@@ -38,6 +38,9 @@
     "classTerm": "As linhas são instâncias de",
     "noClassTerm": "Nenhum termo",
     "classTermUnreadable": "Não foi possível ler seu termo: {{error}}",
+    "classTermNoModel": "Não foi possível ler o termo: suas funções não podem ler as tabelas do modelo.",
+    "classTermNoEntry": "Não foi possível ler o termo: suas funções não podem ler a entrada desta tabela no modelo.",
+    "classTermNoField": "Não foi possível ler o termo: suas funções não podem ler de qual termo as linhas de uma tabela são instâncias.",
     "access": "Acesso"
   }
 }

@@ -1,6 +1,6 @@
 {
   "dbtFormSection": {
-    "specLegend": "Procedencia del manifiesto",
+    "specLegend": "De dónde procede el manifiesto",
     "specLocation": "URL o ubicación del artefacto",
     "specUpload": "Subir",
     "specCloud": "dbt Cloud",
@@ -9,19 +9,19 @@
     "uploadLabel": "Archivo manifest.json",
     "cloudHostLabel": "URL de dbt Cloud",
     "accountLabel": "ID de cuenta",
-    "jobLabel": "ID de trabajo",
+    "jobLabel": "ID de job",
     "tokenLabel": "Token de API",
-    "tokenHint": "Se guarda con esta fuente y se usa para leer el manifiesto y ejecutar trabajos.",
+    "tokenHint": "Se guarda con este origen y se usa para leer el manifiesto y ejecutar jobs.",
     "commandLineLabel": "Comando que ejecuta dbt",
-    "commandLineHint": "Los comandos se ejecutan así donde dbt está instalado, por ejemplo dbt --project-dir /srv/project.",
-    "previewButton": "Previsualizar manifiesto",
+    "commandLineHint": "Se ejecuta donde está instalado dbt, por ejemplo dbt --project-dir /srv/project.",
+    "previewButton": "Vista previa del manifiesto",
     "summary": "{{project}} ({{adapter}}): {{models}} modelos y {{commands}} comandos disponibles.",
-    "warehouseFound": "{{database}} se lee a través de la fuente {{source}}.",
-    "warehouseMissing": "Ninguna fuente registrada lee la base de datos {{adapter}} {{database}}. Cree una:",
-    "warehouseId": "ID de la nueva fuente",
+    "warehouseFound": "{{database}} se lee a través del origen {{source}}.",
+    "warehouseMissing": "Ningún origen registrado lee la base de datos {{adapter}} {{database}}. Cree uno:",
+    "warehouseId": "ID del nuevo origen",
     "warehouseHost": "Cuenta o host",
     "warehouseUser": "Nombre de usuario",
     "warehouseCredential": "Credencial",
-    "adapterUnknown": "El adaptador {{adapter}} no tiene un tipo de fuente correspondiente. Registre primero su almacén y luego añada esta fuente."
+    "adapterUnknown": "El adaptador {{adapter}} no tiene un tipo de origen correspondiente. Registre primero su almacén de datos y luego añada este origen."
   }
 }

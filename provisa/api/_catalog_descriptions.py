@@ -80,6 +80,21 @@ _META: dict[str, str] = {
     # REQ-2126
     "data_product_edges": "Each data product's links to the rest of the model — the tables and "
     "products it reaches through relationships — one row per product, target and kind",
+    # REQ-2208
+    "tag_instances": "Every tag on every object, assigned, inherited from a glossary term or "
+    "derived, and every required tag an object lacks, with its citations and status",
+    # REQ-2208 (decision 2026-11-13)
+    "library_documents": "Every document in the reference library, with the domains it is read "
+    "in. Its policyCoverage, sectionTags and citations relationships reach the objects, tags and "
+    "citations connected to it",
+    "tag_citations": "Every citation of a library document or section, by a tag's definition or "
+    "by an assignment of a tag to an object, with whether the cited text is current, changed or "
+    "gone",
+    "section_tags": "Every tag on a library document or on a section of one, with why it is there",
+    "policy_coverage": "Every path from a library document or section to an object of the model: "
+    "the section carries a tag the object carries, or a tag's definition or assignment cites the "
+    "section. Filter by document_id and object_kind = 'column' for the columns relevant to a "
+    "document",
     # REQ-2145
     "effective_column_tags": "Every tag each column carries, its own and those on the glossary "
     "term it means, each saying where it comes from",
@@ -175,10 +190,17 @@ _OPS: dict[str, str] = {
     "the limit, and when it recovered",
     "requests": "One row per request: what was asked, by whom, the environment it is for, the "
     "roles it is addressed to and their members, its state, the decision, who decided and when",
+    "entitlements": "One row per entitlement list as it was set: from the identity provider, in "
+    "Provisa or by a role, for a person's role grant and one kind of object, with its valid period "
+    "and when Provisa recorded it",
+    "entitlement_expiries": "One row per version of an expiry rule on a person's role grant: when "
+    "it ends access and what it ends, with its valid period and when Provisa recorded it",
     "service_level": "The service level of the org's last hour, from the audit log — how many "
     "queries, their latency percentiles and the share that succeeded",
     "sensitive_column_coverage": "Sensitive coverage: every sensitive column, its tags, whether a "
     "fake covers it, and the reason when none does",
+    "tags_report": "Tags: every tag on every object and every required tag an object lacks, with "
+    "the object, the tag, how the tag got there, its citations and whether it needs attention",
     "names_report": "Names: every model object with its name on each surface and the naming "
     "problems found in it, and every name clash the last model build refused, naming both objects",
 }
@@ -193,6 +215,138 @@ _OPS_OWN = (
     ". Provisa's own record of the queries and activity run through it, not the "
     "organisation's application traffic or logs"
 )
+
+# REQ-2208 (THE TAGS REPORT): the meta table tag_instances and the report over it.
+_TAG_INSTANCE_COLUMNS: dict[str, str] = {
+    "id": "Identity of the row: how the tag got there, the tag, the object and the assignment",
+    "object_kind": "Kind of object: source, table, column, relationship, command, product, term, "
+    "rls_rule, role, metric, document or section",
+    "object_key": "The object's identity across kinds (kind:id)",
+    "object_id": "The object's identity within its kind",
+    "object_name": "How the names table of the last model build names the object; empty for a kind "
+    "it does not name",
+    "domain_id": "Domain the object is governed under",
+    "owner": "The object's owner, for a relationship or a data product",
+    "table_id": "Table the object is, or belongs to",
+    "tag_id": "Tag, with its parameter when it has one",
+    "base_tag_id": "Tag, parameter stripped: the registry id",
+    "parameter": "The assignment's parameter value, when the tag takes one",
+    "tag_description": "The tag's definition",
+    "tag_is_system": "Whether the tag is code-defined rather than the registry's",
+    "tag_required": "Whether every object of the kinds the tag applies to must carry it",
+    "tag_requires_citation": "Whether each assignment of the tag must cite a library section",
+    "definition_citations": "How many library sections the tag's definition cites",
+    "via": "assigned, inherited (from the column's glossary term), derived (from the object's "
+    "registered state) or missing (a required tag the object does not carry)",
+    "reason": "Why the tag is on the object, as recorded with the assignment",
+    "expires_on": "Date the assignment stops being intended",
+    "expired": "Whether that date has passed",
+    "purpose": "What the assignment is for",
+    "review_on": "Date the assignment is to be reviewed by",
+    "evidence": "The profile evidence recorded when the assignment was decided",
+    "decided_by": "Who assigned the tag",
+    "decided_at": "When the tag was assigned",
+    "citations": "How many library sections the assignment cites",
+    "citations_broken": "Of those, how many no longer resolve: the section or document is gone",
+    "citations_drifted": "Of those, how many sections' text changed since they were cited",
+    "citation_missing": "The tag requires each assignment to cite a section, and this one cites none",
+    "status": "clean, or needs attention",
+    "status_reason": "What needs attention, each reason separated by a semicolon",
+    "read_all_domains": "The domains a reader must reach, every one, to read the row (|a|b|)",
+    "read_any_domains": "The domains of which a reader must reach one, when any is named (a "
+    "source's allowed domains)",
+    "read_term_domains": "The domains the row is read in as a glossary term is (a term's, or a "
+    "library document's)",
+    "read_roles": "The roles a metric is granted to, whose tags they read",
+}
+
+# REQ-2208 (decision 2026-11-13): the library views. What each says of the object it names is
+# tag_instances's; of the place cited or tagged, the library's.
+_LIBRARY_OBJECT_COLUMNS: dict[str, str] = {
+    "tag_instance_id": "The row of tag_instances for the tag on the object",
+    "object_kind": _TAG_INSTANCE_COLUMNS["object_kind"],
+    "object_key": _TAG_INSTANCE_COLUMNS["object_key"],
+    "object_id": _TAG_INSTANCE_COLUMNS["object_id"],
+    "object_name": _TAG_INSTANCE_COLUMNS["object_name"],
+    "domain_id": _TAG_INSTANCE_COLUMNS["domain_id"],
+    "table_id": _TAG_INSTANCE_COLUMNS["table_id"],
+    "column_key": "The column, as table id:column name, when the object is a column",
+    "read_all_domains": _TAG_INSTANCE_COLUMNS["read_all_domains"],
+    "read_any_domains": _TAG_INSTANCE_COLUMNS["read_any_domains"],
+    "read_term_domains": _TAG_INSTANCE_COLUMNS["read_term_domains"],
+    "read_roles": _TAG_INSTANCE_COLUMNS["read_roles"],
+}
+_LIBRARY_PLACE_COLUMNS: dict[str, str] = {
+    "document_id": "The library document",
+    "document_title": "The document's title",
+    "place_key": "The document or section: document:id, or section:id:heading:name or "
+    "section:id:page:number",
+    "section_heading": "The section's heading; empty for a whole document or a section named by "
+    "its page",
+    "section_page": "The section's page, for a document whose sections have no headings; empty "
+    "otherwise",
+    "read_document_domains": "The domains the document is read in (|a|b|), as a glossary term's "
+    "are: a reader sees the row only where it reads the document",
+}
+_LIBRARY_DOCUMENT_COLUMNS: dict[str, str] = {
+    "id": "The library document",
+    "title": "The document's title",
+    "source": "The document's file name or URL",
+    "source_kind": "file or url",
+    "status": "proposed or kept",
+    "added_by": "Who added the document",
+    "added_at": "When the document was added",
+    "refreshed_at": "When the document's content was last refreshed",
+    "domains": "The domains the document is read in, * for the whole organisation",
+    "read_document_domains": _LIBRARY_PLACE_COLUMNS["read_document_domains"],
+}
+_TAG_CITATION_COLUMNS: dict[str, str] = {
+    "id": "Identity of the citation",
+    "citer": "definition (the tag's definition cites the place) or assignment (the tag's "
+    "assignment to an object cites it)",
+    "tag_id": "Tag, with its parameter when an assignment carries one",
+    "base_tag_id": "Tag, parameter stripped: the registry id",
+    **_LIBRARY_OBJECT_COLUMNS,
+    "object_key": "The object the cited assignment is on (kind:id); empty for a definition's "
+    "citation",
+    **_LIBRARY_PLACE_COLUMNS,
+    "document_title": "The document's title when it was cited, kept after the document is removed",
+    "document_source": "The document's file name or URL when it was cited",
+    "state": "current, drifted (the section's text changed since it was cited) or broken (the "
+    "section or document is gone)",
+    "needs_review": "Whether the state is other than current",
+    "cited_by": "Who made the citation",
+    "cited_at": "When the citation was made",
+}
+_SECTION_TAG_COLUMNS: dict[str, str] = {
+    "id": "Identity of the row: the tag and the document or section",
+    "tag_instance_id": "The row of tag_instances for this tag",
+    "tag_id": "Tag, with its parameter when it has one",
+    "base_tag_id": "Tag, parameter stripped: the registry id",
+    "place_kind": "document (the tag is on the whole document) or section",
+    **_LIBRARY_PLACE_COLUMNS,
+    "reason": "Why the tag is on the document or section, as recorded with the assignment",
+    "expires_on": "Date the assignment stops being intended",
+    "expired": "Whether that date has passed",
+    "purpose": "What the assignment is for",
+    "review_on": "Date the assignment is to be reviewed by",
+    "decided_by": "Who assigned the tag",
+    "decided_at": "When the tag was assigned",
+}
+_POLICY_COVERAGE_COLUMNS: dict[str, str] = {
+    "id": "Identity of the path: how it links, the document or section, and the tag on the object",
+    **_LIBRARY_PLACE_COLUMNS,
+    "tag_id": "The tag on the object, with its parameter when it has one",
+    "base_tag_id": "Tag, parameter stripped: the registry id",
+    "link": "shared tag (the section carries the tag the object carries), tag cites it (the "
+    "tag's definition cites the section) or assignment cites it (the object's assignment of the "
+    "tag cites the section)",
+    "citation_state": "For a citation's path, the citation's state: current, drifted or broken; "
+    "empty for a shared tag",
+    **_LIBRARY_OBJECT_COLUMNS,
+    "via": "How the tag got onto the object: assigned, inherited (from the column's glossary "
+    "term) or derived (from the object's registered state)",
+}
 
 TABLE_DESCRIPTIONS: dict[str, str] = {
     **{name: text + _META_OWN for name, text in _META.items()},
@@ -235,13 +389,20 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "latest_outcome": "For a checker table, its latest scan's outcome: pass when every check "
         "passed, fail otherwise; empty when it has never run",
         "latest_run_at": "For a checker table, when its latest scan ran",
+        # REQ-1986
+        "requires_parameters": "Whether a read of the table must give a parameter; such a table "
+        "gives no row count, profile or sample without it. Its parameters are in table_columns",
+        # REQ-1921
+        "withdrawn": "Whether the table, or its source, is withdrawn: out of production until it "
+        "is put back",
     },
     # REQ-2190
     "table_details": {
         "id": "The registered table",
         "modeling_role": "The table's star role: fact or dimension, when it has one",
         "modeling_history": "The history mode of the entity the table was lowered from",
-        "comment": "The table's description, with its modeling role and tags in brackets",
+        "comment": "The table's description, the parameters it requires and what it cannot "
+        "give without them, and its modeling role and tags in brackets",
     },
     "column_details": {
         "id": "The column's row in table_columns",
@@ -356,14 +517,25 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "scope": "Where the column may be used — projection, filtering, or both",
         "masks": "The ordered mask list: each entry names the roles it is for and the mask they "
         "read the value through, or none; a reader reads it through the first entry it holds",
-        "native_filter_type": "Type the source expects in a filter on this column, when it "
-        "differs from the projected type",
+        "native_filter_type": "How the column, a parameter of the table, reaches the source: "
+        "a path, query, GraphQL, gRPC or native-query argument, a partition key, or a column "
+        "value; empty for a column that is not a parameter",
         "is_foreign_key": "Whether the column references another registered table",
         "is_alternate_key": "Whether the column uniquely identifies a row without being the "
         "primary key",
         "object_fields": "Field definitions for a structured (object) column",
         "visible_to": "Roles that may select this column; empty means no role",
         "tenant_id": _TENANT,
+        # REQ-1986
+        "parameter_required_by_source": "For a parameter, whether the source requires a value "
+        "for it; empty for a column that is not a parameter",
+        "parameter_required_by_steward": "For a parameter, whether a steward made it required "
+        "for this table; empty for a column that is not a parameter",
+        "parameter_required": "For a parameter, whether a read of the table must give it a "
+        "value; empty for a column that is not a parameter",
+        "parameter_opaque": "For a parameter, whether it is an input to the source's call, "
+        "bound by equality only, rather than a real column of the table (a partition key, a "
+        "column value); empty for a column that is not a parameter",
     },
     "domains": {
         "id": "Domain name — the identifier roles are granted access to",
@@ -520,6 +692,14 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "product_id": "Tagged data product, when the object is a data product",  # REQ-2125
         "term_id": "Tagged glossary term, when the object is a term",  # REQ-2145
     },
+    # REQ-2208
+    "tag_instances": _TAG_INSTANCE_COLUMNS,
+    "tags_report": _TAG_INSTANCE_COLUMNS,
+    # REQ-2208 (decision 2026-11-13)
+    "library_documents": _LIBRARY_DOCUMENT_COLUMNS,
+    "tag_citations": _TAG_CITATION_COLUMNS,
+    "section_tags": _SECTION_TAG_COLUMNS,
+    "policy_coverage": _POLICY_COVERAGE_COLUMNS,
     # REQ-2145
     "effective_column_tags": {
         "id": "Identity of the row: the assignment, and for a term's tag the column it reaches",
@@ -743,6 +923,8 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "variables they read), masks by kind, row caps, and for a write its table and columns",
         "as_of": "The time the statement read bitemporal views as of, when it set one",
         "as_recorded": "The time the statement read bitemporal views as recorded at, when it set one",
+        "stage": "Stage the environment declared when the statement ran — production, preprod, "
+        "test or development",
     },
     "usage_ranking": {
         "id": "The registered table this row ranks",
@@ -816,22 +998,25 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "status_code": "401 unauthenticated, 403 denied by governance",
         "duration_ms": "Wall-clock milliseconds before the refusal",
         "logged_at": "When the refusal happened",
+        "stage": "Stage the environment declared when the statement was refused",
     },
     "surface_mix": {
-        "id": "Composite key of the surface, the day, and the org",
+        "id": "Composite key of the surface, the day, and the stage",
         "source": "Protocol surface (http, grpc, pgwire, bolt, …)",
         "day": "Calendar day the counts cover",
         "query_count": "Statements that arrived on the surface that day",
         "distinct_users": "Distinct principals that used it that day",
+        "stage": "Stage the environment declared when those statements ran",
     },
     "query_health": {
-        "id": "Composite key of the surface, the day, and the org",
+        "id": "Composite key of the surface, the day, and the stage",
         "source": "Protocol surface (http, grpc, pgwire, bolt, …)",
         "day": "Calendar day the counts cover",
         "query_count": "Statements that arrived on the surface that day",
         "error_count": "How many of them ended at 400 or above",
         "avg_duration_ms": "Mean wall-clock milliseconds across them",
         "max_duration_ms": "Slowest statement that day, in milliseconds",
+        "stage": "Stage the environment declared when those statements ran",
     },
     "stale_metadata": {
         "id": "Kind-prefixed key of the object with the gap",
@@ -979,6 +1164,8 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "table_name": "Name of that table",
         "domain_id": "Domain of that table",
         "table_count": "Number of registered tables the statement read",
+        "stage": "Stage the environment declared when the statement ran — production, preprod, "
+        "test or development",
     },
     "replica_builds": {
         "id": "The replica's source, schema and table, dot-joined",
@@ -1063,6 +1250,40 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "decided_by_name": "Display name of the person who decided it",
         "decided_at": "When it was decided",
         "created_at": "When it was raised",
+    },
+    "entitlements": {
+        "id": "The row's number",
+        "source": "Where the list came from: idp, provisa or role",
+        "principal": "The person the list is for; empty on a role's own rows",
+        "principal_name": "Display name of that person",
+        "role_id": "The role grant the list applies within",
+        "kind": "The kind of object the list names: tables, columns, relationships and the like",
+        "capability": "The capability the list is limited to; empty for every scoped capability",
+        "identifiers": "The semantic identifiers listed, * for every one",
+        "removed": "Whether this row ends the list, leaving none held after it",
+        "reason": "Why it was set",
+        "set_by": "User id of whoever set it",
+        "set_by_name": "Display name of whoever set it",
+        "valid_from": "When the list took effect",
+        "valid_to": "When the next row for the same list took effect; empty while it holds",
+        "recorded_at": "When Provisa recorded it",
+    },
+    "entitlement_expiries": {
+        "id": "The row's number",
+        "rule_key": "The rule this row is a version of",
+        "principal": "The person whose grant the rule is on",
+        "principal_name": "Display name of that person",
+        "role_id": "The role grant the rule is on",
+        "list_kind": "The kind of list the rule was set with",
+        "ends_at": "When the rule ends access",
+        "ends": "What it ends, as capability to identifiers; empty for the whole grant",
+        "removed": "Whether this row withdraws the rule",
+        "reason": "Why it was set",
+        "set_by": "User id of whoever set it",
+        "set_by_name": "Display name of whoever set it",
+        "valid_from": "When this version of the rule took effect",
+        "valid_to": "When the next version of the rule took effect; empty while it holds",
+        "recorded_at": "When Provisa recorded it",
     },
     "sensitive_column_coverage": {
         "id": "Synthesized column identity (table_id:column_name) of the sensitive column",

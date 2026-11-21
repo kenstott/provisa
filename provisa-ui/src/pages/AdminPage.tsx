@@ -60,13 +60,10 @@ import { OrgsTab } from "../components/admin/OrgsTab";
 import { AiModelsTab } from "../components/admin/AiModelsTab";
 import { PackageRegistriesTab } from "../components/admin/PackageRegistriesTab";
 import { ContainerRegistriesTab } from "../components/admin/ContainerRegistriesTab";
-import { CatalogsTab } from "../components/admin/CatalogsTab";
-import { MetadataExportTab } from "../components/admin/MetadataExportTab";
 import { ImportTab } from "../components/admin/ImportTab";
 import { TagsTab } from "../components/admin/TagsTab";
 import { ClassificationKindsTab } from "../components/admin/ClassificationKindsTab";
 import { ReportsTab } from "../components/admin/ReportsTab";
-import { GlossaryTab } from "../components/admin/GlossaryTab";
 import { SecurityManager } from "../components/admin/SecurityManager";
 import { SecretsTab, MySecretsTab } from "../components/admin/SecretsTab";
 import { EmailTab } from "../components/admin/EmailTab";
@@ -115,13 +112,10 @@ const ROUTE_TO_SECTION: Record<string, string> = {
   "/admin/ai-models": "AI Models",
   "/admin/package-registries": "Package Registries", // REQ-1984: what Node installs go through
   "/admin/container-registries": "Container Registries", // REQ-2098: where built images go
-  "/admin/catalogs": "Catalogs", // REQ-2122: each catalog connected once
-  "/admin/metadata-export": "Metadata Export",
   "/admin/import": "Import", // REQ-1483: Hasura v2 / DDN import
   "/admin/tags": "Tags",
   "/admin/classification-kinds": "Classification", // REQ-2147: the profiler's classification kinds
   "/admin/reports": "Reports", // REQ-1386: ops-domain management report viewer
-  "/admin/ontology": "Glossary", // REQ-1387: business-glossary curation
   // Consolidated Security area — posture, encryption, auth, and the secrets service as sub-tabs.
   // Legacy routes deep-link to the matching sub-tab.
   "/admin/security": "Security",
@@ -317,28 +311,16 @@ export function AdminPage() {
 
   if (loading) return <PageLoading message={t("adminPage.loading")} />;
 
-  // Glossary's detail panel is meant to fill to the bottom of the viewport rather than
-  // shrink-wrap its content, so its page and content Stack join the flex-height chain that
-  // `main` already provides (the same `page-sticky-head` pattern the sticky-header list
-  // pages use) instead of the plain block-flow the other admin tabs render into.
-  const isGlossary = activeTab === "Glossary";
-
   return (
-    <div className={isGlossary ? "page page-sticky-head" : "page"}>
-      {activeTab !== "Glossary" && (
-        <PageTitle icon={Settings} mb="md">
-          {/* Reads as a breadcrumb: the area, then the section within it. */}
-          {t("adminPage.title")} — {activeTab}
-        </PageTitle>
-      )}
+    <div className="page">
+      <PageTitle icon={Settings} mb="md">
+        {/* Reads as a breadcrumb: the area, then the section within it. */}
+        {t("adminPage.title")} — {activeTab}
+      </PageTitle>
 
       {/* Anchor the tour waits on: step23 highlights the navbar link, which exists before this
           page has painted, so it gates on the admin content itself. */}
-      <Stack
-        gap="lg"
-        data-tour="admin-content"
-        style={isGlossary ? { flex: 1, minHeight: 0 } : undefined}
-      >
+      <Stack gap="lg" data-tour="admin-content">
         {activeTab === "Dashboard" && (
           <>
             <SimpleGrid cols={{ base: 2, sm: 4 }} spacing="md">
@@ -532,6 +514,7 @@ export function AdminPage() {
                                 <ConfirmDialog
                                   title={t("adminPage.deleteDomainTitle", { id: d.id })}
                                   consequence={t("adminPage.deleteDomainConsequence")}
+                                  confirmLabel={t("common.delete")}
                                   onConfirm={() => handleDeleteDomain(d.id)}
                                 >
                                   {(open) => (
@@ -587,13 +570,10 @@ export function AdminPage() {
         {activeTab === "AI Models" && <AiModelsTab />}
         {activeTab === "Package Registries" && <PackageRegistriesTab />}
         {activeTab === "Container Registries" && <ContainerRegistriesTab />}
-        {activeTab === "Catalogs" && <CatalogsTab />}
-        {activeTab === "Metadata Export" && <MetadataExportTab />}
         {activeTab === "Import" && <ImportTab />}
         {activeTab === "Tags" && <TagsTab />}
         {activeTab === "Classification" && <ClassificationKindsTab />}
         {activeTab === "Reports" && <ReportsTab />}
-        {activeTab === "Glossary" && <GlossaryTab />}
       </Stack>
       {refusal.dialog}
     </div>

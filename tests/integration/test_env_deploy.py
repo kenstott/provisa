@@ -180,9 +180,13 @@ class TestTheRoundTrip:
         await _seed(org)
         await _seed(org, ENV, burn_serials=3)
         await deploy_tree(org.db, org.id, ENV, await org.tree(), ref="deadbeef")
-        loaded = {r["table_name"]: r["id"] for r in await org.rows(registered_tables, ENV)}
+        rows = await org.rows(registered_tables, ENV)
+        # REQ-2248: the burn tables the tree lacks are kept, retired; the tables in service are
+        # the tree's.
+        loaded = {r["table_name"]: r["id"] for r in rows if not r["retired"]}
         original = {r["table_name"]: r["id"] for r in await org.rows(registered_tables)}
         assert set(loaded) == set(original)
+        assert {r["table_name"] for r in rows if r["retired"]} == {"burn0", "burn1", "burn2"}
         assert loaded["orders"] != original["orders"]
 
     async def test_a_relationship_arrives_pointing_at_the_right_table(self, org):
@@ -221,7 +225,15 @@ class TestTheTreeIsRefusedWhole:
         await _seed(org, ENV)
         before = await org.tree(ENV)
         tree = await org.tree()
-        del tree["sales/tables/Customer.yaml"]
+        # A relationship to a table neither the tree nor the environment holds. (Dropping
+        # Customer.yaml no longer refuses: the environment's Customer is kept retired, REQ-2248.)
+        order = tree["sales/tables/Order.yaml"]
+        tree["sales/tables/Order.yaml"] = {
+            **order,
+            "relationships": [
+                {**rel, "target": "sales/tables/Nowhere.yaml"} for rel in order["relationships"]
+            ],
+        }
         with pytest.raises(DeployError):
             await deploy_tree(org.db, org.id, ENV, tree, ref="deadbeef")
         assert await org.tree(ENV) == before

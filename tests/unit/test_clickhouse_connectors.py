@@ -217,10 +217,14 @@ def test_from_url_selects_server_for_clickhouse_scheme(monkeypatch):
 def test_from_url_selects_native_for_clickhouse_native_scheme(monkeypatch):
     # Stub the native Client so construction never opens a TCP connection.
     import clickhouse_driver
+    from clickhouse_driver.connection import Connection
 
     class _Stub:
         def __init__(self, **kw):
             self.kw = kw
+            # The connection the real Client holds, unconnected, and those it rotates to.
+            self.connection = Connection(kw["host"], kw["port"])
+            self.connections: list[Connection] = []
 
         def execute(self, sql, params=None, **kw):
             return None

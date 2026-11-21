@@ -8,6 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
+import { DestructiveConfirmButton } from "../components/form/DestructiveConfirmButton";
 import { Users } from "lucide-react";
 import { PageTitle } from "../components/PageTitle";
 import { useCallback, useEffect, useState } from "react";
@@ -751,14 +752,13 @@ export function TeamPage() {
             <FormFooter
               onCancel={() => setDeleteOpen(false)}
               action={
-                <Button
-                  color="red"
+                <DestructiveConfirmButton
                   disabled={confirmText !== activeOrgId}
                   onClick={handleDeleteOrg}
-                  data-testid="team-delete-submit"
+                  testId="team-delete-submit"
                 >
                   {t("teamPage.deleteConfirmButton")}
-                </Button>
+                </DestructiveConfirmButton>
               }
             >
               <Button variant="default" onClick={handleExport} data-testid="team-export-config">

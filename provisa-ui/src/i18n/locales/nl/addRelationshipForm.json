@@ -37,6 +37,16 @@
     "viaLabelSourceColumn": "Waarde van het relatietype",
     "viaLabelSourceTable": "Tabelnaam",
     "viaLabelSourceFixed": "Cypher-alias",
-    "cardinalityOneToOne": "één-op-één"
+    "cardinalityOneToOne": "één-op-één",
+    "targetTypeResolver": "Coderesolver",
+    "resolverLabel": "Resolver",
+    "resolverHelp": "Een query van een codebron die de brontabel en de doeltabel krijgt en per overeenkomst één rij teruggeeft.",
+    "resolverNone": "Geen query van een codebron krijgt twee tabellen",
+    "sourceMatchLabel": "Overeenkomstkolom met de bronsleutel",
+    "targetMatchLabel": "Overeenkomstkolom met de doelsleutel",
+    "incrementalLabel": "Overeenkomsten incrementeel bijhouden",
+    "incrementalHelp": "Bij elke verversing wordt de @change-functie van de resolver gevraagd naar de overeenkomsten die sinds de laatste run zijn gewijzigd, en die worden per sleutel toegepast. Uitgeschakeld berekent elke verversing alle overeenkomsten opnieuw.",
+    "rebuildEveryLabel": "Volledige herbouw elke (seconden)",
+    "rebuildEveryHelp": "Hoe vaak alle overeenkomsten opnieuw worden berekend, om te corrigeren wat de wijzigingen hebben gemist. Verplicht zolang overeenkomsten incrementeel worden bijgehouden."
   }
 }

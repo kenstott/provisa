@@ -18,7 +18,7 @@ Everything here lands on the TEST instance: dedicated server processes on their 
 their own control planes.
 """
 
-# Requirements: REQ-1918, REQ-1919
+# Requirements: REQ-1918, REQ-1919, REQ-2248
 
 from __future__ import annotations
 
@@ -107,3 +107,50 @@ def test_a_source_that_is_not_there_is_not_found(served):
         "deleteSource"
     ]
     assert (answer["success"], answer["code"]) == (False, "schema.source_not_found")
+
+
+def _retired(srv: IsolatedServer, kind: str) -> list[dict]:
+    listed = _gql(srv, "{ retiredModelObjects { kind key name } }")["retiredModelObjects"]
+    return [o for o in listed if o["kind"] == kind]
+
+
+def test_a_source_holding_only_retired_tables_is_retired_listed_and_restored(served):
+    """REQ-2248 (amended 2026-11-15). Runs last: it retires a source's tables and the source.
+    Once the source's tables are retired its delete retires it: hidden, listed with the other
+    retired objects under its id, and restored from there at that id with its tables."""
+    before = _tables_by_source(served)
+    source_id = sorted(s for s in before if not s.startswith(("_", "provisa-")))[0]
+    held = before[source_id]
+    for rel in _gql(served, "{ relationships { id sourceTableId targetTableId } }")[
+        "relationships"
+    ]:
+        if {rel["sourceTableId"], rel["targetTableId"]} & held:
+            gone = _gql(
+                served,
+                f'mutation {{ deleteRelationship(id: "{rel["id"]}") {{ success message }} }}',
+            )["deleteRelationship"]
+            assert gone["success"], gone
+    retired_tables = _gql(
+        served,
+        "mutation { deleteTables(ids: %s) { deleted refused { name reason } } }" % sorted(held),
+    )["deleteTables"]
+    assert retired_tables["refused"] == [], retired_tables
+
+    answer = _gql(
+        served,
+        f'mutation {{ deleteSource(id: "{source_id}") {{ success code message params }} }}',
+    )["deleteSource"]
+    assert (answer["success"], answer["code"]) == (True, "schema.source_deleted"), answer
+    assert source_id not in {s["id"] for s in _gql(served, "{ sources { id } }")["sources"]}
+    [listed] = _retired(served, "source")
+    assert listed["name"] == source_id and listed["key"] != source_id
+
+    restored = _gql(
+        served,
+        'mutation { restoreModelObject(kind: "source", key: "%s") { success code message } }'
+        % listed["key"],
+    )["restoreModelObject"]
+    assert (restored["success"], restored["code"]) == (True, "schema.restored"), restored
+    assert source_id in {s["id"] for s in _gql(served, "{ sources { id } }")["sources"]}
+    assert _tables_by_source(served).get(source_id) == held
+    assert _retired(served, "source") == []

@@ -17,6 +17,16 @@
     "bulkDeleteConsequence": "Diese werden gelöscht: {{names}}. Alle, auf die noch etwas verweist, bleiben erhalten und werden mit Grund genannt.",
     "bulkRefused_one": "{{count}} wurde nicht gelöscht:",
     "bulkRefused_other": "{{count}} wurden nicht gelöscht:",
-    "dismiss": "Schließen"
+    "dismiss": "Schließen",
+    "duplicate": "Duplizieren",
+    "duplicateNamed": "{{name}} duplizieren",
+    "withdraw": "Zurückziehen",
+    "withdrawNamed": "{{name}} zurückziehen",
+    "withdrawTitle": "{{name}} zurückziehen?",
+    "putBack": "Zurückholen",
+    "putBackNamed": "{{name}} zurückholen",
+    "putBackTitle": "{{name}} zurückholen",
+    "putBackRegionHint": "Die Region, in die sie zurückkehrt – eine, die Ihre Datenresidenz-Berechtigung abdeckt.",
+    "putBackNoRegion": "Keine Datenresidenz-Berechtigung Ihrer Rollen deckt eine Region ab, in die sie zurückgeholt werden kann. Eine Person mit Datenresidenz für die Zielregion holt sie zurück."
   }
 }

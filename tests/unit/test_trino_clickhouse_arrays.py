@@ -167,14 +167,27 @@ def test_clickhouse_answers_a_null_array_as_postgresql_does(pg_sql, answer):
 @pytest.mark.parametrize(
     ("pg_sql", "written"),
     [
-        ("SELECT array_append(ARRAY[1], 2) AS v", "SELECT ARRAY_APPEND([1], 2) AS v"),
-        ("SELECT array_prepend(1, ARRAY[2]) AS v", "SELECT ARRAY_PREPEND([2], 1) AS v"),
-        ("SELECT array_append(a, 2) AS v FROM t", "SELECT ARRAY_APPEND(a, 2) AS v FROM t"),
-        ("SELECT array_prepend(2, a) AS v FROM t", "SELECT ARRAY_PREPEND(a, 2) AS v FROM t"),
+        # ClickHouse's own names: it has no ARRAY_APPEND or ARRAY_PREPEND (an unknown function).
+        ("SELECT array_append(ARRAY[1], 2) AS v", "SELECT arrayPushBack([1], 2) AS v"),
+        ("SELECT array_prepend(1, ARRAY[2]) AS v", "SELECT arrayPushFront([2], 1) AS v"),
+        ("SELECT array_append(a, 2) AS v FROM t", "SELECT arrayPushBack(a, 2) AS v FROM t"),
+        ("SELECT array_prepend(2, a) AS v FROM t", "SELECT arrayPushFront(a, 2) AS v FROM t"),
     ],
 )
 def test_an_array_that_is_not_a_null_is_written_as_before_on_clickhouse(pg_sql, written):
+    """No NULL array's form: the call, in ClickHouse's spelling of it."""
     assert transpile(pg_sql, "clickhouse") == written
+
+
+@pytest.mark.parametrize(
+    ("pg_sql", "answer"),
+    [
+        ("SELECT array_append(ARRAY[1], 2) AS v", "[1,2]"),
+        ("SELECT array_prepend(1, ARRAY[2]) AS v", "[1,2]"),
+    ],
+)
+def test_an_array_that_is_not_a_null_is_answered_on_clickhouse(pg_sql, answer):
+    assert _on_clickhouse(pg_sql) == [answer]
 
 
 def test_array_cat_of_two_arrays_is_still_refused_on_clickhouse():

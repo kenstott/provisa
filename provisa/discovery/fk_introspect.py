@@ -21,7 +21,9 @@ Relationship IDs:
 Alias naming follows Hasura convention:
   many-to-one  → ref_table name  (e.g. "users")
   one-to-many  → fk_table name   (e.g. "orders")
-  Disambiguated with _by_{fk_column} when alias would collide.
+  Disambiguated with _by_{fk_column} when alias would collide, then the table
+  (provisa.core.relationship_naming, REQ-415); a derived GraphQL field or Cypher
+  type that would collide is pinned under a name told apart the same way.
 """
 
 from __future__ import annotations
@@ -29,27 +31,14 @@ from __future__ import annotations
 # complexity-gate: allow-ble=3 reason="best-effort constraint introspection over a pluggable set of RDB drivers whose failure taxonomy is unbounded (unreachable source, missing information_schema/PRAGMA, transient driver error): govdata FK fetch, UNIQUE-constraint introspection (REQ-1093), and per-table FK auto-registration each log and return an empty/zero result so one source's metadata read never fails registration or the introspection of other tables"
 
 import logging
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
+
+from provisa.core.inflection import plural, singular
 
 if TYPE_CHECKING:
-    from inflect import Word
-    from inflect import engine as _Engine
-
     from provisa.core.database import Connection
 
 _log = logging.getLogger(__name__)
-# inflect's import + engine() build costs ~0.8s — lazy so it never hits cold start; paid once on
-# first alias derivation. Same pattern as provisa/compiler/naming.py.
-_inflect: "_Engine | None" = None
-
-
-def _engine() -> "_Engine":
-    global _inflect
-    if _inflect is None:
-        import inflect
-
-        _inflect = inflect.engine()
-    return _inflect
 
 
 # Requirements: REQ-018, REQ-399, REQ-413, REQ-414, REQ-415
@@ -268,7 +257,7 @@ def _m2o_alias(ref_table: str, hasura_v2_style: bool = False) -> str:  # REQ-415
     REQ-415: under Hasura V2 style the many-to-one (object) alias is singular.
     """
     if hasura_v2_style:
-        return _engine().singular_noun(cast("Word", ref_table)) or ref_table
+        return singular(ref_table)
     return ref_table
 
 
@@ -278,11 +267,8 @@ def _o2m_alias(fk_table: str, hasura_v2_style: bool = False) -> str:  # REQ-415
     REQ-415: under Hasura V2 style the one-to-many (array) alias is plural.
     """
     if hasura_v2_style:
-        # Singularize first so an already-plural table name is not double-pluralized
-        # (inflect.plural_noun("orders") → "orderss").
-        eng = _engine()
-        singular = eng.singular_noun(cast("Word", fk_table)) or fk_table
-        return eng.plural_noun(cast("Word", singular)) or singular
+        # plural() keeps an already-plural name as written (REQ-194).
+        return plural(fk_table)
     return fk_table
 
 
@@ -294,15 +280,16 @@ async def _insert_rel(
     src_col: str,
     tgt_col: str,
     cardinality: str,
-    alias: str,
-) -> bool:  # REQ-399, REQ-413
+    alias: str | None,
+    graphql_alias: str | None,
+) -> bool:  # REQ-399, REQ-413, REQ-415
     """Insert a relationship; return True if newly inserted."""
     result = await conn.execute(
         """
         INSERT INTO relationships
             (id, source_table_id, target_table_id, source_column, target_column, cardinality,
-             alias, origin)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, 'admin')
+             alias, graphql_alias)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
         ON CONFLICT DO NOTHING
         """,
         rel_id,
@@ -312,8 +299,18 @@ async def _insert_rel(
         tgt_col,
         cardinality,
         alias,
+        graphql_alias,
     )
     return result == "INSERT 0 1"
+
+
+async def _registered_table(conn: "Connection", source_id: str, table_name: str):
+    return await conn.fetchrow(
+        "SELECT id, alias, table_name FROM registered_tables"
+        " WHERE source_id = $1 AND table_name = $2",
+        source_id,
+        table_name,
+    )
 
 
 async def auto_register_fk_relationships(  # REQ-018, REQ-399, REQ-413, REQ-415
@@ -354,74 +351,76 @@ async def auto_register_fk_relationships(  # REQ-018, REQ-399, REQ-413, REQ-415
     if not fk_rows:
         return 0
 
-    # Collect used aliases per source table to detect collisions
-    m2o_aliases_used: dict[int, set[str]] = {}
-    o2m_aliases_used: dict[int, set[str]] = {}
+    from provisa.core.relationship_naming import Generated, unique_names
+    from provisa.core.relationship_names import store_effective_names
 
-    inserted = 0
+    held = {r["id"] for r in await config_conn.fetch("SELECT id FROM relationships")}
+    generated: list[Generated] = []
     for fk in fk_rows:
         fk_tbl, fk_col = fk["fk_table"], fk["fk_column"]
         ref_tbl, ref_col = fk["ref_table"], fk["ref_column"]
-
-        fk_row = await config_conn.fetchrow(
-            "SELECT id FROM registered_tables WHERE source_id = $1 AND table_name = $2",
-            source_id,
-            fk_tbl,
-        )
-        ref_row = await config_conn.fetchrow(
-            "SELECT id FROM registered_tables WHERE source_id = $1 AND table_name = $2",
-            source_id,
-            ref_tbl,
-        )
-
-        m2o_id = f"fk__{fk_tbl}__{fk_col}__to__{ref_tbl}"
-        o2m_id = f"fk__{ref_tbl}__from__{fk_tbl}__{fk_col}"
-
-        # many-to-one: fk_table.fk_col → ref_table.ref_col
-        if fk_row and ref_row:
-            fk_id, ref_id = fk_row["id"], ref_row["id"]
-
-            m2o_aliases_used.setdefault(fk_id, set())
-            base_m2o = _m2o_alias(ref_tbl, hasura_v2_relationship_style)
-            alias_m2o = (
-                base_m2o if base_m2o not in m2o_aliases_used[fk_id] else f"{base_m2o}_by_{fk_col}"
-            )
-            m2o_aliases_used[fk_id].add(alias_m2o)
-
-            if await _insert_rel(
-                config_conn, m2o_id, fk_id, ref_id, fk_col, ref_col, "many-to-one", alias_m2o
-            ):
-                inserted += 1
-                _log.info(
-                    "Auto-tracked FK many-to-one: %s.%s → %s.%s (alias: %s)",
-                    fk_tbl,
-                    fk_col,
-                    ref_tbl,
-                    ref_col,
-                    alias_m2o,
+        fk_row = await _registered_table(config_conn, source_id, fk_tbl)
+        ref_row = await _registered_table(config_conn, source_id, ref_tbl)
+        if fk_row is None or ref_row is None:
+            continue  # created when the missing table is registered
+        fk_id, ref_id = int(fk_row["id"]), int(ref_row["id"])
+        # many-to-one: fk_table.fk_col → ref_table.ref_col; one-to-many: its reverse. An id is
+        # unique by construction, so one already registered is this key, tracked before.
+        for rel_id, src, tgt, src_col, tgt_col, cardinality, alias, target in (
+            (
+                f"fk__{fk_tbl}__{fk_col}__to__{ref_tbl}",
+                fk_id,
+                ref_id,
+                fk_col,
+                ref_col,
+                "many-to-one",
+                _m2o_alias(ref_tbl, hasura_v2_relationship_style),
+                ref_row,
+            ),
+            (
+                f"fk__{ref_tbl}__from__{fk_tbl}__{fk_col}",
+                ref_id,
+                fk_id,
+                ref_col,
+                fk_col,
+                "one-to-many",
+                _o2m_alias(fk_tbl, hasura_v2_relationship_style),
+                fk_row,
+            ),
+        ):
+            if rel_id in held:
+                continue
+            held.add(rel_id)
+            generated.append(
+                Generated(
+                    rel_id=rel_id,
+                    id_typed=True,
+                    source_table_id=src,
+                    target_table_id=tgt,
+                    source_column=src_col,
+                    target_column=tgt_col,
+                    cardinality=cardinality,
+                    target_name=target["alias"] or target["table_name"],
+                    target_table=target["table_name"],
+                    alias=alias,
                 )
-
-            # one-to-many: ref_table.ref_col ← fk_table.fk_col
-            o2m_aliases_used.setdefault(ref_id, set())
-            base_o2m = _o2m_alias(fk_tbl, hasura_v2_relationship_style)
-            alias_o2m = (
-                base_o2m if base_o2m not in o2m_aliases_used[ref_id] else f"{base_o2m}_by_{fk_col}"
             )
-            o2m_aliases_used[ref_id].add(alias_o2m)
 
-            if await _insert_rel(
-                config_conn, o2m_id, ref_id, fk_id, ref_col, fk_col, "one-to-many", alias_o2m
-            ):
-                inserted += 1
-                _log.info(
-                    "Auto-tracked FK one-to-many: %s.%s ← %s.%s (alias: %s)",
-                    ref_tbl,
-                    ref_col,
-                    fk_tbl,
-                    fk_col,
-                    alias_o2m,
-                )
-
-        # else: one or both tables not registered — skip; will be created when the missing table is registered
-
+    inserted = 0
+    for g, named in zip(generated, await unique_names(config_conn, generated), strict=True):
+        if await _insert_rel(
+            config_conn,
+            g.rel_id,
+            g.source_table_id,
+            g.target_table_id,
+            g.source_column,
+            g.target_column,
+            g.cardinality,
+            named.alias,
+            named.graphql_alias,
+        ):
+            inserted += 1
+            _log.info("Auto-tracked FK %s: %s (alias: %s)", g.cardinality, g.rel_id, named.alias)
+    if inserted:
+        await store_effective_names(config_conn, [g.rel_id for g in generated])
     return inserted

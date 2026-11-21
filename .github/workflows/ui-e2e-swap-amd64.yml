@@ -14,9 +14,8 @@ name: UI e2e (swap lane, amd64-only sources)
 # swap tests query through the Trino engine after the DuckDB-registered source is swapped.
 
 on:
-  # Every push to a release branch runs this: it gates the release (REQ-1989). main never does.
-  push:
-    branches: ['release/**']
+  # Runs on dispatch for a release (gh workflow run <workflow> --ref <release branch>): it gates the
+  # release (REQ-1989). No push starts it.
   workflow_dispatch:
     # A retest of named specs: each a file or file:line under provisa-ui (e2e/x.spec.ts,
     # e2e/x.spec.ts:42), space-separated. The lane's provisioning runs as on a full run; Playwright
@@ -38,11 +37,26 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Maven Central is asked for the pinned Trino plugin jars once per pin, here: the lane needs
+  # this job and restores its cache (.github/actions/trino-plugins); its prepare script fetches
+  # nothing.
+  trino-plugins:
+    name: Trino plugins
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/trino-plugins
+        with:
+          phase: prime
+
   playwright:
     name: Playwright swap lane (exasol, saphana)
+    needs: [trino-plugins]
     uses: ./.github/workflows/lane.yml
     with:
       name: ui-swap-amd64
+      trino-plugins: true
       timeout: 90
       # saphana (hdbcli + sqlalchemy-hana) is demo/sources/saphana/prime.py's own dependency.
       python-extras: dev saphana

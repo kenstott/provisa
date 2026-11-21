@@ -20,8 +20,8 @@ configuration file, whole or in part; applied to an empty store it builds the sa
 
 This file supersedes the 2026-10-03 behaviour (every object records its origin; a load removes
 the config-origin objects its file no longer declares): each scenario that asserted a removal or
-an origin now asserts what the one-time seed does instead. The scenarios run on a SQLite control
-plane.
+an origin now asserts what the one-time seed does instead. The scenarios run on a PostgreSQL
+control plane.
 """
 
 # Requirements: REQ-1919, REQ-1918, REQ-164

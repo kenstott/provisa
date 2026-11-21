@@ -8,8 +8,8 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-2180 OFFERS: a product's Offers tab -- its offers as cards, and, for whoever may edit the
-// product, the panel that adds one. The same tab in the read view and the edit view.
+// REQ-2180 OFFERS: a product's Offers section -- its offers as cards, and, for whoever may edit the
+// product, the panel that adds one. The same section in the read view and the edit view.
 
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -32,6 +32,7 @@ export function OffersTab({
   onBid,
   context = null,
   version: readAgain = 0,
+  onLoaded,
 }: {
   productId: string;
   owner: boolean;
@@ -47,6 +48,8 @@ export function OffersTab({
   context?: ContractContext | null;
   /** Bumped when the product's datasets can have changed: its offers and contracts are read again. */
   version?: number;
+  /** Its offers, each time they are read: the section's summary is computed from them. */
+  onLoaded?: (offers: Offer[]) => void;
 }) {
   const { t } = useTranslation();
   const [offers, setOffers] = useState<Offer[] | null>(null);
@@ -58,12 +61,18 @@ export function OffersTab({
   useEffect(() => {
     let live = true;
     fetchOffers(productId).then(
-      (o) => live && (setOffers(o), setError(null)),
+      (o) => {
+        if (!live) return;
+        setOffers(o);
+        setError(null);
+        onLoaded?.(o);
+      },
       (e: unknown) => live && setError(e instanceof Error ? e.message : String(e)),
     );
     return () => {
       live = false;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- read again on these, not on a new callback.
   }, [productId, version, readAgain]);
 
   const viewName = (id: number) => views.find((v) => v.id === id)?.name ?? String(id);

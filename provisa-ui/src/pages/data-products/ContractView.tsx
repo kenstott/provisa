@@ -300,7 +300,11 @@ function VersionChanges({ id, row }: { id: string; row: OdcsRecord }) {
         <Group key={n} gap={6} wrap="nowrap" align="baseline" justify="space-between">
           <Text size="sm" style={{ minWidth: 0, overflowWrap: "anywhere" }}>
             {t(`dataProductsTab.contract.change.${c.kind}`, {
-              subject: c.subject,
+              // A term of use is named in the reader's words; every other subject is a name.
+              subject:
+                c.kind === "terms_of_use_changed"
+                  ? t(`dataProductOffers.term_${c.subject}`)
+                  : c.subject,
               before: c.before,
               after: c.after,
             })}

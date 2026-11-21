@@ -69,7 +69,10 @@ async def preview_query(  # REQ-296
     headers = {"Content-Type": "application/json", "Accept": "application/json"}
     auth_arg = httpx.BasicAuth(*auth) if auth else httpx.USE_CLIENT_DEFAULT
 
-    async with httpx.AsyncClient() as client:
+    from provisa.security import sandbox_egress
+
+    # REQ-2006: a held org's source is checked at each connection, each request.
+    async with httpx.AsyncClient(event_hooks=sandbox_egress.http_event_hooks()) as client:
         resp = await client.post(
             url,
             json={"statements": [{"statement": preview_cypher}]},

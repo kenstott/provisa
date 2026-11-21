@@ -7,20 +7,20 @@
     "ack": "Compris",
     "leave": "Ce n'est pas mon organisation",
     "leaveError": "Impossible de quitter l'organisation.",
-    "sandboxIntro": "Vous êtes sur notre instance de démarrage partagée, dans un environnement isolé qui vous est propre. Les données d'exemple sont une copie privée — rien de ce que vous faites ici n'est visible par un autre visiteur, et rien ici ne touche aux données de quelqu'un d'autre.",
+    "sandboxIntro": "Vous êtes sur notre instance de démarrage partagée, dans un environnement isolé qui vous est propre. Les données d'exemple sont une copie privée. Les autres visiteurs ne voient pas ce que vous faites ici, et rien ici ne touche les données de quelqu'un d'autre.",
     "sandboxOpen": "Presque toutes les opérations vous sont ouvertes : enregistrez vos propres sources, modélisez-les, écrivez des politiques et des règles de masquage, et interrogez le résultat en SQL, GraphQL ou Cypher.",
-    "sandboxHeldBack": "Sont réservés les contrôles à l'échelle de l'organisation — changer ou gérer les environnements, inviter des personnes et attribuer des rôles, les paramètres de l'organisation et l'observabilité à l'échelle de l'organisation. Ces pages restent visibles, signalées comme faisant partie du système de production.",
-    "sandboxTemporary": "Votre environnement est temporaire. La déconnexion l'efface, et il est aussi récupéré après un jour d'inactivité. Rien de ce que vous construisez ici n'est destiné à être conservé.",
+    "sandboxHeldBack": "Les contrôles à l'échelle de l'organisation sont réservés : changer ou gérer des environnements, inviter des personnes et conférer des rôles, les paramètres de l'organisation et l'observabilité à l'échelle de l'organisation. Ces pages restent visibles, marquées comme faisant partie du système de production.",
+    "sandboxTemporary": "Votre environnement est temporaire. La déconnexion l'efface, et il est aussi récupéré après une journée d'inactivité.",
     "sandboxUpgrade": "Lorsque vous serez prêt pour une organisation durable, passez à une offre Starter.",
     "sandboxAck": "Commencer à explorer",
     "demoSandboxTitle": "Bienvenue dans votre bac à sable de démo",
     "demoSandboxIntro": "Ce bac à sable est votre propre copie de la démo, et une version allégée de Provisa. Voici ses limites :",
-    "demoSandboxEngine": "Il fonctionne sur un moteur DuckDB à processus unique, et non sur le moteur des organisations en production.",
+    "demoSandboxEngine": "Il fonctionne sur un moteur DuckDB à processus unique. Les organisations de production utilisent un autre moteur.",
     "demoSandboxMemory": "Son moteur peut utiliser au plus {{memory}} de mémoire ; une requête qui en demande davantage est refusée.",
     "demoSandboxDisk": "Il peut occuper au plus {{disk}} sur disque, ses données et vos fichiers téléversés ensemble ; une écriture au-delà est refusée.",
     "demoSandboxConflicts": "Des modifications faites au même moment depuis plusieurs appareils peuvent être refusées pour conflit. Réessayez.",
     "demoSandboxExpires": "Il est supprimé, avec tout son contenu, après {{idle}} sans utilisation.",
     "demoSandboxHeldBack": "Vous ne pouvez pas inviter d'autres personnes, ni changer ou gérer d'environnements.",
-    "demoSandboxSources": "Les sources d'exemple sont en lecture seule : ce que vous écrivez reste dans le bac à sable."
+    "demoSandboxSources": "Les sources d'exemple sont en lecture seule : ce que vous écrivez reste dans le bac à sable."
   }
 }

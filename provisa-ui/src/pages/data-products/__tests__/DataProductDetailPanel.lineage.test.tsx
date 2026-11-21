@@ -21,7 +21,7 @@ import { upstreamLineage } from "../upstreamLineage";
 import type { LineageNode, ProductLineage } from "../../../api/lineage";
 import type { DataProduct } from "../../../types/admin";
 import { lifecycleProps } from "./lifecycleProps";
-import { openTab } from "./panelTabs";
+import { openSection } from "./panelSections";
 import type { GraphSpec } from "../../../components/provisa-graph/model";
 import type { LanesOptions } from "../../../components/provisa-graph/lanes";
 import en from "../../../i18n/locales/en/dataProductsTab.json";
@@ -115,7 +115,7 @@ function panel() {
 describe("the product's Lineage tab", () => {
   it("is titled by where the product comes from, its hint saying what it draws", () => {
     panel();
-    openTab("lineage", "pet_health");
+    openSection("lineage", "pet_health");
     expect(screen.getByTestId("data-product-lineage-title-pet_health")).toHaveTextContent(
       "Column lineage: where this product comes from",
     );
@@ -127,10 +127,10 @@ describe("the product's Lineage tab", () => {
   it("opens from the Input Ports list's link, drawing nothing downstream of the product", () => {
     window.localStorage.clear();
     panel();
-    openTab("quality", "pet_health");
+    openSection("quality", "pet_health");
     fireEvent.click(screen.getByTestId("data-product-detail-inputs-lineage-link-pet_health"));
-    expect(screen.getByTestId("data-product-tab-lineage-pet_health")).toHaveAttribute(
-      "aria-selected",
+    expect(screen.getByTestId("data-product-row-lineage-pet_health-toggle")).toHaveAttribute(
+      "aria-expanded",
       "true",
     );
     const graph = drawn.last?.graph as GraphSpec;
@@ -177,7 +177,7 @@ describe("the product's Lineage tab", () => {
         {...lifecycleProps()}
       />,
     );
-    openTab("lineage", "pet_health");
+    openSection("lineage", "pet_health");
     expect(drawn.last?.lanes?.lanes.map((l) => l.title)).toEqual([
       "Upstream, hop 2 beyond the inputs",
       "Upstream, hop 1 beyond the inputs",

@@ -112,8 +112,12 @@ if ($LASTEXITCODE -ne 0) { throw "provisa-notebook wheel build failed" }
 # REQ-2194: installing provisa compiles its Rust encoders (provisa._encoders) with setuptools-rust,
 # with the toolchain every recipe names.
 $env:RUSTUP_TOOLCHAIN = '1.95.0'
-& $RuntimePy -m pip install --quiet --find-links $NotebookDir $RepoRoot uvicorn mcp-proxy
+# The vector extra: the default config's embedding model runs on sentence-transformers over torch
+# (PyPI's win_amd64 torch is the CPU-only build).
+& $RuntimePy -m pip install --quiet --find-links $NotebookDir "$RepoRoot[vector]" uvicorn mcp-proxy
 if ($LASTEXITCODE -ne 0) { throw "pip install provisa failed" }
+& $RuntimePy -I -c "import sentence_transformers, torch; assert torch.version.cuda is None" 2>&1 | Out-Null
+if ($LASTEXITCODE -ne 0) { throw "the embedding library (sentence-transformers, CPU torch) missing from the bundled native runtime" }
 # -I: from the repository root, -c would import the checkout's provisa (no compiled module)
 # in place of the runtime's.
 & $RuntimePy -I -c "import provisa, provisa._encoders.pgwire, pathlib; assert (pathlib.Path(provisa.__file__).parent / '_encoders.THIRD_PARTY_NOTICES').is_file()" 2>&1 | Out-Null

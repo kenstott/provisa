@@ -35,6 +35,8 @@ import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from provisa.core.inflection import singular
+
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping, Set as AbstractSet
 
@@ -198,30 +200,6 @@ def _phrase(physical_name: str, *, cut_at_connective: bool = False) -> str:
     return " ".join(expanded)
 
 
-_inflect_engine = None
-
-
-def _singular(token: str) -> str:
-    """Deterministic head-noun singularization (employees → employee), via inflect.
-
-    The engine builds lazily and once — its construction cost dominates the inflect
-    import (see compiler/naming.py, which defers it for the same reason). inflect
-    returns false singulars for -ss nouns (address → addres); those keep the original
-    token, matching the guard naming.py already uses.
-    """
-    from typing import Any, cast
-
-    global _inflect_engine
-    if _inflect_engine is None:
-        import inflect
-
-        _inflect_engine = inflect.engine()
-    singular = _inflect_engine.singular_noun(cast(Any, token))
-    if not singular or token.endswith("ss"):
-        return token
-    return str(singular)
-
-
 def table_concept(table_name: str) -> str:
     """The table's concept phrase: normalized business name with a singular head noun.
 
@@ -232,7 +210,7 @@ def table_concept(table_name: str) -> str:
     attribute -- one term holding both a thing and one of its fields.
     """
     tokens = _phrase(table_name, cut_at_connective=True).split(" ")
-    tokens[-1] = _singular(tokens[-1])
+    tokens[-1] = singular(tokens[-1])  # REQ-194: dictionary singular
     return " ".join(tokens)
 
 

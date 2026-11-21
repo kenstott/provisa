@@ -35,12 +35,12 @@ const RENAMED_EMPLOYEE = "workforce member";
 const EMPLOYEE_DEFINITION = "A person employed by the shelter to care for animals.";
 
 /**
- * Open /admin/ontology and wait for the term list to be populated. The admin page
+ * Open /context/ontology and wait for the term list to be populated. The page
  * is a lazily-compiled Vite chunk, so the first navigation of the run can exceed
  * the 5 s default expect timeout — the generous wait is on first paint only.
  */
 async function openGlossary(page: Page) {
-  await page.goto("/admin/ontology");
+  await page.goto("/context/ontology");
   await expect(page.getByTestId("glossary-search")).toBeVisible({ timeout: 60000 });
   // The list has loaded once at least one derived term row is rendered.
   await expect(

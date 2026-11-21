@@ -32,7 +32,7 @@ const KEY = "provisa.test.splitWidth";
 const LABELS = {
   panel: "Table details",
   resize: "Resize the detail panel",
-  expand: "Expand the panel",
+  expand: "Enlarge the panel",
   restore: "Restore the panel",
   close: "Close the detail panel",
   backToList: "Back to the list",
@@ -232,7 +232,7 @@ describe("SplitPane", () => {
     render(<Page />);
     fireEvent.click(screen.getByText("orders"));
     const list = screen.getByText("customers").parentElement as HTMLElement;
-    fireEvent.click(screen.getByRole("button", { name: "Expand the panel" }));
+    fireEvent.click(screen.getByRole("button", { name: "Enlarge the panel" }));
     expect(list).not.toBeVisible();
     expect(screen.queryByRole("separator")).toBeNull();
     expect(screen.getByTestId("split-panel").style.width).toBe("");
@@ -261,7 +261,7 @@ describe("SplitPane", () => {
       const back = screen.getByRole("button", { name: "Back to the list" });
       expect(screen.getByText("customers").parentElement).not.toBeVisible();
       expect(screen.queryByRole("separator")).toBeNull();
-      expect(screen.queryByRole("button", { name: "Expand the panel" })).toBeNull();
+      expect(screen.queryByRole("button", { name: "Enlarge the panel" })).toBeNull();
       fireEvent.click(back);
       expect(screen.queryByTestId("split-panel")).toBeNull();
       expect(screen.getByText("customers").parentElement).toBeVisible();

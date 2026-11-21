@@ -334,7 +334,9 @@ class TestViewerHoldsNoCatalogRead:
         assert "catalog_read" not in STANDARD_ROLE_RIGHTS["viewer"]
         assert "catalog_read" not in STANDARD_ROLE_RIGHTS["analyst"]
 
-    @pytest.mark.parametrize("role_id", ["dq_reader", "dq_steward", "data_product_owner"])
+    @pytest.mark.parametrize(
+        "role_id", ["data_writer", "member_admin", "dq_steward", "data_product_owner"]
+    )
     def test_a_role_whose_job_is_its_own_tables_does_not_hold_it(self, role_id):
         assert "catalog_read" not in STANDARD_ROLE_RIGHTS[role_id]
 
@@ -356,7 +358,7 @@ class TestViewerHoldsNoCatalogRead:
 
 
 class TestDataAccessShowsTheDefaultTierAndNoMore:
-    """dq_reader's Data access tab: no meta table beyond the default tier."""
+    """dq_steward's Data access tab: no meta table beyond the default tier."""
 
     def _view(self) -> set[str]:
         rows = [{**r, "residency_values": [], "max_rows": None} for r in standard_role_dicts()]
@@ -396,7 +398,7 @@ class TestDataAccessShowsTheDefaultTierAndNoMore:
             t["table_name"]: {c["name"] for c in t["columns"]}
             for t in data_view_from_state(
                 state,
-                "dq_reader",
+                "dq_steward",
                 parents=parent_map(rows),
                 stored={},
                 readable=lambda *_: True,

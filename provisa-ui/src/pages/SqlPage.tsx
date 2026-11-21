@@ -179,6 +179,9 @@ export function SqlPage() {
   }, [roleIds, role, rolesData.length, authRole, allRolesValue]);
   /* eslint-enable react-hooks/set-state-in-effect */
   const [running, setRunning] = useState(false);
+  // The run still out, which Stop aborts; and whether the last run was stopped before it answered.
+  const runRef = useRef<AbortController | null>(null);
+  const [stopped, setStopped] = useState(false);
   const [sampleMode, setSampleMode] = useState<"first" | "last" | "random">("first");
   const [sampleSize, setSampleSize] = useState(100);
   const [resultTab, setResultTab] = useState<ResultTab>("results");
@@ -506,6 +509,7 @@ export function SqlPage() {
       setResultRows(t.resultRows);
       setResultPartial(t.resultPartial ?? false);
       setResultError(t.resultError);
+      setStopped(false);
       setResultRedirect(null);
       setStatements(t.statements ?? []);
       setStatementIndex(t.statementIndex ?? 0);
@@ -762,6 +766,9 @@ export function SqlPage() {
     if (!sqlText.trim()) return;
     const aliased = autoAliasConflicts(sqlText);
     if (aliased !== sqlText) setSqlText(aliased);
+    const controller = new AbortController();
+    runRef.current = controller;
+    setStopped(false);
     setRunning(true);
     setResultError("");
     setResultRedirect(null);
@@ -770,15 +777,28 @@ export function SqlPage() {
     try {
       // Each statement is sampled on its own, so the batch is split as the server splits it; the
       // server answers one result per statement (runSqlEach answers a failure as its error).
-      const sent = (await splitSql(aliased)).map((s) => wrapSampledSql(s, sampleMode, sampleSize));
-      run = await runSqlEach(joinStatements(sent), role, statsEnabled, boundParams);
+      const sent = (await splitSql(aliased, controller.signal)).map((s) =>
+        wrapSampledSql(s, sampleMode, sampleSize),
+      );
+      run = await runSqlEach(
+        joinStatements(sent),
+        role,
+        statsEnabled,
+        boundParams,
+        controller.signal,
+      );
       setBoundParams([]);
     } catch (e) {
       // The split refused: said as the run's error.
       run = { answers: [], error: e instanceof Error ? e.message : String(e) };
     } finally {
-      setRunning(false);
+      // Still this run's: it is over. A stopped run's flag was cleared by Stop, and a newer run's
+      // is its own.
+      if (runRef.current === controller) setRunning(false);
     }
+    // Stopped: Stop has said so, and what the aborted request answered (its abort) is not shown.
+    if (runRef.current !== controller) return;
+    runRef.current = null;
     const durationMs = Math.round(performance.now() - t0);
     setExecMs(durationMs);
     setQueryStats(run.provisa_stats ?? null);
@@ -826,6 +846,17 @@ export function SqlPage() {
     boundParams,
     showStatement,
   ]);
+
+  // Stop the run still out: its request is aborted, and the results say it was stopped.
+  const handleStop = useCallback(() => {
+    const controller = runRef.current;
+    if (!controller) return;
+    runRef.current = null;
+    controller.abort();
+    setRunning(false);
+    setStopped(true);
+    setResultTab("results");
+  }, []);
 
   useEffect(() => {
     // The handed statement, once it is the editor's: on a page the hand-off opened, this runs in
@@ -1038,6 +1069,7 @@ export function SqlPage() {
               handleCopy={handleCopy}
               running={running}
               handleRun={handleRun}
+              handleStop={handleStop}
               handleAnalyze={handleAnalyze}
               analyzing={analyzing}
               sampleMode={sampleMode}
@@ -1069,6 +1101,7 @@ export function SqlPage() {
               resultTab={resultTab}
               setResultTab={setResultTab}
               running={running}
+              stopped={stopped}
               resultError={resultError}
               resultRedirect={resultRedirect}
               resultRows={resultRows}

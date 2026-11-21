@@ -47,6 +47,7 @@ vi.mock("../hooks/useCapability", () => ({ useCapability: () => rights.canEdit }
 
 import { LibraryPage } from "../pages/library/LibraryPage";
 import { scopeChange } from "../components/admin/referenceScope";
+import { NAV_BAR } from "../components/navGroups";
 
 const URL_DOC = {
   id: 3,
@@ -83,7 +84,7 @@ const PROPOSED = {
 beforeEach(() => {
   Object.values(api).forEach((fn) => fn.mockReset());
   rights.canEdit = true;
-  api.fetchCitedBy.mockResolvedValue({ terms: [], drifted: 0 });
+  api.fetchCitedBy.mockResolvedValue({ terms: [], drifted: 0, tags: [], tag_assignments: [] });
   api.fetchLibrary.mockResolvedValue([URL_DOC, PROPOSED]);
   api.fetchLibraryDocument.mockImplementation(async (id: number) => ({
     ...(id === 3 ? URL_DOC : PROPOSED),
@@ -105,18 +106,17 @@ describe("the Library in the app", () => {
   const SRC = resolve(__dirname, "..");
   const read = (path: string) => readFileSync(resolve(SRC, path), "utf-8");
 
-  it("sits beside the Ontology and before the Security group, on the glossary's read right", () => {
-    const nav = read("components/NavBar.tsx");
-    const ontology = nav.indexOf('to="/admin/ontology"');
-    const library = nav.indexOf('to="/library"');
-    const groups = nav.indexOf("NAV_GROUPS.filter(");
-    expect(ontology).toBeGreaterThan(-1);
-    expect(library).toBeGreaterThan(ontology);
-    expect(library).toBeLessThan(groups);
-    expect(nav.slice(ontology, library)).toContain('<CapabilityGate capability="glossary_read">');
+  it("is the Documents page of the Context group, on the glossary's read right", () => {
+    // REQ-2259: the library is the Context group's Documents page, at /context/documents.
+    const context = NAV_BAR.find((e) => e.kind === "group" && e.group.id === "context");
+    expect(context).toBeDefined();
+    const documents =
+      context!.kind === "group" ? context!.group.items.find((i) => i.to === "/context/documents") : undefined;
+    expect(documents).toMatchObject({ labelKey: "navBar.itemDocuments", capability: "glossary_read" });
     expect(read("App.tsx")).toMatch(
-      /path="\/library"\s+element=\{\s+<CapabilityGate\s+capability="glossary_read"/,
+      /path="\/context\/documents"\s+element=\{\s+<CapabilityGate capability="glossary_read"/,
     );
+    expect(read("App.tsx")).not.toContain('path="/library"');
   });
 
   it("is no longer an Admin page", () => {
@@ -132,7 +132,7 @@ describe("LibraryPage", () => {
     expect(await screen.findByTestId("reflib-why")).toHaveTextContent(
       "Why: the documents that give your data its meaning",
     );
-    expect(screen.getByTestId("page-title")).toHaveTextContent("Library");
+    expect(screen.getByTestId("page-title")).toHaveTextContent("Documents");
   });
 
   it("filters the list by title, source or reader", async () => {
@@ -172,6 +172,8 @@ describe("LibraryPage", () => {
   it("lists what cites a document and flags a drifted citation", async () => {
     api.fetchCitedBy.mockResolvedValue({
       drifted: 1,
+      tags: [],
+      tag_assignments: [],
       terms: [
         {
           term_id: 1,
@@ -201,6 +203,53 @@ describe("LibraryPage", () => {
     expect(screen.getByTestId("reflib-cite-2")).toHaveTextContent("A dormant account is closed.");
     expect(within(screen.getByTestId("reflib-cite-2")).getByTestId("reflib-drifted")).toBeTruthy();
     expect(within(screen.getByTestId("reflib-cite-1")).queryByTestId("reflib-drifted")).toBeNull();
+  });
+
+  it("lists the tags and the tag assignments that cite a document, each linked", async () => {
+    const place = { text_sha256: "x", cited_by: null, cited_at: "2026-11-13T00:00:00" };
+    api.fetchCitedBy.mockResolvedValue({
+      drifted: 0,
+      terms: [],
+      tags: [
+        {
+          tag_id: "finance",
+          section_heading: "Scope",
+          section_page: null,
+          state: "current",
+          needs_review: false,
+          ...place,
+        },
+      ],
+      tag_assignments: [
+        {
+          tag_id: "finance",
+          object_type: "table",
+          object_key: "table:7",
+          section_heading: null,
+          section_page: 4,
+          state: "drifted",
+          needs_review: true,
+          ...place,
+        },
+      ],
+    });
+    render(<LibraryPage />);
+    fireEvent.click(await screen.findByTestId("reflib-row-3"));
+    await screen.findByTestId("reflib-detail-3");
+    fireEvent.click(screen.getByTestId("reflib-tab-cited"));
+    const definition = await screen.findByTestId("reflib-cite-tag-finance");
+    expect(definition).toHaveTextContent("Scope");
+    expect(within(definition).getByRole("link", { name: "finance" })).toHaveAttribute(
+      "href",
+      "/admin/tags?tag=finance",
+    );
+    const onObject = screen.getByTestId("reflib-cite-assignment-finance-table:7");
+    expect(within(onObject).getByRole("link", { name: /7/ })).toHaveAttribute(
+      "href",
+      "/tables?table=7",
+    );
+    expect(onObject).toHaveTextContent("Page 4");
+    expect(within(onObject).getByTestId("reflib-cite-drifted")).toBeInTheDocument();
   });
 
   it("says when nothing cites a document", async () => {

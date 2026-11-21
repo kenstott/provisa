@@ -32,6 +32,7 @@ from provisa.core.schema_org import roles
 
 if TYPE_CHECKING:
     from provisa.core.database import Database
+    from provisa.core.models import ProvisaConfig
 
 router = APIRouter(prefix="/admin/roles", tags=["admin"])
 
@@ -230,32 +231,114 @@ async def _check_definition(  # REQ-042, REQ-1337, REQ-1530
     ``role_definition_problem`` and ``role_narrowing_problem``."""
     from provisa.core.repositories import domain as domain_repo
     from provisa.security import domain_tree
-    from provisa.security.inheritance import effective_capabilities
 
-    rows = await role_repo.list_all(conn)
-    inherited = sorted({c for p in parents for c in effective_capabilities(p, rows)})
-    problem = role_definition_problem(
-        request, capabilities, inherited, role_id=role_id, domain_access=domain_access
-    ) or role_narrowing_problem(
+    problem = _definition_problem(
+        request,
         role_id,
-        parents,
         capabilities,
         domain_access,
+        parents,
         residency_values,
-        rows,
+        await role_repo.list_all(conn),
         domain_tree.parent_map(await domain_repo.list_all(conn)),
     )
     if problem is not None:
         raise problem
 
 
+def _definition_problem(  # REQ-042, REQ-1337, REQ-1530, REQ-2155
+    request: Request,
+    role_id: str,
+    capabilities: list[str],
+    domain_access: list[str],
+    parents: list[str],
+    residency_values: list[str],
+    rows: list[dict],
+    domain_parents: dict[str, str | None],
+) -> ApiError | None:
+    """The refusal of :func:`_check_definition`, judged against ``rows`` (the roles as they will
+    stand) and ``domain_parents`` (the domain tree)."""
+    from provisa.security.inheritance import effective_capabilities
+
+    inherited = sorted({c for p in parents for c in effective_capabilities(p, rows)})
+    return role_definition_problem(
+        request, capabilities, inherited, role_id=role_id, domain_access=domain_access
+    ) or role_narrowing_problem(
+        role_id, parents, capabilities, domain_access, residency_values, rows, domain_parents
+    )
+
+
 async def _check_parents(conn, role_id: str, parents: list[str]) -> None:  # REQ-2155
     """Refuse parents that are missing, the role itself, named twice, or would close a cycle."""
+    _require_parents(role_id, parents, await role_repo.list_all(conn))
+
+
+def _require_parents(role_id: str, parents: list[str], rows: list[dict]) -> None:  # REQ-2155
     from provisa.security.inheritance import parent_map, parents_problem
 
-    problem = parents_problem(role_id, parents, parent_map(await role_repo.list_all(conn)))
+    problem = parents_problem(role_id, parents, parent_map(rows))
     if problem is not None:
         raise ApiError(400, "roles.parent_invalid", problem)
+
+
+async def require_roles_definable(  # REQ-1327, REQ-1337, REQ-1531, REQ-2155
+    conn, request: Request, config: "ProvisaConfig"
+) -> None:
+    """Refuse a config whose ``roles`` a caller could not write through the role forms: each role
+    declared is asked what ``create_role`` (a new id) or ``update_role`` (a held one) asks, judged
+    against the roles and domains as they will stand once the config is loaded. And, as granting
+    it would (``rights.check_role_grant``), a role is defined only with rights the caller holds: a
+    platform right, or an org administrator's role, is not handed out by rewriting a definition."""
+    from provisa.api.admin._platform_guard import granter_capabilities
+    from provisa.api.admin.capabilities import require_right_in_domains_request
+    from provisa.core.repositories import domain as domain_repo
+    from provisa.security import domain_tree
+    from provisa.security.inheritance import effective_capabilities
+    from provisa.security.rights import (
+        OrgAdminGrantError,
+        PlatformRoleGrantError,
+        check_role_grant,
+    )
+
+    if not config.roles:
+        return
+    held = {r["id"]: r for r in await role_repo.list_all(conn)}
+    rows = list({**held, **{r.id: r.model_dump() for r in config.roles}}.values())
+    stored_domains = {d["id"]: d for d in await domain_repo.list_all(conn)}
+    domain_parents = domain_tree.parent_map(
+        {**stored_domains, **{d.id: d.model_dump() for d in config.domains}}.values()
+    )
+    granter = granter_capabilities(request)
+    for role in config.roles:
+        _refuse_standard(role.id)
+        _require_parents(role.id, role.parents, rows)
+        before = held[role.id]["domain_access"] if role.id in held else None
+        if before is not None:  # REQ-1531: changing a role is an act in every domain it reaches
+            require_right_in_domains_request(request, "user_management", before)
+        problem = _definition_problem(
+            request,
+            role.id,
+            role.capabilities,
+            role.domain_access,
+            role.parents,
+            role.residency_values,
+            rows,
+            domain_parents,
+        )
+        if problem is not None:
+            raise problem
+        require_reach_of_added_domains_request(request, before, role.domain_access)
+        try:
+            check_role_grant(role.id, effective_capabilities(role.id, rows), granter)
+        except (PlatformRoleGrantError, OrgAdminGrantError) as exc:
+            rights = ", ".join(sorted(exc.missing))
+            raise ApiError(
+                403,
+                "roles.rights_not_held",
+                f"Role {role.id!r} carries {rights}, which you do not hold",
+                role=role.id,
+                rights=rights,
+            ) from exc
 
 
 def _refuse_standard(role_id: str) -> None:  # REQ-2155

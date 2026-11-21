@@ -687,16 +687,17 @@ def _attachable(connectors: list[Connector]) -> tuple[list[Connector], dict[str,
     what is missing for each type left with no connector that no reader lands either. A type
     Provisa lands is a replica (complete_reach gives it its land reach), never unreachable. A
     server with no staged directory counts what it installed when it started (THE SERVER TIER
-    STAGES AT START); where neither is known DuckDB installs on first use and every connector
-    stays, less any whose extension has no build for the running DuckDB (REQ-1998: a sheet lands
-    through the Sheets API on DuckDB 2.0, whatever is staged)."""
+    STAGES AT START) and installs, once, what a connector declared since then needs (REQ-1177);
+    where neither is known DuckDB installs on first use and every connector stays, less any whose
+    extension has no build for the running DuckDB (REQ-1998: a sheet lands through the Sheets API
+    on DuckDB 2.0, whatever is staged)."""
     from provisa.federation.duckdb_extensions import (
-        staged_extensions,
+        attachable_extensions,
         unstaged_needs,
         unstaged_reason,
     )
 
-    staged = staged_extensions()
+    staged = attachable_extensions(connectors)
     kept: list[Connector] = []
     missing: dict[str, tuple[str, ...]] = {}
     for connector in connectors:

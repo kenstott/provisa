@@ -15,21 +15,25 @@ its setup from the action and never repeats the commands.
 | Action | What the job has afterwards | Inputs |
 | --- | --- | --- |
 | `setup-python` | uv, and the locked environment in `.venv` | `extras`, `client`, `cache`, `sync` (false: uv only) |
-| `setup-ui` | Node, `provisa-ui/node_modules`, optionally Chromium | `node-version`, `install`, `playwright` (`none`, `chromium`) |
+| `setup-ui` | Node at `.nvmrc`, `provisa-ui/node_modules`, optionally Chromium | `install`, `graph-render`, `playwright` (`none`, `chromium`) |
 | `trino-plugins` | the pinned Trino plugin jars, restored or saved under one key | `phase` (`restore`, `save`), `cache-hit`, `key-prefix` |
+| `zaychik-image` | the `zaychik:latest` image the core services start, loaded; built and saved once per change to `zaychik/` | `phase` (`prime`, `restore`) |
+| `pyodide-downloads` | every file `provisa_notebook.build` downloads (Pyodide and its packages), from the cache or one download, in the directory `PROVISA_NOTEBOOK_DOWNLOADS` names | `python`; outputs `dir`, `cache-hit` |
 | `mssql-odbc` | ODBC Driver 18, registered | none |
 | `docs-site-deps` | MkDocs and its plugins | none |
 | `free-runner-disk` | the runner image's unused toolchains (.NET, Android, GHC, CodeQL) removed from `/`, and `df -h /` printed | none |
 | `demo-bundle` | a named demo's bundle in `dist/demos/` (its seed, logs and database dump), its data stores down again | `demo`; output `bundle` |
 | `release-metadata` | the channel, the PEP 440 version, every asset name (18 outputs) | `version` |
 | `ensure-release` | the draft GitHub release for a tag | `tag` |
+| `attach-release-assets` | a release asset attached to the draft, by the job that built it | `tag`, `files` |
 | `apple-signing` | a keychain holding the Developer ID certificate | `p12-base64`, `p12-password` |
 | `nixos-vm` | a booted NixOS guest with the checkout on its disk | none |
 | `conformance-instance` | a running Provisa instance over the job's PostgreSQL, its model loaded, the job user created and its token in `CONFORMANCE_AUTHORIZATION` | none (reads the job's env) |
 
 **The lane workflow** (`.github/workflows/lane.yml`) — one job with a fixed order of steps. Any
 job that runs the container suite or Playwright is a call to it. The order: checkout, the setups
-the caller asked for (`odbc`, `python-extras`, `ui`, `java`, `trino-plugins`, `image-cache`,
+the caller asked for (`odbc`, `python-extras`, `ui`, `java`, `trino-plugins`, `pyodide-downloads`,
+`image-cache`,
 `splunk-cim-cache`), the caller's `env`, the sampler, `prepare`, `run`, `after`, `on-failure`
 when the lane failed, the cache saves, the uploads. A lane's own logic lives in
 `scripts/ci/lanes/`, not in the call.

@@ -17,6 +17,9 @@ the meta.* tables) upserted into ``relationships`` at startup. Each row is
 
 from __future__ import annotations
 
+from collections.abc import Iterable
+
+from provisa.core.builtin_relationship_prefix import BUILTIN_RELATIONSHIP_ID_PREFIXES
 from provisa.core.glossary import TERM_EDGE_TYPES
 
 _ADMIN = "provisa-admin"
@@ -737,6 +740,250 @@ META_RELATIONSHIPS: list[tuple[str, str, str, str, str, str, str, str, str | Non
         "TERM_TAGS",
         "termTags",
     ),
+    # REQ-2208 (decision 2026-11-13): the library views reach the tag on the object (tag_instances,
+    # by its id), the tag, and the registered table and column the object is or belongs to; a
+    # tagged section reaches the objects covered from it, and a tag instance, a table and a column
+    # the sections that cover them. Each reaches its library document, and a document its rows.
+    (
+        "meta:tag_citations:document",
+        _ADMIN,
+        "tag_citations",
+        "document_id",
+        "id",
+        "many-to-one",
+        _ADMIN,
+        "library_documents",
+        "DOCUMENT",
+        "document",
+    ),
+    (
+        "meta:section_tags:document",
+        _ADMIN,
+        "section_tags",
+        "document_id",
+        "id",
+        "many-to-one",
+        _ADMIN,
+        "library_documents",
+        "DOCUMENT",
+        "document",
+    ),
+    (
+        "meta:policy_coverage:document",
+        _ADMIN,
+        "policy_coverage",
+        "document_id",
+        "id",
+        "many-to-one",
+        _ADMIN,
+        "library_documents",
+        "DOCUMENT",
+        "document",
+    ),
+    (
+        "meta:library_documents:tag_citations",
+        _ADMIN,
+        "library_documents",
+        "id",
+        "document_id",
+        "one-to-many",
+        _ADMIN,
+        "tag_citations",
+        "CITED_BY",
+        "citations",
+    ),
+    (
+        "meta:library_documents:section_tags",
+        _ADMIN,
+        "library_documents",
+        "id",
+        "document_id",
+        "one-to-many",
+        _ADMIN,
+        "section_tags",
+        "TAGGED",
+        "sectionTags",
+    ),
+    (
+        "meta:library_documents:policy_coverage",
+        _ADMIN,
+        "library_documents",
+        "id",
+        "document_id",
+        "one-to-many",
+        _ADMIN,
+        "policy_coverage",
+        "COVERS",
+        "policyCoverage",
+    ),
+    (
+        "meta:tag_citations:tag_instance",
+        _ADMIN,
+        "tag_citations",
+        "tag_instance_id",
+        "id",
+        "many-to-one",
+        _ADMIN,
+        "tag_instances",
+        "TAG_INSTANCE",
+        "tagInstance",
+    ),
+    (
+        "meta:tag_citations:tags",
+        _ADMIN,
+        "tag_citations",
+        "base_tag_id",
+        "id",
+        "many-to-one",
+        _ADMIN,
+        "tags",
+        "TAG",
+        "tag",
+    ),
+    (
+        "meta:tag_citations:table",
+        _ADMIN,
+        "tag_citations",
+        "table_id",
+        "id",
+        "many-to-one",
+        _ADMIN,
+        "registered_tables",
+        "TABLE",
+        "table",
+    ),
+    (
+        "meta:tag_citations:column",
+        _ADMIN,
+        "tag_citations",
+        "column_key",
+        "column_key",
+        "many-to-one",
+        _ADMIN,
+        "table_columns",
+        "COLUMN",
+        "column",
+    ),
+    (
+        "meta:policy_coverage:tag_instance",
+        _ADMIN,
+        "policy_coverage",
+        "tag_instance_id",
+        "id",
+        "many-to-one",
+        _ADMIN,
+        "tag_instances",
+        "TAG_INSTANCE",
+        "tagInstance",
+    ),
+    (
+        "meta:policy_coverage:tags",
+        _ADMIN,
+        "policy_coverage",
+        "base_tag_id",
+        "id",
+        "many-to-one",
+        _ADMIN,
+        "tags",
+        "TAG",
+        "tag",
+    ),
+    (
+        "meta:policy_coverage:table",
+        _ADMIN,
+        "policy_coverage",
+        "table_id",
+        "id",
+        "many-to-one",
+        _ADMIN,
+        "registered_tables",
+        "TABLE",
+        "table",
+    ),
+    (
+        "meta:policy_coverage:column",
+        _ADMIN,
+        "policy_coverage",
+        "column_key",
+        "column_key",
+        "many-to-one",
+        _ADMIN,
+        "table_columns",
+        "COLUMN",
+        "column",
+    ),
+    (
+        "meta:section_tags:tag_instance",
+        _ADMIN,
+        "section_tags",
+        "tag_instance_id",
+        "id",
+        "many-to-one",
+        _ADMIN,
+        "tag_instances",
+        "TAG_INSTANCE",
+        "tagInstance",
+    ),
+    (
+        "meta:section_tags:tags",
+        _ADMIN,
+        "section_tags",
+        "base_tag_id",
+        "id",
+        "many-to-one",
+        _ADMIN,
+        "tags",
+        "TAG",
+        "tag",
+    ),
+    (
+        "meta:section_tags:policy_coverage",
+        _ADMIN,
+        "section_tags",
+        "place_key",
+        "place_key",
+        "one-to-many",
+        _ADMIN,
+        "policy_coverage",
+        "COVERS",
+        "coverage",
+    ),
+    (
+        "meta:tag_instances:policy_coverage",
+        _ADMIN,
+        "tag_instances",
+        "id",
+        "tag_instance_id",
+        "one-to-many",
+        _ADMIN,
+        "policy_coverage",
+        "COVERED_BY",
+        "policyCoverage",
+    ),
+    (
+        "meta:table_columns:policy_coverage",
+        _ADMIN,
+        "table_columns",
+        "column_key",
+        "column_key",
+        "one-to-many",
+        _ADMIN,
+        "policy_coverage",
+        "COVERED_BY",
+        "policyCoverage",
+    ),
+    (
+        "meta:registered_tables:policy_coverage",
+        _ADMIN,
+        "registered_tables",
+        "id",
+        "table_id",
+        "one-to-many",
+        _ADMIN,
+        "policy_coverage",
+        "COVERED_BY",
+        "policyCoverage",
+    ),
     # REQ-2125: a data product and its parts. data_products_meta holds only the product's own
     # fields; its domain, member tables, commands and tags are reached over these edges, its
     # glossary terms from its member tables' columns (table_columns -> ontology._term_refs) and its
@@ -1248,3 +1495,29 @@ def meta_relationship_seed_rows() -> list[
             )
         )
     return rows
+
+
+def undeclared_seed_relationship_ids(held_ids: Iterable[str]) -> list[str]:
+    """The built-in relationships a control plane holds that the seed no longer declares (R510).
+
+    The seed writes its relationships as a SET, keyed by id: an edge whose id changed between
+    versions (``meta:data_products:registered_tables`` -> ``meta:data_products:member_tables``)
+    leaves the old row behind, and that row still holds the edge's ``(source_table_id, alias)``,
+    so the new id's insert is refused (``relationships_source_alias_unique``) and the boot stops.
+    A row is the seed's own when its id carries a built-in prefix (``meta:``, ``ontology:``,
+    defined once in core); a relationship a person
+    made carries no such id and is never returned. Sorted, for a deterministic removal order.
+    """
+    declared = _declared_relationship_ids()
+    prefixes = seed_relationship_id_prefixes()
+    return sorted(rid for rid in set(held_ids) if rid.startswith(prefixes) and rid not in declared)
+
+
+def _declared_relationship_ids() -> set[str]:
+    return {cols["id"] for _src, _tgt, _via, cols in meta_relationship_seed_rows()}
+
+
+def seed_relationship_id_prefixes() -> tuple[str, ...]:
+    """The id prefixes of the seed's own relationships (``meta:``, ``ontology:``), sorted; defined
+    once in core, where the relationship repository refuses them."""
+    return tuple(sorted(BUILTIN_RELATIONSHIP_ID_PREFIXES))

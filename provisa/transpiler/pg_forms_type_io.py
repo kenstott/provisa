@@ -169,7 +169,7 @@ DUCKDB = Engine(
     size=lambda v: f"strlen({v})",
     chars=lambda v: f"length({v})",
     raises=refused,
-    let=lambda n, v, b: f"list_transform([{v}], {n} -> {b})[1]",
+    let=lambda n, v, b: f"list_transform([{v}], LAMBDA {n} : {b})[1]",
     days=lambda v: f"date_diff('day', DATE '2000-01-01', CAST({v} AS DATE))",
     valid_date=lambda v: f"TRY_CAST({v} AS DATE)",
     nan=lambda t: f"CAST('NaN' AS {t})",
@@ -182,7 +182,7 @@ DUCKDB = Engine(
     ),
     numbers=lambda v: (
         f"array_to_string(list_transform(regexp_extract_all({v}, '{_NUMBER_TEXT}'), "
-        "_n -> printf('%016x', CAST(CAST(CAST(_n AS DOUBLE) AS BIT) AS BIGINT))), '')"
+        "LAMBDA _n : printf('%016x', CAST(CAST(CAST(_n AS DOUBLE) AS BIT) AS BIGINT))), '')"
     ),
 )
 TRINO = Engine(
@@ -281,7 +281,8 @@ CLICKHOUSE = Engine(
     utc_text=lambda v: f"toString({v})",
     numbers=lambda v: (
         f"arrayStringConcat(arrayMap(_n -> leftPad(hex(reverse(reinterpretAsString("
-        f"toFloat64OrZero(_n)))), 16, '0'), extractAll({v}, '{_NUMBER_TEXT}')))"
+        # A NULL is answered before its numbers are read: ClickHouse holds no Nullable(Array).
+        f"toFloat64OrZero(_n)))), 16, '0'), extractAll(ifNull({v}, ''), '{_NUMBER_TEXT}')))"
     ),
     backslash="\\\\",
     backslash_re="\\\\\\\\",
@@ -967,15 +968,20 @@ def _character() -> list[Row]:
 _UUID = "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
 
 
+def _uuid(e: Engine) -> str:
+    """A uuid: ClickHouse's NULL of one is a Nullable(UUID), CAST(NULL AS UUID) its own error."""
+    return "Nullable(UUID)" if e is CLICKHOUSE else "UUID"
+
+
 def _uuids() -> list[Row]:
     def read(e: Engine) -> str:
         return (
-            f"CASE WHEN {e.full_match('v', _UUID)} THEN CAST(lower(v) AS UUID) "
-            f"ELSE {_by_name(e, 'uuid_in', 'UUID')} END"
+            f"CASE WHEN {e.full_match('v', _UUID)} THEN CAST(lower(v) AS {_uuid(e)}) "
+            f"ELSE {_by_name(e, 'uuid_in', _uuid(e))} END"
         )
 
     return [
-        _noted(_row("uuid_in", "v", lambda _: "UUID", read), "uuid"),
+        _noted(_row("uuid_in", "v", _uuid, read), "uuid"),
         _noted(_row("uuid_out", "v", _text, lambda e: e.as_text("v")), "text"),
         _noted(
             _row(
@@ -1551,6 +1557,8 @@ def _fold_text(name: str, text: str, arguments: list[exp.Expr]) -> exp.Expr | No
         fields = literals.interval_fields(text)
         if fields is None:
             raise literals.Refused("22007", f'invalid input syntax for type interval: "{text}"')
+        if not literals.interval_in_range(fields):
+            raise literals.Refused("22008", "interval out of range")
         if name == "interval_send":
             return _said_bytes(literals.interval_bytes(*fields))
         return _said_text(literals.interval_text(*fields))
@@ -1631,6 +1639,17 @@ def _as_interval(said: exp.Expr, dialect: str | None) -> exp.Expr:
     return exp.Paren(this=exp.Add(this=exp.Add(this=months, expression=days), expression=us))
 
 
+#: interval_in's infinite texts: pgwire describes a folded text as interval (cast_types), and has
+#: no interval value of either.
+_INFINITE = frozenset({"infinity", "-infinity"})
+
+
+def _infinite_unheld(said: exp.Expr, dialect: str | None) -> bool:
+    """Whether interval_in's folded text is infinity on an engine that answers it as its text."""
+    infinite = isinstance(said, exp.Literal) and said.is_string and said.this in _INFINITE
+    return infinite and dialect not in (None, "duckdb", "postgres")
+
+
 def _folded(name: str, arguments: list[exp.Expr]) -> exp.Expr | None:
     """``_fold_row``, with PostgreSQL's refusal of a literal as an expression that raises it."""
     try:
@@ -1691,6 +1710,11 @@ def _lowered(tree: exp.Expr, dialect: str | None) -> exp.Expr:
             return exp.alias_(said, name) if in_select else said
         folded = _folded(name, arguments)
         if folded is not None and name == "interval_in":
+            if _infinite_unheld(folded, dialect):
+                # pgwire has no interval value of it: the call of the text it reads as, for the
+                # polyfill grid's row to refuse by name (polyfill.type_io).
+                target.set("expressions", [folded, *arguments[1:]])
+                return node
             folded = _as_interval(folded, dialect)
         if folded is not None:
             return exp.alias_(folded, name) if in_select else folded

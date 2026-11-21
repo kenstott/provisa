@@ -24,8 +24,11 @@ import {
   ontologyHopQuery,
   ontologyOpenedQuery,
   ontologyQuery,
+  readsTerms,
   termLevels,
 } from "../ontologyData";
+import { PRODUCT_MAP, PRODUCT_MAP_LAYERS } from "../ontologyPresets";
+import { tableColumnsQuery } from "../tableColumns";
 import type { LayerId, QueryScope } from "../graphModel";
 import { searchItems } from "../../../lib/searchItems";
 
@@ -161,6 +164,24 @@ function productLayerScopes(): [string, QueryScope][] {
   ]);
 }
 
+/** REQ-2174 (amended 2026-11-12, THE PRODUCT MAP OPENS ON PRODUCTS): the Product map as it opens
+ * -- its products with their member tables, and the links between them -- and with Columns on. */
+function productMapOpening(layers: LayerId[] = PRODUCT_MAP_LAYERS): QueryScope {
+  return {
+    layers: new Set<LayerId>(layers),
+    search: [],
+    hiddenStatuses: ["retired"],
+    edgeTypes: [],
+    domains: [],
+    orphans: true,
+    tags: [],
+    sensitivities: [],
+    focus: PRODUCT_MAP.focus,
+    depth: PRODUCT_MAP.depth,
+    products: PRODUCT_MAP.products,
+  };
+}
+
 /** Each distinct query the builders produce over the grid, by the first scope that builds it. */
 function corpus(): Record<string, string> {
   const m = reader();
@@ -187,6 +208,13 @@ function corpus(): Record<string, string> {
   }
   for (const [key, s] of productLayerScopes())
     add(`ontology product layers: ${key}`, ontologyQuery(m, s));
+  add("ontology product map: opening", ontologyQuery(m, productMapOpening()));
+  add(
+    "ontology product map: opening+columns",
+    ontologyQuery(m, productMapOpening([...PRODUCT_MAP_LAYERS, "columns"])),
+  );
+  // REQ-2244: a table expanded in a term's graph reads its columns, that table alone.
+  add("ontology table columns: one table", tableColumnsQuery(m, "t:101"));
   return out;
 }
 
@@ -279,10 +307,39 @@ describe("the ontology's queries, whole and as snippets, as the GraphQL corpus h
     expect(mapped).toMatch(/targetTable \{[^]*dataProductTables[^{]*\{\s*dataProduct \{/);
   });
 
+  it("open the Product map on its products, their tables and links, and no column or term", () => {
+    const m = reader();
+    const opening = productMapOpening();
+    expect(readsTerms(opening)).toBe(false);
+    const q = ontologyQuery(m, opening) as string;
+    expect(q).toContain("m__dataProducts");
+    expect(q).toMatch(/dataProductTables[^{]*\{\s*registeredTable \{/);
+    // Its links to other products.
+    expect(q).toMatch(/edges\([^)]*\) \{[^]*targetProduct \{/);
+    expect(q).not.toContain("on_terms");
+    expect(q).not.toContain("tableColumns");
+    expect(q).not.toContain("glossaryRef");
+    // Columns on: its member tables' columns are read, still no term.
+    const columns = ontologyQuery(
+      m,
+      productMapOpening([...PRODUCT_MAP_LAYERS, "columns"]),
+    ) as string;
+    expect(columns).toContain("tableColumns");
+    expect(columns).not.toContain("on_terms");
+    // Ontology on: the terms are read.
+    const terms = productMapOpening([...PRODUCT_MAP_LAYERS, "ontology"]);
+    expect(readsTerms(terms)).toBe(true);
+    expect(ontologyQuery(m, terms) as string).toContain("on_terms");
+    // A product's own snippet still reads its tables' columns and its terms.
+    const panel = { ...opening, focus: "p:1" };
+    expect(readsTerms(panel)).toBe(true);
+    expect(ontologyQuery(m, panel) as string).toContain("tableColumns");
+  });
+
   it("each read the system catalog's real root fields", () => {
     const queries = Object.values(corpus());
     expect(queries.length).toBeGreaterThan(10);
-    for (const q of queries) expect(q).toMatch(/on_terms|m__dataProducts/);
+    for (const q of queries) expect(q).toMatch(/on_terms|m__dataProducts|m__registeredTables/);
   });
 });
 

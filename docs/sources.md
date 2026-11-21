@@ -26,7 +26,7 @@ Every query ends up running through the federation engine, which is what lets an
 
 ## All Sources
 
-Provisa registers **79** source types, the ones the Sources form offers. The tables below cover all 79; the index is the count.
+Provisa registers **80** source types, the ones the Sources form offers. The tables below cover all 80; the index is the count.
 
 | # | Group | Source types |
 | --- | --- | --- |
@@ -38,16 +38,16 @@ Provisa registers **79** source types, the ones the Sources form offers. The tab
 | 40–43 | [Code sources](code-sources.md) | `node`, `python`, `go`, `rust` |
 | 44–46 | [Streaming](#streaming) | `kafka`, `websocket`, `rss` |
 | 47 | [Push receiver](#push-receiver) | `ingest` |
-| 48–49 | [Graph & semantic](#graph-semantic) | `neo4j`, `sparql` |
-| 50–54 | [File-based](#file-based) | `sqlite`, `csv`, `parquet`, `files`, `logs` |
-| 55–56 | [Observability & other](#observability-other) | `google_sheets`, `prometheus` |
-| 57–65 | [Enterprise SaaS](#enterprise-saas-connectors) | `sharepoint`, `salesforce`, `servicenow`, `jira`, `cloudops`, `splunk`, `google_workspace`, `microsoft_365`, [`quickbooks`](#quickbooks) |
-| 66–73 | [API sources](#api-sources) | `openapi`, [`dbt`](#dbt), `graphql_remote`, `grpc_remote`, GitHub, GitLab, Shopify, Stripe |
-| 74 | [GovData](#govdata) | `govdata` |
-| 75–76 | [Data quality checkers](#data-quality-checkers) | `soda`, `great_expectations` |
-| 77 | [Data profiler](#data-profiler) | `data_profiler` |
-| 78 | [Kaggle datasets](#kaggle-datasets) | Kaggle (staged via Sources form; registers as a `files` source; see [Kaggle datasets](#kaggle-datasets)) |
-| 79 | [Wikipedia](#wikipedia) | Wikipedia (registers as a `files` source that crawls the named pages; see [Wikipedia](#wikipedia)) |
+| 48–50 | [Graph & semantic](#graph-semantic) | `neo4j`, `sparql`, Wikidata |
+| 51–55 | [File-based](#file-based) | `sqlite`, `csv`, `parquet`, `files`, `logs` |
+| 56–57 | [Observability & other](#observability-other) | `google_sheets`, `prometheus` |
+| 58–66 | [Enterprise SaaS](#enterprise-saas-connectors) | `sharepoint`, `salesforce`, `servicenow`, `jira`, `cloudops`, `splunk`, `google_workspace`, `microsoft_365`, [`quickbooks`](#quickbooks) |
+| 67–74 | [API sources](#api-sources) | `openapi`, [`dbt`](#dbt), `graphql_remote`, `grpc_remote`, GitHub, GitLab, Shopify, Stripe |
+| 75 | [GovData](#govdata) | `govdata` |
+| 76–77 | [Data quality checkers](#data-quality-checkers) | `soda`, `great_expectations` |
+| 78 | [Data profiler](#data-profiler) | `data_profiler` |
+| 79 | [Kaggle datasets](#kaggle-datasets) | Kaggle (staged via Sources form; registers as a `files` source; see [Kaggle datasets](#kaggle-datasets)) |
+| 80 | [Wikipedia](#wikipedia) | Wikipedia (registers as a `files` source that crawls the named pages; see [Wikipedia](#wikipedia)) |
 
 Reference for every source type Provisa supports. "Direct driver" means single-source queries execute against the source natively (sub-100ms). "Connector Name" is the federated connector used when the source participates in multi-source JOINs.
 
@@ -563,7 +563,7 @@ Provisa knows the "See also" heading of these editions: `en`, `de`, `es`, `it`, 
 
 Only tables that editors mark as data tables (`table.wikitable`) become tables, and a table with fewer than 2 rows is not offered.
 
-**Advanced crawl settings.** The form keeps these folded under "Crawl settings" and shows each with its default; leave a field empty to keep it. In a `files` mapping the same names go under `crawl:`, and a name outside this list is refused.
+**Advanced crawl settings.** The form keeps these collapsed under "Crawl settings" and shows each with its default; leave a field empty to keep it. In a `files` mapping the same names go under `crawl:`, and a name outside this list is refused.
 
 | Setting | Wikipedia default | Meaning |
 | --- | --- | --- |
@@ -1247,9 +1247,15 @@ A declared extension that is not installable fails loud, with no silent skip or 
 
 ### Template variables
 
-Every `server_options` value, `user_mapping` value, `attach_template`, and `scan_template` may use `{field}` placeholders. Available fields:
+Every `server_options`, `user_mapping` and `table_options` value, `remote_schema`, `attach_template`, `scan_template` and `engine_template` may use `{field}` placeholders. Available fields:
 
 `{id}`, `{host}`, `{port}`, `{database}`, `{username}`, `{password}`, `{path}`, `{schema_name}`, `{table_name}`, plus any key from `federation_hints`. DuckDB attach templates also receive `{alias}`, the internal catalog alias Provisa gives the attached database.
+
+A template takes raw values and never quotes a placeholder. Provisa writes each value with the engine's quoting rules, so a value holding a quote, a semicolon, a backslash or a newline stays inside its literal or name:
+
+- A `pg_fdw` option value is text. The filled value is written as one string literal: `address: "{host}"` becomes `address 'db.example'`. `remote_schema` is written as one identifier.
+- `attach_template`, `scan_template` and `engine_template` are SQL. `{field}` is written as a string literal, `{field:ident}` as an identifier, and `{field:int}` as an integer (a value that is not an integer fails). To join a value with other text, join it in SQL: `'ducklake:' || {path}` in DuckDB, `concat({host}, ':', {port})` in ClickHouse.
+- A placeholder inside quotes in a SQL template (`read_xlsx('{path}')`) fails when the descriptor is read.
 
 A template referencing an unknown field fails loud at attach time, surfacing a descriptor/source mismatch before broken DDL reaches the engine.
 
@@ -1286,7 +1292,7 @@ connectors:
     extension: excel
     install_from_community: false
     probe_symbol: read_xlsx
-    scan_template: "read_xlsx('{path}')"
+    scan_template: "read_xlsx({path})"
 ```
 
 With either descriptor in place, registering a source with the declared `source_type` routes through the custom connector, subject to a successful probe. No other configuration change is needed.

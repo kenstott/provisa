@@ -87,7 +87,6 @@
     "graphqlQueriesEmpty": "אין טבלאות או קשרים שניתן לשאול",
     "graphqlQueryAria": "הרצת שאילתת GraphQL לדוגמה עבור {{table}}",
     "sqlQueryAria": "הרצת שאילתת SQL לדוגמה עבור {{table}}",
-    "cypherQueryAria": "הרצת שאילתת Cypher לדוגמה עבור {{type}}",
     "grpcQueryAria": "הרצת קריאת gRPC לדוגמה עבור {{table}}",
     "jsonapiQueryAria": "הרצת בקשת JSON:API לדוגמה עבור {{table}}",
     "openApiQueryAria": "הרצת בקשת REST לדוגמה עבור {{table}}",
@@ -106,21 +105,21 @@
       "dqRulesTitle": "כללי איכות — {{table}}",
       "dqRulesEmpty": "החוזה אינו מגדיר בדיקות",
       "relatedTablesEmpty": "אין טבלאות קשורות",
-      "relatedTablesHint": "ניתן להגיע אליהן מטבלאות המוצר דרך קשר מאושר, אך הן אינן (עדיין) חלק ממנו.",
+      "relatedTablesHint": "ניתן להגיע אליה מהטבלאות של המוצר הזה דרך קשר שאושר, אך היא עדיין לא חלק ממנו.",
       "relationshipsEmpty": "אין קשרים בין טבלאות המוצר",
       "lineageEmpty": "אין Data Lineage",
       "lineageLoading": "טוען Data Lineage…",
       "lineageTitle": "Data Lineage של עמודות: מאין מגיע מוצר זה",
-      "lineageHint": "כל עמודה שמוצר זה מפרסם ועמודת הקלט שממנה היא מגיעה, עם כל השלבים שביניהן. נדרשת היכולת view_governance.",
+      "lineageHint": "כל עמודה שהמוצר הזה מפרסם ועמודת הקלט שממנה היא מגיעה, עם כל שלב ביניהן. נדרשת היכולת view_governance.",
       "outputPortsHint": "המשטח הניתן לשאילתה של המוצר הזה: טבלאות החברות והפקודות שלו. שאילתות לדוגמה לכל אחת נמצאות תחת דפוסי גישה.",
       "customPropertiesEmpty": "אין מאפיינים מותאמים אישית",
       "lineageLaneTables": "הטבלאות של מוצר זה",
       "lineageLaneInputs": "קלטים",
-      "lineageLaneUpstream": "במעלה הזרם, דילוג {{n}} מעבר לקלטים",
+      "lineageLaneUpstream": "במעלה הזרם, {{n}} דילוגים מעבר לקלטים",
       "inputsLineageLink": "הצג Data Lineage של עמודות"
     },
     "readOnly": "לקריאה בלבד",
-    "readOnlyHint": "יש לך רק data_product_read — org_admin יכול להעניק data_product_rw לעריכה.",
+    "readOnlyHint": "יש לך רק data_product_read. ‏org_admin יכול להעניק data_product_rw לצורך עריכה.",
     "relatedTermsConcept": "מושג",
     "status_draft": "טיוטה",
     "status_live": "פעיל",
@@ -133,15 +132,15 @@
     "successorHint": "הטבלאות, התצוגות והפקודות שלו עוברות למחליף, מוצר באותו דומיין.",
     "reasonLabel": "סיבה",
     "publish": "פרסם",
-    "publishHint": "הפיכת הטיוטה לפעילה: היא מוצעת לצרכנים ולקטלוגים.",
+    "publishHint": "העלאת הטיוטה הזו לאוויר והצעתה לצרכנים ולקטלוגים.",
     "deprecate": "סמן כמיושן",
-    "deprecateHint": "סימון מוצר פעיל זה כיוצא משימוש: הוא נשאר בשימוש, עם סיבה ותאריך הוצאה משימוש מתוכנן אופציונלי.",
+    "deprecateHint": "סימון המוצר החי הזה כמיועד להוצאה משימוש. הוא נשאר בשירות, עם סיבה ועם מועד הוצאה משימוש מתוכנן (אופציונלי).",
     "deprecateTitle": "סימון '{{product}}' כמיושן",
     "retire": "הוצא משימוש",
-    "retireHint": "הוצאת מוצר זה משימוש: הטבלאות, התצוגות והפקודות שלו עוברות למחליף בדומיין שלו.",
+    "retireHint": "הוצאת המוצר הזה משירות. הטבלאות, התצוגות והפקודות שלו עוברות ליורש בתחום שלו.",
     "retireTitle": "הוצאת '{{product}}' משימוש",
     "retireMoves": "חברים שעוברים: {{members}}",
-    "retireNoMembers": "אין לו חברים: מחליף הוא אופציונלי.",
+    "retireNoMembers": "אין לו חברים, ולכן יורש הוא אופציונלי.",
     "restore": "שחזר",
     "restoreHint": "ביטול הסימון כמיושן (חזרה לפעיל) או ההוצאה משימוש (חזרה לטיוטה).",
     "toReview": "לבדיקה",
@@ -218,7 +217,8 @@
         "data_level_changed": "רמת הנתונים שונתה מ-{{before}} ל-{{after}}",
         "dq_results_changed": "תוצאות האיכות שונו מ-{{before}} ל-{{after}}",
         "profiles_changed": "הפרופילים שונו מ-{{before}} ל-{{after}}",
-        "duration_changed": "המשך שונה מ-{{before}} ל-{{after}}"
+        "duration_changed": "המשך שונה מ-{{before}} ל-{{after}}",
+        "terms_of_use_changed": "תנאי השימוש שונו: {{subject}}"
       },
       "howToUse": {
         "column": {
@@ -308,6 +308,11 @@
         "history": "היסטוריית גרסאות"
       }
     },
-    "detailPanel": "פרטי מוצר הנתונים"
+    "detailPanel": "פרטי מוצר הנתונים",
+    "tagFacetLabel": "תגיות",
+    "tagFacetPlaceholder": "סינון לפי תגית",
+    "noMatch": "אין מוצרי נתונים התואמים למסננים",
+    "domainFacetLabel": "דומיינים",
+    "domainFacetPlaceholder": "סינון לפי דומיין"
   }
 }

@@ -38,6 +38,9 @@
     "classTerm": "Rows are instances of",
     "noClassTerm": "No term",
     "classTermUnreadable": "Its term could not be read: {{error}}",
+    "classTermNoModel": "Its term could not be read: your roles cannot read the model's tables.",
+    "classTermNoEntry": "Its term could not be read: your roles cannot read this table's own entry in the model.",
+    "classTermNoField": "Its term could not be read: your roles cannot read which term a table's rows are instances of.",
     "access": "Access"
   }
 }

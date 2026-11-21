@@ -16,6 +16,8 @@ calls, by the same names -- answered here in the server rather than over ``$PROV
 the check runs, the module's calls are routed to :func:`provisa.codesource.services.answer` under a
 grant issued for the view and revoked when the check returns, so each call is metered and traced as
 a code source's is. A code source's sandbox does not apply: the check runs in the server process.
+In a held organization the organization's check does not run here at all (:func:`compile_check`):
+it runs in a confined process and reaches the services as a code source's worker does.
 
 A check runs with an event loop already running on its thread (the refresh's, or the replica
 build's own). A service call is synchronous and runs its work on a connection loop, which cannot
@@ -129,14 +131,38 @@ def bind_services(
 
 
 def compile_check(
-    source: str | None, *, subject: str, product_ids: Sequence[str] = ()
+    source: str | None, *, subject: str, product_ids: Sequence[str] = (), own: bool = False
 ) -> Callable[..., Any] | None:
     """The compiled check ``source`` (None: no check), with Provisa's services bound when it
-    imports them: dq answers as the role every build runs as, the region's administrator."""
+    imports them: dq answers as the role every build runs as, the region's administrator.
+
+    Where the check runs is decided at each run (REQ-2133): in a held organization
+    (:func:`provisa.security.sandbox_egress.held`) a check the organization wrote runs in a
+    confined process of its own (:mod:`provisa.mv.preflight_confined`), never in the server.
+    Anywhere else, and for a check that is Provisa's own text (``own``: Hold on failing checks),
+    it runs in the server. The source is compiled here either way, so it is refused at wiring."""
     from provisa.core import region_admin
     from provisa.mv.preprocess import compile_preprocess, uses_services
 
     fn = compile_preprocess(source)
-    if fn is None or not uses_services(source):
-        return fn
-    return bind_services(fn, subject=subject, role=region_admin.ROLE, product_ids=product_ids)
+    if fn is None or source is None:
+        return None
+    in_server = (
+        bind_services(fn, subject=subject, role=region_admin.ROLE, product_ids=product_ids)
+        if uses_services(source)
+        else fn
+    )
+    if own:
+        return in_server
+
+    @functools.wraps(fn)
+    def routed(streams: Any, ctx: Any) -> Any:
+        from provisa.security.sandbox_egress import held_here
+
+        if held_here():
+            from provisa.mv.preflight_confined import run_confined
+
+            return run_confined(source, streams, ctx, subject=subject, product_ids=product_ids)
+        return in_server(streams, ctx)
+
+    return routed

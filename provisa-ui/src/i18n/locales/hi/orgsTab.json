@@ -19,7 +19,7 @@
     "colActions": "कार्रवाइयाँ",
     "empty": "कोई संगठन नहीं",
     "membersButton": "सदस्य",
-    "hideButton": "छिपाएँ",
+    "hideButton": "संक्षिप्त करें",
     "expandOrg": "{{name}} के सदस्य टॉगल करें",
     "deleteOrg": "{{name}} हटाएँ",
     "membersHeading": "सदस्य",

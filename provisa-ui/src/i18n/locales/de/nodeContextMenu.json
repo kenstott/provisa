@@ -1,7 +1,7 @@
 {
   "nodeContextMenu": {
     "excludeTooltip": "Diesen Knoten aus der Abfrage ausschließen",
-    "excludeDisabledTooltip": "Kein Primärschlüssel konfiguriert — Ausschließen nicht möglich",
+    "excludeDisabledTooltip": "Ausschließen nicht möglich: kein Primärschlüssel konfiguriert",
     "excludeFromQuery": "Aus Abfrage ausschließen",
     "excludeCount": "{{count}} Knoten ausschließen",
     "unfixPosition": "Position lösen",

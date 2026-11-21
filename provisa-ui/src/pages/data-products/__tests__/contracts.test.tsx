@@ -49,6 +49,9 @@ const OFFER = {
   profiles: false,
   open: false,
   duration_days: null,
+  purpose: "",
+  usage: "",
+  limitations: "",
   version: 1,
   published_by: null,
   review: null,
@@ -73,13 +76,20 @@ const OFFER = {
           dq_results: true,
           profiles: [],
           duration_days: null,
+          purpose: "",
+          usage: "",
+          limitations: "",
         },
       },
     },
   ],
 } as Offer;
+// Every section is mounted (Lineage and Related only once expanded): the reads the others make
+// answer nothing here.
 vi.mock("../../../api/dataProductOffers", () => ({
   fetchOffers: () => Promise.resolve([OFFER]),
+  fetchBids: () => Promise.resolve([]),
+  fetchProductProfiles: () => Promise.resolve([]),
 }));
 
 const PRODUCT = {

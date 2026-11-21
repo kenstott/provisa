@@ -32,6 +32,7 @@ import {
 } from "@mantine/core";
 import { Pencil, Plus, Power, PowerOff } from "lucide-react";
 import { PanelDelete } from "../list/PanelDelete";
+import { PanelDuplicate } from "../list/PanelDuplicate";
 import { Tip } from "../Tip";
 import {
   useScheduledTasks,
@@ -269,6 +270,16 @@ export function ScheduledTasks() {
   const openCreate = () => {
     setSelectedId(null);
     setForm(EMPTY);
+    setFormMsg("");
+    setMode("create");
+  };
+  // Duplicate, from a trigger's panel head: the create form filled with the trigger's schedule or
+  // event and what it runs, under "<id>-copy" (editable; an id that exists is refused on save by
+  // the create). The list holds no webhook arguments and no credential, so none is copied (the
+  // edit form starts them empty as well).
+  const openDuplicate = (task: ScheduledTask) => {
+    setSelectedId(null);
+    setForm({ ...formOf(task, webhooks), id: `${task.id}-copy`, name: `${task.name}-copy` });
     setFormMsg("");
     setMode("create");
   };
@@ -606,6 +617,11 @@ export function ScheduledTasks() {
                 <Pencil size={14} />
               </ActionIcon>
             </Tip>
+            <PanelDuplicate
+              name={selected.name}
+              onDuplicate={() => openDuplicate(selected)}
+              testId="scheduled-task-duplicate"
+            />
             {/* REQ-2198: resolves once the list is read again without the task; a refusal or
                 an error is said by the Delete itself, under the panel's head. */}
             <PanelDelete

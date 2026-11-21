@@ -91,6 +91,488 @@ def _sensitive_assignments_sql() -> str:
     )
 
 
+def _citation_states_sql() -> str:
+    """REQ-2208: every library citation with its state, by the one statement that reads a
+    citation's state (provisa.reference_library.citations.citation_states)."""
+    from sqlalchemy.dialects import postgresql
+
+    from provisa.reference_library.citations import citation_states
+
+    return str(
+        citation_states().compile(
+            dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}
+        )
+    )
+
+
+def _tag_definitions_sql() -> str:
+    """REQ-2208 (THE TAGS REPORT): every tag, the code-defined ones from their constants and the
+    registry's from the tags table, with what the report reads of its definition."""
+    rows = []
+    for tag in SYSTEM_TAGS + DERIVED_TAGS:
+        desc = sql_literal(tag.description, "postgres")
+        applies = sql_literal(_json.dumps(tag.applies_to), "postgres")
+        allowed = sql_literal(_json.dumps(tag.allowed_domains), "postgres")
+        rows.append(
+            f"SELECT '{tag.id}' AS id, {desc} AS description, CAST({applies} AS JSONB) AS "
+            f"applies_to, TRUE AS is_system, {'TRUE' if tag.requires_citation else 'FALSE'} "
+            f"AS requires_citation, {'TRUE' if tag.required else 'FALSE'} AS required, "
+            f"CAST({allowed} AS JSONB) AS allowed_domains"
+        )
+    rows.append(
+        "SELECT id, description, CAST(applies_to AS JSONB), is_system, requires_citation, "
+        "required, CAST(allowed_domains AS JSONB) FROM tags WHERE NOT retired"  # REQ-2248
+    )
+    return "\n            UNION ALL\n            ".join(rows)
+
+
+def _term_domains_sql() -> str:
+    """REQ-1591: each term's domains by the one rule, as the ontology schema's _domains view
+    states it, read here as its query: the meta views are made before the ontology's."""
+    from provisa.api._ontology_views import ONTOLOGY_TABLE_VIEWS
+
+    head, _, body = ONTOLOGY_TABLE_VIEWS["_domains"].partition(
+        "CREATE OR REPLACE VIEW _domains_ontology AS"
+    )
+    if head.strip() or not body:
+        raise ValueError("the ontology's _domains view is no longer one CREATE VIEW statement")
+    return body
+
+
+def _domains_of(rows: str) -> str:
+    """``rows`` (object_key, domain) as one |a|b| string per object, its empty domains left out
+    (an object with no domain is not restricted by one)."""
+    return f"""
+            SELECT object_key, '|' || STRING_AGG(DISTINCT domain_id, '|') || '|' AS domains
+            FROM ({rows}) x
+            WHERE COALESCE(domain_id, '') <> ''
+            GROUP BY object_key"""
+
+
+#: REQ-2208: each library document's domains as one |a|b| string, read as a glossary term's are
+#: (compiler.stage2._readable_term_predicate): the rows about a document are read where it is.
+_DOCUMENT_DOMAINS_SQL = """
+            SELECT document_id,
+                   '|' || STRING_AGG(DISTINCT domain_id, '|') || '|' AS domains
+            FROM reference_document_domains GROUP BY document_id"""
+
+
+def _output_columns(ddl: str) -> list[str]:
+    """The output columns of a CREATE VIEW statement, in select order."""
+    import sqlglot
+
+    select = sqlglot.parse_one(ddl, read="postgres").expression
+    return [e.output_name for e in select.expressions]
+
+
+def _tag_instances_sql() -> str:
+    """REQ-2208 (THE TAGS REPORT): one row per tag on an object -- assigned, inherited from a
+    glossary term, or derived from the object's registered state -- and one per required tag an
+    object of a kind it applies to does not carry. Each row's citation measures
+    and status are computed here, when it is read: nothing of them is stored.
+
+    Its read columns state who may read the row as the tag admin's read of an assignment does
+    (provisa.api.admin.schema_query._readable_assignments), for the compiler to apply
+    (provisa.compiler.stage2, TAG_ROW_VIEWS): ``read_all_domains``, every domain of which the
+    reader must reach (NULL: the object is not there); ``read_any_domains``, one of which it must
+    reach when any is named (a source's allowed domains); ``read_term_domains``, read as a glossary
+    term is (a term's, or a library document's, domains); ``read_roles``, the roles a metric is
+    granted to."""
+    all_domains = _domains_of(
+        """
+                SELECT 'table:' || CAST(id AS TEXT) AS object_key, domain_id
+                FROM registered_tables
+                UNION ALL
+                SELECT 'relationship:' || r.id, rt.domain_id
+                FROM relationships r
+                JOIN registered_tables rt ON rt.id IN (r.source_table_id, r.target_table_id)
+                UNION ALL
+                SELECT 'command:' || name, domain_id FROM tracked_functions
+                UNION ALL
+                SELECT 'command:' || name, domain_id FROM tracked_webhooks
+                UNION ALL
+                SELECT 'product:' || id, domain_id FROM data_products
+                UNION ALL
+                SELECT 'rls_rule:' || CAST(rr.id AS TEXT), rt.domain_id
+                FROM rls_rules rr JOIN registered_tables rt ON rt.id = rr.table_id
+                UNION ALL
+                SELECT 'rls_rule:' || CAST(id AS TEXT), domain_id
+                FROM rls_rules WHERE table_id IS NULL AND domain_id IS NOT NULL
+                UNION ALL
+                SELECT 'rls_rule:' || CAST(rr.id AS TEXT), c.domain_id
+                FROM rls_rules rr
+                JOIN (SELECT name, domain_id FROM tracked_functions
+                      UNION ALL SELECT name, domain_id FROM tracked_webhooks) c
+                  ON c.name = rr.action_name
+                WHERE rr.table_id IS NULL AND rr.domain_id IS NULL
+                UNION ALL
+                SELECT 'rls_rule:' || CAST(rr.id AS TEXT), rt.domain_id
+                FROM rls_rules rr
+                JOIN tag_assignments ta
+                  ON ta.object_type = 'table' AND ta.base_tag_id = rr.tag_id
+                JOIN registered_tables rt ON rt.id = ta.table_id
+                WHERE rr.table_id IS NULL AND rr.domain_id IS NULL AND rr.action_name IS NULL"""
+    )
+    return f"""
+        CREATE OR REPLACE VIEW tag_instances AS
+        WITH defs AS (
+            {_tag_definitions_sql()}
+        ),
+        cited AS ({_citation_states_sql()}),
+        all_domains AS ({all_domains}
+        ),
+        term_domains AS ({_term_domains_sql()}
+        ),
+        document_domains AS ({_DOCUMENT_DOMAINS_SQL}
+        ),
+        objects AS (
+            SELECT 'source' AS object_kind, s.withdrawn AS withdrawn, 'source:' || s.id AS object_key, s.id AS object_id,
+                   CAST(NULL AS INTEGER) AS table_id, CAST(NULL AS TEXT) AS domain_id,
+                   CAST(NULL AS TEXT) AS owner,
+                   COALESCE((SELECT '|' || STRING_AGG(x, '|') || '|'
+                             FROM jsonb_array_elements_text(CAST(s.allowed_domains AS JSONB)) x),
+                            '|') AS read_any_domains,
+                   CAST(NULL AS TEXT) AS read_term_domains, CAST(NULL AS TEXT) AS read_roles
+            FROM sources s
+            WHERE NOT s.retired
+            UNION ALL
+            SELECT 'table', rt.withdrawn, 'table:' || CAST(rt.id AS TEXT), CAST(rt.id AS TEXT), rt.id, rt.domain_id,
+                   CAST(NULL AS TEXT), '|', CAST(NULL AS TEXT), CAST(NULL AS TEXT)
+            FROM registered_tables rt
+            WHERE NOT rt.retired
+            UNION ALL
+            SELECT 'column', rt.withdrawn, 'column:' || CAST(tc.table_id AS TEXT) || ':' || tc.column_name,
+                   CAST(tc.table_id AS TEXT) || ':' || tc.column_name, tc.table_id,
+                   rt.domain_id, CAST(NULL AS TEXT), '|', CAST(NULL AS TEXT), CAST(NULL AS TEXT)
+            FROM table_columns tc JOIN registered_tables rt ON rt.id = tc.table_id
+            WHERE NOT rt.retired AND NOT tc.retired
+            UNION ALL
+            SELECT 'relationship', FALSE, 'relationship:' || r.id, r.id, CAST(NULL AS INTEGER), rt.domain_id, r.owner,
+                   '|', CAST(NULL AS TEXT), CAST(NULL AS TEXT)
+            FROM relationships r JOIN registered_tables rt ON rt.id = r.source_table_id
+            WHERE NOT r.retired AND NOT rt.retired
+            UNION ALL
+            SELECT 'command', FALSE, 'command:' || f.name, f.name, CAST(NULL AS INTEGER), f.domain_id,
+                   CAST(NULL AS TEXT), '|', CAST(NULL AS TEXT), CAST(NULL AS TEXT)
+            FROM tracked_functions f
+            UNION ALL
+            SELECT 'command', FALSE, 'command:' || w.name, w.name, CAST(NULL AS INTEGER), w.domain_id,
+                   CAST(NULL AS TEXT), '|', CAST(NULL AS TEXT), CAST(NULL AS TEXT)
+            FROM tracked_webhooks w
+            UNION ALL
+            SELECT 'product', FALSE, 'product:' || dp.id, dp.id, CAST(NULL AS INTEGER), dp.domain_id,
+                   dp.owner_role, '|', CAST(NULL AS TEXT), CAST(NULL AS TEXT)
+            FROM data_products dp
+            UNION ALL
+            SELECT 'term', FALSE, 'term:' || CAST(gt.id AS TEXT), CAST(gt.id AS TEXT), CAST(NULL AS INTEGER),
+                   CAST(NULL AS TEXT), CAST(NULL AS TEXT), '|',
+                   (SELECT MAX(x.term_domains) FROM term_domains x WHERE x.term_id = gt.id),
+                   CAST(NULL AS TEXT)
+            FROM glossary_terms gt
+            UNION ALL
+            SELECT 'rls_rule', FALSE, 'rls_rule:' || CAST(rr.id AS TEXT), CAST(rr.id AS TEXT),
+                   CAST(NULL AS INTEGER), COALESCE(rr.domain_id, rrt.domain_id),
+                   CAST(NULL AS TEXT), '|', CAST(NULL AS TEXT), CAST(NULL AS TEXT)
+            FROM rls_rules rr LEFT JOIN registered_tables rrt ON rrt.id = rr.table_id
+            UNION ALL
+            SELECT 'role', FALSE, 'role:' || ro.id, ro.id, CAST(NULL AS INTEGER), CAST(NULL AS TEXT),
+                   CAST(NULL AS TEXT), '|', CAST(NULL AS TEXT), CAST(NULL AS TEXT)
+            FROM roles ro
+            UNION ALL
+            SELECT 'metric', FALSE, 'metric:' || m.name, m.name, CAST(NULL AS INTEGER), CAST(NULL AS TEXT),
+                   CAST(NULL AS TEXT), '|', CAST(NULL AS TEXT),
+                   (SELECT '|' || STRING_AGG(x, '|') || '|'
+                    FROM jsonb_array_elements_text(CAST(m.visible_to AS JSONB)) x)
+            FROM metrics m
+            WHERE NOT m.retired
+            UNION ALL
+            SELECT 'document', FALSE, 'document:' || CAST(d.id AS TEXT), CAST(d.id AS TEXT), CAST(NULL AS INTEGER),
+                   CAST(NULL AS TEXT), CAST(NULL AS TEXT), '|', dd.domains, CAST(NULL AS TEXT)
+            FROM reference_documents d
+            LEFT JOIN document_domains dd ON dd.document_id = d.id
+            UNION ALL
+            SELECT DISTINCT 'section', FALSE, dt.object_key,
+                   SUBSTR(dt.object_key, LENGTH('section:') + 1), CAST(NULL AS INTEGER),
+                   CAST(NULL AS TEXT), CAST(NULL AS TEXT), '|', dd.domains, CAST(NULL AS TEXT)
+            FROM reference_document_tags dt
+            LEFT JOIN document_domains dd ON dd.document_id = dt.document_id
+            WHERE dt.object_type = 'section'
+        ),
+        instances AS (
+            SELECT 'assigned' AS via, ta.object_type AS object_kind, ta.object_key,
+                   ta.tag_id, ta.base_tag_id, ta.reason, ta.expires_on, ta.purpose,
+                   ta.review_on, CAST(ta.evidence AS TEXT) AS evidence, ta.decided_by,
+                   ta.decided_at, ta.object_key AS assignment_key,
+                   CAST(NULL AS TEXT) AS term_key
+            FROM tag_assignments ta
+            UNION ALL
+            SELECT 'assigned', dt.object_type, dt.object_key, dt.tag_id, dt.base_tag_id,
+                   dt.reason, dt.expires_on, dt.purpose, dt.review_on,
+                   CAST(dt.evidence AS TEXT), dt.decided_by, dt.decided_at, dt.object_key,
+                   CAST(NULL AS TEXT)
+            FROM reference_document_tags dt
+            UNION ALL
+            SELECT 'inherited', 'column', 'column:' || CAST(e.table_id AS TEXT) || ':'
+                   || e.column_name, ta.tag_id, ta.base_tag_id, ta.reason, ta.expires_on,
+                   ta.purpose, ta.review_on, CAST(ta.evidence AS TEXT), ta.decided_by,
+                   ta.decided_at, ta.object_key, ta.object_key
+            FROM effective_column_tags e
+            JOIN tag_assignments ta
+              ON ta.object_type = 'term' AND ta.term_id = e.term_id
+             AND ta.base_tag_id = e.base_tag_id
+            WHERE e.via = 'term'
+            UNION ALL
+            SELECT 'derived', dg.object_type, dg.object_key, dg.tag_id, dg.tag_id,
+                   CAST(NULL AS TEXT), CAST(NULL AS TEXT), CAST(NULL AS TEXT),
+                   CAST(NULL AS TEXT), CAST(NULL AS TEXT), CAST(NULL AS TEXT),
+                   CAST(NULL AS TIMESTAMPTZ), CAST(NULL AS TEXT), CAST(NULL AS TEXT)
+            FROM derived_tags dg
+        ),
+        missing AS (
+            SELECT 'missing' AS via, o.object_kind, o.object_key, d.id AS tag_id,
+                   d.id AS base_tag_id, CAST(NULL AS TEXT) AS reason,
+                   CAST(NULL AS TEXT) AS expires_on, CAST(NULL AS TEXT) AS purpose,
+                   CAST(NULL AS TEXT) AS review_on, CAST(NULL AS TEXT) AS evidence,
+                   CAST(NULL AS TEXT) AS decided_by, CAST(NULL AS TIMESTAMPTZ) AS decided_at,
+                   CAST(NULL AS TEXT) AS assignment_key, CAST(NULL AS TEXT) AS term_key
+            FROM defs d
+            JOIN objects o ON d.applies_to @> jsonb_build_array(o.object_kind)
+            WHERE d.required AND NOT o.withdrawn
+              -- A TAG IS OFFERED BY DOMAIN: required only on objects of the tag's allowed
+              -- domains (none: every domain), as assignTag places an object
+              -- (domain_guard.tag_target_domains): a source open to every domain is in all of
+              -- them; an object in no domain (a role) is in none.
+              AND (jsonb_array_length(d.allowed_domains) = 0
+                   OR EXISTS (
+                       SELECT 1 FROM jsonb_array_elements_text(d.allowed_domains) a(domain_id)
+                       WHERE a.domain_id = '*'
+                          OR a.domain_id = o.domain_id
+                          OR (o.object_kind = 'source'
+                              AND (o.read_any_domains = '|'
+                                   OR POSITION('|*|' IN o.read_any_domains) > 0
+                                   OR POSITION('|' || a.domain_id || '|' IN o.read_any_domains) > 0))
+                          OR POSITION('|*|' IN COALESCE(o.read_term_domains, '')) > 0
+                          OR POSITION('|' || a.domain_id || '|' IN COALESCE(o.read_term_domains, '')) > 0
+                          OR (o.object_kind = 'rls_rule'
+                              AND EXISTS (
+                                  SELECT 1 FROM all_domains rd
+                                  WHERE rd.object_key = o.object_key
+                                    AND POSITION('|' || a.domain_id || '|' IN rd.domains) > 0))))
+              AND NOT EXISTS (
+                  SELECT 1 FROM instances i
+                  WHERE i.base_tag_id = d.id AND i.object_key = o.object_key
+              )
+        ),
+        tag_rows AS (
+            SELECT * FROM instances
+            UNION ALL
+            SELECT * FROM missing
+        ),
+        assignment_cites AS (
+            SELECT tag_id, object_key, COUNT(*) AS cited,
+                   SUM(CASE WHEN state = 'broken' THEN 1 ELSE 0 END) AS broken,
+                   SUM(CASE WHEN state = 'drifted' THEN 1 ELSE 0 END) AS drifted
+            FROM cited WHERE citer_kind = 'tag_assignment'
+            GROUP BY tag_id, object_key
+        ),
+        definition_cites AS (
+            SELECT tag_id, COUNT(*) AS cited,
+                   SUM(CASE WHEN state <> 'current' THEN 1 ELSE 0 END) AS needs_review
+            FROM cited WHERE citer_kind = 'tag'
+            GROUP BY tag_id
+        ),
+        measured AS (
+            SELECT i.*, o.object_id, o.table_id, o.domain_id, o.owner,
+                   d.description AS tag_description, d.is_system AS tag_is_system,
+                   d.required AS tag_required, d.requires_citation AS tag_requires_citation,
+                   COALESCE(dc.cited, 0) AS definition_citations,
+                   COALESCE(dc.needs_review, 0) AS definition_citations_needing_review,
+                   COALESCE(ac.cited, 0) AS citations,
+                   COALESCE(ac.broken, 0) AS citations_broken,
+                   COALESCE(ac.drifted, 0) AS citations_drifted,
+                   (i.via IN ('assigned', 'inherited') AND COALESCE(d.requires_citation, FALSE)
+                    AND COALESCE(ac.cited, 0) = 0) AS citation_missing,
+                   COALESCE(i.expires_on < CAST(CURRENT_DATE AS TEXT), FALSE) AS expired,
+                   CASE WHEN o.object_key IS NULL THEN NULL
+                        ELSE COALESCE(ad.domains, '|') END AS read_all_domains,
+                   o.read_any_domains,
+                   CASE WHEN i.via = 'inherited' THEN t.read_term_domains
+                        ELSE o.read_term_domains END AS read_term_domains,
+                   o.read_roles
+            FROM tag_rows i
+            LEFT JOIN objects o ON o.object_key = i.object_key
+            LEFT JOIN all_domains ad
+              ON ad.object_key = CASE WHEN i.object_kind = 'column'
+                                      THEN 'table:' || CAST(o.table_id AS TEXT)
+                                      ELSE i.object_key END
+            LEFT JOIN objects t ON t.object_key = i.term_key
+            LEFT JOIN defs d ON d.id = i.base_tag_id
+            LEFT JOIN definition_cites dc ON dc.tag_id = i.base_tag_id
+            LEFT JOIN assignment_cites ac
+              ON ac.tag_id = i.base_tag_id AND ac.object_key = i.assignment_key
+        )
+        SELECT m.via || '|' || m.base_tag_id || '|' || m.object_key || '|'
+                   || COALESCE(m.assignment_key, '') AS id,
+               m.object_kind, m.object_key, m.object_id,
+               (SELECT MIN(mn.label) FROM model_names mn
+                WHERE mn.object_id = m.object_id
+                  AND (mn.object_kind = m.object_kind
+                       OR (m.object_kind = 'table' AND mn.object_kind = 'view'))) AS object_name,
+               m.domain_id, m.owner, m.table_id,
+               m.tag_id, m.base_tag_id,
+               CASE WHEN POSITION(':' IN m.tag_id) > 0
+                    THEN SUBSTR(m.tag_id, POSITION(':' IN m.tag_id) + 1) END AS parameter,
+               m.tag_description, m.tag_is_system, m.tag_required, m.tag_requires_citation,
+               m.definition_citations,
+               m.via, m.reason, m.expires_on, m.expired, m.purpose, m.review_on, m.evidence,
+               m.decided_by, m.decided_at,
+               m.citations, m.citations_broken, m.citations_drifted, m.citation_missing,
+               CASE WHEN m.via = 'missing' OR m.expired OR m.citations_broken > 0
+                         OR m.citations_drifted > 0 OR m.citation_missing
+                         OR m.definition_citations_needing_review > 0
+                    THEN 'needs attention' ELSE 'clean' END AS status,
+               NULLIF(CONCAT_WS('; ',
+                   CASE WHEN m.via = 'missing' THEN 'required tag missing' END,
+                   CASE WHEN m.expired THEN 'the assignment expired' END,
+                   CASE WHEN m.citation_missing THEN 'required citation missing' END,
+                   CASE WHEN m.citations_broken > 0
+                        THEN 'a cited section no longer resolves' END,
+                   CASE WHEN m.citations_drifted > 0
+                        THEN 'a cited section changed since it was cited' END,
+                   CASE WHEN m.definition_citations_needing_review > 0
+                        THEN 'the definition''s cited section needs review' END), '')
+                   AS status_reason,
+               m.read_all_domains, m.read_any_domains, m.read_term_domains, m.read_roles
+        FROM measured m
+    """
+
+
+#: REQ-2208 (decision 2026-11-13): what the library views read of a tag on an object, from
+#: tag_instances: the object as the tags report names it, and the columns its row is read by.
+_INSTANCE_COLUMNS = """i.id AS tag_instance_id, i.object_kind, i.object_key, i.object_id,
+               i.object_name, i.domain_id, i.table_id,
+               CASE WHEN i.object_kind = 'column' THEN i.object_id END AS column_key"""
+_INSTANCE_READ_COLUMNS = "i.read_all_domains, i.read_any_domains, i.read_term_domains, i.read_roles"
+
+
+def _library_documents_sql() -> str:
+    """REQ-2208 (decision 2026-11-13): one row per library document, with its domains; read where
+    the document is (``read_document_domains``), as the rows about it are."""
+    return f"""
+        CREATE OR REPLACE VIEW library_documents AS
+        WITH document_domains AS ({_DOCUMENT_DOMAINS_SQL}
+        )
+        SELECT d.id, d.title, d.source, d.source_kind, d.status, d.added_by, d.added_at,
+               d.refreshed_at,
+               (SELECT STRING_AGG(x.domain_id, ', ' ORDER BY x.domain_id)
+                FROM reference_document_domains x WHERE x.document_id = d.id) AS domains,
+               dd.domains AS read_document_domains
+        FROM reference_documents d
+        LEFT JOIN document_domains dd ON dd.document_id = d.id
+    """
+
+
+def _tag_citations_sql() -> str:
+    """REQ-2208 (decision 2026-11-13): one row per citation of the library, a tag's definition's or
+    an assignment's, with its state as the one statement reads it (citation_states). An
+    assignment's row names its object as tag_instances does and carries that row's read columns;
+    ``read_document_domains`` is the cited document's, read as the document is
+    (compiler.stage2.library_row_predicate)."""
+    return f"""
+        CREATE OR REPLACE VIEW tag_citations AS
+        WITH cited AS ({_citation_states_sql()}),
+        document_domains AS ({_DOCUMENT_DOMAINS_SQL}
+        )
+        SELECT CAST(c.id AS TEXT) AS id,
+               CASE WHEN c.citer_kind = 'tag' THEN 'definition' ELSE 'assignment' END AS citer,
+               COALESCE(i.tag_id, c.tag_id) AS tag_id, c.tag_id AS base_tag_id,
+               i.id AS tag_instance_id, i.object_kind,
+               NULLIF(c.object_key, '') AS object_key, i.object_id, i.object_name, i.domain_id,
+               i.table_id, CASE WHEN i.object_kind = 'column' THEN i.object_id END AS column_key,
+               c.document_id, c.document_title, c.document_source, c.cite_key AS place_key,
+               c.section_heading, c.section_page,
+               c.state, c.state <> 'current' AS needs_review, c.cited_by, c.cited_at,
+               {_INSTANCE_READ_COLUMNS},
+               dd.domains AS read_document_domains
+        FROM cited c
+        LEFT JOIN tag_instances i
+          ON c.citer_kind = 'tag_assignment' AND i.via = 'assigned'
+         AND i.base_tag_id = c.tag_id AND i.object_key = c.object_key
+        LEFT JOIN document_domains dd ON dd.document_id = c.document_id
+    """
+
+
+def _section_tags_sql() -> str:
+    """REQ-2208 (decision 2026-11-13): one row per tag on a library document or on a section of
+    one, with the assignment's why; read where the document is (``read_document_domains``)."""
+    return f"""
+        CREATE OR REPLACE VIEW section_tags AS
+        WITH document_domains AS ({_DOCUMENT_DOMAINS_SQL}
+        )
+        SELECT dt.base_tag_id || '|' || dt.object_key AS id,
+               'assigned|' || dt.base_tag_id || '|' || dt.object_key || '|' || dt.object_key
+                   AS tag_instance_id,
+               dt.tag_id, dt.base_tag_id, dt.object_type AS place_kind, dt.object_key AS place_key,
+               dt.document_id, d.title AS document_title, dt.section_heading, dt.section_page,
+               dt.reason, dt.expires_on,
+               COALESCE(dt.expires_on < CAST(CURRENT_DATE AS TEXT), FALSE) AS expired,
+               dt.purpose, dt.review_on, dt.decided_by, dt.decided_at,
+               dd.domains AS read_document_domains
+        FROM reference_document_tags dt
+        JOIN reference_documents d ON d.id = dt.document_id
+        LEFT JOIN document_domains dd ON dd.document_id = dt.document_id
+    """
+
+
+def _policy_coverage_sql() -> str:
+    """REQ-2208 (decision 2026-11-13): one row per path from a library section, or a whole
+    document, to an object, saying which: ``shared tag`` (the section carries the tag the object
+    carries), ``tag cites it`` (the definition of a tag the object carries cites the section) or
+    ``assignment cites it`` (the object's assignment of the tag cites the section). The object is
+    named as tag_instances names it, its row read as that one is and where the document is."""
+    return f"""
+        CREATE OR REPLACE VIEW policy_coverage AS
+        WITH cited AS ({_citation_states_sql()}),
+        document_domains AS ({_DOCUMENT_DOMAINS_SQL}
+        ),
+        carried AS (
+            SELECT * FROM tag_instances
+            WHERE via <> 'missing' AND object_kind NOT IN ('document', 'section')
+        ),
+        paths AS (
+            SELECT 'shared tag' AS link, dt.document_id, d.title AS document_title,
+                   dt.object_key AS place_key, dt.section_heading, dt.section_page,
+                   CAST(NULL AS TEXT) AS citation_state, i.id AS instance_id
+            FROM reference_document_tags dt
+            JOIN reference_documents d ON d.id = dt.document_id
+            JOIN carried i ON i.tag_id = dt.tag_id
+            UNION ALL
+            SELECT 'tag cites it', c.document_id, c.document_title, c.cite_key,
+                   c.section_heading, c.section_page, c.state, i.id
+            FROM cited c
+            JOIN carried i ON i.base_tag_id = c.tag_id
+            WHERE c.citer_kind = 'tag'
+            UNION ALL
+            SELECT 'assignment cites it', c.document_id, c.document_title, c.cite_key,
+                   c.section_heading, c.section_page, c.state, i.id
+            FROM cited c
+            JOIN carried i
+              ON i.via = 'assigned' AND i.base_tag_id = c.tag_id AND i.object_key = c.object_key
+            WHERE c.citer_kind = 'tag_assignment'
+        )
+        SELECT p.link || '|' || p.place_key || '|' || p.instance_id AS id,
+               p.document_id, p.document_title, p.place_key, p.section_heading, p.section_page,
+               i.tag_id, i.base_tag_id, p.link, p.citation_state,
+               {_INSTANCE_COLUMNS},
+               i.via,
+               {_INSTANCE_READ_COLUMNS},
+               dd.domains AS read_document_domains
+        FROM paths p
+        JOIN carried i ON i.id = p.instance_id
+        LEFT JOIN document_domains dd ON dd.document_id = p.document_id
+    """
+
+
 def _sql_names(names: tuple[str, ...]) -> str:
     return ", ".join(f"'{n}'" for n in names)
 
@@ -205,25 +687,25 @@ def _data_product_edges_sql() -> str:
             SELECT m.table_id, m.product_id, rt.dq_contract
             FROM data_product_tables m
             JOIN registered_tables rt ON rt.id = m.table_id
-            WHERE NOT rt.draft
+            WHERE NOT rt.retired AND NOT rt.withdrawn AND rt.source_id NOT IN (SELECT ws.id FROM sources ws WHERE ws.withdrawn)
         ),
         free AS (
             SELECT id AS table_id FROM registered_tables rt
-            WHERE NOT rt.draft
+            WHERE NOT rt.retired AND NOT rt.withdrawn AND rt.source_id NOT IN (SELECT ws.id FROM sources ws WHERE ws.withdrawn)
               AND NOT EXISTS (SELECT 1 FROM data_product_tables m WHERE m.table_id = rt.id)
         ),
         links AS (
             SELECT r.id AS rel_id, r.alias, r.source_table_id AS a, r.target_table_id AS b
             FROM relationships r
-            JOIN registered_tables s ON s.id = r.source_table_id AND NOT s.draft
-            JOIN registered_tables t ON t.id = r.target_table_id AND NOT t.draft
-            WHERE r.source_table_id <> r.target_table_id
+            JOIN registered_tables s ON s.id = r.source_table_id AND NOT s.retired AND NOT s.withdrawn AND s.source_id NOT IN (SELECT ws.id FROM sources ws WHERE ws.withdrawn)
+            JOIN registered_tables t ON t.id = r.target_table_id AND NOT t.retired AND NOT t.withdrawn AND t.source_id NOT IN (SELECT ws.id FROM sources ws WHERE ws.withdrawn)
+            WHERE r.source_table_id <> r.target_table_id AND NOT r.retired
             UNION ALL
             SELECT r.id, r.alias, r.target_table_id, r.source_table_id
             FROM relationships r
-            JOIN registered_tables s ON s.id = r.source_table_id AND NOT s.draft
-            JOIN registered_tables t ON t.id = r.target_table_id AND NOT t.draft
-            WHERE r.source_table_id <> r.target_table_id
+            JOIN registered_tables s ON s.id = r.source_table_id AND NOT s.retired AND NOT s.withdrawn AND s.source_id NOT IN (SELECT ws.id FROM sources ws WHERE ws.withdrawn)
+            JOIN registered_tables t ON t.id = r.target_table_id AND NOT t.retired AND NOT t.withdrawn AND t.source_id NOT IN (SELECT ws.id FROM sources ws WHERE ws.withdrawn)
+            WHERE r.source_table_id <> r.target_table_id AND NOT r.retired
         ),
         -- (product, the relationship leaving its member, a table reached): walking on only
         -- through tables in no product, never into the product's own members.
@@ -423,7 +905,7 @@ def _table_inputs_sql() -> str:
                         WHEN t.materialize THEN 'materialized_view'
                         ELSE 'view' END AS kind
             FROM registered_tables t
-            WHERE NOT t.draft
+            WHERE NOT t.retired AND NOT t.withdrawn AND t.source_id NOT IN (SELECT ws.id FROM sources ws WHERE ws.withdrawn)
         ),
         walk (table_id, relation, relation_id) AS (
             SELECT e.tgt_id, e.src, e.src_id
@@ -443,35 +925,92 @@ def _table_inputs_sql() -> str:
     """.replace("{derived}", DERIVED_SOURCE_ID)
 
 
+def _is_required_parameter_sql(alias: str) -> str:
+    """REQ-1986: whether the table_columns row ``alias`` is a parameter a read must give
+    (provisa.core.parameters.is_parameter and is_required)."""
+    return (
+        f"({alias}.native_filter_type IS NOT NULL AND NOT {alias}.retired "
+        f"AND (COALESCE({alias}.native_filter_required, FALSE) OR {alias}.required_by_steward))"
+    )
+
+
+def _real_column_kinds_sql() -> str:
+    from provisa.core.parameters import REAL_COLUMN_KINDS
+
+    return ", ".join(f"'{kind}'" for kind in sorted(REAL_COLUMN_KINDS))
+
+
+def _table_limits_sql() -> str:
+    """REQ-1986: the sentence a table that requires parameters states its limits in, one row per
+    such table -- provisa.core.parameters.limits_statement, written in SQL from the same words.
+    A remote field that is also an argument is held both as its column and as its ``_nf_``
+    column and is one parameter, stated by the column a caller names."""
+    from provisa.core.parameters import (
+        LIMITS_CLOSING,
+        LIMITS_OPENING,
+        NF_PREFIX,
+        OPAQUE_WORD,
+        REAL_COLUMN_WORD,
+    )
+
+    n = len(NF_PREFIX)
+    return f"""
+            SELECT p.table_id,
+                   '{LIMITS_OPENING}' || STRING_AGG(
+                       CASE WHEN SUBSTR(p.column_name, 1, {n}) = '{NF_PREFIX}'
+                            THEN SUBSTR(p.column_name, {n + 1}) ELSE p.column_name END
+                       || ' (' || CONCAT_WS(', ', p.data_type,
+                              CASE WHEN p.native_filter_type IN ({_real_column_kinds_sql()})
+                                   THEN '{REAL_COLUMN_WORD}' ELSE '{OPAQUE_WORD}' END) || ')',
+                       ', ' ORDER BY p.id) || '{LIMITS_CLOSING}' AS statement
+            -- registered_tables first: schema.sql locks it before table_columns (lock order).
+            FROM registered_tables r
+            JOIN table_columns p ON p.table_id = r.id
+            WHERE {_is_required_parameter_sql("p")}
+              AND NOT (SUBSTR(p.column_name, 1, {n}) = '{NF_PREFIX}' AND EXISTS (
+                  SELECT 1 FROM table_columns b
+                  WHERE b.table_id = p.table_id AND NOT b.retired
+                    AND b.native_filter_type IS NOT NULL
+                    AND b.column_name = SUBSTR(p.column_name, {n + 1})))
+            GROUP BY p.table_id
+    """
+
+
 def _table_details_sql() -> str:
     """REQ-2190: what a registered table's catalog entry holds that registered_tables_meta does
     not list: its modeling role and history, and its comment -- its description with the suffix
     provisa.core.modeling_tags.append_modeling_tag writes, the role, the history and the tag ids
-    in code-point order."""
+    in code-point order. REQ-1986: a table that requires parameters states it in that comment,
+    after its description: which, of what type, opaque or a real column, and that it gives no
+    row count, profile or sample without them."""
     return """
         CREATE OR REPLACE VIEW table_details AS
-        WITH table_tags AS (
+        WITH limits AS ({limits}),
+        table_tags AS (
             SELECT table_id, STRING_AGG(tag_id, ', ' ORDER BY tag_id COLLATE "C") AS tags
             FROM tag_assignments
             WHERE object_type = 'table' AND table_id IS NOT NULL
             GROUP BY table_id
         ),
         suffixes AS (
-            SELECT rt.id, rt.description, rt.modeling_role, rt.modeling_history,
+            SELECT rt.id,
+                   CONCAT_WS(' ', NULLIF(rt.description, ''), l.statement) AS description,
+                   rt.modeling_role, rt.modeling_history,
                    NULLIF(CONCAT_WS(', ', NULLIF(rt.modeling_role, ''),
                                     CASE WHEN rt.modeling_role <> ''
                                          THEN NULLIF(rt.modeling_history, '') END,
                                     t.tags), '') AS suffix
             FROM registered_tables rt
             LEFT JOIN table_tags t ON t.table_id = rt.id
-            WHERE NOT rt.draft
+            LEFT JOIN limits l ON l.table_id = rt.id
+            WHERE NOT rt.retired AND NOT rt.withdrawn AND rt.source_id NOT IN (SELECT ws.id FROM sources ws WHERE ws.withdrawn)
         )
         SELECT id, modeling_role, modeling_history,
                CASE WHEN suffix IS NULL THEN NULLIF(description, '')
                     ELSE COALESCE(NULLIF(description, '') || ' ', '') || '[' || suffix || ']'
                END AS comment
         FROM suffixes
-    """
+    """.replace("{limits}", _table_limits_sql())
 
 
 def _column_details_sql() -> str:
@@ -497,7 +1036,8 @@ def _column_details_sql() -> str:
                          || COALESCE(NULLIF(rt.modeling_role, '') || ', ', '') || t.tags || ']'
                END AS comment
         FROM registered_tables rt
-        JOIN table_columns tc ON tc.table_id = rt.id AND NOT rt.draft
+        JOIN table_columns tc
+          ON tc.table_id = rt.id AND NOT rt.retired AND NOT rt.withdrawn AND rt.source_id NOT IN (SELECT ws.id FROM sources ws WHERE ws.withdrawn) AND NOT tc.retired
         LEFT JOIN column_tags t ON t.table_id = tc.table_id AND t.column_name = tc.column_name
     """
 
@@ -565,7 +1105,8 @@ def _table_keys_sql() -> str:
             JOIN served t ON t.id = r.target_table_id
             JOIN table_columns sc
               ON sc.table_id = r.source_table_id AND sc.column_name = r.source_column
-            WHERE r.target_column IS NOT NULL
+              AND NOT sc.retired
+            WHERE r.target_column IS NOT NULL AND NOT r.retired
               AND r.source_table_id IN (SELECT table_id FROM wanted)
               AND r.cardinality IN ('many-to-one', 'one-to-one')
             GROUP BY r.source_table_id, r.source_column, r.target_table_id, r.target_column
@@ -576,7 +1117,7 @@ def _table_keys_sql() -> str:
                        AS position
             FROM table_columns c
             JOIN served s ON s.id = c.table_id
-            WHERE c.is_primary_key
+            WHERE c.is_primary_key AND NOT c.retired
               AND c.table_id IN (SELECT table_id FROM wanted
                                  UNION SELECT target_table_id FROM links)
         ),
@@ -691,6 +1232,7 @@ _META_TABLE_VIEWS: dict[str, str] = {
                FALSE AS derived, reason_policy, expires_policy, param_policy,
                CAST(tenant_id AS TEXT) AS tenant_id
         FROM tags
+        WHERE NOT retired
     """,
     # REQ-1443: derived tags are computed, never assigned, so they have no rows in
     # tag_assignments and cannot be unioned into it — a governance query that treats a
@@ -703,13 +1245,14 @@ _META_TABLE_VIEWS: dict[str, str] = {
                'table:' || CAST(rt.id AS TEXT) AS object_key,
                CAST(rt.tenant_id AS TEXT) AS tenant_id
         FROM registered_tables rt
-        WHERE rt.modeling_role IN ('fact', 'dimension') AND NOT rt.draft
+        WHERE rt.modeling_role IN ('fact', 'dimension') AND NOT rt.retired AND NOT rt.withdrawn AND rt.source_id NOT IN (SELECT ws.id FROM sources ws WHERE ws.withdrawn)
         UNION ALL
         SELECT 'data_quality', 'table', rt.source_id, rt.id, rt.table_name, rt.domain_id,
                'table:' || CAST(rt.id AS TEXT), CAST(rt.tenant_id AS TEXT)
         FROM registered_tables rt
         JOIN sources s ON s.id = rt.source_id
-        WHERE s.type IN ({_CHECKER_TYPES_SQL}) AND rt.dq_contract IS NOT NULL AND NOT rt.draft
+        WHERE s.type IN ({_CHECKER_TYPES_SQL}) AND rt.dq_contract IS NOT NULL
+              AND NOT rt.retired AND NOT rt.withdrawn AND rt.source_id NOT IN (SELECT ws.id FROM sources ws WHERE ws.withdrawn)
     """,
     # REQ-1443 clause 10: a checker table's rules, one row per check of its contract in the order
     # authored -- parsed once at registration (provisa.dq.registration) and stored on the table.
@@ -724,7 +1267,7 @@ _META_TABLE_VIEWS: dict[str, str] = {
         FROM registered_tables rt
         JOIN sources s ON s.id = rt.source_id
         CROSS JOIN LATERAL jsonb_array_elements(rt.dq_rules) WITH ORDINALITY AS r(rule, position)
-        WHERE rt.dq_rules IS NOT NULL AND NOT rt.draft
+        WHERE rt.dq_rules IS NOT NULL AND NOT rt.retired AND NOT rt.withdrawn AND rt.source_id NOT IN (SELECT ws.id FROM sources ws WHERE ws.withdrawn)
     """,
     # REQ-2091: every sensitive column's coverage by a fake, with the latest adequacy checks.
     "sensitive_coverage": _sensitive_coverage_sql(),
@@ -741,6 +1284,7 @@ _META_TABLE_VIEWS: dict[str, str] = {
         CREATE OR REPLACE VIEW metric_definitions AS
         SELECT name, expression, datatype, description, ai_context, visible_to, from_fact
         FROM metrics
+        WHERE NOT retired
     """,
     # REQ-2125: product_id is the tagged data product, when the object is one.
     "tag_assignments": """
@@ -781,6 +1325,18 @@ _META_TABLE_VIEWS: dict[str, str] = {
           -- only a defined, in-service term governs its columns (provisa.core.term_tags.governs)
           AND COALESCE(TRIM(gt.definition), '') <> '' AND NOT gt.retired
     """,
+    # REQ-2208 (THE TAGS REPORT): every tag on every object, and every required tag missing from
+    # one, with its citation measures and status. A row is read where the table it is about is
+    # (META_ROW_SCOPED_VIEWS). After effective_column_tags and derived_tags, which it reads.
+    "tag_instances": _tag_instances_sql(),
+    # REQ-2208 (decision 2026-11-13): tags, library documents and sections, and objects, connected:
+    # each citation with its state, each tag on a document or section, and each path from a section
+    # to an object. Read as the tags report is and where the document is (LIBRARY_ROW_VIEWS).
+    # After tag_instances, which they read.
+    "library_documents": _library_documents_sql(),
+    "tag_citations": _tag_citations_sql(),
+    "section_tags": _section_tags_sql(),
+    "policy_coverage": _policy_coverage_sql(),
     # REQ-1375: the management report — every assignment with a planned end date, with its
     # state derived at query time. expires_on is an ISO date string, so lexicographic
     # comparison with CURRENT_DATE (cast to text) is correct on every dialect.
@@ -802,6 +1358,7 @@ _META_TABLE_VIEWS: dict[str, str] = {
     # profiler names each result <member>_<member id>_profile_<kind> on the member's profiler
     # source (provisa.profiler.schema.result_table_name). Both are last, so an existing view is
     # replaced in place. REQ-2132: latest_outcome and latest_run_at are a checker's latest scan.
+    # REQ-1986: requires_parameters states that a read of the table must give a parameter.
     "registered_tables": """
         CREATE OR REPLACE VIEW registered_tables_meta AS
         SELECT rt.id, rt.source_id, rt.domain_id, rt.schema_name, rt.table_name,
@@ -826,9 +1383,43 @@ _META_TABLE_VIEWS: dict[str, str] = {
                (SELECT r.outcome FROM checker_latest_runs r WHERE r.table_id = rt.id)
                    AS latest_outcome,
                (SELECT r.scan_time FROM checker_latest_runs r WHERE r.table_id = rt.id)
-                   AS latest_run_at
+                   AS latest_run_at,
+               -- Whether a read of the table must give a parameter; with one, the
+               -- table gives no row count, profile or sample. Which parameters, of what type and
+               -- kind, is in table_columns_meta. Last, so the view is replaced in place.
+               EXISTS (SELECT 1 FROM table_columns p
+                       WHERE p.table_id = rt.id AND {required_parameter}) AS requires_parameters,
+               -- withdrawn, itself or through its source; who reads its row is the
+               -- statement's governance (compiler/stage2: a role holding table registration in
+               -- its domain, and no other). Last, so the view is replaced in place.
+               (rt.withdrawn OR rt.source_id IN (SELECT ws.id FROM sources ws WHERE ws.withdrawn)) AS withdrawn
         FROM registered_tables rt
-        WHERE NOT rt.draft  -- a draft table is in no catalog
+        -- A retired table is not listed.
+        WHERE NOT rt.retired
+    """.replace("{required_parameter}", _is_required_parameter_sql("p")),
+    # REQ-2248: the relationships of the model, as registered_tables_meta lists its tables: a
+    # retired relationship is not listed, so no retirement column is either.
+    # REQ-2248: a retired domain is not listed; its retirement columns are not exposed.
+    "domains": """
+        CREATE OR REPLACE VIEW domains_meta AS
+        SELECT d.id, d.description, d.steward, d.graphql_alias, d.parent_domain_id, d.org_id,
+               d.tenant_id
+        FROM domains d
+        WHERE NOT d.retired
+    """,
+    "relationships": """
+        CREATE OR REPLACE VIEW relationships_meta AS
+        SELECT r.id, r.source_table_id, r.target_table_id, r.source_column, r.target_column,
+               r.cardinality, r.materialize, r.refresh_interval, r.target_function_name,
+               r.function_arg, r.alias, r.graphql_alias, r.disable_cypher, r.hide_target_meta,
+               r.same_entity,
+               r.via_table_id, r.via_source_column, r.via_target_column, r.via_type_column,
+               r.via_type_value, r.via_label_source,
+               r.source_json_key, r.parameters, r.owner, r.version, r.needs_review,
+               r.cypher_type, r.graphql_field,
+               r.tenant_id
+        FROM relationships r
+        WHERE NOT r.retired
     """,
     # REQ-194 (THE NAMES TABLE IS A META TABLE WITH A REPORT): the names table of the last model
     # version built -- one row per model object and surface, the name it has there and the
@@ -845,7 +1436,7 @@ _META_TABLE_VIEWS: dict[str, str] = {
     # table's rules are parsed with. Its connection settings stay out of the catalog.
     "sources": """
         CREATE OR REPLACE VIEW sources_meta AS
-        SELECT id, type FROM sources
+        SELECT id, type FROM sources WHERE NOT retired
     """,
     # REQ-2125: one row per data product, its own fields only. Everything one-to-many about a
     # product -- members, commands, tags, terms, profiles -- is reached through meta-domain
@@ -859,6 +1450,7 @@ _META_TABLE_VIEWS: dict[str, str] = {
                created_at
         FROM data_products
     """,
+    # REQ-1986: the parameter_* columns state a parameter's limits.
     "table_columns": """
         CREATE OR REPLACE VIEW table_columns_meta AS
         SELECT tc.id, tc.table_id, tc.domain_id, tc.column_name,
@@ -872,13 +1464,26 @@ _META_TABLE_VIEWS: dict[str, str] = {
                tc.native_filter_type, tc.is_foreign_key, tc.is_alternate_key,
                tc.object_fields,
                tc.visible_to,
-               tc.tenant_id
+               tc.tenant_id,
+               -- A parameter's limits, NULL for a column that is not one: whether
+               -- the source requires it, whether a steward made it required, either of which
+               -- makes it required, and whether it is opaque (an input to the source's call) or
+               -- a real column of the table. Last, so the view is replaced in place.
+               tc.native_filter_required AS parameter_required_by_source,
+               CASE WHEN tc.native_filter_type IS NOT NULL THEN tc.required_by_steward END
+                   AS parameter_required_by_steward,
+               CASE WHEN tc.native_filter_type IS NOT NULL
+                    THEN COALESCE(tc.native_filter_required, FALSE) OR tc.required_by_steward END
+                   AS parameter_required,
+               CASE WHEN tc.native_filter_type IS NOT NULL
+                    THEN tc.native_filter_type NOT IN ({real_column_kinds}) END
+                   AS parameter_opaque
         -- registered_tables first: schema.sql locks it before table_columns (lock order).
-        -- A draft table's columns are not listed.
+        -- A withdrawn or retired table's columns are not listed, nor a retired column.
         FROM registered_tables rt
         JOIN table_columns tc ON tc.table_id = rt.id
-        WHERE NOT rt.draft
-    """,
+        WHERE NOT rt.retired AND NOT rt.withdrawn AND rt.source_id NOT IN (SELECT ws.id FROM sources ws WHERE ws.withdrawn) AND NOT tc.retired
+    """.replace("{real_column_kinds}", _real_column_kinds_sql()),
     # REQ-2080: description is the last column, so an existing view is replaced in place.
     "roles": """
         CREATE OR REPLACE VIEW roles_meta AS
@@ -898,7 +1503,7 @@ _META_TABLE_VIEWS: dict[str, str] = {
                'meta' AS domain_id
         FROM registered_tables rt
         JOIN table_columns tc ON tc.table_id = rt.id
-        WHERE tc.scope = 'listed' AND NOT rt.draft
+        WHERE tc.scope = 'listed' AND NOT rt.retired AND NOT rt.withdrawn AND rt.source_id NOT IN (SELECT ws.id FROM sources ws WHERE ws.withdrawn) AND NOT tc.retired
     """,
     # REQ-2155: a role's parents, one row per (role, parent), in declared order.
     "roles_parents": """
@@ -916,7 +1521,7 @@ _META_TABLE_VIEWS: dict[str, str] = {
                r.id AS role_id, 'meta' AS domain_id, d.id AS accessed_domain_id
         FROM roles r
         CROSS JOIN domains d
-        WHERE d.id <> ''
+        WHERE d.id <> '' AND NOT d.retired
     """,
     "tracked_webhooks": """
         CREATE OR REPLACE VIEW tracked_webhooks_meta AS
@@ -975,13 +1580,20 @@ _OPS_LOG_TABLE_ALIAS: dict[str, str] = {
     "sla_breach_log": "sla_breach_log_ops",
     # REQ-2216: ops.requests -- one row per request, over the creation-request queue.
     "requests": "requests_ops",
+    # REQ-2219: the entitlement store's source rows and its expiry rules, beside ops.requests.
+    "entitlements": "entitlements_ops",
+    "entitlement_expiries": "entitlement_expiries_ops",
 }
 
-# An ops log whose exposed name is not a physical table, by the base table it shows one row per
-# row of: its primary key is that table's, and that table's notify trigger (schema.sql) reports its
-# changes on the schema's own channel (subscriptions.pg_provider.schema_channel). REQ-2216:
-# ops.requests over creation_requests.
-_OPS_LOG_BASE_TABLE: dict[str, str] = {"requests": "creation_requests"}
+# An ops log kept in each org schema, by the base table it shows one row per row of: its primary
+# key is that table's, and that table's notify trigger (schema.sql) reports its changes on the
+# schema's own channel (subscriptions.pg_provider.schema_channel). REQ-2216: ops.requests over
+# creation_requests. REQ-2219: ops.entitlements and ops.entitlement_expiries over their tables.
+_OPS_LOG_BASE_TABLE: dict[str, str] = {
+    "requests": "creation_requests",
+    "entitlements": "entitlements",
+    "entitlement_expiries": "entitlement_expiries",
+}
 
 _OPS_LOG_TABLE_VIEWS: dict[str, str] = {
     "query_audit_log": """
@@ -991,7 +1603,10 @@ _OPS_LOG_TABLE_VIEWS: dict[str, str] = {
                q.route, q.row_count, q.route_reason, q.sources, q.data_age, q.region,
                q.model_stamp, q.model_commit, q.enforced,
                -- The statement's time travel: last, so an existing view is replaced in place.
-               q.as_of, q.as_recorded
+               q.as_of, q.as_recorded,
+               -- The environment's stage when the statement ran; appended last for the
+               -- same reason.
+               q.stage
         FROM query_audit_log q
         LEFT JOIN user_directory ud ON ud.user_id = q.user_id
     """,
@@ -1028,6 +1643,43 @@ _OPS_LOG_TABLE_VIEWS: dict[str, str] = {
         FROM creation_requests r
         LEFT JOIN user_directory rq ON rq.user_id = r.requested_by
         LEFT JOIN user_directory rd ON rd.user_id = r.resolved_by
+    """,
+    # REQ-2219: every source row of the entitlement store, as recorded now, with its valid period.
+    # Rows are append-only and carry no valid-to: a row's valid_to is the next row's valid_from for
+    # the same source, person, role, kind and capability, in the order entitlements.history reads
+    # them (valid_from, recorded_at, id); empty while no row follows it. A removed row ends its key.
+    "entitlements": """
+        CREATE OR REPLACE VIEW entitlements_ops AS
+        SELECT e.id, e.source, e.principal, pd.display_name AS principal_name, e.role_id, e.kind,
+               e.capability, e.identifiers, e.removed, e.reason, e.set_by,
+               sd.display_name AS set_by_name, e.valid_from,
+               LEAD(e.valid_from) OVER (
+                   PARTITION BY e.source, e.principal, e.role_id, e.kind, e.capability
+                   ORDER BY e.valid_from, e.recorded_at, e.id
+               ) AS valid_to,
+               e.recorded_at
+        FROM entitlements e
+        LEFT JOIN user_directory pd ON pd.user_id = e.principal
+        LEFT JOIN user_directory sd ON sd.user_id = e.set_by
+        WHERE e.recorded_at <= now()
+    """,
+    # REQ-2219: every version of every expiry rule on a person's grant, as recorded now: a rule
+    # created, changed or removed is a new row, so a subscriber sees each. valid_to as above, per
+    # person, role and rule key.
+    "entitlement_expiries": """
+        CREATE OR REPLACE VIEW entitlement_expiries_ops AS
+        SELECT x.id, x.rule_key, x.principal, pd.display_name AS principal_name, x.role_id,
+               x.list_kind, x.ends_at, x.ends, x.removed, x.reason, x.set_by,
+               sd.display_name AS set_by_name, x.valid_from,
+               LEAD(x.valid_from) OVER (
+                   PARTITION BY x.principal, x.role_id, x.rule_key
+                   ORDER BY x.valid_from, x.recorded_at, x.id
+               ) AS valid_to,
+               x.recorded_at
+        FROM entitlement_expiries x
+        LEFT JOIN user_directory pd ON pd.user_id = x.principal
+        LEFT JOIN user_directory sd ON sd.user_id = x.set_by
+        WHERE x.recorded_at <= now()
     """,
 }
 
@@ -1163,12 +1815,18 @@ _OPS_REPORT_VIEWS: dict[str, str] = {
     "policy_denials": """
         CREATE OR REPLACE VIEW policy_denials AS
         SELECT q.id, q.user_id, ud.display_name AS user_name, q.role_id, q.query_hash, q.table_ids,
-               q.source, q.status_code, q.duration_ms, q.logged_at
+               q.source, q.status_code, q.duration_ms, q.logged_at,
+               -- Filter and group denials by the environment's stage. Last, so an
+               -- existing view is replaced in place.
+               q.stage
         FROM query_audit_log q
         LEFT JOIN user_directory ud ON ud.user_id = q.user_id
         WHERE q.status_code IN (401, 403)
     """,
-    # Daily traffic per protocol surface (the audit log's ``source`` column).
+    # Daily traffic per protocol surface (the audit log's ``source`` column), per stage (REQ-2261).
+    # The id names the stage too, so a day split across a stage change keeps one row per stage;
+    # a row from a deployment without a control plane records no stage (NULL), and the id must
+    # still be a non-NULL key, hence the COALESCE in the id alone -- the column stays NULL.
     # REQ-1910: one row per statement Provisa executed — the audit row, which is the one home of
     # a statement's user, role, transport (``source``), route, rows, outcome and duration. A statement over
     # several tables names its first registered table (lowest id) and counts them; the full set is
@@ -1180,7 +1838,8 @@ _OPS_REPORT_VIEWS: dict[str, str] = {
         SELECT q.id AS id, q.trace_id, q.logged_at, q.duration_ms, q.status_code,
                q.user_id, q.role_id, q.source, q.route, q.row_count, q.query_hash,
                q.region,
-               t.table_id, rt.table_name, rt.domain_id, t.table_count
+               t.table_id, rt.table_name, rt.domain_id, t.table_count,
+               q.stage  -- last, so an existing view is replaced in place
         FROM query_audit_log q
         LEFT JOIN (SELECT u.id AS audit_id, MIN(u.table_id) AS table_id,
                           COUNT(*) AS table_count
@@ -1190,25 +1849,29 @@ _OPS_REPORT_VIEWS: dict[str, str] = {
     """,
     "surface_mix": """
         CREATE OR REPLACE VIEW surface_mix AS
-        SELECT source || ':' || SUBSTR(CAST(logged_at AS TEXT), 1, 10) AS id,
+        SELECT source || ':' || SUBSTR(CAST(logged_at AS TEXT), 1, 10)
+                   || ':' || COALESCE(stage, '') AS id,
                source, SUBSTR(CAST(logged_at AS TEXT), 1, 10) AS day,
                COUNT(*) AS query_count,
-               COUNT(DISTINCT user_id) AS distinct_users
+               COUNT(DISTINCT user_id) AS distinct_users,
+               stage
         FROM query_audit_log
-        GROUP BY source, SUBSTR(CAST(logged_at AS TEXT), 1, 10)
+        GROUP BY source, SUBSTR(CAST(logged_at AS TEXT), 1, 10), stage
     """,
     # Daily latency/error profile per protocol surface. Portable aggregates only
     # (percentile_cont is PG-only); p95 arrives with the REQ-1386 rollup tables.
     "query_health": """
         CREATE OR REPLACE VIEW query_health AS
-        SELECT source || ':' || SUBSTR(CAST(logged_at AS TEXT), 1, 10) AS id,
+        SELECT source || ':' || SUBSTR(CAST(logged_at AS TEXT), 1, 10)
+                   || ':' || COALESCE(stage, '') AS id,
                source, SUBSTR(CAST(logged_at AS TEXT), 1, 10) AS day,
                COUNT(*) AS query_count,
                SUM(CASE WHEN status_code >= 400 THEN 1 ELSE 0 END) AS error_count,
                AVG(duration_ms) AS avg_duration_ms,
-               MAX(duration_ms) AS max_duration_ms
+               MAX(duration_ms) AS max_duration_ms,
+               stage
         FROM query_audit_log
-        GROUP BY source, SUBSTR(CAST(logged_at AS TEXT), 1, 10)
+        GROUP BY source, SUBSTR(CAST(logged_at AS TEXT), 1, 10), stage
     """,
     # Governance-completeness gaps: tables/columns missing a description,
     # domains missing a steward (REQ-609 PENDING state).
@@ -1230,7 +1893,7 @@ _OPS_REPORT_VIEWS: dict[str, str] = {
         SELECT 'domain:' || d.id, 'domain', d.id, d.id,
                'missing_steward'
         FROM domains d
-        WHERE d.id <> '' AND d.id NOT IN (
+        WHERE d.id <> '' AND NOT d.retired AND d.id NOT IN (
             -- a domain under a stewarded one answers to that steward
             WITH RECURSIVE stewarded(id) AS (
                 SELECT id FROM domains WHERE steward IS NOT NULL
@@ -1389,6 +2052,14 @@ _OPS_REPORT_VIEWS: dict[str, str] = {
                c.holder AS physical_name, c.newcomer AS label, '' AS domain_id,
                CAST(NULL AS INTEGER) AS table_id, 'refused' AS status, c.message AS problems
         FROM model_name_clashes c
+    """,
+    # REQ-2208 (THE TAGS REPORT): the meta table tag_instances as a standard report, its rows read
+    # where the table each is about is (OPS_ROW_SCOPED_VIEWS). Grouped by tag it is the tag quality
+    # report; by object or domain, what needs attention there.
+    "tags_report": f"""
+        CREATE OR REPLACE VIEW tags_report AS
+        SELECT {", ".join(_output_columns(_tag_instances_sql()))}
+        FROM tag_instances
     """,
     "sensitive_column_coverage": """
         CREATE OR REPLACE VIEW sensitive_column_coverage AS

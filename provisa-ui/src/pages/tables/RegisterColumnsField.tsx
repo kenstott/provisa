@@ -24,6 +24,8 @@ export function RegisterColumnsField({
   roles,
   irTypes,
   sourceType,
+  describeColumn,
+  setError,
 }: {
   columns: ColumnForm[];
   loadingColumns: boolean;
@@ -35,6 +37,9 @@ export function RegisterColumnsField({
   roles: Role[];
   irTypes: string[];
   sourceType: string;
+  /** The AI describe of one column, by name; absent until the form names the table. */
+  describeColumn?: (column: string) => Promise<string>;
+  setError: (e: string | null) => void;
 }) {
   const { t } = useTranslation();
   return (
@@ -51,6 +56,8 @@ export function RegisterColumnsField({
             roles={roles}
             irTypes={irTypes}
             sourceType={sourceType}
+            describeColumn={describeColumn}
+            setError={setError}
           />
         )}
       </Stack>

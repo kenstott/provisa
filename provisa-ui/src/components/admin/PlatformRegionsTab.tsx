@@ -20,6 +20,7 @@
 // In a demo sandbox the platform's regions are shown read-only, with a note that they are shown to
 // explain regions and cannot be changed there.
 
+import { DestructiveConfirmButton } from "../form/DestructiveConfirmButton";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -60,6 +61,7 @@ import { FormField, FormFooter, FormIdentifiers, FormLayout } from "../form/Form
 import { ListEmpty, ListHead, ListItems, ListRow, ListTable } from "../list/ListTable";
 import { PanelActions, SplitPane } from "../list/SplitPane";
 import { PanelDelete } from "../list/PanelDelete";
+import { PanelDuplicate } from "../list/PanelDuplicate";
 import { useListSortGroup, type ListColumn } from "../list/useListSortGroup";
 import { PageLoading } from "../PageLoading";
 import { Tip } from "../Tip";
@@ -72,7 +74,13 @@ interface Picked {
   /** null: a new region. */
   id: string | null;
   editing: boolean;
+  /** With id null: the region the new-region form was opened from by Duplicate. */
+  seed?: PlatformRegion;
 }
+
+/** The id a duplicate of a region is offered under. A region's id is `[a-z][a-z0-9]{1,39}`: no
+ * separator is accepted, so the suffix is joined to it. */
+const duplicateRegionId = (id: string) => `${id.slice(0, 36)}copy`;
 
 /** A removal the server refused because orgs hold the region: confirmed, it is made anyway. */
 interface Affected {
@@ -262,8 +270,9 @@ function RegionsSection({
         : t("platformRegions.editTitle", { id: picked.id });
     panel = (
       <PlatformRegionForm
-        key={picked.id ?? "new"}
+        key={picked.id ?? `new:${picked.seed?.id ?? ""}`}
         region={region ?? null}
+        seed={picked.id === null ? picked.seed : undefined}
         taken={regions.map((r) => r.id).filter((id) => id !== picked.id)}
         onSave={(r) => save(r, picked.id)}
         onCancel={() =>
@@ -288,6 +297,11 @@ function RegionsSection({
                     <Pencil size={14} />
                   </ActionIcon>
                 </Tip>
+                <PanelDuplicate
+                  name={region.id}
+                  onDuplicate={() => setPicked({ id: null, editing: true, seed: region })}
+                  testId="platform-region-duplicate"
+                />
                 <PanelDelete
                   itemKey={region.id}
                   title={t("platformRegions.deleteTitle", { id: region.id })}
@@ -441,18 +455,16 @@ function AffectedOrgs({
           {t("platformRegions.affectedOrgs", { id: region, orgs: orgs.join(", ") })}
         </Text>
         <Group gap="xs">
-          <Button
-            size="xs"
-            color="red"
+          <DestructiveConfirmButton
             loading={working}
-            data-testid="platform-region-remove-anyway"
+            testId="platform-region-remove-anyway"
             onClick={() => {
               setWorking(true);
               onConfirm().finally(() => setWorking(false));
             }}
           >
             {t("platformRegions.removeAnyway")}
-          </Button>
+          </DestructiveConfirmButton>
           <Button size="xs" variant="default" onClick={onCancel}>
             {t("platformRegions.keep")}
           </Button>
@@ -540,20 +552,24 @@ function OrgsSection({ onSaved }: { onSaved: () => void }) {
 
 function PlatformRegionForm({
   region,
+  seed,
   taken,
   onSave,
   onCancel,
 }: {
   region: PlatformRegion | null;
+  /** A duplicate's starting region: its description, purposes and data addresses, under a new id. */
+  seed?: PlatformRegion;
   taken: string[];
   onSave: (region: PlatformRegion) => Promise<void>;
   onCancel: () => void;
 }) {
   const { t } = useTranslation();
-  const [id, setId] = useState(region?.id ?? "");
-  const [description, setDescription] = useState(region?.description ?? "");
-  const [purposes, setPurposes] = useState<RegionPurpose[]>(region?.purposes ?? []);
-  const [dataAddresses, setDataAddresses] = useState<string[]>(region?.data_addresses ?? []);
+  const start = region ?? seed;
+  const [id, setId] = useState(region ? region.id : seed ? duplicateRegionId(seed.id) : "");
+  const [description, setDescription] = useState(start?.description ?? "");
+  const [purposes, setPurposes] = useState<RegionPurpose[]>(start?.purposes ?? []);
+  const [dataAddresses, setDataAddresses] = useState<string[]>(start?.data_addresses ?? []);
   const [problem, setProblem] = useState<{ text: string; field: string | null } | null>(null);
   const [saving, setSaving] = useState(false);
   const save = async () => {

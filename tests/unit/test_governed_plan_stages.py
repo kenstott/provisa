@@ -321,9 +321,40 @@ async def test_the_compiled_stage_keeps_a_plan_per_temporary_table_session(pipel
         token = temp_tables.bind(second)
         await _compiled(pipeline)
         assert pipeline.calls["govern"] == 2, "another session was served the first's plan"
-        second.generation += 1  # its tables changed
+        second.tables["cypher__node_labels"] = TempTable(
+            "cypher__node_labels", [("node_id", "text"), ("label", "text"), ("x", "bigint")]
+        )  # its tables changed
+        second.generation += 1
         await _compiled(pipeline)
         assert pipeline.calls["govern"] == 3, "a session's changed tables were served its old plan"
+    finally:
+        temp_tables.unbind(token)
+
+
+async def test_the_compiled_stage_keeps_a_sessions_plan_across_writes_that_leave_its_tables_shaped(
+    pipeline,
+):
+    """REQ-2176: a principal's graph session advances its generation on every write, and begins
+    at a new one after each clear; a plan reads the session's tables by address and columns, so a
+    write that leaves them as they were shaped -- rows added to a label it holds, a property set --
+    and a session cleared and built again alike are served the plan already governed, not
+    governed again on the read after every write."""
+    from provisa.compiler import temp_tables
+    from provisa.compiler.temp_tables import TempSession, TempTable
+
+    session = TempSession(id="principal", kept=True)
+    session.tables["cypher__node_labels"] = TempTable(
+        "cypher__node_labels", [("node_id", "text"), ("label", "text")]
+    )
+    token = temp_tables.bind(session)
+    try:
+        await _compiled(pipeline)
+        for _write in range(3):
+            session.generation += 1
+            await _compiled(pipeline)
+        session.generation = 1_800_000_000_000_000  # cleared, begun again at the clock
+        await _compiled(pipeline)
+        assert pipeline.calls["govern"] == 1, "a write that kept the tables' shape regoverned"
     finally:
         temp_tables.unbind(token)
 

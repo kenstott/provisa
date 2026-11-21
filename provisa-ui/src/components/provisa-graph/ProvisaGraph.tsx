@@ -56,7 +56,7 @@ import { graphStylesheet } from "./stylesheet";
 import { applyTaxiLanes, clearTaxiLanes } from "./taxi";
 import { tipPlacement, type DrawnGraph } from "./tipPlacement";
 import { graphTokens, type NodeType } from "./tokens";
-import { fitClear, scrollBy, zoomAbout } from "./viewport";
+import { FIT_PADDING, fitClear, scrollBy, showFocus, zoomAbout } from "./viewport";
 
 /** How far a wheel step (or a pinch) zooms, per pixel of its delta. */
 const WHEEL_ZOOM = 0.002;
@@ -119,6 +119,9 @@ export interface ProvisaGraphProps {
   edgeHasCard?: (id: string) => boolean;
   /** A hovered thing's card; the node's name and description if not given. */
   hoverCard?: (h: GraphHover) => ReactNode;
+  /** The node the graph is about (a term's graph's term): the graph opens, and Reset view comes
+   * back, with it in view (showFocus), the zoom the opening fit's. Null: it opens as fitted. */
+  opensOn?: string | null;
   /** The elements a focus names: marked and fitted into view. */
   focused?: string[];
   /** The focused elements the graph holds, after each draw. */
@@ -206,6 +209,7 @@ export function ProvisaGraph({
   neighbourhood,
   edgeHasCard,
   hoverCard,
+  opensOn = null,
   focused = NO_IDS,
   onFocused,
   filter = null,
@@ -247,6 +251,7 @@ export function ProvisaGraph({
     collapsed,
     options,
     places,
+    opensOn,
     focused,
     onFocused,
     filter,
@@ -262,6 +267,7 @@ export function ProvisaGraph({
       collapsed,
       options,
       places,
+      opensOn,
       focused,
       onFocused,
       filter,
@@ -355,20 +361,25 @@ export function ProvisaGraph({
       setLayingOut(false);
       setFailed(error instanceof Error ? error : new Error(String(error)));
     };
-    /** The canvas, its layouts' failures said: one that throws as it starts, or whose placement
-     * throws once it answers, ends the laying out and goes to the page's error path. */
+    /** The canvas, its layouts' failures said: one that throws as it starts, that fails after it
+     * started (ELK's rejected answer), or whose placement throws once it answers, ends the laying
+     * out and goes to the page's error path. */
     const laying: CyCanvas = {
       container: canvas.container,
       end: canvas.end,
       run(layout, then) {
         try {
-          canvas.run(layout, () => {
-            try {
-              then?.();
-            } catch (error) {
-              fail(error);
-            }
-          });
+          canvas.run(
+            layout,
+            () => {
+              try {
+                then?.();
+              } catch (error) {
+                fail(error);
+              }
+            },
+            fail,
+          );
         } catch (error) {
           fail(error);
         }
@@ -481,8 +492,12 @@ export function ProvisaGraph({
       linger.current = setTimeout(() => setTip(null), TIP_LINGER_MS);
     });
 
+    // The margin the opening fit leaves: the lanes' runLanes fits with 24.
+    const padding = preset === "lanes" ? 24 : FIT_PADDING;
     // Every node placed and the opening fit run: the drawing is shown.
     const finish = () => {
+      // Each preset's opening fit has run (fitClear): the node the graph is about is brought in.
+      showFocus(cy as unknown as CyInstance, latest.current.opensOn, padding);
       applyMarks(cy);
       placedRef.current = cy;
       canvas.container.style.visibility = "";
@@ -533,6 +548,8 @@ export function ProvisaGraph({
         cy.nodes('[kind = "node"]').forEach((n) => {
           if (!connected.has(n.id())) n.style("display", "none");
         });
+        // ELK through Provisa's own adapter (ERD_ELK_LAYOUT names it), which says a failure after
+        // the layout started.
         laying.run(cy.layout(ERD_ELK_LAYOUT as Parameters<typeof cy.layout>[0]), () => {
           const opts = latest.current.options;
           const rect = box.getBoundingClientRect();
@@ -561,7 +578,8 @@ export function ProvisaGraph({
       cy.resize();
       // A layout running fits the diagram when it ends.
       if (placedRef.current !== cy) return;
-      fitClear(cy as unknown as CyInstance, preset === "lanes" ? 24 : undefined);
+      fitClear(cy as unknown as CyInstance, padding);
+      showFocus(cy as unknown as CyInstance, latest.current.opensOn, padding);
       if (preset !== "lanes") applyMarks(cy);
     });
     observer.observe(box);
@@ -638,6 +656,7 @@ export function ProvisaGraph({
       isolated.forEach((id) => cy.getElementById(id).style("display", "element"));
     } else isolated.forEach((id) => cy.getElementById(id).style("display", "none"));
     fitClear(cy as unknown as CyInstance);
+    showFocus(cy as unknown as CyInstance, latest.current.opensOn);
   }, [showOrphans, preset]);
 
   const gridSnap = options?.gridSnap ?? 0;
@@ -671,9 +690,10 @@ export function ProvisaGraph({
   useEffect(() => {
     const cy = placedRef.current;
     if (!cy || command === null) return;
-    if (command.kind === "reset" || command.target == null)
+    if (command.kind === "reset" || command.target == null) {
       fitClear(cy as unknown as CyInstance, 24);
-    else {
+      showFocus(cy as unknown as CyInstance, latest.current.opensOn, 24);
+    } else {
       const at = cy.getElementById(command.target);
       if (at.empty()) return;
       cy.zoom(Math.max(cy.zoom(), 1.2));

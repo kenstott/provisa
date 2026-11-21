@@ -8,12 +8,13 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
+import { DestructiveConfirmButton } from "../components/form/DestructiveConfirmButton";
 import { PageTitle } from "../components/PageTitle";
 import type { MaskEntry } from "../lib/masks";
 import { NEVER_EXPIRES, ttlText } from "../components/form/cacheTtl";
 import { resultRedirectText } from "../components/resultRedirectText";
 import { Tip } from "../components/Tip";
-import { useSetTableDraft, useRegionChoices } from "../hooks/useRegionQueries";
+import { useRegionChoices } from "../hooks/useRegionQueries";
 import { useRegionSelection } from "../hooks/useRegionSelection";
 import { filterByRegion } from "../hooks/regionFilter";
 import { RegionSelector } from "../components/RegionSelector";
@@ -62,6 +63,7 @@ import {
   useListedNames, // REQ-2153
 } from "../hooks/useAdminQueries";
 import { usePurgeCacheByTable, useReplicaBuilds } from "../hooks/useAdminOpsQueries";
+import { usePutBackRegions, useTableWithdrawal } from "../hooks/useWithdrawal";
 import type { RegisteredTable, ColumnDependentsResult } from "../types/admin";
 import { DERIVED_SOURCE_ID } from "../types/admin";
 import { FilterInput } from "../components/admin/FilterInput";
@@ -90,7 +92,7 @@ import { NativeParamsModal } from "../components/NativeParamsModal";
 import { previewSql, requiredParamColumns } from "../components/nativeParams";
 import { TagControl } from "../components/TagControl";
 import { TableEditForm } from "./tables/TableEditForm";
-import { draftFromRegistration, type Registration } from "./tables/draftTable";
+import { draftFromRegistration, duplicateOfTable, type Registration } from "./tables/draftTable";
 import { useCreateTable } from "./tables/useCreateTable";
 import { registeredOf, type Registered } from "./tables/useManyTables";
 import { YourDataStep } from "./tables/YourDataStep";
@@ -117,10 +119,11 @@ import { useCapability } from "../hooks/useCapability";
 import { hidingDomains } from "../lib/capabilities";
 import { domainToSqlName, relationName } from "../naming";
 import { SplitPane } from "../components/list/SplitPane";
-import { useDetailParam } from "../components/list/useDetailParam";
+import { useRememberedDetail } from "../components/list/useDetailParam";
 import { useListSelection } from "../components/list/listSelection";
 import { ListBulkBar } from "../components/list/ListBulkBar";
 import { matchesQuery } from "../lib/searchItems";
+import { assignableDomainIds } from "../lib/internalDomains";
 
 const columnTypes = (cols: { name: string; dataType: string }[]): Record<string, string> =>
   Object.fromEntries(cols.map((c) => [c.name, c.dataType]));
@@ -136,7 +139,10 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
     loading: tablesLoading,
     error: tablesError,
     refetch: refetchTables,
-  } = useTableDetails();
+    // REQ-1921: the withdrawn tables are listed too, marked, so they can be put back.
+  } = useTableDetails({ includeWithdrawn: true });
+  const { withdrawTable, putBackTable } = useTableWithdrawal();
+  const putBackRegions = usePutBackRegions();
   const { sources, refetch: refetchSources } = useSources();
   const { domains, refetch: refetchDomains } = useDomains();
   const { dataProducts } = useDataProducts(); // REQ-1634
@@ -146,7 +152,13 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
   // from elsewhere (its checkers, its source, a graph's column link) lands on the table itself, and
   // Back returns to the panel and section before. The section is the same in the read view and the
   // edit form, so opening the editor keeps the tab that was being read.
-  const detail = useDetailParam(viewsOnly ? "views" : "tables");
+  // REQ-2260: and the one left open is open again on coming back.
+  const detail = useRememberedDetail(
+    viewsOnly ? "views" : "tables",
+    tablesLoading
+      ? null
+      : tables.filter((t) => !viewsOnly || t.viewSql).map((t) => String(t.id)),
+  );
   const section: TableSection =
     detail.tab !== null && (TABLE_SECTIONS as string[]).includes(detail.tab)
       ? (detail.tab as TableSection)
@@ -156,18 +168,13 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
   const erd = useErdView();
   const { roles, refetch: refetchRoles } = useRoles();
   const domainHints = domains.map((d) => d.id);
-  const {
-    fetchColumns: getAvailableColumnsMetadata,
-    late: lateColumns,
-    starting: columnsStarting,
-    startingTimedOut: columnsStartingTimedOut,
-  } = useAvailableColumnsMetadataLazy();
+  const { fetchColumns: getAvailableColumnsMetadata, late: lateColumns } =
+    useAvailableColumnsMetadataLazy();
   const { generateTableDescription } = useGenerateTableDescription();
   const { generateColumnDescription } = useGenerateColumnDescription();
   const getColumnDependents = useColumnDependents();
   const { updateTable } = useUpdateTable();
   const { deleteTable } = useDeleteTable();
-  const setTableDraft = useSetTableDraft();
   const { purgeCacheByTable } = usePurgeCacheByTable();
   const { forceRegen } = useForceRegen();
   const { deployViewToDb } = useDeployViewToDb();
@@ -288,6 +295,11 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
   const deleteTables = useDeleteTables();
   const groupBy = sortGroup.groupBy;
   const { domainAccess } = useAuth();
+  // REQ-1531: the domains a table may be moved to -- those the member may change, as the
+  // register form offers them.
+  const movableDomains = assignableDomainIds(domainHints).filter(
+    (d) => domainAccess.includes("*") || domainAccess.includes(d),
+  );
   // REQ-1620: the rows are read as the roles the user acts as -- one role, or under "Role: All"
   // the set, which the server serves as its meta-role -- as every other page reads them.
   const actingRole = actingRoles;
@@ -502,15 +514,6 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
     await reload();
   };
 
-  // REQ-1921: the detail's Draft box. The same mutation the edit form's draft control saves
-  // through; the box shows what is stored, so the tables are reloaded once it answers.
-  const handleSetDraft = async (table: RegisteredTable, draft: boolean) => {
-    setError(null);
-    const result = await setTableDraft(table.id, draft);
-    if (!result.success) setError(serverMessage(result, result.message));
-    await reload();
-  };
-
   const handleProfile = async (tableId: number, paramValues?: Record<string, string>) => {
     const existing = tableProfiles[tableId];
     if (existing !== undefined && existing !== "loading") {
@@ -591,13 +594,23 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
 
   // REQ-2109 (settled): the create step chose what is registered; its settings follow in the same
   // sections as the editor's, on the table as it will be registered.
-  const startCreating = (registration: Registration) => {
+  const startCreating = (
+    registration: Registration,
+    draft = draftFromRegistration(registration),
+  ) => {
     setShowForm(false);
     setShowViewForm(false);
     setExpanded(null);
     setSection("identity");
-    startEditing(draftFromRegistration(registration));
+    startEditing(draft);
     setNewRegistration(registration);
+  };
+  // Duplicate, from a table's panel head: the same create form as a registration's, filled from
+  // the table's settings and columns under a new name.
+  const handleDuplicate = (table: RegisteredTable) => {
+    const { registration, draft } = duplicateOfTable(table);
+    setError(null);
+    startCreating(registration, draft);
   };
   // A view handed over from the SQL editor's + View is created here, with every setting.
   // REQ-2234: one table picked on a source's Register tables step is created here, with every
@@ -804,7 +817,15 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
   const profileInView = expanded === null ? undefined : tableProfiles[expanded];
   useEffect(() => {
     setPreviewTable(null);
-  }, [expanded, section, linkedColumnTab, columnParam, editingTable?.id, editingViewDef, profileInView]);
+  }, [
+    expanded,
+    section,
+    linkedColumnTab,
+    columnParam,
+    editingTable?.id,
+    editingViewDef,
+    profileInView,
+  ]);
   // Only full-page block on the INITIAL load (no cached tables yet). Background refetches
   // (refetchQueries after mutations, reload()) serve stale-then-fresh from Apollo's cache —
   // blocking the whole page on those hides cached rows unnecessarily and causes test timeouts
@@ -842,6 +863,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
     <ReplicaBuildsContext.Provider value={replicaBuilds}>
       <TableEditForm
         hidingOnly={hidingOnly}
+        domainChoices={movableDomains}
         editingTable={editing}
         setEditingTable={setEditingTable}
         savedTable={saved}
@@ -869,6 +891,8 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
         relationships={relationships}
         section={section}
         onSectionChange={setSection}
+        // REQ-1924: a table registered on its own whose columns its source does not describe.
+        declaresColumns={saved === null && newRegistration?.declaresColumns === true}
       />
     </ReplicaBuildsContext.Provider>
   );
@@ -926,10 +950,6 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
         domainsEnabled={domainsEnabled}
         tables={tables}
         roles={roles}
-        getAvailableColumnsMetadata={getAvailableColumnsMetadata}
-        lateColumns={lateColumns}
-        columnsStarting={columnsStarting}
-        columnsStartingTimedOut={columnsStartingTimedOut}
         suggestTableAlias={suggestTableAlias}
         onContinue={startCreating}
         onCancel={() => setShowForm(false)}
@@ -1002,12 +1022,16 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
             deployViewToDb={deployViewToDb}
             reload={reload}
             startEditing={startEditing}
+            onDuplicate={handleDuplicate}
             handleDelete={handleDelete}
+            onWithdraw={withdrawTable}
+            onPutBack={putBackTable}
+            putBackRegions={putBackRegions}
             handleProfile={handleProfile}
             onPreview={(tb) => setPreviewTable((open) => (open?.id === tb.id ? null : tb))}
-            onSetDraft={handleSetDraft}
             source={sources.find((s) => s.id === t.sourceId)}
             relationships={relationships}
+            actingRole={actingRole}
             onInvalidateCache={!hidingOnly && hasCacheable(t) ? handlePurgeTableCache : undefined}
             invalidating={purging[t.id] === true}
             section={section}
@@ -1396,6 +1420,24 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                             >
                               <Group gap="0.35rem">
                                 {t.alias || t.tableName}
+                                {/* REQ-1921: out of production, by itself or through its source. */}
+                                {(t.withdrawn || t.sourceWithdrawn) && (
+                                  <Badge
+                                    size="xs"
+                                    variant="outline"
+                                    color="gray"
+                                    title={
+                                      t.withdrawn
+                                        ? translate("tablesPage.withdrawnTitle")
+                                        : translate("tablesPage.sourceWithdrawnTitle", {
+                                            source: t.sourceId,
+                                          })
+                                    }
+                                    data-testid={`tables-withdrawn-${t.tableName}`}
+                                  >
+                                    {translate("tablesPage.withdrawn")}
+                                  </Badge>
+                                )}
                                 <ReplicatingMark build={buildOf(replicaBuilds?.builds, t)} />
                                 <EndpointErrorMark
                                   error={t.apiEndpointError}
@@ -1684,16 +1726,15 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
         ))}
         {/* The action first, at the start of the row; the way back to the form follows. */}
         <Group justify="flex-start" mt="md">
-          <Button
-            color="red"
-            data-testid="column-dependents-confirm"
+          <DestructiveConfirmButton
+            testId="column-dependents-confirm"
             onClick={() => {
               setPendingDependents(null);
               void performSaveEdit();
             }}
           >
             {translate("tablesPage.dependentsConfirm")}
-          </Button>
+          </DestructiveConfirmButton>
           <Button
             variant="default"
             onClick={() => setPendingDependents(null)}

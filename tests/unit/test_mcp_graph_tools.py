@@ -104,6 +104,17 @@ _PRINCIPAL = ("ada", ["analyst"])
 
 
 @pytest.fixture(autouse=True)
+def _no_stored_ai_keys(monkeypatch):
+    """Listing the tools asks whether the organization has a Jev key (REQ-1395); the states
+    here hold no model store to ask, so the organization is said to have stored none."""
+
+    async def stored(_db):
+        return {}
+
+    monkeypatch.setattr("provisa.core.org_secrets.read_org_api_keys", stored)
+
+
+@pytest.fixture(autouse=True)
 def _graph_sessions(monkeypatch):
     from tests.unit.graph_session_double import empty_graph_sessions
 
@@ -303,7 +314,7 @@ async def test_generate_explore_queries_answers_all_nine_surfaces_under_the_call
     seen: dict = {}
 
     async def fake_run_nl_job(
-        job_id, question, role, app_state, job_store, llm, strict=False, *, deliver
+        job_id, question, role, app_state, job_store, llm, strict=False, *, deliver, scope
     ):
         seen["role"] = role
         job = await job_store.get(job_id)

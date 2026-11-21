@@ -7,7 +7,7 @@ diagrams (mermaid in Analyze) are not 2D graph views and keep their own.
 
 ## What a view passes
 
-- `nodes`: `{ id, type, name, kind?, parent?, lines?, status?, data? }`. `type` is a key of
+- `nodes`: `{ id, type, name, kind?, parent?, lines?, status?, withdrawn?, data? }`. `type` is a key of
   `NODE_TYPES` (tokens.ts). `lines` is a body under the name (an ERD table's columns); a line may
   be `key` (shown at detail "key"). `kind: "more"` is a fold node standing for nodes not drawn
   ("+N columns"); clicking it is the view's `onMore`.
@@ -68,6 +68,8 @@ uppercase, weight 700.
   for a diamond), and its selection is its border at 2.5px with no halo. The legend draws its
   swatch as a small diamond.
 - A term's status: draft italic, deprecated at 55% opacity, retired at 35%.
+- A withdrawn table (`withdrawn`, REQ-1921) keeps its box with its border dashed; its lines are
+  dashed too.
 
 ## Edges
 
@@ -75,7 +77,8 @@ uppercase, weight 700.
   (taxi); nothing else changes.
 - Arrowheads only where direction means something: `arrow: "target" | "source" | "both"`
   (ontology relationships, lineage, an ERD's cardinality). The default is none.
-- `dashed`: pending or indirect (a line to a collapsed group, a line to a fold node).
+- `dashed`: pending or indirect (a line to a collapsed group, a line to a fold node, a line of a
+  withdrawn relationship).
 - `tone: "via"`: the legs through an ERD junction, in the junction's grape.
 - Lines whose direction carries meaning (the lane diagram's term links, lineage, ontology
   relationships) are solid with arrows; dashed means pending or indirect, never direction.
@@ -98,6 +101,20 @@ titled the same way.
   its top (and, wider than the canvas, its left) and scrolls: the wheel scrolls it down, Shift with
   the wheel or a trackpad's sideways swipe across (at its end the page scrolls); a pinch or the
   wheel with Ctrl or Cmd held zooms about the pointer.
+- A graph's focus is the node it is about, given as `opensOn`. A term's graph has its term as
+  focus. A graph with a focus opens at the fit's zoom and is then moved so the focus is in view.
+  Reset view does the same. `showFocus` makes the move and `focusShift` is its rule (REQ-2239).
+  The rule works per axis and then on both together:
+  1. Along an axis on which the diagram fits the canvas, the diagram does not move. Along one it
+     runs past, it moves no further than it can scroll.
+  2. The move keeps the focus inside the canvas, with the fit's margin round it and below the
+     legend. A focus larger than the canvas is held at the canvas's start.
+  3. Among such moves, the chosen one shows the most nodes the focus joins directly. A node
+     counts only when it is shown whole, across and down.
+  4. Among those that tie, the chosen one is the least move from the fit.
+
+  A diagram that fits opens as fitted. So does a graph with no focus, or with a focus it does not
+  draw.
 - The fit control fits the entire image, below the legend, however small that makes it
   (`fitWhole`; REQ-2239, FIT MEANS THE WHOLE IMAGE): the readable floor is not applied.
 - A graph being laid out says so (REQ-2239, amended, A GRAPH BEING LAID OUT SAYS SO): from the
@@ -107,8 +124,10 @@ titled the same way.
   never painted, and the canvas shows the graph views' loader (ReadState's `Loader`) with
   `provisaGraph.layingOut`. The layout starts once that frame has been painted, so a placement
   that runs as one long task (a large lane diagram's) is seen to be under way. The controls and legend stay; the controls, downloads, the camera and
-  a save act only on a placed drawing. A layout that throws as it starts, or whose placement throws
-  once it answers, ends the laying out and is thrown to the page's error boundary.
+  a save act only on a placed drawing. A layout that throws as it starts, that fails after it
+  started (ELK's answer rejected: `elkLayout.ts` says it as `layoutfail`), or whose placement
+  throws once it answers, ends the laying out and is thrown to the page's error boundary. There
+  is no time limit: a slow layout is not a failed one.
 - The hint (top-left) of a view whose wheel scrolls says so: `provisaGraph.hint`.
 - Controls bottom-left, one vertical bar, always the same order: zoom in, zoom out, fit, full
   screen, download (SVG, PNG, JPEG, and JSON where the view gives it), then copy as text where
@@ -137,7 +156,8 @@ titled the same way.
 
 ## Layout presets
 
-- `layered`: ELK layered, upward, groups laid out with their children; then nodes without edges
+- `layered`: ELK layered (`elkLayout.ts`, Provisa's adapter around elkjs, registered as
+  `provisa-elk`), upward, groups laid out with their children; then nodes without edges
   placed in a grid under their group, groups packed to the pane's aspect, related nodes kept
   apart (the ERD's arrangement).
 - `lanes` (REQ-2239, amended 2026-11-11; REQ-2174, EACH SIBLING TERM ON ITS OWN ROW): no layout

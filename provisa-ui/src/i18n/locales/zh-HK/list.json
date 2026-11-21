@@ -17,6 +17,16 @@
     "bulkDeleteConsequence": "將會刪除：{{names}}。仍被其他物件引用的項目會保留，並說明原因。",
     "bulkRefused_one": "{{count}} 項未刪除：",
     "bulkRefused_other": "{{count}} 項未刪除：",
-    "dismiss": "關閉"
+    "dismiss": "關閉",
+    "duplicate": "複製",
+    "duplicateNamed": "複製 {{name}}",
+    "withdraw": "撤回",
+    "withdrawNamed": "撤回 {{name}}",
+    "withdrawTitle": "撤回 {{name}}？",
+    "putBack": "恢復",
+    "putBackNamed": "恢復 {{name}}",
+    "putBackTitle": "恢復 {{name}}",
+    "putBackRegionHint": "它要恢復到的區域，須為您的數據駐留授權所涵蓋。",
+    "putBackNoRegion": "您的角色的數據駐留授權均未涵蓋可恢復到的區域。由持有目標區域數據駐留權的人員恢復。"
   }
 }

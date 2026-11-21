@@ -32,7 +32,7 @@ from provisa.api.errors import ApiError
 from provisa.api.role_surface import role_surface
 from provisa.compiler.complexity import ComplexityLimitExceeded
 from provisa.compiler.parser import GraphQLValidationError
-from provisa.core.parameters import ParameterRequired
+from provisa.core.parameter_binding import ParameterBindingRefused
 from provisa.core.read_refusal import ReadRefused
 
 router = APIRouter(prefix="/data", tags=["data"])
@@ -305,10 +305,14 @@ async def explain_endpoint(  # REQ-2222
             }
             for p in plans
         ]
-    except (ComplexityLimitExceeded, ReadRefused, PermissionError, HTTPException):
+    except (
+        ComplexityLimitExceeded,
+        ReadRefused,
+        ParameterBindingRefused,
+        PermissionError,
+        HTTPException,
+    ):
         raise  # each answered under its own status and code, as on every surface
-    except ParameterRequired as exc:
-        raise ApiError(400, "data.parameter_required", str(exc), table=exc.table) from exc
     except KeyError as exc:
         raise _invalid(f"{request.language} needs the argument {exc.args[0]}") from exc
     except (ValueError, ExplainUnsupported) as exc:

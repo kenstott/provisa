@@ -47,14 +47,13 @@ from provisa.core.repositories import data_product as data_product_repo
 from provisa.core.repositories import data_product_offer as offers
 from provisa.core.repositories import table as table_repo
 from provisa.core.schema_org import (
-    checker_targets,
     data_product_tables,
     domains,
     registered_tables,
     sources,
     table_columns,
 )
-from tests.unit.offer_build import Built, installed
+from tests.unit.offer_build import Built, installed, published
 
 _AT = datetime(2026, 11, 11, tzinfo=UTC)
 
@@ -306,11 +305,16 @@ def test_a_check_raised_from_warn_to_fail_breaks_nothing():
 
 
 def test_what_all_of_a_products_contracts_share_is_no_part_of_a_contracts_versions():
-    # REQ-2180: description, usage, limitations, freshness and support are written once on the
-    # product, so changing them makes no contract version: they are no term of one.
-    assert not {"description", "usage", "limitations", "freshness", "support"} & set(
-        OfferTerms.model_fields
-    )
+    # REQ-2180: the description, freshness and support are written once on the product, so
+    # changing them makes no contract version: they are no term of one.
+    assert not {"description", "freshness", "support"} & set(OfferTerms.model_fields)
+
+
+def test_an_offers_terms_of_use_are_terms_of_its_contracts():
+    # REQ-2180 (amended 2026-11-11, THE PRODUCT PAGE IS SUMMARY ROWS): each offer carries its own
+    # terms of use -- purpose, usage and limitations -- shown in its contract, so changing them
+    # versions the offer's contracts.
+    assert {"purpose", "usage", "limitations"} <= set(OfferTerms.model_fields)
 
 
 def test_a_version_label_alone_is_no_difference():
@@ -531,6 +535,7 @@ async def _save_offer(conn) -> dict:
         DataProductOffer(name="analysts", role_id="viewer", profiles=True),
         offer_id=None,
         by="pets_team",
+        published=published(),
     )
 
 
@@ -566,7 +571,7 @@ async def test_an_offer_of_a_product_the_rule_admits_saves(plane, monkeypatch): 
     assert names == ["default", "analysts"]
 
 
-async def _a_check_on(conn, table_id: int, *, owner: str | None) -> None:
+async def _a_check_on(conn, built, table_id: int, *, owner: str | None) -> None:
     await conn.execute_core(insert(sources).values(id="soda", type="soda"))
     checker = (
         await conn.execute_core(
@@ -589,9 +594,8 @@ async def _a_check_on(conn, table_id: int, *, owner: str | None) -> None:
             .returning(registered_tables.c.id)
         )
     ).scalar()
-    await conn.execute_core(
-        insert(checker_targets).values(table_id=checker, checked_table_id=table_id)
-    )
+    # REQ-2125: the build resolves the table the checker checks, and publishes it on the runtime.
+    built.checked[int(checker)] = table_id
     if owner is not None:  # REQ-1634: the checker table is a member of its owning product
         await conn.execute_core(
             insert(data_product_tables).values(product_id=owner, table_id=checker)
@@ -600,7 +604,7 @@ async def _a_check_on(conn, table_id: int, *, owner: str | None) -> None:
 
 async def test_a_version_holds_the_products_promised_checks_on_the_member(plane, built):
     async with plane.acquire() as conn:
-        await _a_check_on(conn, await _table_id(conn), owner="p")
+        await _a_check_on(conn, built, await _table_id(conn), owner="p")
         stored = await _derived(conn, built)
     assert stored.versions[-1].terms.checks == [
         ContractCheck(
@@ -614,7 +618,7 @@ async def test_a_version_holds_the_products_promised_checks_on_the_member(plane,
 
 async def test_a_check_no_product_owns_is_no_promise(plane, built):
     async with plane.acquire() as conn:
-        await _a_check_on(conn, await _table_id(conn), owner=None)
+        await _a_check_on(conn, built, await _table_id(conn), owner=None)
         stored = await _derived(conn, built)
     assert stored.versions[-1].terms.checks == []
 

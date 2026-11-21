@@ -8,32 +8,24 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// A data product's panel header, above its tabs: who owns it, its domain, how fresh its data is, a
-// query to run on it now with every way in to each of its tables, and every value of the product
-// (the read view shows them all) under the labels its form gives them.
+// REQ-2180 (amended 2026-11-11, THE PRODUCT PAGE IS SUMMARY ROWS): a data product's short header,
+// above its summary rows: who owns it and its domain; at most three facts -- its consumers (to its
+// owner alone, REQ-2160), its quality as checks passing out of those promised (never a score), its
+// freshness; its support contact; its tags, parameterized ones included, with the tag chip every
+// taggable object has; and every value of the product under the labels its form gives them,
+// collapsed.
 
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { useNavigate } from "react-router-dom";
-import { ActionIcon, Badge, Code, Group, List, Stack, Text } from "@mantine/core";
-import { Braces, Cable, FileJson, Globe, Share2, Table as TableIcon } from "lucide-react";
-import { CopyButton } from "../../components/CopyButton";
+import { Anchor, Badge, Group, List, Stack, Text } from "@mantine/core";
 import { CollapsibleItem, Collapsibles } from "../../components/collapsible/Collapsible";
 import { DetailFields, type DetailField } from "../../components/detail/DetailFields";
 import { OwnerResolutionInline } from "../../components/OwnerResolution";
-import { Tip } from "../../components/Tip";
-import type { MetaReader } from "../../api/metaGraph";
-import { tableSqlRef } from "../../naming";
+import { TagControl } from "../../components/TagControl";
 import { Empty, Muted } from "./DetailCard";
-import { modelName, type CoreTable, type ProductCore } from "./productCore";
-import {
-  graphqlExample,
-  grpcExample,
-  jsonApiExample,
-  restExample,
-  sqlExample,
-  type ExampleLink,
-} from "./tableExamples";
+import type { CoreTable, ProductCore } from "./productCore";
+import type { QualitySummary } from "./productQuality";
+import { WorstBadge } from "./QualityStatus";
 
 /** REQ-2118: a table that is loaded once and never refreshed. */
 const NEVER_EXPIRES = -1;
@@ -49,54 +41,45 @@ function useFreshness(tables: CoreTable[]): string {
   });
 }
 
+/** A header fact: its label, then its value. */
+function Fact({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <Group gap={6} wrap="nowrap">
+      <Text size="xs" c="dimmed">
+        {label}
+      </Text>
+      {children}
+    </Group>
+  );
+}
+
 export function ProductHeader({
   core,
-  reader,
   fields,
   extraFields,
+  quality,
+  consumers,
+  canEdit,
+  onTagsChanged,
 }: {
   core: ProductCore;
-  reader: MetaReader | null;
   /** Every value of the product, under the labels its form gives them. */
   fields: DetailField[];
   /** Shown under the values: the product's own custom properties. */
   extraFields?: ReactNode;
+  /** The product's promised checks summarised; null while they are read. */
+  quality: QualitySummary | null;
+  /** How many read the product one hop downstream; null for a reader who is not its owner. */
+  consumers: number | null;
+  /** The reader may put tags on the product and take them off. */
+  canEdit: boolean;
+  onTagsChanged: () => void;
 }) {
   const { t } = useTranslation();
-  const navigate = useNavigate();
   const product = core.product;
   const outputTables = core.tables?.filter((tb) => tb.dqContract == null) ?? [];
   const freshness = useFreshness(outputTables);
-  const first = outputTables[0];
-  const snippet = first ? `select * from ${tableSqlRef(first)} limit 10` : null;
-  const open = (example: ExampleLink) => navigate(example.to, { state: example.state });
   const customPropertyEntries = Object.entries(product.customProperties ?? {});
-  // REQ-1634: Cypher click-through for the relationships among its tables that resolve to a type.
-  const memberIds = new Set((core.tables ?? []).map((tb) => tb.id));
-  const cypherTypes = [
-    ...new Set(
-      (core.tables ?? []).flatMap((tb) =>
-        (tb.sourceRelationships ?? [])
-          .filter((r) => r.targetTable != null && memberIds.has(r.targetTable.id))
-          .filter((r) => !r.disableCypher && r.cypherType)
-          .map((r) => r.cypherType as string),
-      ),
-    ),
-  ];
-
-  const icon = (label: string, testId: string, onClick: () => void, glyph: ReactNode) => (
-    <Tip text={label} named>
-      <ActionIcon
-        variant="subtle"
-        size="sm"
-        aria-label={label}
-        data-testid={testId}
-        onClick={onClick}
-      >
-        {glyph}
-      </ActionIcon>
-    </Tip>
-  );
 
   return (
     <Stack gap="xs" data-testid={`data-product-header-${product.id}`}>
@@ -130,113 +113,58 @@ export function ProductHeader({
             {freshness}
           </Badge>
         </Group>
-      </Group>
-      {/* Query it now: a statement to copy or run, and each table's other ways in. */}
-      <Stack gap={4} data-testid={`data-product-query-now-${product.id}`}>
-        <Text size="xs" c="dimmed">
-          {t("dataProductOffers.queryItNow")}
-        </Text>
-        {snippet ? (
-          <Group gap={4} wrap="nowrap" align="center">
-            <Code
-              style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}
-              data-testid={`data-product-query-snippet-${product.id}`}
+        {consumers !== null && (
+          <Fact label={t("dataProductCore.consumers")}>
+            <Text size="sm" data-testid={`data-product-header-consumers-${product.id}`}>
+              {consumers}
+            </Text>
+          </Fact>
+        )}
+        {quality !== null && (
+          <Fact label={t("dataProductOffers.section_quality")}>
+            <Group gap={6} wrap="nowrap" data-testid={`data-product-header-quality-${product.id}`}>
+              {quality.worst && <WorstBadge worst={quality.worst} />}
+              <Text size="sm">
+                {t("dataProductOffers.qualityPassing", {
+                  passing: quality.passing,
+                  count: quality.total,
+                })}
+              </Text>
+            </Group>
+          </Fact>
+        )}
+        <Fact label={t("dataProductsTab.supportContactLabel")}>
+          {product.supportContact ? (
+            <Anchor
+              size="sm"
+              href={
+                product.supportContact.includes("@") && !product.supportContact.includes("://")
+                  ? `mailto:${product.supportContact}`
+                  : product.supportContact
+              }
+              data-testid={`data-product-header-support-${product.id}`}
             >
-              {snippet}
-            </Code>
-            <CopyButton text={snippet} />
-            {icon(
-              t("dataProductsTab.sqlQueryAria", { table: first.tableName }),
-              `data-product-query-run-${product.id}`,
-              () => open({ to: "/sql", state: { sql: snippet, autoRun: true } }),
-              <TableIcon size={14} />,
-            )}
-          </Group>
-        ) : (
-          <Empty text={t("dataProductsTab.graphqlQueriesEmpty")} />
-        )}
-        {outputTables.length > 0 && (
-          <Text size="xs" c="dimmed">
-            {t("dataProductsTab.tablesLabel")}
-          </Text>
-        )}
-        {outputTables.length > 0 && (
-          <List size="sm" data-testid={`data-product-detail-graphql-queries-${product.id}`}>
-            {outputTables.map((tb) => {
-              const graphql = graphqlExample(reader, tb);
-              const rest = restExample(reader, tb);
-              const grpc = grpcExample(reader, tb);
-              return (
-                <List.Item key={tb.id} ff="monospace">
-                  <Group gap={4} wrap="nowrap">
-                    <Text component="span" size="sm" ff="monospace">
-                      {modelName(tb)}
-                    </Text>
-                    {graphql &&
-                      icon(
-                        t("dataProductsTab.graphqlQueryAria", { table: tb.tableName }),
-                        `data-product-detail-graphql-query-${tb.id}`,
-                        () => open(graphql),
-                        <Braces size={14} />,
-                      )}
-                    {icon(
-                      t("dataProductsTab.sqlQueryAria", { table: tb.tableName }),
-                      `data-product-detail-sql-query-${tb.id}`,
-                      () => open(sqlExample(tb)),
-                      <TableIcon size={14} />,
-                    )}
-                    {icon(
-                      t("dataProductsTab.jsonapiQueryAria", { table: tb.tableName }),
-                      `data-product-detail-jsonapi-query-${tb.id}`,
-                      () => open(jsonApiExample(tb)),
-                      <FileJson size={14} />,
-                    )}
-                    {rest &&
-                      icon(
-                        t("dataProductsTab.openApiQueryAria", { table: tb.tableName }),
-                        `data-product-detail-openapi-query-${tb.id}`,
-                        () => open(rest),
-                        <Globe size={14} />,
-                      )}
-                    {grpc &&
-                      icon(
-                        t("dataProductsTab.grpcQueryAria", { table: tb.tableName }),
-                        `data-product-detail-grpc-query-${tb.id}`,
-                        () => open(grpc),
-                        <Cable size={14} />,
-                      )}
-                    {tb.description && <Muted>— {tb.description}</Muted>}
-                  </Group>
-                </List.Item>
-              );
-            })}
-            {cypherTypes.map((type) => (
-              <List.Item key={`cy-${type}`} ff="monospace">
-                <Group gap={4} wrap="nowrap">
-                  <Text component="span" size="sm" ff="monospace">
-                    {type}
-                  </Text>
-                  {icon(
-                    t("dataProductsTab.cypherQueryAria", { type }),
-                    `data-product-detail-cypher-query-${type}`,
-                    () =>
-                      navigate("/graph", {
-                        state: {
-                          query: `MATCH ()-[r:${type}]->() RETURN r LIMIT 25`,
-                          autoRun: true,
-                        },
-                      }),
-                    <Share2 size={14} />,
-                  )}
-                </Group>
-              </List.Item>
-            ))}
-          </List>
-        )}
-      </Stack>
+              {product.supportContact}
+            </Anchor>
+          ) : (
+            <Text size="sm" c="dimmed" data-testid={`data-product-header-support-${product.id}`}>
+              —
+            </Text>
+          )}
+        </Fact>
+      </Group>
+      {/* Its tags, parameterized ones included (residency:eu), as the tag chip draws them. */}
+      <Group gap="xs" wrap="wrap" data-testid={`data-product-header-tags-${product.id}`}>
+        <TagControl
+          objectType="product"
+          productId={product.id}
+          readOnly={!canEdit}
+          onChanged={onTagsChanged}
+        />
+      </Group>
       {/* Every value of the product: the read view shows them all. */}
       <Collapsibles id="data-product.header" testId={`data-product-card-details-${product.id}`}>
-        {/* Closed at first, as the viewer left it after: the tabs are the panel's working surface. */}
+        {/* Closed at first, as the viewer left it after: the rows are the panel's working surface. */}
         <CollapsibleItem
           value="details"
           defaultOpen={false}

@@ -99,6 +99,11 @@ class Rule:
 
     pattern: str | None
     forms: Mapping[str, Form]
+    #: Whether a dialect that is no column of the grid keeps what it had (the engine's own, or the
+    #: old table's form) where the pattern matches: a row that polyfills a function only where an
+    #: engine differs (array_agg on ClickHouse) refuses no call elsewhere. False: such a dialect
+    #: has no form of the call, and it is refused by name.
+    unlisted_keep: bool = False
 
     def matched(self, node: exp.Expr) -> Bindings | None:
         """What ``node`` binds to the pattern's holes; None where it does not match."""
@@ -150,6 +155,10 @@ class Applied:
     rewritten: exp.Expr | None = None
 
 
+def _first(rule: Rule) -> bool:
+    return any(isinstance(form, Rewrite) and form.first for form in rule.forms.values())
+
+
 class Grid:
     """The grid: its features, validated, and the lookups the translator and the docs make."""
 
@@ -157,6 +166,8 @@ class Grid:
         self.features = features
         self._by_root: dict[str, list[tuple[Feature, Rule]]] = {}
         self._rewrites: list[tuple[Feature, Rule]] = []
+        #: The rules of no pattern read before any pattern (Rewrite.first).
+        self._first: list[tuple[Feature, Rule]] = []
         #: The names of the typed nodes a pattern's root is (array_length is sqlglot's ArraySize).
         self._typed_names: set[str] = set()
         names = [f.name for f in features]
@@ -168,13 +179,18 @@ class Grid:
                 self._check(feature, side)
         for feature in features:
             for rule in feature.read.rules:
-                if rule.pattern is None:
+                if rule.pattern is None and _first(rule):
+                    self._first.append((feature, rule))
+                elif rule.pattern is None:
                     self._rewrites.append((feature, rule))
                 else:
                     root = notation.pattern(rule.pattern)
                     self._by_root.setdefault(_root_key(root), []).append((feature, rule))
                     if not isinstance(root, exp.Anonymous):
                         self._typed_names.update(_called(root))
+                        # The name the pattern writes, where sqlglot reads it as a node of another
+                        # name (log10 as log of base 10): a quoted call of it is that node too.
+                        self._typed_names.add(_written_name(rule.pattern))
 
     @staticmethod
     def _check(feature: Feature, side: Side) -> None:
@@ -202,6 +218,41 @@ class Grid:
             for name in _called(notation.pattern(rule.pattern))
         )
 
+    def names_on(self, dialect: str) -> frozenset[str]:
+        """The names of the functions the read rules' patterns call that a rule writes on
+        ``dialect``: a form of its column, or, on a dialect with no column, every rule but one that
+        keeps the dialect's own (Rule.unlisted_keep). A rule with no form of a dialect's column
+        leaves the engine's own call there."""
+        column = column_of(dialect)
+        return frozenset(
+            name
+            for feature in self.features
+            for rule in feature.read.rules
+            if rule.pattern is not None
+            and (
+                rule.forms.get(column) is not None if column is not None else not rule.unlisted_keep
+            )
+            for name in _called(notation.pattern(rule.pattern))
+        )
+
+    def mentions_on(self, dialect: str) -> tuple[str, ...]:
+        """What a statement a rule of no pattern may rewrite on ``dialect`` holds, where it names no
+        function: the mentions of the rewrites in the dialect's column, or of every rewrite on a
+        dialect with no column. A rewrite of another column leaves the statement as it is here."""
+        column = column_of(dialect)
+        return tuple(
+            sorted(
+                {
+                    form.mentions
+                    for _, rule in (*self._first, *self._rewrites)
+                    for of, form in rule.forms.items()
+                    if isinstance(form, Rewrite)
+                    and form.mentions
+                    and (column is None or of == column)
+                }
+            )
+        )
+
     def read(self, node: exp.Expr, dialect: str) -> Applied | None:
         """The read rule ``node`` matches, with ``dialect``'s form (None: native there, or no
         column of the grid), or None where no rule matches. Rules of one function are tried in
@@ -224,6 +275,20 @@ class Grid:
             rewritten = form.function(node, dialect)
             if rewritten is not None:
                 return Applied(feature, rule, form, {}, rewritten)
+        return None
+
+    def read_first(self, node: exp.Expr, dialect: str) -> Applied | None:
+        """The rule over every call (Rewrite.first) that rewrites ``node`` on ``dialect``, before
+        any pattern is read; None where none does."""
+        column = column_of(dialect)
+        if column is None:
+            return None
+        for feature, rule in self._first:
+            form = rule.forms.get(column)
+            if isinstance(form, Rewrite):
+                rewritten = form.function(node, dialect)
+                if rewritten is not None:
+                    return Applied(feature, rule, form, {}, rewritten)
         return None
 
     def _typed(self, node: exp.Expr) -> exp.Expr | None:
@@ -267,6 +332,11 @@ def _called(node: exp.Expr) -> tuple[str, ...]:
     if isinstance(node, exp.Func):
         return tuple(name.lower() for name in type(node).sql_names())
     return ()
+
+
+def _written_name(pattern: str) -> str:
+    """The name of the function a pattern's text calls at its root."""
+    return pattern.split("(", 1)[0].strip().lower()
 
 
 def _root_key(node: exp.Expr) -> str:

@@ -235,12 +235,14 @@ def table_access(
     readable: Callable[[int, str], bool],
     governance: bool,
     standard: Collection[str],
+    withdrawn: dict | None = None,
 ) -> dict | None:
     """Who can read or write each column of table ``table_id`` (REQ-2162): the inverse of the
     role panel's data access, resolved by the same view per role of ``roles``. Only the columns
     ``readable`` admits -- the viewer's own read rights -- are listed; None when the build has no
-    such table."""
-    table = next((t for t in state.tables if t["id"] == table_id), None)
+    such table. ``withdrawn``: the table, withdrawn, when the viewer may preview it (REQ-1921:
+    table registration in its domain); it is answered marked ``withdrawn``."""
+    table = next((t for t in state.tables if t["id"] == table_id), None) or withdrawn
     if table is None:
         return None
     columns = {
@@ -276,6 +278,7 @@ def table_access(
         "name": f"{table['domain_id']}.{table.get('alias') or table['table_name']}",
         "table_name": table["table_name"],
         "columns": list(columns.values()),
+        "withdrawn": table is withdrawn,
     }
 
 

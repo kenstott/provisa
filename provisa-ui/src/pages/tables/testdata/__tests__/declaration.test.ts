@@ -26,6 +26,9 @@ const CATALOG: FakeCatalog = {
         { name: "values", kind: "list", required: false },
         { name: "shares", kind: "list", required: false },
       ],
+      families: ["text", "integer"],
+      stable: true,
+      stableNeeds: ["values"],
     },
     {
       category: "distribution",
@@ -37,6 +40,9 @@ const CATALOG: FakeCatalog = {
         { name: "sd", kind: "interval", required: true },
         { name: "min", kind: "point", required: false },
       ],
+      families: ["integer", "numeric", "date", "timestamp"],
+      stable: true,
+      stableNeeds: [],
     },
   ],
   methods: [
@@ -47,9 +53,12 @@ const CATALOG: FakeCatalog = {
         { name: "min_value", required: false, default: "0" },
         { name: "max_value", required: false, default: "9999" },
       ],
+      families: ["integer", "numeric"],
       stable: false,
+      stableNeeds: [],
     },
   ],
+  typeFamilies: {},
 };
 
 describe("declaration", () => {

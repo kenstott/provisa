@@ -564,9 +564,9 @@ async def _deprecate(client: httpx.AsyncClient, name: str) -> dict:
         f"/admin/glossary/terms/{term_id}/deprecate", json={"reason": "Superseded by party."}
     )
     assert marked.status_code == 200, marked.text
-    republished = await client.post("/admin/metadata-export/publish")
+    republished = await client.post("/admin/syncing/publish")
     assert republished.status_code == 200, republished.text
-    (outcome,) = republished.json()["targets"]
+    (outcome,) = republished.json()["entries"]
     return outcome
 
 

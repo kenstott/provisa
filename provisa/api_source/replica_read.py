@@ -160,6 +160,17 @@ def _row_reader(endpoint: ApiEndpoint) -> RowReader | None:
     return reader
 
 
+def _timeout(endpoint: ApiEndpoint) -> float:
+    """How long the build waits on one call of ``endpoint``. A SPARQL query is answered only
+    once the endpoint has computed it, so it waits the operator's SPARQL query timeout
+    (REQ-1923): the full read of a SPARQL table happens here, never in a request."""
+    if endpoint.response_normalizer == "sparql_bindings":
+        from provisa.sparql.source import query_timeout
+
+        return query_timeout()
+    return _TIMEOUT
+
+
 def _spooled_rows(
     endpoint: ApiEndpoint, call: Callable[[], PreparedCall], rows: RowReader, spooled: Any
 ) -> Iterator[dict]:
@@ -167,7 +178,7 @@ def _spooled_rows(
     ``caller._request_with_retry`` does; nothing has been yielded when that happens, since the
     status is known before the first byte is spooled."""
     with httpx.Client(
-        timeout=_TIMEOUT, event_hooks=sandbox_egress.http_sync_event_hooks()
+        timeout=_timeout(endpoint), event_hooks=sandbox_egress.http_sync_event_hooks()
     ) as client:
         for attempt in range(_MAX_RETRIES):
             sent = call()  # prepared per attempt: an expiring token is fetched again

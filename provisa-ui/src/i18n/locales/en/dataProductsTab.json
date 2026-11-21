@@ -87,7 +87,6 @@
     "graphqlQueriesEmpty": "No queryable tables or relationships",
     "graphqlQueryAria": "Run example GraphQL query for {{table}}",
     "sqlQueryAria": "Run example SQL query for {{table}}",
-    "cypherQueryAria": "Run example Cypher query for {{type}}",
     "grpcQueryAria": "Run example gRPC call for {{table}}",
     "jsonapiQueryAria": "Run example JSON:API request for {{table}}",
     "openApiQueryAria": "Run example REST request for {{table}}",
@@ -218,7 +217,8 @@
         "data_level_changed": "Data level changed from {{before}} to {{after}}",
         "dq_results_changed": "Quality results changed from {{before}} to {{after}}",
         "profiles_changed": "Profiles changed from {{before}} to {{after}}",
-        "duration_changed": "Duration changed from {{before}} to {{after}}"
+        "duration_changed": "Duration changed from {{before}} to {{after}}",
+        "terms_of_use_changed": "Terms of use changed: {{subject}}"
       },
       "howToUse": {
         "column": {
@@ -308,6 +308,11 @@
         "history": "Version history"
       }
     },
-    "detailPanel": "Data product detail"
+    "detailPanel": "Data product detail",
+    "tagFacetLabel": "Tags",
+    "tagFacetPlaceholder": "Filter by tag",
+    "noMatch": "No data products match the filters",
+    "domainFacetLabel": "Domains",
+    "domainFacetPlaceholder": "Filter by domain"
   }
 }

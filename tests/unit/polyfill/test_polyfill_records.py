@@ -39,7 +39,10 @@ def _probe(function: str) -> str:
 
 def test_the_family_is_in_the_grid_and_not_in_the_old_table():
     names = {f.name for f in records.FEATURES}
-    assert names == {"record_eq", "record_ne", "record_image_eq", "record_image_ne"}
+    orders = {
+        f"{stem}{o}" for stem in ("record_", "record_image_") for o in ("lt", "le", "gt", "ge")
+    }
+    assert names == {"record_eq", "record_ne", "record_image_eq", "record_image_ne", *orders}
     assert names <= {f.name for f in GRID.features}
     assert not {name for name, _ in MACROS} & names
 

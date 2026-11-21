@@ -17,6 +17,16 @@
     "bulkDeleteConsequence": "Serão excluídos: {{names}}. Os que ainda são referenciados por algo são mantidos, com o motivo.",
     "bulkRefused_one": "{{count}} não foi excluída:",
     "bulkRefused_other": "{{count}} não foram excluídas:",
-    "dismiss": "Fechar"
+    "dismiss": "Fechar",
+    "duplicate": "Duplicar",
+    "duplicateNamed": "Duplicar {{name}}",
+    "withdraw": "Retirar",
+    "withdrawNamed": "Retirar {{name}}",
+    "withdrawTitle": "Retirar {{name}}?",
+    "putBack": "Restabelecer",
+    "putBackNamed": "Restabelecer {{name}}",
+    "putBackTitle": "Restabelecer {{name}}",
+    "putBackRegionHint": "A região para a qual retorna, uma coberta pela sua permissão de residência de dados.",
+    "putBackNoRegion": "Nenhuma permissão de residência de dados dos seus papéis cobre uma região para onde restabelecê-lo. Quem tem residência de dados para a região de destino o restabelece."
   }
 }

@@ -126,7 +126,7 @@ async def test_the_production_publish_reaches_the_target(server, receiver, provi
     await save_targets(server, [target])
     # The publish's own verdict is the end-to-end test's concern: an echoing receiver is no
     # catalog. What it must show is that this target was called with the product's tables.
-    await server.post("/admin/metadata-export/publish")
+    await server.post("/admin/syncing/publish")
     delivered = [r for r in received if MEMBER in r[2] or MEMBER in r[1]]
     assert delivered, (
         f"metadata export target {provider!r} received nothing naming the member table "
@@ -142,8 +142,8 @@ async def test_one_publish_reaches_every_target_two_of_one_provider_among_them(s
             {"id": "lineage-b", "provider": "openlineage", "endpoint": second},
         ]
         await save_targets(server, targets)
-        published = (await server.post("/admin/metadata-export/publish")).json()
-        assert [t["id"] for t in published["targets"]] == ["lineage-a", "lineage-b"]
+        published = (await server.post("/admin/syncing/publish")).json()
+        assert [t["id"] for t in published["entries"]] == ["lineage-a", "lineage-b"]
         for name, received in (("lineage-a", got_first), ("lineage-b", got_second)):
             assert any(MEMBER in r[2] for r in received), f"{name} received nothing"
 

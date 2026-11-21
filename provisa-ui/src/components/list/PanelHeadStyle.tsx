@@ -13,7 +13,8 @@
 // Hovering tints it and keyboard focus rings it -- those are states, not a background. An
 // action keeps a colour it is given (a delete stays red, as text or icon only); what it may not
 // do is choose its own variant or size, which a guard refuses (panelHeadGuard.test.ts). The
-// shared Save and Cancel are the one exception: they keep the look they have at a form's foot.
+// shared Save and Cancel take this style in a head and draw the filled Save and bordered Cancel
+// at a form's foot and in a dialog (`head` of SaveButton and CancelButton).
 //
 // It is Mantine's `subtle`: transparent at rest with a visible hover, where `transparent` has
 // none. Applied as the default props of every Button and ActionIcon rendered inside it, so a

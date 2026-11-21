@@ -18,6 +18,7 @@ import { useTranslation } from "react-i18next";
 import {
   ActionIcon,
   Alert,
+  Anchor,
   Badge,
   FileButton,
   Group,
@@ -48,6 +49,9 @@ import { FormField, FormFooter, FormLayout } from "../../components/form/FormLay
 import { PanelDelete } from "../../components/list/PanelDelete";
 import { PanelActions } from "../../components/list/SplitPane";
 import { TagControl } from "../../components/TagControl";
+import { objectHref, objectName } from "../../components/tagObjectLink";
+import { detailHref } from "../../components/list/useDetailParam";
+import { Link } from "react-router-dom";
 import { Tip } from "../../components/Tip";
 import { IndexBadge, ReaderBadges, StaleBadge, StatusBadge } from "./LibraryBadges";
 import { ACCEPT, useReaderOptions, when } from "./libraryParts";
@@ -63,7 +67,13 @@ function opensSection(passages: LibraryDocumentDetail["passage_list"], i: number
   return before.section !== p.section || (!p.section && before.page !== p.page);
 }
 
-function SectionsTab({ doc, detail }: { doc: LibraryDocument; detail: LibraryDocumentDetail | null }) {
+function SectionsTab({
+  doc,
+  detail,
+}: {
+  doc: LibraryDocument;
+  detail: LibraryDocumentDetail | null;
+}) {
   const { t } = useTranslation();
   if (doc.index_status !== "ready") {
     return (
@@ -119,53 +129,148 @@ function CitedByTab({ cited }: { cited: LibraryCitedBy | null }) {
       </Text>
     );
   }
-  if (cited.terms.length === 0) {
+  const [tags, assignments] = [cited.tags, cited.tag_assignments];
+  if (cited.terms.length === 0 && tags.length === 0 && assignments.length === 0) {
     return (
       <Text size="sm" c="dimmed" data-testid="reflib-cited-empty">
         {t("referenceLibrary.citedByEmpty")}
       </Text>
     );
   }
+  const where = (c: { section_heading: string | null; section_page: number | null }) =>
+    c.section_heading ??
+    (c.section_page !== null
+      ? t("tagCitations.page", { page: c.section_page })
+      : t("tagCitations.citedByWholeDocument"));
+  const mark = (c: { state: string; needs_review: boolean }) =>
+    c.needs_review && (
+      <Badge
+        size="xs"
+        variant="light"
+        color={c.state === "drifted" ? "orange" : "red"}
+        data-testid={`reflib-cite-${c.state}`}
+      >
+        {t(c.state === "drifted" ? "referenceLibrary.citedByDrifted" : "tagCitations.citedByGone")}
+      </Badge>
+    );
   return (
-    <Table data-testid="reflib-cited-by">
-      <Table.Thead>
-        <Table.Tr>
-          <Table.Th>{t("referenceLibrary.citedByTerm")}</Table.Th>
-          <Table.Th>{t("referenceLibrary.citedByWhere")}</Table.Th>
-          <Table.Th>{t("referenceLibrary.citedByQuote")}</Table.Th>
-        </Table.Tr>
-      </Table.Thead>
-      <Table.Tbody>
-        {cited.terms.map((c) => (
-          <Table.Tr key={`${c.term_id}-${c.ordinal}-${c.quote}`} data-testid={`reflib-cite-${c.term_id}`}>
-            <Table.Td>
-              <Group gap={4} wrap="wrap">
-                <Text size="sm">{c.term}</Text>
-                {c.state === "drifted" && (
-                  <Tip text={t("referenceLibrary.citedByDriftedHelp")}>
-                    <Badge size="xs" variant="light" color="orange" data-testid="reflib-drifted">
-                      {t("referenceLibrary.citedByDrifted")}
-                    </Badge>
-                  </Tip>
-                )}
-              </Group>
-            </Table.Td>
-            <Table.Td>
-              <Text size="xs" c="dimmed">
-                {[c.section, c.page !== null ? t("referenceLibrary.page", { page: c.page }) : null]
-                  .filter(Boolean)
-                  .join(" · ") || t("referenceLibrary.noSection")}
-              </Text>
-            </Table.Td>
-            <Table.Td>
-              <Text size="sm" lineClamp={3}>
-                {c.quote}
-              </Text>
-            </Table.Td>
-          </Table.Tr>
-        ))}
-      </Table.Tbody>
-    </Table>
+    <Stack gap="md">
+      {cited.terms.length > 0 && (
+        <Table data-testid="reflib-cited-by">
+          <Table.Thead>
+            <Table.Tr>
+              <Table.Th>{t("referenceLibrary.citedByTerm")}</Table.Th>
+              <Table.Th>{t("referenceLibrary.citedByWhere")}</Table.Th>
+              <Table.Th>{t("referenceLibrary.citedByQuote")}</Table.Th>
+            </Table.Tr>
+          </Table.Thead>
+          <Table.Tbody>
+            {cited.terms.map((c) => (
+              <Table.Tr
+                key={`${c.term_id}-${c.ordinal}-${c.quote}`}
+                data-testid={`reflib-cite-${c.term_id}`}
+              >
+                <Table.Td>
+                  <Group gap={4} wrap="wrap">
+                    <Text size="sm">{c.term}</Text>
+                    {c.state === "drifted" && (
+                      <Tip text={t("referenceLibrary.citedByDriftedHelp")}>
+                        <Badge
+                          size="xs"
+                          variant="light"
+                          color="orange"
+                          data-testid="reflib-drifted"
+                        >
+                          {t("referenceLibrary.citedByDrifted")}
+                        </Badge>
+                      </Tip>
+                    )}
+                  </Group>
+                </Table.Td>
+                <Table.Td>
+                  <Text size="xs" c="dimmed">
+                    {[
+                      c.section,
+                      c.page !== null ? t("referenceLibrary.page", { page: c.page }) : null,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ") || t("referenceLibrary.noSection")}
+                  </Text>
+                </Table.Td>
+                <Table.Td>
+                  <Text size="sm" lineClamp={3}>
+                    {c.quote}
+                  </Text>
+                </Table.Td>
+              </Table.Tr>
+            ))}
+          </Table.Tbody>
+        </Table>
+      )}
+      {(tags.length > 0 || assignments.length > 0) && (
+        <Table data-testid="reflib-cited-by-tags">
+          <Table.Thead>
+            <Table.Tr>
+              <Table.Th>{t("tagCitations.citedByTag")}</Table.Th>
+              <Table.Th>{t("tagCitations.citedByOn")}</Table.Th>
+              <Table.Th>{t("referenceLibrary.citedByWhere")}</Table.Th>
+            </Table.Tr>
+          </Table.Thead>
+          <Table.Tbody>
+            {tags.map((c) => (
+              <Table.Tr
+                key={`def-${c.tag_id}-${c.section_heading}-${c.section_page}`}
+                data-testid={`reflib-cite-tag-${c.tag_id}`}
+              >
+                <Table.Td>
+                  <Group gap={4} wrap="wrap">
+                    <Anchor size="sm" component={Link} to={detailHref("tags", c.tag_id)}>
+                      {c.tag_id}
+                    </Anchor>
+                    {mark(c)}
+                  </Group>
+                </Table.Td>
+                <Table.Td>
+                  <Text size="xs" c="dimmed">
+                    {t("tagCitations.citedByDefinition")}
+                  </Text>
+                </Table.Td>
+                <Table.Td>
+                  <Text size="xs">{where(c)}</Text>
+                </Table.Td>
+              </Table.Tr>
+            ))}
+            {assignments.map((c) => (
+              <Table.Tr
+                key={`on-${c.tag_id}-${c.object_key}-${c.section_heading}-${c.section_page}`}
+                data-testid={`reflib-cite-assignment-${c.tag_id}-${c.object_key}`}
+              >
+                <Table.Td>
+                  <Group gap={4} wrap="wrap">
+                    <Anchor
+                      size="sm"
+                      component={Link}
+                      to={detailHref("tags", c.tag_id.split(":")[0])}
+                    >
+                      {c.tag_id}
+                    </Anchor>
+                    {mark(c)}
+                  </Group>
+                </Table.Td>
+                <Table.Td>
+                  <Anchor size="xs" component={Link} to={objectHref(c.object_type, c.object_key)}>
+                    {t(`tagsTab.scope_${c.object_type}`)} · {objectName(c.object_key)}
+                  </Anchor>
+                </Table.Td>
+                <Table.Td>
+                  <Text size="xs">{where(c)}</Text>
+                </Table.Td>
+              </Table.Tr>
+            ))}
+          </Table.Tbody>
+        </Table>
+      )}
+    </Stack>
   );
 }
 

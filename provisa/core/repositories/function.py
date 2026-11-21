@@ -14,7 +14,7 @@
 
 from __future__ import annotations
 
-from provisa.core import model_change
+from provisa.core import model_change, model_uri
 
 from typing import TYPE_CHECKING
 
@@ -26,6 +26,7 @@ from provisa.core.host_code import refuse_host_code
 from provisa.core.repositories import data_product as data_product_repo
 from provisa.core.repositories.integrity import Dependent, ObjectRef, guard, remove_parts
 from provisa.core.repositories.mask_lists import refuse_unreachable_masks
+from provisa.security.masking import refuse_non_text_constant
 from provisa.core.schema_org import tracked_functions, tracked_webhooks
 
 if TYPE_CHECKING:
@@ -42,7 +43,9 @@ async def upsert_function(  # REQ-205, REQ-206, REQ-207, REQ-304, REQ-305, REQ-3
     await refuse_unreachable_masks(  # REQ-2059
         conn, {c.name: c.model_dump()["masks"] for c in func.output_columns or []}
     )
-    model_change.name("upsert", "command", func.name)  # REQ-1524
+    for _col in func.output_columns or []:  # REQ-2131
+        refuse_non_text_constant(_col.name, _col.model_dump()["masks"], _col.type)
+    model_change.name("upsert", model_change.uri(model_uri.command_uri, func.name))  # REQ-1524
     domain_id = domain_policy.command_domain_id(func.domain_id, func.name)  # REQ-1531
     # REQ-1634: a command keeps to the domain of every product it is a member of.
     await data_product_repo.require_domain_of_products(
@@ -79,6 +82,8 @@ async def upsert_function(  # REQ-205, REQ-206, REQ-207, REQ-304, REQ-305, REQ-3
         "language_bindings": {
             k: v.model_dump(exclude_defaults=True) for k, v in func.language_bindings.items()
         },
+        "source_type": func.source_type,  # REQ-1986
+        "exposed_as_table": func.exposed_as_table,  # REQ-1986
     }
     update_cols = [
         "source_id",
@@ -98,6 +103,8 @@ async def upsert_function(  # REQ-205, REQ-206, REQ-207, REQ-304, REQ-305, REQ-3
         "requires_approval",
         "writes_table",
         "language_bindings",
+        "source_type",
+        "exposed_as_table",
     ]
     function_id = await conn.upsert_returning(
         tracked_functions,
@@ -167,7 +174,7 @@ async def _delete_one(conn: "Connection", kind: str, table, name: str) -> bool: 
 
 async def delete_function(conn: "Connection", name: str) -> bool:  # REQ-205, REQ-1918
     """Delete a tracked function by name: THE delete, for every surface."""
-    model_change.name("delete", "command", name)  # REQ-1524
+    model_change.name("delete", model_change.uri(model_uri.command_uri, name))  # REQ-1524
     return await _delete_one(conn, "command", tracked_functions, name)
 
 
@@ -178,7 +185,9 @@ async def upsert_webhook(
     await refuse_unreachable_masks(  # REQ-2059
         conn, {c.name: c.model_dump()["masks"] for c in wh.inline_return_type}
     )
-    model_change.name("upsert", "webhook", wh.name)  # REQ-1524
+    for _col in wh.inline_return_type:  # REQ-2131
+        refuse_non_text_constant(_col.name, _col.model_dump()["masks"], _col.type)
+    model_change.name("upsert", model_change.uri(model_uri.command_uri, wh.name))  # REQ-1524
     vals = {
         "name": wh.name,
         "url": wh.url,
@@ -244,7 +253,7 @@ async def list_webhooks(conn: "Connection") -> list[dict]:  # REQ-209, REQ-360
 
 async def delete_webhook(conn: "Connection", name: str) -> bool:  # REQ-209, REQ-1918
     """Delete a tracked webhook by name: THE delete, for every surface."""
-    model_change.name("delete", "webhook", name)  # REQ-1524
+    model_change.name("delete", model_change.uri(model_uri.command_uri, name))  # REQ-1524
     return await _delete_one(conn, "webhook", tracked_webhooks, name)
 
 
@@ -274,6 +283,8 @@ def function_from_dict(d: dict) -> Function:  # REQ-205, REQ-304
         requires_approval=bool(d.get("requires_approval", False)),
         writes_table=d.get("writes_table"),
         language_bindings=d["language_bindings"],  # REQ-2168
+        source_type=d.get("source_type"),  # REQ-1986
+        exposed_as_table=d.get("exposed_as_table"),  # REQ-1986
     )
 
 

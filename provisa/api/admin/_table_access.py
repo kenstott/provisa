@@ -36,21 +36,45 @@ FIRST_ROWS = 10
 async def table_access(
     state: Any, role: str, table_id: int, endpoints: "ServingEndpoints | None"
 ) -> TableAccessType:
-    """How ``role`` reaches table ``table_id``. Refused when the role's schema does not serve it."""
+    """How ``role`` reaches table ``table_id``. Refused when the role's schema does not serve it:
+    a withdrawn table is in no role's schema, and no query language reaches it (REQ-1921)."""
     from provisa.api.mcp.tools import graphql_field_names
     from provisa.compiler.naming import domain_to_sql_name
-    from provisa.compiler.sql_rewrite import semantic_ref, semantic_table_name
+    from provisa.compiler.sql_rewrite import semantic_table_name
 
-    ctx = state.contexts.get(role)
-    meta = next(
-        (m for m in (ctx.tables.values() if ctx else ()) if m.table_id == table_id),
-        None,
-    )
+    meta = _served(state.contexts.get(role), table_id)
     if meta is None:
         raise ValueError(f"table {table_id} is not served to role {role!r}")
+    names = await graphql_field_names(
+        state, role, domain_to_sql_name(meta.domain_id), semantic_table_name(meta)
+    )
+    return _ways(
+        meta,
+        names["table_field"],
+        [c["graphql_name"] for c in names["columns"]],
+        names["openapi_path"],
+        endpoints,
+    )
+
+
+def _served(ctx: Any, table_id: int) -> Any:
+    """The table ``table_id`` as context ``ctx`` serves it, or None."""
+    return next((m for m in (ctx.tables.values() if ctx else ()) if m.table_id == table_id), None)
+
+
+def _ways(
+    meta: Any,
+    table_field: str,
+    columns: list[str],
+    openapi_path: str,
+    endpoints: "ServingEndpoints | None",
+) -> TableAccessType:
+    """Each way to reach the table ``meta``, from the names its role's surface gives it."""
+    from provisa.compiler.naming import domain_to_sql_name
+    from provisa.compiler.sql_rewrite import semantic_ref
+
     schema = domain_to_sql_name(meta.domain_id)
-    names = await graphql_field_names(state, role, schema, semantic_table_name(meta))
-    fields = "\n".join(f"    {c['graphql_name']}" for c in names["columns"])
+    fields = "\n".join(f"    {c}" for c in columns)
     sql = f"SELECT * FROM {semantic_ref(meta)} LIMIT {FIRST_ROWS}"
     pgwire = None
     rest = None
@@ -61,10 +85,10 @@ async def table_access(
                 f"{endpoints.database}?options=-csearch_path%3D{schema}"
             )
         if "REST" in endpoints.http_paths:
-            method, path = names["openapi_path"].split(" ", 1)
+            method, path = openapi_path.split(" ", 1)
             rest = f"{method} {endpoints.http_origin}{path}"
     return TableAccessType(
-        graphql=f"query {{\n  {names['table_field']}(limit: {FIRST_ROWS}) {{\n{fields}\n  }}\n}}",
+        graphql=f"query {{\n  {table_field}(limit: {FIRST_ROWS}) {{\n{fields}\n  }}\n}}",
         sql=sql,
         pgwire=pgwire,
         rest=rest,

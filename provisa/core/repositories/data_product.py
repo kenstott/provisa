@@ -13,16 +13,15 @@
 # Requirements: REQ-1634, REQ-2180
 
 import logging
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import delete as _delete, func, insert, select, update
 
-from provisa.core import model_change
+from provisa.core import model_change, model_uri
 from provisa.core.models import ContractCheck, DataProduct
 from provisa.core.repositories.integrity import Dependent, ObjectRef, guard, remove_parts
 from provisa.core.schema_org import (
-    checker_targets,
     data_product_commands,
     data_product_tables,
     data_products,
@@ -53,7 +52,9 @@ async def upsert(  # REQ-1634, REQ-1919
     default offer (REQ-2180)."""
     from provisa.core.repositories import data_product_offer
 
-    model_change.name("upsert", "data product", product.id)  # REQ-1524
+    model_change.name(  # REQ-1524
+        "upsert", model_change.uri(model_uri.data_product_uri, product.domain_id, product.id)
+    )
     is_new = await get(conn, product.id) is None
     await conn.upsert(
         data_products,
@@ -99,6 +100,17 @@ async def upsert(  # REQ-1634, REQ-1919
     )
     if is_new:
         await data_product_offer.add_default(conn, product.id, by=product.created_by)
+
+
+async def name_change(conn: "Connection", action: str, product_id: str) -> None:  # REQ-1524
+    """Name a change to data product ``product_id`` by its model URI, under its owning domain
+    (REQ-1385). The product exists: the caller has read it."""
+    domain_id = (
+        await conn.execute_core(
+            select(data_products.c.domain_id).where(data_products.c.id == product_id)
+        )
+    ).scalar_one()
+    model_change.name(action, model_change.uri(model_uri.data_product_uri, domain_id, product_id))
 
 
 async def get(conn: "Connection", product_id: str) -> dict | None:  # REQ-1634
@@ -151,11 +163,11 @@ async def delete(conn: "Connection", product_id: str) -> bool:  # REQ-1634, REQ-
     it — the operator takes them out of the product first. (PostgreSQL used to detach them
     silently; SQLite left them naming a product that was gone.) Its tag assignments go with it.
     One transaction."""
-    model_change.name("delete", "data product", product_id)  # REQ-1524
     ref = ObjectRef("data_product", product_id)
     async with conn.transaction():
         if await get(conn, product_id) is None:
             return False
+        await name_change(conn, "delete", product_id)  # REQ-1524
         blocking = await guard(conn, ref)
         if blocking:
             raise DataProductDeleteRefused(product_id, blocking)
@@ -165,12 +177,18 @@ async def delete(conn: "Connection", product_id: str) -> bool:  # REQ-1634, REQ-
 
 
 async def promised_checks(  # REQ-2158
-    conn: "Connection", table_id: int
+    conn: "Connection", table_id: int, checked: Mapping[int, int]
 ) -> list[ContractCheck]:
     """What the member's products promise of it: the checks of the checker tables that scan it
     (REQ-2157) and are members of a product it is a member of, each as a contract version keeps it.
-    A check only another product owns, or none does, is no promise of these."""
+    A check only another product owns, or none does, is no promise of these. ``checked`` is each
+    checker's checked table as the runtime's published build resolved it (REQ-2125), never the
+    stored checker targets, which are the meta domain's and written after the build answers."""
     from provisa.dq.contract import check_severity
+
+    checkers = sorted(c for c, t in checked.items() if t == table_id)
+    if not checkers:
+        return []
 
     its_products = select(data_product_tables.c.product_id).where(
         data_product_tables.c.table_id == table_id
@@ -182,9 +200,8 @@ async def promised_checks(  # REQ-2158
         await conn.execute_core(
             select(registered_tables.c.dq_rules, sources.c.type)
             .join(sources, sources.c.id == registered_tables.c.source_id)
-            .join(checker_targets, checker_targets.c.table_id == registered_tables.c.id)
             .where(
-                checker_targets.c.checked_table_id == table_id,
+                registered_tables.c.id.in_(checkers),
                 registered_tables.c.id.in_(owned),
                 registered_tables.c.dq_rules.is_not(None),
             )
@@ -267,7 +284,7 @@ async def publish(conn: "Connection", product_id: str, *, by: "str | None") -> N
             status=status,
         )
     await _set_status(conn, product_id, by, status="live")
-    model_change.name("publish", "data product", product_id)
+    await name_change(conn, "publish", product_id)
 
 
 async def deprecate(
@@ -298,7 +315,7 @@ async def deprecate(
     await _set_status(
         conn, product_id, by, status="deprecated", status_reason=text, retire_on=retire_on
     )
-    model_change.name("deprecate", "data product", product_id)
+    await name_change(conn, "deprecate", product_id)
 
 
 async def retire(
@@ -321,7 +338,7 @@ async def retire(
     # REQ-2188: one transaction: a retirement refused by a row rule moves no member.
     async with conn.transaction():
         await _retire(conn, product, text, successor, by)
-    model_change.name("retire", "data product", product_id)
+    await name_change(conn, "retire", product_id)
 
 
 async def _retire(
@@ -412,7 +429,7 @@ async def restore(conn: "Connection", product_id: str, *, by: "str | None") -> s
         retire_on=None,
         successor_id=None,
     )
-    model_change.name("restore", "data product", product_id)
+    await name_change(conn, "restore", product_id)
     return back
 
 
@@ -640,13 +657,13 @@ async def set_members(  # REQ-1634
     member of any number of products. One transaction."""
     wanted_tables = sorted(set(table_ids))
     wanted_commands = sorted(set(commands))
-    model_change.name("upsert", "data product members", product_id)  # REQ-1524
     async with conn.transaction():
         product = await get(conn, product_id)
         if product is None:
             raise MembershipRefused(
                 "not_found", f"data product {product_id!r} not found", data_product=product_id
             )
+        await name_change(conn, "upsert members of", product_id)  # REQ-1524
         # REQ-2188: a product's membership is the product's: its U rule holds the write.
         await conn.require_admitted(update(data_products).where(data_products.c.id == product_id))
         await _require_member_tables(conn, product, wanted_tables)

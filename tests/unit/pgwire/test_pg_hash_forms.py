@@ -153,18 +153,33 @@ def test_a_form_of_a_held_value_reaches_the_engine(sql: str, dialect: str):
     assert transpile(sql, dialect)
 
 
-@pytest.mark.parametrize("dialect", ["trino", "clickhouse"])
+_HELD_REFUSED = [
+    ("SELECT length('(0,1)'::tid) AS v", "length"),
+    ("SELECT aclitemeq('=r/postgres'::aclitem, '=r/postgres'::aclitem) AS v", "aclitemeq"),
+]
+
+
 @pytest.mark.parametrize(
-    ("sql", "called"),
+    ("sql", "called", "dialect"),
     [
-        ("SELECT tideq('(0,1)'::tid, '(0,1)'::tid) AS v", "tideq"),
-        ("SELECT length('(0,1)'::tid) AS v", "length"),
-        ("SELECT aclitemeq('=r/postgres'::aclitem, '=r/postgres'::aclitem) AS v", "aclitemeq"),
+        *(
+            (sql, called, dialect)
+            for sql, called in _HELD_REFUSED
+            for dialect in ("trino", "clickhouse")
+        ),
+        ("SELECT tideq('(0,1)'::tid, '(0,1)'::tid) AS v", "tideq", "trino"),
     ],
 )
 def test_a_held_value_stays_refused_where_no_form_reads_it(sql: str, called: str, dialect: str):
     with pytest.raises(FunctionRefused, match=called):
         transpile(sql, dialect)
+
+
+def test_a_tid_comparison_is_answered_on_clickhouse_in_duckdb_s_form():
+    """tideq is carried over from DuckDB on ClickHouse (polyfill.ported); its answers are compared
+    with PostgreSQL's in tests/unit/polyfill/test_polyfill_clickhouse_carried.py."""
+    written = transpile("SELECT tideq('(0,1)'::tid, '(0,1)'::tid) AS v", "clickhouse")
+    assert "tideq" not in written.lower()
 
 
 @pytest.mark.parametrize("dialect", ["trino", "clickhouse"])

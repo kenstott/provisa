@@ -164,9 +164,9 @@ def _let(e: Engine, name: str, value: str, body: str) -> str:
 
 DUCKDB = Engine(
     name="duckdb",
-    let="list_transform([{1}], {0} -> {2})[1]",
-    map="list_transform({0}, {1} -> {2})",
-    filter="list_filter({0}, {1} -> {2})",
+    let="list_transform([{1}], LAMBDA {0} : {2})[1]",
+    map="list_transform({0}, LAMBDA {1} : {2})",
+    filter="list_filter({0}, LAMBDA {1} : {2})",
     upto="range(CAST({} AS BIGINT))",
     size="len({})",
     extract="regexp_extract_all({}, '" + _NUMBER + "')",
@@ -190,7 +190,7 @@ DUCKDB = Engine(
     concat="list_concat({}, {})",
     sort="list_sort({})",
     raises=f"CASE WHEN {{0}} THEN error('{MARK} {{1}}') ELSE {{2}} END",
-    fold="list_reduce(list_prepend(CAST({2} AS BIGINT), {0}), ({1}, _item) -> {3})",
+    fold="list_reduce(list_prepend(CAST({2} AS BIGINT), {0}), LAMBDA {1}, _item : {3})",
     bigint="CAST({} AS BIGINT)",
     wide="CAST({} AS HUGEINT)",
     quotient="({} // {})",
@@ -284,7 +284,8 @@ def _float_text(e: Engine, value: str) -> str:
         f"WHEN _p - 1 < -4 OR _p - 1 >= 15 THEN substr(_d, 1, 1) || "
         f"CASE WHEN {e.length.format('_d')} > 1 THEN '.' || substr(_d, 2) ELSE '' END || 'e' || "
         "CASE WHEN _p - 1 < 0 THEN '-' ELSE '+' END || "
-        f"{e.lpad.format(e.text.format('abs(_p - 1)'), 2)} "
+        # At least two digits: an lpad to 2 would cut 308 to 30.
+        f"CASE WHEN abs(_p - 1) < 10 THEN '0' ELSE '' END || {e.text.format('abs(_p - 1)')} "
         f"WHEN _p <= 0 THEN '0.' || {e.lpad.format(chr(39) * 2, '-_p')} || _d "
         f"WHEN {e.length.format('_d')} <= _p THEN {e.rpad.format('_d', '_p')} "
         "ELSE substr(_d, 1, _p) || '.' || substr(_d, _p + 1) END"
@@ -1636,12 +1637,21 @@ def _circle_poly(e: Engine, f: str, n: str = "n") -> str:
         ),
         "','",
     )
+    # geo_ops.c sizes the polygon in an int before it allocates: 40 bytes and 16 a point. Past
+    # INT_MAX it is 54000; past MaxAllocSize (1 GB - 1) palloc's XX000, naming the size.
+    size = f"(40 + 16 * {e.bigint.format(n)})"
+    alloc = "XX000: invalid memory alloc request size"
+    if e is not CLICKHOUSE:  # ClickHouse's throwIf takes a constant message, so no size
+        alloc += f" ' || {e.text.format(size)} || '"
+    built = e.raises.format(
+        f"{size} > 2147483647",
+        "54000: too many points requested",
+        e.raises.format(f"{size} > 1073741823", alloc, f"'(' || {text} || ')'"),
+    )
     return e.raises.format(
         f"abs(_a[3]) <= {_FUZZ}",
         "0A000: cannot convert circle with radius zero to polygon",
-        e.raises.format(
-            f"{n} < 2", "22023: must request at least 2 points", f"'(' || {text} || ')'"
-        ),
+        e.raises.format(f"{n} < 2", "22023: must request at least 2 points", built),
     )
 
 
@@ -2271,7 +2281,12 @@ def planned(sql: str, dialect: str) -> str:
         return _pipelined(sql)
     if dialect != "clickhouse" or "SETTINGS" in sql.upper():
         return sql
-    return f"{sql.rstrip().rstrip(';')} SETTINGS allow_experimental_analyzer = 0"
+    # A shape's text is read into doubles by toFloat64, which reads '0.3' a unit off its nearest
+    # double unless the precise parser reads it: float8in's double is the nearest.
+    return (
+        f"{sql.rstrip().rstrip(';')} SETTINGS allow_experimental_analyzer = 0, "
+        "precise_float_parsing = 1"
+    )
 
 
 def forms(e: Engine) -> dict[tuple[str, str], str]:
@@ -2280,3 +2295,131 @@ def forms(e: Engine) -> dict[tuple[str, str], str]:
         (r.name, ", ".join(p.split(":")[0] for p in r.params.split(", "))): _form(e, r)
         for r in ROWS
     }
+
+
+# --- measures: written for an engine whose old table has no form of them ---------------------------
+
+
+def _in_order(e: Engine, values: str) -> str:
+    """The sum of a list of doubles from 0.0, each added in turn, as a loop of float8_pl adds."""
+    if e.name == "clickhouse":
+        return f"arrayFold((_s, _t) -> _s + _t, {values}, toFloat64(0))"
+    return e.sum_of.format(values)
+
+
+def _path_area(e: Engine, f: str) -> str:
+    """path_area: NULL of an open path; else half the absolute of a loop that adds x_i * y_j and
+    takes y_i * x_j, j the next point, the last's the first."""
+    n = _half(e, e.size.format("_a"))
+    j = f"((_i + 1) % {n})"
+    terms = e.map.format(
+        e.upto.format(n),
+        "_i",
+        _list(
+            e,
+            f"_a[2 * _i + 1] * _a[2 * {j} + 2]",
+            f"-(_a[2 * _i + 2] * _a[2 * {j} + 1])",
+        ),
+    )
+    area = f"abs({_in_order(e, e.flatten.format(terms))}) / 2.0"
+    return f"CASE WHEN {_is_open(e, 'a')} THEN NULL ELSE {_double(e, area, f)} END"
+
+
+def _path_length(e: Engine, f: str) -> str:
+    """path_length: point_dt of each point and the one before it, from the second point; a closed
+    path's first point and its last first."""
+    n = _half(e, e.size.format("_a"))
+    kept = e.filter.format(e.upto.format(n), "_i", f"_i > 0 OR {_is_closed(e, 'a')}")
+    before = f"(CASE WHEN _i = 0 THEN {n} - 1 ELSE _i - 1 END)"
+    lengths = e.map.format(
+        kept,
+        "_i",
+        _dist(
+            e,
+            (f"_a[2 * {before} + 1]", f"_a[2 * {before} + 2]"),
+            ("_a[2 * _i + 1]", "_a[2 * _i + 2]"),
+        ),
+    )
+    return _double(e, _in_order(e, lengths), f)
+
+
+def _inverse_slope(e: Engine, a: tuple[str, str], b: tuple[str, str], f: str) -> str:
+    """point_invsl: of a vertical line 0, of a horizontal one infinite."""
+    finite = f"({a[0]} - {b[0]}) / ({b[1]} - {a[1]})"
+    return (
+        f"CASE WHEN {_fp_eq(a[0], b[0])} THEN 0.0 WHEN {_fp_eq(a[1], b[1])} THEN {e.infinity} "
+        f"ELSE {_double(e, finite, f)} END"
+    )
+
+
+def _line_perp(e: Engine, f: str) -> str:
+    """line_perp: of a line with no A or no B, whether the other has no B or no A; else whether
+    A1 * A2 / (B1 * B2) is -1."""
+    a1, b1, a2, b2 = "_a[1]", "_a[2]", "_b[1]", "_b[2]"
+    ratio = _double(e, f"({a1} * {a2}) / ({b1} * {b2})", f)
+    return (
+        f"CASE WHEN {_fp_zero(a1)} THEN {_fp_zero(b2)} WHEN {_fp_zero(a2)} THEN {_fp_zero(b1)} "
+        f"WHEN {_fp_zero(b1)} THEN {_fp_zero(a2)} WHEN {_fp_zero(b2)} THEN {_fp_zero(a1)} "
+        f"ELSE {_fp_eq(ratio, _MINUS)} END"
+    )
+
+
+def _measures() -> tuple[Row, ...]:
+    """The measures of a shape geo_ops.c answers, each by its own row's name (PostgreSQL's
+    function, as pg_proc names it); a row of ``ROWS`` that answers the same, under its name."""
+    rows = {r.name: r for r in ROWS}
+    p0, p1 = _xy("_a"), _xy("_a", 3)
+    q0, q1 = _xy("_b"), _xy("_b", 3)
+    return (
+        Row(
+            "box_area", "a:box", 2, lambda e, f: _double(e, "(_a[1] - _a[3]) * (_a[2] - _a[4])", f)
+        ),
+        Row("circle_area", "a:circle", 2, lambda e, f: _double(e, "(_a[3] * _a[3]) * pi()", f)),
+        Row("path_area", "a:path", 2, _path_area),
+        replace(rows["point_of_circle"], name="circle_center"),
+        rows["box_diagonal"],
+        Row("box_height", "a:box", 2, lambda e, f: _double(e, "_a[2] - _a[4]", f)),
+        Row("box_width", "a:box", 2, lambda e, f: _double(e, "_a[1] - _a[3]", f)),
+        Row("circle_radius", "a:circle", 2, lambda e, f: _double(e, "_a[3]", f)),
+        Row("path_isclosed", "a:path", 1, lambda e, _: _is_closed(e, "a")),
+        Row("path_isopen", "a:path", 1, lambda e, _: _is_open(e, "a")),
+        rows["point_horiz"],
+        rows["point_vert"],
+        Row("line_horizontal", "a:line", 1, lambda e, _: _fp_zero("_a[1]")),
+        Row("line_vertical", "a:line", 1, lambda e, _: _fp_zero("_a[2]")),
+        Row(
+            "line_parallel",
+            "a:line, b:line",
+            1,
+            lambda e, _: f"NOT ({_at(e, _meet(e, '_a', '_b'), 1)} = 1)",
+        ),
+        Row("line_perp", "a:line, b:line", 1, _line_perp),
+        Row("lseg_horizontal", "a:lseg", 1, lambda e, _: _fp_eq(p0[1], p1[1])),
+        Row("lseg_vertical", "a:lseg", 1, lambda e, _: _fp_eq(p0[0], p1[0])),
+        Row(
+            "lseg_parallel",
+            "a:lseg, b:lseg",
+            1,
+            lambda e, f: _fp_eq(_slope(e, p0, p1, f), _slope(e, q0, q1, f)),
+        ),
+        Row(
+            "lseg_perp",
+            "a:lseg, b:lseg",
+            1,
+            lambda e, f: _fp_eq(_slope(e, p0, p1, f), _inverse_slope(e, q0, q1, f)),
+        ),
+        Row("lseg_length", "a:lseg", 2, lambda e, f: _double(e, _dist(e, p0, p1), f)),
+        Row("path_length", "a:path", 2, _path_length),
+        replace(rows["circle_contain_pt"], name="pt_contained_circle", params="b:point, a:circle"),
+        replace(rows["poly_contain_pt"], name="pt_contained_poly", params="b:point, a:polygon"),
+    )
+
+
+#: The measures ``ROWS`` has no row of: an engine's form of each is written from these where its
+#: old table has none (provisa.transpiler.polyfill.geometric: ClickHouse's).
+MEASURES = _measures()
+
+
+def measure_form(e: Engine, row: Row) -> tuple[str, tuple[str, ...]]:
+    """A measure's form on ``e``, and its parameters' names in the order a call gives them."""
+    return _form(e, row), tuple(p.split(":")[0] for p in row.params.split(", "))

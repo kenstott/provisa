@@ -133,8 +133,6 @@ class _Ordered:
     picks: bool = False
     shown: str | None = None
     ne: str = "ne"
-    #: The comparisons the polyfill grid holds (provisa.transpiler.polyfill), not this table.
-    in_the_grid: tuple[str, ...] = ()
 
     def forms(self) -> list[Form]:
         a, b = _reads(self.read, "a", "b")
@@ -142,7 +140,6 @@ class _Ordered:
         forms = [
             Form(f"{self.stem}{self.ne if name == 'ne' else name}", "a, b", f"{a} {op} {b}")
             for name, op in _ORDER.items()
-            if name not in self.in_the_grid
         ]
         if self.cmp:
             forms.append(Form(f"{self.stem}cmp", "a, b", _compare(a, b)))
@@ -237,9 +234,6 @@ _ORDERED: tuple[_Ordered, ...] = (
     _Ordered("pg_lsn_", _lsn_key("{}"), cmp=True, picks=True, shown=_lsn_text(_lsn_number("{}"))),
     _Ordered("tid", _tid_key("{}"), picks=True, shown=_TEXT),
     _Ordered("name", _NAME),
-    _Ordered("array_", "{}", picks=True),
-    _Ordered("record_", "({})", in_the_grid=("eq", "ne")),
-    _Ordered("record_image_", "({})", in_the_grid=("eq", "ne")),
 )
 
 
@@ -1009,6 +1003,12 @@ DUCKDB_TWEAKS = {
     )
     for form in OPERATORS
     if form.name == "int8div"
+} | {
+    # DuckDB's date holds infinity, which PostgreSQL's date_pli and date_mii answer as it is: the
+    # day count of DuckDB's marker would read as a finite day past the range.
+    form.name: f"CASE WHEN isfinite(CAST(a AS DATE)) THEN {form.sql} ELSE CAST(a AS DATE) END"
+    for form in _DATED_ARITHMETIC
+    if form.name in ("date_pli", "date_mii")
 }
 #: The forms that read an argument's text: a statement's cast to their type says nothing more, and
 #: a cast to character(n) says how far it pads.

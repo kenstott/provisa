@@ -65,6 +65,20 @@ DECLARED: list[Setting] = [
         unit="points",
     ),
     Setting(
+        key="parameters.max_calls_per_statement",
+        card="limits",
+        type="int",
+        effect="live",  # read when a statement's parameters are bound
+        # REQ-1986: each value a statement gives a table's parameter is one call to its source
+        # (an IN list, the branches of an OR, a join's distinct keys); a statement that needs
+        # more calls to one table than this is refused, naming this setting.
+        req="REQ-1986",
+        env="PROVISA_PARAMETERS_MAX_CALLS_PER_STATEMENT",
+        default=1000,
+        min=1,
+        unit="calls",
+    ),
+    Setting(
         key="logs.preview_lines",
         card="limits",
         type="int",
@@ -164,6 +178,20 @@ DECLARED: list[Setting] = [
         min=1,
         unit="rows",
     ),
+    # --- A principal's Kafka sinks (REQ-812) ----------------------------------------------------
+    # Live: read when a sink is started. A client-started sink runs until its owner loses the
+    # role it was started under, so how many one principal holds at once is bounded.
+    Setting(
+        key="subscriptions.max_sinks_per_principal",
+        card="limits",
+        type="int",
+        effect="live",
+        req="REQ-812",  # 5 (maintainer 2026-11-16); a sink past it is refused by name
+        env="PROVISA_MAX_SINKS_PER_PRINCIPAL",
+        default=5,
+        min=1,
+        unit="sinks",
+    ),
     # --- A principal's graph session (REQ-2176) ------------------------------------------------
     # Live: read at each sweep. A graph session unused this long is ended.
     Setting(
@@ -229,6 +257,20 @@ DECLARED: list[Setting] = [
         # `limits.request_timeout`. An operator can change or clear either like any other.
         default={"flight": 3600.0, "pgwire": 300.0},
         min=0.001,
+        unit="seconds",
+    ),
+    Setting(
+        key="sparql.query_timeout",
+        card="limits",
+        type="float",
+        effect="live",  # read at each SPARQL call: a preview, a Wikidata lookup, a replica load
+        # REQ-1923 (amended 2026-11-20): complex SPARQL is given a generous deadline, stated as a
+        # setting with its UI; the full read happens in the replica load, never in a request.
+        req="REQ-1923",
+        env="PROVISA_SPARQL_QUERY_TIMEOUT",
+        config_path=("server", "limits", "sparql_query_timeout"),
+        default=300.0,
+        min=1,
         unit="seconds",
     ),
     Setting(
@@ -378,6 +420,20 @@ DECLARED: list[Setting] = [
         env="PROVISA_CODESOURCE_HEALTH_POLL_INTERVAL",
         default=30,
         min=5,
+        unit="seconds",
+    ),
+    Setting(
+        key="codesource.worker_idle_timeout",
+        card="limits",
+        type="int",
+        effect="live",  # read at each sweep of the worker pool
+        # REQ-1984: how long a code source's, a preflight's or a remote host's worker may go
+        # unused before the pool ends it; 900 keeps a worker warm between a source's reads and
+        # frees an unused one's process within a quarter of an hour.
+        req="REQ-1984",
+        env="PROVISA_CODESOURCE_WORKER_IDLE_TIMEOUT",
+        default=900,
+        min=60,
         unit="seconds",
     ),
     Setting(
@@ -619,8 +675,9 @@ DECLARED: list[Setting] = [
         effect="live",  # read when a source's file is downloaded
         # REQ-2113: the directories a CSV or Parquet source's file may be downloaded from by a
         # file mount path, after following symlinks. None by default: each entry lets the
-        # server's own files under it be copied into an org's folder. Refused whatever it holds
-        # on a server of many organizations.
+        # server's own files under it be copied into an org's folder. A held org
+        # (sandbox_egress.held) copies none outside its folder but what its demo declares,
+        # whatever it holds (REQ-1997).
         req="REQ-2113",
         env="PROVISA_SOURCES_DOWNLOAD_ROOTS",
         default=(),
@@ -633,7 +690,8 @@ DECLARED: list[Setting] = [
         effect="live",  # read when a Logs source is saved, previewed and read
         # REQ-1996 (maintainer ruling, 2026-10-12): the directories a Logs source's glob may
         # resolve into, after following symlinks; by default /var/log. Each entry lets the
-        # server's own files under it be read into tables.
+        # server's own files under it be read into tables. A held org (sandbox_egress.held)
+        # reads none outside its folder but what its demo declares (REQ-1997).
         req="REQ-1996",
         env="PROVISA_LOGS_ALLOWED_ROOTS",
         default=("/var/log",),
@@ -813,6 +871,19 @@ DECLARED: list[Setting] = [
         min=1,
         max=65535,
         guard="confirm",
+    ),
+    Setting(
+        key="embedding.hub_endpoint",
+        card="network",
+        type="str",
+        effect="live",  # read at each fetch of a local embedding model (provisa/vector/providers.py)
+        # REQ-420: the Hugging Face hub a local embedding model is fetched from (a mirror behind a
+        # firewall). Read here, given to every fetch: huggingface_hub would otherwise read
+        # HF_ENDPOINT itself, once, at import.
+        req="REQ-420",
+        env="HF_ENDPOINT",
+        config_path=("embedding", "hub_endpoint"),
+        default="https://huggingface.co",
     ),
     Setting(
         key="server.flight_compression",
@@ -1378,6 +1449,16 @@ DECLARED: list[Setting] = [
         env="PROVISA_MCP_PRINCIPAL",
         nullable=True,
         guard="confirm",
+    ),
+    Setting(
+        key="mcp.tools",
+        card="mcp",
+        type="enum",
+        effect="live",  # read when a client's request names no mode on its address
+        req="REQ-2246",
+        env="PROVISA_MCP_TOOLS",
+        default="full",
+        choices=("full", "sip"),
     ),
     Setting(
         key="mcp.external_url",

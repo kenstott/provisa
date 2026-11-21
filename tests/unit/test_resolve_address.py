@@ -36,6 +36,7 @@ def _ctx(pk=("id",)):
         domain_id="sales",
         display_name="",
         original_table_name="",
+        schema_name="public",
         table_name="orders",
         field_name="sales__orders",
     )
@@ -44,6 +45,7 @@ def _ctx(pk=("id",)):
         domain_id="hr",
         display_name="People",
         original_table_name="",
+        schema_name="hr",
         table_name="employees",
         field_name="hr__people",
     )
@@ -157,7 +159,9 @@ def test_as_of_on_a_table_with_no_history_is_refused_by_name():
     address = SemanticAddress("acme", "sales", "orders", ("7",), None)
     with pytest.raises(AddressError, match="keeps no history"):
         build_statement("u", address, _ctx(), as_of="TIMESTAMP '2026-01-01'", bitemporal=set())
-    build_statement("u", address, _ctx(), as_of="TIMESTAMP '2026-01-01'", bitemporal={"orders"})
+    build_statement(
+        "u", address, _ctx(), as_of="TIMESTAMP '2026-01-01'", bitemporal={"public.orders"}
+    )
 
 
 # -- the one function runs the one pipeline --------------------------------------------------------

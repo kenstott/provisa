@@ -87,7 +87,6 @@
     "graphqlQueriesEmpty": "Sin tablas ni relaciones consultables",
     "graphqlQueryAria": "Ejecutar consulta GraphQL de ejemplo para {{table}}",
     "sqlQueryAria": "Ejecutar consulta SQL de ejemplo para {{table}}",
-    "cypherQueryAria": "Ejecutar consulta Cypher de ejemplo para {{type}}",
     "grpcQueryAria": "Ejecutar llamada gRPC de ejemplo para {{table}}",
     "jsonapiQueryAria": "Ejecutar solicitud JSON:API de ejemplo para {{table}}",
     "openApiQueryAria": "Ejecutar solicitud REST de ejemplo para {{table}}",
@@ -106,21 +105,21 @@
       "dqRulesTitle": "Reglas de calidad — {{table}}",
       "dqRulesEmpty": "El contrato no define comprobaciones",
       "relatedTablesEmpty": "Sin tablas relacionadas",
-      "relatedTablesHint": "Alcanzables desde las tablas de este producto mediante una relación aprobada, pero que (todavía) no forman parte de él.",
+      "relatedTablesHint": "Alcanzable desde las tablas de este producto a través de una relación aprobada, pero aún no forma parte de él.",
       "relationshipsEmpty": "Sin relaciones entre las tablas de este producto",
       "lineageEmpty": "Sin linaje",
       "lineageLoading": "Cargando linaje…",
       "lineageTitle": "Linaje de columnas: de dónde viene este producto",
-      "lineageHint": "Cada columna que publica este producto y la columna de entrada de la que procede, con todos los pasos intermedios. Requiere la capacidad view_governance.",
+      "lineageHint": "Cada columna que publica este producto y la columna de entrada de la que procede, con cada paso intermedio. Requiere la capacidad view_governance.",
       "outputPortsHint": "La superficie consultable de este producto: sus tablas miembro y sus comandos. Encontrará consultas de ejemplo para cada una en Patrones de acceso.",
       "customPropertiesEmpty": "Sin propiedades personalizadas",
       "lineageLaneTables": "Tablas de este producto",
       "lineageLaneInputs": "Entradas",
-      "lineageLaneUpstream": "Aguas arriba, salto {{n}} más allá de las entradas",
+      "lineageLaneUpstream": "Upstream, salto {{n}} más allá de las entradas",
       "inputsLineageLink": "Ver linaje de columnas"
     },
     "readOnly": "Solo lectura",
-    "readOnlyHint": "Solo tiene data_product_read: un org_admin puede conceder data_product_rw para editar.",
+    "readOnlyHint": "Solo tiene data_product_read. Un org_admin puede conceder data_product_rw para editar.",
     "relatedTermsConcept": "concepto",
     "status_draft": "Borrador",
     "status_live": "Activo",
@@ -133,15 +132,15 @@
     "successorHint": "Sus tablas, vistas y comandos pasan al sucesor, un producto del mismo dominio.",
     "reasonLabel": "Motivo",
     "publish": "Publicar",
-    "publishHint": "Poner este borrador en activo: se ofrece a los consumidores y a los catálogos.",
+    "publishHint": "Poner en vivo este borrador y ofrecerlo a consumidores y catálogos.",
     "deprecate": "Marcar obsoleto",
-    "deprecateHint": "Marcar este producto activo como en retirada: sigue en servicio, con un motivo y una retirada prevista opcional.",
+    "deprecateHint": "Marcar este producto en vivo como en vías de retirada. Sigue en servicio, con un motivo y una retirada planificada opcional.",
     "deprecateTitle": "Marcar '{{product}}' como obsoleto",
     "retire": "Retirar",
-    "retireHint": "Retirar este producto del servicio: sus tablas, vistas y comandos pasan a un sucesor de su dominio.",
+    "retireHint": "Retirar este producto del servicio. Sus tablas, vistas y comandos pasan a un sucesor en su dominio.",
     "retireTitle": "Retirar '{{product}}'",
     "retireMoves": "Miembros que pasan: {{members}}",
-    "retireNoMembers": "No tiene miembros: el sucesor es opcional.",
+    "retireNoMembers": "No tiene miembros, así que un sucesor es opcional.",
     "restore": "Restaurar",
     "restoreHint": "Deshacer la obsolescencia (vuelve a activo) o la retirada (vuelve a borrador).",
     "toReview": "Por revisar",
@@ -218,7 +217,8 @@
         "data_level_changed": "Nivel de datos cambiado de {{before}} a {{after}}",
         "dq_results_changed": "Resultados de calidad cambiados de {{before}} a {{after}}",
         "profiles_changed": "Perfiles cambiados de {{before}} a {{after}}",
-        "duration_changed": "Duración cambiada de {{before}} a {{after}}"
+        "duration_changed": "Duración cambiada de {{before}} a {{after}}",
+        "terms_of_use_changed": "Condiciones de uso cambiadas: {{subject}}"
       },
       "howToUse": {
         "column": {
@@ -308,6 +308,11 @@
         "history": "Historial de versiones"
       }
     },
-    "detailPanel": "Detalle del producto de datos"
+    "detailPanel": "Detalle del producto de datos",
+    "tagFacetLabel": "Etiquetas",
+    "tagFacetPlaceholder": "Filtrar por etiqueta",
+    "noMatch": "Ningún producto de datos coincide con los filtros",
+    "domainFacetLabel": "Dominios",
+    "domainFacetPlaceholder": "Filtrar por dominio"
   }
 }

@@ -22,14 +22,20 @@ import pytest
 
 from provisa.compiler.compiled_query_cache import CompiledQueryCache
 from provisa.compiler.directives import NO_CACHE_HINT
+from provisa.compiler.stage2 import GovernanceContext
 from provisa.pgwire import _pipeline
 from provisa.pgwire._pipeline import _reject_view_writes
-from provisa.api.role_surface import RoleSurface
+
+
+#: The reader's governance: the names it reads the view's registered table by.
+_GOV = GovernanceContext(table_map={"shelter.daily_totals": 9, "sales.daily_totals": 9})
 
 
 class _State:
     # daily_totals is a view/MV-backed relation; orders is a base table.
-    view_sql_map = {"daily_totals": "SELECT customer_id AS id, count(*) FROM orders GROUP BY 1"}
+    view_sql_map = {
+        "shelter.daily_totals": "SELECT customer_id AS id, count(*) FROM orders GROUP BY 1"
+    }
 
 
 _WRITES_TO_VIEW = [
@@ -38,7 +44,8 @@ _WRITES_TO_VIEW = [
     "INSERT INTO daily_totals VALUES (1, 2) ON CONFLICT (id) DO UPDATE SET n = 3",  # upsert
     "UPDATE daily_totals SET n = 5 WHERE id = 1",
     "DELETE FROM daily_totals WHERE id = 1",
-    'UPDATE "shelter"."daily_totals" SET n = 5',  # schema-qualified target still matched by leaf
+    'UPDATE "shelter"."daily_totals" SET n = 5',  # under the view's own schema
+    "UPDATE sales.daily_totals SET n = 5",  # under its domain, as governance names it
 ]
 
 _ALLOWED = [
@@ -51,18 +58,20 @@ _ALLOWED = [
     # plain reads of the view are fine
     "SELECT * FROM daily_totals",
     "SELECT o.id FROM orders o JOIN daily_totals d ON o.id = d.id",
+    # a table of the name under another schema is that schema's table, not the view
+    'UPDATE "other"."daily_totals" SET n = 5',
 ]
 
 
 @pytest.mark.parametrize("sql", _WRITES_TO_VIEW)
 def test_write_to_view_rejected(sql):
     with pytest.raises(PermissionError, match="query-only"):
-        _reject_view_writes(sqlglot.parse_one(sql, read="postgres"), _State())
+        _reject_view_writes(sqlglot.parse_one(sql, read="postgres"), _State(), _GOV)
 
 
 @pytest.mark.parametrize("sql", _ALLOWED)
 def test_allowed_statements_pass(sql):
-    _reject_view_writes(sqlglot.parse_one(sql, read="postgres"), _State())  # must not raise
+    _reject_view_writes(sqlglot.parse_one(sql, read="postgres"), _State(), _GOV)  # no raise
 
 
 def test_no_view_map_is_noop():
@@ -70,33 +79,63 @@ def test_no_view_map_is_noop():
         view_sql_map = {}
 
     _reject_view_writes(
-        sqlglot.parse_one("INSERT INTO daily_totals VALUES (1)", read="postgres"), _Empty()
+        sqlglot.parse_one("INSERT INTO daily_totals VALUES (1)", read="postgres"), _Empty(), _GOV
     )
 
 
-async def test_compiled_pipeline_entrypoint_rejects_view_write():
+@pytest.mark.parametrize(
+    "sql", ["UPDATE daily_totals SET n = 1", 'UPDATE "sales"."daily_totals" SET n = 1']
+)
+async def test_compiled_pipeline_entrypoint_rejects_view_write(sql):
     """A surface entrypoint (the compiled Bolt/Cypher/GQL path) rejects a view write end-to-end,
-    proving the guard is wired into the pipeline, not just the helper."""
+    proving the guard is wired into the pipeline, not just the helper -- under the name a compiled
+    statement gives the view (its domain's) as well."""
+    from provisa.compiler.rls import RLSContext
+    from provisa.compiler.sql_gen import CompilationContext, TableMeta
+    from tests.role_state import RoleState
 
-    class _FakeState:
-        contexts = {"admin": object()}
-        rls_contexts: dict = {}
-        # The role's surface, which the pipeline takes once (api/role_surface.py).
-        surfaces = {"admin": RoleSurface(context=object())}
-        view_sql_map = {"daily_totals": "SELECT 1"}
-        # What the governed-plan lookup reads before the statement is parsed (REQ-1877).
-        roles = {"admin": {"id": "admin"}}
-        masking_rules: dict = {}
-        tables: list = []
-        schema_boot_id = "test-boot"
-        schema_version = 1
-        compiled_query_cache = CompiledQueryCache()
+    ctx = CompilationContext()
+    ctx.tables = {
+        "daily_totals": TableMeta(
+            table_id=9,
+            field_name="daily_totals",
+            type_name="DailyTotals",
+            source_id="__derived__",
+            catalog_name="__derived__",
+            schema_name="shelter",
+            table_name="daily_totals",
+            domain_id="sales",
+        )
+    }
+    state = RoleState(
+        admin_db=None,
+        contexts={"admin": ctx},
+        rls_contexts={"admin": RLSContext.empty()},
+        roles={"admin": {"id": "admin", "capabilities": [], "domain_access": ["*"]}},
+        masking_rules={},
+        tables=[
+            {
+                "id": 9,
+                "source_id": "__derived__",
+                "schema_name": "shelter",
+                "table_name": "daily_totals",
+                "domain_id": "sales",
+                "columns": [{"column_name": "n", "data_type": "integer", "visible_to": ["admin"]}],
+            }
+        ],
+        view_sql_map={"shelter.daily_totals": "SELECT 1"},
+        source_types={},
+        relationships=[],
+        schema_boot_id="test-boot",
+        schema_version=1,
+        compiled_query_cache=CompiledQueryCache(),
+    )
 
     with pytest.raises(PermissionError, match="query-only"):
         await _pipeline._govern_and_route_compiled(
-            "UPDATE daily_totals SET n = 1",
+            sql,
             "admin",
-            state=_FakeState(),
+            state=state,
             cache_hint=NO_CACHE_HINT,
             sdl_joins=True,
         )

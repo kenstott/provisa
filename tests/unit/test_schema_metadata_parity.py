@@ -47,6 +47,8 @@ SCHEMA_SQL = Path(__file__).parents[2] / "provisa" / "core" / "schema.sql"
 REGISTRY_ONLY_TABLES = {
     # REQ-1916: the platform state store's cluster node list. Portable metadata only.
     "cluster_nodes",
+    # REQ-812: the platform state store's running client-started Kafka sinks. Portable metadata only.
+    "running_sinks",
     # REQ-1429: the platform state store's record of each coordinator's system catalogs.
     "engine_system_catalogs",
     "orgs",
@@ -56,6 +58,8 @@ REGISTRY_ONLY_TABLES = {
     # The simple provider's stored user ids (a GUID per configured username). Portable metadata only.
     "simple_user_ids",
     "org_invites",
+    # REQ-1250: requests to join an org, the inverse of org_invites. Portable metadata only.
+    "org_join_requests",
     # REQ-1306: the auto-join opt-out written when a user deliberately leaves an org.
     "org_auto_join_optouts",
     # Billing tables are now portable metadata too (schema_admin), created via

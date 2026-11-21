@@ -20,12 +20,12 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 let currentUser: { getIdToken: () => Promise<string> } | null = null;
 
-vi.mock("firebase/app", () => ({
+vi.mock("@firebase/app", () => ({
   initializeApp: vi.fn(() => ({})),
   getApps: vi.fn(() => []),
 }));
 
-vi.mock("firebase/auth", () => ({
+vi.mock("@firebase/auth", () => ({
   getAuth: vi.fn(() => ({
     get currentUser() {
       return currentUser;

@@ -45,6 +45,7 @@ from provisa.api.admin._table_ops import (
     _build_column_models,
     _ensure_view_column_types,
 )
+from provisa.api.engine_error_names import client_text, client_value
 
 # Public re-export surface: these underscore-prefixed helpers were relocated here in the
 # god-file split and are imported by other modules/tests from schema_common. Listing them in
@@ -187,7 +188,7 @@ async def _another_govdata_source(pool, input: SourceInput) -> Optional[Mutation
 
     REQ-540: an AskAmerica subscription reaches every table, and its server is the one
     installed bundle, so one such source is served; a second is refused at save naming the one
-    that exists, not started beside it."""
+    that exists, not started beside it. A retired one is not counted (REQ-2248)."""
     from sqlalchemy import select
 
     from provisa.core.schema_org import sources
@@ -196,7 +197,9 @@ async def _another_govdata_source(pool, input: SourceInput) -> Optional[Mutation
         held = (
             await conn.execute_core(
                 select(sources.c.id).where(
-                    (sources.c.type == "govdata") & (sources.c.id != input.id)
+                    (sources.c.type == "govdata")
+                    & (sources.c.id != input.id)
+                    & sources.c.retired.is_(False)
                 )
             )
         ).fetchone()
@@ -244,7 +247,7 @@ async def _validate_govdata_api_key(input: SourceInput) -> Optional[MutationResu
             success=False,
             message=f"Invalid AskAmerica API Key: {refused.detail}",
             code="schema.invalid_askamerica_key",
-            params={"error": refused.detail},
+            params={"error": client_value(refused.detail)},
         )
     return None
 
@@ -288,7 +291,7 @@ async def _stage_kaggle_if_needed(input: SourceInput) -> Optional[MutationResult
             code="schema.kaggle_token_missing",
             params={"owner": owner, "ref": ref},
         )
-    token = resolve_secrets(input.password)
+    token = resolve_secrets(input.password, credential=True)
     try:
         staged_root = await stage_dataset(token, owner, ref)
     except UnsupportedKaggleDataset as exc:
@@ -306,7 +309,7 @@ async def _stage_kaggle_if_needed(input: SourceInput) -> Optional[MutationResult
             success=False,
             message=f"Kaggle dataset {owner}/{ref} could not be staged: {exc}",
             code="schema.kaggle_stage_failed",
-            params={"owner": owner, "ref": ref, "error": str(exc)},
+            params={"owner": owner, "ref": ref, "error": client_text(str(exc))},
         )
     input.path = str(staged_root)
     return None
@@ -330,7 +333,7 @@ def google_workspace_refusal(input: SourceInput) -> Optional[MutationResult]:  #
             success=False,
             message=f"Google Workspace source {input.id!r}: {exc}",
             code="schema.google_workspace_invalid",
-            params={"source": input.id, "error": str(exc)},
+            params={"source": input.id, "error": client_text(str(exc))},
         )
     return None
 
@@ -357,7 +360,7 @@ def jdbc_source_refusal(input: SourceInput) -> Optional[MutationResult]:  # REQ-
             success=False,
             message=f"Source {input.id!r}: {exc}",
             code="schema.jdbc_file_refused",
-            params={"source": input.id, "path": exc.path, "error": str(exc)},
+            params={"source": input.id, "path": exc.path, "error": client_text(str(exc))},
         )
     except JdbcRefused as exc:
         return MutationResult(
@@ -378,7 +381,7 @@ def jdbc_source_refusal(input: SourceInput) -> Optional[MutationResult]:  # REQ-
             success=False,
             message=f"Source {input.id!r}: {exc}",
             code="schema.jdbc_invalid",
-            params={"source": input.id, "error": str(exc)},
+            params={"source": input.id, "error": client_text(str(exc))},
         )
     # Attach turned on is kept: the source attaches as the built-in type its URL names where the
     # engine has that type's attach, and lands where it has not (provisa.jdbc_source.attach).
@@ -391,13 +394,46 @@ def file_source_path(input: SourceInput) -> Optional[MutationResult]:  # REQ-199
     want to reveal the physical location of the file)". So a path inside the organization's
     folder is kept written with its token ({files}/... or {org}/...) -- an absolute one, such as
     an upload saved before, is rewritten so -- and a token path that leaves the folder is
-    refused by name; on a server of many organizations a path on the server's own disk is
-    refused unless it is written with a token. A remote location (https, s3, gs, az) stands."""
+    refused by name. A remote location (https, s3, gs, az) stands.
+
+    In a held organization (a sandbox org; any org but the deployment's own on a server of many
+    organizations) every place on the server's own disk a source of any type names -- its path,
+    an OpenAPI specification, a proto file, a credentials or certificate file, a sentinel marker
+    -- is refused by name unless it is inside the organization's folder or is its demo's own
+    (source_uploads.require_own_disk)."""
+    import json as _json
+
     from provisa.core import org_files
-    from provisa.core.secrets_providers import many_organisations
-    from provisa.core.source_uploads import UPLOAD_TYPES
+    from provisa.core.source_uploads import (
+        UPLOAD_TYPES,
+        LocalPathRefused,
+        require_source_own_disk,
+    )
     from provisa.federation.connector_duckdb import location_kind
 
+    def _held_refusal() -> Optional[MutationResult]:
+        fields = {
+            "path": input.path,
+            "sentinel_path": input.sentinel_path,
+            "mapping": _json.loads(input.mapping_json) if input.mapping_json else None,
+            "federation_hints": (
+                _json.loads(input.federation_hints_json) if input.federation_hints_json else None
+            ),
+        }
+        try:
+            require_source_own_disk(input.type, fields)
+        except LocalPathRefused as refused:
+            return MutationResult(
+                success=False,
+                message=f"Source {input.id!r}: {refused}",
+                code=refused.code,
+                params={"source": input.id, **refused.params},
+            )
+        return None
+
+    refusal = _held_refusal()
+    if refusal is not None:
+        return refusal
     if input.type not in UPLOAD_TYPES or not input.path or location_kind(input.path) is not None:
         return None
     try:
@@ -414,17 +450,6 @@ def file_source_path(input: SourceInput) -> Optional[MutationResult]:  # REQ-199
         )
     if org_files.is_org_path(rewritten):
         input.path = rewritten
-        return None
-    if many_organisations():
-        return MutationResult(
-            success=False,
-            message=(
-                f"Source {input.id!r}: a server of many organizations reads no file on its own "
-                f"disk; upload the file, or name it as {{files}}/... or by a remote address"
-            ),
-            code="schema.file_path_local_refused",
-            params={"source": input.id},
-        )
     return None
 
 
@@ -485,7 +510,7 @@ def logs_refusal(input: SourceInput) -> Optional[MutationResult]:  # REQ-1996
             success=False,
             message=f"Logs source {input.id!r}: {exc}",
             code="schema.logs_invalid",
-            params={"source": input.id, "error": str(exc)},
+            params={"source": input.id, "error": client_text(str(exc))},
         )
     except LogPathRefused as exc:
         return MutationResult(
@@ -513,7 +538,7 @@ def excel_hints_refusal(input: SourceInput) -> Optional[MutationResult]:
             success=False,
             message=str(exc),
             code="schema.excel_hints_invalid",
-            params={"source": input.id, "error": str(exc)},
+            params={"source": input.id, "error": client_text(str(exc))},
         )
     return None
 
@@ -563,7 +588,7 @@ def microsoft_365_refusal(input: SourceInput) -> Optional[MutationResult]:  # RE
             success=False,
             message=f"Microsoft 365 source {input.id!r}: {exc}",
             code="schema.microsoft_365_invalid",
-            params={"source": input.id, "error": str(exc)},
+            params={"source": input.id, "error": client_text(str(exc))},
         )
     return None
 
@@ -661,6 +686,24 @@ def _expand_wikipedia_if_needed(input: SourceInput) -> Optional[MutationResult]:
     return None
 
 
+def _preset_wikidata_if_needed(input: SourceInput) -> Optional[MutationResult]:  # REQ-1923
+    """The ONE place a Wikidata source takes its preset -- the query service endpoint, no
+    credential, scheduled replication unless chosen otherwise (provisa.sparql.wikidata) --
+    called from inside create_source and update_source, as the Wikipedia crawl is."""
+    from provisa.sparql import wikidata
+
+    try:
+        wikidata.apply_preset(input)
+    except wikidata.InvalidWikidataSource as exc:
+        return MutationResult(
+            success=False,
+            message=f"Wikidata source {input.id!r}: {exc}",
+            code=exc.code,
+            params=exc.params,
+        )
+    return None
+
+
 async def _upsert_source_with_domains(
     pool, model, input: SourceInput, *, create: bool = False
 ) -> None:
@@ -690,11 +733,13 @@ def sandbox_destination_refusal(input: SourceInput) -> "MutationResult | None":
         UnpinnableDestinationRefused,
         require_connectable,
     )
+    from provisa.core.source_uploads import LocalPathRefused
 
     fields = {
         "host": input.host,
         "port": input.port,
         "path": input.path,
+        "sentinel_path": input.sentinel_path,
         "mapping": json.loads(input.mapping_json) if input.mapping_json else None,
         "federation_hints": (
             json.loads(input.federation_hints_json) if input.federation_hints_json else None
@@ -702,7 +747,7 @@ def sandbox_destination_refusal(input: SourceInput) -> "MutationResult | None":
     }
     try:
         require_connectable(fields, input.type, source_id=input.id)
-    except (PrivateDestinationRefused, UnpinnableDestinationRefused) as refused:
+    except (PrivateDestinationRefused, UnpinnableDestinationRefused, LocalPathRefused) as refused:
         return MutationResult(
             success=False,
             message=f"Source {input.id!r}: {refused}",
@@ -743,7 +788,7 @@ async def _add_source_pool(state, input: SourceInput) -> None:
         port=input.port,
         database=file_path or input.database,
         user=input.username,
-        password=resolve_secrets(input.password),
+        password=resolve_secrets(input.password, credential=True),
         extra={k: resolve_secrets(v) for k, v in hints.items()},
     )
 
@@ -875,7 +920,7 @@ def _register_source_on_engine(state, model, input: SourceInput) -> None:
             # the same credential every later reader of this source resolves. Reading it off the
             # raw form input instead would register the literal the operator typed and leave the
             # engine holding a value the control-plane row does not name.
-            resolve_secrets(model.password) if model.password else "",
+            resolve_secrets(model.password, credential=True) if model.password else "",
             # REQ-1266: the physical catalog the caller just published for this source. Registering
             # under the bare name put a non-default org's source at a catalog its own queries — which
             # address the org-prefixed name — could not find.
@@ -1035,17 +1080,18 @@ async def _sync_view_mv(
     persist: str = "replace",  # REQ-965: replace | append | upsert
     primary_key: list[str] | None = None,  # REQ-970: row identity
     incremental: bool = False,  # REQ-969: incremental maintenance
+    rebuild_every: int | None = None,  # REQ-2249: whole rebuild interval of a view kept by @change
     calendar: str | None = None,  # REQ-962: periodic-snapshot calendar (None = not periodic)
     grain: str | None = None,  # REQ-962/1168: nesting grain or nth-weekday spec
     allowed_lateness: float = 0.0,  # REQ-961: seal-deadline slack (s)
     expected_events: list[str] | None = None,  # REQ-961: preflight freshness contract
     business_day_grain: bool = False,  # REQ-962: gate windows to business days
-    draft: bool,  # REQ-1921: checked as saved, registered for building only once released
+    withdrawn: bool,  # REQ-1921: checked as saved, registered for building only once put back
     region: str | None,  # REQ-1921: the region the view names (None: none), where it is built
     bitemporal_columns: list[str],  # the view's declared columns: a snapshot view's read compares
 ) -> None:
-    """Register or update an MVDefinition for a materialized user-defined view. A draft view is
-    held to every rule a saved view is, and is not registered: nothing builds it."""
+    """Register or update an MVDefinition for a materialized user-defined view. A withdrawn view
+    is held to every rule a saved view is, and is not registered: nothing builds it."""
     check_view_mv(
         table_name,
         view_sql,
@@ -1096,7 +1142,7 @@ async def _sync_view_mv(
         sql=view_sql,
         semantic_sql=view_sql,  # REQ-1921/1922
         region=region,  # REQ-1921
-        read_tables=read_table_names(view_sql),
+        read_tables=read_table_names(view_sql, state.tracked_functions),
         expose_in_sdl=False,
         status=existing.status if existing is not None else MVStatus.STALE,
         freshness_mode=freshness,
@@ -1111,6 +1157,7 @@ async def _sync_view_mv(
         persist=persist,  # REQ-965
         primary_key=list(primary_key or []),  # REQ-970
         incremental=incremental,  # REQ-969
+        rebuild_every=rebuild_every,  # REQ-2249
         calendar=calendar,  # REQ-962
         grain=grain,  # REQ-962/1168
         allowed_lateness=allowed_lateness,  # REQ-961
@@ -1120,7 +1167,7 @@ async def _sync_view_mv(
     # Refused, and nothing registered, when the view reads an input the engine cannot read whole.
     from provisa.mv.readable_inputs import register_view, require_readable_inputs
 
-    if draft:
+    if withdrawn:
         await require_readable_inputs(mv, state)
         return
     await register_view(state, mv)

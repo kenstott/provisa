@@ -10,8 +10,7 @@
 
 // What global-setup.ts actually needs to start for THIS invocation: the shared demo-source-
 // containers.ts stack is 9 containers (~5-6GB: Splunk ~1.6GB, Cassandra ~1.4GB, Elasticsearch
-// ~1GB, two Neo4j instances between the export target and the demo one), and the separate neo4j
-// export container is its own ~380MB on top. A run scoped to one file, or one -g pattern within
+// ~1GB, Neo4j). A run scoped to one file, or one -g pattern within
 // source-to-query.spec.ts, needs at most a handful of these — starting the rest was pure waste.
 //
 // This derives the exact subset from the Playwright invocation's own positional spec-file
@@ -46,14 +45,10 @@ const TITLE_SCOPED_FILES = [SOURCE_TO_QUERY_FILE];
 // resources it needs and tears them down, never depends on what global-setup/another test left
 // running.
 
-// The neo4j EXPORT container (a separate fixture from the "neo4j" demo source above) is used by
-// exactly this one file — see neo4j-container.ts's own module comment.
-const NEO4J_EXPORT_FILE = "neo4j-docker-export.spec.ts";
-
 // A spec argument may carry a line (and column) filter -- `e2e/x.spec.ts:144` -- which the CI's
 // targeted reruns always pass. Matching only a bare `.spec.ts` suffix dropped those arguments, so a
-// targeted run of neo4j-docker-export.spec.ts:144 never started the export container (run
-// 40693926851: "No such container").
+// targeted run of one test never started the container its file reads (run 40693926851: "No such
+// container").
 const SPEC_ARG = /^(.+\.spec\.ts)(?::\d+){0,2}$/;
 
 function argSpecFiles(): string[] {
@@ -88,8 +83,6 @@ export function sourceToQueryNeeds(): DemoSource[] {
 export interface NeededSources {
   /** The exact demo-source-containers.ts subset this invocation needs. */
   sources: DemoSource[];
-  /** Whether the separate neo4j export container is needed. */
-  neo4jExport: boolean;
 }
 
 /** The projects named on the command line (`--project core`, `--project=core`). */
@@ -107,8 +100,8 @@ function argProjects(): string[] {
  * What a run of ONE core-lane project needs, or undefined when the projects named are not
  * exactly one of the two. The core lane is two projects on two runners (playwright.config.ts):
  * "core-provisioning" holds source-to-query.spec.ts, the one file that reads the big demo
- * sources; "core" holds everything else, of which only the Hasura import (chinook) and the
- * Neo4j export read a container. Starting all nine for "core" kept Elasticsearch, Cassandra,
+ * sources; "core" holds everything else, of which only the Hasura import (chinook) reads a
+ * container. Starting all nine for "core" kept Elasticsearch, Cassandra,
  * Splunk, Fuseki and Mongo up for its whole run with no spec in it reading them (run
  * 38050265191: about 5 GB and a share of four cores on a runner at load 15-20).
  */
@@ -116,14 +109,14 @@ function projectNeeds(projects: string[]): NeededSources | undefined {
   if (projects.length !== 1) return undefined;
   if (projects[0] === "core") {
     const fixed = new Set<DemoSource>(Object.values(FIXED_FILE_NEEDS).flat());
-    return { sources: DEMO_SOURCES.filter((s) => fixed.has(s)), neo4jExport: true };
+    return { sources: DEMO_SOURCES.filter((s) => fixed.has(s)) };
   }
   if (projects[0] === "core-provisioning") {
     // None: source-to-query.spec.ts starts its demo sources itself and removes them when it ends
     // (sourceToQueryNeeds), so the project's other specs -- each starting a source of its own --
     // never run beside the whole set (run 40120866556: Exasol beside Elasticsearch, Cassandra and
     // Splunk ran the 16 GB runner out of memory).
-    return { sources: [], neo4jExport: false };
+    return { sources: [] };
   }
   return undefined;
 }
@@ -135,18 +128,16 @@ export function resolveNeededSources(): NeededSources {
     if (byProject) return byProject;
     // No positional spec-file filter — a whole-suite run. Every prior behavior is preserved:
     // start everything, since some file in the run needs each of them.
-    return { sources: [...DEMO_SOURCES], neo4jExport: true };
+    return { sources: [...DEMO_SOURCES] };
   }
   const grep = grepPattern();
   const sourceSet = new Set<DemoSource>();
-  let neo4jExport = false;
   for (const f of files) {
     if (TITLE_SCOPED_FILES.includes(f)) {
       for (const s of titleScopedNeeds(f, grep)) sourceSet.add(s);
     } else if (FIXED_FILE_NEEDS[f]) {
       for (const s of FIXED_FILE_NEEDS[f]) sourceSet.add(s);
     }
-    if (f === NEO4J_EXPORT_FILE) neo4jExport = true;
   }
-  return { sources: [...sourceSet], neo4jExport };
+  return { sources: [...sourceSet] };
 }

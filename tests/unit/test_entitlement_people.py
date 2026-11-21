@@ -58,11 +58,13 @@ async def _seed(platform, model_db) -> None:
                 {
                     "user_id": "u-alice",
                     "email": "Alice.Smith@acme.test",
+                    "email_verified": True,
                     "display_name": "Alice Smith",
                 },
                 {
                     "user_id": "u-mallory",
                     "email": "mallory@rival.test",
+                    "email_verified": True,
                     "display_name": "Alice Rival",
                 },
             ],
@@ -102,7 +104,10 @@ async def _seed(platform, model_db) -> None:
     async with model_db.acquire() as conn:
         await conn.execute_core(
             user_directory.insert().values(
-                user_id="kc-carol", email="carol@acme.test", display_name="Carol Signed-In"
+                user_id="kc-carol",
+                email="carol@acme.test",
+                email_verified=True,
+                display_name="Carol Signed-In",
             )
         )
 
@@ -155,10 +160,18 @@ async def _people(api_, q: str) -> list[dict]:
     return response.json()
 
 
-async def _sign_in(api_, user: str, email: str, claims: dict | None = None) -> None:
-    """The sign-in hook, as the auth middleware runs it for a token carrying ``email``."""
+async def _sign_in(
+    api_, user: str, email: str, claims: dict | None = None, *, email_verified: bool = True
+) -> None:
+    """The sign-in hook, as the auth middleware runs it for a token carrying ``email``, which
+    the token's issuer verified unless the test says not (REQ-1261)."""
     identity = AuthIdentity(
-        user_id=user, email=email, display_name=None, roles=["viewer"], raw_claims=claims or {}
+        user_id=user,
+        email=email,
+        email_verified=email_verified,
+        display_name=None,
+        roles=["viewer"],
+        raw_claims=claims or {},
     )
     await middleware._record_idp_entitlements(api_.db, identity)  # pyright: ignore[reportPrivateUsage]
 
@@ -224,6 +237,70 @@ async def test_an_email_of_a_known_person_is_that_persons_write(api):
     assert await _rows(api, entitlement_pending) == []
 
 
+async def test_a_local_accounts_typed_address_names_no_one(api):
+    """REQ-1261 (as SEC-H3 holds at sign-in): a local account's address is whatever was typed
+    when it was made, so nothing proves it is that person's. A write naming that address grants
+    no one now: it waits, as a pending grant, for a sign-in that verifies the address."""
+    response = await api.client.put("/admin/entitlements/lists", json=_by_email("BOB@acme.test"))
+    assert response.status_code == 200, response.text
+    assert response.json()["pending"] is True
+    assert _as(api, "l-bob") is None
+    assert await _rows(api, entitlements) == []
+    listed = (await api.client.get("/admin/entitlements/pending")).json()
+    assert [g["email"] for g in listed] == ["bob@acme.test"]
+
+
+async def _signed_in(api_, user: str, email: str, *, email_verified: bool) -> None:
+    """The auth middleware's own sign-in write (profile, directory, then the entitlement hooks)
+    for a token carrying ``email``, verified by its issuer or not, of a member of the org."""
+    signed_in = middleware.AuthMiddleware(
+        None,
+        provider=SimpleNamespace(provider_name="oidc"),  # pyright: ignore[reportArgumentType]
+        db_pool=api_.db,
+        admin_pool=api_.state.admin_db,
+        assignments_source="table",
+    )
+    async with api_.state.admin_db.acquire() as conn:
+        member = user_org_memberships.c
+        known = await conn.execute_core(
+            select(member.user_id).where(member.user_id == user, member.org_id == ORG)
+        )
+        if known.fetchone() is None:
+            await conn.execute_core(user_org_memberships.insert().values(user_id=user, org_id=ORG))
+    identity = AuthIdentity(
+        user_id=user,
+        email=email,
+        email_verified=email_verified,
+        display_name=None,
+        roles=["viewer"],
+    )
+    await signed_in._upsert_profile(identity)  # pyright: ignore[reportPrivateUsage]
+
+
+async def test_an_address_verified_at_sign_in_names_that_person(api):
+    await _signed_in(api, "kc-frank", "frank@new.test", email_verified=True)
+    response = await api.client.put("/admin/entitlements/lists", json=_by_email("FRANK@new.test"))
+    assert response.status_code == 200, response.text
+    assert response.json().get("pending") is not True
+    assert _as(api, "kc-frank") is not None
+    assert await _rows(api, entitlement_pending) == []
+
+
+async def test_an_address_never_verified_waits_and_attaches_at_a_verified_sign_in(api):
+    """The same person signed in once with the address unverified: it names no one, so the write
+    waits; their sign-in that verifies it then receives the grant."""
+    await _signed_in(api, "kc-gina", "gina@new.test", email_verified=False)
+    response = await api.client.put("/admin/entitlements/lists", json=_by_email("gina@new.test"))
+    assert response.status_code == 200, response.text
+    assert response.json()["pending"] is True
+    assert _as(api, "kc-gina") is None
+    assert await _rows(api, entitlements) == []
+
+    await _signed_in(api, "kc-gina", "gina@new.test", email_verified=True)
+    assert _as(api, "kc-gina") is not None
+    assert (await api.client.get("/admin/entitlements/pending")).json() == []
+
+
 async def test_an_email_matching_no_one_is_stored_as_a_pending_grant(api):
     response = await api.client.put("/admin/entitlements/lists", json=_by_email(" Dave@New.test "))
     assert response.status_code == 200, response.text
@@ -280,6 +357,24 @@ async def test_ending_a_pending_grant_leaves_nothing_to_attach(api):
 
 
 # -- attach on sign-in -----------------------------------------------------------------------
+
+
+async def test_a_pending_grant_waits_for_a_sign_in_that_verifies_the_address(api):
+    """REQ-1261: a grant made to an address goes to whoever proves it is theirs. A sign-in whose
+    address is unverified (typed by its holder, or not yet verified by the IdP) takes nothing and
+    leaves the grant waiting; the verified sign-in then receives it."""
+    await api.client.put("/admin/entitlements/lists", json=_by_email("dave@new.test"))
+    await _sign_in(api, "typed-it", "dave@new.test", email_verified=False)
+    assert _as(api, "typed-it") is None
+    assert "typed-it" not in api.state.held_entitlements
+    assert [g["email"] for g in (await api.client.get("/admin/entitlements/pending")).json()] == [
+        "dave@new.test"
+    ]
+    assert await _rows(api, admin_audit_log, action="entitlements.pending_attached") == []
+
+    await _sign_in(api, "kc-dave", "dave@new.test")
+    assert _as(api, "kc-dave") is not None
+    assert (await api.client.get("/admin/entitlements/pending")).json() == []
 
 
 async def test_a_pending_grant_attaches_on_that_emails_first_sign_in(api):

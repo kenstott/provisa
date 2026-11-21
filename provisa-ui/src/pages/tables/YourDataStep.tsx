@@ -62,9 +62,11 @@ function TableData({ table, role }: { table: ListedTable; role: string | null })
       )}
       {access && (
         <Stack gap="sm">
-          <Text size="sm" fw={600}>
-            {t("yourData.otherWays")}
-          </Text>
+          <Group gap="xs">
+            <Text size="sm" fw={600}>
+              {t("yourData.otherWays")}
+            </Text>
+          </Group>
           <AccessMethod
             label={t("yourData.graphql")}
             text={access.graphql}

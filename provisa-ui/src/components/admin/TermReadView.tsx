@@ -35,6 +35,7 @@ import { TermGroundingChip, TermRoleBadge, TermStatusBadge } from "./TermRoleBad
 import { RetiredTermRecord } from "./RetiredTermRecord";
 import { OntologySnippet } from "../graph3d/OntologyGraph";
 import { termPreset } from "../graph3d/ontologyPresets";
+import { type TermOption } from "./termLabel";
 
 type Option = { value: string; label: string };
 
@@ -91,7 +92,7 @@ export function TermReadView({
 }: {
   term: GlossaryTermDetail;
   relTypeOptions: Option[];
-  otherTermOptions: Option[];
+  otherTermOptions: TermOption[];
   relLabel: (options: Option[], relType: string) => string;
   navigateToTerm: (termId: number) => void;
   /** The reader curates the glossary: the term's tags are changed here, with the chip. */
@@ -174,19 +175,21 @@ export function TermReadView({
             />
           }
         />
-        {/* A draft says which of the two admission tests it still fails. */}
+        {/* A draft's tip says which of the two admission tests it still fails. */}
         <ReadRow
           label={t("glossaryTab.statusLabel")}
           size="medium"
-          value={<TermStatusBadge status={term.status} testId="glossary-detail-status" />}
-          hint={
-            term.status === "draft"
-              ? (term.definition ?? "").trim()
-                ? t("glossaryTab.draftDefined")
-                : t("glossaryTab.draftUndefined")
-              : undefined
+          value={
+            <TermStatusBadge
+              status={term.status}
+              testId="glossary-detail-status"
+              draftHelp={
+                (term.definition ?? "").trim()
+                  ? t("glossaryTab.draftDefined")
+                  : t("glossaryTab.draftUndefined")
+              }
+            />
           }
-          hintTestId="glossary-draft"
         />
         {/* REQ-1387: computed, beside the status a person set and never with it; what keeps it
             from reaching data, or from reaching it cleanly. */}

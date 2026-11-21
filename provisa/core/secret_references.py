@@ -38,7 +38,7 @@ import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import JSON, LargeBinary, String, Text, cast, select
+from sqlalchemy import JSON, LargeBinary, String, Text, cast, select, union_all
 from sqlalchemy import Table as SATable
 
 from provisa.core import schema_admin, schema_org
@@ -144,6 +144,23 @@ def _model_tables() -> list[SATable]:
     from provisa.core.store_sides import RECORD, STATE
 
     return [t for t in schema_org.metadata.sorted_tables if t.name not in STATE | RECORD]
+
+
+def _platform_tables() -> list[SATable]:
+    """The platform tables the search reads: the registry's, through ``admin_db`` (REQ-1922).
+
+    The registry handle refuses the deployment's operating state (``platform_state_db``:
+    cluster nodes, coordinator catalogs, running sinks). That holds what the deployment is doing,
+    not a stored value resolved as a secret reference, so no reference can take effect there. The
+    vault itself holds the secrets, not references to them.
+    """
+    from provisa.core.platform_state import TABLES as PLATFORM_STATE
+
+    return [
+        t
+        for t in schema_admin.metadata.sorted_tables
+        if t.name not in _VAULT_TABLES and t.name not in PLATFORM_STATE
+    ]
 
 
 def reference_text(name: str) -> str:
@@ -268,9 +285,7 @@ async def references(
     finally:
         reset_current_org(token)
     async with admin_db.acquire() as conn:
-        for table in schema_admin.metadata.sorted_tables:
-            if table.name in _VAULT_TABLES:
-                continue
+        for table in _platform_tables():
             if table.name == "orgs":
                 scope = table.c.id == org_id
             elif "org_id" in table.c:
@@ -285,15 +300,32 @@ async def references(
 _SECRET_REFERENCE = re.compile(r"\$\{secret:([^}#]+)(?:#[^}]*)?\}")
 
 
-async def _names_in_table(conn: "Connection", table: SATable, *, where: Any = None) -> set[str]:
-    """Every org secret a stored value of ``table`` names, encrypted columns included."""
+async def _names_in_tables(conn: "Connection", scoped: "list[tuple[SATable, Any]]") -> set[str]:
+    """Every org secret a stored value of each ``(table, where)`` names, encrypted columns
+    included. Every text and JSON column of them is read in ONE statement (REQ-2006): one per
+    column was hundreds of round trips, and an org's first use (a demo sandbox's open) waited on
+    them. A JSON value is searched as its text, where a secret's name (an identifier,
+    secrets_store.NAME) reads as it does in the value."""
     names: set[str] = set()
-    for column in searched_columns(table):
-        statement = select(column).where(cast(column, Text).contains("${secret:", autoescape=True))
-        if where is not None:
-            statement = statement.where(where)
-        for (value,) in (await conn.execute_core(statement)).fetchall():
-            names.update(_SECRET_REFERENCE.findall(str(value)))
+    searches = []
+    for table, where in scoped:
+        for column in searched_columns(table):
+            text = cast(column, Text)
+            statement = select(text.label("value")).where(
+                text.contains("${secret:", autoescape=True)
+            )
+            searches.append(statement if where is None else statement.where(where))
+    if searches:
+        for (value,) in (await conn.execute_core(union_all(*searches))).fetchall():
+            names.update(_SECRET_REFERENCE.findall(value))
+    for table, where in scoped:
+        names |= await _decrypted_names(conn, table, where)
+    return names
+
+
+async def _decrypted_names(conn: "Connection", table: SATable, where: Any) -> set[str]:
+    """Every org secret an encrypted column of ``table`` names, each opened in memory."""
+    names: set[str] = set()
     for column in decrypted_columns(table):
         statement = select(column).where(column.is_not(None))
         if where is not None:
@@ -328,19 +360,15 @@ async def referenced_names(
     try:
         for environment in sorted(environments):
             async with environments[environment].acquire() as conn:
-                for table in _model_tables():
-                    found |= await _names_in_table(conn, table)
+                found |= await _names_in_tables(conn, [(t, None) for t in _model_tables()])
     finally:
         reset_current_org(token)
+    scoped: list[tuple[SATable, Any]] = []
+    for table in _platform_tables():
+        if table.name == "orgs":
+            scoped.append((table, table.c.id == org_id))
+        elif "org_id" in table.c:
+            scoped.append((table, table.c.org_id == org_id))
     async with admin_db.acquire() as conn:
-        for table in schema_admin.metadata.sorted_tables:
-            if table.name in _VAULT_TABLES:
-                continue
-            if table.name == "orgs":
-                scope = table.c.id == org_id
-            elif "org_id" in table.c:
-                scope = table.c.org_id == org_id
-            else:
-                continue
-            found |= await _names_in_table(conn, table, where=scope)
+        found |= await _names_in_tables(conn, scoped)
     return found

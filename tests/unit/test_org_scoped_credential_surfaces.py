@@ -60,6 +60,8 @@ class _State:
     multitenancy = True
     org_id = "root"
     admin_db = _AdminDb()
+    # The cross-org right is judged from what the principal holds (REQ-802): here, its claims.
+    auth_config: dict = {"default_role": "analyst", "assignments_source": "claims"}
     roles: dict = {}
     platform_roles: dict = {}
 
@@ -141,6 +143,8 @@ class TestBolt:
         session.org_id = None
         session.user_id = "u1"
         session.roles = []
+        # A signed-in session holds the identity its credential resolved to.
+        session._identity = _identity()
         session._credential_org = "acme"
         monkeypatch.setattr(session, "_requested_org", lambda: requested)
         return session
@@ -233,6 +237,7 @@ class TestAnUnnamedOrgIsRefused:
         session.org_id = None
         session.user_id = "u1"
         session.roles = []
+        session._identity = _person()
         session._credential_org = None
         monkeypatch.setattr(session, "_requested_org", lambda: None)
         with pytest.raises(OrgResolutionError, match="org's own hostname"):
@@ -290,6 +295,7 @@ class TestSingleTenantNeverReferencesAnOrg:
         session.org_id = None
         session.user_id = "u1"
         session.roles = []
+        session._identity = _person()
         session._credential_org = None
         monkeypatch.setattr(session, "_requested_org", lambda: None)
         await session._ensure_org()

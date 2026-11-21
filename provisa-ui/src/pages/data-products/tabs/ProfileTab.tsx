@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-2180, A PROFILE SHOWN IS SANITIZED: a data product's Profile tab -- each dataset's latest
+// REQ-2180, A PROFILE SHOWN IS SANITIZED: a data product's Profile section -- each dataset's latest
 // profile as the server has sanitized it for the viewer's role, drawn by the tables page's profile
 // panel (REQ-2239): in full for the product's owner, read-only for anyone else.
 
@@ -23,11 +23,14 @@ export function ProfileTab({
   productId,
   owner,
   role,
+  onLoaded,
 }: {
   productId: string;
   owner: boolean;
   /** The role the profile is shown as; none acting, nothing is read. */
   role: string | null;
+  /** Its profiles once read: the section's summary is computed from them. */
+  onLoaded?: (profiles: ProductProfile[]) => void;
 }) {
   const { t } = useTranslation();
   const [read, setRead] = useState<{ profiles: ProductProfile[] | null; error: string | null }>({
@@ -38,13 +41,18 @@ export function ProfileTab({
     if (!role) return;
     let live = true;
     fetchProductProfiles(productId, role).then(
-      (profiles) => live && setRead({ profiles, error: null }),
+      (profiles) => {
+        if (!live) return;
+        setRead({ profiles, error: null });
+        onLoaded?.(profiles);
+      },
       (e: unknown) =>
         live && setRead({ profiles: null, error: e instanceof Error ? e.message : String(e) }),
     );
     return () => {
       live = false;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- read again on these, not on a new callback.
   }, [productId, role]);
 
   if (read.error) {

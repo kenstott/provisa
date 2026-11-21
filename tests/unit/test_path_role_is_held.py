@@ -371,6 +371,7 @@ def test_a_remote_mcp_caller_may_name_only_a_role_it_holds():
             user_id="u1", roles=[A, "role_c"], acting_roles=[A, "role_c"], raw_claims={}
         )
     )
+    r3 = server._request_may_name.set([A, "role_c"])  # what the principal holds, as read
     try:
         assert server.named_role(A, _MCP_STATE) == A
         assert (
@@ -381,6 +382,7 @@ def test_a_remote_mcp_caller_may_name_only_a_role_it_holds():
     finally:
         server._request_role.reset(r1)
         server._request_identity.reset(r2)
+        server._request_may_name.reset(r3)
 
 
 def test_the_tokens_own_mapped_role_qualifies_even_when_no_claim_names_it():
@@ -391,6 +393,7 @@ def test_the_tokens_own_mapped_role_qualifies_even_when_no_claim_names_it():
     r2 = server._request_identity.set(
         types.SimpleNamespace(user_id="u1", roles=[], acting_roles=[], raw_claims={})
     )
+    r3 = server._request_may_name.set([A])  # the mapped role alone
     try:
         assert server.named_role(A, _MCP_STATE) == A
         with pytest.raises(PermissionError):
@@ -398,6 +401,7 @@ def test_the_tokens_own_mapped_role_qualifies_even_when_no_claim_names_it():
     finally:
         server._request_role.reset(r1)
         server._request_identity.reset(r2)
+        server._request_may_name.reset(r3)
 
 
 def _local_named_role(named: str, state: Any) -> str:
@@ -585,6 +589,7 @@ def test_a_remote_mcp_caller_names_a_set_of_held_roles(monkeypatch):
             user_id="u1", roles=["role_c"], acting_roles=["role_c"], raw_claims={}
         )
     )
+    r3 = server._request_may_name.set([A, "role_c"])
     try:
         assert server.named_role(f"role_c,{A}", _MCP_STATE) == meta_role.meta_role_id([A, "role_c"])
         with pytest.raises(PermissionError, match=f"'{B}' is not assigned"):
@@ -594,6 +599,7 @@ def test_a_remote_mcp_caller_names_a_set_of_held_roles(monkeypatch):
     finally:
         server._request_role.reset(r1)
         server._request_identity.reset(r2)
+        server._request_may_name.reset(r3)
 
 
 def test_a_local_stdio_mcp_client_names_a_set_within_its_pin(monkeypatch):

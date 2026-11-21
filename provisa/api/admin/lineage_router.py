@@ -781,18 +781,20 @@ def _consumer(table: dict) -> dict:
 
 
 async def _fetch_checkers(state) -> list[dict]:
-    """Every checker table that is not a draft (REQ-2157): its names, description, owning product,
-    the table its contract scans (checker_targets), the columns its checks name (dq_rules) and its
-    latest run."""
+    """Every checker table that is not withdrawn (REQ-2157, REQ-1921): its names, description, owning product,
+    the table its contract scans as the runtime's published build resolved it
+    (``state.checked_targets``, REQ-2125; the stored checker targets are the meta domain's), the
+    columns its checks name (dq_rules), its latest run and the checks of that run that did not
+    pass (REQ-2180)."""
     if getattr(state, "model_db", None) is None:
         return []
     from sqlalchemy import select
 
     from provisa.core.schema_org import checker_latest_runs as runs
-    from provisa.core.schema_org import checker_targets as targets
+    from provisa.dq.scan import failing_checks
     from provisa.core.schema_org import registered_tables as rt
 
-    checked = rt.alias("checked")
+    targets: dict[int, int] = state.checked_targets
 
     async with state.model_db.acquire() as conn:
         res = await conn.execute_core(
@@ -803,22 +805,35 @@ async def _fetch_checkers(state) -> list[dict]:
                 rt.c.alias,
                 rt.c.description,
                 rt.c.dq_rules,
-                targets.c.checked_table_id,
-                checked.c.domain_id.label("checked_domain_id"),
-                checked.c.table_name.label("checked_table_name"),
-                checked.c.alias.label("checked_alias"),
                 runs.c.outcome,
                 runs.c.scan_time,
+                runs.c.scan_id,
             )
-            .select_from(
-                rt.join(targets, targets.c.table_id == rt.c.id)
-                .join(checked, checked.c.id == targets.c.checked_table_id)
-                .outerjoin(runs, runs.c.table_id == rt.c.id)
+            .select_from(rt.outerjoin(runs, runs.c.table_id == rt.c.id))
+            .where(
+                rt.c.id.in_(list(targets)),
+                rt.c.dq_contract.is_not(None),
+                rt.c.withdrawn.is_(False),  # REQ-1921
+                rt.c.retired.is_(False),
             )
-            .where(rt.c.dq_contract.is_not(None), rt.c.draft.is_(False))
         )
         rows = res.fetchall()
+        checked = {
+            int(c.id): c
+            for c in (
+                await conn.execute_core(
+                    select(rt.c.id, rt.c.domain_id, rt.c.table_name, rt.c.alias).where(
+                        rt.c.id.in_(sorted({targets[int(r.id)] for r in rows}))
+                    )
+                )
+            ).fetchall()
+        }
         products = await data_product_repo.table_memberships(conn)
+        failing = {
+            r.id: await failing_checks(conn, r.table_name, r.scan_id)
+            for r in rows
+            if r.scan_id is not None
+        }
     return [
         {
             "id": r.id,
@@ -827,12 +842,12 @@ async def _fetch_checkers(state) -> list[dict]:
             "alias": r.alias,
             "description": r.description,
             "product_ids": products.get(r.id, []),
-            "checked_table_id": r.checked_table_id,
+            "checked_table_id": targets[r.id],
             "checked_table": {
-                "id": r.checked_table_id,
-                "domain_id": r.checked_domain_id,
-                "table_name": r.checked_table_name,
-                "alias": r.checked_alias,
+                "id": targets[r.id],
+                "domain_id": checked[targets[r.id]].domain_id,
+                "table_name": checked[targets[r.id]].table_name,
+                "alias": checked[targets[r.id]].alias,
             },
             "rule_columns": [rule.get("column_name") or "" for rule in r.dq_rules or []],
             "rules": [
@@ -845,6 +860,7 @@ async def _fetch_checkers(state) -> list[dict]:
             ],
             "latest_outcome": r.outcome,
             "latest_run_at": r.scan_time.isoformat() if r.scan_time is not None else None,
+            "failing_checks": failing[r.id] if r.scan_id is not None else [],
         }
         for r in rows
     ]
@@ -890,7 +906,7 @@ def _input(relation: str, graph: LineageGraph, by_relation: dict, types: dict) -
 
 
 async def _fetch_tables(state) -> list[dict]:
-    """Every registered table that is not a draft: its id, names, source, products (REQ-1634: any
+    """Every registered table that is not withdrawn (REQ-1921): its id, names, source, products (REQ-1634: any
     number) and contract."""
     if getattr(state, "model_db", None) is None:
         return []
@@ -908,7 +924,7 @@ async def _fetch_tables(state) -> list[dict]:
                 rt.c.source_id,
                 rt.c.dq_contract,
                 rt.c.materialize,
-            ).where(rt.c.draft.is_(False))
+            ).where(rt.c.withdrawn.is_(False), rt.c.retired.is_(False))  # REQ-1921, REQ-2248
         )
         products = await data_product_repo.table_memberships(conn)
         return [{**dict(r._mapping), "product_ids": products.get(r.id, [])} for r in res.fetchall()]

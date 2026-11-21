@@ -516,8 +516,12 @@ main {
 }
 
 /* Page layout */
+/* The page gutter: a page's padding, and the margin a dialog as wide as the window keeps. */
+:root {
+  --page-gutter: 1.5rem;
+}
 .page {
-  padding: 1.5rem;
+  padding: var(--page-gutter);
   width: 100%;
   box-sizing: border-box;
 }
@@ -857,8 +861,10 @@ main {
 .split-pane__head .mantine-Group-root {
   gap: 0.25rem;
 }
-.split-pane__head :is(.mantine-Button-root, .mantine-ActionIcon-root)[data-variant="subtle"]:disabled,
-.split-pane__head :is(.mantine-Button-root, .mantine-ActionIcon-root)[data-variant="subtle"][data-disabled] {
+.split-pane__head
+  :is(.mantine-Button-root, .mantine-ActionIcon-root)[data-variant="subtle"]:disabled,
+.split-pane__head
+  :is(.mantine-Button-root, .mantine-ActionIcon-root)[data-variant="subtle"][data-disabled] {
   background: transparent;
   border-color: transparent;
   opacity: 0.45;
@@ -867,10 +873,15 @@ main {
   min-height: 1px;
 }
 /* A form's Save and Cancel in the head of the panel it is open in, in place of the view's
- * actions: the same two as at its foot, beside the name, so the form has the panel's whole height. */
+ * actions: borderless and compact like the head's other actions, beside the name, so the form has
+ * the panel's whole height. */
 .form-footer.form-footer--head {
   flex: 0 0 auto;
   flex-wrap: nowrap;
+  gap: 0.25rem;
+}
+.form-footer.form-footer--head .mantine-Button-root {
+  min-width: 0;
 }
 /* What a form in the panel says of a save that did not go through: one line under the head. */
 .split-pane__notice {
@@ -972,6 +983,12 @@ main {
 .page-sticky-head:has(> .page-aux) > .table-scroll {
   flex: 0 0 auto;
   overflow: visible;
+}
+/* The same for a list with a detail panel (Relationships with its suggestions beneath): left to
+ * shrink, the split pane gave all of its height to the suggestions and a discovery result above it,
+ * and showed only its clipped header. It keeps its own height and the page scrolls. */
+.page-sticky-head:has(> .page-aux) > .split-pane {
+  flex: 0 0 auto;
 }
 .page-sticky-head .data-table {
   overflow: visible;
@@ -2920,6 +2937,11 @@ main {
   }
 }
 /* Grouped fields keep their class minimum (or their label) and move to the next line together. */
+.form-field-group,
+.form-identifiers {
+  /* the label's line, and the hairline the control's own border adds */
+  --form-label-offset: calc(var(--mantine-font-size-sm) * var(--mantine-line-height) + 3px);
+}
 .form-field-group {
   display: flex;
   flex-wrap: wrap;
@@ -2953,8 +2975,13 @@ main {
 .form-field-group > .mantine-Button-root,
 .form-field-group > .mantine-ActionIcon-root {
   flex: 0 0 auto;
-  /* the label's line, and the hairline the control's own border adds */
-  margin-top: calc(var(--mantine-font-size-sm) * var(--mantine-line-height) + 3px);
+  margin-top: var(--form-label-offset);
+}
+/* An unlabelled control (a switch, a segmented choice) beside a labelled input: it starts where
+ * the input's control starts, so the two share a centre line. */
+.form-field-group > .form-field--after-label,
+.form-identifiers > .form-field--after-label {
+  margin-top: var(--form-label-offset);
 }
 /* A row whose boxes carry no label above them (one entry of a list): its action sits level with
    the boxes, and the boxes share the row. */
@@ -2968,7 +2995,8 @@ main {
   min-width: 0;
 }
 .form-field-group--bare > .mantine-Button-root,
-.form-field-group--bare > .mantine-ActionIcon-root {
+.form-field-group--bare > .mantine-ActionIcon-root,
+.form-field-group--bare > .form-field--after-label {
   margin-top: 0;
 }
 .form-identifiers {
@@ -3131,4 +3159,13 @@ main {
 /* REQ-2078: a derived role's value roles sit under their parent in the Roles list. */
 .data-table tbody td.derived-value-cell {
   padding-inline-start: 1.75rem;
+}
+
+/* A multi-select option that cannot be picked but has an action beside it: the label is dimmed
+   as the list dims any such option, and the action stays at full strength. */
+[data-combobox-disabled]:has(.multi-select-option-held) {
+  opacity: 1;
+}
+.multi-select-option-held {
+  opacity: 0.35;
 }

@@ -5,13 +5,13 @@
     "layingOut": "正在布局…",
     "type": {
       "product": "数据产品",
-      "source": "来源",
+      "source": "数据源",
       "domain": "域",
       "group": "组",
       "table": "表",
       "view": "视图",
       "relation": "外部表",
-      "junction": "连接表",
+      "junction": "关联表",
       "column": "列",
       "term": "术语",
       "concept": "概念",
@@ -19,7 +19,7 @@
       "property": "属性",
       "command": "命令",
       "checker": "质量检查",
-      "profile": "剖析",
+      "profile": "概要",
       "tag": "标签",
       "more": "更多"
     }

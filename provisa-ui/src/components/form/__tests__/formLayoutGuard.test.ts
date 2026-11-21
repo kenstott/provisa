@@ -39,6 +39,8 @@ const NOT_A_FORM: Readonly<Record<string, string>> = {
   "components/admin/RepoBrowser.tsx": "the pickers of what the repository browser shows",
   "components/admin/ReplicateSelect.tsx": "one reusable control, placed by the form that uses it",
   "components/RegionSelector.tsx": "the region switch in the page header",
+  "components/TagCitations.tsx":
+    "one reusable control: the document and section pickers of a citation, in a tag's editor and in the form of a tag's assignment (TagAssignmentForm)",
   "components/DataAddressSwitcher.tsx":
     "the data address switch in the page header, with a typed address in its menu",
   "components/entitlements/EntitlementPicker.tsx":
@@ -74,7 +76,6 @@ const NOT_A_FORM: Readonly<Record<string, string>> = {
   "pages/sql/SqlEditorPanel.tsx": "the SQL editor toolbar",
   "pages/SqlPage.tsx": "the SQL page toolbar",
   "pages/QueryPage.tsx": "the query explorer toolbar",
-  "pages/tables/TableReadView.tsx": "the Draft tick among a table detail's actions",
   "pages/NlPage.tsx": "the question box of the natural-language page",
   "pages/GrpcPage.tsx": "the request builder of the gRPC explorer",
   "pages/JsonApiPage.tsx": "the request builder of the JSON:API explorer",
@@ -108,7 +109,8 @@ const IN_PLACE_EDIT: Readonly<Record<string, string>> = {
     "a term's relationship picked in the row that adds it, in the term's detail",
   "components/admin/GlossaryTab.tsx":
     "a term's name, definition and export tick each saved in place in its detail; the list's filter ticks",
-  "components/TagControl.tsx": "a tag assigned and edited in its popover, beside what it tags",
+  "components/TagControl.tsx":
+    "the tag picker's ticks beside what it tags; each tag's assignment is TagAssignmentForm, a form",
   "components/ColumnPiiForm.tsx":
     "pii on a column, in TagControl's popover: on its term or on the column alone",
   "components/admin/GlossaryGroundedTables.tsx":
@@ -564,9 +566,7 @@ describe("every component follows the form rules", () => {
   });
 
   it.each(
-    files.filter(
-      (f) => !pending.has(f) && !(f in EXPLORERS) && f !== THE_SAVE && f !== THE_CANCEL,
-    ),
+    files.filter((f) => !pending.has(f) && !(f in EXPLORERS) && f !== THE_SAVE && f !== THE_CANCEL),
   )("%s", (file) => {
     const violations = violationsOf(file);
     expect(violations, describeViolations(file, violations)).toEqual([]);

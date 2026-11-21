@@ -136,6 +136,17 @@ describe("Your data, right after registering", () => {
     );
   });
 
+  // REQ-1921: there is no draft state; a registered table is live, so no table's ways to reach
+  // it are marked.
+  it("marks no table's ways to reach it as a draft's", async () => {
+    renderStep();
+    expect(screen.queryByTestId("your-data-draft")).toBeNull();
+    await userEvent.click(screen.getByTestId("your-data-tab-customers"));
+    expect(screen.getByTestId("your-data-graphql")).toBeInTheDocument();
+    expect(screen.queryByTestId("your-data-draft")).toBeNull();
+    expect(screen.queryByText(/draft/i)).toBeNull();
+  });
+
   it("names each table whose registration was refused, with why", () => {
     renderStep([{ tableName: "salaries", message: "Missing capability: 'table_registration'" }]);
     expect(screen.getByTestId("your-data-refused")).toHaveTextContent(

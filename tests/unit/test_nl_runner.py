@@ -343,7 +343,7 @@ async def test_a_role_that_may_not_bypass_the_guard_runs_strict_when_it_asks_non
     state.roles["default"]["relationship_guard"] = True
     chains: list[str] = []
 
-    async def _chain(nl_query, role, app_state, check=None):
+    async def _chain(nl_query, role, app_state, check=None, *, scope=None):
         chains.append(role)
         return None, None, None, "no GraphQL schema"
 

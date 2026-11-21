@@ -16,8 +16,17 @@
 // DETAIL_VIEWS is the one place each page's parameter is named; detailHref builds a link into a
 // panel from it, so every link to a detail view is the URL the page itself writes.
 
-import { useCallback, useContext, useLayoutEffect, useRef, useSyncExternalStore } from "react";
+import {
+  useCallback,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { UNSAFE_NavigationContext, useLocation, useSearchParams } from "react-router-dom";
+import { getStored, removeStored, setStored, storedKeys, viewer } from "../../lib/browserStorage";
 
 interface DetailView {
   /** The page's route. */
@@ -30,6 +39,8 @@ interface DetailView {
   alsoClears?: readonly string[];
   /** Another view's parameters, of an object sharing this panel: dropped when this one opens. */
   replaces?: readonly string[];
+  /** Parameters that name the object another way: a link carrying one names an item (REQ-2260). */
+  alsoNames?: readonly string[];
 }
 
 // Existing names are kept, so links built before REQ-2241 open the same panels.
@@ -38,6 +49,7 @@ const TABLE_VIEW = {
   tab: { param: "section", first: "identity" },
   // `column` marks a column row, `open` names a table by source.table, `tab` is a Columns tab.
   alsoClears: ["column", "open", "tab"],
+  alsoNames: ["open"],
 } as const;
 
 export const DETAIL_VIEWS = {
@@ -45,8 +57,8 @@ export const DETAIL_VIEWS = {
   tables: { route: "/tables", ...TABLE_VIEW },
   views: { route: "/views", ...TABLE_VIEW },
   relationships: { route: "/relationships", param: "relationship" },
-  ontology: { route: "/admin/ontology", param: "term" },
-  library: { route: "/library", param: "document" },
+  ontology: { route: "/context/ontology", param: "term" },
+  library: { route: "/context/documents", param: "document" },
   metrics: { route: "/metrics", param: "metric" },
   // REQ-2158: a linked contract is the linked product's.
   products: { route: "/data-products", param: "product", alsoClears: ["contract"] },
@@ -270,4 +282,142 @@ export function useDetailParam(page: DetailPage): DetailParam {
     [write, view],
   );
   return { id, tab, open, setTab, close };
+}
+
+/**
+ * The item `search` names on `page`'s panel: its parameter, or one naming it another way
+ * (`alsoNames`); null when it names none.
+ */
+export function namedIn(page: DetailPage, search: string): string | null {
+  const view: DetailView = DETAIL_VIEWS[page];
+  const params = new URLSearchParams(search);
+  for (const name of [view.param, ...(view.alsoNames ?? [])]) {
+    const value = params.get(name);
+    if (value !== null) return value;
+  }
+  return null;
+}
+
+// REQ-2260: each list page remembers the item whose detail was open, per viewer in this browser
+// (lib/browserStorage keeps it per control plane and org; the key names the viewer). Coming back to
+// the page by any route, with no item named in the address, reopens it: the address is given its
+// parameter (replacing the entry, so Back is unchanged) and the item's row is scrolled into view.
+// A link naming an item opens that one, and it is what is remembered from then. Closing the detail
+// on the page forgets it. A remembered item the page's loaded list does not hold (deleted, or no
+// longer readable by this viewer) is not opened, and is forgotten.
+
+const MEMORY = "detail.";
+
+function memoryKey(page: DetailPage): string {
+  return `${MEMORY}${viewer()}.${page}`;
+}
+
+/** The item `page` remembers having open for the viewer, if any. */
+export function rememberedDetail(page: DetailPage): string | null {
+  return getStored(memoryKey(page));
+}
+
+/** Forget what `page` remembers, for every viewer in this browser's scope (a tour's fresh start). */
+export function forgetDetailForEveryone(page: DetailPage): void {
+  const suffix = `.${page}`;
+  for (const key of storedKeys()) {
+    if (key.startsWith(MEMORY) && key.endsWith(suffix)) removeStored(key);
+  }
+}
+
+/** The open item's row (ListRow marks it `row-selected`), brought into view once it is drawn. */
+function scrollToOpenRow(): boolean {
+  const row = document.querySelector("tr.list-row.row-selected");
+  if (row === null) return false;
+  row.scrollIntoView({ block: "center" });
+  return true;
+}
+
+export interface RememberedDetailParam extends DetailParam {
+  /**
+   * Closes the panel; with `keep`, the item is only set aside (a page showing something else in its
+   * place, to open it again) and stays remembered.
+   */
+  close: (how?: { only?: string; replace?: boolean; keep?: true }) => void;
+}
+
+/**
+ * `useDetailParam` for a list page, remembering the item open (REQ-2260). `listed` is the keys, as
+ * the address names them, of every item the page's loaded list holds; `null` while it loads (or
+ * while the page shows something else in the detail's place, so nothing is reopened meanwhile).
+ */
+export function useRememberedDetail(
+  page: DetailPage,
+  listed: readonly string[] | null,
+): RememberedDetailParam {
+  const detail = useDetailParam(page);
+  const { search } = useLocation();
+  const named = detail.id !== null || namedIn(page, search) !== null;
+  const key = memoryKey(page);
+
+  // The page arriving (mounted, or turned into another page or viewer's) with no item named looks
+  // up the item it last had open, to reopen once the list is loaded.
+  const [restoring, setRestoring] = useState<{ key: string; id: string } | null>(null);
+  const [scrolling, setScrolling] = useState(false);
+  const arrived = useRef<string | null>(null);
+  const was = useRef<{ key: string; id: string | null } | null>(null);
+  const keeping = useRef(false);
+  const { id, open, close: closeDetail } = detail;
+  const close = useCallback(
+    (how?: { only?: string; replace?: boolean; keep?: true }) => {
+      keeping.current = how?.keep === true && id !== null;
+      closeDetail({ only: how?.only, replace: how?.replace });
+    },
+    [closeDetail, id],
+  );
+
+  useLayoutEffect(() => {
+    if (key === arrived.current) return;
+    arrived.current = key;
+    if (named) return;
+    const remembered = getStored(key);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- read as the page arrives, once
+    if (remembered !== null) setRestoring({ key, id: remembered });
+  }, [key, named]);
+
+  // A named item is remembered; the open item closed on the page is forgotten. Leaving the page is
+  // not closing it, and nothing is forgotten while the remembered item waits for the list.
+  useEffect(() => {
+    const before = was.current;
+    was.current = { key, id };
+    const kept = keeping.current;
+    keeping.current = false;
+    if (id !== null) {
+      setStored(key, id);
+      return;
+    }
+    if (before !== null && before.key === key && before.id !== null && !kept) removeStored(key);
+  }, [key, id]);
+
+  useEffect(() => {
+    if (restoring === null) return;
+    if (restoring.key !== key || named) {
+      // The page moved on (another route, or an item named) before the list arrived.
+      setRestoring(null); // eslint-disable-line react-hooks/set-state-in-effect -- see above
+      return;
+    }
+    if (listed === null) return;
+    setRestoring(null);
+    if (listed.includes(restoring.id)) {
+      open(restoring.id, { replace: true });
+      setScrolling(true);
+    } else {
+      removeStored(key);
+    }
+  }, [restoring, key, named, listed, open]);
+
+  // The row is drawn after the detail opens: looked for as the detail and the list change until it
+  // is there; the detail closed in the meantime ends the search.
+  useEffect(() => {
+    if (!scrolling) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- stops once the row is in view
+    if (id === null || scrollToOpenRow()) setScrolling(false);
+  }, [scrolling, id, listed]);
+
+  return { ...detail, close };
 }

@@ -40,7 +40,6 @@ import pytest
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, insert, text
-from sqlalchemy.exc import OperationalError
 
 from provisa.api.admin.invites_router import router as invites_router
 from provisa.api.admin.orgs_router import router as orgs_router
@@ -147,10 +146,7 @@ def _prepare_sync():
 
 @pytest.fixture
 def planes(monkeypatch):
-    try:
-        sync_engine = _prepare_sync()
-    except OperationalError as exc:
-        pytest.skip(f"live Postgres not reachable at {_SYNC_URL}: {exc}")
+    sync_engine = _prepare_sync()
 
     admin_db = Database(create_engine_from_url(_ASYNC_URL), name="admin", search_path=_ADMIN_SCHEMA)
     tenant_db = Database(

@@ -14,27 +14,36 @@ import { Pencil } from "lucide-react";
 import type { Metric } from "../../types/admin";
 import { PanelActions } from "../../components/list/SplitPane";
 import { PanelDelete } from "../../components/list/PanelDelete";
+import { PanelDuplicate } from "../../components/list/PanelDuplicate";
 import { Tip } from "../../components/Tip";
 import { DetailFields } from "../../components/detail/DetailFields";
 import { TagControl } from "../../components/TagControl";
+import { EntityLink } from "../../components/EntityLink";
 
 interface MetricDetailPanelProps {
+  /** REQ-2259: the Context group's Metrics page -- no Edit, Duplicate or Delete, no tag edits,
+   * and the name links to the metric in its editor when the viewer may open it. */
+  readOnly?: boolean;
   m: Metric;
   dependentViews: string[];
   onEdit: () => void;
+  /** Opens the create form filled from this metric, under a new name. */
+  onDuplicate: () => void;
   /** REQ-2198: resolves once the metric is deleted and the list read again (PanelDelete). */
   onDelete: () => Promise<boolean | void>;
 }
 
-// A metric's Edit and Delete. In the page's detail panel they sit in its pinned head
+// A metric's Edit, Duplicate and Delete. In the page's detail panel they sit in its pinned head
 // (PanelActions); the form's Save and Cancel take their place while it is open.
 function MetricActions({
   m,
   onEdit,
+  onDuplicate,
   onDelete,
 }: {
   m: Metric;
   onEdit: () => void;
+  onDuplicate: () => void;
   /** REQ-2198: resolves once the metric is deleted and the list read again (PanelDelete). */
   onDelete: () => Promise<boolean | void>;
 }) {
@@ -55,6 +64,11 @@ function MetricActions({
               <Pencil size={14} />
             </ActionIcon>
           </Tip>
+          <PanelDuplicate
+            name={m.name}
+            onDuplicate={onDuplicate}
+            testId={`metric-detail-duplicate-${m.name}`}
+          />
           <PanelDelete
             itemKey={m.name}
             title={t("metricsPage.deleteTitle")}
@@ -70,19 +84,37 @@ function MetricActions({
   );
 }
 
-// Row-click detail view for a metric — detail-then-edit: the read-only facts, with Edit and
-// Delete in the panel's head.
-export function MetricDetailPanel({ m, dependentViews, onEdit, onDelete }: MetricDetailPanelProps) {
+// Row-click detail view for a metric — detail-then-edit: the read-only facts, with Edit,
+// Duplicate and Delete in the panel's head.
+export function MetricDetailPanel({
+  readOnly = false,
+  m,
+  dependentViews,
+  onEdit,
+  onDuplicate,
+  onDelete,
+}: MetricDetailPanelProps) {
   const { t } = useTranslation();
 
   return (
     <Stack gap="sm" data-testid={`metric-detail-${m.name}`}>
-      <MetricActions m={m} onEdit={onEdit} onDelete={onDelete} />
+      {!readOnly && (
+        <MetricActions m={m} onEdit={onEdit} onDuplicate={onDuplicate} onDelete={onDelete} />
+      )}
       {/* Every value of the metric, under its form's labels. */}
       <DetailFields
         testId={`metric-read-${m.name}`}
         fields={[
-          { label: t("metricsPage.fieldName"), value: m.name },
+          {
+            label: t("metricsPage.fieldName"),
+            value: readOnly ? (
+              <EntityLink kind="metric" id={m.name} testId={`metric-link-${m.name}`}>
+                {m.name}
+              </EntityLink>
+            ) : (
+              m.name
+            ),
+          },
           {
             label: t("metricsPage.fieldExpression"),
             value: (
@@ -99,7 +131,7 @@ export function MetricDetailPanel({ m, dependentViews, onEdit, onDelete }: Metri
           // REQ-2208: a metric carries tags as the model's objects do.
           {
             label: t("metricsPage.fieldTags"),
-            value: <TagControl objectType="metric" metricName={m.name} />,
+            value: <TagControl objectType="metric" metricName={m.name} readOnly={readOnly} />,
           },
           {
             label: t("metricsPage.builderFact"),

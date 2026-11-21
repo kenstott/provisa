@@ -18,7 +18,7 @@
     "cargoNone": "Nenhum registro Cargo. Os crates vêm do crates.io.",
     "add_cargo": "Adicionar registro Cargo",
     "gitTitle": "Hosts Git",
-    "gitHelp": "Os hosts dos quais as fontes de código obtêm código Git e dependências Git.",
+    "gitHelp": "Os hosts dos quais as fontes de código buscam código Git e dependências Git.",
     "gitNone": "Nenhum host Git.",
     "add_git": "Adicionar host Git",
     "npmAddress": "URL do registro",

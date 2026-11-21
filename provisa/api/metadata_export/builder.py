@@ -902,10 +902,19 @@ def build_snapshot(
     # REQ-1443 PRODUCT ASSIGNMENT: every table, a checker table included, publishes with the
     # products it is a member of (REQ-1634: any number, declared on each product).
     product_ids = product_memberships(config)
+    # REQ-1921: a withdrawn table -- itself, or through its source -- is in no catalog publish
+    # until it is put back, nor, through it, in a product's members or contracts. The model
+    # report lists it: its steward reviews it there.
+    withdrawn_sources = {source.id for source in config.sources if source.withdrawn}
     exported = [
         table
         for table in config.tables
-        if product_ids.get(table_ref(table).parts) or not data_products_only
+        if not data_products_only
+        or (
+            product_ids.get(table_ref(table).parts)
+            and not table.withdrawn
+            and table.source_id not in withdrawn_sources
+        )
     ]
     keep = {table_ref(table).parts for table in exported}
     published_source_ids = {table.source_id for table in exported}

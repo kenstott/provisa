@@ -62,7 +62,7 @@
       "kindLabel": "Type",
       "kindPlaceholder": "Sélectionnez un type",
       "entriesLabel": "Entrées",
-      "entriesHelp": "Ce que cette personne peut atteindre parmi ce que le rôle autorise. Un domaine ou une table choisi sans rien de choisi en dessous inclut tout son contenu. Une liste vide n'atteint rien de ce type.",
+      "entriesHelp": "Ce que cette personne peut atteindre parmi ce que le rôle autorise. Un domaine ou une table choisi sans rien de sélectionné en dessous l'inclut en entier. Une liste vide n'atteint rien de ce type.",
       "endsOnLabel": "Se termine le",
       "endsOnHint": "Laissez vide pour conserver la liste jusqu'à ce qu'elle soit clôturée.",
       "reasonLabel": "Motif",

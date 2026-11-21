@@ -24,7 +24,7 @@
     "history": "履歴",
     "noHistory": "履歴はまだありません",
     "favorites": "お気に入り",
-    "noFavorites": "お気に入りはまだありません — 結果フレームの ★ をクリックしてください",
+    "noFavorites": "お気に入りはまだありません。結果フレームの ★ をクリックしてください。",
     "matchAllNodes": "MATCH (n) RETURN n LIMIT 25",
     "matchAllRels": "MATCH p=()-->() RETURN p LIMIT 25",
     "firstPage": "最初のページ",

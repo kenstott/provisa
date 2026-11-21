@@ -599,7 +599,7 @@ def expand(sql: exp.Expression, overlaid: Any, model: Any, session: TempSession)
     for table in list(sql.find_all(exp.Table)):
         if table.catalog != SESSION_CATALOG:
             continue
-        alias = table.alias or table.name
+        named = _read_by(table)
         if table.name in by_name or table.name in overlaid.label_sets:
             if table.name in by_name:
                 key = by_name[table.name]
@@ -644,9 +644,7 @@ def expand(sql: exp.Expression, overlaid: Any, model: Any, session: TempSession)
         else:
             rel_type = types[table.name]
             name = cte(f"__session_rel__{rel_type}", _rel_rows(rel_type, session))
-        table.replace(
-            exp.alias_(exp.Table(this=exp.to_identifier(name, quoted=True)), alias, quoted=True)
-        )
+        table.replace(exp.alias_(exp.Table(this=exp.to_identifier(name, quoted=True)), named))
     if ctes:
         held = sql.args.get("with_")
         if held is not None:
@@ -654,6 +652,18 @@ def expand(sql: exp.Expression, overlaid: Any, model: Any, session: TempSession)
         else:
             sql.set("with_", exp.With(expressions=ctes))
     return sql
+
+
+def _read_by(table: exp.Table) -> exp.Identifier:
+    """The name the statement reads ``table`` by -- its alias, else its name -- spelt as the
+    statement spells it. Quoted, an alias ``newB`` read as ``newB."num"`` would be another name
+    to PostgreSQL's folding (``newb``), which governance judges the statement by (REQ-039)."""
+    held = table.args.get("alias") or table.this
+    if isinstance(held, exp.TableAlias):
+        held = held.this
+    return (
+        held.copy() if isinstance(held, exp.Identifier) else exp.to_identifier(table.alias_or_name)
+    )
 
 
 def _drop_conditions(select: exp.Select, gone: list[exp.Expression]) -> None:

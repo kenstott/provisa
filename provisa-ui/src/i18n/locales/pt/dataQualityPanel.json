@@ -27,7 +27,7 @@
     "datasetLabel": "Conjunto de dados",
     "datasetHelp": "A tabela que o verificador observa, no formato «<fonte de dados>/<esquema>/<tabela>». Ela é resolvida no catálogo governado, do mesmo modo que a varredura a resolve.",
     "datasetTableLabel": "Tabela",
-    "argsHelp": "Cada linha é uma verificação. Edite os argumentos dela aqui mesmo — o texto do contrato do verificador é serializado a partir destas linhas.",
+    "argsHelp": "Cada linha é uma verificação. Edite os argumentos diretamente; o texto do contrato do verificador é serializado a partir dessas linhas.",
     "invalidRow": "Não foi possível analisar os argumentos desta linha; o valor anterior foi mantido."
   }
 }

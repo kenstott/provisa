@@ -20,7 +20,7 @@ import { DataProductDetailPanel } from "../DataProductDetailPanel";
 import type { ProductLineage } from "../../../api/lineage";
 import type { DataProduct } from "../../../types/admin";
 import { lifecycleProps } from "./lifecycleProps";
-import { openTab } from "./panelTabs";
+import { openSection } from "./panelSections";
 
 vi.mock("../../../components/OwnerResolution", () => ({ OwnerResolutionInline: () => null }));
 vi.mock("../../../components/graph3d/OntologyGraph", () => ({
@@ -101,9 +101,9 @@ function panel(over: {
   return view;
 }
 
-/** The tab each card is in. */
+/** The section each card is in. */
 const TAB = { inputPorts: "quality", consumers: "related" } as const;
-const shown = (section: keyof typeof TAB) => openTab(TAB[section], "pet_health");
+const shown = (section: keyof typeof TAB) => openSection(TAB[section], "pet_health");
 
 const card = (s: string) => screen.getByTestId(`data-product-card-${s}-pet_health`);
 const SECTIONS = [

@@ -32,14 +32,16 @@ from provisa.core.schema_org import (
 )
 from provisa.api.admin.types import MutationResult, TableInput
 from provisa.api.admin.schema_helpers import (
-    _dataset_ownership_conflict,
     _domain_table_conflict,
+    table_domain_refusal,
     _get_pool,
     _rebuild_schemas,
 )
 from provisa.api.admin._table_ops import _build_columns_for_input, column_field_refusal
-from provisa.security.masking import MaskUnreachable
+from provisa.security.masking import MaskConstantNotText, MaskUnreachable
 from provisa.api.admin._live_mappers import table_model_from_input as _table_model_from_input
+from provisa.api.admin._retired_objects import retired_name_result
+from provisa.core.repositories.retirement import RetiredNameTaken
 from provisa.api.admin._table_settings import (
     TableSaveRefused,
     carried,
@@ -146,17 +148,29 @@ def _identity_user(info: StrawberryInfo):
     return _identity_from_info(info)
 
 
+async def _column_drop_refusal(info: StrawberryInfo, conn: Any, drop: Any) -> MutationResult:
+    """A column something still refers to is not dropped (REQ-1918): each is named, with only
+    the dependents the caller may read (REQ-2152)."""
+    from provisa.api.admin.read_rights import (
+        column_drop_text,
+        reader_for,
+        readable_columns_report,
+    )
+
+    report = await readable_columns_report(conn, reader_for(info), drop.columns)
+    return MutationResult(
+        success=False,
+        message=column_drop_text(drop.table_name, report),
+        code="schema.column_has_dependents",
+        params={"table": drop.table_name, "columns": report},
+    )
+
+
 async def _registered_result(input: TableInput, table_id: int | None) -> MutationResult:
     """What a successful registration answers. A table of a remote GraphQL source may have had
     fields left out because the source's credential may not read them (REQ-1923); they are
-    named. Registering it may also complete a relationship between two of the source's
-    registered tables (REQ-313), which is stored here, once both exist."""
-    from provisa.api.admin._graphql_table_registration import sync_detected_relationships
+    named."""
     from provisa.api.admin._table_ops import take_omitted_fields
-    from provisa.api.app import state
-
-    if await sync_detected_relationships(state, input.source_id):
-        await _rebuild_schemas()
 
     omitted = take_omitted_fields(input.source_id, input.table_name)
     if not omitted:
@@ -199,7 +213,7 @@ async def reprovision_source_after_registration(pool, state, source_id: str) -> 
         await asyncio.to_thread(use_catalog_of, model)
         state.federation_engine.register_source(
             model,
-            resolve_secrets(model.password) if model.password else "",
+            resolve_secrets(model.password, credential=True) if model.password else "",
             catalog_name=state.source_catalogs[source_id],
         )
 
@@ -228,6 +242,22 @@ def default_mail_watermark(model: Any, source_type: str | None) -> None:
         model.watermark_column = logs.LANDED_AT
 
 
+async def incremental_refused(input: TableInput) -> MutationResult | None:
+    """REQ-2249: a view calling a code command saved with its incremental setting on: refused when
+    its resolver's source declares no @change function for it, or it names no rebuild interval."""
+    from provisa.api.app import state
+    from provisa.mv.change_refresh import incremental_refusal
+
+    refused = await incremental_refusal(
+        state, input.table_name, input.view_sql, input.mv_incremental, input.mv_rebuild_every
+    )
+    if refused is None:
+        return None
+    return MutationResult(
+        success=False, message=str(refused), code=refused.code, params=refused.params
+    )
+
+
 async def register_table(
     info: StrawberryInfo, input: TableInput
 ) -> (
@@ -244,6 +274,10 @@ async def register_table(
     from provisa.api.admin._table_ops import land_transform_view
 
     land_transform_view(input)  # REQ-2131
+    # REQ-1531/REQ-433: a registration names its domain, on every path; refused before anything else.
+    _no_domain = table_domain_refusal(input.domain_id, input.table_name)
+    if _no_domain is not None:
+        return _no_domain
     from provisa.api.admin._dbt_table_registration import read_through_warehouse
 
     _dbt_refused = await read_through_warehouse(input)  # REQ-2228
@@ -322,6 +356,9 @@ async def register_table(
         validate_preprocess(input.mv_preprocess)
     except ValueError as _pp_err:
         return MutationResult(success=False, message=str(_pp_err))
+    _incremental = await incremental_refused(input)  # REQ-2249
+    if _incremental is not None:
+        return _incremental
     # REQ-2066: the window a read of the table (a materialized view's) is judged by is parsed when
     # it is saved, as the load management save does; one that does not parse is refused here. ""
     # is no window (as scheduled_refresh reads it); a table naming no zone takes its source's, and
@@ -432,9 +469,6 @@ async def register_table(
                 model.region = await registration_region(  # REQ-1921
                     _conn, input, is_view=bool(input.view_sql) or input.view_metrics is not None
                 )
-                # REQ-1921: registered through the admin, a table or view starts as draft — out of
-                # service until its domain's owners release it.
-                model.draft = True
                 # REQ-2109: the settings the registration carries, checked as their own mutations
                 # check them; one refused refuses the registration.
                 model = await with_carried_settings(info, _conn, input, model)
@@ -561,11 +595,6 @@ async def register_table(
                 )
                 if _conflict:
                     raise TableSaveRefused(MutationResult(success=False, message=_conflict))
-                _owner_conflict = await _dataset_ownership_conflict(
-                    _conn, model.source_id, model.table_name, model.domain_id
-                )
-                if _owner_conflict:
-                    raise TableSaveRefused(MutationResult(success=False, message=_owner_conflict))
                 if input.source_id == DERIVED_SOURCE_ID:
                     from provisa.api.app import state
 
@@ -636,6 +665,8 @@ async def register_table(
                         model = model.model_copy(update={"write_grants": _carried_grants})
                     from provisa.api.admin._declared_keys import registration_keys
 
+                    # REQ-433: a removed source table registered again is that table restored.
+                    await table_repo.restore_registered(_conn, model)
                     # REQ-2170: the keys its source declares are recorded with the input's.
                     table_id = await table_repo.upsert(
                         _conn, model, declared=await registration_keys(model)
@@ -678,6 +709,20 @@ async def register_table(
                             },
                         )
                     )
+                except MaskConstantNotText as _const:
+                    # REQ-2131: a constant other than NULL on a non-text column reads as NULL; not saved.
+                    raise TableSaveRefused(
+                        MutationResult(
+                            success=False,
+                            message=str(_const),
+                            code="schema.mask_constant_not_text",
+                            params={
+                                "table": model.table_name,
+                                "column": _const.column,
+                                "type": _const.data_type,
+                            },
+                        )
+                    )
                 except table_repo.SubtypeRefused as _sub:
                     # REQ-2171: a subtype is saved only with the base it is a subtype of.
                     raise TableSaveRefused(
@@ -708,26 +753,14 @@ async def register_table(
                         )
                     )
                 except table_repo.ColumnDropRefused as _drop:
-                    # REQ-1918: a column something still refers to is not dropped; each is named,
-                    # with only the dependents the caller may read (REQ-2152).
-                    from provisa.api.admin.read_rights import (
-                        column_drop_text,
-                        reader_for,
-                        readable_columns_report,
-                    )
-
-                    _report = await readable_columns_report(_conn, reader_for(info), _drop.columns)
-                    raise TableSaveRefused(
-                        MutationResult(
-                            success=False,
-                            message=column_drop_text(_drop.table_name, _report),
-                            code="schema.column_has_dependents",
-                            params={"table": _drop.table_name, "columns": _report},
-                        )
-                    )
+                    # REQ-1918: a column something still refers to is not dropped.
+                    raise TableSaveRefused(await _column_drop_refusal(info, _conn, _drop))
                 except LabelClash as _clash:
                     # REQ-572: a label never names both a domain and a table; both are named.
                     raise TableSaveRefused(label_clash_result(_clash))
+                except RetiredNameTaken as _retired:
+                    # REQ-2248: a retired name stays taken; the retired object is named.
+                    raise TableSaveRefused(retired_name_result(_retired))
                 except SqlAddressTaken as _taken:
                     # REQ-1933: one SQL address per table in a domain; the table that holds it is named.
                     raise TableSaveRefused(
@@ -807,9 +840,22 @@ async def register_table(
                 # REQ-1934, REQ-2109: the row rules the registration carries (a profiler result
                 # table's), saved with the table.
                 await save_row_rules(info, _conn, input, model)
+                # REQ-313, REQ-1929: a remote GraphQL table is kept with its source, and the
+                # relationships it completes are stored, each taking its nested column, in this
+                # transaction; a column so taken that is in use refuses the whole registration.
+                from provisa.api.admin._graphql_table_registration import stage_registration
+
+                try:
+                    _staged = await stage_registration(
+                        _conn, _app_state, input.source_id, input.table_name
+                    )
+                except table_repo.ColumnDropRefused as _drop:
+                    raise TableSaveRefused(await _column_drop_refusal(info, _conn, _drop))
     except TableSaveRefused as _refused:
         # The transaction rolled back: nothing of the save is stored.
         return _refused.result
+    if _staged is not None:
+        _staged.apply()  # this process takes what the transaction stored, once it committed
 
     if _effective_view_sql and input.materialize:
         await _sync_view_mv(
@@ -829,27 +875,17 @@ async def register_table(
             persist=input.mv_persist,  # REQ-965
             primary_key=list(input.mv_primary_key),  # REQ-970
             incremental=input.mv_incremental,  # REQ-969
+            rebuild_every=input.mv_rebuild_every,  # REQ-2249
             calendar=input.mv_calendar,  # REQ-962
             grain=input.mv_grain,  # REQ-962/1168
             allowed_lateness=input.mv_allowed_lateness,  # REQ-961
             expected_events=input.mv_expected_events,  # REQ-961
             business_day_grain=input.mv_business_day_grain,  # REQ-962
-            draft=model.draft,  # REQ-1921
+            withdrawn=False,  # REQ-1921: a registration is live
             region=model.region,  # REQ-1921
         )
 
     await _rebuild_schemas()
-    # Schema-currency reconcile (REQ-846/932): a UI (re)registration re-enters the convergent
-    # reconcile — the new/changed table's landing schema is created (or recreated on a column
-    # drift) and its read view attached. Same primitive as the boot pass. Best-effort: a store
-    # hiccup logs but does not fail the registration.
-    try:
-        from provisa.api.app import state as _rc_state
-
-        await _rc_state.federation_engine.reconcile_landed_tables()
-    except Exception:
-        logging.getLogger(__name__).exception("landed-table reconcile after registration failed")
-
     # REQ-1730: a mapping-DSL source (redis) registered under an engine that is ALREADY primary
     # from a cold start (no prior DuckDB registration to replay from) has its Trino catalog
     # provisioned at create_source time, BEFORE this table existed — create_source's own
@@ -876,7 +912,7 @@ async def register_table(
 
     # A newly-created materialized view is materialized immediately and its refresh job registered, so
     # it lands FRESH instead of STALE-until-restart (the event loop otherwise wires only at boot).
-    if _effective_view_sql and input.materialize and not model.draft:
+    if _effective_view_sql and input.materialize:
         from provisa.api.admin.schema_common import activate_view_mv
 
         await activate_view_mv(input.table_name)

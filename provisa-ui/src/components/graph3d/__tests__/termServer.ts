@@ -35,10 +35,11 @@ export function reader(): MetaReader {
 
 export type Row = Record<string, unknown>;
 
-/** The rows a server answers from: the terms by id, the data products. */
+/** The rows a server answers from: the terms by id, the data products, the tables. */
 export interface World {
   terms: Map<number, Row>;
   products: Row[];
+  tables?: Row[];
 }
 
 /** A field of a query: its answer key, its name, its where, its own fields. */
@@ -124,7 +125,9 @@ export function server(world: World) {
           ? [...world.terms.values()]
           : f.name === "m__dataProducts"
             ? world.products
-            : [];
+            : f.name === "m__registeredTables"
+              ? (world.tables ?? [])
+              : [];
       if (rows.length === 0) throw new Error(`unexpected root ${f.name}`);
       out[f.key] = rows
         .filter((r) => !f.where || meets(r, f.where))
@@ -271,5 +274,5 @@ export function world(spec: WorldSpec): World {
       .filter((t) => t.product === p.id)
       .map((t) => ({ productId: p.id, registeredTable: tableRow(t.id) })),
   }));
-  return { terms, products };
+  return { terms, products, tables: spec.tables.map((t) => tableRow(t.id)) };
 }

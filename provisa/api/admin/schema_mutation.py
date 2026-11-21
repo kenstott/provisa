@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import logging
 from datetime import date
+from provisa.api.engine_error_names import client_text, client_value
 from provisa.codesource.languages import CODE_SOURCE_TYPES
 from provisa.compiler.naming import (
     LabelClash,
@@ -53,6 +54,9 @@ from provisa.security.sensitive import SENSITIVE_DATA
 from provisa.core.repositories import glossary as glossary_repo, rls as rls_repo
 from provisa.api.admin.capabilities import require_capability, require_right_in_domains
 from provisa.security.rights import ALL_DOMAINS
+from provisa.api.admin._retired_objects import restore as restore_retired
+from provisa.api.admin._retired_objects import retired_name_result
+from provisa.core.repositories.retirement import RetiredNameTaken
 from provisa.api.admin.types import (
     CalendarInput,
     ColumnAliasType,
@@ -70,6 +74,7 @@ from provisa.api.admin.types import (
     MetricInput,
     MutationResult,
     RelationshipInput,
+    CodeResolverInput,
     RLSRuleInput,
     WriteGrantInput,
     RoleInput,
@@ -80,14 +85,15 @@ from provisa.api.admin.types import (
     TableRegistrationOutcome,
     BulkDeleteResult,
     ColumnInput,
+    LibraryCitationInput,
     TagAssignmentInput,
     TagInput,
     TagParamValueInput,
 )
 
 from provisa.api.admin.schema_helpers import (
-    _dataset_ownership_conflict,
     _domain_table_conflict,
+    table_domain_refusal,
     _get_pool,
     _rebuild_schemas,
 )
@@ -121,7 +127,7 @@ from provisa.api.admin._landing_ttl import (  # REQ-1907, REQ-826
     row_materialize_save_refusal,
 )
 from provisa.api.admin._table_ops import _build_columns_for_input, column_field_refusal
-from provisa.security.masking import MaskUnreachable
+from provisa.security.masking import MaskConstantNotText, MaskUnreachable
 from provisa.api.admin._fake_guard import FakeRefusedSave as _FakeRefusedSave
 from provisa.api.admin import schema_mutation_ops as _ops
 
@@ -150,6 +156,7 @@ from provisa.api.admin.schema_common import (  # noqa: E402
     restart_source_server,
     _remove_view_mv,
     _expand_wikipedia_if_needed,
+    _preset_wikidata_if_needed,
     google_workspace_refusal,
     excel_hints_refusal,
     files_source_glob_refusal,
@@ -262,6 +269,16 @@ async def _save_relationship_as_caller(
     _invalid = _cardinality_problem(input)
     if _invalid is not None:
         return _invalid
+    if not creating:
+        from provisa.api.admin.code_resolver import held_by_set
+        from provisa.core.repositories import relationship as _rel_repo
+
+        _pool_h = await _get_pool()
+        async with _pool_h.acquire() as _hconn:
+            _stored = await _rel_repo.get(cast("Connection", _hconn), input.id)
+        _held = held_by_set(_stored, "relationship", input.id)  # REQ-2249
+        if _held is not None:
+            return _held
     # REQ-1531: A RELATIONSHIP IS OWNED BY ITS SOURCE. The row is source -> target and the unique
     # constraint is (source_table_id, alias), so the edge hangs off the source side and the source's
     # domain is the one being changed. The target is referenced, not altered — its own RLS and
@@ -383,8 +400,15 @@ async def _relationship_id_refusal(
     """A create makes a new relationship and an update changes one: an id another relationship
     holds, or one no relationship holds, is refused by name."""
     held = (
-        await conn.execute_core(select(relationships.c.id).where(relationships.c.id == input.id))
+        await conn.execute_core(
+            select(relationships.c.id, relationships.c.retired).where(
+                relationships.c.id == input.id
+            )
+        )
     ).fetchone()
+    if held is not None and held.retired:
+        # REQ-2248: a retired relationship keeps its id; it is restored, not saved over.
+        return retired_name_result(RetiredNameTaken("relationship", input.id))
     if creating and held is not None:
         return MutationResult(
             success=False,
@@ -462,7 +486,7 @@ async def _relationship_alias_refusal(
         return None
     held = (
         await conn.execute_core(
-            select(relationships.c.id).where(
+            select(relationships.c.id, relationships.c.retired).where(
                 relationships.c.source_table_id == source_table_id,
                 relationships.c.alias == input.alias,
                 relationships.c.id != input.id,
@@ -471,6 +495,8 @@ async def _relationship_alias_refusal(
     ).fetchone()
     if held is None:
         return None
+    if held.retired:  # REQ-2248: a retired relationship's alias stays taken
+        return retired_name_result(RetiredNameTaken("relationship", input.alias))
     return MutationResult(
         success=False,
         message=(
@@ -869,9 +895,16 @@ async def _save_role(
 
 
 async def _save_tag(
-    info: StrawberryInfo, input: TagInput, *, creating: bool
-) -> MutationResult:  # REQ-1373, REQ-1375, REQ-1944
-    """A tag saved: a create makes a new one, an update changes one that exists."""
+    info: StrawberryInfo,
+    input: TagInput,
+    *,
+    creating: bool,
+    cited: "list[LibraryCitationInput] | None" = None,
+) -> MutationResult:  # REQ-1373, REQ-1375, REQ-1944, REQ-2208
+    """A tag saved: a create makes a new one, an update changes one that exists. ``cited``, when
+    given, is the whole set of the tag's definition citations (the sections that say why it
+    exists), written with the tag in one transaction: one the library refuses leaves the tag
+    and every citation unwritten. None leaves the citations as they are."""
     _require_tag_editor(info)
     from provisa.core.models import (
         DERIVED_TAG_IDS,
@@ -883,6 +916,7 @@ async def _save_tag(
         Tag as TagModel,
     )
     from provisa.core.repositories import tag as tag_repo
+    from provisa.reference_library import citations, library
 
     # REQ-1467: a registry id is a base id. Accepting "entity:customer" here would define a
     # tag whose id parses as the system `entity` tag carrying a parameter, and every base-id
@@ -958,10 +992,19 @@ async def _save_tag(
         expires_policy=input.expires_policy,
         param_policy=input.param_policy,
         sensitive=input.sensitive,
+        requires_citation=input.requires_citation,  # REQ-2208
+        required=input.required,  # REQ-2208 (THE TAGS REPORT)
     )
     pool = await _get_pool()
     async with pool.acquire() as conn:
         existing = await tag_repo.get(cast("Connection", conn), input.id)
+        # REQ-2208 (A TAG IS OFFERED BY DOMAIN): left out, the saved list stands.
+        held_domains = None if existing is None else list(existing["allowed_domains"] or [])
+        model.allowed_domains = (
+            list(held_domains or [])
+            if input.allowed_domains is None
+            else [d.strip() for d in input.allowed_domains if d.strip()]
+        )
         # A create makes a new tag and an update changes one: an id another tag holds, or one
         # no tag holds, is refused by name, and nothing is written.
         if creating and existing is not None:
@@ -984,19 +1027,113 @@ async def _save_tag(
             # column carrying the tag -- in every domain, so the right must reach them all
             # (REQ-1944).
             require_right_in_domains(info, SENSITIVE_DATA, {ALL_DOMAINS})
-        elif was_sensitive:
-            # REQ-1944: a sensitive tag's definition is maintained by whoever governs
-            # sensitive columns across the org, or by a table editor as before.
-            _require_sensitive_tag_definer(info)
         else:
-            require_capability(info, "table_registration")
-        await tag_repo.upsert(cast("Connection", conn), model)
+            _require_tag_definer(info, was_sensitive)
+        _require_tag_domains_right(info, held_domains, model.allowed_domains)
+        c = cast("Connection", conn)
+        for citation in cited or []:  # REQ-2208: a document the caller reads
+            unread = await _unread_document(info, c, citation.document_id)
+            if unread is not None:
+                return unread
+        try:
+            async with c.transaction():
+                await tag_repo.upsert(c, model)
+                if cited is not None:
+                    places = [
+                        citations.Place(x.document_id, x.section_heading, x.section_page)
+                        for x in cited
+                    ]
+                    await tag_repo.replace_definition_citations(
+                        c, input.id, places, _caller_id(info)
+                    )
+        except library.LibraryRefused as exc:
+            return MutationResult(
+                success=False, message=str(exc), code=exc.code, params={"tag": input.id}
+            )
+        except RetiredNameTaken as exc:  # REQ-2248
+            return retired_name_result(exc)
+        outside = [] if creating else await _assignments_outside(info, c, model)
     await _refresh_config_tags()
+    message = f"Tag {input.id!r} saved"
+    if outside:
+        keys = ", ".join(o["objectKey"] for o in outside)
+        message += f"; these assignments are outside its allowed domains and stay: {keys}"
     return MutationResult(
         success=True,
-        message=f"Tag {input.id!r} saved",
+        message=message,
         code="schema.tag_saved",
-        params={"tag": input.id},
+        params={"tag": input.id, **({} if creating else {"outside": outside})},
+    )
+
+
+def _require_tag_domains_right(
+    info: StrawberryInfo, held: list[str] | None, domains: list[str]
+) -> None:  # REQ-2208 (A TAG IS OFFERED BY DOMAIN)
+    """Changing a tag's allowed domains needs what changing a source's needs
+    (update_source_allowed_domains): source_registration, and reach of each domain the change opens
+    the tag to -- every one, when it empties the list. A new tag that names none, or a save that
+    leaves the list as it is, changes nothing."""
+    from provisa.api.admin.capabilities import require_reach_of_added_domains
+
+    if set(domains) == set(held or []):
+        return
+    require_capability(info, "source_registration")
+    require_reach_of_added_domains(info, held, domains, empty_is_all=True)
+
+
+async def _assignments_outside(
+    info: StrawberryInfo, conn: "Connection", tag: Any
+) -> list[dict]:  # REQ-2208 (A TAG IS OFFERED BY DOMAIN)
+    """The tag's assignments on objects outside its allowed domains, which stay: those the caller
+    may be told of (REQ-2152), each with its object's domains."""
+    from provisa.api.admin.domain_guard import tag_assignments_outside
+    from provisa.api.admin.read_rights import reader_for, tag_assignment_readable
+
+    outside = await tag_assignments_outside(conn, tag.id, tag.allowed_domains)
+    if not outside:
+        return []
+    reader = reader_for(info)
+    return [
+        {
+            "tagId": row["tag_id"],
+            "objectType": row["object_type"],
+            "objectKey": row["object_key"],
+            "domains": sorted(domains),
+        }
+        for row, domains in outside
+        if await tag_assignment_readable(conn, reader, row)
+    ]
+
+
+async def _tag_domain_refusal(
+    info: StrawberryInfo, conn: "Connection", tag_row: dict, model: Any
+) -> "MutationResult | None":  # REQ-2208 (A TAG IS OFFERED BY DOMAIN)
+    """An assignment on an object outside the tag's allowed domains, refused by name. An object
+    in no domain (a role) is placed by its assigner: refused unless the caller acts in one of the
+    tag's domains."""
+    from provisa.api.admin.capabilities import allowed_domains_request
+    from provisa.api.admin.domain_guard import tag_offered, tag_target_domains
+
+    allowed = sorted(tag_row.get("allowed_domains") or [])
+    domains = await tag_target_domains(conn, model)
+    if tag_offered(allowed, domains, allowed_domains_request(info.context["request"])):
+        return None
+    key = model.object_key()
+    offered_in = ", ".join(allowed)
+    if domains:
+        said = f"{key} is in {', '.join(sorted(domains))}"
+    else:
+        said = f"{key} is in no domain, and you act in none of the tag's"
+    return MutationResult(
+        success=False,
+        message=f"Tag {tag_row['id']!r} is offered only on objects of {offered_in}: {said}",
+        code="schema.tag_domain_not_allowed",
+        params={
+            "tag": tag_row["id"],
+            "objectKey": key,
+            "allowedDomains": allowed,
+            "domains": sorted(domains),
+        },
     )
 
 
@@ -1074,6 +1211,8 @@ async def _save_metric(
             from provisa.api.admin._metric_views import regenerate_metric_views
 
             regenerated = await regenerate_metric_views(cast("Connection", conn), input.name)
+    except RetiredNameTaken as taken:  # REQ-2248
+        return retired_name_result(taken)
     except ValueError as e:  # REQ-1317/1318: invalid expression / spec no longer compiles
         return MutationResult(success=False, message=str(e))
     # Always rebuild: state.metrics (raw-SQL `metrics.<name>` expansion) and the
@@ -1209,6 +1348,22 @@ async def save_relationship(
                 )
         except _FakeRefusedSave as refused:
             return refused.result
+        except RetiredNameTaken as taken:  # REQ-2248
+            return retired_name_result(taken)
+        except rel_repo.RelationshipWithoutColumns as unjoined:
+            return MutationResult(
+                success=False,
+                message=str(unjoined),
+                code=f"schema.relationship_{unjoined.end}_column_missing",
+                params={"relationship": unjoined.rel_id},
+            )
+        except rel_repo.ReservedRelationshipPrefix as reserved:
+            return MutationResult(
+                success=False,
+                message=str(reserved),
+                code="schema.relationship_id_reserved",
+                params={"id": reserved.rel_id, "prefix": reserved.prefix},
+            )
         except (TagLossRefused, TermTagRefused) as refused:
             return _tag_move_refusal(refused)
         if needs_review:
@@ -1344,6 +1499,7 @@ async def _record_request_decision(
     involved, reach, user_id = await _request_decision_scope(info, req)
     await rule.record(
         await _get_pool(),
+        org_id=_resolve_admin_context(info),
         action=action,
         request=req,
         actor=user_id,
@@ -1507,6 +1663,16 @@ def _require_tag_editor(info: StrawberryInfo, object_type: str | None = None) ->
         require_capability(info, "table_registration")
 
 
+def _require_tag_definer(info: StrawberryInfo, sensitive: bool) -> None:  # REQ-1944, REQ-2208
+    """Editing a tag's definition, its option left as it is: a sensitive tag's is maintained by
+    whoever governs sensitive columns across the org, or by a table editor as before
+    (:func:`_require_sensitive_tag_definer`); any other tag's by a table editor."""
+    if sensitive:
+        _require_sensitive_tag_definer(info)
+    else:
+        require_capability(info, "table_registration")
+
+
 def _require_sensitive_tag_definer(info: StrawberryInfo) -> None:  # REQ-1944
     """Editing a sensitive tag's definition (not its option): a table editor as before, or a
     holder of sensitive_data reaching every domain -- the tag hides columns in all of them."""
@@ -1573,6 +1739,164 @@ async def _require_tag_assignment_right(  # REQ-1943, REQ-1944
 
     assert table_id is not None  # _assignment_target_problem: a column names its table
     require_right_in_domains(info, SENSITIVE_DATA, {await table_domain(conn, table_id)})
+
+
+# ---------------------------------------------------------------------------
+# Citations of the reference library by tags and their assignments (REQ-2208)
+# ---------------------------------------------------------------------------
+
+
+def _assignment_model(input: TagAssignmentInput) -> Any:
+    """The assignment a ``TagAssignmentInput`` names (its object; the why is not read)."""
+    from provisa.core.models import TagAssignment as TagAssignmentModel
+
+    return TagAssignmentModel(
+        tag_id=input.tag_id,
+        object_type=input.object_type,
+        source_id=input.source_id,
+        table_id=input.table_id,
+        column_name=input.column_name,
+        relationship_id=input.relationship_id,
+        command_name=input.command_name,
+        term_id=input.term_id,
+        product_id=input.product_id,
+        document_id=input.document_id,
+        section_heading=input.section_heading,
+        section_page=input.section_page,
+        rls_rule_id=input.rls_rule_id,
+        role_id=input.role_id,
+        metric_name=input.metric_name,
+    )
+
+
+async def _require_assignment_editor(
+    info: StrawberryInfo, conn: "Connection", model: Any, tag_row: dict
+) -> "MutationResult | None":  # REQ-2208
+    """What changing the assignment ``model`` asks, as assignTag asks it: the surface's right, the
+    target's domains, a term's curation, and the tag's own right on that object. A target that
+    is not there is answered as one."""
+    _require_tag_editor(info, model.object_type)
+    problem = _assignment_target_problem(model)
+    if problem is not None:
+        return problem
+    refused = await _require_tag_target_domains(info, conn, model)
+    if refused is not None:
+        return refused
+    if model.object_type == "term":
+        assert model.term_id is not None
+        await _require_term_tagger(info, conn, model.term_id)
+    await _require_tag_assignment_right(
+        info,
+        conn,
+        tag_row,
+        model.object_type,
+        model.table_id,
+        model.term_id,
+        model.product_id,
+        await _rule_domains_of(conn, model),
+    )
+    return None
+
+
+async def _unread_document(
+    info: StrawberryInfo, conn: "Connection", document_id: int
+) -> "MutationResult | None":  # REQ-2208
+    """A cited document must be one the caller reads, as the Library page reads it (its
+    domains): one it may not read is answered as one the library does not hold."""
+    from provisa.api.admin.capabilities import allowed_domains_request
+    from provisa.reference_library import store
+    from provisa.reference_library.retrieve import readable
+
+    document = await store.document(conn, document_id)
+    scope = allowed_domains_request(info.context["request"])
+    if document is not None and readable(scope, frozenset(document.domains)):
+        return None
+    return MutationResult(
+        success=False,
+        message=f"the reference library holds no document {document_id}",
+        code="reference_library.not_found",
+        params={"documentId": document_id},
+    )
+
+
+def _caller_id(info: StrawberryInfo) -> str | None:
+    request = info.context["request"]
+    identity = getattr(getattr(request, "state", None), "identity", None)
+    return getattr(identity, "user_id", None)
+
+
+async def _change_citation(
+    info: StrawberryInfo,
+    tag_id: str,
+    assignment: "TagAssignmentInput | None",
+    citation: LibraryCitationInput,
+    *,
+    adding: bool,
+) -> MutationResult:  # REQ-2208
+    """Add or take off a citation on a tag's definition (``assignment`` None) or on one of its
+    assignments, with the right that edits that definition or that assignment."""
+    from provisa.core.repositories import tag as tag_repo
+    from provisa.reference_library import citations, library
+
+    place = citations.Place(citation.document_id, citation.section_heading, citation.section_page)
+    params: dict[str, Any] = {"tag": tag_id, "documentId": citation.document_id}
+    if assignment is None:
+        _require_tag_editor(info)
+    pool = await _get_pool()
+    async with pool.acquire() as conn:
+        c = cast("Connection", conn)
+        tag_row = await tag_repo.get(c, tag_id)
+        if tag_row is None:
+            return MutationResult(
+                success=False,
+                message=f"Tag {tag_id!r} not found",
+                code="schema.tag_not_found",
+                params={"tag": tag_id},
+            )
+        model = None
+        if assignment is None:
+            _require_tag_definer(info, bool(tag_row["sensitive"]))
+        else:
+            model = _assignment_model(assignment)
+            refused = await _require_assignment_editor(info, c, model, tag_row)
+            if refused is not None:
+                return refused
+            params["objectKey"] = model.object_key()
+        refused = await _unread_document(info, c, citation.document_id)
+        if refused is not None:
+            return refused
+        removed = True
+        try:
+            if model is None and adding:
+                await tag_repo.cite_definition(c, tag_id, place, _caller_id(info))
+            elif model is None:
+                removed = await tag_repo.uncite_definition(c, tag_id, place)
+            elif adding:
+                await tag_repo.cite_assignment(c, model, place, _caller_id(info))
+            else:
+                removed = await tag_repo.uncite_assignment(c, model, place)
+        except tag_repo.CitationTargetNotFound as missing:
+            return MutationResult(
+                success=False,
+                message=str(missing),
+                code="schema.tag_assignment_not_found",
+                params=params,
+            )
+        except library.LibraryRefused as exc:
+            return MutationResult(success=False, message=str(exc), code=exc.code, params=params)
+    if not adding and not removed:
+        return MutationResult(
+            success=False,
+            message=f"Tag {tag_id!r} does not cite that document or section",
+            code="tag.citation_not_found",
+            params=params,
+        )
+    return MutationResult(
+        success=True,
+        message=f"Tag {tag_id!r} citation {'added' if adding else 'removed'}",
+        code="tag.citation_added" if adding else "tag.citation_removed",
+        params=params,
+    )
 
 
 async def _rule_domains_of(conn: "Connection", model: Any) -> set[str] | None:  # REQ-2208
@@ -1776,6 +2100,49 @@ async def store_tag_assignment(  # REQ-1375, REQ-1377, REQ-1443, REQ-1467
             params={"tag": model.tag_id, "objectType": model.object_type},
         )
     await tag_repo.assign(cast("Connection", conn), model)
+    return None
+
+
+class _AssignRefused(Exception):
+    """Carries a refusal out of the assignment's transaction, rolling it back."""
+
+    def __init__(self, result: MutationResult) -> None:
+        super().__init__(result.message)
+        self.result = result
+
+
+async def _store_with_citations(  # REQ-2208
+    info: StrawberryInfo,
+    conn: "Connection",
+    model: Any,
+    tag_row: dict,
+    cited: "list[LibraryCitationInput] | None",
+) -> "MutationResult | None":
+    """The assignment and, when ``cited`` is given, the whole set of its citations, in one
+    transaction: a citation the library refuses (no such document, no such section) leaves
+    neither the assignment nor any citation written."""
+    from provisa.core.repositories import tag as tag_repo
+    from provisa.reference_library import citations, library
+
+    try:
+        async with conn.transaction():
+            refused = await store_tag_assignment(conn, model, tag_row)
+            if refused is not None:
+                raise _AssignRefused(refused)
+            if cited is not None:
+                places = [
+                    citations.Place(c.document_id, c.section_heading, c.section_page) for c in cited
+                ]
+                await tag_repo.replace_assignment_citations(conn, model, places, _caller_id(info))
+    except _AssignRefused as stopped:
+        return stopped.result
+    except library.LibraryRefused as exc:
+        return MutationResult(
+            success=False,
+            message=str(exc),
+            code=exc.code,
+            params={"tag": model.tag_id, "objectKey": model.object_key()},
+        )
     return None
 
 
@@ -2008,7 +2375,7 @@ def _parsed_off_peak(off_peak_window: str | None, tz: str) -> "MutationResult | 
             success=False,
             message=f"invalid off-peak window: {e}",
             code="schema.invalid_off_peak_window",
-            params={"error": str(e)},
+            params={"error": client_text(str(e))},
         )
     return None
 
@@ -2102,7 +2469,7 @@ def _refuse_soda_on_hosted_plane(source_type: str) -> MutationResult | None:  # 
 
 
 def _residency_refusal(
-    info, what: str, before: object, after: str | None, *, draft: bool = False
+    info, what: str, before: object, after: str | None
 ) -> MutationResult | None:  # REQ-1921
     """The refusal of a region change the caller's data_residency grant does not cover, naming
     the value; None when it may be made (``capabilities.require_residency_change``)."""
@@ -2110,7 +2477,7 @@ def _residency_refusal(
     from provisa.security.residency import ResidencyRefused
 
     try:
-        require_residency_change(info, what, before, after, draft=draft)
+        require_residency_change(info, what, before, after)
     except ResidencyRefused as refused:
         return MutationResult(
             success=False, message=str(refused), code=refused.code, params=refused.params
@@ -2219,15 +2586,15 @@ async def _delete_source_row(id: str, reader: "DependentsReader", pool) -> Mutat
 async def _publish_new_source(
     info: StrawberryInfo, input: SourceInput
 ) -> MutationResult | None:  # REQ-2113, REQ-2006
-    """Rebuild the schemas once for a source just created, with its draft table when one was asked
+    """Rebuild the schemas once for a source just created, with its table when one was asked
     for. Registering that table ends in a rebuild of its own, and typing it from the file needs
     none first: a Save paid for both, the longest steps it has. What keeps the source from being
-    answered as saved is returned, as :func:`_register_draft_table` says it."""
-    if not input.register_table_draft:
+    answered as saved is returned, as :func:`_register_table_from_file` says it."""
+    if not input.register_table_from_file:
         await _rebuild_schemas()
         return None
     try:
-        said = await _register_draft_table(info, input)
+        said = await _register_table_from_file(info, input)
     except BaseException:
         # The source stands, whatever became of its table.
         await _rebuild_schemas()
@@ -2268,18 +2635,21 @@ def default_table_input(
                 alias=_column_alias(c.name),
                 data_type=c.data_type,
                 description=c.comment,
+                # REQ-1986: a parameter is registered as the source describes it.
+                native_filter_type=c.native_filter_type,
+                native_filter_required=c.native_filter_required,
             )
             for c in columns
         ],
     )
 
 
-async def _register_draft_table(
+async def _register_table_from_file(
     info: StrawberryInfo, input: SourceInput
 ) -> MutationResult | None:  # REQ-2113
-    """A single-file CSV or Parquet source's table, set up with the source as a draft (out
-    of service until a steward takes it out of draft, REQ-1921): named after the source and
-    typed from its file as Register Table proposes it, every role seeing every column. None
+    """A single-file CSV or Parquet source's table, set up with the source and live on
+    registration (REQ-1921): named after the source and typed from its file as Register Table
+    proposes it, every role seeing every column. None
     when it is set up; else the source stands and why its table was not set up is said."""
     from provisa.api.admin.schema_query import resolve_available_columns_metadata
     from provisa.core.source_downloads import DOWNLOAD_TYPES
@@ -2302,6 +2672,188 @@ async def _register_draft_table(
     table = default_table_input(input.id, input.table_domain_id, "main", input.id, columns)
     result = await Mutation().register_table(info, table)  # pyright: ignore[reportCallIssue]
     return None if result.success else _without(result.message)
+
+
+def _source_not_found(source_id: str) -> MutationResult:
+    return MutationResult(
+        success=False,
+        message=f"Source {source_id!r} not found",
+        code="schema.source_not_found",
+        params={"source": source_id},
+    )
+
+
+def _step_refusal(
+    info: StrawberryInfo, what: str, region: str | None, *, withdrawing: bool
+) -> MutationResult | None:  # REQ-1921
+    """The refusal of a step of a move between regions the caller's data_residency grant does
+    not cover, naming the value; None when it may be taken (``capabilities.require_residency_step``)."""
+    from provisa.api.admin.capabilities import require_residency_step
+    from provisa.security.residency import ResidencyRefused
+
+    try:
+        require_residency_step(info, what, region, withdrawing=withdrawing)
+    except ResidencyRefused as refused:
+        return MutationResult(
+            success=False, message=str(refused), code=refused.code, params=refused.params
+        )
+    return None
+
+
+def _put_back_needs_region(what: str) -> MutationResult:  # REQ-1921
+    return MutationResult(
+        success=False,
+        message=f"putting back {what} names a region: give region, or null for no region",
+        code="schema.put_back_needs_region",
+        params={"object": what},
+    )
+
+
+def _region_refused(refused: ValueError, params: dict) -> MutationResult:
+    return MutationResult(
+        success=False,
+        message=str(refused),
+        code="schema.region_refused",
+        params={**params, "reason": str(refused)},
+    )
+
+
+async def _set_table_withdrawn(
+    info: StrawberryInfo, table_id: int, withdrawn: bool, region: str | None
+) -> MutationResult:  # REQ-1921
+    """Withdraw the table ``table_id``, or put it back into ``region``: one action each, guarded
+    by the right that edits it (table registration in its domain) and, on a platform that
+    declares regions, by the caller's data_residency grant -- withdrawing needs the region the
+    table is in covered, putting back the region named. So a move between regions passes through
+    withdrawn, by a holder for each region; nothing is held or read anywhere in between."""
+    from sqlalchemy import update as _update
+
+    from provisa.api.admin.code_resolver import held_by_set
+    from provisa.core import model_change, model_uri
+    from provisa.core.repositories import region as region_repo
+
+    pool = await _get_pool()
+    async with pool.acquire() as conn:
+        row = (
+            await conn.execute_core(
+                select(
+                    registered_tables.c.domain_id,
+                    registered_tables.c.table_name,
+                    registered_tables.c.alias,
+                    registered_tables.c.materialize,
+                    registered_tables.c.code_resolver,
+                    registered_tables.c.region,
+                    registered_tables.c.withdrawn,
+                ).where(registered_tables.c.id == table_id, registered_tables.c.retired.is_(False))
+            )
+        ).fetchone()
+        if row is None:
+            return MutationResult(
+                success=False,
+                message=f"Table {table_id} not found",
+                code="schema.table_not_found",
+                params={"table": table_id},
+            )
+        _held = held_by_set(dict(row._mapping), "table", row.table_name)  # REQ-2249
+        if _held is not None:
+            return _held
+        require_capability(info, "table_registration", domain_id=row.domain_id)
+        _unread = await _table_unread(info, table_id)  # REQ-2152
+        if _unread is not None:
+            return _unread
+        if not withdrawn and not row.withdrawn:
+            # Putting back names a region: a table in production is moved by setTableRegion.
+            return MutationResult(
+                success=False,
+                message=f"table {row.table_name!r} is not withdrawn",
+                code="schema.table_not_withdrawn",
+                params={"table": row.table_name},
+            )
+        what = f"table {row.table_name}"
+        refused = _step_refusal(
+            info, what, row.region if withdrawn else region, withdrawing=withdrawn
+        )
+        if refused is not None:
+            return refused
+        model_change.name(  # REQ-1524
+            "withdraw" if withdrawn else "put back",
+            model_change.uri(model_uri.named_table_uri, row.domain_id, row.alias or row.table_name),
+        )
+        async with conn.transaction():
+            if not withdrawn:
+                try:
+                    await region_repo.set_table_region(conn, table_id, region)
+                except ValueError as refused_region:
+                    return _region_refused(refused_region, {"table": table_id, "region": region})
+            await conn.execute_core(
+                _update(registered_tables)
+                .where(registered_tables.c.id == table_id)
+                .values(withdrawn=withdrawn)
+            )
+    await _rebuild_schemas()
+    if not withdrawn and row.materialize:
+        # Put back: a materialized view is built now, as a newly saved one is.
+        from provisa.api.admin.schema_common import activate_view_mv
+
+        await activate_view_mv(row.table_name)
+    return MutationResult(
+        success=True,
+        message=f"table {row.table_name!r} {'withdrawn' if withdrawn else 'put back'}",
+        code="schema.table_withdrawn" if withdrawn else "schema.table_put_back",
+        params={"table": row.table_name},
+    )
+
+
+async def _set_source_withdrawn(
+    info: StrawberryInfo, source_id: str, withdrawn: bool, region: str | None
+) -> MutationResult:  # REQ-1921
+    """Withdraw the source ``source_id``, or put it back into ``region``: one action each,
+    guarded by the right that edits it (source registration) and, on a platform that declares
+    regions, by the caller's data_residency grant, as a table's (:func:`_set_table_withdrawn`).
+    Every worker's engine detaches or attaches it when its model reload reads the row
+    (model_reload.reconcile_sources), this one's included."""
+    from provisa.core.models import BUILT_IN_SOURCE_IDS
+    from provisa.core.repositories import region as region_repo
+    from provisa.core.repositories import source as source_repo
+
+    require_capability(info, "source_registration")
+    if source_id in BUILT_IN_SOURCE_IDS:
+        return _source_not_found(source_id)
+    pool = await _get_pool()
+    async with pool.acquire() as conn:
+        row = await source_repo.get(conn, source_id)
+        if row is None or row["retired"]:
+            return _source_not_found(source_id)
+        if not withdrawn and not row["withdrawn"]:
+            # Putting back names a region: a source in production is moved by setSourceRegion.
+            return MutationResult(
+                success=False,
+                message=f"source {source_id!r} is not withdrawn",
+                code="schema.source_not_withdrawn",
+                params={"source": source_id},
+            )
+        refused = _step_refusal(
+            info,
+            f"source {source_id}",
+            row["region"] if withdrawn else region,
+            withdrawing=withdrawn,
+        )
+        if refused is not None:
+            return refused
+        async with conn.transaction():
+            if not withdrawn:
+                try:
+                    await region_repo.set_source_region(conn, source_id, region)
+                except ValueError as refused_region:
+                    return _region_refused(refused_region, {"source": source_id, "region": region})
+            await source_repo.set_withdrawn(conn, source_id, withdrawn)
+    await _rebuild_schemas()
+    return MutationResult(
+        success=True,
+        message=f"source {source_id!r} {'withdrawn' if withdrawn else 'put back'}",
+        code="schema.source_withdrawn" if withdrawn else "schema.source_put_back",
+        params={"source": source_id},
+    )
 
 
 def _single() -> Any:  # REQ-2240
@@ -2486,7 +3038,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 success=False,
                 message=str(e),
                 code="schema.invalid_calendar",
-                params={"error": e.reason},
+                params={"error": client_value(e.reason)},
             )
         pool = await _get_pool()
         async with pool.acquire() as conn:
@@ -2647,6 +3199,10 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 _wikipedia_refusal = _expand_wikipedia_if_needed(input)
                 if _wikipedia_refusal is not None:
                     return _wikipedia_refusal
+                # REQ-1923: a Wikidata source is the SPARQL source at the query service.
+                _wikidata_refusal = _preset_wikidata_if_needed(input)
+                if _wikidata_refusal is not None:
+                    return _wikidata_refusal
                 # REQ-1923: a Google Workspace source's settings are checked before it exists.
                 _workspace_refusal = google_workspace_refusal(
                     input
@@ -2684,7 +3240,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 success=False,
                 message=f"Source {input.id!r}: connection validation failed: {_conn_err}",
                 code="schema.source_connection_failed",
-                params={"source": input.id, "error": str(_conn_err)},
+                params={"source": input.id, "error": client_text(str(_conn_err))},
             )
 
         from provisa.api.admin._change_feed import source_change_feed_refusal
@@ -2871,7 +3427,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
 
         # The token as typed: a value, or a reference resolved in the org's vault.
         async with bound_to_request_org():
-            resolved = resolve_secrets(token)
+            resolved = resolve_secrets(token, credential=True)
         try:
             staged_root = await stage_dataset(resolved, owner, ref)
         except UnsupportedKaggleDataset as exc:
@@ -2950,7 +3506,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 params={"owner": owner, "ref": ref},
             )
         async with bound_to_request_org():
-            token = resolve_secrets(row["password_ref"])
+            token = resolve_secrets(row["password_ref"], credential=True)
         # REQ-1787: skip the re-download (and the pgwire endpoint teardown it would otherwise
         # force) when Kaggle has nothing newer than what's already on disk -- the staged files'
         # own mtime IS the "last refreshed at" record; no separate timestamp needs to be stored.
@@ -3065,6 +3621,10 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             _wikipedia_refusal = _expand_wikipedia_if_needed(input)
             if _wikipedia_refusal is not None:
                 return _wikipedia_refusal
+            # REQ-1923: an edited Wikidata source keeps its preset.
+            _wikidata_refusal = _preset_wikidata_if_needed(input)
+            if _wikidata_refusal is not None:
+                return _wikidata_refusal
             _workspace_refusal = google_workspace_refusal(
                 input
             ) or await google_workspace_organisation_refusal(input)  # REQ-1923
@@ -3189,7 +3749,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                         port=input.port,
                         database=input.database,
                         user=input.username,
-                        password=resolve_secrets(password_ref),
+                        password=resolve_secrets(password_ref, credential=True),
                         # The connection extras the standard arguments cannot carry (an Exasol
                         # certificate pin, a warehouse's account/http_path), as create_source's
                         # pool and the boot pool pass them: without them an edited source dialled
@@ -3577,16 +4137,43 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         )
 
     @strawberry.mutation
+    async def restore_model_object(
+        self, info: StrawberryInfo, kind: str, key: str
+    ) -> MutationResult:  # REQ-2248
+        """Restore a retired source, domain, table, column, relationship, tag or metric
+        (``kind``) named by ``key`` as the retired listing names it: the same object, served
+        again; a source or domain at the id it had, with its tables."""
+        pool = await _get_pool()
+        async with pool.acquire() as conn:
+            _conn = cast("Connection", conn)
+            async with _conn.transaction():
+                # The gate is the kind's delete right, in its domains (restore_retired).
+                result = await restore_retired(info, _conn, kind, key)
+        if result.success:
+            if kind == "tag":
+                await _refresh_config_tags()
+            await _rebuild_schemas()
+        return result
+
+    @strawberry.mutation
     async def create_tag(
-        self, info: StrawberryInfo, input: TagInput
-    ) -> MutationResult:  # REQ-1373, REQ-1375, REQ-1944
-        return await _save_tag(info, input, creating=True)
+        self,
+        info: StrawberryInfo,
+        input: TagInput,
+        citations: list[LibraryCitationInput] | None = None,
+    ) -> MutationResult:  # REQ-1373, REQ-1375, REQ-1944, REQ-2208
+        """``citations``, when given, is the tag's whole set of definition citations."""
+        return await _save_tag(info, input, creating=True, cited=citations)
 
     @strawberry.mutation
     async def update_tag(
-        self, info: StrawberryInfo, input: TagInput
-    ) -> MutationResult:  # REQ-1373, REQ-1375, REQ-1944
-        return await _save_tag(info, input, creating=False)
+        self,
+        info: StrawberryInfo,
+        input: TagInput,
+        citations: list[LibraryCitationInput] | None = None,
+    ) -> MutationResult:  # REQ-1373, REQ-1375, REQ-1944, REQ-2208
+        """``citations``, when given, is the tag's whole set of definition citations."""
+        return await _save_tag(info, input, creating=False, cited=citations)
 
     @strawberry.mutation
     async def delete_tag(
@@ -3649,8 +4236,13 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
 
     @strawberry.mutation
     async def assign_tag(
-        self, info: StrawberryInfo, input: TagAssignmentInput
-    ) -> MutationResult:  # REQ-1376/1377, REQ-1944
+        self,
+        info: StrawberryInfo,
+        input: TagAssignmentInput,
+        citations: list[LibraryCitationInput] | None = None,
+    ) -> MutationResult:  # REQ-1376/1377, REQ-1944, REQ-2208
+        """Put the tag on the object, or change that assignment. ``citations``, when given, is the
+        whole set the assignment cites, written with it in one transaction: all of it or none."""
         _require_tag_editor(info, input.object_type)
         from provisa.core.models import TagAssignment as TagAssignmentModel
         from provisa.core.repositories import tag as tag_repo
@@ -3714,6 +4306,10 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 model, refused = await _on_columns_term(cast("Connection", conn), model)
                 if refused is not None:
                     return refused
+            # REQ-2208 (A TAG IS OFFERED BY DOMAIN): on objects of the tag's domains only.
+            refused = await _tag_domain_refusal(info, cast("Connection", conn), tag_row, model)
+            if refused is not None:
+                return refused
             if model.object_type == "term":  # REQ-2145
                 assert model.term_id is not None
                 await _require_term_tagger(info, cast("Connection", conn), model.term_id)
@@ -3741,7 +4337,15 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 model.product_id,
                 await _rule_domains_of(cast("Connection", conn), model),
             )
-            refused = await store_tag_assignment(cast("Connection", conn), model, tag_row)
+            for citation in citations or []:  # REQ-2208: a document the caller reads
+                refused = await _unread_document(
+                    info, cast("Connection", conn), citation.document_id
+                )
+                if refused is not None:
+                    return refused
+            refused = await _store_with_citations(
+                info, cast("Connection", conn), model, tag_row, citations
+            )
             if refused is not None:
                 return refused
             covers = await _covers(cast("Connection", conn), model)  # REQ-2145
@@ -3851,6 +4455,34 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             code="schema.tag_unassigned",
             params={"tag": input.tag_id, "objectKey": model.object_key()},
         )
+
+    @strawberry.mutation
+    async def cite_tag_definition(
+        self, info: StrawberryInfo, tag_id: str, citation: LibraryCitationInput
+    ) -> MutationResult:  # REQ-2208
+        """The tag's definition cites a library document or section (the one that defines it);
+        citing it again records the section's text as it is now, confirming a flagged one."""
+        return await _change_citation(info, tag_id, None, citation, adding=True)
+
+    @strawberry.mutation
+    async def uncite_tag_definition(
+        self, info: StrawberryInfo, tag_id: str, citation: LibraryCitationInput
+    ) -> MutationResult:  # REQ-2208
+        return await _change_citation(info, tag_id, None, citation, adding=False)
+
+    @strawberry.mutation
+    async def cite_tag_assignment(
+        self, info: StrawberryInfo, assignment: TagAssignmentInput, citation: LibraryCitationInput
+    ) -> MutationResult:  # REQ-2208
+        """One assignment of a tag cites a library document or section that traces or confirms
+        it; citing it again records the section's text as it is now."""
+        return await _change_citation(info, assignment.tag_id, assignment, citation, adding=True)
+
+    @strawberry.mutation
+    async def uncite_tag_assignment(
+        self, info: StrawberryInfo, assignment: TagAssignmentInput, citation: LibraryCitationInput
+    ) -> MutationResult:  # REQ-2208
+        return await _change_citation(info, assignment.tag_id, assignment, citation, adding=False)
 
     @strawberry.mutation
     async def upsert_tag_param_value(
@@ -3975,6 +4607,10 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
     async def register_table(
         self, info: StrawberryInfo, input: TableInput
     ) -> MutationResult:  # REQ-013, REQ-016, REQ-252, REQ-366, REQ-413, REQ-432, REQ-433, REQ-434
+        # REQ-1531: a registration naming no domain is refused by name, before its right is asked.
+        _no_domain = table_domain_refusal(input.domain_id, input.table_name)
+        if _no_domain is not None:
+            return _no_domain
         require_capability(info, "table_registration", domain_id=input.domain_id)
         return await _ops.register_table(info, input)
 
@@ -4119,6 +4755,10 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             require_table_save,
         )
 
+        # REQ-1531: a table stays in a domain; a save naming none is refused by name.
+        _no_domain = table_domain_refusal(input.domain_id, input.table_name)
+        if _no_domain is not None:
+            return _no_domain
         _governance_sets = governance_sets(info, input)  # REQ-1958: of the input as sent
         _editor, input = await require_table_save(info, input)  # REQ-1944
         from provisa.api.admin._table_ops import land_transform_view
@@ -4133,6 +4773,15 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         _field_refusal = await column_field_refusal(pool, input, columns)
         if _field_refusal is not None:
             return _field_refusal
+        from provisa.api.admin.code_resolver import held_by_set
+
+        async with pool.acquire() as _hconn:
+            _stored = await table_repo.get_by_name(
+                cast("Connection", _hconn), input.source_id, input.schema_name, input.table_name
+            )
+        _held = held_by_set(_stored, "table", input.table_name)  # REQ-2249
+        if _held is not None:
+            return _held
         # REQ-957/964: reject a non-deterministic / unsafe preprocess hook at registration.
         from provisa.mv.preprocess import validate_preprocess
 
@@ -4140,6 +4789,11 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             validate_preprocess(input.mv_preprocess)
         except ValueError as _pp_err:
             return MutationResult(success=False, message=str(_pp_err))
+        from provisa.api.admin.schema_mutation_ops import incremental_refused
+
+        _incremental = await incremental_refused(input)  # REQ-2249
+        if _incremental is not None:
+            return _incremental
         # REQ-2066: the window a read of the table (a materialized view's) is judged by is parsed when
         # it is saved, as the load management save does; one that does not parse is refused here. ""
         # is no window (as scheduled_refresh reads it); a table naming no zone takes its source's, and
@@ -4152,9 +4806,14 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             async with pool.acquire() as conn:
                 _conn = cast("Connection", conn)
                 async with _conn.transaction():
-                    from provisa.api.admin.domain_guard import require_current_domain
+                    from provisa.api.admin.domain_guard import (
+                        require_current_domain,
+                        require_move_rules,
+                    )
 
                     await require_current_domain(info, _conn, model)  # REQ-1531
+                    # REQ-1531: a move to another domain checks the table's row rules again.
+                    _moved_from = await require_move_rules(info, _conn, model)
                     from provisa.api.admin._parameter_guard import source_parameter_refusal
 
                     _param_refusal = await source_parameter_refusal(_conn, model)  # REQ-1986
@@ -4164,6 +4823,18 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                                 success=False,
                                 message=_param_refusal,
                                 code="schema.parameter_set_by_source",
+                                params={"table": model.table_name},
+                            )
+                        )
+                    from provisa.api.admin._function_table import derived_edit_refusal
+
+                    _derived_refusal = await derived_edit_refusal(_conn, model)  # REQ-1986
+                    if _derived_refusal is not None:
+                        raise TableSaveRefused(
+                            MutationResult(
+                                success=False,
+                                message=_derived_refusal,
+                                code="schema.table_derived_from_function",
                                 params={"table": model.table_name},
                             )
                         )
@@ -4199,8 +4870,8 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                         raise TableSaveRefused(MutationResult(success=False, message=str(_dq_err)))
                     from provisa.api.admin.region_defaults import kept_placement
 
-                    model.region, model.draft = await kept_placement(_conn, model)  # REQ-1921
-                    _stored_region, _stored_draft = model.region, model.draft
+                    model.region, _stored_withdrawn = await kept_placement(_conn, model)  # REQ-1921
+                    _stored_region = model.region
                     _conflict = await _domain_table_conflict(
                         _conn,
                         model.domain_id,
@@ -4211,13 +4882,6 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     )
                     if _conflict:
                         raise TableSaveRefused(MutationResult(success=False, message=_conflict))
-                    _owner_conflict = await _dataset_ownership_conflict(
-                        _conn, model.source_id, model.table_name, model.domain_id
-                    )
-                    if _owner_conflict:
-                        raise TableSaveRefused(
-                            MutationResult(success=False, message=_owner_conflict)
-                        )
                     # REQ-1907/REQ-318: an update does not take cache_ttl / row_materialize / pagination
                     # -- they are saved through updateTableCache / updateTablePaging -- so the upsert
                     # keeps the stored values; role_ttl and replicate likewise unless the input
@@ -4383,6 +5047,13 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                         table_id = await table_repo.upsert(
                             _conn, model, declared=await registration_keys(model)
                         )
+                        if _moved_from is not None and table_id is not None:
+                            from provisa.api.admin.domain_guard import (
+                                review_moved_relationships,
+                            )
+
+                            # REQ-1531: and its relationships, once it sits in the new domain.
+                            await review_moved_relationships(_conn, table_id)
                     except glossary_repo.TermIsClass as _class:
                         # REQ-2141: a column named for a class term is not claimed by it; REQ-2152: only
                         # the tables the caller reads are named.
@@ -4420,6 +5091,20 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                                     "table": model.table_name,
                                     "column": _mask.column,
                                     "entries": _mask.entries,
+                                },
+                            )
+                        )
+                    except MaskConstantNotText as _const:
+                        # REQ-2131: a constant other than NULL on a non-text column reads as NULL; not saved.
+                        raise TableSaveRefused(
+                            MutationResult(
+                                success=False,
+                                message=str(_const),
+                                code="schema.mask_constant_not_text",
+                                params={
+                                    "table": model.table_name,
+                                    "column": _const.column,
+                                    "type": _const.data_type,
                                 },
                             )
                         )
@@ -4475,6 +5160,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     except LabelClash as _clash:
                         # REQ-572: a label never names both a domain and a table; both are named.
                         raise TableSaveRefused(label_clash_result(_clash))
+                    except RetiredNameTaken as _retired:
+                        # REQ-2248: a retired name stays taken; the retired object is named.
+                        raise TableSaveRefused(retired_name_result(_retired))
                     except SqlAddressTaken as _taken:
                         # REQ-1933: one SQL address per table in a domain; the table that holds it is named.
                         raise TableSaveRefused(
@@ -4539,8 +5227,6 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                         input,
                         table_id,
                         stored_region=_stored_region,
-                        stored_draft=_stored_draft,
-                        draft=model.draft,
                     )
                     await save_row_rules(info, _conn, input, model)
                     await save_carried_paging(_conn, input, table_id)
@@ -4568,12 +5254,14 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     persist=input.mv_persist,  # REQ-965
                     primary_key=list(input.mv_primary_key),  # REQ-970
                     incremental=input.mv_incremental,  # REQ-969
+                    rebuild_every=input.mv_rebuild_every,  # REQ-2249
                     calendar=input.mv_calendar,  # REQ-962
                     grain=input.mv_grain,  # REQ-962/1168
                     allowed_lateness=input.mv_allowed_lateness,  # REQ-961
                     expected_events=input.mv_expected_events,  # REQ-961
                     business_day_grain=input.mv_business_day_grain,  # REQ-962
-                    draft=model.draft,  # REQ-1921
+                    # REQ-1921: built only while in service, not withdrawn.
+                    withdrawn=_stored_withdrawn,
                     region=model.region,  # REQ-1921
                 )
             except ValueError as _det_err:  # REQ-964: reject non-deterministic MV SQL
@@ -4581,24 +5269,8 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         elif not input.materialize:
             _remove_view_mv(input.table_name)
         await _rebuild_schemas()
-        # REQ-1742: graphql_remote_router.py's/grpc_remote_router.py's own one-shot registration
-        # flows call reconcile_landed_tables() right after _rebuild_schemas() — the pass that
-        # actually creates a replicated table's replica in the store (REQ-846/932). update_table
-        # (this mutation) never did, so a replica that didn't converge for any reason at
-        # registration time (e.g. a transient failure, or state not yet fully committed) had no
-        # other path to ever catch up — every later grant/edit through this mutation left it
-        # permanently stuck. Idempotent (a matching replica is kept), so calling it
-        # unconditionally here is safe for every table type.
-        try:
-            from provisa.api.app import state as _state
-
-            await _state.federation_engine.reconcile_landed_tables()
-        except Exception:
-            logging.getLogger(__name__).warning(
-                "Landed-table reconcile failed after update_table", exc_info=True
-            )
         # Materialize + wire a (re)materialized view immediately — FRESH now, not STALE-until-restart.
-        if input.view_sql and input.materialize and not model.draft:
+        if input.view_sql and input.materialize and not _stored_withdrawn:
             from provisa.api.admin.schema_common import activate_view_mv
 
             await activate_view_mv(input.table_name)
@@ -4633,6 +5305,26 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     message=f"Table {id} not found",
                     code="schema.table_not_found",
                     params={"table": id},
+                )
+            from provisa.api.admin.code_resolver import held_by_set
+
+            _stored = await table_repo.get(cast("Connection", conn), id)
+            _held = held_by_set(_stored, "table", (_stored or {}).get("table_name", str(id)))
+            if _held is not None:  # REQ-2249
+                return _held
+            from provisa.api.admin._function_table import derived_delete_refusal
+
+            _derived = (
+                None
+                if _stored is None
+                else await derived_delete_refusal(cast("Connection", conn), _stored)
+            )
+            if _derived is not None:  # REQ-1986
+                return MutationResult(
+                    success=False,
+                    message=_derived,
+                    code="schema.table_derived_from_function",
+                    params={"table": id, "name": (_stored or {}).get("table_name")},
                 )
             try:
                 deleted = await table_repo.delete(cast("Connection", conn), id)
@@ -4973,7 +5665,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         from pydantic import ValidationError
 
         from provisa.api.admin.capabilities import require_capability
-        from provisa.core import model_change
+        from provisa.core import model_change, model_uri
         from provisa.core.models import Column as ColumnModel
         from provisa.core.models import Table as TableModel
         from provisa.core.repositories import table as table_repo
@@ -5026,7 +5718,12 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         refusal = write_grant_predicates_refusal(table_id, models, registry)
         if refusal is not None:
             return refusal
-        model_change.name("set", "write grants", f"on table {table_id}")
+        model_change.name(  # REQ-1524
+            "set write grants on",
+            model_change.uri(
+                model_uri.named_table_uri, row["domain_id"], row["alias"] or row["table_name"]
+            ),
+        )
         async with pool.acquire() as conn:
             await write_grant_repo.replace_for_table(
                 cast("Connection", conn), table_id, models, unheld=unheld
@@ -5357,6 +6054,38 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         return await _save_relationship_as_caller(info, input, creating=False)
 
     @strawberry.mutation
+    async def create_code_resolver(  # REQ-2249
+        self, info: StrawberryInfo, input: CodeResolverInput
+    ) -> MutationResult:
+        """A code resolver set: its bridge view and its relationships, saved as one. Each object
+        is saved by its own kind's mutation, which asks its own rights too."""
+        require_capability(info, "create_relationship")
+        from provisa.api.admin import code_resolver
+
+        return await code_resolver.save(info, input, creating=True)
+
+    @strawberry.mutation
+    async def update_code_resolver(  # REQ-2249
+        self, info: StrawberryInfo, input: CodeResolverInput
+    ) -> MutationResult:
+        """A change to a code resolver set, made to its objects together."""
+        require_capability(info, "create_relationship")
+        from provisa.api.admin import code_resolver
+
+        return await code_resolver.save(info, input, creating=False)
+
+    @strawberry.mutation
+    async def retire_code_resolver(  # REQ-2249, REQ-2248
+        self, info: StrawberryInfo, id: str, reason: str | None = None
+    ) -> MutationResult:
+        """Retire a code resolver set: its bridge view and its relationships, together."""
+        require_capability(info, "create_relationship")
+        require_capability(info, "table_registration")
+        from provisa.api.admin import code_resolver
+
+        return await code_resolver.retire(info, id, reason)
+
+    @strawberry.mutation
     async def delete_relationship(
         self,
         info: StrawberryInfo,
@@ -5395,6 +6124,11 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             if domains is not None:
                 require_domains(info, domains)
             _conn = cast("Connection", conn)
+            from provisa.api.admin.code_resolver import held_by_set
+
+            _held = held_by_set(await rel_repo.get(_conn, id), "relationship", id)  # REQ-2249
+            if _held is not None:
+                return _held
             try:
                 async with _conn.transaction():
                     tags_before = await inherited_snapshot(_conn)
@@ -5800,7 +6534,6 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     registered_tables.c.domain_id,
                     registered_tables.c.table_name,
                     registered_tables.c.region,
-                    registered_tables.c.draft,
                 ).where(registered_tables.c.id == table_id)
             )
             row = _row.fetchone()
@@ -5812,10 +6545,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     params={"table": table_id},
                 )
             require_capability(info, "table_registration", domain_id=row.domain_id)
-            # A draft table is claimed: its destination alone is judged (REQ-1921).
-            refused_here = _residency_refusal(
-                info, f"table {row.table_name}", row.region, region, draft=row.draft
-            )
+            refused_here = _residency_refusal(info, f"table {row.table_name}", row.region, region)
             if refused_here is not None:
                 return refused_here
             try:
@@ -5836,57 +6566,39 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         )
 
     @strawberry.mutation
-    async def set_table_draft(
-        self, info: StrawberryInfo, table_id: int, draft: bool
-    ) -> MutationResult:  # REQ-1921
-        """Put a table or view out of service (draft) or release it. While draft it is offered
-        to no reader: in no schema, refused to every statement. It keeps the replica it has, and
-        its steward's preview may land one (admin/table_read.py). Its domain's owners set and
-        clear it, and no other right is needed."""
-        from sqlalchemy import update as _update
+    async def withdraw_table(self, info: StrawberryInfo, table_id: int) -> MutationResult:
+        """Take a table or view out of production (REQ-1921): it serves no role on any front
+        door, no engine reads it and its replica is removed; its definition, grants and
+        relationships stay, and its domain's stewards may preview it. ``putBackTable`` returns it."""
+        return await _set_table_withdrawn(info, table_id, True, None)
 
-        pool = await _get_pool()
-        async with pool.acquire() as conn:
-            row = (
-                await conn.execute_core(
-                    select(
-                        registered_tables.c.domain_id,
-                        registered_tables.c.table_name,
-                        registered_tables.c.materialize,
-                    ).where(registered_tables.c.id == table_id)
-                )
-            ).fetchone()
-            if row is None:
-                return MutationResult(
-                    success=False,
-                    message=f"Table {table_id} not found",
-                    code="schema.table_not_found",
-                    params={"table": table_id},
-                )
-            require_capability(info, "table_registration", domain_id=row.domain_id)
-            _unread = await _table_unread(info, table_id)  # REQ-2152
-            if _unread is not None:
-                return _unread
-            from provisa.core import model_change
+    @strawberry.mutation
+    async def put_back_table(
+        self, info: StrawberryInfo, table_id: int, region: str | None = strawberry.UNSET
+    ) -> MutationResult:
+        """Return a withdrawn table or view to production (REQ-1921) in ``region`` (null: no
+        region), within the regions the caller's data_residency grant covers: the second step of
+        a move between regions."""
+        if region is strawberry.UNSET:
+            return _put_back_needs_region(f"table {table_id}")
+        return await _set_table_withdrawn(info, table_id, False, region)
 
-            model_change.name("update", "table draft", row.table_name)  # REQ-1524
-            await conn.execute_core(
-                _update(registered_tables)
-                .where(registered_tables.c.id == table_id)
-                .values(draft=draft)
-            )
-        await _rebuild_schemas()
-        if not draft and row.materialize:
-            # Released: a materialized view is built now, as a newly saved one is.
-            from provisa.api.admin.schema_common import activate_view_mv
+    @strawberry.mutation
+    async def withdraw_source(self, info: StrawberryInfo, source_id: str) -> MutationResult:
+        """Take a source out of production (REQ-1921): none of its tables serves any role, no
+        engine attaches it and none of its tables keeps a replica; its definition, tables and
+        grants stay. ``putBackSource`` returns it."""
+        return await _set_source_withdrawn(info, source_id, True, None)
 
-            await activate_view_mv(row.table_name)
-        return MutationResult(
-            success=True,
-            message=f"table {row.table_name!r} {'set as draft' if draft else 'released'}",
-            code="schema.table_draft_set" if draft else "schema.table_released",
-            params={"table": row.table_name},
-        )
+    @strawberry.mutation
+    async def put_back_source(
+        self, info: StrawberryInfo, source_id: str, region: str | None = strawberry.UNSET
+    ) -> MutationResult:
+        """Return a withdrawn source to production (REQ-1921) in ``region`` (null: no region),
+        within the regions the caller's data_residency grant covers."""
+        if region is strawberry.UNSET:
+            return _put_back_needs_region(f"source {source_id}")
+        return await _set_source_withdrawn(info, source_id, False, region)
 
     @strawberry.mutation
     async def set_source_region(
@@ -6761,7 +7473,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 success=False,
                 message=f"ANALYZE completed with errors. OK={len(analyzed)} errors={errors}",
                 code="schema.analyze_errors",
-                params={"ok": len(analyzed), "errors": str(errors)},
+                params={"ok": len(analyzed), "errors": client_text(str(errors))},
             )
         return MutationResult(
             success=True,

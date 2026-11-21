@@ -13,6 +13,8 @@
     "replace": "Ersetzung",
     "value": "Konstanter Wert",
     "valuePlaceholder": "Wert (leer für NULL)",
+    "readsNull": "Wird als NULL gelesen: Diese Spalte ist kein Text, daher kann eine konstante Maske nur NULL sein.",
+    "notTextConstant": "Diese Spalte ist kein Text: Eine konstante Maske wird als NULL gelesen, daher kann nur NULL (leer) gespeichert werden.",
     "precision": "Genauigkeit",
     "year": "Jahr",
     "month": "Monat",

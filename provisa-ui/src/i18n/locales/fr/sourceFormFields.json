@@ -94,7 +94,7 @@
     "authMechanismGssapi": "GSSAPI (Kerberos)",
     "upload": "Téléverser un fichier",
     "uploadReplace": "Téléverser un nouveau fichier",
-    "uploadNeedsId": "Saisissez d'abord l'ID de la source : le fichier est rangé sous celui-ci.",
+    "uploadNeedsId": "Saisissez d'abord l'ID de la source, car le fichier est conservé sous celui-ci.",
     "uploadedFileHint": "Le fichier téléversé de cette source, rangé dans le dossier de votre organisation. Téléversez-en un autre pour le remplacer.",
     "fileLocationsHint": "{files}/… dans les fichiers de l'organisation, un chemin sur le serveur, une adresse https://, ou s3://, gs:// ou az:// avec les identifiants du stockage ; ou téléversez le fichier.",
     "fileDatabaseLocationsHint": "{files}/… dans les fichiers de l'organisation, un chemin sur le serveur, une adresse https://, ou s3://, gs:// ou az:// avec les identifiants du stockage (en lecture seule là-bas) ; ou téléversez le fichier.",

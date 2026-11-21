@@ -90,7 +90,12 @@ async def _http_call(
     """Invoke an http-kind function endpoint, return the decoded JSON body."""
     import httpx
 
-    async with httpx.AsyncClient(timeout=timeout) as client:
+    from provisa.security import sandbox_egress
+
+    # REQ-2006: a held org's call reaches public destinations only, each request checked.
+    async with httpx.AsyncClient(
+        timeout=timeout, event_hooks=sandbox_egress.endpoint_event_hooks()
+    ) as client:
         resp = await client.request(method, url, json=payload, headers=headers)
     resp.raise_for_status()
     return resp.json()
@@ -140,7 +145,10 @@ async def _grpc_call(
     """
     path = _grpc_method_path(method)
     request = json.dumps(payload).encode()
-    channel = open_channel(target, tls)
+    from provisa.security.sandbox_egress import PrivateEndpointRefused
+
+    # REQ-2006: a held org's command dials the address its check resolved; refused as a command.
+    channel = open_channel(target, tls, refusal=PrivateEndpointRefused)
     try:
         rpc = channel.unary_unary(
             path, request_serializer=_grpc_identity, response_deserializer=_grpc_identity
@@ -305,7 +313,8 @@ def _require(
 # Egress control (REQ-885 security_constraint) — deny-by-default allow-list.   #
 # --------------------------------------------------------------------------- #
 
-# Loopback is the Provisa pgwire boundary — implicitly reachable, never external egress.
+# Loopback is the Provisa pgwire boundary — implicitly reachable, never external egress, on an
+# install whose org is not held (REQ-2006: a held org's call reaches public destinations only).
 _LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1", "[::1]"})
 
 
@@ -322,18 +331,33 @@ def _endpoint_host(endpoint: str, kind: str) -> tuple[str, str]:
     return host, endpoint
 
 
+def _endpoint_port(hostport: str) -> int | None:
+    """The port a ``host:port`` names, or None when it names none."""
+    port = hostport.rpartition(":")[2] if ":" in hostport else ""
+    return int(port) if port.isdigit() else None
+
+
 def _check_egress(state, endpoint: str, kind: str) -> None:
     """Refuse an external call whose host is not on the deny-by-default egress allow-list.
 
     The allow-list (``state.udf_egress_allowlist``) enumerates the http/grpc endpoints a
     deployment permits hosted functions to reach; loopback (Provisa pgwire) is always
     allowed. An empty/absent list denies all external egress — no silent default (REQ-885).
+
+    For a held org (``sandbox_egress.held``) loopback is not exempt, and a host on the list is
+    reached only when every address it resolves to is public (REQ-2006, amended 2026-11-16).
     """
+    from provisa.security import sandbox_egress
+
     host, hostport = _endpoint_host(endpoint, kind)
-    if host in _LOOPBACK_HOSTS:
+    held = sandbox_egress.held_here()
+    if host in _LOOPBACK_HOSTS and not held:
         return
     allowlist = getattr(state, "udf_egress_allowlist", None) or []
     if host in allowlist or hostport in allowlist:
+        sandbox_egress.require_allowed(
+            host, _endpoint_port(hostport), refusal=sandbox_egress.PrivateEndpointRefused
+        )
         return
     raise ApiError(
         403,
@@ -436,8 +460,16 @@ def _json_arguments_from_sql(fn: dict, args: dict) -> dict:
     return decoded
 
 
-async def _exec_source_operation(fn: dict, args: dict, state, _payload, _session) -> list[dict]:
-    """REQ-1924: a source's write operation, called with the arguments as given."""
+async def _exec_source_operation(fn: dict, args: dict, state, _payload, session) -> list[dict]:
+    """REQ-1924: a source's write operation, called with the arguments as given. REQ-1986: an
+    operation that returns the rows of its table is read as that table with the arguments
+    assigned, through the one pipeline as the caller's role."""
+    from provisa.compiler.operation_function import is_operation_function
+
+    if is_operation_function(fn):
+        from provisa.executor.operation_call import run
+
+        return await run(fn, _bind_arg_names(fn, args), state, session.role_id)
     from provisa.executor.source_operation import call_operation
 
     return await call_operation(
@@ -450,8 +482,15 @@ async def _exec_source_operation(fn: dict, args: dict, state, _payload, _session
 
 
 async def _exec_source_query(fn: dict, args: dict, state, _payload, _session) -> list[dict]:
-    """REQ-1988: a query command that runs its source's native query (a MongoDB pipeline) with
-    the call's arguments, each converted to its type and bound as a value."""
+    """REQ-1988: a command that runs its source's native query -- a MongoDB pipeline, or native
+    SQL on a relational source (binding {"sql"}) -- with the call's arguments, each converted to
+    its type and bound as a value."""
+    from provisa.core.native_sql import BINDING_KEY
+
+    if BINDING_KEY in (fn.get("binding") or {}):
+        from provisa.executor import native_sql_command
+
+        return await native_sql_command.run(state, fn, _bind_arg_names(fn, args))
     from provisa.mongodb.pipeline_command import run_command
 
     return await run_command(state, fn, _bind_arg_names(fn, args))

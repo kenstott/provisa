@@ -28,6 +28,8 @@ from pathlib import Path
 
 import pytest
 
+from tests.pyodide_downloads import build_context_args
+
 # `cluster`: this test deploys the Helm chart to a minikube profile of its own, created for this
 # run and deleted after it. Run it through the one-heavy-job slot; it stops no other container.
 # Every minikube, kubectl and helm call is pinned to that profile's context (see _pin), so it can
@@ -384,6 +386,8 @@ def helm_install(request):
             "build",
             "-f",
             str(repo_root / "Dockerfile.dev"),
+            # Pyodide from the directory already downloaded into, not from its CDN mid-build.
+            *build_context_args(),
             "-t",
             "provisa:latest",
             str(repo_root),

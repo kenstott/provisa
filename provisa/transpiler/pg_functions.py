@@ -559,10 +559,7 @@ def _type_call(name: str, args: list[exp.Expr]) -> str | None:  # noqa: PLR0911 
             sized = f"NUMERIC({packed >> 16}, {packed & 0xFFFF})"
             return f"CAST(CAST({_sql(args[0])} AS {sized}) AS TEXT)"
     if name in _SIZED_CALLS and len(args) == 3:  # noqa: PLR2004 -- value, typmod, explicit
-        value, typmod = _sql(args[0]), _sql(args[1])
-        # A typmod below the header says no length; a character(n) is padded to it.
-        sized = "RPAD({v}, ({t}) - 4, ' ')" if name == "bpchar" else "LEFT({v}, ({t}) - 4)"
-        return f"CASE WHEN ({typmod}) < 4 THEN {value} ELSE {sized.format(v=value, t=typmod)} END"
+        return _sized(name, *(_sql(arg) for arg in args))
     if name == "bit" and len(args) == 3 and _is_null(args[1]):  # noqa: PLR2004
         return "CAST(NULL AS BIT)"
     if name == "bit" and len(args) == 3 and _cast_to(args[0], exp.DataType.Type.BIT):  # noqa: PLR2004
@@ -570,6 +567,30 @@ def _type_call(name: str, args: list[exp.Expr]) -> str | None:  # noqa: PLR0911 
     if name == "bit" and len(args) == 2:  # noqa: PLR2004 -- an integer, as so many bits
         return _sql(_integer_bits(args[0], args[1]))
     return None
+
+
+#: palloc's greatest request (MaxAllocSize, 1 GB - 1): a character(n) padded past it is XX000.
+MAX_ALLOC_SIZE = 1073741823
+
+
+def _sized(name: str, value: str, typmod: str, explicit: str) -> str:
+    """bpchar or varchar(value, typmod, explicit), both strict: a typmod below the header says no
+    length; a varchar is cut to it, a character(n) cut or padded, by palloc(typmod), which raises
+    XX000 past MAX_ALLOC_SIZE. The pad is 0 there: an engine folds a constant RPAD whether or not
+    its branch is taken."""
+    null = f"WHEN ({typmod}) IS NULL OR ({explicit}) IS NULL THEN NULL"
+    if name == "varchar":
+        return (
+            f"CASE {null} WHEN ({typmod}) < 4 THEN {value} ELSE LEFT({value}, ({typmod}) - 4) END"
+        )
+    alloc = raising("XX000", f"'invalid memory alloc request size ' || CAST(({typmod}) AS TEXT)")
+    past = f"({typmod}) > {MAX_ALLOC_SIZE}"
+    pad = f"CASE WHEN {past} THEN 0 ELSE ({typmod}) - 4 END"
+    return (
+        f"CASE {null} WHEN ({typmod}) < 4 THEN {value} "
+        f"WHEN {past} AND LENGTH({value}) <> ({typmod}) - 4 THEN {alloc} "
+        f"ELSE RPAD({value}, {pad}, ' ') END"
+    )
 
 
 def _int_said(node: exp.Expr) -> int | None:
@@ -665,15 +686,20 @@ def _integer_bits(value: exp.Expr, typmod: exp.Expr) -> exp.Expr:
     return exp.Cast(this=padded, to=exp.DataType.build("BIT"))
 
 
+#: varbit.h's greatest bit string length: a longer typmod leaves the value as it is.
+VARBITMAXLEN = 2147483640
+
+
 def _bit_resized(value: exp.Expr, length: exp.Expr, explicit: exp.Expr) -> exp.Expr:
     """bit(bit, length, explicit), the cast to bit(n) as varbit.c's bit() makes it: unchanged for a
-    length of 0 or below or its own; an explicit cast truncates or pads with zeros on the right;
-    an implicit one of another length is PostgreSQL's 22026."""
+    length of 0 or below, past VARBITMAXLEN (INT_MAX - 7) or its own; an explicit cast truncates or
+    pads with zeros on the right; an implicit one of another length is PostgreSQL's 22026."""
     text = exp.Cast(this=value.copy(), to=exp.DataType.build("TEXT"))
     own = exp.Length(this=text.copy())
-    unchanged = exp.Or(
-        this=exp.LTE(this=length.copy(), expression=_number(0)),
-        expression=exp.EQ(this=own.copy(), expression=length.copy()),
+    unchanged = exp.or_(
+        exp.LTE(this=length.copy(), expression=_number(0)),
+        exp.GT(this=length.copy(), expression=_number(VARBITMAXLEN)),
+        exp.EQ(this=own.copy(), expression=length.copy()),
     )
     refused = sqlglot.parse_one(
         raising(
@@ -694,11 +720,22 @@ def _bit_resized(value: exp.Expr, length: exp.Expr, explicit: exp.Expr) -> exp.E
         ),
         read="postgres",
     )
+    # The padded length is 0 wherever the cast does not resize: an engine folds a constant RPAD
+    # whether or not its branch is taken, and RPAD to 2^31 bits takes the machine.
+    resized = exp.Case(
+        ifs=[
+            exp.If(
+                this=exp.and_(explicit.copy(), exp.Not(this=exp.Paren(this=unchanged.copy()))),
+                true=length.copy(),
+            )
+        ],
+        default=_number(0),
+    )
     cut = exp.Anonymous(
         this="RPAD",
         expressions=[
-            exp.Left(this=text.copy(), expression=length.copy()),
-            length.copy(),
+            exp.Left(this=text.copy(), expression=resized.copy()),
+            resized,
             exp.Literal.string("0"),
         ],
     )
@@ -924,20 +961,6 @@ def _type_said(value: exp.Expr) -> str | None:
     return "regtype" if named is not None and named[0] == "pg_typeof" else None
 
 
-#: The collations every PostgreSQL 17 has, whatever its locales (initdb), by name.
-_BUILT_IN_COLLATIONS = frozenset({"default", "C", "POSIX", "ucs_basic", "unicode", "pg_c_utf8"})
-
-
-def _collation_named(value: exp.Collate) -> exp.Expr | None:
-    """pg_collation_for of a value a COLLATE clause gives a built-in collation: its name, as
-    quote_ident writes it ("default" is a keyword, so quoted); None for any other collation."""
-    name = value.expression.name
-    if name not in _BUILT_IN_COLLATIONS:
-        return None
-    bare = re.fullmatch(r"[a-z_][a-z0-9_$]*", name) is not None and name != "default"
-    return exp.Literal.string(name if bare else '"' + name.replace('"', '""') + '"')
-
-
 def _call(node: exp.Expr) -> exp.Expr:
     """A call of an overload DuckDB's function of the name does not take."""
     if isinstance(node, (exp.StrToDate, exp.StrToTime)) and _said_text(node.args.get("format")):
@@ -975,10 +998,6 @@ def _call(node: exp.Expr) -> exp.Expr:
     if name == "generate_series" and len(args) in (3, 4) and _mixed_signs(args[2]):  # noqa: PLR2004
         # DuckDB's range takes no step of months, days and time of different signs.
         raise function_macros.FunctionRefused(name, "duckdb")
-    if name == "pg_collation_for" and len(args) == 1 and isinstance(args[0], exp.Collate):
-        collated = _collation_named(args[0])
-        if collated is not None:
-            return collated
     if name == "pg_typeof" and len(args) == 1:
         said = _type_said(args[0])
         return node if said is None else exp.Literal.string(said)
@@ -1147,7 +1166,7 @@ def _regexp_matches(args: list[exp.Expr]) -> str:
         items = ", ".join(f"REGEXP_EXTRACT_ALL({value}, {regex}, {g})[_m]" for g in groups)
         return (
             f"UNNEST(LIST_TRANSFORM(RANGE(1, LEN(REGEXP_EXTRACT_ALL({value}, {regex}, 0)) + 1), "
-            f"_m -> [{items}]))"
+            f"LAMBDA _m : [{items}]))"
         )
     items = ", ".join(f"REGEXP_EXTRACT({value}, {regex}, {g})" for g in groups)
     return (
@@ -1160,7 +1179,7 @@ def _encode_escape(value: str) -> str:
     """encode(bytea, 'escape'): a zero or high byte as \\ooo, a backslash doubled, any other
     byte as its character."""
     return (
-        f"ARRAY_TO_STRING(LIST_TRANSFORM(REGEXP_EXTRACT_ALL(HEX({value}), '..'), _h -> "
+        f"ARRAY_TO_STRING(LIST_TRANSFORM(REGEXP_EXTRACT_ALL(HEX({value}), '..'), LAMBDA _h : "
         "CASE WHEN _h = '5C' THEN '\\\\' "
         "WHEN _h = '00' OR _h >= '80' THEN PRINTF('\\%03o', CAST('0x' || _h AS INT)) "
         "ELSE CHR(CAST('0x' || _h AS INT)) END), '')"

@@ -12,8 +12,8 @@
 
 Every metadata-export end-to-end test publishes the same way an admin does: a Provisa server
 reads two tables of the test stack's Postgres, registered as the two members of a data product;
-the target is saved through ``PUT /admin/metadata-export`` and the snapshot published through
-``POST /admin/metadata-export/publish`` -- the one publish the drain and the reconcile also run
+the target is saved as a Syncing entry through ``PUT /admin/syncing`` and the snapshot published
+through ``POST /admin/syncing/publish`` -- the one publish the drain and the reconcile also run
 (``publishing.publish_snapshot``). No adapter is constructed by the test and no transport is
 faked: what the target holds afterwards is what production would have sent it.
 
@@ -377,8 +377,6 @@ async def published_server(
             await drop_org_schema(org_id)
 
 
-# A target's settings that are the export's own; the rest are its catalog's (REQ-2122).
-EXPORT_SETTINGS = ("datazone_project_id", "delta_share", "role")
 #: The role each catalog is published as (REQ-2152): what it is sent is what that role reads. The
 #: org's admin reads every column of the model, so every catalog receives all of it.
 PUBLISH_ROLE = ORG_ADMIN_ROLE
@@ -392,22 +390,21 @@ async def org_domains(client: httpx.AsyncClient) -> list[str]:
 
 
 async def save_targets(client: httpx.AsyncClient, targets: list[dict[str, Any]]) -> None:
-    """Connect each target's catalog for every domain of the org in the Catalogs panel, and export
-    to each, both as an admin does (REQ-2122). Each target is named by its ``id``."""
-    cleared = await client.put("/admin/metadata-export", json={"enabled": False, "targets": []})
-    assert cleared.status_code == 200, cleared.text
+    """Keep each target as the org's Syncing entries, data catalogs that export for every domain of
+    the org, published as the publish role, as an admin does (REQ-2247). Each target is named by
+    its ``id``; an entry left out of the list is removed."""
     domains = await org_domains(client)
-    catalogs = [
-        {**{k: v for k, v in t.items() if k not in EXPORT_SETTINGS}, "domains": domains}
+    entries = [
+        {
+            "type": "data_catalog",
+            "direction": "export",
+            "role": PUBLISH_ROLE,
+            **t,
+            "domains": domains,
+        }
         for t in targets
     ]
-    connected = await client.put("/admin/catalogs", json={"catalogs": catalogs})
-    assert connected.status_code == 200, connected.text
-    exports = [
-        {"catalog": t["id"], "role": PUBLISH_ROLE, **{k: t[k] for k in EXPORT_SETTINGS if k in t}}
-        for t in targets
-    ]
-    saved = await client.put("/admin/metadata-export", json={"enabled": True, "targets": exports})
+    saved = await client.put("/admin/syncing", json={"entries": entries})
     assert saved.status_code == 200, saved.text
 
 
@@ -420,7 +417,7 @@ async def publish(client: httpx.AsyncClient, target: dict[str, Any]) -> dict[str
     """Save ``target`` as the org's one export target and publish now, both as an admin does;
     what the publish reports for that target. The target is named after its provider."""
     await save_targets(client, [{"id": target["provider"], **target}])
-    published = await client.post("/admin/metadata-export/publish")
+    published = await client.post("/admin/syncing/publish")
     assert published.status_code == 200, published.text
-    (outcome,) = published.json()["targets"]
+    (outcome,) = published.json()["entries"]
     return outcome
