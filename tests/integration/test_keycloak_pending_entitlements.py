@@ -34,7 +34,8 @@ pytestmark = [pytest.mark.integration, pytest.mark.requires_keycloak]
 
 @pytest.fixture
 async def org(control_plane, monkeypatch):
-    state = SimpleNamespace(held_entitlements={}, idp_entitlements={})
+    # No model is built here, so no effective rows are stored (effective_store.write_person).
+    state = SimpleNamespace(held_entitlements={}, idp_entitlements={}, names_table=None)
     monkeypatch.setattr("provisa.api.app.state", state, raising=False)
     monkeypatch.setattr(middleware, "_recorded_idp_lists", {})
     monkeypatch.setattr(middleware, "_attached_pending", set())

@@ -1600,6 +1600,13 @@ def subscription_request_with_sink_header(shared_data, monkeypatch):
         "query_string": b"",
     }
     raw_request = StarletteRequest(scope)
+    # What the auth middleware sets on every request, secured or not (subscriptions/owner.py).
+    from provisa.auth.models import AuthIdentity
+
+    raw_request.state.identity = AuthIdentity(
+        user_id="admin-user", email=None, display_name=None, roles=["admin"]
+    )
+    raw_request.state.active_org_id = "default"
 
     shared_data["schema"] = schema
     shared_data["ctx"] = ctx
