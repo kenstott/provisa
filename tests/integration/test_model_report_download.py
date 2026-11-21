@@ -223,6 +223,15 @@ async def served(
     raw = _config()
     # Org provisioning gives acme its prod environment (REQ-1487, orgs_router); the report states
     # the stage of the environment it is served from (REQ-2261), so the registry row must exist.
+    from provisa.core.schema_admin import orgs
+
+    async with platform_admin_db.acquire() as conn:
+        await conn.upsert(
+            orgs,
+            {"id": ORG_ID, "name": ORG_ID},
+            index_elements=["id"],
+            update_columns=[],
+        )
     await ensure_prod(platform_admin_db, ORG_ID)
     async with tenant_db.acquire() as conn:
         # The DataProduct FK/domain check in table_repo.upsert requires the domain to already
