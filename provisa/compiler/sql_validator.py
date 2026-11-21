@@ -55,6 +55,7 @@ from provisa.compiler.sql_where import SERVED_WITH_EVERY_TABLE
 from provisa.compiler import temp_tables
 from provisa.compiler.cte_utils import cte_in_scope, cte_names, names_a_cte_in_scope
 from provisa.compiler.sql_gen import CompilationContext, TableMeta
+from provisa.compiler.sql_types import key_list
 from provisa.compiler.stage2 import (
     GovernanceContext,
     approved_join_key,
@@ -662,17 +663,22 @@ def approved_joins(ctx: CompilationContext) -> set[tuple[int, int, str, str]]:
             # Registered with a computed edge: its own condition is what is approved
             # (computed_joins), not an equality of the two columns it is computed from.
             continue
-        approved.add((src.table_id, jm.target.table_id, jm.source_column, jm.target_column))
-        approved.add((jm.target.table_id, src.table_id, jm.target_column, jm.source_column))
+        # A composite key is approved as each of its column pairs, in order (REQ-1586); keys of
+        # unequal length are a malformed declaration and are refused (zip strict).
+        for s_col, t_col in zip(
+            key_list(jm.source_column), key_list(jm.target_column), strict=True
+        ):
+            approved.add((src.table_id, jm.target.table_id, s_col, t_col))
+            approved.add((jm.target.table_id, src.table_id, t_col, s_col))
         via = jm.via
-        if via is not None and len(via.source_columns) == 1 and len(via.target_columns) == 1:
+        if via is not None:
             via_id = via.table.table_id
-            v_src_col = via.source_columns[0]
-            v_tgt_col = via.target_columns[0]
-            approved.add((src.table_id, via_id, jm.source_column, v_src_col))
-            approved.add((via_id, src.table_id, v_src_col, jm.source_column))
-            approved.add((via_id, jm.target.table_id, v_tgt_col, jm.target_column))
-            approved.add((jm.target.table_id, via_id, jm.target_column, v_tgt_col))
+            for s_col, v_col in zip(key_list(jm.source_column), via.source_columns, strict=True):
+                approved.add((src.table_id, via_id, s_col, v_col))
+                approved.add((via_id, src.table_id, v_col, s_col))
+            for v_col, t_col in zip(via.target_columns, key_list(jm.target_column), strict=True):
+                approved.add((via_id, jm.target.table_id, v_col, t_col))
+                approved.add((jm.target.table_id, via_id, t_col, v_col))
     return approved
 
 
