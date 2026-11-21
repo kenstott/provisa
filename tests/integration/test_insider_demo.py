@@ -137,7 +137,17 @@ def set_up(server):
         text=True,
         timeout=1800,
     )
-    assert done.returncode == 0, f"{done.stdout}\n{done.stderr}"
+    if done.returncode != 0:
+        probes = []
+        for sql in (
+            'SELECT * FROM "bank"."screening" LIMIT 2',
+            'SELECT s.message_id, m.id, d.deal_id FROM "bank"."screening" AS s '
+            'JOIN "bank"."messages" AS m ON m.id = s.message_id '
+            'JOIN "bank"."deal" AS d ON d.deal_id = s.deal_id LIMIT 2',
+        ):
+            resp = _post(server, "/data/sql", {"sql": sql}, "org_admin")
+            probes.append(f"{sql}\n  -> HTTP {resp.status_code}: {resp.text[:600]}")
+        raise AssertionError(f"{done.stdout}\n{done.stderr}\n" + "\n".join(probes))
     return server
 
 
