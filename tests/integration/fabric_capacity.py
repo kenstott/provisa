@@ -26,24 +26,26 @@ login`` / managed identity) acquires both, just against different resources.
 The subscription id is resolved from the active ``az login`` session (``az account show``), the same
 credential source and lookup ``tests/integration/synapse_provision.py`` already uses for its own
 ARM calls — no separate subscription-id env var. ``FABRIC_RESOURCE_GROUP`` and ``FABRIC_CAPACITY_NAME``
-name the specific capacity resource and have no equivalent elsewhere in .env (``FABRIC_SQL_SERVER``/
-``FABRIC_DATABASE``/``FABRIC_WORKSPACE_ID`` name the SQL warehouse and workspace, not the ARM capacity
-resource, and cannot be derived from them). Per this project's CLAUDE.md ("never add fallback
+name the capacity resource the run creates. Per this project's CLAUDE.md ("never add fallback
 values"), a missing env var raises rather than silently no-op.
 
-The capacity is the run's own (maintainer 2026-11-10, "Paid cloud resources"): ``create_run_capacity``
-makes it, tagged with the run, and assigns the lane's workspace (FABRIC_WORKSPACE_ID) to it;
-``delete_run_capacity`` unassigns the workspace, deletes the capacity and reads it back gone. A lane
-calls them as ``scripts/fabric_e2e.py up`` before its tests and ``down`` after them, whatever
-happened (integration-suite-lanes.yml warehouse job; scripts/ci/lanes/ui-core-prepare.sh and
-ui-core-after.sh for the warehouse UI job). Locally, the same two commands, with ``az login`` or the
-CI principal's AZURE_* in the environment.
+Everything Fabric a run uses is the run's own (maintainer 2026-11-10, "Paid cloud resources";
+maintainer 2026-11-21, per-run workspace): ``create_run_fabric`` creates the capacity, tagged with
+the run, a workspace on it and a warehouse in that workspace, and returns the warehouse's SQL
+endpoint and database and the workspace id; ``delete_run_fabric`` deletes the workspace (its items
+with it), then the capacity, and reads back that workspace, warehouse and capacity are gone. A lane
+calls them as ``scripts/fabric_e2e.py up <env file>`` before its tests (the endpoint, database and
+workspace id written to the env file as FABRIC_SQL_SERVER / FABRIC_DATABASE / FABRIC_WORKSPACE_ID,
+``$GITHUB_ENV`` in CI) and ``down`` after them, whatever happened (integration-suite-lanes.yml
+warehouse job; scripts/ci/lanes/ui-core-prepare.sh and ui-core-after.sh for the warehouse UI job).
+Locally, the same two commands, with ``az login`` or the CI principal's AZURE_* in the environment.
 """
 
 from __future__ import annotations
 
 from collections.abc import Generator
 from contextlib import contextmanager
+from dataclasses import dataclass
 
 from provisa.federation import fabric_capacity as _product
 
@@ -165,26 +167,54 @@ def ensure_capacity_paused(*, sleep=None, clock=None) -> str:
                 print(f"Fabric capacity: {was} -> {state} at {clock() - start:.0f}s", flush=True)
 
 
-# ------------------------------------------------------------------ the run's own capacity
+# ------------------------------------------------------------------ the run's own Fabric
 #
-# Maintainer 2026-11-10 ("Paid cloud resources"): no test relies on a standing paid resource. A
-# Fabric capacity bills only while Active, but a standing one is still a standing paid resource,
-# and the cloud audit deletes every untagged one in the test resource group. So each run that
-# needs Fabric creates the capacity (named FABRIC_CAPACITY_NAME, in FABRIC_RESOURCE_GROUP), tagged
-# with the run, assigns the lane's workspace (FABRIC_WORKSPACE_ID) to it, and on the way out
-# unassigns the workspace, deletes the capacity and reads it back gone. The workspace and its
-# warehouse are Fabric items, not Azure resources: without a capacity they bill nothing, and are
-# reachable again once a capacity of the same region is assigned. The live lanes run one at a
-# time (the live-cloud-warehouses concurrency group), so the one name never has two runs.
+# Maintainer 2026-11-10 ("Paid cloud resources"): no test relies on a standing paid resource, and
+# maintainer 2026-11-21: the workspace is the run's own too. A Fabric capacity bills while Active,
+# and a workspace holding a Warehouse cannot be unassigned from its capacity (400
+# WorkspaceItemsCanNotBeUnassignedFromCapacity, run 44861735606), so a standing workspace kept the
+# run's capacity from being torn down cleanly. Each run that needs Fabric therefore creates, in
+# order: the capacity (named FABRIC_CAPACITY_NAME, in FABRIC_RESOURCE_GROUP, tagged with the run),
+# a workspace on it (named with the run, the run's tags in its description), and a warehouse in
+# the workspace. Its SQL endpoint, database and workspace id are the run's outputs, written as
+# FABRIC_SQL_SERVER / FABRIC_DATABASE / FABRIC_WORKSPACE_ID lines to the env file the caller names
+# (``$GITHUB_ENV`` in CI): the names the product and the tests read them by. On the way out the
+# workspace is deleted (its items with it), then the capacity, and each is read back gone. The
+# live lanes run one at a time (the live-cloud-warehouses concurrency group), so the one capacity
+# name never has two runs.
 
 _FABRIC_API = "https://api.fabric.microsoft.com/v1"
 _FABRIC_SCOPE = "https://api.fabric.microsoft.com/.default"
-# The region of the Fabric tenant's workspace, which a capacity it is assigned to must share: the
-# standing capacity provisatest2's (Central US), read 2026-11-10.
+# The region the run's capacity is made in; the workspace created on it takes its region.
 CAPACITY_LOCATION = "centralus"
 CAPACITY_SKU = {"name": "F2", "tier": "Fabric"}
+WORKSPACE_PREFIX = "provisa-e2e-"
+WAREHOUSE_NAME = "provisa_e2e"
 _LIFECYCLE_TIMEOUT_S = 1800.0
 _LIFECYCLE_POLL_S = 10.0
+
+
+@dataclass(frozen=True)
+class RunFabric:
+    """What a run's tests connect to: the warehouse's SQL endpoint and database, and the
+    workspace holding it."""
+
+    workspace_id: str
+    sql_server: str
+    database: str
+
+    def env_lines(self) -> list[str]:
+        return [
+            f"FABRIC_WORKSPACE_ID={self.workspace_id}",
+            f"FABRIC_SQL_SERVER={self.sql_server}",
+            f"FABRIC_DATABASE={self.database}",
+        ]
+
+
+def run_workspace_name() -> str:
+    from tests.integration.cloud_run_tag import run_token
+
+    return f"{WORKSPACE_PREFIX}{run_token()}"
 
 
 def _wait_for(what: str, done, *, sleep=None, clock=None) -> None:
@@ -237,30 +267,49 @@ def _fabric_client():
     return httpx.Client(headers={"Authorization": f"Bearer {token}"}, timeout=60.0)
 
 
+def _fail(what: str, response) -> RuntimeError:
+    return RuntimeError(f"{what}: HTTP {response.status_code}: {response.text[:1000]}")
+
+
+def _listed(fabric, path: str) -> list[dict]:
+    """Every entry of a Fabric list endpoint, following its continuation tokens."""
+    entries: list[dict] = []
+    params: dict[str, str] = {}
+    while True:
+        got = fabric.get(f"{_FABRIC_API}{path}", params=params)
+        if got.status_code != 200:
+            raise _fail(f"Fabric GET {path}", got)
+        body = got.json()
+        entries.extend(body.get("value", []))
+        token = body.get("continuationToken")
+        if not token:
+            return entries
+        params = {"continuationToken": token}
+
+
 def _fabric_capacity_id(fabric, name: str) -> str | None:
-    listed = fabric.get(f"{_FABRIC_API}/capacities").raise_for_status().json()
-    ids = [c["id"] for c in listed.get("value", []) if c.get("displayName") == name]
+    ids = [c["id"] for c in _listed(fabric, "/capacities") if c.get("displayName") == name]
     return ids[0] if ids else None
 
 
 def _workspace(fabric, workspace_id: str) -> dict:
-    return fabric.get(f"{_FABRIC_API}/workspaces/{workspace_id}").raise_for_status().json()
+    got = fabric.get(f"{_FABRIC_API}/workspaces/{workspace_id}")
+    if got.status_code != 200:
+        raise _fail(f"Fabric workspace {workspace_id}", got)
+    return got.json()
 
 
-def create_run_capacity() -> None:
-    """Create the run's capacity (tagged with the run), wait for it Active, and assign the lane's
-    workspace to it. A capacity of that name already there is another run's or a leaked one: the
-    run fails, naming it, rather than using or deleting it (the cloud audit deletes one whose run
-    is over)."""
+def _create_capacity() -> None:
+    """Create the run's capacity (tagged with the run) and wait for it Active. A capacity of that
+    name already there is another run's or a leaked one: the run fails, naming it, rather than
+    using or deleting it (the cloud audit deletes one whose run is over)."""
     import os
 
     from azure.identity import DefaultAzureCredential
 
     from tests.integration.cloud_run_tag import run_tags
 
-    _require_configured()
     name = os.environ["FABRIC_CAPACITY_NAME"]
-    workspace_id = os.environ["FABRIC_WORKSPACE_ID"]
     arm_token = DefaultAzureCredential().get_token(_product._ARM_SCOPE).token
     with _product._client() as client:
         url = _capacity_url(client)
@@ -283,116 +332,207 @@ def create_run_capacity() -> None:
             },
         )
         if made.status_code not in (200, 201, 202):
-            raise RuntimeError(
-                f"Fabric capacity {name!r} not created: HTTP {made.status_code}: {made.text[:1000]}"
-            )
+            raise _fail(f"Fabric capacity {name!r} not created", made)
 
         def active() -> bool:
             body = client.get(url, params=params).raise_for_status().json()
             if body["properties"].get("provisioningState") == "Failed":
-                raise RuntimeError(f"Fabric capacity {name!r} provisioning failed")
+                raise RuntimeError(f"Fabric capacity {name!r} provisioning failed: {body}")
             return body["properties"]["state"] == _product._ACTIVE
 
         _wait_for(f"Fabric capacity {name!r} Active", active)
     print(f"Fabric capacity {name}: created for this run, Active", flush=True)
+
+
+def _create_workspace(fabric, capacity_id: str) -> str:
+    """Create the run's workspace on the run's capacity and wait for the assignment."""
+    import json
+
+    from tests.integration.cloud_run_tag import run_tags
+
+    name = run_workspace_name()
+    made = fabric.post(
+        f"{_FABRIC_API}/workspaces",
+        json={
+            "displayName": name,
+            "description": json.dumps(run_tags()),
+            "capacityId": capacity_id,
+        },
+    )
+    if made.status_code == 403:
+        raise RuntimeError(
+            f"Fabric workspace {name!r} not created: HTTP 403: {made.text[:1000]} -- the CI "
+            "service principal needs the Fabric tenant setting that allows creating workspaces "
+            "(Fabric admin portal > Tenant settings > Workspace settings > Create workspaces, "
+            "enabled for the principal or a security group it is in)"
+        )
+    if made.status_code != 201:
+        raise _fail(f"Fabric workspace {name!r} not created", made)
+    workspace_id = made.json()["id"]
+
+    def assigned() -> bool:
+        ws = _workspace(fabric, workspace_id)
+        progress = ws.get("capacityAssignmentProgress")
+        if progress == "Failed":
+            raise RuntimeError(f"Fabric workspace {name!r} assignment failed: {ws}")
+        return ws.get("capacityId") == capacity_id and progress == "Completed"
+
+    _wait_for(f"Fabric workspace {name!r} on the run's capacity", assigned)
+    print(f"Fabric workspace {name} ({workspace_id}): created on the run's capacity", flush=True)
+    return workspace_id
+
+
+def _create_warehouse(fabric, workspace_id: str) -> str:
+    """Create the run's warehouse in the run's workspace; return its SQL endpoint once it has
+    one."""
+    import json
+
+    from tests.integration.cloud_run_tag import run_tags
+
+    path = f"/workspaces/{workspace_id}/warehouses"
+    made = fabric.post(
+        f"{_FABRIC_API}{path}",
+        json={"displayName": WAREHOUSE_NAME, "description": json.dumps(run_tags())},
+    )
+    # 201: created; 202: created by a long-running operation, read below until it is listed.
+    if made.status_code not in (201, 202):
+        raise _fail(f"Fabric warehouse {WAREHOUSE_NAME!r} not created", made)
+    endpoint = ""
+
+    def listed_with_endpoint() -> bool:
+        nonlocal endpoint
+        mine = [w for w in _listed(fabric, path) if w.get("displayName") == WAREHOUSE_NAME]
+        if not mine:
+            return False
+        endpoint = (mine[0].get("properties") or {}).get("connectionString") or ""
+        return bool(endpoint)
+
+    _wait_for(f"Fabric warehouse {WAREHOUSE_NAME!r} SQL endpoint", listed_with_endpoint)
+    print(f"Fabric warehouse {WAREHOUSE_NAME}: created, SQL endpoint {endpoint}", flush=True)
+    return endpoint
+
+
+def create_run_fabric() -> RunFabric:
+    """Create the run's capacity, a workspace on it and a warehouse in that; return what the
+    tests connect to. ``delete_run_fabric`` removes all of it, also after a partial create."""
+    import os
+
+    _require_configured()
+    _create_capacity()
+    name = os.environ["FABRIC_CAPACITY_NAME"]
     with _fabric_client() as fabric:
         capacity_id: str | None = None
 
-        def listed() -> bool:
+        def capacity_listed() -> bool:
             nonlocal capacity_id
             capacity_id = _fabric_capacity_id(fabric, name)
             return capacity_id is not None
 
-        _wait_for(f"Fabric capacity {name!r} listed by the Fabric API", listed)
-        assigned_to = fabric.post(
-            f"{_FABRIC_API}/workspaces/{workspace_id}/assignToCapacity",
-            json={"capacityId": capacity_id},
-        )
-        if assigned_to.status_code == 403:
-            # The capacity side is already met: the Fabric API lists a capacity only to its admins
-            # and contributors (Capacities - List Capacities), and it listed this one. What is left
-            # is the workspace role (Workspaces - Assign To Capacity: "The caller must have admin
-            # workspace role"), which a workspace admin grants in the workspace's Manage access.
-            raise RuntimeError(
-                f"workspace {workspace_id} not assigned to {name!r}: HTTP 403: "
-                f"{assigned_to.text[:1000]} -- the principal is admin of the capacity (the Fabric "
-                "API lists it); assignToCapacity also needs the principal to hold the Admin role "
-                "on the workspace"
-            )
-        assigned_to.raise_for_status()
-
-        def assigned() -> bool:
-            ws = _workspace(fabric, workspace_id)
-            progress = ws.get("capacityAssignmentProgress")
-            if progress == "Failed":
-                raise RuntimeError(f"workspace {workspace_id} assignment to {name!r} failed")
-            return ws.get("capacityId") == capacity_id and progress == "Completed"
-
-        _wait_for(f"workspace {workspace_id} assigned to {name!r}", assigned)
-    print(f"Fabric workspace {workspace_id}: assigned to {name}", flush=True)
+        _wait_for(f"Fabric capacity {name!r} listed by the Fabric API", capacity_listed)
+        assert capacity_id is not None  # set by capacity_listed before the wait returns
+        workspace_id = _create_workspace(fabric, capacity_id)
+        endpoint = _create_warehouse(fabric, workspace_id)
+    return RunFabric(workspace_id=workspace_id, sql_server=endpoint, database=WAREHOUSE_NAME)
 
 
-def delete_run_capacity() -> None:
-    """Unassign the lane's workspace from the run's capacity, delete the capacity and read it back
-    gone. Every step is attempted and every failure raised together: a capacity left behind may
-    bill. A capacity that is not there (``create_run_capacity`` never got that far) is done."""
+def _run_workspaces(fabric, capacity_id: str | None) -> list[dict]:
+    """The run's workspaces: those on the run's capacity, and any carrying the run's name (one
+    whose create was cut short before it was assigned)."""
+    name = run_workspace_name()
+    return [
+        ws
+        for ws in _listed(fabric, "/workspaces")
+        if ws.get("displayName") == name
+        or (capacity_id is not None and ws.get("capacityId") == capacity_id)
+    ]
+
+
+def _read_back_gone(fabric, what: str, path: str) -> None:
+    """Wait until ``path`` answers 404; any answer but 200 or 404 is raised with its body."""
+
+    def gone() -> bool:
+        got = fabric.get(f"{_FABRIC_API}{path}")
+        if got.status_code == 404:
+            return True
+        if got.status_code != 200:
+            raise _fail(f"{what}: read back", got)
+        return False
+
+    _wait_for(f"{what} gone", gone)
+
+
+def _delete_run_workspaces() -> None:
+    """Delete each of the run's workspaces (its items with it) and read back that the workspace
+    and its warehouses are gone."""
+    import os
+
+    name = os.environ["FABRIC_CAPACITY_NAME"]
+    with _fabric_client() as fabric:
+        capacity_id = _fabric_capacity_id(fabric, name)
+        workspaces = _run_workspaces(fabric, capacity_id)
+        if not workspaces:
+            return
+        # The test's own pause (capacity_resumed, REQ-254) can leave the capacity Paused, and
+        # Fabric refuses an operation on a workspace whose capacity is paused: it is brought Active
+        # for the delete, and deleted right after.
+        if capacity_id is not None and capacity_state() not in _ALREADY_RUNNING:
+            ensure_capacity_resumed()
+        for ws in workspaces:
+            workspace_id = ws["id"]
+            label = f"Fabric workspace {ws.get('displayName')!r} ({workspace_id})"
+            warehouses = _listed(fabric, f"/workspaces/{workspace_id}/warehouses")
+            deleted = fabric.delete(f"{_FABRIC_API}/workspaces/{workspace_id}")
+            if deleted.status_code not in (200, 404):
+                raise RuntimeError(
+                    f"{label} not deleted: HTTP {deleted.status_code}: {deleted.text[:1000]}; "
+                    f"workspace state: {ws}"
+                )
+            _read_back_gone(fabric, label, f"/workspaces/{workspace_id}")
+            for wh in warehouses:
+                _read_back_gone(
+                    fabric,
+                    f"Fabric warehouse {wh.get('displayName')!r} ({wh['id']}) of {label}",
+                    f"/workspaces/{workspace_id}/warehouses/{wh['id']}",
+                )
+            print(f"{label}: deleted with its items, read back gone", flush=True)
+
+
+def _delete_capacity() -> None:
+    import os
+
+    name = os.environ["FABRIC_CAPACITY_NAME"]
+    with _product._client() as client:
+        url = _capacity_url(client)
+        params = {"api-version": _product._API_VERSION}
+        deleted = client.delete(url, params=params)
+        if deleted.status_code not in (200, 202, 204, 404):
+            raise _fail(f"Fabric capacity {name!r} not deleted", deleted)
+
+        def gone() -> bool:
+            got = client.get(url, params=params)
+            if got.status_code == 404:
+                return True
+            if got.status_code != 200:
+                raise _fail(f"Fabric capacity {name!r}: read back", got)
+            return False
+
+        _wait_for(f"Fabric capacity {name!r} deleted", gone)
+    print(f"Fabric capacity {name}: deleted, read back gone", flush=True)
+
+
+def delete_run_fabric() -> None:
+    """Delete the run's workspace (its warehouse with it), then the run's capacity, reading each
+    back gone. Both steps are attempted and every failure raised together: what is left behind
+    may bill. What is not there (the create never got that far) is done."""
     import os
 
     from tests.integration.live_teardown import run_every
 
     _require_configured()
     name = os.environ["FABRIC_CAPACITY_NAME"]
-    workspace_id = os.environ["FABRIC_WORKSPACE_ID"]
-
-    def unassign() -> None:
-        with _fabric_client() as fabric:
-            capacity_id = _fabric_capacity_id(fabric, name)
-            if (
-                capacity_id is None
-                or _workspace(fabric, workspace_id).get("capacityId") != capacity_id
-            ):
-                return
-            # The test's own pause (capacity_resumed, REQ-254) leaves the capacity Paused, and
-            # Fabric refuses a workspace operation against a paused capacity: it is brought Active
-            # for the unassign, and deleted right after.
-            if capacity_state() not in _ALREADY_RUNNING:
-                ensure_capacity_resumed()
-            sent = fabric.post(f"{_FABRIC_API}/workspaces/{workspace_id}/unassignFromCapacity")
-            if sent.status_code >= 400:
-                workspace = _workspace(fabric, workspace_id)
-                raise RuntimeError(
-                    f"workspace {workspace_id} not unassigned from {name!r}: HTTP "
-                    f"{sent.status_code}: {sent.text[:1000]}; workspace state: {workspace}"
-                )
-            _wait_for(
-                f"workspace {workspace_id} unassigned from {name!r}",
-                lambda: _workspace(fabric, workspace_id).get("capacityId") != capacity_id,
-            )
-
-    def delete() -> None:
-        with _product._client() as client:
-            url = _capacity_url(client)
-            params = {"api-version": _product._API_VERSION}
-            deleted = client.delete(url, params=params)
-            if deleted.status_code not in (200, 202, 204, 404):
-                raise RuntimeError(
-                    f"Fabric capacity {name!r} not deleted: HTTP {deleted.status_code}: "
-                    f"{deleted.text[:500]}"
-                )
-
-            def gone() -> bool:
-                got = client.get(url, params=params)
-                if got.status_code == 404:
-                    return True
-                got.raise_for_status()
-                return False
-
-            _wait_for(f"Fabric capacity {name!r} deleted", gone)
-
     run_every(
         [
-            (f"unassign workspace {workspace_id} from {name}", unassign),
-            (f"delete Fabric capacity {name}", delete),
+            (f"delete this run's Fabric workspace {run_workspace_name()}", _delete_run_workspaces),
+            (f"delete Fabric capacity {name}", _delete_capacity),
         ]
     )
-    print(f"Fabric capacity {name}: deleted, read back gone", flush=True)
