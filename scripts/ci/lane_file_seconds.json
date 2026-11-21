@@ -457,6 +457,7 @@
   "tests/integration/test_raw_sql_response_cache_direct_e2e.py": 21.0,
   "tests/integration/test_raw_sql_response_cache_e2e.py": 48.8,
   "tests/integration/test_raw_sql_response_cache_passthrough_e2e.py": 13.7,
+  "tests/integration/test_rdf_export_graph_store.py": 45.0,
   "tests/integration/test_redeem_invite.py": 1.5,
   "tests/integration/test_redirect_bucket_first_redirect_e2e.py": 29.1,
   "tests/integration/test_redirect_encryption_minio.py": 0.1,
