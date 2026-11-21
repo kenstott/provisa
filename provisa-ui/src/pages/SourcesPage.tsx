@@ -633,6 +633,9 @@ export function SourcesPage() {
   // REQ-2234: the panel opens first on registering its tables, then on Your data, shown over
   // the read view: skipping or closing either leaves the source read.
   const [afterSave, setAfterSave] = useState<string | null>(null);
+  // REQ-2262: the relationships the review after registration created, said on the source it
+  // returns to.
+  const [related, setRelated] = useState<{ sourceId: string; count: number } | null>(null);
   const openCreated = async (id: string) => {
     const fresh = await refetchSources();
     if (fresh.data?.sources.some((x) => x.id === id)) {
@@ -1608,7 +1611,14 @@ export function SourcesPage() {
   );
   const working =
     afterSave !== null && afterSave === expanded ? (
-      <AfterSaveSteps sourceId={afterSave} onClose={() => setAfterSave(null)} />
+      <AfterSaveSteps
+        sourceId={afterSave}
+        onClose={() => setAfterSave(null)}
+        onRelated={(count) => {
+          setRelated({ sourceId: afterSave, count });
+          setAfterSave(null);
+        }}
+      />
     ) : discoverSourceId && discoverSourceType ? (
       <PanelWorking
         back={t("sourcesPage.backToSource")}
@@ -1779,6 +1789,17 @@ export function SourcesPage() {
           <>
             {/* While the form is open the panel's head is the form's: its Save and Cancel. */}
             {editingSourceId !== s.id && sourceActions(s)}
+            {related?.sourceId === s.id && (
+              <Alert
+                color="green"
+                variant="light"
+                withCloseButton
+                onClose={() => setRelated(null)}
+                data-testid="source-relationships-created"
+              >
+                {t("yourData.relationshipsCreated", { count: related.count })}
+              </Alert>
+            )}
             <SourceSectionTabs value={inView} shown={shown} onChange={setSection} />
             {inView === "tables" && <SourceTablesList sourceId={s.id} tables={registeredTables} />}
             {inView === "operations" && <SourceOperations sourceId={s.id} type={s.type} />}

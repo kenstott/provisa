@@ -138,14 +138,6 @@ def _off_contract(action_name: str, rows: list[dict], names: list[str]) -> str |
     return None
 
 
-class _Rows:
-    """The VALUES-CTE builder's ``HotRows`` view of a response."""
-
-    def __init__(self, column_names: list[str], rows: list[dict]) -> None:
-        self.column_names = column_names
-        self.rows = rows
-
-
 def _governance_context(
     action: dict, cols: list[dict], role_id: str, state: Any
 ) -> tuple[Any, ActionEnforcement]:
@@ -226,7 +218,7 @@ async def govern_action_rows(
     if problem is not None:
         raise ApiError(502, "actions.response_off_contract", problem, action=action["name"])
 
-    from provisa.cache.values_cte import with_values_ctes
+    from provisa.cache.values_cte import InlineRows, with_values_ctes
     from provisa.compiler.stage2 import govern
     from provisa.pgwire._pipeline import resolve_settings
 
@@ -241,7 +233,7 @@ async def govern_action_rows(
     read = exp.select(*(exp.column(n, quoted=True) for n in names if n in served)).from_(
         exp.table_(rel, quoted=True)
     )
-    governed = with_values_ctes(govern(read, gov), {rel: _Rows(names, rows)})
+    governed = with_values_ctes(govern(read, gov), {rel: InlineRows(rows=rows, column_names=names)})
     from provisa.core.request_context import session_vars_for
 
     resolved = resolve_settings(governed, session_vars_for(state.roles.get(role_id)))  # REQ-1682

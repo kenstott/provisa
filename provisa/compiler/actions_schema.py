@@ -217,7 +217,9 @@ def _build_action_fields(  # REQ-205, REQ-206, REQ-207, REQ-208, REQ-209, REQ-21
                 args=args,
                 description=item.get("description"),
                 # The command the field is, named where a field it collides with is refused.
-                extensions={"provisa_command": item["name"]},
+                # REQ-1929: and its definition (domain, command bindings), from which every other
+                # surface derives the operation it offers for this field (api/command_fields.py).
+                extensions={"provisa_command": item["name"], "provisa_command_def": item},
             )
             # Apply the active GraphQL naming convention to the command name, exactly like table
             # fields (apollo_graphql -> camelCase). The reverse lookup in app_loaders applies the

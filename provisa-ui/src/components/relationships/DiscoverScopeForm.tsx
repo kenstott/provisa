@@ -212,6 +212,14 @@ export function DiscoverScopeForm({
   const [foreignKeys, setForeignKeys] = useState(
     initial === null || initial.scope.kinds.includes("foreign_keys"),
   );
+  // REQ-2262: matching key names and types, asked by the review after registration; a run set
+  // up from the defaults leaves it to be ticked.
+  const [keyNames, setKeyNames] = useState(
+    initial !== null && initial.scope.kinds.includes("key_names"),
+  );
+  // REQ-2262: the review after registration counts a relationship between its sets either way
+  // round; a run started from it keeps that, nothing in the form sets it.
+  const eitherWay = initial !== null && initial.scope.either_way;
   const [semantics, setSemantics] = useState(
     initial === null || initial.scope.kinds.includes("semantics"),
   );
@@ -335,6 +343,7 @@ export function DiscoverScopeForm({
   const measures = asksSemantics && keyValues !== null && keyValues.chosen;
   const kinds: DiscoveryRunKind[] = [
     ...(foreignKeys ? (["foreign_keys"] as const) : []),
+    ...(keyNames ? (["key_names"] as const) : []),
     ...(asksSemantics ? (["semantics"] as const) : []),
     ...(measures ? (["key_values"] as const) : []),
   ];
@@ -363,6 +372,7 @@ export function DiscoverScopeForm({
           sample_size: measures ? settings.key_values.sample_size : null,
           contained_at: measures ? settings.key_values.contained_at : null,
           shared_ceiling: measures ? settings.key_values.shared_ceiling : null,
+          either_way: eitherWay && !sameAsSource,
         };
   const scopeKey = scope === null ? null : JSON.stringify(scope);
 
@@ -526,6 +536,12 @@ export function DiscoverScopeForm({
             checked={foreignKeys}
             onChange={(e) => setForeignKeys(e.currentTarget.checked)}
             data-testid="discover-kind-foreign-keys"
+          />
+          <Checkbox
+            label={t("discoverDialog.keyNames")}
+            checked={keyNames}
+            onChange={(e) => setKeyNames(e.currentTarget.checked)}
+            data-testid="discover-kind-key-names"
           />
           <Checkbox
             label={

@@ -12,7 +12,8 @@
     "notAgainAria": "Don't recommend {{name}} again",
     "kind": {
       "foreign_keys": "Constraint",
-      "semantics": "Semantic"
+      "semantics": "Semantic",
+      "key_names": "Name match"
     },
     "asWritten": "As the model wrote it: {{answer}}",
     "apply": "Apply",
