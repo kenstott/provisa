@@ -158,6 +158,17 @@ PAGES: dict[str, PollyPage] = {
         "custom), each with its direction and, for a data catalog, its export settings"
     ),
     "/context/documents": PollyPage("documents: the reference library"),
+    "/context/metrics": PollyPage(
+        "the governed metrics as /metrics shows them, read-only; metrics are edited on /metrics"
+    ),
+    "/context/tags": PollyPage(
+        "each tag, where it is applied and what depends on it, read-only; tags are edited on "
+        "/admin/tags"
+    ),
+    "/context/classification": PollyPage(
+        "the classification kinds and where each was detected, read-only; kinds are switched on "
+        "/admin/classification-kinds, and a column's classification is decided in the table editor"
+    ),
     "/admin/import": PollyPage("import"),
     "/admin/tags": PollyPage(
         "tags. The tag form's Required switch (tags-required) makes every object of the kinds "

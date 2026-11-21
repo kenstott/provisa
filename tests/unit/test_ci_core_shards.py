@@ -44,6 +44,13 @@ def run_lane():
     return _load("run_lane")
 
 
+def _core_lanes(run_lane) -> tuple[str, ...]:
+    """core, and core_long while a core file outgrows a core shard: core_long exists only then
+    (run_lane.CORE_LONG), and once every such file fits a core shard it rejoins core."""
+    assert ("core_long" in run_lane.LANES) == bool(run_lane.CORE_LONG)
+    return ("core", "core_long") if run_lane.CORE_LONG else ("core",)
+
+
 def _shards(run_lane, lane: str) -> list[list[str]]:
     total = run_lane.SUITE[lane][0]
     return [run_lane.targets(lane, f"{k}/{total}") for k in range(1, total + 1)]
@@ -69,13 +76,13 @@ def test_every_core_test_file_is_in_exactly_one_shard(run_lane):
     """Of core or core_long: together they run every file under the core lane's paths once."""
     everything = run_lane.test_files(run_lane.LANES["core"].paths)
     assert len(everything) > 100
-    ran = [f for lane in ("core", "core_long") for s in _shards(run_lane, lane) for f in s]
+    ran = [f for lane in _core_lanes(run_lane) for s in _shards(run_lane, lane) for f in s]
     assert sorted(ran) == everything
 
 
 def test_no_shard_holds_more_than_its_target_on_the_measured_times(run_lane):
     seconds = run_lane.recorded_seconds("core")
-    for lane in ("core", "core_long"):
+    for lane in _core_lanes(run_lane):
         target = run_lane.SHARD_TARGET_S[lane]
         for files in _shards(run_lane, lane):
             load = run_lane.shard_load(files, seconds)
@@ -86,7 +93,7 @@ def test_the_core_shard_target_is_thirty_minutes_and_its_budget_fails_a_shard_th
     run_lane,
 ):
     assert run_lane.SHARD_TARGET_S["core"] == 30 * 60
-    for lane in ("core", "core_long"):
+    for lane in _core_lanes(run_lane):
         target = run_lane.SHARD_TARGET_S[lane]
         assert run_lane.budget_s(lane) == target + run_lane.HEADROOM_S
         assert run_lane.SUITE[lane][1] == run_lane.planned_timeout(lane)
@@ -108,8 +115,11 @@ def test_a_file_no_core_shard_can_hold_runs_in_core_long(run_lane):
     # Job R509-T put the text search replay here; cut to what conformance-functions does not
     # measure (maintainer 2026-11-20), it fits a core shard again and rejoins core.
     assert "tests/integration/test_text_search_on_engines.py" not in long
-    assert run_lane.LANES["core_long"].paths == run_lane.CORE_LONG
-    assert run_lane.LANES["core_long"].marker == run_lane.LANES["core"].marker
+    if long:
+        assert run_lane.LANES["core_long"].paths == run_lane.CORE_LONG
+        assert run_lane.LANES["core_long"].marker == run_lane.LANES["core"].marker
+    else:
+        assert "core_long" not in run_lane.LANES
     assert not set(run_lane.lane_files("core")) & set(long)
 
 
@@ -142,7 +152,7 @@ def test_every_measured_file_exists(run_lane):
 
 def test_the_workflow_matrix_is_the_planners(run_lane):
     include = run_lane.matrix("all")["include"]
-    for lane in ("core", "core_long"):
+    for lane in _core_lanes(run_lane):
         total = run_lane.planned_shards(lane)
         # A lane of one shard is not sharded (run_lane.matrix): its shard is empty.
         shards = [""] if total == 1 else [f"{k}/{total}" for k in range(1, total + 1)]
@@ -159,7 +169,7 @@ def test_the_workflow_matrix_is_the_planners(run_lane):
 
 def test_naming_core_runs_core_long_too(run_lane):
     lanes = {m["lane"] for m in run_lane.matrix("core")["include"]}
-    assert lanes == {"core", "core_long"}
+    assert lanes == set(_core_lanes(run_lane))
 
 
 def test_a_full_run_fits_the_accounts_concurrent_runners(run_lane):

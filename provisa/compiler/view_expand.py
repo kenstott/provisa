@@ -629,8 +629,15 @@ def _expand_marked(
 ) -> str:
     """:func:`expand_view_refs` with ``mark``: on the parsed statement, so a mark can only come
     from a view this process expands -- never from text a comment, a string literal or a quoted
-    identifier of the statement holds (REQ-039, REQ-603)."""
-    tree = parse_marked(sql)
+    identifier of the statement holds (REQ-039, REQ-603).
+
+    Read as the validator reads it (sql_validator.READ): each function by the name it is written
+    with. Read as plain PostgreSQL, ``explode(a)`` is sqlglot's Explode and is written back
+    ``UNNEST(a)``, which the validator then admits as pg_catalog's unnest (REQ-2204)."""
+    # Imported where used, as sql_validator imports this module's helpers where it uses them.
+    from provisa.compiler.sql_validator import READ  # noqa: PLC0415
+
+    tree = parse_marked(sql, read=READ)
     unqualified = {
         name: key for name, key in _unqualified_views(views).items() if key in view_sql_map
     }
