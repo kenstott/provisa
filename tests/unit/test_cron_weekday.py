@@ -1,3 +1,13 @@
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 158a6dc7-80de-4934-9181-202716a18ac1
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+
 """Cron expressions follow standard crontab weekdays (GitHub issue 343)."""
 
 from datetime import UTC, datetime, timedelta

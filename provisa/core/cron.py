@@ -1,3 +1,13 @@
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 8d6a163c-b950-4017-8306-721c318f4aa7
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+
 """Standard crontab schedules for APScheduler.
 
 APScheduler's ``CronTrigger.from_crontab`` numbers the weekday field 0 = Monday; crontab numbers it
