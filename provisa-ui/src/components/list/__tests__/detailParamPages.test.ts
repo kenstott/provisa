@@ -68,7 +68,9 @@ describe("every list page's detail panel is in the URL through useDetailParam (R
   it.each(Object.keys(DETAIL_VIEWS) as DetailPage[])("%s", (page) => {
     const { file, call, marks } = PAGES[page];
     const text = readFileSync(join(SRC, file), "utf8");
-    expect(text).toContain(call);
+    // Whitespace-insensitive: the call, not its line breaks.
+    const squash = (t: string) => t.replace(/\s+/g, "");
+    expect(squash(text)).toContain(squash(call));
     // REQ-2260: a page with a detail remembers it; it never takes the bare hook.
     if (!marks) expect(text).not.toContain("useDetailParam(");
     const { param } = DETAIL_VIEWS[page];
