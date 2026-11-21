@@ -267,11 +267,10 @@ def test_a_reader_whose_rules_narrow_nothing_reads_the_stored_rows_as_they_are(s
     """Another role's rule makes the build keep region; this reader has none, so it reads the
     stored rows as they are."""
     answered = _answered(STATEMENT, _state(status, {1: _east()}), _reader())
-    # The statement only has the view put in at optimization, as for an administrator.
-    assert (
-        answered
-        == f"SELECT id, city FROM ({READ}) \"clean_suppliers\" WHERE city = 'Springfield 3'"
-    )
+    # Each output as stored, unfiltered; the view's own columns only, never the kept region.
+    assert _items(answered) == {c: f'"clean_suppliers"."{c}"' for c in _OUTPUTS}
+    assert "__rule_input" not in answered
+    assert answered.endswith("WHERE city = 'Springfield 3'")
 
 
 def test_rows_and_masks_hold_together():
@@ -480,10 +479,9 @@ def test_a_reader_the_change_does_not_touch_keeps_reading_and_nothing_is_probed(
     state = _state(MVStatus.FRESH, {1: _east()})
     _changed(state)
     answered = _answered(STATEMENT, state, _reader())
-    assert (
-        answered
-        == f"SELECT id, city FROM ({READ}) \"clean_suppliers\" WHERE city = 'Springfield 3'"
-    )
+    # It reads the stored rows unfiltered, the view's own columns only.
+    assert _items(answered) == {c: f'"clean_suppliers"."{c}"' for c in _OUTPUTS}
+    assert "__rule_input" not in answered
     assert state.federation_engine.probes == []
 
 
