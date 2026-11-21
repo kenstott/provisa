@@ -98027,7 +98027,7 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     roles assigned there (REQ-1539). Reports (usage, query health, policy denials, cost) can be filtered and
     grouped by stage; the audit log and the lineage and catalog exports carry the environment''s stage, so a
     catalog can tell production assets from others; the environment switcher shows the stage beside each
-    environment''s name.'
+    environment''s name. (Amended 2026-11-21 by the maintainer. Cost grouped by stage is withdrawn from this requirement; cost reporting, if wanted, is its own requirement.)'
 - id: REQ-2262
   status: proposed
   target: 2026-Q4
