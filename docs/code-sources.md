@@ -210,8 +210,9 @@ A function tagged `@loader` is called once per batch instead, the pattern GraphQ
 - **Sparse.** A field with no value is left out of the key, so the function's own default applies, as it does on a single call.
 - **What it returns.** A hash from each key it was given to that key's rows: ordinary rows of the table, none or many. Provisa gives each key's rows to every joining row that shared the key.
 - **Matched by hash.** The function fills a sparse key's missing fields with defaults, so the values it sees differ from the joining row's. Provisa computes the hash, and the function only echoes back the keys it was given.
-- **Typed as usual.** The function still declares its row type alone, a list of rows.
+- **Typed.** The function declares its rows, and may add the mapping of names to those rows it returns on a loader call (see Return type).
 - **Batch size.** Cap it, as DataLoader's `maxBatchSize` does, with `@loader 100` in place of `@loader`. Provisa then splits the keys into batches of that size and merges the answers by hash. Without a size, one batch holds every key.
+- **Return type.** A `@loader` alone may declare its rows or a mapping of names to its rows: `list[Score] | dict[str, list[Score]]` in Python, `Score[] | Record<string, Score[]>` in TypeScript. Any other kind that declares a union is refused.
 - **Refused.** A `@loader` with no `ReadContext` parameter, a size that isn't a positive integer, two sizes on one function, and `@loader` on anything but a `@table`.
 
 Use `@loader` when one call over many keys does better than many calls over one:
@@ -239,7 +240,9 @@ class Score:
     score: float
 
 
-def churn_score(inputs: ScoreInputs, context: ReadContext) -> list[Score]:
+def churn_score(
+    inputs: ScoreInputs, context: ReadContext
+) -> list[Score] | dict[str, list[Score]]:
     """Churn score of each customer in the batch.
 
     @table
@@ -548,7 +551,7 @@ export interface Score {
 export async function churnScore(
   { customer_id = "", plan = "basic", region = "US" }: ScoreInputs,
   context: ReadContext,
-): Promise<Score[]> {
+): Promise<Score[] | Record<string, Score[]>> {
   const keys = context.keys ?? { "": { customer_id, plan, region } };
   const rows = Object.entries(keys).map(([h, key]) => ({
     h,
@@ -560,8 +563,8 @@ export async function churnScore(
   const out: Record<string, Score[]> = Object.fromEntries(
     rows.map((row, i) => [row.h, [{ customer_id: row.customer_id, score: scores[i] }]]),
   );
-  // A loader call returns the hash of each key to its rows; the declared type is the rows.
-  return (context.keys ? out : out[""]) as Score[];
+  // A loader call returns the hash of each key to its rows; a single call returns the rows.
+  return context.keys ? out : out[""];
 }
 ```
 
