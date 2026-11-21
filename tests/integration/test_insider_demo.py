@@ -147,6 +147,20 @@ def set_up(server):
         ):
             resp = _post(server, "/data/sql", {"sql": sql}, "org_admin")
             probes.append(f"{sql}\n  -> HTTP {resp.status_code}: {resp.text[:600]}")
+        hot = httpx.post(
+            f"{server.base_url}/admin/graphql",
+            json={"query": "{ hotTables { tableName catalog schemaName rowCount kind } }"},
+            headers={"X-Provisa-Role": "org_admin"},
+            timeout=300,
+        )
+        probes.append(f"hotTables -> HTTP {hot.status_code}: {hot.text[:1500]}")
+        count = _post(
+            server,
+            "/data/sql",
+            {"sql": 'SELECT COUNT(*) AS n FROM "bank"."screening"'},
+            "org_admin",
+        )
+        probes.append(f"count -> HTTP {count.status_code}: {count.text[:300]}")
         raise AssertionError(f"{done.stdout}\n{done.stderr}\n" + "\n".join(probes))
     return server
 
