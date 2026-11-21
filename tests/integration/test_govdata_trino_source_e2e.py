@@ -51,9 +51,11 @@ pytestmark = [pytest.mark.integration, pytest.mark.requires_warehouse]
 
 _SOURCE_ID = "askamerica-trino-itest"
 _CATALOG = "askamerica_trino_itest"
-_SCHEMAS = "fec,ref,geo"
-_SCHEMA = "fec"
-_TABLE = "candidates"
+_SCHEMAS = "weather,ref,geo"
+_SCHEMA = "weather"
+# A materialized table: engine-v0.128.8 declares tables with no data yet (fec.candidates), which
+# Trino refuses as having no supported columns.
+_TABLE = "nws_stations"
 _COLD_START_SECONDS = 600
 
 
