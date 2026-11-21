@@ -12,7 +12,11 @@
 # integration tests start for that engine (tests/conftest.py _MARKER_SERVICES), in a compose project
 # of its own, on the test instance's store credentials (scripts/ci/test-store-env.sh).
 #
-#   engine_service.sh up <service> <wait-seconds>   start it and wait for its healthcheck, if any
+#   engine_service.sh up <service> <wait-seconds> [NAME=value ...]
+#                                                   start it and wait for its healthcheck, if any,
+#                                                   with each NAME=value in the compose environment
+#                                                   (a leg's service-env: a host port that would
+#                                                   collide with the workflow's own services)
 #   engine_service.sh logs <service> <file>         its log, for the leg's failure reason
 #
 # Or the demo/sources/<name> container another CI lane already starts for that engine (the swap UI
@@ -40,6 +44,9 @@ case "${1:-}" in
   up)
     service=$2
     wait_seconds=$3
+    for assignment in "${@:4}"; do
+      export "${assignment?}"
+    done
     "${compose[@]}" pull --quiet "$service"
     "${compose[@]}" up -d --wait --wait-timeout "$wait_seconds" "$service"
     ;;

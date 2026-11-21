@@ -324,12 +324,13 @@ services:
       - "${MONETDB_PORT:-50000}:50000"
 
   # The image creates the remote-login user gaussdb with GS_PASSWORD, which it requires to be
-  # complex; it runs privileged.
+  # complex: its entrypoint wants a character of #?!@$%^&*- (an underscore is none); it runs
+  # privileged.
   opengauss:
     image: opengauss/opengauss:latest
     privileged: true
     environment:
-      GS_PASSWORD: Provisa_2026
+      GS_PASSWORD: Provisa_2026!
     ports:
       - "${OPENGAUSS_PORT:-15433}:5432"
 

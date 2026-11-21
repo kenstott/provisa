@@ -15,6 +15,8 @@
 #   image         the container the engine runs in, as the report lists it
 #   service       the docker-compose.test.yml service the integration tests start for it (started by
 #                 scripts/conformance/engine_service.sh); none for in-process or external engines
+#   service-env   NAME=value words the service is started with (engine_service.sh up): a host port
+#                 the compose default publishes where the workflow's own PostgreSQL service listens
 #   demo-source   instead of a service: the demo/sources/<name> container another CI lane already
 #                 starts for this engine (demo/sources/provision.py, by engine_service.sh demo)
 #   engine-url    $PROVISA_ENGINE_URL; a warehouse leg's is written by warehouse_leg.py up
@@ -104,7 +106,7 @@ legs:
     service: firebird
     engine-url: firebird+firebird://provisa:provisa@127.0.0.1:3050//firebird/data/test.fdb
     ready-sql: SELECT 1 FROM RDB$DATABASE
-    pip: sqlalchemy-firebird firebird-driver
+    extras: dev firebird
     apt: libfbclient2
   - engine: cockroachdb
     lane: free
@@ -112,7 +114,7 @@ legs:
     service: cockroachdb
     engine-url: cockroachdb://root@127.0.0.1:26257/defaultdb?sslmode=disable
     ready-sql: SELECT 1
-    pip: sqlalchemy-cockroachdb
+    extras: dev cockroachdb
   - engine: yugabytedb
     lane: free
     image: yugabytedb/yugabyte:2026.1.1.1-b2
@@ -123,7 +125,10 @@ legs:
     lane: free
     image: datagrip/greenplum:6.8
     service: greenplum
-    engine-url: postgresql+psycopg2://gpadmin@127.0.0.1:15432/postgres
+    # docker-compose.test.yml publishes it on 15432 by default, where the workflow's PostgreSQL
+    # service already listens.
+    service-env: GREENPLUM_PORT=15442
+    engine-url: postgresql+psycopg2://gpadmin@127.0.0.1:15442/postgres
     ready-sql: SELECT 1
     wait: 900
   - engine: exasol
@@ -134,7 +139,7 @@ legs:
     setup-url: exa+websocket://sys:exasol@127.0.0.1:8563?SSLCertificate=SSL_VERIFY_NONE
     setup-sql: CREATE SCHEMA IF NOT EXISTS PROVISA
     ready-sql: SELECT 1
-    pip: sqlalchemy-exasol
+    extras: dev exasol
     wait: 900
 
   # --- containers started for this run alone (docker-compose.test.yml, no test of their own) --
@@ -144,29 +149,21 @@ legs:
     service: monetdb
     engine-url: monetdb://monetdb:monetdb@127.0.0.1:50000/provisa
     ready-sql: SELECT 1
-    pip: sqlalchemy-monetdb
+    extras: dev monetdb
   - engine: opengauss
     lane: free
     image: opengauss/opengauss:latest
     service: opengauss
-    engine-url: opengauss://gaussdb:Provisa_2026@127.0.0.1:15433/postgres
+    engine-url: opengauss://gaussdb:Provisa_2026!@127.0.0.1:15433/postgres
     ready-sql: SELECT 1
-    pip: opengauss-sqlalchemy
-  - engine: vertica
-    lane: free
-    image: vertica/vertica-ce:24.1.0-0
-    service: vertica
-    engine-url: vertica+vertica_python://dbadmin@127.0.0.1:5434/VMart
-    ready-sql: SELECT 1
-    pip: sqlalchemy-vertica-python
-    wait: 900
+    extras: dev opengauss
   - engine: db2
     lane: free
     image: icr.io/db2_community/db2:11.5.9.0
     service: db2
     engine-url: db2+ibm_db://db2inst1:provisa@127.0.0.1:50001/PROVISA
     ready-sql: SELECT 1 FROM SYSIBM.SYSDUMMY1
-    pip: ibm-db-sa
+    extras: dev db2
     wait: 1200
 
   # --- a container another CI lane already starts (demo/sources) ---------------------------
@@ -228,3 +225,8 @@ not_run:
     the trino leg: trino-byo is built by the same builder (provisa/federation/engine.py
     _ENGINE_BUILDERS, build_trino_engine), and the trino leg already reaches its coordinator in a
     compose container that Provisa does not manage, which is what trino-byo is
+  vertica: >-
+    no image a hosted runner can pull: Docker Hub answers "pull access denied for
+    vertica/vertica-ce, repository does not exist" (run 44918205557, 2026-11-21) since the vendor
+    removed the Community Edition repository, and its only copies are third-party re-uploads,
+    which CI does not run unverified

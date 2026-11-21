@@ -262,7 +262,8 @@ def grid_bounds(statement: str, engine: str) -> tuple[str, ...]:
     ``engine``'s dialect, read as the translator reads it: the function unqualified, the statement
     parsed as PostgreSQL's, its first column's expression looked up. None when the grid has no row
     of it there; a rewrite function refusing the call for its values states that refusal. An
-    engine the grid has no dialect of is a mistake in the run."""
+    engine polyfill_check.ENGINE_DIALECTS names no dialect of is a mistake in the run; one whose
+    dialect is no column of the grid has no row there."""
     import polyfill_check
     import sqlglot
     from sqlglot.errors import ParseError
@@ -272,6 +273,9 @@ def grid_bounds(statement: str, engine: str) -> tuple[str, ...]:
     from provisa.transpiler.polyfill.notation import Refused
 
     dialect = polyfill_check.ENGINE_DIALECTS[engine]
+    if polyfill_check.column_of(dialect) is None:
+        # A dialect that is no column of the grid: it has no row there.
+        return ()
     # pg_catalog."f"(...) as the translator reads it: the function unqualified, read again.
     try:
         unqualified = transpile._catalog_functions_unqualified(statement)

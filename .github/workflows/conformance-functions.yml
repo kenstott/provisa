@@ -179,6 +179,7 @@ jobs:
         if: matrix.service != '' || matrix.demo-source != ''
         env:
           SERVICE: ${{ matrix.service }}
+          SERVICE_ENV: ${{ matrix.service-env }}
           DEMO_SOURCE: ${{ matrix.demo-source }}
           WAIT: ${{ matrix.wait }}
           READY_SQL: ${{ matrix.ready-sql }}
@@ -189,7 +190,8 @@ jobs:
           if [ -n "$DEMO_SOURCE" ]; then
             bash scripts/conformance/engine_service.sh demo "$DEMO_SOURCE"
           else
-            bash scripts/conformance/engine_service.sh up "$SERVICE" "$WAIT"
+            # shellcheck disable=SC2086 # SERVICE_ENV is NAME=value words, one argument each
+            bash scripts/conformance/engine_service.sh up "$SERVICE" "$WAIT" $SERVICE_ENV
           fi
           if [ -n "$SETUP_SQL" ]; then
             .venv/bin/python scripts/conformance/function_legs.py wait --url "$SETUP_URL" --sql "$READY_SQL" --timeout "$WAIT"

@@ -141,6 +141,50 @@ def test_a_free_leg_with_a_server_starts_a_service_the_test_compose_file_defines
             assert services[leg["service"]]["image"] == leg["image"], leg["engine"]
 
 
+def test_a_leg_installs_the_engine_extra_the_product_ships_not_an_unpinned_dialect():
+    """A kind with a pyproject extra (federation/engine.py RDB_EXTRAS) installs it from the lock:
+    run 44918205557's firebird leg pip-installed firebird-driver 2, which took protobuf down to
+    5.29 and Provisa never started (gencode 6.32.1, runtime 5.29.6)."""
+    from provisa.federation.engine import RDB_EXTRAS
+
+    for leg in DOC["legs"]:
+        if leg["engine"] in RDB_EXTRAS:
+            extra = RDB_EXTRAS[leg["engine"]][0]
+            assert extra in leg.get("extras", "dev").split(), leg["engine"]
+            assert "pip" not in leg, leg["engine"]
+
+
+def test_a_service_publishes_no_host_port_the_workflows_postgresql_holds():
+    """Run 44918205557's greenplum leg: compose's default 15432 was the workflow's PostgreSQL's."""
+    pg_port = _workflow()["jobs"]["probe"]["env"]["CONFORMANCE_PG_PORT"]
+    greenplum = _leg("greenplum")
+    assert greenplum["service-env"] == "GREENPLUM_PORT=15442"
+    assert ":15442/" in greenplum["engine-url"] and str(pg_port) != "15442"
+    entry = next(
+        e for e in legs.plan("free", DOC)["matrix"]["include"] if e["engine"] == "greenplum"
+    )
+    assert entry["service-env"] == "GREENPLUM_PORT=15442"
+    step = next(s for s in _workflow()["jobs"]["probe"]["steps"] if s.get("id") == "service")
+    assert step["env"]["SERVICE_ENV"] == "${{ matrix.service-env }}"
+    assert '"$WAIT" $SERVICE_ENV' in step["run"]
+
+
+def test_opengauss_password_meets_the_images_complexity_rule():
+    """Its entrypoint wants one of #?!@$%^&*- (run 44918205557: "GS_PASSWORD is not meet
+    requirements" for Provisa_2026)."""
+    import re
+
+    services = yaml.safe_load((REPO / "docker-compose.test.yml").read_text())["services"]
+    password = services["opengauss"]["environment"]["GS_PASSWORD"]
+    assert re.search(r"[#?!@$%^&*-]", password) and len(password) >= 8
+    assert f"gaussdb:{password}@" in _leg("opengauss")["engine-url"]
+
+
+def test_vertica_is_not_run_for_want_of_a_pullable_image():
+    assert "vertica" not in {leg["engine"] for leg in DOC["legs"]}
+    assert "pull access denied" in DOC["not_run"]["vertica"]
+
+
 def test_a_free_engine_with_a_server_has_its_url():
     for leg in DOC["legs"]:
         if "service" in leg or "demo-source" in leg:

@@ -47,6 +47,7 @@ FIELDS = (
     "lane",
     "image",
     "service",
+    "service-env",
     "demo-source",
     "engine-url",
     "secrets",

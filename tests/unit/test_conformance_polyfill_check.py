@@ -180,6 +180,28 @@ def test_an_engine_the_check_has_no_dialect_of_is_refused():
         check.checked(_run("array_ndims", "anyarray", spark=_PASS))
 
 
+def test_every_leg_has_the_dialect_provisa_transpiles_its_sql_to():
+    """Every engine a run can measure (function_legs.yaml) has a dialect, and an engine driven by
+    its URL has the one its backend reads off that URL (EngineBackend.dialect): the scheme, mssql
+    read as tsql. Run 44918205557 lost thirteen legs to a KeyError of an engine the map lacked."""
+    from provisa.federation.backend import EngineBackend
+
+    doc = yaml.safe_load((REPO / "scripts" / "conformance" / "function_legs.yaml").read_text())
+    assert {leg["engine"] for leg in doc["legs"]} <= set(check.ENGINE_DIALECTS)
+    for leg in doc["legs"]:
+        url = leg.get("engine-url")
+        if url and leg["engine"] != "pg":
+            scheme = url.split("://", 1)[0].split("+", 1)[0]
+            dialect = EngineBackend._SQLGLOT_DIALECT_ALIASES.get(scheme, scheme)
+            assert check.ENGINE_DIALECTS[leg["engine"]] == dialect, leg["engine"]
+
+
+def test_an_engine_whose_dialect_is_no_grid_column_is_held_to_nothing():
+    """The grid states nothing of a dialect that is no column of it (db2): no finding, no crash."""
+    assert check.ENGINE_DIALECTS["db2"] == "db2"
+    assert check.checked(_run("array_ndims", "anyarray", db2=_WRONG)) == []
+
+
 def test_the_report_counts_by_engine_and_lists_each_failure():
     run = {
         "engines": ["duckdb", "trino"],
