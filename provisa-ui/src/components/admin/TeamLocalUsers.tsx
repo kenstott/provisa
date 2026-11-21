@@ -9,15 +9,19 @@
 // permission from the copyright holder.
 
 import { useDomains, useRoles } from "../../hooks/useAdminQueries";
+import { useAuth } from "../../context/AuthContext";
+import { conferrableRoles } from "../../lib/capabilities";
 import { LocalUsersTab } from "./LocalUsersTab";
 
 // REQ-1327: Team's Local users section, with the org's roles and domains a user is assigned to.
 export function TeamLocalUsers() {
   const { roles } = useRoles();
   const { domains } = useDomains();
+  const { capabilities } = useAuth();
   return (
     <LocalUsersTab
-      allRoles={roles.map((r) => r.id)}
+      // REQ-1327 (amended 2026-11-16): only the roles the caller may confer are offered.
+      allRoles={conferrableRoles(roles, capabilities).map((r) => r.id)}
       allDomains={domains.filter((d) => d.id !== "").map((d) => d.id)}
     />
   );
