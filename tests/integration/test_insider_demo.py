@@ -137,37 +137,7 @@ def set_up(server):
         text=True,
         timeout=1800,
     )
-    if done.returncode != 0:
-        probes = []
-        for sql in (
-            'SELECT * FROM "bank"."screening" LIMIT 2',
-            'SELECT deal_id FROM "bank"."screening" LIMIT 2',
-            'SELECT * FROM "bank"."deal" LIMIT 2',
-            'SELECT * FROM "bank"."deal_team" LIMIT 2',
-            'SELECT * FROM "control_room"."control_room"."watch_list__screening" LIMIT 2',
-            'SELECT COUNT(*) AS n FROM "bank"."deal_team"',
-            'SELECT * FROM "bank"."deal_counterparty" LIMIT 2',
-            'SELECT s.message_id, m.id, d.deal_id FROM "bank"."screening" AS s '
-            'JOIN "bank"."messages" AS m ON m.id = s.message_id '
-            'JOIN "bank"."deal" AS d ON d.deal_id = s.deal_id LIMIT 2',
-        ):
-            resp = _post(server, "/data/sql", {"sql": sql}, "org_admin")
-            probes.append(f"{sql}\n  -> HTTP {resp.status_code}: {resp.text[:600]}")
-        hot = httpx.post(
-            f"{server.base_url}/admin/graphql",
-            json={"query": "{ hotTables { tableName catalog schemaName rowCount kind } }"},
-            headers={"X-Provisa-Role": "org_admin"},
-            timeout=300,
-        )
-        probes.append(f"hotTables -> HTTP {hot.status_code}: {hot.text[:1500]}")
-        count = _post(
-            server,
-            "/data/sql",
-            {"sql": 'SELECT COUNT(*) AS n FROM "bank"."screening"'},
-            "org_admin",
-        )
-        probes.append(f"count -> HTTP {count.status_code}: {count.text[:300]}")
-        raise AssertionError(f"{done.stdout}\n{done.stderr}\n" + "\n".join(probes))
+    assert done.returncode == 0, f"{done.stdout}\n{done.stderr}"
     return server
 
 
