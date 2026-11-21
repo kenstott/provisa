@@ -97371,7 +97371,7 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     NAMED DERIVED:) Maintainer 2026-11-12: a button that stops an operation in progress says Stop, not Cancel;
     Cancel is kept for leaving a form or dialog with nothing changed. The top navigation group holding Views,
     Metrics, Commands and Lineage is named Derived, not Model: model keeps its two other meanings, the whole
-    declared model and an entity or fact added with + Model.'
+    declared model and an entity or fact added with + Model. (Amended 2026-11-21 by the maintainer decisions of 2026-11-13. The schema panel toggle reads Hide schema panel and Show schema panel, since it draws the panel or not. Leaving an enlarged view reads Restore size, in the graph frame and the ER diagram alike. The observability tab''s close control reads Close.)'
   scenario: |
     Given a graph that draws a table with its columns collapsed into it
     When a reader looks at the table's control
