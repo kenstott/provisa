@@ -1,0 +1,25 @@
+{
+  "glossaryPage": {
+    "title": "Glossary",
+    "intro": "The approved terms of your organization, with what each one means.",
+    "search": "Search terms",
+    "searchPlaceholder": "Search names and definitions",
+    "domainFilter": "Domains",
+    "domainFilterPlaceholder": "All domains",
+    "sort": "Sort",
+    "sortName": "A–Z",
+    "sortRecent": "Recently changed",
+    "letterBar": "Jump to letter",
+    "otherLetter": "#",
+    "alsoCalled": "Also called",
+    "kindOf": "A kind of",
+    "kinds": "Kinds",
+    "seeAlso": "See also",
+    "allDomains": "All domains",
+    "loadFailed": "The glossary could not be loaded: {{message}}",
+    "empty": "No approved terms yet.",
+    "noMatch": "No terms match.",
+    "count_one": "{{count}} term",
+    "count_other": "{{count}} terms"
+  }
+}
