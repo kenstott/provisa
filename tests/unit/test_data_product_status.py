@@ -22,6 +22,7 @@ from provisa.core import product_findings
 from provisa.core.models import DataProduct
 from provisa.core.repositories import data_product as repo
 from provisa.core.schema_org import (
+    data_product_commands,
     data_products,
     domains,
     registered_tables,
@@ -67,14 +68,12 @@ async def _store(control_plane):
                         domain_id="sales",
                         schema_name="public",
                         table_name=name,
-                        product_id="c360",
                     )
                 )
             await conn.execute_core(
-                insert(tracked_functions).values(
-                    name="refresh_customer", domain_id="sales", product_id="c360"
-                )
+                insert(tracked_functions).values(name="refresh_customer", domain_id="sales")
             )
+            await repo.set_members(conn, "c360", table_ids=[1, 2], commands=["refresh_customer"])
         yield db
     finally:
         await db.close()
@@ -174,8 +173,8 @@ async def test_retiring_moves_every_member_to_the_successor(control_plane):
         assert (await _members(conn, "c360"), await _members(conn, "c360_v2")) == (0, 3)
         moved = (
             await conn.execute_core(
-                select(tracked_functions.c.product_id).where(
-                    tracked_functions.c.name == "refresh_customer"
+                select(data_product_commands.c.product_id).where(
+                    data_product_commands.c.command_name == "refresh_customer"
                 )
             )
         ).scalar_one()

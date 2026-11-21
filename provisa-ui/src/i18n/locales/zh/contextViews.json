@@ -1,0 +1,16 @@
+{
+  "contextViews": {
+    "colWhereApplied": "应用位置",
+    "colDependents": "依赖项",
+    "detectedHeader": "检测位置",
+    "nowhere": "无",
+    "hiddenPlaces_one": "另有 {{count}} 项您无权读取",
+    "hiddenPlaces_other": "另有 {{count}} 项您无权读取",
+    "rowFilters_one": "{{count}} 个行筛选器",
+    "rowFilters_other": "{{count}} 个行筛选器",
+    "classifiedAs": "由分类指定：{{kind}}",
+    "noDependents": "无",
+    "enabled": "已启用",
+    "disabled": "已停用"
+  }
+}

@@ -72,12 +72,19 @@ describe("AdminRail", () => {
   });
 
   it("offers a platform administrator the deployment-wide surfaces", () => {
-    auth.capabilities = ["platform_settings"];
+    auth.capabilities = ["platform_settings", "cross_org"];
     renderAt("/admin/security");
     expect(screen.getByRole("link", { name: "Security" })).toHaveAttribute(
       "href",
       "/admin/security",
     );
+  });
+
+  it("offers a single-tenant org administrator no page the deployment check refuses", () => {
+    // REQ-1327: it holds platform_settings, never cross_org, and every call on these pages asks both.
+    auth.capabilities = ["platform_settings", "org_settings"];
+    renderAt("/admin/domains");
+    expect(screen.queryByRole("link", { name: "Security" })).toBeNull();
   });
 
   it("carries no entry of its own for Secrets, which is a Security sub-tab", () => {

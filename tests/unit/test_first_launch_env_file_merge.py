@@ -64,8 +64,8 @@ def test_a_rerun_keeps_the_keys_it_does_not_generate_and_updates_the_ones_it_doe
         "PROVISA_STORE_BIND_IP=10.0.0.5\n"
         "PROVISA_OTEL_S3_ENDPOINT=https://storage.googleapis.com\n"
         "PROVISA_OTEL_S3_BUCKET=otel-signals\n"
-        "LEMONSQUEEZY_API_KEY=ls-key\n"
-        "LEMONSQUEEZY_STORE_ID=4711\n"
+        "STRIPE_SECRET_KEY=sk_live_kept\n"
+        "STRIPE_PRICE_STARTER=price_kept\n"
         "PROVISA_GRAFANA_ADMIN_PASSWORD=kept-from-before\n"
     )
     env_file.chmod(0o600)
@@ -84,8 +84,8 @@ def test_a_rerun_keeps_the_keys_it_does_not_generate_and_updates_the_ones_it_doe
     # Not known to first launch: kept as they were.
     assert keys["PROVISA_OTEL_S3_ENDPOINT"] == "https://storage.googleapis.com"
     assert keys["PROVISA_OTEL_S3_BUCKET"] == "otel-signals"
-    assert keys["LEMONSQUEEZY_API_KEY"] == "ls-key"
-    assert keys["LEMONSQUEEZY_STORE_ID"] == "4711"
+    assert keys["STRIPE_SECRET_KEY"] == "sk_live_kept"
+    assert keys["STRIPE_PRICE_STARTER"] == "price_kept"
     # Known to first launch but not given this run: kept, never blanked.
     assert keys["PROVISA_STORE_BIND_IP"] == "10.0.0.5"
     assert keys["PROVISA_GRAFANA_ADMIN_PASSWORD"] == "kept-from-before"
@@ -104,5 +104,69 @@ def test_a_first_run_writes_only_what_it_was_given(tmp_path):
 
 def test_install_systemd_writes_the_environment_file_through_the_merge():
     body = _function("install_systemd")
-    assert 'write_env_file "${PROVISA_HOME}/provisa.env"' in body
+    assert 'write_env_file "$env_file"' in body
     assert ': > "$env_file"' not in _FIRST_LAUNCH
+
+
+def _run_install_systemd(tmp_path: Path) -> tuple[subprocess.CompletedProcess, Path, Path]:
+    """Run install_systemd as the script runs it, with the system paths in tmp_path."""
+    unit = tmp_path / "system" / "provisa.service"
+    unit.parent.mkdir()
+    home = tmp_path / "home" / ".provisa"
+    home.mkdir(parents=True)
+    body = _function("write_env_file") + _function("install_systemd").replace(
+        "/etc/systemd/system/provisa.service", str(unit)
+    )
+    script = (
+        "ok() { :; }\n"
+        'systemctl() { printf \'%s\\n\' "$*" >> "$SYSTEMCTL_LOG"; }\n'
+        f"PROVISA_HOME={home}\nLOCAL_BIN={tmp_path}/bin\nDOCKER_MODE=system\n"
+        "DOCKER_SOCKET=/var/run/docker.sock\n" + body + "install_systemd\n"
+    )
+    log = tmp_path / "systemctl.log"
+    done = subprocess.run(
+        ["bash", "-euo", "pipefail", "-c", script],
+        env={"PATH": os.environ["PATH"], "SYSTEMCTL_LOG": str(log), "PROVISA_IDP": "firebase"},
+        capture_output=True,
+        text=True,
+    )
+    return done, unit, home
+
+
+def test_install_systemd_runs_and_points_the_unit_at_the_env_file(tmp_path):
+    done, unit, home = _run_install_systemd(tmp_path)
+
+    assert done.returncode == 0, done.stderr
+    assert f"\nEnvironmentFile=-{home}/provisa.env\n" in unit.read_text()
+    assert (home / "provisa.env").read_text() == "PROVISA_IDP=firebase\n"
+    assert (tmp_path / "systemctl.log").read_text().splitlines() == [
+        "daemon-reload",
+        "enable provisa",
+        "restart provisa",
+    ]
+    assert [p.name for p in unit.parent.iterdir()] == ["provisa.service"]
+
+
+def test_install_systemd_never_leaves_an_empty_unit_when_it_fails(tmp_path):
+    unit = tmp_path / "system" / "provisa.service"
+    unit.parent.mkdir()
+    unit.write_text("[Unit]\nDescription=previous\n")
+    home = tmp_path / ".provisa"
+    home.mkdir()
+    body = _function("write_env_file") + _function("install_systemd").replace(
+        "/etc/systemd/system/provisa.service", str(unit)
+    )
+    # LOCAL_BIN is deliberately unset: the unit body cannot be rendered.
+    script = (
+        f"ok() {{ :; }}\nsystemctl() {{ :; }}\nPROVISA_HOME={home}\nDOCKER_MODE=system\n"
+        "DOCKER_SOCKET=/s\n" + body + "install_systemd\n"
+    )
+    done = subprocess.run(
+        ["bash", "-euo", "pipefail", "-c", script],
+        env={"PATH": os.environ["PATH"]},
+        capture_output=True,
+        text=True,
+    )
+
+    assert done.returncode != 0
+    assert unit.read_text() == "[Unit]\nDescription=previous\n"

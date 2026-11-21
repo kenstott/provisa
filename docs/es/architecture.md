@@ -417,7 +417,7 @@ Estos encabezados implementan la redirección controlada por el cliente.
 | Env var | Default | Purpose |
 | --------- | --------- | --------- |
 | `PROVISA_REDIRECT_ENABLED` | `false` | Enable server-side threshold redirect |
-| `PROVISA_REDIRECT_THRESHOLD` | `1000` | Default row count threshold |
+| `PROVISA_REDIRECT_THRESHOLD` | `100000` | Default row count threshold |
 | `PROVISA_REDIRECT_FORMAT` | `parquet` | Default redirect format |
 | `PROVISA_REDIRECT_BUCKET` | `provisa-results` | S3 bucket name |
 | `PROVISA_REDIRECT_ENDPOINT` | | S3-compatible endpoint URL |

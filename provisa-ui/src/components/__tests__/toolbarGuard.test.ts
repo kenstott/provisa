@@ -123,12 +123,40 @@ describe("the toolbar rules fail what they are meant to fail", () => {
     ).toEqual(["toolbar-order"]);
   });
 
+  it("a filter inside a toolbar, but not one in the page header beside it", () => {
+    expect(
+      rules(
+        `const x = <Group data-toolbar><FilterInput value={q} onChange={f} /><Button>Add</Button></Group>;`,
+      ),
+    ).toEqual(["filter-in-toolbar"]);
+    expect(
+      rules(
+        `const x = <div className="page-actions"><Group><FilterInput value={q} onChange={f} /></Group></div>;`,
+      ),
+    ).toEqual(["filter-in-toolbar"]);
+    expect(
+      rules(
+        `const x = <div className="page-header"><PageTitle>T</PageTitle><FilterInput value={q} onChange={f} />` +
+          `<div className="page-actions"><Button>+ Table</Button></div></div>;`,
+      ),
+    ).toEqual([]);
+  });
+
   it("reads a page's head actions as a toolbar too", () => {
     expect(
       rules(
         `const x = <div className="page-actions"><HelpBubble title="t" /><Button>Add</Button></div>;`,
       ),
     ).toEqual(["toolbar-order"]);
+  });
+});
+
+describe("every list page's filter", () => {
+  it("sits in its page header, where it grows, not inside a toolbar", () => {
+    const wrong = of("filter-in-toolbar").map(
+      ({ file, hits }) => `${file}: ${hits.map((v) => `line ${v.line}`).join("; ")}`,
+    );
+    expect(wrong).toEqual([]);
   });
 });
 

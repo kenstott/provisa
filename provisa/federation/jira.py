@@ -105,7 +105,7 @@ def jira_settings(source: Any) -> dict:
     or token is a config error naming it."""
     who = f"jira source {source.id!r}"
     email = resolve_secrets(source.username) if source.username else ""
-    token = resolve_secrets(source.password) if source.password else ""
+    token = resolve_secrets(source.password, credential=True) if source.password else ""
     if not email:
         raise MissingConnectorConfig(f"{who}: requires the account's email")
     if not token:

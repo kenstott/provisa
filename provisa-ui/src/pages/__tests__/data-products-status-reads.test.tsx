@@ -56,7 +56,7 @@ vi.mock("../../components/graph3d/OntologyGraph", () => ({
 vi.mock("../../context/AuthContext", () => ({
   useAuth: () => ({
     role: { id: "admin", capabilities: [] },
-    selectedRoles: [{ id: "admin" }],
+    selectedRoles: [{ id: "admin", effectiveCapabilities: [], domain_access: [] }],
     availableRoles: [],
   }),
 }));
@@ -115,7 +115,8 @@ vi.mock("../../hooks/useDataProductMutations", () => ({
   useCreateDataProduct: () => ({ createDataProduct: vi.fn(), loading: false }),
   useUpdateDataProduct: () => ({ updateDataProduct: vi.fn(), loading: false }),
   useDeleteDataProduct: () => ({ deleteDataProduct: vi.fn(), loading: false }),
-  useSaveDataContract: () => ({ saveDataContract: vi.fn(), loading: false }),
+  useDeleteDataProducts: () => vi.fn(),
+  useSetDataProductMembers: () => ({ setDataProductMembers: vi.fn(), loading: false }),
   useDataProductFindings: () => ({
     findings: new Map(),
     refetch: refetchFindings,

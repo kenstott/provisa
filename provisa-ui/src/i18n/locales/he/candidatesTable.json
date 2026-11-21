@@ -1,6 +1,6 @@
 {
   "candidatesTable": {
-    "heading": "קשרים בהצעת AI",
+    "heading": "קשרים מוצעים",
     "colName": "שם",
     "colSource": "מקור",
     "colTarget": "יעד",
@@ -10,6 +10,25 @@
     "accept": "קבלה",
     "reject": "דחייה",
     "acceptAria": "קבלת הקשר המוצע {{name}}",
-    "rejectAria": "דחיית הקשר המוצע {{name}}"
+    "rejectAria": "דחיית הקשר המוצע {{name}}",
+    "acceptAll": "קבלת הכול",
+    "rejectAll": "דחיית הכול",
+    "acceptAllTitle": "קבלת כל ההצעות",
+    "rejectAllTitle": "דחיית כל ההצעות",
+    "acceptAllConsequence": "לקבל את ההצעה הרשומה ({{count}})? היא תהפוך לקשר רשום.",
+    "acceptAllConsequence_other": "לקבל את כל {{count}} ההצעות הרשומות? כל אחת תהפוך לקשר רשום.",
+    "rejectAllConsequence": "לדחות את ההצעה הרשומה ({{count}})? היא לא תוצע שוב עד שהדחיות יימחקו.",
+    "rejectAllConsequence_other": "לדחות את כל {{count}} ההצעות הרשומות? הן לא יוצעו שוב עד שהדחיות יימחקו.",
+    "acceptedAll": "הצעה {{count}} התקבלה.",
+    "acceptedAll_other": "{{count}} הצעות התקבלו.",
+    "rejectedAll": "הצעה {{count}} נדחתה.",
+    "rejectedAll_other": "{{count}} הצעות נדחו.",
+    "acceptFailed": "לא ניתן היה לקבל הצעה {{count}}:",
+    "acceptFailed_other": "לא ניתן היה לקבל {{count}} הצעות:",
+    "rejectFailed": "לא ניתן היה לדחות הצעה {{count}}:",
+    "rejectFailed_other": "לא ניתן היה לדחות {{count}} הצעות:",
+    "failedOne": "{{name}}: {{error}}",
+    "reducedInformation": "מידע מצומצם: לא הושוו ערכים",
+    "reducedInformationHelp": "אחת מהטבלאות האלה דורשת פרמטר, ולכן היא לעולם אינה נקראת. הצעה זו מבוססת רק על שמות, תיאורים, סוגים ופרמטרים נדרשים."
   }
 }

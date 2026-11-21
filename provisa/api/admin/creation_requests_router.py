@@ -26,6 +26,7 @@ from pydantic import BaseModel
 from sqlalchemy import and_, func, select, update
 
 from provisa.api.admin import relationship_approvals as approvals_rule
+from provisa.api.admin._guards import require_active_org_id
 from provisa.api.admin.request_queue import raise_request
 from provisa.api.errors import ApiError
 from provisa.api.idempotency import once
@@ -144,6 +145,7 @@ async def _audit(
 ) -> None:  # REQ-1948
     await approvals_rule.record(
         _get_pool(),
+        org_id=require_active_org_id(request),
         action=action,
         request=row,
         actor=_user_id(request),

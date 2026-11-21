@@ -97,6 +97,7 @@ def test_a_meta_role_is_judged_by_its_own_set(monkeypatch):
         role_build_inputs={
             "role_chains": CHAINS,
             "tables": [],
+            "withdrawn_tables": [],
             "metrics": [],
             "functions": [],
             "webhooks": [],
@@ -191,6 +192,7 @@ def _state() -> SimpleNamespace:
             "derived_roles": [{"attribute": "region", "description": "The member's region."}]
         },
         config=SimpleNamespace(derived_roles=[]),
+        org_registry={},
     )
 
 

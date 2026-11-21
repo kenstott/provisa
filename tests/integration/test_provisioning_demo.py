@@ -363,12 +363,15 @@ def _close_build(server) -> dict:
     "path", sorted((_DEMO / "queries").glob("*.graphql")), ids=lambda p: p.stem
 )
 def test_each_example_query_answers(landed, pulled, path):
+    closed = "viewOrderMargins" in path.read_text() and not _dataset_open(_utc())
     resp = _post(landed, "/data/graphql", {"query": path.read_text()})
+    if closed:
+        # Outside the dataset's window a read is refused whatever the client (run 43655220491, at
+        # 00:23 UTC, was the first to reach this branch).
+        _refused_outside_window(resp, "view_order_margins")
+        return
     assert resp.status_code == 200, resp.text
     body = resp.json()
-    if "viewOrderMargins" in path.read_text() and not _dataset_open(_utc()):
-        assert body.get("errors"), body
-        return
     assert not body.get("errors"), body
     [rows] = body["data"].values()
     if "__pulls" in path.read_text() and pulled is None:
@@ -419,3 +422,19 @@ def test_each_tour_rest_call_answers(landed, pulled, step):
     assert resp.status_code == 200, resp.text
     if pulled is not None:
         assert resp.json()["data"], step["key"]
+
+
+def test_the_first_example_query_answers_one_group_per_category_as_finance(landed):
+    """The demo's first query, as its comment says to run it: one group per product category
+    (db/init.sql: beans, equipment, merchandise and services). Outside the dataset's window it is
+    refused, naming the view."""
+    text = (_DEMO / "queries" / "1-dataset-by-category.graphql").read_text()
+    resp = _post(landed, "/data/graphql", {"query": text}, "finance")
+    if not _dataset_open(_utc()):
+        _refused_outside_window(resp, "view_order_margins")
+        return
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert not body.get("errors"), body
+    [groups] = body["data"].values()
+    assert len(groups) == 4, groups

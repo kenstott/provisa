@@ -26,6 +26,9 @@ and how this module reads it:
 * **Errors** — a statement Trino failed carries Trino's error name, type, code, message and query
   id in the Flight error's trailers (:func:`engine_error`); an unreachable proxy or coordinator is
   :class:`EngineUnreachable`.
+* **Zone** — a statement in a session on a zone (REQ-2171) names it in the same header
+  (``timeZone``), so the proxy opens the statement's Trino session in it: what Trino reads of an
+  instant is read in the session's zone, and nothing another statement shares keeps it.
 * **Parameters** — bound as the Trino client binds them: ``EXECUTE IMMEDIATE '<sql>' USING
   <literals>`` (:func:`bound_statement`).
 """
@@ -51,6 +54,8 @@ import pyarrow as pa
 
 from provisa.core import request_deadline
 from provisa.core.ir_arrow import column_values
+from provisa.core.pg_error import PostgresError
+from provisa.core.session_time_zone import told_as, trino_spelling
 from provisa.executor.result import ArrowResult, ArrowStreamResult
 from provisa.otel_compat import get_tracer as _get_tracer
 from provisa.otel_compat import stage as _stage
@@ -75,6 +80,9 @@ _ERROR_CODE = "x-trino-error-code"
 _QUERY_ID = "x-trino-query-id"
 _ERROR_MESSAGE = "x-trino-error-message-bin"
 
+#: Trino's refusal while it types a statement, which no form of to_json can avoid (REQ-2171).
+_NO_JSON_OF_INSTANT = "with time zone to json"
+
 #: Trino error names that mean the query ran out of memory: never retried.
 _MEMORY_ERROR_NAMES = frozenset({"EXCEEDED_LOCAL_MEMORY_LIMIT", "EXCEEDED_GLOBAL_MEMORY_LIMIT"})
 
@@ -93,8 +101,8 @@ class TrinoContext:
     #: declared it (``TF_TRINO_ALLOWED_SERVERS``), else refuses (:class:`CoordinatorRefused`).
     server: str | None = None
 
-    def header(self) -> str:
-        """The value of the ``x-provisa-trino-context`` call header: base64 of its JSON."""
+    def body(self) -> dict[str, Any]:
+        """The JSON object of the ``x-provisa-trino-context`` call header."""
         body: dict[str, Any] = {"source": self.source, "properties": dict(self.properties)}
         if self.server is not None:
             body["server"] = self.server
@@ -102,7 +110,27 @@ class TrinoContext:
             body["catalog"] = self.catalog
         if self.schema is not None:
             body["schema"] = self.schema
-        return base64.b64encode(json.dumps(body).encode("utf-8")).decode("ascii")
+        return body
+
+    def header(self) -> str:
+        """The value of the ``x-provisa-trino-context`` call header: base64 of its JSON."""
+        return _encoded(self.body())
+
+
+def _encoded(body: dict[str, Any]) -> str:
+    return base64.b64encode(json.dumps(body).encode("utf-8")).decode("ascii")
+
+
+def call_header(context: TrinoContext | None, exec_sql: str) -> str | None:
+    """The call header a statement is sent with: ``context`` and, for a statement in a session on
+    a zone (REQ-2171), the zone in the spelling Trino reads (``timeZone``). None: nothing to send,
+    the proxy's own session. A zone Trino reads no spelling of is refused where the statement
+    could depend on it."""
+    zone = told_as(exec_sql, trino_spelling, "Trino")
+    body = {} if context is None else context.body()
+    if zone is not None:
+        body["timeZone"] = zone
+    return _encoded(body) if body else None
 
 
 class TrinoFlightQueryError(Exception):
@@ -326,14 +354,15 @@ def trino_rows(data: pa.RecordBatch | pa.Table) -> list[tuple]:
 # -- execution ----------------------------------------------------------------------------------
 
 
-def _open_cursor(conn, context: TrinoContext | None):
+def _open_cursor(conn, context: TrinoContext | None, exec_sql: str):
     """A cursor that runs its statement as a plain one (the proxy has no prepare step), with
-    ``context`` in its call header."""
+    ``context`` and the statement's zone in its call header (:func:`call_header`)."""
     import types
 
+    header = call_header(context, exec_sql)
     cursor = conn.cursor()
-    if context is not None:
-        cursor.adbc_statement.set_options(**{_CALL_HEADER_OPTION: context.header()})
+    if header is not None:
+        cursor.adbc_statement.set_options(**{_CALL_HEADER_OPTION: header})
 
     def _prepare_execute_no_prepare(self, operation, *_):
         self._results = None
@@ -346,7 +375,7 @@ def _open_cursor(conn, context: TrinoContext | None):
 
 
 def _fetch_table(conn, exec_sql: str, context: TrinoContext | None) -> pa.Table:
-    cursor = _open_cursor(conn, context)
+    cursor = _open_cursor(conn, context, exec_sql)
     try:
         with request_deadline.cancel_on_deadline(cursor.adbc_cancel):
             cursor.execute(exec_sql)
@@ -388,6 +417,10 @@ def _with_retries(run: Callable[[], Any], span: Any) -> Any:
             if not _is_retryable(exc) or remaining <= 0:
                 span.set_attribute("error", True)
                 span.set_attribute("error.message", str(exc)[:500])
+                if _NO_JSON_OF_INSTANT in str(exc):
+                    raise PostgresError(
+                        "0A000", "to_json of a timestamptz is not available on Trino"
+                    ) from exc
                 raise
             attempt += 1
             delay = min(_backoff_secs(attempt), remaining)
@@ -463,7 +496,7 @@ def execute_trino_flight_sync(  # REQ-028, REQ-2194
 
 
 def _open_reader(conn, exec_sql: str, context: TrinoContext | None):
-    cursor = _open_cursor(conn, context)
+    cursor = _open_cursor(conn, context, exec_sql)
     try:
         with request_deadline.cancel_on_deadline(cursor.adbc_cancel):
             cursor.execute(exec_sql)

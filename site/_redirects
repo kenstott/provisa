@@ -1,3 +1,5 @@
 # Cloudflare Pages redirects (https://developers.cloudflare.com/pages/configuration/redirects/)
 /why/active-semantic-layer /why/one-model 301
 /why/active-semantic-layer.html /why/one-model 301
+/compare /works-with 301
+/compare.html /works-with 301

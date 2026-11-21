@@ -220,12 +220,12 @@ def test_a_row_names_the_commit_only_when_the_stamp_is_proven_and_then_drops_vis
         proven = _audit_record(5, enforced)
         unproven = _audit_record(6, enforced)
         rows = [
-            proven.row(await writer._model_commit(proven)),
-            unproven.row(await writer._model_commit(unproven)),
-            proven.row(await writer._model_commit(proven)),
+            proven.row(await writer._model_commit(proven), "production"),
+            unproven.row(await writer._model_commit(unproven), "production"),
+            proven.row(await writer._model_commit(proven), "production"),
         ]
         no_stamp = _audit_record(None, enforced)
-        rows.append(no_stamp.row(await writer._model_commit(no_stamp)))
+        rows.append(no_stamp.row(await writer._model_commit(no_stamp), "production"))
         return rows
 
     rows = asyncio.run(_rows())
@@ -258,7 +258,9 @@ def _write_through_harness(monkeypatch, tmp_path, stamps: list[int]):
     monkeypatch.setattr("provisa.core.env_project.model_stamp", _stamp)
     monkeypatch.setattr(env_repo, "project", _model)
     monkeypatch.setattr(
-        env_repo, "dump_reusing", lambda _m, _last: ({"sales/domain.yaml": "id: sales\n"}, {})
+        env_repo,
+        "dump_reusing",
+        lambda _m, _last, _rebased=None: ({"sales/domain.yaml": "id: sales\n"}, {}),
     )
     monkeypatch.setattr("provisa.core.env_store.set_position", _set_position)
     monkeypatch.setattr("provisa.core.env_store.set_drifted", _nothing)

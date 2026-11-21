@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { describe, it, expect, afterEach, vi } from "vitest";
+import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
 import type { ReactElement } from "react";
 import { Routes, Route } from "react-router-dom";
 import { render, screen, fireEvent, waitFor } from "../test-utils/render";
@@ -16,6 +16,25 @@ import {
   PlatformAdminWelcomeModal,
   CLAIMED_ADMIN_FLAG,
 } from "../components/PlatformAdminWelcomeModal";
+
+// The claimant acts as "All" after the claim: root's org_admin and platform_admin together.
+const ORG_ADMIN = { id: "org_admin", effectiveCapabilities: ["user_management", "org_settings"] };
+const PLATFORM_ADMIN = {
+  id: "platform_admin",
+  effectiveCapabilities: ["platform_settings", "cross_org"],
+};
+const auth = vi.hoisted(() => ({
+  capabilities: [] as string[],
+  availableRoles: [] as { id: string; effectiveCapabilities: string[] }[],
+  selectRole: (() => undefined) as (r: unknown) => void,
+}));
+vi.mock("../context/AuthContext", () => ({
+  useAuth: () => ({
+    capabilities: auth.capabilities,
+    availableRoles: auth.availableRoles,
+    selectRole: auth.selectRole,
+  }),
+}));
 
 // The modal calls useNavigate. The /team route is real so the call-to-action assertion is about
 // navigation, not a mocked spy.
@@ -29,6 +48,15 @@ const renderModal = (ui: ReactElement) =>
   );
 
 describe("PlatformAdminWelcomeModal (REQ-1294)", () => {
+  beforeEach(() => {
+    auth.capabilities = [
+      ...ORG_ADMIN.effectiveCapabilities,
+      ...PLATFORM_ADMIN.effectiveCapabilities,
+    ];
+    auth.availableRoles = [ORG_ADMIN, PLATFORM_ADMIN];
+    auth.selectRole = vi.fn();
+  });
+
   afterEach(() => {
     localStorage.removeItem(CLAIMED_ADMIN_FLAG);
     vi.restoreAllMocks();
@@ -102,5 +130,28 @@ describe("PlatformAdminWelcomeModal (REQ-1294)", () => {
 
     expect(await screen.findByTestId("team-page")).toBeInTheDocument();
     expect(localStorage.getItem(CLAIMED_ADMIN_FLAG)).toBeNull();
+  });
+
+  it("offers no invite button while acting as a role without user_management", async () => {
+    // Team asks user_management, which platform_admin does not hold. The button is not offered,
+    // and the role being acted as is never changed for the user.
+    auth.capabilities = [...PLATFORM_ADMIN.effectiveCapabilities];
+    localStorage.setItem(CLAIMED_ADMIN_FLAG, "1");
+
+    renderModal(<PlatformAdminWelcomeModal />);
+
+    expect(await screen.findByTestId("platform-admin-welcome-dismiss")).toBeInTheDocument();
+    expect(screen.queryByTestId("platform-admin-welcome-team")).not.toBeInTheDocument();
+    expect(auth.selectRole).not.toHaveBeenCalled();
+  });
+
+  it("does not change the role being acted as when it opens Team", async () => {
+    localStorage.setItem(CLAIMED_ADMIN_FLAG, "1");
+
+    renderModal(<PlatformAdminWelcomeModal />);
+    fireEvent.click(await screen.findByTestId("platform-admin-welcome-team"));
+
+    expect(await screen.findByTestId("team-page")).toBeInTheDocument();
+    expect(auth.selectRole).not.toHaveBeenCalled();
   });
 });

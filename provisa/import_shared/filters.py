@@ -13,10 +13,20 @@
 
 from __future__ import annotations
 
+import datetime
+import math
 from collections.abc import Callable
 from typing import Any, Mapping, NamedTuple
 
+from sqlglot import exp
+
+from provisa.import_shared.refused import FilterOperatorRefused, FilterValueRefused
+
 # Requirements: REQ-041, REQ-040
+
+#: Every literal and identifier a filter carries is rendered by sqlglot in this dialect, the one
+#: an RLS rule's text is parsed in (provisa/compiler/rls_validate.py).
+_DIALECT = "postgres"
 
 # Hasura operator -> SQL operator
 _OPERATORS: dict[str, str] = {
@@ -52,30 +62,75 @@ def hasura_session_name(header: str) -> str:
     return "hasura_" + name.replace("-", "_")
 
 
-def _format_value(val: Any) -> str:
-    """Format a value for SQL embedding."""
-    if isinstance(val, str):
-        if val.startswith("x-hasura-") or val.startswith("X-Hasura-"):
-            return f"current_setting('provisa.{hasura_session_name(val)}')"
-        return f"'{val}'"
+def _is_session_header(val: Any) -> bool:
+    return isinstance(val, str) and (val.startswith("x-hasura-") or val.startswith("X-Hasura-"))
+
+
+def session_setting(header: str) -> str:
+    """The SQL reading session variable ``header``: ``current_setting('provisa.hasura_...')``,
+    its name a string literal sqlglot renders, whatever the header holds."""
+    name = exp.Literal.string(f"provisa.{hasura_session_name(header)}").sql(dialect=_DIALECT)
+    return f"current_setting({name})"
+
+
+def sql_literal(val: Any) -> str:
+    """A filter value as the typed SQL literal sqlglot renders: a string, a finite number, true,
+    false or null. A date or time (YAML reads an unquoted one as such) is the string it was
+    written as, as the JSON export carries it. Anything else is refused by name."""
+    node: exp.Expression
     if isinstance(val, bool):
-        return "TRUE" if val else "FALSE"
+        node = exp.Boolean(this=val)
+    elif isinstance(val, str):
+        node = exp.Literal.string(val)
+    elif isinstance(val, (datetime.date, datetime.time)):
+        node = exp.Literal.string(val.isoformat())
+    elif isinstance(val, int) or (isinstance(val, float) and math.isfinite(val)):
+        node = exp.Literal.number(val)
+    elif val is None:
+        node = exp.Null()
+    else:
+        raise FilterValueRefused(val)
+    return node.sql(dialect=_DIALECT)
+
+
+def sql_identifier(name: str) -> str:
+    """A column, table or schema name as sqlglot renders it: as written when it is a plain
+    identifier, quoted otherwise."""
+    if not isinstance(name, str) or not name:
+        raise FilterValueRefused(name)
+    return exp.to_identifier(name).sql(dialect=_DIALECT)
+
+
+def sql_dotted(name: str) -> str:
+    """A dotted table id (``schema.table``) with each part rendered by :func:`sql_identifier`."""
+    return ".".join(sql_identifier(part) for part in name.split("."))
+
+
+def _format_value(val: Any) -> str:
+    """A filter operand as SQL: a session variable read, a list of literals, or one literal."""
+    if _is_session_header(val):
+        return session_setting(val)
     if isinstance(val, list):
-        items = ", ".join(_format_value(v) for v in val)
+        items = ", ".join(
+            session_setting(v) if _is_session_header(v) else sql_literal(v) for v in val
+        )
         return f"({items})"
-    if val is None:
-        return "NULL"
-    return str(val)
+    return sql_literal(val)
+
+
+def _reads_session(val: Any) -> bool:
+    """Whether an operand reads a session variable, alone or in a list."""
+    if isinstance(val, list):
+        return any(_is_session_header(v) for v in val)
+    return _is_session_header(val)
 
 
 def _convert_session_var(val: Any) -> str:
     """Convert Hasura session variable references to current_setting()."""
     if isinstance(val, dict) and len(val) == 1:
         key = next(iter(val))
-        if not isinstance(key, str):
-            return ""
-        if key.startswith("x-hasura-") or key.startswith("X-Hasura-"):
-            return f"current_setting('provisa.{hasura_session_name(key)}')"
+        if _is_session_header(key):
+            return session_setting(key)
     return ""
 
 
@@ -118,8 +173,8 @@ def _is_operator_map(value: Any) -> bool:
 
 def _col_ref(col: str, table_alias: str) -> str:
     if table_alias:
-        return f"{table_alias}.{col}"
-    return col
+        return f"{sql_identifier(table_alias)}.{sql_identifier(col)}"
+    return sql_identifier(col)
 
 
 def _convert_node(
@@ -167,7 +222,8 @@ def _convert_node(
             table = tbl["name"]
             where_node = value.get("_where", {})
             where = _convert_node(where_node, "") if isinstance(where_node, dict) else "TRUE"
-            parts.append(f"EXISTS (SELECT 1 FROM {schema}.{table} WHERE {where})")
+            from_ = f"{sql_identifier(schema)}.{sql_identifier(table)}"
+            parts.append(f"EXISTS (SELECT 1 FROM {from_} WHERE {where})")
         elif key.startswith("_"):
             # Unknown operator at top level — skip
             continue
@@ -179,13 +235,15 @@ def _convert_node(
         ):
             alias = f"_r{depth + 1}"
             joined = " AND ".join(
-                f"{alias}.{theirs} = {_col_ref(ours, table_alias)}" for ours, theirs in hop.pairs
+                f"{_col_ref(theirs, alias)} = {_col_ref(ours, table_alias)}"
+                for ours, theirs in hop.pairs
             )
             where = _convert_node(
                 value, alias, table=hop.target, relations=relations, depth=depth + 1
             )
             condition = joined if where == "TRUE" else f"{joined} AND {where}"
-            parts.append(f"EXISTS (SELECT 1 FROM {hop.target} AS {alias} WHERE {condition})")
+            target = sql_dotted(hop.target)
+            parts.append(f"EXISTS (SELECT 1 FROM {target} AS {alias} WHERE {condition})")
         else:
             # Column name -> operator dict
             col = _col_ref(key, table_alias)
@@ -208,12 +266,12 @@ def _convert_node(
                             value_sql = _format_value(operand)
                             left = (
                                 f"CAST({col} AS TEXT)"
-                                if related and "current_setting(" in value_sql
+                                if related and _reads_session(operand)
                                 else col
                             )
                             parts.append(f"{left} {sql_op} {value_sql}")
                     else:
-                        parts.append(f"{col} /* unsupported op: {op} */")
+                        raise FilterOperatorRefused(op)
 
     if not parts:
         return "TRUE"

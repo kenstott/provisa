@@ -221,8 +221,10 @@ ways; `zaychik/trino-statement-protocol.patch` and `executor/trino_flight.py` cl
 3. **Session**: every Flight statement is a Trino session of its own. Its `source` (the org),
    catalog, schema and session properties (the FTE hints, the caller's hints,
    `query_max_execution_time`) travel in the `x-provisa-trino-context` call header and reach
-   Trino as the client protocol sends them. With no header the proxy keeps the JDBC driver's
-   source `trino-jdbc` (the `global.flight` resource group).
+   Trino as the client protocol sends them. A statement in a pgwire session set to a time zone
+   names that zone there too (`timeZone`), and the proxy opens the statement's Trino session in
+   it. With no header the proxy keeps the JDBC driver's source `trino-jdbc` (the
+   `global.flight` resource group).
 4. **Type names**: every field carries `trino.type` (the coordinator's own type string, what
    the trino client's `description` gave) and `trino.type_signature`; `column_types` come from it.
 5. **Errors**: a failed statement's Flight error carries Trino's error name, type, code, message

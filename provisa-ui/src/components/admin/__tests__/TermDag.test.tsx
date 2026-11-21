@@ -37,6 +37,7 @@ const term: GlossaryTermDetail = {
   id: 1,
   name: "Customer",
   definition: null,
+  calculation_method: null,
   is_abstract: false,
   deprecated: false,
   ref_count: 1,
@@ -64,11 +65,12 @@ const term: GlossaryTermDetail = {
       domain_id: "sales",
     },
   ],
-  edges_in: [{ term_id: 2, rel_type: "KIND_OF", name: "Buyer" }],
-  edges_out: [{ term_id: 3, rel_type: "PART_OF", name: "Party" }],
+  edges_in: [{ term_id: 2, rel_type: "KIND_OF", name: "Buyer", domains: [] }],
+  edges_out: [{ term_id: 3, rel_type: "PART_OF", name: "Party", domains: [] }],
   experts: [],
   tags: [],
   pending_on: [],
+  iri: null,
 };
 
 /** ``term`` as the ontology's query reads it around the term: its neighbours, its column and

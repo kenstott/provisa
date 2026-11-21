@@ -31,6 +31,7 @@ from provisa.api.metadata_export import dataplex
 from provisa.api.metadata_export.builder import build_snapshot
 from provisa.api.metadata_export.dataplex import DataplexExport, member_resource, resource_id
 from provisa.api.metadata_export.registry import metadata_export, registered_providers
+from tests.unit.product_members import member_name, with_members
 from provisa.core.models import (
     Column,
     DataProduct,
@@ -69,13 +70,17 @@ def _table(source: str, name: str, **extra: Any) -> Table:
         domain_id="sales",
         schema_name="public" if source == "pg" else "warehouse",
         table_name=name,
-        product_id="sales_360",
         columns=[Column(name="id", data_type="integer", visible_to=["admin"])],
         **extra,
     )
 
 
 def _snapshot(*, owners: tuple[str, ...] = ("owner@example.com",), tables: list | None = None):
+    tables = (
+        tables
+        if tables is not None
+        else [_table("bq", "sales"), _table("pg", "orders", cache_ttl=3600)]
+    )
     config = ProvisaConfig(
         sources=[
             Source(id="bq", type=SourceType.bigquery, database="proj-src", description="BQ"),
@@ -90,9 +95,7 @@ def _snapshot(*, owners: tuple[str, ...] = ("owner@example.com",), tables: list 
             ),
         ],
         domains=[Domain(id="sales", description="Sales")],
-        tables=tables
-        if tables is not None
-        else [_table("bq", "sales"), _table("pg", "orders", cache_ttl=3600)],
+        tables=tables,
         data_products=[
             DataProduct(
                 id="sales_360",
@@ -103,6 +106,7 @@ def _snapshot(*, owners: tuple[str, ...] = ("owner@example.com",), tables: list 
                 limitations="No refunds",
                 version="1.2.0",
                 status="live",
+                tables=[member_name(t) for t in tables],
             )
         ],
         roles=[],
@@ -310,6 +314,7 @@ def _glossary(edges=None) -> dict:
             "approved": True,
             "retired": False,
             "export_excluded": False,
+            "calculation_method": None,
             "status_reason": None,
             "retire_on": None,
         },
@@ -323,6 +328,7 @@ def _glossary(edges=None) -> dict:
             "approved": True,
             "retired": False,
             "export_excluded": False,
+            "calculation_method": None,
             "status_reason": None,
             "retire_on": None,
         },
@@ -336,6 +342,7 @@ def _glossary(edges=None) -> dict:
             "approved": True,
             "retired": False,
             "export_excluded": False,
+            "calculation_method": None,
             "status_reason": None,
             "retire_on": None,
         },
@@ -371,6 +378,7 @@ def _glossary_snapshot(glossary: dict):
             ],
             domains=[Domain(id="sales", description="Sales")],
             tables=config_tables,
+            data_products=with_members([], {"sales_360": config_tables}),
             roles=[],
         ),
         org_id="acme",
@@ -550,6 +558,19 @@ async def test_the_glossary_its_role_categories_terms_and_links_are_created(glos
     assert result.published["term_assignment"] == 2 and result.published["glossary_term"] == 3
 
 
+async def test_a_class_is_linked_to_its_key_column_beside_its_table(glossary_api):
+    # REQ-2141 KEYS ON THE CLASS, REQ-2238: the key column's term is its table's Class.
+    glossary = _glossary()
+    glossary["refs"][0]["term_id"] = 1
+    result = await _export().publish(_glossary_snapshot(glossary))
+    assert result.ok, result.errors
+    definitions = {link for link in _link_kinds(glossary_api) if link[0] == "definition"}
+    assert definitions == {
+        ("definition", ((SALES_ENTRY, "", "SOURCE"), (_entry("sale"), "", "TARGET"))),
+        ("definition", ((SALES_ENTRY, "Schema.id", "SOURCE"), (_entry("sale"), "", "TARGET"))),
+    }
+
+
 async def test_a_stewards_links_and_labels_stand_and_provisas_stale_links_leave(glossary_api):
     await _export().publish(_glossary_snapshot(_glossary()))
     fake = glossary_api
@@ -616,3 +637,17 @@ async def test_a_term_whose_read_failed_is_refused_and_the_others_publish(glossa
     assert f"{GLOSSARY}/terms/sale" not in patched
     assert f"{GLOSSARY}/terms/deal" in patched
     assert fake.resources[f"{GLOSSARY}/terms/sale"]["labels"]["team"] == "finance"
+
+
+async def test_the_product_and_each_asset_carry_the_environment_and_its_stage(api):  # REQ-2261
+    from provisa.api.metadata_export.model import EnvironmentStage
+
+    snapshot = _snapshot()
+    snapshot.environment = EnvironmentStage(name="EU-West", stage="production")
+    result = await _export().publish(snapshot)
+    assert result.ok, result.errors
+    staged = {"provisa-environment": "eu-west", "provisa-stage": "production"}
+    assert api.products[PRODUCT]["labels"].items() >= staged.items()
+    assert api.assets
+    for asset in api.assets.values():
+        assert asset["labels"].items() >= staged.items()

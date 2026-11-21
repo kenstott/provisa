@@ -71,7 +71,7 @@ function reader(): MetaReader {
         }),
         type("M__RegisteredTables", {
           ...scalars("id", "domainId", "tableName"),
-          product: one("M__DataProducts"),
+          dataProductTables: list("M__DataProductTables"),
           tableColumns: list("M__TableColumns"),
           sourceRelationships: list("M__Relationships"),
         }),
@@ -79,14 +79,22 @@ function reader(): MetaReader {
           ...scalars("columnName", "columnKey"),
           glossaryRef: list("ON_TermRefs"),
         }),
-        type("M__Relationships", scalars("id", "cypherType", "targetTableId")),
+        type("M__Relationships", {
+          ...scalars("id", "cypherType", "targetTableId"),
+          targetTable: one("M__RegisteredTables"),
+        }),
         type("ON_TermEdges", {
           ...scalars("id", "fromTermId", "toTermId", "relType"),
           targetTerm: one("ON_Terms"),
         }),
+        type("M__DataProductTables", {
+          ...scalars("productId"),
+          dataProduct: one("M__DataProducts"),
+          registeredTable: one("M__RegisteredTables"),
+        }),
         type("M__DataProducts", {
           ...scalars("id", "name", "domainId"),
-          memberTables: list("M__RegisteredTables"),
+          dataProductTables: list("M__DataProductTables"),
         }),
       ],
     },
@@ -110,12 +118,21 @@ const TABLES: Record<number, { name: string; columns: string[]; product: string 
   90: { name: "pets_quality_dq_checker_dq", columns: ["outcome", "run_at"], product: "pet_store" },
   91: { name: "vets_quality_dq_soda_dq", columns: ["outcome"], product: "vet_clinic" },
 };
-// Relationships declared between the tables: the ERD's, never the Ontology View's.
-const RELATIONSHIPS: Record<number, { id: string; cypherType: string; targetTableId: number }[]> =
-  {
-    11: [{ id: "order_pet", cypherType: "PLACED_FOR", targetTableId: 10 }],
-    90: [{ id: "dq_pets", cypherType: "CHECKS", targetTableId: 10 }],
-  };
+// Relationships declared between the tables: the ERD's, never the Ontology View's. Each is read
+// with the table it reaches and that table's product (REQ-2174, amended 2026-11-07).
+const PETS = {
+  id: 10,
+  tableName: "pets",
+  domainId: "sales",
+  dataProductTables: [{ dataProduct: { id: "pet_store", name: "pet_store", domainId: "sales" } }],
+};
+const RELATIONSHIPS: Record<
+  number,
+  { id: string; cypherType: string; targetTableId: number; targetTable: typeof PETS }[]
+> = {
+  11: [{ id: "order_pet", cypherType: "PLACED_FOR", targetTableId: 10, targetTable: PETS }],
+  90: [{ id: "dq_pets", cypherType: "CHECKS", targetTableId: 10, targetTable: PETS }],
+};
 // Pet IS pets.id and store_order.pet_id; Status IS both status columns; Category IS the categories
 // table (a class term); Companion grounds nothing, RELATED_TO Pet.
 const TERMS = [
@@ -133,11 +150,11 @@ const product = (id: string, named: boolean) =>
 function answer(query: string): OntologyRows & { data_products?: unknown[] } {
   const q = query.replace(/\s+/g, " ");
   const selected = (field: string) => new RegExp(`\\b${field}[ (]`).test(q);
-  const named = q.includes("product { id name domainId");
+  const named = q.includes("dataProduct { id name domainId");
   const rels = q.includes("sourceRelationships");
   const table = (id: number) => ({
     id,
-    product: product(TABLES[id].product, named),
+    dataProductTables: [{ dataProduct: product(TABLES[id].product, named) }],
     ...(rels ? { sourceRelationships: RELATIONSHIPS[id] ?? [] } : {}),
   });
   const out: OntologyRows & { data_products?: unknown[] } = {
@@ -185,20 +202,22 @@ function answer(query: string): OntologyRows & { data_products?: unknown[] } {
       id: p,
       name: p,
       domainId: "sales",
-      memberTables: Object.entries(TABLES)
+      dataProductTables: Object.entries(TABLES)
         .filter(([, t]) => t.product === p)
         .map(([id, t]) => ({
-          id: Number(id),
-          domainId: "sales",
-          tableName: t.name,
-          tableColumns: t.columns.map((c) => ({
-            columnName: c,
-            columnKey: `${id}:${c}`,
-            glossaryRef: TERMS.filter((x) => x.columns.includes(`${id}:${c}`)).map((x) => ({
-              termId: x.id,
+          registeredTable: {
+            id: Number(id),
+            domainId: "sales",
+            tableName: t.name,
+            tableColumns: t.columns.map((c) => ({
+              columnName: c,
+              columnKey: `${id}:${c}`,
+              glossaryRef: TERMS.filter((x) => x.columns.includes(`${id}:${c}`)).map((x) => ({
+                termId: x.id,
+              })),
             })),
-          })),
-          ...(rels ? { sourceRelationships: RELATIONSHIPS[Number(id)] ?? [] } : {}),
+            ...(rels ? { sourceRelationships: RELATIONSHIPS[Number(id)] ?? [] } : {}),
+          },
         })),
     }));
   return out;
@@ -331,19 +350,27 @@ describe("the Product map keeps the product graph's layers and member tables", (
     );
   });
 
-  it("joins the tables drawn by their declared relationships under Tables, with Columns", () => {
+  it("joins the tables drawn by their declared relationships under Related tables", () => {
     const rel = (g: GraphData) =>
       g.edges.filter((e) => e.kind === "relationship").map((e) => [e.a, e.b, e.label]);
     expect(rel(drawn(MAP, true))).toEqual([]);
-    expect(rel(drawn([...MAP, "ownerTables"], true)).sort()).toEqual([
+    expect(rel(drawn([...MAP, "ownerTables"], true))).toEqual([]);
+    expect(rel(drawn([...MAP, "related"], true)).sort()).toEqual([
       ["t:11", "t:10", "PLACED_FOR"],
       ["t:90", "t:10", "CHECKS"],
     ]);
   });
 
-  it("offers the owner-tables layer and the product layers, lineage read once it is on", () => {
-    for (const l of ["ownerTables", "commands", "quality", "productLinks", "lineage"] as LayerId[])
+  it("offers the owner-tables, related-tables and product layers, each read once it is on", () => {
+    for (const l of [
+      "ownerTables",
+      "related",
+      "commands",
+      "quality",
+      "productLinks",
+      "lineage",
+    ] as LayerId[])
       expect(PRODUCT_MAP_SCOPE.layerOrder).toContain(l);
-    expect(PRODUCT_MAP_SCOPE.readWhenOn).toEqual({ lineage: "product" });
+    expect(PRODUCT_MAP_SCOPE.readWhenOn).toEqual({ lineage: "product", related: "table" });
   });
 });

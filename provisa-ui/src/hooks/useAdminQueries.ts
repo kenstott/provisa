@@ -18,6 +18,7 @@ import type {
   DataProduct,
   ListedNames,
   Metric,
+  DatasetMetric,
   RefreshPolicySummary,
   DqContract,
   DqContractText,
@@ -31,11 +32,14 @@ import type {
   DqDryRunVars,
   Relationship,
   MutationResult,
+  CodeResolver,
+  CodeResolverInput,
   ColumnDependentsResult,
   UserSummary,
 } from "../types/admin";
 import type { CompileResult, TableMetadata } from "../api/admin";
 import { useStartingPoll } from "./discoveryStartingPoll";
+import { isAbort } from "./useOrgHas";
 export { useAvailableColumnsMetadataLazy } from "./useAvailableColumnsMetadataLazy";
 import { normalizeRole, type RawRole } from "../lib/roles";
 import {
@@ -63,8 +67,13 @@ import {
   CreateMetric as CREATE_METRIC_MUTATION,
   UpdateMetric as UPDATE_METRIC_MUTATION,
   DeleteMetric as DELETE_METRIC_MUTATION,
+  TableMetricsQuery as TABLE_METRICS_QUERY,
   RelationshipsQuery as RELATIONSHIPS_QUERY,
   AllRelationshipsQuery as ALL_RELATIONSHIPS_QUERY,
+  CodeResolversQuery as CODE_RESOLVERS_QUERY,
+  CreateCodeResolver,
+  UpdateCodeResolver,
+  RetireCodeResolver,
   AvailableSchemas,
   AvailableTables,
   KaggleTokenValid,
@@ -99,18 +108,27 @@ import {
   UpdateSourceAllowedDomains,
   SuggestTableAlias,
   ResolveOwners,
+  DeleteMetrics,
+  DeleteDomains,
+  DeleteRelationships,
+  DeleteSources,
 } from "./admin.graphql";
+import { useBulkDelete } from "./useBulkDelete";
 import { firstLoad } from "./firstLoad";
 import { useShownTableQueries } from "./useTableQueries";
+export { useAllRelationships } from "./useRelationshipQueries";
 
 export { firstLoad } from "./firstLoad";
 export {
   useDeleteTable,
+  useDeleteTables,
   useReadTableDetails,
   useRegisterEntity,
   useRegisterFact,
   useRegisterTable,
+  useRegisterTables,
   useShownTableQueries,
+  useTableAccess,
   useTableDetails,
   useTables,
   useUpdateTable,
@@ -250,6 +268,16 @@ export interface MetricInput {
   description?: string | null;
   aiContext?: string | null;
   visibleTo?: string[];
+  term?: string | null; // REQ-2243
+}
+
+// REQ-2243: the governed metrics a dataset uses, as the caller's role may see them.
+export function useTableMetrics(tableId: number) {
+  const { data, loading, error } = useQuery<{ tableMetrics: DatasetMetric[] }>(
+    TABLE_METRICS_QUERY,
+    { variables: { tableId }, fetchPolicy: "cache-and-network" },
+  );
+  return { metrics: data?.tableMetrics, loading, error };
 }
 
 export function useUpsertMetric() {
@@ -364,6 +392,21 @@ export function useRefreshPolicyPreview() {
   };
 }
 
+/**
+ * A one-off read's answer, or null when it was cut short. Apollo aborts a lazy query when its hook
+ * unmounts, and rejects the promise it handed out when no result had arrived: leaving the panel
+ * mid-read (a tour step moving on, a table closed) is the panel's own teardown, not a failure, and
+ * these reads' callers already treat null as "nothing to apply". Any other rejection is still theirs.
+ */
+async function nullWhenCutShort<T>(read: () => Promise<T>): Promise<T | null> {
+  try {
+    return await read();
+  } catch (e) {
+    if (isAbort(e)) return null;
+    throw e;
+  }
+}
+
 // REQ-1443: the contract builder's three server calls. The soda / Great Expectations dialects are
 // parsed and serialized server-side, so the panel holds contract TEXT and check rows and never a
 // dialect of its own — a hand edit in the raw editor can therefore never disagree with the builder.
@@ -393,22 +436,23 @@ export function useDqContract() {
   return {
     checkCatalog: useCallback(
       async (vars: DqCheckCatalogVars): Promise<DqCheckCatalog | null> =>
-        (await catalog({ variables: vars })).data?.dqCheckCatalog ?? null,
+        (await nullWhenCutShort(() => catalog({ variables: vars })))?.data?.dqCheckCatalog ?? null,
       [catalog],
     ),
     buildCheck: useCallback(
       async (vars: DqCheckDefinitionVars): Promise<DqCheckDefinition | null> =>
-        (await buildOne({ variables: vars })).data?.dqCheckDefinition ?? null,
+        (await nullWhenCutShort(() => buildOne({ variables: vars })))?.data?.dqCheckDefinition ??
+        null,
       [buildOne],
     ),
     parseContract: useCallback(
       async (vars: DqContractParseVars): Promise<DqContract | null> =>
-        (await parse({ variables: vars })).data?.dqContractParse ?? null,
+        (await nullWhenCutShort(() => parse({ variables: vars })))?.data?.dqContractParse ?? null,
       [parse],
     ),
     buildContract: useCallback(
       async (vars: DqContractBuildVars): Promise<DqContractText | null> =>
-        (await build({ variables: vars })).data?.dqContractBuild ?? null,
+        (await nullWhenCutShort(() => build({ variables: vars })))?.data?.dqContractBuild ?? null,
       [build],
     ),
     dryRunContract: useCallback(
@@ -434,19 +478,6 @@ export function useRelationships() {
   );
   return {
     relationships: data?.relationships ?? NO_RELATIONSHIPS,
-    loading: firstLoad(loading, data),
-    error,
-    refetch,
-  };
-}
-
-export function useAllRelationships() {
-  const { data, loading, error, refetch } = useQuery<{ allRelationships: Relationship[] }>(
-    ALL_RELATIONSHIPS_QUERY,
-    { fetchPolicy: "cache-and-network" },
-  );
-  return {
-    relationships: data?.allRelationships ?? NO_RELATIONSHIPS,
     loading: firstLoad(loading, data),
     error,
     refetch,
@@ -532,6 +563,36 @@ export function useDeleteRelationship() {
       return (result.data?.deleteRelationship ?? { success: false, message: "" }) as MutationResult;
     },
     loading,
+  };
+}
+
+/** REQ-2249: the code resolver sets in service, and saving, changing and retiring one. Each
+ * act changes three objects (a bridge view and two relationships), so the lists are read again. */
+export function useCodeResolvers() {
+  const reread = {
+    refetchQueries: [{ query: RELATIONSHIPS_QUERY }, { query: CODE_RESOLVERS_QUERY }],
+    awaitRefetchQueries: true,
+  };
+  const { data, loading } = useQuery<{ codeResolvers: CodeResolver[] }>(CODE_RESOLVERS_QUERY);
+  const [create] = useMutation<{ createCodeResolver: MutationResult }>(CreateCodeResolver, reread);
+  const [update] = useMutation<{ updateCodeResolver: MutationResult }>(UpdateCodeResolver, reread);
+  const [retire] = useMutation<{ retireCodeResolver: MutationResult }>(RetireCodeResolver, reread);
+  const failed: MutationResult = { success: false, message: "" };
+  return {
+    codeResolvers: data?.codeResolvers ?? [],
+    loading,
+    saveCodeResolver: async (input: CodeResolverInput, isNew: boolean): Promise<MutationResult> => {
+      if (isNew) {
+        const result = await create({ variables: { input } });
+        return result.data?.createCodeResolver ?? failed;
+      }
+      const result = await update({ variables: { input } });
+      return result.data?.updateCodeResolver ?? failed;
+    },
+    retireCodeResolver: async (id: string): Promise<MutationResult> => {
+      const result = await retire({ variables: { id } });
+      return result.data?.retireCodeResolver ?? failed;
+    },
   };
 }
 
@@ -844,9 +905,10 @@ export function useKaggleDatasetsLazy() {
     kaggleDatasets: { ref: string; title: string; subtitle: string }[];
   }>(KaggleDatasets, { fetchPolicy: "no-cache" });
   return useCallback(
+    // Null, not an empty list, for a search a newer one replaced: it found nothing out.
     async (token: string, query: string) => {
-      const { data } = await run({ variables: { token, query } });
-      return data?.kaggleDatasets ?? [];
+      const answer = await nullWhenCutShort(() => run({ variables: { token, query } }));
+      return answer && (answer.data?.kaggleDatasets ?? []);
     },
     [run],
   );
@@ -1055,4 +1117,30 @@ export function useDeployViewToDb() {
     },
     loading,
   };
+}
+
+/** REQ-2240: several metrics deleted in one call, each through its single delete; the same lists
+ *  read again. */
+export function useDeleteMetrics() {
+  return useBulkDelete(DeleteMetrics, "deleteMetrics", "names", [{ query: METRICS_QUERY }]);
+}
+
+/** REQ-2240: several domains deleted in one call, each through its single delete; the same lists
+ *  read again. */
+export function useDeleteDomains() {
+  return useBulkDelete(DeleteDomains, "deleteDomains", "ids", [{ query: DOMAINS_QUERY }]);
+}
+
+/** REQ-2240: several relationships deleted in one call, each through its single delete; the same lists
+ *  read again. */
+export function useDeleteRelationships() {
+  return useBulkDelete(DeleteRelationships, "deleteRelationships", "ids", [
+    { query: RELATIONSHIPS_QUERY },
+  ]);
+}
+
+/** REQ-2240: several sources deleted in one call, each through its single delete; the same lists
+ *  read again. */
+export function useDeleteSources() {
+  return useBulkDelete(DeleteSources, "deleteSources", "ids");
 }

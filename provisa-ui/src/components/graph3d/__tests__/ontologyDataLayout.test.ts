@@ -49,7 +49,7 @@ const TERMS: TermRow[] = ["pet-store", "shelter"].flatMap((domain, d) =>
         tableId: table,
         tableName: `t${table}`,
         domainId: domain,
-        registeredTable: { id: table, product: productOf(table) },
+        registeredTable: { id: table, dataProductTables: [{ dataProduct: productOf(table) }] },
       })),
     };
   }),
@@ -73,10 +73,12 @@ const core = (ids: string[]) =>
 describe("the Ontology View's layout with Data on", () => {
   it("joins a data product to its tables alone: no domain edge, no domain of its own", () => {
     const g = view(["ontology", "domains", "columns", "data"]);
-    expect(g.edges.filter((e) => e.a === "p:workforce_ops").map((e) => e.b).sort()).toEqual([
-      "t:100",
-      "t:101",
-    ]);
+    expect(
+      g.edges
+        .filter((e) => e.a === "p:workforce_ops")
+        .map((e) => e.b)
+        .sort(),
+    ).toEqual(["t:100", "t:101"]);
     expect(g.edges.some((e) => e.kind === "in_domain" && e.a.startsWith("p:"))).toBe(false);
     expect(g.nodes.map((n) => n.id)).not.toContain("d:hr");
   });

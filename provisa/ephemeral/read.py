@@ -74,6 +74,22 @@ def involved(session: TempSession | None) -> bool:
     return session is not None and not store.graph(session).empty
 
 
+def overlaid(label_map: Any) -> tuple[frozenset[str], frozenset[str]]:
+    """The node labels and relationship types ``label_map`` (an :func:`overlay`) reads from the
+    session: what an answer names by them is the session's, never registered in the model's node
+    and relationship ids. Every other label is read as it is without the session, and its nodes
+    are registered as they are then (REQ-394)."""
+    labels = frozenset(
+        nm.label for nm in label_map.nodes.values() if nm.catalog_name == SESSION_CATALOG
+    )
+    types = frozenset(
+        rm.rel_type
+        for rm in label_map.relationships.values()
+        if getattr(rm.via, "catalog_name", None) == SESSION_CATALOG
+    )
+    return labels, types
+
+
 def _model_columns(nm: Any) -> list[tuple[str, str, str]]:
     """A model node's (property, the column its relation names it by, type)."""
     types = dict(nm.property_types)
@@ -99,6 +115,7 @@ def overlay(model: Any, session: TempSession) -> Any:
         JunctionMapping,
         NodeMapping,
         RelationshipMapping,
+        Selectivity,
         SessionWalk,
     )
 
@@ -196,6 +213,11 @@ def overlay(model: Any, session: TempSession) -> Any:
     # REQ-348: every session relationship in one relation, which a path function with an
     # unlabelled end walks.
     out.session_walk = SessionWalk(SESSION_CATALOG, SESSION_SCHEMA, WALK_RELATION)
+    # The session's counts, which a read starts a path from its more selective end by: a label
+    # the model also has counts model rows the session cannot, so only the session's own count.
+    out.selectivity = Selectivity(
+        {k: n for k, n in graph.label_counts.items() if k and k not in model.nodes}
+    )
     return out
 
 
@@ -577,7 +599,7 @@ def expand(sql: exp.Expression, overlaid: Any, model: Any, session: TempSession)
     for table in list(sql.find_all(exp.Table)):
         if table.catalog != SESSION_CATALOG:
             continue
-        alias = table.alias or table.name
+        named = _read_by(table)
         if table.name in by_name or table.name in overlaid.label_sets:
             if table.name in by_name:
                 key = by_name[table.name]
@@ -622,9 +644,7 @@ def expand(sql: exp.Expression, overlaid: Any, model: Any, session: TempSession)
         else:
             rel_type = types[table.name]
             name = cte(f"__session_rel__{rel_type}", _rel_rows(rel_type, session))
-        table.replace(
-            exp.alias_(exp.Table(this=exp.to_identifier(name, quoted=True)), alias, quoted=True)
-        )
+        table.replace(exp.alias_(exp.Table(this=exp.to_identifier(name, quoted=True)), named))
     if ctes:
         held = sql.args.get("with_")
         if held is not None:
@@ -632,6 +652,18 @@ def expand(sql: exp.Expression, overlaid: Any, model: Any, session: TempSession)
         else:
             sql.set("with_", exp.With(expressions=ctes))
     return sql
+
+
+def _read_by(table: exp.Table) -> exp.Identifier:
+    """The name the statement reads ``table`` by -- its alias, else its name -- spelt as the
+    statement spells it. Quoted, an alias ``newB`` read as ``newB."num"`` would be another name
+    to PostgreSQL's folding (``newb``), which governance judges the statement by (REQ-039)."""
+    held = table.args.get("alias") or table.this
+    if isinstance(held, exp.TableAlias):
+        held = held.this
+    return (
+        held.copy() if isinstance(held, exp.Identifier) else exp.to_identifier(table.alias_or_name)
+    )
 
 
 def _drop_conditions(select: exp.Select, gone: list[exp.Expression]) -> None:

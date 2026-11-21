@@ -479,9 +479,13 @@ async def test_boot_loads_an_openapi_table_through_its_endpoint_and_its_sources_
     import respx
 
     from provisa.api_source.models import ApiColumn, ApiColumnType, ApiEndpoint, ApiSource
+    from provisa.core import secrets_providers
     from provisa.core.auth_models import ApiAuthBearer
     from provisa.core.paging import PaginationConfig
 
+    # The source's credential is read as a deployment of one organisation reads it; the API
+    # layer says which at import, and this test does not import it.
+    monkeypatch.setattr(secrets_providers, "_many_organisations", lambda: False)
     _hot_settings(monkeypatch)
     endpoint = ApiEndpoint(
         source_id="pay",

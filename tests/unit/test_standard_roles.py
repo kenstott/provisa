@@ -35,14 +35,15 @@ class TestTheSet:
         assert set(STANDARD_ROLES) == {
             "viewer",
             "analyst",
+            "data_writer",
             "developer",
             "modeler",
             "data_product_owner",
             "security_admin",
             "data_steward",
-            "dq_reader",
             "dq_steward",
             "source_admin",
+            "member_admin",
             "org_operator",
             "org_admin",
             "sandbox",
@@ -69,17 +70,48 @@ class TestTheSet:
 
 
 class TestWhatEachHolds:
-    def test_viewer_reads_the_catalog_the_glossary_and_data_products(self):
-        assert _rights("viewer") == {"glossary_read", "data_product_read"}
+    def test_viewer_reads_the_glossary_and_data_products_and_switches_environments(self):
+        """REQ-2155 (amended 2026-11-20): environment_switch is viewer's, since which environments
+        a person sees is decided by the roles assigned in each."""
+        assert _rights("viewer") == {"glossary_read", "data_product_read", "environment_switch"}
 
-    def test_analyst_queries(self):
-        assert _rights("analyst") == _rights("viewer") | {"usage", "query_development"}
+    def test_analyst_queries_and_reads_quality_results(self):
+        """REQ-2155 (amended 2026-11-20): dq_reader is folded into analyst."""
+        assert _rights("analyst") == _rights("viewer") | {
+            "usage",
+            "query_development",
+            "command_execution",
+            "dq_read",
+        }
 
-    def test_developer_builds_and_switches_but_never_manages_environments(self):
-        assert {"create_view", "create_relationship", "write", "environment_switch"} <= _rights(
-            "developer"
-        )
-        assert "environment_management" not in _rights("developer")
+    def test_dq_reader_is_retired(self):
+        assert "dq_reader" not in STANDARD_ROLES
+
+    def test_developer_authors_the_model_and_neither_writes_data_nor_manages_environments(self):
+        """REQ-2155 (amended 2026-11-20): one job per role; write and full_results are
+        data_writer's."""
+        assert _rights("developer") == _rights("analyst") | {
+            "catalog_read",
+            "create_view",
+            "create_relationship",
+            "environment_owned_management",
+        }
+        assert not _rights("developer") & {"write", "full_results", "environment_management"}
+
+    def test_data_writer_is_analyst_plus_writing_data(self):
+        assert STANDARD_ROLES["data_writer"].parents == ("analyst",)
+        assert _rights("data_writer") == _rights("analyst") | {"write", "full_results"}
+
+    def test_member_admin_confers_roles_and_entitlements_and_nothing_else(self):
+        assert STANDARD_ROLES["member_admin"].parents == ("viewer",)
+        assert _rights("member_admin") == _rights("viewer") | {
+            "user_management",
+            "assign_entitlements",
+        }
+
+    def test_only_member_admin_and_org_admin_confer_roles(self):
+        holders = {r for r in STANDARD_ROLES if "user_management" in _rights(r)}
+        assert holders == {"member_admin", "org_admin"}
 
     def test_modeler_is_developer_plus_joining_outside_the_model(self):
         assert _rights("modeler") == _rights("developer") | {"ignore_relationships"}
@@ -104,7 +136,6 @@ class TestWhatEachHolds:
 
     def test_data_quality_needs_no_table_registration(self):
         assert _rights("dq_steward") == _rights("viewer") | {"dq_read", "dq_rw"}
-        assert _rights("dq_reader") == _rights("viewer") | {"dq_read"}
 
     def test_a_data_product_owner_holds_nothing_until_an_owner_field_names_it(self):
         """REQ-2188: the Owner field gives RW, with the generated rules, to any role it names."""
@@ -130,6 +161,64 @@ class TestWhatEachHolds:
             "org_glossary_rw",
         } <= _rights("org_admin")
 
+    def test_org_admin_holds_exactly_what_it_held_before_the_one_job_split(self):
+        """REQ-2155 (amended 2026-11-20): splitting data_writer and member_admin out changes no
+        right an org admin holds."""
+        assert _rights("org_admin") == {
+            "access_config",
+            "approve_relationship",
+            "approve_view",
+            "assign_entitlements",
+            "catalog_read",
+            "column_grant",
+            "command_execution",
+            "create_relationship",
+            "create_view",
+            "data_product_owner",
+            "data_product_read",
+            "data_product_rw",
+            "domain_steward",
+            "dq_read",
+            "dq_rw",
+            "environment_data",
+            "environment_management",
+            "environment_owned_management",
+            "environment_switch",
+            "full_results",
+            "glossary_read",
+            "glossary_rw",
+            "judgment_basis_owner",
+            "lineage_report",
+            "masking_config",
+            "observability",
+            "org_glossary_rw",
+            "org_settings",
+            "query_development",
+            "relationship_owner",
+            "sensitive_data",
+            "source_registration",
+            "table_registration",
+            "term_owner",
+            "usage",
+            "user_management",
+            "view_governance",
+            "write",
+        }
+
+    def test_org_admin_holds_the_five_owner_capabilities(self):
+        """REQ-2219 (amended 2026-11-19): with no list, so an org admin owns every object of
+        those kinds; other owners are granted on lists or by the creator's owner row."""
+        owners = {
+            "data_product_owner",
+            "relationship_owner",
+            "domain_steward",
+            "term_owner",
+            "judgment_basis_owner",
+        }
+        assert owners <= set(STANDARD_ROLES["org_admin"].capabilities)
+        holders = {r for r in STANDARD_ROLES if owners & _rights(r)}
+        assert holders == {"org_admin"}
+
     def test_platform_admin_holds_the_platform_rights_alone(self):
         assert _rights("platform_admin") == {"platform_settings", "cross_org"}
 
@@ -140,13 +229,12 @@ class TestTheSandbox:
         # holds every other right developer holds.
         assert set(STANDARD_ROLES[SANDBOX].capabilities) == {
             "create_view",
-            "write",
-            "environment_switch",
             "data_product_rw",  # REQ-2188: its own, so a visitor can try products
         }
         assert _rights("developer") - _rights(SANDBOX) == {"environment_owned_management"}
         assert set(STANDARD_ROLES[SANDBOX].parents) == {
             "analyst",
+            "data_writer",
             "data_product_owner",
             "dq_steward",
             "source_admin",
@@ -250,6 +338,6 @@ class TestTheSeed:
         with db.engine.begin() as sa_conn:
             assert_standard_roles(sa_conn, org_schema("default"))
         analyst = (await self._rows(db))["analyst"]
-        assert analyst["capabilities"] == ["usage", "query_development"]
+        assert analyst["capabilities"] == list(STANDARD_ROLES["analyst"].capabilities)
         assert analyst["parents"] == ["viewer"]
         assert analyst["description"] == STANDARD_ROLES["analyst"].description

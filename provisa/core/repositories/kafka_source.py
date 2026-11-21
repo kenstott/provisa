@@ -24,7 +24,7 @@ from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import select
 
-from provisa.core import model_change
+from provisa.core import model_change, model_uri
 from provisa.core.engine_shard import EngineShardRefused, bound_org_shard
 from provisa.core.schema_org import kafka_sources, kafka_topics
 
@@ -70,7 +70,9 @@ async def upsert(conn: "Connection", spec: dict[str, Any]) -> None:
     """Add the Kafka source and its topics, or replace their definition. A topic the spec does not
     name is left as it is (REQ-1919: nothing is removed)."""
     refuse_on_engine_shard(spec)
-    model_change.name("upsert", "kafka source", spec["id"])  # REQ-1524
+    model_change.name(
+        "upsert", model_change.uri(model_uri.kind_uri, "kafka-sources", spec["id"])
+    )  # REQ-1524
     auth = spec.get("auth") or {}
     await conn.upsert(
         kafka_sources,

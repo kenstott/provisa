@@ -27,15 +27,17 @@ from tests.unit.pgwire.test_type_conversions import conn, pgwire  # noqa: F401
 
 # int42pl overflows on the last row only, PostgreSQL's 22003 raised by its catalog macro: past what
 # the engine computes when the statement is run (about 128K rows), so it is met as a batch is read.
-_ROWS = 400_000
+# Far enough that the first batches are read before the error: DuckDB's threads run ahead of the
+# reader, so at 400,000 rows about one read in thirteen under load met it before the first.
+_ROWS = 2_000_000
 _LATE_OVERFLOW = (
     f"SELECT pg_catalog.int42pl((2147483647 - {_ROWS} + g.i)::int4, 1::int2) AS v "
     f"FROM generate_series(1, {_ROWS}) AS g(i)"
 )
 
 
-# A zero divisor on row 300,000: the transpiler's division guard, met as a batch is read.
-_LATE_ZERO_DIVISOR = "SELECT 1/(g.i - 300000) AS v FROM generate_series(1, 400000) AS g(i)"
+# A zero divisor on row 1,900,000: the transpiler's division guard, met as a batch is read.
+_LATE_ZERO_DIVISOR = f"SELECT 1/(g.i - 1900000) AS v FROM generate_series(1, {_ROWS}) AS g(i)"
 # Engine errors no catalog macro raises, on the last row: DuckDB's own conversion and overflow.
 _LATE_CONVERSION = (
     f"SELECT CASE WHEN g.i = {_ROWS} THEN 'x' ELSE g.i::text END::int AS v "
@@ -44,21 +46,6 @@ _LATE_CONVERSION = (
 _LATE_INT4_OVERFLOW = (
     f"SELECT (2147483647 - {_ROWS} + g.i)::int4 + 1 AS v FROM generate_series(1, {_ROWS}) AS g(i)"
 )
-
-
-@pytest.fixture
-def single_threaded_conn(conn: Any) -> Any:
-    """The connection with its engine on one thread, for the tests of an error met in a later batch.
-
-    DuckDB 1.5.5/1.5.6 race when the error is met while a streamed batch is fetched with more than
-    one engine thread: the task that hits the error interrupts its sibling pipelines, and about
-    1.6% of the time under load the fetch reports that internal ``INTERRUPT Error: Interrupted!``
-    instead of the error itself (no ``interrupt()`` call involved; 0/1200 with ``threads = 1``).
-    These tests check how Provisa answers the error DuckDB reports, so they read on one thread
-    until DuckDB fixes the race. The client-facing mis-answer is tracked in
-    https://github.com/kenstott/provisa/issues/324 (upstream DuckDB issue: see there)."""
-    conn.engine._rt._con.execute("SET threads = 1")
-    return conn
 
 
 def _said(res: Any) -> tuple[str, str]:
@@ -70,9 +57,9 @@ def _said(res: Any) -> tuple[str, str]:
 
 @pytest.mark.parametrize("protocol", ["extended", "simple"])
 def test_an_error_met_in_a_later_batch_is_postgresqls_and_the_connection_goes_on(
-    single_threaded_conn: Any, protocol: str
+    conn: Any, protocol: str
 ):
-    pgconn = single_threaded_conn.conn.pgconn
+    pgconn = conn.conn.pgconn
     run = (
         (lambda sql: pgconn.exec_params(sql.encode(), [], result_format=0))
         if protocol == "extended"
@@ -104,9 +91,9 @@ def _runner(conn: Any, protocol: str) -> Any:
     ids=["zero-divisor", "conversion", "int4-overflow"],
 )
 def test_an_engine_error_met_in_a_later_batch_is_answered_and_the_connection_goes_on(
-    single_threaded_conn: Any, protocol: str, sql: str, sqlstate: str
+    conn: Any, protocol: str, sql: str, sqlstate: str
 ):
-    run = _runner(single_threaded_conn, protocol)
+    run = _runner(conn, protocol)
     res = run(sql)
     assert res.status == pq.ExecStatus.FATAL_ERROR, res.status
     assert res.error_field(pq.DiagnosticField.SQLSTATE).decode() == sqlstate, (
@@ -117,8 +104,8 @@ def test_an_engine_error_met_in_a_later_batch_is_answered_and_the_connection_goe
     assert after.get_value(0, 0) == b"42"
 
 
-def test_the_zero_divisor_is_postgresqls_division_by_zero(single_threaded_conn: Any):
-    res = _runner(single_threaded_conn, "extended")(_LATE_ZERO_DIVISOR)
+def test_the_zero_divisor_is_postgresqls_division_by_zero(conn: Any):
+    res = _runner(conn, "extended")(_LATE_ZERO_DIVISOR)
     assert _said(res) == ("22012", "division by zero")
 
 

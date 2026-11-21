@@ -13,10 +13,19 @@ list is folded to one table-level rule per (role, table) at runtime build
 domain-RLS load path is covered in ``test_rls.py::TestDomainRLS``.
 """
 
+import pytest
+
 from provisa.compiler.rls import RLSContext, build_rls_context
 from provisa.compiler.sql_gen import CompilationContext, TableMeta
 from provisa.security.row_filters import resolve_table_rules
 from tests.helpers import governed_for_role
+from tests.governed_pg import assert_same_answer, governed_database
+
+
+@pytest.fixture(scope="module")
+def pg(embedded_postgres):
+    return governed_database(embedded_postgres, "test_rls_compiler_fallback")
+
 
 _SQL = 'SELECT "id" FROM "public"."orders"'
 
@@ -59,31 +68,39 @@ _SALES = {
 }
 
 
-def test_table_rule_used_when_present():
-    assert _governed([_OWNER], _meta()) == f'{_SQL} WHERE ("orders"."owner" = \'me\')'
+def test_table_rule_used_when_present(pg):
+    assert_same_answer(
+        pg, _governed([_OWNER], _meta()), f'{_SQL} WHERE ("orders"."owner" = \'me\')'
+    )
 
 
-def test_domain_rule_used_as_fallback():
-    assert _governed([_SALES], _meta()) == f'{_SQL} WHERE ("orders"."region" = \'us\')'
+def test_domain_rule_used_as_fallback(pg):
+    assert_same_answer(
+        pg, _governed([_SALES], _meta()), f'{_SQL} WHERE ("orders"."region" = \'us\')'
+    )
 
 
-def test_table_rule_takes_precedence_over_domain_rule():
-    assert _governed([_OWNER, _SALES], _meta()) == (f'{_SQL} WHERE ("orders"."owner" = \'me\')')
+def test_table_rule_takes_precedence_over_domain_rule(pg):
+    assert_same_answer(
+        pg, _governed([_OWNER, _SALES], _meta()), (f'{_SQL} WHERE ("orders"."owner" = \'me\')')
+    )
 
 
-def test_no_rule_for_table_or_domain_leaves_sql_unchanged():
+def test_no_rule_for_table_or_domain_leaves_sql_unchanged(pg):
     rules = [{"table_id": 99, "domain_id": None, "role_id": "a", "filter_expr": "x = 1"}]
-    assert _governed(rules, _meta(domain_id="other")) == _SQL
+    assert_same_answer(pg, _governed(rules, _meta(domain_id="other")), _SQL)
 
 
-def test_domain_rule_does_not_apply_when_table_in_other_domain():
-    assert _governed([_SALES], _meta(domain_id="marketing")) == _SQL
+def test_domain_rule_does_not_apply_when_table_in_other_domain(pg):
+    assert_same_answer(pg, _governed([_SALES], _meta(domain_id="marketing")), _SQL)
 
 
-def test_an_aliased_root_keeps_its_field_through_rls():
+def test_an_aliased_root_keeps_its_field_through_rls(pg):
     """The statement for ``a: orders`` is governed by the ``orders`` table's rule — the rule is
     found by the table the statement reads, whatever the client named the root (REQ-544)."""
     sql = 'SELECT "t0"."id" AS "id" FROM "public"."orders" "t0"'
-    assert _governed([_OWNER], _meta(), sql) == (
-        'SELECT "t0"."id" AS "id" FROM "public"."orders" AS "t0" WHERE ("t0"."owner" = \'me\')'
+    assert_same_answer(
+        pg,
+        _governed([_OWNER], _meta(), sql),
+        ('SELECT "t0"."id" AS "id" FROM "public"."orders" AS "t0" WHERE ("t0"."owner" = \'me\')'),
     )

@@ -37,6 +37,16 @@
     "viaLabelSourceColumn": "Relationship type value",
     "viaLabelSourceTable": "Table name",
     "viaLabelSourceFixed": "Cypher alias",
-    "cardinalityOneToOne": "one-to-one"
+    "cardinalityOneToOne": "one-to-one",
+    "targetTypeResolver": "Code resolver",
+    "resolverLabel": "Resolver",
+    "resolverHelp": "A query of a code source that takes the source table and the target table and returns one row per match.",
+    "resolverNone": "No code source query takes two tables",
+    "sourceMatchLabel": "Match column holding the source key",
+    "targetMatchLabel": "Match column holding the target key",
+    "incrementalLabel": "Keep matches incrementally",
+    "incrementalHelp": "On each refresh, the resolver's @change function is asked for the matches that changed since the last run, and they are applied by key. Off, each refresh recomputes every match.",
+    "rebuildEveryLabel": "Whole rebuild every (seconds)",
+    "rebuildEveryHelp": "How often every match is recomputed, to correct anything the changes missed. Required while matches are kept incrementally."
   }
 }

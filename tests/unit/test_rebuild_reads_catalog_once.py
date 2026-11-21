@@ -14,13 +14,15 @@ REQ-2190).
 The meta domain registers every SQL catalog view (hundreds of them), each with its columns. The
 rebuild runs on a request thread, and reading those columns where nothing uses them made every
 rebuild slower as the catalog grew: the replica routing read (twice per rebuild) routes no
-table of a built-in source, and the store model leaves every seeded table out but its id.
+table of a built-in source, and the store model leaves the seeded tables out but their ids;
+demo-seeded tables (graphql-demo) stay out of it too, and ``seeded_table_names`` reports them
+(REQ-1634).
 
 The control plane is real; the model is ``sales.orders`` (two columns) and three catalog views
 on the built-in ``provisa-admin`` source (four columns each).
 """
 
-# Requirements: REQ-1882, REQ-2190
+# Requirements: REQ-1882, REQ-2190, REQ-1634
 
 from __future__ import annotations
 
@@ -210,3 +212,72 @@ def test_the_rebuild_runs_in_one_model_read() -> None:
         for call in ast.walk(block)
         if named(call) == "_rebuild_schemas_impl"
     ]
+
+
+@pytest.fixture
+async def plane_with_graphql_demo(control_plane) -> Any:
+    """Control plane with a pg table (orders), provisa-admin catalog views, AND a
+    graphql-demo table (assignments) — the Root Cause #1 scenario."""
+    db = control_plane.org()
+    async with db.acquire() as conn:
+        await conn.execute_core(insert(sources).values(id="pg", type="postgresql"))
+        await conn.execute_core(insert(sources).values(id="provisa-admin", type="postgresql"))
+        await conn.execute_core(insert(sources).values(id="graphql-demo", type="graphql_remote"))
+        await conn.execute_core(insert(domains).values(id="sales"))
+        await conn.execute_core(insert(domains).values(id="shelter"))
+        await table_repo.upsert(
+            conn,
+            Table(
+                source_id="pg",
+                domain_id="sales",
+                schema_name="public",
+                table_name="orders",
+                columns=[Column(name=c, visible_to=[], data_type="integer") for c in ("id", "n")],
+            ),
+        )
+        for name in _VIEWS:
+            await table_repo.upsert(
+                conn,
+                Table(
+                    source_id="provisa-admin",
+                    domain_id=META_DOMAIN_ID,
+                    schema_name="pg_catalog",
+                    table_name=name,
+                    columns=[
+                        Column(name=c, visible_to=[], data_type="varchar") for c in _VIEW_COLUMNS
+                    ],
+                ),
+            )
+        # REQ-1634: demo-seeded table, as auto-registered by _auto_register_graphql_demo
+        await table_repo.upsert(
+            conn,
+            Table(
+                source_id="graphql-demo",
+                domain_id="shelter",
+                schema_name="graphql",
+                table_name="assignments",
+                columns=[Column(name="id", data_type="integer", visible_to=[])],
+            ),
+        )
+    return db
+
+
+async def test_the_store_model_leaves_a_seeded_table_out_and_reports_its_names(
+    plane_with_graphql_demo,
+) -> None:
+    """REQ-1634 EXPORT KEEPS SEEDED MEMBERS: a seeded table is not the model's, so a graphql-demo
+    table stays out of store_model's ``tables`` as a built-in catalog view does, while
+    ``seeded_table_names`` reports it by both names a data product may use for a member."""
+    from provisa.core.store_config import seeded_table_names, store_model
+
+    async with plane_with_graphql_demo.acquire() as conn:
+        model = await store_model(conn)
+        seeded = await seeded_table_names(conn)
+
+    assert [t["table"] for t in model["tables"]] == ["orders"]
+    assert seeded == {
+        "assignments",
+        "graphql-demo.graphql.assignments",
+        *_VIEWS,
+        *(f"provisa-admin.pg_catalog.{name}" for name in _VIEWS),
+    }

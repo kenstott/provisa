@@ -1,0 +1,65 @@
+name: Smoke
+
+# Keeps main startable (REQ-1989, amendment 2026-11-08 "MAIN IS THE TRUNK"): every landing passes
+# this, beside the unit tests. One job, one isolated instance of the default demo on the native
+# DuckDB engine: the browser, one known query through each front door, a read from each source that
+# needs no external service, and governance once (tests/smoke/test_main_is_startable.py). A skip is
+# a failure there. No container, no other engine, no live account.
+#
+# Dispatch only: the landing script runs it on the branch it is landing.
+
+on:
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  smoke:
+    name: Smoke (default demo, DuckDB)
+    runs-on: ubuntu-latest
+    # The limit is not the budget (well under ten minutes): without one a run that stops making
+    # progress held its runner for the hosted default of six hours.
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      # gx and soda: the two data-quality checkers the demo registers as sources. client: the
+      # module reads the Flight front door through provisa_client.
+      - name: Set up Python
+        uses: ./.github/actions/setup-python
+        with:
+          extras: dev gx soda
+          client: "true"
+          cache: "true"
+
+      - name: Set up the UI toolchain
+        uses: ./.github/actions/setup-ui
+        timeout-minutes: 12
+        with:
+          playwright: chromium
+
+      - name: Run the smoke check
+        env:
+          CI: "true"
+          # No compose stack: tests/conftest.py would otherwise start one for a test outside
+          # tests/unit.
+          PYTEST_NO_DOCKER: "1"
+          PROVISA_SMOKE_LOG_DIR: ${{ github.workspace }}/smoke-logs
+        run: >-
+          .venv/bin/python -m pytest -m isolated tests/smoke/test_main_is_startable.py
+          --no-cov -v --durations=0 -o faulthandler_timeout=300
+
+      - name: Upload the instance's logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-logs
+          path: smoke-logs/
+          retention-days: 7
+          if-no-files-found: error

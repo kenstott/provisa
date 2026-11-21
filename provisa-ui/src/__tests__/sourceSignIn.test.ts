@@ -9,8 +9,9 @@
 // permission from the copyright holder.
 
 // REQ-1923: the browser's half of signing a source in. The page an issuer returns to takes the
-// one-time code out of its address before anything else, asks no server for anything, and hands
-// the code only to its own opener at an origin of this deployment; the form accepts it only from
+// one-time code out of its address before anything else, calls no API, reads the base domain the
+// deployment declares at runtime (REQ-1276), and hands the code only to its own opener at an
+// origin of this deployment; the form accepts it only from
 // the popup it opened, at the sign-in origin.
 
 import { readFileSync } from "node:fs";
@@ -25,7 +26,7 @@ import {
   signInSource,
   takeIssuerAnswer,
 } from "../lib/sourceSignIn";
-import { onDeclaredBaseDomain } from "./declaredBaseDomain";
+import { declareBaseDomain, onDeclaredBaseDomain } from "./declaredBaseDomain";
 
 const SIGN_IN = "https://cloud.provisa.test";
 const ORG = "https://acme.provisa.test";
@@ -108,6 +109,7 @@ describe("the page an issuer returns to", () => {
     expect(html).not.toMatch(/https?:\/\//);
     expect(html.match(/<script[^>]*>/g)).toEqual([
       '<script type="module" src="/src/sourceSignInPage.ts">',
+      '<script defer src="/deployment-config.js">',
     ]);
     expect(html).not.toMatch(/<link|<img|<iframe|@import|url\(/);
   });
@@ -175,6 +177,51 @@ describe("who the return page hands the answer to", () => {
     page.say(ORG, { type: HELLO });
     page.say(ORG, { type: HELLO });
     expect(page.opener.postMessage).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("a deployment that declares its base domain only at runtime (REQ-1276)", () => {
+  const answer = { state: "made-up-state", code: "made-up-code", error: null };
+  const html = readFileSync(resolve(__dirname, "../../source-sign-in.html"), "utf8");
+
+  beforeEach(() => {
+    // Nothing built in: the only declaration is the one ui_server serves.
+    vi.stubEnv("VITE_ORG_BASE_DOMAIN", "");
+    declareBaseDomain(null);
+  });
+  afterEach(() => vi.unstubAllEnvs());
+
+  /** What the browser does with the page's own script tags: the declaration arrives if asked for. */
+  function runPageScripts() {
+    const sources = [...html.matchAll(/<script[^>]*\bsrc="([^"]+)"/g)].map((m) => m[1]);
+    if (sources.includes("/deployment-config.js")) declareBaseDomain("provisa.test");
+  }
+
+  it("answers its opener on a sibling host", () => {
+    runPageScripts();
+    const page = returnPage();
+    answerOpener(answer, page.win);
+    page.say(ORG, { type: HELLO });
+    expect(page.opener.postMessage).toHaveBeenCalledWith({ type: ANSWER, ...answer }, ORG);
+  });
+
+  it("takes the code out of the address before the declaration runs", () => {
+    const tags = html.match(/<script[^>]*>/g) ?? [];
+    expect(tags).toEqual([
+      '<script type="module" src="/src/sourceSignInPage.ts">',
+      '<script defer src="/deployment-config.js">',
+    ]);
+  });
+
+  it("does not spend a hello that arrives before the declaration", () => {
+    const page = returnPage();
+    answerOpener(answer, page.win);
+    page.say(ORG, { type: HELLO });
+    expect(page.opener.postMessage).not.toHaveBeenCalled();
+    expect(page.close).not.toHaveBeenCalled();
+    runPageScripts();
+    page.say(ORG, { type: HELLO });
+    expect(page.opener.postMessage).toHaveBeenCalledWith({ type: ANSWER, ...answer }, ORG);
   });
 });
 

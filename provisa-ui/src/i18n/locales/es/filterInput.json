@@ -1,6 +1,7 @@
 {
   "filterInput": {
     "filter": "Filtrar",
-    "clear": "Borrar"
+    "clear": "Borrar",
+    "syntaxHint": "Usa la sintaxis de búsqueda de Google: cada palabra debe coincidir; escriba or (la palabra inglesa, tal cual) entre alternativas; -palabra excluye; las \"comillas\" mantienen unida una frase."
   }
 }

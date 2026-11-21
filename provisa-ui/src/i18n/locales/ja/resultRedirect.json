@@ -2,6 +2,7 @@
   "resultRedirect": {
     "landed": "結果（{{rows}} 行）は結果ストアに書き込まれました。",
     "landedAt": "結果（{{rows}} 行）は結果ストアに書き込まれました: {{url}}",
-    "download": "ダウンロード"
+    "download": "ダウンロード",
+    "downloadFailed": "ダウンロードに失敗しました: {{reason}}"
   }
 }

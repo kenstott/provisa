@@ -56,8 +56,8 @@ class ProfilerSettings:
     joint_max_distinct: int
     # The most category columns entered, the most frequently held kept.
     category_max_columns: int
-    # REQ-2147: the most rows whose values the classification kinds are tested against, drawn
-    # at random from the run's sample.
+    # REQ-2147: the most non-null values of each column the classification kinds are tested
+    # against, drawn at random from the run's sample in one read of it.
     classification_sample: int
 
 
@@ -153,7 +153,7 @@ async def profiler_sources(conn: Any) -> list[dict]:
 
     result = await conn.execute_core(
         select(sources.c.id, sources.c.mapping)
-        .where(sources.c.type == PROFILER_SOURCE_TYPE)
+        .where(sources.c.type == PROFILER_SOURCE_TYPE, sources.c.retired.is_(False))  # REQ-2248
         .order_by(sources.c.id)
     )
     return [
@@ -198,8 +198,12 @@ async def check_membership(conn: Any, table: Any) -> None:
 
 async def run_source(state: Any, source_id: str) -> list[dict]:
     """Profile every member of ``source_id`` in turn. Returns one outcome per member; a member's
-    failure is recorded in its own history and in its outcome, and does not stop the others."""
-    from provisa.profiler.run import ProfileError, profile_table
+    failure is recorded in its own history and in its outcome, and does not stop the others. A
+    member whose metadata states required parameters (a steward made one required after it
+    joined) is not read: its outcome says so in ``not_read``, with the parameters it ``requires``,
+    no run and no error (REQ-1986)."""
+    from provisa.core.parameters import not_read_reason
+    from provisa.profiler.run import ProfileError, not_read_whole, profile_table
     from provisa.core.schema_org import sources
 
     async with state.model_db.acquire() as conn:
@@ -214,16 +218,26 @@ async def run_source(state: Any, source_id: str) -> list[dict]:
         tables = await members(conn, source_id)
     outcomes = []
     for table in tables:
+        name = table["table_name"]
+        refusal = not_read_whole(state, table["id"], name)
+        if refusal is not None:
+            outcomes.append(
+                {
+                    "table": name,
+                    "run_id": None,
+                    "error": None,
+                    "not_read": not_read_reason(refusal.parameters),
+                    "requires": refusal.parameters,
+                }
+            )
+            continue
         try:
             run = await profile_table(
-                state,
-                table_id=table["id"],
-                table_name=table["table_name"],
-                settings=settings,
+                state, table_id=table["id"], table_name=name, settings=settings
             )
-            outcomes.append({"table": table["table_name"], "run_id": run.run_id, "error": None})
+            outcomes.append({"table": name, "run_id": run.run_id, "error": None, "not_read": None})
         except ProfileError as exc:
-            outcomes.append({"table": table["table_name"], "run_id": None, "error": str(exc)})
+            outcomes.append({"table": name, "run_id": None, "error": str(exc), "not_read": None})
     return outcomes
 
 

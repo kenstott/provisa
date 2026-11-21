@@ -29,7 +29,7 @@
     "query": "Requête",
     "domain": "Domaine",
     "selectDomain": "Sélectionner un domaine…",
-    "dataProduct": "Produit de données (facultatif)",
+    "dataProduct": "Produits de données",
     "dataProductPlaceholder": "Sélectionner un produit de données...",
     "description": "Description",
     "descriptionPlaceholder": "facultatif",
@@ -52,6 +52,8 @@
     "colVisibleTo": "Visible par (rôles, séparés par des virgules ; vide = tout le monde)",
     "colVisibleToPlaceholder": "analyst, org_admin",
     "colMask": "Masque",
+    "exposedAsTable": "Aussi une table",
+    "exposedAsTableHint": "Les clients qui lisent des tables, comme les outils de BI, lisent cette fonction comme une table dont les paramètres sont des colonnes. Désactivée, elle renvoie les lignes de la liste de la source du même type, et la table est supprimée.",
     "requiresApproval": "Nécessite une approbation",
     "requiresApprovalHint": "Chaque appel ne s'exécute qu'une fois approuvé par le hook d'approbation. Sans hook configuré, les appels sont refusés.",
     "writesTable": "Écrit dans la table",
@@ -68,6 +70,8 @@
     "bindingTemplate": "Expression SQL",
     "bindingTemplateHint": "Une expression SQL. Écrivez chaque argument sous la forme {{placeholder}} ; elle s'exécute dans la requête qui l'appelle.",
     "argDefault": "Valeur par défaut de l'argument {{name}}",
-    "argDefaultPlaceholder": "Valeur par défaut (vide si obligatoire)"
+    "argDefaultPlaceholder": "Valeur par défaut (vide si obligatoire)",
+    "nativeSql": "SQL natif",
+    "nativeSqlHint": "Du SQL dans le dialecte propre de la source, une instruction ou plusieurs, exécutées sur la source dans une seule transaction : toutes sont validées ou aucune. Écrivez un argument sous la forme {{placeholder}} ; chacun est lié comme une valeur. La réponse est faite des lignes de la dernière instruction."
   }
 }

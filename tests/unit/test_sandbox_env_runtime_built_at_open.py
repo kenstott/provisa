@@ -8,14 +8,15 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""A sandbox's environments' runtimes are built during its open, each once and cloned (REQ-2006,
-amended 2026-11-04).
+"""A sandbox's environments' runtimes are built inline during its open, each once and cloned
+from the sandbox's PROD (REQ-2006, amended 2026-11-04).
 
 A sandbox's environments are created from its prod and given the template's prepared rows through
 their schemas, with no runtime built (J656). Left to the first request that asked for one, a tour
 step (profiling's ``env: synthetic``, testdata's preprod and dev) waited on an ordinary build of
-15-20 s that seeded the whole model again. The open builds each one once, cloned as its prod's is,
-after its sources are bound; the template's are never built."""
+15-20 s that seeded the whole model again. The open builds each one once, cloned from the sandbox's
+PROD (copying its compiled schema rather than rebuilding it), so the open takes ~9 s rather than
+~20 s. The template's are never built."""
 
 # Requirements: REQ-2006
 
@@ -67,6 +68,8 @@ def test_the_open_builds_each_environments_runtime_once_cloned_after_its_rows(mo
         return SimpleNamespace(org_id=org_id, env=env)
 
     registry = OrgRegistry()
+    # The sandbox's prod runtime, built by the open before its environments (demo_sandbox._build).
+    registry.set(_SANDBOX, SimpleNamespace(org_id=_SANDBOX, env="prod"))
     monkeypatch.setattr(demo_templates, "template_environments", _template_environments)
     monkeypatch.setattr(demo_templates, "create_environments", _create)
     monkeypatch.setattr(demo_synthetic, "copy_to_sandbox", _copy)
@@ -81,14 +84,26 @@ def test_the_open_builds_each_environments_runtime_once_cloned_after_its_rows(mo
 
     asyncio.run(demo_sandbox._environments(demo, _SANDBOX, "sandbox-visitor"))
 
-    assert events == [
-        ("created", _SANDBOX, "synthetic"),
-        ("created", _SANDBOX, "preprod"),
-        ("rows", _SANDBOX, ("synthetic",)),
-        # Each once, cloned, after its rows and bindings are given; none of the template's.
-        ("built", _SANDBOX, "synthetic", True),
-        ("built", _SANDBOX, "preprod", True),
-    ]
+    # Each env runtime is built inline (before _environments returns), cloned, after its rows.
+    # Each environment is its own line (created, given its rows, built), the lines side by side.
+    assert sorted(events, key=repr) == sorted(
+        [
+            ("created", _SANDBOX, "synthetic"),
+            ("created", _SANDBOX, "preprod"),
+            ("rows", _SANDBOX, ("synthetic",)),
+            # Each once, cloned, after its rows and bindings are given; none of the template's.
+            ("built", _SANDBOX, "synthetic", True),
+            ("built", _SANDBOX, "preprod", True),
+        ],
+        key=repr,
+    ), events
+    for name in ("synthetic", "preprod"):
+        line = [e for e in events if name in e or (name,) in e]
+        assert line[0] == ("created", _SANDBOX, name), events
+        assert line[-1] == ("built", _SANDBOX, name, True), events
+    assert events.index(("rows", _SANDBOX, ("synthetic",))) < events.index(
+        ("built", _SANDBOX, "synthetic", True)
+    ), events
     # Built when the open returns: the first request is served it, and builds nothing.
     for env in _WANTED:
         assert registry.get(runtime_key(_SANDBOX, env["name"])) is not None, env["name"]

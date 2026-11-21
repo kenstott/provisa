@@ -22,6 +22,8 @@ export type Capability =
   | "create_view"
   | "column_grant"
   | "user_management"
+  // REQ-2219: set a member's allow-list and deny-list entries within what user_management confers.
+  | "assign_entitlements"
   | "masking_config"
   // REQ-1134: see the meta domain's GOVERNANCE columns (visible_to, unmasked_to, writable_by, the
   // mask definitions, view SQL) — the security posture rather than the structure.
@@ -68,12 +70,23 @@ export type Capability =
   // comes with being named in a product's Owner field, held to that product by a row rule.
   | "data_product_read"
   | "data_product_rw"
+  // REQ-2219: owning is a capability of its own, each scoped by the kind it owns: a data product, a
+  // relationship, a domain (its steward), a glossary term (domain.term) and a judgment basis.
+  | "data_product_owner"
+  | "relationship_owner"
+  | "domain_steward"
+  | "term_owner"
+  | "judgment_basis_owner"
   // REQ-2155: data quality's own rights -- reading check definitions and results, and managing
   // checks, expectations and promises -- so managing checks needs no table registration.
+  // REQ-2229: send OpenLineage run events to the receiver.
+  | "lineage_report"
   | "dq_read"
   | "dq_rw"
   | "ignore_relationships"
   | "write"
+  // Run the commands the role is assigned, in the domains it lists.
+  | "command_execution"
   | "no_aggregations";
 
 /** REQ-1174: an LLM spend limit, in tokens or in USD at the model price list. */

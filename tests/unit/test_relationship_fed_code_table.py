@@ -33,6 +33,7 @@ from provisa.executor.result import QueryResult
 from provisa.mongodb.pipeline_table import PipelineRead
 from provisa.transpiler.transpile import transpile
 from provisa.security.masking import MaskingRule, MaskType
+from tests.governed_pg import assert_same_answer, governed_database
 from tests.helpers import governed_for_role
 
 pytestmark = pytest.mark.unit
@@ -194,7 +195,13 @@ async def _scored(
     return called, {**rewrites, **inlined}, governed
 
 
-async def test_each_customer_is_scored_with_its_own_features():
+@pytest.fixture(scope="module")
+def pg(embedded_postgres):
+    """What a governed read answers, on PostgreSQL (tests/governed_pg.py)."""
+    return governed_database(embedded_postgres, "test_relationship_fed_code_table")
+
+
+async def test_each_customer_is_scored_with_its_own_features(pg):
     called, put_in, governed = await _scored(_JOINED, [CUSTOMERS, RISK])
     assert called == [
         {"customer_id": 1, "email": "ann@example.com", "plan": "pro", "tenure_months": 12},
@@ -203,10 +210,13 @@ async def test_each_customer_is_scored_with_its_own_features():
         {"customer_id": 4, "email": "di@example.com", "plan": "team", "tenure_months": 40},
     ]
     # One read of the source's columns, named for the parameters they feed.
-    assert governed == [
+    (read,) = governed
+    assert_same_answer(
+        pg,
+        read,
         'SELECT DISTINCT "id" AS "customer_id", "email" AS "email", "plan" AS "plan", '
-        '"tenure_months" AS "tenure_months" FROM "public"."customers"'
-    ]
+        '"tenure_months" AS "tenure_months" FROM "public"."customers"',
+    )
     assert set(put_in) == {"churn_risk"}
 
 

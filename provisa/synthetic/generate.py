@@ -41,6 +41,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+import sqlglot
+
 from provisa.fakes.projection import DIGEST, layered, references
 from provisa.synthetic.group import (
     GroupColumn,
@@ -194,8 +196,9 @@ class _Dialect:
         pos = "_pos"
         if self.name == "duckdb":
             draw = f"hash(concat_ws(':', {salt_seed}, {key}, {pos}))"
+            # DuckDB 2.0 binds a lambda only in its keyword form; this SQL reaches DuckDB as written.
             return (
-                f"array_to_string(list_transform(range(length({_lit(shape)})), {pos} -> "
+                f"array_to_string(list_transform(range(length({_lit(shape)})), LAMBDA {pos} : "
                 f"CASE substr({_lit(shape)}, {pos} + 1, 1) "
                 f"WHEN 'A' THEN chr(65 + CAST({draw} % 26 AS INTEGER)) "
                 f"WHEN 'a' THEN chr(97 + CAST({draw} % 26 AS INTEGER)) "
@@ -677,24 +680,35 @@ def _faked(
     later = tuple(DIGEST + n for n in sorted(after))
     # REQ-1939, DEPENDENCE KEPT: a faked column the copula or network draws takes that point.
     points = {c.name: c.dep_u for c in plan.columns if c.fake is not None and c.dep_u is not None}
-    governed = layered(
+
+    # Generation builds its statements as text (placeholders it replaces afterwards); the fakes
+    # are the faked read's own AST (provisa.fakes.projection), read from and rendered to text here.
+    def text_layered(level: str, chosen: dict, keep: tuple[str, ...], uniforms: dict) -> str:
+        tree = sqlglot.parse_one(level, read="postgres")
+        assert isinstance(tree, sqlglot.exp.Query), level
+        return layered(
+            tree,
+            "g",
+            columns,
+            chosen,
+            keep=keep,
+            uniforms={n: sqlglot.parse_one(p, read="postgres") for n, p in uniforms.items()},
+        ).sql(dialect="postgres")
+
+    governed = text_layered(
         f"SELECT * FROM {placeholder}",
-        "g",
-        columns,
         {n: c for n, c in fakes.items() if n not in after},
-        keep=later + tuple(p.strip('"') for n, p in points.items() if n in after) + carry,
-        uniforms={n: p for n, p in points.items() if n not in after},
+        later + tuple(p.strip('"') for n, p in points.items() if n in after) + carry,
+        {n: p for n, p in points.items() if n not in after},
     )
     if rules:
         governed = group_levels(governed, "g", [c.name for c in plan.columns], rules, later + carry)
     if after:
-        governed = layered(
+        governed = text_layered(
             governed,
-            "g",
-            columns,
             {n: fakes[n] for n in sorted(after)},
-            keep=carry,
-            uniforms={n: p for n, p in points.items() if n in after},
+            carry,
+            {n: p for n, p in points.items() if n in after},
         )
     physical = transpile_to_trino(governed) if dialect == "trino" else transpile(governed, dialect)
     assert physical.count(placeholder) == 1, "the generated rows are read once"

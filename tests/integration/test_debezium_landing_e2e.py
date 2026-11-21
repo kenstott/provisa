@@ -37,7 +37,6 @@ import psycopg
 import pytest
 import yaml
 
-from tests.helpers import registered_id, release_field
 from tests.integration.test_pg_engine_landing_never_writes_source_e2e import _SourceAndEngine
 
 pytestmark = [pytest.mark.integration, pytest.mark.requires_debezium]
@@ -231,14 +230,13 @@ def test_changes_reach_the_replica_through_the_debezium_stream(server):
         "replicate: 0, "
         f'cdc: {{bootstrapServers: "{bootstrap}", topicPrefix: "{_PREFIX}"}}}})',
     )
-    registered = _mutate(
+    _mutate(
         server,
         'registerTable(input: {sourceId: "shop_pg", domainId: "shop", schemaName: "public", '
         f'tableName: "{_TABLE}", columns: ['
         '{name: "id", visibleTo: ["org_admin"], dataType: "integer", isPrimaryKey: true}, '
         '{name: "name", visibleTo: ["org_admin"], dataType: "varchar"}]})',
     )
-    _mutate(server, release_field(registered_id(registered["message"])))
 
     assert _read(server) == [(1, "first")]  # the first read builds the replica
     (built,) = _builds(server)

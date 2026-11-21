@@ -59,13 +59,17 @@ const TERM: TermRow = {
           { latestOutcome: "fail", latestRunAt: "2026-10-27T10:00:00Z" },
         ],
         tags: [{ tagId: "gold" }],
-        product: {
-          id: "c360",
-          name: "customer_360",
-          domainId: "sales",
-          status: "live",
-          ownerRole: "sales_steward",
-        },
+        dataProductTables: [
+          {
+            dataProduct: {
+              id: "c360",
+              name: "customer_360",
+              domainId: "sales",
+              status: "live",
+              ownerRole: "sales_steward",
+            },
+          },
+        ],
       },
     },
   ],
@@ -77,22 +81,24 @@ const PRODUCT: ProductRow = {
   domainId: "sales",
   status: "live",
   ownerRole: "sales_steward",
-  memberTables: [
+  dataProductTables: [
     {
-      id: 2,
-      domainId: "sales",
-      tableName: "orders",
-      checkedBy: null,
-      tags: null,
-      tableColumns: [
-        {
-          columnName: "total",
-          columnKey: "2:total",
-          dataType: "numeric",
-          glossaryRef: [{ termId: 7 }],
-          tags: [{ tagId: "finance" }],
-        },
-      ],
+      registeredTable: {
+        id: 2,
+        domainId: "sales",
+        tableName: "orders",
+        checkedBy: null,
+        tags: null,
+        tableColumns: [
+          {
+            columnName: "total",
+            columnKey: "2:total",
+            dataType: "numeric",
+            glossaryRef: [{ termId: 7 }],
+            tags: [{ tagId: "finance" }],
+          },
+        ],
+      },
     },
   ],
 };

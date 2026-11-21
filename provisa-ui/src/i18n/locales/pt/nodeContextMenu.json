@@ -1,7 +1,7 @@
 {
   "nodeContextMenu": {
     "excludeTooltip": "Excluir este nó da consulta",
-    "excludeDisabledTooltip": "Nenhuma chave primária configurada — não é possível excluir",
+    "excludeDisabledTooltip": "Não é possível excluir: nenhuma chave primária configurada",
     "excludeFromQuery": "Excluir da consulta",
     "excludeCount": "Excluir {{count}} nós",
     "unfixPosition": "Liberar posição",

@@ -31,6 +31,17 @@ from provisa.federation.strategy import Strategy, federate
 
 pytestmark = pytest.mark.unit
 
+
+@pytest.fixture(autouse=True)
+def one_organisation(monkeypatch):
+    """The deployment's answer to whether it holds many organisations, which resolve() asks when
+    it reads a source's secrets: here, one. The API layer gives it at import; a test that does not
+    import it gives it itself, so it passes on its own as well as beside other files."""
+    from provisa.core import secrets_providers
+
+    monkeypatch.setattr(secrets_providers, "_many_organisations", lambda: False)
+
+
 _ENGINES = ["duckdb", "pg"]
 
 
@@ -129,6 +140,12 @@ class _RecordingCon:
         self.sql.append(sql)
         return self
 
+    def cursor(self):  # the runtime runs each statement on a cursor of its own (DuckDB 2.0)
+        return self
+
+    def close(self) -> None:
+        pass
+
 
 @pytest.fixture
 def stub_resolver(monkeypatch):
@@ -204,7 +221,15 @@ def test_duckdb_detach_stops_the_re_pointing(stub_resolver):
 # --- per-query re-pointing and #244: pg runtime ----------------------------------------------
 
 
+class _AutocommitConnection:
+    """What a store cursor's ``connection`` says: schema creation asks it for autocommit."""
+
+    autocommit = True
+
+
 class _PgCursor:
+    connection = _AutocommitConnection()
+
     def __init__(self, log: list) -> None:
         self.log = log
         self._last = ""

@@ -11,6 +11,7 @@
     "reachLiveOn": "केवल {{engines}} पर लाइव",
     "reachNone": "इस इंजन से पहुँच योग्य नहीं",
     "categories": {
+      "Connectors": "आपके संगठन के कनेक्टर",
       "Subscriptions": "सदस्यताएँ",
       "RDBMS": "RDBMS",
       "Cloud DW": "क्लाउड डेटा वेयरहाउस",

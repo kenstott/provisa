@@ -76,6 +76,11 @@ _SHAPES: tuple[tuple[re.Pattern[str], int], ...] = (
 _BLANK = re.compile(r"[\s,;:!?'\"()\[\]{}=+*~^%$#|`]+")
 
 
+#: MAXSTRLEN: a longer token is left out (IGNORE_LONGLEXEME). MAXENTRYPOS - 1, the last position
+#: (LIMITPOS), and MAXNUMPOS - 1, the most positions uniqueWORD keeps of a lexeme.
+_LONGEST, _LAST_POSITION, _MOST_POSITIONS = 2047, 16383, 255
+
+
 class Unread(ValueError):
     """A text with a shape :func:`tokens` does not say the machine's reading of."""
 
@@ -141,18 +146,23 @@ def positioned(config: str, text: str) -> list[tuple[int, str]]:
     held: list[tuple[int, str]] = []
     position = 0
     for token in tokens(text):
+        if len(token.text.encode()) >= _LONGEST:
+            continue  # IGNORE_LONGLEXEME: a notice, and no position
         found = lexemes(config, token)
         if found is None:
             continue
         position += 1
-        held.extend((position, lexeme) for lexeme in found)
+        held.extend((min(position, _LAST_POSITION), lexeme) for lexeme in found)
     return held
 
 
 def to_tsvector(config: str, text: str, start: int = 0) -> dict[str, list[tuple[int, int]]]:
+    """make_tsvector: uniqueWORD keeps a lexeme's positions once each, the first 255."""
     entries: dict[str, list[tuple[int, int]]] = {}
     for position, lexeme in positioned(config, text):
-        entries.setdefault(lexeme, []).append((position + start, 0))
+        held = entries.setdefault(lexeme, [])
+        if len(held) < _MOST_POSITIONS and (not held or held[-1][0] != position + start):
+            held.append((position + start, 0))
     return entries
 
 
@@ -226,7 +236,9 @@ def websearch_to_tsquery(config: str, text: str) -> Node | None:
 
 
 def lexize(dictionary: str, text: str) -> list[str]:
-    """ts_lexize."""
+    """ts_lexize: nothing of an empty text, which a dictionary rejects as it does a stop word."""
+    if not text:
+        return []
     if dictionary == "simple":
         return [text.lower()]
     return english(text)

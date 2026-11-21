@@ -66,6 +66,7 @@ vi.mock("../api/admin", async (orig) => ({
   ...(await orig<typeof import("../api/admin")>()),
   fetchSettings: vi.fn(async () => ({
     naming: { use_domains: true },
+    names: { clash_policy: "refuse" },
     federation: { enabled: false, subgraph_name: "provisa", role: null },
   })),
 }));
@@ -80,10 +81,12 @@ const MCP_SERVER: McpServerStatus = {
   port: null,
   transport: null,
   stdio_role: null,
+  principal: null,
   max_rows: 1000,
   tools: [],
   enable_env_var: "PROVISA_MCP_PORT",
   role_env_var: "PROVISA_MCP_ROLE",
+  principal_env_var: "PROVISA_MCP_PRINCIPAL",
 };
 
 function answer(url: string): object {

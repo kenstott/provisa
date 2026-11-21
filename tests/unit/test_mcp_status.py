@@ -96,6 +96,41 @@ def test_enabled_without_role_reports_none(monkeypatch):
     assert s["stdio_role"] is None
 
 
+# -- REQ-1105: the principal local calls act for, shown beside the role ---------------------------
+
+
+def test_reports_the_configured_principal_beside_the_role(monkeypatch):
+    monkeypatch.setenv("PROVISA_MCP_PORT", "9100")
+    monkeypatch.setenv("PROVISA_MCP_ROLE", "analyst")
+    monkeypatch.setenv("PROVISA_MCP_PRINCIPAL", "alice")
+    s = mcp_status()
+    assert s["stdio_role"] == "analyst"
+    assert s["principal"] == "alice"
+    assert s["role_env_var"] == "PROVISA_MCP_ROLE"
+    assert s["principal_env_var"] == "PROVISA_MCP_PRINCIPAL"
+
+
+def test_an_unnamed_principal_reports_none(monkeypatch):
+    monkeypatch.setenv("PROVISA_MCP_PORT", "9100")
+    monkeypatch.delenv("PROVISA_MCP_PRINCIPAL", raising=False)
+    s = mcp_status()
+    assert s["principal"] is None
+    assert s["principal_env_var"] == "PROVISA_MCP_PRINCIPAL"
+
+
+@pytest.mark.asyncio
+async def test_the_principal_is_the_observers(monkeypatch):
+    monkeypatch.setenv("PROVISA_MCP_PORT", "9100")
+    monkeypatch.setenv("PROVISA_MCP_PRINCIPAL", "alice")
+    from tests.unit.gate_identity import grant
+
+    request = _FakeRequest({"host": "localhost:3000"})
+    request.state = grant(monkeypatch, "observability")[1].state
+    assert (await get_mcp_server(request))["principal"] == "alice"
+    request.state = grant(monkeypatch)[1].state
+    assert "principal" not in await get_mcp_server(request)
+
+
 @pytest.mark.asyncio
 async def test_endpoint_returns_status(monkeypatch):
     monkeypatch.setenv("PROVISA_MCP_PORT", "9100")

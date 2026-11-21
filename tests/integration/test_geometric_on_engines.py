@@ -10,7 +10,9 @@
 
 """The geometric forms on each engine (REQ-2171, AN ANSWER THAT DIFFERS IS REFUSED): first that the
 recording is what postgres:17.11 answers today, then each statement of geometric_corpus as Provisa
-writes it, against that recording, one test to a function."""
+writes it, against that recording, one test to a function. On Trino and ClickHouse
+conformance-functions measures every literal statement (tests/integration/replay_coverage.py), so
+only each function's statement over columns is replayed there."""
 
 # Requirements: REQ-2167, REQ-2171
 
@@ -28,6 +30,7 @@ import psycopg
 import pytest
 
 from provisa.transpiler.transpile import transpile
+from tests.integration.every_case import failures_of_every_case
 from tests.unit.pgwire.geometric_replay import (
     BY_FUNCTION,
     column_statement,
@@ -93,29 +96,15 @@ def test_geometric_forms_on_duckdb(function: str):
     assert _check(function, "duckdb", run) == []
 
 
-@pytest.mark.requires_trino
-@pytest.mark.parametrize("function", sorted(BY_FUNCTION))
-def test_geometric_forms_on_trino(trino_conn, function: str):
-    def run(sql: str) -> Any:
-        cursor = trino_conn.cursor()
-        cursor.execute(sql)
-        return cursor.fetchall()[0][0]
-
-    _check(function, "trino", run)
-
-
-@pytest.mark.requires_clickhouse
-@pytest.mark.parametrize("function", sorted(BY_FUNCTION))
-def test_geometric_forms_on_clickhouse(function: str):
+def _clickhouse_client():
     import clickhouse_connect
 
-    client = clickhouse_connect.get_client(
+    return clickhouse_connect.get_client(
         host=os.environ.get("CLICKHOUSE_HOST", "localhost"),
         port=int(os.environ.get("CLICKHOUSE_PORT", "8123")),
         username=os.environ.get("CLICKHOUSE_USER", "default"),
         password=os.environ.get("CLICKHOUSE_PASSWORD", ""),
     )
-    _check(function, "clickhouse", lambda sql: client.query(sql).result_rows[0][0])
 
 
 def _on_columns(function: str, dialect: str, rows: Callable[[str], list[Any]]) -> None:
@@ -146,14 +135,10 @@ def test_geometric_columns_on_trino(trino_conn, function: str):
 
 
 @pytest.mark.requires_clickhouse
-@pytest.mark.parametrize("function", sorted(BY_FUNCTION))
-def test_geometric_columns_on_clickhouse(function: str):
-    import clickhouse_connect
-
-    client = clickhouse_connect.get_client(
-        host=os.environ.get("CLICKHOUSE_HOST", "localhost"),
-        port=int(os.environ.get("CLICKHOUSE_PORT", "8123")),
-        username=os.environ.get("CLICKHOUSE_USER", "default"),
-        password=os.environ.get("CLICKHOUSE_PASSWORD", ""),
+def test_geometric_columns_on_clickhouse():
+    client = _clickhouse_client()
+    rows = lambda sql: [r[0] for r in client.query(sql).result_rows]  # noqa: E731
+    assert (
+        failures_of_every_case(sorted(BY_FUNCTION), lambda f: _on_columns(f, "clickhouse", rows))
+        == {}
     )
-    _on_columns(function, "clickhouse", lambda sql: [r[0] for r in client.query(sql).result_rows])

@@ -14,6 +14,7 @@
 
 import { requestFailed, serverMessage } from "../i18n/serverMessage";
 import { base64Of } from "./referenceLibrary";
+import { selectedDomainsQuery, withSelectedDomains } from "./selectedDomains";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "";
 const BASE = `${API_BASE}/admin/glossary/term-finding`;
@@ -134,10 +135,7 @@ export interface Draft {
 
 /** What a scan reads: a library document, a new one by file or URL, or a registered table. */
 export type ScanSource =
-  | { document_id: number }
-  | { url: string }
-  | { file: File }
-  | { table: TableScanSource };
+  { document_id: number } | { url: string } | { file: File } | { table: TableScanSource };
 
 async function ok<T>(res: Response, op: string): Promise<T> {
   if (!res.ok) {
@@ -153,27 +151,46 @@ function send(method: string, body?: unknown): RequestInit {
     : { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) };
 }
 
-export async function fetchScannableDocuments(): Promise<ScannableDocument[]> {
+// REQ-2253: each read and each scan carries the navbar filter's selection (useViewDomains; null
+// for none), so nothing outside it is offered, read or matched.
+
+export async function fetchScannableDocuments(
+  selected: ReadonlySet<string> | null,
+): Promise<ScannableDocument[]> {
   const body = await ok<{ documents: ScannableDocument[] }>(
-    await fetch(`${BASE}/documents`),
+    await fetch(`${BASE}/documents${selectedDomainsQuery(selected)}`),
     "Reference library",
   );
   return body.documents;
 }
 
+/** Start a scan working in ``domains``, within the filter's ``selected`` domains. */
 export async function startScan(
   source: ScanSource,
   domains: string[],
+  selected: ReadonlySet<string> | null,
 ): Promise<{ scan: Scan; document?: ScannableDocument }> {
   const given =
     "file" in source
       ? { file_name: source.file.name, content_b64: await base64Of(source.file) }
       : source;
-  return ok(await fetch(`${BASE}/scans`, send("POST", { ...given, domains })), "Find terms");
+  return ok(
+    await fetch(
+      `${BASE}/scans${selectedDomainsQuery(selected)}`,
+      send("POST", { ...given, domains }),
+    ),
+    "Find terms",
+  );
 }
 
-export async function fetchScans(documentId?: number): Promise<Scan[]> {
-  const query = documentId === undefined ? "" : `?document_id=${documentId}`;
+export async function fetchScans(
+  selected: ReadonlySet<string> | null,
+  documentId?: number,
+): Promise<Scan[]> {
+  const params = withSelectedDomains(new URLSearchParams(), selected);
+  if (documentId !== undefined) params.set("document_id", String(documentId));
+  const text = params.toString();
+  const query = text ? `?${text}` : "";
   const body = await ok<{ scans: Scan[] }>(await fetch(`${BASE}/scans${query}`), "Scans");
   return body.scans;
 }

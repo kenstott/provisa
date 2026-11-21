@@ -109,6 +109,10 @@ function write(type, at) {
   }
   const name = symbolName(type);
   if (name && fromLib(type)) {
+    if (name === "Record") {
+      const index = checker.getIndexInfoOfType(type, ts.IndexKind.String);
+      if (index) return { kind: "record", value: write(index.type, at) };
+    }
     if (name === "Date") return { kind: "date" };
     if (name === "Promise" || name === "PromiseLike") {
       return { kind: "promise", value: write(checker.getTypeArguments(type)[0], at) };
@@ -133,6 +137,11 @@ function write(type, at) {
   const named = name && name !== "__type" && name !== "__object" ? name : null;
   // REQ-2100: Provisa's own types (the ReadContext, services.d.ts) are named, never read: theirs
   // are no columns, and their names are no name of the code's.
+  if (named === "TableRef" && fromServices(type)) {
+    // REQ-2226: a parameter taking a governed table, its row type the columns it declares.
+    const row = (type.aliasTypeArguments ?? checker.getTypeArguments(type))[0];
+    return { kind: "table_ref", row: write(row, at) };
+  }
   if (named && fromServices(type)) return { kind: "ref", name: named };
   if (named) {
     if (named in types || inProgress.has(named)) return { kind: "ref", name: named };

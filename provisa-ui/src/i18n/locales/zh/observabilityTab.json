@@ -1,22 +1,22 @@
 {
   "observabilityTab": {
-    "noSpansYet": "暂无 Span——发起一次请求以查看跟踪。",
+    "noSpansYet": "暂无跨度。发起请求以查看追踪。",
     "noSpansMatch": "没有符合筛选条件的 Span。",
     "traces": "跟踪",
     "filterPlaceholder": "筛选…",
     "pause": "暂停",
     "resume": "继续",
     "collapse": "折叠",
-    "expand": "展开",
+    "expand": "放大",
     "traceLabel": "Trace：",
     "spanLabel": "Span：",
     "timeLabel": "时间：",
     "otelTitle": "OpenTelemetry 跟踪",
     "statusLabel": "状态：",
     "statusExporting": "正在导出 → {{endpoint}}",
-    "statusActiveNoCollector": "活动（跟踪仅保留在此页面，不会导出）",
+    "statusActiveNoCollector": "活动（追踪保留在此页面，不会导出）",
     "endpointLabel": "OTLP 收集器终结点",
-    "endpointHelp": "请指向 Provisa 自己的收集器，并在收集器中把外部提供商添加为导出器，这样跟踪表才会持续写入。留空则只在此页面保留跟踪。可通过 OTEL_EXPORTER_OTLP_ENDPOINT 环境变量覆盖。",
+    "endpointHelp": "将此处指向 Provisa 自带的收集器，并在收集器中添加外部提供方作为导出器，使追踪表持续写入数据。留空则仅在此页面保留追踪。可用 OTEL_EXPORTER_OTLP_ENDPOINT 覆盖。",
     "serviceNameLabel": "服务名称",
     "serviceNameHelp": "可通过 OTEL_SERVICE_NAME 环境变量覆盖。",
     "sampleRateLabel": "采样率",
@@ -86,6 +86,7 @@
     },
     "tracesTableCheckFailed": "无法检查 Provisa 的跟踪表（{{reason}}）。不清楚它们是否在接收行；检查每 30 秒重复一次。",
     "tracesTableEmpty": "已设置终结点，但 Provisa 的跟踪表还没有任何行。如果该终结点是外部提供商而不是 Provisa 的收集器，请把它移到收集器的导出器中。",
-    "tracesTableStale": "已设置终结点，但 Provisa 的跟踪表在过去 {{minutes}} 分钟内没有收到任何行。如果 Provisa 一直空闲，这是正常的。否则，请确认该终结点是 Provisa 的收集器，而不是外部提供商。"
+    "tracesTableStale": "已设置终结点，但 Provisa 的跟踪表在过去 {{minutes}} 分钟内没有收到任何行。如果 Provisa 一直空闲，这是正常的。否则，请确认该终结点是 Provisa 的收集器，而不是外部提供商。",
+    "schemaClustersTitle": "模式集群"
   }
 }

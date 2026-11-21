@@ -34,7 +34,9 @@ const ref = (table: number, column: string, product?: string) => ({
   domainId: "sales",
   registeredTable: {
     id: table,
-    product: product ? { id: product, name: product, domainId: "sales" } : null,
+    dataProductTables: product
+      ? [{ dataProduct: { id: product, name: product, domainId: "sales" } }]
+      : [],
   },
 });
 
@@ -62,7 +64,12 @@ const TERMS: TermRow[] = [
     refs: [ref(10, "tier")],
   }),
   term(4, "Concept", { refCount: 0, status: "draft", grounding: "not_grounded" }),
-  term(5, "Old customer", { deprecated: true, status: "deprecated", grounding: "not_grounded", domains: [{ domainId: "finance" }] }),
+  term(5, "Old customer", {
+    deprecated: true,
+    status: "deprecated",
+    grounding: "not_grounded",
+    domains: [{ domainId: "finance" }],
+  }),
   term(6, "Ancient", { retired: true, status: "retired", grounding: "not_grounded" }),
 ];
 const EDGES: TermEdgeRow[] = [

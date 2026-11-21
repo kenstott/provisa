@@ -13,7 +13,12 @@
 DuckDB caps each database on its own: the federation runtime's, the in-memory store's, a DuckDB
 source's, and every short-lived one a step opens. Each is opened with :func:`connect`, which caps
 it; each long-lived one also says its cap once it is open (:func:`log_limit`), so a run whose server
-grew can tell whether the cap was in force."""
+grew can tell whether the cap was in force.
+
+Each is opened, too, without DuckDB 2.0's ``remote_pushdown`` optimizer (:data:`PLANNED`; new in 2.0,
+1.5.5 had none): once a PostgreSQL catalog is attached it plans a statement over a large constant
+list for minutes -- Cypher's ``UNWIND range(1000000, 2000000)`` took 73 s to plan where it answers
+in 0.2 s without it (REQ-1142)."""
 
 from __future__ import annotations
 
@@ -31,6 +36,24 @@ _MIB = 1024 * 1024
 
 #: A DuckDB connection's config, as duckdb.connect takes it.
 DuckDBConfig = dict[str, str | bool | int | float | list[str]]
+
+#: How every database this process opens plans: as DuckDB 1.5.5 did, without 2.0's remote_pushdown.
+PLANNED: DuckDBConfig = {"disabled_optimizers": "remote_pushdown"}
+
+#: The newest DuckDB MotherDuck's extension loads on (its own refusal on 2.0.0, 2026-11-06:
+#: "Your DuckDB version (v2.0.0) is not yet supported by MotherDuck. The latest supported version
+#: is v1.5.6."). Raised when MotherDuck supports a later one.
+MOTHERDUCK_LATEST_DUCKDB = (1, 5, 6)
+
+
+def motherduck_extension_limit() -> str | None:  # REQ-1999
+    """Why MotherDuck's extension does not load on the DuckDB this install runs, or None where it
+    does."""
+    running = tuple(int(p) for p in duckdb.__version__.split(".")[:3])
+    if running <= MOTHERDUCK_LATEST_DUCKDB:
+        return None
+    latest = ".".join(map(str, MOTHERDUCK_LATEST_DUCKDB))
+    return f"MotherDuck's extension supports DuckDB up to {latest} and this install runs DuckDB {duckdb.__version__}"
 
 
 def config(own: int | None = None) -> DuckDBConfig:
@@ -58,7 +81,8 @@ def connect(
     not read: a built code host's image carries no settings of Provisa's, REQ-2100)."""
     extra = extra or {}
     capped = {} if "memory_limit" in extra else config()
-    return duckdb.connect(database, read_only=read_only, config={**capped, **extra})
+    # Planned as 1.5.5 planned (PLANNED): 2.0's remote_pushdown is off on every database.
+    return duckdb.connect(database, read_only=read_only, config={**PLANNED, **capped, **extra})
 
 
 def log_limit(con: Any, what: str) -> None:

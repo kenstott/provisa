@@ -1,0 +1,2154 @@
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 166110f8-d4a4-40aa-a316-de78d39388ac
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+
+"""An interval on ClickHouse (REQ-2236; REQ-2167, AN ANSWER WITHIN A STATED BOUND COMES BEFORE A
+REFUSAL; design note J1305, representation A, chosen by the maintainer).
+
+ClickHouse has no interval of PostgreSQL's. Here one is held as PostgreSQL holds it: three
+integers, months (Int32), days (Int32) and microseconds (Int64), as a ClickHouse
+Tuple(Nullable(Int32), Nullable(Int32), Nullable(Int64)); a NULL interval is the tuple of three
+NULLs (a ClickHouse tuple is never NULL itself). Every answer below is computed from those three
+integers as PostgreSQL's own C code computes it (timestamp.c), so it is exact:
+
+- a literal (a string cast to interval) is read here, as the statement is transpiled, by
+  PostgreSQL's DecodeInterval rules (IntervalStyle postgres): amounts and their unit words, a clock
+  (h:mm[:ss[.ffffff]]), signs, fractions, '@' and 'ago'. Any other form (ISO 8601, SQL standard,
+  a bare number, infinity) is refused by name: it is read nowhere here;
+- comparisons read PostgreSQL's order: months * 30 days + days * 24 hours + microseconds, an
+  Int128 that holds every interval exactly;
+- arithmetic raises PostgreSQL's 22008 (interval out of range) where a field overflows;
+- an answer that is an interval and reaches the select list is written as interval_out's text
+  (IntervalStyle postgres), which pgwire reads back as the interval it is
+  (provisa.pgwire.cast_types.interval_of_text); one that another row here reads stays the tuple;
+- a timestamp or a date plus an interval is computed in integers (months, with the day clamped to
+  the month's last day, then days, then microseconds), and a result, or a step of it, outside
+  DateTime64's bound raises 0A000, as the other bounded rows do.
+
+Every other dialect keeps what it had: no row here has a form outside ClickHouse."""
+
+# Requirements: REQ-2236, REQ-2167
+
+from __future__ import annotations
+
+import datetime
+import re
+from collections.abc import Callable
+from dataclasses import dataclass
+
+import sqlglot
+import sqlglot.expressions as exp
+
+from provisa.transpiler.interval_input import (
+    DAY_US as _DAY_US,
+    HOUR_US as _HOUR_US,
+    I32_MAX as _I32_MAX,
+    I32_MIN as _I32_MIN,
+    I64_MAX as _I64_MAX,
+    I64_MIN as _I64_MIN,
+    INPUT_UNITS as _INPUT_UNITS,
+    MINUTE_US as _MINUTE_US,
+    SECOND_US as _SECOND_US,
+    canonical,
+    duckdb_reads_alike,
+    interval_read,
+    rejected,
+)
+from provisa.transpiler.polyfill import clocks, instants, trino
+from provisa.transpiler.polyfill.grid import DIALECTS, NATIVE, Feature, Limitation, Rule, Side
+from provisa.transpiler.polyfill.notation import Refusal, Refused, Rewrite
+from provisa.transpiler.polyfill.numbers import ch_fail
+
+FAMILY = "interval on ClickHouse"
+
+_CLICKHOUSE = "clickhouse"
+#: The meta key of a node this module wrote whose value is a held interval (the tuple).
+HELD = "provisa_interval"
+
+#: An interval's order: a month is 30 days, a day 24 hours (interval_cmp_value).
+_MONTH_US = 30 * _DAY_US
+
+
+def interval_text(months: int, days: int, micros: int) -> str:
+    """interval_out under IntervalStyle postgres (EncodeInterval), in Python: what the written
+    form computes on ClickHouse, for the oracle and the tests."""
+    parts: list[str] = []
+    before = False
+    years, rest = int(months / 12), months - int(months / 12) * 12
+    for count, word in ((years, "year"), (rest, "mon"), (days, "day")):
+        if count:
+            plus = "+" if before and count > 0 else ""
+            parts.append(f"{plus}{count} {word}{'' if count == 1 else 's'}")
+            before = count < 0
+    if micros or not parts:
+        sign = "-" if micros < 0 else ("+" if before else "")
+        whole, fraction = divmod(abs(micros), _SECOND_US)
+        clock = f"{whole // 3600:02d}:{whole // 60 % 60:02d}:{whole % 60:02d}"
+        if fraction:
+            clock += f".{fraction:06d}".rstrip("0")
+        parts.append(sign + clock)
+    return " ".join(parts)
+
+
+# --- ClickHouse's SQL of a held interval ----------------------------------------------------------
+
+_NULL_HELD = (
+    "tuple(CAST(NULL AS Nullable(Int32)), CAST(NULL AS Nullable(Int32)), "
+    "CAST(NULL AS Nullable(Int64)))"
+)
+_RANGE = "interval out of range"
+
+
+def _literal(months: int, days: int, micros: int) -> str:
+    return (
+        f"tuple(toNullable(toInt32({months})), toNullable(toInt32({days})), "
+        f"toNullable(toInt64({micros})))"
+    )
+
+
+def _field(held: str, index: int) -> str:
+    return f"tupleElement({held}, {index})"
+
+
+def _key(held: str) -> str:
+    """An interval's place in PostgreSQL's order (interval_cmp_value), exact in Int128."""
+    m, d, u = (_field(held, i) for i in (1, 2, 3))
+    return f"(toInt128({m}) * {_MONTH_US} + toInt128({d}) * {_DAY_US} + toInt128({u}))"
+
+
+def _outside(months: str, days: str, micros: str) -> str:
+    """Whether fields computed past their types hold no interval: a field past its type, or the
+    fields of an infinity, which PostgreSQL 17 raises for a finite operation's result."""
+    return (
+        f"({months} < {_I32_MIN} OR {months} > {_I32_MAX} OR {days} < {_I32_MIN} "
+        f"OR {days} > {_I32_MAX} OR {micros} < {_I64_MIN} OR {micros} > {_I64_MAX} "
+        f"OR ({months} = {_I32_MAX} AND {days} = {_I32_MAX} AND {micros} = {_I64_MAX}) "
+        f"OR ({months} = {_I32_MIN} AND {days} = {_I32_MIN} AND {micros} = {_I64_MIN}))"
+    )
+
+
+def _raise(sqlstate: str, message: str, condition: str) -> str:
+    return ch_fail(sqlstate, message).format(condition=condition)
+
+
+def _checked_tuple(months: str, days: str, micros: str) -> str:
+    """The interval of computed fields, raising 22008 where they hold none."""
+    raised = _raise("22008", _RANGE, _outside(months, days, micros))
+    return _fields_raising(months, days, micros, raised)
+
+
+def _fields_raising(months: str, days: str, micros: str, raised: str) -> str:
+    """The interval of three fields, ``raised`` (a throwIf) read with its microseconds: a cast to
+    Int32 that holds a raise is written as accurateCast (transpile.clickhouse_semantics)."""
+    return (
+        f"tuple(CAST({months} AS Nullable(Int32)), CAST({days} AS Nullable(Int32)), "
+        f"CAST({micros} + {raised} AS Nullable(Int64)))"
+    )
+
+
+def _decimal(number: str, scale: int) -> str:
+    """An Int128's text as a numeric of ``scale`` digits past the point."""
+    if scale == 0:
+        return f"toString({number})"
+    unit = 10**scale
+    return (
+        f"concat(if({number} < 0, '-', ''), toString(intDiv(abs({number}), {unit})), '.', "
+        f"leftPad(toString(abs({number}) % {unit}), {scale}, '0'))"
+    )
+
+
+class _Sql:
+    """The ClickHouse SQL a row writes, with what the statement holds (a column, a value another
+    row wrote) as placeholders, grafted after it is parsed."""
+
+    def __init__(self) -> None:
+        self.nodes: list[exp.Expr] = []
+        self.names = 0
+
+    def embed(self, node: exp.Expr) -> str:
+        self.nodes.append(node)
+        return f"provisa_node_{len(self.nodes) - 1}"
+
+    def name(self) -> str:
+        self.names += 1
+        return f"provisa_iv{self.names}"
+
+    def let(self, values: list[str], body: Callable[..., str]) -> str:
+        """``body`` of names each bound to one of ``values``, so a value written once is read
+        many times (ClickHouse has no let: a lambda over a one-element array)."""
+        names = [self.name() for _ in values]
+        params = names[0] if len(names) == 1 else f"({', '.join(names)})"
+        arrays = ", ".join(f"[{value}]" for value in values)
+        return f"arrayElement(arrayMap({params} -> {body(*names)}, {arrays}), 1)"
+
+    def text(self, held: str) -> str:
+        """interval_out of a held interval (EncodeInterval, IntervalStyle postgres)."""
+
+        def written(x: str) -> str:
+            m, d, u = (_field(x, i) for i in (1, 2, 3))
+            years, months = f"intDiv({m}, 12)", f"({m} % 12)"
+
+            def part(count: str, word: str, before: str) -> str:
+                plus = f"if(({before}) AND {count} > 0, '+', '')"
+                plural = f"if({count} = 1, '', 's')"
+                return (
+                    f"if({count} = 0, '', concat({plus}, toString({count}), ' {word}', {plural}))"
+                )
+
+            before_day = f"if({months} != 0, {months} < 0, {years} < 0)"
+            before_clock = f"if({d} != 0, {d} < 0, {before_day})"
+            a = f"abs(toInt128({u}))"
+            hours = f"intDiv({a}, {_HOUR_US})"
+            clock = (
+                f"concat(if({hours} < 10, '0', ''), toString({hours}), ':', "
+                f"leftPad(toString(intDiv({a}, {_MINUTE_US}) % 60), 2, '0'), ':', "
+                f"leftPad(toString(intDiv({a}, {_SECOND_US}) % 60), 2, '0'), "
+                f"if({a} % {_SECOND_US} = 0, '', concat('.', replaceRegexpOne("
+                f"leftPad(toString({a} % {_SECOND_US}), 6, '0'), '0+$', ''))))"
+            )
+            shown = f"{u} != 0 OR ({m} = 0 AND {d} = 0)"
+            sign = f"if({u} < 0, '-', if({before_clock}, '+', ''))"
+            parts = [
+                part(years, "year", "false"),
+                part(months, "mon", f"{years} < 0"),
+                part(d, "day", before_day),
+                f"if({shown}, concat({sign}, {clock}), '')",
+            ]
+            p = self.name()
+            joined = f"arrayStringConcat(arrayFilter({p} -> {p} != '', [{', '.join(parts)}]), ' ')"
+            return f"if(isNull({m}), CAST(NULL AS Nullable(String)), {joined})"
+
+        return self.let([held], written)
+
+    def parsed(self, text: str) -> exp.Expr:
+        tree = sqlglot.parse_one(text, read=_CLICKHOUSE)
+        nodes = self.nodes
+
+        def grafted(node: exp.Expr) -> exp.Expr:
+            if isinstance(node, exp.Column) and node.name.startswith("provisa_node_"):
+                return nodes[int(node.name.removeprefix("provisa_node_"))].copy()
+            return node
+
+        return tree.transform(grafted)
+
+
+# --- what a row reads of its arguments ----------------------------------------------------------
+
+
+def _said(node: exp.Expr) -> str | None:
+    said = trino.said(node)
+    return None if said is None else said.split("(")[0]
+
+
+def _string(node: exp.Expr) -> str | None:
+    return node.this if isinstance(node, exp.Literal) and node.is_string else None
+
+
+#: A held interval read of an argument: its SQL, None where the row does not read it.
+def _interval(argument: exp.Expr, sql: _Sql, untyped: bool = False) -> str | None:
+    """The held interval ``argument`` is: a literal read here, a NULL, a column of a VALUES list
+    of them, or a call or an operator another row here answers. ``untyped``: an untyped string is
+    the interval's input (the call's only overload takes an interval there)."""
+    value = argument.unnest()
+    if value.meta.get(HELD):
+        return sql.embed(value)
+    if isinstance(value, exp.Null):
+        return _NULL_HELD
+    if untyped and _string(value) is not None:
+        return _read_literal(_string(value) or "")
+    if isinstance(value, exp.Cast):
+        if _said(value) != "interval":
+            return None
+        inner = value.this.unnest()
+        if isinstance(inner, exp.Null):
+            return _NULL_HELD
+        text = _string(inner)
+        return None if text is None else _read_literal(text)
+    if isinstance(value, exp.Interval):
+        read = keyword_read(value)
+        return None if read is None else _literal(*read)
+    if isinstance(value, exp.Column):
+        return _values_column(value, sql)
+    return _written(value, sql)
+
+
+def _read_literal(text: str) -> str | None:
+    read = interval_read(text)
+    return None if read is None else _literal(*read)
+
+
+def keyword_read(node: exp.Interval) -> tuple[int, int, int] | None:
+    """The fields of sqlglot's INTERVAL 'n' UNIT, an amount of one unit (the parser keeps one
+    such literal so, pg_syntax): None for one of no unit read here (a span, a quarter)."""
+    amount, unit = node.this, node.args.get("unit")
+    if not isinstance(amount, exp.Literal) or not isinstance(unit, exp.Var):
+        return None
+    return interval_read(f"{amount.name} {unit.name}")
+
+
+def _cell(cell: exp.Expr) -> str | None:
+    """A cell of a VALUES list read as an interval: a NULL, or a literal cast to one."""
+    value = cell.unnest()
+    if value.meta.get(HELD):
+        return ""  # a cell already written (the walk reads a statement twice)
+    if isinstance(value, exp.Null):
+        return _NULL_HELD
+    if isinstance(value, exp.Cast) and _said(value) == "interval":
+        inner = value.this.unnest()
+        if isinstance(inner, exp.Null):
+            return _NULL_HELD
+        text = _string(inner)
+        return None if text is None else _read_literal(text)
+    return None
+
+
+def _values_column(column: exp.Column, sql: _Sql) -> str | None:
+    """A column of the VALUES list the statement reads, each of its cells an interval literal or a
+    NULL: the cells are written as held intervals, where every reference to the column is a call
+    of a row here."""
+    select = column.find_ancestor(exp.Select)
+    if select is None or select.args.get("joins"):
+        return None
+    source = select.args.get("from_")
+    values = source.this if source is not None else None
+    if not isinstance(values, exp.Values) or values.args.get("alias") is None:
+        return None
+    names = [c.name for c in values.args["alias"].columns]
+    if column.name not in names or column.table not in ("", values.alias):
+        return None
+    index = names.index(column.name)
+    cells = [row.expressions[index] for row in values.expressions]
+    written = [_cell(cell) for cell in cells]
+    if None in written or not any(
+        isinstance(c.unnest(), exp.Cast) or c.unnest().meta.get(HELD) for c in cells
+    ):
+        return None
+    for other in select.find_all(exp.Column):
+        if other.name == column.name and not _read_by_a_row(other):
+            return None  # the column is read as it is elsewhere: the select list's own value
+    for cell, text in zip(cells, written):
+        if text:
+            held = sqlglot.parse_one(text, read=_CLICKHOUSE)
+            held.meta[HELD] = True
+            cell.replace(held)
+    return sql.embed(column)
+
+
+def _held_column(column: exp.Column) -> bool:
+    """Whether ``column`` is one of a VALUES list whose cells a row here wrote as intervals."""
+    select = column.find_ancestor(exp.Select)
+    source = select.args.get("from_") if select is not None else None
+    values = source.this if source is not None else None
+    if not isinstance(values, exp.Values) or values.args.get("alias") is None:
+        return False
+    names = [c.name for c in values.args["alias"].columns]
+    if column.name not in names:
+        return False
+    index = names.index(column.name)
+    return any(row.expressions[index].meta.get(HELD) for row in values.expressions)
+
+
+def _read_by_a_row(column: exp.Column) -> bool:
+    """Whether ``column`` is an argument of a call or an operator a row here reads."""
+    node = column.parent
+    while node is not None and not isinstance(node, exp.Select):
+        if isinstance(node, exp.Values):
+            return True
+        call = trino.called(node)
+        if call is not None and call[0] & _NAMES:
+            return True
+        if type(node) in _OPERATORS:
+            return True
+        node = node.parent
+    return False
+
+
+#: A timestamp's or a date's literal, read here: its micro seconds from the epoch.
+_STAMP = re.compile(
+    r"\s*(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,6}))?)?)?\s*", re.ASCII
+)
+_DATE = re.compile(r"\s*(\d{4})-(\d{2})-(\d{2})\s*", re.ASCII)
+_EPOCH = datetime.datetime(1970, 1, 1)
+_FIRST_US = (instants.FIRST - _EPOCH) // datetime.timedelta(microseconds=1)
+_LAST_US = (instants.LAST - _EPOCH) // datetime.timedelta(microseconds=1)
+
+
+def _instant_literal(text: str, day: bool) -> int | None:
+    matched = (_DATE if day else _STAMP).fullmatch(text)
+    if matched is None:
+        return None
+    parts = [int(g) if g else 0 for g in matched.groups()[:6]]
+    fraction = 0 if day or not matched.group(7) else int(matched.group(7).ljust(6, "0"))
+    try:
+        stamp = datetime.datetime(*parts, microsecond=fraction)  # type: ignore[misc]
+    except ValueError:
+        return None
+    return (stamp - _EPOCH) // datetime.timedelta(microseconds=1)
+
+
+def _instant(argument: exp.Expr, kind: str, untyped: bool) -> str | None:
+    """A timestamp or a date ``argument``, read here: its wall time's microseconds from the epoch
+    (a literal in ISO form), or ``NULL``. None for any other value, which no row here reads."""
+    value = argument.unnest()
+    if isinstance(value, exp.Cast):
+        if _said(value) not in _KIND_TYPES[kind]:
+            return None
+        value = value.this.unnest()
+    elif not untyped and not isinstance(value, exp.Null):
+        return None
+    if isinstance(value, exp.Null):
+        return "NULL"
+    text = _string(value)
+    if text is None:
+        return None
+    micros = _instant_literal(text, kind == "date")
+    return None if micros is None else str(micros)
+
+
+_KIND_TYPES = {
+    "timestamp": frozenset({"timestamp", "timestamp without time zone"}),
+    "date": frozenset({"date"}),
+    "time": frozenset({"time", "time without time zone"}),
+}
+
+
+# --- the forms of each row ------------------------------------------------------------------------
+
+
+def _strict(fields: list[str], answer: str, null: str) -> str:
+    """``answer``, or ``null`` where any of ``fields`` is NULL (a STRICT function's answer)."""
+    test = " OR ".join(f"isNull({f})" for f in fields)
+    return f"if({test}, {null}, {answer})"
+
+
+_BOOL_NULL = "CAST(NULL AS Nullable(Bool))"
+_COMPARISONS = {"eq": "=", "ne": "!=", "lt": "<", "le": "<=", "gt": ">", "ge": ">="}
+
+
+def _compared(op: str) -> Callable[[_Sql, list[str]], str]:
+    def form(sql: _Sql, args: list[str]) -> str:
+        return f"CAST({_key(args[0])} {op} {_key(args[1])} AS Nullable(Bool))"
+
+    return form
+
+
+def _cmp(sql: _Sql, args: list[str]) -> str:
+    def body(x: str, y: str) -> str:
+        kx, ky = _key(x), _key(y)
+        answer = f"multiIf({kx} < {ky}, -1, {kx} > {ky}, 1, 0)"
+        return f"CAST({_strict([kx, ky], answer, 'NULL')} AS Nullable(Int32))"
+
+    return sql.let(args, body)
+
+
+def _chosen(op: str) -> Callable[[_Sql, list[str]], str]:
+    """interval_larger (op >) and interval_smaller (<): the first where it compares so, else the
+    second (a tie answers the second, as PostgreSQL's does)."""
+
+    def form(sql: _Sql, args: list[str]) -> str:
+        def body(x: str, y: str) -> str:
+            answer = f"if({_key(x)} {op} {_key(y)}, {x}, {y})"
+            return _strict([_field(x, 1), _field(y, 1)], answer, _NULL_HELD)
+
+        return sql.let(args, body)
+
+    return form
+
+
+def _arithmetic(op: str) -> Callable[[_Sql, list[str]], str]:
+    """interval_pl (+) and interval_mi (-): field by field, 22008 where one overflows."""
+
+    def form(sql: _Sql, args: list[str]) -> str:
+        def body(x: str, y: str) -> str:
+            m = f"toInt64({_field(x, 1)}) {op} toInt64({_field(y, 1)})"
+            d = f"toInt64({_field(x, 2)}) {op} toInt64({_field(y, 2)})"
+            u = f"toInt128({_field(x, 3)}) {op} toInt128({_field(y, 3)})"
+            return sql.let([m, d, u], _checked_tuple)
+
+        return sql.let(args, body)
+
+    return form
+
+
+def _negated(sql: _Sql, args: list[str]) -> str:
+    def body(x: str) -> str:
+        m, d = f"-toInt64({_field(x, 1)})", f"-toInt64({_field(x, 2)})"
+        u = f"-toInt128({_field(x, 3)})"
+        return sql.let([m, d, u], _checked_tuple)
+
+    return sql.let(args, body)
+
+
+def _justify_days(sql: _Sql, args: list[str]) -> str:
+    def body(x: str) -> str:
+        whole = f"intDiv({_field(x, 2)}, 30)"
+        days = f"toInt64({_field(x, 2)}) - {whole} * 30"
+        months = f"toInt64({_field(x, 1)}) + {whole}"
+
+        def adjusted(m: str, d: str, u: str) -> str:
+            up, down = f"({m} > 0 AND {d} < 0)", f"({m} < 0 AND {d} > 0)"
+            m2 = f"multiIf({up}, {m} - 1, {down}, {m} + 1, {m})"
+            d2 = f"multiIf({up}, {d} + 30, {down}, {d} - 30, {d})"
+            raised = _raise("22008", _RANGE, f"({m} < {_I32_MIN} OR {m} > {_I32_MAX})")
+            return _fields_raising(m2, d2, u, raised)
+
+        return sql.let([months, days, _field(x, 3)], adjusted)
+
+    return sql.let(args, body)
+
+
+def _justify_hours(sql: _Sql, args: list[str]) -> str:
+    def body(x: str) -> str:
+        whole = f"intDiv({_field(x, 3)}, {_DAY_US})"
+        micros = f"toInt64({_field(x, 3)}) - {whole} * {_DAY_US}"
+        days = f"toInt64({_field(x, 2)}) + {whole}"
+
+        def adjusted(d: str, u: str, m: str) -> str:
+            up, down = f"({d} > 0 AND {u} < 0)", f"({d} < 0 AND {u} > 0)"
+            d2 = f"multiIf({up}, {d} - 1, {down}, {d} + 1, {d})"
+            u2 = f"multiIf({up}, {u} + {_DAY_US}, {down}, {u} - {_DAY_US}, {u})"
+            raised = _raise("22008", _RANGE, f"({d} < {_I32_MIN} OR {d} > {_I32_MAX})")
+            return _fields_raising(m, d2, u2, raised)
+
+        return sql.let([days, micros, _field(x, 1)], adjusted)
+
+    return sql.let(args, body)
+
+
+def _justify_interval(sql: _Sql, args: list[str]) -> str:
+    """interval_justify_interval (PostgreSQL 17): days to months first where days and time share a
+    sign, then time to days, days to months, and the signs made one."""
+
+    def body(x: str) -> str:
+        m0, d0, u0 = (f"toInt64({_field(x, i)})" for i in (1, 2, 3))
+        pre = f"(({d0} > 0 AND {u0} > 0) OR ({d0} < 0 AND {u0} < 0))"
+        m1 = f"if({pre}, {m0} + intDiv({d0}, 30), {m0})"
+        d1 = f"if({pre}, {d0} - intDiv({d0}, 30) * 30, {d0})"
+
+        def step(m: str, d: str, u: str) -> str:
+            first = f"({m} < {_I32_MIN} OR {m} > {_I32_MAX})"
+            wholeday = f"intDiv({u}, {_DAY_US})"
+            u2 = f"{u} - {wholeday} * {_DAY_US}"
+            d2 = f"{d} + {wholeday}"
+
+            def months(d3: str, u3: str) -> str:
+                over_days = f"({d3} < {_I32_MIN} OR {d3} > {_I32_MAX})"
+                m4 = f"{m} + intDiv({d3}, 30)"
+                d4 = f"{d3} - intDiv({d3}, 30) * 30"
+
+                def signs(mm: str, dd: str, uu: str) -> str:
+                    over = f"({first} OR {over_days} OR {mm} < {_I32_MIN} OR {mm} > {_I32_MAX})"
+                    up = f"({mm} > 0 AND ({dd} < 0 OR ({dd} = 0 AND {uu} < 0)))"
+                    down = f"({mm} < 0 AND ({dd} > 0 OR ({dd} = 0 AND {uu} > 0)))"
+                    m5 = f"multiIf({up}, {mm} - 1, {down}, {mm} + 1, {mm})"
+                    d5 = f"multiIf({up}, {dd} + 30, {down}, {dd} - 30, {dd})"
+
+                    def last(m6: str, d6: str) -> str:
+                        up2, down2 = f"({d6} > 0 AND {uu} < 0)", f"({d6} < 0 AND {uu} > 0)"
+                        d7 = f"multiIf({up2}, {d6} - 1, {down2}, {d6} + 1, {d6})"
+                        u7 = f"multiIf({up2}, {uu} + {_DAY_US}, {down2}, {uu} - {_DAY_US}, {uu})"
+                        raised = _raise("22008", _RANGE, over)
+                        return _fields_raising(m6, d7, u7, raised)
+
+                    return sql.let([m5, d5], last)
+
+                return sql.let([m4, d4, u3], signs)
+
+            return sql.let([d2, u2], months)
+
+        return sql.let([m1, d1, u0], step)
+
+    return sql.let(args, body)
+
+
+def _isfinite(sql: _Sql, args: list[str]) -> str:
+    """isfinite: no interval held here is infinite (an infinity's literal is refused by name)."""
+    return f"if(isNull({_field(args[0], 1)}), {_BOOL_NULL}, CAST(true AS Nullable(Bool)))"
+
+
+# --- extract and date_part of an interval ------------------------------------------------------
+
+#: The units extract and date_part read of an interval (deltatktbl and datetktbl), by the first
+#: ten characters, as interval_part_common reads them.
+_PART_UNITS = {
+    **{k: v for k, v in _INPUT_UNITS.items()},
+    **dict.fromkeys(("qtr", "quarter"), "quarter"),
+    "epoch": "epoch",
+}
+#: Words PostgreSQL knows as a unit that an interval has no part of: 0A000.
+_NOT_SUPPORTED = frozenset(
+    {"dow", "doy", "isodow", "isoyear", "julian", "timezone", "timezone_h", "timezone_m"}
+)
+
+
+def _units_of(text: str) -> str:
+    """downcase_truncate_identifier's text of a unit, as PostgreSQL's errors name it."""
+    return text.lower()[:63]
+
+
+def _parts_form(unit: str, x: str, numeric: bool) -> str:
+    """A part of the held interval ``x`` (interval2itm, then interval_part_common): text of a
+    numeric (extract) or a Float64 (date_part)."""
+    m, d, u = (_field(x, i) for i in (1, 2, 3))
+    hours = f"intDiv({u}, {_HOUR_US})"
+    minutes = f"intDiv({u} - {hours} * {_HOUR_US}, {_MINUTE_US})"
+    seconds_us = f"({u} % {_MINUTE_US})"  # tm_sec * 1000000 + tm_usec
+    years = f"intDiv({m}, 12)"
+    integers = {
+        "microsecond": seconds_us,
+        "minute": minutes,
+        "hour": hours,
+        "day": d,
+        "week": f"intDiv({d}, 7)",
+        "month": f"({m} % 12)",
+        # -month wraps in PostgreSQL's int32 where month is its least: -(-8 / 3 + 1) = 1
+        "quarter": (
+            f"multiIf({m} >= 0, intDiv({m} % 12, 3) + 1, {m} = {_I32_MIN}, 1, "
+            f"-(intDiv((-toInt64({m})) % 12, 3) + 1))"
+        ),
+        "year": years,
+        "decade": f"intDiv({years}, 10)",
+        "century": f"intDiv({years}, 100)",
+        "millennium": f"intDiv({years}, 1000)",
+    }
+    if unit in integers:
+        value = f"toInt128({integers[unit]})"
+        return _decimal(value, 0) if numeric else f"toFloat64({value})"
+    if unit in ("millisecond", "second"):
+        scale = 3 if unit == "millisecond" else 6
+        if numeric:
+            return _decimal(f"toInt128({seconds_us})", scale)
+        whole = f"intDiv({seconds_us}, {_SECOND_US})"
+        fraction = f"({seconds_us} % {_SECOND_US})"
+        if unit == "millisecond":
+            return f"(toFloat64({whole}) * 1000.0 + toFloat64({fraction}) / 1000.0)"
+        return f"(toFloat64({whole}) + toFloat64({fraction}) / 1000000.0)"
+    assert unit == "epoch"
+    if numeric:
+        seconds = (
+            f"((toInt128(1461) * intDiv({m}, 12) + toInt128(120) * ({m} % 12) "
+            f"+ toInt128(4) * {d}) * 21600)"
+        )
+        return _decimal(f"({seconds} * {_SECOND_US} + toInt128({u}))", 6)
+    return (
+        f"(toFloat64({u}) / 1000000.0 + (365.25 * 86400) * toFloat64(intDiv({m}, 12)) "
+        f"+ toFloat64(30 * 86400) * toFloat64({m} % 12) + 86400.0 * toFloat64({d}))"
+    )
+
+
+def _part(numeric: bool) -> Callable[[_Sql, list[str], str | None], str]:
+    returns = "Nullable(String)" if numeric else "Nullable(Float64)"
+    null = f"CAST(NULL AS {returns})"
+
+    def form(sql: _Sql, args: list[str], unit_text: str | None) -> str:
+        if unit_text is None:
+            return null
+        lowered = _units_of(unit_text)
+        unit = _PART_UNITS.get(lowered[:10])
+
+        def body(x: str) -> str:
+            present = f"isNotNull({_field(x, 1)})"
+            if unit is None or lowered in _NOT_SUPPORTED:
+                known = lowered in _NOT_SUPPORTED
+                state, verb = ("0A000", "supported") if known else ("22023", "recognized")
+                message = f'unit "{lowered}" not {verb} for type interval'
+                return f"CAST(if({present}, {_raise(state, message, present)}, NULL) AS {returns})"
+            answer = _parts_form(unit, x, numeric)
+            return f"if({present}, CAST({answer} AS {returns}), {null})"
+
+        return sql.let(args, body)
+
+    return form
+
+
+# --- aggregates ---------------------------------------------------------------------------------
+
+
+def _extreme(function: str, op: str) -> Callable[[_Sql, list[str]], str]:
+    """max (op 'Max') and min ('Min') of a column of intervals. PostgreSQL answers a tie's last
+    row in its scan, which ClickHouse does not keep: a tie of intervals that are equal but written
+    apart ('1 mon', '30 days') raises 0A000."""
+
+    def form(sql: _Sql, args: list[str]) -> str:
+        h = args[0]
+        m, d, u = (_field(h, i) for i in (1, 2, 3))
+        present = f"isNotNull({m})"
+        key = _key(h)
+        first = (
+            f"arg{op}If({h}, tuple({key}, toInt64({m}), toInt64({d}), toInt128({u})), {present})"
+        )
+        other = (
+            f"arg{op}If({h}, tuple({key}, -toInt64({m}), -toInt64({d}), -toInt128({u})), {present})"
+        )
+        count = f"countIf({present})"
+        message = (
+            f"{function}() of intervals that are equal but written apart has no exact form on "
+            f"{_CLICKHOUSE}"
+        )
+
+        def body(a: str, b: str, n: str) -> str:
+            tie = f"({n} > 0 AND {a} != {b})"
+            raised = _raise("0A000", message, tie)
+            held = _fields_raising(_field(a, 1), _field(a, 2), _field(a, 3), raised)
+            return f"if({n} = 0, {_NULL_HELD}, {held})"
+
+        return sql.let([first, other, count], body)
+
+    return form
+
+
+def _sum(sql: _Sql, args: list[str]) -> str:
+    """sum: each field's total. PostgreSQL raises 22008 where a running total overflows, which
+    depends on the rows' order: a total outside its field raises 22008 (every order overflows);
+    a total inside, where the rows of one sign alone could reach the field's end, raises 0A000."""
+    h = args[0]
+    present = f"isNotNull({_field(h, 1)})"
+    totals, ends = [], []
+    for index, (low, high) in enumerate(((_I32_MIN, _I32_MAX),) * 2 + ((_I64_MIN, _I64_MAX),)):
+        value = f"toInt128({_field(h, index + 1)})"
+        totals.append(f"sumIf({value}, {present})")
+        rising = f"sumIf({value}, {present} AND {value} > 0)"
+        falling = f"sumIf({value}, {present} AND {value} < 0)"
+        ends.append(f"({rising} >= {high} OR {falling} <= {low})")
+    count = f"countIf({present})"
+    message = (
+        f"sum() of intervals whose running total may reach a field's end has no exact form on "
+        f"{_CLICKHOUSE}"
+    )
+
+    def body(m: str, d: str, u: str, n: str, reach: str) -> str:
+        over = _outside(m, d, u)
+        overflow = _raise("22008", _RANGE, f"({n} > 0 AND {over})")
+        bounded = _raise("0A000", message, f"({n} > 0 AND NOT {over} AND {reach})")
+        held = _fields_raising(m, d, u, f"{overflow} + {bounded}")
+        return f"if({n} = 0, {_NULL_HELD}, {held})"
+
+    return sql.let([*totals, count, " OR ".join(ends)], body)
+
+
+# --- a timestamp or a date and an interval -------------------------------------------------------
+
+
+def _days_from_civil(y: str, m: str, d: str) -> str:
+    """Days from 1970-01-01 of a proleptic Gregorian date (Hinnant's days_from_civil), in Int64."""
+    yy = f"(toInt64({y}) - if({m} <= 2, 1, 0))"
+    era = f"intDiv({yy} - if({yy} < 0, 399, 0), 400)"
+    yoe = f"({yy} - {era} * 400)"
+    doy = f"(intDiv(153 * ({m} + if({m} > 2, -3, 9)) + 2, 5) + {d} - 1)"
+    doe = f"({yoe} * 365 + intDiv({yoe}, 4) - intDiv({yoe}, 100) + {doy})"
+    return f"({era} * 146097 + {doe} - 719468)"
+
+
+_NULL_STAMP = "CAST(NULL AS Nullable(DateTime64(6, 'UTC')))"
+_MONTH_DAYS = "[31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]"
+
+
+def _shifted(function: str, negate: bool) -> Callable[[_Sql, str, str], str]:
+    """timestamp_pl_interval (and _mi_, the interval negated first, 22008 where a field cannot
+    be): the months added, the day clamped to its month's last day, then the days, then the
+    microseconds; each step inside DateTime64's bound, or 0A000. The timestamp is a literal, so its
+    calendar is read here; the answer is DateTime64(6, 'UTC'), its wall time."""
+    message = instants.out_of_bound(function, instants.STAMP_BOUND)
+
+    def form(sql: _Sql, stamp: str, interval: str) -> str:
+        if stamp == "NULL":
+            return _NULL_STAMP
+        t = int(stamp)
+        whole = _EPOCH + datetime.timedelta(microseconds=t)
+        tod = t - (t // _DAY_US) * _DAY_US
+        start = whole.year * 12 + whole.month - 1
+
+        def body(x: str) -> str:
+            m0, d0 = (f"toInt64({_field(x, i)})" for i in (1, 2))
+            u0 = f"toInt128({_field(x, 3)})"
+            negation = "0"
+            if negate:
+                m0, d0, u0 = f"(-{m0})", f"(-{d0})", f"(-{u0})"
+                negation = _raise(
+                    "22008",
+                    _RANGE,
+                    f"({m0} > {_I32_MAX} OR {d0} > {_I32_MAX} OR {u0} > {_I64_MAX} "
+                    f"OR ({m0} = {_I32_MAX} AND {d0} = {_I32_MAX} AND {u0} = {_I64_MAX}))",
+                )
+
+            def calendar(total: str) -> str:
+                ny = f"intDiv({total} - if({total} < 0, 11, 0), 12)"
+
+                def day(y: str, m: str) -> str:
+                    leap = f"(({y} % 4 = 0 AND {y} % 100 != 0) OR {y} % 400 = 0)"
+                    last = f"if({m} = 2 AND {leap}, 29, arrayElement({_MONTH_DAYS}, toUInt8({m})))"
+                    nd = f"least({whole.day}, {last})"
+                    first = f"toInt128({_days_from_civil(y, m, nd)}) * {_DAY_US} + {tod}"
+                    s1 = f"if({m0} = 0, toInt128({t}), {first})"
+
+                    def steps(one: str, two: str, three: str) -> str:
+                        outside = " OR ".join(
+                            f"({s} < {_FIRST_US} OR {s} > {_LAST_US})" for s in (one, two, three)
+                        )
+                        raised = _raise("0A000", message, f"({outside})")
+                        held = f"toInt64(if({outside}, {_FIRST_US}, {three}))"
+                        return f"fromUnixTimestamp64Micro({held} + {raised} + {negation}, 'UTC')"
+
+                    def after(one: str) -> str:
+                        two = f"({one} + toInt128({d0}) * {_DAY_US})"
+                        return sql.let(
+                            [two], lambda second: steps(one, second, f"({second} + {u0})")
+                        )
+
+                    return sql.let([s1], after)
+
+                return sql.let([ny, f"({total} - {ny} * 12 + 1)"], day)
+
+            answer = sql.let([f"(toInt64({start}) + {m0})"], calendar)
+            return f"if(isNull({_field(x, 1)}), {_NULL_STAMP}, {answer})"
+
+        return sql.let([interval], body)
+
+    return form
+
+
+# --- an interval and a time of day ---------------------------------------------------------------
+
+#: A time of day, held as an Int64 of its microseconds of the day (polyfill.clocks): a NULL of it.
+_NULL_TIME = clocks.NULL_HELD
+#: A day's microseconds, signed: ClickHouse's remainder of an Int64 by a UInt64 is unsigned. Its
+#: remainder takes the dividend's sign, as C's does (r -= r / D * D in timestamp.c).
+_DAY = f"toInt64({_DAY_US})"
+#: A time of day's literal PostgreSQL's time input reads (time_in): hours and minutes, seconds,
+#: and a fraction of up to six digits. Any other text (a zone, AM or PM, 'allballs', a seventh
+#: digit, which PostgreSQL rounds) is read by no row here, and refused by name.
+_CLOCK = re.compile(r"\s*(\d{1,2}):(\d{2})(?::(\d{2})(?:\.(\d{1,6}))?)?\s*", re.ASCII)
+
+
+def _clock_literal(text: str) -> int | None:
+    """The microseconds of the day of a time literal; 24:00:00 is PostgreSQL's last."""
+    matched = _CLOCK.fullmatch(text)
+    if matched is None:
+        return None
+    hour, minute = int(matched.group(1)), int(matched.group(2))
+    second = int(matched.group(3) or 0)
+    fraction = int((matched.group(4) or "").ljust(6, "0"))
+    if minute > 59 or second > 59 or hour > 24:
+        return None
+    micros = ((hour * 60 + minute) * 60 + second) * _SECOND_US + fraction
+    return micros if micros <= _DAY_US else None
+
+
+def _clock(argument: exp.Expr, untyped: bool) -> str | None:
+    """A time of day ``argument``, read here: its microseconds of the day (a literal), or
+    ``NULL``. None for any other value, which no row here reads."""
+    value = argument.unnest()
+    if isinstance(value, exp.Cast):
+        if _said(value) not in _KIND_TYPES["time"]:
+            return None
+        value = value.this.unnest()
+    elif not untyped and not isinstance(value, exp.Null):
+        return None
+    if isinstance(value, exp.Null):
+        return "NULL"
+    text = _string(value)
+    if text is None:
+        return None
+    micros = _clock_literal(text)
+    return None if micros is None else str(micros)
+
+
+def _time_of(micros: str) -> str:
+    """A time of day of its microseconds, an Int64 in [0, a day): held as that Int64
+    (polyfill.clocks), exact."""
+    return f"toInt64({micros})"
+
+
+def _time_moved(negate: bool) -> Callable[[_Sql, str, str], str]:
+    """time_pl_interval and time_mi_interval (timestamp.c): the interval's microseconds added in
+    int64, as its C adds them, then brought into the day; its months and days are not read."""
+
+    def form(sql: _Sql, time: str, interval: str) -> str:
+        if time == "NULL":
+            return _NULL_TIME
+
+        def body(x: str) -> str:
+            micros = _field(x, 3)
+            moved = f"(toInt64({time}) {'-' if negate else '+'} toInt64({micros}))"
+
+            def within(r: str) -> str:
+                rest = f"({r} % {_DAY})"
+                return _time_of(f"if({rest} < 0, {rest} + {_DAY}, {rest})")
+
+            return f"if(isNull({micros}), {_NULL_TIME}, {sql.let([moved], within)})"
+
+        return sql.let([interval], body)
+
+    return form
+
+
+def _time_interval(sql: _Sql, args: list[str]) -> str:
+    """interval of a time (time_interval): its microseconds, no months and no days."""
+    del sql
+    if args[0] == "NULL":
+        return _NULL_HELD
+    return _literal(0, 0, int(args[0]))
+
+
+def _time_mi_time(sql: _Sql, args: list[str]) -> str:
+    """A time of day less a time of day (time_mi_time): the difference of their microseconds, no
+    months and no days."""
+    del sql
+    if "NULL" in args:
+        return _NULL_HELD
+    return _literal(0, 0, int(args[0]) - int(args[1]))
+
+
+def _interval_time(sql: _Sql, args: list[str]) -> str:
+    """time of an interval (interval_time): its microseconds brought into the day, its months and
+    days not read."""
+
+    def body(x: str) -> str:
+        micros = _field(x, 3)
+        rest = f"(toInt64({micros}) % {_DAY})"
+        within = f"if({rest} < 0, {rest} + {_DAY}, {rest})"
+        return f"if(isNull({micros}), {_NULL_TIME}, {_time_of(within)})"
+
+    return sql.let([args[0]], body)
+
+
+#: overlaps' overloads of an interval (pg_proc's SQL functions: ($1, $1 + $2) overlaps ($3, $4),
+#: and so on), by their arguments' kinds: of timestamps (t), or of times of day (T); and overlaps
+#: of four times (overlaps_time), whose ends are the times themselves.
+_OVERLAPS_KINDS = frozenset({"titi", "titt", "ttti", "TiTi", "TiTT", "TTTi", "TTTT"})
+_NULL_BOOL = "CAST(NULL AS Nullable(Bool))"
+
+
+def _overlapped(s1: str, e1: str, s2: str, e2: str) -> str:
+    """overlaps_timestamp's (and overlaps_time's) answer, timestamp.c's steps: each period's start
+    the earlier of its ends, a NULL start its end's place, then the comparisons and their NULLs."""
+
+    def period(start: str, end: str) -> tuple[str, str]:
+        swapped = f"(isNotNull({end}) AND {start} > {end})"
+        first = f"if(isNull({start}), {end}, if({swapped}, {end}, {start}))"
+        last = f"if(isNull({start}), NULL, if({swapped}, {start}, {end}))"
+        return first, last
+
+    (t1, u1), (t2, u2) = period(s1, e1), period(s2, e2)
+    return (
+        f"multiIf(isNull({t1}) OR isNull({t2}), {_NULL_BOOL}, "
+        f"{t1} > {t2}, if(isNull({u2}), {_NULL_BOOL}, if({t1} < {u2}, true, "
+        f"if(isNull({u1}), {_NULL_BOOL}, false))), "
+        f"{t1} < {t2}, if(isNull({u1}), {_NULL_BOOL}, if({t2} < {u1}, true, "
+        f"if(isNull({u2}), {_NULL_BOOL}, false))), "
+        f"if(isNull({u1}) OR isNull({u2}), {_NULL_BOOL}, true))"
+    )
+
+
+def _overlaps(sql: _Sql, kinds: str, read: list[str]) -> str:
+    """overlaps of two periods, either end of each an interval from its start: that end is the
+    start plus the interval, as PostgreSQL's SQL function computes it."""
+    clock = kinds[0] == "T"
+    moved = _time_moved(False) if clock else _shifted("overlaps", False)
+
+    def value(micros: str) -> str:
+        if micros == "NULL":
+            return _NULL_TIME if clock else _NULL_STAMP
+        if clock:
+            return _time_of(micros)
+        return f"fromUnixTimestamp64Micro(toInt64({micros}), 'UTC')"
+
+    def end(start: str, kind: str, given: str) -> str:
+        return moved(sql, start, given) if kind == "i" else value(given)
+
+    ends = [
+        value(read[0]),
+        end(read[0], kinds[1], read[1]),
+        value(read[2]),
+        end(read[2], kinds[3], read[3]),
+    ]
+    return sql.let(ends, _overlapped)
+
+
+# --- an interval times or divided by a number ---------------------------------------------------
+
+#: A float8 literal's text, as ClickHouse's Float64 reads it: a special value by its name.
+_SPECIAL_FLOATS = {
+    "nan": "nan",
+    "infinity": "inf",
+    "+infinity": "inf",
+    "inf": "inf",
+    "+inf": "inf",
+    "-infinity": "-inf",
+    "-inf": "-inf",
+}
+#: The numeric types a factor's literal may be cast to: its double's value is the literal's.
+_DOUBLES = frozenset({"double precision", "float", "float8", "double", "numeric", "decimal"})
+_INTEGERS = frozenset({"integer", "int", "int4", "bigint", "int8", "smallint", "int2"})
+_REALS = frozenset({"real", "float4"})
+
+
+def _number_text(node: exp.Expr) -> str | None:
+    """A numeric literal's text, its sign kept (-2.25 is a minus of a literal)."""
+    value = node.unnest()
+    if isinstance(value, exp.Neg):
+        inner = _number_text(value.this)
+        return None if inner is None else ("-" + inner).replace("--", "")
+    if isinstance(value, exp.Literal) and not value.is_string:
+        return value.this
+    return None
+
+
+def _float(text: str) -> str | None:
+    """ClickHouse's Float64 of a float8's input text, as float8in reads it; None for no number."""
+    lowered = text.strip().lower()
+    if lowered in _SPECIAL_FLOATS:
+        return f"toFloat64('{_SPECIAL_FLOATS[lowered]}')"
+    try:
+        float(lowered)
+    except ValueError:
+        return None
+    return f"toFloat64('{lowered}')" if re.fullmatch(r"[+-]?[0-9.e+-]+", lowered) else None
+
+
+def _factor(argument: exp.Expr, untyped: bool) -> str | None:
+    """A factor read here: its Float64 (a numeric literal, one cast to a number, an untyped
+    string where the call takes a float8), "NULL" for a NULL; None for any other value."""
+    value = argument.unnest()
+    if isinstance(value, exp.Null):
+        return "NULL"
+    if isinstance(value, exp.Neg):
+        inner = _factor(value.this, untyped=False)
+        return (
+            None
+            if inner is None or inner == "NULL"
+            else (inner if inner == "NULL" else f"(-{inner})")
+        )
+    if isinstance(value, exp.Cast):
+        said = _said(value)
+        inner = value.this.unnest()
+        if isinstance(inner, exp.Null):
+            return "NULL"
+        text = _number_text(inner) if _string(inner) is None else _string(inner)
+        if text is None or said not in _DOUBLES | _INTEGERS | _REALS:
+            return None
+        if said in _INTEGERS:
+            return (
+                None if not re.fullmatch(r"[+-]?\d+", text.strip()) else f"toFloat64({int(text)})"
+            )
+        read = _float(text)
+        if read is not None and said in _REALS:
+            return f"toFloat64(toFloat32({read}))"
+        return read
+    if untyped and _string(value) is not None:
+        return _float(_string(value) or "")
+    text = _number_text(value)
+    return None if text is None else _float(text)
+
+
+def _fits(value: str, bits: int) -> str:
+    """FLOAT8_FITS_IN_INT32 / _INT64: the double inside the integer's range, NaN not."""
+    low = -(2 ** (bits - 1))
+    return f"({value} >= {float(low)!r} AND {value} < {float(-low)!r})"
+
+
+def _scaled(function: str, divide: bool) -> Callable[[_Sql, list[str]], str]:
+    """interval_mul and interval_div (PostgreSQL 17, timestamp.c), in Float64 as its C does them
+    in doubles: months and days scaled and truncated, their fractions cascaded down (a month's to
+    days at 30, rounded to a microsecond; a day's to seconds at 86400, rounded so), whole days of
+    the seconds carried, then the time scaled with the seconds and rounded half to even (rint).
+    22008 where a field overflows or the factor is NaN; 22012 for a division by zero; an
+    infinite factor's infinite answer (PostgreSQL 17's) has no form here: 0A000."""
+    op = "/" if divide else "*"
+    infinite = (
+        f"{function}() of an infinite factor answers an infinite interval, which has no form on "
+        f"{_CLICKHOUSE}"
+    )
+
+    def form(sql: _Sql, args: list[str]) -> str:
+        held, factor = args
+        if factor == "NULL":
+            return _NULL_HELD
+
+        def body(x: str, f: str) -> str:
+            nan, inf, zero = f"isNaN({f})", f"isInfinite({f})", f"({f} = 0)"
+            sane = f"(NOT {nan} AND NOT {inf}" + (f" AND NOT {zero})" if divide else ")")
+            return sql.let([f"if({sane}, {f}, 1.0)"], lambda g: scaled(x, f, g, sane))
+
+        def scaled(x: str, f: str, g: str, sane: str) -> str:
+            """``g`` the factor where it is a number the arithmetic reads, else 1 (its answer is
+            then a raise): ClickHouse converts a NaN or an infinity to no integer."""
+            m, d, u = (_field(x, i) for i in (1, 2, 3))
+            nan, inf, zero = f"isNaN({f})", f"isInfinite({f})", f"({f} = 0)"
+            rm, rd = f"(toFloat64({m}) {op} {g})", f"(toFloat64({d}) {op} {g})"
+            ok_m, ok_d = _fits(rm, 32), _fits(rd, 32)
+            rm_, rd_ = f"if({ok_m}, {rm}, 0.0)", f"if({ok_d}, {rd}, 0.0)"
+
+            def whole(mm: str, dd: str, fm: str, fd: str) -> str:
+                mrd = f"(roundBankers(({fm} - toFloat64({mm})) * 30 * 1000000.0) / 1000000.0)"
+
+                def remainders(mr: str) -> str:
+                    sr = (
+                        f"(roundBankers(({fd} - toFloat64({dd}) + {mr} - trunc({mr})) * 86400 "
+                        "* 1000000.0) / 1000000.0)"
+                    )
+
+                    def carried(s: str) -> str:
+                        over = f"(abs({s}) >= 86400)"
+                        whole_days = f"toInt64(trunc({s} / 86400))"
+                        days_carry = f"if({over}, {whole_days}, 0)"
+                        s2 = f"if({over}, {s} - toFloat64({whole_days} * 86400), {s})"
+
+                        def last(d2: str, s3: str) -> str:
+                            d3 = f"({d2} + toInt64(trunc({mr})))"
+                            rt = f"roundBankers(toFloat64({u}) {op} {g} + {s3} * 1000000.0)"
+                            ok_t = _fits(rt, 64)
+                            micros = f"toInt128(toInt64(if({ok_t}, {rt}, 0.0)))"
+                            bad = (
+                                f"(NOT {ok_m} OR NOT {ok_d} OR NOT {ok_t} OR "
+                                f"{d2} < {_I32_MIN} OR {d2} > {_I32_MAX} OR "
+                                f"{_outside(mm, d3, micros)})"
+                            )
+                            if divide:
+                                raised = " + ".join(
+                                    (
+                                        _raise("22012", "division by zero", zero),
+                                        _raise("22008", _RANGE, nan),
+                                        _raise("22008", _RANGE, f"({sane} AND {bad})"),
+                                    )
+                                )
+                                zeroed = f"(NOT {sane})"  # by an infinity: a zero interval
+                            else:
+                                raised = " + ".join(
+                                    (
+                                        _raise(
+                                            "22008", _RANGE, f"({nan} OR ({inf} AND {_key(x)} = 0))"
+                                        ),
+                                        _raise("0A000", infinite, f"({inf} AND {_key(x)} != 0)"),
+                                        _raise("22008", _RANGE, f"({sane} AND {bad})"),
+                                    )
+                                )
+                                zeroed = f"(NOT {sane})"
+                            return _fields_raising(
+                                f"if({zeroed}, 0, {mm})",
+                                f"if({zeroed}, 0, {d3})",
+                                f"if({zeroed}, 0, {micros})",
+                                raised,
+                            )
+
+                        return sql.let([f"({dd} + {days_carry})", s2], last)
+
+                    return sql.let([sr], carried)
+
+                return sql.let([mrd], remainders)
+
+            answer = sql.let([f"toInt64(trunc({rm_}))", f"toInt64(trunc({rd_}))", rm_, rd_], whole)
+            return f"if(isNull({m}) OR isNull({f}), {_NULL_HELD}, {answer})"
+
+        return sql.let([held, factor], body)
+
+    return form
+
+
+# --- the rows -----------------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class _Row:
+    """A function of intervals: its PostgreSQL name, its arguments' kinds (i: an interval,
+    t: a timestamp, d: a date, u: a unit's text), what it answers (interval, or another type's
+    ClickHouse value) and its form."""
+
+    names: frozenset[str]
+    kinds: str
+    form: Callable[..., str]
+    interval: bool
+    untyped: bool = False
+    aggregate: bool = False
+
+
+def _make_interval(sql: _Sql, args: list[str]) -> str:
+    """make_interval(years, months, weeks, days, hours, mins, secs) (PostgreSQL 17, timestamp.c):
+    each step checked as its C checks it (pg_mul and pg_add overflow), 22008 where one overflows,
+    the seconds NaN or infinite, or the answer an infinity's fields; the seconds scaled to
+    microseconds and rounded half to even (rint). NULL of any NULL argument."""
+    if "NULL" in args:
+        return _NULL_HELD
+    y, mo, w, d, h, mi = (f"toInt128({a})" for a in args[:6])
+    secs = args[6]
+    year_months, week_days = f"({y} * 12)", f"({w} * 7)"
+    months, days = f"({year_months} + {mo})", f"({week_days} + {d})"
+    scaled = f"(if(isNaN({secs}) OR isInfinite({secs}), 0.0, {secs}) * 1000000.0)"
+    seconds_us = f"toInt128(roundBankers(if({_fits(scaled, 64)}, {scaled}, 0.0)))"
+    hours_us, mins_us = f"({h} * {_HOUR_US})", f"({mi} * {_MINUTE_US})"
+    micros = f"({hours_us} + {mins_us} + {seconds_us})"
+
+    def outside32(v: str) -> str:
+        return f"({v} < {_I32_MIN} OR {v} > {_I32_MAX})"
+
+    def outside64(v: str) -> str:
+        return f"({v} < {_I64_MIN} OR {v} > {_I64_MAX})"
+
+    steps = " OR ".join(
+        [
+            f"isNaN({secs}) OR isInfinite({secs}) OR NOT {_fits(scaled, 64)}",
+            outside32(year_months),
+            outside32(week_days),
+            outside64(hours_us),
+            outside64(mins_us),
+            outside64(f"({hours_us} + {mins_us})"),
+        ]
+    )
+    raised = _raise("22008", _RANGE, steps)
+    checked = _raise("22008", _RANGE, _outside(months, days, micros))
+    return _fields_raising(months, days, micros, f"{raised} + {checked}")
+
+
+def _rows() -> dict[str, _Row]:
+    rows: dict[str, _Row] = {}
+    for name, op in _COMPARISONS.items():
+        rows[f"interval_{name}"] = _Row(
+            frozenset({f"interval_{name}"}), "ii", _compared(op), False, untyped=True
+        )
+    rows["interval_cmp"] = _Row(frozenset({"interval_cmp"}), "ii", _cmp, False, untyped=True)
+    rows["interval_larger"] = _Row(
+        frozenset({"interval_larger"}), "ii", _chosen(">"), True, untyped=True
+    )
+    rows["interval_smaller"] = _Row(
+        frozenset({"interval_smaller"}), "ii", _chosen("<"), True, untyped=True
+    )
+    rows["interval_pl"] = _Row(
+        frozenset({"interval_pl"}), "ii", _arithmetic("+"), True, untyped=True
+    )
+    rows["interval_mi"] = _Row(
+        frozenset({"interval_mi"}), "ii", _arithmetic("-"), True, untyped=True
+    )
+    rows["interval_um"] = _Row(frozenset({"interval_um"}), "i", _negated, True, untyped=True)
+    rows["justify_days"] = _Row(frozenset({"justify_days"}), "i", _justify_days, True, untyped=True)
+    rows["justify_hours"] = _Row(
+        frozenset({"justify_hours"}), "i", _justify_hours, True, untyped=True
+    )
+    rows["justify_interval"] = _Row(
+        frozenset({"justify_interval"}), "i", _justify_interval, True, untyped=True
+    )
+    rows["isfinite"] = _Row(frozenset({"isfinite"}), "i", _isfinite, False)
+    rows["extract"] = _Row(frozenset({"extract"}), "ui", _part(True), False)
+    rows["date_part"] = _Row(frozenset({"date_part"}), "ui", _part(False), False)
+    rows["max"] = _Row(frozenset({"max"}), "i", _extreme("max", "Max"), True, aggregate=True)
+    rows["min"] = _Row(frozenset({"min"}), "i", _extreme("min", "Min"), True, aggregate=True)
+    rows["sum"] = _Row(frozenset({"sum"}), "i", _sum, True, aggregate=True)
+    rows["interval_mul"] = _Row(
+        frozenset({"interval_mul"}), "if", _scaled("interval_mul", False), True, untyped=True
+    )
+    rows["mul_d_interval"] = _Row(
+        frozenset({"mul_d_interval"}), "fi", _scaled("mul_d_interval", False), True, untyped=True
+    )
+    rows["interval_div"] = _Row(
+        frozenset({"interval_div"}), "if", _scaled("interval_div", True), True, untyped=True
+    )
+    for function, kinds, negate in (
+        ("timestamp_pl_interval", "ti", False),
+        ("timestamp_mi_interval", "ti", True),
+        ("interval_pl_timestamp", "it", False),
+        ("date_pl_interval", "di", False),
+        ("date_mi_interval", "di", True),
+        ("interval_pl_date", "id", False),
+    ):
+        rows[function] = _Row(
+            frozenset({function}), kinds, _shifted(function, negate), False, untyped=True
+        )
+    for function, kinds, negate in (
+        ("time_pl_interval", "Ti", False),
+        ("time_mi_interval", "Ti", True),
+        ("interval_pl_time", "iT", False),
+    ):
+        rows[function] = _Row(
+            frozenset({function}), kinds, _time_moved(negate), False, untyped=True
+        )
+    rows["overlaps_timestamp"] = _Row(
+        frozenset({"overlaps_timestamp", "overlaps"}), "????", _overlaps, False
+    )
+    rows["interval"] = _Row(frozenset({"interval"}), "T", _time_interval, True)
+    rows["time_mi_time"] = _Row(frozenset({"time_mi_time"}), "TT", _time_mi_time, True)
+    rows["time"] = _Row(frozenset({"time"}), "i", _interval_time, False)
+    rows["make_interval"] = _Row(frozenset({"make_interval"}), "fffffff", _make_interval, True)
+    return rows
+
+
+_ROWS = _rows()
+_NAMES = frozenset(_ROWS)
+#: The rows whose answer is a time of day (held as polyfill.clocks holds one).
+_TIME_ANSWERS = frozenset({"time_pl_interval", "time_mi_interval", "interval_pl_time", "time"})
+
+#: PostgreSQL's operators of intervals, by sqlglot's node: the row each is, by its operands'
+#: kinds (unary minus has one).
+_OPERATORS: dict[type[exp.Expr], dict[str, str]] = {
+    exp.EQ: {"ii": "interval_eq"},
+    exp.NEQ: {"ii": "interval_ne"},
+    exp.LT: {"ii": "interval_lt"},
+    exp.LTE: {"ii": "interval_le"},
+    exp.GT: {"ii": "interval_gt"},
+    exp.GTE: {"ii": "interval_ge"},
+    exp.Add: {
+        "ii": "interval_pl",
+        "ti": "timestamp_pl_interval",
+        "it": "interval_pl_timestamp",
+        "di": "date_pl_interval",
+        "id": "interval_pl_date",
+        "Ti": "time_pl_interval",
+        "iT": "interval_pl_time",
+    },
+    exp.Sub: {
+        "ii": "interval_mi",
+        "ti": "timestamp_mi_interval",
+        "di": "date_mi_interval",
+        "Ti": "time_mi_interval",
+        "TT": "time_mi_time",
+    },
+    exp.Neg: {"i": "interval_um"},
+    exp.Mul: {"if": "interval_mul", "fi": "mul_d_interval"},
+    exp.Div: {"if": "interval_div"},
+}
+
+
+def _kind(argument: exp.Expr) -> str | None:
+    """An operand's kind, as the statement says it: i, t or d; None for any other."""
+    value = argument.unnest()
+    if value.meta.get(HELD):
+        return "i"
+    said = _said(value)
+    if said == "interval" or isinstance(value, exp.Interval):
+        return "i"
+    if isinstance(value, exp.Column) and _held_column(value):
+        return "i"
+    if said in _KIND_TYPES["time"]:
+        return "T"
+    if _factor(value, untyped=False) is not None and not isinstance(value, exp.Null):
+        return "f"
+    if said in _KIND_TYPES["timestamp"]:
+        return "t"
+    if said == "date":
+        return "d"
+    call = trino.called(value)
+    if call is not None:
+        named = call[0] & _NAMES
+        if named and _ROWS[next(iter(named))].interval:
+            return "i"
+    if type(value) in _OPERATORS:
+        operands = _operands(value)
+        if operands is not None and _OPERATORS[type(value)].get(operands[0]) in _INTERVAL_ROWS:
+            return "i"
+    return None
+
+
+_INTERVAL_ROWS = frozenset(name for name, row in _ROWS.items() if row.interval)
+
+
+def _operands(node: exp.Expr) -> tuple[str, list[exp.Expr]] | None:
+    args = [node.this] if isinstance(node, exp.Neg) else [node.this, node.expression]
+    kinds = [_kind(a) for a in args]
+    if None in kinds:
+        return None
+    return "".join(k for k in kinds if k is not None), args
+
+
+def _mentions_interval(node: exp.Expr) -> bool:
+    """Whether ``node`` may hold an interval: a type of interval, a value a row here wrote, a call
+    of a row here, or a column of a VALUES list of intervals. Read before any operand's type,
+    which is costly to read of a deep expression (function_types reads every call it holds)."""
+    for inner in node.walk():
+        if inner.meta.get(HELD):
+            return True
+        if isinstance(inner, exp.DataType) and inner.this in _INTERVAL_OR_CLOCK:
+            return True  # a time less a time is an interval (time_mi_time)
+        if isinstance(inner, (exp.Interval, exp.MakeInterval)):
+            return True
+        if isinstance(inner, exp.Anonymous) and inner.name.lower() in _NAMES - _SHARED:
+            return True
+        if isinstance(inner, exp.Column) and _interval_column(inner):
+            return True
+    return False
+
+
+_INTERVAL_OR_CLOCK = frozenset({exp.DataType.Type.INTERVAL, exp.DataType.Type.TIME})
+#: The names of rows here that other types' calls have too: a call of one says no interval.
+_SHARED = frozenset(
+    {"max", "min", "sum", "extract", "date_part", "isfinite", "time", "overlaps_timestamp"}
+)
+#: The rows of a type's own name, each of one overload: a call of another is another row's.
+_CASTS = frozenset({"interval", "time"})
+
+
+def _interval_column(column: exp.Column) -> bool:
+    """Whether ``column`` is one of a VALUES list whose cells are intervals (cast, or written)."""
+    select = column.find_ancestor(exp.Select)
+    source = select.args.get("from_") if select is not None else None
+    values = source.this if source is not None else None
+    if not isinstance(values, exp.Values) or values.args.get("alias") is None:
+        return False
+    names = [c.name for c in values.args["alias"].columns]
+    if column.name not in names:
+        return False
+    index = names.index(column.name)
+    for row in values.expressions:
+        cell = row.expressions[index].unnest()
+        if cell.meta.get(HELD) or (
+            isinstance(cell, exp.Cast) and cell.to.this == exp.DataType.Type.INTERVAL
+        ):
+            return True
+    return False
+
+
+def _may_be(node: exp.Expr, name: str) -> bool:
+    """Whether ``node`` may be a call of the row ``name``: its operator is one of that row's, or
+    it calls that name. Read before _mentions_interval, which walks the node's every descendant:
+    every row asks of every node, so a deep form (range_agg's on ClickHouse) is read once a row,
+    not once a row and a node, for each of its operators."""
+    operators = _OPERATORS.get(type(node))
+    if operators is not None:
+        if name == "time_mi_time":
+            # a time less a time: both operands say time, read without a walk (no interval in it)
+            return all(_said(o.unnest()) in _KIND_TYPES["time"] for o in node.iter_expressions())
+        return name in operators.values()
+    call = trino.called(node)
+    return call is not None and name in call[0]
+
+
+def _call(node: exp.Expr, name: str | None = None) -> tuple[str, _Row, list[exp.Expr]] | None:
+    """The row ``node`` is a call of, by its name or its operator, and its arguments; with
+    ``name``, None for a call of any other row."""
+    if name is not None and not _may_be(node, name):
+        return None
+    if not _mentions_interval(node):
+        return None
+    if type(node) in _OPERATORS:
+        operands = _operands(node)
+        if operands is None:
+            return None
+        name = _OPERATORS[type(node)].get(operands[0])
+        return None if name is None else (name, _ROWS[name], operands[1])
+    call = trino.called(node)
+    if call is None:
+        return None
+    named = call[0] & _NAMES
+    if not named:
+        return None
+    name = next(iter(named))
+    row = _ROWS[name]
+    args = call[1]
+    if len(args) != len(row.kinds):
+        return None
+    return name, row, args
+
+
+def _written(node: exp.Expr, sql: _Sql) -> str | None:
+    """The ClickHouse SQL of ``node``, a call of a row here, its arguments read; None where the row
+    does not read them. An interval answer is the held tuple."""
+    found = _call(node)
+    if found is None:
+        return None
+    name, row, args = found
+    if row.aggregate and not _plain_aggregate(node):
+        return None
+    if (name == "isfinite" or row.aggregate) and _said_kinds(args) != "i":
+        return None  # max, min, sum and isfinite of another type are other rows'
+    if name in _CASTS and _said_kinds(args) != row.kinds:
+        return None  # interval(interval, integer), time(timestamp): other overloads
+    if name == "overlaps_timestamp":
+        return _overlaps_written(sql, args)
+    read: list[str] = []
+    unit: str | None = None
+    for kind, argument in zip(row.kinds, args):
+        if kind == "i":
+            value = _interval(argument, sql, untyped=row.untyped)
+            if value is None and name not in _SHARED and isinstance(argument.unnest(), exp.Column):
+                # a table's column: ClickHouse holds no interval of it to read (and the call's
+                # name says the column is one, which no other row answers)
+                raise _refused_literal(f"{name}() of a table's interval column", _CLICKHOUSE)
+        elif kind == "u":
+            text = _unit(argument)
+            if text is False:
+                return None
+            unit = text if isinstance(text, str) else None
+            continue
+        elif kind == "f":
+            value = _factor(argument, row.untyped)
+        elif kind == "T":
+            value = _clock(argument, row.untyped)
+        else:
+            value = _instant(argument, "timestamp" if kind == "t" else "date", row.untyped)
+        if value is None:
+            return None
+        read.append(value)
+    if row.kinds == "ui":
+        return row.form(sql, read, unit)
+    if row.kinds in ("ti", "di", "Ti"):
+        return row.form(sql, read[0], read[1])
+    if row.kinds in ("it", "id", "iT"):
+        return row.form(sql, read[1], read[0])
+    if row.kinds == "fi":
+        return row.form(sql, [read[1], read[0]])
+    return row.form(sql, read)
+
+
+def _period_kind(argument: exp.Expr) -> str:
+    """An end of a period's kind, by the type the statement says of it (a NULL's too)."""
+    said = _said(argument.unnest())
+    if said == "interval":
+        return "i"
+    if said in _KIND_TYPES["timestamp"]:
+        return "t"
+    if said in _KIND_TYPES["time"]:
+        return "T"
+    return "?"
+
+
+def _overlaps_written(sql: _Sql, args: list[exp.Expr]) -> str | None:
+    """overlaps of an interval, its arguments read: None for overlaps of four timestamps or four
+    times, which are other rows', and for an argument no row here reads."""
+    kinds = "".join(_period_kind(a) for a in args)
+    if kinds not in _OVERLAPS_KINDS:
+        return None
+    read: list[str] = []
+    for kind, argument in zip(kinds, args):
+        if kind == "i":
+            value = _interval(argument, sql)
+        elif kind == "T":
+            value = _clock(argument, untyped=False)
+        else:
+            value = _instant(argument, "timestamp", untyped=False)
+        if value is None:
+            return None
+        read.append(value)
+    return _overlaps(sql, kinds, read)
+
+
+def _said_kinds(args: list[exp.Expr]) -> str:
+    return "".join(_kind(a) or "?" for a in args)
+
+
+def _plain_aggregate(node: exp.Expr) -> bool:
+    """An aggregate of its rows: no window, no DISTINCT, no FILTER, which this row does not read."""
+    if isinstance(node.parent, (exp.Window, exp.Filter)):
+        return False
+    return not any(isinstance(a, exp.Distinct) for a in node.iter_expressions())
+
+
+def _unit(argument: exp.Expr) -> str | None | bool:
+    """extract's and date_part's unit: a literal's text, None for a NULL, False for one a row
+    computes (refused by name)."""
+    value = argument.unnest()
+    if isinstance(value, exp.Cast):
+        value = value.this.unnest()
+    if isinstance(value, exp.Null):
+        return None
+    text = _string(value)
+    if text is None and isinstance(value, exp.Var):
+        text = value.name  # extract(year from x): its unit a keyword
+    return False if text is None else text
+
+
+def _answered_as_text(node: exp.Expr) -> bool | None:
+    """Where an interval answer goes: True to the client (the select list), False to another row
+    here, None anywhere else (the call is refused by name)."""
+    parent = node.parent
+    while isinstance(parent, exp.Paren):
+        parent = parent.parent
+    if isinstance(parent, exp.Alias):
+        parent = parent.parent
+        return True if isinstance(parent, exp.Select) else None
+    if isinstance(parent, exp.Select):
+        return True if node.arg_key == "expressions" or isinstance(node.parent, exp.Paren) else None
+    if parent is None:
+        # a copy of a pattern rule's argument, read by that rule (function_macros._polyfilled):
+        # the walk's first reading (inline's) saw where it stands, and refused it anywhere else
+        return False
+    if type(parent) in _OPERATORS:
+        return False
+    if isinstance(parent, exp.Cast) and _said(parent) in _TEXT_TYPES:
+        return True  # f(..)::text: interval_out's text is the cast's answer
+    call = trino.called(parent)
+    if call is not None and call[0] & _NAMES:
+        return False
+    return None
+
+
+#: The text types a cast of an interval's answer to is that answer's text (interval_out).
+_TEXT_TYPES = frozenset({"text", "varchar", "character varying"})
+
+
+def _rewrite(name: str) -> Callable[[exp.Expr, str], exp.Expr | None]:
+    """The rewrite of the row ``name``: a call of it (or of its operator) held as
+    Tuple(months, days, microseconds), in PostgreSQL's arithmetic."""
+
+    def rewrite(node: exp.Expr, dialect: str) -> exp.Expr | None:
+        if dialect != _CLICKHOUSE or (type(node) not in _OPERATORS and trino.called(node) is None):
+            return None
+        found = _call(node, name)
+        if found is None or found[0] != name:
+            return None
+        sql = _Sql()
+        text = _written(node, sql)
+        if text is None:
+            return None
+        shown = _answered_as_text(node) if found[1].interval else False
+        if shown is None and type(node) in _OPERATORS:
+            # an operator names no function, so no older refusal reads it (engine_refusals): its
+            # interval would reach ClickHouse as a type it has none of
+            raise Refused(Refusal("0A000", f"{name}() has no form on {_CLICKHOUSE}"), ruling=True)
+        if shown is None:
+            return None
+        tree = sql.parsed(sql.text(text) if shown else text)
+        if found[1].interval and not shown:
+            tree.meta[HELD] = True
+        if found[0] in _TIME_ANSWERS:
+            tree.meta[clocks.HELD] = True  # shown as its text where it reaches the client
+        return tree
+
+    rewrite.__doc__ = f"{name} of intervals held as Tuple(months, days, microseconds)."
+    rewrite.__qualname__ = rewrite.__name__ = f"{name}_of_intervals"
+    return rewrite
+
+
+#: What a statement a row may rewrite holds where it names no function: an interval's operator.
+_MENTIONS = r"\binterval\b"
+
+_HELD_STATED = (
+    "Held as Tuple(months Int32, days Int32, microseconds Int64), PostgreSQL's own fields: exact. "
+    "A literal is read as PostgreSQL's interval input reads it (IntervalStyle postgres): amounts "
+    "and their units, a clock, signs, fractions, '@' and 'ago'. ISO 8601 and SQL standard input, "
+    "a bare number, infinity, and a value whose type no statement says (a table's column) are "
+    "refused by name."
+)
+_TEXT_STATED = (
+    " An interval answer in the select list is interval_out's text (IntervalStyle postgres); one "
+    "anywhere else but another interval call is refused by name."
+)
+_RANGE_STATED = " A field that overflows raises 22008 (interval out of range), as PostgreSQL does."
+
+
+@dataclass(frozen=True)
+class _Doc:
+    feature: str
+    summary: str
+    stated: str = ""
+
+
+_DOCS: dict[str, _Doc] = {
+    "interval_eq": _Doc("interval_eq(interval, interval)", "Whether two intervals are equal (=)."),
+    "interval_ne": _Doc("interval_ne(interval, interval)", "Whether two intervals differ (<>)."),
+    "interval_lt": _Doc("interval_lt(interval, interval)", "Whether an interval is less (<)."),
+    "interval_le": _Doc("interval_le(interval, interval)", "Whether an interval is not more (<=)."),
+    "interval_gt": _Doc("interval_gt(interval, interval)", "Whether an interval is more (>)."),
+    "interval_ge": _Doc("interval_ge(interval, interval)", "Whether an interval is not less (>=)."),
+    "interval_cmp": _Doc(
+        "interval_cmp(interval, interval)", "btree's comparison of two intervals."
+    ),
+    "interval_larger": _Doc(
+        "interval_larger(interval, interval)", "The larger of two intervals.", _TEXT_STATED
+    ),
+    "interval_smaller": _Doc(
+        "interval_smaller(interval, interval)", "The smaller of two intervals.", _TEXT_STATED
+    ),
+    "interval_pl": _Doc(
+        "interval_pl(interval, interval)",
+        "The sum of two intervals (+).",
+        _TEXT_STATED + _RANGE_STATED,
+    ),
+    "interval_mi": _Doc(
+        "interval_mi(interval, interval)",
+        "The difference of two intervals (-).",
+        _TEXT_STATED + _RANGE_STATED,
+    ),
+    "interval_um": _Doc(
+        "interval_um(interval)", "An interval negated (unary -).", _TEXT_STATED + _RANGE_STATED
+    ),
+    "justify_days": _Doc(
+        "justify_days(interval)",
+        "An interval with each 30 days as a month.",
+        _TEXT_STATED + _RANGE_STATED,
+    ),
+    "justify_hours": _Doc(
+        "justify_hours(interval)",
+        "An interval with each 24 hours as a day.",
+        _TEXT_STATED + _RANGE_STATED,
+    ),
+    "justify_interval": _Doc(
+        "justify_interval(interval)",
+        "An interval justified by days and hours, its signs one.",
+        _TEXT_STATED + _RANGE_STATED,
+    ),
+    "isfinite": _Doc(
+        "isfinite(interval)",
+        "Whether an interval is finite.",
+        " No interval held here is infinite: an infinity's literal is refused by name.",
+    ),
+    "extract": _Doc(
+        "extract(text, interval)",
+        "A part of an interval, as a numeric.",
+        " The unit is read as the statement writes it, a literal or a NULL; one a row computes is "
+        "refused by name. A unit an interval has no part of raises 0A000, and one PostgreSQL does "
+        "not know 22023, as PostgreSQL's do.",
+    ),
+    "date_part": _Doc(
+        "date_part(text, interval)",
+        "A part of an interval, as a double precision.",
+        " The unit is read as the statement writes it, a literal or a NULL; one a row computes is "
+        "refused by name. A unit an interval has no part of raises 0A000, and one PostgreSQL does "
+        "not know 22023, as PostgreSQL's do.",
+    ),
+    "max": _Doc(
+        "max(interval)",
+        "The largest of a group's intervals.",
+        _TEXT_STATED + " PostgreSQL answers the last of intervals that are equal but written "
+        "apart ('1 mon' and '30 days'), in its scan's order, which ClickHouse does not keep: such "
+        "a tie for the largest raises 0A000. A window, DISTINCT or FILTER is refused by name.",
+    ),
+    "min": _Doc(
+        "min(interval)",
+        "The smallest of a group's intervals.",
+        _TEXT_STATED + " PostgreSQL answers the last of intervals that are equal but written "
+        "apart, in its scan's order, which ClickHouse does not keep: such a tie for the smallest "
+        "raises 0A000. A window, DISTINCT or FILTER is refused by name.",
+    ),
+    "sum": _Doc(
+        "sum(interval)",
+        "The sum of a group's intervals.",
+        _TEXT_STATED + " A total past a field raises 22008 (interval out of range). PostgreSQL "
+        "raises it where a running total overflows, which depends on its scan's order: where the "
+        "rows of one sign alone reach a field's end and the total does not, 0A000 is raised. A "
+        "window, DISTINCT or FILTER is refused by name.",
+    ),
+}
+_SCALED_STATED = (
+    _TEXT_STATED
+    + " PostgreSQL 17's arithmetic, in Float64 as its C does it in doubles: months and "
+    "days scaled and truncated, their fractions cascaded down (a month at 30 days, a day at 86400 "
+    "seconds, each rounded to a microsecond), then the time rounded half to even. The factor is "
+    "read as the statement writes it: a number, a NULL, or one cast to a number; one a row "
+    "computes is refused by name. A field that overflows, or a NaN factor, raises 22008, and a "
+    "division by zero 22012, as PostgreSQL's do; an infinite factor's infinite answer is refused "
+    "(0A000), and a division by an infinite one answers a zero interval, as PostgreSQL 17's does."
+)
+_DOCS["interval_mul"] = _Doc(
+    "interval_mul(interval, double precision)", "An interval times a number (*).", _SCALED_STATED
+)
+_DOCS["mul_d_interval"] = _Doc(
+    "mul_d_interval(double precision, interval)", "A number times an interval (*).", _SCALED_STATED
+)
+_DOCS["make_interval"] = _Doc(
+    "make_interval(integer, integer, integer, integer, integer, integer, double precision)",
+    "An interval of years, months, weeks, days, hours, minutes and seconds.",
+    " Of its seven arguments written, each a number literal or a NULL; any other is refused by "
+    "name." + _TEXT_STATED + _RANGE_STATED,
+)
+_DOCS["interval_div"] = _Doc(
+    "interval_div(interval, double precision)",
+    "An interval divided by a number (/).",
+    _SCALED_STATED,
+)
+_SHIFT_STATED = (
+    " The {} is read as a literal in ISO form or a NULL; any other is refused by name. The answer "
+    "is held as DateTime64(6, 'UTC'): an answer, or the step of it after the months or after the "
+    f"days, outside {instants.STAMP_BOUND} raises 0A000 ({{}}() of a value outside "
+    f"{instants.STAMP_BOUND} has no exact form on clickhouse)."
+)
+for _name, _what, _summary in (
+    ("timestamp_pl_interval", "timestamp", "A timestamp plus an interval (+)."),
+    ("timestamp_mi_interval", "timestamp", "A timestamp less an interval (-)."),
+    ("interval_pl_timestamp", "timestamp", "An interval plus a timestamp (+)."),
+    ("date_pl_interval", "date", "A date plus an interval, a timestamp (+)."),
+    ("date_mi_interval", "date", "A date less an interval, a timestamp (-)."),
+    ("interval_pl_date", "date", "An interval plus a date, a timestamp (+)."),
+):
+    _types = ", ".join("interval" if k == "i" else _what for k in _ROWS[_name].kinds)
+    _DOCS[_name] = _Doc(f"{_name}({_types})", _summary, _SHIFT_STATED.format(_what, _name))
+_CLOCK_STATED = (
+    " The time is read as a literal (hours and minutes, seconds, a fraction of up to six digits, "
+    "24:00:00 the last) or a NULL; any other, and a time of a table's column, is refused by name. "
+    "A time answer is held as an Int64 of its microseconds of the day, exact, and shown in the "
+    "select list as time_out's text."
+)
+_MOVED_STATED = (
+    _CLOCK_STATED + " The interval's microseconds are added in int64 as PostgreSQL's C adds them, "
+    "then brought into the day; its months and days are not read, as PostgreSQL does not read them."
+)
+_DOCS["time_pl_interval"] = _Doc(
+    "time_pl_interval(time, interval)", "A time of day plus an interval (+).", _MOVED_STATED
+)
+_DOCS["time_mi_interval"] = _Doc(
+    "time_mi_interval(time, interval)", "A time of day less an interval (-).", _MOVED_STATED
+)
+_DOCS["interval_pl_time"] = _Doc(
+    "interval_pl_time(interval, time)", "An interval plus a time of day (+).", _MOVED_STATED
+)
+_DOCS["time_mi_time"] = _Doc(
+    "time_mi_time(time, time)",
+    "A time of day less a time of day, an interval (-).",
+    " Each time is read as a literal (hours and minutes, seconds, a fraction of up to six digits, "
+    "24:00:00 the last) or a NULL; any other, and a time of a table's column, is refused by name. "
+    "The answer is the difference of their microseconds, no months and no days.",
+)
+_DOCS["overlaps_timestamp"] = _Doc(
+    "overlaps(timestamp, interval, timestamp, interval)",
+    "Whether two periods overlap, an end of either given as an interval from its start: "
+    "overlaps(timestamp, interval, timestamp, interval), (timestamp, interval, timestamp, "
+    "timestamp), (timestamp, timestamp, timestamp, interval), the same of times of day, and "
+    "overlaps of four times of day (overlaps_time).",
+    " Each end given as an interval is its start plus the interval, as PostgreSQL's SQL function "
+    "computes it: a timestamp's as timestamp_pl_interval's row writes it (a literal in ISO form "
+    "or a NULL; the answer, or a step of it, outside "
+    f"{instants.STAMP_BOUND} raises 0A000), a time's as time_pl_interval's."
+    + _CLOCK_STATED
+    + " Then timestamp.c's comparisons, with its NULLs.",
+)
+_DOCS["interval"] = _Doc(
+    "interval(time)",
+    "The interval of a time of day: its microseconds, no months and no days.",
+    _TEXT_STATED + _CLOCK_STATED,
+)
+_DOCS["time"] = _Doc(
+    "time(interval)",
+    "The time of day of an interval: its microseconds brought into the day.",
+    _CLOCK_STATED + " The interval's months and days are not read, as PostgreSQL does not read "
+    "them.",
+)
+
+
+# --- an interval's literal where no call reads it -------------------------------------------------
+
+#: The row of a literal of interval: a string cast to interval, sqlglot's INTERVAL 'n' UNIT, or a
+#: NULL cast to interval.
+LITERAL = "interval literal"
+_TRINO_DIALECTS = ("trino", "presto", "athena")
+
+
+def _literal_fields(node: exp.Expr) -> tuple[int, int, int] | str | None:
+    """The fields of a literal of interval ``node``; "null" for a NULL; the text read for a
+    literal of no form read here (refused by name); None for a node that is no such literal."""
+    if isinstance(node, exp.Interval):
+        read = keyword_read(node)
+        return read if read is not None else node.sql(dialect="postgres")
+    if not isinstance(node, exp.Cast) or node.to.this != exp.DataType.Type.INTERVAL:
+        return None
+    inner = node.this.unnest()
+    if isinstance(inner, exp.Null):
+        return "null"
+    text = _string(inner)
+    if text is None:
+        return None
+    read = interval_read(text)
+    return read if read is not None else text
+
+
+def _standing(node: exp.Expr) -> str | None:
+    """Where a value stands: "shown" in the select list (or cast to text there), "read" as an
+    argument of a call (the call reads it, or refuses it, as its own), "operand" of an interval's
+    operator (on ClickHouse its row's), "cell" in a VALUES list, None anywhere else (a predicate, a
+    CASE, an ORDER BY)."""
+    child, parent = node, node.parent
+    while isinstance(parent, (exp.Paren, exp.Alias)):
+        child, parent = parent, parent.parent
+    if parent is None:
+        return "read"  # a copy of a pattern rule's argument, which that rule reads
+    if isinstance(parent, exp.Select):
+        return "shown" if child.arg_key == "expressions" else None
+    if isinstance(parent, exp.Cast):
+        return "shown" if _said(parent) in _TEXT_TYPES else None
+    if isinstance(parent, exp.Tuple) and isinstance(parent.parent, exp.Values):
+        return "cell"
+    if type(parent) in _OPERATORS:
+        return "operand"
+    if isinstance(parent, (exp.If, exp.Case)):
+        return None  # a branch: CASE's answer is the select list's, and no row reads it
+    if isinstance(parent, exp.Anonymous):
+        return "read"
+    if isinstance(parent, exp.Func) and not isinstance(parent, (exp.Binary, exp.Unary)):
+        return "read"
+    return None
+
+
+def _reading_call(node: exp.Expr) -> str | None:
+    """The name of the call a value ``node`` stands in, as the statement wrote it
+    (``percentile_cont(..) WITHIN GROUP (ORDER BY v)``, ``string_agg(.. ORDER BY v)``); for a cell
+    of a VALUES list, of the first call reading its column; None where no call holds it."""
+    if isinstance(node.parent, exp.Tuple) and isinstance(node.parent.parent, exp.Values):
+        return next(filter(None, map(_reading_call, _cell_columns(node))), None)
+    parent = node.parent
+    while parent is not None and not isinstance(parent, (exp.Select, exp.Values)):
+        if isinstance(parent, exp.WithinGroup):
+            parent = parent.this
+        if isinstance(parent, exp.Anonymous):
+            return parent.name.lower()
+        if isinstance(parent, exp.Func) and not isinstance(parent, (exp.Binary, exp.Unary)):
+            if not isinstance(parent, exp.Cast):
+                written = parent.sql(dialect="postgres").split("(", 1)[0]
+                return written.rsplit(".", 1)[-1].strip('"').lower()
+        parent = parent.parent
+    return None
+
+
+def _refused_value(node: exp.Expr, what: str, dialect: str) -> Refused:
+    """The refusal of an interval value ``node`` no row reads: by the name of the call it stands
+    in, where one holds it; ``what`` it is otherwise."""
+    called = _reading_call(node)
+    if called is not None:
+        return _refused_literal(f"{called}() of an interval", dialect)
+    return _refused_literal(what, dialect)
+
+
+def _cell_columns(node: exp.Expr) -> list[exp.Column]:
+    """The references to the VALUES column of the cell ``node``, outside the VALUES list."""
+    tuple_ = node.find_ancestor(exp.Tuple)
+    values = tuple_.parent if tuple_ is not None else None
+    alias = values.args.get("alias") if isinstance(values, exp.Values) else None
+    select = values.find_ancestor(exp.Select) if values is not None else None
+    if tuple_ is None or alias is None or select is None or not alias.columns:
+        return []
+    at = next(i for i, cell in enumerate(tuple_.expressions) if cell is node or node in cell.walk())
+    name = alias.columns[at].name
+    return [
+        column
+        for column in select.find_all(exp.Column)
+        if column.name == name and column.find_ancestor(exp.Values) is None
+    ]
+
+
+def _cell_readers(node: exp.Expr) -> list[str | None]:
+    """Where each reference to the VALUES column of the cell ``node`` stands."""
+    readers = [
+        "read" if _read_by_a_row(column) else _standing(column) for column in _cell_columns(node)
+    ]
+    return readers or [None]
+
+
+def _refused_literal(what: str, dialect: str) -> Refused:
+    return Refused(Refusal("0A000", f"{what} has no form on {dialect}"), ruling=True)
+
+
+def _literal_rewrite(node: exp.Expr, dialect: str) -> exp.Expr | None:
+    """A literal of interval where no call reads it, on ClickHouse: its text (interval_out,
+    IntervalStyle postgres) in the select list or a VALUES column it alone reads; refused by name
+    anywhere else, or for an input form not read here. A call or an operator reads its own."""
+    if dialect != _CLICKHOUSE or node.meta.get(HELD):
+        return None
+    if isinstance(node, exp.Cast) and _said(node) in _TEXT_TYPES:
+        inner = node.this.unnest()
+        if _literal_fields(inner) is None:
+            return None  # a cast of any other value to text is not this row's
+        node = inner  # '1 day'::interval::text: the literal's text is the cast's answer
+    fields = _literal_fields(node)
+    if fields is None:
+        return None
+    where = _standing(node)
+    if where in ("read", "operand"):
+        return None
+    if where == "cell":
+        readers = _cell_readers(node)
+        if all(r == "read" for r in readers):
+            return None  # the rows read the column (_values_column)
+        where = "shown" if all(r == "shown" for r in readers) else None
+    if isinstance(fields, str) and fields != "null":
+        raise _refused_literal(f"interval input '{fields}'", dialect)
+    if where is None:
+        raise _refused_value(
+            node, "an interval value outside an interval call or the select list", dialect
+        )
+    if fields == "null":
+        return exp.cast(exp.null(), exp.DataType.build("Nullable(String)", dialect=_CLICKHOUSE))
+    return exp.Literal.string(interval_text(*fields))
+
+
+def _trino_rewrite(node: exp.Expr, dialect: str) -> exp.Expr | None:
+    """A literal of interval on Trino where no call reads it. Trino has no type named interval,
+    holds months and days in two interval types, and a day and its time as one count of
+    milliseconds, so an interval it answers may be written otherwise than PostgreSQL's
+    ('25:00:00' is its 1 day 01:00:00). Only a timestamp plus or minus the literal is written
+    (a date's answers a date on Trino, a timestamp in PostgreSQL), as Trino's INTERVAL 'n' UNIT (the answer is a timestamp, the same): a value of months
+    alone, or of days and whole seconds. Anywhere else, and for any other value, the literal is
+    refused by name. A NULL is a NULL of Trino's day to second; a literal a call reads is the
+    call's, as before."""
+    if dialect not in _TRINO_DIALECTS or not isinstance(node, exp.Cast):
+        return None
+    fields = _literal_fields(node)
+    where = _standing(node)
+    if fields is None or where == "read":
+        return None
+    if fields == "null":  # Trino has no type named interval: a NULL of its day to second
+        return exp.cast(exp.null(), exp.DataType.build("INTERVAL DAY TO SECOND", dialect="trino"))
+    if isinstance(fields, str):
+        raise _refused_literal(f"interval input '{fields}'", dialect)
+    months, days, micros = fields
+    text = interval_text(*fields)
+    if not _shifts_an_instant(node):
+        raise _refused_value(
+            node, f"interval '{text}' anywhere but a timestamp's plus or minus", dialect
+        )
+    if days == 0 and micros == 0:
+        return exp.Interval(this=exp.Literal.string(str(months)), unit=exp.Var(this="MONTH"))
+    if months == 0 and micros == 0:
+        return exp.Interval(this=exp.Literal.string(str(days)), unit=exp.Var(this="DAY"))
+    if months == 0 and micros % _SECOND_US == 0:
+        seconds = days * 86400 + micros // _SECOND_US
+        return exp.Interval(this=exp.Literal.string(str(seconds)), unit=exp.Var(this="SECOND"))
+    raise _refused_literal(f"interval '{text}', which no one interval of Trino holds", dialect)
+
+
+def _shifts_an_instant(node: exp.Expr) -> bool:
+    """Whether ``node`` is the interval a timestamp is moved by: an operand of + with a timestamp,
+    or the right one of - from one. Not a date's: Trino answers a date, PostgreSQL a timestamp."""
+    child, parent = node, node.parent
+    while isinstance(parent, exp.Paren):
+        child, parent = parent, parent.parent
+    if not isinstance(parent, (exp.Add, exp.Sub)):
+        return False
+    other = parent.expression if child is parent.this else parent.this
+    if isinstance(parent, exp.Sub) and child is not parent.expression:
+        return False
+    return _kind(other) == "t"
+
+
+_LITERAL_STATED = (
+    " A literal of interval where no call reads it (`'1 day 02:03'::interval`, "
+    "`interval '1 day 02:03'`) is its text (interval_out, IntervalStyle postgres) in the select "
+    "list, or in a VALUES column read only there; anywhere else it is refused by name, as is an "
+    "input form not read here."
+)
+_TRINO_LITERAL_STATED = (
+    "A literal of interval where no call reads it is written only where a timestamp is moved by "
+    "it (+, -), as Trino's INTERVAL 'n' UNIT: a value of months alone, or of days and "
+    "whole seconds. Anywhere else, or of any other value, it is refused by name: Trino holds "
+    "months and days in two interval types, and a day and its time as one count of milliseconds, "
+    "which it writes otherwise than PostgreSQL."
+)
+
+
+def _duckdb_rewrite(node: exp.Expr, dialect: str) -> exp.Expr | None:
+    """A string cast to interval on DuckDB, wherever it stands. DuckDB's own interval input reads
+    whole amounts of the common units and one clock as PostgreSQL does (interval_input.
+    duckdb_reads_alike), and those are kept as written. It rounds a fraction of a microsecond
+    otherwise, fails on '+3 hours' and '1 day 02:03 ago', and answers '1 day 1 day' and
+    '1 quarter', which PostgreSQL refuses: any other text read here is sent as its three fields'
+    text, which DuckDB reads exactly. A bare whole number (seconds) is DuckDB's own reading, which
+    is PostgreSQL's; any other text not read here is refused by name: DuckDB fails on ISO 8601 and
+    the SQL standard's forms, and answers what PostgreSQL refuses for a unit given twice."""
+    if dialect != "duckdb" or not isinstance(node, exp.Cast):
+        return None
+    fields = _literal_fields(node)
+    if fields is None or fields == "null":
+        return None
+    text = node.this.unnest().name
+    if duckdb_reads_alike(text) or text == (
+        canonical(*fields) if isinstance(fields, tuple) else None
+    ):
+        return None
+    if not isinstance(fields, tuple):
+        if _BARE_SECONDS.fullmatch(fields) and not rejected(fields):
+            return None  # a whole number of seconds: DuckDB's own reading is PostgreSQL's
+        raise _refused_literal(f"interval input '{fields}'", dialect)
+    return exp.Cast(this=exp.Literal.string(canonical(*fields)), to=node.to.copy())
+
+
+#: A bare whole number, an interval's seconds in PostgreSQL's input and DuckDB's alike.
+_BARE_SECONDS = re.compile(r"\s*[+-]?\d+\s*", re.ASCII)
+
+_DUCKDB_LITERAL_STATED = (
+    "A string cast to interval is read as PostgreSQL's interval input reads it (IntervalStyle "
+    "postgres). Whole amounts of year, month, week, day, hour, minute and second and one clock "
+    "are sent as written, which DuckDB reads alike; any other text is sent as the text of its "
+    "three fields, which DuckDB reads exactly. A bare whole number of seconds is DuckDB's own "
+    "reading, which is PostgreSQL's; any other text not read here (ISO 8601, the SQL standard's, "
+    "infinity, a unit given twice) is refused by name: DuckDB fails on it or answers otherwise."
+)
+
+
+def _literal_feature() -> Feature:
+    forms: dict[str, Rewrite] = {
+        _CLICKHOUSE: Rewrite(_literal_rewrite, mentions=_MENTIONS),
+        "duckdb": Rewrite(_duckdb_rewrite, mentions=_MENTIONS),
+    }
+    forms.update({d: Rewrite(_trino_rewrite, mentions=_MENTIONS) for d in _TRINO_DIALECTS})
+    limitations = {
+        _CLICKHOUSE: (Limitation(_HELD_STATED + _LITERAL_STATED),),
+        "duckdb": (Limitation(_DUCKDB_LITERAL_STATED),),
+        **{d: (Limitation(_TRINO_LITERAL_STATED),) for d in _TRINO_DIALECTS},
+    }
+    return Feature(
+        LITERAL,
+        FAMILY,
+        "A literal of interval where no call reads it.",
+        read=Side(rules=(Rule(None, forms),), limitations=limitations),
+    )
+
+
+def _isfinite_rewrite() -> Callable[[exp.Expr, str], exp.Expr | None]:
+    """isfinite's rewrite: instants' row reads every isfinite by its pattern, so this row's pattern
+    is read first, and a call of no interval is that row's."""
+    of_intervals = _rewrite("isfinite")
+    of_instants = next(
+        rule.forms[_CLICKHOUSE]
+        for feature in instants.FEATURES
+        if feature.name == "isfinite(timestamptz)"
+        for rule in feature.read.rules
+    )
+    assert isinstance(of_instants, Rewrite)
+
+    def rewrite(node: exp.Expr, dialect: str) -> exp.Expr | None:
+        return of_intervals(node, dialect) or of_instants.function(node, dialect)
+
+    rewrite.__doc__ = of_intervals.__doc__
+    rewrite.__qualname__ = rewrite.__name__ = of_intervals.__name__
+    return rewrite
+
+
+def _overlaps_rewrite() -> Callable[[exp.Expr, str], exp.Expr | None]:
+    """overlaps' rewrite: instants' row reads every overlaps by its pattern, so this row's pattern
+    is read first, and a call of no interval is that row's."""
+    of_intervals = _rewrite("overlaps_timestamp")
+    of_instants = next(
+        rule.forms[_CLICKHOUSE]
+        for feature in instants.FEATURES
+        if feature.name == "overlaps(timestamptz)"
+        for rule in feature.read.rules
+    )
+    assert isinstance(of_instants, Rewrite)
+
+    def rewrite(node: exp.Expr, dialect: str) -> exp.Expr | None:
+        return of_intervals(node, dialect) or of_instants.function(node, dialect)
+
+    rewrite.__doc__ = of_intervals.__doc__
+    rewrite.__qualname__ = rewrite.__name__ = of_intervals.__name__
+    return rewrite
+
+
+def _feature(name: str) -> Feature:
+    doc = _DOCS[name]
+    stated = _HELD_STATED + doc.stated
+    if name == "isfinite":
+        forms = {
+            **{d: trino.KEPT for d in DIALECTS if d not in NATIVE},
+            _CLICKHOUSE: Rewrite(_isfinite_rewrite()),
+        }
+        rule = Rule("isfinite($a)", forms, unlisted_keep=True)
+    elif name == "overlaps_timestamp":
+        forms = {
+            **{d: trino.KEPT for d in DIALECTS if d not in NATIVE},
+            _CLICKHOUSE: Rewrite(_overlaps_rewrite()),
+        }
+        rule = Rule("overlaps($a, $b, $c, $d)", forms, unlisted_keep=True)
+    else:
+        mentions = _MENTIONS if name != "time_mi_time" else r"\binterval\b|\btime\b"
+        rule = Rule(None, {_CLICKHOUSE: Rewrite(_rewrite(name), mentions=mentions)})
+    return Feature(
+        doc.feature,
+        FAMILY,
+        doc.summary,
+        read=Side(rules=(rule,), limitations={_CLICKHOUSE: (Limitation(stated),)}),
+    )
+
+
+#: The rows. isfinite's is read before instants' (polyfill.GRID lists this family first).
+FEATURES: tuple[Feature, ...] = (*(_feature(name) for name in _ROWS), _literal_feature())
+
+__all__ = ["FEATURES", "HELD", "LITERAL", "interval_read", "interval_text", "keyword_read"]

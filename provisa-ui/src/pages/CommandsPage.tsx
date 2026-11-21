@@ -12,7 +12,6 @@ import { PageTitle } from "../components/PageTitle";
 import { FunctionRead, WebhookRead } from "./commands/CommandRead";
 import React, { useState, useEffect, useCallback } from "react";
 import { useTranslation } from "react-i18next";
-import { useSearchParams } from "react-router-dom";
 import {
   ActionIcon,
   Alert,
@@ -52,7 +51,13 @@ import type { TableMetadata } from "../api/admin";
 import { fetchOrgRoles } from "../api/admin";
 import type { Role } from "../types/auth";
 import { PanelDelete } from "../components/list/PanelDelete";
+import { PanelDuplicate } from "../components/list/PanelDuplicate";
 import { PanelActions, SplitPane } from "../components/list/SplitPane";
+import {
+  commandId,
+  readCommandId,
+  useRememberedDetail,
+} from "../components/list/useDetailParam";
 import { PanelWorking } from "./sources/PanelWorking";
 import { TagControl } from "../components/TagControl";
 import type { ActionType, FormState } from "./commands/types";
@@ -101,12 +106,25 @@ export function CommandsPage() {
   const [saving, setSaving] = useState(false);
   const [testResult, setTestResult] = useState<{ name: string; data: unknown } | null>(null);
   const [testing, setTesting] = useState<string | null>(null);
-  // `?command=<name>` opens that command's detail -- a lineage edge links to the command it names.
-  const [searchParams] = useSearchParams();
-  const [expandedFn, setExpandedFn] = useState<string | null>(() => searchParams.get("command"));
-  const [expandedWh, setExpandedWh] = useState<string | null>(null);
-  // REQ-2168: the open function's section, the same tab in its read view and its form.
-  const [fnSection, setFnSection] = useState<CommandSection>("command");
+  // REQ-2241: `?command=` is the open command's panel -- a lineage edge links to the command it
+  // names: a function by its name, a webhook as `webhook:<name>` (a function and a webhook may
+  // share a name; commandId).
+  // REQ-2168: `?section=` is the open function's section, the same tab in its read view and form.
+  // REQ-2260: and the one left open is open again on coming back.
+  const detail = useRememberedDetail(
+    "commands",
+    loading
+      ? null
+      : [
+          ...functions.map((f) => commandId("function", f.name)),
+          ...webhooks.map((w) => commandId("webhook", w.name)),
+        ],
+  );
+  const fnSection = (detail.tab ?? "command") as CommandSection;
+  const setFnSection = detail.setTab;
+  const openCommand = (kind: ActionType, name: string | null) =>
+    name === null ? detail.close() : detail.open(commandId(kind, name));
+  const opened = detail.id === null ? null : readCommandId(detail.id);
   const [fnPage, setFnPage] = useState(1);
   const [whPage, setWhPage] = useState(1);
   const PAGE_SIZE = 50;
@@ -158,20 +176,19 @@ export function CommandsPage() {
       .finally(() => setLoadingFunctions(false));
   }, [form.sourceId, form.schemaName, sources, getAvailableFunctions]);
 
-  // `held`: the lists as just read, where the page's own have not caught up yet (a command
-  // opened in edit straight after it was created).
-  const handleEdit = (
+  // The form's values for a command, as its edit form holds them.
+  const formFor = (
     actionType: ActionType,
     name: string,
-    held: { functions: TrackedFunction[]; webhooks: TrackedWebhook[] } = { functions, webhooks },
-  ) => {
+    held: { functions: TrackedFunction[]; webhooks: TrackedWebhook[] },
+  ): FormState | null => {
     if (actionType === "function") {
       const fn = held.functions.find((f) => f.name === name);
-      if (!fn) return;
+      if (!fn) return null;
       // REQ-1159: output is a dataset. A registered table → "table" mode; anything else is an
       // IR-typed column list. Legacy commands carry only return_schema → reverse-project it.
       const outputColumns = fn.outputColumns ?? columnsFromReturnSchema(fn.returnSchema);
-      setForm({
+      return {
         actionType: "function",
         name: fn.name,
         sourceId: fn.sourceId,
@@ -194,43 +211,71 @@ export function CommandsPage() {
         requiresApproval: fn.requiresApproval ?? false, // REQ-1924
         writesTable: fn.writesTable ?? "", // REQ-1924, REQ-871
         outputColumns, // REQ-1159
-        productId: fn.productId ?? "", // REQ-1634
         languageBindings: fn.languageBindings ?? {}, // REQ-2168
-      });
-      setExpandedFn(name);
-    } else {
-      const wh = held.webhooks.find((w) => w.name === name);
-      if (!wh) return;
-      setForm({
-        actionType: "webhook",
-        name: wh.name,
-        sourceId: "",
-        schemaName: "public",
-        functionName: "",
-        returns: wh.returns ?? "",
-        visibleTo: wh.visibleTo.join(", "),
-        domainId: wh.domainId,
-        description: wh.description ?? "",
-        arguments: wh.arguments.length > 0 ? wh.arguments : [],
-        url: wh.url,
-        method: wh.method,
-        timeoutMs: wh.timeoutMs,
-        inlineReturnType: wh.inlineReturnType.length > 0 ? wh.inlineReturnType : [],
-        kind: wh.kind ?? "mutation",
-        returnSchemaMode: "table",
-        implKind: "source_procedure",
-        binding: {},
-        materialize: false,
-        requiresApproval: wh.requiresApproval, // REQ-209
-        writesTable: "",
-        outputColumns: [],
-        productId: "",
-        languageBindings: {},
-      });
-      setExpandedWh(name);
+        exposedAsTable: fn.exposedAsTable ?? null, // REQ-1986
+      };
     }
+    const wh = held.webhooks.find((w) => w.name === name);
+    if (!wh) return null;
+    return {
+      actionType: "webhook",
+      name: wh.name,
+      sourceId: "",
+      schemaName: "public",
+      functionName: "",
+      returns: wh.returns ?? "",
+      visibleTo: wh.visibleTo.join(", "),
+      domainId: wh.domainId,
+      description: wh.description ?? "",
+      arguments: wh.arguments.length > 0 ? wh.arguments : [],
+      url: wh.url,
+      method: wh.method,
+      timeoutMs: wh.timeoutMs,
+      inlineReturnType: wh.inlineReturnType.length > 0 ? wh.inlineReturnType : [],
+      kind: wh.kind ?? "mutation",
+      returnSchemaMode: "table",
+      implKind: "source_procedure",
+      binding: {},
+      materialize: false,
+      requiresApproval: wh.requiresApproval, // REQ-209
+      writesTable: "",
+      outputColumns: [],
+      languageBindings: {},
+      exposedAsTable: null, // REQ-1986: a webhook has no table form
+    };
+  };
+
+  // `held`: the lists as just read, where the page's own have not caught up yet (a command
+  // opened in edit straight after it was created).
+  const handleEdit = (
+    actionType: ActionType,
+    name: string,
+    held: { functions: TrackedFunction[]; webhooks: TrackedWebhook[] } = { functions, webhooks },
+  ) => {
+    const values = formFor(actionType, name, held);
+    if (!values) return;
+    setForm(values);
+    openCommand(actionType, name);
     setEditingName(name);
     setShowForm(false);
+  };
+
+  // "+ Command": the create form, empty whatever command was open or edited before it.
+  const openCreate = () => {
+    setForm({ ...EMPTY_FORM });
+    setEditingName(null);
+    setShowForm(true);
+  };
+
+  // Duplicate: the same create form, filled with the command's definition and language bindings
+  // under a new name. Its grants (who may see it) are not copied. A name that exists is refused
+  // by the create on save.
+  const handleDuplicate = (actionType: ActionType, name: string) => {
+    const values = formFor(actionType, name, { functions, webhooks });
+    if (!values) return;
+    setForm({ ...values, name: `${name}_copy`, visibleTo: "" });
+    setEditingName(null);
+    setShowForm(true);
   };
 
   const handleSave = async (e: React.FormEvent) => {
@@ -273,8 +318,8 @@ export function CommandsPage() {
             materialize: form.materialize,
             requiresApproval: form.requiresApproval, // REQ-1924
             writesTable: isStatement || isTemplate ? undefined : form.writesTable || null, // REQ-1924, REQ-871
-            productId: form.productId || null, // REQ-1634
             languageBindings: form.languageBindings, // REQ-2168
+            exposedAsTable: form.exposedAsTable ?? undefined, // REQ-1986
           },
           editingName, // the open command is updated; a new one is created
         );
@@ -306,8 +351,7 @@ export function CommandsPage() {
       setEditingName(null);
       const held = await load();
       if (created && held) {
-        setExpandedFn(created.type === "function" ? created.name : null);
-        setExpandedWh(created.type === "webhook" ? created.name : null);
+        openCommand(created.type, created.name);
         handleEdit(created.type, created.name, held);
       }
     } catch (e) {
@@ -345,7 +389,6 @@ export function CommandsPage() {
     domainHints,
     availableFunctions,
     loadingFunctions,
-    dataProducts,
     roleOptions: roles.map((r) => ({ id: r.id, label: r.id })),
   };
 
@@ -443,8 +486,10 @@ export function CommandsPage() {
 
   // What the right-hand panel shows: the result of a test run (with a way back to the command),
   // the short step that creates a command, or the selected command -- being edited, or read.
-  const selectedFn = expandedFn ? (functions.find((f) => f.name === expandedFn) ?? null) : null;
-  const selectedWh = expandedWh ? (webhooks.find((w) => w.name === expandedWh) ?? null) : null;
+  const selectedFn =
+    opened?.kind === "function" ? (functions.find((f) => f.name === opened.name) ?? null) : null;
+  const selectedWh =
+    opened?.kind === "webhook" ? (webhooks.find((w) => w.name === opened.name) ?? null) : null;
   // Whom a test run is made as: chosen where the run is started, in the command's own panel.
   const testAs = (
     <Group gap="sm" align="center" mt="sm">
@@ -565,11 +610,9 @@ export function CommandsPage() {
             ) : (
               <FunctionRead
                 fn={fn}
-                productName={
-                  fn.productId
-                    ? (dataProducts.find((dp) => dp.id === fn.productId)?.name ?? fn.productId)
-                    : null
-                }
+                productNames={(fn.productIds ?? []).map(
+                  (id) => dataProducts.find((dp) => dp.id === id)?.name ?? id,
+                )}
               />
             )}
             <PanelActions>
@@ -583,6 +626,11 @@ export function CommandsPage() {
                 >
                   <Pencil size={14} />
                 </ActionIcon>
+                <PanelDuplicate
+                  name={fn.name}
+                  onDuplicate={() => handleDuplicate("function", fn.name)}
+                  testId="command-duplicate-fn"
+                />
                 <Button
                   onClick={(e) => {
                     e.stopPropagation();
@@ -605,7 +653,7 @@ export function CommandsPage() {
                   onDelete={async () => {
                     await deleteFunction(fn.name);
                     await load();
-                    setExpandedFn(null);
+                    detail.close({ only: commandId("function", fn.name) });
                   }}
                 />
               </Group>
@@ -641,6 +689,11 @@ export function CommandsPage() {
                 >
                   <Pencil size={14} />
                 </ActionIcon>
+                <PanelDuplicate
+                  name={wh.name}
+                  onDuplicate={() => handleDuplicate("webhook", wh.name)}
+                  testId="command-duplicate-wh"
+                />
                 <Button
                   onClick={(e) => {
                     e.stopPropagation();
@@ -663,7 +716,7 @@ export function CommandsPage() {
                   onDelete={async () => {
                     await deleteWebhook(wh.name);
                     await load();
-                    setExpandedWh(null);
+                    detail.close({ only: commandId("webhook", wh.name) });
                   }}
                 />
               </Group>
@@ -681,8 +734,7 @@ export function CommandsPage() {
   const closePanel = () => {
     setTestResult(null);
     if (showForm || editingName) handleCancel();
-    setExpandedFn(null);
-    setExpandedWh(null);
+    detail.close();
   };
 
   if (loading) return <PageLoading message={t("commandsPage.loading")} />;
@@ -705,7 +757,7 @@ export function CommandsPage() {
             <Button
               leftSection={<Plus size={14} />}
               data-testid="commands-toggle-form"
-              onClick={() => setShowForm(true)}
+              onClick={openCreate}
             >
               {t("commandsPage.addCommand")}
             </Button>
@@ -769,7 +821,7 @@ export function CommandsPage() {
                   colSpan={7}
                   rowKey={(fn) => `fn:${fn.name}`}
                   render={(fn) => {
-                    const isExpanded = expandedFn === fn.name;
+                    const isExpanded = selectedFn?.name === fn.name;
                     const isEditing = editingName === fn.name;
                     return (
                       <React.Fragment key={fn.name}>
@@ -778,8 +830,7 @@ export function CommandsPage() {
                           selected={isExpanded}
                           onClick={() => {
                             setTestResult(null);
-                            setExpandedWh(null);
-                            setExpandedFn(isExpanded ? null : fn.name);
+                            openCommand("function", isExpanded ? null : fn.name);
                             if (isEditing) setEditingName(null);
                           }}
                         >
@@ -843,7 +894,7 @@ export function CommandsPage() {
                   colSpan={9}
                   rowKey={(wh) => `wh:${wh.name}`}
                   render={(wh) => {
-                    const isExpanded = expandedWh === wh.name;
+                    const isExpanded = selectedWh?.name === wh.name;
                     const isEditing = editingName === wh.name;
                     return (
                       <React.Fragment key={wh.name}>
@@ -852,8 +903,7 @@ export function CommandsPage() {
                           selected={isExpanded}
                           onClick={() => {
                             setTestResult(null);
-                            setExpandedFn(null);
-                            setExpandedWh(isExpanded ? null : wh.name);
+                            openCommand("webhook", isExpanded ? null : wh.name);
                             if (isEditing) setEditingName(null);
                           }}
                         >

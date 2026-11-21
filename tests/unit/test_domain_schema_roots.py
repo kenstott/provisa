@@ -75,7 +75,7 @@ def _schema_input(root_domains: set[str] | None):
         naming_rules=[],
         role={
             "id": "admin",
-            "capabilities": ["query_development"],
+            "capabilities": ["query_development", "command_execution"],
             "domain_access": ["*", "meta", "ontology", "ops"],
         },
         domains=[{"id": d} for d, _ in _TABLES],

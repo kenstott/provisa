@@ -172,12 +172,20 @@ async def load_proto(  # REQ-322, REQ-329
         httpx.HTTPError   — HTTP fetch failure
         ValueError        — proto parse error
     """
-    if path_or_url.startswith("http://") or path_or_url.startswith("https://"):
+    from provisa.core import org_files
+    from provisa.core.source_uploads import on_own_disk, require_own_disk
+
+    # REQ-1997: a held org's proto file and import directories on the server's own disk are in
+    # its own folder.
+    for directory in import_paths or []:
+        require_own_disk(directory)
+    if not on_own_disk(path_or_url) and path_or_url.startswith(("http://", "https://")):
         r = sandbox_egress.checked_get(path_or_url, timeout=30)
         r.raise_for_status()
         text = r.text
     else:
-        p = Path(path_or_url)
+        require_own_disk(path_or_url)
+        p = Path(org_files.resolve_path(path_or_url))
         if not p.exists():
             raise FileNotFoundError(f"Proto file not found: {path_or_url!r}")
         text = p.read_text()
@@ -196,7 +204,9 @@ def compile_proto_stubs(  # REQ-329
     import_paths: list[str] | None = None,
     out_dir: str | None = None,
 ) -> tuple[str, str]:
-    """Compile proto text to Python stubs using grpc_tools.protoc.
+    """Compile proto text to Python stubs using grpc_tools.protoc, and beside them its descriptor
+    set, its imports included (``<proto_name>.desc``), which executor.load_stubs builds the
+    source's message classes from.
 
     Returns:
         (pb2_path, pb2_grpc_path) — absolute paths to the generated modules.
@@ -222,7 +232,10 @@ def compile_proto_stubs(  # REQ-329
     well_known = os.path.join(os.path.dirname(grpc_tools.__file__), "_proto")
 
     include_flags: list[str] = [f"-I{tmp}", f"-I{well_known}"]
+    from provisa.core.source_uploads import require_own_disk
+
     for ip in import_paths or []:
+        require_own_disk(ip)  # REQ-1997, as load_proto
         include_flags.append(f"-I{ip}")
 
     args = [
@@ -230,6 +243,8 @@ def compile_proto_stubs(  # REQ-329
         *include_flags,
         f"--python_out={tmp}",
         f"--grpc_python_out={tmp}",
+        f"--descriptor_set_out={os.path.join(tmp, f'{proto_name}.desc')}",
+        "--include_imports",
         proto_file,
     ]
     ret = protoc.main(args)

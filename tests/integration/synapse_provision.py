@@ -36,23 +36,17 @@ A workspace created by a USER admits that user; one created by a service princip
 The endpoint's own login for its creator is keyed by the creator's object id, which is how a
 user's token is matched, but an application's token is matched by its application (client) id. The
 workspace's Azure AD admin setting did not admit anyone at the serverless endpoint (provisa-ci by
-either id, nor a user), and a SQL login cannot create an Azure AD login (error 33159). So CI pins a
-standing workspace whose login for provisa-ci was created once from Azure AD.
+either id, nor a user), and a SQL login cannot create an Azure AD login FROM EXTERNAL PROVIDER
+(error 33159: that form looks the name up in Microsoft Graph).
 
-A standing workspace (CI)
--------------------------
-Set ``SYNAPSE_SQL_SERVER`` / ``SYNAPSE_DATABASE`` / ``SYNAPSE_ADLS_URL`` to pin it: nothing is
-created or deleted, except a firewall rule for this host's egress address, opened for the lane and
-removed after it (a runner's address changes every run). Its one-time setup, by a user who is a
-Synapse Administrator of the workspace (``az synapse role assignment create --role "Synapse
-Administrator"``), on its ``-ondemand`` endpoint:
-
-- in ``master``: ``CREATE LOGIN [provisa-ci] FROM EXTERNAL PROVIDER``, then
-  ``CREATE DATABASE [provisa_syn]``;
-- in ``provisa_syn``: ``CREATE USER [provisa-ci] FROM LOGIN [provisa-ci]`` and
-  ``ALTER ROLE db_owner ADD MEMBER [provisa-ci]``;
-- provisa-ci holds Storage Blob Data Contributor on the ADLS account, and the account holds the seed
-  Parquet at ``SYNAPSE_ADLS_URL`` (what ``_provision`` uploads).
+So a workspace the CI principal creates admits it the way the one-time setup of the standing
+workspace CI used to pin did (``CREATE LOGIN [provisa-ci] FROM EXTERNAL PROVIDER``, a user in
+``provisa_syn``, ``db_owner``), but made by the workspace's own SQL admin login and with the
+login's SID given rather than looked up: ``CREATE LOGIN [<name>] WITH SID = <id>, TYPE = E``, the
+SID being the application (client) id an application's token is matched by
+(``_admit_service_principal``). The standing workspace is gone (maintainer 2026-11-10, "Paid cloud
+resources": no test relies on a standing paid resource); every run creates its own, tagged with the
+run (tests/integration/cloud_run_tag.py), and deletes it.
 """
 
 from __future__ import annotations
@@ -67,6 +61,8 @@ import time
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
+
+from tests.integration.cloud_run_tag import az_tag_args
 
 # Regions tried, in order, when SYNAPSE_AZ_LOCATION is unset. US-first for round-trip latency from
 # the developer host; the European entries exist so a US-wide capacity block cannot strand the lane.
@@ -343,6 +339,73 @@ def _create_database(server: str) -> None:
             rt.close()
 
 
+def _sql_admin(server: str, database: str, password: str):
+    """A connection to ``database`` as the workspace's SQL admin login, autocommit (CREATE
+    DATABASE and CREATE LOGIN run outside a transaction). A new workspace's endpoint refuses the
+    login for a while (18456) and a firewall rule takes a while to reach it (40615): both are
+    waited out, bounded; any other refusal is raised."""
+    import pyodbc
+
+    driver = os.environ.get("PROVISA_MSSQL_ODBC_DRIVER", "ODBC Driver 18 for SQL Server")
+    driver_clause = driver if driver.startswith("/") else f"{{{driver}}}"
+    deadline = time.monotonic() + 300
+    while True:
+        try:
+            con = pyodbc.connect(
+                f"DRIVER={driver_clause};SERVER={server};DATABASE={database};UID=provisaadmin;"
+                f"PWD={password};Encrypt=yes;TrustServerCertificate=no;",
+                timeout=120,
+                autocommit=True,
+            )
+            return con
+        except pyodbc.Error as exc:
+            if not any(code in str(exc) for code in ("(18456)", "(40615)")):
+                raise
+            if time.monotonic() >= deadline:
+                raise
+            time.sleep(15)
+
+
+def _quoted(name: str) -> str:
+    return "[" + name.replace("]", "]]") + "]"
+
+
+def _admit_service_principal(server: str, password: str, login: str, app_id: str) -> None:
+    """Admit the CI service principal at the new workspace's serverless endpoint, as the standing
+    workspace's one-time setup did, but by the workspace's SQL admin login: a login for the
+    application with its SID given (the application id, which its token is matched by; ``TYPE =
+    E``, an external principal, so nothing is looked up in Graph), the ``provisa_syn`` database,
+    and the application's user there, a member of ``db_owner``."""
+    import uuid
+
+    import pyodbc
+
+    sid = "0x" + uuid.UUID(app_id).bytes_le.hex().upper()
+    con = _sql_admin(server, "master", password)
+    try:
+        cur = con.cursor()
+        cur.execute(f"CREATE LOGIN {_quoted(login)} WITH SID = {sid}, TYPE = E")
+        deadline = time.monotonic() + 300
+        while True:
+            try:
+                cur.execute(f"CREATE DATABASE [{_DATABASE}]")
+                break
+            except pyodbc.ProgrammingError as exc:
+                # 1807: `model` still locked by the freshly provisioned pool (_create_database).
+                if "(1807)" not in str(exc) or time.monotonic() >= deadline:
+                    raise
+                time.sleep(15)
+    finally:
+        con.close()
+    con = _sql_admin(server, _DATABASE, password)
+    try:
+        cur = con.cursor()
+        cur.execute(f"CREATE USER {_quoted(login)} FROM LOGIN {_quoted(login)}")
+        cur.execute(f"ALTER ROLE db_owner ADD MEMBER {_quoted(login)}")
+    finally:
+        con.close()
+
+
 def _wait_gone(workspace: str, group: str) -> None:
     """Block until the workspace no longer exists (its delete is long-running), bounded."""
     deadline = time.monotonic() + _AZ_TIMEOUT_S
@@ -475,6 +538,8 @@ def _provision() -> tuple[dict[str, str], str, str, str]:
             "StorageV2",
             "--enable-hierarchical-namespace",
             "true",
+            "--tags",
+            *az_tag_args(),
             "-o",
             "none",
         )
@@ -581,6 +646,8 @@ def _provision() -> tuple[dict[str, str], str, str, str]:
             "provisaadmin",
             "--sql-admin-login-password",
             sql_password,
+            "--tags",
+            *az_tag_args(),
             "-o",
             "none",
         )
@@ -636,7 +703,10 @@ def _provision() -> tuple[dict[str, str], str, str, str]:
         sql_server = f"{workspace}-ondemand.sql.azuresynapse.net"
         adls_url = f"https://{storage}.dfs.core.windows.net/{_FILESYSTEM}/{_PARQUET_PATH}"
         try:
-            _create_database(sql_server)
+            if principal_type == "ServicePrincipal":
+                _admit_service_principal(sql_server, sql_password, principal_name, sql_admin_id)
+            else:
+                _create_database(sql_server)
         except Exception as exc:
             if "(18456)" not in str(exc):
                 raise
@@ -694,65 +764,10 @@ def _open_firewall(workspace: str, resource_group: str, rule: str) -> None:
     )
 
 
-def _close_firewall(workspace: str, resource_group: str, rule: str) -> None:
-    _az(
-        "synapse",
-        "workspace",
-        "firewall-rule",
-        "delete",
-        "-n",
-        rule,
-        "--workspace-name",
-        workspace,
-        "-g",
-        resource_group,
-        "--yes",
-        "-o",
-        "none",
-    )
-
-
-def _wait_admitted(server: str, database: str) -> None:
-    """Block until this host reaches the endpoint: a new firewall rule takes a while to reach it,
-    and until then a connection is refused (40615)."""
-    import pyodbc
-
-    from provisa.federation.mssql_warehouse_runtime import MssqlWarehouseRuntime
-
-    deadline = time.monotonic() + _RBAC_TIMEOUT_S
-    while True:
-        try:
-            MssqlWarehouseRuntime(server=server, database=database, engine_name="synapse").close()
-            return
-        except pyodbc.Error as exc:
-            if "(40615)" not in str(exc) or time.monotonic() >= deadline:
-                raise
-            time.sleep(15)
-
-
 @contextmanager
 def synapse_lane():
-    """Yield ``(sql_server, database, adls_url)``, destroying every resource on exit.
-
-    A pre-set ``SYNAPSE_SQL_SERVER`` pins a standing workspace: nothing is created, so nothing is
-    deleted either -- this must never delete a workspace it did not create.
-    """
-    pinned = os.environ.get("SYNAPSE_SQL_SERVER")
-    if pinned:
-        # A standing workspace (the module docstring): only this host's firewall rule is made, and
-        # removed after.
-        workspace = pinned.removesuffix("-ondemand.sql.azuresynapse.net")
-        resource_group = os.environ["FABRIC_RESOURCE_GROUP"]
-        database = os.environ["SYNAPSE_DATABASE"]
-        rule = "provisa-lane-" + datetime.now(timezone.utc).strftime("%y%m%d%H%M%S")
-        _open_firewall(workspace, resource_group, rule)
-        try:
-            _wait_admitted(pinned, database)
-            yield pinned, database, os.environ["SYNAPSE_ADLS_URL"]
-        finally:
-            _close_firewall(workspace, resource_group, rule)
-        return
-
+    """Yield ``(sql_server, database, adls_url)`` of a workspace made for this run, destroying
+    every resource it made on exit, each read back gone (``_teardown``)."""
     lane, sql_server, database, adls_url = _provision()
     try:
         yield sql_server, database, adls_url

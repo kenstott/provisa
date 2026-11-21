@@ -24,7 +24,7 @@ import duckdb
 
 from provisa.core import engine_memory
 
-from provisa.federation.duckdb_runtime import DuckDBFederationRuntime
+from provisa.federation.duckdb_runtime import DuckDBFederationRuntime, ReservedCatalog
 from provisa.federation.native_backend import NativeEngineBackend
 
 
@@ -41,7 +41,9 @@ class DuckDBBackend(NativeEngineBackend):
     # Trino-bound test rebinds the engine back to DuckDB) must be skipped here, not raised uncaught into
     # an unrelated later query's attach pass (observed: UnreachableSource("duckdb", "pinot") propagating
     # out of _attach_registered() into a 400 on an unrelated /data/sql request).
-    _attach_errors = (duckdb.Error, KeyError, *NativeEngineBackend._attach_errors)
+    # ReservedCatalog: a source named under the control plane's catalog (a name computed for another
+    # engine, e.g. Trino's materialize-store catalog) is refused per table, never attached over it.
+    _attach_errors = (duckdb.Error, KeyError, ReservedCatalog, *NativeEngineBackend._attach_errors)
 
     # The runtime connection is a duckdb connection: values bind at ``?``.
     _cache_bind_placeholder = "?"

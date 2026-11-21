@@ -89,6 +89,10 @@ export interface SourceRunOutcome {
   table: string;
   run_id: string | null;
   error: string | null;
+  /** Why the member was not read: its table requires parameters (`requires`), so it has no
+   * rows to count or profile. Null for a member that was read. */
+  not_read?: string | null;
+  requires?: string[];
 }
 
 async function call<T>(

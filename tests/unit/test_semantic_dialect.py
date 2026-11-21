@@ -51,7 +51,7 @@ _FILTERED = "SELECT FILTER(l, y -> y > 1) AS f FROM t"
     ("target", "written"),
     [
         ("trino", "FILTER(l, y -> y > 1)"),
-        ("duckdb", "LIST_FILTER(l, y -> y > 1)"),
+        ("duckdb", "LIST_FILTER(l, LAMBDA y : y > 1)"),
         ("postgres", "ARRAY(SELECT y FROM UNNEST(l) AS _t(y) WHERE y > 1)"),
     ],
 )

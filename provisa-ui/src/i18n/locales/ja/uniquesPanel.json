@@ -1,7 +1,7 @@
 {
   "uniquesPanel": {
     "title": "ユニーク制約",
-    "infoTooltip": "このテーブルに宣言された UNIQUE 制約です（単一列または複合）。外部キーは任意のユニークキーを対象にでき、クライアントには UNIQUE 制約として表示されます。登録時にソースからシードされます。編集または独自に追加できます。",
+    "infoTooltip": "このテーブルで宣言された UNIQUE 制約(単一列または複合)。外部キーは任意の一意キーを参照でき、クライアントにはこれらが UNIQUE 制約として見えます。登録時にソースから取り込まれます。編集したり独自に追加したりできます。",
     "addConstraint": "制約",
     "nameLabel": "名前",
     "namePlaceholder": "制約名（例：users_tenant_email_key）",

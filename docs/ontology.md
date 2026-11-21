@@ -345,7 +345,7 @@ What counts is whether the business uses the word. An ETL batch identifier has a
 
 ## Working with the ontology
 
-Open **Ontology** in the navigation bar. The left panel lists every term with its role, its status unless it is approved, and its grounding chip. The **Status** and **Grounding** filters narrow the list by each, the **Deprecated** box shows or hides deprecated terms, **To review** narrows it to terms with findings, and **Related to** narrows it to terms with a Related to link. Click a term to open its panel.
+Open **Context** in the navigation bar, then **Ontology**. The left panel lists every term with its role, its status unless it is approved, and its grounding chip. The **Status** and **Grounding** filters narrow the list by each, the **Deprecated** box shows or hides deprecated terms, **To review** narrows it to terms with findings, and **Related to** narrows it to terms with a Related to link. Click a term to open its panel.
 
 The panel shows the term's role, its status and its grounding side by side, and for a Property its PII mark with the number of columns it covers. A muted ⏚ term names the drafts whose approval would ground it. A deprecated or retired term shows who changed its status and why. A term with findings opens with a **To review** section: click a finding to see what was found and the action that fixes it.
 

@@ -10,6 +10,7 @@
 
 import { useRef, useState } from "react";
 import { executeClientTool, type ClientToolContext } from "../mcp/clientTools";
+import { useViewDomains } from "../lib/viewDomains";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "";
 
@@ -24,6 +25,13 @@ export type ChatArtifact =
       expires_in: number | null;
       content_type: string | null;
     };
+
+/** The artifact an `artifact` stream event carries: the event minus its `type` tag. Shared by every
+ *  chat that reads the server's stream, so a new artifact is handled in one place. */
+export function artifactFromEvent(ev: { type: string }): ChatArtifact {
+  const { type: _type, ...artifact } = ev;
+  return artifact as ChatArtifact;
+}
 
 export interface ChatMsg {
   role: "user" | "assistant";
@@ -70,6 +78,8 @@ export function useMcpChat(
   // thing that just changed (e.g. the Sources admin page's own query), which nothing did before.
   onServerToolResult?: (name: string, isError: boolean) => void,
 ) {
+  // REQ-2253: the chat works only within the navbar's selected domains; null sends none.
+  const viewDomains = useViewDomains();
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [tools, setTools] = useState<ToolEvent[]>([]);
   const [busy, setBusy] = useState(false);
@@ -100,7 +110,11 @@ export function useMcpChat(
     const resp = await fetch(`${API_BASE}/admin/mcp/chat`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-provisa-role": roleId },
-      body: JSON.stringify({ messages: convo, current_route: currentRoute }),
+      body: JSON.stringify({
+        messages: convo,
+        current_route: currentRoute,
+        domains: viewDomains ? [...viewDomains] : undefined,
+      }),
       signal,
     });
     if (!resp.ok || !resp.body) throw new Error(`chat failed: ${resp.status}`);
@@ -128,8 +142,7 @@ export function useMcpChat(
         }
         if (ev.type === "text") turn.text(ev.text);
         else if (ev.type === "artifact") {
-          const { type: _type, ...artifact } = ev;
-          turn.artifact(artifact as ChatArtifact);
+          turn.artifact(artifactFromEvent(ev));
         }
         else if (ev.type === "tool_use")
           setTools((p) => [...p, { name: ev.name, input: ev.input, running: true }]);

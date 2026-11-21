@@ -11,7 +11,7 @@
 // Always present in a Node, Bun or Deno source's worker: the host resolves the name to this file
 // (host.mjs). Outside Provisa it is not there, and code that imports it is tested by mocking it.
 //
-//   import { secrets, settings, cache, vectors, http, llm, log, metric } from "@provisa/services";
+//   import { secrets, settings, cache, vectors, http, llm, log, metric, audit } from "@provisa/services";
 //
 // The same calls, by the same names, as Python's provisa_services (provisa/python/lib): each is
 // made to $PROVISA_SERVICES through the worker's egress proxy, naming the call it serves, so what
@@ -207,4 +207,11 @@ export async function metric(name, value, kind = "counter", attributes = {}) {
   await json("metric", "POST", "metric", { name, value, kind, attributes });
 }
 
-export default { ServiceError, secrets, settings, cache, vectors, http, llm, log, metric };
+/** A structured event written to the org's trail, attached to the request this call serves:
+ *  `event` names it (lower-case letters, digits, _ and .), `fields` are JSON values, at most 64 KB.
+ *  A secret value does not belong in it, and is redacted if it is there. */
+export async function audit(event, fields = {}) {
+  await json("audit", "POST", "audit", { event, fields });
+}
+
+export default { ServiceError, secrets, settings, cache, vectors, http, llm, log, metric, audit };

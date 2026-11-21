@@ -74,7 +74,8 @@ test.describe("source to query through the UI, file-based lakehouse types (REQ-1
   test("delta_lake: add the source, register its one table, query it on the SQL page", async ({
     page,
   }) => {
-    test.setTimeout(180000);
+    // 240s: a delta pass was measured at 177s on the shared runner, with up to 60s on the /tables load.
+    test.setTimeout(240000);
     const stamp = Date.now();
     const sourceId = `e2e_delta_${stamp}`;
 
@@ -106,7 +107,8 @@ test.describe("source to query through the UI, file-based lakehouse types (REQ-1
   test("iceberg: add the source, register its one table, query it on the SQL page", async ({
     page,
   }) => {
-    test.setTimeout(180000);
+    // 240s: a delta pass was measured at 177s on the shared runner, with up to 60s on the /tables load.
+    test.setTimeout(240000);
     const stamp = Date.now();
     const sourceId = `e2e_iceberg_${stamp}`;
 

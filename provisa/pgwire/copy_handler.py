@@ -31,6 +31,7 @@ import struct
 from typing import TYPE_CHECKING, Any, Protocol
 
 from provisa.compiler.definitions import NotAvailableHere
+from provisa.core.session_time_zone import bind_zone, reset_zone
 from provisa.pgwire.session_zone import refuse_other_zone
 from provisa.pgwire.copy_binary import (
     _arrow_binary_tag,
@@ -383,6 +384,13 @@ class CopyHandler:  # REQ-038, REQ-040, REQ-129, REQ-266, REQ-272
     # ------------------------------------------------------------------
 
     def _handle_copy_to_query(self, _ctx: BVContext, query: str, fmt: str, role_id: str) -> int:
+        zone = bind_zone(_ctx.session.zone.statement_zone())  # type: ignore[attr-defined]  # REQ-2171
+        try:
+            return self._copy_query_out(_ctx, query, fmt, role_id)
+        finally:
+            reset_zone(zone)
+
+    def _copy_query_out(self, _ctx: BVContext, query: str, fmt: str, role_id: str) -> int:
         from provisa.audit.context import with_audit_identity
         from provisa.pgwire import server as _srv
         from provisa.pgwire._pipeline import plan_pgwire_sql, streams_from_terminal

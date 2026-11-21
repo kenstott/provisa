@@ -345,6 +345,7 @@ class TestHandleQuery:
 
         fake_plan = SimpleNamespace(
             warnings=[],
+            no_rows_yet=False,  # as _Plan: not read as empty (REQ-2224)
             row_limit=None,  # as _Plan: no row limit bounds this read
             materialize=None,  # no delivery forced
             route=Route.DIRECT,
@@ -451,6 +452,7 @@ class TestHandleQuery:
 
         fake_plan = SimpleNamespace(
             warnings=[],
+            no_rows_yet=False,  # as _Plan: not read as empty (REQ-2224)
             row_limit=None,  # as _Plan: no row limit bounds this read
             materialize=None,  # no delivery forced
             route=Route.DIRECT,

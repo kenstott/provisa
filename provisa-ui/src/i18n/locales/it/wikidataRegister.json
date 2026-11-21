@@ -1,0 +1,14 @@
+{
+  "wikidataRegister": {
+    "starters": "Tabelle iniziali",
+    "startersHint": "Tabelle di riferimento a cui collegarsi, ciascuna con le sue colonne. Descrizioni, tipi e alias si perfezionano poi su ogni tabella.",
+    "startersPlaceholder": "Scegli le tabelle iniziali",
+    "customLabel": "Tabella personalizzata",
+    "customNone": "Nessuna tabella personalizzata",
+    "customSparql": "Query SPARQL",
+    "classNotUsed": "Scegli una classe e premi Usa questa classe, oppure scegli Nessuna tabella personalizzata.",
+    "columnsReading": "Lettura delle colonne dal SELECT della query…",
+    "nothingChosen": "Scegli una tabella iniziale o una tabella personalizzata da registrare.",
+    "columns": "Colonne: {{columns}}"
+  }
+}

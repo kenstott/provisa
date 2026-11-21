@@ -314,13 +314,36 @@ def _single_table_shape(
     direct registry lookup, with no qualification or annotation pass. None when it does not apply."""
     if not isinstance(tree, exp.Select) or tree.args.get("with_") or tree.args.get("joins"):
         return None
+    from provisa.compiler.governed_relation import read_through
+
     source = tree.args.get("from_")
-    if source is None or not isinstance(source.this, exp.Table):
+    if source is None:
         return None
-    table_id = _resolve_table(source.this, table_map)
+    relation = read_through(source.this)  # REQ-039: the governed relation of one table
+    table = relation.table if relation is not None else source.this
+    if not isinstance(table, exp.Table):
+        return None
+    table_id = _resolve_table(table, table_map)
     if table_id is None:
         return None
-    return _plain_projection_shape(tree.expressions, table_columns(table_id, ctx, column_types))
+    columns = table_columns(table_id, ctx, column_types)
+    if relation is not None:
+        columns = _served_columns(relation, columns)
+    return _plain_projection_shape(tree.expressions, columns)
+
+
+def _served_columns(relation: Any, columns: dict[str, str]) -> dict[str, str]:
+    """The registered type of each column a governed relation serves as it is, by the name it
+    exposes it under. A masked or computed column is not typed by the registry."""
+    served: dict[str, str] = {}
+    for name in relation.columns:
+        physical = relation.column(name)
+        col_type = None if physical is None else _lookup(columns, physical)
+        if col_type is None and physical is not None:
+            col_type = _lookup(columns, name)
+        if col_type is not None:
+            served[name] = col_type
+    return served
 
 
 def registered_money(
@@ -390,6 +413,39 @@ def typed_statement(
     return cast(exp.Query, annotated), registered
 
 
+def _column_source(scope: Any, column: exp.Column) -> tuple[Any, str]:
+    """The relation ``column`` reads and its name there, read through every derived table that
+    passes the column on unchanged (REQ-039: a governed relation serves a column as it is under
+    its exposed name), so the registered column under it types it."""
+    from sqlglot.optimizer.scope import Scope
+
+    from provisa.compiler.governed_relation import read_through
+
+    source = scope.sources.get(column.table)
+    name = column.name
+    while (
+        isinstance(source, Scope)
+        and isinstance(source.expression, exp.Select)
+        and read_through(source.expression.parent) is not None
+    ):
+        passed = next(
+            (
+                s
+                for s in source.expression.selects
+                if s.alias_or_name == name
+                and isinstance(s.unalias(), exp.Column)
+                and not isinstance(s.unalias().this, exp.Star)
+            ),
+            None,
+        )
+        if passed is None:
+            return None, name
+        inner = cast(exp.Column, passed.unalias())
+        name = inner.name
+        source, scope = source.sources.get(inner.table), source
+    return source, name
+
+
 def _annotated_shape(
     tree: exp.Query, table_map: dict[str, int], ctx: Any, column_types: dict, *, each: bool = False
 ) -> list[tuple[str, str]]:
@@ -417,11 +473,11 @@ def _annotated_shape(
 
         col_type: str | None = None
         if isinstance(inner, exp.Column) and root is not None:
-            source = root.sources.get(inner.table)
+            source, column = _column_source(root, inner)
             if isinstance(source, exp.Table):
                 columns = registered.get((source.db, source.name))
                 if columns is not None:
-                    col_type = _lookup(columns, inner.name)  # the registry's own spelling
+                    col_type = _lookup(columns, column)  # the registry's own spelling
         if col_type is None:
             col_type = money_type(inner, money_of)  # REQ-2171: its operators' result, not its base
         if col_type is None:

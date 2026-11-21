@@ -52,7 +52,7 @@ def _patch_fetch_tables(monkeypatch):
         ]
 
     monkeypatch.setattr("provisa.api.admin.db_queries.fetch_tables", _fetch)
-    monkeypatch.setattr("provisa.core.repositories.source.list_all", _source_rows)
+    monkeypatch.setattr("provisa.core.repositories.source.list_in_production", _source_rows)
 
 
 class _Sched:
@@ -152,6 +152,7 @@ def _state(*, ready=True):
             "schema_name": "default",
             "table_name": "events",
             "landing_filter": None,
+            "read_wait": None,
             "columns": [_rcol("id", "bigint", pk=True)],
             "dq_contract": None,
             "query_template": None,
@@ -285,7 +286,7 @@ def _state_with_mv(*, column_types, probed: list | None = None):
         refresh_interval=600,
         debounce_quiet=0.0,
         debounce_max_delay=None,
-        product_id=None,  # REQ-2133
+        product_ids=[],  # REQ-2133
         hold_on_failing_checks=False,  # REQ-2133
         table_id=None,  # REQ-2133
         region=None,  # REQ-1921: names no region — built by every region
@@ -305,6 +306,7 @@ def _state_with_mv(*, column_types, probed: list | None = None):
                 "schema_name": "public",
                 "table_name": "orders",
                 "landing_filter": None,
+                "read_wait": None,
                 "alias": None,
             }
         ],
@@ -358,6 +360,7 @@ async def test_registered_checker_table_carries_its_contract_to_the_loop(monkeyp
                 "schema_name": "quality",
                 "table_name": "pets_scan",
                 "landing_filter": None,
+                "read_wait": None,
                 "columns": [_rcol("scan_id", "varchar", pk=True)],
                 "dq_contract": contract,
                 "query_template": None,
@@ -471,10 +474,10 @@ async def test_a_sources_own_probe_runs_with_its_orgs_vault_bound(monkeypatch):
     source_probe = app_wiring.make_source_probe(
         SimpleNamespace(), {"google_workspace": loader}, [source]
     )
-    probe = source_probe(source, SimpleNamespace(table_name="messages"))
+    probe = source_probe(source, SimpleNamespace(schema_name="mail", table_name="messages"))
     assert await probe() == "t"
     assert order == ["bound:1", "asked", "released"]
-    assert source_probe(source, SimpleNamespace(table_name="events")) is None
+    assert source_probe(source, SimpleNamespace(schema_name="mail", table_name="events")) is None
 
 
 def _state_with_a_view_over_a_view(built: set[str], probed: list[str]):
@@ -512,7 +515,7 @@ def _state_with_a_view_over_a_view(built: set[str], probed: list[str]):
             refresh_interval=600,
             debounce_quiet=0.0,
             debounce_max_delay=None,
-            product_id=None,  # REQ-2133
+            product_ids=[],  # REQ-2133
             hold_on_failing_checks=False,  # REQ-2133
             table_id=None,  # REQ-2133
             region=None,
@@ -522,7 +525,7 @@ def _state_with_a_view_over_a_view(built: set[str], probed: list[str]):
     margins = _mv("margins", "SELECT day AS d, count(*) AS n FROM orders GROUP BY day")
     close = _mv("close", "SELECT d, n FROM view_margins")
     views = {mv.id: mv for mv in (margins, close)}
-    row = {"domain_id": "sales", "landing_filter": None, "alias": None}
+    row = {"domain_id": "sales", "landing_filter": None, "read_wait": None, "alias": None}
     return RoleState(
         model_db=(_one_db := _fake_db([])),
         tenant_db=_one_db,

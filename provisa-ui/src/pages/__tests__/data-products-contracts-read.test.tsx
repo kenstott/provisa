@@ -14,7 +14,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "../../test-utils/render";
 
-const fetchProductContract = vi.fn((_id: string, _member: string) => Promise.resolve({}));
+const fetchProductContract = vi.fn((_id: string, _offer: string, _member: string) =>
+  Promise.resolve({}),
+);
 let coreData: unknown = null;
 
 vi.mock("../data-products/useProductCore", () => ({
@@ -41,7 +43,7 @@ vi.mock("../../components/graph3d/OntologyGraph", () => ({
 vi.mock("../../context/AuthContext", () => ({
   useAuth: () => ({
     role: { id: "admin", capabilities: [] },
-    selectedRoles: [{ id: "admin" }],
+    selectedRoles: [{ id: "admin", effectiveCapabilities: [], domain_access: [] }],
     availableRoles: [],
   }),
 }));
@@ -53,7 +55,8 @@ vi.mock("../../api/actions", () => ({
   saveFunction: vi.fn(),
 }));
 vi.mock("../../api/dataProductContracts", () => ({
-  fetchProductContract: (id: string, member: string) => fetchProductContract(id, member),
+  fetchProductContract: (id: string, offer: string, member: string) =>
+    fetchProductContract(id, offer, member),
   fetchContractVersions: () => Promise.resolve([]),
 }));
 vi.mock("../../api/lineage", () => ({
@@ -95,7 +98,8 @@ vi.mock("../../hooks/useDataProductMutations", () => ({
   useCreateDataProduct: () => ({ createDataProduct: vi.fn(), loading: false }),
   useUpdateDataProduct: () => ({ updateDataProduct: vi.fn(), loading: false }),
   useDeleteDataProduct: () => ({ deleteDataProduct: vi.fn(), loading: false }),
-  useSaveDataContract: () => ({ saveDataContract: vi.fn(), loading: false }),
+  useDeleteDataProducts: () => vi.fn(),
+  useSetDataProductMembers: () => ({ setDataProductMembers: vi.fn(), loading: false }),
   useDataProductFindings: () => ({ findings: new Map(), refetch: vi.fn(), error: undefined }),
   useDataProductStatus: () => ({
     publish: vi.fn(),
@@ -117,7 +121,8 @@ vi.mock("../../hooks/useAdminQueries", async (importOriginal) => ({
 
 import { DataProductsPage } from "../DataProductsPage";
 
-const member = (contract: unknown) => ({
+// REQ-2180: a member's contracts are its offers' (read by the Offers tab), never a column of it.
+const member = () => ({
   id: 7,
   sourceId: "pg",
   domainId: "care",
@@ -126,7 +131,6 @@ const member = (contract: unknown) => ({
   alias: null,
   description: null,
   dqContract: null,
-  contract,
 });
 
 const core = (tables: unknown[]) => ({
@@ -150,16 +154,16 @@ describe("the open product's ODCS contracts (REQ-2158)", () => {
     expect(fetchProductContract).not.toHaveBeenCalled();
   });
 
-  it("are not read for a product whose members have no contract", async () => {
-    coreData = core([member(null)]);
+  it("are not read for a product with a member, until a contract is opened", async () => {
+    coreData = core([member()]);
     render(<DataProductsPage />, { initialEntries: ["/data-products?product=pet_health"] });
     await screen.findByTestId("detail-panel");
     await new Promise((r) => setTimeout(r, 0));
     expect(fetchProductContract).not.toHaveBeenCalled();
   });
 
-  it("are not read when a product with a member's contract opens: its rows read them", async () => {
-    coreData = core([member({ version: "1.0.0", status: "active" })]);
+  it("are not read when a product opens: an offer's contract rows read them", async () => {
+    coreData = core([member()]);
     render(<DataProductsPage />, { initialEntries: ["/data-products?product=pet_health"] });
     await screen.findByTestId("detail-panel");
     await waitFor(() => expect(screen.getByTestId("detail-panel")).toHaveTextContent("pet_health"));

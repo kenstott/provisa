@@ -30,6 +30,12 @@ CARRIED: frozenset[str] = frozenset(
     {
         "domains",
         "data_products",  # REQ-1634: domain-scoped metadata, travels with the domain it belongs to
+        # REQ-1634: a product's members travel with the product and the tables and commands.
+        "data_product_tables",
+        "data_product_commands",
+        # REQ-2180: a product's offers and the contracts derived from them travel with it.
+        "data_product_offers",
+        "data_product_offer_contracts",
         "naming_rules",
         "registered_tables",
         "table_columns",
@@ -68,6 +74,8 @@ CARRIED: frozenset[str] = frozenset(
         "glossary_term_refs",
         "glossary_term_edges",
         "glossary_term_experts",
+        "glossary_term_statements",  # REQ-2237: what an imported ontology stated about a term
+        "glossary_term_sources",  # REQ-2247: the catalogs a term was sourced from
         "glossary_term_domains",
         "materialized_views",
         "calendars",
@@ -81,6 +89,8 @@ CARRIED: frozenset[str] = frozenset(
         # holding the model it was copied from, so it is seeded too; like ``roles``, only when
         # an environment is created.
         "model_seed",
+        # REQ-2221: the connectors an org offers: a version runs where the model's branches say.
+        "connectors",
         # REQ-1921/1922: the regions an org selects travel with its model; the stores they name
         # are bindings (IDENTITY_ONLY).
         "org_regions",
@@ -113,7 +123,29 @@ IDENTITY_ONLY: frozenset[str] = frozenset({"sources", "api_sources", "kafka_sour
 #: ``user_idp_attributes`` (REQ-1383) is what each identity provider said at a sign-in to THIS
 #: environment; it is rewritten there at the next one.
 NEVER_SENSITIVE: frozenset[str] = frozenset(
-    {"org_secrets", "user_directory", "user_idp_attributes"}
+    {
+        "org_secrets",
+        "user_directory",
+        "user_idp_attributes",
+        # REQ-2219: the role claims each identity provider sent at a sign-in to this environment,
+        # rewritten there at the next one, as user_idp_attributes is.
+        "user_idp_roles",
+        # REQ-2219: what each person is entitled to within a role, and when it ends: grants
+        # keyed by this environment's principals, as the directory is. A role's defaults
+        # (roles.default_entitlements) travel with the role; a person's narrowing and expiry
+        # are this environment's own answer, and carrying them through a merge would be a way
+        # to grant or to widen a right, the escalation REQ-1539 closed for roles.
+        "entitlements",
+        "entitlement_expiries",
+        # REQ-2219: a grant waiting on a typed email attaches to this environment's principal.
+        "entitlement_pending",
+        # REQ-2219: what each person's entitlements come to, computed from those rows: this
+        # environment's own, as they are.
+        "effective_entitlements",
+        # REQ-2180: a bid is keyed by this environment's principals and what accepting it granted
+        # them, as the entitlements are.
+        "data_product_bids",
+    }
 )
 
 #: Never copied: runtime state and evidence, which belong to the environment that PRODUCED them.
@@ -125,6 +157,10 @@ NEVER_RUNTIME: frozenset[str] = frozenset(
         "mv_refresh_log",
         "mv_delta_ledger",
         "relationship_candidates",
+        # REQ-413: this environment's discovery runs and their progress.
+        "discovery_runs",
+        # REQ-413: what each of those runs read, shown and left out.
+        "discovery_run_proposals",
         "creation_requests",
         # REQ-2216: the approve and decide calls this environment already answered.
         "idempotent_calls",
@@ -166,6 +202,9 @@ NEVER_RUNTIME: frozenset[str] = frozenset(
         "reference_passages",
         # REQ-2208: the tags on its documents and their sections, which go where the documents go.
         "reference_document_tags",
+        # REQ-2208: the citations of its documents and their sections, by tags' definitions and
+        # assignments, which go where the documents they cite go.
+        "reference_citations",
         # REQ-2185 (GRAPH RETRIEVAL): its glossary terms' embeddings, by its own vector model,
         # made again from its own terms wherever they are missing or stale.
         "glossary_term_vectors",
@@ -173,6 +212,11 @@ NEVER_RUNTIME: frozenset[str] = frozenset(
         # queue of the terms they propose, drafts until a steward decides on them.
         "glossary_term_scans",
         "glossary_term_drafts",
+        # REQ-2237: the ontologies imported into this environment's glossary and the alignments
+        # proposed for them, until a steward decides on each and applies the import.
+        "glossary_ontology_imports",
+        "glossary_ontology_items",
+        "glossary_ontology_alignments",
         "catalog_bindings",
         "email_send_authority_audit",
         # REQ-1742: grpc_remote_router.py's own per-table registration log for this process's
@@ -201,13 +245,27 @@ NEVER_RUNTIME: frozenset[str] = frozenset(
         "judgment_findings",
         # REQ-2129: derived from its own compiled views by its own model build.
         "lineage_edges",
+        # REQ-2229: what the tools pointed at this environment reported to it.
+        "openlineage_run_datasets",
+        # REQ-2263: the dataset facets those tools reported to it.
+        "openlineage_dataset_facets",
         # REQ-2125: resolved from its own contracts by its own model build.
         "checker_targets",
+        # REQ-194: its own names table and refused clashes, from its own model build.
+        "model_names",
+        "model_name_clashes",
         # REQ-2132: its own checkers' latest scans.
         "checker_latest_runs",
         # REQ-2147: its own scans for sensitive values inside text, and the hints they left.
         "profiler_sensitive_scans",
         "profiler_sensitive_hints",
+        # REQ-2228: what this environment's dbt source last read from its own manifest. The
+        # manifest comes through the source's binding and states the databases and schemas of the
+        # dbt target that built it, so like catalog_bindings it addresses this environment's
+        # warehouse; another environment reads its own.
+        "dbt_manifests",
+        # REQ-2228, REQ-858: what this environment's dbt runs last built.
+        "dbt_node_runs",
     }
 )
 
@@ -220,7 +278,14 @@ PARTIAL: frozenset[str] = frozenset({"org_settings"})
 #: (``metadata_export.endpoint``, ``cache.redis_url``), and an exact list would miss the next key
 #: added inside one.
 #: REQ-2122: ``catalogs`` names the external catalogs and how to sign in to them.
-NEVER_SETTING_PREFIXES: tuple[str, ...] = ("metadata_export", "catalogs", "redirect", "cache")
+NEVER_SETTING_PREFIXES: tuple[str, ...] = (
+    "metadata_export",
+    "catalogs",
+    "redirect",
+    "cache",
+    # REQ-2180: the system an environment's access requests go to is the environment's own.
+    "offer_hook",
+)
 
 #: Every table name this module classifies. The test asserts it equals ``schema_org``'s metadata.
 CLASSIFIED: frozenset[str] = CARRIED | IDENTITY_ONLY | NEVER_SENSITIVE | NEVER_RUNTIME | PARTIAL

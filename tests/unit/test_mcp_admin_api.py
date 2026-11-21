@@ -124,36 +124,110 @@ def test_the_uis_rest_routes_are_listed_with_their_bodies():
     ]
 
 
-async def test_discovery_runs_for_the_named_table_as_the_user(monkeypatch):
+async def test_discovery_runs_for_the_named_table_as_a_stored_run_jev_asked_by_name(
+    monkeypatch, tmp_path
+):
+    """REQ-413, REQ-1789: MCP's table-scope discovery is a run of the table's domain: every
+    proposal it read is stored with the run, and Jev is asked about the tables and columns by
+    name with their context, its score shown beside the model's, which decides."""
+    import json
+
     from provisa.api.admin import discovery
+    from tests.unit.test_discovery_run_api import (
+        _REQUEST,
+        _World,
+        _named,
+        _store,
+        _suggestion,
+        _table,
+    )
 
-    seen = {}
+    db = await _store(f"sqlite+pysqlite:///{tmp_path / 'store.db'}")
+    await _table(
+        db, 7, "sales", "orders", [("id", "integer", True), ("customer_id", "integer", False)]
+    )
+    await _table(db, 8, "sales", "customers", [("id", "integer", True), ("name", "text", False)])
+    await _table(db, 9, "crm", "leads", [("id", "integer", True)])
+    world = _World(
+        monkeypatch,
+        db,
+        config={"ai_models": {"relationship_inference": {"vendor": "openai", "model": "gpt-t"}}},
+        api_keys={"openai": "k"},
+    )
+    # customers.id holds both customers orders name and two of the three orders' ids: the first
+    # pair measures contained in a key, the second under the threshold (REQ-413).
+    world.measured.values[("customers", "id")] = [1, 2, 4]
+    world.answers = [
+        json.dumps(
+            [
+                _suggestion((7, "customer_id"), (8, "id"), 0.95),
+                _suggestion((7, "id"), (8, "id"), 0.3),
+            ]
+        )
+    ]
+    asked: list[tuple[dict, list[dict]]] = []
 
-    async def fake_trigger(request, body):
-        seen.update(request=request, scope=body.scope, table_id=body.table_id)
-        return {"candidates_found": 2, "stored_ids": [11, 12]}
+    async def jev_key(pool, vendor):
+        assert vendor == "jev"
+        return "ts-key"
 
-    async def fake_list(request):
-        return [{"id": 11, "confidence": 0.9}, {"id": 12, "confidence": 0.8}, {"id": 3}]
+    async def evaluate(api_key, state, questions):
+        asked.append((state, questions))
+        return {"answers": {q["id"]: {"noul": 0.31} for q in questions}}
 
-    monkeypatch.setattr(discovery, "trigger_discovery", fake_trigger)
-    monkeypatch.setattr(discovery, "list_candidates", fake_list)
+    monkeypatch.setattr("provisa.core.org_secrets.org_ai_key_or_none", jev_key)
+    monkeypatch.setattr("provisa.jev.client.evaluate", evaluate)
     state = SimpleNamespace(
+        model_db=db,
         tables=[
             {"id": 7, "domain_id": "sales", "schema_name": "public", "table_name": "orders"},
             {"id": 8, "domain_id": "sales", "schema_name": "public", "table_name": "customers"},
-        ]
+        ],
     )
-    request = object()
-    found = await admin_api.discover_relationships(state, "sales", "orders", request=request)
-    assert seen == {"request": request, "scope": "table", "table_id": 7}
-    # Only the candidates this run found, not every pending one.
-    assert found == {
-        "table": "sales.orders",
-        "candidates": [{"id": 11, "confidence": 0.9}, {"id": 12, "confidence": 0.8}],
-    }
+    found = await admin_api.discover_relationships(state, "sales", "orders", request=_REQUEST)
+
+    # A run of the table's domain, its scope stored as the dialog's is.
+    run = (await discovery.get_run(_REQUEST, found["run_id"]))["run"]
+    assert run["status"] == "done"
+    assert run["scope"]["source_domains"] == ["sales"]
+    # The model's 0.95 makes a suggestion though Jev gave 0.31; it is the candidate to accept.
+    assert [(c["source_column"], c["target_column"]) for c in found["candidates"]] == [
+        ("customer_id", "id")
+    ]
+    assert found["semantics"]["suggested"] == 1
+    # Jev re-scores every semantic proposal of the model, before the band is judged on the
+    # model's confidence (REQ-413, amended 2026-11-16), and scored both under the threshold.
+    assert (found["semantics"]["scored"], found["semantics"]["scored_below_threshold"]) == (2, 2)
+    # Every proposal it read is stored with the run, with both scores.
+    stored = (await discovery.list_proposals(_REQUEST, found["run_id"]))["proposals"]
+    assert found["proposals"] == stored
+    named = _named(stored)
+    assert [(r["source_column"], r["confidence"], r["scored"], r["reason"]) for r in named] == [
+        ("customer_id", 0.95, 0.31, None),
+        ("id", 0.3, 0.31, "below_threshold"),
+    ]
+    # The column pair of a listed table pair the model did not name is listed too, scored zero
+    # (REQ-413, amended 2026-11-18): orders' own id and customer_id.
+    assert [
+        (
+            r["source_table_id"],
+            r["source_column"],
+            r["target_table_id"],
+            r["target_column"],
+            r["confidence"],
+            r["reason"],
+        )
+        for r in stored
+        if r not in named
+    ] == [(7, "id", 7, "customer_id", 0.0, "below_threshold")]
+    # Jev was asked with the tables and columns by name and their context, no sample values.
+    ((jev_state, questions),) = asked
+    assert [t["table"]["name"] for t in jev_state["tables"]] == ["orders", "customers"]
+    assert "column 'customer_id' of table 'orders' (id 7)" in questions[0]["instructions"]
+    assert "sample_values" not in json.dumps(jev_state)
+
     with pytest.raises(ValueError, match="names 0 registered tables"):
-        await admin_api.discover_relationships(state, "sales", "returns", request=request)
+        await admin_api.discover_relationships(state, "sales", "returns", request=_REQUEST)
 
 
 def test_an_explore_question_reaches_the_nl_python_and_notebook_surfaces():

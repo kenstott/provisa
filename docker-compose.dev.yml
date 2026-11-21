@@ -106,8 +106,8 @@ services:
       - prometheus
       - tempo
 
-  # Billing (Lemon Squeezy, REQ-1015) is Merchant-of-Record over the public REST API; there is no
-  # bundled billing mock service. Tests stub Lemon Squeezy via HTTP fixtures (LEMONSQUEEZY_BASE_URL).
+  # Billing (Stripe Managed Payments, REQ-1015) is Merchant-of-Record over the public REST API; there
+  # is no bundled billing mock service. Tests stub Stripe via HTTP fixtures (STRIPE_BASE_URL).
 
 volumes:
   tempo_data:

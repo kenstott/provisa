@@ -32,7 +32,10 @@ default it was created under, not a guess.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from collections.abc import Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
+from dataclasses import dataclass, replace
 from typing import Callable
 
 #: Provisa's own domains, which hold its catalog, operations and ontology rather than a model's
@@ -67,14 +70,36 @@ def _scope() -> str | None:
     return _scope_resolver() if _scope_resolver is not None else None
 
 
+# REQ-2222: the policy of a dry run in progress, seen by that dry run alone.
+_trial: ContextVar[_DomainPolicy | None] = ContextVar("provisa_domain_policy_trial", default=None)
+
+
+@contextmanager
+def trial() -> Iterator[None]:  # REQ-2222
+    """Within this block :func:`configure` changes the policy for the current context only, and
+    the change ends with the block: an apply configures the policy before it writes anything, and
+    a dry run of one must not change what the org's other requests read."""
+    token = _trial.set(replace(_current()))
+    try:
+        yield
+    finally:
+        _trial.reset(token)
+
+
 def _current() -> _DomainPolicy:
     """The policy for the current scope, or the deployment-wide one it was created under."""
+    in_trial = _trial.get()
+    if in_trial is not None:
+        return in_trial
     policy = _policies.get(_scope())
     return policy if policy is not None else _policies[None]
 
 
 def configure(use_domains: bool | None, default_domain: str) -> None:  # REQ-154, REQ-432, REQ-433
     """Set the resolved policy for the current scope, before any registration."""
+    if _trial.get() is not None:
+        _trial.set(_DomainPolicy(use_domains, default_domain))
+        return
     _policies[_scope()] = _DomainPolicy(use_domains, default_domain)
 
 
@@ -138,6 +163,27 @@ def resolve_domain_id(requested: str | None) -> str:  # REQ-367, REQ-418, REQ-43
             f"only {policy.default_domain!r} is permitted"
         )
     return policy.default_domain
+
+
+class TableDomainRequired(ValueError):  # REQ-1531, REQ-433
+    """A table registration names no domain. Every table sits in a domain; refused by name."""
+
+    code = "schema.table_domain_required"
+
+    def __init__(self, table: str) -> None:
+        super().__init__(f"Table {table!r} names no domain: every table is registered in a domain")
+        self.table = table
+
+
+def table_domain_id(requested: str | None, table: str) -> str:  # REQ-1531, REQ-433
+    """The domain a table is registered into. Every table sits in a domain: an empty domain is
+    refused (:class:`TableDomainRequired`) on every path that saves one -- a single or bulk
+    registration, a source's register step, the Wikidata starter and class tables, a
+    configuration import or apply. In single-domain mode the one domain is used."""
+    resolved = resolve_domain_id(requested)
+    if not resolved:
+        raise TableDomainRequired(table)
+    return resolved
 
 
 def command_domain_id(requested: str | None, name: str) -> str:  # REQ-1531

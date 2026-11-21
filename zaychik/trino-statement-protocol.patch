@@ -65,10 +65,10 @@ index 895348d..d740d8d 100644
      TRINO_DRIVER_VERSION = config.getString("trino.driver.version", "452");
 diff --git a/src/main/java/ru/raiffeisen/trino/arrow/flight/sql/connection/TrinoStatementClients.java b/src/main/java/ru/raiffeisen/trino/arrow/flight/sql/connection/TrinoStatementClients.java
 new file mode 100644
-index 0000000..19275cb
+index 0000000..cd280a1
 --- /dev/null
 +++ b/src/main/java/ru/raiffeisen/trino/arrow/flight/sql/connection/TrinoStatementClients.java
-@@ -0,0 +1,172 @@
+@@ -0,0 +1,177 @@
 +package ru.raiffeisen.trino.arrow.flight.sql.connection;
 +
 +import io.airlift.units.Duration;
@@ -216,22 +216,27 @@ index 0000000..19275cb
 +    }
 +  }
 +
++  /** The Trino client session {@code context} asks for, for {@code user} on {@code target}. */
++  static ClientSession session(URI target, String user, TrinoStatementContext context) {
++    return ClientSession.builder()
++        .server(target)
++        .user(Optional.of(user))
++        .source(context.source().orElse(DEFAULT_SOURCE))
++        .catalog(context.catalog().orElse(null))
++        .schema(context.schema().orElse(null))
++        .properties(context.properties())
++        // A statement that names no zone runs in the proxy's own, as before timeZone was sent.
++        .timeZone(context.timeZone().orElse(ZoneId.systemDefault()))
++        .locale(Locale.getDefault())
++        .clientRequestTimeout(new Duration(60, TimeUnit.SECONDS))
++        .build();
++  }
++
 +  /** Submits {@code sql} for {@code user} in {@code context}'s session. */
 +  public StatementClient submit(
 +      String user, String password, TrinoStatementContext context, String sql) {
 +    URI target = serverFor(context);
-+    ClientSession session =
-+        ClientSession.builder()
-+            .server(target)
-+            .user(Optional.of(user))
-+            .source(context.source().orElse(DEFAULT_SOURCE))
-+            .catalog(context.catalog().orElse(null))
-+            .schema(context.schema().orElse(null))
-+            .properties(context.properties())
-+            .timeZone(ZoneId.systemDefault())
-+            .locale(Locale.getDefault())
-+            .clientRequestTimeout(new Duration(60, TimeUnit.SECONDS))
-+            .build();
++    ClientSession session = session(target, user, context);
 +    OkHttpClient client = httpClient;
 +    if ("https".equals(target.getScheme()) && !password.isEmpty()) {
 +      // A password is sent only over TLS, as the Trino clients require.
@@ -243,10 +248,10 @@ index 0000000..19275cb
 +}
 diff --git a/src/main/java/ru/raiffeisen/trino/arrow/flight/sql/connection/TrinoStatementContext.java b/src/main/java/ru/raiffeisen/trino/arrow/flight/sql/connection/TrinoStatementContext.java
 new file mode 100644
-index 0000000..a2504b8
+index 0000000..1d9d549
 --- /dev/null
 +++ b/src/main/java/ru/raiffeisen/trino/arrow/flight/sql/connection/TrinoStatementContext.java
-@@ -0,0 +1,88 @@
+@@ -0,0 +1,111 @@
 +package ru.raiffeisen.trino.arrow.flight.sql.connection;
 +
 +import com.fasterxml.jackson.databind.JsonNode;
@@ -254,6 +259,8 @@ index 0000000..a2504b8
 +
 +import java.io.IOException;
 +import java.nio.charset.StandardCharsets;
++import java.time.DateTimeException;
++import java.time.ZoneId;
 +import java.util.Base64;
 +import java.util.Iterator;
 +import java.util.LinkedHashMap;
@@ -265,27 +272,36 @@ index 0000000..a2504b8
 + * {@value #HEADER}: base64 of a JSON object
 + *
 + * <pre>{"server": "http://host:port", "source": "...", "catalog": "...", "schema": "...",
-+ *  "properties": {"name": "value"}}</pre>
++ *  "properties": {"name": "value"}, "timeZone": "Asia/Tokyo"}</pre>
 + *
 + * <p>Every key is optional. {@code server} names the coordinator the statement runs on; it is
 + * dialed only when the deployment declared it ({@link TrinoStatementClients}), and without it the
 + * statement runs on the configured coordinator. {@code properties} are Trino session properties, sent with the
 + * statement as the Trino client protocol sends them ({@code X-Trino-Session}); a connection that
 + * opens per statement cannot carry a {@code SET SESSION} from one statement to the next, so this is
-+ * how a statement gets them.
++ * how a statement gets them. {@code timeZone} is the zone the statement's session runs in (a zone
++ * of the tz database or a fixed offset such as {@code +05:30}), sent as the Trino client protocol
++ * sends it ({@code X-Trino-Time-Zone}): a client session on a zone has its statements read an
++ * instant in that zone, and no other statement shares it.
 + */
 +public record TrinoStatementContext(
 +    Optional<String> server,
 +    Optional<String> source,
 +    Optional<String> catalog,
 +    Optional<String> schema,
-+    Map<String, String> properties) {
++    Map<String, String> properties,
++    Optional<ZoneId> timeZone) {
 +
 +  public static final String HEADER = "x-provisa-trino-context";
 +
 +  public static final TrinoStatementContext NONE =
 +      new TrinoStatementContext(
-+          Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Map.of());
++          Optional.empty(),
++          Optional.empty(),
++          Optional.empty(),
++          Optional.empty(),
++          Map.of(),
++          Optional.empty());
 +
 +  private static final ObjectMapper MAPPER = new ObjectMapper();
 +
@@ -321,7 +337,19 @@ index 0000000..a2504b8
 +    }
 +    return new TrinoStatementContext(
 +        text(root, "server"),
-+        text(root, "source"), text(root, "catalog"), text(root, "schema"), Map.copyOf(properties));
++        text(root, "source"),
++        text(root, "catalog"),
++        text(root, "schema"),
++        Map.copyOf(properties),
++        text(root, "timeZone").map(TrinoStatementContext::zone));
++  }
++
++  private static ZoneId zone(String name) {
++    try {
++      return ZoneId.of(name);
++    } catch (DateTimeException e) {
++      throw new IllegalArgumentException(HEADER + ": timeZone " + name + " is not a zone", e);
++    }
 +  }
 +
 +  private static Optional<String> text(JsonNode root, String key) {
@@ -1284,15 +1312,16 @@ index 0000000..f182875
 +}
 diff --git a/src/test/java/ru/raiffeisen/trino/arrow/flight/sql/connection/TrinoStatementClientsTest.java b/src/test/java/ru/raiffeisen/trino/arrow/flight/sql/connection/TrinoStatementClientsTest.java
 new file mode 100644
-index 0000000..bd3381a
+index 0000000..d2e6ae7
 --- /dev/null
 +++ b/src/test/java/ru/raiffeisen/trino/arrow/flight/sql/connection/TrinoStatementClientsTest.java
-@@ -0,0 +1,79 @@
+@@ -0,0 +1,103 @@
 +package ru.raiffeisen.trino.arrow.flight.sql.connection;
 +
 +import org.junit.jupiter.api.Test;
 +
 +import java.net.URI;
++import java.time.ZoneId;
 +import java.util.List;
 +import java.util.Map;
 +import java.util.Optional;
@@ -1307,7 +1336,12 @@ index 0000000..bd3381a
 +
 +  private static TrinoStatementContext naming(String server) {
 +    return new TrinoStatementContext(
-+        Optional.ofNullable(server), Optional.empty(), Optional.empty(), Optional.empty(), Map.of());
++        Optional.ofNullable(server),
++        Optional.empty(),
++        Optional.empty(),
++        Optional.empty(),
++        Map.of(),
++        Optional.empty());
 +  }
 +
 +  private static boolean allowed(String declared, String requested) {
@@ -1366,18 +1400,37 @@ index 0000000..bd3381a
 +            () -> clients.serverFor(naming("http://169.254.169.254:80")));
 +    assertTrue(refused.getMessage().contains("not one this proxy is declared to reach"));
 +  }
++
++  @Test
++  void theSessionRunsInTheZoneTheStatementNames() {
++    TrinoStatementContext zoned =
++        new TrinoStatementContext(
++            Optional.empty(),
++            Optional.empty(),
++            Optional.empty(),
++            Optional.empty(),
++            Map.of(),
++            Optional.of(ZoneId.of("Asia/Kolkata")));
++    URI trino = URI.create("http://trino:8080");
++    assertEquals(
++        ZoneId.of("Asia/Kolkata"), TrinoStatementClients.session(trino, "u", zoned).getTimeZone());
++    assertEquals(
++        ZoneId.systemDefault(),
++        TrinoStatementClients.session(trino, "u", naming(null)).getTimeZone());
++  }
 +}
 diff --git a/src/test/java/ru/raiffeisen/trino/arrow/flight/sql/connection/TrinoStatementContextTest.java b/src/test/java/ru/raiffeisen/trino/arrow/flight/sql/connection/TrinoStatementContextTest.java
 new file mode 100644
-index 0000000..a688a53
+index 0000000..c867693
 --- /dev/null
 +++ b/src/test/java/ru/raiffeisen/trino/arrow/flight/sql/connection/TrinoStatementContextTest.java
-@@ -0,0 +1,48 @@
+@@ -0,0 +1,63 @@
 +package ru.raiffeisen.trino.arrow.flight.sql.connection;
 +
 +import org.junit.jupiter.api.Test;
 +
 +import java.nio.charset.StandardCharsets;
++import java.time.ZoneId;
 +import java.util.Base64;
 +import java.util.Map;
 +import java.util.Optional;
@@ -1406,6 +1459,17 @@ index 0000000..a688a53
 +    assertEquals(Optional.of("org_1"), context.schema());
 +    assertEquals(
 +        Map.of("query_max_execution_time", "120s", "retry_policy", "TASK"), context.properties());
++    assertEquals(Optional.empty(), context.timeZone());
++  }
++
++  @Test
++  void parsesTheSessionsZoneByNameOrOffset() {
++    assertEquals(
++        Optional.of(ZoneId.of("Asia/Tokyo")),
++        TrinoStatementContext.parse(header("{\"timeZone\":\"Asia/Tokyo\"}")).timeZone());
++    assertEquals(
++        Optional.of(ZoneId.of("+05:30")),
++        TrinoStatementContext.parse(header("{\"timeZone\":\"+05:30\"}")).timeZone());
 +  }
 +
 +  @Test
@@ -1419,6 +1483,9 @@ index 0000000..a688a53
 +    assertThrows(
 +        IllegalArgumentException.class,
 +        () -> TrinoStatementContext.parse(header("{\"properties\":{\"a\":1}}")));
++    assertThrows(
++        IllegalArgumentException.class,
++        () -> TrinoStatementContext.parse(header("{\"timeZone\":\"Not/AZone\"}")));
 +  }
 +}
 diff --git a/src/test/java/ru/raiffeisen/trino/arrow/flight/sql/producer/TrinoArrowColumnTest.java b/src/test/java/ru/raiffeisen/trino/arrow/flight/sql/producer/TrinoArrowColumnTest.java

@@ -32,6 +32,8 @@
     "statusUnknown": "正在检查远程主机...",
     "answering": "远程主机有响应。",
     "notAnswering": "远程主机无响应：{{error}}",
+    "health_healthy": "正常",
+    "health_unhealthy": "异常",
     "otherCode": "远程主机运行的代码（{{reported}}）与此数据源固定的代码（{{pinned}}）不同。在您审查代码并重新固定之前，其读取会被拒绝。",
     "repin": "重新固定到主机的代码",
     "refresh": "重新检查",

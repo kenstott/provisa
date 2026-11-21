@@ -27,6 +27,8 @@ export function OffPeakWindowFields({
   onTzChange,
   windowHelp,
   windowHint,
+  windowReadOnly,
+  tzReadOnly,
 }: {
   /** "HH:MM-HH:MM"; empty is no window. */
   window: string;
@@ -39,6 +41,9 @@ export function OffPeakWindowFields({
   windowHelp?: string;
   /** The sentence beneath the window, likewise. */
   windowHint?: string;
+  /** Shown, not changeable: a value a connector fixes. */
+  windowReadOnly?: boolean;
+  tzReadOnly?: boolean;
 }) {
   const { t } = useTranslation();
   const [opens = "", closes = ""] = window.split("-");
@@ -60,6 +65,7 @@ export function OffPeakWindowFields({
               data-testid="off-peak-opens"
               label={t("tableEditForm.offPeakOpens")}
               value={opens}
+              readOnly={windowReadOnly}
               onChange={(e) => onWindowChange(compose(e.currentTarget.value, closes))}
             />
             <TimeInput
@@ -67,6 +73,7 @@ export function OffPeakWindowFields({
               data-testid="off-peak-closes"
               label={t("tableEditForm.offPeakCloses")}
               value={closes}
+              readOnly={windowReadOnly}
               onChange={(e) => onWindowChange(compose(opens, e.currentTarget.value))}
             />
           </Group>
@@ -79,7 +86,8 @@ export function OffPeakWindowFields({
           value={tz}
           onChange={(v) => onTzChange(v ?? "")}
           searchable
-          clearable
+          clearable={!tzReadOnly}
+          disabled={tzReadOnly}
           placeholder="UTC"
           comboboxProps={{ withinPortal: true }}
           data-testid="off-peak-tz"

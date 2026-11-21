@@ -12,8 +12,7 @@
 // previews it, but is not offered the table editor's acts -- deploy, profile, delete.
 
 import { describe, it, expect, vi } from "vitest";
-import userEvent from "@testing-library/user-event";
-import { fireEvent, render, screen, within } from "../../../test-utils/render";
+import { fireEvent, render, screen, waitFor, within } from "../../../test-utils/render";
 // The glossary terms that name the table's columns, as the server answers: one rooted term, and an
 // abstract one reachable from it (which names no column).
 // The table's class term reads the meta domain as the user: its own tests (termGrounding) hold it.
@@ -24,6 +23,18 @@ vi.mock("../../../api/glossary", async (importOriginal) => ({
     { id: 1, name: "Customer", definition: null, is_abstract: false, live: true, domains: [] },
     { id: 2, name: "Revenue", definition: null, is_abstract: true, live: true, domains: [] },
   ]),
+}));
+// The relationships a person made: the server's `relationships` read, which leaves out the system's
+// own. The `relationships` prop is what the page read with them (`allRelationships`).
+const PERSONS: { ids: number[] } = { ids: [] };
+vi.mock("../../../hooks/useAdminQueries", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../../hooks/useAdminQueries")>()),
+  useRelationships: () => ({
+    relationships: PERSONS.ids.map((id) => ({ id })),
+    loading: false,
+    error: undefined,
+    refetch: vi.fn(),
+  }),
 }));
 import { TableReadView } from "../TableReadView";
 import type { Relationship } from "../../../types/admin";
@@ -38,6 +49,7 @@ function makeTable(overrides: Partial<RegisteredTable> = {}): RegisteredTable {
     tableName: "orders",
     alias: null,
     description: null,
+    registeredAt: "2026-11-01T00:00:00+00:00",
     cacheTtl: null,
     roleTtl: [],
     pagingKind: null,
@@ -45,7 +57,8 @@ function makeTable(overrides: Partial<RegisteredTable> = {}): RegisteredTable {
     pagingCeilingRows: null,
     replicate: null,
     region: null,
-    draft: false,
+    withdrawn: false,
+    sourceWithdrawn: false,
     rowMaterialize: false,
     loadProtected: null,
     offPeakWindow: null,
@@ -78,12 +91,14 @@ function makeTable(overrides: Partial<RegisteredTable> = {}): RegisteredTable {
     mvPersist: "replace",
     mvPrimaryKey: [],
     mvIncremental: false,
+    mvRebuildEvery: null,
+    incrementalOption: { available: true, code: null, reason: null },
     mvCalendar: null,
     mvGrain: null,
     mvAllowedLateness: 0,
     mvExpectedEvents: null,
     mvBusinessDayGrain: false,
-    productId: null,
+    productIds: [],
     enableAggregates: false,
     enableGroupBy: false,
     canDeployToDb: false,
@@ -118,9 +133,13 @@ function renderView(hidingOnly: boolean, shown: RegisteredTable = TABLE, acts = 
       reload={vi.fn()}
       startEditing={vi.fn()}
       handleDelete={vi.fn()}
+      onWithdraw={vi.fn()}
+      onPutBack={vi.fn()}
+      putBackRegions={null}
       handleProfile={vi.fn()}
       onPreview={vi.fn()}
       relationships={[]}
+      actingRole={null}
       {...acts}
     />,
   );
@@ -169,57 +188,66 @@ describe("TableReadView for a table with a required parameter", () => {
   });
 });
 
-// REQ-1921: the Draft box sits with the table's other actions. It shows the stored state and
-// asks for the change; whoever may not release a table sees the state and cannot change it.
-describe("TableReadView's Draft box", () => {
-  it("is checked on a draft and asks to release it when unticked", () => {
-    const onSetDraft = vi.fn();
-    const draft = makeTable({ id: 7, draft: true });
-    renderView(false, draft, { onSetDraft });
-    const box = screen.getByTestId("table-read-view-draft");
-    expect(box).toBeChecked();
-    expect(screen.getByLabelText("Draft")).toBe(box);
-    fireEvent.click(box);
-    expect(onSetDraft).toHaveBeenCalledTimes(1);
-    expect(onSetDraft).toHaveBeenCalledWith(draft, false);
-    // Not optimistic: the box follows the stored state, which has not changed yet.
-    expect(box).toBeChecked();
+// REQ-1921: there is no draft state: the read view offers no control to set or clear it, and
+// marks a withdrawn table instead.
+describe("TableReadView and a draft", () => {
+  it.each([true, false])("offers no control to set or clear draft (withdrawn: %s)", (withdrawn) => {
+    renderView(false, makeTable({ id: 7, withdrawn }));
+    expect(screen.queryByTestId("table-read-view-draft")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Draft")).not.toBeInTheDocument();
   });
 
-  it("is unchecked on a table in service and asks to return it to draft when ticked", () => {
-    const onSetDraft = vi.fn();
-    const released = makeTable({ id: 7, draft: false });
-    renderView(false, released, { onSetDraft });
-    const box = screen.getByTestId("table-read-view-draft");
-    expect(box).not.toBeChecked();
-    fireEvent.click(box);
-    expect(onSetDraft).toHaveBeenCalledWith(released, true);
-  });
-
-  it("shows the state and cannot be changed by a caller who may not register tables", async () => {
-    const onSetDraft = vi.fn();
-    renderView(true, makeTable({ id: 7, draft: true }), { onSetDraft });
-    const box = screen.getByTestId("table-read-view-draft");
-    expect(box).toBeChecked();
-    expect(box).toBeDisabled();
-    // As a person clicks: a disabled control takes no click (a dispatched event would).
-    await userEvent.setup({ pointerEventsCheck: 0 }).click(box);
-    expect(onSetDraft).not.toHaveBeenCalled();
-    expect(box).toBeChecked();
-  });
-
-  it("says a draft's preview is a draft preview, and keeps Preview and Profile offered", () => {
-    renderView(false, makeTable({ id: 7, draft: true }), { onSetDraft: vi.fn() });
-    expect(screen.getByTestId("table-read-view-draft-note")).toHaveTextContent(
-      "Draft preview: readers cannot see this table yet.",
+  it("says a withdrawn table is read by no role, and keeps Preview and Profile offered", () => {
+    renderView(false, makeTable({ id: 7, withdrawn: true }));
+    expect(screen.getByTestId("table-read-view-withdrawn-note")).toHaveTextContent(
+      "Withdrawn: no role reads this table until it is put back. Its preview still reads it.",
     );
     expect(screen.getByTestId("table-read-view-preview")).toBeEnabled();
     expect(screen.getByTestId("table-read-view-profile")).toBeEnabled();
   });
 
-  it("says nothing of drafts on a table in service", () => {
-    renderView(false, makeTable({ id: 7, draft: false }), { onSetDraft: vi.fn() });
-    expect(screen.queryByTestId("table-read-view-draft-note")).not.toBeInTheDocument();
+  it("says nothing of withdrawal on a table in production", () => {
+    renderView(false, makeTable({ id: 7 }));
+    expect(screen.queryByTestId("table-read-view-withdrawn-note")).not.toBeInTheDocument();
+  });
+});
+
+// REQ-1921: Withdraw among the table's actions, confirmed naming what stops; Put back once withdrawn.
+describe("TableReadView — Withdraw and Put back", () => {
+  it("withdraws the table once confirmed, the confirmation naming what stops", async () => {
+    const onWithdraw = vi.fn().mockResolvedValue(undefined);
+    renderView(false, TABLE, { onWithdraw });
+    fireEvent.click(screen.getByTestId("table-read-view-withdraw"));
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog).toHaveTextContent("Withdraw orders?");
+    expect(dialog).toHaveTextContent(
+      "No role reads it on any front door, no engine attaches it, and its replica is removed.",
+    );
+    fireEvent.click(screen.getByTestId("table-read-view-confirm-dialog-confirm"));
+    await waitFor(() => expect(onWithdraw).toHaveBeenCalledWith(7));
+    expect(screen.queryByTestId("table-read-view-put-back")).not.toBeInTheDocument();
+  });
+
+  it("puts a withdrawn table back, and says it is withdrawn", async () => {
+    const onPutBack = vi.fn().mockResolvedValue(undefined);
+    renderView(false, makeTable({ id: 7, withdrawn: true }), { onPutBack });
+    expect(screen.queryByTestId("table-read-view-withdraw")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("table-read-view-put-back"));
+    await waitFor(() => expect(onPutBack).toHaveBeenCalledWith(7, null));
+  });
+
+  it("names the withdrawn source of a table withdrawn through it, and still offers Withdraw", () => {
+    renderView(false, makeTable({ id: 7, sourceId: "pg", sourceWithdrawn: true }));
+    expect(screen.getByTestId("table-read-view-withdrawn-note")).toHaveTextContent(
+      "Its source pg is withdrawn: no role reads this table until the source is put back.",
+    );
+    expect(screen.getByTestId("table-read-view-withdraw")).toBeInTheDocument();
+  });
+
+  it("is not offered to a governance-only viewer", () => {
+    renderView(true);
+    expect(screen.queryByTestId("table-read-view-withdraw")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("table-read-view-put-back")).not.toBeInTheDocument();
   });
 });
 
@@ -302,6 +330,7 @@ describe("TableReadView — the table's seven sections", () => {
   });
 
   it("lists the relationships the table takes part in and the terms that name its columns", async () => {
+    PERSONS.ids = [1, 2];
     renderView(false, makeTable({ id: 7 }), {
       relationships: [rel(1, "orders", "customers", 7), rel(2, "returns", "orders", 9)],
     });
@@ -311,13 +340,35 @@ describe("TableReadView — the table's seven sections", () => {
     );
     expect(screen.getByTestId("table-association-relationship-2")).toHaveAttribute(
       "href",
-      "/relationships?search=returns",
+      "/relationships?relationship=2&search=returns",
     );
     expect(await screen.findByText("Customer")).toBeInTheDocument();
     expect(screen.getByTestId("table-associations-terms")).not.toHaveTextContent("Revenue");
   });
 
+  it("leaves out the system's own relationships, listing only a person's beside them", () => {
+    PERSONS.ids = [1];
+    renderView(false, makeTable({ id: 7 }), {
+      relationships: [rel(1, "orders", "customers", 7), rel(2, "orders", "registered_tables", 7)],
+    });
+    fireEvent.click(screen.getByTestId("table-section-associations"));
+    expect(screen.getByTestId("table-association-relationship-1")).toBeInTheDocument();
+    expect(screen.queryByTestId("table-association-relationship-2")).toBeNull();
+  });
+
+  it("says no relationship when the table's only ones are the system's", () => {
+    PERSONS.ids = [];
+    renderView(false, makeTable({ id: 7 }), {
+      relationships: [rel(2, "orders", "registered_tables", 7)],
+    });
+    fireEvent.click(screen.getByTestId("table-section-associations"));
+    expect(screen.getByTestId("table-associations-relationships")).toHaveTextContent(
+      "This table takes part in no relationship",
+    );
+  });
+
   it("says when the table takes part in no relationship", () => {
+    PERSONS.ids = [];
     renderView(false, makeTable({ id: 7 }));
     fireEvent.click(screen.getByTestId("table-section-associations"));
     expect(screen.getByTestId("table-associations-relationships")).toHaveTextContent(

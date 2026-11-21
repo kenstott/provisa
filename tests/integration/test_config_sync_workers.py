@@ -47,7 +47,6 @@ from pathlib import Path
 import pytest
 import sqlalchemy as sa
 
-from tests.helpers import registered_id, release_mutation
 from tests.integration.cross_worker_evidence import Worker
 from tests.integration.test_settings_catalog_workers import _one_connection_per_worker
 from tests.integration.worker_boot_harness import WorkerBoot
@@ -205,11 +204,7 @@ def test_a_source_registered_through_one_worker_is_queryable_on_every_worker(wor
         "{ success message } }"
     )
     assert res["data"]["registerTable"]["success"], res
-    # REQ-1921: registered through the admin, it starts as draft; released, it is read.
-    released = author.admin(
-        release_mutation(registered_id(res["data"]["registerTable"]["message"]))
-    )
-    assert released["data"]["setTableDraft"]["success"], released
+    # REQ-1921: registered, it is live: no step puts it in service.
 
     def _reads_customers(w: Worker) -> tuple[bool, dict]:
         body = w.data("{ s__customers { id name } }")
@@ -238,6 +233,49 @@ def test_the_stored_stamp_does_not_move_while_nothing_changes(workers):
         "a worker rebuilt with no change",
         {"stamps before": stamps, "stamps after": [_health(w)["config"] for w in workers]},
     )
+
+
+def _save_product(author: Worker, verb: str, owner_role: str) -> None:
+    res = author.admin(
+        f"mutation {{ {verb}DataProduct(input: "
+        f'{{id: "orders_status", domainId: "sales", name: "Orders", ownerRole: "{owner_role}"}}) '
+        "{ success message } }"
+    )
+    assert res["data"][f"{verb}DataProduct"]["success"], res
+
+
+def _product_status(worker: Worker) -> str | None:
+    products = worker.admin("{ dataProducts { id status } }")["data"]["dataProducts"]
+    return next((p["status"] for p in products if p["id"] == "orders_status"), None)
+
+
+def test_a_status_change_moves_every_workers_stamp_and_rebuilds_none(workers):
+    """REQ-1914 (amended 2026-11-09): the build does not read a data product's status, so every
+    worker of both instances takes the new stamp without a rebuild, and each reads the new status.
+    A change the build does read, the product's owner, still rebuilds every worker."""
+    author = workers[2]
+    _save_product(author, "create", "org_admin")
+    _until_every_worker(workers, _stamps_agree, "loaded stamp == stored stamp after the create")
+    before = _health(author)["config"]["model"]["stored"]
+    versions = [w.schema_version()[1] for w in workers]
+
+    res = author.admin('mutation { publishDataProduct(id: "orders_status") { success message } }')
+    assert res["data"]["publishDataProduct"]["success"], res
+
+    _until_every_worker(workers, _stamps_agree, "loaded stamp == stored stamp after the publish")
+    assert _health(author)["config"]["model"]["stored"] > before
+    for worker in workers:
+        assert _product_status(worker) == "live"
+    assert [w.schema_version()[1] for w in workers] == versions, "a status change rebuilt a worker"
+
+    built_at = {w.boot_id: int(w.schema_version()[1]) for w in workers}
+    _save_product(author, "update", "analyst")
+
+    def _rebuilt(w: Worker) -> tuple[bool, dict]:
+        version = int(w.schema_version()[1])
+        return version > built_at[w.boot_id], {"version": version}
+
+    _until_every_worker(workers, _rebuilt, "rebuilt for a change of the product's owner")
 
 
 def _evidence(*flags: str) -> list[tuple[str, str, str, str]]:

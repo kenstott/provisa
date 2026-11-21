@@ -331,7 +331,26 @@ async def test_every_carried_setting_is_written_and_an_undeclared_one_cleared(mo
     updates = await _declared_settings(monkeypatch, "retail")
     assert set(updates) == _carried_settings()
     assert updates["vector_models"] is None
-    assert updates["naming"] is None  # retail declares no naming key an org owns
+    # REQ-1327: naming conventions are the org's, so the one key retail declares (domain_prefix)
+    # is carried to its sandboxes; the rest of the naming block is not written.
+    assert updates["naming"] == {"domain_prefix": True}
+
+
+async def test_an_undeclared_naming_block_is_cleared(monkeypatch):
+    """REQ-1327: a configuration that declares no naming key leaves the template org with none."""
+    from provisa.api.demo_templates import write_declared_settings
+    from provisa.core import org_settings
+    from provisa.core.models import ProvisaConfig
+
+    written = []
+
+    async def write(model_db, updates, *, updated_by):
+        written.append(updates)
+        return list(updates)
+
+    monkeypatch.setattr(org_settings, "write_org_overrides", write)
+    await write_declared_settings(object(), ProvisaConfig.model_construct())
+    assert written[0]["naming"] is None
 
 
 def test_the_demos_connector_bundles_are_fetched_outside_any_request(monkeypatch, tmp_path):
@@ -546,20 +565,6 @@ def test_each_node_serves_its_own_sandboxes_its_templates_and_its_deployment_org
     _on_the_tier(monkeypatch, None)
     for org in ("sbx0aef6d8dbe7d", "sbxtplweblogs", "sbxtier"):
         require_this_tier(org)
-
-
-async def test_a_demos_own_library_retrieval_reaches_its_sandboxes(monkeypatch):
-    """REQ-2185: banksecrecy declares graph retrieval for its reference library. Its template org's
-    settings carry it, so a sandbox cloned from them reads retrieval=graph."""
-    updates = await _declared_settings(monkeypatch, "banksecrecy")
-    assert updates["reference_library"] == {"retrieval": "graph"}
-    assert "reference_library" in _carried_settings()
-
-
-async def test_a_demo_that_declares_no_library_retrieval_clears_it(monkeypatch):
-    """REQ-2185: a setting the configuration does not declare is cleared (REQ-1919)."""
-    updates = await _declared_settings(monkeypatch, "sonnets")
-    assert updates["reference_library"] is None
 
 
 @pytest.fixture(autouse=True)

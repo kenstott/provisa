@@ -52,7 +52,7 @@ def athena_client(source: Any) -> Any:
     if not region:
         raise ValueError(f"athena source {source.id!r}: requires its region")
     key = resolve_secrets(source.username) if source.username else ""
-    secret = resolve_secrets(source.password) if source.password else ""
+    secret = resolve_secrets(source.password, credential=True) if source.password else ""
     if bool(key) != bool(secret):
         raise ValueError(
             f"athena source {source.id!r}: an access key ID and its secret are given together, "

@@ -130,7 +130,7 @@ def _selected(name: str, kind: str) -> str:
     if kind == "INTERVAL":
         return _FIELDS.format(x=column)
     if kind == "INTERVAL[]":
-        return f"list_transform({column}, _z -> {_FIELDS.format(x='_z')})"
+        return f"list_transform({column}, LAMBDA _z : {_FIELDS.format(x='_z')})"
     return column
 
 

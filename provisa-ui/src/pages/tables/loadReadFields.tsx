@@ -169,6 +169,9 @@ export function mvStoreFields(t: TFunction, table: RegisteredTable): DetailField
         ]),
     ...historyFields(t, table),
     { label: t("tableEditForm.incrementalLabel"), value: yesNo(t, table.mvIncremental) },
+    ...(table.mvIncremental
+      ? [{ label: t("tableEditForm.mvRebuildEveryLabel"), value: orDash(table.mvRebuildEvery) }]
+      : []),
     {
       label: t("tableEditForm.preprocessLabel"),
       value: table.mvPreprocess ? <code className="detail-code">{table.mvPreprocess}</code> : null,

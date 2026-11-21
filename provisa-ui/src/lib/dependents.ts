@@ -15,11 +15,15 @@ export interface Dependent {
   kind: string;
   id: string | number;
   name: string;
+  /** What its own page shows it as (REQ-2240): a relationship as its two tables. */
+  label: string;
   via: string[];
   /** A column grant's table: what the grant is revoked through (revokeRoleFromTable). */
   table_id?: number;
   /** A role assignment's holder: what the assignment is removed from. */
   user_id?: string;
+  /** A remote registration's source: the panel it is opened on. */
+  source_id?: string;
 }
 
 /** The dependents a refused delete reported, or null when the result is not such a refusal.

@@ -195,3 +195,76 @@ async def citations(
         for passage in json.loads(payload).get("passages", []):
             out.setdefault(int(term_id), set()).add((int(document_id), int(passage["ordinal"])))
     return {t: sorted(cited) for t, cited in out.items()}
+
+
+#: A citation whose quoted words are still in the document, wherever they now are.
+CURRENT = "current"
+#: A citation whose quoted words the document no longer holds: flagged for review.
+DRIFTED = "drifted"
+
+
+@dataclass(frozen=True)
+class CitedBy:
+    """A term's citation of a passage of a document: ``ordinal``, ``section`` and ``page`` say
+    where the words are now, or where they were when ``state`` is :data:`DRIFTED`."""
+
+    term_id: int
+    term: str
+    ordinal: int
+    section: str | None
+    page: int | None
+    quote: str
+    state: str
+
+
+def _spaced(text: str) -> str:
+    return " ".join(text.split()).casefold()
+
+
+def same_text(quote: str, passage: str) -> bool:
+    """Whether ``passage`` still holds the words of ``quote``, however they are spaced."""
+    return _spaced(quote) in _spaced(passage)
+
+
+async def cited_by(conn: Connection, document_id: int) -> list[CitedBy]:
+    """The terms citing the document, each citation with its state. A quote is looked for where it
+    was cited and then everywhere in the document, so a passage that only moved follows silently;
+    one whose words are gone is flagged. In term order, then passage order."""
+    rows = (
+        await conn.execute_core(
+            select(terms_t.c.id, terms_t.c.name, drafts_t.c.payload)
+            .join(drafts_t, drafts_t.c.term_id == terms_t.c.id)
+            .join(scans_t, drafts_t.c.scan_id == scans_t.c.id)
+            .where(drafts_t.c.status.in_(CITING), scans_t.c.document_id == document_id)
+        )
+    ).fetchall()
+    if not rows:
+        return []
+    held = await store.passages(conn, document_id)
+    seen: set[tuple[int, str]] = set()
+    found: list[CitedBy] = []
+    for term_id, name, payload in rows:
+        for cited in json.loads(payload).get("passages", []):
+            quote = cited.get("quote") or ""
+            ordinal = int(cited["ordinal"])
+            if (int(term_id), _spaced(quote)) in seen:
+                continue
+            seen.add((int(term_id), _spaced(quote)))
+            at_place = [p for p in held if p[0] == ordinal and same_text(quote, p[3])]
+            anywhere = at_place or [p for p in held if same_text(quote, p[3])]
+            if anywhere:
+                now = anywhere[0]
+                found.append(CitedBy(term_id, name, now[0], now[1], now[2], quote, CURRENT))
+            else:
+                found.append(
+                    CitedBy(
+                        term_id,
+                        name,
+                        ordinal,
+                        cited.get("section"),
+                        cited.get("page"),
+                        quote,
+                        DRIFTED,
+                    )
+                )
+    return sorted(found, key=lambda c: (c.term.casefold(), c.ordinal))

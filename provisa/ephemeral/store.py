@@ -71,7 +71,8 @@ _CASE_MASK = re.compile(r"__[0-9a-f]+$")
 
 
 def _caseless(name: str) -> str:
-    """``name`` as a table name an engine that folds case (DuckDB) tells from every other: a name
+    """``name`` as a table name an engine that folds case (DuckDB; Trino, whose PostgreSQL catalog
+    the session's store is read through) tells from every other and finds as written: a name
     in lower case alone (that does not end like a mask) as it is; any other lowered, with the
     hex mask of its upper-case letters' places -- T2 ``t2__1``, t2 ``t2``."""
     if name == name.lower() and not _CASE_MASK.search(name):
@@ -81,24 +82,15 @@ def _caseless(name: str) -> str:
 
 
 def anchor_table(label: str) -> str:
-    """The anchor table a free label creates for the nodes it anchors."""
-    return f"cypher__anchor__{label}"
+    """The anchor table a free label creates for the nodes it anchors: one per label, labels told
+    apart by case (A and a)."""
+    return f"cypher__anchor__{_caseless(label)}"
 
 
 def anchor_of(g: "Graph", label: str) -> str:
     """The anchor table of ``label`` in the session's graph ``g``: the one it holds, else the one
-    it would make -- :func:`anchor_table`, numbered when an engine that folds case (DuckDB) would
-    read it as one held for a label differing only in case (A and a are two labels)."""
-    held = g.anchors.get(label)
-    if held is not None:
-        return held
-    name = anchor_table(label)
-    taken = {t.lower() for t in g.anchors.values()}
-    n = 1
-    while name.lower() in taken:
-        name = f"{anchor_table(label)}__{n}"
-        n += 1
-    return name
+    it would make (:func:`anchor_table`)."""
+    return g.anchors.get(label) or anchor_table(label)
 
 
 def rel_table(rel_type: str) -> str:

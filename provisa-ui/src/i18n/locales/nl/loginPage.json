@@ -6,7 +6,7 @@
     "signInTitle": "Aanmelden",
     "firstLoginHeading": "Deze implementatie instellen",
     "firstLoginTitle": "Dit is de eerste aanmelding",
-    "firstLoginBody": "Nog niemand beheert deze implementatie. Wie zich als eerste aanmeldt, wordt de platformbeheerder — met volledige controle over organisaties, gebruikers en databronnen. Kies hieronder een aanmeldmethode om die rol te claimen.",
+    "firstLoginBody": "Niemand beheert deze deployment nog. Wie zich als eerste aanmeldt, wordt platformbeheerder, met volledige controle over organisaties, gebruikers en databronnen. Kies hieronder een aanmeldmethode om dit te claimen.",
     "signInWithGoogle": "Aanmelden met Google",
     "signInWithGithub": "Aanmelden met GitHub",
     "signInWithMicrosoft": "Aanmelden met Microsoft",
@@ -36,9 +36,9 @@
     "signInWithSso": "Aanmelden met eenmalige aanmelding (SSO)",
     "samlSignInFailed": "Eenmalige aanmelding (SSO) is niet voltooid. Probeer het opnieuw of neem contact op met uw beheerder.",
     "sandboxBuildingTitle": "Uw sandbox wordt gebouwd…",
-    "sandboxBuildingBody": "Er wordt een privékopie van de voorbeeldgegevens speciaal voor u klaargezet — dit kan een paar minuten duren.",
+    "sandboxBuildingBody": "Er wordt een privékopie van de voorbeelddata klaargezet. Dit kan een paar minuten duren.",
     "sandboxTryTitle": "Probeer Provisa gratis",
-    "sandboxTryBody": "Verken het volledige platform met voorbeeldgegevens — geen creditcard nodig. Uw sandbox is tijdelijk: ze verdwijnt wanneer u uitlogt.",
+    "sandboxTryBody": "Verken het hele platform met voorbeelddata. Geen creditcard nodig. De sandbox is tijdelijk en verdwijnt bij afmelden.",
     "sandboxHeading": "Probeer Provisa"
   }
 }

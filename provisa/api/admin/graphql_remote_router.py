@@ -102,16 +102,9 @@ async def _verify_live_auth(url: str, auth: dict | None, verify_query: str) -> N
 async def _resolved_credential(value: str) -> str:
     """A credential as entered: itself, or what its ``${env:...}``/``${secret:...}`` reference
     names (a vault reference resolves in the requesting org's vault)."""
-    if "${" not in value:
-        return value
-    from provisa.core.secrets import resolve_secrets
+    from provisa.core.secrets_store import resolved_credential
 
-    if "${secret:" in value or "${user:" in value:
-        from provisa.core.secrets_store import bound_to_request_org
-
-        async with bound_to_request_org():
-            return resolve_secrets(value)
-    return resolve_secrets(value)
+    return await resolved_credential(value)
 
 
 _AUTH_SECRET_KEYS = frozenset({"token", "password"})
@@ -448,9 +441,6 @@ async def _upsert_tables_to_semantic_layer(  # REQ-308, REQ-599, REQ-602
                     for a, required in arguments(t)
                 ],
             )
-            from provisa.api.admin.region_defaults import admin_registration_draft
-
-            tbl.draft = await admin_registration_draft(conn, source_id, "graphql", _sql_name)
             try:
                 await table_repo.upsert(conn, tbl)
             except table_repo.ColumnDropRefused as refused:

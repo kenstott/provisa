@@ -10,13 +10,16 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "../test-utils/render";
-import type { Tag, TagAssignment } from "../types/admin";
+import { offeredTagsFor } from "../test-utils/offeredTags";
+import type { Tag, TagAssignment, TagTarget } from "../types/admin";
 import { TagControl } from "../components/TagControl";
 
 const assignSpy = vi.fn(async () => ({ success: true, message: "ok" }));
 const unassignSpy = vi.fn(async () => ({ success: true, message: "ok" }));
 
 let mockTags: Tag[] = [];
+// The tags the server places outside the object's domains (offeredTags), per test.
+let notOffered: ReadonlySet<string> = new Set();
 let mockAssignments: TagAssignment[] = [];
 
 // Spread the real module: vmThreads + fileParallelism:false share one module registry, so a
@@ -27,6 +30,7 @@ vi.mock("../hooks/useTagQueries", async (importOriginal) => ({
   useTagAssignments: () => ({ tagAssignments: mockAssignments, refetch: vi.fn() }),
   useAssignTag: () => ({ assignTag: assignSpy }),
   useUnassignTag: () => ({ unassignTag: unassignSpy }),
+  useOfferedTags: (target: TagTarget) => offeredTagsFor(mockTags, target, notOffered),
 }));
 
 // A column's term, as the pii flow reads it: none unless a test names one.
@@ -43,6 +47,7 @@ vi.mock("react-router-dom", async (importOriginal) => ({
 
 describe("TagControl", () => {
   beforeEach(() => {
+    notOffered = new Set();
     termByRef.term = null;
     navigateTo.mockClear();
     assignSpy.mockClear();
@@ -57,6 +62,11 @@ describe("TagControl", () => {
         reasonPolicy: "required",
         expiresPolicy: "optional",
         paramPolicy: "none",
+        requiresCitation: false,
+        required: false,
+        allowedDomains: [],
+        citations: [],
+        needsReview: false,
         paramValues: [],
       },
       {
@@ -68,6 +78,11 @@ describe("TagControl", () => {
         reasonPolicy: "optional",
         expiresPolicy: "hidden",
         paramPolicy: "none",
+        requiresCitation: false,
+        required: false,
+        allowedDomains: [],
+        citations: [],
+        needsReview: false,
         paramValues: [],
       },
       {
@@ -79,6 +94,11 @@ describe("TagControl", () => {
         reasonPolicy: "hidden",
         expiresPolicy: "required",
         paramPolicy: "none",
+        requiresCitation: false,
+        required: false,
+        allowedDomains: [],
+        citations: [],
+        needsReview: false,
         paramValues: [],
       },
       {
@@ -90,6 +110,11 @@ describe("TagControl", () => {
         reasonPolicy: "optional",
         expiresPolicy: "optional",
         paramPolicy: "none",
+        requiresCitation: false,
+        required: false,
+        allowedDomains: [],
+        citations: [],
+        needsReview: false,
         paramValues: [],
       },
       {
@@ -101,6 +126,11 @@ describe("TagControl", () => {
         reasonPolicy: "hidden",
         expiresPolicy: "hidden",
         paramPolicy: "none",
+        requiresCitation: false,
+        required: false,
+        allowedDomains: [],
+        citations: [],
+        needsReview: false,
         paramValues: [],
       },
       {
@@ -112,6 +142,11 @@ describe("TagControl", () => {
         reasonPolicy: "hidden",
         expiresPolicy: "hidden",
         paramPolicy: "required",
+        requiresCitation: false,
+        required: false,
+        allowedDomains: [],
+        citations: [],
+        needsReview: false,
         paramValues: [
           { value: "customer", description: "A buying party" },
           { value: "vendor", description: "" },
@@ -149,6 +184,26 @@ describe("TagControl", () => {
     expect(screen.queryByTestId("tag-option-pii")).toBeNull();
   });
 
+  it("picker offers only the tags the server offers on the object, by its domains", async () => {
+    // REQ-2208: finance applies to tables, but the server places table 7 outside its domains.
+    notOffered = new Set(["finance"]);
+    render(<TagControl objectType="table" tableId={7} />);
+    fireEvent.click(screen.getByTestId("tag-picker-toggle"));
+    await screen.findByTestId("tag-option-deprecated");
+    expect(screen.queryByTestId("tag-option-finance")).toBeNull();
+  });
+
+  it("picker keeps a tag already on the object outside its domains, so it can be taken off", async () => {
+    // Narrowing a tag's domains removes no assignment: table 8 keeps finance, unchecked here.
+    notOffered = new Set(["finance"]);
+    render(<TagControl objectType="table" tableId={8} />);
+    fireEvent.click(screen.getByTestId("tag-picker-toggle"));
+    fireEvent.click(await screen.findByTestId("tag-option-finance"));
+    await waitFor(() =>
+      expect(unassignSpy).toHaveBeenCalledWith(expect.objectContaining({ tagId: "finance" })),
+    );
+  });
+
   it("picker never offers a derived tag, which the server refuses to assign", async () => {
     // REQ-1443: the tag reports what the table's own registration already says. A checkbox for it
     // would be a control whose only outcome is an error.
@@ -167,16 +222,19 @@ describe("TagControl", () => {
     expect(assignSpy).not.toHaveBeenCalled();
     // A column's pii first reads its term; with none, the tag's own form.
     fireEvent.click(await screen.findByTestId("tag-apply-pii"));
-    expect(assignSpy).toHaveBeenCalledWith({
-      tagId: "pii",
-      objectType: "column",
-      sourceId: undefined,
-      tableId: 7,
-      columnName: "name",
-      relationshipId: undefined,
-      reason: null,
-      expiresOn: null,
-    });
+    expect(assignSpy).toHaveBeenCalledWith(
+      {
+        tagId: "pii",
+        objectType: "column",
+        sourceId: undefined,
+        tableId: 7,
+        columnName: "name",
+        relationshipId: undefined,
+        reason: null,
+        expiresOn: null,
+      },
+      [],
+    );
     expect(unassignSpy).not.toHaveBeenCalled();
   });
 
@@ -202,16 +260,19 @@ describe("TagControl", () => {
     });
     expect(apply).not.toBeDisabled();
     fireEvent.click(apply);
-    expect(assignSpy).toHaveBeenCalledWith({
-      tagId: "finance",
-      objectType: "table",
-      sourceId: undefined,
-      tableId: 9,
-      columnName: undefined,
-      relationshipId: undefined,
-      reason: null,
-      expiresOn: "2027-06-30",
-    });
+    expect(assignSpy).toHaveBeenCalledWith(
+      {
+        tagId: "finance",
+        objectType: "table",
+        sourceId: undefined,
+        tableId: 9,
+        columnName: undefined,
+        relationshipId: undefined,
+        reason: null,
+        expiresOn: "2027-06-30",
+      },
+      [],
+    );
   });
 
   it("hidden expiresPolicy hides the expiry input", async () => {
@@ -237,16 +298,19 @@ describe("TagControl", () => {
     });
     expect(apply).not.toBeDisabled();
     fireEvent.click(apply);
-    expect(assignSpy).toHaveBeenCalledWith({
-      tagId: "deprecated",
-      objectType: "table",
-      sourceId: undefined,
-      tableId: 8,
-      columnName: undefined,
-      relationshipId: undefined,
-      reason: "Superseded",
-      expiresOn: "2027-01-31",
-    });
+    expect(assignSpy).toHaveBeenCalledWith(
+      {
+        tagId: "deprecated",
+        objectType: "table",
+        sourceId: undefined,
+        tableId: 8,
+        columnName: undefined,
+        relationshipId: undefined,
+        reason: "Superseded",
+        expiresOn: "2027-01-31",
+      },
+      [],
+    );
   });
 
   it("unchecking an assigned tag calls unassignTag immediately", async () => {
@@ -287,16 +351,19 @@ describe("TagControl", () => {
     expect(reasonInput).toHaveValue("Legacy source");
     fireEvent.change(reasonInput, { target: { value: "Retiring Q3" } });
     fireEvent.click(screen.getByTestId("tag-apply-deprecated"));
-    expect(assignSpy).toHaveBeenCalledWith({
-      tagId: "deprecated",
-      objectType: "source",
-      sourceId: "pg",
-      tableId: undefined,
-      columnName: undefined,
-      relationshipId: undefined,
-      reason: "Retiring Q3",
-      expiresOn: null,
-    });
+    expect(assignSpy).toHaveBeenCalledWith(
+      {
+        tagId: "deprecated",
+        objectType: "source",
+        sourceId: "pg",
+        tableId: undefined,
+        columnName: undefined,
+        relationshipId: undefined,
+        reason: "Retiring Q3",
+        expiresOn: null,
+      },
+      [],
+    );
   });
 
   it("command objectType: pills match by commandName, picker filters to command-scoped tags, assign carries commandName", async () => {
@@ -311,17 +378,20 @@ describe("TagControl", () => {
     expect(option).not.toBeChecked();
     fireEvent.click(option);
     fireEvent.click(screen.getByTestId("tag-apply-beta"));
-    expect(assignSpy).toHaveBeenCalledWith({
-      tagId: "beta",
-      objectType: "command",
-      sourceId: undefined,
-      tableId: undefined,
-      columnName: undefined,
-      relationshipId: undefined,
-      commandName: "refund_order",
-      reason: null,
-      expiresOn: null,
-    });
+    expect(assignSpy).toHaveBeenCalledWith(
+      {
+        tagId: "beta",
+        objectType: "command",
+        sourceId: undefined,
+        tableId: undefined,
+        columnName: undefined,
+        relationshipId: undefined,
+        commandName: "refund_order",
+        reason: null,
+        expiresOn: null,
+      },
+      [],
+    );
   });
 
   it("command objectType: renders the pill for its own assignment", () => {
@@ -346,17 +416,20 @@ describe("TagControl", () => {
     fireEvent.click(await screen.findByRole("option", { name: "vendor" }));
     expect(apply).not.toBeDisabled();
     fireEvent.click(apply);
-    expect(assignSpy).toHaveBeenCalledWith({
-      tagId: "entity:vendor",
-      objectType: "column",
-      sourceId: undefined,
-      tableId: 7,
-      columnName: "supplier",
-      relationshipId: undefined,
-      commandName: undefined,
-      reason: null,
-      expiresOn: null,
-    });
+    expect(assignSpy).toHaveBeenCalledWith(
+      {
+        tagId: "entity:vendor",
+        objectType: "column",
+        sourceId: undefined,
+        tableId: 7,
+        columnName: "supplier",
+        relationshipId: undefined,
+        commandName: undefined,
+        reason: null,
+        expiresOn: null,
+      },
+      [],
+    );
   });
 
   it("editing an existing parameterized assignment seeds the picked value", async () => {
@@ -464,7 +537,7 @@ describe("TagControl: pii on a column", () => {
       "Define 'Email' to mark it.",
     );
     fireEvent.click(screen.getByTestId("pii-define-term"));
-    expect(navigateTo).toHaveBeenCalledWith("/admin/ontology?term=7");
+    expect(navigateTo).toHaveBeenCalledWith("/context/ontology?term=7");
   });
 
   it("shows a column pii through its term, and unmarks it on the term", async () => {
@@ -529,6 +602,11 @@ describe("TagControl: row rules, roles and metrics", () => {
         reasonPolicy: "optional",
         expiresPolicy: "hidden",
         paramPolicy: "none",
+        requiresCitation: false,
+        required: false,
+        allowedDomains: [],
+        citations: [],
+        needsReview: false,
         paramValues: [],
       },
       {
@@ -540,6 +618,11 @@ describe("TagControl: row rules, roles and metrics", () => {
         reasonPolicy: "optional",
         expiresPolicy: "hidden",
         paramPolicy: "none",
+        requiresCitation: false,
+        required: false,
+        allowedDomains: [],
+        citations: [],
+        needsReview: false,
         paramValues: [],
       },
       {
@@ -551,6 +634,11 @@ describe("TagControl: row rules, roles and metrics", () => {
         reasonPolicy: "hidden",
         expiresPolicy: "hidden",
         paramPolicy: "none",
+        requiresCitation: false,
+        required: false,
+        allowedDomains: [],
+        citations: [],
+        needsReview: false,
         paramValues: [],
       },
     ];
@@ -585,6 +673,7 @@ describe("TagControl: row rules, roles and metrics", () => {
           commandName: undefined,
           ...target,
         }),
+        [],
       );
     },
   );

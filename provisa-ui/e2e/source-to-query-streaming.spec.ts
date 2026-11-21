@@ -39,13 +39,13 @@ import {
   openSourcesForm,
   pickSchemaAndTable,
   runSqlOnPage,
-  releaseDraftTables,
+  expectRegisteredLive,
   setSourceCacheTtl,
   submitRegisterAndExpectListed,
   submitSourceAndExpectListed,
   typeSql,
   FORM_FIELD,
-  removeTestSources,
+  retireTestSourcesTables,
 } from "./source-to-query-helpers";
 
 const E2E_RSS_PORT = 37801;
@@ -124,8 +124,18 @@ function registerJsonSchema(topic: string, properties: Record<string, string>): 
 // ---------------------------------------------------------------------------------------------
 
 const RSS_ITEMS = [
-  { guid: "item-1", title: "First item", link: "https://example.com/1", pubDate: "Mon, 01 Jan 2024 00:00:00 GMT" },
-  { guid: "item-2", title: "Second item", link: "https://example.com/2", pubDate: "Tue, 02 Jan 2024 00:00:00 GMT" },
+  {
+    guid: "item-1",
+    title: "First item",
+    link: "https://example.com/1",
+    pubDate: "Mon, 01 Jan 2024 00:00:00 GMT",
+  },
+  {
+    guid: "item-2",
+    title: "Second item",
+    link: "https://example.com/2",
+    pubDate: "Tue, 02 Jan 2024 00:00:00 GMT",
+  },
 ];
 
 function rssFeedXml(): string {
@@ -210,11 +220,12 @@ async function pollUntilLanded(
 }
 
 test.describe("source to query through the UI — streaming/push types (REQ-1739/REQ-1745)", () => {
-  // Each test's source goes when the test ends, also after a failure. Left to the kafka block's
-  // afterAll, all six of the file's sources were deleted inside that one hook's 90 s, each table
-  // and source delete paying a schema rebuild of 4-16 s: the hook ran out (run 42187604573).
+  // Each test's tables are retired when the test ends, also after a failure; its source is kept
+  // (REQ-2248). Left to the kafka block's afterAll, all six of the file's sources were cleaned up
+  // inside that one hook's 90 s, each table and source delete paying a schema rebuild of 4-16 s:
+  // the hook ran out (run 42187604573).
   test.afterEach(async () => {
-    await removeTestSources();
+    await retireTestSourcesTables();
   });
 
   test("ingest: add the source, register a table, POST a row, query it on the SQL page", async ({
@@ -457,7 +468,6 @@ test.describe("source to query through the UI — streaming/push types (REQ-1739
       ["ws-2", "world"],
     ]);
   });
-
 });
 
 // ---------------------------------------------------------------------------------------------
@@ -485,14 +495,17 @@ test.describe("source to query through the UI: kafka (REQ-1739/REQ-1745/REQ-1766
   // Per test, as in the block above: one source and its table per test, not all of the file's in
   // one hook.
   test.afterEach(async () => {
-    await removeTestSources();
+    await retireTestSourcesTables();
   });
 
   test.afterAll(async () => {
-    // Nothing is left by the afterEach above unless it failed; a source left registered against
+    // Nothing is left by the afterEach above unless it failed; a table left in service against
     // the stack going down would be rebuilt against a refused connection for the rest of the lane.
-    await removeTestSources();
-    provisionKafka("down");
+    try {
+      await retireTestSourcesTables();
+    } finally {
+      provisionKafka("down");
+    }
   });
 
   test("kafka: add the source, register a table, land a produced message, query it", async ({
@@ -644,7 +657,7 @@ test.describe("source to query through the UI: kafka (REQ-1739/REQ-1745/REQ-1766
       // REQ-1921: registered through the admin, it starts as draft, and a draft table has no
       // dataset (dqDataset stays null until it is released). Release it as soon as it is listed;
       // registration lists it asynchronously, and a release with nothing listed yet is a no-op.
-      await releaseDraftTables(page, { sourceId });
+      await expectRegisteredLive(page, { sourceId });
       const tablesRes = await page.request.post("/admin/graphql", {
         data: { query: "{ tables { sourceId dqDataset } }" },
       });
@@ -781,7 +794,7 @@ test.describe("source to query through the UI: kafka (REQ-1739/REQ-1745/REQ-1766
       // REQ-1921: registered through the admin, it starts as draft, and a draft table has no
       // dataset (dqDataset stays null until it is released). Release it as soon as it is listed;
       // registration lists it asynchronously, and a release with nothing listed yet is a no-op.
-      await releaseDraftTables(page, { sourceId });
+      await expectRegisteredLive(page, { sourceId });
       const tablesRes = await page.request.post("/admin/graphql", {
         data: { query: "{ tables { sourceId dqDataset } }" },
       });

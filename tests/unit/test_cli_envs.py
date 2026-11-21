@@ -379,3 +379,27 @@ class TestRebuild:
         answers.append({"sha": None, "drifted": True})
         assert _run("rebuild", "--org", "acme", "--env", "dev") == 1
         assert "still drifted" in capsys.readouterr().err
+
+
+class TestTheOrgIsNamed:
+    """REQ-1327, REQ-1235: an environment route acts in the org its path names, and the request
+    must be bound to that org. A session token names no org, so the CLI names it with the
+    X-Org-Provisa header, as the UI does, rather than relying on a token issued for the org."""
+
+    def test_every_call_sends_the_org_it_acts_in(self, monkeypatch, capsys):
+        import io
+        import json as _json
+        import urllib.request
+
+        sent: list[urllib.request.Request] = []
+
+        def _urlopen(req, timeout=None):
+            sent.append(req)
+            return io.BytesIO(_json.dumps({"environments": []}).encode())
+
+        monkeypatch.setattr(urllib.request, "urlopen", _urlopen)
+        assert _run("list", "--org", "acme", "--token", "t", "--api", "http://x.invalid") == 0
+        assert len(sent) == 1
+        assert sent[0].full_url == "http://x.invalid/admin/orgs/acme/environments"
+        assert sent[0].get_header("X-org-provisa") == "acme"
+        assert sent[0].get_header("Authorization") == "Bearer t"

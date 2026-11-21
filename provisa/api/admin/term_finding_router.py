@@ -38,7 +38,7 @@ import asyncio
 import logging
 import uuid
 from datetime import timedelta
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Annotated, Any, cast
 
 from fastapi import APIRouter, Query, Request
 
@@ -50,6 +50,7 @@ from provisa.core.repositories import glossary as glossary_repo
 from provisa.llm.client import CALL_TIMEOUT_S
 from provisa.reference_library import library, store
 from provisa.term_finding import model, queue, review, scan
+from provisa.api.engine_error_names import client_value
 
 if TYPE_CHECKING:
     from collections.abc import Coroutine
@@ -75,6 +76,8 @@ STALLED = (
     f"the scan made no progress for {STALLED_AFTER.total_seconds():g} seconds; "
     "scan the document again"
 )
+INDEX_RESTARTED = "the server restarted while the document was being indexed; retry it"
+INDEX_STALLED = f"indexing made no progress for {STALLED_AFTER.total_seconds():g} seconds; retry it"
 
 
 def _pool() -> Database:
@@ -85,10 +88,31 @@ def _pool() -> Database:
     return state.model_db
 
 
-def _readable(request: Request, domains: Any) -> bool:
+#: REQ-2253: the navbar filter's selection, as repeated ``domains=`` parameters (as the glossary's
+#: AI assistants take it, glossary_router._view_scope). Absent is no selection.
+Selected = Annotated[list[str] | None, Query()]
+
+
+def _readable(scope: frozenset[str] | None, domains: Any) -> bool:
+    """May a caller whose domains are ``scope`` (``None`` for unlimited) read what is in ``domains``."""
     from provisa.core.glossary import readable_term
 
-    return readable_term(glossary._authority(request), frozenset(domains))
+    return readable_term(scope, frozenset(domains))
+
+
+def _selection(request: Request, selected: list[str] | None) -> frozenset[str] | None:
+    """REQ-2253: the domains a scan started with ``selected`` works within -- the caller's
+    authority intersected with the selection -- or ``None`` when nothing is selected, which leaves
+    the scan as it was: it matches against the whole glossary and reads what authority admits."""
+    return None if selected is None else glossary._view_scope(request, selected)
+
+
+def _outside_selection(what: str) -> ApiError:
+    return ApiError(
+        403,
+        "term_finding.outside_selection",
+        f"{what} is outside the domains selected in the domain filter",
+    )
 
 
 def _iso(value: Any) -> str | None:
@@ -122,7 +146,7 @@ def _scan(s: queue.ScanRow, counts: dict[str, int] | None = None) -> dict[str, A
         "source_table": s.source_table,
         "domains": s.domains,
         "status": s.status,
-        "error": s.error,
+        "error": client_value(s.error),
         "summary": s.summary,
         "started_by": s.started_by,
         "started_at": _iso(s.started_at),
@@ -150,13 +174,15 @@ def _refused(exc: library.LibraryRefused | review.ReviewRefused) -> ApiError:
 
 
 @router.get("/documents")
-async def list_documents(request: Request) -> dict:
-    """The library documents the caller may read, proposed and kept, to pick one to scan."""
+async def list_documents(request: Request, domains: Selected = None) -> dict:
+    """The library documents the caller may read, proposed and kept, to pick one to scan; with a
+    selection, only those of the selected domains (REQ-2253)."""
     glossary._require_glossary_rw(request)
     require_active_org_id(request)
+    scope = glossary._view_scope(request, domains)
     async with _pool().acquire() as conn:
         found = await store.documents(conn)
-    return {"documents": [_document(d) for d in found if _readable(request, d.domains)]}
+    return {"documents": [_document(d) for d in found if _readable(scope, d.domains)]}
 
 
 async def _library_domains(conn: Connection, declared: set[str]) -> list[str]:
@@ -214,14 +240,23 @@ async def _model(request: Request) -> Held:
     return await model.for_role(state, acting_role_of_request(request))
 
 
-async def _match(conn: Connection, candidates: list[scan.Candidate]) -> None:
-    """Mark ``candidates`` with the glossary's terms and synonyms they duplicate or name again."""
+async def _match(
+    conn: Connection, candidates: list[scan.Candidate], scope: frozenset[str] | None
+) -> None:
+    """Mark ``candidates`` with the glossary's terms and synonyms they duplicate or name again --
+    with a selection (``scope``), only the terms of the selected domains, so no merge into a term
+    outside them is proposed (REQ-2253)."""
     terms = [
         {"id": t["id"], "name": t["name"]}
-        for t in await glossary_repo.list_terms(cast("Connection", conn))
+        for t in await glossary_repo.list_terms(cast("Connection", conn), domains=scope)
     ]
+    held = {t["id"] for t in terms}
     edges = await glossary_repo.term_edges(cast("Connection", conn))
-    scan.match(candidates, terms, [(f, t) for f, t, rel in edges if rel == review.SYNONYM_OF])
+    scan.match(
+        candidates,
+        terms,
+        [(f, t) for f, t, rel in edges if rel == review.SYNONYM_OF and f in held and t in held],
+    )
 
 
 async def run_scan(
@@ -232,6 +267,7 @@ async def run_scan(
     call: Held,
     *,
     rows: list[scan.Passage] | None = None,
+    scope: frozenset[str] | None = None,
 ) -> None:
     """Scan the document -- or a table's ``rows``, already read as the steward (REQ-2202) -- and
     queue its candidates; a scan that cannot finish is marked failed,
@@ -260,7 +296,7 @@ async def run_scan(
         else:
             result = await scan.run(title, rows, call, report, scan.TABLE)
         async with pool.acquire() as conn:
-            await _match(conn, result.candidates)
+            await _match(conn, result.candidates, scope)
             summary = {
                 "passages": result.passages,
                 "mentions": result.mentions,
@@ -297,10 +333,41 @@ async def give_up_on_left_behind(pool: Database, launch: str) -> None:
     async with pool.acquire() as conn:
         restarted = await queue.fail_left_behind(conn, launch, RESTARTED)
         stalled = await queue.fail_stalled(conn, STALLED_AFTER, STALLED)
+        # REQ-2185: a library document's background job is watched the same way.
+        await store.fail_indexing_left_behind(conn, launch, INDEX_RESTARTED)
+        await store.fail_indexing_stalled(conn, STALLED_AFTER, INDEX_STALLED)
     if restarted or stalled:
         log.warning(
             "term-finding scans given up on: %d left by a restart, %d stalled", restarted, stalled
         )
+
+
+async def find_terms_in(
+    pool: Database, document: store.DocumentRow, role: str, started_by: str | None
+) -> None:
+    """Look for a newly indexed document's terms (REQ-2185, ADD NOW, INDEX IN THE BACKGROUND): a
+    scan like a steward's, in the document's own domains. With no model named for term finding the
+    document stays ready, and says why its terms were not looked for."""
+    from provisa.api.app import state
+
+    try:
+        call = await model.for_role(state, role)
+    except model.ModelRefused as exc:
+        async with pool.acquire() as conn:
+            await store.set_terms_note(conn, document.id, str(exc))
+        return
+    async with pool.acquire() as conn:
+        scan_id = await queue.start_scan(
+            conn,
+            document_id=document.id,
+            document_title=document.title,
+            document_source=document.source,
+            domains=sorted(document.domains),
+            started_by=started_by,
+            model=call.name,
+            launch=this_launch(),
+        )
+    await run_scan(pool, scan_id, document.id, document.title, call)
 
 
 async def keep(state: Any) -> None:
@@ -339,7 +406,9 @@ def _no_rows(source: Any, column: str) -> ApiError:
     )
 
 
-async def _import_terms(request: Request, source: Any, declared: set[str]) -> dict[str, Any]:
+async def _import_terms(
+    request: Request, source: Any, declared: set[str], scope: frozenset[str] | None
+) -> dict[str, Any]:
     """Offer a table of terms and their definitions (REQ-2202, explicit): its rows read as the
     steward's acting role, each a term with its definition, matched against the glossary and
     queued for review at once. No model is asked, so none need be set and no budget is spent."""
@@ -351,7 +420,7 @@ async def _import_terms(request: Request, source: Any, declared: set[str]) -> di
     if not candidates:
         raise _no_rows(source, source.term_column)
     async with _pool().acquire() as conn:
-        await _match(conn, candidates)
+        await _match(conn, candidates, scope)
         async with conn.transaction():
             scan_id = await queue.start_scan(
                 conn,
@@ -380,7 +449,7 @@ async def _import_terms(request: Request, source: Any, declared: set[str]) -> di
 
 
 async def _start_table_scan(
-    request: Request, source: Any, declared: set[str], call: Held
+    request: Request, source: Any, declared: set[str], call: Held, scope: frozenset[str] | None
 ) -> dict[str, Any]:
     """Scan a registered table (REQ-2202, inferred): its rows read as the steward's acting role,
     refused before the scan starts when the role's LLM budget has no room for them."""
@@ -409,16 +478,20 @@ async def _start_table_scan(
             source_table=source.as_dict(),
         )
         started = await queue.scan(conn, scan_id)
-    _launch(run_scan(pool, scan_id, None, source.name, call, rows=rows))
+    _launch(run_scan(pool, scan_id, None, source.name, call, rows=rows, scope=scope))
     assert started is not None
     return {"scan": _scan(started)}
 
 
 @router.post("/scans")
-async def start_scan(request: Request) -> dict:
+async def start_scan(request: Request, domains: Selected = None) -> dict:
     """Scan a library document (``document_id``), a new one (``url``, or ``file_name`` with
     ``content_b64``) or a registered table (``table``: its ``domain``, ``table``, ``id_column``
-    and ``text_column``), in the steward's working ``domains``."""
+    and ``text_column``), in the steward's working ``domains`` (the body's).
+
+    REQ-2253: started with the filter's selection (the ``domains`` query parameters), the scan
+    works only within it: its working domains, its document and its table are the selection's,
+    and its candidates are matched only against the selection's terms."""
     glossary._require_glossary_rw(request)
     org_id = require_active_org_id(request)
     body = await request.json()
@@ -430,11 +503,22 @@ async def start_scan(request: Request) -> dict:
             "a scan reads one source: a library document, a URL, a file or a table",
         )
     declared = glossary._declared_domains(request, body.get("domains"), current=set())
+    scope = _selection(request, domains)
+    if scope is not None:
+        from provisa.core.glossary import ENTERPRISE_DOMAIN
+
+        # The enterprise scope is the org's shared vocabulary, read within every selection as the
+        # glossary lists it (glossary_repo.list_terms, readable_term).
+        outside = sorted(declared - scope - {ENTERPRISE_DOMAIN})
+        if outside:
+            raise _outside_selection(f"domain {outside[0]!r}")
     from provisa.api.admin import term_finding_table as table
 
     source = table.source_of(body["table"]) if given == ["table"] else None
+    if source is not None and scope is not None and source.domain not in scope:
+        raise _outside_selection(f"table {source.name!r}")
     if isinstance(source, table.TermsSource):
-        return await _import_terms(request, source, declared)
+        return await _import_terms(request, source, declared, scope)
     pool = _pool()
     # Before anything is written: a scan that could not run adds no document to the library.
     try:
@@ -442,7 +526,7 @@ async def start_scan(request: Request) -> dict:
     except model.ModelRefused as exc:
         raise ApiError(409, "term_finding.no_model", str(exc)) from None
     if source is not None:
-        return await _start_table_scan(request, source, declared, call)
+        return await _start_table_scan(request, source, declared, call, scope)
     try:
         async with pool.acquire() as conn:
             if body.get("document_id") is not None:
@@ -456,12 +540,15 @@ async def start_scan(request: Request) -> dict:
             document = await store.document(conn, document_id)
             if document is None:
                 raise library.DocumentNotFound(document_id)
-            if not _readable(request, document.domains):
+            if not _readable(glossary._authority(request), document.domains):
                 raise ApiError(
                     403,
                     "auth.domain_denied",
                     f"{document.title!r} is in the reference library, outside your domains",
                 )
+            if scope is not None and not _readable(scope, document.domains):
+                raise _outside_selection(repr(document.title))
+            library.require_ready(document)
             scan_id = await queue.start_scan(
                 conn,
                 document_id=document.id,
@@ -475,7 +562,7 @@ async def start_scan(request: Request) -> dict:
             started = await queue.scan(conn, scan_id)
     except (library.LibraryRefused, review.ReviewRefused) as exc:
         raise _refused(exc) from None
-    _launch(run_scan(pool, scan_id, document.id, document.title, call))
+    _launch(run_scan(pool, scan_id, document.id, document.title, call, scope=scope))
     assert started is not None
     return {"scan": _scan(started), "document": _document(document)}
 
@@ -497,20 +584,25 @@ async def load_carried_scans(request: Request) -> dict:
 
 
 @router.get("/scans")
-async def list_scans(request: Request, document_id: int | None = Query(None)) -> dict:
+async def list_scans(
+    request: Request,
+    document_id: Annotated[int | None, Query()] = None,
+    domains: Selected = None,
+) -> dict:
     """The scans in the caller's domains (of ``document_id``), newest first, each with its
-    drafts counted by status."""
+    drafts counted by status; with a selection, only those of the selected domains (REQ-2253)."""
     glossary._require_glossary_rw(request)
     require_active_org_id(request)
+    scope = glossary._view_scope(request, domains)
     async with _pool().acquire() as conn:
         found = await queue.scans(conn, document_id=document_id)
         counts = await queue.draft_counts(conn)
-    return {"scans": [_scan(s, counts.get(s.id)) for s in found if _readable(request, s.domains)]}
+    return {"scans": [_scan(s, counts.get(s.id)) for s in found if _readable(scope, s.domains)]}
 
 
 async def _scan_held(conn: Connection, scan_id: int, request: Request) -> queue.ScanRow:
     found = await queue.scan(conn, scan_id)
-    if found is None or not _readable(request, found.domains):
+    if found is None or not _readable(glossary._authority(request), found.domains):
         raise ApiError(404, "term_finding.not_found", f"there is no scan {scan_id}")
     return found
 
@@ -612,7 +704,7 @@ async def _require_curatable(conn: Connection, term_ids: Any, request: Request) 
 async def _accept(conn: Connection, draft_id: int, request: Request) -> dict[str, Any]:
     found, held_scan = await _draft_held(conn, draft_id, request)
     domains = glossary._declared_domains(request, held_scan.domains, current=set())
-    existing = await review.existing_terms(conn, review.kept_synonyms(found))
+    existing = await review.existing_terms(conn, review.kept_synonyms(found), domains)
     await _require_curatable(conn, existing.values(), request)
     term_id = await review.accept(conn, found, domains, glossary._caller_id(request))
     return {"id": draft_id, "status": queue.ACCEPTED, "term_id": term_id}
@@ -634,7 +726,7 @@ async def _merge(
     if term is None:
         raise review.ReviewRefused(f"the glossary holds no term {target_id}")
     domains = glossary._declared_domains(request, held_scan.domains, current=set())
-    existing = await review.existing_terms(conn, review.merge_names(found, term["name"]))
+    existing = await review.existing_terms(conn, review.merge_names(found, term["name"]), domains)
     await _require_curatable(conn, [target_id, *existing.values()], request)
     await review.merge(
         conn,
@@ -677,6 +769,7 @@ async def accept_draft(draft_id: int, request: Request) -> dict:
     except (review.ReviewRefused, ValueError) as exc:
         raise _refused(_review_error(exc)) from None
     await glossary._notify(org_id, "ontology term accepted from a document")
+    await glossary.embed_terms(org_id)
     return decided
 
 
@@ -700,6 +793,7 @@ async def merge_draft(draft_id: int, request: Request) -> dict:
     except (review.ReviewRefused, ValueError) as exc:
         raise _refused(_review_error(exc)) from None
     await glossary._notify(org_id, "ontology term merged from a document")
+    await glossary.embed_terms(org_id)
     return decided
 
 
@@ -750,7 +844,8 @@ async def bulk_accept(scan_id: int, request: Request) -> dict:
                         decided.append(await _accept(conn, draft_id, request))
             except (review.ReviewRefused, ValueError, ApiError) as exc:
                 message = exc.detail if isinstance(exc, ApiError) else str(exc)
-                refused.append({"id": draft_id, "message": message})
+                refused.append({"id": draft_id, "message": client_value(message)})
     if decided:
         await glossary._notify(org_id, "ontology terms accepted from a document")
+        await glossary.embed_terms(org_id)
     return {"decided": decided, "refused": refused}

@@ -1,0 +1,32 @@
+{
+  "combineFiles": {
+    "globLabel": "Or files matching",
+    "globPlaceholder": "complaints_2026_*.csv",
+    "globHint": "A glob over the source's files, as one table or one per file.",
+    "modeLabel": "How the files are registered",
+    "perFile": "One table per file",
+    "combine": "Combine into one table",
+    "checking": "Checking the files…",
+    "noMatch": "No file matches this glob.",
+    "unmatched": "No file was found for {{tables}}.",
+    "matched_one": "{{count}} file matched by {{glob}}",
+    "matched_other": "{{count}} files matched by {{glob}}",
+    "sharedColumns": "Columns they share: {{columns}}",
+    "noSharedColumns": "They share no column.",
+    "differHeading": "These files' columns differ, so they cannot be one table. Leave them out, or type a glob that does not match them:",
+    "differ": "{{file}} {{how}}",
+    "lacks": "lacks {{columns}}",
+    "adds": "adds {{columns}}",
+    "differUnreadable": "{{file}} could not be read: {{error}}",
+    "extra": "The glob {{glob}} also matches {{files}}, which you did not pick.",
+    "includeExtra": "Include them too",
+    "extraUnconfirmed": "Include the files the glob also matches, or type a glob that matches only the files you want.",
+    "nameLabel": "New table name",
+    "namePlaceholder": "complaints",
+    "nameRequired": "Name the new table.",
+    "notRegistrable": "These files cannot be registered as one table.",
+    "sourceFileColumnLabel": "Source-file column",
+    "sourceFileColumnPlaceholder": "source_file",
+    "sourceFileColumnHint": "Optional: a column holding the file each row came from."
+  }
+}

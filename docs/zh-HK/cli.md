@@ -157,7 +157,7 @@ Licensed:     no (no license installed)
 
 ## provisa metadata export
 
-觸發正在執行的伺服器按需發佈中繼資料。該指令向 `POST /admin/metadata-export/publish` 傳送請求，也就是 Admin 分頁中 **立即發佈** 按鈕呼叫的端點，所以兩條路徑傳送的是同一份完整快照。
+觸發正在執行的伺服器按需發佈中繼資料。該指令向 `POST /admin/syncing/publish` 傳送請求，也就是 Admin 分頁中 **立即發佈** 按鈕呼叫的端點，所以兩條路徑傳送的是同一份完整快照。
 
 ```
 provisa metadata export [--api URL] [--token TOKEN] [--timeout SECONDS]
