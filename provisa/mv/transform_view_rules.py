@@ -54,7 +54,7 @@ if TYPE_CHECKING:
 
 #: Where a kept input column is stored: the input's alias in the definition, then the column.
 _RULE_INPUT = "__rule_input_{alias}__{column}"
-_RULE_INPUT_PREFIX = "__rule_input_"
+RULE_INPUT_PREFIX = "__rule_input_"
 
 #: An output's lineage: the (table id, column name as the definition reads it) it derives from.
 Lineage = frozenset[tuple[int, str]]
@@ -514,12 +514,15 @@ def reader_rows(
     views: Mapping[str, str],
     commands: Mapping[str, dict],
     stored: frozenset[str] | None,
-) -> exp.Select | None:  # pyright: ignore[reportPrivateImportUsage]
+) -> exp.Select:  # pyright: ignore[reportPrivateImportUsage]
     """The reader's read of stored view ``view``'s rows, through ``reference`` (the view's
-    reference in the governed statement, which optimization answers from its stored table): its
-    row rules applied over the kept input columns and each output computed from a column masked
-    for it masked with that column's mask. None when no rule of the reader narrows the view's
-    inputs: it reads the stored rows as they are.
+    reference in the governed statement, which optimization answers from its stored table): the
+    view's own columns, its row rules applied over the kept input columns and each output computed
+    from a column masked for it masked with that column's mask. A reader whose rules narrow none
+    of the view's inputs reads the stored rows as they are. The kept input columns are Provisa's
+    own, offered to no reader: every read names the view's columns, so a star over the view
+    never reaches them, whatever the reader may see (the build that kept them is governed as the
+    administrator).
 
     ``stored`` is the kept input columns the stored table holds as built
     (:func:`stored_rule_inputs`; None when it is not built), read only when the reader has a row
@@ -591,7 +594,6 @@ def reader_rows(
         if (table_id, input_column) in lineage.get(view_column, frozenset()):
             lineage[view_column] = frozenset({(table_id, input_column)})
     items: list[exp.Expr] = []  # pyright: ignore[reportPrivateImportUsage]
-    masked_any = False
     for physical, dtype in gov.all_columns.get(view_table_id, []):
         name = apply_sql_name(physical)
         value: exp.Expr = exp.column(name, table=held, quoted=True)  # pyright: ignore[reportPrivateImportUsage]
@@ -607,11 +609,8 @@ def reader_rows(
                     "role reads faked, which its stored rows cannot fake"
                 )
             value = mask_expression(rule, value, dtype)
-            masked_any = True
             break
         items.append(exp.alias_(value, name, quoted=True))
-    if not filters and not masked_any:
-        return None
     from provisa.compiler.rls import all_of  # noqa: PLC0415
 
     stored_table = reference.copy()
@@ -648,7 +647,7 @@ async def stored_rule_inputs(mv: "MVDefinition", state: Any) -> frozenset[str] |
     )
     if columns is None:
         return None
-    kept = frozenset(c for c in columns if c.startswith(_RULE_INPUT_PREFIX))
+    kept = frozenset(c for c in columns if c.startswith(RULE_INPUT_PREFIX))
     mv.stored_rule_inputs = (key, kept)
     return kept
 

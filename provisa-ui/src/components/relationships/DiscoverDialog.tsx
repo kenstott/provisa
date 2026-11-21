@@ -15,7 +15,7 @@
 // The form starts from the defaults when the dialog opens; only "New run" at the end of a run
 // opens it with that run's fields.
 
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Modal } from "@mantine/core";
 import type { DiscoveryScope } from "../../api/admin";
@@ -33,6 +33,11 @@ interface DiscoverDialogProps {
   /** The domains ticked in the Domains picker: the source domains of the defaults. */
   defaultDomains: string[];
   suggestions: SuggestionActions;
+  /** REQ-2262: the run the form starts from when the dialog opens; absent: the defaults. */
+  start?: LastRun;
+  /** REQ-2262: the review after registration. Closing the dialog, or its Done, ends the review
+   *  with how many relationships its Applies created. */
+  onDone?: (created: number) => void;
 }
 
 export function DiscoverDialog({
@@ -42,13 +47,25 @@ export function DiscoverDialog({
   tables,
   defaultDomains,
   suggestions,
+  start,
+  onDone,
 }: DiscoverDialogProps) {
   const { t } = useTranslation();
   const run = discovery.run;
-  const proposals = useRunProposals(run, suggestions.onApplied);
+  // REQ-2262: the relationships the dialog's Applies created, which the review ends with.
+  const [created, setCreated] = useState(0);
+  const { onApplied } = suggestions;
+  const applied = useCallback(
+    (accepted: number) => {
+      setCreated((n) => n + accepted);
+      onApplied(accepted);
+    },
+    [onApplied],
+  );
+  const proposals = useRunProposals(run, applied);
   // The run "New run" left, whose fields the form starts from; null: the defaults. "Reset to
   // defaults" and closing the dialog clear it.
-  const [initial, setInitial] = useState<LastRun | null>(null);
+  const [initial, setInitial] = useState<LastRun | null>(start ?? null);
   // "Reset to defaults" was pressed: Key value overlap takes its defaults, not the person's own.
   const [reset, setReset] = useState(false);
   const close = () => {
@@ -58,6 +75,7 @@ export function DiscoverDialog({
     // line keeps the run, and its Open shows it again.
     if (run !== null && run.status !== "running") discovery.dismiss();
     onClose();
+    onDone?.(created);
   };
   // Only the list of an ended run's proposals takes the wide size: setting up, a run going, and
   // an ended run with no proposal to list keep the standard size.
@@ -111,6 +129,7 @@ export function DiscoverDialog({
             }}
             suggestions={suggestions}
             proposals={proposals}
+            onDone={onDone ? close : undefined}
           />
         ) : (
           <DiscoverScopeForm

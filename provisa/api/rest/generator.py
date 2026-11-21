@@ -700,6 +700,55 @@ def rest_read_graphql(  # REQ-222, REQ-2222
     return RestRead(table, gql_query, variables, is_group_by, is_aggregate)
 
 
+def _json_param(params: dict[str, str], name: str) -> list:
+    """A command read's JSON array parameter; absent is none, anything but an array a 400."""
+    raw = params.get(name, "").strip()
+    if not raw:
+        return []
+    try:
+        value = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=400, detail=f"{name} is not JSON: {exc}")
+    if not isinstance(value, list):
+        raise HTTPException(status_code=400, detail=f"{name} takes a JSON array")
+    return value
+
+
+def _command_where(params: dict[str, str]) -> dict[str, dict[str, Any]]:  # REQ-1929
+    """``filter`` (the table read's form, [{"field","comparator","value"}]) as the command field's
+    ``where``. An entry it cannot read is refused by name, never dropped."""
+    where: dict[str, dict[str, Any]] = {}
+    for entry in _json_param(params, "filter"):
+        if not isinstance(entry, dict) or not {"field", "comparator", "value"} <= entry.keys():
+            raise HTTPException(
+                status_code=400, detail=f"filter entry {entry!r} needs field, comparator and value"
+            )
+        if entry["comparator"] not in _WHERE_OPS:
+            raise HTTPException(
+                status_code=400,
+                detail=f"filter comparator {entry['comparator']!r} is not one of "
+                f"{', '.join(sorted(_WHERE_OPS))}",
+            )
+        where.setdefault(entry["field"], {})[f"_{entry['comparator']}"] = entry["value"]
+    return where
+
+
+def _command_order_by(params: dict[str, str]) -> list[str]:  # REQ-1929
+    """``orderBy`` (the table read's form, [{"field","direction"}]) as the command field's
+    ``order_by``."""
+    order: list[str] = []
+    for entry in _json_param(params, "orderBy"):
+        if not isinstance(entry, dict) or "field" not in entry:
+            raise HTTPException(status_code=400, detail=f"orderBy entry {entry!r} needs a field")
+        direction = str(entry.get("direction", "asc")).lower()
+        if direction not in ("asc", "desc"):
+            raise HTTPException(
+                status_code=400, detail=f"orderBy direction {direction!r} is not asc or desc"
+            )
+        order.append(f"{entry['field']} {direction}")
+    return order
+
+
 def create_rest_router(state: Any) -> APIRouter:  # REQ-222, REQ-256, REQ-266, REQ-267
     """Create a REST router with auto-generated endpoints for each table.
 
@@ -942,38 +991,82 @@ def create_rest_router(state: Any) -> APIRouter:  # REQ-222, REQ-256, REQ-266, R
             warn(to_one_truncated(path))
         return Response(content=body, media_type="application/json", headers=cache_headers)
 
+    def _command_or_404(request: Request, domain_id: str, command_name: str, read: bool):
+        """The role's GraphQL command field offered at this path (REQ-1929), and the role."""
+        from provisa.api.command_fields import command_at
+        from provisa.api.data.action_exec import unknown_command
+
+        role_id = getattr(request.state, "role", None)
+        if not role_id:
+            raise HTTPException(status_code=401, detail="authenticated role required")
+        surface = role_surface(state, role_id)
+        if surface is None:
+            raise HTTPException(status_code=400, detail=f"No schema available for role {role_id!r}")
+        # REQ-2168: the path names the command's REST command binding.
+        cf = command_at(surface.schema, domain_id, command_name, "rest")
+        if cf is None:
+            # The executor's own answer, the same as for a command the role may not use.
+            raise unknown_command(command_name)
+        if cf.is_read != read:
+            # A Query field is read with GET, a Mutation field written with POST.
+            allow = "GET" if cf.is_read else "POST"
+            raise HTTPException(
+                status_code=405,
+                detail=f"command {command_name!r} is {'read with GET' if cf.is_read else 'run with POST'}",
+                headers={"Allow": allow},
+            )
+        return role_id, surface, cf
+
+    @rest_router.get("/{domain_id}/commands/{command_name}")
+    async def rest_command_read(  # pyright: ignore[reportUnusedFunction]  # REQ-1929
+        request: Request,
+        domain_id: str,
+        command_name: str,
+        limit: int | None = Query(None, ge=1),
+        offset: int | None = Query(None, ge=0),
+    ):
+        """Read a query-kind command: lowered to the role's GraphQL command field and executed as
+        GraphQL executes it, its filter, orderBy, limit and offset the field's own arguments."""
+        from provisa.api.command_fields import argument_values, read_command
+
+        role_id, surface, cf = _command_or_404(request, domain_id, command_name, read=True)
+        params = dict(request.query_params)
+        try:
+            rows = await read_command(
+                state,
+                surface,
+                cf,
+                role_id,
+                arguments=argument_values(cf, params),
+                where=_command_where(params),
+                order_by=_command_order_by(params),
+                limit=limit,
+                offset=offset,
+            )
+        except ComplexityLimitExceeded:
+            raise  # REQ-1174: answered as 413 by the app's handler
+        except ReadRefused:
+            raise  # refused by name; the app answers it (core/read_refusal.py)
+        except ParameterBindingRefused:
+            raise  # REQ-1986: the app answers it under its code (400)
+        except PermissionError as exc:
+            raise HTTPException(status_code=403, detail=str(exc))
+        return OrjsonResponse(content={"data": rows})
+
     @rest_router.post("/{domain_id}/commands/{command_name}")
     async def rest_command_endpoint(  # pyright: ignore[reportUnusedFunction]  # REQ-1155
         request: Request,
         domain_id: str,
         command_name: str,
     ):
-        """Invoke a registered command over REST — the OpenAPI mirror of the shared executor.
+        """Run a mutation-kind command over REST — the OpenAPI mirror of the shared executor.
 
         Body is a JSON object of the command's declared arguments. Routes through the one
         governed executor (invoke_tracked_function) and its command admission.
         """
-        auth_role = getattr(request.state, "role", None)
-        if not auth_role:
-            raise HTTPException(status_code=401, detail="authenticated role required")
-        role_id = auth_role
+        from provisa.api.data.action_exec import bind_named_args, invoke_tracked_function
 
-        # Functions AND webhooks are governed commands (REQ-872) — both callable over REST, both
-        # routed through the one invoke_tracked_function executor below.
-        from provisa.api.data.action_exec import (
-            bind_named_args,
-            invoke_tracked_function,
-            unknown_command,
-            usable_commands,
-        )
-
-        # REQ-2168: the path names the command's REST command binding.
-        fn = usable_commands(state, role_id, language="rest").get(command_name)
-        if fn is None or fn.get("domain_id") != domain_id:
-            # The executor's own answer, the same as for a command the role may not use.
-            raise unknown_command(command_name)
-        command_name = fn["name"]
-
+        role_id, _surface, cf = _command_or_404(request, domain_id, command_name, read=False)
         raw = await request.body()
         try:
             body = json.loads(raw) if raw.strip() else {}  # no body: a call with no arguments
@@ -983,8 +1076,8 @@ def create_rest_router(state: Any) -> APIRouter:  # REQ-222, REQ-256, REQ-266, R
             raise HTTPException(status_code=400, detail="request body must be a JSON object")
 
         try:
-            args = bind_named_args(command_name, body, state, role_id)
-            rows = await invoke_tracked_function(command_name, args, state, role_id)
+            args = bind_named_args(cf.command, body, state, role_id)
+            rows = await invoke_tracked_function(cf.command, args, state, role_id)
         except ComplexityLimitExceeded:
             raise  # REQ-1174: answered as 413 by the app's handler
         except ReadRefused:

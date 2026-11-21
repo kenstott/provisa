@@ -33,8 +33,9 @@ import type { RunProposalsState } from "./useRunProposals";
 export interface SuggestionActions {
   tableDomainById: Record<string, string>;
   tableNameById: Record<string, string>;
-  /** Told after an Apply decided something: relationships and suggestions have changed. */
-  onApplied: () => void;
+  /** Told after an Apply decided something, with how many proposals it accepted: relationships
+   *  and suggestions have changed. */
+  onApplied: (accepted: number) => void;
 }
 
 /** One run going, as a line of the block: how far it has got, its suggestions and model, Stop.
@@ -95,6 +96,7 @@ export function DiscoverRunView({
   onNewRun,
   suggestions,
   proposals,
+  onDone,
 }: {
   run: DiscoveryRun;
   /** Every run going, the newest first: each is a line of the block. */
@@ -107,6 +109,8 @@ export function DiscoverRunView({
   suggestions: SuggestionActions;
   /** What the ended run read, and what is ticked of it. */
   proposals: RunProposalsState;
+  /** REQ-2262: the review after registration's Done, beside New run. */
+  onDone?: () => void;
 }) {
   const { t } = useTranslation();
   const running = run.status === "running";
@@ -168,9 +172,16 @@ export function DiscoverRunView({
           tableDomainById={suggestions.tableDomainById}
           tableNameById={suggestions.tableNameById}
           newRun={
-            <Button variant="default" onClick={onNewRun} data-testid="discover-new-run">
-              {t("discoverDialog.newRun")}
-            </Button>
+            <>
+              <Button variant="default" onClick={onNewRun} data-testid="discover-new-run">
+                {t("discoverDialog.newRun")}
+              </Button>
+              {onDone && (
+                <Button variant="default" onClick={onDone} data-testid="discover-done">
+                  {t("discoverDialog.reviewDone")}
+                </Button>
+              )}
+            </>
           }
         />
       )}

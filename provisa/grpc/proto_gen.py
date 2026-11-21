@@ -187,7 +187,7 @@ class ProtoFieldCollision(ModelNotServable):  # REQ-1929
 
 
 # GraphQL scalar name (command argument type) → proto3 type. Mirrors the REST surface's
-# _arg_type_to_openapi mapping so a command's arg shape is identical across surfaces (REQ-1156).
+# _argument_schema mapping (api/rest/openapi_spec.py) so a command's arg shape is identical across surfaces (REQ-1156).
 _ARG_PROTO_TYPE: dict[str, str] = {"int": "int64", "float": "double", "boolean": "bool"}
 
 

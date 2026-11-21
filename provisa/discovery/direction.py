@@ -45,7 +45,7 @@ from provisa.discovery.columns import TableFacts
 if TYPE_CHECKING:
     from provisa.discovery.measure import Measure
 
-Kind = Literal["foreign_keys", "semantics"]
+Kind = Literal["foreign_keys", "semantics", "key_names"]
 ColumnRef = tuple[int, str]  # (table id, column name)
 Edge = tuple[int, str, int, str]  # (start table, start column, end table, end column)
 
@@ -327,10 +327,13 @@ async def settle(
     target_ids: set[int],
     known: Known,
     read_sample: SampleReader,
+    *,
+    either_way: bool = False,
 ) -> Outcome:
     """The suggestions to show, from every proposal of a run: removals applied, one direction
     kept per pair of columns, only relationships starting in the source set and ending in the
-    target set."""
+    target set; ``either_way`` (REQ-2262), also those starting in the target set and ending in
+    the source set."""
     removed = Removed()
     left_out: list[LeftOut] = []
 
@@ -372,7 +375,9 @@ async def settle(
     shown: list[Proposal] = []
     for p in kept:
         reverse = (p.end[0], p.end[1], p.start[0], p.start[1])
-        if p.start[0] not in source_ids or p.end[0] not in target_ids:
+        forward = p.start[0] in source_ids and p.end[0] in target_ids
+        backward = either_way and p.end[0] in source_ids and p.start[0] in target_ids
+        if not (forward or backward):
             leave_out(p, "out_of_scope")
         elif p.edge in known.existing or reverse in known.existing:
             leave_out(p, "existing")

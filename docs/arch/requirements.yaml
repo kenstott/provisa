@@ -76499,7 +76499,7 @@
     does when the whole source is mapped at once, so the relationship and a column never share a name.
     (Amended 2026-11-19, A COLUMN IN USE REFUSES THE REGISTRATION:) Maintainer 2026-11-19. When the nested
     column a relationship would take is used by a view, metric or row filter, registering the table is
-    refused, naming what uses it, and nothing is written. (Amended 2026-11-21 by the maintainer. A Query-kind command read over REST or JSON:API is lowered to the role''s GraphQL command field and runs through the one SQL pipeline, so its filtering, ordering, paging and governance match GraphQL. The REST read is GET on the command and takes the table parameters filter, orderBy, limit and offset plus the declared arguments; a Mutation-kind command stays POST. JSON:API serves commands at /data/jsonapi/<domain>/commands/<name>, GET to read and POST to write.)'
+    refused, naming what uses it, and nothing is written. (Amended 2026-11-21 by the maintainer. A Query-kind command read over REST or JSON:API is lowered to the role''s GraphQL command field and runs through the one SQL pipeline, so its filtering, ordering, paging and governance match GraphQL. The REST read is GET on the command and takes the table parameters filter, orderBy, limit and offset plus the declared arguments; a Mutation-kind command stays POST. JSON:API serves commands at /data/jsonapi/<domain>/commands/<name>, GET to read and POST to write.) (Amended again 2026-11-21 by the maintainer. A JSON:API command answers its rows under meta.rows, and a POST takes its arguments in the body meta, since a command row is not a resource. The name commands is reserved: a table named commands is refused by name at registration, so the command path never shadows a table.)'
   use_case: An operator who assigns a command to a role, hides a column, or moves an object to another
     domain changes what every API offers in one place, and no surface can offer what another surface hides.
   scenario: 'Given a query-kind command find_pets in domain petstore, assigned to role analyst
@@ -82518,7 +82518,7 @@
     2026-11-20, A FEEDING RELATIONSHIP IS NOT A JOIN KEY:) Maintainer 2026-11-20. When a statement equates a
     parameter column with the source column of a relationship that feeds that table (REQ-2099), the
     relationship''s feed supplies the parameter rather than a per-row join key. The feed is one batched read
-    per statement, not per-row calls, so parameters.max_calls_per_statement does not apply to it.'
+    per statement, not per-row calls, so parameters.max_calls_per_statement does not apply to it. (Amended 2026-11-21 by the maintainer. A table derived from a function shares its function release state, region included: it is not withdrawn, put back or moved to another region on its own, and each is refused by name.)'
   use_case: 'An OpenAPI operation takes an optional region query parameter, and without it returns every region''s rows, millions of them. A steward makes region required on the table; from then on an analyst''s SQL query without a region condition is refused, naming the table and region, and the GraphQL field''s region argument is non-null. The operation''s id path parameter is shown locked on, because the source requires it.'
   scenario: 'Given an OpenAPI table with a required path parameter id and an optional query parameter region, and a remote GraphQL table with an optional argument status
 

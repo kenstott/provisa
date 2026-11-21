@@ -569,7 +569,8 @@
       "source_not_withdrawn": "A fonte {{source}} não está retirada: só se repõe uma fonte retirada. Para mudar a sua região, defina a sua região.",
       "put_back_needs_region": "Repor {{object}} indica uma região: indique uma, ou nenhuma para nenhuma região.",
       "mask_constant_not_text": "Uma máscara constante em uma coluna que não é de texto é lida como NULL; só é possível salvar NULL: {{column}} ({{type}})",
-      "table_domain_required": "A tabela '{{table}}' não indica nenhum domínio: toda tabela é registrada em um domínio"
+      "table_domain_required": "A tabela '{{table}}' não indica nenhum domínio: toda tabela é registrada em um domínio",
+      "table_name_reserved": "O nome de tabela '{{table}}' é reservado: os comandos de um domínio são servidos sob 'commands'. Registre a tabela com outro nome ou alias."
     },
     "secrets": {
       "env_reference_object_locked": "Este objeto é do operador: ele lê o ambiente próprio do servidor e não pode ser alterado aqui. Adicione um seu em vez disso.",
@@ -835,7 +836,7 @@
       "impact_action": "Não há pré-visualização para essa ação.",
       "impact_table_required": "Uma vinculação nomeia uma tabela ou uma das suas colunas.",
       "name_taken": "Já existe um termo chamado '{{name}}' no domínio {{domain}}. Escolha outro nome ou coloque o termo em outro domínio.",
-      "name_taken_unscoped": "Já existe um termo chamado '{{name}}' sem domínio, que portanto alcança todos os domínios. Escolha outro nome."
+      "name_taken_unscoped": "Já existe um termo chamado '{{name}}' sem domínio, portanto ele alcança todos os domínios. Escolha outro nome."
     },
     "table": {
       "requires_parameters": "A tabela {{table}} não pode ser contada nem perfilada: exige {{parameters}}. Dê um valor a cada um para ler as suas linhas."
@@ -942,6 +943,19 @@
       "filter_required": "Esta classe tem {{count}} instâncias, mais de {{limit}}: escolha um filtro",
       "filter_too_wide": "O filtro deixa mais de {{limit}} instâncias",
       "unreachable": "Não foi possível acessar o Wikidata: {{reason}}"
+    },
+    "access_review": {
+      "not_found": "Essa revisão de acessos não existe",
+      "row_not_found": "Essa linha da revisão não existe",
+      "already_decided": "Esta linha já foi decidida",
+      "reason_required": "Informe o motivo",
+      "decision_invalid": "Uma decisão é confirmed ou revoked",
+      "cron_invalid": "Não é uma expressão cron de cinco campos: {{cron}}",
+      "not_owner": "Somente o proprietário do domínio {{domain}} decide esta linha",
+      "own_access": "Você não pode revisar o seu próprio acesso. Peça a outro proprietário.",
+      "read_only": "Esta função é atribuída pelo provedor de identidade; o Provisa não mantém nenhuma atribuição para confirmar ou revogar",
+      "webhook_invalid": "A URL do webhook não é utilizável: {{url}}",
+      "webhook_secret_required": "Um webhook precisa do segredo com o qual as revisões agendadas são assinadas"
     }
   }
 }

@@ -19,7 +19,13 @@ owner reviews them: a domain's owner is whoever ``domain_steward`` reaches it fo
 the same transaction, so it holds from the next request.
 
 A role reached only through the identity provider's claims or a role mapping is the provider's to
-review: Provisa holds no grant of it to revoke (REQ-2077).
+review: Provisa holds no grant of it to revoke (REQ-2077). The review lists it read-only with its
+source (:data:`IDP`, from ``user_idp_roles``); a decision on it is refused (:func:`decide`).
+
+A scheduled review is posted to the org's signed webhook (:func:`post_scheduled`): the
+``access_review.webhook`` setting names a URL and a secret, the post is signed as the offer hook
+signs its requests (``provisa.core.offer_hooks``), and its outcome, a failure with its text, stays
+on the review. An on-demand review is not posted.
 
 The schedule is the org's ``access_review.cron`` (a five-field cron expression in UTC; unset, no
 scheduled review). The scheduler checks it every :data:`RUN_MINUTES` and starts a review when a
@@ -46,11 +52,13 @@ from provisa.core.schema_org import (
     access_reviews,
     domains,
     user_directory,
+    user_idp_roles,
     user_role_assignments,
 )
 from provisa.entitlements.lists import HeldEntitlements
 
 if TYPE_CHECKING:
+    from provisa.core.offer_hooks import HookTarget
     from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
     from provisa.core.database import Connection, Database
@@ -59,6 +67,11 @@ log = logging.getLogger(__name__)
 
 #: Who started a review the schedule started.
 SCHEDULE = "schedule"
+#: Where a row's role is held: a grant Provisa holds, or the identity provider (read-only).
+PROVISA = "provisa"
+IDP = "identity_provider"
+DELIVERED = "delivered"
+FAILED = "failed"
 CONFIRMED = "confirmed"
 REVOKED = "revoked"
 DECISIONS = (CONFIRMED, REVOKED)
@@ -66,6 +79,8 @@ DECISIONS = (CONFIRMED, REVOKED)
 #: The org settings block holding the schedule: ``{"cron": "<five-field cron, UTC>"}``.
 SETTINGS_KEY = "access_review"
 CRON_FIELD = "cron"
+#: ``{"url": ..., "secret": ...}`` inside the block: where a scheduled review is posted.
+WEBHOOK_FIELD = "webhook"
 
 JOB_ID = "access_review"
 RUN_MINUTES = 15
@@ -90,6 +105,8 @@ class Review:
     started_at: datetime
     rows: int
     decided: int
+    webhook_status: str | None = None
+    webhook_error: str | None = None
 
 
 def _lists_of(held: HeldEntitlements | None, role_id: str) -> list[dict[str, Any]]:
@@ -117,21 +134,44 @@ async def start(conn: "Connection", started_by: str, held: Mapping[str, HeldEnti
             .order_by(_g.c.domain_id, _g.c.user_id, _g.c.role_id)
         )
     ).fetchall()
-    await conn.execute_core_many(
-        insert(_r),
-        [
-            {
-                "review_id": review_id,
-                "user_id": g.user_id,
-                "role_id": g.role_id,
-                "domain_id": g.domain_id,
-                "entitlements": _lists_of(held.get(g.user_id), g.role_id),
-                "expires_at": g.expires_at,
-                "last_used_at": g.last_used_at,
-            }
-            for g in grants
-        ],
-    )
+    held_here = {(g.user_id, g.role_id, g.domain_id) for g in grants}
+    # What the identity provider's claims or role mapping give and Provisa holds no grant of.
+    provider = (
+        await conn.execute_core(
+            select(
+                user_idp_roles.c.user_id, user_idp_roles.c.role_id, user_idp_roles.c.domain_id
+            ).order_by(
+                user_idp_roles.c.domain_id, user_idp_roles.c.user_id, user_idp_roles.c.role_id
+            )
+        )
+    ).fetchall()
+    rows = [
+        {
+            "review_id": review_id,
+            "user_id": g.user_id,
+            "role_id": g.role_id,
+            "domain_id": g.domain_id,
+            "source": PROVISA,
+            "entitlements": _lists_of(held.get(g.user_id), g.role_id),
+            "expires_at": g.expires_at,
+            "last_used_at": g.last_used_at,
+        }
+        for g in grants
+    ] + [
+        {
+            "review_id": review_id,
+            "user_id": p.user_id,
+            "role_id": p.role_id,
+            "domain_id": p.domain_id,
+            "source": IDP,
+            "entitlements": _lists_of(held.get(p.user_id), p.role_id),
+            "expires_at": None,
+            "last_used_at": None,
+        }
+        for p in provider
+        if (p.user_id, p.role_id, p.domain_id) not in held_here
+    ]
+    await conn.execute_core_many(insert(_r), rows)
     return review_id
 
 
@@ -144,6 +184,8 @@ async def reviews(conn: "Connection") -> list[Review]:
                 access_reviews.c.id,
                 access_reviews.c.started_by,
                 access_reviews.c.started_at,
+                access_reviews.c.webhook_status,
+                access_reviews.c.webhook_error,
                 func.count(_r.c.id).label("rows"),
                 decided.label("decided"),
             )
@@ -152,7 +194,12 @@ async def reviews(conn: "Connection") -> list[Review]:
             .order_by(access_reviews.c.started_at.desc(), access_reviews.c.id.desc())
         )
     ).fetchall()
-    return [Review(r.id, r.started_by, r.started_at, r.rows, r.decided) for r in rows]
+    return [
+        Review(
+            r.id, r.started_by, r.started_at, r.rows, r.decided, r.webhook_status, r.webhook_error
+        )
+        for r in rows
+    ]
 
 
 async def review_exists(conn: "Connection", review_id: int) -> bool:
@@ -173,6 +220,7 @@ async def rows_of(conn: "Connection", review_id: int) -> list[dict[str, Any]]:
             u.c.email,
             _r.c.role_id,
             _r.c.domain_id,
+            _r.c.source,
             _r.c.entitlements,
             _r.c.expires_at,
             _r.c.last_used_at,
@@ -233,14 +281,22 @@ async def decide(
         raise ReviewRefused("access_review.reason_required", "Say why")
     updated = await conn.execute_core(
         update(_r)
-        .where(_r.c.id == row_id, _r.c.decision.is_(None))
+        .where(_r.c.id == row_id, _r.c.decision.is_(None), _r.c.source == PROVISA)
         .values(decision=decision, decided_by=decided_by, decided_at=func.now(), reason=why)
         .returning(_r)
     )
     decided = updated.fetchone()
     if decided is None:
-        if await row(conn, row_id) is None:
+        found = await row(conn, row_id)
+        if found is None:
             raise ReviewRefused("access_review.row_not_found", "No such review row", row=row_id)
+        if found["source"] != PROVISA:
+            raise ReviewRefused(
+                "access_review.read_only",
+                "This role is held through the identity provider; Provisa holds no grant of it "
+                "to confirm or revoke",
+                row=row_id,
+            )
         raise ReviewRefused(
             "access_review.already_decided", "This row is already decided", row=row_id
         )
@@ -266,6 +322,7 @@ EXPORT_COLUMNS = (
     "display_name",
     "email",
     "role_id",
+    "source",
     "entitlements",
     "expires_at",
     "last_used_at",
@@ -302,11 +359,11 @@ def export_csv(rows: Iterable[Mapping[str, Any]]) -> str:
 
 def check_cron(cron: str) -> str:
     """``cron`` as stored, refused unless it is a five-field cron expression."""
-    from apscheduler.triggers.cron import CronTrigger
+    from provisa.core.cron import cron_trigger
 
     text = cron.strip()
     try:
-        CronTrigger.from_crontab(text, timezone=UTC)
+        cron_trigger(text, timezone=UTC)
     except ValueError as exc:
         raise ReviewRefused(
             "access_review.cron_invalid",
@@ -325,10 +382,10 @@ def cron_of(overrides: Mapping[str, Any]) -> str | None:
 def due(cron: str, last: datetime | None, now: datetime) -> bool:
     """Whether a cron time of ``cron`` has passed since ``last`` (the last scheduled review), or,
     with none yet, within the last check interval."""
-    from apscheduler.triggers.cron import CronTrigger
+    from provisa.core.cron import cron_trigger
 
     since = last if last is not None else now - timedelta(minutes=RUN_MINUTES)
-    fire = CronTrigger.from_crontab(cron, timezone=UTC).get_next_fire_time(None, since)
+    fire = cron_trigger(cron, timezone=UTC).get_next_fire_time(None, since)
     return fire is not None and since < fire <= now
 
 
@@ -337,6 +394,90 @@ async def last_scheduled(conn: "Connection") -> datetime | None:
         select(func.max(access_reviews.c.started_at)).where(access_reviews.c.started_by == SCHEDULE)
     )
     return result.scalar_one()
+
+
+def check_webhook(hook: Mapping[str, Any]) -> None:
+    """Refuse by name a webhook whose URL is not http(s) or that has no secret."""
+    from provisa.core.offer_hooks import HookTarget, checked
+
+    url = str(hook.get("url") or "")
+    if not str(hook.get("secret") or ""):
+        raise ReviewRefused(
+            "access_review.webhook_secret_required",
+            "A webhook needs the secret scheduled reviews are signed with",
+        )
+    try:
+        checked(HookTarget(url=url, secret=str(hook["secret"])))
+    except ValueError as exc:
+        raise ReviewRefused("access_review.webhook_invalid", str(exc), url=url) from None
+
+
+def webhook_of(overrides: Mapping[str, Any]) -> "HookTarget | None":
+    """The org's webhook from its settings rows; None when it has set none. One missing its URL
+    or its secret is refused by name (ValueError)."""
+    from provisa.core.offer_hooks import HookTarget, checked
+
+    hook = (overrides.get(SETTINGS_KEY) or {}).get(WEBHOOK_FIELD)
+    if not hook:
+        return None
+    return checked(HookTarget(url=str(hook.get("url") or ""), secret=str(hook.get("secret") or "")))
+
+
+def _iso(value: Any) -> Any:
+    return value.isoformat() if isinstance(value, datetime) else value
+
+
+def webhook_body(
+    review_id: int, started_at: datetime, rows: Iterable[Mapping[str, Any]]
+) -> dict[str, Any]:
+    """What the webhook receives: the review, its rows and its id, which is the same on every
+    send of it so a repeat is harmless."""
+    import uuid
+
+    return {
+        "id": uuid.uuid5(uuid.NAMESPACE_URL, f"provisa-access-review:{review_id}").hex,
+        "kind": "access_review",
+        "review_id": review_id,
+        "started_at": _iso(started_at),
+        "rows": [{c: _iso(r.get(c)) for c in EXPORT_COLUMNS} for r in rows],
+    }
+
+
+async def post_scheduled(
+    db: "Database", review_id: int, overrides: Mapping[str, Any]
+) -> str | None:
+    """Post the scheduled review ``review_id`` to the org's webhook, signed; None when the org
+    has set none. The outcome stays on the review: :data:`DELIVERED`, or :data:`FAILED` with the
+    failure's text, which the review list shows. Returns the outcome."""
+    from provisa.core.offer_hooks import HookFailed, deliver
+
+    try:
+        target = webhook_of(overrides)
+    except ValueError as exc:
+        status, error = FAILED, str(exc)
+        target = None
+    else:
+        status, error = DELIVERED, None
+    if target is None and status == DELIVERED:
+        return None
+    async with db.acquire() as conn:
+        if target is not None:
+            started = (
+                await conn.execute_core(
+                    select(access_reviews.c.started_at).where(access_reviews.c.id == review_id)
+                )
+            ).scalar_one()
+            body = webhook_body(review_id, started, await rows_of(conn, review_id))
+            try:
+                await deliver(target, body)
+            except HookFailed as exc:
+                status, error = FAILED, str(exc)
+        await conn.execute_core(
+            update(access_reviews)
+            .where(access_reviews.c.id == review_id)
+            .values(webhook_status=status, webhook_error=error, webhook_at=func.now())
+        )
+    return status
 
 
 async def run_scheduled(db: "Database", overrides: Mapping[str, Any], now: datetime) -> int | None:
@@ -364,8 +505,21 @@ async def run_org(org_id: str) -> int | None:
     try:
         db = state.model_db
         assert db is not None, "the org's model store is bound with its runtime"
-        review_id = await run_scheduled(db, await read_org_overrides(db), datetime.now(UTC))
+        overrides = await read_org_overrides(db)
+        review_id = await run_scheduled(db, overrides, datetime.now(UTC))
         if review_id is not None:
+            if await post_scheduled(db, review_id, overrides) == FAILED:
+                await record_admin_action(
+                    db,
+                    org_id=org_id,
+                    action="access_review.webhook_failed",
+                    actor_id=SCHEDULE,
+                    subject_id=str(review_id),
+                    detail={"review_id": review_id},
+                )
+                log.error(
+                    "org %s: access review %d was not posted to its webhook", org_id, review_id
+                )
             await record_admin_action(
                 db,
                 org_id=org_id,
