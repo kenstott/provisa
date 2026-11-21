@@ -60,10 +60,12 @@ export function useListSortGroup<T>(
   testPrefix: string,
   /** A page that opens already sorted (the user can still cycle it off). */
   initialSortCol: string | null = null,
+  /** A page that opens already grouped (the user can still ungroup it). */
+  initialGroupBy: string[] = [],
 ): ListSortGroup<T> {
   const [sortCol, setSortCol] = useState<string | null>(initialSortCol);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
-  const [groupBy, setGroupBy] = useState<string[]>([]);
+  const [groupBy, setGroupBy] = useState<string[]>(initialGroupBy);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
 
   const toggleSort = useCallback(

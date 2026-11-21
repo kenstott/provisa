@@ -3050,3 +3050,31 @@ CREATE TABLE IF NOT EXISTS admin_audit_log (
     detail      JSONB NOT NULL DEFAULT '{}'::jsonb,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- REQ-2266: an access review. Each review is a snapshot, taken on demand or on the org's schedule,
+-- of the grants Provisa holds (user_role_assignments): one row per member, role and domain, with
+-- the entitlement lists of that grant and its last use. The owner of the row's domain confirms or
+-- revokes it; the decision, who made it, when and why stay on the row. A revocation deletes the
+-- grant at once. Mirrors schema_org.access_reviews / access_review_rows.
+CREATE TABLE IF NOT EXISTS access_reviews (
+    id          BIGSERIAL PRIMARY KEY,
+    started_by  TEXT NOT NULL,          -- the person who asked for it, or 'schedule'
+    started_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS access_review_rows (
+    id            BIGSERIAL PRIMARY KEY,
+    review_id     BIGINT NOT NULL REFERENCES access_reviews(id) ON DELETE CASCADE,
+    user_id       TEXT NOT NULL,
+    role_id       TEXT NOT NULL,
+    domain_id     TEXT NOT NULL,
+    entitlements  JSONB NOT NULL DEFAULT '[]'::jsonb,  -- [{kind, capability, identifiers}]
+    expires_at    TIMESTAMPTZ,
+    last_used_at  TIMESTAMPTZ,
+    decision      TEXT CONSTRAINT access_review_rows_decision_check
+                      CHECK (decision IN ('confirmed', 'revoked')),
+    decided_by    TEXT,
+    decided_at    TIMESTAMPTZ,
+    reason        TEXT,
+    UNIQUE (review_id, user_id, role_id, domain_id)
+);
