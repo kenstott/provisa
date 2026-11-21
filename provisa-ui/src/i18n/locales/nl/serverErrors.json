@@ -170,7 +170,7 @@
       "view_awaits_rule_rebuild": "De view {{view}} wordt opnieuw opgebouwd vanwege een wijziging in de rijregels op de invoer. Deze rol kan hem lezen zodra die build is gepubliceerd.",
       "parameter_required": "Tabel '{{table}}' vereist de parameter(s) {{parameters}}: geef elk een waarde (een WHERE-voorwaarde op de kolom in SQL, een argument in GraphQL).",
       "parameter_wrong_type": "De parameter {{parameter}} neemt een waarde van type {{type}}; '{{value}}' is dat niet.",
-      "statement_failed": "De opdracht is in de server mislukt ({{kind}}): {{error}}"
+      "statement_failed": "De instructie is mislukt binnen de server ({{kind}}): {{error}}"
     },
     "discovery": {
       "adapter_missing_discover_schema": "Adapter voor '{{source_type}}' implementeert discover_schema niet",
@@ -837,7 +837,7 @@
       "impact_action": "Voor die actie bestaat geen voorbeeld.",
       "impact_table_required": "Een koppeling noemt een tabel, of een van zijn kolommen.",
       "name_taken": "Er bestaat al een term met de naam '{{name}}' in domein {{domain}}. Kies een andere naam of plaats de term in een ander domein.",
-      "name_taken_unscoped": "Er bestaat al een term met de naam '{{name}}' zonder domein, die dus in elk domein geldt. Kies een andere naam."
+      "name_taken_unscoped": "Er bestaat al een term met de naam '{{name}}' zonder domein, dus hij geldt voor elk domein. Kies een andere naam."
     },
     "table": {
       "requires_parameters": "De tabel {{table}} kan niet worden geteld of geprofileerd: ze vereist {{parameters}}. Geef elk een waarde om de rijen te lezen."
@@ -944,6 +944,19 @@
       "filter_required": "Deze klasse heeft {{count}} instanties, meer dan {{limit}}: kies een filter",
       "filter_too_wide": "Het filter laat meer dan {{limit}} instanties over",
       "unreachable": "Wikidata is niet bereikbaar: {{reason}}"
+    },
+    "access_review": {
+      "not_found": "Geen dergelijke toegangsreview",
+      "row_not_found": "Geen dergelijke reviewrij",
+      "already_decided": "Deze rij is al beslist",
+      "reason_required": "Geef een reden op",
+      "decision_invalid": "Een beslissing is confirmed of revoked",
+      "cron_invalid": "Geen cron-expressie met vijf velden: {{cron}}",
+      "not_owner": "Alleen de eigenaar van domein {{domain}} beslist over deze rij",
+      "own_access": "U kunt uw eigen toegang niet beoordelen. Vraag een andere eigenaar.",
+      "read_only": "Deze rol wordt toegewezen via de identiteitsprovider; Provisa bewaart geen toewijzing om te bevestigen of in te trekken",
+      "webhook_invalid": "De webhook-URL is niet bruikbaar: {{url}}",
+      "webhook_secret_required": "Een webhook heeft het geheim nodig waarmee geplande reviews worden ondertekend"
     }
   }
 }

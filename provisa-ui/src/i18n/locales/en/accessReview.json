@@ -37,6 +37,15 @@
       "revoked": "Revoke {{member}}'s {{role}} grant in {{domain}}. It is removed at once."
     },
     "reasonLabel": "Reason",
-    "reasonHint": "Why you confirm or revoke this access. It is recorded with your decision."
+    "reasonHint": "Why you confirm or revoke this access. It is recorded with your decision.",
+    "webhookUrlLabel": "Webhook URL",
+    "webhookUrlHint": "Each scheduled review is posted here, signed with the secret. Empty: no webhook.",
+    "webhookSecretLabel": "Webhook secret",
+    "webhookSecretHint": "Write-only: it signs each post and is never shown again. Leave empty to keep the one held.",
+    "webhookSecretHeld": "A secret is held",
+    "webhookFailed": "The scheduled review was not posted to the webhook: {{error}}",
+    "webhookDelivered": "This scheduled review was posted to the webhook.",
+    "sourceIdp": "Held through the identity provider",
+    "readOnly": "Read-only: Provisa holds no grant to revoke"
   }
 }

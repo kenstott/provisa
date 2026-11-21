@@ -65,5 +65,5 @@ def test_every_allowed_form_type_checks(errors):
 def test_each_mistake_is_a_type_error_on_its_marked_line(errors):
     lines = (CASES / "negative.py").read_text().splitlines()
     marked = {n for n, line in enumerate(lines, 1) if MARK in line}
-    assert len(marked) == 16
+    assert len(marked) == 17
     assert errors["negative.py"] == marked

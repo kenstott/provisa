@@ -3059,7 +3059,11 @@ CREATE TABLE IF NOT EXISTS admin_audit_log (
 CREATE TABLE IF NOT EXISTS access_reviews (
     id          BIGSERIAL PRIMARY KEY,
     started_by  TEXT NOT NULL,          -- the person who asked for it, or 'schedule'
-    started_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+    started_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    webhook_status TEXT CONSTRAINT access_reviews_webhook_status_check
+                      CHECK (webhook_status IN ('delivered', 'failed')),
+    webhook_error  TEXT,
+    webhook_at     TIMESTAMPTZ
 );
 
 CREATE TABLE IF NOT EXISTS access_review_rows (
@@ -3068,6 +3072,8 @@ CREATE TABLE IF NOT EXISTS access_review_rows (
     user_id       TEXT NOT NULL,
     role_id       TEXT NOT NULL,
     domain_id     TEXT NOT NULL,
+    source        TEXT NOT NULL DEFAULT 'provisa' CONSTRAINT access_review_rows_source_check
+                      CHECK (source IN ('provisa', 'identity_provider')),
     entitlements  JSONB NOT NULL DEFAULT '[]'::jsonb,  -- [{kind, capability, identifiers}]
     expires_at    TIMESTAMPTZ,
     last_used_at  TIMESTAMPTZ,

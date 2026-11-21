@@ -837,7 +837,7 @@
       "impact_action": "Aucun aperçu n'existe pour cette action.",
       "impact_table_required": "Une liaison nomme une table, ou l'une de ses colonnes.",
       "name_taken": "Un terme nommé '{{name}}' existe déjà dans le domaine {{domain}}. Choisissez un autre nom ou placez le terme dans un autre domaine.",
-      "name_taken_unscoped": "Un terme nommé '{{name}}' existe déjà sans domaine : il s'applique donc à tous les domaines. Choisissez un autre nom."
+      "name_taken_unscoped": "Un terme nommé '{{name}}' existe déjà sans domaine et couvre donc tous les domaines. Choisissez un autre nom."
     },
     "table": {
       "requires_parameters": "La table {{table}} ne peut être ni comptée ni profilée : elle exige {{parameters}}. Donnez une valeur à chacun pour lire ses lignes."
@@ -944,6 +944,19 @@
       "filter_required": "Cette classe a {{count}} instances, plus de {{limit}} : choisissez un filtre",
       "filter_too_wide": "Le filtre laisse plus de {{limit}} instances",
       "unreachable": "Wikidata est inaccessible : {{reason}}"
+    },
+    "access_review": {
+      "not_found": "Cette revue des accès n'existe pas",
+      "row_not_found": "Cette ligne de revue n'existe pas",
+      "already_decided": "Cette ligne est déjà tranchée",
+      "reason_required": "Indiquez le motif",
+      "decision_invalid": "Une décision est confirmed ou revoked",
+      "cron_invalid": "Pas une expression cron à cinq champs : {{cron}}",
+      "not_owner": "Seul le propriétaire du domaine {{domain}} décide de cette ligne",
+      "own_access": "Vous ne pouvez pas examiner votre propre accès. Demandez à un autre propriétaire.",
+      "read_only": "Ce rôle est attribué via le fournisseur d'identité ; Provisa ne détient aucune attribution à confirmer ou révoquer",
+      "webhook_invalid": "L'URL du webhook n'est pas utilisable : {{url}}",
+      "webhook_secret_required": "Un webhook a besoin du secret avec lequel les revues planifiées sont signées"
     }
   }
 }

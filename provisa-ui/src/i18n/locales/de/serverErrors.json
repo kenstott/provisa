@@ -246,7 +246,7 @@
       "no_plain_list": "Keine Operation der Quelle '{{source_id}}' ohne Pflichtparameter liefert die Zeilen von '{{operation}}', daher bleibt ihre Tabelle eingeschaltet",
       "plain_list_unregistered": "'{{operation}}' der Quelle '{{source_id}}' liefert die Zeilen ihrer Liste {{lists}}; registrieren Sie diese Liste zuerst als Tabelle",
       "table_has_dependents": "Auf die Tabelle '{{table}}' der Funktion '{{name}}' verweisen noch andere Objekte; entfernen Sie zuerst diese Verweise",
-      "statement_failed": "Befehl '{{name}}' ist fehlgeschlagen: {{error}}"
+      "statement_failed": "Befehl '{{name}}' fehlgeschlagen: {{error}}"
     },
     "graphql_remote": {
       "introspection_failed": "Introspektion fehlgeschlagen: {{error}}",
@@ -836,8 +836,8 @@
       "term_ids_required": "Nennen Sie die freizugebenden Begriffe.",
       "impact_action": "Für diese Aktion gibt es keine Vorschau.",
       "impact_table_required": "Eine Bindung nennt eine Tabelle oder eine ihrer Spalten.",
-      "name_taken": "Ein Begriff namens '{{name}}' existiert bereits in der Domäne {{domain}}. Wählen Sie einen anderen Namen oder ordnen Sie den Begriff einer anderen Domäne zu.",
-      "name_taken_unscoped": "Ein Begriff namens '{{name}}' existiert bereits ohne Domäne und gilt damit in jeder Domäne. Wählen Sie einen anderen Namen."
+      "name_taken": "Ein Begriff namens '{{name}}' existiert bereits in der Domäne {{domain}}. Wählen Sie einen anderen Namen oder legen Sie den Begriff in einer anderen Domäne ab.",
+      "name_taken_unscoped": "Ein Begriff namens '{{name}}' existiert bereits ohne Domäne und gilt daher für jede Domäne. Wählen Sie einen anderen Namen."
     },
     "table": {
       "requires_parameters": "Die Tabelle {{table}} kann nicht gezählt oder profiliert werden: Sie verlangt {{parameters}}. Geben Sie jedem einen Wert, um ihre Zeilen zu lesen."
@@ -944,6 +944,19 @@
       "filter_required": "Diese Klasse hat {{count}} Instanzen, mehr als {{limit}}: Wählen Sie einen Filter",
       "filter_too_wide": "Der Filter lässt mehr als {{limit}} Instanzen übrig",
       "unreachable": "Wikidata ist nicht erreichbar: {{reason}}"
+    },
+    "access_review": {
+      "not_found": "Keine solche Zugriffsprüfung",
+      "row_not_found": "Keine solche Prüfzeile",
+      "already_decided": "Diese Zeile ist bereits entschieden",
+      "reason_required": "Bitte begründen",
+      "decision_invalid": "Eine Entscheidung ist „confirmed“ oder „revoked“",
+      "cron_invalid": "Kein Cron-Ausdruck mit fünf Feldern: {{cron}}",
+      "not_owner": "Nur der Eigentümer der Domäne {{domain}} entscheidet über diese Zeile",
+      "own_access": "Sie können Ihren eigenen Zugriff nicht prüfen. Bitten Sie einen anderen Eigentümer.",
+      "read_only": "Diese Rolle wird über den Identitätsanbieter vergeben; Provisa hält keine Zuweisung, die bestätigt oder widerrufen werden könnte",
+      "webhook_invalid": "Die Webhook-URL ist nicht verwendbar: {{url}}",
+      "webhook_secret_required": "Ein Webhook braucht das Geheimnis, mit dem geplante Prüfungen signiert werden"
     }
   }
 }

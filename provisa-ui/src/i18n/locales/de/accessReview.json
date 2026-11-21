@@ -1,0 +1,51 @@
+{
+  "accessReview": {
+    "heading": "Zugriffsprüfung",
+    "help": "Jede Prüfung listet die Rollenzuweisung jedes Mitglieds mit ihren Berechtigungen und der letzten Nutzung auf, gruppiert nach Domäne. Der Eigentümer jeder Domäne bestätigt oder widerruft jede Zeile und begründet es. Ein Widerruf entfernt die Zuweisung sofort.",
+    "scheduleLabel": "Prüfungsplan",
+    "scheduleHint": "Cron in UTC: Minute Stunde Tag Monat Wochentag. Leer: keine geplante Prüfung.",
+    "scheduleSaved": "Prüfungsplan gespeichert",
+    "reviewLabel": "Prüfung",
+    "reviewOption": "{{when}} · {{by}} · {{decided}} von {{rows}} entschieden",
+    "bySchedule": "nach Plan",
+    "noReviews": "Es wurde noch keine Prüfung durchgeführt.",
+    "noRows": "Keine Zeilen in dieser Prüfung für die Domänen, deren Eigentümer Sie sind.",
+    "start": "Prüfung starten",
+    "started_one": "Prüfung gestartet: {{count}} Zuweisung zu prüfen",
+    "started_other": "Prüfung gestartet: {{count}} Zuweisungen zu prüfen",
+    "export": "CSV exportieren",
+    "colDomain": "Domäne",
+    "colMember": "Mitglied",
+    "colRole": "Rolle",
+    "colEntitlements": "Berechtigungen",
+    "colLastUsed": "Zuletzt verwendet",
+    "colDecision": "Entscheidung",
+    "colActions": "Aktionen",
+    "everyDomain": "Jede Domäne",
+    "wholeRole": "Die gesamte Rolle",
+    "neverUsed": "Nie",
+    "undecided": "Nicht entschieden",
+    "decision": {
+      "confirmed": "Bestätigt",
+      "revoked": "Widerrufen"
+    },
+    "decidedBy": "{{who}}, {{when}}",
+    "confirm": "Bestätigen",
+    "revoke": "Widerrufen",
+    "prompt": {
+      "confirmed": "Die Rolle {{role}} von {{member}} in {{domain}} bestätigen.",
+      "revoked": "Die Rolle {{role}} von {{member}} in {{domain}} widerrufen. Sie wird sofort entfernt."
+    },
+    "reasonLabel": "Begründung",
+    "reasonHint": "Warum Sie diesen Zugriff bestätigen oder widerrufen. Sie wird mit Ihrer Entscheidung festgehalten.",
+    "webhookUrlLabel": "Webhook-URL",
+    "webhookUrlHint": "Jede geplante Prüfung wird hierhin gesendet, mit dem Geheimnis signiert. Leer: kein Webhook.",
+    "webhookSecretLabel": "Webhook-Geheimnis",
+    "webhookSecretHint": "Nur schreibbar: Es signiert jede Sendung und wird nie wieder angezeigt. Leer lassen, um das vorhandene zu behalten.",
+    "webhookSecretHeld": "Ein Geheimnis ist hinterlegt",
+    "webhookFailed": "Die geplante Prüfung wurde nicht an den Webhook gesendet: {{error}}",
+    "webhookDelivered": "Diese geplante Prüfung wurde an den Webhook gesendet.",
+    "sourceIdp": "Über den Identitätsanbieter vergeben",
+    "readOnly": "Schreibgeschützt: Provisa hält keine Zuweisung, die widerrufen werden könnte"
+  }
+}
