@@ -65,4 +65,10 @@ def test_the_package_depends_on_nothing_and_ships_its_declarations():
     assert package["name"] == "@provisa/sdk"
     assert not {"dependencies", "peerDependencies", "optionalDependencies"} & set(package)
     assert package["exports"]["."] == {"types": "./index.d.ts", "default": "./index.js"}
-    assert set(package["files"]) == {"index.js", "index.d.ts", "services.d.ts"}
+    assert set(package["files"]) == {
+        "index.js",
+        "index.d.ts",
+        "services.d.ts",
+        "bin/check.js",
+    }
+    assert package["bin"] == {"provisa-sdk": "./bin/check.js"}
