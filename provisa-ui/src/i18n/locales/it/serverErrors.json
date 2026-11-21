@@ -833,7 +833,9 @@
       "not_bulk_approvable": "Solo le bozze definite e ancorate si approvano insieme; non: {{terms}}.",
       "term_ids_required": "Indica i termini da approvare.",
       "impact_action": "Non esiste un'anteprima per questa azione.",
-      "impact_table_required": "Un collegamento nomina una tabella o una delle sue colonne."
+      "impact_table_required": "Un collegamento nomina una tabella o una delle sue colonne.",
+      "name_taken": "Esiste già un termine chiamato '{{name}}' nel dominio {{domain}}. Scegli un altro nome o assegna il termine a un altro dominio.",
+      "name_taken_unscoped": "Esiste già un termine chiamato '{{name}}' senza dominio, quindi vale in ogni dominio. Scegli un altro nome."
     },
     "table": {
       "requires_parameters": "La tabella {{table}} non può essere contata né profilata: richiede {{parameters}}. Assegna un valore a ciascuno per leggerne le righe."

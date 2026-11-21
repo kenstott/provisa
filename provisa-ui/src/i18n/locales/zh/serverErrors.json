@@ -833,7 +833,9 @@
       "not_bulk_approvable": "只有已定义且已锚定的草稿术语才能一起批准；以下不符合：{{terms}}。",
       "term_ids_required": "请指定要批准的术语。",
       "impact_action": "该操作没有预览。",
-      "impact_table_required": "绑定指定一张表或其中的一列。"
+      "impact_table_required": "绑定指定一张表或其中的一列。",
+      "name_taken": "域 {{domain}} 中已存在名为 '{{name}}' 的术语。请选择其他名称，或将该术语放入其他域。",
+      "name_taken_unscoped": "已存在名为 '{{name}}' 且不属于任何域的术语，它适用于所有域。请选择其他名称。"
     },
     "table": {
       "requires_parameters": "无法对表 {{table}} 计数或生成概要：它需要 {{parameters}}。请为每个参数提供值以读取其行。"

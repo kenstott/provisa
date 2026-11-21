@@ -44,6 +44,7 @@ const FORWARD = {
 
 const RELS = { relationships: [FORWARD], loading: false, refetch: vi.fn() };
 const TABLES = {
+  refetch: () => Promise.resolve(),
   tables: [
     {
       id: 1,

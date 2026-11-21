@@ -833,7 +833,9 @@
       "not_bulk_approvable": "Only defined, grounded draft terms are approved together; not: {{terms}}.",
       "term_ids_required": "Name the terms to approve.",
       "impact_action": "There is no preview for that action.",
-      "impact_table_required": "Binding names a table, or one of its columns."
+      "impact_table_required": "Binding names a table, or one of its columns.",
+      "name_taken": "A term named '{{name}}' already exists in domain {{domain}}. Choose another name, or put the term in another domain.",
+      "name_taken_unscoped": "A term named '{{name}}' already exists with no domain, so it reaches every domain. Choose another name."
     },
     "table": {
       "requires_parameters": "The table {{table}} cannot be counted or profiled: it requires {{parameters}}. Give each a value to read its rows."

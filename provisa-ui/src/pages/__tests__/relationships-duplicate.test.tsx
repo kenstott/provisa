@@ -53,6 +53,7 @@ const tbl = (id: number, tableName: string, columns: string[]) => ({
 
 const RELS = { relationships: [rel], loading: false, refetch: vi.fn() };
 const TABLES = {
+  refetch: () => Promise.resolve(),
   tables: [tbl(1, "orders", ["customer_id", "total"]), tbl(2, "customers", ["cust_key", "name"])],
   loading: false,
 };

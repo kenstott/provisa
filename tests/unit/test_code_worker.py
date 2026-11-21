@@ -323,6 +323,68 @@ def test_the_pool_starts_a_new_worker_after_a_crash_and_stops_a_sources_workers(
     pool.stop_all()
 
 
+def test_the_pool_ends_a_worker_unused_past_the_idle_limit(command):
+    pool = w.WorkerPool()
+    try:
+        first = pool.get("orders-src", "h1", lambda: command[0])
+        now = time.monotonic()
+        assert pool.reap_idle(60, now=now + 59) == 0 and first.alive()
+        assert pool.reap_idle(60, now=now + 61) == 1
+        assert not first.alive()
+        second = pool.get("orders-src", "h1", lambda: command[0])
+        assert second is not first and second.ping()
+    finally:
+        pool.stop_all()
+
+
+def test_a_worker_serving_a_call_is_not_idle(command):
+    pool = w.WorkerPool()
+    try:
+        busy = pool.get("orders-src", "h1", lambda: command[0])
+        failed: list[BaseException] = []
+
+        def call() -> None:
+            try:
+                with request_deadline.within(1.0):
+                    list(busy.rows("slow", "table", [], schema=ANY))
+            except TimeoutError as exc:
+                failed.append(exc)
+
+        caller = threading.Thread(target=call)
+        caller.start()
+        until = time.monotonic() + 5.0
+        while busy.idle_since() is not None and time.monotonic() < until:
+            time.sleep(0.01)
+        assert pool.reap_idle(0, now=time.monotonic() + 3600) == 0 and busy.alive()
+        caller.join()
+        assert failed and busy.idle_since() is not None
+        assert pool.reap_idle(0) == 1 and not busy.alive()
+    finally:
+        pool.stop_all()
+
+
+def test_the_pools_reaper_ends_idle_workers_of_its_own_accord(command, monkeypatch):
+    monkeypatch.setattr(w, "_REAP_EVERY_S", 0.05)
+    monkeypatch.setattr(w, "idle_limit", lambda: 0.2)
+    pool = w.WorkerPool()
+    try:
+        idle = pool.get("orders-src", "h1", lambda: command[0])
+        until = time.monotonic() + 5.0
+        while idle.alive() and time.monotonic() < until:
+            time.sleep(0.02)
+        assert not idle.alive()
+    finally:
+        pool.stop_all()
+
+
+def test_the_idle_limit_is_the_operators_setting(monkeypatch):
+    from provisa.core import settings_registry
+
+    assert settings_registry.setting(w.IDLE_SETTING).default == 900
+    monkeypatch.setenv("PROVISA_CODESOURCE_WORKER_IDLE_TIMEOUT", "120")
+    assert w.idle_limit() == 120.0
+
+
 def test_a_worker_gets_only_path_from_the_environment(monkeypatch):
     monkeypatch.setenv("PROVISA_SECRET", "s3cret")
     assert set(w.private_environment(NO_COLOR="1")) == {"PATH", "NO_COLOR"}

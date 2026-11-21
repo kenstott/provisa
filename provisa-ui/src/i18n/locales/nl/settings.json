@@ -41,12 +41,6 @@
         "help": "De hoogste complexiteitsscore die één statement mag hebben, voor elke rol. Een rol kan een eigen, lagere limiet instellen. Laat leeg voor geen limiet."
       }
     },
-    "sparql": {
-      "query_timeout": {
-        "label": "Time-out voor SPARQL-query's",
-        "help": "Hoe lang één SPARQL-query mag lopen voordat ze wordt opgegeven: een voorbeeld, een Wikidata-klassezoekopdracht en elke keer dat de replica van een SPARQL-tabel wordt geladen. Een openbaar endpoint kan een query eerder stoppen door zijn eigen limiet (bij Wikidata 60 seconden)."
-      }
-    },
     "sampling": {
       "default_sample_size": {
         "label": "Standaard steekproefgrootte",
@@ -297,12 +291,6 @@
       "node_url": {
         "label": "Adres van dit knooppunt",
         "help": "Het adres waarop clients dit knooppunt bereiken. De UI van een coördinator vermeldt het als dataknooppunt wanneer de regio er geen vermeldt. De launcher stelt het per knooppunt in; zonder adres wordt het knooppunt niet vermeld."
-      }
-    },
-    "embedding": {
-      "hub_endpoint": {
-        "label": "Adres van de Hugging Face-hub",
-        "help": "De Hugging Face-hub waarvan een lokaal embeddingmodel wordt gedownload, zoals een mirror binnen uw netwerk. Geldt vanaf de volgende modeldownload."
       }
     },
     "tls": {
@@ -849,6 +837,10 @@
       "health_poll_interval": {
         "label": "Pollinterval voor connectorstatus",
         "help": "Hoe vaak elk Provisa-proces de host van een connector naar zijn status vraagt en het resultaat bij de bron toont. Een herstarte host wordt bij de volgende poll opgemerkt, waarna zijn on-start-functie opnieuw wordt uitgevoerd."
+      },
+      "worker_idle_timeout": {
+        "label": "Inactiviteitstime-out voor codeworkers",
+        "help": "Hoe lang de worker van een codebron, of de preflight-worker van een organisatie, ongebruikt mag blijven voordat Provisa het proces beëindigt. De volgende aanroep start een nieuwe."
       }
     },
     "config": {
@@ -887,10 +879,22 @@
         "help": "Het maximale aantal aanroepen dat één statement naar één geparametriseerde tabel doet. Elke waarde die een statement aan een parameter geeft, is één aanroep van de bron: elke waarde van een IN-lijst, elke tak van een OR, elke unieke sleutel van een join. Een statement dat er meer nodig heeft, wordt geweigerd."
       }
     },
+    "embedding": {
+      "hub_endpoint": {
+        "label": "Adres van de Hugging Face-hub",
+        "help": "De Hugging Face-hub waarvan een lokaal embeddingmodel wordt gedownload, zoals een mirror binnen uw netwerk. Geldt vanaf de volgende modeldownload."
+      }
+    },
     "subscriptions": {
       "max_sinks_per_principal": {
         "label": "Actieve Kafka-sinks per persoon",
         "help": "Hoeveel Kafka-sinks één persoon tegelijk actief mag hebben. Een verzoek om er nog een te starten wordt geweigerd tot een van de eigen sinks stopt."
+      }
+    },
+    "sparql": {
+      "query_timeout": {
+        "label": "Time-out voor SPARQL-query's",
+        "help": "Hoe lang één SPARQL-query mag lopen voordat ze wordt opgegeven: een voorbeeld, een Wikidata-klassezoekopdracht en elke keer dat de replica van een SPARQL-tabel wordt geladen. Een openbaar endpoint kan een query eerder stoppen door zijn eigen limiet (bij Wikidata 60 seconden)."
       }
     }
   }

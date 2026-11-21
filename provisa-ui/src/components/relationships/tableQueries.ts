@@ -73,7 +73,7 @@ export function tableGraphql(tb: RelationshipQueryTable, reader: MetaReader): st
 
 export function tableRest(tb: RelationshipQueryTable, reader: MetaReader): string | null {
   const root = rootOf(tb, reader);
-  return root === null ? null : `GET /data/rest/${root}?limit=${LIMIT}`;
+  return root === null ? null : `GET /data/rest/${tb.domainId}/${tb.tableName}?limit=${LIMIT}`;
 }
 
 export function tableJsonApi(tb: RelationshipQueryTable, reader: MetaReader): string | null {

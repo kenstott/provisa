@@ -423,6 +423,20 @@ DECLARED: list[Setting] = [
         unit="seconds",
     ),
     Setting(
+        key="codesource.worker_idle_timeout",
+        card="limits",
+        type="int",
+        effect="live",  # read at each sweep of the worker pool
+        # REQ-1984: how long a code source's, a preflight's or a remote host's worker may go
+        # unused before the pool ends it; 900 keeps a worker warm between a source's reads and
+        # frees an unused one's process within a quarter of an hour.
+        req="REQ-1984",
+        env="PROVISA_CODESOURCE_WORKER_IDLE_TIMEOUT",
+        default=900,
+        min=60,
+        unit="seconds",
+    ),
+    Setting(
         key="kaggle.api_token",
         card="security",
         type="str",

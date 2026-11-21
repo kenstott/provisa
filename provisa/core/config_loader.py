@@ -33,12 +33,12 @@ from provisa.core.models import (
     STORED_MODEL,
     ProvisaConfig,
     Source,
+    GlossaryTermConfig,
     Table,
     TagAssignment,
 )
 from provisa.core import domain_policy
 from provisa.core.schema_org import (
-    glossary_terms,
     model_seed,
     naming_rules,
     registered_tables,
@@ -1265,26 +1265,23 @@ async def _load_after_tables(  # REQ-1919
     # declares or derives exists — an abstract term with no edge to a grounded term can never
     # be live, so this is what actually connects it rather than the name-collision trick of
     # declaring a term with the same name as a derived one.
-    if config.glossary_terms:
-        term_ids = {
-            row.name: row.id
-            for row in (
-                await conn.execute_core(select(glossary_terms.c.id, glossary_terms.c.name))
-            ).fetchall()
-        }
-        for gt in config.glossary_terms:
-            # REQ-1844: every term name in the catalog is lowercase, and the declared term was
-            # stored that way (upsert_declared_term), so it and its edges' targets are looked up
-            # that way too — a name the file wrote with a capital letter is the same term.
-            from_id = term_ids[gt.name.strip().lower()]
-            for edge in gt.edges:
-                target = edge.to.strip().lower()
-                if target not in term_ids:
-                    raise ValueError(
-                        f"glossary term {gt.name!r} has an edge to {edge.to!r}, "
-                        "which does not exist in this config or the catalog"
-                    )
-                await glossary_repo.add_edge(conn, from_id, term_ids[target], edge.rel_type)
+    for gt in config.glossary_terms:
+        # REQ-1844: every term name in the catalog is lowercase, and the declared term was
+        # stored that way (upsert_declared_term), so it and its edges' targets are looked up
+        # that way too — a name the file wrote with a capital letter is the same term.
+        # REQ-1591: a name is unique only within a domain, so the declared term is the one of
+        # its name in its domains, and an edge's target is found from them.
+        from_id = await _declared_term_id(conn, gt)
+        for edge in gt.edges:
+            target_id = await glossary_repo.resolve_reference(
+                conn, edge.to.strip().lower(), near=gt.domains
+            )
+            if target_id is None:
+                raise ValueError(
+                    f"glossary term {gt.name!r} has an edge to {edge.to!r}, "
+                    "which does not exist in this config or the catalog"
+                )
+            await glossary_repo.add_edge(conn, from_id, target_id, edge.rel_type)
 
     # 10.6 Class terms (REQ-2141): resolved by name, like the edges above, once every term the
     # config declares or derives exists and every table has its columns (a class needs a key).
@@ -1341,19 +1338,19 @@ async def _resolve_tag_assignment_term(
     if not ta.term:
         raise ValueError(f"tag assignment {ta.tag_id!r} on a term names no term")
     name = ta.term.strip().lower()  # REQ-1844: every term name in the catalog is lowercase
-    row = (
-        await conn.execute_core(select(glossary_terms.c.id).where(glossary_terms.c.name == name))
-    ).fetchone()
-    if row is None:
+    # REQ-1591: a tag assignment names its term without a domain; several of that name are
+    # refused by name (TermNameAmbiguous), never guessed.
+    term_id = await glossary_repo.resolve_term(conn, name, domains=None)
+    if term_id is None:
         raise ValueError(
             f"tag assignment {ta.tag_id!r} names term {ta.term!r}, which does not exist in this "
             "config or the catalog"
         )
     try:
-        await refuse_term_tag(conn, row.id, ta.tag_id)
+        await refuse_term_tag(conn, term_id, ta.tag_id)
     except TermTagRefused as refused:
         raise ValueError(f"tag {ta.tag_id!r} cannot go on term {ta.term!r}: {refused}") from None
-    return ta.model_copy(update={"term_id": row.id})
+    return ta.model_copy(update={"term_id": term_id})
 
 
 async def _declare_term_statuses(conn: "Connection", config: ProvisaConfig) -> None:
@@ -1366,16 +1363,10 @@ async def _declare_term_statuses(conn: "Connection", config: ProvisaConfig) -> N
     ]
     if not stated:
         return
-    term_ids = {
-        row.name: row.id
-        for row in (
-            await conn.execute_core(select(glossary_terms.c.id, glossary_terms.c.name))
-        ).fetchall()
-    }
     statuses = await glossary_repo.term_statuses(conn)
     today = datetime.date.today()
     for gt in stated:
-        term_id = term_ids[gt.name.strip().lower()]
+        term_id = await _declared_term_id(conn, gt)
         try:
             # Loading the same configuration again changes nothing: an approval already made
             # stands.
@@ -1388,13 +1379,14 @@ async def _declare_term_statuses(conn: "Connection", config: ProvisaConfig) -> N
             elif gt.retire is not None:
                 successor = None
                 if gt.retire.successor is not None:
-                    named = gt.retire.successor.strip().lower()
-                    if named not in term_ids:
+                    successor = await glossary_repo.resolve_reference(  # REQ-1591
+                        conn, gt.retire.successor.strip().lower(), near=gt.domains
+                    )
+                    if successor is None:
                         raise ValueError(
                             f"glossary term {gt.name!r} names {gt.retire.successor!r} as its "
                             "successor, which does not exist in this config or the catalog"
                         )
-                    successor = term_ids[named]
                 if statuses[term_id] != "retired":
                     await glossary_repo.retire_term(
                         conn, term_id, reason=gt.retire.reason, successor=successor, by=None
@@ -1430,22 +1422,29 @@ async def _check_identities(conn: "Connection", config: ProvisaConfig) -> None:
                 raise ValueError(refused.message)
 
 
+async def _declared_term_id(conn: "Connection", term: GlossaryTermConfig) -> int:
+    """The id of a term this configuration declares, found by its name in its declared domains as
+    upsert_declared_term found or made it (REQ-1591)."""
+    term_id = await glossary_repo.find_declared_term(
+        conn, term.name.strip().lower(), set(term.domains)
+    )
+    if term_id is None:
+        raise ValueError(f"glossary term {term.name!r} was not declared in {term.domains!r}")
+    return term_id
+
+
 async def _declare_class_terms(conn: "Connection", config: ProvisaConfig) -> None:
     declared = [t for t in config.tables if t.class_term is not None]
     if not declared:
         return
-    term_ids = {
-        row.name: row.id
-        for row in (
-            await conn.execute_core(select(glossary_terms.c.id, glossary_terms.c.name))
-        ).fetchall()
-    }
     for table in declared:
         assert table.class_term is not None
         address = f"{table.source_id}.{table.schema_name}.{table.table_name}"
-        # REQ-1844: every term name in the catalog is lowercase.
+        # REQ-1844: every term name in the catalog is lowercase. REQ-1591: the class term is
+        # found from the table's domain, since a name is unique only within a domain.
         name = table.class_term.strip().lower()
-        if name not in term_ids:
+        class_term_id = await glossary_repo.resolve_reference(conn, name, near={table.domain_id})
+        if class_term_id is None:
             raise ValueError(
                 f"table {address} names {table.class_term!r} as its class term, "
                 "which does not exist in this config or the catalog"
@@ -1461,7 +1460,7 @@ async def _declare_class_terms(conn: "Connection", config: ProvisaConfig) -> Non
         ).fetchone()
         assert row is not None, f"table {address} was upserted by this load"
         try:
-            await glossary_repo.declare_class_term(conn, row.id, term_ids[name])
+            await glossary_repo.declare_class_term(conn, row.id, class_term_id)
         except (
             glossary_repo.TableHasNoPrimaryKey,
             glossary_repo.TermIsProperty,
@@ -2340,15 +2339,15 @@ async def _unstamp_revived_terms(conn: "Connection", config: ProvisaConfig) -> N
     configuration does not."""
     from sqlalchemy import delete
 
-    from provisa.core.schema_org import glossary_term_domains, glossary_term_refs, glossary_terms
+    from provisa.core.schema_org import glossary_term_domains, glossary_term_refs
 
-    declared = [term.name.strip().lower() for term in config.glossary_terms]
+    # REQ-1591: the declared terms by name within their domains; a same-named term elsewhere
+    # is another term, and its stamp goes.
+    declared = {await _declared_term_id(conn, term) for term in config.glossary_terms}
     await conn.execute_core(
         delete(glossary_term_domains).where(
             glossary_term_domains.c.term_id.in_(select(glossary_term_refs.c.term_id)),
-            glossary_term_domains.c.term_id.not_in(
-                select(glossary_terms.c.id).where(glossary_terms.c.name.in_(declared))
-            ),
+            glossary_term_domains.c.term_id.not_in(sorted(declared)),
         )
     )
 

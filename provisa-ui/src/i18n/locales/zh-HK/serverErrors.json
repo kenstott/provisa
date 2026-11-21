@@ -833,7 +833,9 @@
       "not_bulk_approvable": "只有已定義且已錨定的草稿術語才能一起批准；以下不符合：{{terms}}。",
       "term_ids_required": "請指定要批准的術語。",
       "impact_action": "此操作沒有預覽。",
-      "impact_table_required": "綁定指定一張表或其中的一欄。"
+      "impact_table_required": "綁定指定一張表或其中的一欄。",
+      "name_taken": "域 {{domain}} 中已存在名為 '{{name}}' 的術語。請選擇其他名稱，或將該術語放入其他域。",
+      "name_taken_unscoped": "已存在名為 '{{name}}' 且不屬於任何域的術語，它適用於所有域。請選擇其他名稱。"
     },
     "table": {
       "requires_parameters": "無法對資料表 {{table}} 計數或產生概要：它需要 {{parameters}}。請為每個參數提供值以讀取其資料列。"

@@ -51,6 +51,8 @@
     "retireResolverConsequence": "Sua visão de correspondências e suas três relações são retiradas juntas. Seus nomes continuam ocupados.",
     "queryLinks": {
       "heading": "Consultar",
+      "tableMissing": "Os links de consulta estão indisponíveis: a tabela {{ids}} citada por esta relação não está entre as tabelas registradas.",
+      "tablesUnread": "Os links de consulta estão indisponíveis: não foi possível ler as tabelas registradas ({{error}}).",
       "cypher": "Ler {{name}} em Cypher",
       "sql": "Ler {{name}} em SQL",
       "sparql": "Ler {{name}} em SPARQL",

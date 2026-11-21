@@ -233,7 +233,7 @@ describe("GraphQL", () => {
 describe("REST", () => {
   it("reads the source's columns with the relationship nested, by its GraphQL name, limited", () => {
     expect(relationshipRest(ref(), reader())).toBe(
-      "GET /data/rest/sales__orders?fields=id,customerId,client&limit=25",
+      "GET /data/rest/sales/orders?fields=id,customerId,client&limit=25",
     );
   });
 

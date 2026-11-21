@@ -225,10 +225,13 @@ async def _terms(conn: Connection) -> list[Any]:
 
 
 def _problems(
-    pending: list[store.ItemRow], same: dict[int, list[store.AlignmentRow]], terms: list[Any]
+    pending: list[store.ItemRow],
+    same: dict[int, list[store.AlignmentRow]],
+    terms: list[Any],
+    taken: set[str],
 ) -> list[str]:
+    """``taken``: the item names a term already holds in the import's domains (REQ-1591)."""
     by_id = {t.id: t for t in terms}
-    by_name = {t.name: t for t in terms}
     by_iri = {t.iri: t for t in terms if t.iri}
     problems: list[str] = []
     for item in pending:
@@ -257,7 +260,7 @@ def _problems(
                     f"IRI is carried by {by_iri[item.iri].name!r}"
                 )
             continue
-        if item.name in by_name:
+        if item.name in taken:
             problems.append(
                 f"the glossary already holds a term {item.name!r}: approve aligning the item "
                 "with it as the same entity, rename the item, or exclude it"
@@ -287,7 +290,14 @@ async def apply(
         if a.rel_type == SAME_AS:
             same.setdefault(a.item_id, []).append(a)
     terms = await _terms(conn)
-    problems = _problems(pending, same, terms)
+    # REQ-1591: a name is unique only within a domain, so only a term of an item's name in the
+    # import's domains is in its way.
+    taken = {
+        i.name
+        for i in pending
+        if await glossary_repo.name_taken(conn, i.name, set(domains)) is not None
+    }
+    problems = _problems(pending, same, terms, taken)
     if problems:
         raise ApplyRefused(problems)
     by_id = {t.id: t for t in terms}

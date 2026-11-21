@@ -833,7 +833,9 @@
       "not_bulk_approvable": "Solo se aprueban juntos los borradores definidos y anclados; no: {{terms}}.",
       "term_ids_required": "Indique los términos que se van a aprobar.",
       "impact_action": "No hay vista previa para esa acción.",
-      "impact_table_required": "Una vinculación nombra una tabla o una de sus columnas."
+      "impact_table_required": "Una vinculación nombra una tabla o una de sus columnas.",
+      "name_taken": "Ya existe un término llamado '{{name}}' en el dominio {{domain}}. Elija otro nombre o coloque el término en otro dominio.",
+      "name_taken_unscoped": "Ya existe un término llamado '{{name}}' sin dominio, por lo que alcanza todos los dominios. Elija otro nombre."
     },
     "table": {
       "requires_parameters": "La tabla {{table}} no se puede contar ni perfilar: exige {{parameters}}. Dé un valor a cada uno para leer sus filas."
