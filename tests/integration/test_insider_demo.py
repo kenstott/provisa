@@ -144,6 +144,8 @@ def set_up(server):
             'SELECT deal_id FROM "bank"."screening" LIMIT 2',
             'SELECT * FROM "bank"."deal" LIMIT 2',
             'SELECT * FROM "bank"."deal_team" LIMIT 2',
+            'SELECT * FROM "control_room"."control_room"."watch_list__screening" LIMIT 2',
+            'SELECT COUNT(*) AS n FROM "bank"."deal_team"',
             'SELECT * FROM "bank"."deal_counterparty" LIMIT 2',
             'SELECT s.message_id, m.id, d.deal_id FROM "bank"."screening" AS s '
             'JOIN "bank"."messages" AS m ON m.id = s.message_id '
