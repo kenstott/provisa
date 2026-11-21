@@ -25,10 +25,9 @@ other.
 
 What the adapter returns
 ------------------------
-The source's pgwire server is the pinned release's (engine-v0.106.3); the same assertions passed
-against engine-v0.108.0's. They are what the adapter answers today, to be tightened when a later
-release fills it in. The last two points were seen on engine-v0.108.0's server and are avoided
-here on either release:
+The source's pgwire server is the pinned release's (engine-v0.128.8). The assertions are what the
+adapter answers today, to be tightened when a later release fills it in. The last two points were
+seen on engine-v0.108.0's server and are still avoided here:
 
 - the tables in ``_EMPTY_BY_ADAPTER`` come back with no rows for the cloud named there although
   the account holds such resources;
@@ -46,6 +45,7 @@ here on either release:
 
 from __future__ import annotations
 
+import concurrent.futures
 import contextlib
 import os
 
@@ -80,9 +80,7 @@ _TABLES = {
 # (table, cloud) pairs the adapter answers with no rows; see the module docstring.
 _EMPTY_BY_ADAPTER: frozenset[tuple[str, str]] = frozenset(
     {
-        ("iam_resources", "gcp"),
         ("database_resources", "gcp"),
-        ("container_registries", "gcp"),
     }
 )
 _CLOUDS = ("azure", "aws", "gcp")
@@ -104,6 +102,30 @@ def _source(source_id: str = _SOURCE_ID, clouds: tuple[str, ...] = _CLOUDS):
     return Source(id=source_id, type=SourceType.cloudops, mapping=_mapping(clouds))
 
 
+def _cold_start(source, pr):
+    """Start the source's server and wait for its first catalog query. A wait that runs out says
+    only "STARTING" (warehouse run 44946515029: the AWS-only source's 600 s ran out), so the
+    failure carries what one more catalog query answers and the end of the server's own log."""
+    try:
+        return pr.ensure_endpoint(source, timeout=_COLD_START_SECONDS)
+    except pr.SourceStillStartingError as exc:
+        server = pr._endpoint_replica(source)._server
+        if server is None:
+            raise AssertionError(f"{exc}\n(no server was started)") from exc
+        # On a thread of its own, as the replica sends it: the async test's loop runs here.
+        with concurrent.futures.ThreadPoolExecutor(1) as pool:
+            sent = pool.submit(pr._prepare_catalog, server.ports, pr.sign_in_password(source))
+        try:
+            sent.result()
+            probe = "answered"
+        except Exception as probe_exc:  # noqa: BLE001 - reported by name with the log below
+            probe = f"{type(probe_exc).__name__}: {probe_exc}"
+        raise AssertionError(
+            f"{exc}\nthe server's exit code: {server.exit_code()}\n"
+            f"one more catalog query: {probe}\nthe server's log, its end:\n{server.log_tail()}"
+        ) from exc
+
+
 @contextlib.contextmanager
 def _serving(source, data_dir):
     """The source's pgwire server, started from a state directory of this run's own."""
@@ -115,7 +137,7 @@ def _serving(source, data_dir):
         # A module fixture runs before the per-test org binding: the endpoint is the
         # deployment org's, its folder ready, as its runtime's boot starts it (REQ-1266, REQ-1992).
         with deployment_org_on_this_node():
-            served = pr.ensure_endpoint(source, timeout=_COLD_START_SECONDS)
+            served = _cold_start(source, pr)
         yield served
     finally:
         with as_deployment_org():
@@ -168,9 +190,11 @@ async def test_the_inventory_tables_are_offered(endpoint):
 
 #: The clouds whose accounts hold resources of the table's kind. The Azure subscription holds no
 #: network resource the adapter lists (virtual networks, security groups, public IPs, load
-#: balancers, application gateways) -- only Network Watchers, which it does not.
+#: balancers, application gateways) -- only Network Watchers, which it does not -- and, since
+#: warehouse run 44946515029 (2026-11-21), no storage account: Azure Resource Manager lists none
+#: for the source's service principal (GET .../providers/Microsoft.Storage/storageAccounts).
 _HELD_BY_THE_ACCOUNTS = {
-    "storage_resources": set(_CLOUDS),
+    "storage_resources": {"aws", "gcp"},
     "network_resources": {"aws", "gcp"},
 }
 

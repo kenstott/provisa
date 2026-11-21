@@ -145,14 +145,23 @@ class ServerLifecycleError(ServerNotServing):  # REQ-955
 
 
 class ServerExited(ServerNotServing):  # REQ-955
-    """The pgwire server's process ended before it accepted connections: its start failed. Not
-    "still starting" — nothing is booting any more — so a discovery call reports it, with the exit
-    code and the end of the server's own log, instead of asking to be polled again."""
+    """The pgwire server's process ended before it could be read: before it accepted connections
+    (its start failed), or after while its first catalog query went unanswered
+    (``preparing_catalog``). Not "still starting" — nothing is booting any more — so a discovery
+    call reports it, with the exit code and the end of the server's own log, instead of asking to
+    be polled again."""
 
-    def __init__(self, source_id: str, code: int, log_tail: str) -> None:
+    def __init__(
+        self, source_id: str, code: int, log_tail: str, *, preparing_catalog: bool = False
+    ) -> None:
+        when = (
+            "while its first catalog query went unanswered"
+            if preparing_catalog
+            else "before it accepted connections"
+        )
         super().__init__(
-            f"the connector server for {source_id!r} exited with code {code} before it accepted "
-            f"connections; its log ends:\n{log_tail}"
+            f"the connector server for {source_id!r} exited with code {code} {when}; "
+            f"its log ends:\n{log_tail}"
         )
         self.source_id = source_id
         self.code = code
@@ -1620,6 +1629,11 @@ class ConnectorReplica:  # REQ-954/955/956
                 return
             if self._catalog_error is not None:
                 raise ServerCatalogFailed(self._source.id, self._catalog_error)
+            # Unanswered: sent again only while the server runs -- one that has exited answers
+            # nothing, ever, and is reported by its exit and its log, not as still starting.
+            server = self._server
+            if server is not None and (code := server.exit_code()) is not None:
+                raise ServerExited(self._source.id, code, server.log_tail(), preparing_catalog=True)
             left = deadline - time.monotonic()
             if left <= 0:
                 raise SourceStillStartingError(self._source.id, preparing_catalog=True)
