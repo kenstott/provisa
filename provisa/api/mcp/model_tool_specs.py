@@ -595,22 +595,16 @@ _OBJECT = {
     },
     "object_key": {
         "type": "string",
-        "description": (
-            "The object as read_screen's tags and meta.tag_instances name it: <kind>:<id>, "
-            "column:<table id>:<column>, section:<document id>:heading:<heading> or "
-            "section:<document id>:page:<page>."
-        ),
+        "description": "As read_screen's tags give it: <kind>:<id>, column:<table id>:<column>.",
     },
     "tag_id": {
         "type": "string",
-        "description": "The tag's id, with its parameter where it takes one (entity:customer).",
+        "description": "Tag id with its parameter if any (entity:customer).",
     },
 }
 _CITATION = {
     "type": "object",
-    "description": (
-        "A library document, or a section of it by its heading, or by its page when it has none."
-    ),
+    "description": "A library document or one of its sections, by heading or by page.",
     "properties": {
         "document_id": {"type": "integer"},
         "section_heading": {"type": "string"},
@@ -618,19 +612,14 @@ _CITATION = {
     },
     "required": ["document_id"],
 }
-_CONFIRMED = (
-    " In the chat the change is shown to the user, who confirms it before it is written; over "
-    "MCP it is written at once, as the caller. Returns the mutation's own success, message, code "
-    "and params; a caller without the right gets its refusal."
-)
+_CONFIRMED = " Shown to the user to confirm in the chat; written at once over MCP."
 
 TAG_SPECS: list[dict] = [
     {
         "name": "assign_tag",
         "description": (
-            "Put a tag on an object, or change that assignment, as the tag assignment form does "
-            "(assignTag): with a reason and an expiry (ISO date) where the tag asks for them, and "
-            "citations, the whole set the assignment cites." + _CONFIRMED
+            "Put a tag on an object or change that assignment (assignTag): reason, expiry (ISO "
+            "date) and citations, the whole set, where the tag asks for them." + _CONFIRMED
         ),
         "input_schema": _obj(
             {
@@ -645,17 +634,16 @@ TAG_SPECS: list[dict] = [
     {
         "name": "unassign_tag",
         "description": (
-            "Take a tag off an object (unassignTag). A tag the object inherits or derives is no "
-            "assignment of its own and is refused." + _CONFIRMED
+            "Take a tag off an object (unassignTag); an inherited or derived tag is refused."
+            + _CONFIRMED
         ),
         "input_schema": _obj(_OBJECT, ["object_kind", "object_key", "tag_id"]),
     },
     {
         "name": "cite_tag_assignment",
         "description": (
-            "One assignment of a tag cites a library document or section (citeTagAssignment); "
-            "citing it again records the section as it is now, confirming one that needs review."
-            + _CONFIRMED
+            "An assignment of a tag cites a document or section (citeTagAssignment); citing again "
+            "re-records it, confirming one that needs review." + _CONFIRMED
         ),
         "input_schema": _obj(
             {**_OBJECT, "citation": _CITATION},
@@ -675,9 +663,8 @@ TAG_SPECS: list[dict] = [
     {
         "name": "cite_tag_definition",
         "description": (
-            "A tag's definition cites the library document or section that says why the tag "
-            "exists (citeTagDefinition); citing it again records the section as it is now."
-            + _CONFIRMED
+            "A tag's definition cites the document or section saying why it exists "
+            "(citeTagDefinition); citing again re-records it." + _CONFIRMED
         ),
         "input_schema": _obj(
             {"tag_id": _OBJECT["tag_id"], "citation": _CITATION}, ["tag_id", "citation"]
