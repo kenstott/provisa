@@ -1153,6 +1153,10 @@ async def register_org_triggers(  # REQ-1003, REQ-1266
         from provisa.entitlements.expiry_run import register_org as register_org_expiry_run
 
         register_org_expiry_run(scheduler, org_id)
+        # REQ-2266: and its access review schedule, checked for a review that is due.
+        from provisa.entitlements.access_review import register_org as register_org_access_review
+
+        register_org_access_review(scheduler, org_id)
         # REQ-2144: and its deprecated terms, retired on their planned date.
         from provisa.scheduler.planned_retirement import register_org as register_org_retirements
 
