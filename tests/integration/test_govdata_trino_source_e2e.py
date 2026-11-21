@@ -52,12 +52,14 @@ pytestmark = [pytest.mark.integration, pytest.mark.requires_warehouse]
 _SOURCE_ID = "askamerica-trino-itest"
 _CATALOG = "askamerica_trino_itest"
 _SCHEMAS = "econ,ref,geo"
-_SCHEMA = "econ"
-# econ.inflation_metrics is always materialized (6,001 rows). Two others are avoided on
-# engine-v0.128.8: weather.nws_stations reports TABLE_NOT_FOUND to Trino though its data exists
-# (calcite catalog/describe bug, govdata-ops #1416/#1420), and fec.candidates shows 0 columns for
-# the same reason.
-_TABLE = "inflation_metrics"
+_SCHEMA = "ref"
+# ref.countries: neither the schema nor the table name contains "_". Calcite's pgwire pg_catalog
+# emulation answers LIKE from DuckDB without PostgreSQL's default backslash escape, so any govdata
+# schema/table name containing "_" is TABLE_NOT_FOUND through Trino (reported to calcite-lead).
+# This reverts to _SCHEMA = "econ", _TABLE = "inflation_metrics" (always materialized, 6,001 rows)
+# once calcite ships the LIKE-escape fix. fec.candidates is avoided too: it shows 0 columns
+# (calcite catalog/describe bug, govdata-ops #1416).
+_TABLE = "countries"
 _COLD_START_SECONDS = 600
 
 
