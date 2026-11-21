@@ -1,7 +1,7 @@
 {
   "relationshipRow": {
-    "autoTrackedTitle": "FK बाध्यता से स्वतः ट्रैक किया गया",
-    "fkBadge": "FK",
+    "fkBadge": "FK से",
+    "fkBadgeTitle": "स्रोत की एक फ़ॉरेन की से बनाया गया",
     "yes": "हाँ",
     "no": "नहीं",
     "none": "—",
@@ -32,7 +32,6 @@
     "materializeCheckbox": "मटीरियलाइज़ करें",
     "excludeFromCypher": "Cypher से बाहर रखें",
     "sqlName": "SQL नाम",
-    "autoTracked": "स्वतः ट्रैक किया गया",
     "cardinalityWarning": "चेतावनी: यदि यह जॉइन प्रति पैरेंट एक से अधिक पंक्ति लौटाता है, तो केवल पहला मान उपयोग होगा।",
     "toggleDetails": "संबंध विवरण टॉगल करें",
     "junctionBadge": "गुण",
@@ -44,6 +43,30 @@
     "parameterNotFed": "नहीं दिया गया",
     "sameEntity": "एक ही इकाई",
     "sameEntityHint": "यह जिन पंक्तियों को जोड़ता है वे एक ही चीज़ हैं: एक शब्द दोनों तालिकाओं का आधार है, कुंजियों पर 1:1",
-    "cardinalityOneToOne": "एक-से-एक"
+    "cardinalityOneToOne": "एक-से-एक",
+    "resolverNote": "कोड रिज़ॉल्वर {{resolver}} का हिस्सा। इसका मिलान व्यू और इसके तीनों संबंध एक साथ बदले और सेवानिवृत्त किए जाते हैं।",
+    "changeResolver": "कोड रिज़ॉल्वर बदलें",
+    "retireResolver": "कोड रिज़ॉल्वर सेवानिवृत्त करें",
+    "retireResolverTitle": "कोड रिज़ॉल्वर {{resolver}} सेवानिवृत्त करें?",
+    "retireResolverConsequence": "इसका मिलान व्यू और इसके तीनों संबंध एक साथ सेवानिवृत्त किए जाते हैं। उनके नाम आरक्षित रहते हैं।",
+    "queryLinks": {
+      "heading": "क्वेरी करें",
+      "cypher": "{{name}} को Cypher में पढ़ें",
+      "sql": "{{name}} को SQL में पढ़ें",
+      "sparql": "{{name}} को SPARQL में पढ़ें",
+      "graphql": "{{name}} को GraphQL में पढ़ें",
+      "rest": "{{name}} को REST में पढ़ें",
+      "grpc": "{{name}} को gRPC में पढ़ें",
+      "jsonapi": "{{name}} को JSON:API में पढ़ें",
+      "surfaces": {
+        "cypher": "Cypher",
+        "sql": "SQL",
+        "sparql": "SPARQL",
+        "graphql": "GraphQL",
+        "rest": "REST",
+        "grpc": "gRPC",
+        "jsonapi": "JSON:API"
+      }
+    }
   }
 }

@@ -18,12 +18,11 @@ import { History, BarChart2, Maximize2 } from "lucide-react";
 import { ResultsGrid } from "./ResultsGrid";
 import type { ResultsGridState } from "./useResultsGrid";
 import type { ResultTab, HistoryEntry } from "./types";
-import type { ExplainNodeDto, ExplainResponse } from "../../api/admin";
+import type { ExplainResponse } from "../../api/admin";
+import { AnalyzePanes } from "./AnalyzePanes";
 import { MermaidDiagram } from "../../components/MermaidDiagram";
 import "./ResultsPanel.css";
 import { Tip } from "../../components/Tip";
-import { ListCell } from "../../components/list/ListCell";
-import { ListTable } from "../../components/list/ListTable";
 import { StatementTabs } from "../../components/StatementTabs";
 import { statementLabel } from "./statementResults";
 import type { StatementResult } from "./statementResults";
@@ -32,6 +31,8 @@ interface ResultsPanelProps {
   resultTab: ResultTab;
   setResultTab: React.Dispatch<React.SetStateAction<ResultTab>>;
   running: boolean;
+  /** The last run was stopped before it answered: the results say so, and show nothing it held. */
+  stopped?: boolean;
   resultError: string;
   /** The result was landed in the results store and is there, not in the grid. */
   resultRedirect?: ResultRedirect | null;
@@ -60,6 +61,7 @@ export function ResultsPanel({
   resultTab,
   setResultTab,
   running,
+  stopped = false,
   resultError,
   resultRedirect = null,
   resultRows,
@@ -149,6 +151,7 @@ export function ResultsPanel({
 
       {statements.length > 1 &&
         !running &&
+        !stopped &&
         (resultTab === "results" || resultTab === "profile") && (
           <StatementTabs
             tabs={statements.map((r) => ({
@@ -177,6 +180,18 @@ export function ResultsPanel({
             >
               <span className="btn-spinner" style={{ flexShrink: 0 }} />
               {t("sqlResultsPanel.running")}
+            </div>
+          ) : stopped ? (
+            <div
+              data-testid="sql-results-stopped"
+              style={{
+                padding: "1.5rem",
+                textAlign: "center",
+                color: "var(--text-muted)",
+                fontSize: "0.85rem",
+              }}
+            >
+              {t("common.stopped")}
             </div>
           ) : resultRedirect ? (
             <ResultRedirectNotice redirect={resultRedirect} />
@@ -862,133 +877,16 @@ export function ResultsPanel({
                 title={t("sqlResultsPanel.analyzeExpandTitle")}
                 styles={{
                   content: { height: "90vh" },
-                  body: { height: "calc(90vh - 3.5rem)", overflow: "auto" },
+                  body: { height: "calc(90vh - 3.5rem)", overflow: "hidden" },
                 }}
               >
-                <AnalyzePanes plan={analyzePlan} />
+                <AnalyzePanes plan={analyzePlan} fill />
               </Modal>
             </Box>
           ) : null)}
       </div>
     </div>
   );
-}
-
-// REQ-1519: one rendering of the plan, used inline in the results strip and again at full size
-// in the expand modal, so both readings stay identical.
-function AnalyzePanes({ plan: analyzePlan }: { plan: ExplainResponse }) {
-  const { t } = useTranslation();
-  // REQ-1521: the rule between the panes is the handle — the split a reader wants depends on
-  // whether the tree is deep or the diagram is wide, so they set it by dragging it.
-  const [listPct, setListPct] = React.useState(50);
-
-  const startResize = (e: React.MouseEvent) => {
-    e.preventDefault();
-    // The separator is only ever rendered as a child of the pane row, so its parent is the row.
-    const row = e.currentTarget.parentElement as HTMLElement;
-    const rtl = window.getComputedStyle(row).direction === "rtl";
-    const onMove = (ev: MouseEvent) => {
-      const rect = row.getBoundingClientRect();
-      const offset = rtl ? rect.right - ev.clientX : ev.clientX - rect.left;
-      setListPct(Math.min(85, Math.max(15, (offset / rect.width) * 100)));
-    };
-    const onUp = () => {
-      document.removeEventListener("mousemove", onMove);
-      document.removeEventListener("mouseup", onUp);
-    };
-    document.addEventListener("mousemove", onMove);
-    document.addEventListener("mouseup", onUp);
-  };
-
-  return (
-    <div
-      style={{ display: "flex", gap: "0.75rem", alignItems: "stretch" }}
-      data-testid="analyze-panes"
-    >
-      {analyzePlan.plan.length > 0 && (
-        <div style={{ flex: `0 0 ${listPct}%`, minWidth: 0, overflow: "auto" }}>
-          <ListTable style={{ fontSize: "0.68rem" }}>
-            <Table.Thead>
-              <Table.Tr>
-                <Table.Th>{t("sqlResultsPanel.analyzeColOperator")}</Table.Th>
-                <Table.Th>{t("sqlResultsPanel.analyzeColRows")}</Table.Th>
-                <Table.Th>
-                  {analyzePlan.analyzed
-                    ? t("sqlResultsPanel.analyzeColActualMs")
-                    : t("sqlResultsPanel.analyzeColCost")}
-                </Table.Th>
-                <Table.Th>{t("sqlResultsPanel.analyzeColDetail")}</Table.Th>
-              </Table.Tr>
-            </Table.Thead>
-            <Table.Tbody>
-              {flattenPlan(analyzePlan.plan).map((row, i) => (
-                <Table.Tr key={i}>
-                  <Table.Td
-                    style={{
-                      fontFamily: "monospace",
-                      paddingInlineStart: `${0.4 + Math.min(row.depth, MAX_INDENT_DEPTH) * 0.9}rem`,
-                    }}
-                  >
-                    {row.depth > MAX_INDENT_DEPTH && (
-                      <span
-                        data-testid="analyze-depth"
-                        style={{ color: "var(--text-muted)", marginInlineEnd: "0.3rem" }}
-                      >
-                        ↳{row.depth}
-                      </span>
-                    )}
-                    {row.node.op}
-                  </Table.Td>
-                  <Table.Td>{row.node.rows ?? t("sqlResultsPanel.dash")}</Table.Td>
-                  <Table.Td>
-                    {(analyzePlan.analyzed ? row.node.actual_ms : row.node.cost) ??
-                      t("sqlResultsPanel.dash")}
-                  </Table.Td>
-                  <Table.Td style={{ color: "var(--text-muted)" }}>
-                    <ListCell
-                      text={Object.entries(row.node.detail)
-                        .map(([k, v]) => `${k}=${v}`)
-                        .join("  ")}
-                    />
-                  </Table.Td>
-                </Table.Tr>
-              ))}
-            </Table.Tbody>
-          </ListTable>
-        </div>
-      )}
-      {analyzePlan.plan.length > 0 && analyzePlan.mermaid && (
-        <Tip text={t("sqlResultsPanel.analyzeResize")} named>
-          <div
-            role="separator"
-            aria-orientation="vertical"
-            aria-label={t("sqlResultsPanel.analyzeResize")}
-            onMouseDown={startResize}
-            data-testid="analyze-resizer"
-            className="analyze-resizer"
-          />
-        </Tip>
-      )}
-      {analyzePlan.mermaid && (
-        <div style={{ flex: "1 1 0", minWidth: 0, overflow: "auto" }}>
-          <MermaidDiagram chart={analyzePlan.mermaid} />
-        </div>
-      )}
-    </div>
-  );
-}
-
-// A deep plan (hundreds of nested operators) would indent its rows off the pane: past this depth
-// the indent stops growing and the row names its depth instead.
-const MAX_INDENT_DEPTH = 8;
-
-// REQ-1519: the operator tree read top-down, each row carrying its depth so the list reads like
-// the diagram.
-function flattenPlan(
-  nodes: ExplainNodeDto[],
-  depth = 0,
-): { node: ExplainNodeDto; depth: number }[] {
-  return nodes.flatMap((node) => [{ node, depth }, ...flattenPlan(node.children, depth + 1)]);
 }
 
 export { PAGE_SIZE } from "./types";

@@ -72,7 +72,8 @@ CREATE TABLE IF NOT EXISTS sources (
     producer_command JSONB,  -- REQ-861
     cache_catalog   TEXT,
     cache_schema    TEXT NOT NULL DEFAULT 'api_cache',
-    approval_hook   BOOLEAN NOT NULL DEFAULT FALSE  -- REQ-204/247
+    approval_hook   BOOLEAN NOT NULL DEFAULT FALSE,  -- REQ-204/247
+    is_system       BOOLEAN NOT NULL DEFAULT FALSE  -- a source Provisa runs for itself; not a target of Register table
     -- the password itself is never stored; password_ref below carries the reference that names it
 );
 ALTER TABLE sources ADD COLUMN IF NOT EXISTS replicate INTEGER;
@@ -118,6 +119,17 @@ DO $$ BEGIN
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 ALTER TABLE sources ADD COLUMN IF NOT EXISTS synthetic JSONB;
+-- REQ-2248: deleting a source that holds no live table retires it, as a table is retired: why
+-- (status_reason), who (status_by) and when (status_at). Its row is kept under a key of its own
+-- and retired_id holds the id it had while live, so that id is free for reuse.
+ALTER TABLE sources ADD COLUMN IF NOT EXISTS retired BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE sources ADD COLUMN IF NOT EXISTS status_reason TEXT;
+ALTER TABLE sources ADD COLUMN IF NOT EXISTS status_by TEXT;
+ALTER TABLE sources ADD COLUMN IF NOT EXISTS status_at TIMESTAMPTZ;
+ALTER TABLE sources ADD COLUMN IF NOT EXISTS retired_id TEXT;
+-- REQ-1921: withdrawn -- out of production while set: its tables serve no role, no engine
+-- attaches it, none of its tables keeps a replica; its definition, grants and relationships stay.
+ALTER TABLE sources ADD COLUMN IF NOT EXISTS withdrawn BOOLEAN NOT NULL DEFAULT FALSE;
 
 CREATE TABLE IF NOT EXISTS domains (
     id            TEXT PRIMARY KEY,
@@ -132,6 +144,14 @@ ALTER TABLE domains ADD COLUMN IF NOT EXISTS parent_domain_id TEXT;
 ALTER TABLE domains ADD COLUMN IF NOT EXISTS graphql_alias TEXT;
 -- REQ-609: designated steward; NULL = pending (the domain may not serve governed data).
 ALTER TABLE domains ADD COLUMN IF NOT EXISTS steward TEXT;
+-- REQ-2248: deleting a domain that holds no live table retires it, as a table is retired: why
+-- (status_reason), who (status_by) and when (status_at). Its row is kept under a key of its own
+-- and retired_id holds the id it had while live, so that id is free for reuse.
+ALTER TABLE domains ADD COLUMN IF NOT EXISTS retired BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE domains ADD COLUMN IF NOT EXISTS status_reason TEXT;
+ALTER TABLE domains ADD COLUMN IF NOT EXISTS status_by TEXT;
+ALTER TABLE domains ADD COLUMN IF NOT EXISTS status_at TIMESTAMPTZ;
+ALTER TABLE domains ADD COLUMN IF NOT EXISTS retired_id TEXT;
 
 -- Seed default (no-domain) row so domain_id='' is always a valid FK target
 INSERT INTO domains (id, description) VALUES ('', 'No domain')
@@ -156,8 +176,8 @@ ON CONFLICT (id) DO NOTHING;
 -- already has the underlying source of truth -- team_role/owner_role resolve to individuals
 -- via the existing role machinery (OwnerResolutionInline), tags/authoritativeDefinitions/
 -- inputPorts are derived from existing tag assignments/glossary/lineage rather than stored here,
--- and support stays prose. REQ-2158: each output port is a member table, whose declared contract
--- (registered_tables.contract) holds the SLA.
+-- and support stays prose. REQ-2180: its contracts are derived from its offers
+-- (data_product_offer_contracts); what they share (freshness, support) is written once here.
 CREATE TABLE IF NOT EXISTS data_products (
     id            TEXT PRIMARY KEY,
     domain_id     TEXT NOT NULL REFERENCES domains(id) ON DELETE CASCADE,
@@ -181,9 +201,13 @@ CREATE TABLE IF NOT EXISTS data_products (
     -- REQ-2118: when the product was created (ODPS productCreatedTs); set on insert only.
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
     -- REQ-2219: who created it, set on insert only; it grants nothing.
-    created_by    TEXT
+    created_by    TEXT,
+    -- REQ-2180: how fresh every contract of the product promises its data, written once on the
+    -- product: a read trails its source by at most this many seconds; NULL: each dataset's own.
+    freshness     INTEGER
 );
 ALTER TABLE data_products ADD COLUMN IF NOT EXISTS owner_role TEXT;
+ALTER TABLE data_products ADD COLUMN IF NOT EXISTS freshness INTEGER;
 ALTER TABLE data_products ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT now();
 
 ALTER TABLE data_products ADD COLUMN IF NOT EXISTS created_by TEXT;
@@ -225,9 +249,10 @@ CREATE TABLE IF NOT EXISTS registered_tables (
     role_ttl    JSONB NOT NULL DEFAULT '{}',  -- REQ-1907: role -> TTL seconds; effective = max(cache_ttl, role_ttl)
     replicate   INTEGER,  -- REQ-826: NULL = inherit source; -1 never, N > 0 once it passes N statements per interval, 0 always
     region      TEXT,     -- REQ-1921: the org region its data lives in; NULL = no region
-    -- REQ-1921: out of service while set — read and written nowhere, offered in no schema,
-    -- copied nowhere; a table or view registered through the admin starts so.
-    draft       BOOLEAN NOT NULL DEFAULT FALSE,
+    -- REQ-1921: withdrawn -- out of production while set: serves no role, attached by no engine,
+    -- keeps no replica; its definition, grants and relationships stay. Put back by one action,
+    -- naming a region: the waypoint of a move between regions.
+    withdrawn   BOOLEAN NOT NULL DEFAULT FALSE,
     load_protected BOOLEAN,  -- REQ-1141: NULL = inherit source; overrides scheduled-refresh-only load protection
     off_peak_window TEXT,    -- REQ-1141: per-table "HH:MM-HH:MM" window override; NULL = inherit source
     off_peak_tz TEXT,        -- REQ-1141: per-table window zone override; NULL = inherit source
@@ -253,6 +278,7 @@ CREATE TABLE IF NOT EXISTS registered_tables (
     mv_persist TEXT NOT NULL DEFAULT 'replace',  -- REQ-965: replace | append | upsert
     mv_primary_key JSONB,  -- REQ-970: row identity (required for upsert / incremental)
     mv_incremental BOOLEAN NOT NULL DEFAULT FALSE,  -- REQ-969: incremental maintenance
+    mv_rebuild_every INTEGER,  -- REQ-2249: seconds between whole rebuilds of a view kept by @change
     mv_calendar TEXT,  -- REQ-962: periodic-snapshot calendar name (NULL = not periodic)
     mv_grain TEXT,  -- REQ-962/1168: nesting grain ('daily'..'annual') or nth-weekday ('3WE'/'LFR')
     mv_allowed_lateness DOUBLE PRECISION NOT NULL DEFAULT 0,  -- REQ-961: seal-deadline slack (s)
@@ -268,15 +294,28 @@ CREATE TABLE IF NOT EXISTS registered_tables (
     promotions    JSONB NOT NULL DEFAULT '[]',  -- REQ-119
     query_template TEXT,  -- REQ-1668/1683: neo4j / sparql tables
     relay_pagination BOOLEAN,  -- NULL = inherit
-    -- REQ-2158: a data product member's ODCS contract (its output port), declared and versioned on
-    -- its own: {version, status, description, terms, sla, schema}; NULL for a table in no product.
-    contract    JSONB,
+    -- REQ-2249: the code resolver set this view is the bridge of (its id), else NULL. The set's
+    -- objects are changed and retired together, through the set.
+    code_resolver TEXT,
+    -- REQ-2248: deleting it retires it -- the row, its name and its file are kept, out of
+    -- service, with why (status_reason), who (status_by) and when (status_at), as a term's.
+    retired       BOOLEAN NOT NULL DEFAULT FALSE,
+    status_reason TEXT,
+    status_by     TEXT,
+    status_at     TIMESTAMPTZ,
+    -- REQ-413: when it was registered; an upsert by identity keeps it.
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE (source_id, schema_name, table_name)
 );
+-- REQ-2248: the retirement columns, for a table created before them.
+ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS retired BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS status_reason TEXT;
+ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS status_by TEXT;
+ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS status_at TIMESTAMPTZ;
 ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS role_ttl JSONB NOT NULL DEFAULT '{}';
 ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS replicate INTEGER;
 ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS region TEXT;
-ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS draft BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS withdrawn BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS load_protected BOOLEAN;
 ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS off_peak_window TEXT;
 ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS off_peak_tz TEXT;
@@ -290,7 +329,9 @@ ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS hot BOOLEAN;
 ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS promotions JSONB NOT NULL DEFAULT '[]';
 ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS query_template TEXT;
 ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS relay_pagination BOOLEAN;
-ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS contract JSONB;
+ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS mv_rebuild_every INTEGER;
+ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS code_resolver TEXT;
+ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT now();
 
 CREATE TABLE IF NOT EXISTS table_columns (
     id          SERIAL PRIMARY KEY,
@@ -320,8 +361,19 @@ CREATE TABLE IF NOT EXISTS table_columns (
     embedding_model TEXT,  -- REQ-421
     embedding_source_column TEXT,  -- REQ-421
     encrypted    BOOLEAN NOT NULL DEFAULT FALSE,  -- REQ-1919: surfaced as @encrypted
+    -- REQ-2248: deleting it retires it -- the row, its name and its file are kept, out of
+    -- service, with why (status_reason), who (status_by) and when (status_at), as a term's.
+    retired       BOOLEAN NOT NULL DEFAULT FALSE,
+    status_reason TEXT,
+    status_by     TEXT,
+    status_at     TIMESTAMPTZ,
     UNIQUE (table_id, column_name)
 );
+-- REQ-2248: the retirement columns, for a table created before them.
+ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS retired BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS status_reason TEXT;
+ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS status_by TEXT;
+ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS status_at TIMESTAMPTZ;
 ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS masks JSONB NOT NULL DEFAULT '[]';
 ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS not_null BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS epoch_unit TEXT;
@@ -374,6 +426,7 @@ DO $$ BEGIN
     ALTER TABLE sources ADD COLUMN IF NOT EXISTS federation_hints JSONB NOT NULL DEFAULT '{}';
     ALTER TABLE sources ADD COLUMN IF NOT EXISTS cdc JSONB;  -- REQ-824: source-level CDC transport
     ALTER TABLE sources ADD COLUMN IF NOT EXISTS change_signal TEXT NOT NULL DEFAULT 'ttl';  -- REQ-929
+    ALTER TABLE sources ADD COLUMN IF NOT EXISTS is_system BOOLEAN NOT NULL DEFAULT FALSE;  -- a source Provisa runs for itself
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS cache_ttl INTEGER;
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS read_wait INTEGER;  -- REQ-2224
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS watermark_column TEXT;
@@ -459,6 +512,15 @@ CREATE TABLE IF NOT EXISTS relationships (
     -- REQ-2099: the target table's parameters this edge feeds, {parameter: source column}. A join
     -- to a parameterized target (a code table) over this edge calls it with the source's values.
     parameters        JSONB NOT NULL DEFAULT '{}',
+    -- REQ-2249: the code resolver set this relationship belongs to (its id), else NULL. The set's
+    -- objects are changed and retired together, through the set.
+    code_resolver     TEXT,
+    -- REQ-2248: deleting it retires it -- the row, its name and its file are kept, out of
+    -- service, with why (status_reason), who (status_by) and when (status_at), as a term's.
+    retired       BOOLEAN NOT NULL DEFAULT FALSE,
+    status_reason TEXT,
+    status_by     TEXT,
+    status_at     TIMESTAMPTZ,
     CONSTRAINT relationships_via_complete CHECK (
         (via_table_id IS NULL AND via_source_column IS NULL AND via_target_column IS NULL
          AND via_label_source IS NULL)
@@ -478,8 +540,14 @@ CREATE TABLE IF NOT EXISTS relationships (
         OR (via_type_column IS NOT NULL AND via_type_value IS NOT NULL AND via_table_id IS NOT NULL)
     )
 );
+-- REQ-2248: the retirement columns, for a table created before them.
+ALTER TABLE relationships ADD COLUMN IF NOT EXISTS retired BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE relationships ADD COLUMN IF NOT EXISTS status_reason TEXT;
+ALTER TABLE relationships ADD COLUMN IF NOT EXISTS status_by TEXT;
+ALTER TABLE relationships ADD COLUMN IF NOT EXISTS status_at TIMESTAMPTZ;
 ALTER TABLE relationships ADD COLUMN IF NOT EXISTS hide_target_meta BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE relationships ADD COLUMN IF NOT EXISTS parameters JSONB NOT NULL DEFAULT '{}';
+ALTER TABLE relationships ADD COLUMN IF NOT EXISTS code_resolver TEXT;
 
 -- Migration: add materialize columns if missing
 DO $$ BEGIN
@@ -642,6 +710,32 @@ ALTER TABLE entitlement_expiries ADD COLUMN IF NOT EXISTS list_kind TEXT;
 CREATE INDEX IF NOT EXISTS entitlement_expiries_principal_idx
     ON entitlement_expiries (principal, role_id);
 
+-- REQ-2219: ops.entitlements and ops.entitlement_expiries are subscribable, as ops.requests is.
+-- Every change of either table is reported on its schema's own channel
+-- (subscriptions.pg_provider.schema_channel, named for the table) with the row's id only; the
+-- subscription reads the row back through the governed pipeline as the subscriber.
+CREATE OR REPLACE FUNCTION provisa_notify_entitlement_rows()
+RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE
+  rid bigint;
+BEGIN
+  rid := CASE WHEN TG_OP = 'DELETE' THEN OLD.id ELSE NEW.id END;
+  PERFORM pg_notify(
+    'provisa_' || TG_TABLE_NAME || '_' || substr(md5(TG_TABLE_SCHEMA), 1, 12),
+    json_build_object('op', lower(TG_OP), 'row', json_build_object('id', rid))::text
+  );
+  RETURN CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
+END;
+$$;
+DROP TRIGGER IF EXISTS provisa_sub_entitlements ON entitlements;
+CREATE TRIGGER provisa_sub_entitlements
+AFTER INSERT OR UPDATE OR DELETE ON entitlements
+FOR EACH ROW EXECUTE FUNCTION provisa_notify_entitlement_rows();
+DROP TRIGGER IF EXISTS provisa_sub_entitlement_expiries ON entitlement_expiries;
+CREATE TRIGGER provisa_sub_entitlement_expiries
+AFTER INSERT OR UPDATE OR DELETE ON entitlement_expiries
+FOR EACH ROW EXECUTE FUNCTION provisa_notify_entitlement_rows();
+
 -- REQ-2219, ONE API, THREE WAYS TO USE IT: a list granted by typed email to a person not yet seen.
 -- Append-only, keyed by (email, role_id, kind): the last row is the grant's state. outcome is NULL
 -- while it waits, and ended, attached or refused once it does not; principal names whom a sign-in
@@ -661,6 +755,28 @@ CREATE TABLE IF NOT EXISTS entitlement_pending (
     recorded_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS entitlement_pending_email_idx ON entitlement_pending (email);
+
+-- REQ-2219: one effective row per person, role and capability, computed after precedence and
+-- within the ceiling. bits is the mask over the role's schema, in hex, for a data-plane capability
+-- (NULL for one with no mask); model_version is the version of the bit positions it is over
+-- (provisa.entitlements.mask.index_version); expansion is the identifiers it covers (NULL for an
+-- unscoped capability, held wherever the role is). Append-only as the source rows are: a change
+-- appends a row whose valid_from ends the one before it; ``removed`` ends it with none. Derived
+-- state, written from the source rows: it advances no config stamp.
+CREATE TABLE IF NOT EXISTS effective_entitlements (
+    id             BIGSERIAL PRIMARY KEY,
+    principal      TEXT NOT NULL,
+    role_id        TEXT NOT NULL,
+    capability     TEXT NOT NULL,
+    bits           TEXT,
+    model_version  TEXT NOT NULL,
+    expansion      JSONB,
+    removed        BOOLEAN NOT NULL DEFAULT FALSE,
+    valid_from     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    recorded_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS effective_entitlements_principal_idx
+    ON effective_entitlements (principal, role_id, capability);
 
 CREATE TABLE IF NOT EXISTS rls_rules (
     id          SERIAL PRIMARY KEY,
@@ -741,9 +857,32 @@ CREATE TABLE IF NOT EXISTS tags (
     -- reading available is a guessed entity type.
     param_policy   TEXT NOT NULL DEFAULT 'none' CHECK (param_policy IN ('none', 'required')),
     -- REQ-1943: the Sensitive data option: a column carrying this tag is a sensitive column.
-    sensitive      BOOLEAN NOT NULL DEFAULT FALSE
+    sensitive      BOOLEAN NOT NULL DEFAULT FALSE,
+    -- REQ-2208 (CITATIONS PER ASSIGNMENT): each assignment of this tag must cite a library
+    -- document or section (reference_citations); one that does not is a gap, never refused.
+    requires_citation BOOLEAN NOT NULL DEFAULT FALSE,
+    -- REQ-2208 (THE TAGS REPORT): the tag is required on every object of the kinds its applies_to
+    -- lists; the tags report lists each such object that does not carry it.
+    required       BOOLEAN NOT NULL DEFAULT FALSE,
+    -- REQ-2208 (A TAG IS OFFERED BY DOMAIN): the domains whose objects the tag is offered on, as
+    -- a source's allowed_domains; empty = every domain.
+    allowed_domains JSONB NOT NULL DEFAULT '[]',
+    -- REQ-2248: deleting it retires it -- the row, its name and its file are kept, out of
+    -- service, with why (status_reason), who (status_by) and when (status_at), as a term's.
+    retired       BOOLEAN NOT NULL DEFAULT FALSE,
+    status_reason TEXT,
+    status_by     TEXT,
+    status_at     TIMESTAMPTZ
 );
+-- REQ-2248: the retirement columns, for a table created before them.
+ALTER TABLE tags ADD COLUMN IF NOT EXISTS retired BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE tags ADD COLUMN IF NOT EXISTS status_reason TEXT;
+ALTER TABLE tags ADD COLUMN IF NOT EXISTS status_by TEXT;
+ALTER TABLE tags ADD COLUMN IF NOT EXISTS status_at TIMESTAMPTZ;
 ALTER TABLE tags ADD COLUMN IF NOT EXISTS sensitive BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE tags ADD COLUMN IF NOT EXISTS requires_citation BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE tags ADD COLUMN IF NOT EXISTS required BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE tags ADD COLUMN IF NOT EXISTS allowed_domains JSONB NOT NULL DEFAULT '[]';
 
 -- REQ-1384: a row filter on a tag refers to the tag. No ON DELETE action: a tag that carries a
 -- filter is refused deletion (repositories.integrity), never taken with its filter.
@@ -926,6 +1065,9 @@ CREATE TABLE IF NOT EXISTS glossary_terms (
     id              SERIAL PRIMARY KEY,
     name            TEXT NOT NULL,
     definition      TEXT,
+    -- REQ-2243: how the measure or derived value the term names is computed, in business
+    -- language. Curator work governed with the definition: read by everyone who reads the term.
+    calculation_method TEXT,
     deprecated      BOOLEAN NOT NULL DEFAULT FALSE,
     -- Out of service, set only by a curator (REQ-2144). Retiring moves what the term holds --
     -- its column refs, or its table groundings with their keys -- to a successor, and keeps the
@@ -955,6 +1097,7 @@ CREATE TABLE IF NOT EXISTS glossary_terms (
     UNIQUE (name)
 );
 ALTER TABLE glossary_terms ADD COLUMN IF NOT EXISTS retired BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE glossary_terms ADD COLUMN IF NOT EXISTS calculation_method TEXT;  -- REQ-2243
 ALTER TABLE glossary_terms ADD COLUMN IF NOT EXISTS export_excluded BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE glossary_terms ADD COLUMN IF NOT EXISTS approved BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE glossary_terms ADD COLUMN IF NOT EXISTS deprecation_asserted BOOLEAN NOT NULL DEFAULT FALSE;
@@ -962,6 +1105,7 @@ ALTER TABLE glossary_terms ADD COLUMN IF NOT EXISTS status_reason TEXT;
 ALTER TABLE glossary_terms ADD COLUMN IF NOT EXISTS retire_on DATE;
 ALTER TABLE glossary_terms ADD COLUMN IF NOT EXISTS status_by TEXT;
 ALTER TABLE glossary_terms ADD COLUMN IF NOT EXISTS status_at TIMESTAMPTZ;
+ALTER TABLE glossary_terms ADD COLUMN IF NOT EXISTS iri TEXT;
 
 -- REQ-2145: a tag on a glossary term, on a table that predates it. The term's deletion takes its
 -- tags: a term holding a column cannot be deleted (glossary.delete_term), so none of them is a
@@ -1040,6 +1184,34 @@ CREATE TABLE IF NOT EXISTS glossary_term_domains (
     UNIQUE (term_id, domain_id)
 );
 
+-- REQ-2237 (A WHOLE RELEASE IMPORTS, AND NOTHING IS LOST): what an imported ontology states about
+-- the thing a term is that the term does not model -- restrictions and cardinalities,
+-- disjointness, inverse and transitive properties, property chains, named individuals with
+-- properties of their own, datatype ranges, an object property's domain and range, annotations.
+-- One row a statement (provisa/ontology_import/kept.py): ``statement`` is its JSON, ``kind`` what
+-- it is for a reader. Shown on the term's page and written back out on export; never reasoned over.
+CREATE TABLE IF NOT EXISTS glossary_term_statements (
+    id        SERIAL PRIMARY KEY,
+    term_id   INTEGER NOT NULL REFERENCES glossary_terms(id) ON DELETE CASCADE,
+    ordinal   INTEGER NOT NULL,
+    kind      TEXT NOT NULL,
+    statement TEXT NOT NULL,
+    tenant_id UUID,
+    UNIQUE (term_id, ordinal)
+);
+
+-- REQ-2247: the catalogs a term was sourced from, one row a catalog: the catalog entry's id, the
+-- catalog's own id for its term (an OpenMetadata entity id, a DataHub URN) and when it was taken.
+CREATE TABLE IF NOT EXISTS glossary_term_sources (
+    id          SERIAL PRIMARY KEY,
+    term_id     INTEGER NOT NULL REFERENCES glossary_terms(id) ON DELETE CASCADE,
+    catalog     TEXT NOT NULL,
+    catalog_ref TEXT NOT NULL,
+    sourced_at  TIMESTAMPTZ NOT NULL,
+    tenant_id   UUID,
+    UNIQUE (term_id, catalog)
+);
+
 -- People who can answer questions about the term or who authored its definition.
 CREATE TABLE IF NOT EXISTS glossary_term_experts (
     id        SERIAL PRIMARY KEY,
@@ -1094,9 +1266,15 @@ CREATE TABLE IF NOT EXISTS mv_build_state (
     materialized_definition_version TEXT,
     materialized_input_version      TEXT,
     snapshot_id     TEXT,
-    index_state     JSONB   -- REQ-2015: the indexes its standing landing asked for, as a replica's
+    index_state     JSONB,  -- REQ-2015: the indexes its standing landing asked for, as a replica's
+    -- REQ-2249: a view kept by its code resolver's @change function: the cursor stored after its
+    -- last successful apply (JSON; NULL = none yet) and when it was last rebuilt whole.
+    change_cursor     TEXT,
+    change_rebuilt_at TIMESTAMPTZ
 );
 ALTER TABLE mv_build_state ADD COLUMN IF NOT EXISTS index_state JSONB;
+ALTER TABLE mv_build_state ADD COLUMN IF NOT EXISTS change_cursor TEXT;
+ALTER TABLE mv_build_state ADD COLUMN IF NOT EXISTS change_rebuilt_at TIMESTAMPTZ;
 
 -- REQ-1317: governed metric definitions — named aggregates with query-time grain.
 -- from_fact marks a metric auto-registered from a fact spec's measure (REQ-1320).
@@ -1107,8 +1285,23 @@ CREATE TABLE IF NOT EXISTS metrics (
     description TEXT,
     ai_context  TEXT,  -- REQ-1319: definition text for AI consumers
     visible_to  JSONB NOT NULL DEFAULT '["*"]',
-    from_fact   TEXT
+    from_fact   TEXT,
+    -- REQ-2248: deleting it retires it -- the row, its name and its file are kept, out of
+    -- service, with why (status_reason), who (status_by) and when (status_at), as a term's.
+    retired       BOOLEAN NOT NULL DEFAULT FALSE,
+    status_reason TEXT,
+    status_by     TEXT,
+    status_at     TIMESTAMPTZ
 );
+-- REQ-2248: the retirement columns, for a table created before them.
+ALTER TABLE metrics ADD COLUMN IF NOT EXISTS retired BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE metrics ADD COLUMN IF NOT EXISTS status_reason TEXT;
+ALTER TABLE metrics ADD COLUMN IF NOT EXISTS status_by TEXT;
+ALTER TABLE metrics ADD COLUMN IF NOT EXISTS status_at TIMESTAMPTZ;
+-- REQ-2243: the glossary term a metric names, as a table names its class term: its definition and
+-- calculation method are read beside the metric. The term's deletion leaves the metric unnamed.
+ALTER TABLE metrics ADD COLUMN IF NOT EXISTS term_id INTEGER
+    REFERENCES glossary_terms(id) ON DELETE SET NULL;
 
 -- REQ-2208: the row rule, role and metric columns on a table that predates them, then a tag on a
 -- metric goes with the metric.
@@ -1221,6 +1414,19 @@ CREATE TABLE IF NOT EXISTS openlineage_run_datasets (
     column_lineage    JSONB NOT NULL DEFAULT '{}',
     CONSTRAINT openlineage_run_datasets_key UNIQUE
         (job_namespace, job_name, run_id, direction, dataset_namespace, dataset_name)
+);
+
+-- REQ-2263: each dataset's latest schema, documentation and ownership facet any OpenLineage event
+-- carried, with the run and event time it came from. One row per dataset and facet.
+CREATE TABLE IF NOT EXISTS openlineage_dataset_facets (
+    dataset_namespace TEXT NOT NULL,
+    dataset_name      TEXT NOT NULL,
+    facet             TEXT NOT NULL CONSTRAINT openlineage_dataset_facets_facet_check
+                      CHECK (facet IN ('schema', 'documentation', 'ownership')),
+    payload           JSONB NOT NULL,
+    run_id            TEXT NOT NULL,
+    event_time        TIMESTAMPTZ NOT NULL,
+    PRIMARY KEY (dataset_namespace, dataset_name, facet)
 );
 
 -- REQ-2125: the governed table each checker table's contract scans, as the model build resolved
@@ -1560,6 +1766,8 @@ CREATE TABLE IF NOT EXISTS tracked_functions (
     requires_approval BOOLEAN NOT NULL DEFAULT FALSE,  -- REQ-1924: each call approved by the hook
     writes_table  TEXT,  -- REQ-1924, REQ-871: "schema.table" of the registered table it writes
     language_bindings JSONB NOT NULL DEFAULT '{}',  -- REQ-2168: the command's name per language
+    source_type   TEXT,  -- REQ-1986: the returned row's type as the source's schema names it
+    exposed_as_table BOOLEAN,  -- REQ-1986: also a parameterized table, derived from it (NULL: no table form)
     created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -1567,6 +1775,8 @@ ALTER TABLE tracked_functions ADD COLUMN IF NOT EXISTS output_columns JSONB;
 ALTER TABLE tracked_functions ADD COLUMN IF NOT EXISTS requires_approval BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE tracked_functions ADD COLUMN IF NOT EXISTS writes_table TEXT;
 ALTER TABLE tracked_functions ADD COLUMN IF NOT EXISTS language_bindings JSONB NOT NULL DEFAULT '{}';
+ALTER TABLE tracked_functions ADD COLUMN IF NOT EXISTS source_type TEXT;
+ALTER TABLE tracked_functions ADD COLUMN IF NOT EXISTS exposed_as_table BOOLEAN;
 
 -- Tracked webhooks exposed as GraphQL mutations (REQ-211)
 CREATE TABLE IF NOT EXISTS tracked_webhooks (
@@ -1880,6 +2090,96 @@ CREATE TABLE IF NOT EXISTS data_product_commands (
 );
 CREATE INDEX IF NOT EXISTS idx_data_product_commands_command ON data_product_commands(command_name);
 
+-- REQ-2180 OFFERS: access to a data product is by offers. Each is a role the owner may grant, a
+-- level of data (the product's datasets, a sample of existing views over them, or synthetic), and
+-- whether it includes the product's data quality results and its profiles, whether it is open
+-- (accepted at once), and how long what it grants lasts (none: no end). ``version`` counts its
+-- changes; ``published_by`` is the owner who published it; ``review`` says why it is listed for
+-- review (its data no longer public, or a profiler gone), NULL when not.
+CREATE TABLE IF NOT EXISTS data_product_offers (
+    id            SERIAL PRIMARY KEY,
+    product_id    TEXT NOT NULL REFERENCES data_products(id) ON DELETE CASCADE,
+    name          TEXT NOT NULL,
+    role_id       TEXT NOT NULL,
+    data_level    TEXT NOT NULL DEFAULT 'full'
+                  CONSTRAINT data_product_offers_data_level_check
+                  CHECK (data_level IN ('full', 'sample', 'synthetic')),
+    sample_views  JSONB NOT NULL DEFAULT '[]',
+    dq_results    BOOLEAN NOT NULL DEFAULT TRUE,
+    profiles      BOOLEAN NOT NULL DEFAULT FALSE,
+    open          BOOLEAN NOT NULL DEFAULT FALSE,
+    duration_days INTEGER,
+    -- REQ-2180 (amended 2026-11-11): the offer's terms of use in prose, shown on its card and in
+    -- its contract; empty where it states none.
+    purpose       TEXT NOT NULL DEFAULT '',
+    usage         TEXT NOT NULL DEFAULT '',
+    limitations   TEXT NOT NULL DEFAULT '',
+    version       INTEGER NOT NULL DEFAULT 1,
+    published_by  TEXT,
+    review        TEXT,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (product_id, name)
+);
+ALTER TABLE data_product_offers ADD COLUMN IF NOT EXISTS purpose TEXT NOT NULL DEFAULT '';
+ALTER TABLE data_product_offers ADD COLUMN IF NOT EXISTS usage TEXT NOT NULL DEFAULT '';
+ALTER TABLE data_product_offers ADD COLUMN IF NOT EXISTS limitations TEXT NOT NULL DEFAULT '';
+
+-- REQ-2180 CONTRACTS ARE DERIVED FROM THE OFFERS: for every offer, each dataset of the product has
+-- the contract that is the offer's terms applied to it, versioned on its own (offer_contracts).
+CREATE TABLE IF NOT EXISTS data_product_offer_contracts (
+    offer_id INTEGER NOT NULL REFERENCES data_product_offers(id) ON DELETE CASCADE,
+    table_id INTEGER NOT NULL REFERENCES registered_tables(id) ON DELETE CASCADE,
+    contract JSONB NOT NULL,
+    PRIMARY KEY (offer_id, table_id)
+);
+
+-- REQ-2180: a requester's bid for an offer, or the cancel of an accepted one, as the request it
+-- fired through the outbound request hook (REQUESTS GO THROUGH HOOKS), and its outcome.
+-- ``request_id`` is the id the hook carries, which makes a repeat harmless and which the decision
+-- names; ``hook`` where the request went ('local': the org's own request queue, else the hook's
+-- URL); ``payload`` the request as fired. ``terms`` is the offer as bid, which the decider accepts
+-- or declines and never alters; ``granted`` what an accepted bid granted, which its cancel removes.
+CREATE TABLE IF NOT EXISTS data_product_bids (
+    id             SERIAL PRIMARY KEY,
+    request_id     TEXT NOT NULL UNIQUE,
+    kind           TEXT NOT NULL DEFAULT 'bid'
+                   CONSTRAINT data_product_bids_kind_check CHECK (kind IN ('bid', 'cancel')),
+    cancels        INTEGER REFERENCES data_product_bids(id) ON DELETE CASCADE,
+    product_id     TEXT NOT NULL REFERENCES data_products(id) ON DELETE CASCADE,
+    offer_id       INTEGER REFERENCES data_product_offers(id) ON DELETE SET NULL,
+    offer_version  INTEGER NOT NULL,
+    terms          JSONB NOT NULL,
+    requester      TEXT NOT NULL,
+    -- A bid's purpose, or a cancel's reason.
+    reason         TEXT NOT NULL,
+    -- REQ-2180 (amended 2026-11-11, A BID NAMES ITS CONSUMER AND AGREES TO THE TERMS): a bid's
+    -- kind of consumer (person, team, data_product, agent), who it named as approving it (the
+    -- product's owner role, or the host its hook reaches), and when its requester agreed to the
+    -- offer's terms of use, as ``terms`` holds them. NULL on a cancel.
+    consumer_kind  TEXT
+                   CONSTRAINT data_product_bids_consumer_kind_check
+                   CHECK (consumer_kind IN ('person', 'team', 'data_product', 'agent')),
+    approver       TEXT,
+    agreed_at      TIMESTAMPTZ,
+    hook           TEXT NOT NULL,
+    payload        JSONB NOT NULL,
+    status         TEXT NOT NULL DEFAULT 'pending'
+                   CONSTRAINT data_product_bids_status_check
+                   CHECK (status IN ('pending', 'accepted', 'declined', 'withdrawn', 'cancelled')),
+    decided_by     TEXT,
+    decided_at     TIMESTAMPTZ,
+    decline_reason TEXT,
+    granted        JSONB,
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+ALTER TABLE data_product_bids ADD COLUMN IF NOT EXISTS consumer_kind TEXT
+    CONSTRAINT data_product_bids_consumer_kind_check
+    CHECK (consumer_kind IN ('person', 'team', 'data_product', 'agent'));
+ALTER TABLE data_product_bids ADD COLUMN IF NOT EXISTS approver TEXT;
+ALTER TABLE data_product_bids ADD COLUMN IF NOT EXISTS agreed_at TIMESTAMPTZ;
+CREATE INDEX IF NOT EXISTS idx_data_product_bids_product ON data_product_bids(product_id);
+
 -- Bridge table: every registered user table → its meta:registered_tables row
 -- Populated automatically on register_table; enables REGISTERED_AS Cypher edges
 CREATE TABLE IF NOT EXISTS table_meta_links (
@@ -2002,10 +2302,36 @@ CREATE TABLE IF NOT EXISTS user_directory (
     user_id      TEXT PRIMARY KEY,
     display_name TEXT,
     email        TEXT,
+    -- REQ-2219 (amended 2026-11-18): whether the identity provider verified this address at the
+    -- person's latest sign-in; only a verified address names this person in a write by email.
+    email_verified BOOLEAN NOT NULL DEFAULT FALSE,
     email_opt_in BOOLEAN NOT NULL DEFAULT TRUE,
+    -- REQ-413: the score from which a discovery run's proposals start ticked, the person's own.
+    discovery_threshold DOUBLE PRECISION NOT NULL DEFAULT 0.7,
+    -- REQ-413: Key value overlap, the person's own: chosen, its measure cutoff, its sample size.
+    discovery_key_values BOOLEAN NOT NULL DEFAULT TRUE,
+    discovery_measure_cutoff DOUBLE PRECISION NOT NULL DEFAULT 0.2,
+    discovery_sample_size INTEGER NOT NULL DEFAULT 10000,
+    -- REQ-413 (amended 2026-11-18): the share of values in a key target at which a pair is a key
+    -- relationship, the most a pair scores when neither side is a key, the sample values shown
+    -- per column: the person's own, each set in the discover dialog.
+    discovery_contained_at DOUBLE PRECISION NOT NULL DEFAULT 0.95,
+    discovery_shared_ceiling DOUBLE PRECISION NOT NULL DEFAULT 0.6,
+    discovery_samples_per_column INTEGER NOT NULL DEFAULT 5,
+    -- REQ-413: the filter on a run's Score column, the person's own: JSON; NULL when cleared.
+    discovery_score_filter TEXT DEFAULT '{"op": "ge", "a": "10"}',
     updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 ALTER TABLE user_directory ADD COLUMN IF NOT EXISTS email_opt_in BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE user_directory ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE user_directory ADD COLUMN IF NOT EXISTS discovery_threshold DOUBLE PRECISION NOT NULL DEFAULT 0.7;
+ALTER TABLE user_directory ADD COLUMN IF NOT EXISTS discovery_key_values BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE user_directory ADD COLUMN IF NOT EXISTS discovery_measure_cutoff DOUBLE PRECISION NOT NULL DEFAULT 0.2;
+ALTER TABLE user_directory ADD COLUMN IF NOT EXISTS discovery_sample_size INTEGER NOT NULL DEFAULT 10000;
+ALTER TABLE user_directory ADD COLUMN IF NOT EXISTS discovery_contained_at DOUBLE PRECISION NOT NULL DEFAULT 0.95;
+ALTER TABLE user_directory ADD COLUMN IF NOT EXISTS discovery_shared_ceiling DOUBLE PRECISION NOT NULL DEFAULT 0.6;
+ALTER TABLE user_directory ADD COLUMN IF NOT EXISTS discovery_samples_per_column INTEGER NOT NULL DEFAULT 5;
+ALTER TABLE user_directory ADD COLUMN IF NOT EXISTS discovery_score_filter TEXT DEFAULT '{"op": "ge", "a": "10"}';
 
 -- REQ-1382: attributes the org records for a member, beside what their identity provider
 -- supplies. Bound as session variables (current_setting('provisa.<name>')); where the provider
@@ -2486,6 +2812,36 @@ CREATE TABLE IF NOT EXISTS reference_document_tags (
     UNIQUE (base_tag_id, object_key)
 );
 
+-- REQ-2208: citations of reference library documents and their sections. One shape for whatever
+-- cites the library: a tag's definition (citer_kind 'tag', object_key ''), and each assignment of
+-- a tag (citer_kind 'tag_assignment', object_key the assignment's, in tag_assignments or
+-- reference_document_tags); a security item cites the same way under a kind of its own. tag_id is
+-- the BASE id. The cited section is named as a section tag names it, by heading or by page, and
+-- the whole document when neither is given; cite_key is that name ('document:<id>',
+-- 'section:<id>:heading:<h>', 'section:<id>:page:<n>'). text_sha256 is of the section's text when
+-- it was cited: a revised section no longer matches it and its citer is flagged for review. The
+-- document's title and source are kept, so a citation outlives the document. They are the
+-- environment's own, as the documents they cite are (env_classes). Mirrors
+-- schema_org.reference_citations.
+CREATE TABLE IF NOT EXISTS reference_citations (
+    id              SERIAL PRIMARY KEY,
+    citer_kind      TEXT NOT NULL CONSTRAINT reference_citations_citer_kind_check
+                        CHECK (citer_kind IN ('tag', 'tag_assignment', 'dq_check')),
+    tag_id          TEXT,
+    object_key      TEXT NOT NULL DEFAULT '',
+    document_id     INTEGER REFERENCES reference_documents(id) ON DELETE SET NULL,
+    document_title  TEXT NOT NULL,
+    document_source TEXT NOT NULL,
+    section_heading TEXT,
+    section_page    INTEGER,
+    cite_key        TEXT NOT NULL,
+    text_sha256     TEXT NOT NULL,
+    cited_by        TEXT,
+    cited_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+    tenant_id       UUID,
+    UNIQUE (citer_kind, tag_id, object_key, cite_key)
+);
+
 -- REQ-2185 (GRAPH RETRIEVAL): each in-service glossary term's embedding (its name and definition, by
 -- the org's vector model), under one partial HNSW index per dimension in use
 -- (provisa.reference_library.terms). Mirrors schema_org.glossary_term_vectors.
@@ -2533,6 +2889,53 @@ ALTER TABLE glossary_term_scans ADD COLUMN IF NOT EXISTS launch TEXT;
 ALTER TABLE glossary_term_scans ADD COLUMN IF NOT EXISTS progress_at TIMESTAMPTZ;
 ALTER TABLE glossary_term_scans ADD COLUMN IF NOT EXISTS source_table TEXT;
 
+-- REQ-413: a relationship discovery run in the background and its progress; Stop is asked on the
+-- row. Mirrors schema_org.discovery_runs.
+CREATE TABLE IF NOT EXISTS discovery_runs (
+    id              SERIAL PRIMARY KEY,
+    status          TEXT NOT NULL CONSTRAINT discovery_runs_status_check
+                        CHECK (status IN ('running', 'done', 'stopped', 'failed')),
+    scope           TEXT NOT NULL,
+    model           TEXT,
+    requests_total  INTEGER NOT NULL DEFAULT 0,
+    requests_done   INTEGER NOT NULL DEFAULT 0,
+    suggestions     INTEGER NOT NULL DEFAULT 0,
+    report          TEXT,
+    error           TEXT,
+    stop_requested  BOOLEAN NOT NULL DEFAULT false,
+    stopped_by      TEXT,
+    started_by      TEXT,
+    started_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    finished_at     TIMESTAMPTZ,
+    launch          TEXT,
+    progress_at     TIMESTAMPTZ,
+    tenant_id       UUID
+);
+
+-- REQ-413: every proposal a discovery run read, kept with the run. Mirrors
+-- schema_org.discovery_run_proposals.
+CREATE TABLE IF NOT EXISTS discovery_run_proposals (
+    id              SERIAL PRIMARY KEY,
+    run_id          INTEGER NOT NULL REFERENCES discovery_runs(id) ON DELETE CASCADE,
+    kind            TEXT NOT NULL,
+    source_table_id INTEGER REFERENCES registered_tables(id),
+    source_column   TEXT,
+    target_table_id INTEGER REFERENCES registered_tables(id),
+    target_column   TEXT,
+    confidence      DOUBLE PRECISION,
+    scored          DOUBLE PRECISION,
+    score           DOUBLE PRECISION,
+    cardinality     TEXT,
+    measure         TEXT,
+    reasoning       TEXT,
+    suggested_name  TEXT,
+    left_out        TEXT,
+    answer          TEXT,
+    decision        TEXT,
+    accepted_as     TEXT,
+    tenant_id       UUID
+);
+
 CREATE TABLE IF NOT EXISTS glossary_term_drafts (
     id              SERIAL PRIMARY KEY,
     scan_id         INTEGER NOT NULL REFERENCES glossary_term_scans(id) ON DELETE CASCADE,
@@ -2569,7 +2972,7 @@ CREATE TABLE IF NOT EXISTS glossary_ontology_imports (
     title       TEXT NOT NULL,
     file_name   TEXT NOT NULL,
     format      TEXT NOT NULL CONSTRAINT glossary_ontology_imports_format_check
-                    CHECK (format IN ('ossie', 'turtle', 'xml', 'nt', 'json-ld')),
+                    CHECK (format IN ('ossie', 'turtle', 'xml', 'nt', 'json-ld', 'archive')),
     domains     TEXT NOT NULL,
     summary     TEXT NOT NULL,
     imported_by TEXT,
@@ -2585,7 +2988,7 @@ CREATE TABLE IF NOT EXISTS glossary_ontology_items (
     ordinal     INTEGER NOT NULL,
     name        TEXT NOT NULL,
     kind        TEXT NOT NULL CONSTRAINT glossary_ontology_items_kind_check
-                    CHECK (kind IN ('class', 'property', 'value', 'concept')),
+                    CHECK (kind IN ('class', 'property', 'value', 'concept', 'individual')),
     definition  TEXT,
     iri         TEXT,
     payload     TEXT NOT NULL,

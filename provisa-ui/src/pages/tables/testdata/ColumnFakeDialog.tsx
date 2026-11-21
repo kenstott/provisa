@@ -12,6 +12,8 @@ import { Button, Modal, Switch, Text } from "@mantine/core";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { checkColumnFake, proposeFakes, type FakeCatalog } from "../../../api/fakes";
+import { Tip } from "../../../components/Tip";
+import { stableBlock, stableReasonKey } from "./declaration";
 import type { RegisteredTable, TableColumn } from "../../../types/admin";
 import { FakePicker } from "./FakePicker";
 import { FormChecks, FormField, FormFooter, FormLayout } from "../../../components/form/FormLayout";
@@ -20,7 +22,8 @@ const CHECK_DELAY_MS = 400;
 
 // REQ-1494: one column's test data -- its fake (shown by faked reads), whether it is stable, and
 // its synthetic rule (used by synthetic generation only) -- each checked by the server as typed,
-// so a declaration the save would refuse is refused here, by name.
+// so a declaration the save would refuse is refused here, by name. The lists offer only what the
+// column's family can hold, and Stable only a fake that can be stable, with the reason why not.
 export function ColumnFakeDialog({
   table,
   column,
@@ -35,9 +38,18 @@ export function ColumnFakeDialog({
   onSave: (fake: string, rule: string, stable: boolean) => void;
 }) {
   const { t } = useTranslation();
-  const [fake, setFake] = useState(column.fake ?? "");
+  const [fake, setFakeText] = useState(column.fake ?? "");
   const [rule, setRule] = useState(column.syntheticRule ?? "");
   const [stable, setStable] = useState(!!column.fakeStable);
+  // The family the server names for the column's type, asked with the catalog.
+  const family = catalog.typeFamilies[column.dataType ?? ""];
+  const blocked = stableBlock(catalog, fake);
+  // A fake that cannot be stable turns Stable off.
+  const setFake = (next: string) => {
+    setFakeText(next);
+    if (stableBlock(catalog, next)) setStable(false);
+  };
+  const stableNow = stable && blocked === null;
   const [refusal, setRefusal] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   // REQ-1494: this column's proposal from the table's latest profile run.
@@ -66,13 +78,13 @@ export function ColumnFakeDialog({
         dataType: column.dataType ?? "",
         fake: fake.trim() || null,
         syntheticRule: rule.trim() || null,
-        stable,
+        stable: stableNow,
       })
         .then(() => setRefusal(null))
         .catch((e: Error) => setRefusal(e.message));
     }, CHECK_DELAY_MS);
     return () => clearTimeout(timer);
-  }, [fake, rule, stable, table.id, table.tableName, column.columnName, column.dataType]);
+  }, [fake, rule, stableNow, table.id, table.tableName, column.columnName, column.dataType]);
   return (
     <Modal
       opened
@@ -83,24 +95,36 @@ export function ColumnFakeDialog({
       <FormLayout data-testid="testdata-dialog">
         <FakePicker
           catalog={catalog}
+          family={family}
           label={t("testData.fake")}
           value={fake}
           onChange={setFake}
           rule={false}
           testId="testdata-dialog-fake"
-        />
-        {/* About the fake above it, so it stays beneath it and before the synthetic rule. */}
-        <FormChecks>
-          <FormField size="short" help={t("testData.stableHint")}>
-            <Switch
-              label={t("testData.stable")}
-              checked={stable}
-              onChange={(e) => setStable(e.currentTarget.checked)}
-              data-testid="testdata-dialog-stable"
-            />
-          </FormField>
-        </FormChecks>
-        {stable &&
+        >
+          {/* About the fake above it, so it stays in its section, before the synthetic rule. */}
+          <FormChecks>
+            <FormField size="short">
+              {/* What Stable means, or why this fake cannot be: a disabled switch takes no
+                  pointer, so the tip is on what holds it. */}
+              <Tip
+                text={blocked ? t(...stableReasonKey(blocked)) : t("testData.stableHint")}
+                testId="testdata-dialog-stable-reason"
+              >
+                <span data-testid="testdata-dialog-stable-tip">
+                  <Switch
+                    label={t("testData.stable")}
+                    checked={stableNow}
+                    disabled={blocked !== null}
+                    onChange={(e) => setStable(e.currentTarget.checked)}
+                    data-testid="testdata-dialog-stable"
+                  />
+                </span>
+              </Tip>
+            </FormField>
+          </FormChecks>
+        </FakePicker>
+        {stableNow &&
           column.fakeStable &&
           column.fakeStableVersion != null &&
           fake.trim() === column.fake && (
@@ -112,6 +136,7 @@ export function ColumnFakeDialog({
           )}
         <FakePicker
           catalog={catalog}
+          family={family}
           label={t("testData.syntheticRule")}
           value={rule}
           onChange={setRule}
@@ -139,7 +164,7 @@ export function ColumnFakeDialog({
           action={
             <Button
               disabled={refusal !== null}
-              onClick={() => onSave(fake.trim(), rule.trim(), stable)}
+              onClick={() => onSave(fake.trim(), rule.trim(), stableNow)}
               data-testid="testdata-dialog-save"
             >
               {t("testData.apply")}

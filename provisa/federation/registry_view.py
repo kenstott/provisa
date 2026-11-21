@@ -42,6 +42,8 @@ async def registered_sources(state: Any, conn: Any | None = None) -> list[Source
     reference (REQ-1695, REQ-1919). Built-in sources (provisa-admin, provisa-otel, the
     derived-view source) are never landed and stay out.
 
+    REQ-1921: a withdrawn source is not one: nothing lands, routes to or attaches it.
+
     REQ-1892: cached (TTL + schema-generation-keyed) when called on the pool-acquire path
     (``conn`` unset) -- this is read 2-3 times per governed call (`ensure_rows_resident`,
     `ensure_resident`, the replica build) with no cache before this, the same shape of finding
@@ -55,7 +57,7 @@ async def registered_sources(state: Any, conn: Any | None = None) -> list[Source
     if db is None:
         return []
     if conn is not None:
-        rows = await source_repo.list_all(conn)
+        rows = await source_repo.list_in_production(conn)
         merged = _source_rows(rows)
         await _attach_file_glob_tables(merged, conn)
         return merged
@@ -70,7 +72,7 @@ async def registered_sources(state: Any, conn: Any | None = None) -> list[Source
     if cached is not None:
         return cached
     async with db.acquire() as _conn:
-        rows = await source_repo.list_all(_conn)
+        rows = await source_repo.list_in_production(_conn)
         out = _source_rows(rows)
         await _attach_file_glob_tables(out, _conn)
     rs_cache.put(generation, out)
@@ -185,30 +187,11 @@ async def registered_tables(
     return out
 
 
-async def draft_tables(state: Any) -> list[Any]:  # REQ-1921
-    """Every DRAFT table, in the shape :func:`registered_tables` gives a table in service. A
-    draft is offered to no reader and is in none of the lists a read is planned from; it may hold
-    a replica, landed for its steward's preview, which the replicator finds it by. Read from the
-    model store each time: asked only by a preview and by a build of a draft."""
-    from provisa.api.admin.db_queries import fetch_tables
-
-    db = getattr(state, "model_db", None)
-    if db is None:
-        return []
-    async with db.acquire() as conn:
-        return _build_registered_tables(await fetch_tables(conn, draft=True))
-
-
 async def tables_a_read_judges(state: Any) -> list[Any]:
-    """The tables a read through ``state`` may wait on a replica of: those in service — and,
-    through the one-table view a steward's preview of a draft reads (admin/table_read.py, which
-    names it ``previewed_draft_id``), that draft (REQ-1921). No other state names one."""
-    tables = await registered_tables(state)
-    # Absent on every state but the preview's view: the application state names no draft.
-    draft_id = getattr(state, "previewed_draft_id", None)
-    if draft_id is None:
-        return tables
-    return [*tables, *(t for t in await draft_tables(state) if t.id == draft_id)]
+    """The tables a read through ``state`` may wait on a replica of: those in service. A steward's
+    preview of a withdrawn table (admin/table_read.py) waits on none: a withdrawn table keeps no
+    replica (REQ-1921)."""
+    return await registered_tables(state)
 
 
 def _delta_of(raw: Any) -> Any:

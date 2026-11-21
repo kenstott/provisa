@@ -36,7 +36,6 @@ from provisa.api.metadata_export.model import term_note
 from provisa.api.metadata_export.odps import SEMANTICS, product_documents
 from provisa.core.models import (
     Column,
-    DataContract,
     Domain,
     ProvisaConfig,
     Source,
@@ -46,6 +45,7 @@ from provisa.core.models import (
 from provisa.ossie.convert import OSSIE_VERSION, OssieExportRefused
 from provisa.ossie.ontology import ossie_ontology, ossie_ontology_yaml
 from tests.unit.product_members import with_members
+from tests.unit.test_metadata_export_odps_odcs import _offers, _with
 
 pytestmark = pytest.mark.unit
 
@@ -84,7 +84,6 @@ def _table(name: str, columns: dict[str, str]) -> Table:
             Column(name=c, data_type=t, visible_to=["admin"], is_primary_key=c == "id")
             for c, t in columns.items()
         ],
-        contract=DataContract(version="1.0.0", status="active"),
     )
 
 
@@ -99,6 +98,7 @@ def _term(term_id: int, name: str, definition: str | None, **flags) -> dict:
         "approved": True,
         "retired": False,
         "export_excluded": False,
+        "calculation_method": None,
         "status_reason": None,
         "retire_on": None,
         **flags,
@@ -217,8 +217,9 @@ def test_a_hop_carries_no_name_definition_or_uri():
 
 def test_each_contract_field_names_its_grounded_term_as_a_semantics_definition():
     snapshot = _snapshot()
-    _, contracts = product_documents(snapshot, _product(snapshot))
-    orders = contracts["wh.public.orders"]
+    product = _product(snapshot)
+    _, contracts = product_documents(_with(snapshot, product, _offers(snapshot, product)), product)
+    orders = contracts["default/wh.public.orders"]
     assert not list(ODCS.iter_errors(orders))
     (schema_object,) = orders["schema"]
     fields = {p["name"]: p.get("authoritativeDefinitions") for p in schema_object["properties"]}
@@ -238,25 +239,28 @@ def test_each_contract_field_names_its_grounded_term_as_a_semantics_definition()
     ]
     assert fields["id"][0]["url"] == "provisa://acme/terms/order"
     assert fields["line_no"] is None and fields["legacy"] is None and fields["note"] is None
-    customers = contracts["wh.public.customers"]
+    customers = contracts["default/wh.public.customers"]
     assert customers["schema"][0]["properties"][0].get("authoritativeDefinitions") is None
 
 
 def test_the_odps_output_port_carries_its_fields_term_links():
     snapshot = _snapshot()
-    document, contracts = product_documents(snapshot, _product(snapshot))
+    product = _product(snapshot)
+    document, contracts = product_documents(
+        _with(snapshot, product, _offers(snapshot, product)), product
+    )
     assert not list(ODPS.iter_errors(document))
     ports = {port["name"]: port for port in document["outputPorts"]}
     field_links = {
         json.dumps(d, sort_keys=True)
-        for p in contracts["wh.public.orders"]["schema"][0]["properties"]
+        for p in contracts["default/wh.public.orders"]["schema"][0]["properties"]
         for d in p.get("authoritativeDefinitions", [])
     }
     port_links = {
-        json.dumps(d, sort_keys=True) for d in ports["orders"]["authoritativeDefinitions"]
+        json.dumps(d, sort_keys=True) for d in ports["orders (default)"]["authoritativeDefinitions"]
     }
     assert port_links == field_links and len(port_links) == 4
-    assert "authoritativeDefinitions" not in ports["customers"]
+    assert "authoritativeDefinitions" not in ports["customers (default)"]
 
 
 def test_the_ossie_ontology_holds_the_terms_the_product_reaches():

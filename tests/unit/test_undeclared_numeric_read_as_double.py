@@ -138,11 +138,13 @@ def test_a_write_is_not_cast():
 # --- masks -----------------------------------------------------------------------------------------
 
 
-def test_a_constant_mask_is_still_the_columns_number_and_is_cast(pg):
+def test_a_constant_mask_reads_null_and_is_still_cast(pg):
+    """REQ-2131: a numeric column under a constant mask reads as NULL, still cast to the number."""
     gov = _gov(ratio=MaskingRule(mask_type=MaskType.constant, value=0))
-    assert _types(pg, "SELECT ratio FROM sales.orders", gov) == [float]
+    governed = apply_governance("SELECT ratio FROM sales.orders", gov)
+    assert f"CAST(ratio AS {_D})" in governed and 'NULL AS "ratio"' in governed
     assert pg.answer(apply_governance("SELECT * FROM sales.orders", gov), _ROWS) == [
-        (1, 0.0, Decimal("2.50"), 0.5)
+        (1, None, Decimal("2.50"), 0.5)
     ]
 
 

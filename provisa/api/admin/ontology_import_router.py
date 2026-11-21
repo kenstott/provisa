@@ -10,7 +10,8 @@
 
 """Import an ontology into the glossary as an alignment: the admin API for it (REQ-2237).
 
-A steward uploads an Apache Ossie ontology or an RDF/OWL file in the domains they work in. It is
+A steward uploads an Apache Ossie ontology, an RDF/OWL file, or a whole release of one as a zip
+archive of its module files, in the domains they work in. It is
 read at once (provisa/ontology_import): its classes, properties, value types and concepts are
 kept as items, each with the alignments proposed between it and the glossary's terms the steward
 may read, or another item of the file. The steward edits or excludes items, approves or rejects
@@ -29,15 +30,18 @@ from __future__ import annotations
 
 import base64
 import binascii
+import json
 from typing import TYPE_CHECKING, Any, cast
 
 from fastapi import APIRouter, Request
+from fastapi.responses import Response
 
 from provisa.api.admin import glossary_router as glossary
 from provisa.api.admin._guards import require_active_org_id
 from provisa.api.errors import ApiError
 from provisa.core.repositories import glossary as glossary_repo
 from provisa.ontology_import import align, apply, parse, store
+from provisa.api.engine_error_names import client_value
 
 if TYPE_CHECKING:
     from provisa.core.database import Connection, Database
@@ -166,6 +170,7 @@ async def _review(conn: Connection, request: Request, found: store.ImportRow) ->
                 "iri": i.iri,
                 "keys": i.payload["keys"],
                 "labels": i.payload["labels"],
+                "statements": i.payload.get("statements", []),
                 "status": i.status,
                 "term": _term_view(i.term_id, terms),
                 "alignments": by_item.get(i.id, []),
@@ -284,6 +289,36 @@ async def discard_import(import_id: int, request: Request) -> dict:
     return {"id": import_id, "discarded": True}
 
 
+@router.get("/{import_id}/export")
+async def export_import(import_id: int, request: Request, format: str = "turtle") -> Response:
+    """The ontology the import brought in, written back out as RDF (``format``: turtle, xml, nt
+    or json-ld): the terms it applied that the caller may read, with what each keeps of the
+    ontology and the edges between them (provisa.ontology_import.export)."""
+    from provisa.ontology_import import export
+
+    glossary._require_glossary_rw(request)
+    require_active_org_id(request)
+    if format not in export.FORMATS:
+        raise ApiError(
+            400,
+            "ontology_import.refused",
+            f"an ontology is exported as one of {', '.join(export.FORMATS)}",
+        )
+    async with _pool().acquire() as conn:
+        await _held(conn, import_id, request)
+        applied = {i.term_id for i in await store.items(conn, import_id) if i.term_id is not None}
+        terms = [t for t in await _readable_terms(conn, request) if t["id"] in applied]
+        ids = [t["id"] for t in terms]
+        edges = [e for e in await glossary_repo.term_edges(cast("Connection", conn)) if e[0] in ids]
+        statements = await glossary_repo.term_statements(cast("Connection", conn), ids)
+    exported = export.graph_of(terms, edges, statements)
+    return Response(
+        content=export.serialize(exported, format),
+        media_type=export.MEDIA_TYPES[format],
+        headers={"X-Provisa-Left-Out": json.dumps(exported.left_out, sort_keys=True)},
+    )
+
+
 @router.patch("/items/{item_id}")
 async def edit_item(item_id: int, request: Request) -> dict:
     """Edit a pending item's ``name`` or ``definition``, or exclude it (``excluded``)."""
@@ -394,7 +429,7 @@ async def bulk_approve(import_id: int, request: Request) -> dict:
                 approved.append(alignment_id)
             except (apply.ImportRefused, ApiError) as exc:
                 message = exc.detail if isinstance(exc, ApiError) else str(exc)
-                refused.append({"id": alignment_id, "message": message})
+                refused.append({"id": alignment_id, "message": client_value(message)})
     return {"approved": approved, "refused": refused}
 
 
@@ -417,6 +452,7 @@ async def apply_import(import_id: int, request: Request) -> dict:
     except (apply.ImportRefused, ValueError) as exc:
         raise _refused(exc) from None
     await glossary._notify(org_id, "ontology imported")
+    await glossary.embed_terms(org_id)
     return {
         "id": import_id,
         "created": done.created,

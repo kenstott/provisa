@@ -72,7 +72,7 @@ from provisa.transpiler.metadata_oids import (
     schema_oid_sql,
     table_oid_sql,
 )
-from provisa.transpiler.metadata_settings import asked_sql, setting
+from provisa.transpiler.metadata_settings import asked_sql, masked_column_key, setting
 from provisa.transpiler.metadata_views import (
     CATALOG_VIEW_NAMES,
     PG_CLASS_OID,
@@ -177,12 +177,18 @@ _CATALOG_NAMES = ", ".join(
 )
 _IS_ITSELF = f"rt.domain_id = 'meta' AND rt.table_name IN ({_CATALOG_NAMES})"
 #: Over ``rt``, a row of registered_tables: whether a catalog lists it.
-LISTED_TABLE = f"NOT rt.draft AND NOT ({_IS_ITSELF})"
+#: REQ-1921, REQ-2248: a withdrawn (itself or through its source) or retired table is in no
+#: catalog.
+LISTED_TABLE = (
+    "NOT rt.retired AND NOT rt.withdrawn "
+    "AND rt.source_id NOT IN (SELECT ws.id FROM sources ws WHERE ws.withdrawn) "
+    f"AND NOT ({_IS_ITSELF})"
+)
 
 
 def _catalog_tables() -> str:
     """Every table a catalog lists, by the name a statement queries it by, and every metric:
-    drafts are in no catalog, and these views are in none (security.rights.SQL_CATALOG_TABLES).
+    withdrawn tables are in no catalog, and these views are in none (security.rights.SQL_CATALOG_TABLES).
     The naming rules apply in order, each everywhere in the name, as naming._apply_naming_rules.
     Each step of a name is read once by a subquery held apart by OFFSET 0, and only for a table
     with no alias: written out, a step would be repeated in the next, and a statement plans
@@ -238,6 +244,7 @@ def _catalog_tables() -> str:
         SELECT NULL, {metric_oid_sql("name")}, NULL, '{_METRICS_SCHEMA}',
                {schema_oid_sql(f"'{_METRICS_SCHEMA}'")}, name
         FROM metrics
+        WHERE NOT retired
     """
 
 
@@ -258,9 +265,11 @@ _VIRTUAL_TYPE = "'varchar'"
 # registered_tables) names it as this: PostgreSQL locks a view's relations in the order of its
 # stored range table, and schema.sql locks registered_tables before table_columns, so a reader that
 # held table_columns while it waited for registered_tables would deadlock with it. Every
-# table_columns row has its registered table, so the join drops none.
+# table_columns row has its registered table, so the join drops none. REQ-2248: a retired column
+# is absent from its table.
 COLUMNS_OF_TABLES = (
-    "(SELECT tc0.* FROM registered_tables rt0 JOIN table_columns tc0 ON tc0.table_id = rt0.id)"
+    "(SELECT tc0.* FROM registered_tables rt0 JOIN table_columns tc0 ON tc0.table_id = rt0.id "
+    "WHERE NOT tc0.retired)"
 )
 
 
@@ -303,7 +312,10 @@ def _catalog_columns() -> str:
                    {registered_column_sql_name("c")} AS sql_name,
                    CAST(ROW_NUMBER() OVER (PARTITION BY c.table_id ORDER BY c.id) AS INTEGER)
                        AS attnum,
-                   {listed} AS listed_type, c.not_null
+                   {listed} AS listed_type,
+                   -- REQ-2131: a column the asking role reads under a mask is nullable to it.
+                   c.not_null AND NOT ({masked_column_key("c.table_id", "c.column_name")}
+                                       = ANY(CAST({setting("masked")} AS TEXT[]))) AS not_null
             FROM asked t
             JOIN {COLUMNS_OF_TABLES} c ON c.table_id = t.table_id
         ),
@@ -412,12 +424,12 @@ def _pg_namespace() -> str:
             {"oid": "n.oid", "nspname": "n.name", "nspowner": str(OWNER_OID)},
             "FROM (SELECT DISTINCT o, n FROM ("
             f"SELECT {schema_oid_sql('s.name')} AS o, s.name AS n FROM (SELECT {domains} AS name "
-            "FROM domains d WHERE d.id <> '') s "
+            "FROM domains d WHERE d.id <> '' AND NOT d.retired) s "
             f"UNION ALL SELECT oid, name FROM {_rows(fixed, 'name, oid')} "
             f"UNION ALL SELECT {schema_oid_sql('s.name')}, s.name FROM (SELECT DISTINCT "
             f"{domain_sql_name_sql('rt.domain_id')} AS name FROM registered_tables rt "
             f"WHERE {LISTED_TABLE} UNION SELECT '{_METRICS_SCHEMA}' "
-            "FROM metrics) s "
+            "FROM metrics WHERE NOT retired) s "
             # The schema of each source enum the statement is told, which is a type's there.
             f"UNION ALL SELECT {schema_oid_sql('s.name')}, s.name FROM (SELECT "
             f"e.enum ->> 'schema' AS name FROM {_SOURCE_ENUMS}) s) a) "
@@ -709,7 +721,7 @@ def _pg_description() -> str:
             "objsubid": "0",
             "description": "d.description",
         },
-        "FROM domains d WHERE d.id <> '' AND d.description <> ''",
+        "FROM domains d WHERE d.id <> '' AND NOT d.retired AND d.description <> ''",
     )
     metrics = _select(
         relation,
@@ -719,7 +731,7 @@ def _pg_description() -> str:
             "objsubid": "0",
             "description": "COALESCE(m.description, m.ai_context)",
         },
-        "FROM metrics m WHERE COALESCE(m.description, m.ai_context) IS NOT NULL",
+        "FROM metrics m WHERE NOT m.retired AND COALESCE(m.description, m.ai_context) IS NOT NULL",
     )
     shipped = _select(
         relation,
@@ -871,6 +883,38 @@ def _function_type(returns: str) -> str:
 _FUNCTION_OID = f"{FIRST_FUNCTION_OID} + f.id"
 
 
+def _function_type_oid(declared: str) -> str:
+    """The oid of :func:`_function_type`'s type, over a tracked function's declared type (SQL)."""
+    from provisa.pgwire.catalog_pg17 import TYPES
+    from provisa.pgwire.function_catalog import _FN_TYPE_TO_SQL
+
+    oid_of = {t[-1]: oid for oid, t in TYPES.items() if t[0] == "pg_catalog"}
+    cases = " ".join(f"WHEN '{k}' THEN {oid_of[v]}" for k, v in _FN_TYPE_TO_SQL.items())
+    return f"CASE LOWER(COALESCE({declared}, '')) {cases} ELSE {oid_of['character varying']} END"
+
+
+#: Over ``f``, a row of tracked_functions: whether it is a source operation returning the rows of
+#: its table (REQ-1986, compiler.operation_function.is_operation_function).
+_RETURNS_TABLE_ROWS = (
+    "(f.impl_kind = 'source_operation' AND f.kind = 'query' AND COALESCE(f.returns, '') <> '')"
+)
+
+#: Joined to ``f``: ``ct``, the catalog_tables row of the table whose rows a source operation's
+#: function returns; NULL for every other function.
+_RETURNED_TABLE = (
+    f"LEFT JOIN registered_tables rt ON {_RETURNS_TABLE_ROWS} AND rt.source_id = f.source_id "
+    "AND rt.schema_name || '.' || rt.table_name = f.returns "
+    "LEFT JOIN catalog_tables ct ON ct.table_id = rt.id"
+)
+
+#: Over ``f``: its arguments, each with its position.
+_ARGUMENTS = (
+    "JSONB_ARRAY_ELEMENTS(CAST(f.arguments AS JSONB)) WITH ORDINALITY AS a(argument, position)"
+)
+#: Over ``a``, one of :data:`_ARGUMENTS`: the oid of its type.
+_ARGUMENT_TYPE_OID = _function_type_oid("a.argument ->> 'type'")
+
+
 def _pg_proc() -> str:
     relation = (_PG, "pg_proc")
     return _view(
@@ -886,15 +930,24 @@ def _pg_proc() -> str:
                 "prosecdef": "FALSE",
                 "proleakproof": "FALSE",
                 "proisstrict": "FALSE",
-                "proretset": "f.return_schema IS NOT NULL",
+                "proretset": f"f.return_schema IS NOT NULL OR {_RETURNS_TABLE_ROWS}",
                 "provolatile": "'v'",
                 "proparallel": "'u'",
                 "pronargs": "JSONB_ARRAY_LENGTH(CAST(f.arguments AS JSONB))",
                 "pronargdefaults": "0",
-                "prorettype": "0",
+                # REQ-1986: a source operation's function returns the rows of its table, of the
+                # table's row type; every other function's type is not stated.
+                "prorettype": f"CASE WHEN {_RETURNS_TABLE_ROWS} THEN "
+                f"CAST(ct.relation_oid AS BIGINT) + {_ROW_TYPE_OFFSET} ELSE 0 END",
+                "proargtypes": "ARRAY_TO_STRING(ARRAY(SELECT "
+                f"{_ARGUMENT_TYPE_OID} FROM {_ARGUMENTS} "
+                "ORDER BY a.position), ' ')",
+                "proargnames": f"ARRAY(SELECT a.argument ->> 'name' FROM {_ARGUMENTS} "
+                "ORDER BY a.position)",
                 "prosrc": "f.name",
+                SCOPE_COLUMN: "rt.id",
             },
-            "FROM tracked_functions f",
+            f"FROM tracked_functions f {_RETURNED_TABLE}",
         ),
         _select(
             relation,
@@ -903,6 +956,7 @@ def _pg_proc() -> str:
                 "proowner": str(OWNER_OID),
                 "prosupport": "CAST(s.prosupport AS OID)",
                 "proargtypes": "s.proargtypes",
+                SCOPE_COLUMN: "NULL",
             },
             f"FROM {_unnested(_shipped_procs(), _PROC_COLUMNS)}",
         ),
@@ -962,15 +1016,22 @@ def _is_routines() -> str:
                 "routine_schema": "'public'",
                 "routine_name": "f.name",
                 "routine_type": "'FUNCTION'",
-                "data_type": "CASE WHEN f.return_schema IS NOT NULL THEN 'record' "
+                # REQ-1986: a source operation's function returns its table's rows, of the
+                # table's row type (USER-DEFINED, as PostgreSQL states a SETOF table).
+                "data_type": f"CASE WHEN {_RETURNS_TABLE_ROWS} THEN 'USER-DEFINED' "
+                "WHEN f.return_schema IS NOT NULL THEN 'record' "
                 f"ELSE {_function_type('f.returns')} END",
+                "type_udt_catalog": f"CASE WHEN {_RETURNS_TABLE_ROWS} THEN {_SERVED_NAME} END",
+                "type_udt_schema": "ct.schema_name",
+                "type_udt_name": "ct.table_name",
                 "routine_body": "'EXTERNAL'",
                 "external_language": "'EXTERNAL'",
                 "is_deterministic": "'NO'",
                 "sql_data_access": "'MODIFIES'",
                 "security_type": "'INVOKER'",
+                SCOPE_COLUMN: "rt.id",
             },
-            "FROM tracked_functions f",
+            f"FROM tracked_functions f {_RETURNED_TABLE}",
         ),
     )
 
@@ -991,9 +1052,7 @@ def _is_parameters() -> str:
                 "parameter_name": "a.argument ->> 'name'",
                 "data_type": _function_type("a.argument ->> 'type'"),
             },
-            "FROM tracked_functions f CROSS JOIN LATERAL "
-            "JSONB_ARRAY_ELEMENTS(CAST(f.arguments AS JSONB)) WITH ORDINALITY AS a(argument, "
-            "position)",
+            f"FROM tracked_functions f CROSS JOIN LATERAL {_ARGUMENTS}",
         ),
     )
 

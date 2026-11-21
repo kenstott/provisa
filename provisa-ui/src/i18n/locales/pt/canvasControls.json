@@ -6,7 +6,7 @@
     "fitToScreen": "Ajustar à tela",
     "switchToHierarchy": "Alternar para layout hierárquico",
     "switchToForce": "Alternar para layout de força",
-    "nudgeLayout": "Ajustar layout — desloca os nós selecionados (ou todos, se nenhum estiver selecionado); mantenha pressionado para continuar iterando",
+    "nudgeLayout": "Desloca levemente os nós selecionados, ou todos se nenhum estiver selecionado. Mantenha pressionado para continuar iterando.",
     "edgeLength": "Comprimento da aresta",
     "edgeLengthValue": "{{value}}px"
   }

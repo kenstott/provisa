@@ -67,10 +67,11 @@ async def _product(request: Request, product_id: str, *, export: bool):
 
 
 async def _documents(request: Request, product_id: str, *, export: bool = True):
-    """The product's ODPS document and its members' ODCS contracts."""
+    """The product's ODPS document and its ODCS contracts, one per offer and dataset."""
     from provisa.api.metadata_export.odps import product_documents
 
-    return product_documents(*await _product(request, product_id, export=export))
+    snapshot, product = await _product(request, product_id, export=export)
+    return product_documents(snapshot, product)
 
 
 def _yaml(document: dict) -> Response:
@@ -99,61 +100,60 @@ async def data_product_ossie(product_id: str, request: Request) -> Response:  # 
 
 @router.get("/data-products/{product_id}/contracts.json")
 async def data_product_contracts(product_id: str, request: Request) -> dict:  # REQ-2158
-    """Every output port's ODCS 3.1 contract, by its member's address, as the product's
-    Contracts panel shows them: each element declared or derived, the one document a catalog
-    pulls."""
+    """Every output port's ODCS 3.1 contract -- one per offer and dataset (REQ-2180), each keyed
+    ``<offer>/<source.schema.table>`` -- as the product's offers show them: the one document a
+    catalog pulls."""
     _, contracts = await _documents(request, product_id, export=False)
     return contracts
 
 
-def _port_contract(product_id: str, member: str, contracts: dict[str, dict]) -> dict:
-    """The output port ``member``'s contract, or why there is none."""
-    contract = contracts.get(member)
+def _port_contract(product_id: str, offer: str, member: str, contracts: dict[str, dict]) -> dict:
+    """The contract ``offer`` gives on ``member``, or why there is none."""
+    contract = contracts.get(f"{offer}/{member}")
     if contract is None:
         raise ApiError(
             404,
             "data_products.no_contract",
-            f"data product {product_id!r} has no output port {member!r}; its output ports are "
-            f"{', '.join(sorted(contracts))}",
+            f"data product {product_id!r} has no contract of offer {offer!r} on {member!r}; its "
+            f"contracts are {', '.join(sorted(contracts))}",
         )
     return contract
 
 
-@router.get("/data-products/{product_id}/contracts/{member}.json")
-async def data_product_contract_json(product_id: str, member: str, request: Request) -> dict:
-    """One output port's ODCS 3.1 contract, as the product's contracts list shows it when that
-    port's row opens (REQ-2158): asking what reading the product asks, as contracts.json does."""
+@router.get("/data-products/{product_id}/offers/{offer}/contracts/{member}.json")
+async def data_product_contract_json(
+    product_id: str, offer: str, member: str, request: Request
+) -> dict:
+    """The ODCS 3.1 contract an offer gives on one dataset, as the product's offer shows it when
+    that contract opens (REQ-2180): asking what reading the product asks, as contracts.json does."""
     _, contracts = await _documents(request, product_id, export=False)
-    return _port_contract(product_id, member, contracts)
+    return _port_contract(product_id, offer, member, contracts)
 
 
-@router.get("/data-products/{product_id}/contracts/{member}/versions.json")
+@router.get("/data-products/{product_id}/offers/{offer}/contracts/{member}/versions.json")
 async def data_product_contract_versions(
-    product_id: str, member: str, request: Request
+    product_id: str, offer: str, member: str, request: Request
 ) -> list[dict]:
-    """One output port's saved contract versions, oldest first, each with when and by whom it was
-    saved and its differences from the one before (REQ-2158): read with the port's contract when
-    its row opens, asking what reading the product asks."""
-    require_capability_request(request, "data_product_read")
-    require_active_org_id(request)
-    from provisa.api.app import state
-    from provisa.core.models import DataContract
-    from provisa.core.repositories import data_product as data_product_repo
-
-    assert state.model_db is not None  # the org's model store is bound with its runtime
-    async with state.model_db.acquire() as conn:
-        rows = await data_product_repo.member_contracts(conn, product_id)
-    contracts = {
-        f"{r['source_id']}.{r['schema_name']}.{r['table_name']}": r["contract"] for r in rows
-    }
-    contract = DataContract.model_validate(_port_contract(product_id, member, contracts))
-    return [
-        v.model_dump(mode="json", exclude={"contract": {"versions"}}) for v in contract.versions
-    ]
+    """The saved versions of the contract an offer gives on one dataset, oldest first, each with
+    when and by whom it was saved and its differences from the one before (REQ-2180), asking what
+    reading the product asks."""
+    snapshot, product = await _product(request, product_id, export=False)
+    exports = {o.name: o for o in snapshot.offers.get(product.id, ())}
+    contract = None if offer not in exports else exports[offer].contracts.get(member)
+    if contract is None:
+        raise ApiError(
+            404,
+            "data_products.no_contract",
+            f"data product {product_id!r} has no contract of offer {offer!r} on {member!r}",
+        )
+    return [v.model_dump(mode="json") for v in contract.versions]
 
 
-@router.get("/data-products/{product_id}/contracts/{member}.yaml")
-async def data_product_contract(product_id: str, member: str, request: Request) -> Response:
-    """A member's ODCS 3.1 contract, the member named by its address (source.schema.table)."""
+@router.get("/data-products/{product_id}/offers/{offer}/contracts/{member}.yaml")
+async def data_product_contract(
+    product_id: str, offer: str, member: str, request: Request
+) -> Response:
+    """The ODCS 3.1 contract an offer gives on a dataset, named by its address
+    (source.schema.table)."""
     _, contracts = await _documents(request, product_id)
-    return _yaml(_port_contract(product_id, member, contracts))
+    return _yaml(_port_contract(product_id, offer, member, contracts))

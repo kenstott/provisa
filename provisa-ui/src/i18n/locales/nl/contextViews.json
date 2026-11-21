@@ -1,0 +1,16 @@
+{
+  "contextViews": {
+    "colWhereApplied": "Waar toegepast",
+    "colDependents": "Hangt ervan af",
+    "detectedHeader": "Gedetecteerd op",
+    "nowhere": "Nergens",
+    "hiddenPlaces_one": "Nog {{count}} die u niet mag lezen",
+    "hiddenPlaces_other": "Nog {{count}} die u niet mag lezen",
+    "rowFilters_one": "{{count}} rijfilter",
+    "rowFilters_other": "{{count}} rijfilters",
+    "classifiedAs": "Toegewezen door classificatie: {{kind}}",
+    "noDependents": "Niets",
+    "enabled": "Ingeschakeld",
+    "disabled": "Uitgeschakeld"
+  }
+}

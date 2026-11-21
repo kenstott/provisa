@@ -61,7 +61,6 @@ const { cytoscape, pending } = vi.hoisted(() => {
   return { cytoscape: Object.assign(cytoscape, { use: vi.fn() }), pending };
 });
 vi.mock("cytoscape", () => ({ default: cytoscape }));
-vi.mock("cytoscape-elk", () => ({ default: vi.fn() }));
 
 import { LineageDag } from "../LineageDag";
 

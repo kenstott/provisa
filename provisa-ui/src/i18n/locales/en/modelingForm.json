@@ -30,11 +30,11 @@
     "errorRequired": "Name, source, and domain are required.",
     "submit": "Create",
     "createdTitle": "{{name}} created",
-    "createdMv": "Built the {{kind}} \"{{name}}\" as a materialized view in domain {{domain}}. It now appears in Registered Tables and is queryable.",
+    "createdMv": "Built the {{kind}} \"{{name}}\" as a materialized view in domain {{domain}}. It now appears on the Tables page and is queryable.",
     "createdHistory": "History is tracked: past values are queryable via time travel.",
     "createdDims": "Registered {{count}} dimension link(s) so the fact can be joined to its entities.",
     "reviseTitle": "Changing it later",
-    "reviseBody": "This dialog only creates. To change the key, attributes, history, or columns of \"{{name}}\", edit it in Registered Tables. Re-running this dialog with the same name overwrites the existing model.",
+    "reviseBody": "This dialog only creates. To change the key, attributes, history, or columns of \"{{name}}\", edit it on the Tables page. Re-running this dialog with the same name overwrites the existing model.",
     "createAnother": "Create another",
     "done": "Done"
   }

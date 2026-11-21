@@ -9,7 +9,7 @@
 // permission from the copyright holder.
 
 // Admin and Docs are in the user menu, below a divider after Profile and What's new, and
-// not in the top navigation. Admin is shown only to a caller who holds an admin right.
+// not in the top navigation. Admin is shown to every member: My Secrets and Requests ask no right.
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import userEvent from "@testing-library/user-event";
@@ -106,9 +106,7 @@ describe("Admin and Docs in the user menu", () => {
     expect(
       whatsNew.compareDocumentPosition(divider!) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
-    expect(
-      divider!.compareDocumentPosition(admin) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
+    expect(divider!.compareDocumentPosition(admin) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it("opens the Docs page from the menu", async () => {
@@ -117,11 +115,11 @@ describe("Admin and Docs in the user menu", () => {
     expect(screen.getByTestId("navbar-docs").closest("a")).toHaveAttribute("href", "/docs");
   });
 
-  it("offers Docs but not Admin to a caller who holds no admin right", async () => {
+  it("offers Admin to a member who holds no admin right, for the pages every member opens", async () => {
+    // REQ-1327 (amended 2026-11-14), REQ-1560: My Secrets and Requests open to every member.
     auth.capabilities = ["query_development"];
     render(<NavBar />);
     await openUserMenu();
-    expect(menuLabels()).toEqual(["Profile", "What's new", "Docs", "Logout"]);
-    expect(screen.queryByTestId("navbar-admin")).toBeNull();
+    expect(menuLabels()).toEqual(["Profile", "What's new", "Admin", "Docs", "Logout"]);
   });
 });

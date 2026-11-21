@@ -8,7 +8,7 @@
       "purpose": {
         "environment_management": {
           "title": "Gli ambienti sono una funzionalità di produzione",
-          "body": "Un ambiente è una copia completa e governata separatamente del modello: origini, tabelle, criteri, regole di mascheramento e concessioni. I team mantengono un ambiente dev in cui modificare il modello, uno staging in cui revisionarlo e prod da cui servirlo, poi portano avanti la modifica unendo un ambiente al successivo con un diff, un'approvazione e una cronologia annullabile.\n\nLa tua sandbox È uno di questi ambienti, creato solo per te. La gestione degli ambienti (creazione, merge, deployment, ritiro) spetta all'organizzazione che li possiede, quindi qui l'interfaccia viene mostrata e non consegnata: puoi vedere cosa fa, ma non agisce su nulla."
+          "body": "Un ambiente è una copia completa e governata separatamente del modello: origini, tabelle, criteri, regole di mascheramento e concessioni. I team modificano il modello in dev, lo revisionano in staging e servono da prod, unendo un ambiente nel successivo con un diff, un'approvazione e una cronologia annullabile.\n\nLa sandbox è uno di questi ambienti, creato solo per te. Creare, unire, distribuire e ritirare gli ambienti spetta all'organizzazione che li possiede, quindi questa pagina è mostrata come riferimento e non agisce su nulla."
         }
       }
     }

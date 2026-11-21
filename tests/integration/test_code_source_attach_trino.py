@@ -33,7 +33,6 @@ import httpx
 import pytest
 import yaml
 
-from tests.helpers import registered_id, release_field
 from tests.integration.test_code_sources_e2e import (
     build_provisa_wheel,
     _admin,
@@ -195,12 +194,11 @@ def code_source(server):
     ]
     # A landing TTL of 0: in dev mode each read lands its rows for itself alone (REQ-1907 asks a
     # landed table for one), and once built, a read across sources attaches the host (REQ-2100).
-    registered = _admin(
+    _admin(
         server,
         f'registerTable(input: {{sourceId: "{_SOURCE}", domainId: "fx", schemaName: "default", '
         f'tableName: "regions", cacheTtl: 0, columns: [{", ".join(columns)}]}})',
     )
-    _admin(server, release_field(registered_id(registered["message"])))
     # An approved relationship: governance admits a join only along one (V002).
     _admin(
         server,

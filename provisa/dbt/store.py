@@ -78,7 +78,8 @@ async def warehouse_rows(conn: Any) -> list[_Warehouse]:
     rows = (
         await conn.execute_core(
             select(sources.c.id, sources.c.type, sources.c.database, sources.c.path).where(
-                sources.c.type != DBT
+                sources.c.type != DBT,
+                sources.c.retired.is_(False),  # REQ-2248
             )
         )
     ).fetchall()

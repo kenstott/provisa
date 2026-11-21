@@ -365,33 +365,71 @@ def _base_sql(table: str, base_cols: list[str], sample: Sample) -> str:
     return f"{select} WHERE RANDOM() < {sample.fraction!r}"
 
 
-def classification_sql(table: str, columns: list[ColumnSpec], sample: Sample, limit: int) -> str:
-    """Up to ``limit`` rows of ``columns``, as text, drawn at random from the run's sample, whose
-    values the classification kinds are tested against (REQ-2147), each row with the count of the
-    rows the sample held (``SAMPLE_ROWS``, counted before the limit): what the statement read of
-    the source. The values are tested in memory and never stored."""
+def classification_sql(
+    table: str, columns: list[ColumnSpec], sample: Sample, per_column: int
+) -> str:
+    """Up to ``per_column`` non-null values of each of ``columns``, as text, drawn at random from
+    ``sample`` -- the run's sample, which is the read's ceiling on rows -- in ONE read of the table
+    (REQ-2147, amended 2026-11-15: the classification sample is non-null values per column).
+
+    The sample's rows are put in one random order; per column a running count of its non-null
+    values over that order (``COUNT(c) OVER (ORDER BY r ROWS ...)``, every window sharing the one
+    order, so the engine sorts once) says whether a row's value is among the column's first
+    ``per_column``. A row is kept when it carries such a value for some column, so a sparse column
+    gets its values from rows a well-populated column no longer needs, and the result is at most
+    ``per_column`` rows per column. The first row (its running row count 1, over the same window)
+    is always kept, so the count of the rows the sample held (``SAMPLE_ROWS``) comes back even
+    when every value is null. The statement is plain windowed SQL with no engine's own aggregate,
+    so it is the same read on every engine the profiler runs on (DuckDB, Trino, ClickHouse,
+    PostgreSQL); only RANDOM() is spelled per engine by the transpile. The values are tested in
+    memory and never stored."""
+    if not columns:
+        raise ValueError(f"table {table!r}: no column to classify")
     inner = _base_sql(
-        table, [f"{read_column('t', c)} AS {_ident(c.name)}" for c in columns], sample
+        table,
+        [f"{read_column('t', c)} AS {_ident(f'c{i}')}" for i, c in enumerate(columns)],
+        sample,
     )
-    cols = ", ".join(f"CAST(s.{_ident(c.name)} AS VARCHAR) AS {_ident(c.name)}" for c in columns)
-    return (
-        f"SELECT {cols}, COUNT(*) OVER () AS {_ident(SAMPLE_ROWS)} FROM ({inner}) s "
-        f"ORDER BY RANDOM() LIMIT {int(limit)}"
+    order = f"ORDER BY o.{_ident(_ORDER)} ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW"
+    running = ", ".join(
+        f"COUNT(o.{_ident(f'c{i}')}) OVER ({order}) AS {_ident(f'n{i}')}"
+        for i in range(len(columns))
     )
+    ordered = f"SELECT b.*, RANDOM() AS {_ident(_ORDER)} FROM ({inner}) b"
+    counted = (
+        f"SELECT o.*, {running}, COUNT(*) OVER () AS {_ident(SAMPLE_ROWS)}, "
+        f"COUNT(*) OVER ({order}) AS {_ident(_FIRST)} FROM ({ordered}) o"
+    )
+    n = int(per_column)
+    picked = ", ".join(
+        f"CASE WHEN s.{_ident(f'n{i}')} <= {n} THEN CAST(s.{_ident(f'c{i}')} AS VARCHAR) END "
+        f"AS {_ident(c.name)}"
+        for i, c in enumerate(columns)
+    )
+    keep = " OR ".join(
+        [f"s.{_ident(_FIRST)} = 1"]
+        + [
+            f"(s.{_ident(f'c{i}')} IS NOT NULL AND s.{_ident(f'n{i}')} <= {n})"
+            for i in range(len(columns))
+        ]
+    )
+    return f"SELECT {picked}, s.{_ident(SAMPLE_ROWS)} FROM ({counted}) s WHERE {keep}"
 
 
 #: The classification statement's column holding the rows its sample held.
 SAMPLE_ROWS = "__sample_rows"
+_ORDER = "__order"
+_FIRST = "__first"
 
 
 def parse_classification_result(
     names: list[str], rows: list[tuple], columns: list[ColumnSpec]
-) -> tuple[dict[str, list[str | None]], int]:
-    """Each column's sampled values, by its name, and the rows the sample held (0 when it held
-    none, so the statement answered no row)."""
+) -> tuple[dict[str, list[str]], int]:
+    """Each column's sampled non-null values, by its name, and the rows the sample held (0 when
+    it held none, so the statement answered no row)."""
     index = {n: i for i, n in enumerate(names)}
     values = {
-        c.name: [None if r[index[c.name]] is None else str(r[index[c.name]]) for r in rows]
+        c.name: [str(r[index[c.name]]) for r in rows if r[index[c.name]] is not None]
         for c in columns
     }
     return values, int(rows[0][index[SAMPLE_ROWS]]) if rows else 0

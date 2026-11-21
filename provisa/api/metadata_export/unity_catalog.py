@@ -26,6 +26,9 @@ table the engine reads in place, its external table (``DatabricksFederationRunti
 - The schema's comment holds the product's purpose, limitations, usage, service level and
   support; its owner, team, version and status are ``provisa_product:<field>`` tags (a tag value
   holds 256 characters, so the prose stays in the comment).
+- Each view carries the environment the snapshot was read in and that environment's stage as the
+  ``provisa_environment`` and ``provisa_stage`` tags (REQ-2261), so a catalog can tell production
+  assets from others; neither is written when the snapshot names no environment.
 - A view in the product's schema that is no longer a member is dropped.
 - With ``delta_share`` set, the schema's views are also published as the Delta Share
   ``provisa_<product id>``, for other data teams of the enterprise; a recipient is granted it in
@@ -40,7 +43,7 @@ Each schema's and view's full name is recorded in the target's bindings (REQ-138
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
 
@@ -52,6 +55,7 @@ if TYPE_CHECKING:
     from provisa.api.metadata_export.model import (
         ColumnAsset,
         DataProductAsset,
+        EnvironmentStage,
         GovernanceTag,
         GroundedTerm,
         MetadataSnapshot,
@@ -62,6 +66,9 @@ GOVERNANCE_PREFIX = "provisa_governance:"
 #: REQ-2238: the tag naming a view column's grounded term.
 TERM_TAG = "provisa_term"
 PRODUCT_PREFIX = "provisa_product:"
+#: REQ-2261: the tags naming a view's environment and that environment's stage.
+ENVIRONMENT_TAG = "provisa_environment"
+STAGE_TAG = "provisa_stage"
 _TAG_VALUE_LIMIT = 256
 
 Parts = tuple[str, str, str]
@@ -177,6 +184,63 @@ def term_statements(
         for column in table.columns
         if (term := terms_by_column.get(column.ref.fqn())) is not None
     ]
+
+
+def environment_statements(view: Parts, environment: "EnvironmentStage | None") -> list[str]:
+    """The environment and its stage as tags on the view (REQ-2261); none without an
+    environment."""
+    if environment is None:
+        return []
+    return [
+        f"ALTER VIEW {q(*view)} SET TAGS ("
+        f"'{ENVIRONMENT_TAG}' = '{lit(environment.name[:_TAG_VALUE_LIMIT])}', "
+        f"'{STAGE_TAG}' = '{lit(environment.stage)}')"
+    ]
+
+
+def _owned(tag: str) -> bool:
+    """A tag this export sets: the term tag or a governance tag; any other origin is never touched."""
+    return tag == TERM_TAG or tag.startswith(GOVERNANCE_PREFIX)
+
+
+def stale_tag_statements(
+    view: Parts,
+    table: "TableAsset",
+    governance_tags: list["GovernanceTag"],
+    terms_by_column: Mapping[str, "GroundedTerm"],
+    table_tags: Iterable[str],
+    column_tags: Iterable[tuple[str, str]],
+) -> list[str]:
+    """Unsets the tags the view still holds that its member no longer carries. ``CREATE OR REPLACE
+    VIEW`` keeps the tags of the view it replaces, so a term that left a column, or a governance
+    rule that no longer fires, would stay tagged. ``table_tags`` and ``column_tags``
+    (``(column, tag)``) are what the view holds now."""
+    table_fqn = table.ref.fqn()
+    names = {c.ref.fqn(): c.name for c in table.columns}
+    wanted_table: set[str] = set()
+    wanted_columns: set[tuple[str, str]] = set()
+    for tag in governance_tags:
+        key = f"{GOVERNANCE_PREFIX}{tag.signal.value}"
+        fqn = tag.asset.fqn()
+        if fqn == table_fqn:
+            wanted_table.add(key)
+        elif fqn in names:
+            wanted_columns.add((names[fqn], key))
+    for column in table.columns:
+        if column.ref.fqn() in terms_by_column:
+            wanted_columns.add((column.name, TERM_TAG))
+    stmts = [
+        f"ALTER VIEW {q(*view)} UNSET TAGS ('{lit(tag)}')"
+        for tag in sorted(set(table_tags))
+        if _owned(tag) and tag not in wanted_table
+    ]
+    stmts += [
+        # A view's column is untagged through ALTER TABLE, as it is tagged.
+        f"ALTER TABLE {q(*view)} ALTER COLUMN {q(column)} UNSET TAGS ('{lit(tag)}')"
+        for column, tag in sorted(set(column_tags))
+        if _owned(tag) and (column, tag) not in wanted_columns
+    ]
+    return stmts
 
 
 @register_provider
@@ -302,9 +366,32 @@ class UnityCatalogExport(MetadataExport):  # REQ-2117
             view = (catalog, schema, name)
             member = self._member_parts(runtime, snapshot, ref)
             cur.execute(view_statement(view, member, table, terms))
+            where = f"schema_name = '{lit(schema)}' AND table_name = '{lit(name)}'"
+            held_table = [
+                str(k)
+                for (k, _) in self._rows(
+                    cur,
+                    f"SELECT tag_name, tag_value FROM {q(catalog)}.information_schema.table_tags "
+                    f"WHERE {where}",
+                )
+            ]
+            held_columns = [
+                (str(c), str(k))
+                for (c, k, _) in self._rows(
+                    cur,
+                    f"SELECT column_name, tag_name, tag_value "
+                    f"FROM {q(catalog)}.information_schema.column_tags WHERE {where}",
+                )
+            ]
+            for stmt in stale_tag_statements(
+                view, table, governance, terms, held_table, held_columns
+            ):
+                cur.execute(stmt)
             for stmt in governance_statements(view, table, governance):
                 cur.execute(stmt)
             for stmt in term_statements(view, table, terms):
+                cur.execute(stmt)
+            for stmt in environment_statements(view, snapshot.environment):
                 cur.execute(stmt)
             views[name] = view
             members[name] = member

@@ -28,6 +28,7 @@ import { FieldGroup, FormChecks, FormField, FormLayout } from "../../components/
 import { OffPeakWindowFields } from "../../components/admin/OffPeakWindowFields";
 import { TimeTravelEditor } from "./TimeTravelSection";
 import { useHistoryChoice } from "./timeTravel";
+import { incrementalReason } from "../../components/relationships/incrementalOption";
 
 // REQ-961/962/965/969/970/1168/1169: the materialized-view configuration cluster — refresh cadence &
 // NRT debounce, fleet consistency, keeping history (REQ-2109), the calendar snapshot schedule, and
@@ -179,10 +180,21 @@ export function MaterializedViewPanels({
       )}
       <FormChecks>
         {editingTable.materialize && !timeTravel && (
-          <FormField help={t("tableEditForm.incrementalHelp")} size="short">
+          <FormField
+            // REQ-2249: a view calling a code command is kept incrementally only by its
+            // resolver's @change function; without one the (?) says why in place of the help.
+            help={
+              incrementalReason(editingTable.incrementalOption, {
+                table: editingTable.tableName,
+              }) ?? t("tableEditForm.incrementalHelp")
+            }
+            size="short"
+          >
             <Checkbox
               mt="1.75rem"
               data-testid="mv-incremental"
+              // A setting already on stays reachable, so it can be turned off.
+              disabled={!editingTable.incrementalOption.available && !editingTable.mvIncremental}
               checked={editingTable.mvIncremental}
               label={t("tableEditForm.incrementalLabel")}
               onChange={(e) =>
@@ -192,6 +204,20 @@ export function MaterializedViewPanels({
           </FormField>
         )}
       </FormChecks>
+      {editingTable.materialize && !timeTravel && editingTable.mvIncremental && (
+        <FormField help={t("tableEditForm.mvRebuildEveryHelp")} size="short">
+          <NumberInput
+            label={t("tableEditForm.mvRebuildEveryLabel")}
+            min={1}
+            allowDecimal={false}
+            data-testid="mv-rebuild-every"
+            value={editingTable.mvRebuildEvery ?? ""}
+            onChange={(v) =>
+              setEditingTable({ ...editingTable, mvRebuildEvery: typeof v === "number" ? v : null })
+            }
+          />
+        </FormField>
+      )}
       {/* REQ-970: upsert / incremental need a row-identity key. That key IS the table's Primary Key,
           set via the per-column checkboxes in the columns list below — no second definition here.
           Surface what's derived (or prompt to set it) so the requirement is visible where it's used. */}

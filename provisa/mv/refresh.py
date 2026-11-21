@@ -401,6 +401,21 @@ def _emit_column_lineage_span(
         )
 
 
+async def _landed_count(engine, mv: MVDefinition, target: str, authorization: SystemAuth) -> int:
+    """The rows the view's store table holds, read where its refresh writes it (REQ-2249)."""
+    broker = _mv_store_broker(engine)
+    if broker is not None:
+        from provisa.federation.materialize_broker import _MAT_STORE_ALIAS  # noqa: PLC0415
+
+        landed = f'{_MAT_STORE_ALIAS}."{mv.target_schema}"."{mv.target_table}"'
+        rows = await _in_executor(lambda: broker.execute(f"SELECT COUNT(*) FROM {landed}"))
+        return int(rows[0][0])
+    counted = await engine.execute_engine(
+        f"SELECT COUNT(*) FROM {target}", authorization=authorization
+    )
+    return int(counted.rows[0][0])
+
+
 def _mv_definition_version(mv: MVDefinition) -> str:  # REQ-862
     from provisa.mv.delta import definition_version_of
 
@@ -820,6 +835,33 @@ async def refresh_mv(  # REQ-135, REQ-160, REQ-235, REQ-879, REQ-1760
                 mv.last_error = str(quota_exc.detail)
                 log.warning("MV %s: %s", mv.id, quota_exc.detail)
                 return
+
+        # REQ-2249: a view kept by its code resolver's @change function is refreshed through it --
+        # whole, or by the cursor stored after its last successful run -- never recomputed here.
+        from provisa.mv.change_refresh import kept_by_change, refresh_by_change  # noqa: PLC0415
+
+        kept = await kept_by_change(state, mv)
+        if kept is not None:
+            await refresh_by_change(state, engine, mv, kept, full=full)
+            row_count = await _landed_count(engine, mv, target, authorization)
+            if coordinated:
+                assert ledger is not None and writer is not None
+                from provisa.mv.coordination import commit_refresh  # noqa: PLC0415
+
+                if not await commit_refresh(
+                    ledger,
+                    mv.id,
+                    writer,
+                    row_count=row_count,
+                    input_version=target_token,
+                    definition_version=_mv_definition_version(mv),
+                    snapshot_id=None,
+                ):
+                    log.warning("MV %s: lease lost during refresh — result discarded", mv.id)
+                    return
+            registry.mark_refreshed(mv.id, row_count)
+            mv.last_input_token = target_token  # REQ-881
+            return
 
         # REQ-2109: a view inheriting its versions rebuilds only the valid dates its input changed
         # since its watermark; with none changed nothing is appended.

@@ -31,8 +31,11 @@ test("auto-impute fires and returns integer-id edges for meta node query", async
   );
 
   // Enable auto-impute if not already active (button name changes based on state)
+  // The graph page loads once the role's reads answer, which wait behind a schema rebuild of the
+  // org when one is running: as the lane's first spec, 9.8 s after the start-up replica builds
+  // (run 43521446753), longer than a 10 s wait for the page.
   const imputeBtn = page.locator('button[aria-label*="Auto-impute"]').first();
-  await imputeBtn.waitFor({ timeout: 10000 });
+  await imputeBtn.waitFor({ timeout: 60000 });
   const isActive = await imputeBtn.evaluate((el) => el.classList.contains("gf-icon-btn--on"));
   if (!isActive) {
     await imputeBtn.click();

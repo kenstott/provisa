@@ -128,6 +128,15 @@ export interface ProductDqEntry {
   rules: ProductDqRule[]; // its checks, in the order authored
   latest_outcome: "pass" | "fail" | null; // null when it has never run
   latest_run_at: string | null;
+  /** The checks of its latest run that did not pass; none when it passed or never ran. */
+  failing_checks: ProductFailingCheck[];
+}
+
+/** One check of a checker's latest run that did not pass: its name, column and outcome. */
+export interface ProductFailingCheck {
+  name: string;
+  column: string | null;
+  outcome: string;
 }
 
 /** REQ-2157: a product's data quality. Expectations and promises are its own checks on its inputs

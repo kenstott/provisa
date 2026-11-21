@@ -90,7 +90,9 @@ def test_extension_connectors_attach_under_a_private_alias(source_type):
         database="d",
         username="u",
         password="p",
-        path=None,
+        # A firebird source names its database file in `path` (the Sources form routes it there);
+        # the connector refuses one without it.
+        path="/data/d.fdb" if source_type == "firebird" else None,
         base_url="grpc://h:1",
         federation_hints={"project": "proj"},
         mapping={},

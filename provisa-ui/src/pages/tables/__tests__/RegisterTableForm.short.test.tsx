@@ -8,12 +8,13 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// The short register step: what names the table, and only what the server will not do without.
-// The rest is the editor's, which opens on the draft once it is registered.
+// Register Table (REQ-2234) asks what names the tables -- source, domain, schema, tables -- and
+// nothing the table's panel holds: every other setting is edited there once it is registered.
 
 import { describe, expect, it, vi } from "vitest";
 import userEvent from "@testing-library/user-event";
 import { render, screen, waitFor } from "../../../test-utils/render";
+import { held, openTables, submitTables, tableOption } from "./registerFormHelpers";
 
 vi.mock("../../../context/DomainFilterContext", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../../context/DomainFilterContext")>()),
@@ -28,11 +29,32 @@ vi.mock("../../../hooks/useAdminQueries", async (importOriginal) => ({
     loading: false,
   }),
 }));
+const readColumns = async () => [
+  { name: "id", dataType: "integer", isPrimaryKey: true, comment: null, nativeFilterType: null },
+  { name: "name", dataType: "varchar", isPrimaryKey: false, comment: null, nativeFilterType: null },
+];
+vi.mock("../../../hooks/useAvailableColumnsMetadataLazy", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../../hooks/useAvailableColumnsMetadataLazy")>()),
+  useReadColumns: () => readColumns,
+}));
+const registerTables = vi.fn();
+vi.mock("../../../hooks/useTableQueries", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../../hooks/useTableQueries")>()),
+  useRegisterTables: () => ({ registerTables, loading: false }),
+}));
+vi.mock("../../../api/admin", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../../api/admin")>()),
+  fetchTableUniqueConstraints: vi.fn().mockResolvedValue([]),
+}));
 
 const { RegisterTableForm } = await import("../RegisterTableForm");
 
 function renderForm(domainHints: string[]) {
-  const onContinue = vi.fn();
+  registerTables
+    .mockReset()
+    .mockResolvedValue([
+      { tableName: "getStore", result: { success: true, message: "", params: { id: 1 } } },
+    ]);
   render(
     <RegisterTableForm
       sources={[{ id: "petstore", type: "openapi", allowedDomains: [] } as never]}
@@ -42,61 +64,57 @@ function renderForm(domainHints: string[]) {
       domainsEnabled={true}
       tables={[]}
       roles={[{ id: "admin" } as never]}
-      getAvailableColumnsMetadata={vi.fn().mockResolvedValue([
-        { name: "id", dataType: "integer", isPrimaryKey: true },
-        { name: "name", dataType: "varchar" },
-      ])}
       suggestTableAlias={vi.fn().mockResolvedValue("")}
-      onContinue={onContinue}
+      onContinue={vi.fn()}
       onCancel={() => {}}
       onProductsRegistered={vi.fn()}
       onRegisteredMany={vi.fn()}
       setError={vi.fn()}
+      initialSourceId="petstore"
     />,
   );
-  return { onContinue };
 }
 
-async function pick(domain?: string) {
-  const user = userEvent.setup();
-  await user.selectOptions(screen.getByTestId("register-table-source-select"), "petstore");
-  if (domain) await user.selectOptions(screen.getByTestId("register-table-domain-select"), domain);
-  await user.selectOptions(await screen.findByTestId("register-table-table-select"), "getStore");
-  await screen.findByTestId("register-table-columns-summary");
-  return user;
+/** getStore picked, in `domain` when one is asked, and registered; what it sent. */
+async function register(domain?: string) {
+  if (domain)
+    await userEvent.selectOptions(screen.getByTestId("register-table-domain-select"), domain);
+  const user = await openTables();
+  await waitFor(() => expect(held("getStore")).toBe(false));
+  await user.click(tableOption("getStore"));
+  await user.click(submitTables());
+  await waitFor(() => expect(registerTables).toHaveBeenCalled());
+  return registerTables.mock.calls[0][0][0];
 }
 
-describe("RegisterTableForm — the short step", () => {
-  it("asks only what names the table, none of what the editor holds", async () => {
+describe("RegisterTableForm asks only what names the tables", () => {
+  it("asks none of what the table's panel holds", async () => {
     renderForm(["sales"]);
-    await pick();
-    expect(screen.getByTestId("register-table-alias")).toBeInTheDocument();
+    await openTables();
     for (const absent of [
+      "register-table-alias",
       "register-table-domain-select",
       "register-table-region-select",
       "register-table-watermark-select",
+      "register-table-cache-ttl",
+      "register-table-description",
       "register-table-col-selected-id",
       "uniques-panel",
       "discover-columns-checkbox",
+      "declared-columns",
+      "register-table-vector-models",
     ])
       expect(screen.queryByTestId(absent)).toBeNull();
-    expect(screen.queryByPlaceholderText(/appears in sdl docs/i)).toBeNull();
   });
 
   it("asks the domain when there is more than one to choose from", async () => {
-    const { onContinue } = renderForm(["sales", "finance"]);
-    const user = await pick("finance");
-    await user.click(screen.getByTestId("register-table-submit"));
-    await waitFor(() => expect(onContinue).toHaveBeenCalled());
-    expect(onContinue.mock.calls[0][0].input.domainId).toBe("finance");
+    renderForm(["sales", "finance"]);
+    expect((await register("finance")).domainId).toBe("finance");
   });
 
-  it("hands on every discovered column with its type, in the one domain, for the table's settings", async () => {
-    const { onContinue } = renderForm(["sales"]);
-    const user = await pick();
-    await user.click(screen.getByTestId("register-table-submit"));
-    await waitFor(() => expect(onContinue).toHaveBeenCalled());
-    const input = onContinue.mock.calls[0][0].input;
+  it("registers every discovered column with its type, in the one domain", async () => {
+    renderForm(["sales"]);
+    const input = await register();
     expect(input.domainId).toBe("sales");
     expect(input.description).toBe("The store");
     expect(

@@ -1,0 +1,23 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# The break queue, least time to the cutoff first: each break, what differs, the minutes left
+# before its market's cutoff and what a failed settlement would accrue a day.
+query BreakQueue {
+  p__viewBreakQueue(order_by: [{ minutesToCutoff: asc }, { penaltyPerDay: desc }], limit: 20) {
+    tradeRef
+    security
+    brokerCode
+    breakType
+    detail
+    minutesToCutoff
+    currency
+    penaltyPerDay
+  }
+}

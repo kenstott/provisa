@@ -7,7 +7,7 @@
     "redirectHint": "所有結果重新導向至 S3",
     "queryStats": "查詢統計",
     "schemaError": "結構描述錯誤：{{message}}",
-    "redirectReady": "重新導向已就緒 — {{rowCount}} 列（{{contentType}}）",
+    "redirectReady": "重新導向已準備就緒：{{rowCount}} 行（{{contentType}}）",
     "download": "下載",
     "dismissRedirect": "關閉重新導向通知",
     "formatNone": "無",

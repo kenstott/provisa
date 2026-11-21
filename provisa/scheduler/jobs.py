@@ -145,14 +145,9 @@ async def compact_otel_signals() -> None:  # REQ-302, REQ-303
         if state.shared_federation_engine.landed_signals:
             from provisa.observability import native_traces
 
-            from provisa.core.limits import longest_request_timeout
-
-            # A merged batch is kept while a request's read could still hold its listing.
-            merged = await asyncio.to_thread(
-                native_traces.compact,
-                native_traces.traces_dir(),
-                grace_s=longest_request_timeout(),
-            )
+            # A merged file is kept past any listing begun before its merged copy was in place
+            # (native_traces.MERGED_GRACE_S), and the folder stays within day_file_bound (#338).
+            merged = await asyncio.to_thread(native_traces.compact, native_traces.traces_dir())
             logger.debug("compact_otel: merged %d native trace files", merged)
         return
 
@@ -1025,6 +1020,7 @@ async def _audit_reaped(org_id: str, name: str, outcome: dict) -> None:
 
     await record_admin_action(
         await _org_model_db(org_id),
+        org_id=org_id,
         action="environment.expired",
         actor_id="platform",
         subject_id=name,
@@ -1033,19 +1029,22 @@ async def _audit_reaped(org_id: str, name: str, outcome: dict) -> None:
 
 
 def new_scheduler(holders: "Holders | None" = None) -> AsyncIOScheduler:
-    """An AsyncIOScheduler whose wakeup chain never inherits a request's trace context.
+    """An AsyncIOScheduler whose wakeup chain never inherits a request's context.
 
     ``holders`` (REQ-1900, REQ-1922): the server's scheduler passes its ``Holders``, so the
     deployment's jobs run in one worker process only, and each region's jobs in one of its own.
 
-    ``add_job`` on a running scheduler calls ``wakeup`` synchronously, and ``wakeup`` re-arms the
-    timer with ``call_later`` -- which copies the CALLER's contextvars. A job registered from inside
-    a request (the event-loop poll jobs a runtime build registers, REQ-1623) re-rooted the whole
-    chain in that request's context, and every job the scheduler ran afterwards, including ones
-    registered at startup, emitted its spans under that request's trace. Wrapping ``wakeup`` keeps
-    the chain rootless whoever last called ``add_job``.
+    ``add_job`` on a running scheduler calls ``wakeup`` synchronously, and ``wakeup`` hands
+    ``_process_jobs`` to the loop and re-arms the timer with ``call_later`` -- both copy the
+    CALLER's contextvars. A job registered from inside a request (the event-loop poll jobs a
+    runtime build registers, REQ-1623) re-rooted the whole chain in that request's context, and
+    every job the scheduler ran afterwards, including ones registered at startup, ran in it: its
+    spans under that request's trace, and -- REQ-074/REQ-1386 -- its governed statements (a view's
+    build, governed as the region's administrator) audited as that request's user on that
+    request's surface. ``wakeup`` therefore runs in a context of its own, empty: the chain holds
+    nothing of whoever last called ``add_job``, and each job binds what it needs (its org).
     """
-    from provisa.otel_compat import detached_trace_context
+    import contextvars
 
     from provisa.scheduler.executor import background_scheduler
 
@@ -1054,8 +1053,7 @@ def new_scheduler(holders: "Holders | None" = None) -> AsyncIOScheduler:
     inner = scheduler.wakeup
 
     def wakeup() -> None:
-        with detached_trace_context():
-            inner()
+        contextvars.Context().run(inner)
 
     scheduler.wakeup = wakeup  # type: ignore[method-assign]
     return scheduler
@@ -1150,11 +1148,8 @@ async def register_org_triggers(  # REQ-1003, REQ-1266
         from provisa.audit.sla_monitor import register_org_sla
 
         register_org_sla(scheduler, org_id)
-        # REQ-2077: and its role grants, swept of the expired and the unused.
-        from provisa.auth.role_grants import register_org_role_grants
-
-        register_org_role_grants(scheduler, org_id)
-        # REQ-2219: and its entitlement expiry rules, each's expiring-soon and expired events.
+        # REQ-2077, REQ-2219: and its one expiry run: role grants swept of the expired and the
+        # unused, each entitlement entry's expiring-soon and expired events, one notice for both.
         from provisa.entitlements.expiry_run import register_org as register_org_expiry_run
 
         register_org_expiry_run(scheduler, org_id)

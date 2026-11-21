@@ -559,7 +559,9 @@ def _replicate_mutation(db: Database):
 
     rebuild = AsyncMock()
     # A bound engine that reads PostgreSQL in place: only the operator's settings land a table.
-    state = SimpleNamespace(config=None, tables=[], federation_engine=build_engine("trino"))
+    state = SimpleNamespace(
+        config=None, tables=[], federation_engine=build_engine("trino"), org_registry={}
+    )
     return (
         schema_mutation.Mutation(),
         rebuild,

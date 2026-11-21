@@ -38,7 +38,8 @@ from provisa.transpiler.metadata_server_forms import SERVER_FORM_RAISE
 from provisa.transpiler.native_json import resolve_native_json
 from provisa.transpiler.native_subtype import resolve_reads
 from provisa.transpiler.pg_forms_json import json_member
-from provisa.transpiler.pg_literals import exact_inputs, postgres_literals
+from provisa.transpiler.polyfill import ported as polyfill_ported
+from provisa.transpiler.pg_literals import array_inputs, exact_inputs, postgres_literals
 from provisa.transpiler.to_char import to_char_for_duckdb
 from provisa.transpiler.transpile_correlated import (
     rewrite_correlated_subqueries_for_trino,
@@ -582,11 +583,28 @@ def _rewrite_to_json_for_trino(sql: str) -> str:
     Trino has no to_json; its CAST(x AS JSON) already ENCODES a scalar/struct as a JSON value (the
     same semantics to_json gives on Postgres/DuckDB). The Cypher map-literal path emits to_json so the
     parse-semantics engines (Postgres/DuckDB) encode bare strings correctly; here it maps back to the
-    Trino spelling."""
+    Trino spelling.
+
+    A to_json that is a JSON object's value is its JSON text marked FORMAT JSON: Trino's
+    JSON_OBJECT casts a value of type JSON to varchar, which no array or object survives, and reads
+    text marked FORMAT JSON as the JSON it holds (REQ-2176: a session node's labels)."""
     # Parse failure must fail loud: returning input skips the required Trino rewrite.
     tree = sqlglot.parse_one(sql, read="trino")
 
     def _transform(node: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
+        value = node.expression if isinstance(node, exp.JSONKeyValue) else None
+        if (
+            isinstance(value, exp.Anonymous)
+            and value.name.upper() == "TO_JSON"
+            and len(value.expressions) == 1
+        ):
+            encoded = exp.Cast(
+                this=value.expressions[0].transform(_transform),
+                to=exp.DataType(this=exp.DataType.Type.JSON),
+            )
+            return exp.JSONKeyValue(
+                this=node.this, expression=exp.FormatJson(this=exp.JSONFormat(this=encoded))
+            )
         if isinstance(node, exp.Anonymous) and node.name.upper() == "TO_JSON":
             if len(node.expressions) == 1:
                 # Recurse into the argument: sqlglot's transform walks pre-order and does not
@@ -762,8 +780,9 @@ def _row_delimited_string_agg(tree: exp.Expr) -> exp.Expr:  # REQ-2167
 
 #: The calls of DuckDB's that take a zone's text, by name: the position of the zone, the number
 #: of arguments, and whether PostgreSQL reads a number in it as POSIX does (west of UTC) or as a
-#: numeric zone (make_timestamptz's, ISO 8601's: east).
-_ZONE_ARGUMENTS = {"timezone": (0, 2, True), "make_timestamptz": (6, 7, False)}
+#: numeric zone (make_timestamptz's, ISO 8601's: east). timezone()'s zone is the polyfill grid's
+#: row (provisa.transpiler.polyfill.zones).
+_ZONE_ARGUMENTS = {"make_timestamptz": (6, 7, False)}
 
 
 def _posix_zones_for_duckdb(tree: exp.Expr) -> None:  # REQ-2167
@@ -985,6 +1004,29 @@ def _like_escape_written(pg_sql: str, target_dialect: str) -> str:
     return escape_likes(sqlglot.parse_one(pg_sql, read="postgres")).sql(
         dialect="postgres", copy=False
     )
+
+
+_LIKE_SAID = re.compile(r"like\b|~~|\bescape\b", re.IGNORECASE)
+
+
+def _like_patterns_read(pg_sql: str, target_dialect: str) -> str:
+    """``pg_sql`` with each LIKE pattern in ClickHouse's form, its ESCAPE read (REQ-2167):
+    ClickHouse's LIKE has no ESCAPE clause, and its backslash escapes only %, _ and itself."""
+    if target_dialect != "clickhouse" or _LIKE_SAID.search(pg_sql) is None:
+        return pg_sql
+    from provisa.transpiler import like_patterns
+
+    return like_patterns.written(pg_sql)
+
+
+def _stamp_inputs_held(pg_sql: str, target_dialect: str) -> str:
+    """``pg_sql`` with each text cast to a timestamp without its offset, as PostgreSQL's input
+    drops it (REQ-2167): ClickHouse's cast reads it."""
+    if target_dialect != "clickhouse" or "TIMESTAMP" not in pg_sql.upper():
+        return pg_sql
+    from provisa.transpiler.polyfill import instants
+
+    return instants.wall_inputs(pg_sql)
 
 
 def _null_order_as_key(tree: exp.Expr) -> exp.Expr:
@@ -1259,6 +1301,20 @@ def rewrite_json_object_to_build_object(pg_sql: str) -> str:  # REQ-902
     while list(tree.find_all(exp.JSONObject)):
         tree = tree.transform(_transform)
     return pg_syntax.overlaps_restored(tree).sql(dialect="postgres")
+
+
+def direct_physical(sql: str, dialect: str) -> str:
+    """``sql``, transpiled to ``dialect``, as it is sent DIRECT to one source of that dialect.
+
+    PostgreSQL types JSON_OBJECT(...) as jsonb when any of its arguments is jsonb and as json
+    otherwise, so two JSON values of one column (a Cypher node union's arms, one label reading a
+    jsonb column and another none) were of two types, and PostgreSQL refused the statement: "UNION
+    could not convert type jsonb to json". json_build_object is json whatever it holds, as the pg
+    engine already sends it (rewrite_json_object_to_build_object, REQ-902).
+    """
+    if dialect != "postgres":
+        return sql
+    return rewrite_json_object_to_build_object(sql)
 
 
 def postgres_try_casts(tree: exp.Expr) -> exp.Expr:  # REQ-778
@@ -1890,6 +1946,9 @@ def clickhouse_try_casts(tree: exp.Expr) -> exp.Expr:  # REQ-778
 
 
 #: The targets whose own null-on-failure cast sqlglot does not write (REQ-778).
+#: The dialects whose cast does not read an array's text form ('{1,2}'), array_in's.
+_ARRAY_TEXT_UNREAD = ("trino", "presto", "athena", "clickhouse")
+
 _OWN_TRY_CASTS = {
     "postgres": postgres_try_casts,
     "snowflake": snowflake_try_casts,
@@ -1914,6 +1973,8 @@ def transpile(
     Returns:
         SQL string in target dialect.
     """
+    # REQ-2167: a call ClickHouse answers in DuckDB's form, held out of what follows.
+    pg_sql, ported = polyfill_ported.held_out(pg_sql, target_dialect)
     pg_sql = pg_forms_type_io.readable(pg_sql, target_dialect)  # REQ-2171
     pg_sql = _within_group_unqualified(pg_sql)
     if target_dialect != "duckdb":  # DuckDB's form is pg_functions.typed_calls'
@@ -1952,6 +2013,8 @@ def transpile(
         pg_sql = unalias_write_target(pg_sql)
     pg_sql = _every_match_unflagged(pg_sql, target_dialect)
     pg_sql = _like_escape_written(pg_sql, target_dialect)
+    pg_sql = _like_patterns_read(pg_sql, target_dialect)
+    pg_sql = _stamp_inputs_held(pg_sql, target_dialect)
     pg_sql = _instants_as_utc(pg_sql, target_dialect)
     lowered = _lower_universal_regex(pg_sql, target_dialect)
     if target_dialect == "postgres" and "FILTER(" in pg_sql.upper():
@@ -2006,6 +2069,12 @@ def transpile(
     # REQ-2171: each read of an instant in the session's zone, on what is not told it. Before the
     # functions, so what they write of their own text is not read as a statement's.
     lowered = zoned_instants.written(pg_sql, lowered, target_dialect)
+    if target_dialect in _ARRAY_TEXT_UNREAD:
+        # REQ-2171: an array's text form as its elements, before a function's form reads it. Each
+        # cast is read on the tree (REQ-913), never by a substring of the statement.
+        lowered = array_inputs(
+            lowered if lowered is not None else sqlglot.parse_one(pg_sql, read="postgres")
+        )
     if function_macros.mentioned(pg_sql, target_dialect):
         # REQ-2167: each function the target does not have, in its form there, or refused by name.
         lowered = function_macros.inline(
@@ -2070,6 +2139,7 @@ def transpile(
         )
     from provisa.observability.stage_trace import trace_stage
 
+    result = ported.restored(result)
     trace_stage(f"transpile.{target_dialect}", result)
     return result
 
@@ -2134,17 +2204,23 @@ def literals_as_said(tree: exp.Expr) -> exp.Expr:  # REQ-2171
 
 
 #: A timestamp on ClickHouse: its DateTime has no fraction, and Arrow reads it as a count of seconds.
-_CLICKHOUSE_INSTANT = "Nullable(DateTime64(6, 'UTC'))"
+_CLICKHOUSE_INSTANT = zoned_instants.CLICKHOUSE_INSTANT
 
 
 def clickhouse_semantics(tree: exp.Expr) -> exp.Expr:  # REQ-2171
     """``tree`` with what ClickHouse would read otherwise said for it. A timestamp keeps its
-    microseconds and reads as one, a time is read by toTime64 (its Time reads PostgreSQL's text as
-    NULL), and a hex has no leading zeros, as to_hex has none. A refusal (pg_forms_types.refused), the cast of a text that is no
+    microseconds and reads as one, a time of day is held as its microseconds (polyfill.clocks: the
+    server has no Time64) and shown as time_out's text, and a hex has no leading zeros, as to_hex has none. A refusal (pg_forms_types.refused), the cast of a text that is no
     number, raises: sqlglot writes a cast as Nullable, which reads such a text as NULL. Its argument
     is materialized so the refusal is not folded in a branch the statement does not take."""
 
+    from provisa.transpiler.polyfill import clickhouse, clocks, instants
+
     def said(node: exp.Expr) -> exp.Expr:
+        outside = instants.outside_cast(node)
+        if outside is not None:
+            # REQ-2167: a literal DateTime64 would hold at its type's end raises 0A000.
+            return outside
         if isinstance(node, exp.CurrentTimestamp):
             return exp.Anonymous(
                 this="now64", expressions=[exp.Literal.number(6), exp.Literal.string("UTC")]
@@ -2155,12 +2231,17 @@ def clickhouse_semantics(tree: exp.Expr) -> exp.Expr:  # REQ-2171
         ):
             return exp.DataType.build(_CLICKHOUSE_INSTANT, dialect="clickhouse")
         if isinstance(node, exp.Cast) and node.to.is_type(exp.DataType.Type.TIME):
-            value = node.this
-            while isinstance(value, exp.Cast) and value.to.is_type(exp.DataType.Type.TIME):
-                value = value.this
-            # Its OrNull reads what the literal's own refuses, and a NULL it cannot.
-            reader = "toTime64" if isinstance(value, exp.Literal) else "toTime64OrNull"
-            return exp.Anonymous(this=reader, expressions=[value, exp.Literal.number(6)])
+            # REQ-2236: a time of day held as its microseconds (polyfill.clocks): the server has
+            # no Time64.
+            return clocks.cast(node, said, clickhouse.clock_micros)
+        clock = clocks.semantics(node, said)
+        if clock is not None:
+            return clock
+        if isinstance(node, exp.Date) and not node.args.get("zone"):
+            # REQ-2236: its DATE() is toDate, a Date of 1970 to 2149; PostgreSQL's day of a value
+            # held as DateTime64(6, 'UTC') or Date32 is Date32's, exact from 1900 to 2299.
+            # The new node is not walked again: its value is said here.
+            return exp.Anonymous(this="toDate32", expressions=[node.this.transform(said)])
         if isinstance(node, exp.Hex):
             return exp.Anonymous(
                 this="replaceRegexpOne",
@@ -2180,7 +2261,8 @@ def clickhouse_semantics(tree: exp.Expr) -> exp.Expr:  # REQ-2171
             )
         return node
 
-    return tree.transform(said)
+    # A time in the select list reaches the client as time_out's text (polyfill.clocks).
+    return clocks.select_shown(tree, tree.transform(said))
 
 
 def _lower_universal_regex(pg_sql: str, target_dialect: str) -> exp.Expr | None:  # REQ-2142
@@ -2240,9 +2322,10 @@ def _regex_found(value: exp.Expr, pattern: str, target_dialect: str) -> exp.Expr
 
 # Where REGEXP_REPLACE with the 'g' flag means every match as it does in PostgreSQL. Everywhere
 # else its three-argument form already replaces every match, and a fourth argument is something
-# other than flags (Trino's is a function, Snowflake's and MySQL's a position).
+# other than flags (Snowflake's and MySQL's a position).
 _REGEXP_FLAGS_KEPT = frozenset({"postgres", "duckdb"})
-_FIRST_MATCH_WRITTEN = frozenset({"trino", "presto", "athena", "clickhouse"})
+#: Where the polyfill grid's regexp_replace row reads the flags (provisa.transpiler.polyfill.regex).
+_FLAGS_IN_THE_GRID = frozenset({"trino", "presto", "athena", "clickhouse"})
 
 
 def _every_match_unflagged(pg_sql: str, target_dialect: str) -> str:  # REQ-263
@@ -2252,26 +2335,38 @@ def _every_match_unflagged(pg_sql: str, target_dialect: str) -> str:  # REQ-263
         return pg_sql
     if target_dialect == "duckdb":
         return _flag_past_n(pg_sql)
+    if target_dialect in _FLAGS_IN_THE_GRID:
+        return _no_flags_said(pg_sql)
     if target_dialect in _REGEXP_FLAGS_KEPT:
         return pg_sql
     tree = sqlglot.parse_one(pg_sql, read="postgres")
-    replaces = list(tree.find_all(exp.RegexpReplace))
     flagged = [
         node
-        for node in replaces
+        for node in tree.find_all(exp.RegexpReplace)
         if isinstance(node.args.get("modifiers"), exp.Literal)
         and node.args["modifiers"].this == "g"
     ]
-    first_only = target_dialect in _FIRST_MATCH_WRITTEN
-    if not flagged and not first_only:
+    if not flagged:
         return pg_sql
     for node in flagged:
         node.set("modifiers", None)
-    if first_only:  # PostgreSQL replaces the first match unless the 'g' flag says every one
-        for node in replaces:
-            positioned = node.args.get("position") is not None  # its row reads the start and N
-            if node not in flagged and node.args.get("modifiers") is None and not positioned:
-                node.set("modifiers", exp.Literal.string(function_macros.FIRST_MATCH))
+    return tree.sql(dialect="postgres")
+
+
+def _no_flags_said(pg_sql: str) -> str:
+    """``pg_sql`` with each REGEXP_REPLACE the statement gives no flags given none (''), which
+    PostgreSQL reads as the same call: the grid's row reads a call's flags, and a call of three
+    arguments a rewrite writes (a regex mask's) is every match, as sqlglot writes one."""
+    tree = sqlglot.parse_one(pg_sql, read="postgres")
+    unflagged = [
+        node
+        for node in tree.find_all(exp.RegexpReplace)
+        if node.args.get("modifiers") is None and node.args.get("position") is None
+    ]
+    if not unflagged:
+        return pg_sql
+    for node in unflagged:
+        node.set("modifiers", exp.Literal.string(""))
     return tree.sql(dialect="postgres")
 
 

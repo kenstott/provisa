@@ -28,6 +28,7 @@ from provisa.codesource.languages import CODE_SOURCE_TYPES
 from provisa.core.repositories.identity import TableInIdentity
 from provisa.core.models import (
     ControlPlaneConfig,
+    DataProduct,
     Domain,
     STORED_MODEL,
     ProvisaConfig,
@@ -337,6 +338,38 @@ def parse_config_dict(data: dict, *, stored: bool = False) -> ProvisaConfig:  # 
     return config
 
 
+def sections_as_written(data: dict) -> dict:  # REQ-1557
+    """``data`` with its sections as :func:`parse_config_dict` reads them (views and Kafka
+    topics as tables), and nothing resolved: what a caller's rights are asked of before a
+    reference in the document is read."""
+    import copy
+
+    return kafka_topics_as_tables(commit_time_columns(views_as_tables(copy.deepcopy(data))))
+
+
+def invalid_text(refusal: ValueError, data: dict) -> str:  # REQ-1557
+    """What to tell the caller whose config ``data`` was refused by ``refusal``, carrying no
+    value a ``${env:...}`` in it resolved to: a validation's errors without the input each
+    refused (the resolved document), and any such value the remaining text holds replaced by
+    the name of the variable that gave it."""
+    import os
+
+    from pydantic import ValidationError
+
+    from provisa.core.env_reference_guard import env_names
+
+    if isinstance(refusal, ValidationError):
+        errors = refusal.errors(include_input=False, include_url=False, include_context=False)
+        text = "; ".join(f"{'.'.join(str(p) for p in e['loc'])}: {e['msg']}" for e in errors)
+    else:
+        text = str(refusal)
+    for name in sorted(set(env_names(data))):
+        value = os.environ.get(name)
+        if value:
+            text = text.replace(value, f"(the value of {name})")
+    return text
+
+
 def _code_secrets_as_written(data: dict, resolve: Any) -> dict:
     """``resolve(data)``, but the mapping values resolved at use kept as the references written:
     a code source's declared secrets (REQ-2104), each resolved only when the code reads it,
@@ -440,7 +473,8 @@ async def _upsert_sources(conn: "Connection", config: ProvisaConfig) -> None:  #
     """Add each source the config declares to the store, or replace its definition. Stored as
     written: a credential's reference, never its value."""
     for src in config.written.sources:
-        await source_repo.upsert(conn, src)
+        # REQ-1921: a configuration carries a withdrawn source as withdrawn.
+        await source_repo.upsert(conn, src, withdrawn=src.withdrawn)
 
 
 def resolved_source(source: Source) -> Source:  # REQ-1919
@@ -467,7 +501,7 @@ def register_sources(  # REQ-012, REQ-1266, REQ-1730, REQ-1919
         try:
             engine.register_source(
                 src,
-                resolve_secrets(src.password),
+                resolve_secrets(src.password, credential=True),
                 catalog_name=(catalog_names or {}).get(src.id),
             )
         except Exception:
@@ -731,7 +765,8 @@ async def _upsert_single_table(
     # REQ-1426: data_type is design-time metadata — the config carries it and nothing infers it
     # here. A column that reaches this point untyped means the design was never completed; the
     # repository refuses it rather than persisting a hole the catalog renders as "unknown".
-    await table_repo.upsert(conn, tbl)
+    # REQ-1921: a configuration carries a withdrawn table as withdrawn.
+    await table_repo.upsert(conn, tbl, withdrawn=tbl.withdrawn)
 
     if src and src.type.value == "openapi" and src.base_url:
         spec = openapi_specs.get(src.id, {})
@@ -1103,12 +1138,7 @@ async def set_product_members(  # REQ-1634
         table_ids = []
         waiting = None
         for name in dp.tables:
-            parts = name.split(".")
-            row = (
-                await table_repo.get_by_name(conn, *parts)
-                if len(parts) == 3
-                else await table_repo.find_by_table_name(conn, name)
-            )
+            row = await _product_table(conn, name)
             if row is None:
                 if defer_unregistered and name not in declared:
                     waiting = name
@@ -1125,6 +1155,45 @@ async def set_product_members(  # REQ-1634
             )
         except data_product_repo.MembershipRefused as refused:
             raise ValueError(f"data product {dp.id!r}: {refused}") from refused
+        await _save_declared_offers(conn, dp)
+
+
+async def _product_table(conn: "Connection", name: str) -> dict | None:
+    """The registered table a data product names: by its alias, else its table name, or as
+    ``source.schema.table``; None when no registration holds it."""
+    parts = name.split(".")
+    if len(parts) == 3:
+        return await table_repo.get_by_name(conn, *parts)
+    return await table_repo.find_by_table_name(conn, name)
+
+
+async def _save_declared_offers(conn: "Connection", dp: DataProduct) -> None:  # REQ-2180
+    """Each offer ``dp`` declares added, or replacing the product's offer of its name; a sample's
+    views named as the product's tables are. An offer the store refuses fails the load, naming the
+    product. A sample's views are checked against the published build by the build the load is
+    followed by, which lists a sample that does not hold for review (REQ-2180, amended
+    2026-11-16), and derives their contracts."""
+    from provisa.core.models import DataProductOffer
+    from provisa.core.repositories import data_product_offer as offer_repo
+
+    held = {o["name"]: o["id"] for o in await offer_repo.list_offers(conn, dp.id)}
+    for declared in dp.offers:
+        views = []
+        for name in declared.sample_views:
+            row = await _product_table(conn, name)
+            if row is None:
+                raise ValueError(
+                    f"data product {dp.id!r}: offer {declared.name!r} names view {name!r}, "
+                    "which no registration holds"
+                )
+            views.append(int(row["id"]))
+        offer = DataProductOffer.model_validate({**declared.model_dump(), "sample_views": views})
+        try:
+            await offer_repo.save_declared(conn, dp.id, offer, offer_id=held.get(offer.name))
+        except offer_repo.OfferRefused as refused:
+            raise ValueError(
+                f"data product {dp.id!r}: offer {declared.name!r}: {refused}"
+            ) from refused
 
 
 async def _load_after_tables(  # REQ-1919
@@ -1463,7 +1532,11 @@ async def _apply_in_txn(  # REQ-012, REQ-013, REQ-016, REQ-041, REQ-250, REQ-126
     # upsert_declared_term upserts by name (its unique key); an apply removes nothing.
     for gt in config.glossary_terms:
         await glossary_repo.upsert_declared_term(
-            conn, gt.name, definition=gt.definition, domains=set(gt.domains)
+            conn,
+            gt.name,
+            definition=gt.definition,
+            calculation_method=gt.calculation_method,  # REQ-2243
+            domains=set(gt.domains),
         )
 
     # 4.7 Calendars (REQ-2120): before the tables, whose views name one as their mv_calendar.
@@ -1752,6 +1825,21 @@ def _validate_triggers(config) -> None:  # REQ-2054
         refused = trigger_refusal(trigger, commands=commands, tables=tables, roles=roles)
         if refused is not None:
             raise ValueError(refused)
+
+
+def _validate_destinations(config) -> None:  # REQ-2006
+    """A configuration a held org's admin applies names public destinations only for its webhooks
+    and the URLs its scheduled triggers call, refused by name as a save of either is (REQ-2006,
+    amended 2026-11-16); each is checked again at each call. Any other org's reaches what it
+    names. A demo's own configuration, which builds its template and the orgs seeded with it, is
+    the operator's (``sandbox_egress``) and is not judged here."""
+    from provisa.security import sandbox_egress
+
+    for webhook in config.webhooks:
+        sandbox_egress.require_endpoint_url_allowed(webhook.url)
+    for trigger in config.scheduled_triggers:
+        if trigger.url:
+            sandbox_egress.require_endpoint_url_allowed(trigger.url)
 
 
 def _validate_paging(config) -> None:  # REQ-318
@@ -2203,6 +2291,9 @@ async def reset_model(conn: "Connection") -> None:  # REQ-1919
         # A calendar is removed by name, every version at once (integrity.discard).
         ("calendar", await _ids(select(calendars.c.name).distinct())),
     ]
+    # REQ-2248 (ruling 2026-11-15): a demo organisation's rebuild from its configuration is a
+    # built-in seed, so it DELETES its model rather than retiring it; the apply that follows
+    # declares the same objects again. Nothing else deletes a person's model objects.
     for kind, idents in order:
         for ident in idents:
             if kind == "table":
@@ -2359,6 +2450,7 @@ async def apply_config(  # REQ-1919, REQ-164
     ``engine`` decides only the names tables are registered under. Returns the source ids whose
     change feed could not be reached.
     """
+    _validate_destinations(config)
     # Nothing registers a table after an admin's apply: every relationship registers now.
     return await _apply(
         config, conn, engine, label="configuration applied", defer_unregistered=False
@@ -2401,6 +2493,7 @@ async def dry_run_config(  # REQ-2222
     from provisa.core.model_row_rules import unnarrowed
     from provisa.core.store_config import model_changes, store_model
 
+    _validate_destinations(config)
     async with model_change.committed_by_caller():
         with domain_policy.trial(), unnarrowed():
             try:

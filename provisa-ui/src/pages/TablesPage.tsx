@@ -8,12 +8,13 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
+import { DestructiveConfirmButton } from "../components/form/DestructiveConfirmButton";
 import { PageTitle } from "../components/PageTitle";
 import type { MaskEntry } from "../lib/masks";
 import { NEVER_EXPIRES, ttlText } from "../components/form/cacheTtl";
 import { resultRedirectText } from "../components/resultRedirectText";
 import { Tip } from "../components/Tip";
-import { useSetTableDraft, useRegionChoices } from "../hooks/useRegionQueries";
+import { useRegionChoices } from "../hooks/useRegionQueries";
 import { useRegionSelection } from "../hooks/useRegionSelection";
 import { filterByRegion } from "../hooks/regionFilter";
 import { RegionSelector } from "../components/RegionSelector";
@@ -53,6 +54,7 @@ import {
   useColumnDependents,
   useUpdateTable,
   useDeleteTable,
+  useDeleteTables,
   useDeployViewToDb,
   useSuggestTableAlias,
   useForceRegen,
@@ -61,6 +63,7 @@ import {
   useListedNames, // REQ-2153
 } from "../hooks/useAdminQueries";
 import { usePurgeCacheByTable, useReplicaBuilds } from "../hooks/useAdminOpsQueries";
+import { usePutBackRegions, useTableWithdrawal } from "../hooks/useWithdrawal";
 import type { RegisteredTable, ColumnDependentsResult } from "../types/admin";
 import { DERIVED_SOURCE_ID } from "../types/admin";
 import { FilterInput } from "../components/admin/FilterInput";
@@ -89,7 +92,7 @@ import { NativeParamsModal } from "../components/NativeParamsModal";
 import { previewSql, requiredParamColumns } from "../components/nativeParams";
 import { TagControl } from "../components/TagControl";
 import { TableEditForm } from "./tables/TableEditForm";
-import { draftFromRegistration, type Registration } from "./tables/draftTable";
+import { draftFromRegistration, duplicateOfTable, type Registration } from "./tables/draftTable";
 import { useCreateTable } from "./tables/useCreateTable";
 import { registeredOf, type Registered } from "./tables/useManyTables";
 import { YourDataStep } from "./tables/YourDataStep";
@@ -116,6 +119,9 @@ import { useCapability } from "../hooks/useCapability";
 import { hidingDomains } from "../lib/capabilities";
 import { domainToSqlName, relationName } from "../naming";
 import { SplitPane } from "../components/list/SplitPane";
+import { useRememberedDetail } from "../components/list/useDetailParam";
+import { useListSelection } from "../components/list/listSelection";
+import { ListBulkBar } from "../components/list/ListBulkBar";
 import { matchesQuery } from "../lib/searchItems";
 
 const columnTypes = (cols: { name: string; dataType: string }[]): Record<string, string> =>
@@ -132,37 +138,60 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
     loading: tablesLoading,
     error: tablesError,
     refetch: refetchTables,
-  } = useTableDetails();
+    // REQ-1921: the withdrawn tables are listed too, marked, so they can be put back.
+  } = useTableDetails({ includeWithdrawn: true });
+  const { withdrawTable, putBackTable } = useTableWithdrawal();
+  const putBackRegions = usePutBackRegions();
   const { sources, refetch: refetchSources } = useSources();
   const { domains, refetch: refetchDomains } = useDomains();
   const { dataProducts } = useDataProducts(); // REQ-1634
   const listedNames = useListedNames(); // REQ-2153
   const { relationships } = useAllRelationships();
-  // The detail's section in view: the same in the read view and the edit form, so opening the
-  // editor keeps the tab that was being read.
-  const [section, setSection] = useState<TableSection>("identity");
+  // REQ-2241: the open table and its section are the URL (`?table=<id>&section=<section>`): a link
+  // from elsewhere (its checkers, its source, a graph's column link) lands on the table itself, and
+  // Back returns to the panel and section before. The section is the same in the read view and the
+  // edit form, so opening the editor keeps the tab that was being read.
+  // REQ-2260: and the one left open is open again on coming back.
+  const detail = useRememberedDetail(
+    viewsOnly ? "views" : "tables",
+    tablesLoading
+      ? null
+      : tables.filter((t) => !viewsOnly || t.viewSql).map((t) => String(t.id)),
+  );
+  const section: TableSection =
+    detail.tab !== null && (TABLE_SECTIONS as string[]).includes(detail.tab)
+      ? (detail.tab as TableSection)
+      : "identity";
+  const setSection = detail.setTab;
   // REQ-2187: the ERD in the list's place, its state in the URL.
   const erd = useErdView();
   const { roles, refetch: refetchRoles } = useRoles();
   const domainHints = domains.map((d) => d.id);
-  const {
-    fetchColumns: getAvailableColumnsMetadata,
-    late: lateColumns,
-    starting: columnsStarting,
-    startingTimedOut: columnsStartingTimedOut,
-  } = useAvailableColumnsMetadataLazy();
+  const { fetchColumns: getAvailableColumnsMetadata, late: lateColumns } =
+    useAvailableColumnsMetadataLazy();
   const { generateTableDescription } = useGenerateTableDescription();
   const { generateColumnDescription } = useGenerateColumnDescription();
   const getColumnDependents = useColumnDependents();
   const { updateTable } = useUpdateTable();
   const { deleteTable } = useDeleteTable();
-  const setTableDraft = useSetTableDraft();
   const { purgeCacheByTable } = usePurgeCacheByTable();
   const { forceRegen } = useForceRegen();
   const { deployViewToDb } = useDeployViewToDb();
   const { suggestTableAlias } = useSuggestTableAlias();
   const [loading, setLoading] = useState(true);
-  const [expanded, setExpanded] = useState<number | null>(null);
+  // `?open=<source>.<table>` names the table to open by its name instead -- a demo tour's step names
+  // a table so, whatever id the org gave it -- on `section` and, in Columns, `tab`.
+  const openParam = searchParams.get("open");
+  const opened = openParam
+    ? tables.find(
+        (t) =>
+          `${t.sourceId}.${t.tableName}` === openParam || `${t.sourceId}.${t.alias}` === openParam,
+      )
+    : undefined;
+  const expanded: number | null =
+    detail.id !== null ? Number(detail.id) : opened ? opened.id : null;
+  const setExpanded = (id: number | null) =>
+    id === null ? detail.close() : detail.open(String(id));
   // One request for every row; asked for often only while a build runs or a detail is open.
   const { replicaBuilds } = useReplicaBuilds({ watching: expanded !== null });
   // REQ-1386: table whose governed SELECT * preview modal is open.
@@ -197,41 +226,10 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
     setSeededSource(sourceParam);
     setTableSearch(sourceParam ?? "");
   }
-  // `?table=<id>` opens that table's detail panel: a link from elsewhere (its checkers, its
-  // source) lands on the table itself, again whenever the link changes while the page stays.
-  const tableParam = searchParams.get("table");
-  const [seededTable, setSeededTable] = useState<string | null>(null);
-  if (tableParam !== seededTable) {
-    setSeededTable(tableParam);
-    if (tableParam !== null) {
-      setExpanded(Number(tableParam));
-      // A graph's column link names the Columns section too (lib/entityHref).
-      const named = searchParams.get("section");
-      if (named && (TABLE_SECTIONS as string[]).includes(named)) setSection(named as TableSection);
-    }
-  }
   // `?column=<name>` with `?table=`: that column's row is marked and brought into view.
   const columnParam = searchParams.get("column");
-  // `?open=<source>.<table>` opens that table's detail panel by its name -- a demo tour's step
-  // names a table so, whatever id the org gave it -- on `section` and, in Columns, `tab`.
-  const openParam = searchParams.get("open");
-  const sectionParam = searchParams.get("section");
+  // `?tab=<tab>`: the Columns section's tab.
   const tabParam = searchParams.get("tab");
-  const opened = openParam
-    ? tables.find(
-        (t) =>
-          `${t.sourceId}.${t.tableName}` === openParam || `${t.sourceId}.${t.alias}` === openParam,
-      )
-    : undefined;
-  const [seededOpen, setSeededOpen] = useState<string | null>(null);
-  const openKey = opened ? `${opened.id}:${sectionParam}:${tabParam}` : null;
-  if (openKey !== null && openKey !== seededOpen) {
-    setSeededOpen(openKey);
-    setExpanded(opened!.id);
-    if (sectionParam && (TABLE_SECTIONS as string[]).includes(sectionParam)) {
-      setSection(sectionParam as TableSection);
-    }
-  }
   const linkedColumnTab =
     tabParam && (COLUMN_TABS as string[]).includes(tabParam) ? (tabParam as ColumnTab) : undefined;
   const [page, setPage] = useState(0);
@@ -290,6 +288,10 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
     ? { visible: filteredTables, hidden: 0 }
     : filterByRegion(filteredTables, regionSel, connected, (t) => t.region ?? null);
   const sortGroup = useListSortGroup(regionTables, listColumns, "tables");
+  // REQ-2240: tables selected and deleted together; the header's box takes every table shown.
+  const shownTableIds = useMemo(() => regionTables.map((tbl) => tbl.id), [regionTables]);
+  const selection = useListSelection(shownTableIds);
+  const deleteTables = useDeleteTables();
   const groupBy = sortGroup.groupBy;
   const { domainAccess } = useAuth();
   // REQ-1620: the rows are read as the roles the user acts as -- one role, or under "Role: All"
@@ -506,15 +508,6 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
     await reload();
   };
 
-  // REQ-1921: the detail's Draft box. The same mutation the edit form's draft control saves
-  // through; the box shows what is stored, so the tables are reloaded once it answers.
-  const handleSetDraft = async (table: RegisteredTable, draft: boolean) => {
-    setError(null);
-    const result = await setTableDraft(table.id, draft);
-    if (!result.success) setError(serverMessage(result, result.message));
-    await reload();
-  };
-
   const handleProfile = async (tableId: number, paramValues?: Record<string, string>) => {
     const existing = tableProfiles[tableId];
     if (existing !== undefined && existing !== "loading") {
@@ -595,13 +588,23 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
 
   // REQ-2109 (settled): the create step chose what is registered; its settings follow in the same
   // sections as the editor's, on the table as it will be registered.
-  const startCreating = (registration: Registration) => {
+  const startCreating = (
+    registration: Registration,
+    draft = draftFromRegistration(registration),
+  ) => {
     setShowForm(false);
     setShowViewForm(false);
     setExpanded(null);
     setSection("identity");
-    startEditing(draftFromRegistration(registration));
+    startEditing(draft);
     setNewRegistration(registration);
+  };
+  // Duplicate, from a table's panel head: the same create form as a registration's, filled from
+  // the table's settings and columns under a new name.
+  const handleDuplicate = (table: RegisteredTable) => {
+    const { registration, draft } = duplicateOfTable(table);
+    setError(null);
+    startCreating(registration, draft);
   };
   // A view handed over from the SQL editor's + View is created here, with every setting.
   // REQ-2234: one table picked on a source's Register tables step is created here, with every
@@ -801,6 +804,22 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
     }
   };
 
+  // One rule for the preview: it is a mode of the panel body, left as soon as what the body shows
+  // changes -- another table, its section or column (a head action's or a link's), the edit form,
+  // the view-definition editor, or a profile starting. The eye toggles it and "Back to details"
+  // closes it; neither is a change of this kind, so neither is handled here.
+  const profileInView = expanded === null ? undefined : tableProfiles[expanded];
+  useEffect(() => {
+    setPreviewTable(null);
+  }, [
+    expanded,
+    section,
+    linkedColumnTab,
+    columnParam,
+    editingTable?.id,
+    editingViewDef,
+    profileInView,
+  ]);
   // Only full-page block on the INITIAL load (no cached tables yet). Background refetches
   // (refetchQueries after mutations, reload()) serve stale-then-fresh from Apollo's cache —
   // blocking the whole page on those hides cached rows unnecessarily and causes test timeouts
@@ -820,7 +839,6 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
     setPreviewTable(null);
     setEditingViewDef(null);
     cancelEditing();
-    if (erd.on) erd.setPanel("table", null);
   };
   // REQ-2187: a table clicked in the ERD: its panel, in place of whatever the panel held.
   const openFromErd = (id: string) => {
@@ -831,7 +849,6 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
     setEditingViewDef(null);
     cancelEditing();
     setExpanded(Number(id));
-    erd.setPanel("table", id);
   };
   const selectedTable =
     expanded === null ? null : (tables.find((tb) => tb.id === expanded) ?? null);
@@ -867,6 +884,8 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
         relationships={relationships}
         section={section}
         onSectionChange={setSection}
+        // REQ-1924: a table registered on its own whose columns its source does not describe.
+        declaresColumns={saved === null && newRegistration?.declaresColumns === true}
       />
     </ReplicaBuildsContext.Provider>
   );
@@ -924,10 +943,6 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
         domainsEnabled={domainsEnabled}
         tables={tables}
         roles={roles}
-        getAvailableColumnsMetadata={getAvailableColumnsMetadata}
-        lateColumns={lateColumns}
-        columnsStarting={columnsStarting}
-        columnsStartingTimedOut={columnsStartingTimedOut}
         suggestTableAlias={suggestTableAlias}
         onContinue={startCreating}
         onCancel={() => setShowForm(false)}
@@ -1000,19 +1015,23 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
             deployViewToDb={deployViewToDb}
             reload={reload}
             startEditing={startEditing}
+            onDuplicate={handleDuplicate}
             handleDelete={handleDelete}
+            onWithdraw={withdrawTable}
+            onPutBack={putBackTable}
+            putBackRegions={putBackRegions}
             handleProfile={handleProfile}
-            onPreview={setPreviewTable}
-            onSetDraft={handleSetDraft}
+            onPreview={(tb) => setPreviewTable((open) => (open?.id === tb.id ? null : tb))}
             source={sources.find((s) => s.id === t.sourceId)}
             relationships={relationships}
+            actingRole={actingRole}
             onInvalidateCache={!hidingOnly && hasCacheable(t) ? handlePurgeTableCache : undefined}
             invalidating={purging[t.id] === true}
             section={section}
             onSectionChange={setSection}
             columnTab={linkedColumnTab}
             column={
-              tableParam !== null && Number(tableParam) === t.id
+              detail.id !== null && Number(detail.id) === t.id
                 ? (columnParam ?? undefined)
                 : undefined
             }
@@ -1133,7 +1152,9 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
           {!hidingOnly && !(viewsOnly && showViewForm) && (
             <Tip text={translate("tablesPage.addViewTitle")}>
               <Button
-                variant="default"
+                // On the Views page "+ View" is the page's own add, so the filled primary as
+                // "+ Table" is on the Tables page; beside "+ Table" it is a secondary.
+                variant={viewsOnly ? "filled" : "default"}
                 data-testid="views-add-toggle"
                 // REQ-1318: on the Views page, Add View opens the definition-mode form
                 // (SQL | Metrics toggle); elsewhere it keeps routing to the SQL editor.
@@ -1291,7 +1312,19 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
             />
           ) : (
             <>
-              <ListTable testId="tables-list">
+              <ListBulkBar
+                selection={selection}
+                nameOf={(key) => {
+                  const found = tables.find((tbl) => String(tbl.id) === key);
+                  if (!found) throw new Error(`table ${key} is not listed`);
+                  return found.tableName;
+                }}
+                // The tables shown are read again by the call itself: a reload() would show the
+                // page loading and take the refusals the bar names with it.
+                onDelete={(keys) => deleteTables(keys.map(Number))}
+                testId="tables-bulk"
+              />
+              <ListTable testId="tables-list" selection={selection}>
                 <ListHead
                   sortGroup={sortGroup}
                   columns={[
@@ -1380,6 +1413,24 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                             >
                               <Group gap="0.35rem">
                                 {t.alias || t.tableName}
+                                {/* REQ-1921: out of production, by itself or through its source. */}
+                                {(t.withdrawn || t.sourceWithdrawn) && (
+                                  <Badge
+                                    size="xs"
+                                    variant="outline"
+                                    color="gray"
+                                    title={
+                                      t.withdrawn
+                                        ? translate("tablesPage.withdrawnTitle")
+                                        : translate("tablesPage.sourceWithdrawnTitle", {
+                                            source: t.sourceId,
+                                          })
+                                    }
+                                    data-testid={`tables-withdrawn-${t.tableName}`}
+                                  >
+                                    {translate("tablesPage.withdrawn")}
+                                  </Badge>
+                                )}
                                 <ReplicatingMark build={buildOf(replicaBuilds?.builds, t)} />
                                 <EndpointErrorMark
                                   error={t.apiEndpointError}
@@ -1668,16 +1719,15 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
         ))}
         {/* The action first, at the start of the row; the way back to the form follows. */}
         <Group justify="flex-start" mt="md">
-          <Button
-            color="red"
-            data-testid="column-dependents-confirm"
+          <DestructiveConfirmButton
+            testId="column-dependents-confirm"
             onClick={() => {
               setPendingDependents(null);
               void performSaveEdit();
             }}
           >
             {translate("tablesPage.dependentsConfirm")}
-          </Button>
+          </DestructiveConfirmButton>
           <Button
             variant="default"
             onClick={() => setPendingDependents(null)}

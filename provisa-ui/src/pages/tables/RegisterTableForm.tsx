@@ -8,43 +8,51 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
+// REQ-2234: Register Table holds Source, Domain, Schema when the source has more than one, and
+// Tables: the standard multi-select, which takes one table or many, each registered with its
+// defaults in one action. Every other setting of a table is edited in its detail panel once it
+// is registered. A table that needs input is registered on its own from its option in the list,
+// as a draft opened in the panel's edit form.
+//
+// A source whose table is authored rather than listed (a checker's contract, a query API's or a
+// native query's text, a profiler's result relation) and a dbt source's public models still take
+// their own fields here: nothing in the table panel authors them yet.
+
 import type { MaskEntry } from "../../lib/masks";
 import { NEVER_EXPIRES, cacheTtlHint } from "../../components/form/cacheTtl";
 import { useState, useEffect, useCallback, useRef } from "react";
-import { UntypedColumns } from "./UntypedColumns";
 import { ProfilerRowRulesField } from "./ProfilerRowRulesField";
 import { QueryTableFields } from "./QueryTableFields";
+import { WikidataRegisterForm } from "./WikidataRegisterForm";
+import { sparqlColumnsNow, useSparqlColumns } from "./useSparqlColumns";
+import { sourceBrand } from "../sources/sourceHelpers";
+import { WIKIDATA } from "../sources/wikidata";
 import { isPipelineArgument, NATIVE_QUERY_MODES, previewedColumn } from "./queryTables";
 import { QDRANT, QDRANT_SCHEMA, searchQueryArgument } from "../sources/qdrant";
 import { QdrantVectorsNote } from "./QdrantVectorsNote";
 import { RegisterColumnsField } from "./RegisterColumnsField";
-import { defaultWatermark, discoveredColumns, registrationOf } from "./registrationDefaults";
-import { ManyTablesList, ManyTablesMode } from "./ManyTablesPicker";
+import { RegisterDescriptionField } from "./RegisterDescriptionField";
+import { registrationOf } from "./registrationDefaults";
 import { useManyTables } from "./useManyTables";
+import { useCombineFiles } from "./useCombineFiles";
+import { CombineFilesSection } from "./CombineFilesSection";
+import { isFilesSourceType } from "./tableSectionFields";
+import { tableChoices } from "./tableChoices";
 import type { TableRegistrationOutcome } from "../../hooks/useTableQueries";
 import { DQ_PLACEHOLDER_COLUMN, registeredColumns } from "./registrationColumns";
-import { QdrantVectorColumns } from "./QdrantVectorColumns";
-import { FilesGlobFieldset } from "./FilesGlobFieldset";
-import { isFilesSourceType } from "./tableSectionFields";
 import { useTranslation } from "react-i18next";
-import {
-  Button,
-  Checkbox,
-  NumberInput,
-  SegmentedControl,
-  Select,
-  Text,
-  TextInput,
-} from "@mantine/core";
+import { Button, NumberInput, SegmentedControl, Select, Text, TextInput } from "@mantine/core";
 import { domainToSqlName, toSnakeCase } from "../../naming";
-import { NlTableSearch } from "./NlTableSearch";
 import { useAvailableSchemas, useAvailableTables } from "../../hooks/useAdminQueries";
-import type { LateColumns } from "../../hooks/useAvailableColumnsMetadataLazy";
+import {
+  useDescribeUnregistered,
+  type UnregisteredTable,
+} from "../../hooks/useDescribeUnregistered";
 import { RegionSelect } from "../../components/admin/RegionSelect";
+import { MultiSelect } from "../../components/MultiSelect";
 import { useRegionChoice, useRegionChoices } from "../../hooks/useRegionQueries";
 import { useQueryPreview } from "../../hooks/useQueryPreview";
-import { UniquesPanel } from "../../components/admin/UniquesPanel";
-import { fetchIrTypes, fetchTableUniqueConstraints } from "../../api/admin";
+import { fetchIrTypes } from "../../api/admin";
 import {
   fetchProfilerCatalog,
   type ProfilerCatalogEntry,
@@ -52,16 +60,16 @@ import {
 } from "../../api/profiler";
 import { DQ_CHECKERS } from "../../types/admin";
 import type { Registration } from "./draftTable";
-import type { Paging, RegisteredTable, Source, UniqueConstraint } from "../../types/admin";
+import { DERIVED_SOURCE_ID } from "../../types/admin";
+import type { RegisteredTable, Source } from "../../types/admin";
 import type { Role } from "../../types/auth";
 import type { ColumnForm } from "./types";
 import { CDC_TYPES } from "./constants";
 import { IR_TYPES_FALLBACK } from "../../irTypes";
 import { isWatermarkEligible } from "./helpers";
 import { CheckerFields } from "./CheckerFields";
-import { PagingField } from "./PagingField";
-import { pagingProblem } from "./paging";
 import {
+  FieldGroup,
   FormChecks,
   FormField,
   FormFooter,
@@ -73,9 +81,7 @@ import { ttlSignalMissingCacheTtl } from "../sources/loadManagement";
 import { usePanelDirty } from "../../components/list/panelLeave";
 import { ProfilerResultSelect } from "./ProfilerResultSelect";
 import { requiredParametersOf } from "./lookups";
-import { SchemaTableSelects } from "./SchemaTableSelects";
-import { DeclaredColumns } from "./DeclaredColumns";
-import { ImportSetField } from "./ImportSetField";
+import { DiscoverColumnsField } from "./DiscoverColumnsField";
 import { assignableDomainIds } from "../../lib/internalDomains";
 import { DbtPublicProducts } from "./DbtPublicProducts";
 import {
@@ -102,31 +108,11 @@ interface RegisterTableFormProps {
   domainsEnabled: boolean;
   tables: RegisteredTable[];
   roles: Role[];
-  getAvailableColumnsMetadata: (
-    sourceId: string,
-    schemaName: string,
-    tableName: string,
-  ) => Promise<
-    | {
-        name: string;
-        dataType: string;
-        subtype?: string | null; // REQ-2171
-        comment?: string | null;
-        nativeFilterType?: string | null;
-        nativeFilterRequired?: boolean | null;
-        isPrimaryKey?: boolean | null;
-        path?: string | null;
-      }[]
-    | null // null: the source is still starting (REQ-1824); the answer arrives as `lateColumns`
-  >;
-  /** The columns read answered after STARTING, with the table they belong to. */
-  lateColumns?: LateColumns | null;
-  columnsStarting?: boolean;
-  columnsStartingTimedOut?: boolean;
   suggestTableAlias: (tableName: string, domainId: string, sourceId: string) => Promise<string>;
   /**
-   * REQ-2109 (settled): what is registered is chosen here; every setting of the table follows in
-   * the same sections as its editor, and Save there registers it.
+   * REQ-2109 (settled): a table that is registered on its own is handed over as it will be
+   * registered; every setting of it follows in the same sections as its editor, and Save there
+   * registers it.
    */
   onContinue: (registration: Registration) => void;
   /** Closes the form without registering anything. */
@@ -138,9 +124,9 @@ interface RegisterTableFormProps {
   problem?: string | null;
   /** REQ-2234: the source the form opens with already chosen (a source just saved). */
   initialSourceId?: string;
-  /** REQ-2234: the form opens on picking several tables, not one. */
-  severalFirst?: boolean;
-  /** REQ-2234: several tables were registered in one action; what each one answered. */
+  /** REQ-2234: every table that needs no input starts picked (a source just saved). */
+  pickReady?: boolean;
+  /** REQ-2234: the tables picked were registered in one action; what each one answered. */
   onRegisteredMany: (outcomes: TableRegistrationOutcome[]) => void;
 }
 
@@ -152,10 +138,6 @@ export function RegisterTableForm({
   domainsEnabled,
   tables,
   roles,
-  getAvailableColumnsMetadata,
-  lateColumns,
-  columnsStarting = false,
-  columnsStartingTimedOut = false,
   suggestTableAlias,
   onContinue,
   onCancel,
@@ -163,36 +145,23 @@ export function RegisterTableForm({
   setError,
   problem,
   initialSourceId = "",
-  severalFirst = false,
+  pickReady = false,
   onRegisteredMany,
 }: RegisterTableFormProps) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [sourceId, setSourceId] = useState(initialSourceId);
-  // REQ-2234: several tables of the schema picked at once, each registered with its defaults.
-  const [several, setSeveral] = useState(severalFirst);
   const [chosenDomain, setDomainId] = useState("");
   const [schemaName, setSchemaName] = useState("");
+  // An authored table's name (a checker's results, a query's projection, a profiler's result).
   const [tableName, setTableName] = useState("");
-  // Leaving the panel once something is chosen asks first (the panel's one mechanism).
-  usePanelDirty(Boolean(sourceId || schemaName || tableName), tableName || schemaName || sourceId);
   const [tableAlias, setTableAlias] = useState("");
   const [tableDescription, setTableDescription] = useState("");
-  // REQ-318: the table's paging, starting from what its source suggests; the steward accepts
-  // or edits it here, and registration stores it on the table.
-  const [pagination, setPagination] = useState<Paging | null>(null);
   const [columns, setColumns] = useState<ColumnForm[]>([]);
-  const [uniqueConstraints, setUniqueConstraints] = useState<UniqueConstraint[]>([]); // REQ-1093
   const [watermarkColumn, setWatermarkColumn] = useState<string>("");
   // REQ-1907 (#208): the table's own Cache TTL, asked for when the table will be a replica and
-  // its source states none -- without one the registration is refused.
+  // its source states none -- without one the registration is refused. A checker's scan interval.
   const [cacheTtl, setCacheTtl] = useState<string>("");
-  const [fileGlob, setFileGlob] = useState(""); // REQ-788
-  const [sourceFileColumn, setSourceFileColumn] = useState(""); // REQ-788
-  const [importSet, setImportSet] = useState<string | null>(null); // REQ-1954
   const [discover, setDiscover] = useState(false); // REQ-252: infer columns from the live source
-  const [loadingColumns, setLoadingColumns] = useState(false);
-  // The columns discovery gave no type: the short step asks a type for each.
-  const [untypedAtDiscovery, setUntypedAtDiscovery] = useState<string[]>([]);
   // REQ-1663: a data-quality checker source has no remote schema to pick from — its table's rows
   // are one contract's scan results. The form asks for the governed table to scan (through the
   // contract panel) and derives the rest: results table name, alias, description, columns.
@@ -219,8 +188,8 @@ export function RegisterTableForm({
 
   const sourceType = sources.find((s) => s.id === sourceId)?.type?.toLowerCase() ?? "";
   const isChecker = (DQ_CHECKERS as readonly string[]).includes(sourceType);
-  // REQ-2228: a dbt source registers its tables one by one, or all its public models with
-  // enforced contracts at once as draft data products.
+  // REQ-2228: a dbt source registers its tables, or all its public models with enforced
+  // contracts at once as draft data products.
   const [dbtMode, setDbtMode] = useState<"tables" | "products">("tables");
   const productsMode = sourceType === "dbt" && dbtMode === "products";
   const [previewed, setPreviewed] = useState<{
@@ -248,7 +217,23 @@ export function RegisterTableForm({
   // rules and editable here; saved after the table, as the table's own rules.
   const [profilerRowRules, setProfilerRowRules] = useState<ProfilerRowRule[]>([]);
   const isSparql = sourceType === "sparql";
-  const isFilesSource = isFilesSourceType(sourceType); // REQ-788
+  // REQ-1923: a Wikidata source's tables are chosen: starter tables, and a table of a class or a
+  // hand-written query, registered together (WikidataRegisterForm).
+  const isWikidata = isSparql && sourceBrand(chosenSource?.federationHintsJson) === WIKIDATA;
+  // REQ-1923 (amended 2026-11-20): a SPARQL table's columns are its query's SELECT variables,
+  // every binding text; registration never waits on a preview.
+  const sparqlColumns = useSparqlColumns(isSparql && !isWikidata ? cypher : "");
+  const [previewProblem, setPreviewProblem] = useState<string | null>(null);
+  useEffect(() => {
+    if (sparqlColumns.state !== "read") return;
+    const roleIds = roles.map((r) => r.id);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- the columns follow the query's SELECT once it is read
+    setColumns(
+      sparqlColumns.columns.map((c) =>
+        previewedColumn({ name: c.name, dataType: c.data_type }, roleIds),
+      ),
+    );
+  }, [sparqlColumns, roles]);
   // REQ-1670/REQ-1683: a query-API source has no tables to list — its table IS a query projection.
   // REQ-1980/REQ-1982: a document source's table is a collection or container, or a native query.
   // REQ-1983: a Qdrant table is a collection, or a search. REQ-2017: an Elasticsearch table is an
@@ -261,23 +246,23 @@ export function RegisterTableForm({
   const isPipeline = isNativeQuerySource && mongoMode === "pipeline";
   const isQueryApi = (QUERY_API_TYPES as readonly string[]).includes(sourceType) || isPipeline;
   const pipelineArgs = columns.filter(isPipelineArgument);
-  // The short step: what names the table, and only what the server will not do without. The rest
-  // is the edit form's, which opens on the registered draft. A query API's table (its query and
-  // preview), a checker's (its contract) and a profiler's results take the longer path: the same
-  // form, more of it shown.
-  const short = !isChecker && !isQueryApi && !isProfiler;
+  // A table authored here rather than picked from the source's list.
+  const authored = isChecker || isQueryApi || isProfiler;
+  // REQ-2234: a source whose tables are listed has them picked in the Tables field.
+  const listsTables = sourceId !== "" && !authored && !productsMode;
   // The domains the caller may register in. With one, it is the domain and is not asked.
   const offeredDomains = assignableDomainIds(domainHints).filter(
     (d) => domainAccess.includes("*") || domainAccess.includes(d),
   );
-  const domainAsked = domainsEnabled && (!short || offeredDomains.length !== 1);
+  const domainAsked = domainsEnabled && (authored || offeredDomains.length !== 1);
   const domainId =
     chosenDomain ||
-    (domainsEnabled && short && offeredDomains.length === 1 ? offeredDomains[0] : "");
+    (domainsEnabled && !authored && offeredDomains.length === 1 ? offeredDomains[0] : "");
+  // Leaving the panel once something is chosen asks first (the panel's one mechanism).
+  usePanelDirty(Boolean(sourceId || schemaName || tableName), tableName || schemaName || sourceId);
 
-  // REQ-846/REQ-1426: the canonical IR type vocabulary a steward picks from. Registration is the
-  // last point at which a type can be assigned — nothing infers one afterwards — so the list comes
-  // from the backend (provisa/core/ir_types.py) with a static fallback if that fetch fails.
+  // REQ-846/REQ-1426: the canonical IR type vocabulary a steward picks from, for an authored
+  // table's columns; from the backend (provisa/core/ir_types.py) with a static fallback.
   const [irTypes, setIrTypes] = useState<string[]>(IR_TYPES_FALLBACK);
   useEffect(() => {
     fetchIrTypes()
@@ -287,21 +272,22 @@ export function RegisterTableForm({
       .catch(() => setIrTypes(IR_TYPES_FALLBACK));
   }, []);
 
-  // A checker source is never introspected: nothing exists upstream until a scan runs, so the
-  // schema/table lookups are not made for it (REQ-1663).
+  // An authored table's source is never introspected: the schema/table lookups are not made.
   const { schemas: availableSchemas, loading: loadingSchemas } = useAvailableSchemas(
-    sourceId && !isChecker && !isQueryApi && !isProfiler ? sourceId : null,
+    listsTables ? sourceId : null,
   );
-  const isFixedSchema = availableSchemas.length === 1;
+  // REQ-2234: the Schema field is absent, not disabled, when the source has one schema. The schema
+  // a listed table is registered under is then that one schema, read from the list itself: a
+  // copy of it kept in state (set by an effect once the list answered) could be empty while the
+  // form showed it, and the registration was refused as having no schema.
+  const oneSchema = availableSchemas.length === 1;
+  const listedSchema = oneSchema ? availableSchemas[0] : schemaName;
   const {
     tables: availableTables,
     loading: loadingTables,
     starting: startingTables,
     startingTimedOut: startingTablesTimedOut,
-  } = useAvailableTables(
-    sourceId && schemaName && !isChecker && !isQueryApi && !isProfiler ? sourceId : null,
-    schemaName || null,
-  );
+  } = useAvailableTables(listsTables && listedSchema ? sourceId : null, listedSchema || null);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- form cascade reset: dependent fields cleared when source selection changes
@@ -350,36 +336,9 @@ export function RegisterTableForm({
       .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
   }, [isProfiler, sourceId, setError]);
 
+  // An authored table's alias follows its name.
   useEffect(() => {
-    if (availableSchemas.length === 1) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- auto-select the only available schema; not derivable without an effect because schemas load asynchronously
-      setSchemaName(availableSchemas[0]);
-    }
-  }, [availableSchemas, sourceId]);
-
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- form cascade reset: dependent fields cleared when schema selection changes
-    setTableName("");
-    setTableDescription("");
-    setColumns([]);
-    setUniqueConstraints([]);
-  }, [sourceId, schemaName]);
-
-  // Auto-populate table description from physical database comment
-  useEffect(() => {
-    if (!tableName) return;
-    const meta = availableTables.find((t) => t.name === tableName);
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- auto-populate description from physical database comment when table is selected
-    if (meta?.comment) setTableDescription(meta.comment);
-    setPagination(meta?.pagination ?? null);
-  }, [tableName, availableTables]);
-  const offered = availableTables.find((tbl) => tbl.name === tableName);
-  const pagingKind = offered?.pagingKind ?? null;
-  const pagingCeilingRows = offered?.pagingCeilingRows ?? null;
-
-  // Auto-generate alias from table name using snake_case convention
-  useEffect(() => {
-    if (!tableName || !domainId || !sourceId) {
+    if (!authored || !tableName || !domainId || !sourceId) {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- cascade reset: alias cleared when table/domain/source deselected
       setTableAlias("");
       return;
@@ -392,7 +351,7 @@ export function RegisterTableForm({
     }
     suggestTableAlias(tableName, domainId, sourceId).then(setTableAlias);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- suggestTableAlias is a stable hook callback; re-run only when the table selection changes
-  }, [tableName, domainId, sourceId, isChecker, dqScanned]);
+  }, [authored, tableName, domainId, sourceId, isChecker, dqScanned]);
 
   // REQ-1663: the contract names what it scans; the results table is named after it. A change of
   // scanned table re-derives the name and description, which stay editable afterwards.
@@ -414,84 +373,40 @@ export function RegisterTableForm({
     // registrant's to state, so nothing generic is put there for them.
   }, []);
 
-  const applyColumns = (
-    cols: NonNullable<Awaited<ReturnType<typeof getAvailableColumnsMetadata>>>,
-  ) => {
-    const formed = discoveredColumns(
-      cols,
-      roles.map((r) => r.id),
-      sourceType,
+  useEffect(() => {
+    if (!isProfiler) return;
+    // REQ-1934: the result relation's fields, granted like any table's columns; the server fixes
+    // their types and the watermark.
+    const picked = profilerCatalog
+      ?.flatMap((entry) => entry.tables)
+      .find((tb) => tb.tableName === tableName);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- the picked result relation's rules and fields seed the form
+    setProfilerRowRules(picked?.rowRules ?? []);
+    setColumns(
+      (picked?.columns ?? []).map((c) => ({
+        name: c.name,
+        visibleTo: c.visibleTo,
+        masks: c.masks,
+        alias: "",
+        description: c.description,
+        selected: true,
+        nativeFilterType: null,
+        dataType: c.dataType,
+        isPrimaryKey: false,
+        scope: "domain",
+        path: null,
+      })),
     );
-    setColumns(formed);
-    setUntypedAtDiscovery(formed.filter((c) => !c.dataType).map((c) => c.name));
-    const autoWm = defaultWatermark(formed, sources.find((s) => s.id === sourceId)?.type ?? "");
-    if (autoWm) setWatermarkColumn(autoWm);
-  };
-
-  // The columns of a source that was still starting arrive here, once its server answers.
-  useEffect(() => {
-    if (
-      lateColumns &&
-      lateColumns.sourceId === sourceId &&
-      lateColumns.schemaName === schemaName &&
-      lateColumns.tableName === tableName
-    ) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- the late answer of a read that began before this render
-      applyColumns(lateColumns.columns);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- applied once per answer
-  }, [lateColumns]);
-
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- cascade reset: columns cleared before async fetch when table selection changes
-    setColumns([]);
-    setUniqueConstraints([]);
-    setWatermarkColumn("");
-    if (isProfiler && tableName) {
-      // REQ-1934: the result relation's fields, granted like any table's columns; the server fixes
-      // their types and the watermark.
-      const picked = profilerCatalog
-        ?.flatMap((entry) => entry.tables)
-        .find((tb) => tb.tableName === tableName);
-      setProfilerRowRules(picked?.rowRules ?? []);
-      setColumns(
-        (picked?.columns ?? []).map((c) => ({
-          name: c.name,
-          visibleTo: c.visibleTo,
-          masks: c.masks,
-          alias: "",
-          description: c.description,
-          selected: true,
-          nativeFilterType: null,
-          dataType: c.dataType,
-          isPrimaryKey: false,
-          scope: "domain",
-          path: null,
-        })),
-      );
-      return;
-    }
-    if (!sourceId || !schemaName || !tableName || isChecker || isQueryApi || isProfiler) return;
-    // REQ-1093: seed the Uniques panel from the source's declared UNIQUE constraints.
-    fetchTableUniqueConstraints(sourceId, schemaName, tableName)
-      .then(setUniqueConstraints)
-      .catch(() => setUniqueConstraints([]));
-    setLoadingColumns(true);
-    getAvailableColumnsMetadata(sourceId, schemaName, tableName)
-      .then((cols) => {
-        if (cols) applyColumns(cols);
-      })
-      .catch(() => setColumns([]))
-      .finally(() => setLoadingColumns(false));
-    /* eslint-disable-next-line react-hooks/exhaustive-deps --
-       refetch columns only when the table selection changes; roles/sources are read for default seeding and must not retrigger a column fetch */
-  }, [sourceId, schemaName, tableName]);
+  }, [isProfiler, tableName, profilerCatalog]);
 
   // REQ-1670: run the Cypher (LIMIT 5); the columns and their types come from what it returns.
   const handleNeo4jPreview = async () => {
     setError(null);
+    setPreviewProblem(null);
     if (!sourceId || !cypher.trim()) {
-      setError(t("registerTableForm.errorNeo4jCypher"));
+      setError(
+        t(isSparql ? "registerTableForm.errorSparqlQuery" : "registerTableForm.errorNeo4jCypher"),
+      );
       return;
     }
     setPreviewing(true);
@@ -511,6 +426,14 @@ export function RegisterTableForm({
           }),
         }),
       });
+      if (isSparql) {
+        // A SPARQL table's columns are its SELECT's: the preview only shows rows, or why none.
+        setPreviewRows(res.error ? [] : res.rows);
+        if (res.error)
+          setPreviewProblem(t("registerTableForm.previewFailed", { error: res.error }));
+        else if (res.rows.length === 0) setPreviewProblem(t("registerTableForm.previewNoRows"));
+        return;
+      }
       if (res.error) {
         setError(res.error);
         setPreviewRows([]);
@@ -531,6 +454,18 @@ export function RegisterTableForm({
     }
   };
 
+  // The table the AI describe writes for, once the form names it: what it will register.
+  const { describeTable, describeColumn } = useDescribeUnregistered();
+  const unregistered: UnregisteredTable | undefined =
+    sourceId && schemaName && tableName
+      ? {
+          sourceId,
+          schemaName,
+          tableName,
+          columns: columns.filter((c) => c.selected && !isPipelineArgument(c)).map((c) => c.name),
+        }
+      : undefined;
+
   const updateCol = (
     i: number,
     key: keyof ColumnForm,
@@ -542,27 +477,52 @@ export function RegisterTableForm({
     setColumns(next);
   };
 
-  const handleSubmit = () => {
+  // An authored table (a query API's, a native query's, a profiler's result) goes on to its
+  // settings in the table editor.
+  const handleSubmit = async () => {
     setError(null);
     if (isChecker) {
       submitChecker();
       return;
     }
-    // REQ-1983: a Qdrant search's query is the one argument Qdrant requires.
-    const searchQuery =
-      isPipeline && sourceType === QDRANT ? searchQueryArgument(cypher.trim()) : null;
-    const selectedCols = registeredColumns(columns, searchQuery);
     if (!sourceId || !schemaName || !tableName) {
       setError(t("registerTableForm.errorRequiredFields"));
       return;
     }
-    if (isQueryApi) {
-      if (!cypher.trim()) {
-        setError(t("registerTableForm.errorNeo4jCypher"));
+    // REQ-1923 (amended 2026-11-20): a SPARQL table's columns are read from its query's SELECT,
+    // never from a preview -- read now when the query changed since they were last read.
+    let formColumns = columns;
+    if (isSparql && cypher.trim()) {
+      try {
+        const roleIds = roles.map((r) => r.id);
+        formColumns = (await sparqlColumnsNow(cypher, sparqlColumns)).map((c) =>
+          previewedColumn({ name: c.name, dataType: c.data_type }, roleIds),
+        );
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
         return;
       }
-      if (columns.filter((c) => !isPipelineArgument(c)).length === 0) {
-        setError(t("registerTableForm.errorNeo4jPreviewFirst"));
+    }
+    // REQ-1983: a Qdrant search's query is the one argument Qdrant requires.
+    const searchQuery =
+      isPipeline && sourceType === QDRANT ? searchQueryArgument(cypher.trim()) : null;
+    const selectedCols = registeredColumns(formColumns, searchQuery);
+    if (isQueryApi) {
+      if (!cypher.trim()) {
+        setError(
+          t(isSparql ? "registerTableForm.errorSparqlQuery" : "registerTableForm.errorNeo4jCypher"),
+        );
+        return;
+      }
+      if (!isSparql && columns.filter((c) => !isPipelineArgument(c)).length === 0) {
+        // Named in the query language of the source: Cypher, or a native query.
+        setError(
+          t(
+            sourceType === "neo4j"
+              ? "registerTableForm.errorNeo4jPreviewFirst"
+              : "registerTableForm.errorQueryPreviewFirst",
+          ),
+        );
         return;
       }
     }
@@ -571,22 +531,10 @@ export function RegisterTableForm({
       setError(t("registerTableForm.errorNoColumnsSelected"));
       return;
     }
-    // REQ-1426: a design is not complete until every column carries a data type. Discovery types
-    // what the source can describe; whatever it could not type the steward assigns here, because
-    // nothing infers a type after registration.
+    // REQ-1426: a design is not complete until every column carries a data type.
     const untyped = selectedCols.filter((c) => !c.dataType).map((c) => c.name);
     if (untyped.length > 0) {
       setError(t("registerTableForm.errorUntypedColumns", { columns: untyped.join(", ") }));
-      return;
-    }
-    // The short step does not show paging; the paging the source proposes is carried to the
-    // editor's Load and timeliness tab, where it is accepted or edited (REQ-318).
-    if (
-      !short &&
-      pagingKind !== null &&
-      pagingProblem(pagingKind, pagination, pagingCeilingRows) !== null
-    ) {
-      setError(t("tableEditForm.pagingFixErrors"));
       return;
     }
     if (needsCacheTtl && cacheTtl.trim() === "") {
@@ -604,18 +552,14 @@ export function RegisterTableForm({
         description: tableDescription,
         watermarkColumn: isQueryApi ? "" : watermarkColumn,
         columns: selectedCols,
-        uniqueConstraints,
-        pagingKind,
-        pagination,
-        pagingCeilingRows,
+        uniqueConstraints: [],
+        pagingKind: null,
+        pagination: null,
+        pagingCeilingRows: null,
         extra: {
           cacheTtl: needsCacheTtl && cacheTtl.trim() !== "" ? Number(cacheTtl) : undefined,
           discover: isQueryApi ? false : discover, // REQ-252
           queryTemplate: isQueryApi ? cypher.trim() : undefined, // REQ-1670/REQ-1683
-          fileGlob: isFilesSource && fileGlob.trim() ? fileGlob.trim() : undefined, // REQ-788
-          sourceFileColumn:
-            isFilesSource && sourceFileColumn.trim() ? sourceFileColumn.trim() : undefined, // REQ-788
-          importSet: sourceType === "servicenow" ? importSet : undefined, // REQ-1954
         },
       }),
       rowRules: isProfiler ? profilerRowRules : [],
@@ -676,36 +620,83 @@ export function RegisterTableForm({
     tables.some(
       (rt) => rt.sourceId === sourceId && toSnakeCase(rt.tableName) === toSnakeCase(tbl.name),
     );
-  // REQ-1986: what each offered table needs to be read, a steward's requirements included once
-  // it is registered.
+  // REQ-1986: what each offered table needs to be read.
   const requiredOf = (tbl: { name: string }) =>
-    requiredParametersOf(
-      availableTables.find((a) => a.name === tbl.name) ?? {},
-      tables.find(
-        (rt) => rt.sourceId === sourceId && toSnakeCase(rt.tableName) === toSnakeCase(tbl.name),
-      ),
-    );
-  const allTablesRegistered =
-    !loadingTables &&
-    !!schemaName &&
-    availableTables.length > 0 &&
-    availableTables.every(isRegistered);
-
-  // REQ-2234: a source whose tables are listed can have several picked at once.
-  const listsTables = !isChecker && !isQueryApi && !isProfiler && !productsMode;
-  const many = several && listsTables;
+    requiredParametersOf(availableTables.find((a) => a.name === tbl.name) ?? {});
   const manyTables = useManyTables({
     sourceId,
     sourceType,
     domainId,
-    schemaName,
+    schemaName: listedSchema,
     regionInput,
     roleIds: roles.map((r) => r.id),
-    // Nothing is read until several are being picked.
-    offered: many ? availableTables : [],
+    offered: listsTables ? availableTables : [],
     isRegistered,
     suggestTableAlias,
+    needsCacheTtl,
+    pickReady,
   });
+  const choices = tableChoices({
+    t,
+    tables: availableTables,
+    isRegistered,
+    requiredOf,
+    readings: manyTables.readings,
+    needsCacheTtl: manyTables.needsCacheTtl,
+    // A table that needs input is registered on its own, opened in edit to be given it.
+    onRegisterOne: (name) => void manyTables.registerAsDraft(name, onContinue, setError),
+    opening: manyTables.opening,
+  });
+  // REQ-788: on a files source, files picked or a glob typed may be combined into one table.
+  const combine = useCombineFiles({
+    sourceId,
+    filesSource: listsTables && isFilesSourceType(sourceType),
+    offered: availableTables.map((tbl) => tbl.name),
+    picked: manyTables.ticked,
+  });
+  // A glob typed picks the listed tables of the files it matches.
+  const { setTicked } = manyTables;
+  const globTables =
+    combine.typedGlob.trim() && combine.preview
+      ? combine.preview.files.map((f) => f.table).join("\n")
+      : null;
+  useEffect(() => {
+    if (globTables !== null) setTicked(globTables ? globTables.split("\n") : []);
+  }, [globTables, setTicked]);
+  const registerCombined = () => {
+    const outcome = combine.combined(t);
+    if ("problem" in outcome) {
+      setError(outcome.problem);
+      return;
+    }
+    void manyTables.registerAll(domainId, onRegisteredMany, setError, outcome.combined);
+  };
+  const globHint = !combine.typedGlob.trim()
+    ? t("combineFiles.globHint")
+    : combine.checking || combine.preview === null
+      ? t("combineFiles.checking")
+      : combine.preview.files.length === 0
+        ? t("combineFiles.noMatch")
+        : t("combineFiles.matched", {
+            count: combine.preview.files.length,
+            glob: combine.preview.glob,
+          });
+  // Listing until the schema's tables first answer. A list already answered stays in use while it
+  // is asked again: each schema change in the org asks every open query again, and a field
+  // disabled meanwhile closed its open list under the person picking.
+  const listing = !listedSchema || (loadingTables && availableTables.length === 0);
+  // What the Tables field's hint says: still listing, or that there is nothing to pick.
+  const tablesStatus = startingTablesTimedOut
+    ? t("registerTableForm.tableStartingTimedOut")
+    : startingTables
+      ? t("registerTableForm.tableStarting")
+      : listing
+        ? t("registerManyTables.listing")
+        : availableTables.length === 0
+          ? t("registerManyTables.noTables")
+          : choices.length === 0
+            ? t("registerTableForm.tableAllRegistered")
+            : undefined;
   const isCdcSource = CDC_TYPES.has(sourceType);
 
   const registerProducts = async () => {
@@ -720,55 +711,84 @@ export function RegisterTableForm({
     }
   };
 
-  return (
-    <FormLayout data-tour="tables-form" className="form-card">
-      {/* REQ-1968: what names the table (its source, domain, schema, table and alias) sits apart at
-          the top; the rest flows beneath. */}
-      <FormIdentifiers>
+  // What names the table: its source and, where asked, its domain.
+  const sourceAndDomain = (
+    <>
+      <FormField size="medium">
+        <label>
+          {t("registerTableForm.sourceLabel")}
+          <select
+            className="form-select"
+            value={sourceId}
+            onChange={(e) => setSourceId(e.target.value)}
+            data-testid="register-table-source-select"
+          >
+            <option value="">{t("registerTableForm.sourcePlaceholder")}</option>
+            {sources
+              .filter(
+                (s) =>
+                  // Views come from + View, and a system source is Provisa's own.
+                  s.id !== DERIVED_SOURCE_ID &&
+                  !s.isSystem &&
+                  (s.allowedDomains.length === 0 ||
+                    s.allowedDomains.some((d) => checkedDomains.has(d))),
+              )
+              .map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.id}
+                </option>
+              ))}
+          </select>
+        </label>
+      </FormField>
+      {domainAsked && (
         <FormField size="medium">
           <label>
-            {t("registerTableForm.sourceLabel")}
+            {t("registerTableForm.domainLabel")}
             <select
               className="form-select"
-              value={sourceId}
-              onChange={(e) => setSourceId(e.target.value)}
-              data-testid="register-table-source-select"
+              value={domainId}
+              onChange={(e) => setDomainId(e.target.value)}
+              data-testid="register-table-domain-select"
             >
-              <option value="">{t("registerTableForm.sourcePlaceholder")}</option>
-              {sources
-                .filter(
-                  (s) =>
-                    s.allowedDomains.length === 0 ||
-                    s.allowedDomains.some((d) => checkedDomains.has(d)),
-                )
-                .map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.id}
-                  </option>
-                ))}
+              <option value="">{t("registerTableForm.domainPlaceholder")}</option>
+              {offeredDomains.map((d) => (
+                <option key={d} value={d}>
+                  {d}
+                </option>
+              ))}
             </select>
           </label>
         </FormField>
-        {domainAsked && (
-          <FormField size="medium">
-            <label>
-              {t("registerTableForm.domainLabel")}
-              <select
-                className="form-select"
-                value={domainId}
-                onChange={(e) => setDomainId(e.target.value)}
-                data-testid="register-table-domain-select"
-              >
-                <option value="">{t("registerTableForm.domainPlaceholder")}</option>
-                {offeredDomains.map((d) => (
-                  <option key={d} value={d}>
-                    {d}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </FormField>
-        )}
+      )}
+    </>
+  );
+
+  if (isWikidata) {
+    return (
+      <WikidataRegisterForm
+        identifiers={sourceAndDomain}
+        sourceId={sourceId}
+        domainId={domainId}
+        regionInput={regionInput}
+        roleIds={roles.map((r) => r.id)}
+        registeredNames={tables.filter((rt) => rt.sourceId === sourceId).map((rt) => rt.tableName)}
+        suggestTableAlias={suggestTableAlias}
+        language={i18n.language.split("-")[0]}
+        onRegisteredMany={onRegisteredMany}
+        onCancel={onCancel}
+        setError={setError}
+        problem={problem}
+      />
+    );
+  }
+
+  return (
+    <FormLayout data-tour="tables-form" className="form-card">
+      {/* REQ-1968: what names the table (its source, domain, schema and tables) sits apart at
+          the top; the rest flows beneath. */}
+      <FormIdentifiers>
+        {sourceAndDomain}
         {isChecker && (
           <FormField size="medium">
             <TextInput
@@ -833,41 +853,72 @@ export function RegisterTableForm({
             />
           </FormField>
         )}
-        {listsTables && sourceId && <ManyTablesMode several={several} onChange={setSeveral} />}
-        {listsTables && (
-          <>
-            <SchemaTableSelects
-              {...{ sourceId, schemaName, setSchemaName, tableName, setTableName, isRegistered }}
-              withTable={!many}
-              requiredOf={requiredOf}
-              schemas={availableSchemas}
-              loadingSchemas={loadingSchemas}
-              fixedSchema={isFixedSchema}
-              tables={availableTables}
-              loadingTables={loadingTables}
-              allRegistered={allTablesRegistered}
-              starting={startingTables}
-              startingTimedOut={startingTablesTimedOut}
-            />
-            {!many && tableName && (columnsStarting || columnsStartingTimedOut) && (
-              <Text
-                size="xs"
-                c={columnsStartingTimedOut ? "red" : "dimmed"}
-                data-testid="register-table-columns-starting"
+        {listsTables && !oneSchema && (
+          <FormField size="medium">
+            <label>
+              {t("registerTableForm.schemaLabel")}
+              <select
+                className="form-select"
+                value={schemaName}
+                onChange={(e) => setSchemaName(e.target.value)}
+                disabled={loadingSchemas}
+                data-testid="register-table-schema-select"
               >
-                {columnsStartingTimedOut
-                  ? t("registerTableForm.tableStartingTimedOut")
-                  : t("registerTableForm.tableStarting")}
-              </Text>
-            )}
-            {!many && sourceType === "servicenow" && tableName && (
-              <ImportSetField
-                {...{ sourceId, schemaName, tableName, value: importSet, onChange: setImportSet }}
-              />
-            )}
-          </>
+                <option value="">
+                  {loadingSchemas
+                    ? t("registerTableForm.schemaLoading")
+                    : t("registerTableForm.schemaPlaceholder")}
+                </option>
+                {availableSchemas.map((s) => (
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </FormField>
         )}
-        {!productsMode && !many && (
+        {listsTables && (
+          <FormField size="long" hint={tablesStatus} data-testid="register-tables-field">
+            <MultiSelect
+              label={t("registerManyTables.tablesLabel")}
+              options={choices}
+              value={manyTables.ticked}
+              onChange={manyTables.setTicked}
+              placeholder={t("registerManyTables.pickTables")}
+              disabled={listing || choices.length === 0}
+            />
+          </FormField>
+        )}
+        {/* The glob and the choice it offers wrap together, beside each other at every width. */}
+        {listsTables && isFilesSourceType(sourceType) && (
+          <FieldGroup>
+            <FormField size="medium" hint={globHint}>
+              <TextInput
+                label={t("combineFiles.globLabel")}
+                placeholder={t("combineFiles.globPlaceholder")}
+                value={combine.typedGlob}
+                onChange={(e) => combine.setTypedGlob(e.currentTarget.value)}
+                data-testid="register-tables-file-glob"
+              />
+            </FormField>
+            {combine.offeredChoice && (
+              <FormField size="medium" afterLabel>
+                <SegmentedControl
+                  aria-label={t("combineFiles.modeLabel")}
+                  value={combine.mode}
+                  onChange={(v) => combine.setMode(v as "perFile" | "combine")}
+                  data={[
+                    { value: "perFile", label: t("combineFiles.perFile") },
+                    { value: "combine", label: t("combineFiles.combine") },
+                  ]}
+                  data-testid="register-tables-combine-mode"
+                />
+              </FormField>
+            )}
+          </FieldGroup>
+        )}
+        {authored && (
           <FormField size="medium">
             <TextInput
               data-testid="register-table-alias"
@@ -878,37 +929,24 @@ export function RegisterTableForm({
             />
           </FormField>
         )}
-        {/* The describe-a-table search comes after the five fields it helps to fill, not between them. */}
-        {!isChecker &&
-          !isQueryApi &&
-          !isProfiler &&
-          !productsMode &&
-          !many &&
-          sourceId &&
-          schemaName &&
-          !allTablesRegistered && (
-            <NlTableSearch
-              sourceId={sourceId}
-              schemaName={schemaName}
-              isRegistered={isRegistered}
-              onPick={setTableName}
-            />
-          )}
       </FormIdentifiers>
+      {combine.combining && (
+        <CombineFilesSection
+          preview={combine.preview}
+          checking={combine.checking}
+          error={combine.error}
+          name={combine.name}
+          setName={combine.setName}
+          sourceFileColumn={combine.sourceFileColumn}
+          setSourceFileColumn={combine.setSourceFileColumn}
+          includeExtra={combine.includeExtra}
+          setIncludeExtra={combine.setIncludeExtra}
+        />
+      )}
       {productsMode && (
         <DbtPublicProducts key={sourceId} sourceId={sourceId} onPreview={onPreview} />
       )}
-      {many && (
-        <ManyTablesList
-          offered={availableTables}
-          isRegistered={isRegistered}
-          readings={manyTables.readings}
-          ticked={manyTables.ticked}
-          setTicked={manyTables.setTicked}
-          loading={!schemaName || loadingTables}
-        />
-      )}
-      {!productsMode && !many && (
+      {authored && (
         <>
           {needsCacheTtl && (
             <FormField
@@ -926,17 +964,15 @@ export function RegisterTableForm({
               />
             </FormField>
           )}
-          {sourceId && !short && (
-            <FormField size="medium">
-              <RegionSelect
-                value={region}
-                onChange={setRegion}
-                regions={regionChoices.regions}
-                scope="table"
-                testId="register-table-region-select"
-              />
-            </FormField>
-          )}
+          <FormField size="medium">
+            <RegionSelect
+              value={region}
+              onChange={setRegion}
+              regions={regionChoices.regions}
+              scope="table"
+              testId="register-table-region-select"
+            />
+          </FormField>
           {isChecker && (
             <CheckerFields
               checker={sourceType}
@@ -967,6 +1003,7 @@ export function RegisterTableForm({
               canPreview={Boolean(sourceId && cypher.trim())}
               onPreview={handleNeo4jPreview}
               previewRows={previewRows}
+              previewProblem={previewProblem}
               columns={columns.filter((c) => !isPipelineArgument(c))}
             />
           )}
@@ -977,7 +1014,7 @@ export function RegisterTableForm({
             <ProfilerRowRulesField rules={profilerRowRules} onChange={setProfilerRowRules} />
           )}
           {/* REQ-2132: on a checker source the description is the check's claim, why it exists. */}
-          {!short && isChecker && (
+          {isChecker ? (
             <FormField size="long" hint={t("registerTableForm.checkReasonHint")}>
               <TextInput
                 label={t("registerTableForm.checkReasonLabel")}
@@ -987,28 +1024,15 @@ export function RegisterTableForm({
                 data-testid="register-table-description"
               />
             </FormField>
-          )}
-          {!short && !isChecker && (
-            <FormField size="long">
-              <TextInput
-                label={t("registerTableForm.descriptionLabel")}
-                value={tableDescription}
-                onChange={(e) => setTableDescription(e.currentTarget.value)}
-                placeholder={t("registerTableForm.descriptionPlaceholder")}
-                data-testid="register-table-description"
-              />
-            </FormField>
-          )}
-          {pagingKind !== null && !short && (
-            <PagingField
-              kind={pagingKind}
-              paging={pagination}
-              onChange={setPagination}
-              ceilingRows={pagingCeilingRows}
-              rowsFieldEditable
+          ) : (
+            <RegisterDescriptionField
+              value={tableDescription}
+              onChange={setTableDescription}
+              describe={unregistered && (() => describeTable(unregistered))}
+              setError={setError}
             />
           )}
-          {sourceId && !isChecker && !isQueryApi && !short && (
+          {!isChecker && !isQueryApi && (
             <FormField
               size="medium"
               hint={
@@ -1035,93 +1059,33 @@ export function RegisterTableForm({
               />
             </FormField>
           )}
-          {isFilesSource && (
-            <FilesGlobFieldset
-              fileGlob={fileGlob}
-              setFileGlob={setFileGlob}
-              sourceFileColumn={sourceFileColumn}
-              setSourceFileColumn={setSourceFileColumn}
-            />
-          )}
           {/* The ticks sit together beneath the fields. */}
-          <FormChecks>
-            {!isChecker &&
-              !isQueryApi &&
-              (!short || (tableName !== "" && !loadingColumns && columns.length === 0)) && (
-                <FormField size="short" help={t("registerTableForm.discoverHint")}>
-                  <Checkbox
-                    checked={discover}
-                    onChange={(e) => setDiscover(e.currentTarget.checked)}
-                    data-testid="discover-columns-checkbox"
-                    label={t("registerTableForm.discoverLabel")}
-                  />
-                </FormField>
-              )}
-          </FormChecks>
-          {availableTables.find((tb) => tb.name === tableName)?.columnsDeclared && (
-            <DeclaredColumns
-              {...{ sourceId, tableName, columns, setColumns, irTypes }}
-              visibleTo={roles.map((r) => r.id)}
-            />
-          )}
-          {/* The heading shows once there is something under it: columns, or their loading. */}
-          {short && (
-            // Every discovered column is registered with its discovered type; a column discovery could
-            // not type is the one thing about the columns asked here (the server refuses it untyped).
-            <UntypedColumns
-              columns={columns}
-              untypedAtDiscovery={untypedAtDiscovery}
-              irTypes={irTypes}
-              loading={loadingColumns}
-              onType={(i, v) => updateCol(i, "dataType", v)}
-            />
-          )}
-          {short && sourceType === QDRANT && (
-            <QdrantVectorColumns
-              {...{ sourceId, columns }}
-              collection={tableName}
-              // A vector is offered unselected; naming its model registers it.
-              onModel={(i, m) =>
-                setColumns((cs) =>
-                  cs.map((c, j) => (j === i ? { ...c, embeddingModel: m, selected: m !== "" } : c)),
-                )
-              }
-            />
-          )}
-          {!isChecker && !short && (columns.length > 0 || loadingColumns) && (
-            <RegisterColumnsField
-              {...{ columns, loadingColumns, updateCol, roles, irTypes, sourceType }}
-            />
-          )}
-          {columns.length > 0 && !short && (
-            <FormField size="full">
-              <UniquesPanel
-                uniques={uniqueConstraints}
-                columns={columns.map((c) => c.name)}
-                onChange={setUniqueConstraints}
+          {!isChecker && !isQueryApi && (
+            <FormChecks>
+              <DiscoverColumnsField
+                checked={discover}
+                onChange={setDiscover}
+                help={t("registerTableForm.discoverHint")}
               />
-            </FormField>
+            </FormChecks>
+          )}
+          {!isChecker && columns.length > 0 && (
+            <RegisterColumnsField
+              {...{ columns, updateCol, roles, irTypes, sourceType, setError }}
+              loadingColumns={false}
+              describeColumn={unregistered && ((column) => describeColumn(unregistered, column))}
+            />
           )}
         </>
       )}
-      {/* Continue takes the chosen table to its settings, Cancel closes the form. */}
+      {/* Register registers the tables picked; an authored table goes on to its settings. */}
       <FormFooter
         panel
         problem={problem}
         onCancel={onCancel}
         cancelProps={{ "data-testid": "register-table-cancel" }}
-        // Choosing what is registered is not a save: every setting of it follows (REQ-2109).
         action={
-          many ? (
-            <Button
-              onClick={() => void manyTables.registerAll(domainId, onRegisteredMany, setError)}
-              loading={manyTables.registering}
-              disabled={manyTables.ticked.length === 0}
-              data-testid="register-many-tables-submit"
-            >
-              {t("registerManyTables.register", { count: manyTables.ticked.length })}
-            </Button>
-          ) : productsMode ? (
+          productsMode ? (
             <Button
               onClick={() => void registerProducts()}
               loading={registeringProducts}
@@ -1130,9 +1094,27 @@ export function RegisterTableForm({
             >
               {t("dbtPublicProducts.confirm", { count: productsPreview?.products.length ?? 0 })}
             </Button>
-          ) : (
-            <Button onClick={handleSubmit} data-testid="register-table-submit">
+          ) : authored ? (
+            <Button onClick={() => void handleSubmit()} data-testid="register-table-submit">
               {t("registerTableForm.continue")}
+            </Button>
+          ) : combine.combining ? (
+            <Button
+              onClick={registerCombined}
+              loading={manyTables.registering}
+              disabled={!combine.registrable}
+              data-testid="register-many-tables-submit"
+            >
+              {t("registerManyTables.register", { count: 1 })}
+            </Button>
+          ) : (
+            <Button
+              onClick={() => void manyTables.registerAll(domainId, onRegisteredMany, setError)}
+              loading={manyTables.registering}
+              disabled={manyTables.ticked.length === 0}
+              data-testid="register-many-tables-submit"
+            >
+              {t("registerManyTables.register", { count: manyTables.ticked.length })}
             </Button>
           )
         }

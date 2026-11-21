@@ -45,7 +45,7 @@ on:
         type: boolean
         default: false
       ui:
-        description: none | chromium | chromium-with-deps (.github/actions/setup-ui).
+        description: none | chromium (.github/actions/setup-ui).
         type: string
         default: none
       ui-timeout:
@@ -57,7 +57,21 @@ on:
         type: boolean
         default: false
       trino-plugins:
-        description: Restore and save the pinned Trino plugin jars (a lane that collects pytest).
+        description: >-
+          Restore the pinned Trino plugin jars and verify them (a lane that collects pytest); the
+          caller primes them in a job this one needs (.github/actions/trino-plugins).
+        type: boolean
+        default: false
+      pyodide-downloads:
+        description: >-
+          Put Pyodide's files in PROVISA_NOTEBOOK_DOWNLOADS (a lane with a test that builds the app
+          image, which takes them from there).
+        type: boolean
+        default: false
+      zaychik-image:
+        description: >-
+          Load the zaychik image the core services start, so the lane never builds it; the caller
+          primes it in a job this one needs (.github/actions/zaychik-image).
         type: boolean
         default: false
       image-cache:
@@ -206,6 +220,17 @@ on:
         required: false
       SP_CERT_PASSWORD:
         required: false
+      # SingleStore Cloud shared-tier workspace (source-to-query-community-ext.spec.ts)
+      SINGLESTORE_HOST:
+        required: false
+      SINGLESTORE_PORT:
+        required: false
+      SINGLESTORE_USERNAME:
+        required: false
+      SINGLESTORE_PASSWORD:
+        required: false
+      SINGLESTORE_DATABASE:
+        required: false
 
 permissions:
   contents: read
@@ -287,6 +312,10 @@ jobs:
         with:
           phase: restore
 
+      - name: Pyodide downloads
+        if: inputs.pyodide-downloads
+        uses: ./.github/actions/pyodide-downloads
+
       # Images this lane pulled last time, so a run is not dominated by pulls. Keyed on the compose
       # files: a changed image tag is a new key.
       - name: Restore images
@@ -300,6 +329,14 @@ jobs:
       - name: Load images
         if: inputs.image-cache && steps.images.outputs.cache-hit == 'true'
         run: zstd -dc ~/images.tar.zst | docker load
+
+      # After the lane's own image cache, so a zaychik:latest kept there from an older zaychik/ is
+      # replaced by the one built from this commit's.
+      - name: Restore the zaychik image
+        if: inputs.zaychik-image
+        uses: ./.github/actions/zaychik-image
+        with:
+          phase: restore
 
       # The itest splunk service bind-mounts the Splunk CIM add-on (docker-compose.test.yml), which
       # is licensed from Splunkbase and gitignored. tests/conftest.py fetches it
@@ -377,6 +414,11 @@ jobs:
           SP_CLIENT_ID: ${{ secrets.SP_CLIENT_ID }}
           SP_SITE_URL: ${{ secrets.SP_SITE_URL }}
           SP_CERT_PASSWORD: ${{ secrets.SP_CERT_PASSWORD }}
+          SINGLESTORE_HOST: ${{ secrets.SINGLESTORE_HOST }}
+          SINGLESTORE_PORT: ${{ secrets.SINGLESTORE_PORT }}
+          SINGLESTORE_USERNAME: ${{ secrets.SINGLESTORE_USERNAME }}
+          SINGLESTORE_PASSWORD: ${{ secrets.SINGLESTORE_PASSWORD }}
+          SINGLESTORE_DATABASE: ${{ secrets.SINGLESTORE_DATABASE }}
         run: bash ${{ inputs.prepare }}
 
       # REQ-2073: the lane's app runs as the runner's user beside Trino's container (uid and gid
@@ -447,12 +489,6 @@ jobs:
           path: ~/images.tar.zst
           key: images-${{ steps.key.outputs.lane }}-${{ steps.key.outputs.compose }}
 
-      - name: Cache Trino plugins
-        if: always() && inputs.trino-plugins
-        uses: ./.github/actions/trino-plugins
-        with:
-          phase: save
-          cache-hit: ${{ steps.trino-plugins.outputs.cache-hit }}
 
       - name: Upload results
         if: always()

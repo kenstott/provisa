@@ -392,7 +392,7 @@ Le righe si conservano per sempre. Provisa non ha alcuna impostazione di conserv
 
 ## Oscuramento {: #redaction }
 
-Ciò che Provisa registra del proprio lavoro passa per una lista di regole di oscuramento prima di essere scritto ovunque. Il testo riconosciuto da una regola viene sostituito con `[REDACTED:<rule>]`, che nomina la regola corrispondente.
+Ciò che Provisa registra del proprio lavoro, e ogni testo di errore che invia a un client, passa per una lista di regole di oscuramento prima di essere scritto ovunque. Nei log, negli span e nella traccia di audit di Provisa, il testo riconosciuto da una regola viene sostituito con `[REDACTED:<rule>]`, che nomina la regola corrispondente. Un client riceve il marcatore semplice `[REDACTED]`. Non nomina alcuna regola né alcuna variabile, quindi non puoi sapere a quale secret corrisponde una parola che hai inviato.
 
 La lista ha quattro parti:
 
@@ -412,7 +412,8 @@ La lista si applica a ogni uscita che Provisa scrive:
 - ogni span, come un'unica copia oscurata consegnata a ogni exporter, e la vista degli span recenti;
 - ogni record di log nella pipeline di log OpenTelemetry di Provisa, e ogni riga scritta da un handler di logging, compresi l'output standard e i log dei container;
 - il testo della query del log di audit, prima che ne sia calcolato l'hash e che sia cifrato, così che né il testo né il suo hash rivelino un valore riconosciuto; e il dettaglio del registro amministrativo;
-- i messaggi di errore che un client riceve tramite HTTP, pgwire, gRPC, Arrow Flight e MCP.
+- i messaggi di errore che un client riceve tramite HTTP, pgwire, gRPC, Arrow Flight, MCP e Bolt. Un errore dentro una risposta riuscita, come una lista `errors` di GraphQL in una risposta 200 o l'ultimo frame di una sottoscrizione, viene oscurato come uno in una risposta 400;
+- il testo che Provisa invia a un modello, come un prompt o un input di embedding, che porta il marcatore semplice.
 
 La telemetria e gli errori dei client non sono legati a una singola organizzazione quando vengono scritti, quindi vengono oscurati con le regole di tutte le organizzazioni insieme. Due errori passano senza oscuramento: un corpo di errore HTTP più grande di 1 MiB e l'errore di uno stream Arrow Flight che fallisce dopo aver iniziato a inviare.
 

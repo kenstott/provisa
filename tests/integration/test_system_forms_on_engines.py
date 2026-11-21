@@ -10,7 +10,8 @@
 
 """pg_forms_system on an engine that is not DuckDB (REQ-2171): each statement of system_corpus as
 Provisa writes it for the engine, run there, against postgres:17.11's recorded answers.
-tests/unit/pgwire/test_pg_system_forms.py proves the same on DuckDB."""
+tests/unit/pgwire/test_pg_system_forms.py proves the same on DuckDB. A statement conformance-functions
+measures on the engine is not replayed here (tests/integration/replay_coverage.py)."""
 
 # Requirements: REQ-2167, REQ-2171
 
@@ -27,6 +28,7 @@ from provisa.transpiler.function_macros import FunctionRefused
 from provisa.transpiler.pg_forms_enum import NOT_SUPPORTED
 from provisa.transpiler.pg_forms_types import REFUSED
 from provisa.transpiler.transpile import transpile
+from tests.integration.replay_coverage import remaining
 from tests.unit.pgwire.pg17_system_answers import RECORDED
 
 pytestmark = [pytest.mark.integration]
@@ -53,7 +55,8 @@ def _refused_by_decision(got: Any, sql: str, dialect: str) -> bool:
 
 def _check(run: Callable[[str], Any], dialect: str, written_from_a_value: bool) -> None:
     wrong = {}
-    for sql, want in RECORDED.items():
+    for sql in remaining("system_forms", dialect, RECORDED):
+        want = RECORDED[sql]
         try:
             got = run(transpile(sql, dialect))
         except Exception as raised:  # noqa: BLE001 -- the engine's refusal is the answer compared

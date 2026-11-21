@@ -1,6 +1,6 @@
 {
   "storageNotice": {
-    "settings": "Ihr Browser konnte einige Einstellungen nicht speichern. Die App läuft mit den Standardwerten weiter.",
-    "session": "Ihr Browser hat Ihre Sitzung nicht behalten. Die Anmeldung bleibt erst bestehen, wenn der Browserspeicher verfügbar ist."
+    "settings": "Ihr Browser konnte einige Einstellungen nicht speichern. Die App arbeitet mit ihren Standardwerten weiter.",
+    "session": "Ihr Browser hat Ihre Sitzung nicht behalten. Die Anmeldung kann erst bestehen bleiben, wenn Browser-Speicher verfügbar ist."
   }
 }

@@ -1,19 +1,22 @@
 name: Unit Tests
 
-# Runs on main, and on release/** where it gates a release (release-cut.yml reads the result).
+# Runs on main, and on dispatch for a release (release-cut.yml reads the result); a push to release/**
+# does not start it, the lander having run it on the merged sha before the push.
 # tests/unit/ — pure, no Docker/live-service dependency (verified: no test in this directory
 # carries an integration/e2e/requires_* marker). Runs on every push/PR so a regression is caught
 # in minutes, not only when the (much more expensive) e2e lanes happen to run — see
-# ui-e2e-core.yml/ui-e2e-trino.yml, which are workflow_dispatch/release-branch only.
+# ui-e2e-core.yml/ui-e2e-trino.yml, which are workflow_dispatch only.
 
 on:
   push:
-    branches: [main, 'release/**']
+    branches: [main]
   pull_request:
   workflow_dispatch:
 
+# actions: the plan job reads the last green run's artifacts.
 permissions:
   contents: read
+  actions: read
 
 # A newer push to the same ref supersedes the run before it: without this every push kept its own
 # runner until it finished, and the runs queued behind them (integration-suite.yml's lanes).
@@ -22,22 +25,51 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Four shards side by side, each its own runner with xdist across its cores. The files split by
-  # recorded seconds (scripts/ci/unit_file_seconds.json, rewritten from a run's unit-junit-N
-  # artifacts by `unit_shard.py timings`), so the four take about the same time; a file with no
-  # record goes by its path's hash. Each shard writes the test ids it collected for the check below.
-  shard:
-    name: pytest tests/unit ${{ matrix.shard }}/4
+  # The seconds each test file took in the last successful run on main, for the shards to split by:
+  # that run's unit-junit-N artifacts, summed by file (`unit_shard.py timings`). The times are read
+  # per run instead of kept in the repo, so they are never older than main's last green run and no
+  # branch edits a record of them.
+  plan:
+    name: plan the shards
     runs-on: ubuntu-latest
-    # A shard takes a quarter of the suite's test time, about fifteen to twenty minutes, plus
-    # four minutes before the first test runs. The limit is not the budget: a shard near it
-    # means the recorded times are out of date. Without a limit a run that stops making progress held
-    # its runner for the hosted default of six hours.
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Times from the last green run on main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          run=$(gh run list -R "$GITHUB_REPOSITORY" --workflow unit-tests.yml --branch main --status success --limit 1 --json databaseId -q '.[0].databaseId')
+          [ -n "$run" ] || { echo "::error::no successful Unit Tests run on main to take the times from"; exit 1; }
+          echo "times from run $run"
+          gh run download "$run" -R "$GITHUB_REPOSITORY" --pattern 'unit-junit-*' --dir junit
+          python3 scripts/ci/unit_shard.py timings unit-seconds.json junit/*/unit-junit.xml
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: unit-seconds
+          path: unit-seconds.json
+          if-no-files-found: error
+
+  # Six shards side by side, each its own runner with xdist across its cores. The matrix list is
+  # the one place the count is stated. The files split by the plan job's seconds (unit_shard.py), so
+  # the shards take about the same time; a file main has not run counts as the mean file. Each
+  # shard writes the test ids it collected for the check below.
+  shard:
+    name: pytest tests/unit ${{ matrix.shard }}/${{ strategy.job-total }}
+    needs: plan
+    runs-on: ubuntu-latest
+    # A shard's tests take about twelve minutes, after two to four before pytest starts. The limit
+    # is not the budget: the last step fails the shard by name above twenty minutes of tests and
+    # warns above fifteen (unit_shard.py BUDGET_SECONDS, TARGET_SECONDS), which is when to add a
+    # shard. Without a limit a run that stops making progress held its runner for the hosted
+    # default of six hours.
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4]
+        shard: [1, 2, 3, 4, 5, 6]
     steps:
       - uses: actions/checkout@v4
 
@@ -54,17 +86,33 @@ jobs:
         with:
           node-version-file: .nvmrc
 
+      - uses: actions/download-artifact@v4
+        with:
+          name: unit-seconds
+
       - name: Run unit tests
+        id: tests
+        # The unit_shard plugin leaves the other shards' files out of tests/unit; the files are not
+        # passed as arguments, which took a shard of 1,285 files 8:36 to collect.
         # --timeout: a test still running after five minutes fails by name and the shard goes on,
         # instead of holding it to the job's limit and being cancelled with no test named.
         # faulthandler_timeout: at the same moment every thread's stack is written to the log.
         env:
           PYTHONPATH: scripts/ci
           PROVISA_COLLECTED_IDS: ${{ github.workspace }}/ids.txt
-          SHARD: ${{ matrix.shard }}/4
+          PROVISA_UNIT_SHARD: ${{ matrix.shard }}/${{ strategy.job-total }}
+          PROVISA_UNIT_SECONDS: ${{ github.workspace }}/unit-seconds.json
         run: |
-          mapfile -t files < <(python3 scripts/ci/unit_shard.py files "$SHARD")
-          uv run pytest -p unit_shard "${files[@]}" --no-cov -q -n auto --timeout=300 -o faulthandler_timeout=300 --junitxml=unit-junit.xml
+          python3 scripts/ci/unit_shard.py files "$PROVISA_UNIT_SHARD" "$PROVISA_UNIT_SECONDS" > /dev/null
+          start=$SECONDS
+          uv run pytest -p unit_shard tests/unit --no-cov -q -n auto --timeout=300 -o faulthandler_timeout=300 --junitxml=unit-junit.xml
+          echo "seconds=$((SECONDS - start))" >> "$GITHUB_OUTPUT"
+
+      # The shard that is running long fails here, by name, before one reaches the job's limit.
+      - name: Shard within its time budget
+        env:
+          TAKEN: ${{ steps.tests.outputs.seconds }}
+        run: python3 scripts/ci/unit_shard.py budget "$TAKEN"
 
       - uses: actions/upload-artifact@v4
         if: always()
@@ -124,7 +172,7 @@ jobs:
       - name: Compare
         run: >-
           python3 scripts/ci/unit_shard.py check ids/unit-ids-full/ids.txt
-          ids/unit-ids-[0-9]/ids.txt
+          ids/unit-ids-[0-9]*/ids.txt
 
   # The workflow's verdict under the job name it had before sharding.
   unit:

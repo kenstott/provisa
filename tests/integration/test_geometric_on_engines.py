@@ -10,7 +10,9 @@
 
 """The geometric forms on each engine (REQ-2171, AN ANSWER THAT DIFFERS IS REFUSED): first that the
 recording is what postgres:17.11 answers today, then each statement of geometric_corpus as Provisa
-writes it, against that recording, one test to a function."""
+writes it, against that recording, one test to a function. On Trino and ClickHouse
+conformance-functions measures every literal statement (tests/integration/replay_coverage.py), so
+only each function's statement over columns is replayed there."""
 
 # Requirements: REQ-2167, REQ-2171
 
@@ -28,6 +30,7 @@ import psycopg
 import pytest
 
 from provisa.transpiler.transpile import transpile
+from tests.integration.every_case import failures_of_every_case
 from tests.unit.pgwire.geometric_replay import (
     BY_FUNCTION,
     column_statement,
@@ -93,17 +96,6 @@ def test_geometric_forms_on_duckdb(function: str):
     assert _check(function, "duckdb", run) == []
 
 
-@pytest.mark.requires_trino
-@pytest.mark.parametrize("function", sorted(BY_FUNCTION))
-def test_geometric_forms_on_trino(trino_conn, function: str):
-    def run(sql: str) -> Any:
-        cursor = trino_conn.cursor()
-        cursor.execute(sql)
-        return cursor.fetchall()[0][0]
-
-    _check(function, "trino", run)
-
-
 def _clickhouse_client():
     import clickhouse_connect
 
@@ -113,25 +105,6 @@ def _clickhouse_client():
         username=os.environ.get("CLICKHOUSE_USER", "default"),
         password=os.environ.get("CLICKHOUSE_PASSWORD", ""),
     )
-
-
-def _on_every_function(check: Callable[[str], Any]) -> dict[str, str]:
-    """Every function's failure, reported together: requires_clickhouse starts and removes the
-    service for each test, 14 seconds that made one test a function take over an hour."""
-    failures: dict[str, str] = {}
-    for function in sorted(BY_FUNCTION):
-        try:
-            check(function)
-        except AssertionError as failed:
-            failures[function] = str(failed)[:2000]
-    return failures
-
-
-@pytest.mark.requires_clickhouse
-def test_geometric_forms_on_clickhouse():
-    client = _clickhouse_client()
-    run = lambda sql: client.query(sql).result_rows[0][0]  # noqa: E731
-    assert _on_every_function(lambda f: _check(f, "clickhouse", run)) == {}
 
 
 def _on_columns(function: str, dialect: str, rows: Callable[[str], list[Any]]) -> None:
@@ -165,4 +138,7 @@ def test_geometric_columns_on_trino(trino_conn, function: str):
 def test_geometric_columns_on_clickhouse():
     client = _clickhouse_client()
     rows = lambda sql: [r[0] for r in client.query(sql).result_rows]  # noqa: E731
-    assert _on_every_function(lambda f: _on_columns(f, "clickhouse", rows)) == {}
+    assert (
+        failures_of_every_case(sorted(BY_FUNCTION), lambda f: _on_columns(f, "clickhouse", rows))
+        == {}
+    )

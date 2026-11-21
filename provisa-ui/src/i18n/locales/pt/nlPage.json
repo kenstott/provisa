@@ -1,7 +1,7 @@
 {
   "nlPage": {
     "guideTitle": "Como escrever uma boa pergunta",
-    "guideDesc": "Esta ferramenta gera consultas diretamente do esquema — ela não raciocina sobre texto livre ou conhecimento geral. Formule a pergunta como uma composição das tabelas, campos e relacionamentos que existem nos dados.",
+    "guideDesc": "Esta ferramenta gera consultas a partir do seu esquema. Ela não raciocina sobre texto livre nem conhecimento geral, então formule sua pergunta em termos das tabelas, campos e relacionamentos dos seus dados.",
     "guideRuleNames": "Use os nomes das entidades, não sinônimos ({{entity}}, não {{synonym}})",
     "guideRuleFilters": "Especifique filtros, agrupamentos e agregações como faria em uma consulta",
     "guideRuleSchema": "Se um campo ou relacionamento não está no esquema, ele não pode ser consultado",
@@ -24,8 +24,8 @@
     "strictModeTooltip": "Toda a geração se baseia estritamente na expressão GraphQL: primeiro o GraphQL é gerado e validado contra o esquema, depois compilado para SQL e então para Cypher. Desativado: SQL, GraphQL e Cypher são gerados, cada um, de forma independente, como a consulta mais próxima da pergunta.",
     "strictLocked": "Esta função só pode usar relacionamentos aprovados",
     "questionTooltip": "Pergunte em linguagem natural usando seus próprios nomes de tabelas, colunas e relações. Enter envia; Shift+Enter adiciona uma linha.",
-    "generateTooltip": "Gera uma consulta para cada superfície — GraphQL, SQL e Cypher — a partir desta pergunta, usando o esquema que seu papel atual pode ver.",
-    "mcpChatTooltip": "Entrega esta pergunta ao assistente MCP, que explora o catálogo e executa a consulta para você em vez de apenas gerá-la.",
+    "generateTooltip": "Gera consultas GraphQL, SQL e Cypher a partir desta pergunta, usando o esquema que sua função atual pode ver.",
+    "mcpChatTooltip": "Envia esta pergunta ao assistente MCP, que explora o catálogo e executa a consulta para você.",
     "questionHelpTitle": "Formular a pergunta",
     "strictHelpTitle": "Geração estrita",
     "generateHelpTitle": "O que o Gerar produz",

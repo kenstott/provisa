@@ -1,6 +1,6 @@
 {
   "queryBar": {
-    "autoImputeOn": "Imputation automatique des relations ACTIVÉE — cliquez pour désactiver",
+    "autoImputeOn": "L'inférence automatique des relations est activée. Cliquez pour la désactiver.",
     "autoImputeOff": "Imputer automatiquement les relations entre les nœuds visibles",
     "run": "Exécuter la requête (⌘↵)",
     "clear": "Effacer la requête"

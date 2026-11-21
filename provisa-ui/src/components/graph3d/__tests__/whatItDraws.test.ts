@@ -8,9 +8,10 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-2174 (amended 2026-11-07, WHAT THE GRAPH DRAWS): the 3D view's hops counted from the focus
-// alone (1 its tables and commands, 2 their columns, 3 the terms tied to them, 4 the other columns
-// tied to those terms); Related tables drawing the tables related to the tables drawn, named by the
+// REQ-2174 (amended 2026-11-07, WHAT THE GRAPH DRAWS; 2026-11-12, A HOP IS A STEP BETWEEN TERMS):
+// the 3D view's hops counted from the focus alone, each a step between terms -- a product's tables,
+// commands, columns and the terms tied to them come with it at no hop, each term with its
+// grounding (the other columns tied to it, their tables); Related tables drawing the tables related to the tables drawn, named by the
 // relationship, with their products, one step and nothing of their own; a table's columns tied to
 // no term drawn folded into one node; the product panel's and the full graph's defaults.
 
@@ -100,30 +101,46 @@ const drawn = (depth: number, layers: LayerId[], g: GraphData = GRAPH) =>
   });
 const ids = (g: GraphData) => g.nodes.map((n) => n.id).sort();
 
-describe("the 3D view's hops, counted from the focus alone", () => {
-  it("draws the product's tables and commands at 1 hop, and none of their columns", () => {
-    expect(ids(drawn(1, LAYERS))).toEqual(["f:refund", "p:p1", "t:3"]);
-  });
+describe("the 3D view's hops, counted between terms from the focus alone", () => {
+  // Pet name is a KIND_OF Animal name, a PART_OF Animal; neither is tied to a column.
+  const chain: GraphData = productMapGraph(
+    [
+      ...TERMS,
+      { ...TERMS[0], id: 8, name: "Animal name", refCount: 0, refs: [] },
+      { ...TERMS[0], id: 9, name: "Animal", refCount: 0, refs: [] },
+    ],
+    [
+      { id: 1, fromTermId: 7, toTermId: 8, relType: "KIND_OF" },
+      { id: 2, fromTermId: 8, toTermId: 9, relType: "PART_OF" },
+    ],
+    PRODUCTS,
+  );
 
-  it("draws their columns at 2", () => {
-    expect(ids(drawn(2, LAYERS))).toEqual([
+  it("draws the product's tables, commands, columns and their terms at 1 hop, each term grounded", () => {
+    // Pet name brings the other column it is tied to, animals.nickname, with its table.
+    expect(ids(drawn(1, LAYERS))).toEqual([
       "c:3:age",
       "c:3:born",
       "c:3:name",
+      "c:6:nickname",
       "f:refund",
       "p:p1",
       "t:3",
+      "t:6",
+      "term:7",
     ]);
   });
 
-  it("draws the terms tied to those columns at 3", () => {
-    const g = drawn(3, LAYERS);
-    expect(ids(g)).toContain("term:7");
-    expect(ids(g)).not.toContain("c:6:nickname");
+  it("draws no more past 1 hop where no term link leads on", () => {
+    for (const depth of [2, 3, 4, Infinity])
+      expect(ids(drawn(depth, LAYERS))).toEqual(ids(drawn(1, LAYERS)));
   });
 
-  it("draws the other columns tied to those terms at 4", () => {
-    expect(ids(drawn(4, LAYERS))).toContain("c:6:nickname");
+  it("steps once across the term links for each hop", () => {
+    const at = (depth: number) => ids(drawn(depth, LAYERS, chain)).filter((id) => id.startsWith("term:"));
+    expect(at(1)).toEqual(["term:7", "term:8"]);
+    expect(at(2)).toEqual(["term:7", "term:8", "term:9"]);
+    expect(at(Infinity)).toEqual(["term:7", "term:8", "term:9"]);
   });
 });
 
@@ -132,7 +149,19 @@ describe("Related tables", () => {
 
   it("draws each table related to a table drawn, named by the relationship, with its product", () => {
     const g = drawn(1, ON);
-    expect(ids(g)).toEqual(["f:refund", "p:p1", "p:p2", "t:3", "t:5"]);
+    expect(ids(g)).toEqual([
+      "c:3:age",
+      "c:3:born",
+      "c:3:name",
+      "c:6:nickname",
+      "f:refund",
+      "p:p1",
+      "p:p2",
+      "t:3",
+      "t:5",
+      "t:6",
+      "term:7",
+    ]);
     expect(g.edges.find((e) => e.kind === "relationship")).toMatchObject({
       a: "t:3",
       b: "t:5",
@@ -176,7 +205,7 @@ describe("Related tables", () => {
   });
 
   it("counts no hop: the related table is drawn at 1 hop as at 4", () => {
-    for (const depth of [1, 2, 3, 4]) expect(ids(drawn(depth, ON))).toContain("t:5");
+    for (const depth of [1, 2, 3, 4, Infinity]) expect(ids(drawn(depth, ON))).toContain("t:5");
   });
 });
 
@@ -184,7 +213,7 @@ describe("a table's columns tied to no term drawn", () => {
   const label = (count: number) => `${count} columns with no term in this view`;
 
   it("fold into one node, named by their count, while no term is drawn", () => {
-    const g = foldUnbound(drawn(2, LAYERS), new Set(), label);
+    const g = foldUnbound(drawn(1, LAYERS, productMapGraph([], [], PRODUCTS)), new Set(), label);
     const fold = g.nodes.find((n) => n.id === foldId("t:3"));
     expect(fold).toMatchObject({
       type: "column",
@@ -200,7 +229,7 @@ describe("a table's columns tied to no term drawn", () => {
   });
 
   it("leave a column tied to a term drawn as itself", () => {
-    const g = foldUnbound(drawn(3, LAYERS), new Set(), label);
+    const g = foldUnbound(drawn(1, LAYERS), new Set(), label);
     expect(ids(g)).toContain("c:3:name");
     expect(g.nodes.find((n) => n.id === foldId("t:3"))).toMatchObject({
       label: "2 columns with no term in this view",
@@ -209,7 +238,7 @@ describe("a table's columns tied to no term drawn", () => {
   });
 
   it("are drawn one by one once the table is expanded", () => {
-    const g = foldUnbound(drawn(3, LAYERS), new Set(["t:3"]), label);
+    const g = foldUnbound(drawn(1, LAYERS), new Set(["t:3"]), label);
     expect(g.nodes.some((n) => n.folded)).toBe(false);
     expect(ids(g)).toEqual(expect.arrayContaining(["c:3:age", "c:3:born", "c:3:name"]));
   });

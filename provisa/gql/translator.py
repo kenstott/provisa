@@ -29,7 +29,6 @@ from __future__ import annotations
 
 import copy
 import dataclasses
-import functools
 import re
 from collections.abc import Callable
 from dataclasses import replace
@@ -132,42 +131,89 @@ def cypher_to_sql(  # REQ-345, REQ-347, REQ-352
     return quote_keywords(sql_ast), ordered, graph_vars
 
 
-@functools.cache
-def _keywords() -> frozenset[str]:
-    """The keywords sqlglot reads back as other than a column (``like``, ``qualify``) when its
-    own SQL text writes them bare."""
-    import sqlglot
-    from sqlglot.dialects.postgres import Postgres
-    from sqlglot.errors import SqlglotError
-
-    found: set[str] = set()
-    for keyword in Postgres.Tokenizer.KEYWORDS:
-        word = keyword.lower()
-        if not word.isidentifier() or word in found:
-            continue
-        for probe in (f"SELECT {word} FROM t", f"SELECT f({word}, 1), {word}.x FROM t AS {word}"):
-            try:
-                tree = sqlglot.parse_one(probe, read="postgres")
-            except SqlglotError:
-                found.add(word)
-                break
-            names = {n for c in tree.find_all(exp.Column) for n in (c.name, c.table)}
-            if word not in {n.lower() for n in names}:
-                found.add(word)
-                break
-    return frozenset(found)
+#: The keywords sqlglot reads back as other than a column (``like``, ``qualify``) when its own
+#: SQL text writes them bare. Fixed by the pinned sqlglot (pyproject: sqlglot>=30.23,<30.24);
+#: tests/unit/test_cypher_first_translation.py probes every Postgres tokenizer keyword and fails when
+#: a sqlglot change makes this set differ, so a process never probes at its first translation.
+SQL_KEYWORDS: frozenset[str] = frozenset(
+    {
+        "all",
+        "alter",
+        "and",
+        "any",
+        "as",
+        "between",
+        "case",
+        "create",
+        "cross",
+        "current_catalog",
+        "current_date",
+        "current_schema",
+        "current_time",
+        "current_timestamp",
+        "current_user",
+        "distinct",
+        "drop",
+        "else",
+        "except",
+        "false",
+        "fetch",
+        "for",
+        "from",
+        "glob",
+        "grant",
+        "having",
+        "ilike",
+        "in",
+        "inner",
+        "insert",
+        "intersect",
+        "into",
+        "join",
+        "lateral",
+        "like",
+        "localtime",
+        "localtimestamp",
+        "not",
+        "notnull",
+        "null",
+        "on",
+        "only",
+        "or",
+        "outer",
+        "partitioned_by",
+        "qualify",
+        "regexp",
+        "returning",
+        "revoke",
+        "rlike",
+        "rollback",
+        "select",
+        "session_user",
+        "tablesample",
+        "then",
+        "true",
+        "uncache",
+        "union",
+        "using",
+        "variadic",
+        "when",
+        "where",
+        "with",
+        "xor",
+    }
+)
 
 
 def quote_keywords(tree: exp.Expression) -> Any:
     """``tree`` with each unquoted column name or column table that is a SQL keyword quoted: a Cypher variable
     may be named ``like`` or ``order``, which the SQL text sqlglot writes (it quotes no keyword)
     would read back as the keyword (REQ-347)."""
-    keywords = _keywords()
     for column in tree.find_all(exp.Column):
         # A column's name and its table's: an alias (AS like) sqlglot reads back as written.
         for part in (column.args.get("this"), column.args.get("table")):
             if isinstance(part, exp.Identifier) and not part.quoted:
-                if part.name.lower() in keywords:
+                if part.name.lower() in SQL_KEYWORDS:
                     part.set("quoted", True)
     return tree
 

@@ -1,6 +1,6 @@
 {
   "profile3d": {
-    "expand": "Espandi vista",
+    "expand": "Ingrandisci",
     "webglError": "Impossibile avviare la vista 3D: {{error}}",
     "hint": "Trascina per orbitare · scorri per ingrandire · trascina con il tasto destro per spostare",
     "hintFlat": "Trascina per spostare · scorri per ingrandire",

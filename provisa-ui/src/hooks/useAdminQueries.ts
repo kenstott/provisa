@@ -18,6 +18,7 @@ import type {
   DataProduct,
   ListedNames,
   Metric,
+  DatasetMetric,
   RefreshPolicySummary,
   DqContract,
   DqContractText,
@@ -31,6 +32,8 @@ import type {
   DqDryRunVars,
   Relationship,
   MutationResult,
+  CodeResolver,
+  CodeResolverInput,
   ColumnDependentsResult,
   UserSummary,
 } from "../types/admin";
@@ -64,8 +67,13 @@ import {
   CreateMetric as CREATE_METRIC_MUTATION,
   UpdateMetric as UPDATE_METRIC_MUTATION,
   DeleteMetric as DELETE_METRIC_MUTATION,
+  TableMetricsQuery as TABLE_METRICS_QUERY,
   RelationshipsQuery as RELATIONSHIPS_QUERY,
   AllRelationshipsQuery as ALL_RELATIONSHIPS_QUERY,
+  CodeResolversQuery as CODE_RESOLVERS_QUERY,
+  CreateCodeResolver,
+  UpdateCodeResolver,
+  RetireCodeResolver,
   AvailableSchemas,
   AvailableTables,
   KaggleTokenValid,
@@ -100,13 +108,20 @@ import {
   UpdateSourceAllowedDomains,
   SuggestTableAlias,
   ResolveOwners,
+  DeleteMetrics,
+  DeleteDomains,
+  DeleteRelationships,
+  DeleteSources,
 } from "./admin.graphql";
+import { useBulkDelete } from "./useBulkDelete";
 import { firstLoad } from "./firstLoad";
 import { useShownTableQueries } from "./useTableQueries";
+export { useAllRelationships } from "./useRelationshipQueries";
 
 export { firstLoad } from "./firstLoad";
 export {
   useDeleteTable,
+  useDeleteTables,
   useReadTableDetails,
   useRegisterEntity,
   useRegisterFact,
@@ -253,6 +268,16 @@ export interface MetricInput {
   description?: string | null;
   aiContext?: string | null;
   visibleTo?: string[];
+  term?: string | null; // REQ-2243
+}
+
+// REQ-2243: the governed metrics a dataset uses, as the caller's role may see them.
+export function useTableMetrics(tableId: number) {
+  const { data, loading, error } = useQuery<{ tableMetrics: DatasetMetric[] }>(
+    TABLE_METRICS_QUERY,
+    { variables: { tableId }, fetchPolicy: "cache-and-network" },
+  );
+  return { metrics: data?.tableMetrics, loading, error };
 }
 
 export function useUpsertMetric() {
@@ -459,19 +484,6 @@ export function useRelationships() {
   };
 }
 
-export function useAllRelationships() {
-  const { data, loading, error, refetch } = useQuery<{ allRelationships: Relationship[] }>(
-    ALL_RELATIONSHIPS_QUERY,
-    { fetchPolicy: "cache-and-network" },
-  );
-  return {
-    relationships: data?.allRelationships ?? NO_RELATIONSHIPS,
-    loading: firstLoad(loading, data),
-    error,
-    refetch,
-  };
-}
-
 export function useCreateDomain() {
   const [createDomain, { loading }] = useMutation<{ createDomain: MutationResult }>(CreateDomain, {
     refetchQueries: [{ query: DOMAINS_QUERY }],
@@ -551,6 +563,36 @@ export function useDeleteRelationship() {
       return (result.data?.deleteRelationship ?? { success: false, message: "" }) as MutationResult;
     },
     loading,
+  };
+}
+
+/** REQ-2249: the code resolver sets in service, and saving, changing and retiring one. Each
+ * act changes three objects (a bridge view and two relationships), so the lists are read again. */
+export function useCodeResolvers() {
+  const reread = {
+    refetchQueries: [{ query: RELATIONSHIPS_QUERY }, { query: CODE_RESOLVERS_QUERY }],
+    awaitRefetchQueries: true,
+  };
+  const { data, loading } = useQuery<{ codeResolvers: CodeResolver[] }>(CODE_RESOLVERS_QUERY);
+  const [create] = useMutation<{ createCodeResolver: MutationResult }>(CreateCodeResolver, reread);
+  const [update] = useMutation<{ updateCodeResolver: MutationResult }>(UpdateCodeResolver, reread);
+  const [retire] = useMutation<{ retireCodeResolver: MutationResult }>(RetireCodeResolver, reread);
+  const failed: MutationResult = { success: false, message: "" };
+  return {
+    codeResolvers: data?.codeResolvers ?? [],
+    loading,
+    saveCodeResolver: async (input: CodeResolverInput, isNew: boolean): Promise<MutationResult> => {
+      if (isNew) {
+        const result = await create({ variables: { input } });
+        return result.data?.createCodeResolver ?? failed;
+      }
+      const result = await update({ variables: { input } });
+      return result.data?.updateCodeResolver ?? failed;
+    },
+    retireCodeResolver: async (id: string): Promise<MutationResult> => {
+      const result = await retire({ variables: { id } });
+      return result.data?.retireCodeResolver ?? failed;
+    },
   };
 }
 
@@ -1075,4 +1117,30 @@ export function useDeployViewToDb() {
     },
     loading,
   };
+}
+
+/** REQ-2240: several metrics deleted in one call, each through its single delete; the same lists
+ *  read again. */
+export function useDeleteMetrics() {
+  return useBulkDelete(DeleteMetrics, "deleteMetrics", "names", [{ query: METRICS_QUERY }]);
+}
+
+/** REQ-2240: several domains deleted in one call, each through its single delete; the same lists
+ *  read again. */
+export function useDeleteDomains() {
+  return useBulkDelete(DeleteDomains, "deleteDomains", "ids", [{ query: DOMAINS_QUERY }]);
+}
+
+/** REQ-2240: several relationships deleted in one call, each through its single delete; the same lists
+ *  read again. */
+export function useDeleteRelationships() {
+  return useBulkDelete(DeleteRelationships, "deleteRelationships", "ids", [
+    { query: RELATIONSHIPS_QUERY },
+  ]);
+}
+
+/** REQ-2240: several sources deleted in one call, each through its single delete; the same lists
+ *  read again. */
+export function useDeleteSources() {
+  return useBulkDelete(DeleteSources, "deleteSources", "ids");
 }

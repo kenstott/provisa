@@ -18,6 +18,7 @@ from provisa.transpiler.transpile import (
     transpile,
     transpile_to_trino,
     rewrite_correlated_subqueries_for_trino,
+    direct_physical,
     rewrite_json_object_to_build_object,
     rewrite_prometheus_labels_for_trino,
 )
@@ -41,6 +42,23 @@ class TestTranspileToTrino:
             'ARRAY[to_json("b"."id")]))]) AS x FROM "public"."users" "b"'
         )
         assert "to_json" not in transpile_to_trino(pg).lower()
+
+    def test_to_json_in_a_json_object_is_its_json_text_marked_format_json(self):
+        # REQ-2176: Trino's JSON_OBJECT takes a JSON value only as text marked FORMAT JSON; a
+        # value of type JSON it casts to varchar, which no array or object survives ("Cannot
+        # cast '["Small"]' to varchar"). A session node's labels are such a list.
+        pg = "SELECT JSON_OBJECT('labels': to_json(\"__labels\"), 'k': \"k\") AS n FROM t"
+        assert transpile_to_trino(pg) == (
+            "SELECT JSON_OBJECT('labels': JSON_FORMAT(CAST(\"__labels\" AS JSON)) FORMAT JSON, "
+            "'k': \"k\") AS n FROM t"
+        )
+
+    def test_to_json_in_a_built_object_is_its_json_text_marked_format_json(self):
+        pg = "SELECT json_build_object('labels', to_json(\"__labels\")) AS n FROM t"
+        assert transpile_to_trino(pg) == (
+            "SELECT JSON_OBJECT('labels': JSON_FORMAT(CAST(\"__labels\" AS JSON)) FORMAT JSON) "
+            "AS n FROM t"
+        )
 
     def test_nested_json_build_object_is_rewritten(self):
         pg = (
@@ -554,7 +572,10 @@ def test_a_captured_group_in_a_replacement_is_written_as_trino_names_it():
     # PostgreSQL's \1 in regexp_replace's replacement is Trino's $1. The 'g' flag is every match,
     # which is what Trino's own replaces.
     pg = r"SELECT REGEXP_REPLACE(x, 'a(b)(c)', '\2-\1', 'g') FROM t"
-    assert transpile_to_trino(pg) == "SELECT REGEXP_REPLACE(x, 'a(b)(c)', '$2-$1') FROM t"
+    assert (
+        transpile_to_trino(pg)
+        == "SELECT REGEXP_REPLACE(x, 'a(b)(c)', '$2-$1') AS regexp_replace FROM t"
+    )
 
 
 def test_a_captured_group_of_the_first_match_counts_past_the_text_before_it():
@@ -563,7 +584,7 @@ def test_a_captured_group_of_the_first_match_counts_past_the_text_before_it():
     pg = r"SELECT REGEXP_REPLACE(x, 'a(b)(c)', '\2-\1') FROM t"
     assert transpile_to_trino(pg) == (
         "SELECT REGEXP_REPLACE(x, '(?s)^(?<before>.*?)(?:a(b)(c))(?<after>.*)$', "
-        "'${before}$3-$2${after}') FROM t"
+        "'${before}$3-$2${after}') AS regexp_replace FROM t"
     )
 
 
@@ -572,7 +593,7 @@ def test_a_group_the_pattern_does_not_have_is_empty_in_the_first_match():
     pg = r"SELECT REGEXP_REPLACE(x, 'a(b)[(]\(', '[\2]') FROM t"
     assert transpile_to_trino(pg) == (
         r"SELECT REGEXP_REPLACE(x, '(?s)^(?<before>.*?)(?:a(b)[(]\()(?<after>.*)$', "
-        "'${before}[]${after}') FROM t"
+        "'${before}[]${after}') AS regexp_replace FROM t"
     )
 
 
@@ -581,13 +602,16 @@ def test_a_replacement_s_literal_text_stays_literal_beside_a_group():
     pg = r"SELECT REGEXP_REPLACE(x, 'a(b)', '\1$\\1') FROM t"
     assert transpile_to_trino(pg) == (
         "SELECT REGEXP_REPLACE(x, '(?s)^(?<before>.*?)(?:a(b))(?<after>.*)$', "
-        r"'${before}$2\$\\1${after}') FROM t"
+        r"'${before}$2\$\\1${after}') AS regexp_replace FROM t"
     )
 
 
 def test_a_backslash_and_a_digit_are_literal_when_every_match_is_replaced():
     pg = r"SELECT REGEXP_REPLACE(x, 'a(b)', '\\1\1', 'g') FROM t"
-    assert transpile_to_trino(pg) == r"SELECT REGEXP_REPLACE(x, 'a(b)', '\\1$1') FROM t"
+    assert (
+        transpile_to_trino(pg)
+        == r"SELECT REGEXP_REPLACE(x, 'a(b)', '\\1$1') AS regexp_replace FROM t"
+    )
 
 
 @pytest.mark.parametrize(
@@ -644,3 +668,26 @@ def test_a_range_s_computed_step_fails_on_trino_at_zero():
         "SELECT SEQUENCE(2, 8, CASE WHEN s = 0 THEN FAIL('range() takes a step other than 0')"
         " ELSE s END) FROM t"
     )
+
+
+class TestDirectPostgresJson:
+    """A statement sent DIRECT to a PostgreSQL source (the meta domain's control plane among them)
+    builds its JSON values as json. PostgreSQL types JSON_OBJECT(...) as jsonb when any argument is
+    jsonb and as json otherwise, so a Cypher node union whose arms read jsonb columns in some
+    labels and none in others was refused: "UNION could not convert type jsonb to json"."""
+
+    UNION = (
+        "SELECT JSON_OBJECT('id': d.id, 'properties': JSON_OBJECT('name': d.name)) AS __node "
+        "FROM domains AS d UNION ALL "
+        "SELECT JSON_OBJECT('id': r.id, 'properties': JSON_OBJECT('capabilities': r.capabilities)) "
+        "AS __node FROM roles AS r"
+    )
+
+    def test_postgres_arms_are_built_as_json(self):
+        out = direct_physical(transpile(self.UNION, "postgres"), "postgres")
+        assert out.upper().count("JSON_BUILD_OBJECT") == 4
+        assert "JSON_OBJECT(" not in out.upper()
+
+    def test_another_dialect_is_unchanged(self):
+        mysql = transpile('SELECT "id" FROM "orders"', "mysql")
+        assert direct_physical(mysql, "mysql") == mysql

@@ -1,6 +1,8 @@
 {
   "latestProfilePanel": {
     "heading": "Último perfil, execução {{time}}",
-    "none": "Ainda não há execuções de perfil."
+    "none": "Ainda não há execuções de perfil.",
+    "viewTable": "Tabela",
+    "viewTerrain": "Terreno"
   }
 }

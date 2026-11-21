@@ -204,6 +204,14 @@ async def _tag_assignment_readable(
     return row["table_id"] is None or reader.column(row["table_id"], row["column_name"])
 
 
+async def tag_assignment_readable(
+    conn: "Connection", reader: DependentsReader, row: dict
+) -> bool:  # REQ-2152, REQ-2208
+    """Whether ``reader`` may be told of the tag assignment ``row`` (a row as
+    ``repositories.tag.list_assignments`` or ``list_library_assignments`` answers it)."""
+    return await _tag_assignment_readable(conn, reader, row)
+
+
 def _ref_dependent(kind: str, key: Any) -> "Dependent":
     """A bare dependent naming ``kind`` ``key``, to ask :func:`_readable` about an object another
     one is on."""
@@ -227,13 +235,31 @@ async def relationship_readable(conn: "Connection", reader: DependentsReader, re
         (row.target_table_id, row.target_column),
         (row.via_table_id, None),
     ]
+    parameters = await _parameters_of(conn, {t for t, _ in ends if t is not None})
     return all(
-        reader.column(table_id, c)
+        # REQ-1986: a parameter is the table's input, not a column served to a role: a reader of
+        # the table reads it.
+        reader.column(table_id, None if (table_id, c) in parameters else c)
         for table_id, column in ends
         if table_id is not None
         # A composite key lists its columns comma-separated (REQ-1586).
         for c in ([part.strip() for part in column.split(",")] if column else [None])
     )
+
+
+async def _parameters_of(conn: "Connection", table_ids: set[int]) -> set[tuple[int, str]]:
+    """Each (table id, column) of ``table_ids`` that is a parameter of its table (REQ-1986)."""
+    from provisa.core.schema_org import table_columns
+
+    rows = (
+        await conn.execute_core(
+            select(table_columns.c.table_id, table_columns.c.column_name).where(
+                table_columns.c.table_id.in_(table_ids),
+                table_columns.c.native_filter_type.is_not(None),
+            )
+        )
+    ).fetchall()
+    return {(r.table_id, r.column_name) for r in rows}
 
 
 async def readable_dependents(

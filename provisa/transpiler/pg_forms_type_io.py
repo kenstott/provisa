@@ -281,7 +281,8 @@ CLICKHOUSE = Engine(
     utc_text=lambda v: f"toString({v})",
     numbers=lambda v: (
         f"arrayStringConcat(arrayMap(_n -> leftPad(hex(reverse(reinterpretAsString("
-        f"toFloat64OrZero(_n)))), 16, '0'), extractAll({v}, '{_NUMBER_TEXT}')))"
+        # A NULL is answered before its numbers are read: ClickHouse holds no Nullable(Array).
+        f"toFloat64OrZero(_n)))), 16, '0'), extractAll(ifNull({v}, ''), '{_NUMBER_TEXT}')))"
     ),
     backslash="\\\\",
     backslash_re="\\\\\\\\",
@@ -967,15 +968,20 @@ def _character() -> list[Row]:
 _UUID = "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
 
 
+def _uuid(e: Engine) -> str:
+    """A uuid: ClickHouse's NULL of one is a Nullable(UUID), CAST(NULL AS UUID) its own error."""
+    return "Nullable(UUID)" if e is CLICKHOUSE else "UUID"
+
+
 def _uuids() -> list[Row]:
     def read(e: Engine) -> str:
         return (
-            f"CASE WHEN {e.full_match('v', _UUID)} THEN CAST(lower(v) AS UUID) "
-            f"ELSE {_by_name(e, 'uuid_in', 'UUID')} END"
+            f"CASE WHEN {e.full_match('v', _UUID)} THEN CAST(lower(v) AS {_uuid(e)}) "
+            f"ELSE {_by_name(e, 'uuid_in', _uuid(e))} END"
         )
 
     return [
-        _noted(_row("uuid_in", "v", lambda _: "UUID", read), "uuid"),
+        _noted(_row("uuid_in", "v", _uuid, read), "uuid"),
         _noted(_row("uuid_out", "v", _text, lambda e: e.as_text("v")), "text"),
         _noted(
             _row(
@@ -1351,17 +1357,21 @@ def _is_null(value: exp.Expr) -> bool:
 
 
 #: The results a NULL is of only on DuckDB (``None``: the engine a statement with no table goes
-#: to), where pgwire describes it as that type; another engine's NULL of one is its text.
+#: to), where pgwire describes it as that type. Another engine's NULL of one would be described as
+#: its text, an answer that differs: such a call is left as written, for the polyfill grid's row of
+#: it to refuse by name (provisa.transpiler.polyfill.type_io).
 _DUCKDB_RESULTS = frozenset({"jsonb", "interval", "xid8"})
+
+
+def _null_held(name: str, dialect: str | None) -> bool:
+    """Whether ``dialect`` holds a NULL of ``name``'s PostgreSQL result type."""
+    return dialect in (None, "duckdb", "postgres") or RESULTS[name] not in _DUCKDB_RESULTS
 
 
 def _null_of(result: str, dialect: str | None = None) -> exp.Expr:
     """A NULL of ``result``. ClickHouse holds a time as its text (Engine.time): sqlglot would write
-    toTime64OrNull, which ClickHouse 24 does not have. Only DuckDB and PostgreSQL hold jsonb,
-    interval and xid8."""
+    toTime64OrNull, which ClickHouse 24 does not have."""
     if dialect == "clickhouse" and result == "time without time zone":
-        result = "text"
-    if dialect not in (None, "duckdb", "postgres") and result in _DUCKDB_RESULTS:
         result = "text"
     # xid8 is no type sqlglot knows: pg_held_types holds it as the engine's.
     to = exp.DataType.build(result, dialect="postgres", udt=True)
@@ -1547,6 +1557,8 @@ def _fold_text(name: str, text: str, arguments: list[exp.Expr]) -> exp.Expr | No
         fields = literals.interval_fields(text)
         if fields is None:
             raise literals.Refused("22007", f'invalid input syntax for type interval: "{text}"')
+        if not literals.interval_in_range(fields):
+            raise literals.Refused("22008", "interval out of range")
         if name == "interval_send":
             return _said_bytes(literals.interval_bytes(*fields))
         return _said_text(literals.interval_text(*fields))
@@ -1627,6 +1639,17 @@ def _as_interval(said: exp.Expr, dialect: str | None) -> exp.Expr:
     return exp.Paren(this=exp.Add(this=exp.Add(this=months, expression=days), expression=us))
 
 
+#: interval_in's infinite texts: pgwire describes a folded text as interval (cast_types), and has
+#: no interval value of either.
+_INFINITE = frozenset({"infinity", "-infinity"})
+
+
+def _infinite_unheld(said: exp.Expr, dialect: str | None) -> bool:
+    """Whether interval_in's folded text is infinity on an engine that answers it as its text."""
+    infinite = isinstance(said, exp.Literal) and said.is_string and said.this in _INFINITE
+    return infinite and dialect not in (None, "duckdb", "postgres")
+
+
 def _folded(name: str, arguments: list[exp.Expr]) -> exp.Expr | None:
     """``_fold_row``, with PostgreSQL's refusal of a literal as an expression that raises it."""
     try:
@@ -1672,6 +1695,8 @@ def _lowered(tree: exp.Expr, dialect: str | None) -> exp.Expr:
         in_select = isinstance(node.parent, exp.Select) and node.arg_key == "expressions"
         unset = name == "domain_in" and _is_null(arguments[1])
         if unset or (name not in _NOT_STRICT and any(_is_null(a) for a in arguments)):
+            if not _null_held(name, dialect):
+                return node
             written = _null_of(RESULTS[name], dialect)
             return exp.alias_(written, name) if in_select else written
         if name == "int8_sum":
@@ -1685,6 +1710,11 @@ def _lowered(tree: exp.Expr, dialect: str | None) -> exp.Expr:
             return exp.alias_(said, name) if in_select else said
         folded = _folded(name, arguments)
         if folded is not None and name == "interval_in":
+            if _infinite_unheld(folded, dialect):
+                # pgwire has no interval value of it: the call of the text it reads as, for the
+                # polyfill grid's row to refuse by name (polyfill.type_io).
+                target.set("expressions", [folded, *arguments[1:]])
+                return node
             folded = _as_interval(folded, dialect)
         if folded is not None:
             return exp.alias_(folded, name) if in_select else folded

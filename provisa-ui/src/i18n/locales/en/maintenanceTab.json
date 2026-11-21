@@ -15,6 +15,7 @@
     "dangerTitle": "Danger zone",
     "dangerIntro": "Stops the backend and the UI dev server on this machine. Works only on a --demo/--native desktop launch and is refused everywhere else.",
     "stopAll": "Stop all services",
-    "stopConfirm": "Kill the backend and UI dev server on this machine? This ends your session immediately."
+    "stopTitle": "Stop all services?",
+    "stopConsequence": "This stops the backend and the UI dev server on this machine. While they are stopped, this page, every query and every other user's session stop working, and your session ends. Nothing comes back until the services are started again on this machine."
   }
 }

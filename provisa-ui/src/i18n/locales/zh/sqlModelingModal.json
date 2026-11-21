@@ -1,11 +1,11 @@
 {
   "sqlModelingModal": {
     "title": "SQL 建模",
-    "description": "将 JOIN 条件提取为新的关系候选——已有关系将被排除",
+    "description": "将 JOIN 条件提取为新的候选关系。已有关系会被排除。",
     "close": "关闭",
     "tabSql": "SQL",
     "tabCanvas": "画布",
-    "nlPlaceholder": "用自然语言提问——自动生成 SQL…",
+    "nlPlaceholder": "用自然语言提问以生成 SQL…",
     "nlLoading": "加载中",
     "generateSql": "生成 SQL",
     "generating": "生成中…",

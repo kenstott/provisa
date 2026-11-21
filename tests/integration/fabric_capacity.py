@@ -352,9 +352,18 @@ def delete_run_capacity() -> None:
                 or _workspace(fabric, workspace_id).get("capacityId") != capacity_id
             ):
                 return
-            fabric.post(
-                f"{_FABRIC_API}/workspaces/{workspace_id}/unassignFromCapacity"
-            ).raise_for_status()
+            # The test's own pause (capacity_resumed, REQ-254) leaves the capacity Paused, and
+            # Fabric refuses a workspace operation against a paused capacity: it is brought Active
+            # for the unassign, and deleted right after.
+            if capacity_state() not in _ALREADY_RUNNING:
+                ensure_capacity_resumed()
+            sent = fabric.post(f"{_FABRIC_API}/workspaces/{workspace_id}/unassignFromCapacity")
+            if sent.status_code >= 400:
+                workspace = _workspace(fabric, workspace_id)
+                raise RuntimeError(
+                    f"workspace {workspace_id} not unassigned from {name!r}: HTTP "
+                    f"{sent.status_code}: {sent.text[:1000]}; workspace state: {workspace}"
+                )
             _wait_for(
                 f"workspace {workspace_id} unassigned from {name!r}",
                 lambda: _workspace(fabric, workspace_id).get("capacityId") != capacity_id,

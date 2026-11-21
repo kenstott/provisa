@@ -211,7 +211,7 @@ def test_a_dialects_page_lists_what_is_not_native_and_counts_the_rest():
     page = docs.dialect_page(_TOY, "trino")
     assert page.startswith("# Polyfills on Trino")
     assert "1 of the grid&#x27;s" not in page  # nothing escaped outside a cell
-    assert "2 of the grid's 4 features are left out as native" in page
+    assert "2 of the grid's 4 features are native on Trino and left out" in page
     assert "Rules on this page: 2, of which 1 are only the name of a rewrite function" in page
     assert "<strong>one_of_a_kind</strong>" in page and "<strong>a_money_value</strong>" in page
     assert "<strong>shout</strong>" not in page and "<strong>abs</strong>" not in page
@@ -229,16 +229,21 @@ def test_a_refusal_is_shown_with_its_sqlstate_and_message():
     assert "<li>Refused. <code>0A000</code> shout has no form on clickhouse</li>" in page
 
 
-def _summary_row(name: str, statuses: dict[str, str]) -> str:
-    cells = (statuses.get(dialect, "native") for dialect in DIALECTS)
-    return f"| `{name}` | toy | {' | '.join(cells)} |"
-
-
-def test_the_summary_shows_each_feature_on_each_dialect():
+def test_the_index_is_one_table_per_dialect_of_what_is_not_native_there():
+    """The index is pivoted and split: per dialect, a table of each feature not native there, the
+    same table as the dialect's page, with the native features counted, not listed."""
     page = docs.summary_page(_TOY)
-    assert "| Feature | Family | PostgreSQL | DuckDB | Trino | Presto | Athena |" in page
-    assert _summary_row("shout", {"duckdb": "polyfilled", "clickhouse": "refused"}) in page
-    assert _summary_row("a_money_value", {"trino": "differs"}) in page
+    assert "| Feature | Family |" not in page  # no feature-by-dialect matrix
+    for dialect, connector in DIALECTS.items():
+        assert f"## [{connector.title}]({dialect}.md)" in page
+        assert docs.dialect_table(_TOY, dialect) in page
+        assert docs.dialect_table(_TOY, dialect) in docs.dialect_page(_TOY, dialect)
+    trino = page.split("## [Trino](trino.md)", 1)[1].split("\n## ", 1)[0]
+    assert "2 of the grid's 4 features are native on Trino and left out" in trino
+    assert "<strong>one_of_a_kind</strong>" in trino and "<strong>shout</strong>" not in trino
+    postgres = page.split("## [PostgreSQL](postgres.md)", 1)[1].split("\n## ", 1)[0]
+    assert "4 of the grid's 4 features are native on PostgreSQL and left out" in postgres
+    assert "<tbody>\n</tbody>" in postgres
 
 
 def test_a_page_says_when_its_forms_are_another_dialects_sql():

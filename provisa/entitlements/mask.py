@@ -128,8 +128,6 @@ class EntitlementMask:
 
 def _ends(rule: ExpiryRule, obj: IndexedObject) -> bool:
     """Whether a passed ``rule`` removes ``obj``."""
-    if not rule.ends:
-        return True
     for capability, identifiers in rule.ends.items():
         if capability == "*" and rule.list_kind not in (None, *SEMANTIC_LISTS):
             continue  # set with a list outside the mask: its identifiers name none of its objects
@@ -222,6 +220,17 @@ def compute_mask(
             if bit is not None:
                 bits |= 1 << bit
     return EntitlementMask(role_id, index, bits, model_version, next_expiry, findings)
+
+
+def index_version(index: ObjectIndex) -> str:
+    """The version of ``index``'s bit positions: a digest of its objects in bit order. A stored
+    mask's bits are read only against an index of the same version (REQ-2219: the model version
+    its bit positions belong to, never read against another). Two builds that place every object
+    at the same bit share it, whatever else changed; any move of a bit changes it."""
+    digest = hashlib.sha256()
+    for obj in index.objects:
+        digest.update(f"{obj.kind}\x1f{obj.oid}\x1e".encode())
+    return digest.hexdigest()
 
 
 class MaskCache:

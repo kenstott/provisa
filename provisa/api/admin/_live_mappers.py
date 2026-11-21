@@ -83,6 +83,7 @@ def table_model_from_input(inp, columns, alias):  # REQ-929, REQ-982
         mv_persist=inp.mv_persist,  # REQ-965
         mv_primary_key=list(inp.mv_primary_key),  # REQ-970
         mv_incremental=inp.mv_incremental,  # REQ-969
+        mv_rebuild_every=inp.mv_rebuild_every,  # REQ-2249
         mv_calendar=inp.mv_calendar,  # REQ-962
         mv_grain=inp.mv_grain,  # REQ-962/1168
         mv_allowed_lateness=inp.mv_allowed_lateness,  # REQ-961

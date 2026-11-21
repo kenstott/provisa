@@ -12,5 +12,5 @@
     "allowImportingTsExtensions": false,
     "typeRoots": ["./node_modules/@types", "../node_modules/@types"]
   },
-  "include": ["src", "../src/types/cytoscape*.d.ts"]
+  "include": ["src", "../src/components/provisa-graph/types/cytoscape*.d.ts"]
 }

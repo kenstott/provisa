@@ -127,6 +127,7 @@ def _source_from_row(row, *, connection: bool) -> SourceType:
         cache_ttl=row.get("cache_ttl"),
         replicate=row["replicate"],  # REQ-826
         region=row["region"],  # REQ-1921
+        withdrawn=row["withdrawn"],  # REQ-1921
         load_protected=bool(row.get("load_protected", False)),  # REQ-1141
         off_peak_window=row.get("off_peak_window"),  # REQ-1141
         off_peak_tz=row.get("off_peak_tz") or "UTC",  # REQ-1141
@@ -143,6 +144,7 @@ def _source_from_row(row, *, connection: bool) -> SourceType:
         # What the password field holds, as entered: the value, or a reference someone typed.
         password_ref=(row.get("password_ref") or "") if connection else None,
         change_signal=row.get("change_signal") or "ttl",  # REQ-929
+        is_system=bool(row.get("is_system", False)),
         cdc=_cdc_from_row(row) if connection else None,
     )
 
@@ -244,6 +246,7 @@ def _rel_from_row(row) -> RelationshipType:
         cypher_type=row["cypher_type"],
         disable_cypher=row.get("disable_cypher", False),
         same_entity=row["same_entity"],  # REQ-2141
+        code_resolver=row.get("code_resolver"),  # REQ-2249
         # REQ-1586: the junction declaration is part of the edge the UI reads back.
         via_table_id=row.get("via_table_id"),
         via_table_name=row.get("via_table_name"),

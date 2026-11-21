@@ -65,7 +65,8 @@ async def checker_tables(conn: Any) -> list[dict]:
     result = await conn.execute_core(
         select(rt.c.id, rt.c.table_name, rt.c.source_id, rt.c.cache_ttl)
         .join(sources, sources.c.id == rt.c.source_id)
-        .where(sources.c.type.in_(sorted(CHECKERS)))
+        # REQ-2248: a retired checker table scans nothing.
+        .where(sources.c.type.in_(sorted(CHECKERS)), rt.c.retired.is_(False))
         .order_by(rt.c.id)
     )
     return [
@@ -128,6 +129,23 @@ def scan_outcome(rows: list[dict]) -> str:
     """A scan's outcome as REQ-2132 shows it: ``pass`` when every check passed, ``fail``
     otherwise -- a warning, an error or a skipped check is not a pass."""
     return "pass" if all(r["outcome"] == "pass" for r in rows) else "fail"
+
+
+async def failing_checks(conn: Any, table_name: str, scan_id: str) -> list[dict]:
+    """The checks of checker table ``table_name``'s scan ``scan_id`` that did not pass (REQ-2180,
+    QUALITY IS STATUS AND COUNTS: a product's quality names them), each its check name, the column
+    it applies to (None for a table check) and its outcome, ordered by name and column."""
+    relation = results_sa_table(table_name)
+    rows = (
+        await conn.execute_core(
+            select(relation.c.check_name, relation.c.column_name, relation.c.outcome)
+            .where(relation.c.scan_id == scan_id, relation.c.outcome != "pass")
+            .order_by(relation.c.check_name, relation.c.column_name)
+        )
+    ).fetchall()
+    return [
+        {"name": r.check_name, "column": r.column_name or None, "outcome": r.outcome} for r in rows
+    ]
 
 
 async def record_latest_run(

@@ -10,6 +10,7 @@
     "metaRowsElapsed_other": "{{count}} rows · {{elapsed}}ms",
     "error": "Error",
     "expand": "Expand",
+    "enlarge": "Enlarge",
     "exitFullScreen": "Exit full screen",
     "collapse": "Collapse",
     "unpinHint": "Unpin (unpin to allow sorting)",
@@ -38,7 +39,7 @@
     "viewCode": "Code",
     "showPropertiesPanel": "Show properties panel",
     "copyErrorTitle": "Copy error",
-    "expandedDialogLabel": "Expanded graph view",
+    "expandedDialogLabel": "Enlarged graph view",
     "firstNodesShown": "Showing the first {{count}} nodes; there are more. Raise the limit in the side menu.",
     "deleteFrame": "Delete this result",
     "sparqlNothingMore": "Nothing more is said of {{resource}}.",
@@ -49,7 +50,7 @@
     "sparqlDropSubquery": "A pill can't be dropped on a query with a sub-SELECT. Nothing was added.",
     "sparqlDropNoClass": "This result names no class to join to: give a variable a class, then drop again. Nothing was added.",
     "sparqlDropNode": "That node is no variable of this query, so there is nothing to join it to. Nothing was added.",
-    "sparqlDropNoPath": "{{name}} has no relationship to {{classes}}. Nothing was added.",
+    "sparqlDropNoPath": "{{name}} has no relationship to {{classes}} within the selected domains. Nothing was added.",
     "sparqlDropTooFar": "{{name}} is {{hops}} relationships from {{classes}}, past the {{most}} a drop walks: no short path. Nothing was added.",
     "sparqlDropNoEnd": "Neither end of {{name}} is in this result. Nothing was added.",
     "sparqlDropParameterized": "A path can't go through {{name}}: it takes arguments to read. Nothing was added.",
@@ -57,6 +58,9 @@
     "sparqlDropNoProperty": "No class in this result has {{name}}. Nothing was added.",
     "sparqlDropLeftOut": "Added {{shown}} of {{total}} equally short paths; the others were left out.",
     "sparqlDropCut": "The result reached its LIMIT of {{limit}}: rows past it are left out.",
-    "cypherPathNoKey": "The paths between {{from}} and {{to}} need each node's key, and one of them has none."
+    "cypherPathNoKey": "The paths between {{from}} and {{to}} need each node's key, and one of them has none.",
+    "cypherDropNoLabel": "This result's nodes have no label, and its query has no relationship to give them one: give a node a label, then drop again. Nothing was added.",
+    "cypherDropNoPair": "No relationship in this result's query joins labels within the selected domains, so its nodes can't be given labels. Nothing was added.",
+    "cypherDropLabelled": "This result's unlabelled nodes were given their labels from the schema, one MATCH per label pair."
   }
 }

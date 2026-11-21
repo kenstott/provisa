@@ -127,6 +127,10 @@ def _tier(work, registry):
         _ORG,
         engine="duckdb",
         config=str(config),
+        # Its own control plane: a demo's template org (sbxtpl<demo>) is global, so on the
+        # session's shared plane every module serving a demo of the same name shares one template,
+        # and one module's record of it was served to the next as theirs (release 510).
+        control_plane="own",
         auth={"provider": "basic", "jwt_secret": _JWT_SECRET, "assignments_source": "provisa"},
         env={
             "PROVISA_SANDBOX_TIER": "true",
@@ -137,37 +141,11 @@ def _tier(work, registry):
     )
 
 
-_opened: list[str] = []
-
-
-@pytest.fixture(autouse=True)
-def _close_what_the_test_opened():
-    """The session's control plane is shared by every module's tier: a sandbox left open here
-    counts against the next tier's sandbox.max_concurrent. Each test's are removed after it."""
-    yield
-    import os
-
-    from sqlalchemy import create_engine, delete
-
-    from provisa.core.schema_admin import demo_sandboxes
-
-    if not _opened:
-        return
-    engine = create_engine(os.environ["PLATFORM_DATABASE_URL"])
-    try:
-        with engine.begin() as conn:
-            conn.execute(delete(demo_sandboxes).where(demo_sandboxes.c.org_id.in_(_opened)))
-    finally:
-        engine.dispose()
-        _opened.clear()
-
-
 def _open(tier) -> dict:
     deadline = time.monotonic() + 240
     while True:
         opened = httpx.post(f"{tier.base_url}/public/demos/alpha", timeout=300)
         if opened.status_code == 200:
-            _opened.append(opened.json()["org_id"])
             return opened.json()
         assert opened.json().get("code") == "sandbox.demo_not_ready", (
             opened.text,
@@ -283,7 +261,7 @@ def test_a_visitor_reads_what_the_demo_shows_its_admin_and_runs_as_its_own_roles
 ):
     """A demo names its own roles (data_steward, a keeper), never the sandbox role. Its visitor
     holds the sandbox role, which inherits what data_steward is granted (REQ-2155), and the demo's
-    own roles, so its tour can run as each (weblogs: its analyst; test_weblogs_bundle_e2e, run
+    own roles, so its tour can run as each (weblogs: its analyst; its bundle walk, run
     38596957161)."""
     import yaml
 

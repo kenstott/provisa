@@ -7,9 +7,9 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-# The three-device optimistic benchmark (demo/named/perf/METHODOLOGY.md): device 1 runs Provisa
-# only, device 2 the load generator, device 3 the sources, the engine, the control plane, Redis
-# and the telemetry pipeline.
+# The three-device optimistic benchmark (demo/named/perf/METHODOLOGY.md): device 1 runs Provisa and
+# the engine, device 2 the load generator, device 3 the sources, the control plane, Redis and the
+# telemetry pipeline. A fourth, server2, is the second node of the kill-a-node check.
 
 variable "project" {
   description = "GCP project the three devices are created in."
@@ -28,7 +28,7 @@ variable "zone" {
 
 # 16 physical cores each: a 32-vCPU type (GCP counts hardware threads).
 variable "server_machine_type" {
-  description = "Device 1: Provisa only."
+  description = "Device 1: Provisa and the engine."
   type        = string
   default     = "c4d-standard-32"
 }
@@ -40,9 +40,15 @@ variable "client_machine_type" {
 }
 
 variable "backends_machine_type" {
-  description = "Device 3: sources, engine, control plane, Redis, telemetry."
+  description = "Device 3: sources, control plane, Redis, telemetry."
   type        = string
   default     = "c4d-standard-32"
+}
+
+variable "second_server_machine_type" {
+  description = "server2, the second node of the kill-a-node check. It measures nothing."
+  type        = string
+  default     = "c4d-standard-8"
 }
 
 variable "image" {
@@ -109,12 +115,12 @@ variable "repo_dir" {
 
 # The seed job (seed_lifecycle.sh) creates the backends device alone; a run creates all three.
 variable "devices" {
-  description = "The devices to create: a subset of server, client, backends."
+  description = "The devices to create: a subset of server, client, backends, server2."
   type        = list(string)
   default     = ["server", "client", "backends"]
   validation {
-    condition     = length(var.devices) > 0 && alltrue([for d in var.devices : contains(["server", "client", "backends"], d)])
-    error_message = "devices names one or more of server, client, backends."
+    condition     = length(var.devices) > 0 && alltrue([for d in var.devices : contains(["server", "client", "backends", "server2"], d)])
+    error_message = "devices names one or more of server, client, backends, server2."
   }
 }
 
@@ -154,4 +160,15 @@ variable "results_bucket" {
   description = "Name of the bucket a run checkpoints its results to (unique per run); null for the seed job."
   type        = string
   default     = null
+}
+
+# Every device's self-destruct. Set, GCE deletes the device and its disk this long after it starts.
+variable "max_run_hours" {
+  description = "Hours after which GCE deletes each device; null for none."
+  type        = number
+  default     = null
+  validation {
+    condition     = var.max_run_hours == null ? true : var.max_run_hours >= 1
+    error_message = "max_run_hours is at least 1."
+  }
 }

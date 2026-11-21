@@ -88,7 +88,7 @@ def test_tds_fdw_attach_ddl_defaults_dbo_and_binds_endpoint():
     assert any("FOREIGN DATA WRAPPER tds_fdw" in s and "servername 'mssql'" in s for s in ddl)
     # The default schema, from the org's own server.
     assert any(
-        'IMPORT FOREIGN SCHEMA dbo FROM SERVER "fdw_org_acme__crm" INTO "fdw_org_acme__crm"' in s
+        'IMPORT FOREIGN SCHEMA "dbo" FROM SERVER "fdw_org_acme__crm" INTO "fdw_org_acme__crm"' in s
         for s in ddl
     )
 

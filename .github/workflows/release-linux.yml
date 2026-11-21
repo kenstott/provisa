@@ -4,9 +4,11 @@
 #
 # One leg of the release. Called by build-dmg.yml (the release orchestrator) on a tag, and by a
 # manual dry run of it. `version` is the release's tag; nothing here reads the pushed ref.
-# `publish` is false on a dry run: every artifact is built and uploaded to the RUN exactly as on
-# a tag, and every step that leaves the run -- the draft release, its attachments, PyPI, an image
-# push, a signed attestation -- is skipped. A failed job of this leg is re-run alone with
+# `publish` is false on a dry run: every artifact is built and uploaded to the RUN, and every
+# step that leaves the run -- the draft release, its attachments, PyPI, an image push, a signed
+# attestation -- is skipped. On a release each job attaches the assets it built straight to the
+# draft (.github/actions/attach-release-assets) instead of uploading them to the run, unless
+# another job of the run reads them. A failed job of this leg is re-run alone with
 # "Re-run failed jobs" on the release's run; the legs it reads from (their artifacts are the
 # run's) are not built again.
 name: "Release: Linux AppImage"
@@ -45,6 +47,8 @@ jobs:
   build-linux:
     name: Build Linux AppImage (core, ${{ needs.metadata.outputs.channel }})
     runs-on: ubuntu-latest
+    permissions:
+      contents: write   # attaches what it builds to the draft release
     needs: [metadata]
     steps:
       - name: Checkout
@@ -79,6 +83,10 @@ jobs:
           name: trino-plugins
           path: trino/plugins/
 
+      # provisa-notebook's build takes Pyodide from this directory, not from its CDN.
+      - name: Pyodide downloads
+        uses: ./.github/actions/pyodide-downloads
+
       - name: Build AppImage
         run: |
           chmod +x packaging/linux/build-appimage.sh
@@ -89,9 +97,20 @@ jobs:
           mv packaging/linux/dist/Provisa.AppImage \
              "packaging/linux/dist/${{ needs.metadata.outputs.linux_name }}"
 
+      # A dry run keeps it in the run (its only home: nothing is attached); a release attaches it
+      # to the draft directly, never through an artifact.
       - name: Upload AppImage artifact
+        if: ${{ !inputs.publish }}
         uses: actions/upload-artifact@v4
         with:
           name: linux-dist
           path: "packaging/linux/dist/${{ needs.metadata.outputs.linux_name }}"
+          if-no-files-found: error
           retention-days: 1
+
+      - name: Attach the AppImage to the draft release
+        if: inputs.publish
+        uses: ./.github/actions/attach-release-assets
+        with:
+          tag: ${{ inputs.version }}
+          files: "packaging/linux/dist/${{ needs.metadata.outputs.linux_name }}"

@@ -1524,7 +1524,7 @@ def test_a_single_schema_sibling_attaches_on_postgres_exactly_as_before(endpoint
             'CREATE USER MAPPING IF NOT EXISTS FOR CURRENT_USER SERVER "fdw_pgwire_my_src" '
             "OPTIONS (user 'provisa')",
             'CREATE SCHEMA IF NOT EXISTS "fdw_pgwire_my_src"',
-            'IMPORT FOREIGN SCHEMA my_src FROM SERVER "fdw_pgwire_my_src" INTO "fdw_pgwire_my_src"',
+            'IMPORT FOREIGN SCHEMA "my_src" FROM SERVER "fdw_pgwire_my_src" INTO "fdw_pgwire_my_src"',
         ],
         "local_schema": "fdw_pgwire_my_src",
     }
@@ -2403,6 +2403,7 @@ def test_the_engines_attach_pass_never_waits_on_a_source_whose_catalog_is_being_
             federation_hints={},
             mapping={},
             max_live_concurrency=None,  # REQ-1909: a source always carries its cap
+            download_from=None,  # REQ-1997: a source always carries it
             cache_ttl=None,
         )
 

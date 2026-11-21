@@ -21,6 +21,7 @@ from pydantic import BaseModel
 from sqlalchemy import delete, func, insert, select, update
 
 from provisa.api.errors import ApiError
+from provisa.auth.models import verified_email
 from provisa.auth.scram_store import write_verifier
 from provisa.core.schema_admin import (
     local_users,
@@ -244,7 +245,7 @@ async def superuser_login(body: SuperuserLoginRequest):
     if su_config is None:
         raise ApiError(404, "auth.superuser_not_configured", "No superuser is configured")
     raw_secret = auth_cfg.get("jwt_secret")
-    secret = resolve_secrets(raw_secret) if raw_secret else None
+    secret = resolve_secrets(raw_secret, credential=True) if raw_secret else None
     try:
         with login_attempt(body.username, body.password):
             token = issue_superuser_session(body.username, body.password, su_config, secret)
@@ -415,6 +416,9 @@ async def _seat_claimant_in_root(user_id: str) -> None:  # REQ-1296
     # seat them as its org_admin too. Without this the claim lands on "No roles configured" again: the
     # welcome modal would hand them a deployment whose own org they cannot query.
     await grant_org_role(model_db, user_id, ORG_ADMIN_ROLE, granter_capabilities=DEPLOYMENT_GRANTER)
+    from provisa.api.effective_rows import record_people
+
+    await record_people(state.org_id, [user_id])
     # REQ-1599: and in the sandbox org, which is a tenant org their platform_admin reaches no
     # further into than any other. A no-op while it is still building — that build seats them.
     from provisa.api.sandbox_org import seat_platform_admins
@@ -431,14 +435,18 @@ async def my_invites(request: Request):  # REQ-1287
     user who arrived without their token looked identical to a stranger, so the UI could only offer
     "create an org". Returns [] for a link-only invite (email is null) or a dev principal with no
     email; the caller then falls through to org creation or pasting a token.
+
+    REQ-1261: the address is matched only when the caller's provider verified it. An answer here
+    carries the invitation's token, so an address the caller typed for themselves (a
+    basic-provider account) or one their IdP has not verified is shown nothing: that person
+    redeems with the link they were sent, where the token is the proof.
     """
     import datetime
     from datetime import timezone
 
     from provisa.api.app import state
 
-    identity = getattr(request.state, "identity", None)
-    email = getattr(identity, "email", None) if identity is not None else None
+    email = verified_email(getattr(request.state, "identity", None))
     if not email:
         return {"invites": []}
 
@@ -487,6 +495,8 @@ async def _auto_join_offers(request: Request) -> list[dict]:
     Auto-join is a multitenant act: the middleware joins only inside its multitenant branch, so a
     single-tenant deployment offers nothing either. Offering there would put to the person a choice
     sign-in never makes, for an org the single-tenant path never joins.
+
+    REQ-1261: as at sign-in, only an address the caller's provider verified is matched.
     """
     from provisa.api.app import state
     from provisa.core.org_membership import resolve_auto_join_orgs
@@ -496,10 +506,13 @@ async def _auto_join_offers(request: Request) -> list[dict]:
     identity = getattr(request.state, "identity", None)
     if identity is None or identity.user_id == "anonymous":
         return []
+    email = verified_email(identity)
+    if not email:
+        return []
 
     admin_db = state.admin_db
     assert admin_db is not None
-    matches = await resolve_auto_join_orgs(admin_db, identity.email, identity.user_id)
+    matches = await resolve_auto_join_orgs(admin_db, email, identity.user_id)
     if not matches:
         return []
     roles_by_org = dict(matches)
@@ -557,8 +570,9 @@ async def accept_auto_join(request: Request, body: AcceptAutoJoinBody):  # REQ-1
     identity = request.state.identity
     admin_db = state.admin_db
     assert admin_db is not None
+    # An offer exists only for a verified address (_auto_join_offers).
     await join_org_automatically(
-        admin_db, identity.user_id, identity.email, chosen["org_id"], chosen["role_id"]
+        admin_db, identity.user_id, verified_email(identity), chosen["org_id"], chosen["role_id"]
     )
     for other in offers:
         if other["org_id"] != chosen["org_id"]:
@@ -672,12 +686,25 @@ async def register(body: RegisterRequest, request: Request):
     # middleware's credential-less /auth/register relaxation (AuthMiddleware._process). Such a
     # caller — a redeemer following an invite link, not signed in — may create an account ONLY by
     # presenting a valid, unspent, unexpired invite, and that is checked BEFORE any row is written
-    # so a bad token writes nothing. An already-authenticated caller (identity resolved by the
-    # middleware) keeps the open behaviour.
+    # so a bad token writes nothing.
+    # A signed-in caller is creating an account for someone else, which is managing the
+    # deployment's users: it needs user_management, as creating one at /admin/users does. Being
+    # signed in alone creates nothing.
     identity = getattr(request.state, "identity", None)
     authenticated = (
         identity is not None and getattr(identity, "user_id", "anonymous") != "anonymous"
     )
+    if authenticated:
+        from provisa.api.admin.capabilities import require_capability_request
+        from provisa.core.request_context import current_org
+        from provisa.security.rights import Capability
+
+        right = Capability.USER_MANAGEMENT.value
+        # A right is held in an org. On a deployment of many, a request that names none acts in
+        # none (/auth/ is served without one), so its caller holds user_management nowhere.
+        if state.multitenancy and current_org.get() is None:
+            raise ApiError(403, "auth.missing_capability", f"Missing capability: {right!r}")
+        require_capability_request(request, right)
 
     import datetime
     from datetime import timezone
@@ -686,9 +713,9 @@ async def register(body: RegisterRequest, request: Request):
     admin_db = state.admin_db
     assert admin_db is not None
 
-    if not authenticated:
-        if not body.invite_token:
-            raise ApiError(401, "auth.invite_required", "An invite is required to register")
+    if not authenticated and not body.invite_token:
+        raise ApiError(401, "auth.invite_required", "An invite is required to register")
+    if body.invite_token:
         now = datetime.datetime.now(tz=timezone.utc)
         async with admin_db.acquire() as conn:
             result = await conn.execute_core(
@@ -785,6 +812,7 @@ async def register(body: RegisterRequest, request: Request):
         )
         assert role_rt.model_db is not None
         await seat_redeemed_roles(role_rt.model_db, user_id, role_id)
+        await _record_redeemed(invite["org_id"], pinned_env, user_id)
         # REQ-1599: if platform_admin, seat in sandbox org
         from provisa.api.sandbox_org import reseat_after_conferral
 
@@ -899,6 +927,7 @@ async def redeem_invite(body: RedeemInviteRequest, request: Request):
         )
         assert role_rt.model_db is not None
         await seat_redeemed_roles(role_rt.model_db, user_id, role_id)
+        await _record_redeemed(invite["org_id"], pinned_env, user_id)
         # REQ-1599: an invitation is the other way platform_admin is conferred, and a new administrator
         # is owed the sandbox org the same as the claimant is.
         from provisa.api.sandbox_org import reseat_after_conferral
@@ -955,6 +984,9 @@ async def delete_sandbox_account(request: Request):
     delete_firebase_user(user_id)
     model_db = await _org_model_db(SANDBOX_ORG_ID)
     await remove_from_org(admin_db, model_db, user_id, SANDBOX_ORG_ID)
+    from provisa.api.effective_rows import record_people
+
+    await record_people(SANDBOX_ORG_ID, [user_id])
     async with admin_db.acquire() as conn:
         await conn.execute_core(delete(user_profiles).where(user_profiles.c.user_id == user_id))
     return {"deleted": user_id}
@@ -1054,7 +1086,7 @@ async def delete_account(request: Request, confirm: str | None = None):
     platform_db = state.platform_model_db
     assert platform_db is not None
     try:
-        return await remove_account(
+        removed = await remove_account(
             _admin_pool(),
             platform_db,
             user_id,
@@ -1082,3 +1114,19 @@ async def delete_account(request: Request, confirm: str | None = None):
                 "another user before deleting your account."
             ),
         ) from refused
+    from provisa.api.effective_rows import record_removed_account
+
+    await record_removed_account(removed)
+    return removed
+
+
+async def _record_redeemed(org_id: str, pinned_env: str | None, user_id: str) -> None:
+    """REQ-2219: a redemption granted ``user_id`` a role in ``org_id``; their effective rows are
+    recomputed. The rows are prod's: an environment's model is the prod's, and only the prod
+    build records rows (write_every_holder), so a grant pinned to another environment changes no
+    prod row."""
+    from provisa.api.effective_rows import record_people
+    from provisa.core.environments import PROD
+
+    if pinned_env is None or pinned_env == PROD:
+        await record_people(org_id, [user_id])

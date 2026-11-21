@@ -19,7 +19,7 @@ read straight from a source has that source as its input. A member is never an i
 product.
 """
 
-# Requirements: REQ-1640, REQ-2126, REQ-2157, REQ-2152
+# Requirements: REQ-1640, REQ-2126, REQ-2157, REQ-2152, REQ-2180
 
 from __future__ import annotations
 
@@ -108,8 +108,8 @@ def product_dq(
     ``checkers``: every checker table -- its id, names, description, owning ``product_ids``
     (REQ-1634: any number), the
     ``checked_table_id`` its contract scans and that table's names (``checked_table``), the
-    ``rule_columns`` its checks name, its ``rules`` (check type, column and arguments) and its
-    latest run. ``members`` and ``inputs`` are the product's member and nearest input table ids, as
+    ``rule_columns`` its checks name, its ``rules`` (check type, column and arguments), its
+    latest run and the ``failing_checks`` of that run (REQ-2180: a product's quality names them). ``members`` and ``inputs`` are the product's member and nearest input table ids, as
     its reader's lineage gives them; ``served`` what that reader is served (table id → physical
     columns). A promise is the product's check on a member, an expectation its check on an
     input; another owner's (or no owner's) check on either is related; the product's check on
@@ -145,6 +145,7 @@ def product_dq(
                 "rules": c["rules"],
                 "latest_outcome": c["latest_outcome"],
                 "latest_run_at": c["latest_run_at"],
+                "failing_checks": c["failing_checks"],
             }
         )
     return out

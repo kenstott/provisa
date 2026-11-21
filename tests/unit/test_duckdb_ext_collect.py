@@ -110,8 +110,9 @@ def _incompressible(path: Path, size: int) -> None:
 def test_collect_fills_in_priority_order_and_names_what_it_leaves_out(
     tmp_path, monkeypatch, capsys
 ):
-    # crypto, mssql, snowflake, bigquery, mongo, firebird (maintainer decision 2026-11-06), then any
-    # other mirrored one by name. One that does not fit is left out by name; a later, smaller one
+    # crypto, mssql, snowflake, bigquery, mongo, airport, firebird (maintainer decision 2026-11-06;
+    # gsheets is not in the order, it has no DuckDB 2.0 build, REQ-1998), then any other mirrored
+    # one by name. One that does not fit is left out by name; a later, smaller one
     # that still fits goes in.
     collect = _collect()
     dest = tmp_path / "_ext"
@@ -142,7 +143,7 @@ def test_collect_fills_in_priority_order_and_names_what_it_leaves_out(
     out = capsys.readouterr().out
     assert "LEFT OUT snowflake" in out and "LEFT OUT bigquery" in out
     assert "left out (over the size limit): snowflake, bigquery" in out
-    assert "left out (not mirrored): gsheets, airport, firebird" in out
+    assert "left out (not mirrored): airport, firebird" in out
     assert "packed crypto, mssql, mongo, zz_other" in out
 
 
@@ -154,7 +155,6 @@ def test_the_fill_order_is_the_maintainers_priority_then_by_name():
         "snowflake",
         "bigquery",
         "mongo",
-        "gsheets",
         "airport",
         "firebird",
     )

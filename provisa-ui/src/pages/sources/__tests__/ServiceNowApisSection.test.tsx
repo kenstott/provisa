@@ -102,14 +102,14 @@ describe("ServiceNowApisSection", () => {
     );
   });
 
-  it("the filter keeps the APIs matching any word of it", async () => {
+  it("the filter keeps the APIs matching every word of it, or either side of or", async () => {
     renderInForm(
       <MockedProvider mocks={[listed(false)]}>
         <ServiceNowApisSection sourceId="helpdesk" />
       </MockedProvider>,
     );
     fireEvent.change(await screen.findByTestId("servicenow-apis-filter"), {
-      target: { value: "catalog import" },
+      target: { value: "catalog or import" },
     });
     expect(screen.getByTestId("servicenow-api-now/import")).toBeInTheDocument();
     expect(screen.getByTestId("servicenow-api-sn_sc/servicecatalog")).toBeInTheDocument();

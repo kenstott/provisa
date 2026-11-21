@@ -21,12 +21,13 @@ import duckdb
 import pytest
 import sqlglot
 import sqlglot.expressions as exp
+from sqlglot.dialects.dialect import Dialect, NormalizationStrategy
 
 from provisa.transpiler import function_macros
 from provisa.transpiler.function_macros import MACROS, FunctionRefused, RowRefused
 from provisa.transpiler.polyfill import GRID, arrays, graft, holes
 from provisa.transpiler.polyfill.grid import DIALECTS, written_in
-from provisa.transpiler.polyfill.notation import Refusal, pattern, replacement
+from provisa.transpiler.polyfill.notation import Refusal, Refused, Rewrite, pattern, replacement
 from provisa.transpiler.transpile import transpile
 
 _DIALECTS = sorted(DIALECTS)
@@ -38,18 +39,25 @@ _RULES = [
 ]
 
 
-def _call(rule_pattern: str) -> str:
-    """A call of the rule's function with a column for each hole."""
+def _call(rule_pattern: str | None) -> str:
+    """A call of the rule's function with a column for each hole, and a NULL of an array its
+    pattern names as a NULL integer[]."""
+    assert rule_pattern is not None  # every array rule has a pattern
     tree = pattern(rule_pattern).copy()
     for cast in list(tree.find_all(exp.Cast)):
-        cast.replace(exp.column(cast.this.this.name))
+        if isinstance(cast.this, exp.Null):
+            cast.set("to", exp.DataType.build("integer[]", dialect="postgres"))
+        else:
+            cast.replace(exp.column(cast.this.this.name))
     return tree.sql("postgres")
 
 
 def test_the_family_is_in_the_grid_and_not_in_the_old_table():
     names = {f.name for f in arrays.FEATURES}
     assert names <= {f.name for f in GRID.features}
-    assert not {name for name, _ in MACROS} & names
+    # btarraycmp's row writes Trino's form only: every other dialect keeps the old table's
+    # (provisa.transpiler.pg_forms_index), which reads an array's elements as written first.
+    assert not {name for name, _ in MACROS} & names - {"btarraycmp"}
 
 
 @pytest.mark.parametrize(("feature", "rule", "dialect"), _RULES)
@@ -65,17 +73,56 @@ def test_each_rule_is_the_form_the_translator_writes(feature, rule, dialect):
         assert refused.value.sqlstate == form.sqlstate
         assert isinstance(refused.value, FunctionRefused)  # the API's handler of a refusal
         return
+    if isinstance(form, Rewrite):
+        _rewritten_as_the_row_writes(form, sql, dialect)
+        return
     written = sqlglot.parse_one(transpile(sql, dialect), read=dialect).expressions[0].this
     if form is None:  # sqlglot's own writing of the call, untouched by the grid
         plain = sqlglot.transpile(sql, read="postgres", write=dialect)[0]
         assert type(written) is type(sqlglot.parse_one(plain, read=dialect).expressions[0].this)
         return
-    assert isinstance(form, str)
-    bindings = {h: exp.column(h) for h in holes(pattern(rule.pattern))}
+    assert isinstance(form, str) and rule.pattern is not None
+    bindings: dict[str, exp.Expr] = {h: exp.column(h) for h in holes(pattern(rule.pattern))}
     expected = graft(replacement(form, written_in(dialect), rule.pattern), bindings)
     if dialect == "clickhouse":
         expected = expected.transform(function_macros._thrown)  # noqa: SLF001
-    assert written.sql(dialect) == expected.sql(dialect)
+    # A dialect that quotes every identifier (Snowflake) writes the same column quoted, and one
+    # that folds an unquoted name to upper case (Exasol) writes it so.
+    assert _unquoted(written, dialect).sql(dialect) == _unquoted(expected, dialect).sql(dialect)
+
+
+def _rewritten_as_the_row_writes(form: Rewrite, sql: str, dialect: str) -> None:
+    """A rewrite's refusal raised from the row; what it writes, the call's form; and where it writes
+    nothing (a dialect that keeps the old table's form), no refusal of the grid's."""
+    call = sqlglot.parse_one(sql, read="postgres").expressions[0].this
+    try:
+        rewritten = form.function(call, dialect)
+    except Refused as by_the_row:
+        with pytest.raises(RowRefused) as refused:
+            transpile(sql, dialect)
+        assert str(refused.value) == by_the_row.refusal.message
+        assert refused.value.sqlstate == by_the_row.refusal.sqlstate
+        return
+    try:
+        written = transpile(sql, dialect)
+    except RowRefused:
+        pytest.fail("a row that keeps the old table's form refused the call")
+    except FunctionRefused:
+        return  # the old table's own refusal by name
+    if rewritten is not None:
+        expected = rewritten.sql(written_in(dialect))
+        assert expected in sqlglot.parse_one(written, read=dialect).sql(written_in(dialect))
+
+
+def _unquoted(tree: exp.Expr, dialect: str) -> exp.Expr:
+    upper = Dialect.get_or_raise(dialect).normalization_strategy is NormalizationStrategy.UPPERCASE
+
+    def plain(node: exp.Expr) -> exp.Expr:
+        if isinstance(node, exp.Identifier) and node.quoted:
+            return exp.to_identifier(node.name.lower() if upper else node.name)
+        return node
+
+    return tree.copy().transform(plain)
 
 
 @pytest.mark.parametrize("dialect", _DIALECTS)
@@ -135,6 +182,63 @@ def test_array_length_reads_the_dimension_it_is_given(dialect: str):
     assert "d" in columns, out
 
 
+#: The sources a statement goes to directly that hold no array type.
+_ARRAY_LESS = ("mysql", "sqlite", "oracle", "tsql", "singlestore", "exasol", "redshift")
+#: The sources whose own array length takes no dimension (sqlglot drops it).
+_FIRST_DIMENSION_ONLY = ("snowflake", "bigquery", "databricks", "hive", "druid")
+
+
+@pytest.mark.parametrize("dialect", _ARRAY_LESS)
+@pytest.mark.parametrize("call", ["array_length(a, 1)", "array_length(a, d)"])
+def test_array_length_is_refused_by_name_where_there_is_no_array(dialect: str, call: str):
+    with pytest.raises(RowRefused) as refused:
+        transpile(f"SELECT {call} AS v FROM t", dialect)
+    assert str(refused.value) == f"array_length() has no form on {dialect}"
+    assert refused.value.sqlstate == "0A000"
+
+
+@pytest.mark.parametrize("dialect", _FIRST_DIMENSION_ONLY)
+@pytest.mark.parametrize("call", ["array_length(a, 2)", "array_length(a, d)", "array_length(a, 0)"])
+def test_array_length_of_another_dimension_than_the_first_is_refused(dialect: str, call: str):
+    """The source's own length answers the first dimension's for any: the dimension is not
+    dropped, as sqlglot drops it, but refused."""
+    with pytest.raises(RowRefused) as refused:
+        transpile(f"SELECT {call} AS v FROM t", dialect)
+    assert str(refused.value) == f"array_length() reads only dimension 1 on {dialect}"
+    assert refused.value.sqlstate == "0A000"
+
+
+@pytest.mark.parametrize(
+    ("dialect", "length"),
+    [
+        ("snowflake", "ARRAY_SIZE"),
+        ("bigquery", "ARRAY_LENGTH"),
+        ("databricks", "SIZE"),
+        ("hive", "SIZE"),
+        ("druid", "ARRAY_LENGTH"),
+    ],
+)
+def test_array_length_of_the_first_dimension_is_null_for_an_empty_array(dialect: str, length: str):
+    """PostgreSQL answers NULL for an empty or NULL array, where the source's length answers 0
+    (or -1): the form answers the length only where it is above 0."""
+    out = transpile("SELECT array_length(a, 1) AS v FROM t", dialect)
+    case = sqlglot.parse_one(out, read=dialect).expressions[0].find(exp.Case)
+    assert case is not None, out
+    assert f"{length}(" in out.upper() and "> 0" in out, out
+
+
+@pytest.mark.parametrize(
+    ("sql", "expected"),
+    [
+        ("SELECT array_length(ARRAY[[1,2,3],[4,5,6]], 1)", [(2,)]),
+        ("SELECT array_length(CAST(ARRAY[] AS INTEGER[]), 1)", [(None,)]),
+        ("SELECT array_length(CAST(NULL AS INTEGER[]), 1)", [(None,)]),
+    ],
+)
+def test_the_duckdb_form_of_the_first_dimension_answers_as_postgresql_does(sql: str, expected):
+    assert duckdb.connect().execute(transpile(sql, "duckdb")).fetchall() == expected
+
+
 def _on_clickhouse(sql: str) -> list[str | None]:
     held = chdb.query(transpile(sql, "clickhouse"), "TabSeparated").bytes().decode()
     return [None if line == "\\N" else line for line in held.splitlines()]
@@ -147,6 +251,7 @@ def _on_clickhouse(sql: str) -> list[str | None]:
         ("SELECT array_length(ARRAY[[1,2,3],[4,5,6]], 1)", "2"),
         ("SELECT array_length(ARRAY[1,2,3], 2)", None),
         ("SELECT array_length(ARRAY[1,2,3], 0)", None),
+        ("SELECT array_length(CAST(ARRAY[] AS INTEGER[]), 1)", None),
     ],
 )
 def test_the_clickhouse_form_of_array_length_answers_as_postgresql_does(sql: str, expected):
@@ -154,7 +259,7 @@ def test_the_clickhouse_form_of_array_length_answers_as_postgresql_does(sql: str
 
 
 def test_a_quoted_or_qualified_call_is_read_as_sqlglots_node():
-    out = transpile('SELECT pg_catalog."array_length"(ARRAY[1, 2], 1) AS v', "duckdb")
+    out = transpile('SELECT pg_catalog."array_length"(ARRAY[[1, 2]], 2) AS v', "duckdb")
     assert "JSON_ARRAY_LENGTH" in out.upper(), out
 
 
@@ -256,6 +361,10 @@ def test_a_documented_refusal_is_the_text_the_form_raises(feature):
         ("SELECT trim_array(ARRAY[1,2,3], 1)", [([1, 2],)]),
         ("SELECT array_shuffle(ARRAY[7])", [([7],)]),
         ("SELECT generate_subscripts(ARRAY[7,8,9], 1, true)", [(3,), (2,), (1,)]),
+        ("SELECT array_cat(ARRAY[1], ARRAY[2])", [([1, 2],)]),
+        ("SELECT array_cat(NULL::integer[], ARRAY[1, 2])", [([1, 2],)]),
+        ("SELECT array_cat(ARRAY[1, 2], NULL::integer[])", [([1, 2],)]),
+        ("SELECT array_cat(NULL::integer[], NULL::integer[])", [(None,)]),
     ],
 )
 def test_the_duckdb_forms_answer_as_postgresql_does(sql: str, expected):
@@ -270,3 +379,31 @@ def test_a_refusal_raised_on_duckdb_carries_postgresqls_sqlstate():
     error = from_engine(raised.value)
     assert error is not None and error.sqlstate == "2202E"
     assert "number of elements to trim must be between 0 and 3" in str(error)
+
+
+#: array_cat of two arrays on Trino, as release v0.1.0-alpha.509 (R509-K) wrote it: a column can be
+#: NULL at run time, and Trino's concat of a NULL array is NULL, so the other array is answered.
+_ARRAY_CAT_ON_TRINO = "CASE WHEN a IS NULL THEN b WHEN b IS NULL THEN a ELSE CONCAT(a, b) END"
+
+
+@pytest.mark.parametrize("dialect", ["trino", "presto", "athena"])
+@pytest.mark.parametrize(
+    ("call", "rule", "written"),
+    [
+        ("array_cat(a, b)", 2, _ARRAY_CAT_ON_TRINO),
+        ("array_cat(NULL, b)", 0, "b"),
+        ("array_cat(a, NULL)", 1, "a"),
+    ],
+)
+def test_array_cat_on_trino_is_written_by_its_grid_row(dialect: str, call: str, rule: int, written):
+    row = arrays.ARRAY_CAT.read.rules[rule]
+    assert row.matched(sqlglot.parse_one(call, read="postgres")) is not None
+    assert isinstance(row.forms[dialect], str)
+    assert transpile(f"SELECT {call} AS v FROM t", dialect) == f"SELECT {written} AS v FROM t"
+
+
+@pytest.mark.parametrize("dialect", ["trino", "presto", "athena"])
+def test_array_cat_of_two_null_arrays_on_trino_is_null(dialect: str):
+    assert (
+        transpile("SELECT array_cat(NULL, NULL) AS v FROM t", dialect) == "SELECT NULL AS v FROM t"
+    )

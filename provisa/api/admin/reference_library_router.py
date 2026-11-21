@@ -20,8 +20,11 @@ new version of a file document, removing one and retrying a failed one.
 Adding is one step: the document exists at once, and a background job reads and indexes it and then
 looks for its terms. Its index status (indexing with progress, ready, failed with the reason) is
 a property of the document. A file travels as base64 in a JSON body, as every admin upload does
-(import_router.py). The page also shows and changes the library's retrieval setting, passage or
-graph (GRAPH RETRIEVAL), held in the org's settings.
+(import_router.py).
+
+The glossary's in-service terms are embedded as they change (TERMS ARE EMBEDDED AS THEY CHANGE):
+every save that brings a term into service, renames it, redefines it or takes it out of service
+calls :func:`embed_terms`, which brings the org's term embeddings up to date in the background.
 """
 
 # Requirements: REQ-2185
@@ -44,7 +47,7 @@ from provisa.api.admin.capabilities import (
 )
 from provisa.api.errors import ApiError
 from provisa.core.connection_loop import spawn_background
-from provisa.reference_library import library, store, terms
+from provisa.reference_library import citations, library, store, terms
 from provisa.security.rights import Capability
 
 if TYPE_CHECKING:
@@ -223,18 +226,86 @@ async def get_document(document_id: int, request: Request) -> dict:
 
 
 @router.get("/documents/{document_id}/cited-by")
-async def cited_by(document_id: int, request: Request) -> dict:
+async def cited_by(
+    document_id: int,
+    request: Request,
+    section_heading: str | None = None,
+    section_page: int | None = None,
+) -> dict:
     """What cites the document, among what the caller may read: each citation with its state, a
-    quote the document no longer holds flagged as drifted."""
+    quote the document no longer holds flagged as drifted. REQ-2208: and the tags whose definition
+    cites it and the tag assignments that cite it, each citation current, drifted or broken; with
+    ``section_heading`` or ``section_page``, only what cites that section of it."""
     scope = _read_scope(request)
     async with _pool().acquire() as conn:
         await _read_document(conn, document_id, scope)
         citing = await terms.cited_by(conn, document_id)
         readable = await _readable_terms(conn, scope, {c.term_id for c in citing})
+        by_tags = await _cited_by_tags(conn, request, document_id, section_heading, section_page)
     shown = [c for c in citing if c.term_id in readable]
     return {
         "terms": [asdict(c) for c in shown],
         "drifted": sum(c.state == terms.DRIFTED for c in shown),
+        **by_tags,
+    }
+
+
+def _citation(c: citations.Citation) -> dict:
+    return {
+        "section_heading": c.section_heading,
+        "section_page": c.section_page,
+        "text_sha256": c.text_sha256,
+        "cited_by": c.cited_by,
+        "cited_at": c.cited_at.isoformat(),
+        "state": c.state,
+        "needs_review": c.needs_review,
+    }
+
+
+async def _cited_by_tags(
+    conn: Connection,
+    request: Request,
+    document_id: int,
+    section_heading: str | None,
+    section_page: int | None,
+) -> dict:  # REQ-2208
+    """The tags whose definition cites the document (or the section), and the tag assignments
+    citing it that the caller may read, through the tag assignments' one read gate."""
+    from provisa.api.admin.schema_query import readable_tag_assignments
+    from provisa.core.repositories import tag as tag_repo
+
+    found = await citations.citing(conn, document_id, section_heading, section_page)
+    by_assignment = {
+        (c.tag_id, c.object_key) for c in found if c.citer_kind == citations.TAG_ASSIGNMENT
+    }
+    held = [
+        *await tag_repo.list_assignments(conn),
+        *await tag_repo.list_library_assignments(conn),
+    ]
+    rows = [r for r in held if (r["base_tag_id"], r["object_key"]) in by_assignment]
+    if rows:
+        rows = await readable_tag_assignments(request, conn, rows)
+    assignments = []
+    for r in rows:
+        for c in found:
+            if (c.citer_kind, c.tag_id, c.object_key) == (
+                citations.TAG_ASSIGNMENT,
+                r["base_tag_id"],
+                r["object_key"],
+            ):
+                assignments.append(
+                    {
+                        "tag_id": r["tag_id"],
+                        "object_type": r["object_type"],
+                        "object_key": r["object_key"],
+                        **_citation(c),
+                    }
+                )
+    return {
+        "tags": [
+            {"tag_id": c.tag_id, **_citation(c)} for c in found if c.citer_kind == citations.TAG
+        ],
+        "tag_assignments": assignments,
     }
 
 
@@ -417,45 +488,26 @@ async def remove_document(document_id: int, request: Request) -> dict:
     return {"removed": document_id}
 
 
-@router.get("/settings")
-async def get_settings(request: Request) -> dict:
-    """The library's retrieval setting: ``passage`` or ``graph``."""
-    from provisa.reference_library import retrieve
+async def embed_terms(org_id: str) -> None:
+    """Bring the embeddings of ``org_id``'s in-service glossary terms up to date in the background
+    of a save (REQ-2185, TERMS ARE EMBEDDED AS THEY CHANGE): a term that entered service or whose
+    name or definition changed is embedded by the org's vector model, and a term that left service
+    loses its embedding (terms.refresh). Every path that changes a term's service state, name or
+    definition calls this, after its save. An org with no vector model schedules nothing. The work
+    runs on a background worker (connection_loop.spawn_background), which logs a failure with its
+    traceback under its name; the save it follows has already been answered."""
+    from provisa.core.request_context import reset_current_org, set_current_org
 
-    _guard(request)
+    token = set_current_org(org_id)
     try:
-        return {"retrieval": await retrieve.retrieval_setting(_pool())}
-    except ValueError as exc:
-        raise ApiError(409, "reference_library.bad_setting", str(exc)) from None
+        if await _current_model() is None:
+            return
+        spawn_background(_embed_terms(_pool()), name=f"glossary term embeddings of {org_id}")
+    finally:
+        reset_current_org(token)
 
 
-@router.put("/settings")
-async def put_settings(body: dict, request: Request) -> dict:
-    """Change the library's retrieval setting (``retrieval``: ``passage`` or ``graph``). Choosing
-    graph embeds the glossary's in-service terms with the org's vector model now, so the first
-    question does not wait on it."""
-    from provisa.core.org_settings import write_org_overrides
-    from provisa.reference_library import retrieve
-
-    _guard(request)
-    unknown = sorted(set(body) - {"retrieval"})
-    if unknown:
-        raise ApiError(
-            400, "reference_library.bad_setting", f"{unknown[0]!r} is not a library setting"
-        )
-    retrieval = body.get("retrieval")
-    if retrieval not in retrieve.RETRIEVALS:
-        raise ApiError(
-            400,
-            "reference_library.bad_setting",
-            f"retrieval must be one of {', '.join(retrieve.RETRIEVALS)}",
-        )
-    pool = _pool()
-    if retrieval == retrieve.GRAPH:
-        embedder = await _embedder()
-        async with pool.acquire() as conn:
-            await terms.refresh(conn, await terms.in_service(conn), embedder)
-    await write_org_overrides(
-        pool, {retrieve.SETTING: {"retrieval": retrieval}}, updated_by=_user_id(request) or "admin"
-    )
-    return {"retrieval": retrieval}
+async def _embed_terms(pool: Database) -> None:
+    embedder = await _embedder()
+    async with pool.acquire() as conn:
+        await terms.refresh(conn, await terms.in_service(conn), embedder)

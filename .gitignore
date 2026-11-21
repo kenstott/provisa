@@ -211,3 +211,4 @@ demo/named/*/data/
 /config/pgwire.crt
 # Maven classpath dump (mvn dependency:build-classpath); holds local paths.
 /jdbc-driver/cp.txt
+packaging/windows/rootfs-cache/

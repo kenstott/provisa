@@ -1,0 +1,16 @@
+{
+  "contextViews": {
+    "colWhereApplied": "היכן מוחל",
+    "colDependents": "תלוי בו",
+    "detectedHeader": "זוהה ב",
+    "nowhere": "בשום מקום",
+    "hiddenPlaces_one": "עוד {{count}} שאין לך הרשאה לקרוא",
+    "hiddenPlaces_other": "עוד {{count}} שאין לך הרשאה לקרוא",
+    "rowFilters_one": "מסנן שורות {{count}}",
+    "rowFilters_other": "{{count}} מסנני שורות",
+    "classifiedAs": "הוקצה על ידי סיווג: {{kind}}",
+    "noDependents": "כלום",
+    "enabled": "מופעל",
+    "disabled": "מושבת"
+  }
+}

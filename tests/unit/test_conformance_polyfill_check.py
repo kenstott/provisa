@@ -152,12 +152,13 @@ def test_an_outcome_that_compared_nothing_is_unverified(outcome: str):
 
 
 def test_a_function_the_grid_has_no_row_of_is_not_read():
-    assert check.checked(_run("abs", "integer", duckdb=_WRONG)) == []
+    """Read against a grid of the toy row alone: the production grid gains rows (abs has one)."""
+    assert check.checked(_run("abs", "integer", duckdb=_WRONG), Grid((_DIFFERS,))) == []
 
 
 def test_an_overload_no_rule_matches_is_not_read():
-    """generate_subscripts of two arguments is no row of the grid (pg_functions reads it)."""
-    assert check.checked(_run("generate_subscripts", "anyarray, integer", trino=_WRONG)) == []
+    """regexp_replace of no flags is no row of the grid (its flags' row takes four arguments)."""
+    assert check.checked(_run("regexp_replace", "text, text, text", trino=_WRONG)) == []
 
 
 @pytest.mark.parametrize(

@@ -64,10 +64,10 @@ def test_a_waiting_run_is_never_cancelled_by_another_branchs_run():
     assert "cancel-in-progress" not in concurrency
 
 
-def test_the_suite_runs_on_a_release_branch_nightly_and_on_demand_and_never_on_a_push_to_main():
-    # REQ-1989: a release branch runs the full suites on its pushes; main never does.
+def test_the_suite_runs_nightly_and_on_demand_and_never_on_a_push():
+    # REQ-1989: the full suites run on a dispatch on a release branch; no push starts them.
     triggers = _caller()[True]  # YAML reads the key `on` as a boolean
-    assert triggers["push"] == {"branches": ["release/**"]}
+    assert "push" not in triggers
     assert "schedule" in triggers and "workflow_dispatch" in triggers
 
 

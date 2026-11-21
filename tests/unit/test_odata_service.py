@@ -494,7 +494,7 @@ async def test_a_masked_key_stays_masked_and_the_read_still_pages(service, monke
     monkeypatch.setattr(odata_router, "SERVER_PAGE_SIZE", 2)
     first = await service.client.get("/data/odata/orders", headers=_as("clerk"))
     assert first.status_code == 200, first.text
-    assert {r["id"] for r in first.json()["value"]} == {0}
+    assert {r["id"] for r in first.json()["value"]} == {None}  # REQ-2131: keeps its type
     assert "@odata.nextLink" in first.json()
 
 
@@ -1687,7 +1687,7 @@ async def test_a_masked_key_still_joins_and_stays_masked(expanding):
     body = await _expand(
         expanding, role="clerk", path="orders", expand="customer", filter="id eq 1"
     )
-    assert body["value"][0]["customer"] == {"id": 0, "name": "one"}
+    assert body["value"][0]["customer"] == {"id": None, "name": "one"}
 
 
 async def test_a_nested_filter_on_a_masked_column_is_refused_and_runs_nothing(expanding):

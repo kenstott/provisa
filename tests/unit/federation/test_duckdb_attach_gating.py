@@ -256,9 +256,34 @@ def test_a_replica_source_is_added(tmp_path, monkeypatch):
 def test_with_no_staged_directory_every_extension_connector_stays(monkeypatch):
     monkeypatch.delenv("PROVISA_DUCKDB_EXT_DIR", raising=False)
     engine = build_engine("duckdb")
-    for source_type in ("postgresql", "sqlserver", "firebird", "google_sheets", "iceberg"):
+    for source_type in ("postgresql", "sqlserver", "firebird", "iceberg"):
         assert engine.unreachable_reason(source_type) is None, source_type
         assert engine.connectors[source_type].reads_in_place, source_type
+
+
+def test_with_no_staged_list_a_sheet_on_duckdb_2_lands_through_the_sheets_reader(monkeypatch):
+    # REQ-1998: gsheets has no 2.0 build (its download 404s), so with nothing staged or installed
+    # the engine still materializes a sheet instead of sending it to read_gsheet.
+    from provisa.federation.strategy import Strategy, federate
+
+    monkeypatch.delenv("PROVISA_DUCKDB_EXT_DIR", raising=False)
+    monkeypatch.setattr(duckdb_extensions, "_installed_at_start", None)
+    monkeypatch.setattr(duckdb, "__version__", "2.0.0")
+    assert staged_extensions() is None
+    engine = build_engine("duckdb")
+    assert engine.unreachable_reason("google_sheets") is None
+    assert not engine.connectors["google_sheets"].reads_in_place
+    assert federate(_source("google_sheets", database="sheet-id"), engine) is (
+        Strategy.MATERIALIZED
+    )
+
+
+def test_with_no_staged_list_a_sheet_attaches_on_a_duckdb_with_a_gsheets_build(monkeypatch):
+    monkeypatch.delenv("PROVISA_DUCKDB_EXT_DIR", raising=False)
+    monkeypatch.setattr(duckdb_extensions, "_installed_at_start", None)
+    monkeypatch.setattr(duckdb, "__version__", "1.5.5")
+    engine = build_engine("duckdb")
+    assert engine.connectors["google_sheets"].reads_in_place
 
 
 # --- MotherDuck (REQ-1998: a replica where it cannot attach, landed through its Postgres endpoint) ---

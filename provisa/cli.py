@@ -330,9 +330,9 @@ def _cmd_license_status(args: argparse.Namespace) -> int:
 def _cmd_metadata_export(args: argparse.Namespace) -> int:
     """`provisa metadata export` — trigger the running server's on-demand metadata publish.
 
-    A thin client for POST /admin/metadata-export/publish (REQ-1072/REQ-1074): the server owns
+    A thin client for POST /admin/syncing/publish (REQ-1072/REQ-1074, REQ-2247): the server owns
     the single publish path (entitlement gate, org runtime, snapshot build), so a cron-driven
-    export sends exactly what the admin tab's Publish now sends. Under multitenancy the org is
+    export sends exactly what the Syncing page's Publish now sends, to every entry that exports. Under multitenancy the org is
     named by the API host (acme.provisa.org), the same way every other client names it.
     """
     import urllib.error
@@ -341,7 +341,7 @@ def _cmd_metadata_export(args: argparse.Namespace) -> int:
     api = args.api or os.environ.get("PROVISA_API_URL", "http://127.0.0.1:8000")
     token = args.token or os.environ.get("PROVISA_API_TOKEN", "")
     req = urllib.request.Request(
-        f"{api.rstrip('/')}/admin/metadata-export/publish", method="POST", data=b""
+        f"{api.rstrip('/')}/admin/syncing/publish", method="POST", data=b""
     )
     if token:
         req.add_header("Authorization", f"Bearer {token}")
@@ -362,8 +362,8 @@ def _cmd_metadata_export(args: argparse.Namespace) -> int:
     if _wants_json(args):
         print(json.dumps(payload))
         return 0 if payload["ok"] else 1
-    # REQ-2118: one publish reaches every target the org has, each reported on its own line.
-    for target in payload["targets"]:
+    # REQ-2118: one publish reaches every entry that exports, each reported on its own line.
+    for target in payload["entries"]:
         print(
             f"{'ok' if target['ok'] else 'PARTIAL'}: {target['id']} ({target['provider']}) "
             f"published {target['total_published']} assets"
@@ -391,6 +391,10 @@ def _api_call(args: argparse.Namespace, method: str, path: str, body: dict | Non
     capability check, same report. A deployment pipeline holding a credential that passes that
     check is the organization delegating its own standing, which is the org's decision to make and
     revocable as any other credential is.
+
+    Its callers are the ``provisa env`` commands, each of which takes a required ``--org``. The
+    org goes in the X-Org-Provisa header, as the UI sends it: an environment route acts in the org
+    its path names only on a request bound to that org (REQ-1327), and a session token names none.
     """
     import urllib.error
     import urllib.request
@@ -400,6 +404,7 @@ def _api_call(args: argparse.Namespace, method: str, path: str, body: dict | Non
     url = f"{api.rstrip('/')}{path}"
     data = None if body is None else json.dumps(body).encode()
     req = urllib.request.Request(url, method=method, data=data)
+    req.add_header("X-Org-Provisa", args.org)
     if data is not None:
         req.add_header("Content-Type", "application/json")
     if token:

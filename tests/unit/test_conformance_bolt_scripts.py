@@ -16,6 +16,7 @@ and the role the driver's user acts as there (REQ-2167)."""
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
 from pathlib import Path
 
@@ -90,9 +91,76 @@ def test_the_drivers_user_acts_as_a_role_reaching_the_examples_domain_alone():
     (role,) = (Role(**r) for r in access["roles"])
     assert (role.id, role.domain_access) == ("bolt_examples", ["bolt_examples"])
     assert "write" in role.capabilities
-    assert access["role_mapping"] == [
-        {"claim": "username", "type": "exact", "value": "conformance", "role": "bolt_examples"}
-    ]
+    assert access["assignments"] == {
+        "conformance": [{"role_id": "bolt_examples", "domain_id": "*"}]
+    }
+
+
+def test_the_drivers_user_holds_the_role_its_bolt_sessions_act_as(tmp_path, monkeypatch):
+    """REQ-2167, REQ-1263, REQ-120: the control plane holds the instance's assignments, so a Bolt
+    sign-in acts only as a role it holds; a role its claims map to that it does not hold is not
+    one. The driver's user is assigned bolt_examples, and its sessions act as that role alone, never
+    as org_admin, whose DETACH DELETE would reach conformance.types_fixture."""
+    import asyncio
+    from types import SimpleNamespace
+
+    from provisa.auth import held_assignments as held_module
+    from provisa.auth.models import AuthIdentity, RoleAssignment
+
+    config = _bolt_config(tmp_path, monkeypatch)
+    assigned = pgwire_catalog_types.job_assignments(tmp_path / "a.yaml", ["conformance"])
+
+    async def held(state, identity, org_id):
+        # Explicit assignments replace default_assignments (held_assignments.read_assignments).
+        return [RoleAssignment(**a) for a in assigned[identity.raw_claims["username"]]]
+
+    monkeypatch.setattr(held_module, "held_assignments", held)
+    identity = AuthIdentity(
+        user_id="conformance-id",
+        email=None,
+        display_name=None,
+        roles=[],
+        raw_claims={"username": "conformance"},
+    )
+    acts_as, may_name = asyncio.run(
+        held_module.sign_in_roles(SimpleNamespace(auth_config=config["auth"]), identity, None)
+    )
+    assert (acts_as, may_name) == ("bolt_examples", ["bolt_examples"])
+
+
+def test_an_assignment_to_a_user_the_job_does_not_create_is_refused_by_name(tmp_path):
+    access = tmp_path / "a.yaml"
+    access.write_text(yaml.safe_dump(fixtures.access("someone-else")))
+    with pytest.raises(SystemExit, match=r"assigns roles to \['someone-else'\]"):
+        pgwire_catalog_types.job_assignments(access, ["conformance"])
+
+
+def test_the_instance_gives_the_job_user_its_assignments():
+    """The instance action posts each assignment of the job's extra access to the job user it
+    created, and fails the start on any answer that is not a success."""
+    action = (
+        CONFORMANCE.parents[1] / ".github/actions/conformance-instance/action.yml"
+    ).read_text()
+    assert "pgwire_catalog_types.py assignments" in action
+    assert "/admin/users/$user_id/assignments" in action
+    assert 'answered $status"; cat "$home/assignment-response.txt"; exit 1' in action
+
+
+def test_the_assignments_command_prints_the_job_users_bodies(tmp_path, capsys):
+    access = tmp_path / "a.yaml"
+    access.write_text(yaml.safe_dump(fixtures.access("conformance")))
+    pgwire_catalog_types.main(
+        [
+            "pgwire_catalog_types.py",
+            "assignments",
+            "--extra-access",
+            str(access),
+            "--user",
+            "conformance",
+        ]
+    )
+    lines = capsys.readouterr().out.splitlines()
+    assert [json.loads(line) for line in lines] == [{"role_id": "bolt_examples", "domain_id": "*"}]
 
 
 def _bolt_config(tmp_path, monkeypatch) -> dict:
@@ -105,7 +173,7 @@ def _bolt_config(tmp_path, monkeypatch) -> dict:
     return yaml.safe_load((tmp_path / "provisa.yaml").read_text())
 
 
-def test_the_model_maps_the_drivers_user_to_its_role_beside_the_shared_fixture(
+def test_the_model_declares_the_drivers_role_beside_the_shared_fixture_and_maps_no_one(
     tmp_path, monkeypatch
 ):
     config = _bolt_config(tmp_path, monkeypatch)
@@ -114,9 +182,9 @@ def test_the_model_maps_the_drivers_user_to_its_role_beside_the_shared_fixture(
     assert roles["bolt_examples"]["domain_access"] == ["bolt_examples"]
     assert {t["table"]: t["domain_id"] for t in config["tables"]}["types_fixture"] == "conformance"
     assert {d["id"] for d in config["domains"]} >= {"conformance", "bolt_examples"}
-    mapped = {m["value"]: m["role"] for m in config["auth"]["role_mapping"]}
-    assert mapped["conformance"] == "bolt_examples"
-    assert mapped[pgwire_catalog_types.TCK_SESSION_USER] == "tck_empty"
+    # Every role is held by assignment (the driver's user bolt_examples, the Cypher TCK's session
+    # user tck_empty): no mapping rule grants a role.
+    assert config["auth"]["role_mapping"] == []
 
 
 def test_an_access_file_with_another_field_is_refused_by_name(tmp_path, monkeypatch):

@@ -99,6 +99,7 @@ def plane(monkeypatch):
         statements=[],
         memberships=[],
         roles=[],
+        recorded=[],
         claim=[_Row({"token": "tok-1"})],
         invite={
             "org_id": "acme",
@@ -133,18 +134,27 @@ def plane(monkeypatch):
     async def _bind_member_to_org_trial(db, org_id, email):
         return None
 
+    async def _record_people(org_id, principals):
+        state.recorded.append((org_id, list(principals)))
+
     monkeypatch.setattr(
         "provisa.api.admin.invites_router.resolve_invite_role", _resolve_invite_role
     )
     monkeypatch.setattr("provisa.api.app.ensure_org_runtime", _ensure_org_runtime, raising=False)
     monkeypatch.setattr("provisa.core.org_membership.grant_org_role", _grant_org_role)
     monkeypatch.setattr("provisa.core.commerce.bind_member_to_org_trial", _bind_member_to_org_trial)
+    # REQ-2219: the granted role changes the invitee's effective rows, recomputed in the invited
+    # org's prod model store. The stand-in runtime has no store, so the recompute is recorded.
+    monkeypatch.setattr("provisa.api.effective_rows.record_people", _record_people)
     return state
 
 
 def _request(email: str, user_id: str = "bob"):
     return types.SimpleNamespace(
-        state=types.SimpleNamespace(identity=types.SimpleNamespace(user_id=user_id, email=email))
+        state=types.SimpleNamespace(
+            # An address the person's identity provider verified (REQ-1261).
+            identity=types.SimpleNamespace(user_id=user_id, email=email, email_verified=True)
+        )
     )
 
 
@@ -168,6 +178,8 @@ async def test_redemption_grants_the_invited_role_in_the_invited_org(plane):
     assert plane.roles == [("bob", "analyst")]
     # The role lands in the INVITED org's schema, not the request's default org.
     assert plane.bound_org == "acme"
+    # REQ-2219: and the invitee's effective rows are recomputed in that org.
+    assert plane.recorded == [("acme", ["bob"])]
 
 
 @pytest.mark.asyncio
@@ -211,6 +223,7 @@ async def test_a_spent_or_expired_invitation_admits_nobody(plane, uses, expires_
 
     assert exc.value.status_code == 400
     assert plane.memberships == []
+    assert plane.recorded == []
 
 
 @pytest.mark.asyncio

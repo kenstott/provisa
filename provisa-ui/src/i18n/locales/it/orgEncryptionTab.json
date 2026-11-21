@@ -1,7 +1,7 @@
 {
   "orgEncryptionTab": {
     "loading": "Caricamento…",
-    "intro": "La chiave di crittografia con cui sono protetti i dati di questa organizzazione. Può essere impostata, sostituita e ruotata qui; non viene mai mostrata e nulla in questo deployment può mostrarla a te o ad altri.",
+    "intro": "La chiave di crittografia con cui sono protetti i dati di questa organizzazione. Qui è possibile impostarla, sostituirla e ruotarla. Nulla in questo deployment può mostrarla, né a te né ad altri.",
     "fingerprintLabel": "Impronta",
     "supplied": "Fornita",
     "generated": "Generata qui",
@@ -9,14 +9,14 @@
     "retired": "{{count}} chiave/i ritirata/e ancora leggibile/i",
     "unset": "Questa organizzazione non ha impostato una chiave propria. I suoi dati sono protetti con la chiave del deployment.",
     "modeLabel": "Come impostare la chiave",
-    "modeGenerate": "Generane una — esiste solo nel keyring e non viene mostrata a nessuno",
+    "modeGenerate": "Generane una. Esiste solo nel keyring e non viene mostrata a nessuno.",
     "modeSupply": "Fornisci la mia (base64, 32 byte)",
     "keyLabel": "Chiave",
     "keyHelp": "Base64 di 32 byte casuali, ad es. openssl rand -base64 32. Viene scritta una sola volta e mai riletta.",
-    "rotationNote": "La rotazione cambia la chiave con cui vengono protetti i NUOVI dati. La chiave precedente viene ritirata nel keyring e continua a decifrare ciò che ha già scritto, quindi nulla diventa illeggibile — e perciò una rotazione non è una revoca.",
+    "rotationNote": "La rotazione cambia la chiave con cui vengono protetti i nuovi dati. La chiave precedente viene ritirata nel keyring e continua a decifrare ciò che ha scritto, quindi i dati esistenti restano leggibili, e una rotazione non è una revoca.",
     "set": "Imposta chiave",
     "rotate": "Ruota chiave",
-    "applied": "Chiave {{keyId}} attiva — impronta {{fingerprint}}",
+    "applied": "Chiave {{keyId}} attiva, impronta {{fingerprint}}",
     "panelTitle": "Chiave dell'organizzazione"
   }
 }

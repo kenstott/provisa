@@ -14,6 +14,9 @@
     "runProfilerTitle": "Nu uitvoeren voor elke lidtabel",
     "profilerNoMembers": "Geen tabel hoort bij deze profiler.",
     "profilerRan": "{{table}}: geprofileerd",
-    "profilerFailed": "{{table}}: {{error}}"
+    "profilerFailed": "{{table}}: {{error}}",
+    "profilerNotRead": "{{table}}: niet gelezen. Ze vereist {{parameters}} en kan dus niet worden geteld of geprofileerd.",
+    "withdrawConsequence": "Geen rol leest een van haar tabellen, geen engine koppelt haar en de replica's van haar tabellen worden verwijderd. Definitie, tabellen en rechten blijven, en Terugzetten herstelt haar zoals ze was.",
+    "withdrawnNote": "Teruggetrokken: geen van haar tabellen bedient een rol totdat ze wordt teruggezet."
   }
 }

@@ -4,9 +4,11 @@
 #
 # One leg of the release. Called by build-dmg.yml (the release orchestrator) on a tag, and by a
 # manual dry run of it. `version` is the release's tag; nothing here reads the pushed ref.
-# `publish` is false on a dry run: every artifact is built and uploaded to the RUN exactly as on
-# a tag, and every step that leaves the run -- the draft release, its attachments, PyPI, an image
-# push, a signed attestation -- is skipped. A failed job of this leg is re-run alone with
+# `publish` is false on a dry run: every artifact is built and uploaded to the RUN, and every
+# step that leaves the run -- the draft release, its attachments, PyPI, an image push, a signed
+# attestation -- is skipped. On a release each job attaches the assets it built straight to the
+# draft (.github/actions/attach-release-assets) instead of uploading them to the run, unless
+# another job of the run reads them. A failed job of this leg is re-run alone with
 # "Re-run failed jobs" on the release's run; the legs it reads from (their artifacts are the
 # run's) are not built again.
 name: "Release: macOS installers"
@@ -62,6 +64,8 @@ jobs:
   build-macos-core:
     name: Build macOS Core DMG (${{ needs.metadata.outputs.channel }})
     runs-on: macos-15
+    permissions:
+      contents: write   # attaches what it builds to the draft release
     # These finish in 9-13 minutes; a notarization stall would otherwise sit on a macOS
     # runner for the 6-hour default (run 32152155205 hung 4h in Build DMG).
     timeout-minutes: 45
@@ -90,8 +94,11 @@ jobs:
       - name: Set up Node.js
         uses: ./.github/actions/setup-ui
         with:
-          node-version: "20"
           install: "false"
+
+      # provisa-notebook's build takes Pyodide from this directory, not from its CDN.
+      - name: Pyodide downloads
+        uses: ./.github/actions/pyodide-downloads
 
       # REQ-2194: installing provisa compiles provisa._encoders, with the toolchain every recipe names.
       - name: Install the Rust toolchain
@@ -114,16 +121,29 @@ jobs:
           mv packaging/macos/dist/Provisa.dmg \
              "packaging/macos/dist/${{ needs.metadata.outputs.dmg_name }}"
 
+      # A dry run keeps it in the run (its only home: nothing is attached); a release attaches it
+      # to the draft directly, never through an artifact.
       - name: Upload DMG artifact
+        if: ${{ !inputs.publish }}
         uses: actions/upload-artifact@v4
         with:
           name: macos-core-dist
           path: "packaging/macos/dist/${{ needs.metadata.outputs.dmg_name }}"
+          if-no-files-found: error
           retention-days: 1
+
+      - name: Attach the Core DMG to the draft release
+        if: inputs.publish
+        uses: ./.github/actions/attach-release-assets
+        with:
+          tag: ${{ inputs.version }}
+          files: "packaging/macos/dist/${{ needs.metadata.outputs.dmg_name }}"
 
   build-macos-container:
     name: Build macOS Container DMG (${{ needs.metadata.outputs.channel }})
     runs-on: macos-15
+    permissions:
+      contents: write   # attaches what it builds to the draft release
     # These finish in 9-13 minutes; a notarization stall would otherwise sit on a macOS
     # runner for the 6-hour default (run 32152155205 hung 4h in Build DMG).
     timeout-minutes: 45
@@ -151,8 +171,11 @@ jobs:
       - name: Set up Node.js
         uses: ./.github/actions/setup-ui
         with:
-          node-version: "20"
           install: "false"
+
+      # provisa-notebook's build takes Pyodide from this directory, not from its CDN.
+      - name: Pyodide downloads
+        uses: ./.github/actions/pyodide-downloads
 
       # REQ-2194: installing provisa compiles provisa._encoders, with the toolchain every recipe names.
       - name: Install the Rust toolchain
@@ -176,16 +199,29 @@ jobs:
           mv packaging/macos/dist/Provisa-Container.dmg \
              "packaging/macos/dist/${{ needs.metadata.outputs.dmg_container_name }}"
 
+      # A dry run keeps it in the run (its only home: nothing is attached); a release attaches it
+      # to the draft directly, never through an artifact.
       - name: Upload Container DMG artifact
+        if: ${{ !inputs.publish }}
         uses: actions/upload-artifact@v4
         with:
           name: macos-container-dist
           path: "packaging/macos/dist/${{ needs.metadata.outputs.dmg_container_name }}"
+          if-no-files-found: error
           retention-days: 1
+
+      - name: Attach the Container DMG to the draft release
+        if: inputs.publish
+        uses: ./.github/actions/attach-release-assets
+        with:
+          tag: ${{ inputs.version }}
+          files: "packaging/macos/dist/${{ needs.metadata.outputs.dmg_container_name }}"
 
   build-macos-obs:
     name: Build macOS Obs DMG (${{ needs.metadata.outputs.channel }})
     runs-on: macos-15
+    permissions:
+      contents: write   # attaches what it builds to the draft release
     # These finish in 9-13 minutes; a notarization stall would otherwise sit on a macOS
     # runner for the 6-hour default (run 32152155205 hung 4h in Build DMG).
     timeout-minutes: 45
@@ -227,16 +263,29 @@ jobs:
           mv packaging/macos/dist/Provisa-Obs.dmg \
              "packaging/macos/dist/${{ needs.metadata.outputs.dmg_obs_name }}"
 
+      # A dry run keeps it in the run (its only home: nothing is attached); a release attaches it
+      # to the draft directly, never through an artifact.
       - name: Upload Obs DMG artifact
+        if: ${{ !inputs.publish }}
         uses: actions/upload-artifact@v4
         with:
           name: macos-obs-dist
           path: "packaging/macos/dist/${{ needs.metadata.outputs.dmg_obs_name }}"
+          if-no-files-found: error
           retention-days: 1
+
+      - name: Attach the Obs DMG to the draft release
+        if: inputs.publish
+        uses: ./.github/actions/attach-release-assets
+        with:
+          tag: ${{ inputs.version }}
+          files: "packaging/macos/dist/${{ needs.metadata.outputs.dmg_obs_name }}"
 
   build-macos-demo:
     name: Build macOS Demo DMG (${{ needs.metadata.outputs.channel }})
     runs-on: macos-15
+    permissions:
+      contents: write   # attaches what it builds to the draft release
     # These finish in 9-13 minutes; a notarization stall would otherwise sit on a macOS
     # runner for the 6-hour default (run 32152155205 hung 4h in Build DMG).
     timeout-minutes: 45
@@ -278,9 +327,20 @@ jobs:
           mv packaging/macos/dist/Provisa-Demo.dmg \
              "packaging/macos/dist/${{ needs.metadata.outputs.dmg_demo_name }}"
 
+      # A dry run keeps it in the run (its only home: nothing is attached); a release attaches it
+      # to the draft directly, never through an artifact.
       - name: Upload Demo DMG artifact
+        if: ${{ !inputs.publish }}
         uses: actions/upload-artifact@v4
         with:
           name: macos-demo-dist
           path: "packaging/macos/dist/${{ needs.metadata.outputs.dmg_demo_name }}"
+          if-no-files-found: error
           retention-days: 1
+
+      - name: Attach the Demo DMG to the draft release
+        if: inputs.publish
+        uses: ./.github/actions/attach-release-assets
+        with:
+          tag: ${{ inputs.version }}
+          files: "packaging/macos/dist/${{ needs.metadata.outputs.dmg_demo_name }}"

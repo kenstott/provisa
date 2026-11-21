@@ -44,6 +44,7 @@ from provisa.api.metadata_export.model import (
     LineageEdge,
     MetadataSnapshot,
     ModelTag,
+    OfferExport,
     OwnerRef,
     RelationshipEdge,
     ServingEndpoints,
@@ -216,7 +217,6 @@ def _table_assets(
                 table.cache_ttl if table.cache_ttl is not None else source_ttls.get(table.source_id)
             ),
             is_view=table.view_sql is not None,
-            contract=table.contract,  # REQ-2158
             unique_keys=_unique_keys(table),
             readers=readers.get(table_ref(table).parts, ()),
             writers=tuple(sorted({grant.role for grant in table.write_grants})),
@@ -323,9 +323,19 @@ def _relationship_edges(
     edges: list[RelationshipEdge] = []
     for rel in config.relationships:
         context = f"relationship {rel.id!r}"
-        source = index.resolve(rel.source_table_id, context)
+        source = index.resolve_published(rel.source_table_id, context)
         # A computed (function-target) relationship has no target table by design (REQ-019).
-        target = index.resolve(rel.target_table_id, context) if rel.target_table_id else None
+        target = (
+            index.resolve_published(rel.target_table_id, context) if rel.target_table_id else None
+        )
+        via = index.resolve_published(rel.via_table, context) if rel.via_table else None
+        # REQ-1634: an edge with a seeded table at either end, or through one, is not published.
+        if (
+            source is None
+            or (rel.target_table_id and target is None)
+            or (rel.via_table and via is None)
+        ):
+            continue
         edges.append(
             RelationshipEdge(
                 id=rel.id,
@@ -346,13 +356,13 @@ def _relationship_edges(
                 kind=rel.kind,
                 via=(
                     JunctionRef(
-                        table=table_ref(index.resolve(rel.via_table, context)),
+                        table=table_ref(via),
                         source_column=rel.via_source_column,
                         target_column=rel.via_target_column,
                         type_column=rel.via_type_column,
                         type_value=rel.via_type_value,
                     )
-                    if rel.via_table
+                    if via is not None
                     else None
                 ),
             )
@@ -412,10 +422,12 @@ def _lineage_edges(
             for upstream_node, transforms in _upstream_sources(graph, output_id):
                 if upstream_node.relation is None:
                     raise UnqualifiedLineageError(table.table_name, output.column, upstream_node.id)
-                upstream_table = index.resolve(
+                upstream_table = index.resolve_published(
                     upstream_node.relation,
                     f"view {table.table_name!r} column {output.column!r}",
                 )
+                if upstream_table is None:  # REQ-1634: a seeded table publishes nowhere
+                    continue
                 edges.append(
                     LineageEdge(
                         upstream=column_ref(upstream_table, upstream_node.column),
@@ -798,6 +810,8 @@ def _grounded_terms(
     )
     roles = _roles(glossary)
     by_id = {term["id"]: term for term in terms}
+    # REQ-2237: what an imported ontology stated about each term, written back out with it.
+    kept = {row["term_id"]: tuple(row["statements"]) for row in glossary.get("statements", [])}
     grounded = []
     for term_id in sorted(view.seen()):
         term = by_id[term_id]
@@ -813,6 +827,9 @@ def _grounded_terms(
                 refs=tuple(refs_by_term.get(term_id, [])),
                 tables=tuple(tables_by_term.get(term_id, [])),
                 paths=tuple(tuple(path) for path in agent_paths(view, roots, term_id)),
+                iri=term.get("iri") if named else None,
+                statements=kept.get(term_id, ()) if named else (),
+                calculation_method=term["calculation_method"] if named else None,  # REQ-2243
             )
         )
     edges = [GlossaryTermEdge(from_term_id=a, to_term_id=b, rel_type=r) for a, b, r in view.edges]
@@ -833,6 +850,7 @@ def build_snapshot(
     owner_emails: Mapping[str, tuple[str, ...]] | None = None,
     product_created: Mapping[str, datetime] | None = None,
     endpoints: ServingEndpoints | None = None,
+    offers: Mapping[str, tuple[OfferExport, ...]] | None = None,
 ) -> MetadataSnapshot:  # REQ-1070
     """Project the governed config into the vendor-neutral snapshot every adapter publishes.
 
@@ -851,6 +869,8 @@ def build_snapshot(
     caller: a data product's owners are its owner role's holders, its team its team role's.
     ``product_created`` is when each product was created, by product id, read by the caller.
     ``endpoints`` is where a consumer reads the products, which a contract names as its servers.
+    ``offers`` (REQ-2180) is each product's offers with the contracts derived from them, by product
+    id, read by the caller: a product's contracts are its offers' (none: no product has offers).
 
     ``data_products_only`` is the export filter, and stays on for every catalog publish: a catalog
     receives what the admin marked for it and nothing else. REQ-1592's model report turns it off,
@@ -869,7 +889,7 @@ def build_snapshot(
         uri_org_id = org_id
     # Name resolution sees EVERY table: a bare relationship/lineage name that is ambiguous
     # across the full config stays refused, whether or not both candidates publish.
-    index = TableIndex(config.tables)
+    index = TableIndex(config.tables, config.seeded_table_names)
     # The Data Product checkbox is the export filter: only marked tables publish, and every
     # edge or tag touching an unmarked table is withheld with it — a dangling edge would hand
     # the catalog a reference to an asset it was never sent, and name the table the admin
@@ -882,10 +902,19 @@ def build_snapshot(
     # REQ-1443 PRODUCT ASSIGNMENT: every table, a checker table included, publishes with the
     # products it is a member of (REQ-1634: any number, declared on each product).
     product_ids = product_memberships(config)
+    # REQ-1921: a withdrawn table -- itself, or through its source -- is in no catalog publish
+    # until it is put back, nor, through it, in a product's members or contracts. The model
+    # report lists it: its steward reviews it there.
+    withdrawn_sources = {source.id for source in config.sources if source.withdrawn}
     exported = [
         table
         for table in config.tables
-        if product_ids.get(table_ref(table).parts) or not data_products_only
+        if not data_products_only
+        or (
+            product_ids.get(table_ref(table).parts)
+            and not table.withdrawn
+            and table.source_id not in withdrawn_sources
+        )
     ]
     keep = {table_ref(table).parts for table in exported}
     published_source_ids = {table.source_id for table in exported}
@@ -967,4 +996,5 @@ def build_snapshot(
             tag.id for tag in (*SYSTEM_TAGS, *config.tags) if tag.sensitive
         ),  # REQ-1943
         endpoints=endpoints,
+        offers=dict(offers or {}),
     )

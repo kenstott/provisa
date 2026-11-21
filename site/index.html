@@ -99,6 +99,15 @@
                 <button class="proto-tab" role="tab" id="tab-grpc" aria-controls="panel-grpc" aria-selected="false" tabindex="-1">
                   <span class="proto-lang">gRPC</span><span class="proto-wire">HTTP/2</span>
                 </button>
+                <button class="proto-tab" role="tab" id="tab-python" aria-controls="panel-python" aria-selected="false" tabindex="-1">
+                  <span class="proto-lang">Python</span><span class="proto-wire">Flight</span>
+                </button>
+                <button class="proto-tab" role="tab" id="tab-odata" aria-controls="panel-odata" aria-selected="false" tabindex="-1">
+                  <span class="proto-lang">OData</span><span class="proto-wire">v4</span>
+                </button>
+                <button class="proto-tab" role="tab" id="tab-mcp" aria-controls="panel-mcp" aria-selected="false" tabindex="-1">
+                  <span class="proto-lang">MCP</span><span class="proto-wire">tools</span>
+                </button>
               </div>
             </div>
 
@@ -166,6 +175,51 @@
   <span class="c-kw">repeated</span> Query queries = 4;
 }</code></pre>
             </div>
+
+            <div class="proto-panel" role="tabpanel" id="panel-python" aria-labelledby="tab-python" hidden>
+              <pre><code><span class="c-comment"># A notebook or a script, with rows streamed over Arrow Flight</span>
+<span class="c-cmd">pip</span> install provisa-client
+
+<span class="c-comment"># The same question, answered as a pandas DataFrame</span>
+<span class="c-kw">import</span> provisa_client
+
+df = provisa_client.query(<span class="c-str">"""
+    SELECT c.name, o.total, t.trace_id
+    FROM customers c
+    JOIN orders o   ON o.customer_id = c.id
+    JOIN queries t  ON t.actor = c.email
+    WHERE o.total &gt; 1000
+"""</span>, role=<span class="c-str">"analyst"</span>)</code></pre>
+            </div>
+
+            <div class="proto-panel" role="tabpanel" id="panel-odata" aria-labelledby="tab-odata" hidden>
+              <pre><code><span class="c-comment"># Excel and Power BI read it as an OData feed, with no driver to install</span>
+<span class="c-cmd">GET</span> https://provisa.internal<span class="c-flag">/data/odata/orders</span>
+    ?<span class="c-flag">$filter</span>=total gt <span class="c-str">1000</span>&amp;<span class="c-flag">$expand</span>=customers
+
+<span class="c-comment"># The same question, with related rows nested under the order</span>
+{ <span class="c-str">"@odata.context"</span>: <span class="c-str">"https://provisa.internal/data/odata/$metadata#orders"</span>,
+  <span class="c-str">"value"</span>: [ { <span class="c-str">"total"</span>: 1420, <span class="c-str">"customers"</span>: { <span class="c-str">"name"</span>: <span class="c-str">"Acme"</span> } } ] }
+
+<span class="c-comment"># The role's entity sets and types, generated from the model</span>
+<span class="c-cmd">GET</span> https://provisa.internal<span class="c-flag">/data/odata/$metadata</span></code></pre>
+            </div>
+
+            <div class="proto-panel" role="tabpanel" id="panel-mcp" aria-labelledby="tab-mcp" hidden>
+              <pre><code><span class="c-comment"># Claude, Cursor or your own agent, over stdio or Streamable HTTP</span>
+<span class="c-cmd">tools</span>  list_schemas  list_tables  describe_table  search_terms  run_sql
+
+<span class="c-comment"># The same question, as the agent's tool call</span>
+<span class="c-flag">run_sql</span>({ <span class="c-str">"sql"</span>: <span class="c-str">"SELECT c.name, o.total, t.trace_id
+                   FROM customers c
+                   JOIN orders o   ON o.customer_id = c.id
+                   JOIN queries t  ON t.actor = c.email
+                   WHERE o.total &gt; 1000"</span> })
+
+<span class="c-comment"># The token maps to a role, so the agent gets that role's rows, a page at a time</span>
+{ <span class="c-str">"rows"</span>: [ { <span class="c-str">"name"</span>: <span class="c-str">"Acme"</span>, <span class="c-str">"total"</span>: 1420, <span class="c-str">"trace_id"</span>: <span class="c-str">"7f3a"</span> } ],
+  <span class="c-str">"total_rows"</span>: 1, <span class="c-str">"truncated"</span>: false }</code></pre>
+            </div>
           </div>
 
           <p class="proto-note">
@@ -200,7 +254,7 @@
           <span class="job-more">Five-minute start &rarr;</span>
         </a>
         <a class="job" href="/start/data-provisioning">
-          <p class="job-tag">Data provisioning</p>
+          <p class="job-tag">Data products &amp; provisioning</p>
           <h3>Now three other teams need it, and each one wants its own pipeline.</h3>
           <span class="job-more">Five-minute start &rarr;</span>
         </a>
@@ -270,11 +324,11 @@
 
     <!-- Sources -->
     <section class="sources-strip container" aria-label="Sources">
-      <p class="eyebrow">79 connectors, including</p>
+      <p class="eyebrow">Any database, API or file store, including</p>
       <!-- source-row:start -->
-<ul class="source-row"><li><svg class="picker-mark" width="20" height="20" aria-hidden="true"><use href="/assets/source-marks.40e079f30d.svg#m-postgresql"/></svg><span>PostgreSQL</span></li><li><svg class="picker-mark" width="20" height="20" aria-hidden="true"><use href="/assets/source-marks.40e079f30d.svg#m-snowflake"/></svg><span>Snowflake</span></li><li><span class="picker-tile" style="background:#4b5563" aria-hidden="true">SA</span><span>Salesforce</span></li><li><svg class="picker-mark" width="20" height="20" aria-hidden="true"><use href="/assets/source-marks.40e079f30d.svg#m-mongodb"/></svg><span>MongoDB</span></li><li><svg class="picker-mark" width="20" height="20" aria-hidden="true"><use href="/assets/source-marks.40e079f30d.svg#m-elasticsearch"/></svg><span>Elasticsearch</span></li><li><svg class="picker-mark" width="20" height="20" aria-hidden="true"><use href="/assets/source-marks.40e079f30d.svg#m-databricks"/></svg><span>Databricks</span></li><li><svg class="picker-mark" width="20" height="20" aria-hidden="true"><use href="/assets/source-marks.40e079f30d.svg#m-googlesheets"/></svg><span>Google Sheets</span></li></ul>
+<ul class="source-row"><li><svg class="picker-mark" width="20" height="20" aria-hidden="true"><use href="/assets/source-marks.b4e47aab2d.svg#m-postgresql"/></svg><span>PostgreSQL</span></li><li><svg class="picker-mark" width="20" height="20" aria-hidden="true"><use href="/assets/source-marks.b4e47aab2d.svg#m-snowflake"/></svg><span>Snowflake</span></li><li><span class="picker-tile" style="background:#4b5563" aria-hidden="true">SA</span><span>Salesforce</span></li><li><svg class="picker-mark" width="20" height="20" aria-hidden="true"><use href="/assets/source-marks.b4e47aab2d.svg#m-mongodb"/></svg><span>MongoDB</span></li><li><svg class="picker-mark" width="20" height="20" aria-hidden="true"><use href="/assets/source-marks.b4e47aab2d.svg#m-elasticsearch"/></svg><span>Elasticsearch</span></li><li><svg class="picker-mark" width="20" height="20" aria-hidden="true"><use href="/assets/source-marks.b4e47aab2d.svg#m-databricks"/></svg><span>Databricks</span></li><li><svg class="picker-mark" width="20" height="20" aria-hidden="true"><use href="/assets/source-marks.b4e47aab2d.svg#m-googlesheets"/></svg><span>Google Sheets</span></li></ul>
 <!-- source-row:end -->
-      <a class="more" href="/why/sources#the-79">See all 79 connectors</a>
+      <a class="more" href="/why/sources#the-80">See all 80 connectors</a>
     </section>
 
     <!-- Download -->

@@ -23,6 +23,7 @@ import {
   meetsRequirement,
 } from "../lib/capabilities";
 import type { Capability } from "../types/auth";
+import { NAV_BAR } from "../components/navGroups";
 
 describe("the Tables surface gate (REQ-1944)", () => {
   it.each([
@@ -67,11 +68,15 @@ describe("hidingDomains (REQ-1944)", () => {
   });
 
   it("is every domain when one such role reaches all of them", () => {
-    expect(hidingDomains([{ effectiveCapabilities: ["sensitive_data"], domain_access: ["*"] }])).toBeNull();
+    expect(
+      hidingDomains([{ effectiveCapabilities: ["sensitive_data"], domain_access: ["*"] }]),
+    ).toBeNull();
   });
 
   it("is nothing for a caller holding no hiding right", () => {
-    expect(hidingDomains([{ effectiveCapabilities: ["usage"], domain_access: ["*"] }])).toEqual(new Set());
+    expect(hidingDomains([{ effectiveCapabilities: ["usage"], domain_access: ["*"] }])).toEqual(
+      new Set(),
+    );
   });
 });
 
@@ -88,11 +93,8 @@ describe("the /tables route and its nav link carry the surface gate (REQ-1944)",
   });
 
   it("the nav link is gated the same way", () => {
-    const nav = readFileSync(resolve(SRC, "components/NavBar.tsx"), "utf-8");
-    const at = nav.indexOf('to="/tables"');
-    expect(at).toBeGreaterThan(-1);
-    expect(nav.slice(Math.max(0, at - 200), at)).toContain(
-      'capability="table_registration" anyOf={HIDING_RIGHTS}',
-    );
+    // The bar's links are the NAV_BAR list NavBar renders.
+    const link = NAV_BAR.find((e) => e.kind === "link" && e.to === "/tables");
+    expect(link).toMatchObject({ capability: "table_registration", anyOf: HIDING_RIGHTS });
   });
 });

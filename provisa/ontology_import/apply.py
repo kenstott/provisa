@@ -19,6 +19,9 @@ item still pending:
 - every other item becomes a draft Concept in the import's domains, carrying its definition and
   IRI, and grounds only through the alignments approved for it.
 
+Either way the term keeps what the ontology stated about the item that a term does not model
+(its restrictions, characteristics, individuals, annotations: provisa.ontology_import.kept).
+
 Every approved alignment that is not SAME_AS is written as the glossary edge it names. One whose
 other end is an excluded item is left waiting. Nothing is approved here: a term the import makes
 is a draft, and an alignment is written only when a steward approved it. An import is applied as
@@ -214,6 +217,7 @@ async def _terms(conn: Connection) -> list[Any]:
                     glossary_terms.c.name,
                     glossary_terms.c.iri,
                     glossary_terms.c.definition,
+                    glossary_terms.c.calculation_method,
                 )
             )
         ).fetchall()
@@ -266,6 +270,11 @@ def _problems(
     return problems
 
 
+def _statements(item: store.ItemRow) -> list[dict[str, Any]]:
+    """What the ontology stated about the item that a term does not model: kept on its term."""
+    return list(item.payload.get("statements", []))
+
+
 async def apply(
     conn: Connection, imported: store.ImportRow, domains: Collection[str], by: str | None
 ) -> Applied:
@@ -293,8 +302,13 @@ async def apply(
                 await glossary_repo.set_iri(conn, term.id, item.iri)
             if item.definition and (chosen.use_definition or not (term.definition or "").strip()):
                 await glossary_repo.set_definition(conn, term.id, item.definition)
+            # REQ-2243: the method goes with the definition, by the same choice.
+            method = item.payload["calculation_method"]
+            if method and (chosen.use_definition or not (term.calculation_method or "").strip()):
+                await glossary_repo.set_calculation_method(conn, term.id, method)
             await store.written(conn, chosen.id)
             resolved[item.id] = term.id
+            await glossary_repo.keep_statements(conn, term.id, _statements(item))
             done.aligned.append({"item_id": item.id, "term_id": term.id, "name": term.name})
         else:
             term_id = await glossary_repo.create_abstract_term(
@@ -302,6 +316,11 @@ async def apply(
             )
             if item.iri:
                 await glossary_repo.set_iri(conn, term_id, item.iri)
+            if item.payload["calculation_method"]:  # REQ-2243
+                await glossary_repo.set_calculation_method(
+                    conn, term_id, item.payload["calculation_method"]
+                )
+            await glossary_repo.keep_statements(conn, term_id, _statements(item))
             resolved[item.id] = term_id
             done.created.append({"item_id": item.id, "term_id": term_id, "name": item.name})
         await store.item_applied(conn, item.id, resolved[item.id])

@@ -194,15 +194,12 @@ async def wanted_shapes(
     is for, when it is not the bound one (REQ-2006: a demo sandbox's copy of its template's
     replicas carries the definition the sandbox's own convergence will want)."""
     from provisa.federation.replica_address import replica_address
-    from provisa.federation.replica_routing import draft_landing_worklist, landing_worklist
+    from provisa.federation.replica_routing import landing_worklist
 
     engine = state.federation_engine.engine
     backend = engine.backend
     shapes: dict[ReplicaKey, tuple[str, list[tuple[str, str]]]] = {}
-    worklist = [
-        *await landing_worklist(engine, state),
-        *await draft_landing_worklist(engine, state),
-    ]
+    worklist = await landing_worklist(engine, state)
     for src, schema_name, table_name, columns, pk_columns, landing_filter in worklist:
         key = (src.id, schema_name, table_name)
         if whole is not None and key not in whole:
@@ -229,11 +226,7 @@ async def converge_replicas(state: Any) -> Converged:
     records and logs a failure instead."""
     from provisa.federation import replica_builds
     from provisa.core.cache_ttl import NEVER_EXPIRES
-    from provisa.federation.replica_routing import (
-        draft_replica_tables,
-        replica_tables,
-        resolved_cache_ttl,
-    )
+    from provisa.federation.replica_routing import replica_tables, resolved_cache_ttl
     from provisa.federation.replica_state_view import view_for
 
     engine = state.federation_engine.engine
@@ -245,18 +238,6 @@ async def converge_replicas(state: Any) -> Converged:
         ((src.id, reg["schema_name"], reg["table_name"]), src, reg)
         for src, reg in await replica_tables(engine, state)
     ]
-    # REQ-1921: a DRAFT may hold a replica, landed for its steward's preview and kept for its
-    # release. It is declared — never retired, its definition watched — and no build of it is
-    # asked for here: a draft is built when its steward previews it, not on the model's word.
-    # Why the replicator does not simply ignore ``draft``: a table is registered as a draft
-    # BEFORE its region is settled, and a scheduled build would land it somewhere before its
-    # steward has looked. A build the steward asks for is the steward's act.
-    held_draft = [
-        ((src.id, reg["schema_name"], reg["table_name"]), src, reg)
-        for src, reg in await draft_replica_tables(engine, state)
-    ]
-    drafts = {key for key, _src, _reg in held_draft}
-    served += held_draft
     declared = {key for key, _src, _reg in served}
     homes = {key: home_region(reg) for key, src, reg in served}
     # Of those, the ones a build makes: a row-level or parameterized table is declared (its
@@ -292,7 +273,7 @@ async def converge_replicas(state: Any) -> Converged:
             view.await_definition(org_id, key, wanted_hash if built and not serving else None)
             if built and not serving:
                 done.not_serving.append(key)
-            if key in drafts or (built and record.definition_hash == wanted_hash):  # type: ignore[union-attr]
+            if built and record.definition_hash == wanted_hash:  # type: ignore[union-attr]
                 continue
             if built and key in kept_for_good:
                 # REQ-2031: a table that never expires lands once; its source is not asked again,

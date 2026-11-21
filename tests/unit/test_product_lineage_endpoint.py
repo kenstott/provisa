@@ -180,6 +180,7 @@ CHECKERS = [
         "rules": [{"check_type": "missing", "column_name": "amount", "args": {}}],
         "latest_outcome": "pass",
         "latest_run_at": None,
+        "failing_checks": [],
     },
     {
         "id": 7,
@@ -194,6 +195,7 @@ CHECKERS = [
         "rules": [{"check_type": "missing", "column_name": "cost", "args": {}}],
         "latest_outcome": "fail",
         "latest_run_at": None,
+        "failing_checks": [],
     },
 ]
 

@@ -45,7 +45,7 @@ use serde_json::{json, Value};
 use glue::{Answer, Args, Export};
 
 /// The protocol this host speaks (provisa/codesource/worker.py PROTOCOL).
-const PROTOCOL: u64 = 4;
+const PROTOCOL: u64 = 5;
 const CONNECTIONS_ENV: &str = "PROVISA_HOST_CONNECTIONS";
 const CODE_HASH_ENV: &str = "PROVISA_CODE_HASH";
 const JSON_FRAME: u8 = b'J';

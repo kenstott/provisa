@@ -23,7 +23,10 @@ object it is:
   (``BigQueryFederationRuntime.publish_replica_view``);
 - any other member has no BigQuery object, and is reported by name.
 
-Each asset carries its freshness (the member's ``cache_ttl``) as a label. Assets no longer members
+Each asset carries its freshness (the member's ``cache_ttl``) as a label. The product and each
+asset carry the environment they were published from and its stage as the ``provisa-environment``
+and ``provisa-stage`` labels (REQ-2261), so a catalog can tell production assets from others;
+neither is written when the snapshot names no environment. Assets no longer members
 are removed. Dataplex answers create, update and delete with a long-running operation, which is
 followed to its end. Access groups are not published yet.
 
@@ -54,6 +57,7 @@ from typing import TYPE_CHECKING, Any
 
 import httpx
 
+from provisa.core.http_failure import describe_http_failure
 from provisa.api.metadata_export.provider import (
     AssetError,
     AssetRefStub,
@@ -61,11 +65,13 @@ from provisa.api.metadata_export.provider import (
     PublishResult,
 )
 from provisa.api.metadata_export.registry import register_provider
+from provisa.security import sandbox_egress  # REQ-2006: held to public destinations
 
 if TYPE_CHECKING:
     from provisa.api.metadata_export.model import (
         AssetRef,
         DataProductAsset,
+        EnvironmentStage,
         GlossaryTermAsset,
         MetadataSnapshot,
         SourceAsset,
@@ -105,6 +111,16 @@ def asset_id(resource: str) -> str:
 def label(value: str) -> str:
     """``value`` in Dataplex's label alphabet."""
     return _LABEL_DISALLOWED.sub("_", value.lower())[:63]
+
+
+def environment_labels(environment: "EnvironmentStage | None") -> dict[str, str]:  # REQ-2261
+    """The environment and its stage as labels; none without an environment."""
+    if environment is None:
+        return {}
+    return {
+        "provisa-environment": label(environment.name),
+        "provisa-stage": label(environment.stage),
+    }
 
 
 def bigquery_engine_project() -> str | None:
@@ -215,12 +231,15 @@ class DataplexExport(MetadataExport):  # REQ-2118
             return self._config.token.get_secret_value()
         import json
 
-        from google.auth.transport.requests import Request
         from google.oauth2 import service_account
 
         info = json.loads(self._config.google_service_account_json.get_secret_value())
         credentials = service_account.Credentials.from_service_account_info(info, scopes=[SCOPE])
-        await asyncio.to_thread(credentials.refresh, Request())
+        # REQ-2006: the key names the address it is exchanged at (from_service_account_info
+        # requires it); a held org's is a public destination, checked at the call and sent to the
+        # address the check resolved (CheckedTokenRequest), never resolved again.
+        request = CheckedTokenRequest(sandbox_egress.endpoint_sync_event_hooks())
+        await asyncio.to_thread(credentials.refresh, request)
         return credentials.token
 
     async def _done(self, client: httpx.AsyncClient, response: httpx.Response) -> dict:
@@ -249,7 +268,9 @@ class DataplexExport(MetadataExport):  # REQ-2118
         engine_project = bigquery_engine_project()
         headers = {"Authorization": f"Bearer {await self._token()}"}
         async with httpx.AsyncClient(
-            timeout=self._config.timeout_seconds, headers=headers
+            timeout=self._config.timeout_seconds,
+            headers=headers,
+            event_hooks=sandbox_egress.endpoint_event_hooks(),
         ) as client:
             if snapshot.glossary_terms:
                 try:
@@ -260,6 +281,8 @@ class DataplexExport(MetadataExport):  # REQ-2118
                     message = str(exc)
                     if isinstance(exc, httpx.HTTPStatusError):
                         message = f"HTTP {exc.response.status_code}: {exc.response.text[:500]}"
+                    elif isinstance(exc, httpx.HTTPError):
+                        message = describe_http_failure(exc)
                     result.errors.append(
                         AssetError(asset=AssetRefStub("glossary"), message=f"glossary: {message}")
                     )
@@ -298,11 +321,15 @@ class DataplexExport(MetadataExport):  # REQ-2118
                     )
                     continue
                 try:
-                    count = await self._publish_product(client, product, assets)
+                    count = await self._publish_product(
+                        client, product, assets, snapshot.environment
+                    )
                 except (httpx.HTTPError, RuntimeError, TimeoutError) as exc:
                     message = str(exc)
                     if isinstance(exc, httpx.HTTPStatusError):
                         message = f"HTTP {exc.response.status_code}: {exc.response.text[:500]}"
+                    elif isinstance(exc, httpx.HTTPError):
+                        message = describe_http_failure(exc)
                     result.errors.append(AssetError(asset=product.ref, message=message))
                     continue
                 result.published["data_products"] = result.published.get("data_products", 0) + 1
@@ -314,12 +341,14 @@ class DataplexExport(MetadataExport):  # REQ-2118
         client: httpx.AsyncClient,
         product: "DataProductAsset",
         assets: dict[str, "TableAsset | None"],
+        environment: "EnvironmentStage | None",
     ) -> int:
         """Create or update the data product and converge its assets to ``assets``; the number of
         assets it has."""
         product_id = resource_id(product.id)
         name = f"{self._parent()}/dataProducts/{product_id}"
         body = product_body(product)
+        body["labels"] = {**body["labels"], **environment_labels(environment)}
         found = await client.get(self._url(name))
         if found.status_code == 404:
             await self._done(
@@ -348,7 +377,7 @@ class DataplexExport(MetadataExport):  # REQ-2118
             if resource not in assets:
                 await self._done(client, await client.delete(self._url(asset_name)))
         for resource, table in assets.items():
-            labels = {"provisa-product": label(product.id)}
+            labels = {"provisa-product": label(product.id), **environment_labels(environment)}
             if table is not None and table.cache_ttl is not None:
                 # REQ-2118: the member's refresh cadence, from its freshness (-1: never expires).
                 labels["provisa-freshness-seconds"] = label(str(table.cache_ttl))
@@ -665,9 +694,52 @@ class DataplexExport(MetadataExport):  # REQ-2118
     async def health(self) -> None:
         headers = {"Authorization": f"Bearer {await self._token()}"}
         async with httpx.AsyncClient(
-            timeout=self._config.timeout_seconds, headers=headers
+            timeout=self._config.timeout_seconds,
+            headers=headers,
+            event_hooks=sandbox_egress.endpoint_event_hooks(),
         ) as client:
             response = await client.get(
                 self._url(f"{self._parent()}/dataProducts"), params={"pageSize": 1}
             )
         response.raise_for_status()
+
+
+#: google-auth's own transport's default timeout for a token exchange.
+_TOKEN_TIMEOUT_S = 120
+
+
+class _TokenResponse:
+    """An httpx response as google-auth's transport reads one."""
+
+    def __init__(self, response: httpx.Response) -> None:
+        self.status = response.status_code
+        self.headers = dict(response.headers)
+        self.data = response.content
+
+
+class CheckedTokenRequest:
+    """google-auth's transport (``google.auth.transport.Request``) over httpx, with the event
+    hooks given: a held org's token exchange is checked at the call and sent to the address the
+    check resolved, its name kept for Host and TLS (REQ-2006). google-auth's own transport
+    resolves the name again when it connects."""
+
+    def __init__(self, event_hooks: dict) -> None:
+        self._event_hooks = event_hooks
+
+    def __call__(
+        self,
+        url: str,
+        method: str = "GET",
+        body: bytes | None = None,
+        headers: dict | None = None,
+        timeout: float = _TOKEN_TIMEOUT_S,
+        **_kwargs: object,
+    ) -> _TokenResponse:
+        import google.auth.exceptions
+
+        try:
+            with httpx.Client(timeout=timeout, event_hooks=self._event_hooks) as client:
+                response = client.request(method, url, content=body, headers=headers)
+        except httpx.HTTPError as exc:
+            raise google.auth.exceptions.TransportError(str(exc)) from exc
+        return _TokenResponse(response)

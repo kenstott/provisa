@@ -38,6 +38,7 @@ def _state(catalog: str) -> SimpleNamespace:
         source_catalogs={"pet-store-sqlite": catalog},
         view_context=SimpleNamespace(tables={}),
         mv_registry=SimpleNamespace(get_enabled=lambda: []),
+        tracked_functions={},
     )
 
 

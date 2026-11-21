@@ -705,9 +705,20 @@ def test_a_named_role_is_the_whole_acting_set_and_the_held_set_stays_whole():
     assert sorted(data["held"]) == ["analyst", "editor"]  # what the role picker offers
 
 
-def test_a_request_naming_no_role_acts_as_the_default_role_alone():
+def test_a_request_naming_no_role_acts_as_the_union_of_its_roles(monkeypatch):
+    """REQ-2155: a member holding several roles acts with their union by default (their
+    meta-role); naming one role narrows (the test above)."""
+    built: list[list[str]] = []
+
+    def _ensure(_state, members, qualifiers=()):
+        built.append(sorted(members))
+        return "meta:" + "+".join(sorted(members))
+
+    monkeypatch.setattr("provisa.security.meta_role.ensure_meta_role", _ensure)
     data = _acting()
-    assert data["acting"] == [data["role"]]
+    assert data["role"] == "meta:analyst+editor"
+    assert sorted(data["acting"]) == ["analyst", "editor"]
+    assert built == [["analyst", "editor"]]
 
 
 def test_a_named_set_acts_as_every_role_in_it(monkeypatch):

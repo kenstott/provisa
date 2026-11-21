@@ -61,6 +61,8 @@ import { RelatedToFilter, RelatedToHint, RelatedToReviewModal } from "./relTypeG
 import { RELATED_TO_PARAM } from "../../lib/reportCellHref";
 import { RetireTermDialog } from "./RetireTermDialog";
 import { FindTermsDialog } from "./FindTermsDialog";
+import { OntologyImportsView } from "./ontologyImport/OntologyImportsView";
+import { ImportsToggle } from "./ontologyImport/ImportsToggle";
 import { DeprecateTermDialog } from "./DeprecateTermDialog";
 import { useUnassignTag } from "../../hooks/useTagQueries";
 import { refusalError } from "../../i18n/serverMessage";
@@ -77,7 +79,6 @@ import {
   generateGlossaryRelationships,
   fetchGlossaryFindings,
   listAttributablePeople,
-  listGlossaryTerms,
   restoreGlossaryTerm,
   type AttributablePerson,
   type GlossaryFinding,
@@ -101,11 +102,13 @@ import type {
 import { FormField, FormFooter, FormIdentifiers, FormLayout } from "../form/FormLayout";
 import { Tip } from "../Tip";
 import { PanelDelete, PanelDeleteLock } from "../list/PanelDelete";
+import { PanelDuplicate } from "../list/PanelDuplicate";
 import { PanelNoticeContext, usePanelDeleting } from "../list/panelActions";
 import {
   readStoredBool,
   readStoredString,
   useGlossaryPanel,
+  useReadableTermIds,
   writeStored,
   writeStoredBool,
 } from "./useGlossaryPanel";
@@ -122,8 +125,9 @@ export function GlossaryTab() {
   // The page reopens as it was left: its view, search and filters are per-viewer preferences kept in
   // the browser. A deep link (?term=, ?search=) decides that visit instead, and is not saved over
   // them; only the reader's own changes are.
+  const [readableTermIds, readTerms] = useReadableTermIds(); // REQ-2260
   const { ontology, setOntology, selectedId, setSelectedId, editing, setEditing } =
-    useGlossaryPanel(canEdit);
+    useGlossaryPanel(canEdit, readableTermIds);
   // REQ-1592: the org's glossary owner. It is what admits a term to the enterprise scope ("*"),
   // so the option is offered only to a holder — the server refuses it to anyone else.
   const isOrgGlossaryOwner = useCapability("org_glossary_rw");
@@ -188,11 +192,13 @@ export function GlossaryTab() {
   // Editable copies of the selected term's name/definition.
   const [bulkGeneratingDefinitions, setBulkGeneratingDefinitions] = useState(false);
   const [bulkGeneratingRelationships, setBulkGeneratingRelationships] = useState(false);
+  // REQ-2237: the ontology imports in place of the list, for a curator.
+  const [imports, setImports] = useState(false);
   // REQ-2179: Find terms, and the review queue of what it proposes.
   const [findTermsOpen, setFindTermsOpen] = useState(false);
   // REQ-2115: the open term by name, once the glossary has answered for it, and whether the Find
   // terms dialog is open.
-  useScreenInputs("/admin/ontology", {
+  useScreenInputs("/context/ontology", {
     termName: detail?.id === selectedId ? (detail?.name ?? null) : null,
     findTerms: findTermsOpen,
   });
@@ -225,11 +231,11 @@ export function GlossaryTab() {
     setListLoading(true);
     try {
       // Every status is fetched: the Status filter narrows the list in the browser.
-      setTerms(await listGlossaryTerms(query, true, viewDomains && [...viewDomains]));
+      setTerms(await readTerms(query, viewDomains && [...viewDomains]));
     } finally {
       setListLoading(false);
     }
-  }, [query, viewDomains]);
+  }, [query, viewDomains, readTerms]);
 
   useEffect(() => {
     // Deferred so the loading flag is never set synchronously inside the effect body
@@ -362,6 +368,25 @@ export function GlossaryTab() {
     }
   };
 
+  // "+ New term" opens the form empty, whatever term is open or was duplicated and cancelled.
+  const openNewTerm = () => {
+    setAddName("");
+    setAddDefinition("");
+    setAddDomainsRaw([]);
+    setAddError("");
+    setAddOpen(true);
+  };
+  // Duplicate, from a term's panel: the same form filled with the term's definition and domains
+  // under "<name>-copy" (editable; a name that exists is refused on save by the create). Not
+  // copied: its links (columns, tables, relationships) and its reviews.
+  const openDuplicateTerm = (term: GlossaryTermDetail) => {
+    setAddName(`${term.name}-copy`);
+    setAddDefinition(term.definition ?? "");
+    setAddDomainsRaw([...term.domains]);
+    setAddError("");
+    setAddOpen(true);
+  };
+
   const handleCreate = async () => {
     if (!addName.trim()) return;
     setAddSaving(true);
@@ -403,11 +428,21 @@ export function GlossaryTab() {
     setBulkGeneratingDefinitions(true);
     setActionError("");
     try {
-      const { generated } = await generateAllGlossaryDefinitions();
+      const { generated, tables_without_samples } =
+        await generateAllGlossaryDefinitions(viewDomains);
       notifications.show({
         color: "green",
         message: t("glossaryTab.definitionsGenerated", { count: generated }),
       });
+      // REQ-1387: name the tables the drafts read no samples from; it stays until dismissed.
+      if (tables_without_samples.length > 0)
+        notifications.show({
+          color: "yellow",
+          autoClose: false,
+          message: t("glossaryTab.tablesWithoutSamples", {
+            tables: tables_without_samples.join(", "),
+          }),
+        });
       if (selectedId !== null) await loadDetail(selectedId);
       await refreshList();
     } catch (e) {
@@ -421,7 +456,7 @@ export function GlossaryTab() {
     setBulkGeneratingRelationships(true);
     setActionError("");
     try {
-      const { added, review: toResolve } = await generateGlossaryRelationships();
+      const { added, review: toResolve } = await generateGlossaryRelationships(viewDomains);
       notifications.show({
         color: "green",
         message: t("glossaryTab.relationshipsGenerated", { count: added }),
@@ -513,7 +548,7 @@ export function GlossaryTab() {
           {canEdit && (
             <Button
               leftSection={<Plus size={14} />}
-              onClick={() => setAddOpen(true)}
+              onClick={openNewTerm}
               data-testid="glossary-new-btn"
             >
               {t("glossaryTab.newTerm")}
@@ -526,6 +561,7 @@ export function GlossaryTab() {
               aria-label={t("glossaryTab.stewardshipHint")}
               onClick={() => {
                 setOntology(false);
+                setImports(false);
                 setSelectedId(null);
                 setDetail(null);
               }}
@@ -534,7 +570,14 @@ export function GlossaryTab() {
               <ClipboardList size={16} aria-hidden />
             </ActionIcon>
           </Tip>
-          <OntologyToggle open={ontology} onChange={setOntology} />
+          <OntologyToggle
+            open={ontology && !imports}
+            onChange={(open) => {
+              setImports(false);
+              setOntology(open);
+            }}
+          />
+          {canEdit && <ImportsToggle open={imports} onChange={setImports} />}
           {canEdit ? (
             // The AI drafts, both behind one sparkle: relationships between the terms, and the
             // definitions the terms lack.
@@ -595,7 +638,14 @@ export function GlossaryTab() {
       </Group>
 
       {/* REQ-2130: the Ontology View in place of the list, read and drawn once it is opened. */}
-      {ontology ? (
+      {imports && canEdit ? (
+        <OntologyImportsView
+          terms={terms}
+          domainOptions={addDomainOptions}
+          domainsEnabled={domainsEnabled}
+          defaultDomains={defaultFindDomains(viewDomains, addDomainOptions)}
+        />
+      ) : ontology ? (
         <OntologyView search={query} />
       ) : (
         <div style={{ display: "flex", gap: "0.75rem", flex: 1, minHeight: 0 }}>
@@ -711,34 +761,11 @@ export function GlossaryTab() {
                     </Alert>
                   )}
 
-                  {/* A term nothing consumes is the normal state of a freshly derived glossary, so
-                    the panel says which of the two admission tests it still fails rather than
-                    leaving the curator to infer it from a badge. */}
-                  {detail.status === "draft" && (
-                    <Alert color="yellow" data-testid="glossary-draft">
-                      {(detail.definition ?? "").trim()
-                        ? t("glossaryTab.draftDefined")
-                        : t("glossaryTab.draftUndefined")}
-                    </Alert>
-                  )}
-                  {/* REQ-1387: what keeps it from reaching data, or from reaching it cleanly. */}
-                  {detail.grounding === "not_grounded" &&
-                    (detail.status === "draft" || detail.status === "approved") && (
-                      <Alert color="orange" data-testid="glossary-ungrounded">
-                        {t("glossaryTab.draftUngrounded")}
-                      </Alert>
-                    )}
+                  {/* A draft's and a term's grounding's state hints sit beside their values
+                    (TermReadView): Status, Grounding. */}
                   {/* REQ-1387 (RELATED_TO IS THE LAST RESORT): held only by RELATED_TO, which does
                     not ground, so the pair may want a term between. Guidance, never a block. */}
                   {onlyRelatedTo(detail) && <RelatedToHint />}
-                  {detail.grounding === "grounded_pending" && detail.pending_on.length > 0 && (
-                    <Alert color="yellow" variant="outline" data-testid="glossary-pending-on">
-                      {t("glossaryTab.groundingValue_grounded_pending")} —{" "}
-                      {t("glossaryTab.pendingOn", {
-                        terms: detail.pending_on.map((p) => p.name).join(", "),
-                      })}
-                    </Alert>
-                  )}
 
                   {canEdit && !editing && (
                     // Edit opens the whole term as one form; Retire and Delete act at once.
@@ -751,6 +778,12 @@ export function GlossaryTab() {
                       >
                         {t("glossaryTab.edit")}
                       </Button>
+                      <PanelDuplicate
+                        name={detail.name}
+                        onDuplicate={() => openDuplicateTerm(detail)}
+                        testId="glossary-duplicate-btn"
+                        labelled
+                      />
                       {/* REQ-1387, REQ-2144: each status change is a person's act. A defined draft is
                         approved, its impact seen first; an approved term deprecated, with a
                         reason; any term in service retired; a deprecation or a retirement undone. */}

@@ -34,6 +34,18 @@ import { useAuth } from "../../context/AuthContext";
 
 type Suggestion = Record<string, unknown>;
 
+// A column whose classification sample held too few non-null values to classify, and how many.
+type TooFew = { column: string; count: number };
+
+// The columns whose classification sample held too few non-null values to classify, from the
+// run's columns rows (each says what its classification sample said of it, and how many values it
+// held). Counts only; no value is stored.
+function tooFewOf(columns: Record<string, unknown>[] | undefined): TooFew[] {
+  return (columns ?? [])
+    .filter((c) => c.classification === "too_few_values")
+    .map((c) => ({ column: String(c.column_name), count: Number(c.classification_values) }));
+}
+
 function message(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
@@ -54,6 +66,7 @@ export function ProfileClassificationsModal({
   const { t } = useTranslation();
   const { actingRoles } = useAuth();
   const [suggestions, setSuggestions] = useState<Suggestion[] | null>(null);
+  const [tooFew, setTooFew] = useState<TooFew[]>([]);
   const [runId, setRunId] = useState<string | null>(null);
   const [decisions, setDecisions] = useState<ClassificationDecision[]>([]);
   const [notice, setNotice] = useState<{ ok: boolean; text: string } | null>(null);
@@ -82,6 +95,7 @@ export function ProfileClassificationsModal({
         const results = await fetchProfileRun(tableId, latest.run_id, actingRoles);
         setRunId(latest.run_id);
         setSuggestions(results.classifications ?? []);
+        setTooFew(tooFewOf(results.columns));
       })
       .catch((e: unknown) => setNotice({ ok: false, text: message(e) }));
   }, [tableId, actingRoles]);
@@ -220,6 +234,30 @@ export function ProfileClassificationsModal({
             </Table.Tbody>
           </Table>
         </ScrollArea.Autosize>
+      )}
+      {tooFew.length > 0 && (
+        <>
+          <Title order={6} mt="md">
+            {t("profileClassificationsModal.tooFewTitle")}
+          </Title>
+          <Text size="xs" c="dimmed">
+            {t("profileClassificationsModal.tooFewNote")}
+          </Text>
+          <Table withTableBorder fz="xs" mt="xs" data-testid="classifications-too-few">
+            <Table.Tbody>
+              {tooFew.map((f) => (
+                <Table.Tr key={f.column} data-testid={`classification-too-few-${f.column}`}>
+                  <Table.Td>
+                    {t("profileClassificationsModal.tooFew", {
+                      column: f.column,
+                      count: f.count,
+                    })}
+                  </Table.Td>
+                </Table.Tr>
+              ))}
+            </Table.Tbody>
+          </Table>
+        </>
       )}
       <Title order={6} mt="md">
         {t("profileClassificationsModal.decided")}

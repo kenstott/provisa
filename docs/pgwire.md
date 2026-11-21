@@ -204,6 +204,23 @@ SET, BEGIN, COMMIT, ROLLBACK, SAVEPOINT, RELEASE, DISCARD, RESET and DEALLOCATE 
 
 ---
 
+## Polyfills
+
+A PostgreSQL client expects PostgreSQL's answers, and most of the engines behind pgwire are not PostgreSQL. Where an engine lacks a PostgreSQL feature or holds it differently, Provisa supplies it: a polyfill. Your client sees PostgreSQL's behaviour and writes no engine-specific SQL.
+
+A feature has a read polyfill, a write polyfill, or both.
+
+- **Read polyfill.** How Provisa computes the feature's values and operations on the engine and returns them. `array_length` on DuckDB, for example, runs as DuckDB's own list functions.
+- **Write polyfill.** How the feature's values reach the engine: in literals, parameters, predicates, and in `INSERT` and `UPDATE`.
+
+A polyfill can have limitations, each a stated difference from PostgreSQL. A feature Provisa cannot polyfill on an engine is refused by name, and your client receives the SQLSTATE and message the grid states for it.
+
+The [polyfill pages](conformance/polyfill/index.md) hold the grid, one page per engine. Each lists every feature with a polyfill or a limitation on that engine, with its read polyfill, write polyfill and their limitations. A feature an engine does natively, with no difference, is left out and counted at the top of the page. The pages are generated from the same grid the translator reads, so what they print is what runs.
+
+A predicate an engine pushes down to a source, and a single-source read sent directly, are evaluated by that source with its own semantics. A difference that comes from the source is not a polyfill gap.
+
+---
+
 ## Catalog Intercept
 
 Queries against `information_schema` and `pg_catalog` are answered locally without a Trino round-trip. The intercept layer builds an in-memory DuckDB database per request, populated from the role's compilation context.

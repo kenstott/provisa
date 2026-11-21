@@ -38,6 +38,7 @@ const base: Relationship = {
   autoSuggested: false,
   disableCypher: false,
   sameEntity: false,
+  withdrawn: false,
   parameters: [],
   viaTableId: 9,
   viaTableName: "pet_relations",
@@ -58,6 +59,7 @@ function show(rel: Relationship, domainsEnabled = true) {
       setEditingRel={vi.fn()}
       canManage={false}
       onStartEdit={vi.fn()}
+      onDuplicate={vi.fn()}
       onReverse={vi.fn()}
       onDelete={vi.fn()}
       onEditSave={vi.fn()}
@@ -67,6 +69,7 @@ function show(rel: Relationship, domainsEnabled = true) {
       functions={[]}
       tableDomainById={{ "2": "zoo" }}
       domainsEnabled={domainsEnabled}
+      actingRole={null}
     />,
   );
 }
@@ -86,7 +89,6 @@ describe("a relationship's read view", () => {
       ["CQL Alias (UPPER_SNAKE)", "BONDED_PAIR"],
       ["GQL Alias (camelCase)", "bondedPairs"],
       ["SQL Name", "bonded_pairs"],
-      ["Auto-tracked", "No"],
     ]);
     expect(fields("relationship-read-source")).toEqual([
       ["Domain", "zoo"],

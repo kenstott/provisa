@@ -36,7 +36,7 @@ vi.mock("../../context/AuthContext", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../context/AuthContext")>()),
   useAuth: () => ({
     role: "admin",
-    selectedRoles: ["admin"],
+    selectedRoles: [{ id: "admin", effectiveCapabilities: [], effectiveResidencyValues: [] }],
     // REQ-1944: the table editor's right -- without it the page is the governance-only view.
     capabilities: ["admin", "table_registration"],
     domainAccess: ["*"],
@@ -73,6 +73,7 @@ function table(
     tableName,
     alias: null,
     description: null,
+    registeredAt: "2026-11-01T00:00:00+00:00",
     cacheTtl: 60,
     roleTtl,
     pagingKind: null,
@@ -80,7 +81,8 @@ function table(
     pagingCeilingRows: null,
     replicate: null,
     region: null,
-    draft: false,
+    withdrawn: false,
+    sourceWithdrawn: false,
     rowMaterialize: false,
     loadProtected: null,
     offPeakWindow: null,
@@ -117,6 +119,8 @@ function table(
     mvPersist: "replace",
     mvPrimaryKey: [],
     mvIncremental: false,
+    mvRebuildEvery: null,
+    incrementalOption: { available: true, code: null, reason: null },
     mvCalendar: null,
     mvGrain: null,
     mvAllowedLateness: 0,
@@ -134,10 +138,7 @@ function table(
   };
 }
 
-let TABLES = [
-  table(7, "orders", [], { region: "eu" }),
-  table(8, "staging", [], { region: "eu", draft: true }),
-];
+let TABLES = [table(7, "orders", [], { region: "eu" }), table(8, "staging", [], { region: "eu" })];
 const SOURCES = [
   {
     id: "sales-pg",
@@ -173,10 +174,6 @@ const updateTableLoadProtection = vi.fn();
 const updateTableRoleTtl = vi.fn();
 
 const calls: string[] = [];
-const setTableDraft = vi.fn(async (id: number, draft: boolean) => {
-  calls.push(`draft ${id} ${draft}`);
-  return ok;
-});
 const setTableRegion = vi.fn(async (id: number, region: string | null) => {
   calls.push(`region ${id} ${region}`);
   return ok;
@@ -185,7 +182,6 @@ const setTableRegion = vi.fn(async (id: number, region: string | null) => {
 vi.mock("../../hooks/useRegionQueries", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../hooks/useRegionQueries")>()),
   useRegionChoices: () => ({ regions: ["eu", "us"], connected: "eu" }),
-  useSetTableDraft: () => setTableDraft,
   useSetTableRegion: () => setTableRegion,
 }));
 
@@ -320,10 +316,10 @@ describe("the Views page", () => {
     await userEvent.click(screen.getByTestId("table-section-load"));
     await userEvent.click(screen.getByRole("checkbox", { name: /Materialized View/ }));
     expect(screen.getByTestId("time-travel-section")).toBeInTheDocument();
-    // The list as the server has it once the view exists: a draft, as every new view is.
+    // The list as the server has it once the view exists: live, as every new view is.
     registerTable.mockResolvedValue({ ...ok, params: { id: 9 } });
     refetchTables.mockImplementation(async () => {
-      TABLES = [...TABLES, view(9, "rev_by_region", { draft: true })];
+      TABLES = [...TABLES, view(9, "rev_by_region", {})];
       return { data: { tables: TABLES } };
     });
     await userEvent.click(within(panel()!).getByTestId("table-edit-save"));
@@ -354,6 +350,17 @@ describe("the Views page", () => {
     expect(screen.getByTestId("table-read-view-edit-definition")).toBeInTheDocument();
   });
 
+  it("edit definition from the preview leaves the preview and shows the definition editor", async () => {
+    render(<TablesPage viewsOnly />);
+    const list = await screen.findByTestId("tables-list");
+    await userEvent.click(within(list).getByText("sales_by_day"));
+    await userEvent.click(await screen.findByTestId("table-read-view-preview"));
+    await screen.findByTestId("table-preview-modal");
+    await userEvent.click(screen.getByTestId("table-read-view-edit-definition"));
+    expect(await screen.findByTestId("view-form-stub")).toBeInTheDocument();
+    expect(screen.queryByTestId("table-preview-modal")).toBeNull();
+  });
+
   it("returns to the view's detail when its definition has been saved", async () => {
     render(<TablesPage viewsOnly />);
     const list = await screen.findByTestId("tables-list");
@@ -380,7 +387,7 @@ describe("the Tables page's register step", () => {
     registerTable.mockResolvedValue({ ...ok, params: { id: 10 } });
     // Stored under another schema than the form sent, as an ingest table is: found by its id.
     refetchTables.mockImplementation(async () => {
-      TABLES = [...TABLES, table(10, "returns", [], { draft: true, schemaName: "org_default" })];
+      TABLES = [...TABLES, table(10, "returns", [], { schemaName: "org_default" })];
       return { data: { tables: TABLES } };
     });
     await userEvent.click(within(panel()!).getByTestId("table-edit-save"));
@@ -391,7 +398,7 @@ describe("the Tables page's register step", () => {
       tableName: "returns",
       enableAggregates: true,
     });
-    // Registered through the admin a table starts as draft; nothing releases it unasked.
-    expect(setTableDraft).not.toHaveBeenCalled();
+    // REQ-1921: registered, the table is live; the registration carries no draft.
+    expect(registerTable.mock.calls[0][0]).not.toHaveProperty("draft");
   });
 });

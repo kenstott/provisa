@@ -75,8 +75,18 @@ def populate_functions(db, state, role_id: str, database: str) -> None:  # REQ-8
             continue
         name = fn.get("name") or ""
         args = fn.get("arguments") or []
-        set_returns = bool(fn.get("return_schema"))
-        ret_sql = "record" if set_returns else _fn_sql_type(fn.get("returns"))
+        from provisa.compiler.operation_function import is_operation_function
+
+        # REQ-1986: a source operation's function returns the rows of its table.
+        returns_rows = is_operation_function(fn)
+        set_returns = bool(fn.get("return_schema")) or returns_rows
+        ret_sql = (
+            "USER-DEFINED"
+            if returns_rows
+            else "record"
+            if set_returns
+            else _fn_sql_type(fn.get("returns"))
+        )
         specific = f"{name}_{oid}"
 
         db.execute(

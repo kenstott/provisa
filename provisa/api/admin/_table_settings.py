@@ -9,7 +9,7 @@
 # permission from the copyright holder.
 
 """A table's settings that have mutations of their own -- its naming convention, role TTLs,
-replicate, write grants, draft, Cache TTL, paging, region, load protection and row rules --
+replicate, write grants, Cache TTL, paging, region, load protection and row rules --
 checked and set the one way, whether a mutation of their own
 saves one of them or registerTable / updateTable carries them with the table (REQ-2109, settled:
 one save applies everything in one control-plane transaction, and a refusal of any one leaves
@@ -255,10 +255,6 @@ async def with_carried_settings(
         if refusal is not None:
             raise TableSaveRefused(refusal)
         updates["replicate"] = inp.replicate
-    if carried(inp.draft):
-        if inp.draft is None:
-            raise TableSaveRefused(_null_refused("draft"))
-        updates["draft"] = inp.draft
     if carried(inp.gql_naming_convention):
         refusal = naming_refusal(inp.gql_naming_convention)
         if refusal is not None:
@@ -430,20 +426,15 @@ async def save_carried_region(
     table_id: int,
     *,
     stored_region: str | None,
-    stored_draft: bool,
-    draft: bool,
 ) -> None:
     """Move a stored table to the region an update carries, judged as setTableRegion judges it:
-    the caller's residency grant (a draft table, as stored or as saved now, is claimed by its
-    destination alone) and the platform's regions. Raises TableSaveRefused."""
+    the caller's residency grant and the platform's regions. Raises TableSaveRefused."""
     from provisa.api.admin.schema_mutation import _residency_refusal
     from provisa.core.repositories import region as region_repo
 
     if not carried(inp.region) or inp.region == stored_region:
         return
-    refusal = _residency_refusal(
-        info, f"table {inp.table_name}", stored_region, inp.region, draft=stored_draft or draft
-    )
+    refusal = _residency_refusal(info, f"table {inp.table_name}", stored_region, inp.region)
     if refusal is not None:
         raise TableSaveRefused(refusal)
     try:

@@ -373,7 +373,9 @@ def results_are_returned(shared_data: dict) -> None:
                 return {"data": {"persons": [{"id": "1", "name": "Alice"}]}}
             return {"columns": ["id", "name"], "rows": [{"id": 1, "name": "Alice"}]}
 
-        async def _fake_sql(nl_query, role, app_state, pre_selected_types=None, check=None):
+        async def _fake_sql(
+            nl_query, role, app_state, pre_selected_types=None, check=None, *, scope=None
+        ):
             return ("SELECT id, name FROM persons LIMIT 10", None)
 
         async def _fake_table_selection(

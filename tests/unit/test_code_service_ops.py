@@ -342,6 +342,8 @@ def trail(monkeypatch) -> list[dict]:
             rows.append(dict(stmt.compile().params))
 
     class Db:
+        model = None
+
         @asynccontextmanager
         async def acquire(self):
             yield Conn()
@@ -429,10 +431,12 @@ def secret_holder(monkeypatch, trail):
     monkeypatch.setattr(services, "_audit", read_audited)
     monkeypatch.setenv("SPARK_TOKEN", _SPARK_TOKEN)
     issued = services.issue(_grant(secrets={"spark": "${env:SPARK_TOKEN}"}))
-    status, _, value = services.answer("GET", f"/{issued}/secrets/spark")
-    assert status == 200 and value.decode() == _SPARK_TOKEN
-    yield issued
-    services.revoke(issued)
+    try:
+        status, _, value = services.answer("GET", f"/{issued}/secrets/spark")
+        assert status == 200 and value.decode() == _SPARK_TOKEN
+        yield issued
+    finally:
+        services.revoke(issued)
 
 
 @pytest.mark.parametrize(

@@ -68,7 +68,7 @@ export function AdminRail() {
             >
               <NavLink to={item.to}>{t(item.labelKey)}</NavLink>
             </RegionReadableGate>
-          ) : item.sandboxReadable ? (
+          ) : item.sandboxReadable && item.capability !== null ? (
             <SandboxReadableGate
               key={item.to}
               capability={item.capability}

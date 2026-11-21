@@ -68,6 +68,18 @@ metadata = MetaData()
 
 # REQ-1921/1922: the stores an org keeps its data in, per region. A store is a connection URL (a
 # secret reference); an org region names, for each kind of data, the store it is kept in there.
+def _retirement() -> list[Column]:
+    """REQ-2248: a model object deleted is retired, not removed -- its row, its name and its file
+    are kept, out of service, with why, who and when, in the shape a glossary term's retirement
+    takes (``retired``, ``status_reason``, ``status_by``, ``status_at``)."""
+    return [
+        Column("retired", Boolean, nullable=False, server_default=false()),
+        Column("status_reason", Text),
+        Column("status_by", Text),
+        Column("status_at", DateTime(timezone=True)),
+    ]
+
+
 stores = Table(
     "stores",
     metadata,
@@ -184,6 +196,13 @@ sources = Table(
     Column("cache_catalog", Text),
     Column("cache_schema", Text, nullable=False, server_default="api_cache"),
     Column("approval_hook", Boolean, nullable=False, server_default=false()),
+    Column("is_system", Boolean, nullable=False, server_default=false()),
+    # REQ-2248: deleting a source that holds no live table retires it, as a table is retired.
+    *_retirement(),
+    Column("retired_id", Text),  # REQ-2248: its id while live (retirement.retired_key)
+    # REQ-1921: withdrawn -- out of production while set: its tables serve no role, no engine
+    # attaches it, none of its tables keeps a replica; its definition and grants stay.
+    Column("withdrawn", Boolean, nullable=False, default=False, server_default=false()),
 )
 
 domains = Table(
@@ -200,6 +219,9 @@ domains = Table(
     # by name wherever a tree is written (security.domain_tree).
     Column("parent_domain_id", Text),
     Column("org_id", Text),  # cross-model ref -> admin.orgs
+    # REQ-2248: deleting a domain that holds no live table retires it, as a table is retired.
+    *_retirement(),
+    Column("retired_id", Text),  # REQ-2248: its id while live (retirement.retired_key)
     Column("tenant_id", Uuid),
 )
 
@@ -232,6 +254,8 @@ data_products = Table(  # REQ-1634
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     # REQ-2219: who created it, set on insert only; it grants nothing.
     Column("created_by", Text),
+    # REQ-2180: the freshness every contract of the product promises, in seconds.
+    Column("freshness", Integer),
 )
 
 naming_rules = Table(
@@ -257,9 +281,10 @@ registered_tables = Table(
     Column("role_ttl", JSON, nullable=False, default=dict, server_default="{}"),
     Column("replicate", Integer),  # REQ-826: NULL = inherit source
     Column("region", Text),  # REQ-1921: the org region its data lives in; NULL = none
-    # REQ-1921: out of service while set — read and written nowhere, offered in no schema, copied
-    # nowhere; a table or view registered through the admin starts so.
-    Column("draft", Boolean, nullable=False, default=False, server_default=false()),
+    # REQ-1921: withdrawn -- out of production while set: serves no role, attached by no engine,
+    # keeps no replica; its definition, grants and relationships stay. Put back by one action,
+    # naming a region: the waypoint of a move between regions.
+    Column("withdrawn", Boolean, nullable=False, default=False, server_default=false()),
     Column("load_protected", Boolean),  # REQ-1141: NULL = inherit source
     Column("off_peak_window", Text),  # REQ-1141
     Column("off_peak_tz", Text),  # REQ-1141
@@ -291,15 +316,15 @@ registered_tables = Table(
     # REQ-1318: declarative metric-composed view spec ({metrics, dimensions, filters});
     # NULL for ordinary tables/free-hand views. view_sql holds the generated SELECT.
     Column("view_metrics", JSON(none_as_null=True)),
-    # REQ-2158: a data product member's ODCS contract, its output port, declared and versioned on
-    # its own (provisa.core.models.DataContract); NULL for a table in no product.
-    Column("contract", JSON(none_as_null=True)),
     # REQ-2130: the glossary term this table's rows are instances of; one per table (schema.sql).
     Column("class_term_id", Integer, ForeignKey("glossary_terms.id", ondelete="SET NULL")),
     # REQ-2141: derived by sync, not declared by config or grounded by a person (schema.sql).
     Column("class_term_derived", Boolean, nullable=False, server_default=false()),
     Column("materialize", Boolean, nullable=False, server_default=false()),
     Column("row_materialize", Boolean, nullable=False, server_default=false()),  # REQ-1865
+    # REQ-413: when the table was registered; a discovery form names the tables registered since
+    # the run it starts from. An upsert by identity keeps it.
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     Column(
         "file_glob", Text
     ),  # REQ-788: one logical table over a glob of files; NULL = single file
@@ -342,6 +367,9 @@ registered_tables = Table(
     Column("mv_persist", Text, nullable=False, server_default="replace"),
     Column("mv_primary_key", JSON(none_as_null=True)),
     Column("mv_incremental", Boolean, nullable=False, server_default=false()),
+    # REQ-2249: seconds between whole rebuilds of a view kept by its code resolver's @change
+    # function; required while it is kept incrementally. NULL = no clock.
+    Column("mv_rebuild_every", Integer),
     # REQ-961/962/1168: PERIODIC calendar trigger (snapshot schedule). mv_calendar names a registered
     # calendar; mv_grain is a nesting grain ("daily".."annual") OR an nth-weekday recurrence
     # ("3WE"/"LFR"). mv_allowed_lateness (s) extends the claim deadline; mv_expected_events is the
@@ -370,6 +398,10 @@ registered_tables = Table(
     Column("promotions", JSON, nullable=False, default=list, server_default="[]"),  # REQ-119
     Column("query_template", Text),  # REQ-1668/1683: neo4j / sparql tables
     Column("relay_pagination", Boolean),  # NULL = inherit
+    # REQ-2249: the code resolver set this view is the bridge of (its id), else None.
+    Column("code_resolver", Text),
+    # REQ-2248: deleting it retires it, as a term is retired: why, who, when (schema.sql).
+    *_retirement(),
     UniqueConstraint("source_id", "schema_name", "table_name"),
 )
 
@@ -426,6 +458,8 @@ table_columns = Table(
     Column("embedding_model", Text),  # REQ-421
     Column("embedding_source_column", Text),  # REQ-421
     Column("encrypted", Boolean, nullable=False, server_default=false()),  # REQ-1919
+    # REQ-2248: deleting it retires it, as a term is retired: why, who, when (schema.sql).
+    *_retirement(),
     Column("tenant_id", Uuid),
     UniqueConstraint("table_id", "column_name"),
 )
@@ -474,6 +508,10 @@ relationships = Table(
     # REQ-351: the effective names, derived and stored once (core.relationship_names).
     Column("cypher_type", Text),
     Column("graphql_field", Text),
+    # REQ-2249: the code resolver set this relationship belongs to (its id), else None.
+    Column("code_resolver", Text),
+    # REQ-2248: deleting it retires it, as a term is retired: why, who, when (schema.sql).
+    *_retirement(),
     Column("tenant_id", Uuid),
     UniqueConstraint("source_table_id", "alias", name="relationships_source_alias_unique"),
     CheckConstraint(
@@ -495,6 +533,10 @@ metrics = Table(
     Column("ai_context", Text),  # REQ-1319: definition text for AI consumers
     Column("visible_to", JSON, nullable=False, default=list, server_default="[]"),
     Column("from_fact", Text),
+    # REQ-2243: the glossary term the metric names (schema.sql).
+    Column("term_id", Integer, ForeignKey("glossary_terms.id", ondelete="SET NULL")),
+    # REQ-2248: deleting it retires it, as a term is retired: why, who, when (schema.sql).
+    *_retirement(),
 )
 
 roles = Table(
@@ -567,6 +609,22 @@ entitlement_expiries = Table(
     Column("removed", Boolean, nullable=False, server_default=false()),
     Column("reason", Text),
     Column("set_by", Text),
+    Column("valid_from", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("recorded_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+)
+
+# REQ-2219: one effective row per person, role and capability. See the matching block in schema.sql.
+effective_entitlements = Table(
+    "effective_entitlements",
+    metadata,
+    Column("id", BigInteger, primary_key=True, autoincrement=True),
+    Column("principal", Text, nullable=False),
+    Column("role_id", Text, nullable=False),
+    Column("capability", Text, nullable=False),
+    Column("bits", Text),  # hex; NULL for a capability with no mask
+    Column("model_version", Text, nullable=False),
+    Column("expansion", JSON(none_as_null=True)),  # NULL: unscoped
+    Column("removed", Boolean, nullable=False, server_default=false()),
     Column("valid_from", DateTime(timezone=True), nullable=False, server_default=func.now()),
     Column("recorded_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
 )
@@ -665,6 +723,16 @@ tags = Table(
     Column("param_policy", Text, nullable=False, server_default="none"),
     # REQ-1943: the Sensitive data option.
     Column("sensitive", Boolean, nullable=False, server_default=false()),
+    # REQ-2208: each assignment must cite a library document or section; one that does not is a
+    # gap, never refused.
+    Column("requires_citation", Boolean, nullable=False, server_default=false()),
+    # REQ-2208 (THE TAGS REPORT): required on every object of the kinds applies_to lists.
+    Column("required", Boolean, nullable=False, server_default=false()),
+    # REQ-2208 (A TAG IS OFFERED BY DOMAIN): offered on objects of these domains, as a source's
+    # allowed_domains; empty = every domain.
+    Column("allowed_domains", JSON, nullable=False, default=list, server_default="[]"),
+    # REQ-2248: deleting it retires it, as a term is retired: why, who, when (schema.sql).
+    *_retirement(),
     Column("tenant_id", Uuid),
     CheckConstraint(
         "reason_policy IN ('hidden', 'optional', 'required')",
@@ -750,8 +818,8 @@ catalog_bindings = Table(
     "catalog_bindings",
     metadata,
     Column("id", Integer, primary_key=True, autoincrement=True),
-    # REQ-2118: the export target (its id in the org's metadata_export.targets), not the provider:
-    # two targets of one provider keep their bindings apart.
+    # REQ-2118, REQ-2247: the Syncing entry the export publishes to (its id), not the provider:
+    # two entries of one provider keep their bindings apart.
     Column("target", Text, nullable=False),
     Column("semantic_uri", Text, nullable=False),
     Column("vendor_ref", Text, nullable=False),
@@ -771,6 +839,8 @@ glossary_terms = Table(
     Column("id", Integer, primary_key=True, autoincrement=True),
     Column("name", Text, nullable=False),
     Column("definition", Text),
+    # REQ-2243: the term's calculation method (schema.sql).
+    Column("calculation_method", Text),
     Column("deprecated", Boolean, nullable=False, server_default=false()),
     # Curator-set soft delete: bound but out of service. See schema.sql for the full rule.
     Column("retired", Boolean, nullable=False, server_default=false()),
@@ -837,6 +907,33 @@ glossary_term_domains = Table(
     Column("domain_id", Text, nullable=False),
     Column("tenant_id", Uuid),
     UniqueConstraint("term_id", "domain_id"),
+)
+
+# REQ-2237: what an imported ontology states about a term that the term does not model, one row a
+# statement (provisa/ontology_import/kept.py). See schema.sql.
+glossary_term_statements = Table(
+    "glossary_term_statements",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("term_id", Integer, ForeignKey("glossary_terms.id", ondelete="CASCADE"), nullable=False),
+    Column("ordinal", Integer, nullable=False),
+    Column("kind", Text, nullable=False),
+    Column("statement", Text, nullable=False),
+    Column("tenant_id", Uuid),
+    UniqueConstraint("term_id", "ordinal"),
+)
+
+# REQ-2247: the catalogs a term was sourced from, one row a catalog. See schema.sql.
+glossary_term_sources = Table(
+    "glossary_term_sources",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("term_id", Integer, ForeignKey("glossary_terms.id", ondelete="CASCADE"), nullable=False),
+    Column("catalog", Text, nullable=False),
+    Column("catalog_ref", Text, nullable=False),
+    Column("sourced_at", DateTime(timezone=True), nullable=False),
+    Column("tenant_id", Uuid),
+    UniqueConstraint("term_id", "catalog"),
 )
 
 # People who can answer questions about the term or who authored its definition.
@@ -908,6 +1005,11 @@ mv_build_state = Table(
     # REQ-2015: the indexes the view's standing landing asked for and how each stands, as a
     # replica's are (``replica_state.index_state``): {"for", "table", "wanted", "built", "failed"}.
     Column("index_state", JSON(none_as_null=True)),
+    # REQ-2249: a view kept by its code resolver's @change function: the cursor stored after its
+    # last successful apply (JSON; NULL = none yet, so the next build is whole) and when it was
+    # last rebuilt whole (its rebuild_every is counted from it).
+    Column("change_cursor", Text),
+    Column("change_rebuilt_at", DateTime(timezone=True)),
     CheckConstraint(
         "status IN ('fresh', 'stale', 'refreshing', 'disabled')",
         name="mv_build_state_status_check",
@@ -1041,6 +1143,24 @@ openlineage_run_datasets = Table(
         "dataset_namespace",
         "dataset_name",
         name="openlineage_run_datasets_key",
+    ),
+)
+
+# REQ-2263: each dataset's latest schema, documentation and ownership facet any OpenLineage event
+# carried, with the run and event time it came from
+# (provisa.core.repositories.openlineage_facets). One row per dataset and facet.
+openlineage_dataset_facets = Table(
+    "openlineage_dataset_facets",
+    metadata,
+    Column("dataset_namespace", Text, primary_key=True),
+    Column("dataset_name", Text, primary_key=True),
+    Column("facet", Text, primary_key=True),
+    Column("payload", JSON, nullable=False),
+    Column("run_id", Text, nullable=False),
+    Column("event_time", DateTime(timezone=True), nullable=False),
+    CheckConstraint(
+        "facet IN ('schema', 'documentation', 'ownership')",
+        name="openlineage_dataset_facets_facet_check",
     ),
 )
 
@@ -1330,6 +1450,11 @@ tracked_functions = Table(
     Column("writes_table", Text),
     # REQ-2168: the command's name per language {language: {name?, exclude?}}.
     Column("language_bindings", JSON, nullable=False, default=dict, server_default="{}"),
+    # REQ-1986: the type of one returned row as the source's schema names it, where it names one.
+    Column("source_type", Text),
+    # REQ-1986: whether a source operation that reads rows is also exposed as a parameterized
+    # table derived from it; NULL for a function that has no table form.
+    Column("exposed_as_table", Boolean),
 )
 
 
@@ -1356,6 +1481,92 @@ data_product_commands = Table(
         nullable=False,
     ),
     PrimaryKeyConstraint("product_id", "command_name"),
+)
+
+# REQ-2180 OFFERS: a product's offers (see schema.sql).
+data_product_offers = Table(
+    "data_product_offers",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("product_id", Text, ForeignKey("data_products.id", ondelete="CASCADE"), nullable=False),
+    Column("name", Text, nullable=False),
+    Column("role_id", Text, nullable=False),
+    Column("data_level", Text, nullable=False, server_default="full"),
+    Column("sample_views", JSON, nullable=False, default=list, server_default="[]"),
+    Column("dq_results", Boolean, nullable=False, server_default=true()),
+    Column("profiles", Boolean, nullable=False, server_default=false()),
+    Column("open", Boolean, nullable=False, server_default=false()),
+    Column("duration_days", Integer),
+    # REQ-2180 (amended 2026-11-11): the offer's terms of use in prose.
+    Column("purpose", Text, nullable=False, server_default=""),
+    Column("usage", Text, nullable=False, server_default=""),
+    Column("limitations", Text, nullable=False, server_default=""),
+    Column("version", Integer, nullable=False, server_default="1"),
+    Column("published_by", Text),
+    Column("review", Text),
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    UniqueConstraint("product_id", "name"),
+    CheckConstraint(
+        "data_level IN ('full', 'sample', 'synthetic')",
+        name="data_product_offers_data_level_check",
+    ),
+)
+
+# REQ-2180: each offer's contract for each dataset of its product, versioned on its own.
+data_product_offer_contracts = Table(
+    "data_product_offer_contracts",
+    metadata,
+    Column(
+        "offer_id",
+        Integer,
+        ForeignKey("data_product_offers.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    Column(
+        "table_id", Integer, ForeignKey("registered_tables.id", ondelete="CASCADE"), nullable=False
+    ),
+    Column("contract", JSON, nullable=False),
+    PrimaryKeyConstraint("offer_id", "table_id"),
+)
+
+# REQ-2180: a bid, or the cancel of an accepted one, as the request it fired through the outbound
+# request hook, and its outcome (see schema.sql).
+data_product_bids = Table(
+    "data_product_bids",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("request_id", Text, nullable=False, unique=True),
+    Column("kind", Text, nullable=False, server_default="bid"),
+    Column("cancels", Integer, ForeignKey("data_product_bids.id", ondelete="CASCADE")),
+    Column("product_id", Text, ForeignKey("data_products.id", ondelete="CASCADE"), nullable=False),
+    Column("offer_id", Integer, ForeignKey("data_product_offers.id", ondelete="SET NULL")),
+    Column("offer_version", Integer, nullable=False),
+    Column("terms", JSON, nullable=False),
+    Column("requester", Text, nullable=False),
+    Column("reason", Text, nullable=False),
+    # REQ-2180 (amended 2026-11-11, A BID NAMES ITS CONSUMER AND AGREES TO THE TERMS).
+    Column("consumer_kind", Text),
+    Column("approver", Text),
+    Column("agreed_at", DateTime(timezone=True)),
+    Column("hook", Text, nullable=False),
+    Column("payload", JSON, nullable=False),
+    Column("status", Text, nullable=False, server_default="pending"),
+    Column("decided_by", Text),
+    Column("decided_at", DateTime(timezone=True)),
+    Column("decline_reason", Text),
+    # none_as_null: a bid with nothing granted (None) is SQL NULL, never the JSON value null.
+    Column("granted", JSON(none_as_null=True)),
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    CheckConstraint("kind IN ('bid', 'cancel')", name="data_product_bids_kind_check"),
+    CheckConstraint(
+        "consumer_kind IN ('person', 'team', 'data_product', 'agent')",
+        name="data_product_bids_consumer_kind_check",
+    ),
+    CheckConstraint(
+        "status IN ('pending', 'accepted', 'declined', 'withdrawn', 'cancelled')",
+        name="data_product_bids_status_check",
+    ),
 )
 
 tracked_webhooks = Table(
@@ -1802,7 +2013,28 @@ user_directory = Table(
     Column("user_id", Text, primary_key=True),
     Column("display_name", Text),
     Column("email", Text),
+    # REQ-2219 (amended 2026-11-18): whether the identity provider verified this address at the
+    # person's latest sign-in; only a verified address names this person in a write by email.
+    Column("email_verified", Boolean, nullable=False, server_default=false()),
     Column("email_opt_in", Boolean, nullable=False, server_default=true()),
+    # REQ-413: the score from which a discovery run's proposals start ticked, the person's own.
+    Column("discovery_threshold", Float, nullable=False, server_default="0.7"),
+    # REQ-413 (amended 2026-11-16): Key value overlap, the person's own as the threshold is:
+    # whether it is chosen, its measure cutoff, and its sample size (the most distinct values
+    # read of each column; provisa.discovery.measure.DISTINCT_BOUND).
+    Column("discovery_key_values", Boolean, nullable=False, server_default=true()),
+    Column("discovery_measure_cutoff", Float, nullable=False, server_default="0.2"),
+    Column("discovery_sample_size", Integer, nullable=False, server_default="10000"),
+    # REQ-413 (amended 2026-11-18): the share of values in a key target at which a pair is a key
+    # relationship, the most a pair scores when neither side is a key, and the sample values
+    # shown per column (provisa.discovery.threshold.DEFAULTS), each set in the discover dialog.
+    Column("discovery_contained_at", Float, nullable=False, server_default="0.95"),
+    Column("discovery_shared_ceiling", Float, nullable=False, server_default="0.6"),
+    Column("discovery_samples_per_column", Integer, nullable=False, server_default="5"),
+    # REQ-413 (amended 2026-11-18): the filter on a run's Score column, the person's own as the
+    # threshold is: JSON {"op", "a", "b"} as the list's column filter holds it; NULL when they
+    # cleared it. A person who has set none has Score >= 10%.
+    Column("discovery_score_filter", Text, nullable=True, server_default='{"op": "ge", "a": "10"}'),
     Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
 )
 
@@ -1929,6 +2161,10 @@ query_audit_log = Table(
     Column("as_of", Text),
     Column("as_recorded", Text),
     Column("logged_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    # REQ-2261: the stage (production | preprod | test | development) the environment declared when
+    # the statement ran, so reports filter and group by it. NULL only for a deployment without a
+    # control plane, which keeps no environment registry to read a stage from.
+    Column("stage", Text),
 )
 
 # Service-level breaches (REQ-506). A row is opened when a measure goes past its limit and closed
@@ -2424,6 +2660,41 @@ reference_document_tags = Table(
     ),
 )
 
+# REQ-2208: citations of reference library documents and their sections, one shape for whatever
+# cites the library: a tag's definition (citer_kind "tag", object_key "") and each assignment of a
+# tag (citer_kind "tag_assignment", object_key the assignment's). The section is named by heading or
+# page, the whole document by neither; cite_key is that name. text_sha256 is of the section's text
+# when cited, so a revised section flags its citer for review (provisa.reference_library.citations).
+# The document's title and source are kept, so a citation outlives the document.
+reference_citations = Table(
+    "reference_citations",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("citer_kind", Text, nullable=False),
+    Column("tag_id", Text),  # the BASE tag id
+    Column("object_key", Text, nullable=False, server_default=""),
+    Column(
+        "document_id",
+        Integer,
+        ForeignKey("reference_documents.id", ondelete="SET NULL"),
+        nullable=True,
+    ),
+    Column("document_title", Text, nullable=False),
+    Column("document_source", Text, nullable=False),
+    Column("section_heading", Text),
+    Column("section_page", Integer),
+    Column("cite_key", Text, nullable=False),
+    Column("text_sha256", Text, nullable=False),
+    Column("cited_by", Text),
+    Column("cited_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("tenant_id", Uuid),
+    UniqueConstraint("citer_kind", "tag_id", "object_key", "cite_key"),
+    CheckConstraint(
+        "citer_kind IN ('tag', 'tag_assignment', 'dq_check')",
+        name="reference_citations_citer_kind_check",
+    ),
+)
+
 # REQ-2185 (GRAPH RETRIEVAL): each in-service glossary term's embedding -- its name and definition,
 # embedded by the org's vector model -- that governed retrieval finds the terms nearest a question
 # by. ``digest`` is of the model and the text embedded, so a term whose name or definition changed,
@@ -2485,6 +2756,69 @@ glossary_term_scans = Table(
     CheckConstraint(
         "status IN ('running', 'done', 'failed')", name="glossary_term_scans_status_check"
     ),
+)
+
+# REQ-413: a relationship discovery run in the background -- running, then done, stopped (a person
+# pressed Stop: the request in flight finished and what was found is kept) or failed with why. Its
+# row is what every worker reads: progress is written after each request, Stop is asked on it, and
+# the worker running the run checks it before each request (provisa/discovery/runs.py).
+discovery_runs = Table(
+    "discovery_runs",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("status", Text, nullable=False),  # running | done | stopped | failed
+    Column("scope", Text, nullable=False),  # JSON: the kinds, model and sets asked for
+    Column("model", Text, nullable=True),  # vendor:model when semantics was asked
+    Column("requests_total", Integer, nullable=False, server_default="0"),
+    Column("requests_done", Integer, nullable=False, server_default="0"),
+    Column("suggestions", Integer, nullable=False, server_default="0"),
+    Column("report", Text, nullable=True),  # JSON: what each kind found so far
+    Column("error", Text, nullable=True),
+    Column("stop_requested", Boolean, nullable=False, server_default=false()),
+    Column("stopped_by", Text, nullable=True),
+    Column("started_by", Text, nullable=True),
+    Column("started_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("finished_at", DateTime(timezone=True), nullable=True),
+    Column("launch", Text, nullable=True),
+    Column("progress_at", DateTime(timezone=True), nullable=True),
+    Column("tenant_id", Uuid),
+    CheckConstraint(
+        "status IN ('running', 'done', 'stopped', 'failed')", name="discovery_runs_status_check"
+    ),
+)
+
+# REQ-413: every proposal a discovery run read, kept with the run: a foreign key it found or an
+# element of a model's answer, with the confidence and reasoning given. ``left_out`` is why it is
+# not among the run's suggestions (provisa/discovery/proposals.py REASONS); null: it is one of
+# them. A proposal that named no two compared columns has no table ids, and ``answer`` holds the
+# element as the model wrote it. ``scored`` is the confidence a second scorer gave it, when one
+# re-scored it. ``decision`` is what a reviewer decided of it in the run's result: ``accepted``
+# (``accepted_as`` the relationship it became) or ``rejected`` (not to be recommended again);
+# null: undecided, and nothing is recorded against it.
+discovery_run_proposals = Table(
+    "discovery_run_proposals",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("run_id", Integer, ForeignKey("discovery_runs.id", ondelete="CASCADE"), nullable=False),
+    Column("kind", Text, nullable=False),  # foreign_keys | semantics
+    Column("source_table_id", Integer, ForeignKey("registered_tables.id"), nullable=True),
+    Column("source_column", Text, nullable=True),
+    Column("target_table_id", Integer, ForeignKey("registered_tables.id"), nullable=True),
+    Column("target_column", Text, nullable=True),
+    Column("confidence", Float, nullable=True),
+    Column("scored", Float, nullable=True),
+    # REQ-413: the pair's values measured against each other (JSON), the score that gives it
+    # (None: no values were compared) and the cardinality it decides.
+    Column("score", Float, nullable=True),
+    Column("cardinality", Text, nullable=True),
+    Column("measure", Text, nullable=True),
+    Column("reasoning", Text, nullable=True),
+    Column("suggested_name", Text, nullable=True),
+    Column("left_out", Text, nullable=True),
+    Column("answer", Text, nullable=True),
+    Column("decision", Text, nullable=True),
+    Column("accepted_as", Text, nullable=True),
+    Column("tenant_id", Uuid),
 )
 
 # REQ-2179: the review queue -- each candidate term a scan proposes, as a draft until the steward
@@ -2549,7 +2883,7 @@ glossary_ontology_imports = Table(
     Column("id", Integer, primary_key=True, autoincrement=True),
     Column("title", Text, nullable=False),
     Column("file_name", Text, nullable=False),
-    Column("format", Text, nullable=False),  # ossie | turtle | xml | nt | json-ld
+    Column("format", Text, nullable=False),  # ossie | turtle | xml | nt | json-ld | archive
     Column("domains", Text, nullable=False),
     Column("summary", Text, nullable=False),
     Column("imported_by", Text, nullable=True),
@@ -2558,7 +2892,7 @@ glossary_ontology_imports = Table(
     Column("applied_at", DateTime(timezone=True), nullable=True),
     Column("tenant_id", Uuid),
     CheckConstraint(
-        "format IN ('ossie', 'turtle', 'xml', 'nt', 'json-ld')",
+        "format IN ('ossie', 'turtle', 'xml', 'nt', 'json-ld', 'archive')",
         name="glossary_ontology_imports_format_check",
     ),
 )
@@ -2578,7 +2912,7 @@ glossary_ontology_items = Table(
     ),
     Column("ordinal", Integer, nullable=False),
     Column("name", Text, nullable=False),
-    Column("kind", Text, nullable=False),  # class | property | value | concept
+    Column("kind", Text, nullable=False),  # class | property | value | concept | individual
     Column("definition", Text, nullable=True),
     Column("iri", Text, nullable=True),
     Column("payload", Text, nullable=False),
@@ -2592,7 +2926,7 @@ glossary_ontology_items = Table(
     Column("tenant_id", Uuid),
     UniqueConstraint("import_id", "ordinal"),
     CheckConstraint(
-        "kind IN ('class', 'property', 'value', 'concept')",
+        "kind IN ('class', 'property', 'value', 'concept', 'individual')",
         name="glossary_ontology_items_kind_check",
     ),
     CheckConstraint(
@@ -2670,12 +3004,14 @@ admin_audit_log = Table(
 )
 
 
-# REQ-2006: every source of the DDL that lands in an org's control-plane schema from code, by its
-# path in this package: its tables (beside this metadata, which ddl_fingerprint compiles), views,
-# functions and triggers. A demo template kept across a cloud patch is trusted only when the code
-# that built it had the same text here (no migrations: one built by older code lacks what is new,
-# e.g. relation "config_stamp" does not exist). A module that runs DDL is in this list or in the
-# guard's list of DDL that never lands in an org's schema
+# REQ-2006: every source of the DDL that lands in an org's control-plane schema from code and stays
+# there, by its path in this package: its tables (beside this metadata, which ddl_fingerprint
+# compiles), functions and triggers. A demo template kept across a cloud patch is trusted only when
+# the code that built it had the same shape here (no migrations: one built by older code lacks what
+# is new, e.g. relation "config_stamp" does not exist). The built-in views are not: every runtime
+# build makes them again from the running code (startup_seed._seed_view) and a sandbox's are made
+# fresh (_make_built_in_views), so a kept template is served the patched code's views. A module
+# that runs DDL is in this list or in the guard's list of DDL that never lands in an org's schema
 # (tests/unit/test_demo_template_warm_start.py), so a new source cannot be missed.
 ORG_SCHEMA_DDL_SOURCES: tuple[str, ...] = (
     "core/schema.sql",
@@ -2685,11 +3021,6 @@ ORG_SCHEMA_DDL_SOURCES: tuple[str, ...] = (
     "core/env_copy.py",
     "audit/query_log.py",
     "mv/schema.sql",
-    "api/_meta_views.py",
-    "api/_ontology_views.py",
-    "api/_ontology_quality_views.py",
-    "api/_pg_catalog_views.py",
-    "api/startup_seed.py",
     "grpc/field_numbering.py",
     "live/watermark.py",
     "profiler/schema.py",
@@ -2714,12 +3045,16 @@ def ddl_sources() -> dict[str, bytes]:
 
 def fingerprint_of(tables: MetaData, sources: dict[str, bytes]) -> str:
     """The first 16 hex of SHA-256 over an org schema's DDL: each of ``tables``' CREATE TABLE and
-    CREATE INDEX, compiled for PostgreSQL in name order, and the text of each of ``sources`` (the
-    modules and scripts that run the rest of it), in path order."""
+    CREATE INDEX, compiled for PostgreSQL in name order, and the shape of each of ``sources`` (the
+    modules and scripts that run the rest of it; ddl_text.source_shape), in path order. A comment,
+    a docstring or a layout change in a source is not a change of shape: each once reset every
+    demo template at the next cloud patch."""
     import hashlib
 
     from sqlalchemy.dialects import postgresql
     from sqlalchemy.schema import CreateIndex, CreateTable
+
+    from provisa.core.ddl_text import source_shape
 
     dialect = postgresql.dialect()
     digest = hashlib.sha256()
@@ -2729,7 +3064,7 @@ def fingerprint_of(tables: MetaData, sources: dict[str, bytes]) -> str:
         for index in sorted(table.indexes, key=lambda i: str(i.name)):
             digest.update(str(CreateIndex(index).compile(dialect=dialect)).encode())
     for path in sorted(sources):
-        digest.update(path.encode() + b"\0" + sources[path])
+        digest.update(path.encode() + b"\0" + source_shape(path, sources[path]))
     return digest.hexdigest()[:16]
 
 
