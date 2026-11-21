@@ -48,6 +48,7 @@ const TABLE = {
   apiEndpointError: null,
   queryTemplate: QUERY,
   writeGrants: [],
+  writeOps: [],
   columns: [
     { ...draftColumn({ name: "id", dataType: "text", visibleTo: ["admin"] }, 0), id: 31 },
     {
