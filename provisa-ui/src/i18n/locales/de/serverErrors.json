@@ -22,17 +22,17 @@
       "embedding_library_missing": "Das Embedding-Modell {{model}} verwendet den Anbieter {{provider}}, der das Extra {{extra}} benötigt (das Modul {{module}} ist nicht installiert): pip install 'provisa[{{extra}}]'."
     },
     "ai": {
-      "key_required": "{{vendor}} hat keinen Schlüssel. Legen Sie einen unter Admin, KI-Modelle fest.",
-      "vendor_uses_server_credentials": "{{vendor}} wird mit den eigenen Zugangsdaten des Servers erreicht, die eine Organisation auf diesem Server nicht verwendet. Wählen Sie unter Admin, KI-Modelle einen Anbieter, der einen Schlüssel annimmt, oder einen KI-Endpunkt.",
+      "endpoint_address_from_server": "Der KI-Endpunkt {{vendor}} bezieht seine Adresse aus der Umgebung des Servers, die eine Organisation auf diesem Server nicht verwendet. Geben Sie ihm unter Admin, KI-Modelle eine eigene Adresse.",
       "endpoint_key_from_server": "Der KI-Endpunkt {{vendor}} bezieht seinen Schlüssel aus der Umgebung des Servers, die eine Organisation auf diesem Server nicht verwendet. Geben Sie ihm unter Admin, KI-Modelle einen eigenen Schlüssel.",
       "endpoint_key_unset": "Der KI-Endpunkt {{vendor}} hat keinen Schlüssel: {{field}} ist nicht gesetzt.",
-      "endpoint_address_from_server": "Der KI-Endpunkt {{vendor}} bezieht seine Adresse aus der Umgebung des Servers, die eine Organisation auf diesem Server nicht verwendet. Geben Sie ihm unter Admin, KI-Modelle eine eigene Adresse.",
+      "key_required": "{{vendor}} hat keinen Schlüssel. Legen Sie einen unter Admin, KI-Modelle fest.",
       "local_server_from_environment": "{{vendor}} wird unter der eigenen Adresse des Servers erreicht, die eine Organisation auf diesem Server nicht verwendet. Legen Sie unter Admin, KI-Modelle einen KI-Endpunkt mit Ihrer eigenen Adresse an.",
       "server_environment_sets": "{{vendor}} kann hier nicht aufgerufen werden: Die Umgebung des Servers setzt {{variable}}, das sein Client für jede Organisation senden würde.",
+      "vector_model_address_from_server": "Das Embedding-Modell {{vendor}} bezieht seine Adresse aus der Umgebung des Servers, die eine Organisation auf diesem Server nicht verwendet. Geben Sie ihm unter Admin, KI-Modelle eine eigene Adresse.",
       "vector_model_key_from_server": "Das Embedding-Modell {{vendor}} bezieht seinen Schlüssel aus der Umgebung des Servers, die eine Organisation auf diesem Server nicht verwendet. Geben Sie ihm unter Admin, KI-Modelle einen eigenen Schlüssel.",
       "vector_model_key_unset": "Das Embedding-Modell {{vendor}} hat keinen Schlüssel: {{field}} ist nicht gesetzt.",
-      "vector_model_address_from_server": "Das Embedding-Modell {{vendor}} bezieht seine Adresse aus der Umgebung des Servers, die eine Organisation auf diesem Server nicht verwendet. Geben Sie ihm unter Admin, KI-Modelle eine eigene Adresse.",
-      "vector_model_local_server": "Das Embedding-Modell {{vendor}} wird unter der eigenen Adresse des Servers erreicht, die eine Organisation auf diesem Server nicht verwendet. Geben Sie ihm unter Admin, KI-Modelle eine eigene Adresse."
+      "vector_model_local_server": "Das Embedding-Modell {{vendor}} wird unter der eigenen Adresse des Servers erreicht, die eine Organisation auf diesem Server nicht verwendet. Geben Sie ihm unter Admin, KI-Modelle eine eigene Adresse.",
+      "vendor_uses_server_credentials": "{{vendor}} wird mit den eigenen Zugangsdaten des Servers erreicht, die eine Organisation auf diesem Server nicht verwendet. Wählen Sie unter Admin, KI-Modelle einen Anbieter, der einen Schlüssel annimmt, oder einen KI-Endpunkt."
     },
     "api": {
       "answer_cut": "Die Antwort für {{table}} wurde bei max_pages={{max_pages}} abgeschnitten ({{rows}} Zeilen): Die API hat weitere Daten. Erhöhen Sie max_pages oder die Seitengröße des Endpunkts, um alles zu lesen.",
@@ -174,13 +174,14 @@
     },
     "discovery": {
       "adapter_missing_discover_schema": "Adapter für '{{source_type}}' implementiert discover_schema nicht",
+      "answer_unreadable": "Die Antwort des Modells enthielt keine lesbare Liste.",
       "cassandra_discovery_unsupported": "Die Cassandra-Schemaerkennung erfordert eine aktive CQL-Sitzung, die nicht verfügbar ist. Definieren Sie die Spalten für diese Quelle manuell.",
       "database_not_connected": "Datenbank nicht verbunden",
+      "decided_both_ways": "Ein Vorschlag wird akzeptiert oder nicht erneut empfohlen, nicht beides.",
       "domain_id_required": "domain_id für den Domänen-Geltungsbereich erforderlich",
       "elasticsearch_index_hint_required": "Die Elasticsearch-Erkennung erfordert einen 'index'-Hinweis.",
       "elasticsearch_mapping_failed": "Elasticsearch-Mapping für Index '{{index}}' konnte nicht gelesen werden: {{error}}",
       "endpoint_already_registered": "Endpunkt bereits registriert: {{error}}",
-      "decided_both_ways": "Ein Vorschlag wird akzeptiert oder nicht erneut empfohlen, nicht beides.",
       "model_has_no_room": "Das Modell {{model}} kann keine Anfrage aufnehmen: {{reason}}",
       "model_incomplete": "Ein gewähltes Modell nennt sowohl seinen Anbieter als auch sein Modell.",
       "no_adapter_for_source_type": "Kein Adapter für Quellentyp '{{source_type}}' registriert",
@@ -201,8 +202,7 @@
       "target_tables_not_read": "Keine der gewählten Zieltabellen ({{count}}) wird gelesen: Die Erkennung lässt Tabellen einer Systemdomäne und Tabellen außer Betrieb aus.",
       "target_tables_outside_domains": "Die gewählten Zieltabellen liegen außerhalb der im Domänenfilter ausgewählten Domänen: {{names}}.",
       "unknown_source_type": "Unbekannter Quellentyp: {{type}}",
-      "vendor_unknown": "{{vendor}} listet hier keine Modelle auf; geben Sie den Modellnamen ein.",
-      "answer_unreadable": "Die Antwort des Modells enthielt keine lesbare Liste."
+      "vendor_unknown": "{{vendor}} listet hier keine Modelle auf; geben Sie den Modellnamen ein."
     },
     "llm": {
       "request_failed": "Die Anfrage an das Modell ist fehlgeschlagen: {{reason}}",
@@ -617,9 +617,9 @@
     },
     "sparql": {
       "columns_not_inferred": "Spalten konnten nicht abgeleitet werden: Der Probe-Aufruf lieferte keine Zeilen und keine SELECT-Variablen.",
-      "no_select_variables": "Die Abfrage nennt keine SELECT-Variablen (SELECT * oder keine SELECT-Abfrage): Ihre Spalten lassen sich nicht daraus lesen",
       "probe_failed": "Prüfung des SPARQL-Endpunkts fehlgeschlagen: {{error}}",
-      "source_not_found": "SPARQL-Quelle '{{source_id}}' nicht gefunden"
+      "source_not_found": "SPARQL-Quelle '{{source_id}}' nicht gefunden",
+      "no_select_variables": "Die Abfrage nennt keine SELECT-Variablen (SELECT * oder keine SELECT-Abfrage): Ihre Spalten lassen sich nicht daraus lesen"
     },
     "subscribe": {
       "avro_topic_without_registry": "Topic '{{topic}}' enthält Avro-Nachrichten, und seine Quelle nennt keine Schema-Registry zum Lesen: Setzen Sie die Schema-Registry-URL der Quelle",
@@ -832,7 +832,9 @@
       "not_bulk_approvable": "Nur definierte, verankerte Entwürfe werden gemeinsam freigegeben; nicht: {{terms}}.",
       "term_ids_required": "Nennen Sie die freizugebenden Begriffe.",
       "impact_action": "Für diese Aktion gibt es keine Vorschau.",
-      "impact_table_required": "Eine Bindung nennt eine Tabelle oder eine ihrer Spalten."
+      "impact_table_required": "Eine Bindung nennt eine Tabelle oder eine ihrer Spalten.",
+      "name_taken": "Ein Begriff namens '{{name}}' existiert bereits in der Domäne {{domain}}. Wählen Sie einen anderen Namen oder ordnen Sie den Begriff einer anderen Domäne zu.",
+      "name_taken_unscoped": "Ein Begriff namens '{{name}}' existiert bereits ohne Domäne und gilt damit in jeder Domäne. Wählen Sie einen anderen Namen."
     },
     "table": {
       "requires_parameters": "Die Tabelle {{table}} kann nicht gezählt oder profiliert werden: Sie verlangt {{parameters}}. Geben Sie jedem einen Wert, um ihre Zeilen zu lesen."
@@ -897,10 +899,10 @@
       "unknown_kind": "{{kind}} ist keine Art von Berechtigungsliste.",
       "idp_supersedes": "Der Identitätsanbieter sendet die Liste {{kind}} dieser Person für Rolle {{role_id}}. Diese Liste hat Vorrang und wird dort geändert, nicht hier.",
       "blank_identifier": "Ein Eintrag darf nicht leer sein.",
-      "invalid_identifier": "{{identifier}} ist kein gültiger Eintrag vom Typ {{kind}}.",
       "expiry_in_past": "Ein Enddatum muss in der Zukunft liegen.",
       "expiry_removes_nothing": "Ein Enddatum für diese Liste {{kind}} würde nichts entfernen.",
-      "pending_not_found": "Keine Gewährung wartet auf {{email}} für Rolle {{role_id}} und {{kind}}."
+      "pending_not_found": "Keine Gewährung wartet auf {{email}} für Rolle {{role_id}} und {{kind}}.",
+      "invalid_identifier": "{{identifier}} ist kein gültiger Eintrag vom Typ {{kind}}."
     },
     "mv": {
       "change_key_missing": "{{function}} hat eine Zeile ohne ihre Schlüsselspalte {{column}} zurückgegeben",

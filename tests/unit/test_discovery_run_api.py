@@ -48,7 +48,7 @@ from provisa.discovery.direction import Sampled
 from provisa.llm.client import Completion
 from provisa.profiler.classify import catalogue
 from provisa.profiler.run import ProfileError
-from provisa.discovery.runner import NOT_NAMED
+from provisa.discovery.runner import NOT_NAMED, SAME_NAME
 from tests.unit.discovery_answers import from_ids
 
 _REQUEST = cast(
@@ -255,8 +255,16 @@ _TABLE_NAMES: dict[int, str] = {}
 
 def _named(proposals: list[dict]) -> list[dict]:
     """A run's listed proposals but the column pairs its model was asked about and did not name,
-    each scored zero (REQ-413, amended 2026-11-18): those are asserted on their own."""
-    return [r for r in proposals if r["reasoning"] != NOT_NAMED]
+    each scored zero (REQ-413, amended 2026-11-18), and the same-name pairs measured whatever the
+    model answered (amended 2026-11-20), whatever the measure adds to their reasoning: those are
+    asserted on their own."""
+    return [
+        r
+        for r in proposals
+        # An answer element that made no proposal has no reasoning, and is kept.
+        if r["reasoning"] is None
+        or (r["reasoning"] != NOT_NAMED and not r["reasoning"].startswith(SAME_NAME))
+    ]
 
 
 class _World:
@@ -266,6 +274,13 @@ class _World:
             {"id": [1, 2, 3], "customer_id": [1, 1, 2], "name": ["a", "b", "c"], "ref": ["x"]}
         )
         self.measured = _Measured(self.reads)
+        # Each table's own key holds its own values: orders.id and stores.id share none with
+        # customers.id, so their same-name pairs, measured whatever the model answers (REQ-413,
+        # amended 2026-11-20), are left out on their measure unless a test gives them values.
+        self.measured.values = {
+            ("orders", "id"): [101, 102, 103],
+            ("stores", "id"): [201, 202, 203],
+        }
         self.classified: list[dict] = []
         #: The kinds a table's latest profile run matched, by column; a table absent was never
         #: profiled and is classified during the run, with the kinds ``classifies`` gives it.
@@ -2360,9 +2375,13 @@ async def test_a_many_to_many_pair_is_accepted_as_a_shared_dimension_both_sides_
     assert {e.graphql_alias for e in made.edges} == {"neighborhood_dimension"}
     # The pair is decided: accepted, so a later run never reopens it.
     assert _named((await discovery.list_proposals(_REQUEST, run["id"]))["proposals"]) == []
-    assert [(c["cardinality"], c["status"]) for c in await _candidates(db)] == [
-        ("many-to-many", "accepted")
-    ]
+    # The city's other same-name pairs are measured as well (REQ-413, amended 2026-11-20).
+    assert [
+        (c["cardinality"], c["status"])
+        for c in await _candidates(db)
+        if {(c["source_table_id"], c["source_column"]), (c["target_table_id"], c["target_column"])}
+        == {(1, "hood"), (4, "hood")}
+    ] == [("many-to-many", "accepted")]
 
 
 async def test_a_second_pair_on_the_same_values_reuses_the_dimension(monkeypatch, tmp_path):
@@ -2608,14 +2627,16 @@ async def test_a_band_pair_whose_key_values_match_is_admitted_and_the_summary_st
         world,
         [
             _suggestion((2, "permit_id"), (1, "permit_id"), 0.45),
-            _suggestion((3, "hood"), (1, "hood"), 0.1),
+            _suggestion((2, "result"), (1, "hood"), 0.1),
         ],
         measure_cutoff=0.3,
         sample_size=500,
     )
     assert run["status"] == "done", run
     by_source = {r["source_column"]: r for r in listed}
-    permit, hood = by_source["permit_id"], by_source["hood"]
+    # A pair of differently named columns: a same-name pair is measured whatever its model
+    # confidence (REQ-413, amended 2026-11-20).
+    permit, hood = by_source["permit_id"], by_source["result"]
     assert permit["reason"] is None and permit["admitted_on_key_values"] is True
     assert permit["score"] == context.KEY_SCORE and permit["confidence"] == 0.45
     assert permit["measure"]["bound"] == 500
@@ -2628,7 +2649,9 @@ async def test_a_band_pair_whose_key_values_match_is_admitted_and_the_summary_st
         "contained_at": 0.95,
         "shared_ceiling": 0.6,
     }
-    assert (report["semantics"]["measured"], report["semantics"]["admitted"]) == (1, 1)
+    # The permit pair, and the hood pair measured for its same name: a shared column, scored at
+    # the shared ceiling 0.6, under the threshold (REQ-413, amended 2026-11-20).
+    assert (report["semantics"]["measured"], report["semantics"]["admitted"]) == (2, 1)
 
 
 async def test_without_key_value_overlap_a_band_pair_is_left_out_unmeasured(monkeypatch, tmp_path):

@@ -22,17 +22,17 @@
       "embedding_library_missing": "Le modèle d'embeddings {{model}} utilise le fournisseur {{provider}}, qui nécessite l'extra {{extra}} (le module {{module}} n'est pas installé) : pip install 'provisa[{{extra}}]'."
     },
     "ai": {
-      "key_required": "{{vendor}} n'a pas de clé. Définissez-en une dans Admin, Modèles IA.",
-      "vendor_uses_server_credentials": "{{vendor}} est joint avec les identifiants propres au serveur, qu'une organisation de ce serveur n'utilise pas. Choisissez un fournisseur qui accepte une clé, ou un point de terminaison IA, dans Admin, Modèles IA.",
+      "endpoint_address_from_server": "Le point de terminaison IA {{vendor}} prend son adresse dans l'environnement du serveur, qu'une organisation de ce serveur n'utilise pas. Donnez-lui une adresse qui vous est propre dans Admin, Modèles IA.",
       "endpoint_key_from_server": "Le point de terminaison IA {{vendor}} prend sa clé dans l'environnement du serveur, qu'une organisation de ce serveur n'utilise pas. Donnez-lui une clé qui vous est propre dans Admin, Modèles IA.",
       "endpoint_key_unset": "Le point de terminaison IA {{vendor}} n'a pas de clé : {{field}} n'est pas défini.",
-      "endpoint_address_from_server": "Le point de terminaison IA {{vendor}} prend son adresse dans l'environnement du serveur, qu'une organisation de ce serveur n'utilise pas. Donnez-lui une adresse qui vous est propre dans Admin, Modèles IA.",
+      "key_required": "{{vendor}} n'a pas de clé. Définissez-en une dans Admin, Modèles IA.",
       "local_server_from_environment": "{{vendor}} est joint à l'adresse propre au serveur, qu'une organisation de ce serveur n'utilise pas. Déclarez un point de terminaison IA à votre propre adresse dans Admin, Modèles IA.",
       "server_environment_sets": "{{vendor}} ne peut pas être appelé ici : l'environnement du serveur définit {{variable}}, que son client enverrait pour chaque organisation.",
+      "vector_model_address_from_server": "Le modèle d'embedding {{vendor}} prend son adresse dans l'environnement du serveur, qu'une organisation de ce serveur n'utilise pas. Donnez-lui une adresse qui vous est propre dans Admin, Modèles IA.",
       "vector_model_key_from_server": "Le modèle d'embedding {{vendor}} prend sa clé dans l'environnement du serveur, qu'une organisation de ce serveur n'utilise pas. Donnez-lui une clé qui vous est propre dans Admin, Modèles IA.",
       "vector_model_key_unset": "Le modèle d'embedding {{vendor}} n'a pas de clé : {{field}} n'est pas défini.",
-      "vector_model_address_from_server": "Le modèle d'embedding {{vendor}} prend son adresse dans l'environnement du serveur, qu'une organisation de ce serveur n'utilise pas. Donnez-lui une adresse qui vous est propre dans Admin, Modèles IA.",
-      "vector_model_local_server": "Le modèle d'embedding {{vendor}} est joint à l'adresse propre au serveur, qu'une organisation de ce serveur n'utilise pas. Donnez-lui une adresse qui vous est propre dans Admin, Modèles IA."
+      "vector_model_local_server": "Le modèle d'embedding {{vendor}} est joint à l'adresse propre au serveur, qu'une organisation de ce serveur n'utilise pas. Donnez-lui une adresse qui vous est propre dans Admin, Modèles IA.",
+      "vendor_uses_server_credentials": "{{vendor}} est joint avec les identifiants propres au serveur, qu'une organisation de ce serveur n'utilise pas. Choisissez un fournisseur qui accepte une clé, ou un point de terminaison IA, dans Admin, Modèles IA."
     },
     "api": {
       "answer_cut": "La réponse pour {{table}} a été tronquée à max_pages={{max_pages}} ({{rows}} lignes) : l'API en a davantage. Augmentez max_pages ou la taille de page du point de terminaison pour tout lire.",
@@ -174,13 +174,14 @@
     },
     "discovery": {
       "adapter_missing_discover_schema": "L'adaptateur pour « {{source_type}} » n'implémente pas discover_schema",
+      "answer_unreadable": "La réponse du modèle ne contenait aucune liste lisible.",
       "cassandra_discovery_unsupported": "La découverte de schéma Cassandra requiert une session CQL active, qui n'est pas disponible. Définissez les colonnes manuellement pour cette source.",
       "database_not_connected": "Base de données non connectée",
+      "decided_both_ways": "Une proposition est acceptée ou n'est plus recommandée, pas les deux.",
       "domain_id_required": "domain_id requis pour la portée domaine",
       "elasticsearch_index_hint_required": "La découverte Elasticsearch requiert un indice « index ».",
       "elasticsearch_mapping_failed": "Échec de lecture du mapping Elasticsearch pour l'index « {{index}} » : {{error}}",
       "endpoint_already_registered": "Endpoint déjà enregistré : {{error}}",
-      "decided_both_ways": "Une proposition est acceptée ou n'est plus recommandée, pas les deux.",
       "model_has_no_room": "Le modèle {{model}} ne peut pas contenir une requête : {{reason}}",
       "model_incomplete": "Un modèle choisi indique à la fois son fournisseur et son modèle.",
       "no_adapter_for_source_type": "Aucun adaptateur enregistré pour le type de source « {{source_type}} »",
@@ -201,8 +202,7 @@
       "target_tables_not_read": "Aucune des tables cibles choisies ({{count}}) n'est lue : la découverte laisse de côté les tables d'un domaine système et celles hors service.",
       "target_tables_outside_domains": "Les tables cibles choisies sont en dehors des domaines sélectionnés dans le filtre de domaines : {{names}}.",
       "unknown_source_type": "Type de source inconnu : {{type}}",
-      "vendor_unknown": "{{vendor}} ne liste aucun modèle ici ; saisissez le nom du modèle.",
-      "answer_unreadable": "La réponse du modèle ne contenait aucune liste lisible."
+      "vendor_unknown": "{{vendor}} ne liste aucun modèle ici ; saisissez le nom du modèle."
     },
     "llm": {
       "request_failed": "La requête au modèle a échoué : {{reason}}",
@@ -617,9 +617,9 @@
     },
     "sparql": {
       "columns_not_inferred": "Impossible d'inférer les colonnes : le sondage n'a renvoyé aucune ligne et aucune variable SELECT n'a été trouvée.",
-      "no_select_variables": "La requête ne nomme aucune variable SELECT (SELECT * ou pas une requête SELECT) : ses colonnes ne peuvent pas en être lues",
       "probe_failed": "Échec du sondage de l'endpoint SPARQL : {{error}}",
-      "source_not_found": "Source SPARQL « {{source_id}} » introuvable"
+      "source_not_found": "Source SPARQL « {{source_id}} » introuvable",
+      "no_select_variables": "La requête ne nomme aucune variable SELECT (SELECT * ou pas une requête SELECT) : ses colonnes ne peuvent pas en être lues"
     },
     "subscribe": {
       "avro_topic_without_registry": "Le topic '{{topic}}' transporte des messages Avro et sa source ne désigne aucun registre de schémas pour les lire : renseignez l'URL du registre de schémas de la source",
@@ -832,7 +832,9 @@
       "not_bulk_approvable": "Seuls les brouillons définis et ancrés sont approuvés ensemble ; pas : {{terms}}.",
       "term_ids_required": "Indiquez les termes à approuver.",
       "impact_action": "Aucun aperçu n'existe pour cette action.",
-      "impact_table_required": "Une liaison nomme une table, ou l'une de ses colonnes."
+      "impact_table_required": "Une liaison nomme une table, ou l'une de ses colonnes.",
+      "name_taken": "Un terme nommé '{{name}}' existe déjà dans le domaine {{domain}}. Choisissez un autre nom ou placez le terme dans un autre domaine.",
+      "name_taken_unscoped": "Un terme nommé '{{name}}' existe déjà sans domaine : il s'applique donc à tous les domaines. Choisissez un autre nom."
     },
     "table": {
       "requires_parameters": "La table {{table}} ne peut être ni comptée ni profilée : elle exige {{parameters}}. Donnez une valeur à chacun pour lire ses lignes."
@@ -897,10 +899,10 @@
       "unknown_kind": "{{kind}} n'est pas un type de liste de droits d'accès.",
       "idp_supersedes": "Le fournisseur d'identité envoie la liste {{kind}} de cette personne pour le rôle {{role_id}}. Cette liste prévaut : elle se modifie chez lui, pas ici.",
       "blank_identifier": "Une entrée ne peut pas être vide.",
-      "invalid_identifier": "{{identifier}} n'est pas une entrée {{kind}} valide.",
       "expiry_in_past": "Une date de fin doit être dans le futur.",
       "expiry_removes_nothing": "Une date de fin sur cette liste {{kind}} ne retirerait rien.",
-      "pending_not_found": "Aucun octroi n'attend {{email}} pour le rôle {{role_id}} et {{kind}}."
+      "pending_not_found": "Aucun octroi n'attend {{email}} pour le rôle {{role_id}} et {{kind}}.",
+      "invalid_identifier": "{{identifier}} n'est pas une entrée {{kind}} valide."
     },
     "mv": {
       "change_key_missing": "{{function}} a renvoyé une ligne sans sa colonne de clé {{column}}",

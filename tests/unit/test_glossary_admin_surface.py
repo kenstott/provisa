@@ -154,7 +154,8 @@ async def test_curation_mutations_notify_the_exporter(control_plane, monkeypatch
         detail = await glossary_router.get_term(_request(), customer)
         assert detail["definition"] == "The buyer."
         assert detail["edges_out"] == [
-            {"term_id": created["id"], "rel_type": "KIND_OF", "name": "party"}
+            # REQ-1591: a related term carries its domains
+            {"term_id": created["id"], "rel_type": "KIND_OF", "name": "party", "domains": ["d"]}
         ]
         assert detail["experts"] == [{"user_id": "bob", "kind": "author"}]
         assert len(notified) == 4  # every mutation queued a publish
@@ -249,7 +250,9 @@ async def test_edge_type_is_correctable_in_place(control_plane, monkeypatch):
         )
         detail = await glossary_router.get_term(_request(), customer)
         # One edge, same endpoints and direction, corrected type.
-        assert detail["edges_out"] == [{"term_id": party, "rel_type": "KIND_OF", "name": "party"}]
+        assert detail["edges_out"] == [
+            {"term_id": party, "rel_type": "KIND_OF", "name": "party", "domains": ["d"]}
+        ]
 
         with pytest.raises(ApiError) as unknown:
             await glossary_router.retype_edge(

@@ -313,7 +313,7 @@ def _catalog_columns() -> str:
                    CAST(ROW_NUMBER() OVER (PARTITION BY c.table_id ORDER BY c.id) AS INTEGER)
                        AS attnum,
                    {listed} AS listed_type,
-                   -- REQ-2131: a column the asking role reads under a mask is nullable to it.
+                   -- a column the asking role reads under a mask is nullable to it.
                    c.not_null AND NOT ({masked_column_key("c.table_id", "c.column_name")}
                                        = ANY(CAST({setting("masked")} AS TEXT[]))) AS not_null
             FROM asked t
