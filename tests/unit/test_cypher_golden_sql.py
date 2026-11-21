@@ -87,6 +87,7 @@ _ADDED_AFTER_THE_SPLIT = frozenset(
         "sql_only_relationships",
         "sql_only_aliases",
         "attribute_types",  # REQ-2176: a junction attribute's registered type
+        "registered",  # REQ-1586: whether a registered relationship row declares the edge
         "directed",  # REQ-2176: a stored edge (only the session's) has one direction
         "identity_column",  # REQ-2176: a stored edge (only the session's) is its own row
         "property_zones",  # REQ-2176: a session date time's zone (only the session's)
