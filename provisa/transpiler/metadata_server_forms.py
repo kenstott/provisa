@@ -343,6 +343,23 @@ _LO_WRITES = (
 )
 
 
+#: The server options postgresql_fdw_validator accepts (foreign.c valid_options).
+_FDW_SERVER_OPTIONS = (
+    "authtype",
+    "service",
+    "connect_timeout",
+    "dbname",
+    "host",
+    "hostaddr",
+    "port",
+    "tty",
+    "options",
+    "requiressl",
+    "sslmode",
+    "gsslib",
+)
+
+
 class _Answers:
     """Each function's forms, one per arity: its form as a value, and, where it has rows, its form
     in FROM (a select)."""
@@ -1637,7 +1654,24 @@ def _catalog_objects(a: _Answers) -> None:
         + raising("XX000", "'cache lookup failed for operator class ' || c")
         + " END",
     )
-    a.strict("postgresql_fdw_validator", "options, catalog", "BOOLEAN", "true")
+    # postgresql_fdw_validator (src/backend/foreign/foreign.c): an option name outside the catalog's
+    # list is 42601 invalid option, whatever its value. A server (1417) takes the libpq names, a
+    # user mapping (1418) user and password; any other catalog takes none.
+    _server_options = ", ".join(f"'{n}'" for n in _FDW_SERVER_OPTIONS)
+    _option = "SPLIT_PART(_o, '=', 1)"
+    _invalid = (
+        f"NOT (({_option} IN ({_server_options}) AND catalog = 1417) "
+        f"OR ({_option} IN ('user', 'password') AND catalog = 1418))"
+    )
+    _refused = f"ARRAY_FILTER(options, _o -> {_invalid})"
+    a.strict(
+        "postgresql_fdw_validator",
+        "options:array, catalog:bigint",
+        "BOOLEAN",
+        f"CASE WHEN CARDINALITY({_refused}) > 0 THEN "
+        + raising("42601", f"'invalid option \"' || SPLIT_PART({_refused}[1], '=', 1) || '\"'")
+        + " ELSE true END",
+    )
     a.strict(
         "aclinsert",
         "acl, item",
