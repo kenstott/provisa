@@ -884,7 +884,9 @@ def test_a_live_lane_runs_only_the_named_tests_of_a_targeted_run(lane):
     # minutes): the live jobs were not handed the run's named tests.
     job = _lanes_workflow()["jobs"][lane]
     assert job["env"]["PROVISA_LANE_TESTS"] == "${{ inputs.tests }}"
-    assert job["needs"] == ["plan", "trino-plugins"]
+    # microsoft_365 runs with PYTEST_NO_DOCKER: it restores and needs no plugin jars.
+    expected = "plan" if lane == "microsoft_365" else ["plan", "trino-plugins"]
+    assert job["needs"] == expected
     assert job["if"].endswith(f"&& needs.plan.outputs.{lane} == 'true'")
     plan = _lanes_workflow()["jobs"]["plan"]
     assert plan["outputs"][lane] == f"${{{{ steps.plan.outputs.{lane} }}}}"
