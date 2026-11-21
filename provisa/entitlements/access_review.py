@@ -302,11 +302,11 @@ def export_csv(rows: Iterable[Mapping[str, Any]]) -> str:
 
 def check_cron(cron: str) -> str:
     """``cron`` as stored, refused unless it is a five-field cron expression."""
-    from apscheduler.triggers.cron import CronTrigger
+    from provisa.core.cron import cron_trigger
 
     text = cron.strip()
     try:
-        CronTrigger.from_crontab(text, timezone=UTC)
+        cron_trigger(text, timezone=UTC)
     except ValueError as exc:
         raise ReviewRefused(
             "access_review.cron_invalid",
@@ -325,10 +325,10 @@ def cron_of(overrides: Mapping[str, Any]) -> str | None:
 def due(cron: str, last: datetime | None, now: datetime) -> bool:
     """Whether a cron time of ``cron`` has passed since ``last`` (the last scheduled review), or,
     with none yet, within the last check interval."""
-    from apscheduler.triggers.cron import CronTrigger
+    from provisa.core.cron import cron_trigger
 
     since = last if last is not None else now - timedelta(minutes=RUN_MINUTES)
-    fire = CronTrigger.from_crontab(cron, timezone=UTC).get_next_fire_time(None, since)
+    fire = cron_trigger(cron, timezone=UTC).get_next_fire_time(None, since)
     return fire is not None and since < fire <= now
 
 
