@@ -11212,5 +11212,6 @@
   "he/yourData.json::yourData.pgwire": "Connection string for a SQL client (pgwire)",
   "he/yourData.json::yourData.rest": "REST",
   "he/yourData.json::yourData.sql": "SQL",
-  "he/yourData.json::yourData.title": "Your data"
+  "he/yourData.json::yourData.title": "Your data",
+  "he/syncingTab.json::syncingTab.diffBothOff": "Both directions are off, so no differences are listed."
 }

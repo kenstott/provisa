@@ -11212,5 +11212,6 @@
   "fr/yourData.json::yourData.rest": "REST",
   "fr/yourData.json::yourData.sql": "SQL",
   "fr/yourData.json::yourData.title": "Your data",
-  "glossaryTab.json::glossaryTab.tablesWithoutSamples": "No sample values were read from: {{tables}}."
+  "glossaryTab.json::glossaryTab.tablesWithoutSamples": "No sample values were read from: {{tables}}.",
+  "fr/syncingTab.json::syncingTab.diffBothOff": "Both directions are off, so no differences are listed."
 }

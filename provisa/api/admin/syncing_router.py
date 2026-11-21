@@ -472,7 +472,9 @@ async def review_entry(request: Request, entry_id: str) -> dict:  # REQ-2247, RE
         "provider": entry.provider,
         # Which sides a decision may take: Provisa's is an Export, the catalog's an Import.
         "directions": {"export": entry.exports, "import": entry.imports},
-        **syncing_review.grouped(diffs, await _standing_choices(entry_id)),
+        **syncing_review.grouped(
+            syncing_review.listed(entry, diffs), await _standing_choices(entry_id)
+        ),
     }
 
 

@@ -431,6 +431,52 @@ async def test_a_side_whose_direction_is_off_is_refused(entry):
 
 
 @pytest.mark.asyncio
+async def test_a_direction_that_is_off_lists_none_of_its_differences(entry):
+    """REQ-2247: Provisa moved off the last exchange is Export's, the catalog's move Import's."""
+    async with _conn() as conn:
+        await catalog_exchange.record(
+            conn,
+            "mz",
+            "export",
+            [(sv.DESCRIPTION, GROUP, "Orders, as the catalog says")],
+            decided_by="publish",
+        )
+    entry.catalog.values = _catalog_values(
+        description__wh_public_orders="Orders, as the catalog says",
+        tag__wh_public_orders=("PII.Sensitive",),
+    )
+
+    def kinds(body):
+        return [k["kind"] for k in body["kinds"]]
+
+    both = await _review()
+    assert (both["total"], kinds(both)) == (2, [sv.DESCRIPTION, sv.TAG])
+
+    entry.settings["catalogs"] = [
+        _catalog(provider="openmetadata", role="steward", direction="export")
+    ]
+    export_only = await _review()
+    assert (export_only["total"], kinds(export_only)) == (1, [sv.DESCRIPTION])
+
+    entry.settings["catalogs"] = [
+        _catalog(provider="openmetadata", role="steward", direction="import")
+    ]
+    import_only = await _review()
+    assert (import_only["total"], kinds(import_only)) == (1, [sv.TAG])
+
+
+def test_both_directions_off_lists_no_differences():
+    from types import SimpleNamespace
+
+    from provisa.api.admin import syncing_review as sr
+
+    ours = sv.SyncValue(sv.DESCRIPTION, "g", "o", "a")
+    diff = sr.Difference(ours, sv.SyncValue(sv.DESCRIPTION, "g", "o", "b"), None)
+    off = SimpleNamespace(exports=False, imports=False)
+    assert sr.listed(off, [diff]) == []  # type: ignore[arg-type]
+
+
+@pytest.mark.asyncio
 async def test_taking_a_catalogs_tag_is_refused_by_name(entry):
     entry.catalog.values = _catalog_values(tag__wh_public_orders=("PII.Sensitive",))
     with pytest.raises(ApiError) as caught:

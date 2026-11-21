@@ -11213,5 +11213,6 @@
   "zh-HK/yourData.json::yourData.pgwire": "Connection string for a SQL client (pgwire)",
   "zh-HK/yourData.json::yourData.rest": "REST",
   "zh-HK/yourData.json::yourData.sql": "SQL",
-  "zh-HK/yourData.json::yourData.title": "Your data"
+  "zh-HK/yourData.json::yourData.title": "Your data",
+  "zh-HK/syncingTab.json::syncingTab.diffBothOff": "Both directions are off, so no differences are listed."
 }
