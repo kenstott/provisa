@@ -251,7 +251,7 @@ async def test_the_columns_the_catalog_calls_personal_and_provisa_does_not_mask(
         )
     assert resp.status_code == 200, f"{resp.text}\n{srv.dump_stderr_debug()[-6000:]}"
     body = resp.json()
-    rows = body.get("data") or body.get("rows") or []
+    rows = body["data"]["sql"]
     assert [(r["table_name"], r["column_name"]) for r in rows] == [("customers", "email")], body
     # the catalog was read to its end, the second page by the cursor the first answered
     reads = [q.get("after") for q in catalog.asked]
