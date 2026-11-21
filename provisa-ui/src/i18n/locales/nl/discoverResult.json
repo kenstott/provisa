@@ -46,6 +46,7 @@
       "existing": "al geregistreerd",
       "rejected": "eerder afgewezen",
       "out_of_scope": "buiten de gekozen tabellen"
-    }
+    },
+    "keyNames": "Sleutelnamen en -typen: {{found}} gevonden, {{count}} voorgesteld."
   }
 }

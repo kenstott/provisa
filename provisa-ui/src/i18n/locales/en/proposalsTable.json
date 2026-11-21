@@ -54,7 +54,9 @@
         "target": "You cannot read the target column."
       },
       "noValues": "The source holds no values.",
-      "modelScore": "Scored by the model: no values were compared."
+      "modelScore": "Scored by the model: no values were compared.",
+      "ruleForeignKeys": "Produced by a declared foreign key: no values were compared.",
+      "ruleKeyNames": "Produced by a matching key name and type: no values were compared."
     },
     "dimensionMade": "Accepting makes the shared dimension {{name}}, which both columns join.",
     "dimensionJoined": "Accepting joins both columns to the shared dimension {{name}}.",
