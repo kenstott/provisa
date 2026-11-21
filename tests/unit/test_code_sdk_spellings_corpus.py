@@ -50,8 +50,8 @@ def test_the_docs_show_the_docstring_tab_before_the_sdk_tab(tmp_path):
     pairs, problems = doc_cases(markdown)
     assert pairs == []
     assert problems == [
-        "page.md:7: a tagged python example is not the 'Docstring' tab of a 'Docstring'/'SDK' pair",
-        "page.md:13: the 'Docstring' tab has no 'SDK' tab next",
+        "page.md:5: a tagged python example is not the 'Docstring' tab of a 'Docstring'/'SDK' pair",
+        "page.md:11: the 'Docstring' tab has no 'SDK' tab next",
     ]
 
 

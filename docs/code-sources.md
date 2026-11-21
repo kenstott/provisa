@@ -354,6 +354,7 @@ Use `@loader` when one call over many keys does better than many calls over one:
 
     ```python
     from dataclasses import dataclass
+    from typing import cast
 
     from provisa_sdk import table
     from provisa_services import ReadContext
@@ -380,7 +381,8 @@ Use `@loader` when one call over many keys does better than many calls over one:
         rows = {h: {"plan": "basic", "region": "US", **key} for h, key in keys.items()}
         scores = MODEL.predict(features(list(rows.values())))  # one vectorized call for the batch
         out = {h: [Score(r["customer_id"], s)] for (h, r), s in zip(rows.items(), scores)}
-        return out if context.keys else out[""]  # a loader call returns the hash of key to rows
+        # A loader call returns the hash of each key to its rows; the declared type is the rows.
+        return cast(list[Score], out if context.keys else out[""])
     ```
 
     `@table(loader=100)` is `@loader 100`.
