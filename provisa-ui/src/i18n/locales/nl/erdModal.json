@@ -20,6 +20,9 @@
     "collapseAll": "Alles samenvouwen",
     "expandAll": "Alles uitvouwen",
     "fitAll": "Alles passend maken",
+    "download": "Downloaden",
+    "fullscreen": "Volledig scherm",
+    "exitFullscreen": "Volledig scherm sluiten",
     "downloadSvg": "SVG downloaden",
     "downloadPng": "PNG downloaden",
     "downloadJpeg": "JPEG downloaden",
@@ -31,6 +34,7 @@
     "focusDomains": "Domeinen: {{names}}",
     "focusTables": "Tabellen: {{names}}",
     "focusMissing": "Niet gevonden: {{names}}",
-    "showAll": "Alles tonen"
+    "showAll": "Alles tonen",
+    "showWithdrawn": "Teruggetrokken tonen"
   }
 }

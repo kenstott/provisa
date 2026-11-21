@@ -51,18 +51,31 @@ def refused(sqlstate: str, message: str, sql_type: str = "INTEGER") -> str:
     return f"CAST(CAST({text} AS INTEGER) AS {sql_type})"
 
 
-def _fails(sqlstate: str, message: str, sql_type: str = "INTEGER") -> str:
+def fails(sqlstate: str, message: str, sql_type: str = "INTEGER") -> str:
     """A refusal whose message is a constant."""
     return refused(sqlstate, _quoted(message), sql_type)
+
+
+_fails = fails
 
 
 #: Ends the refusal of a value a form cannot answer as PostgreSQL does.
 REFUSED = "does not read this value"
 
 
-def _not_served(function: str, sql_type: str) -> str:
+def not_served(function: str, sql_type: str) -> str:
     """A value this form cannot answer as PostgreSQL does: refused by name, not answered."""
     return _fails("0A000", f"{function} {REFUSED}", sql_type)
+
+
+_not_served = not_served
+
+
+def rint(value: str) -> str:
+    """float8's rint, half to even: ROUND is half away from zero on most dialects."""
+    x = f"CAST({value} AS DOUBLE PRECISION)"
+    half = f"{x} - FLOOR({x}) = 0.5"
+    return f"CASE WHEN {half} THEN 2 * ROUND({x} / 2) ELSE ROUND({x}) END"
 
 
 def _bound(value: str, answer: str, name: str) -> str:
@@ -221,9 +234,6 @@ _ORDERED: tuple[_Ordered, ...] = (
     _Ordered("pg_lsn_", _lsn_key("{}"), cmp=True, picks=True, shown=_lsn_text(_lsn_number("{}"))),
     _Ordered("tid", _tid_key("{}"), picks=True, shown=_TEXT),
     _Ordered("name", _NAME),
-    _Ordered("array_", "{}", picks=True),
-    _Ordered("record_", "({})"),
-    _Ordered("record_image_", "({})"),
 )
 
 
@@ -303,6 +313,12 @@ def _in_range(value: str, sql_type: str, pg_name: str, bits: int) -> str:
         f"THEN {_fails('22003', f'{pg_name} out of range', sql_type)} "
         f"ELSE CAST({value} AS {sql_type}) END"
     )
+
+
+def integer_of(value: str, stem: str) -> str:
+    """``value`` as the integer type ``stem`` names, or PostgreSQL's refusal of one it does not fit."""
+    _, sql_type, pg_name, _, bits = next(row for row in _INTEGERS if row[0] == stem)
+    return _in_range(value, sql_type, pg_name, bits)
 
 
 def _shifted_left(own: str, sql_type: str, bits: int) -> str:
@@ -660,7 +676,12 @@ def _inet_moved(name: str, params: str, inet: str, number: str) -> Form:
 
 
 def _set_masklen(name: str, cleared: bool) -> Form:
-    bits = "CASE WHEN CAST(b AS INTEGER) = -1 THEN 32 ELSE CAST(b AS INTEGER) END"
+    # NULL for an IPv6 value, which _v4 refuses before this branch: DuckDB 2.0 evaluates the
+    # branch's bound subquery even when it is not taken, and its mask check must not raise then.
+    bits = (
+        "CASE WHEN STRPOS(CAST(a AS TEXT), ':') > 0 THEN CAST(NULL AS INTEGER) "
+        "WHEN CAST(b AS INTEGER) = -1 THEN 32 ELSE CAST(b AS INTEGER) END"
+    )
     wrote = _inet_text(_network("a", "_n") if cleared else "_ipa", "_n")
     if cleared:
         wrote = f"CAST({_dotted(_network('a', '_n'))} || '/' || CAST(_n AS TEXT) AS TEXT)"
@@ -846,7 +867,7 @@ def _interval_of(months: str, days: str, micros: str) -> str:
     )
 
 
-def _interval_scaled(function: str, op: str) -> str:
+def _interval_scaled(function: str, op: str, factor: str = "CAST(b AS DOUBLE PRECISION)") -> str:
     """interval_mul and interval_div, as timestamp.c cascades them: what ``op`` leaves of a month
     runs on to days at thirty a month and what it leaves of a day to seconds, each rounded to six
     places; rounding may leave a whole day of seconds, which is carried."""
@@ -861,7 +882,7 @@ def _interval_scaled(function: str, op: str) -> str:
     return _bound(
         "CAST(a AS INTERVAL)",
         _bound(
-            "CAST(b AS DOUBLE PRECISION)",
+            factor,
             f"CASE WHEN ABS(_x) = CAST('Infinity' AS DOUBLE PRECISION) "
             f"OR _x = CAST('NaN' AS DOUBLE PRECISION) "
             f"THEN {_not_served(function, 'INTERVAL')} "
@@ -881,7 +902,9 @@ _INTERVAL_SCALED: tuple[Form, ...] = (
         "a, b",
         f"CASE {_strict('INTERVAL')}WHEN CAST(b AS DOUBLE PRECISION) = 0 "
         f"THEN {_fails('22012', _DIVISION_BY_ZERO, 'INTERVAL')} ELSE "
-        + _interval_scaled("interval_div", "/")
+        # The divisor bound NULLIF 0: this branch's subquery is evaluated by DuckDB 2.0 even when
+        # the zero divisor (or a NULL argument) has already been answered above.
+        + _interval_scaled("interval_div", "/", "NULLIF(CAST(b AS DOUBLE PRECISION), 0)")
         + " END",
     ),
 )
@@ -963,6 +986,8 @@ OPERATORS: tuple[Form, ...] = (
 
 
 #: PostgreSQL's array operators, in the dialect sqlglot writes them for: any other refuses them.
+FORMS_BY_NAME = {form.name: form for form in OPERATORS}
+
 ARRAY_OPERATORS: tuple[Form, ...] = (
     # A NULL element is equal to nothing, so an array holding one is contained in no other.
     Form("arraycontains", "a, b", "a @> b AND ARRAY_POSITION(b, NULL) IS NULL"),
@@ -978,10 +1003,18 @@ DUCKDB_TWEAKS = {
     )
     for form in OPERATORS
     if form.name == "int8div"
+} | {
+    # DuckDB's date holds infinity, which PostgreSQL's date_pli and date_mii answer as it is: the
+    # day count of DuckDB's marker would read as a finite day past the range.
+    form.name: f"CASE WHEN isfinite(CAST(a AS DATE)) THEN {form.sql} ELSE CAST(a AS DATE) END"
+    for form in _DATED_ARITHMETIC
+    if form.name in ("date_pli", "date_mii")
 }
 #: The forms that read an argument's text: a statement's cast to their type says nothing more, and
 #: a cast to character(n) says how far it pads.
-HELD = frozenset(form.name for form in OPERATORS if form.name.startswith(("tid", "bpchar")))
+HELD = frozenset(form.name for form in OPERATORS if form.name.startswith(("tid", "bpchar"))) | {
+    "width_bucket_numeric"
+}
 #: The forms whose overflow only the engine's own arithmetic raises: they check no range themselves.
 #: date_subtract's AT TIME ZONE is also what sqlglot drops for MySQL.
 OVERFLOW_UNCHECKED = frozenset(form.name for form in (*_numeric_forms(), *_DATED_ARITHMETIC))

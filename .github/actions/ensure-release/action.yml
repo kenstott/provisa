@@ -1,7 +1,7 @@
 name: Ensure release exists
 description: >-
-  Idempotently create the GitHub release for the pushed tag as a DRAFT so the
-  several tag-triggered workflows (and their parallel matrix jobs) never race on
+  Idempotently create the GitHub release for the release's tag as a DRAFT so the
+  several release workflows (and their parallel matrix jobs) never race on
   creation. After this runs, every attach step only ever performs an idempotent
   asset upload, never a create POST that can return "already_exists".
 
@@ -13,7 +13,7 @@ inputs:
   tag:
     description: >-
       The release's tag. By default the pushed ref's name; a leg of the release orchestrator
-      passes the version it was given, which is the same on a tag push.
+      passes the version it was given.
     default: ""
 runs:
   using: composite

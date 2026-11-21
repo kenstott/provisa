@@ -51,9 +51,14 @@ async def execute_webhook(  # REQ-209, REQ-211, REQ-220
         httpx.TimeoutException: if the request exceeds timeout_ms
         httpx.HTTPStatusError: if response indicates an error (4xx/5xx)
     """
+    from provisa.security import sandbox_egress
+
     timeout = httpx.Timeout(webhook.timeout_ms / 1000.0)
 
-    async with httpx.AsyncClient(timeout=timeout) as client:
+    # REQ-2006: a held org's webhook reaches public destinations only, each request checked.
+    async with httpx.AsyncClient(
+        timeout=timeout, event_hooks=sandbox_egress.endpoint_event_hooks()
+    ) as client:
         response = await client.request(
             method=webhook.method,
             url=webhook.url,

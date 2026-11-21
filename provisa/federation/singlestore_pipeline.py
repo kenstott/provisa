@@ -39,6 +39,8 @@ import json
 from dataclasses import dataclass
 from typing import Any
 
+from provisa.kafka.security import HINT_CA, PLAINTEXT, KafkaSecurity
+
 #: The store backend (SQLAlchemy dialect name) whose engine lands by pipeline.
 PIPELINE_STORE = "singlestoredb"
 
@@ -61,6 +63,9 @@ class LandOrigin:
     source_type: str
     location: str
     format: str
+    # REQ-147: a Kafka source that names its own CA. A pipeline reads one only from a file on
+    # SingleStore's nodes, which Provisa cannot place, so such a table keeps the relay.
+    private_ca: bool = False
 
 
 def _scheme(location: str) -> str:
@@ -85,7 +90,10 @@ def origin_of(source: Any, table: Any = None) -> LandOrigin:
     if source_type == "kafka":
         kafka = _field(_field(table, "live"), "kafka")
         return LandOrigin(
-            "kafka", _field(kafka, "topic") or "", (_field(kafka, "format") or "json").lower()
+            "kafka",
+            _field(kafka, "topic") or "",
+            (_field(kafka, "format") or "json").lower(),
+            private_ca=bool((_field(source, "federation_hints") or {}).get(HINT_CA)),
         )
     return LandOrigin(source_type, source.path or "", source_type)
 
@@ -95,7 +103,7 @@ def lands_by_pipeline(origin: LandOrigin) -> bool:
     relay; that is decided by type, not tried and then fallen back to. Raises
     :class:`PipelineRefused` for an origin in the pipeline's scope that cannot land yet."""
     if origin.source_type == "kafka":
-        return origin.format in _KAFKA_PIPELINE_FORMATS
+        return origin.format in _KAFKA_PIPELINE_FORMATS and not origin.private_ca
     if origin.source_type not in _FILE_PIPELINE_FORMATS | {"iceberg"}:
         return False
     store = object_store(origin.location)
@@ -374,6 +382,7 @@ def kafka_pipeline_ddl(
     pk_columns: list[str],
     field_mapping: dict[str, str] | None = None,
     schema_registry: str | None = None,
+    security: KafkaSecurity = PLAINTEXT,
 ) -> list[str]:
     """The statements that land a Kafka topic into ``table`` continuously, in order.
 
@@ -394,6 +403,12 @@ def kafka_pipeline_ddl(
         f"{_ident(pk_columns[0])} = VALUES({_ident(pk_columns[0])})"
     )
     source = f"LOAD DATA KAFKA {_literal(f'{bootstrap}/{origin.location}')}"
+    settings = security.pipeline_config()  # REQ-147
+    if settings is not None:
+        config, credentials = settings
+        source += f" CONFIG {_json_literal(config)}"
+        if credentials:
+            source += f" CREDENTIALS {_json_literal(credentials)}"
     target_table = _qualified(schema, table)
     if origin.format == "avro":
         if not schema_registry:
@@ -477,22 +492,24 @@ def kafka_definition(
     field_mapping: dict[str, str] | None,
     schema_registry: str | None,
     bootstrap: str,
+    security: KafkaSecurity = PLAINTEXT,
 ) -> str:
     """A digest of everything a Kafka pipeline's DDL is made from. A table whose digest changes
     gets a new pipeline (and loses the old one), and an unchanged table keeps its running
-    pipeline and its offsets."""
-    body = json.dumps(
-        [
-            origin.location,
-            origin.format,
-            columns,
-            sorted(pk_columns),
-            sorted((field_mapping or {}).items()),
-            schema_registry,
-            bootstrap,
-        ],
-        sort_keys=True,
-    )
+    pipeline and its offsets. REQ-147: the settings of a secured source count, its password not:
+    the digest names the pipeline, and a name is logged. A plain source's digest is what it was."""
+    parts: list[Any] = [
+        origin.location,
+        origin.format,
+        columns,
+        sorted(pk_columns),
+        sorted((field_mapping or {}).items()),
+        schema_registry,
+        bootstrap,
+    ]
+    if security != PLAINTEXT:
+        parts.append([security.protocol, security.mechanism, security.username])
+    body = json.dumps(parts, sort_keys=True)
     return hashlib.sha256(body.encode()).hexdigest()[:8]
 
 

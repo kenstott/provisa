@@ -10,7 +10,9 @@
 
 """PostgreSQL's json functions on a real engine (REQ-2171, AN ANSWER THAT DIFFERS IS REFUSED): each
 statement of tests/unit/pgwire/pg17_json_answers.py, written as Provisa writes it for the engine and
-run there, its cells as pgwire would serve them, against PostgreSQL 17's recorded answer."""
+run there, its cells as pgwire would serve them, against PostgreSQL 17's recorded answer. A statement
+conformance-functions measures on the engine is not replayed here
+(tests/integration/replay_coverage.py)."""
 
 # Requirements: REQ-2167, REQ-2171
 
@@ -26,6 +28,7 @@ import pytest
 from provisa.pgwire.cast_types import result_casts
 from provisa.transpiler.function_macros import FunctionRefused
 from provisa.transpiler.transpile import transpile, transpile_to_trino
+from tests.integration.replay_coverage import remaining
 from tests.unit.pgwire.pg17_json_answers import RECORDED
 from tests.unit.pgwire.pg17_json_matrix import MATRIX, SERVED, outcome, text_of
 
@@ -42,10 +45,19 @@ def _served(sql: str, rows: list[Any]) -> list[tuple]:
     return [tuple(cell(i, value) for i, value in enumerate(row)) for row in rows]
 
 
-def _replayed(written: Callable[[str], str], run: Callable[[str], list[Any]]) -> dict[str, str]:
-    """Each statement's outcome, where it is not an answer PostgreSQL gave."""
+def _expected(engine: str) -> dict[str, str]:
+    """pg17_json_matrix's outcomes on ``engine`` of the statements replayed there."""
+    replayed_there = frozenset(remaining("json", engine, RECORDED))
+    return {sql: said for sql, said in MATRIX[engine].items() if sql in replayed_there}
+
+
+def _replayed(
+    engine: str, written: Callable[[str], str], run: Callable[[str], list[Any]]
+) -> dict[str, str]:
+    """Each statement's outcome on ``engine``, where it is not an answer PostgreSQL gave."""
     found: dict[str, str] = {}
-    for sql, recorded in RECORDED.items():
+    for sql in remaining("json", engine, RECORDED):
+        recorded = RECORDED[sql]
         try:
             found[sql] = outcome(sql, recorded, _served(sql, run(written(sql))), False)
         except FunctionRefused:
@@ -62,8 +74,8 @@ def test_json_on_trino(trino_conn):
         cursor.execute(sql)
         return cursor.fetchall()
 
-    found = _replayed(transpile_to_trino, run)
-    assert found == MATRIX["trino"], json.dumps({"trino": found})
+    found = _replayed("trino", transpile_to_trino, run)
+    assert found == _expected("trino"), json.dumps({"trino": found})
 
 
 @pytest.mark.requires_clickhouse
@@ -80,5 +92,5 @@ def test_json_on_clickhouse():
     def written(sql: str) -> str:
         return transpile(sql, "clickhouse")
 
-    found = _replayed(written, lambda sql: list(client.query(sql).result_rows))
-    assert found == MATRIX["clickhouse"], json.dumps({"clickhouse": found})
+    found = _replayed("clickhouse", written, lambda sql: list(client.query(sql).result_rows))
+    assert found == _expected("clickhouse"), json.dumps({"clickhouse": found})

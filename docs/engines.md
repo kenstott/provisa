@@ -72,8 +72,8 @@ library.
 | `sqlalchemy` | Any SQLAlchemy URL |
 | `mysql`, `mariadb`, `tidb`, `singlestore` | MySQL and its wire-compatible relatives |
 | `greenplum`, `cockroachdb`, `yugabytedb`, `opengauss` | PostgreSQL-wire relatives |
-| `oracle`, `mssql`, `db2`, `teradata` | Enterprise RDBMS |
-| `saphana`, `sapase`, `sqlanywhere` | SAP |
+| `oracle`, `mssql`, `db2` | Enterprise RDBMS |
+| `saphana` | SAP |
 | `redshift`, `vertica`, `exasol`, `monetdb` | Analytic stores |
 | `firebird` | Firebird |
 
@@ -113,6 +113,8 @@ The functions Provisa ships for Cypher tools (the APOC set, see [Commands](comma
 <!-- engine-function-anomalies:begin -->
 | Engine | Function not available |
 | --- | --- |
+| `bigquery` | `apoc.coll.toSet` |
+| `bigquery` | `apoc.coll.union` |
 | `clickhouse` | `apoc.map.fromLists` |
 | `clickhouse-server` | `apoc.map.fromLists` |
 | `snowflake` | `apoc.map.fromLists` |

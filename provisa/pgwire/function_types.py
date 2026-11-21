@@ -21,11 +21,13 @@ matches, its type is not known here."""
 
 from __future__ import annotations
 
+import contextvars
 from typing import Any
 
 import sqlglot.expressions as exp
 
 from provisa.core.pg_range import MULTIRANGE_TYPES, RANGE_TYPES
+from provisa.pgwire.catalog_pg17 import TYPES
 from provisa.pgwire.catalog_pg17_overloads import FUNCTION_OVERLOADS
 from provisa.transpiler.pg_literals import values_cast
 from provisa.transpiler.xml_syntax import RETURNS_XML, XML_VALUES
@@ -96,7 +98,7 @@ def _arg_type(arg: exp.Expr, literal: str | None, numbers: bool) -> str | None:
     string literal is of unknown type, which overload resolution fits to the overload: ``literal``
     is what it is read as (None: any type). ``numbers``: a numeric literal has the type it reads
     as; otherwise it is said to fit any overload, as PostgreSQL's implicit casts widen it."""
-    if isinstance(arg, (exp.Neg, exp.Paren)):
+    if isinstance(arg, (exp.Neg, exp.Paren, exp.Order)):  # an aggregate's value ORDER BY ...
         return _arg_type(arg.this, literal, numbers)
     if isinstance(arg, exp.Literal):
         if arg.is_string:
@@ -113,7 +115,7 @@ def _arg_type(arg: exp.Expr, literal: str | None, numbers: bool) -> str | None:
         to = arg.to
         if isinstance(to, exp.ObjectIdentifier) or to.this == exp.DataType.Type.USERDEFINED:
             spelled = to.sql(dialect="postgres").lower().removeprefix("pg_catalog.")
-            return "bit varying" if spelled == "varbit" else spelled
+            return {"varbit": "bit varying", "_cstring": "cstring[]"}.get(spelled, spelled)
         if to.this == exp.DataType.Type.ARRAY:
             element = _PG_NAMES.get(to.expressions[0].this) if to.expressions else None
             return None if element is None else f"{element}[]"
@@ -122,6 +124,13 @@ def _arg_type(arg: exp.Expr, literal: str | None, numbers: bool) -> str | None:
     if call is not None:
         return call_result_type(arg)
     return None
+
+
+def argument_type(arg: exp.Expr) -> str | None:
+    """PostgreSQL's name of the type a statement says of ``arg``, None where it does not say one
+    (a column, an untyped literal, a call whose overload is not known). REQ-2236's typed holes read
+    an argument's type this way."""
+    return _arg_type(arg, None, True)
 
 
 def _call(expression: exp.Expr) -> tuple[list[str], list[exp.Expr]] | None:
@@ -184,6 +193,48 @@ _RETURNS_ITS_BASE = frozenset(
 )
 
 
+#: The window functions that return a value of their first argument (pg_proc's anyelement, which
+#: its list of overloads does not hold): lag and lead with a default return the common type of the
+#: value and the default.
+_OF_ITS_VALUE = frozenset({"first_value", "last_value", "nth_value", "lag", "lead"})
+
+
+def _value_type(name: str, args: list[exp.Expr]) -> str | None:
+    """A window function's value: its first argument's type, which a default must share."""
+    value = _arg_type(args[0], None, True)
+    if name in ("lag", "lead") and len(args) == 3 and _arg_type(args[2], None, True) != value:
+        return None
+    return value
+
+
+def _ordered_set_type(within: exp.WithinGroup) -> str | None:
+    """An ordered-set aggregate's result: percentile_disc and mode return the type they order
+    by, percentile_cont a double precision (an interval of intervals), each an array of it for
+    an array of fractions."""
+    call = _call(within.this)
+    order = within.expression
+    if call is None or not isinstance(order, exp.Order) or len(order.expressions) != 1:
+        return None
+    names, args = call
+    ordered = order.expressions[0]
+    by = _arg_type(ordered.this if isinstance(ordered, exp.Ordered) else ordered, None, True)
+    fractions = _arg_type(args[0], None, True) if args else None
+    of_array = "[]" if fractions is not None and fractions.endswith("[]") else ""
+    if by is None:
+        return None
+    if "mode" in names:
+        return by
+    if "percentile_disc" in names:
+        return by + of_array
+    if "percentile_cont" in names:
+        return ("interval" if by == "interval" else "double precision") + of_array
+    return None
+
+
+#: Each built-in type, as format_type names it. Any other name a statement casts to may be its enum.
+_BUILT_IN = frozenset(row[-1] for row in TYPES.values())
+
+
 def _fits(argument: str | None, parameter: str) -> bool:
     """A string argument fits a character varying parameter as it fits a text one, any argument a
     polymorphic parameter of no kind, and a range or multirange the pseudo-type of its kind."""
@@ -191,16 +242,59 @@ def _fits(argument: str | None, parameter: str) -> bool:
         argument is None
         or argument == parameter
         or parameter in _OF_ANY_TYPE
-        or (parameter == "anynonarray" and not argument.endswith("[]"))
+        or (parameter in _NONARRAYS and not argument.endswith("[]"))
+        or (
+            parameter == "anyenum" and argument not in _BUILT_IN
+        )  # only the server's catalog names one
         or (argument == "text" and parameter == "character varying")
-        or (parameter == "anyarray" and argument.endswith("[]"))
-        or (parameter == "anyrange" and argument in RANGE_TYPES)
-        or (parameter == "anymultirange" and argument in MULTIRANGE_TYPES)
+        or (parameter in ("anyarray", "anycompatiblearray") and argument.endswith("[]"))
+        or (parameter in ("anyrange", "anycompatiblerange") and argument in RANGE_TYPES)
+        or (
+            parameter in ("anymultirange", "anycompatiblemultirange")
+            and argument in MULTIRANGE_TYPES
+        )
     )
 
 
-def _resolved(returns: str, arg_types: list[str | None]) -> str:
-    """A polymorphic result as the array, range or multirange among the arguments makes it."""
+def fits(argument: str | None, parameter: str) -> bool:
+    """Whether an argument of type ``argument`` (None: not said) fits a parameter of type
+    ``parameter``, as overload resolution here fits it."""
+    return _fits(argument, parameter)
+
+
+#: The polymorphic parameters of each family that take an element, or an array of one.
+_NONARRAYS = frozenset({"anynonarray", "anycompatiblenonarray"})
+_ELEMENTS = {
+    "anyelement": frozenset({"anyelement", "anynonarray", "anyenum"}),
+    "anycompatible": frozenset({"anycompatible", "anycompatiblenonarray"}),
+}
+_ARRAYS = {"anyelement": "anyarray", "anycompatible": "anycompatiblearray"}
+_FAMILY = {
+    **{p: family for family, params in _ELEMENTS.items() for p in params},
+    **{a: family for family, a in _ARRAYS.items()},
+}
+
+
+def _element(family: str, params: tuple[str, ...], arg_types: list[str | None]) -> str | None:
+    """The element type a family's arguments resolve to: an element's own type, an array's
+    element (PostgreSQL's enforce_generic_type_consistency)."""
+    for param, argument in zip(params, arg_types):
+        if argument is None:
+            continue
+        if param in _ELEMENTS[family]:
+            return argument
+        if param == _ARRAYS[family] and argument.endswith("[]"):
+            return argument[:-2]
+    return None
+
+
+def _resolved(returns: str, arg_types: list[str | None], params: tuple[str, ...] = ()) -> str:
+    """A polymorphic result as the element, array, range or multirange among the arguments
+    makes it."""
+    family = _FAMILY.get(returns)
+    element = None if family is None else _element(family, params, arg_types)
+    if element is not None:
+        return f"{element}[]" if returns in _ARRAYS.values() else element
     if returns == "anyarray":
         return next((a for a in arg_types if a is not None and a.endswith("[]")), returns)
     if returns not in ("anyelement", "anyrange", "anymultirange"):
@@ -215,13 +309,39 @@ def _resolved(returns: str, arg_types: list[str | None]) -> str:
     return returns
 
 
+#: The types of the calls one typing has read, by node: a call's type does not depend on how the
+#: call holding it reads its literals, and each of the four readings call_result_type tries reads
+#: every call it holds again, which is exponential in their nesting (a range form of polyfill's,
+#: typed by a row, ran for minutes).
+_TYPED: contextvars.ContextVar[dict[int, tuple[exp.Expr, str | None]] | None] = (
+    contextvars.ContextVar("_TYPED", default=None)
+)
+
+
 def call_result_type(expression: exp.Expr) -> str | None:
     """The format_type name of what a call of a pg_catalog function returns; None when the
     expression is not such a call or its overload is not known from the statement."""
+    typed = _TYPED.get()
+    if typed is not None:
+        if id(expression) not in typed:  # the node is held with its type: its id is not reused
+            typed[id(expression)] = (expression, _call_result_type(expression))
+        return typed[id(expression)][1]
+    token = _TYPED.set({})  # one typing: the tree is not changed while it is read
+    try:
+        return call_result_type(expression)
+    finally:
+        _TYPED.reset(token)
+
+
+def _call_result_type(expression: exp.Expr) -> str | None:
     if isinstance(expression, exp.Dot):
         expression = expression.expression
     if isinstance(expression, exp.Window):
         expression = expression.this
+    if isinstance(expression, exp.Column) and isinstance(expression.this, exp.WithinGroup):
+        expression = expression.this  # pg_catalog.f(...) WITHIN GROUP: sqlglot's column of it
+    if isinstance(expression, exp.WithinGroup):
+        return _ordered_set_type(expression)
     if isinstance(expression, XML_VALUES):
         return "xml"  # PostgreSQL's grammar has these, and pg_proc none
     call = _call(expression)
@@ -230,6 +350,8 @@ def call_result_type(expression: exp.Expr) -> str | None:
     names, args = call
     if names[0] in _RETURNS_ITS_BASE and args:
         return _arg_type(args[0], None, True)
+    if names[0] in _OF_ITS_VALUE and args:
+        return _value_type(names[0], args)
     if names[0] == "ntile":
         return "integer"  # a window function: pg_proc's list of overloads does not hold it
     if names[0] in RETURNS_XML and names[0] not in FUNCTION_OVERLOADS:
@@ -246,7 +368,7 @@ def call_result_type(expression: exp.Expr) -> str | None:
         arg_types = [_arg_type(a, literal, numbers) for a in args]
         for name in names:
             candidates = {
-                _resolved(returns, arg_types)
+                _resolved(returns, arg_types, params)
                 for params, returns in FUNCTION_OVERLOADS.get(name, ())
                 if (len(params) == len(arg_types) or params == _VARIADIC_ANY)
                 and all(_fits(t, p) for t, p in zip(arg_types, params))

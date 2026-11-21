@@ -10,8 +10,9 @@
 
 """data_residency (REQ-1921, "a region governs where data may be, a domain governs who owns it"):
 setting, changing or removing where an object's data lives needs the right, for the values its
-grant lists (the org's regions and "no region"). P -> Q needs both; a new object needs Q; a draft
-object needs only Q (a claim). A refusal names the value not covered. The right exists only when
+grant lists (the org's regions and "no region"). P -> Q needs both; a new object needs Q. A move
+may pass through withdrawn instead, by two holders: withdrawing needs P, putting back into Q needs
+Q. A refusal names the value not covered. The right exists only when
 the platform declares regions."""
 
 # Requirements: REQ-1921
@@ -28,7 +29,9 @@ from provisa.security.residency import (
     CREATED,
     NO_REGION,
     ResidencyRefused,
+    WithdrawRefused,
     require_change,
+    require_covers,
 )
 
 EU_US = {"eu", "us"}
@@ -66,11 +69,32 @@ def test_a_change_needs_every_value_it_touches_covered(covered, before, after, r
     assert refused.value.params == {"object": "table orders", "value": refused_value}
 
 
-def test_a_draft_object_is_claimed_with_its_destination_alone():
-    require_change({"us"}, "table orders", "eu", "us", draft=True)
+def test_a_move_through_withdrawn_takes_a_holder_for_each_region():
+    """The origin's holder withdraws; the destination's holder puts it back. Neither needs the
+    other's region."""
+    eu_holder, us_holder = {"eu"}, {"us"}
+    require_covers(eu_holder, "table orders", "eu", withdrawing=True)
+    with pytest.raises(WithdrawRefused) as refused:
+        require_covers(us_holder, "table orders", "eu", withdrawing=True)
+    assert refused.value.code == "security.withdraw_residency_refused"
+    assert refused.value.params == {"object": "table orders", "value": "eu"}
+    assert "cannot be withdrawn" in str(refused.value)
+
+    require_covers(us_holder, "table orders", "us", withdrawing=False)
     with pytest.raises(ResidencyRefused) as refused:
-        require_change({"eu"}, "table orders", "eu", "us", draft=True)
-    assert refused.value.params["value"] == "us"
+        require_covers(eu_holder, "table orders", "us", withdrawing=False)
+    assert refused.value.code == "security.data_residency_refused"
+    assert refused.value.params == {"object": "table orders", "value": "us"}
+
+
+def test_a_step_without_the_right_is_refused_and_no_region_is_a_value_like_any():
+    with pytest.raises(WithdrawRefused):
+        require_covers(None, "table orders", "eu", withdrawing=True)
+    with pytest.raises(ResidencyRefused) as refused:
+        require_covers(None, "table orders", None, withdrawing=False)
+    assert refused.value.code == "security.data_residency_missing"
+    assert refused.value.params["value"] == NO_REGION
+    require_covers({NO_REGION}, "table orders", None, withdrawing=False)
 
 
 def test_without_the_right_any_change_is_refused_naming_it_and_no_change_needs_nothing():
@@ -104,8 +128,8 @@ def test_a_grant_is_the_union_of_the_values_of_the_roles_that_hold_the_right():
 
 _PLATFORM = {
     "regions": [
-        {"id": "eu", "address": "https://eu.example.com"},
-        {"id": "us", "address": "https://us.example.com"},
+        {"id": "eu", "description": "The eu region", "purposes": ["residency"]},
+        {"id": "us", "description": "The us region", "purposes": ["residency"]},
     ]
 }
 

@@ -14,6 +14,10 @@
 // one may be the default index) and Git hosts (a host and a credential). The public npm registry
 // and the public PyPI need no entry.
 //
+// REQ-2200, REQ-2227: Go module proxies (an address and user:password) and Cargo registries (a
+// sparse index URL and a token) likewise; one of each kind may be the default, in place of the
+// public Go module proxy and crates.io.
+//
 // Every field keeps what was typed -- the value, or a reference to a secret the administrator
 // created -- and shows it again; the credential behind the reveal control.
 //
@@ -109,6 +113,24 @@ const LABELS: Record<
     credential: "packageRegistries.pypiCredential",
     credentialHelp: "packageRegistries.pypiCredentialHelp",
     mirror: "packageRegistries.pypiMirror",
+  },
+  // REQ-2200: a Go module proxy; its credential is the login the go command sends.
+  goproxy: {
+    address: "packageRegistries.goproxyAddress",
+    addressHelp: null,
+    placeholder: "https://goproxy.example.com",
+    credential: "packageRegistries.goproxyCredential",
+    credentialHelp: "packageRegistries.goproxyCredentialHelp",
+    mirror: "packageRegistries.goproxyMirror",
+  },
+  // REQ-2227: a Cargo registry, by its sparse index URL; its credential is the token cargo sends.
+  cargo: {
+    address: "packageRegistries.cargoAddress",
+    addressHelp: "packageRegistries.cargoAddressHelp",
+    placeholder: "sparse+https://cargo.example.com/index/",
+    credential: "packageRegistries.cargoCredential",
+    credentialHelp: "packageRegistries.cargoCredentialHelp",
+    mirror: "packageRegistries.cargoMirror",
   },
   git: {
     address: "packageRegistries.gitHost",
@@ -320,6 +342,8 @@ export function PackageRegistriesTab() {
       <Text size="sm">{t("packageRegistries.help")}</Text>
       {section("npm")}
       {section("pypi")}
+      {section("goproxy")}
+      {section("cargo")}
       {section("git")}
     </Stack>
   );

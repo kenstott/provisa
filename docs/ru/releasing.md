@@ -32,7 +32,7 @@ git tag v1.2.3 && git push origin v1.2.3
 1. **Определение метаданных релиза** — определяет канал по суффиксу тега, выводит версию PEP 440 и имена артефактов
 2. **Скачивание / упаковка плагинов Trino** — тянет коннекторы Calcite Trino и упаковывает tar-архив
 3. **Скачивание базовых / obs / demo образов Docker** — сохраняет tar-архивы образов сервисов (arm64, плюс amd64 core для уровня контейнера Windows)
-4. **Сборка macOS Core / Obs / Demo DMG** — выполняется на `macos-14` (Apple Silicon), изолированно
+4. **Сборка macOS Core / Obs / Demo DMG** — выполняется на `macos-15` (Apple Silicon), изолированно
 5. **Сборка Linux AppImage** — core, изолированно
 6. **Сборка установщика Windows Core** — нативный, встроенный Python, без Docker
 7. **Сборка установщика уровня Windows Container** — WSL2 + Trino, скачивает образы по требованию (без VirtualBox/OVA)

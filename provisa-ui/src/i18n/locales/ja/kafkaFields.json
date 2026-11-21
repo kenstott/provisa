@@ -1,0 +1,13 @@
+{
+  "kafkaFields": {
+    "securityProtocol": "セキュリティプロトコル",
+    "securityProtocolHint": "Confluent Cloud と MSK では SASL_SSL を使用します。セキュリティのないクラスターでは PLAINTEXT を使用します。",
+    "saslMechanism": "SASL メカニズム",
+    "username": "ユーザー名",
+    "usernameHint": "Confluent Cloud の API キーです。",
+    "password": "パスワード",
+    "passwordHint": "Confluent Cloud の API シークレットです。${secret:NAME} のようなシークレット参照は、クラスターを開くときに解決されます。",
+    "caCertificate": "CA 証明書 (PEM)",
+    "caCertificateHint": "Confluent Cloud や MSK のように、証明書が公的 CA から発行されたブローカーでは空欄のままにします。プライベート CA のみを信頼するには、その証明書を貼り付けます。"
+  }
+}

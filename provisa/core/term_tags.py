@@ -10,7 +10,8 @@
 
 """Tags a column carries through its glossary term (REQ-2145).
 
-pii is on columns, and on a Property term. Only a term that is defined and in service -- live, or
+pii is on columns, and on a Property term, and only the tags that reach columns (FLOWING_TAGS: pii)
+pass from a term to its columns; any other tag on a term stays on the term. Only a term that is defined and in service -- live, or
 deprecated -- carries a tag; a draft (undefined) or retired term governs nothing. Every column whose
 ref is on such a term tagged pii carries pii, sensitive included (REQ-1943). Nothing is copied: the
 column's tags are read as its own assignments plus its term's, here, so a column moved onto the
@@ -39,8 +40,11 @@ from sqlalchemy import func, select
 if TYPE_CHECKING:
     from provisa.core.database import Connection
 
-#: The tags a term may carry (REQ-2145: pii only, for now).
-TERM_TAGS = ("pii",)
+#: The tags a term passes to the columns it holds (REQ-2145, amended 2026-11-06, TERMS TAKE ANY TAG;
+#: ONLY PII FLOWS): the system tags whose effect reaches columns. Such a tag goes only on a defined,
+#: in-service Property. Any other tag whose applies_to lists terms may go on any term, and stays on
+#: it: no column inherits it.
+FLOWING_TAGS = ("pii",)
 
 #: The tags whose loss on a move must be confirmed: the restricting ones (pii, now).
 RESTRICTING_TAGS = ("pii",)
@@ -69,7 +73,7 @@ def inherited_column_tags(tag_assignments: Any, term_refs: Any, glossary_terms: 
         .select_from(
             ta.join(refs, refs.c.term_id == ta.c.term_id).join(terms, terms.c.id == ta.c.term_id)
         )
-        .where(ta.c.object_type == "term", governs(terms))
+        .where(ta.c.object_type == "term", ta.c.base_tag_id.in_(FLOWING_TAGS), governs(terms))
     )
 
 
@@ -151,18 +155,14 @@ class TermTagRefused(ValueError):
 
 
 async def refuse_term_tag(conn: "Connection", term_id: int, tag_id: str) -> None:
-    """Raise :class:`TermTagRefused` unless term ``term_id`` may take tag ``tag_id``: a tag that
-    goes on a term (pii), on a term that is defined and in service, and a Property."""
+    """Raise :class:`TermTagRefused` unless term ``term_id`` may take tag ``tag_id``. A tag that
+    flows to the term's columns (pii) goes only on a term that is defined and in service, and a
+    Property. Any other tag goes on any term that is there: whether it applies to terms at all is
+    the tag's applies_to, which the assignment checks (REQ-2145, TERMS TAKE ANY TAG)."""
     from provisa.core.models import base_tag_id
     from provisa.core.repositories import glossary as glossary_repo
     from provisa.core.schema_org import glossary_terms
 
-    if base_tag_id(tag_id) not in TERM_TAGS:
-        raise TermTagRefused(
-            "tag.not_on_terms",
-            f"Tag {tag_id!r} does not go on a term; only {', '.join(TERM_TAGS)} does",
-            tag=tag_id,
-        )
     row = (
         await conn.execute_core(
             select(
@@ -172,6 +172,8 @@ async def refuse_term_tag(conn: "Connection", term_id: int, tag_id: str) -> None
     ).fetchone()
     if row is None:
         raise TermTagRefused("glossary.term_not_found", f"term {term_id} not found", term=term_id)
+    if base_tag_id(tag_id) not in FLOWING_TAGS:
+        return
     if row.retired or not (row.definition or "").strip():
         raise TermTagRefused("tag.term_not_live", f"Define '{row.name}' to mark it", term=row.name)
     role = await glossary_repo.term_role(conn, term_id)

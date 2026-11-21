@@ -8,31 +8,26 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Per-source row counts for a GraphQL field's stats walk only the joins the query selected (#265).
+"""Per-source row counts for a GraphQL field's stats count only the joins the query selected (#265).
 
 The count used to pass over every result row once per join in the role's whole context, whether
 or not the query selected a join: a 6M-row scan through a context holding joins spent a minute
-counting nothing."""
+counting nothing. The Rust encoder now counts each selected relationship while it writes the rows
+(``FieldAnswer.joined``, REQ-2194): a to-many's elements summed over the rows, a to-one's non-null
+objects. ``_count_rows_per_source`` gives each count to the source its join targets."""
 
 from __future__ import annotations
 
+import json
 from types import SimpleNamespace
 
 from provisa.api.data.endpoint_helpers import _count_rows_per_source
+from provisa.executor import json_encoders as je
+from tests.unit.json_encoder.cases import C, orders, project
 
 
 def _join(source_id: str, cardinality: str) -> SimpleNamespace:
     return SimpleNamespace(target=SimpleNamespace(source_id=source_id), cardinality=cardinality)
-
-
-class _Rows(list):
-    """A row list that counts how many times it is walked."""
-
-    walks = 0
-
-    def __iter__(self):
-        self.walks += 1
-        return super().__iter__()
 
 
 def _context(n_unselected: int = 50) -> SimpleNamespace:
@@ -43,29 +38,40 @@ def _context(n_unselected: int = 50) -> SimpleNamespace:
     return SimpleNamespace(joins=joins)
 
 
-def test_a_query_that_selected_no_join_walks_no_rows():
-    rows = _Rows({"id": i, "region": "east"} for i in range(1000))
-    assert _count_rows_per_source(rows, _context(), "Order") == {}
-    assert rows.walks == 0
+def test_a_query_that_selected_no_join_has_no_entry():
+    assert _count_rows_per_source({}, _context(), "Order") == {}
+    assert _count_rows_per_source(None, _context(), "Order") == {}
 
 
-def test_selected_joins_are_counted_in_one_pass():
-    rows = _Rows(
-        [
-            {"id": 1, "customer": {"id": 7}, "items": [{"sku": "a"}, {"sku": "b"}]},
-            {"id": 2, "customer": None, "items": []},
-            {"id": 3, "customer": {"id": 9}, "items": None},
-            {"id": 4, "customer": {"id": 9}, "items": [{"sku": "c"}]},
-        ]
+def test_selected_joins_are_counted_as_the_encoder_writes_the_rows():
+    """The encoder counts each selected relationship of the rows it writes, in that one pass: a
+    to-one's non-null objects, a to-many's elements; the context's other joins are not counted."""
+    plan = [
+        C("id"),
+        C("cust_id", "customer", "many-to-one"),
+        C("item_id", "items", "one-to-many"),
+        C("item_qty", "items", "one-to-many"),
+    ]
+    answer = je.graphql_field(project(orders(), plan).to_batches(), plan)
+    rows = json.loads(answer.body)
+    assert (
+        answer.joined
+        == {
+            "customer": sum(r["customer"] is not None for r in rows),
+            "items": sum(len(r["items"]) for r in rows),
+        }
+        == {"customer": 3, "items": 5}
     )
-    assert _count_rows_per_source(rows, _context(), "Order") == {"crm": 3, "warehouse": 3}
-    assert rows.walks == 1
+    assert _count_rows_per_source(answer.joined, _context(), "Order") == {
+        "crm": 3,
+        "warehouse": 5,
+    }
 
 
 def test_a_source_no_selected_join_targets_has_no_entry():
     """Its caller then reports the field's own row count for it, not zero."""
     ctx = SimpleNamespace(joins={("Customer", "orders"): _join("sales", "one-to-many")})
-    assert _count_rows_per_source([{"id": 1}, {"id": 2}], ctx, "Customer") == {}
+    assert _count_rows_per_source({}, ctx, "Customer") == {}
 
 
 def test_two_selected_joins_on_one_source_add_up():
@@ -75,13 +81,11 @@ def test_two_selected_joins_on_one_source_add_up():
             ("Order", "contacts"): _join("crm", "one-to-many"),
         }
     )
-    rows = [{"customer": {"id": 1}, "contacts": [{"id": 1}, {"id": 2}]}]
-    assert _count_rows_per_source(rows, ctx, "Order") == {"crm": 3}
+    assert _count_rows_per_source({"customer": 1, "contacts": 2}, ctx, "Order") == {"crm": 3}
 
 
 def test_another_type_s_join_of_a_column_s_name_is_not_counted():
     """A view's column ``complaints`` (a count) is no join, though the permits type has a join of
     that name: the stats used to take it for one and fail the read, len() of an int."""
     ctx = SimpleNamespace(joins={("Permits", "complaints"): _join("drop", "one-to-many")})
-    rows = [{"neighborhood": "Eastgate", "complaints": 82}]
-    assert _count_rows_per_source(rows, ctx, "ViewComplaintsNearConstruction") == {}
+    assert _count_rows_per_source({"complaints": 82}, ctx, "ViewComplaintsNearConstruction") == {}

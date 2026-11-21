@@ -13,6 +13,8 @@ import type { Dispatch, SetStateAction } from "react";
 import type { SchemaRel } from "../graph-schema-types";
 import type { GNode, GEdge } from "../graph-model";
 import { extractElements } from "../graph-model";
+import type { PathScope } from "../dropPath";
+import { neighboursQuery } from "../cypherEndpoints";
 
 type OverlayMap = Map<string, { nodes: Map<string, GNode>; edges: Map<string, GEdge> }>;
 type MergedOverlay = { nodes: Map<string, GNode>; edges: Map<string, GEdge> };
@@ -24,6 +26,10 @@ interface UseOverlayNavigationParams {
   /** The acting role's relationship types (/data/graph-schema): the only types a query is written
    * with, so the translator never meets one it does not register. */
   schemaRels: SchemaRel[];
+  /** The labels no expansion reaches: their tables take arguments to read. */
+  parameterized: ReadonlySet<string>;
+  /** Where a node's children and parents may be: the selected domains (REQ-2135). */
+  pathScope: PathScope;
 }
 
 export function useOverlayNavigation({
@@ -31,6 +37,8 @@ export function useOverlayNavigation({
   setOverlayData,
   frameNodes,
   schemaRels,
+  parameterized,
+  pathScope,
 }: UseOverlayNavigationParams) {
   const _resolveNodeForKey = useCallback(
     (nodeKey: string): GNode | undefined => {
@@ -79,54 +87,26 @@ export function useOverlayNavigation({
     [],
   );
 
-  const _fetchChildrenForNode = useCallback(
-    async (nodeKey: string): Promise<MergedOverlay | null> => {
+  /** A node's children (its parents): one query, its other ends labelled from the schema within
+   * the selected domains, one MATCH per label pair, unioned (REQ-2135). */
+  const _fetchNeighboursOfNode = useCallback(
+    async (nodeKey: string, way: "children" | "parents"): Promise<MergedOverlay | null> => {
       const gNode = _resolveNodeForKey(nodeKey);
       if (!gNode || gNode.id == null) return null;
-      // Each type the role's label map registers out of the node's label (REQ-1586).
-      const types = [
-        ...new Set(schemaRels.filter((r) => r.source === gNode.label).map((r) => r.type)),
-      ];
-      if (types.length === 0) return null;
-      const merged: MergedOverlay = { nodes: new Map(), edges: new Map() };
-      await Promise.all(
-        types.map(async (relType) => {
-          const q = `MATCH (n:${gNode.label})-[r:${relType}]->(child) WHERE id(n) IN [${gNode.id}] RETURN n, r, child`;
-          const result = await _fetchNeighbors(q);
-          if (result) {
-            result.nodes.forEach((n, k) => merged.nodes.set(k, n));
-            result.edges.forEach((e, k) => merged.edges.set(k, e));
-          }
-        }),
-      );
-      return merged.nodes.size > 0 || merged.edges.size > 0 ? merged : null;
+      const q = neighboursQuery(gNode.label, gNode.id, way, schemaRels, parameterized, pathScope);
+      if (q === null) return null;
+      const result = await _fetchNeighbors(q);
+      return result && (result.nodes.size > 0 || result.edges.size > 0) ? result : null;
     },
-    [schemaRels, _resolveNodeForKey, _fetchNeighbors],
+    [schemaRels, parameterized, pathScope, _resolveNodeForKey, _fetchNeighbors],
   );
-
+  const _fetchChildrenForNode = useCallback(
+    (nodeKey: string) => _fetchNeighboursOfNode(nodeKey, "children"),
+    [_fetchNeighboursOfNode],
+  );
   const _fetchParentsForNode = useCallback(
-    async (nodeKey: string): Promise<MergedOverlay | null> => {
-      const gNode = _resolveNodeForKey(nodeKey);
-      if (!gNode || gNode.id == null) return null;
-      // Each type the role's label map registers into the node's label (REQ-1586).
-      const types = [
-        ...new Set(schemaRels.filter((r) => r.target === gNode.label).map((r) => r.type)),
-      ];
-      if (types.length === 0) return null;
-      const merged: MergedOverlay = { nodes: new Map(), edges: new Map() };
-      await Promise.all(
-        types.map(async (relType) => {
-          const q = `MATCH (parent)-[r:${relType}]->(n:${gNode.label}) WHERE id(n) IN [${gNode.id}] RETURN n, r, parent`;
-          const result = await _fetchNeighbors(q);
-          if (result) {
-            result.nodes.forEach((n, k) => merged.nodes.set(k, n));
-            result.edges.forEach((e, k) => merged.edges.set(k, e));
-          }
-        }),
-      );
-      return merged.nodes.size > 0 || merged.edges.size > 0 ? merged : null;
-    },
-    [schemaRels, _resolveNodeForKey, _fetchNeighbors],
+    (nodeKey: string) => _fetchNeighboursOfNode(nodeKey, "parents"),
+    [_fetchNeighboursOfNode],
   );
 
   const handleToggleChildren = useCallback(

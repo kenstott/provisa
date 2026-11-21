@@ -23,7 +23,6 @@ introspect.py) import the ``Trino*`` re-exports below instead of ``trino`` direc
 from __future__ import annotations
 
 import asyncio
-import concurrent.futures
 import json
 import logging
 import os
@@ -126,7 +125,6 @@ def _register_kafka_on_shard(state: Any, kafka_source: dict, catalog: str, shard
     columns from table-description files in a directory of the catalog's own, and a shard has no
     way to be given a directory per catalog while it runs. It is refused when saved.
     """
-    from provisa.core import settings_registry
     from provisa.core.catalog import create_kafka_catalog
     from provisa.core.trino_catalog_files import _kafka_source_config
     from provisa.federation import k8s_provisioner
@@ -147,14 +145,7 @@ def _register_kafka_on_shard(state: Any, kafka_source: dict, catalog: str, shard
     client_props = generate_kafka_client_properties(cfg)
     wait = 0.0
     if client_props is not None:
-        # Synchronous callers (the boot's Kafka pass) run on the event loop's thread, so the
-        # Kubernetes call runs on a loop of its own.
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-            pool.submit(
-                asyncio.run,
-                k8s_provisioner.put_kafka_client_properties(shard, catalog, client_props),
-            ).result()
-        wait = float(settings_registry.value("engine.ready_timeout"))
+        wait = k8s_provisioner.put_kafka_client_on_shard(shard, catalog, client_props)
     create_kafka_catalog(state.engine_conn, kafka_source, catalog, client_file_wait=wait)
 
 
@@ -222,8 +213,9 @@ def bind_terminal(state: Any) -> None:
 
     The dedicated coordinator of an isolated-engine org sleeps between sessions (wake-on-traffic,
     same as the shared engine's front door). Binding only the kwargs keeps org provisioning from
-    waking — or failing against — a sleeping cluster; ``execute_trino``'s liveness/reconnect path
-    connects from these kwargs on the first real query."""
+    waking — or failing against — a sleeping cluster; the first real query's read names its
+    session (source, catalog, schema, and the coordinator for an org on its own) from these kwargs
+    through the Zaychik proxy (``executor/trino_flight.py``, REQ-2194)."""
     state.engine_conn_kwargs = terminal_conn_kwargs(state)
 
 
@@ -593,7 +585,10 @@ def classify_error(exc: Exception) -> str | None:
 
     Returns ``"connection"`` (→ 503), ``"query"`` (→ 400), or ``None`` (not an engine error the
     Trino backend recognizes — the caller picks a default)."""
-    if isinstance(exc, trino.exceptions.TrinoConnectionError):
+    from provisa.executor.trino_flight import EngineUnreachable
+
+    # REQ-2194: a read through the Zaychik proxy that reached no coordinator.
+    if isinstance(exc, (trino.exceptions.TrinoConnectionError, EngineUnreachable)):
         return "connection"
     if isinstance(exc, trino.exceptions.TrinoQueryError):
         return "query"

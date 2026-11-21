@@ -17,7 +17,7 @@ refers to it, and nothing is changed. A dropped column nothing refers to goes, w
 assignments.
 """
 
-# Requirements: REQ-1918, REQ-1919
+# Requirements: REQ-1918, REQ-1919, REQ-2248
 
 from __future__ import annotations
 
@@ -74,7 +74,10 @@ async def _columns(db: Database, name: str) -> list[str]:
     table_id = await _id(db, name)
     async with db.acquire() as conn:
         rows = await conn.execute_core(
-            select(table_columns.c.column_name).where(table_columns.c.table_id == table_id)
+            # The columns in service: a dropped column is retired, its row kept (REQ-2248).
+            select(table_columns.c.column_name).where(
+                table_columns.c.table_id == table_id, table_columns.c.retired.is_(False)
+            )
         )
         return sorted(r[0] for r in rows.fetchall())
 
@@ -155,6 +158,7 @@ async def test_dropping_a_column_a_relationship_is_keyed_on_is_refused_and_nothi
                 "kind": "relationship",
                 "id": "orders_customers",
                 "name": "orders_customers",
+                "label": "orders -> customers",
                 "via": ["relationships.source_column"],
             }
         ]
@@ -172,7 +176,9 @@ async def test_dropping_the_other_ends_key_column_is_refused_too(plane):
     assert list(err.value.columns) == ["id"]
 
 
-async def test_a_column_nothing_refers_to_is_dropped_with_its_tags(plane):
+async def test_a_column_nothing_refers_to_is_retired_keeping_its_tags(plane):
+    """REQ-2248: dropped from the registration, the column is retired, not removed: it leaves
+    its table and keeps its tag, which is not applied while it is retired."""
     orders = await _id(plane, "orders")
     async with plane.acquire() as conn:
         for column in ("note", "amount"):
@@ -189,7 +195,11 @@ async def test_a_column_nothing_refers_to_is_dropped_with_its_tags(plane):
         await table_repo.upsert(conn, _table("orders", "id", "customer_id", "amount"))
         tagged = (await conn.execute_core(select(tag_assignments.c.column_name))).fetchall()
     assert await _columns(plane, "orders") == ["amount", "customer_id", "id"]
-    assert [t[0] for t in tagged] == ["amount"]
+    assert sorted(t[0] for t in tagged) == ["amount", "note"]
+    async with plane.acquire() as conn:
+        assert [c["column_name"] for c in await table_repo.retired_columns(conn, orders)] == [
+            "note"
+        ]
     assert await _id(plane, "orders") == orders
 
 

@@ -138,13 +138,14 @@ def test_the_regions_tier_runs_as_its_visitor_region_with_a_store_per_region(tmp
 
 def test_the_regions_node_is_given_every_region_the_tier_declares(tmp_path):
     """REQ-2068: the tier's config declares every regions demo's regions, so its node is given each
-    region's store and address; ledger and warehouse keep theirs in databases of their own in the eu
-    and us PostgreSQLs."""
+    region's store; ledger and warehouse keep theirs in databases of their own in the eu and us
+    PostgreSQLs. A platform region names no address (REQ-1922, amended 2026-11-05), so no node is
+    given one."""
     services = _compose(tmp_path)["services"]
     node_env = services["provisa-sandbox-regions"]["environment"]
     assert node_env["PROVISA_DEMO_LEDGER_PG_URL"].endswith("@region-pg-eu:5432/ledger")
     assert node_env["PROVISA_DEMO_WAREHOUSE_PG_URL"].endswith("@region-pg-us:5432/warehouse")
-    assert ".invalid" in node_env["PROVISA_DEMO_LEDGER_ADDRESS"]
+    assert not [k for k in node_env if k.startswith("PROVISA_DEMO_") and k.endswith("_ADDRESS")]
     assert services["region-pg-eu"]["environment"]["REGION_PG_ALSO"] == "ledger"
     assert services["region-pg-us"]["environment"]["REGION_PG_ALSO"] == "warehouse"
     for store in ("region-pg-eu", "region-pg-us"):
@@ -154,7 +155,7 @@ def test_the_regions_node_is_given_every_region_the_tier_declares(tmp_path):
 
 def test_banking_is_served_by_a_node_running_as_its_visitor_region(tmp_path):
     """REQ-2068: a node serves a demo only in the region it runs as, so banking (visitor region
-    warehouse) has a node of its own: the regions node's image, config, stores and addresses, run
+    warehouse) has a node of its own: the regions node's image, config and stores, run
     as warehouse, with its own boot org, data folder and published port, serving banking's bundle
     (ci/bankingwalk7: banking's template refused on a node running as us)."""
     services = _compose(tmp_path)["services"]
@@ -168,7 +169,7 @@ def test_banking_is_served_by_a_node_running_as_its_visitor_region(tmp_path):
     assert env["ORG_ID"] not in (us_env["ORG_ID"], "sbxrtier")
     for shared in ("PROVISA_CONFIG", "PROVISA_DEMO_WAREHOUSE_PG_URL", "PROVISA_DEMO_LEDGER_PG_URL"):
         assert env[shared] == us_env[shared], shared
-    assert env["PROVISA_DEMO_WAREHOUSE_ADDRESS"] == "https://provisa-sandbox-regions-warehouse:8100"
+    assert "PROVISA_DEMO_WAREHOUSE_ADDRESS" not in env
     assert warehouse["image"] == us["image"] and warehouse["command"] == us["command"]
     assert warehouse["ports"] == [
         "${PROVISA_SANDBOX_REGIONS_WAREHOUSE_PUBLISH:-127.0.0.1:18101}:8100"

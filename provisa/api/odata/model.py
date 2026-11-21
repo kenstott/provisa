@@ -60,6 +60,7 @@ class EntitySet:
     properties: tuple[Property, ...]
     navigations: tuple[Navigation, ...]
     ordering: tuple[str, ...]  # the properties that give a read one order across its pages
+    domain: str  # the domain of the table it reads
 
     def property(self, name: str) -> Property | None:
         return next((p for p in self.properties if p.name == name), None)
@@ -165,6 +166,7 @@ def entity_set(surface: RoleSurface, name: str, *, navigations: bool = False) ->
         properties,
         _navigations(surface, name) if navigations else (),
         _ordering(root, key, properties),
+        surface.table_path_map[name]["domain_id"],
     )
 
 

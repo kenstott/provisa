@@ -535,12 +535,31 @@ async def views_waiting_here(template_org: str, since: datetime) -> str:
     return "; ".join(recorded) or "views with no build recorded"
 
 
+def seeding_node_addresses(regions: list[str]) -> dict[str, str]:
+    """Where a bundle build's seeding node of each of ``regions`` listens
+    (``PROVISA_DEMO_<REGION>_ADDRESS``, set by the build for its seeding run). A platform region
+    names no address (REQ-1922, amended 2026-11-05), and each seeding node runs on a control
+    plane of its own, so the build says where its nodes are."""
+    import os
+
+    unset = [
+        f"PROVISA_DEMO_{r.upper()}_ADDRESS"
+        for r in regions
+        if not os.environ.get(f"PROVISA_DEMO_{r.upper()}_ADDRESS")
+    ]
+    if unset:
+        raise RuntimeError(
+            f"a seeding run of a regions demo is told where each region's node listens: "
+            f"{', '.join(unset)} is not set"
+        )
+    return {r: os.environ[f"PROVISA_DEMO_{r.upper()}_ADDRESS"] for r in regions}
+
+
 async def unanswered_regions(
     addresses: dict[str, str], *, probe: Callable[[str], Awaitable[bool]] | None = None
 ) -> list[tuple[str, str]]:
-    """Every other region whose node does not answer at its ``addresses`` entry (the platform's
-    regions, as the deployment config declares them): ``probe`` an address, by default its
-    /health."""
+    """Every other region whose node does not answer at its ``addresses`` entry
+    (:func:`seeding_node_addresses`): ``probe`` an address, by default its /health."""
     probe = probe or _answers
     return [
         (region, address)

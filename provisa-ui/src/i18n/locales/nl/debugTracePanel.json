@@ -27,6 +27,8 @@
     "permit": "Toestaan",
     "revoke": "Intrekken",
     "noHintRoles": "Voor geen enkele rol is de hint toegestaan.",
-    "loadFailed": "De instellingen voor debug-tracing konden niet worden geladen"
+    "loadFailed": "De instellingen voor debug-tracing konden niet worden geladen",
+    "introPlatform": "Tracing legt standaard één span per verzoek vast. Debug-tracing voegt een span toe per pijplijnfase en per bronaanroep, met SQL-tekst. Het voegt belasting toe, dus zet het aan voor één organisatie als geheel gedurende een bepaalde tijd; het schakelt zichzelf uit als de tijd om is. Het traceren van een benoemde rol of bron is aan de beheerder van die organisatie.",
+    "introOrg": "Tracing legt standaard één span per verzoek vast. Debug-tracing voegt een span toe per pijplijnfase en per bronaanroep, met SQL-tekst. Het voegt belasting toe, dus zet het aan voor één rol of bron gedurende een bepaalde tijd; het schakelt zichzelf uit als de tijd om is."
   }
 }

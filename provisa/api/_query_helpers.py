@@ -165,7 +165,10 @@ def request_variables(  # REQ-1986
         values["where"] = _coerced(_typed(where, where_arg.type), where_arg.type, "filter")
         declarations.append(f"$where: {where_arg.type}")
         arguments.append("where: $where")
-    parameters = native_arguments(root)
+    # REQ-1986: a parameter is given under its own name and under its alias alike, and its
+    # argument is named by its alias where it declares one (schema_gen).
+    named = native_arguments(root)
+    parameters = {**{arg_name: (arg_name, arg) for arg_name, arg in named.values()}, **named}
     for name, value in (params or {}).items():
         if name not in parameters:
             raise RequestRefused(f"{field_name} takes no parameter {name!r}")

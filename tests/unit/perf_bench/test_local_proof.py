@@ -24,12 +24,13 @@ import yaml
 BENCH = Path(__file__).resolve().parents[3] / "demo" / "named" / "perf" / "bench"
 sys.path.insert(0, str(BENCH))
 
-import deployment_fixture as fx  # noqa: E402
 import local_proof as lp  # noqa: E402
 import lookup  # noqa: E402
 import optimistic_load as ol  # noqa: E402
 from run_benchmark import GraphqlTransport, joined_rows  # noqa: E402
 from server_answer import checked  # noqa: E402
+
+from tests.unit.perf_bench import deployment_fixture as fx  # noqa: E402
 
 
 def _response(status: int, body: str) -> httpx.Response:

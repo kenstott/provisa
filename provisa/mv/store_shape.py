@@ -18,6 +18,14 @@ from __future__ import annotations
 
 from typing import Any
 
+from provisa.transpiler.pg_forms_geometric import around
+
+
+def shape_probe(select_sql: str, alias: str = "_shape") -> str:
+    """A zero-row read of ``select_sql``: its columns alone. A geometric form's routines are kept
+    ahead of the read (REQ-2171)."""
+    return around(select_sql, lambda s: f"SELECT * FROM ({s}) AS {alias} LIMIT 0")
+
 
 def view_key(mv: Any) -> list[str]:
     """The view's store-table key: the operator-declared ``primary_key``, else inferred from an
@@ -39,7 +47,7 @@ async def output_columns(
 
     probe = await engine.execute_engine(
         # Its columns alone: never its rows, a column transform's among them.
-        f"SELECT * FROM ({select_sql}) AS _mv_probe LIMIT 0",
+        shape_probe(select_sql, "_mv_probe"),
         authorization=authorization,
     )
     if probe.column_types is None:

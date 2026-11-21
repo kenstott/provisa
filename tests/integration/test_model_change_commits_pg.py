@@ -83,7 +83,12 @@ async def planes(docker_postgres, tmp_path, monkeypatch):
         )
     from provisa.core.env_deploy import PROJECTED
 
-    model_change.attach(admin_db, commit=env_repo.write_through, projected=PROJECTED)
+    model_change.attach(
+        admin_db,
+        commit=env_repo.write_through,
+        projected=PROJECTED,
+        uri_org=lambda org_id: org_id,
+    )
     yield type("Planes", (), {"org_id": org_id, "admin": admin_db, "prod": prod_db, "dev": dev_db})
     async with admin_db.acquire() as conn:
         for env in (PROD, DEV):

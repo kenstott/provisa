@@ -8,7 +8,7 @@
     "operations": "Bewerkingen",
     "tableName": "Tabel",
     "tableDomain": "Domein",
-    "draft": "Concept",
+    "withdrawn": "Teruggetrokken",
     "commands": "Opdrachten",
     "commandName": "Opdracht",
     "commandKind": "Soort"

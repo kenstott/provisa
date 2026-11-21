@@ -68,6 +68,7 @@ def entity_table_input(inp: EntityInput) -> TableInput:
         recorded_time=reg.get("recorded_time"),  # REQ-2109
         modeling_role=reg["modeling_role"],  # REQ-1320
         modeling_history=reg.get("modeling_history"),  # REQ-1320
+        description=inp.description,  # REQ-2199
     )
 
 
@@ -92,6 +93,7 @@ def fact_table_input(inp: FactInput) -> tuple[TableInput, list[RelationshipInput
         view_sql=reg["view_sql"],
         materialize=True,
         modeling_role=reg["modeling_role"],  # REQ-1320
+        description=inp.description,  # REQ-2199
     )
     rels = [
         RelationshipInput(

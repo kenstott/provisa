@@ -1,0 +1,23 @@
+{
+  "erdLayouts": {
+    "layout": "Indeling: {{name}}",
+    "layouts": "Indelingen",
+    "menuHint": "Een opgeslagen schikking van dit diagram kiezen, opslaan of verwijderen",
+    "automatic": "Automatisch",
+    "save": "Opslaan",
+    "saveAs": "Opslaan als…",
+    "delete": "Verwijderen",
+    "unsaved": "Niet opgeslagen",
+    "unsavedHint": "Het diagram is gewijzigd sinds deze indeling is opgeslagen",
+    "saveAsTitle": "Indeling opslaan als",
+    "name": "Naam",
+    "nameTaken": "Er bestaat al een indeling met de naam {{name}}",
+    "deleteTitle": "Indeling {{name}} verwijderen?",
+    "deleteConsequence": "De indeling wordt voor iedereen verwijderd. De tabellen en relaties die ze toont, veranderen niet.",
+    "newSinceSaved_one": "{{count}} tabel nieuw sinds de indeling is opgeslagen",
+    "newSinceSaved_other": "{{count}} tabellen nieuw sinds de indeling is opgeslagen",
+    "place": "Plaatsen",
+    "placeHint": "De tabel aan de indeling toevoegen",
+    "notDrawn": "Het diagram is nog niet getekend"
+  }
+}

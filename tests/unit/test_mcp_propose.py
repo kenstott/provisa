@@ -36,7 +36,13 @@ async def _db(control_plane):
 
 
 def _state(db: Database) -> types.SimpleNamespace:
-    return RoleState(contexts={"analyst": object()}, model_db=db, tenant_db=db)
+    # REQ-2216: a request raised looks up the org's mail channel; none is configured here.
+    return RoleState(
+        contexts={"analyst": object()},
+        model_db=db,
+        tenant_db=db,
+        config=types.SimpleNamespace(mail=types.SimpleNamespace(provider="")),
+    )
 
 
 class TestProposeSource:

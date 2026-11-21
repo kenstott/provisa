@@ -29,7 +29,7 @@ from provisa.compiler.row_limit import RowLimit
 from provisa.compiler.sql_gen import compile_query
 from provisa.compiler.sql_rewrite import make_semantic_sql
 from provisa.compiler.stage2 import GovernanceContext, apply_governance
-from provisa.executor.serialize import serialize_rows
+from tests.unit.json_encoder.rows import serialize_rows
 from provisa.transpiler.transpile import transpile_to_duckdb
 from tests.unit.test_group_by import _build_schema_and_ctx as _group_by_model
 from tests.unit.test_sql_gen import _build_schema_and_ctx as _sales_model

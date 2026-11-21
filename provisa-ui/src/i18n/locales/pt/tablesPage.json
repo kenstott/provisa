@@ -2,7 +2,7 @@
   "tablesPage": {
     "loading": "Carregando tabelas...",
     "titleViews": "Exibições",
-    "titleTables": "Tabelas registradas",
+    "titleTables": "Tabelas",
     "filterPlaceholderViews": "Filtrar exibições…",
     "filterPlaceholderTables": "Filtrar por fonte, domínio ou tabela…",
     "addTable": "+ Tabela",
@@ -11,8 +11,12 @@
     "addViewTitle": "Criar uma nova exibição no SQL Explorer",
     "model": "+ Modelo",
     "modelTitle": "Modelar uma entidade ou fato (esquema estrela / Data Vault)",
+    "modelMenu": "Escolher como modelar",
+    "modelEntityFact": "Entidade/Fato",
+    "modelStarSchema": "Esquema estrela",
+    "modelDataVault": "Data Vault",
     "reportXlsx": "Planilha",
-    "reportXlsxTitle": "Baixar o modelo como planilha para revisão — fontes, tabelas, colunas, relacionamentos, exibições, métricas, exibições materializadas, ontologia, produtos de dados, contratos de dados, qualidade de dados e perfis de dados, uma aba para cada",
+    "reportXlsxTitle": "Baixar o modelo como planilha para revisão, com uma aba para fontes, tabelas, colunas, relacionamentos, exibições, métricas, exibições materializadas, ontologia, produtos de dados, contratos de dados, qualidade de dados e criação de perfil de dados",
     "viewErd": "Ver ERD",
     "colSource": "Fonte",
     "colDomain": "Domínio",
@@ -54,39 +58,44 @@
     "modelingRole": {
       "fact": "fato",
       "dimension": "dimensão",
-      "impliedFactTitle": "Fato implícito — «Habilitar agregações» está ativado para esta tabela",
-      "impliedDimensionTitle": "Dimensão implícita — «Habilitar Group By» está ativado para esta tabela"
+      "impliedFactTitle": "Fato implícito: Habilitar agregados está ativado para esta tabela",
+      "impliedDimensionTitle": "Dimensão implícita: Habilitar Group By está ativado para esta tabela"
     },
     "derived": "derivada",
     "endpointUnread": "Não foi possível ler o documento de API da sua origem",
     "checker": {
       "soda": "Soda",
       "great_expectations": "Great Expectations",
-      "title": "Verificador de qualidade de dados — as linhas desta tabela são os resultados da execução do seu contrato"
+      "title": "Verificador de qualidade de dados: as linhas desta tabela são os resultados da execução do seu contrato"
     },
     "dataProduct": "produto",
-    "dataProductTitle": "Produto de dados — incluído em provisa metadata export",
+    "dataProductTitle": "Produto de dados: incluído na exportação de metadados do Provisa",
     "purposeTitle": "O que o registro de uma tabela faz",
-    "purposeBody": "O registro é o que coloca uma tabela no modelo governado: fixa as colunas, os nomes sob os quais são expostas e quais papéis podem vê-las. Somente tabelas registradas podem ser consultadas, e tudo o que vem depois — relacionamentos, métricas, visões, termos da ontologia — nomeia colunas registradas.",
-    "purposeAdd": "+ Vista regista uma relação definida por SQL ou por métricas em vez de por uma tabela física — e registá-la é o que a faz deixar de ser uma consulta guardada. A definição decide também como é servida: ao vivo, ou materializada segundo uma cadência ou uma janela de calendário, com uma atualização que substitui, faz upsert ou acrescenta. Ao ativar a viagem no tempo, a vista mantém o seu próprio histórico e os consumidores podem lê-la tal como estava num momento passado; as suas entradas são seguidas como linhagem, pelo que uma atualização espera por aquilo de que depende.",
+    "purposeBody": "Registrar uma tabela a coloca no modelo governado e fixa suas colunas, os nomes com que são expostas e quais funções podem vê-las. Somente tabelas registradas podem ser consultadas, e relacionamentos, métricas, exibições e termos de ontologia nomeiam colunas registradas.",
+    "purposeAdd": "+ Exibição registra uma relação definida por SQL ou por métricas. A definição também decide como ela é servida: ao vivo, ou materializada em uma cadência ou janela de calendário, com uma atualização que substitui, faz upsert ou acrescenta. Ative o Time Travel e a exibição mantém seu próprio histórico, para que os consumidores possam lê-la como era em um momento passado. Suas entradas são rastreadas como linhagem, então uma atualização aguarda aquilo de que depende.",
     "purposeAria": "Sobre as tabelas registradas",
     "erdHelpTitle": "Diagrama entidade-relacionamento",
-    "erdHelpBody": "Desenha as tabelas registadas e os relacionamentos declarados entre elas, para que os joins já existentes fiquem visíveis antes de escrever uma consulta. Lê o modelo em vez de o editar: filtre por domínio e exporte o diagrama como PNG ou SVG.",
-    "purposeModel": "+ Modelo declara uma entidade ou um facto — as duas peças com que se constroem tanto um esquema em estrela como um Data Vault — e baixa-o para essas mesmas primitivas, registando a vista materializada, a sua viagem no tempo e os relacionamentos com as entidades cujas chaves usa.",
+    "erdHelpBody": "Desenha as tabelas registradas e os relacionamentos declarados entre elas, para que você veja quais junções existem antes de escrever uma consulta. É somente leitura: filtre por domínio e exporte o diagrama como PNG ou SVG.",
+    "purposeModel": "+ Modelo declara uma entidade ou um fato, os blocos de construção de um esquema estrela e de um Data Vault. Ele registra a exibição materializada, seu Time Travel e os relacionamentos com as entidades em que se baseia.",
     "empty": "Nenhuma tabela registrada ainda.",
     "resizeDetail": "Redimensionar o painel de detalhes",
     "detailPanel": "Detalhes da tabela",
     "closeDetail": "Fechar o painel de detalhes",
-    "expandDetail": "Expandir o painel",
+    "expandDetail": "Ampliar o painel",
     "restoreDetail": "Restaurar o painel",
     "backToList": "Voltar à lista",
     "backToDetail": "Voltar aos detalhes",
     "panelRegisterTable": "Registar tabela",
     "panelNewView": "Nova vista",
     "panelNewModel": "Novo modelo",
+    "panelStarSchema": "Novo esquema estrela",
+    "panelDataVault": "Novo Data Vault",
     "history": {
       "badge": "histórico",
       "title": "Guarda histórico: consulte-o em uma data ou como registrado (Viagem no tempo)"
-    }
+    },
+    "withdrawn": "Retirada",
+    "withdrawnTitle": "Fora de produção: nenhum papel a lê até que seja restabelecida",
+    "sourceWithdrawnTitle": "Sua fonte {{source}} está retirada: nenhum papel a lê até que a fonte seja restabelecida"
   }
 }

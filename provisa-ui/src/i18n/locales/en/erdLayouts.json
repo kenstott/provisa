@@ -1,0 +1,23 @@
+{
+  "erdLayouts": {
+    "layout": "Layout: {{name}}",
+    "layouts": "Layouts",
+    "menuHint": "Choose, save or delete a saved arrangement of this diagram",
+    "automatic": "Automatic",
+    "save": "Save",
+    "saveAs": "Save as…",
+    "delete": "Delete",
+    "unsaved": "Unsaved",
+    "unsavedHint": "The diagram has changed since this layout was saved",
+    "saveAsTitle": "Save layout as",
+    "name": "Name",
+    "nameTaken": "A layout named {{name}} already exists",
+    "deleteTitle": "Delete layout {{name}}?",
+    "deleteConsequence": "The layout is removed for everyone. The tables and relationships it shows are not changed.",
+    "newSinceSaved_one": "{{count}} table new since the layout was saved",
+    "newSinceSaved_other": "{{count}} tables new since the layout was saved",
+    "place": "Place",
+    "placeHint": "Add the table to the layout",
+    "notDrawn": "The diagram is not drawn yet"
+  }
+}

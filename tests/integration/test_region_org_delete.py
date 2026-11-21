@@ -33,13 +33,14 @@ import trino
 from provisa.compiler.naming import org_prefixed_catalog
 from provisa.core.environments import SCHEMA_SUFFIXES, org_schema
 from provisa.core.regions import OrgRegion, StoreConfig
+from tests.helpers import create_pgvector
 
 pytestmark = [pytest.mark.requires_trino, pytest.mark.integration]
 
 _PLATFORM = {
     "regions": [
-        {"id": "eu", "address": "https://eu.example.com"},
-        {"id": "us", "address": "https://us.example.com"},
+        {"id": "eu", "description": "The eu region", "purposes": ["residency"]},
+        {"id": "us", "description": "The us region", "purposes": ["residency"]},
     ]
 }
 _ENVS = ["prod", "dev"]
@@ -203,6 +204,8 @@ class _Estate:
         from provisa.core.schema_org import metadata
 
         sync = sa.create_engine(self.url(self.cp_db, "+psycopg"))
+        with sync.begin() as conn:
+            create_pgvector(conn)  # a fresh control plane
         for org in (self.org, self.bystander):
             for env in _ENVS:
                 with sync.begin() as conn:

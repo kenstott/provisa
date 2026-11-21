@@ -34,6 +34,11 @@
     "reasonGovernanceViolation": "הפרת ממשל",
     "reasonOutOfScope": "מחוץ לתחום",
     "reasonEndpointUnreachable": "נקודת הקצה אינה נגישה",
-    "reasonSchemaMismatch": "אי-התאמת סכמה"
+    "reasonSchemaMismatch": "אי-התאמת סכמה",
+    "delivery": "הודעה באמצעות",
+    "deliveryHelp": "האופן שבו חברי התפקידים שאליהם מופנית בקשה מקבלים עליה הודעה. דוא\"ל: Provisa שולחת הודעה לכל אחד מהם. אירועים בלבד: Provisa אינה שולחת הודעה; כלי זרימת העבודה שלכם נרשם ל-ops.requests. שניהם: דוא\"ל ואירועים.",
+    "deliveryEmail": "דוא\"ל",
+    "deliveryEvents": "אירועים בלבד",
+    "deliveryBoth": "שניהם"
   }
 }

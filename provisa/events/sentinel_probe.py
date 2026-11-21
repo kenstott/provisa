@@ -152,6 +152,10 @@ def build_sentinel_probe(sentinel_path: str, *, http_head: HttpHead | None = Non
         path = parsed.path or sentinel_path
 
         async def _file() -> str | None:
+            # REQ-1997: a held org's marker on the server's own disk is in its own folder.
+            from provisa.core.source_uploads import require_own_disk
+
+            require_own_disk(path)
             return _file_token(path)
 
         return _file

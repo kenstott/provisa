@@ -38,6 +38,7 @@ function makeTable(overrides: Partial<RegisteredTable> = {}): RegisteredTable {
     tableName: "docs",
     alias: null,
     description: null,
+    registeredAt: "2026-11-01T00:00:00+00:00",
     cacheTtl: null,
     roleTtl: [],
     pagingKind: null,
@@ -45,7 +46,8 @@ function makeTable(overrides: Partial<RegisteredTable> = {}): RegisteredTable {
     pagingCeilingRows: null,
     replicate: null,
     region: null,
-    draft: false,
+    withdrawn: false,
+    sourceWithdrawn: false,
     rowMaterialize: false,
     loadProtected: null,
     offPeakWindow: null,
@@ -78,12 +80,14 @@ function makeTable(overrides: Partial<RegisteredTable> = {}): RegisteredTable {
     mvPersist: "replace",
     mvPrimaryKey: [],
     mvIncremental: false,
+    mvRebuildEvery: null,
+    incrementalOption: { available: true, code: null, reason: null },
     mvCalendar: null,
     mvGrain: null,
     mvAllowedLateness: 0,
     mvExpectedEvents: null,
     mvBusinessDayGrain: false,
-    productId: null,
+    productIds: [],
     enableAggregates: false,
     enableGroupBy: false,
     canDeployToDb: false,
@@ -133,6 +137,7 @@ function renderForm(updateEditCol = vi.fn()) {
     <TableEditForm
       hidingOnly={false}
       savedProfilerId={null}
+      domainChoices={[]}
       editingTable={makeTable({ columns: COLUMNS })}
       savedTable={makeTable({ columns: COLUMNS })}
       setEditingTable={vi.fn()}
@@ -162,7 +167,8 @@ describe("TableEditForm on a Qdrant collection: a vector's model (REQ-2000)", ()
     fireEvent.click(screen.getByTestId("table-section-columns"));
     // The Columns section asks for the models it offers.
     expect(useVectorModels).toHaveBeenLastCalledWith("vec", "docs", true);
-    fireEvent.click(screen.getByTestId("column-tab-type"));
+    // One editor for the vectors, above the column tabs.
+    expect(screen.getByTestId("register-table-vector-models")).toBeInTheDocument();
     expect(screen.queryByTestId("vector-model-title")).toBeNull();
     expect(screen.queryByTestId("vector-model-none-title")).toBeNull();
     expect(screen.getByTestId("vector-model-none-image")).toBeInTheDocument();

@@ -34,8 +34,11 @@ export interface LineageNode {
   column: string;
   relation: string | null;
   // REQ-2116: native is the raw field a source reads, beneath a registered table's column.
-  kind: "source" | "derived" | "command" | "native";
+  // REQ-2229: job is a job an OpenLineage event reported; external a dataset outside the model.
+  kind: "source" | "derived" | "command" | "native" | "job" | "external";
   materialized: boolean;
+  // REQ-2229: what a job or a dataset outside the model is called. Absent on every other kind.
+  label?: string;
   // REQ-2116: a native node's source object -- its source, and the schema and table it is read
   // from where the source has them. Absent on every other kind.
   source_id?: string;
@@ -66,6 +69,11 @@ export interface LineageEdge {
   target: string;
   transform: string;
   ops: LineageTransformOp[];
+  /** REQ-2229: where the edge came from. Absent on one the client folded together. */
+  origin?: "definition" | "openlineage";
+  /** Set by the client when a view between an input and a member is folded into this edge: the
+   *  relations the column passes through (lineage-layout foldViewsOntoEdges). Never sent. */
+  via?: string[];
 }
 
 export interface LineageCycle {
@@ -91,8 +99,8 @@ export interface ProductInput {
   domain_id: string;
   table_name: string;
   alias: string | null;
-  // The product the input belongs to, when it is another product's member: built from it.
-  product_id: string | null;
+  // Every product the input is a member of: a product is built from each of them.
+  product_ids: string[];
   source_id: string | null;
   source_type: string | null;
   source_schema: string | null;
@@ -114,12 +122,21 @@ export interface ProductDqEntry {
   table_name: string;
   alias: string | null;
   description: string | null;
-  owner_product_id: string | null; // the product owning the check; null for none
+  owner_product_ids: string[]; // the products owning the check, any number; none for none
   checked_table_id: number;
   checked_table: { id: number; domain_id: string; table_name: string; alias: string | null };
   rules: ProductDqRule[]; // its checks, in the order authored
   latest_outcome: "pass" | "fail" | null; // null when it has never run
   latest_run_at: string | null;
+  /** The checks of its latest run that did not pass; none when it passed or never ran. */
+  failing_checks: ProductFailingCheck[];
+}
+
+/** One check of a checker's latest run that did not pass: its name, column and outcome. */
+export interface ProductFailingCheck {
+  name: string;
+  column: string | null;
+  outcome: string;
 }
 
 /** REQ-2157: a product's data quality. Expectations and promises are its own checks on its inputs
@@ -140,8 +157,8 @@ export interface ProductConsumer {
   domain_id: string;
   table_name: string;
   alias: string | null;
-  // The product the consumer belongs to, when it is another product's member.
-  product_id: string | null;
+  // The products the consumer belongs to, any number, when it is other products' member.
+  product_ids: string[];
   // REQ-2158: the member relations it reads, so each contract names its own port's consumers.
   reads: string[];
 }

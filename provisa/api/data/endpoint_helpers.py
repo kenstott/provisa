@@ -28,9 +28,7 @@ from provisa.compiler.directives import (
     extract_directives_from_sql_comments,
     merge_directives,
 )
-from provisa.executor.serialize import (
-    serialize_rows,
-)
+from provisa.observability.request_facts import DocumentResponse
 from provisa.executor import stats as _qs_mod
 from provisa.executor.mermaid_label import label as _label
 from provisa.executor.mermaid_label import node_id as _node_id
@@ -57,36 +55,37 @@ def _parse_accept(accept: str | None) -> str:
     return "json"
 
 
-def _format_response(rows, columns, root_field, output_format, result_limit: int | None = None):
-    """Serialize query results in the requested output format."""
-    if output_format == "json":
-        return serialize_rows(rows, columns, root_field, result_limit=result_limit)
-
+def _format_response(result, columns, root_field, output_format, result_limit: int | None = None):
+    """A root field's result in the requested output format: JSON (any format not named below) is
+    the Rust encoder's, written from the result's Arrow batches (REQ-2194) as a
+    :class:`~provisa.executor.json_encoders.FieldAnswer`; any other format is a Response."""
     if output_format == "ndjson":
         from provisa.executor.formats.ndjson import rows_to_ndjson
 
-        content = rows_to_ndjson(rows, columns)
+        content = rows_to_ndjson(result.rows, columns)
         return Response(content=content, media_type="application/x-ndjson")
 
     if output_format == "csv":
         from provisa.executor.formats.tabular import rows_to_csv
 
-        content = rows_to_csv(rows, columns)
+        content = rows_to_csv(result.rows, columns)
         return Response(content=content, media_type="text/csv")
 
     if output_format == "parquet":
         from provisa.executor.formats.tabular import rows_to_parquet
 
-        content = rows_to_parquet(rows, columns)
+        content = rows_to_parquet(result.rows, columns)
         return Response(content=content, media_type="application/vnd.apache.parquet")
 
     if output_format == "arrow":
         from provisa.executor.formats.arrow import rows_to_arrow_ipc
 
-        content = rows_to_arrow_ipc(rows, columns)
+        content = rows_to_arrow_ipc(result.rows, columns)
         return Response(content=content, media_type="application/vnd.apache.arrow.stream")
 
-    return serialize_rows(rows, columns, root_field, result_limit=result_limit)
+    from provisa.executor.json_encoders import graphql_field, result_batches
+
+    return graphql_field(result_batches(result), columns, result_limit)
 
 
 def _check_role_capability(role, capability: Capability) -> None:
@@ -163,6 +162,10 @@ def _build_redirect_params(
 
 def _inject_stats_into_response(response, stats_dict: dict):
     """Inject provisa_stats extension into a JSON response/dict."""
+    if isinstance(response, DocumentResponse):
+        # The encoders' answers are embedded in the document as their bytes: nothing is decoded.
+        response.document.setdefault("extensions", {})["provisa_stats"] = stats_dict
+        return response.rebuilt()
     if isinstance(response, JSONResponse):
         body = json.loads(bytes(response.body))
         body.setdefault("extensions", {})["provisa_stats"] = stats_dict
@@ -181,6 +184,10 @@ def _inject_warnings_into_response(response, warnings: list):
     carries them in the ``X-Provisa-Warnings`` header (``middleware.response_headers``); a
     response with no JSON body is left to that."""
     entries = [w.as_dict() for w in warnings]
+    if isinstance(response, DocumentResponse):
+        # The encoders' answers are embedded in the document as their bytes: nothing is decoded.
+        response.document.setdefault("extensions", {}).setdefault("warnings", []).extend(entries)
+        return response.rebuilt()
     if isinstance(response, JSONResponse):
         body = json.loads(bytes(response.body))
         body.setdefault("extensions", {}).setdefault("warnings", []).extend(entries)
@@ -192,45 +199,26 @@ def _inject_warnings_into_response(response, warnings: list):
     return response
 
 
-def _count_rows_per_source(field_rows: list, ctx, root_type: str) -> dict[str, int]:
+def _count_rows_per_source(joined: dict[str, int] | None, ctx, root_type: str) -> dict[str, int]:
     """Count matched rows per source_id using join cardinality in the result.
 
-    For one-to-many joins, sums the nested array lengths across all parent rows.
-    For many-to-one / one-to-one joins, counts the non-null joined objects.
-    The root source row count is NOT included here — callers use len(field_rows) for that.
+    ``joined`` is what the encoder counted of the field's rows (``FieldAnswer.joined``): for each
+    relationship the rows hold, by its root key, a to-many's elements summed over the rows and a
+    to-one's non-null objects. The root source row count is NOT included here — callers use the
+    field's row count for that.
 
-    Only the joins the query SELECTED are counted, in one pass over the rows. A field's rows are
-    one selection, so the join fields present are read off the first row; a query that selected
-    no join does no per-row work, however many joins the role's context holds. A source no
-    selected join targets has no entry, and its caller reports the field's own row count for it.
-    Only the joins of the field's own type (``root_type``) are its: another type's join of the
-    same name is no field of these rows, which may hold a column of that name.
+    Only the joins the query SELECTED are counted. A source no selected join targets has no
+    entry, and its caller reports the field's own row count for it. Only the joins of the field's
+    own type (``root_type``) are its: another type's join of the same name is no field of these
+    rows, which may hold a column of that name.
     """
-    if not field_rows or not ctx or not hasattr(ctx, "joins"):
+    if not joined or not ctx or not hasattr(ctx, "joins"):
         return {}
-    first = field_rows[0]
-    if not isinstance(first, dict):
-        return {}
-    selected = [
-        (join_field, join_meta.cardinality == "one-to-many", join_meta.target.source_id)
-        for (type_name, join_field), join_meta in ctx.joins.items()
-        if type_name == root_type and join_field in first
-    ]
-    if not selected:
-        return {}
-    totals = [0] * len(selected)
-    for row in field_rows:
-        if not isinstance(row, dict):
-            continue
-        for i, (join_field, one_to_many, _) in enumerate(selected):
-            value = row.get(join_field)
-            if one_to_many:
-                totals[i] += len(value or [])
-            elif value is not None:
-                totals[i] += 1
     counts: dict[str, int] = {}
-    for (_, _, src_id), total in zip(selected, totals):
-        counts[src_id] = counts.get(src_id, 0) + total
+    for (type_name, join_field), join_meta in ctx.joins.items():
+        if type_name == root_type and join_field in joined:
+            src_id = join_meta.target.source_id
+            counts[src_id] = counts.get(src_id, 0) + joined[join_field]
     return counts
 
 
@@ -358,7 +346,7 @@ def _record_per_source_stats(
     per_source_ms: dict[str, float] | None = None,
     engine_ms: float | None = None,
     hydration_rows: dict[str, int] | None = None,
-    field_rows: list | None = None,
+    joined: dict[str, int] | None = None,
     physical_sql: str | None = None,
     hydration_cache_hits: set | None = None,
 ) -> None:
@@ -370,9 +358,7 @@ def _record_per_source_stats(
     Per-source row counts use join cardinality from the result for one-to-many joins.
     """
     joined_rows = (
-        _count_rows_per_source(field_rows, ctx, ctx.tables[canonical_field].type_name)
-        if field_rows
-        else {}
+        _count_rows_per_source(joined, ctx, ctx.tables[canonical_field].type_name) if joined else {}
     )
     for src_id in sources or set():
         source_type = getattr(state, "source_types", {}).get(src_id, "")

@@ -29,10 +29,30 @@ import { FederationSettingsCards } from "./settingsCards";
 import { PlatformRequired } from "./PlatformRequired";
 import { isForbidden } from "./isForbidden";
 import { FormChecks, FormField, FormFooter, FormLayout } from "../form/FormLayout";
+import { RegionEngineTabs } from "./RegionEngineTabs";
+import { useRegionEngines } from "./useRegionEngines";
+
+// REQ-1922: when the org uses regions the page is a tab per region, each that region's engine
+// store; with none it is the one engine, as before.
+export function FederationEngineTab() {
+  const { t } = useTranslation();
+  const regions = useRegionEngines();
+  if (regions.status === "error") return <Alert color="red">{regions.text}</Alert>;
+  if (regions.status === "loading") return <Text>{t("federationEngineTab.loading")}</Text>;
+  if (regions.status === "none") return <DeploymentEngineForm />;
+  return (
+    <Stack gap="md">
+      <RegionEngineTabs grant={regions.grant} save={regions.save} sandbox={regions.sandbox} />
+      {/* REQ-1349: the limits on how an engine reaches sources are the deployment's, not a
+          region's. */}
+      <FederationSettingsCards />
+    </Stack>
+  );
+}
 
 // REQ-916: select + configure the federation engine. Changes persist to the platform config and
 // take effect on the next service restart (the engine is bound once at boot).
-export function FederationEngineTab() {
+function DeploymentEngineForm() {
   const { t } = useTranslation();
   const [state, setState] = useState<FederationEngineState | null>(null);
   const [selected, setSelected] = useState<string>("");

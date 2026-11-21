@@ -2,9 +2,13 @@
   "parametersPanel": {
     "title": "פרמטרים",
     "summary": "{{required}} מתוך {{count}} נדרשים",
+    "limits": "הטבלה הזו דורשת את {{parameters}}. ללא ערך לכל אחד מהם היא אינה מספקת ספירת שורות, פרופיל או דגימה.",
     "name": "פרמטר",
     "type": "סוג",
     "reaches": "מגיע למקור בתור",
+    "meaning": "משמעות",
+    "opaque": "קלט אטום למקור",
+    "realColumn": "עמודה אמיתית של הטבלה",
     "required": "נדרש",
     "requiredBySource": "נדרש על ידי המקור",
     "requiredAria": "{{name}} נדרש",
@@ -13,7 +17,9 @@
       "query_param": "פרמטר שאילתה",
       "graphql_arg": "ארגומנט GraphQL",
       "grpc_input": "שדה בבקשת gRPC",
-      "query_arg": "ארגומנט של השאילתה המקורית"
+      "query_arg": "ארגומנט של השאילתה המקורית",
+      "partition_key": "מפתח מחיצה",
+      "column_value": "ערך עמודה"
     }
   }
 }

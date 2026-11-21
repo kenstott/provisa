@@ -27,6 +27,7 @@
           "odata": "OData",
           "sql_http": "SQL über HTTP",
           "cypher_http": "Cypher über HTTP",
+          "sparql_http": "SPARQL über HTTP",
           "pgwire": "PostgreSQL Wire",
           "flight": "Arrow Flight",
           "bolt": "Bolt",
@@ -193,7 +194,7 @@
       },
       "hot_threshold": {
         "label": "Schwellenwert für stark genutzte Tabellen",
-        "help": "Wie viele kontrollierte Anweisungen eine Tabelle innerhalb des Zeitfensters für stark genutzte Tabellen erhalten muss, bevor sie repliziert wird, damit spätere Lesezugriffe aus ihrem Replikat kommen."
+        "help": "Wie viele gesteuerte Anweisungen eine Tabelle innerhalb des Zeitfensters für ausgelastete Tabellen erhalten muss, bevor sie repliziert wird, sodass spätere Lesezugriffe aus ihrem Replikat kommen."
       },
       "hot_interval": {
         "label": "Zeitfenster für stark genutzte Tabellen",
@@ -246,8 +247,8 @@
         }
       },
       "role_grant_notice_days": {
-        "label": "Hinweis vor dem Ende einer Rollenzuweisung",
-        "help": "Wie viele Tage vor dem Ablauf einer Rollenzuweisung oder ihrer Entfernung wegen Nichtnutzung der Inhaber und die Administratoren der Organisation per E-Mail benachrichtigt werden."
+        "label": "Benachrichtigung, bevor eine Rollenzuweisung oder ihre Einträge enden",
+        "help": "Wie viele Tage bevor eine Rollenzuweisung oder einer ihrer Berechtigungseinträge endet oder die Zuweisung wegen Nichtnutzung entfernt wird, der Inhaber und die Administratoren der Organisation per E-Mail benachrichtigt werden."
       }
     },
     "server": {
@@ -271,6 +272,10 @@
         "label": "PostgreSQL-Wire-Port",
         "help": "Der Port, auf dem der Server für das PostgreSQL-Protokoll lauscht; 0 lässt ihn aus. Neustart erforderlich; bestätigungspflichtig, da ein Listener geöffnet oder geschlossen wird."
       },
+      "minted_pgwire_port": {
+        "label": "PostgreSQL-Wire-Port für ausgestellte Token",
+        "help": "Der Port, den die Sandbox einer Codequelle erreichen darf, um die ihr übergebene Tabelle zu lesen, und die Adresse, die ein entfernter Host erhält. Er akzeptiert nur Token, die für einen einzelnen Aufruf ausgestellt wurden; 0 lässt ihn ausgeschaltet, und ein Befehl, dem eine Tabelle übergeben wird, wird dann abgelehnt. Neustart erforderlich; geschützt, da er einen Listener öffnet oder schließt."
+      },
       "bolt_port": {
         "label": "Bolt-Port",
         "help": "Der Port, auf dem der Bolt-Server (Neo4j) lauscht; 0 lässt ihn aus. Neustart erforderlich; bestätigungspflichtig, da ein Listener geöffnet oder geschlossen wird."
@@ -282,6 +287,10 @@
       "public_url": {
         "label": "Öffentliche Adresse",
         "help": "Die Adresse, unter der diese Bereitstellung bekannt ist, etwa https://data.example.com. Jede IRI eines Subjekts in SPARQL und in RDF-Exporten beginnt damit, daher sollte sie gleich bleiben, solange diese IRIs verwendet werden. Ist sie nicht gesetzt, wird eine Abfrage abgelehnt, die die IRI eines Subjekts liefert."
+      },
+      "node_url": {
+        "label": "Adresse dieses Knotens",
+        "help": "Die Adresse, unter der Clients diesen Knoten erreichen. Die Oberfläche eines Koordinators führt ihn als Datenknoten auf, wenn die Region keinen aufführt. Der Launcher setzt sie für jeden Knoten; ist sie nicht gesetzt, wird der Knoten nicht aufgeführt."
       }
     },
     "tls": {
@@ -587,6 +596,14 @@
         "label": "Lokale MCP-Rolle",
         "help": "Die Rolle, als die lokale (stdio) MCP-Aufrufe ausgeführt werden; solange sie nicht gesetzt ist, werden diese Aufrufe abgelehnt. Bestätigungspflichtig, da sie jedem, der den lokalen Client starten kann, den Zugriff dieser Rolle gewährt."
       },
+      "principal": {
+        "label": "Lokaler MCP-Principal",
+        "help": "Der Principal (Benutzer-ID), für den lokale (stdio-)MCP-Aufrufe neben der lokalen Rolle handeln; die Berechtigungen dieser Person schränken die Rolle ein. Solange er nicht gesetzt ist, werden diese Aufrufe abgelehnt. Geschützt, weil er für jeden, der den lokalen Client starten kann, mit dem Zugriff dieser Person handelt."
+      },
+      "tools": {
+        "label": "Gelistete MCP-Tools",
+        "help": "Die Tools, die einem MCP-Client aufgeführt werden, dessen Adresse keinen Modus nennt (tools=full oder tools=sip in der Adresse). full listet jedes Tool; sip listet die Tools zum Finden, Beschreiben, Abfragen und Lesen von Metriken sowie ein Tool, das auf Anfrage des Clients die anderen Gruppen hinzufügt. Jedes Tool kann in beiden Modi aufgerufen werden, soweit die Rechte des Aufrufers es erlauben."
+      },
       "external_url": {
         "label": "Externe MCP-Adresse",
         "help": "Die MCP-Adresse, die Benutzern angezeigt wird, wenn das Deployment hinter einem Proxy steht."
@@ -666,7 +683,7 @@
     "logs": {
       "allowed_roots": {
         "label": "Verzeichnisse, aus denen Logdateien gelesen werden dürfen",
-        "help": "Die Verzeichnisse, in denen die Dateien einer Logs-Quelle liegen dürfen, nachdem ihre Links aufgelöst sind; standardmäßig /var/log. Fügen Sie eines wie ~/Library/Logs hinzu, um die eigenen Dateien des Servers darunter in Tabellen zu lesen. Ein Server mit vielen Organisationen liest keine eigene Logdatei, was auch immer hier steht."
+        "help": "Die Verzeichnisse, in denen die Dateien einer Logs-Quelle liegen dürfen, nachdem ihre Links aufgelöst sind; standardmäßig /var/log. Fügen Sie eines hinzu, etwa ~/Library/Logs, um die eigenen Dateien des Servers darunter in Tabellen zu lesen. Eine Sandbox-Organisation, und auf einem Server mit vielen Organisationen jede Organisation außer der des Deployments selbst, liest keine eigene Datei des Servers außerhalb ihres eigenen Ordners außer denen, die die Quellen ihrer Demo nennen, unabhängig von dieser Einstellung."
       },
       "preview_lines": {
         "label": "Gelesene Zeilen zur Ermittlung der Spalten eines Logs",
@@ -694,7 +711,7 @@
       },
       "download_roots": {
         "label": "Verzeichnisse, aus denen Quelldateien heruntergeladen werden dürfen",
-        "help": "Die Verzeichnisse, aus denen die Datei einer CSV- oder Parquet-Quelle über ihren Pfad auf diesem Server heruntergeladen werden darf, nachdem ihre Links aufgelöst sind; standardmäßig keines. Fügen Sie eines hinzu, damit ein Steward eine Datei darunter in den Ordner der Organisation kopieren kann. Ein Server mit vielen Organisationen kopiert keine eigene Datei, was hier auch steht."
+        "help": "Die Verzeichnisse, aus denen die Datei einer CSV- oder Parquet-Quelle über ihren Pfad auf diesem Server heruntergeladen werden darf, nachdem ihre Links aufgelöst sind; standardmäßig keine. Fügen Sie eines hinzu, damit ein Steward eine Datei darunter in den Ordner der Organisation kopieren kann. Eine Sandbox-Organisation, und auf einem Server mit vielen Organisationen jede Organisation außer der des Deployments selbst, kopiert keine eigene Datei des Servers außerhalb ihres eigenen Ordners außer denen, die die Quellen ihrer Demo nennen, unabhängig von dieser Einstellung."
       }
     },
     "polly": {
@@ -797,7 +814,7 @@
     "graph": {
       "depth_limit": {
         "label": "Tiefster Graphpfad",
-        "help": "Die meisten Hops, die ein Cypher-Pfad variabler Länge oder ein SPARQL-Property-Path durchläuft, wenn die Abfrage selbst keine Grenze setzt. Ein Ergebnis, das an dieser Tiefe abgeschnitten wurde, weist darauf hin."
+        "help": "Die maximale Anzahl Schritte, die ein Cypher-Pfad variabler Länge oder ein SPARQL-Property-Path geht, wenn die Abfrage keine eigene Grenze setzt. Ein Cypher-Pfad nutzt keine Beziehung zweimal und schlägt mit Namen fehl, wenn er weiter gehen würde; ein SPARQL-Ergebnis, das bei dieser Tiefe abgeschnitten wird, weist darauf hin. Standardmäßig sehr groß (1000)."
       },
       "union_limit": {
         "label": "Höchstzahl der Prädikate einer Prädikatvariable",
@@ -816,6 +833,14 @@
       "duckdb_threads": {
         "label": "DuckDB-Threads der Code-Quelle",
         "help": "Die Threads, auf denen die DuckDB einer Code-Quelle ihre Anweisungen beantwortet."
+      },
+      "health_poll_interval": {
+        "label": "Abfrageintervall für den Connector-Zustand",
+        "help": "Wie oft jeder Provisa-Prozess den Host eines Connectors nach seinem Zustand fragt und das Ergebnis an der Quelle anzeigt. Ein neu gestarteter Host wird bei der nächsten Abfrage erkannt, wodurch seine On-Start-Funktion erneut ausgeführt wird."
+      },
+      "worker_idle_timeout": {
+        "label": "Leerlauf-Timeout für Code-Worker",
+        "help": "Wie lange der Worker einer Code-Quelle oder der Preflight-Worker einer Organisation ungenutzt bleiben darf, bevor Provisa seinen Prozess beendet. Der nächste Aufruf startet einen neuen."
       }
     },
     "config": {
@@ -846,6 +871,30 @@
       "default_ttl": {
         "label": "Standard-Lebensdauer für materialisierte Sichten",
         "help": "Wie lange eine materialisierte Sicht verwendet wird, bevor sie aktualisiert wird, wenn sie keine eigene Lebensdauer festlegt. Neustart erforderlich."
+      }
+    },
+    "parameters": {
+      "max_calls_per_statement": {
+        "label": "Aufrufe pro Anweisung an eine parametrisierte Tabelle",
+        "help": "Die Höchstzahl der Aufrufe, die eine Anweisung an eine parametrisierte Tabelle richtet. Jeder Wert, den eine Anweisung einem Parameter gibt, ist ein Aufruf der Quelle: jeder Wert einer IN-Liste, jeder Zweig eines OR, jeder eindeutige Schlüssel eines Joins. Eine Anweisung, die mehr benötigt, wird abgelehnt."
+      }
+    },
+    "embedding": {
+      "hub_endpoint": {
+        "label": "Adresse des Hugging Face Hub",
+        "help": "Der Hugging Face Hub, von dem ein lokales Embedding-Modell heruntergeladen wird, etwa ein Spiegel in Ihrem Netzwerk. Gilt ab dem nächsten Modell-Download."
+      }
+    },
+    "subscriptions": {
+      "max_sinks_per_principal": {
+        "label": "Laufende Kafka-Sinks pro Person",
+        "help": "Wie viele Kafka-Sinks eine Person gleichzeitig laufen lassen darf. Eine Anfrage, einen weiteren zu starten, wird abgelehnt, bis einer ihrer Sinks stoppt."
+      }
+    },
+    "sparql": {
+      "query_timeout": {
+        "label": "SPARQL-Abfrage-Timeout",
+        "help": "Wie lange eine SPARQL-Abfrage laufen darf, bevor sie aufgegeben wird: eine Vorschau, eine Wikidata-Klassensuche und jedes Laden des Replikats einer SPARQL-Tabelle. Ein öffentlicher Endpunkt kann eine Abfrage durch sein eigenes Limit früher beenden (bei Wikidata 60 Sekunden)."
       }
     }
   }

@@ -1,0 +1,18 @@
+{
+  "_comment": "REQ-1929: a relationship's gRPC field, its GraphQL relationship field translated as provisa/grpc/proto_gen.py proto_relation_field_name does. Pinned against both that and provisa-ui relationshipQueries.ts protoRelationFieldName.",
+  "examples": [
+    ["client", "client"],
+    ["buildingPermit", "building_permit"],
+    ["billedTo", "billed_to"],
+    ["edgesOut", "edges_out"],
+    ["edges_out", "edges_out"],
+    ["ps__pets", "ps_pets"],
+    ["sales__clients", "sales_clients"],
+    ["permit_neighborhood_dimension", "permit_neighborhood_dimension"],
+    ["HTTPServer", "http_server"],
+    ["ownerID", "owner_id"],
+    ["permit2Holder", "permit2_holder"],
+    ["shelter__buildingPermits", "shelter_building_permits"],
+    ["a___b", "a__b"]
+  ]
+}

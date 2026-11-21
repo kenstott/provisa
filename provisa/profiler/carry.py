@@ -134,6 +134,59 @@ async def load_runs(conn: Any, path: Path) -> list[str]:
     return loaded
 
 
+async def unheld_runs(conn: Any, path: Path, schema: str) -> list[str]:
+    """The profile runs a bundle carries at ``path`` that control-plane ``schema`` (an org's) does
+    not hold, rows and all, each saying why; empty when it holds every one. A template is ready
+    only when it holds what its bundle carries: one whose relations were emptied, or never loaded,
+    gave every sandbox of it an empty run history."""
+    from provisa.profiler.schema import result_table_name
+
+    carried = json.loads(path.read_text())["results"]
+    registered = sa.table(
+        "registered_tables",
+        sa.column("id"),
+        sa.column("source_id"),
+        sa.column("schema_name"),
+        sa.column("table_name"),
+        schema=schema,
+    )
+    ids = {
+        (r.source_id, r.schema_name, r.table_name): r.id
+        for r in (
+            await conn.execute_core(
+                sa.select(
+                    registered.c.id,
+                    registered.c.source_id,
+                    registered.c.schema_name,
+                    registered.c.table_name,
+                )
+            )
+        ).fetchall()
+    }
+    present = {
+        r[0]
+        for r in (await conn.execute_core(_RESULT_RELATIONS.bindparams(schema=schema))).fetchall()
+    }
+    unheld = []
+    for entry in carried:
+        key = tuple(entry["table"])
+        if key not in ids:
+            unheld.append(f"{'.'.join(key)} is not registered")
+            continue
+        name = result_table_name(key[2], ids[key], entry["kind"])
+        if name not in present:
+            unheld.append(f"{name} is not there")
+            continue
+        held = (
+            await conn.execute_core(
+                sa.select(sa.func.count()).select_from(sa.table(name, schema=schema))
+            )
+        ).scalar_one()
+        if held != len(entry["rows"]):
+            unheld.append(f"{name} holds {held} rows of the {len(entry['rows'])} carried")
+    return unheld
+
+
 async def load_bundle_runs(conn: Any, directory: Path | None) -> list[str]:
     """Load the profile runs the bundle of the demo this server was started as carries
     (``directory``, :func:`provisa.core.demo.started_demo_directory`) into the org ``conn`` is

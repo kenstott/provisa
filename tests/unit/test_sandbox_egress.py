@@ -317,6 +317,9 @@ def test_the_direct_pool_connects_to_the_checked_address(in_sandbox, public_name
     dialled: list[str] = []
 
     class _Driver:
+        names_own_destination = False
+        dialect = None
+
         def bind_source(self, _sid):
             pass
 
@@ -338,6 +341,41 @@ def test_the_direct_pool_connects_to_the_checked_address(in_sandbox, public_name
     assert dialled == [_PUBLIC]
 
 
+def test_a_jdbc_source_url_is_connected_to_at_the_checked_address(
+    in_sandbox, public_names, monkeypatch
+):
+    """REQ-2191: a JDBC source's host is in its URL, which its driver connects at; the
+    pool hands it no host, and the driver pins the URL's host as the pool pins any other."""
+    import sqlalchemy
+
+    from provisa.executor import pool as pool_mod
+
+    created: list[str] = []
+    monkeypatch.setattr(sqlalchemy, "create_engine", lambda url, **_k: created.append(url.host))
+    hints = {"url": "postgresql+psycopg2://db.example.com:5432/d", "sql_dialect": "postgres"}
+    asyncio.run(pool_mod.SourcePool().add("g", "jdbc", "localhost", 0, "", "u", "p", extra=hints))
+    assert created == [_PUBLIC]
+
+
+def test_a_sandboxs_jdbc_source_url_is_held_to_its_checked_address(in_sandbox, public_names):
+    """REQ-2191: a network URL is pinnable -- its driver connects at the checked address."""
+    from provisa.core.models import Source, SourceType
+
+    hints = {"url": "postgresql+psycopg2://db.example.com:5432/d", "sql_dialect": "postgres"}
+    fields = {"host": "", "port": 0, "federation_hints": hints}
+    assert egress.require_connectable(fields, "jdbc") == _PUBLIC
+    source = Source(id="g", type=SourceType.jdbc, federation_hints=hints)
+    assert egress.pinned_source(source) is source  # the driver pins; the row is left as written
+
+
+def test_a_jdbc_source_url_on_a_private_address_is_refused(in_sandbox, monkeypatch):
+    from provisa.executor import pool as pool_mod
+
+    hints = {"url": "mssql+pyodbc://10.0.0.5:1433/d", "sql_dialect": "tsql"}
+    with pytest.raises(egress.PrivateDestinationRefused):
+        asyncio.run(pool_mod.SourcePool().add("g", "jdbc", "", 0, "", "", "", extra=hints))
+
+
 # --- a host given as a URL: a Qdrant source's is its instance's URL ----------------------------
 
 _QDRANT_URL = "http://provisa-demo-sonnets-202610161328-7d7b35b3a-qdrant-1:6333"
@@ -349,6 +387,9 @@ def _qdrant_pool(monkeypatch, host: str) -> list[str]:
     dialled: list[str] = []
 
     class _Driver:
+        names_own_destination = False
+        dialect = None
+
         def bind_source(self, _sid):
             pass
 

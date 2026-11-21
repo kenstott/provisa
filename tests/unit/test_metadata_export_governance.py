@@ -23,6 +23,7 @@ from provisa.api.metadata_export.governance import build_governance_tags
 from provisa.api.metadata_export.model import GovernanceSignal, MetadataSnapshot
 from provisa.api.metadata_export.refs import UnknownTableError
 from provisa.core.db import STANDARD_ROLES
+from tests.unit.product_members import with_members
 from provisa.core.models import (
     Column,
     Domain,
@@ -61,8 +62,6 @@ def _table(name: str, columns: list[Column], domain_id: str = "sales") -> Table:
         schema_name="public",
         table_name=name,
         columns=columns,
-        # Marked so the table publishes: only Data Product tables enter the snapshot.
-        product_id="prod",
     )
 
 
@@ -71,6 +70,8 @@ def _config(*, tables: list[Table], rls: list[RLSRule] | None = None) -> Provisa
         sources=[Source(id="wh", type=SourceType.postgresql, description="Warehouse")],
         domains=[Domain(id="sales", description="Sales", steward="s")],
         tables=tables,
+        # Members of a product so the tables publish: only Data Product tables enter the snapshot.
+        data_products=with_members([], {"prod": tables}),
         relationships=[],
         roles=[
             Role(id="clerk", description="Test role.", capabilities=["usage"], domain_access=["*"]),

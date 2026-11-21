@@ -32,7 +32,7 @@ import duckdb
 from hypothesis import HealthCheck, assume, given, settings
 from hypothesis import strategies as st
 
-from provisa.compiler.rls import _inject_where, _qualified_predicate
+from provisa.compiler.rls import _inject_where, _qualified_predicate, read_rule
 from provisa.transpiler.transpile import transpile
 
 # ── Adversarial schema/data generators ─────────────────────────────────────────
@@ -325,7 +325,7 @@ class TestGovernanceMetamorphic:
         policy = data.draw(_predicate(cols))
         base = f"SELECT {_q('rid')} FROM t"
         bare = _inject_where(base, policy)
-        qualified_pred = _qualified_predicate(policy, "t").sql(dialect="postgres")
+        qualified_pred = _qualified_predicate(read_rule(policy), "t").sql(dialect="postgres")
         qual = _inject_where(base, qualified_pred)
         duck = _make_duck(cols, rows)
         a = _norm_rows(_duck_rows(duck, transpile(bare, "duckdb")))

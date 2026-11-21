@@ -19,9 +19,18 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { RoleSchema, rootKey, type Introspection, type MetaReader } from "../../../api/metaGraph";
-import { ontologyCountQuery, ontologyQuery } from "../glossaryGraphData";
+import {
+  ontologyCountQuery,
+  ontologyHopQuery,
+  ontologyOpenedQuery,
+  ontologyQuery,
+  readsTerms,
+  termLevels,
+} from "../ontologyData";
+import { PRODUCT_MAP, PRODUCT_MAP_LAYERS } from "../ontologyPresets";
+import { tableColumnsQuery } from "../tableColumns";
 import type { LayerId, QueryScope } from "../graphModel";
-import { productGraphQuery, type ProductFilters } from "../productGraphData";
+import { searchItems } from "../../../lib/searchItems";
 
 const GOLDEN = resolve(__dirname, "../../../../../tests/fixtures/graphql_golden");
 
@@ -48,7 +57,7 @@ function subsets<T>(items: T[]): T[][] {
 }
 
 const LAYERS: LayerId[] = ["domains", "data", "columns"];
-const SEARCHES = [[], ["party"]];
+const SEARCHES = ["", "party"];
 const STATUSES: QueryScope["hiddenStatuses"][] = [
   [],
   ["retired"],
@@ -69,7 +78,7 @@ function ontologyScopes(): [string, QueryScope][] {
           for (const domains of DOMAINS) {
             const key = [
               ["ontology", ...layers].join("+"),
-              `search=${search.join(",")}`,
+              `search=${search}`,
               `hidden=${hiddenStatuses.join(",")}`,
               `edges=${edgeTypes.join(",")}`,
               `domains=${domains.join(",")}`,
@@ -78,32 +87,99 @@ function ontologyScopes(): [string, QueryScope][] {
               key,
               {
                 layers: new Set<LayerId>(["ontology", ...layers]),
-                search,
+                search: searchItems(search),
                 hiddenStatuses,
                 edgeTypes,
                 domains,
                 orphans: true,
                 tags: [],
                 sensitivities: [],
+                focus: null,
+                depth: 2,
               },
             ]);
           }
   return out;
 }
 
-/** The product graph's: one product (a member's start) or all, under its filters. */
-function productScopes(): [string, string | null, ProductFilters][] {
-  const out: [string, string | null, ProductFilters][] = [];
-  for (const product of [null, "1"])
-    for (const domains of DOMAINS)
-      for (const tags of [[], ["pii"]])
-        for (const sensitivities of [[], ["confidential"]])
-          out.push([
-            `product=${product ?? "*"} domains=${domains.join(",")} tags=${tags.join(",")} sensitive=${sensitivities.join(",")}`,
-            product,
-            { domains, tags, sensitivities, edgeTypes: [] },
-          ]);
+/** REQ-2174 (ONE ONTOLOGY GRAPH): the snippets' -- a term's page and a product's panel, in 3D
+ * and in lanes, to each depth a reader can pick -- and the whole ontology in lanes. A product's
+ * panel reads by the Product map's rules (ONE GRAPH, RULES PER PRESET), a term's page by the
+ * Ontology preset's. */
+function snippetScopes(): [string, QueryScope][] {
+  const out: [string, QueryScope][] = [];
+  for (const focus of [null, "term:7", "p:1"])
+    for (const lanes of [false, true])
+      for (const depth of [1, 2, 3, 4]) {
+        if (focus === null && depth !== 2) continue;
+        out.push([
+          `focus=${focus ?? "*"} lanes=${lanes} depth=${depth}`,
+          {
+            layers: new Set<LayerId>(["ontology", "domains", "columns", "data"]),
+            search: [],
+            hiddenStatuses: ["retired"],
+            edgeTypes: [],
+            domains: [],
+            orphans: true,
+            tags: [],
+            sensitivities: [],
+            lanes,
+            focus,
+            depth,
+            ...(focus?.startsWith("p:") ? { products: true } : {}),
+          },
+        ]);
+      }
   return out;
+}
+
+/** REQ-2174 (THE ONE GRAPH'S PRESETS AND LAYERS): the Product map with each layer of a product's
+ * own parts on, alone and with Data, and all of them at once; and its Tables, with Columns. */
+function productLayerScopes(): [string, QueryScope][] {
+  const parts: LayerId[] = ["commands", "quality", "productLinks", "lineage"];
+  const sets: LayerId[][] = [
+    ...parts.flatMap((l): LayerId[][] => [[l], ["data", l]]),
+    ["data", ...parts],
+    ["ownerTables"],
+    ["data", "ownerTables"],
+    // REQ-2174 (amended 2026-11-07): the tables related to those drawn, with their products.
+    ["related"],
+    ["data", "related"],
+  ];
+  return sets.map((layers) => [
+    `layers=${layers.join("+")}`,
+    {
+      layers: new Set<LayerId>(["ontology", "domains", "columns", ...layers]),
+      search: [],
+      hiddenStatuses: ["retired"],
+      edgeTypes: [],
+      domains: [],
+      orphans: true,
+      tags: [],
+      sensitivities: [],
+      focus: null,
+      depth: 2,
+      products: true,
+    },
+  ]);
+}
+
+/** REQ-2174 (amended 2026-11-12, THE PRODUCT MAP OPENS ON PRODUCTS): the Product map as it opens
+ * -- its products with their member tables, and the links between them -- and with Columns on. */
+function productMapOpening(layers: LayerId[] = PRODUCT_MAP_LAYERS): QueryScope {
+  return {
+    layers: new Set<LayerId>(layers),
+    search: [],
+    hiddenStatuses: ["retired"],
+    edgeTypes: [],
+    domains: [],
+    orphans: true,
+    tags: [],
+    sensitivities: [],
+    focus: PRODUCT_MAP.focus,
+    depth: PRODUCT_MAP.depth,
+    products: PRODUCT_MAP.products,
+  };
 }
 
 /** Each distinct query the builders produce over the grid, by the first scope that builds it. */
@@ -120,12 +196,29 @@ function corpus(): Record<string, string> {
     add(`ontology: ${key}`, ontologyQuery(m, s));
     add(`ontology count: ${key}`, ontologyCountQuery(m, s));
   }
-  for (const [key, product, f] of productScopes())
-    add(`product graph: ${key}`, productGraphQuery(m, product, f));
+  for (const [key, s] of snippetScopes()) {
+    add(`ontology snippet: ${key}`, ontologyQuery(m, s));
+    add(`ontology snippet count: ${key}`, ontologyCountQuery(m, s));
+    // REQ-2174: each hop past the root, by the ids of the terms it reaches.
+    for (let hop = 1; hop <= termLevels(s); hop++)
+      add(`ontology snippet hop ${hop}: ${key}`, ontologyHopQuery(m, s, hop, [1, 2]));
+    // REQ-2136: what the snippet opens as -- its root and every hop -- in one query.
+    const hops = Array.from({ length: termLevels(s) }, (_, i) => [2 * i + 1, 2 * i + 2]);
+    add(`ontology snippet opened: ${key}`, ontologyOpenedQuery(m, s, hops));
+  }
+  for (const [key, s] of productLayerScopes())
+    add(`ontology product layers: ${key}`, ontologyQuery(m, s));
+  add("ontology product map: opening", ontologyQuery(m, productMapOpening()));
+  add(
+    "ontology product map: opening+columns",
+    ontologyQuery(m, productMapOpening([...PRODUCT_MAP_LAYERS, "columns"])),
+  );
+  // REQ-2244: a table expanded in a term's graph reads its columns, that table alone.
+  add("ontology table columns: one table", tableColumnsQuery(m, "t:101"));
   return out;
 }
 
-describe("the Ontology View's and the product graph's queries, as the GraphQL corpus holds them", () => {
+describe("the ontology's queries, whole and as snippets, as the GraphQL corpus holds them", () => {
   it("are the ones the builders produce now", () => {
     const produced = corpus();
     const path = resolve(GOLDEN, "ontology_queries.json");
@@ -148,6 +241,8 @@ describe("the Ontology View's and the product graph's queries, as the GraphQL co
       orphans: true,
       tags: [],
       sensitivities: [],
+      focus: null,
+      depth: 2,
     });
     const data = ontologyQuery(m, scope(["columns", "data"]));
     const columns = ontologyQuery(m, scope(["columns"]));
@@ -155,14 +250,127 @@ describe("the Ontology View's and the product graph's queries, as the GraphQL co
     expect(data).not.toContain("data_products");
     const refs = data!.slice(data!.indexOf("refs {"));
     expect(refs).toContain("registeredTable {");
-    expect(refs).toContain("product {");
+    expect(refs).toContain("dataProductTables {");
+    expect(refs).toContain("dataProduct {");
     expect(refs).not.toContain("source_relationships");
     expect(refs).not.toContain("_meta");
+  });
+
+  it("reads a term's snippet from the term, and a product's from the terms its tables are", () => {
+    // REQ-2174: the root names the focus; its neighbourhood is read a hop at a time to the depth.
+    const m = reader();
+    const [, base] = snippetScopes()[0];
+    const term = ontologyQuery(m, { ...base, focus: "term:7", depth: 2 }) as string;
+    expect(term).toMatch(/on_terms\(where: \{[^\n]*id: \{ eq: 7 \}/);
+    expect(term).toContain("edgesIn");
+    const product = ontologyQuery(m, {
+      ...base,
+      focus: "p:1",
+      depth: 2,
+      products: true,
+    }) as string;
+    expect(product).toContain('productId: { eq: "1" }');
+    // The product itself is read, that product alone.
+    expect(product).toMatch(/m__dataProducts\(where: \{ id: \{ eq: "1" \} \}\)/);
+    // A deeper read reads one more hop, its root the same: no level is nested under another.
+    const deeper = { ...base, focus: "term:7", depth: 3 };
+    expect(ontologyQuery(m, deeper)).toBe(term);
+    const hop = ontologyHopQuery(m, deeper, 3, [1, 2]) as string;
+    expect(hop).toMatch(/on_terms\(where: \{ id: \{ in: \[1,2\] \} \}\)/);
+    expect(hop.split("edgesOut")).toHaveLength(2);
+  });
+
+  it("read no product apart and no relationship between tables by the Ontology preset's rules", () => {
+    // REQ-2174 (ONE GRAPH, RULES PER PRESET): the Ontology page and a term's page draw only what a
+    // shown term reaches (REQ-2130); the Product map and a product's panel keep its products.
+    const m = reader();
+    const ontology = [...ontologyScopes(), ...snippetScopes()].filter(([, s]) => !s.products);
+    expect(ontology.length).toBeGreaterThan(10);
+    for (const [, s] of ontology) {
+      const q = ontologyQuery(m, {
+        ...s,
+        layers: new Set([...s.layers, "ownerTables", "related"]),
+      }) as string;
+      expect(q).not.toContain("m__dataProducts");
+      expect(q).not.toContain("sourceRelationships");
+    }
+    // The Product map reads relationships only under Related tables, each with the table it reaches.
+    const [, tables] = productLayerScopes().find(([k]) => k === "layers=data+ownerTables")!;
+    expect(ontologyQuery(m, tables) as string).not.toContain("sourceRelationships");
+    const [, map] = productLayerScopes().find(([k]) => k === "layers=data+related")!;
+    const mapped = ontologyQuery(m, map) as string;
+    expect(mapped).toContain("m__dataProducts");
+    expect(mapped).toMatch(/dataProductTables[^{]*\{\s*registeredTable \{/);
+    expect(mapped).toContain("sourceRelationships");
+    expect(mapped).toMatch(/sourceRelationships \{[^]*targetTable \{/);
+    // The product holding a related table is read through the membership junction.
+    expect(mapped).toMatch(/targetTable \{[^]*dataProductTables[^{]*\{\s*dataProduct \{/);
+  });
+
+  it("open the Product map on its products, their tables and links, and no column or term", () => {
+    const m = reader();
+    const opening = productMapOpening();
+    expect(readsTerms(opening)).toBe(false);
+    const q = ontologyQuery(m, opening) as string;
+    expect(q).toContain("m__dataProducts");
+    expect(q).toMatch(/dataProductTables[^{]*\{\s*registeredTable \{/);
+    // Its links to other products.
+    expect(q).toMatch(/edges\([^)]*\) \{[^]*targetProduct \{/);
+    expect(q).not.toContain("on_terms");
+    expect(q).not.toContain("tableColumns");
+    expect(q).not.toContain("glossaryRef");
+    // Columns on: its member tables' columns are read, still no term.
+    const columns = ontologyQuery(
+      m,
+      productMapOpening([...PRODUCT_MAP_LAYERS, "columns"]),
+    ) as string;
+    expect(columns).toContain("tableColumns");
+    expect(columns).not.toContain("on_terms");
+    // Ontology on: the terms are read.
+    const terms = productMapOpening([...PRODUCT_MAP_LAYERS, "ontology"]);
+    expect(readsTerms(terms)).toBe(true);
+    expect(ontologyQuery(m, terms) as string).toContain("on_terms");
+    // A product's own snippet still reads its tables' columns and its terms.
+    const panel = { ...opening, focus: "p:1" };
+    expect(readsTerms(panel)).toBe(true);
+    expect(ontologyQuery(m, panel) as string).toContain("tableColumns");
   });
 
   it("each read the system catalog's real root fields", () => {
     const queries = Object.values(corpus());
     expect(queries.length).toBeGreaterThan(10);
-    for (const q of queries) expect(q).toMatch(/on_terms|m__dataProducts/);
+    for (const q of queries) expect(q).toMatch(/on_terms|m__dataProducts|m__registeredTables/);
+  });
+});
+
+/** REQ-2143 (PAGE SEARCH USES THE WEB-SEARCH SYNTAX): the Ontology View's root under each search
+ * the shared cases hold (tests/fixtures/page_search_cases.json), as test_ontology_search.py runs
+ * it on DuckDB: the terms it keeps are the ones the page's own filter keeps. */
+describe("the Ontology View's root under each shared search case", () => {
+  it("is the query the builder produces now", () => {
+    const cases = (
+      JSON.parse(readFileSync(resolve(GOLDEN, "../page_search_cases.json"), "utf8")) as {
+        cases: { query: string }[];
+      }
+    ).cases;
+    const m = reader();
+    const produced: Record<string, string | null> = {};
+    for (const { query } of cases)
+      produced[query] = ontologyCountQuery(m, {
+        layers: new Set<LayerId>(["ontology"]),
+        search: searchItems(query),
+        hiddenStatuses: [],
+        edgeTypes: [],
+        domains: [],
+        orphans: true,
+        tags: [],
+        sensitivities: [],
+        focus: null,
+        depth: 0,
+      });
+    const path = resolve(GOLDEN, "ontology_search_queries.json");
+    if (process.env.PROVISA_GRAPHQL_GOLDEN_CAPTURE)
+      writeFileSync(path, `${JSON.stringify(produced, null, 1)}\n`);
+    expect(JSON.parse(readFileSync(path, "utf8"))).toEqual(produced);
   });
 });

@@ -16,6 +16,9 @@ creates up to three things through the Fabric REST API: an ``AmazonS3Compatible`
 and the lakehouse itself (no per-run name can be given), so a test reads which of the two exist
 before it attaches (``found``) and removes only what it created; the shortcut's name carries the
 run's own source id, so it is always the run's and always removed. Each removal is read back.
+The workspace is the run's own (``fabric_capacity.create_run_fabric``), so the lakehouse goes with
+it in any case; the connection is the tenant's, not the workspace's, and outlives it unless removed
+here.
 """
 
 from __future__ import annotations

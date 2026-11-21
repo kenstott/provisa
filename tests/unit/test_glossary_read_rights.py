@@ -156,3 +156,13 @@ async def test_a_retired_terms_history_names_only_what_its_caller_reads(model):
     told = await glossary_router._history_as_read(_REQUEST, history)
     assert told["columns"] == [{"table": orders, "column": "id"}]
     assert told["tables"] == [orders]
+
+
+async def test_a_term_with_no_retirement_in_its_history_is_an_empty_answer(model, monkeypatch):
+    """REQ-2144 (amended 2026-11-20): no retirement in the history answers success, not 404."""
+    _db, ids = model
+    monkeypatch.setattr(
+        "provisa.core.term_history.applied_history", lambda org, env, term_id, name: None
+    )
+    told = await glossary_router.applied_history(_REQUEST, ids["term"])
+    assert told == {"retired_in": None, "as_of": None, "columns": [], "tables": []}

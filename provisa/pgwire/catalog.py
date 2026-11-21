@@ -23,6 +23,7 @@ import datetime
 import functools
 import logging
 import re
+from collections.abc import Mapping
 
 from provisa.pgwire.catalog_data import (
     _CATALOG_TABLE_NAMES,
@@ -37,7 +38,8 @@ from provisa.pgwire.catalog_data import (
     typeinfo,
 )
 from provisa.pgwire.catalog_pg17 import PROC_NAMES, TYPES
-from provisa.pgwire.constant_arguments import is_constant_sql
+from provisa.pgwire.constant_arguments import evaluable, is_constant_sql
+from provisa.pgwire.session_zone import SessionZone
 from provisa.pgwire.catalog_server_answers import ANSWERED as _SERVER_ANSWERED
 from provisa.pgwire.catalog_server_answers import REWRITTEN
 from provisa.core.pg_error import PostgresError, from_engine, postgres_error
@@ -53,6 +55,11 @@ log = logging.getLogger(__name__)
 
 _SET_RE = re.compile(r"^\s*SET\b", re.IGNORECASE)
 _SHOW_RE = re.compile(r"^\s*SHOW\b", re.IGNORECASE)
+_SHOW_ZONE_RE = re.compile(r"^\s*SHOW\s+(?:\"?TimeZone\"?|TIME\s+ZONE)\s*$", re.IGNORECASE)
+_READS_ZONE_RE = re.compile(
+    r"^\s*SHOW\s+(?:ALL\b|\"?TimeZone\b|TIME\s+ZONE\b)|current_setting\s*\(\s*'timezone'",
+    re.IGNORECASE,
+)
 _TXN_RE = re.compile(
     r"^\s*(BEGIN|START\s+TRANSACTION|START|COMMIT|END|ROLLBACK|ABORT|DISCARD|RESET|DEALLOCATE|SAVEPOINT|RELEASE)\b",
     re.IGNORECASE,
@@ -79,11 +86,18 @@ _SCALAR_FN_RE = re.compile(
 
 
 def _parse_typeinfo_oids(sql: str) -> list[int] | None:
-    """Extract OIDs from ANY('{oid,...}'::oid[]) pattern; None if $1 still present."""
-    m = re.search(r"ANY\s*\(\s*'\{([^}]*)\}'", sql, re.IGNORECASE)
-    if m:
-        raw = m.group(1).strip()
-        return [int(x) for x in raw.split(",") if x.strip()] if raw else []
+    """The OIDs asyncpg's type introspection asks for: the array its ``ANY($1::oid[])`` was bound
+    to, read on the tree (REQ-2167); None while the ``$1`` is unbound (Describe)."""
+    import sqlglot
+    import sqlglot.expressions as exp
+
+    for any_ in sqlglot.parse_one(sql, read="postgres").find_all(exp.Any):
+        bound = any_.this
+        while isinstance(bound, (exp.Cast, exp.Paren)):
+            bound = bound.this
+        if isinstance(bound, exp.Literal) and bound.is_string:
+            raw = bound.name.strip().removeprefix("{").removesuffix("}")
+            return [int(x) for x in raw.split(",") if x.strip()]
     return None
 
 
@@ -286,6 +300,7 @@ def classify(sql: str) -> str:  # REQ-127, REQ-128, REQ-363
         import sqlglot.expressions as exp
         import sqlglot
 
+        # REQ-2167: read as the transpiler reads it; ``::cstring[]`` is no subscript (pg_syntax).
         tree = sqlglot.parse_one(stripped, read="postgres")
         for tbl in tree.find_all(exp.Table):
             db = tbl.db.lower() if tbl.db else ""
@@ -322,6 +337,7 @@ def classify(sql: str) -> str:  # REQ-127, REQ-128, REQ-363
                 "SessionUser",
                 "CurrentDatabase",
                 "CurrentSchema",
+                "CurrentCatalog",
             ):
                 return "INTERCEPT"
     except Exception:
@@ -337,21 +353,23 @@ def classify(sql: str) -> str:  # REQ-127, REQ-128, REQ-363
     return "PASS_THROUGH"
 
 
-def _handle_show(sql: str):
+def _handle_show(sql: str, settings: Mapping[str, str]):
     """Answer SHOW commands without DuckDB."""
     from provisa.executor.result import QueryResult
 
     normalized = sql.strip().rstrip(";")
     if re.match(r"^\s*SHOW\s+TRANSACTION\s+ISOLATION\s+LEVEL\s*$", normalized, re.IGNORECASE):
         return QueryResult(rows=[("read committed",)], column_names=["transaction_isolation"])
+    if _SHOW_ZONE_RE.match(normalized):
+        return QueryResult(rows=[(settings["timezone"],)], column_names=["TimeZone"])
     parts = normalized.split()
     if len(parts) < _SHOW_MIN_PARTS:
         return QueryResult(rows=[], column_names=[])
     setting = parts[1].lower()
     if setting == "all":
-        rows = [(k, v) for k, v in _KNOWN_SETTINGS.items()]
+        rows = [(k, v) for k, v in settings.items()]
         return QueryResult(rows=rows, column_names=["name", "setting"])
-    value = _KNOWN_SETTINGS.get(setting, "")
+    value = settings.get(setting, "")
     return QueryResult(rows=[(value,)], column_names=[setting])
 
 
@@ -407,45 +425,66 @@ def _handle_txid(sql: str):
 
 
 _SET_CONFIG_VALUE_RE = re.compile(
-    r"set_config\"?\s*\(\s*'(?:[^']|'')*'(?:::\w+)?\s*,\s*'((?:[^']|'')*)'", re.IGNORECASE
+    r"set_config\"?\s*\(\s*'(?P<name>(?:[^']|'')*)'(?:::\w+)?\s*,\s*'(?P<value>(?:[^']|'')*)'",
+    re.IGNORECASE,
 )
 
 
-def _set_config_value(sql: str) -> str | None:
-    """What set_config(name, value, is_local) answers: the value it set, as PostgreSQL does."""
+def _set_config_value(sql: str, settings: Mapping[str, str]) -> str | None:
+    """What set_config(name, value, is_local) answers: the value it set, as PostgreSQL does, and of
+    TimeZone the name it read that as."""
     m = _SET_CONFIG_VALUE_RE.search(sql)
-    return m.group(1).replace("''", "'") if m else None
+    if m is None:
+        return None
+    if m.group("name").lower() == "timezone":
+        return settings["timezone"]
+    return m.group("value").replace("''", "'")
 
 
-def _handle_current_setting(sql: str):
-    """Answer SELECT current_setting(...) [+ set_config(...)] without DuckDB."""
+def _handle_current_setting(sql: str, settings: Mapping[str, str]):
+    """Answer a statement that is only SELECT current_setting('x') [AS a] [, set_config(...) [AS b]]
+    without DuckDB. Any other statement that mentions current_setting is None: the catalog read
+    answers it with the rest of the statement intact (REQ-2167, REQ-2204)."""
+    import sqlglot
+    import sqlglot.errors
+    import sqlglot.expressions as exp
     from provisa.executor.result import QueryResult
 
-    lower = sql.lower()
-    if "current_setting" not in lower:
+    if "current_setting" not in sql.lower():
+        return None
+    try:
+        tree = sqlglot.parse_one(sql, read="postgres")
+    except sqlglot.errors.SqlglotError:
+        return None
+    if not isinstance(tree, exp.Select) or any(
+        tree.args.get(k) for k in tree.args if k not in ("expressions", "kind")
+    ):
         return None
 
-    # Multi-expression startup query: SELECT current_setting('x') AS a, set_config(...) AS b
-    # Detect alias names from the SQL so we return the right column names for asyncpg.
-    if "set_config" in lower:
-        m1 = re.search(
-            r"current_setting\s*\(\s*['\"]([^'\"]+)['\"]\s*\)(?:\s+AS\s+(\w+))?",
-            sql,
-            re.IGNORECASE,
-        )
-        m2 = re.search(r"set_config\s*\([^)]+\)(?:\s+AS\s+(\w+))?", sql, re.IGNORECASE)
-        col1 = (m1.group(2) or "current_setting") if m1 else "current_setting"
-        col2 = (m2.group(1) or "set_config") if m2 else "set_config"
-        key = m1.group(1).lower() if m1 else ""
-        val1 = _KNOWN_SETTINGS.get(key, "")
-        return QueryResult(rows=[(val1, _set_config_value(sql))], column_names=[col1, col2])
+    names: list[str] = []
+    values: list[str | None] = []
+    for projection in tree.expressions:
+        alias = projection.alias if isinstance(projection, exp.Alias) else ""
+        call = projection.this if isinstance(projection, exp.Alias) else projection
+        if not isinstance(call, exp.Anonymous):
+            return None
+        fn = call.name.lower()
+        args = call.expressions
+        if fn == "current_setting" and len(args) == 1 and _is_string_literal(args[0]):
+            names.append(alias or "current_setting")
+            values.append(settings.get(args[0].name.lower(), ""))
+        elif fn == "set_config" and names:  # only after a current_setting
+            names.append(alias or "set_config")
+            values.append(_set_config_value(call.sql(dialect="postgres"), settings))
+        else:
+            return None
+    return QueryResult(rows=[tuple(values)], column_names=names)
 
-    m = re.search(r"current_setting\s*\(\s*['\"]([^'\"]+)['\"]\s*\)", sql, re.IGNORECASE)
-    if not m:
-        return None
-    key = m.group(1).lower()
-    value = _KNOWN_SETTINGS.get(key, "")
-    return QueryResult(rows=[(value,)], column_names=["current_setting"])
+
+def _is_string_literal(node) -> bool:
+    import sqlglot.expressions as exp
+
+    return isinstance(node, exp.Literal) and node.is_string
 
 
 #: An object identifier value a statement reads with its name, its oid and name held together.
@@ -506,6 +545,7 @@ def _handle_pg_sleep(match: re.Match[str]):  # REQ-2167
         raise NotImplementedError(
             f"{match['name']}: an argument that is not a constant expression is not supported"
         )
+    arg = evaluable(arg)
     seconds = {
         "pg_sleep": f"CAST(({arg}) AS DOUBLE PRECISION)",
         "pg_sleep_for": f"EXTRACT(EPOCH FROM ({arg}))",
@@ -544,6 +584,56 @@ class CatalogSession:
     backend_start: datetime.datetime | None = None
     system_user: str | None = None
     time_zone: str | None = None
+    zone: SessionZone | None = None
+    #: The org whose advisory locks pg_locks lists (advisory_locks.LOCKS keys them by org).
+    org_id: str | None = None
+    #: What the connection's own set_config(name, value, false) set (the connection's dict, which
+    #: a set_config here writes): current_setting reads it back. Never a catalog view's setting.
+    client_settings: dict[str, str] | None = None
+    #: The cursors pg_cursors lists of the connection: its DECLAREd ones and the open portal.
+    cursors: tuple[dict, ...] = ()
+    #: The client's end of the connection, (host, port), which pg_stat_activity lists.
+    client_end: tuple = ()
+    #: The statements the connection has run, this one with them: pg_stat_database's xact_commit.
+    queries: int = 0
+
+
+def _session_settings(sql: str, session: CatalogSession | None) -> Mapping[str, str]:
+    """The settings as this session has them, what it set itself over the server's. A statement
+    that reads TimeZone in a session whose zone cannot be told is refused; any other is
+    answered."""
+    zone = None if session is None else session.zone
+    own = (session.client_settings if session is not None else None) or {}
+    if zone is None:
+        return {**_KNOWN_SETTINGS, **own}
+    if _READS_ZONE_RE.search(sql):
+        return {**_KNOWN_SETTINGS, **own, "timezone": zone.named()}
+    return {
+        **_KNOWN_SETTINGS,
+        **own,
+        "timezone": zone.shown() or _KNOWN_SETTINGS["timezone"],
+    }
+
+
+#: A set_config whose name, value and is_local are constants.
+_SET_CONFIG_CALL_RE = re.compile(
+    r"set_config\"?\s*\(\s*'(?P<name>(?:[^']|'')*)'(?:::\w+)?\s*,\s*"
+    r"'(?P<value>(?:[^']|'')*)'(?:::\w+)?\s*,\s*(?P<local>\w+)(?:::\w+)?\s*\)",
+    re.IGNORECASE,
+)
+
+
+def _keep_set_config(sql: str, session: CatalogSession | None) -> None:
+    """A set_config(name, value, false) is the session's from then on, as PostgreSQL keeps it;
+    one local to a transaction ends with it, and TimeZone is the session zone's to keep."""
+    if session is None or session.client_settings is None:
+        return
+    m = _SET_CONFIG_CALL_RE.search(sql)
+    if m is None or m["local"].lower() not in ("false", "f", "off"):
+        return
+    name = m["name"].replace("''", "'").lower()
+    if name != "timezone":
+        session.client_settings[name] = m["value"].replace("''", "'")
 
 
 def _list_session(cur, role_id: str, session: CatalogSession, sql: str) -> None:
@@ -576,12 +666,16 @@ def _catalog_request(
     from provisa.pgwire.catalog_data import served_database_name
     from provisa.transpiler.metadata_facts import catalog_facts
 
+    held = getattr(state, "pg_source_enums", None)
+    enums = tuple(held.values()) if isinstance(held, dict) else ()
     connection: dict[str, str] = {}
     if session is not None:
         connection = {
             "pid": str(session.pid),
             "application_name": session.application_name,
             "backend_start": session.backend_start.isoformat() if session.backend_start else "",
+            "queries": str(session.queries),
+            **_client_end_told(session.client_end),
             **({"system_user": session.system_user} if session.system_user else {}),
             **({"time_zone": session.time_zone} if session.time_zone else {}),
         }
@@ -592,11 +686,75 @@ def _catalog_request(
         facts=role_facts(role_id, state)
         if "_privilege" in sql.lower()
         else catalog_facts(role_id, {}),
-        settings=_KNOWN_SETTINGS,
+        settings=_session_settings(sql, session),
         pid=session.pid if session is not None else 0,
-        session={**connection, "query": sql} if "pg_stat_activity" in sql.lower() else connection,
+        session={
+            **connection,
+            **({"query": sql} if "pg_stat_activity" in sql.lower() else {}),
+            **({"locks": _advisory_locks(session)} if "pg_locks" in sql.lower() else {}),
+            **({"enums": _enums_told(enums)} if enums else {}),
+            **({"cursors": _cursors_told(session)} if "pg_cursor" in sql.lower() else {}),
+            **(
+                {"row_estimates": _row_estimates_told(row_counts(role_id, state))}
+                if "pg_stat_user_tables" in sql.lower()
+                else {}
+            ),
+        },
+        enums=enums,
         reltuples=row_counts(role_id, state) if "reltuples" in sql.lower() else {},
     )
+
+
+def _client_end_told(end: tuple) -> dict[str, str]:
+    """The client's address and port, as pg_stat_activity's view reads them: none where the
+    connection's client end is not known."""
+    if len(end) < 2:
+        return {}
+    return {"client_addr": str(end[0]), "client_port": str(end[1])}
+
+
+def _row_estimates_told(counts: Mapping[int, float]) -> str:
+    """The role's row estimates by relation oid, as pg_stat_user_tables' view reads them (JSON):
+    a table with none is not in it."""
+    import json
+
+    return json.dumps({str(oid): round(rows) for oid, rows in counts.items()})
+
+
+def _cursors_told(session: CatalogSession | None) -> str:
+    """The connection's cursors, as pg_cursors' view reads them (JSON)."""
+    import json
+
+    return json.dumps(list(session.cursors) if session is not None else [])
+
+
+def _enums_told(enums: tuple) -> str:
+    """The sources' enums, as pg_type's and pg_enum's views read them (JSON)."""
+    import json
+
+    return json.dumps(
+        [
+            {
+                "oid": e.oid,
+                "array_oid": e.array_oid,
+                "schema": e.schema,
+                "name": e.name,
+                "labels": list(e.labels),
+            }
+            for e in enums
+        ]
+    )
+
+
+def _advisory_locks(session: CatalogSession | None) -> str:
+    """The advisory locks of the asking session's org, as pg_locks' view reads them (JSON)."""
+    import json
+
+    from provisa.pgwire import advisory_locks
+
+    if session is None:
+        return "[]"
+    return json.dumps(advisory_locks.LOCKS.held(session.org_id))
 
 
 def _served_type(oid: int) -> str:
@@ -653,12 +811,12 @@ def _array_text(value: list) -> str:
 def _with_own_oids(result, oids, served: list[str]):
     """A column of a type the wire has no form of its own for (tsquery, xml[]) is sent as text under
     PostgreSQL's oid, which is what its text form is: the client names it as PostgreSQL does."""
-    from provisa.pgwire.server import BVTYPE_TO_PGTYPE, _sql_type_to_bvtype
+    from provisa.pgwire.server import BVTYPE_TO_OID, _sql_type_to_bvtype
 
     declared = result.column_types
     own: list[int | None] = [None] * len(declared)
     for i, oid in enumerate(oids):
-        if declared[i] == served[i] and BVTYPE_TO_PGTYPE[_sql_type_to_bvtype(served[i])][0] != oid:
+        if declared[i] == served[i] and BVTYPE_TO_OID[_sql_type_to_bvtype(served[i])] != oid:
             own[i] = oid
             declared[i] = "text"
     if not any(own):
@@ -674,6 +832,23 @@ def _with_own_oids(result, oids, served: list[str]):
     return result
 
 
+def _unbound(sql: str) -> str:
+    """``sql`` with each $N NULL, on the tree (REQ-2167): a ``$1`` in a string literal is its
+    text."""
+    if "$" not in sql:
+        return sql
+    import sqlglot
+    import sqlglot.expressions as exp
+
+    def null(node: exp.Expr) -> exp.Expr:
+        unbound = isinstance(node, exp.Parameter) and node.name.isdigit()
+        return exp.Null() if unbound else node
+
+    tree = sqlglot.parse_one(sql, read="postgres")
+    written = tree.transform(null)
+    return sql if written == tree else written.sql(dialect="postgres")
+
+
 def _read_meta(sql: str, role_id: str, state, session: CatalogSession | None, run):
     """The statement as a read of the meta domain, governed as any read is (REQ-2190): ``run``
     takes the coroutine onto the connection's loop."""
@@ -681,7 +856,7 @@ def _read_meta(sql: str, role_id: str, state, session: CatalogSession | None, ru
 
     request = _catalog_request(sql, role_id, state, session)
     # A $N a value was not bound for (Describe of an unbound statement): any value describes it.
-    bare = re.sub(r"\$\d+", "NULL", sql)
+    bare = _unbound(sql)
     try:
         addressed, asked = address(bare, request)
     except MetadataFunctionRefused as exc:
@@ -715,8 +890,9 @@ def answer(sql: str, role_id: str, state, session: CatalogSession | None = None,
     if _TXN_RE.match(stripped) or _SET_RE.match(stripped):
         return QueryResult(rows=[], column_names=[])
 
+    settings = _session_settings(stripped, session)
     if _SHOW_RE.match(stripped):
-        return _handle_show(stripped)
+        return _handle_show(stripped, settings)
 
     sleep = _PG_SLEEP_RE.match(stripped)
     if sleep:
@@ -734,15 +910,16 @@ def answer(sql: str, role_id: str, state, session: CatalogSession | None = None,
             return result
 
     if "current_setting" in stripped.lower():
-        result = _handle_current_setting(stripped)
+        result = _handle_current_setting(stripped, settings)
         if result is not None:
             return result
 
     if "set_config" in stripped.lower() and "current_setting" not in stripped.lower():
         from provisa.executor.result import QueryResult
 
+        _keep_set_config(stripped, session)
         return QueryResult(
-            rows=[(_set_config_value(stripped),)],
+            rows=[(_set_config_value(stripped, settings),)],
             column_names=["set_config"],
             column_types=["VARCHAR"],
         )

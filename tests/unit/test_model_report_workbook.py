@@ -27,6 +27,7 @@ import pytest
 from provisa.api.metadata_export import workbook as wb
 from provisa.api.metadata_export.builder import build_snapshot
 from provisa.api.metadata_export.refs import metric_uri
+from tests.unit.product_members import assigned, assigned_members, with_members
 from provisa.core.models import (
     Column,
     Domain,
@@ -34,6 +35,7 @@ from provisa.core.models import (
     ProvisaConfig,
     Source,
     SourceType,
+    TagAssignment,
     Table,
     ViewMetricsSpec,
 )
@@ -45,20 +47,21 @@ def _table(name: str, **kwargs) -> Table:
     columns = kwargs.pop("columns", None) or [
         Column(name="id", data_type="integer", visible_to=["*"])
     ]
-    return Table(
+    product_id = kwargs.pop("product_id", "prod")
+    table = Table(
         source_id="wh",
         domain_id=kwargs.pop("domain_id", "sales"),
         schema_name="public",
         table_name=name,
         description=kwargs.pop("description", f"{name} table"),
-        product_id=kwargs.pop("product_id", "prod"),
         columns=columns,
         **kwargs,
     )
+    return assigned(table, product_id)
 
 
 def _config() -> ProvisaConfig:
-    return ProvisaConfig(
+    config = ProvisaConfig(
         sources=[Source(id="wh", type=SourceType.postgresql, description="warehouse")],
         domains=[Domain(id="sales", description="Sales", steward="data-steward")],
         tables=[
@@ -86,6 +89,10 @@ def _config() -> ProvisaConfig:
         ],
         roles=[],
     )
+    # REQ-1634: each table's product lists it.
+    return config.model_copy(
+        update={"data_products": with_members([], assigned_members(config.tables))}
+    )
 
 
 def _rows(withheld: frozenset[str] = frozenset()) -> dict[str, list[list]]:
@@ -104,6 +111,7 @@ def _header(**kwargs) -> wb.ReportHeader:
     defaults = dict(
         org_id=ORG,
         environment="prod",
+        stage="production",
         domains="all",
         generated_at=datetime(2026, 8, 26, 12, 0, tzinfo=UTC),
         included=wb.OBJECT_SHEETS,
@@ -123,6 +131,7 @@ def test_report_sheet_leads_and_names_the_scope():
     stated = {row[0]: row[1] for row in book[wb.REPORT].iter_rows(min_row=2, values_only=True)}
     assert stated["Organization"] == ORG
     assert stated["Environment"] == "prod"
+    assert stated["Stage"] == "production"  # REQ-2261
     assert stated["Domains covered"] == "sales"
     assert stated["Generated"] == "2026-08-26T12:00:00+00:00"
     assert stated["Sheets included"] == wb.TABLES
@@ -185,11 +194,36 @@ def test_a_taggable_row_carries_one_comma_delimited_tags_cell():
     by_name = {row[1]: row[tags] for row in rows[wb.TABLES]}
     assert "fact" in by_name["orders"].split(", ")
     assert by_name["staging"] == ""
-    for sheet in (wb.SOURCES, wb.COLUMNS, wb.RELATIONSHIPS, wb.VIEWS, wb.MATERIALIZED_VIEWS):
+    # REQ-2208: a metric carries tags like any other governed object.
+    for sheet in (
+        wb.SOURCES,
+        wb.COLUMNS,
+        wb.RELATIONSHIPS,
+        wb.VIEWS,
+        wb.MATERIALIZED_VIEWS,
+        wb.METRICS,
+    ):
         assert "tags" in wb.HEADERS[sheet], sheet
     # Neither is taggable — `applies_to` never names them, so a tags column would always be blank.
-    for sheet in (wb.METRICS, wb.ONTOLOGY, wb.DATA_PRODUCTS):
+    for sheet in (wb.ONTOLOGY, wb.DATA_PRODUCTS):
         assert "tags" not in wb.HEADERS[sheet], sheet
+
+
+def test_a_metrics_tags_are_in_its_row():  # REQ-2208
+    config = _config()
+    config.tag_assignments = [
+        TagAssignment(tag_id="reviewed", object_type="metric", metric_name="revenue"),
+        TagAssignment(tag_id="decision-traced", object_type="metric", metric_name="revenue"),
+    ]
+    snapshot = build_snapshot(
+        config, org_id=ORG, dialect="postgres", contexts={}, data_products_only=False
+    )
+    rows = wb.sheet_rows(
+        snapshot, config, org_id=ORG, withheld_definitions=frozenset(), profiles={}, inputs={}
+    )
+    tags = wb.HEADERS[wb.METRICS].index("tags")
+    by_name = {row[1]: row[tags] for row in rows[wb.METRICS]}
+    assert by_name == {"revenue": "reviewed, decision-traced", "held": ""}
 
 
 def test_an_omitted_sheet_is_absent_rather_than_empty():
@@ -1077,36 +1111,39 @@ def test_the_ontology_sheet_states_each_terms_axioms():
     )
 
 
-def test_the_data_contracts_sheet_lists_each_output_ports_contract_with_its_served_columns():
-    """REQ-1592 (2026-10-27): each output port's contract (REQ-2158) -- version, status, purpose,
-    usage, limitations and the columns it promises, a column the caller is not served absent."""
+def test_the_data_contracts_sheet_lists_each_offers_contracts_with_their_served_columns():
+    """REQ-1592 (2026-10-27): each output port's contract -- one per offer and dataset, derived
+    from the offer (REQ-2180) -- with its version, its product's status, the purpose, usage and
+    limitations the product writes once for all of them, and its schema: the columns the offer's
+    role reads, a masked one marked so, that the caller is served."""
+    from datetime import UTC, datetime
+
     from provisa.api.metadata_export.model import (
         AssetKind,
         AssetRef,
         DataProductAsset,
         MetadataSnapshot,
+        OfferExport,
     )
-    from provisa.core.models import ContractColumn, ContractTerms, DataContract, DataProduct
+    from provisa.core import offer_contracts
+    from provisa.core.models import DataProduct, DataProductOffer
 
     orders = dataclasses.replace(
         _asset_table("orders", ["id", "total"]),
         semantic_uri=f"provisa://{ORG}/sales/tables/orders",
-        contract=DataContract(
-            version="1.2.0",
-            status="active",
-            description="every order placed",
-            terms=ContractTerms(usage="reporting", limitations="no PII"),
-            columns=[
-                ContractColumn(name="id", type="integer", required=True),
-                ContractColumn(name="total", type="decimal"),
-                ContractColumn(name="margin", type="decimal"),  # not served to this caller
-            ],
-        ),
     )
-    drafts = _asset_table("drafts", ["id"])  # a member with no contract declared
-    loose = dataclasses.replace(
-        _asset_table("loose", ["id"]),
-        contract=DataContract(version="0.1.0"),  # in no product the workbook shows
+    drafts = _asset_table("drafts", ["id"])  # a member the offer gives no contract on
+    loose = _asset_table("loose", ["id"])  # in no product the workbook shows
+    offer = DataProductOffer(name="default", role_id="viewer")
+    seen = [
+        offer_contracts.SeenColumn("id", "int"),
+        offer_contracts.SeenColumn("total", "int", mask="truncate"),
+        offer_contracts.SeenColumn("secret", "int"),  # read by the role, served to no caller
+    ]
+    derived = offer_contracts.recorded(
+        None,
+        offer_contracts.terms(offer, seen, row_rules=[], sample_views=[], checks=[], profiles=[]),
+        at=datetime(2026, 11, 11, tzinfo=UTC),
     )
     snapshot = MetadataSnapshot(
         org_id=ORG,
@@ -1118,10 +1155,27 @@ def test_the_data_contracts_sheet_lists_each_output_ports_contract_with_its_serv
                 name="Orders",
                 domain_id="sales",
                 owner=None,
-                description="",
+                description="every order placed",
+                usage="reporting",
+                limitations="no PII",
+                status="live",
                 members=(orders.ref, drafts.ref),
             )
         ],
+        offers={
+            "orders_prod": (
+                OfferExport(
+                    name="default",
+                    role_id="viewer",
+                    data_level="full",
+                    dq_results=True,
+                    profiles=False,
+                    open=False,
+                    duration_days=None,
+                    contracts={orders.ref.fqn(): derived, loose.ref.fqn(): derived},
+                ),
+            )
+        },
     )
     config = ProvisaConfig(
         sources=[],
@@ -1136,14 +1190,15 @@ def test_the_data_contracts_sheet_lists_each_output_ports_contract_with_its_serv
     header = wb.HEADERS[wb.DATA_CONTRACTS]
     assert [dict(zip(header, r, strict=True)) for r in rows[wb.DATA_CONTRACTS]] == [
         {
-            "id": f"provisa://{ORG}/sales/tables/orders",
+            "id": f"provisa://{ORG}/sales/tables/orders/offers/default",
             "product": "Orders",
+            "offer": "default",
             "output port": "orders",
-            "version": "1.2.0",
+            "version": "1.0.0",
             "status": "active",
             "purpose": "every order placed",
             "usage": "reporting",
             "limitations": "no PII",
-            "columns": "id (integer, required), total (decimal)",
+            "columns": "id (int), total (int, masked: truncate)",
         }
     ]

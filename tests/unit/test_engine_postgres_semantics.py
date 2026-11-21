@@ -28,10 +28,12 @@ from provisa.transpiler.transpile import transpile_to_duckdb
 
 
 def _on_duckdb(pg_sql: str) -> list[tuple]:
-    from provisa.executor.drivers.duckdb_driver import fetch_rows
+    from provisa.executor.drivers.duckdb_arrow import LOSSLESS_ARROW, arrow_rows
 
+    # Read as every DuckDB read is (REQ-2194): through its Arrow export.
     with duckdb.connect() as con:
-        return fetch_rows(con.execute(transpile_to_duckdb(pg_sql)))
+        con.execute(LOSSLESS_ARROW)
+        return arrow_rows(con.execute(transpile_to_duckdb(pg_sql)).to_arrow_table())
 
 
 @pytest.mark.parametrize(
@@ -104,13 +106,13 @@ def test_a_uuid_beside_a_date_is_read_as_the_uuid_it_is():
 
 
 def test_infinity_is_written_as_postgresql_writes_it():
-    from buenavista.postgres import BVTYPE_TO_PGTYPE
     from buenavista.core import BVType
 
     from provisa.core.ir_types import infinite_date, infinite_timestamp
+    from tests.unit.pgwire import wire_cells
 
     def wire(kind, value):
-        _oid, text, binary = BVTYPE_TO_PGTYPE[kind]
+        _oid, text, binary = wire_cells.entry(kind)
         return text(value), binary(value)
 
     assert wire(BVType.DATE, infinite_date(1)) == ("infinity", struct.pack("!i", 0x7FFFFFFF))
@@ -142,6 +144,13 @@ _TO_CHAR = [
     ("TIMESTAMP '2026-10-06 17:39:18'", "Day, DD  HH12:MI:SS", "Tuesday  , 06  05:39:18"),
     ("TIMESTAMP '2026-10-06 17:39:18'", "FMDay, FMDD  HH12:MI:SS", "Tuesday, 6  05:39:18"),
     ("DATE '2026-10-06'", 'YYYY-MM-DD"T" Mon MON mon D WW Q', "2026-10-06T Oct OCT oct 3 40 4"),
+    ("TIMESTAMP '2026-10-06 17:39:18'", "J DDth", "2461320 06th"),
+    (
+        "TIMESTAMP '2026-10-06 17:39:18'",
+        "SSSS IYYY-IW-ID Y,YYY CC RM",
+        "63558 2026-41-2 2,026 21 X   ",
+    ),
+    ("TIMESTAMP '2026-10-06 17:39:18'", "%Y \\MM", "%6 \\10"),  # a % and a \ are only text
     ("-0.1", "99.99", "  -.10"),
     ("-0.1", "FM9.99", "-.1"),
     ("-0.1", "FM90.99", "-0.1"),
@@ -170,9 +179,8 @@ def test_to_char_writes_as_postgresql_writes(value, fmt, written):
     "call, element",
     [
         ("to_char(5, '999S')", "'S'"),
-        ("to_char(now(), 'TMMonth')", "'TM'"),
-        ("to_char(now(), 'DDth')", "'DDth'"),
-        ("to_char(now(), 'J')", "'J'"),
+        ("to_char(now(), 'TMMonth')", "'TMMonth'"),
+        ("to_char(now(), 'TZ')", "'TZ'"),  # an instant: the session's zone is not read here
         ("to_char(now(), x) FROM (VALUES ('YYYY')) t(x)", "not a literal"),
     ],
 )

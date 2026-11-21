@@ -6,7 +6,7 @@ Provisa 在您的全部資料之上提供一個 API。把它指向您的資料�
 
 這之所以可行，是因為一切都來自同一個模型：您的網域、資料表之間的關係，以及作用在它們之上的政策，涵蓋所有數據來源。Provisa 依據這個模型運作，也依據它實施治理，所以沒有任何需要同步的東西。已註冊的關係是查詢唯一可以進行的連接，存取政策會編譯進每一個查詢計劃。由這一個模型帶來四件事：
 
-- **聯邦。** 73 個連接器可以連到 85 種以上的數據來源，其中包括 Salesforce、ServiceNow 及 Stripe。支撐您業務運作的 SaaS 系統會作為資料表出現在您的資料庫旁邊，就地讀取，不需要先建立管道把數據送進數據倉庫。以 SQL、GraphQL 或 Cypher 查詢它們，可經由九種協定。
+- **聯邦。** 76 個連接器可以連到 200 種以上的數據來源，其中包括 Salesforce、ServiceNow 及 Stripe。支撐您業務運作的 SaaS 系統會作為資料表出現在您的資料庫旁邊，就地讀取，不需要先建立管道把數據送進數據倉庫。以 SQL、GraphQL 或 Cypher 查詢它們，可經由九種協定。
 - **指標。** 指標是有名稱、受治理的聚合。只需定義一次，任何工具、任何語言來問，得到的都是同一個定義。
 - **本體。** 業務詞彙表是一張由概念、概念定義以及概念之間關係構成的圖。Provisa 把它對應到保存這些值的資料表及欄位上，因此能夠回答關於您數據的問題。一個概念在直接或經由其他概念連到數據之前，始終是草稿。詞彙表說明一個概念是甚麼；指標說明一個數字怎樣計算。
 - **治理。** 六層檢查會編譯進每個查詢計劃，涵蓋每種語言、每種協定；每項請求都以同樣的方式記錄：誰查詢了甚麼、以甚麼角色、依據甚麼政策。追蹤、指標及日誌亦作為可查詢的資料表，註冊在您的業務數據旁邊。
@@ -118,7 +118,7 @@ Provisa 以這種方式管理系統時間，亦即它記錄一個版本的時間
 
 ### 數據來源 {: #data-sources }
 
-- **73 個連接器，85 種以上數據來源** —— 較大的數字把託管的 PostgreSQL 服務（RDS、Aurora、Cloud SQL、AlloyDB、Azure、Supabase、Neon）及 File Crawler 的各種檔案格式逐一計算在內。PostgreSQL、MySQL、MongoDB、Cassandra、Elasticsearch、Neo4j、SPARQL 三元組儲存、Kafka、Google Sheets、Kaggle、Salesforce、ServiceNow、Stripe 等都位於同一個 API 之後。圖及 RDF 數據來源與關聯式數據來源地位相同。
+- **76 個連接器，200 種以上數據來源** —— 較大的數字把託管的 PostgreSQL 服務（RDS、Aurora、Cloud SQL、AlloyDB、Azure、Supabase、Neon）及 File Crawler 的各種檔案格式逐一計算在內。PostgreSQL、MySQL、MongoDB、Cassandra、Elasticsearch、Neo4j、SPARQL 三元組儲存、Kafka、Google Sheets、Kaggle、Salesforce、ServiceNow、Stripe 等都位於同一個 API 之後。圖及 RDF 數據來源與關聯式數據來源地位相同。
 - **智慧路由** —— 單源查詢會跳過聯邦（低於 100ms）。多源查詢經由聯邦層執行，可以用您自己的叢集，亦可以用內置的工作節點。
 - **API 數據來源** —— 把 REST、GraphQL、gRPC、WebSocket 或 RSS 端點登錄為可查詢的表，並附帶 SPARQL 輔助工具。API 數據來源與關聯式數據來源之間的聯邦連接無須額外設定。
 - **遠端結構描述自省**——指向任何 GraphQL、OpenAPI 或 gRPC 端點；已載明的操作自動呈現為可查詢的表、圖形節點與邊，並在其上套用完整治理

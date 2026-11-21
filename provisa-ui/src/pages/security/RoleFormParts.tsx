@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Kenneth Stott
-// Canary: 5397601b-c80d-4309-8a4b-c3a8c683e829
+// Canary: 6fef819e-cf0f-494c-90ae-29ac9f776637
 //
 // This source code is licensed under the Business Source License 1.1
 // found in the LICENSE file in the root directory of this source tree.
@@ -9,11 +9,11 @@
 // permission from the copyright holder.
 
 import { useTranslation } from "react-i18next";
-import { Checkbox, Group, Text } from "@mantine/core";
+import { MultiSelect, Text } from "@mantine/core";
 import { alsoReached } from "../../lib/domainTree";
 import type { TreeDomain } from "../../lib/domainTree";
 import { FormField } from "../../components/form/FormLayout";
-import { Tip } from "../../components/Tip";
+import { CapabilityOption } from "./CapabilityOption";
 import type { Capability } from "../../types/auth";
 
 // Every right a role may be given but data_residency, which its own control carries, with what it
@@ -26,6 +26,7 @@ const ALL_CAPABILITIES: Capability[] = [
   "query_development",
   "full_results",
   "write",
+  "command_execution",
   "no_aggregations",
   "create_view",
   "approve_view",
@@ -43,8 +44,14 @@ const ALL_CAPABILITIES: Capability[] = [
   "glossary_rw",
   "org_glossary_rw",
   "data_product_rw",
+  "data_product_owner",
+  "relationship_owner",
+  "domain_steward",
+  "term_owner",
+  "judgment_basis_owner",
   "dq_read",
   "dq_rw",
+  "lineage_report",
   "org_settings",
   "observability",
   "environment_switch",
@@ -103,36 +110,37 @@ export function CapabilityGrid({
   onToggle: (cap: Capability) => void;
   label: string;
 }) {
-  const { t } = useTranslation();
+  const offered = (cap: Capability) => held === null || held.has(cap);
   return (
-    // One labelled set of ticks, a line of the role form to itself.
-    <FormField size="full">
-      <Checkbox.Group label={label} value={value} data-testid="capability-grid">
-        <Group gap="sm" mt="xs" style={{ rowGap: "0.35rem" }}>
-          {ALL_CAPABILITIES.map((cap) => {
-            const offered = held === null || held.has(cap);
-            return (
-              <Tip
-                key={cap}
-                text={offered ? t(`capabilityHelp.${cap}`) : t("capabilityHelp.notHeldByParent")}
-              >
-                {/* A disabled input takes no pointer events, so the hint is on what holds it. */}
-                <span data-testid={`capability-tick-${cap}`}>
-                  <Checkbox
-                    label={cap}
-                    // The group reads a box's state off its value.
-                    value={cap}
-                    checked={value.includes(cap)}
-                    disabled={!offered}
-                    onChange={() => onToggle(cap)}
-                    size="sm"
-                  />
-                </span>
-              </Tip>
-            );
-          })}
-        </Group>
-      </Checkbox.Group>
+    // One dropdown, a line of the role form to itself, shaped as Domain Access is.
+    <FormField size="long">
+      <MultiSelect
+        label={label}
+        aria-label={label}
+        data={ALL_CAPABILITIES.map((cap) => ({ value: cap, label: cap, disabled: !offered(cap) }))}
+        value={value}
+        // The picker reports the whole selection; the form's contract is one toggle at a time.
+        onChange={(next) => {
+          const changed = [
+            ...next.filter((c) => !value.includes(c as Capability)),
+            ...value.filter((c) => !next.includes(c)),
+          ];
+          for (const cap of changed) onToggle(cap as Capability);
+        }}
+        renderOption={({ option, checked }) => (
+          <CapabilityOption
+            cap={option.value as Capability}
+            checked={!!checked}
+            offered={offered(option.value as Capability)}
+          />
+        )}
+        searchable
+        clearable={false}
+        comboboxProps={{ withinPortal: true }}
+        placeholder={label}
+        size="sm"
+        data-testid="capability-grid"
+      />
     </FormField>
   );
 }

@@ -22,8 +22,11 @@ import type { GlossaryTermDetail, GlossaryTermSummary } from "../api/glossary";
 
 const t = i18n.getFixedT("en");
 
-// jsdom draws no canvas: the term graph is tested on its own (TermDag.test.tsx).
-vi.mock("../components/admin/TermDag", () => ({ TermDag: () => null }));
+// jsdom draws no canvas: the term page's ontology snippet is tested on its own (TermDag.test.tsx).
+vi.mock("../components/graph3d/OntologyGraph", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../components/graph3d/OntologyGraph")>()),
+  OntologySnippet: () => null,
+}));
 vi.mock("../api/glossary", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../api/glossary")>()),
   listGlossaryTerms: vi.fn(),
@@ -54,6 +57,7 @@ const REVENUE: GlossaryTermSummary = {
   id: 1,
   name: "Revenue",
   definition: "Money in.",
+  calculation_method: null,
   is_abstract: false,
   deprecated: false,
   ref_count: 1,
@@ -100,11 +104,12 @@ const REVENUE_DETAIL: GlossaryTermDetail = {
       domain_id: "sales",
     },
   ],
-  edges_out: [{ term_id: 2, rel_type: "RELATED_TO", name: "Churn" }],
-  edges_in: [{ term_id: 2, rel_type: "PART_OF", name: "Churn" }],
+  edges_out: [{ term_id: 2, rel_type: "RELATED_TO", name: "Churn", domains: [] }],
+  edges_in: [{ term_id: 2, rel_type: "PART_OF", name: "Churn", domains: [] }],
   experts: [{ user_id: "u1", kind: "expert" }],
   tags: [],
   pending_on: [],
+  iri: null,
 };
 
 /** Mount the tab and open Revenue. */

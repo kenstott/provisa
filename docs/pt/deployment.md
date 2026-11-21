@@ -505,7 +505,7 @@ Observação: o AppImage do Provisa não roda dentro de um pod do Kubernetes. El
    | ------- | ---------- |
    | `provisa/provisa:<version>` | API Provisa |
    | `trinodb/trino:480` | Coordenador + workers do motor de federação |
-   | `postgres:16` | PostgreSQL no cluster (se `postgresql.enabled`) |
+   | `pgvector/pgvector:pg16-trixie` | PostgreSQL no cluster (se `postgresql.enabled`) |
    | `edoburu/pgbouncer:latest` | PgBouncer no cluster (se `pgbouncer.enabled`) |
    | `redis:7.2` | Redis no cluster (se `redis.enabled` e sem `redis.host`) |
    | `minio/minio:latest` | MinIO no cluster (se `minio.enabled`) |
@@ -817,7 +817,7 @@ O conector do Databricks herda isso do `requests`, então não precisa de variá
 | `PG_PASSWORD` | | Senha PostgreSQL |
 | `PROVISA_CONFIG` | `config/provisa.yaml` | Caminho para o arquivo de config |
 | `PROVISA_REDIRECT_ENABLED` | `false` | Habilitar redirecionamento de resultado grande para S3 |
-| `PROVISA_REDIRECT_THRESHOLD` | `1000` | Limite de contagem de linha para redirecionamento |
+| `PROVISA_REDIRECT_THRESHOLD` | `100000` | Limite de contagem de linha para redirecionamento |
 | `PROVISA_REDIRECT_BUCKET` | `provisa-results` | Bucket S3 |
 | `PROVISA_REDIRECT_ENDPOINT` | | URL de endpoint compatível com S3 |
 | `PROVISA_REDIRECT_TTL` | `3600` | TTL de URL pré-assinada (segundos) |

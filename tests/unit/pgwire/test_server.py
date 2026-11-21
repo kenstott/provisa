@@ -24,6 +24,8 @@ import pytest
 from provisa.executor.result import QueryResult as EngineResult
 from provisa.executor.result import StreamingQueryResult
 from provisa.pgwire.server import ProvisaQueryResult, _infer_bvtype, _tag_from_sql
+from provisa.core.ir_arrow import row_batch
+from tests.unit.pgwire.result_rows import rows_of
 from buenavista.core import BVType
 
 
@@ -53,59 +55,59 @@ class TestTagFromSql:
 class TestInferBvtype:
     def test_int(self):
         rows = [(42,)]
-        assert _infer_bvtype(rows, 0) == BVType.BIGINT
+        assert _infer_bvtype(row_batch(rows, ["c"]), 0) == BVType.BIGINT
 
     def test_bool_before_int(self):
         rows = [(True,)]
-        assert _infer_bvtype(rows, 0) == BVType.BOOL
+        assert _infer_bvtype(row_batch(rows, ["c"]), 0) == BVType.BOOL
 
     def test_float(self):
         rows = [(3.14,)]
-        assert _infer_bvtype(rows, 0) == BVType.FLOAT
+        assert _infer_bvtype(row_batch(rows, ["c"]), 0) == BVType.FLOAT
 
     def test_decimal(self):
         rows = [(decimal.Decimal("1.5"),)]
-        assert _infer_bvtype(rows, 0) == BVType.DECIMAL
+        assert _infer_bvtype(row_batch(rows, ["c"]), 0) == BVType.DECIMAL
 
     def test_datetime(self):
         rows = [(datetime.datetime(2024, 1, 1),)]
-        assert _infer_bvtype(rows, 0) == BVType.TIMESTAMP
+        assert _infer_bvtype(row_batch(rows, ["c"]), 0) == BVType.TIMESTAMP
 
     def test_date(self):
         rows = [(datetime.date(2024, 1, 1),)]
-        assert _infer_bvtype(rows, 0) == BVType.DATE
+        assert _infer_bvtype(row_batch(rows, ["c"]), 0) == BVType.DATE
 
     def test_time(self):
         rows = [(datetime.time(12, 0),)]
-        assert _infer_bvtype(rows, 0) == BVType.TIME
+        assert _infer_bvtype(row_batch(rows, ["c"]), 0) == BVType.TIME
 
     def test_dict_json(self):
         rows = [({"key": "val"},)]
-        assert _infer_bvtype(rows, 0) == BVType.JSON
+        assert _infer_bvtype(row_batch(rows, ["c"]), 0) == BVType.JSON
 
     def test_list_integer_array(self):
         rows = [([1, 2, 3],)]
-        assert _infer_bvtype(rows, 0) == BVType.INTEGERARRAY
+        assert _infer_bvtype(row_batch(rows, ["c"]), 0) == BVType.INTEGERARRAY
 
     def test_list_string_array(self):
         rows = [(["a", "b"],)]
-        assert _infer_bvtype(rows, 0) == BVType.STRINGARRAY
+        assert _infer_bvtype(row_batch(rows, ["c"]), 0) == BVType.STRINGARRAY
 
     def test_list_empty_json(self):
         rows = [([],)]
-        assert _infer_bvtype(rows, 0) == BVType.JSON
+        assert _infer_bvtype(row_batch(rows, ["c"]), 0) == BVType.JSON
 
     def test_str(self):
         rows = [("hello",)]
-        assert _infer_bvtype(rows, 0) == BVType.TEXT
+        assert _infer_bvtype(row_batch(rows, ["c"]), 0) == BVType.TEXT
 
     def test_none_falls_through_to_text(self):
         rows = [(None,)]
-        assert _infer_bvtype(rows, 0) == BVType.TEXT
+        assert _infer_bvtype(row_batch(rows, ["c"]), 0) == BVType.TEXT
 
     def test_none_then_int(self):
         rows = [(None,), (5,)]
-        assert _infer_bvtype(rows, 0) == BVType.BIGINT
+        assert _infer_bvtype(row_batch(rows, ["c"]), 0) == BVType.BIGINT
 
 
 class TestProvisaQueryResult:
@@ -137,7 +139,7 @@ class TestProvisaQueryResult:
 
     def test_rows_iterator(self):
         qr = self._make([(1, "a"), (2, "b")], ["id", "name"])
-        rows = list(qr.rows())
+        rows = [tuple(r) for r in rows_of(qr)]
         assert rows == [(1, "a"), (2, "b")]
 
     def test_status_set(self):
@@ -162,18 +164,18 @@ class TestProvisaQueryResultStreaming:
     def test_rows_flatten_across_batches(self):
         stream = self._stream([[(1, "a"), (2, "b")], [(3, "c")]], ["id", "name"])
         qr = ProvisaQueryResult(stream, "SELECT 1")
-        assert list(qr.rows()) == [(1, "a"), (2, "b"), (3, "c")]
+        assert [tuple(r) for r in rows_of(qr)] == [(1, "a"), (2, "b"), (3, "c")]
 
     def test_type_inference_buffers_only_first_batch(self):
         # No column_types → ONE batch is buffered to infer types up front, not the whole result.
         stream = self._stream([[(1,)], [(2,)], [(3,)]], ["id"])
         qr = ProvisaQueryResult(stream, "SELECT 1")
-        # Head buffered → first batch's row counted; the tail is untouched until rows() runs.
+        # Head buffered → first batch's row counted; the tail is untouched until it is read.
         assert stream.stats.row_count == 1
         assert not stream.stats.done
         _, bvtype = qr.column(0)
         assert bvtype == BVType.BIGINT
-        assert list(qr.rows()) == [(1,), (2,), (3,)]
+        assert [tuple(r) for r in rows_of(qr)] == [(1,), (2,), (3,)]
         assert stream.stats.row_count == 3 and stream.stats.done
 
     def test_declared_types_skip_buffering(self):
@@ -183,25 +185,20 @@ class TestProvisaQueryResultStreaming:
         assert stream.stats.row_count == 0  # nothing pulled at construction
         _, bvtype = qr.column(0)
         assert bvtype == BVType.BIGINT
-        assert list(qr.rows()) == [(1,), (2,)]
+        assert [tuple(r) for r in rows_of(qr)] == [(1,), (2,)]
 
     def test_rows_head_peek_not_resent_on_second_call(self):
-        # vendor/buenavista's send_data_rows calls .rows() fresh on EVERY Execute message of a
-        # paginated (portal-suspend) fetch, not once for the whole result. A real multi-Execute
-        # client (e.g. asyncpg's cursor.fetch(n) against an 80M-row scan) calls .rows() many
-        # times against the same ProvisaQueryResult. The peeked head batch must be consumed
-        # exactly once across all of those calls, or every call after the first re-yields it
-        # before reaching new rows — confirmed live on perf-bench: large_scan never advanced past
-        # its first batch.
-        # send_data_rows takes only `limit` rows per Execute (itertools.islice mirrors its
-        # `cnt >= limit: break`), abandoning the .rows() generator mid-stream — exactly how a
-        # portal-suspend fetch leaves it between Execute messages.
-        import itertools
-
+        # vendor/buenavista's send_data_rows reads each Execute's `limit` rows of a paginated
+        # (portal-suspend) fetch from the result's one ResultData, not the whole result at once.
+        # A real multi-Execute client (e.g. asyncpg's cursor.fetch(n) against an 80M-row scan)
+        # reads many times from the same ProvisaQueryResult. The peeked head batch must be read
+        # exactly once across all of those, or every read after the first re-yields it before
+        # reaching new rows — confirmed live on perf-bench: large_scan never advanced past its
+        # first batch. rows_of(qr, 2) takes an Execute's 2 rows as send_data_rows does.
         stream = self._stream([[(1,), (2,)], [(3,), (4,)]], ["id"])
         qr = ProvisaQueryResult(stream, "SELECT 1")
-        first_execute = list(itertools.islice(qr.rows(), 2))
-        second_execute = list(itertools.islice(qr.rows(), 2))
+        first_execute = [tuple(r) for r in rows_of(qr, 2)]
+        second_execute = [tuple(r) for r in rows_of(qr, 2)]
         assert first_execute == [(1,), (2,)]
         assert second_execute == [(3,), (4,)]  # not [(1,), (2,)] again, and not empty
         assert first_execute + second_execute == [(1,), (2,), (3,), (4,)]
@@ -243,7 +240,7 @@ class TestProvisaSessionCatalog:
         sess = self._make_session()
         result = sess.execute_sql("SHOW server_version")
         assert result.has_results() is True
-        rows = list(result.rows())
+        rows = [tuple(r) for r in rows_of(result)]
         assert len(rows) == 1
         assert "provisa" in rows[0][0]
 
@@ -252,7 +249,7 @@ class TestProvisaSessionCatalog:
         sess = self._make_session()
         result = sess.execute_sql("SELECT nspname FROM pg_catalog.pg_namespace")
         assert result.has_results() is True
-        ns_names = [r[0] for r in result.rows()]
+        ns_names = [r[0] for r in rows_of(result)]
         assert "public" in ns_names
 
     def test_no_role_raises(self, monkeypatch):
@@ -329,7 +326,7 @@ class TestProvisaSessionEngineStreaming:
             assert captured["session_hints"] == {"retry_policy": "NONE"}
             assert captured["params"] == [7]
             assert captured["physical_sql"] == "SELECT 1"
-            assert list(qr.rows()) == [(1,), (2,)]
+            assert [tuple(r) for r in rows_of(qr)] == [(1,), (2,)]
             sess.close()
 
     def test_engine_route_rejects_ungoverned_plan(self, monkeypatch):

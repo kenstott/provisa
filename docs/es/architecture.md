@@ -417,7 +417,7 @@ Estos encabezados implementan la redirección controlada por el cliente.
 | Env var | Default | Purpose |
 | --------- | --------- | --------- |
 | `PROVISA_REDIRECT_ENABLED` | `false` | Enable server-side threshold redirect |
-| `PROVISA_REDIRECT_THRESHOLD` | `1000` | Default row count threshold |
+| `PROVISA_REDIRECT_THRESHOLD` | `100000` | Default row count threshold |
 | `PROVISA_REDIRECT_FORMAT` | `parquet` | Default redirect format |
 | `PROVISA_REDIRECT_BUCKET` | `provisa-results` | S3 bucket name |
 | `PROVISA_REDIRECT_ENDPOINT` | | S3-compatible endpoint URL |
@@ -825,7 +825,7 @@ Para cargas de trabajo analíticas grandes, use una de las siguientes opciones:
 | Provisa gRPC | (host process) | 50051 | Protobuf gRPC server |
 | Federation Engine | `trinodb/trino` (default) or external warehouse | 8080 / varies | Query federation engine — Trino for the embedded stack; Snowflake/Databricks/BigQuery/Fabric/Synapse/DuckDB for warehouse targets |
 | Zaychik | `provisa-zaychik` (built from source) | 8480 | Arrow Flight SQL proxy for Trino; not required for warehouse engines |
-| PostgreSQL | `postgres:16` | 5432 | Config metadata + Iceberg catalog |
+| PostgreSQL | `pgvector/pgvector:pg16-trixie` | 5432 | Config metadata + Iceberg catalog |
 | MongoDB | `mongo:7` | 27017 | Demo NoSQL data source |
 | MinIO | `minio/minio` | 9000/9001 | S3-compatible object storage |
 | Redis | `redis:7-alpine` | 6379 | Query result cache |

@@ -1,0 +1,19 @@
+{
+  "federationRegions": {
+    "intro": "Ogni regione esegue le sue query sul proprio motore: lo store che la piattaforma ha assegnato a questa organizzazione come motore della regione, con il suo tipo di motore e l'URL di connessione.",
+    "readOnlyNote": "L'amministratore della piattaforma assegna il motore di ogni regione. Qui è mostrato in sola lettura.",
+    "sandboxNote": "È mostrato per spiegare le regioni. Non può essere modificato in una demo.",
+    "restartNote": "Una modifica si applica al riavvio dei nodi della regione.",
+    "restartPending": "Salvato. La modifica si applica al riavvio dei nodi della regione.",
+    "edit": "Modifica",
+    "store": "Store del motore",
+    "kind": "Tipo di motore",
+    "url": "URL",
+    "sharedWith": "È anche il motore di",
+    "storeHelp": "Lo store che questa regione indica come suo motore. Quale store sia si imposta nella pagina Piattaforma.",
+    "sharedHint": "È anche il motore di {{regions}}. Una modifica qui si applica anche lì.",
+    "kindHelp": "Il motore eseguito da questo store.",
+    "urlHelp": "L'URL di connessione del motore, o un riferimento come ${env:NAME}. Viene conservato esattamente come inserito. Una password al suo interno non viene più mostrata; lascia l'URL invariato per mantenerla.",
+    "storeMissing": "La regione {{region}} indica {{store}} come suo motore, e l'organizzazione non ha nessuno store {{store}}."
+  }
+}

@@ -90,6 +90,8 @@ _ADDED_AFTER_THE_SPLIT = frozenset(
         "directed",  # REQ-2176: a stored edge (only the session's) has one direction
         "identity_column",  # REQ-2176: a stored edge (only the session's) is its own row
         "property_zones",  # REQ-2176: a session date time's zone (only the session's)
+        "alias",  # REQ-1385: a table's alias, its model name for SPARQL's IRIs
+        "property_aliases",  # REQ-1385: each aliased column's alias, its model name
     }
 ) | frozenset(
     # Dropped after the split: labels are case-sensitive (openCypher), so no case-folding index of

@@ -25,6 +25,7 @@ import {
   shownOperation,
   typeInto,
 } from "./openapi/swaggerDocs";
+import { currentDataAddress, pageAtDataAddress } from "../lib/dataAddress";
 import "./OpenApiPage.css";
 
 // How long a driven call's response may take: a query on a loaded demo answers in seconds.
@@ -100,13 +101,16 @@ export function OpenApiPage() {
     // renewal in flight) so this doesn't race an about-to-change provisa_token.
     if (authLoading) return;
     let cancelled = false;
-    fetch(src)
-      .then((res) => {
+    // REQ-1916: on a coordinator-served UI the docs come from, and call, the chosen data node.
+    Promise.all([
+      fetch(src).then((res) => {
         if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
         return res.text();
-      })
-      .then((text) => {
-        if (!cancelled) setLoaded({ src, html: text, error: null });
+      }),
+      currentDataAddress(),
+    ])
+      .then(([text, address]) => {
+        if (!cancelled) setLoaded({ src, html: pageAtDataAddress(text, address), error: null });
       })
       .catch((err: Error) => {
         if (!cancelled) setLoaded({ src, html: null, error: err.message });

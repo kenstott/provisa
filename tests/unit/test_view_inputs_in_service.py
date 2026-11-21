@@ -10,10 +10,9 @@
 
 """A view's inputs are in service for its readers (REQ-1921).
 
-A view is answered from the tables its SQL names. A table out of service -- a draft -- is
+A view is answered from the tables its SQL names. A table out of production -- withdrawn -- is
 offered to no reader, by any name: a statement over a view that reads one is refused naming the
-table, exactly as a statement naming the table is. The view itself stays; it is answered again
-when its input is released."""
+table. The view itself stays; it is answered again when its input is put back."""
 
 # Requirements: REQ-1921
 
@@ -24,7 +23,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from provisa.compiler.definitions import TableIsDraft
+from provisa.compiler.definitions import TableIsWithdrawn
 from provisa.compiler.introspect import ColumnMetadata
 from provisa.mv.view_read import require_inputs_in_service
 from tests.unit.test_empty_domain_access_reaches_nothing import DOMAIN_OF, _tables
@@ -33,7 +32,7 @@ from tests.unit.test_table_read_as_caller import _Routed, _refunds
 pytestmark = pytest.mark.unit
 
 _VIEW = 10
-_OVER_THE_DRAFT = 'SELECT id, note FROM "sales"."refunds"'
+_OVER_THE_WITHDRAWN = 'SELECT id, note FROM "sales"."refunds"'
 _OVER_A_SERVED_TABLE = 'SELECT id FROM "sales"."orders"'
 
 
@@ -45,14 +44,15 @@ def _view(view_sql: str, **over) -> dict:
             "schema_name": "sales",
             "table_name": "refund_notes",
             "view_sql": view_sql,
-            "draft": False,
+            "withdrawn": False,
             **over,
         }
     )
 
 
-def _build(monkeypatch, *, view: dict, drafts: list[dict], role: dict | None = None):
-    """The real role build over the tables in service, the view among them, and the drafts."""
+def _build(monkeypatch, *, view: dict, withdrawn: list[dict], role: dict | None = None):
+    """The real role build over the tables in service, the view among them, and the withdrawn
+    ones."""
     import provisa.api.app as appmod
     from provisa.api.app_loaders import _build_and_register_schemas
 
@@ -100,11 +100,15 @@ def _build(monkeypatch, *, view: dict, drafts: list[dict], role: dict | None = N
         gql_object_cols={},
         rls_rules=[],
         metrics=[],
-        draft_tables=drafts,
+        withdrawn_tables=withdrawn,
+        withdrawn_relationships=[],
     )
     monkeypatch.setattr(state, "tables", tables, raising=False)
     monkeypatch.setattr(
-        state, "view_sql_map", {view["table_name"]: view["view_sql"]}, raising=False
+        state,
+        "view_sql_map",
+        {f"{view['schema_name']}.{view['table_name']}": view["view_sql"]},
+        raising=False,
     )
     return state
 
@@ -131,14 +135,14 @@ async def _read_the_view(state) -> str:
 
 
 async def test_a_view_over_a_table_out_of_service_is_refused_naming_the_table(monkeypatch):
-    state = _build(monkeypatch, view=_view(_OVER_THE_DRAFT), drafts=[_refunds()])
-    with pytest.raises(TableIsDraft) as refused:
+    state = _build(monkeypatch, view=_view(_OVER_THE_WITHDRAWN), withdrawn=[_refunds()])
+    with pytest.raises(TableIsWithdrawn) as refused:
         await _read_the_view(state)
     assert refused.value.table == "refunds"
 
 
-async def test_the_view_is_answered_again_once_its_input_is_released(monkeypatch):
-    state = _build(monkeypatch, view=_view(_OVER_A_SERVED_TABLE), drafts=[_refunds()])
+async def test_the_view_is_answered_again_once_its_input_is_put_back(monkeypatch):
+    state = _build(monkeypatch, view=_view(_OVER_A_SERVED_TABLE), withdrawn=[_refunds()])
     assert '"pg"."public"."orders"' in await _read_the_view(state)
 
 
@@ -147,46 +151,47 @@ async def test_the_view_is_answered_again_once_its_input_is_released(monkeypatch
     ['"sales"."refunds"', "sales.refunds", "public.refunds", "refunds", '"refunds" AS r'],
 )
 def test_a_table_out_of_service_is_refused_by_every_name_a_view_could_give_it(said):
-    state = SimpleNamespace(tables=_tables(), role_build_inputs={"draft_tables": [_refunds()]})
-    with pytest.raises(TableIsDraft) as refused:
+    state = SimpleNamespace(tables=_tables(), role_build_inputs={"withdrawn_tables": [_refunds()]})
+    with pytest.raises(TableIsWithdrawn) as refused:
         require_inputs_in_service(f"SELECT id FROM {said}", state)
     assert refused.value.table == "refunds"
 
 
 def test_it_is_found_wherever_the_views_sql_reads_it():
-    state = SimpleNamespace(tables=_tables(), role_build_inputs={"draft_tables": [_refunds()]})
+    state = SimpleNamespace(tables=_tables(), role_build_inputs={"withdrawn_tables": [_refunds()]})
     for sql in (
         'SELECT o.id FROM "sales"."orders" o JOIN "sales"."refunds" r ON r.id = o.id',
         'SELECT id FROM "sales"."orders" WHERE id IN (SELECT id FROM sales.refunds)',
         'WITH r AS (SELECT id FROM "sales"."refunds") SELECT id FROM r',
     ):
-        with pytest.raises(TableIsDraft):
+        with pytest.raises(TableIsWithdrawn):
             require_inputs_in_service(sql, state)
 
 
 def test_a_view_whose_inputs_are_all_in_service_is_not_refused():
-    state = SimpleNamespace(tables=_tables(), role_build_inputs={"draft_tables": [_refunds()]})
+    state = SimpleNamespace(tables=_tables(), role_build_inputs={"withdrawn_tables": [_refunds()]})
     require_inputs_in_service('SELECT id FROM "sales"."orders"', state)
     require_inputs_in_service("SELECT 1", state)
 
 
 def test_a_name_a_table_in_service_answers_to_is_that_tables():
-    """A draft in another domain with a served table's name takes nothing from the served one."""
+    """A withdrawn table in another domain with a served table's name takes nothing from the
+    served one."""
     twin = _refunds(id=11, domain_id="finance", table_name="orders")
-    state = SimpleNamespace(tables=_tables(), role_build_inputs={"draft_tables": [twin]})
+    state = SimpleNamespace(tables=_tables(), role_build_inputs={"withdrawn_tables": [twin]})
     require_inputs_in_service('SELECT id FROM "sales"."orders"', state)
     require_inputs_in_service("SELECT id FROM orders", state)
-    with pytest.raises(TableIsDraft):
+    with pytest.raises(TableIsWithdrawn):
         require_inputs_in_service('SELECT id FROM "finance"."orders"', state)
 
 
-async def test_a_draft_views_preview_follows_the_same_rule(monkeypatch):
+async def test_a_withdrawn_views_preview_follows_the_same_rule(monkeypatch):
     from provisa.api.admin import table_read
 
-    view = _view(_OVER_THE_DRAFT, draft=True)
+    view = _view(_OVER_THE_WITHDRAWN, withdrawn=True)
     served = _view(_OVER_A_SERVED_TABLE, id=12, table_name="order_ids")
-    state = _build(monkeypatch, view=served, drafts=[_refunds(), view])
-    with pytest.raises(TableIsDraft) as refused:
+    state = _build(monkeypatch, view=served, withdrawn=[_refunds(), view])
+    with pytest.raises(TableIsWithdrawn) as refused:
         await table_read.read_as_caller(state, _VIEW, "r", limit=5)
     assert refused.value.table == "refunds"
 
@@ -200,7 +205,7 @@ async def test_a_view_over_a_table_its_reader_does_not_reach_is_refused_naming_i
     """The reader reaches ``sales`` and the view is in ``sales``; the view reads ``finance``.
     Refused where the view's body is chosen, by the rule and in the words a statement naming
     the table is refused with -- no statement is written for the engine."""
-    state = _build(monkeypatch, view=_view(_OVER_ANOTHER_DOMAIN), drafts=[])
+    state = _build(monkeypatch, view=_view(_OVER_ANOTHER_DOMAIN), withdrawn=[])
     with pytest.raises(PermissionError) as refused:
         await _read_the_view(state)
     assert str(refused.value) == "[V000] Table 'finance.ledger' not accessible for role 'r'"
@@ -209,7 +214,7 @@ async def test_a_view_over_a_table_its_reader_does_not_reach_is_refused_naming_i
 async def test_a_view_over_tables_its_reader_reaches_is_answered_under_its_rules(monkeypatch):
     from provisa.compiler.rls import RLSContext
 
-    state = _build(monkeypatch, view=_view(_OVER_A_SERVED_TABLE), drafts=[])
+    state = _build(monkeypatch, view=_view(_OVER_A_SERVED_TABLE), withdrawn=[])
     state.rls_contexts["r"] = RLSContext(rules={1: "id > 100"}, domain_rules={}, action_rules={})
     routed = (await _read_the_view(state)).replace('"', "")
     assert "FROM pg.public.orders" in routed and "orders.id > 100" in routed
@@ -219,7 +224,7 @@ async def test_a_reader_who_reaches_the_other_domain_reads_the_same_view(monkeyp
     state = _build(
         monkeypatch,
         view=_view(_OVER_ANOTHER_DOMAIN),
-        drafts=[],
+        withdrawn=[],
         role={
             "id": "r",
             "description": "Test role.",

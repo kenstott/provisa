@@ -1,0 +1,2 @@
+# The crate is written to 120 columns.
+max_width = 120

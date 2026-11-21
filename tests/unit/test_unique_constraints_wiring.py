@@ -47,6 +47,7 @@ def _input(**over):
         off_peak_tz=None,  # REQ-1141
         arguments=None,  # REQ-2061
         landing_filter=None,  # REQ-2062
+        read_wait=None,  # REQ-2224
         view_sql=None,
         dq_contract=None,  # REQ-1443
         profiler_source_id=None,  # REQ-1934
@@ -65,12 +66,12 @@ def _input(**over):
         mv_persist="replace",  # REQ-965
         mv_primary_key=[],  # REQ-970
         mv_incremental=False,  # REQ-969
+        mv_rebuild_every=None,  # REQ-2249
         mv_calendar=None,  # REQ-962
         mv_grain=None,  # REQ-962/1168
         mv_allowed_lateness=0.0,  # REQ-961
         mv_expected_events=None,  # REQ-961
         mv_business_day_grain=False,  # REQ-962
-        product_id=None,
         enable_aggregates=False,
         enable_group_by=False,
         modeling_role=None,  # REQ-1320

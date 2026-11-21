@@ -32,7 +32,7 @@ git tag v1.2.3 && git push origin v1.2.3
 1. **פתירת מטא-דאטת שחרור** — מזהה ערוץ מסיומת התגית, גוזר גרסת PEP 440 ושמות assets
 2. **הורדה/אריזה של תוספי Trino** — מושך מחברי Trino של Calcite ואורז tarball
 3. **משיכת image-י Docker ליבה/obs/הדגמה** — שומר tarballs של image שירות (arm64, בתוספת amd64 ליבה עבור שכבת ה-container של Windows)
-4. **בניית DMG-ים ל-macOS Core/Obs/Demo** — רץ על `macos-14` (Apple Silicon), air-gapped
+4. **בניית DMG-ים ל-macOS Core/Obs/Demo** — רץ על `macos-15` (Apple Silicon), air-gapped
 5. **בניית AppImage ל-Linux** — ליבה, air-gapped
 6. **בניית מתקין Core ל-Windows** — ילידי, Python מוטמע, ללא Docker
 7. **בניית מתקין שכבת-Container ל-Windows** — WSL2 + Trino, מושך images לפי דרישה (ללא VirtualBox/OVA)

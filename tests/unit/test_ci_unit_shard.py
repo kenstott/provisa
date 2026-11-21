@@ -34,19 +34,99 @@ def _shard():
     return module
 
 
+def _matrix() -> list[int]:
+    return _jobs("unit-tests.yml")["shard"]["strategy"]["matrix"]["shard"]
+
+
 def test_the_shards_partition_the_unit_test_files():
     shard = _shard()
     every = shard.test_files()
     assert "tests/unit/test_ci_unit_shard.py" in every
-    parts = [shard.files(f"{i}/4") for i in range(1, 5)]
-    assert sorted(f for part in parts for f in part) == every
-    assert all(parts)
+    total = len(_matrix())
+    for seconds in ({}, {f: float(len(f)) for f in every[::2]}):
+        parts = [shard.files(f"{i}/{total}", seconds) for i in range(1, total + 1)]
+        assert sorted(f for part in parts for f in part) == every
+        assert all(parts)
 
 
-def test_a_file_keeps_its_shard_whatever_else_is_added():
+def test_files_are_dealt_out_by_time_and_an_unrecorded_one_counts_as_the_mean():
     shard = _shard()
-    assert shard.shard_of("tests/unit/test_x.py", 4) == shard.shard_of("tests/unit/test_x.py", 4)
-    assert {shard.shard_of(f"tests/unit/test_{i}.py", 4) for i in range(40)} == {1, 2, 3, 4}
+    seconds = {"a.py": 10.0, "b.py": 9.0, "c.py": 5.0, "d.py": 5.0, "e.py": 1.0}
+    placed = shard.assign(["a.py", "b.py", "c.py", "d.py", "e.py", "new.py"], seconds, 2)
+    assert placed["a.py"] == 1 and placed["b.py"] == 2
+    cost = {**seconds, "new.py": 6.0}
+    load = {1: 0.0, 2: 0.0}
+    for f, s in cost.items():
+        load[placed[f]] += s
+    # new.py went out third, as a file of six seconds: after a and b, before c and d.
+    assert placed["new.py"] == 2 and placed["c.py"] == 1
+    assert abs(load[1] - load[2]) <= 5.0
+
+
+def test_files_whose_tests_take_no_time_are_spread_and_not_dealt_to_one_shard():
+    """The split by test seconds alone gave one shard 1,285 files of 2,453, and 8:36 of collection."""
+    shard = _shard()
+    paths = ["long.py"] + [f"quick_{i:03d}.py" for i in range(400)]
+    seconds = {p: 0.0 for p in paths} | {"long.py": 30.0}
+    placed = shard.assign(paths, seconds, 4)
+    counts = [sum(1 for s in placed.values() if s == k) for k in (1, 2, 3, 4)]
+    assert max(counts[1:]) - min(counts[1:]) <= 1
+    assert sum(counts) == 401 and counts[0] < min(counts[1:])
+
+
+def test_the_real_files_split_evenly_with_no_recorded_time_at_all():
+    shard = _shard()
+    total = len(_matrix())
+    counts = [len(shard.files(f"{i}/{total}", {})) for i in range(1, total + 1)]
+    assert max(counts) - min(counts) <= 1
+
+
+def test_timings_sum_a_junit_by_the_file_its_classname_names(tmp_path):
+    shard = _shard()
+    junit = tmp_path / "j.xml"
+    junit.write_text(
+        "<testsuites><testsuite>"
+        '<testcase classname="tests.unit.test_ci_unit_shard" name="a" time="1.5"/>'
+        '<testcase classname="tests.unit.test_ci_unit_shard.TestX" name="b" time="2"/>'
+        '<testcase classname="tests.unit.test_a_file_another_commit_had.TestY" name="c" time="9"/>'
+        "</testsuite></testsuites>"
+    )
+    assert shard.timings([junit]) == ({"tests/unit/test_ci_unit_shard.py": 3.5}, 1)
+    out = tmp_path / "seconds.json"
+    assert shard.main(["timings", str(out), str(junit)]) == 0
+    assert json.loads(out.read_text()) == {"tests/unit/test_ci_unit_shard.py": 3.5}
+
+
+def test_the_plugin_leaves_out_the_other_shards_files_and_nothing_else(tmp_path, monkeypatch):
+    shard = _shard()
+    every = shard.test_files()
+    seconds = tmp_path / "seconds.json"
+    seconds.write_text(json.dumps({every[0]: 4.0}))
+    # In CI this test runs inside a shard, whose own setting is in the environment.
+    monkeypatch.delenv(shard.SHARD_ENV, raising=False)
+    assert shard.pytest_ignore_collect(REPO / every[0], None) is None
+    monkeypatch.setenv(shard.SHARD_ENV, "2/3")
+    monkeypatch.setenv(shard.SECONDS_ENV, str(seconds))
+    mine = set(shard.files("2/3", {every[0]: 4.0}))
+    left_out = {f for f in every if shard.pytest_ignore_collect(REPO / f, None)}
+    assert left_out == set(every) - mine and mine
+    assert shard.pytest_ignore_collect(REPO / "tests/unit/conftest.py", None) is None
+    assert shard.pytest_ignore_collect(REPO / "tests/unit", None) is None
+    assert shard.pytest_ignore_collect(REPO / "tests/integration/test_x.py", None) is None
+
+
+def test_a_shard_over_its_budget_fails_by_name_and_one_over_its_target_warns(capsys):
+    shard = _shard()
+    assert shard.TARGET_SECONDS < shard.BUDGET_SECONDS
+    assert shard.main(["budget", str(shard.TARGET_SECONDS)]) == 0
+    assert "::" not in capsys.readouterr().out
+    assert shard.main(["budget", str(shard.TARGET_SECONDS + 1)]) == 0
+    assert capsys.readouterr().out.startswith("::warning::this shard's tests took 15:01")
+    assert shard.main(["budget", str(shard.BUDGET_SECONDS + 1)]) == 1
+    out = capsys.readouterr().out
+    assert (
+        out.startswith("::error::this shard's tests took 20:01") and "add one to the matrix" in out
+    )
 
 
 def test_the_check_names_a_test_missing_run_twice_or_unknown(tmp_path):
@@ -91,14 +171,51 @@ def _jobs(name: str) -> dict:
 
 def test_the_unit_workflow_shards_checks_and_keeps_its_verdicts_name():
     jobs = _jobs("unit-tests.yml")
-    assert jobs["shard"]["strategy"]["matrix"]["shard"] == [1, 2, 3, 4]
+    matrix = jobs["shard"]["strategy"]["matrix"]["shard"]
+    assert matrix == list(range(1, len(matrix) + 1)) and len(matrix) >= 2
     run = next(s for s in jobs["shard"]["steps"] if s.get("name") == "Run unit tests")
-    assert "unit_shard.py files" in run["run"] and "-n auto" in run["run"]
-    assert run["env"]["SHARD"] == "${{ matrix.shard }}/4"
+    assert "pytest -p unit_shard tests/unit " in run["run"] and "-n auto" in run["run"]
+    # The count is stated once, in the matrix: the job's name and the plugin take it from there.
+    assert run["env"]["PROVISA_UNIT_SHARD"] == "${{ matrix.shard }}/${{ strategy.job-total }}"
+    assert jobs["shard"]["name"].endswith("${{ matrix.shard }}/${{ strategy.job-total }}")
     assert jobs["check"]["needs"] == ["shard", "collect"]
-    assert "--collect-only" in str(jobs["collect"]["steps"])
+    assert "ids/unit-ids-[0-9]*/ids.txt" in str(jobs["check"]["steps"])
+    collect = str(jobs["collect"]["steps"])
+    assert "--collect-only" in collect and "PROVISA_UNIT_SHARD" not in collect
     assert jobs["unit"]["name"] == "pytest tests/unit"
     assert jobs["unit"]["needs"] == ["shard", "check"] and jobs["unit"]["if"] == "always()"
+
+
+def test_the_shards_split_by_the_times_of_mains_last_green_run():
+    workflow = yaml.safe_load((WORKFLOWS / "unit-tests.yml").read_text())
+    jobs = workflow["jobs"]
+    assert workflow["permissions"] == {"contents": "read", "actions": "read"}
+    plan = jobs["plan"]["steps"][1]["run"]
+    assert "--workflow unit-tests.yml --branch main --status success --limit 1" in plan
+    assert "--pattern 'unit-junit-*'" in plan and "unit_shard.py timings unit-seconds.json" in plan
+    assert jobs["shard"]["needs"] == "plan"
+    steps = jobs["shard"]["steps"]
+    names = [s.get("name") or s.get("uses") for s in steps]
+    assert names.index("actions/download-artifact@v4") < names.index("Run unit tests")
+    assert sum(
+        1 for s in steps if s.get("with", {}).get("name") == "unit-junit-${{ matrix.shard }}"
+    )
+    # No times are kept in the repo for branches to edit.
+    assert not (REPO / "scripts" / "ci" / "unit_file_seconds.json").exists()
+
+
+def test_a_shard_fails_on_its_budget_well_before_the_jobs_limit():
+    shard = _shard()
+    job = _jobs("unit-tests.yml")["shard"]
+    steps = job["steps"]
+    names = [s.get("name") for s in steps]
+    budget = steps[names.index("Shard within its time budget")]
+    assert names.index("Shard within its time budget") == names.index("Run unit tests") + 1
+    assert "unit_shard.py budget" in budget["run"] and "if" not in budget
+    assert budget["env"]["TAKEN"] == "${{ steps.tests.outputs.seconds }}"
+    assert steps[names.index("Run unit tests")]["id"] == "tests"
+    # Four minutes pass before pytest starts; the budget leaves five more under the limit.
+    assert shard.BUDGET_SECONDS + 9 * 60 <= job["timeout-minutes"] * 60
 
 
 def test_the_ui_workflow_shards_vitest_beside_tsc_and_lint_and_checks():

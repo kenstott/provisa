@@ -33,6 +33,7 @@ from provisa.core.schema_admin import (
     org_auto_join_optouts,
     orgs,
     user_org_memberships,
+    user_profiles,
 )
 from provisa.auth.role_grants import in_force as grant_in_force
 from provisa.core.schema_org import admin_audit_log, roles, user_role_assignments
@@ -40,7 +41,7 @@ from provisa.security.inheritance import effective_capabilities
 from provisa.security.rights import DEPLOYMENT_GRANTER, ORG_ADMIN_ROLE, check_role_grant
 
 if TYPE_CHECKING:
-    from provisa.core.database import Database
+    from provisa.core.database import Connection, Database
 
 log = logging.getLogger(__name__)
 
@@ -187,12 +188,20 @@ async def grant_membership(
     and re-announcing an org the member already acknowledged would be noise.
     """
     async with admin_db.acquire() as conn:
-        await conn.upsert(
-            user_org_memberships,
-            membership_values(user_id, org_id, joined_via),
-            index_elements=["user_id", "org_id"],
-            update_columns=[],
-        )
+        await record_membership(conn, user_id, org_id, joined_via=joined_via)
+
+
+async def record_membership(
+    conn: "Connection", user_id: str, org_id: str, *, joined_via: str
+) -> None:
+    """:func:`grant_membership` on ``conn``, a connection to the admin plane: with the writes it
+    goes with, in one transaction and one checkout (a demo sandbox's person, REQ-2006)."""
+    await conn.upsert(
+        user_org_memberships,
+        membership_values(user_id, org_id, joined_via),
+        index_elements=["user_id", "org_id"],
+        update_columns=[],
+    )
 
 
 async def acknowledge_membership(  # REQ-1478
@@ -229,20 +238,41 @@ async def grant_org_role(
     nobody stands behind — an auto-join — passes an empty set.
     """
     async with model_db.acquire() as conn:
+        await grant_org_roles(conn, user_id, [role_id], granter_capabilities=granter_capabilities)
+
+
+async def grant_org_roles(
+    conn: "Connection",
+    user_id: str,
+    role_ids: Iterable[str],
+    *,
+    granter_capabilities: Iterable[str],
+) -> None:
+    """:func:`grant_org_role` for each of ``role_ids``, on ``conn`` (scoped to the org's schema) in
+    one transaction: the roles are read once and every grant checked before any is written. A demo
+    sandbox's person is granted several at its open, each a round trip to a control plane on
+    another machine (REQ-2006)."""
+    wanted = list(role_ids)
+    granter = set(granter_capabilities)
+    async with conn.transaction():
         result = await conn.execute_core(select(roles.c.id, roles.c.capabilities, roles.c.parents))
         role_rows = [dict(r._mapping) for r in result.fetchall()]
-        if role_id not in {r["id"] for r in role_rows}:
-            raise ValueError(
-                f"role {role_id!r} does not exist in the org schema the grant lands in: a role is "
-                "granted out of the roles that schema holds, and its rights are read from that row"
+        held = {r["id"] for r in role_rows}
+        for role_id in wanted:
+            if role_id not in held:
+                raise ValueError(
+                    f"role {role_id!r} does not exist in the org schema the grant lands in: a role "
+                    "is granted out of the roles that schema holds, and its rights are read from "
+                    "that row"
+                )
+            check_role_grant(role_id, effective_capabilities(role_id, role_rows), granter)
+        for role_id in wanted:
+            await conn.upsert(
+                user_role_assignments,
+                {"user_id": user_id, "role_id": role_id, "domain_id": "*"},
+                index_elements=["user_id", "role_id", "domain_id"],
+                update_columns=[],
             )
-        check_role_grant(role_id, effective_capabilities(role_id, role_rows), granter_capabilities)
-        await conn.upsert(
-            user_role_assignments,
-            {"user_id": user_id, "role_id": role_id, "domain_id": "*"},
-            index_elements=["user_id", "role_id", "domain_id"],
-            update_columns=[],
-        )
 
 
 async def grant_org_admin(
@@ -321,6 +351,35 @@ async def clear_auto_join_suppression(  # REQ-1306
                 org_auto_join_optouts.c.org_id == org_id,
             )
         )
+
+
+async def org_roster(admin_db: "Database", org_id: str) -> list[dict]:  # REQ-042, REQ-1592
+    """The people who belong to ``org_id``: each membership row with the profile it names.
+
+    Membership is admin-plane, so this is the control plane's answer to who is in the org. Two
+    surfaces read it under different rights: the team page (user_management, which adds what each
+    person may do) and the glossary's author/expert picker (glossary_rw, which needs only who they
+    are) -- so the query lives here once and each route decides what of it to return.
+    """
+    async with admin_db.acquire() as conn:
+        result = await conn.execute_core(
+            select(
+                user_org_memberships.c.user_id,
+                user_profiles.c.email,
+                user_profiles.c.display_name,
+                user_profiles.c.provider,
+                user_org_memberships.c.created_at,
+            )
+            .select_from(
+                user_org_memberships.outerjoin(
+                    user_profiles,
+                    user_profiles.c.user_id == user_org_memberships.c.user_id,
+                )
+            )
+            .where(user_org_memberships.c.org_id == org_id)
+            .order_by(user_org_memberships.c.user_id)
+        )
+        return [dict(r._mapping) for r in result.fetchall()]
 
 
 async def org_admin_user_ids(model_db: "Database") -> set[str]:  # REQ-1302
@@ -439,19 +498,48 @@ async def suspended_principals(admin_db: "Database", org_id: str) -> list[dict]:
     return out
 
 
-async def record_admin_action(  # REQ-1303, REQ-1308
-    model_db: "Database", *, action: str, actor_id: str, subject_id: str, detail: dict
+class AdminTrailOfAnotherOrg(RuntimeError):  # REQ-2087, REQ-1303
+    """An administrative-trail entry about one org handed the model store of another."""
+
+    def __init__(self, org_id: str, store_org_id: str) -> None:
+        self.org_id = org_id
+        self.store_org_id = store_org_id
+        super().__init__(
+            f"an administrative-trail entry about org {org_id!r} was given the model store of "
+            f"org {store_org_id!r}; the entry is written to the trail of the org it is about"
+        )
+
+
+async def record_admin_action(  # REQ-1303, REQ-1308, REQ-2087
+    model_db: "Database",
+    *,
+    org_id: str,
+    action: str,
+    actor_id: str,
+    subject_id: str,
+    detail: dict,
 ) -> None:
-    """Append an entry to the org's administrative trail. ``model_db`` must be scoped to that org's
-    schema — the entry belongs to the org the act was performed against, so a platform_admin's
-    intervention is visible there afterward rather than only on the platform."""
-    # REQ-2087: the trail's detail is redacted as every record Provisa writes is.
+    """Append an entry to the administrative trail of ``org_id``, the org the act is about.
+
+    ``model_db`` is that org's model store: the entry belongs to the org the act was performed
+    against, so a platform_admin's intervention is visible there afterward rather than only on the
+    platform. A store that holds another org's model is refused (:class:`AdminTrailOfAnotherOrg`).
+    The detail is redacted with ``org_id``'s rules (REQ-2087: an org's rules apply to the text it
+    produced, its audit entries among them), not the rules of whichever org the actor is bound to.
+    """
     from provisa.security.redaction import redact_value
 
+    # A handle built without a model plane (``Database.model`` is None) names no org to compare.
+    plane = model_db.model
+    if plane is not None and plane.org_id != org_id:
+        raise AdminTrailOfAnotherOrg(org_id, plane.org_id)
     async with model_db.acquire() as conn:
         await conn.execute_core(
             insert(admin_audit_log).values(
-                action=action, actor_id=actor_id, subject_id=subject_id, detail=redact_value(detail)
+                action=action,
+                actor_id=actor_id,
+                subject_id=subject_id,
+                detail=redact_value(detail, org_id),
             )
         )
 
@@ -513,10 +601,12 @@ async def remove_account(  # REQ-1307, REQ-1312, REQ-1918
     Refused (:class:`AccountRemovalRefused`) while they are the last org_admin of any org — every
     such org is named, not only the first — or the last platform_admin of the deployment. When
     it may go: they leave every org in both planes (their tokens for each are revoked with the
-    membership), their profile, credential row and SCRAM verifier are deleted, and every
-    remaining reference to their id — orgs and invites they created or used, audit entries —
-    carries a tombstone instead. Audit entries are never deleted. The orgs and everything
-    registered in them stay: they are the org's, not the person's.
+    membership), their profile, credential row and SCRAM verifier are deleted, as are each of
+    those orgs' own copies of who they are (its user directory entry, the attributes it records
+    and their identity provider's claims), and every remaining reference to their id — orgs
+    and invites they created or used, audit entries — carries a tombstone instead. Audit
+    entries are never deleted. The orgs and everything registered in them stay: they are the
+    org's, not the person's.
 
     ``platform_db`` is the model store that holds the platform_admin assignments;
     ``model_db_of`` returns one org's model store (its role assignments and admin trail) and
@@ -529,7 +619,13 @@ async def remove_account(  # REQ-1307, REQ-1312, REQ-1918
         superadmin_bootstrap,
         user_profiles,
     )
-    from provisa.core.schema_org import query_audit_log
+    from provisa.core.schema_org import (
+        query_audit_log,
+        user_attributes,
+        user_directory,
+        user_idp_attributes,
+        user_idp_roles,
+    )
     from provisa.security.rights import PLATFORM_ADMIN_ROLE
 
     async with admin_db.acquire() as conn:
@@ -601,6 +697,16 @@ async def remove_account(  # REQ-1307, REQ-1312, REQ-1918
                 .values(user_id=tombstone)
             )
         async with model_dbs[org_id].acquire() as conn:
+            # The org's own copies of who they are (REQ-1439, REQ-1382, REQ-1383) go with the
+            # profile: a name and email left in user_directory would still label every audit row
+            # the tombstone was meant to stop identifying them on.
+            for identity in (
+                user_directory,
+                user_attributes,
+                user_idp_attributes,
+                user_idp_roles,
+            ):
+                await conn.execute_core(delete(identity).where(identity.c.user_id == user_id))
             await conn.execute_core(
                 update(admin_audit_log)
                 .where(admin_audit_log.c.actor_id == user_id)
@@ -620,6 +726,9 @@ def tombstone_id(user_id: str) -> str:  # REQ-1312
     Derived by hash rather than randomly so every reference to one deleted account collapses to the
     same token — the record still shows that one person did these things, without saying who. It is
     one-way: the digest cannot be turned back into the id.
+
+    query_audit_log's no_update_audit rule (provisa/audit/query_log.py) computes this same token
+    in SQL: the one UPDATE it lets through is a user_id going to its tombstone. Change both.
     """
     return "deleted-user-" + hashlib.sha256(user_id.encode("utf-8")).hexdigest()[:16]
 

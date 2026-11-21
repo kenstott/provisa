@@ -12,7 +12,7 @@
 
 # Requirements: REQ-042, REQ-059, REQ-060, REQ-215
 
-from provisa.core import model_change
+from provisa.core import model_change, model_uri
 from typing import TYPE_CHECKING
 
 from sqlalchemy import delete as _delete, select
@@ -77,7 +77,7 @@ async def upsert(  # REQ-042, REQ-059, REQ-060, REQ-1174, REQ-1919
     ``org_id`` is the org an administrator created it in (tenancy); it is recorded at
     creation and never changed, and is None for a role no administrator of an org created.
     """
-    model_change.name("upsert", "role", role.id)  # REQ-1524
+    model_change.name("upsert", model_change.uri(model_uri.role_uri, role.id))  # REQ-1524
     from provisa.core.db import STANDARD_ROLES
 
     if role.id in STANDARD_ROLES:
@@ -88,6 +88,7 @@ async def upsert(  # REQ-042, REQ-059, REQ-060, REQ-1174, REQ-1919
         # silently would load a config as if a declaration it carries had been honoured.
         raise ReservedRoleRedefined(role.id)
     await require_residency_grant_saved(conn, role.id, role.capabilities, role.residency_values)
+    stored = await get(conn, role.id)
     await conn.upsert(
         roles,
         {
@@ -103,6 +104,7 @@ async def upsert(  # REQ-042, REQ-059, REQ-060, REQ-1174, REQ-1919
             "max_rows": role.max_rows,  # REQ-005, REQ-1919
             "relationship_guard": role.relationship_guard,  # REQ-1919
             "inactivity_days": role.inactivity_days,  # auth.role_grants
+            "default_entitlements": _default_entitlements(role, stored),  # REQ-2219
             "org_id": org_id,
         },
         index_elements=["id"],
@@ -117,8 +119,21 @@ async def upsert(  # REQ-042, REQ-059, REQ-060, REQ-1174, REQ-1919
             "max_rows",
             "relationship_guard",
             "inactivity_days",
+            "default_entitlements",
         ],
     )
+
+
+def _default_entitlements(role: Role, stored: dict | None) -> dict[str, list[str]]:
+    """What a holder of ``role`` gets with no list (REQ-2219). Stated by the save, that; left out,
+    a role's domains setting writes them, each kind scoped to those domains, and a save that
+    did not change the domains keeps what is stored, so a narrowing survives."""
+    if role.default_entitlements is not None:
+        return role.default_entitlements
+    if stored is not None and stored.get("default_entitlements") is not None:
+        if stored["domain_access"] == role.domain_access:
+            return stored["default_entitlements"]
+    return {"domains": list(role.domain_access)}
 
 
 async def require_residency_grant_saved(
@@ -158,7 +173,7 @@ async def delete(conn: "Connection", role_id: str) -> bool:  # REQ-042, REQ-1677
     who holds it, a role that inherits from it, a grant or ownership that names it. Its row
     filters go with it. One transaction; no database cascade is relied on.
     """
-    model_change.name("delete", "role", role_id)  # REQ-1524
+    model_change.name("delete", model_change.uri(model_uri.role_uri, role_id))  # REQ-1524
     ref = ObjectRef("role", role_id)
     async with conn.transaction():
         row = await get(conn, role_id)

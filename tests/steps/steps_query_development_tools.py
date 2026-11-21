@@ -110,9 +110,9 @@ def compiled_sql_route_params_returned(shared_data):
 
     # Compile must NOT execute the query against any engine.
     # Check only the compile_endpoint function body (not the full module) since
-    # execute_trino is used legitimately in other endpoint functions.
+    # the Trino read is used legitimately in other endpoint functions.
     fn_src = shared_data["endpoint_fn_source"]
-    assert "execute_trino(" not in fn_src, "compile_endpoint must not execute via Trino"
+    assert "execute_trino_flight(" not in fn_src, "compile_endpoint must not execute via Trino"
     assert "execute_direct(" not in fn_src, "compile_endpoint must not execute directly"
 
     assert shared_data.get("rls_available") is True

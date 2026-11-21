@@ -30,6 +30,7 @@ from provisa.codesource.mutations import (
     Binding,
     MutationRefused,
     bindings,
+    changes_of,
     inserted_rows,
     key_read,
     keys_of,
@@ -153,14 +154,10 @@ async def run(state: Any, write: CodeWrite, read_rows: list[tuple] | None) -> in
             for at in range(0, len(keys), BATCH):
                 _call(prepared, write.binding, [keys[at : at + BATCH]])
             return len(keys)
-        # An UPDATE: the keys grouped by the changes their SET gives them (one group when the SET
-        # is literals; one a key when it is computed per row), each group's call given its own.
-        width = len(write.key)
-        groups: dict[tuple, list[Any]] = {}
-        for k, row in zip(keys, read_rows, strict=True):
-            changes = tuple(zip(write.columns, row[width:], strict=True))
-            groups.setdefault(changes, []).append(k)
-        for changes, grouped in groups.items():
+        # An UPDATE: the keys grouped by the changes their SET gives them, each group's call given
+        # its own.
+        for changes, rows in changes_of(read_rows, len(write.key), write.columns).items():
+            grouped = keys_of(rows, code, write.binding.bare_keys)
             given = {write.declared.get(c, c): v for c, v in changes}
             for at in range(0, len(grouped), BATCH):
                 _call(prepared, write.binding, [grouped[at : at + BATCH], given])

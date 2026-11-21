@@ -8,23 +8,15 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Analyze prompt via Claude API and parse relationship candidates."""
+"""A relationship candidate, and the list read from a model's answer (REQ-413)."""
 
-# Requirements: REQ-018, REQ-167, REQ-612
+# Requirements: REQ-018, REQ-167, REQ-413, REQ-612
 
 from __future__ import annotations
 
 import json
-import logging
 import re
 from dataclasses import dataclass
-
-from provisa.discovery.collector import DiscoveryInput
-from provisa.otel_compat import get_tracer as _get_tracer
-
-_tracer = _get_tracer(__name__)
-
-log = logging.getLogger(__name__)
 
 
 @dataclass
@@ -39,103 +31,51 @@ class RelationshipCandidate:  # REQ-018, REQ-612
     suggested_name: str = ""
 
 
-def _extract_json(text: str) -> str:
-    """Extract JSON array from response text, handling markdown code blocks."""
-    # Try to find JSON in code blocks first
-    match = re.search(r"```(?:json)?\s*(\[.*?])\s*```", text, re.DOTALL)
-    if match:
-        return match.group(1)
-    # Try bare JSON array
-    match = re.search(r"\[.*]", text, re.DOTALL)
-    if match:
-        return match.group(0)
-    return text
+#: Where a list of relationships can open: a ``[`` before an object or before its own end. A
+#: bracket in prose (``[Note]``) or one inside an element is not taken for the list.
+_LIST_OPENING = re.compile(r"\[(?=\s*[{\]])")
 
 
-def _validate_candidate(raw: dict, discovery_input: DiscoveryInput) -> bool:  # REQ-612
-    """Check that referenced columns exist in the metadata."""
-    required_keys = {
-        "source_table_id",
-        "source_column",
-        "target_table_id",
-        "target_column",
-        "cardinality",
-        "confidence",
-    }
-    if not required_keys.issubset(raw.keys()):
-        return False
+@dataclass
+class AnswerList:  # REQ-413
+    """The list read from a model's answer. ``items`` is None when no list could be read;
+    ``cut_short`` says the answer stopped before its list closed, and ``items`` then holds the
+    elements that were complete."""
 
-    if raw.get("cardinality") not in ("many-to-one", "one-to-many"):
-        return False
-
-    tables_by_id = {t.table_id: t for t in discovery_input.tables}
-
-    src_table = tables_by_id.get(raw["source_table_id"])
-    if src_table is None:
-        return False
-    src_col_names = {c["name"] for c in src_table.columns}
-    if raw["source_column"] not in src_col_names:
-        return False
-
-    tgt_table = tables_by_id.get(raw["target_table_id"])
-    if tgt_table is None:
-        return False
-    tgt_col_names = {c["name"] for c in tgt_table.columns}
-    if raw["target_column"] not in tgt_col_names:
-        return False
-
-    return True
+    items: list | None
+    cut_short: bool = False
 
 
-def analyze(
-    prompt: str,
-    api_keys: dict[str, str],
-    discovery_input: DiscoveryInput,
-    min_confidence: float = 0.7,
-) -> list[RelationshipCandidate]:  # REQ-018, REQ-167, REQ-612
-    """Call LLM with prompt, parse and validate response."""
-    with _tracer.start_as_current_span("discovery.analyze"):
-        from provisa.llm.client import ProvisaLLMClient
-
-        llm = ProvisaLLMClient("relationship_inference", api_keys=api_keys)
-        response_text = llm.complete_sync(prompt, "You are a data analyst.", 4096)
-        log.warning("LLM raw response (%d chars): %s", len(response_text), response_text[:3000])
-
+def _complete_elements(text: str, start: int) -> list:
+    """The elements of the list opening at ``text[start]`` that are complete, read one at a time
+    until one is not: the list of an answer cut off before it closed."""
+    decoder = json.JSONDecoder()
+    items: list = []
+    pos = start + 1
+    while True:
+        while pos < len(text) and text[pos] in " \t\r\n,":
+            pos += 1
         try:
-            raw_json = _extract_json(response_text)
-            candidates_raw = json.loads(raw_json)
-        except (json.JSONDecodeError, TypeError) as e:
-            log.warning("Malformed LLM response (%s). Raw text: %s", e, response_text[:500])
-            return []
+            item, pos = decoder.raw_decode(text, pos)
+        except json.JSONDecodeError:
+            return items
+        items.append(item)
 
-        if not isinstance(candidates_raw, list):
-            log.warning("LLM response is not a JSON array. Raw: %s", response_text[:500])
-            return []
 
-        results: list[RelationshipCandidate] = []
-        for raw in candidates_raw:
-            if not isinstance(raw, dict):
-                continue
-            if not _validate_candidate(raw, discovery_input):
-                log.warning("Invalid candidate filtered: %s", raw)
-                continue
-            confidence = float(raw["confidence"])
-            if confidence < min_confidence:
-                log.warning(
-                    "Candidate below threshold (%.2f < %.2f): %s", confidence, min_confidence, raw
-                )
-                continue
-            results.append(
-                RelationshipCandidate(
-                    source_table_id=int(raw["source_table_id"]),
-                    source_column=str(raw["source_column"]),
-                    target_table_id=int(raw["target_table_id"]),
-                    target_column=str(raw["target_column"]),
-                    cardinality=str(raw["cardinality"]),
-                    confidence=confidence,
-                    reasoning=str(raw.get("reasoning", "")),
-                    suggested_name=str(raw.get("suggested_name", "")),
-                )
-            )
-
-        return results
+def read_answer_list(text: str, cut_off: bool) -> AnswerList:  # REQ-413
+    """The JSON list in a model's answer, whatever text or code fence is around it: read by a JSON
+    decoder from the first ``[`` that opens a list of objects (:data:`_LIST_OPENING`), so a
+    bracket in the text after the list is never taken for its end. An answer that stopped at its token limit (``cut_off``) and whose
+    list never closed gives the elements that were complete, marked ``cut_short``."""
+    decoder = json.JSONDecoder()
+    opens = [m.start() for m in _LIST_OPENING.finditer(text)]
+    for i in opens:
+        try:
+            value, _ = decoder.raw_decode(text, i)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(value, list):
+            return AnswerList(value)
+    if cut_off and opens:
+        return AnswerList(_complete_elements(text, opens[0]), cut_short=True)
+    return AnswerList(None)

@@ -18,9 +18,11 @@ SQL over a parameter's name, valid on both dialects."""
 
 from __future__ import annotations
 
+import re
 from collections.abc import Sequence
 
 from provisa.core.pg_error import raising
+from provisa.transpiler.pg_forms_types import fails, not_served
 
 _FUZZ = "1e-06"  # geo_decls.h's EPSILON: PostgreSQL's geometric comparisons allow it
 _NUMBER = r"[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?"
@@ -102,7 +104,7 @@ def points_differ_by_nothing(index: int) -> str:
 
 # --- DuckDB: a shape's measures, over its numbers ------------------------------------------------
 
-_DOUBLES = f"list_transform({numbers('value')}, _n -> CAST(_n AS DOUBLE))"
+_DOUBLES = f"list_transform({numbers('value')}, LAMBDA _n : CAST(_n AS DOUBLE))"
 _POINT_TEXT = "format('({{:g}},{{:g}})', {x}, {y})"
 _BOX_X = (number("value", 1), number("value", 3))
 _BOX_Y = (number("value", 2), number("value", 4))
@@ -110,8 +112,8 @@ _BOX_Y = (number("value", 2), number("value", 4))
 BOX_AREA = f"abs({_BOX_X[0]} - {_BOX_X[1]}) * abs({_BOX_Y[0]} - {_BOX_Y[1]})"
 CIRCLE_AREA = f"pi() * pow({number('value', 3)}, 2)"
 _SHOELACE = (
-    f"list_transform([{_DOUBLES}], _p -> abs(list_sum(list_transform(range(1, len(_p), 2), "
-    "_i -> _p[_i] * _p[(_i + 1) % len(_p) + 2] - _p[(_i + 1) % len(_p) + 1] * _p[_i + 1]))) "
+    f"list_transform([{_DOUBLES}], LAMBDA _p : abs(list_sum(list_transform(range(1, len(_p), 2), "
+    "LAMBDA _i : _p[_i] * _p[(_i + 1) % len(_p) + 2] - _p[(_i + 1) % len(_p) + 1] * _p[_i + 1]))) "
     "/ 2.0)[1]"
 )
 PATH_AREA = f"CASE WHEN NOT {_is_open('value')} THEN {_SHOELACE} END"
@@ -140,9 +142,10 @@ LSEG_LENGTH = (
     f"pow({number('value', 4)} - {number('value', 2)}, 2))"
 )
 PATH_LENGTH = (
-    f"CASE WHEN value IS NOT NULL THEN list_transform([{_DOUBLES}], _q -> list_transform(["
+    f"CASE WHEN value IS NOT NULL THEN list_transform([{_DOUBLES}], LAMBDA _q : list_transform(["
     f"CASE WHEN {is_closed('value')} AND len(_q) > 2 THEN list_concat(_q, _q[1:2]) ELSE _q END], "
-    f"_p -> coalesce(list_sum(list_transform(range(1, len(_p) - 1, 2), _i -> {_STEP})), 0.0))[1])"
+    "LAMBDA _p : coalesce(list_sum(list_transform(range(1, len(_p) - 1, 2), "
+    f"LAMBDA _i : {_STEP})), 0.0))[1])"
     "[1] END"
 )
 POINT_IN_CIRCLE = (
@@ -166,10 +169,11 @@ _CROSSES = (
 )
 #: On an edge, or inside by the even-odd rule.
 POINT_IN_POLYGON = (
-    f"list_transform([{_DOUBLES.replace('value', 'poly')}], _c -> "
-    f"list_transform([{number('p', 1)}], _x -> list_transform([{number('p', 2)}], _y -> "
-    f"len(list_filter({_EDGES}, _i -> {_ON_EDGE})) > 0 OR "
-    f"len(list_filter({_EDGES}, _i -> {_CROSSES})) % 2 = 1)[1])[1])[1]"
+    f"list_transform([{_DOUBLES.replace('value', 'poly')}], LAMBDA _c : "
+    f"list_transform([{number('p', 1)}], LAMBDA _x : "
+    f"list_transform([{number('p', 2)}], LAMBDA _y : "
+    f"len(list_filter({_EDGES}, LAMBDA _i : {_ON_EDGE})) > 0 OR "
+    f"len(list_filter({_EDGES}, LAMBDA _i : {_CROSSES})) % 2 = 1)[1])[1])[1]"
 )
 
 
@@ -261,13 +265,13 @@ _LEXEME = (
     f"ELSE {_BARE} END"
 )
 _MARK_LIST = (
-    f"list_filter(string_split(regexp_extract(_t, {_MARKED}, 1), ','), _m -> length(_m) > 0)"
+    f"list_filter(string_split(regexp_extract(_t, {_MARKED}, 1), ','), LAMBDA _m : length(_m) > 0)"
 )
 _ITEMS = (
-    f"list_sort(list_transform({_TOKENS}, _t -> struct_pack(lexeme := {_LEXEME}, "
+    f"list_sort(list_transform({_TOKENS}, LAMBDA _t : struct_pack(lexeme := {_LEXEME}, "
     f"positions := nullif(list_transform({_MARK_LIST}, "
-    "_m -> CAST(rtrim(_m, 'ABCD') AS SMALLINT)), []), "
-    f"weights := nullif(list_transform({_MARK_LIST}, _m -> "
+    "LAMBDA _m : CAST(rtrim(_m, 'ABCD') AS SMALLINT)), []), "
+    f"weights := nullif(list_transform({_MARK_LIST}, LAMBDA _m : "
     "CASE WHEN right(_m, 1) IN ('A', 'B', 'C') THEN right(_m, 1) ELSE 'D' END), []))))"
 )
 _QUOTED_LEXEME = "'''' || replace(_l, '''', '''''') || ''''"
@@ -275,8 +279,8 @@ _QUOTED_LEXEME = "'''' || replace(_l, '''', '''''') || ''''"
 TSVECTOR_LENGTH = f"len({_TOKENS})"
 TSVECTOR_UNNEST = f"unnest({_ITEMS})"
 TSVECTOR_STRIP = (
-    f"array_to_string(list_transform(list_sort(list_transform({_TOKENS}, _t -> {_LEXEME})), "
-    f"_l -> {_QUOTED_LEXEME}), ' ')"
+    f"array_to_string(list_transform(list_sort(list_transform({_TOKENS}, LAMBDA _t : {_LEXEME})), "
+    f"LAMBDA _l : {_QUOTED_LEXEME}), ' ')"
 )
 TRINO_TSVECTOR_LENGTH = f"cardinality({_TOKENS})"
 TRINO_TSVECTOR_STRIP = (
@@ -312,15 +316,7 @@ TRINO_CIDR_ABBREV = (
 _CENTS = "CAST(round((value) * 100, 0) AS BIGINT)"
 _WIDE_CENTS = f"CAST({_CENTS} AS HUGEINT)"
 
-MONEY_TEXT = (
-    f"CASE WHEN {_CENTS} < 0 THEN '-' ELSE '' END || '$' || "
-    f"format('{{:,}}', abs({_WIDE_CENTS}) // 100) || '.' || "
-    f"printf('%02d', CAST(abs({_WIDE_CENTS}) % 100 AS INTEGER))"
-)
-TRINO_MONEY_TEXT = (
-    "CASE WHEN value < 0 THEN '-' ELSE '' END || "
-    "format('$%,.2f', abs(CAST(value AS DECIMAL(19,2))))"
-)
+#: money's text form is the polyfill grid's row (provisa.transpiler.polyfill.money).
 MONEY_BYTES = f"unhex(printf('%016x', {_CENTS}))"
 TRINO_MONEY_BYTES = f"to_big_endian_64({_CENTS})"
 
@@ -348,10 +344,10 @@ _WORD = (
 )
 _GROUPS = (
     "list_concat(list_transform([1000000000000000, 1000000000000, 1000000000, 1000000, 1000, 1], "
-    "_u -> CAST((abs(_c) // 100) // _u % 1000 AS INTEGER)), [CAST(abs(_c) % 100 AS INTEGER)])"
+    "LAMBDA _u : CAST((abs(_c) // 100) // _u % 1000 AS INTEGER)), [CAST(abs(_c) % 100 AS INTEGER)])"
 )
 _SCALED = (
-    "array_to_string(list_transform(range(1, 6), _i -> CASE WHEN _a[_i] > 0 "
+    "array_to_string(list_transform(range(1, 6), LAMBDA _i : CASE WHEN _a[_i] > 0 "
     f"THEN _w[_i] || ' ' || {_list(_SCALES)}[_i] || ' ' ELSE '' END), '')"
 )
 _SENTENCE = (
@@ -362,12 +358,14 @@ _SENTENCE = (
     "CASE WHEN _a[7] = 1 THEN ' cent' ELSE ' cents' END"
 )
 _WORDS = (
-    f"list_transform([{_list(_SMALL)}], _s -> list_transform([{_list(_TENS)}], _e -> "
-    f"list_transform([{_GROUPS}], _a -> list_transform([list_transform(_a, _g -> {_WORD})], "
-    f"_w -> list_transform([{_SENTENCE}], _o -> upper(_o[1]) || _o[2:])[1])[1])[1])[1])[1]"
+    f"list_transform([{_list(_SMALL)}], LAMBDA _s : list_transform([{_list(_TENS)}], LAMBDA _e : "
+    f"list_transform([{_GROUPS}], LAMBDA _a : "
+    f"list_transform([list_transform(_a, LAMBDA _g : {_WORD})], "
+    f"LAMBDA _w : list_transform([{_SENTENCE}], "
+    "LAMBDA _o : upper(_o[1]) || _o[2:])[1])[1])[1])[1])[1]"
 )
 MONEY_WORDS = (
-    f"CASE WHEN value IS NOT NULL THEN list_transform([{_WIDE_CENTS}], _c -> {_WORDS})[1] END"
+    f"CASE WHEN value IS NOT NULL THEN list_transform([{_WIDE_CENTS}], LAMBDA _c : {_WORDS})[1] END"
 )
 
 _SPACE = r"[ \t\n\r\f\v]*"
@@ -392,13 +390,14 @@ _ROUNDED = (
 )
 _SIGNED = f"CASE WHEN {_NEGATIVE} THEN -({_ROUNDED}) ELSE {_ROUNDED} END"
 _READ = (
-    f"list_transform([{_PARTS}], _m -> list_transform([{_DIGITS}], _d -> CASE WHEN length(_d) > 19 "
-    f"THEN {_OUT_OF_RANGE} ELSE list_transform([{_SIGNED}], _c -> "
+    f"list_transform([{_PARTS}], LAMBDA _m : "
+    f"list_transform([{_DIGITS}], LAMBDA _d : CASE WHEN length(_d) > 19 "
+    f"THEN {_OUT_OF_RANGE} ELSE list_transform([{_SIGNED}], LAMBDA _c : "
     f"CASE WHEN _c < -9223372036854775808 OR _c > 9223372036854775807 THEN {_OUT_OF_RANGE} "
     "ELSE CAST(CAST(_c AS DECIMAL(19,0)) * 0.01 AS DECIMAL(21,4)) END)[1] END)[1])[1]"
 )
 MONEY_INPUT = (
-    "CASE WHEN value IS NOT NULL THEN list_transform([CAST(value AS VARCHAR)], _t -> "
+    "CASE WHEN value IS NOT NULL THEN list_transform([CAST(value AS VARCHAR)], LAMBDA _t : "
     f"CASE WHEN NOT regexp_matches(_t, '{_MONEY_INPUT}') THEN {_INVALID} ELSE {_READ} END)[1] END"
 )
 
@@ -408,17 +407,26 @@ MONEY_INPUT = (
 
 def bound(name: str, value: str, body: str) -> str:
     """``body`` with ``name`` the value of ``value``, which it reads as often as it needs."""
-    return f"list_transform([{value}], {name} -> {body})[1]"
+    return f"list_transform([{value}], LAMBDA {name} : {body})[1]"
+
+
+def held(name: str, value: str, body: str) -> str:
+    """``body`` with ``name`` written as ``value``, which any dialect's SQL can do: a form that
+    reads a value twice names it, and a volatile argument is held whole (function_macros)."""
+    return re.sub(rf"\b{name}\b", f"({value})", body)
 
 
 def _refused(sqlstate: str, message: str) -> str:
     return raising(sqlstate, f"'{message}'")
 
 
-_DIVISION_BY_ZERO = _refused("22012", "division by zero")
-_OVERFLOW = _refused("22003", "value out of range: overflow")
-_UNDERFLOW = _refused("22003", "value out of range: underflow")
-_OUT_OF_DOMAIN = _refused("22003", "input is out of range")
+def _double_refused(sqlstate: str, message: str) -> str:
+    return fails(sqlstate, message, "DOUBLE PRECISION")
+
+
+_OVERFLOW = _double_refused("22003", "value out of range: overflow")
+_UNDERFLOW = _double_refused("22003", "value out of range: underflow")
+_OUT_OF_DOMAIN = _double_refused("22003", "input is out of range")
 #: Each integer type: its name in the engine and PostgreSQL's.
 PG_INTEGERS = {"SMALLINT": "smallint", "INTEGER": "integer", "BIGINT": "bigint"}
 PG_FLOATS = {"FLOAT": "real", "DOUBLE": "double precision"}
@@ -439,98 +447,47 @@ def in_range(value: str, sql_type: str) -> str:
     )
 
 
-def integer_arithmetic(operator: str, left: str, right: str, result: str) -> str:
-    """int24pl and its kin: the integers widened past their result, which is then range-checked.
-    ``//`` truncates toward zero, as int4div does."""
-    wide = "HUGEINT" if result == "BIGINT" else "BIGINT"
-    a, b = f"CAST(CAST(a AS {left}) AS {wide})", f"CAST(CAST(b AS {right}) AS {wide})"
-    answer = in_range(f"{a} {operator} {b}", result)
-    return (
-        f"CASE WHEN {b} = 0 THEN {_DIVISION_BY_ZERO} ELSE {answer} END"
-        if operator == "//"
-        else answer
-    )
-
-
-def _float_operands(left: str, right: str) -> tuple[str, str]:
-    return f"CAST(CAST(a AS {left}) AS DOUBLE)", f"CAST(CAST(b AS {right}) AS DOUBLE)"
-
-
-def float_comparison(operator: str, left: str, right: str) -> str:
-    """float48eq and its kin: the real widened, and the engine's NaN equal to itself and above
-    every number, as PostgreSQL's is."""
-    a, b = _float_operands(left, right)
-    return f"{a} {operator} {b}"
-
-
-def float_arithmetic(operator: str, left: str, right: str) -> str:
-    """float8_pl, float8_mi, float8_mul and float8_div (utils/float.h): an infinity or a zero the
-    operands do not explain is refused."""
-    a, b = _float_operands(left, right)
-    checks = {
-        "+": f"isinf(_r) AND NOT isinf({a}) AND NOT isinf({b}) THEN {_OVERFLOW}",
-        "-": f"isinf(_r) AND NOT isinf({a}) AND NOT isinf({b}) THEN {_OVERFLOW}",
-        "*": (
-            f"isinf(_r) AND NOT isinf({a}) AND NOT isinf({b}) THEN {_OVERFLOW} "
-            f"WHEN _r = 0 AND {a} <> 0 AND {b} <> 0 THEN {_UNDERFLOW}"
-        ),
-        "/": (
-            f"isinf(_r) AND NOT isinf({a}) THEN {_OVERFLOW} "
-            f"WHEN _r = 0 AND {a} <> 0 AND NOT isinf({b}) THEN {_UNDERFLOW}"
-        ),
-    }
-    answer = bound("_r", f"{a} {operator} {b}", f"CASE WHEN {checks[operator]} ELSE _r END")
-    if operator == "/":
-        return f"CASE WHEN {b} = 0 THEN CASE WHEN isnan({a}) THEN {a} ELSE {_DIVISION_BY_ZERO} END ELSE {answer} END"
-    return answer
-
-
 _X = "CAST(x AS DOUBLE)"
 _Y = "CAST(y AS DOUBLE)"
 
 DEXP = (
-    f"CASE WHEN isnan({_X}) OR isinf({_X}) THEN exp({_X}) ELSE "
-    + bound(
-        "_r",
-        f"exp({_X})",
-        f"CASE WHEN isinf(_r) THEN {_OVERFLOW} WHEN _r = 0 THEN {_UNDERFLOW} ELSE _r END",
-    )
-    + " END"
+    f"CASE WHEN IS_NAN({_X}) OR IS_INF({_X}) THEN EXP({_X}) "
+    f"WHEN {_X} > 709.782712893384 THEN {_OVERFLOW} "
+    f"WHEN {_X} < -745.1332191019412 THEN {_UNDERFLOW} ELSE EXP({_X}) END"
 )
 
 
 def _logarithm(function: str) -> str:
     return (
-        f"CASE WHEN {_X} = 0 THEN {_refused('2201E', 'cannot take logarithm of zero')} "
-        f"WHEN {_X} < 0 THEN {_refused('2201E', 'cannot take logarithm of a negative number')} "
+        f"CASE WHEN {_X} = 0 THEN {_double_refused('2201E', 'cannot take logarithm of zero')} "
+        f"WHEN {_X} < 0 THEN {_double_refused('2201E', 'cannot take logarithm of a negative number')} "
         f"ELSE {function}({_X}) END"
     )
 
 
-DLOG1 = _logarithm("ln")
-DLOG10 = _logarithm("log10")
+DLOG1 = _logarithm("LN")
+DLOG10 = _logarithm("LOG10")
 DSQRT = (
-    f"CASE WHEN {_X} < 0 THEN {_refused('2201F', 'cannot take square root of a negative number')} "
-    f"ELSE sqrt({_X}) END"
+    f"CASE WHEN {_X} < 0 THEN "
+    f"{_double_refused('2201F', 'cannot take square root of a negative number')} "
+    f"ELSE SQRT({_X}) END"
+)
+_COMPLEX = _double_refused(
+    "2201F", "a negative number raised to a non-integer power yields a complex result"
 )
 #: dpow: POSIX's pow where an infinity or a NaN is in it, which the engine's follows, and the
 #: errors PostgreSQL gives where one is not.
 DPOW = (
     f"CASE WHEN {_X} = 0 AND {_Y} < 0 THEN "
-    + _refused("2201F", "zero raised to a negative power is undefined")
-    + f" WHEN {_X} < 0 AND NOT isinf({_X}) AND NOT isinf({_Y}) AND floor({_Y}) <> {_Y} THEN "
-    + _refused("2201F", "a negative number raised to a non-integer power yields a complex result")
-    + f" WHEN {_X} < 0 AND isinf({_X}) AND NOT isnan({_Y}) AND NOT isinf({_Y}) "
-    f"AND floor({_Y}) <> {_Y} THEN "
-    + _refused("2201F", "a negative number raised to a non-integer power yields a complex result")
-    + f" WHEN isnan({_X}) OR isnan({_Y}) OR isinf({_X}) OR isinf({_Y}) THEN pow({_X}, {_Y}) ELSE "
-    + bound(
-        "_r",
-        f"pow({_X}, {_Y})",
-        f"CASE WHEN isinf(_r) THEN {_OVERFLOW} WHEN _r = 0 AND {_X} <> 0 THEN {_UNDERFLOW} "
-        "ELSE _r END",
-    )
-    + " END"
+    + _double_refused("2201F", "zero raised to a negative power is undefined")
+    + f" WHEN {_X} < 0 AND NOT IS_INF({_X}) AND NOT IS_INF({_Y}) AND FLOOR({_Y}) <> {_Y} THEN "
+    + _COMPLEX
+    + f" WHEN {_X} < 0 AND IS_INF({_X}) AND NOT IS_NAN({_Y}) AND NOT IS_INF({_Y}) "
+    f"AND FLOOR({_Y}) <> {_Y} THEN "
+    + _COMPLEX
+    + f" WHEN IS_NAN({_X}) OR IS_NAN({_Y}) OR IS_INF({_X}) OR IS_INF({_Y}) THEN POWER({_X}, {_Y}) "
+    f"WHEN IS_INF(POWER({_X}, {_Y})) THEN {_OVERFLOW} "
+    f"WHEN POWER({_X}, {_Y}) = 0 AND {_X} <> 0 THEN {_UNDERFLOW} ELSE POWER({_X}, {_Y}) END"
 )
 
 # float.c's degree functions: each angle is folded into the first quadrant, where a ratio of two
@@ -582,61 +539,59 @@ def _acosd_q1(x: str) -> str:
 
 
 def _finite_angle(answer: str) -> str:
-    return (
-        f"CASE WHEN isnan({_X}) THEN {_X} WHEN isinf({_X}) THEN {_OUT_OF_DOMAIN} ELSE {answer} END"
-    )
+    return f"CASE WHEN IS_NAN({_X}) THEN {_X} WHEN IS_INF({_X}) THEN {_OUT_OF_DOMAIN} ELSE {answer} END"
 
 
-COSD = _finite_angle(
-    bound(
-        "_a",
-        f"abs({_X} % 360.0)",
-        bound(
-            "_b",
-            "CASE WHEN _a > 180.0 THEN 360.0 - _a ELSE _a END",
-            f"CASE WHEN _b > 90.0 THEN -({_cosd_q1('(180.0 - _b)')}) ELSE {_cosd_q1('_b')} END",
-        ),
+def degree_answers(angle: str, minus_zero: bool = False) -> dict[str, str]:
+    """sind, cosd, tand and cotd of a finite angle, by ``angle``, its text as C's fmod(x, 360.0)
+    reads it (sign kept, a minus zero kept): each is folded into the first quadrant. ``minus_zero``:
+    a minus zero is folded as itself, as float.c's negation of a negative angle leaves it (sind of
+    -0 is -0), and tand's minus zero is a plain zero."""
+    whole = (
+        f"CASE WHEN {angle} < 0 THEN -{angle} ELSE {angle} END" if minus_zero else f"ABS({angle})"
     )
-)
-_COT_45 = _ratio(f"({_cosd_q1('45.0')})", f"({_sind_q1('45.0')})")
-#: dcotd: a minus zero is forced to a plain zero, as the function does.
-COTD = _finite_angle(
-    bound(
-        "_a",
-        f"{_X} % 360.0",
-        bound(
-            "_b",
-            "abs(_a)",
-            bound(
-                "_c",
-                "CASE WHEN _b > 180.0 THEN 360.0 - _b ELSE _b END",
-                bound(
-                    "_d",
-                    "CASE WHEN _c > 90.0 THEN 180.0 - _c ELSE _c END",
-                    bound(
-                        "_r",
-                        "(CASE WHEN _a < 0 THEN -1.0 ELSE 1.0 END) * "
-                        "(CASE WHEN _b > 180.0 THEN -1.0 ELSE 1.0 END) * "
-                        "(CASE WHEN _c > 90.0 THEN -1.0 ELSE 1.0 END) * "
-                        # fmod keeps a dividend's minus sign on a zero, and cos over it is -Infinity.
-                        "(CASE WHEN _d = 0 THEN CAST(CASE WHEN _a = 0 AND atan2(_a, -1.0) < 0 "
-                        "THEN '-Infinity' ELSE 'Infinity' END AS DOUBLE) ELSE "
-                        + _ratio(_ratio(_cosd_q1("_d"), _sind_q1("_d")), _COT_45)
-                        + " END)",
-                        "CASE WHEN _r = 0 THEN 0.0 ELSE _r END",
-                    ),
-                ),
-            ),
-        ),
+    # The angle folded to 0..180, and to the first quadrant.
+    half = f"CASE WHEN {whole} > 180.0 THEN 360.0 - {whole} ELSE {whole} END"
+    quadrant = f"CASE WHEN {half} > 90.0 THEN 180.0 - {half} ELSE {half} END"
+    first_sign = (
+        f"(CASE WHEN {angle} < 0 THEN -1.0 ELSE 1.0 END) * "
+        f"(CASE WHEN {whole} > 180.0 THEN -1.0 ELSE 1.0 END)"
     )
-)
+    second_sign = f"(CASE WHEN {half} > 90.0 THEN -1.0 ELSE 1.0 END)"
+    cot_45 = _ratio(f"({_cosd_q1('45.0')})", f"({_sind_q1('45.0')})")
+    tan_45 = _ratio(f"({_sind_q1('45.0')})", f"({_cosd_q1('45.0')})")
+    return {
+        "sind": f"({first_sign}) * ({held('_d', quadrant, _sind_q1('_d'))})",
+        "cosd": f"({second_sign}) * ({held('_d', quadrant, _cosd_q1('_d'))})",
+        # dtand forces a minus zero to a plain zero, as dcotd does.
+        "tand": (
+            f"({first_sign}) * {second_sign} * "
+            + held("_d", quadrant, _ratio(_ratio(_sind_q1("_d"), _cosd_q1("_d")), tan_45))
+            + (" + 0.0" if minus_zero else "")
+        ),
+        # dcotd: a minus zero is forced to a plain zero, as the function does.
+        "cotd": (
+            f"(CASE WHEN {angle} = 0 AND ATAN2({angle}, -1.0) < 0 THEN -1.0 ELSE 1.0 END) * "
+            f"({first_sign}) * {second_sign} * "
+            f"CASE WHEN {quadrant} = 0 THEN CAST('Infinity' AS DOUBLE PRECISION) ELSE "
+            + held("_d", quadrant, _ratio(_ratio(_cosd_q1("_d"), _sind_q1("_d")), cot_45))
+            + " END + 0.0"
+        ),
+    }
+
+
+_DEGREES = degree_answers(f"{_X} % 360.0")
+SIND = _finite_angle(_DEGREES["sind"])
+COSD = _finite_angle(_DEGREES["cosd"])
+TAND = _finite_angle(_DEGREES["tand"])
+COTD = _finite_angle(_DEGREES["cotd"])
 _UNIT_RANGE = f"{_X} < -1.0 OR {_X} > 1.0"
 ASIND = (
-    f"CASE WHEN isnan({_X}) THEN {_X} WHEN {_UNIT_RANGE} THEN {_OUT_OF_DOMAIN} "
+    f"CASE WHEN IS_NAN({_X}) THEN {_X} WHEN {_UNIT_RANGE} THEN {_OUT_OF_DOMAIN} "
     f"WHEN {_X} >= 0 THEN {_asind_q1(_X)} ELSE -({_asind_q1(f'(-{_X})')}) END"
 )
 ACOSD = (
-    f"CASE WHEN isnan({_X}) THEN {_X} WHEN {_UNIT_RANGE} THEN {_OUT_OF_DOMAIN} "
+    f"CASE WHEN IS_NAN({_X}) THEN {_X} WHEN {_UNIT_RANGE} THEN {_OUT_OF_DOMAIN} "
     f"WHEN {_X} >= 0 THEN {_acosd_q1(_X)} ELSE 90.0 + ({_asind_q1(f'(-{_X})')}) END"
 )
 ATAND = _ratio(f"atan({_X})", "atan(1.0)") + " * 45.0"
@@ -731,16 +686,16 @@ AS_REAL = bound(
     "try_cast(value AS FLOAT)",
     f"CASE WHEN _r IS NULL THEN {_OVERFLOW} WHEN _r = 0 AND value <> 0 THEN {_UNDERFLOW} ELSE _r END",
 )
-_TRIMMED = "CASE WHEN contains(_t, '.') THEN rtrim(rtrim(_t, '0'), '.') ELSE _t END"
-_NOT_A_NUMBER = f"{_NAN} OR {_INFINITE}"
+_TRIMMED = "CASE WHEN STRPOS(_t, '.') > 0 THEN RTRIM(RTRIM(_t, '0'), '.') ELSE _t END"
+_DIGITS = "CAST(value AS TEXT)"
+_NOT_A_NUMBER = f"LOWER({_DIGITS}) IN ('nan', 'infinity', '-infinity')"
 #: numeric's text with the zeros that end its fraction gone.
-TRIM_SCALE = bound("_t", _DIGITS_AS_TEXT, _TRIMMED)
+TRIM_SCALE = held("_t", _DIGITS, _TRIMMED)
 #: How many digits of the fraction are left once they are; a NaN or an infinity has no scale.
-MIN_SCALE = bound(
-    "_t",
-    _DIGITS_AS_TEXT,
-    f"CASE WHEN {_NOT_A_NUMBER} THEN CAST(NULL AS INTEGER) ELSE "
-    f"CAST(length(split_part({_TRIMMED}, '.', 2)) AS INTEGER) END",
+MIN_SCALE = (
+    f"CASE WHEN {_NOT_A_NUMBER} THEN CAST(NULL AS INTEGER) "
+    f"WHEN STRPOS({held('_t', _DIGITS, _TRIMMED)}, '.') = 0 THEN 0 "
+    f"ELSE CAST(LENGTH(SPLIT_PART({held('_t', _DIGITS, _TRIMMED)}, '.', 2)) AS INTEGER) END"
 )
 
 # erf and erfc: no engine has them but ClickHouse, and PostgreSQL's are libm's, so these are the
@@ -786,35 +741,35 @@ def _polynomial(variable: str, coefficients: tuple[str, ...]) -> str:
 
 
 #: y of |x| < 0.84375: erf(x) is x + x * y.
-_ERF_NEAR_ZERO = bound("_z", f"{_X} * {_X}", _ratio(_polynomial("_z", _PP), _polynomial("_z", _QQ)))
-_ERF_NEAR_ONE = bound("_s", "_a - 1.0", _ratio(_polynomial("_s", _PA), _polynomial("_s", _QA)))
+_ERF_NEAR_ZERO = held("_z", f"{_X} * {_X}", _ratio(_polynomial("_z", _PP), _polynomial("_z", _QQ)))
+_ERF_NEAR_ONE = held("_s", "_a - 1.0", _ratio(_polynomial("_s", _PA), _polynomial("_s", _QA)))
 #: r / |x|: exp(-x^2) times the tail's ratio, with x^2 split so its exponent keeps every bit.
-_ERF_TAIL = bound(
+_ERF_TAIL = held(
     "_s",
     "1.0 / (_a * _a)",
-    bound(
+    held(
         "_z",
-        "floor(_a * 262144.0) / 262144.0",
-        f"exp(-_z * _z - 0.5625) * exp((_z - _a) * (_z + _a) + CASE WHEN _a < {_SWITCH} "
+        "FLOOR(_a * 262144.0) / 262144.0",
+        f"EXP(-_z * _z - 0.5625) * EXP((_z - _a) * (_z + _a) + CASE WHEN _a < {_SWITCH} "
         f"THEN {_ratio(_polynomial('_s', _RA), _polynomial('_s', _SA))} "
         f"ELSE {_ratio(_polynomial('_s', _RB), _polynomial('_s', _SB))} END) / _a",
     ),
 )
 _SIGN = f"CASE WHEN {_X} < 0 THEN -1.0 ELSE 1.0 END"
-ERF = bound(
+ERF = held(
     "_a",
     f"abs({_X})",
-    f"CASE WHEN isnan({_X}) THEN {_X} "
+    f"CASE WHEN IS_NAN({_X}) THEN {_X} "
     f"WHEN _a < 3.7252902984e-09 THEN {_X} + {_EFX} * {_X} "
     f"WHEN _a < {_SMALL} THEN {_X} + {_X} * ({_ERF_NEAR_ZERO}) "
     f"WHEN _a < {_MIDDLE} THEN ({_SIGN}) * ({_ERX} + {_ERF_NEAR_ONE}) "
     f"WHEN _a >= {_ERF_ONE} THEN {_SIGN} "
     f"ELSE ({_SIGN}) * (1.0 - {_ERF_TAIL}) END",
 )
-ERFC = bound(
+ERFC = held(
     "_a",
     f"abs({_X})",
-    f"CASE WHEN isnan({_X}) THEN {_X} "
+    f"CASE WHEN IS_NAN({_X}) THEN {_X} "
     f"WHEN _a < 1.3877787807814457e-17 THEN 1.0 - {_X} "
     f"WHEN _a < {_SMALL} AND {_X} < 0.25 THEN 1.0 - ({_X} + {_X} * ({_ERF_NEAR_ZERO})) "
     f"WHEN _a < {_SMALL} THEN 0.5 - ({_X} * ({_ERF_NEAR_ZERO}) + ({_X} - 0.5)) "
@@ -826,11 +781,11 @@ ERFC = bound(
 )
 INT2VECTOR_SEND = (
     "unhex(printf('%08x%08x%08x%08x%08x', 1, 0, 21, len(v), 0) || "
-    "array_to_string(list_transform(v, _o -> printf('00000002%04x', _o & 65535)), ''))"
+    "array_to_string(list_transform(v, LAMBDA _o : printf('00000002%04x', _o & 65535)), ''))"
 )
 #: int2int4_sum: a transition array is its count and its sum.
 INT2INT4_SUM = (
-    "CASE WHEN len(v) <> 2 OR len(list_filter(v, _x -> _x IS NULL)) > 0 THEN "
+    "CASE WHEN len(v) <> 2 OR len(list_filter(v, LAMBDA _x : _x IS NULL)) > 0 THEN "
     + _refused("XX000", "expected 2-element int8 array")
     + " WHEN v[1] = 0 THEN CAST(NULL AS BIGINT) ELSE v[2] END"
 )
@@ -879,6 +834,67 @@ def _interval_parts(body: str) -> str:
             f"CAST({_days('value')} AS HUGEINT)",
             bound("_t", f"CAST({_micros('value')} AS HUGEINT)", body),
         ),
+    )
+
+
+def interval_span(value: str) -> str:
+    """What PostgreSQL orders an interval by (interval_cmp_value): its microseconds, a month thirty
+    days. DuckDB orders its own normalization of the fields, which a mix of signs sorts otherwise."""
+    return (
+        f"(CAST({_months(value)} AS HUGEINT) * 30 * {_USECS_PER_DAY} + "
+        f"CAST({_days(value)} AS HUGEINT) * {_USECS_PER_DAY} + CAST({_micros(value)} AS HUGEINT))"
+    )
+
+
+def interval_lerp(lo: str, hi: str, fraction: str) -> str:
+    """percentile_cont's interval_lerp, as timestamp.c has it: ``hi - lo`` field by field, times
+    ``fraction`` as interval_mul cascades it -- what it leaves of a month runs on to days at thirty
+    a month, and what it leaves of a day to seconds, each rounded to six places by rint, a whole
+    day of seconds carried -- plus ``lo``. DuckDB's own interval product rounds half away from
+    zero where rint rounds half to even. Each division is of a double: the form is read back
+    through PostgreSQL's SQL, where an integer's is the integer quotient."""
+    product = bound(
+        "_a",
+        "trunc(_m * _x)",
+        bound(
+            "_r",
+            "round_even((_m * _x - _a) * 30 * 1000000, 0) / 1000000.0",
+            bound(
+                "_b",
+                "trunc(_d * _x)",
+                bound(
+                    "_s",
+                    "round_even((_d * _x - _b + _r - trunc(_r)) * 86400 * 1000000, 0) / 1000000.0",
+                    bound(
+                        "_c",
+                        "CASE WHEN abs(_s) >= 86400 THEN trunc(_s / 86400.0) ELSE 0 END",
+                        _interval(
+                            f"CAST(_a AS HUGEINT) + {_months('_lo')}",
+                            f"CAST(_b + _c + trunc(_r) AS HUGEINT) + {_days('_lo')}",
+                            "CAST(round_even(_t * _x + (_s - _c * 86400) * 1000000, 0) AS HUGEINT)"
+                            f" + {_micros('_lo')}",
+                        ),
+                    ),
+                ),
+            ),
+        ),
+    )
+    differences = bound(
+        "_m",
+        f"CAST({_months('_hi')} AS HUGEINT) - {_months('_lo')}",
+        bound(
+            "_d",
+            f"CAST({_days('_hi')} AS HUGEINT) - {_days('_lo')}",
+            bound(
+                "_t",
+                f"CAST({_micros('_hi')} AS HUGEINT) - {_micros('_lo')}",
+                "CASE WHEN abs(_m) > 2147483647 OR abs(_d) > 2147483647 "
+                f"OR abs(_t) > 9223372036854775807 THEN {_INTERVAL_OUT_OF_RANGE} ELSE {product} END",
+            ),
+        ),
+    )
+    return bound(
+        "_lo", lo, bound("_hi", hi, bound("_x", f"CAST({fraction} AS DOUBLE)", differences))
     )
 
 
@@ -985,16 +1001,16 @@ def _endpoints(start: str, end: str) -> tuple[str, str]:
 _ANSWER_UNKNOWN = "CAST(NULL AS BOOLEAN)"
 #: overlaps_timestamp, overlaps_time and overlaps_timetz: SQL's OVERLAPS, whose three-valued answer
 #: a NULL end leaves open, not a strict function.
-OVERLAPS = bound(
+OVERLAPS = held(
     "_a",
     _endpoints("s1", "e1")[0],
-    bound(
+    held(
         "_b",
         _endpoints("s1", "e1")[1],
-        bound(
+        held(
             "_c",
             _endpoints("s2", "e2")[0],
-            bound(
+            held(
                 "_d",
                 _endpoints("s2", "e2")[1],
                 f"CASE WHEN _a IS NULL OR _c IS NULL THEN {_ANSWER_UNKNOWN} "
@@ -1049,7 +1065,7 @@ def _time_of(micros: str) -> str:
 
 
 def _time_scaled(time: str) -> str:
-    rounded = bound("_r", _rounded_micros(f"epoch_us({time})", "n"), _time_of("_r"))
+    rounded = held("_r", _rounded_micros(f"epoch_us({time})", "n"), _time_of("_r"))
     return f"CASE WHEN n < 0 OR n > 6 THEN {time} ELSE {rounded} END"
 
 
@@ -1093,7 +1109,7 @@ INTERVAL_SCALE = (
     + raising("22023", f"'interval(' || {_PRECISION} || ') precision must be between 0 and 6'")
     + " ELSE "
     + _interval_parts(
-        bound(
+        held(
             "_u",
             _FIELDS_TIME,
             _interval(
@@ -1123,10 +1139,12 @@ def _zoned_time(clock: str, offset: str) -> str:
 TIMETZ_SCALE = _zoned_time(_time_scaled(_TIMETZ_CLOCK), _OFFSET)
 #: time_timetz: the session's offset today, which the engine's cast leaves at zero.
 TIME_TIMETZ = _zoned_time("value", "date_part('timezone', now())")
-INTERVAL_TIME = bound(
+INTERVAL_TIME = held(
     "_t",
     f"{_micros('value')} % {_USECS_PER_DAY}",
-    f"{_MIDNIGHT} + to_microseconds(CASE WHEN _t < 0 THEN _t + {_USECS_PER_DAY} ELSE _t END)",
+    # BIGINT: to_microseconds takes it alone, and a NULL interval's micros are a DOUBLE on 2.0.
+    f"{_MIDNIGHT} + to_microseconds(CAST(CASE WHEN _t < 0 THEN _t + {_USECS_PER_DAY} ELSE _t END "
+    "AS BIGINT))",
 )
 TIME_INTERVAL = "to_microseconds(epoch_us(value))"
 #: A date's or a timestamp's infinity, which the engine's casts between them do not keep.
@@ -1140,7 +1158,9 @@ def _keeping_infinity(value: str, sql_type: str, answer: str) -> str:
 
 _CLOCK = "to_microseconds(epoch_us(t))"
 DATETIME_PL = _keeping_infinity("d", "TIMESTAMP", f"CAST(d AS TIMESTAMP) + {_CLOCK}")
-_ZONED_MICROS = "to_microseconds(epoch_us(CAST(t AS TIME)) - date_part('timezone', t) * 1000000)"
+# BIGINT: on a NULL TIMETZ DuckDB 2.0 takes date_part's DOUBLE overload, and to_microseconds
+# takes a BIGINT alone.
+_ZONED_MICROS = "to_microseconds(CAST(epoch_us(CAST(t AS TIME)) - date_part('timezone', t) * 1000000 AS BIGINT))"
 #: The date and the clock read at the time's own offset.
 DATETIMETZ_PL = _keeping_infinity(
     "d", "TIMESTAMPTZ", f"timezone('UTC', CAST(d AS TIMESTAMP) + {_ZONED_MICROS})"
@@ -1162,3 +1182,60 @@ TIMESTAMPTZ_TIMETZ = "CASE WHEN isfinite(value) THEN CAST(value AS TIMETZ) END"
 #: behind.
 CLOCK_TIMESTAMP = "greatest(now(), uuid_extract_timestamp(uuidv7()))"
 TIMEOFDAY = f"strftime({CLOCK_TIMESTAMP}, '%a %b %d %H:%M:%S.%f %Y %Z')"
+
+
+PG_AS_REAL = (
+    f"CASE WHEN ABS(CAST(value AS DOUBLE PRECISION)) > 3.4028235677973366e38 "
+    f"AND NOT IS_INF(CAST(value AS DOUBLE PRECISION)) THEN {_OVERFLOW} "
+    f"WHEN value <> 0 AND CAST(value AS REAL) = 0 THEN {_UNDERFLOW} "
+    "ELSE CAST(value AS REAL) END"
+)
+#: The dialect has no hyperbolic inverse: their logarithms. asinh keeps the sign of a value, where
+#: its logarithm would lose the digits of one near zero.
+HYPERBOLICS = {
+    "asinh": f"SIGN({_X}) * LN(ABS({_X}) + SQRT({_X} * {_X} + 1.0))",
+    "acosh": (
+        f"CASE WHEN {_X} < 1.0 THEN {_OUT_OF_DOMAIN} ELSE LN({_X} + SQRT({_X} * {_X} - 1.0)) END"
+    ),
+    "atanh": (
+        f"CASE WHEN {_X} < -1.0 OR {_X} > 1.0 THEN {_OUT_OF_DOMAIN} "
+        f"ELSE 0.5 * LN((1.0 + {_X}) / (1.0 - {_X})) END"
+    ),
+}
+COT = f"1.0 / TAN({_X})"
+
+
+#: The parts of a date every dialect's EXTRACT answers as PostgreSQL does, a second's fraction
+#: excepted, which is refused by name.
+_DATE_PARTS = ("year", "quarter", "month", "day", "hour", "minute")
+#: A date has no hour to an engine's type check, so every part reads the instant.
+_INSTANT = "CAST(value AS TIMESTAMP)"
+
+
+def _date_part_of(extras: str, otherwise: str) -> str:
+    named = " ".join(
+        f"WHEN LOWER(part) = '{name}' THEN EXTRACT({name.upper()} FROM {_INSTANT})"
+        for name in _DATE_PARTS
+    )
+    return f"CASE WHEN part IS NULL OR value IS NULL THEN NULL {named} {extras} {otherwise} END"
+
+
+def date_part_form(called: str) -> str:
+    extras = (
+        f"WHEN LOWER(part) = 'dow' THEN EXTRACT(DOW FROM {_INSTANT}) % 7 "
+        f"WHEN LOWER(part) = 'doy' THEN EXTRACT(DOY FROM {_INSTANT})"
+    )
+    return _date_part_of(extras, f"ELSE {not_served(called, 'BIGINT')}")
+
+
+#: A part that is no constant is refused by name (engine_refusals), as a refusal here would be
+#: evaluated for a part that is one.
+def clickhouse_date_part() -> str:
+    extras = (
+        f"WHEN LOWER(part) = 'dow' THEN toDayOfWeek({_INSTANT}) % 7 "
+        f"WHEN LOWER(part) = 'doy' THEN toDayOfYear({_INSTANT})"
+    )
+    return _date_part_of(extras, "")
+
+
+DATE_AND_TIME = "CAST(CAST(d AS TEXT) || ' ' || CAST(t AS TEXT) AS TIMESTAMP)"

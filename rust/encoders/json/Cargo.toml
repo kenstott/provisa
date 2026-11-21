@@ -1,0 +1,27 @@
+# REQ-2194: the JSON encoders (GraphQL, REST JSON and CSV, JSON:API, OData), linked into
+# provisa._encoders as its json submodule (rust/encoders). One value model and one JSON writer;
+# the surfaces differ only in their envelope. Named time zones are the pgwire crate's (rust/pgwire
+# tz: chrono-tz's IANA tables and each zone's POSIX rule), as zoneinfo and PostgreSQL read them.
+[package]
+name = "json_encoder"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+name = "json_encoder"
+crate-type = ["rlib"]
+
+[dependencies]
+pyo3 = { version = "0.25", features = ["extension-module"] }
+arrow = { version = "56", default-features = false, features = ["pyarrow", "ffi"] }
+itoa = "1"
+ryu = "1"
+hashbrown = "0.16"
+pgwire_encoder = { path = "../../pgwire" }
+# The pgwire crate's chrono-tz (its IANA tables): a zone's canonical name for its repr.
+chrono-tz = { path = "../../pgwire/third_party/chrono-tz", default-features = false, features = ["std", "filter-by-regex"] }
+
+[profile.release]
+lto = "fat"
+codegen-units = 1

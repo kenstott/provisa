@@ -27,10 +27,10 @@ from __future__ import annotations
 from provisa.compiler.sql_literals import sql_literal
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Awaitable, Callable
 
 if TYPE_CHECKING:
-    from provisa.core.database import Database
+    from provisa.core.database import Connection, Database
 
 log = logging.getLogger(__name__)
 
@@ -138,8 +138,18 @@ def _quote_literal(value: str) -> str:
     return sql_literal(value, "postgres")
 
 
-async def refresh_org_registry_view(*, model_db: "Database", admin_db: "Database") -> str:
+async def refresh_org_registry_view(
+    *,
+    model_db: "Database",
+    admin_db: "Database",
+    with_view: Callable[["Connection"], Awaitable[None]] | None = None,
+) -> str:
     """(Re)create the registry view in the root org's schema and return the SQL that made it.
+
+    ``with_view`` runs on the view's connection once the view is made, under the same hold of the
+    lock: the view reads every org's schema, so an org's schema dropped the moment the lock is let
+    go takes the view with it (DROP SCHEMA ... CASCADE). Whatever reads or grants the view goes
+    there, not after this returns.
 
     Raises :class:`RegistryViewUnavailable` when the topology cannot support it: planes in
     separate databases (the tenant connection cannot see the admin tables, and
@@ -183,5 +193,7 @@ async def refresh_org_registry_view(*, model_db: "Database", admin_db: "Database
         # drop first. The view holds no data, and it is rebuilt in the same statement batch.
         await conn.execute(f"DROP VIEW IF EXISTS {root_schema}.{VIEW_NAME}")
         await conn.execute(sql)
+        if with_view is not None:
+            await with_view(conn)
     log.info("org registry view %s.%s rebuilt over %d org(s)", root_schema, VIEW_NAME, len(org_ids))
     return sql

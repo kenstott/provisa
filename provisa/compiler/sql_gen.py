@@ -213,6 +213,7 @@ def _compile_root_field(  # REQ-009, REQ-011, REQ-032, REQ-033, REQ-034, REQ-035
                         variables,
                         cardinality=join_meta.cardinality,
                         flat=flat,
+                        joined=f"{tgt_expr} = {src_expr}",
                     )
                     has_lateral_ops_joins |= _child_lateral
             elif _use_agg and sel.selection_set:
@@ -226,6 +227,7 @@ def _compile_root_field(  # REQ-009, REQ-011, REQ-032, REQ-033, REQ-034, REQ-035
                     if join_meta.child_src_val is not None
                     else (src_expr if join_meta.source_column_type != "integer" else None)
                 )
+                _json_text: set[str] = set()
                 json_expr, alias_counter = _build_rel_json_expr(
                     sel.selection_set.selections,
                     ctx,
@@ -241,6 +243,7 @@ def _compile_root_field(  # REQ-009, REQ-011, REQ-032, REQ-033, REQ-034, REQ-035
                     sources,
                     variables,
                     parent_src_val=_pv,
+                    json_text=_json_text,
                 )
                 select_parts.append(f"{json_expr} AS {_q(_rel_key)}")
                 columns.append(
@@ -251,6 +254,8 @@ def _compile_root_field(  # REQ-009, REQ-011, REQ-032, REQ-033, REQ-034, REQ-035
                         nested_in=None,
                         cardinality=join_meta.cardinality,
                         is_agg=True,
+                        json=True,
+                        json_text=frozenset(_json_text),
                     )
                 )
             else:
@@ -279,6 +284,7 @@ def _compile_root_field(  # REQ-009, REQ-011, REQ-032, REQ-033, REQ-034, REQ-035
                         variables,
                         cardinality=join_meta.cardinality,
                         flat=flat,
+                        joined=f"{tgt_expr} = {src_expr}",
                     )
                     has_lateral_ops_joins |= _child_lateral
         else:
@@ -335,37 +341,14 @@ def _compile_root_field(  # REQ-009, REQ-011, REQ-032, REQ-033, REQ-034, REQ-035
                     base = _q(sel_name)
                 _emit_root_json_cols(sel.selection_set.selections, base, sel_name, sel_name)
                 continue
-            # Scalar field — check for JSON path extraction
+            # Scalar field. A column registered at a path in its document is read by its own
+            # name: its governed relation serves it so (stage2; on Trino's MongoDB catalog the
+            # routed statement reads it at its path, sql_rewrite.read_document_paths).
             response_key = sel.alias.value if sel.alias else sel_name
             gql_field_name = response_key
-            col_path = ctx.column_paths.get((table.table_id, sel_name))
             phys_name = ctx.exposed_to_physical.get((table.table_id, sel_name), sel_name)
             sql_name = ctx.physical_to_sql.get((table.table_id, phys_name), phys_name)
-            if col_path:
-                # path is "source_col.key1.key2" → PG JSON extraction, or just "key"
-                # when the column is aliased (phys_name is the JSON source column).
-                # Emits PG syntax; SQLGlot transpiles to the engine json_extract_scalar
-                path_parts = col_path.split(".")
-                if len(path_parts) == 1:
-                    # Single-key path: phys_name is the JSON column, col_path is the key.
-                    source_col = phys_name
-                    keys = [col_path]
-                else:
-                    source_col = path_parts[0]
-                    keys = path_parts[1:]
-                if use_aliases:
-                    assert root_alias is not None
-                    expr = f"{_q(root_alias)}.{_q(source_col)}"
-                else:
-                    expr = _q(source_col)
-                # Navigate with -> for intermediate keys, ->> for final (text extract)
-                for i, key in enumerate(keys):
-                    op = "->>" if i == len(keys) - 1 else "->"
-                    expr = f"{expr}{op}'{key}'"
-                if sel.alias:
-                    expr = f"{expr} AS {_q(response_key)}"
-                select_parts.append(expr)
-            elif phys_name in _VIRTUAL_COLS:
+            if phys_name in _VIRTUAL_COLS:
                 vval = (ctx.virtual_columns.get(table.table_id) or {}).get(phys_name, "")
                 expr = _sql_str_literal(vval)
                 select_parts.append(f"{expr} AS {_q(response_key)}")
@@ -387,6 +370,8 @@ def _compile_root_field(  # REQ-009, REQ-011, REQ-032, REQ-033, REQ-034, REQ-035
                     column=sql_name,
                     field_name=gql_field_name,
                     nested_in=None,
+                    json=(table.table_id, phys_name.lower()) in ctx.json_columns,
+                    integer=(table.table_id, phys_name.lower()) in ctx.integer_columns,
                 )
             )
 
@@ -420,7 +405,7 @@ def _compile_root_field(  # REQ-009, REQ-011, REQ-032, REQ-033, REQ-034, REQ-035
     # Native filter args (any arg not handled by SQL compilation): each a _nf_-prefixed condition
     # of the root's WHERE, so the SQL/CQL preview shows the filter. nf_extractor strips them before
     # the engine runs the statement; endpoint.py uses api_args for the REST call.
-    api_args = native_args(args, _STANDARD_ARGS, ctx.native_filter_columns.get(table.table_id, {}))
+    api_args = native_args(args, _STANDARD_ARGS, ctx.parameter_names.get(table.table_id, {}))
 
     # WHERE
     where_parts: list[str] = []
@@ -600,7 +585,7 @@ def _compile_connection_field(  # REQ-218
     use_catalog: bool = False,
 ) -> CompiledQuery:
     """Compile a _connection root query field to SQL with cursor pagination."""
-    from provisa.compiler.cursor import apply_cursor_pagination, extract_sort_columns, reverse_order
+    from provisa.compiler.cursor import apply_cursor_pagination, extract_sort_columns
 
     root_name = field_node.alias.value if field_node.alias else field_node.name.value
     table = ctx.tables[field_node.name.value]
@@ -620,7 +605,16 @@ def _compile_connection_field(  # REQ-218
             continue
         phys_name = ctx.exposed_to_physical.get((table.table_id, sel_name), sel_name)
         select_parts.append(_q(phys_name))
-        columns.append(ColumnRef(None, phys_name, sel_name, None))
+        columns.append(
+            ColumnRef(
+                None,
+                phys_name,
+                sel_name,
+                None,
+                json=(table.table_id, phys_name.lower()) in ctx.json_columns,
+                integer=(table.table_id, phys_name.lower()) in ctx.integer_columns,
+            )
+        )
 
     if not select_parts:
         select_parts.append("1")
@@ -669,9 +663,9 @@ def _compile_connection_field(  # REQ-218
         order_by_val = args["order_by"]
         if isinstance(order_by_val, dict):
             order_by_val = [order_by_val]
-        order_sql = _compile_order_by(order_by_val, None, table.table_id, ctx.exposed_to_physical)
-        if is_backward:
-            order_sql = reverse_order(order_sql)
+        order_sql = _compile_order_by(
+            order_by_val, None, table.table_id, ctx.exposed_to_physical, reverse=is_backward
+        )
         sql += f" ORDER BY {order_sql}"
     else:
         direction = "DESC" if is_backward else "ASC"

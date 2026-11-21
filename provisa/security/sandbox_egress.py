@@ -34,7 +34,10 @@ dedicated platform) holds only its sandboxes to it: its own org may have private
 
 from __future__ import annotations
 
+import fnmatch
 import ipaddress
+import os
+import re
 import socket
 from typing import TYPE_CHECKING
 from urllib.parse import urlsplit
@@ -61,6 +64,24 @@ class PrivateDestinationRefused(PermissionError):
             "which is not one"
         )
         self.params = {"host": host, "address": address}
+
+
+class PrivateEndpointRefused(PrivateDestinationRefused):
+    """A held org's webhook, scheduled trigger, command, Syncing or metadata-export endpoint -- a
+    destination that is not a source -- is not on the public internet."""
+
+    code = "egress.private_destination"
+
+    def __init__(self, host: str, address: str) -> None:
+        PermissionError.__init__(
+            self,
+            f"This org may call only public addresses; {host!r} is {address}, which is not one",
+        )
+        self.params = {"host": host, "address": address}
+
+
+#: Which refusal a check raises: a source's, or another destination's (:class:`PrivateEndpointRefused`).
+Refusal = type[PrivateDestinationRefused]
 
 
 def confined(org_id: str | None) -> bool:
@@ -121,15 +142,22 @@ def resolve(host: str, port: int | None = None) -> list[str]:
     return sorted({str(info[4][0]) for info in infos})
 
 
-def require_public_destination(host: str | None, port: int | None = None) -> list[str]:
-    """The addresses ``host`` resolves to, refused by name when any is not public. A source with
-    no network host (an uploaded file, an embedded store) has nothing to check."""
+def require_public_destination(
+    host: str | None, port: int | None = None, refusal: Refusal = PrivateDestinationRefused
+) -> list[str]:
+    """The addresses ``host`` resolves to, refused by name (``refusal``) when any is not public.
+    A source with no network host (an uploaded file, an embedded store) has nothing to check."""
     if not host:
         return []
-    addresses = resolve(host, port)
+    try:
+        addresses = resolve(host, port)
+    except PrivateDestinationRefused as unresolved:
+        if refusal is PrivateDestinationRefused:
+            raise
+        raise refusal(host, unresolved.params["address"]) from unresolved
     for address in addresses:
         if not _public(ipaddress.ip_address(address)):
-            raise PrivateDestinationRefused(host, address)
+            raise refusal(host, address)
     return addresses
 
 
@@ -147,12 +175,20 @@ _demo_destinations: dict[str, frozenset[tuple[str, int | None]]] = {}
 # sources are held to public destinations whatever host the demo names (REQ-2006).
 _seeded_demo_sources: dict[str, frozenset[str]] = {}
 
+# REQ-1997: the places on the server's own disk a demo's sources name (its shipped files), by
+# their real paths. A held org reads those and its own folder, and nothing else on this disk
+# (provisa.core.source_uploads.require_own_disk).
+_demo_locations: dict[str, frozenset[str]] = {}
+#: A glob's wildcard characters, as ``glob.glob`` reads them.
+_WILDCARD = re.compile(r"[*?\[]")
+
 #: A network-host source with no host given is reached at this host (schema_common._add_source_pool).
 _DEFAULT_HOST = "localhost"
-_URL_FIELDS = ("path", "base_url")
+#: A file source's download_from (REQ-2113) is a URL it reads from, as a path or base_url is.
+_URL_FIELDS = ("path", "base_url", "download_from")
 
 
-def _plain(value: object) -> str | None:
+def _plain(value: object) -> str | None:  # object-ok: any field value a source holds
     """``value`` with any secret reference resolved -- a source may name its host as
     ``${secret:NAME}``, and the address it reaches is the resolved one."""
     if not isinstance(value, str) or not value:
@@ -202,10 +238,33 @@ def destinations(fields: dict) -> list[tuple[str, int | None]]:
             url = _url_destination(_plain(value))
             if url is not None:
                 found.append(url)
+    sql_url = _sql_url_destination(fields.get("federation_hints"))
+    if sql_url is not None and sql_url not in found:
+        found.append(sql_url)
     return found
 
 
-def _strings(node: object) -> list[str]:
+def _sql_url_destination(
+    hints: object,
+) -> tuple[str, int | None] | None:  # object-ok: a source's federation_hints as stored
+    """REQ-2191: where a JDBC source's connection URL points. Its scheme is any SQLAlchemy
+    dialect's (``mssql+pyodbc://...``), which :func:`_url_destination` does not know as a network
+    scheme; a file database's URL points nowhere."""
+    if not isinstance(hints, dict):
+        return None
+    from provisa.jdbc_source.settings import URL, InvalidJdbcSource
+    from provisa.jdbc_source.url import destination
+
+    url = _plain(hints.get(URL))
+    if url is None or "://" not in url:
+        return None
+    try:
+        return destination(url)
+    except InvalidJdbcSource:
+        return None  # no URL at all: nothing can be connected to, and the save refuses it
+
+
+def _strings(node: object) -> list[str]:  # object-ok: any JSON node
     if isinstance(node, str):
         return [node]
     if isinstance(node, dict):
@@ -216,8 +275,45 @@ def _strings(node: object) -> list[str]:
 
 
 def set_demo_destinations(org_id: str, sources: list[dict]) -> None:
-    """Record what the demo of sandbox org ``org_id`` declares, from its configuration's sources."""
+    """Record what the demo of sandbox org ``org_id`` declares, from its configuration's sources:
+    the destinations they reach and the places on the server's own disk they read (REQ-1997)."""
+    from provisa.core.source_uploads import real_locations
+
     _demo_destinations[org_id] = frozenset(d for s in sources for d in destinations(s))
+    _demo_locations[org_id] = frozenset(
+        # A source given with no type names no path a type reads; its other files still count.
+        real
+        for s in sources
+        for real in real_locations(str(s.get("type", "")), s)
+    )
+
+
+def _glob_names(pattern: str, real_path: str) -> bool:
+    """Whether ``real_path`` is a path the glob ``pattern`` matches as ``glob.glob`` reads it: a
+    wildcard matches within one directory, and a name starting with '.' only where the pattern's
+    segment starts with one too."""
+    wanted = pattern.split(os.sep)
+    parts = real_path.split(os.sep)
+    if len(wanted) != len(parts):
+        return False
+    for want, part in zip(wanted, parts, strict=True):
+        if not _WILDCARD.search(want):
+            if want != part:
+                return False
+        elif not fnmatch.fnmatchcase(part, want) or (
+            part.startswith(".") and not want.startswith(".")
+        ):
+            return False
+    return True
+
+
+def declared_location(org_id: str, real_path: str) -> bool:
+    """Whether ``real_path`` is a place on the server's own disk ``org_id``'s demo declares: one
+    of its declared places, or a file a declared glob matches (a Logs source's, REQ-1996)."""
+    declared = _demo_locations.get(org_id, frozenset())
+    return real_path in declared or any(
+        _glob_names(place, real_path) for place in declared if _WILDCARD.search(place)
+    )
 
 
 def set_seeded_demo(org_id: str, sources: list) -> None:
@@ -230,6 +326,7 @@ def set_seeded_demo(org_id: str, sources: list) -> None:
 def forget(org_id: str) -> None:
     _demo_destinations.pop(org_id, None)
     _seeded_demo_sources.pop(org_id, None)
+    _demo_locations.pop(org_id, None)
 
 
 def _own_beside_a_seeded_demo(org: str, source_id: str | None) -> bool:
@@ -246,7 +343,17 @@ def _org(org_id: str | None) -> str | None:
     return current_org.get(None)
 
 
-def require_allowed(host: str, port: int | None, org_id: str | None = None) -> None:
+def held_here(org_id: str | None = None) -> bool:
+    """Whether the sources of ``org_id`` (the bound org when None) are held (:func:`held`)."""
+    return held(_org(org_id))
+
+
+def require_allowed(
+    host: str,
+    port: int | None,
+    org_id: str | None = None,
+    refusal: Refusal = PrivateDestinationRefused,
+) -> None:
     """Refuse, by name, ``host`` for a held org (:func:`held`) unless its demo declares it or every
     address it resolves to is public. Any other org reaches what it names."""
     org = _org(org_id)
@@ -255,7 +362,36 @@ def require_allowed(host: str, port: int | None, org_id: str | None = None) -> N
     assert org is not None
     if (host.lower(), port) in _demo_destinations.get(org, frozenset()):
         return
-    require_public_destination(host, port)
+    require_public_destination(host, port, refusal)
+
+
+def require_url_allowed(
+    url: str, org_id: str | None = None, refusal: Refusal = PrivateDestinationRefused
+) -> None:
+    """:func:`require_allowed` for the host and port ``url`` names, any secret reference in it
+    resolved first: what a held org's webhook, scheduled trigger, Syncing or metadata-export
+    endpoint calls is held to public destinations as a source's is (REQ-2006, amended
+    2026-11-16), when it is saved and at each call (:func:`http_event_hooks`). A URL that names no
+    host cannot be shown to be public, so a held org is refused it."""
+    org = _org(org_id)
+    if not held(org):
+        return
+    plain = _plain(url) or ""
+    parts = urlsplit(plain)
+    try:
+        host, port = parts.hostname, parts.port
+    except ValueError:
+        raise refusal(plain, "a URL with no valid port") from None
+    if not host:
+        raise refusal(plain, "a URL that names no host")
+    require_allowed(host, port, org, refusal)
+
+
+def require_endpoint_url_allowed(url: str, org_id: str | None = None) -> None:
+    """:func:`require_url_allowed` for a destination that is not a source -- a webhook, a
+    scheduled trigger, a Syncing or metadata-export endpoint -- refused as one
+    (:class:`PrivateEndpointRefused`)."""
+    require_url_allowed(url, org_id, PrivateEndpointRefused)
 
 
 def require_source_allowed(fields: dict, org_id: str | None = None) -> None:
@@ -267,19 +403,25 @@ def require_source_allowed(fields: dict, org_id: str | None = None) -> None:
         require_allowed(host, port, org)
 
 
-def source_fields(source: object) -> dict:
-    """The address-bearing fields of a registered :class:`provisa.core.models.Source`."""
+def source_fields(source: object) -> dict:  # object-ok: a Source (models import cycle)
+    """The address-bearing fields of a registered :class:`provisa.core.models.Source`, with
+    its type and its sentinel marker: what says where it reads from (REQ-2006, REQ-1997)."""
     return {
+        "type": str(getattr(source.type, "value", source.type)),  # type: ignore[attr-defined]
+        "sentinel_path": getattr(source, "sentinel_path", None),
         "host": source.host,  # type: ignore[attr-defined]
         "port": source.port,  # type: ignore[attr-defined]
         "path": source.path,  # type: ignore[attr-defined]
+        "download_from": source.download_from,  # type: ignore[attr-defined]
         "base_url": source.base_url,  # type: ignore[attr-defined]
         "federation_hints": source.federation_hints,  # type: ignore[attr-defined]
         "mapping": source.mapping,  # type: ignore[attr-defined]
     }
 
 
-def http_event_hooks(org_id: str | None = None) -> dict:
+def http_event_hooks(
+    org_id: str | None = None, refusal: Refusal = PrivateDestinationRefused
+) -> dict:
     """httpx event hooks that check each request a held org's source makes -- every redirect
     is a request of its own -- and send it to the address checked (:func:`_pin_request`). Empty
     for any other org."""
@@ -289,13 +431,21 @@ def http_event_hooks(org_id: str | None = None) -> dict:
 
     assert org is not None
 
-    async def _acheck(request: object) -> None:
-        _pin_request(request, org)
+    async def _acheck(request: "httpx.Request") -> None:
+        _pin_request(request, org, refusal)
 
     return {"request": [_acheck]}
 
 
-def http_sync_event_hooks(org_id: str | None = None) -> dict:
+def endpoint_event_hooks(org_id: str | None = None) -> dict:
+    """:func:`http_event_hooks` for a destination that is not a source (a webhook, a trigger, a
+    command, a Syncing or metadata-export endpoint): refused as one (:class:`PrivateEndpointRefused`)."""
+    return http_event_hooks(org_id, PrivateEndpointRefused)
+
+
+def http_sync_event_hooks(
+    org_id: str | None = None, refusal: Refusal = PrivateDestinationRefused
+) -> dict:
     """:func:`http_event_hooks` for a synchronous ``httpx.Client``."""
     org = _org(org_id)
     if not held(org):
@@ -303,10 +453,15 @@ def http_sync_event_hooks(org_id: str | None = None) -> dict:
 
     assert org is not None
 
-    def _check(request: object) -> None:
-        _pin_request(request, org)
+    def _check(request: "httpx.Request") -> None:
+        _pin_request(request, org, refusal)
 
     return {"request": [_check]}
+
+
+def endpoint_sync_event_hooks(org_id: str | None = None) -> dict:
+    """:func:`endpoint_event_hooks` for a synchronous ``httpx.Client``."""
+    return http_sync_event_hooks(org_id, PrivateEndpointRefused)
 
 
 def checked_get(url: str, *, timeout: float) -> "httpx.Response":
@@ -320,7 +475,9 @@ def checked_get(url: str, *, timeout: float) -> "httpx.Response":
         return client.get(url)
 
 
-def pinned_address(server_address: str, org_id: str | None = None) -> tuple[str, str]:
+def pinned_address(
+    server_address: str, org_id: str | None = None, refusal: Refusal = PrivateDestinationRefused
+) -> tuple[str, str]:
     """A ``host:port`` target (a gRPC channel's) as a sandbox org dials it: ``(target, name)``,
     the target carrying the checked address and the name kept for TLS. Any other org's is
     itself."""
@@ -328,11 +485,50 @@ def pinned_address(server_address: str, org_id: str | None = None) -> tuple[str,
     if not host:
         host, port = server_address, ""
     name = host.strip("[]")
-    address = pin(name, int(port) if port.isdigit() else None, org_id)
+    address = pin(name, int(port) if port.isdigit() else None, org_id, refusal)
     if address == name:
         return server_address, name
     literal = f"[{address}]" if ":" in address else address
     return (f"{literal}:{port}" if port else literal), name
+
+
+def pinned_url(url: str, org_id: str | None = None) -> tuple[str, str]:
+    """``url`` as a held org connects to it, for a client that resolves its own host (a Qdrant
+    client): ``(url, name)``, the URL carrying the address its check resolved and the name kept
+    for Host and TLS (:func:`named_request_hooks`). Any other org's, and a demo's own, is itself."""
+    parts = urlsplit(url)
+    try:
+        name, port = parts.hostname, parts.port
+    except ValueError:
+        raise PrivateDestinationRefused(url, "a URL with no valid port") from None
+    if not name:
+        raise PrivateDestinationRefused(url, "a URL that names no host")
+    address = pin(name, port, org_id)
+    if address == name:
+        return url, name
+    literal = f"[{address}]" if ":" in address else address
+    netloc = f"{literal}:{port}" if port else literal
+    if parts.username or parts.password:
+        netloc = parts.netloc.rpartition("@")[0] + "@" + netloc
+    return parts._replace(netloc=netloc).geturl(), name
+
+
+def named_request_hooks(name: str, address_url: str) -> dict:
+    """httpx event hooks for a synchronous client built on ``address_url`` (:func:`pinned_url`):
+    each request to its address is sent with ``name`` for the Host header and TLS. A request to
+    any other host is refused: it would resolve its own address."""
+    address = urlsplit(address_url).hostname
+    if address == name:
+        return {}
+
+    def _name(request: "httpx.Request") -> None:
+        url = request.url
+        if url.host != address:
+            raise PrivateDestinationRefused(url.host, "not the address the check resolved")
+        request.headers["Host"] = f"{name}:{url.port}" if url.port else name
+        request.extensions["sni_hostname"] = name
+
+    return {"request": [_name]}
 
 
 # --- pinning: the address checked is the address connected to ----------------------------------
@@ -349,7 +545,11 @@ def pinned_address(server_address: str, org_id: str | None = None) -> tuple[str,
 #: Source types whose connection, on every engine, takes its network address from ``host`` alone.
 #: (ClickHouse is not one: the DuckDB engine reaches it over HTTP, whose redirects it follows
 #: itself.)
-PINNABLE_TYPES = frozenset({"postgresql", "mysql", "mariadb", "sqlserver", "oracle", "firebird"})
+#: A JDBC source's network URL is one (REQ-2191): its driver connects at the checked
+#: address in place of the URL's host, and a held org's URL carries no option naming another.
+PINNABLE_TYPES = frozenset(
+    {"postgresql", "mysql", "mariadb", "sqlserver", "oracle", "firebird", "jdbc"}
+)
 
 
 class UnpinnableDestinationRefused(PermissionError):
@@ -369,7 +569,12 @@ def _declared(org: str, host: str, port: int | None) -> bool:
     return (host.lower(), port) in _demo_destinations.get(org, frozenset())
 
 
-def pin(host: str, port: int | None, org_id: str | None = None) -> str:
+def pin(
+    host: str,
+    port: int | None,
+    org_id: str | None = None,
+    refusal: Refusal = PrivateDestinationRefused,
+) -> str:
     """The address to connect to for ``host``: for a held org, a checked address it resolves
     to (a demo's own destinations are connected to by name); for any other org, ``host``."""
     org = _org(org_id)
@@ -378,7 +583,7 @@ def pin(host: str, port: int | None, org_id: str | None = None) -> str:
     assert org is not None
     if _declared(org, host, port):
         return host
-    return require_public_destination(host, port)[0]
+    return require_public_destination(host, port, refusal)[0]
 
 
 def pin_host(host: str, port: int | None, source_type: str, org_id: str | None = None) -> str:
@@ -400,6 +605,17 @@ def pin_host(host: str, port: int | None, source_type: str, org_id: str | None =
     return host
 
 
+def _pinnable_destination(fields: dict, source_type: str) -> list[tuple[str, int | None]]:
+    """The destination a pinnable source's connection takes its address from: its ``host``, or
+    a JDBC source's URL host (REQ-2191)."""
+    from provisa.jdbc_source import SOURCE_TYPE as JDBC_SOURCE
+
+    if source_type == JDBC_SOURCE:
+        url = _sql_url_destination(fields.get("federation_hints"))
+        return [] if url is None else [url]
+    return destinations({"host": fields.get("host"), "port": fields.get("port")})
+
+
 def require_connectable(
     fields: dict, source_type: str, org_id: str | None = None, *, source_id: str | None = None
 ) -> str | None:
@@ -411,6 +627,10 @@ def require_connectable(
     if not held(org):
         return None
     assert org is not None
+    # REQ-1997: nor may it read the server's own disk outside its folder and its demo's files.
+    from provisa.core.source_uploads import require_source_own_disk
+
+    require_source_own_disk(source_type, fields, org)
     if _own_beside_a_seeded_demo(org, source_id):
         # Not one of the demo's: every destination it names must be public, the demo's included.
         for host, port in destinations(fields):
@@ -420,7 +640,7 @@ def require_connectable(
     undeclared = [d for d in destinations(fields) if not _declared(org, *d)]
     if not undeclared:
         return None
-    host_only = destinations({"host": fields.get("host"), "port": fields.get("port")})
+    host_only = _pinnable_destination(fields, source_type)
     if source_type not in PINNABLE_TYPES or undeclared != host_only:
         if not confined(org):
             # Not a sandbox: checked here and at each connection, not pinned (module docstring).
@@ -430,7 +650,9 @@ def require_connectable(
     return pin(host, port, org)
 
 
-def pinned_source(source: object, org_id: str | None = None) -> object:
+def pinned_source(
+    source: object, org_id: str | None = None
+) -> object:  # object-ok: a Source (models import cycle)
     """``source`` as a sandbox org connects to it: its host replaced by its checked address
     (:func:`require_connectable`). Any other org's source is itself."""
     org = _org(org_id)
@@ -443,18 +665,21 @@ def pinned_source(source: object, org_id: str | None = None) -> object:
         org,
         source_id=source.id,  # type: ignore[attr-defined]
     )
-    if address is None:
+    if address is None or source_type == "jdbc":
+        # REQ-2191: a JDBC source's driver connects at the checked address itself.
         return source
     return source.model_copy(update={"host": address})  # type: ignore[attr-defined]
 
 
-def _pin_request(request: object, org: str) -> None:
+def _pin_request(
+    request: "httpx.Request", org: str, refusal: Refusal = PrivateDestinationRefused
+) -> None:
     """Send ``request`` to its host's checked address, keeping the name for Host and TLS."""
-    url = request.url  # type: ignore[attr-defined]
+    url = request.url
     host, port = url.host, url.port
-    address = pin(host, port, org)
+    address = pin(host, port, org, refusal)
     if address == host:
         return
-    request.headers["Host"] = url.netloc.decode("ascii")  # type: ignore[attr-defined]
-    request.extensions["sni_hostname"] = host  # type: ignore[attr-defined]
-    request.url = url.copy_with(host=address)  # type: ignore[attr-defined]
+    request.headers["Host"] = url.netloc.decode("ascii")
+    request.extensions["sni_hostname"] = host
+    request.url = url.copy_with(host=address)

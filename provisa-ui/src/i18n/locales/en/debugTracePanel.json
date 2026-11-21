@@ -27,6 +27,8 @@
     "permit": "Permit",
     "revoke": "Revoke",
     "noHintRoles": "No role is permitted the hint.",
-    "loadFailed": "Could not load debug tracing settings"
+    "loadFailed": "Could not load debug tracing settings",
+    "introPlatform": "Tracing records one span per request by default. Debug tracing adds a span per pipeline stage and per source call, with SQL text. It adds load, so turn it on for one organization as a whole for a set time; it turns itself off when the time is up. Tracing a named role or source is that organization's administrator's.",
+    "introOrg": "Tracing records one span per request by default. Debug tracing adds a span per pipeline stage and per source call, with SQL text. It adds load, so turn it on for one role or source for a set time; it turns itself off when the time is up."
   }
 }

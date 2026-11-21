@@ -199,7 +199,7 @@ describe("a role that can read the table", () => {
     });
     expect(landing("rest")).toEqual({
       pathname: "/openapi",
-      state: { openApiUrl: "GET /data/rest/sales__orders", autoRun: true },
+      state: { openApiUrl: "GET /data/rest/sales/orders", autoRun: true },
     });
     expect(landing("openapi").pathname).toBe("/openapi");
     expect(landing("jsonapi")).toEqual({

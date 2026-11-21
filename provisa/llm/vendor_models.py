@@ -26,11 +26,6 @@ class _VendorApi(NamedTuple):
     auth: Literal["bearer", "x-api-key"]
 
 
-# The env var each vendor's key is read from when the org has not set its own — the same name
-# aisuite resolves, so the deployment default the UI advertises ("NO KEY SET — USING DEPLOYMENT
-# DEFAULT") is the key this listing uses too.
-VENDOR_API_KEY_ENV = {vendor: f"{vendor.upper()}_API_KEY" for vendor in ("anthropic", "openai")}
-
 VENDOR_MODEL_APIS: dict[str, _VendorApi] = {
     "anthropic": _VendorApi("https://api.anthropic.com/v1/models", "x-api-key"),
     "openai": _VendorApi("https://api.openai.com/v1/models", "bearer"),

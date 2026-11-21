@@ -22,8 +22,8 @@ from provisa.mv.registry import MVRegistry
 
 _REGIONS = {
     "regions": [
-        {"id": "eu", "address": "https://eu.example.com"},
-        {"id": "us", "address": "https://us.example.com"},
+        {"id": "eu", "description": "The eu region", "purposes": ["residency"]},
+        {"id": "us", "description": "The us region", "purposes": ["residency"]},
     ]
 }
 
@@ -82,7 +82,10 @@ def _state(eu_state_db, backend, monkeypatch, *, region="eu"):
 
     monkeypatch.setattr(registry_view, "registered_tables", _tables)
     return SimpleNamespace(
-        role_build_inputs={"draft_tables": []},  # REQ-1921: none out of service
+        source_catalogs={},  # the default org: its views lowered under __derived__
+        role_build_inputs={
+            "withdrawn_tables": [],
+        },  # REQ-1921: none out of service
         tables=[],
         org_id="acme",
         mv_registry=registry,
@@ -164,7 +167,7 @@ def test_every_reader_is_served_from_its_regions_copy_never_its_inputs(
     from provisa.mv.view_read import semantic_statement, unnarrowed_view_bodies
 
     state = _state(eu_state_db, _Backend(), monkeypatch)
-    view_sql_map = {"eu_sales": "SELECT * FROM sales.orders WHERE home = 'eu'"}
+    view_sql_map = {"views.eu_sales": "SELECT * FROM sales.orders WHERE home = 'eu'"}
     home = 'SELECT * FROM "eu:views"."org_default_rg_eu_mv_cache"."mv_eu_sales"'
     # Governance keeps the reference (the view's own rules apply to it); optimization reads the copy.
     governed, _ = semantic_statement(
@@ -172,7 +175,7 @@ def test_every_reader_is_served_from_its_regions_copy_never_its_inputs(
     )
     assert governed == "SELECT * FROM eu_sales"
     assert unnarrowed_view_bodies("SELECT * FROM eu_sales", view_sql_map, state) == {
-        "eu_sales": home
+        "views.eu_sales": home
     }
 
 
@@ -189,7 +192,7 @@ def test_a_readers_rules_are_not_held_to_the_inputs_of_another_regions_view(
 
     state = _state(eu_state_db, _Backend(), monkeypatch)
     view_sql_map = {
-        "eu_sales": "SELECT o.id FROM sales.orders AS o JOIN sales.staff AS s ON s.id = o.staff_id"
+        "views.eu_sales": "SELECT o.id FROM sales.orders AS o JOIN sales.staff AS s ON s.id = o.staff_id"
     }
     governed, validated = semantic_statement(
         "SELECT * FROM eu_sales", view_sql_map, state, GovernanceContext()

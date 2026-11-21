@@ -125,18 +125,28 @@ async def test_a_metric_a_views_sql_reads_is_refused_naming_the_view(plane):
     ]
 
 
-async def test_a_metric_nothing_uses_is_deleted(plane):
+async def test_a_metric_nothing_uses_is_retired(plane):
+    """REQ-2248: deleting it retires it; the row is kept."""
     async with plane.acquire() as conn:
         assert await metric_repo.delete(conn, "unused") is True
         assert await metric_repo.delete(conn, "unused") is False
-    assert await _names(plane, metrics) == {"revenue", "margin"}
+        retired = (
+            await conn.execute_core(select(metrics.c.retired).where(metrics.c.name == "unused"))
+        ).scalar_one()
+    assert retired is True
+    assert await _names(plane, metrics) == {"revenue", "margin", "unused"}
 
 
-async def test_a_declared_set_of_metrics_is_removed_without_the_guard(plane):
+async def test_a_declared_set_of_metrics_is_retired_without_the_guard(plane):
+    """REQ-2248 (amended 2026-11-15): metric removal retires; every row is kept."""
     await _view(plane, "margins", view_sql="SELECT m.total FROM metrics.margin m")
     async with plane.acquire() as conn:
-        await metric_repo.remove_where(conn, metrics.c.name.not_in(["revenue"]))
-    assert await _names(plane, metrics) == {"revenue"}
+        await metric_repo.retire_where(conn, metrics.c.name.not_in(["revenue"]))
+        retired = {
+            r.name: r.retired
+            for r in (await conn.execute_core(select(metrics.c.name, metrics.c.retired))).fetchall()
+        }
+    assert retired == {"revenue": False, "margin": True, "unused": True}
 
 
 async def test_the_mutation_refuses_with_the_list(plane, monkeypatch):
@@ -159,7 +169,13 @@ async def test_the_mutation_refuses_with_the_list(plane, monkeypatch):
     assert refused.params == {
         "metric": "margin",
         "dependents": [
-            {"kind": "table", "id": view, "name": "margins", "via": ["registered_tables.view_sql"]}
+            {
+                "kind": "table",
+                "id": view,
+                "name": "margins",
+                "label": "margins",
+                "via": ["registered_tables.view_sql"],
+            }
         ],
     }
     assert rebuilds == []

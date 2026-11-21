@@ -5,4 +5,4 @@ Feature: REQ-277 — Federation Performance
   Scenario: REQ-277 default behaviour
     Given a query or table/view with session hints configured
     When the query is executed via the federation engine
-    Then Provisa injects the corresponding SET SESSION statements before execution
+    Then Provisa sets the corresponding session properties on the statement's session before execution

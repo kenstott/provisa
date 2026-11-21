@@ -26,6 +26,7 @@ from provisa.core.repositories import glossary as glossary_repo
 from provisa.core.repositories import table as table_repo
 from provisa.core.schema_org import domains, sources
 from tests.role_state import RoleState
+from tests.unit.mcp_local_principal import act_for
 
 pytestmark = pytest.mark.asyncio
 
@@ -57,6 +58,7 @@ async def _server(control_plane):
         tenant_db=db,
         # REQ-1591: the search narrows to the domains the ROLE reaches; "*" is unlimited.
         roles={"analyst": {"domain_access": ["*"]}},
+        idp_entitlements={},
     )
     yield build_mcp_server(state), db
 
@@ -69,6 +71,7 @@ async def test_search_terms_is_a_registered_tool(control_plane):
 
 async def test_search_terms_round_trips_through_the_protocol(control_plane, monkeypatch):
     monkeypatch.setenv("PROVISA_MCP_ROLE", "analyst")  # stdio names roles within its pin
+    act_for(monkeypatch)  # REQ-1105: and the principal it acts for
     async with _server(control_plane) as (server, db):
         # Derived and a draft, so the protocol offers nothing: an agent sees what a steward
         # approved, on a path to data (REQ-1387).
@@ -90,6 +93,7 @@ async def test_search_terms_round_trips_through_the_protocol(control_plane, monk
 
 async def test_unknown_role_fails_through_the_protocol(control_plane, monkeypatch):
     monkeypatch.setenv("PROVISA_MCP_ROLE", "nobody")  # pinned, yet no role the model knows
+    act_for(monkeypatch)
     async with _server(control_plane) as (server, _db):
         with pytest.raises(Exception, match="No schema for role"):
             await server.call_tool("search_terms", {"query": "customer", "role": "nobody"})

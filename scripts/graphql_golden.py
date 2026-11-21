@@ -581,6 +581,18 @@ def _plain(value: Any) -> Any:
     return value
 
 
+def _views_expanded(semantic: str, view_sql: dict, ctx: Any) -> str:
+    """``semantic`` with each view it reads expanded, read by the names the server reads it by
+    (``mv.view_read.statement_as_read``): its key, ``schema.table``, and the names governance
+    gives its registered table -- a semantic statement names it by its domain."""
+    from provisa.compiler.stage2 import context_table_map
+    from provisa.compiler.view_expand import expand_view_refs
+    from provisa.mv.view_read import view_names
+
+    names = view_names(view_sql, context_table_map(ctx))
+    return expand_view_refs(semantic, view_sql, names=names)
+
+
 def physical_statements(schema: Any, ctx: Any, read: CorpusRead, view_sql: dict) -> list[dict]:
     """Each root of ``read`` as the statement the engine runs (its views expanded, physical), with
     its parameters, the catalogs it reads and whether it orders its rows."""
@@ -590,14 +602,13 @@ def physical_statements(schema: Any, ctx: Any, read: CorpusRead, view_sql: dict)
     from provisa.compiler.parser import coerce_variable_defaults
     from provisa.compiler.sql_gen import compile_query
     from provisa.compiler.sql_rewrite import lower_to_catalog_physical, make_semantic_sql
-    from provisa.compiler.view_expand import expand_view_refs
 
     document = parse(read.text)
     out = []
     for root in compile_query(document, ctx, coerce_variable_defaults(document, read.variables)):
         semantic = make_semantic_sql(root.sql, ctx)
         # Lowered the one way every surface lowers a governed statement (REQ-641).
-        physical = lower_to_catalog_physical(expand_view_refs(semantic, view_sql), ctx)
+        physical = lower_to_catalog_physical(_views_expanded(semantic, view_sql, ctx), ctx)
         tree = sqlglot.parse_one(physical, read="postgres")
         out.append(
             {
@@ -663,8 +674,15 @@ def answer_on_postgres(pg: Any, databases: dict[str, str], stmt: dict) -> dict:
 
 
 def _view_sql(config: Path) -> dict[str, str]:
+    from provisa.compiler.view_expand import view_key
+
     _schema_input, tables, _rels, _types = _cypher_golden().model_inputs(config, parameters=True)
-    return {t["table_name"]: t["view_sql"] for t in tables if "view_sql" in t}
+    # Keyed as the server keys its view map (``api.app_rebuild``): by schema and table name.
+    return {
+        view_key(t["schema_name"], t["table_name"]): t["view_sql"]
+        for t in tables
+        if "view_sql" in t
+    }
 
 
 def demo_answers(pg: Any, demo: Path, prefix: str) -> list[dict]:
@@ -748,6 +766,42 @@ def _canonical(row: dict) -> str:
     return json.dumps(row, sort_keys=True, default=str)
 
 
+def _unordered_levels(document: Any, root_field: str) -> set[tuple[str, ...]]:
+    """The response paths, below ``root_field``, of the nested fields the read gives no order_by:
+    their lists are in no order (neither the GraphQL compiler's statement nor the front end's
+    COLLECT orders them), so their answers are compared as multisets. A level the read orders
+    keeps its order."""
+    from graphql.language import FieldNode, OperationDefinitionNode
+
+    def walk(node: Any, path: tuple[str, ...], out: set[tuple[str, ...]]) -> None:
+        for sel in node.selection_set.selections if node.selection_set else ():
+            if not isinstance(sel, FieldNode) or sel.selection_set is None:
+                continue
+            key = (sel.alias or sel.name).value
+            if not any(a.name.value == "order_by" for a in sel.arguments or ()):
+                out.add((*path, key))
+            walk(sel, (*path, key), out)
+
+    out: set[tuple[str, ...]] = set()
+    for definition in document.definitions:
+        if not isinstance(definition, OperationDefinitionNode):
+            continue
+        for sel in definition.selection_set.selections:
+            if isinstance(sel, FieldNode) and (sel.alias or sel.name).value == root_field:
+                walk(sel, (), out)
+    return out
+
+
+def _in_read_order(value: Any, unordered: set[tuple[str, ...]], path: tuple[str, ...] = ()) -> Any:
+    """``value`` with each list at an ``unordered`` path sorted canonically, its items first."""
+    if isinstance(value, dict):
+        return {k: _in_read_order(v, unordered, (*path, k)) for k, v in value.items()}
+    if isinstance(value, list):
+        items = [_in_read_order(v, unordered, path) for v in value]
+        return sorted(items, key=_canonical) if path in unordered else items
+    return value
+
+
 def front_answers(pg: Any, demo: Path, prefix: str) -> list[dict]:
     """Each root of each corpus read of ``demo`` as the GraphQL front end lowers it, printed as
     Cypher and read back by the Cypher front end, answered on DuckDB over the seeded sources, with
@@ -758,10 +812,10 @@ def front_answers(pg: Any, demo: Path, prefix: str) -> list[dict]:
     from provisa.compiler.parser import coerce_variable_defaults
     from provisa.compiler.sql_gen import compile_query
     from provisa.compiler.sql_rewrite import lower_to_catalog_physical, make_semantic_sql
-    from provisa.compiler.view_expand import expand_view_refs
     from provisa.cypher.parser import parse_cypher
     from provisa.cypher.printer import print_cypher
-    from provisa.executor.serialize import serialize_aggregate, serialize_rows
+    from provisa.core.ir_arrow import row_batch
+    from provisa.executor import json_encoders as je
     from provisa.gql.assembler import assemble_rows
     from provisa.gql.graph_rewriter import apply_graph_rewrites
     from provisa.gql.translator import cypher_to_sql
@@ -801,7 +855,7 @@ def front_answers(pg: Any, demo: Path, prefix: str) -> list[dict]:
             sql_ast, _params, graph_vars = cypher_to_sql(parse_cypher(cypher), lm, {})
             sql_ast = apply_graph_rewrites(sql_ast, graph_vars, lm)
             semantic = make_semantic_sql(sql_ast.sql(dialect="postgres"), ctx)
-            physical = lower_to_catalog_physical(expand_view_refs(semantic, view_sql), ctx)
+            physical = lower_to_catalog_physical(_views_expanded(semantic, view_sql, ctx), ctx)
             import sqlglot
 
             tree = sqlglot.parse_one(physical, read="postgres")
@@ -829,18 +883,26 @@ def front_answers(pg: Any, demo: Path, prefix: str) -> list[dict]:
             own = answer_on_duckdb(pg, catalogs, statements[root_field], plain=False)
             own_rows = [tuple(_compared(v) for v in r) for r in own["rows"]]
             c = compiled[root_field]
+            # The field's answer to its own statement's rows, as the endpoint gives it: the rows
+            # as Arrow at the fetch boundary, the answer the Rust encoder's (REQ-2194).
+            own_batches = (
+                [row_batch(own_rows, [f"c{i}" for i in range(len(c.columns))])] if own_rows else []
+            )
             if c.canonical_field.endswith(("Aggregate", "_aggregate")):
                 # One object, the aggregate's (its statement's one row, its nodes a column of
                 # it), its nodes in no order: compared as a multiset.
-                one = serialize_aggregate(own_rows, c.columns, root_field, c.agg_alias)["data"][
-                    root_field
-                ]
+                one = json.loads(je.graphql_aggregate(own_batches, c.columns, c.agg_alias))
                 expected = [one]
                 for row in (*expected, *rows):
                     if "nodes" in row:
                         row["nodes"] = sorted(row["nodes"], key=_canonical)
             else:
-                expected = serialize_rows(own_rows, c.columns, root_field)["data"][root_field]
+                expected = json.loads(je.graphql_field(own_batches, c.columns).body)
+            # A nested level the read does not order is in no order on either side (REQ-863:
+            # a level is ordered by its order_by): compared as a multiset, as the roots are.
+            unordered = _unordered_levels(document, root_field)
+            rows = [_in_read_order(r, unordered) for r in rows]
+            expected = [_in_read_order(r, unordered) for r in expected]
             out.append(
                 {
                     "origin": read.origin,

@@ -150,7 +150,7 @@ def test_each_table_is_indexed_on_its_key_when_it_lands(monkeypatch):
 def test_rows_added_in_place_are_held_to_the_sessions_rows(monkeypatch):
     s = Session(monkeypatch, {})
     asyncio.run(store.write(s.state, s.session, Writes(nodes=[_node(n) for n in range(1, 900)])))
-    with pytest.raises(ValueError, match="cypher__anchor__Person"):
+    with pytest.raises(ValueError, match=store.anchor_table("Person")):
         asyncio.run(
             store.write(s.state, s.session, Writes(nodes=[_node(n) for n in range(900, 1200)]))
         )

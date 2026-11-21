@@ -88,8 +88,8 @@ async def test_a_copy_of_a_view_another_region_keeps_is_an_orphan_here():
 
     platform = {
         "regions": [
-            {"id": "eu", "address": "https://eu.example.com"},
-            {"id": "us", "address": "https://us.example.com"},
+            {"id": "eu", "description": "The eu region", "purposes": ["residency"]},
+            {"id": "us", "description": "The us region", "purposes": ["residency"]},
         ]
     }
     reg = MVRegistry()

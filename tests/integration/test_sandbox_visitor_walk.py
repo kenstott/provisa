@@ -22,6 +22,8 @@ page and the tour do it:
   transport its page uses, in the role, environment and time travel the steps before it chose (as
   provisa-ui/src/tour/demoTour.ts sets them), and answers with rows (or, reading a materialized
   view outside its read window, with the refusal naming it, as the page shows then);
+- the demo's first example query, sent several times at once as the sandbox opens (a visitor's
+  tabs and its tour's warm-up), answers each the same, within the cloud's request timeout;
 - the tab closes it (``POST /sandboxes/closing``): once the grace has passed it is deleted, its place
   is free again, and its token reaches nothing.
 
@@ -87,6 +89,8 @@ def _bundle(demo: str, out: Path) -> Path:
         timeout=3600,
     )
     print(done.stdout[-4000:])
+    # Whole: an assertion's message is cut to a line, and a failing step says why on stderr.
+    print(done.stderr, file=sys.stderr)
     assert done.returncode == 0, (demo, done.stdout[-4000:], done.stderr[-8000:])
     (bundle,) = out.glob(f"{demo}-*.tar.gz")
     return bundle
@@ -127,7 +131,11 @@ def _regions_tier(demo: str, bundle: Path, work: Path) -> Iterator[tuple[Any, Pa
 
 
 @contextlib.contextmanager
-def _plain_tier(demo: str, bundle: Path, work: Path) -> Iterator[tuple[Any, Path]]:
+def _plain_tier(
+    demo: str, bundle: Path, work: Path, *, control_plane: str = "postgres"
+) -> Iterator[tuple[Any, Path]]:
+    """``control_plane``: IsolatedServer's; "own" for a tier restarted on its own record of what
+    it built (a template another test recorded in the shared one has no folder here)."""
     from tests.integration.demo_registry import DemoRegistry
     from tests.integration.isolated_server import IsolatedServer
 
@@ -152,6 +160,7 @@ def _plain_tier(demo: str, bundle: Path, work: Path) -> Iterator[tuple[Any, Path
             f"visitor{demo}",
             engine="duckdb",
             config=str(config),
+            control_plane=control_plane,
             auth=_AUTH,
             env={
                 "PROVISA_SANDBOX_TIER": "true",
@@ -253,6 +262,59 @@ def _answered(what: str, resp: httpx.Response, sql: str | None = None) -> tuple[
     return f"{what}: {len(body) if isinstance(body, list) else 'answered'}", body
 
 
+#: How many first queries reach a new sandbox at once: a visitor's tabs, and its tour's warm-up.
+_AT_ONCE = 4
+#: The longest a first query may take: the cloud's request timeout (config/provisa-install.yaml,
+#: limits.request_timeout).
+_FIRST_QUERY_S = 60.0
+
+
+def _first_queries_at_once(tier, token: dict[str, str]) -> str | None:
+    """The demo's first example query, sent ``_AT_ONCE`` times at once into the newly opened
+    sandbox as "Role: All": each is the sandbox's first read of what the query reads, whose store
+    each would attach. One store attached by two reads at once was refused as unreachable (503
+    query.home_region_unavailable, R509-AQ, retail's EU view). Each answers alike within the
+    request timeout; a read of a materialized view outside its read window is refused naming it,
+    as the page shows then. None when the demo has no example query to send."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    from provisa.api.demo_warmup import _is_subscription
+    from provisa.core.demo import example_queries
+
+    queries = [q for q in example_queries(tier.directory) if not _is_subscription(q["query"])]
+    if not queries:
+        return None
+    first = min(queries, key=lambda q: q["name"])
+    headers = {**token, "X-Provisa-Role": _all_roles(tier, token)}
+
+    def ask(_: int) -> tuple[httpx.Response, float]:
+        started = time.monotonic()
+        resp = httpx.post(
+            f"{tier.base_url}/data/graphql",
+            json={"query": first["query"]},
+            headers=headers,
+            timeout=300,
+        )
+        return resp, time.monotonic() - started
+
+    with ThreadPoolExecutor(max_workers=_AT_ONCE) as pool:
+        answers = list(pool.map(ask, range(_AT_ONCE)))
+    said = []
+    for resp, took in answers:
+        if resp.status_code == 503 and resp.json().get("code") == "data.view_outside_load_window":
+            said.append(f"refused outside {resp.json()['params']['view']}'s read window")
+        elif resp.status_code == 200 and not resp.json().get("errors"):
+            data = resp.json()["data"]
+            said.append(f"{sum(len(v) if isinstance(v, list) else 1 for v in data.values())} rows")
+        else:
+            raise _failed(tier, f"{first['name']} at once: {resp.status_code} {resp.text[:1500]}")
+        if took > _FIRST_QUERY_S:
+            raise _failed(tier, f"{first['name']} at once took {took:.1f}s: {said[-1]}")
+    if len(set(said)) != 1:
+        raise _failed(tier, f"{first['name']} sent at once answered unalike: {said}")
+    return f"{first['name']} x{_AT_ONCE} at once: {said[0]}"
+
+
 class Walk:
     """The visitor's page state through the tour, as demoTour.ts keeps it: the page the tour is on,
     the role the app acts as (the header's picker), the SQL explorer's run-as role, the value an
@@ -338,6 +400,16 @@ class Walk:
                 # The explorer's Connect panel reads the MCP server's status; the agent's own
                 # questions (mcp) are answered live by a model, so the walk sends none.
                 self.send(f"{key} (mcp-connect)", "GET", "/admin/mcp-server", None)
+            if "region" in step or step.get("purposes"):
+                # The regions the page lists, as the visitor reads them: the Platform page's, read-only
+                # in a sandbox (REQ-1922), or the org's, which Admin > Regions and Federation's tab
+                # per region both read.
+                path = (
+                    "/admin/platform/regions"
+                    if self.page == "/admin/platform"
+                    else "/admin/regions"
+                )
+                self.send(f"{key} (regions)", "GET", path, None)
             if "cypher" in step:
                 self.send(f"{key} (cypher)", "POST", "/data/cypher", {"query": step["cypher"]})
             if "example" in step and not _is_subscription(examples[step["example"]]):
@@ -389,7 +461,7 @@ def _build_live_source(tier, token: dict[str, str]) -> list[str]:
                         "id": source_id,
                         "type": "parquet",
                         "path": path,
-                        "registerTableDraft": True,
+                        "registerTableFromFile": True,
                         "tableDomainId": domain,
                     }
                 },
@@ -415,6 +487,7 @@ def test_a_visitor_opens_the_demo_walks_its_tour_and_closes_it(tier):
     sandbox = _open_sandbox(tier)
     assert _places_free(tier) == free - 1
     token = {"Authorization": f"Bearer {sandbox['token']}", "x-org-provisa": sandbox["org_id"]}
+    print(_first_queries_at_once(tier, token))
 
     walked = Walk(tier, token).run(tier.directory)
     print("\n".join(walked))

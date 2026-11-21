@@ -13,7 +13,11 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Stage3D, type CameraCommand } from "../../pages/tables/profile3d/Stage3D";
+import {
+  Stage3D,
+  type CameraCommand,
+  type ViewControls,
+} from "../../pages/tables/profile3d/Stage3D";
 import { useLazyScene } from "../../pages/tables/profile3d/useLazyScene";
 import type { GraphData, LayoutKind, NodeType } from "./graphModel";
 import type { GraphHover, GraphScene } from "./graphScene";
@@ -26,7 +30,7 @@ export interface StageState {
   graph: GraphData;
   at: Map<string, [number, number, number]>;
   /** Changes when the graph is laid out afresh (a preset), so the camera is reset to fit it. */
-  frame: number;
+  frame: number | string;
   /** REQ-2174: drawn in 2D -- laid out flat, through a face-on orthographic camera. */
   flat: boolean;
   /** REQ-2174: laid out in layers, where lateral edges are drawn as arcs over the rest. */
@@ -60,6 +64,7 @@ export function GraphStage({
   command,
   exportName,
   testId,
+  controls,
   bare = false,
 }: {
   s: StageState;
@@ -67,7 +72,8 @@ export function GraphStage({
   /** What the view's exports are named after (the graph and its view). */
   exportName: string;
   testId: string;
-  /** A glance only (a card): no export or hint (Stage3D). */
+  controls: ViewControls;
+  /** A glance only (a card): no controls or hint (Stage3D). */
   bare?: boolean;
 }) {
   const { t } = useTranslation();
@@ -104,7 +110,7 @@ export function GraphStage({
   const drawn = useRef<{
     graph: GraphData;
     at: Map<string, [number, number, number]>;
-    frame: number;
+    frame: number | string;
     flat: boolean;
     layout: LayoutKind;
   } | null>(null);
@@ -148,6 +154,7 @@ export function GraphStage({
       exportable={scene}
       exportName={exportName}
       testId={testId}
+      controls={controls}
       bare={bare}
       flat={s.flat}
       legend={<GraphLegend graph={s.graph} />}

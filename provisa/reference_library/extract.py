@@ -12,8 +12,10 @@
 
 A section is a run of paragraphs under one heading, or on one page, so a passage cut from it
 cites where it sits. HTML is read by its headings (``h1``-``h6``), markdown by its ``#`` headings,
-a Word document by its heading styles (python-docx), a PDF by its pages (pypdf), plain text as
-paragraphs. A media type this module does not read is refused by name.
+a Word document by its heading styles (python-docx), an Excel workbook by its worksheets
+(openpyxl), a PDF by its pages (pypdf), plain text as
+paragraphs, and eCFR's XML (its API's ``DIV`` sections) by its sections and their paragraph
+headings. A media type this module does not read is refused by name.
 """
 
 # Requirements: REQ-2185
@@ -23,12 +25,15 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from pathlib import PurePosixPath
+from typing import Any
 
 HTML = "text/html"
 MARKDOWN = "text/markdown"
 PLAIN = "text/plain"
 PDF = "application/pdf"
 WORD = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+XML = "application/xml"
+EXCEL = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 #: The media types a library document may have, by the file extension that names each.
 EXTENSIONS: dict[str, str] = {
@@ -39,7 +44,12 @@ EXTENSIONS: dict[str, str] = {
     ".txt": PLAIN,
     ".pdf": PDF,
     ".docx": WORD,
+    ".xml": XML,
+    ".xlsx": EXCEL,
 }
+
+#: Other names a response may give a media type the library reads.
+_ALIASES: dict[str, str] = {"text/xml": XML}
 
 READABLE: frozenset[str] = frozenset(EXTENSIONS.values())
 
@@ -83,6 +93,7 @@ def media_type_of_response(content_type: str | None, url: str) -> tuple[str, str
     if content_type:
         parts = [p.strip() for p in content_type.split(";")]
         media = parts[0].lower()
+        media = _ALIASES.get(media, media)
         charset = next(
             (
                 p.split("=", 1)[1].strip().strip('"')
@@ -121,6 +132,10 @@ def read(content: bytes, media_type: str, name: str, charset: str | None = None)
         document = _read_pdf(content, name)
     elif media_type == WORD:
         document = _read_word(content, name)
+    elif media_type == EXCEL:
+        document = _read_excel(content, name)
+    elif media_type == XML:
+        document = _read_ecfr(content, name)
     elif media_type == PLAIN:
         document = Document(title=None, sections=[_paragraphs(None, _text(content, charset, name))])
     else:
@@ -277,4 +292,137 @@ def _read_word(content: bytes, name: str) -> Document:
             sections.append(Section(heading=text, page=None))
         else:
             sections[-1].paragraphs.append(text)
+    return Document(title=title, sections=sections)
+
+
+def _cell_text(value: Any) -> str:
+    return _clean(str(value)) if value is not None else ""
+
+
+def _read_excel(content: bytes, name: str) -> Document:
+    """An Excel workbook (.xlsx): each worksheet a section headed by its sheet name, each row a
+    paragraph as a Word table's row is; a cell is its value (a formula as the value it last
+    computed). A row is written ``Label: value · Label: value`` with the sheet's first-row labels,
+    or with column letters when the first row holds no labels (a label row is all text)."""
+    import io
+    import zipfile
+
+    from openpyxl import load_workbook
+    from openpyxl.utils import get_column_letter
+    from openpyxl.utils.exceptions import InvalidFileException
+
+    try:
+        book = load_workbook(io.BytesIO(content), read_only=True, data_only=True)
+    except (InvalidFileException, zipfile.BadZipFile, KeyError, ValueError) as exc:
+        raise UnreadableDocument(
+            f"{name!r} is not an Excel workbook that can be read: {exc}"
+        ) from None
+    sections: list[Section] = []
+    try:
+        for sheet in book.worksheets:
+            section = Section(heading=sheet.title, page=None)
+            labels: dict[int, str] | None = None
+            for number, row in enumerate(sheet.iter_rows(values_only=True)):
+                cells = {i: _cell_text(v) for i, v in enumerate(row, start=1) if _cell_text(v)}
+                if number == 0:
+                    labelled = bool(cells) and all(isinstance(row[i - 1], str) for i in cells)
+                    labels = cells if labelled else {}
+                    if labelled:
+                        continue
+                assert labels is not None
+                text = " · ".join(
+                    f"{labels.get(i) or get_column_letter(i)}: {v}" for i, v in cells.items()
+                )
+                if text:
+                    section.paragraphs.append(text)
+            sections.append(section)
+    finally:
+        book.close()
+    return Document(title=None, sections=sections)
+
+
+#: eCFR's division elements (title, chapter, part, subpart, section, ...), each with its ``HEAD``.
+_ECFR_DIVISIONS = frozenset({"ECFR", *(f"DIV{n}" for n in range(1, 10))})
+#: eCFR elements that annotate the regulation rather than state it: amendment links, source
+#: citations, editorial notes and a part's authority and source.
+_ECFR_DROPPED = frozenset({"XREF", "CITA", "EDNOTE", "AUTH", "SOURCE", "SECAUTH"})
+#: eCFR's paragraph elements.
+_ECFR_PARAGRAPHS = frozenset({"P", "FP", "PSPACE"})
+#: A paragraph's enumeration, as ``(a)`` or ``(6)(i)``, ahead of its italic heading.
+_ENUMERATION = re.compile(r"^\s*((?:\(\w+\))+)\s*$")
+
+
+def _read_ecfr(content: bytes, name: str) -> Document:
+    """eCFR's XML (its API's ``versioner/v1/full`` documents): each division (``DIVn``) a section
+    headed by its ``HEAD``, and each paragraph that leads with an italic heading after its
+    enumeration -- a definition's term, as ``(i) <I>Business day.</I>`` -- a section of its own
+    headed by that, so a definition is cited by its term. A paragraph's notes and examples
+    (``HED`` with ``PSPACE``) are paragraphs; a table is read a row to a paragraph."""
+    from lxml import etree  # pyright: ignore[reportAttributeAccessIssue]  # lxml ships no stubs for its C module
+
+    parser = etree.XMLParser(
+        resolve_entities=False, no_network=True, load_dtd=False, remove_comments=True
+    )
+    try:
+        root = etree.fromstring(content, parser)
+    except etree.XMLSyntaxError as exc:
+        raise UnreadableDocument(f"{name!r} is not XML that can be read: {exc}") from None
+    if root.tag not in _ECFR_DIVISIONS:
+        raise UnreadableDocument(
+            f"{name!r} is XML the library does not read: it reads eCFR's XML, whose root is a "
+            f"division (DIV1-DIV9), and this document's root is <{root.tag}>"
+        )
+    sections: list[Section] = []
+    lead: list[str] = []
+
+    def heading_of(division: Any) -> str | None:
+        head = division.find("HEAD")
+        return (_clean("".join(head.itertext())) or None) if head is not None else None
+
+    def paragraph(element: Any, division_heading: str | None) -> None:
+        text = _clean("".join(element.itertext()))
+        if not text:
+            return
+        children = [c for c in element if isinstance(c.tag, str)]
+        enumeration = _ENUMERATION.match(element.text or "")
+        if element.tag == "P" and enumeration and children and children[0].tag == "I":
+            term = _clean("".join(children[0].itertext())).rstrip(".")
+            if term:
+                sections.append(
+                    Section(
+                        heading=f"{(division_heading or '').rstrip('.')} — "
+                        f"{enumeration.group(1)} {term}".lstrip(" —"),
+                        page=None,
+                    )
+                )
+        if lead:
+            text = " ".join([*lead, text])
+            lead.clear()
+        sections[-1].paragraphs.append(text)
+
+    def walk(element: Any, division_heading: str | None) -> None:
+        for child in element:
+            tag = child.tag if isinstance(child.tag, str) else ""
+            if not tag or tag in _ECFR_DROPPED or tag == "HEAD":
+                continue
+            if tag in _ECFR_DIVISIONS:
+                heading = heading_of(child)
+                sections.append(Section(heading=heading, page=None))
+                walk(child, heading)
+                continue
+            if tag == "HED":
+                lead.append(_clean("".join(child.itertext())))
+            elif tag in _ECFR_PARAGRAPHS:
+                paragraph(child, division_heading)
+            elif tag == "ROW":
+                cells = [_clean("".join(c.itertext())) for c in child]
+                row = " | ".join(c for c in cells if c)
+                if row:
+                    sections[-1].paragraphs.append(row)
+            else:
+                walk(child, division_heading)
+
+    title = heading_of(root)
+    sections.append(Section(heading=title, page=None))
+    walk(root, title)
     return Document(title=title, sections=sections)

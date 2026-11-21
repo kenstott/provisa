@@ -32,7 +32,9 @@ from provisa.core import pg_tsearch
 from provisa.core import pg_tsearch_parse as parse
 from provisa.core.pg_error import END, MARK, PostgresError
 from provisa.core.pg_tsearch import Node
+from provisa.transpiler import pg_forms_textsearch_document as document
 from provisa.transpiler.pg_forms_json import jsonb_text
+from provisa.transpiler.pg_literals import values_cast
 from provisa.transpiler.pg_forms_types import REFUSED
 
 _D, _T, _C = "duckdb", "trino", "clickhouse"
@@ -77,6 +79,13 @@ class Engine:
     chars: str  # a text's length in characters
     char: str  # text, a character's place: that character
     code: str  # a character's number
+    prefix: str  # text, n: its first n characters
+    since: str  # text, a character's place: the text from there
+    lower: str
+    array: str  # items: a list of them
+    no_texts: str  # an empty list of text
+    head: str  # list, n: its first n items
+    nullable_lists: bool = True  # whether a list may be NULL
     backslash: str = "\\"  # a backslash in a string constant
 
     def text(self, value: str) -> str:
@@ -90,8 +99,8 @@ DUCKDB = Engine(
     matches="regexp_matches({}, {})",
     replace_all="regexp_replace({}, {}, {}, 'g')",
     group="\\1",
-    map="list_transform({0}, {1} -> {2})",
-    keep="list_filter({0}, {1} -> {2})",
+    map="list_transform({0}, LAMBDA {1} : {2})",
+    keep="list_filter({0}, LAMBDA {1} : {2})",
     join="array_to_string({}, {})",
     split="string_split({}, {})",
     size="len({})",
@@ -106,8 +115,8 @@ DUCKDB = Engine(
     distinct="list_distinct({})",
     flatten="flatten({})",
     concat="list_concat({}, {})",
-    fold="list_reduce({0}, ({1}, {2}) -> {3}, {4})",
-    let="list_transform([{1}], {0} -> {2})[1]",
+    fold="list_reduce({0}, LAMBDA {1}, {2} : {3}, {4})",
+    let="list_transform([{1}], LAMBDA {0} : {2})[1]",
     upto="range(1, {} + 1)",
     first="{}[1]",
     largest="list_max({})",
@@ -117,6 +126,12 @@ DUCKDB = Engine(
     chars="length({})",
     char="substr({}, {}, 1)",
     code="unicode({})",
+    prefix="substr({}, 1, {})",
+    since="substr({}, {})",
+    lower="lower({})",
+    array="[{}]",
+    no_texts="CAST([] AS VARCHAR[])",
+    head="list_slice({}, 1, {})",
 )
 TRINO = Engine(
     find_all="regexp_extract_all({}, {})",
@@ -142,7 +157,9 @@ TRINO = Engine(
     concat="concat({}, {})",
     fold="reduce({0}, {4}, ({1}, {2}) -> {3}, _f -> _f)",
     let="transform(ARRAY[{1}], {0} -> {2})[1]",
-    upto="sequence(1, {})",
+    # in blocks: Trino's sequence makes no more than 10000 entries
+    upto="transform(ARRAY[{}], _un -> flatten(transform(sequence(0, (_un - 1) / 10000), "
+    "_ub -> sequence(_ub * 10000 + 1, least(_un, _ub * 10000 + 10000)))))[1]",
     first="element_at({}, 1)",
     largest="array_max({})",
     bytes="length(to_utf8({}))",
@@ -151,6 +168,12 @@ TRINO = Engine(
     chars="length({})",
     char="substr({}, {}, 1)",
     code="codepoint(CAST({} AS VARCHAR(1)))",
+    prefix="substr({}, 1, {})",
+    since="substr({}, {})",
+    lower="lower({})",
+    array="ARRAY[{}]",
+    no_texts="CAST(ARRAY[] AS ARRAY(VARCHAR))",
+    head="slice({}, 1, {})",
 )
 CLICKHOUSE = Engine(
     find_all="extractAll(ifNull({}, ''), {})",
@@ -172,7 +195,8 @@ CLICKHOUSE = Engine(
     within="position({1}, {0}) > 0",
     sort="arraySort({})",
     distinct="arrayDistinct({})",
-    flatten="arrayFlatten({})",
+    # one level, as DuckDB's and Trino's flatten: arrayFlatten flattens every level
+    flatten="arrayMap(_fl -> arrayFold((_fa, _fe) -> arrayConcat(_fa, _fe), _fl, arrayResize(_fl[1], 0)), [{}])[1]",
     concat="arrayConcat({}, {})",
     fold="arrayFold(({1}, {2}) -> {3}, {0}, {4})",
     let="arrayMap({0} -> {2}, [{1}])[1]",
@@ -185,6 +209,13 @@ CLICKHOUSE = Engine(
     chars="lengthUTF8({})",
     char="substringUTF8({}, {}, 1)",
     code="toInt64(ascii({}))",
+    prefix="substringUTF8({}, 1, {})",
+    since="substringUTF8({}, {})",
+    lower="lowerUTF8({})",
+    array="[{}]",
+    no_texts="CAST([] AS Array(String))",
+    head="arraySlice({}, 1, {})",
+    nullable_lists=False,
     backslash="\\\\",
 )
 ENGINES = ((_D, DUCKDB), (_T, TRINO), (_C, CLICKHOUSE))
@@ -220,7 +251,11 @@ def _read(e: Engine, function: str, answer: str, *values: str, listed: bool = Fa
     wrong = " OR ".join(f"NOT {e.matches.format(v, e.text(_FORM))}" for v in values)
     message = e.text(f"{MARK} 0A000: {function} {REFUSED} {END}")
     guard = e.fails.format(f"coalesce({wrong}, false)", message)
-    return (e.guarded_list if listed else e.guarded).format(guard, answer)
+    written = (e.guarded_list if listed else e.guarded).format(guard, answer)
+    if listed and not e.nullable_lists:
+        return written
+    nulls = " OR ".join(f"{v} IS NULL" for v in values)
+    return f"CASE WHEN {nulls} THEN NULL ELSE {written} END"
 
 
 def _join_tokens(e: Engine, tokens: str) -> str:
@@ -451,12 +486,31 @@ def _concat(e: Engine) -> str:
     )
 
 
+#: array_to_tsvector's errors, by the mark of the item that raises it (1 a NULL, 2 an empty text).
+_LEXEME_ERRORS = (
+    (1, "22004", "lexeme array may not contain nulls"),
+    (2, "2200F", "lexeme array may not contain empty strings"),
+)
+
+
 def _lexeme_list(e: Engine) -> str:
-    """array_to_tsvector of the list ``x``."""
-    written = e.map.format(e.sort.format(e.distinct.format("x")), "_l", _quoted(e, "_l"))
-    return e.join.format(written, "' '")
+    """array_to_tsvector of the list ``x``: PostgreSQL reads its items in order, raising for the
+    first that is a NULL or an empty text."""
+    written = e.join.format(
+        e.map.format(e.sort.format(e.distinct.format("x")), "_l", _quoted(e, "_l")), "' '"
+    )
+    marks = e.map.format("x", "_e", "CASE WHEN _e IS NULL THEN 1 WHEN _e = '' THEN 2 ELSE 0 END")
+    first = e.first.format(e.keep.format(marks, "_m", "_m > 0"))
+    guard = " + ".join(
+        e.fails.format(f"coalesce(_f = {mark}, false)", e.text(f"{MARK} {state}: {said} {END}"))
+        for mark, state, said in _LEXEME_ERRORS
+    )
+    return e.let.format("_f", first, e.guarded.format(guard, written))
 
 
+#: The configurations and dictionaries a row of a column reads, each its own row.
+_CONFIGS = ("english", "simple")
+_DICTIONARIES = ("english_stem", "simple")
 _DEFAULT_WEIGHTS = ("0.1", "0.2", "0.4", "1.0")
 #: Each engine's float4: a form's every step is one, as calc_rank's are.
 _REAL = {_D: "CAST({} AS FLOAT)", _T: "CAST({} AS REAL)", _C: "toFloat32({})"}
@@ -554,7 +608,9 @@ def _rank_and(d: str, e: Engine) -> str:
         f"CASE WHEN _s < 0 THEN {double('_x')} ELSE 1.0 - (1.0 - {double('_s')}) * (1.0 - {double('_x')}) END"
     )
     total = e.fold.format(items, "_s", "_x", step, real("-1"))
-    return e.let.format("_e", total, f"CASE WHEN _e < 0 THEN {real('1e-20')} ELSE _e END")
+    ranked = e.let.format("_e", total, f"CASE WHEN _e < 0 THEN {real('1e-20')} ELSE _e END")
+    # calc_rank's 0 for a vector of no lexemes, before calc_rank_and's floor
+    return f"CASE WHEN {e.size.format(_tokens(e))} = 0 THEN {real('0')} ELSE {ranked} END"
 
 
 def _occurrences(e: Engine) -> str:
@@ -598,8 +654,13 @@ def _word_count(e: Engine) -> str:
         "_s",
         "_x",
         "_s + _x",
-        "0",
+        # A count's type: ClickHouse's fold takes its seed's, and a bare 0 is a UInt8 there.
+        "CAST(0 AS BIGINT)",
     )
+
+
+#: The name ts_bound gives a vector its search reads.
+_BOUND = "_sv"
 
 
 def _rows() -> tuple[Row, ...]:
@@ -613,8 +674,7 @@ def _rows() -> tuple[Row, ...]:
         add(d, "tsvector_to_array", "v", _read(e, "tsvector_to_array", lexemes, "v", listed=True))
         kept = e.keep.format(_tokens(e), "_t", f"{_lexeme_of(e, '_t')} <> x")
         add(d, "ts_delete", "v, x", _read(e, "ts_delete", _join_tokens(e, kept), "v"))
-        dropped = e.keep.format(_tokens(e), "_t", f"NOT {e.has.format('x', _lexeme_of(e, '_t'))}")
-        add(d, "ts_delete_array", "v, x", _read(e, "ts_delete", _join_tokens(e, dropped), "v"))
+        # ts_delete of a list of lexemes (ts_delete_array) is the polyfill grid's row.
         add(d, "tsvector_eq", "a, b", _read(e, "tsvector_eq", "a = b", "a", "b"))
         add(d, "tsvector_ne", "a, b", _read(e, "tsvector_ne", "a <> b", "a", "b"))
         for weight in "ABCD":
@@ -636,6 +696,7 @@ def _rows() -> tuple[Row, ...]:
         add(d, "ts_stripped", "v, x, p, w", _read(e, "ts_match_vq", _stripped(e), "v"))
         add(d, "ts_phrase", "l, r, n", e.keep.format("r", "_q", e.has.format("l", "_q - n")))
         add(d, "ts_found", "l", f"{e.size.format('l')} > 0")
+        add(d, "ts_bound", "v, b", e.let.format(_BOUND, "v", "b"))
         add(d, "ts_lexemes", "x", _lexeme_list(e))
         add(d, "ts_rank_or", "v, w, x, p", _read(e, "ts_rank", _rank_or(d, e), "v"))
         add(d, "ts_rank_and", "v, w, x", _read(e, "ts_rank", _rank_and(d, e), "v"))
@@ -673,6 +734,12 @@ def _rows() -> tuple[Row, ...]:
                 f"THEN {by(f'{ln(double(f"{lexemes_held} + 1"))}{log_two}')} ELSE r END",
             )
             add(d, f"ts_norm_{suffix}_32", "r, v", real(f"{double('r')} / ({double('r')} + 1)"))
+        for config in _CONFIGS:
+            add(d, f"ts_document_{config}", "s", document.document(e, config))
+            add(d, f"ts_plain_{config}", "s", document.plain_query(e, config))
+            add(d, f"ts_phrase_{config}", "s", document.phrase_query(e, config))
+        for dictionary in _DICTIONARIES:
+            add(d, f"ts_lexize_{dictionary}", "s", document.lexized(e, dictionary))
     return tuple((name, params, each) for (name, params), each in forms.items())
 
 
@@ -750,6 +817,15 @@ def _constant(value: exp.Expr) -> str | None:
     raise _NotConstant
 
 
+def _is_constant(value: exp.Expr) -> bool:
+    """Whether ``value`` is a literal, read in the statement."""
+    try:
+        _constant(value)
+    except _NotConstant:
+        return False
+    return True
+
+
 def _is_null(value: exp.Expr) -> bool:
     node = value.unnest()
     return isinstance(node.this if isinstance(node, exp.Cast) else node, exp.Null)
@@ -770,6 +846,8 @@ def _query(value: exp.Expr) -> Node | None:
             return pg_tsearch.negated(_query(args[0]))
         if name == "tsquery_phrase":
             return _phrase(args)
+        if name in _BUILDERS:
+            return _built_query(name, args)
         raise _NotConstant
     text = _constant(value)
     if text is None:
@@ -925,7 +1003,16 @@ def _matched(name: str, args: list[exp.Expr]) -> exp.Expr:
         return exp.null()
     first, second = args if name == "ts_match_vq" else reversed(args)
     vector, query = _vector(first), _query(second)
-    return _boolean(False) if query is None else _search(vector, query, name)
+    return _boolean(False) if query is None else _bound_search(vector, query, name)
+
+
+def _bound_search(vector: exp.Expr, query: Node, name: str) -> exp.Expr:
+    """:func:`_search`, a vector of a column read once: each term's form holds it, more than
+    once."""
+    if vector.find(exp.Column) is None:
+        return _search(vector, query, name)
+    searched = _search(exp.column(_BOUND), query, name)
+    return exp.Anonymous(this="ts_bound", expressions=[vector, searched])
 
 
 _RANKS = frozenset({"ts_rank", "ts_rank_cd"})
@@ -937,6 +1024,20 @@ _BUILDERS = {
     "websearch_to_tsquery": parse.websearch_to_tsquery,
 }
 _SETS = frozenset({"ts_parse", "ts_debug", "ts_stat"})
+#: What each function returns, as the engine holds it, where that is not text (a tsvector, a
+#: tsquery and text are held as text): a NULL argument answers a NULL of it (REQ-2167).
+_RESULTS = {
+    **dict.fromkeys(_RANKS, "float"),  # real
+    **dict.fromkeys(("ts_lexize", "tsvector_to_array"), "ARRAY<TEXT>"),
+    **dict.fromkeys(("numnode", "tsquery_cmp", "tsvector_cmp"), "int"),
+    **dict.fromkeys(
+        (
+            *_SEARCHES, *_ORDERED, *_ORDER, "tsq_mcontains", "tsq_mcontained", "tsvector_eq",
+            "tsvector_ne", "ts_match_tt", "ts_match_tq",
+        ),
+        "boolean",
+    ),
+}  # fmt: skip
 _PARSER = 3722
 _RECORD_SPECIAL = re.compile(r'[\s,()"\\]')
 _COLUMNS = {
@@ -979,10 +1080,44 @@ def _parsed(reading: Callable[[], str], name: str) -> str:
         raise NoForm(name) from None
 
 
+#: What a statement says is text: the overload of a call of no other type.
+_TEXTS = frozenset({"text", "varchar", "character varying", "char", "character", "bpchar", "name"})
+
+
+_SAID = "pg_said_cast"
+
+
+def _column_cast(node: exp.Expr) -> exp.Expr:
+    """A column as the cast of its VALUES list, as :func:`lowered` marked it while it was in the
+    statement: a form's copy of it is not."""
+    if isinstance(node, exp.Column):
+        return node.meta.get(_SAID) or node
+    return node
+
+
+def _told_text(value: exp.Expr) -> bool:
+    """Whether the statement says ``value`` is text: its cast, its VALUES list's, or a ||."""
+    node = _column_cast(value.unnest())
+    if isinstance(node, (exp.DPipe, exp.Concat, exp.Lower, exp.Upper)):
+        return True
+    said = node.to.sql("postgres").lower().split("(")[0] if isinstance(node, exp.Cast) else None
+    return said in _TEXTS
+
+
+def _row_of(prefix: str, config: str, value: exp.Expr, name: str) -> exp.Expr:
+    """A row's reading of a text that is not a constant: refused where the statement does not
+    say it is text, as a json document's reading differs."""
+    if not _told_text(value):
+        raise NoForm(name)
+    return exp.Anonymous(this=f"{prefix}_{config}", expressions=[value])
+
+
 def _document(name: str, args: list[exp.Expr]) -> exp.Expr:
     arity = 1 if name == "to_tsvector" else 2
     config, rest = _split_config(args, arity, name)
     kind = _said(rest[0])
+    if name == "to_tsvector" and kind not in ("json", "jsonb") and not _is_constant(rest[0]):
+        return _row_of("ts_document", config, rest[0], name)
     if name == "to_tsvector" and kind not in ("json", "jsonb"):
         return _text_value(
             _parsed(
@@ -1005,20 +1140,40 @@ def _document(name: str, args: list[exp.Expr]) -> exp.Expr:
     )
 
 
-def _built(name: str, args: list[exp.Expr]) -> exp.Expr:
+#: The builders a row of a column reads, by the prefix of their rows.
+_BUILT_ROWS = {"plainto_tsquery": "ts_plain", "phraseto_tsquery": "ts_phrase"}
+
+
+def _built_query(name: str, args: list[exp.Expr]) -> Node | None:
+    """A builder's query of constants."""
     config, rest = _split_config(args, 1, name)
     text = _text_of(rest[0], name)
-    return _text_value(
-        _parsed(lambda: pg_tsearch.tsquery_text(_BUILDERS[name](config, text)), name)
-    )
+    try:
+        return _BUILDERS[name](config, text)
+    except parse.Unread:
+        raise NoForm(name) from None
+
+
+def _built(name: str, args: list[exp.Expr]) -> exp.Expr:
+    config, rest = _split_config(args, 1, name)
+    if name in _BUILT_ROWS and not _is_constant(rest[0]):
+        return _row_of(_BUILT_ROWS[name], config, rest[0], name)
+    return _text_value(pg_tsearch.tsquery_text(_built_query(name, args)))
 
 
 def _searched_text(name: str, args: list[exp.Expr]) -> exp.Expr:
     """ts_match_tt and ts_match_tq: the document's vector, the query's search."""
-    vector = _parsed(
-        lambda: pg_tsearch.tsvector_text(parse.to_tsvector("english", _text_of(args[0], name))),
-        name,
-    )
+    if _is_constant(args[0]):
+        vector: exp.Expr = _text_value(
+            _parsed(
+                lambda: pg_tsearch.tsvector_text(
+                    parse.to_tsvector("english", _text_of(args[0], name))
+                ),
+                name,
+            )
+        )
+    else:
+        vector = _row_of("ts_document", "english", args[0], name)
     if name == "ts_match_tt":
         try:
             query = parse.plainto_tsquery("english", _text_of(args[1], name))
@@ -1026,15 +1181,19 @@ def _searched_text(name: str, args: list[exp.Expr]) -> exp.Expr:
             raise NoForm(name) from None
     else:
         query = _query(args[1])
-    return _boolean(False) if query is None else _search(_text_value(vector), query, name)
+    return _boolean(False) if query is None else _bound_search(vector, query, name)
 
 
 def _lexized(name: str, args: list[exp.Expr]) -> exp.Expr:
     dictionary = _text_of(args[0], name)
-    if dictionary not in ("english_stem", "simple"):
+    if dictionary not in _DICTIONARIES:
         raise PostgresError("42704", f'text search dictionary "{dictionary}" does not exist')
+    if not _is_constant(args[1]):
+        return _row_of("ts_lexize", dictionary, args[1], name)
     found = parse.lexize(dictionary, _text_of(args[1], name))
-    return exp.Array(expressions=[_text_value(x) for x in found])
+    # A text[] even of no lexeme: an empty array of no type is ClickHouse's Array(Nothing).
+    lexemes = exp.Array(expressions=[_text_value(x) for x in found])
+    return exp.Cast(this=lexemes, to=exp.DataType.build("TEXT[]", dialect="postgres"))
 
 
 def _rank_terms(query: Node | None) -> list[Node]:
@@ -1068,7 +1227,9 @@ def _rank(name: str, args: list[exp.Expr]) -> exp.Expr:
         return exp.null()
     weights = _ranked_weights(args[0] if weighted else None)
     rest = args[1:] if weighted else args
-    vector, query = _vector(rest[0]), _query(rest[1])
+    held, query = _vector(rest[0]), _query(rest[1])
+    # a vector of a column read once, as _bound_search reads it: each row of a rank names it again
+    vector = exp.column(_BOUND) if held.find(exp.Column) is not None else held
     method = int(_text_of(rest[2], name).strip("()")) if len(rest) > 2 else 0
     terms = _rank_terms(query)
     if not terms:
@@ -1098,6 +1259,8 @@ def _rank(name: str, args: list[exp.Expr]) -> exp.Expr:
             written = exp.Anonymous(
                 this=f"ts_norm_{suffix}_{bit}", expressions=[written, vector.copy()]
             )
+    if vector is not held:
+        written = exp.Anonymous(this="ts_bound", expressions=[held, written])
     return exp.Cast(this=written, to=exp.DataType.build("float"))
 
 
@@ -1252,11 +1415,35 @@ def _rewritten(name: str, args: list[exp.Expr]) -> exp.Expr:
     return _text_value(pg_tsearch.tsquery_text(pg_tsearch.rewrite(_query(args[0]), target, by)))
 
 
-def _headlined(name: str, args: list[exp.Expr]) -> exp.Expr:
-    first_said = _said(args[0])
-    named = first_said == "regconfig" or (
+def _names_config(args: list[exp.Expr]) -> bool:
+    """Whether a ts_headline call's first argument is its config, its document then second."""
+    return _said(args[0]) == "regconfig" or (
         len(args) == 4 or (len(args) == 3 and _said(args[1]) != "tsquery")
     )
+
+
+def _json_value(value: exp.Expr, dialect: str) -> exp.Expr:
+    """A json or jsonb result as the engine's JSON, which pgwire describes as the call's type;
+    ClickHouse, which has no JSON form, holds its text."""
+    if dialect in ("trino", "athena", "presto") and not isinstance(value, exp.Null):
+        return exp.ParseJSON(this=value)
+    return value if dialect == "clickhouse" else exp.cast(value, "JSON")
+
+
+def _null_of(name: str, args: list[exp.Expr], dialect: str) -> exp.Expr:
+    """The NULL a call answers for a NULL argument, of the type the function returns."""
+    if name == "ts_headline":
+        document = args[1] if _names_config(args) else args[0]
+        if _said(document) in ("json", "jsonb"):
+            return _json_value(exp.null(), dialect)
+    result = _RESULTS.get(name, "text")
+    if dialect == "clickhouse" and result.startswith("ARRAY"):
+        return exp.null()  # ClickHouse has no NULL of an array
+    return exp.Cast(this=exp.null(), to=exp.DataType.build(result))
+
+
+def _headlined(name: str, args: list[exp.Expr], dialect: str) -> exp.Expr:
+    named = _names_config(args)
     config = _config(args[0], name) if named else "english"
     rest = args[1:] if named else args
     query = _query(rest[1])
@@ -1269,7 +1456,9 @@ def _headlined(name: str, args: list[exp.Expr]) -> exp.Expr:
     try:
         if _said(rest[0]) in ("json", "jsonb"):
             written = parse.json_headline(document, mark)
-            return _text_value(jsonb_text(written) if _said(rest[0]) == "jsonb" else written)
+            if _said(rest[0]) == "json":
+                return _text_value(written)
+            return _json_value(_text_value(jsonb_text(written)), dialect)
         written = mark(document)
     except parse.Unread:
         raise NoForm(name) from None
@@ -1332,11 +1521,77 @@ def _on_vector(name: str, args: list[exp.Expr]) -> exp.Expr:
     return exp.Anonymous(this=called, expressions=written)
 
 
+#: The operators :func:`lowered` reads, for function_macros.mentioned.
+OPERATORS = "@@"
+_VECTOR, _QUERY, _TEXT, _UNKNOWN = "tsvector", "tsquery", "text", "unknown"
+#: The calls whose answer is a vector, or a query.
+_VECTOR_CALLS = frozenset(
+    {"to_tsvector", "json_to_tsvector", "jsonb_to_tsvector", "array_to_tsvector", "setweight",
+     "ts_delete", "ts_filter", "tsvector_concat"}
+)  # fmt: skip
+_QUERY_CALLS = frozenset(_BUILDERS) | frozenset(_JOINS) | {"tsquery_not", "tsquery_phrase"}
+
+
+def _operand(value: exp.Expr) -> str | None:
+    """What an operand of @@ is said to be: None where the statement does not say."""
+    node = value.unnest()
+    called = _call(node)
+    if called is not None:
+        return (
+            _VECTOR if called[0] in _VECTOR_CALLS else _QUERY if called[0] in _QUERY_CALLS else None
+        )
+    node = _column_cast(node)
+    if isinstance(node, exp.Cast):
+        said = node.to.sql("postgres").lower().split("(")[0]
+        return said if said in (_VECTOR, _QUERY) else _TEXT if said in _TEXTS else None
+    if isinstance(node, exp.Literal) and node.is_string:
+        return _UNKNOWN
+    if isinstance(node, exp.Null):
+        return _UNKNOWN
+    return _TEXT if _told_text(node) else None
+
+
+#: @@ of each two operands, as PostgreSQL resolves it: an unknown literal takes the other side's
+#: type where an operator has it, and is text, the preferred string type, where it is open.
+_MATCHES: dict[tuple[str | None, str | None], str] = {
+    (_VECTOR, _QUERY): "ts_match_vq", (_VECTOR, _UNKNOWN): "ts_match_vq",
+    (_QUERY, _VECTOR): "ts_match_qv", (_QUERY, _UNKNOWN): "ts_match_qv",
+    (_UNKNOWN, _VECTOR): "ts_match_qv",
+    (_TEXT, _QUERY): "ts_match_tq", (_UNKNOWN, _QUERY): "ts_match_tq",
+    (_TEXT, _TEXT): "ts_match_tt", (_TEXT, _UNKNOWN): "ts_match_tt", (_UNKNOWN, _TEXT): "ts_match_tt",
+}  # fmt: skip
+
+
+def _match_operator(node: exp.MatchAgainst) -> exp.Expr:
+    """``left @@ right``: the function its operand types choose, refused by name where the
+    statement does not say them."""
+    left, right = node.expressions[0], node.this
+    name = _MATCHES.get((_operand(left), _operand(right)))
+    if name is None:
+        raise NoForm("@@")
+    if _is_null(left) or _is_null(right):
+        return exp.null()
+    if name in _SEARCHES:
+        return _matched(name, [left, right])
+    return _searched_text(name, [left, right])
+
+
+def _below(written: exp.Expr, rewrite: Callable[[exp.Expr], exp.Expr]) -> exp.Expr:
+    """``written`` with what it holds lowered: transform does not revisit what a form holds, a
+    call of a column in a vector argument. Its own root is a row, some of PostgreSQL's name."""
+    return written.transform(lambda node: node if node is written else rewrite(node), copy=False)
+
+
 def lowered(tree: exp.Expr, dialect: str) -> exp.Expr:
     """``tree``'s text search calls as rows of the table, or as what they answer. Raises
     :class:`NoForm` for what no form writes."""
 
     def rewrite(node: exp.Expr) -> exp.Expr:
+        if isinstance(node, exp.MatchAgainst):
+            try:
+                return _below(_match_operator(node), rewrite)
+            except _NotConstant:
+                raise NoForm("@@") from None
         called = _call(node)
         if called is None or called[0] not in NAMES:
             return node
@@ -1365,17 +1620,24 @@ def lowered(tree: exp.Expr, dialect: str) -> exp.Expr:
             elif name == "ts_rewrite":
                 written = _rewritten(name, args)
             elif name == "ts_headline":
-                written = _headlined(name, args)
+                written = _headlined(name, args, dialect)
             else:
                 written = _on_vector(name, args)
         except _NotConstant:
             raise NoForm(name) from None
+        if isinstance(written, exp.Null):
+            written = _null_of(name, args, dialect)
+        written = _below(written, rewrite)
         if isinstance(node.parent, exp.Select) and node.arg_key == "expressions":
             return exp.alias_(written, name)
         return written
 
+    for column in tree.find_all(exp.Column):
+        cast = values_cast(column)
+        if cast is not None:
+            column.meta[_SAID] = cast.copy()
     try:
         tree = _sets(tree)
     except _NotConstant as unread:
         raise NoForm("ts_parse") from unread
-    return tree.transform(rewrite)
+    return tree.transform(rewrite, copy=False)

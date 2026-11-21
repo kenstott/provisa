@@ -68,24 +68,35 @@ async def _run_subprocess(argv: list[str], payload: bytes) -> bytes:
     )
     out, err = await proc.communicate(payload)
     if proc.returncode != 0:
+        # A tool that reports on stdout (dbt, REQ-2228) has nothing on stderr to say why.
+        said = (err or out).decode(errors="replace")
         raise ApiError(
             502,
             "functions.script_failed",
-            f"script exited {proc.returncode}: {err.decode(errors='replace')}",
+            f"script exited {proc.returncode}: {said}",
             returncode=proc.returncode,
-            stderr=err.decode(errors="replace"),
+            stderr=said,
         )
     return out
 
 
 async def _http_call(
-    method: str, url: str, payload: dict, timeout: float
+    method: str,
+    url: str,
+    payload: dict,
+    timeout: float,
+    headers: dict[str, str] | None = None,
 ) -> object:  # object-ok: decoded external JSON is truly-any
     """Invoke an http-kind function endpoint, return the decoded JSON body."""
     import httpx
 
-    async with httpx.AsyncClient(timeout=timeout) as client:
-        resp = await client.request(method, url, json=payload)
+    from provisa.security import sandbox_egress
+
+    # REQ-2006: a held org's call reaches public destinations only, each request checked.
+    async with httpx.AsyncClient(
+        timeout=timeout, event_hooks=sandbox_egress.endpoint_event_hooks()
+    ) as client:
+        resp = await client.request(method, url, json=payload, headers=headers)
     resp.raise_for_status()
     return resp.json()
 
@@ -134,7 +145,10 @@ async def _grpc_call(
     """
     path = _grpc_method_path(method)
     request = json.dumps(payload).encode()
-    channel = open_channel(target, tls)
+    from provisa.security.sandbox_egress import PrivateEndpointRefused
+
+    # REQ-2006: a held org's command dials the address its check resolved; refused as a command.
+    channel = open_channel(target, tls, refusal=PrivateEndpointRefused)
     try:
         rpc = channel.unary_unary(
             path, request_serializer=_grpc_identity, response_deserializer=_grpc_identity
@@ -185,11 +199,9 @@ async def _materialize_relation(ref: str, state, columns: list[str] | None = Non
     projection = ", ".join(f'"{c}"' for c in columns) if columns else "*"
     sql = f'SELECT {projection} FROM "{schema}"."{table}"'
     result = await state.source_pools.execute(src_id, sql, [])
-    from provisa.executor.serialize import _convert_value
+    from provisa.executor.serialize import result_records
 
-    cols = result.column_names
-    rows = [{c: _convert_value(v) for c, v in zip(cols, r)} for r in result.rows]
-    return {"kind": "result_set", "columns": cols, "rows": rows}
+    return {"kind": "result_set", "columns": result.column_names, "rows": result_records(result)}
 
 
 def _arg_kinds(fn: dict) -> dict[str, str]:
@@ -249,6 +261,9 @@ async def _prepare_args(fn: dict, args: dict, state) -> tuple[dict, list[str]]:
             # time — the service fetches them. The declared columns still travel as the contract the
             # service must honour; input-side enforcement happens only for the eager result_set kind.
             payload[name] = {"kind": "table_ref", "ref": value}
+            declared = columns_by_arg.get(name)
+            if declared:
+                payload[name]["columns"] = [c["name"] for c in declared]
             input_refs.append(str(value))
         elif kind == "result_set":  # eager: materialize referenced relation to Arrow
             declared = columns_by_arg.get(name)
@@ -298,7 +313,8 @@ def _require(
 # Egress control (REQ-885 security_constraint) — deny-by-default allow-list.   #
 # --------------------------------------------------------------------------- #
 
-# Loopback is the Provisa pgwire boundary — implicitly reachable, never external egress.
+# Loopback is the Provisa pgwire boundary — implicitly reachable, never external egress, on an
+# install whose org is not held (REQ-2006: a held org's call reaches public destinations only).
 _LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1", "[::1]"})
 
 
@@ -315,18 +331,33 @@ def _endpoint_host(endpoint: str, kind: str) -> tuple[str, str]:
     return host, endpoint
 
 
+def _endpoint_port(hostport: str) -> int | None:
+    """The port a ``host:port`` names, or None when it names none."""
+    port = hostport.rpartition(":")[2] if ":" in hostport else ""
+    return int(port) if port.isdigit() else None
+
+
 def _check_egress(state, endpoint: str, kind: str) -> None:
     """Refuse an external call whose host is not on the deny-by-default egress allow-list.
 
     The allow-list (``state.udf_egress_allowlist``) enumerates the http/grpc endpoints a
     deployment permits hosted functions to reach; loopback (Provisa pgwire) is always
     allowed. An empty/absent list denies all external egress — no silent default (REQ-885).
+
+    For a held org (``sandbox_egress.held``) loopback is not exempt, and a host on the list is
+    reached only when every address it resolves to is public (REQ-2006, amended 2026-11-16).
     """
+    from provisa.security import sandbox_egress
+
     host, hostport = _endpoint_host(endpoint, kind)
-    if host in _LOOPBACK_HOSTS:
+    held = sandbox_egress.held_here()
+    if host in _LOOPBACK_HOSTS and not held:
         return
     allowlist = getattr(state, "udf_egress_allowlist", None) or []
     if host in allowlist or hostport in allowlist:
+        sandbox_egress.require_allowed(
+            host, _endpoint_port(hostport), refusal=sandbox_egress.PrivateEndpointRefused
+        )
         return
     raise ApiError(
         403,
@@ -350,6 +381,9 @@ _PASSED_THROUGH_KINDS = frozenset(
     {"source_procedure", "source_operation", "source_query", "statement"}  # REQ-2001
     | {"sql_expression", "builtin"}  # REQ-2168
 )
+# A code_command is not passed through: its table arguments are prepared as table_ref references
+# the worker reads (REQ-2226). A command bound with fixed arguments (REQ-2228) takes the call's
+# arguments as given, by name, from ``args`` rather than the prepared payload.
 _RELATION_ARG_KINDS = frozenset({"table_ref", "result_set"})
 
 
@@ -394,10 +428,9 @@ async def _exec_source_procedure(fn: dict, args: dict, state, _payload, _session
     placeholders = ", ".join(f"${i + 1}" for i in range(len(params)))
     sql = f'SELECT * FROM "{fn["schema_name"]}"."{fn["function_name"]}"({placeholders})'
     result = await state.source_pools.execute(src_id, sql, params)
-    from provisa.executor.serialize import _convert_value
+    from provisa.executor.serialize import result_records
 
-    cols = result.column_names
-    return [{c: _convert_value(v) for c, v in zip(cols, r)} for r in result.rows]
+    return result_records(result)
 
 
 def _json_arguments_from_sql(fn: dict, args: dict) -> dict:
@@ -427,18 +460,37 @@ def _json_arguments_from_sql(fn: dict, args: dict) -> dict:
     return decoded
 
 
-async def _exec_source_operation(fn: dict, args: dict, state, _payload, _session) -> list[dict]:
-    """REQ-1924: a source's write operation, called with the arguments as given."""
+async def _exec_source_operation(fn: dict, args: dict, state, _payload, session) -> list[dict]:
+    """REQ-1924: a source's write operation, called with the arguments as given. REQ-1986: an
+    operation that returns the rows of its table is read as that table with the arguments
+    assigned, through the one pipeline as the caller's role."""
+    from provisa.compiler.operation_function import is_operation_function
+
+    if is_operation_function(fn):
+        from provisa.executor.operation_call import run
+
+        return await run(fn, _bind_arg_names(fn, args), state, session.role_id)
     from provisa.executor.source_operation import call_operation
 
     return await call_operation(
-        state, fn["source_id"], fn["function_name"], _json_arguments_from_sql(fn, args)
+        state,
+        fn["source_id"],
+        fn["function_name"],
+        _json_arguments_from_sql(fn, args),
+        fn.get("schema_name"),
     )
 
 
 async def _exec_source_query(fn: dict, args: dict, state, _payload, _session) -> list[dict]:
-    """REQ-1988: a query command that runs its source's native query (a MongoDB pipeline) with
-    the call's arguments, each converted to its type and bound as a value."""
+    """REQ-1988: a command that runs its source's native query -- a MongoDB pipeline, or native
+    SQL on a relational source (binding {"sql"}) -- with the call's arguments, each converted to
+    its type and bound as a value."""
+    from provisa.core.native_sql import BINDING_KEY
+
+    if BINDING_KEY in (fn.get("binding") or {}):
+        from provisa.executor import native_sql_command
+
+        return await native_sql_command.run(state, fn, _bind_arg_names(fn, args))
     from provisa.mongodb.pipeline_command import run_command
 
     return await run_command(state, fn, _bind_arg_names(fn, args))
@@ -447,9 +499,18 @@ async def _exec_source_query(fn: dict, args: dict, state, _payload, _session) ->
 async def _exec_script(
     fn: dict, _args, _state, payload: dict, session: MintedSession
 ) -> list[dict]:
-    argv = list(_require(fn["binding"], "argv", "script"))  # type: ignore[arg-type]
+    binding = fn["binding"]
+    argv = list(_require(binding, "argv", "script"))  # type: ignore[arg-type]
+    # REQ-2228: a command line that takes one argument as JSON (dbt's ``run-operation --args``).
+    json_argument = binding.get("json_argument")
+    if json_argument is not None and payload.get(json_argument["argument"]) is not None:
+        value = payload[json_argument["argument"]]
+        argv += [json_argument["flag"], value if isinstance(value, str) else json.dumps(value)]
     body = json.dumps({"args": payload, "correlation_id": session.correlation_id}).encode()
     out = await _run_subprocess(argv, body)
+    # REQ-2228: a tool whose report is plain text (dbt) answers one row holding it.
+    if binding.get("stdout") == "text":
+        return [{"output": out.decode(errors="replace")}]
     return _rows_from_response(json.loads(out or b"[]"))
 
 
@@ -459,6 +520,14 @@ async def _exec_http(fn: dict, _args, state, payload: dict, session: MintedSessi
     _check_egress(state, url, "http")
     method = str(binding.get("method", "POST")).upper()
     timeout = float(binding.get("timeout_s", _HTTP_DEFAULT_TIMEOUT_S))
+    if "credential_source" in binding:
+        # REQ-2228: called with a body of its own and the named source's credential (dbt Cloud).
+        from provisa.dbt.cloud import authorization
+
+        headers = await authorization(state, binding["credential_source"], binding["auth_scheme"])
+        return _rows_from_response(
+            await _http_call(method, url, binding.get("body", {}), timeout, headers)
+        )
     body = {"args": payload, "correlation_id": session.correlation_id}
     return _rows_from_response(await _http_call(method, url, body, timeout))
 
@@ -509,6 +578,27 @@ def _rows_from_response(
     )
 
 
+async def _exec_code_command(
+    fn: dict, args: dict, state, payload: dict, session: MintedSession
+) -> list[dict]:
+    """A code source's command, called in its source's worker. A binding that names a
+    ``command`` is a registration bound to that ``@command`` with the arguments it fixes
+    (REQ-2228); a command with no such binding is the source's ``@command`` or ``@query`` of the
+    function's own name, its table arguments readable for the call (REQ-2226)."""
+    from provisa.codesource.commands import call_command, run
+
+    binding = fn.get("binding") or {}
+    if "command" not in binding:
+        return await run(state, fn, payload, session)
+    return await call_command(
+        state,
+        str(_require(binding, "source_id", "code_command")),
+        str(_require(binding, "command", "code_command")),
+        dict(binding.get("fixed_arguments") or {}),
+        _bind_arg_names(fn, args),
+    )
+
+
 async def _exec_statement(fn: dict, args: dict, state, _payload, session) -> list[dict]:
     """REQ-2001: a Provisa SQL statement, run through the one pipeline as the caller's role."""
     from provisa.executor.statement_command import run
@@ -543,6 +633,7 @@ _EXECUTORS = {
     "statement": _exec_statement,  # REQ-2001
     "sql_expression": _exec_sql_expression,  # REQ-2168
     "builtin": _exec_builtin,  # REQ-2168
+    "code_command": _exec_code_command,  # REQ-2226, REQ-2228
 }
 
 

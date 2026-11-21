@@ -36,7 +36,6 @@ from __future__ import annotations
 import base64
 import datetime
 import importlib
-import itertools
 import json
 import re
 import struct
@@ -48,7 +47,15 @@ from typing import Any
 import pyarrow as pa
 import sqlglot
 from buenavista import postgres as bv
-from buenavista.core import BVType, Connection, QueryResult, Session, SimpleQueryResult
+from buenavista.core import (
+    BVType,
+    Connection,
+    QueryResult,
+    ResultData,
+    Session,
+    SimpleQueryResult,
+    wire_type_name,
+)
 from sqlglot import exp
 
 # beside this program, in the image
@@ -106,14 +113,15 @@ def _bvtype(kind: pa.DataType) -> BVType:
 
 
 class ArrowResult(QueryResult):
-    """Arrow rows as a query result, a batch at a time: each batch's columns read out whole, its
-    rows sent, then the next batch read (REQ-2100)."""
+    """Arrow rows as a query result, a batch at a time: each batch handed to the encoder as it is
+    read (REQ-2100, REQ-2194)."""
 
     def __init__(self, rows: pa.Table | pa.RecordBatchReader) -> None:
         super().__init__()
         self.reader = rows.to_reader() if isinstance(rows, pa.Table) else rows
         self.schema = self.reader.schema
         self.count = 0
+        self._data: ResultData | None = None
 
     def has_results(self) -> bool:
         return True
@@ -125,17 +133,15 @@ class ArrowResult(QueryResult):
         field = self.schema.field(index)
         return field.name, _bvtype(field.type)
 
-    def rows(self) -> Iterator[list]:
+    def data(self) -> ResultData:
+        if self._data is None:
+            self._data = ResultData(self._batches())
+        return self._data
+
+    def _batches(self) -> Iterator[pa.RecordBatch]:
         for batch in self.reader:
-            lists = []
-            for field, column in zip(self.schema, batch.columns, strict=True):
-                values = column.to_pylist()
-                if pa.types.is_list(field.type):
-                    values = [None if v is None else [str(x) for x in v] for v in values]
-                lists.append(values)
-            for row in zip(*lists, strict=True):
-                self.count += 1
-                yield list(row)
+            self.count += batch.num_rows
+            yield _as_sent(batch)
 
     def close(self) -> None:
         """The rows not read: what answers them (the function's call, DuckDB) is stopped -- by
@@ -147,19 +153,31 @@ class ArrowResult(QueryResult):
         return f"SELECT {self.count}"
 
 
+def _as_sent(batch: pa.RecordBatch) -> pa.RecordBatch:
+    """A list column as the text array it is described as (STRINGARRAY)."""
+    arrays = [
+        column.cast(pa.list_(pa.utf8()))
+        if pa.types.is_list(column.type) and not pa.types.is_string(column.type.value_type)
+        else column
+        for column in batch.columns
+    ]
+    return pa.RecordBatch.from_arrays(arrays, names=batch.schema.names)
+
+
 class RowsResult(ArrowResult):
     """Rows already read (a cursor's fetch), in an Arrow result's columns."""
 
-    def __init__(self, schema: pa.Schema, rows: list[list]) -> None:
+    def __init__(self, schema: pa.Schema, batches: list[pa.RecordBatch]) -> None:
         QueryResult.__init__(self)
         self.schema = schema
         self.count = 0
-        self._rows = rows
+        self._held = batches
+        self._data = None
 
-    def rows(self) -> Iterator[list]:
-        for row in self._rows:
-            self.count += 1
-            yield row
+    def _batches(self) -> Iterator[pa.RecordBatch]:
+        for batch in self._held:
+            self.count += batch.num_rows
+            yield batch
 
     def close(self) -> None:
         return None
@@ -297,22 +315,30 @@ class FrontHandler(bv.BuenaVistaHandler):
         self.send_ready_for_query(ctx)
 
     def _copy_out(self, result: QueryResult) -> None:
-        """``result`` as a binary COPY to the client: its columns in PostgreSQL's binary forms."""
+        """``result`` as a binary COPY to the client: its columns in PostgreSQL's binary forms. A
+        binary COPY tuple is a binary DataRow's body (its field count and fields), so the encoder
+        writes it (REQ-2194) and the DataRow header is left off each."""
+        from provisa._encoders import pgwire as encoder
+
         count = result.column_count()
-        encoders = [bv.BVTYPE_TO_PGTYPE[result.column(i)[1]][2] for i in range(count)]
+        types = [wire_type_name(result.column(i)[1]) for i in range(count)]
         response = struct.pack("!bh", 1, count) + struct.pack(f"!{count}h", *([1] * count))
         self.wfile.write(struct.pack("!ci", b"H", 4 + len(response)) + response)
         rows = 0
         chunk = bytearray(_PGCOPY)
-        for row in result.rows():
-            chunk += struct.pack("!h", count)
-            for value, encode in zip(row, encoders, strict=True):
-                if value is None:
-                    chunk += struct.pack("!i", -1)
-                else:
-                    data = encode(value)
-                    chunk += struct.pack("!i", len(data)) + data
-            rows += 1
+        data = result.data()
+        for batch in data.take():
+            messages = (
+                encoder.encode_rows(batch, types, [1] * count, result.coercers(), result.kinds())
+                if data.rows
+                else encoder.encode_batch(batch, types, [1] * count, result.coercers())
+            )
+            at = 0
+            while at < len(messages):
+                (size,) = struct.unpack_from("!i", messages, at + 1)
+                chunk += messages[at + 5 : at + 1 + size]
+                at += 1 + size
+                rows += 1
             if len(chunk) > 1 << 16:
                 self.wfile.write(struct.pack("!ci", b"d", 4 + len(chunk)) + bytes(chunk))
                 chunk.clear()
@@ -389,7 +415,7 @@ class FrontSession(Session):
         self.catalog: Catalog
         self._transaction = False
         #: Each declared cursor's result, and its rows not yet fetched.
-        self._cursors: dict[str, tuple[QueryResult, Iterator[list]]] = {}
+        self._cursors: dict[str, tuple[QueryResult, ResultData]] = {}
 
     def use(self, catalog: Catalog) -> None:
         """The catalog of the schemas the session's connection names."""
@@ -449,7 +475,7 @@ class FrontSession(Session):
         declared = _DECLARE.match(sql)
         if declared is not None:
             result = self.execute_sql(declared.group("sql"), params)
-            rows = result.rows() if isinstance(result, ArrowResult) else iter(())
+            rows = result.data() if isinstance(result, ArrowResult) else ResultData(iter(()))
             self._cursors[declared.group("name").lower()] = (result, rows)
             return StatusResult("DECLARE CURSOR")
         fetched = _FETCH.match(sql)
@@ -461,8 +487,10 @@ class FrontSession(Session):
             schema = result.schema if isinstance(result, ArrowResult) else pa.schema([])
             count = fetched.group("count")
             # FETCH alone is FETCH NEXT, one row; FETCH ALL, every row left: read as fetched.
-            taken = 1 if count is None else None if count.upper() == "ALL" else int(count)
-            return RowsResult(schema, list(itertools.islice(rows, taken)))
+            taken = 1 if count is None else 0 if count.upper() == "ALL" else int(count)
+            if taken == 0 and count is not None and count.upper() != "ALL":
+                return RowsResult(schema, [])  # FETCH 0: no row
+            return RowsResult(schema, list(rows.take(taken)))
         closed = _CLOSE.match(sql)
         if closed is not None:
             name = closed.group("name").lower()

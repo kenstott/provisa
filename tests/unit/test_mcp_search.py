@@ -19,6 +19,7 @@ from provisa.api.flight.catalog import CatalogColumn, CatalogTable
 from provisa.api.mcp import search as search_mod
 from provisa.api.mcp import tools
 from tests.role_state import RoleState
+from tests.unit.mcp_described import metas_for, serve_whole
 
 _VOCAB = [
     "customer",
@@ -130,7 +131,7 @@ def _state():
         )
     ]
     config = SimpleNamespace(roles=roles, vector_models=vms, domains=[])
-    ctx = SimpleNamespace(tables={}, joins={})
+    ctx = SimpleNamespace(tables=metas_for(_catalog()), joins={})
     return RoleState(
         config=config,
         contexts={"analyst": ctx, "hr_only": ctx, "admin": ctx},
@@ -146,6 +147,7 @@ class TestSearchCatalogTool:
             return _catalog()
 
         monkeypatch.setattr(tools, "_catalog", fake_catalog)
+        serve_whole(monkeypatch)
         await tools.build_catalog_index(state, BowProvider())
 
     async def test_resolves_up_to_table_branch_with_columns(self, monkeypatch):

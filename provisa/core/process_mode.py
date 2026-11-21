@@ -65,6 +65,34 @@ def refuse_data_request(transport: str) -> None:
         raise CoordinatorServesNoData(transport)
 
 
+class QueryServesNoUi(RuntimeError):
+    """The UI or the UI's backend reached a query node (REQ-1916, amended 2026-11-02), which
+    serves data requests only. The mirror of :class:`CoordinatorServesNoData`."""
+
+    code = "node.query_serves_no_ui"
+
+    def __init__(self, ui_address: str | None) -> None:
+        self.ui_address = ui_address
+        where = (
+            f"open the UI at {ui_address}"
+            if ui_address is not None
+            else "open the UI at the coordinator's address (mail.base_url), which this node has "
+            "not loaded yet"
+        )
+        super().__init__(
+            "this node runs in query mode and serves no UI or UI backend; only a coordinator or "
+            f"every-mode node does: {where}"
+        )
+
+
+def refuse_ui_request(ui_address: str | None) -> None:
+    """Refuse a request for the UI or the UI's backend when this process is a query node.
+    ``ui_address`` is the stable address the UI is served at (``mail.base_url``), named in the
+    refusal. Called by the HTTP gate (``provisa.api.query_gate``) before anything is read."""
+    if _mode == QUERY:
+        raise QueryServesNoUi(ui_address)
+
+
 def runs_background_work() -> bool:
     """Whether this process does the coordinator's background work: replica builds, and the
     scheduled work a coordinator runs. True for ``every`` and ``coordinator``."""

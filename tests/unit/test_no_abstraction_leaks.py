@@ -39,6 +39,9 @@ OWNERS: dict[str, set[str]] = {
         "provisa/federation/duckdb_runtime.py",
         "provisa/federation/backend.py",
         "provisa/executor/drivers/duckdb_driver.py",
+        # REQ-2194: the DuckDB driver's Arrow reader (duckdb_driver and duckdb_runtime import it);
+        # it raises a reader error met mid-stream as the duckdb exception the statement run raises.
+        "provisa/executor/drivers/duckdb_arrow.py",
         # REQ-1730: a scratch in-memory DuckDB connection is the only available reader for a
         # source type DuckDB reaches only by community extension (firebird/airport) and no other
         # engine reaches at all — there is no separate Python client library for either wire
@@ -59,6 +62,10 @@ OWNERS: dict[str, set[str]] = {
         # Arrow batches (residual.py) and answers pgwire's catalog over them (pgfront.py).
         "provisa/codehost/residual.py",
         "provisa/codehost/pgfront.py",
+        # REQ-2100, REQ-2194: the DuckDB form every DuckDB answering a statement runs, carried into
+        # every image beside residual.py: it reads DuckDB's exception classes to raise an error its
+        # Arrow reader met mid-stream as DuckDB raises it (engine_error; duckdb_arrow and residual).
+        "provisa/codehost/duckdb_sql.py",
         # REQ-2068: a scratch in-memory DuckDB ATTACHes a regions demo's seed file and a region's
         # PostgreSQL store and copies tables between them -- no engine, no org, no query path.
         "provisa/api/demo_region_seed.py",

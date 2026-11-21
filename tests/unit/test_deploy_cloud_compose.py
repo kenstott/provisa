@@ -69,7 +69,7 @@ def _rendered(tmp_path: Path) -> Path:
 
 def test_every_variable_the_regions_config_names_is_set_by_the_compose_a_deploy_installs(tmp_path):
     named = set(re.findall(r"\$\{env:([A-Z0-9_]+)\}", _REGIONS_CONFIG.read_text()))
-    assert "PROVISA_DEMO_LEDGER_ADDRESS" in named
+    assert "PROVISA_DEMO_LEDGER_PG_URL" in named
     compose = yaml.safe_load(_rendered(tmp_path).read_text())
     environment = compose["services"]["provisa-sandbox-regions"]["environment"]
     assert not sorted(named - set(environment)), "named by the config, set by no compose"

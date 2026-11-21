@@ -21,10 +21,13 @@ statement as ``_nf_<name> = <value>``, the form an SQL client gives a parameter 
 
 from __future__ import annotations
 
+from provisa.executor.result import QueryResult
+
 from types import SimpleNamespace
 
 import pytest
 
+from provisa.api.app_schema_build import _inject_gql_required_args
 from provisa.compiler.introspect import ColumnMetadata
 from provisa.compiler.schema_gen import SchemaInput
 from provisa.grpc.field_numbering import FieldNumberAllocator
@@ -168,8 +171,8 @@ async def test_the_servicer_hands_the_pipeline_the_parameters():
         HasField=lambda name: name == "params",
         DESCRIPTOR=SimpleNamespace(fields_by_name={"params": object()}),
     )
-    result = SimpleNamespace(column_names=["order_id"], rows=[])
-    govern = await harness._run(servicer, request, harness._context(), result)
+    result = QueryResult(rows=[], column_names=["order_id"])
+    govern, _sent = await harness._run(servicer, request, harness._context(), result)
 
     govern.assert_awaited_once()
     assert "\"_nf_region\" = 'EU'" in govern.await_args.args[0]
@@ -244,3 +247,86 @@ def test_a_proxy_array_parameter_is_a_list_of_its_items():
         compiled_read(_vector_model(), "Orders", 0, None, None, {"query_vector": 0.1})
     with pytest.raises(ParameterError, match="each item is a number"):
         compiled_read(_vector_model(), "Orders", 0, None, None, {"query_vector": [0.1, "x"]})
+
+
+def _remote_argument_si() -> SchemaInput:
+    """A remote GraphQL table as the default demo declares it: its parameter is the column
+    ``_nf_breed_name``, and the remote field's own argument is spelled ``breedName``."""
+    table = {
+        "id": 1,
+        "source_id": "graphql-demo",
+        "domain_id": "shelter",
+        "schema_name": "graphql",
+        "table_name": "assignments_by_breed",
+        "columns": [
+            {"column_name": "id", "visible_to": ["admin"]},
+            {
+                "column_name": "_nf_breed_name",
+                "visible_to": [],
+                "native_filter_type": "graphql_arg",
+                "native_filter_required": True,
+            },
+        ],
+        "write_ops": [],
+        "write_returns_rows": False,
+        "write_refused_forms": [],
+    }
+    remote = {
+        "graphql-demo": {
+            "source_id": "graphql-demo",
+            "tables": [
+                {
+                    "name": "assignmentsByBreed",
+                    "required_args": [
+                        {"name": "breedName", "gql_type": "String!", "provisa_type": "text"}
+                    ],
+                }
+            ],
+        }
+    }
+    _inject_gql_required_args([table], remote)
+    return SchemaInput(
+        tables=[table],
+        relationships=[],
+        column_types={
+            1: [
+                ColumnMetadata(column_name="id", data_type="integer", is_nullable=False),
+                ColumnMetadata(column_name="_nf_breed_name", data_type="varchar", is_nullable=True),
+            ],
+        },
+        naming_rules=[],
+        role={"id": "admin", "domain_access": ["*"], "capabilities": []},
+        domains=[{"id": "shelter", "description": "Shelter"}],
+    )
+
+
+@pytest.mark.parametrize(
+    ("held", "injected"),
+    [
+        ({"column_name": "_nf_breed_name", "native_filter_type": "graphql_arg"}, False),
+        ({"column_name": "breed_name"}, True),
+    ],
+    ids=["declared-parameter", "data-column-of-that-name"],
+)
+def test_a_remote_argument_is_injected_only_when_no_parameter_holds_it(held, injected):
+    """REQ-1986: the parameter the table already holds is the argument; a data column is not."""
+    table = {"source_id": "s", "table_name": "t", "columns": [held]}
+    remote = {
+        "s": {
+            "source_id": "s",
+            "tables": [{"name": "t", "required_args": [{"name": "breedName"}]}],
+        }
+    }
+    _inject_gql_required_args([table], remote)
+    names = [c["column_name"] for c in table["columns"]]
+    assert ("breedName" in names) is injected
+
+
+def test_a_remote_argument_declared_as_a_parameter_is_one_field_and_the_proto_compiles():
+    """REQ-1986: one parameter is one field; two spellings of it are a JSON name conflict that
+    protoc refuses, which took every RPC of the role's service down."""
+    proto = generate_proto(_remote_argument_si())
+    params = _message_block(proto, "AssignmentsByBreedParams")
+    assert "breed_name" in params
+    assert "breedName" not in params
+    assert compile_descriptor_set(proto)

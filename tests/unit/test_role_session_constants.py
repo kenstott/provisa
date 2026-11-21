@@ -30,7 +30,8 @@ from provisa.core.request_context import (
     set_session_vars,
 )
 from provisa.pgwire._pipeline import _resolve_session_settings
-from provisa.security.inheritance import flatten_role_dicts
+from provisa.security.inheritance import flatten_role_dicts, with_own_domains
+from tests.rules import rule_of
 
 
 def _role(**kw: Any) -> Role:
@@ -181,7 +182,8 @@ def test_a_meta_role_inlines_each_members_inherited_constants(monkeypatch):
             "session_vars": {},
         },
     ]
-    roles = {r["id"]: r for r in flatten_role_dicts(stored)}
+    # REQ-2153: the build keeps each role's own domain access beside its reach.
+    roles = {r["id"]: r for r in flatten_role_dicts(with_own_domains(stored))}
     tables = [{"id": 1, "source_id": "pg", "domain_id": "sales", "columns": []}]
     state = RoleState(
         roles=dict(roles),
@@ -202,13 +204,14 @@ def test_a_meta_role_inlines_each_members_inherited_constants(monkeypatch):
         role_build_inputs={
             "role_chains": {"base": ["base"], "east": ["east", "base"], "west": ["west"]},
             "tables": tables,
+            "withdrawn_tables": [],
             "metrics": [],
             "functions": [],
             "webhooks": [],
         },
     )
     meta = ensure_meta_role(state, ["east", "west"])
-    assert state.rls_contexts[meta].rules[1] == (
+    assert state.rls_contexts[meta].rules[1] == rule_of(
         "(tier = 'gold') OR (tier = current_setting('provisa.tier'))"
     )
 

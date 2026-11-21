@@ -19,14 +19,18 @@ from __future__ import annotations
 
 from provisa.compiler.sql_literals import sql_literal
 
+import functools
 import re as _re
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, cast
 
 import sqlglot
 import sqlglot.expressions as exp
 
+from provisa.compiler.governed_relation import ReadThrough, read_through
 from provisa.compiler.native_nested import mark_native_nested_reads
+from provisa.compiler.json_instants import state_json_instants
 from provisa.compiler.native_subtype import mark_subtype_operations, mark_subtype_reads
 from provisa.compiler.ontology_classes import is_class_table_id
 from provisa.compiler.sql_types import CompilationContext, TableMeta
@@ -41,20 +45,28 @@ def split_sql_statements(sql: str) -> list[str]:
     malformed fragments). Original statement text is preserved (sliced between top-level semicolon
     tokens, not re-rendered), so COPY/CTAS regex matching and governance see EXACTLY what executes —
     closing the parser-differential where the batch was tokenized one way for governance and another
-    at execution. Blank fragments (a trailing ``;``) are dropped."""
+    at execution. A segment holding no token but comments (a trailing ``;``, ``-- ping``) is dropped."""
     tokens = sqlglot.tokenize(sql, read="postgres")
     stmts: list[str] = []
     start = 0
+    held = False  # the segment since the last ';' holds a token: comments are not tokens
     for tok in tokens:
         if tok.token_type == sqlglot.TokenType.SEMICOLON:
-            seg = sql[start : tok.start].strip()
-            if seg:
-                stmts.append(seg)
+            if held:
+                stmts.append(sql[start : tok.start].strip())
+            held = False
             start = tok.end + 1
-    tail = sql[start:].strip()
-    if tail:
-        stmts.append(tail)
+        else:
+            held = True
+    if held:
+        stmts.append(sql[start:].strip())
     return stmts
+
+
+def holds_no_statement(sql: str) -> bool:
+    """True when ``sql`` holds nothing but whitespace, comments and ``;``: PostgreSQL answers it
+    with EmptyQueryResponse on both protocols (REQ-2167)."""
+    return not split_sql_statements(sql)
 
 
 # --- Type coercion for cross-source JOINs ---
@@ -81,9 +93,12 @@ _TEMPORAL_TYPES = {
 }
 
 
+@functools.lru_cache(maxsize=4096)
 def _q(name: str) -> str:
-    """Double-quote a SQL identifier."""
-    return f'"{name}"'
+    """``name`` as one double-quoted SQL identifier: a quote inside it is doubled, so a name a
+    request gives (a where or order_by key, a distinct_on column) never ends the identifier.
+    Memoized: a statement quotes the same few names many times."""
+    return exp.to_identifier(name, quoted=True).sql(dialect="postgres")
 
 
 def _base_type(column_type: str) -> str:
@@ -193,6 +208,63 @@ def _apply_replacements(sql: str, replacements: dict[str, str]) -> str:
     return pattern.sub(lambda m: replacements[m.group(0)], sql)
 
 
+@dataclass(frozen=True)
+class _Replacements:
+    """A replacement map with its pattern compiled once: :func:`_apply_replacements` for a map
+    every statement of a context applies."""
+
+    replacements: dict[str, str]
+    pattern: _re.Pattern[str] | None
+
+    @classmethod
+    def of(cls, replacements: dict[str, str]) -> "_Replacements":
+        if not replacements:
+            return cls(replacements, None)
+        keys_sorted = sorted(replacements, key=len, reverse=True)
+        return cls(replacements, _re.compile("|".join(_re.escape(k) for k in keys_sorted)))
+
+    def apply(self, sql: str) -> str:
+        if self.pattern is None:
+            return sql
+        replacements = self.replacements
+        return self.pattern.sub(lambda m: replacements[m.group(0)], sql)
+
+
+def _context_stamp(ctx: CompilationContext) -> tuple[Any, ...]:
+    """What a lookup derived from ``ctx`` was derived from. A context is built once
+    (compiler/context.py) and only read afterwards, so this is a guard, not the design's
+    invalidation: its tables and joins compared by identity (a table re-registered under a name is
+    a new TableMeta), the column and virtual-column maps by object and size."""
+    return (
+        tuple(ctx.tables.values()),
+        tuple(ctx.joins.values()),
+        id(ctx.physical_to_sql),
+        len(ctx.physical_to_sql),
+        id(ctx.virtual_columns),
+        len(ctx.virtual_columns),
+        id(ctx.row_virtual_columns),
+        len(ctx.row_virtual_columns),
+    )
+
+
+def _derived(ctx: CompilationContext, kind: str, build: Any) -> Any:
+    """``build(ctx)``, kept on the context (``CompilationContext.lowering_memo``) for every later
+    statement of it: keyed by the SQL naming convention in force (an org's own convention names
+    its tables otherwise, REQ-1327) and rebuilt when the context's stamp differs from the one it
+    was built under. Two connections deriving one at once both build it; either answer is the
+    same."""
+    from provisa.compiler.naming import active_sql_convention
+
+    key = (kind, active_sql_convention())
+    stamp = _context_stamp(ctx)
+    held = ctx.lowering_memo.get(key)
+    if held is not None and held[0] == stamp:
+        return held[1]
+    value = build(ctx)
+    ctx.lowering_memo[key] = (stamp, value)
+    return value
+
+
 def make_semantic_sql(sql: str, ctx: CompilationContext) -> str:  # REQ-641
     """Replace physical table refs with semantic (domain.field_name) refs."""
     replacements: dict[str, str] = {}
@@ -207,17 +279,61 @@ def make_semantic_sql(sql: str, ctx: CompilationContext) -> str:  # REQ-641
     return _apply_replacements(sql, replacements)
 
 
-def normalize_table_refs(sql: str, ctx: CompilationContext) -> str:  # REQ-641
-    """Qualify and quote all table references using CompilationContext.
+def _from_entries(node: exp.Expr) -> list[exp.Expr]:  # pyright: ignore[reportPrivateImportUsage]
+    """The relations ``node`` (a SELECT, UPDATE or DELETE) names in its own FROM, JOINs, target
+    and USING -- never a nested query's."""
+    entries = [node.this] if isinstance(node, (exp.Update, exp.Delete)) else []
+    from_ = node.args.get("from_")
+    if from_ is not None:
+        entries.append(from_.this)
+    entries.extend(j.this for j in node.args.get("joins") or [])
+    entries.extend(node.args.get("using") or [])
+    return [e for e in entries if isinstance(e, (exp.Table, exp.Subquery))]
 
-    For each exp.Table node in the parsed SQL:
-    - Already schema-qualified (schema.table or "schema"."table") → re-emit quoted.
-    - Unqualified (table only) + unique match in ctx → add schema + quote.
-    - Unqualified + ambiguous (multiple schemas) → leave unchanged.
-    - Unqualified + no match → leave unchanged (governance will reject).
-    """
-    import sqlglot.expressions as exp
 
+def bind_schema_qualified_columns(tree: exp.Expr) -> None:  # REQ-2204
+    """Each column reference qualified by its table's schema -- ``"s"."t"."c"``, as Metabase
+    writes every data query -- rebound to the name the table has in FROM: ``"t"."c"``. While the
+    table is unaliased the two are one reference to PostgreSQL; once a later step aliases it
+    (normalize_table_refs pins its own name) or puts a governed projection in its place (stage2),
+    the schema-qualified form names nothing and PostgreSQL refuses it (42P01 "invalid reference
+    to FROM-clause entry"). Bound before those steps, the reference reads the name they keep.
+
+    The nearest scope with a relation of the reference's table name decides: an unaliased table
+    of that schema (and catalog, when the reference names one) binds it; anything else -- an
+    alias, another schema's table, a derived relation -- leaves it as written."""
+    for col in list(tree.find_all(exp.Column)):
+        db = col.args.get("db")
+        if db is None:
+            continue
+        scope = col.find_ancestor(exp.Select, exp.Update, exp.Delete)
+        while scope is not None:
+            named = [e for e in _from_entries(scope) if e.alias_or_name == col.table]
+            if named:
+                entry = named[0]
+                catalog = col.args.get("catalog")
+                if (
+                    isinstance(entry, exp.Table)
+                    and not entry.alias
+                    and entry.db == db.name
+                    and (catalog is None or entry.catalog == catalog.name)
+                ):
+                    col.set("db", None)
+                    col.set("catalog", None)
+                break
+            scope = scope.find_ancestor(exp.Select, exp.Update, exp.Delete)
+
+
+TableLookups = tuple[
+    dict[str, list[tuple[str, str]]],
+    dict[tuple[str, str], tuple[str, str, str]],
+    dict[str, tuple[str, str]],
+    dict[tuple[str, str, str], tuple[str, str, str]],
+]
+
+
+def _table_lookups(ctx: CompilationContext) -> TableLookups:
+    """The names :func:`normalize_table_refs` resolves a table reference by."""
     # Build lookup structures from ctx
     # table_name (lower) → list of (schema_name, table_name) physical pairs
     by_name: dict[str, list[tuple[str, str]]] = {}
@@ -225,10 +341,17 @@ def normalize_table_refs(sql: str, ctx: CompilationContext) -> str:  # REQ-641
     by_schema_name: dict[tuple[str, str], tuple[str, str, str]] = {}
     # field name (lower) → its table's physical pair, for an unqualified ref no table is named by
     by_field: dict[str, tuple[str, str]] = {}
+    # (catalog_lower, schema_lower, name_lower) → canonical triple: two sources may hold tables of
+    # one schema.table, and a reference that names its catalog is the table under that catalog
+    # (naming.table_id_of), never the other's
+    by_catalog_name: dict[tuple[str, str, str], tuple[str, str, str]] = {}
 
     seen: set[tuple[str, str]] = set()
     for meta in ctx.tables.values():
         key = (meta.schema_name, meta.table_name)
+        by_catalog_name[
+            (meta.catalog_name.lower(), meta.schema_name.lower(), meta.table_name.lower())
+        ] = (meta.catalog_name, meta.schema_name, meta.table_name)
         if key in seen:
             continue
         seen.add(key)
@@ -253,6 +376,13 @@ def normalize_table_refs(sql: str, ctx: CompilationContext) -> str:  # REQ-641
             from provisa.compiler.naming import domain_to_sql_name
 
             domain_sl = domain_to_sql_name(meta.domain_id).lower()
+            # The name the model serves it under, which an alias makes another than its physical
+            # one: left unresolved, its published columns are not lowered (_lower_column_aliases).
+            by_schema_name[(domain_sl, semantic_table_name(meta).lower())] = (
+                meta.catalog_name,
+                meta.schema_name,
+                meta.table_name,
+            )
             if domain_sl != sl:
                 by_schema_name[(domain_sl, nl)] = (
                     meta.catalog_name,
@@ -266,14 +396,36 @@ def normalize_table_refs(sql: str, ctx: CompilationContext) -> str:  # REQ-641
                         meta.table_name,
                     )
 
+    return by_name, by_schema_name, by_field, by_catalog_name
+
+
+def normalize_table_refs(sql: str, ctx: CompilationContext) -> str:  # REQ-641
+    """Qualify and quote all table references using CompilationContext.
+
+    For each exp.Table node in the parsed SQL:
+    - Already schema-qualified (schema.table or "schema"."table") → re-emit quoted.
+    - Unqualified (table only) + unique match in ctx → add schema + quote.
+    - Unqualified + ambiguous (multiple schemas) → leave unchanged.
+    - Unqualified + no match → leave unchanged (governance will reject).
+    """
+    import sqlglot.expressions as exp
+
+    by_name, by_schema_name, by_field, by_catalog_name = _derived(
+        ctx, "table_lookups", _table_lookups
+    )
+
     from provisa.compiler import temp_tables
 
     # Parse failure must fail loud: returning un-rewritten SQL skips physical/catalog qualification.
     tree = sqlglot.parse_one(sql, read="postgres")
+    # The alias pinned below hides the table's schema-qualified name from its column references.
+    bind_schema_qualified_columns(tree)
     quoted_aliases: set[str] = set()
 
     def _rewrite(node: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
-        if not isinstance(node, exp.Table):
+        if not isinstance(node, exp.Table) or not isinstance(node.this, exp.Identifier):
+            # REQ-2167: a function in FROM (pg_catalog.json_to_recordset(...) AS t(v int)) is
+            # no table reference: it has no name to qualify, and its definition list is its own.
             return node
         name = node.name
         db = node.db  # schema
@@ -282,7 +434,11 @@ def normalize_table_refs(sql: str, ctx: CompilationContext) -> str:  # REQ-641
 
         if db:
             # Already schema-qualified — just ensure quoting
-            canonical = by_schema_name.get((db.lower(), name.lower()))
+            canonical = (
+                by_catalog_name.get((catalog.lower(), db.lower(), name.lower()))
+                if catalog
+                else None
+            ) or by_schema_name.get((db.lower(), name.lower()))
             if canonical:
                 catalog_q, schema_q, table_q = canonical
             else:
@@ -341,7 +497,7 @@ def normalize_table_refs(sql: str, ctx: CompilationContext) -> str:  # REQ-641
         )
         return new_tbl
 
-    tree = tree.transform(_rewrite)
+    tree = tree.transform(_rewrite, copy=False)  # the parse above, no one else's
     _lower_column_aliases(tree, ctx)
     _lower_virtual_columns(tree, ctx)
 
@@ -350,10 +506,16 @@ def normalize_table_refs(sql: str, ctx: CompilationContext) -> str:  # REQ-641
         if isinstance(tbl_id, exp.Identifier) and tbl_id.this in quoted_aliases:
             tbl_id.set("quoted", True)
 
-    return tree.sql(dialect="postgres")
+    return tree.sql(dialect="postgres", copy=False)
 
 
 def published_columns(ctx: CompilationContext) -> dict[int, dict[str, str]]:
+    """:func:`_published_columns`, derived once per context: read, never changed, by its
+    callers."""
+    return _derived(ctx, "published_columns", _published_columns)
+
+
+def _published_columns(ctx: CompilationContext) -> dict[int, dict[str, str]]:
     """Per table id, each published column name that is not the column's physical name,
     lowercased, to that physical name -- an ``alias``, or a SQL naming convention's rename
     (``CompilationContext.physical_to_sql``). A published name that is another physical column of
@@ -383,15 +545,29 @@ def published_columns(ctx: CompilationContext) -> dict[int, dict[str, str]]:
 
 
 def _column_renames(ctx: CompilationContext) -> dict[tuple[str, str], dict[str, str]]:
+    """:func:`_derived_column_renames`, derived once per context."""
+    return _derived(ctx, "column_renames", _derived_column_renames)
+
+
+def _derived_column_renames(ctx: CompilationContext) -> dict[tuple[str, str], dict[str, str]]:
     """Per physical ``(schema, table)`` (lowercased), each published column name to its physical
     name (``published_columns``). Lowering never renames a physical name, so it is idempotent and
-    safe on SQL that is already physical."""
-    by_id: dict[int, tuple[str, str]] = {
-        m.table_id: (m.schema_name.lower(), m.table_name.lower()) for m in _all_table_metas(ctx)
-    }
+    safe on SQL that is already physical. An API-backed table has no physical spelling to lower
+    to: it is read from what it was materialized as (a hot VALUES CTE, an engine-cache table),
+    whose columns are the SQL names (REQ-301)."""
+    from provisa.compiler.complexity import api_source_types
+
+    api_backed = api_source_types()
+    by_id: dict[int, tuple[str, str]] = {}
+    materialized: set[int] = set()
+    for m in _all_table_metas(ctx):
+        by_id[m.table_id] = (m.schema_name.lower(), m.table_name.lower())
+        if m.source_type in api_backed:
+            materialized.add(m.table_id)
     out: dict[tuple[str, str], dict[str, str]] = {}
     for table_id, names in published_columns(ctx).items():
-        out.setdefault(by_id[table_id], {}).update(names)
+        if table_id not in materialized:
+            out.setdefault(by_id[table_id], {}).update(names)
     return out
 
 
@@ -417,9 +593,21 @@ def _lower_column_aliases(tree: exp.Expression, ctx: CompilationContext) -> None
         inserted = tree.expression
         if isinstance(inserted, exp.Query):
             _lower_column_aliases(cast(exp.Expression, inserted), ctx)
+        # REQ-039: a governed write reads what the role wrote in a leading CTE, lowered as any
+        # query is.
+        with_ = tree.args.get("with_")
+        for cte in with_.expressions if with_ is not None else []:
+            if isinstance(cte.this, exp.Query):
+                _lower_column_aliases(cast(exp.Expression, cte.this), ctx)
         return
     if not isinstance(tree, exp.Query):
         return
+    # REQ-039: WITH w AS (<write> RETURNING ...) SELECT ... FROM w -- the write is lowered as a
+    # write is; scopes below never enter a data-modifying CTE.
+    with_ = tree.args.get("with_")
+    for cte in with_.expressions if with_ is not None else []:
+        if isinstance(cte.this, (exp.Insert, exp.Update, exp.Delete)):
+            _lower_column_aliases(cast(exp.Expression, cte.this), ctx)
     for scope in traverse_scope(tree):
         tables: dict[str, dict[str, str]] = {}
         derived: list[set[str]] = []
@@ -511,6 +699,21 @@ def rename_write_columns(
             col.replace(exp.alias_(col.copy(), published, quoted=True))
 
 
+def _virtual_tables(ctx: CompilationContext) -> dict[tuple[str, str], int]:
+    """Each name a table with virtual columns is read by, lowercased, to its table id. A source is
+    named here physically, or still semantically when its rename is textual
+    (rewrite_semantic_to_physical's replacements run after :func:`_lower_virtual_columns`)."""
+    from provisa.compiler.naming import domain_to_sql_name
+
+    by_physical: dict[tuple[str, str], int] = {}
+    for m in _all_table_metas(ctx):
+        if m.table_id in ctx.virtual_columns or m.table_id in ctx.row_virtual_columns:
+            by_physical[(m.schema_name.lower(), m.table_name.lower())] = m.table_id
+            semantic = (domain_to_sql_name(m.domain_id).lower(), semantic_table_name(m).lower())
+            by_physical[semantic] = m.table_id
+    return by_physical
+
+
 def _lower_virtual_columns(tree: exp.Expression, ctx: CompilationContext) -> None:
     """Answer, IN PLACE, every reference to a registered table's virtual column with what GraphQL
     answers it with: ``_name_``/``_domain_`` with the table's literal (``ctx.virtual_columns``),
@@ -521,16 +724,7 @@ def _lower_virtual_columns(tree: exp.Expression, ctx: CompilationContext) -> Non
     PostgreSQL does."""
     from sqlglot.optimizer.scope import traverse_scope
 
-    from provisa.compiler.naming import domain_to_sql_name
-
-    # A source is named here physically, or still semantically when its rename is textual
-    # (rewrite_semantic_to_physical's replacements run after this).
-    by_physical: dict[tuple[str, str], int] = {}
-    for m in _all_table_metas(ctx):
-        if m.table_id in ctx.virtual_columns or m.table_id in ctx.row_virtual_columns:
-            by_physical[(m.schema_name.lower(), m.table_name.lower())] = m.table_id
-            semantic = (domain_to_sql_name(m.domain_id).lower(), semantic_table_name(m).lower())
-            by_physical[semantic] = m.table_id
+    by_physical: dict[tuple[str, str], int] = _derived(ctx, "virtual_tables", _virtual_tables)
     if not by_physical or not isinstance(tree, exp.Query):
         return
     for scope in traverse_scope(tree):
@@ -584,8 +778,8 @@ def _row_value(qualifier: str, key_column: str, values: dict[int, str]) -> exp.E
     return case
 
 
-def rewrite_semantic_to_physical(sql: str, ctx: CompilationContext) -> str:  # REQ-641
-    """Replace semantic (domain.field_name) refs with physical (schema.table) refs."""
+def _semantic_to_physical(ctx: CompilationContext) -> _Replacements:
+    """The replacements :func:`rewrite_semantic_to_physical` applies."""
     from provisa.compiler.naming import bare_field_name, domain_to_sql_name
 
     replacements: dict[str, str] = {}
@@ -606,18 +800,26 @@ def rewrite_semantic_to_physical(sql: str, ctx: CompilationContext) -> str:  # R
         ref = f"{_q(domain_sql)}.{_q(table_part)}"
         if ref not in replacements:
             replacements[ref] = physical
+    return _Replacements.of(replacements)
+
+
+def rewrite_semantic_to_physical(sql: str, ctx: CompilationContext) -> str:  # REQ-641
+    """Replace semantic (domain.field_name) refs with physical (schema.table) refs."""
     # normalize_table_refs FIRST — the same order the ENGINE lowering uses. It pins an unaliased
     # ref's own name as an explicit alias, which is what the query's column qualifiers bind to
     # ("query_audit_log"."id" against `FROM "ops"."query_audit_log"`). Substituting first renamed
     # the ref to its physical name before that alias existed, so normalize then aliased it to the
     # PHYSICAL name and the qualifiers were stranded — "missing FROM-clause entry for table
     # query_audit_log" on every ops/meta table whose physical name differs from its semantic one.
-    sql = _apply_replacements(normalize_table_refs(sql, ctx), replacements)
+    sql = _derived(ctx, "semantic_to_physical", _semantic_to_physical).apply(
+        normalize_table_refs(sql, ctx)
+    )
     # DIRECT route: a native driver addresses schema.table, not catalog.schema.table — strip the
     # catalog normalize_table_refs re-attaches for already-qualified refs (REQ-641/REQ-863).
     sql = translate_epoch_temporal_columns(strip_catalog(sql), ctx.epoch_columns)  # REQ-1908
     sql = mark_subtype_operations(sql, ctx.subtype_columns)  # REQ-2171
     sql = mark_subtype_reads(sql, ctx.read_columns)  # REQ-2171
+    sql = state_json_instants(sql, ctx.instant_columns)  # REQ-2171
     return mark_native_nested_reads(sql, ctx.nested_columns)  # REQ-1965
 
 
@@ -647,6 +849,18 @@ def rewrite_semantic_to_catalog_physical(sql: str, ctx: CompilationContext) -> s
     join targets that are not in ctx.tables). Distinct from ``rewrite_semantic_to_physical``,
     which only rewrites semantic → uncatalogued schema.table.
     """
+    sql = translate_epoch_temporal_columns(  # REQ-1908
+        _derived(ctx, "semantic_to_catalog_physical", _semantic_to_catalog_physical).apply(sql),
+        ctx.epoch_columns,
+    )
+    sql = mark_subtype_operations(sql, ctx.subtype_columns)  # REQ-2171
+    sql = mark_subtype_reads(sql, ctx.read_columns)  # REQ-2171
+    sql = state_json_instants(sql, ctx.instant_columns)  # REQ-2171
+    return mark_native_nested_reads(sql, ctx.nested_columns)  # REQ-1965
+
+
+def _semantic_to_catalog_physical(ctx: CompilationContext) -> _Replacements:
+    """The replacements :func:`rewrite_semantic_to_catalog_physical` applies."""
     from provisa.compiler.naming import source_to_catalog
 
     replacements: dict[str, str] = {}
@@ -674,12 +888,7 @@ def rewrite_semantic_to_catalog_physical(sql: str, ctx: CompilationContext) -> s
         # pet_store_sqlite.org_kstott__pet_store_sqlite.pet_store.pets ("Too many dots").
         base_catalog_ref = f"{_q(source_to_catalog(meta.source_id))}.{physical_no_catalog}"
         replacements.setdefault(base_catalog_ref, physical_with_catalog)
-    sql = translate_epoch_temporal_columns(  # REQ-1908
-        _apply_replacements(sql, replacements), ctx.epoch_columns
-    )
-    sql = mark_subtype_operations(sql, ctx.subtype_columns)  # REQ-2171
-    sql = mark_subtype_reads(sql, ctx.read_columns)  # REQ-2171
-    return mark_native_nested_reads(sql, ctx.nested_columns)  # REQ-1965
+    return _Replacements.of(replacements)
 
 
 def qualify_with_catalogs(sql: str, ctx: CompilationContext) -> str:  # REQ-641
@@ -779,6 +988,12 @@ def fold_catalog_into_schema(sql: str) -> str:  # REQ-1730
 # specific physical file/database, so a schema qualifier is purely Provisa's own catalog
 # convention and has nothing to resolve against on the wire (REQ-1361).
 FLAT_NAMESPACE_SOURCES: frozenset[str] = frozenset({"sqlite"})
+
+# REQ-1671: source types with no SQLGlot dialect of their own (their statements are written as
+# PostgreSQL) whose database folds an unquoted name to UPPER CASE. A statement's own unquoted
+# column reference reads the governed relation's quoted lowercase output, so every identifier is
+# sent quoted: unquoted, SAP HANA reads ``id`` as ``ID`` ("invalid column name: ID").
+UPPER_FOLDING_SOURCES: frozenset[str] = frozenset({"saphana"})
 
 
 def strip_schema(sql: str) -> str:  # REQ-1361
@@ -909,6 +1124,43 @@ def _collect_table_aliases(select: exp.Select) -> dict[str, tuple[str, str]]:
     return aliases
 
 
+@dataclass(frozen=True)
+class _Read:
+    """A FROM or JOIN item of one SELECT, read as the registered table it reads: ``table`` is its
+    lowercased (schema, table), ``through`` the governed relation it stands as (REQ-039), None
+    when it is the table itself."""
+
+    table: tuple[str, str]
+    through: ReadThrough | None = None
+
+    def column(self, name: str) -> str | None:
+        """The table's column, lowercased, the item exposes as ``name`` unchanged. None when a
+        governed relation exposes no such column, or exposes it masked or computed: a predicate
+        on that value is not one on the table's column."""
+        if self.through is None:
+            return name.lower()
+        physical = self.through.column(name)
+        return None if physical is None else physical.lower()
+
+
+def _read_aliases(select: exp.Select) -> dict[str, _Read]:
+    """alias (lowercased) -> the table it reads, for this SELECT's own FROM + JOIN items only --
+    never descends into a nested subquery's own FROM/JOIN (each is its own scope, visited
+    separately by the caller's own ``find_all(exp.Select)``). Stage 2 puts the role's governed
+    relation in the place of every registered table (REQ-039): such an item is read as its
+    table, under the relation's alias."""
+    aliases: dict[str, _Read] = {}
+    from_ = select.args.get("from_") or select.args.get("from")
+    items: list[exp.Expr] = [from_.this] if from_ is not None else []
+    items += [j.this for j in select.args.get("joins") or []]
+    for item in items:
+        through = read_through(item)
+        tbl = item if through is None else through.table
+        if isinstance(tbl, exp.Table) and tbl.db:
+            aliases[item.alias_or_name.lower()] = _Read((tbl.db.lower(), tbl.name.lower()), through)
+    return aliases
+
+
 def propagate_literal_join_predicates(  # REQ-1880
     sql: str,
     dialect: str,
@@ -953,7 +1205,7 @@ def propagate_literal_join_predicates(  # REQ-1880
         joins = select.args.get("joins") or []
         if where is None or not joins:
             continue
-        alias_to_phys = _collect_table_aliases(select)
+        alias_to_phys = _read_aliases(select)
         if not alias_to_phys:
             continue
         literal_preds: dict[tuple[str, str], list[exp.Expr]] = {}
@@ -977,18 +1229,28 @@ def propagate_literal_join_predicates(  # REQ-1880
                 preds = literal_preds.get((drv_alias.lower(), drv_col.lower()))
                 if not preds:
                     continue
-                tgt_phys = alias_to_phys.get(tgt_alias.lower())
-                drv_phys = alias_to_phys.get(drv_alias.lower())
-                if tgt_phys is None or drv_phys is None or tgt_phys not in eligible_targets:
+                tgt = alias_to_phys.get(tgt_alias.lower())
+                drv = alias_to_phys.get(drv_alias.lower())
+                if tgt is None or drv is None or tgt.table not in eligible_targets:
                     continue
-                drv_type = column_types.get((*drv_phys, drv_col.lower()))
-                tgt_type = column_types.get((*tgt_phys, tgt_col.lower()))
+                drv_physical, tgt_physical = drv.column(drv_col), tgt.column(tgt_col)
+                if drv_physical is None or tgt_physical is None:
+                    continue
+                drv_type = column_types.get((*drv.table, drv_physical))
+                tgt_type = column_types.get((*tgt.table, tgt_physical))
                 if (
                     drv_type is None
                     or tgt_type is None
                     or not _types_compatible(drv_type, tgt_type)
                 ):
                     continue
+                # The far side's own identifiers, quoting kept: its column need not share the
+                # driving column's name.
+                far = next(
+                    c
+                    for c in (join.args["on"].left, join.args["on"].right)
+                    if c.table == tgt_alias and c.name == tgt_col
+                )
                 for pred in preds:
                     propagated = pred.copy()
                     for col in propagated.find_all(exp.Column):
@@ -996,7 +1258,8 @@ def propagate_literal_join_predicates(  # REQ-1880
                             col.table.lower() == drv_alias.lower()
                             and col.name.lower() == drv_col.lower()
                         ):
-                            col.set("table", exp.to_identifier(tgt_alias))
+                            col.set("table", far.args["table"].copy())
+                            col.set("this", far.args["this"].copy())
                     new_preds.append(propagated)
         if new_preds:
             combined = where.this
@@ -1125,7 +1388,7 @@ def _propagate_into_correlated_subqueries(
         where = outer.args.get("where")
         if where is None:
             continue
-        outer_aliases = _collect_table_aliases(outer)
+        outer_aliases = _read_aliases(outer)
         if not outer_aliases:
             continue
         literal_preds: dict[tuple[str, str], list[exp.Expr]] = {}
@@ -1142,7 +1405,7 @@ def _propagate_into_correlated_subqueries(
                 sub_where = sub.args.get("where")
                 if sub_where is None:
                     continue
-                sub_aliases = _collect_table_aliases(sub)
+                sub_aliases = _read_aliases(sub)
                 additions: list[exp.Expr] = []
                 key: tuple[exp.EQ, exp.Column, exp.Column] | None = None
                 for conjunct in _split_and(sub_where.this):
@@ -1166,13 +1429,15 @@ def _propagate_into_correlated_subqueries(
                         preds = literal_preds.get((outer_alias, outer_col.name.lower()))
                         if not preds:
                             continue
-                        tgt_phys = sub_aliases[inner_alias]
-                        if tgt_phys not in eligible_targets:
+                        tgt, drv = sub_aliases[inner_alias], outer_aliases[outer_alias]
+                        if tgt.table not in eligible_targets:
                             continue
-                        drv_type = column_types.get(
-                            (*outer_aliases[outer_alias], outer_col.name.lower())
-                        )
-                        tgt_type = column_types.get((*tgt_phys, inner_col.name.lower()))
+                        drv_physical = drv.column(outer_col.name)
+                        tgt_physical = tgt.column(inner_col.name)
+                        if drv_physical is None or tgt_physical is None:
+                            continue
+                        drv_type = column_types.get((*drv.table, drv_physical))
+                        tgt_type = column_types.get((*tgt.table, tgt_physical))
                         if (
                             drv_type is None
                             or tgt_type is None
@@ -1283,6 +1548,78 @@ def wrap_lowcardinality_columns(  # REQ-1881
         ):
             continue  # already wrapped -- idempotency
         col.replace(exp.Anonymous(this="from_utf8", expressions=[col.copy()]))
+        changed = True
+    return tree.sql(dialect=dialect) if changed else sql
+
+
+# --- Document paths on Trino's MongoDB catalog (REQ-039) ---
+
+# (catalog, schema, table) lowercased -> {column lowercased: its registered path in the document}
+DocumentPaths = dict[tuple[str, str, str], dict[str, str]]
+
+
+def _scope_physical_tables(select: exp.Select) -> dict[str, tuple[str, str, str]]:
+    """alias (lowercased) -> (catalog, schema, table) lowercased, for this SELECT's own FROM and
+    JOIN tables only (each nested SELECT is its own scope)."""
+    from_ = select.args.get("from_")
+    items = [from_.this] if from_ is not None else []
+    items += [j.this for j in select.args.get("joins") or []]
+    return {
+        t.alias_or_name.lower(): (t.catalog.lower(), t.db.lower(), t.name.lower())
+        for t in items
+        if isinstance(t, exp.Table) and t.db
+    }
+
+
+def _document_path(qualifier: str, path: str) -> exp.Expr:
+    """The value at ``path`` (``field.key...``) of the document read under ``qualifier``: its
+    top-level field, then each key's field of the ROW it holds."""
+    first, *keys = path.split(".")
+    value: exp.Expr = exp.column(first, table=qualifier, quoted=True)
+    for key in keys:
+        value = exp.Dot(this=value, expression=exp.to_identifier(key, quoted=True))
+    return value
+
+
+def read_document_paths(sql: str, dialect: str, paths: DocumentPaths) -> str:  # REQ-039
+    """``sql`` with each read of a column registered at a path in its MongoDB document read as
+    that path, off a table Trino reads live through its MongoDB catalog.
+
+    Every other engine's relation of a MongoDB table exposes such a column under its own name
+    (DuckDB's attach names each nested field's column apart, #266; a replica lands it by name), so
+    the governed statement reads it by name (stage2). Trino's MongoDB connector reads the document
+    as it is, a nested document as a ROW column: ``customer_tier`` at ``customer_profile.tier`` is
+    ``"d"."customer_profile"."tier"`` there. ``paths`` holds, per such table, each path column;
+    the caller computes it from each referenced table's registered source (a MongoDB source read
+    live on Trino) and columns. A column read off a derived table is left as it is: only a read off
+    the table itself is the document's. In a select list the value keeps the column's name."""
+    if not paths:
+        return sql
+    tree = sqlglot.parse_one(sql, read=dialect)
+    changed = False
+    scopes: dict[int, dict[str, tuple[str, str, str]]] = {}
+    for col in list(tree.find_all(exp.Column)):
+        if isinstance(col.this, exp.Star):
+            continue
+        select = col.find_ancestor(exp.Select)
+        if select is None:
+            continue
+        tables = scopes.setdefault(id(select), _scope_physical_tables(select))
+        if col.table:
+            physical = tables.get(col.table.lower())
+            qualifier = col.table
+        elif len(tables) == 1:
+            (physical,) = tables.values()
+            qualifier = next(iter(tables))
+        else:
+            continue
+        path = (paths.get(physical) or {}).get(col.name.lower()) if physical else None
+        if path is None:
+            continue
+        value = _document_path(qualifier, path)
+        if col.parent is select and col.arg_key == "expressions":
+            value = exp.alias_(value, col.name, quoted=True)
+        col.replace(value)
         changed = True
     return tree.sql(dialect=dialect) if changed else sql
 

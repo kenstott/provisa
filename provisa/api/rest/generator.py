@@ -26,7 +26,7 @@ from provisa.api.role_surface import role_surface
 
 import json
 import logging
-from typing import Any
+from typing import Any, NamedTuple
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
@@ -34,6 +34,7 @@ from graphql import GraphQLError, GraphQLObjectType, GraphQLSchema
 
 from provisa.api.errors import ApiError
 from provisa.cache.middleware import build_cache_headers
+from provisa.core.parameter_binding import ParameterBindingRefused
 from provisa.core.read_refusal import ReadRefused
 from provisa.federation.pgwire_replica import SourceStillStartingError
 from provisa.api.json_response import OrjsonResponse
@@ -48,7 +49,7 @@ from provisa.api._query_helpers import (
 from provisa.api.generated_plan import compile_generated_graphql
 from provisa.compiler.naming import apply_gql_name
 from provisa.compiler.parser import GraphQLValidationError
-from provisa.executor.serialize import serialize_aggregate, serialize_rows
+from provisa.compiler.sql_validator import GovernanceRefused
 from provisa.compiler.complexity import ComplexityLimitExceeded
 from provisa.security.rights import META_DOMAIN_ID
 
@@ -399,6 +400,59 @@ def _build_nodes_selection(schema: GraphQLSchema, table: str, paths: list[str]) 
     return _render_node_selection(_node_item_type(schema, table), tree)
 
 
+def _table_row_type(schema: GraphQLSchema, table: str) -> GraphQLObjectType:
+    """The row type of root field ``table``, which the caller has already found on Query."""
+    query_type = schema.query_type
+    assert query_type is not None and table in query_type.fields
+    row_type = _unwrap_type(query_type.fields[table].type)
+    assert isinstance(row_type, GraphQLObjectType)
+    return row_type
+
+
+def _render_fields_selection(row_type: GraphQLObjectType, tree: dict[str, dict]) -> str:
+    """Render a checked ``?fields=`` dot-path tree as GraphQL selection text against
+    ``row_type``, each segment translated by ``apply_gql_name``. A relationship named as a leaf
+    reads its scalar fields."""
+    parts = []
+    for seg, children in tree.items():
+        name = apply_gql_name(seg)
+        field_type = _unwrap_type(row_type.fields[name].type)
+        if not isinstance(field_type, GraphQLObjectType):
+            parts.append(name)
+        elif children:
+            parts.append(f"{name} {{ {_render_fields_selection(field_type, children)} }}")
+        else:
+            parts.append(f"{name} {{ {' '.join(_scalar_field_names(field_type))} }}")
+    return " ".join(parts)
+
+
+def _check_fields_path(row_type: GraphQLObjectType, path: str, where: str) -> None:
+    """Refuse a ``?fields=`` path naming it whole when one of its segments is not a field of the
+    role's type, or it continues past a scalar field. A field the role cannot see and one that does
+    not exist are answered alike (REQ-1929)."""
+    current: GraphQLObjectType | None = row_type
+    for seg in path.split("."):
+        field = current.fields.get(apply_gql_name(seg)) if current is not None else None
+        if field is None:
+            raise HTTPException(
+                status_code=400, detail=f"fields: {path!r} is not a field of {where}"
+            )
+        field_type = _unwrap_type(field.type)
+        current = field_type if isinstance(field_type, GraphQLObjectType) else None
+
+
+def _fields_selection(schema: GraphQLSchema, table: str, paths: list[str], where: str) -> str:
+    """``?fields=`` as the GraphQL selection of a row read (REQ-1929): a bare name selects a field
+    of the row; each further dot segment goes one relationship further (``customer.name``), and the
+    related row comes back nested, as the GraphQL selection nests it."""
+    row_type = _table_row_type(schema, table)
+    tree: dict[str, dict] = {}
+    for path in paths:
+        _check_fields_path(row_type, path, where)
+        _insert_node_path(tree, path)
+    return _render_fields_selection(row_type, tree)
+
+
 def _build_group_by_graphql_query(
     schema: GraphQLSchema,
     table: str,
@@ -458,6 +512,48 @@ def _build_group_by_graphql_query(
     )
 
 
+def _arrow_file(
+    batches: list[Any],
+    columns: list[Any],
+    accept: str,
+    table_name: str,
+    cache_headers: dict[str, str],
+) -> Any:  # noqa: ANN401 — a Response
+    """REST's Parquet or Arrow IPC answer (REQ-2194): the engine's record batches as they are,
+    with their native types, each column named by the field it answers (``rel.field`` for a
+    relationship's). An answer with no batch is the fields with no rows."""
+    import io
+
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+    from fastapi.responses import Response
+
+    names = [
+        c.field_name if c.nested_in is None else f"{c.nested_in}.{c.field_name}" for c in columns
+    ]
+    if batches:
+        # The fields are the statement's first columns, by position.
+        table = pa.Table.from_batches(batches).select(range(len(names))).rename_columns(names)
+    else:
+        table = pa.table({name: pa.array([], pa.null()) for name in names})
+    buf = io.BytesIO()
+    if "application/vnd.apache.parquet" in accept:
+        pq.write_table(table, buf)
+        media_type, suffix = "application/vnd.apache.parquet", "parquet"
+    else:
+        with pa.ipc.new_stream(buf, table.schema) as writer:
+            writer.write_table(table)
+        media_type, suffix = "application/vnd.apache.arrow.stream", "arrow"
+    return Response(
+        content=buf.getvalue(),
+        media_type=media_type,
+        headers={
+            "Content-Disposition": f"attachment; filename={table_name}.{suffix}",
+            **cache_headers,
+        },
+    )
+
+
 def _variables_or_400(
     schema: GraphQLSchema,
     field_name: str,
@@ -471,6 +567,137 @@ def _variables_or_400(
         return request_variables(schema, field_name, where, params, travel)
     except RequestRefused as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+class RestRead(NamedTuple):
+    """A REST table read, lowered: the GraphQL text it becomes and its values."""
+
+    table: str
+    gql_query: str
+    variables: Any
+    is_group_by: bool
+    is_aggregate: bool
+
+
+def rest_read_graphql(  # REQ-222, REQ-2222
+    surface: Any,
+    domain_id: str,
+    table_name: str,
+    raw_params: dict[str, str],
+    *,
+    limit: int | None,
+    offset: int | None,
+    fields: str | None,
+    as_of: str | None,
+    as_recorded: str | None,
+) -> RestRead:
+    """The GraphQL a REST read of ``domain_id``/``table_name`` becomes. Its one lowering: the
+    route compiles and runs it, and an EXPLAIN stops here (REQ-2222)."""
+    schema = surface.schema
+    ctx = surface.context
+
+    # Resolve {domain_id}/{table_name} → GQL field name via path map
+    path_map = surface.table_path_map
+    table = next(
+        (
+            gql_field
+            for gql_field, meta in path_map.items()
+            if meta["domain_id"] == domain_id and meta["table_name"] == table_name
+        ),
+        None,
+    )
+    query_type = schema.query_type
+    if table is None or query_type is None or table not in query_type.fields:
+        raise HTTPException(status_code=404, detail=f"Table {domain_id!r}/{table_name!r} not found")
+
+    where = _parse_where_params(raw_params)
+    order_by = _parse_order_by_params(raw_params)
+    try:
+        # REQ-1986: ?params= gives the table's parameters, by argument name.
+        params = parse_params(raw_params.get("params"))
+    except RequestRefused as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    # REQ-1359: aggregate/groupBy target {table}_aggregate / {table}_group_by instead of
+    # the base table field. Schema exposure is already flag-gated (schema_gen.py); a
+    # disabled table simply fails GraphQL validation below (400), no extra checks needed.
+    agg_funcs = _parse_aggregate_param(raw_params)
+    group_by_cols = _parse_group_by_param(raw_params)
+    requested_fields = [f.strip() for f in fields.split(",")] if fields else None
+    is_group_by = bool(group_by_cols)
+    is_aggregate = agg_funcs is not None and not is_group_by
+
+    if is_group_by:
+        # REQ-1361: ?groupBy= takes API-native (physical) column names, same as the
+        # grpc-group-by-columns picker offers. Validate against ctx.aggregate_columns,
+        # mirroring the identical check in provisa/api/jsonapi/generator.py.
+        table_meta = ctx.tables.get(table)
+        valid_group_by_cols = (
+            {c for c, _t in ctx.aggregate_columns.get(table_meta.table_id, [])}
+            if table_meta is not None
+            else set()
+        )
+        for col in group_by_cols:
+            if col not in valid_group_by_cols:
+                raise HTTPException(status_code=400, detail=f"Unknown group-by field {col!r}")
+        # REQ-1401: ?includeNodes=true adds a nodes { ... } sub-selection — per-group
+        # row-level detail, mirroring GraphQL's {table}_group_by nodes field. REST has
+        # no ?include= relationship sideloading, so this is scalar fields only.
+        include_nodes = _parse_include_nodes(raw_params)
+        variables = _variables_or_400(
+            schema, _aggregate_field_name(schema, table, group_by=True), where, params
+        )
+        gql_query = _build_group_by_graphql_query(
+            schema,
+            table,
+            group_by_cols,
+            agg_funcs or [],
+            variables,
+            order_by,
+            limit,
+            offset,
+            requested_fields,
+            include_nodes,
+        )
+    elif is_aggregate:
+        variables = _variables_or_400(
+            schema, _aggregate_field_name(schema, table, group_by=False), where, params
+        )
+        gql_query = _build_aggregate_graphql_query(
+            schema, table, agg_funcs or [], variables, requested_fields
+        )
+    else:
+        # REQ-1929: ?fields= takes dot-paths through relationships; the related row is nested.
+        if requested_fields:
+            paths = [p for p in requested_fields if p]
+            selected_fields = (
+                [_fields_selection(schema, table, paths, f"{domain_id}/{table_name}")]
+                if paths
+                else []
+            )
+        else:
+            selected_fields = _get_scalar_fields(schema, table)
+
+        if not selected_fields:
+            raise HTTPException(
+                status_code=400,
+                detail=f"No selectable fields for table {table!r}",
+            )
+
+        travel = {
+            k: v for k, v in (("as_of", as_of), ("as_recorded", as_recorded)) if v is not None
+        }
+        variables = _variables_or_400(schema, table, where, params, travel)
+        gql_query = _build_graphql_query(
+            table,
+            selected_fields,
+            variables,
+            order_by,
+            limit,
+            offset,
+        )
+    log.debug("REST → GraphQL: %s", gql_query)
+    return RestRead(table, gql_query, variables, is_group_by, is_aggregate)
 
 
 def create_rest_router(state: Any) -> APIRouter:  # REQ-222, REQ-256, REQ-266, REQ-267
@@ -509,10 +736,12 @@ def create_rest_router(state: Any) -> APIRouter:  # REQ-222, REQ-256, REQ-266, R
     @rest_router.get("/docs", include_in_schema=False)
     async def rest_docs(  # pyright: ignore[reportUnusedFunction]
         theme: str | None = None,
+        role: str | None = None,
+        domains: str | None = None,
     ):
         from provisa.api.rest.openapi_spec import swagger_ui_html
 
-        return HTMLResponse(content=swagger_ui_html(theme))
+        return HTMLResponse(content=swagger_ui_html(theme, role, domains))
 
     # Before the table route, which ``/meta/resolve`` would otherwise match as a table of meta.
     @rest_router.get(f"/{META_DOMAIN_ID}/resolve")
@@ -574,107 +803,19 @@ def create_rest_router(state: Any) -> APIRouter:  # REQ-222, REQ-256, REQ-266, R
         schema = surface.schema
         ctx = surface.context
 
-        # Resolve {domain_id}/{table_name} → GQL field name via path map
-        path_map = surface.table_path_map
-        table = next(
-            (
-                gql_field
-                for gql_field, meta in path_map.items()
-                if meta["domain_id"] == domain_id and meta["table_name"] == table_name
-            ),
-            None,
+        read = rest_read_graphql(
+            surface,
+            domain_id,
+            table_name,
+            dict(request.query_params),
+            limit=limit,
+            offset=offset,
+            fields=fields,
+            as_of=as_of,
+            as_recorded=as_recorded,
         )
-        query_type = schema.query_type
-        if table is None or query_type is None or table not in query_type.fields:
-            raise HTTPException(
-                status_code=404, detail=f"Table {domain_id!r}/{table_name!r} not found"
-            )
-
-        # Parse all query params
-        raw_params = dict(request.query_params)
-
-        where = _parse_where_params(raw_params)
-        order_by = _parse_order_by_params(raw_params)
-        try:
-            # REQ-1986: ?params= gives the table's parameters, by argument name.
-            params = parse_params(raw_params.get("params"))
-        except RequestRefused as e:
-            raise HTTPException(status_code=400, detail=str(e))
-
-        # REQ-1359: aggregate/groupBy target {table}_aggregate / {table}_group_by instead of
-        # the base table field. Schema exposure is already flag-gated (schema_gen.py); a
-        # disabled table simply fails GraphQL validation below (400), no extra checks needed.
-        agg_funcs = _parse_aggregate_param(raw_params)
-        group_by_cols = _parse_group_by_param(raw_params)
-        requested_fields = [f.strip() for f in fields.split(",")] if fields else None
-        is_group_by = bool(group_by_cols)
-        is_aggregate = agg_funcs is not None and not is_group_by
-
-        if is_group_by:
-            # REQ-1361: ?groupBy= takes API-native (physical) column names, same as the
-            # grpc-group-by-columns picker offers. Validate against ctx.aggregate_columns,
-            # mirroring the identical check in provisa/api/jsonapi/generator.py.
-            table_meta = ctx.tables.get(table)
-            valid_group_by_cols = (
-                {c for c, _t in ctx.aggregate_columns.get(table_meta.table_id, [])}
-                if table_meta is not None
-                else set()
-            )
-            for col in group_by_cols:
-                if col not in valid_group_by_cols:
-                    raise HTTPException(status_code=400, detail=f"Unknown group-by field {col!r}")
-            # REQ-1401: ?includeNodes=true adds a nodes { ... } sub-selection — per-group
-            # row-level detail, mirroring GraphQL's {table}_group_by nodes field. REST has
-            # no ?include= relationship sideloading, so this is scalar fields only.
-            include_nodes = _parse_include_nodes(raw_params)
-            variables = _variables_or_400(
-                schema, _aggregate_field_name(schema, table, group_by=True), where, params
-            )
-            gql_query = _build_group_by_graphql_query(
-                schema,
-                table,
-                group_by_cols,
-                agg_funcs or [],
-                variables,
-                order_by,
-                limit,
-                offset,
-                requested_fields,
-                include_nodes,
-            )
-        elif is_aggregate:
-            variables = _variables_or_400(
-                schema, _aggregate_field_name(schema, table, group_by=False), where, params
-            )
-            gql_query = _build_aggregate_graphql_query(
-                schema, table, agg_funcs or [], variables, requested_fields
-            )
-        else:
-            # Determine fields
-            if fields:
-                selected_fields = requested_fields or []
-            else:
-                selected_fields = _get_scalar_fields(schema, table)
-
-            if not selected_fields:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"No selectable fields for table {table!r}",
-                )
-
-            travel = {
-                k: v for k, v in (("as_of", as_of), ("as_recorded", as_recorded)) if v is not None
-            }
-            variables = _variables_or_400(schema, table, where, params, travel)
-            gql_query = _build_graphql_query(
-                table,
-                selected_fields,
-                variables,
-                order_by,
-                limit,
-                offset,
-            )
-        log.debug("REST → GraphQL: %s", gql_query)
+        table, gql_query, variables = read.table, read.gql_query, read.variables
+        is_group_by, is_aggregate = read.is_group_by, read.is_aggregate
 
         # REQ-1877: one compiled plan is kept per request shape; values are bound into it.
         try:
@@ -723,8 +864,12 @@ def create_rest_router(state: Any) -> APIRouter:  # REQ-222, REQ-256, REQ-266, R
             raise  # REQ-1174: answered as 413 by the app's handler
         except ReadRefused:
             raise  # refused by name; the app answers it (core/read_refusal.py)
+        except ParameterBindingRefused:
+            raise  # REQ-1986: the app answers it under its code (400)
         except SourceStillStartingError:
             raise  # a source still starting: the app answers 503 data.source_starting (REQ-1824)
+        except GovernanceRefused:
+            raise  # REQ-2222: the app answers it under its code
         except PermissionError as exc:
             raise HTTPException(status_code=403, detail=str(exc))
         except HTTPException:
@@ -751,100 +896,51 @@ def create_rest_router(state: Any) -> APIRouter:  # REQ-222, REQ-256, REQ-266, R
                 headers=cache_headers,
             )
 
-        # REQ-1359: aggregate/group-by results aren't resource rows — reuse the same
-        # serializers the GraphQL/data pipeline uses for _aggregate/_group_by fields, but
-        # flatten to REST's existing flat {"data": ...} shape. REQ-1401: a group's nodes, when
-        # ?includeNodes=true selected them, are a column of its own row.
-        if is_group_by:
-            gb_response = serialize_rows(result.rows, compiled.columns, compiled.root_field)
-            return OrjsonResponse(
-                content={"data": gb_response["data"][compiled.root_field]}, headers=cache_headers
-            )
-        if is_aggregate:
-            agg_response = serialize_aggregate(
-                result.rows, compiled.columns, compiled.root_field, agg_alias=compiled.agg_alias
-            )
-            agg_obj = agg_response["data"][compiled.root_field][compiled.agg_alias]
-            return OrjsonResponse(content={"data": agg_obj}, headers=cache_headers)
+        # REQ-2194: every answer below is the Rust encoders' (or the engine's own Arrow), written
+        # from the result's record batches: no Python row in between.
+        from fastapi.responses import Response
 
-        # Serialize
-        response_data = serialize_rows(result.rows, compiled.columns, table)
-        rows = response_data.get("data", {}).get(table, [])
-        col_names = list(compiled.columns or [])
+        from provisa.core.statement_warnings import warn
+        from provisa.executor.json_encoders import rest as rest_json
+        from provisa.executor.json_encoders import rest_csv, result_batches
+        from provisa.executor.serialize import to_one_truncated
+
+        batches = result_batches(result)
         accept = request.headers.get("accept", "application/json").lower()
 
-        if "text/csv" in accept:
-            import csv
-            import io
-
-            buf = io.StringIO()
-            writer = csv.writer(buf)
-            if rows:
-                writer.writerow(rows[0].keys())
-                for row in rows:
-                    writer.writerow(row.values())
-            from fastapi.responses import Response
-
+        # REQ-1359: aggregate/group-by results aren't resource rows — the same nesting the
+        # GraphQL pipeline gives _aggregate/_group_by fields, in REST's flat {"data": ...} shape.
+        # REQ-1401: a group's nodes, when ?includeNodes=true selected them, are a column of its
+        # own row.
+        if is_group_by or is_aggregate:
+            body, truncated = rest_json(
+                batches, compiled.columns, compiled.agg_alias if is_aggregate else None
+            )
+        elif "text/csv" in accept:
+            body, truncated = rest_csv(batches, compiled.columns)
+            for path in truncated:
+                warn(to_one_truncated(path))
             return Response(
-                content=buf.getvalue(),
+                content=body,
                 media_type="text/csv",
                 headers={
                     "Content-Disposition": f"attachment; filename={table_name}.csv",
                     **cache_headers,
                 },
             )
-
-        if "application/vnd.apache.parquet" in accept:
-            try:
-                import io
-
-                import pyarrow as pa
-                import pyarrow.parquet as pq
-
-                keys = list(rows[0].keys()) if rows else col_names
-                arrays = {k: [row.get(k) for row in rows] for k in keys}
-                table_pa = pa.table(arrays)
-                buf = io.BytesIO()
-                pq.write_table(table_pa, buf)
-                from fastapi.responses import Response
-
-                return Response(
-                    content=buf.getvalue(),
-                    media_type="application/vnd.apache.parquet",
-                    headers={
-                        "Content-Disposition": f"attachment; filename={table_name}.parquet",
-                        **cache_headers,
-                    },
-                )
-            except ImportError:
-                raise HTTPException(status_code=400, detail="parquet format requires pyarrow")
-
-        if "application/vnd.apache.arrow.stream" in accept:
-            try:
-                import io
-
-                import pyarrow as pa
-
-                keys = list(rows[0].keys()) if rows else col_names
-                arrays = {k: [row.get(k) for row in rows] for k in keys}
-                table_pa = pa.table(arrays)
-                buf = io.BytesIO()
-                with pa.ipc.new_stream(buf, table_pa.schema) as writer:
-                    writer.write_table(table_pa)
-                from fastapi.responses import Response
-
-                return Response(
-                    content=buf.getvalue(),
-                    media_type="application/vnd.apache.arrow.stream",
-                    headers={
-                        "Content-Disposition": f"attachment; filename={table_name}.arrow",
-                        **cache_headers,
-                    },
-                )
-            except ImportError:
-                raise HTTPException(status_code=400, detail="arrow format requires pyarrow")
-
-        return OrjsonResponse(content={"data": rows}, headers=cache_headers)
+        elif "application/vnd.apache.parquet" in accept or (
+            "application/vnd.apache.arrow.stream" in accept
+        ):
+            # The engine's batches as they are, with their native types (a DECIMAL a decimal, a
+            # timestamp a timestamp), each column named by its field.
+            return _arrow_file(batches, compiled.columns, accept, table_name, cache_headers)
+        else:
+            body, truncated = rest_json(batches, compiled.columns)
+        # A to-one relationship that matched several rows for one row: the response says so in
+        # its X-Provisa-Warnings header (REQ-1350).
+        for path in truncated:
+            warn(to_one_truncated(path))
+        return Response(content=body, media_type="application/json", headers=cache_headers)
 
     @rest_router.post("/{domain_id}/commands/{command_name}")
     async def rest_command_endpoint(  # pyright: ignore[reportUnusedFunction]  # REQ-1155
@@ -893,6 +989,8 @@ def create_rest_router(state: Any) -> APIRouter:  # REQ-222, REQ-256, REQ-266, R
             raise  # REQ-1174: answered as 413 by the app's handler
         except ReadRefused:
             raise  # refused by name; the app answers it (core/read_refusal.py)
+        except ParameterBindingRefused:
+            raise  # REQ-1986: the app answers it under its code (400)
         except PermissionError as exc:
             raise HTTPException(status_code=403, detail=str(exc))
 

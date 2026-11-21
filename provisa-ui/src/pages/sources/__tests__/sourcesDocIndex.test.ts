@@ -23,6 +23,7 @@ const DOC_NAME_TO_TYPE: Record<string, string> = {
   grpc_remote: "grpc",
   github: "github",
   gitlab: "gitlab",
+  shopify: "shopify",
   stripe: "stripe",
   kaggle: "kaggle",
   wikipedia: "wikipedia",

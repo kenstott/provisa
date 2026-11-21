@@ -2,6 +2,8 @@
 # Start Provisa using the install-time configuration (core services only, no dev extras).
 # Simulates the installed product: postgres + trino + redis, no kafka/mongo/observability.
 # Backend runs locally via uvicorn. UI runs on the host via vite.
+# Needs cargo: provisa._encoders (the Rust encoders) is built from rust/ with rust/build-local.sh
+# when provisa/_encoders.so is missing or older than its Rust sources, before the API starts.
 
 set -euo pipefail
 
@@ -65,6 +67,8 @@ if [ -n "$IDP" ] && [ "$IDP" != "basic" ] && [ "$IDP" != "firebase" ]; then
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# REQ-2223: a virtual environment out of step with uv.lock stops the start here.
+"$SCRIPT_DIR/scripts/ensure-venv-in-step.sh" "$SCRIPT_DIR" || exit 1
 # A named demo's directory: this checkout's demo/named/<name>/, or -- for a published demo (REQ-2049)
 # -- its bundle, pulled from where the project publishes demos (PROVISA_DEMO_REGISTRY names another)
 # into $PROVISA_HOME/demos/<name>/<version>: `--demo weblogs` pulls its latest, `--demo
@@ -179,9 +183,27 @@ _mcp_scheme() {
   fi
 }
 
+# Print one line per query surface the backend serves (the startup banner). The HTTP paths are
+# system_health.HTTP_SURFACES (tests/unit/test_startup_banner_surfaces.py holds them equal); a
+# listener whose port is 0 or unset is not started, so it has no line.
+print_query_surfaces() {
+  echo "  pgwire:  postgresql://admin:ignored@localhost:5439/provisa  (username = role)"
+  [ "${PROVISA_BOLT_PORT:-0}" != 0 ] && echo "  bolt:    bolt://localhost:${PROVISA_BOLT_PORT}  (username = role)"
+  [ "${PROVISA_MINTED_PGWIRE_PORT:-0}" != 0 ] && echo "  minted:  postgresql://localhost:${PROVISA_MINTED_PGWIRE_PORT}/provisa  (tokens minted for one code-source call only)"
+  echo "  sparql:  http://localhost:$PROVISA_API_PORT/data/sparql  (SPARQL 1.1 Protocol; role via sign-in or X-Provisa-Role)"
+  echo "  graphql: http://localhost:$PROVISA_API_PORT/data/graphql  (GraphQL over HTTP; role via sign-in or X-Provisa-Role)"
+  echo "  cypher:  http://localhost:$PROVISA_API_PORT/data/cypher  (Cypher over HTTP; role via sign-in or X-Provisa-Role)"
+  echo "  rest:    http://localhost:$PROVISA_API_PORT/data/rest  (REST, a path per table; role via sign-in or X-Provisa-Role)"
+  echo "  jsonapi: http://localhost:$PROVISA_API_PORT/data/jsonapi  (JSON:API, a path per table; role via sign-in or X-Provisa-Role)"
+  echo "  odata:   http://localhost:$PROVISA_API_PORT/data/odata  (OData service root; role via sign-in or X-Provisa-Role)"
+  echo "  grpc:    localhost:$GRPC_PORT  (gRPC; role via bearer token or x-provisa-role metadata)"
+  echo "  flight:  grpc://localhost:$FLIGHT_PORT  (Arrow Flight; role via bearer token or x-provisa-role header)"
+  print_mcp_info
+}
+
 # Print the MCP connect line + (under WSL) the explanation the WSL/Windows split demands.
 print_mcp_info() {
-  [ -n "${PROVISA_MCP_PORT:-}" ] || return 0
+  [ "${PROVISA_MCP_PORT:-0}" != 0 ] || return 0
   local port="$PROVISA_MCP_PORT" scheme host
   scheme=$(_mcp_scheme "$port")
   if is_wsl; then
@@ -227,8 +249,12 @@ is_exfat() {
 # Singleton: a second copy of this script would share ~/.provisa-server-version,
 # and each instance's version watcher cross-triggers backend restarts in the others
 # (restart storm). Kill any previous instance and the process group it owns
-# (backend + UI + watchers) before starting.
-for _other in $(pgrep -f "start-ui-install.sh" 2>/dev/null); do
+# (backend + UI + watchers) before starting. A previous instance is a shell running this script
+# ("bash ./start-ui-install.sh --demo", as the shebang starts it), not any command line that only
+# mentions it: a `bash -c` launcher that starts the script (devcontainer-smoke's runCmd) has the
+# name in its arguments, and killing it killed the launcher (exit 137) before the script printed.
+_instance_re='^[^ ]*sh( -[^ c]+)* [^ ]*start-ui-install\.sh( |$)'
+for _other in $(pgrep -f "$_instance_re" 2>/dev/null); do
   [ "$_other" = "$$" ] && continue
   echo "Stopping previous start-ui-install.sh instance (PID $_other) and its services..."
   kill -CONT "-$_other" 2>/dev/null || true   # un-stop the process group if suspended
@@ -243,7 +269,20 @@ if [ -f "$SCRIPT_DIR/.env" ]; then
   set +a
 fi
 
+# provisa._encoders (the Rust encoders pgwire, gRPC and JSON use, with no Python fallback) built for
+# this checkout before the API starts: rust/ensure-local-build.sh runs rust/build-local.sh when
+# provisa/_encoders.so is missing or older than its Rust sources. No cargo, or a failed build, stops
+# the start here.
+"$SCRIPT_DIR/rust/ensure-local-build.sh" || exit 1
+
 export PROVISA_API_PORT="${PROVISA_API_PORT:-8001}"
+# The backend's gRPC, Arrow Flight and MCP ports (server.grpc_port / server.flight_port / mcp.port,
+# REQ-1913), set here so the startup banner prints the port the backend binds. MCP is on by
+# default in dev too (parity with the native tier) so the Explore -> MCP panel and the
+# config-file/mcp-proxy bridge work here.
+export GRPC_PORT="${GRPC_PORT:-50051}"
+export FLIGHT_PORT="${FLIGHT_PORT:-8815}"
+export PROVISA_MCP_PORT="${PROVISA_MCP_PORT:-8009}"
 # REQ-2135: a local install's public address. The boot stores this as server.public_url, the
 # operator setting in Deployment settings, when nothing sets it, so SPARQL works on a fresh start.
 export PROVISA_LOCAL_ADDRESS="http://localhost:$PROVISA_API_PORT"
@@ -419,14 +458,19 @@ if [ -n "$DEMO_NAME" ]; then
       docker compose -f "$_NAMED_DIR/docker-compose.yml" up seeder
     fi
   fi
-  # REQ-2016: the optional dependency groups the demo's demo.yaml names (extras:), installed for
-  # this demo alone; any other start installs nothing more.
+  # REQ-2016: the optional dependency groups the demo's demo.yaml names (extras:), synced for
+  # this demo alone from uv.lock; any other start installs nothing more. Through the lock, torch
+  # comes from PyTorch's CPU-only index on Linux ([tool.uv.sources]), never PyPI's CUDA build.
+  # --inexact keeps what is already installed; --no-install-project leaves provisa's own build to
+  # rust/ensure-local-build.sh.
   if [ -f "$_NAMED_DIR/demo.yaml" ]; then
-    _DEMO_REQS="$("$SCRIPT_DIR/.venv/bin/python" "$SCRIPT_DIR/scripts/demo_extras.py" "$_NAMED_DIR")" || exit 1
-    if [ -n "$_DEMO_REQS" ]; then
-      echo "Named demo '$DEMO_NAME': installing what it needs: $(echo $_DEMO_REQS)"
-      # shellcheck disable=SC2086
-      "$SCRIPT_DIR/.venv/bin/python" -m pip install --quiet $_DEMO_REQS || exit 1
+    _DEMO_EXTRAS="$("$SCRIPT_DIR/.venv/bin/python" "$SCRIPT_DIR/scripts/demo_extras.py" --groups "$_NAMED_DIR")" || exit 1
+    if [ -n "$_DEMO_EXTRAS" ]; then
+      _DEMO_EXTRA_ARGS=()
+      for _extra in $_DEMO_EXTRAS; do _DEMO_EXTRA_ARGS+=(--extra "$_extra"); done
+      echo "Named demo '$DEMO_NAME': syncing the extras it needs: $(echo $_DEMO_EXTRAS)"
+      (cd "$SCRIPT_DIR" && UV_PROJECT_ENVIRONMENT=.venv uv sync --locked --inexact --no-install-project \
+        "${_DEMO_EXTRA_ARGS[@]}") || exit 1
     fi
   fi
   if [ "$_NAMED_WHOLE" = true ]; then
@@ -757,7 +801,9 @@ if [ "$DEMO" = true ] || [ "$NATIVE" = true ]; then
     CP_STORE_DESC="embedded PostgreSQL (pgserver, socket $CP_PG_HOST:$CP_PG_PORT)"
   else
     echo "FAILED — see $LOG_DIR/control-plane-pg.log"
-    echo "Embedded control plane requires pgserver (Python <=3.12). Aborting."
+    echo "Embedded control plane did not start. Last error in $LOG_DIR/control-plane-pg.log:"
+    tail -n 5 "$LOG_DIR/control-plane-pg.log"
+    echo "Aborting."
     exit 1
   fi
 else
@@ -868,15 +914,17 @@ start_backend() {
     PROVISA_CONFIG="${PROVISA_CONFIG}"
     PROVISA_CONFIG_REPLACE="true"
     PROVISA_PGWIRE_PORT=5439
-    # MCP on by default in dev too (parity with the native tier) so the Explore -> MCP panel and the
-    # config-file/mcp-proxy bridge work here. Plain HTTP: Claude Desktop reaches a local server only
-    # via the stdio bridge (works over http); its custom-connector URL path is brokered from Anthropic
-    # (public HTTPS only). TLS stays opt-in via PROVISA_MCP_TLS=1. All overridable via env/.env.
-    PROVISA_MCP_PORT="${PROVISA_MCP_PORT:-8009}"
+    PROVISA_MINTED_PGWIRE_PORT="${PROVISA_MINTED_PGWIRE_PORT:-5440}"
+    GRPC_PORT="$GRPC_PORT"
+    FLIGHT_PORT="$FLIGHT_PORT"
+    # MCP over plain HTTP: Claude Desktop reaches a local server only via the stdio bridge (works
+    # over http); its custom-connector URL path is brokered from Anthropic (public HTTPS only). TLS
+    # stays opt-in via PROVISA_MCP_TLS=1. All overridable via env/.env.
+    PROVISA_MCP_PORT="$PROVISA_MCP_PORT"
     # Bind 0.0.0.0 under WSL so Windows Claude Desktop can reach the backend via the WSL VM IP
     # (the localhost relay drops MCP's streamed response); loopback-only otherwise.
     PROVISA_MCP_HOST="${PROVISA_MCP_HOST:-$(is_wsl && echo 0.0.0.0 || echo 127.0.0.1)}"
-    PROVISA_MCP_ROLE="${PROVISA_MCP_ROLE:-admin}"
+    PROVISA_MCP_ROLE="${PROVISA_MCP_ROLE:-org_admin}"
     PROVISA_MCP_BRIDGE_COMMAND="${PROVISA_MCP_BRIDGE_COMMAND:-$SCRIPT_DIR/.venv/bin/python}"
   )
   # Native tier: in-process DuckDB engine + embedded fakeredis, so no Trino/Redis
@@ -924,8 +972,10 @@ start_backend() {
     _BACKEND_ENV+=( PROVISA_HTTP_LISTEN="0.0.0.0:$PROVISA_API_PORT" )
     _bind_args=( --uds "${TMPDIR:-/tmp}/provisa-supervisor-$$.sock" )
   fi
+  # scripts/serve_backend.py: with --reload, a failed first start ends this process, which the
+  # wait below sees; plain uvicorn's reloader would keep running with no server under it.
   env "${_BACKEND_ENV[@]}" \
-    "$SCRIPT_DIR/.venv/bin/uvicorn" main:app \
+    "$SCRIPT_DIR/.venv/bin/python" "$SCRIPT_DIR/scripts/serve_backend.py" uvicorn main:app \
       "${_serve_args[@]}" \
       "${_bind_args[@]}" \
       >> "$LOG_DIR/backend.log" 2>&1 &
@@ -1015,11 +1065,10 @@ if [ -n "$DEMO_NAME" ] && [ -f "$_NAMED_DIR/setup.yaml" ]; then
   if [ "$_DEMO_BUNDLED" = true ]; then _SETUP_SCOPE="--environments-only"; fi
   echo "Named demo '$DEMO_NAME': running its setup (once per control plane)..."
   # shellcheck disable=SC2086  # empty, or the one flag: split on purpose
-  # --flight: where a client step of the setup reads the server (the visitor's node's Flight,
-  # FLIGHT_PORT when set, else the server's own default, 8815).
+  # --flight: where a client step of the setup reads the server (the visitor's node's Flight).
   if ! "$SCRIPT_DIR/.venv/bin/python" "$SCRIPT_DIR/scripts/run_demo_setup.py" \
        "$_NAMED_DIR" --url "http://localhost:$PROVISA_API_PORT" \
-       --flight "grpc://localhost:${FLIGHT_PORT:-8815}" $_SETUP_SCOPE; then
+       --flight "grpc://localhost:$FLIGHT_PORT" $_SETUP_SCOPE; then
     echo "Named demo '$DEMO_NAME': its setup failed (above). Backend log: $LOG_DIR/backend.log"
     exit 1
   fi
@@ -1027,12 +1076,14 @@ fi
 
 echo "Starting Provisa UI on port 3000..."
 is_exfat "$SCRIPT_DIR/provisa-ui" && find "$SCRIPT_DIR/provisa-ui" -name "._*" -delete 2>/dev/null || true
-# Load nvm and switch to the Node version specified in .nvmrc (requires Node 20.19+ or 22+)
+# Load nvm and switch to the Node version .nvmrc pins, installing it when it is missing.
 export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
 # shellcheck disable=SC1091
 [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
 if command -v nvm >/dev/null 2>&1; then
-  nvm use 2>/dev/null || nvm use 22 2>/dev/null || true
+  (cd "$SCRIPT_DIR" && nvm install >/dev/null) \
+    || { echo "nvm could not install the Node version in $SCRIPT_DIR/.nvmrc" >&2; exit 1; }
+  nvm use "$(cat "$SCRIPT_DIR/.nvmrc")" >/dev/null
 fi
 # REQ-2071: provisa-notebook (the Data Science area's Python) installed and its assets built,
 # before vite serves them. A failure leaves the rest of the app running; the Data Science area
@@ -1100,10 +1151,7 @@ if [ "$DEMO" = true ]; then
   echo "  Backend: http://localhost:$PROVISA_API_PORT  (logs: tail -f $LOG_DIR/backend.log)"
   echo "  UI:      http://localhost:3000"
   echo "  Control plane (platform + tenant registries): ${CP_STORE_DESC:-unknown}"
-  echo "  pgwire:  postgresql://admin:ignored@localhost:5439/provisa  (username = role)"
-  [ -n "${PROVISA_BOLT_PORT:-}" ] && echo "  bolt:    bolt://localhost:${PROVISA_BOLT_PORT}  (username = role)"
-  echo "  sparql:  http://localhost:$PROVISA_API_PORT/data/sparql  (SPARQL 1.1 Protocol; role via sign-in or X-Provisa-Role)"
-  print_mcp_info
+  print_query_surfaces
   echo ""
   echo "Demo sources:"
   echo "  - pet-store-pg       (PostgreSQL, pet_store schema)"
@@ -1115,10 +1163,7 @@ else
   echo "  Backend: http://localhost:$PROVISA_API_PORT  (logs: tail -f $LOG_DIR/backend.log)"
   echo "  UI:      http://localhost:3000"
   echo "  Control plane (platform + tenant registries): ${CP_STORE_DESC:-unknown}"
-  echo "  pgwire:  postgresql://admin:ignored@localhost:5439/provisa  (username = role)"
-  [ -n "${PROVISA_BOLT_PORT:-}" ] && echo "  bolt:    bolt://localhost:${PROVISA_BOLT_PORT}  (username = role)"
-  echo "  sparql:  http://localhost:$PROVISA_API_PORT/data/sparql  (SPARQL 1.1 Protocol; role via sign-in or X-Provisa-Role)"
-  print_mcp_info
+  print_query_surfaces
   echo ""
   echo "No demo services started. Use --demo to include petstore-mock, graphql-demo, and SQLite ETL."
 fi

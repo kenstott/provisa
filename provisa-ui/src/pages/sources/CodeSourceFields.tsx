@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-1984, REQ-1993: what a Node or Python source's code is -- its runtime, and where the code
+// REQ-1984, REQ-1993, REQ-2200, REQ-2227: what a Node, Python, Go or Rust source's code is -- its runtime, and where the code
 // comes from: a package at an exact version, a Git repository at a commit, or an uploaded archive,
 // with a lockfile beside it when the code carries none. The server installs and
 // reads the code when the source is saved, and refuses code it cannot use by name.
@@ -49,7 +49,11 @@ import { useAuth } from "../../context/AuthContext";
 import {
   LOCKFILES,
   NODE_RUNTIMES,
+  GO,
+  NAMED_ENTRY,
+  NODE,
   PYTHON,
+  RUST,
   declaredSecrets,
   vscodeLink,
   withSecretNames,
@@ -88,6 +92,8 @@ export function CodeSourceFields({ type, fields, setFields, sourceId }: Props) {
   const [failed, setFailed] = useState<{ key: string; text: string } | null>(null);
   const origin = (fields.code_origin ?? "package") as CodeOrigin;
   const python = type === PYTHON;
+  const go = type === GO;
+  const rust = type === RUST;
   const set = (patch: Record<string, string>) => setFields({ ...fields, ...patch });
   const [orgSecrets, setOrgSecrets] = useState<string[]>([]);
   const [secretsFailed, setSecretsFailed] = useState("");
@@ -187,7 +193,7 @@ export function CodeSourceFields({ type, fields, setFields, sourceId }: Props) {
       )}
       <CodeLocked locked={built}>
         <FieldGroup>
-          {!python && (
+          {type === NODE && (
             <FormField size="short">
               <Select
                 label={t("codeSourceFields.runtime")}
@@ -208,7 +214,15 @@ export function CodeSourceFields({ type, fields, setFields, sourceId }: Props) {
               data={[
                 {
                   value: "package",
-                  label: t(python ? "codeSourceFields.pypi" : "codeSourceFields.npm"),
+                  label: t(
+                    python
+                      ? "codeSourceFields.pypi"
+                      : go
+                        ? "codeSourceFields.gomod"
+                        : rust
+                          ? "codeSourceFields.cargo"
+                          : "codeSourceFields.npm",
+                  ),
                 },
                 { value: "git", label: t("codeSourceFields.git") },
                 { value: "upload", label: t("codeSourceFields.upload") },
@@ -230,18 +244,35 @@ export function CodeSourceFields({ type, fields, setFields, sourceId }: Props) {
             <FormField size="medium">
               <TextInput
                 required
-                label={t("codeSourceFields.package")}
-                placeholder={python ? "acme-rates" : "@acme/rates"}
+                label={t(
+                  go
+                    ? "codeSourceFields.module"
+                    : rust
+                      ? "codeSourceFields.crate"
+                      : "codeSourceFields.package",
+                )}
+                placeholder={
+                  python || rust ? "acme-rates" : go ? "github.com/acme/rates" : "@acme/rates"
+                }
                 value={fields.code_package ?? ""}
                 onChange={(e) => set({ code_package: e.currentTarget.value })}
                 data-testid="code-package"
               />
             </FormField>
-            <FormField size="short" hint={t("codeSourceFields.versionHint")}>
+            <FormField
+              size="short"
+              hint={t(
+                go
+                  ? "codeSourceFields.versionHintGo"
+                  : rust
+                    ? "codeSourceFields.versionHintRust"
+                    : "codeSourceFields.versionHint",
+              )}
+            >
               <TextInput
                 required
                 label={t("codeSourceFields.version")}
-                placeholder="1.2.0"
+                placeholder={go ? "v1.2.0" : "1.2.0"}
                 value={fields.code_version ?? ""}
                 onChange={(e) => set({ code_version: e.currentTarget.value })}
                 data-testid="code-version"
@@ -424,28 +455,46 @@ export function CodeSourceFields({ type, fields, setFields, sourceId }: Props) {
             />
           </FormField>
         </FieldGroup>
-        <FieldGroup>
-          <FormField size="long" help={t("codeSourceFields.settingsHint")}>
-            <Textarea
-              label={t("codeSourceFields.settings")}
-              placeholder={"region = eu-west\nthreshold = 0.8"}
-              value={fields.code_settings ?? ""}
-              onChange={(e) => set({ code_settings: e.currentTarget.value })}
-              autosize
-              minRows={2}
-              maxRows={10}
-              styles={{ input: { fontFamily: "var(--mantine-font-family-monospace)" } }}
-              data-testid="code-settings"
-            />
-          </FormField>
-        </FieldGroup>
-
-        {python && (
+        {/* A connector's source shows each value its code requires instead. */}
+        {!fields.code_connector && (
           <FieldGroup>
-            <FormField size="medium" help={t("codeSourceFields.entryHint")}>
+            <FormField size="long" help={t("codeSourceFields.settingsHint")}>
+              <Textarea
+                label={t("codeSourceFields.settings")}
+                placeholder={"region = eu-west\nthreshold = 0.8"}
+                value={fields.code_settings ?? ""}
+                onChange={(e) => set({ code_settings: e.currentTarget.value })}
+                autosize
+                minRows={2}
+                maxRows={10}
+                styles={{ input: { fontFamily: "var(--mantine-font-family-monospace)" } }}
+                data-testid="code-settings"
+              />
+            </FormField>
+          </FieldGroup>
+        )}
+
+        {NAMED_ENTRY.has(type) && (
+          <FieldGroup>
+            <FormField
+              size="medium"
+              help={t(
+                go
+                  ? "codeSourceFields.entryGoHint"
+                  : rust
+                    ? "codeSourceFields.entryRustHint"
+                    : "codeSourceFields.entryHint",
+              )}
+            >
               <TextInput
-                label={t("codeSourceFields.entry")}
-                placeholder="rates"
+                label={t(
+                  go
+                    ? "codeSourceFields.entryGo"
+                    : rust
+                      ? "codeSourceFields.entryRust"
+                      : "codeSourceFields.entry",
+                )}
+                placeholder={go || rust ? "feeds" : "rates"}
                 value={fields.code_entry ?? ""}
                 onChange={(e) => set({ code_entry: e.currentTarget.value })}
                 data-testid="code-entry"

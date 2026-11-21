@@ -33,11 +33,13 @@ class OAuthProvider(AuthProvider):  # REQ-120, REQ-123
         client_id: str,
         audience: str | None = None,
         role_claim: str = "roles",
+        entitlements_claim: str | None = None,
     ) -> None:
         self._discovery_url = discovery_url
         self._client_id = client_id
         self._audience = audience or client_id
         self._role_claim = role_claim
+        self._entitlements_claim = entitlements_claim  # REQ-2219
         self._jwks_client: jwt.PyJWKClient | None = None
         self._jwks_fetched_at: float = 0.0
         self._jwks_ttl: float = 3600.0
@@ -82,7 +84,10 @@ class OAuthProvider(AuthProvider):  # REQ-120, REQ-123
         return AuthIdentity(
             user_id=decoded["sub"],
             email=decoded.get("email"),
+            # REQ-1261: the issuer's own statement; absent or false, the address matches nothing.
+            email_verified=decoded.get("email_verified") is True,
             display_name=decoded.get("name"),
             roles=roles,
             raw_claims=decoded,
+            entitlements_claim=self._entitlements_claim,
         )

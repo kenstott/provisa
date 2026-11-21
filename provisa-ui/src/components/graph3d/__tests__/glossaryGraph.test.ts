@@ -14,14 +14,14 @@
 
 import { describe, expect, it } from "vitest";
 import {
-  GLOSSARY_SCOPE,
+  ONTOLOGY_SCOPE,
   layoutGraph,
   visibleGraph,
   type GraphData,
   type GraphFilters,
   type LayerId,
 } from "../graphModel";
-import { glossaryGraph, type TermEdgeRow, type TermRow } from "../glossaryGraphData";
+import { glossaryGraph, type TermEdgeRow, type TermRow } from "../ontologyData";
 import { NO_FILTERS } from "../graphModel";
 
 const NO_FILTERS_ONTOLOGY: GraphFilters = { ...NO_FILTERS };
@@ -34,7 +34,9 @@ const ref = (table: number, column: string, product?: string) => ({
   domainId: "sales",
   registeredTable: {
     id: table,
-    product: product ? { id: product, name: product, domainId: "sales" } : null,
+    dataProductTables: product
+      ? [{ dataProduct: { id: product, name: product, domainId: "sales" } }]
+      : [],
   },
 });
 
@@ -62,7 +64,12 @@ const TERMS: TermRow[] = [
     refs: [ref(10, "tier")],
   }),
   term(4, "Concept", { refCount: 0, status: "draft", grounding: "not_grounded" }),
-  term(5, "Old customer", { deprecated: true, status: "deprecated", grounding: "not_grounded", domains: [{ domainId: "finance" }] }),
+  term(5, "Old customer", {
+    deprecated: true,
+    status: "deprecated",
+    grounding: "not_grounded",
+    domains: [{ domainId: "finance" }],
+  }),
   term(6, "Ancient", { retired: true, status: "retired", grounding: "not_grounded" }),
 ];
 const EDGES: TermEdgeRow[] = [
@@ -80,15 +87,15 @@ const defaults: GraphFilters = {
   sensitivities: [],
   focus: [],
   edgeTypes: [],
-  hiddenStatuses: GLOSSARY_SCOPE.hiddenStatuses,
+  hiddenStatuses: ONTOLOGY_SCOPE.hiddenStatuses,
 };
 const preset = (p: "ontology" | "taxonomy") => {
-  const found = GLOSSARY_SCOPE.presets[p];
+  const found = ONTOLOGY_SCOPE.presets[p];
   if (!found) throw new Error(p);
   return found;
 };
 const view = (layers: LayerId[], filters: GraphFilters = defaults) =>
-  visibleGraph(G, new Set(layers), filters, new Set(), GLOSSARY_SCOPE);
+  visibleGraph(G, new Set(layers), filters, new Set(), ONTOLOGY_SCOPE);
 
 describe("the Ontology View's terms", () => {
   it("marks a class whose tables are not all declared one entity, naming its tables", () => {
@@ -218,7 +225,7 @@ describe("the Ontology View's presets", () => {
       [],
     );
     const on = (layers: LayerId[]) =>
-      visibleGraph(grounded, new Set(layers), NO_FILTERS_ONTOLOGY, new Set(), GLOSSARY_SCOPE);
+      visibleGraph(grounded, new Set(layers), NO_FILTERS_ONTOLOGY, new Set(), ONTOLOGY_SCOPE);
     const g = on(["ontology"]);
     expect(g.nodes.find((n) => n.id === "t:20")).toMatchObject({
       type: "table",
@@ -249,7 +256,7 @@ describe("a draft named for a column, with Domains alone drawn", () => {
       new Set(["ontology", "domains"]),
       NO_FILTERS_ONTOLOGY,
       new Set(),
-      GLOSSARY_SCOPE,
+      ONTOLOGY_SCOPE,
     );
     expect(g.nodes.map((n) => n.id).sort()).toEqual(["d:shelter", "term:7"]);
     expect(g.edges.map((e) => [e.kind, e.a, e.b])).toEqual([["in_domain", "term:7", "d:shelter"]]);

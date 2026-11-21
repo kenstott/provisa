@@ -42,7 +42,6 @@ from contextvars import ContextVar
 from dataclasses import dataclass, field
 from typing import Any
 
-import sqlglot
 import sqlglot.expressions as exp
 from sqlalchemy import Delete, Update, literal_column
 
@@ -52,6 +51,18 @@ from provisa.core.session_terms import resolve_session_terms
 
 #: A statement's right: what an UPDATE or a DELETE does to a row that exists.
 _RIGHTS: tuple[tuple[type, str, str], ...] = ((Update, "U", "UPDATE"), (Delete, "D", "DELETE"))
+
+#: REQ-2248: deleting a model object retires it, an UPDATE of its row. The statement that does is
+#: marked with this execution option (:func:`as_delete`) and held to the D rule as the DELETE it
+#: stands for.
+_RETIRES_OPTION = "provisa_retires"
+
+
+def as_delete(stmt: Update) -> Update:
+    """``stmt``, an UPDATE that retires rows because a person deleted them (REQ-2248), marked so
+    the acting role's D rule holds it, as it held the DELETE it replaces (REQ-2188)."""
+    return stmt.execution_options(**{_RETIRES_OPTION: True})
+
 
 #: A backend's name in sqlglot, where it differs from the connection's.
 _SQLGLOT_DIALECT = {"postgresql": "postgres", "mssql": "tsql", "singlestoredb": "singlestore"}
@@ -73,9 +84,15 @@ class ModelRule:
     the session values it reads, and the ``*_meta`` view the model is registered through, which a
     column the table does not hold is read from."""
 
-    predicate: str
+    predicate: Any
     session_vars: dict[str, str] = field(default_factory=dict)
     view: str | None = None
+
+    def __post_init__(self) -> None:
+        from provisa.compiler.rls import as_rule
+
+        # REQ-913: the rule is an expression; one given as text is a rule entering, read here.
+        object.__setattr__(self, "predicate", as_rule(self.predicate))
 
 
 #: (acting role, table, right) -> its rule. The application registers it; a process with no
@@ -113,11 +130,11 @@ class Narrowing:
     predicate: Any
 
 
-def _column_names(tree: exp.Expression) -> set[str]:
+def _column_names(tree: exp.Expr) -> set[str]:  # pyright: ignore[reportPrivateImportUsage]
     return {c.name for c in tree.find_all(exp.Column)}
 
 
-def _rendered(tree: exp.Expression, dialect: str) -> str:
+def _rendered(tree: exp.Expr, dialect: str) -> str:  # pyright: ignore[reportPrivateImportUsage]
     return tree.sql(dialect=_SQLGLOT_DIALECT.get(dialect, dialect))
 
 
@@ -126,22 +143,45 @@ def _predicate(
 ) -> Any:
     """The rule as a criterion on ``table``: over its own columns where it holds them all; else,
     a column only the model's view holds, as the rows of the view it admits."""
-    parsed = sqlglot.parse_one(rule.predicate, read="postgres")
-    tree = resolve_session_terms(parsed, rule.session_vars)  # pyright: ignore[reportArgumentType]  # sqlglot stub types parse_one as Expr
+    tree = resolve_session_terms(rule.predicate.copy(), rule.session_vars)
     outside = _column_names(tree) - set(table.c.keys())
-    if not outside:
-        # literal_column, not text(): a literal in a rule may hold a colon (a meta-role's id),
-        # which text() would take for a bind parameter.
-        return literal_column(f"({_rendered(tree, dialect)})")
-    key = list(table.primary_key.columns)
-    if rule.view is None or len(key) != 1:
-        raise refuse(f"reads {sorted(outside)}, which {table.name} does not hold")
-    column = key[0].name
-    through_view = sqlglot.parse_one(
-        f'"{column}" IN (SELECT "{column}" FROM "{rule.view}" WHERE {tree.sql(dialect="postgres")})',
-        read="postgres",
+    if outside:
+        key = list(table.primary_key.columns)
+        if rule.view is None or len(key) != 1:
+            raise refuse(f"reads {sorted(outside)}, which {table.name} does not hold")
+        column = key[0].name
+        tree = exp.In(
+            this=exp.column(column, quoted=True),
+            query=exp.Subquery(
+                this=exp.select(exp.column(column, quoted=True))
+                .from_(exp.table_(rule.view, quoted=True))
+                .where(tree, copy=False)
+            ),
+        )
+    # REQ-913: the statement is SQLAlchemy's, which takes a criterion as text: the rule is
+    # rendered once, here, in the store's dialect. literal_column, not text(): a literal in a rule
+    # may hold a colon (a meta-role's id), which text() would take for a bind parameter.
+    return literal_column(f"({_rendered(tree, dialect)})")
+
+
+def _retires(stmt: Any) -> bool:
+    """Whether ``stmt`` is an UPDATE :func:`as_delete` marked."""
+    return isinstance(stmt, Update) and bool(stmt.get_execution_options().get(_RETIRES_OPTION))
+
+
+#: What a reader outside this module asks (REQ-1557: a retired row is a deleted one there too).
+retires = _retires
+
+
+def person_acting() -> bool:
+    """Whether a person is making this context's writes: a role is acting, and the path is not
+    one that writes the model with no person acting (:func:`unnarrowed`, a whole-model write).
+    The test :func:`narrowing_of` applies before it looks for a rule."""
+    return (
+        current_acting_role.get() is not None
+        and not _unnarrowed.get()
+        and not model_change.writes_whole_model()
     )
-    return literal_column(f"({_rendered(through_view, dialect)})")  # pyright: ignore[reportArgumentType]  # sqlglot stub types parse_one as Expr
 
 
 def narrowing_of(stmt: Any, dialect: str) -> Narrowing | None:
@@ -150,6 +190,8 @@ def narrowing_of(stmt: Any, dialect: str) -> Narrowing | None:
     if _provider is None or _unnarrowed.get():
         return None
     match = next(((right, verb) for kind, right, verb in _RIGHTS if isinstance(stmt, kind)), None)
+    if match is not None and _retires(stmt):
+        match = ("D", "DELETE")
     role = current_acting_role.get()
     if match is None or role is None or model_change.writes_whole_model():
         return None

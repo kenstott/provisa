@@ -19,8 +19,11 @@ import logging
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, Optional, cast
 
+from provisa.codesource.languages import CODE_SOURCE_TYPES
 from provisa.api.admin.catalog_scope import CatalogScope, catalog_scope
+from provisa.api.admin.jdbc_source_admin import JdbcSourceSetupType
 from provisa.api.admin.engine_auth import run_admin_catalog_sql
+from provisa.api.admin.secret_redaction import redact_url_password
 
 import strawberry
 from sqlalchemy import func, or_, select
@@ -28,6 +31,7 @@ from strawberry.types.info import Info as StrawberryInfo
 
 from provisa.auth.role_grants import in_force as grant_in_force
 from provisa.core.schema_org import (
+    data_products,
     domains,
     registered_tables,
     relationships,
@@ -57,8 +61,12 @@ from provisa.api.admin.capabilities import (
     require_capability,
     role_definitions_visible,
 )
+from provisa.api.admin._retired_objects import RetiredObjectType
 from provisa.api.admin.types import (
     JsonScalar,
+    CombinedFileType,
+    FileColumnsDifferType,
+    FileGlobPreviewType,
     AvailableColumnType,
     AvailableTableType,
     CompanionImportSetType,
@@ -73,10 +81,6 @@ from provisa.api.admin.types import (
     CrawledFileType,
     CrawledTableType,
     CrawlResultType,
-    ContractColumnType,
-    ContractSlaPropertyType,
-    ContractTermsType,
-    DataContractType,
     DataProductFindingType,
     DataProductFindingsType,
     DataProductType,
@@ -105,17 +109,23 @@ from provisa.api.admin.types import (
     ReplicaBuildType,
     ReplicaIndexType,
     MetricType,
+    DatasetMetricType,
     MVType,
     RefreshPolicySummaryType,
     RegisteredTableType,
     RelationshipType,
+    CodeResolverType,
+    IncrementalOptionType,
     RLSRuleType,
     RoleType,
     ScheduledTaskType,
     SourceType,
     SystemHealthType,
+    TableAccessType,
+    LibraryCitationType,
     TagAssignmentType,
     TagParamValueType,
+    TagTargetInput,
     TagType,
     UserSummaryType,
 )
@@ -149,16 +159,26 @@ from provisa.core.secrets_store import bound_to_request_org as _bound_to_request
 
 
 def _safe_store_ref(engine: Any) -> str | None:
-    """The engine's materialization-store DSN, or None when unconfigured. ``engine`` is the
-    EngineRuntime, whose accessor is ``materialize_store_dsn`` (NOT ``materialize_store`` — that lives
-    on the wrapped FederationEngine). Best-effort so an unconfigured store still renders the engine +
-    MV count instead of the whole field failing (which blanked both tiles to "—")."""
+    """The engine's materialization-store DSN without its credential, or None when unconfigured.
+    ``engine`` is the EngineRuntime, whose accessor is ``materialize_store_dsn`` (NOT
+    ``materialize_store`` — that lives on the wrapped FederationEngine). Best-effort so an
+    unconfigured store still renders the engine + MV count instead of the whole field failing
+    (which blanked both tiles to "—")."""
     from provisa.federation.engine import MaterializeStoreUnconfigured
 
     try:
-        return engine.materialize_store_dsn()
+        return redact_url_password(engine.materialize_store_dsn())
     except MaterializeStoreUnconfigured:
         return None
+
+
+# REQ-1327: the Cache page's Materialized tab opens to either right.
+_MATERIALIZED_READERS = ("observability", "table_registration")
+
+
+def _require_materialized_read(info: StrawberryInfo) -> None:  # REQ-1327
+    if not any(has_capability(info, right) for right in _MATERIALIZED_READERS):
+        raise PermissionError(f"Missing capability: one of {', '.join(_MATERIALIZED_READERS)}")
 
 
 # Local-file store schemes: each running instance writes its OWN copy (no cross-instance coordination).
@@ -239,6 +259,37 @@ async def _listed_sources(conn: Any, scope: CatalogScope) -> set[str]:
         select(registered_tables.c.id, registered_tables.c.domain_id, registered_tables.c.source_id)
     )
     return {r.source_id for r in _res.fetchall() if scope.lists_table(r.id)}
+
+
+async def _with_withdrawn(
+    conn: Any, info: StrawberryInfo, include_withdrawn: bool, rows: list[dict]
+) -> list[RelationshipType]:  # REQ-1921
+    """``rows`` (relationships, each with its ends' ids) as the admin lists them: one with an end
+    (or its junction) withdrawn or retired is withdrawn -- derived, stored nowhere -- and left
+    out, unless ``include_withdrawn`` and the caller may preview each withdrawn end, when it is
+    listed marked withdrawn. A retired end is previewed by no one."""
+    from dataclasses import replace
+
+    from provisa.api.admin.withdrawn import (
+        edge_ends,
+        preview_reach,
+        previews,
+        retired_table_ids,
+        withdrawn_table_domains,
+    )
+
+    withdrawn = await withdrawn_table_domains(conn)
+    retired = await retired_table_ids(conn)
+    reach = preview_reach(info) if include_withdrawn else frozenset()
+    listed: list[RelationshipType] = []
+    for row in rows:
+        ends = edge_ends(row)
+        out = [t for t in ends if t in withdrawn or t in retired]
+        if not out:
+            listed.append(_rel_from_row(row))
+        elif not any(t in retired for t in out) and all(previews(reach, withdrawn[t]) for t in out):
+            listed.append(replace(_rel_from_row(row), withdrawn=True))
+    return listed
 
 
 async def _listed_relationships(
@@ -373,9 +424,11 @@ def _names_read(state: Any, scope: CatalogScope) -> Callable[[str], bool]:
     held by a table it is not served is not told) -- for the observability lists, which name
     tables rather than address them (REQ-2152, ruling Q3)."""
     ids: dict[str, list[int]] = {}
-    # The compiled tables and the drafts, which no context compiles: the scope serves a draft by
-    # its stored columns (catalog_scope), so its builds are its readers' as well.
-    for t in [*state.tables, *state.role_build_inputs["draft_tables"]]:
+    # The compiled tables and the withdrawn ones, which no context compiles: the scope serves a
+    # withdrawn table by its stored columns to its stewards (catalog_scope, REQ-1921), so its
+    # kept builds are theirs to see as well.
+    inputs = state.role_build_inputs
+    for t in [*state.tables, *inputs["withdrawn_tables"]]:
         ids.setdefault(t["table_name"], []).append(t["id"])
 
     def _reads(name: str) -> bool:
@@ -385,6 +438,18 @@ def _names_read(state: Any, scope: CatalogScope) -> Callable[[str], bool]:
         return bare in ids and all(scope.lists_table(i) for i in ids[bare])
 
     return _reads
+
+
+def _mvs_read(state: Any, scope: CatalogScope) -> list[Any]:
+    """The materialized views over tables the caller reads (REQ-2152 Q3, REQ-1327): the rows of
+    the Materialized tab and the count on its store tile."""
+    reads = _names_read(state, scope)
+
+    def _readable(mv: Any) -> bool:
+        over = [mv.id[len("view-") :]] if mv.id.startswith("view-") else mv.source_tables
+        return all(reads(name) for name in over)
+
+    return [mv for mv in state.mv_registry.all() if _readable(mv)]
 
 
 async def _table_region_maps(
@@ -422,7 +487,10 @@ async def _assignments_in_scope(conn, rows: list[dict], scope: frozenset[str]) -
 
     An assignment's domain comes from its object: a table or column from the registered table's
     domain; a relationship only when BOTH its source and target tables' domains are reachable; a command (tracked function or webhook)
-    from its own domain; a source from its ``allowed_domains`` (reachable when any of them is). An
+    from its own domain; a source from its ``allowed_domains`` (reachable when any of them is); a
+    data product from its domain (REQ-1634); a row rule from the domains it decides rows in, all
+    of which must be reachable (REQ-2208). A glossary term's tag is read as the term is
+    (REQ-2145), and a library document's or section's as the document is (REQ-2208). An
     object with no domain (an empty domain id, or a source with no ``allowed_domains``) is not
     restricted by a domain scope and stays visible. An assignment whose object cannot be found is
     dropped: it cannot be shown to be in scope.
@@ -448,7 +516,11 @@ async def _assignments_in_scope(conn, rows: list[dict], scope: frozenset[str]) -
     source_domains = {
         r.id: list(r.allowed_domains or [])
         for r in (
-            await conn.execute_core(select(sources.c.id, sources.c.allowed_domains))
+            await conn.execute_core(
+                select(sources.c.id, sources.c.allowed_domains).where(
+                    sources.c.retired.is_(False)  # REQ-2248
+                )
+            )
         ).fetchall()
     }
     command_domain: dict[str, str] = {}
@@ -457,6 +529,28 @@ async def _assignments_in_scope(conn, rows: list[dict], scope: frozenset[str]) -
             await conn.execute_core(select(registry.c.name, registry.c.domain_id))
         ).fetchall():
             command_domain[r.name] = r.domain_id
+    kinds = {r["object_type"] for r in rows}
+    from provisa.core.glossary import readable_term
+    from provisa.reference_library.retrieve import readable as library_readable
+
+    product_domain: dict[str, str] = {}
+    if "product" in kinds:  # REQ-1634
+        product_domain = {
+            r.id: r.domain_id
+            for r in (
+                await conn.execute_core(select(data_products.c.id, data_products.c.domain_id))
+            ).fetchall()
+        }
+    term_domain: dict[int, set[str]] = {}
+    if "term" in kinds:  # REQ-2145
+        from provisa.core.repositories.glossary import term_domains
+
+        term_domain = await term_domains(conn)
+    document_domains: dict[int, set[str]] = {}
+    if kinds & {"document", "section"}:  # REQ-2208
+        from provisa.reference_library import store
+
+        document_domains = {d.id: set(d.domains) for d in await store.documents(conn)}
 
     def reachable(domain: str) -> bool:
         return domain == "" or domain in scope
@@ -479,30 +573,113 @@ async def _assignments_in_scope(conn, rows: list[dict], scope: frozenset[str]) -
             return row["command_name"] in command_domain and reachable(
                 command_domain[row["command_name"]]
             )
-        return False
+        if kind == "product":
+            return row["product_id"] in product_domain and reachable(
+                product_domain[row["product_id"]]
+            )
+        if kind == "term":  # read as the term is (REQ-1593): its domains, or the whole org's
+            # A term absent from term_domains is unscoped, which every glossary reader reaches.
+            return readable_term(scope, term_domain.get(row["term_id"], set()))
+        if kind in ("document", "section"):  # read as the library document is (REQ-2185)
+            return row["document_id"] in document_domains and library_readable(
+                scope, document_domains[row["document_id"]]
+            )
+        if kind == "rls_rule":  # REQ-2208: the domains the rule decides rows in
+            return row["rls_rule_id"] in rule_domains and all(
+                reachable(d) for d in rule_domains[row["rls_rule_id"]]
+            )
+        # REQ-2208: a role is in no domain, and a metric is listed by its grant, not its domains
+        # (_assignments_on_readable).
+        return kind in ("role", "metric")
 
+    from provisa.api.admin.domain_guard import DomainLookupError
+    from provisa.api.admin.domain_guard import rule_domains as _rule_domains
+
+    rule_domains: dict[int, set[str]] = {}
+    for rule_id in {r["rls_rule_id"] for r in rows if r["object_type"] == "rls_rule"}:
+        try:
+            rule_domains[rule_id] = await _rule_domains(conn, rule_id)
+        except DomainLookupError:
+            continue
     return [r for r in rows if visible(r)]
 
 
-def data_contract_type(member: dict) -> DataContractType:  # REQ-2158
-    """A member's stored contract (data_product.member_contracts) as the admin API answers it."""
-    from provisa.core.data_contracts import contract_id
-    from provisa.core.models import DataContract
-
-    c = DataContract.model_validate(member["contract"])
-    return DataContractType(
-        table_id=member["id"],
-        source_id=member["source_id"],
-        schema_name=member["schema_name"],
-        table_name=member["table_name"],
-        contract_id=contract_id(member["product_id"], member["schema_name"], member["table_name"]),
-        version=c.version,
-        status=c.status,
-        description=c.description,
-        terms=ContractTermsType(**c.terms.model_dump()),
-        sla=[ContractSlaPropertyType(**s.model_dump()) for s in c.sla],
-        columns=[ContractColumnType(**col.model_dump()) for col in c.columns],
+def citation_type(citation: Any) -> LibraryCitationType:  # REQ-2208
+    """A library citation (reference_library.citations.Citation) as the admin API answers it."""
+    return LibraryCitationType(
+        document_id=citation.document_id,
+        document_title=citation.document_title,
+        document_source=citation.document_source,
+        section_heading=citation.section_heading,
+        section_page=citation.section_page,
+        text_sha256=citation.text_sha256,
+        cited_by=citation.cited_by,
+        cited_at=citation.cited_at.isoformat(),
+        state=citation.state,
+        needs_review=citation.needs_review,
     )
+
+
+async def readable_tag_assignments(
+    request: Any, conn: "Connection", rows: list[dict]
+) -> list[dict]:  # REQ-2208
+    """:func:`_readable_assignments` for a REST handler's ``request``: the one read gate on tag
+    assignments, wherever they are listed."""
+    import types as _types
+
+    return await _readable_assignments(
+        cast(StrawberryInfo, _types.SimpleNamespace(context={"request": request})), conn, rows
+    )
+
+
+async def _readable_assignments(
+    info: StrawberryInfo, conn: "Connection", rows: list[dict]
+) -> list[dict]:  # REQ-2152, REQ-2208
+    """The one read gate on tag assignments: each is answered only when the caller may read the
+    object it is on. A table, column, relationship, command, source, data product, row rule,
+    glossary term, library document or section by the domains the caller reaches (None =
+    unrestricted: dev mode, single-domain mode, or a role whose domain_access is "*"), the same
+    scope the admin gates compute (:func:`_assignments_in_scope`); and a row rule, role or metric
+    by the right to read that rule, role definition or metric (:func:`_assignments_on_readable`).
+    """
+    scope = allowed_domains_request(info.context["request"])
+    if scope is not None:
+        rows = await _assignments_in_scope(conn, rows, scope)
+    return await _assignments_on_readable(info, conn, rows)
+
+
+async def _assignments_on_readable(
+    info: StrawberryInfo, conn: "Connection", rows: list[dict]
+) -> list[dict]:  # REQ-2152, REQ-2208
+    """The tag assignments whose object the caller may read: a tag on a row rule is read only by
+    a reader of row rules (access_config, the rules' own listing gate), one on a role only by
+    whoever may read the role's definition, one on a metric only by a caller the metric is
+    granted to. Every other assignment is left to the domain scope."""
+    from provisa.core.repositories import metric as metric_repo
+
+    kinds = {r["object_type"] for r in rows}
+    reads_rules = "rls_rule" not in kinds or has_capability(info, "access_config")
+    role_visible = None
+    if "role" in kinds:
+        request = info.context["request"]
+        identity = getattr(request.state, "identity", None)
+        role_visible = role_definitions_visible(request, getattr(identity, "roles", []))
+    metric_rows = (
+        {m["name"]: m for m in await metric_repo.list_all(conn)} if "metric" in kinds else {}
+    )
+
+    def readable(row: dict) -> bool:
+        kind = row["object_type"]
+        if kind == "rls_rule":
+            return reads_rules
+        if kind == "role":
+            return role_visible is not None and role_visible(row["role_id"])
+        if kind == "metric":
+            metric = metric_rows.get(row["metric_name"])
+            return metric is not None and _sees_metric(info, metric)
+        return True
+
+    return [r for r in rows if readable(r)]
 
 
 @strawberry.type
@@ -537,6 +714,46 @@ class Query:  # REQ-021, REQ-042
         ]
 
     @strawberry.field
+    async def table_metrics(
+        self, info: StrawberryInfo, table_id: int
+    ) -> list["DatasetMetricType"]:  # REQ-2243
+        """The governed metrics a dataset uses -- the metrics a view declared from metrics closes,
+        or those whose expression references the table -- each with its name, description, AI
+        definition and the glossary term it names. Listed as the caller's acting role may see them
+        (visible_to, as ``metrics``); no expression is shown."""
+        from provisa.api.admin._metric_views import dataset_metrics
+
+        pool = await _get_pool()
+        async with pool.acquire() as conn:
+            rows = await dataset_metrics(cast("Connection", conn), table_id)
+        return [
+            DatasetMetricType(
+                name=r["name"],
+                description=r["description"],
+                ai_context=r["ai_context"],
+                term=r["term"],
+                term_definition=r["term_definition"],
+                term_calculation_method=r["term_calculation_method"],
+            )
+            for r in rows
+            if _sees_metric(info, r)
+        ]
+
+    @strawberry.field
+    async def retired_model_objects(
+        self, info: StrawberryInfo
+    ) -> list[RetiredObjectType]:  # REQ-2248
+        """The retired tables, columns, relationships, tags and metrics the caller may act on,
+        with who retired each, when and why: what the ordinary lists leave out, to restore."""
+        from provisa.api.admin._retired_objects import retired_objects
+        from provisa.api.admin.capabilities import require_capability
+
+        require_capability(info, "table_registration")
+        pool = await _get_pool()
+        async with pool.acquire() as conn:
+            return await retired_objects(info, cast("Connection", conn))
+
+    @strawberry.field
     async def metrics(self, info: StrawberryInfo) -> list["MetricType"]:  # REQ-1317, REQ-1958
         """The governed metric definitions the caller may see — feeds the metric admin panel
         (REQ-1317); fact-derived metrics carry ``from_fact`` (REQ-1320). Every caller sees the
@@ -557,6 +774,7 @@ class Query:  # REQ-021, REQ-042
                 ai_context=r["ai_context"],
                 visible_to=list(r["visible_to"]) if catalog_scope(info).governance else None,
                 from_fact=r["from_fact"],
+                term=r["term"],  # REQ-2243
             )
             for r in rows
         ]
@@ -633,9 +851,9 @@ class Query:  # REQ-021, REQ-042
         pool = await _get_pool()
         async with pool.acquire() as conn:
             _dres = await conn.execute_core(
-                select(domains.c.id, domains.c.description, domains.c.graphql_alias).order_by(
-                    domains.c.id
-                )
+                select(domains.c.id, domains.c.description, domains.c.graphql_alias)
+                .where(domains.c.retired.is_(False))  # REQ-2248
+                .order_by(domains.c.id)
             )
             domain_rows = _dres.fetchall()
             _tres = await conn.execute_core(
@@ -665,7 +883,9 @@ class Query:  # REQ-021, REQ-042
         connection = has_capability(info, "source_registration")
         pool = await _get_pool()
         async with pool.acquire() as conn:
-            _res = await conn.execute_core(select(sources).order_by(sources.c.id))
+            _res = await conn.execute_core(
+                select(sources).where(sources.c.retired.is_(False)).order_by(sources.c.id)
+            )
             # REQ-1958: a source is named to its registrar, and to a caller answered a table
             # from it.
             named = None if connection else await _listed_sources(conn, catalog_scope(info))
@@ -682,7 +902,9 @@ class Query:  # REQ-021, REQ-042
         connection = has_capability(info, "source_registration")
         pool = await _get_pool()
         async with pool.acquire() as conn:
-            _res = await conn.execute_core(select(sources).where(sources.c.id == id))
+            _res = await conn.execute_core(
+                select(sources).where(sources.c.id == id, sources.c.retired.is_(False))
+            )
             row = _res.fetchone()
             if row is None:
                 return None
@@ -718,7 +940,9 @@ class Query:  # REQ-021, REQ-042
         pool = await _get_pool()
         async with pool.acquire() as conn:
             _res = await conn.execute_core(
-                select(domains).where(domains.c.id != "").order_by(domains.c.id)
+                select(domains)
+                .where(domains.c.id != "", domains.c.retired.is_(False))  # REQ-2248
+                .order_by(domains.c.id)
             )
             rows = [dict(r._mapping) for r in _res.fetchall()]
             # REQ-1958: the domains the caller's roles reach, and any holding a table it is
@@ -762,7 +986,9 @@ class Query:  # REQ-021, REQ-042
                     )
                     .where(
                         table_columns.c.scope == "listed",
-                        registered_tables.c.draft.is_(False),
+                        registered_tables.c.withdrawn.is_(False),  # REQ-1921
+                        registered_tables.c.retired.is_(False),  # REQ-2248
+                        table_columns.c.retired.is_(False),
                         registered_tables.c.domain_id.not_in(sorted(scope.reach)),
                     )
                     .order_by(
@@ -793,14 +1019,19 @@ class Query:  # REQ-021, REQ-042
         async with pool.acquire() as conn:
             conn = cast("Connection", conn)
             rows = await data_product_repo.list_all(conn)
-            members = await data_product_repo.member_contracts(conn)
+            # REQ-1634: each product's members, from the membership relation.
+            member_tables: dict[str, list[int]] = {}
+            for table_id, pids in (await data_product_repo.table_memberships(conn)).items():
+                for pid in pids:
+                    member_tables.setdefault(pid, []).append(table_id)
+            member_commands: dict[str, list[str]] = {}
+            for name, pids in (await data_product_repo.command_memberships(conn)).items():
+                for pid in pids:
+                    member_commands.setdefault(pid, []).append(name)
             found = await product_findings.findings(
                 conn, await product_findings.context(datetime.date.today())
             )
         names = {r["id"]: r["name"] for r in rows}
-        contracts: dict[str, list[DataContractType]] = {}
-        for m in members:  # REQ-2158
-            contracts.setdefault(m["product_id"], []).append(data_contract_type(m))
         return [
             DataProductType(
                 id=r["id"],
@@ -816,7 +1047,7 @@ class Query:  # REQ-021, REQ-042
                 support_contact=r["support_contact"],
                 custom_properties=r["custom_properties"],
                 created_at=r["created_at"].isoformat(),
-                contracts=contracts.get(r["id"], []),
+                freshness=r["freshness"],  # REQ-2180
                 status=r["status"],
                 status_reason=r["status_reason"],
                 retire_on=r["retire_on"].isoformat() if r["retire_on"] is not None else None,
@@ -825,6 +1056,8 @@ class Query:  # REQ-021, REQ-042
                 successor_id=r["successor_id"],
                 successor_name=names.get(r["successor_id"]) if r["successor_id"] else None,
                 findings=len(found.get(r["id"], [])),
+                table_ids=sorted(member_tables.get(r["id"], [])),
+                command_names=sorted(member_commands.get(r["id"], [])),
             )
             for r in rows
         ]
@@ -930,6 +1163,7 @@ class Query:  # REQ-021, REQ-042
             # REQ-1467: one read for every tag's values, grouped here — a per-tag read would be a
             # query per row to serve a table that holds a handful of values in total.
             param_rows = await tag_repo.list_all_param_values(cast("Connection", conn))
+            cited = await tag_repo.definition_citations(cast("Connection", conn))  # REQ-2208
         by_tag: dict[str, list[TagParamValueType]] = {}
         for p in param_rows:
             by_tag.setdefault(p["tag_id"], []).append(
@@ -947,8 +1181,38 @@ class Query:  # REQ-021, REQ-042
                 param_policy=r["param_policy"],
                 param_values=by_tag.get(r["id"], []),
                 sensitive=bool(r["sensitive"]),
+                requires_citation=bool(r["requires_citation"]),  # REQ-2208
+                required=bool(r["required"]),  # REQ-2208 (THE TAGS REPORT)
+                allowed_domains=list(r["allowed_domains"] or []),  # REQ-2208
+                citations=[citation_type(c) for c in cited.get(r["id"], [])],
+                needs_review=any(c.needs_review for c in cited.get(r["id"], [])),
             )
             for r in rows
+        ]
+
+    @strawberry.field
+    async def offered_tags(
+        self, info: StrawberryInfo, target: TagTargetInput
+    ) -> list[str]:  # REQ-2208 (A TAG IS OFFERED BY DOMAIN)
+        """The ids of the tags the picker offers on ``target``: those that apply to its kind, are
+        not derived, and are offered in its domains -- or, for an object in no domain, in one the
+        caller acts in. assignTag refuses the same tags by the same rule."""
+        from provisa.api.admin.capabilities import allowed_domains_request
+        from provisa.api.admin.domain_guard import tag_offered, tag_target_domains
+        from provisa.core.repositories import tag as tag_repo
+
+        _resolve_admin_context(info)
+        acting = allowed_domains_request(info.context["request"])
+        pool = await _get_pool()
+        async with pool.acquire() as conn:
+            domains = await tag_target_domains(cast("Connection", conn), target)
+            rows = await tag_repo.list_all(cast("Connection", conn))
+        return [
+            r["id"]
+            for r in rows
+            if target.object_type in (r["applies_to"] or [])
+            and not r["derived"]
+            and tag_offered(r["allowed_domains"] or [], domains, acting)
         ]
 
     @strawberry.field
@@ -956,14 +1220,21 @@ class Query:  # REQ-021, REQ-042
         from provisa.core.repositories import tag as tag_repo
 
         _resolve_admin_context(info)
-        # The domains the caller reaches (None = unrestricted: dev mode, single-domain mode, or a
-        # role whose domain_access is "*"), the same scope the admin gates compute.
-        scope = allowed_domains_request(info.context["request"])
         pool = await _get_pool()
         async with pool.acquire() as conn:
-            rows = await tag_repo.list_assignments(cast("Connection", conn))
-            if scope is not None:
-                rows = await _assignments_in_scope(conn, rows, scope)
+            # REQ-2208: the model's, and the library's on its documents and their sections.
+            rows = [
+                *await tag_repo.list_assignments(cast("Connection", conn)),
+                *await tag_repo.list_library_assignments(cast("Connection", conn)),
+            ]
+            rows = await _readable_assignments(info, cast("Connection", conn), rows)
+            # REQ-2208: each assignment's citations, and the tags that require one.
+            cited = await tag_repo.assignment_citations(cast("Connection", conn))
+            tag_rows = {t["id"]: t for t in await tag_repo.list_all(cast("Connection", conn))}
+
+        def _cited(r: dict) -> list:
+            return cited.get((r["base_tag_id"], r["object_key"]), [])
+
         return [
             TagAssignmentType(
                 tag_id=r["tag_id"],
@@ -973,18 +1244,33 @@ class Query:  # REQ-021, REQ-042
                 column_name=r["column_name"],
                 relationship_id=r["relationship_id"],
                 command_name=r["command_name"],
+                product_id=r["product_id"],  # REQ-1634
+                term_id=r["term_id"],  # REQ-2145
+                document_id=r.get("document_id"),  # REQ-2208: a library tag's
+                section_heading=r.get("section_heading"),
+                section_page=r.get("section_page"),
                 table_ref=r["table_ref"],
                 reason=r["reason"],
                 expires_on=r["expires_on"],
                 why=r.get("why"),  # REQ-2094
+                rls_rule_id=r.get("rls_rule_id"),  # REQ-2208
+                role_id=r.get("role_id"),
+                metric_name=r.get("metric_name"),
+                object_key=r["object_key"],  # REQ-2208
+                citations=[citation_type(c) for c in _cited(r)],
+                needs_review=any(c.needs_review for c in _cited(r)),
+                citation_gap=tag_repo.citation_gap(tag_rows.get(r["base_tag_id"]), _cited(r)),
             )
             for r in rows
         ]
 
     @strawberry.field
     async def tables(
-        self, info: StrawberryInfo
+        self, info: StrawberryInfo, include_withdrawn: bool = False
     ) -> list[RegisteredTableType]:  # REQ-016, REQ-021, REQ-042
+        """The registered tables the caller is served. REQ-1921: a withdrawn one (itself or
+        through its source) is left out; ``include_withdrawn`` lists it, marked withdrawn, to a
+        caller who may preview it (table registration reaching its domain)."""
         with _stage(_tracer, "admin.schema_introspect"):
             from provisa.api.admin.capabilities import _identity_from_info, _resolved_capabilities
             from provisa.api.app import state as _state
@@ -1000,7 +1286,9 @@ class Query:  # REQ-021, REQ-042
             pool = await _get_pool()
             async with pool.acquire() as conn:
                 _res = await conn.execute_core(
-                    select(registered_tables).order_by(registered_tables.c.id)
+                    select(registered_tables)
+                    .where(registered_tables.c.retired.is_(False))  # REQ-2248
+                    .order_by(registered_tables.c.id)
                 )
                 rows = [dict(r._mapping) for r in _res.fetchall()]
                 _ares = await conn.execute_core(
@@ -1016,11 +1304,20 @@ class Query:  # REQ-021, REQ-042
                 # REQ-1958, REQ-2152: the caller is answered the tables it is served; one the last
                 # schema build did not compile (saved since) is judged by its stored columns.
                 scope = catalog_scope(info)
+                from provisa.api.admin.withdrawn import (
+                    preview_reach,
+                    previews,
+                    withdrawn_table_domains,
+                )
+
+                withdrawn = await withdrawn_table_domains(conn)
+                reach = preview_reach(info) if include_withdrawn else frozenset()
                 listed = [
                     r
                     for r in rows
                     if (scope.lists_table(r["id"]) or r["id"] not in scope.compiled)
                     and (r["domain_id"], r["table_name"]) not in SQL_CATALOG_TABLES  # REQ-2190
+                    and (r["id"] not in withdrawn or previews(reach, r["domain_id"]))
                 ]
                 # What every listed table reads beside its row, read once for all of them.
                 listing = await table_listing(conn, listed)
@@ -1037,8 +1334,10 @@ class Query:  # REQ-021, REQ-042
 
     @strawberry.field
     async def relationships(
-        self, info: StrawberryInfo
+        self, info: StrawberryInfo, include_withdrawn: bool = False
     ) -> list[RelationshipType]:  # REQ-019, REQ-020, REQ-1958
+        """REQ-1921: a withdrawn relationship is left out; ``include_withdrawn`` lists it, marked
+        withdrawn, to a caller who may preview its withdrawn ends (:func:`_with_withdrawn`)."""
         pool = await _get_pool()
         _st = registered_tables.alias("st")
         _tt = registered_tables.alias("tt")
@@ -1062,17 +1361,58 @@ class Query:  # REQ-021, REQ-042
                 .where(
                     relationships.c.id.not_like("gql_auto__%"),
                     relationships.c.id.not_like("meta:%"),
+                    relationships.c.retired.is_(False),  # REQ-2248
                 )
                 .order_by(relationships.c.id)
             )
-            rows = [_rel_from_row(dict(r._mapping)) for r in _res.fetchall()]
-            return await _listed_relationships(conn, catalog_scope(info), rows)
+            scope = catalog_scope(info)
+            rows = await _with_withdrawn(
+                conn, info, include_withdrawn, [dict(r._mapping) for r in _res.fetchall()]
+            )
+            return await _listed_relationships(conn, scope, rows)
+
+    @strawberry.field
+    async def code_resolvers(self, info: StrawberryInfo) -> list[CodeResolverType]:  # REQ-2249
+        """Every code resolver set in service whose two tables the caller is served."""
+        from provisa.api.admin import code_resolver
+        from provisa.api.admin.read_rights import served_columns_of
+        from provisa.core.repositories import table as table_repo
+
+        scope = catalog_scope(info)
+        pool = await _get_pool()
+        async with pool.acquire() as raw:
+            conn = cast("Connection", raw)
+            out: list[CodeResolverType] = []
+            for found in await code_resolver.listed(conn):
+                served = True
+                for name in (found["source_table"], found["target_table"]):
+                    row = await table_repo.find_by_table_name(conn, name)
+                    assert row is not None  # read back from the set's own relationships
+                    columns = await served_columns_of(conn, scope, row["id"])
+                    served = served and (columns is None or bool(columns))
+                if served:
+                    out.append(CodeResolverType(**found))
+            return out
+
+    @strawberry.field
+    async def code_resolver_incremental(
+        self, info: StrawberryInfo, resolver: str, id: str
+    ) -> IncrementalOptionType:  # REQ-2249
+        """Whether a code resolver set ``id`` over ``resolver`` may keep its matches incrementally
+        (its form disables the setting with the reason when not)."""
+        from provisa.api.admin import code_resolver
+
+        # Asked by the form that saves a set, which registers its bridge.
+        require_capability(info, "table_registration")
+        return await code_resolver.incremental_option(resolver, id)
 
     @strawberry.field
     async def all_relationships(
-        self, info: StrawberryInfo
+        self, info: StrawberryInfo, include_withdrawn: bool = False
     ) -> list[RelationshipType]:  # REQ-019, REQ-020, REQ-1958
-        """All relationships including system-generated meta:% entries (used by ERD)."""
+        """All relationships including system-generated meta:% entries (used by ERD). REQ-1921:
+        a withdrawn one is left out; ``include_withdrawn`` lists it, marked withdrawn, to a caller
+        who may preview its withdrawn ends (:func:`_with_withdrawn`)."""
         pool = await _get_pool()
         _st = registered_tables.alias("st")
         _tt = registered_tables.alias("tt")
@@ -1092,12 +1432,18 @@ class Query:  # REQ-021, REQ-042
                     .join(_tt, relationships.c.target_table_id == _tt.c.id, isouter=True)
                     .join(_vt, relationships.c.via_table_id == _vt.c.id, isouter=True)
                 )
-                .where(relationships.c.id.not_like("gql_auto__%"))
+                .where(
+                    relationships.c.id.not_like("gql_auto__%"),
+                    relationships.c.retired.is_(False),  # REQ-2248
+                )
                 .order_by(relationships.c.id)
             )
-            rows = [_rel_from_row(dict(r._mapping)) for r in _res.fetchall()]
+            scope = catalog_scope(info)
+            rows = await _with_withdrawn(
+                conn, info, include_withdrawn, [dict(r._mapping) for r in _res.fetchall()]
+            )
             rows.extend(await _has_table_synthetic_relationships(conn))
-            return await _listed_relationships(conn, catalog_scope(info), rows)
+            return await _listed_relationships(conn, scope, rows)
 
     @strawberry.field
     async def roles(
@@ -1260,6 +1606,36 @@ class Query:  # REQ-021, REQ-042
         return tables
 
     @strawberry.field
+    async def file_glob_preview(
+        self,
+        info: StrawberryInfo,
+        source_id: str,
+        glob: Optional[str] = None,
+        tables: Optional[list[str]] = None,
+    ) -> FileGlobPreviewType:  # REQ-788
+        """One table over many files of a files source, before it is registered: a typed
+        ``glob`` (``tables`` names the listed tables the files are), or the glob derived from the
+        listed ``tables`` picked; the files it reads, the columns they share and the files that
+        differ. Reads only; registration checks the same again when the table is saved."""
+        require_capability(info, "table_registration")
+        from provisa.api.admin._file_glob import file_glob_preview, source_files_path
+
+        pool = await _get_pool()
+        async with pool.acquire() as config_conn, _bound_to_request_org():
+            path = await source_files_path(config_conn, source_id)
+        # A glob that cannot be read, or picked tables no glob covers, is the query's error.
+        out = await asyncio.to_thread(file_glob_preview, path, glob or None, tables)
+        return FileGlobPreviewType(
+            glob=out["glob"],
+            files=[CombinedFileType(**f) for f in out["files"]],
+            shared_columns=out["shared_columns"],
+            differing=[FileColumnsDifferType(**d) for d in out["differing"]],
+            extra_files=out["extra_files"],
+            unmatched_tables=out["unmatched_tables"],
+            reference_table=out["reference_table"],
+        )
+
+    @strawberry.field
     async def crawl_source(
         self,
         info: StrawberryInfo,
@@ -1331,7 +1707,7 @@ class Query:  # REQ-021, REQ-042
 
         # The token as typed: a value, or a reference resolved in the org's vault.
         async with _bound_to_request_org():
-            resolved = resolve_secrets(token)
+            resolved = resolve_secrets(token, credential=True)
         return await validate_token(resolved)
 
     @strawberry.field
@@ -1347,7 +1723,7 @@ class Query:  # REQ-021, REQ-042
         from provisa.kaggle.client import search_datasets
 
         async with _bound_to_request_org():
-            resolved = resolve_secrets(token)
+            resolved = resolve_secrets(token, credential=True)
         results = await search_datasets(resolved, query=query, page=page)
         return [
             KaggleDatasetType(
@@ -1367,7 +1743,8 @@ class Query:  # REQ-021, REQ-042
         remote GraphQL source's mutations, a gRPC source's mutation methods. An OpenAPI source
         also offers each GET whose response declares no row schema. A database source
         offers the routines of ``schema_name`` (REQ-887), each with its read/write kind. A code
-        source offers its ``@columns`` functions under schema ``code`` (REQ-2131). Listing
+        source offers its ``@columns`` functions (REQ-2131) and its ``@command`` and ``@query``
+        functions (REQ-2226) under schema ``code``. Listing
         them registers none: registration is the steward's curation step."""
         require_capability(info, "table_registration")
         from provisa.api.app import state
@@ -1379,12 +1756,16 @@ class Query:  # REQ-021, REQ-042
         if source_type in CODE_SOURCE_TYPES:
             # REQ-2131: a code source offers its @columns functions, each a batch column transform.
             from provisa.codesource.columns import SCHEMA, offered
+            from provisa.codesource.commands import offered as offered_commands
 
             if schema_name != SCHEMA:
                 return []
             return [
                 AvailableTableType(name=name, comment=comment)
-                for name, comment in await offered(state, source_id)
+                for name, comment in [
+                    *await offered(state, source_id),
+                    *await offered_commands(state, source_id),
+                ]
             ]
         operation_schema = OPERATION_SCHEMA.get(source_type)
         if operation_schema is None:
@@ -1394,12 +1775,20 @@ class Query:  # REQ-021, REQ-042
                 source_id, source_type, schema_name, state.source_pools
             )
             # None: this source type has no routine catalog to read, so it offers no routines.
+            # REQ-2230: a Snowflake source also offers what can be run on the schema's Dynamic
+            # Tables and Tasks.
             return [
-                AvailableTableType(
-                    name=r.routine_name,
-                    comment=" — ".join(p for p in (r.kind, r.description) if p),
-                )
-                for r in routines or []
+                *(
+                    AvailableTableType(
+                        name=r.routine_name,
+                        comment=" — ".join(p for p in (r.kind, r.description) if p),
+                    )
+                    for r in routines or []
+                ),
+                *(
+                    AvailableTableType(name=op.name, comment=op.comment)
+                    for op in await offered_operations(state, source_id, schema_name) or []
+                ),
             ]
         if operation_schema != schema_name:
             return []
@@ -1440,6 +1829,30 @@ class Query:  # REQ-021, REQ-042
             if named is not None:
                 column.data_type, column.subtype = base_type(column.data_type), named
         return columns
+
+    @strawberry.field
+    async def table_access(
+        self, info: StrawberryInfo, table_id: int, role: str
+    ) -> TableAccessType:  # REQ-2234
+        """How ``role`` reaches a registered table: each access method, ready to copy."""
+        require_capability(info, "table_registration")
+        from provisa.api.admin._table_access import table_access
+        from provisa.api.admin.capabilities import require_inspectable_role
+        from provisa.api.app import state
+        from provisa.api.metadata_export.publishing import serving_endpoints
+        from provisa.core.request_context import require_current_org
+        from provisa.security.meta_role import ensure_meta_role, refuse_named_meta_role
+
+        # REQ-1620: the role may be the set the person acts as ("Role: All"), served as its
+        # meta-role, as compileQuery reads it.
+        named = sorted({r.strip() for r in role.split(",") if r.strip()})
+        refuse_named_meta_role(named)
+        for role_name in named:
+            require_inspectable_role(info, role_name)
+        role_id = named[0] if len(named) == 1 else ensure_meta_role(state, named)
+        base_url = state.config.mail.base_url if state.config else None
+        endpoints = serving_endpoints(state, require_current_org(), base_url)
+        return await table_access(state, role_id, table_id, endpoints)
 
     @strawberry.field
     async def sample_openapi_columns(
@@ -1517,9 +1930,11 @@ class Query:  # REQ-021, REQ-042
         from a different source.
         """
         require_capability(info, "table_registration")
-        from provisa.compiler.naming import apply_convention
+        from provisa.compiler.naming import apply_convention, source_to_catalog
 
         pool = await _get_pool()
+        # The source's catalog name, not its id: a hyphen is no SQL identifier character.
+        source = source_to_catalog(source_id)
 
         def _conflict_stmt(name: str):
             return (
@@ -1539,23 +1954,23 @@ class Query:  # REQ-021, REQ-042
             # a camelCase convention) — the exact GraphQL-vs-SQL-plane mixup register_table's own
             # auto-gen deliberately avoids (see its comment: "deriving the alias from a source's
             # gql_naming_convention put camelCase into the SQL plane, e.g. dim_pet -> dimPet").
-            # The alias is a SQL-plane identifier; the deployment's global_sql_naming_convention
-            # is its authority, matching register_table exactly, not a per-source GraphQL setting.
-            from provisa.api.app import state as _naming_state
+            # The alias is a SQL-plane identifier; the acting org's SQL convention is its authority,
+            # matching register_table exactly, not a per-source GraphQL setting.
+            from provisa.compiler.naming import active_sql_convention
 
-            convention = getattr(_naming_state, "global_sql_naming_convention", "snake")
+            convention = active_sql_convention()
             candidate: str = apply_convention(table_name, convention)
             conflict = (await conn.execute_core(_conflict_stmt(candidate))).fetchone()
             if not conflict:
                 return candidate
-            # Prefix with source_id to disambiguate
-            prefixed: str = apply_convention(f"{source_id}_{table_name}", convention)
+            # Prefix with the source to disambiguate
+            prefixed: str = apply_convention(f"{source}_{table_name}", convention)
             conflict2 = (await conn.execute_core(_conflict_stmt(prefixed))).fetchone()
             if not conflict2:
                 return prefixed
             # Last resort: add numeric suffix
             for i in range(1, 100):
-                suffixed: str = apply_convention(f"{source_id}_{table_name}_{i}", convention)
+                suffixed: str = apply_convention(f"{source}_{table_name}_{i}", convention)
                 taken = (await conn.execute_core(_conflict_stmt(suffixed))).fetchone()
                 if not taken:
                     return suffixed
@@ -1574,17 +1989,11 @@ class Query:  # REQ-021, REQ-042
     @strawberry.field
     async def mv_list(self, info: StrawberryInfo) -> list[MVType]:
         """List all materialized views with status."""
-        require_capability(info, "observability")
+        _require_materialized_read(info)
         from provisa.api.app import state
         from provisa.mv.bitemporal_capture import logged_table_id
 
         names = {row["id"]: row["table_name"] for row in state.tables}
-        # REQ-2152 (Q3): only the materialized views over tables the caller reads.
-        reads = _names_read(state, catalog_scope(info))
-
-        def _readable(mv: Any) -> bool:
-            over = [mv.id[len("view-") :]] if mv.id.startswith("view-") else mv.source_tables
-            return all(reads(name) for name in over)
 
         return [
             MVType(
@@ -1600,8 +2009,7 @@ class Query:  # REQ-021, REQ-042
                 allowed_lateness=mv.allowed_lateness,
                 version_log_of=(None if (tid := logged_table_id(mv.id)) is None else names[tid]),
             )
-            for mv in state.mv_registry._mvs.values()
-            if _readable(mv)
+            for mv in _mvs_read(state, catalog_scope(info))
         ]
 
     @strawberry.field
@@ -2080,9 +2488,20 @@ class Query:  # REQ-021, REQ-042
         )
 
     @strawberry.field
+    async def jdbc_source_setup(self, info: StrawberryInfo) -> JdbcSourceSetupType:  # REQ-2191
+        """What a JDBC source's form offers: the engine its capabilities are set for, the
+        standard drivers (with whether that engine attaches each), the SQL dialects it may be
+        written in, and the capabilities."""
+        require_capability(info, "source_registration")
+        from provisa.api.admin.jdbc_source_admin import setup
+        from provisa.api.app import state
+
+        return setup(state.federation_engine)
+
+    @strawberry.field
     async def materialize_store_info(self, info: StrawberryInfo) -> MaterializeStoreInfoType:
         """Identity of the durable materialization store (landed sources + MV cache)."""
-        require_capability(info, "observability")
+        _require_materialized_read(info)
         from provisa.api.app import state
 
         engine = state.federation_engine
@@ -2090,7 +2509,7 @@ class Query:  # REQ-021, REQ-042
         return MaterializeStoreInfoType(
             engine_name=engine.name,
             store_ref=store_ref,
-            mv_count=len(state.mv_registry._mvs),
+            mv_count=len(_mvs_read(state, catalog_scope(info))),
             instance_local_store=_is_instance_local_store(store_ref),
         )
 
@@ -2174,56 +2593,39 @@ class Query:  # REQ-021, REQ-042
     # ── AI: Generate table description ──
 
     @strawberry.field
-    async def generate_table_description(self, info: StrawberryInfo, table_id: str) -> str:
-        """Use LLM to generate a description for a registered table."""
+    async def generate_table_description(
+        self,
+        info: StrawberryInfo,
+        table_id: Optional[str] = None,
+        source_id: Optional[str] = None,
+        schema_name: Optional[str] = None,
+        table_name: Optional[str] = None,
+        columns: Optional[list[str]] = None,
+    ) -> str:
+        """Use LLM to generate a description for a table: a registered one by ``table_id``, or one
+        the Register table form is about to register by its source, schema, name and columns."""
         require_capability(info, "table_registration")
-        import sys
-
-        print(
-            f"[DEBUG] generate_table_description called: table_id={table_id}",
-            file=sys.stderr,
-            flush=True,
+        subject = await _describe_subject(
+            info, table_id, source_id, schema_name, table_name, columns
+        )
+        if isinstance(subject, str):
+            return subject
+        prompt = (
+            f"You are a data catalog assistant. Write a concise one-to-two sentence description "
+            f"for a database table named '{subject.table_name}' in schema '{subject.schema_name}' "
+            f"from source '{subject.source_id}'. "
+            f"Columns: {', '.join(subject.columns)}. "
+            f"Respond with only the description text, no preamble."
         )
         try:
-            pool = await _get_pool()
-            tid = int(table_id)
-            async with pool.acquire() as conn:
-                _res = await conn.execute_core(
-                    select(registered_tables).where(registered_tables.c.id == tid)
-                )
-                row = _res.fetchone()
-                if row is None:
-                    print(
-                        f"[DEBUG] table {table_id} not found — save the view/table first",
-                        file=sys.stderr,
-                        flush=True,
-                    )
-                    return "Save the view first before generating descriptions"
-                _cres = await conn.execute_core(
-                    select(table_columns.c.column_name)
-                    .where(table_columns.c.table_id == tid)
-                    .order_by(table_columns.c.id)
-                )
-                col_rows = _cres.fetchall()
-            table_name = row.table_name
-            schema_name = row.schema_name
-            source_id = row.source_id
-            columns = [r.column_name for r in col_rows]
-            prompt = (
-                f"You are a data catalog assistant. Write a concise one-to-two sentence description "
-                f"for a database table named '{table_name}' in schema '{schema_name}' "
-                f"from source '{source_id}'. "
-                f"Columns: {', '.join(columns)}. "
-                f"Respond with only the description text, no preamble."
-            )
             result = await _call_llm(prompt, "table_description", max_tokens=256)
-            logging.getLogger(__name__).info(
-                "generateTableDescription result: %s", result[:100] if result else "(empty)"
-            )
-            return result
         except Exception as e:
             logging.getLogger(__name__).exception("generateTableDescription failed: %s", e)
             return ""
+        logging.getLogger(__name__).info(
+            "generateTableDescription result: %s", result[:100] if result else "(empty)"
+        )
+        return result
 
     @strawberry.field
     async def column_dependents(  # REQ-1484
@@ -2267,58 +2669,81 @@ class Query:  # REQ-021, REQ-042
 
     @strawberry.field
     async def generate_column_description(
-        self, info: StrawberryInfo, table_id: str, column_name: str
+        self,
+        info: StrawberryInfo,
+        column_name: str,
+        table_id: Optional[str] = None,
+        source_id: Optional[str] = None,
+        schema_name: Optional[str] = None,
+        table_name: Optional[str] = None,
+        columns: Optional[list[str]] = None,
     ) -> str:
-        """Use LLM to generate a description for a single column."""
+        """Use LLM to generate a description for a single column of a registered table
+        (``table_id``) or of one the Register table form is about to register."""
         require_capability(info, "table_registration")
-        import sys
-
-        print(
-            f"[DEBUG] generate_column_description called: table_id={table_id}, column_name={column_name}",
-            file=sys.stderr,
-            flush=True,
+        subject = await _describe_subject(
+            info, table_id, source_id, schema_name, table_name, columns
+        )
+        if isinstance(subject, str):
+            return subject
+        others = ", ".join(c for c in subject.columns if c != column_name)
+        prompt = (
+            f"You are a data catalog assistant. Write a concise one-sentence description "
+            f"for the column '{column_name}' in table '{subject.table_name}' "
+            f"(schema '{subject.schema_name}', source '{subject.source_id}'). "
+            f"Other columns in this table: {others}. "
+            f"Respond with only the description text, no preamble."
         )
         try:
-            pool = await _get_pool()
-            tid = int(table_id)
-            async with pool.acquire() as conn:
-                _res = await conn.execute_core(
+            return await _call_llm(prompt, "column_description", max_tokens=128)
+        except Exception as e:
+            logging.getLogger(__name__).exception("generateColumnDescription failed: %s", e)
+            return ""
+
+
+async def _describe_subject(
+    info: StrawberryInfo,
+    table_id: Optional[str],
+    source_id: Optional[str],
+    schema_name: Optional[str],
+    table_name: Optional[str],
+    columns: Optional[list[str]],
+):
+    """The table a description is written for, after the caller is checked to read its source;
+    a string is the answer to give in its place (the registered form's id is not a table)."""
+    from provisa.api.admin.describe_subject import (
+        DescribeSubject,
+        require_source_readable,
+        unregistered_subject,
+    )
+
+    subject = unregistered_subject(table_id, source_id, schema_name, table_name, columns)
+    if isinstance(subject, str):
+        try:
+            tid = int(subject)
+        except ValueError:
+            return ""
+        pool = await _get_pool()
+        async with pool.acquire() as conn:
+            row = (
+                await conn.execute_core(
                     select(registered_tables).where(registered_tables.c.id == tid)
                 )
-                row = _res.fetchone()
-                if row is None:
-                    print(
-                        f"[DEBUG] table {table_id} not found — save the view/table first",
-                        file=sys.stderr,
-                        flush=True,
-                    )
-                    return "Save the view first before generating descriptions"
-                _cres = await conn.execute_core(
+            ).fetchone()
+            if row is None:
+                return "Save the view first before generating descriptions"
+            col_rows = (
+                await conn.execute_core(
                     select(table_columns.c.column_name)
                     .where(table_columns.c.table_id == tid)
                     .order_by(table_columns.c.id)
                 )
-                col_rows = _cres.fetchall()
-            table_name = row.table_name
-            schema_name = row.schema_name
-            source_id = row.source_id
-            all_columns = [r.column_name for r in col_rows]
-            prompt = (
-                f"You are a data catalog assistant. Write a concise one-sentence description "
-                f"for the column '{column_name}' in table '{table_name}' (schema '{schema_name}', "
-                f"source '{source_id}'). Other columns in this table: {', '.join(c for c in all_columns if c != column_name)}. "
-                f"Respond with only the description text, no preamble."
-            )
-            result = await _call_llm(prompt, "column_description", max_tokens=128)
-            print(
-                f"[DEBUG] _call_llm result: {result[:100] if result else '(empty)'}",
-                file=sys.stderr,
-                flush=True,
-            )
-            return result
-        except Exception as e:
-            logging.getLogger(__name__).exception("generateColumnDescription failed: %s", e)
-            return ""
+            ).fetchall()
+        subject = DescribeSubject(
+            row.source_id, row.schema_name, row.table_name, [r.column_name for r in col_rows]
+        )
+    require_source_readable(info, subject.source_id)
+    return subject
 
 
 async def _require_live_attach(source_id: str, what: str) -> None:
@@ -2763,6 +3188,24 @@ async def _derived_view_columns(schema_name: str, table_name: str) -> list[Avail
     ]
 
 
+# REQ-2234: Register Table reads the columns of every table it lists, one after another, and an
+# OpenAPI table's columns come from its source's parsed spec. Parsing Stripe's spec (273 read
+# operations) took seconds, once per table read. A loaded spec is parsed once; a spec loaded again
+# (a new dict in state.openapi_specs) is parsed again. The held spec keeps its identity unique.
+_parsed_specs: dict[str, tuple[dict, list]] = {}
+
+
+def _spec_queries(source_id: str, spec: dict) -> list:
+    """The read operations of `source_id`'s loaded `spec`, parsed once per loaded spec."""
+    from provisa.openapi.mapper import parse_spec
+
+    held = _parsed_specs.get(source_id)
+    if held is None or held[0] is not spec:
+        held = (spec, parse_spec(spec)[0])
+        _parsed_specs[source_id] = held
+    return held[1]
+
+
 async def _introspect_available_columns(
     source_id: str, schema_name: str, table_name: str
 ) -> list[AvailableColumnType]:
@@ -2778,6 +3221,10 @@ async def _introspect_available_columns(
     if source_id == DERIVED_SOURCE_ID:
         return await _derived_view_columns(schema_name, table_name)
     source_type = state.source_types.get(source_id, "")
+    if source_type == "dbt":  # REQ-2228: the warehouse's columns, with the manifest's descriptions
+        from provisa.api.admin._dbt_table_registration import model_columns
+
+        return await model_columns(source_id, schema_name, table_name)
     if source_type in ("graphql_remote", "grpc_remote"):
         return await _remote_source_columns(source_id, schema_name, table_name)
     # REQ-1672 (and the same engine-independent readers for the types below): the app's own native
@@ -2800,7 +3247,7 @@ async def _introspect_available_columns(
             return await _cosmosdb_columns(source_id, table_name)
         if source_type == "qdrant":
             return await _qdrant_columns(source_id, table_name)
-        if source_type in ("node", "python"):
+        if source_type in CODE_SOURCE_TYPES:
             return await _code_columns(source_id, table_name)
         if source_type == "redis":
             return await _redis_columns(source_id, table_name)
@@ -2849,6 +3296,20 @@ async def _introspect_available_columns(
         ]
     if source_type == "logs":
         return await _logs_columns(source_id)
+    if source_type == "quickbooks":
+        # REQ-2197: an entity's columns are the catalog's, typed as QuickBooks' schema types them.
+        from provisa.api_source.persist import data_type_for_api_column
+        from provisa.quickbooks.entities import columns_of, entity
+
+        return [
+            AvailableColumnType(
+                name=c.name,
+                data_type=data_type_for_api_column(c.type),
+                comment=None,
+                is_primary_key=c.name == "id",
+            )
+            for c in columns_of(entity(table_name))
+        ]
     if source_type == "rss":
         # REQ-1745: an rss/Atom feed has no catalog to introspect at all (native_schemas/
         # native_tables give it a synthetic single "default"/<source_id> pick so the picker isn't
@@ -2905,11 +3366,10 @@ async def _introspect_available_columns(
     # _source_for_introspection + introspect_columns path below that sharepoint/splunk already
     # use correctly, instead of maintaining a second, divergent construction of the same call.
     if schema_name == "openapi" and await _ensure_openapi_spec(source_id):
-        from provisa.openapi.mapper import parse_spec
-        from provisa.openapi.register import _openapi_to_provisa_type, _schema_to_columns
+        from provisa.api.admin.introspect import openapi_parameter_columns
+        from provisa.openapi.register import _schema_to_columns
 
-        spec = state.openapi_specs[source_id]["spec"]
-        queries, _ = parse_spec(spec)
+        queries = _spec_queries(source_id, state.openapi_specs[source_id]["spec"])
         q = next((q for q in queries if q.operation_id == table_name), None)
         if q is None:
             return []
@@ -2917,30 +3377,7 @@ async def _introspect_available_columns(
         if not cols and not q.path_params and (q.response_schema or {}).get("additionalProperties"):
             cols = await _dynamic_openapi_columns(state.openapi_specs[source_id]["base_url"], q)
         existing = {c["name"] for c in cols}
-        for p in q.path_params:
-            nf_name = f"_nf_{p['name']}"
-            if nf_name not in existing:
-                cols.append(
-                    {
-                        "name": nf_name,
-                        "type": _openapi_to_provisa_type(p.get("type")),
-                        "native_filter_type": "path_param",
-                        "native_filter_required": True,
-                    }
-                )
-        for p in q.query_params:
-            nf_name = f"_nf_{p['name']}"
-            if nf_name not in existing:
-                cols.append(
-                    {
-                        "name": nf_name,
-                        # A parameter's type is the spec's (array, object); a column's is one
-                        # the engine has, as the response's columns are typed.
-                        "type": _openapi_to_provisa_type(p.get("type")),
-                        "native_filter_type": "query_param",
-                        "native_filter_required": p["required"],
-                    }
-                )
+        cols += [c for c in openapi_parameter_columns(q) if c["name"] not in existing]
         return [
             AvailableColumnType(
                 name=c["name"],
@@ -2976,7 +3413,7 @@ async def _introspect_available_columns(
                 source_id, source_type, schema_name, table_name, state.source_pools
             )
         pk_names = set(native_pks or [])
-        return [
+        listed = [
             AvailableColumnType(
                 name=name,
                 data_type=typing.data_type,
@@ -2989,6 +3426,23 @@ async def _introspect_available_columns(
             )
             for name, typing in native
         ]
+        if source_type == "jdbc":
+            # REQ-2191: each column offered as an optional column_value parameter, the floor's
+            # equality filter; a steward marks which are required.
+            from provisa.jdbc_source.table import parameters_of
+
+            listed += [
+                AvailableColumnType(
+                    name=p["name"],
+                    data_type=p["data_type"],
+                    comment=None,
+                    path=p["path"],
+                    native_filter_type=p["native_filter_type"],
+                    native_filter_required=p["native_filter_required"],
+                )
+                for p in parameters_of([{"name": c.name, "data_type": c.data_type} for c in listed])
+            ]
+        return listed
     # REQ-1912: the engine lists only a source it holds a live attach of. With none, a table the
     # driver listed and found no columns for has none to report; a source the driver cannot list
     # at all is refused, naming it.

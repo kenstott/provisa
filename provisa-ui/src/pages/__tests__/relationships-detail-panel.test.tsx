@@ -50,7 +50,7 @@ const RELS = {
   loading: false,
   refetch: vi.fn(),
 };
-const TABLES: { tables: unknown[]; loading: boolean } = { tables: [], loading: false };
+const TABLES: { tables: unknown[]; loading: boolean; refetch: () => Promise<unknown> } = { tables: [], loading: false, refetch: () => Promise.resolve() };
 const DOMAINS = { domains: [] };
 const UPSERT = { upsertRelationship: vi.fn(async () => ({ success: true, message: "" })) };
 const DELETE = {
@@ -66,19 +66,30 @@ const FILTER: { domainsEnabled: boolean; domains: string[]; checkedDomains: Set<
 };
 
 vi.mock("../../hooks/useAdminQueries", () => ({
+  // REQ-2249: no code resolver set is in service here.
+  useCodeResolvers: () => ({
+    codeResolvers: [],
+    loading: false,
+    saveCodeResolver: vi.fn(),
+    retireCodeResolver: vi.fn(),
+  }),
   useRelationships: () => RELS,
   useAllRelationships: () => RELS,
   useTables: () => TABLES,
   useDomains: () => DOMAINS,
   useUpsertRelationship: () => UPSERT,
   useDeleteRelationship: () => DELETE,
+  useDeleteRelationships: () => vi.fn(),
 }));
 vi.mock("../../context/AuthContext", () => ({ useAuth: () => AUTH }));
 vi.mock("../../context/DomainFilterContext", () => ({ useDomainFilter: () => FILTER }));
 vi.mock("../../api/admin", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../api/admin")>()),
-  fetchCandidates: vi.fn().mockResolvedValue([]),
   fetchRejectedCount: vi.fn().mockResolvedValue(0),
+  // REQ-194: the reverse is offered once the GraphQL convention its alias is named by is read.
+  fetchSettings: vi.fn().mockResolvedValue({
+    naming: { convention: "apollo_graphql", use_domains: false, default_domain: "" },
+  }),
 }));
 vi.mock("../../api/actions", () => ({
   fetchActions: vi.fn().mockResolvedValue({ functions: [], webhooks: [] }),
@@ -91,10 +102,10 @@ const rowOf = (text: string) =>
 const panel = () => screen.getByTestId("relationships-split-panel");
 
 describe("RelationshipsPage: the list's search", () => {
-  it("lists the relationships matching any word of the search", () => {
+  it("lists the relationships matching every word of the search, or either side of or", () => {
     render(<RelationshipsPage />);
     fireEvent.change(screen.getByTestId("filter-input"), {
-      target: { value: "customers payments" },
+      target: { value: "customers or payments" },
     });
     const list = within(screen.getByTestId("relationships-list"));
     expect(list.getByText("orders.customer_id")).toBeInTheDocument();
@@ -155,10 +166,12 @@ describe("RelationshipsPage: the right-hand detail panel", () => {
     expect(form.queryByText(/Junction table/)).toBeNull();
   });
 
-  it("opens the reverse form in the panel, with a way back to the relationship", () => {
+  it("opens the reverse form in the panel, with a way back to the relationship", async () => {
     render(<RelationshipsPage />);
     fireEvent.click(rowOf("orders.customer_id"));
-    fireEvent.click(within(panel()).getByRole("button", { name: "Generate reverse relationship" }));
+    const reverse = within(panel()).getByRole("button", { name: "Generate reverse relationship" });
+    await waitFor(() => expect(reverse).toBeEnabled());
+    fireEvent.click(reverse);
     expect(within(panel()).getByTestId("reverse-relationship-form")).toBeTruthy();
     expect(screen.getByTestId("reverse-rel-id")).toHaveValue("customers-to-orders");
 
@@ -264,7 +277,9 @@ describe("RelationshipsPage: a delete that takes tags off columns", () => {
     render(<RelationshipsPage />);
     fireEvent.click(rowOf("orders.customer_id"));
     fireEvent.click(within(panel()).getByRole("button", { name: "Delete" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Confirm" }));
+    fireEvent.click(
+      within(await screen.findByRole("dialog")).getByRole("button", { name: "Delete" }),
+    );
     expect(await screen.findByTestId("glossary-tag-loss")).toHaveTextContent("Loses: pii");
     fireEvent.click(screen.getByTestId("glossary-tag-loss-move"));
     await waitFor(() =>

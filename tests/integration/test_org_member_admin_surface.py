@@ -120,13 +120,19 @@ async def org_plane(monkeypatch):
     monkeypatch.setattr(app_state, "model_db", app_state.tenant_db, raising=False)
     # No schema build runs here: nothing is compiled, so the table is answered by its stored
     # grants (catalog_scope), whatever an earlier test left built.
-    monkeypatch.setattr(app_state, "role_build_inputs", {"draft_tables": []}, raising=False)
+    monkeypatch.setattr(app_state, "role_build_inputs", {"withdrawn_tables": []}, raising=False)
     monkeypatch.setattr(app_state, "tables", [], raising=False)
     monkeypatch.setattr(app_state, "contexts", {}, raising=False)
     monkeypatch.setattr(
         app_state,
         "roles",
-        {"org_admin": {"capabilities": list(_ORG_ADMIN_CAPS), "domain_access": ["*"]}},
+        {
+            "org_admin": {
+                "capabilities": list(_ORG_ADMIN_CAPS),
+                "domain_access": ["*"],
+                "own_domain_access": ["*"],
+            }
+        },
         raising=False,
     )
     # A booted node always holds the deployment's config (set by the boot's load); this fixture

@@ -17,15 +17,29 @@ Supports PG SQL → Trino, and PG SQL → any target dialect for direct executio
 
 import functools
 import re
+from collections.abc import Callable
 
 import sqlglot
+from sqlglot.dialects.postgres import Postgres
 
-from provisa.core.pg_error import MARK
-from provisa.transpiler import function_macros, pg_functions, pg_held_types, pg_money
+from provisa.core.pg_error import MARK, raising
+from provisa.transpiler import (
+    function_macros,
+    pg_forms_enum,
+    pg_forms_geometric,
+    pg_forms_type_io,
+    pg_functions,
+    pg_held_types,
+    pg_money,
+    pg_syntax,
+    zoned_instants,
+)
+from provisa.transpiler.metadata_server_forms import SERVER_FORM_RAISE
 from provisa.transpiler.native_json import resolve_native_json
 from provisa.transpiler.native_subtype import resolve_reads
 from provisa.transpiler.pg_forms_json import json_member
-from provisa.transpiler.pg_literals import exact_inputs, postgres_literals
+from provisa.transpiler.polyfill import ported as polyfill_ported
+from provisa.transpiler.pg_literals import array_inputs, exact_inputs, postgres_literals
 from provisa.transpiler.to_char import to_char_for_duckdb
 from provisa.transpiler.transpile_correlated import (
     rewrite_correlated_subqueries_for_trino,
@@ -48,10 +62,39 @@ SUPPORTED_DIALECTS: set[str] = {
 }
 
 
+_WITHIN_GROUP = re.compile(r"\bWITHIN\s+GROUP\b", re.IGNORECASE)
+
+
+def _within_group_unqualified(pg_sql: str) -> str:
+    """``pg_sql`` with each pg_catalog.f(...) WITHIN GROUP (...) the unqualified call (REQ-2167):
+    sqlglot reads the qualified one as a column of table pg_catalog and writes its name quoted and
+    upper-cased, pg_catalog."RANK", which names no function. PostgreSQL resolves an unqualified
+    built-in in pg_catalog first, so the call is the same."""
+    if _WITHIN_GROUP.search(pg_sql) is None or "pg_catalog" not in pg_sql.lower():
+        return pg_sql
+    tree = sqlglot.parse_one(pg_sql, read="postgres")
+    misread = [
+        c
+        for c in tree.find_all(exp.Column)
+        if isinstance(c.this, exp.WithinGroup) and c.table.lower() == "pg_catalog"
+    ]
+    for column in misread:
+        call = column.this
+        if isinstance(call.this, exp.Anonymous):
+            named = call.this
+            call.set("this", exp.Anonymous(this=named.name.lower(), expressions=named.expressions))
+        column.replace(call)
+    return tree.sql(dialect="postgres") if misread else pg_sql
+
+
 def transpile_to_trino(pg_sql: str) -> str:  # REQ-066, REQ-068
     """Transpile PostgreSQL-dialect SQL to Trino SQL."""
     pg_sql = rewrite_correlated_subqueries_for_trino(pg_sql)
-    result = transpile(pg_sql, "trino")
+    # REQ-2171: the rewrites read the statement; a geometric form's routines are kept as written.
+    return pg_forms_geometric.around(transpile(pg_sql, "trino"), _trino_rewrites)
+
+
+def _trino_rewrites(result: str) -> str:
     result = _rewrite_epoch_of_timestamp_for_trino(result)
     result = _rewrite_json_build_object_for_trino(result)
     result = _rewrite_json_arrayagg_for_trino(result)
@@ -82,23 +125,30 @@ def _type_refused(message: exp.Expression, raise_with: str) -> exp.Expression:  
     return exp.Anonymous(this=raise_with, expressions=[message.copy()])
 
 
-def _json_has_keys(value: exp.Expression, *keys: str) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
-    """True where the JSON object ``value`` holds every one of ``keys``."""
-    held = [
-        exp.Not(
-            this=exp.Is(
-                this=exp.Anonymous(
-                    this="json_extract", expressions=[value.copy(), exp.Literal.string(f"$.{k}")]
-                ),
-                expression=exp.Null(),
-            )
-        )
-        for k in keys
-    ]
+def _json_field(value: exp.Expression, key: str) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
+    """The JSON object ``value``'s field ``key``, null where it has none (Trino, DuckDB)."""
+    return exp.Anonymous(
+        this="json_extract", expressions=[value.copy(), exp.Literal.string(f"$.{key}")]
+    )
+
+
+def _json_has_keys(
+    value: exp.Expression,  # pyright: ignore[reportPrivateImportUsage]
+    *keys: str,
+    field: Callable[[exp.Expression, str], exp.Expression] = _json_field,  # pyright: ignore[reportPrivateImportUsage]
+) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
+    """True where the JSON object ``value`` holds every one of ``keys`` (read by ``field``)."""
+    held = [exp.Not(this=exp.Is(this=field(value, k), expression=exp.Null())) for k in keys]
     return exp.and_(*held)  # pyright: ignore[reportReturnType]
 
 
-def _json_order_key(value: exp.Expression, text: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
+def _json_order_key(
+    value: exp.Expression,  # pyright: ignore[reportPrivateImportUsage]
+    text: exp.Expression,  # pyright: ignore[reportPrivateImportUsage]
+    *,
+    field: Callable[[exp.Expression, str], exp.Expression] = _json_field,  # pyright: ignore[reportPrivateImportUsage]
+    number: exp.Expression | None = None,  # pyright: ignore[reportPrivateImportUsage]
+) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
     """json_order_key(x), a JSON value's place in openCypher's order (expr_visitor): its kind --
     read from the first character of ``text``, its JSON text, and for an object from its keys --
     then its number, then its text.
@@ -107,20 +157,17 @@ def _json_order_key(value: exp.Expression, text: exp.Expression) -> exp.Expressi
     spec, "Orderability"), ascending: MAP, NODE, RELATIONSHIP, LIST, PATH, STRING, BOOLEAN,
     NUMBER, then null last. A node, a relationship and a path are each a JSON object, told from a
     map by the keys the result assembler (gql/assembler.py) and Bolt packstream
-    (bolt/packstream.py: _is_node_dict, _is_rel_dict, _is_path_dict) recognise them by."""
+    (bolt/packstream.py: _is_node_dict, _is_rel_dict, _is_path_dict) recognise them by. An
+    object's field is read by ``field``; ``number`` is the value as a number, null for any other
+    kind (by default its TRY_CAST to a double)."""
     first = exp.Anonymous(
         this="substr", expressions=[text, exp.Literal.number(1), exp.Literal.number(1)]
     )
-    is_path = _json_has_keys(value, "nodes", "edges")
-    is_rel = _json_has_keys(value, "type", "startNode", "endNode")
+    is_path = _json_has_keys(value, "nodes", "edges", field=field)
+    is_rel = _json_has_keys(value, "type", "startNode", "endNode", field=field)
     is_node = exp.and_(
-        _json_has_keys(value, "id", "label", "properties"),
-        exp.Is(
-            this=exp.Anonymous(
-                this="json_extract", expressions=[value.copy(), exp.Literal.string("$.startNode")]
-            ),
-            expression=exp.Null(),
-        ),
+        _json_has_keys(value, "id", "label", "properties", field=field),
+        exp.Is(this=field(value, "startNode"), expression=exp.Null()),
     )
     # Packstream tests a node, then a relationship, then a path; a path holds no node's keys.
     as_object = exp.Case(
@@ -140,7 +187,8 @@ def _json_order_key(value: exp.Expression, text: exp.Expression) -> exp.Expressi
         ],
         default=exp.Literal.number(7),
     )
-    number = exp.TryCast(this=value.copy(), to=exp.DataType.build("DOUBLE"))
+    if number is None:
+        number = exp.TryCast(this=value.copy(), to=exp.DataType.build("DOUBLE"))
     # A list's end before anything after it ([] before ['a'], ['a'] before ['a', 1]).
     ended = exp.Anonymous(
         this="replace",
@@ -248,7 +296,9 @@ def _json_list_compare(
         body = pair(f"{p}[1]", f"{p}[2]", depth - 1)
         if duck:
             zipped = f"list_zip({arr_a}, {arr_b}, true)"
-            decided = f"list_filter(list_transform({zipped}, {p} -> {body}), {c} -> {c} <> 0)"
+            decided = (
+                f"list_filter(list_transform({zipped}, LAMBDA {p} : {body}), LAMBDA {c} : {c} <> 0)"
+            )
             return f"list_extract(list_append({decided}, {shorter}), 1)"
         zipped = (
             f"slice(zip({arr_a}, {arr_b}), 1, least(cardinality({arr_a}), cardinality({arr_b})))"
@@ -319,7 +369,7 @@ def _rewrite_json_size_for_trino(sql: str) -> str:
     return tree.transform(_sized).sql(dialect="trino")
 
 
-_BACKREFERENCE = re.compile(r"\\(\d)")
+_BACKREFERENCE = re.compile(r"\\(\\|\d)")
 
 
 def _rewrite_regex_backreferences_for_trino(sql: str) -> str:
@@ -331,31 +381,60 @@ def _rewrite_regex_backreferences_for_trino(sql: str) -> str:
     for node in tree.find_all(exp.RegexpReplace):
         replacement = node.args.get("replacement")
         if isinstance(replacement, exp.Literal) and replacement.is_string:
-            written = _BACKREFERENCE.sub(r"$\1", replacement.this)
+            written = _BACKREFERENCE.sub(
+                lambda said: said.group() if said.group(1) == "\\" else f"${said.group(1)}",
+                replacement.this,
+            )
             node.set("replacement", exp.Literal.string(written))
     return tree.sql(dialect="trino")
+
+
+def _is_json_list_literal(node: exp.Expression) -> bool:  # pyright: ignore[reportPrivateImportUsage]
+    """'[]' as json: CAST('[]' AS JSON), or JSON_PARSE('[]') as the json forms write a json cast
+    of a literal for Trino (pg_forms_json._cast)."""
+    if isinstance(node, exp.Cast):
+        literal, is_json = node.this, node.to.is_type(exp.DataType.Type.JSON)
+    elif isinstance(node, exp.ParseJSON):
+        literal, is_json = node.this, True
+    else:
+        return False
+    return is_json and isinstance(literal, exp.Literal) and literal.this == "[]"
+
+
+def _is_json_text_aggregate(node: exp.Expression) -> bool:  # pyright: ignore[reportPrivateImportUsage]
+    """A list field's aggregate as Trino holds it: json_format(...) text
+    (_rewrite_json_arrayagg_for_trino), inline as a subquery or as the value column of the joined
+    aggregate it was hoisted to (transpile_correlated: _grel_<n>._val)."""
+    value = node
+    if isinstance(node, exp.Subquery) and isinstance(node.this, exp.Select):
+        selects = node.this.selects
+        value = selects[0].unalias() if len(selects) == 1 else node
+    if isinstance(value, exp.JSONFormat):
+        return True
+    return (
+        isinstance(value, exp.Column) and value.name == "_val" and value.table.startswith("_grel_")
+    )
 
 
 def _rewrite_empty_json_list_for_trino(sql: str) -> str:
     """A list field's empty default (sql_selection.EMPTY_JSON_LIST, CAST('[]' AS JSON)) is
     '[]' for Trino: there the aggregate it defaults is json_format(...) text
     (_rewrite_json_arrayagg_for_trino), and Trino's CAST of text to JSON is a JSON string, not an
-    array (#286)."""
-    if "'[]' AS JSON" not in sql:
+    array (#286). Only that default is rewritten: a statement's own json cast of '[]' stays json.
+    The json forms have already written the cast as JSON_PARSE('[]') by the time this runs, so
+    both forms are read."""
+    if "'[]'" not in sql:
         return sql
     tree = sqlglot.parse_one(sql, read="trino")
 
     def _transform(node: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
-        if (
-            isinstance(node, exp.Cast)
-            and isinstance(node.this, exp.Literal)
-            and node.this.this == "[]"
-            and node.to.is_type(exp.DataType.Type.JSON)
-        ):
-            return exp.Literal.string("[]")
+        if isinstance(node, exp.Coalesce) and _is_json_text_aggregate(node.this):
+            for default in node.expressions:
+                if _is_json_list_literal(default):
+                    default.replace(exp.Literal.string("[]"))
         return node
 
-    return tree.transform(_transform).sql(dialect="trino")
+    return tree.transform(_transform, copy=False).sql(dialect="trino", copy=False)
 
 
 def _rewrite_epoch_of_timestamp_for_trino(sql: str) -> str:
@@ -379,6 +458,40 @@ def _rewrite_epoch_of_timestamp_for_trino(sql: str) -> str:
     return tree.sql(dialect="trino") if changed else sql
 
 
+def _utc_wall_outputs(
+    select: exp.Select, utc_wall: dict[tuple[str, str, str], set[str]]
+) -> dict[str, set[str]]:
+    """Each FROM or JOIN item of ``select`` that holds a UTC-wall instant, by its alias, with the
+    names it exposes them under: a table's declared columns, or the bare columns a derived table
+    passes on from one -- a governed read (REQ-039) is a table inside its relation. A derived
+    table's computed or masked output is no longer the column, and is not one of them."""
+    outputs: dict[str, set[str]] = {}
+    for source in [select.args.get("from_"), *(select.args.get("joins") or [])]:
+        item = source.this if source is not None else None
+        if isinstance(item, exp.Table) and item.args.get("catalog") is not None:
+            key = (item.catalog, item.db.lower(), item.name.lower())
+            if key in utc_wall:
+                outputs[item.alias_or_name] = utc_wall[key]
+        elif isinstance(item, exp.Subquery) and isinstance(item.this, exp.Select):
+            inner = item.this
+            below = _utc_wall_outputs(inner, utc_wall)
+            only = next(iter(below)) if len(below) == 1 else ""
+            passed = {
+                expression.alias_or_name
+                for expression in inner.expressions
+                if isinstance(
+                    column := (
+                        expression.this if isinstance(expression, exp.Alias) else expression
+                    ),
+                    exp.Column,
+                )
+                and column.name in below.get(column.table or only, ())
+            }
+            if passed:
+                outputs[item.alias_or_name] = passed
+    return outputs
+
+
 def rewrite_instants_for_trino(
     sql: str, utc_wall: dict[tuple[str, str, str], set[str]]
 ) -> str:  # REQ-2050
@@ -388,8 +501,9 @@ def rewrite_instants_for_trino(
 
     ``utc_wall`` maps ``(catalog, schema, table)`` to such a table's declared-timestamptz columns
     (trino_connectors.trino_utc_wall_columns). Only the statement's outputs -- the outermost
-    SELECT's items, each UNION branch's -- that are a bare column of such a table: a predicate, a
-    join or an inner query reads the column as the connector gives it, so its pushdown stands."""
+    SELECT's items, each UNION branch's -- that are a bare column of such a table, directly or
+    through a derived table that passes it on: a predicate, a join or an inner query reads the
+    column as the connector gives it, so its pushdown stands."""
     if not utc_wall:
         return sql
     tree = sqlglot.parse_one(sql, read="trino")
@@ -398,15 +512,8 @@ def rewrite_instants_for_trino(
         selects = [s for s in tree.find_all(exp.Select) if s.find_ancestor(exp.Select) is None]
     changed = False
     for select in selects:
-        tables: dict[str, set[str]] = {}
         sources = [select.args.get("from_")] + list(select.args.get("joins") or [])
-        for source in sources:
-            table = source.this if source is not None else None
-            if not isinstance(table, exp.Table) or table.args.get("catalog") is None:
-                continue
-            key = (table.catalog, table.db.lower(), table.name.lower())
-            if key in utc_wall:
-                tables[table.alias_or_name] = utc_wall[key]
+        tables = _utc_wall_outputs(select, utc_wall)
         if not tables:
             continue
         only = next(iter(tables)) if len(sources) == 1 else None
@@ -478,11 +585,28 @@ def _rewrite_to_json_for_trino(sql: str) -> str:
     Trino has no to_json; its CAST(x AS JSON) already ENCODES a scalar/struct as a JSON value (the
     same semantics to_json gives on Postgres/DuckDB). The Cypher map-literal path emits to_json so the
     parse-semantics engines (Postgres/DuckDB) encode bare strings correctly; here it maps back to the
-    Trino spelling."""
+    Trino spelling.
+
+    A to_json that is a JSON object's value is its JSON text marked FORMAT JSON: Trino's
+    JSON_OBJECT casts a value of type JSON to varchar, which no array or object survives, and reads
+    text marked FORMAT JSON as the JSON it holds (REQ-2176: a session node's labels)."""
     # Parse failure must fail loud: returning input skips the required Trino rewrite.
     tree = sqlglot.parse_one(sql, read="trino")
 
     def _transform(node: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
+        value = node.expression if isinstance(node, exp.JSONKeyValue) else None
+        if (
+            isinstance(value, exp.Anonymous)
+            and value.name.upper() == "TO_JSON"
+            and len(value.expressions) == 1
+        ):
+            encoded = exp.Cast(
+                this=value.expressions[0].transform(_transform),
+                to=exp.DataType(this=exp.DataType.Type.JSON),
+            )
+            return exp.JSONKeyValue(
+                this=node.this, expression=exp.FormatJson(this=exp.JSONFormat(this=encoded))
+            )
         if isinstance(node, exp.Anonymous) and node.name.upper() == "TO_JSON":
             if len(node.expressions) == 1:
                 # Recurse into the argument: sqlglot's transform walks pre-order and does not
@@ -494,7 +618,7 @@ def _rewrite_to_json_for_trino(sql: str) -> str:
                 )
         return node
 
-    return tree.transform(_transform).sql(dialect="trino")
+    return tree.transform(_transform, copy=False).sql(dialect="trino", copy=False)
 
 
 def _rewrite_json_build_object_for_trino(sql: str) -> str:
@@ -524,7 +648,7 @@ def _rewrite_json_build_object_for_trino(sql: str) -> str:
             return exp.JSONObject(expressions=pairs)
         return node
 
-    return tree.transform(_transform).sql(dialect="trino")
+    return tree.transform(_transform, copy=False).sql(dialect="trino", copy=False)
 
 
 def _rewrite_json_arrayagg_for_trino(sql: str) -> str:
@@ -567,7 +691,7 @@ def _rewrite_json_arrayagg_for_trino(sql: str) -> str:
             return _list(inner, None)
         return node
 
-    return tree.transform(_transform).sql(dialect="trino")
+    return tree.transform(_transform, copy=False).sql(dialect="trino", copy=False)
 
 
 def transpile_to_duckdb(pg_sql: str) -> str:  # REQ-066, REQ-068
@@ -581,32 +705,111 @@ def transpile_to_duckdb(pg_sql: str) -> str:  # REQ-066, REQ-068
 
 @functools.lru_cache(maxsize=2048)
 def _duckdb_form(pg_sql: str) -> str:
-    """``pg_sql`` in DuckDB's SQL, derived once: every step is a function of the text alone, and
-    the steps parse it about six times. A statement a client repeats reaches here on each run, its
+    """``pg_sql`` in DuckDB's SQL, derived once: every step is a function of the text alone. A
+    statement a client repeats reaches here on each run, its
     plan kept or not. A refusal raises and is not kept."""
-    pg_sql = pg_money.lowered(pg_sql, "duckdb")  # REQ-2171
-    return pg_functions.after(
-        _postgres_semantics_for_duckdb(
-            _lengths_for_duckdb(
-                _null_order_as_key(
-                    _rewrite_list_functions_for_duckdb(
-                        _rewrite_json_agg_for_duckdb(
-                            transpile(
-                                pg_functions.before(
-                                    _catalog_functions_unqualified(
-                                        to_char_for_duckdb(
-                                            postgres_literals(pg_functions.typed_calls(pg_sql))
-                                        )
-                                    )
-                                ),
-                                "duckdb",
-                            )
-                        )
-                    )
-                )
+    pg_sql = pg_money.lowered(pg_forms_type_io.readable(pg_sql), "duckdb")  # REQ-2171
+    pg_sql = pg_forms_enum.lowered(pg_sql, "duckdb")  # REQ-2171
+    written = transpile(
+        pg_functions.before(
+            _catalog_functions_unqualified(
+                to_char_for_duckdb(postgres_literals(pg_functions.typed_calls(pg_sql)))
             )
-        )
+        ),
+        "duckdb",
     )
+    # From here every step is of DuckDB's tree, read once: the JSON forms are several times the
+    # statement's text, and each step that read it again paid for all of them.
+    tree = _rewrite_json_agg_for_duckdb(sqlglot.parse_one(written, read="duckdb"))
+    tree = _null_order_as_key(_rewrite_list_functions_for_duckdb(tree))
+    tree = _row_delimited_string_agg(tree)
+    tree = pg_functions.after_in(_postgres_semantics_for_duckdb(_lengths_for_duckdb(tree)))
+    _posix_zones_for_duckdb(tree)
+    # In place, the tree being this function's; a root a step lifted out of its parent keeps its copy.
+    return tree.sql(dialect="duckdb", copy=tree.parent is not None)
+
+
+#: string_agg of a delimiter that is no constant, as PostgreSQL appends one: each row's delimiter
+#: before its value, the first row's dropped, a NULL value's row skipped and a NULL delimiter none.
+#: Of any type both concatenate (text, bytea); DuckDB's own takes a constant delimiter alone.
+_ROW_DELIMITED = (
+    "list_reduce(list_transform(list(struct_pack(v := _v, d := _d)) FILTER (WHERE _v IS NOT NULL), "
+    "(x, i) -> CASE WHEN i = 1 OR x.d IS NULL THEN x.v ELSE x.d || x.v END), (a, b) -> a || b)"
+)
+#: A text order key as en_US.utf8 orders it (provisa_en_us_key, refused by name for a value it
+#: does not read); NULL for a value of any other type, which its own order then decides.
+_EN_US_KEY = (
+    "CASE WHEN typeof(_o) = 'VARCHAR' THEN provisa_en_us_key(CAST(_o AS VARCHAR), 'string_agg') END"
+)
+
+
+def _duckdb_form_of(sql: str, **nodes: exp.Expr) -> exp.Expr:
+    """``sql`` read as DuckDB's, each column named in ``nodes`` that node."""
+    return sqlglot.parse_one(sql, read="duckdb").transform(
+        lambda n: nodes[n.name].copy() if isinstance(n, exp.Column) and n.name in nodes else n
+    )
+
+
+def _row_delimited_string_agg(tree: exp.Expr) -> exp.Expr:  # REQ-2167
+    """Each string_agg whose delimiter is no constant (a column), as PostgreSQL answers it
+    (``_ROW_DELIMITED``), its ORDER BY kept, a text key ordered as en_US.utf8 orders it."""
+
+    def rewrite(node: exp.Expr) -> exp.Expr:
+        if not isinstance(node, exp.GroupConcat) or isinstance(node.parent, exp.Filter):
+            return node
+        delimiter = node.args.get("separator")
+        if delimiter is None or delimiter.find(exp.Column) is None:
+            return node
+        value, order = node.this, None
+        if isinstance(value, exp.Order):
+            value, order = value.this, value
+        if isinstance(value, exp.Distinct):
+            return node
+        written = _duckdb_form_of(_ROW_DELIMITED, _v=value, _d=delimiter)
+        if order is not None:
+            listed = written.find(exp.ArrayAgg)  # list(...), as sqlglot reads it
+            assert listed is not None
+            keys: list[exp.Expr] = []
+            for ordered in order.expressions:
+                collated = ordered.copy()
+                collated.set("this", _duckdb_form_of(_EN_US_KEY, _o=ordered.this))
+                keys += [collated, ordered.copy()]
+            listed.set("this", exp.Order(this=listed.this, expressions=keys))
+        return written
+
+    return tree.transform(rewrite, copy=False)
+
+
+#: The calls of DuckDB's that take a zone's text, by name: the position of the zone, the number
+#: of arguments, and whether PostgreSQL reads a number in it as POSIX does (west of UTC) or as a
+#: numeric zone (make_timestamptz's, ISO 8601's: east). timezone()'s zone is the polyfill grid's
+#: row (provisa.transpiler.polyfill.zones).
+_ZONE_ARGUMENTS = {"make_timestamptz": (6, 7, False)}
+
+
+def _posix_zones_for_duckdb(tree: exp.Expr) -> None:  # REQ-2167
+    """In place: each zone a statement writes as a literal that PostgreSQL reads as a fixed
+    offset (``'12'``, ``'+05:30'``) written as the ICU zone of that offset, which DuckDB knows
+    (pg_zones); DuckDB has no zone of PostgreSQL's text."""
+    zones: list[tuple[exp.Expr, bool]] = [
+        (node.args["zone"], True) for node in tree.find_all(exp.AtTimeZone) if node.args.get("zone")
+    ]
+    for call in tree.find_all(exp.Anonymous):
+        at = _ZONE_ARGUMENTS.get(call.name.lower())
+        if at is not None and len(call.expressions) == at[1]:
+            zones.append((call.expressions[at[0]], at[2]))
+    for zone, posix in zones:
+        written = zone
+        while isinstance(written, exp.Cast):
+            written = written.this
+        if isinstance(written, exp.Literal) and written.is_string:
+            # On a zone's text alone: pg_zones reads every pinned zone's abbreviations at import.
+            from provisa.transpiler import pg_zones
+
+            read = pg_zones.icu_fixed_zone if posix else pg_zones.icu_numeric_zone
+            icu = read(written.this)
+            if icu is not None:
+                written.replace(exp.Literal.string(icu))
 
 
 def _catalog_functions_unqualified(pg_sql: str) -> str:  # REQ-2167
@@ -639,18 +842,31 @@ def _catalog_functions_unqualified(pg_sql: str) -> str:  # REQ-2167
         function = node.expression
         if not isinstance(function, exp.Anonymous):
             return function.transform(_call)
+        part = function.expressions[0] if len(function.expressions) == 2 else None
+        part = part.this if isinstance(part, exp.Cast) else part
+        if function.name.lower() == "extract" and isinstance(part, exp.Literal) and part.is_string:
+            # extract(text, value), as EXTRACT(field FROM value) reads it: its field a keyword,
+            # where date_part's is a text (a numeric's answer, not a float8's).
+            value = function.expressions[1].transform(_call)
+            return exp.Extract(this=exp.var(part.this), expression=value)
         args = ", ".join(a.transform(_call).sql(dialect="postgres") for a in function.expressions)
         return sqlglot.parse_one(f"{function.name}({args})", read="postgres")
 
     return tree.transform(_call).sql(dialect="postgres")
 
 
-#: The error a zero divisor raises on DuckDB: PostgreSQL's own message, reported with its
-#: SQLSTATE 22012 (pgwire.server._sqlstate_of).
+#: The error a zero divisor raises on DuckDB: PostgreSQL's own, its SQLSTATE 22012 and message
+#: (pg_error.raising).
 DIVISION_BY_ZERO = "division by zero"
 
 
-def _postgres_semantics_for_duckdb(sql: str) -> str:  # REQ-2167
+#: What a zero divisor answers on DuckDB: PostgreSQL's 22012, raised by the engine.
+_DIVISION_REFUSED = sqlglot.parse_one(
+    raising("22012", exp.Literal.string(DIVISION_BY_ZERO).sql(dialect="duckdb")), read="duckdb"
+)
+
+
+def _postgres_semantics_for_duckdb(tree: exp.Expr) -> exp.Expr:  # REQ-2167
     """What PostgreSQL says, said on DuckDB where the two differ. A division or remainder by zero
     is PostgreSQL's error: DuckDB answers infinity or NULL, so each divisor is read through a CASE
     that raises PostgreSQL's message on zero (a nonzero literal divisor is left as it is; any
@@ -658,7 +874,6 @@ def _postgres_semantics_for_duckdb(sql: str) -> str:  # REQ-2167
     zero: DuckDB's ``/`` answers a DOUBLE, its ``//`` PostgreSQL's ``/`` (a non-integer operand
     divides exactly). And a set-returning function aliased in FROM with no column list names its
     one column by the alias, as PostgreSQL's does: DuckDB names the row by it."""
-    tree = sqlglot.parse_one(sql, read="duckdb")
 
     def _guarded(divisor: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
         if isinstance(divisor, exp.Literal) and not divisor.is_string and divisor.to_py() != 0:
@@ -667,9 +882,7 @@ def _postgres_semantics_for_duckdb(sql: str) -> str:  # REQ-2167
             ifs=[
                 exp.If(
                     this=exp.EQ(this=divisor.copy(), expression=exp.Literal.number(0)),
-                    true=exp.Anonymous(
-                        this="error", expressions=[exp.Literal.string(DIVISION_BY_ZERO)]
-                    ),
+                    true=_DIVISION_REFUSED.copy(),
                 )
             ],
             default=divisor,
@@ -687,24 +900,20 @@ def _postgres_semantics_for_duckdb(sql: str) -> str:  # REQ-2167
                 node.set("columns", [node.this.copy()])
         return node
 
-    tree = tree.transform(_transform)
+    tree = tree.transform(_transform, copy=False)
     # After the transform, which does not revisit what a replaced node holds (a / (b / c)).
     for div in list(tree.find_all(exp.Div)):
         div.replace(exp.IntDiv(this=div.this, expression=div.expression))
-    return tree.sql(dialect="duckdb")
+    return tree
 
 
-def _lengths_for_duckdb(sql: str) -> str:
+def _lengths_for_duckdb(tree: exp.Expr) -> exp.Expr:
     """PostgreSQL's ``length`` and ``octet_length`` of a bytea, a text or a list as DuckDB computes
     them. DuckDB's ``length`` takes no BLOB and its ``octet_length`` no VARCHAR, and which the
     argument is is known only once DuckDB binds it -- every branch of a CASE is bound whatever
     the argument -- so each is a CASE on ``typeof`` (folded at bind) whose branches read the
     argument through TRY_CAST: a BLOB's byte count, a list's elements, a text's characters
     (``length``) or bytes (``strlen``)."""
-    upper = sql.upper()
-    if "LENGTH(" not in upper:
-        return sql
-    tree = sqlglot.parse_one(sql, read="duckdb")
 
     def _try_cast(arg: exp.Expression, to: str) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
         return exp.TryCast(this=arg.copy(), to=exp.DataType.build(to, dialect="duckdb"))
@@ -721,7 +930,7 @@ def _lengths_for_duckdb(sql: str) -> str:
             branches.append(
                 exp.If(
                     this=exp.Like(this=kind.copy(), expression=exp.Literal.string("%[]")),
-                    true=exp.Anonymous(this="len", expressions=[_try_cast(arg, "VARCHAR[]")]),
+                    true=exp.Length(this=_try_cast(arg, "VARCHAR[]")),
                 )
             )
         text_len = exp.Anonymous(this=text_fn, expressions=[_try_cast(arg, "VARCHAR")])
@@ -738,7 +947,7 @@ def _lengths_for_duckdb(sql: str) -> str:
             return _of(node.expressions[0].transform(_transform), "strlen")
         return node
 
-    return tree.transform(_transform).sql(dialect="duckdb")
+    return tree.transform(_transform, copy=False)
 
 
 #: The targets whose LIKE has no escape character unless one is written (PostgreSQL's is a
@@ -748,14 +957,20 @@ _LIKE_ESCAPE_WRITTEN = frozenset({"duckdb", "trino"})
 
 # A source whose datetime literal takes no UTC offset: an instant is written as its UTC wall time,
 # which the connection's UTC session reads as that instant (REQ-2050, executor/drivers/mysql.py).
-_INSTANT_AS_UTC_WALL_TIME = frozenset({"mysql"})
+_INSTANT_AS_UTC_WALL_TIME = frozenset({"clickhouse", "mysql", "trino", "presto", "athena"})
+# The engines whose session is the client's zone (REQ-2171): the wall time is written naming UTC,
+# which they read as that instant in every session.
+_INSTANT_NAMES_UTC = frozenset({"trino", "presto", "athena"})
 
 
 def _instants_as_utc(pg_sql: str, target_dialect: str) -> str:
     """``pg_sql`` with each string literal cast to timestamptz that carries an offset written as
     the same instant in UTC, its offset gone. MariaDB reads ``TIMESTAMP('2024-01-01
-    20:04:05-05:00')`` as 20:04:05, five hours early (REQ-2050)."""
-    if target_dialect not in _INSTANT_AS_UTC_WALL_TIME or "TIMESTAMPTZ" not in pg_sql.upper():
+    20:04:05-05:00')`` as 20:04:05, five hours early (REQ-2050). On Trino, Presto and Athena,
+    whose session is the client's zone, the text names UTC."""
+    said = pg_sql.upper()
+    zoned = "TIMESTAMPTZ" in said or "TIMESTAMP WITH TIME ZONE" in said
+    if target_dialect not in _INSTANT_AS_UTC_WALL_TIME or not zoned:
         return pg_sql
     from datetime import datetime, timezone
 
@@ -772,8 +987,10 @@ def _instants_as_utc(pg_sql: str, target_dialect: str) -> str:
             continue  # not a date and time (the source refuses it as it is)
         if instant.tzinfo is None:
             continue  # no offset: read in the session's zone, UTC, as written
-        utc = instant.astimezone(timezone.utc).replace(tzinfo=None)
-        literal.replace(exp.Literal.string(utc.isoformat(sep=" ")))
+        utc = instant.astimezone(timezone.utc).replace(tzinfo=None).isoformat(sep=" ")
+        if target_dialect in _INSTANT_NAMES_UTC:
+            utc = f"{utc} UTC"
+        literal.replace(exp.Literal.string(utc))
     return tree.sql(dialect="postgres")
 
 
@@ -786,15 +1003,40 @@ def _like_escape_written(pg_sql: str, target_dialect: str) -> str:
         return pg_sql
     from provisa.codehost.duckdb_sql import escape_likes
 
-    return escape_likes(sqlglot.parse_one(pg_sql, read="postgres")).sql(dialect="postgres")
+    return escape_likes(sqlglot.parse_one(pg_sql, read="postgres")).sql(
+        dialect="postgres", copy=False
+    )
 
 
-def _null_order_as_key(sql: str) -> str:
+_LIKE_SAID = re.compile(r"like\b|~~|\bescape\b", re.IGNORECASE)
+
+
+def _like_patterns_read(pg_sql: str, target_dialect: str) -> str:
+    """``pg_sql`` with each LIKE pattern in ClickHouse's form, its ESCAPE read (REQ-2167):
+    ClickHouse's LIKE has no ESCAPE clause, and its backslash escapes only %, _ and itself."""
+    if target_dialect != "clickhouse" or _LIKE_SAID.search(pg_sql) is None:
+        return pg_sql
+    from provisa.transpiler import like_patterns
+
+    return like_patterns.written(pg_sql)
+
+
+def _stamp_inputs_held(pg_sql: str, target_dialect: str) -> str:
+    """``pg_sql`` with each text cast to a timestamp without its offset, as PostgreSQL's input
+    drops it (REQ-2167): ClickHouse's cast reads it."""
+    if target_dialect != "clickhouse" or "TIMESTAMP" not in pg_sql.upper():
+        return pg_sql
+    from provisa.transpiler.polyfill import instants
+
+    return instants.wall_inputs(pg_sql)
+
+
+def _null_order_as_key(tree: exp.Expr) -> exp.Expr:
     """#294: DuckDB SQL with each ORDER BY key whose nulls come first written as a null-test key
     of its own (codehost.duckdb_sql, the one form every DuckDB answering a statement runs)."""
     from provisa.codehost.duckdb_sql import null_order_as_key
 
-    return null_order_as_key(sqlglot.parse_one(sql, read="duckdb")).sql(dialect="duckdb")
+    return null_order_as_key(tree)
 
 
 #: A Cypher read's list functions as the IR names them (gql/expr_visitor, Trino's names) whose
@@ -837,7 +1079,7 @@ def _three_valued(
     )
 
 
-def _rewrite_list_functions_for_duckdb(sql: str) -> str:
+def _rewrite_list_functions_for_duckdb(tree: exp.Expr) -> exp.Expr:
     """A Cypher read's list functions as DuckDB computes them: a list index ``element_at(l, i)``
     (1-based, negative from the end) is ``list_extract`` and a map key ``element_at(m, 'k')``
     ``map_extract_value`` (DuckDB's element_at is a map's alone, and answers a list of the
@@ -846,9 +1088,8 @@ def _rewrite_list_functions_for_duckdb(sql: str) -> str:
     predicate values or'd or and'd, three-valued as Trino's (on an empty list any is false, all
     and none true; a null value with no deciding one answers null);
     ``sequence`` is ``generate_series`` (both inclusive)."""
-    if not any(name in sql.upper() for name in _DUCKDB_LIST_FUNCTIONS):
-        return sql
-    tree = sqlglot.parse_one(sql, read="duckdb")
+    if not any(n.name.upper() in _DUCKDB_LIST_FUNCTIONS for n in tree.find_all(exp.Anonymous)):
+        return tree
 
     def _fn(name: str, *args: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
         return exp.Anonymous(this=name, expressions=list(args))
@@ -927,7 +1168,11 @@ def _rewrite_list_functions_for_duckdb(sql: str) -> str:
         found = _three_valued(_predicates(args), decided, exp.true(), exp.false())
         return found if name == "ANY_MATCH" else exp.Not(this=exp.Paren(this=found))
 
-    return tree.transform(_transform).sql(dialect="duckdb")
+    # Read back: what is written here by name (len, generate_series) is a typed node to the steps
+    # after this one, as it is to DuckDB's parser.
+    return sqlglot.parse_one(
+        tree.transform(_transform, copy=False).sql(dialect="duckdb"), read="duckdb"
+    )
 
 
 def _list_arg(node: exp.Expression) -> exp.Expression | None:  # pyright: ignore[reportPrivateImportUsage]
@@ -943,7 +1188,15 @@ def _list_arg(node: exp.Expression) -> exp.Expression | None:  # pyright: ignore
     return None
 
 
-def _rewrite_json_agg_for_duckdb(sql: str) -> str:
+def _json_key(key: exp.Expr) -> exp.Expr:
+    """A key of json_build_object, as PostgreSQL makes one of any type: its text. DuckDB's
+    json_object takes a VARCHAR key alone."""
+    if isinstance(key, exp.Literal) and key.is_string:
+        return key
+    return exp.cast(key, "VARCHAR")
+
+
+def _rewrite_json_agg_for_duckdb(tree: exp.Expr) -> exp.Expr:
     """Replace JSON_ARRAYAGG(x) / JSON_AGG(x) / JSONB_AGG(x) with json_group_array(x), and
     JSON_BUILD_OBJECT / JSONB_BUILD_OBJECT with json_object.
 
@@ -957,8 +1210,6 @@ def _rewrite_json_agg_for_duckdb(sql: str) -> str:
     ``json_object`` (which DuckDB does register, in the flat k, v form SQLGlot writes)
     needs no rewrite.
     """
-    # Parse failure must fail loud: returning input skips the required DuckDB rewrite.
-    tree = sqlglot.parse_one(sql, read="duckdb")
 
     def _transform(node: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
         listed = _list_arg(node.this) if isinstance(node, exp.Filter) else None
@@ -996,7 +1247,9 @@ def _rewrite_json_agg_for_duckdb(sql: str) -> str:
             pairs = [e.transform(_transform) for e in node.expressions]
             return exp.Anonymous(
                 this="json_object",
-                expressions=[json_member(e) if i % 2 else e for i, e in enumerate(pairs)],
+                expressions=[
+                    json_member(e) if i % 2 else _json_key(e) for i, e in enumerate(pairs)
+                ],
             )
         # Each value a statement puts in JSON, as PostgreSQL writes it at any depth. A value is
         # set in place, so transform goes on into it for the JSON it holds.
@@ -1007,10 +1260,15 @@ def _rewrite_json_agg_for_duckdb(sql: str) -> str:
         elif isinstance(node, exp.JSONArray):
             node.set("expressions", [json_member(e) for e in node.expressions])
         elif isinstance(node, exp.Anonymous) and node.name.upper() == "JSON_GROUP_OBJECT":
-            node.set("expressions", [node.expressions[0], json_member(node.expressions[1])])
+            value = node.expressions[1]
+            if isinstance(value, exp.Order):  # value ORDER BY ...: the member is the value
+                value.set("this", json_member(value.this))
+            else:
+                value = json_member(value)
+            node.set("expressions", [node.expressions[0], value])
         return node
 
-    return tree.transform(_transform).sql(dialect="duckdb")
+    return tree.transform(_transform, copy=False)
 
 
 def rewrite_json_object_to_build_object(pg_sql: str) -> str:  # REQ-902
@@ -1024,6 +1282,10 @@ def rewrite_json_object_to_build_object(pg_sql: str) -> str:  # REQ-902
     """
     # Parse failure must fail loud: returning input skips the required pg_duckdb JSON rewrite.
     tree = sqlglot.parse_one(pg_sql, read="postgres")
+    if tree.find(exp.JSONObject) is None:
+        # Nothing to collapse. Written out again, the statement would lose what transpile wrote
+        # for PostgreSQL alone, such as pg_catalog."overlaps" (pg_syntax reads it as the routine).
+        return pg_sql
 
     def _transform(node: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
         if isinstance(node, exp.JSONObject):
@@ -1040,7 +1302,21 @@ def rewrite_json_object_to_build_object(pg_sql: str) -> str:  # REQ-902
     # pass rewrites only nodes visited before their parent is replaced, so iterate until none remain.
     while list(tree.find_all(exp.JSONObject)):
         tree = tree.transform(_transform)
-    return tree.sql(dialect="postgres")
+    return pg_syntax.overlaps_restored(tree).sql(dialect="postgres")
+
+
+def direct_physical(sql: str, dialect: str) -> str:
+    """``sql``, transpiled to ``dialect``, as it is sent DIRECT to one source of that dialect.
+
+    PostgreSQL types JSON_OBJECT(...) as jsonb when any of its arguments is jsonb and as json
+    otherwise, so two JSON values of one column (a Cypher node union's arms, one label reading a
+    jsonb column and another none) were of two types, and PostgreSQL refused the statement: "UNION
+    could not convert type jsonb to json". json_build_object is json whatever it holds, as the pg
+    engine already sends it (rewrite_json_object_to_build_object, REQ-902).
+    """
+    if dialect != "postgres":
+        return sql
+    return rewrite_json_object_to_build_object(sql)
 
 
 def postgres_try_casts(tree: exp.Expr) -> exp.Expr:  # REQ-778
@@ -1051,14 +1327,23 @@ def postgres_try_casts(tree: exp.Expr) -> exp.Expr:  # REQ-778
     def _lowered(node: exp.Expr) -> exp.Expr:
         if not isinstance(node, exp.TryCast):
             return node
+        # Recurse first: transform is pre-order and skips a replaced node's children (toInteger's
+        # TRY_CAST(TRUNC(TRY_CAST(v AS DECIMAL)) AS BIGINT)).
+        value = node.this.transform(_lowered)
         valid = exp.Anonymous(
             this="PG_INPUT_IS_VALID",
             expressions=[
-                exp.Cast(this=node.this.copy(), to=exp.DataType.build("TEXT")),
+                exp.Cast(this=value.copy(), to=exp.DataType.build("TEXT")),
                 exp.Literal.string(node.to.sql(dialect="postgres")),
             ],
         )
-        cast = exp.Cast(this=node.this.copy(), to=node.to.copy())
+        operand = value.copy()
+        if not any(operand.find_all(exp.Column, exp.Placeholder, exp.Parameter)):
+            # A constant's cast is folded when the statement is planned, whatever the CASE
+            # decides: PostgreSQL would refuse the value it was asked to test. Its scalar
+            # subquery is not folded.
+            operand = exp.Subquery(this=exp.select(operand))
+        cast = exp.Cast(this=operand, to=node.to.copy())
         return exp.Case(ifs=[exp.If(this=valid, true=cast)])
 
     return tree.transform(_lowered)
@@ -1081,7 +1366,7 @@ def postgres_empty_arrays(tree: exp.Expr) -> exp.Expr:
 def postgres_array_filters(tree: exp.Expr) -> exp.Expr:  # REQ-778
     """``tree`` for a PostgreSQL server, which has no FILTER: each filtered list (the semantic SQL
     keeps ``FILTER(l, y -> p)``, ``semantic_dialect``) is ``ARRAY(SELECT y FROM UNNEST(l) AS
-    _t(y) WHERE p)``."""
+    _t(y) WHERE p)``, null for a null ``l`` (as Trino's filter), never the empty list."""
 
     def _lowered(node: exp.Expr) -> exp.Expr:
         if not isinstance(node, exp.ArrayFilter):
@@ -1090,13 +1375,510 @@ def postgres_array_filters(tree: exp.Expr) -> exp.Expr:  # REQ-778
         if not (isinstance(cond, exp.Lambda) and len(cond.expressions) == 1):
             raise ValueError(f"A filtered list takes one element variable: {node.sql()}")
         var = cond.expressions[0].name
-        unnest = exp.Unnest(expressions=[node.this.copy()])
-        table = exp.TableAlias(this=exp.to_identifier("_t"), columns=[exp.to_identifier(var)])
-        unnest.set("alias", table)
-        filtered = exp.select(var).from_(unnest).where(cond.this.copy())
-        return exp.Array(expressions=[filtered])
+        # Recurse first: transform is pre-order and skips a replaced node's children.
+        values = node.this.transform(_lowered)
+        filtered = (
+            exp.select(var).from_(_pg_unnested(values, var)).where(cond.this.transform(_lowered))
+        )
+        return _pg_null_list(values, exp.Array(expressions=[filtered]))
 
     return tree.transform(_lowered)
+
+
+def postgres_list_ranges(tree: exp.Expr) -> exp.Expr:  # REQ-345
+    """``tree`` for a PostgreSQL server, which has no ``sequence``: each list a Cypher range()
+    is (gql/translator_helpers names it Trino's ``sequence(start, end[, step])``) is
+    ``ARRAY(SELECT generate_series(start, end[, step]))``, inclusive of both ends as range() is.
+    PostgreSQL's generate_series returns rows, so they are collected into the list."""
+
+    def _lowered(node: exp.Expr) -> exp.Expr:
+        if not (isinstance(node, exp.Anonymous) and node.name.upper() == "SEQUENCE"):
+            return node
+        # Recurse first: transform is pre-order and skips a replaced node's children.
+        args = [a.transform(_lowered) for a in node.expressions]
+        series = exp.Anonymous(this="generate_series", expressions=args)
+        return exp.Array(expressions=[exp.select(series)])
+
+    return tree.transform(_lowered)
+
+
+_SEQUENCE_CALLED = re.compile(r"\bsequence\s*\(", re.IGNORECASE)
+
+
+def _pg_raised(sqlstate: str, message: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
+    """PostgreSQL's error ``sqlstate`` with ``message`` as its own text, where it is reached:
+    provisa_raise, which the pg engine installs (pg_runtime), as an integer. It is volatile, so
+    it is never folded, and raised, when the statement is planned."""
+    raised = exp.Anonymous(
+        this=SERVER_FORM_RAISE, expressions=[exp.Literal.string(sqlstate), message.copy()]
+    )
+    return exp.Cast(this=raised, to=exp.DataType.build("INT"))
+
+
+def _pg_json_text(value: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
+    """A JSON value's JSON text on PostgreSQL, from a json or a jsonb."""
+    return exp.Cast(this=value.copy(), to=exp.DataType.build("TEXT"))
+
+
+def _pg_json(value: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
+    """A JSON value as PostgreSQL's json, from a json or a jsonb."""
+    return exp.Cast(this=_pg_json_text(value), to=exp.DataType.build("JSON"))
+
+
+def _pg_json_scalar(value: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
+    """A JSON scalar's text on PostgreSQL: a string unquoted, a number or boolean as written."""
+    return exp.JSONBExtractScalar(
+        this=exp.Cast(this=_pg_json_text(value), to=exp.DataType.build("JSONB")),
+        expression=exp.Literal.string("{}"),
+    )
+
+
+def _pg_binary(text: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
+    """``text`` compared by its characters' codes, as Trino and DuckDB compare text (and
+    openCypher orders strings), never by the database's collation."""
+    return exp.Collate(this=text, expression=exp.to_identifier("C", quoted=True))
+
+
+def _pg_sign(a: exp.Expression, b: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
+    """-1, 0 or 1 as ``a`` is below, equal to or above ``b``."""
+    return exp.Case(
+        ifs=[
+            exp.If(this=exp.LT(this=a, expression=b), true=exp.Literal.number(-1)),
+            exp.If(this=exp.GT(this=a.copy(), expression=b.copy()), true=exp.Literal.number(1)),
+        ],
+        default=exp.Literal.number(0),
+    )
+
+
+def _pg_json_list_compare(
+    left: exp.Expression,  # pyright: ignore[reportPrivateImportUsage]
+    right: exp.Expression,  # pyright: ignore[reportPrivateImportUsage]
+    depth: int = _LIST_COMPARE_DEPTH,
+) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
+    """json_list_compare(a, b) on PostgreSQL, as _json_list_compare answers it on Trino and
+    DuckDB: the first element pair (by position) that is not equal decides, else the shorter list
+    is smaller; 2 for a pair that cannot be compared, which the caller reads as null."""
+    a, b, z = f"_a{depth}", f"_b{depth}", f"_z{depth}"
+
+    def items(of: str, value: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
+        listed = exp.Table(
+            this=exp.Anonymous(this="json_array_elements", expressions=[_pg_json(value)]),
+            ordinality=True,
+            alias=exp.TableAlias(
+                this=exp.to_identifier(of), columns=[exp.to_identifier("e"), exp.to_identifier("n")]
+            ),
+        )
+        return listed
+
+    def item(of: str) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
+        return exp.column("e", table=of)
+
+    ea, eb = item(a), item(b)
+    kind_a, kind_b = (_json_kind(_pg_json_text(e)) for e in (ea, eb))
+
+    def both(kind: str) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
+        return exp.and_(  # pyright: ignore[reportReturnType]
+            exp.EQ(this=kind_a.copy(), expression=exp.Literal.string(kind)),
+            exp.EQ(this=kind_b.copy(), expression=exp.Literal.string(kind)),
+        )
+
+    def as_(e: exp.Expression, to: str) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
+        return exp.Cast(this=_pg_json_scalar(e), to=exp.DataType.build(to))
+
+    if depth == 1:
+        nested = _pg_raised("54001", exp.Literal.string(LIST_COMPARE_TOO_DEEP))
+    else:
+        nested = _pg_json_list_compare(ea.copy(), eb.copy(), depth - 1)
+    pair = exp.Case(
+        ifs=[
+            exp.If(
+                this=both("number"),
+                true=_pg_sign(as_(ea, "DOUBLE PRECISION"), as_(eb, "DOUBLE PRECISION")),
+            ),
+            exp.If(
+                this=both("string"),
+                true=_pg_sign(_pg_binary(_pg_json_scalar(ea)), _pg_binary(_pg_json_scalar(eb))),
+            ),
+            exp.If(this=both("boolean"), true=_pg_sign(as_(ea, "BOOLEAN"), as_(eb, "BOOLEAN"))),
+            exp.If(this=both("list"), true=nested),
+        ],
+        default=exp.Literal.number(2),
+    )
+    decided = (
+        exp.select(exp.column("c", table=z))
+        .from_(
+            exp.select(exp.column("n", table=a), exp.alias_(pair, "c"))
+            .from_(items(a, left))
+            .join(
+                items(b, right),
+                on=exp.EQ(this=exp.column("n", table=a), expression=exp.column("n", table=b)),
+            )
+            .subquery(z)
+        )
+        .where(exp.NEQ(this=exp.column("c", table=z), expression=exp.Literal.number(0)))
+        .order_by(exp.column("n", table=z))
+        .limit(1)
+    )
+    sizes = [
+        exp.Anonymous(this="json_array_length", expressions=[_pg_json(v)]) for v in (left, right)
+    ]
+    return exp.Coalesce(this=exp.Subquery(this=decided), expressions=[_pg_sign(*sizes)])
+
+
+def _pg_matched(
+    name: str,
+    values: exp.Expression,  # pyright: ignore[reportPrivateImportUsage]
+    test: exp.Expression | None,  # pyright: ignore[reportPrivateImportUsage]
+) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
+    """any_match / all_match / none_match(l[, x -> p]) on PostgreSQL, three-valued as Trino's: on
+    an empty list any is false, all and none true; a value that decides answers (a true any, a
+    false all); else a null predicate value answers null. A null list is null."""
+    if test is None:
+        var, predicate = "_x", exp.column("_x")
+    else:
+        if not (isinstance(test, exp.Lambda) and len(test.expressions) == 1):
+            raise ValueError(f"A quantifier takes one element variable: {name}")
+        var, predicate = test.expressions[0].name, test.this
+    unknown = exp.GT(this=exp.Count(this=exp.Star()), expression=exp.Count(this=predicate.copy()))
+    if name == "ALL_MATCH":
+        decided = exp.Not(
+            this=exp.Coalesce(
+                this=exp.Anonymous(this="bool_and", expressions=[predicate.copy()]),
+                expressions=[exp.true()],
+            )
+        )
+        then, otherwise = exp.false(), exp.true()
+    else:
+        decided = exp.Coalesce(
+            this=exp.Anonymous(this="bool_or", expressions=[predicate.copy()]),
+            expressions=[exp.false()],
+        )
+        then, otherwise = exp.true(), exp.false()
+        if name == "NONE_MATCH":
+            then, otherwise = otherwise, then
+    answer = exp.Case(
+        ifs=[exp.If(this=decided, true=then), exp.If(this=unknown, true=exp.Null())],
+        default=otherwise,
+    )
+    over = exp.select(answer).from_(_pg_unnested(values, var))
+    return _pg_null_list(values, exp.Subquery(this=over))
+
+
+def _pg_unnested(values: exp.Expression, var: str) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
+    """The list ``values`` as rows of ``var``: UNNEST(l) AS _t(var)."""
+    unnest = exp.Unnest(expressions=[values.copy()])
+    unnest.set(
+        "alias", exp.TableAlias(this=exp.to_identifier("_t"), columns=[exp.to_identifier(var)])
+    )
+    return unnest
+
+
+def _pg_null_list(values: exp.Expression, listed: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
+    """``listed``, read from the rows of ``values``, or null for a null list (whose rows are none)."""
+    return exp.Case(
+        ifs=[exp.If(this=exp.Is(this=values.copy(), expression=exp.Null()), true=exp.Null())],
+        default=listed,
+    )
+
+
+def _pg_reduced(node: exp.Reduce) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
+    """reduce(l, init, (acc, x) -> step, acc -> acc), a fold over a list, on PostgreSQL: a
+    recursive scalar subquery from ``init``, each row the next item folded in, the last row's
+    accumulator the answer. A null list is null."""
+    values, merge, finish = node.this, node.args["merge"], node.args.get("finish")
+    if not (isinstance(merge, exp.Lambda) and len(merge.expressions) == 2):
+        raise ValueError(f"A fold takes an accumulator and an element variable: {node.sql()}")
+    acc, var = (e.name for e in merge.expressions)
+    if finish is not None and not (
+        isinstance(finish, exp.Lambda)
+        and [e.name for e in finish.expressions] == [acc]
+        and isinstance(finish.this, (exp.Column, exp.Identifier))
+        and finish.this.name == acc
+    ):
+        raise ValueError(f"A fold's finish is its accumulator: {node.sql()}")
+    done = exp.column("_n", table="_r")
+    at = exp.Add(this=done, expression=exp.Literal.number(1))
+    item = exp.Bracket(this=exp.Paren(this=values.copy()), expressions=[at], offset=1)
+
+    def _read(n: exp.Expr) -> exp.Expr:
+        # A lambda's variable is a bare identifier (or an unqualified column) in its body.
+        bare = (isinstance(n, exp.Column) and not n.table) or (
+            isinstance(n, exp.Identifier)
+            and not isinstance(n.parent, (exp.Column, exp.Table, exp.TableAlias, exp.Alias))
+            and not (isinstance(n.parent, exp.Dot) and n.arg_key == "expression")
+        )
+        if bare and n.name == var:
+            return item.copy()
+        if bare and n.name == acc:
+            return exp.column(acc, table="_r")
+        return n
+
+    folded = (
+        exp.select(at.copy(), merge.this.transform(_read))
+        .from_("_r")
+        .where(
+            exp.LT(
+                this=done.copy(),
+                expression=exp.Anonymous(this="cardinality", expressions=[values.copy()]),
+            )
+        )
+    )
+    rows = exp.union(
+        exp.select(exp.Literal.number(0), node.args["initial"].copy()), folded, distinct=False
+    )
+    named = exp.TableAlias(
+        this=exp.to_identifier("_r"), columns=[exp.to_identifier("_n"), exp.to_identifier(acc)]
+    )
+    last = (
+        exp.select(exp.column(acc))
+        .from_("_r")
+        .order_by(exp.Ordered(this=exp.column("_n"), desc=True))
+        .limit(1)
+    )
+    last.set("with_", exp.With(expressions=[exp.CTE(this=rows, alias=named)], recursive=True))
+    return _pg_null_list(values, exp.Subquery(this=last))
+
+
+def postgres_list_functions(tree: exp.Expr) -> exp.Expr:  # REQ-345
+    """``tree`` for a PostgreSQL server, which has none of the list functions a Cypher read names
+    (gql/expr_visitor writes Trino's, _rewrite_list_functions_for_duckdb DuckDB's) nor lambdas:
+
+    - ``element_at(l, i)``, 1-based with a negative ``i`` from the end, is ``(l)[i]``, from the
+      end ``(l)[cardinality(l) + 1 + i]``; null past either end, as Trino's;
+    - ``slice(l, start, length)`` is ``(l)[start:start + length - 1]``;
+    - ``transform(l, x -> e)`` is ``ARRAY(SELECT e FROM UNNEST(l) AS _t(x))``, null for a null l;
+    - ``any_match`` / ``all_match`` / ``none_match`` aggregate the predicate over the list's
+      rows (_pg_matched); ``reduce`` is a recursive fold (_pg_reduced);
+    - ``range_step(s)`` is ``s``, raising where it is 0; ``type_refused('m')`` raises ``m`` where
+      its branch is reached;
+    - ``json_kind``, ``json_size``, ``json_order_key`` and ``json_list_compare`` read a JSON
+      value's text, as on the other engines.
+
+    A map's key (``element_at(m, 'k')``) is not a list's index: it is postgres_maps'."""
+
+    def _lowered(node: exp.Expr) -> exp.Expr:
+        if isinstance(node, exp.Case):
+            return _refused_branches(node)
+        if isinstance(node, exp.Transform):
+            values = node.this.transform(_lowered)
+            fn = node.expression
+            if not (isinstance(fn, exp.Lambda) and len(fn.expressions) == 1):
+                raise ValueError(f"A projected list takes one element variable: {node.sql()}")
+            var = fn.expressions[0].name
+            listed = exp.select(fn.this.transform(_lowered)).from_(_pg_unnested(values, var))
+            return _pg_null_list(values, exp.Array(expressions=[listed]))
+        if isinstance(node, exp.Reduce):
+            return _pg_reduced(
+                exp.Reduce(
+                    **{k: v.transform(_lowered) for k, v in node.args.items() if v is not None}
+                )
+            )
+        if not isinstance(node, exp.Anonymous) or node.name.upper() not in _PG_LIST_FUNCTIONS:
+            return node
+        # Recurse first: transform is pre-order and skips a replaced node's children.
+        args = [a.transform(_lowered) for a in node.expressions]
+        name = node.name.upper()
+        if name == "ELEMENT_AT":
+            values, at = args
+            if isinstance(at, exp.Literal) and at.is_string:
+                return exp.Anonymous(this=node.name, expressions=args)
+            return _pg_element_at(values, at)
+        if name == "SLICE":
+            values, start, length = args
+            end = exp.Sub(
+                this=exp.Add(this=start.copy(), expression=length), expression=exp.Literal.number(1)
+            )
+            return exp.Bracket(
+                this=exp.Paren(this=values),
+                expressions=[exp.Slice(this=start, expression=end)],
+                offset=1,
+            )
+        if name in ("ANY_MATCH", "ALL_MATCH", "NONE_MATCH"):
+            return _pg_matched(name, args[0], args[1] if len(args) > 1 else None)
+        if name == "RANGE_STEP":
+            (step,) = args
+            failed = _pg_raised("22023", exp.Literal.string(RANGE_STEP_ZERO))
+            return exp.Case(
+                ifs=[
+                    exp.If(
+                        this=exp.EQ(this=step.copy(), expression=exp.Literal.number(0)), true=failed
+                    )
+                ],
+                default=step,
+            )
+        if name == "TYPE_REFUSED":
+            (message,) = args
+            return _pg_raised("42804", message)
+        if name == "JSON_KIND":
+            (value,) = args
+            return _json_kind(_pg_json_text(value))
+        if name == "JSON_SIZE":
+            # A JSON value's size: a list's items, a string's characters (expr_visitor).
+            (value,) = args
+            kind = _json_kind(_pg_json_text(value))
+            return exp.Case(
+                ifs=[
+                    exp.If(
+                        this=exp.EQ(this=kind, expression=exp.Literal.string("list")),
+                        true=exp.Anonymous(this="json_array_length", expressions=[_pg_json(value)]),
+                    ),
+                    exp.If(
+                        this=exp.EQ(this=kind.copy(), expression=exp.Literal.string("string")),
+                        true=exp.Length(this=_pg_json_scalar(value)),
+                    ),
+                ]
+            )
+        if name == "JSON_ORDER_KEY":
+            (value,) = args
+            text = _pg_json_text(value)
+            number = exp.TryCast(this=text.copy(), to=exp.DataType.build("DOUBLE"))
+            key = _json_order_key(
+                _pg_json(value),
+                text,
+                field=lambda v, k: exp.Anonymous(
+                    this="json_extract_path", expressions=[v.copy(), exp.Literal.string(k)]
+                ),
+                number=postgres_try_casts(number),  # pyright: ignore[reportArgumentType]
+            )
+            *ranks, ended = key.expressions
+            return exp.Anonymous(this=key.name, expressions=[*ranks, _pg_binary(ended)])
+        left, right = args  # JSON_LIST_COMPARE
+        return exp.Nullif(this=_pg_json_list_compare(left, right), expression=exp.Literal.number(2))
+
+    def _refused_branches(case: exp.Case) -> exp.Expr:
+        """A CASE whose branch is type_refused('m'): PostgreSQL's raise is an integer, which the
+        CASE's other branches need not be, so the raise is the branch's test, reached where the
+        test holds (CASE WHEN (CASE WHEN test THEN raise = 0 END) THEN NULL ...)."""
+        for branch in case.args.get("ifs") or []:
+            refused = branch.args.get("true")
+            if isinstance(refused, exp.Anonymous) and refused.name.upper() == "TYPE_REFUSED":
+                (message,) = refused.expressions
+                raised = exp.EQ(this=_pg_raised("42804", message), expression=exp.Literal.number(0))
+                branch.set("this", exp.Case(ifs=[exp.If(this=branch.this, true=raised)]))
+                branch.set("true", exp.Null())
+        return case
+
+    return tree.transform(_lowered)
+
+
+def _pg_element_at(values: exp.Expression, at: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
+    """element_at(l, i) on PostgreSQL: ``(l)[i]``, a negative ``i`` counted from the end."""
+
+    def read(index: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
+        return exp.Bracket(this=exp.Paren(this=values.copy()), expressions=[index], offset=1)
+
+    size = exp.Anonymous(this="cardinality", expressions=[values.copy()])
+    from_end = exp.Add(
+        this=exp.Add(this=size, expression=exp.Literal.number(1)), expression=at.copy()
+    )
+    if isinstance(at, exp.Literal) or (
+        isinstance(at, exp.Neg) and isinstance(at.this, exp.Literal)
+    ):
+        return read(from_end if int(at.to_py()) < 0 else at.copy())
+    return exp.Case(
+        ifs=[
+            exp.If(
+                this=exp.LT(this=at.copy(), expression=exp.Literal.number(0)), true=read(from_end)
+            )
+        ],
+        default=read(at.copy()),
+    )
+
+
+def postgres_maps(tree: exp.Expr) -> exp.Expr:  # REQ-345
+    """``tree`` for a PostgreSQL server, which has no MAP type: a Cypher map is jsonb.
+
+    - ``MAP(ARRAY[k, ...], ARRAY[v, ...])`` (gql/expr_visitor, each value its JSON) is
+      ``JSONB_BUILD_OBJECT(k, v, ...)``;
+    - a key's value, ``element_at(m, 'k')``, is ``m -> 'k'``, null where the map has no such key;
+      read as JSON (``CAST(element_at(m, 'k') AS JSON)``) it is that jsonb, which PostgreSQL casts
+      to a number or a boolean as it casts no json;
+    - ``map_keys(m)`` is ``ARRAY(SELECT jsonb_object_keys(m))``, null for a null map."""
+
+    def _key_read(node: exp.Expr) -> exp.Expression | None:  # pyright: ignore[reportPrivateImportUsage]
+        if not (isinstance(node, exp.Anonymous) and node.name.upper() == "ELEMENT_AT"):
+            return None
+        held, key = node.expressions
+        if not (isinstance(key, exp.Literal) and key.is_string):
+            return None
+        as_jsonb = exp.Cast(this=held.transform(_lowered), to=exp.DataType.build("JSONB"))
+        return exp.JSONExtract(this=as_jsonb, expression=key.copy(), only_json_types=True)
+
+    def _lowered(node: exp.Expr) -> exp.Expr:
+        if isinstance(node, exp.Cast) and node.to.is_type(exp.DataType.Type.JSON):
+            read = _key_read(node.this)
+            if read is not None:
+                return read
+        read = _key_read(node)
+        if read is not None:
+            return read
+        if isinstance(node, exp.Map):
+            keys, values = node.args.get("keys"), node.args.get("values")
+            if not (isinstance(keys, exp.Array) and isinstance(values, exp.Array)):
+                raise ValueError(f"A map is built from its keys and values listed: {node.sql()}")
+            pairs = [
+                part.transform(_lowered)
+                for pair in zip(keys.expressions, values.expressions, strict=True)
+                for part in pair
+            ]
+            return exp.Anonymous(this="JSONB_BUILD_OBJECT", expressions=pairs)
+        if isinstance(node, exp.MapKeys):
+            held = node.this.transform(_lowered)
+            named = exp.Anonymous(
+                this="JSONB_OBJECT_KEYS",
+                expressions=[exp.Cast(this=held.copy(), to=exp.DataType.build("JSONB"))],
+            )
+            return _pg_null_list(held, exp.Array(expressions=[exp.select(named)]))
+        return node
+
+    return tree.transform(_lowered)
+
+
+_MAP_CALLED = re.compile(r"\b(?:map|map_keys|element_at)\s*\(", re.IGNORECASE)
+
+
+def postgres_json_of_text(tree: exp.Expr) -> exp.Expr:  # REQ-345
+    """``tree`` for a PostgreSQL server, which cannot tell the type of a quoted literal TO_JSON
+    is given (to_json is polymorphic): each such literal (an item of a Cypher list of several
+    types, gql/expr_visitor) is the text it is."""
+
+    def _typed(node: exp.Expr) -> exp.Expr:
+        if (
+            isinstance(node, exp.Anonymous)
+            and node.name.upper() == "TO_JSON"
+            and len(node.expressions) == 1
+            and isinstance(node.expressions[0], exp.Literal)
+            and node.expressions[0].is_string
+        ):
+            text = exp.Cast(this=node.expressions[0].copy(), to=exp.DataType.build("TEXT"))
+            return exp.Anonymous(this=node.name, expressions=[text])
+        return node
+
+    return tree.transform(_typed)
+
+
+_TO_JSON_CALLED = re.compile(r"\bto_json\s*\(\s*'", re.IGNORECASE)
+
+#: The list functions postgres_list_functions renders, as the IR names them.
+_PG_LIST_FUNCTIONS = frozenset(
+    {
+        "ELEMENT_AT",
+        "SLICE",
+        "ANY_MATCH",
+        "ALL_MATCH",
+        "NONE_MATCH",
+        "RANGE_STEP",
+        "TYPE_REFUSED",
+        "JSON_KIND",
+        "JSON_SIZE",
+        "JSON_ORDER_KEY",
+        "JSON_LIST_COMPARE",
+    }
+)
+_PG_LIST_CALLED = re.compile(
+    r"\b(?:%s|transform|reduce)\s*\(" % "|".join(n.lower() for n in _PG_LIST_FUNCTIONS),
+    re.IGNORECASE,
+)
 
 
 def snowflake_try_casts(tree: exp.Expr) -> exp.Expr:  # REQ-778
@@ -1166,6 +1948,9 @@ def clickhouse_try_casts(tree: exp.Expr) -> exp.Expr:  # REQ-778
 
 
 #: The targets whose own null-on-failure cast sqlglot does not write (REQ-778).
+#: The dialects whose cast does not read an array's text form ('{1,2}'), array_in's.
+_ARRAY_TEXT_UNREAD = ("trino", "presto", "athena", "clickhouse")
+
 _OWN_TRY_CASTS = {
     "postgres": postgres_try_casts,
     "snowflake": snowflake_try_casts,
@@ -1175,7 +1960,7 @@ _OWN_TRY_CASTS = {
 
 
 def transpile(
-    pg_sql: str, target_dialect: str, *, pgvector: bool = False
+    pg_sql: str, target_dialect: str, *, pgvector: bool = False, quote_identifiers: bool = False
 ) -> str:  # REQ-066, REQ-068, REQ-229, REQ-423
     """Transpile PostgreSQL-dialect SQL to a target dialect.
 
@@ -1184,15 +1969,22 @@ def transpile(
         target_dialect: SQLGlot dialect name (e.g. "trino", "postgres", "mysql").
         pgvector: the statement runs on a PostgreSQL source with the pgvector extension, whose
             own operator a similarity search is then written with (REQ-423).
+        quote_identifiers: send every identifier quoted, for a source written in another
+            dialect's text whose database folds an unquoted name to upper case (REQ-1671).
 
     Returns:
         SQL string in target dialect.
     """
+    # REQ-2167: a call ClickHouse answers in DuckDB's form, held out of what follows.
+    pg_sql, ported = polyfill_ported.held_out(pg_sql, target_dialect)
+    pg_sql = pg_forms_type_io.readable(pg_sql, target_dialect)  # REQ-2171
+    pg_sql = _within_group_unqualified(pg_sql)
     if target_dialect != "duckdb":  # DuckDB's form is pg_functions.typed_calls'
         pg_sql = pg_functions.pg_xml.for_dialect(pg_sql, target_dialect)  # REQ-2167
+        pg_sql = _regexp_replace_by_name(pg_sql)  # its flag is read below
     if target_dialect != "postgres":
         pg_sql = exact_inputs(pg_sql)  # REQ-2171
-    pg_sql = pg_money.lowered(pg_sql, target_dialect)  # REQ-2171
+    pg_sql = pg_forms_enum.lowered(pg_money.lowered(pg_sql, target_dialect), target_dialect)
     # REQ-1730: an identifier UNQUOTED in the source SQL (the common case for a raw/direct query —
     # governed GraphQL/Cypher-compiled queries already force `quoted=True`, see stage2.py's
     # `_expand_star`) stays unquoted through the transpile by default, which is harmless for every
@@ -1211,7 +2003,7 @@ def transpile(
     # UNQUOTED (verified live: `CreateTable` compiled `product_id` bare) — fixed at the DDL side
     # too (materialize_exec.py's `build_table`, `quoted_name(..., quote=True)`) so both sides of
     # the seam agree on always-quoted.
-    identify = target_dialect in ("snowflake", "oracle")
+    identify = quote_identifiers or target_dialect in ("snowflake", "oracle")
     if target_dialect in ("trino", "athena") and pg_sql.lstrip().upper().startswith(
         ("INSERT", "UPDATE")
     ):
@@ -1223,10 +2015,28 @@ def transpile(
         pg_sql = unalias_write_target(pg_sql)
     pg_sql = _every_match_unflagged(pg_sql, target_dialect)
     pg_sql = _like_escape_written(pg_sql, target_dialect)
+    pg_sql = _like_patterns_read(pg_sql, target_dialect)
+    pg_sql = _stamp_inputs_held(pg_sql, target_dialect)
     pg_sql = _instants_as_utc(pg_sql, target_dialect)
     lowered = _lower_universal_regex(pg_sql, target_dialect)
     if target_dialect == "postgres" and "FILTER(" in pg_sql.upper():
         lowered = postgres_array_filters(
+            lowered if lowered is not None else sqlglot.parse_one(pg_sql, read="postgres")
+        )
+    if target_dialect == "postgres" and _SEQUENCE_CALLED.search(pg_sql):
+        lowered = postgres_list_ranges(
+            lowered if lowered is not None else sqlglot.parse_one(pg_sql, read="postgres")
+        )
+    if target_dialect == "postgres" and _TO_JSON_CALLED.search(pg_sql):
+        lowered = postgres_json_of_text(
+            lowered if lowered is not None else sqlglot.parse_one(pg_sql, read="postgres")
+        )
+    if target_dialect == "postgres" and _MAP_CALLED.search(pg_sql):
+        lowered = postgres_maps(
+            lowered if lowered is not None else sqlglot.parse_one(pg_sql, read="postgres")
+        )
+    if target_dialect == "postgres" and _PG_LIST_CALLED.search(pg_sql):
+        lowered = postgres_list_functions(
             lowered if lowered is not None else sqlglot.parse_one(pg_sql, read="postgres")
         )
     if target_dialect == "postgres" and "ARRAY[]" in pg_sql.upper():
@@ -1235,12 +2045,16 @@ def transpile(
         )
     from provisa.transpiler.native_subtype import MARKER as _SUBTYPE_MARKER, resolve_subtypes
 
+    if target_dialect != "duckdb" and target_dialect != "postgres" and "in_range" in pg_sql.lower():
+        function_macros.refuse_named(sqlglot.parse_one(pg_sql, read="postgres"), target_dialect)
     if target_dialect != "postgres" and "range" in pg_sql.lower():
         # REQ-2171: ranges and multiranges, which only PostgreSQL has, as text and its parts.
         from provisa.transpiler import pg_ranges
 
         lowered = pg_ranges.rewrite(
-            lowered if lowered is not None else sqlglot.parse_one(pg_sql, read="postgres"),
+            function_macros.range_rows_chosen(
+                lowered if lowered is not None else sqlglot.parse_one(pg_sql, read="postgres")
+            ),
             target_dialect,
         )
     if _SUBTYPE_MARKER in pg_sql.lower():
@@ -1254,11 +2068,24 @@ def transpile(
         lowered = _OWN_TRY_CASTS[target_dialect](
             lowered if lowered is not None else sqlglot.parse_one(pg_sql, read="postgres")
         )
+    # REQ-2171: each read of an instant in the session's zone, on what is not told it. Before the
+    # functions, so what they write of their own text is not read as a statement's.
+    lowered = zoned_instants.written(pg_sql, lowered, target_dialect)
+    if target_dialect in _ARRAY_TEXT_UNREAD:
+        # REQ-2171: an array's text form as its elements, before a function's form reads it. Each
+        # cast is read on the tree (REQ-913), never by a substring of the statement.
+        lowered = array_inputs(
+            lowered if lowered is not None else sqlglot.parse_one(pg_sql, read="postgres")
+        )
     if function_macros.mentioned(pg_sql, target_dialect):
         # REQ-2167: each function the target does not have, in its form there, or refused by name.
         lowered = function_macros.inline(
             lowered if lowered is not None else sqlglot.parse_one(pg_sql, read="postgres"),
             target_dialect,
+        )
+    if target_dialect not in ("postgres", "duckdb") and _CAST_LITERAL_NAMED.search(pg_sql):
+        lowered = literals_as_said(
+            lowered if lowered is not None else sqlglot.parse_one(pg_sql, read="postgres")
         )
     if target_dialect != "postgres" and pg_held_types.mentioned(pg_sql):
         # REQ-2171: a value of a type only PostgreSQL has, as what the target holds it as. After
@@ -1276,7 +2103,11 @@ def transpile(
             lowered if lowered is not None else sqlglot.parse_one(pg_sql, read="postgres")
         )
     elif lowered is not None:
-        result = lowered.sql(dialect=target_dialect, identify=identify)
+        # In place, the tree being this function's; a root a step lifted out of its parent keeps
+        # its copy, for the generator reads a root's parent.
+        result = lowered.sql(
+            dialect=target_dialect, identify=identify, copy=lowered.parent is not None
+        )
     else:
         results = sqlglot.transpile(
             pg_sql, read="postgres", write=target_dialect, identify=identify
@@ -1302,24 +2133,96 @@ def transpile(
     # reads the governed call itself and runs the search through Qdrant's API.
     if target_dialect != "qdrant":
         result = _lower_similarity(result, target_dialect, pgvector=pgvector)
+    # REQ-2171: last, for what a later step parses has no routine definitions at its head.
+    result = pg_forms_geometric.planned(result, target_dialect)
+    if target_dialect == "postgres" and pg_syntax.OVERLAPS in result.lower():
+        result = pg_syntax.overlaps_restored(sqlglot.parse_one(result, read="postgres")).sql(
+            dialect="postgres"
+        )
     from provisa.observability.stage_trace import trace_stage
 
+    result = ported.restored(result)
     trace_stage(f"transpile.{target_dialect}", result)
     return result
 
 
+_REGEXP_REPLACE_BY_NAME = re.compile(r'\bpg_catalog\s*\.\s*"?regexp_replace"?\s*\(', re.IGNORECASE)
+
+
+def _regexp_replace_by_name(pg_sql: str) -> str:
+    """``pg_sql`` with each pg_catalog.regexp_replace(...) the bare call (REQ-2167): sqlglot reads
+    the qualified one as a function it does not know, and the bare one as REGEXP_REPLACE, whose
+    flag the rewrites below read. PostgreSQL resolves the bare built-in in pg_catalog first."""
+    if _REGEXP_REPLACE_BY_NAME.search(pg_sql) is None:
+        return pg_sql
+    build = Postgres.Parser.FUNCTIONS["REGEXP_REPLACE"]
+
+    def bare(node: exp.Expr) -> exp.Expr:
+        called = node.expression if isinstance(node, exp.Dot) else None
+        if (
+            isinstance(called, exp.Anonymous)
+            and called.name.lower() == "regexp_replace"
+            and node.this.name.lower() == "pg_catalog"
+        ):
+            return build([a.copy() for a in called.expressions], dialect="postgres")
+        return node
+
+    return sqlglot.parse_one(pg_sql, read="postgres").transform(bare).sql(dialect="postgres")
+
+
+_CAST_LITERAL_NAMED = re.compile(
+    r"\b(numeric|decimal|bytea|character|char|bpchar)\b", re.IGNORECASE
+)
+_BYTEA_ESCAPES = re.compile(r"\\\\|\\[0-3][0-7]{2}")
+
+
+def _bytea_literal(text: str) -> exp.Expr | None:
+    """byteain's reading of a hex literal; None for the escape form, which the engine's own text
+    cast reads wrong and no form can."""
+    if not text.startswith("\\x") or len(text) % 2:
+        return None
+    return exp.Unhex(this=exp.Literal.string(text[2:]))
+
+
+def literals_as_said(tree: exp.Expr) -> exp.Expr:  # REQ-2171
+    """A literal keeps what its cast says: a bare DECIMAL has no fraction on an engine with no
+    unconstrained numeric (2.5::numeric would answer 3 on Trino and 2 on ClickHouse), a bare
+    character is one character, and a bytea is its bytes, not its text."""
+    for cast in list(tree.find_all(exp.Cast)):
+        value = cast.this.unnest()
+        value = value.this if isinstance(value, exp.Neg) else value
+        if not isinstance(value, exp.Literal):
+            continue
+        if cast.to.is_type("decimal") and not cast.to.expressions and not value.is_string:
+            scale = len(value.this.partition(".")[2])
+            cast.set("to", exp.DataType.build(f"DECIMAL(38, {scale})"))
+        elif cast.to.is_type("char") and not cast.to.expressions and value.is_string:
+            value.replace(exp.Literal.string(value.this[:1]))
+        elif cast.to.is_type("varbinary", "binary") and value.is_string:
+            read = _bytea_literal(value.this)
+            if read is not None:
+                cast.replace(read)
+    return tree
+
+
 #: A timestamp on ClickHouse: its DateTime has no fraction, and Arrow reads it as a count of seconds.
-_CLICKHOUSE_INSTANT = "Nullable(DateTime64(6, 'UTC'))"
+_CLICKHOUSE_INSTANT = zoned_instants.CLICKHOUSE_INSTANT
 
 
 def clickhouse_semantics(tree: exp.Expr) -> exp.Expr:  # REQ-2171
     """``tree`` with what ClickHouse would read otherwise said for it. A timestamp keeps its
-    microseconds and reads as one, a time is read by toTime64 (its Time reads PostgreSQL's text as
-    NULL), and a hex has no leading zeros, as to_hex has none. A refusal (pg_forms_types.refused), the cast of a text that is no
+    microseconds and reads as one, a time of day is held as its microseconds (polyfill.clocks: the
+    server has no Time64) and shown as time_out's text, and a hex has no leading zeros, as to_hex has none. A refusal (pg_forms_types.refused), the cast of a text that is no
     number, raises: sqlglot writes a cast as Nullable, which reads such a text as NULL. Its argument
     is materialized so the refusal is not folded in a branch the statement does not take."""
 
+    from provisa.transpiler.polyfill import clickhouse, clocks, instants
+
     def said(node: exp.Expr) -> exp.Expr:
+        outside = instants.outside_cast(node)
+        if outside is not None:
+            # REQ-2167: a literal DateTime64 would hold at its type's end raises 0A000.
+            return outside
         if isinstance(node, exp.CurrentTimestamp):
             return exp.Anonymous(
                 this="now64", expressions=[exp.Literal.number(6), exp.Literal.string("UTC")]
@@ -1330,12 +2233,17 @@ def clickhouse_semantics(tree: exp.Expr) -> exp.Expr:  # REQ-2171
         ):
             return exp.DataType.build(_CLICKHOUSE_INSTANT, dialect="clickhouse")
         if isinstance(node, exp.Cast) and node.to.is_type(exp.DataType.Type.TIME):
-            value = node.this
-            while isinstance(value, exp.Cast) and value.to.is_type(exp.DataType.Type.TIME):
-                value = value.this
-            # Its OrNull reads what the literal's own refuses, and a NULL it cannot.
-            reader = "toTime64" if isinstance(value, exp.Literal) else "toTime64OrNull"
-            return exp.Anonymous(this=reader, expressions=[value, exp.Literal.number(6)])
+            # REQ-2236: a time of day held as its microseconds (polyfill.clocks): the server has
+            # no Time64.
+            return clocks.cast(node, said, clickhouse.clock_micros)
+        clock = clocks.semantics(node, said)
+        if clock is not None:
+            return clock
+        if isinstance(node, exp.Date) and not node.args.get("zone"):
+            # REQ-2236: its DATE() is toDate, a Date of 1970 to 2149; PostgreSQL's day of a value
+            # held as DateTime64(6, 'UTC') or Date32 is Date32's, exact from 1900 to 2299.
+            # The new node is not walked again: its value is said here.
+            return exp.Anonymous(this="toDate32", expressions=[node.this.transform(said)])
         if isinstance(node, exp.Hex):
             return exp.Anonymous(
                 this="replaceRegexpOne",
@@ -1355,7 +2263,8 @@ def clickhouse_semantics(tree: exp.Expr) -> exp.Expr:  # REQ-2171
             )
         return node
 
-    return tree.transform(said)
+    # A time in the select list reaches the client as time_out's text (polyfill.clocks).
+    return clocks.select_shown(tree, tree.transform(said))
 
 
 def _lower_universal_regex(pg_sql: str, target_dialect: str) -> exp.Expr | None:  # REQ-2142
@@ -1415,14 +2324,22 @@ def _regex_found(value: exp.Expr, pattern: str, target_dialect: str) -> exp.Expr
 
 # Where REGEXP_REPLACE with the 'g' flag means every match as it does in PostgreSQL. Everywhere
 # else its three-argument form already replaces every match, and a fourth argument is something
-# other than flags (Trino's is a function, Snowflake's and MySQL's a position).
+# other than flags (Snowflake's and MySQL's a position).
 _REGEXP_FLAGS_KEPT = frozenset({"postgres", "duckdb"})
+#: Where the polyfill grid's regexp_replace row reads the flags (provisa.transpiler.polyfill.regex).
+_FLAGS_IN_THE_GRID = frozenset({"trino", "presto", "athena", "clickhouse"})
 
 
 def _every_match_unflagged(pg_sql: str, target_dialect: str) -> str:  # REQ-263
     """``pg_sql`` with the 'g' flag taken off each REGEXP_REPLACE for a target whose
     three-argument form replaces every match already (a regex mask masks every match)."""
-    if target_dialect in _REGEXP_FLAGS_KEPT or "REGEXP_REPLACE" not in pg_sql.upper():
+    if "REGEXP_REPLACE" not in pg_sql.upper():
+        return pg_sql
+    if target_dialect == "duckdb":
+        return _flag_past_n(pg_sql)
+    if target_dialect in _FLAGS_IN_THE_GRID:
+        return _no_flags_said(pg_sql)
+    if target_dialect in _REGEXP_FLAGS_KEPT:
         return pg_sql
     tree = sqlglot.parse_one(pg_sql, read="postgres")
     flagged = [
@@ -1434,6 +2351,46 @@ def _every_match_unflagged(pg_sql: str, target_dialect: str) -> str:  # REQ-263
     if not flagged:
         return pg_sql
     for node in flagged:
+        node.set("modifiers", None)
+    return tree.sql(dialect="postgres")
+
+
+def _no_flags_said(pg_sql: str) -> str:
+    """``pg_sql`` with each REGEXP_REPLACE the statement gives no flags given none (''), which
+    PostgreSQL reads as the same call: the grid's row reads a call's flags, and a call of three
+    arguments a rewrite writes (a regex mask's) is every match, as sqlglot writes one."""
+    tree = sqlglot.parse_one(pg_sql, read="postgres")
+    unflagged = [
+        node
+        for node in tree.find_all(exp.RegexpReplace)
+        if node.args.get("modifiers") is None and node.args.get("position") is None
+    ]
+    if not unflagged:
+        return pg_sql
+    for node in unflagged:
+        node.set("modifiers", exp.Literal.string(""))
+    return tree.sql(dialect="postgres")
+
+
+def _flag_past_n(pg_sql: str) -> str:
+    """``pg_sql`` for DuckDB, whose REGEXP_REPLACE sqlglot writes with a flag and without the start
+    and N. PostgreSQL reads 'g' only where N is not given, so that call is the five-argument one;
+    any other flag beside N has no form."""
+    tree = sqlglot.parse_one(pg_sql, read="postgres")
+    # A flag given as text ('i'::text) is its literal: sqlglot writes DuckDB's flags only from one.
+    for node in tree.find_all(exp.RegexpReplace):
+        said = node.args.get("modifiers")
+        if isinstance(said, exp.Cast) and said.this.is_string and said.to.is_type("text"):
+            node.set("modifiers", said.this)
+    both = [
+        node
+        for node in tree.find_all(exp.RegexpReplace)
+        if node.args.get("occurrence") is not None and node.args.get("modifiers") is not None
+    ]
+    for node in both:
+        said = node.args["modifiers"]
+        if not (isinstance(said, exp.Literal) and said.this == "g"):
+            raise function_macros.FunctionRefused("regexp_replace", "duckdb")
         node.set("modifiers", None)
     return tree.sql(dialect="postgres")
 
@@ -1482,27 +2439,57 @@ def _exasol_stored_case(tree: exp.Expr) -> str:  # REQ-1731
     ctes = {c.alias for c in tree.find_all(exp.CTE)}
     table_aliases = {a.name for a in tree.find_all(exp.TableAlias)}
     output_aliases = {a.alias for a in tree.find_all(exp.Alias)}
-    # Relations the statement derives (a CTE, a subquery): their columns are the statement's own
-    # output names, never a stored object's.
-    derived = (
-        ctes
-        | {s.alias for s in tree.find_all(exp.Subquery) if s.alias}
-        | {t.alias_or_name for t in tree.find_all(exp.Table) if t.name in ctes}
-    )
 
-    def _reads_only_derived(column: exp.Column) -> bool:
+    def _sources(column: exp.Column) -> list[exp.Expr]:
         select = column.find_ancestor(exp.Select)
         if select is None:
-            return False
-        sources = [
+            return []
+        return [
             src.this if isinstance(src, (exp.From, exp.Join)) else src
             for src in [select.args.get("from_"), *select.args.get("joins", [])]
             if src is not None
         ]
+
+    def _qualifies_derived(column: exp.Column) -> bool:
+        """True when the column's table qualifier names a subquery or CTE in its SELECT's FROM.
+
+        Uses the column's immediate SELECT context rather than the full tree, so a subquery alias
+        present in an outer SELECT does not incorrectly mask a same-named real table in an inner
+        SELECT (REQ-1731 scope fix: global ``derived`` set caused the inner column to be treated as
+        derived, suppressing the required uppercase conversion)."""
+        qualifier = column.table
+        if not qualifier:
+            return False
+        for src in _sources(column):
+            if isinstance(src, exp.Subquery) and src.alias == qualifier:
+                return True
+            if isinstance(src, exp.Table) and src.name in ctes and src.alias_or_name == qualifier:
+                return True
+        return False
+
+    def _reads_only_derived(column: exp.Column) -> bool:
+        sources = _sources(column)
         return bool(sources) and all(
             isinstance(src, exp.Subquery) or (isinstance(src, exp.Table) and src.name in ctes)
             for src in sources
         )
+
+    cte_bodies = {c.alias: c.this for c in tree.find_all(exp.CTE)}
+
+    def _quoted_outputs(column: exp.Column) -> set[str]:
+        """The names the derived relations ``column`` reads output in quotes, as written."""
+        outputs: set[str] = set()
+        for src in _sources(column):
+            if column.table and src.alias_or_name != column.table:
+                continue
+            body = src.this if isinstance(src, exp.Subquery) else cte_bodies.get(src.name)
+            if not isinstance(body, exp.Query):
+                continue
+            for projection in body.selects:
+                name = projection.args.get("alias" if isinstance(projection, exp.Alias) else "this")
+                if isinstance(name, exp.Identifier) and name.quoted:
+                    outputs.add(name.this)
+        return outputs
 
     def _stored(ident: exp.Expr | None, own: set[str]) -> None:
         if isinstance(ident, exp.Identifier) and ident.this == ident.this.lower():
@@ -1526,8 +2513,13 @@ def _exasol_stored_case(tree: exp.Expr) -> str:  # REQ-1731
         _stored(column.args.get("db"), set())
         _stored(column.args.get("table"), table_aliases | ctes)
         qualifier = column.table
-        if (qualifier and qualifier in derived) or (not qualifier and _reads_only_derived(column)):
-            continue  # a derived relation's column is the statement's own output name
+        if _qualifies_derived(column) or (not qualifier and _reads_only_derived(column)):
+            # A derived relation's column is the statement's own output name. Unquoted, Exasol
+            # reads it in upper case, which a quoted lowercase output does not answer to.
+            name = column.this
+            if isinstance(name, exp.Identifier) and name.this in _quoted_outputs(column):
+                name.set("quoted", True)
+            continue
         # An ORDER BY of an output alias names the alias, not a stored column.
         in_order = column.find_ancestor(exp.Order) is not None
         _stored(column.args.get("this"), output_aliases if in_order else set())

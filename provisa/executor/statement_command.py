@@ -31,7 +31,7 @@ RUN_FACTS: ContextVar[dict[str, Any] | None] = ContextVar("statement_run_facts",
 async def run(fn: dict, args: dict, state: Any, role_id: str | None) -> list[dict]:
     """One call of a statement command: its statement through the one pipeline as the caller's
     role, the call's arguments bound in declared order (REQ-2001)."""
-    from provisa.executor.serialize import _convert_value
+    from provisa.executor.serialize import result_records
     from provisa.pgwire._pipeline import _execute_plan, _govern_and_route
 
     if role_id is None:
@@ -64,5 +64,4 @@ async def run(fn: dict, args: dict, state: Any, role_id: str | None) -> list[dic
     )
     if found.kind == "mutation" and not found.returns_rows:
         return [{"rows_affected": count}]
-    cols = result.column_names
-    return [{c: _convert_value(v) for c, v in zip(cols, r)} for r in result.rows]
+    return result_records(result)

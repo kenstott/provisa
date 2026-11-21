@@ -89,13 +89,21 @@ const ROLE_SELECTORS: Record<string, string> = {
   link: "a[href], [role='link']",
 };
 
+/** The fields a label may wrap: they name nothing of the label (a select's options are its
+ * choices, not its name). */
+const CONTROLS = new Set(["INPUT", "SELECT", "TEXTAREA"]);
+
 /** An element's text as assistive technology reads it: without its aria-hidden parts (a required
- * field's label hides its asterisk so). */
+ * field's label hides its asterisk so) and without a field it wraps. */
 function spokenText(el: Element): string {
   let text = "";
   for (const child of el.childNodes) {
     if (child.nodeType === Node.TEXT_NODE) text += child.textContent ?? "";
-    else if (child instanceof Element && child.getAttribute("aria-hidden") !== "true") {
+    else if (
+      child instanceof Element &&
+      child.getAttribute("aria-hidden") !== "true" &&
+      !CONTROLS.has(child.tagName)
+    ) {
       text += spokenText(child);
     }
   }
@@ -201,8 +209,12 @@ function click(el: HTMLElement) {
 async function chooseIn(el: HTMLElement, option: string, ctx: UiActionContext): Promise<string> {
   const wanted = normalized(option);
   if (el instanceof HTMLSelectElement) {
-    const match = [...el.options].find((o) => normalized(o.textContent) === wanted);
+    // An option is named by its text or its value: a lookup's text leads with its key mark.
+    const match = [...el.options].find(
+      (o) => normalized(o.textContent) === wanted || normalized(o.value) === wanted,
+    );
     if (!match) return `it offers no option "${option}"`;
+    if (match.disabled) return `its option "${option}" cannot be chosen`;
     el.value = match.value;
     el.dispatchEvent(new Event("change", { bubbles: true }));
     return "";

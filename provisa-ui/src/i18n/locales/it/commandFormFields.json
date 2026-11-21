@@ -29,7 +29,7 @@
     "query": "Query",
     "domain": "Dominio",
     "selectDomain": "Seleziona dominio...",
-    "dataProduct": "Prodotto dati (facoltativo)",
+    "dataProduct": "Prodotti dati",
     "dataProductPlaceholder": "Seleziona prodotto dati...",
     "description": "Descrizione",
     "descriptionPlaceholder": "facoltativo",
@@ -52,6 +52,8 @@
     "colVisibleTo": "Visibile a (ruoli, separati da virgola; vuoto = tutti)",
     "colVisibleToPlaceholder": "analyst, org_admin",
     "colMask": "Maschera",
+    "exposedAsTable": "Anche come tabella",
+    "exposedAsTableHint": "I client che leggono tabelle, come gli strumenti di BI, leggono questa funzione come una tabella con i suoi parametri come colonne. Disattivata, restituisce le righe dell'elenco della sorgente dello stesso tipo e la tabella viene rimossa.",
     "requiresApproval": "Richiede approvazione",
     "requiresApprovalHint": "Ogni chiamata viene eseguita solo dopo l'approvazione dell'hook di approvazione. Senza un hook configurato, le chiamate vengono rifiutate.",
     "writesTable": "Scrive nella tabella",
@@ -68,6 +70,8 @@
     "bindingTemplate": "Espressione SQL",
     "bindingTemplateHint": "Un'espressione SQL. Scrivi ogni argomento come {{placeholder}}; viene eseguita all'interno della query chiamante.",
     "argDefault": "Valore predefinito dell'argomento {{name}}",
-    "argDefaultPlaceholder": "Valore predefinito (vuoto se obbligatorio)"
+    "argDefaultPlaceholder": "Valore predefinito (vuoto se obbligatorio)",
+    "nativeSql": "SQL nativo",
+    "nativeSqlHint": "SQL nel dialetto proprio della sorgente, un’istruzione o più, eseguite sulla sorgente in un’unica transazione: vengono confermate tutte o nessuna. Scrivi un argomento come {{placeholder}}; ognuno è associato come valore. La risposta sono le righe dell’ultima istruzione."
   }
 }

@@ -15,6 +15,10 @@
 - ``listed``: the same, and every role of the organisation sees the table's and the column's
   names in the catalog, and nothing more.
 - ``public``: the same, and also served to a role that does not reach the table's domain.
+- ``own-domain``: served only to a role whose own ``domain_access`` names the table's domain (or
+  lists ``*``); a role that reaches it only through an ancestor domain (REQ-1363) is not served it,
+  even when ``visible_to`` names the role. Folded into the grant when roles load
+  (:func:`provisa.security.inheritance.narrow_own_domain_grants`).
 
 Who reads a column is decided by ``visible_to`` alone, and an empty list is no role (REQ-2154).
 
@@ -30,7 +34,8 @@ from __future__ import annotations
 SCOPE_DOMAIN = "domain"
 SCOPE_LISTED = "listed"
 SCOPE_PUBLIC = "public"
-COLUMN_SCOPES: tuple[str, ...] = (SCOPE_DOMAIN, SCOPE_LISTED, SCOPE_PUBLIC)
+SCOPE_OWN_DOMAIN = "own-domain"
+COLUMN_SCOPES: tuple[str, ...] = (SCOPE_DOMAIN, SCOPE_LISTED, SCOPE_PUBLIC, SCOPE_OWN_DOMAIN)
 
 
 class ColumnScopeInvalid(ValueError):

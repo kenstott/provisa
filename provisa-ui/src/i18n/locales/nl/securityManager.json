@@ -5,7 +5,8 @@
       "encryption": "Versleuteling",
       "authentication": "Authenticatie",
       "localUsers": "Lokale gebruikers",
-      "secrets": "Secrets"
+      "secrets": "Secrets",
+      "secretsService": "Secrets-service"
     }
   }
 }

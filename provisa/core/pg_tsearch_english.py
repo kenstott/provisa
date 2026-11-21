@@ -86,12 +86,18 @@ def _short_syllable(word: str, end: int) -> bool:
     return not _vowel(last) and last not in "wxY" and _vowel(middle) and not _vowel(first)
 
 
+#: dict_snowball passes no longer word to the stemmer: it is its own lexeme.
+UNSTEMMED_BYTES = 1000
+
+
 def stem(word: str) -> str:
-    """The stem of a lower case word."""
-    if len(word) <= 2:
+    """The stem of a lower case word; dict_snowball keeps a word whose stem is empty."""
+    if len(word) <= 2 or len(word.encode()) > UNSTEMMED_BYTES:
         return word
     if word in _EXCEPTIONS:
         return _EXCEPTIONS[word]
+    if not _step_0(word.removeprefix("'")):
+        return word
     word = word.removeprefix("'")
     chars = list(word)
     for at, char in enumerate(chars):

@@ -44,7 +44,12 @@ from provisa.ddn.models import (
     DDNRelationship,
     DDNTypePermission,
 )
-from provisa.import_shared.filters import hasura_session_name
+from provisa.import_shared.filters import (
+    session_setting,
+    sql_identifier,
+    sql_literal,
+)
+from provisa.import_shared.refused import FilterOperatorRefused
 from provisa.import_shared.warnings import WarningCollector
 
 # DDN permission filters are recursive JSON: field->predicate or logical combinator.
@@ -358,25 +363,23 @@ _DDN_OPS: dict[str, str] = {
 
 
 def _ddn_op_to_sql(col: str, op: str, operand: DdnOperand) -> str:
-    """Convert a single DDN filter operation to SQL."""
+    """Convert a single DDN filter operation to SQL: the column and every literal rendered by
+    sqlglot (import_shared.filters), an operator from ``_DDN_OPS`` or refused by name."""
+    column = sql_identifier(col)
     if op == "_is_null":
-        return f"{col} IS NULL" if operand else f"{col} IS NOT NULL"
+        return f"{column} IS NULL" if operand else f"{column} IS NOT NULL"
     sql_op = _DDN_OPS.get(op)
     if not sql_op:
-        return f"{col} /* unsupported op: {op} */"
+        raise FilterOperatorRefused(op)
     # Session variable reference
     if isinstance(operand, dict) and len(operand) == 1:
         key = next(iter(operand))
         if key.startswith("x-hasura-") or key.startswith("X-Hasura-"):
-            return f"{col} {sql_op} current_setting('provisa.{hasura_session_name(key)}')"
-    if isinstance(operand, str):
-        return f"{col} {sql_op} '{operand}'"
+            return f"{column} {sql_op} {session_setting(key)}"
     if isinstance(operand, list):
-        items = ", ".join(f"'{v}'" if isinstance(v, str) else str(v) for v in operand)
-        return f"{col} {sql_op} ({items})"
-    if operand is None:
-        return f"{col} {sql_op} NULL"
-    return f"{col} {sql_op} {operand}"
+        items = ", ".join(sql_literal(v) for v in operand)
+        return f"{column} {sql_op} ({items})"
+    return f"{column} {sql_op} {sql_literal(operand)}"
 
 
 def _map_relationships(  # REQ-183, REQ-188, REQ-189

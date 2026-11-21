@@ -1,0 +1,13 @@
+{
+  "dataAddress": {
+    "label": "Datenknoten",
+    "heading": "Datenanfragen senden an",
+    "none": "Kein Datenknoten",
+    "noneOffered": "Für diese Region ist kein Datenknoten aufgeführt. Geben Sie unten eine Adresse ein.",
+    "typedLabel": "Adresse des Datenknotens",
+    "typedPlaceholder": "https://data.example.com",
+    "typedInvalid": "Geben Sie eine http- oder https-Adresse ein",
+    "use": "Verwenden",
+    "loadError": "Die Datenknoten konnten nicht geladen werden"
+  }
+}

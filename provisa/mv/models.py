@@ -204,6 +204,9 @@ class MVDefinition:  # REQ-133, REQ-135, REQ-158, REQ-160, REQ-199, REQ-234, REQ
     # with a PK (a declared-but-infeasible incremental MV is an explicit error, never a silent full
     # recompute). Default False = recompute-to-current (the REQ-966 NRT baseline).
     incremental: bool = False
+    # REQ-2249: seconds between whole rebuilds of a view kept by its code resolver's @change
+    # function (required while it is kept incrementally); None = no clock.
+    rebuild_every: int | None = None
 
     # REQ-1162: append-only bitemporal materialization. When set, each refresh APPENDS (never
     # UPDATEs) either the whole fresh dataset (snapshot mode) or engine-computed changes (delta
@@ -216,11 +219,11 @@ class MVDefinition:  # REQ-133, REQ-135, REQ-158, REQ-160, REQ-199, REQ-234, REQ
     # Purity-checked at registration and compiled to a callable at boot (provisa.mv.preprocess).
     preprocess: str | None = None
     # REQ-2133: the registered view table this build is of (None for a configured or automatic
-    # view, which is no table), its data product, and its Hold on failing checks option: a built-in
+    # view, which is no table), its data products (REQ-1634: any number), and its Hold on failing checks option: a built-in
     # preflight that holds a refresh while a checker scanning one of its nearest physical inputs
     # failed its latest run, combined with ``preprocess`` (both must continue).
     table_id: int | None = None
-    product_id: str | None = None
+    product_ids: list[str] = field(default_factory=list)
     hold_on_failing_checks: bool = False
 
     # REQ-877 (MAY): opt-in per-MV ROW-LEVEL delta capture. Off by default (the hash/diff path is the
@@ -240,6 +243,9 @@ class MVDefinition:  # REQ-133, REQ-135, REQ-158, REQ-160, REQ-199, REQ-234, REQ
     row_count: int | None = None
     last_error: str | None = None
     last_input_token: str | None = None  # REQ-881: source version token at last materialization
+    # REQ-2131: the kept input columns its stored table holds, as read from the table, with the
+    # (last_refresh_at, rules generation) they were read for (transform_view_rules).
+    stored_rule_inputs: tuple[tuple[float | None, int], frozenset[str]] | None = None
 
     def __post_init__(self):
         if self.target_table is None:

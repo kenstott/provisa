@@ -20,6 +20,10 @@ from xml.sax.saxutils import quoteattr
 from provisa.api.odata.model import EntitySet, Navigation, Property
 
 NAMESPACE = "Provisa"
+# Each entity set names the domain of the table it reads, so a client narrows the model to the
+# domains it works in. A term the schema declares, so a client that validates the document finds it.
+DOMAIN_TERM = f"{NAMESPACE}.Domain"
+_DOMAIN_TERM_DECLARATION = '<Term Name="Domain" Type="Edm.String" AppliesTo="EntitySet"/>'
 _EDMX = "http://docs.oasis-open.org/odata/ns/edmx"
 _EDM = "http://docs.oasis-open.org/odata/ns/edm"
 
@@ -76,7 +80,8 @@ def _entity_set(entity: EntitySet) -> str:
         for n in entity.navigations
     )
     declared = _attributes(Name=entity.name, EntityType=f"{NAMESPACE}.{entity.type_name}")
-    return f"<EntitySet{declared}>{bindings}</EntitySet>"
+    domain = f"<Annotation{_attributes(Term=DOMAIN_TERM, String=entity.domain)}/>"
+    return f"<EntitySet{declared}>{bindings}{domain}</EntitySet>"
 
 
 def metadata_document(entities: list[EntitySet]) -> str:
@@ -86,7 +91,7 @@ def metadata_document(entities: list[EntitySet]) -> str:
     return (
         '<?xml version="1.0" encoding="utf-8"?>'
         f'<edmx:Edmx xmlns:edmx="{_EDMX}" Version="4.0"><edmx:DataServices>'
-        f'<Schema xmlns="{_EDM}" Namespace="{NAMESPACE}">{types}'
+        f'<Schema xmlns="{_EDM}" Namespace="{NAMESPACE}">{_DOMAIN_TERM_DECLARATION}{types}'
         f'<EntityContainer Name="Default">{sets}</EntityContainer>'
         "</Schema></edmx:DataServices></edmx:Edmx>"
     )

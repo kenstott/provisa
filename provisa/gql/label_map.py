@@ -19,7 +19,7 @@ from provisa.compiler.sql_literals import sql_literal
 import json
 import re
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from provisa.compiler.naming import (
     apply_cql_label as _apply_cql_label,
@@ -64,6 +64,13 @@ class NodeMapping:
     native_filter_columns: dict[str, str] = field(
         default_factory=dict
     )  # SQL column name → data_type for native API params
+    # The table's parameters as its metadata states them (core.parameters.ParameterFact,
+    # REQ-1986): name, type, kind, opaque or a real column, required.
+    parameters: tuple[Any, ...] = ()
+    # Every name its parameters are bound under, lowercased, to the parameter column (REQ-1986:
+    # CompilationContext.parameter_names): its column, its own name, its alias. (name, column)
+    # pairs, a tuple as property_types is.
+    parameter_names: tuple[tuple[str, str], ...] = ()
     physical_table_name: str = ""  # physical DB table name; "" means same as table_name
     traversal_only: bool = False  # True = cross-domain node; may not be a MATCH starting node
     domain_id: str | None = None  # raw domain id, e.g. "pet-store"; None if no domain
@@ -87,6 +94,28 @@ class NodeMapping:
     #: A graph session's date time properties, each with the zone its values were written in
     #: (REQ-2176): the column holds the instant, and a read gives it back in that zone.
     property_zones: tuple[tuple[str, str], ...] = ()
+    #: REQ-1385: the table's alias, "" when it has none. With ``table_name`` it gives the table's
+    #: model name (:attr:`model_name`), the name SPARQL's IRIs are built from.
+    alias: str = ""
+    #: REQ-1385: the name the table is registered under where the model reads it through another
+    #: relation (meta's domains through domains_meta: TableMeta.original_table_name); "" where
+    #: ``table_name`` is the registered name. A model name is never the relation read.
+    registered_table_name: str = ""
+    #: REQ-1385: each aliased column's alias, as (cypher prop name, alias) pairs: the column's
+    #: model name, which its prop name need not spell (a GraphQL convention applied to the
+    #: physical name when the alias is that name's SQL spelling). A tuple, as property_types is.
+    property_aliases: tuple[tuple[str, str], ...] = ()
+
+    @property
+    def model_name(self) -> str:
+        """The table's model name (REQ-1385): its alias when it has one, else the name it is
+        registered under, the rule metadata export's table_uri follows."""
+        return self.alias or self.registered_table_name or self.table_name
+
+    def property_model_name(self, prop: str) -> str:
+        """The model name of the column ``prop`` reads (REQ-1385): its alias when it has one,
+        else the property's own name."""
+        return dict(self.property_aliases).get(prop, prop)
 
     def property_of(self, column: str) -> str:
         """The property a column of this node is read and written by, the column named by its
@@ -108,6 +137,23 @@ class NodeMapping:
         """Whether its table is read by arguments (REQ-1986): a function of them, with no rows of
         its own for a path to walk (REQ-2135)."""
         return bool(self.native_filter_columns)
+
+    def parameter_column(self, name: str) -> str | None:
+        """The parameter column a property ``name`` binds (REQ-1986), or None for no parameter:
+        a parameter is bound under its column (``_nf_petId``), its own name (``petId``, published
+        so by graph-schema) and its alias, in any spelling of those (``pet_id``, ``_petId``) --
+        the names every front binds it under (core.parameters.parameter_names)."""
+        from provisa.core.parameters import parameter_column
+
+        return parameter_column(dict(self.parameter_names), name)
+
+    @property
+    def required_parameters(self) -> list[str]:
+        """The parameters its table's metadata states as required (REQ-1986), by the name a caller
+        gives each. With any, the label gives no count without them."""
+        from provisa.core.parameters import required_of
+
+        return required_of(self.parameters)
 
     @property
     def role_label(self) -> str | None:  # REQ-1320
@@ -154,6 +200,10 @@ class JunctionMapping:  # REQ-1586
     #: A single-hop type alternation over this junction (``[r:A|B]``): the discriminator values
     #: its rows may hold, one per type. Empty for a relationship's own mapping (``type_value``).
     type_values: tuple[str, ...] = ()
+    #: A walk's hop over this junction, filtered by the walk's inline property map
+    #: (``-[:T* {k: v}]->``, RelPattern.every_hop): each (junction column, SQL value) a row it
+    #: takes holds. Empty for a relationship's own mapping (REQ-348).
+    hop_conditions: tuple[tuple[str, Any], ...] = ()
 
 
 @dataclass
@@ -273,6 +323,15 @@ def _used_key(rel: "RelationshipMapping", direction: str) -> tuple:
     )
 
 
+@dataclass(frozen=True)
+class Selectivity:
+    """How many nodes a label map's session labels hold (REQ-2176): the nodes of each label the
+    session alone holds. A read starts a path from the end fewer nodes hold
+    (gql.traversal_order)."""
+
+    node_counts: dict[str, int]
+
+
 class CypherLabelMap:  # REQ-351, REQ-392, REQ-574
     """Graph schema derived from registered Provisa tables and relationships."""
 
@@ -282,6 +341,8 @@ class CypherLabelMap:  # REQ-351, REQ-392, REQ-574
     #: A graph session's node relations of several labels (node_of_all): each one's table name ->
     #: the labels its nodes all have, and its type name -> the same (REQ-2176).
     label_sets: dict[str, tuple[str, ...]] = {}
+    #: The session's counts, on a map the read overlay made (REQ-2176); a model's map has none.
+    selectivity: Selectivity | None = None
 
     def __init__(
         self,
@@ -452,16 +513,14 @@ class CypherLabelMap:  # REQ-351, REQ-392, REQ-574
                 if rel.source_label == cur_label:
                     key = _used_key(rel, "fwd")
                     if key not in used_rel_keys:
-                        tgt_nm = self.nodes.get(rel.target_label)
-                        if tgt_nm and tgt_nm.native_filter_columns:
+                        if not self.end_reads(rel.target_label):
                             continue
                         queue.append((rel.target_label, path + [rel], used_rel_keys | {key}))
                 # Reverse edge (only when bidirectional)
                 if bidirectional and rel.target_label == cur_label:
                     key = _used_key(rel, "rev")
                     if key not in used_rel_keys:
-                        src_nm = self.nodes.get(rel.source_label)
-                        if src_nm and src_nm.native_filter_columns:
+                        if not self.end_reads(rel.source_label):
                             continue
                         # When forward uses source_constant + target_expr, the reverse
                         # must express: target_expr(source) = source_constant, not
@@ -492,11 +551,19 @@ class CypherLabelMap:  # REQ-351, REQ-392, REQ-574
                         queue.append((rel.source_label, path + [rev], used_rel_keys | {key}))
         return results
 
+    def end_reads(self, type_name: str, named: str | None = None) -> bool:
+        """Whether a pattern's end may read ``type_name``'s table (REQ-2135): the one rule every
+        expansion of a free node goes through. A parameterized table is a function of its
+        arguments, with no rows of its own an open pattern could find, so it is read only where a
+        label names it (``named``, the table the end's label or binding names; None for a free
+        end, a domain label among them) -- and then its parameters are required as for any read."""
+        nm = self.nodes.get(type_name)
+        return nm is None or not nm.parameterized or type_name == named
+
     def touches_parameterized(self, rel: RelationshipMapping) -> bool:
-        """Whether either end of ``rel`` is a parameterized table, which no path includes
-        (REQ-2135)."""
-        ends = (self.nodes.get(rel.source_label), self.nodes.get(rel.target_label))
-        return any(nm is not None and nm.parameterized for nm in ends)
+        """Whether either end of ``rel`` is a parameterized table, which no path includes, named
+        or not (REQ-2135)."""
+        return not (self.end_reads(rel.source_label) and self.end_reads(rel.target_label))
 
     def relationships_for(  # REQ-572
         self, source_label: str, target_label: str | None = None
@@ -712,10 +779,16 @@ def _build_target_pk(ctx_typed: "CompilationContext") -> dict[str, str]:
 
     Both cardinalities resolve to a single target row keyed by target_column, which is
     therefore the target table's actual PK (unlike one-to-many, where target_column is a FK).
+
+    A join onto a parameter of its target binds the parameter (REQ-1986): an argument, never an
+    attribute of the rows returned, so no key of them.
     """
     target_pk: dict[str, str] = {}
     for join_meta in ctx_typed.joins.values():
         tname = join_meta.target.type_name
+        parameters = ctx_typed.native_filter_columns.get(join_meta.target.table_id, {})
+        if any(c in parameters for c in key_list(join_meta.target_column)):
+            continue
         if tname not in target_pk and getattr(join_meta, "cardinality", None) in (
             "many-to-one",
             "one-to-one",
@@ -831,6 +904,8 @@ def _build_node_mappings(
             properties=props,
             physical_properties=phys_props,
             native_filter_columns=nf_cols,
+            parameters=ctx_typed.parameters.get(table_meta.table_id, ()),
+            parameter_names=tuple(ctx_typed.parameter_names.get(table_meta.table_id, {}).items()),
             physical_table_name=physical_table_name,
             map_properties=map_props,
             property_types=tuple(
@@ -844,6 +919,14 @@ def _build_node_mappings(
             if len(user_pks) > 1
             else (),
             key_readable=key_readable,
+            alias=table_meta.display_name,
+            registered_table_name=_strip_domain_prefix(table_meta.original_table_name, domain_id),
+            property_aliases=tuple(
+                (_published_property(ctx_typed, table_meta.table_id, c), alias)
+                for c in col_names
+                if (table_meta.table_id, c) not in _gov_obj
+                and (alias := ctx_typed.column_aliases.get((table_meta.table_id, c)))
+            ),
         )
 
         if domain_label:
@@ -1064,6 +1147,8 @@ def _make_traversal_node(
         properties=props,
         physical_properties=phys_props,
         traversal_only=True,
+        alias=tgt_table.get("alias") or "",
+        property_aliases=tuple((alias, alias) for alias in _col_alias.values()),
     )
 
 

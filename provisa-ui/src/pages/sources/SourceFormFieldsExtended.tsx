@@ -24,34 +24,38 @@ import {
 import { MultiSelect } from "../../components/MultiSelect";
 import { cdcTransportApplicable } from "../../liveCapability";
 import { SchemaRegistryAuthFields } from "./SchemaRegistryAuthFields";
-import {
-  API_AUTH_TYPES,
-  BRAND_CARRIER,
-  BRAND_AUTH,
-  FILE_TRANSPORTS,
-  KAFKA_AUTH_TYPES,
-} from "./constants";
+import { API_AUTH_TYPES, BRAND_CARRIER, FILE_TRANSPORTS } from "./constants";
 import { namingConventionLabel, useNamingConventions } from "../../hooks/useNamingConventions";
 import { AuthUserPass } from "./AuthUserPass";
 import { OpenApiFormSection } from "./OpenApiFormSection";
+import { BrandFields } from "./BrandFields";
+import { DbtFormSection } from "./DbtFormSection";
 import { KaggleFormSection } from "./KaggleFormSection";
 import { PushFeedFormSection } from "./PushFeedFormSection";
 import { ProfilerFormSection } from "./ProfilerFormSection";
 import { SalesforceFields } from "./SalesforceFields";
 import { ServiceNowFields } from "./ServiceNowFields";
 import { JiraFields } from "./JiraFields";
+import { QuickBooksFields } from "./QuickBooksFields";
 import { CloudopsFields } from "./CloudopsFields";
+import { GoogleSheetsFields } from "./GoogleSheetsFields";
 import { GoogleWorkspaceFields } from "./GoogleWorkspaceFields";
 import { Microsoft365Fields } from "./Microsoft365Fields";
 import { CodeSourceFields } from "./CodeSourceFields";
 import { CODE_SOURCE_TYPES } from "./codeSource";
+import { ConnectorSetupFields, ConnectorSourceValues } from "./ConnectorSetupFields";
+import { fixedFormKeys } from "./connector";
 import { CosmosDbFields } from "./CosmosDbFields";
 import { MOTHERDUCK, MotherDuckFields } from "./MotherDuckFields";
 import { COSMOSDB } from "./cosmosdb";
+import { JdbcSourceFields } from "./JdbcSourceFields";
+import { JDBC_SOURCE } from "./jdbcSource";
 import { ExcelHintsFields } from "./ExcelHintsFields";
+import { KafkaFields } from "./KafkaFields";
 import { QdrantFields } from "./QdrantFields";
 import { QDRANT } from "./qdrant";
 import { WikipediaFields } from "./WikipediaFields";
+import { WikidataFields } from "./WikidataFields";
 import { LogsFields } from "./LogsFields";
 import { LOGS } from "./logs";
 import { SparqlFormSection } from "./SparqlFormSection";
@@ -78,6 +82,8 @@ export function SourceFormFieldsExtended({
   setAuthType,
   authFields,
   setAuthFields,
+  connector,
+  heldBy,
   editingSourceId,
   essential,
   cdc,
@@ -120,12 +126,15 @@ export function SourceFormFieldsExtended({
   setOpenapiBaseUrl,
   openapiCacheTtl,
   setOpenapiCacheTtl,
+  dbt,
   openapiPreview,
   openapiPreviewing,
   openapiPreviewError,
   onOpenapiPreview,
   gqlNamespace,
   setGqlNamespace,
+  brandSetup,
+  setBrandSetup,
   gqlCacheTtl,
   setGqlCacheTtl,
   grpcProtoPath,
@@ -165,6 +174,8 @@ export function SourceFormFieldsExtended({
   // the sole Streaming member — websocket/rss/ingest now share the category and each needs its own
   // fields, so this must key on the type itself.
   const isKafka = form.type === "kafka";
+  // The props of a type's own fields that keep their settings beside the connection's.
+  const typed = { form, setForm, fields: authFields, setFields: setAuthFields };
   const simpleAuthData = [
     { value: "none", label: t("sourceFormFieldsExtended.authNone") },
     { value: "basic", label: t("sourceFormFieldsExtended.authBasic") },
@@ -214,27 +225,12 @@ export function SourceFormFieldsExtended({
         </>
       )}
       {form.type === "google_sheets" && (
-        <>
-          <FormField section="authentication" size="long">
-            <TextInput
-              required
-              label={t("sourceFormFieldsExtended.credentialsJsonPath")}
-              value={authFields.credentials_json ?? ""}
-              onChange={(e) => setAuthFields({ ...authFields, credentials_json: e.target.value })}
-              placeholder={t("sourceFormFieldsExtended.credentialsJsonPathPlaceholder")}
-              data-testid="google-sheets-credentials-input"
-            />
-          </FormField>
-          <FormField size="medium">
-            <TextInput
-              label={t("sourceFormFieldsExtended.metadataSheetId")}
-              value={form.database}
-              onChange={(e) => setForm({ ...form, database: e.target.value })}
-              placeholder={t("sourceFormFieldsExtended.metadataSheetIdPlaceholder")}
-              data-testid="google-sheets-sheet-id-input"
-            />
-          </FormField>
-        </>
+        <GoogleSheetsFields
+          form={form}
+          setForm={setForm}
+          fields={authFields}
+          setFields={setAuthFields}
+        />
       )}
       {form.type === "openapi" && (
         <OpenApiFormSection
@@ -264,22 +260,13 @@ export function SourceFormFieldsExtended({
           onSourcesRegistered={onKaggleSourcesRegistered ?? (() => {})}
         />
       )}
-      {/* REQ-1923: a brand asks for the credential it states (BRAND_AUTH), never one by default. */}
-      {BRAND_AUTH[form.type] === "token" && (
-        <FormField
-          section="authentication"
-          hint={t("sourceFormFieldsExtended.accessTokenHint")}
-          size="long"
-        >
-          <PasswordInput
-            required
-            label={t("sourceFormFieldsExtended.accessToken")}
-            value={authFields.token ?? ""}
-            onChange={(e) => setAuthFields({ ...authFields, token: e.target.value })}
-            data-testid="brand-token-input"
-          />
-        </FormField>
-      )}
+      <BrandFields
+        brand={form.type}
+        brandSetup={brandSetup}
+        setBrandSetup={setBrandSetup}
+        authFields={authFields}
+        setAuthFields={setAuthFields}
+      />
       {/* A table name prefix is the remote GraphQL source's; an OpenAPI table is named for its
           operation. */}
       {BRAND_CARRIER[form.type] === "graphql" && (
@@ -631,22 +618,7 @@ export function SourceFormFieldsExtended({
               data-testid="kafka-schema-registry-input"
             />
           </FormField>
-          <FormField section="authentication" size="medium">
-            <Select
-              label={t("sourceFormFieldsExtended.authentication")}
-              value={authType}
-              onChange={(v) => {
-                setAuthType(v ?? "");
-                setAuthFields({});
-              }}
-              data={KAFKA_AUTH_TYPES.map((a) => ({ value: a.value, label: a.label }))}
-              allowDeselect={false}
-              data-testid="kafka-auth-type-select"
-            />
-          </FormField>
-          {authType !== "none" && (
-            <AuthUserPass authFields={authFields} setAuthFields={setAuthFields} />
-          )}
+          <KafkaFields fields={authFields} setFields={setAuthFields} />
         </>
       )}
       {form.type === "data_profiler" && (
@@ -677,41 +649,45 @@ export function SourceFormFieldsExtended({
       {form.type === "microsoft_365" && ( // REQ-1923
         <Microsoft365Fields sourceId={form.id} fields={authFields} setFields={setAuthFields} />
       )}
-      {CODE_SOURCE_TYPES.has(form.type) && ( // REQ-1984, REQ-1993
-        <CodeSourceFields
-          type={form.type}
-          fields={authFields}
-          setFields={setAuthFields}
-          sourceId={editingSourceId ?? undefined}
-        />
+      {connector && (
+        <ConnectorSetupFields connector={connector} fields={authFields} setFields={setAuthFields} />
+      )}
+      {!connector &&
+        CODE_SOURCE_TYPES.has(form.type) && ( // REQ-1984, REQ-1993
+          <CodeSourceFields
+            type={form.type}
+            fields={authFields}
+            setFields={setAuthFields}
+            sourceId={editingSourceId ?? undefined}
+          />
+        )}
+      {heldBy && (
+        <ConnectorSourceValues connector={heldBy} fields={authFields} setFields={setAuthFields} />
       )}
       {form.type === MOTHERDUCK && <MotherDuckFields form={form} setForm={setForm} />}
-      {form.type === COSMOSDB && ( // REQ-1982
-        <CosmosDbFields
+      {form.type === COSMOSDB && <CosmosDbFields {...typed} /> /* REQ-1982 */}
+      {form.type === JDBC_SOURCE && ( // REQ-2191
+        <JdbcSourceFields
           form={form}
           setForm={setForm}
-          fields={authFields}
-          setFields={setAuthFields}
+          authFields={authFields}
+          setAuthFields={setAuthFields}
         />
       )}
       {form.type === QDRANT && ( // REQ-1983
         <QdrantFields form={form} setForm={setForm} fields={authFields} setFields={setAuthFields} />
       )}
+      {form.type === "wikidata" && <WikidataFields /> /* REQ-1923 */}
       {form.type === "wikipedia" && (
         <WikipediaFields fields={authFields} setFields={setAuthFields} /> // REQ-1960
       )}
       {form.type === LOGS && <LogsFields fields={authFields} setFields={setAuthFields} />}
       {form.type === "cloudops" && <CloudopsFields fields={authFields} setFields={setAuthFields} />}
-      {form.type === "salesforce" && (
-        <SalesforceFields
-          form={form}
-          setForm={setForm}
-          fields={authFields}
-          setFields={setAuthFields}
-        />
-      )}
+      {form.type === "salesforce" && <SalesforceFields {...typed} />}
       {form.type === "servicenow" && <ServiceNowFields form={form} setForm={setForm} />}
       {form.type === "jira" && <JiraFields form={form} setForm={setForm} />}
+      {form.type === "quickbooks" && <QuickBooksFields {...typed} /> /* REQ-2197 */}
+      {form.type === "dbt" && <DbtFormSection dbt={dbt} sourceId={form.id} /> /* REQ-2228 */}
       {form.type === "sharepoint" && (
         <SharepointFields
           form={form}
@@ -898,7 +874,11 @@ export function SourceFormFieldsExtended({
           whose tables land must state its Cache TTL. */}
       {(!essential || landsWithTtl) && (
         <FormSection id="load">
-          <SourceLoadManagementPanel form={form} setForm={setForm} />
+          <SourceLoadManagementPanel
+            form={form}
+            setForm={setForm}
+            fixed={fixedFormKeys(connector ?? heldBy)}
+          />
         </FormSection>
       )}
       {!essential && (

@@ -1,0 +1,19 @@
+Third-party notices: provisa._encoders
+======================================
+
+provisa._encoders, Provisa's compiled encoders, links the Rust crates below. Each is listed with
+the licence it is used under, followed by that licence's text.
+
+{{#each overview}}  {{{name}}}: {{count}} crate(s)
+{{/each}}
+{{#each licenses}}
+
+--------------------------------------------------------------------------------
+{{{name}}} ({{{id}}})
+
+Used by:
+{{#each used_by}}  {{{crate.name}}} {{{crate.version}}}{{#if crate.repository}} ({{{crate.repository}}}){{/if}}
+{{/each}}
+
+{{{text}}}
+{{/each}}

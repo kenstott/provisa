@@ -27,11 +27,12 @@ Also parses GraphQL query comment hints of the form ``# @provisa key=value``:
   - ``# @provisa broadcast_size=N``→ the engine session: join_max_broadcast_table_size=N
 """
 
-# Requirements: REQ-277, REQ-278, REQ-279, REQ-281
+# Requirements: REQ-277, REQ-278, REQ-279, REQ-281, REQ-348
 
 from __future__ import annotations
 
 import re
+from typing import Any
 
 # Matches the outer hint block: /*+ ... */
 _HINT_BLOCK_RE = re.compile(r"/\*\+\s*(.*?)\s*\*/", re.DOTALL)
@@ -178,3 +179,19 @@ def extract_graphql_hints(query: str) -> dict[str, str]:  # REQ-277, REQ-278, RE
                 k, _, v = part.partition("=")
                 hints[k.strip()] = v.strip()
     return hints
+
+
+def recursion_session_props(tree: Any) -> dict[str, str]:  # REQ-348
+    """The engine session property a recursive statement runs with: ``max_recursion_depth``, the
+    maximum depth (graph.depth_limit) one past, as a walk with no upper bound goes one hop beyond
+    the maximum to tell whether it could go on. A statement with no recursive WITH needs none.
+
+    Trino reads the property; an engine with no such property ignores the session hints, its
+    recursion bounded by the walk's own hop limit and visited-relationship check."""
+    from sqlglot import exp
+
+    from provisa.core import settings_registry
+
+    if not any(w.args.get("recursive") for w in tree.find_all(exp.With)):
+        return {}
+    return {"max_recursion_depth": str(settings_registry.value("graph.depth_limit") + 1)}

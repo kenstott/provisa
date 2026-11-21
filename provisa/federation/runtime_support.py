@@ -25,6 +25,7 @@ from typing import Any, Callable
 
 from provisa.core.read_refusal import ReadRefused
 from provisa.core import request_deadline
+from provisa.core.session_time_zone import carrying_zone
 from provisa.core.ir_arrow import column_values
 from provisa.executor.result import (
     QueryResult,
@@ -69,6 +70,15 @@ def release_shielded(release: Callable[[], None]) -> None:
     with shield.lock:
         shield.settle()
         release()
+
+
+class EngineClosed(RuntimeError):
+    """Work that reached a native engine after its lifespan closed it (REQ-1316): a runtime built
+    then would attach its sources again -- the control plane among them -- and nothing would close
+    it. Refused by name, naming the engine and what was asked of it."""
+
+    def __init__(self, engine: str, what: str) -> None:
+        super().__init__(f"engine {engine!r} is closed: {what}")
 
 
 def open_cursor(conn: Any) -> Any:
@@ -443,6 +453,14 @@ def arrow_type_name(t: Any) -> str:
     that wire type's encoder takes."""
     import pyarrow as pa
 
+    if pa.types.is_union(t):
+        # ClickHouse's value of a type that cannot be Nullable (an array) or NULL is its Variant
+        # of that type and NULL: the type it holds.
+        held = [t.field(i).type for i in range(t.num_fields)]
+        values = [h for h in held if not pa.types.is_null(h)]
+        if len(values) == 1:
+            return arrow_type_name(values[0])
+        return "VARCHAR"
     if pa.types.is_boolean(t):
         return "BOOLEAN"
     if pa.types.is_integer(t):
@@ -461,16 +479,29 @@ def arrow_type_name(t: Any) -> str:
         return "INTERVAL"
     if pa.types.is_binary(t) or pa.types.is_large_binary(t) or pa.types.is_fixed_size_binary(t):
         return "BLOB"
-    if pa.types.is_list(t) or pa.types.is_large_list(t) or pa.types.is_fixed_size_list(t):
+    if _is_list(t):
+        # PostgreSQL has one array type of an element, whatever its dimensions.
         v = t.value_type
+        while _is_list(v):
+            v = v.value_type
         if pa.types.is_integer(v):
             return "INTEGER[]"
         if pa.types.is_string(v) or pa.types.is_large_string(v):
             return "VARCHAR[]"
+        if pa.types.is_float64(v):
+            return "DOUBLE[]"
+        if pa.types.is_float32(v):
+            return "REAL[]"
         return "JSON"
     if pa.types.is_struct(t) or pa.types.is_map(t):
         return "JSON"
     return "VARCHAR"
+
+
+def _is_list(t: Any) -> bool:
+    import pyarrow as pa
+
+    return pa.types.is_list(t) or pa.types.is_large_list(t) or pa.types.is_fixed_size_list(t)
 
 
 def columns_from_describe(rows: Any) -> dict[str, str]:
@@ -487,7 +518,7 @@ async def run_async(
     """Run a runtime's synchronous ``run_sync`` on the default executor. The shared
     async wrapper for runtimes whose driver is blocking (pg / sqlalchemy / clickhouse)."""
     loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(None, lambda: run_sync(sql, params))
+    return await loop.run_in_executor(None, carrying_zone(lambda: run_sync(sql, params)))
 
 
 async def run_async_materialized(
@@ -509,4 +540,4 @@ async def run_async_materialized(
             column_types=rs.column_types,
         )
 
-    return await loop.run_in_executor(None, _drain)
+    return await loop.run_in_executor(None, carrying_zone(_drain))

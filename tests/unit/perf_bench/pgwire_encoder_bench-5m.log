@@ -1,0 +1,81 @@
+[heavy] slot acquired after 71s
+dataset: 5,000,000 rows, 77 batches, 574.3 MB Arrow, built in 2.6s, free memory 46%
+[text] first 2 batches agree; timing...
+[text] rust   best 1.461s wall 1.448s cpu  runs ['1.486', '1.471', '1.512', '1.512', '1.461']
+[text] python best 69.768s wall 69.527s cpu  runs ['70.147', '69.768', '69.953']
+[binary] first 2 batches agree; timing...
+[binary] rust   best 1.242s wall 1.229s cpu  runs ['1.299', '1.253', '1.257', '1.242', '1.271']
+[binary] python best 50.975s wall 50.872s cpu  runs ['50.975', '51.039', '51.377']
+arrow->rows alone: 24.230s wall
+--- cProfile python text, 458,752 rows ---
+         46582228 function calls in 13.660 seconds
+
+   Ordered by: internal time
+   List reduced from 89 to 25 due to restriction <25>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        1    2.979    2.979   13.660   13.660 /Users/kennethstott/.provisa-agent/jobs/J492a/vendor/buenavista/buenavista/postgres.py:1627(send_data_rows)
+   458752    2.174    0.000    3.248    0.000 /Users/kennethstott/.provisa-agent/jobs/J492a/vendor/buenavista/buenavista/postgres.py:601(_float4_text)
+       14    1.029    0.073    1.474    0.105 /Users/kennethstott/.provisa-agent/jobs/J492a/provisa/core/ir_arrow.py:158(_with_infinities)
+       84    0.878    0.010    2.352    0.028 /Users/kennethstott/.provisa-agent/jobs/J492a/provisa/core/ir_arrow.py:135(column_values)
+   917504    0.593    0.000    0.924    0.000 /Users/kennethstott/.provisa-agent/jobs/J492a/vendor/buenavista/buenavista/postgres.py:559(_shortest_text)
+  5275264    0.556    0.000    0.556    0.000 {method 'encode' of 'str' objects}
+   458752    0.511    0.000    1.180    0.000 /Users/kennethstott/.provisa-agent/jobs/J492a/vendor/buenavista/buenavista/postgres.py:260(_pg_clock)
+  5275264    0.443    0.000    0.443    0.000 {method 'pack' of '_struct.Struct' objects}
+   458752    0.410    0.000    1.335    0.000 /Users/kennethstott/.provisa-agent/jobs/J492a/vendor/buenavista/buenavista/postgres.py:591(_float8_text)
+  4366337    0.409    0.000    0.409    0.000 {built-in method _struct.pack}
+  6652497    0.389    0.000    0.389    0.000 {built-in method builtins.len}
+   458752    0.326    0.000    1.595    0.000 /Users/kennethstott/.provisa-agent/jobs/J492a/vendor/buenavista/buenavista/postgres.py:273(_timestamp_text)
+   458752    0.288    0.000    0.435    0.000 /Users/kennethstott/.provisa-agent/jobs/J492a/vendor/buenavista/buenavista/postgres.py:245(_pg_offset)
+  4825132    0.240    0.000    0.240    0.000 {built-in method builtins.abs}
+   458752    0.214    0.000    0.264    0.000 {function UTC.fromutc at 0x10cdbd080}
+   917504    0.194    0.000    0.194    0.000 /Users/kennethstott/.provisa-agent/jobs/J492a/vendor/buenavista/buenavista/postgres.py:579(_non_finite_text)
+   458752    0.161    0.000    0.161    0.000 {built-in method builtins.repr}
+   458753    0.146    0.000    2.613    0.000 /Users/kennethstott/.provisa-agent/jobs/J492a/provisa/pgwire/server.py:1314(rows)
+   458752    0.141    0.000    0.141    0.000 {method 'isoformat' of 'datetime.date' objects}
+   458752    0.132    0.000    0.160    0.000 {method 'utcoffset' of 'datetime.datetime' objects}
+   917504    0.122    0.000    0.122    0.000 {method 'split' of 'str' objects}
+   917504    0.118    0.000    0.176    0.000 /Users/kennethstott/.provisa-agent/jobs/J492a/vendor/buenavista/buenavista/postgres.py:224(_infinity)
+   458752    0.117    0.000    0.344    0.000 /Users/kennethstott/.provisa-agent/jobs/J492a/vendor/buenavista/buenavista/postgres.py:234(_date_text)
+  1376255    0.111    0.000    0.111    0.000 {method 'rstrip' of 'str' objects}
+   917504    0.106    0.000    0.106    0.000 {method 'replace' of 'str' objects}
+
+
+
+--- cProfile python binary, 458,752 rows ---
+         38541717 function calls in 10.458 seconds
+
+   Ordered by: internal time
+   List reduced from 93 to 25 due to restriction <25>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        1    2.367    2.367   10.457   10.457 /Users/kennethstott/.provisa-agent/jobs/J492a/vendor/buenavista/buenavista/postgres.py:1627(send_data_rows)
+   458752    1.425    0.000    2.291    0.000 /Users/kennethstott/.provisa-agent/jobs/J492a/vendor/buenavista/buenavista/postgres.py:680(_numeric_to_pg_binary)
+       14    1.062    0.076    1.532    0.109 /Users/kennethstott/.provisa-agent/jobs/J492a/provisa/core/ir_arrow.py:158(_with_infinities)
+       84    0.890    0.011    2.423    0.029 /Users/kennethstott/.provisa-agent/jobs/J492a/provisa/core/ir_arrow.py:135(column_values)
+  8946226    0.485    0.000    0.485    0.000 {built-in method builtins.len}
+  5275264    0.418    0.000    0.418    0.000 {method 'pack' of '_struct.Struct' objects}
+   458752    0.328    0.000    0.592    0.000 /Users/kennethstott/.provisa-agent/jobs/J492a/vendor/buenavista/buenavista/postgres.py:668(_micros_since_2000)
+   458752    0.237    0.000    0.237    0.000 {method 'replace' of 'datetime.datetime' objects}
+   458752    0.227    0.000    0.278    0.000 {function UTC.fromutc at 0x10cdbd080}
+  2201865    0.214    0.000    0.214    0.000 {method 'to_bytes' of 'int' objects}
+  1835008    0.205    0.000    0.205    0.000 {built-in method _struct.pack}
+   458752    0.178    0.000    0.344    0.000 /Users/kennethstott/.provisa-agent/jobs/J492a/vendor/buenavista/buenavista/postgres.py:238(_date_binary)
+   458752    0.176    0.000    0.981    0.000 /Users/kennethstott/.provisa-agent/jobs/J492a/vendor/buenavista/buenavista/postgres.py:284(encode)
+   779639    0.162    0.000    0.246    0.000 /Users/kennethstott/.provisa-agent/jobs/J492a/vendor/buenavista/buenavista/postgres.py:775(<lambda>)
+   458752    0.147    0.000    0.268    0.000 {method 'as_tuple' of 'decimal.Decimal' objects}
+   458753    0.142    0.000    2.680    0.000 /Users/kennethstott/.provisa-agent/jobs/J492a/provisa/pgwire/server.py:1314(rows)
+  1238391    0.136    0.000    0.136    0.000 {method 'encode' of 'str' objects}
+  1835048    0.123    0.000    0.123    0.000 {built-in method builtins.isinstance}
+   825609    0.121    0.000    0.200    0.000 /Users/kennethstott/.provisa-agent/jobs/J492a/vendor/buenavista/buenavista/postgres.py:748(<lambda>)
+   917504    0.114    0.000    0.167    0.000 /Users/kennethstott/.provisa-agent/jobs/J492a/vendor/buenavista/buenavista/postgres.py:224(_infinity)
+   458752    0.112    0.000    0.188    0.000 /Users/kennethstott/.provisa-agent/jobs/J492a/vendor/buenavista/buenavista/postgres.py:771(<lambda>)
+   458752    0.098    0.000    0.376    0.000 /Volumes/main/Users/kennethstott/PycharmProjects/provisa/.venv/lib/python3.12/site-packages/pytz/__init__.py:235(fromutc)
+        8    0.085    0.011    2.508    0.313 /Users/kennethstott/.provisa-agent/jobs/J492a/provisa/federation/runtime_support.py:426(_batches)
+   458752    0.083    0.000    0.083    0.000 {built-in method builtins.format}
+   458752    0.082    0.000    0.675    0.000 /Users/kennethstott/.provisa-agent/jobs/J492a/vendor/buenavista/buenavista/postgres.py:294(_micros_since_2000_utc)
+
+
+
+text: 5,000,000 rows, 1022.9 MB out | python 69.77s (0.07 Mrow/s, 14.7 MB/s) | rust 1.461s (3.42 Mrow/s, 699.9 MB/s) | speedup 47.7x
+binary: 5,000,000 rows, 793.3 MB out | python 50.98s (0.10 Mrow/s, 15.6 MB/s) | rust 1.242s (4.03 Mrow/s, 638.6 MB/s) | speedup 41.0x

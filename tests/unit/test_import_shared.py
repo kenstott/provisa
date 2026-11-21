@@ -15,6 +15,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 import yaml
 
 from provisa.import_shared.filters import (
@@ -22,6 +23,7 @@ from provisa.import_shared.filters import (
     _format_value,
     bool_expr_to_sql,
 )
+from provisa.import_shared.refused import FilterOperatorRefused
 from provisa.import_shared.warnings import (
     ImportWarning,
     WarningCollector,
@@ -479,10 +481,13 @@ class TestBoolExprToSQLExistsSubquery:
 
 
 class TestBoolExprToSQLUnsupportedOperator:
-    def test_unsupported_op_produces_comment(self):
+    def test_unsupported_op_is_refused_by_name(self):
+        """An operator with no SQL is refused, naming it: written into the rule as a comment, its
+        name could close the comment and add SQL to the rule."""
         expr = {"col": {"_custom_op": "value"}}
-        result = bool_expr_to_sql(expr)
-        assert "unsupported op" in result or "custom_op" in result
+        with pytest.raises(FilterOperatorRefused) as caught:
+            bool_expr_to_sql(expr)
+        assert caught.value.params == {"operator": "_custom_op"}
 
     def test_unknown_top_level_key_skipped(self):
         """Keys starting with _ that are not known operators are skipped."""
@@ -721,9 +726,9 @@ class TestBoolExprEdgeCases:
         assert "FALSE" in result
 
     def test_string_with_single_quote_formatted(self):
-        """Values with single quotes are wrapped."""
+        """A single quote in a value is escaped inside the literal, not ending it."""
         result = bool_expr_to_sql({"name": {"_eq": "O'Brien"}})
-        assert "O'Brien" in result
+        assert result == "name = 'O''Brien'"
 
     def test_large_in_list(self):
         values = list(range(20))

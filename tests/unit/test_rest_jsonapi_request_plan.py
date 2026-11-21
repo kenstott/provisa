@@ -26,6 +26,9 @@ that answers from a 60-row table:
 
 from __future__ import annotations
 
+from provisa.executor.result import QueryResult
+
+import json
 import re
 from types import SimpleNamespace
 from urllib.parse import parse_qs, urlsplit
@@ -84,7 +87,7 @@ class _Pipeline:
     async def execute(self, plan, state):
         sql, params = plan.sql, plan.params
         if "COUNT(*)" in sql:
-            return SimpleNamespace(rows=[(_TABLE_ROWS,)], redirect=None, cache_entry=None)
+            return QueryResult(rows=[(_TABLE_ROWS,)], column_names=["total"])
 
         def _bound(keyword: str) -> int | None:
             m = re.search(rf"{keyword} \$(\d+)", sql)
@@ -99,9 +102,7 @@ class _Pipeline:
         rows = rows[offset : offset + limit] if limit is not None else rows[offset:]
         select_list = sql[len("SELECT ") : sql.index(" FROM ")]
         names = [re.findall(r'"([^"]+)"', part)[-1] for part in select_list.split(", ")]
-        return SimpleNamespace(
-            rows=[tuple(r[n] for n in names) for r in rows], redirect=None, cache_entry=None
-        )
+        return QueryResult(rows=[tuple(r[n] for n in names) for r in rows], column_names=names)
 
     @property
     def sql(self) -> list[str]:
@@ -387,9 +388,12 @@ async def test_a_replaced_schema_compiles_again(surface):
 
 
 async def test_an_invalid_request_is_rejected_every_time_and_nothing_is_kept(surface):
+    # An order on a field the type does not have reaches the GraphQL validation; an unknown
+    # ``fields`` path is refused before it (REQ-1929, tests/unit/test_rest_nested_fields.py).
+    order = json.dumps([{"field": "no_such_column", "direction": "asc"}])
     for _ in range(2):
         resp = await surface.client.get(
-            "/data/rest/sales/orders", params={"fields": "no_such_column"}, headers=_REST
+            "/data/rest/sales/orders", params={"orderBy": order}, headers=_REST
         )
         assert resp.status_code == 400, resp.text
     assert len(surface.compiles.parsed) == 2

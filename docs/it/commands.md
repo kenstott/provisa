@@ -320,7 +320,7 @@ Ogni invocazione emette una traccia, qualunque sia l'esito. La traccia contiene 
 
 ## CLI: provisa metadata export
 
-`provisa metadata export` è un job del livello shell e gira fuori dal percorso RPC governato. Avvia la pubblicazione su richiesta dei metadati del server in esecuzione inviando a `/admin/metadata-export/publish`, l'endpoint che chiama il pulsante **Pubblica ora** della scheda Admin.
+`provisa metadata export` è un job del livello shell e gira fuori dal percorso RPC governato. Avvia la pubblicazione su richiesta dei metadati del server in esecuzione inviando a `/admin/syncing/publish`, l'endpoint che chiama il pulsante **Pubblica ora** della scheda Admin.
 
 Si usa per pilotare esportazioni programmate da cron o CI quando la pianificazione
 `reconcile_cron` configurata non è abbastanza granulare:

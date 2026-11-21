@@ -89,7 +89,14 @@ def test_catalog_bindings_are_not_part_of_the_model():
 
 @pytest.mark.parametrize(
     "key",
-    ["metadata_export.endpoint", "catalogs", "redirect.base_url", "cache.redis_url", "cache"],
+    [
+        "metadata_export.endpoint",
+        "catalogs",
+        "redirect.base_url",
+        "cache.redis_url",
+        "cache",
+        "offer_hook",  # REQ-2180: the system an environment's access requests go to
+    ],
 )
 def test_settings_naming_an_external_target_or_a_runtime_stay_behind(key):
     assert not ec.carries_setting(key)
@@ -135,6 +142,11 @@ class TestBindingColumns:
         assert {"host", "port", "database", "username"} <= ec.binding_columns("sources")
         assert ec.binding_columns("api_sources") >= {"base_url", "auth"}
         assert ec.binding_columns("kafka_sources") >= {"bootstrap_servers"}
+
+    def test_the_connectors_block_promotes_with_the_model(self):  # REQ-2221
+        # A version runs where the model's branches say: the block travels, with no binding.
+        assert "connectors" in ec.CARRIED
+        assert "connectors" not in ec.SEEDED_AT_CREATION
 
     def test_governance_on_a_source_row_still_travels(self):
         # The point of IDENTITY_ONLY is that the row is not simply dropped: everything about the

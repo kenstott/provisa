@@ -20,133 +20,32 @@ identically — an external catalog matches assets by that address alone.
 
 from __future__ import annotations
 
-from urllib.parse import quote
-
 from provisa.api.metadata_export.model import AssetKind, AssetRef
 from provisa.core.models import Source, Table
+
+# REQ-1385: the URI grammar is the core's (provisa.core.model_uri), which the model's history names
+# objects by as well (REQ-1524); the export publishes the same URIs.
+from provisa.core.model_uri import (  # noqa: F401  (re-exported)
+    RESERVED_KIND_KEYWORDS,
+    column_uri,
+    command_uri,
+    data_product_uri,
+    domain_uri,
+    metric_uri,
+    relationship_uri,
+    source_uri,
+    table_uri,
+    tag_uri,
+    term_uri,
+)
 
 
 def source_ref(source: Source) -> AssetRef:  # REQ-1070
     return AssetRef(kind=AssetKind.SOURCE, parts=(source.id,))
 
 
-# REQ-1385: kind keywords are reserved path segments; a domain with one of these names
-# would make its URIs unparseable, so domain creation refuses them.
-#
-# REQ-1526 widened the list from the four kinds that appear in a URI to every kind the serialized
-# model gives a DIRECTORY to. In a URI a kind is only ever preceded by domain segments, so an
-# unreserved kind was merely unparseable in the cases that reached it; in a directory tree the kind
-# and the domain are siblings on disk, and a domain named for one would have its own file written
-# into the kind's directory. Reserving the whole set costs an org the use of about a dozen domain
-# names and removes the collision entirely.
-RESERVED_KIND_KEYWORDS = (
-    "tables",
-    "sources",
-    "api-sources",
-    "kafka-sources",
-    "tags",
-    "roles",
-    "commands",
-    "terms",
-    "metrics",
-    "views",
-    "calendars",
-    "naming",
-    "domain",
-    "data-products",
-    "stores",  # REQ-1922: an org's stores
-    "regions",  # REQ-1921: the platform regions an org selects
-)
-
-_URI_SCHEME = "provisa"
-
-
-def _segment(name: str) -> str:
-    return quote(name, safe="")
-
-
-def _domain_segments(domain_id: str | None) -> str:
-    """The domain path portion of a URI. Hierarchical domains arrive as slash-separated ids;
-    the unassigned ('') bucket contributes no segments."""
-    if not domain_id:
-        return ""
-    return "/".join(_segment(part) for part in domain_id.split("/")) + "/"
-
-
-def _org_segment(org_id: str | None) -> str:
-    """The org path portion of a URI. ``org_id`` is ``None`` for a single-tenant deployment
-    (REQ-697 ``multitenancy=False``): there is only ever one org, so naming it in every URI
-    would expose config plumbing (the "default" ORG_ID fallback) rather than business identity."""
-    return f"{_segment(org_id)}/" if org_id else ""
-
-
-def domain_uri(org_id: str | None, domain_id: str) -> str:  # REQ-1385
-    return f"{_URI_SCHEME}://{_org_segment(org_id)}{_domain_segments(domain_id)}".rstrip("/")
-
-
-def source_uri(org_id: str | None, source_id: str) -> str:  # REQ-1385
-    return f"{_URI_SCHEME}://{_org_segment(org_id)}sources/{_segment(source_id)}"
-
-
-def tag_uri(org_id: str | None, tag_id: str) -> str:  # REQ-1385
-    return f"{_URI_SCHEME}://{_org_segment(org_id)}tags/{_segment(tag_id)}"
-
-
 def data_product_ref(product_id: str) -> AssetRef:  # REQ-1634
     return AssetRef(kind=AssetKind.DATA_PRODUCT, parts=(product_id,))
-
-
-def data_product_uri(
-    org_id: str | None, domain_id: str, product_id: str
-) -> str:  # REQ-1385, REQ-1634
-    # Domain-segmented like table_uri: a data product lives under its one owning domain.
-    return (
-        f"{_URI_SCHEME}://{_org_segment(org_id)}"
-        f"{_domain_segments(domain_id)}data-products/{_segment(product_id)}"
-    )
-
-
-def command_uri(org_id: str | None, command_name: str) -> str:  # REQ-1385
-    """A governed command (tracked function/webhook) by its registered name."""
-    return f"{_URI_SCHEME}://{_org_segment(org_id)}commands/{_segment(command_name)}"
-
-
-def table_uri(org_id: str | None, table: Table) -> str:  # REQ-1385
-    """Business-identity address: alias when present, else table name — never the physical
-    (source, schema) coordinates, which export separately as the binding."""
-    business_name = table.alias or table.table_name
-    return (
-        f"{_URI_SCHEME}://{_org_segment(org_id)}"
-        f"{_domain_segments(table.domain_id)}tables/{_segment(business_name)}"
-    )
-
-
-def column_uri(org_id: str | None, table: Table, column_name: str, column_alias: str | None) -> str:
-    # REQ-1385: #field:<business name> — a column is an attribute of the concept.
-    return f"{table_uri(org_id, table)}#field:{_segment(column_alias or column_name)}"
-
-
-def metric_uri(org_id: str | None, metric_name: str) -> str:  # REQ-1385, REQ-1592
-    """A governed metric by its (config-unique) name.
-
-    Org-level rather than domain-segmented because a metric has no grain and no domain of its own:
-    its dataset binding is implicit in the semantic references inside its expression (REQ-1317), so
-    there are no domain segments to place it under. ``metrics`` is already a reserved kind keyword.
-    """
-    return f"{_URI_SCHEME}://{_org_segment(org_id)}metrics/{_segment(metric_name)}"
-
-
-def term_uri(org_id: str | None, term_name: str) -> str:  # REQ-1385, REQ-1387
-    """A business-glossary term by its (unique) normalized name."""
-    return f"{_URI_SCHEME}://{_org_segment(org_id)}terms/{_segment(term_name)}"
-
-
-def relationship_uri(
-    org_id: str | None, source_table: Table, alias: str | None, rel_id: str
-) -> str:
-    # REQ-1385: a relationship is a navigational field anchored at its source concept.
-    # Its business name is the alias when the edge is named; the registry id otherwise.
-    return f"{table_uri(org_id, source_table)}#rel:{_segment(alias or rel_id)}"
 
 
 class SnapshotBuildError(RuntimeError):
@@ -209,7 +108,9 @@ class TableIndex:
     neither, and the build refuses rather than picking one.
     """
 
-    def __init__(self, tables: list[Table]) -> None:
+    def __init__(self, tables: list[Table], seeded: frozenset[str] = frozenset()) -> None:
+        # REQ-1634: the names of the seeded tables the store holds and ``tables`` leaves out.
+        self._seeded = seeded
         self._by_bare: dict[str, list[Table]] = {}
         self._by_qualified: dict[str, Table] = {}
         for table in tables:
@@ -231,3 +132,11 @@ class TableIndex:
                 name, [".".join(table_ref(t).parts) for t in matches], context
             )
         return matches[0]
+
+    def resolve_published(self, name: str, context: str) -> Table | None:
+        """``resolve``, except a name that identifies a seeded table answers None: a seeded table
+        stays out of the export model and publishes nowhere (REQ-1634), so what names it has
+        nothing to anchor to. Any other name no table answers is refused, as ``resolve`` does."""
+        if name in self._seeded and name not in self._by_qualified and name not in self._by_bare:
+            return None
+        return self.resolve(name, context)

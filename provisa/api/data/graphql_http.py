@@ -39,6 +39,7 @@ from fastapi.responses import Response
 from provisa.observability.request_facts import TimedJSONResponse as JSONResponse  # REQ-1910
 
 from provisa.api.errors import ApiError
+from provisa.api.engine_error_names import client_value
 
 GRAPHQL_RESPONSE = "application/graphql-response+json"
 
@@ -148,7 +149,8 @@ def document_error_response(exc: GraphQLDocumentError, accept: str | None) -> JS
     """The answer to a document that did not parse, validate or coerce: its errors, no data."""
     from provisa.api.data.endpoint_helpers import _parse_accept
 
-    body = {"errors": [{"message": m} for m in exc.messages]}
+    # A 200 passes the error-response middleware: the errors are told here (REQ-2087).
+    body = {"errors": client_value([{"message": m} for m in exc.messages])}
     if wants_graphql_response(accept):
         return JSONResponse(body, status_code=400, media_type=GRAPHQL_RESPONSE)
     if _parse_accept(accept) != "json":

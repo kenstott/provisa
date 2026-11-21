@@ -5,10 +5,9 @@
     "identity": "Identidad",
     "associations": "Asociaciones",
     "load": "Gestión de carga y actualidad",
-    "query": "Consulta",
+    "query": "API",
     "quality": "Calidad",
     "columns": "Columnas",
-    "writes": "Escrituras",
     "source": "Origen",
     "schema": "Esquema",
     "table": "Tabla",
@@ -18,6 +17,10 @@
     "noTerms": "Ningún término nombra una columna de esta tabla",
     "relationships": "Relaciones",
     "noRelationships": "Esta tabla no participa en ninguna relación",
+    "metrics": "Métricas",
+    "noMetrics": "Ninguna métrica usa esta tabla",
+    "metricTerm": "{{term}}:",
+    "metricMethod": "Se calcula como: {{method}}",
     "fromSource": "{{value}} (del origen)",
     "fromSourceAsIs": "Como lo tiene el origen",
     "notScheduledLikeSource": "No se lee solo según la programación, aunque su origen sí: una consulta puede leer el origen.",
@@ -33,9 +36,11 @@
       "skipped": "Omitido"
     },
     "classTerm": "Las filas son instancias de",
-    "classTermPlaceholder": "Elegir un término",
     "noClassTerm": "Ningún término",
     "classTermUnreadable": "No se pudo leer su término: {{error}}",
+    "classTermNoModel": "No se pudo leer su término: sus roles no pueden leer las tablas del modelo.",
+    "classTermNoEntry": "No se pudo leer su término: sus roles no pueden leer la entrada propia de esta tabla en el modelo.",
+    "classTermNoField": "No se pudo leer su término: sus roles no pueden leer de qué término son instancias las filas de una tabla.",
     "access": "Acceso"
   }
 }

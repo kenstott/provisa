@@ -10,9 +10,14 @@
 
 // REQ-2193: the OData page gives the service root and the role's $metadata, each to copy.
 
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen } from "../test-utils/render";
 import i18n from "../i18n";
+
+vi.mock("../context/AuthContext", () => ({
+  useAuth: () => ({ actingRoles: "analyst" }),
+}));
+
 import { ODataPage } from "../pages/ODataPage";
 import { NAV_GROUPS } from "../components/navGroups";
 
@@ -20,6 +25,20 @@ const t = i18n.getFixedT("en");
 const ROOT = `${window.location.origin}/data/odata`;
 
 describe("ODataPage", () => {
+  // The viewer below the addresses reads the role's $metadata: here, a model with no entity set.
+  beforeEach(() => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response('<edmx:Edmx xmlns:edmx="http://docs.oasis-open.org/odata/ns/edmx"/>'),
+      ),
+    );
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it("shows the service root and $metadata addresses", () => {
     render(<ODataPage />);
     expect(screen.getByTestId("odata-service-root")).toHaveTextContent(ROOT);

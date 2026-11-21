@@ -149,6 +149,12 @@ def unchecked_table(table: str) -> list[dict]:
     ]
 
 
+def unread_table(table: str, reason: str) -> list[dict]:
+    """The report's row of a table whose real rows are never read whole (REQ-1986): ``reason`` is
+    why, as its metadata states it."""
+    return [_row(table, "closeness", None, None, f"not checked: the table {reason}")]
+
+
 def cascaded_only(table: str, cascaded: int) -> list[dict]:
     """The report's rows of a table not checked itself: the rows dropped with a parent."""
     return [

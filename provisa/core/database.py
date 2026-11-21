@@ -925,9 +925,17 @@ class Connection:
             self._record_write(target, -1 if rowcount is None else rowcount)
         return result
 
-    def _run(self, sql: str, args: tuple, *, bind_as_given: bool = False) -> Any:
+    def _run(
+        self, sql: str, args: tuple, *, bind_as_given: bool = False, prepared: bool = True
+    ) -> Any:
+        from provisa.core.env_reference_guard import check_raw
+
+        check_raw(sql, args)  # REQ-1557: a raw write is a write like any other
         stmt, params = _translate(sql, args, self.capabilities.dialect, bind_as_given=bind_as_given)
-        return self._exec(text(stmt), params)
+        if prepared or self.capabilities.dialect != "postgresql":
+            return self._exec(text(stmt), params)
+        with _unprepared(self._sc):
+            return self._exec(text(stmt), params)
 
     def _commit_if_autocommit(self) -> None:
         if self._tx_depth == 0:
@@ -948,6 +956,10 @@ class Connection:
 
     # Async only to keep the awaitable call-site contract; runs synchronously on the request thread.
     async def executemany(self, sql: str, args_seq: list) -> None:
+        from provisa.core.env_reference_guard import check_raw
+
+        for row in args_seq:
+            check_raw(sql, tuple(row))  # REQ-1557
         dialect = self.capabilities.dialect
         stmt, _ = _translate(sql, tuple(args_seq[0]) if args_seq else (), dialect)
         param_list = [_translate(sql, tuple(row), dialect)[1] for row in args_seq]
@@ -964,18 +976,19 @@ class Connection:
 
     # Async only to keep the awaitable call-site contract; runs synchronously on the request thread.
     async def fetch_with_columns(
-        self, sql: str, *args: Any, bind_as_given: bool = False
+        self, sql: str, *args: Any, bind_as_given: bool = False, prepared: bool = True
     ) -> tuple[list[str], list[Row]]:
         """Rows plus the result's column names — known even when no row comes back.
-        ``bind_as_given``: see :func:`_translate`."""
-        result = self._run(sql, args, bind_as_given=bind_as_given)
+        ``bind_as_given``: see :func:`_translate`. ``prepared=False``: a statement run once, which
+        PostgreSQL does not keep (:func:`_unprepared`)."""
+        result = self._run(sql, args, bind_as_given=bind_as_given, prepared=prepared)
         columns = list(result.keys())
         rows = [Row(r) for r in result.fetchall()]
         self._commit_if_autocommit()
         return columns, rows
 
     async def fetch_described(
-        self, sql: str, *args: Any, bind_as_given: bool = False
+        self, sql: str, *args: Any, bind_as_given: bool = False, prepared: bool = True
     ) -> tuple[list[str], list[int], list[Row]]:
         """:meth:`fetch_with_columns` with each column's type oid, as PostgreSQL described it."""
         from psycopg.types.json import JsonLoader
@@ -987,7 +1000,7 @@ class Connection:
         adapters = driver.adapters
         adapters.register_loader("json", TextLoader)
         try:
-            result = self._run(sql, args, bind_as_given=bind_as_given)
+            result = self._run(sql, args, bind_as_given=bind_as_given, prepared=prepared)
         finally:
             adapters.register_loader("json", JsonLoader)
         columns = list(result.keys())
@@ -1025,6 +1038,44 @@ class Connection:
         from sqlalchemy import inspect as _sa_inspect
 
         eff_schema = schema if self.capabilities.schemas else None
+        insp = _sa_inspect(self._sc)
+        pk = set(insp.get_pk_constraint(table, schema=eff_schema).get("constrained_columns") or [])
+        return self._column_records(
+            insp.get_columns(table, schema=eff_schema), pk, table, eff_schema
+        )
+
+    # Async only to keep the awaitable call-site contract; runs synchronously on the request thread.
+    async def reflect_columns_many(
+        self, tables: list[str], schema: str | None = None
+    ) -> dict[str, list[dict]]:
+        """:meth:`reflect_columns` of several relations of one schema, read in one pass: each
+        relation's columns by name. One Inspector reads them all, so the catalog-wide lookups it
+        makes for every reflection (PostgreSQL's domains and enums, a scan of ``pg_type``) are made
+        once, where a call per relation made them once per relation. A relation that does not
+        exist has no entry: the caller decides whether that is a refusal."""
+        from sqlalchemy import inspect as _sa_inspect
+        from sqlalchemy.engine.reflection import ObjectKind
+
+        eff_schema = schema if self.capabilities.schemas else None
+        names = list(dict.fromkeys(tables))
+        insp = _sa_inspect(self._sc)
+        # ObjectKind.ANY: views (the meta schema's relations are) as well as tables.
+        columns = insp.get_multi_columns(schema=eff_schema, filter_names=names, kind=ObjectKind.ANY)
+        pks = insp.get_multi_pk_constraint(
+            schema=eff_schema, filter_names=names, kind=ObjectKind.ANY
+        )
+        reflected: dict[str, list[dict]] = {}
+        for name in names:
+            key = (eff_schema, name)
+            if key in columns:
+                pk = set((pks.get(key) or {}).get("constrained_columns") or [])
+                reflected[name] = self._column_records(columns[key], pk, name, eff_schema)
+        return reflected
+
+    def _column_records(
+        self, columns: list[Any], pk: set[str], table: str, eff_schema: str | None
+    ) -> list[dict]:
+        """The Inspector's columns of ``table`` as :meth:`reflect_columns` returns them."""
         is_sqlite = self.capabilities.dialect == "sqlite"
 
         # SQLite does not type VIEW columns, so the Inspector reports NullType (→ "null") for the
@@ -1032,8 +1083,6 @@ class Connection:
         # in-line with SQL (``typeof``) and pick the best match; storage classes map cleanly.
         _SQLITE_STORAGE = {"integer": "integer", "real": "double", "text": "text", "blob": "blob"}
         sync_conn = self._sc
-        insp = _sa_inspect(sync_conn)
-        pk = set(insp.get_pk_constraint(table, schema=eff_schema).get("constrained_columns") or [])
         ref = f'"{table}"' if eff_schema is None else f'"{eff_schema}"."{table}"'
 
         def _infer_sqlite(col: str) -> str:
@@ -1046,7 +1095,7 @@ class Connection:
             return _SQLITE_STORAGE.get(row[0], "text") if row else "text"
 
         cols: list[dict] = []
-        for c in insp.get_columns(table, schema=eff_schema):
+        for c in columns:
             type_name = str(c["type"]).split("(")[0].strip().lower()
             if "[]" in type_name or type_name in ("array", "json", "jsonb"):
                 type_name = "text"
@@ -1105,12 +1154,22 @@ class Connection:
         from provisa.core.model_row_rules import narrowing_of
 
         guarded = apply_meta_tenant_guard(guard_statement(stmt))
+        self._refuse_edit_of_operator_row(guarded)  # REQ-1557
         narrowing = narrowing_of(guarded, self.capabilities.dialect)  # REQ-2188
         result = (
             self._exec(guarded) if narrowing is None else self._exec_narrowed(guarded, narrowing)
         )
         self._commit_if_autocommit()
         return result
+
+    def _refuse_edit_of_operator_row(self, stmt: Any) -> None:
+        """REQ-1557: refuse a held organization's member's UPDATE of a row that carries a
+        reference to the server's environment (the operator's object), having written nothing."""
+        from provisa.core.env_reference_guard import check_edited, edit_to_check
+
+        query = edit_to_check(stmt)
+        if query is not None:
+            check_edited(stmt.table, self._exec(query).fetchall())
 
     def _count_rows(self, table: Any, *where: Any) -> int:
         from sqlalchemy import func, select as _select
@@ -1479,6 +1538,24 @@ class Connection:
 
 
 _PREPARED_SCOPE = "provisa_prepared_scope"
+
+
+@contextmanager
+def _unprepared(sc: sa.Connection) -> Iterator[None]:
+    """Statements run on ``sc`` meanwhile are not prepared: psycopg sends each as the unnamed
+    statement, which PostgreSQL drops once the next one arrives. A statement run once -- a client's
+    own SQL, its literals written into it -- would otherwise stay prepared on the pooled
+    connection, its plan held in the server backend until the LRU (:data:`_PREPARED_MAX`) evicts
+    it: a catalog statement's plan alone is tens of megabytes, and a backend holding a hundred of
+    them never gives that memory back."""
+    driver = sc.connection.driver_connection
+    assert driver is not None  # a statement of this connection is about to run on it
+    threshold = driver.prepare_threshold
+    driver.prepare_threshold = None
+    try:
+        yield
+    finally:
+        driver.prepare_threshold = threshold
 
 
 def _prepared_for_scope(sc: sa.Connection, search_path: str | None) -> None:

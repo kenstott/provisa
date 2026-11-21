@@ -17,9 +17,12 @@ column rename would break (REQ-1484), the objects a refused delete is still refe
 (REQ-1918):
 
 - a table, view or materialized view: the acting role is served a column of it;
-- a column, a relationship end, a tag on a column: the acting role is served that column;
+- a column, a relationship end, a tag on a column: the acting role is served that column; a tag
+  on a row rule or a metric: the caller may read that rule or metric (REQ-2208);
 - a metric or a command: it is granted to the acting role;
-- a glossary term: the caller's domains read it.
+- a glossary term: the caller's domains read it;
+- a tag on a term or on a library document or section: the caller reads the term, or the
+  document's domains, as a term's.
 
 Anything else a refusal names (a domain, a source, a role, a region...) is not a field, table,
 column or check, and is named as before.
@@ -156,15 +159,9 @@ async def _readable(conn: "Connection", reader: DependentsReader, dependent: "De
         return row is not None and (row.table_id is None or reader.column(row.table_id, None))
     if kind == "tag_assignment":
         row = (
-            await conn.execute_core(
-                select(tag_assignments.c.table_id, tag_assignments.c.column_name).where(
-                    tag_assignments.c.id == key
-                )
-            )
+            await conn.execute_core(select(tag_assignments).where(tag_assignments.c.id == key))
         ).fetchone()
-        return row is not None and (
-            row.table_id is None or reader.column(row.table_id, row.column_name)
-        )
+        return row is not None and await _tag_assignment_readable(conn, reader, dict(row._mapping))
     if kind == "materialized_view":
         # A view's storage row is kept under ``view-<table name>`` (integrity._attributes); any
         # other materialized view is named by the tables it reads.
@@ -182,6 +179,47 @@ async def _readable(conn: "Connection", reader: DependentsReader, dependent: "De
     return True
 
 
+async def _tag_assignment_readable(
+    conn: "Connection", reader: DependentsReader, row: dict
+) -> bool:  # REQ-2152
+    """A tag assignment is read as the object it is on: a table's or column's as that column is
+    served, a row rule's or metric's as that rule or metric is (REQ-2208), a term's as the term is
+    read (REQ-2145), and a library document's or section's as the document is: by its domains,
+    the rule a term is read by (REQ-2185, REQ-2208)."""
+    from provisa.core.repositories.glossary import term_domains
+
+    kind = row["object_type"]
+    if kind == "term":
+        return reader.term((await term_domains(conn)).get(row["term_id"], set()))
+    if kind in ("document", "section"):
+        from provisa.reference_library import store
+
+        document = await store.document(conn, row["document_id"])
+        return document is not None and reader.term(set(document.domains))
+    # REQ-2208: a tag on a row rule or a metric is read by whoever may read that rule or metric.
+    if row["rls_rule_id"] is not None:
+        return await _readable(conn, reader, _ref_dependent("row_filter", row["rls_rule_id"]))
+    if row["metric_name"] is not None:
+        return await _readable(conn, reader, _ref_dependent("metric", row["metric_name"]))
+    return row["table_id"] is None or reader.column(row["table_id"], row["column_name"])
+
+
+async def tag_assignment_readable(
+    conn: "Connection", reader: DependentsReader, row: dict
+) -> bool:  # REQ-2152, REQ-2208
+    """Whether ``reader`` may be told of the tag assignment ``row`` (a row as
+    ``repositories.tag.list_assignments`` or ``list_library_assignments`` answers it)."""
+    return await _tag_assignment_readable(conn, reader, row)
+
+
+def _ref_dependent(kind: str, key: Any) -> "Dependent":
+    """A bare dependent naming ``kind`` ``key``, to ask :func:`_readable` about an object another
+    one is on."""
+    from provisa.core.repositories.integrity import Dependent, ObjectRef
+
+    return Dependent(ObjectRef(kind, key), via=())
+
+
 async def relationship_readable(conn: "Connection", reader: DependentsReader, rel_id: str) -> bool:
     """Whether ``reader`` is served every column relationship ``rel_id`` joins on, and the table
     it goes through; a relationship that does not exist is not readable."""
@@ -197,13 +235,31 @@ async def relationship_readable(conn: "Connection", reader: DependentsReader, re
         (row.target_table_id, row.target_column),
         (row.via_table_id, None),
     ]
+    parameters = await _parameters_of(conn, {t for t, _ in ends if t is not None})
     return all(
-        reader.column(table_id, c)
+        # REQ-1986: a parameter is the table's input, not a column served to a role: a reader of
+        # the table reads it.
+        reader.column(table_id, None if (table_id, c) in parameters else c)
         for table_id, column in ends
         if table_id is not None
         # A composite key lists its columns comma-separated (REQ-1586).
         for c in ([part.strip() for part in column.split(",")] if column else [None])
     )
+
+
+async def _parameters_of(conn: "Connection", table_ids: set[int]) -> set[tuple[int, str]]:
+    """Each (table id, column) of ``table_ids`` that is a parameter of its table (REQ-1986)."""
+    from provisa.core.schema_org import table_columns
+
+    rows = (
+        await conn.execute_core(
+            select(table_columns.c.table_id, table_columns.c.column_name).where(
+                table_columns.c.table_id.in_(table_ids),
+                table_columns.c.native_filter_type.is_not(None),
+            )
+        )
+    ).fetchall()
+    return {(r.table_id, r.column_name) for r in rows}
 
 
 async def readable_dependents(

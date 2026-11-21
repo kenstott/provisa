@@ -1,0 +1,13 @@
+{
+  "dataAddress": {
+    "label": "डेटा नोड",
+    "heading": "डेटा अनुरोध यहाँ भेजें",
+    "none": "कोई डेटा नोड नहीं",
+    "noneOffered": "इस क्षेत्र के लिए कोई डेटा नोड सूचीबद्ध नहीं है। नीचे एक पता लिखें।",
+    "typedLabel": "डेटा नोड का पता",
+    "typedPlaceholder": "https://data.example.com",
+    "typedInvalid": "http या https पता दर्ज करें",
+    "use": "उपयोग करें",
+    "loadError": "डेटा नोड लोड नहीं हो सके"
+  }
+}

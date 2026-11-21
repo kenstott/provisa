@@ -20,6 +20,7 @@ from __future__ import annotations
 import pytest
 
 from provisa.api.org_resolve import OrgResolutionError
+from provisa.auth.models import AuthIdentity
 from provisa.bolt.session import _show_databases_rows, select_database
 
 
@@ -101,6 +102,8 @@ class _State:
     admin_db = _AdminDb()
     roles: dict = {}
     platform_roles: dict = {}
+    # The sign-in's roles are its claims: what the session's principal holds (REQ-802).
+    auth_config: dict = {"assignments_source": "claims"}
 
 
 class TestTheDatabaseOrgBindsTheSession:
@@ -118,6 +121,9 @@ class TestTheDatabaseOrgBindsTheSession:
         session.org_id = None
         session.user_id = "u1"
         session.roles = ["analyst"]
+        session._identity = AuthIdentity(
+            user_id="u1", email=None, display_name=None, roles=["analyst"]
+        )
         session._credential_org = None
         monkeypatch.setattr(session, "_requested_org", lambda: sni_org)
         return session

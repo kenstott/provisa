@@ -16,13 +16,15 @@ Extracted from sql_gen.py; pure data structures, no compilation logic.
 
 from __future__ import annotations
 
+import functools
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 if TYPE_CHECKING:
     from provisa.compiler.native_nested import NestedColumns
     from provisa.compiler.native_subtype import SubtypeColumns
     from provisa.compiler.introspect import ColumnMetadata
+    from provisa.core.parameters import ParameterFact
 
 
 # Protocol mirroring schema_gen._TableInfo — avoids a circular import while
@@ -61,6 +63,37 @@ class TableMeta:
     source_type: str = ""  # source type string (e.g. "iceberg", "postgresql") for time-travel
     original_table_name: str = ""  # pre-alias name (e.g. "registered_tables"); empty if no alias
     display_name: str = ""  # user-visible name (DB alias); empty → derived from field_name
+
+
+def extracts_paths(source_type: str, table: str) -> bool:  # REQ-151, REQ-152
+    """Whether a path column of ``table``, on a source of ``source_type``, is served as the
+    extraction from its JSON column (a SQL database) rather than by its name (a source whose
+    connector resolves the path), as the type declares (``core.source_registry.PATH_COLUMNS``).
+    A table whose source type is not known, or declares neither, cannot say which, and is
+    refused."""
+    from provisa.core.source_registry import PATHS_EXTRACTED, path_columns
+
+    if not source_type:
+        raise ValueError(
+            f"table {table!r} registers a column at a path, and its source's type is not known: "
+            "a path column is served by its name or extracted from its JSON column by the type"
+        )
+    served = path_columns(source_type)
+    if served is None:
+        raise ValueError(
+            f"table {table!r} registers a column at a path, and its source's type "
+            f"{source_type!r} serves no path column: its connector neither resolves the path nor "
+            "holds the document in a JSON column it is extracted from"
+        )
+    return served == PATHS_EXTRACTED
+
+
+def stored_path(column: str, path: str) -> tuple[str, list[str]]:  # REQ-151, REQ-152
+    """The JSON column and the keys into it a path column registered as ``column`` at ``path``
+    reads, on a SQL database: ``source.key...`` reads ``source``; a one-key path reads that key
+    of the column itself (the column is the JSON column, exposed under its alias)."""
+    first, *keys = path.split(".")
+    return (column, [first]) if not keys else (first, keys)
 
 
 def key_list(stored: str) -> tuple[str, ...]:
@@ -142,21 +175,16 @@ class CompilationContext:
     write_ops: dict[int, frozenset[str]] = field(default_factory=dict)
     # REQ-1942: per table with kept mutations (a Reversible environment), its change log's
     # address and primary key columns.
-    kept: dict[int, tuple[str, list[str]]] = field(default_factory=dict)
+    kept: dict[int, tuple[tuple[str, ...], list[str]]] = field(default_factory=dict)
 
     # Root query field_name → TableMeta
     tables: dict[str, TableMeta] = field(default_factory=dict)
-    # REQ-1921: every name a statement could give a draft table this role would see (field name,
-    # table name, alias, schema.table) → the table's name. In no schema; refused as draft.
-    draft_names: dict[str, str] = field(default_factory=dict)
     # REQ-1132: each name of a system domain's table the role holds no capability for -> the domain.
     missing_capability: dict[str, str] = field(default_factory=dict)
     # REQ-1132: each name of a table the role can only list -> the table.
     listed_only: dict[str, str] = field(default_factory=dict)
     # (source_type_name, relationship_field_name) → JoinMeta
     joins: dict[tuple[str, str], JoinMeta] = field(default_factory=dict)
-    # (table_id, graphql_field_name) → path expression (e.g. "payload.order_id")
-    column_paths: dict[tuple[int, str], str] = field(default_factory=dict)
     # REQ-1908: (schema, physical table) lowercased → {column lowercased: (epoch unit, data_type)}
     # for every registered temporal column its source stores as an epoch number.
     epoch_columns: dict[tuple[str, str], dict[str, tuple[str, str]]] = field(default_factory=dict)
@@ -168,6 +196,8 @@ class CompilationContext:
     subtype_columns: "SubtypeColumns" = field(default_factory=dict)
     # REQ-2171: the registered columns of a subtype held as text, read through its read form.
     read_columns: "SubtypeColumns" = field(default_factory=dict)
+    # REQ-2171: the registered timestamptz columns, which to_json is told it reads.
+    instant_columns: "SubtypeColumns" = field(default_factory=dict)
     # REQ-1915: the tables replicated row by row on the bound engine (flagged, and the engine
     # cannot attach their source). A to-one relationship into one compiles to a JOIN.
     row_level_tables: frozenset[int] = frozenset()
@@ -184,8 +214,19 @@ class CompilationContext:
     # (table_id, physical_column_name) → the GraphQL field name the row type gives it (alias, or
     # the naming convention applied): the name an aggregate's result fields use too.
     physical_to_gql: dict[tuple[int, str], str] = field(default_factory=dict)
+    # REQ-1385: (table_id, physical_column_name) → the column's alias, for a column that has one:
+    # its model name, which a physical rename under the alias leaves as it was.
+    column_aliases: dict[tuple[int, str], str] = field(default_factory=dict)
     # table_id → set of column names that require native API params (_nf_ prefix)
     native_filter_columns: dict[int, dict[str, str]] = field(default_factory=dict)
+    # table_id → the table's parameters as its metadata states them (REQ-1986:
+    # core.parameters.parameter_facts): name, type, kind, opaque or a real column, required. What
+    # a reader that counts, profiles, samples or scans a table asks before reading it.
+    parameters: dict[int, tuple[ParameterFact, ...]] = field(default_factory=dict)
+    # table_id -> every name its parameters are bound under, lowercased, to the parameter column
+    # (REQ-1986, core.parameters.parameter_names): its column, its own name, its alias. The one
+    # map every front resolves a parameter name by.
+    parameter_names: dict[int, dict[str, str]] = field(default_factory=dict)
     # table_id → {virtual_col_name → literal_value}
     virtual_columns: dict[int, dict[str, str]] = field(default_factory=dict)
     # table_id → {virtual_col_name → (key column, {key value → literal})}: a virtual column whose
@@ -194,6 +235,12 @@ class CompilationContext:
     row_virtual_columns: dict[int, dict[str, tuple[str, dict[int, str]]]] = field(
         default_factory=dict
     )
+    # REQ-1867: (table_id, physical column name lowercased) for every registered column typed json
+    # or jsonb: the only columns whose text is written as the JSON it holds.
+    json_columns: set[tuple[int, str]] = field(default_factory=set)
+    # REQ-1867: (table_id, physical column name lowercased) for every registered column typed an
+    # integer: written as a JSON number, by its type.
+    integer_columns: set[tuple[int, str]] = field(default_factory=set)
     # (table_id, col_name) pairs where the column is a GQL OBJECT stored as JSON
     gql_json_columns: set[tuple[int, str]] = field(default_factory=set)
     # (table_id, col_name) pairs where the GQL OBJECT type is itself a governed (registered) table —
@@ -208,9 +255,45 @@ class CompilationContext:
     # aggregate compiler selects a metric exactly like a sum/avg column (same expansion the
     # raw-SQL pipeline applies via metric_expand).
     metric_exprs: dict[tuple[int, str], str] = field(default_factory=dict)
+    # The lookups sql_rewrite derives from this context to lower a statement (its table names,
+    # replacements, published columns), each kept with the stamp of the inputs it was derived
+    # from and the SQL naming convention in force (sql_rewrite._derived). A context is built once
+    # and read by every statement of its role; derived per statement, they were most of the
+    # server time of a simple query.
+    lowering_memo: dict[Any, tuple[Any, Any]] = field(
+        default_factory=dict, repr=False, compare=False
+    )
 
 
 # --- Compiled query result ---
+
+
+# Asked for every column of every table each role's context is built from: a type is answered
+# from the memo.
+@functools.lru_cache(maxsize=1024)
+def is_json_type(data_type: str | None) -> bool:
+    """REQ-1867: a column type whose values are JSON -- PostgreSQL's json and jsonb, as a
+    registration or an engine names them."""
+    return data_type is not None and data_type.strip().lower() in ("json", "jsonb")
+
+
+#: REQ-1867: the integer types, as a registration or an engine (PostgreSQL, DuckDB, Trino) names
+#: them. A DECIMAL with no fraction is not one: it is written as a DECIMAL is.
+_INTEGER_TYPES = frozenset(
+    {
+        "int2", "int4", "int8", "int16", "int32", "int64", "int128",
+        "smallint", "integer", "int", "bigint", "tinyint", "hugeint",
+        "utinyint", "usmallint", "uinteger", "ubigint", "uhugeint",
+        "smallserial", "serial", "bigserial", "serial2", "serial4", "serial8",
+    }
+)  # fmt: skip
+
+
+@functools.lru_cache(maxsize=1024)
+def is_integer_type(data_type: str | None) -> bool:
+    """REQ-1867: a column type whose values are integers, written as JSON numbers by the type --
+    not by how a reader represented the value (a DuckDB HUGEINT read through Arrow is a Decimal)."""
+    return data_type is not None and data_type.strip().lower() in _INTEGER_TYPES
 
 
 @dataclass(frozen=True)
@@ -223,6 +306,17 @@ class ColumnRef:
     nested_in: str | None  # relationship field name, or None for root
     cardinality: str | None = None  # "many-to-one", "one-to-many", "one-to-one", or None for root
     is_agg: bool = False  # True when emitted as ARRAY_AGG correlated subquery
+    # REQ-1867: the value is JSON -- a column typed json or jsonb, or a relationship the statement
+    # builds as one JSON value -- and is written as the object, array or scalar it holds. Any other
+    # text is written as the string it is, even when it reads as JSON.
+    json: bool = False
+    # REQ-1867: the key paths ("items", "items.product") inside a JSON value whose strings are
+    # JSON text the engine wrote: a nested relationship or declared object, which Trino's
+    # json_format turns into text. Every other string inside the value is a string.
+    json_text: frozenset[str] = frozenset()
+    # REQ-1867: the column is typed an integer and is written as a JSON number, whatever a reader
+    # represented its value as (a DuckDB HUGEINT read through Arrow is a Decimal).
+    integer: bool = False
 
 
 class StatementSources(set[str]):

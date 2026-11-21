@@ -13,6 +13,8 @@
     "replace": "Substituição",
     "value": "Valor constante",
     "valuePlaceholder": "Valor (vazio para NULL)",
+    "readsNull": "Lido como NULL: esta coluna não é de texto, então uma máscara constante só pode ser NULL.",
+    "notTextConstant": "Esta coluna não é de texto: uma máscara constante é lida como NULL, então só é possível salvar NULL (vazio).",
     "precision": "Precisão",
     "year": "Ano",
     "month": "Mês",

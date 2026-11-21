@@ -18,7 +18,11 @@ social security numbers in tax_id and world cities in city, joined to a Data Pro
 A run suggests that tax_id looks like a US SSN and city like a world city, each with its evidence.
 Accepting the SSN suggestion links tax_id to the SSN Property term, marks it pii and names the
 ssn_last4 mask. Rejecting the city suggestion is recorded on the next run as rejected, not
-suggested again. A kind the org disables is not tested, so a run records nothing of it."""
+suggested again. A kind the org disables is not tested, so a run records nothing of it.
+
+The classification sample is non-null values per column (REQ-2147, amended 2026-11-15): a visits
+table of 4,000 rows whose city is 95% null still has the profiler's 100 values of it classified, and
+a note column holding 5 values is reported as too few values to classify, not as matching no kind."""
 
 # Requirements: REQ-2147
 
@@ -49,6 +53,12 @@ _CITIES = (
 )
 # Valid SSNs: area 123, group 45, serials 1001..1030 -- none 000, 666 or 9xx, none group 00.
 _ROWS = [(i, f"123-45-{1000 + i:04d}", _CITIES[i % len(_CITIES)]) for i in range(1, 31)]
+# 4,000 visits: a city on every 20th (95% null), a note on 5.
+_VISITS = [
+    (i, _CITIES[(i // 20) % len(_CITIES)] if i % 20 == 0 else None, "seen" if i < 5 else None)
+    for i in range(4000)
+]
+_PER_COLUMN = 100
 _PROFILER = {
     "cron": "0 2 * * *",
     "low_cardinality_max": 100,
@@ -61,7 +71,7 @@ _PROFILER = {
     "correlation_max_columns": 20,
     "joint_max_distinct": 20,
     "category_max_columns": 10,
-    "classification_sample": 500,
+    "classification_sample": _PER_COLUMN,
 }
 
 
@@ -73,6 +83,8 @@ def server(tmp_path_factory):
     db = sqlite3.connect(home / "crm.sqlite")
     db.execute("CREATE TABLE customers (id INTEGER PRIMARY KEY, tax_id TEXT, city TEXT)")
     db.executemany("INSERT INTO customers VALUES (?, ?, ?)", _ROWS)
+    db.execute("CREATE TABLE visits (id INTEGER PRIMARY KEY, city TEXT, note TEXT)")
+    db.executemany("INSERT INTO visits VALUES (?, ?, ?)", _VISITS)
     db.commit()
     db.close()
     readers = [_ROLE]
@@ -102,7 +114,24 @@ def server(tmp_path_factory):
                     {"name": "tax_id", "data_type": "varchar", "visible_to": readers},
                     {"name": "city", "data_type": "varchar", "visible_to": readers},
                 ],
-            }
+            },
+            {
+                "source_id": "crm-db",
+                "domain_id": "crm",
+                "schema": "main",
+                "table": "visits",
+                "profiler_source_id": "crm-profiler",
+                "columns": [
+                    {
+                        "name": "id",
+                        "data_type": "integer",
+                        "is_primary_key": True,
+                        "visible_to": readers,
+                    },
+                    {"name": "city", "data_type": "varchar", "visible_to": readers},
+                    {"name": "note", "data_type": "varchar", "visible_to": readers},
+                ],
+            },
         ],
         "relationships": [],
     }
@@ -135,15 +164,24 @@ def _graphql(srv, query: str) -> dict:
     return body["data"]
 
 
+def _table_id(srv, name: str) -> int:
+    tables = _graphql(srv, "{ tables { id tableName } }")["tables"]
+    (found,) = [t["id"] for t in tables if t["tableName"] == name]
+    return int(found)
+
+
 @pytest.fixture(scope="module")
 def table_id(server) -> int:
-    tables = _graphql(server, "{ tables { id tableName } }")["tables"]
-    (found,) = [t["id"] for t in tables if t["tableName"] == "customers"]
-    return int(found)
+    return _table_id(server, "customers")
 
 
 def _run(srv, table_id: int) -> list[dict]:
     """Profile the table now; the run's classifications rows, as the org admin reads them."""
+    return _run_results(srv, table_id)["classifications"]
+
+
+def _run_results(srv, table_id: int) -> dict:
+    """Profile the table now; the run's results, as the org admin reads them."""
     run = _ok(
         httpx.post(
             _url(srv, f"/admin/tables/{table_id}/profile-runs"), headers=_HEADERS, timeout=600
@@ -158,7 +196,7 @@ def _run(srv, table_id: int) -> list[dict]:
         )
     )
     assert isinstance(results, dict)
-    return results["classifications"]
+    return results
 
 
 def _decide(srv, table_id: int, row: dict, status: str) -> dict:
@@ -224,6 +262,29 @@ def test_a_run_suggests_each_kind_with_its_evidence_and_the_stewards_decisions_s
     assert second[("tax_id", "us_ssn")]["status"] == "accepted"
     # Rejected: recorded as the steward decided, not suggested again.
     assert second[("city", "city")]["status"] == "rejected"
+
+
+def test_a_sparse_column_is_classified_from_its_values_and_too_few_is_said_so(server):
+    results = _run_results(server, _table_id(server, "visits"))
+    rows = _by_column(results["classifications"])
+    # 95% null: a row sample of 100 rows held about 5 cities, too few; 100 values are read now.
+    assert set(rows) == {("city", "city")}, rows
+    assert rows[("city", "city")]["values_tested"] == _PER_COLUMN
+    columns = {c["column_name"]: c for c in results["columns"]}
+    assert (columns["city"]["classification"], columns["city"]["classification_values"]) == (
+        "matched",
+        _PER_COLUMN,
+    )
+    # 5 values: too few values to classify, which is not matching no kind.
+    assert (columns["note"]["classification"], columns["note"]["classification_values"]) == (
+        "too_few_values",
+        5,
+    )
+    # One read of the whole table (4,000 rows, within the budget) for every column.
+    (run,) = results["runs"]
+    assert json.loads(run["classification_attempts"]) == [
+        {"statement": "classification", "percent": 100.0, "rows": 4000}
+    ]
 
 
 def test_a_disabled_kind_is_not_tested(server, table_id):

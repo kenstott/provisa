@@ -5,7 +5,8 @@
       "encryption": "Crittografia",
       "authentication": "Autenticazione",
       "localUsers": "Utenti locali",
-      "secrets": "Segreti"
+      "secrets": "Segreti",
+      "secretsService": "Servizio dei segreti"
     }
   }
 }

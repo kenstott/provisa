@@ -30,7 +30,6 @@ from __future__ import annotations
 
 import asyncio
 from collections import Counter
-from collections.abc import Iterable, Iterator
 from typing import Any
 
 from provisa.executor.drivers.base import DirectDriver
@@ -231,15 +230,8 @@ class _Read:
 
         return row_schema(prepared.manifest, self.export)
 
-    def _loose(self, prepared: Any) -> bool:
-        from provisa.codesource.arrow_rows import WHOLE_ROW
-
-        # A row type typed by a preview: each row comes whole, and the table's registered columns
-        # are what the statement names, read out of it as a landed read reads them.
-        return self._schema(prepared).names == [WHOLE_ROW]
-
     def answered_by_image(self, prepared: Any) -> bool:
-        return prepared.worker().where_kind == "remote" and not self._loose(prepared)
+        return prepared.worker().where_kind == "remote"
 
     def answer_in_image(self, prepared: Any, sql: str) -> Any:
         """The statement answered by the host's front end over its function's rows."""
@@ -294,11 +286,7 @@ class _Read:
                 context=self.context,
             )
         )
-        rows = (
-            _registered(self.table, self.name, ipcs)
-            if self._loose(prepared)
-            else pa.RecordBatchReader.from_batches(schema, residual.batches(ipcs))
-        )
+        rows = pa.RecordBatchReader.from_batches(schema, residual.batches(ipcs))
         return residual.with_arguments(rows, self.arguments)
 
 
@@ -329,68 +317,3 @@ def _ipc_text(table: Any) -> str:  # a pyarrow Table
     with pa.ipc.new_stream(sink, table.schema) as stream:
         stream.write_table(table)
     return base64.b64encode(sink.getvalue().to_pybytes()).decode()
-
-
-def _arrow_field(name: str, data_type: str) -> Any:
-    """A registered column's Arrow form, by its IR type; a numeric's digits and a json value's
-    text, as every host sends them (provisa/codesource/arrow_rows.py)."""
-    import pyarrow as pa
-
-    from provisa.codesource.arrow_rows import IR_KEY
-
-    kinds = {
-        "text": pa.utf8(),
-        "bigint": pa.int64(),
-        "integer": pa.int64(),
-        "double": pa.float64(),
-        "real": pa.float64(),
-        "boolean": pa.bool_(),
-        "timestamp": pa.timestamp("us", tz="UTC"),
-        "date": pa.date32(),
-    }
-    if data_type in kinds:
-        return pa.field(name, kinds[data_type])
-    if data_type in ("numeric", "json"):
-        return pa.field(name, pa.utf8(), metadata={IR_KEY: data_type.encode()})
-    raise TypeError(f"column {name!r}: the IR type {data_type!r} has no Arrow form")
-
-
-def _registered(table: dict, name: str, ipcs: Iterable[bytes]) -> Any:
-    """Whole rows read out into ``table``'s registered columns (``pipeline_rows.project``), batch
-    by batch."""
-    import json
-
-    import pyarrow as pa
-
-    from provisa.codesource.arrow_rows import rows_of
-    from provisa.codesource.worker import encode
-    from provisa.mongodb.pipeline_rows import OutputColumn, project
-
-    outputs = [
-        OutputColumn(c["column_name"], c["data_type"], c.get("path"))
-        for c in table["columns"]
-        if c["native_filter_type"] is None
-    ]
-    fields = [_arrow_field(c.name, c.data_type) for c in outputs]
-
-    def _cell(value: Any, data_type: str) -> Any:
-        if value is None:
-            return None
-        if data_type == "numeric":
-            return str(value)
-        if data_type == "json":
-            return json.dumps(encode(value), separators=(",", ":"))
-        return value
-
-    schema = pa.schema(fields)
-
-    def each() -> Iterator[pa.RecordBatch]:
-        for ipc in ipcs:
-            rows = [
-                {c.name: _cell(row[c.name], c.data_type) for c in outputs}
-                for whole in rows_of(ipc)
-                for row in [project(name, whole, outputs)]
-            ]
-            yield pa.RecordBatch.from_pylist(rows, schema=schema)
-
-    return pa.RecordBatchReader.from_batches(schema, each())

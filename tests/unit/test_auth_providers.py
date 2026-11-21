@@ -265,6 +265,7 @@ class TestFirebaseProvider:
         # Bypass __init__ (which needs firebase-admin); validate_token only uses
         # the module-level firebase_auth handle.
         provider = FirebaseAuthProvider.__new__(FirebaseAuthProvider)
+        provider._entitlements_claim = None  # the field __init__ sets (REQ-2219)
         monkeypatch.setattr(fb_mod, "firebase_auth", _Auth())
         return provider
 

@@ -44,3 +44,37 @@ def test_an_array_of_finite_numbers_is_handed_over(embedded_postgres):
 def test_a_float_element_that_is_not_a_finite_number_is_refused(embedded_postgres, value):
     with pytest.raises(psycopg.Error, match=NON_FINITE):
         _read(embedded_postgres.dsn(), f"ARRAY[1.5, '{value}'::float8]")
+
+
+def _intervals(dsn: str, array: str) -> object:
+    marker = native_json_marker(
+        exp.column("v", "r", quoted=True), NestedColumn("interval[]", 1, "interval")
+    )
+    sql = transpile(
+        f"SELECT {marker.sql(dialect='postgres')} FROM (SELECT {array} AS v) AS r", "postgres"
+    )
+    with psycopg.connect(dsn) as con:
+        (value,) = con.execute(sql).fetchone()  # type: ignore[misc]
+    return value if not isinstance(value, str) else json.loads(value)
+
+
+def test_an_interval_element_is_postgresqls_own_text(embedded_postgres):
+    # REQ-2167: database_to_xml reads every column, an interval[] one with it, and writes each
+    # element as interval_out writes it; the read refused it, naming no verified form.
+    array = "ARRAY['1 day 02:00:00'::interval, NULL, '-1 mons 3 days'::interval, '00:00:01.5']"
+    with psycopg.connect(embedded_postgres.dsn()) as con:
+        want = [
+            None if v is None else str(v)
+            for v in con.execute(f"SELECT x::text FROM unnest({array}) AS x").fetchall()
+            for v in v
+        ]
+    assert (
+        _intervals(embedded_postgres.dsn(), array)
+        == want
+        == [
+            "1 day 02:00:00",
+            None,
+            "-1 mons +3 days",
+            "00:00:01.5",
+        ]
+    )

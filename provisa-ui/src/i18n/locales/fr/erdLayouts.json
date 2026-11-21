@@ -1,0 +1,23 @@
+{
+  "erdLayouts": {
+    "layout": "Disposition : {{name}}",
+    "layouts": "Dispositions",
+    "menuHint": "Choisir, enregistrer ou supprimer une disposition enregistrée de ce diagramme",
+    "automatic": "Automatique",
+    "save": "Enregistrer",
+    "saveAs": "Enregistrer sous…",
+    "delete": "Supprimer",
+    "unsaved": "Non enregistré",
+    "unsavedHint": "Le diagramme a changé depuis l'enregistrement de cette disposition",
+    "saveAsTitle": "Enregistrer la disposition sous",
+    "name": "Nom",
+    "nameTaken": "Une disposition nommée {{name}} existe déjà",
+    "deleteTitle": "Supprimer la disposition {{name}} ?",
+    "deleteConsequence": "La disposition est supprimée pour tout le monde. Les tables et relations qu'elle montre ne sont pas modifiées.",
+    "newSinceSaved_one": "{{count}} table nouvelle depuis l'enregistrement de la disposition",
+    "newSinceSaved_other": "{{count}} tables nouvelles depuis l'enregistrement de la disposition",
+    "place": "Placer",
+    "placeHint": "Ajouter la table à la disposition",
+    "notDrawn": "Le diagramme n'est pas encore dessiné"
+  }
+}

@@ -3,6 +3,1963 @@
 All notable changes to Provisa are documented in this file.
 Format based on [Keep a Changelog](https://keepachangelog.com/).
 
+## v0.1.0-alpha.510
+
+Released 2026-11-19.
+
+### Changes
+
+#### admin
+
+- A bulk delete reaches each single delete when GraphQL runs it
+
+#### api
+
+- A client that disconnects cancels its statement on the engine
+
+#### bolt
+
+- An internal fault in RUN is UnknownError, not SyntaxError
+- Answer each deliberate RUN refusal as Cypher over HTTP does
+
+#### build
+
+- Pyodide is pinned by sha256 and downloaded once per pin, never inside a build
+
+#### clickhouse
+
+- A decided CASE keeps an aggregate it would drop; a NULL array is described by its cast
+
+#### commands
+
+- Native SQL source_query command on a relational source
+
+#### compiler
+
+- A joined list row that is absent is no element, not one of nulls (J1218)
+- Guard only a nested list, not a to-one; recapture GraphQL goldens (J1218)
+
+#### conformance
+
+- Bind before Prepare matches DuckDB 2.0's wording of a missing value
+- An internal type's own functions are by design in the function report
+
+#### core
+
+- Background work submitted while shutdown runs is refused, never started on a fresh pool
+
+#### data-products
+
+- Gate bid and decision routes, one commit per product, hook secret as entered
+
+#### discovery
+
+- Ask before running, run only the kinds asked, use the assigned model's own key, say what each kind found
+- A model answer cut off at its token limit keeps its complete suggestions and says so; accept or reject every suggestion in one request
+
+#### docker
+
+- Copy provisa-graph into the graph-render stage, drop the removed erd layout file (#340)
+- Give pip a 120 s read timeout and 10 retries in the image build
+- Give Dockerfile.dev's wheel stage the same pip timeout and retries
+
+#### dq
+
+- A product's checks name the failures of their latest scan
+- Keep a regulation check as a Soda failed_rows rule citing its section
+- A kept regulation check's condition reads the named column alone
+- The regulation-check route asks pgwire for a sign-in's validator, not its own copy
+
+#### draft
+
+- An org_admin's SQL statement naming a draft reads it through the preview path
+- An org_admin role's GraphQL and REST surface offers drafts, read through the preview path
+- The ways to reach a draft are told to a role holding org_admin, marked as a draft's
+- A draft is served by the right to register tables in its domain, not by a role id
+- The Access section answers a draft to its preview's right; a catalog publish omits drafts
+- An ordinary statement pays nothing for drafts; test stand-ins carry the build's fields
+
+#### export
+
+- Snowflake TERM tag in the landing reconcile; unset stale Unity Catalog tags
+
+#### fakes
+
+- The Test data dialog offers by column family, Stable only when it can be, and names the saved text
+
+#### federation
+
+- Never route a source to a connector whose extension has no build for the running DuckDB
+- A closed native engine builds no runtime, and its close ends every open result
+
+#### glossary
+
+- Metric term picker, dataset metrics panel, locales, meta golden
+- The term page says Grounded in columns
+
+#### gql
+
+- A free node never reads a parameterized table
+
+#### graph
+
+- Term lane level with its columns, blocks of siblings where their lines are flattest; tests and SPEC to the new rule
+- A drop's path stays in the selected domains and out of system domains
+- The paths between two nodes never walk a link from a constant
+- Label pills read in the light theme; text colour by contrast
+- Saved frames read back join the page's frames, never replace them
+
+#### graph-ui
+
+- Split the Cypher explorer node list into Nodes and Parameterized nodes
+
+#### graph3d
+
+- Read a term's snippet a hop at a time, each term once
+- Open a term's snippet as every hop it read, in one query
+- Pin each line name to its own line, hide colliding names
+- A line name on a patch of the canvas, readable over its own line
+- The Product map opens on products, their tables and product links
+- A term's graph expands a table to its other columns, read on asking
+- A selected term lights its associations in 2D (J1240)
+- Open as query offers the search now shown, once its hop reads are in
+
+#### graphql
+
+- Where takes _not; the Ontology View's root excludes with it
+
+#### i18n
+
+- The translation memory records only the test-data strings translated here
+- Translate maintenanceTab stopTitle and stopConsequence in every locale
+- Keep the TM sidecars in their order, add only the two tag keys
+
+#### installer
+
+- install_systemd uses an env_file it defines, renders the unit atomically
+
+#### ir
+
+- Typed arrays are an IR type
+
+#### lanes
+
+- Fix the column lane, align tables and products to their columns
+
+#### mcp
+
+- list_fake_kinds names no column type when it reads the fake catalog
+- describe_table names how the caller reads each column
+- Sip mode lists a session its asking tools and adds groups on request
+
+#### meta
+
+- The meta relationships table lists no retired relationship
+
+#### meta,background
+
+- A retired domain is not in the meta domains table; cancel_background cancels queued work first
+
+#### metadata-export
+
+- Send ODCS customProperties to OpenMetadata in the shapes its model reads
+
+#### model
+
+- A draft's row of registered_tables is read by a role holding org_admin
+- Retired column listed again is restored; retired objects declare no key and leave the ERD
+- Retired objects are not served; retired names refused; restore per kind
+- A relationship that joins a retired column is not traversable
+- Retirement aftermath on the release branch
+- A domain that still holds a retired table is kept
+- A retired table holds its source too; refusals name it as retired
+
+#### model-history
+
+- Name each changed object by its model URI, never a serial id
+- Keep the requirement id out of a refusal; the relationship fake is a whole row
+
+#### model-reload
+
+- Reconcile reads only the added and changed sources
+
+#### nl
+
+- gRPC preview row read unpacks the helper's (cq, result) pair
+
+#### offers
+
+- bid.granted stores None as SQL NULL; dbt product tests build the offer tables
+- A synthetic offer is served through a role-wide fake mask
+- A synthetic acceptance refused for a column with no fake lists the offer for review
+
+#### ontology
+
+- Draft explanation moves into the Draft badge tip
+
+#### ontology-import
+
+- import, review and apply an ontology from the Ontology page; a term shows its IRI
+
+#### pgwire
+
+- Describe ClickHouse's bytea, time, array and window results as PostgreSQL's types
+- ClickHouse Strings of bytes read as bytes; bigint[] described by the call; ordered array_agg refused by name on ClickHouse
+- A MERGE whose USING reads another source is read first, then merged on its target
+- Describe only a literal cast to interval as interval; a column cast keeps the engine type
+
+#### polly
+
+- Polly reads the MCP explorer
+- The /explore row says how a run_sql statement goes to /sql or /python
+
+#### polyfill
+
+- A column and a page per connector dialect; array_length reads its dimension on Trino and ClickHouse; refusals name the routed dialect
+- array_length refused by name on array-less sources, first dimension only on Snowflake, BigQuery, Databricks, Hive and Druid; the index is one table per dialect
+- array_append, array_prepend and array_cat of a NULL array on ClickHouse as PostgreSQL answers; the array text pass reads every statement's tree
+- pg_timezone_names and timezone() of a POSIX zone as grid rows on DuckDB
+- Trino type operators answer as PostgreSQL or are refused by name, from the grid
+- Trino's engine errors of pg_catalog functions as grid rows
+- int8shl's exact wrap, jsonb literals and pgwire's server forms on Trino
+- age(xid), mxid_age, pg_char_to_encoding and the last Trino engine errors as grid rows
+- json_agg of a said text and unnest of a tsvector on ClickHouse refused by name
+- ClickHouse array_agg keeps its NULLs; current_schemas refused by name on ClickHouse
+- ClickHouse NULL-array fold, text dates, date_trunc and window defaults as grid rows
+- ClickHouse json_agg of said scalars, numeric_mod by nullIf; regression tests of run 43410717058 engine errors; polyfill docs
+- A NULL IS NOT NULL is false in the ClickHouse CASE fold; record orders, int8shl, window offsets, array_to_string, ts_rank seed on ClickHouse; numeric_mod kept elsewhere
+- A row polyfilling ClickHouse alone refuses nothing on a dialect with no grid column (array_agg, date_trunc, numeric_mod on spark)
+- The last engine errors of run 43450123314: jsonb casts, spg_poly_quad_compress, range_intersect_agg
+- ClickHouse answers bool and numeric of a jsonb value, its limits a grid Limitation
+- ClickHouse reads the grid before refusing a type, and compares timestamptz
+- ClickHouse answers max, min, isfinite, date, timestamp and date_trunc of timestamptz
+- ClickHouse answers date_part, extract, overlaps, timezone and precision of timestamptz
+- ClickHouse answers the 33 geometric measures through pg_forms_geometric
+- ClickHouse answers bytea's functions as its bytes, date_trunc at a zone, tstzrange's bounds and to_char of a NULL
+- An instant's row keeps the old form on a dialect outside the grid
+- ClickHouse's four holes give PostgreSQL's answer, its error outside a bound, or a refusal
+- ClickHouse's LIKE ESCAPE, timestamp bounds, row-computed range bounds, bytea LIKE/ILIKE and native exception text
+- interval_mul, interval_div and mul_d_interval on ClickHouse, PostgreSQL 17's float cascade in Float64 (J1337 tranche 2)
+- DuckDB keeps its own reading of an interval input not read here, refusing only what PostgreSQL refuses; function_macros reads a row named by its signature (J1337)
+- DuckDB refuses by name an interval input it fails on or misreads, keeping a bare number of seconds (J1337)
+- ClickHouse array_agg of arrays writes no NULL of an array; PostgreSQL's errors of its arrays, the edge of no rows raised by name
+
+#### products
+
+- Offer requests go through hooks; open offers are public data; sanitized profiles
+
+#### provisa-graph
+
+- Lanes placed from a barycentre order, spread to the tallest, boxes apart; labels sized and wrapped; readable fit; no dot grid
+- Readable floor across too, a lane hint that says the wheel scrolls, depth redraw pinned
+- A label wraps at its spaces unless a word is wider than its room
+- Fit control fits the whole image; control tips on one line
+- Draw a beside-lane line's name clear of the term boxes (J1227)
+- A graph with a focus opens and resets with the focus in view
+
+#### reload
+
+- A retired source is not among the rows a schema build reads
+
+#### request-thread
+
+- The client watch keeps one receive relay; shard plan holds the disconnect test
+
+#### router
+
+- provisa-admin is typed and dialected by the source-state loader
+
+#### sandboxes
+
+- A template whose folder is not on this node is not served as built
+
+#### schema
+
+- is_system is a column of the sources CREATE TABLE, not an ALTER
+- sources.is_system keeps its ADD COLUMN beside the table's others
+
+#### site
+
+- Sources story leads with classes and the connector tree
+
+#### sparql
+
+- A table the model reads through a view is named by its registered name
+
+#### store
+
+- Write a metrics view by its declaration alone
+
+#### syncing
+
+- A new entry's direction follows its type until chosen; tour says an entry can import
+- An entry's panel offers Duplicate, and its head actions take the head's one style
+
+#### tables
+
+- Register table source picker omits __derived__ and is_system sources
+- Associations relationship links carry the detail param; system relationships left out
+
+#### tags
+
+- Reserve the term tag name for the grounded term
+- Tag definitions and assignments cite library sections
+- Read tags report rows as the tag admin reads assignments
+- Tags report reads term domains without the ontology views
+- Required tags, on the admin API and as missing rows in the tags report
+- One form for a tag assignment: reason, expiry and citations
+- Meta views connecting tags, library sections and objects
+- meta.library_documents, related to the library views both ways
+
+#### transpiler
+
+- Array text and NULL arrays on Trino and ClickHouse; Trino array results as PostgreSQL arrays
+- ClickHouse's day of a value a call computes is Date32's, and the call keeps its bound
+- The interval keyword's literal read whole; interval literals on ClickHouse, Trino and DuckDB answered or refused by name; f(..)::text of an interval call answered (J1337 part 1)
+- array_to_tsvector raises PostgreSQL's error for a NULL or empty lexeme on the engine
+- A grid row walks a statement only on a dialect it writes; forms and json matrices follow what the engines now answer
+
+#### ui
+
+- Graph marks only what a view sets; controls bottom-left, legend top-right
+- Graph copy says done beside its control; ERD filter test reads the graph's dim class
+- A junction is a diamond, the one named exception to the node shape
+- Stacked terms spaced at the drawn node height; SPEC names the junction diamond
+- A fit keeps the diagram below the legend
+- PanelDelete releases its panel lock with the settle, not a later effect
+- Data product offers in a tabbed right-hand panel; locale strings
+- Product panel details closed by default; in-panel offer forms guard leaving; sample view placeholder
+- Contracts only per offer; hand-written contract editor and save removed
+- Contracts only per offer, no ?contract= links; offer change kinds in words
+- Every list page's detail panel is in the URL
+- Escape in a detail panel asks before dropping unsaved changes
+- Derived roles and webhooks have their own deep links
+- Bulk delete strings in 13 locales; Tables bulk delete keeps its refusals shown
+- Ontology import review passes the busy-flag and panel-head guards
+- An expanded term graph opens on the term alone
+- An expanded term graph opens at the product graph's depth
+- Each dependent of a refused delete is its page's label, linked to its panel
+- A dependent's link reads at the list's size
+- A 2D graph being laid out says so and draws no stacked nodes
+- A graph's layout starts once the frame saying so is painted
+- View controls sit in the canvas stack in 2D and 3D
+- The ontology graph's Lateral edges chip is called Associations
+- The Associations hint sits on a span round the chip
+- A list page's own add button is the filled primary
+- Reword the Related to dialog intro and heading in plain words
+- A form read flows as its edit form; the term page reads through it, its state hints beside their values
+- One Cancel button everywhere (CancelButton)
+- The product panel's edit action takes the panel head's one style
+- The data product page is summary rows; quality is status and counts
+- Each test-data section lays its fields out in its own form layout
+- A destructive confirm is filled red, one component, Delete says Delete
+- A node picked in the plan diagram keeps the view; a row picked brings its node into view
+- + Source opens empty; Duplicate opens the create form from a source
+- Duplicate and empty create for Commands, Tables and Views, Relationships, Metrics
+- Stop a running query in the SQL editor and the GraphQL, Cypher and SPARQL explorers
+- Keep the query bar's Stop off the bar's edge
+- Duplicate for Roles, Derived roles, RLS rules, Data Products, Terms, Triggers, Regions, Grants; _copy for SQL names; view copy name editable
+- Duplicate beside Edit on a term; a rule's tip names its panel title
+- The SQL page's running flag is cleared in a finally
+- Stop all services asks for confirmation first
+- 3D graph floor Grid is off at first; the choice is remembered
+- Tag citations of the reference library in the tag editor, chips and Library
+- Tag citation links read as links; the detail spacing; render fixes
+- Native SQL arguments take no relation kind
+- Table panel edits import set, file glob and column discovery; Register one blocked table
+- Register sits under the row's reason; read-view guard knows the moved fields
+- MultiSelect option carries its own reason when it cannot be picked
+- The Tables field states its listing in its hint, at long width
+- A native SQL command's read view shows its source and its SQL
+- Register Table combines files into one table
+- The Combine section reads as one block at every width
+- Required switch in the tag editor and Required badge in the tag list
+- A graph whose ELK layout fails after it started shows the error
+- A change of size reads Enlarge; a row's detail reads Expand/Collapse
+- Register Table keeps its Tables list open while the list is asked again; a remote source is saved only once its settings are read
+- ELK layouts run through provisa-elk only; a failed layout is shown
+- Every standard role sees its pages and opens the app on one
+- Sandbox Create Organization signs out as Log Out does; invite button never switches role
+- Discovery dialog's Run and Cancel sit in the form's footer spacing
+
+#### ui,api
+
+- Bulk delete on Relationships, Metrics, Sources, Roles, Domains, Data products, Tags, Scheduled tasks
+
+#### General
+
+- Tables panel leaves the preview when an action changes the panel body
+- The SQL editor and modeling dialog hover buttons use the shared canvas controls
+
+## v0.1.0-alpha.509
+
+Released 2026-11-14.
+
+### Changes
+
+#### admin
+
+- table_registration reads the materialized list and store info
+- Redact credentials in any DSN query parameter
+- Count only the materialized views the caller reads
+- Redact odbc_connect and semicolon-separated DSN credentials
+- Gate registerTables and tableAccess with require_capability
+
+#### admin-ui
+
+- Mail transport and MV actions asked a right the API does not (J684 follow-up, audit #7)
+
+#### apply-dry-run
+
+- Stamp write_ops on tables before schema build
+
+#### audit tour
+
+- Name the Ontology step term as the catalog stores it
+
+#### bench
+
+- A table save keeps its read wait
+
+#### cli
+
+- Provisa api, a generic call to an instance API
+- Keep requirement id out of the --person refusal
+- Diff keeps a typed-field reference and compares it only with a reference
+- plan, drift exit, can-i, contexts, shared output and filter, wait, schema
+- Query --changed runs the statements a model change affects
+
+#### code-sources
+
+- A code source can be written in Rust
+
+#### codehost
+
+- DuckDB 2.0 -- an engine error met as a code statement's answer streams is raised as DuckDB raises it; a full spill volume still refused naming the cap
+
+#### codesource
+
+- A sort past the capped DuckDB is refused by name, memory per thread has a minimum
+- Refuse loose row types by name, drop preview typing
+- The code can write an audit event to the org trail
+- Size the Node host's record batch from its rows
+
+#### compiler
+
+- A mask the source cannot evaluate is computed by the engine, not refused
+- A role context built over types already read tokenizes no SQL
+
+#### config
+
+- A change the model build does not read does not rebuild the schema
+- The rebuild itself answers whether only the stamp moved
+
+#### conformance
+
+- The Cypher TCK stops inside its bound, naming the scenario in progress
+
+#### connectors
+
+- @requires tag, connectors config block, provisa connector build/check/rebuild
+- operator-run connectors join by handshake; block in the model; private indexes
+- The pairing explanation is help, not a hint
+- Standard connector.yaml sets the store, defaults and fixed values
+- Lifecycle tags, health shown on the source
+
+#### core
+
+- Table constraints upgrade in place on an older schema
+
+#### cypher
+
+- Write a session node's labels as JSON in its object
+- An OPTIONAL MATCH walk that found nothing gives a null path
+- A variable-length relationship variable with no path variable reads its walk's relationships
+- nodes(), relationships(), length(), startNode(), endNode() of a carried path or relationship
+- A value a WITH carries is grouped by its column, not a node's star
+- collect(nodes(p)) of a walk is a list of node lists, read as nodes
+- A variable-length pattern comprehension gives one column; its walk still fails past the depth limit
+- A walk's property map filters each hop; [rs*] walks a carried list of relationships
+
+#### dbt
+
+- A dbt source type: manifest, offered models and commands, setup form
+- Classify dbt_manifests and count the dbt source in the docs, site and tour
+- A public, contracted model is offered as a candidate data product
+- Registering a source's models as data products asks table_registration in the domain
+
+#### demo
+
+- The sandbox tier serves audit, now published
+
+#### demo-templates
+
+- A template's readiness record counts its store in one operation
+
+#### demos
+
+- Write glossary term names in lower case, and test it
+- Publish the audit demo with a card from its real answer page
+
+#### deps
+
+- Raise locked dnspython to 2.9.2 (CVE-2026-128089)
+
+#### discovery
+
+- A catalog nothing has requested is not reported as being prepared
+
+#### duckdb
+
+- DuckDB 2.0 lambdas in the keyword form; pg_timezone_names' table macro before its value macro
+- Postgres filter pushdown back on -- postgres_scanner 2.0.0 fixes duckdb-postgres#564
+- DuckDB 2.0 -- statements on cursors, JSON extraction as a function, forms safe where 2.0 evaluates an untaken branch
+- DuckDB 2.0 -- relations read with fetchall, the default connection read to its end, a JSON extraction a call takes read back as itself, lambdas sent as written in the keyword form
+- DuckDB 2.0 -- streams from the statement's relation, a NULL scale answers NULL, the excerpt's run of carets dropped, sources reachable in the source-save doubles
+- A PostgreSQL store's catalog cache cleared with postgres_scanner 2.0's postgres_clear_cache
+- A SQL Server source pinning trust_server_certificate attaches with TrustServerCertificate=yes
+- A live read's NULLs inlined typed as its table declares; a view over an empty search keeps its scores DOUBLE
+- Airport from Query.Farm's repository on DuckDB 2.0; provisa-duckdb-ext 0.2.2 carries it
+- The connector probe brings airport up from its repository, as the loader does
+- DuckDB 2.0 -- the control plane's catalog cache cleared on every registry walk, so an org schema made since the attach resolves
+- DuckDB 2.0 -- every database opened without 2.0's remote_pushdown optimizer; a statement over a large constant list planned in milliseconds, not minutes
+- DuckDB 2.0 -- a geometric form's run of names written as a pipeline; the deepest bound in 1.5GB, not 4.4GB
+- A JSON step keeps DuckDB's own arrow outside a call; JSON_EXTRACT only as a call's argument
+
+#### duckdb-ext
+
+- Mirror every extension with its.info; staging refuses one without it; provisa-duckdb-ext 0.2.1
+- Ship and stage Query.Farm's repository trust anchor; crypto unknown-repository is not staged
+
+#### duckdb-runtime
+
+- Attach another region's store once when two reads reach it at once
+- Restore the attach lock after the red probe
+- Restore the attach lock after the second red probe
+
+#### entitlements
+
+- The core of per-person entitlements on a coarse role
+- The nested claim is named in each identity provider's settings
+- Product save reads the caller through the resolver info; entitlements tables never travel
+- One write API for a principal's lists
+- People search and grants by email that attach on sign-in
+- Person roles and kinds reads on the entitlements API
+- Names tree in the model's spelling; undefined IdP roles left out of /roles
+- Mirror identity provider role claims at sign-in
+- rule, add-access, history and per-capability reads for the UI
+- Expiry rules end every capability they name
+
+#### entitlements-ui
+
+- Read kinds, names and a person's roles from the API
+
+#### ephemeral
+
+- Name session tables quoted so a label in capitals passes V006
+- Name anchor tables in lower case, as Trino's store catalog finds them
+
+#### export
+
+- A config export keeps seeded data product members and relationships to seeded tables
+
+#### federation
+
+- The DuckDB engine attaches only what is staged; MotherDuck refused by name
+- Not attachable means replica; unreachable only with no reader, shown at add naming what is missing
+- Read the DuckDB version for MotherDuck in the module that owns DuckDB
+
+#### golang
+
+- Go code sources get provisa_services
+
+#### gql
+
+- A path over the session's graph starts from its more selective end
+
+#### graph3d
+
+- A product graph opens on its product, the rest of the model on asking
+
+#### grpc-remote
+
+- A source's message classes in a descriptor pool of its own
+- The demo server builds its message classes as load_stubs now takes them
+
+#### i18n
+
+- Translate the org engine strings for the platform administrator
+
+#### image
+
+- The product image carries a C linker for Rust sources
+
+#### library
+
+- A top-level Library page with a background index job
+- Upgrade an existing reference_documents in place
+
+#### lineage
+
+- Receive OpenLineage run events into the lineage graph
+
+#### mcp
+
+- Every MCP call runs as a principal with its entitlements
+
+#### metadata-export
+
+- Exported data products carry their grounded terms
+
+#### metadata_export
+
+- Scope product_memberships; include graphql-demo tables in config
+- product_memberships refuses unknown members, tolerates seeded ones
+- An edge, rule or lineage leaf on a seeded table publishes nothing
+
+#### mv
+
+- Serialize store schema creation with a per-schema advisory lock
+
+#### oauth
+
+- A refresh lock is released by name before its session is closed
+- Closing a refresh lock whose session already ended releases nothing
+
+#### org-engine
+
+- The lane is read-only for the org, saved from the Platform page
+- An org admin changes its own lane on the org page
+
+#### pgwire
+
+- pg's last three function-check differences (J1185,)
+
+#### rebuild
+
+- One rebuild lock per runtime; a reload builds only a stale runtime
+
+#### release
+
+- Platform connector block as a release leg
+- Build the Spark connector image into the run, push it only at publish
+
+#### reload
+
+- The config watcher waits for the save it follows
+
+#### replicas
+
+- A table says what a read does with nothing landed
+
+#### residency
+
+- Without the freshness guarantee a read answers from the replica it holds
+
+#### scheduler
+
+- A scheduled job is not audited as the request that last armed the wakeup
+
+#### schema
+
+- Every column added to an existing table has its ADD COLUMN IF NOT EXISTS
+- Drop constraints removed from CREATE that survive on older planes (J1158)
+- glossary_terms.iri is added to a table that predates it
+
+#### secrets
+
+- Account for reference_documents.pending_content in the reference search
+
+#### settings
+
+- Naming and processing settings are the org's
+- An org-only graphql_remote save leaves the deployment config file
+
+#### site
+
+- Tighten the home page for product-led adoption
+- The rotating headline keeps one height
+- The AI access guide points at the queries report
+- Stylesheet changes reach returning visitors, button reads Live Demo
+
+#### snowflake
+
+- Dynamic Tables and Tasks as tables and commands
+- Read the connector error class through the driver that owns it
+
+#### spark-e2e
+
+- Set SPARK_HOME so pyspark-client probe succeeds in CI
+
+#### sql
+
+- A command the role may not call reads as a name never registered (V006)
+
+#### sql-validator, ephemeral
+
+- A field of a derived value column is read; a session node keeps its alias's spelling
+
+#### start
+
+- End the launch when the backend fails to start
+- End start-ui.sh when the backend fails to start
+- Refuse a virtual environment out of step with uv.lock
+
+#### storage
+
+- An org store is assigned by the platform administrator
+
+#### store_config
+
+- Revert J1161 seeded-table inclusion; fix product_memberships skip
+
+#### tables
+
+- Register several tables at once, from the source just saved to its data
+
+#### transpiler
+
+- A to_json of a map or a list is encoded once on DuckDB
+- A to_json of a to_json is encoded once on DuckDB
+- Cast an array literal to its own nesting depth, not the declared type's plus it
+- Give array_cat a Trino form
+- Give an array's @> a Trino form
+- A to_json object value reaches Trino as FORMAT JSON text
+
+#### ui
+
+- A landed result shows no row count; the redirect test finds the row-limit option in its portal
+- A Quality contract read cut short by its panel leaving answers null; e2e budgets from measured CI latency
+- Source sign-in page reads the runtime base domain
+- Each admin page one layer: the stores on Platform, Cache per right
+- Translate the DuckDB thread memory refusal into every locale
+- Give the Unregistered badge its own shell row
+- Point a regional org on a plan to Billing
+- Add assign_entitlements capability to DEFAULT_ADMIN_ROLE and locale catalogs
+- Entitlement strings in every locale
+- Grant and end entitlement lists from the Team page
+- Cascading searchable pickers for entitlement lists
+- Entitlement pickers claim their Escape and sit beside their level names
+- Entitlement ended and superseded hints use the shared Tip
+- A grant's end dates, soonest first, with extend on a list's end
+- End dates keep their dates on one line; the superseded hint sits on its text
+
+#### windows
+
+- Pin and cache the WSL rootfs, verify its sha256
+
+#### General
+
+- to_json of a list of instants reads as PostgreSQL's does
+- Enforce column visibility in minted listener, skip function-call table refs
+- Governed pipeline enforces column visibility when context is empty
+- Enforce calling role governance on minted-token listener
+- Resolve a qualified column outward and refuse an unresolved one; drop listener bolt-on
+- A column registered with a grant named keeps exactly that list
+- Governance caller sees all columns; command ops survive hidden input
+- Revert governance gate widening; fix integration test caller
+- A code_command's table arguments are prepared, not passed through
+- Scalar SELECT fn(args) form and minted_call_tokens parity
+- Resolve diagnostics in test_background_work.py
+- Rewrite only qualified calls recognised by node type
+
+## v0.1.0-alpha.508
+
+Released 2026-11-10.
+
+### Changes
+
+#### admin
+
+- Each page's UI gate matches its API gate and owner
+
+#### audit
+
+- Let an account's erasure tombstone query_audit_log
+- Keep the requirement id out of the audit-rule DDL
+
+#### authz
+
+- The assignment is the grant
+- Add command_execution to fixture roles for admission-every-surface test (R508d)
+
+#### ci,sharepoint
+
+- Let the runner's pgwire server read the certificate
+
+#### codehost
+
+- A built image's worker has its thread pool sized at spawn
+
+#### codesource
+
+- A code table is given the arguments its governed relation passes up
+- A host on inherited sockets has its thread pool sized at spawn
+- A built image holds the provisa modules its PostgreSQL protocol imports
+
+#### conformance
+
+- Take psycopg tests that pass now off the expected-failure list
+- Charge a pool worker's late thread exception to the test that started it
+
+#### contracts
+
+- A version snapshots a column's declared type as the store holds it, null when none
+- A version column's type is required; registration guarantees it
+- A table save snapshots each column's resolved type
+
+#### cypher
+
+- Schema procedures take YIELD/RETURN; model nodes keep stable ids beside a graph session
+- An unlabelled relationship read skips relationships lacking the property its WHERE filters
+
+#### data-products
+
+- Refuse moving a product with members; exports tests to the m2m shape
+
+#### demo
+
+- Users id and name served to org_admin through data_steward, not by name
+- customer360 relationships get distinct GraphQL fields
+- customer360 views filter by one table's columns, as the join guard requires
+- Restore view_* names in account_health product; copy source_catalogs in cloned env (R508e)
+- test_fake cloned env reloads masking_rules with faking=True (R508e3)
+
+#### demo-sandbox
+
+- test_fake cloned env reloads masking rules with fake generators
+
+#### demos
+
+- Replace RELATED_TO term edges where a truer type fits
+- The data room reads SUM of a bigint as the numeric PostgreSQL answers
+
+#### docs,demo
+
+- No requirement ids in the governance note; starthere users serve org_admin the id and name
+
+#### e2e,sharepoint
+
+- The certificate path both Trino and the host's server can open
+
+#### engine
+
+- A statement runs in the pgwire session's zone
+- The session's zone written into what Trino and ClickHouse read of an instant
+- A text function's result is no instant to ask about
+- ClickHouse zone answers typed for Arrow, Trino to_json of a timestamptz as PostgreSQL's
+- ClickHouse start of a second keeps its fraction, a replacement of nothing is served, the forms matrix is the replay's
+- A range reads an instant that names UTC; Trino's start of a microsecond is the value
+
+#### exasol,saphana
+
+- An unquoted reference reads the governed relation's quoted output; the register form waits out a model rebuild
+
+#### federation
+
+- A governed relation is read as its table by predicate propagation and the ClickHouse scan
+- Connector server exit error names the Java root cause
+- Read the control plane's attach from DuckDB, refuse provisa_admin for a source
+- A pooled ADBC engine read holds no transaction between borrows
+
+#### governance
+
+- An action reads only its served columns; tests read answers; no shared registry
+- A read's governed relations serve the outputs it reads; a path column is its path
+- A path column is read by its name, and at its path on Trino's MongoDB catalog; every chain level reads only what is read
+- Path columns are served by the governed relation
+- Sources declare how they serve a path column; a SQL path column is a String
+- What a statement names beyond a table's columns reaches its governed relation
+
+#### graph3d
+
+- Term graph in demos: 2D at one hop, emphasis, tooltip, crossings
+
+#### grpc
+
+- One proto field per remote GraphQL parameter
+
+#### grpc_remote
+
+- Register gRPC tables under lower snake case names
+- A gRPC table is addressed in SQL by its convention alias
+
+#### guard
+
+- Whether a statement is connected is settled without listing its unions' branches
+
+#### join-guard
+
+- A filter on a window result over joined rows is not a match
+
+#### lineage
+
+- Fold a view between an input and a member into the column edge
+
+#### live-only
+
+- Cut a live-only table's part where its governed relation stands
+
+#### mcp
+
+- The tool request shim carries headers, so MCP decisions survive the idempotency key
+
+#### meta
+
+- Read product membership through the junction tables
+
+#### meta-views
+
+- Read registered_tables before table_columns, as schema.sql locks them
+- Drop a requirement id from the table_columns SQL comment
+
+#### model-build
+
+- Replace lineage edges and checker targets one build at a time
+
+#### model-names
+
+- Replace the stored names one build at a time
+
+#### names
+
+- Store the names table in one batched insert
+
+#### naming
+
+- Rules for every client-facing name kind
+- Names table built per model version
+- Names table published as meta table with a report
+
+#### orgs
+
+- Account deletion removes each org's copy of who the person was
+
+#### pgwire
+
+- A client's catalog statement runs unprepared and without JIT on the control plane
+- Read a TimeZone bound to set_config
+- Read a POSIX TimeZone with no abbreviation
+
+#### polly
+
+- A delivered file downloads, and no delivery is said as none
+
+#### rebuild
+
+- Write names-table after schema_version increments, skip for env builds
+
+#### release
+
+- A commit scope of requirement or work item ids is no scope in the notes
+
+#### site
+
+- Dremio is not an engine Provisa can register
+
+#### sql
+
+- An aliased table's published columns are lowered like any other's
+
+#### startup
+
+- Type the registered table name in the admin key pass
+
+#### transpiler
+
+- A timestamptz literal names UTC on Trino, Presto and Athena; json_agg and json_build_object of a stated instant refused by name on Trino
+- ClickHouse start of a sub-minute unit writes no dateTrunc in either branch
+- Cypher range() on the pg engine is generate_series, not sequence
+- Cypher list functions on the pg engine are PostgreSQL's own
+- J731 english_stem keeps an empty stem and a word over 1000 bytes, ts_rank of no lexemes is 0
+- A NULL beside a range, multirange_cmp of columns, a multirange of an array
+- J731 ClickHouse flattens one level, Trino counts past 10000 in blocks
+- -> and ->> of a step the rows hold read a key or an index, never a path
+- Trino's array index is an array's alone and counts back from the end
+- J731 a token's parts by a searched CASE, which ClickHouse reads
+- J731 a search reads a column's vector once, within ClickHouse's max_query_size
+- A zoned instant's form keeps what the statement says of its value
+- A to_json is told apart once, never around what json_encoded already told apart
+- A to_json of an ARRAY_AGG or JSON_OBJECT is not wrapped, it is never an instant
+- A to_json of a map or a list is encoded once on DuckDB
+- A to_json of a to_json is encoded once on DuckDB
+
+#### ui
+
+- Name clash policy control
+- Role form capabilities as one multi-select dropdown with a tick per option
+- A graph redrawn mid-layout keeps its canvas
+- A product's inputs are its Lineage panel's Inputs lane
+- Show a delivered file in the Explore MCP chat
+- List SQL explorer schemas and tables alphabetically
+- Product membership read and written through the many-to-many surface
+- Lineage inputs read product_ids, drawing a node per product; data products label and domain_has_members refusal in every locale; prettier
+- An enclosing Tip stays closed while the pointer or focus is on a nested Tip target
+- Admin and Docs move from the top navigation into the user menu
+- Remove the Settings entry from the user menu
+- A Kaggle search a newer one replaced answers nothing; a taken alias gets the source's catalog name
+
+#### General
+
+- A governed read keeps its instant on Trino, a row timetz has no date; tests follow the amended requirements
+- Restore launch server and test ordering to unblock CI re-run failures
+- Fail closed when table absent from visible_columns
+- Populate visible_columns in _model() so V003 passes under fail-closed
+- Route cloned-env surface copy through install_surface (J1157d)
+- Populate state.tables in pg_backed_flight to avoid V003 on Flight DoGet
+- Complete state.tables shape in pg_backed_flight fixture (R508c2)
+- Clone path: source_catalogs, SYNTHETIC unbound, as_generated, __derived__ guard
+- Synthetic env — camelCase param column rename and mat_store catalog not found
+- Wire pgwire_pg_backend model_db + remove stale '^' MATRIX entries
+- pgwire_pg_backend registers the meta catalog views as the product does
+- A SYNTHETIC-bound env is built in full, not cloned from PROD
+- pgwire_pg_backend grants the catalog client role its views
+- A generated parameter column is published by its own name, no alias
+- A client's catalog statement is answered whole, past the role's row cap
+- A schema-qualified WITHIN GROUP or FILTER call is a call, not a column
+
+## v0.1.0-alpha.507
+
+Released 2026-11-07.
+
+### Changes
+
+#### api
+
+- A TTL -1 API table with declared rows is read from its replica, never fetched
+- Resolve a table's TTL before asking whether it is kept for good
+
+#### demo
+
+- Banksecrecy relationships get their own GraphQL field names
+
+#### guard
+
+- A union's branch choices are judged unexpanded, never listed as their product
+
+#### macos
+
+- Allow only the container-image unpack warning in Apple's notarization log
+
+#### packaging
+
+- Retry a dropped staple connection and fail on Apple's notarization log
+
+#### tags
+
+- Library document and section tags kept with the library
+
+#### ui
+
+- The tags scope bar wraps its twelve object kinds
+
+## v0.1.0-alpha.506
+
+Released 2026-11-07.
+
+### Changes
+
+#### conformance
+
+- Keep psycopg's brace-form UUID parameter failures listed
+
+#### demo
+
+- setup_pulls waits for the view's read window to open
+
+#### naming
+
+- Name client-facing names through the naming authority
+- naming.ts answers as naming.py, takes presets; B16 alias follows the convention (D18, B16)
+- Type attach_catalog's source as Source | SimpleNamespace
+
+#### pgwire
+
+- Read a text Bind value as an array only for an array-typed parameter
+
+#### reference-library
+
+- read.xlsx workbooks, a sheet a section and a row a paragraph
+
+#### schema
+
+- Refuse a computed relationship's field another relationship holds
+- Add the row rule, role and metric tag columns to a tag_assignments that predates them
+
+#### ui
+
+- metaGraph rowKey and ServiceNow schema name use naming.ts (D15, D17)
+- Filter box on the Admin Reports list
+
+#### General
+
+- J856 /data/sql column_types lists a registered integer as integer
+
+## v0.1.0-alpha.505
+
+Released 2026-11-06.
+
+### Changes
+
+#### release
+
+- Oauthlib 4.0.1 (CVE-2026-49272); keep openssl@4 headers out of the macOS PG build
+
+#### tags
+
+- Row rules, roles and metrics carry tags
+
+## v0.1.0-alpha.504
+
+Released 2026-11-06.
+
+### Features
+
+#### Admin UI
+
+- Maintainer 2026-10-30: a layout is a saved arrangement of the ERD, for building a high quality diagram that can keep being revised.
+
+#### Authorization
+
+- A capability assigned to a role never widens that role's read or write grants.
+
+#### Business Glossary & Ontology
+
+- Maintainer 2026-11-03: "another angle for getting terms from docs would be a sql query with id + text against a registered table", then "it could literally just be domain,,table,id,text".
+
+#### CI/CD
+
+- CI runs a leak test on the local platform (embedded PostgreSQL and DuckDB): one server process serves a mixed request loop over every surface -- GraphQL, SQL, Cypher, SPARQL, pgwire, Arrow Flight, REST and JSON:API reads, a write, a subscription opened and closed, a sign-in and a sign-out -- for N iterations after a warm-up, then N more, and a churn of K demo sandbox orgs, each created, used and reaped.
+
+#### Catalog Explore
+
+- Polly can perform every action the UI can, as the chatting user, through the admin API the UI uses.
+
+#### Data Catalog Integration
+
+- Databricks Unity Catalog joins the data product export (docs/data-products.md, metadata export) as a target that approximates a data product, as the BigQuery Analytics Hub target does: Unity Catalog has no data-product entity.
+- A feature that works but is not yet proven for production, such as a metadata export target not yet verified against a live tenant of that product, is shown as "<Name> (beta)" wherever a user picks or sees it, and its documentation states why it is beta.
+
+#### Data Products
+
+- The Data Products page and the core of its detail panel are drawn from the meta domain through the governed pipeline as the signed-in user: the product list, and each panel section's summary (the product's fields, its domain, member tables, commands, tags, glossary terms, data-quality and profile evidence, related tables and lineage) come from data_products_meta and its relationships and data_product_edges. [SUPERSEDED by 2026-11-06 -- lineage comes from the product lineage endpoint.
+- The Data Product detail panel has a Knowledge Graph panel, one of its masonry panels, scoped to the selected product.
+- A data-quality checker table's description states its quality claim: why the check exists, in business terms (for example, "Orders are complete and unique so daily revenue reconciles with finance").
+- A data product's data quality has three parts.
+
+#### Demo Provisioning
+
+- A hosted demo sandbox can carry two regions, so a regions demo runs live and not only locally.
+- A published named demo may declare, in its demo.yaml, the attributes its sandbox visitor carries (visitor: attributes: {name: value}).
+
+#### Extensible Functions
+
+- A deployment setting, commands.allow_host_code (off by default), governs host code: the python command kind (an in-process module:attr callable) and the script command kind (a subprocess on the server's host).
+
+#### Federation-Wide Provenance Graph
+
+- Every lineage surface answers only what the caller can read, through one shared server-side filter: the admin Lineage page (the federation graph and statement lineage), the data product panel's Lineage and Inputs, the product Graph panel, and anything else that names a field from lineage.
+
+#### Governance Column Visibility
+
+- A column's scope says how far beyond its table's domain it reaches, and nothing else: domain, listed or public. domain, the default: outside the domain the column does not exist; inside it, roles that reach the domain read and write it per grants. listed: every role of the organisation sees the table's name and the column's name in the catalog and nothing more (no description, type, sample, value or count); reading or writing it still needs a role that reaches the domain and holds a grant. listed is how a domain makes a table discoverable, so that someone in another domain (one allowed to bypass the relationship guard, for example) can find its keys and ask its owners for a grant. public: every role of the organisation sees the table's and column's names and descriptions, and the column is served to roles of every domain per grants; masks, row rules and limits apply as inside the domain.
+
+#### JDBC/ODBC Integration
+
+- Maintainer 2026-11-02: transport (HTTP, pgwire, Flight, gRPC, Bolt...), query language (SQL, GraphQL, Cypher, SPARQL...) and encoder (pgwire rows, GraphQL JSON, gRPC protobuf, Arrow...) are independent.
+
+#### MCP Authentication
+
+- MCP tool describe_role returns only the caller's resolved role (for a meta-role, also its members, derived roles among them) with each one's description, and the roles the caller may switch to: the set named_role checks a named role against (remote: the token's held roles, the role it maps to and its principal's derived roles; stdio: the pinned mcp.role set), each with its description.
+
+#### Materialization Store
+
+- Fixed table arguments: a table whose source takes arguments (a parameterized API table, such as a GitHub table taking owner and name) may declare the argument values in its config (arguments: {name: value}).
+- Landing filter: a table may declare landing_filter, a SQL predicate over its own columns that is applied when its replica lands, so only matching rows are copied.
+
+#### OData
+
+- Maintainer 2026-11-01: a Provisa OData service, the easier lift with more commercial benefit, a very clean mapping of the model.
+
+#### Profile Runs 3D Relationship and Distribution Views
+
+- The profile runs modal has three more 3D tabs that share the Terrain tab's controls: drag to rotate, a reset-view control, and an expand button that opens the view in a modal at 95% of the viewport with its own camera.
+
+#### Profile Runs Terrain View
+
+- The profile runs modal (ProfileRunsModal, opened from the table editor's profiler panel) has a Terrain tab: a rotatable, zoomable 3D view of the selected run's column profiles, with one ridge per column arranged front to back from low to high values (categories from most to least common), each ridge's height equal to the rows per range, p5, median and p95 quantile marks, and a null-share block per column.
+
+#### Schema Registration
+
+- Discovery records the keys a source declares: its primary key, unique (alternate) keys and foreign keys, into the model (table_columns.is_primary_key and is_alternate_key, and foreign keys as relationship candidates), for every source whose catalog exposes them, starting with SQLite, Postgres and DuckDB and then each other connector that can.
+
+#### Security
+
+- Derived roles: roles derived from identity claims, which turn an attribute-conditioned (ABAC) column rule into an ordinary role grant (RBAC).
+- Rights follow the request.
+- Derived roles join the Roles list.
+- Every role carries a required description of what it is for: ordinary roles, derived parent roles and the seeded roles (whose descriptions the deployment writes).
+- The Security page's role detail panel shows the role's effective rights, as the composition of scope, capabilities and grants: every capability the role holds with the role it comes from (its own or the ancestor that carries it), its domain reach, and per table and column the access it has (read, write, masked, row rule) with the grant that gives it and the column's scope.
+- A table's detail panel answers who can read or write each of its columns: for a chosen column, every role that reads it, writes it, sees it masked or has a row rule on it, each with the chain that gives it (the granting role, the ancestor it is inherited through, the column's scope and the role's reach).
+
+#### Source Connectors
+
+- A MotherDuck database is reached in place on the DuckDB engine as well as on the Postgres engine: the DuckDB engine attaches it with DuckDB's MotherDuck extension (md:<database>), signed in with the source's MotherDuck token (its password field) resolved with the standard resolution.
+- A Node or Python code source can take its code from a folder on the developer's machine, and opens in VS Code from its form.
+- Maintainer 2026-11-01: a source type called Generic SQL (generic_sql), so a database with no named source type can be registered and behave similar to something.
+- Maintainer 2026-11-03 (after asking how feasible QuickBooks and NetSuite are, and adding QuickBooks sandbox credentials): QuickBooks Online is a source type.
+- Maintainer 2026-11-03: asked whether a Go or Java code resolver is possible, and chose Go first.
+
+#### UI
+
+- Everything the UI saves in the browser is saved per control plane and organization, so each demo, instance and org keeps its own state: the domain filter, the explorers' saved queries and tabs, remembered collapsibles, and every other remembered choice.
+- A named demo ships example GraphQL queries, one file a query in its directory (demo/named/<name>/queries/*.graphql), and the GraphQL explorer opens them as its tabs, in file-name order, the first time that demo is opened in a browser.
+- A named demo has its own tour, the story of the demo told with its own data, for a demo that runs with no one to present it.
+- Each tour declares its prerequisites, what its steps show of the org beyond the rights its pages need: the sources, the registered tables and whether a data product exists.
+- A named demo, streaming (Live order stream): A live order feed arriving through Kafka or a webhook, joined to a static product catalog, on the demo's own containers.
+- A named demo, GDPR at an international retail group (one group, EU and US subsidiaries): two regions, EU and US, defined in one model so that every cross-border data movement rule is coordinated and enforced in one place; the visitor stays on one node (the US node) and the EU region's setup is shown in tour screenshots or explained; EU-homed data is landed and EU-named views, including the in-region message scoring, are built in the EU region's own store at bundle build, and the US node reads them in place from that store, the per-request record naming eu as the serving region, or refuses naming eu when that store is absent; each subsidiary's own sources with their home region -- loyalty-programme customers with their marketing consent, orders, stores and staff -- plus shared reference data (products, stores), all generated; users with a region attribute and row rules on it.
+- An industry vertical demo, insurance: Where is our property exposure concentrated against hazard risk?
+- A feature demo, data profiling: The built-in Data Profiler profiles a demo's tables on a schedule; its results are governed tables the tour shows (nulls, distinct counts, value ranges, outliers), and a profile run is visible on each profiled table.
+- A feature demo, data vault: how to set up a data vault in Provisa.
+- A capability demo, provisioning: a warehouse takes several feeds (orders, inventory, prices) and builds large datasets as materialized views refreshed by the view cascade as the feeds land, then provisions them downstream to two consumers (a finance mart and a data-science feature store).
+- A named demo's tour step can take its "as recorded at" time from data instead of a literal: as_recorded_from {step, row, column} names an earlier sql step of the tour, a 0-based row and a column its statement returns.
+- A named demo may ship a notebook (notebook.ipynb beside its tour.yaml).
+- The named demo churn answers which customers of a subscription business are about to cancel.
+- The named demo "groupexposure" joins company data to public linked data by an identifier both share.
+- Maintainer 2026-11-03: deleting a table can take a while, and the UI still let the table be used while it was being deleted.
+- Maintainer 2026-11-03: the entity/fact form is built from the right primitives, but people won't get how to interpret their method into the primitive.
+- Maintainer 2026-11-03: "reading a u.s. law text, extracting terms and applying a bank example, then querying based on a concept, could interesting"; chose the Bank Secrecy Act.
+    - A served view is found by its stored name; a classified column is proposed its fake
+
+### Changes
+
+#### admin
+
+- Gate specialized surfaces by their own rights (WIP)
+- Nav and route tests follow the specialized gates
+
+#### api
+
+- A schema rebuild's lifecycle wiring failure raises
+
+#### build_mongo_fdw
+
+- Drop libmongoc's -Werror cmake option, which cmake 4.4 refuses
+
+#### codesource
+
+- A code host's rows are pulled on the statement's own threads, so a refused statement's process exits
+
+#### deploy
+
+- Put the org base domain in the API containers, and verify it
+
+#### devcontainer
+
+- Make the UI's port 3000 public when a Codespace starts
+
+#### discovery
+
+- A Register Table listing goes before the catalog index's next read
+
+#### dq
+
+- great_expectations checker connects to Provisa without the hstore catalog probe
+- great_expectations checker percent-escapes the user and password in its URL
+
+#### duckdb
+
+- Drain results read from shared DuckDB connections
+
+#### ephemeral
+
+- Name a graph session's tables quoted, so governance's folded reading keeps them
+
+#### federation
+
+- Lock registered_tables before table_columns in fetch_tables
+
+#### pg
+
+- Run the engine's ADBC read pool in autocommit
+
+#### pgwire
+
+- J764 the engine replays write a jsonb answer as the wire does
+- Send a reply's messages together, as PostgreSQL does
+
+#### security
+
+- org_from_host reads an org only under the declared base domain
+
+#### site
+
+- Architecture FAQ page, linked from the home FAQ and How it works
+
+#### sql-validator
+
+- Every alias the statement binds is in scope (J775)
+- Judge an unqualified column at the relations that have it
+
+#### tour
+
+- reference-library tour steps name glossary_rw
+- Test fixture library step names glossary_rw
+- Anchor the Observability step on the trace feed, not the debug tab
+
+#### transpiler
+
+- The engine forms matrix recaptured; NULL array and pg_notify refused by name
+- A NULL fraction in a percentile's array answers NULL in its place
+- Trino's exact percentile over no keys answers NULL, not element 0
+- Trino's exact percentile over no rows answers NULL as well
+
+#### ui
+
+- A table's class term is read-only, set from the glossary term
+- Table API tab, Read grants and Write grants wording
+- Read an org from the host only under a declared base domain
+- Serve a null deployment-config.js in dev
+- The table header's profile icon opens Quality with the profile in view
+
+#### General
+
+- J788 /data/sql writes a registered column as its registered type
+
+## v0.1.0-alpha.503
+
+Released 2026-11-05.
+
+### Changes
+
+#### api
+
+- region-lane rebuild skips schema DDL; row-materialize wiring failure raises
+
+#### contract
+
+- Every remote call of a REST, GraphQL, gRPC or SPARQL connector is its contract's call
+- A remote GraphQL table's keyed fetch is its contract's call
+
+#### deploy
+
+- Refresh the node's control-plane compose; name the container a failed verify finds down
+
+#### graph3d
+
+- The one graph's product layers -- commands, quality, product links, lineage
+- A snippet holds its panel's place before it is seen
+
+#### kafka
+
+- A Kafka source reaches a secured cluster over TLS and SASL
+- A sandbox's live landing reaches a secured Kafka source over its TLS and SASL
+
+#### routing
+
+- A SPARQL or remote GraphQL source is an API source: it lands for want of a capability
+
+#### ui
+
+- Observability says the ops traces table could not be checked, with the reason
+
+#### validator
+
+- A column is judged where it resolves; pg_catalog.unnest is a client table function
+- A hidden column is refused in every clause; unknown sources never end the check (J597b)
+
+## v0.1.0-alpha.502
+
+Released 2026-11-05.
+
+### Changes
+
+#### admin
+
+- admin-layer API gates match
+- The invite gate names no role id
+
+#### control-plane
+
+- Create the embedded data directory parent; report the real start failure
+
+#### demo
+
+- Declare the audit demo's Assistance Listing and state joins
+- Banking config region description quote breaks YAML
+- The audit demo requires Provisa 0.1.0a497
+
+#### demos
+
+- Banksecrecy shows the glossary walk -- structuring and SAR passages scanned, a Polly step asks for them
+
+#### devcontainer
+
+- One container, no compose stack, so Codespaces creates it
+- The environment is the checkout.venv, on a volume
+- Forward the UI and API ports; fetch the manifest with credentials
+- Singleton killer no longer kills the shell that launched the script
+
+#### erd
+
+- Save as keeps the new layout current in the link
+
+#### fakes
+
+- propose_fakes for named columns; testdata tour asks Polly for a fake
+
+#### federation-ui
+
+- A tab per region on Admin > Federation, each its engine store
+
+#### llm
+
+- Term scans turn reasoning off where the wire has a switch; other vendors keep their default
+
+#### main
+
+- The full unit suite green after today's focused-only landings
+
+#### mv
+
+- A join view never answers a subquery that shadows a covered table
+
+#### profiler
+
+- regex-declared classification kinds, 15 new sensitive kinds
+- Scan text columns for sensitive values held inside them; hints on the column access settings and in the coverage report
+- contained_pattern for kinds searched inside text; in-sentence hint noun
+
+#### reference-library
+
+- Neighbours in governed retrieval
+- Graph retrieval over the glossary
+
+#### regions
+
+- Admin routes for platform regions and an org's stores and regions
+- The platform grants regions and assigns stores; a region is an id, description, purposes and data addresses
+
+#### regions-ui
+
+- Platform page grants and regions, read-only Admin > Regions, sandbox note, purposes legend
+
+#### reports
+
+- Sensitive coverage is a seeded ops report
+- The list highlights the report shown, a linked or default one included
+
+#### retail-demo
+
+- Title the GDPR demo "A Tale of Two Regions"
+
+#### retail-tour
+
+- Show where regions are defined before the residency queries
+
+#### sandbox
+
+- Prepare every published demo at once when the sandbox tier starts
+
+#### term_finding
+
+- Ask the vendor for one JSON object on every scan call
+
+#### tour
+
+- Testdata coverage step opens the sensitive coverage report
+
+#### ui
+
+- Page help opens on hover and stays open once clicked
+- own-domain in the column scope selects
+- Open a live demo outside the login's identity bootstrap
+- Replace ~grounded with plain words in glossary strings
+
+## v0.1.0-alpha.501
+
+Released 2026-11-04.
+
+### Changes
+
+#### compiler
+
+- Refuse shapes that hide a registered relation from governance
+- Stage 2 refuses a parenthesised join group with a registered relation
+- Govern a leftmost parenthesised join group as the flat join
+- Quote a request-given name as one identifier
+
+#### cypher,compiler
+
+- Lower a write's WHERE from its tree; no SQL text rewrites
+
+#### meta
+
+- The meta seed retires the tables it no longer declares
+
+#### ui
+
+- page-level (?) help, first on the Reference library page
+
+## v0.1.0-alpha.500
+
+Released 2026-11-04.
+
+### Changes
+
+#### catalog
+
+- A set-returning catalog form in FROM keeps WITH ORDINALITY
+
+#### compiler
+
+- Bind schema-qualified column refs before FROM rewrites
+
+#### conformance
+
+- apply's 2026-11-03/04 pgcatalog decisions to the function check
+- A call PostgreSQL cannot make is skipped by design
+
+#### demo
+
+- Banksecrecy registered, captured and answering one way
+
+#### demos
+
+- The banksecrecy named demo -- the Bank Secrecy Act read, its terms grounded, asked by concept
+- Banksecrecy aliases its two customer edges and asks Polly in plain words
+
+#### devcontainer
+
+- Dev container with pinned toolchains and control-plane PostgreSQL
+- Codespaces-ready setup and feature lock
+
+#### glossary
+
+- The menu item is named Find terms
+
+#### go
+
+- A Go source's remote image; each language's image parts its own
+- Each language's image fetch looks its install up when called; the Go tests pass export names
+- A Go source names its Module and its Package; the proxies help fits one line
+
+#### installers
+
+- Check the bundled runtime, not the checkout, for provisa._encoders
+
+#### library
+
+- half-precision HNSW index for 2001-4000 dimension embeddings
+
+#### pgwire
+
+- query_to_xml and its kin map a row result's rows
+- Answer the server state client tools read as Provisa's own
+- current_setting shortcut only for a bare SELECT current_setting(...)
+- comment-only query is empty; keyword after AS is a quoted label
+- pg's last four function-check failures (J603,)
+
+#### polly
+
+- read_screen reports the data node
+- read_screen's tool description names dataNode
+
+#### reference-library
+
+- Passages in pgvector under per-dimension HNSW indexes
+
+#### sql-validator
+
+- Fold identifiers as PostgreSQL does and refuse unknown qualifiers (J609)
+
+#### ui
+
+- Find terms wording for table scans;.xml in reference library pickers
+- Find terms lists no scans only once it has read them
+
+#### views
+
+- A view the reader is served no column of is refused; banksecrecy masks once
+
+## v0.1.0-alpha.499
+
+Released 2026-11-04.
+
+### Changes
+
+#### admin
+
+- Gate the ERD layout routes; drop requirement ids from fetch-paths
+- ERD layout reads open to every signed-in role
+
+#### api
+
+- A query node serves no UI or UI backend
+
+#### bench
+
+- plan-cache hit/miss knob and a rows-and-masks governance variant
+- The mask share counts the contract's columns, not every deployment column
+
+#### codesource
+
+- Code images carry provisa._encoders from the provisa wheel
+
+#### config-watch
+
+- Stop reading an org reaped during a check
+
+#### conformance
+
+- An overload with no compared answer is not checked, never a pass
+- Side effects compared on pg, type and form for values that cannot be
+- Every overload is passed, skipped by design or failed
+- random()'s form holds for random() alone
+- Real arguments for the overloads called with NULL only
+- The 2026-11-03 decisions and the catalog's model skipped by design
+- Not checked and not reached count as not tested, not failed
+- An adapted case is marked with the outcome it counts as
+
+#### cypher
+
+- The maximum depth defaults to 1000
+- A walk along a relationship of a table to itself passes the guard with its trail check
+
+#### demo
+
+- A built-in view ending in a comment no longer swallows the script terminator
+- A template's build adopts its seed before starting replica convergence
+- Drop "landed once when the demo is built" from source descriptions
+
+#### demos
+
+- Carry a demo's scans for terms in its bundle
+
+#### deploy
+
+- Verify sends a page-load request
+
+#### docs
+
+- Count 76 source types after Generic SQL and QuickBooks merged
+
+#### encoders
+
+- JSON surfaces answer from the Rust encoders; Python serializers deleted
+- The plan's columns are the statement's first; integration and unit tests on the encoders
+
+#### erd
+
+- A saved layout's time is set by the database on every save
+- A failed layout delete frees its confirm; the Layout menu's hinted trigger is listed
+- The delete confirm comes before the Save-as dialog, so no save's await sits inside its busy span
+- The automatic layout overlaps no two tables of a domain
+
+#### executor
+
+- DuckDB reads hand the terminal Arrow, rows built at the consumer
+- DuckDB async rows built off the event loop; DIRECT driver reads Arrow
+- Columnar reads answer PostgreSQL's error met mid-stream; 24:00 times
+
+#### experiments
+
+- Pgwire encoder benchmark and results
+- Pgwire encoder benchmark and results
+- Pgwire encoder PostgreSQL floats, named zones, ns units
+- Pgwire encoder writes every type pgwire sends
+
+#### explore
+
+- OData and OpenAPI follow the navbar domain selection; Polly drives OData
+
+#### federation
+
+- Ship each generic engine kind's dialect as a named extra
+
+#### glossary
+
+- Fill the expert picker from a glossary_rw roster, not the team page's
+- List only the caller in the shared sandbox's picker roster
+
+#### go
+
+- A Go source's reader and the manifest's Go rules
+- Pinned Go toolchain; a stream yields a row and an error
+- The Go host, compiled with the code linked in, and its sandbox
+
+#### golden
+
+- The GraphQL front gate's expected answer is the encoder's
+
+#### graph
+
+- A dragged SPARQL node stays pinned and the drawing is kept
+
+#### graphql_remote
+
+- Land connection tables at the page size registration priced
+
+#### grpc
+
+- Write values exactly
+- A zoned nanosecond timestamp is floored to the microsecond
+
+#### ir_arrow
+
+- Read an Arrow UTC timestamp as offset zero, not a region
+
+#### jdbc_source
+
+- The attach check reads from the source before it passes
+- The JDBC form picks a driver, takes a jar file, names no engine
+
+#### org-registry
+
+- Grant and register the registry view under the hold that rebuilt it
+
+#### pg engine
+
+- ordered-set aggregates, overlaps, character(n), json text, bounded arrays, interval elements
+- Overlaps and quoted table functions reach PostgreSQL as written
+- Catalog reads in regclass arguments, the catalog's function oids, pg_get_viewdef's size, clock and NULL types
+- Amvalidate from PostgreSQL 17's opclasses, database_to_xml without Provisa's domains, decided errors
+
+#### pgwire
+
+- Hashes of time, timestamp, timetz, uuid and pg_lsn, float8 finals of a column
+- ClickHouse reads date, time and timestamp literals, refusing only what it cannot read
+- A time literal in a ClickHouse statement of these forms is read by time_in
+- Zoneinfo timestamptz text, float4out for REAL, UUID bytes
+- Delete the Python DataRow writers; every cell is the Rust encoder's
+- A schema-named function in FROM is no table; regexp_replace reads its flags beside N
+- Sequence functions and six-argument regexp_replace refused by name, skipped by design
+- Lastval from the session's own inserts
+- A bounded array sent as PostgreSQL sends it; lastval documented
+- Inet text is PostgreSQL's whatever Python's ipaddress writes
+- Advisory locks show in pg_locks; a lock with constant keys may sit in a larger statement
+- set_config keeps a session's setting; current_setting(name, true) of an unknown one is NULL
+- A sleep's time may be read from the clock
+- A simple query's error ends at its ReadyForQuery
+- LISTEN, UNLISTEN, NOTIFY and pg_notify refused by name
+- A pytz-zoned value and a UUID's 16 bytes are sent as main's writers sent them
+- pg_cursor lists the session's cursors and its open portal; pg_column_size of a computed value; json_object is the engine's
+- A zoned nanosecond value is floored to the microsecond, a UUID is written as main's _uuid_text writes it
+- Notices from the current lock; no requirement id in fetch-paths' heading
+- ReadyForQuery reports 'E' after a failed statement in a transaction
+- DuckDB answers System functions as PostgreSQL 17 does
+- Answer an engine error met mid-stream, keep the connection
+- pg_timezone_names left as it was, pending the maintainer's zone list
+- regexp_instr's UDF is DuckDB's alone; the abbreviations' rows name their own columns
+- DuckDB PostgreSQL-function leftovers
+- pg_timezone_names in FROM is its rows; a table's XML row unpacked
+- pg_timezone_names' rows name their own columns
+- Timetz text, zone abbreviations and pg_timezone_abbrevs in FROM as PostgreSQL 17
+- DECLARE, CLOSE and MOVE over the extended protocol run as the simple Query's
+- A regprocedure's argument types compare as text; amvalidate waits on a decision
+
+#### pgwire catalog
+
+- PostgreSQL 17's predefined roles, strict catalog functions and statistics
+- Reg types write meta's names; information_schema at PostgreSQL 17's oid
+- A predefined role's privileges and acldefault answer as PostgreSQL 17
+- Tablespace location, object identity, updatable columns and input checks answer as PostgreSQL 17
+- The functions and descriptions PostgreSQL 17 ships are in meta
+- pg_get_catalog_foreign_keys and pg_settings_get_flags answer as PostgreSQL 17
+- pg_get_viewdef gives a system view's definition as PostgreSQL 17
+- The indexes and constraints of PostgreSQL 17's catalogs are in meta
+- *_is_visible follows search_path as PostgreSQL does
+- A privilege function asked about another model role answers from its grants
+- A source's enum types are types of the catalog
+
+#### polly
+
+- Read and operate the screens added since alpha.498
+
+#### profiler
+
+- A rebuild drops superseded result relations after its commit, 50 to a transaction; a sandbox copies only current ones
+
+#### quickbooks
+
+- Live sandbox test passes: quoted numbers, api_sources type check, one page size
+
+#### reference-library
+
+- Read eCFR's XML
+
+#### sandbox
+
+- The VM idle stop counts an open under way and the last sandbox request
+- An open times its ask for a newer version and its waits for stores and template
+- The VM idle stop counts an open under way and the last sandbox request
+- An open times its ask for a newer version and its waits for stores and template
+- A template is served as built only when it holds its bundle's profile runs
+- A sandbox opens holding its template's Kafka-landed rows, its listener continuing from there
+- A dropped open answers starting, and an open builds none of its template's runtimes
+- A template's runtime build keeps the profile runs its bundle carries
+- A patch keeps demo templates built under the same DDL
+- The DDL fingerprint covers every source of an org schema's DDL
+- The sandbox VM is not stopped under an open sandbox or another tier's visitor
+
+#### serialize
+
+- Exact JSON values in GraphQL and the shared JSON path
+- Exact JSON numbers, json as text, integers by type
+
+#### sources
+
+- Generic SQL source type over any SQLAlchemy URL
+- A held org's Generic SQL URL carries no driver options
+- Held orgs give only allowed Generic SQL URL options; URL is pinnable
+- Generic SQL form and Detect
+- A customer JDBC driver behind Generic SQL
+- The Generic SQL floor, read by column_value parameters
+- A branded source's setup is Source.brand_setup, not a hint
+- Read a Shopify source saved with its setup in federation_hints
+- Generic SQL lands on Unit against main
+
+#### start
+
+- Build provisa._encoders before a source start runs the API
+
+#### start-ui
+
+- List every query surface in the startup banner
+
+#### table-search
+
+- Find a remote source's tables by description; no stale form problem
+- The table named for the word ranks above narrower kinds of it
+
+#### tables
+
+- The table picker lists lookups apart
+
+#### term-finding
+
+- A table of terms and definitions, read with no model
+
+#### tour
+
+- find_terms, scan and library steps for a named demo
+
+#### transpiler
+
+- J455 slope is infinite on a vertical line, doubles compare as numbers
+- J455 circle, lseg, path, polygon, line forms and polygon containment
+- J455d the geometric forms left and width_bucket, on columns
+- J455c2 the geometric forms plan in seconds on Trino and ClickHouse
+- J455e Trino defines each geometric helper as a routine of the statement
+- J455e a Trino statement's routine head survives what wraps it; floats replay within 1e-14
+- J455f geometric bare names are refused rows; main's tests read Trino routines and ClickHouse SETTINGS
+- regexp_instr's sqlglot-written forms are the OWN step
+
+#### trino
+
+- A list field's empty default is text like its json_format aggregate again (#286,)
+
+#### tz
+
+- One IANA release (2026f) for zoneinfo, pytz and the Rust zone tables, brought forward from fix/tz-one-release
+- The JSON encoders' zone tests and lock at IANA 2026f, from fix/tz-one-release
+
+#### ui
+
+- OData viewer strings in every locale
+- OData viewer keeps a query being built open on Escape
+- A coordinator-served UI sends its data calls to a chosen data node
+- A detail panel's delete works like its save
+- A glossary term's Delete works like a save
+- Modeling wizards relate each satellite to its hub and each effectivity satellite to its link
+- ERD image controls in a hover bar, the open item highlighted, domains packed side by side
+- The ERD keeps a domain the domain filter does not offer (ops)
+- A table's definition is badged as defined in the table
+- Move the ERD's hint off the diagram into the toolbar's (?) help
+
+## v0.1.0-alpha.498
+
+Released 2026-11-02.
+
+### Changes
+
+#### audit
+
+- A governance read on the writer thread runs in the request org
+
+#### bench
+
+- A role chain lists what the role holds
+
+#### demo
+
+- Ground "group of connected clients" in groupexposure
+
+#### notebook
+
+- Read and write build text as UTF-8 on every OS
+
+#### odata
+
+- OData V4 service, first slice
+- $filter, $orderby and the odata request timeout
+- $expand, nested paging and the e2e test
+- Show the endpoint in the startup log and the admin console
+- Carry statement warnings in the body as @Provisa.warnings
+
+#### pgwire
+
+- Enums by a table's schema, audit the text sent, casts refused by name
+- Timestamptz text, SHOW and ParameterStatus follow the session zone
+- Type operators reach Trino and ClickHouse
+- A Trino instant reads into UTC, a built-in type is no enum, a timetz keeps its encoder
+- float4out takes Trino's digits from text that reads back
+- Exact binary numeric past 28 digits, integer interval day split
+
+#### polly
+
+- Add the /odata page to Polly's page table
+
+#### release
+
+- Unblock Build Provisa Packages (guava CVE, arm64 docker save)
+
+#### rights
+
+- Viewer holds no catalog_read; a role map fits its panel on every open
+- The Cypher and catalog-fact checks read only what their branch needs
+
+#### startup
+
+- The boot reads a schema's catalog once, not once a table
+
+#### transpiler
+
+- A call by pg_catalog is the call of the function on an engine without that schema
+- The round-trip forms in PostgreSQL syntax, a numeric literal keeps its digits
+- Numeric forms in PostgreSQL syntax, refused by name where a replay differs
+- String and date forms in PostgreSQL syntax, refused by name where a replay differs
+- Position edges, first match, and refusals from the replay on real engines
+- The second replay on real engines read back into forms and refusals
+- The third replay read back: a NULL part, zoned literals, an answer's scale refused
+- Nameconcatoid keeps its text type, jsonb_numeric restored
+- A large object form reads its bytes as bytea on Trino
+- A bytea argument of a server form stays bytes
+- A time beside a date stays refused on ClickHouse's server
+- A server's state answered, and regexp_replace's Nth match, recorded on postgres:17.11
+- regexp_replace's Nth match compiles on ClickHouse, repeat is a text on Trino
+- A tid's and an aclitem's forms reach the engine past the held-type refusal
+- A source's enum keeps its type on the wire, its functions on every engine
+- A captured group reaches the first match on Trino
+- Repeat has a form on every dialect, so only the rule's own step goes without
+- A positioned regexp_replace reaches its row past the first-match mark
+- Repeat of NULL is NULL for any count, N overrides the g flag on DuckDB
+
+#### ui
+
+- A copy button names its hint, the one tooltip
+- CopySymbolButton keeps its title
+
 ## v0.1.0-alpha.497
 
 Released 2026-11-01.

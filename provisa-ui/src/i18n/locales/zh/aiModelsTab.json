@@ -1,11 +1,13 @@
 {
   "aiModelsTab": {
     "apiKeysHeading": "AI 供应商 API 密钥",
-    "apiKeysIntro": "贵组织为各供应商配置的 API 密钥，用于分配给该供应商的 AI 辅助操作。若某供应商未设置，则使用部署的默认密钥。密钥保存后不再显示。 也可以粘贴保险库引用来代替密钥本身：${secret:NAME} 每次使用时都会在贵组织的机密中解析。",
+    "apiKeysIntro": "组织为每个供应商提供的专属 API 密钥，用于分配给该供应商的 AI 辅助操作。若某供应商未设置，则使用部署的默认密钥。密钥保存后不会再显示。可以粘贴 ${secret:NAME} 这样的保管库引用代替密钥；每次使用时会依据组织的密钥进行解析。",
+    "apiKeysIntroOrgOnly": "贵组织为各供应商配置的 API 密钥，用于分配给该供应商的 AI 辅助操作。未设置密钥的供应商不会被使用。密钥保存后不再显示。 也可以粘贴保险库引用来代替密钥本身：${secret:NAME} 每次使用时都会在贵组织的机密中解析。",
     "apiKeyLabel": "{{vendor}} API 密钥",
     "apiKeyPlaceholder": "API 密钥",
     "apiKeySet": "密钥已设置",
-    "apiKeyNotSet": "未设置密钥——正在使用部署默认值",
+    "apiKeyNotSet": "未设置密钥。使用部署默认值。",
+    "apiKeyNotSetOrgOnly": "未设置密钥",
     "apiKeyClear": "清除密钥",
     "apiKeyWillClear": "保存时将清除该密钥。",
     "modelsHeading": "AI 模型分配",
@@ -16,7 +18,7 @@
     "role_sql_generation": "SQL 生成",
     "role_table_selection": "表选择",
     "role_mcp_chat": "聊天助手",
-    "role_glossary_term_finding": "在文档中查找术语",
+    "role_glossary_term_finding": "查找术语",
     "vendorLabel": "供应商",
     "modelLabel": "模型",
     "nlHeading": "自然语言查询",
@@ -43,10 +45,18 @@
     "addEndpoint": "添加终结点",
     "removeEndpoint": "移除",
     "jevHeading": "Jev (TypeSafe AI)",
-    "jevIntro": "可选。设置后，Provisa 将使用 Jev 的校准置信度决策 API 为本体关系类型建议和发现的外键关系评分，而不是仅依赖生成模型自行报告的置信度。若未设置，这些功能将保留现有的仅基于模型的行为。若此处未设置，则在存在时使用部署的 TYPESAFEAI_API_KEY 环境变量。",
+    "jevIntro": "可选。设置后，Provisa 除了使用生成模型自报的置信度外，还会使用 Jev 的校准置信度决策 API 为本体关系类型建议和发现的外键关系评分。若此处未设置，则在部署的 TYPESAFEAI_API_KEY 环境变量存在时使用它。两者都没有时，这些功能仅使用模型的置信度。",
+    "jevIntroOrgOnly": "可选。设置后，Provisa 将使用 Jev 的校准置信度决策 API 为本体关系类型建议和发现的外键关系评分，而不是仅依赖生成模型自行报告的置信度。若未设置，这些功能将保留现有的仅基于模型的行为。",
     "saveButtonLabel": "保存 AI 模型设置",
     "loading": "正在加载…",
     "saved": "已保存。",
-    "savedRestartRequired": "已保存。重启服务以生效。"
+    "savedRestartRequired": "已保存。重启服务以生效。",
+    "limitsIntro": "每个模型有两个以令牌计的上限：一次请求中最多能读取的量（输入）和能写出的最长回答（输出）。有公开数值的模型以这些数值为起点；如果您的数值不同，请修改。",
+    "inputLimitLabel": "输入上限（令牌）",
+    "outputLimitLabel": "输出上限（令牌）",
+    "limitsDefaultNote": "默认值：此模型没有已知的公开数值。",
+    "limitsResetKnown": "使用公开上限",
+    "limitsResetDefault": "使用默认上限",
+    "limitsIncomplete": "请将 {{model}} 的两个上限都输入为大于零的整数。"
   }
 }

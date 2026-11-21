@@ -22,6 +22,7 @@ SQL."""
 
 from __future__ import annotations
 
+import functools
 import json
 from collections.abc import Callable
 from decimal import Decimal
@@ -30,7 +31,7 @@ from typing import Any
 import sqlglot
 import sqlglot.expressions as exp
 
-from provisa.core.pg_error import raising
+from provisa.core.pg_error import PostgresError, raising
 
 _D, _T, _C = "duckdb", "trino", "clickhouse"
 _ENGINES = (_D, _T, _C)
@@ -42,11 +43,13 @@ _NAME = """replace(k, '"', '\\"')"""
 _KEY = {_D: f"""('$."' || {_NAME} || '"')""", _T: f"""('$["' || {_NAME} || '"]')""", _C: "k"}
 _AT = {
     _D: "{i}",
-    _T: "('$[' || CAST({i} AS VARCHAR) || ']')",
+    # an array's alone, as $[n] reads an object's key "n" there; a negative counts from the end
+    _T: "('$[' || CAST(CASE WHEN json_array_length(v) IS NULL THEN NULL WHEN {i} >= 0 THEN {i} "
+    "WHEN json_array_length(v) + {i} >= 0 THEN json_array_length(v) + {i} END AS VARCHAR) || ']')",
     _C: "if(startsWith(trimLeft(v), '['), if({i} < 0, {i}, {i} + 1), 0)",  # a key's place otherwise
 }
 _INDEX = {_D: "CAST(i AS BIGINT)", _T: "i", _C: "i"}
-_KEY_INDEX = {_D: "TRY_CAST(k AS BIGINT)", _T: "k", _C: "toInt64OrNull(k)"}
+_KEY_INDEX = {_D: "TRY_CAST(k AS BIGINT)", _T: "TRY_CAST(k AS BIGINT)", _C: "toInt64OrNull(k)"}
 _READ = {_D: "json_extract(v, @)", _T: "json_extract(v, @)", _C: "nullif(JSONExtractRaw(v, @), '')"}
 _READ_TEXT = {
     _D: "json_extract_string(v, @)",
@@ -92,7 +95,7 @@ def _rows(name: str, params: str, form: Callable[[str, str], str]) -> list[Row]:
 
 _EACH = (
     f"unnest(list_transform(json_keys(CAST({_guard(_D, 'v', 'object', 'json_each')} AS JSON)), "
-    """_k -> struct_pack(key := _k, value := json_extract(v, '$."' || """
+    """LAMBDA _k : struct_pack(key := _k, value := json_extract(v, '$."' || """
     """replace(_k, '"', '\\"') || '"'))))"""
 )
 #: A row: name, parameters, each dialect's form.
@@ -115,7 +118,7 @@ _ON_JSON = frozenset(row[0] for row in ROWS) - {"to_jsonb", "array_to_json", "ro
 #: What no engine has a form of.
 REFUSED = frozenset(
     """
-    jsonb_pretty jsonb_hash jsonb_hash_extended json_send jsonb_send jsonpath_send jsonb_cmp
+    jsonb_pretty jsonb_hash jsonb_hash_extended jsonb_cmp
     jsonb_eq jsonb_ne jsonb_lt jsonb_le jsonb_gt jsonb_ge jsonb_concat json_strip_nulls
     jsonb_strip_nulls jsonb_set jsonb_set_lax jsonb_insert jsonb_delete jsonb_delete_path
     jsonb_object json_to_record jsonb_to_record json_to_recordset jsonb_to_recordset
@@ -218,9 +221,9 @@ class NoForm(ValueError):
         super().__init__(called)
 
 
-#: What may be json in a statement, for function_macros.mentioned. ``->`` is not: a statement that
-#: holds only it costs nothing here.
-OPERATORS = r"#>|#-|@>|<@|@\?|\?\||\?&|\s\?\s|\bjsonb?\b|\bjsonb?_|\bto_json"
+#: What may be json in a statement, for function_macros.mentioned. ``->`` of a literal key or index
+#: is not: a statement that holds only it costs nothing here. ``->`` of a step the rows hold is.
+OPERATORS = r"#>|#-|@>|<@|@\?|\?\||\?&|\s\?\s|\bjsonb?\b|\bjsonb?_|\bto_json|->>?\s*[^\s'\d>-]"
 
 
 def _said_jsonb(node: exp.Expr) -> bool:
@@ -247,6 +250,36 @@ def _path(value: exp.Expr, steps: list[str], scalar: bool) -> exp.Expr:
         row += "_text" if scalar and position == len(steps) - 1 else ""
         value = exp.Anonymous(this=row, expressions=[value, exp.Literal.string(step)])
     return value
+
+
+_INDEX_TYPES = (exp.DataType.Type.SMALLINT, exp.DataType.Type.INT, exp.DataType.Type.BIGINT)
+_KEY_TYPES = (exp.DataType.Type.TEXT, exp.DataType.Type.VARCHAR)
+
+
+def _stepped(
+    node: exp.JSONExtract | exp.JSONExtractScalar,
+    dialect: str,
+    inner: Callable[[exp.Expr], exp.Expr],
+) -> exp.Expr | None:
+    """``->`` and ``->>`` of a step the rows hold, as the row of the type the statement states
+    for it: an integer an array's index, a text an object's key whatever it spells. The engine's
+    own operator reads a text as a path. A step of no stated type stays DuckDB's own, which takes
+    an integer column as an index; None there, refused by name elsewhere."""
+    scalar = isinstance(node, exp.JSONExtractScalar)
+    step = node.expression.unnest()
+    negative = isinstance(step, exp.Neg) and step.this.is_int  # -1: the last element
+    if negative or (isinstance(step, exp.Cast) and step.to.this in _INDEX_TYPES):
+        row = "json_array_element"
+    elif isinstance(step, exp.Cast) and step.to.this in _KEY_TYPES:
+        row = "json_object_field"
+    elif dialect in _OF[_D]:
+        return None
+    else:
+        raise NoForm("->>" if scalar else "->")
+    called = row + ("_text" if scalar else "")
+    return exp.Anonymous(
+        this=called, expressions=[node.this.transform(inner), node.expression.transform(inner)]
+    )
 
 
 def _steps(called: str, path: exp.Expr) -> list[str]:
@@ -305,6 +338,11 @@ def _table(table: exp.Table, dialect: str) -> exp.Expr:
     return exp.Subquery(this=query.transform(bound), alias=alias.copy())
 
 
+#: The key of a node's meta that holds the json type a statement said of a value ClickHouse holds
+#: as its text: "json" or "jsonb" (provisa.transpiler.polyfill.trino.said reads it).
+SAID = "provisa_said_json_type"
+
+
 def _cast(node: exp.Cast, dialect: str) -> exp.Expr:
     """A cast to a json type as the engine reads one: Trino's cast of text is a json string, and
     ClickHouse holds json as its text."""
@@ -312,12 +350,16 @@ def _cast(node: exp.Cast, dialect: str) -> exp.Expr:
     if dialect in _OF[_T]:
         return exp.ParseJSON(this=node.this) if literal else exp.cast(node.this, "JSON")
     text = exp.DataType.build("Nullable(String)", dialect=_C)
-    return node.this if literal else exp.cast(node.this, text)
+    held = node.this if literal else exp.cast(node.this, text)
+    # Its text, still the json value the statement says: a polyfill grid row reads the type of
+    # what it is handed (bool and numeric of a jsonb value refuse it by name).
+    held.meta[SAID] = node.to.this.value.lower()
+    return held
 
 
 #: DuckDB's UDF of a function: its name, each parameter's kind (j a json, t a text, p a jsonpath,
-#: a a text[], b a boolean, i a bigint), the defaults of its trailing parameters, whether it answers
-#: a json.
+#: a a text[], k a jsonb path: a text[] of one dimension, b a boolean, i a bigint), the defaults of
+#: its trailing parameters, whether it answers a json.
 _Udf = tuple[str, str, tuple[str, ...], bool]
 _PATH_DEFAULTS = ("'{}'", "FALSE")
 _OPERATOR_DEFAULTS = ("'{}'", "TRUE")
@@ -328,10 +370,10 @@ _DUCKDB: dict[str, _Udf] = {
     "jsonb_exists_any": ("provisa_jsonb_exists_any", "ja", (), False),
     "jsonb_exists_all": ("provisa_jsonb_exists_all", "ja", (), False),
     "jsonb_concat": ("provisa_jsonb_concat", "jj", (), True),
-    "jsonb_delete_path": ("provisa_jsonb_delete_path", "ja", (), True),
-    "jsonb_set": ("provisa_jsonb_set", "jajb", ("TRUE",), True),
-    "jsonb_set_lax": ("provisa_jsonb_set_lax", "jajbt", ("TRUE", "'use_json_null'"), True),
-    "jsonb_insert": ("provisa_jsonb_insert", "jajb", ("FALSE",), True),
+    "jsonb_delete_path": ("provisa_jsonb_delete_path", "jk", (), True),
+    "jsonb_set": ("provisa_jsonb_set", "jkjb", ("TRUE",), True),
+    "jsonb_set_lax": ("provisa_jsonb_set_lax", "jkjbt", ("TRUE", "'use_json_null'"), True),
+    "jsonb_insert": ("provisa_jsonb_insert", "jkjb", ("FALSE",), True),
     "jsonb_pretty": ("provisa_jsonb_pretty", "j", (), False),
     "jsonb_cmp": ("provisa_jsonb_cmp", "jj", (), False),
     "jsonb_hash": ("provisa_jsonb_hash", "j", (), False),
@@ -399,7 +441,14 @@ def _duckdb(sql: str, **nodes: exp.Expr) -> exp.Expr:
             nodes[node.name].copy() if isinstance(node, exp.Column) and node.name in nodes else node
         )
 
-    return sqlglot.parse_one(sql, read=_D).transform(filled)
+    return _form(sql).transform(filled)
+
+
+@functools.lru_cache(maxsize=256)
+def _form(sql: str) -> exp.Expr:
+    """``sql`` as DuckDB reads it, once: a form is one of this module's own, and a statement
+    writes one for each member of each JSON it builds. ``transform`` copies it before filling."""
+    return sqlglot.parse_one(sql, read=_D)
 
 
 #: DuckDB writes a timestamp as its text; PostgreSQL's json has the T, and an offset's minutes.
@@ -411,6 +460,8 @@ _TO_JSON = (
 )
 #: What already is JSON, or holds a value that was written on its way in.
 _JSON_NODES = (exp.JSONObject, exp.JSONArray, exp.JSONArrayAgg)
+#: What _TO_JSON's typeof test can never find to be a timestamp.
+_NEVER_AN_INSTANT = (exp.Map, exp.Array)
 _JSON_CALLS = frozenset(
     {
         "json_group_array",
@@ -432,7 +483,11 @@ def _is_json_call(node: exp.Expr) -> bool:
 
 def json_encoded(value: exp.Expr) -> exp.Expr:
     """``value`` as its JSON value on DuckDB, whatever its type: one form for every JSON a
-    statement builds, so a timestamp reads alike at any depth."""
+    statement builds, so a timestamp reads alike at any depth. A map or a list is never an
+    instant, so it takes the form's ELSE alone: the form names its value three times, and around
+    each level of a nested statement that multiplied the text."""
+    if isinstance(value.unnest(), _NEVER_AN_INSTANT):
+        return exp.Anonymous(this="to_json", expressions=[value])
     return _duckdb(_TO_JSON, _v=value)
 
 
@@ -495,11 +550,33 @@ def _text_array(value: exp.Expr, inner: Callable[[exp.Expr], exp.Expr]) -> exp.E
     return exp.cast(value.transform(inner), "VARCHAR[]", dialect=_D)
 
 
+def _nested(value: exp.Expr) -> bool:
+    """Whether a constant text[] has more than one dimension: a literal's text opening a sub-array,
+    or an ARRAY of ARRAYs."""
+    node = value.unnest()
+    if isinstance(node, exp.Cast):
+        node = node.this.unnest()
+    if isinstance(node, exp.Literal) and node.is_string:
+        return node.this.lstrip().startswith("{") and node.this.lstrip()[1:].lstrip()[:1] == "{"
+    return isinstance(node, exp.Array) and any(
+        isinstance(item.unnest(), exp.Array) for item in node.expressions
+    )
+
+
+def _path_array(value: exp.Expr, inner: Callable[[exp.Expr], exp.Expr]) -> exp.Expr:
+    """A jsonb path: jsonb_set, jsonb_insert and jsonb_delete_path refuse one of more than one
+    dimension (ARR_NDIM(path) > 1)."""
+    if _nested(value):
+        raise PostgresError("2202E", "wrong number of array subscripts")
+    return _text_array(value, inner)
+
+
 _READ_ARGUMENT: dict[str, Callable[[exp.Expr, Callable[[exp.Expr], exp.Expr]], exp.Expr]] = {
     "j": _text,
     "t": _text,
     "p": _jsonpath,
     "a": _text_array,
+    "k": _path_array,
     "b": lambda value, inner: exp.cast(value.transform(inner), "BOOLEAN"),
     "i": lambda value, inner: exp.cast(value.transform(inner), "BIGINT"),
 }
@@ -628,15 +705,26 @@ def _aggregate(node: exp.Func, name: str, args: list[exp.Expr], inner: Callable)
 
     if name in _AGG_STRICT:
         return _duckdb(
-            "to_json(list_filter(_rows, _v -> _v IS NOT NULL))", _rows=rows(member(args[0]))
+            "to_json(list_filter(_rows, LAMBDA _v : _v IS NOT NULL))", _rows=rows(member(args[0]))
         )
-    if name in _OBJECT_AGGS or (filtered and name in ("json_object_agg", "jsonb_object_agg")):
+    # An ordered one too: DuckDB's json_group_object is a macro, which takes no ORDER BY.
+    ordered_value = len(args) > 1 and isinstance(args[1], exp.Order)
+    plain = name in ("json_object_agg", "jsonb_object_agg")
+    if name in _OBJECT_AGGS or ((filtered or ordered_value) and plain):
         strict, unique = _OBJECT_AGGS.get(name, (False, False))
+        # value ORDER BY ...: the order is the pairs' list's, around the pair.
+        value, order = args[1], None
+        if isinstance(value, exp.Order):
+            value, order = value.this, value
         pairs = _duckdb(
             "struct_pack(k := CAST(_k AS VARCHAR), v := CAST(_x AS VARCHAR))",
             _k=args[0].transform(inner),
-            _x=json_encoded(args[1].transform(inner)),
+            _x=json_encoded(value.transform(inner)),
         )
+        if order is not None:
+            pairs = exp.Order(
+                this=pairs, expressions=[o.transform(inner) for o in order.expressions]
+            )
         flags = [exp.Boolean(this=strict), exp.Boolean(this=unique), exp.Literal.string(name)]
         call = exp.Anonymous(this="provisa_json_object_agg", expressions=[rows(pairs), *flags])
         return exp.cast(call, "JSON")
@@ -667,7 +755,7 @@ def _populated(name: str, args: list[exp.Expr]) -> exp.Expr:
     if len(args) < 2 or not (_is_null(args[0]) and _is_null(args[1])):
         raise NoForm(name)
     if name.endswith("_valid"):
-        return exp.Boolean(this=True)
+        return exp.cast(exp.Null(), "BOOLEAN")  # PostgreSQL's answer of a NULL value
     return _duckdb(
         "unnest(CAST([] AS VARCHAR[]))" if name.endswith("set") else "CAST(NULL AS VARCHAR)"
     )
@@ -683,8 +771,31 @@ def _not_a_row_type(name: str, value: exp.Expr, inner: Callable) -> exp.Expr:
     )
 
 
+def _named_fields(value: exp.Expr) -> None:
+    """An anonymous row (``ROW(...)``, or one cast to record) with its fields named as PostgreSQL
+    names them, f1, f2, ..., and so each row within it: DuckDB's row has no names, and its JSON
+    keys are empty."""
+    node = value.unnest()
+    cast = isinstance(node, exp.Cast) and node.to.sql(dialect="postgres").lower() == "record"
+    row = node.this if cast else node
+    if not (isinstance(row, exp.Anonymous) and row.name.lower() == "row" and row.expressions):
+        return
+    for field in row.expressions:
+        _named_fields(field)  # a row within names its fields too
+    named = exp.Anonymous(
+        this="struct_pack",
+        expressions=[
+            exp.PropertyEQ(this=exp.to_identifier(f"f{i}"), expression=field.copy())
+            for i, field in enumerate(row.expressions, 1)
+        ],
+    )
+    node.replace(named)
+
+
 def _on_duckdb(node: exp.Func, name: str, inner: Callable) -> exp.Expr | None:
     """``node`` as DuckDB's SQL over its UDFs; None for a call of what the rows answer."""
+    if name in ("row_to_json", "to_json", "to_jsonb") and node.expressions:
+        _named_fields(node.expressions[0])
     args, of_null = _spread([_key_of(a) for a in _arguments(node)])
     if isinstance(node, exp.JSONExtract):
         name = "json_extract_path"
@@ -748,7 +859,12 @@ def _on_duckdb(node: exp.Func, name: str, inner: Callable) -> exp.Expr | None:
     if name in _POPULATE or name == "jsonb_populate_record_valid":
         return _populated(name, args)
     if name in ("to_json", "to_jsonb") and len(args) == 1:
-        return _duckdb(_TO_JSON, _v=args[0].transform(inner))
+        written_value = args[0].transform(inner)
+        if _is_json_call(
+            args[0].unnest()
+        ):  # already JSON, so never an instant: json_encoded's ELSE
+            return exp.Anonymous(this="to_json", expressions=[written_value])
+        return json_encoded(written_value)
     if name in ("row_to_json", "array_to_json") and len(args) == 2:
         if _is_null(args[0]):
             return exp.cast(exp.Null(), "JSON")
@@ -854,9 +970,12 @@ def _call(node: exp.Func, dialect: str, inner: Callable[[exp.Expr], exp.Expr]) -
     return node
 
 
-def lowered(tree: exp.Expr, dialect: str) -> exp.Expr:
+def lowered(
+    tree: exp.Expr, dialect: str, by_a_row: Callable[[exp.Expr], bool] = lambda _: False
+) -> exp.Expr:
     """``tree``'s json operators, set-returning calls and casts as the table writes them. Raises
-    :class:`NoForm` for what it does not."""
+    :class:`NoForm` for what it does not. A call ``by_a_row`` holds (a polyfill grid row's, REQ-2236)
+    is left to its row."""
     json_is_text = dialect in _OF[_T] | _OF[_C]
     on_duckdb = dialect in _OF[_D]
 
@@ -886,6 +1005,14 @@ def lowered(tree: exp.Expr, dialect: str) -> exp.Expr:
                 return _extracted(node, rewrite)
             steps = _steps("#>>" if scalar else "#>", path)
             return _path(node.this.transform(rewrite), steps, scalar)
+        if (
+            isinstance(node, exp.JSONExtract | exp.JSONExtractScalar)
+            and not isinstance(node.expression, exp.JSONPath)
+            and not by_a_row(node)  # json_extract_path(v, VARIADIC path), read as ->
+        ):
+            stepped = _stepped(node, dialect, rewrite)
+            if stepped is not None:
+                return stepped
         if kind in _ON_KEYS:
             return operated(_ON_KEYS[kind], node, kind)
         if kind in _ON_JSONB and (_said_jsonb(node.this) or _said_jsonb(node.expression)):
@@ -915,6 +1042,8 @@ def lowered(tree: exp.Expr, dialect: str) -> exp.Expr:
                 if dialect in _OF[_C]:
                     raise NoForm(name)
                 return _table(node, dialect)
-        return _call(node, dialect, rewrite) if isinstance(node, exp.Func) else node
+        if not isinstance(node, exp.Func) or by_a_row(node):
+            return node
+        return _call(node, dialect, rewrite)
 
-    return tree.transform(rewrite)
+    return tree.transform(rewrite, copy=False)

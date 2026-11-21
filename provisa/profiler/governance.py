@@ -66,6 +66,10 @@ _SHAPE_FIELDS = frozenset(
         "distinct_ratio",
         "length_min",
         "length_max",
+        # REQ-2147: a state name (matched | no_kind | too_few_values) and a count of values
+        # tested; neither holds a value of the column.
+        "classification",
+        "classification_values",
     }
 )
 # The kinds keyed by a described column, and so filtered column by column.

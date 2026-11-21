@@ -1,0 +1,20 @@
+{
+  "regionPurposes": {
+    "legendTitle": "Pourquoi une région existe",
+    "explainOnly": "Les finalités expliquent une région. Elles ne changent ni l'endroit où s'exécutent les requêtes, ni ce qu'une règle autorise, ni ce qui est accepté.",
+    "name": {
+      "residency": "Résidence",
+      "workload": "Charge de travail",
+      "latency": "Latence",
+      "resilience": "Résilience",
+      "dedicated": "Dédiée"
+    },
+    "explain": {
+      "residency": "Les données doivent rester dans une juridiction.",
+      "workload": "Sépare une charge de travail des autres.",
+      "latency": "Placée près de ses utilisateurs ou de ses sources.",
+      "resilience": "Un lieu de bascule ou de reprise.",
+      "dedicated": "Infrastructure réservée à une organisation, pour sa propre souveraineté sur celle-ci."
+    }
+  }
+}

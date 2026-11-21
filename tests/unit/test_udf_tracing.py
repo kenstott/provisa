@@ -24,18 +24,17 @@ from fastapi import HTTPException
 import provisa.executor.function_dispatch as fd
 from provisa.executor.function_dispatch import dispatch_function
 from provisa.otel_compat import MemoryUdfTraceSink
-
-
-class _FakeResult:
-    def __init__(self, cols, rows):
-        self.column_names = cols
-        self.rows = rows
+from provisa.executor.result import QueryResult
 
 
 class _FakePools:
     def __init__(self, connected=True):
         self._connected = connected
-        self._result = _FakeResult(["id", "name"], [(1, "ada"), (2, "grace")])
+        self._result = QueryResult(
+            rows=[(1, "ada"), (2, "grace")],
+            column_names=["id", "name"],
+            column_types=["integer", "text"],
+        )
 
     def has(self, _src_id):
         return self._connected

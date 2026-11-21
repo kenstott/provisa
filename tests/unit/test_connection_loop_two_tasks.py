@@ -33,6 +33,7 @@ from unittest.mock import patch
 import pytest
 
 from provisa.core.connection_loop import connection_loop
+from tests.unit.json_encoder.rows import field_answer
 
 
 class _OneConnectionPool:
@@ -142,7 +143,7 @@ def test_multi_root_graphql_query_runs_its_fields_as_one_task_on_the_request_thr
         me = asyncio.current_task()
         sibling_tasks.append(sum(1 for t in asyncio.all_tasks() if t is not me and not t.done()))
         name = await execute(compiled.name)
-        return name, [{"v": name}], None, None
+        return name, field_answer([{"v": name}]), None, None
 
     state = SimpleNamespace()
     compiled = [SimpleNamespace(name="a"), SimpleNamespace(name="b")]

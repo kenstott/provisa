@@ -52,8 +52,11 @@ import {
 } from "../lib/sandboxSession";
 import { storedToken } from "../lib/sessionToken";
 import { endVisit } from "../lib/browserStorage";
+import { onDeclaredBaseDomain } from "./declaredBaseDomain";
 
 const assign = vi.fn();
+// cloud.provisa.dev, which declares provisa.dev: a sandbox is reached at its own subdomain of it.
+onDeclaredBaseDomain("provisa.dev");
 
 beforeEach(() => {
   vi.clearAllMocks();

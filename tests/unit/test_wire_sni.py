@@ -45,23 +45,49 @@ from provisa.security.sni import (
 # ── The hostname rule ─────────────────────────────────────────────────────────────────────────
 
 
+@pytest.fixture
+def declared_base(monkeypatch):
+    """The deployment declares provisa.dev — the same env value the UI server serves."""
+    monkeypatch.setenv("VITE_ORG_BASE_DOMAIN", "provisa.dev")
+
+
 @pytest.mark.parametrize(
     "host,expected",
     [
         ("acme.provisa.dev", "acme"),
         ("ACME.Provisa.Dev", "acme"),  # DNS is case-insensitive; the org id is lowercase
         ("acme.provisa.dev:5439", "acme"),  # a Host header carries the port; SNI does not
-        ("beta.internal.example.com", "beta"),
-        ("provisa.dev", None),  # apex — the leftmost label is the domain, not an org
+        ("beta.internal.example.com", None),  # not under the declared base
+        ("a.b.provisa.dev", None),  # more than one label in front of the base
+        ("provisa.dev", None),  # apex — the base itself, not an org
+        ("evilprovisa.dev", None),  # a suffix match that is not a label boundary
         ("localhost", None),
         ("127.0.0.1", None),  # dialed by address, which sends no SNI at all
         ("cloud.provisa.dev", None),  # the control plane names no org by its hostname
+        ("fluffy-space-3000.app.github.dev", None),  # a Codespace host
         ("", None),
         (None, None),
     ],
 )
-def test_the_org_a_hostname_addresses(host, expected):
+def test_the_org_a_hostname_addresses(declared_base, host, expected):
     assert org_from_host(host) == expected
+
+
+@pytest.mark.parametrize(
+    "host",
+    ["acme.provisa.dev", "fluffy-space-3000.app.github.dev", "beta.internal.example.com"],
+)
+@pytest.mark.parametrize("declared", [None, "", "  "])
+def test_no_declared_base_means_no_host_names_an_org(monkeypatch, host, declared):
+    if declared is None:
+        monkeypatch.delenv("VITE_ORG_BASE_DOMAIN", raising=False)
+    else:
+        monkeypatch.setenv("VITE_ORG_BASE_DOMAIN", declared)
+    assert org_from_host(host) is None
+
+
+def test_a_codespace_host_names_no_org_even_when_a_base_is_declared(declared_base):
+    assert org_from_host("fluffy-space-3000.app.github.dev") is None
 
 
 def test_the_control_plane_host_is_recognized_with_its_port_and_case():
@@ -70,7 +96,7 @@ def test_the_control_plane_host_is_recognized_with_its_port_and_case():
     assert not is_control_plane_host("acme.provisa.dev")
 
 
-def test_the_http_middleware_reads_hostnames_the_same_way():
+def test_the_http_middleware_reads_hostnames_the_same_way(declared_base):
     """One rule, one place — the middleware must not grow a second reading of the same string."""
     from provisa.auth.middleware import _requested_org_from_host
 
@@ -189,7 +215,7 @@ def test_a_plaintext_connection_indicates_nothing():
 # ── What the protocol handlers do with it ─────────────────────────────────────────────────────
 
 
-def test_pgwire_reads_the_org_off_its_wrapped_socket():
+def test_pgwire_reads_the_org_off_its_wrapped_socket(declared_base):
     from provisa.pgwire.server import ProvisaHandler
 
     handler = cast(Any, object.__new__(ProvisaHandler))
@@ -206,7 +232,7 @@ def test_pgwire_reads_the_org_off_its_wrapped_socket():
     assert handler._requested_org() is None  # apex — a TLS connection that named no org
 
 
-def test_bolt_reads_the_org_off_its_transport():
+def test_bolt_reads_the_org_off_its_transport(declared_base):
     from provisa.bolt.session import BoltSession
 
     session = cast(Any, object.__new__(BoltSession))

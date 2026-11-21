@@ -18,6 +18,7 @@ tests/unit/test_deploy_view_source_types.py)."""
 
 import json
 import os
+import uuid
 from types import SimpleNamespace
 
 import pytest
@@ -25,7 +26,7 @@ import pytest_asyncio
 import sqlalchemy as sa
 from httpx import ASGITransport, AsyncClient
 
-from tests.helpers import registered_id, release_mutation
+from tests.helpers import registered_id
 
 pytestmark = [pytest.mark.e2e, pytest.mark.asyncio(loop_scope="session")]
 
@@ -34,9 +35,13 @@ _PG_PORT = int(os.environ.get("PG_PORT", "5432"))
 _PG_DB = "provisa"
 _SCHEMA_A = "j108_dv_a"
 _SCHEMA_B = "j108_dv_b"
-_SRC_A = "j108-pg-a"
-_SRC_B = "j108-pg-b"
-_DOMAIN = "j108dv"
+# REQ-2248: a deleted table is retired, keeping its row and its name, and a domain that still
+# holds a table, retired or not, is kept (maintainer 2026-11-15). Every name the module registers
+# is this run's own, so no run meets a name a retired table of an earlier run still holds.
+_RUN = uuid.uuid4().hex[:8]
+_SRC_A = f"j108-pg-a-{_RUN}"
+_SRC_B = f"j108-pg-b-{_RUN}"
+_DOMAIN = f"j108dv{_RUN}"
 _ADMIN = "org_admin"
 
 
@@ -131,8 +136,6 @@ async def model(client, source_db):
                 f'input: {{sourceId: "{source_id}", domainId: "{_DOMAIN}", schemaName: "{schema}", '
                 f'tableName: "{table}", columns: [{cols}]}}',
             )
-            released = await _admin(client, release_mutation(registered_id(reg["message"])))
-            assert released["setTableDraft"]["success"], released
             ids[table] = registered_id(reg["message"])
             _REGISTERED.append(ids[table])
         yield ids
@@ -145,12 +148,11 @@ _REGISTERED: list[int] = []
 
 
 async def _tear_down(client) -> None:
-    """Delete what the module registered, tables first, then the domain and the sources. Every
-    delete is attempted; a refusal is reported once all have run."""
+    """Delete (retire, REQ-2248) every table the module registered, views first. The domain and
+    the sources stay: they hold the retired tables, and a domain that still holds a table,
+    retired or not, is kept. Every delete is attempted; a refusal is reported once all have run."""
     refused = []
     deletes = [f"deleteTable(id: {i})" for i in reversed(_REGISTERED)]
-    deletes.append(f'deleteDomain(id: "{_DOMAIN}")')
-    deletes += [f'deleteSource(id: "{s}")' for s in (_SRC_A, _SRC_B)]
     for call in deletes:
         resp = await client.post(
             "/admin/graphql", json={"query": f"mutation {{ {call} {{ success message }} }}"}
@@ -173,8 +175,6 @@ async def _register_view(client, name: str, sql: str, columns: list[str]) -> int
     )
     table_id = registered_id(reg["message"])
     _REGISTERED.append(table_id)
-    released = await _admin(client, release_mutation(table_id))
-    assert released["setTableDraft"]["success"], released
     return table_id
 
 
@@ -201,7 +201,7 @@ def _view_def(engine, schema: str, view: str) -> str | None:
 async def test_a_single_source_view_is_deployed_and_the_source_answers_as_provisa_did(
     client, model, source_db
 ):
-    name = "j108_big_orders"
+    name = f"j108_big_orders_{_RUN}"
     table_id = await _register_view(
         client,
         name,
@@ -232,7 +232,7 @@ async def test_a_single_source_view_is_deployed_and_the_source_answers_as_provis
 async def test_a_view_across_two_sources_is_refused_naming_both_and_creates_nothing(
     client, model, source_db
 ):
-    name = "j108_cross"
+    name = f"j108_cross_{_RUN}"
     table_id = await _register_view(
         client,
         name,
@@ -259,7 +259,7 @@ async def test_a_role_without_table_registration_is_refused_and_nothing_is_creat
 
     role = "analyst"
     assert "table_registration" not in (state.roles[role].get("capabilities") or [])
-    name = "j108_denied"
+    name = f"j108_denied_{_RUN}"
     table_id = await _register_view(
         client, name, f'SELECT id, amount FROM "{_DOMAIN}"."orders"', ["id", "amount"]
     )

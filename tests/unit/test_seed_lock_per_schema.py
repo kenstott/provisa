@@ -131,12 +131,6 @@ async def test_a_seeded_tables_columns_are_written_in_one_commit(monkeypatch):
         async def upsert_returning(self, *args, **kwargs):
             return 7
 
-        async def reflect_columns(self, table, schema=None):
-            return [
-                {"column_name": name, "data_type": "text", "is_primary_key": False}
-                for name in ("a", "b", "c")
-            ]
-
         async def execute_core(self, stmt):
             return None
 
@@ -152,8 +146,14 @@ async def test_a_seeded_tables_columns_are_written_in_one_commit(monkeypatch):
 
     monkeypatch.setitem(startup_seed._TBL_DESC, "t", "a table")
     monkeypatch.setitem(startup_seed._COL_DESC, "t", {})
+    reflected = {
+        "t": [
+            {"column_name": name, "data_type": "text", "is_primary_key": False}
+            for name in ("a", "b", "c")
+        ]
+    }
     await startup_seed._register_admin_view(
-        _Writer(), "meta", "org_acme", "t", base_table=None, view_name="t"
+        _Writer(), "meta", "org_acme", "t", base_table=None, view_name="t", reflected=reflected
     )
     assert commits["columns"] == 3
     assert commits["outside"] == 0

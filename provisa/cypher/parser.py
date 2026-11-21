@@ -1057,15 +1057,10 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
             if (_trdd := self._peek()) and _trdd.type == "DOTDOT":
                 # *..n
                 self._advance()
-                if not ((_trm2 := self._peek()) and _trm2.type == "NUMBER"):
-                    # [*..], unbounded written out: refused as [*] is (REQ-348)
-                    raise CypherParseError(
-                        "Unbounded variable-length pattern [*] is not allowed. "
-                        "Specify a depth limit, e.g. [*..5]."
-                    )
-                t = self._expect("NUMBER")
-                max_hops = int(float(t.value))
                 min_hops = 1
+                if (_trm2 := self._peek()) and _trm2.type == "NUMBER":
+                    max_hops = int(float(self._advance().value))
+                # [*..] is [*] written out: no upper bound (REQ-348)
             elif (_trn := self._peek()) and _trn.type == "NUMBER":
                 n = int(float(self._advance().value))
                 if (_trdd2 := self._peek()) and _trdd2.type == "DOTDOT":
@@ -1077,22 +1072,21 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
                     min_hops = n
                     max_hops = n
             else:
-                # unbounded [*] — reject
-                raise CypherParseError(
-                    "Unbounded variable-length pattern [*] is not allowed. "
-                    "Specify a depth limit, e.g. [*..5]."
-                )
+                # [*]: one hop or more, no upper bound. The translation walks to the maximum
+                # depth (graph.depth_limit) and fails by name past it (REQ-348).
+                min_hops = 1
 
         props: dict[str, Any] = {}
         text: dict[str, str] = {}
+        every_hop: dict[str, CypherExpr] = {}
         if (_trm := self._peek()) and _trm.type == "LBRACE":
-            if variable_length:
-                raise CypherParseError(
-                    "an inline property map on a variable-length relationship is not supported: "
-                    "state the condition in WHERE"
-                )
             props, text = self._parse_map_literal()
-            if variable is None and not self._write_pattern:
+            if variable_length:
+                # REQ-348: a walk's map holds of every relationship it takes, each hop filtered
+                # by it; it is no condition on the walk's variable (a list), so no WHERE.
+                every_hop = {key: parse_expression(value) for key, value in text.items()}
+                props, text = {}, {}
+            elif variable is None and not self._write_pattern:
                 variable = self._inline_variable()
         self._expect("RBRACKET")
         return RelPattern(
@@ -1104,6 +1098,7 @@ class _Parser:  # REQ-345, REQ-346, REQ-347, REQ-348, REQ-571
             variable_length=variable_length,
             properties=props,
             property_text=text,
+            every_hop=every_hop,
         )
 
     def _parse_map_literal(self) -> tuple[dict[str, Any], dict[str, str]]:

@@ -20,12 +20,15 @@ SQL     → Stage 2 governance + the engine
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 from typing import TYPE_CHECKING, Any, Literal
 
 if TYPE_CHECKING:
+    from provisa.compiler.sql_types import CompiledQuery
     from provisa.executor.redirect import Delivery
+    from provisa.executor.result import QueryResult
 
 log = logging.getLogger(__name__)
 
@@ -90,7 +93,7 @@ async def _execute_cypher(
     from provisa.gql.translator import cypher_to_sql
     from provisa.gql.graph_rewriter import apply_graph_rewrites
     from provisa.cypher.params import collect_param_names, bind_params
-    from provisa.gql.assembler import assemble_rows, take_cut, to_serializable
+    from provisa.gql.assembler import assemble_rows, take_overrun, to_serializable
     from provisa.compiler.sql_rewrite import make_semantic_sql
     from provisa.compiler.directives import NO_CACHE_HINT
     from provisa.pgwire._pipeline import _govern_and_route_compiled, _execute_plan
@@ -127,7 +130,7 @@ async def _execute_cypher(
     result = await _execute_plan(plan, app_state)
     if result.redirect is not None:
         raise _Delivered(result.redirect)
-    rows = take_cut([dict(zip(result.column_names, row)) for row in result.rows], plan.warnings)
+    rows = take_overrun([dict(zip(result.column_names, row)) for row in result.rows])
     assembled = assemble_rows(rows, graph_vars)
     columns = list(rows[0].keys()) if rows else []
     return {"columns": columns, "rows": [to_serializable(r) for r in assembled]}
@@ -135,10 +138,10 @@ async def _execute_cypher(
 
 async def _compile_and_execute_graphql(
     query: str, role: str, app_state: Any, deliver: "Delivery | None"
-) -> list[tuple]:
+) -> "list[tuple[CompiledQuery, QueryResult]]":
     """Compile ``query`` and run each root field through the ONE compiled pipeline
-    (``_govern_and_route_compiled`` → ``_execute_plan``), returning the raw (compiled_query, result,
-    nodes_result) tuples — the step both ``_execute_graphql`` (GraphQL-shaped merge) and the
+    (``_govern_and_route_compiled`` → ``_execute_plan``), returning the raw (compiled_query, result)
+    pairs — the step both ``_execute_graphql`` (GraphQL-shaped merge) and the
     gRPC/JSON:API/OpenAPI aggregate branches (protocol-shaped envelopes, REQ-1359) build on.
     Governance, API-table hydration, the response cache and the terminal are the pipeline's, exactly
     as for REST and JSON:API reading the same compiled SQL."""
@@ -158,7 +161,7 @@ async def _compile_and_execute_graphql(
     if not compiled_queries:
         raise RuntimeError("No query fields found")
 
-    out: list[tuple] = []
+    out: list[tuple[CompiledQuery, QueryResult]] = []
     for cq in compiled_queries:
         plan = await _govern_and_route_compiled(
             cq.sql,
@@ -181,7 +184,7 @@ async def _compile_and_execute_graphql(
 
 async def _run_single_compiled_graphql(
     query: str, role: str, app_state: Any, deliver: "Delivery | None"
-) -> tuple:
+) -> "tuple[CompiledQuery, QueryResult]":
     """The single-root-field case (gRPC/JSON:API/OpenAPI aggregate/group-by NL query text always
     targets exactly one root field) — returns (compiled_query, result)."""
     return (await _compile_and_execute_graphql(query, role, app_state, deliver))[0]
@@ -190,23 +193,28 @@ async def _run_single_compiled_graphql(
 async def _execute_graphql(
     query: str, role: str, app_state: Any, deliver: "Delivery | None"
 ) -> dict:
-    from provisa.executor.serialize import serialize_aggregate, serialize_rows
-
     compiled_results = await _compile_and_execute_graphql(query, role, app_state, deliver)
 
     merged: dict = {}
     for cq, result in compiled_results:
-        if cq.has_nodes and not cq.is_group_by:
-            serialized = serialize_aggregate(
-                result.rows, cq.columns, cq.root_field, agg_alias=cq.agg_alias
-            )
-        else:
-            serialized = serialize_rows(
-                result.rows, cq.columns, cq.root_field, result_limit=cq.result_limit
-            )
-        merged.update(serialized.get("data", {}))
+        merged[cq.root_field] = _graphql_value(
+            cq, result, aggregate=cq.has_nodes and not cq.is_group_by
+        )
 
     return {"data": merged}
+
+
+def _graphql_value(cq: Any, result: Any, *, aggregate: bool) -> Any:  # noqa: ANN401
+    """A root field's value as GraphQL answers it (the Rust encoder's JSON, REQ-2194): its rows,
+    or an aggregate's map; read back as the Python value this executor hands its caller."""
+    import json
+
+    from provisa.executor.json_encoders import graphql_aggregate, graphql_field, result_batches
+
+    batches = result_batches(result)
+    if aggregate:
+        return json.loads(graphql_aggregate(batches, cq.columns, cq.agg_alias))
+    return json.loads(graphql_field(batches, cq.columns, cq.result_limit).body)
 
 
 async def _execute_sql(query: str, role: str, app_state: Any, deliver: "Delivery | None") -> dict:
@@ -232,7 +240,7 @@ async def _execute_grpc(query: str, role: str, app_state: Any, deliver: "Deliver
         split_agg_columns,
         split_group_by_columns,
     )
-    from provisa.executor.serialize import _convert_value
+    from provisa.executor.serialize import column_value
 
     ctx = _get_ctx(app_state, role)
 
@@ -274,7 +282,7 @@ async def _execute_grpc(query: str, role: str, app_state: Any, deliver: "Deliver
                 "aggregate": {**top, **nested},
             }
             if at is not None:
-                out_row["nodes"] = _convert_value(row[at])
+                out_row["nodes"] = column_value(row[at], cq.columns[at])
             rows.append(out_row)
         return {"group_by": rows}
 
@@ -290,15 +298,52 @@ async def _execute_grpc(query: str, role: str, app_state: Any, deliver: "Deliver
         top, nested = split_agg_columns(cq.columns, row)
         return {**top, **nested}
 
+    m = re.match(r"^Query(\w+)\(read_mask=\[(.*)\]\)$", query)
+    if m is not None:
+        return await _execute_grpc_masked_read(
+            m.group(1),
+            [p.strip() for p in m.group(2).split(",") if p.strip()],
+            role,
+            app_state,
+            deliver,
+        )
+
     # Query{Type}: the row read the servicer runs, lowered to GraphQL and compiled as it is.
     type_name = query[len("Query") :] if query.startswith("Query") else query
     lowered = grpc_table_to_graphql(ctx, app_state.schemas.get(role), type_name, limit=20)
     if lowered is None:
         raise RuntimeError(f"No table matches gRPC type: {type_name}")
     graphql_text, _no_variables = lowered  # no filter or parameter is passed
-    _cq, result, _ = await _run_single_compiled_graphql(graphql_text, role, app_state, deliver)
+    _cq, result = await _run_single_compiled_graphql(graphql_text, role, app_state, deliver)
     columns = list(result.column_names)
     return {"columns": columns, "rows": [dict(zip(columns, row)) for row in result.rows]}
+
+
+async def _execute_grpc_masked_read(
+    type_name: str, paths: list[str], role: str, app_state: Any, deliver: "Delivery | None"
+) -> dict:
+    """``Query{Type}`` with a ``read_mask`` (REQ-803, REQ-1929): the servicer's own lowering
+    (``resolve_read_mask`` → ``grpc_table_to_graphql``), compiled and run as every row read is,
+    and each row keyed by proto field with its relations nested, as the servicer and the HTTP
+    proxy answer it (a to-one an object, a to-many a list)."""
+    import json
+
+    from provisa.executor.json_encoders import graphql_field, result_batches
+    from provisa.grpc.query_ir import grpc_table_to_graphql, resolve_read_mask
+
+    ctx = _get_ctx(app_state, role)
+    read_mask = resolve_read_mask(ctx, type_name, paths)
+    lowered = grpc_table_to_graphql(
+        ctx, app_state.schemas.get(role), type_name, limit=20, read_mask=read_mask
+    )
+    if read_mask is None or lowered is None:
+        raise RuntimeError(f"No table matches gRPC type: {type_name}")
+    graphql_text, _no_variables = lowered  # no filter or parameter is passed
+    cq, result = await _run_single_compiled_graphql(graphql_text, role, app_state, deliver)
+    answer = graphql_field(result_batches(result), cq.columns)
+    rows = [read_mask.restrict_row(row) for row in json.loads(answer.body)]
+    columns = [*read_mask.columns, *(relation.field for relation in read_mask.relations)]
+    return {"columns": columns, "rows": rows}
 
 
 def _grpc_aggregate_graphql_text(
@@ -384,10 +429,9 @@ async def _execute_jsonapi(
             _parse_aggregate_funcs(m.group(3)),
             deliver=deliver,
         )
-    m = re.match(r"^/data/jsonapi/([^/]+)/([^/?]+)", query)
-    if m is None:
+    if re.match(r"^/data/jsonapi/[^/]+/[^/?]+(\?.*)?$", query) is None:
         raise RuntimeError(f"Malformed jsonapi query: {query}")
-    return await _execute_domain_table(m.group(1), m.group(2), role, app_state, deliver)
+    return await _endpoint_read(query, _JSONAPI_MEDIA_TYPE, role, app_state, deliver)
 
 
 async def _execute_openapi(
@@ -419,28 +463,68 @@ async def _execute_openapi(
             _parse_aggregate_funcs(m.group(3)),
             deliver=deliver,
         )
-    m = re.match(r"^GET /data/rest/([^/]+)/([^/?]+)", query)
+    m = re.match(r"^GET (/data/rest/[^/]+/[^/?]+(\?.*)?)$", query)
     if m is None:
         raise RuntimeError(f"Malformed openapi query: {query}")
-    return await _execute_domain_table(m.group(1), m.group(2), role, app_state, deliver)
+    return await _endpoint_read(m.group(1), "application/json", role, app_state, deliver)
 
 
-async def _execute_domain_table(
-    domain_id: str, table_name: str, role: str, app_state: Any, deliver: "Delivery | None"
-) -> dict:
-    from provisa.compiler.sql_gen import _q
-    from provisa.compiler.sql_rewrite import semantic_ref
+_JSONAPI_MEDIA_TYPE = "application/vnd.api+json"
 
-    ctx = _get_ctx(app_state, role)
-    meta = next(
-        (m for m in ctx.tables.values() if m.domain_id == domain_id and m.table_name == table_name),
-        None,
-    )
-    if meta is None:
-        raise RuntimeError(f"No table matches {domain_id}/{table_name}")
-    cols = ", ".join(_q(c) for c, _t in ctx.aggregate_columns.get(meta.table_id, [])) or "*"
-    sql = f"SELECT {cols} FROM {semantic_ref(meta)} LIMIT 20"
-    return await _execute_sql(sql, role, app_state, deliver)
+
+async def _endpoint_read(
+    path: str, accept: str, role: str, app_state: Any, deliver: "Delivery | None"
+) -> Any:
+    """A REST or JSON:API row read run through its real route (REQ-1929): the request the panel
+    shows is the one the endpoint accepts, and the panel's answer is the endpoint's body, its
+    relationships nested (REST ``?fields=`` dot-paths) or included (JSON:API ``?include=``).
+
+    The routes are the app's own (``create_rest_router`` / ``create_jsonapi_router``), served
+    in-process as ``role``, the role the auth layer establishes for a request. The NL request's
+    forced delivery (REQ-1194) rides the ``X-Provisa-Redirect*`` headers the routes read it
+    from. A refusal the route answers (4xx/5xx) is this read's error, in the route's words."""
+    from collections.abc import MutableMapping
+
+    import httpx
+    from fastapi import FastAPI
+
+    from provisa.api.jsonapi.generator import create_jsonapi_router
+    from provisa.api.rest.generator import create_rest_router
+
+    app = FastAPI()
+    app.include_router(create_rest_router(app_state))
+    app.include_router(create_jsonapi_router(app_state))
+
+    async def _as_role(scope: MutableMapping[str, Any], receive: Any, send: Any) -> None:
+        if scope["type"] == "http":
+            scope = {**scope, "state": {**scope.get("state", {}), "role": role}}
+        await app(scope, receive, send)
+
+    headers = {"accept": accept}
+    if deliver is not None:
+        headers["x-provisa-redirect"] = "true"
+        headers["x-provisa-redirect-format"] = deliver.output_format
+    transport = httpx.ASGITransport(app=_as_role)
+    async with httpx.AsyncClient(transport=transport, base_url="http://nl") as client:
+        response = await client.get(path, headers=headers)
+    body = response.json()
+    if response.status_code >= 400:
+        raise RuntimeError(_endpoint_refusal(body))
+    meta = body.get("meta") if isinstance(body, dict) else None
+    if isinstance(meta, dict) and meta.get("redirect") is not None:
+        raise _Delivered(meta["redirect"])
+    return body
+
+
+def _endpoint_refusal(body: Any) -> str:
+    """The reason a route's error body gives: JSON:API's first error's detail (or title), or the
+    ``detail`` of FastAPI's HTTP error body."""
+    if isinstance(body, dict) and body.get("errors"):
+        error = body["errors"][0]
+        return str(error.get("detail") or error["title"])
+    if isinstance(body, dict) and "detail" in body:
+        return str(body["detail"])
+    return json.dumps(body, default=str)
 
 
 def _physical_include_path(ctx: Any, meta: Any, entry: str) -> str:
@@ -482,8 +566,6 @@ async def _execute_domain_table_aggregate(
     ``include_nodes`` (REQ-1361/REQ-1401) mirrors ``?includeNodes=true`` — the per-group
     row-level detail JSON:API/REST's real group-by endpoints attach via a ``nodes { ... }``
     sub-selection."""
-    from provisa.executor.serialize import serialize_aggregate, serialize_rows
-
     ctx = _get_ctx(app_state, role)
     meta = next(
         (m for m in ctx.tables.values() if m.domain_id == domain_id and m.table_name == table_name),
@@ -511,8 +593,7 @@ async def _execute_domain_table_aggregate(
 
     if by_columns:
         # A group's nodes, when selected, are a column of its own row.
-        shaped = serialize_rows(result.rows, cq.columns, cq.root_field)
-        group_rows = shaped.get("data", {}).get(cq.root_field, [])
+        group_rows = _graphql_value(cq, result, aggregate=False)
         if protocol == "jsonapi":
             return {
                 "data": [
@@ -522,8 +603,7 @@ async def _execute_domain_table_aggregate(
             }
         return {"data": group_rows}
 
-    shaped = serialize_aggregate(result.rows, cq.columns, cq.root_field, agg_alias=cq.agg_alias)
-    agg_payload = shaped.get("data", {}).get(cq.root_field, {}).get(cq.agg_alias, {})
+    agg_payload = _graphql_value(cq, result, aggregate=True).get(cq.agg_alias, {})
     if protocol == "jsonapi":
         return {"data": None, "meta": {"aggregate": agg_payload}}
     return {"data": agg_payload}

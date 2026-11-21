@@ -23,17 +23,22 @@ import gzip
 import hashlib
 import io
 import json
+import re
 import platform
 import shutil
+import subprocess
+import sys
 import tarfile
 import zipfile
 from pathlib import Path
 
 import httpx
 import pytest
+import sqlglot
 
 from provisa.codesource import image_build, oci
 from provisa.codesource.bundle import content_hash
+from provisa.codesource.manifest import manifest_hash
 from provisa.codesource.worker import PROTOCOL
 from provisa.runtime_deps.code_runtimes import RUNTIMES, LINUX_ARM64, LINUX_X64
 
@@ -60,8 +65,26 @@ def _zip(files: dict[str, bytes]) -> bytes:
     return raw.getvalue()
 
 
+VERSION = "0.1.0a7+local"
+
+
+def _wheels(root: Path, version: str = VERSION) -> Path:
+    """The Linux provisa wheels of ``version``, one per architecture, each carrying its compiled
+    encoders (REQ-2194), in the build cache's wheelhouse."""
+    house = root / "wheels"
+    house.mkdir(parents=True, exist_ok=True)
+    for arch in ("x86_64", "aarch64"):
+        wheel = house / f"provisa-{version}-cp312-cp312-manylinux_2_28_{arch}.whl"
+        wheel.write_bytes(
+            _zip({"provisa/_encoders.so": f"encoders {arch}".encode(), "provisa/server.py": b""})
+        )
+    return house
+
+
 def _cache(root: Path, platform_key: tuple[str, str]) -> None:
-    """The pinned archives a build reads, already in the cache under their pinned sums."""
+    """The pinned archives a build reads, already in the cache under their pinned sums, and the
+    provisa wheels whose encoders the front end writes its rows with."""
+    _wheels(root)
     archives = root / "code" / "archives"
     archives.mkdir(parents=True, exist_ok=True)
     for name in ("python", "pyarrow", "node", "apache-arrow"):
@@ -102,6 +125,7 @@ def base(tmp_path: Path) -> oci.Registry:
 
 
 NAMES = {"rates": {"columns": [], "parameters": [], "takes": []}}
+MANIFEST = {"exports": [{"name": "rates"}], "types": {}, "requires": []}
 FRONT = [
     "-I",
     "/opt/provisa/front/front.py",
@@ -121,9 +145,10 @@ def _plan(root: Path, language: str, runtime: str, cache: Path, entry: str | Non
         entry=entry,
         exports=["rates"],
         names=NAMES,
+        manifest=MANIFEST,
         registries=[],
         cache_root=cache,
-        version="0.1.0a7+local",
+        version=VERSION,
     )
 
 
@@ -156,7 +181,9 @@ def test_a_python_source_is_built_for_linux_with_its_wheels_and_its_host(
     code = tmp_path / "src"
     code.mkdir()
     (code / "rates.py").write_text(
-        "def rates(n: int) -> list[dict]:\n    '''@table'''\n    return []\n"
+        "from typing import TypedDict\n\n\n"
+        "class Rate(TypedDict):\n    code: str\n\n\n"
+        "def rates(n: int) -> list[Rate]:\n    '''@table'''\n    return []\n"
     )
     (code / "requirements.txt").write_text("six==1.17.0 --hash=sha256:" + "a" * 64 + "\n")
     cache = tmp_path / "cache"
@@ -195,9 +222,13 @@ def test_a_python_source_is_built_for_linux_with_its_wheels_and_its_host(
         "dev.provisa.code_hash": content_hash(code),
         "dev.provisa.exports": "rates",
         "dev.provisa.names": json.dumps(NAMES, sort_keys=True, separators=(",", ":")),
+        # REQ-2221: what a host's handshake is checked by, against the image at its digest.
+        "dev.provisa.manifest_hash": manifest_hash(MANIFEST),
     }
     assert "PROVISA_CODE_HASH=" + content_hash(code) in config["Env"]
+    assert "PROVISA_MANIFEST_FILE=/opt/provisa/front/manifest.json" in config["Env"]
     paths = _layers_paths(built)
+    assert "opt/provisa/front/manifest.json" in paths
     assert {
         "usr/lib/libc.so.6",
         "opt/provisa/runtime/python/bin/python3.12",
@@ -213,12 +244,68 @@ def test_a_python_source_is_built_for_linux_with_its_wheels_and_its_host(
         "opt/provisa/front/names.json",
         "opt/provisa/frontlib/duckdb.py",
         "opt/provisa/frontlib/buenavista/postgres.py",
+        # REQ-2194: provisa._encoders from the amd64 wheel, in a provisa package of its own.
+        "opt/provisa/frontlib/provisa/__init__.py",
+        "opt/provisa/frontlib/provisa/_encoders.so",
         "opt/provisa/venv/pyvenv.cfg",
         "opt/provisa/venv/bin/python",
         "opt/provisa/venv/lib/python3.12/site-packages/six.py",
         "opt/provisa/code/rates.py",
         "var/lib/provisa",
     } <= paths
+
+
+def test_the_front_end_imports_its_postgres_protocol_from_the_image_alone(
+    tmp_path: Path, pinned_base, monkeypatch
+):
+    """An engine attaches a built host over pgwire, and that face is imported on its first
+    connection: a module the protocol takes from provisa and the image lacks ends every attach. Run
+    with no site processing, so no editable provisa answers for what the image does not hold."""
+    code = tmp_path / "src"
+    code.mkdir()
+    (code / "rates.py").write_text(
+        "from typing import TypedDict\n\n\n"
+        "class Rate(TypedDict):\n    code: str\n\n\n"
+        "def rates(n: int) -> list[Rate]:\n    '''@table'''\n    return []\n"
+    )
+    (code / "requirements.txt").write_text("six==1.17.0 --hash=sha256:" + "a" * 64 + "\n")
+    cache = tmp_path / "cache"
+    _cache(cache, LINUX_X64)
+    monkeypatch.setattr(image_build, "_fetched", _fetched_from(code))
+
+    def run(argv, cwd, env):
+        Path(argv[argv.index("--target") + 1], "unused.py").write_text("")
+
+    built = image_build.assemble(
+        _plan(code, "python", "python", cache, "rates"), None, None, "amd64", tmp_path / "w",
+        run=run, base=pinned_base,
+    )  # fmt: skip
+    image = tmp_path / "image"
+    for layer in built.image.layers:
+        with gzip.open(layer.blob) as plain, tarfile.open(fileobj=io.BytesIO(plain.read())) as tar:
+            wanted = [
+                m
+                for m in tar.getmembers()
+                if m.name.startswith(("opt/provisa/front/", "opt/provisa/frontlib/"))
+            ]
+            tar.extractall(image, members=wanted, filter="data")
+    front, lib = image / "opt/provisa/front", image / "opt/provisa/frontlib"
+    third_party = Path(sqlglot.__file__).parent.parent
+    probe = (
+        "import sys\n"
+        f"sys.path[:0] = [{str(front)!r}, {str(lib)!r}]\n"
+        f"sys.path.append({str(third_party)!r})\n"
+        "import provisa, pgfront\n"
+        "print(provisa.__file__)\n"
+    )
+    done = subprocess.run(  # noqa: S603 -- the test's own interpreter and the image's programs
+        [sys.executable, "-I", "-S", "-c", probe],
+        capture_output=True,
+        text=True,
+        cwd=tmp_path,
+    )
+    assert done.returncode == 0, done.stderr
+    assert done.stdout.strip() == str(lib / "provisa" / "__init__.py")
 
 
 def test_a_node_source_installs_its_packages_for_the_images_platform(
@@ -276,9 +363,135 @@ def test_a_node_source_installs_its_packages_for_the_images_platform(
         f"opt/provisa/front-runtime/{python}",
         "opt/provisa/front/front.py",
         "opt/provisa/frontlib/duckdb.py",
+        "opt/provisa/frontlib/provisa/_encoders.so",
         "opt/provisa/code/node_modules/dayjs",
     } <= paths
     assert not (code / ".npmrc").exists()
+
+
+def test_a_go_source_is_its_host_compiled_for_the_images_platform(
+    tmp_path: Path, pinned_base, monkeypatch
+):
+    """REQ-2200: a Go source's image is its host, compiled by the pinned Go for linux and the
+    image's architecture with the code linked in, and the front end on its own Python."""
+    from provisa.golang import image as go_image
+
+    code = tmp_path / "src"
+    code.mkdir()
+    (code / "go.mod").write_text("module example.com/rates\n\ngo 1.23\n")
+    (code / "rates.go").write_text(
+        "package rates\n\n"
+        'type Rate struct {\n\tCode string `json:"code"`\n}\n\n'
+        "// @table\nfunc Rates() []Rate { return nil }\n"
+    )
+    cache = tmp_path / "cache"
+    _cache(cache, LINUX_ARM64)
+    here = (platform.system(), platform.machine())
+    go = cache / "code" / "go" / RUNTIMES["go"].version / RUNTIMES["go"].asset(here).executable
+    go.parent.mkdir(parents=True, exist_ok=True)
+    go.write_text("")
+    monkeypatch.setattr(image_build, "_fetched", _fetched_from(code))
+    listed: list[tuple[list[str], dict]] = []
+    built_with: dict = {}
+
+    def run_go(argv, env, cwd):
+        listed.append((list(argv), env))
+        return ""
+
+    def build_host(**given):
+        built_with.update(given)
+        given["dest"].parent.mkdir(parents=True, exist_ok=True)
+        given["dest"].write_bytes(b"\x7fELF static host")
+        return given["dest"]
+
+    monkeypatch.setattr(go_image, "run_go", run_go)
+    monkeypatch.setattr(go_image, "build_host", build_host)
+    built = image_build.assemble(
+        _plan(code, "go", "go", cache),
+        None,
+        None,
+        "arm64",
+        tmp_path / "w",
+        run=lambda argv, cwd, env: (
+            Path(argv[argv.index("--target") + 1]) / "duckdb.py"
+        ).write_text(""),
+        base=pinned_base,
+    )
+    [(argv, env)] = listed
+    assert argv[1:] == ["list", "-deps", "."]
+    assert (env["GOOS"], env["GOARCH"], env["CGO_ENABLED"]) == ("linux", "arm64", "0")
+    assert env["GOPROXY"] == "https://proxy.golang.org"
+    assert built_with["exports"] == ["rates"] and built_with["package"] == "."
+    assert (built_with["extra_env"]["GOOS"], built_with["extra_env"]["GOARCH"]) == (
+        "linux",
+        "arm64",
+    )
+    config = json.loads(built.image.config())
+    python = RUNTIMES["python"].asset(LINUX_ARM64).executable
+    assert config["architecture"] == "arm64"
+    assert config["config"]["Entrypoint"] == [
+        f"/opt/provisa/front-runtime/{python}", *FRONT, "/opt/provisa/host/host", "{fd}",
+    ]  # fmt: skip
+    assert config["config"]["Labels"]["dev.provisa.runtime"] == "go"
+    paths = _layers_paths(built)
+    assert {
+        "opt/provisa/host/host",
+        f"opt/provisa/front-runtime/{python}",
+        "opt/provisa/front/front.py",
+        "opt/provisa/frontlib/provisa/_encoders.so",
+        "opt/provisa/code",
+    } <= paths
+    # Nothing of the code but the host it is linked into.
+    assert not any(p.startswith("opt/provisa/code/") for p in paths)
+
+
+def test_the_front_ends_encoders_are_the_ones_of_the_images_architecture(tmp_path: Path):
+    plan = _plan(tmp_path, "python", "python", tmp_path)
+    _wheels(tmp_path)
+    for arch, machine in (("amd64", "x86_64"), ("arm64", "aarch64")):
+        entries = {e.path: e for e in image_build._encoders(plan, arch)}
+        module = entries["/opt/provisa/frontlib/provisa/_encoders.so"]
+        assert module.data == f"encoders {machine}".encode() and module.mode == 0o755
+        assert entries["/opt/provisa/frontlib/provisa/__init__.py"].data == b""
+        # Only the compiled encoders: the front end runs no other part of provisa.
+        assert set(entries) == {
+            "/opt/provisa/frontlib/provisa",
+            "/opt/provisa/frontlib/provisa/__init__.py",
+            "/opt/provisa/frontlib/provisa/_encoders.so",
+        }
+
+
+@pytest.mark.parametrize("arch", ["amd64", "arm64"])
+def test_a_build_without_the_provisa_wheel_for_its_architecture_is_refused_by_name(
+    tmp_path: Path, arch: str
+):
+    """No other DataRow writer exists: an image whose front end could not load provisa._encoders
+    is not built."""
+    plan = _plan(tmp_path, "python", "python", tmp_path)
+    house = _wheels(tmp_path)
+    machine = image_build._WHEEL_ARCH[arch]
+    (house / f"provisa-{VERSION}-cp312-cp312-manylinux_2_28_{machine}.whl").unlink()
+    with pytest.raises(image_build.ImageBuildRefused) as refused:
+        image_build._encoders(plan, arch)
+    assert refused.value.code == "codesource.image_encoders"
+    assert f"linux/{arch}" in str(refused.value) and machine in str(refused.value)
+
+
+def test_a_wheel_of_another_provisa_version_is_not_taken(tmp_path: Path):
+    plan = _plan(tmp_path, "python", "python", tmp_path)
+    _wheels(tmp_path, version="0.1.0a6")
+    with pytest.raises(
+        image_build.ImageBuildRefused, match=re.escape(f"no provisa {VERSION} wheel")
+    ):
+        image_build._encoders(plan, "amd64")
+
+
+def test_the_wheelhouse_is_the_one_the_deployment_names(tmp_path: Path, monkeypatch):
+    plan = _plan(tmp_path, "python", "python", tmp_path / "cache")
+    house = _wheels(tmp_path / "elsewhere")
+    monkeypatch.setenv(image_build.WHEELHOUSE_ENV, str(house))
+    assert image_build.wheelhouse(plan) == house
+    assert image_build._encoders(plan, "arm64")
 
 
 def test_an_image_is_built_for_amd64_or_arm64_only(tmp_path: Path, pinned_base):

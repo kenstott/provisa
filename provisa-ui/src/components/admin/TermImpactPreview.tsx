@@ -9,7 +9,7 @@
 // permission from the copyright holder.
 
 // REQ-2144 (A STEWARD SEES THE IMPACT OF EACH ACTION): before a steward approves, retires or binds
-// a term, what it changes -- the terms becoming grounded, ~grounded or reaching no data, and the
+// a term, what it changes -- the terms becoming grounded, reaching data only through a draft, or reaching no data, and the
 // tables agents gain or lose a path to. Read from the server, which changes nothing to answer.
 
 import { useEffect, useState } from "react";

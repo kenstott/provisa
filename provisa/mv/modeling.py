@@ -31,8 +31,9 @@ engines without remodeling.
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass, field
+
+from provisa.compiler.naming import apply_gql_name
 
 HISTORY_NONE = "none"
 HISTORY_SCD2 = "scd2"
@@ -48,12 +49,6 @@ def _q(ident: str) -> str:
 def _dedup(seq) -> list[str]:
     """Order-preserving de-duplication."""
     return list(dict.fromkeys(seq))
-
-
-def _snake(ident: str) -> str:
-    """snake_case a metric name component: CamelCase → camel_case, non-word runs → '_' (REQ-1320)."""
-    s = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", ident)
-    return re.sub(r"[^a-zA-Z0-9]+", "_", s).lower()
 
 
 @dataclass(frozen=True)
@@ -174,7 +169,8 @@ def fact_registration(f: Fact) -> dict:
         # the fact's registered table name).
         "metrics": [
             {
-                "name": _snake(f"{f.name}_{m.column}_{m.agg}"),
+                # REQ-194: snake case and an identifier, from the naming authority.
+                "name": apply_gql_name(f"{f.name}_{m.column}_{m.agg}", "snake"),
                 "expression": f"{m.agg.upper()}({f.name}.{m.column})",
                 "datatype": None,
                 "from_fact": f.name,

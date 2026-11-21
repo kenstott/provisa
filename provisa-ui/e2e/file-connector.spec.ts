@@ -6,16 +6,22 @@
 // found in the LICENSE file in the root directory of this source tree.
 
 import { test, expect, BACKEND_URL } from "./coverage";
-import { deleteSourceAndItsTables } from "./delete-source";
+import { retireSourceTables, testSourceId } from "./retire-source-tables";
+import { isAssignableDomain } from "../src/lib/internalDomains";
 import {
   addSourceOfType,
+  listedTableNames,
   openRegisterForm,
   submitSourceAndExpectListed,
   waitForSourceServing,
 } from "./source-to-query-helpers";
 
-const SOURCE_ID = "e2e-northwind";
-const SCHEMA_NAME = "e2e_northwind";
+// This attempt's own source, its stamp and schema, set in beforeEach (REQ-2248: the source is
+// kept after the test, with its table retired, and a retired table keeps its name and key, so a
+// retry or a later run registers under names no earlier attempt holds).
+let SOURCE_ID = "";
+let STAMP = "";
+let SCHEMA_NAME = ""; // pgwire_replica.schema_name()'s convention: the sql-normalized source id
 const GQL = `${BACKEND_URL}/admin/graphql`;
 const GLOB = "demo/files/northwind/**";
 
@@ -47,20 +53,25 @@ async function gql(query: string, variables: Record<string, unknown> = {}) {
 async function getDomainId(): Promise<string> {
   const res = await gql(`{ domains { id } }`);
   const domains: Array<{ id: string }> = res.data?.domains ?? [];
-  const d = domains.find((d) => d.id !== "meta" && d.id !== "ops") ?? domains[0];
-  return d?.id ?? "pet-store";
+  // The first domain a table may be put into: the form offers no internal one (meta, ontology, ops).
+  const d = domains.find((d) => isAssignableDomain(d.id));
+  if (!d) {
+    throw new Error(
+      `no assignable domain among ${JSON.stringify(domains)}: ${JSON.stringify(res)}`,
+    );
+  }
+  return d.id;
 }
 
-async function cleanupSource() {
-  await deleteSourceAndItsTables(gql, SOURCE_ID);
-}
-
-test.beforeEach(async () => {
-  await cleanupSource();
+test.beforeEach(() => {
+  SOURCE_ID = testSourceId("northwind");
+  STAMP = SOURCE_ID.split("_").pop()!;
+  SCHEMA_NAME = SOURCE_ID.replace(/-/g, "_");
 });
 
+// The test retires the table it registered and leaves its source (REQ-2248).
 test.afterEach(async () => {
-  await cleanupSource();
+  await retireSourceTables(gql, SOURCE_ID);
 });
 
 test("file connector: add northwind source and query customers", async ({ page }) => {
@@ -90,15 +101,15 @@ test("file connector: add northwind source and query customers", async ({ page }
   // ── 2. Open table form and verify Northwind tables are enumerated ─────────
   await openRegisterForm(page, SOURCE_ID, await getDomainId());
 
-  // The Northwind glob resolves to exactly one schema, which the form selects for itself.
-  await expect(page.getByTestId("register-table-schema-select")).toHaveValue(SCHEMA_NAME, {
-    timeout: 60000,
-  });
-  const tableSelect = page.getByTestId("register-table-table-select");
-  await expect(tableSelect.locator("option[value='customers']")).toHaveCount(1, {
-    timeout: 30000,
-  });
-  const tableOptions = await tableSelect.locator("option").allTextContents();
+  // The Northwind glob resolves to exactly one schema, which the form takes for itself: no
+  // Schema field (REQ-2234). The Tables field lists its tables.
+  await expect(page.getByTestId("register-table-schema-select")).toHaveCount(0);
+  const field = page.getByTestId("register-tables-field").getByRole("textbox");
+  await expect(field).toBeEnabled({ timeout: 60000 });
+  await field.click();
+  await expect(page.getByRole("option", { name: /^customers/ })).toBeVisible({ timeout: 30000 });
+  const tableOptions = await listedTableNames(page);
+  await page.keyboard.press("Escape");
 
   expect(tableOptions).toContain("customers");
   expect(tableOptions).toContain("orders");
@@ -114,34 +125,29 @@ test("file connector: add northwind source and query customers", async ({ page }
         domainId,
         schemaName: SCHEMA_NAME,
         tableName: "customers",
+        // This attempt's own model name: an earlier attempt's retired customers keeps its name in
+        // the domain (REQ-2248).
+        alias: `e2e_${STAMP}_customers`,
         columns: CUSTOMERS_COLUMNS,
       },
     },
   );
 
-  expect(registerResult.errors, `registerTable errors: ${JSON.stringify(registerResult.errors)}`).toBeUndefined();
+  expect(
+    registerResult.errors,
+    `registerTable errors: ${JSON.stringify(registerResult.errors)}`,
+  ).toBeUndefined();
   expect(
     registerResult.data?.registerTable?.success,
     `registerTable: ${JSON.stringify(registerResult.data?.registerTable)}`,
   ).toBe(true);
 
-  // REQ-1921: registered through the admin, the table starts as draft; released, it is read.
-  const registeredId = Number(
-    /\(id=(\d+)\)/.exec(String(registerResult.data?.registerTable?.message))?.[1],
-  );
-  const releaseResult = await gql(
-    `mutation($id: Int!) { setTableDraft(tableId: $id, draft: false) { success message } }`,
-    { id: registeredId },
-  );
-  expect(
-    releaseResult.data?.setTableDraft?.success,
-    `setTableDraft: ${JSON.stringify(releaseResult)}`,
-  ).toBe(true);
-
   await page.goto("/tables");
   await page.waitForSelector(".page-header", { timeout: 15000 });
 
-  await expect(page.locator(".data-table").getByText("customers")).toBeVisible({ timeout: 15000 });
+  await expect(page.locator(".data-table").getByText(`e2e_${STAMP}_customers`)).toBeVisible({
+    timeout: 15000,
+  });
 
   // ── 4. Query customers via GQL data endpoint ──────────────────────────────
   // Domain prefix (e.g. "pet-store" → "ps__") is prepended to the field name.
@@ -151,9 +157,18 @@ test("file connector: add northwind source and query customers", async ({ page }
     body: JSON.stringify({ query: `{ __schema { queryType { fields { name } } } }` }),
   });
   const introData = await introRes.json();
-  const allFields: string[] = introData.data?.__schema?.queryType?.fields?.map((f: { name: string }) => f.name) ?? [];
-  const customersField = allFields.find((f) => f.toLowerCase().endsWith("customers") && !f.toLowerCase().includes("aggregate"));
-  expect(customersField, `customers field not found in schema. Available: ${allFields.join(", ")}`).toBeDefined();
+  const allFields: string[] =
+    introData.data?.__schema?.queryType?.fields?.map((f: { name: string }) => f.name) ?? [];
+  const customersField = allFields.find(
+    (f) =>
+      f.toLowerCase().includes(STAMP) &&
+      f.toLowerCase().endsWith("customers") &&
+      !f.toLowerCase().includes("aggregate"),
+  );
+  expect(
+    customersField,
+    `customers field not found in schema. Available: ${allFields.join(", ")}`,
+  ).toBeDefined();
 
   const dataRes = await fetch(`${BACKEND_URL}/data/graphql`, {
     method: "POST",
@@ -162,7 +177,8 @@ test("file connector: add northwind source and query customers", async ({ page }
   });
   const queryResult = await dataRes.json();
   expect(queryResult.errors, `query errors: ${JSON.stringify(queryResult.errors)}`).toBeUndefined();
-  const rows: Array<{ customerId: string; companyName: string }> = queryResult.data?.[customersField!] ?? [];
+  const rows: Array<{ customerId: string; companyName: string }> =
+    queryResult.data?.[customersField!] ?? [];
   expect(rows.length).toBeGreaterThan(0);
   expect(rows[0].customerId).toBeDefined();
 });

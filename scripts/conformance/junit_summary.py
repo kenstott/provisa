@@ -101,7 +101,7 @@ def summarise(junit: str, surface: str, suite: str, version: str, tests: str) ->
         "version": version,
         "tests": tests,
         **by_design.outcomes(passed, excluded, failures),
-        "adapted": by_design.adapted(outcomes, declared),
+        "adapted": by_design.adapted(outcomes, declared, excluded),
     }
 
 

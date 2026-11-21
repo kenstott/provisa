@@ -239,6 +239,23 @@ def test_an_instant_trino_reads_as_a_plain_timestamp_is_an_output_at_utc(source_
     )
 
 
+def test_an_instant_read_through_its_governed_relation_is_read_with_its_zone():
+    """REQ-039: a governed read of the table is a derived table of its served columns. The
+    outermost column reads the derived table's bare column, and is the instant all the same."""
+    from provisa.transpiler.transpile import rewrite_instants_for_trino
+
+    columns = {("src", "shop", "orders"): {"placed_at"}}
+    sql = (
+        'SELECT "id", "placed_at" FROM (SELECT "orders"."id" AS "id", '
+        '"orders"."placed_at" AS "placed_at" FROM "src"."shop"."orders" AS "orders") AS "orders"'
+    )
+    assert rewrite_instants_for_trino(sql, columns) == (
+        'SELECT "id", WITH_TIMEZONE("placed_at", \'UTC\') AS placed_at FROM (SELECT '
+        '"orders"."id" AS "id", "orders"."placed_at" AS "placed_at" FROM "src"."shop"."orders" '
+        'AS "orders") AS "orders"'
+    )
+
+
 def test_an_instant_trino_reads_with_its_zone_or_a_wall_time_is_left_as_read():
     from provisa.federation.trino_connectors import trino_utc_wall_columns
 
@@ -247,10 +264,41 @@ def test_an_instant_trino_reads_with_its_zone_or_a_wall_time_is_left_as_read():
 
 
 def test_a_zoned_trino_value_is_carried_at_utc():
-    from provisa.executor.trino import _instants_in_utc
+    """REQ-2050/REQ-2194: the Zaychik proxy sends a timestamp with time zone as the instant (UTC
+    microseconds); its row value is that instant at datetime.timezone.utc. A time with time zone
+    has no instant and keeps its offset."""
+    import json
+
+    from provisa.executor.trino_flight import trino_rows
+
+    def _meta(trino_type: str, raw: str, encoding: str) -> dict[str, str]:
+        signature = {"rawType": raw, "arguments": [{"kind": "LONG", "value": 6}]}
+        return {
+            "trino.type": trino_type,
+            "trino.type_signature": json.dumps(signature),
+            "trino.encoding": encoding,
+        }
 
     at_two = datetime(2024, 1, 2, 3, 4, 5, tzinfo=timezone(timedelta(hours=2)))
-    rows = _instants_in_utc([[1, at_two]], ["integer", "timestamp(6) with time zone"])
-    assert rows == [[1, datetime(2024, 1, 2, 1, 4, 5, tzinfo=timezone.utc)]]
-    assert rows[0][1].tzinfo is timezone.utc
-    assert _instants_in_utc([[1, at_two]], ["integer", "time(3) with time zone"]) == [[1, at_two]]
+    schema = pa.schema(
+        [
+            pa.field(
+                "at",
+                pa.timestamp("us", tz="UTC"),
+                metadata=_meta("timestamp(6) with time zone", "timestamp with time zone", "arrow"),
+            ),
+            pa.field(
+                "t",
+                pa.string(),
+                metadata=_meta("time(6) with time zone", "time with time zone", "text"),
+            ),
+        ]
+    )
+    table = pa.Table.from_arrays(
+        [pa.array([at_two], pa.timestamp("us", tz="UTC")), pa.array(["03:04:05.000000+02:00"])],
+        schema=schema,
+    )
+    rows = trino_rows(table)
+    assert rows[0][0] == datetime(2024, 1, 2, 1, 4, 5, tzinfo=timezone.utc)
+    assert rows[0][0].tzinfo is timezone.utc
+    assert rows[0][1] == at_two.timetz()

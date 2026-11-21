@@ -13,7 +13,8 @@ roles.
 
 ``environment_management`` is creating or deleting an environment and reaching the environments
 admin surface; ``environment_switch`` is being served by one other than prod. org_admin holds both;
-developer, and so modeler, holds environment_switch alone; analyst holds neither.
+every other data role holds environment_switch alone, through viewer (REQ-2155 amended 2026-11-20:
+which environments a person sees is decided by the roles assigned in each, REQ-1539).
 """
 
 from __future__ import annotations
@@ -34,16 +35,22 @@ def test_org_admin_holds_both_rights():
     assert _RIGHTS <= _seeded("org_admin")
 
 
-@pytest.mark.parametrize("role_id", ["developer", "modeler"])
-def test_a_builder_switches_but_never_manages(role_id: str):
+@pytest.mark.parametrize("role_id", ["viewer", "analyst", "data_writer", "developer", "modeler"])
+def test_a_member_switches_but_never_manages(role_id: str):
     assert "environment_switch" in _seeded(role_id)
     assert "environment_management" not in _seeded(role_id)
 
 
-def test_a_reader_holds_neither():
-    # An analyst works in prod, and nothing about switching environments arrives with a role whose
-    # subject is querying the model.
-    assert not (_RIGHTS & _seeded("analyst"))
+def test_only_org_admin_manages_environments():
+    from provisa.core.db import STANDARD_ROLES
+
+    holders = {r for r in STANDARD_ROLES if "environment_management" in _seeded(r)}
+    assert holders == {"org_admin"}
+
+
+def test_the_platform_admin_holds_neither():
+    # REQ-1327: the control plane alone; no environment of any org's data.
+    assert not (_RIGHTS & _seeded("platform_admin"))
 
 
 def test_both_rights_are_real_capabilities():

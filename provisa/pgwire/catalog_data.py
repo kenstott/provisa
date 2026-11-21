@@ -29,6 +29,8 @@ from provisa.pgwire.catalog_pg17_tables import (
 )
 from provisa.pgwire.catalog_types import CATALOG_TYPE_OIDS
 from provisa.pgwire.ext_surfaces import surface_pg_type_rows, surface_typeinfo
+from provisa.pgwire.catalog_pg17_acl import PG17_ROLE_MEMBERS, PG17_ROLES
+from provisa.transpiler.metadata_oids import INFORMATION_SCHEMA_OID, PG_CATALOG_OID
 
 
 _PG_TYPE_ROWS = [
@@ -275,17 +277,9 @@ _KNOWN_SETTINGS = {
     "in_hot_standby": "off",
 }
 
-_PG_SYSTEM_ROLES: list[tuple] = [
-    # OID, name, super, inherit, createrole, createdb, canlogin, replication, connlimit, bypassrls
-    (3386, "pg_monitor", False, True, False, False, False, False, -1, False),
-    (3387, "pg_read_all_settings", False, True, False, False, False, False, -1, False),
-    (3388, "pg_read_all_stats", False, True, False, False, False, False, -1, False),
-    (3389, "pg_stat_scan_tables", False, True, False, False, False, False, -1, False),
-    (4200, "pg_signal_backend", False, True, False, False, False, False, -1, False),
-    (4569, "pg_read_server_files", False, True, False, False, False, False, -1, False),
-    (4570, "pg_write_server_files", False, True, False, False, False, False, -1, False),
-    (4571, "pg_execute_server_program", False, True, False, False, False, False, -1, False),
-]
+#: PostgreSQL 17's predefined roles and their memberships (catalog_pg17_acl).
+_PG_SYSTEM_ROLES: list[tuple] = list(PG17_ROLES)
+PG_SYSTEM_ROLE_MEMBERS = PG17_ROLE_MEMBERS
 
 _PG_SETTINGS_ROWS: list[tuple] = [
     (
@@ -591,7 +585,7 @@ _TABLE_MAP.update({key: served_table(*key) for key in UNQUERIED_RELATIONS})
 
 _CATALOG_TABLE_NAMES = frozenset(t for _, t in _TABLE_MAP)
 
-_NAMESPACE_OIDS = {"pg_catalog": 11, "information_schema": 12}
+_NAMESPACE_OIDS = {"pg_catalog": PG_CATALOG_OID, "information_schema": INFORMATION_SCHEMA_OID}
 
 
 def _array_element(oid: int) -> int:

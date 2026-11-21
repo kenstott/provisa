@@ -191,7 +191,7 @@ def test_the_guard_sits_at_both_parse_points_of_the_one_pipeline_before_governan
     compiled = inspect.getsource(_pipeline._govern_compiled)
     assert compiled.index("parse_one(sql") < compiled.index("refuse_definition(_compiled_tree)")
     assert compiled.index("refuse_definition(_compiled_tree)") < compiled.index(
-        "_reject_view_writes(_compiled_tree, state)"
+        "_reject_view_writes(_compiled_tree, state, gov_ctx)"
     )
     assert compiled.index("refuse_definition(_compiled_tree)") < compiled.index("gov_ctx = ")
 

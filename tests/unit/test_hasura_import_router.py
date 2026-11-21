@@ -22,6 +22,7 @@ import io
 import zipfile
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 import yaml
@@ -123,11 +124,40 @@ async def test_preview_rejects_an_upload_it_cannot_read(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_preview_requires_org_settings(monkeypatch):
+async def test_preview_requires_an_import_right(monkeypatch):
+    """REQ-1327: the page and its preview open to a holder of any right an imported object asks;
+    a right no imported object asks is refused, naming the ones that would do."""
     _grant(monkeypatch, {"observability"})
     with pytest.raises(ApiError) as exc:
         await ir.preview_import(_preview_req(V2_DOCUMENT), _request(("observability",)))
-    assert exc.value.status_code == 403
+    assert exc.value.status_code == 403 and exc.value.code == "import.right_required"
+    assert "table_registration" in str(exc.value.detail)
+    _grant(monkeypatch, {"table_registration"})
+    resp = await ir.preview_import(_preview_req(V2_DOCUMENT), _request(("table_registration",)))
+    assert resp.summary.source_ids == ["pg1"]
+
+
+def test_the_import_page_opens_on_the_orgs_object_rights_never_the_platforms():
+    """The platform holds no data capability, so its pair opens no import."""
+    assert set(ir.IMPORT_RIGHTS) == {
+        "source_registration",
+        "org_settings",
+        "user_management",
+        "data_product_rw",
+        "glossary_rw",
+        "table_registration",
+        "create_relationship",
+        "masking_config",
+    }
+
+
+def test_every_section_an_apply_writes_names_its_own_right():
+    """An apply writes every model section (store_config.MODEL_SECTIONS) and the naming rules;
+    each must name the right that object's own admin edit asks, or it would go unchecked."""
+    from provisa.core.store_config import MODEL_SECTIONS
+
+    assert set(ir.SECTION_RIGHTS) == {*MODEL_SECTIONS, "naming"}
+    assert ir.SECTION_RIGHTS["stores"] == ("platform_settings", "cross_org")
 
 
 @pytest.mark.asyncio
@@ -209,7 +239,27 @@ def _wire_apply(monkeypatch) -> dict:
         seen["order"].append("residency")  # REQ-1921: judged before anything is loaded
 
     monkeypatch.setattr(ir, "_require_residency_of_import", _residency)
+
+    # REQ-1327: an imported role is judged against the org's roles and domains as stored; this org
+    # holds the standard roles and no domain yet (test_config_import_roles_checked covers the rule).
+    import provisa.core.repositories.domain as domain_repo
+    import provisa.core.repositories.role as role_repo
+    from provisa.core.db import standard_role_dicts
+
+    async def _stored_roles(conn):  # noqa: ARG001
+        return standard_role_dicts()
+
+    async def _stored_domains(conn, retired=False):  # noqa: ARG001
+        return []
+
+    monkeypatch.setattr(role_repo, "list_all", _stored_roles)
+    monkeypatch.setattr(domain_repo, "list_all", _stored_domains)
+    import provisa.api.admin.capabilities as capmod
+
+    monkeypatch.setattr(capmod, "allowed_domains_request", lambda request: None)  # noqa: ARG005
     monkeypatch.setattr(app_mod, "_rebuild_schemas", _rebuild)
+    # REQ-2185: the term-embedding trigger reads the org's vector model; its own tests cover it.
+    monkeypatch.setattr("provisa.api.admin.reference_library_router.embed_terms", AsyncMock())
     monkeypatch.setattr(app_mod.state, "tenant_db", _FakePool(), raising=False)
     monkeypatch.setattr(app_mod.state, "model_db", app_mod.state.tenant_db, raising=False)
     monkeypatch.setattr(app_mod.state, "federation_engine", None, raising=False)
@@ -234,9 +284,13 @@ CONFIG_YAML = yaml.dump(
 )
 
 
+# What CONFIG_YAML declares asks: sources, a domain and a role (REQ-1327).
+CONFIG_RIGHTS = {"source_registration", "org_settings", "user_management"}
+
+
 @pytest.mark.asyncio
 async def test_apply_runs_the_settled_sequence(monkeypatch):
-    _grant(monkeypatch, {"org_settings"})
+    _grant(monkeypatch, CONFIG_RIGHTS)
     seen = _wire_apply(monkeypatch)
     import provisa.security.sensitive as sensitive
 
@@ -273,7 +327,8 @@ async def test_an_import_offers_no_replace(monkeypatch):
 
 
 async def test_apply_rejects_an_invalid_config(monkeypatch):
-    _grant(monkeypatch, {"org_settings"})
+    # REQ-1557: the rights of what the document declares are asked before it is read further.
+    _grant(monkeypatch, {"source_registration"})
     _wire_apply(monkeypatch)
     with pytest.raises(ApiError) as exc:
         await ir.apply_import(ir.ImportApplyRequest(config_yaml="sources: [{}]"), _request())
@@ -284,7 +339,7 @@ async def test_apply_rejects_an_invalid_config(monkeypatch):
 async def test_apply_refuses_a_variable_the_deployment_has_not_set_by_its_name(monkeypatch):
     """A converted handler URL reads a variable the report names to set before applying (REQ-417);
     applied unset, the import is refused naming it, not answered with a server error."""
-    _grant(monkeypatch, {"org_settings"})
+    _grant(monkeypatch, CONFIG_RIGHTS)  # REQ-1557: asked before anything is resolved
     _wire_apply(monkeypatch)
     monkeypatch.delenv("PROVISA_TEST_UNSET_HANDLER", raising=False)
     config = yaml.safe_load(CONFIG_YAML)
@@ -296,11 +351,37 @@ async def test_apply_refuses_a_variable_the_deployment_has_not_set_by_its_name(m
 
 
 @pytest.mark.asyncio
-async def test_apply_requires_org_settings(monkeypatch):
+async def test_apply_requires_each_declared_objects_own_right(monkeypatch):
+    """REQ-1327: org_settings covers the domain but not the sources or the role, so the apply is
+    refused naming both, and nothing is applied; holding all three admits it."""
+    seen = _wire_apply(monkeypatch)
+    _grant(monkeypatch, {"org_settings"})
+    with pytest.raises(ApiError) as exc:
+        await ir.apply_import(ir.ImportApplyRequest(config_yaml=CONFIG_YAML), _request())
+    assert exc.value.status_code == 403 and exc.value.code == "import.rights_required"
+    assert exc.value.params == {
+        "sections": "sources, roles",
+        "rights": "source_registration, user_management",
+    }
+    assert "apply_config" not in seen["order"]
+
+    import provisa.security.sensitive as sensitive
+
+    async def _no_changes(conn, config):
+        return []
+
+    monkeypatch.setattr(sensitive, "config_changes", _no_changes)
+    _grant(monkeypatch, CONFIG_RIGHTS)
+    resp = await ir.apply_import(ir.ImportApplyRequest(config_yaml=CONFIG_YAML), _request())
+    assert resp.summary.source_ids == ["pg1"] and "apply_config" in seen["order"]
+
+
+@pytest.mark.asyncio
+async def test_apply_requires_an_import_right(monkeypatch):
     _grant(monkeypatch, {"observability"})
     with pytest.raises(ApiError) as exc:
         await ir.apply_import(ir.ImportApplyRequest(config_yaml=CONFIG_YAML), _request())
-    assert exc.value.status_code == 403
+    assert exc.value.status_code == 403 and exc.value.code == "import.right_required"
 
 
 def _zip(entries: dict[str, str]) -> bytes:
@@ -382,7 +463,7 @@ async def test_preview_converts_a_ddn_project(monkeypatch):
 async def test_an_apply_changing_a_sensitive_columns_hiding_needs_the_right(monkeypatch):
     """REQ-1943: a configuration that sets a sensitive column's fake, mask or grants is applied
     only by a holder of sensitive_data."""
-    _grant(monkeypatch, {"org_settings"})
+    _grant(monkeypatch, CONFIG_RIGHTS)
     seen = _wire_apply(monkeypatch)
     import provisa.security.sensitive as sensitive
 
@@ -423,3 +504,43 @@ async def test_preview_reports_what_was_carried_mapped_and_left_to_redo(monkeypa
     assert all(i.detail for i in resp.mapped)
     redo = {w.category for w in resp.warnings}
     assert {"sources", "computed_fields", "functions"} <= redo
+
+
+@pytest.mark.asyncio
+async def test_preview_refuses_an_include_outside_the_upload_by_name(monkeypatch):
+    """An uploaded project's ``!include`` of a server file is refused with its catalogued code."""
+    _grant(monkeypatch, {"org_settings"})
+    data = _zip(
+        {
+            "metadata/databases/databases.yaml": yaml.dump(
+                [
+                    {
+                        "name": "default",
+                        "kind": "postgres",
+                        "tables": "!include default/tables/tables.yaml",
+                    }
+                ]
+            ),
+            "metadata/databases/default/tables/tables.yaml": "- !include /etc/hosts\n",
+        }
+    )
+    req = ir.ImportPreviewRequest(
+        filename="metadata.zip", content_b64=base64.b64encode(data).decode()
+    )
+    with pytest.raises(ApiError) as exc:
+        await ir.preview_import(req, _request())
+    assert exc.value.status_code == 400
+    assert exc.value.code == "import.include_outside_upload"
+    assert exc.value.params == {"path": "/etc/hosts"}
+
+
+@pytest.mark.asyncio
+async def test_preview_refuses_a_filter_operator_it_has_no_sql_for_by_name(monkeypatch):
+    _grant(monkeypatch, {"org_settings"})
+    doc = yaml.safe_load(yaml.dump(V2_DOCUMENT))
+    perm = doc["sources"][0]["tables"][0]["select_permissions"][0]["permission"]
+    perm["filter"] = {"id": {"_x */ OR TRUE /*": 1}}
+    with pytest.raises(ApiError) as exc:
+        await ir.preview_import(_preview_req(doc), _request())
+    assert exc.value.code == "import.filter_operator_refused"
+    assert exc.value.params == {"operator": "_x */ OR TRUE /*"}

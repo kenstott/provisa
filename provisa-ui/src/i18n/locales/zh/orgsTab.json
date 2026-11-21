@@ -19,7 +19,7 @@
     "colActions": "操作",
     "empty": "暂无组织",
     "membersButton": "成员",
-    "hideButton": "隐藏",
+    "hideButton": "折叠",
     "expandOrg": "切换 {{name}} 的成员显示",
     "deleteOrg": "删除 {{name}}",
     "membersHeading": "成员",

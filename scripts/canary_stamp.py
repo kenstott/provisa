@@ -13,6 +13,7 @@
 builds .canary_registry.json, and generates canary-site/ static JSON files."""
 
 import fcntl
+import hashlib
 import json
 import os
 import re
@@ -29,6 +30,8 @@ SITE_DIR = Path(os.environ["CANARY_SITE_DIR"]).expanduser()
 # runs this script. One lock serializes them, so two hooks never prune or deploy the directory at
 # the same time.
 SITE_LOCK = SITE_DIR.parent / f".{SITE_DIR.name}.lock"
+# The digest of the site as last deployed, shared like SITE_DIR by every checkout.
+DEPLOYED_DIGEST = SITE_DIR.parent / f".{SITE_DIR.name}.deployed"
 # A worktree's .git is a file pointing at the main repository; the main checkout's is a directory.
 IS_MAIN_CHECKOUT = (PROJECT_ROOT / ".git").is_dir()
 EXCLUDE_DIRS = {
@@ -96,18 +99,16 @@ def find_source_files() -> list[Path]:
     listed = subprocess.run(
         ["git", "ls-files", "-z"], cwd=PROJECT_ROOT, check=True, capture_output=True
     ).stdout.decode("utf-8")
-    results = []
-    for rel in listed.split("\0"):
-        if not rel:
-            continue
-        p = PROJECT_ROOT / rel
-        # A symlink is its target's path a second time: stamping through it reissued the
-        # target's canary on every commit, so only the target is stamped.
-        if set(Path(rel).parts) & EXCLUDE_DIRS or p.is_symlink() or not p.is_file():
-            continue
-        if p.suffix == ".py" or p.suffix in TS_EXTENSIONS:
-            results.append(p)
-    return sorted(results)
+    return sorted(PROJECT_ROOT / rel for rel in listed.split("\0") if rel and is_stampable(rel))
+
+
+def is_stampable(rel: str) -> bool:
+    p = PROJECT_ROOT / rel
+    # A symlink is its target's path a second time: stamping through it reissued the
+    # target's canary on every commit, so only the target is stamped.
+    if set(Path(rel).parts) & EXCLUDE_DIRS or p.is_symlink() or not p.is_file():
+        return False
+    return p.suffix == ".py" or p.suffix in TS_EXTENSIONS
 
 
 def extract_canary(content: str, canary_re: re.Pattern) -> str | None:
@@ -191,21 +192,32 @@ def reissue_canary(path: Path) -> str:
     return canary_id
 
 
+def existing_stamped_at(canary_id: str, rel_path: str) -> str | None:
+    """The stamped_at the site already publishes for this canary at this path; None when the
+    canary is new to the site or now names a different path."""
+    site_file = SITE_DIR / f"{canary_id}.json"
+    if not site_file.exists():
+        return None
+    entry = json.loads(site_file.read_text(encoding="utf-8"))
+    return entry["stamped_at"] if entry["path"] == rel_path else None
+
+
 def build_registry(file_canaries: dict[str, str]) -> dict:
-    return {
-        "generated_at": datetime.now(timezone.utc).isoformat(),
-        "files": {
-            canary_id: {
-                "path": rel_path,
-                "stamped_at": datetime.now(timezone.utc).isoformat(),
-            }
-            for rel_path, canary_id in file_canaries.items()
-        },
-    }
+    # A canary's entry never changes once published: re-dating every entry on every commit
+    # rewrote all ~7,500 site files and re-uploaded the whole site on each deploy.
+    now = datetime.now(timezone.utc).isoformat()
+    files = {}
+    for rel_path, canary_id in file_canaries.items():
+        published = existing_stamped_at(canary_id, rel_path)
+        # None means this canary is published at this path for the first time: it is stamped now.
+        files[canary_id] = {"path": rel_path, "stamped_at": now if published is None else published}
+    return {"generated_at": now, "files": files}
 
 
 def write_site(registry: dict) -> None:
+    """Write the site entries that are new or changed; leave identical ones untouched."""
     SITE_DIR.mkdir(exist_ok=True)
+    written = 0
     for canary_id, info in registry["files"].items():
         entry = {
             "uuid": canary_id,
@@ -215,8 +227,14 @@ def write_site(registry: dict) -> None:
             "license": "Business Source License 1.1",
             "notice": AI_NOTICE,
         }
+        text = json.dumps(entry, indent=2) + "\n"
         site_file = SITE_DIR / f"{canary_id}.json"
-        site_file.write_text(json.dumps(entry, indent=2) + "\n", encoding="utf-8")
+        if site_file.exists() and site_file.read_text(encoding="utf-8") == text:
+            continue
+        site_file.write_text(text, encoding="utf-8")
+        written += 1
+    if written:
+        print(f"Wrote {written} site entries")
 
     # Only the main checkout prunes. A worktree's registry holds only its own branch's files, so
     # pruning against it would delete every other branch's entries from the shared directory.
@@ -236,14 +254,34 @@ def write_site(registry: dict) -> None:
         print(f"Pruned {removed} stale site entries")
 
 
-def deploy_site() -> None:
-    """Publish SITE_DIR to Cloudflare Pages when its credentials are configured."""
-    if not (os.environ.get("CLOUDFLARE_API_TOKEN") and os.environ.get("CLOUDFLARE_ACCOUNT_ID")):
-        return
+def site_digest() -> str:
+    """One hash over every site entry's name and content: what a deploy would publish."""
+    digest = hashlib.sha256()
+    for site_file in sorted(SITE_DIR.glob("*.json")):
+        digest.update(site_file.name.encode("utf-8"))
+        digest.update(site_file.read_bytes())
+    return digest.hexdigest()
+
+
+def wrangler_deploy() -> None:
     subprocess.run(
         ["npx", "wrangler", "pages", "deploy", str(SITE_DIR), "--project-name=simpleishard-canary"],
         check=True,
     )
+
+
+def deploy_site() -> None:
+    """Publish SITE_DIR to Cloudflare Pages when its credentials are configured and its content
+    differs from the last deploy. The digest is shared across checkouts with SITE_DIR, so entries
+    a checkout without credentials wrote are published by the next checkout that has them."""
+    if not (os.environ.get("CLOUDFLARE_API_TOKEN") and os.environ.get("CLOUDFLARE_ACCOUNT_ID")):
+        return
+    digest = site_digest()
+    if DEPLOYED_DIGEST.exists() and DEPLOYED_DIGEST.read_text(encoding="utf-8") == digest:
+        print("Site unchanged since last deploy; not deploying")
+        return
+    wrangler_deploy()
+    DEPLOYED_DIGEST.write_text(digest, encoding="utf-8")
 
 
 def main() -> None:

@@ -17,6 +17,7 @@ from __future__ import annotations
 from provisa.compiler.sql_types import CompilationContext, TableMeta
 from provisa.compiler.stage2 import build_governance_context
 from provisa.security.rights import GOVERNANCE_META_COLUMNS, META_DOMAIN_ID, SYSTEM_DOMAINS
+from tests.rules import mentions, rule_of
 
 
 class _FakeRLSContext:
@@ -53,7 +54,13 @@ def _meta_tables(table_id: int = 1) -> list[dict]:
     return [{"id": table_id, "columns": cols}]
 
 
+def _built(role: dict) -> dict:
+    """``role`` as the build holds it: with the roles it acts as (REQ-2188, app_loaders)."""
+    return {**role, "acting_chain": [role["id"]]}
+
+
 def _build(role: dict):
+    role = _built(role)
     return build_governance_context(
         role["id"], _FakeRLSContext({}), {}, _meta_ctx(), _meta_tables(), role
     )
@@ -210,6 +217,7 @@ def _relationships() -> list[dict]:
 
 
 def _row_gov(role: dict):
+    role = _built(role)
     return build_governance_context(
         role["id"],
         _FakeRLSContext({}),
@@ -234,8 +242,13 @@ class TestREQ1132RowScope:
                 "domain_access": ["sales"],
             }
         )
-        assert gov.rls_rules[_RT_META_TID] == f"id IN ({_SALES_A},{_SALES_B},{_FIN_OPEN})"
-        assert gov.rls_rules[_TC_META_TID] == f"table_id IN ({_SALES_A},{_SALES_B},{_FIN_OPEN})"
+        # REQ-1921: a withdrawn table's row is read by its domain's stewards and by no other.
+        assert gov.rls_rules[_RT_META_TID] == rule_of(
+            f"(id IN ({_SALES_A},{_SALES_B},{_FIN_OPEN})) AND (NOT withdrawn)"
+        )
+        assert gov.rls_rules[_TC_META_TID] == rule_of(
+            f"table_id IN ({_SALES_A},{_SALES_B},{_FIN_OPEN})"
+        )
 
     def test_opt_out_target_not_discoverable(self):
         # REQ-1132 — the hide_target_meta edge's target must never appear in the row predicate.
@@ -247,7 +260,7 @@ class TestREQ1132RowScope:
                 "domain_access": ["sales"],
             }
         )
-        assert str(_FIN_HIDDEN) not in gov.rls_rules[_RT_META_TID]
+        assert not mentions(gov.rls_rules[_RT_META_TID], _FIN_HIDDEN)
 
     def test_reaching_every_data_domain_sees_all_rows(self):
         # REQ-1132 — "*" lifts the row filter entirely (no predicate injected); catalog_read opens
@@ -260,7 +273,8 @@ class TestREQ1132RowScope:
                 "domain_access": ["*", *SYSTEM_DOMAINS],
             }
         )
-        assert _RT_META_TID not in gov.rls_rules
+        # REQ-1921: the whole catalog's rows but a withdrawn table's, which its stewards read.
+        assert gov.rls_rules[_RT_META_TID] == rule_of("NOT withdrawn")
         assert _TC_META_TID not in gov.rls_rules
 
     def test_no_capability_lifts_the_row_filter(self):
@@ -275,8 +289,10 @@ class TestREQ1132RowScope:
                     "domain_access": ["sales"],
                 }
             )
-            assert gov.rls_rules[_RT_META_TID] == f"id IN ({_SALES_A},{_SALES_B},{_FIN_OPEN})"
-            assert gov.rls_rules[_TC_META_TID] == (
+            assert gov.rls_rules[_RT_META_TID] == rule_of(
+                f"(id IN ({_SALES_A},{_SALES_B},{_FIN_OPEN})) AND (NOT withdrawn)"
+            )
+            assert gov.rls_rules[_TC_META_TID] == rule_of(
                 f"table_id IN ({_SALES_A},{_SALES_B},{_FIN_OPEN})"
             )
 
@@ -290,7 +306,7 @@ class TestREQ1132RowScope:
                 "domain_access": ["marketing"],
             }
         )
-        assert gov.rls_rules[_RT_META_TID] == "id IN (-1)"
+        assert gov.rls_rules[_RT_META_TID] == rule_of("(id IN (-1)) AND (NOT withdrawn)")
 
 
 # --- REQ-2153: listed names, for a reader outside the listed table's domain -----------------------
@@ -319,6 +335,7 @@ def _listed_gov(domain_access: list[str]):
         "description": "Test role.",
         "capabilities": [],
         "domain_access": domain_access,
+        "acting_chain": ["sales"],  # REQ-2188: as the build records it
     }
     # finance's payroll lists its id: its name is in the catalog of every role.
     payroll = {
@@ -335,11 +352,11 @@ def _listed_gov(domain_access: list[str]):
 def test_a_reader_outside_the_domain_lists_the_table_in_every_view_of_the_catalog():
     gov = _listed_gov(["sales"])
     # listed_names: the names of the domains it does not reach.
-    assert gov.rls_rules[_LN_META_TID] == "listed_domain NOT IN ('sales')"
+    assert gov.rls_rules[_LN_META_TID] == rule_of("listed_domain NOT IN ('sales')")
     # REQ-1132: every role lists it, so it is among the tables it is described.
-    assert str(_FIN_HIDDEN) in gov.rls_rules[_TC_META_TID]
-    assert str(_FIN_HIDDEN) in gov.rls_rules[_RT_META_TID]
+    assert mentions(gov.rls_rules[_TC_META_TID], _FIN_HIDDEN)
+    assert mentions(gov.rls_rules[_RT_META_TID], _FIN_HIDDEN)
 
 
 def test_a_reader_reaching_every_domain_has_no_listed_name_outside_its_reach():
-    assert _listed_gov(["*"]).rls_rules[_LN_META_TID] == "1 = 0"
+    assert _listed_gov(["*"]).rls_rules[_LN_META_TID] == rule_of("1 = 0")

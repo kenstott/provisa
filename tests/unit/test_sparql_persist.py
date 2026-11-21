@@ -174,7 +174,7 @@ async def test_preview_reports_an_unreachable_endpoint_and_a_wrong_source_type()
     with respx.mock:
         respx.post(_EP).mock(side_effect=httpx.ConnectError("refused"))
         out = await qa.preview_sparql(_Conn(_SRC), "graph", "SELECT ?x WHERE {}")  # type: ignore[arg-type]
-    assert out.error is not None and "ConnectError" in out.error
+    assert out.error is not None and out.error.startswith(f"could not connect to POST {_EP}")
     out = await qa.preview_sparql(_Conn({**_SRC, "type": "neo4j"}), "graph", "SELECT ?x WHERE {}")  # type: ignore[arg-type]
     assert out.error == "'graph' is not a registered sparql source"
 

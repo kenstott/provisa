@@ -40,6 +40,7 @@ from typing import TYPE_CHECKING, Any
 from provisa.federation.backend import EngineBackend
 from provisa.federation.engine import UnreachableSource
 from provisa.federation.pgwire_replica import SourceStillStartingError, server_start_errors
+from provisa.federation.runtime_support import EngineClosed
 from provisa.otel_compat import get_tracer as _get_tracer
 from provisa.otel_compat import stage as _stage
 
@@ -246,6 +247,17 @@ class NativeEngineBackend(EngineBackend):
         # server to serve (``attach_started``), not at the retry interval.
         self._starting: set[tuple[str, str, str, str]] = set()
         self._walk_lock = threading.Lock()
+        # Set by close, cleared by open: work that reaches a closed engine (a cancelled request's
+        # thread, a walk still running at shutdown) is refused, never handed a new runtime.
+        self._closed = False
+
+    def open(self, state: Any) -> None:
+        """Lifecycle: a lifespan starts serving on this engine. One closed by an earlier lifespan
+        in this process (the shared engine outlives each app) builds its runtime again on first
+        use."""
+        del state
+        with self._walk_lock:
+            self._closed = False
 
     def close(self, state: Any) -> None:
         """Lifecycle: the runtime this backend built is closed and dropped with everything
@@ -254,9 +266,12 @@ class NativeEngineBackend(EngineBackend):
         next app "store attached" from memory while that app named another store, and the cache
         write then named a catalog that was never attached. Closing it also releases what its
         sources hold: DuckDB's postgres extension keeps a pool to an attached source's server for
-        as long as the attaching database lives. Called by the lifespan at shutdown."""
+        as long as the attaching database lives. Called by the lifespan at shutdown; until the
+        next lifespan opens it, the engine refuses work (``EngineClosed``) rather than build a
+        runtime nothing would close."""
         del state
         with self._walk_lock:
+            self._closed = True
             runtime, self._runtime = self._runtime, None
             self._attached.clear()
             self._detached.clear()
@@ -298,12 +313,18 @@ class NativeEngineBackend(EngineBackend):
 
     def _store_runtime(self) -> Any:
         """The persistent runtime, built if this process has none yet, with no source attached by
-        this call: for what is answered from the engine and its store alone."""
-        if self._runtime is None:
+        this call: for what is answered from the engine and its store alone. A closed engine
+        refuses (``EngineClosed``): a runtime built after the lifespan closed it would attach the
+        control plane again and outlive the process's use of it."""
+        runtime = self._runtime
+        if runtime is None:
             with self._walk_lock:
+                if self._closed:
+                    raise EngineClosed(self.engine.name, "no runtime is built after its shutdown")
                 if self._runtime is None:
                     self._runtime = self._new_runtime()
-        return self._runtime
+                runtime = self._runtime
+        return runtime
 
     def _store_catalog(self, state: Any, org_id: str) -> str:
         """The catalog the store is read under, from the runtime's store attach alone (REQ-1912):
@@ -463,6 +484,7 @@ class NativeEngineBackend(EngineBackend):
         from provisa.core.operator_floor import floor_setting
         from provisa.core.request_context import current_org
         from provisa.core.secrets import resolve_secrets
+        from provisa.jdbc_source.attach import attach_type, attach_view
 
         complete = True
         # What this org's registry refused for a declared reason (_OrgWalk.refused).
@@ -503,7 +525,8 @@ class NativeEngineBackend(EngineBackend):
                     # REQ-2031: a cache_ttl that never expires keeps the source's tables on their
                     # replica (replica_routing.table_floor), as replicate does.
                     cache_ttl=_rs_dict["cache_ttl"],
-                    federation_hints={},
+                    # REQ-2191: a JDBC source's settings decide whether it attaches, and as what.
+                    federation_hints=dict(_rs_dict.get("federation_hints") or {}),
                     # REQ-1742: forwarded so _attach_tbl's merged SimpleNamespace below (which reads
                     # it via getattr(src, "mapping", {})) can actually see it — same gap base_url
                     # above (REQ-1746) already documents and fixes for a different connector
@@ -513,6 +536,9 @@ class NativeEngineBackend(EngineBackend):
                     # is divided from (DuckDBPostgresConnector.details reads it directly). A
                     # sources row always carries the column; NULL is no cap.
                     max_live_concurrency=_rs_dict["max_live_concurrency"],
+                    # REQ-1997: where the source's file is fetched from, which the sandbox check at
+                    # attach (sandbox_egress.pinned_source) reads. A sources row always carries it.
+                    download_from=_rs_dict["download_from"],
                 )
 
         def _rs(v: Any) -> Any:
@@ -542,6 +568,11 @@ class NativeEngineBackend(EngineBackend):
         def _attach_tbl(src: Any, schema_name: str, table_name: str) -> None:
             """Attach one table into the runtime; skip if already attached or attach fails."""
             nonlocal complete
+            # Bug B fix: guard _NO_REMOTE_SOURCE_IDS BEFORE accessing source_catalogs.
+            # '__derived__' (and other virtual sources) have no catalog entry; the dict lookup
+            # crashed with KeyError before the original guard further down could fire (REQ-1942).
+            if getattr(src, "id", None) in _NO_REMOTE_SOURCE_IDS:
+                return
             key = (state.source_catalogs[src.id], src.id, schema_name, table_name)
             if key in tried or (src.id, schema_name, table_name) in native:
                 return
@@ -580,8 +611,11 @@ class NativeEngineBackend(EngineBackend):
             ):
                 return
             tried.add(key)
-            if getattr(src, "id", None) in _NO_REMOTE_SOURCE_IDS:
-                return
+            # REQ-2191: a JDBC source attached live here is attached as the built-in type its URL
+            # names, through that type's own connector.
+            named = attach_type(src, self.engine)
+            if named is not None:
+                src = attach_view(src, named)
             # Only a source the engine reads LIVE in place (attach/scan) is attached here. A
             # FETCH/DIRECT source (API/push adapter or native driver -- openapi, graphql_remote,
             # the dq sources) is read from its replica or the API cache, never attached, so the
@@ -634,6 +668,8 @@ class NativeEngineBackend(EngineBackend):
                 # REQ-1909: read directly by DuckDBPostgresConnector.details; every source this
                 # walk holds carries it (a config Source, or the runtime row's shim above).
                 max_live_concurrency=src.max_live_concurrency,
+                # REQ-1997: read by the sandbox check every attach passes (engine.resolve).
+                download_from=src.download_from,
                 schema_name=schema_name,
                 table_name=table_name,
                 column_fields=fields,
@@ -687,7 +723,8 @@ class NativeEngineBackend(EngineBackend):
 
         # Native DuckDB path: attach the control plane (REQ-2014: PostgreSQL) as the provisa_admin
         # catalog so meta/ops entities resolve (parity with Trino, where provisa_admin is a real
-        # catalog). The attach is live, so once is enough.
+        # catalog). Attached once; each walk after clears its catalog cache, so a schema made since
+        # (an org's) resolves.
         tdb = getattr(state, "model_db", None)
         if tdb is not None and hasattr(self._runtime, "attach_control_plane"):
             self._runtime.attach_control_plane(libpq_dsn(tdb.engine.url))
@@ -730,6 +767,13 @@ class NativeEngineBackend(EngineBackend):
         landed: list[LandedTable] = []
         addresses: dict[str, tuple[str, str]] = {}
         views: dict[str, tuple[str, str]] = {}
+        # A store that lists its tables' columns at once (an embedded DuckDB file) is read once, by
+        # the first table's reconcile: a replica whose columns already match is kept as it stands,
+        # and only a missing or drifted one is reconciled -- one open of the store per rebuild, not
+        # one write per table. A read that fails is that table's failure, as a reconcile's is, and
+        # the next table reads again.
+        held: dict[tuple[str, str], list[str]] = {}
+        held_read = False
         for src, schema_name, table_name, columns, pk_columns, _filter in await landing_worklist(
             self.engine, state
         ):
@@ -737,12 +781,19 @@ class NativeEngineBackend(EngineBackend):
                 state, source_id=src.id, schema_name=schema_name, table_name=table_name
             )
             try:
-                outcome = await runtime.reconcile_replica(
-                    schema=address.schema,
-                    table=address.table,
-                    columns=columns,
-                    pk_columns=pk_columns,
-                )
+                if not held_read:
+                    if hasattr(runtime, "replica_column_lists"):
+                        held = runtime.replica_column_lists()
+                    held_read = True
+                if held.get((address.schema, address.table)) == [name for name, _ in columns]:
+                    outcome = "kept"
+                else:
+                    outcome = await runtime.reconcile_replica(
+                        schema=address.schema,
+                        table=address.table,
+                        columns=columns,
+                        pk_columns=pk_columns,
+                    )
                 view = None
                 if hasattr(runtime, "publish_replica_view"):
                     # A store whose catalog export shares a view of each replica (Snowflake). It
@@ -1065,7 +1116,7 @@ class NativeEngineBackend(EngineBackend):
         # them rather than breaking the shared call site every engine's execute() must match.
         # The ops `queries` report reads spans named provisa.query.* and lifts their provisa.*
         # attributes into the trace table (TRACE_ATTR_COLS). The Trino terminal names its span
-        # that way in execute_trino; a native engine has no such executor, so the terminal names
+        # that way in trino_flight.execute_trino_flight; a native engine has no such executor, so the terminal names
         # it here — otherwise every native-engine org's report is blank.
         span_name = f"provisa.query.{self.dialect}" if span_attrs else f"{self.dialect}.execute"
         with _stage(_tracer, span_name, name="execute") as span:

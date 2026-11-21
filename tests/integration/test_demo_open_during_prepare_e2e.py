@@ -27,8 +27,6 @@ import pytest
 
 from tests.integration.test_demo_bundle_build_e2e import published_demo
 from tests.integration.test_demo_bundle_sandbox_e2e import (
-    _close_what_the_test_opened,  # noqa: F401 -- autouse: the sandboxes opened here are removed
-    _opened,
     _publish,
     _synced,
     _tier,
@@ -58,7 +56,6 @@ def _open_until_served(tier) -> list[tuple[int, str]]:
         code = opened.json().get("code", "") if opened.status_code != 200 else ""
         answers.append((opened.status_code, code or opened.text[:300]))
         if opened.status_code == 200:
-            _opened.append(opened.json()["org_id"])
             return answers
         if code != "sandbox.demo_not_ready":
             return answers

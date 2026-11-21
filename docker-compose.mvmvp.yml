@@ -14,7 +14,7 @@ name: provisa-mvmvp
 services:
   postgres:
     container_name: provisa-postgres-mvmvp
-    image: postgres:16
+    image: pgvector/pgvector:pg16-trixie  # REQ-2185: the control plane carries pgvector
     restart: unless-stopped
     environment:
       POSTGRES_USER: provisa

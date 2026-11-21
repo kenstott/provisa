@@ -1,0 +1,23 @@
+{
+  "erdLayouts": {
+    "layout": "Layout: {{name}}",
+    "layouts": "Layouts",
+    "menuHint": "Eine gespeicherte Anordnung dieses Diagramms wählen, speichern oder löschen",
+    "automatic": "Automatisch",
+    "save": "Speichern",
+    "saveAs": "Speichern unter…",
+    "delete": "Löschen",
+    "unsaved": "Nicht gespeichert",
+    "unsavedHint": "Das Diagramm wurde geändert, seit dieses Layout gespeichert wurde",
+    "saveAsTitle": "Layout speichern unter",
+    "name": "Name",
+    "nameTaken": "Ein Layout namens {{name}} existiert bereits",
+    "deleteTitle": "Layout {{name}} löschen?",
+    "deleteConsequence": "Das Layout wird für alle entfernt. Die gezeigten Tabellen und Beziehungen bleiben unverändert.",
+    "newSinceSaved_one": "{{count}} Tabelle neu seit dem Speichern des Layouts",
+    "newSinceSaved_other": "{{count}} Tabellen neu seit dem Speichern des Layouts",
+    "place": "Platzieren",
+    "placeHint": "Die Tabelle dem Layout hinzufügen",
+    "notDrawn": "Das Diagramm ist noch nicht gezeichnet"
+  }
+}

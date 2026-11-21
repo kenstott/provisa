@@ -6,17 +6,37 @@
 // found in the LICENSE file in the root directory of this source tree.
 
 import { test, expect, UI_URL, TRINO_BACKEND_URL } from "./coverage";
-import { deleteSourceAndItsTables } from "./delete-source";
-import { addSourceOfType } from "./source-to-query-helpers";
+import { retireSourceTables, testSourceId } from "./retire-source-tables";
+import { isAssignableDomain } from "../src/lib/internalDomains";
+import { addSourceOfType, listedTableNames } from "./source-to-query-helpers";
 
-const SOURCE_ID = "e2e-sharepoint";
+// This attempt's own source, table alias and schema, set in beforeEach (REQ-2248: the source is
+// kept after the test, with its table retired, and a retired table keeps its name and key, so a
+// retry or a later run registers under names no earlier attempt holds).
+let SOURCE_ID = "";
+let ALIAS = "";
 // REQ-1730: the sharepoint catalog's schema is the sql-normalized source id on every engine
 // (trino_connectors.TrinoSharepointConnector passes it as the catalog's `schema`, as
 // the DuckDB pgwire bridge exposes it), not the fixed literal "sharepoint".
-const SCHEMA = SOURCE_ID.replace(/-/g, "_");
+let SCHEMA = "";
 // Trino backend: register_source() creates a real Trino catalog so the schema dropdown populates.
 // DuckDB backend's register_source() is a no-op — the schema dropdown would stay empty.
 const GQL = `${TRINO_BACKEND_URL}/admin/graphql`;
+// The certificate's ONE absolute path that both readers of the source can open: Trino, in its
+// container, and the source's own pgwire server, which Provisa starts on this host for the
+// source's writes (REQ-1946) and the keys it declares (REQ-2170). docker-compose.e2e-mounts.yml
+// mounts the file into Trino at this same path. `/certs/sharepoint.pfx` exists only in the
+// container: the host's server died on FileNotFoundException and registerTable failed with
+// "Error instantiating JsonCustomSchema" (runs 42367768201, 42368724170).
+function certPath(): string {
+  const path = process.env.PROVISA_E2E_SHAREPOINT_CERT_HOST;
+  if (!path) {
+    throw new Error(
+      "PROVISA_E2E_SHAREPOINT_CERT_HOST is not set: the certificate's absolute host path",
+    );
+  }
+  return path;
+}
 
 // SharePoint calendar list columns (obtained via Graph API — information_schema.columns
 // returns empty for the Calcite-based sharepoint connector, so we supply known columns)
@@ -46,27 +66,32 @@ async function gql(query: string, variables: Record<string, unknown> = {}) {
   return res.json();
 }
 
-async function cleanupSource() {
-  await deleteSourceAndItsTables(gql, SOURCE_ID);
-}
-
 async function getDomainId(): Promise<string> {
   const res = await gql(`{ domains { id } }`);
   const domains: Array<{ id: string }> = res.data?.domains ?? [];
-  const d = domains.find((d) => d.id !== "meta" && d.id !== "ops") ?? domains[0];
-  return d?.id ?? "pet-store";
+  // The first domain a table may be put into: the form offers no internal one (meta, ontology, ops).
+  const d = domains.find((d) => isAssignableDomain(d.id));
+  if (!d) {
+    throw new Error(
+      `no assignable domain among ${JSON.stringify(domains)}: ${JSON.stringify(res)}`,
+    );
+  }
+  return d.id;
 }
 
-test.beforeEach(async () => {
-  await cleanupSource();
+test.beforeEach(() => {
+  SOURCE_ID = testSourceId("sharepoint");
+  ALIAS = `e2e_sp_calendar_${SOURCE_ID.split("_").pop()}`;
+  SCHEMA = SOURCE_ID.replace(/-/g, "_");
 });
 
+// The test retires the table it registered and leaves its source (REQ-2248).
 test.afterEach(async () => {
-  await cleanupSource();
+  await retireSourceTables(gql, SOURCE_ID);
 });
 
 test("sharepoint connector: add source and verify calendar list is available", async ({ page }) => {
-  // 600s: beforeEach cleanup + navigation + form fill (~150s) + Trino SharePoint catalog init
+  // 600s: navigation + form fill (~150s) + Trino SharePoint catalog init
   // (~135s) + headroom. The trino lane runs with workers = 1 (playwright.config.ts derives
   // `workers` from CORE_BACKENDS, which is a single entry outside the core lane), so the splunk
   // spec is serialized against this one and cannot queue a competing catalog init.
@@ -91,10 +116,9 @@ test("sharepoint connector: add source and verify calendar list is available", a
 
   // ── 1. Add SharePoint source via UI ──────────────────────────────────────
   await page.goto("/sources");
-  await page.waitForFunction(
-    () => !document.body.textContent?.includes("Loading sources..."),
-    { timeout: 30000 },
-  );
+  await page.waitForFunction(() => !document.body.textContent?.includes("Loading sources..."), {
+    timeout: 30000,
+  });
   // A schema-version advance makes apolloClient.ts re-fetch every active query, causing
   // "Loading sources..." to reappear briefly. Use 30s to survive the re-fetch.
   await page.waitForSelector(".page-header", { timeout: 30000 });
@@ -108,24 +132,31 @@ test("sharepoint connector: add source and verify calendar list is available", a
   // Mantine TextInput/Select: data-testid is forwarded to the underlying <input> element
   // (not a wrapper div), so selectors target data-testid directly — no child combinator.
   await page.waitForSelector('[data-testid="sharepoint-site-url-input"]', { timeout: 10000 });
-  await page.locator('[data-testid="sharepoint-site-url-input"]').fill("https://kenstott.sharepoint.com");
-  await page.locator('[data-testid="sharepoint-tenant-id-input"]').fill("5d2609cc-7eff-4b82-8f83-f0b28c71fafc");
+  await page
+    .locator('[data-testid="sharepoint-site-url-input"]')
+    .fill("https://kenstott.sharepoint.com");
+  await page
+    .locator('[data-testid="sharepoint-tenant-id-input"]')
+    .fill("5d2609cc-7eff-4b82-8f83-f0b28c71fafc");
 
   // Mantine Select — click the combobox input, then click the option in the listbox
   await page.locator('[data-testid="sharepoint-auth-type-select"]').click();
   await page.getByRole("option", { name: "Certificate" }).click();
 
   await page.waitForSelector('[data-testid="sharepoint-cert-path-input"]', { timeout: 10000 });
-  await page.locator('[data-testid="sharepoint-client-id-input"]').fill("d6f6b74e-df85-470f-8e68-e34c767436be");
-  // Trino runs inside Docker where the cert is mounted at /certs/sharepoint.pfx (docker-compose.core.yml:99)
-  await page.locator('[data-testid="sharepoint-cert-path-input"]').fill("/certs/sharepoint.pfx");
+  await page
+    .locator('[data-testid="sharepoint-client-id-input"]')
+    .fill("d6f6b74e-df85-470f-8e68-e34c767436be");
+  await page.locator('[data-testid="sharepoint-cert-path-input"]').fill(certPath());
   // PFX password — the cert was created with the password literally set to "YOUR_PFX_PASSWORD"
   await page.locator('[data-testid="sharepoint-cert-password-input"]').fill("YOUR_PFX_PASSWORD");
 
   await page.locator('[data-testid="sources-submit"]').click();
 
   // Wait for source row to appear in list
-  await expect(page.locator(".data-table td").filter({ hasText: SOURCE_ID })).toBeVisible({ timeout: 30000 });
+  await expect(page.locator(".data-table td").filter({ hasText: SOURCE_ID })).toBeVisible({
+    timeout: 30000,
+  });
 
   // ── 2. Open table form and verify SharePoint lists are enumerated ─────────
   await page.goto("/tables");
@@ -139,7 +170,9 @@ test("sharepoint connector: add source and verify calendar list is available", a
   // data initially; the network fetch updates the cache within a few seconds.
   await page.waitForFunction(
     (id: string) => {
-      const sel = document.querySelector<HTMLSelectElement>('[data-testid="register-table-source-select"]');
+      const sel = document.querySelector<HTMLSelectElement>(
+        '[data-testid="register-table-source-select"]',
+      );
       return Array.from(sel?.options ?? []).some((o) => o.value === id);
     },
     SOURCE_ID,
@@ -152,7 +185,9 @@ test("sharepoint connector: add source and verify calendar list is available", a
   await page.waitForFunction(
     () => {
       const selects = Array.from(document.querySelectorAll<HTMLSelectElement>(".form-card select"));
-      return selects.some((s) => s.dataset.testid === "register-table-domain-select" && s.options.length > 1);
+      return selects.some(
+        (s) => s.dataset.testid === "register-table-domain-select" && s.options.length > 1,
+      );
     },
     { timeout: 10000 },
   );
@@ -164,7 +199,9 @@ test("sharepoint connector: add source and verify calendar list is available", a
   // 240s for Trino catalog initialisation + schema enumeration via SharePoint REST API.
   await page.waitForFunction(
     (schema) => {
-      const sel = document.querySelector<HTMLSelectElement>('[data-testid="register-table-schema-select"]');
+      const sel = document.querySelector<HTMLSelectElement>(
+        '[data-testid="register-table-schema-select"]',
+      );
       return Array.from(sel?.options ?? []).some((o) => o.value === schema);
     },
     SCHEMA,
@@ -174,18 +211,13 @@ test("sharepoint connector: add source and verify calendar list is available", a
   // Select sharepoint schema
   await page.locator('[data-testid="register-table-schema-select"]').selectOption(SCHEMA);
 
-  // Wait for 'calendar' table to appear — proves SharePoint lists are enumerated
-  await page.waitForFunction(
-    () => {
-      const sel = document.querySelector<HTMLSelectElement>('[data-testid="register-table-table-select"]');
-      return Array.from(sel?.options ?? []).some((o) => o.value === "calendar");
-    },
-    { timeout: 30000 },
-  );
-
-  const tableOptions = await page
-    .locator('[data-testid="register-table-table-select"] option')
-    .allTextContents();
+  // Wait for 'calendar' table to appear — proves SharePoint lists are enumerated: the Tables field (REQ-2234) lists them in its open list.
+  const tablesField = page.getByTestId("register-tables-field").getByRole("textbox");
+  await expect(tablesField).toBeEnabled({ timeout: 30000 });
+  await tablesField.click();
+  await expect(page.getByRole("option", { name: /^calendar/ })).toBeVisible({ timeout: 30000 });
+  const tableOptions = await listedTableNames(page);
+  await page.keyboard.press("Escape");
 
   expect(tableOptions).toContain("calendar");
   expect(tableOptions).toContain("events");
@@ -208,13 +240,16 @@ test("sharepoint connector: add source and verify calendar list is available", a
         // registration with "no data type could be resolved from the source".
         schemaName: SCHEMA,
         tableName: "calendar",
-        alias: "e2e_sp_calendar",
+        alias: ALIAS,
         columns: CALENDAR_COLUMNS,
       },
     },
   );
 
-  expect(registerResult.errors, `registerTable errors: ${JSON.stringify(registerResult.errors)}`).toBeUndefined();
+  expect(
+    registerResult.errors,
+    `registerTable errors: ${JSON.stringify(registerResult.errors)}`,
+  ).toBeUndefined();
   // The mutation reports a refusal in `message` with no GraphQL error, so carry it into the
   // assertion — otherwise CI shows only "expected true, received false".
   expect(
@@ -222,28 +257,19 @@ test("sharepoint connector: add source and verify calendar list is available", a
     `registerTable message: ${registerResult.data?.registerTable?.message}`,
   ).toBe(true);
 
-  // REQ-1921: registered through the admin, the table starts as draft; released, it is read.
-  const registeredId = Number(
-    /\(id=(\d+)\)/.exec(String(registerResult.data?.registerTable?.message))?.[1],
-  );
-  const releaseResult = await gql(
-    `mutation($id: Int!) { setTableDraft(tableId: $id, draft: false) { success message } }`,
-    { id: registeredId },
-  );
-  expect(
-    releaseResult.data?.setTableDraft?.success,
-    `setTableDraft: ${JSON.stringify(releaseResult)}`,
-  ).toBe(true);
-
   // ── 4. Verify the registered table appears in the UI ─────────────────────
   // Reload the page to show the registered tables list
   await page.goto("/tables");
   await page.waitForSelector(".page-header", { timeout: 30000 });
 
-  await expect(page.locator(".data-table").getByText("e2e_sp_calendar")).toBeVisible({ timeout: 10000 });
+  await expect(page.locator(".data-table").getByText(ALIAS)).toBeVisible({
+    timeout: 10000,
+  });
 
   // ── 5. Query via GQL data endpoint ───────────────────────────────────────
-  const queryResult = await gql(`{ e2eSpCalendar { id title } }`);
+  // The GraphQL field is the alias in camelCase.
+  const field = ALIAS.replace(/_([a-z0-9])/g, (_m, c: string) => c.toUpperCase());
+  const queryResult = await gql(`{ ${field} { id title } }`);
   // Query may error since the Calcite sharepoint connector does not support
   // direct SQL table access (getTableHandle returns null for user tables).
   // We assert the response shape is defined — success or a recognisable error.

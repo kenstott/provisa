@@ -38,7 +38,7 @@ in
   environment.systemPackages = with pkgs; [
     git
     uv
-    nodejs_22
+    nodejs_24
     maven
     # tests/unit renders the chart with `helm template`.
     kubernetes-helm
@@ -55,6 +55,9 @@ in
     gcc14
     gnumake
     unixodbc
+    # REQ-2194: `uv sync` compiles provisa._encoders (rust/encoders) into provisa.
+    cargo
+    rustc
   ];
 
   # Registers "ODBC Driver 18 for SQL Server" in /etc/odbcinst.ini.

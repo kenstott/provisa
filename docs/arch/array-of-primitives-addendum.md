@@ -42,7 +42,7 @@ meeting points:
 
 | Meeting point | Example |
 |---|---|
-| A replica landed in a self-only engine without arrays | a PostgreSQL `text[]` table replicated into a region whose engine is MySQL, SQL Server, Oracle, MariaDB, TiDB, SingleStore, Exasol, Db2, SAP HANA, Fabric, Synapse, Redshift, Firebird, MonetDB, SAP ASE, SQL Anywhere, or the generic `sqlalchemy` kind |
+| A replica landed in a self-only engine without arrays | a PostgreSQL `text[]` table replicated into a region whose engine is MySQL, SQL Server, Oracle, MariaDB, TiDB, SingleStore, Exasol, Db2, SAP HANA, Fabric, Synapse, Redshift, Firebird, MonetDB, or the generic `sqlalchemy` kind |
 | An API, file or stream source whose scalar list lands in that engine's cache | OpenAPI `items: {type: string}` under a MySQL engine |
 | Moving a model to such an engine | engine swap; an environment on a different engine kind |
 

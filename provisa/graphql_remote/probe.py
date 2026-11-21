@@ -37,7 +37,15 @@ from graphql import (
     print_ast,
 )
 
-from provisa.graphql_remote.executor import _safe_json, column_selection, table_query
+from provisa.graphql_remote.executor import (
+    NO_POLICY,
+    ErrorPolicy,
+    _post,
+    _safe_json,
+    column_selection,
+    error_code,
+    table_query,
+)
 from provisa.graphql_remote.introspect import _build_headers
 
 # A remote that reports refused fields a few at a time is asked again until it reports none.
@@ -186,6 +194,7 @@ async def fit_table_to_credential(
     refused_error_types: frozenset[str],
     page_size: int = 1,
     too_complex_messages: tuple[str, ...] = (),
+    error_policy: ErrorPolicy = NO_POLICY,
 ) -> tuple[dict, list[dict]]:
     """Return the table without the fields the remote refuses this credential, and what was
     taken out -- ``[{"field": "projectsV2", "reason": <the remote's message>}]``. A table the
@@ -194,7 +203,8 @@ async def fit_table_to_credential(
     The query is offered at ``page_size``, the size a read will ask for, because a remote that
     prices a query prices its page size too. A remote that answers that the query costs too
     much -- an error whose message starts with one of ``too_complex_messages`` -- raises
-    :class:`QueryTooComplex`.
+    :class:`QueryTooComplex`. A probe the remote throttles waits as ``error_policy`` says, as a
+    read does, so a throttled answer is never taken for the table's.
 
     The table is returned unchanged when the source declares nothing to check for, or a
     required argument has no placeholder value to probe with.
@@ -212,8 +222,8 @@ async def fit_table_to_credential(
         timeout=30.0, event_hooks=sandbox_egress.http_event_hooks()
     ) as client:
         for _ in range(_MAX_ROUNDS):
-            resp = await client.post(
-                url, json={"query": query, "variables": variables}, headers=headers
+            resp = await _post(
+                client, url, {"query": query, "variables": variables}, headers, error_policy
             )
             errors = _errors_of(resp)
             too_complex = _too_complex(errors, too_complex_messages)
@@ -221,7 +231,7 @@ async def fit_table_to_credential(
                 raise QueryTooComplex(table["name"], too_complex)
             resp.raise_for_status()
             refusals = [
-                e for e in errors if e.get("type") in refused_error_types and e.get("locations")
+                e for e in errors if error_code(e) in refused_error_types and e.get("locations")
             ]
             if not refusals:
                 break

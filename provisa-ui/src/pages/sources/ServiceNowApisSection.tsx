@@ -32,6 +32,7 @@ import { serverMessage } from "../../i18n/serverMessage";
 import { Tip } from "../../components/Tip";
 import { ServiceNowApiList, type InstanceApi } from "./ServiceNowApiList";
 import { matchesQuery } from "../../lib/searchItems";
+import { sourceToCatalog } from "../../naming";
 
 interface CompanionImportSet {
   staging: string;
@@ -55,7 +56,7 @@ export function ServiceNowApisSection({ sourceId }: { sourceId: string }) {
   const maps = useQuery<{ availableImportSets: { name: string; importSet: string }[] }>(
     AvailableImportSets,
     {
-      variables: { sourceId, schemaName: sourceId.replace(/-/g, "_"), tableName: table.trim() },
+      variables: { sourceId, schemaName: sourceToCatalog(sourceId), tableName: table.trim() },
       skip: !table.trim(),
       fetchPolicy: "no-cache",
     },

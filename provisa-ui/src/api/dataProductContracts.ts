@@ -65,15 +65,18 @@ export interface OdcsContract extends OdcsRecord {
   tags?: string[];
 }
 
-/** One output port's contract, the port named by its member's address (source.schema.table): read
- * when its row in the product's contracts list opens. */
+/** REQ-2180: where an offer's contract on a dataset is read: the offer by its name, the dataset by
+ * its address (source.schema.table). */
+const contractPath = (productId: string, offer: string, member: string) =>
+  `${API_BASE}/data-products/${encodeURIComponent(productId)}/offers/${encodeURIComponent(offer)}/contracts/${encodeURIComponent(member)}`;
+
+/** The ODCS contract an offer gives on one dataset: read when its row in the offer opens. */
 export async function fetchProductContract(
   productId: string,
+  offer: string,
   member: string,
 ): Promise<OdcsContract> {
-  const resp = await fetch(
-    `${API_BASE}/data-products/${encodeURIComponent(productId)}/contracts/${encodeURIComponent(member)}.json`,
-  );
+  const resp = await fetch(`${contractPath(productId, offer, member)}.json`);
   if (!resp.ok) {
     const data = await resp.json().catch(() => ({ detail: resp.statusText }));
     throw new Error(serverMessage(data, requestFailed("Product contract", resp.status)));
@@ -81,14 +84,13 @@ export async function fetchProductContract(
   return resp.json();
 }
 
-/** One output port's saved versions, oldest first: read with its contract when its row opens. */
+/** That contract's saved versions, oldest first: read with it when its row opens. */
 export async function fetchContractVersions(
   productId: string,
+  offer: string,
   member: string,
 ): Promise<ContractVersion[]> {
-  const resp = await fetch(
-    `${API_BASE}/data-products/${encodeURIComponent(productId)}/contracts/${encodeURIComponent(member)}/versions.json`,
-  );
+  const resp = await fetch(`${contractPath(productId, offer, member)}/versions.json`);
   if (!resp.ok) {
     const data = await resp.json().catch(() => ({ detail: resp.statusText }));
     throw new Error(serverMessage(data, requestFailed("Contract versions", resp.status)));

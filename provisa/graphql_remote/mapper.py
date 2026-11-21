@@ -374,35 +374,41 @@ def _detect_relationships(  # REQ-313
     types: list[dict],
     queryable_type_names: set[str],
     type_to_table: dict[str, str],
+    only: set[str] | None = None,
 ) -> list[dict]:
     """Emit relationships for intra-source OBJECT column references.
 
     For many-to-one fields, infers source_column/target_column from naming
-    conventions (e.g. breedName → breed.name). Falls back to empty columns
-    for list (one-to-many) object fields where the FK lives on the target side.
+    conventions (e.g. breedName → breed.name). A field that names no join column -- a nested
+    object with no key scalar beside it, or a list whose key lives on the target side -- offers
+    no relationship: a relationship joins on columns (rel_repo.RelationshipWithoutColumns), and
+    the nested object is read as its own column. A field offered as a relationship is not also
+    a column (REQ-1929): it leaves the table's columns, so the relationship never hides one.
+    A relationship is offered only to a table mapped in full here (``only``, as map_schema
+    takes it): a table read on its own, for the picker or for registration, keeps the nested
+    object as a column, and a relationship is stored once both its tables are registered.
     """
     relationships = []
     for table in tables:
         src_scalars = {c["name"] for c in (table.get("columns") or []) if c.get("type") != "jsonb"}
+        kept: list[dict] = []
         for col in table.get("columns") or []:
+            kept.append(col)
             gql_type = col.get("gql_object_type")
             if not gql_type or gql_type not in queryable_type_names:
                 continue
             target_table = type_to_table.get(gql_type)
             if not target_table or target_table == table["name"]:
                 continue
-            cardinality = "one-to-many" if col.get("gql_is_list") else "many-to-one"
+            if only is not None and target_table not in only:
+                continue  # its target is not mapped here: no relationship is offered to it
+            if col.get("gql_is_list"):
+                continue  # its key lives on the target side: no column of this table joins
+            src_col, tgt_col = _infer_fk_columns(col["name"], gql_type, src_scalars, types)
+            if not src_col:
+                continue  # no key scalar beside the nested object: nothing to join on
+            kept.pop()  # REQ-1929: offered as a relationship, so not a column too
             rel_id = f"{REMOTE_OFFERED_PREFIX}{table['source_id']}__{table['name']}__{col['name']}"
-            if cardinality == "many-to-one":
-                src_col, tgt_col = _infer_fk_columns(col["name"], gql_type, src_scalars, types)
-                # The columns are named as they are registered too (apply_sql_name): FK/PK marking
-                # in rel_repo.upsert matches source_column/target_column against the registered
-                # column names, so a camelCase GQL field (breedName) must become breed_name here or
-                # the is_foreign_key/is_primary_key flag lands on no row.
-                src_col = apply_sql_name(src_col) if src_col else ""
-                tgt_col = apply_sql_name(tgt_col) if tgt_col else ""
-            else:
-                src_col, tgt_col = "", ""
             relationships.append(
                 {
                     "id": rel_id,
@@ -411,12 +417,17 @@ def _detect_relationships(  # REQ-313
                     # "assignmentsByEmployee" is registered as "assignments_by_employee".
                     "source_table_id": apply_sql_name(table["name"]),
                     "target_table_id": apply_sql_name(target_table),
-                    "source_column": src_col,
-                    "target_column": tgt_col,
-                    "cardinality": cardinality,
+                    # The columns are named as they are registered (apply_sql_name): FK/PK
+                    # marking in rel_repo.upsert matches them against the registered column
+                    # names, so a camelCase GQL field (breedName) must become breed_name here.
+                    "source_column": apply_sql_name(src_col),
+                    "target_column": apply_sql_name(tgt_col),
+                    "cardinality": "many-to-one",
                     "remote_managed": True,
                 }
             )
+        if table.get("columns") is not None:
+            table["columns"] = kept
     return relationships
 
 
@@ -725,6 +736,22 @@ def _collect_queryable_types(
     return queryable_type_names, type_to_table
 
 
+def _offers_columns(type_def: dict | None, types: list[dict]) -> bool:
+    """Whether a root field's type has a field :func:`_build_columns` makes a column of: one
+    selected bare (no required argument) that is not a connection. A scalar or enum root field
+    is its own column."""
+    if type_def is None or type_def.get("fields") is None:
+        return True
+    for f in type_def["fields"]:
+        if _build_required_args(f):
+            continue
+        kind, name = _unwrap_type(f["type"])
+        if kind in _COMPOSITE_KINDS and _is_connection(_find_type(types, name)):
+            continue
+        return True
+    return False
+
+
 def _process_query_fields(
     query_type: dict | None,
     namespace: str,
@@ -739,6 +766,7 @@ def _process_query_fields(
 ) -> tuple[list[dict], list[dict]]:
     """Partition query fields into tables and functions."""
     tables: list[dict] = []
+    children: list[dict] = []  # tables derived from a connection under a root field
     functions: list[dict] = []
     for field in (query_type or {}).get("fields") or []:
         override = field_overrides.get(field["name"], "").lower()
@@ -758,15 +786,25 @@ def _process_query_fields(
             if connection is not None:
                 tables.append(connection)
             continue
-        tables.append(_map_query_field_as_table(field, *shape, *depths))
-        tables.extend(_map_child_connection_tables(field, *shape, *depths))
-    # A child connection's derived name never displaces a root field of the same name.
+        if _offers_columns(_find_type(types, ret_name), types):
+            # A type whose every field is a connection, or needs an argument, has no columns
+            # to offer and is not a table; its connections still are (Shopify's taxonomy).
+            tables.append(_map_query_field_as_table(field, *shape, *depths))
+        derived = _map_child_connection_tables(field, *shape, *depths)
+        tables.extend(derived)
+        children.extend(derived)
+    # A child connection's derived name never displaces a root field of the same name. The
+    # tables keep the schema's order: the Register Table picker lists them as given, and a root
+    # connection moved below every plain table reads as missing.
+    child_ids = {id(t) for t in children}
+    root_names = {t["name"] for t in tables if id(t) not in child_ids}
     seen: set[str] = set()
     unique = []
-    for t in sorted(tables, key=lambda t: "rows_path" in t):
-        if t["name"] not in seen:
-            seen.add(t["name"])
-            unique.append(t)
+    for t in tables:
+        if t["name"] in seen or (id(t) in child_ids and t["name"] in root_names):
+            continue
+        seen.add(t["name"])
+        unique.append(t)
     return unique, functions
 
 
@@ -845,5 +883,5 @@ def map_schema(  # REQ-308, REQ-312, REQ-313
         )
     )
 
-    relationships = _detect_relationships(tables, types, queryable_type_names, type_to_table)
+    relationships = _detect_relationships(tables, types, queryable_type_names, type_to_table, only)
     return tables, functions, relationships

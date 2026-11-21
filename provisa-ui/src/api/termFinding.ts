@@ -8,12 +8,13 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-2179: find terms in a document. A scan of a reference library document (picked there, or
+// REQ-2179, REQ-2202: find terms in a document or a registered table. A scan of a reference library document (picked there, or
 // given as a file or URL and added to the library as proposed), and the review queue of the
 // candidate terms it proposes, each a draft the steward edits, accepts, merges or rejects.
 
 import { requestFailed, serverMessage } from "../i18n/serverMessage";
 import { base64Of } from "./referenceLibrary";
+import { selectedDomainsQuery, withSelectedDomains } from "./selectedDomains";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "";
 const BASE = `${API_BASE}/admin/glossary/term-finding`;
@@ -52,6 +53,12 @@ export interface ScanSummary {
   };
 }
 
+/** A registered table a scan reads (REQ-2202): a table of terms and their definitions, each row a
+ * term (no model), or a table of text, each row one passage cited by its id. */
+export type TableScanSource =
+  | { domain: string; table: string; term_column: string; definition_column: string }
+  | { domain: string; table: string; id_column: string; text_column: string };
+
 export interface Scan {
   id: number;
   document_id: number | null;
@@ -59,6 +66,8 @@ export interface Scan {
   document_source: string;
   /** The document was removed from the library; its citations stay. */
   document_removed: boolean;
+  /** A table's scan: the table it read; null for a document's. */
+  source_table: TableScanSource | null;
   domains: string[];
   status: ScanStatus;
   error: string | null;
@@ -84,6 +93,8 @@ export interface Citation {
   ordinal: number;
   section: string | null;
   page: number | null;
+  /** The id of the table row the passage is, in a table's scan. */
+  row?: string | null;
   quote: string;
   explicit: boolean;
   sense: string;
@@ -122,8 +133,9 @@ export interface Draft {
   matches: (TermRef & { via: string })[];
 }
 
-/** The document a scan reads: one in the library, or a new one by file or URL. */
-export type ScanSource = { document_id: number } | { url: string } | { file: File };
+/** What a scan reads: a library document, a new one by file or URL, or a registered table. */
+export type ScanSource =
+  { document_id: number } | { url: string } | { file: File } | { table: TableScanSource };
 
 async function ok<T>(res: Response, op: string): Promise<T> {
   if (!res.ok) {
@@ -139,27 +151,46 @@ function send(method: string, body?: unknown): RequestInit {
     : { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) };
 }
 
-export async function fetchScannableDocuments(): Promise<ScannableDocument[]> {
+// REQ-2253: each read and each scan carries the navbar filter's selection (useViewDomains; null
+// for none), so nothing outside it is offered, read or matched.
+
+export async function fetchScannableDocuments(
+  selected: ReadonlySet<string> | null,
+): Promise<ScannableDocument[]> {
   const body = await ok<{ documents: ScannableDocument[] }>(
-    await fetch(`${BASE}/documents`),
+    await fetch(`${BASE}/documents${selectedDomainsQuery(selected)}`),
     "Reference library",
   );
   return body.documents;
 }
 
+/** Start a scan working in ``domains``, within the filter's ``selected`` domains. */
 export async function startScan(
   source: ScanSource,
   domains: string[],
-): Promise<{ scan: Scan; document: ScannableDocument }> {
+  selected: ReadonlySet<string> | null,
+): Promise<{ scan: Scan; document?: ScannableDocument }> {
   const given =
     "file" in source
       ? { file_name: source.file.name, content_b64: await base64Of(source.file) }
       : source;
-  return ok(await fetch(`${BASE}/scans`, send("POST", { ...given, domains })), "Find terms");
+  return ok(
+    await fetch(
+      `${BASE}/scans${selectedDomainsQuery(selected)}`,
+      send("POST", { ...given, domains }),
+    ),
+    "Find terms",
+  );
 }
 
-export async function fetchScans(documentId?: number): Promise<Scan[]> {
-  const query = documentId === undefined ? "" : `?document_id=${documentId}`;
+export async function fetchScans(
+  selected: ReadonlySet<string> | null,
+  documentId?: number,
+): Promise<Scan[]> {
+  const params = withSelectedDomains(new URLSearchParams(), selected);
+  if (documentId !== undefined) params.set("document_id", String(documentId));
+  const text = params.toString();
+  const query = text ? `?${text}` : "";
   const body = await ok<{ scans: Scan[] }>(await fetch(`${BASE}/scans${query}`), "Scans");
   return body.scans;
 }

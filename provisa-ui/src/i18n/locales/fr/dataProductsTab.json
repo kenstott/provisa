@@ -87,7 +87,6 @@
     "graphqlQueriesEmpty": "Aucune table ni relation interrogeable",
     "graphqlQueryAria": "Exécuter l'exemple de requête GraphQL pour {{table}}",
     "sqlQueryAria": "Exécuter l'exemple de requête SQL pour {{table}}",
-    "cypherQueryAria": "Exécuter l'exemple de requête Cypher pour {{type}}",
     "grpcQueryAria": "Exécuter l'exemple d'appel gRPC pour {{table}}",
     "jsonapiQueryAria": "Exécuter l'exemple de requête JSON:API pour {{table}}",
     "openApiQueryAria": "Exécuter l'exemple de requête REST pour {{table}}",
@@ -97,7 +96,6 @@
         "customProperties": "Propriétés personnalisées",
         "relatedTables": "Tables associées",
         "relationships": "Relations",
-        "lineage": "Traçabilité",
         "inputPorts": "Ports d'entrée",
         "dataQuality": "Qualité des données"
       },
@@ -107,18 +105,21 @@
       "dqRulesTitle": "Règles de qualité : {{table}}",
       "dqRulesEmpty": "Le contrat ne définit aucun contrôle",
       "relatedTablesEmpty": "Aucune table associée",
-      "relatedTablesHint": "Accessibles depuis les tables de ce produit par une relation approuvée, mais n'en faisant pas (encore) partie.",
+      "relatedTablesHint": "Accessible depuis les tables de ce produit via une relation approuvée, mais n'en fait pas encore partie.",
       "relationshipsEmpty": "Aucune relation entre les tables de ce produit",
       "lineageEmpty": "Aucune traçabilité",
       "lineageLoading": "Chargement de la traçabilité…",
-      "lineageHint": "Graphe de traçabilité des colonnes montrant les tables de ce produit comme endpoint publié, ainsi que chaque table en amont utilisée pour les dériver. À titre informatif uniquement ; nécessite la capacité view_governance.",
+      "lineageTitle": "Traçabilité des colonnes : d'où vient ce produit",
+      "lineageHint": "Chaque colonne publiée par ce produit et la colonne d'entrée dont elle provient, avec chaque étape intermédiaire. Nécessite la capacité view_governance.",
       "outputPortsHint": "La surface interrogeable de ce produit : ses tables membres et ses commandes. Des exemples de requêtes pour chacune se trouvent sous Modèles d'accès.",
       "customPropertiesEmpty": "Aucune propriété personnalisée",
-      "lineageLaneUpstream": "En amont, saut {{n}}",
-      "lineageLaneDownstream": "En aval, saut {{n}}"
+      "lineageLaneTables": "Tables de ce produit",
+      "lineageLaneInputs": "Entrées",
+      "lineageLaneUpstream": "En amont, saut {{n}} au-delà des entrées",
+      "inputsLineageLink": "Voir la traçabilité des colonnes"
     },
     "readOnly": "Lecture seule",
-    "readOnlyHint": "Vous disposez uniquement de data_product_read ; un org_admin peut accorder data_product_rw pour modifier.",
+    "readOnlyHint": "Vous n'avez que data_product_read. Un org_admin peut accorder data_product_rw pour modifier.",
     "relatedTermsConcept": "concept",
     "status_draft": "Brouillon",
     "status_live": "Actif",
@@ -131,15 +132,15 @@
     "successorHint": "Ses tables, vues et commandes passent au successeur, un produit du même domaine.",
     "reasonLabel": "Motif",
     "publish": "Publier",
-    "publishHint": "Rendre ce brouillon actif : il est proposé aux consommateurs et aux catalogues.",
+    "publishHint": "Mettre ce brouillon en ligne et le proposer aux consommateurs et aux catalogues.",
     "deprecate": "Marquer obsolète",
-    "deprecateHint": "Marquer ce produit actif comme en fin de vie : il reste en service, avec un motif et un retrait prévu facultatif.",
+    "deprecateHint": "Marquer ce produit en ligne comme en voie de retrait. Il reste en service, avec un motif et un retrait prévu facultatif.",
     "deprecateTitle": "Marquer « {{product}} » comme obsolète",
     "retire": "Retirer",
-    "retireHint": "Retirer ce produit du service : ses tables, vues et commandes passent à un successeur de son domaine.",
+    "retireHint": "Retirer ce produit du service. Ses tables, vues et commandes passent à un successeur dans son domaine.",
     "retireTitle": "Retirer « {{product}} »",
     "retireMoves": "Membres transférés : {{members}}",
-    "retireNoMembers": "Il n'a aucun membre : le successeur est facultatif.",
+    "retireNoMembers": "Il n'a aucun membre, un successeur est donc facultatif.",
     "restore": "Restaurer",
     "restoreHint": "Annuler l'obsolescence (retour à actif) ou le retrait (retour au brouillon).",
     "toReview": "À examiner",
@@ -177,9 +178,6 @@
       "versionLabel": "Version du contrat",
       "statusLabel": "Statut du contrat",
       "descriptionLabel": "À quoi il sert",
-      "columnsLabel": "Colonnes",
-      "columnsHelp": "Retirer une colonne, ou changer son type, exige une nouvelle version.",
-      "requiredLabel": "Jamais nul",
       "slaLabel": "Niveaux de service",
       "slaProperty": "Propriété",
       "slaValue": "Valeur",
@@ -211,7 +209,56 @@
         "check_removed": "Contrôle qualité {{subject}} supprimé",
         "check_changed": "Contrôle qualité {{subject}} modifié",
         "description_changed": "Description modifiée",
-        "terms_changed": "Conditions modifiées : {{subject}}"
+        "terms_changed": "Conditions modifiées : {{subject}}",
+        "field_masked": "Champ {{subject}} masqué ({{after}})",
+        "field_unmasked": "Champ {{subject}} n'est plus masqué",
+        "row_rule_added": "Règle de ligne ajoutée : {{subject}}",
+        "row_rule_removed": "Règle de ligne retirée : {{subject}}",
+        "data_level_changed": "Niveau de données passé de {{before}} à {{after}}",
+        "dq_results_changed": "Résultats de qualité passés de {{before}} à {{after}}",
+        "profiles_changed": "Profils passés de {{before}} à {{after}}",
+        "duration_changed": "Durée passée de {{before}} à {{after}}",
+        "terms_of_use_changed": "Conditions d'utilisation modifiées : {{subject}}"
+      },
+      "howToUse": {
+        "column": {
+          "surface": "Interface",
+          "address": "Adresse",
+          "how": "Mode d'utilisation",
+          "link": "Exemple"
+        },
+        "surface": {
+          "pgwire": "PostgreSQL",
+          "flight-sql": "Arrow Flight SQL",
+          "grpc": "gRPC",
+          "graphql": "GraphQL",
+          "rest": "REST",
+          "openapi": "OpenAPI",
+          "jsonapi": "JSON:API",
+          "sparql": "SPARQL"
+        },
+        "how": {
+          "pgwire": "Tout client PostgreSQL, tel que psql ou DBeaver. Base de données {{database}}, schéma {{schema}}.",
+          "flight-sql": "Tout client Arrow Flight SQL, tel que le pilote ADBC. Base de données {{database}}, schéma {{schema}}.",
+          "grpc": "Tout client gRPC, sur le service {{service}}, avec les métadonnées authorization: Bearer <token>.",
+          "graphql": "Tout client GraphQL : envoyez une requête en POST sur cette table, avec l'en-tête Authorization: Bearer <token>.",
+          "rest": "Tout client HTTP : GET sur cette adresse, avec l'en-tête Authorization: Bearer <token>.",
+          "openapi": "La description de cette seule table : chargez-la dans Swagger UI, Postman ou un générateur de clients.",
+          "jsonapi": "Tout client JSON:API : GET sur cette adresse, avec l'en-tête Authorization: Bearer <token>.",
+          "sparql": "Tout client SPARQL 1.1 : envoyez une requête en POST sur la classe de cette table, avec l'en-tête Authorization: Bearer <token>."
+        },
+        "access": {
+          "granted": "Ne fonctionne qu'une fois l'accès accordé, par {{approvers}}.",
+          "noApprover": "Ne fonctionne qu'une fois l'accès accordé, par un titulaire de {{roles}}. Ce contrat ne nomme aucun approbateur.",
+          "undeclared": "Ne fonctionne qu'une fois l'accès accordé. Ce contrat ne nomme ni rôle ni approbateur."
+        },
+        "ask": {
+          "approvers": "Demander l'accès à {{approvers}}",
+          "roles": "Demander l'accès à un titulaire de {{roles}}",
+          "nobody": "Ce contrat ne nomme personne à qui s'adresser"
+        },
+        "open": "Ouvrir l'exemple",
+        "openAria": "Ouvrir l'exemple {{surface}} pour {{table}}"
       },
       "loadError": "Impossible de lire les contrats : {{error}}",
       "notExported": "{{member}} n’a aucun contrat exporté",
@@ -259,47 +306,13 @@
         "versions": "Versions et modifications",
         "roles": "Rôles",
         "history": "Historique des versions"
-      },
-      "howToUse": {
-        "column": {
-          "surface": "Interface",
-          "address": "Adresse",
-          "how": "Mode d'utilisation",
-          "link": "Exemple"
-        },
-        "surface": {
-          "pgwire": "PostgreSQL",
-          "flight-sql": "Arrow Flight SQL",
-          "grpc": "gRPC",
-          "graphql": "GraphQL",
-          "rest": "REST",
-          "openapi": "OpenAPI",
-          "jsonapi": "JSON:API",
-          "sparql": "SPARQL"
-        },
-        "how": {
-          "pgwire": "Tout client PostgreSQL, tel que psql ou DBeaver. Base de données {{database}}, schéma {{schema}}.",
-          "flight-sql": "Tout client Arrow Flight SQL, tel que le pilote ADBC. Base de données {{database}}, schéma {{schema}}.",
-          "grpc": "Tout client gRPC, sur le service {{service}}, avec les métadonnées authorization: Bearer <token>.",
-          "graphql": "Tout client GraphQL : envoyez une requête en POST sur cette table, avec l'en-tête Authorization: Bearer <token>.",
-          "rest": "Tout client HTTP : GET sur cette adresse, avec l'en-tête Authorization: Bearer <token>.",
-          "openapi": "La description de cette seule table : chargez-la dans Swagger UI, Postman ou un générateur de clients.",
-          "jsonapi": "Tout client JSON:API : GET sur cette adresse, avec l'en-tête Authorization: Bearer <token>.",
-          "sparql": "Tout client SPARQL 1.1 : envoyez une requête en POST sur la classe de cette table, avec l'en-tête Authorization: Bearer <token>."
-        },
-        "access": {
-          "granted": "Ne fonctionne qu'une fois l'accès accordé, par {{approvers}}.",
-          "noApprover": "Ne fonctionne qu'une fois l'accès accordé, par un titulaire de {{roles}}. Ce contrat ne nomme aucun approbateur.",
-          "undeclared": "Ne fonctionne qu'une fois l'accès accordé. Ce contrat ne nomme ni rôle ni approbateur."
-        },
-        "ask": {
-          "approvers": "Demander l'accès à {{approvers}}",
-          "roles": "Demander l'accès à un titulaire de {{roles}}",
-          "nobody": "Ce contrat ne nomme personne à qui s'adresser"
-        },
-        "open": "Ouvrir l'exemple",
-        "openAria": "Ouvrir l'exemple {{surface}} pour {{table}}"
       }
-    }
+    },
+    "detailPanel": "Détail du produit de données",
+    "tagFacetLabel": "Tags",
+    "tagFacetPlaceholder": "Filtrer par tag",
+    "noMatch": "Aucun produit de données ne correspond aux filtres",
+    "domainFacetLabel": "Domaines",
+    "domainFacetPlaceholder": "Filtrer par domaine"
   }
 }

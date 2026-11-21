@@ -186,6 +186,7 @@ async def config_changes(conn: "Connection", config: Any) -> list[str]:
     from provisa.core.repositories.table import load_columns
     from provisa.core.schema_org import registered_tables as rt
     from provisa.core.schema_org import tag_assignments as ta
+    from provisa.core.term_tags import FLOWING_TAGS
 
     out: list[str] = []
     ids = set(await sensitive_tag_ids(conn))
@@ -210,6 +211,8 @@ async def config_changes(conn: "Connection", config: Any) -> list[str]:
 
     for a in config.tag_assignments:
         if a.object_type == "term" and base_tag_id(a.tag_id) in ids:  # REQ-2145
+            if base_tag_id(a.tag_id) not in FLOWING_TAGS:
+                continue  # stays on the term: no column it holds is hidden by it
             if not await _term_holds(conn, a.term, base_tag_id(a.tag_id)):
                 out.append(f"term {a.term} (tag {a.tag_id})")
             continue
@@ -247,18 +250,19 @@ async def config_changes(conn: "Connection", config: Any) -> list[str]:
 
 
 async def _term_holds(conn: "Connection", term: str | None, base: str) -> bool:
-    """Whether the glossary term named ``term`` already carries tag ``base`` (REQ-2145)."""
-    from provisa.core.schema_org import glossary_terms
+    """Whether the glossary term named ``term`` already carries tag ``base`` (REQ-2145). A tag
+    assignment names its term without a domain, so it is resolved as the loader resolves it
+    (REQ-1591): several terms of that name are refused by name."""
+    from provisa.core.repositories.glossary import resolve_term
     from provisa.core.schema_org import tag_assignments as ta
 
+    term_id = await resolve_term(conn, (term or "").strip().lower(), domains=None)
+    if term_id is None:
+        return False
     row = (
         await conn.execute_core(
-            select(ta.c.id)
-            .join(glossary_terms, glossary_terms.c.id == ta.c.term_id)
-            .where(
-                ta.c.object_type == "term",
-                ta.c.base_tag_id == base,
-                glossary_terms.c.name == (term or "").strip().lower(),
+            select(ta.c.id).where(
+                ta.c.object_type == "term", ta.c.base_tag_id == base, ta.c.term_id == term_id
             )
         )
     ).fetchone()

@@ -52,10 +52,13 @@ def _query_with_governance(shared_data: dict) -> None:
         table_ceilings={1: 500},
     )
 
-    sql = "SELECT id, email, secret FROM orders"
+    # The role reads every column of orders (a star); a statement naming "secret" is the
+    # refusal case below.
+    sql = "SELECT * FROM orders"
 
     shared_data["gov"] = gov
     shared_data["sql"] = sql
+    shared_data["names_hidden"] = "SELECT id, email, secret FROM orders"
 
 
 @when("Stage 2 processes the query")
@@ -63,14 +66,25 @@ def _stage2_processes(shared_data: dict) -> None:
     gov: GovernanceContext = shared_data["gov"]
     sql: str = shared_data["sql"]
     shared_data["result"] = apply_governance(sql, gov)
+    if "names_hidden" in shared_data:
+        with pytest.raises(PermissionError) as refused:
+            apply_governance(shared_data["names_hidden"], gov)
+        shared_data["refusal"] = str(refused.value)
 
 
 @then(
     "RLS predicates, column masking, column visibility, and row cap are all applied via AST rewrite"
 )
 def _all_governance_applied(shared_data: dict) -> None:
+    """Column visibility removes the invisible column by construction: the table is read through
+    the role's governed relation, which holds only the served columns, so a star over it reads no
+    "secret", and a statement naming "secret" is refused (V003) as REQ-039 (amended 2026-11-04, a
+    hidden column is refused in every clause) says, rather than having it removed from its select
+    list. The scenario reads every column with a star and asserts the refusal separately."""
     result: str = shared_data["result"]
     upper = result.upper()
+
+    assert shared_data["refusal"] == "[V003] Column 'secret' is not visible to this role"
 
     # (1) RLS predicate injected for the referenced table
     assert "WHERE" in upper, f"RLS WHERE not injected: {result}"
@@ -80,11 +94,8 @@ def _all_governance_applied(shared_data: dict) -> None:
     assert "PROVISA_REGEX_REPLACE" in upper, f"masking function not applied: {result}"
     assert "email" in result.lower(), f"masked column missing: {result}"
 
-    # (3) column visibility — invisible column removed/nulled out
-    # "secret" must no longer appear as a plain selected physical column
-    assert "secret" not in result.lower() or "NULL" in upper, (
-        f"invisible column not removed/nulled: {result}"
-    )
+    # (3) column visibility — invisible column removed: it is in no part of the statement
+    assert "secret" not in result.lower(), f"invisible column not removed: {result}"
 
     # (4) row cap — LIMIT injected/capped to the most restrictive ceiling (500)
     assert "LIMIT" in upper, f"row cap LIMIT not injected: {result}"
@@ -167,14 +178,20 @@ def _governance_at_every_reference(shared_data: dict) -> None:
     customers_rls_count = result.lower().count("active")
     assert customers_rls_count >= 2, f"RLS for customers not injected at every reference: {result}"
 
-    # SELECT * inside the CTE must be expanded to the governed physical columns,
-    # not left as a bare star.  Check for bare SELECT * / , * (not regexp ***@).
-    import re as _re
-
-    has_bare_star = bool(_re.search(r"SELECT\s+\*|,\s*\*\b", result, _re.IGNORECASE))
-    assert not has_bare_star or "COUNT(*)" in upper, (
-        f"SELECT * was not expanded via schema introspection: {result}"
-    )
+    # SELECT * inside the CTE reads the governed physical columns: each star reads only
+    # relations governance built from the table's introspected columns with visibility applied,
+    # never the physical table itself. (Governance by construction, REQ-039, expands the table
+    # into its governed relation rather than the star into a column list; a star over that
+    # relation reads exactly its columns, which is what REQ-264 asks of the expansion.)
+    for select in parsed.find_all(sqlglot.exp.Select):
+        if not any(isinstance(e, sqlglot.exp.Star) for e in select.expressions):
+            continue
+        from_ = select.args["from_"].this
+        assert isinstance(from_, sqlglot.exp.Subquery), (
+            f"SELECT * reads a table, not its governed relation: {result}"
+        )
+        if from_.alias == "orders":
+            assert from_.this.named_selects == ["id", "cid", "region"], result
     for col in ("id", "cid", "region"):
         assert col in result.lower(), f"expanded column {col!r} missing: {result}"
 
@@ -221,12 +238,12 @@ def _raw_sql_to_data_sql(shared_data: dict) -> None:
 
     # Raw PG-compatible SQL exactly as a SQL tool (psql, BI client) would submit
     # it to the /data/sql endpoint.
-    raw_sql = "SELECT id, email, secret FROM orders"
+    raw_sql = "SELECT id, email FROM orders"
 
     # The GraphQL path arrives at Stage 2 with the same semantic query after
     # Stage 1 compilation — represented here by the identical physical SQL so we
     # can prove the governance output is identical regardless of transport.
-    graphql_path_sql = "SELECT id, email, secret FROM orders"
+    graphql_path_sql = "SELECT id, email FROM orders"
 
     shared_data["gov"] = gov
     shared_data["raw_sql"] = raw_sql
@@ -246,9 +263,19 @@ def _endpoint_processes_raw_sql(shared_data: dict) -> None:
     # apply_governance entrypoint.
     shared_data["graphql_result"] = apply_governance(shared_data["graphql_path_sql"], gov)
 
+    # Naming the column the role is not served is refused on the raw SQL path (REQ-039).
+    with pytest.raises(PermissionError) as refused:
+        apply_governance("SELECT id, email, secret FROM orders", gov)
+    shared_data["refusal"] = str(refused.value)
+
 
 @then("it passes through Stage 2 governance and executes identically to the GraphQL path")
 def _identical_to_graphql_path(shared_data: dict) -> None:
+    """Both transports submit the role's served columns, as the GraphQL compiler only ever
+    compiles; the raw SQL path naming the hidden "secret" is refused (V003), as REQ-039 (amended
+    2026-11-04, a hidden column is refused in every clause) says, rather than having it removed
+    from the select list, so that case is asserted as a refusal."""
+    assert shared_data["refusal"] == "[V003] Column 'secret' is not visible to this role"
     sql_result: str = shared_data["sql_endpoint_result"]
     gql_result: str = shared_data["graphql_result"]
     upper = sql_result.upper()
@@ -262,8 +289,8 @@ def _identical_to_graphql_path(shared_data: dict) -> None:
     )
     #   (2) masking applied to the masked column
     assert "PROVISA_REGEX_REPLACE" in upper, f"masking not applied on /data/sql path: {sql_result}"
-    #   (3) invisible column ("secret") stripped or nulled
-    assert "secret" not in sql_result.lower() or "NULL" in upper, (
+    #   (3) invisible column ("secret") in no part of the statement
+    assert "secret" not in sql_result.lower(), (
         f"invisible column not removed on /data/sql path: {sql_result}"
     )
     #   (4) row cap enforced uniformly
