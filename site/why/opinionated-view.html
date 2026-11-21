@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>An opinionated view — Provisa</title>
+  <meta name="description" content="Data management has failed for decades because no approach fused governance, meaning, data and access into one coherent model. Here is the history, and the opinions that drove Provisa." />
+  <link rel="icon" type="image/svg+xml" href="../favicon.svg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="../styles.css" />
+  <link rel="canonical" href="https://provisa.dev/why/opinionated-view" />
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <header class="nav" id="nav">
+    <div class="container nav-inner">
+      <a class="brand" href="/" aria-label="Provisa home">
+        <svg class="brand-mark" viewBox="0 0 512 512" width="28" height="28" aria-hidden="true">
+          <rect width="512" height="512" rx="112" fill="#1F2933" />
+          <g transform="translate(48,66) scale(4.0)">
+            <rect x="30" y="18" width="15" height="64" rx="7" fill="#ffffff" />
+            <circle cx="52" cy="35" r="22" fill="#ffffff" />
+            <circle cx="52" cy="34" r="10.5" fill="#1F2933" />
+            <circle cx="52" cy="34" r="4.5" fill="#10B981" />
+          </g>
+        </svg>
+        <span class="brand-word">Provisa</span>
+        <span class="brand-tag">Preview</span>
+      </a>
+      <nav class="nav-links" aria-label="Primary">
+        <a href="/#interfaces">Interfaces</a>
+        <a href="/#governance">Governance</a>
+        <a href="/#sources">Sources</a>
+        <a href="/compare">Compare</a>
+        <a href="/#deploy">Deploy</a>
+        <a href="/how-it-works">How</a>
+        <a href="/demos">Demos</a>
+        <a href="/docs">Docs</a>
+        <a class="nav-cta" href="/#download">Download</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main" class="doc">
+    <div class="container">
+      <div class="doc-head">
+        <p class="crumb"><a href="/">Provisa</a> <span>/</span> <span>An opinionated view</span></p>
+        <h1>Why data management keeps failing</h1>
+        <p class="lead">
+          Forty years of advances in data management share a common failure: each one added a
+          piece of what an organization needs, and none assembled the pieces into one model that
+          fuses governance, meaning, the data itself, and access. The result is estates held
+          together by integration projects that never quite close. <a href="/why/ai">AI shows the
+          gap plainly</a>: an agent handed data with no fused meaning, ownership or governance
+          exposes the seams at once. The approach here is a methodology: semantics drives every
+          decision about data management.
+        </p>
+      </div>
+
+      <div class="doc-body">
+
+        <h2 id="history">Each generation added a piece</h2>
+
+        <ul>
+          <li><strong>Data warehouses</strong> (Inmon, Kimball): one integrated store with meaning encoded in a schema; access still scattered across tools, and governance added afterwards.</li>
+          <li><strong>Big data and data lakes</strong> (Hadoop, object stores): scale without limits; meaning and governance were left behind.</li>
+          <li><strong>Data catalogs and governance tools</strong>: meaning documented, policies recorded; neither bound to the data nor enforced at query time.</li>
+          <li><strong>Semantic layers and metrics stores</strong>: shared metric definitions for BI; a thin slice of meaning covering only aggregations, with no model of who owns what or what the terms mean.</li>
+          <li><strong>Ontologies and knowledge graphs</strong> (the first failure mode): formal meaning, relationships and reasoning, built as an end in themselves; rarely tied to operational records, and valued by assumption rather than measurement.</li>
+          <li><strong>Data mesh</strong>: domain ownership and federated computational governance over existing systems, deliberately without a runtime; data products were its more enduring outcome, a packaged dataset with an owner and a contract. Each product carries its own meaning and governance, so a catalog of products repeats the fragmentation one level up instead of fusing meaning, governance, data and access into one model.</li>
+          <li><strong>Operationally focused ontologies</strong> (the second failure mode, e.g. Foundry, Fabric): an ontology bound to data, driving applications inside the platform over its own connectors rather than standard protocols; scales technically, not organizationally. Operations as code, not declared primitives; controls without stewardship of meaning, and no method to prove, refine or resolve ambiguity.</li>
+        </ul>
+
+        <p>
+          The last two entries show two ways an ontology fails: the first built concepts as an end in themselves, never tied to records, valued by assumption; the second tied to data and operational, but with no method to prove a term, refine it, or resolve ambiguity. None of these approaches creates a single model that scales organizationally and technically, reinforces itself, and outlives the technology of the moment (today that is AI). The opinions below answer both failure modes.
+        </p>
+
+        <!-- Wave description sources (for maintainer review):
+          Sources checked 2026-11-02 for Foundry as a representative of this wave:
+          - palantir.com/docs/foundry/ontology/overview/: object/link types declarative; kinetic layer (functions, actions) as TypeScript/Python code; consumer surface is Workshop/Quiver/Object Explorer (platform-native apps), not standard SQL/JDBC/Bolt/Flight SQL protocols.
+          - palantir.com/docs/foundry/functions/overview/: TypeScript and Python, server-side. Confirmed operations-as-code.
+          - palantir.com/docs/foundry/security/markings/: classification-based access controls (who may see). No term-definition stewardship workflow found.
+          Microsoft Fabric not independently checked; included as a named example per the maintainer's brief.
+        -->
+
+        <h2 id="opinions">The opinions behind the model</h2>
+
+        <p>
+          <strong>A concept without a binding is documentation.</strong> A term defined in a
+          glossary tells you what "customer" should mean. Without a link to the column that
+          holds the customer ID, the definition and the data have no relationship to each other.
+          You can read one without the other, and so can an agent. A concept earns its place in
+          the model by reaching data, directly or through other concepts. Until then, it is a
+          draft. <a href="/why/glossary-that-grounds">What grounding means in practice.</a>
+        </p>
+
+        <p>
+          <strong>The model governs reality; it does not contain it.</strong> Sources stay where
+          they are. Pipelines are not the answer; interfaces are. A platform that processes data
+          to govern it creates a copy and a latency; it also fuses the governance with the
+          platform, so replacing the platform means replacing the governance too.
+        </p>
+
+        <p>
+          <strong>It pays off on day one.</strong> One domain, one steward, one concept, bound
+          to existing records. That is enough to govern one slice of the organization from the
+          first day it is declared, without a rebuild, a migration, or a platform project first.
+          Start there.
+        </p>
+
+        <p>
+          <strong>Domain boundaries are hypotheses: the five whys of data.</strong> When something breaks, most
+          organizations reach for a new system, a new team, or a new layer. Before that, stop
+          at the first question whose answer is no:
+        </p>
+        <ol>
+          <li>Is the meaning right? It may be inaccurate, ambiguous or missing. If not: refine the meaning.</li>
+          <li>Do the registered relationships explain the gap? If not: refine the relationships.</li>
+          <li>Does ownership explain it? If not: realign the boundary or reassign the steward.</li>
+          <li>Is the relevant reality inside the model at all? If not: expand the boundary.</li>
+          <li>Only then: create a new concept or build something new.</li>
+        </ol>
+
+        <p>
+          <strong>The model compounds.</strong> Each new domain binding opens query paths to
+          every relationship that crosses into it; each new relationship multiplies what those
+          paths can traverse. A pipeline estate adds one capability per pipeline; the model
+          connects existing ones.
+        </p>
+
+        <p>
+          <strong>Its value is measured, not assumed.</strong> An ontology that exists as a
+          de facto good gives you no way to know whether it is working. Grounding is
+          measurable: which terms reach data and which are approved but reach nothing. The
+          latter are invisible to agents and queryable as a finding. That is the start of a
+          measurement practice, not the end of one.
+        </p>
+
+        <h2 id="provisa">Provisa as an attempt</h2>
+
+        <p>
+          Each opinion above corresponds to something in the model.
+          <a href="/why/glossary-that-grounds">Grounding is computed from the live model</a>
+          and shown on every term, so a steward can see at a glance whether their concept
+          reaches data. <a href="/why/ontology">The ontology</a> links concepts to columns, to
+          relationships, and to each other, with domain stewards as the accountable owners.
+          <a href="/why/governance">Access control</a> (row-level security, column masking,
+          role inheritance through the domain hierarchy) is compiled into every query plan, so
+          governance is not a layer applied to a copy but a constraint on the query itself.
+          <a href="/why/interfaces">One model</a> is served over pgwire, JDBC, OData, Flight
+          SQL, GraphQL, REST, gRPC, Cypher/Bolt, SPARQL, and MCP, so existing tools connect
+          without being rebuilt inside the platform. Derived views capture their own lineage.
+          Commands declare write operations over governed tables.
+        </p>
+
+
+        <h2 id="without-provisa">The model matters more than the tool</h2>
+
+        <p>
+          The framework can be applied without Provisa: fuse governance, meaning, data and
+          access into one model, ground concepts to records, and govern reality at the boundary
+          rather than inside a platform. A model built this way absorbs new paradigms predictably and rapidly, in small steps
+          or large ones; quantum computing and heavy AI regulation are two examples on the
+          horizon. If you apply the framework with the tools you have, you get most of the value.
+          Provisa is an attempt to make the whole thing declarative, so you do not have to
+          implement it yourself.
+        </p>
+
+      </div>
+
+      <div class="doc-next">
+        <a class="more" href="/why/one-model">What the model contains</a>
+        <a class="more" href="/why/glossary-that-grounds">Grounding in depth</a>
+        <a class="more" href="/why/ontology">Domain stewardship and the ontology</a>
+        <a class="more" href="/why/governance">The six access-control layers</a>
+      </div>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <div class="container footer-inner">
+      <div class="brand">
+        <svg class="brand-mark" viewBox="0 0 512 512" width="24" height="24" aria-hidden="true">
+          <rect width="512" height="512" rx="112" fill="#1F2933" />
+          <g transform="translate(48,66) scale(4.0)">
+            <rect x="30" y="18" width="15" height="64" rx="7" fill="#ffffff" />
+            <circle cx="52" cy="35" r="22" fill="#ffffff" />
+            <circle cx="52" cy="34" r="10.5" fill="#1F2933" />
+            <circle cx="52" cy="34" r="4.5" fill="#10B981" />
+          </g>
+        </svg>
+        <span class="brand-word">Provisa</span>
+      </div>
+      <p class="footer-note">Provisa is a data kernel: a compiler and runtime for building your data control plane. Federation, metrics, ontology and governance from a single model. Nothing to keep in sync. Business Source License 1.1. Non-production use (including evaluation) is free forever, for any size organization. Production use is also free for organizations that, together with their affiliates, have under 100 employees and contractors and under $1M in annual revenue, budget, or expenditures; others need a <a href="mailto:license@provisa.dev">commercial license</a> for production use.</p>
+      <nav class="footer-links" aria-label="Footer">
+        <a href="/why/one-model">One model</a>
+        <a href="/why/interfaces">Interfaces</a>
+        <a href="/why/governance">Governance</a>
+        <a href="/why/sources">Sources</a>
+        <a href="/why/materialized-views">Materialized views</a>
+        <a href="/why/catalog">Catalog</a>
+        <a href="/why/no-lock-in">No lock-in</a>
+        <a href="/why/data-mesh">Data mesh</a>
+        <a href="/why/ai">Data for AI</a>
+        <a href="/why/ontology">Ontology</a>
+        <a href="/why/glossary-that-grounds">Glossary that grounds</a>
+        <a href="/why/opinionated-view">An opinionated view</a>
+        <a href="/vs/starburst">vs Starburst</a>
+        <a href="/vs/denodo">vs Denodo</a>
+        <a href="/vs/hasura">Coming from Hasura</a>
+        <a href="/docs">Docs</a>
+        <a href="/register">Register (free license)</a>
+        <a href="/privacy">Privacy</a>
+        <a href="/terms">Terms</a>
+        <a href="mailto:support@provisa.dev">Support</a>
+      </nav>
+    </div>
+  </footer>
+</body>
+</html>

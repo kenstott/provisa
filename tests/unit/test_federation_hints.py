@@ -13,7 +13,6 @@
 from __future__ import annotations
 
 import logging
-from unittest.mock import patch
 
 from provisa.compiler.hints import extract_hints
 
@@ -80,46 +79,30 @@ class TestExtractHints:
 
 
 class TestExecuteTrinoSessionHints:
-    """Verify that session_hints are injected as SET SESSION before the main query."""
+    """Verify that session_hints reach the session the statement runs in (REQ-2194: the
+    x-provisa-trino-context call header, not SET SESSION statements)."""
+
+    def _run(self, session_hints=None):
+        from tests.zaychik_double import ProxyConnection, backend_state, trino_backend
+
+        proxy = ProxyConnection()
+        trino_backend().execute_sync(
+            backend_state(proxy), "SELECT id FROM orders", session_hints=session_hints
+        ).rows
+        return proxy
 
     def test_session_hints_trigger_set_session(self):
-        from unittest.mock import MagicMock
-        from provisa.executor.trino import execute_trino
-
-        mock_conn = MagicMock()
-        mock_cursor = MagicMock()
-        mock_cursor.description = [("id", "bigint", None, None, None, None, None)]
-        mock_cursor.fetchall.return_value = [(1,)]
-        mock_conn.cursor.return_value = mock_cursor
-
-        execute_trino(
-            mock_conn,
-            "SELECT id FROM orders",
-            session_hints={"join_distribution_type": "BROADCAST"},
-        )
-
-        # cursor().execute should have been called for SET SESSION + main query
-        calls = [c.args[0] for c in mock_cursor.execute.call_args_list]
-        set_calls = [c for c in calls if c.startswith("SET SESSION")]
-        assert len(set_calls) >= 1
-        assert any("join_distribution_type" in c and "BROADCAST" in c for c in set_calls)
+        proxy = self._run({"join_distribution_type": "BROADCAST"})
+        (session,) = proxy.sessions
+        assert session["properties"]["join_distribution_type"] == "BROADCAST"
+        assert proxy.statements == ["SELECT id FROM orders"]
 
     def test_no_session_hints_no_set_session(self):
-        from unittest.mock import MagicMock
-        from provisa.executor.trino import execute_trino
-
-        mock_conn = MagicMock()
-        mock_cursor = MagicMock()
-        mock_cursor.description = [("id", "bigint", None, None, None, None, None)]
-        mock_cursor.fetchall.return_value = [(1,)]
-        mock_conn.cursor.return_value = mock_cursor
-
-        execute_trino(mock_conn, "SELECT id FROM orders")
-
-        calls = [c.args[0] for c in mock_cursor.execute.call_args_list]
-        set_calls = [c for c in calls if c.startswith("SET SESSION")]
+        proxy = self._run()
+        (session,) = proxy.sessions
         # Only the default timeout hint is injected; no user-supplied hints
-        assert all("query_max_execution_time" in c for c in set_calls)
+        assert list(session["properties"]) == ["query_max_execution_time"]
+        assert not [sql for sql in proxy.statements if sql.startswith("SET SESSION")]
 
 
 # --- REQ-281: source federation hint translation ---
@@ -179,74 +162,67 @@ class TestTranslateFederationHints:
 # ---------------------------------------------------------------------------
 
 
-class _TrinoCursor:
-    """Answers as Trino does: SET SESSION of a name it does not define fails the statement."""
+class _Trino:
+    """The state a Trino engine's plan is built on, over a coordinator defining ``defined``:
+    a session property it does not define fails the statement, as Trino answers it."""
 
-    def __init__(self, defined: frozenset[str], issued: list[str]) -> None:
-        self._defined = defined
-        self._issued = issued
-        self._rows: list = []
-        self.description = [("name", "varchar")]
+    DEFINED = frozenset({"join_distribution_type", "query_max_execution_time", "query_max_memory"})
 
-    def cancel(self) -> None:
-        pass
+    def __init__(self, source_federation_hints: dict[str, dict[str, str]]) -> None:
+        from tests.zaychik_double import ProxyConnection
 
-    def execute(self, sql: str, params=None) -> None:
-        self._issued.append(sql)
-        self._rows = [[1]]
-        if sql.startswith("SET SESSION"):
-            name = sql.split()[2]
-            if name not in self._defined:
+        self.source_federation_hints = source_federation_hints
+        self.source_types = {sid: "mongodb" for sid in source_federation_hints}
+        self.engine_conn = None
+        self.engine_conn_kwargs: dict = {"source": "provisa/org-1"}
+        self.engine_session_hints: dict = {}
+        self.active_engine_endpoint = None
+        self.active_isolated_org = None
+        self.proxy = ProxyConnection(on_execute=self._answer)
+        self.flight_client = self.proxy
+
+    @property
+    def issued(self) -> list[str]:
+        """Everything that reached the engine: each statement and each session property."""
+        return [*self.proxy.statements] + [
+            f"{k}={v}" for s in self.proxy.sessions for k, v in s["properties"].items()
+        ]
+
+    def _answer(self, sql: str, session: dict | None) -> None:
+        for name in (session or {}).get("properties", {}):
+            if name not in self.DEFINED:
                 raise RuntimeError(
                     "FederationError(type=USER_ERROR, name=INVALID_SESSION_PROPERTY, "
                     f"message=\"Session property '{name}' does not exist\")"
                 )
 
-    def fetchall(self) -> list:
-        return self._rows
-
-
-class _Trino:
-    """The state a Trino engine's plan is built on, over a coordinator defining ``defined``."""
-
-    DEFINED = frozenset({"join_distribution_type", "query_max_execution_time", "query_max_memory"})
-
-    def __init__(self, source_federation_hints: dict[str, dict[str, str]]) -> None:
-        self.issued: list[str] = []
-        self.source_federation_hints = source_federation_hints
-        self.source_types = {sid: "mongodb" for sid in source_federation_hints}
-        self.engine_conn = self
-        self.engine_conn_kwargs: dict = {}
-        self.engine_session_hints: dict = {}
-
-    def cursor(self) -> _TrinoCursor:
-        return _TrinoCursor(self.DEFINED, self.issued)
-
-    def run(self, *sources: str) -> list[str]:
-        """Build the plan's hints for a statement over ``sources``, then execute it."""
-        from provisa.executor.trino import execute_trino
+    def run(self, *sources: str) -> dict[str, str]:
+        """Build the plan's hints for a statement over ``sources``, then execute it; returns the
+        session properties it ran with."""
         from provisa.pgwire._pipeline import _engine_session_hints
+        from tests.zaychik_double import trino_backend
 
-        with patch("provisa.executor.trino._alive", return_value=True):
-            hints = _engine_session_hints(self, sources, None, "SELECT 1", writes=False)
-            self.issued.clear()
-            execute_trino(self, "SELECT 1", session_hints=hints)
-        return [sql for sql in self.issued if sql.startswith("SET SESSION")]
+        hints = _engine_session_hints(self, sources, None, "SELECT 1", writes=False)
+        self.proxy.sessions.clear()
+        self.proxy.statements.clear()
+        trino_backend().execute_sync(self, "SELECT 1", session_hints=hints).rows
+        (session,) = self.proxy.sessions
+        return session["properties"]
 
 
 class TestOnlyTheVocabularyReachesTheSession:
     def test_a_connector_setting_does_not_fail_the_statement(self):
         # Bench P2: bench-mongodb's direct_connection, HTTP 500 INVALID_SESSION_PROPERTY.
         sent = _Trino({"bench-mongodb": {"direct_connection": "true"}}).run("bench-mongodb")
-        assert not [sql for sql in sent if "direct_connection" in sql]
+        assert "direct_connection" not in sent
 
     def test_a_raw_session_property_on_a_source_is_not_sent(self):
         engine = _Trino({"s": {"query_max_memory": "8GB", "direct_connection": "true"}})
-        assert not [sql for sql in engine.run("s") if "query_max_memory" in sql]
+        assert "query_max_memory" not in engine.run("s")
 
     def test_the_provisa_vocabulary_is_still_sent(self):
         sent = _Trino({"s": {"join": "broadcast"}}).run("s")
-        assert "SET SESSION join_distribution_type = 'BROADCAST'" in sent
+        assert sent["join_distribution_type"] == "BROADCAST"
 
     def test_a_setting_holding_a_secret_never_reaches_a_statement_or_a_log(self, caplog):
         engine = _Trino({"s": {"client_secret": "hunter2"}})

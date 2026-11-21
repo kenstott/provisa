@@ -307,6 +307,33 @@ describe("CommandFormFields — a call that needs approval (REQ-1924)", () => {
   });
 });
 
+describe("CommandFormFields — a function's table (REQ-1986)", () => {
+  it("lets the steward turn a registered reading operation's table on and off", async () => {
+    const { default: userEvent } = await import("@testing-library/user-event");
+    render(
+      <RemoteHarness
+        initial={{
+          actionType: "function",
+          implKind: "source_operation",
+          sourceId: "gh",
+          kind: "query",
+          exposedAsTable: true,
+        }}
+      />,
+    );
+    const toggle = screen.getByTestId("command-exposed-as-table-switch");
+    expect(toggle).toBeChecked();
+    expect(screen.getByText("Also a table")).toBeInTheDocument();
+    await userEvent.click(toggle);
+    expect(toggle).not.toBeChecked();
+  });
+
+  it("offers no switch to a function with no table form, or one not yet registered", () => {
+    render(<Harness initial={{ actionType: "function", implKind: "source_procedure" }} />);
+    expect(screen.queryByTestId("command-exposed-as-table-switch")).not.toBeInTheDocument();
+  });
+});
+
 describe("CommandFormFields — the table a command writes (REQ-1924, REQ-871)", () => {
   it("offers the selected source's registered tables", () => {
     render(

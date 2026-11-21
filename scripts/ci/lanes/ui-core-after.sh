@@ -17,9 +17,10 @@
 # (integration-suite-lanes.yml warehouse-ui), which is.
 #
 # 1. Names every test that did not execute (never counted as passed).
-# 2. Deletes this run's Fabric capacity (the prepare script made it; maintainer 2026-11-10, "Paid
-#    cloud resources"), the workspace unassigned first, and reads it back gone, whatever the
-#    spec's outcome; one still there fails the step, and it says so.
+# 2. Deletes this run's Fabric workspace (its warehouse with it), then its capacity (the prepare
+#    script made them; maintainer 2026-11-10, "Paid cloud resources", and 2026-11-21, per-run
+#    workspace), and reads each back gone, whatever the spec's outcome; one still there fails the
+#    step, and it says so.
 # 3. Leaves the Databricks SQL warehouse stopped and the Snowflake warehouse suspended, for the
 #    same reason: the cloud-warehouse spec's seed wakes the Databricks warehouse and its statements
 #    resume Snowflake's, and nothing in the spec stops either (other workers may still be reading
@@ -37,9 +38,9 @@ status=0
 
 python3 "$(dirname "$0")/playwright_not_executed.py" "${1:?the Playwright JSON report}" || status=1
 
-if [ -n "${FABRIC_RESOURCE_GROUP:-}" ] && [ -n "${FABRIC_CAPACITY_NAME:-}" ] && [ -n "${FABRIC_WORKSPACE_ID:-}" ]; then
+if [ -n "${FABRIC_RESOURCE_GROUP:-}" ] && [ -n "${FABRIC_CAPACITY_NAME:-}" ]; then
   ( cd "$GITHUB_WORKSPACE" && uv run python scripts/fabric_e2e.py down ) \
-    || { echo "::error::this run's Fabric capacity could not be confirmed deleted: check it, it may be billing"; status=1; }
+    || { echo "::error::this run's Fabric workspace or capacity could not be confirmed deleted: check it, it may be billing"; status=1; }
 fi
 
 if [ -n "${DATABRICKS_SERVER_HOSTNAME:-}" ] && [ -n "${DATABRICKS_HTTP_PATH:-}" ] && [ -n "${DATABRICKS_TOKEN:-}" ]; then

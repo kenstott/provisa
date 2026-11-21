@@ -213,12 +213,12 @@ async def test_an_offer_the_build_cannot_derive_is_listed_for_review_and_keeps_i
     plane, built
 ):
     first = await _build(plane, built)
-    built.draft.add("orders")  # out of service: not in the build
+    built.withdrawn.add("orders")  # out of production: not in the build
     assert await _build(plane, built) == first
     async with plane.acquire() as conn:
         (offer,) = await offers.list_offers(conn, "p")
     assert offer["review"] == REVIEW_NOT_BUILT
-    built.draft.clear()
+    built.withdrawn.clear()
     await _build(plane, built)
     async with plane.acquire() as conn:
         (offer,) = await offers.list_offers(conn, "p")

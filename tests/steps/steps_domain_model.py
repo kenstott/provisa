@@ -32,7 +32,6 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
-from unittest.mock import AsyncMock, patch
 
 import pytest
 from pytest_bdd import given, when, then, scenarios
@@ -620,7 +619,7 @@ def _build_relationship(
 
 async def _run_upsert(rel: Relationship, plane, existing_pk_count: int) -> None:
     """Seed the target table's columns (the target_column plus `existing_pk_count` pre-existing PKs),
-    then run relationship_repo.upsert with the table lookups mocked to the seeded ids."""
+    then run relationship_repo.upsert, which looks both tables up among the seeded rows."""
     from provisa.core.repositories import relationship as rel_repo
     from provisa.core.schema_org import table_columns
 
@@ -648,13 +647,9 @@ async def _run_upsert(rel: Relationship, plane, existing_pk_count: int) -> None:
                     table_id=_TGT_TBL_ID, column_name=f"existing_pk_{i}", is_primary_key=True
                 )
             )
-        source_row = {"id": _SRC_TBL_ID, "table_name": rel.source_table_id}
-        target_row = {"id": _TGT_TBL_ID, "table_name": rel.target_table_id}
-        with patch(
-            "provisa.core.repositories.relationship.table_repo.find_by_table_name",
-            new=AsyncMock(side_effect=[source_row, target_row]),
-        ):
-            await rel_repo.upsert(conn, rel)
+        # The repo resolves both ends from the rows just seeded: the real lookup returns the
+        # registered row it names objects by (domain, alias, name: REQ-1524).
+        await rel_repo.upsert(conn, rel)
 
 
 @given("a relationship being saved where the target table has no existing primary key")

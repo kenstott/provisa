@@ -8,15 +8,19 @@
 import https from "https";
 import { spawnSync } from "child_process";
 import { test, expect, UI_URL, TRINO_BACKEND_URL } from "./coverage";
-import { deleteSourceAndItsTables } from "./delete-source";
+import { retireSourceTables, testSourceId } from "./retire-source-tables";
 import { isAssignableDomain } from "../src/lib/internalDomains";
-import { addSourceOfType } from "./source-to-query-helpers";
+import { addSourceOfType, listedTableNames } from "./source-to-query-helpers";
 
-const SOURCE_ID = "e2e-splunk";
+// This attempt's own source, its stamp and schema, set in beforeEach (REQ-2248: the source is
+// kept after the test, with its table retired, and a retired table keeps its name and key, so a
+// retry or a later run registers under names no earlier attempt holds).
+let SOURCE_ID = "";
+let STAMP = "";
 // REQ-1730: the splunk catalog's schema is the sql-normalized source id on every engine
 // (trino_connectors.TrinoSplunkConnector passes it as the catalog's `schema`, as
 // the DuckDB pgwire bridge exposes it), not the fixed literal "splunk".
-const SCHEMA = SOURCE_ID.replace(/-/g, "_");
+let SCHEMA = "";
 // Trino backend: register_source() creates a real Trino catalog so the schema dropdown populates.
 // DuckDB backend's register_source() is a no-op — the schema dropdown would stay empty.
 const ADMIN_GQL = `${TRINO_BACKEND_URL}/admin/graphql`;
@@ -125,10 +129,6 @@ async function getDomainId(): Promise<string> {
   return d.id;
 }
 
-async function cleanupSource() {
-  await deleteSourceAndItsTables(gql, SOURCE_ID);
-}
-
 test.beforeAll(async () => {
   // Splunk's cold start (image pull + first boot) dominates this spec: up to 420 s before the
   // management port accepts a login. Doing it here rather than in the test body keeps it off the
@@ -187,12 +187,15 @@ test.afterAll(() => {
   spawnSync("docker", ["rm", "-f", CONTAINER_NAME], { stdio: "pipe" });
 });
 
-test.beforeEach(async () => {
-  await cleanupSource();
+test.beforeEach(() => {
+  SOURCE_ID = testSourceId("splunk");
+  STAMP = SOURCE_ID.split("_").pop()!;
+  SCHEMA = SOURCE_ID.replace(/-/g, "_");
 });
 
+// The test retires the table it registered and leaves its source (REQ-2248).
 test.afterEach(async () => {
-  await cleanupSource();
+  await retireSourceTables(gql, SOURCE_ID);
 });
 
 test("splunk connector: add source and query internal_server", async ({ page }) => {
@@ -305,10 +308,7 @@ test("splunk connector: add source and query internal_server", async ({ page }) 
   await expect(page.getByRole("option", { name: /^internal_server/ })).toBeVisible({
     timeout: 30000,
   });
-  // An option's text is the table's name, followed by Register where it needs input.
-  const tableOptions = await page
-    .getByRole("option")
-    .evaluateAll((opts) => opts.map((o) => (o.textContent ?? "").replace(/Register$/, "")));
+  const tableOptions = await listedTableNames(page);
   await page.keyboard.press("Escape");
 
   expect(tableOptions).toContain("internal_server");
@@ -324,6 +324,9 @@ test("splunk connector: add source and query internal_server", async ({ page }) 
         domainId,
         schemaName: SCHEMA,
         tableName: "internal_server",
+        // This attempt's own model name: an earlier attempt's retired internal_server keeps its
+        // name in the domain (REQ-2248).
+        alias: `e2e_${STAMP}_internal_server`,
         columns: INTERNAL_SERVER_COLUMNS,
       },
     },
@@ -334,19 +337,6 @@ test("splunk connector: add source and query internal_server", async ({ page }) 
     `registerTable errors: ${JSON.stringify(registerResult.errors)}`,
   ).toBeUndefined();
   expect(registerResult.data?.registerTable?.success).toBe(true);
-
-  // REQ-1921: registered through the admin, the table starts as draft; released, it is read.
-  const registeredId = Number(
-    /\(id=(\d+)\)/.exec(String(registerResult.data?.registerTable?.message))?.[1],
-  );
-  const releaseResult = await gql(
-    `mutation($id: Int!) { setTableDraft(tableId: $id, draft: false) { success message } }`,
-    { id: registeredId },
-  );
-  expect(
-    releaseResult.data?.setTableDraft?.success,
-    `setTableDraft: ${JSON.stringify(releaseResult)}`,
-  ).toBe(true);
 
   await page.goto("/tables");
   await page.waitForSelector(".page-header", { timeout: 15000 });
@@ -366,7 +356,10 @@ test("splunk connector: add source and query internal_server", async ({ page }) 
   const allFields: string[] =
     introData.data?.__schema?.queryType?.fields?.map((f: { name: string }) => f.name) ?? [];
   const tableField = allFields.find(
-    (f) => f.toLowerCase().endsWith("internalserver") && !f.toLowerCase().includes("aggregate"),
+    (f) =>
+      f.toLowerCase().includes(STAMP) &&
+      f.toLowerCase().endsWith("internalserver") &&
+      !f.toLowerCase().includes("aggregate"),
   );
   expect(
     tableField,

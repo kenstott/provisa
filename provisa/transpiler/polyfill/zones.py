@@ -25,6 +25,7 @@ import sqlglot
 import sqlglot.expressions as exp
 
 from provisa.transpiler import pg_zones
+from provisa.transpiler.polyfill import instants
 from provisa.transpiler.polyfill.grid import DIALECTS, NATIVE, Feature, Rule, Side
 from provisa.transpiler.polyfill.notation import Refusal, Rewrite
 
@@ -93,9 +94,16 @@ TIMEZONE = Feature(
     read=Side(
         rules=(
             # An interval given for the zone is no zone's text: the pattern's zone is text alone.
-            Rule("timezone($z::text, $v)", {"duckdb": Rewrite(posix_zone)}),
-        )
+            Rule(
+                "timezone($z::text, $v)",
+                {"duckdb": Rewrite(posix_zone), "clickhouse": instants.AT_ZONE},
+            ),
+        ),
+        limitations={"clickhouse": (instants.AT_ZONE_LIMITATION,)},
     ),
 )
 
+#: The family's place in the grid (polyfill.GRID), which tries the rules of one function in
+#: the order of their families.
+ORDER = 40
 FEATURES: tuple[Feature, ...] = (PG_TIMEZONE_NAMES, TIMEZONE)

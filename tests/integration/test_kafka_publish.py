@@ -124,6 +124,86 @@ class TestKafkaSinkReal:
         assert ids == {2001, 2002}
 
 
+# The role a request acts as, as endpoint.py hands it on (require_role).
+_WRITER = {"id": "analyst", "capabilities": ["write"]}
+_READER = {"id": "analyst", "capabilities": []}
+
+
+def _sink_call(tmp_path, monkeypatch, topic: str, role: dict):
+    """handle_subscription_sse's arguments for a subscription on ``orders`` whose X-Provisa-Sink
+    names ``topic`` on the test broker, acting as ``role``; and the platform store holding its
+    place."""
+    from types import SimpleNamespace
+    from unittest.mock import MagicMock
+
+    from graphql.language.ast import (
+        DocumentNode,
+        FieldNode,
+        NameNode,
+        OperationDefinitionNode,
+        SelectionSetNode,
+    )
+
+    from provisa.auth.models import AuthIdentity
+    from provisa.core.database import Database, create_engine_from_url
+    from provisa.core.schema_admin import running_sinks
+
+    bootstrap = _kafka_bootstrap()
+    monkeypatch.setenv("KAFKA_BOOTSTRAP_SERVERS", bootstrap)
+    engine = create_engine_from_url(f"sqlite:///{tmp_path / 'ps.db'}", pool_size=5, max_overflow=0)
+    running_sinks.create(engine)
+    sink_db = Database(engine, name="platform-state", holds="platform_state")
+
+    table_meta = MagicMock(table_name="orders", type_name="Orders", source_id="pg1")
+    table_meta.catalog_name = None
+    table_meta.schema_name = None
+    ctx = MagicMock(tables={"orders": table_meta}, joins={})
+    state = MagicMock(
+        source_types={"pg1": "postgresql"},
+        tenant_db=None,
+        pg_notify_tables=set(),
+        table_watermarks={},
+        source_pools={},
+        platform_state_db=sink_db,
+        auth_config={"assignments_source": "provisa", "default_role": "analyst"},
+    )
+    request = MagicMock()
+    request.headers.get = lambda key, default="": {
+        "x-provisa-sink": f"kafka://{bootstrap}/{topic}"
+    }.get(key.lower(), default)
+    request.state = SimpleNamespace(
+        identity=AuthIdentity(
+            user_id="alice", email=None, display_name="alice", roles=[], raw_claims={}
+        ),
+        active_org_id="org1",
+    )
+    document = DocumentNode(
+        definitions=[
+            OperationDefinitionNode(
+                operation=None,  # type: ignore[arg-type]
+                name=None,
+                variable_definitions=[],
+                directives=[],
+                selection_set=SelectionSetNode(
+                    selections=[FieldNode(name=NameNode(value="orders"), selection_set=None)]
+                ),
+            )
+        ]
+    )
+    call = dict(
+        document=document,
+        ctx=ctx,
+        rls=MagicMock(),
+        state=state,
+        variables=None,
+        role=role,
+        role_id=role["id"],
+        raw_request=request,
+        directives=MagicMock(sink_topic=None, sink_broker=None, watermark_column=None),
+    )
+    return call, sink_db
+
+
 async def _read(topic: str, count: int) -> list[tuple[bytes | None, dict]]:
     """The first ``count`` messages on ``topic``, from its beginning."""
     import asyncio
@@ -200,3 +280,91 @@ class TestTheProductsOwnProducerOnARealBroker:
             (b"5", {"id": 5, "status": "new"}),
             (b"6", {"id": 6, "status": "open"}),
         ]
+
+    async def test_a_sink_publishes_until_its_owner_loses_the_role(self, tmp_path, monkeypatch):
+        """REQ-812 (amended 2026-11-16): a sink started over X-Provisa-Sink publishes to the broker
+        while its owner holds the role it was started under, then ends when the role is revoked
+        and frees its place under the owner's cap."""
+        import asyncio
+        from datetime import timedelta
+        from unittest.mock import MagicMock, patch
+
+        from provisa.api.data.subscription_sse import handle_subscription_sse
+        from provisa.auth.models import RoleAssignment
+        from provisa.core.platform_state import sinks as running
+        from provisa.kafka import producer as kafka_producer
+
+        monkeypatch.setattr(running, "HEARTBEAT", timedelta(seconds=0.2))
+        topic = f"provisa-owned-{uuid.uuid4().hex[:8]}"
+        call, sink_db = _sink_call(tmp_path, monkeypatch, topic, _WRITER)
+
+        held = {"analyst"}
+
+        async def held_assignments(_state, _identity, _org):
+            return [RoleAssignment(role_id=r, domain_id="*") for r in sorted(held)]
+
+        changes: asyncio.Queue = asyncio.Queue()
+
+        class Feed:
+            async def watch(self, _table):
+                while True:
+                    yield await changes.get()
+
+            async def close(self):
+                return None
+
+        async def answer(*_a, **_k):
+            return {"data": {"orders": [{"id": 1}]}}
+
+        spawned: list = []
+        with (
+            patch(
+                "provisa.core.connection_loop.spawn_long_lived",
+                lambda coro, *, name=None: spawned.append(coro),
+            ),
+            patch("provisa.subscriptions.registry.get_provider", lambda *_a, **_k: Feed()),
+            patch("provisa.api.data.endpoint._handle_query", answer),
+            patch("provisa.compiler.parser.parse_query", MagicMock()),
+            patch("provisa.auth.held_assignments.held_assignments", held_assignments),
+        ):
+            response = await handle_subscription_sse(**call)
+            assert response.status_code == 202
+            sink = asyncio.ensure_future(spawned[0])
+            await changes.put({"op": "insert"})
+            await asyncio.sleep(1.0)
+            assert not sink.done()
+            assert await running.held_by(sink_db, "alice") == 1
+            held.clear()  # the role is revoked in the control plane
+            async with asyncio.timeout(10):
+                await sink
+        await kafka_producer.stop_all()
+
+        assert await _read(topic, 1) == [(None, {"orders": [{"id": 1}]})]
+        assert await running.held_by(sink_db, "alice") == 0
+
+    async def test_a_sink_without_the_write_right_is_refused_and_writes_nothing(
+        self, tmp_path, monkeypatch
+    ):
+        """REQ-812 (amended 2026-11-16), REQ-868: a role without the write right is refused by name
+        before anything is produced: the topic it named is never written, nor created."""
+        from aiokafka.admin import AIOKafkaAdminClient  # noqa: PLC0415
+
+        from provisa.api.data.subscription_sse import handle_subscription_sse
+        from provisa.api.errors import ApiError
+        from provisa.core.platform_state import sinks as running
+
+        topic = f"provisa-refused-{uuid.uuid4().hex[:8]}"
+        call, sink_db = _sink_call(tmp_path, monkeypatch, topic, _READER)
+
+        with pytest.raises(ApiError) as refused:
+            await handle_subscription_sse(**call)
+        assert refused.value.status_code == 403
+        assert refused.value.code == "subscribe.sink_needs_write"
+        assert await running.held_by(sink_db, "alice") == 0
+
+        admin = AIOKafkaAdminClient(bootstrap_servers=_kafka_bootstrap())
+        await admin.start()
+        try:
+            assert topic not in await admin.list_topics()
+        finally:
+            await admin.close()

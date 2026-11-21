@@ -15,7 +15,7 @@ import { Fragment, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { ChartColumn, DatabaseZap, Eye, Pencil, ShieldCheck } from "lucide-react";
 import { Tip } from "../../components/Tip";
-import { ActionIcon, Badge, Box, Button, Checkbox, Group, Table, Text } from "@mantine/core";
+import { ActionIcon, Badge, Box, Button, Group, Table, Text } from "@mantine/core";
 import type { NavigateFunction } from "react-router-dom";
 import type { RegisteredTable, DataProduct, Relationship, Source } from "../../types/admin";
 import type { ReplicaBuild } from "../../api/admin";
@@ -29,6 +29,8 @@ import { ProfileRunsButton } from "./ProfileRunsButton";
 import { PanelActions } from "../../components/list/SplitPane";
 import { PanelDuplicate } from "../../components/list/PanelDuplicate";
 import { PanelDelete } from "../../components/list/PanelDelete";
+import { PanelWithdraw } from "../../components/list/PanelWithdraw";
+import type { PutBackRegions } from "../../hooks/useWithdrawal";
 import { ColumnTabs } from "./ColumnTabs";
 import { COLUMN_TABS, useColumnTab, type ColumnTab } from "./columnTopics";
 import { shownType } from "../../irTypes";
@@ -68,12 +70,14 @@ interface TableReadViewProps {
   onDuplicate?: (t: RegisteredTable) => void;
   /** REQ-2198: resolves once the table is deleted and the list read again (PanelDelete). */
   handleDelete: (id: number) => Promise<boolean | void>;
+  /** REQ-1921: take the table out of production, and return it; each rejects with the refusal. */
+  onWithdraw: (id: number) => Promise<void>;
+  onPutBack: (id: number, region: string | null) => Promise<void>;
+  /** Where a withdrawn table may be put back; null where the platform declares no regions. */
+  putBackRegions: PutBackRegions | null;
   handleProfile: (id: number) => void;
   /** REQ-1944: a governance-only viewer: no registration, deploy, profiling or delete. */
   hidingOnly?: boolean;
-  // REQ-1921: put the table out of service (draft) or release it. The view shows the stored
-  // state: the box follows `table.draft` once the change is saved and the table reloaded.
-  onSetDraft?: (table: RegisteredTable, draft: boolean) => void;
   // REQ-1386: opens the governed SELECT * preview modal.
   onPreview: (t: RegisteredTable) => void;
   // REQ-1318: opens the Views-page definition-mode editor (SQL | Metrics toggle).
@@ -86,6 +90,8 @@ interface TableReadViewProps {
   source?: Source;
   /** The relationships the table takes part in are listed on Associations. */
   relationships: Relationship[];
+  /** REQ-2252: the acting roles, whose names Identity's query links use. */
+  actingRole: string | null;
   /**
    * Drops the table's cached results, for a table whose source caches them; absent for any
    * other table, which then shows no such action.
@@ -118,15 +124,18 @@ export function TableReadView({
   startEditing,
   onDuplicate,
   handleDelete,
+  onWithdraw,
+  onPutBack,
+  putBackRegions,
   handleProfile,
   hidingOnly = false,
-  onSetDraft,
   onPreview,
   onEditDefinition,
   profileColumnsTable,
   actionsOnly = false,
   source,
   relationships,
+  actingRole,
   section: sectionIn,
   onSectionChange,
   columnTab,
@@ -308,6 +317,19 @@ export function TableReadView({
             />
           )}
           {!hidingOnly && (
+            <PanelWithdraw
+              name={table.tableName}
+              withdrawn={table.withdrawn}
+              consequence={t("tableReadView.withdrawConsequence")}
+              region={table.region}
+              putBackRegions={putBackRegions}
+              scope={table.viewSql != null ? "view" : "table"}
+              onWithdraw={() => onWithdraw(table.id)}
+              onPutBack={(region) => onPutBack(table.id, region)}
+              testId="table-read-view"
+            />
+          )}
+          {!hidingOnly && (
             <PanelDelete
               itemKey={table.id}
               title={t("tableReadView.deleteTitle", { name: table.tableName })}
@@ -317,26 +339,6 @@ export function TableReadView({
               onDelete={() => handleDelete(table.id)}
             />
           )}
-          {/* REQ-1921: draft is set and cleared here, beside the table's other actions. It needs
-              the right to register tables in the table's domain; without it the box only shows
-              the state. */}
-          <Tip
-            text={
-              hidingOnly || !onSetDraft
-                ? t("tableReadView.draftNoRightTooltip")
-                : t("tableReadView.draftTooltip")
-            }
-          >
-            <Checkbox
-              size="xs"
-              label={t("tableReadView.draftLabel")}
-              checked={table.draft}
-              disabled={hidingOnly || !onSetDraft}
-              data-testid="table-read-view-draft"
-              onClick={(e) => e.stopPropagation()}
-              onChange={(e) => onSetDraft?.(table, e.currentTarget.checked)}
-            />
-          </Tip>
         </Group>
       </fieldset>
     </PanelActions>
@@ -351,7 +353,7 @@ export function TableReadView({
       {/* The section in view, as a demo tour step anchors on it (`open: <section>`); Columns
           carries its own. */}
       <div data-testid={section === "columns" ? undefined : `table-section-${section}-panel`}>
-        {section === "identity" && <IdentityRead table={table} source={source} />}
+        {section === "identity" && <IdentityRead table={table} source={source} actingRole={actingRole} />}
         {section === "associations" && (
           <TableAssociations
             table={table}
@@ -827,15 +829,19 @@ export function TableReadView({
           </div>
         )}
         {actions}
-        {table.draft && (
+        {/* REQ-1921: out of production, by itself or through its source; its preview still
+            reads it, for its domain's stewards. */}
+        {(table.withdrawn || table.sourceWithdrawn) && (
           <Text
             size="xs"
             c="dimmed"
             px="0.5rem"
             pb="0.25rem"
-            data-testid="table-read-view-draft-note"
+            data-testid="table-read-view-withdrawn-note"
           >
-            {t("tableReadView.draftPreviewNote")}
+            {table.withdrawn
+              ? t("tableReadView.withdrawnNote")
+              : t("tableReadView.sourceWithdrawnNote", { source: table.sourceId })}
           </Text>
         )}
         {/* REQ-2162: who can read or write each column. */}

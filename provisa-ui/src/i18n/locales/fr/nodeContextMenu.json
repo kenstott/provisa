@@ -1,7 +1,7 @@
 {
   "nodeContextMenu": {
     "excludeTooltip": "Exclure ce nœud de la requête",
-    "excludeDisabledTooltip": "Aucune clé primaire configurée — exclusion impossible",
+    "excludeDisabledTooltip": "Exclusion impossible : aucune clé primaire configurée",
     "excludeFromQuery": "Exclure de la requête",
     "excludeCount": "Exclure {{count}} nœuds",
     "unfixPosition": "Libérer la position",

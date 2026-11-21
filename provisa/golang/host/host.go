@@ -42,7 +42,7 @@ import (
 )
 
 // The protocol this host speaks (provisa/codesource/worker.py PROTOCOL).
-const protocol = 4
+const protocol = 5
 
 const (
 	connectionsEnv = "PROVISA_HOST_CONNECTIONS"

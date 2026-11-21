@@ -99,8 +99,8 @@ DUCKDB = Engine(
     matches="regexp_matches({}, {})",
     replace_all="regexp_replace({}, {}, {}, 'g')",
     group="\\1",
-    map="list_transform({0}, {1} -> {2})",
-    keep="list_filter({0}, {1} -> {2})",
+    map="list_transform({0}, LAMBDA {1} : {2})",
+    keep="list_filter({0}, LAMBDA {1} : {2})",
     join="array_to_string({}, {})",
     split="string_split({}, {})",
     size="len({})",
@@ -115,8 +115,8 @@ DUCKDB = Engine(
     distinct="list_distinct({})",
     flatten="flatten({})",
     concat="list_concat({}, {})",
-    fold="list_reduce({0}, ({1}, {2}) -> {3}, {4})",
-    let="list_transform([{1}], {0} -> {2})[1]",
+    fold="list_reduce({0}, LAMBDA {1}, {2} : {3}, {4})",
+    let="list_transform([{1}], LAMBDA {0} : {2})[1]",
     upto="range(1, {} + 1)",
     first="{}[1]",
     largest="list_max({})",
@@ -486,10 +486,26 @@ def _concat(e: Engine) -> str:
     )
 
 
+#: array_to_tsvector's errors, by the mark of the item that raises it (1 a NULL, 2 an empty text).
+_LEXEME_ERRORS = (
+    (1, "22004", "lexeme array may not contain nulls"),
+    (2, "2200F", "lexeme array may not contain empty strings"),
+)
+
+
 def _lexeme_list(e: Engine) -> str:
-    """array_to_tsvector of the list ``x``."""
-    written = e.map.format(e.sort.format(e.distinct.format("x")), "_l", _quoted(e, "_l"))
-    return e.join.format(written, "' '")
+    """array_to_tsvector of the list ``x``: PostgreSQL reads its items in order, raising for the
+    first that is a NULL or an empty text."""
+    written = e.join.format(
+        e.map.format(e.sort.format(e.distinct.format("x")), "_l", _quoted(e, "_l")), "' '"
+    )
+    marks = e.map.format("x", "_e", "CASE WHEN _e IS NULL THEN 1 WHEN _e = '' THEN 2 ELSE 0 END")
+    first = e.first.format(e.keep.format(marks, "_m", "_m > 0"))
+    guard = " + ".join(
+        e.fails.format(f"coalesce(_f = {mark}, false)", e.text(f"{MARK} {state}: {said} {END}"))
+        for mark, state, said in _LEXEME_ERRORS
+    )
+    return e.let.format("_f", first, e.guarded.format(guard, written))
 
 
 #: The configurations and dictionaries a row of a column reads, each its own row.
@@ -1175,7 +1191,9 @@ def _lexized(name: str, args: list[exp.Expr]) -> exp.Expr:
     if not _is_constant(args[1]):
         return _row_of("ts_lexize", dictionary, args[1], name)
     found = parse.lexize(dictionary, _text_of(args[1], name))
-    return exp.Array(expressions=[_text_value(x) for x in found])
+    # A text[] even of no lexeme: an empty array of no type is ClickHouse's Array(Nothing).
+    lexemes = exp.Array(expressions=[_text_value(x) for x in found])
+    return exp.Cast(this=lexemes, to=exp.DataType.build("TEXT[]", dialect="postgres"))
 
 
 def _rank_terms(query: Node | None) -> list[Node]:

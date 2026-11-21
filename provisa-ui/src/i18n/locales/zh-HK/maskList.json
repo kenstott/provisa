@@ -13,6 +13,8 @@
     "replace": "取代文字",
     "value": "常數值",
     "valuePlaceholder": "值（留空表示 NULL）",
+    "readsNull": "讀取為 NULL：此欄不是文字，因此常數遮罩只能為 NULL。",
+    "notTextConstant": "此欄不是文字：常數遮罩讀取為 NULL，因此只能儲存 NULL（留空）。",
     "precision": "精確度",
     "year": "年",
     "month": "月",

@@ -190,6 +190,11 @@ _OPS: dict[str, str] = {
     "the limit, and when it recovered",
     "requests": "One row per request: what was asked, by whom, the environment it is for, the "
     "roles it is addressed to and their members, its state, the decision, who decided and when",
+    "entitlements": "One row per entitlement list as it was set: from the identity provider, in "
+    "Provisa or by a role, for a person's role grant and one kind of object, with its valid period "
+    "and when Provisa recorded it",
+    "entitlement_expiries": "One row per version of an expiry rule on a person's role grant: when "
+    "it ends access and what it ends, with its valid period and when Provisa recorded it",
     "service_level": "The service level of the org's last hour, from the audit log — how many "
     "queries, their latency percentiles and the share that succeeded",
     "sensitive_column_coverage": "Sensitive coverage: every sensitive column, its tags, whether a "
@@ -384,14 +389,20 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "latest_outcome": "For a checker table, its latest scan's outcome: pass when every check "
         "passed, fail otherwise; empty when it has never run",
         "latest_run_at": "For a checker table, when its latest scan ran",
-        "draft": "Whether the table is a draft, not yet released to its readers",
+        # REQ-1986
+        "requires_parameters": "Whether a read of the table must give a parameter; such a table "
+        "gives no row count, profile or sample without it. Its parameters are in table_columns",
+        # REQ-1921
+        "withdrawn": "Whether the table, or its source, is withdrawn: out of production until it "
+        "is put back",
     },
     # REQ-2190
     "table_details": {
         "id": "The registered table",
         "modeling_role": "The table's star role: fact or dimension, when it has one",
         "modeling_history": "The history mode of the entity the table was lowered from",
-        "comment": "The table's description, with its modeling role and tags in brackets",
+        "comment": "The table's description, the parameters it requires and what it cannot "
+        "give without them, and its modeling role and tags in brackets",
     },
     "column_details": {
         "id": "The column's row in table_columns",
@@ -506,14 +517,25 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "scope": "Where the column may be used — projection, filtering, or both",
         "masks": "The ordered mask list: each entry names the roles it is for and the mask they "
         "read the value through, or none; a reader reads it through the first entry it holds",
-        "native_filter_type": "Type the source expects in a filter on this column, when it "
-        "differs from the projected type",
+        "native_filter_type": "How the column, a parameter of the table, reaches the source: "
+        "a path, query, GraphQL, gRPC or native-query argument, a partition key, or a column "
+        "value; empty for a column that is not a parameter",
         "is_foreign_key": "Whether the column references another registered table",
         "is_alternate_key": "Whether the column uniquely identifies a row without being the "
         "primary key",
         "object_fields": "Field definitions for a structured (object) column",
         "visible_to": "Roles that may select this column; empty means no role",
         "tenant_id": _TENANT,
+        # REQ-1986
+        "parameter_required_by_source": "For a parameter, whether the source requires a value "
+        "for it; empty for a column that is not a parameter",
+        "parameter_required_by_steward": "For a parameter, whether a steward made it required "
+        "for this table; empty for a column that is not a parameter",
+        "parameter_required": "For a parameter, whether a read of the table must give it a "
+        "value; empty for a column that is not a parameter",
+        "parameter_opaque": "For a parameter, whether it is an input to the source's call, "
+        "bound by equality only, rather than a real column of the table (a partition key, a "
+        "column value); empty for a column that is not a parameter",
     },
     "domains": {
         "id": "Domain name — the identifier roles are granted access to",
@@ -901,6 +923,8 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "variables they read), masks by kind, row caps, and for a write its table and columns",
         "as_of": "The time the statement read bitemporal views as of, when it set one",
         "as_recorded": "The time the statement read bitemporal views as recorded at, when it set one",
+        "stage": "Stage the environment declared when the statement ran — production, preprod, "
+        "test or development",
     },
     "usage_ranking": {
         "id": "The registered table this row ranks",
@@ -974,22 +998,25 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "status_code": "401 unauthenticated, 403 denied by governance",
         "duration_ms": "Wall-clock milliseconds before the refusal",
         "logged_at": "When the refusal happened",
+        "stage": "Stage the environment declared when the statement was refused",
     },
     "surface_mix": {
-        "id": "Composite key of the surface, the day, and the org",
+        "id": "Composite key of the surface, the day, and the stage",
         "source": "Protocol surface (http, grpc, pgwire, bolt, …)",
         "day": "Calendar day the counts cover",
         "query_count": "Statements that arrived on the surface that day",
         "distinct_users": "Distinct principals that used it that day",
+        "stage": "Stage the environment declared when those statements ran",
     },
     "query_health": {
-        "id": "Composite key of the surface, the day, and the org",
+        "id": "Composite key of the surface, the day, and the stage",
         "source": "Protocol surface (http, grpc, pgwire, bolt, …)",
         "day": "Calendar day the counts cover",
         "query_count": "Statements that arrived on the surface that day",
         "error_count": "How many of them ended at 400 or above",
         "avg_duration_ms": "Mean wall-clock milliseconds across them",
         "max_duration_ms": "Slowest statement that day, in milliseconds",
+        "stage": "Stage the environment declared when those statements ran",
     },
     "stale_metadata": {
         "id": "Kind-prefixed key of the object with the gap",
@@ -1137,6 +1164,8 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "table_name": "Name of that table",
         "domain_id": "Domain of that table",
         "table_count": "Number of registered tables the statement read",
+        "stage": "Stage the environment declared when the statement ran — production, preprod, "
+        "test or development",
     },
     "replica_builds": {
         "id": "The replica's source, schema and table, dot-joined",
@@ -1221,6 +1250,40 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "decided_by_name": "Display name of the person who decided it",
         "decided_at": "When it was decided",
         "created_at": "When it was raised",
+    },
+    "entitlements": {
+        "id": "The row's number",
+        "source": "Where the list came from: idp, provisa or role",
+        "principal": "The person the list is for; empty on a role's own rows",
+        "principal_name": "Display name of that person",
+        "role_id": "The role grant the list applies within",
+        "kind": "The kind of object the list names: tables, columns, relationships and the like",
+        "capability": "The capability the list is limited to; empty for every scoped capability",
+        "identifiers": "The semantic identifiers listed, * for every one",
+        "removed": "Whether this row ends the list, leaving none held after it",
+        "reason": "Why it was set",
+        "set_by": "User id of whoever set it",
+        "set_by_name": "Display name of whoever set it",
+        "valid_from": "When the list took effect",
+        "valid_to": "When the next row for the same list took effect; empty while it holds",
+        "recorded_at": "When Provisa recorded it",
+    },
+    "entitlement_expiries": {
+        "id": "The row's number",
+        "rule_key": "The rule this row is a version of",
+        "principal": "The person whose grant the rule is on",
+        "principal_name": "Display name of that person",
+        "role_id": "The role grant the rule is on",
+        "list_kind": "The kind of list the rule was set with",
+        "ends_at": "When the rule ends access",
+        "ends": "What it ends, as capability to identifiers; empty for the whole grant",
+        "removed": "Whether this row withdraws the rule",
+        "reason": "Why it was set",
+        "set_by": "User id of whoever set it",
+        "set_by_name": "Display name of whoever set it",
+        "valid_from": "When this version of the rule took effect",
+        "valid_to": "When the next version of the rule took effect; empty while it holds",
+        "recorded_at": "When Provisa recorded it",
     },
     "sensitive_column_coverage": {
         "id": "Synthesized column identity (table_id:column_name) of the sensitive column",

@@ -48,7 +48,7 @@ steps:
 - key: auditCountyJoin
   relationship: OBLIGATED_IN
 - key: auditTerms
-  route: /admin/ontology
+  route: /context/ontology
   capability: glossary_read
   term: schedule of expenditures of federal awards
 - key: auditRequest

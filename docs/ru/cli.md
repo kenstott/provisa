@@ -157,7 +157,7 @@ Licensed:     no (no license installed)
 
 ## provisa metadata export
 
-Запускает публикацию метаданных по запросу на работающем сервере. Команда отправляет запрос на `POST /admin/metadata-export/publish`, ту же конечную точку, которую вызывает кнопка **Publish now** на вкладке Admin, поэтому оба пути отправляют один и тот же полный снимок.
+Запускает публикацию метаданных по запросу на работающем сервере. Команда отправляет запрос на `POST /admin/syncing/publish`, ту же конечную точку, которую вызывает кнопка **Publish now** на вкладке Admin, поэтому оба пути отправляют один и тот же полный снимок.
 
 ```
 provisa metadata export [--api URL] [--token TOKEN] [--timeout SECONDS]

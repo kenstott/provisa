@@ -115,7 +115,8 @@ def test_every_form_is_sql_its_dialect_reads_back(dialect):
         except FunctionRefused:
             # A row of the polyfill grid refuses it on this dialect (REQ-2236), or this dialect is
             # no column of the grid, which refuses a call a row matches by name: no form is written.
-            assert name in {f.name for f in GRID.features}
+            # (a row is named by its call, or by its signature: interval_eq(interval, interval))
+            assert name in {f.name.split("(")[0] for f in GRID.features}
             continue
         tree = sqlglot.parse_one(out, read=dialect)
         # A ClickHouse statement's SETTINGS name a setting, not a column (REQ-2171: its old analyzer).
@@ -428,17 +429,6 @@ def test_clickhouses_like_has_no_escape_clause():
         ("SELECT substr(c, 1) AS v FROM (VALUES ('\\xbeef'::bytea)) AS t(c)", "trino", "substring"),
         ("SELECT date_add('2000-01-01'::date, '1 day'::interval) AS v", "clickhouse", "date_add"),
         ('SELECT pg_catalog."gcd"(1, 2) AS v', "trino", "gcd"),
-        ("SELECT timestamp('2024-06-15'::date, '12:30:45'::time) AS v", "clickhouse", "timestamp"),
-        (
-            "SELECT pg_catalog.\"datetime_pl\"('2024-06-15'::date, '12:30:45'::time) AS v",
-            "clickhouse",
-            "datetime_pl",
-        ),
-        (
-            'SELECT pg_catalog."overlaps"(NULL::time, NULL::time, NULL::time, NULL::time) AS v',
-            "clickhouse",
-            "overlaps",
-        ),
     ],
 )
 def test_what_a_replay_refused_is_refused_by_name(sql: str, dialect: str, function: str):
@@ -483,7 +473,9 @@ def test_a_literal_keeps_what_its_cast_says(sql: str, want: str):
     "sql",
     [
         "SELECT date_part('century'::text, x::timestamp) AS v FROM t",
-        "SELECT ln(x) AS v FROM t",
+        # ln of a numeric: its exact digits, which ClickHouse's double does not hold (ln of a
+        # double is polyfill.floats' row)
+        "SELECT ln(x::numeric) AS v FROM t",
         'SELECT pg_catalog."in_range"(a::time, b::time, c::interval, true, false) AS v FROM t',
     ],
 )

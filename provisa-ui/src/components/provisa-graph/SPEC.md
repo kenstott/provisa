@@ -7,7 +7,7 @@ diagrams (mermaid in Analyze) are not 2D graph views and keep their own.
 
 ## What a view passes
 
-- `nodes`: `{ id, type, name, kind?, parent?, lines?, status?, data? }`. `type` is a key of
+- `nodes`: `{ id, type, name, kind?, parent?, lines?, status?, withdrawn?, data? }`. `type` is a key of
   `NODE_TYPES` (tokens.ts). `lines` is a body under the name (an ERD table's columns); a line may
   be `key` (shown at detail "key"). `kind: "more"` is a fold node standing for nodes not drawn
   ("+N columns"); clicking it is the view's `onMore`.
@@ -68,6 +68,8 @@ uppercase, weight 700.
   for a diamond), and its selection is its border at 2.5px with no halo. The legend draws its
   swatch as a small diamond.
 - A term's status: draft italic, deprecated at 55% opacity, retired at 35%.
+- A withdrawn table (`withdrawn`, REQ-1921) keeps its box with its border dashed; its lines are
+  dashed too.
 
 ## Edges
 
@@ -75,7 +77,8 @@ uppercase, weight 700.
   (taxi); nothing else changes.
 - Arrowheads only where direction means something: `arrow: "target" | "source" | "both"`
   (ontology relationships, lineage, an ERD's cardinality). The default is none.
-- `dashed`: pending or indirect (a line to a collapsed group, a line to a fold node).
+- `dashed`: pending or indirect (a line to a collapsed group, a line to a fold node, a line of a
+  withdrawn relationship).
 - `tone: "via"`: the legs through an ERD junction, in the junction's grape.
 - Lines whose direction carries meaning (the lane diagram's term links, lineage, ontology
   relationships) are solid with arrows; dashed means pending or indirect, never direction.

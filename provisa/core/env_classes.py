@@ -75,6 +75,7 @@ CARRIED: frozenset[str] = frozenset(
         "glossary_term_edges",
         "glossary_term_experts",
         "glossary_term_statements",  # REQ-2237: what an imported ontology stated about a term
+        "glossary_term_sources",  # REQ-2247: the catalogs a term was sourced from
         "glossary_term_domains",
         "materialized_views",
         "calendars",
@@ -138,6 +139,9 @@ NEVER_SENSITIVE: frozenset[str] = frozenset(
         "entitlement_expiries",
         # REQ-2219: a grant waiting on a typed email attaches to this environment's principal.
         "entitlement_pending",
+        # REQ-2219: what each person's entitlements come to, computed from those rows: this
+        # environment's own, as they are.
+        "effective_entitlements",
         # REQ-2180: a bid is keyed by this environment's principals and what accepting it granted
         # them, as the entitlements are.
         "data_product_bids",
@@ -153,6 +157,10 @@ NEVER_RUNTIME: frozenset[str] = frozenset(
         "mv_refresh_log",
         "mv_delta_ledger",
         "relationship_candidates",
+        # REQ-413: this environment's discovery runs and their progress.
+        "discovery_runs",
+        # REQ-413: what each of those runs read, shown and left out.
+        "discovery_run_proposals",
         "creation_requests",
         # REQ-2216: the approve and decide calls this environment already answered.
         "idempotent_calls",
@@ -239,6 +247,8 @@ NEVER_RUNTIME: frozenset[str] = frozenset(
         "lineage_edges",
         # REQ-2229: what the tools pointed at this environment reported to it.
         "openlineage_run_datasets",
+        # REQ-2263: the dataset facets those tools reported to it.
+        "openlineage_dataset_facets",
         # REQ-2125: resolved from its own contracts by its own model build.
         "checker_targets",
         # REQ-194: its own names table and refused clashes, from its own model build.

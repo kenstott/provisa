@@ -121,7 +121,7 @@
     "roleSynthesis": "Verwendet",
     "roleSupporting": "Ergänzend",
     "conflicts": "Widersprüchliche Erklärungen",
-    "conflictsHint": "Diese Passagen können nicht beide zutreffen. Sie werden nebeneinander gezeigt, nie vermischt.",
+    "conflictsHint": "Diese Passagen können nicht beide zutreffen und werden daher nebeneinander angezeigt.",
     "accept": "Annehmen",
     "merge": "Zusammenführen",
     "mergeInto": "Zusammenführen mit",

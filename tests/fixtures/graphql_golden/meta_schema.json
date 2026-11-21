@@ -692,13 +692,6 @@
        }
       },
       {
-       "name": "draft",
-       "type": {
-        "kind": "SCALAR",
-        "name": "Boolean"
-       }
-      },
-      {
        "name": "gqlNamingConvention",
        "type": {
         "kind": "SCALAR",
@@ -769,6 +762,13 @@
        }
       },
       {
+       "name": "requiresParameters",
+       "type": {
+        "kind": "SCALAR",
+        "name": "Boolean"
+       }
+      },
+      {
        "name": "schemaName",
        "type": {
         "kind": "SCALAR",
@@ -801,6 +801,13 @@
        "type": {
         "kind": "SCALAR",
         "name": "String"
+       }
+      },
+      {
+       "name": "withdrawn",
+       "type": {
+        "kind": "SCALAR",
+        "name": "Boolean"
        }
       },
       {
@@ -932,6 +939,21 @@
          "ofType": {
           "kind": "OBJECT",
           "name": "M__PolicyCoverage"
+         }
+        }
+       }
+      },
+      {
+       "name": "products",
+       "type": {
+        "kind": "LIST",
+        "name": null,
+        "ofType": {
+         "kind": "NON_NULL",
+         "name": null,
+         "ofType": {
+          "kind": "OBJECT",
+          "name": "M__DataProducts"
          }
         }
        }
@@ -1252,6 +1274,34 @@
        "type": {
         "kind": "SCALAR",
         "name": "String"
+       }
+      },
+      {
+       "name": "parameterOpaque",
+       "type": {
+        "kind": "SCALAR",
+        "name": "Boolean"
+       }
+      },
+      {
+       "name": "parameterRequired",
+       "type": {
+        "kind": "SCALAR",
+        "name": "Boolean"
+       }
+      },
+      {
+       "name": "parameterRequiredBySource",
+       "type": {
+        "kind": "SCALAR",
+        "name": "Boolean"
+       }
+      },
+      {
+       "name": "parameterRequiredBySteward",
+       "type": {
+        "kind": "SCALAR",
+        "name": "Boolean"
        }
       },
       {
@@ -1902,6 +1952,21 @@
        }
       },
       {
+       "name": "commands",
+       "type": {
+        "kind": "LIST",
+        "name": null,
+        "ofType": {
+         "kind": "NON_NULL",
+         "name": null,
+         "ofType": {
+          "kind": "OBJECT",
+          "name": "M__TrackedFunctions"
+         }
+        }
+       }
+      },
+      {
        "name": "dataProductCommands",
        "type": {
         "kind": "LIST",
@@ -1954,6 +2019,21 @@
        }
       },
       {
+       "name": "memberTables",
+       "type": {
+        "kind": "LIST",
+        "name": null,
+        "ofType": {
+         "kind": "NON_NULL",
+         "name": null,
+         "ofType": {
+          "kind": "OBJECT",
+          "name": "M__RegisteredTables"
+         }
+        }
+       }
+      },
+      {
        "name": "tags",
        "type": {
         "kind": "LIST",
@@ -1970,61 +2050,6 @@
       }
      ],
      "name": "M__DataProducts"
-    },
-    {
-     "fields": [
-      {
-       "name": "commandName",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "productId",
-       "type": {
-        "kind": "SCALAR",
-        "name": "String"
-       }
-      },
-      {
-       "name": "_name_",
-       "type": {
-        "kind": "NON_NULL",
-        "name": null,
-        "ofType": {
-         "kind": "SCALAR",
-         "name": "String"
-        }
-       }
-      },
-      {
-       "name": "_domain_",
-       "type": {
-        "kind": "NON_NULL",
-        "name": null,
-        "ofType": {
-         "kind": "SCALAR",
-         "name": "String"
-        }
-       }
-      },
-      {
-       "name": "dataProduct",
-       "type": {
-        "kind": "OBJECT",
-        "name": "M__DataProducts"
-       }
-      },
-      {
-       "name": "trackedFunction",
-       "type": {
-        "kind": "OBJECT",
-        "name": "M__TrackedFunctions"
-       }
-      }
-     ],
-     "name": "M__DataProductCommands"
     },
     {
      "fields": [
@@ -2146,6 +2171,21 @@
        "type": {
         "kind": "OBJECT",
         "name": "M__Domains"
+       }
+      },
+      {
+       "name": "products",
+       "type": {
+        "kind": "LIST",
+        "name": null,
+        "ofType": {
+         "kind": "NON_NULL",
+         "name": null,
+         "ofType": {
+          "kind": "OBJECT",
+          "name": "M__DataProducts"
+         }
+        }
        }
       }
      ],
@@ -2642,6 +2682,61 @@
       }
      ],
      "name": "M__TrackedWebhooks"
+    },
+    {
+     "fields": [
+      {
+       "name": "commandName",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "productId",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "_name_",
+       "type": {
+        "kind": "NON_NULL",
+        "name": null,
+        "ofType": {
+         "kind": "SCALAR",
+         "name": "String"
+        }
+       }
+      },
+      {
+       "name": "_domain_",
+       "type": {
+        "kind": "NON_NULL",
+        "name": null,
+        "ofType": {
+         "kind": "SCALAR",
+         "name": "String"
+        }
+       }
+      },
+      {
+       "name": "dataProduct",
+       "type": {
+        "kind": "OBJECT",
+        "name": "M__DataProducts"
+       }
+      },
+      {
+       "name": "trackedFunction",
+       "type": {
+        "kind": "OBJECT",
+        "name": "M__TrackedFunctions"
+       }
+      }
+     ],
+     "name": "M__DataProductCommands"
     },
     {
      "fields": [
@@ -4254,6 +4349,51 @@
        }
       },
       {
+       "name": "antonymOfs",
+       "type": {
+        "kind": "LIST",
+        "name": null,
+        "ofType": {
+         "kind": "NON_NULL",
+         "name": null,
+         "ofType": {
+          "kind": "OBJECT",
+          "name": "ON_Terms"
+         }
+        }
+       }
+      },
+      {
+       "name": "referencedBy",
+       "type": {
+        "kind": "LIST",
+        "name": null,
+        "ofType": {
+         "kind": "NON_NULL",
+         "name": null,
+         "ofType": {
+          "kind": "OBJECT",
+          "name": "M__TableColumns"
+         }
+        }
+       }
+      },
+      {
+       "name": "derivedFroms",
+       "type": {
+        "kind": "LIST",
+        "name": null,
+        "ofType": {
+         "kind": "NON_NULL",
+         "name": null,
+         "ofType": {
+          "kind": "OBJECT",
+          "name": "ON_Terms"
+         }
+        }
+       }
+      },
+      {
        "name": "domains",
        "type": {
         "kind": "LIST",
@@ -4314,6 +4454,51 @@
        }
       },
       {
+       "name": "kindOfs",
+       "type": {
+        "kind": "LIST",
+        "name": null,
+        "ofType": {
+         "kind": "NON_NULL",
+         "name": null,
+         "ofType": {
+          "kind": "OBJECT",
+          "name": "ON_Terms"
+         }
+        }
+       }
+      },
+      {
+       "name": "partOfs",
+       "type": {
+        "kind": "LIST",
+        "name": null,
+        "ofType": {
+         "kind": "NON_NULL",
+         "name": null,
+         "ofType": {
+          "kind": "OBJECT",
+          "name": "ON_Terms"
+         }
+        }
+       }
+      },
+      {
+       "name": "preferredTermFors",
+       "type": {
+        "kind": "LIST",
+        "name": null,
+        "ofType": {
+         "kind": "NON_NULL",
+         "name": null,
+         "ofType": {
+          "kind": "OBJECT",
+          "name": "ON_Terms"
+         }
+        }
+       }
+      },
+      {
        "name": "refs",
        "type": {
         "kind": "LIST",
@@ -4324,6 +4509,51 @@
          "ofType": {
           "kind": "OBJECT",
           "name": "ON_TermRefs"
+         }
+        }
+       }
+      },
+      {
+       "name": "relatedTos",
+       "type": {
+        "kind": "LIST",
+        "name": null,
+        "ofType": {
+         "kind": "NON_NULL",
+         "name": null,
+         "ofType": {
+          "kind": "OBJECT",
+          "name": "ON_Terms"
+         }
+        }
+       }
+      },
+      {
+       "name": "replaces",
+       "type": {
+        "kind": "LIST",
+        "name": null,
+        "ofType": {
+         "kind": "NON_NULL",
+         "name": null,
+         "ofType": {
+          "kind": "OBJECT",
+          "name": "ON_Terms"
+         }
+        }
+       }
+      },
+      {
+       "name": "synonymOfs",
+       "type": {
+        "kind": "LIST",
+        "name": null,
+        "ofType": {
+         "kind": "NON_NULL",
+         "name": null,
+         "ofType": {
+          "kind": "OBJECT",
+          "name": "ON_Terms"
          }
         }
        }
@@ -4354,6 +4584,51 @@
          "ofType": {
           "kind": "OBJECT",
           "name": "M__TagAssignments"
+         }
+        }
+       }
+      },
+      {
+       "name": "inDomains",
+       "type": {
+        "kind": "LIST",
+        "name": null,
+        "ofType": {
+         "kind": "NON_NULL",
+         "name": null,
+         "ofType": {
+          "kind": "OBJECT",
+          "name": "M__Domains"
+         }
+        }
+       }
+      },
+      {
+       "name": "translationOfs",
+       "type": {
+        "kind": "LIST",
+        "name": null,
+        "ofType": {
+         "kind": "NON_NULL",
+         "name": null,
+         "ofType": {
+          "kind": "OBJECT",
+          "name": "ON_Terms"
+         }
+        }
+       }
+      },
+      {
+       "name": "validValueOfs",
+       "type": {
+        "kind": "LIST",
+        "name": null,
+        "ofType": {
+         "kind": "NON_NULL",
+         "name": null,
+         "ofType": {
+          "kind": "OBJECT",
+          "name": "ON_Terms"
          }
         }
        }

@@ -327,7 +327,7 @@ def test_the_check_route_says_the_refusal_and_takes_the_entry_for_everyone(monke
     monkeypatch.setattr(
         appmod,
         "state",
-        SimpleNamespace(role_chains={}, settings_overrides={}, config=None),
+        SimpleNamespace(role_chains={}, settings_overrides={}, config=None, org_registry={}),
     )
     app = FastAPI()
     app.include_router(masks_router.router)

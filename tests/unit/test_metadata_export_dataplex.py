@@ -637,3 +637,17 @@ async def test_a_term_whose_read_failed_is_refused_and_the_others_publish(glossa
     assert f"{GLOSSARY}/terms/sale" not in patched
     assert f"{GLOSSARY}/terms/deal" in patched
     assert fake.resources[f"{GLOSSARY}/terms/sale"]["labels"]["team"] == "finance"
+
+
+async def test_the_product_and_each_asset_carry_the_environment_and_its_stage(api):  # REQ-2261
+    from provisa.api.metadata_export.model import EnvironmentStage
+
+    snapshot = _snapshot()
+    snapshot.environment = EnvironmentStage(name="EU-West", stage="production")
+    result = await _export().publish(snapshot)
+    assert result.ok, result.errors
+    staged = {"provisa-environment": "eu-west", "provisa-stage": "production"}
+    assert api.products[PRODUCT]["labels"].items() >= staged.items()
+    assert api.assets
+    for asset in api.assets.values():
+        assert asset["labels"].items() >= staged.items()

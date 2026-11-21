@@ -48,6 +48,19 @@ from provisa.api.mcp import admin_api, model_tool_specs, polly_pages, polly_usag
 from provisa.api.mcp import tools as mcp_tools
 from provisa.api.mcp.column_state import DESCRIBE_TABLE
 from provisa.api.mcp.sql_quoting import quote_identifiers
+from provisa.nl.scope import Scope
+from provisa.core.org_secrets import (
+    NO_KEY,
+    AiKeyRequired,
+    endpoint_address,
+    endpoint_key,
+    endpoint_provider_key,
+    provider_key,
+    read_org_api_keys,
+    sdk_config,
+)
+from provisa.core.secrets_providers import many_organisations
+from provisa.api.engine_error_names import client_text, client_value
 
 # Tool schemas mirror the MCP tools, minus `role` — the role is pinned by the endpoint from the
 # caller's identity and injected at execution, so the model can never select or escalate it.
@@ -291,10 +304,13 @@ _TOOLS: list[Any] = [
     {
         "name": "discover_relationships",
         "description": (
-            "Run the Relationships page's discovery for one registered table, as the user, and "
-            "list the relationship candidates it found (each with its id, the columns it would "
-            "join, its confidence and why). Use it for 'create any relationships to <table>'; "
-            "accept the candidates the user picks with admin_request POST "
+            "Run the Relationships page's discovery for one registered table's domain, as the "
+            "user, as a stored run. It returns: candidates (each suggestion, with its id, the "
+            "columns it would join, its confidence and why); foreign_keys and semantics (what "
+            "each kind found); run_id (the stored run); and proposals (every proposal the run "
+            "read, with the model's confidence, Jev's score as scored where a Jev key is set, "
+            "and the reason one is not a suggestion). Use it for 'create any relationships to "
+            "<table>'; accept the candidates the user picks with admin_request POST "
             "/admin/discover/candidates/{id}/accept."
         ),
         "input_schema": {
@@ -767,8 +783,8 @@ _CLIENT_TOOLS: list[Any] = [
         "name": "navigate",
         "description": (
             "Navigate the browser to a route within the Provisa app. Common ones: /sources, "
-            "/tables (the ERD at /tables?view=erd), /relationships, /admin/ontology, /schema. Explore's query surfaces "
-            "(never guess a route for these — NOT /explore, which is this same chat, and NOT "
+            "/tables (the ERD at /tables?view=erd), /relationships, /context/ontology, /schema. Explore's query surfaces "
+            "(never guess a route for these — NOT /explore, the MCP explorer, a separate chat, and NOT "
             "/admin/explorer, which doesn't exist): /query (GraphQL), /graph (Cypher), /sparql "
             "(SPARQL), /sql, /grpc, /jsonapi, /openapi, /nl (Natural Language). When you have "
             "already prepared a "
@@ -1107,9 +1123,9 @@ _SYSTEM = (
     "an s3:// URL to a single .csv or .parquet file -- is a CSV or Parquet source given its file "
     "by download: work out csv or parquet from the file's name (ask if it says neither), and "
     "propose type='csv' or 'parquet' with download_from set to that path, path left out, an id "
-    "from the file's name, register_table_draft true and table_domain_id the domain the user "
+    "from the file's name, register_table_from_file true and table_domain_id the domain the user "
     "named (ask which one if they named none) -- the server copies the file into the "
-    "organization's folder and sets up its table as a draft when the source is created. A server "
+    "organization's folder and registers its table, live, when the source is created. A server "
     "of many organizations refuses a file mount path by name: offer an https:// or s3:// address "
     "there. A directory, a glob or several files is a files source instead (type='files', path "
     "set to that directory or glob), proposed and confirmed the same way, its tables registered "
@@ -1131,7 +1147,7 @@ _SYSTEM = (
     "and accept each the user picks with admin_request POST "
     "/admin/discover/candidates/{id}/accept. A source's createSource input: at minimum id and "
     "type; a CSV or Parquet source given its file by download sets download_from and leaves path "
-    "out, and register_table_draft with table_domain_id sets its table up as a draft. A "
+    "out, and register_table_from_file with table_domain_id registers its table with it. A "
     "registerTable input: source_id, domain_id, schema_name, table_name and columns (each at "
     "least name and visible_to); never set alias -- the server derives the right SQL name. When "
     "the user asks to be shown, demoed or taught how something is done, use the screen instead "
@@ -1151,7 +1167,7 @@ _SYSTEM = (
     "THE PAGE-FIRST RULE: before performing an action that corresponds to a specific admin page (creating or "
     "registering a source/table, editing a ontology term, upserting/deleting a relationship, "
     "running a GraphQL query in Explorer, or anything else with a dedicated screen), call navigate "
-    "to that page FIRST (e.g. /admin/ontology for any ontology edit), then perform the action — so "
+    "to that page FIRST (e.g. /context/ontology for any ontology edit), then perform the action — so "
     "the user sees, on their own screen, the same page you're acting on, not just a chat "
     "transcript. Do this every single time that kind of action comes up, not just the first time "
     "in a conversation — a later ontology edit needs its own navigate call exactly as much as the "
@@ -1178,7 +1194,7 @@ _SYSTEM = (
     "glossary_terms first to avoid creating a duplicate term. A term's status is set by people "
     "(approve_glossary_term approves a defined draft); its grounding is computed from its "
     "edges and bindings and is never set. Per "
-    "the page-first rule above: navigate to /admin/ontology before calling any of these — every time, for "
+    "the page-first rule above: navigate to /context/ontology before calling any of these — every time, for "
     "every term you touch in the turn, not only the first.\n\n"
     "Manage data products with list_data_products/list_data_product_findings/create_data_product/"
     "set_data_product_members/delete_data_product -- a product's members are set on the product "
@@ -1405,37 +1421,24 @@ async def _llm_configured(state: Any) -> tuple[bool, str]:
     }
     endpoint = endpoints.get(vendor)
     if endpoint is not None:
-        key_env = endpoint.get("api_key_env")
-        from provisa.core.request_context import current_org
-        from provisa.core.sandbox_ai import endpoint_key, key_org
-
-        # REQ-1826: this must resolve the SAME grammar _resolve_api_key_field does at actual chat
-        # time (${secret:NAME}/${env:NAME}/${user:NAME}, or a plain env-var name) — a bare
-        # os.environ.get(key_env) check here always failed for a ${secret:...}/${env:...}
-        # reference (that string is never itself a real env var name), permanently reporting "not
-        # configured" for the exact vault-reference pattern this app's own AI Models UI recommends
-        # (REQ-1808's whole point: every config field may carry that grammar, not just literals).
-        if key_env:
-            try:
-                # REQ-2006: a sandbox's tier endpoint's key is the deployment org's.
-                resolved = (
-                    await endpoint_key(endpoint, current_org.get())
-                    if key_org(endpoint, current_org.get())
-                    else await _resolve_api_key_field(key_env)
-                )
-            except Exception as exc:
-                # Never swallow the real cause into a generic "needs X set" — a ${secret:...}
-                # that fails to resolve (unbound org, wrong org, the secret genuinely missing) is
-                # a DIFFERENT, more diagnosable problem than "nothing was ever configured", and
-                # reporting it as the latter hides exactly the information needed to fix it.
-                return False, f"the {vendor!r} endpoint's {key_env} could not be resolved: {exc}"
-            if not resolved:
-                return False, f"the {vendor!r} endpoint needs {key_env} set"
-    elif vendor == "ollama":
-        pass  # REQ-1797: no credential — a local server, reachable at OLLAMA_API_URL or the default
-    elif vendor == "google":
+        # REQ-1826: the same resolution the chat's call makes (_resolve_aisuite_routing): the
+        # resolver's (provisa.core.org_secrets.endpoint_key), whose refusals say why.
+        try:
+            await endpoint_key(await _stored_keys(state), endpoint)
+            endpoint_address(endpoint)
+        except AiKeyRequired as refused:
+            return False, str(refused)
+        except Exception as exc:
+            # Never swallow the real cause into a generic "needs X set" — a ${secret:...}
+            # that fails to resolve (unbound org, wrong org, the secret genuinely missing) is
+            # a DIFFERENT, more diagnosable problem than "nothing was ever configured", and
+            # reporting it as the latter hides exactly the information needed to fix it.
+            key_env = endpoint.get("api_key_env")
+            return False, f"the {vendor!r} endpoint's {key_env} could not be resolved: {exc}"
+    elif vendor == "google" and not many_organisations():
         # REQ-1797: aisuite's Google provider is Vertex AI, not the simpler Gemini API-key auth —
-        # it needs a GCP project + service-account credentials, not one key.
+        # it needs a GCP project + service-account credentials, not one key. They are the
+        # deployment's own: on a server of many organizations the vendor is refused below.
         missing = [
             v
             for v in ("GOOGLE_PROJECT_ID", "GOOGLE_REGION", "GOOGLE_APPLICATION_CREDENTIALS")
@@ -1444,13 +1447,27 @@ async def _llm_configured(state: Any) -> tuple[bool, str]:
         if missing:
             return False, f"google (Vertex AI) needs {', '.join(missing)} set"
     else:
-        env_var = {"anthropic": "ANTHROPIC_API_KEY", "openai": "OPENAI_API_KEY"}.get(vendor)
-        if env_var and not os.environ.get(env_var):
-            return False, f"{env_var} is not set"
+        try:
+            sdk_config(vendor, {"api_key": await _vendor_key(state, vendor)})
+        except AiKeyRequired as refused:
+            return False, str(refused)
 
     if vendor != "anthropic" and not await _resolve_model(state):
         return False, f"no model is set for vendor {vendor!r}"
     return True, ""
+
+
+async def _vendor_key(state: Any, vendor: str) -> str | None:
+    """The key one of aisuite's named vendors is called with for the acting org (REQ-1395,
+    provisa.core.org_secrets.provider_key): refused when it has none to use."""
+    return provider_key(await _stored_keys(state), vendor)
+
+
+async def _stored_keys(state: Any) -> dict[str, str]:
+    """The acting org's AI keys (provisa.core.org_secrets.read_org_api_keys); none where no model
+    store is bound."""
+    model_db = getattr(state, "model_db", None)
+    return await read_org_api_keys(model_db) if model_db is not None else {}
 
 
 async def _resolve_model(state: Any) -> str | None:
@@ -1571,7 +1588,20 @@ def _split_artifact(result: Any) -> tuple[Any, dict | None]:
 
 
 async def _execute_tool(
-    state: Any, role: str, name: str, args: dict, *, request: Any = None
+    state: Any, role: str, name: str, args: dict, *, scope: Scope, request: Any = None
+) -> Any:
+    """Run one tool call within ``scope`` (REQ-2253): the domains selected in the domain filter,
+    intersected with the role's (``provisa.nl.scope.selected_scope``), or None for no selection.
+    Every read the call makes -- the catalog it lists and describes, the statements it runs --
+    stays inside it."""
+    from provisa.security.selected_domains import within
+
+    with within(scope):
+        return await _dispatch_tool(state, role, name, args, scope=scope, request=request)
+
+
+async def _dispatch_tool(
+    state: Any, role: str, name: str, args: dict, *, scope: Scope, request: Any = None
 ) -> Any:
     """Dispatch one tool call to the governed MCP tool, with the role pinned by the endpoint.
 
@@ -1589,7 +1619,9 @@ async def _execute_tool(
     if name == "cypher_field_names":
         return await mcp_tools.cypher_field_names(state, role, args["schema"], args["table"])
     if name == "generate_explore_queries":
-        return await mcp_tools.generate_explore_queries(state, role, args["question"])
+        return await mcp_tools.generate_explore_queries(
+            state, role, args["question"], domains=None if scope is None else sorted(scope)
+        )
     if name == "search_catalog":
         return await mcp_tools.search_catalog(state, role, args["query"], k=int(args.get("k", 5)))
     if name == "search_reference_library":  # REQ-2185
@@ -1905,8 +1937,14 @@ def _prepare_client_call(call: dict, confirmation: str | None = None) -> tuple[d
     return prepared, None if error is None else _unquoted_note(error)
 
 
+def _tool_error(exc: BaseException) -> str:
+    """A failed tool's result, as the model is told it: its text told as a client is told an
+    error's, since the model's answer returns to the caller (REQ-2087)."""
+    return client_text(f"Error: {exc}")
+
+
 async def _checked_graph_navigates(
-    state: Any, role: str, calls: list[dict]
+    state: Any, role: str, calls: list[dict], *, scope: Scope
 ) -> tuple[dict[str, str], dict[str, str]]:
     """Each Graph page navigate, by call id: refused -- its Cypher statement could not run, or
     would draw no edges -- with the tool result the model gets instead (the statement never
@@ -1914,6 +1952,7 @@ async def _checked_graph_navigates(
     can confirm. The browser reports only that it navigated, never what the page drew, so the
     confirmation says what the page was handed and that the drawing is not reported back."""
     from provisa.api.mcp.cypher_check import check_graph_read, graph_query
+    from provisa.security.selected_domains import within
 
     refused: dict[str, str] = {}
     confirmed: dict[str, str] = {}
@@ -1931,9 +1970,10 @@ async def _checked_graph_navigates(
                     "already on screen; the page does not report back what it drew."
                 )
             continue
-        read = await check_graph_read(state, role, query)
+        with within(scope):  # REQ-2253: a statement outside the selected domains does not run
+            read = await check_graph_read(state, role, query)
         if read.problem is not None:
-            refused[call["id"]] = (
+            refused[call["id"]] = client_text(
                 "Not navigated: this Cypher statement does not run, so it was not put on the "
                 f"Graph page. {read.problem}. Correct the statement and navigate again."
             )
@@ -2112,6 +2152,7 @@ async def _run_chat_anthropic(
     *,
     max_iterations: int,
     budget: Any,
+    scope: Scope,
     request: Any = None,
     current_route: str | None = None,
 ) -> AsyncIterator[dict]:
@@ -2119,7 +2160,11 @@ async def _run_chat_anthropic(
     Anthropic-only hosted web_search/web_fetch tools. Unchanged behavior from before REQ-1797."""
     from anthropic import AsyncAnthropic, omit
 
-    client = AsyncAnthropic()
+    # REQ-1395: the key is handed to the client, which constructed with none reads the
+    # environment's itself.
+    client = AsyncAnthropic(
+        **sdk_config("anthropic", {"api_key": await _vendor_key(state, "anthropic")})
+    )
     model = await _resolve_model(state)
     assert model is not None  # _llm_configured() guarantees this for vendor == "anthropic"
     refused = await _budget_refusal(budget, model)
@@ -2202,7 +2247,7 @@ async def _run_chat_anthropic(
             usage = usage + polly_usage.from_anthropic(resp.usage)
             over = budget.over_cap(usage, model)  # REQ-1174: the turn ends at its role's cap
             if over is not None:
-                yield {"type": "error", "error": over}
+                yield {"type": "error", "error": client_value(over)}
                 yield polly_usage.usage_event(model, usage)
                 yield {"type": "done"}
                 return
@@ -2241,12 +2286,14 @@ async def _run_chat_anthropic(
             yield {"type": "tool_use", "name": block.name, "input": block.input}
             try:
                 result, artifact = _split_artifact(
-                    await _execute_tool(state, role, block.name, dict(block.input), request=request)
+                    await _execute_tool(
+                        state, role, block.name, dict(block.input), scope=scope, request=request
+                    )
                 )
                 content = json.dumps(result, default=str)
                 is_error = False
             except Exception as exc:  # noqa: BLE001 - reported back to the model, see pragma
-                content = f"Error: {exc}"
+                content = _tool_error(exc)
                 is_error = True
                 artifact = None
             if artifact is not None:
@@ -2262,7 +2309,7 @@ async def _run_chat_anthropic(
             )
 
         raw_blocks = [{"id": b.id, "name": b.name, "input": b.input} for b in client_blocks]
-        refused, confirmed = await _checked_graph_navigates(state, role, raw_blocks)
+        refused, confirmed = await _checked_graph_navigates(state, role, raw_blocks, scope=scope)
         refused |= _refused_tag_edits(raw_blocks)
         for block in client_blocks:
             if block.id in refused:
@@ -2365,27 +2412,24 @@ async def _resolve_aisuite_routing(state: Any, vendor: str, model: str) -> tuple
     endpoints = {ep["id"]: ep for ep in (cfg.get("ai_endpoints") or [])}
     endpoint = endpoints.get(vendor)
     if endpoint is None:
-        return f"{vendor}:{model}", {}
+        key = await _vendor_key(state, vendor)
+        return f"{vendor}:{model}", ({vendor: {"api_key": key}} if key else {})
 
     style = endpoint["style"]  # "openai" | "anthropic"
-    from provisa.core.request_context import current_org
-    from provisa.core.sandbox_ai import endpoint_key, key_org
-
-    # REQ-2006: a sandbox's tier endpoint's key is the deployment org's; any other, the org's own.
-    api_key = (
-        await endpoint_key(endpoint, current_org.get())
-        if key_org(endpoint, current_org.get())
-        else await _resolve_api_key_field(endpoint.get("api_key_env"))
-    )
-    resolved_base_url = await _resolve_config_field(endpoint["base_url"])
+    # The resolver's key (provisa.core.org_secrets.endpoint_key): the one the org's keys carry for
+    # it (a sandbox's tier endpoint's, REQ-2006), else its api_key_env, never the server's
+    # environment on a server of many organizations (REQ-1395).
+    api_key = await endpoint_key(await _stored_keys(state), endpoint)
+    resolved_base_url = await _resolve_config_field(endpoint_address(endpoint))
     provider_config: dict[str, Any] = {"base_url": resolved_base_url}
+    api_key = endpoint_provider_key(api_key)
     if api_key:
         provider_config["api_key"] = api_key
     elif style == "openai":
         # aisuite's OpenAI provider requires a non-empty api_key even when the server behind
         # base_url doesn't check one at all (e.g. Ollama's OpenAI-compatible endpoint) — a
         # placeholder here is not a credential, just satisfying that constructor guard.
-        provider_config["api_key"] = "not-required"
+        provider_config["api_key"] = NO_KEY
     return f"{style}:{model}", {style: provider_config}
 
 
@@ -2412,18 +2456,6 @@ async def _resolve_config_field(value: str) -> str:
     return resolve_secrets(value)
 
 
-async def _resolve_api_key_field(api_key_env: str | None) -> str | None:
-    """The endpoint's API key, from its ``api_key_env`` field (REQ-1790, REQ-1808, REQ-1827).
-
-    Delegates to provisa.core.secrets.resolve_api_key_field — the ONE shared implementation of
-    this grammar, also used by provisa/vector/providers.py's embedding-model key. Kept as a thin
-    wrapper (not a bare re-export) so this module's own call sites/tests don't need to know it
-    moved."""
-    from provisa.core.secrets import resolve_api_key_field
-
-    return await resolve_api_key_field(api_key_env)
-
-
 async def _run_chat_aisuite(
     state: Any,
     role: str,
@@ -2432,6 +2464,7 @@ async def _run_chat_aisuite(
     *,
     max_iterations: int,
     budget: Any,
+    scope: Scope,
     request: Any = None,
     current_route: str | None = None,
 ) -> AsyncIterator[dict]:
@@ -2469,8 +2502,12 @@ async def _run_chat_aisuite(
         yield refused
         yield {"type": "done"}
         return
-    provider = ProviderFactory.create_provider(provider_key, provider_configs.get(provider_key, {}))
-    cap = output_cap(provider_key, custom_endpoint=bool(provider_configs))
+    provider = ProviderFactory.create_provider(
+        provider_key, sdk_config(provider_key, provider_configs.get(provider_key, {}))
+    )
+    # An endpoint is routed with its base_url; a named vendor with its key alone.
+    at_endpoint = "base_url" in provider_configs.get(provider_key, {})
+    cap = output_cap(provider_key, custom_endpoint=at_endpoint)
     openai_tools = [_to_openai_tool(t) for t in _TOOLS + _CLIENT_TOOLS]
     system_text = _system_prompt(current_route)
     # REQ-2012: an Anthropic model behind an OpenAI-wire gateway (OpenRouter) caches only where a
@@ -2527,7 +2564,7 @@ async def _run_chat_aisuite(
             billed = (billed or 0.0) + float(call_cost)
         over = budget.over_cap(usage, model_name)  # REQ-1174: the turn ends at its role's cap
         if over is not None:
-            yield {"type": "error", "error": over}
+            yield {"type": "error", "error": client_value(over)}
             yield polly_usage.usage_event(model_name, usage, billed)
             yield {"type": "done"}
             return
@@ -2564,12 +2601,14 @@ async def _run_chat_aisuite(
             yield {"type": "tool_use", "name": call["name"], "input": call["input"]}
             try:
                 result, artifact = _split_artifact(
-                    await _execute_tool(state, role, call["name"], call["input"], request=request)
+                    await _execute_tool(
+                        state, role, call["name"], call["input"], scope=scope, request=request
+                    )
                 )
                 content = json.dumps(result, default=str)
                 is_error = False
             except Exception as exc:  # noqa: BLE001 - reported back to the model, see pragma
-                content = f"Error: {exc}"
+                content = _tool_error(exc)
                 is_error = True
                 artifact = None
             if artifact is not None:
@@ -2584,7 +2623,7 @@ async def _run_chat_aisuite(
                 }
             )
 
-        refused, confirmed = await _checked_graph_navigates(state, role, client_calls)
+        refused, confirmed = await _checked_graph_navigates(state, role, client_calls, scope=scope)
         refused |= _refused_tag_edits(client_calls)
         for call in client_calls:
             if call["id"] in refused:
@@ -2639,6 +2678,7 @@ async def run_chat(
     max_iterations: int = 8,
     request: Any = None,
     current_route: str | None = None,
+    domains: list[str] | None = None,
 ) -> AsyncIterator[dict]:
     """Drive the model's tool-use loop, yielding UI events until it stops calling tools.
 
@@ -2656,17 +2696,27 @@ async def run_chat(
     ``current_route`` is the frontend's own current URL (REQ-1800), sent with every turn — this
     answers "what page am I on" without a tool round-trip, since the browser already knows its
     own route for free; see _system_prompt.
+
+    ``domains`` (REQ-2253) is the domain filter's selection: every tool call works within it,
+    intersected with the role's domain access. None (no selection) is the role's whole surface.
     """
     mcp_tools.require_role(role, state)  # raises ValueError / PermissionError
+    from provisa.nl.scope import selected_scope
+    from provisa.security.rights import require_role as _role_of
+
+    # No selection leaves the role's surface alone, and its authority is not read for it.
+    scope = None if domains is None else selected_scope(_role_of(state.roles, role), domains)
 
     configured, reason = await _llm_configured(state)
     if not configured:
         yield {
             "type": "error",
             "error": (
-                "Polly isn't configured yet"
-                + (f" ({reason})" if reason else "")
-                + ". Set a vendor, model, and API key in Settings, then try again."
+                client_value(
+                    "Polly isn't configured yet"
+                    + (f" ({reason})" if reason else "")
+                    + ". Set a vendor, model, and API key in Settings, then try again."
+                )
             ),
             "action": {"label": "Open AI Models settings", "route": "/admin/ai-models"},
         }
@@ -2687,6 +2737,7 @@ async def run_chat(
             convo,
             max_iterations=max_iterations,
             budget=budget,
+            scope=scope,
             request=request,
             current_route=current_route,
         )
@@ -2698,6 +2749,7 @@ async def run_chat(
             vendor,
             max_iterations=max_iterations,
             budget=budget,
+            scope=scope,
             request=request,
             current_route=current_route,
         )
@@ -2726,5 +2778,5 @@ async def _budget_refusal(budget: Any, model: str) -> dict | None:
     try:
         await budget.admit(model)
     except BudgetRefused as exc:
-        return {"type": "error", "error": str(exc)}
+        return {"type": "error", "error": client_text(str(exc))}
     return None

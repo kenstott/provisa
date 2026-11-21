@@ -265,20 +265,19 @@ class _Row:
 
 
 class _ConnClone:
-    """DB double for _install_cloned_env_schema: answers SELECT sources and
-    SELECT … WHERE binding=SYNTHETIC."""
+    """DB double for _install_cloned_env_schema: answers the read of the sources in service
+    (SELECT sources WHERE NOT retired, REQ-2248) and SELECT … WHERE binding=SYNTHETIC."""
 
     def __init__(self, source_rows: list[_Row]) -> None:
         self._rows = source_rows
 
     async def execute_core(self, stmt):
         # Both queries in _install_cloned_env_schema read from the sources table.
-        # Distinguish by presence of a WHERE clause on the binding column.
-        try:
-            whereclause = stmt.whereclause
-        except AttributeError:
-            whereclause = None
-        if whereclause is not None:
+        # Distinguish by the column each one's WHERE clause names.
+        if "sources.retired" in str(stmt.whereclause):
+            in_service = [r for r in self._rows if not r._mapping.get("retired")]
+            return SimpleNamespace(fetchall=lambda: in_service)
+        if stmt.whereclause is not None:
             # synthetic_sources() does ``for sid, where in bound.fetchall()``:
             # return (id, synthetic) tuples, not _Row objects.
             from provisa.core.env_classes import SYNTHETIC
@@ -289,7 +288,7 @@ class _ConnClone:
                 if r._mapping.get("binding") == SYNTHETIC
             ]
             return SimpleNamespace(fetchall=lambda: synthetic)
-        return SimpleNamespace(fetchall=lambda: list(self._rows))
+        raise AssertionError(f"a read of every sources row, retired ones included: {stmt}")
 
 
 class _DbClone:
@@ -368,10 +367,11 @@ def _run_install_cloned(
         relationships=None,
         roles=None,
         role_chains=None,
-        draft_table_ids=None,
+        withdrawn_table_ids=None,
         view_context=None,
         view_path_map=None,
         names_table=None,
+        checked_targets={},
         view_sql_map=None,
         mv_registry=None,
         bitemporal_view_reads=None,
@@ -398,6 +398,7 @@ def _run_install_cloned(
         source_approval_hooks=None,
         pg_enum_types=None,
         pg_source_enums=None,
+        pg_enums_by_source=None,
         graphql_remote_sources=None,
         openapi_specs=None,
         grpc_remote_sources=None,
@@ -485,6 +486,28 @@ def test_cloned_env_unbound_sources_excludes_synthetic_bindings(monkeypatch):
     )
     assert cloned.full_builds == []
     assert cloned.unbound_sources == frozenset({"sales-pg"})
+
+
+def test_cloned_env_holds_nothing_for_a_retired_source(monkeypatch):
+    """REQ-2248: a retired source's row is kept under a key of its own, which is no source id.
+    The cloned env reads the sources in service: the retired one is in none of its source maps."""
+    from provisa.core.env_classes import UNBOUND
+    from provisa.core.repositories.retirement import retired_key
+
+    gone = retired_key("old-pg")
+    cloned = _run_install_cloned(
+        monkeypatch,
+        [
+            _Row(id="sales-pg", binding="own"),
+            _Row(id="crm-pg", binding=UNBOUND),
+            _Row(id=gone, binding="own", retired=True, retired_id="old-pg"),
+            _Row(id=retired_key("lost-pg"), binding=UNBOUND, retired=True, retired_id="lost-pg"),
+        ],
+    )
+    assert cloned.full_builds == []
+    assert set(cloned.runtime_sources) == {"sales-pg", "crm-pg"}
+    assert cloned.source_binding_env == {"sales-pg": "synthetic"}
+    assert cloned.unbound_sources == frozenset({"crm-pg"})
 
 
 def test_cloned_env_copies_source_catalogs_from_prod(monkeypatch):
@@ -631,10 +654,11 @@ def test_cloned_env_rebuilds_replica_routes_not_copies_prods(monkeypatch):
         relationships=None,
         roles=None,
         role_chains=None,
-        draft_table_ids=None,
+        withdrawn_table_ids=None,
         view_context=None,
         view_path_map=None,
         names_table=None,
+        checked_targets={},
         view_sql_map=None,
         mv_registry=None,
         bitemporal_view_reads=None,
@@ -661,6 +685,7 @@ def test_cloned_env_rebuilds_replica_routes_not_copies_prods(monkeypatch):
         source_approval_hooks=None,
         pg_enum_types=None,
         pg_source_enums=None,
+        pg_enums_by_source=None,
         graphql_remote_sources=None,
         openapi_specs=None,
         grpc_remote_sources=None,
@@ -738,10 +763,11 @@ def test_cloned_env_schema_copies_source_catalogs_from_prod(monkeypatch):
         "relationships",
         "roles",
         "role_chains",
-        "draft_table_ids",
+        "withdrawn_table_ids",
         "view_context",
         "view_path_map",
         "names_table",
+        "checked_targets",
         "view_sql_map",
         "mv_registry",
         "bitemporal_view_reads",
@@ -862,10 +888,11 @@ def _prod_rt_for_clone_test():
         "role_build_inputs",
         "tables",
         "relationships",
-        "draft_table_ids",
+        "withdrawn_table_ids",
         "view_context",
         "view_path_map",
         "names_table",
+        "checked_targets",
         "view_sql_map",
         "mv_registry",
         "bitemporal_view_reads",

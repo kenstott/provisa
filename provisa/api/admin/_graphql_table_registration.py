@@ -25,6 +25,7 @@ branded source (GitHub, GitLab, Shopify), and the source's own, read from its en
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import select
@@ -336,29 +337,102 @@ async def refreshed_registered_tables(state: Any, offer: SchemaOffer, reg: dict)
 
 
 async def remember_table(state: Any, reg: dict, table_name: str, fitted: dict) -> None:
-    """Record how a table being registered is read: in this process's registration, which the
-    readers consult, and -- for a plain source -- on the source's row, so a process that starts
-    later reads the table without asking the remote for its schema. A branded source's tables
-    are read by the brand's shipped schema and need nothing stored."""
+    """Record how a table is read: in this process's registration, which the readers consult,
+    and -- for a plain source -- on the source's row, so a process that starts later reads the
+    table without asking the remote for its schema. A branded source's tables are read by the
+    brand's shipped schema and need nothing stored."""
     entry = {**fitted, "sql_name": table_name}
-    reg["tables"] = [t for t in reg.get("tables", []) if t.get("sql_name") != table_name]
+    async with state.model_db.acquire() as conn:
+        await _store_spec(conn, reg, table_name, entry)
+    _hold(reg, entry)
+
+
+def _hold(reg: dict, entry: dict) -> None:
+    """``entry`` is how this process reads its table, in place of what it held for it."""
+    reg["tables"] = [t for t in reg.get("tables", []) if t.get("sql_name") != entry["sql_name"]]
     reg["tables"].append(entry)
+
+
+async def _store_spec(conn: Any, reg: dict, table_name: str, entry: dict) -> None:
+    """How ``table_name`` is read, kept on a plain source's row; nothing for a branded one."""
     if reg.get("brand"):
         return
-    spec = {k: fitted[k] for k in SPEC_FIELDS if k in fitted}
-    async with state.model_db.acquire() as conn:
-        row = (
-            await conn.execute_core(
-                select(sources.c.mapping).where(sources.c.id == reg["source_id"])
-            )
-        ).fetchone()
-        mapping = dict(row.mapping or {}) if row is not None else {}
-        specs = dict(mapping.get(TABLE_SPECS_KEY) or {})
-        specs[table_name] = spec
-        mapping[TABLE_SPECS_KEY] = specs
-        await conn.execute_core(
-            sources.update().where(sources.c.id == reg["source_id"]).values(mapping=mapping)
-        )
+    spec = {k: entry[k] for k in SPEC_FIELDS if k in entry}
+    row = (
+        await conn.execute_core(select(sources.c.mapping).where(sources.c.id == reg["source_id"]))
+    ).fetchone()
+    mapping = dict(row.mapping or {}) if row is not None else {}
+    specs = dict(mapping.get(TABLE_SPECS_KEY) or {})
+    specs[table_name] = spec
+    mapping[TABLE_SPECS_KEY] = specs
+    await conn.execute_core(
+        sources.update().where(sources.c.id == reg["source_id"]).values(mapping=mapping)
+    )
+
+
+# A table being registered, from the step that resolves its columns to the transaction that
+# stores it (REQ-1929, A COLUMN IN USE REFUSES THE REGISTRATION): this process holds it only
+# once that transaction commits, so a refused registration leaves nothing behind.
+_PENDING: dict[tuple[str, str], dict] = {}
+
+
+def hold_pending(reg: dict, table_name: str, fitted: dict) -> None:
+    """``fitted`` is how ``table_name`` is read once the registration in progress commits."""
+    _PENDING[(reg["source_id"], table_name)] = {**fitted, "sql_name": table_name}
+
+
+def drop_pending(source_id: str, table_name: str) -> None:
+    """The registration of ``table_name`` in progress resolves no new columns."""
+    _PENDING.pop((source_id, table_name), None)
+
+
+def held_table(state: Any, source_id: str, table_name: str) -> dict | None:
+    """How ``table_name`` is read: as the registration in progress has it, else as this process
+    holds it; None when neither has it."""
+    pending = _PENDING.get((source_id, table_name))
+    if pending is not None:
+        return pending
+    reg = (getattr(state, "graphql_remote_sources", None) or {}).get(source_id)
+    tables = reg["tables"] if reg is not None else []
+    return next((t for t in tables if t["sql_name"] == table_name), None)
+
+
+@dataclass
+class StagedRegistration:
+    """What a registration's transaction stored that this process takes once it commits: the
+    table as it is read, and each nested column a stored relationship took (table, column)."""
+
+    reg: dict
+    entry: dict | None
+    taken: list[tuple[str, str]]
+
+    def apply(self) -> int:
+        """This process takes what was stored; the number of relationships stored."""
+        if self.entry is not None:
+            _hold(self.reg, self.entry)
+        for table_name, via in self.taken:
+            table = next(t for t in self.reg["tables"] if t["sql_name"] == table_name)
+            table["columns"] = [c for c in table["columns"] if c["name"] != via]
+        return len(self.taken)
+
+
+async def stage_registration(
+    conn: Any, state: Any, source_id: str, table_name: str
+) -> StagedRegistration | None:
+    """On a registration's own transaction, after its table is stored: how the table is read,
+    kept with the source, and the relationships it completes, each taking its nested column
+    (REQ-313, REQ-1929). ``ColumnDropRefused`` when a column so taken is in use, and the
+    transaction stores nothing. None for a source that is not a remote GraphQL source."""
+    reg = (getattr(state, "graphql_remote_sources", None) or {}).get(source_id)
+    if reg is None:
+        return None
+    entry = _PENDING.pop((source_id, table_name), None)
+    tables = list(reg.get("tables", []))
+    if entry is not None:
+        await _store_spec(conn, reg, table_name, entry)
+        tables = [t for t in tables if t.get("sql_name") != table_name] + [entry]
+    taken = await _store_relationships(conn, state, reg, tables)
+    return StagedRegistration(reg, entry, taken)
 
 
 async def stored_key_fetches(state: Any, source_id: str, table_name: str) -> dict[str, dict]:
@@ -394,27 +468,38 @@ async def stored_key_fetches(state: Any, source_id: str, table_name: str) -> dic
 
 async def sync_detected_relationships(state: Any, source_id: str) -> int:
     """Store the relationships the schema shows between this source's REGISTERED tables
-    (REQ-313), and return how many. A relationship is one object-typed column of a registered
-    table whose type another registered table returns; it is stored only when that column is
-    among the columns registered. Nothing is stored for a source that is not a remote GraphQL
-    source, or has fewer than two tables registered in this process."""
-    from provisa.core.models import Cardinality, Relationship
-    from provisa.core.repositories import relationship as rel_repo
-    from provisa.graphql_remote.mapper import map_schema
-
+    (REQ-313), in one transaction, and return how many; this process takes the columns they
+    took once it commits. 0 for a source that is not a remote GraphQL source."""
     if source_id not in getattr(state, "graphql_remote_sources", {}):
         return 0
     reg = state.graphql_remote_sources[source_id]
-    registered = {t["name"]: t for t in reg.get("tables", []) if t.get("gql_type_name")}
+    async with state.model_db.acquire() as conn:
+        async with conn.transaction():
+            taken = await _store_relationships(conn, state, reg, list(reg.get("tables", [])))
+    return StagedRegistration(reg, None, taken).apply()
+
+
+async def _store_relationships(
+    conn: Any, state: Any, reg: dict, tables: list[dict]
+) -> list[tuple[str, str]]:
+    """Store the relationships the schema shows between ``tables``, the source's registered
+    tables, and return the nested column each took (table, column). A relationship is one
+    object-typed column of a registered table whose type another registered table returns; it is
+    stored only when that column is among the columns registered, and storing it takes that
+    column out of the table (REQ-1929). Nothing is stored when fewer than two tables are
+    registered. ``tables`` is not changed."""
+    from provisa.graphql_remote.mapper import map_schema
+
+    registered = {t["name"]: t for t in tables if t.get("gql_type_name")}
     if len(registered) < 2:
-        return 0
-    offered = await source_offer(state, source_id)
+        return []
+    offered = await source_offer(state, reg["source_id"])
     assert offered is not None
     offer, _ = offered
     _, _, detected = map_schema(
         offer.schema(),
         reg["namespace"],
-        source_id,
+        reg["source_id"],
         "",
         max_object_depth=offer.max_object_depth,
         max_list_depth=offer.max_list_depth,
@@ -422,30 +507,61 @@ async def sync_detected_relationships(state: Any, source_id: str) -> int:
         field_overrides=offer.field_overrides,
         only=set(registered),
     )
-    stored = 0
-    async with state.model_db.acquire() as conn:
-        for rel in detected:
-            source = registered.get(rel["source_table_id"])
-            target = registered.get(rel["target_table_id"])
-            via = rel["id"].rsplit("__", 1)[-1]  # the object column the relationship rides on
-            if source is None or target is None:
-                continue
-            if via not in {c["name"] for c in source["columns"]}:
-                continue
-            await rel_repo.upsert(
-                conn,
-                Relationship(
-                    id=rel["id"],
-                    source_table_id=source["sql_name"],
-                    target_table_id=target["sql_name"],
-                    source_column=apply_sql_name(rel["source_column"])
-                    if rel["source_column"]
-                    else "",
-                    target_column=apply_sql_name(rel["target_column"])
-                    if rel["target_column"]
-                    else "",
-                    cardinality=Cardinality(rel["cardinality"]),
-                ),
+    taken: list[tuple[str, str]] = []
+    for rel in detected:
+        source = registered.get(rel["source_table_id"])
+        target = registered.get(rel["target_table_id"])
+        via = rel["id"].rsplit("__", 1)[-1]  # the object column the relationship rides on
+        if source is None or target is None:
+            continue
+        if via not in {c["name"] for c in source["columns"]}:
+            continue
+        if (source["sql_name"], via) in taken:
+            continue
+        await _store_taking_its_column(conn, reg, source, target, rel, via)
+        taken.append((source["sql_name"], via))
+    return taken
+
+
+async def _store_taking_its_column(
+    conn: Any, reg: dict, source: dict, target: dict, rel: dict, via: str
+) -> None:
+    """Store ``rel`` and take the nested column ``via`` it rides on out of its source table's
+    registration (REQ-1929, A STORED RELATIONSHIP TAKES ITS NESTED COLUMN): a source mapped in
+    full never has that column, so a relationship stored once both tables are registered leaves
+    the model as that mapping does, with no column of the relationship's name. A column other
+    objects refer to is not taken: ``ColumnDropRefused`` names them, and nothing is stored."""
+    from provisa.core.models import Cardinality, Relationship
+    from provisa.core.repositories import relationship as rel_repo
+    from provisa.core.repositories.integrity import column_dependents
+    from provisa.core.repositories.table import ColumnDropRefused
+
+    column = apply_sql_name(via)
+    table_id = (
+        await conn.execute_core(
+            select(registered_tables.c.id).where(
+                registered_tables.c.source_id == reg["source_id"],
+                registered_tables.c.schema_name == "graphql",
+                registered_tables.c.table_name == source["sql_name"],
             )
-            stored += 1
-    return stored
+        )
+    ).scalar_one()
+    dependents = await column_dependents(conn, table_id, column)
+    if dependents:
+        raise ColumnDropRefused(source["sql_name"], {column: dependents})
+    await conn.execute_core(
+        table_columns.delete().where(
+            table_columns.c.table_id == table_id, table_columns.c.column_name == column
+        )
+    )
+    await rel_repo.upsert(
+        conn,
+        Relationship(
+            id=rel["id"],
+            source_table_id=source["sql_name"],
+            target_table_id=target["sql_name"],
+            source_column=apply_sql_name(rel["source_column"]) if rel["source_column"] else "",
+            target_column=apply_sql_name(rel["target_column"]) if rel["target_column"] else "",
+            cardinality=Cardinality(rel["cardinality"]),
+        ),
+    )

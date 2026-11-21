@@ -133,6 +133,8 @@ export function graphStylesheet(t: GraphTokens) {
         "text-justification": "center",
       },
     },
+    // A withdrawn table (REQ-1921): the same box, its border dashed.
+    { selector: 'node[withdrawn = "yes"]', style: { "border-style": "dashed" } },
     { selector: 'node[status = "draft"]', style: { "font-style": "italic" } },
     { selector: 'node[status = "deprecated"]', style: { opacity: 0.55 } },
     { selector: 'node[status = "retired"]', style: { opacity: 0.35 } },

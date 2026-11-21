@@ -126,7 +126,8 @@ async def test_the_mutation_refuses_with_the_members(plane, monkeypatch):
     assert await _count(plane, data_products) == 2
 
 
-async def test_a_tag_takes_its_assignments_and_values_with_it(plane):
+async def test_a_tag_is_retired_with_its_assignments_and_values_kept(plane):
+    """REQ-2248: deleting it retires it; what is attached to it is kept."""
     async with plane.acquire() as conn:
         for tag_id in ("pii", "gold"):
             await conn.execute_core(insert(tags).values(id=tag_id))
@@ -145,5 +146,10 @@ async def test_a_tag_takes_its_assignments_and_values_with_it(plane):
         assert await tag_repo.delete(conn, "pii:high") is True  # any value names the tag
         assert await tag_repo.delete(conn, "pii") is False
         left = (await conn.execute_core(select(tag_assignments.c.base_tag_id))).fetchall()
-    assert [r[0] for r in left] == ["gold"]
-    assert await _count(plane, tag_param_values) == 0 and await _count(plane, tags) == 1
+    assert sorted(r[0] for r in left) == ["gold", "pii", "pii"]
+    assert await _count(plane, tag_param_values) == 1 and await _count(plane, tags) == 2
+    async with plane.acquire() as conn:
+        retired = (
+            await conn.execute_core(select(tags.c.retired).where(tags.c.id == "pii"))
+        ).scalar_one()
+    assert retired is True

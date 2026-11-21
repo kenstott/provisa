@@ -36,6 +36,6 @@
     "write_insert": "inserimento",
     "write_update": "aggiornamento",
     "write_delete": "eliminazione",
-    "draft": "Bozza"
+    "withdrawn": "Ritirata"
   }
 }

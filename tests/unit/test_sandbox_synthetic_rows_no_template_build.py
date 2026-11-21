@@ -78,6 +78,11 @@ class _Conn:
             self.wrote.append(("delete", stmt.table.fullname, None))
         return SimpleNamespace()
 
+    async def execute_core_many(self, stmt, rows):
+        # Like the real connection: a no-op for an empty batch, else one insert per parameter set.
+        for row in rows:
+            self.wrote.append(("insert", stmt.table.fullname, dict(row)))
+
 
 class _Pool:
     def __init__(self, held: dict[str, list[dict]], read: list[str], wrote: list[tuple]) -> None:

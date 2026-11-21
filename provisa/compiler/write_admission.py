@@ -28,7 +28,10 @@ table for the operation (REQ-2074), in this order:
    or DELETE, and beside it the role's read row rule (REQ-039: a write reaches only rows the
    role may read) and its U rule into an UPDATE and its D rule into a DELETE (REQ-2188). A rule
    only narrows: it is read after the grant, so it gives nothing to a role holding no grant for
-   the operation, and a role with no rule for a right is not narrowed. A TRUNCATE, a MERGE and an
+   the operation, and a role with no rule for a right is not narrowed. A MERGE that deletes
+   (a WHEN ... THEN DELETE) needs the delete grant too, and those three join each such WHEN's
+   condition over the target row, as they join a DELETE's WHERE; one that reads another table
+   cannot stand there and is refused. A TRUNCATE, a MERGE's insert and update and an
    ``ON CONFLICT DO UPDATE`` cannot carry a predicate, so a role whose reads are narrowed is
    refused them.
 5. **The rows it leaves behind.** An INSERT's rows, and the new values of an UPDATE that sets a
@@ -597,6 +600,61 @@ def _supplied(value: exp.Expression, params: list | None) -> exp.Expression | No
     return None
 
 
+def _merge_deletes(tree: exp.Merge) -> bool:
+    """Whether a MERGE deletes: one of its WHENs, matched or not matched by source, is THEN
+    DELETE."""
+    whens = tree.args.get("whens")
+    return any(
+        w.args["then"].sql(dialect="postgres").upper() == "DELETE"
+        for w in (whens.expressions if whens is not None else [])
+    )
+
+
+#: The mark on a column admission adds to a MERGE's WHEN: the target's own, read by the rule the
+#: role deletes under, which governance does not refuse as a WHEN reading the target row.
+ADMITTED = "provisa_admitted"
+
+
+def _narrow_merge_deletes(
+    tree: exp.Merge, gov: "GovernanceContext", table_id: int, table: exp.Table, name: str
+) -> None:
+    """Narrow each of a MERGE's THEN DELETE clauses to the rows the role may delete, as a DELETE
+    statement's WHERE is (REQ-2001, REQ-2188, REQ-039): the delete grant's rows, the role's read
+    row rule and its D rule join the clause's condition over the target row. A rule that reads
+    another table cannot stand in a WHEN condition and is refused by name."""
+    from provisa.compiler.rls import qualified_filter  # noqa: PLC0415
+    from provisa.compiler.stage2 import _alias_for  # noqa: PLC0415
+
+    grant = _grant(gov, table_id, name, "delete")
+    rows = _predicate(gov, table_id, grant.get("rows"))
+    rule = _rule(gov, table_id, "delete")
+    column_types = dict(gov.all_columns.get(table_id, []))
+    narrowing = []
+    for predicate in dict.fromkeys((rows, gov.rls_rules.get(table_id), rule)):
+        if _every_row(predicate):
+            continue
+        assert predicate is not None
+        if predicate.find(exp.Query) is not None:
+            stated = "D rule" if predicate is rule else _label(grant, "rows")
+            raise WriteNotAdmitted(
+                f"MERGE into {name!r}: role {gov.role_id!r}'s {stated} on this table "
+                f"({predicate.sql(dialect='postgres')}) reads another table, which a MERGE's "
+                "WHEN condition cannot. Use DELETE, which applies it."
+            )
+        touched = qualified_filter(predicate, _alias_for(table), column_types)
+        for column in touched.find_all(exp.Column):
+            column.meta[ADMITTED] = True
+        narrowing.append(exp.paren(touched))
+    if not narrowing:
+        return
+    for when in tree.args["whens"].expressions:
+        if when.args["then"].sql(dialect="postgres").upper() != "DELETE":
+            continue
+        condition = when.args.get("condition")
+        terms = [condition, *(n.copy() for n in narrowing)] if condition else narrowing
+        when.set("condition", exp.and_(*(t.copy() for t in terms)))
+
+
 def written_columns(tree: exp.Expression, gov: "GovernanceContext", table_id: int) -> list[str]:
     """The columns a write writes: an INSERT the columns it lists (all of the table's when it
     lists none), an UPDATE the columns it sets, a DELETE or MERGE every column (whole rows)."""
@@ -692,6 +750,8 @@ def admit_write(
                     "rows it may write, and the rows a MERGE would write cannot be checked "
                     "against it. Use INSERT and UPDATE."
                 )
+        if _merge_deletes(tree):  # REQ-2001: a WHEN ... THEN DELETE removes rows
+            _narrow_merge_deletes(tree, gov, table_id, table, name)
         return tree
 
     if isinstance(tree, exp.Insert):

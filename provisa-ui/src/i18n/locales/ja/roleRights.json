@@ -36,6 +36,6 @@
     "write_insert": "挿入",
     "write_update": "更新",
     "write_delete": "削除",
-    "draft": "下書き"
+    "withdrawn": "取り下げ中"
   }
 }

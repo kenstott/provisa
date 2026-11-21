@@ -85,7 +85,10 @@ def org_overrides(monkeypatch):
     monkeypatch.setattr(org_secrets_mod, "write_org_secret", _write_secret)
     monkeypatch.setattr(
         "provisa.api.app.state",
-        types.SimpleNamespace(model_db=(_one_db := object()), tenant_db=_one_db),
+        # multitenancy: what a key variable's read asks of the deployment (REQ-1557).
+        types.SimpleNamespace(
+            model_db=(_one_db := object()), tenant_db=_one_db, multitenancy=False
+        ),
         raising=False,
     )
     return store
@@ -168,6 +171,96 @@ class TestAiModels:
         client.put("/admin/ai-models", json={"ai_models": {"sql_generation": "x"}})
         client.put("/admin/ai-models", json={"ai_models": {"sql_generation": ""}})
         assert "ai_models" not in org_overrides
+
+    def test_get_returns_each_assigned_models_limits_and_source(self, client, org_overrides):
+        # REQ-464: a known model's published figures, and the default pair for one not known.
+        org_overrides["ai_models"] = {
+            "sql_generation": {"vendor": "ollama", "model": "llama3:8b"},
+        }
+        limits = client.get("/admin/ai-models").json()["model_limits"]
+        haiku = limits["anthropic"]["claude-haiku-4-5-20251001"]
+        assert (haiku["input_tokens"], haiku["output_tokens"], haiku["source"]) == (
+            200_000,
+            64_000,
+            "known",
+        )
+        llama = limits["ollama"]["llama3:8b"]
+        assert (llama["input_tokens"], llama["output_tokens"], llama["source"]) == (
+            32_000,
+            4_096,
+            "default",
+        )
+
+    def test_put_stores_a_limits_override_and_null_clears_it(self, client, org_overrides):
+        # REQ-464: the override is the org's, beside its role assignments, and is read back.
+        r = client.put(
+            "/admin/ai-models",
+            json={
+                "model_limits": {
+                    "anthropic": {
+                        "claude-haiku-4-5-20251001": {
+                            "input_tokens": 100_000,
+                            "output_tokens": 8_000,
+                        }
+                    }
+                }
+            },
+        )
+        assert r.status_code == 200
+        assert org_overrides["ai_models"]["model_limits"] == {
+            "anthropic": {
+                "claude-haiku-4-5-20251001": {"input_tokens": 100_000, "output_tokens": 8_000}
+            }
+        }
+        haiku = client.get("/admin/ai-models").json()["model_limits"]["anthropic"][
+            "claude-haiku-4-5-20251001"
+        ]
+        assert (haiku["input_tokens"], haiku["output_tokens"], haiku["source"]) == (
+            100_000,
+            8_000,
+            "override",
+        )
+        client.put(
+            "/admin/ai-models",
+            json={"model_limits": {"anthropic": {"claude-haiku-4-5-20251001": None}}},
+        )
+        assert "ai_models" not in org_overrides
+        haiku = client.get("/admin/ai-models").json()["model_limits"]["anthropic"][
+            "claude-haiku-4-5-20251001"
+        ]
+        assert haiku["source"] == "known"
+
+    def test_put_of_limits_keeps_the_orgs_role_assignments(self, client, org_overrides):
+        client.put("/admin/ai-models", json={"ai_models": {"sql_generation": "claude-opus-4-8"}})
+        client.put(
+            "/admin/ai-models",
+            json={"model_limits": {"openai": {"gpt-4o": {"input_tokens": 9, "output_tokens": 3}}}},
+        )
+        assert org_overrides["ai_models"]["sql_generation"] == "claude-opus-4-8"
+        assert org_overrides["ai_models"]["model_limits"]["openai"]["gpt-4o"]["output_tokens"] == 3
+
+    @pytest.mark.parametrize("bad", [0, -1, "100", 1.5, True, None])
+    def test_put_refuses_a_limit_that_is_not_a_positive_whole_number(
+        self, client, org_overrides, bad
+    ):
+        r = client.put(
+            "/admin/ai-models",
+            json={
+                "model_limits": {"openai": {"gpt-4o": {"input_tokens": bad, "output_tokens": 3}}}
+            },
+        )
+        assert r.status_code == 400
+        assert "ai_models" not in org_overrides
+
+    def test_limits_lookup_answers_for_an_unassigned_model(self, client, org_overrides):
+        r = client.get("/admin/ai-models/limits", params={"vendor": "openai", "model": "gpt-4.1"})
+        assert r.status_code == 200
+        body = r.json()
+        assert (body["input_tokens"], body["output_tokens"], body["source"]) == (
+            1_047_576,
+            32_768,
+            "known",
+        )
 
     def test_invalid_vector_model_rejected(self, client, org_overrides):
         r = client.put("/admin/ai-models", json={"vector_models": [{"id": "x"}]})
@@ -749,10 +842,13 @@ class TestVendorModelListing:
         assert "publishes no list-models API" in r.json()["detail"]
 
     def test_vendor_with_no_key_anywhere_is_rejected(self, client, org_overrides, monkeypatch):
-        monkeypatch.delenv("COHERE_API_KEY", raising=False)
-        r = client.get("/admin/ai-models/vendors/cohere/models")
-        assert r.status_code == 400
-        assert "set an API key for 'cohere'" in r.json()["detail"]
+        from provisa.core.org_secrets import AiKeyRequired
+
+        monkeypatch.delenv("CO_API_KEY", raising=False)
+        # This bare app registers no handler for the refusal (provisa.api.app answers it 409).
+        with pytest.raises(AiKeyRequired) as refused:
+            client.get("/admin/ai-models/vendors/cohere/models")
+        assert refused.value.code == "ai.key_required" and refused.value.vendor == "cohere"
 
     def test_a_vendor_rejecting_the_key_surfaces_as_502(self, client, org_overrides, monkeypatch):
         import httpx
@@ -841,9 +937,16 @@ class TestVendorModelListing:
             }
         ]
         monkeypatch.delenv("UNSET_GATEWAY_KEY_FOR_TEST", raising=False)
-        r = client.get("/admin/ai-models/vendors/my-gateway/models")
-        assert r.status_code == 400
-        assert "UNSET_GATEWAY_KEY_FOR_TEST" in r.json()["detail"]
+        from provisa.core.org_secrets import AiKeyRequired
+
+        # The router's refusal; the API answers it 409 (provisa.api.app).
+        with pytest.raises(AiKeyRequired) as refused:
+            client.get("/admin/ai-models/vendors/my-gateway/models")
+        assert refused.value.code == "ai.endpoint_key_unset"
+        assert refused.value.params == {
+            "vendor": "my-gateway",
+            "field": "UNSET_GATEWAY_KEY_FOR_TEST",
+        }
 
     def test_disabled_custom_endpoint_is_not_listable(self, client, org_overrides):
         org_overrides["ai_endpoints"] = [

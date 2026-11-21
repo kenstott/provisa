@@ -149,6 +149,12 @@ def check_normalizable(document: DocumentNode, ctx: CompilationContext) -> None:
             jm = ctx.joins.get((parent_type, rel_field))
             if jm is None:
                 continue
+            if jm.via is not None:  # REQ-1586
+                raise NormalizeError(
+                    f"cannot normalize: relationship {rel_field!r} joins through the junction "
+                    f"{jm.via.table.table_name!r}, not on a key column of its own — every "
+                    f"relationship must be a real FK/PK column join to produce normalized tables."
+                )
             if (
                 jm.source_expr is not None
                 or jm.source_constant is not None

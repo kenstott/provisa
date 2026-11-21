@@ -38,7 +38,8 @@ def _load(name: str):
     return module
 
 
-by_design = _load("by_design")  # the scripts import it as their sibling
+import by_design  # noqa: E402  # the scripts' sibling: one module object, never re-executed
+
 bolt = _load("cypher_tck_bolt")  # cypher_tck's sibling too
 procedures = _load("cypher_tck_procedures")  # and this
 tck = _load("cypher_tck")
@@ -1378,3 +1379,52 @@ def test_the_tck_step_stops_itself_inside_its_bound_and_past_the_suite_s_longest
     # The full suite took up to 40 minutes on hosted runners with no scenario hung (.509).
     assert deadline >= 50 * 60
     assert int(job["timeout-minutes"]) * 60 >= bound + 10 * 60
+
+
+def _tck_session_step() -> dict:
+    """The workflow step that creates the TCK session user (.github/workflows/conformance-cypher.yml)."""
+    import yaml
+
+    workflow = yaml.safe_load((REPO / ".github/workflows/conformance-cypher.yml").read_text())
+    (step,) = (
+        s
+        for job in workflow["jobs"].values()
+        for s in job["steps"]
+        if s.get("name") == "Create the TCK session user"
+    )
+    return step
+
+
+def test_the_tck_session_user_holds_the_role_its_bolt_sessions_act_as(monkeypatch):
+    """REQ-2176, REQ-1263: where the control plane holds the assignments, a Bolt sign-in may name
+    only a role it holds; a role its claims map to that it does not hold is not one (SEC-H1). The
+    TCK session user is assigned tck_empty, and its sessions act as that role alone."""
+    import asyncio
+    from types import SimpleNamespace
+
+    from provisa.auth import held_assignments as held_module
+    from provisa.auth.models import AuthIdentity, RoleAssignment
+
+    catalog = _load("pgwire_catalog_types")
+    monkeypatch.setattr(catalog, "registrable_columns", lambda dsn: [])
+    auth = catalog.provisa_config(5432, "dsn")["auth"]
+    step = _tck_session_step()
+    assignment = json.loads(step["env"]["TCK_SESSION_ASSIGNMENT"])
+    assert assignment["role_id"] == bolt.EMPTY_ROLE
+    assert "/admin/users/$user_id/assignments" in step["run"]
+
+    async def held(state, identity, org_id):
+        return [RoleAssignment(role_id=assignment["role_id"], domain_id=assignment["domain_id"])]
+
+    monkeypatch.setattr(held_module, "held_assignments", held)
+    identity = AuthIdentity(
+        user_id="tck-session-id",
+        email=None,
+        display_name=None,
+        roles=[],
+        raw_claims={"username": catalog.TCK_SESSION_USER},
+    )
+    acts_as, may_name = asyncio.run(
+        held_module.sign_in_roles(SimpleNamespace(auth_config=auth), identity, None)
+    )
+    assert (acts_as, may_name) == (bolt.EMPTY_ROLE, [bolt.EMPTY_ROLE])

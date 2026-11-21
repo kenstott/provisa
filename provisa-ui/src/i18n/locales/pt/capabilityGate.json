@@ -8,7 +8,7 @@
       "purpose": {
         "environment_management": {
           "title": "Ambientes são um recurso de produção",
-          "body": "Um ambiente é uma cópia completa e governada separadamente do seu modelo — fontes, tabelas, políticas, regras de mascaramento e concessões. As equipes mantêm um ambiente dev para alterar o modelo, um de staging para revisá-lo e o prod para servir, e então levam a alteração adiante mesclando um ambiente no seguinte, com um diff, uma aprovação e um histórico que pode ser desfeito.\n\nSeu sandbox É um desses ambientes, criado só para você. Gerenciá-los — criar, mesclar, implantar, desativar — cabe à organização que os possui, então a interface é mostrada aqui em vez de entregue: você vê o que ela faz, e ela não age sobre nada."
+          "body": "Um ambiente é uma cópia completa e governada separadamente do seu modelo: suas fontes, tabelas, políticas, regras de mascaramento e concessões. As equipes alteram o modelo em dev, revisam em staging e servem a partir de prod, fazendo merge de um ambiente no seguinte com um diff, uma aprovação e um histórico reversível.\n\nSeu sandbox é um desses ambientes, criado só para você. Criar, fazer merge, implantar e desativar ambientes cabe à organização que os possui, então esta página é exibida apenas como referência e não age sobre nada."
         }
       }
     }

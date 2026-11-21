@@ -35,6 +35,10 @@ role sees it (:func:`offer_contract`); the document lists the offers (``customPr
 ``offers``). Nothing of a contract is written by hand but what all of a product's contracts share,
 written once on the product. The offers are the snapshot's (``MetadataSnapshot.offers``).
 
+REQ-2261: the product's document names the environment it was read in and that environment's
+stage as the ``provisaEnvironment`` and ``provisaStage`` custom properties, so a catalog can tell
+production assets from others; neither is written when the snapshot names no environment.
+
 A contract has its own version and status, as ODPS versions each port by its contract. The
 product's version is its own; a product with no version says so -- ``unversioned`` -- since ODPS
 requires the field and inventing a number would claim a release that never happened.
@@ -51,7 +55,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from provisa.api.metadata_export.model import OfferExport
 from provisa.core.cache_ttl import NEVER_EXPIRES
-from provisa.core.models import DEFAULT_OFFER
+from provisa.core.models import DEFAULT_OFFER, TERMS_OF_USE
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -417,6 +421,13 @@ def odps_document(snapshot: "MetadataSnapshot", product: "DataProductAsset") -> 
     inputs_without = [table.name for table in inputs if not _input_contracts(snapshot, table)]
     if custom := _custom_properties(product, without_contract, inputs_without):
         document["customProperties"] = custom
+    if snapshot.environment is not None:  # REQ-2261
+        document.setdefault("customProperties", []).extend(
+            [
+                {"property": "provisaEnvironment", "value": snapshot.environment.name},
+                {"property": "provisaStage", "value": snapshot.environment.stage},
+            ]
+        )
     if offers:
         document.setdefault("customProperties", []).append(
             {
@@ -1097,4 +1108,9 @@ def offer_contract(
         *contract.get("customProperties", []),
         *_offer_terms(offer, table),
     ]
+    # Amended 2026-11-11: the offer's terms of use are its contract's; a term it leaves unstated
+    # is the product's, written once on it.
+    stated = {k: getattr(terms, k) for k in TERMS_OF_USE if getattr(terms, k)}
+    if stated:
+        contract["description"] = {**contract.get("description", {}), **stated}
     return contract

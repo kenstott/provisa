@@ -1,0 +1,15 @@
+{
+  "joinThrough": {
+    "action": "Koppelen via {{table}}",
+    "title": "Koppelen via {{table}}",
+    "junction": "{{table}} verwijst naar beide tabellen. De overige kolommen worden attributen van deze relatie.",
+    "sharedDimension": "Beide tabellen verwijzen naar {{table}}.",
+    "name": "Naam",
+    "cardinality": "Kardinaliteit",
+    "manyToMany": "Veel-op-veel",
+    "from": "Van",
+    "to": "Naar",
+    "through": "Via",
+    "attributes": "Attributen"
+  }
+}

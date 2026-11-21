@@ -13,11 +13,11 @@
 # Requirements: REQ-013, REQ-014, REQ-016, REQ-133, REQ-155, REQ-156, REQ-260, REQ-334, REQ-393, REQ-399
 
 from provisa.core.column_scope import SCOPE_DOMAIN, require_column_scope
-from provisa.core import model_change
-from typing import TYPE_CHECKING, Any, Callable
+from provisa.core import model_change, model_uri
+from typing import TYPE_CHECKING, Any, Callable, NamedTuple
 
 
-from sqlalchemy import delete as _delete, select
+from sqlalchemy import delete as _delete, select, update
 
 from provisa.core.paging import paging_row
 from provisa.core import domain_policy
@@ -25,6 +25,7 @@ from provisa.core.models import Table
 from provisa.core.numeric_type import ReportedNumericMalformed, stored_type_of
 from provisa.core.repositories import data_product as data_product_repo
 from provisa.core.repositories import glossary as glossary_repo
+from provisa.core.repositories import retirement
 from provisa.core.repositories.integrity import (
     Dependent,
     ObjectRef,
@@ -38,9 +39,9 @@ from provisa.core.schema_org import (
     registered_tables,
     roles,
     table_columns,
-    tag_assignments,
 )
 from provisa.core.repositories.mask_lists import refuse_unreachable_masks
+from provisa.security.masking import refuse_non_text_constant
 from provisa.fakes.portable import pinned_version
 from provisa.security.rights import Capability
 
@@ -245,9 +246,22 @@ async def registered_columns(
 
 
 async def _load_columns(conn: "Connection", table_id: int) -> list[dict]:
+    """A table's columns in service, in registration order (REQ-2248: a retired column is absent
+    from its table, and a save of what this returns leaves it retired)."""
     result = await conn.execute_core(
         select(*_COLUMN_PROJECTION)
-        .where(table_columns.c.table_id == table_id)
+        .where(table_columns.c.table_id == table_id, table_columns.c.retired.is_(False))
+        .order_by(table_columns.c.id)
+    )
+    return [dict(r._mapping) for r in result.fetchall()]
+
+
+async def retired_columns(conn: "Connection", table_id: int) -> list[dict]:
+    """REQ-2248: a table's retired columns in registration order, each with who retired it,
+    when and why."""
+    result = await conn.execute_core(
+        select(*_COLUMN_PROJECTION, *retirement.stamp_of(table_columns))
+        .where(table_columns.c.table_id == table_id, table_columns.c.retired.is_(True))
         .order_by(table_columns.c.id)
     )
     return [dict(r._mapping) for r in result.fetchall()]
@@ -322,7 +336,11 @@ class ViewLoopRefused(ValueError):
 
 
 async def upsert(
-    conn: "Connection", table: Table, *, declared: "DeclaredKeys | None" = None
+    conn: "Connection",
+    table: Table,
+    *,
+    declared: "DeclaredKeys | None" = None,
+    withdrawn: bool | None = None,
 ) -> int | None:  # REQ-013, REQ-016, REQ-133, REQ-155, REQ-156, REQ-260, REQ-334, REQ-393, REQ-399
     """Upsert a registered table and its columns. Returns the table row id.
 
@@ -340,15 +358,25 @@ async def upsert(
     read it; a column is a primary or alternate key when the source declares it one, when the
     registration's input does, or (an alternate key) when a relationship is keyed on it. None:
     this registration read no declaration (no driver for the source here), and the input's marks
-    are the table's."""
-    model_change.name("upsert", "table", table.table_name)  # REQ-1524
+    are the table's.
+
+    REQ-1921: ``withdrawn`` is written only when given -- by a configuration, which carries it as
+    the store holds it. Every other save keeps what is held (a new table is live): a table is
+    withdrawn and put back only by ``withdrawTable`` / ``putBackTable``."""
+    model_change.name("upsert", model_change.uri(model_uri.table_uri, table))  # REQ-1524
     async with conn.transaction():
         view_sql = getattr(table, "view_sql", None)
         if view_sql:
             loop = await view_loop(conn, table.table_name, view_sql)
             if loop:
                 raise ViewLoopRefused(loop)
-        return await _upsert(conn, table, declared)
+        table_id = await _upsert(conn, table, declared, withdrawn)
+        if table_id is not None:
+            from provisa.dq.regulation import uncite_removed
+
+            # REQ-2245: a kept regulation check its contract no longer holds takes its citation.
+            await uncite_removed(conn, table_id)
+        return table_id
 
 
 async def naming_rules(conn: "Connection") -> list[dict]:
@@ -365,6 +393,39 @@ async def naming_rules(conn: "Connection") -> list[dict]:
     ]
 
 
+async def _require_not_retired(conn: "Connection", table: Table) -> None:
+    """REQ-2248: a retired table keeps its name, and its physical identity with it: registering
+    the table again would bring the retired one back by a write that did not ask for it. Refused
+    (:class:`RetiredNameTaken`), naming the retired table; restoring it is its own act."""
+    from sqlalchemy import and_, func, or_
+
+    # The same physical table, or another one at a retired table's model name (its alias, else
+    # its table name) in the same domain.
+    model_name = func.coalesce(registered_tables.c.alias, registered_tables.c.table_name)
+    held = (
+        await conn.execute_core(
+            select(registered_tables.c.alias, registered_tables.c.table_name)
+            .where(
+                registered_tables.c.retired.is_(True),
+                or_(
+                    and_(
+                        registered_tables.c.source_id == table.source_id,
+                        registered_tables.c.schema_name == table.schema_name,
+                        registered_tables.c.table_name == table.table_name,
+                    ),
+                    and_(
+                        registered_tables.c.domain_id == table.domain_id,
+                        model_name == (table.alias or table.table_name),
+                    ),
+                ),
+            )
+            .limit(1)
+        )
+    ).fetchone()
+    if held is not None:
+        raise retirement.RetiredNameTaken("table", held.alias or held.table_name)
+
+
 async def _require_label_not_a_domain(conn: "Connection", table: Table) -> None:
     """REQ-572: refuse a table whose Cypher label is an org domain's, naming both
     (:class:`provisa.compiler.naming.LabelClash`)."""
@@ -373,7 +434,12 @@ async def _require_label_not_a_domain(conn: "Connection", table: Table) -> None:
     from provisa.compiler.naming import refuse_label_clash
     from provisa.core.schema_org import domains
 
-    domain_ids = [r.id for r in (await conn.execute_core(select(domains.c.id))).fetchall()]
+    domain_ids = [
+        r.id
+        for r in (
+            await conn.execute_core(select(domains.c.id).where(domains.c.retired.is_(False)))
+        ).fetchall()
+    ]
     candidate = {
         "source_id": table.source_id,
         "schema_name": table.schema_name,
@@ -451,8 +517,11 @@ async def _require_landed_if_member(  # REQ-1634
         )
 
 
-async def _upsert(conn: "Connection", table: Table, declared: "DeclaredKeys | None") -> int | None:
-    domain_id = domain_policy.resolve_domain_id(table.domain_id)
+async def _upsert(
+    conn: "Connection", table: Table, declared: "DeclaredKeys | None", withdrawn: bool | None
+) -> int | None:
+    domain_id = domain_policy.table_domain_id(table.domain_id, table.table_name)  # REQ-1531
+    await _require_not_retired(conn, table)
     await _require_free_sql_address(conn, table, domain_id)
     await _require_label_not_a_domain(conn, table)
     from provisa.core.repositories.region import require_table_region
@@ -486,6 +555,8 @@ async def _upsert(conn: "Connection", table: Table, declared: "DeclaredKeys | No
                 table_columns.c.native_type,
                 table_columns.c.native_platform,
                 table_columns.c.subtype,
+                table_columns.c.retired,
+                table_columns.c.alias,
             )
             .select_from(
                 table_columns.join(
@@ -559,6 +630,7 @@ async def _upsert(conn: "Connection", table: Table, declared: "DeclaredKeys | No
         "mv_persist": getattr(table, "mv_persist", "replace"),  # REQ-965
         "mv_primary_key": getattr(table, "mv_primary_key", []),  # REQ-970
         "mv_incremental": getattr(table, "mv_incremental", False),  # REQ-969
+        "mv_rebuild_every": getattr(table, "mv_rebuild_every", None),  # REQ-2249
         "mv_calendar": getattr(table, "mv_calendar", None),  # REQ-962
         "mv_grain": getattr(table, "mv_grain", None),  # REQ-962/1168
         "mv_allowed_lateness": getattr(table, "mv_allowed_lateness", 0.0),  # REQ-961
@@ -575,7 +647,6 @@ async def _upsert(conn: "Connection", table: Table, declared: "DeclaredKeys | No
         "load_protected": getattr(table, "load_protected", None),  # REQ-1141
         "replicate": getattr(table, "replicate", None),  # REQ-826
         "region": getattr(table, "region", None),  # REQ-1921
-        "draft": table.draft,  # REQ-1921
         "off_peak_window": getattr(table, "off_peak_window", None),  # REQ-1141
         "off_peak_tz": getattr(table, "off_peak_tz", None),  # REQ-1141
         # REQ-1865: never written here despite fetch_tables() SELECTing both columns and
@@ -633,6 +704,7 @@ async def _upsert(conn: "Connection", table: Table, declared: "DeclaredKeys | No
         "mv_persist",  # REQ-965
         "mv_primary_key",  # REQ-970
         "mv_incremental",  # REQ-969
+        "mv_rebuild_every",  # REQ-2249
         "mv_calendar",  # REQ-962
         "mv_grain",  # REQ-962/1168
         "mv_allowed_lateness",  # REQ-961
@@ -649,7 +721,6 @@ async def _upsert(conn: "Connection", table: Table, declared: "DeclaredKeys | No
         "load_protected",  # REQ-1141
         "replicate",  # REQ-826
         "region",  # REQ-1921
-        "draft",  # REQ-1921
         "off_peak_window",  # REQ-1141
         "off_peak_tz",  # REQ-1141
         "row_materialize",  # REQ-1865
@@ -673,6 +744,9 @@ async def _upsert(conn: "Connection", table: Table, declared: "DeclaredKeys | No
         "query_template",
         "relay_pagination",
     ]
+    if withdrawn is not None:  # REQ-1921: a configuration's, as the store holds it
+        values["withdrawn"] = withdrawn
+        _update_columns.append("withdrawn")
     table_id = await conn.upsert_returning(
         registered_tables,
         values,
@@ -726,7 +800,32 @@ async def _upsert(conn: "Connection", table: Table, declared: "DeclaredKeys | No
     _pins = {r.column_name: (r.fake, bool(r.fake_stable), r.fake_stable_version) for r in _held}
     # REQ-2094: each column's judgments as stored, for their why.
     _decided = {r.column_name: r for r in _held}
-    _dropped = sorted(set(_existing_types) - {col.name for col in table.columns})
+    # REQ-2248: a column this registration no longer lists is RETIRED, not removed: its row, its
+    # name and what is attached to it are kept, marked retired. A column is its physical name in
+    # its table, so a registration listing a retired column's name lists THAT column, and restores
+    # it: its retirement is cleared and what is attached to it is still there. A DIFFERENT column
+    # whose business name (alias, else column name) is a retired column's is refused naming it
+    # (RetiredNameTaken): the retired name is not taken by another object.
+    _listed = {col.name for col in table.columns}
+    _retired_names = {
+        (r.alias or r.column_name): r.column_name
+        for r in _existing_rows
+        if r.retired and r.column_name not in _listed
+    }
+    for col in table.columns:
+        held = _retired_names.get(getattr(col, "alias", None) or col.name)
+        if held is not None and held != col.name:
+            raise retirement.RetiredNameTaken("column", f"{table.table_name}.{held}")
+    _retired_columns = {r.column_name for r in _existing_rows if r.retired} - _listed
+    for _restored in sorted(
+        (r for r in _existing_rows if r.retired and r.column_name in _listed),
+        key=lambda r: r.column_name,
+    ):
+        model_change.name(  # REQ-1524
+            "restore",
+            model_change.uri(model_uri.column_uri, table, _restored.column_name, _restored.alias),
+        )
+    _dropped = sorted(set(_existing_types) - _retired_columns - {col.name for col in table.columns})
     _referred: dict[str, list[Dependent]] = {}
     for _column in _dropped:
         _dependents = await column_dependents(conn, table_id, _column)
@@ -734,13 +833,27 @@ async def _upsert(conn: "Connection", table: Table, declared: "DeclaredKeys | No
             _referred[_column] = _dependents
     if _referred:
         raise ColumnDropRefused(table.table_name, _referred)
-    if _dropped:
-        await conn.execute_core(
-            _delete(tag_assignments).where(
-                tag_assignments.c.table_id == table_id,
-                tag_assignments.c.column_name.in_(_dropped),
+    # REQ-2248: the rows kept retired -- those retired before and those this registration drops
+    # -- read whole, to be written back after the replace below.
+    _by = model_change.actor()
+    _kept_retired = [
+        {
+            **{k: v for k, v in r._mapping.items() if k != "id"},
+            **(
+                {}
+                if r.retired
+                else retirement.stamped("dropped from the table's registration", _by)
+            ),
+        }
+        for r in (
+            await conn.execute_core(
+                select(table_columns).where(
+                    table_columns.c.table_id == table_id,
+                    table_columns.c.column_name.in_(sorted(_retired_columns | set(_dropped))),
+                )
             )
-        )
+        ).fetchall()
+    ]
     # REQ-2094: each column's fake and mask entries carry their why, stamped when they change.
     from provisa.judgments.evidence import evidence as _evidence
     from provisa.judgments.why import stamp_for
@@ -803,6 +916,8 @@ async def _upsert(conn: "Connection", table: Table, declared: "DeclaredKeys | No
         for name, (_, entries) in _whys.items()
     }
     await refuse_unreachable_masks(conn, _stored_masks)  # REQ-2059
+    for _name, _masks in _stored_masks.items():  # REQ-2131
+        refuse_non_text_constant(_name, _masks, _stored[_name][0])
     # Replace columns: delete existing, insert new
     await conn.execute_core(_delete(table_columns).where(table_columns.c.table_id == table_id))
     for col in table.columns:
@@ -864,6 +979,8 @@ async def _upsert(conn: "Connection", table: Table, declared: "DeclaredKeys | No
                 encrypted=getattr(col, "encrypted", False),  # REQ-1919
             )
         )
+    for _row in _kept_retired:
+        await conn.execute_core(table_columns.insert().values(**_row))
     # REQ-2074: the table's write grants are written with it, as its columns are.
     from provisa.core.repositories import write_grant as write_grant_repo
 
@@ -887,6 +1004,8 @@ async def _upsert(conn: "Connection", table: Table, declared: "DeclaredKeys | No
             for c in table.columns
             if getattr(c, "native_filter_type", None) is None and not c.name.startswith("_nf_")
         ],
+        # REQ-1591: the domain this upsert writes, which tells same-named terms apart.
+        domain=domain_id,
         table_context=getattr(table, "alias", None) or table.table_name,
     )
     return table_id
@@ -943,6 +1062,29 @@ async def keep_unedited(conn: "Connection", table: Table) -> Table:
         WriteGrant.model_validate(g) for g in await write_grant_repo.for_table(conn, stored["id"])
     ]
     return table.model_copy(update={**kept, "columns": columns})
+
+
+class ModelName(NamedTuple):
+    """What a table is named by in the model (REQ-1385): its domain and its business name, the
+    alias when it has one, else its table name. Never its serial."""
+
+    domain_id: str
+    name: str
+
+
+async def model_name(conn: "Connection", table_id: int) -> ModelName | None:  # REQ-1524
+    """The model name of registered table ``table_id``, for naming a change to it in the model's
+    history (:func:`provisa.core.model_uri.named_table_uri`). None when there is no such table."""
+    row = (
+        await conn.execute_core(
+            select(
+                registered_tables.c.domain_id,
+                registered_tables.c.alias,
+                registered_tables.c.table_name,
+            ).where(registered_tables.c.id == table_id)
+        )
+    ).fetchone()
+    return None if row is None else ModelName(row.domain_id, row.alias or row.table_name)
 
 
 async def get(conn: "Connection", table_id: int) -> dict | None:  # REQ-013, REQ-393, REQ-399
@@ -1011,21 +1153,32 @@ async def find_by_table_name(
 
 
 async def list_all(
-    conn: "Connection", *, parts_of: "Callable[[dict], bool] | None" = None
+    conn: "Connection",
+    *,
+    parts_of: "Callable[[dict], bool] | None" = None,
+    retired: bool = False,
 ) -> list[dict]:  # REQ-013, REQ-016
-    """Every registered table's row with its ``product_ids`` (REQ-1634: the products it is a
-    member of, in id order), ``columns`` and ``write_grants``. ``parts_of``, when
-    given, says which tables' parts are read: a table it refuses is its row alone, with neither
-    key — for a reader that needs no more of it than its row (``store_model``'s seeded tables)."""
+    """Every registered table's row in service with its ``product_ids`` (REQ-1634: the products
+    it is a member of, in id order), ``columns`` (those in service) and ``write_grants``.
+    ``retired`` lists the retired tables instead (REQ-2248), with who, when and why.
+    ``parts_of``, when given, says which tables' parts are read: a table it refuses is its row
+    alone, with neither key — for a reader that needs no more of it than its row
+    (``store_model``'s seeded tables)."""
     from provisa.core.repositories import write_grant as write_grant_repo
 
-    result = await conn.execute_core(select(registered_tables).order_by(registered_tables.c.id))
+    result = await conn.execute_core(
+        select(registered_tables)
+        .where(registered_tables.c.retired.is_(retired))
+        .order_by(registered_tables.c.id)
+    )
     rows = [dict(row._mapping) for row in result.fetchall()]
     with_parts = [r["id"] for r in rows if parts_of is None or parts_of(r)]
     # Every table's columns in one read, each table's in registration order (as _load_columns
     # reads one table's): a rebuild lists every table, and a query per table was a query for each.
-    columns_read = select(table_columns.c.table_id, *_COLUMN_PROJECTION).order_by(
-        table_columns.c.table_id, table_columns.c.id
+    columns_read = (
+        select(table_columns.c.table_id, *_COLUMN_PROJECTION)
+        .where(table_columns.c.retired.is_(False))
+        .order_by(table_columns.c.table_id, table_columns.c.id)
     )
     if parts_of is not None:
         columns_read = columns_read.where(table_columns.c.table_id.in_(with_parts))
@@ -1044,36 +1197,120 @@ async def list_all(
     return rows
 
 
-async def delete(conn: "Connection", table_id: int) -> bool:  # REQ-014, REQ-1918
-    """Delete one registered table or view: THE delete, for every surface. False when there is
-    no such table.
+async def restore(conn: "Connection", table_id: int) -> bool:  # REQ-2248
+    """Restore a retired table: the same table, its retirement cleared, served again with the
+    columns and links it kept. A column retired on its own stays retired. False when there is
+    no such table, or it is not retired."""
+    async with conn.transaction():
+        row = await get(conn, table_id)
+        if row is None or not row["retired"]:
+            return False
+        model_change.name(  # REQ-1524
+            "restore",
+            model_change.uri(
+                model_uri.named_table_uri, row["domain_id"], row["alias"] or row["table_name"]
+            ),
+        )
+        await conn.execute_core(
+            update(registered_tables)
+            .where(registered_tables.c.id == table_id)
+            .values(**retirement.cleared())
+        )
+    return True
+
+
+async def restore_registered(conn: "Connection", table: Table) -> bool:  # REQ-433, REQ-2248
+    """Registering a source table that was removed restores it: the same table (its id, columns
+    and links), its retirement cleared, so the registration that follows saves it into the
+    domain it names. REQ-433 (amended 2026-11-20): removing a table frees it at once, a table
+    registered with no domain included. A different table at a retired table's name is still
+    refused (:func:`_require_not_retired`). False when no retired table is that source table."""
+    held = (
+        await conn.execute_core(
+            select(registered_tables.c.id).where(
+                registered_tables.c.source_id == table.source_id,
+                registered_tables.c.schema_name == table.schema_name,
+                registered_tables.c.table_name == table.table_name,
+                registered_tables.c.retired.is_(True),
+            )
+        )
+    ).fetchone()
+    return held is not None and await restore(conn, int(held.id))
+
+
+async def restore_column(conn: "Connection", table_id: int, column_name: str) -> bool:  # REQ-2248
+    """Restore a retired column of a table: the same column, its retirement cleared, in its
+    table again with the tags it kept. False when the table has no such retired column."""
+    retired_column = (
+        table_columns.c.table_id == table_id,
+        table_columns.c.column_name == column_name,
+        table_columns.c.retired.is_(True),
+    )
+    async with conn.transaction():
+        held = (
+            await conn.execute_core(
+                select(
+                    registered_tables.c.domain_id,
+                    registered_tables.c.alias.label("table_alias"),
+                    registered_tables.c.table_name,
+                    table_columns.c.alias,
+                )
+                .join(registered_tables, registered_tables.c.id == table_columns.c.table_id)
+                .where(*retired_column)
+            )
+        ).fetchone()
+        if held is None:
+            return False
+        model_change.name(  # REQ-1524
+            "restore",
+            model_change.uri(
+                model_uri.named_column_uri,
+                held.domain_id,
+                held.table_alias or held.table_name,
+                column_name,
+                held.alias,
+            ),
+        )
+        await conn.execute_core(
+            update(table_columns).where(*retired_column).values(**retirement.cleared())
+        )
+    return True
+
+
+async def delete(  # REQ-014, REQ-1918, REQ-2248
+    conn: "Connection", table_id: int, *, reason: str | None = None
+) -> bool:
+    """Delete one registered table or view: THE delete, for every surface. It RETIRES the table
+    (REQ-2248): the row, its name, its columns and everything attached to it are kept, the table
+    marked retired with ``reason``, the acting person and the time. False when there is no such
+    table, or it is retired already.
 
     Refused (:class:`TableDeleteRefused`), naming each dependent, while a relationship takes
     part in it — at either end, or through it — a view or materialized view reads it, a metric's
-    expression reads it, or a command or webhook returns it. When it may go, its parts go with
-    it: its columns, the row filters defined on it, its tag assignments, glossary references,
-    meta links, file mtimes, the discovery candidates naming it, and for a view its storage row
-    with its refresh log and delta ledger. One transaction; no database cascade is relied on.
+    expression reads it, or a command or webhook returns it. One transaction.
 
     Data kept for the table outside the control plane (replica, row-level rows, a view's
     storage relation, cache entries) is not removed here; the caller runs what exists for it.
     """
-    model_change.name("delete", "table", table_id)  # REQ-1524
     ref = ObjectRef("table", table_id)
     async with conn.transaction():
         row = await get(conn, table_id)
-        if row is None:
+        if row is None or row["retired"]:
             return False
+        model_change.name(  # REQ-1524
+            "retire",
+            model_change.uri(
+                model_uri.named_table_uri, row["domain_id"], row["alias"] or row["table_name"]
+            ),
+        )
         blocking = await guard(conn, ref)
         if blocking:
             raise TableDeleteRefused(table_id, row["table_name"], blocking)
-        # REQ-1591: before the refs go. A term's domains are derived by joining its refs to this
-        # very table, so the sweep that follows has nothing left to read them from.
-        refs_before = await glossary_repo.before_ref_removal(conn)
-        await discard(conn, table_id)
-        # REQ-1387: settle the terms that lost their last ref (remove, or deprecate when an
-        # abstract term hangs on them).
-        await glossary_repo.sweep_refless_terms(conn, before=refs_before)
+        await conn.execute_core(
+            update(registered_tables)
+            .where(registered_tables.c.id == table_id)
+            .values(**retirement.values(reason))
+        )
     return True
 
 
@@ -1103,8 +1340,9 @@ async def discard(conn: "Connection", table_id: int) -> None:
 async def retire_generated(  # REQ-1918
     conn: "Connection", source_id: str, schema_name: str, current: set[str]
 ) -> list[TableDeleteRefused]:
-    """Remove the tables a source's generated set no longer contains, one at a time through
-    :func:`delete`; returns the refusals of those that could not go.
+    """Retire the tables a source's generated set no longer contains, one at a time through
+    :func:`delete` (REQ-2248: retired, not removed); returns the refusals of those that could
+    not go.
 
     A remote source's tables are generated from its schema, and re-registering the source
     upserts each by its identity (source, schema, name), so a table that is still there keeps its
@@ -1132,8 +1370,9 @@ async def retire_generated(  # REQ-1918
 
 async def remove_registrations(conn: "Connection", *where) -> None:
     """Remove every registered table matching ``where`` (clauses on ``registered_tables``) —
-    for the code that registers tables as a SET and replaces or retires that set: the seed
-    retiring rows it wrote, the config loader dropping what the config no longer declares.
+    for the startup seed removing built-in rows it wrote and no longer declares. The one
+    exception to retirement it serves (REQ-2248, amended 2026-11-15): a startup seed may delete
+    Provisa's own built-in rows that it no longer declares; they are not a person's objects.
 
     It declares a set; it is not a deletion of one object, so it does not ask the dependency
     guard, as a full replace does not. What referred to those tables is left to the database, as

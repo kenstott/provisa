@@ -34,8 +34,15 @@ class MVRegistry:  # REQ-133, REQ-135, REQ-158, REQ-159, REQ-160
     """
 
     def __init__(self, tenant_id: str | None = None) -> None:
+        # Read by every request (the rewriter's get_fresh) while a schema build on another thread
+        # registers and unregisters views: every walk is over _snapshot(), never the dict itself.
         self._mvs: dict[str, MVDefinition] = {}
         self._tenant_id = tenant_id
+
+    def _snapshot(self) -> list[MVDefinition]:
+        """The views registered now, as one list: ``list()`` copies the dict's values in one step
+        (under the GIL), so a build changing the registry meanwhile cannot fail the walk."""
+        return list(self._mvs.values())
 
     def _key(self, mv_id: str) -> str:
         if self._tenant_id is not None:
@@ -58,17 +65,17 @@ class MVRegistry:  # REQ-133, REQ-135, REQ-158, REQ-159, REQ-160
         the live source instead of being rewritten onto stale data.
         """
         now = time.time()
-        return [mv for mv in self._mvs.values() if mv.enabled and mv.is_fresh_at(now)]
+        return [mv for mv in self._snapshot() if mv.enabled and mv.is_fresh_at(now)]
 
     def get_enabled(self) -> list[MVDefinition]:  # REQ-543
         """Return all enabled MVs (for refresh scheduler)."""
-        return [mv for mv in self._mvs.values() if mv.enabled]
+        return [mv for mv in self._snapshot() if mv.enabled]
 
     def get_due_for_refresh(self) -> list[MVDefinition]:  # REQ-135, REQ-160
         """Return enabled MVs that are due for refresh."""
         now = time.time()
         result = []
-        for mv in self._mvs.values():
+        for mv in self._snapshot():
             if not mv.enabled or mv.status == MVStatus.REFRESHING:
                 continue
             if mv.last_refresh_at is None:
@@ -82,7 +89,7 @@ class MVRegistry:  # REQ-133, REQ-135, REQ-158, REQ-159, REQ-160
     def mark_stale(self, table_name: str) -> list[str]:  # REQ-543
         """Mark all MVs referencing a table as stale. Returns list of affected MV IDs."""
         affected = []
-        for mv in self._mvs.values():
+        for mv in self._snapshot():
             reads = table_name in mv.source_tables or table_name in mv.read_tables
             if reads and mv.status != MVStatus.DISABLED:
                 mv.status = MVStatus.STALE
@@ -123,4 +130,4 @@ class MVRegistry:  # REQ-133, REQ-135, REQ-158, REQ-159, REQ-160
             mv.last_error = None
 
     def all(self) -> list[MVDefinition]:  # REQ-543
-        return list(self._mvs.values())
+        return self._snapshot()

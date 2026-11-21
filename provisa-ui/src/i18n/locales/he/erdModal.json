@@ -34,6 +34,7 @@
     "focusDomains": "דומיינים: {{names}}",
     "focusTables": "טבלאות: {{names}}",
     "focusMissing": "לא נמצא: {{names}}",
-    "showAll": "הצגת הכול"
+    "showAll": "הצגת הכול",
+    "showWithdrawn": "הצגת פריטים שנמשכו"
   }
 }

@@ -204,6 +204,9 @@ class MVDefinition:  # REQ-133, REQ-135, REQ-158, REQ-160, REQ-199, REQ-234, REQ
     # with a PK (a declared-but-infeasible incremental MV is an explicit error, never a silent full
     # recompute). Default False = recompute-to-current (the REQ-966 NRT baseline).
     incremental: bool = False
+    # REQ-2249: seconds between whole rebuilds of a view kept by its code resolver's @change
+    # function (required while it is kept incrementally); None = no clock.
+    rebuild_every: int | None = None
 
     # REQ-1162: append-only bitemporal materialization. When set, each refresh APPENDS (never
     # UPDATEs) either the whole fresh dataset (snapshot mode) or engine-computed changes (delta
@@ -240,6 +243,9 @@ class MVDefinition:  # REQ-133, REQ-135, REQ-158, REQ-160, REQ-199, REQ-234, REQ
     row_count: int | None = None
     last_error: str | None = None
     last_input_token: str | None = None  # REQ-881: source version token at last materialization
+    # REQ-2131: the kept input columns its stored table holds, as read from the table, with the
+    # (last_refresh_at, rules generation) they were read for (transform_view_rules).
+    stored_rule_inputs: tuple[tuple[float | None, int], frozenset[str]] | None = None
 
     def __post_init__(self):
         if self.target_table is None:

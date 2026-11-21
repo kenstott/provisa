@@ -20,6 +20,7 @@ from typing import Any
 
 from provisa.federation.replica_errors import WAITING
 from provisa.federation.replica_state import retry_policy
+from provisa.api.engine_error_names import client_value
 
 RETIRED = "retired"
 
@@ -115,7 +116,7 @@ def index_view(state: dict | None) -> list[dict]:
                 else "built"
                 if name in state["built"]
                 else "pending",
-                "error": failure["error"] if failure is not None else None,
+                "error": client_value(failure["error"] if failure is not None else None),
                 "error_code": failure["code"] if failure is not None else None,
             }
         )

@@ -228,6 +228,7 @@ def _walk_attaches(monkeypatch, row_cap: int | None) -> list[dict]:
         "replicate": None,
         "load_protected": False,
         "max_live_concurrency": row_cap,
+        "download_from": None,
         "cache_ttl": None,
     }
     config = SimpleNamespace(

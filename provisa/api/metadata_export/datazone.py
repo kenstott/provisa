@@ -15,7 +15,9 @@ its owner, published so that consumers find it and request it by subscription. I
 assets of a Provisa table asset type, which this target creates in the domain the first time:
 
 - the ``ProvisaTableForm`` form type: the member's Provisa URI, its address in Provisa, its
-  columns and its freshness;
+  columns, its freshness, and the environment it was published from and that environment's
+  stage (``environment``, ``stage``; REQ-2261), so a catalog can tell production assets from
+  others -- neither is written when the snapshot names no environment;
 - the ``ProvisaTable`` asset type, which carries that form;
 - the ``ProvisaDataProductForm`` form type: the product's fields (purpose, limitations, usage,
   version, status, service level, support, documentation).
@@ -57,7 +59,12 @@ from provisa.api.metadata_export.provider import (
 from provisa.api.metadata_export.registry import register_provider
 
 if TYPE_CHECKING:
-    from provisa.api.metadata_export.model import DataProductAsset, MetadataSnapshot, TableAsset
+    from provisa.api.metadata_export.model import (
+        DataProductAsset,
+        EnvironmentStage,
+        MetadataSnapshot,
+        TableAsset,
+    )
 
 TABLE_FORM = "ProvisaTableForm"
 TABLE_TYPE = "ProvisaTable"
@@ -69,6 +76,8 @@ structure {TABLE_FORM} {{
     address: String
     columns: String
     freshnessSeconds: Integer
+    environment: String
+    stage: String
 }}
 """
 
@@ -86,7 +95,7 @@ structure {PRODUCT_FORM} {{
 """
 
 
-def table_form(table: "TableAsset") -> dict[str, Any]:
+def table_form(table: "TableAsset", environment: "EnvironmentStage | None") -> dict[str, Any]:
     """The member's ``ProvisaTableForm``."""
     form: dict[str, Any] = {
         "provisaUri": table.semantic_uri,
@@ -95,6 +104,9 @@ def table_form(table: "TableAsset") -> dict[str, Any]:
     }
     if table.cache_ttl is not None:
         form["freshnessSeconds"] = table.cache_ttl
+    if environment is not None:  # REQ-2261
+        form["environment"] = environment.name
+        form["stage"] = environment.stage
     return form
 
 
@@ -157,7 +169,7 @@ class DataZoneExport(MetadataExport):  # REQ-2118
         for product in snapshot.data_products:
             try:
                 count = self._publish_product(
-                    client, product, tables, types, assets, products, result
+                    client, product, tables, types, assets, products, result, snapshot.environment
                 )
             except (ClientError, BotoCoreError) as exc:
                 result.errors.append(AssetError(asset=product.ref, message=str(exc)))
@@ -271,6 +283,7 @@ class DataZoneExport(MetadataExport):  # REQ-2118
         assets: dict[str, str],
         products: dict[str, str],
         result: PublishResult,
+        environment: "EnvironmentStage | None",
     ) -> int:
         """Upsert and publish each member's asset, then the product over them; the number of
         assets it has."""
@@ -282,7 +295,7 @@ class DataZoneExport(MetadataExport):  # REQ-2118
                     "formName": TABLE_FORM,
                     "typeIdentifier": TABLE_FORM,
                     "typeRevision": types[TABLE_FORM],
-                    "content": json.dumps(table_form(table)),
+                    "content": json.dumps(table_form(table, environment)),
                 }
             ]
             name = table.aliases[0] if table.aliases else table.name

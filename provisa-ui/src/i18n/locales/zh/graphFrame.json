@@ -19,7 +19,7 @@
     "run": "运行",
     "removeFromFavorites": "从收藏中移除",
     "addToFavorites": "添加到收藏",
-    "autoImputeOn": "关系自动推断已开启——点击禁用",
+    "autoImputeOn": "自动推断关系已开启。点击以关闭。",
     "autoImputeOff": "自动推断可见节点之间的关系",
     "groupTooltip": "按属性对节点分组（双击外壳可折叠；双击折叠节点可展开）",
     "groupPlaceholder": "⬡ 分组",
@@ -50,7 +50,7 @@
     "sparqlDropSubquery": "不能将标签拖放到含子 SELECT 的查询上。未添加任何内容。",
     "sparqlDropNoClass": "此结果没有可连接的类：请先为变量指定类，再重新拖放。未添加任何内容。",
     "sparqlDropNode": "该节点不是此查询的变量，因此没有可连接的对象。未添加任何内容。",
-    "sparqlDropNoPath": "{{name}} 与 {{classes}} 没有关系。未添加任何内容。",
+    "sparqlDropNoPath": "在所选域内，{{name}} 与 {{classes}} 没有关系。未添加任何内容。",
     "sparqlDropTooFar": "{{name}} 距 {{classes}} 有 {{hops}} 个关系，超过拖放遍历的 {{most}} 个：没有短路径。未添加任何内容。",
     "sparqlDropNoEnd": "{{name}} 的两端都不在此结果中。未添加任何内容。",
     "sparqlDropParameterized": "路径无法经过 {{name}}：读取它需要参数。未添加任何内容。",
@@ -58,6 +58,9 @@
     "sparqlDropNoProperty": "此结果中没有类具有 {{name}}。未添加任何内容。",
     "sparqlDropLeftOut": "已添加 {{total}} 条等长路径中的 {{shown}} 条；其余已省略。",
     "sparqlDropCut": "结果已达到 LIMIT {{limit}}：之后的行已省略。",
-    "cypherPathNoKey": "{{from}} 与 {{to}} 之间的路径需要每个节点的键，而其中一个没有。"
+    "cypherPathNoKey": "{{from}} 与 {{to}} 之间的路径需要每个节点的键，而其中一个没有。",
+    "cypherDropNoLabel": "此结果的节点没有标签，其查询中也没有可为其提供标签的关系：请先为节点指定标签，再重新拖放。未添加任何内容。",
+    "cypherDropNoPair": "此结果的查询中没有关系连接所选域内的标签，因此无法为其节点指定标签。未添加任何内容。",
+    "cypherDropLabelled": "已根据架构为此结果中没有标签的节点指定标签，每个标签对一个 MATCH。"
   }
 }

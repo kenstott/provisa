@@ -33,6 +33,8 @@ import { useAuth } from "../context/AuthContext";
 import { Tip } from "../components/Tip";
 import { getStored, getStoredJson, setStored } from "../lib/browserStorage";
 import { explainSql, type ExplainResponse } from "../api/admin";
+import { useScreenInputs } from "../mcp/screenState";
+import { useViewDomains } from "../lib/viewDomains";
 
 /** A copy-to-clipboard button that fades in on bubble hover. */
 function CopyButton({ text }: { text: string }) {
@@ -207,6 +209,24 @@ function toolSql(tool: ToolEvent): string | null {
   return typeof input?.sql === "string" ? input.sql : null;
 }
 
+/** What read_screen reports of the conversation: its last SCREEN_MESSAGES messages, each text cut at
+ * SCREEN_TEXT_CHARS characters (and saying so). read_screen sends at most 4000 characters of the
+ * whole screen, so the conversation is published after the tool calls: a run_sql call's statement,
+ * in full, is what a long conversation is cut before. */
+export const SCREEN_MESSAGES = 4;
+export const SCREEN_TEXT_CHARS = 500;
+
+function cutText(text: string): { text: string; cut: boolean } {
+  return text.length > SCREEN_TEXT_CHARS
+    ? { text: text.slice(0, SCREEN_TEXT_CHARS), cut: true }
+    : { text, cut: false };
+}
+
+function toolStatus(tool: ToolEvent): "running" | "done" | "error" {
+  if (tool.running) return "running";
+  return tool.error ? "error" : "done";
+}
+
 // REQ-2172: what a run_sql call of the agent ran -- the statement it sent, and the statement the
 // one pipeline ran for it under the explorer's role, row rules and masks applied (the SQL
 // explorer's explain, /data/sql/explain). The developer's view; the agent itself is never told.
@@ -260,6 +280,7 @@ export function McpExplorePage() {
   const { actingRoles } = useAuth();
   // REQ-1620: the ACTIVE roles — one, or under "Role: All" the set served as their meta-role.
   const roleId = actingRoles ?? "";
+  const viewDomains = useViewDomains();
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [tools, setTools] = useState<ToolEvent[]>([]);
   const [busy, setBusy] = useState(false);
@@ -364,6 +385,8 @@ export function McpExplorePage() {
         headers: { "Content-Type": "application/json", "x-provisa-role": roleId },
         body: JSON.stringify({
           messages: history.map((m) => ({ role: m.role, content: m.text })),
+          // REQ-2253: only within the navbar's selected domains; none selected sends none.
+          domains: viewDomains ? [...viewDomains] : undefined,
         }),
       });
       if (!resp.ok || !resp.body) throw new Error(`chat failed: ${resp.status}`);
@@ -417,6 +440,16 @@ export function McpExplorePage() {
       setAnswered(false);
       void send(payload.mcpQuestion).then(() => setAnswered(true));
     }
+  });
+  // What Polly's read_screen reports of this page: it is a separate chat from hers, so the
+  // conversation, the last answer's tool calls and the draft are published from the page's state.
+  useScreenInputs("/explore", {
+    status: busy ? "running" : error ? "failed" : messages.length > 0 ? "answered" : "idle",
+    error,
+    tools: tools.map((tl) => ({ name: tl.name, status: toolStatus(tl), sql: toolSql(tl) })),
+    draft,
+    messageCount: messages.length,
+    messages: messages.slice(-SCREEN_MESSAGES).map((m) => ({ role: m.role, ...cutText(m.text) })),
   });
   // The badge a tour's explain step opens: the turn's last run_sql call.
   const lastSqlTool = tools.reduce((last, tl, i) => (toolSql(tl) !== null ? i : last), -1);

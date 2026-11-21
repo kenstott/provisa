@@ -27,7 +27,7 @@
     "datasetLabel": "Dataset",
     "datasetHelp": "Die Tabelle, die der Checker beobachtet, als „<Datenquelle>/<Schema>/<Tabelle>“. Sie wird gegen den gesteuerten Katalog aufgelöst, genau wie beim Scan.",
     "datasetTableLabel": "Tabelle",
-    "argsHelp": "Jede Zeile ist eine Prüfung. Bearbeiten Sie ihre Argumente direkt — der Vertragstext des Checkers wird aus diesen Zeilen serialisiert.",
+    "argsHelp": "Jede Zeile ist eine Prüfung. Bearbeiten Sie die Argumente direkt; der Vertragstext des Checkers wird aus diesen Zeilen serialisiert.",
     "invalidRow": "Die Argumente dieser Zeile ließen sich nicht parsen; der vorherige Wert wurde beibehalten."
   }
 }

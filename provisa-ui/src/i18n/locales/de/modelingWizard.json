@@ -210,7 +210,7 @@
       "description": "Beschreibungsentwurf",
       "notCreatedTitle": "Festgehalten, nicht erstellt",
       "ruleNotCreated": "Business-Vault-Regel „{{rule}}“: in der Beschreibung ihrer Tabelle festgehalten; bauen Sie sie als Sicht über diesen Tabellen.",
-      "draftNote": "Jede Beschreibung ist ein erster Entwurf, den ein Steward unter Registrierte Tabellen überarbeitet.",
+      "draftNote": "Jede Beschreibung ist ein erster Entwurf, den ein Steward auf der Seite „Tabellen“ überarbeitet.",
       "create": "Erstellen",
       "nameRequired": "Geben Sie jeder Tabelle einen Namen.",
       "nameTaken": "Zwei Tabellen haben denselben Namen. Geben Sie jeder einen eigenen."
@@ -219,8 +219,8 @@
       "created_one": "{{count}} Tabelle erstellt",
       "created_other": "{{count}} Tabellen erstellt",
       "stopped": "Bei {{name}} angehalten",
-      "draftNote": "Ihre Beschreibungen sind erste Entwürfe: Überarbeiten Sie sie unter Registrierte Tabellen.",
-      "oneWay": "Der Assistent erstellt nur. Ändern Sie diese Tabellen unter Registrierte Tabellen oder im Entität/Fakt-Formular; der Assistent erzeugt sie nicht neu.",
+      "draftNote": "Ihre Beschreibungen sind erste Entwürfe: Überarbeiten Sie sie auf der Seite „Tabellen“.",
+      "oneWay": "Der Assistent erstellt nur. Ändern Sie diese Tabellen auf der Seite „Tabellen“ oder im Entität/Fakt-Formular; der Assistent erzeugt sie nicht neu.",
       "relatesTo": "verbunden mit {{tables}}",
       "status": {
         "created": "Erstellt",

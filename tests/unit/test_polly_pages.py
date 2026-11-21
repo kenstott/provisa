@@ -31,9 +31,9 @@ OUTSIDE_THE_ROUTES = {"/demos/:name", "/login", "/register"}
 
 def _app_routes() -> set[str]:
     routes = set(re.findall(r'path="(/[^"]*)"', APP))
-    routes |= {
-        path for path, _cap in re.findall(r'\[\s*"(/[^"]*)"\s*,\s*"([a-z_]+)"\s*,?\s*\]', APP)
-    }
+    # The Admin table's `[path, gate]` rows: the gate is a capability or EVERY_MEMBER (a page that
+    # asks no right). A route is a route whatever its gate.
+    routes |= set(re.findall(r'\[\s*"(/[^"]*)"\s*,\s*(?:"[a-z_]+"|EVERY_MEMBER)\s*,?\s*\]', APP))
     for mapped in re.findall(r'\{\[("/[^\]]*)\]\.map', APP):
         routes |= set(re.findall(r'"(/[^"]*)"', mapped))
     return routes
@@ -47,7 +47,7 @@ def _published(name: str) -> set[str]:
 
 def test_the_routes_are_read_from_the_app():
     routes = _app_routes()
-    assert {"/tables", "/python", "/notebook", "/admin/ontology", "/sparql"} <= routes
+    assert {"/tables", "/python", "/notebook", "/context/ontology", "/sparql"} <= routes
     assert len(routes) > 50
 
 
@@ -127,7 +127,7 @@ def _reads(route: str) -> set[str]:
     [
         ("/tables", {"modeling", "wizardStep", "layout", "layoutUnsaved", "collapsed"}),
         ("/relationships", {"layout", "layoutUnsaved", "collapsed"}),
-        ("/admin/ontology", {"findTerms"}),
+        ("/context/ontology", {"findTerms"}),
     ],
 )
 def test_the_new_screens_inputs_are_named(route, keys):
@@ -292,3 +292,24 @@ def test_the_screen_state_publishes_the_tags_shape_she_is_told_of():
     assert "useScreenTags(" in (UI / "components/TagControl.tsx").read_text()
     tool = next(t for t in chat._CLIENT_TOOLS if t["name"] == "read_screen")
     assert "`tags`" in tool["description"]
+
+
+def test_she_can_read_the_mcp_explorer():
+    """The MCP explorer was described as her own chat, and published nothing to read_screen."""
+    explore = polly_pages.PAGES["/explore"]
+    assert "MCP explorer" in explore.what
+    assert "separate chat" in explore.what
+    assert "same chat" not in explore.what
+    assert "state.mcpQuestion" in explore.sets
+    assert "/sql with it as state.sql" in explore.what
+    assert "/python" in explore.what and "state.code" in explore.what
+    assert {"status", "error", "draft", "tools", "messageCount", "messages"} <= _reads("/explore")
+    assert "/explore" in _published("INPUT_ROUTES")
+    assert "this same chat" not in chat._SYSTEM
+    assert "this same chat" not in json.dumps(chat._CLIENT_TOOLS)
+
+
+def test_the_mcp_explorer_publishes_what_the_table_names():
+    page = (ROOT / "provisa-ui/src/pages/McpExplorePage.tsx").read_text()
+    assert 'useScreenInputs("/explore"' in page
+    assert "mcpQuestion?: string" in page

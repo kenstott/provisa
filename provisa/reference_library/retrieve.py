@@ -353,7 +353,7 @@ async def org_embedder(state: Any) -> Embedder:
     it is given redacted as everything Provisa sends out is (provisa.security.redaction)."""
     from provisa.api.mcp.tools import resolve_embedding_model
     from provisa.core.request_context import current_org
-    from provisa.security.redaction import redact
+    from provisa.security.redaction import client_redact
     from provisa.vector.providers import get_provider
 
     model = await resolve_embedding_model(state, purpose="the reference library")
@@ -361,7 +361,7 @@ async def org_embedder(state: Any) -> Embedder:
     org_id = current_org.get()
 
     async def embed(texts: list[str]) -> list[list[float]]:
-        return await provider.embed([redact(t, org_id) for t in texts], model)
+        return await provider.embed([client_redact(t, org_id) for t in texts], model)
 
     return Embedder(model=model.id, embed=embed)
 
@@ -378,11 +378,14 @@ async def search_for_role(state: Any, role: str, question: str, k: int = 5) -> l
     """:func:`retrieve_with_neighbours` for ``role`` in the bound org, as an assistant's tool
     answers: the ``k`` passages nearest the question, and up to as many again of the glossary
     walk's candidates and neighbours."""
+    from provisa.security.selected_domains import narrowed
+
     embedder = await org_embedder(state)
     pool = state.model_db
     assert pool is not None
     async with pool.acquire() as conn:
+        # REQ-2253: an AI-assisted call draws only on the selected domains' documents.
         found = await retrieve_with_neighbours(
-            conn, question, role_domains(state, role), embedder, k=k
+            conn, question, narrowed(role_domains(state, role)), embedder, k=k
         )
     return [c.as_dict() for c in found]

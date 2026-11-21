@@ -50,9 +50,11 @@ from typing import TYPE_CHECKING, Any
 
 import httpx
 
+from provisa.core.http_failure import describe_http_failure
 from provisa.api.metadata_export.atlas import PURVIEW_SCOPE, AtlasExport
 from provisa.api.metadata_export.provider import AssetError, AssetRefStub, PublishResult
 from provisa.api.metadata_export.registry import register_provider
+from provisa.security import sandbox_egress  # REQ-2006: held to public destinations
 
 if TYPE_CHECKING:
     from provisa.api.metadata_export.model import (
@@ -227,7 +229,9 @@ class PurviewExport(AtlasExport):  # REQ-2118
         if not snapshot.data_products and not snapshot.glossary_terms:
             return result
         tables = {t.ref.fqn(): t for t in snapshot.tables}
-        async with httpx.AsyncClient(timeout=self._config.timeout_seconds) as client:
+        async with httpx.AsyncClient(
+            timeout=self._config.timeout_seconds, event_hooks=sandbox_egress.endpoint_event_hooks()
+        ) as client:
             token = await self._entra_token(client, PURVIEW_SCOPE)
             catalog = {"Authorization": f"Bearer {token}"}
             domains = await self._domains(client, catalog)
@@ -249,7 +253,8 @@ class PurviewExport(AtlasExport):  # REQ-2118
             except httpx.HTTPError as exc:
                 result.errors.append(
                     AssetError(
-                        asset=AssetRefStub("glossary"), message=f"Unified Catalog glossary: {exc}"
+                        asset=AssetRefStub("glossary"),
+                        message=f"Unified Catalog glossary: {describe_http_failure(exc)}",
                     )
                 )
             if not snapshot.data_products:
@@ -269,7 +274,9 @@ class PurviewExport(AtlasExport):  # REQ-2118
                         )
                     )
                 except httpx.HTTPError as exc:
-                    result.errors.append(AssetError(asset=product.ref, message=str(exc)))
+                    result.errors.append(
+                        AssetError(asset=product.ref, message=describe_http_failure(exc))
+                    )
         return result
 
     async def _paged(self, client: httpx.AsyncClient, headers: dict, url: str, **params) -> list:

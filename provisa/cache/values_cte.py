@@ -35,6 +35,9 @@ class HotRows(Protocol):
     @property
     def rows(self) -> list[dict]: ...
 
+    @property
+    def column_types(self) -> Mapping[str, str]: ...
+
 
 @dataclass(frozen=True)
 class InlineRows:
@@ -60,18 +63,40 @@ def _typed_null(ir_type: str) -> Any:  # noqa: ANN401 — a sqlglot expression
 
 
 def _cte_literal(value: Any, ir_type: str | None = None) -> Any:  # noqa: ANN401 — any value a hot row holds
-    """A hot row's value as a PostgreSQL literal expression. A float is typed DOUBLE PRECISION: a
-    bare ``2.0`` is a numeric literal, which the engine reads as a DECIMAL, and a DECIMAL is
-    written as the string of its digits (REQ-1867) -- a float column would answer as text. A NULL
-    of a column whose IR type is given is cast to it (:attr:`InlineRows.column_types`)."""
+    """A hot row's value as a PostgreSQL literal expression. With the column's IR type given
+    (:attr:`InlineRows.column_types`) the value, NULL or not, is cast to it: an untyped string
+    literal is read by the engine as text, so a jsonb column would not take ``@>`` and a numeric
+    or date column would answer as text. An array is built from its elements, each cast to the
+    element type. A float of an undeclared type is typed DOUBLE PRECISION: a bare ``2.0`` is a
+    numeric literal, which the engine reads as a DECIMAL, and a DECIMAL is written as the string
+    of its digits (REQ-1867) -- a float column would answer as text."""
     import sqlglot.expressions as exp
 
-    if value is None and ir_type is not None:
-        return _typed_null(ir_type)
+    if ir_type is not None:
+        return _typed_literal(value, ir_type)
     literal = literal_expr(value)
     if isinstance(value, float):
         return exp.cast(literal, "DOUBLE PRECISION")
     return literal
+
+
+def _typed_literal(value: Any, ir_type: str) -> Any:  # noqa: ANN401 — a sqlglot expression
+    """``value`` cast to the IR type ``ir_type``, as a PostgreSQL expression."""
+    import sqlglot.expressions as exp
+
+    from provisa.core.ir_arrays import array_of
+    from provisa.core.ir_types import to_physical
+
+    if value is None:
+        return _typed_null(ir_type)
+    physical = to_physical(ir_type, "postgresql")
+    typed_array = array_of(ir_type)
+    if typed_array is not None and isinstance(value, list):
+        inner = typed_array.inner
+        inner_type = inner if isinstance(inner, str) else inner.name
+        elements = [_typed_literal(v, inner_type) for v in value]
+        return exp.cast(exp.Array(expressions=elements), physical)
+    return exp.cast(literal_expr(value), physical)
 
 
 def _values_cte(cte_name: str, entry: HotRows) -> Any:  # noqa: ANN401 — a sqlglot CTE
@@ -80,7 +105,7 @@ def _values_cte(cte_name: str, entry: HotRows) -> Any:  # noqa: ANN401 — a sql
     import sqlglot.expressions as exp
 
     columns = [exp.to_identifier(c, quoted=True) for c in entry.column_names]
-    types = entry.column_types if isinstance(entry, InlineRows) else {}
+    types = entry.column_types
     if entry.rows:
         values = exp.Values(
             expressions=[

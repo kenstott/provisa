@@ -19,6 +19,9 @@
     "linked": "La columna ahora significa {{term}}.",
     "keyColumn": "La columna conserva su término de clase: el significado de una columna clave es su término de clase.",
     "markedPii": "Está marcada como PII.",
-    "maskOffered": "Máscara sugerida: {{mask}}. Añádala en las máscaras de la columna."
+    "maskOffered": "Máscara sugerida: {{mask}}. Añádala en las máscaras de la columna.",
+    "tooFewTitle": "Muy pocos valores para clasificar",
+    "tooFewNote": "Estas columnas tenían muy pocos valores en la muestra de la ejecución para decir qué contienen. No es lo mismo que no coincidir con ningún tipo.",
+    "tooFew": "{{column}}: {{count}} valores en la muestra, muy pocos para clasificar."
   }
 }

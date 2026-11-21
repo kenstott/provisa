@@ -64,6 +64,9 @@ const offer = (id: number, name: string, tables: number[], over: Partial<Offer> 
     profiles: false,
     open: false,
     duration_days: null,
+    purpose: "",
+    usage: "",
+    limitations: "",
     version: 1,
     published_by: "owner",
     review: null,
@@ -84,6 +87,9 @@ const offer = (id: number, name: string, tables: number[], over: Partial<Offer> 
           dq_results: true,
           profiles: [],
           duration_days: null,
+          purpose: "",
+          usage: "",
+          limitations: "",
         },
       },
     })),
@@ -95,7 +101,7 @@ const offer = (id: number, name: string, tables: number[], over: Partial<Offer> 
 const OFFERS: Offer[] = [
   offer(1, "Everything", [ORDERS, CUSTOMERS]),
   offer(2, "Orders only", [ORDERS], { open: true }),
-  offer(3, "Customers, no results", [CUSTOMERS], { dq_results: false, review: "role gone" }),
+  offer(3, "Customers, no results", [CUSTOMERS], { dq_results: false, review: "role_gone" }),
 ];
 const bid = (id: number, status: Bid["status"]): Bid => ({
   id,
@@ -107,6 +113,9 @@ const bid = (id: number, status: Bid["status"]): Bid => ({
   terms: { role_id: "viewer" },
   requester: "ana",
   reason: "reporting",
+  consumer_kind: "person",
+  approver: "owner",
+  agreed_at: "2026-11-11T00:00:00Z",
   status,
   decided_by: null,
   decided_at: null,

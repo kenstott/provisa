@@ -25,7 +25,7 @@ expected rows (a multiset), as many as the limit allows (min(limit, matching)), 
 columns; a join's every (parent, child) pair joins. A governance knob is also shown applied: the
 rule's predicate in the governed SQL, the role the audit log records, the masked columns null.
 
-Each request's latency is written to results/bench_features/latency.json, as data: nothing is
+Each request's latency is written to results/bench_features_latency.json, as data: nothing is
 asserted of it.
 """
 
@@ -82,7 +82,8 @@ UNGATED = ("sparql",)
 TRANSPORTS = tuple(t for t in ol.TRANSPORTS if t not in UNGATED)
 JOIN_TRANSPORTS = tuple(t for t in cm.JOIN_TRANSPORTS if t in TRANSPORTS)
 SOURCES = tuple(lp.SOURCES)
-LATENCY_OUT = REPO / "results" / "bench_features" / "latency.json"
+# A file, not a folder: the lane report reads every folder under results/ as a lane (run 43634925767).
+LATENCY_OUT = REPO / "results" / "bench_features_latency.json"
 READER = "bench_feat_reader"  # the second contract role: a child of org_admin
 PER_CELL = 3  # requests per (knob, transport[, source]) cell
 # The roles the MCP server may act as over loopback (mcp.role, a pin): every role a request names --

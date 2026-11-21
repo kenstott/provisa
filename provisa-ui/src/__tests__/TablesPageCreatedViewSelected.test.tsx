@@ -66,6 +66,7 @@ function view(
     tableName,
     alias: null,
     description: null,
+    registeredAt: "2026-11-01T00:00:00+00:00",
     cacheTtl: 60,
     roleTtl: [],
     pagingKind: null,
@@ -73,7 +74,8 @@ function view(
     pagingCeilingRows: null,
     replicate: null,
     region: null,
-    draft: false,
+    withdrawn: false,
+    sourceWithdrawn: false,
     rowMaterialize: false,
     loadProtected: null,
     offPeakWindow: null,
@@ -110,6 +112,8 @@ function view(
     mvPersist: "replace",
     mvPrimaryKey: [],
     mvIncremental: false,
+    mvRebuildEvery: null,
+    incrementalOption: { available: true, code: null, reason: null },
     mvCalendar: null,
     mvGrain: null,
     mvAllowedLateness: 0,
@@ -167,7 +171,6 @@ const DOMAINS = {
 vi.mock("../hooks/useRegionQueries", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../hooks/useRegionQueries")>()),
   useRegionChoices: () => ({ regions: [], connected: null }),
-  useSetTableDraft: () => vi.fn(),
   useSetTableRegion: () => vi.fn(),
 }));
 vi.mock("../hooks/useAdminOpsQueries", async (importOriginal) => ({

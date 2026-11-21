@@ -148,6 +148,7 @@ async def _audit(org_id: str, actor: str | None, action: str, name: str) -> None
 
     await record_admin_action(
         await _org_model_db(org_id),
+        org_id=org_id,
         action=action,
         actor_id=actor or "anonymous",
         subject_id=name,

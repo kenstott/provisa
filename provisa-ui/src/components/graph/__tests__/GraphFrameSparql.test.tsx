@@ -64,6 +64,8 @@ function show(
       onClose={() => {}}
       onRerun={() => {}}
       schemaRels={[]}
+      parameterized={new Set()}
+      pathScope={{ nodeLabels: [], checkedDomains: new Set() }}
       colorOverrides={{}}
       sizeOverrides={{}}
       labelProperty={{}}
@@ -95,6 +97,8 @@ describe("a SPARQL frame", () => {
         onClose={() => {}}
         onRerun={() => {}}
         schemaRels={[]}
+        parameterized={new Set()}
+        pathScope={{ nodeLabels: [], checkedDomains: new Set() }}
         colorOverrides={{}}
         sizeOverrides={{}}
         labelProperty={{}}
@@ -217,6 +221,8 @@ describe("a SPARQL answer drawn", () => {
       onClose: () => {},
       onRerun: () => {},
       schemaRels: [],
+      parameterized: new Set<string>(),
+      pathScope: { nodeLabels: [], checkedDomains: new Set<string>() },
       colorOverrides: {},
       sizeOverrides: {},
       labelProperty: {},
@@ -236,6 +242,8 @@ describe("a SPARQL answer drawn", () => {
     onClose: () => {},
     onRerun: () => {},
     schemaRels: [],
+    parameterized: new Set<string>(),
+    pathScope: { nodeLabels: [], checkedDomains: new Set<string>() },
     colorOverrides: {},
     sizeOverrides: {},
     labelProperty: {},

@@ -45,6 +45,10 @@ def _tier(work, demos, data, *, seeding: bool):
         _ORG,
         engine="duckdb",
         config=str(config),
+        # Each tier its own control plane: the release's build and the new deployment share
+        # nothing but the demo's directory. A template another test recorded ready in the shared
+        # plane, under the same demo name, was served to them as theirs (release 510).
+        control_plane="own",
         auth={"provider": "basic", "jwt_secret": _JWT_SECRET, "assignments_source": "provisa"},
         env={
             "PROVISA_SANDBOX_TIER": "true",

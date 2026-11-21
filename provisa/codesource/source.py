@@ -156,19 +156,22 @@ def config_of(source_type: str, mapping: dict) -> CodeConfig:
 def checked_directory(path: str) -> Path:
     """A code directory on this server (REQ-2121): a directory under the operator's allowed
     directories (``sources.download_roots``, as a file source's mount path is, REQ-2113) once its
-    symlinks are followed; refused by name otherwise, and always on a server of many
-    organizations, whose disk is the platform's."""
+    symlinks are followed; refused by name otherwise, and for a held org outside its own folder
+    unless its demo declares it (REQ-1997, ``source_uploads.require_own_disk``)."""
     import os
 
-    from provisa.core.secrets_providers import many_organisations
     from provisa.core.source_downloads import download_roots
+    from provisa.core.source_uploads import LocalPathRefused, require_own_disk
 
-    if many_organisations():
+    try:
+        require_own_disk(path)
+    except LocalPathRefused as exc:
         raise BundleRefused(
             "directory_refused",
-            f"{path}: a server of many organizations runs no code from its own disk",
+            f"{path}: this organization runs no code from the server's own disk outside its "
+            "own folder",
             path=path,
-        )
+        ) from exc
     expanded = os.path.expanduser(path)
     if not os.path.isabs(expanded):
         raise BundleRefused(

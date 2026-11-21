@@ -42,7 +42,7 @@ const FORWARD = {
 };
 
 const RELS = { relationships: [FORWARD], loading: false, refetch: vi.fn() };
-const TABLES = { tables: [], loading: false };
+const TABLES = { tables: [], loading: false, refetch: () => Promise.resolve() };
 const DOMAINS = { domains: [] };
 const UPSERT = { upsertRelationship: vi.fn() };
 const DELETE = { deleteRelationship: vi.fn() };
@@ -51,6 +51,13 @@ const FILTER = { domainsEnabled: false, domains: [], checkedDomains: new Set<str
 const SETTINGS = vi.hoisted(() => ({ convention: "apollo_graphql" }));
 
 vi.mock("../../hooks/useAdminQueries", () => ({
+  // REQ-2249: no code resolver set is in service here.
+  useCodeResolvers: () => ({
+    codeResolvers: [],
+    loading: false,
+    saveCodeResolver: vi.fn(),
+    retireCodeResolver: vi.fn(),
+  }),
   useRelationships: () => RELS,
   useAllRelationships: () => RELS,
   useTables: () => TABLES,
@@ -63,7 +70,6 @@ vi.mock("../../context/AuthContext", () => ({ useAuth: () => AUTH }));
 vi.mock("../../context/DomainFilterContext", () => ({ useDomainFilter: () => FILTER }));
 vi.mock("../../api/admin", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../api/admin")>()),
-  fetchCandidates: vi.fn().mockResolvedValue([]),
   fetchRejectedCount: vi.fn().mockResolvedValue(0),
   fetchSettings: vi.fn(async () => ({
     naming: { convention: SETTINGS.convention, use_domains: false, default_domain: "" },

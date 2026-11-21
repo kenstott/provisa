@@ -84,6 +84,7 @@ def admin(monkeypatch):
     pool = _Pool()
     rebuild = AsyncMock()
     state = SimpleNamespace(
+        org_registry={},
         config=SimpleNamespace(sources=[SimpleNamespace(id="from-config")]),
         tables=[
             {"id": 7, "source_id": "from-config", "table_name": "orders"},

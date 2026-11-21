@@ -14,7 +14,8 @@ Mirrors the provider pattern already in the tree: an abstract base with a stable
 ``provider_name`` (``provisa/auth/models.py`` ``AuthProvider``) resolved by a factory that
 refuses an unknown name at construction (``provisa/core/mail.py`` ``email_sender``).
 
-Outbound only. The port declares ``publish`` and ``health`` and nothing that reads.
+Outbound only. Reading a catalog's glossary back (REQ-2247) is the separate inbound port
+``provisa.api.catalog_import.reader.CatalogReader``.
 """
 
 # Requirements: REQ-1068, REQ-1069

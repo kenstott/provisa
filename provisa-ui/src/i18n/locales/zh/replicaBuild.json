@@ -50,9 +50,9 @@
       "mailboxes_left_out": "因 Microsoft 或 Google 表示不存在或不可读取而被排除的邮箱：{{total}} 个。它们是：{{accounts}}",
       "mailboxes_at_quota": "因已达到存储配额、在释放空间之前 Microsoft 不会跟踪其更改而被排除的邮箱：{{total}} 个。它们是：{{accounts}}",
       "mailboxes_failed": "读取中途失败的邮箱：{{total}} 个。已读取的部分会保留，下次刷新时继续读取。它们是：{{accounts}}",
-      "place_not_kept": "此副本已完成，但未能保存其读取到达的位置，因此下一次变更检查将再次请求读取：{{reason}}",
-      "indexes_not_planned": "此副本已完整且可读取，但无法规划其索引，因此在重新构建之前将不使用索引读取：{{reason}}",
-      "column_not_landed": "列 {{column}}（{{subtype}}）不在此副本中：{{reader}} 无法将其作为 {{subtype}} 读取，因此已省略，读取该列的请求将被拒绝。",
+      "place_not_kept": "此副本已完成，但无法保存读取到达的位置，因此下一次变更检查会再次请求读取：{{reason}}",
+      "indexes_not_planned": "此副本已完成且可读，但无法规划其索引，因此在重新构建之前将不使用索引读取：{{reason}}",
+      "column_not_landed": "列 {{column}}（{{subtype}}）不在此副本中：{{reader}} 无法将其读取为 {{subtype}}，因此已省略，对它的读取会被拒绝。",
       "andMore": "{{ids}} 以及另外 {{more}} 封",
       "other": "上次构建的备注:{{code}}"
     },

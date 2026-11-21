@@ -381,6 +381,8 @@ export type RemoteSeed =
       baseUrl: string;
       cacheTtl: string;
       auth: RemoteAuth;
+      // REQ-2265: what an OpenAPI brand's setup was given (its base URL).
+      setup: Record<string, string>;
     }
   | {
       kind: "grpc";
@@ -450,6 +452,7 @@ export async function fetchRemoteSeed(s: Source): Promise<RemoteSeed> {
       baseUrl: String(reg.base_url),
       cacheTtl: ttl,
       auth: reg.auth_config as RemoteAuth,
+      setup: reg.setup as Record<string, string>,
     };
   }
   return {

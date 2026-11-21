@@ -128,7 +128,7 @@ def _state(cfg, registered, monkeypatch):
             for src in cfg.sources
         ]
 
-    monkeypatch.setattr("provisa.core.repositories.source.list_all", _source_rows)
+    monkeypatch.setattr("provisa.core.repositories.source.list_in_production", _source_rows)
 
     async def _export_graph(_conn):
         # REQ-2238: the term graph the reconcile grounds columns against; this model holds no terms.

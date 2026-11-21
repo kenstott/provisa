@@ -21,10 +21,11 @@ sudo apt-get update -qq
 sudo apt-get install -y -qq gocryptfs fuse3
 
 # REQ-2016: the vector lane's tests embed with a local sentence-transformers model, the vector
-# extra. It is installed in the lanes that select a requires_vector test alone, torch from PyTorch's
-# CPU-only wheel index first so the extra pulls no GPU build: no other lane pays for torch. The
-# warehouse lane is one: a demo test on a live warehouse that embeds locally (the audit demo's)
-# carries both markers, and only the warehouse lane selects it.
+# extra. Every lane's `uv sync --extra dev` already has it (dev carries provisa[vector], torch from
+# PyTorch's CPU-only index through [tool.uv.sources]); the lanes that select a requires_vector test
+# check it here, with the requirements the sonnets demo's demo.yaml names. The warehouse lane is
+# one: a demo test on a live warehouse that embeds locally (the audit demo's) carries both markers,
+# and only the warehouse lane selects it.
 case "${1:-}" in vector | warehouse)
   uv pip install --index-url https://download.pytorch.org/whl/cpu torch
   # The extra's own requirements, as the sonnets demo's demo.yaml names it.

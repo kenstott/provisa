@@ -25,7 +25,7 @@
 // of source-to-query-special-cases.spec.ts (FREE_ASKAMERICA_KEY in the root .env).
 
 import { test, expect } from "./coverage";
-import { deleteSourceAndItsTables } from "./delete-source";
+import { deleteSourceHoldingNoTable } from "./retire-source-tables";
 import {
   discoveredColumnCount,
   openRegisterForm,
@@ -44,15 +44,16 @@ const PICKER_FILLS_MS = 90_000;
 test.describe("AskAmerica: the Register Table pickers", () => {
   const apiKey = process.env.FREE_ASKAMERICA_KEY ?? "";
 
-  // The instance serves ONE AskAmerica source: a spec that fails before its own cleanup would leave
-  // its source behind and refuse every later one ("already exists"), so it is removed whatever the
-  // outcome.
+  // The instance serves ONE AskAmerica source (REQ-540): a spec that fails before its own cleanup
+  // would leave its source behind and refuse every later one ("already exists"), so it is removed
+  // whatever the outcome. It may be: this spec registers no table on it, and only a source that
+  // holds a table, retired or not, is kept (REQ-2248).
   let created: string | undefined;
   test.afterEach(async ({ page }) => {
     if (created === undefined) return;
     const id = created;
     created = undefined;
-    await deleteSourceAndItsTables(async (query, variables) => {
+    await deleteSourceHoldingNoTable(async (query, variables) => {
       const res = await page.request.post("/admin/graphql", { data: { query, variables } });
       return res.json();
     }, id);
@@ -103,7 +104,7 @@ test.describe("AskAmerica: the Register Table pickers", () => {
     await field.click();
     await expect(tableOption(page, "nws_stations")).toBeVisible({ timeout: PICKER_FILLS_MS });
     const filledAfterMs = Date.now() - saved;
-    const weatherTables = await page.getByRole("option").count();
+    const weatherTables = await page.locator("[data-combobox-option]").count();
     expect(weatherTables).toBeGreaterThan(1);
     console.log(
       `[askamerica picker] ${weatherTables} weather tables listed ${filledAfterMs} ms after save`,
@@ -116,9 +117,10 @@ test.describe("AskAmerica: the Register Table pickers", () => {
 
     // 5. A linker schema lists its own tables: the picker follows the schema, not the first answer.
     await schemaSelect.selectOption("geo");
-    await expect(tableSelect.locator("option[value='counties']")).toHaveCount(1, {
-      timeout: PICKER_FILLS_MS,
-    });
-    await expect(tableSelect.locator("option[value='nws_stations']")).toHaveCount(0);
+    await expect(field).toBeEnabled({ timeout: PICKER_FILLS_MS });
+    await field.click();
+    await expect(tableOption(page, "counties")).toBeVisible({ timeout: PICKER_FILLS_MS });
+    await expect(tableOption(page, "nws_stations")).toHaveCount(0);
+    await page.keyboard.press("Escape");
   });
 });

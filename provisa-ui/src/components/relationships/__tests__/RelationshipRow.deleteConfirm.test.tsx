@@ -42,9 +42,11 @@ function row(onDelete: () => void) {
     saving: null,
     problem: "",
     tables: [],
+    refetchTables: () => Promise.resolve(),
     functions: [],
     tableDomainById: {},
     domainsEnabled: true,
+    actingRole: null,
   } as unknown as Props;
   return <RelationshipDetail {...props} />;
 }

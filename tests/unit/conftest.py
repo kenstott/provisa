@@ -82,6 +82,103 @@ def control_plane(embedded_postgres, control_plane_template):
     plane.close()
 
 
+class StoodInPass:
+    """What the stood-in build's after-answer pass does (``model_builds.after``): each phase is
+    recorded in ``ran`` with the build stamp of the build it ran for, after the test's own step
+    for that phase (``before[phase]``, an async callable: a gate to hold it, a failure to raise)."""
+
+    def __init__(self) -> None:
+        self.ran: list[tuple[str, int]] = []
+        self.before: dict = {}
+
+    def settle(self, timeout: float = 30.0) -> None:
+        """Wait until no runtime's pass is running or pending."""
+        from provisa.api import build_after_answer
+
+        while True:
+            with build_after_answer._guard:
+                workers = list(build_after_answer._draining.values())
+            if not workers:
+                return
+            for worker in workers:
+                worker.result(timeout)
+
+
+@pytest.fixture
+def model_builds(monkeypatch, rebuild_recorder):
+    """Every call for a schema build made during the test (``rebuild_recorder``), with the model
+    build itself stood in for: it reads the stamps a build is loaded at, enters every phase in
+    order, installs the stamps on the runtime and publishes its after-answer pass, as
+    ``app._rebuild_schemas_impl`` does, and compiles nothing. The entry (``app._rebuild_schemas``:
+    its turn, its cause, its record, the watcher's stamp check, the start of the pass) and the
+    pass's runner (``build_after_answer``) are the real ones, so a test asserts how many builds
+    a write caused, by whom and with which phases, and what ran after the answer -- by counting,
+    never by seconds (REQ-1914). ``.after`` is the stood-in pass (:class:`StoodInPass`)."""
+    import asyncio
+
+    import provisa.api.app as app
+    from provisa.api import build_after_answer, rebuild_trace
+    from provisa.api.org_runtime import runtime_key
+    from provisa.core import config_stamp
+    from provisa.core.connection_loop import is_connection_loop
+    from provisa.core.request_context import current_env, require_current_org
+
+    stood_in = StoodInPass()
+    monkeypatch.setattr(build_after_answer, "_latest", {})
+    monkeypatch.setattr(build_after_answer, "_draining", {})
+
+    def _step(phase: str, built_at: int):
+        async def run() -> None:
+            if phase in stood_in.before:
+                await stood_in.before[phase]()
+            stood_in.ran.append((phase, built_at))
+
+        return run
+
+    async def _build(raw_config=None, *, announce=True, converge=True):
+        del raw_config, announce, converge
+        if app.state.model_db is None:
+            return
+        build = rebuild_trace.this_build()
+        runtime = app.state._active_runtime()
+        stamps: dict[str, int] = {}
+        for phase in rebuild_trace.PHASES:
+            build.phase(phase)
+            if phase == rebuild_trace.STAMP_READ:
+                stamps = await config_stamp.read(app.state.model_db)
+                build.stamps(
+                    loaded={
+                        config_stamp.MODEL: runtime.model_stamp,
+                        config_stamp.BUILD: runtime.build_stamp,
+                    },
+                    read={k: stamps[k] for k in (config_stamp.MODEL, config_stamp.BUILD)},
+                )
+        runtime.model_stamp = stamps[config_stamp.MODEL]
+        runtime.build_stamp = stamps[config_stamp.BUILD]
+        after = build_after_answer.Pass(
+            record=rebuild_trace.AfterAnswer(
+                runtime=runtime_key(require_current_org(), current_env.get()),
+                org_id=build.org_id,
+                env=build.env,
+                cause=build.cause,
+                stamps=build.read_stamps,
+            ),
+            steps={
+                phase: _step(phase, stamps[config_stamp.BUILD])
+                for phase in rebuild_trace.AFTER_PHASES
+            },
+        )
+        build.after = after.record
+        build_after_answer.publish(after)
+        if not is_connection_loop(asyncio.get_running_loop()):
+            await build_after_answer.run(after, before=rebuild_trace.WARM_UP)
+
+    monkeypatch.setattr(app, "_rebuild_schemas_impl", _build)
+    rebuild_recorder.after = stood_in
+    yield rebuild_recorder
+    stood_in.settle()
+
+
 # The org a fresh AppState serves (AppState._org_id) -- used when the app module is not loaded.
 _DEPLOYMENT_ORG = "default"
 
@@ -169,6 +266,44 @@ def _deployment_org_bound(request: pytest.FixtureRequest, monkeypatch):
         monkeypatch.undo()
     finally:
         reset_current_org(token)
+
+
+@pytest.fixture(autouse=True)
+def _a_deployment_of_one_organization_unless_said():
+    """The API layer says at import whether the deployment holds many organizations
+    (provisa.api.app), and what a held organization's member may save asks it (REQ-1557:
+    provisa.core.env_reference_guard). A unit test that never imports the API layer is a
+    single-organization install, said here; a test of a server of many organizations says so
+    itself. What the API layer says, when a test imports it meanwhile, is left as it said it."""
+    from provisa.core import secrets_providers
+
+    if secrets_providers._many_organisations is not None:
+        yield
+        return
+
+    def _one_organization() -> bool:
+        return False
+
+    secrets_providers._many_organisations = _one_organization
+    yield
+    if secrets_providers._many_organisations is _one_organization:
+        secrets_providers._many_organisations = None
+
+
+@pytest.fixture(autouse=True)
+def _redactor_forgets_what_a_test_resolved():
+    """A secret, or an environment value given a credential field (REQ-1557), is matched by
+    central redaction from its first use, for the life of the process. A test's are forgotten
+    when it ends, so the value one test resolved is not redacted from another's text."""
+    from provisa.security import redaction
+
+    before = {org: dict(values) for org, values in redaction._noted.items()}
+    yield
+    if redaction._noted != before:
+        with redaction._lock:
+            redaction._noted.clear()
+            redaction._noted.update(before)
+            redaction._rebuild()
 
 
 @pytest.fixture(autouse=True)

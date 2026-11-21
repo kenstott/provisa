@@ -13,23 +13,36 @@
 ``POST /api/v1/lineage`` is the path every OpenLineage HTTP transport posts to by default, so a
 tool's configuration names only Provisa's address and a token. A job's latest run is what is kept:
 events of one run add to each other, since a tool may send its datasets on START, on COMPLETE or on
-both, and a newer run with datasets replaces the older run's.
+both, and a newer run with datasets replaces the older run's. Each dataset's schema,
+documentation and ownership facets are kept apart from its job, the latest of each (REQ-2263). A
+malformed one of those facets is left out, logged and named in the response; the rest of the event
+is kept.
 """
 
-# Requirements: REQ-2229
+# Requirements: REQ-2229, REQ-2263
 
 from __future__ import annotations
 
 import json
+import logging
+from dataclasses import asdict
 
 from fastapi import APIRouter, Request
 from sqlalchemy import and_, delete, select
 
 from provisa.api.admin.capabilities import require_capability_request
 from provisa.api.errors import ApiError
-from provisa.lineage.reported import InvalidRunEvent, RunEvent, dataset_rows, parse_run_event
+from provisa.core.repositories.openlineage_facets import write_dataset_facets
+from provisa.lineage.reported import (
+    InvalidRunEvent,
+    RunEvent,
+    dataset_rows,
+    facet_rows,
+    parse_run_event,
+)
 
 router = APIRouter()
+log = logging.getLogger(__name__)
 
 _DATASET_KEY = [
     "job_namespace",
@@ -43,9 +56,13 @@ _DATASET_KEY = [
 
 async def store_run_event(conn, event: RunEvent) -> None:
     """Keep what ``event`` says of its job's latest run. An event naming no dataset says nothing
-    to keep; one from a run older than the job's latest is out of date."""
+    to keep; one from a run older than the job's latest is out of date. The facets it carries
+    are kept whichever run of its job it is from: they describe the dataset, not the job."""
     from provisa.core.schema_org import openlineage_run_datasets as table
 
+    await write_dataset_facets(
+        conn, facet_rows(event), run_id=event.run_id, event_time=event.event_time
+    )
     rows = dataset_rows(event)
     if not rows:
         return
@@ -91,5 +108,17 @@ async def receive_run_event(request: Request) -> dict:
         event = parse_run_event(json.loads(await request.body()))
     except (InvalidRunEvent, ValueError) as exc:
         raise ApiError(422, "lineage.invalid_run_event", str(exc)) from exc
+    for skip in event.skipped_facets:
+        log.warning(
+            "OpenLineage run %s: skipped the malformed %s facet of %s/%s: %s",
+            event.run_id,
+            skip.facet,
+            skip.dataset_namespace,
+            skip.dataset_name,
+            skip.reason,
+        )
     await _store(state, event)
-    return {"status": "accepted"}
+    return {
+        "status": "accepted",
+        "skipped_facets": [asdict(skip) for skip in event.skipped_facets],
+    }

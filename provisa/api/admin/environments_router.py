@@ -68,6 +68,7 @@ from provisa.core.env_store import (
     list_envs,
     set_expiry,
     set_protected,
+    set_stage,
 )
 from provisa.core.environments import PROD, EnvironmentNameError, EnvironmentNameTaken
 from provisa.core.schema_admin import user_org_memberships, user_profiles
@@ -128,13 +129,6 @@ async def _guard(request: Request, org_id: str) -> str | None:
     the org being acted in — not user_management, and never cross_org: a platform admin does not
     act on an org's model branches. Returns the acting user for the audit entry."""
     user_id = await _member_rights(request, org_id, MANAGE_CAPABILITY)
-    if user_id is not None and getattr(request.state, "active_org_id", None) != org_id:
-        raise ApiError(
-            403,
-            "environments.capability_required_in_org",
-            f"{MANAGE_CAPABILITY} in {org_id} required",
-            org=org_id,
-        )
     await _org_ready_on_this_node(org_id)
     return user_id
 
@@ -195,6 +189,10 @@ async def _member_rights(request: Request, org_id: str, *rights: str) -> str | N
     attacker and not against an accident: an environment is a schema and a place in the org's plan
     ceiling, and an analyst has no reason to make one. org_admin and developer carry the right in
     the seed; analyst and modeler do not.
+
+    REQ-1327: the right is held as a member of the org being acted in. A request's rights are
+    those of the org it is bound to, so a request bound to another org than the path's is
+    refused: a right held elsewhere says nothing about this org.
     """
     from provisa.api.admin.capabilities import _resolved_capabilities
     from provisa.api.app import state as _app_state
@@ -212,21 +210,26 @@ async def _member_rights(request: Request, org_id: str, *rights: str) -> str | N
             "This requires one of the " + ", ".join(repr(r) for r in rights) + " capabilities.",
             org=org_id,
         )
-    async with _admin_pool().acquire() as conn:
-        result = await conn.execute_core(
-            select(user_org_memberships.c.org_id).where(
-                user_org_memberships.c.user_id == user_id,
-                user_org_memberships.c.org_id == org_id,
-            )
+    if not await _is_member(user_id, org_id):
+        raise ApiError(
+            403,
+            "environments.membership_required",
+            f"Acting on the environments of {org_id!r} requires membership of it.",
+            org=org_id,
         )
-        if result.fetchone() is None:
-            raise ApiError(
-                403,
-                "environments.membership_required",
-                f"Acting on the environments of {org_id!r} requires membership of it.",
-                org=org_id,
-            )
+    if not _bound_to(request, org_id):
+        raise ApiError(
+            403,
+            "environments.capability_required_in_org",
+            " or ".join(rights) + f" in {org_id} required",
+            org=org_id,
+        )
     return user_id
+
+
+def _bound_to(request: Request, org_id: str) -> bool:
+    """Whether the request is bound to ``org_id``, the org its rights were resolved in."""
+    return getattr(request.state, "active_org_id", None) == org_id
 
 
 async def _pinned_env(request: Request, org_id: str) -> str | None:
@@ -291,9 +294,51 @@ async def _guard_within(request: Request, org_id: str, name: str) -> str | None:
     await _confined(request, org_id, name)
     user_id = _caller_user_id(request)
     if user_id is not None and await owns_environment(_admin_pool(), org_id, name, user_id):
+        await _owner_standing(request, org_id, name, user_id)
         await _org_ready_on_this_node(org_id)
         return user_id
     return await _guard(request, org_id)
+
+
+async def _is_member(user_id: str, org_id: str) -> bool:
+    """Whether ``user_id`` holds a membership row in ``org_id`` now."""
+    async with _admin_pool().acquire() as conn:
+        result = await conn.execute_core(
+            select(user_org_memberships.c.org_id).where(
+                user_org_memberships.c.user_id == user_id,
+                user_org_memberships.c.org_id == org_id,
+            )
+        )
+        return result.fetchone() is not None
+
+
+async def _owner_standing(request: Request, org_id: str, name: str, user_id: str) -> None:
+    """The owner path's conditions beyond ``created_by`` (REQ-1528, REQ-1327).
+
+    Removing a member (``remove_from_org``) deletes their membership, role assignments and tokens
+    and leaves ``environments.created_by`` as it was: the environment is the org's, and its
+    history names who made it. So the creator is still the owner of record after leaving, and
+    ownership alone would keep a former member acting in it. The owner's authority is therefore
+    held only while they are a member of the environment's org, and only on a request bound to
+    that org, as every other right on these paths is.
+    """
+    if not await _is_member(user_id, org_id):
+        raise ApiError(
+            403,
+            "environments.owner_not_member",
+            f"{user_id!r} created environment {name!r} but is not a member of {org_id!r}; "
+            "acting in it as its owner requires membership.",
+            org=org_id,
+            env=name,
+            user=user_id,
+        )
+    if not _bound_to(request, org_id):
+        raise ApiError(
+            403,
+            "environments.capability_required_in_org",
+            f"owner of {name} in {org_id} required",
+            org=org_id,
+        )
 
 
 def _caller_capabilities(request: Request) -> set[str]:
@@ -311,13 +356,12 @@ async def _guard_owned(request: Request, org_id: str, name: str) -> str | None: 
     another's. The pin is asked first, as in :func:`_guard_within`."""
     await _confined(request, org_id, name)
     user_id = _caller_user_id(request)
-    if (
-        user_id is not None
-        and OWNED_CAPABILITY in _caller_capabilities(request)
-        and await owns_environment(_admin_pool(), org_id, name, user_id)
-    ):
-        await _org_ready_on_this_node(org_id)
-        return user_id
+    if user_id is not None and await owns_environment(_admin_pool(), org_id, name, user_id):
+        # REQ-1327: a current member, on a request bound to the path's org, where the right is read.
+        await _owner_standing(request, org_id, name, user_id)
+        if OWNED_CAPABILITY in _caller_capabilities(request):
+            await _org_ready_on_this_node(org_id)
+            return user_id
     return await _guard(request, org_id)
 
 
@@ -348,12 +392,22 @@ async def _known(org_id: str, name: str) -> dict:
 
 
 async def _audit(org_id: str, actor: str | None, action: str, name: str, detail: dict) -> None:
-    """Record the act in the ORG's own trail (REQ-1488), where the org can see it."""
+    """Record the act in the ORG's own trail (REQ-1488), where the org can see it.
+
+    REQ-2261: an entry about one environment carries the stage it declares as the entry is
+    written. An act on the org's environments as a whole (subject ``-``) is about no one
+    environment and so carries none; an act that removed its environment states the stage it had
+    in ``detail`` itself, read before the removal."""
     from provisa.api.admin.orgs_router import _org_model_db
     from provisa.core.org_membership import record_admin_action
 
+    if "stage" not in detail:
+        row = await get_env(_admin_pool(), org_id, name)
+        if row is not None:
+            detail = {**detail, "stage": row["stage"]}
     await record_admin_action(
         await _org_model_db(org_id),
+        org_id=org_id,
         action=action,
         actor_id=actor or "anonymous",
         subject_id=name,
@@ -393,6 +447,8 @@ class PatchEnvBody(BaseModel):
     expires_at: datetime | None = None
     clear_expiry: bool = False
     protected: bool | None = None
+    # REQ-2261: the stage the environment declares; absent leaves it as it is.
+    stage: Literal["production", "preprod", "test", "development"] | None = None
 
 
 class MergeBody(BaseModel):
@@ -700,7 +756,7 @@ async def delete_environment(
     environment takes the visitor's membership with it (``env_retire``'s inventory says so).
     """
     actor = await _guard_owned(request, org_id, name)  # REQ-2155
-    await _known(org_id, name)
+    known = await _known(org_id, name)
     try:
         outcome = await retire_environment(
             _pool(), _admin_pool(), org_id, name, drop_branch=delete_branch
@@ -732,7 +788,8 @@ async def delete_environment(
         actor,
         "environment.delete",
         name,
-        {**outcome, "remote_branch_deleted": remote_deleted},
+        # REQ-2261: the row is gone by now, so the stage it declared is the one read before.
+        {**outcome, "remote_branch_deleted": remote_deleted, "stage": known["stage"]},
     )
 
     return {
@@ -744,12 +801,36 @@ async def delete_environment(
 
 @router.patch("/{name}")
 async def patch_environment(request: Request, org_id: str, name: str, body: PatchEnvBody) -> dict:
-    """Set what the registry row holds and the schema cannot: expiry (REQ-1523) and whether a merge
-    into this environment waits for someone else's approval (REQ-1504)."""
-    await _confined(request, org_id, name)
-    actor = await _guard(request, org_id)
+    """Set what the registry row holds and the schema cannot: expiry (REQ-1523), whether a merge
+    into this environment waits for someone else's approval (REQ-1504), and its stage (REQ-2261).
+
+    A stage change alone is managing that one environment, so its owner holding
+    environment_owned_management may make it (:func:`_guard_owned`), as it may delete it; expiry
+    and protection stay with environment_management."""
+    only_stage = (
+        body.stage is not None
+        and body.protected is None
+        and body.expires_at is None
+        and not body.clear_expiry
+    )
+    if only_stage:
+        actor = await _guard_owned(request, org_id, name)
+    else:
+        await _confined(request, org_id, name)
+        actor = await _guard(request, org_id)
     await _known(org_id, name)
     detail: dict = {}
+    if body.stage is not None:
+        # The body's Literal admits only STAGES, so set_stage's own refusal cannot arise here.
+        previous = await set_stage(_admin_pool(), org_id, name, body.stage)
+        if previous != body.stage:
+            await _audit(
+                org_id,
+                actor,
+                "environment.stage",
+                name,
+                {"from": previous, "to": body.stage, "stage": body.stage},
+            )
     try:
         if body.clear_expiry:
             await set_expiry(_admin_pool(), org_id, name, None)
@@ -1023,6 +1104,7 @@ async def _retire(org_id: str, actor: str | None, name: str, *, remote: bool = F
     holding the branch, which is the copy that survives a lost volume; deleting it too is what a
     finished feature says explicitly, and it happens only after the local retirement succeeded.
     """
+    known = await _known(org_id, name)
     try:
         outcome = await retire_environment(_pool(), _admin_pool(), org_id, name, drop_branch=True)
     except EnvironmentInUse as refused:
@@ -1040,8 +1122,9 @@ async def _retire(org_id: str, actor: str | None, name: str, *, remote: bool = F
             ) from exc
         _forget_pushed(org_id, name)
         remote_deleted = True
+    # REQ-2261: the row is gone by now, so the stage it declared is the one read before.
     outcome = {**outcome, "remote_branch_deleted": remote_deleted}
-    await _audit(org_id, actor, "environment.retired", name, outcome)
+    await _audit(org_id, actor, "environment.retired", name, {**outcome, "stage": known["stage"]})
     return outcome
 
 
@@ -1387,19 +1470,20 @@ async def decide_merge_request(
     from provisa.api.admin.orgs_router import _org_model_db
     from provisa.api.idempotency import once
 
+    # The guard comes before the org's store is opened: a refused caller has the node build nothing.
+    actor = await _guard(request, org_id)
     return await once(
         await _org_model_db(org_id),
         request,
-        lambda: _decide_merge_request(request, org_id, request_id, body),
+        lambda: _decide_merge_request(request, org_id, request_id, body, actor),
     )
 
 
 async def _decide_merge_request(
-    request: Request, org_id: str, request_id: int, body: DecideBody
+    request: Request, org_id: str, request_id: int, body: DecideBody, actor: str | None
 ) -> dict:
     from provisa.api.admin.orgs_router import _org_model_db
 
-    actor = await _guard(request, org_id)
     decided_on = await _request_or_404(org_id, request_id)
     await _confined(request, org_id, decided_on["source_env"], decided_on["target_env"])
     if body.approve and decided_on["retire_source"] and decided_on["source_env"] is not None:

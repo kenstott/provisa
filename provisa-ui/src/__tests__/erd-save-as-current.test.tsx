@@ -66,6 +66,8 @@ vi.mock("../context/DomainFilterContext", () => ({
   useDomainFilter: () => ({ checkedDomains: new Set<string>(), domains: ["sales"] }),
 }));
 vi.mock("../mcp/screenState", () => ({ useScreenInputs: () => undefined }));
+// Show withdrawn is offered by a right; this view is looked at without it.
+vi.mock("../hooks/useCapability", () => ({ useCapability: () => false }));
 vi.mock("../components/list/panelLeave", () => ({
   useLeaveGuard: () => (go: () => void) => go(),
 }));

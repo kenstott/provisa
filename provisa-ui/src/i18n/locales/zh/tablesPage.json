@@ -2,7 +2,7 @@
   "tablesPage": {
     "loading": "正在加载表…",
     "titleViews": "视图",
-    "titleTables": "已注册的表",
+    "titleTables": "表",
     "filterPlaceholderViews": "筛选视图…",
     "filterPlaceholderTables": "按数据源、域或表筛选…",
     "addTable": "+ 表",
@@ -16,7 +16,7 @@
     "modelStarSchema": "星型模式",
     "modelDataVault": "Data Vault",
     "reportXlsx": "工作簿",
-    "reportXlsxTitle": "将模型下载为电子表格以供审阅——数据源、表、列、关系、视图、指标、物化视图、本体、数据产品、数据契约、数据质量和数据画像，各占一个工作表",
+    "reportXlsxTitle": "将模型下载为电子表格以供审阅，数据源、表、列、关系、视图、指标、物化视图、本体、数据产品、数据契约、数据质量和数据剖析各占一个工作表",
     "viewErd": "查看 ERD",
     "colSource": "数据源",
     "colDomain": "域",
@@ -58,25 +58,25 @@
     "modelingRole": {
       "fact": "事实",
       "dimension": "维度",
-      "impliedFactTitle": "隐含事实 — 此表已开启“启用聚合”",
-      "impliedDimensionTitle": "隐含维度 — 此表已开启“启用分组”"
+      "impliedFactTitle": "隐含事实：此表已开启“启用聚合”",
+      "impliedDimensionTitle": "隐含维度：此表已开启“启用 Group By”"
     },
     "derived": "派生",
     "endpointUnread": "无法读取其源的 API 文档",
     "checker": {
       "soda": "Soda",
       "great_expectations": "Great Expectations",
-      "title": "数据质量检查器——此表的行是运行其契约所得的结果"
+      "title": "数据质量检查器：此表的行是运行其契约的结果"
     },
     "dataProduct": "产品",
-    "dataProductTitle": "数据产品 — 包含在 provisa metadata export 中",
+    "dataProductTitle": "数据产品：已包含在 Provisa 元数据导出中",
     "purposeTitle": "注册表意味着什么",
-    "purposeBody": "注册才会把一张表纳入受治理的模型：它确定列、列对外暴露的名称，以及哪些角色可以看到它们。只有已注册的表可以被查询，而下游的一切——关系、指标、视图、术语——引用的都是已注册的列。",
-    "purposeAdd": "“+ 视图”注册的是由 SQL 或指标定义的关系，而不是物理表——注册之后它就不再只是一条保存的查询。定义还决定它如何提供：实时，或者按节奏、按日历窗口物化；刷新可以替换、upsert 或追加。开启时间旅行后，视图会保留自己的历史，使用者可以按过去某个时点读取它；它的输入会作为血缘被记录，因此刷新会等待其依赖。",
+    "purposeBody": "注册表会将其纳入受治理的模型，并确定其列、对外公开的名称以及哪些角色可以看到它们。只有已注册的表才能被查询，关系、指标、视图和本体术语引用的都是已注册的列。",
+    "purposeAdd": "“+ 视图”注册由 SQL 或指标定义的关系。定义还决定其提供方式：实时，或按周期或日历时间窗物化，刷新方式为替换、upsert 或追加。开启 Time Travel 后，视图会保留自己的历史，使用者可以读取它在过去某个时间点的状态。其输入作为血缘被追踪，因此刷新会等待其依赖项。",
     "purposeAria": "关于已注册的表",
     "erdHelpTitle": "实体关系图",
-    "erdHelpBody": "绘制已注册的表以及它们之间声明的关系，让你在写查询之前就能看到已有的连接。它只读取模型，不做修改：可按域筛选，并将图导出为 PNG 或 SVG。",
-    "purposeModel": "“+ 模型”声明一个实体或事实——星型模型和 Data Vault 都由这两者搭成——并把它降解到同样的原语上，注册物化视图、它的时间旅行，以及指向所引用实体键的关系。",
+    "erdHelpBody": "绘制已注册的表以及它们之间声明的关系，让您在编写查询之前了解存在哪些连接。只读：可按域筛选，并将图导出为 PNG 或 SVG。",
+    "purposeModel": "“+ 模型”声明实体或事实，即星型架构和 Data Vault 的构建块。它会注册物化视图、其 Time Travel，以及与其所引用的实体之间的关系。",
     "empty": "尚未注册任何表。",
     "resizeDetail": "调整详情面板大小",
     "detailPanel": "表详情",
@@ -93,6 +93,9 @@
     "history": {
       "badge": "历史",
       "title": "保留历史：可按截至某日或按记录时查询（时间旅行）"
-    }
+    },
+    "withdrawn": "已撤回",
+    "withdrawnTitle": "已停止生产使用：在恢复之前，任何角色都无法读取",
+    "sourceWithdrawnTitle": "其数据源 {{source}} 已撤回：在数据源恢复之前，任何角色都无法读取"
   }
 }

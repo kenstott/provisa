@@ -134,6 +134,14 @@ class Capability(str, Enum):  # REQ-042, REQ-060
     # rw of a role named in a product's Owner field, held to that product by a generated row rule.
     DATA_PRODUCT_READ = "data_product_read"
     DATA_PRODUCT_RW = "data_product_rw"
+    # REQ-2219, OWNER KINDS: owning is a capability of its own, each scoped by the kind it owns
+    # (provisa.entitlements.index.capability_scopes): a data product, a relationship, a domain (its
+    # steward), a glossary term (named domain.term) and a judgment basis (named by its id).
+    DATA_PRODUCT_OWNER = "data_product_owner"
+    RELATIONSHIP_OWNER = "relationship_owner"
+    DOMAIN_STEWARD = "domain_steward"
+    TERM_OWNER = "term_owner"
+    JUDGMENT_BASIS_OWNER = "judgment_basis_owner"
     # REQ-2155: data quality's own rights, so managing checks no longer needs TABLE_REGISTRATION.
     # DQ_READ reads check definitions and results; DQ_RW manages checks, expectations and
     # promises (REQ-2157).
@@ -235,9 +243,9 @@ def members_of(role_id: str) -> tuple[str, ...]:  # REQ-2188
     return tuple(role_id[len(META_PREFIX) :].split("+"))
 
 
-def _draft_right_reach(role: dict, roles: dict[str, dict]) -> set[str]:  # REQ-1921
-    """The domains ``role`` holds the right a draft is read by: table registration, the right a
-    draft's preview needs (A DRAFT IS SERVED TO ORG_ADMIN, decided 2026-11-12). Held as every
+def _preview_right_reach(role: dict, roles: dict[str, dict]) -> set[str]:  # REQ-1921
+    """The domains ``role`` holds the right a withdrawn table is previewed by: table
+    registration, the right withdrawing and putting it back needs. Held as every
     right is: by the role, a role it inherits from, or a member of a meta role (``acting_chain``,
     REQ-2188), each paired with the domains of the role carrying it (REQ-1944,
     :func:`domain_access_for_capability`). The one place the right is named."""
@@ -248,15 +256,15 @@ def _draft_right_reach(role: dict, roles: dict[str, dict]) -> set[str]:  # REQ-1
 
 def registers_tables_in(role: dict, roles: dict[str, dict], domain_id: str) -> bool:  # REQ-1921
     """Whether ``role`` (a built role, state.roles) holds table registration reaching
-    ``domain_id``: a draft of that domain is served to it."""
-    reach = _draft_right_reach(role, roles)
+    ``domain_id``: a withdrawn table of that domain may be previewed by it."""
+    reach = _preview_right_reach(role, roles)
     return bool(reach) and reaches_domain(sorted(reach), domain_id)
 
 
-def draft_reach(role: dict, roles: dict[str, dict]) -> frozenset[str] | None:  # REQ-1921
-    """The domains whose drafts are served to ``role``: those it holds table registration in
-    (:func:`registers_tables_in`); None for every data domain, empty for none."""
-    reach = _draft_right_reach(role, roles)
+def withdrawn_reach(role: dict, roles: dict[str, dict]) -> frozenset[str] | None:  # REQ-1921
+    """The domains whose withdrawn tables ``role`` may preview: those it holds table
+    registration in (:func:`registers_tables_in`); None for every data domain, empty for none."""
+    reach = _preview_right_reach(role, roles)
     if not reach:
         return frozenset()
     if reaches_all_domains(sorted(reach)):
@@ -684,6 +692,51 @@ def unknown_capabilities(capabilities: Iterable[str] | None) -> list[str]:  # RE
     return sorted({c for c in (capabilities or ()) if c not in known})
 
 
+class OrgAdminGrantError(Exception):
+    """An org administrator's role was granted by someone who does not hold every right it carries
+    (REQ-1327)."""
+
+    def __init__(self, role_id: str, missing: Iterable[str]):
+        self.role_id = role_id
+        self.missing = sorted(missing)
+        super().__init__(
+            f"role {role_id!r} is granted only by a holder of every right it carries; the granter "
+            "lacks: " + ", ".join(self.missing)
+        )
+
+
+def org_admin_rights_missing(
+    org_admin_capabilities: Iterable[str] | None, held: Iterable[str]
+) -> set[str]:  # REQ-1327
+    """The rights of org_admin that ``held`` lacks: empty when ``held`` is an org_admin's.
+
+    REQ-1327 (amended 2026-11-16): deleting an organization and granting org_admin are an
+    org_admin's acts; user_management alone allows neither. Holding org_admin is read as rights
+    (REQ-1337): every right the org_admin role carries in that org. The platform administrator
+    (``cross_org``) keeps an org's lifecycle and the appointment of its admins, so it lacks nothing.
+    """
+    caps = set(held)
+    if Capability.CROSS_ORG.value in caps:
+        return set()
+    return set(org_admin_capabilities or ()) - caps
+
+
+def admin_role_grant_missing(
+    role_capabilities: Iterable[str] | None, granter_capabilities: Iterable[str]
+) -> set[str]:  # REQ-1327
+    """The rights a granter lacks to confer an org administrator's role: empty when it may.
+
+    An org administrator's role is one carrying ``user_management`` -- read off its rights, never
+    its name (REQ-1337), as the platform's invitation of an org's admin is. Granting org_admin is
+    an org_admin's act (REQ-1327, amended 2026-11-16), so such a role is conferred only by a holder
+    of every right it carries, or by the platform (``cross_org``), which appoints an org's admins.
+    """
+    rights = set(role_capabilities or ())
+    if Capability.USER_MANAGEMENT.value not in rights:
+        return set()
+    return org_admin_rights_missing(rights, granter_capabilities)
+
+
 class PlatformRoleGrantError(Exception):
     """A role carrying platform rights was granted by someone who does not hold them."""
 
@@ -709,11 +762,19 @@ def check_role_grant(  # REQ-1337
     deployment, which they do not hold. A role carrying no platform right passes for any granter:
     whether the granter may manage users at all is the calling surface's gate, not this one.
 
-    Raises :class:`PlatformRoleGrantError` naming the rights the granter lacks.
+    REQ-1327: an org administrator's role (one carrying user_management, org_admin among them) is
+    granted only by a holder of every right it carries, or by a holder of ``cross_org``;
+    user_management alone does not confer org_admin (:func:`admin_role_grant_missing`).
+
+    Raises :class:`PlatformRoleGrantError` or :class:`OrgAdminGrantError` naming the rights the
+    granter lacks.
     """
     missing = platform_rights_in(role_capabilities) - set(granter_capabilities)
     if missing:
         raise PlatformRoleGrantError(role_id, missing)
+    lacking = admin_role_grant_missing(role_capabilities, granter_capabilities)
+    if lacking:
+        raise OrgAdminGrantError(role_id, lacking)
 
 
 def carries_platform_right(role_id: str, roles: dict[str, dict] | None) -> bool:  # REQ-1337
@@ -785,10 +846,10 @@ def has_capability(
 # The meta views whose ROWS describe registered tables/columns and are therefore subject to the
 # REQ-1132 row-level neighbourhood scoping. Each maps to the meta-view columns that carry the
 # DESCRIBED tables' ids, so the row filter is "<column> IN (<reachable table ids>)" for each.
-#: REQ-1921: the meta view holding a draft's row (``draft`` true), which a role holding table
-#: registration in the draft's domain reads and no other role does (compiler/stage2;
-#: :func:`draft_reach`).
-DRAFT_ROWS_VIEW = "registered_tables_meta"
+#: REQ-1921: the meta view holding a withdrawn table's row (``withdrawn`` true), which a role
+#: holding table registration in its domain reads and no other role does (compiler/stage2;
+#: :func:`withdrawn_reach`).
+WITHDRAWN_ROWS_VIEW = "registered_tables_meta"
 
 META_ROW_SCOPED_VIEWS: dict[str, tuple[str, ...]] = {
     "registered_tables_meta": ("id",),
@@ -868,7 +929,7 @@ SQL_ONLY_TABLES |= SQL_CATALOG_TABLES
 def lists_table(table: dict) -> bool:
     """Whether every role of the org lists ``table``: it holds a listed column (REQ-2153), in a
     data domain."""
-    if table.get("domain_id") in SYSTEM_DOMAINS or table.get("draft"):
+    if table.get("domain_id") in SYSTEM_DOMAINS or table.get("withdrawn"):
         return False
     return any(c.get("scope") == SCOPE_LISTED for c in table.get("columns") or [])
 

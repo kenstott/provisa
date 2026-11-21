@@ -225,14 +225,18 @@ async def test_a_missing_term_or_table_is_404(control_plane, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_deleting_the_term_or_the_table_takes_the_grounding(control_plane, monkeypatch):
+async def test_deleting_the_term_takes_the_grounding_and_retiring_the_table_keeps_it(
+    control_plane, monkeypatch
+):
+    """REQ-2248: a deleted table is retired, and no rule drops a link to it."""
     async with _surface(control_plane, monkeypatch) as (db, ids, _notified):
         await _ground(ids["party"], ids["customers"])
         await _ground(ids["ledger"], ids["accounts"])
         async with db.acquire() as conn:
             await glossary_repo.delete_term(conn, ids["party"])
             await table_repo.delete(conn, ids["accounts"])
-            assert await glossary_repo.term_tables(conn, ids["ledger"]) == []
+            held = await glossary_repo.term_tables(conn, ids["ledger"])
+            assert [t["table_id"] for t in held] == [ids["accounts"]]
         await _ground(ids["ledger"], ids["customers"])
 
 
@@ -1057,7 +1061,8 @@ async def test_grounding_carries_the_keys_and_ungrounding_returns_them_to_the_pr
 @pytest.mark.asyncio
 async def test_a_declared_class_named_for_its_tables_concept_is_curated(cfg_db):
     """A configuration declaring orders' class as "order" -- the very name sync proposes -- states
-    a curated grounding: the export keeps it, and deleting the table keeps the term."""
+    a curated grounding: the export keeps it, and deleting the table keeps the term, still
+    grounding the retired table (REQ-2248)."""
     from provisa.core.config_loader import apply_config
 
     async with cfg_db.acquire() as conn:
@@ -1071,11 +1076,11 @@ async def test_a_declared_class_named_for_its_tables_concept_is_curated(cfg_db):
         ).fetchone()
         await table_repo.delete(conn, orders.id)
         kept = await glossary_repo.get_term(conn, order["id"])
-    assert kept is not None and kept["is_abstract"] is True
+    assert kept is not None and kept["is_abstract"] is False
 
 
 @pytest.mark.asyncio
-async def test_a_proposal_is_not_stated_by_the_export_and_goes_with_its_table(cfg_db):
+async def test_a_proposal_is_not_stated_by_the_export_and_stays_with_its_retired_table(cfg_db):
     from provisa.core.config_loader import apply_config
 
     async with cfg_db.acquire() as conn:
@@ -1089,4 +1094,5 @@ async def test_a_proposal_is_not_stated_by_the_export_and_goes_with_its_table(cf
             )
         ).fetchone()
         await table_repo.delete(conn, orders.id)
-        assert await glossary_repo.get_term(conn, order["id"]) is None
+        # REQ-2248: the table is retired, and the term it proposed stays with it.
+        assert await glossary_repo.get_term(conn, order["id"]) is not None

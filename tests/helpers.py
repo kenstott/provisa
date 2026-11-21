@@ -394,17 +394,21 @@ def dq_contexts(*tables: tuple, role: str = "analyst") -> dict:
             domain_id=domain_id,
             display_name=alias[0] if alias else "",
         )
-    return {role: SimpleNamespace(tables=metas)}
+    # REQ-1986: no table of these requires a parameter (ctx.parameters).
+    return {role: SimpleNamespace(tables=metas, parameters={})}
 
 
-async def delete_source_and_its_tables(client, source_id: str) -> None:
-    """Remove a source a test registered, and what the test registered against it (REQ-1918).
+async def retire_tables_of_source(client, source_id: str) -> None:
+    """Retire every table a test registered against ``source_id``, and leave the source in place.
 
-    A source is deleted only when nothing refers to it: ``deleteSource`` is refused while a table
-    is registered against it, and ``deleteTable`` while a relationship takes part in the table.
-    So a cleanup removes them in that order, each through its own mutation, as an operator would.
-    ``client`` is an httpx ``AsyncClient`` for the app. A source that is not there is left
-    alone; one still refused after its tables are gone raises.
+    REQ-2248: deleting a table retires it -- its row, its name and its (source, schema, table) key
+    stay -- and a source that still holds a table, retired or not, is kept: ``deleteSource`` is
+    refused naming the retired table. The product restores a retired object and never removes
+    one, so a cleanup retires what the test registered and stops there; a test that registers
+    a source gives it a name of its own, so no later test meets it. ``deleteTable`` is refused
+    while a relationship takes part in the table, so those go first, each through its own
+    mutation, as an operator would. ``client`` is an httpx ``AsyncClient`` for the app. Every
+    delete must succeed: a refused one raises, naming it.
     """
 
     async def gql(query: str) -> dict:
@@ -421,13 +425,17 @@ async def delete_source_and_its_tables(client, source_id: str) -> None:
     table_ids = {t["id"] for t in listed["tables"] if t["sourceId"] == source_id}
     for rel in listed["relationships"]:
         if rel["sourceTableId"] in table_ids or rel["targetTableId"] in table_ids:
-            await gql(f'mutation {{ deleteRelationship(id: "{rel["id"]}") {{ success }} }}')
+            outcome = (
+                await gql(
+                    f'mutation {{ deleteRelationship(id: "{rel["id"]}") {{ success message }} }}'
+                )
+            )["deleteRelationship"]
+            assert outcome["success"], outcome
     for table_id in sorted(table_ids):
-        await gql(f"mutation {{ deleteTable(id: {table_id}) {{ success }} }}")
-    outcome = (
-        await gql(f'mutation {{ deleteSource(id: "{source_id}") {{ success code message }} }}')
-    )["deleteSource"]
-    assert outcome["success"] or outcome["code"] == "schema.source_not_found", outcome
+        outcome = (await gql(f"mutation {{ deleteTable(id: {table_id}) {{ success message }} }}"))[
+            "deleteTable"
+        ]
+        assert outcome["success"], outcome
 
 
 def hold_registered_tables(
@@ -514,7 +522,7 @@ def attaching(source, catalog: str):
     return SimpleNamespace(**dict(source), catalog=catalog)
 
 
-# -- REQ-1921: a table or view registered through the admin starts as draft ---------------------
+# -- REQ-1921: a table or view registered through the admin is live ----------------------------
 
 
 def registered_id(message: str) -> int:
@@ -522,17 +530,6 @@ def registered_id(message: str) -> int:
     found = re.search(r"\(id=(\d+)\)", message)
     assert found is not None, f"registerTable named no id: {message!r}"
     return int(found.group(1))
-
-
-def release_field(table_id: int) -> str:
-    """The admin GraphQL field that releases a draft table or view into service: what a domain
-    owner does after registering one through the admin, before anything reads it."""
-    return f"setTableDraft(tableId: {table_id}, draft: false)"
-
-
-def release_mutation(table_id: int) -> str:
-    """:func:`release_field` as a whole mutation document."""
-    return f"mutation {{ {release_field(table_id)} {{ success message }} }}"
 
 
 def config_write_grants(roles: list[str], columns: list[str]) -> list[dict]:

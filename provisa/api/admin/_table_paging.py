@@ -43,9 +43,9 @@ def table_paging_kind(state: Any, source_type: str, source_id: str, table_name: 
     connection); one this process holds no registration for is not known to be one."""
     connection: bool | None = None
     if source_type == "graphql_remote":
-        registration = (getattr(state, "graphql_remote_sources", None) or {}).get(source_id)
-        tables = registration["tables"] if registration is not None else []
-        spec = next((t for t in tables if t["sql_name"] == table_name), None)
+        from provisa.api.admin._graphql_table_registration import held_table
+
+        spec = held_table(state, source_id, table_name)
         connection = spec is not None and bool(spec.get("rows_path"))
     return paging_kind(source_type, connection=connection)
 

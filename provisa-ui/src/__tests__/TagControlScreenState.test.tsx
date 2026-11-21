@@ -30,6 +30,13 @@ vi.mock("../hooks/useTagQueries", async (importOriginal) => ({
   useTagAssignments: () => ({ tagAssignments: mockAssignments, refetch: vi.fn() }),
   useAssignTag: () => ({ assignTag: vi.fn() }),
   useUnassignTag: () => ({ unassignTag: vi.fn() }),
+  // REQ-2208: the server offers the tags; here it offers every tag that applies to the kind.
+  useOfferedTags: (target: { objectType: string }) => ({
+    offered: new Set(
+      mockTags.filter((t) => t.appliesTo.includes(target.objectType as never)).map((t) => t.id),
+    ),
+    loading: false,
+  }),
 }));
 
 function tag(id: string, over: Partial<Tag> = {}): Tag {
@@ -46,6 +53,8 @@ function tag(id: string, over: Partial<Tag> = {}): Tag {
     requiresCitation: false,
     citations: [],
     needsReview: false,
+    required: false,
+    allowedDomains: [],
     ...over,
   };
 }

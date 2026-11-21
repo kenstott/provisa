@@ -228,7 +228,14 @@ async def test_a_sandboxs_polly_runs_on_the_tiers_openrouter_haiku(monkeypatch):
     async def no_overrides(_db):
         return {}
 
+    async def stored_nothing(_db):
+        # The org stored no key of its own: its keys are the tier endpoint's (read_org_api_keys).
+        from provisa.core.sandbox_ai import vendor_keys
+
+        return await vendor_keys(current_org.get())
+
     monkeypatch.setattr(org_settings, "read_org_overrides", no_overrides)
+    monkeypatch.setattr(chat, "read_org_api_keys", stored_nothing)
     monkeypatch.setattr("provisa.api.admin._config_io.read_config", lambda: {"ai_models": {}})
     state = SimpleNamespace(model_db=object())
     token = current_org.set("sbx0123456789ab")

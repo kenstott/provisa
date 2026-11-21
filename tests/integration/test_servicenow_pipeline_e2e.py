@@ -41,7 +41,7 @@ from tests.integration.connector_source_harness import (
     rebuild_schemas,
 )
 from tests.conftest import as_deployment_org
-from tests.helpers import registered_id, release_mutation, write_grants_mutation
+from tests.helpers import registered_id, write_grants_mutation
 from tests.integration.live_teardown import none_remain, run_every_async, run_name
 
 pytestmark = [
@@ -125,7 +125,6 @@ async def _register(
     table_id = registered_id(registered["message"])
     # The tests write both tables: the role may write every registered column (REQ-2074).
     await _gql(client, write_grants_mutation(table_id, [_ROLE], columns), "setTableWriteGrants")
-    await _gql(client, release_mutation(table_id), "setTableDraft")
 
 
 async def _mutation(client: AsyncClient, verb: str, table: str) -> str:

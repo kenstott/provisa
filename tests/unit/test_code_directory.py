@@ -9,7 +9,7 @@
 # permission from the copyright holder.
 
 """A code source read from a directory on the server (REQ-2121): only under the operator's
-allowed directories and never on a server of many organizations; copied without what the
+allowed directories and, for a held organization, inside its own folder (REQ-1997); copied without what the
 developer's tools make; read as it is now, so an edit is read by the next query; never pinned."""
 
 # Requirements: REQ-2121
@@ -68,10 +68,20 @@ def test_a_directory_it_may_not_read_is_refused_by_name(roots, tmp_path, where, 
     assert refused.value.code == code
 
 
-def test_a_server_of_many_organizations_runs_no_code_from_its_own_disk(roots, monkeypatch):
+def test_a_held_org_on_a_server_of_many_runs_no_code_from_its_own_disk(roots, monkeypatch):
+    """REQ-1997: an org that is not the deployment's own on a server of many is held: a code
+    directory outside its folder is refused whatever the operator's directories allow."""
+    from provisa.core.request_context import reset_current_org, set_current_org
+    from provisa.security import sandbox_egress
+
     monkeypatch.setattr("provisa.core.secrets_providers.many_organisations", lambda: True)
-    with pytest.raises(BundleRefused) as refused:
-        code_source.config_of("python", _mapping(roots / "rates"))
+    monkeypatch.setattr(sandbox_egress, "_deployment_org", lambda: "default")
+    token = set_current_org("acme")
+    try:
+        with pytest.raises(BundleRefused) as refused:
+            code_source.config_of("python", _mapping(roots / "rates"))
+    finally:
+        reset_current_org(token)
     assert refused.value.code == "codesource.directory_refused"
 
 

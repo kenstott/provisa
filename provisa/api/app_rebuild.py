@@ -26,6 +26,7 @@ from provisa.core.schema_org import registered_tables as _registered_tables_t
 from provisa.core.schema_org import table_columns as _table_columns_t
 from provisa.api.startup_resilience import tolerate_startup_failure
 from provisa.core.models import DERIVED_SOURCE_ID
+from provisa.compiler.view_expand import view_key
 
 if TYPE_CHECKING:
     from provisa.core.database import Connection
@@ -51,7 +52,7 @@ def compile_registry_mvs_to_physical(mv_registry, ctx) -> None:
     physical catalogs. Without this compile the refresh fails with "schema <domain> does
     not exist". Join-pattern MVs (sql is None) are untouched — they build SQL at refresh.
     """
-    for mv in mv_registry._mvs.values():
+    for mv in mv_registry.all():
         if mv.sql:
             mv.sql = compile_view_sql_to_physical(mv.sql, ctx)
 
@@ -95,19 +96,20 @@ async def start_org_live_engine(scheduler: Any) -> None:  # REQ-286, REQ-1266
 
 
 async def _register_user_views_in_state(
-    conn: "Connection", raw_config: dict | None, tables: list[dict], draft_tables: list[dict]
+    conn: "Connection", raw_config: dict | None, tables: list[dict], withdrawn_tables: list[dict]
 ) -> None:
     """Register __derived__ views in mv_registry (REQ-199) or view_sql_map. Non-fatal.
     ``tables`` are the registered table rows this build loaded: what a view inheriting its
     versions is judged against (REQ-2109) -- ``state.tables`` is published only after this.
-    ``draft_tables`` are its draft ones: a draft table keeps its version log, uncaptured."""
+    ``withdrawn_tables`` are its withdrawn ones: a withdrawn table keeps its version log,
+    uncaptured (REQ-1921)."""
     from provisa.api.app import state
 
     with tolerate_startup_failure("user views for inline expansion"):
         # REQ-2131: the org's column transforms, by name: a view applying one is landed (built as
         # a materialized view, declared or not) and read only from its stored table.
         from provisa.codesource.columns import COLUMN_TRANSFORM
-        from provisa.codesource.columns_fold import called
+        from provisa.mv.view_read import lands_stored_read
         from provisa.core.schema_org import tracked_functions as _tracked_functions_t
 
         _transforms = {
@@ -120,13 +122,33 @@ async def _register_user_views_in_state(
                 )
             ).fetchall()
         }
-        state.stored_view_reads = set()
+        # REQ-2249: the org's code commands, by the name a statement calls them by: a view whose
+        # definition calls one is landed as well, and read only from its stored table.
+        from provisa.codesource.commands import CODE_COMMAND
+        from provisa.core.command_bindings import binding_name
+
+        _code_commands = {
+            _name
+            for _r in (
+                await conn.execute_core(
+                    select(
+                        _tracked_functions_t.c.name, _tracked_functions_t.c.language_bindings
+                    ).where(_tracked_functions_t.c.impl_kind == CODE_COMMAND)
+                )
+            ).fetchall()
+            if (_name := binding_name(dict(_r._mapping), "sql")) is not None
+        }
+        # REQ-1914: built aside and published in one assignment below; requests run while this
+        # build reads, and one finding the set empty would expand a stored view's read of its
+        # stored table into the statement (V006).
+        _stored_reads: set[str] = set()
         _view_rows = [
             dict(_r._mapping)
             for _r in (
                 await conn.execute_core(
                     select(
                         _registered_tables_t.c.id,
+                        _registered_tables_t.c.schema_name,
                         _registered_tables_t.c.table_name,
                         _registered_tables_t.c.view_sql,
                         _registered_tables_t.c.materialize,
@@ -140,13 +162,16 @@ async def _register_user_views_in_state(
                         _registered_tables_t.c.mv_persist,  # REQ-965
                         _registered_tables_t.c.mv_primary_key,  # REQ-970
                         _registered_tables_t.c.mv_incremental,  # REQ-969
+                        _registered_tables_t.c.mv_rebuild_every,  # REQ-2249
                         _registered_tables_t.c.mv_calendar,  # REQ-962
                         _registered_tables_t.c.mv_grain,  # REQ-962/1168
                         _registered_tables_t.c.mv_allowed_lateness,  # REQ-961
                         _registered_tables_t.c.mv_expected_events,  # REQ-961
                         _registered_tables_t.c.mv_business_day_grain,  # REQ-962
                         _registered_tables_t.c.region,  # REQ-1921: where the view is built
-                        _registered_tables_t.c.draft,  # REQ-1921
+                        # REQ-1921: withdrawn -- a view is registered for building only once put
+                        # back.
+                        _registered_tables_t.c.withdrawn,
                     ).where(
                         _registered_tables_t.c.source_id == DERIVED_SOURCE_ID,
                         _registered_tables_t.c.view_sql.is_not(None),
@@ -181,6 +206,8 @@ async def _register_user_views_in_state(
             # is unqueryable: its raw source catalog (e.g. __derived__) reaches the engine and fails
             # with "Catalog __derived__ does not exist".
             _semantic_sql = _vr["view_sql"].rstrip().rstrip(";")
+            # Keyed by its schema and name: a reference is the view only under its own schema.
+            _key = view_key(_vr["schema_name"], _vr["table_name"])
             # REQ-1162, REQ-2109: reconstruct the bitemporal spec from the persisted declaration;
             # a materialized view declaring none may inherit its versions from the one versioned
             # table it groups (None = ordinary).
@@ -215,10 +242,10 @@ async def _register_user_views_in_state(
                     f"mv_{_vr['table_name']}",
                     catalog_qualified=state.federation_engine.engine.catalog_qualified,
                 )
-                state.view_sql_map[_vr["table_name"]] = view_read_sql(_mv_ref, _bt_spec)
+                state.view_sql_map[_key] = view_read_sql(_mv_ref, _bt_spec)
                 # REQ-1163: remember (target, spec) so a request-level as-of can overlay an as-of
                 # reconstruction over this view's append log at query time.
-                state.bitemporal_view_reads[_vr["table_name"]] = (_mv_ref, _bt_spec)
+                state.bitemporal_view_reads[_key] = (_mv_ref, _bt_spec)
                 if _bt_spec.inherited is not None:
                     # REQ-2064, REQ-2109: it declared none of the times its reads answer.
                     from provisa.mv.bitemporal_inherit import with_inherited_read_columns
@@ -226,8 +253,9 @@ async def _register_user_views_in_state(
                     with_inherited_read_columns(
                         next(t for t in tables if t["id"] == _vr["id"]), _bt_spec
                     )
-            elif called(_semantic_sql, _transforms):
-                # REQ-2131: its outputs exist only in its stored table, so that is what it reads.
+            elif lands_stored_read(_semantic_sql, _transforms, _code_commands):
+                # REQ-2131, REQ-2249: its outputs exist only in its stored table, so that is what
+                # it reads.
                 from provisa.mv.models import stored_table_ref
 
                 _tgt_cat, _tgt_schema = state.federation_engine.materialize_store_target(
@@ -240,10 +268,10 @@ async def _register_user_views_in_state(
                     catalog_qualified=state.federation_engine.engine.catalog_qualified,
                 )
                 _vr["materialize"] = True  # landed, declared or not
-                state.view_sql_map[_vr["table_name"]] = f"SELECT * FROM {_stored}"
-                state.stored_view_reads.add(_vr["table_name"])
+                state.view_sql_map[_key] = f"SELECT * FROM {_stored}"
+                _stored_reads.add(_key)
             else:
-                state.view_sql_map[_vr["table_name"]] = _semantic_sql
+                state.view_sql_map[_key] = _semantic_sql
             if _vr.get("materialize"):
                 from provisa.mv.models import MVDefinition, MVStatus
                 from provisa.mv.readable_inputs import read_table_names
@@ -278,14 +306,13 @@ async def _register_user_views_in_state(
                             ),
                             target_table=f"mv_{_vr['table_name']}",
                             refresh_interval=int(_vr.get("mv_refresh_interval") or _mv_default_ttl),
-                            enabled=not _vr[
-                                "draft"
-                            ],  # REQ-1921: a draft's build is kept, unscheduled
+                            # REQ-1921: a withdrawn view's build is kept, unscheduled.
+                            enabled=not _vr["withdrawn"],
                             sql=_semantic_sql,
                             semantic_sql=_semantic_sql,  # REQ-1921/1922
                             region=_vr.get("region"),  # REQ-1921
                             view_table=_vr["table_name"],  # REQ-1918: the view it builds
-                            read_tables=read_table_names(_semantic_sql),
+                            read_tables=read_table_names(_semantic_sql, state.tracked_functions),
                             expose_in_sdl=False,
                             status=MVStatus.STALE,
                             freshness_mode=_fresh,
@@ -297,6 +324,7 @@ async def _register_user_views_in_state(
                             persist=_vr.get("mv_persist") or "replace",  # REQ-965
                             primary_key=list(_vr.get("mv_primary_key") or []),  # REQ-970
                             incremental=bool(_vr.get("mv_incremental")),  # REQ-969
+                            rebuild_every=_vr["mv_rebuild_every"],  # REQ-2249
                             calendar=_vr.get("mv_calendar"),  # REQ-962
                             grain=_vr.get("mv_grain"),  # REQ-962/1168
                             allowed_lateness=float(
@@ -318,10 +346,10 @@ async def _register_user_views_in_state(
                             "lower its SQL against"
                         )
                     _existing.sql = compile_view_sql_to_physical(_semantic_sql, state.view_context)
-                    _existing.enabled = not _vr["draft"]  # REQ-1921
+                    _existing.enabled = not _vr["withdrawn"]  # REQ-1921
                     _existing.semantic_sql = _semantic_sql  # REQ-1921/1922
                     _existing.region = _vr.get("region")  # REQ-1921
-                    _existing.read_tables = read_table_names(_semantic_sql)
+                    _existing.read_tables = read_table_names(_semantic_sql, state.tracked_functions)
                     _existing.preprocess = _vr.get("mv_preprocess")  # REQ-957
                     _existing.table_id = _vr["id"]  # REQ-2133
                     _existing.product_ids = _view_products.get(_vr["id"], [])  # REQ-2133
@@ -330,6 +358,7 @@ async def _register_user_views_in_state(
                     _existing.persist = _vr.get("mv_persist") or "replace"  # REQ-965
                     _existing.primary_key = list(_vr.get("mv_primary_key") or [])  # REQ-970
                     _existing.incremental = bool(_vr.get("mv_incremental"))  # REQ-969
+                    _existing.rebuild_every = _vr["mv_rebuild_every"]  # REQ-2249
                     _existing.calendar = _vr.get("mv_calendar")  # REQ-962
                     _existing.grain = _vr.get("mv_grain")  # REQ-962/1168
                     _existing.allowed_lateness = float(
@@ -337,24 +366,26 @@ async def _register_user_views_in_state(
                     )  # REQ-961
                     _existing.expected_events = _vr.get("mv_expected_events")  # REQ-961
                     _existing.business_day_grain = bool(_vr.get("mv_business_day_grain"))  # REQ-962
-        # REQ-1921: a view that is draft is offered to no reader, wherever this runs (each region
-        # on its reload): no statement expands it. A materialized one stays registered above,
-        # with its build DISABLED — the scheduler and the rewriter skip a disabled build
+        state.stored_view_reads = _stored_reads
+        # REQ-1921: a view that is withdrawn is offered to no reader, wherever this runs (each
+        # region on its reload): no statement expands it. A materialized one stays registered
+        # above, with its build DISABLED -- the scheduler and the rewriter skip a disabled build
         # (mv/registry.py), and the reclamation sweep keeps a registered build's stored table
-        # (mv/refresh.py, REQ-234) — so a view set back to draft keeps what it has built, and is
-        # built again only when its steward previews it (admin/table_read.py). One that is not
-        # materialized has no build.
+        # (mv/refresh.py, REQ-234) -- so a withdrawn view keeps what it has built, and is built
+        # again when its steward previews it (admin/table_read.py) or it is put back. One that is
+        # not materialized has no build.
         for _vr in _view_rows:
-            if not _vr["draft"]:
+            if not _vr["withdrawn"]:
                 continue
-            state.view_sql_map.pop(_vr["table_name"], None)
-            state.bitemporal_view_reads.pop(_vr["table_name"], None)
+            _key = view_key(_vr["schema_name"], _vr["table_name"])
+            state.view_sql_map.pop(_key, None)
+            state.bitemporal_view_reads.pop(_key, None)
             if not _vr.get("materialize") and state.mv_registry.get(f"view-{_vr['table_name']}"):
                 state.mv_registry.unregister(f"view-{_vr['table_name']}")
         # REQ-1918: a view's read and its build are parts of it. A view deleted leaves neither,
         # and one no longer materialized leaves no build -- a build left reading a view that is
         # gone would fail the org's event wiring on every later change.
-        _views = {_vr["table_name"] for _vr in _view_rows}
+        _views = {view_key(_vr["schema_name"], _vr["table_name"]) for _vr in _view_rows}
         _built = {_vr["table_name"] for _vr in _view_rows if _vr.get("materialize")}
         for _mv in state.mv_registry.all():
             if _mv.view_table is not None and _mv.view_table not in _built:
@@ -367,7 +398,7 @@ async def _register_user_views_in_state(
         # captures, an MV of its own refreshed on that MV's interval.
         from provisa.mv.bitemporal_capture import register_logs
 
-        register_logs(state, [*tables, *draft_tables], int(_mv_default_ttl))
+        register_logs(state, [*tables, *withdrawn_tables], int(_mv_default_ttl))
 
 
 async def serve_registered_tables(state) -> None:
@@ -393,7 +424,7 @@ async def serve_registered_tables(state) -> None:
         await restart_source_server(source)
         state.federation_engine.register_source(
             source,
-            resolve_secrets(source.password) if source.password else "",
+            resolve_secrets(source.password, credential=True) if source.password else "",
             catalog_name=state.source_catalogs[source.id],
         )
 
@@ -438,3 +469,10 @@ async def _finalize_rebuild_state(_rebuild_log: logging.Logger) -> None:
                 for name, sql in state.view_sql_map.items()
             }
         compile_registry_mvs_to_physical(state.mv_registry, ctx)
+        # A view over a command call reads the tables the call is given (REQ-2249). The commands
+        # are loaded after the views are registered, so what each view reads is taken again here.
+        from provisa.mv.readable_inputs import read_table_names
+
+        for _mv in state.mv_registry.all():
+            if _mv.view_table and _mv.semantic_sql:
+                _mv.read_tables = read_table_names(_mv.semantic_sql, state.tracked_functions)

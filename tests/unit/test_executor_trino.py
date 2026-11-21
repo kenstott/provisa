@@ -15,14 +15,18 @@ trino_write CTAS helpers, and trino_flight utilities.
 from __future__ import annotations
 
 
+import base64
+import json
+
+import pyarrow as pa
+
 from provisa.executor.result import QueryResult
-from provisa.executor.trino import execute_trino
+from provisa.executor.trino_flight import TrinoContext, bound_statement, execute_trino_flight
 from provisa.executor.trino_write import (
     ENGINE_NATIVE_FORMATS,
     _iceberg_format,
     is_engine_native_format,
 )
-from provisa.executor.trino_flight import _substitute_params
 
 
 # ---------------------------------------------------------------------------
@@ -52,37 +56,62 @@ class TestQueryResult:
 
 
 # ---------------------------------------------------------------------------
-# execute_trino — parameter substitution (via a real stub connection)
+# execute_trino_flight — parameter binding and session (via a stub ADBC connection, REQ-2194)
 # ---------------------------------------------------------------------------
 
 
+def _zaychik_table(cols: list[str], rows: list[tuple]) -> pa.Table:
+    """A table as the Zaychik proxy sends it: every field names its Trino type."""
+    fields = [
+        pa.field(
+            c,
+            pa.string(),
+            metadata={
+                "trino.type": "varchar",
+                "trino.type_signature": json.dumps(
+                    {"rawType": "varchar", "arguments": [{"kind": "LONG", "value": 2147483647}]}
+                ),
+                "trino.encoding": "arrow",
+            },
+        )
+        for c in cols
+    ]
+    columns = [[r[i] for r in rows] for i in range(len(cols))]
+    return pa.Table.from_arrays(
+        [pa.array(v, pa.string()) for v in columns], schema=pa.schema(fields)
+    )
+
+
+class _FakeStatement:
+    def __init__(self, cursor):
+        self._cursor = cursor
+
+    def set_options(self, **options):
+        self._cursor.options.update(options)
+
+
 class _FakeCursor:
-    """Minimal cursor stand-in to verify execute_trino parameter handling."""
+    """Minimal ADBC cursor stand-in: records the statement and the call options it was given."""
 
     def __init__(self, rows=None, cols=None):
-        self._rows = rows or []
-        self._cols = cols or []
+        self._table = _zaychik_table(cols or [], rows or [])
         self.last_sql: str | None = None
-        self.last_params = None
-        # Mirror the Trino DBAPI description shape: (name, type_code, display_size,
-        # internal_size, precision, scale, null_ok). execute_trino reads desc[0]/desc[1].
-        self.description: list | None = [
-            (c, "varchar", None, None, None, None, None) for c in self._cols
-        ]
+        self.options: dict[str, str] = {}
+        self.adbc_statement = _FakeStatement(self)
+        self.closed = False
 
     def execute(self, sql, params=None):
+        assert params is None, "values are bound in the statement, never as driver params"
         self.last_sql = sql
-        self.last_params = params
 
-    def fetchall(self):
-        return list(self._rows)
+    def fetch_arrow_table(self):
+        return self._table
 
-    def fetchone(self):
-        return self._rows[0] if self._rows else None
-
-    def cancel(self):
-        # The Trino DBAPI cursor's cancel, registered with the request deadline around execute.
+    def adbc_cancel(self):
         self.cancelled = True
+
+    def close(self):
+        self.closed = True
 
 
 class _FakeConnection:
@@ -94,93 +123,69 @@ class _FakeConnection:
 
 
 class TestExecuteTrinoParameterSubstitution:
-    """execute_trino must replace $N / @N placeholders with ? before sending."""
+    """execute_trino_flight binds $N / @N values as the Trino client does (EXECUTE IMMEDIATE)."""
 
     def test_no_params_passed_as_is(self):
-        conn = _FakeConnection(rows=[(42,)], cols=["n"])
-        result = execute_trino(conn, "SELECT 42 AS n")
-        assert result.rows == [(42,)]
+        conn = _FakeConnection(rows=[("42",)], cols=["n"])
+        result = execute_trino_flight(conn, "SELECT 42 AS n")
+        assert result.rows == [("42",)]
         assert result.column_names == ["n"]
         # No params → original SQL used as-is
         assert conn._cursor.last_sql == "SELECT 42 AS n"
-        assert conn._cursor.last_params is None
 
     def test_dollar_param_replaced(self):
         conn = _FakeConnection(rows=[("x",)], cols=["v"])
-        execute_trino(conn, "SELECT $1 AS v", params=["x"])
-        assert "?" in conn._cursor.last_sql
-        assert "$1" not in conn._cursor.last_sql
+        execute_trino_flight(conn, "SELECT $1 AS v", params=["x"])
+        assert conn._cursor.last_sql == "EXECUTE IMMEDIATE 'SELECT ? AS v' USING 'x'"
 
     def test_at_param_replaced(self):
         conn = _FakeConnection(rows=[("x",)], cols=["v"])
-        execute_trino(conn, "SELECT @1 AS v", params=["x"])
-        assert "?" in conn._cursor.last_sql
-        assert "@1" not in conn._cursor.last_sql
+        execute_trino_flight(conn, "SELECT @1 AS v", params=["x"])
+        assert conn._cursor.last_sql == "EXECUTE IMMEDIATE 'SELECT ? AS v' USING 'x'"
 
     def test_multiple_params_all_replaced(self):
         conn = _FakeConnection(rows=[], cols=["a", "b"])
-        execute_trino(conn, "SELECT $1, $2", params=["foo", "bar"])
-        # Both placeholders should be replaced with ?
-        assert conn._cursor.last_sql.count("?") == 2
-        assert "$1" not in conn._cursor.last_sql
-        assert "$2" not in conn._cursor.last_sql
+        execute_trino_flight(conn, "SELECT $1, $2", params=["foo", "bar"])
+        assert conn._cursor.last_sql == "EXECUTE IMMEDIATE 'SELECT ?, ?' USING 'foo','bar'"
 
     def test_replacement_order_no_prefix_collision(self):
-        """$10 must not accidentally match $1 prefix — replace in reverse order."""
+        """$10 must not accidentally match $1 prefix."""
         conn = _FakeConnection(rows=[], cols=["a"])
-        sql = "SELECT $1, $10"
-        execute_trino(conn, sql, params=list(range(10)))
-        # Both $1 and $10 must be replaced
-        assert "$1" not in conn._cursor.last_sql
-        assert "$10" not in conn._cursor.last_sql
-        assert conn._cursor.last_sql.count("?") == 2
+        execute_trino_flight(conn, "SELECT $1, $10", params=list(range(10)))
+        assert conn._cursor.last_sql == "EXECUTE IMMEDIATE 'SELECT ?, ?' USING 0,9"
 
     def test_returns_query_result(self):
-        conn = _FakeConnection(rows=[(1,), (2,)], cols=["id"])
-        result = execute_trino(conn, "SELECT id FROM t")
+        conn = _FakeConnection(rows=[("1",), ("2",)], cols=["id"])
+        result = execute_trino_flight(conn, "SELECT id FROM t")
         assert isinstance(result, QueryResult)
-        assert result.rows == [(1,), (2,)]
+        assert result.rows == [("1",), ("2",)]
         assert result.column_names == ["id"]
+        assert result.column_types == ["varchar"]
+        assert conn._cursor.closed
 
     def test_empty_description_gives_empty_columns(self):
         conn = _FakeConnection(rows=[], cols=[])
-        conn._cursor.description = None
-        result = execute_trino(conn, "SELECT 1")
+        result = execute_trino_flight(conn, "SELECT 1")
         assert result.column_names == []
 
-    def test_session_hints_execute_set_session(self):
-        """Session hints must emit SET SESSION statements before the main query."""
-        executed: list[str] = []
-
-        class _TrackingCursor:
-            description = [("n", "integer", None, None, None, None, None)]
-
-            def cancel(self):  # trino Cursor.cancel(), registered with the request deadline
-                pass
-
-            def execute(self, sql, params=None):
-                executed.append(sql)
-
-            def fetchall(self):
-                return [(1,)]
-
-            def fetchone(self):
-                return (1,)
-
-        class _TrackingConn:
-            def cursor(self):
-                return _TrackingCursor()
-
-        execute_trino(
-            _TrackingConn(),
+    def test_session_hints_ride_the_call_header(self):
+        """Session properties reach Trino with the statement (a fresh session per statement
+        cannot carry a SET SESSION): in the x-provisa-trino-context call header."""
+        conn = _FakeConnection(rows=[("1",)], cols=["n"])
+        execute_trino_flight(
+            conn,
             "SELECT 1 AS n",
-            session_hints={"join_distribution_type": "BROADCAST"},
+            context=TrinoContext(
+                source="provisa/org-1",
+                properties={"join_distribution_type": "BROADCAST"},
+            ),
         )
-        # First execute call is the SET SESSION statement
-        assert any("SET SESSION" in s for s in executed)
-        assert any("join_distribution_type" in s for s in executed)
-        # Main query is also executed
-        assert any("SELECT 1" in s for s in executed)
+        header = conn._cursor.options["adbc.flight.sql.rpc.call_header.x-provisa-trino-context"]
+        assert json.loads(base64.b64decode(header)) == {
+            "source": "provisa/org-1",
+            "properties": {"join_distribution_type": "BROADCAST"},
+        }
+        assert conn._cursor.last_sql == "SELECT 1 AS n"
 
 
 # ---------------------------------------------------------------------------
@@ -230,43 +235,39 @@ class TestIcebergFormat:
 
 
 class TestSubstituteParams:
+    """The statement a read sends: the Trino client's EXECUTE IMMEDIATE binding (REQ-2194)."""
+
     def test_no_params_unchanged(self):
         sql = "SELECT id FROM orders"
-        assert _substitute_params(sql, None) == sql
+        assert bound_statement(sql, None) == sql
 
     def test_empty_params_unchanged(self):
         sql = "SELECT id FROM orders"
-        assert _substitute_params(sql, []) == sql
+        assert bound_statement(sql, []) == sql
 
     def test_string_param_quoted(self):
-        sql = "SELECT $1"
-        result = _substitute_params(sql, ["hello"])
-        assert "'hello'" in result
-        assert "?" not in result
+        result = bound_statement("SELECT $1", ["hello"])
+        assert result == "EXECUTE IMMEDIATE 'SELECT ?' USING 'hello'"
 
     def test_string_param_escapes_single_quote(self):
-        sql = "SELECT $1"
-        result = _substitute_params(sql, ["it's"])
-        assert "it''s" in result
+        result = bound_statement("SELECT $1", ["it's"])
+        assert result == "EXECUTE IMMEDIATE 'SELECT ?' USING 'it''s'"
 
     def test_none_param_becomes_null(self):
-        sql = "SELECT $1"
-        result = _substitute_params(sql, [None])
-        assert "NULL" in result
+        assert bound_statement("SELECT $1", [None]) == "EXECUTE IMMEDIATE 'SELECT ?' USING NULL"
 
     def test_int_param_inlined(self):
-        sql = "SELECT $1"
-        result = _substitute_params(sql, [42])
-        assert "42" in result
+        assert bound_statement("SELECT $1", [42]) == "EXECUTE IMMEDIATE 'SELECT ?' USING 42"
 
     def test_multiple_params_in_order(self):
-        sql = "SELECT $1, $2"
-        result = _substitute_params(sql, ["a", "b"])
-        assert "'a'" in result
-        assert "'b'" in result
+        result = bound_statement("SELECT $1, $2", ["a", "b"])
+        assert result == "EXECUTE IMMEDIATE 'SELECT ?, ?' USING 'a','b'"
 
     def test_at_style_replaced(self):
-        sql = "SELECT @1"
-        result = _substitute_params(sql, ["x"])
-        assert "'x'" in result
+        result = bound_statement("SELECT @1", ["x"])
+        assert result == "EXECUTE IMMEDIATE 'SELECT ?' USING 'x'"
         assert "@1" not in result
+
+    def test_quote_in_the_statement_is_escaped_in_the_immediate_text(self):
+        result = bound_statement("SELECT 'a' || $1", ["b"])
+        assert result == "EXECUTE IMMEDIATE 'SELECT ''a'' || ?' USING 'b'"

@@ -192,6 +192,32 @@ def test_only_what_a_privilege_function_reads_is_carried():
     assert PRIVILEGES in sql and UNSERVED in sql
 
 
+@pytest.mark.parametrize(
+    "call",
+    (
+        "has_table_privilege(LOWER('Sales.Orders'), UPPER('select'))",
+        "has_column_privilege(LOWER('Sales.Orders'), LOWER('ID'), UPPER('select'))",
+        "has_table_privilege(LOWER('Analyst'), LOWER('Sales.Orders'), UPPER('select'))",
+        "has_column_privilege(LOWER('Analyst'), LOWER('Sales.Orders'), LOWER('ID'), UPPER('select'))",
+        "pg_get_viewdef(LOWER('PG_CLASS'))",
+    ),
+)
+def test_an_argument_is_written_once_however_often_a_form_names_it(call):
+    sql = _expanded(f"SELECT {call}")
+    for argument in re.findall(r"(?:LOWER|UPPER)\('[^']+'\)", call):
+        assert sql.count(argument) == 1, argument
+
+
+def test_a_privilege_form_resolves_its_relation_once():
+    plain = _expanded("SELECT has_table_privilege('orders', 'SELECT')")
+    for call in (
+        "has_table_privilege('analyst', 'orders', 'SELECT')",
+        "has_column_privilege('analyst', 'orders', 'id', 'SELECT')",
+    ):
+        assert _expanded(f"SELECT {call}").count("catalog_pg_class") == 1
+    assert plain.count("catalog_pg_class") == 1
+
+
 def test_a_call_in_an_argument_is_written_too():
     sql = _expanded("SELECT pg_get_expr(pg_get_userbyid(10), 1)")
     assert "pg_get_userbyid" not in sql.lower()
@@ -551,9 +577,9 @@ def test_a_table_under_two_names_is_scoped_once():
 
 
 def test_the_scope_is_told_once_and_a_statement_not_told_it_reads_nothing_of_the_model():
-    settings = statement_settings("analyst", False, "provisa", False, scope="{1,2}")
+    settings = statement_settings("analyst", False, "provisa", False, masked=(), scope="{1,2}")
     assert settings["scope"] == "{1,2}"
-    assert "scope" not in statement_settings("analyst", False, "provisa", False)
+    assert "scope" not in statement_settings("analyst", False, "provisa", False, masked=())
     assert isinstance(scope_ids().expressions[0], exp.Explode)
     assert mentions(scope_ids(), "provisa.catalog.scope")
 

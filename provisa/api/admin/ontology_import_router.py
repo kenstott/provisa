@@ -41,6 +41,7 @@ from provisa.api.admin._guards import require_active_org_id
 from provisa.api.errors import ApiError
 from provisa.core.repositories import glossary as glossary_repo
 from provisa.ontology_import import align, apply, parse, store
+from provisa.api.engine_error_names import client_value
 
 if TYPE_CHECKING:
     from provisa.core.database import Connection, Database
@@ -428,7 +429,7 @@ async def bulk_approve(import_id: int, request: Request) -> dict:
                 approved.append(alignment_id)
             except (apply.ImportRefused, ApiError) as exc:
                 message = exc.detail if isinstance(exc, ApiError) else str(exc)
-                refused.append({"id": alignment_id, "message": message})
+                refused.append({"id": alignment_id, "message": client_value(message)})
     return {"approved": approved, "refused": refused}
 
 

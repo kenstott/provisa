@@ -109,7 +109,8 @@ class TestAScopedMerge:
         with pytest.raises(MergeSelectionError, match="removal"):
             _merged(dict(target), ["metrics/old.yaml"])
         merged, _ = _merged(dict(target), ["metrics/old.yaml"], removals=True)
-        assert "metrics/old.yaml" not in merged
+        # REQ-2248: the removal of a metric retires it in the target.
+        assert merged["metrics/old.yaml"]["retired"] is True
 
     def test_removals_reach_only_what_was_selected(self):
         target = {"metrics/old.yaml": {"expression": "SUM(1)"}, "metrics/keep.yaml": {"x": 1}}

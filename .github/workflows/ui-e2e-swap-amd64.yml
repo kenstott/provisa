@@ -37,11 +37,26 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Maven Central is asked for the pinned Trino plugin jars once per pin, here: the lane needs
+  # this job and restores its cache (.github/actions/trino-plugins); its prepare script fetches
+  # nothing.
+  trino-plugins:
+    name: Trino plugins
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/trino-plugins
+        with:
+          phase: prime
+
   playwright:
     name: Playwright swap lane (exasol, saphana)
+    needs: [trino-plugins]
     uses: ./.github/workflows/lane.yml
     with:
       name: ui-swap-amd64
+      trino-plugins: true
       timeout: 90
       # saphana (hdbcli + sqlalchemy-hana) is demo/sources/saphana/prime.py's own dependency.
       python-extras: dev saphana

@@ -10,13 +10,14 @@
 
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ActionIcon, Badge, Checkbox, Group, Popover, Stack, Text } from "@mantine/core";
+import { ActionIcon, Badge, Checkbox, Group, Loader, Popover, Stack, Text } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { Pencil, Tag as TagIcon } from "lucide-react";
-import type { MutationResult, Tag, TagAssignment, TagObjectType } from "../types/admin";
+import type { MutationResult, Tag, TagAssignment, TagObjectType, TagTarget } from "../types/admin";
 import { TAG_PARAM_SEPARATOR, baseTagId } from "../types/admin";
 import {
   useAssignTag,
+  useOfferedTags,
   useTagAssignments,
   useTagCitations,
   useTags,
@@ -103,6 +104,8 @@ export function TagControl({
   // Which tag's assignment form is open in the picker, and which chip's form is open.
   const [editingTagId, setEditingTagId] = useState<string | null>(null);
   const [openChip, setOpenChip] = useState<string | null>(null);
+  // The picker asks the server which tags it offers on this object once it is first opened.
+  const [pickerOpened, setPickerOpened] = useState(false);
 
   const matches = (a: TagAssignment): boolean => {
     if (a.objectType !== objectType) return false;
@@ -189,9 +192,6 @@ export function TagControl({
   const assignedTags = tags.filter(
     (tag) => assignmentByTagId.has(tag.id) || (tag.id === PII_TAG_ID && !!piiTerm),
   );
-  // REQ-1443: a derived tag reports what the object's own registration already says, so there is
-  // nothing to check or clear — the server refuses the assignment and offering it would put a
-  // control on screen whose only outcome is an error.
   // Polly's read_screen: the object's tags as its chips show them, ids and flags only.
   const screenTags: ScreenTag[] = assignedTags.map((tag) => {
     const assignment = assignmentByTagId.get(tag.id);
@@ -214,10 +214,8 @@ export function TagControl({
           tags: screenTags,
         },
   );
-  const applicableTags = tags.filter((tag) => tag.appliesTo.includes(objectType) && !tag.derived);
 
-  const buildInput = (tagId: string): TagAssignment => ({
-    tagId,
+  const buildTarget = (): TagTarget => ({
     objectType,
     sourceId: objectType === "source" ? sourceId : undefined,
     tableId: objectType === "table" || objectType === "column" ? tableId : undefined,
@@ -233,6 +231,18 @@ export function TagControl({
     roleId: objectType === "role" ? roleId : undefined,
     metricName: objectType === "metric" ? metricName : undefined,
   });
+  const buildInput = (tagId: string): TagAssignment => ({ tagId, ...buildTarget() });
+
+  // REQ-2208: the tags the server offers on this object -- those that apply to its kind, are not
+  // derived (REQ-1443: the server refuses a derived tag), and are offered in its domains, or for an
+  // object in no domain in one its assigner acts in. assignTag refuses any other by the same rule;
+  // the object's domains are the server's to know, so nothing of that is decided here.
+  const { offered, loading: offeredLoading } = useOfferedTags(buildTarget(), pickerOpened);
+  // A tag already on the object stays listed, checked, so it can be taken off: narrowing a tag's
+  // domains removes no assignment.
+  const applicableTags = offered
+    ? tags.filter((tag) => offered.has(tag.id) || assignmentByTagId.has(tag.id))
+    : [];
 
   const closeForm = () => setEditingTagId(null);
   const openForm = (tagId: string) => setEditingTagId(tagId);
@@ -406,7 +416,13 @@ export function TagControl({
         );
       })}
       {!readOnly && (
-        <Popover withinPortal position="bottom-start" shadow="md" width={500}>
+        <Popover
+          withinPortal
+          position="bottom-start"
+          shadow="md"
+          width={500}
+          onOpen={() => setPickerOpened(true)}
+        >
           <Popover.Target>
             <Tip text={t("tagControl.editTags")} named>
               <ActionIcon
@@ -421,7 +437,10 @@ export function TagControl({
           </Popover.Target>
           <Popover.Dropdown onClick={(e) => e.stopPropagation()}>
             <Stack gap="0.35rem">
-              {applicableTags.length === 0 && (
+              {offered === null && offeredLoading && (
+                <Loader size="xs" data-testid="tag-picker-loading" />
+              )}
+              {offered !== null && applicableTags.length === 0 && (
                 <span style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>
                   {t("tagControl.noTags")}
                 </span>

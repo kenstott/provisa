@@ -91,11 +91,14 @@ def _build_column_fields(  # REQ-008, REQ-010, REQ-039, REQ-155, REQ-156, REQ-22
     enum_types: dict | None = None,
     object_type_registry: dict[str, GraphQLObjectType] | None = None,
     governed_gql_types: set[str] | None = None,
+    masked: frozenset[tuple[int, str]] = frozenset(),
 ) -> dict[str, GraphQLField]:
     """Build GraphQL fields for visible columns.
 
     Naming priority: explicit alias > convention-based alias > raw column name.
     Enum columns are mapped to GraphQLEnumType when enum_types is provided (REQ-221).
+    A column the role reads under a mask (``masked``: table id, column) is nullable, whatever its
+    declaration (REQ-2131).
     """
     fields: dict[str, GraphQLField] = {}
     _enums = enum_types or {}
@@ -139,12 +142,13 @@ def _build_column_fields(  # REQ-008, REQ-010, REQ-039, REQ-155, REQ-156, REQ-22
                 col_name, object_fields, override, _obj_registry, _type_prefix
             )
         else:
+            nullable = meta.is_nullable or (table.table_id, col_name) in masked  # REQ-2131
             enum_gql = resolve_column_type(meta.data_type, _enums)
             if enum_gql is not None:
-                gql_type = enum_gql if meta.is_nullable else GraphQLNonNull(enum_gql)
+                gql_type = enum_gql if nullable else GraphQLNonNull(enum_gql)
             else:
                 scalar_type = registered_graphql_type(meta.data_type, meta.subtype)
-                if not meta.is_nullable and not isinstance(scalar_type, GraphQLList):
+                if not nullable and not isinstance(scalar_type, GraphQLList):
                     gql_type = GraphQLNonNull(scalar_type)
                 else:
                     gql_type = scalar_type

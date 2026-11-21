@@ -38,6 +38,7 @@ from provisa.transpiler.metadata_server_forms import SERVER_FORM_RAISE
 from provisa.transpiler.native_json import resolve_native_json
 from provisa.transpiler.native_subtype import resolve_reads
 from provisa.transpiler.pg_forms_json import json_member
+from provisa.transpiler.polyfill import ported as polyfill_ported
 from provisa.transpiler.pg_literals import array_inputs, exact_inputs, postgres_literals
 from provisa.transpiler.to_char import to_char_for_duckdb
 from provisa.transpiler.transpile_correlated import (
@@ -295,7 +296,9 @@ def _json_list_compare(
         body = pair(f"{p}[1]", f"{p}[2]", depth - 1)
         if duck:
             zipped = f"list_zip({arr_a}, {arr_b}, true)"
-            decided = f"list_filter(list_transform({zipped}, {p} -> {body}), {c} -> {c} <> 0)"
+            decided = (
+                f"list_filter(list_transform({zipped}, LAMBDA {p} : {body}), LAMBDA {c} : {c} <> 0)"
+            )
             return f"list_extract(list_append({decided}, {shorter}), 1)"
         zipped = (
             f"slice(zip({arr_a}, {arr_b}), 1, least(cardinality({arr_a}), cardinality({arr_b})))"
@@ -1005,6 +1008,29 @@ def _like_escape_written(pg_sql: str, target_dialect: str) -> str:
     )
 
 
+_LIKE_SAID = re.compile(r"like\b|~~|\bescape\b", re.IGNORECASE)
+
+
+def _like_patterns_read(pg_sql: str, target_dialect: str) -> str:
+    """``pg_sql`` with each LIKE pattern in ClickHouse's form, its ESCAPE read (REQ-2167):
+    ClickHouse's LIKE has no ESCAPE clause, and its backslash escapes only %, _ and itself."""
+    if target_dialect != "clickhouse" or _LIKE_SAID.search(pg_sql) is None:
+        return pg_sql
+    from provisa.transpiler import like_patterns
+
+    return like_patterns.written(pg_sql)
+
+
+def _stamp_inputs_held(pg_sql: str, target_dialect: str) -> str:
+    """``pg_sql`` with each text cast to a timestamp without its offset, as PostgreSQL's input
+    drops it (REQ-2167): ClickHouse's cast reads it."""
+    if target_dialect != "clickhouse" or "TIMESTAMP" not in pg_sql.upper():
+        return pg_sql
+    from provisa.transpiler.polyfill import instants
+
+    return instants.wall_inputs(pg_sql)
+
+
 def _null_order_as_key(tree: exp.Expr) -> exp.Expr:
     """#294: DuckDB SQL with each ORDER BY key whose nulls come first written as a null-test key
     of its own (codehost.duckdb_sql, the one form every DuckDB answering a statement runs)."""
@@ -1277,6 +1303,20 @@ def rewrite_json_object_to_build_object(pg_sql: str) -> str:  # REQ-902
     while list(tree.find_all(exp.JSONObject)):
         tree = tree.transform(_transform)
     return pg_syntax.overlaps_restored(tree).sql(dialect="postgres")
+
+
+def direct_physical(sql: str, dialect: str) -> str:
+    """``sql``, transpiled to ``dialect``, as it is sent DIRECT to one source of that dialect.
+
+    PostgreSQL types JSON_OBJECT(...) as jsonb when any of its arguments is jsonb and as json
+    otherwise, so two JSON values of one column (a Cypher node union's arms, one label reading a
+    jsonb column and another none) were of two types, and PostgreSQL refused the statement: "UNION
+    could not convert type jsonb to json". json_build_object is json whatever it holds, as the pg
+    engine already sends it (rewrite_json_object_to_build_object, REQ-902).
+    """
+    if dialect != "postgres":
+        return sql
+    return rewrite_json_object_to_build_object(sql)
 
 
 def postgres_try_casts(tree: exp.Expr) -> exp.Expr:  # REQ-778
@@ -1935,6 +1975,8 @@ def transpile(
     Returns:
         SQL string in target dialect.
     """
+    # REQ-2167: a call ClickHouse answers in DuckDB's form, held out of what follows.
+    pg_sql, ported = polyfill_ported.held_out(pg_sql, target_dialect)
     pg_sql = pg_forms_type_io.readable(pg_sql, target_dialect)  # REQ-2171
     pg_sql = _within_group_unqualified(pg_sql)
     if target_dialect != "duckdb":  # DuckDB's form is pg_functions.typed_calls'
@@ -1973,6 +2015,8 @@ def transpile(
         pg_sql = unalias_write_target(pg_sql)
     pg_sql = _every_match_unflagged(pg_sql, target_dialect)
     pg_sql = _like_escape_written(pg_sql, target_dialect)
+    pg_sql = _like_patterns_read(pg_sql, target_dialect)
+    pg_sql = _stamp_inputs_held(pg_sql, target_dialect)
     pg_sql = _instants_as_utc(pg_sql, target_dialect)
     lowered = _lower_universal_regex(pg_sql, target_dialect)
     if target_dialect == "postgres" and "FILTER(" in pg_sql.upper():
@@ -2097,6 +2141,7 @@ def transpile(
         )
     from provisa.observability.stage_trace import trace_stage
 
+    result = ported.restored(result)
     trace_stage(f"transpile.{target_dialect}", result)
     return result
 
@@ -2166,12 +2211,18 @@ _CLICKHOUSE_INSTANT = zoned_instants.CLICKHOUSE_INSTANT
 
 def clickhouse_semantics(tree: exp.Expr) -> exp.Expr:  # REQ-2171
     """``tree`` with what ClickHouse would read otherwise said for it. A timestamp keeps its
-    microseconds and reads as one, a time is read by toTime64 (its Time reads PostgreSQL's text as
-    NULL), and a hex has no leading zeros, as to_hex has none. A refusal (pg_forms_types.refused), the cast of a text that is no
+    microseconds and reads as one, a time of day is held as its microseconds (polyfill.clocks: the
+    server has no Time64) and shown as time_out's text, and a hex has no leading zeros, as to_hex has none. A refusal (pg_forms_types.refused), the cast of a text that is no
     number, raises: sqlglot writes a cast as Nullable, which reads such a text as NULL. Its argument
     is materialized so the refusal is not folded in a branch the statement does not take."""
 
+    from provisa.transpiler.polyfill import clickhouse, clocks, instants
+
     def said(node: exp.Expr) -> exp.Expr:
+        outside = instants.outside_cast(node)
+        if outside is not None:
+            # REQ-2167: a literal DateTime64 would hold at its type's end raises 0A000.
+            return outside
         if isinstance(node, exp.CurrentTimestamp):
             return exp.Anonymous(
                 this="now64", expressions=[exp.Literal.number(6), exp.Literal.string("UTC")]
@@ -2182,12 +2233,17 @@ def clickhouse_semantics(tree: exp.Expr) -> exp.Expr:  # REQ-2171
         ):
             return exp.DataType.build(_CLICKHOUSE_INSTANT, dialect="clickhouse")
         if isinstance(node, exp.Cast) and node.to.is_type(exp.DataType.Type.TIME):
-            value = node.this
-            while isinstance(value, exp.Cast) and value.to.is_type(exp.DataType.Type.TIME):
-                value = value.this
-            # Its OrNull reads what the literal's own refuses, and a NULL it cannot.
-            reader = "toTime64" if isinstance(value, exp.Literal) else "toTime64OrNull"
-            return exp.Anonymous(this=reader, expressions=[value, exp.Literal.number(6)])
+            # REQ-2236: a time of day held as its microseconds (polyfill.clocks): the server has
+            # no Time64.
+            return clocks.cast(node, said, clickhouse.clock_micros)
+        clock = clocks.semantics(node, said)
+        if clock is not None:
+            return clock
+        if isinstance(node, exp.Date) and not node.args.get("zone"):
+            # REQ-2236: its DATE() is toDate, a Date of 1970 to 2149; PostgreSQL's day of a value
+            # held as DateTime64(6, 'UTC') or Date32 is Date32's, exact from 1900 to 2299.
+            # The new node is not walked again: its value is said here.
+            return exp.Anonymous(this="toDate32", expressions=[node.this.transform(said)])
         if isinstance(node, exp.Hex):
             return exp.Anonymous(
                 this="replaceRegexpOne",
@@ -2207,7 +2263,8 @@ def clickhouse_semantics(tree: exp.Expr) -> exp.Expr:  # REQ-2171
             )
         return node
 
-    return tree.transform(said)
+    # A time in the select list reaches the client as time_out's text (polyfill.clocks).
+    return clocks.select_shown(tree, tree.transform(said))
 
 
 def _lower_universal_regex(pg_sql: str, target_dialect: str) -> exp.Expr | None:  # REQ-2142

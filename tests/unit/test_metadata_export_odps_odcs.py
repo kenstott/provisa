@@ -942,3 +942,37 @@ def test_a_contracts_dq_promises_are_stated_whether_or_not_its_results_are_given
     assert props["id"]["quality"]
     custom = {p["property"]: p["value"] for p in contract["customProperties"]}
     assert custom["dataQualityResults"] is False
+
+
+def test_an_offers_contract_states_the_offers_terms_of_use():
+    """REQ-2180 (amended 2026-11-11, THE PRODUCT PAGE IS SUMMARY ROWS): each offer carries its
+    terms of use, shown in its contract: a term the offer states is its contract's, one it leaves
+    unstated is the product's, written once on it."""
+    snapshot, product = _snapshot()
+    orders = next(t for t in snapshot.tables if t.name == "orders")
+    contract = _contract(
+        snapshot, product, orders, usage="Monthly churn models", limitations="No credit decisions"
+    )
+    assert _errors(ODCS, contract) == []
+    assert contract["description"] == {
+        "purpose": "One view of each customer",
+        "usage": "Monthly churn models",
+        "limitations": "No credit decisions",
+    }
+
+
+def test_the_odps_document_names_the_environment_and_its_stage():  # REQ-2261
+    from provisa.api.metadata_export.model import EnvironmentStage
+
+    snapshot, product = _snapshot(version="1.2.0", status="live")
+    snapshot.environment = EnvironmentStage(name="eu", stage="production")
+    document = odps_document(snapshot, product)
+
+    assert _errors(ODPS, document) == []
+    custom = {p["property"]: p["value"] for p in document["customProperties"]}
+    assert custom["provisaEnvironment"] == "eu"
+    assert custom["provisaStage"] == "production"
+    # Without an environment registry no stage is claimed.
+    snapshot.environment = None
+    bare = odps_document(snapshot, product)
+    assert not any(p["property"] == "provisaStage" for p in bare.get("customProperties", []))

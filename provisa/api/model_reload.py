@@ -35,6 +35,7 @@ import logging
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, cast
 
+from provisa.api import rebuild_trace
 from provisa.core import config_stamp, deployment_settings, domain_policy, model_change
 from provisa.core.config_watch import NOT_RELOADED, Target
 from provisa.core.environments import PROD
@@ -87,6 +88,21 @@ def _connection(row: dict) -> tuple:
     return tuple(json.dumps(row[c], sort_keys=True, default=str) for c in _CONNECTION_COLUMNS)
 
 
+async def registered_source_rows(conn: Any) -> dict[str, dict]:
+    """The ``sources`` rows a schema build reads, by id: the sources in service.
+
+    A retired source is not one (REQ-2248): its row is kept under a key of its own
+    (:func:`provisa.core.repositories.retirement.retired_key`), which is no source id, and it has
+    no pool, catalog or attach. Read through the one reader of the sources in service, so a build
+    and the admin reads cannot disagree about which those are. A restored source is back among
+    them at its id, and :func:`reconcile_sources` builds it as added. A withdrawn source is not
+    one either (REQ-1921): no engine attaches it and it has no pool; put back, it is built as
+    added."""
+    from provisa.core.repositories import source as source_repo
+
+    return {row["id"]: row for row in await source_repo.list_in_production(conn)}
+
+
 async def reconcile_sources(rows: dict[str, dict]) -> None:
     """Bring this worker's per-source state (direct pool, dialect, catalog name) in line with the
     ``sources`` rows just read by the schema build.
@@ -110,7 +126,7 @@ async def reconcile_sources(rows: dict[str, dict]) -> None:
 async def _reconcile_sources(rows: dict[str, dict]) -> None:
     from provisa.api.admin.schema_common import _drop_source_on_engine
     from provisa.api.app import state
-    from provisa.api.app_loaders import _build_source_pools_and_enums
+    from provisa.api.app_loaders import _build_source_pools_and_enums, forget_source_enums
     from provisa.core.env_classes import BINDING_COLUMN, SYNTHETIC, UNBOUND
     from provisa.core.models import BUILT_IN_SOURCE_IDS
     from provisa.core.repositories.source import source_from_row
@@ -132,6 +148,10 @@ async def _reconcile_sources(rows: dict[str, dict]) -> None:
     changed = [sid for sid in seen if sid in known and known[sid] != seen[sid]]
     added = [sid for sid in seen if sid not in known]
     removed = [sid for sid in known if sid not in seen]
+    # REQ-1921: an added source this worker has published no catalog for -- one put back, or
+    # registered by another worker -- is attached by this worker's engine below, as the worker
+    # that registers a source attaches it in the mutation.
+    unattached = [sid for sid in added if sid not in rt.source_catalogs]
     for sid in (*changed, *removed):
         await state.source_pools.remove(sid)
     for sid in removed:
@@ -142,24 +162,40 @@ async def _reconcile_sources(rows: dict[str, dict]) -> None:
         for name in _SOURCE_MAPS:
             getattr(rt, name).pop(sid, None)
         state.graphql_remote_sources.pop(sid, None)
+        forget_source_enums(rt, sid)
     if added or changed:
         # REQ-1919: each source as the store holds it — an admin's edit governs, and the file's
         # declaration of the same id is never read.
         # REQ-1491, REQ-1942: a source reached through no connection gets no pool.
+        # Only the added and changed sources: the others keep their pools and the enums they
+        # declared when last read (SourcePool.add returns for a source it already holds), and are
+        # not contacted, so a registered source whose server is down neither slows nor fails the
+        # build of the one just added.
         models = [
             source_from_row(rows[sid])
-            for sid in seen
+            for sid in (*added, *changed)
             if rows[sid][BINDING_COLUMN] not in (UNBOUND, SYNTHETIC)
         ]
-        # Every registered source is passed, not only the new ones: the builder also derives the
-        # process's enum-type registry from the sources it is given. Pools that exist are kept
-        # (SourcePool.add returns for a source it already holds).
         shim = SimpleNamespace(
             sources=[],
             # A first-run install has no config file, so no domain declares a write target yet.
             domains=state.config.domains if state.config is not None else [],
         )
         await _build_source_pools_and_enums(cast("ProvisaConfig", shim), extra_sources=models)
+        attach = [m for m in models if m.id in unattached]
+        if attach:
+            from provisa.core.config_loader import register_sources, resolved_source
+            from provisa.core.secrets_store import bound_to_request_org
+
+            # The one call create_source and the boot make, here for the worker that did not.
+            async with bound_to_request_org():
+                failed = register_sources(
+                    state.federation_engine,
+                    [resolved_source(m) for m in attach],
+                    state.source_catalogs,
+                )
+            if failed:
+                log.error("sources not attached on this worker's engine: %s", failed)
         log.info("source state rebuilt: added=%s changed=%s", added, changed)
     if removed:
         log.info("source state dropped: %s", removed)
@@ -202,7 +238,7 @@ async def reload_model(rt: "OrgRuntime") -> object:
         # The worker that made the change announced it (REQ-1072); a reload is not another change.
         # Built at the stored stamp by the time its turn comes (this worker's own change), it is
         # not built again.
-        if await _rebuild_schemas(announce=False, if_stale=True):
+        if await _rebuild_schemas(announce=False, if_stale=True, cause=rebuild_trace.WATCHER):
             return  # only the stamp moved: the model these steps follow has not changed
         # REQ-1922: this region's state rows whose model owner the change removed.
         await prune_region_state(rt)
@@ -371,7 +407,7 @@ async def reload_org_settings(rt: "OrgRuntime") -> None:
             else deployment.get("default_domain", "default")
         )
         domain_policy.configure(use_domains, default_domain)
-        await _rebuild_schemas(announce=False)
+        await _rebuild_schemas(announce=False, cause=rebuild_trace.SETTINGS_WATCHER)
 
     await _bound(rt, _apply_domain_mode)
 

@@ -16,7 +16,7 @@
     "checkPassed": "{{capability}}: geslaagd",
     "checkFailed": "{{capability}}: mislukt ({{reason}})",
     "jdbcDriverJar": "JDBC-stuurprogramma-JAR",
-    "jdbcDriverJarHint": "Het JAR-bestand van het stuurprogramma, geüpload vanaf uw computer. Alleen zelf-gehoste installaties.",
+    "jdbcDriverJarHint": "Het jar-bestand van de driver, geüpload vanaf de eigen machine. Alleen voor zelf gehoste installaties.",
     "jdbcDriverClass": "Stuurprogrammaklasse",
     "driver": "Stuurprogramma",
     "jarDriver": "Uw eigen JDBC-stuurprogramma (JAR)",

@@ -55,12 +55,13 @@ from typing import Any
 from fastapi import APIRouter, Request
 from pydantic import AwareDatetime, BaseModel
 
+from provisa.api.admin._platform_guard import require_roles_removable
 from provisa.api.admin._guards import require_active_org_id
 from provisa.api.admin.capabilities import _resolved_capabilities, require_capability_request
 from provisa.api.errors import ApiError
 from provisa.auth import role_grants
 from provisa.core.org_membership import record_admin_action
-from provisa.entitlements import pending, people, roles, store
+from provisa.entitlements import effective_store, pending, people, roles, store
 from provisa.entitlements.effective import (
     ExpiryPreview,
     access_view,
@@ -75,6 +76,7 @@ from provisa.entitlements.index import (
     TREE_DEPTH,
     WILDCARD,
     capability_scopes,
+    identifier_problem,
     names_tree,
 )
 from provisa.entitlements.lists import ExpiryRule, HeldEntitlements
@@ -178,6 +180,14 @@ def _require_role(state: Any, role_id: str) -> None:
         )
 
 
+async def _reload_held(conn: Any, state: Any, principal: str) -> None:
+    """After a write to ``principal``'s lists, rules or grants: this worker's copy of what Provisa
+    holds (the write advances the org's config stamp, which reloads the others), and their
+    effective rows recomputed from it (REQ-2219)."""
+    state.held_entitlements = await store.load_held(conn)
+    await effective_store.write_person(conn, state, principal)
+
+
 def _admin_db(state: Any) -> Any:
     if state.admin_db is None:
         raise ApiError(503, "entitlements.database_not_connected", "Database not connected")
@@ -185,8 +195,8 @@ def _admin_db(state: Any) -> Any:
 
 
 async def _resolve(request: Request, state: Any, body: _ListKey) -> str | None:
-    """The principal a write names: its own, or the one person of the org with its email. None
-    when the email matches no one: the write is a pending grant."""
+    """The principal a write names: its own, or the one person of the org whose verified email it
+    is. None when the email is no one's verified address: the write is a pending grant."""
     if (body.principal is None) == (body.email is None):
         raise ApiError(
             422, "entitlements.principal_or_email", "Name a principal or an email, not both"
@@ -203,7 +213,6 @@ async def _resolve(request: Request, state: Any, body: _ListKey) -> str | None:
         _db(state),
         require_active_org_id(request),
         body.email,
-        multitenancy=state.multitenancy,
     )
     if len(matched) > 1:
         raise ApiError(
@@ -273,6 +282,16 @@ def _check_list_expiry(
 ) -> None:
     if any(not identifier.strip() for identifier in identifiers):
         raise ApiError(422, "entitlements.blank_identifier", "An identifier cannot be blank")
+    for identifier in identifiers:
+        problem = identifier_problem(kind, identifier)
+        if problem is not None:
+            raise ApiError(
+                422,
+                "entitlements.invalid_identifier",
+                problem,
+                kind=kind,
+                identifier=identifier,
+            )
     if expires_at is None:
         return
     _refuse_past(expires_at)
@@ -337,7 +356,7 @@ def _pending_view(grant: pending.PendingGrant) -> dict:
     }
 
 
-async def _set_pending(state: Any, body: SetListBody, actor: str) -> dict:
+async def _set_pending(state: Any, org_id: str, body: SetListBody, actor: str) -> dict:
     assert body.email is not None
     db = _db(state)
     async with db.acquire() as conn:
@@ -353,6 +372,7 @@ async def _set_pending(state: Any, body: SetListBody, actor: str) -> dict:
         )
     await record_admin_action(
         db,
+        org_id=org_id,
         action="entitlements.set_pending",
         actor_id=actor,
         subject_id=grant.email,
@@ -377,7 +397,7 @@ async def set_list(body: SetListBody, request: Request) -> dict:
     _check_set(state, body)
     actor = _caller(request) or _ANONYMOUS
     if principal is None:
-        return await _set_pending(state, body, actor)
+        return await _set_pending(state, require_active_org_id(request), body, actor)
     await _refuse_past_grant(state, principal, body.role_id, body.expires_at)
     db = _db(state)
     async with db.acquire() as conn:
@@ -393,9 +413,10 @@ async def set_list(body: SetListBody, request: Request) -> dict:
                 reason=body.reason,
             )
         # This worker now; the write advances the org's config stamp, which reloads the others.
-        state.held_entitlements = await store.load_held(conn)
+        await _reload_held(conn, state, principal)
     await record_admin_action(
         db,
+        org_id=require_active_org_id(request),
         action="entitlements.set",
         actor_id=actor,
         subject_id=principal,
@@ -436,6 +457,7 @@ async def end_list(body: EndListBody, request: Request) -> dict:
             )
         await record_admin_action(
             db,
+            org_id=require_active_org_id(request),
             action="entitlements.end_pending",
             actor_id=actor,
             subject_id=grant.email,
@@ -450,9 +472,10 @@ async def end_list(body: EndListBody, request: Request) -> dict:
             await store.remove_list(
                 conn, principal, body.role_id, body.kind, set_by=actor, reason=body.reason
             )
-        state.held_entitlements = await store.load_held(conn)
+        await _reload_held(conn, state, principal)
     await record_admin_action(
         db,
+        org_id=require_active_org_id(request),
         action="entitlements.end",
         actor_id=actor,
         subject_id=principal,
@@ -677,9 +700,10 @@ async def add_access(body: AddAccessBody, request: Request) -> dict:
                 set_by=actor,
                 reason=body.reason,
             )
-        state.held_entitlements = await store.load_held(conn)
+        await _reload_held(conn, state, body.principal)
     await record_admin_action(
         db,
+        org_id=require_active_org_id(request),
         action="entitlements.add",
         actor_id=actor,
         subject_id=body.principal,
@@ -778,13 +802,26 @@ def _rule(state: Any, rule_key: str) -> tuple[str, ExpiryRule]:
 
 
 async def _end_grant(
-    state: Any, principal: str, role_id: str, ends_at: datetime, actor: str, reason: str
+    request: Request,
+    state: Any,
+    principal: str,
+    role_id: str,
+    ends_at: datetime,
+    actor: str,
+    reason: str,
 ) -> None:
     """End ``principal``'s grant of ``role_id`` at ``ends_at``: set or shorten its own expiry.
-    Refused by name when Provisa holds no grant of the role for them."""
+    Refused by name when Provisa holds no grant of the role for them.
+
+    Ending a grant takes the role away, so it asks what removing the role asks
+    (``rights.check_role_grant``): REQ-1327 (amended 2026-11-16), ending org_admin needs org_admin.
+    """
+    require_roles_removable(request, [role_id])
     db = _db(state)
     async with db.acquire() as conn:
         ended = await role_grants.end_grant(conn, principal, role_id, ends_at)
+        if ended:
+            await effective_store.write_person(conn, state, principal)
     if not ended:
         raise ApiError(
             409,
@@ -795,6 +832,7 @@ async def _end_grant(
         )
     await record_admin_action(
         db,
+        org_id=require_active_org_id(request),
         action="role.expiry_set",
         actor_id=actor,
         subject_id=principal,
@@ -830,7 +868,9 @@ async def add_expiry(body: ExpiryBody, request: Request) -> dict:
     _refuse_past(body.ends_at)
     actor = _caller(request) or _ANONYMOUS
     if not body.ends:
-        await _end_grant(state, body.principal, body.role_id, body.ends_at, actor, body.reason)
+        await _end_grant(
+            request, state, body.principal, body.role_id, body.ends_at, actor, body.reason
+        )
         return await _view(state, body.principal, body.role_id)
     await _refuse_past_grant(state, body.principal, body.role_id, body.ends_at)
     if _preview(state, body.principal, body.role_id, body).removes_nothing:
@@ -846,9 +886,10 @@ async def add_expiry(body: ExpiryBody, request: Request) -> dict:
             set_by=actor,
             reason=body.reason,
         )
-        state.held_entitlements = await store.load_held(conn)
+        await _reload_held(conn, state, body.principal)
     await record_admin_action(
         db,
+        org_id=require_active_org_id(request),
         action="entitlements.expiry_added",
         actor_id=actor,
         subject_id=body.principal,
@@ -877,10 +918,10 @@ async def change_expiry(rule_key: str, body: ChangeExpiryBody, request: Request)
     actor = _caller(request) or _ANONYMOUS
     db = _db(state)
     if not body.ends:
-        await _end_grant(state, principal, rule.role_id, body.ends_at, actor, body.reason)
+        await _end_grant(request, state, principal, rule.role_id, body.ends_at, actor, body.reason)
         async with db.acquire() as conn:
             await store.withdraw_expiry(conn, rule, principal, set_by=actor, reason=body.reason)
-            state.held_entitlements = await store.load_held(conn)
+            await _reload_held(conn, state, principal)
         return await _view(state, principal, rule.role_id)
     await _refuse_past_grant(state, principal, rule.role_id, body.ends_at)
     if _preview(state, principal, rule.role_id, body, rule_key).removes_nothing:
@@ -889,9 +930,10 @@ async def change_expiry(rule_key: str, body: ChangeExpiryBody, request: Request)
         await store.change_expiry(
             conn, rule, principal, body.ends_at, body.ends, set_by=actor, reason=body.reason
         )
-        state.held_entitlements = await store.load_held(conn)
+        await _reload_held(conn, state, principal)
     await record_admin_action(
         db,
+        org_id=require_active_org_id(request),
         action="entitlements.expiry_changed",
         actor_id=actor,
         subject_id=principal,
@@ -918,9 +960,10 @@ async def withdraw_expiry(rule_key: str, body: EndExpiryBody, request: Request) 
     db = _db(state)
     async with db.acquire() as conn:
         await store.withdraw_expiry(conn, rule, principal, set_by=actor, reason=body.reason)
-        state.held_entitlements = await store.load_held(conn)
+        await _reload_held(conn, state, principal)
     await record_admin_action(
         db,
+        org_id=require_active_org_id(request),
         action="entitlements.expiry_withdrawn",
         actor_id=actor,
         subject_id=principal,

@@ -61,6 +61,7 @@ _VIEWS = (
     "table_columns",
     "tracked_functions",
     "tag_assignments",
+    "domains",  # REQ-2248: domains_meta, a product's domain read through its relationship
     "_domains",  # _term_refs_ontology reads each term's domains from it
     "_term_refs",
 )
@@ -126,7 +127,7 @@ async def _seed(conn) -> None:
     """customer_360 in sales: a member table, a member checker table with a dq_contract, a
     member command, a tag on the product, a term bound to a member column, and the member table
     profiled with a result table registered on its profiler source. Plus a table that is in no
-    product and a draft member, which are reached by nothing."""
+    product and a withdrawn member, which are reached by nothing."""
     from sqlalchemy import insert
 
     from provisa.core.schema_org import (
@@ -172,7 +173,7 @@ async def _seed(conn) -> None:
         ),
         dict(id=3, source_id="crm", table_name="regions"),
         dict(id=4, source_id="prof", table_name="customers_1_profile_runs"),
-        dict(id=5, source_id="crm", table_name="draft_member", draft=True),
+        dict(id=5, source_id="crm", table_name="withdrawn_member", withdrawn=True),
     ]
     for t in tables:
         await conn.execute_core(
@@ -239,17 +240,17 @@ async def test_a_product_and_every_part_of_it_are_reached_by_relationships(contr
             domain = await _follow(conn, "meta:data_products:domains", key)
             assert [d["id"] for d in domain] == ["sales"]
 
-            # Every member table, the checker told apart by its contract and the draft by its
-            # flag; the table in no product is reached by nothing. REQ-1921: the draft's row is
-            # the model's; a statement's governance reads it to a role holding org_admin only
-            # (test_draft_served_to_org_admin.py).
+            # Every member table, the checker told apart by its contract and the withdrawn one by
+            # its flag; the table in no product is reached by nothing. REQ-1921: the withdrawn
+            # table's row is the model's; a statement's governance reads it to its stewards only
+            # (test_withdrawn_row_read_by_steward.py).
             members = await _follow_via(conn, "meta:data_products:member_tables", key)
             assert {
-                m["table_name"]: (m["dq_contract"] is not None, m["draft"]) for m in members
+                m["table_name"]: (m["dq_contract"] is not None, m["withdrawn"]) for m in members
             } == {
                 "customers": (False, False),
                 "customers_checks": (True, False),
-                "draft_member": (False, True),
+                "withdrawn_member": (False, True),
             }
             member_ids = [m["id"] for m in members]
 
