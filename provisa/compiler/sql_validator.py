@@ -850,80 +850,232 @@ def tables_outside_relationships(  # REQ-603
 # --------------------------------------------------------------------------- #
 
 
-def _check_column_visibility(  # REQ-040, REQ-263, REQ-265
+def _check_column_visibility(  # REQ-039, REQ-040, REQ-263, REQ-265
     tree: exp.Expr,
     gov_ctx: GovernanceContext,
     cte_names_set: frozenset[str] = frozenset(),
     field_named: dict[str, int] | None = None,
 ) -> list[ValidationViolation]:
+    """V003 for every column of ``tree`` the role is not served, in every clause of every SELECT
+    (REQ-039, amended 2026-11-04): each column is judged in its own SELECT scope, where it
+    resolves, and a nested SELECT's columns in the nested SELECT's scope."""
     violations = []
     scopes = _relation_names_by_scope(tree)
     for select in tree.find_all(exp.Select):
         am = _alias_map(select, gov_ctx, cte_names_set)
         for expr in select.expressions:
-            if _is_star(expr):
-                if isinstance(expr, exp.Column) and _names_no_relation(expr, scopes):
-                    violations.append(_no_relation_violation(expr))
-                    continue
-                # A star's columns are the ones the role is served (stage2._expand_star); it is
-                # refused only when that is none of them.
-                star = _star_violation(expr, am, gov_ctx)
-                if star is not None:
-                    violations.append(star)
+            if not _is_star(expr):
                 continue
-            cols = _collect_columns(expr)
-            for col in cols:
-                tbl_ref = col.table
-                col_name = col.name
-                if _names_no_relation(col, scopes):
-                    violations.append(_no_relation_violation(col))
-                    continue
-                if col_name in SERVED_WITH_EVERY_TABLE:
-                    # A virtual column (a table's _domain_/_name_, registered_tables'
-                    # table_query_name) is served with the table to every role that reads it,
-                    # as GraphQL serves it; the lowering answers it (sql_rewrite).
-                    continue
-                if approved_join_key(col, gov_ctx):
-                    # A registered relationship's join key in a nested SELECT's condition (a
-                    # relationship field): read by the engine to join, never returned (REQ-603).
-                    continue
-                if not tbl_ref:
-                    if _unqualified_column_refused(col_name, am, gov_ctx):
-                        violations.append(
-                            ValidationViolation(
-                                "V003",
-                                f"Column {col_name!r} is not visible to this role",
-                            )
+            if isinstance(expr, exp.Column) and _names_no_relation(expr, scopes):
+                violations.append(_no_relation_violation(expr))
+                continue
+            # A star's columns are the ones the role is served (stage2._expand_star); it is
+            # refused only when that is none of them.
+            star = _star_violation(expr, am, gov_ctx)
+            if star is not None:
+                violations.append(star)
+        outputs = _output_names(select)
+        for col in _scope_columns(select):
+            tbl_ref = col.table
+            col_name = col.name
+            if _names_no_relation(col, scopes):
+                violations.append(_no_relation_violation(col))
+                continue
+            if col_name in SERVED_WITH_EVERY_TABLE:
+                # A virtual column (a table's _domain_/_name_, registered_tables'
+                # table_query_name) is served with the table to every role that reads it,
+                # as GraphQL serves it; the lowering answers it (sql_rewrite).
+                continue
+            if approved_join_key(col, gov_ctx):
+                # A registered relationship's join key in a nested SELECT's condition (a
+                # relationship field): read by the engine to join, never returned (REQ-603).
+                continue
+            if not tbl_ref:
+                if _unqualified_refused(col, select, am, outputs, gov_ctx, cte_names_set):
+                    violations.append(
+                        ValidationViolation(
+                            "V003",
+                            f"Column {col_name!r} is not visible to this role",
                         )
-                else:
-                    named = _qualified_relation(col, gov_ctx, cte_names_set, field_named or {})
-                    if named is None:
-                        violations.append(
-                            ValidationViolation(
-                                "V003",
-                                f"Column {tbl_ref}.{col_name}: {tbl_ref!r} names no governed "
-                                "relation, so the column is not read",
-                            )
-                        )
-                        continue
-                    if not isinstance(named, int):
-                        continue  # _DERIVED: a derived relation's own SELECT is checked where it is
-                    tid = named
-                    vis = gov_ctx.visible_columns.get(tid)
-                    # Refuse when no governance data (key absent = fail closed) OR when the role's
-                    # visible set exists and excludes this column (REQ-2226, REQ-039).
-                    if (tid not in gov_ctx.visible_columns) or (
-                        vis is not None and registered_name(gov_ctx, tid, col_name) not in vis
-                    ):
-                        violations.append(
-                            ValidationViolation(
-                                "V003",
-                                f"Column {tbl_ref}.{col_name} is not visible to this role",
-                            )
-                        )
-        violations += _hidden_sort_keys(select, am, gov_ctx)
+                    )
+                continue
+            named = _qualified_relation(col, gov_ctx, cte_names_set, field_named or {})
+            if named is None:
+                violations.append(
+                    ValidationViolation(
+                        "V003",
+                        f"Column {tbl_ref}.{col_name}: {tbl_ref!r} names no governed "
+                        "relation, so the column is not read",
+                    )
+                )
+                continue
+            if not isinstance(named, int):
+                continue  # _DERIVED: a derived relation's own SELECT is checked where it is
+            tid = named
+            vis = gov_ctx.visible_columns.get(tid)
+            # Refuse when no governance data (key absent = fail closed) OR when the role's
+            # visible set exists and excludes this column (REQ-2226, REQ-039).
+            if (tid not in gov_ctx.visible_columns) or (
+                vis is not None and registered_name(gov_ctx, tid, col_name) not in vis
+            ):
+                violations.append(
+                    ValidationViolation(
+                        "V003",
+                        f"Column {tbl_ref}.{col_name} is not visible to this role",
+                    )
+                )
         violations += _hidden_join_keys(select, am, gov_ctx)
     return violations
+
+
+def _scope_columns(select: exp.Select) -> list[exp.Column]:  # REQ-039
+    """The columns ``select`` itself names, in every clause -- the select list, FROM-item
+    function arguments, JOIN ON, WHERE, GROUP BY, HAVING, WINDOW, ORDER BY, DISTINCT ON,
+    aggregate FILTER and ORDER BY -- and not those of a SELECT nested in it, which is their own
+    scope. A star is judged apart (:func:`_star_violation`)."""
+    return [
+        col
+        for col in select.find_all(exp.Column)
+        if not isinstance(col.this, exp.Star) and _nearest_scope(col) is select
+    ]
+
+
+def _output_names(select: exp.Select) -> set[str]:
+    """The output column names ``select`` gives by a real alias or as a bare column."""
+    return {e.alias for e in select.expressions if isinstance(e, exp.Alias)} | {
+        e.name
+        for e in select.expressions
+        if isinstance(e, exp.Column) and not isinstance(e.this, exp.Star)
+    }
+
+
+def _sort_or_group_key(col: exp.Column, select: exp.Select) -> str | None:
+    """``"order"`` or ``"group"`` when ``col`` is itself a key of ``select``'s ORDER BY or
+    GROUP BY (not a name inside a key's expression), else None."""
+    order = select.args.get("order")
+    if order is not None and any(o.this is col for o in order.expressions):
+        return "order"
+    group = select.args.get("group")
+    if group is not None and any(g is col for g in group.expressions):
+        return "group"
+    return None
+
+
+def _unqualified_refused(  # REQ-039
+    col: exp.Column,
+    select: exp.Select,
+    am: dict[str, int],
+    outputs: set[str],
+    gov_ctx: GovernanceContext,
+    cte_names_set: frozenset[str],
+) -> bool:
+    """Whether the unqualified column ``col`` of ``select`` is refused, resolved as PostgreSQL
+    resolves it. A bare ORDER BY key names an output first; any other name an input column first
+    (a bare GROUP BY key falls back to an output). An input name is judged at the registered
+    relations in scope that have it; failing those it is passed to the engine when a source no
+    registry governs is known to provide it (a table function's alias or column, a derived
+    table's column, VALUES' column1..N); failing that it is looked up in each enclosing SELECT
+    (an outer reference). A name nothing resolves is refused when a governed relation is in
+    scope (:func:`_unqualified_column_refused`)."""
+    name = col.name
+    key = _sort_or_group_key(col, select)
+    if key == "order" and name in outputs:
+        return False
+    scope: exp.Expr | None = select
+    scope_am = am
+    while isinstance(scope, exp.Select):
+        held = _held_by_registered(name, scope_am, gov_ctx)
+        if held is not None:
+            return held
+        if name in _provided_names(scope, cte_names_set):
+            return False
+        if scope is select and key == "group" and name in outputs:
+            return False
+        scope = _nearest_scope(scope)
+        if isinstance(scope, exp.Select):
+            scope_am = _alias_map(scope, gov_ctx, cte_names_set)
+    return _unqualified_column_refused(name, am, gov_ctx)
+
+
+def _held_by_registered(name: str, am: dict[str, int], gov_ctx: GovernanceContext) -> bool | None:
+    """None when no registered relation of ``am`` has ``name`` (registers it or serves it);
+    else whether one of those that have it hides it."""
+    held = False
+    for tid in am.values():
+        reg = registered_name(gov_ctx, tid, name)
+        vis = gov_ctx.visible_columns.get(tid)
+        registered = {c for c, _ in gov_ctx.all_columns.get(tid, [])}
+        if reg in registered or (vis is not None and reg in vis):
+            if vis is not None and reg not in vis:
+                return True
+            held = True
+    return False if held else None
+
+
+#: Table functions that return a record, with the columns PostgreSQL names them by. Any other
+#: function in FROM is read as returning one value, its column named by the FROM item's alias.
+_RECORD_FUNCTION_COLUMNS: dict[str, tuple[str, ...]] = {
+    "json_each": ("key", "value"),
+    "jsonb_each": ("key", "value"),
+    "json_each_text": ("key", "value"),
+    "jsonb_each_text": ("key", "value"),
+}
+
+
+def _provided_names(  # REQ-039
+    select: exp.Select, cte_names_set: frozenset[str]
+) -> set[str]:
+    """The column names the sources of ``select`` that no registry governs are known to provide:
+    a CTE's or derived table's columns, VALUES' column1..N, a table function's columns or its
+    alias, WITH ORDINALITY's ``ordinality``. A registered or unknown table provides none here."""
+    names: set[str] = set()
+    for item in _scope_relations(select):
+        if isinstance(item, exp.Table) and isinstance(item.this, exp.Identifier):
+            if not item.db and (item.name in cte_names_set or names_a_cte_in_scope(item)):
+                names |= _value_columns(item)
+            continue
+        names |= _source_columns(item)
+    return names
+
+
+def _source_columns(item: exp.Expr) -> set[str]:
+    """The columns a derived FROM item gives (see :func:`_provided_names`)."""
+    alias = item.args.get("alias")
+    listed = (
+        [c.name for c in (alias.args.get("columns") or [])]
+        if isinstance(alias, exp.TableAlias)
+        else []
+    )
+    alias_name = alias.name if isinstance(alias, exp.TableAlias) else ""
+    if isinstance(item, exp.Lateral):
+        inner = item.this
+        if isinstance(inner, exp.Subquery) and isinstance(inner.this, exp.Query):
+            return set(listed) or set(inner.this.named_selects)
+        return set(listed) | ({alias_name} if alias_name else set())
+    if isinstance(item, exp.Subquery):
+        if isinstance(item.this, exp.Query):
+            return set(listed) or set(item.this.named_selects)
+        return set(listed)
+    if isinstance(item, exp.Values):
+        rows = item.expressions
+        width = len(rows[0].expressions) if rows and isinstance(rows[0], exp.Tuple) else 1
+        defaults = [f"column{i}" for i in range(1, width + 1)]
+        return set(listed) | set(defaults[len(listed) :])
+    if isinstance(item, exp.Unnest):
+        ordinality = {"ordinality"} if item.args.get("offset") else set()
+        own = set(listed) or {alias_name or "unnest"}
+        return own | ordinality
+    if isinstance(item, exp.Table):
+        fn = item.this
+        if fn is None:
+            return set(listed)
+        fn_name = fn.sql(dialect="postgres").split("(", 1)[0].rsplit(".", 1)[-1].lower()
+        ordinality = {"ordinality"} if item.args.get("ordinality") else set()
+        record = _RECORD_FUNCTION_COLUMNS.get(fn_name)
+        if record is not None:
+            return set(listed) | set(record[len(listed) :]) | ordinality
+        return (set(listed) or {alias_name or fn_name}) | ordinality
+    return set(listed)
 
 
 #: What :func:`_qualified_relation` answers for a qualifier naming a derived relation: a CTE, a
@@ -1081,45 +1233,6 @@ def _hidden_join_keys(  # REQ-039
     return violations
 
 
-def _hidden_sort_keys(  # REQ-039
-    select: exp.Select, am: dict[str, int], gov_ctx: GovernanceContext
-) -> list[ValidationViolation]:
-    """V003 for a bare ORDER BY or GROUP BY key of ``select`` that is a hidden registered column,
-    as PostgreSQL resolves it: an ORDER BY name is an output's only where an output is named so --
-    by a real alias or as a bare column, never by a string literal's text -- and a GROUP BY name is
-    the input column first. Names compare exactly, in the reading of the statement judged."""
-    outputs = {e.alias for e in select.expressions if isinstance(e, exp.Alias)} | {
-        e.name
-        for e in select.expressions
-        if isinstance(e, exp.Column) and not isinstance(e.this, exp.Star)
-    }
-    keys: list[exp.Column] = []
-    order = select.args.get("order")
-    if order is not None:
-        keys += [
-            o.this
-            for o in order.expressions
-            if isinstance(o.this, exp.Column) and o.this.name not in outputs
-        ]
-    group = select.args.get("group")
-    if group is not None:
-        keys += [g for g in group.expressions if isinstance(g, exp.Column)]
-    violations = []
-    for col in keys:
-        if col.table or isinstance(col.this, exp.Star):
-            continue
-        for tid in am.values():
-            name = registered_name(gov_ctx, tid, col.name)
-            vis = gov_ctx.visible_columns.get(tid)
-            registered = {c for c, _ in gov_ctx.all_columns.get(tid, [])}
-            if vis is not None and name in registered and name not in vis:
-                violations.append(
-                    ValidationViolation("V003", f"Column {col.name!r} is not visible to this role")
-                )
-                break
-    return violations
-
-
 def _is_star(expr: exp.Expr) -> bool:
     return isinstance(expr, exp.Star) or (
         isinstance(expr, exp.Column) and isinstance(expr.this, exp.Star)
@@ -1151,16 +1264,6 @@ def served_columns(tid: int, gov_ctx: GovernanceContext) -> list[str]:
     """The registered columns of table ``tid`` the role is served (REQ-040)."""
     vis = gov_ctx.visible_columns.get(tid)
     return [c for c, _ in gov_ctx.all_columns.get(tid, []) if vis is None or c in vis]
-
-
-def _collect_columns(expr: exp.Expr) -> list[exp.Column]:
-    if isinstance(expr, exp.Column):
-        return [expr]
-    if isinstance(expr, exp.Alias):
-        return _collect_columns(expr.this)
-    if isinstance(expr, exp.Star):
-        return []
-    return list(expr.find_all(exp.Column))
 
 
 # The nodes a FROM item's name is in scope of: a query's own, a DML statement's for its subqueries.
