@@ -185,3 +185,31 @@ def test_a_reader_diagnostic_exits_1(tmp_path, capsys, monkeypatch):
     monkeypatch.setattr(cli_code, "_read_typescript", lambda _code: (raw, []))
     assert _run(str(code)) == 1
     assert "do not type-check" in capsys.readouterr().err
+
+
+def test_the_typescript_launcher_runs_uvx_provisa_at_the_packages_version():
+    import shutil
+    import subprocess
+
+    node = shutil.which("node")
+    assert node is not None, "node is required for the launcher test"
+    package = Path(__file__).resolve().parents[2] / "provisa-sdk" / "typescript"
+    version = json.loads((package / "package.json").read_text())["version"]
+    script = (
+        f"import {{ command }} from {json.dumps(str(package / 'bin' / 'check.js'))};"
+        "console.log(JSON.stringify(command(['check','proj','--json'], process.argv[1])));"
+    )
+    done = subprocess.run(
+        [node, "--input-type=module", "-e", script, version],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert json.loads(done.stdout) == [
+        "uvx",
+        f"provisa=={version}",
+        "code",
+        "check",
+        "proj",
+        "--json",
+    ]
