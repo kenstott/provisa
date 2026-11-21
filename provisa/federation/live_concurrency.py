@@ -310,6 +310,7 @@ def _live_source_ids(
     their replicas by the operator's settings (REQ-826/REQ-1141). The same classification
     query_residency.ensure_resident lands by, so the two never disagree."""
     from provisa.federation.strategy import engine_attaches
+    from provisa.jdbc_source.attach import reach_type
     from provisa.transpiler.router import Route
 
     if plan.route in (Route.DIRECT, Route.API):
@@ -323,7 +324,7 @@ def _live_source_ids(
         src = sources_by_id.get(sid)
         if src is None or sid in replicated:
             continue
-        if engine_attaches(engine, src.type.value):
+        if engine_attaches(engine, reach_type(src, engine)):
             out.append(sid)
     return out
 

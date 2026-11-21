@@ -186,3 +186,31 @@ def test_the_input_graph_is_left_as_it_was() -> None:
     graph = _chain()
     readable_graph(graph, registered=REGISTERED, readable=set())
     assert len(graph.nodes) == 3 and len(graph.edges) == 2
+
+
+def test_command_ops_are_preserved_beside_a_hidden_input() -> None:
+    """When a command output has a hidden input column beside visible ones, the command-kind ops
+    on the visible edges survive: they name the function called, not the hidden column's SQL
+    expression (REQ-1161)."""
+    command_op = TransformOp("read_whole", "command")
+    graph = LineageGraph()
+    for nid, col, rel, kind in [
+        ("fx.vault.id", "id", "fx.vault", "source"),
+        ("fx.vault.secret", "secret", "fx.vault", "source"),
+        ("views.vault_digest.status", "status", "views.vault_digest", "derived"),
+    ]:
+        graph.add_node(Node(id=nid, column=col, relation=rel, kind=kind))
+    for src, tgt in [
+        ("fx.vault.id", "views.vault_digest.status"),
+        ("fx.vault.secret", "views.vault_digest.status"),
+    ]:
+        graph.add_edge(Edge(src, tgt, "read_whole(...)", (command_op,)))
+    registered = {"fx.vault", "views.vault_digest"}
+    readable = {"fx.vault.id", "views.vault_digest.status"}  # secret is hidden
+    out = readable_graph(graph, registered=registered, readable=readable)
+    assert set(out.nodes) == {"fx.vault.id", "views.vault_digest.status"}
+    assert len(out.edges) == 1
+    assert out.edges[0].source == "fx.vault.id"
+    command_ops = [o for o in out.edges[0].ops if o.kind == "command"]
+    assert len(command_ops) == 1, out.edges[0].ops
+    assert command_ops[0].name == "read_whole"

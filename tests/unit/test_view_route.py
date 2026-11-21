@@ -66,7 +66,7 @@ def _state(*, kept: bool) -> SimpleNamespace:
             "columns": [{"column_name": "id", "data_type": "integer", "visible_to": ["analyst"]}],
         },
     ]
-    state.view_sql_map = {"order_totals": _VIEW_SQL}
+    state.view_sql_map = {"views.order_totals": _VIEW_SQL}
     registry = MVRegistry()
     if kept:
         # Materialized, fresh, and seen whole by the reader: answered from its stored rows.
@@ -83,7 +83,7 @@ def _state(*, kept: bool) -> SimpleNamespace:
             )
         )
     state.mv_registry = registry
-    state.role_build_inputs = {"draft_tables": []}
+    state.role_build_inputs = {"withdrawn_tables": []}
     state.source_dialects = {"pg": "postgres"}
     state.source_catalogs = {"pg": "pg"}
     state.source_pools = SimpleNamespace(source_ids=["pg"], has=lambda sid: sid == "pg")

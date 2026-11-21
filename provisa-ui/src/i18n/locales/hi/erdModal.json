@@ -20,6 +20,9 @@
     "collapseAll": "सभी संक्षिप्त करें",
     "expandAll": "सभी विस्तृत करें",
     "fitAll": "सभी फ़िट करें",
+    "download": "डाउनलोड करें",
+    "fullscreen": "पूर्ण स्क्रीन",
+    "exitFullscreen": "पूर्ण स्क्रीन से बाहर निकलें",
     "downloadSvg": "SVG डाउनलोड करें",
     "downloadPng": "PNG डाउनलोड करें",
     "downloadJpeg": "JPEG डाउनलोड करें",
@@ -31,6 +34,7 @@
     "focusDomains": "डोमेन: {{names}}",
     "focusTables": "तालिकाएँ: {{names}}",
     "focusMissing": "नहीं मिला: {{names}}",
-    "showAll": "सभी दिखाएँ"
+    "showAll": "सभी दिखाएँ",
+    "showWithdrawn": "वापस लिए गए दिखाएँ"
   }
 }

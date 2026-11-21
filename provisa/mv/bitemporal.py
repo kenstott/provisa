@@ -342,6 +342,11 @@ _READ_DESCRIPTIONS = {
 }
 
 
+def describe_read_column(name: str) -> str:
+    """What the read column ``name`` (one of ``READ_COLUMNS``) answers."""
+    return _READ_DESCRIPTIONS[name]
+
+
 def declared_spec(
     business_key: list[str], valid_time: str, recorded_time: str, columns: list[str]
 ) -> BitemporalSpec:

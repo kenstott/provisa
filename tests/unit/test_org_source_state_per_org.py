@@ -40,6 +40,7 @@ _KEYED = {
     "ingest_tables": "events",
     "kafka_windows": "clicks",
     "kafka_bootstrap": "clicks",
+    "kafka_declared": "clicks",
     "kafka_table_configs": "clickstream",
     "kafka_table_physical": "clickstream",
     "pg_enum_types": "order_status",

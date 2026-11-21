@@ -15,6 +15,6 @@
     "cycleFeedback": "(legal: crosses a materialized boundary)",
     "cycleError": "(no materialization boundary: likely a design error)",
     "emptyTitle": "Nothing to show",
-    "emptyBody": "No lineage was found. Complete Lineage spans your registered views, and none are defined yet. Register a view (Model → Views), or analyze a query above to see its lineage."
+    "emptyBody": "No lineage was found. Complete Lineage spans your registered views, and none are defined yet. Register a view (Derived → Views), or analyze a query above to see its lineage."
   }
 }

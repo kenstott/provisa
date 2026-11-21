@@ -25,17 +25,17 @@ which the operator keeps on a volume. Its tag carries the code hash and Provisa'
 labels say what it is: ``dev.provisa.codehost=1``, the protocol, the runtime, the code hash, the
 exports and the name tables.
 
-Deno installs npm packages for the machine it runs on and has no way to name another platform, so
-a Deno source's image is built from the server's own install, and is refused by name when the
-server's platform is not the image's and the code's lockfile holds packages for a platform.
+What each language puts in the image is its own (its ``image`` module, provisa/codesource/
+languages.py): Python's interpreter and wheels, Node's runtime and packages, Go's host compiled
+for the image's platform with the code linked in.
 """
 
-# Requirements: REQ-2098
+# Requirements: REQ-2098, REQ-2200
 from __future__ import annotations
 
+import importlib
 import json
 import os
-import platform
 import re
 import shutil
 import tempfile
@@ -47,6 +47,7 @@ from typing import Any
 from provisa.codesource import oci
 from provisa.codesource.bundle import BundleRefused, content_hash
 from provisa.codesource.install import Lockfile, Runner, gitconfig, place_lockfile, run_command
+from provisa.codesource.manifest import manifest_hash
 from provisa.codesource.remote import HOST_PORT
 from provisa.codesource.worker import PROTOCOL
 from provisa.runtime_deps.code_runtimes import LINUX_ARM64, LINUX_X64, CodeRuntimeResolver
@@ -60,9 +61,9 @@ BASE_DIGESTS = {
     "arm64": "sha256:4bed9c8eff0e70bf6547aa04a3b1ea5bba63fb910707b3f94f45556edc2a9238",
 }
 ARCHITECTURES = tuple(BASE_DIGESTS)
-_PLATFORM = {"amd64": LINUX_X64, "arm64": LINUX_ARM64}
-_UV_PLATFORM = {"amd64": "x86_64-manylinux_2_28", "arm64": "aarch64-manylinux_2_28"}
-_CPU = {"amd64": "x64", "arm64": "arm64"}
+PLATFORM = {"amd64": LINUX_X64, "arm64": LINUX_ARM64}
+_UVPLATFORM = {"amd64": "x86_64-manylinux_2_28", "arm64": "aarch64-manylinux_2_28"}
+CPU = {"amd64": "x64", "arm64": "arm64"}
 
 #: Where everything is in the image.
 ROOT = "/opt/provisa"
@@ -90,6 +91,26 @@ class Built:
     exports: list[str]
 
 
+@dataclass(frozen=True)
+class ImageParts:
+    """What a language puts in a source's image: its layers, its host program's argv (``{fd}``
+    where its socket goes), its environment, and whether its runtime is a Python the front end
+    runs on too."""
+
+    layers: list[list[oci.Entry]]
+    worker: list[str]
+    env: dict[str, str]
+    runs_front: bool = False
+
+
+def language_image(source_type: str) -> Any:  # the language's image module
+    """The language's part of an image (its ``image`` module): ``fetch``, ``LOCKFILES`` and
+    ``layers`` (provisa/codesource/languages.py)."""
+    from provisa.codesource.languages import LANGUAGES
+
+    return importlib.import_module(LANGUAGES[source_type].image)
+
+
 def repository_of(source_id: str) -> str:
     """The repository a source's images are named in, under a registry's namespace."""
     return "provisa-code-" + re.sub(r"[^a-z0-9._-]+", "-", source_id.lower()).strip("-.")
@@ -100,7 +121,9 @@ def tag_of(code_hash: str, version: str) -> str:
     return re.sub(r"[^A-Za-z0-9_.-]", "-", f"{code_hash[:12]}-{version}")[:128]
 
 
-def labels(runtime: str, code_hash: str, exports: list[str], names: dict) -> dict[str, str]:
+def labels(
+    runtime: str, code_hash: str, exports: list[str], names: dict, manifest: dict
+) -> dict[str, str]:
     return {
         f"{LABEL}codehost": "1",
         f"{LABEL}protocol": str(PROTOCOL),
@@ -108,6 +131,8 @@ def labels(runtime: str, code_hash: str, exports: list[str], names: dict) -> dic
         f"{LABEL}code_hash": code_hash,
         f"{LABEL}exports": ",".join(sorted(exports)),
         f"{LABEL}names": _names_text(names),
+        # REQ-2221: what a host's handshake is checked by, against the image at its digest.
+        f"{LABEL}manifest_hash": manifest_hash(manifest),
     }
 
 
@@ -148,16 +173,21 @@ class Plan:
     """What a build needs, read from the source and the organisation before it runs."""
 
     source_id: str
-    language: str  # node | python
-    runtime: str  # node | bun | deno | python
+    language: str  # a source type of provisa.codesource.languages.LANGUAGES
+    runtime: str  # one of its language's runtimes
     code_hash: str
     entry: str | None
     exports: list[str]
     #: REQ-2100: the code's name tables (provisa/codesource/names.py), by function.
     names: dict
+    #: REQ-2221: the code's manifest (manifest.manifest_json), which a paired host hands over.
+    manifest: dict
     registries: list[Any]  # core.package_registries.Resolved
     cache_root: Path
     version: str
+    #: REQ-2225: the @requires value that is the connector's script, for a connector whose tables
+    #: and commands come from a script given at setup; None for any other.
+    script: str | None = None
 
 
 def assemble(
@@ -178,7 +208,7 @@ def assemble(
             arch=arch,
         )
     root = _fetched(plan, code, lock, workdir / "code")
-    target = CodeRuntimeResolver(cache_root=plan.cache_root, host=_PLATFORM[arch])
+    target = CodeRuntimeResolver(cache_root=plan.cache_root, host=PLATFORM[arch])
     layers, base_config = oci.pull_base(
         base or oci.Registry(BASE_HOST),
         BASE_REPOSITORY,
@@ -193,12 +223,11 @@ def assemble(
         ],
         layers_dir,
     )
-    if plan.language == "python":
-        own, worker, env = _python(plan, root, target, arch, workdir, run)
-        front_python = None  # the code's own runtime runs the front end too
-    else:
-        own, worker, env = _node(plan, root, target, arch, workdir, run)
-        front_python = _runtime(target, "python", FRONT_RUNTIME)
+    parts = language_image(plan.language).layers(plan, root, target, arch, workdir, run)
+    own, worker, env = parts.layers, parts.worker, parts.env
+    # A language whose runtime is a Python runs the front end on it; any other image carries the
+    # front end's own.
+    front_python = None if parts.runs_front else runtime_layer(target, "python", FRONT_RUNTIME)
     front, entrypoint = _front(plan, target, arch, workdir, run, worker, front_python)
     own = [*own, *front]
     image = oci.Image(
@@ -209,9 +238,11 @@ def assemble(
             "PROVISA_CODE_HASH": plan.code_hash,
             "PROVISA_HOST_LIB": f"{ROOT}/hostlib",
             "PROVISA_FRONT_LIB": f"{ROOT}/frontlib",
+            "PROVISA_MANIFEST_FILE": f"{FRONT}/manifest.json",
+            **({SCRIPT_ENV: plan.script} if plan.script else {}),
             **env,
         },
-        labels=labels(plan.runtime, plan.code_hash, plan.exports, plan.names),
+        labels=labels(plan.runtime, plan.code_hash, plan.exports, plan.names, plan.manifest),
         exposed=[HOST_PORT],
         working_dir=f"{ROOT}/code",
         user=f"{NONROOT}:{NONROOT}",
@@ -227,16 +258,9 @@ def _fetched(plan: Plan, code: Any, lock: Lockfile | None, dest: Path) -> Path:
     platform's dependencies), with its lockfile beside it."""
     from provisa.codesource.install import http_get
 
-    from provisa.node import install as node_install
-    from provisa.python import install as python_install
-
-    lockfiles: tuple[str, ...]
-    if plan.language == "python":
-        root = python_install.fetch(code, plan.registries, http_get, dest)
-        lockfiles = python_install.LOCKFILES
-    else:
-        root = node_install.fetch(code, plan.registries, http_get, dest)
-        lockfiles = tuple(n for names in node_install.LOCKFILES.values() for n in names)
+    language = language_image(plan.language)
+    root = language.fetch(code, plan.registries, http_get, dest)
+    lockfiles = language.LOCKFILES
     if lock is not None:
         place_lockfile(root, lock, lockfiles)
     found = content_hash(root)
@@ -250,7 +274,7 @@ def _fetched(plan: Plan, code: Any, lock: Lockfile | None, dest: Path) -> Path:
     return root
 
 
-def _runtime(resolver: CodeRuntimeResolver, name: str, at: str) -> list[oci.Entry]:
+def runtime_layer(resolver: CodeRuntimeResolver, name: str, at: str) -> list[oci.Entry]:
     """A pinned runtime (or library) for the image's platform, from its checked archive."""
     asset, data = resolver.archive(name)
     executable = f"{at}/{asset.executable}"
@@ -263,15 +287,15 @@ def _runtime(resolver: CodeRuntimeResolver, name: str, at: str) -> list[oci.Entr
     ]
 
 
-def _files(root: Path, at: str, names: list[str]) -> list[oci.Entry]:
+def files(root: Path, at: str, names: list[str]) -> list[oci.Entry]:
     return [oci.Entry(f"{at}/{n}", source=root / n) for n in names]
 
 
-def _uv_install_env(plan: Plan, home: Path) -> dict[str, str]:
+def uv_install_env(plan: Plan, home: Path) -> dict[str, str]:
     from provisa.python import install as python_install
 
     return {
-        **_scratch_env(plan.registries, home),
+        **scratch_env(plan.registries, home),
         "UV_CACHE_DIR": str(home / "uv-cache"),
         "UV_NO_CONFIG": "1",
         "UV_PYTHON_DOWNLOADS": "never",
@@ -279,21 +303,27 @@ def _uv_install_env(plan: Plan, home: Path) -> dict[str, str]:
     }
 
 
-def _uv_install(arch: str, site: Path) -> list[str]:
+def uv_install(arch: str, site: Path) -> list[str]:
     return [
         "pip", "install", "--target", str(site), "--python-version", "3.12",
-        "--python-platform", _UV_PLATFORM[arch], "--only-binary", ":all:", "--no-deps",
+        "--python-platform", _UVPLATFORM[arch], "--only-binary", ":all:", "--no-deps",
     ]  # fmt: skip
 
 
 #: Where a Node image's front end Python runs from (a Python image's front end runs on the code's).
 FRONT_RUNTIME = f"{ROOT}/front-runtime"
+#: REQ-2225: names the @requires value that is the connector's script, for the front end
+#: (provisa/codehost/front.py).
+SCRIPT_ENV = "PROVISA_CONNECTOR_SCRIPT"
 #: The front end's programs (provisa/codehost), with the code's name tables beside them.
 FRONT = f"{ROOT}/front"
 FRONT_PROGRAMS = ("front.py", "residual.py", "duckdb_sql.py", "pgfront.py", "pgcatalog.py")
 #: Provisa's own modules the front end runs with, copied beside its programs: each image path's
 #: source, relative to the provisa package. Every DuckDB the front end opens is capped (REQ-2006).
 FRONT_MODULES = {"engine_memory.py": "core/engine_memory.py"}
+#: Provisa's own modules the PostgreSQL protocol (buenavista) imports, relative to the provisa
+#: package: placed in the front end's ``provisa`` package, under the names it imports them by.
+PROTOCOL_MODULES = ("pgwire/catalog_pg17.py", "transpiler/pg_literals.py")
 #: REQ-2194: where the Linux provisa wheels are (PROVISA_WHEELHOUSE, else the build cache's
 #: ``wheels``): the front end writes its DataRows and binary COPY with the encoders
 #: (provisa._encoders) compiled into the wheel for the image's architecture.
@@ -319,8 +349,9 @@ def _same_version(wheel: Path, version: str) -> bool:
 def _encoders(plan: Plan, arch: str) -> list[oci.Entry]:
     """provisa._encoders for ``arch`` as a package of its own in the front end's library: its
     compiled module, from the Linux provisa wheel of this Provisa's version, and an empty
-    ``provisa/__init__.py`` (the front end runs no other part of provisa). A build for an
-    architecture whose wheel is not there is refused by name; there is no other DataRow writer."""
+    ``provisa/__init__.py`` (the rest of provisa the front end runs is PROTOCOL_MODULES). A build
+    for an architecture whose wheel is not there is refused by name; there is no other DataRow
+    writer."""
     house = wheelhouse(plan)
     tag = f"manylinux_2_28_{_WHEEL_ARCH[arch]}"
     found = sorted(house.glob(f"provisa-*-{tag}.whl")) if house.is_dir() else []
@@ -352,6 +383,19 @@ def _encoders(plan: Plan, arch: str) -> list[oci.Entry]:
     ]
 
 
+def _protocol_modules(package: Path) -> list[oci.Entry]:
+    """The provisa modules the PostgreSQL protocol imports, in the front end's ``provisa`` package.
+    Each subpackage's ``__init__.py`` is empty, as the package's own is: provisa's would import
+    what the image does not hold."""
+    lib = f"{ROOT}/frontlib/provisa"
+    packages = sorted({Path(module).parent.as_posix() for module in PROTOCOL_MODULES})
+    return [
+        *(oci.Entry(f"{lib}/{name}", directory=True, mode=0o755) for name in packages),
+        *(oci.Entry(f"{lib}/{name}/__init__.py", data=b"") for name in packages),
+        *(oci.Entry(f"{lib}/{module}", source=package / module) for module in PROTOCOL_MODULES),
+    ]
+
+
 def _front(
     plan: Plan,
     target: CodeRuntimeResolver,
@@ -374,14 +418,14 @@ def _front(
     lib = workdir / "frontlib"
     lib.mkdir(parents=True)
     with tempfile.TemporaryDirectory(prefix="provisa-image-front-") as scratch:
-        env = _uv_install_env(plan, Path(scratch))
+        env = uv_install_env(plan, Path(scratch))
         requirements = here / "front_requirements.txt"
         run(
-            [str(uv), *_uv_install(arch, lib), "--require-hashes", "-r", str(requirements)],
+            [str(uv), *uv_install(arch, lib), "--require-hashes", "-r", str(requirements)],
             workdir,
             env,
         )
-    executable = target.pin("python").asset(_PLATFORM[arch]).executable
+    executable = target.pin("python").asset(PLATFORM[arch]).executable
     python = (
         f"{ROOT}/runtime/{executable}" if front_python is None else f"{FRONT_RUNTIME}/{executable}"
     )
@@ -389,18 +433,20 @@ def _front(
         *([front_python] if front_python is not None else []),
         oci.tree(lib, f"{ROOT}/frontlib"),
         _encoders(plan, arch),
+        _protocol_modules(here.parent),
         # The PostgreSQL protocol, as provisa/pgwire serves it (REQ-2100, pgfront.py): its
         # modules, never what an interpreter cached beside them.
-        _files(
+        files(
             protocol, f"{ROOT}/frontlib/buenavista", sorted(p.name for p in protocol.glob("*.py"))
         ),
         [
-            *_files(here, FRONT, list(FRONT_PROGRAMS)),
+            *files(here, FRONT, list(FRONT_PROGRAMS)),
             *(
                 oci.Entry(f"{FRONT}/{name}", source=here.parent / source)
                 for name, source in FRONT_MODULES.items()
             ),
             oci.Entry(f"{FRONT}/names.json", data=_names_text(plan.names).encode()),
+            oci.Entry(f"{FRONT}/manifest.json", data=json.dumps(plan.manifest).encode()),
         ],
     ]
     entrypoint = [
@@ -410,7 +456,7 @@ def _front(
     return layers, entrypoint
 
 
-def _scratch_env(registries: list[Any], home: Path) -> dict[str, str]:
+def scratch_env(registries: list[Any], home: Path) -> dict[str, str]:
     from provisa.codesource import install as shared
 
     git = home / ".gitconfig"
@@ -426,159 +472,6 @@ def _scratch_env(registries: list[Any], home: Path) -> dict[str, str]:
         **({"SSL_CERT_FILE": str(ca_file)} if ca_file is not None else {}),
         **shared.trust_environment(ca_file),
     }
-
-
-# -- Python -------------------------------------------------------------------------------------
-
-
-def _python(
-    plan: Plan, root: Path, target: CodeRuntimeResolver, arch: str, workdir: Path, run: Runner
-) -> tuple[list[list[oci.Entry]], list[str], dict[str, str]]:
-    from provisa.python import install as python_install
-    from provisa.python.source import HOST, code_path, entry_module
-
-    server = CodeRuntimeResolver(cache_root=plan.cache_root)
-    uv = server.resolve("uv")
-    site = workdir / "site-packages"
-    site.mkdir(parents=True)
-    with tempfile.TemporaryDirectory(prefix="provisa-image-python-") as scratch:
-        home = Path(scratch)
-        env = _uv_install_env(plan, home)
-        install = [str(uv), *_uv_install(arch, site)]
-        lock = python_install.lockfile(root)
-        if lock is not None:
-            requirements = lock
-            if lock.name == "uv.lock":
-                requirements = home / "requirements.txt"
-                run(
-                    [str(uv), "export", "--frozen", "--no-emit-project", "--format",
-                     "requirements-txt", "--output-file", str(requirements)],
-                    root,
-                    env,
-                )  # fmt: skip
-            hashed = ["--require-hashes"] if requirements.name.endswith(".txt") else []
-            run([*install, *hashed, "-r", str(requirements)], root, env)
-    version = target.pin("python").version.split("+", 1)[0]
-    venv = [
-        oci.Entry(
-            f"{ROOT}/venv/pyvenv.cfg",
-            data=(
-                f"home = {ROOT}/runtime/python/bin\ninclude-system-site-packages = false\n"
-                f"version = {version}\n"
-            ).encode(),
-        ),
-        oci.Entry(f"{ROOT}/venv/bin/python", link=f"{ROOT}/runtime/python/bin/python3.12"),
-        *oci.tree(site, f"{ROOT}/venv/lib/python3.12/site-packages"),
-    ]
-    code = code_path(root)
-    entry = entry_module(code, plan.entry)
-    layers = [
-        _runtime(target, "python", f"{ROOT}/runtime"),
-        _runtime(target, "pyarrow", f"{ROOT}/hostlib"),
-        _files(HOST.parent, f"{ROOT}/host", ["host.py"]),
-        # REQ-2106: Provisa's services module, beside the host as it is on the server.
-        oci.tree(HOST.parent / "services", f"{ROOT}/host/services"),
-        venv,
-        oci.tree(code, f"{ROOT}/code"),
-    ]
-    worker = [
-        f"{ROOT}/venv/bin/python",
-        "-I",
-        f"{ROOT}/host/host.py",
-        "{fd}",
-        f"{ROOT}/code",
-        entry,
-    ]
-    return layers, worker, {"PYTHONDONTWRITEBYTECODE": "1", "PYTHONUNBUFFERED": "1"}
-
-
-# -- Node.js, Bun, Deno -------------------------------------------------------------------------
-
-
-def _deno_platform_packages(root: Path) -> list[str]:
-    """The npm packages a Deno lockfile holds for one platform only."""
-    lock = root / "deno.lock"
-    if not lock.is_file():
-        return []
-    packages = (json.loads(lock.read_text()).get("npm") or {}).items()
-    return sorted(name for name, entry in packages if entry.get("os") or entry.get("cpu"))
-
-
-def _node(
-    plan: Plan, root: Path, target: CodeRuntimeResolver, arch: str, workdir: Path, run: Runner
-) -> tuple[list[list[oci.Entry]], list[str], dict[str, str]]:
-    from provisa.node import install as node_install
-    from provisa.node.worker import HOST, entry_module
-
-    runtime = plan.runtime
-    if node_install.needs_install(root, runtime):
-        server = CodeRuntimeResolver(cache_root=plan.cache_root)
-        executable = server.resolve(runtime)
-        with tempfile.TemporaryDirectory(prefix="provisa-image-node-") as scratch:
-            home = Path(scratch)
-            rc = home / ".npmrc"
-            env = _scratch_env(plan.registries, home)
-            cafile = env.get("SSL_CERT_FILE")
-            rc.write_text(node_install.npmrc(plan.registries, Path(cafile) if cafile else None))
-            (root / ".npmrc").write_text(rc.read_text())
-            env.update(
-                {
-                    "NPM_CONFIG_USERCONFIG": str(rc),
-                    "npm_config_cache": str(home / "npm-cache"),
-                    "BUN_INSTALL_CACHE_DIR": str(home / "bun-cache"),
-                    "DENO_DIR": str(root / ".deno"),
-                }
-            )
-            if runtime == "node":
-                argv = [
-                    *node_install.install_command("node", executable),
-                    "--os=linux", f"--cpu={_CPU[arch]}", "--libc=glibc",
-                ]  # fmt: skip
-            elif runtime == "bun":
-                argv = [
-                    *node_install.install_command("bun", executable),
-                    "--os=linux",
-                    f"--cpu={_CPU[arch]}",
-                ]
-            else:
-                here = (platform.system(), platform.machine().replace("arm64", "aarch64"))
-                held = _deno_platform_packages(root)
-                if here != _PLATFORM[arch] and held:
-                    raise ImageBuildRefused(
-                        "deno_platform",
-                        "Deno installs npm packages for the machine it runs on; this server is "
-                        f"not {arch} Linux, and the lockfile holds packages for one platform: "
-                        f"{', '.join(held[:5])}",
-                    )
-                argv = node_install.install_command("deno", executable)
-            try:
-                run(argv, root, env)
-            finally:
-                (root / ".npmrc").unlink(missing_ok=True)
-    exe = f"{ROOT}/runtime/{target.pin(runtime).asset(_PLATFORM[arch]).executable}"
-    entry = entry_module(root).relative_to(root.resolve()).as_posix()
-    host = [f"{ROOT}/host/host.mjs", "{fd}", f"{ROOT}/code/{entry}"]
-    if runtime == "deno":
-        worker = [
-            exe, "run", "--no-prompt", "--allow-net", f"--allow-read={ROOT}", "--allow-env",
-            f"--import-map={ROOT}/host/services-import-map.json", *host,
-        ]  # fmt: skip
-        env = {"DENO_DIR": f"{ROOT}/code/.deno", "NO_COLOR": "1"}
-    else:
-        worker = [*node_install.code_command(runtime, exe), *host]
-        env = {"NO_COLOR": "1"}
-    layers = [
-        _runtime(target, runtime, f"{ROOT}/runtime"),
-        _runtime(target, "apache-arrow", f"{ROOT}/hostlib"),
-        _files(
-            HOST.parent,
-            f"{ROOT}/host",
-            # REQ-2106: "@provisa/services", and Deno's import map naming it.
-            ["host-core.mjs", "host.mjs", "services.mjs", "services-import-map.json"],
-        ),
-        oci.tree(root, f"{ROOT}/code"),
-    ]
-    return layers, worker, env
 
 
 def clean(workdir: Path) -> None:

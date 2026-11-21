@@ -527,6 +527,50 @@ def test_a_tour_asking_polly_needs_the_openrouter_key(tmp_path, monkeypatch):
         builder._set_up(tmp_path, _toured(tmp_path, _ASKING), None, 1, None)
 
 
+def test_the_answering_config_finds_terms_through_openrouter_on_the_sandbox_model(tmp_path):
+    """REQ-2201: a setup's scan reads its document with the model a demo sandbox's Polly runs."""
+    from provisa.core.settings_registry import setting
+
+    config = yaml.safe_load(
+        builder.answering_config(tmp_path, _toured(tmp_path, _ASKING)).read_text()
+    )
+    assert config["ai_models"]["glossary_term_finding"] == {
+        "vendor": "openrouter",
+        "model": setting("sandbox.ai_model").default,
+    }
+
+
+def test_a_setup_scanning_a_document_needs_the_openrouter_key(tmp_path, monkeypatch):
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    demo = _toured(tmp_path, [{"key": "bsaIntro", "route": "/sources", "source": "bank"}])
+    (demo / "setup.yaml").write_text(
+        yaml.safe_dump({"steps": [{"scan": "https://www.ecfr.gov/api/versioner/v1/x.xml"}]})
+    )
+    with pytest.raises(SystemExit, match="scans 1 document.*OPENROUTER_API_KEY is not set"):
+        builder._set_up(tmp_path, demo, None, 1, None)
+
+
+def test_the_setup_s_scans_are_carried_and_a_scan_missing_fails_the_build(tmp_path, monkeypatch):
+    from provisa.term_finding import carry
+
+    demo = _toured(tmp_path, _ASKING)
+    url = "https://www.ecfr.gov/api/versioner/v1/x.xml"
+    (demo / "setup.yaml").write_text(yaml.safe_dump({"steps": [{"scan": url}, {"scan": url}]}))
+    written: list = []
+
+    def export_scans(cp_url, schema, out):
+        written.append((cp_url, schema, out))
+        return len(written)
+
+    monkeypatch.setattr(carry, "export_scans", export_scans)
+    with pytest.raises(SystemExit, match="scanned 2 document.*holds 1 scan"):
+        builder._export_term_scans("postgresql://cp", demo)
+    builder._export_term_scans("postgresql://cp", demo)
+    assert written[-1][2] == carry.scans_path(demo)
+    builder._export_term_scans("postgresql://cp", tmp_path / "nothing")  # no setup: nothing
+    assert len(written) == 2
+
+
 def _stores_up(tmp_path: Path, services: str) -> list[tuple]:
     """What ``Stores.up`` asks docker compose, for a demo whose services are ``services``."""
     demo = tmp_path / "demo"

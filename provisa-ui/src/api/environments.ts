@@ -60,7 +60,21 @@ export interface Environment {
   // REQ-1918: for an environment past its expiry that could not be retired, how many of each
   // kind still refer to it (membership, invitation, environment). Empty for every other row.
   expired_kept_by: Record<string, number>;
+  // REQ-2261: the stage the environment declares -- a label for reporting and display only; it
+  // changes no right.
+  stage: EnvironmentStage;
 }
+
+/** REQ-2261: the stages an environment may declare, in the order a picker offers them. */
+export const ENVIRONMENT_STAGES = ["production", "preprod", "test", "development"] as const;
+export type EnvironmentStage = (typeof ENVIRONMENT_STAGES)[number];
+/** REQ-2261: one colour per stage, the same wherever a stage is shown. */
+export const STAGE_COLOR: Record<EnvironmentStage, string> = {
+  production: "red",
+  preprod: "orange",
+  test: "blue",
+  development: "gray",
+};
 
 /** REQ-1529, REQ-1942: an environment that did not copy its parent's connections -- prod, or one
  * whose data mode is not Inherit. */
@@ -232,7 +246,12 @@ export class EnvironmentInUse extends Error {
 export async function patchEnvironment(
   orgId: string,
   name: string,
-  body: { expires_at?: string | null; clear_expiry?: boolean; protected?: boolean | null },
+  body: {
+    expires_at?: string | null;
+    clear_expiry?: boolean;
+    protected?: boolean | null;
+    stage?: EnvironmentStage;
+  },
 ): Promise<Environment> {
   const res = await fetch(`${base(orgId)}/${encodeURIComponent(name)}`, json("PATCH", body));
   const answer = await ok<{ environment: Environment }>(res, "patchEnvironment");

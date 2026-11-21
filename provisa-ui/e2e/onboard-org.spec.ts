@@ -8,17 +8,29 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
+import type { Route } from "@playwright/test";
 import { test, expect } from "./coverage";
 
 /**
  * REQ-1266: a member-less authenticated user is routed to self-service org creation, fills the
  * form (with demo data), sees "provisioning…" while the create+poll runs, and on ready the app
- * binds the new org and navigates into the shell. Backend routes are stubbed so this isolates the
- * UI onboarding contract (create body carries include_demo, poll drives ready, org is bound); the
- * full two-org data plane is covered by backend integration tests.
+ * binds the new org and navigates into the shell, on the new org's welcome (REQ-1276). Backend
+ * routes are stubbed so this isolates the UI onboarding contract (create body carries
+ * include_demo, poll drives ready, org is bound); the full two-org data plane is covered by backend
+ * integration tests.
  */
 
 const ORG_ID = "carolco";
+
+/** The shell's GraphQL reads, answered empty in the shape each asks: the AuthProvider's role and
+ * domain bootstrap, and the admin rail's RegionChoices (REQ-1921: no regions declared). A read
+ * answered without a field it asked for is an uncaught Apollo error in the page. */
+function answerShellGraphql(route: Route) {
+  const op = (route.request().postDataJSON() as { operationName?: string } | null)?.operationName;
+  if (op === "RegionChoices")
+    return route.fulfill({ json: { data: { regionChoices: { regions: [], connected: null } } } });
+  return route.fulfill({ json: { data: { roles: [], domains: [] } } });
+}
 
 test("member-less user onboards a new org with demo data and is routed into the app", async ({
   page,
@@ -67,9 +79,7 @@ test("member-less user onboards a new org with demo data and is routed into the 
     }),
   );
   // Silence the GraphQL role/domain bootstrap the AuthProvider fires and the shell's queries.
-  await page.route("**/admin/graphql", (route) =>
-    route.fulfill({ json: { data: { roles: [], domains: [] } } }),
-  );
+  await page.route("**/admin/graphql", answerShellGraphql);
 
   let createBody: Record<string, unknown> | null = null;
   await page.route("**/admin/orgs", (route) => {
@@ -102,8 +112,12 @@ test("member-less user onboards a new org with demo data and is routed into the 
 
   await expect(page.getByTestId("onboard-org-provisioning")).toBeVisible();
 
-  // Once provisioning is ready the app binds the org, refetches identity, and routes into the shell.
-  await page.waitForURL("**/query");
+  // Once provisioning is ready the app binds the org, refetches identity, and routes into the shell
+  // on the org's welcome. REQ-1276: "Given an org create finishes on the control plane When the
+  // last checkout returns Then the browser is navigated to {org}.<base>/welcome"; on a host that
+  // names no org (localhost) that is the in-app route /welcome.
+  await page.waitForURL("**/welcome");
+  await expect(page.getByTestId("org-welcome")).toBeVisible();
   await expect(page.getByTestId("onboard-org-page")).toHaveCount(0);
 
   expect(createBody).toEqual(
@@ -154,9 +168,7 @@ test("member-less user joins an existing org with an invite code and is routed i
       },
     }),
   );
-  await page.route("**/admin/graphql", (route) =>
-    route.fulfill({ json: { data: { roles: [], domains: [] } } }),
-  );
+  await page.route("**/admin/graphql", answerShellGraphql);
 
   let redeemBody: Record<string, unknown> | null = null;
   await page.route("**/auth/redeem-invite", (route) => {
@@ -173,7 +185,9 @@ test("member-less user joins an existing org with an invite code and is routed i
   await page.getByTestId("onboard-org-invite").fill("invite-tok-xyz");
   await page.getByTestId("onboard-org-join-submit").click();
 
-  await page.waitForURL("**/query");
+  // REQ-1327: the join enters `/`, which opens the role's first page. The shell's role read is
+  // answered empty, so the joined member holds no query right and lands on its own first page.
+  await page.waitForURL("**/admin/my-secrets");
   await expect(page.getByTestId("onboard-org-page")).toHaveCount(0);
 
   expect(redeemBody).toEqual({ token: "invite-tok-xyz" });

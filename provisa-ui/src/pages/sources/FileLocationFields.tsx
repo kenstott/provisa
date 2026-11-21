@@ -108,7 +108,7 @@ function DownloadFields({ form, setForm }: Omit<Props, "creating">) {
 function DraftTableFields({ form, setForm }: Omit<Props, "creating">) {
   const { t } = useTranslation();
   const { domains } = useDomains();
-  const { registerTableDraft: draft, tableDomainId: domain } = draftTable(form, domains);
+  const { registerTableFromFile: draft, tableDomainId: domain } = draftTable(form, domains);
   const choices = domains
     .filter((d) => isAssignableDomain(d.id))
     .map((d) => ({ value: d.id, label: d.id }));
@@ -119,7 +119,11 @@ function DraftTableFields({ form, setForm }: Omit<Props, "creating">) {
           label={t("sourceFormFields.draftTable")}
           checked={draft}
           onChange={(e) =>
-            setForm({ ...form, registerTableDraft: e.currentTarget.checked, tableDomainId: domain })
+            setForm({
+              ...form,
+              registerTableFromFile: e.currentTarget.checked,
+              tableDomainId: domain,
+            })
           }
           data-testid="source-draft-table"
         />

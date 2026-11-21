@@ -14,7 +14,7 @@
 
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { Route, Routes, useLocation } from "react-router-dom";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { render } from "../test-utils/render";
 import type { RegisteredTable } from "../types/admin";
 
@@ -31,9 +31,11 @@ const drawn = vi.hoisted(() => ({
 // The real cytoscape, with the instance each ERD draws kept for the test to click on.
 vi.mock("cytoscape", async (importOriginal) => {
   const real = (await importOriginal<{ default: (o: unknown) => unknown }>()).default;
-  const keeping = Object.assign((o: unknown) => {
-    drawn.cy = real(o) as typeof drawn.cy;
-    return drawn.cy;
+  // A call naming an extension (cytoscape("layout", "elk")) asks whether it is registered.
+  const keeping = Object.assign((...args: unknown[]) => {
+    const made = (real as (...a: unknown[]) => unknown)(...args);
+    if (typeof args[0] !== "string") drawn.cy = made as typeof drawn.cy;
+    return made;
   }, real);
   return { default: keeping };
 });
@@ -57,6 +59,19 @@ HTMLCanvasElement.prototype.getContext = function (this: HTMLCanvasElement) {
   });
 } as unknown as typeof HTMLCanvasElement.prototype.getContext;
 
+const saved = vi.hoisted(() => ({ files: [] as string[] }));
+vi.mock("../components/graph/graph-export", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../components/graph/graph-export")>()),
+  downloadBlob: (_blob: Blob, name: string) => saved.files.push(name),
+}));
+
+// jsdom has no Fullscreen API: the element asked to go full screen is recorded.
+const fullscreen = vi.hoisted(() => ({ asked: [] as Element[] }));
+HTMLElement.prototype.requestFullscreen = function (this: HTMLElement) {
+  fullscreen.asked.push(this);
+  return Promise.resolve();
+};
+
 function table(id: number, tableName: string, domainId: string): RegisteredTable {
   const serving = "cache" as const;
   return {
@@ -67,6 +82,7 @@ function table(id: number, tableName: string, domainId: string): RegisteredTable
     tableName,
     alias: null,
     description: null,
+    registeredAt: "2026-11-01T00:00:00+00:00",
     cacheTtl: 60,
     roleTtl: [],
     pagingKind: null,
@@ -74,7 +90,8 @@ function table(id: number, tableName: string, domainId: string): RegisteredTable
     pagingCeilingRows: null,
     replicate: null,
     region: null,
-    draft: false,
+    withdrawn: false,
+    sourceWithdrawn: false,
     rowMaterialize: false,
     loadProtected: null,
     offPeakWindow: null,
@@ -111,12 +128,14 @@ function table(id: number, tableName: string, domainId: string): RegisteredTable
     mvPersist: "replace",
     mvPrimaryKey: [],
     mvIncremental: false,
+    mvRebuildEvery: null,
+    incrementalOption: { available: true, code: null, reason: null },
     mvCalendar: null,
     mvGrain: null,
     mvAllowedLateness: 0,
     mvExpectedEvents: null,
     mvBusinessDayGrain: false,
-    productId: null,
+    productIds: [],
     enableAggregates: false,
     enableGroupBy: false,
     canDeployToDb: false,
@@ -147,6 +166,7 @@ const relationship = (id: string, source: number, target: number) => ({
   cypherType: null,
   disableCypher: false,
   sameEntity: false,
+  withdrawn: false,
   viaTableId: null,
   viaTableName: null,
   viaSourceColumn: null,
@@ -175,6 +195,25 @@ const RELS = {
   relationships: [relationship("orders-customers", 1, 2), relationship("ledger-invoices", 3, 4)],
   loading: false,
   refetch: REFETCH,
+};
+// What the ERD draws: the system's own relationships too (allRelationships), which the page's list
+// (relationships) leaves out.
+const ALL_RELS = { ...RELS };
+// REQ-1921: what Show withdrawn reads besides: a withdrawn table and its relationship, marked.
+const WITHDRAWN_TABLE = { ...table(7, "staging", "sales"), withdrawn: true };
+const WITHDRAWN_REL = { ...relationship("orders-staging", 1, 7), withdrawn: true };
+const asked = vi.hoisted(() => ({ tables: [] as unknown[], relationships: [] as unknown[] }));
+const tablesRead = (opts?: { includeWithdrawn?: boolean }) => {
+  asked.tables.push(opts);
+  return opts?.includeWithdrawn
+    ? { ...TABLES, tables: [...TABLES.tables, WITHDRAWN_TABLE] }
+    : TABLES;
+};
+const relationshipsRead = (opts?: { includeWithdrawn?: boolean }) => {
+  asked.relationships.push(opts);
+  return opts?.includeWithdrawn
+    ? { ...ALL_RELS, relationships: [...ALL_RELS.relationships, WITHDRAWN_REL] }
+    : ALL_RELS;
 };
 const DOMAINS = {
   domains: [
@@ -214,7 +253,6 @@ vi.mock("../api/admin", async (importOriginal) => ({
     cache: { default_ttl: 300 },
     naming: { domain_prefix: false, convention: "none" },
   }),
-  fetchCandidates: vi.fn().mockResolvedValue([]),
   fetchRejectedCount: vi.fn().mockResolvedValue(0),
 }));
 vi.mock("../api/actions", () => ({
@@ -224,7 +262,6 @@ vi.mock("../components/TagControl", () => ({ TagControl: () => null }));
 vi.mock("../hooks/useRegionQueries", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../hooks/useRegionQueries")>()),
   useRegionChoices: () => ({ regions: [], connected: null }),
-  useSetTableDraft: () => vi.fn(),
   useSetTableRegion: () => vi.fn(),
 }));
 vi.mock("../hooks/useAdminOpsQueries", async (importOriginal) => ({
@@ -234,14 +271,14 @@ vi.mock("../hooks/useAdminOpsQueries", async (importOriginal) => ({
 }));
 vi.mock("../hooks/useAdminQueries", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../hooks/useAdminQueries")>()),
-  useTables: () => TABLES,
+  useTables: (opts?: { includeWithdrawn?: boolean }) => tablesRead(opts),
   useTableDetails: () => TABLES,
   useSources: () => ({ sources: NONE, loading: false, refetch: REFETCH }),
   useDomains: () => DOMAINS,
   useRoles: () => ({ roles: NONE, loading: false, refetch: REFETCH }),
   useDataProducts: () => ({ dataProducts: NONE, loading: false, refetch: REFETCH }),
   useRelationships: () => RELS,
-  useAllRelationships: () => RELS,
+  useAllRelationships: (opts?: { includeWithdrawn?: boolean }) => relationshipsRead(opts),
   useUpsertRelationship: () => ({ upsertRelationship: vi.fn() }),
   useDeleteRelationship: () => ({ deleteRelationship: vi.fn() }),
   useAvailableColumnsMetadataLazy: () => ({
@@ -256,6 +293,8 @@ vi.mock("../hooks/useAdminQueries", async (importOriginal) => ({
 
 import { RelationshipsPage } from "../pages/RelationshipsPage";
 import { TablesPage } from "../pages/TablesPage";
+import { readScreen } from "../mcp/screenState";
+import { runUiActions } from "../mcp/uiActions";
 
 function Where() {
   const { pathname, search } = useLocation();
@@ -281,7 +320,7 @@ const param = (key: string) => new URL(where(), "http://x").searchParams.get(key
 const drawnHas = (id: string) => (drawn.cy?.getElementById(id).length ?? 0) > 0;
 const diagramHolds = async (id: string) => waitFor(() => expect(drawnHas(id)).toBe(true));
 const tap = (id: string) => act(() => drawn.cy?.getElementById(id).emit("tap"));
-const highlighted = (id: string) => drawn.cy?.getElementById(id).hasClass("erd-focused");
+const highlighted = (id: string) => drawn.cy?.getElementById(id).hasClass("focused");
 const settled = (ids: string) =>
   waitFor(() => expect(screen.getByTestId("erd-panel")).toHaveAttribute("data-highlighted", ids));
 const toggle = (page: "tables" | "relationships") =>
@@ -290,6 +329,8 @@ const toggle = (page: "tables" | "relationships") =>
 beforeEach(() => {
   drawn.cy = null;
   FILTER.checkedDomains = new Set();
+  saved.files = [];
+  fullscreen.asked = [];
 });
 
 describe("the requirement's scenario", () => {
@@ -346,7 +387,9 @@ describe("the requirement's scenario", () => {
     await waitFor(() => expect(param("objects")).toBeNull());
     expect(param("domains")).toBeNull();
     expect(param("view")).toBe("erd");
-    await settled("");
+    // The focus is gone; the table whose panel is still open stays highlighted.
+    expect(param("table")).toBe("1");
+    await settled("1");
     expect(screen.queryByTestId("erd-focus-bar")).toBeNull();
     expect(drawnHas("t:1")).toBe(true);
     expect(drawnHas("t:3")).toBe(false);
@@ -450,9 +493,10 @@ describe("Add to focus", () => {
     // The table is in the focus already.
     expect(await screen.findByTestId("erd-add-to-focus")).toBeDisabled();
 
-    // Show all draws the other domain, and Focus starts a new focus on one of its tables.
+    // Show all draws the other domain, and Focus starts a new focus on one of its tables. The
+    // table whose panel is open stays highlighted.
     fireEvent.click(screen.getByTestId("erd-show-all"));
-    await settled("");
+    await settled("1");
     await diagramHolds("t:3");
     tap("t:3");
     await waitFor(() => expect(param("table")).toBe("3"));
@@ -550,7 +594,8 @@ describe("clicks in the diagram", () => {
     expect(param("objects")).toBe("sales.orders");
     expect(param("table")).toBe("2");
     expect(await screen.findByTestId("tables-split-title")).toHaveTextContent("customers");
-    await settled("1");
+    // The focus's table, and the table whose panel opened.
+    await settled("1,2");
     expect(screen.getByTestId("erd-focus-table")).toBeInTheDocument();
   });
 });
@@ -566,10 +611,83 @@ describe("a domain of orphan tables only", () => {
       expect(drawnHas("t:6")).toBe(true);
       expect(drawnHas("t:1")).toBe(false);
       const node = (id: string) =>
-        (drawn.cy as unknown as { getElementById(id: string): { style(k: string): string } }).getElementById(id);
+        (
+          drawn.cy as unknown as { getElementById(id: string): { style(k: string): string } }
+        ).getElementById(id);
       // Laid out and shown: the layout leaves the orphans displayed.
       await waitFor(() => expect(node("t:5").style("display")).toBe("element"));
       expect(node("d:ops").style("display")).toBe("element");
+    },
+  );
+});
+
+describe("a domain the domain filter does not offer", () => {
+  // The model as the server answers it: ops traces reached from meta, every table anchored to
+  // meta.registered_tables (HAS_TABLE), and the page's list without the system's own rows.
+  const before = {
+    tables: TABLES.tables,
+    rels: RELS.relationships,
+    all: ALL_RELS.relationships,
+    domains: DOMAINS.domains,
+    offered: FILTER.domains,
+  };
+  const from = (id: string, source: number, target: number, domain: string) => ({
+    ...relationship(id, source, target),
+    sourceDomainId: domain,
+  });
+  beforeEach(() => {
+    TABLES.tables = [
+      table(1, "orders", "sales"),
+      table(2, "customers", "sales"),
+      table(10, "registered_tables", "meta"),
+      table(11, "queries", "meta"),
+      table(20, "traces", "ops"),
+      table(21, "query_audit_log", "ops"),
+    ];
+    RELS.relationships = [relationship("orders-customers", 1, 2)];
+    ALL_RELS.relationships = [
+      relationship("orders-customers", 1, 2),
+      from("meta:queries:traces", 11, 20, "meta"),
+      from("meta:has_table:20", 20, 10, "ops"),
+      from("meta:has_table:21", 21, 10, "ops"),
+    ];
+    DOMAINS.domains = ["sales", "meta", "ops"].map((id) => ({ id, description: "" }));
+  });
+  afterEach(() => {
+    TABLES.tables = before.tables;
+    RELS.relationships = before.rels;
+    ALL_RELS.relationships = before.all;
+    DOMAINS.domains = before.domains;
+    FILTER.domains = before.offered;
+  });
+
+  it.each(["tables", "relationships"] as const)(
+    "stays drawn on the %s ERD, with its relationships, when another domain is unticked",
+    async (page) => {
+      // The acting roles' domain list leaves ops out; the reader unticked sales.
+      FILTER.domains = ["sales", "meta"];
+      FILTER.checkedDomains = new Set(["meta"]);
+      open(`/${page}?view=erd`);
+      await diagramHolds("d:meta");
+      expect(drawnHas("d:ops")).toBe(true);
+      expect(drawnHas("t:20")).toBe(true);
+      expect(drawnHas("t:21")).toBe(true);
+      expect(drawnHas("r:meta:queries:traces")).toBe(true);
+      expect(drawnHas("r:meta:has_table:20")).toBe(true);
+      // What the reader unticked is still hidden.
+      expect(drawnHas("d:sales")).toBe(false);
+    },
+  );
+
+  it.each(["tables", "relationships"] as const)(
+    "is hidden on the %s ERD when the filter offers it and it is unticked",
+    async (page) => {
+      FILTER.domains = ["sales", "meta", "ops"];
+      FILTER.checkedDomains = new Set(["sales", "meta"]);
+      open(`/${page}?view=erd`);
+      await diagramHolds("d:meta");
+      expect(drawnHas("d:ops")).toBe(false);
+      expect(drawnHas("t:20")).toBe(false);
     },
   );
 });
@@ -578,7 +696,7 @@ describe("the page's filter box on the ERD", () => {
   const dimmed = (id: string) =>
     (drawn.cy as unknown as { getElementById(id: string): { hasClass(c: string): boolean } })
       .getElementById(id)
-      .hasClass("erd-dim");
+      .hasClass("dim");
   const type = (value: string) =>
     fireEvent.change(screen.getByTestId("filter-input"), { target: { value } });
 
@@ -627,5 +745,260 @@ describe("the page's filter box on the ERD", () => {
     expect(param("search")).toBeNull(); // not in the link
     type("t3"); // a source that is no table's name matches nothing
     await waitFor(() => expect(dimmed("r:orders-customers")).toBe(true));
+  });
+});
+
+describe("the item whose detail panel is open", () => {
+  const lineHighlighted = (id: string) => drawn.cy?.getElementById(id).hasClass("focused");
+
+  it("on Tables is highlighted when the ERD opens from the list", async () => {
+    open("/tables");
+    await screen.findByTestId("tables-list");
+    fireEvent.click(
+      document.querySelector('[data-table-row="warehouse.customers"]') as HTMLElement,
+    );
+    expect(await screen.findByTestId("tables-split-title")).toHaveTextContent("customers");
+    toggle("tables");
+    await diagramHolds("t:2");
+    await settled("2");
+    expect(highlighted("t:2")).toBe(true);
+    expect(highlighted("t:1")).toBe(false);
+  });
+
+  it("on Tables is highlighted when clicked in the ERD, and not once its panel closes", async () => {
+    open("/tables?view=erd");
+    await diagramHolds("t:3");
+    await settled("");
+    tap("t:3");
+    await settled("3");
+    fireEvent.click(await screen.findByTestId("tables-split-close"));
+    await settled("");
+    expect(highlighted("t:3")).toBe(false);
+  });
+
+  it("on Relationships is its line, highlighted when the ERD opens with its panel open", async () => {
+    open("/relationships?relationship=ledger-invoices");
+    expect(await screen.findByTestId("relationships-split-title")).toHaveTextContent(
+      "ledger-invoices",
+    );
+    toggle("relationships");
+    await diagramHolds("r:ledger-invoices");
+    await waitFor(() => expect(lineHighlighted("r:ledger-invoices")).toBe(true));
+    expect(lineHighlighted("r:orders-customers")).toBe(false);
+    // A line is not a table: the tables highlighted are a focus's alone.
+    await settled("");
+  });
+});
+
+describe("the diagram's image controls", () => {
+  const bar = () => screen.getByTestId("erd-canvas-bar");
+
+  it("are a vertical bar inside the diagram, and gone from the toolbar", async () => {
+    open("/tables?view=erd");
+    await diagramHolds("t:1");
+    expect(bar()).toHaveAttribute("aria-orientation", "vertical");
+    expect(bar().closest(".pg-stage")).not.toBeNull();
+    for (const id of [
+      "erd-zoom-in",
+      "erd-zoom-out",
+      "erd-fit-all",
+      "erd-fullscreen",
+      "erd-download",
+    ])
+      expect(within(bar()).getByTestId(id)).toBeInTheDocument();
+    // The toolbar keeps the view options only.
+    const toolbar = screen.getByTestId("erd-column-detail").closest(".mantine-Group-root");
+    expect(toolbar).not.toBeNull();
+    expect(within(toolbar as HTMLElement).queryByTestId("erd-download")).toBeNull();
+    expect(within(toolbar as HTMLElement).queryByTestId("erd-fit-all")).toBeNull();
+    expect(within(toolbar as HTMLElement).getByTestId("erd-toggle-all")).toBeInTheDocument();
+    expect(screen.queryByTestId("erd-export-svg")).toBeNull();
+  });
+
+  it("download is one control whose menu names the file types, each saving its file", async () => {
+    open("/tables?view=erd");
+    await diagramHolds("t:1");
+    fireEvent.click(within(bar()).getByTestId("erd-download"));
+    const menu = await screen.findByTestId("erd-download-menu");
+    expect(
+      ["svg", "png", "jpeg", "json"].map(
+        (k) => within(menu).getByTestId(`erd-export-${k}`).textContent,
+      ),
+    ).toEqual(["SVG", "PNG", "JPEG", "JSON"]);
+    fireEvent.click(within(menu).getByTestId("erd-export-json"));
+    await waitFor(() => expect(saved.files).toEqual(["erd.json"]));
+  });
+
+  it("zooms in and out, and fit all fits the whole diagram", async () => {
+    open("/tables?view=erd");
+    await diagramHolds("t:1");
+    const cy = drawn.cy as unknown as {
+      zoom(level?: number): number;
+      fit(eles?: unknown, padding?: number): void;
+      getElementById(id: string): { style(k: string): string };
+    };
+    // Laid out: the layout has ended (the controls act on a placed drawing only) and shown the
+    // orphans, and fits nothing more of its own.
+    await waitFor(() => expect(screen.queryByTestId("erd-laying-out")).not.toBeInTheDocument());
+    await waitFor(() => expect(cy.getElementById("t:5").style("display")).toBe("element"));
+    // jsdom's canvas has no size, so a fit leaves no zoom to compare against: start from 1.
+    cy.zoom(1);
+    fireEvent.click(screen.getByTestId("erd-zoom-in"));
+    expect(cy.zoom()).toBeCloseTo(1.3, 12);
+    fireEvent.click(screen.getByTestId("erd-zoom-out"));
+    fireEvent.click(screen.getByTestId("erd-zoom-out"));
+    expect(cy.zoom()).toBeCloseTo(1 / 1.3, 12);
+    const fit = vi.spyOn(cy, "fit");
+    fireEvent.click(screen.getByTestId("erd-fit-all"));
+    expect(fit).toHaveBeenCalledWith(undefined, 10);
+  });
+
+  it("full screen is asked of the diagram's own box, bar and all", async () => {
+    open("/tables?view=erd");
+    await diagramHolds("t:1");
+    fireEvent.click(screen.getByTestId("erd-fullscreen"));
+    expect(fullscreen.asked).toHaveLength(1);
+    expect(fullscreen.asked[0]).toHaveClass("pg-stage");
+    expect(fullscreen.asked[0]).toContainElement(bar());
+  });
+});
+
+describe("the diagram's hint", () => {
+  it("is the toolbar's (?) help, last in the row, and nothing over the diagram", async () => {
+    open("/tables?view=erd");
+    await diagramHolds("t:1");
+    const hint = screen.getByTestId("erd-hint");
+    expect(hint.closest(".pg-stage")).toBeNull();
+    const toolbar = screen.getByTestId("erd-column-detail").closest(".mantine-Group-root");
+    expect(toolbar).toContainElement(hint);
+    expect(
+      screen.getByTestId("erd-toggle-all").compareDocumentPosition(hint) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    const stage = document.querySelector(".pg-stage") as HTMLElement;
+    expect(stage).not.toHaveTextContent("Click a domain group");
+    fireEvent.mouseEnter(hint);
+    expect(await screen.findByTestId("erd-hint-card")).toHaveTextContent(
+      "Click a domain group to collapse / expand · dashed lines connect collapsed domains",
+    );
+  });
+});
+
+// REQ-2115: what Polly reads and presses on the Tables page's screens of REQ-2189 and REQ-2199.
+describe("Polly on the ERD and + Model", () => {
+  async function inputs(route: string) {
+    window.history.pushState({}, "", route);
+    const read = await readScreen(1000);
+    if (typeof read === "string") throw new Error(read);
+    return read.inputs;
+  }
+  const steps = { paceMs: 0, waitMs: 2000 };
+
+  beforeEach(() => {
+    HTMLElement.prototype.checkVisibility = () => true;
+  });
+
+  it("reads the saved layout the link names, and whether it is edited", async () => {
+    open("/tables?view=erd&layout=Sales%20overview");
+    await diagramHolds("t:1");
+    expect(await inputs("/tables")).toMatchObject({
+      view: "erd",
+      layout: "Sales overview",
+      layoutUnsaved: false,
+      modeling: null,
+    });
+  });
+
+  it("opens Star Schema from + Model's drop down and reads its wizard and step", async () => {
+    open("/tables");
+    await screen.findByTestId("tables-model-menu");
+    const confirm = vi.fn().mockResolvedValue(false);
+    const out = await runUiActions(
+      [
+        { do: "press", target: { testId: "tables-model-menu" } },
+        { do: "press", target: { testId: "tables-model-star" } },
+      ],
+      { ...steps, confirm },
+    );
+    expect(out.success).toBe(true);
+    await screen.findByTestId("wizard-next");
+    expect(await inputs("/tables")).toMatchObject({
+      modeling: "star",
+      wizardStep: { number: 1, count: 5 },
+    });
+    expect(confirm).not.toHaveBeenCalled();
+  });
+
+  it("presses a wizard's Next without asking", async () => {
+    open("/tables");
+    fireEvent.click(await screen.findByTestId("tables-model-menu"));
+    fireEvent.click(await screen.findByTestId("tables-model-vault"));
+    expect(await screen.findByTestId("wizard-next")).toHaveAttribute("data-changes", "false");
+    const confirm = vi.fn().mockResolvedValue(false);
+    const out = await runUiActions([{ do: "press", target: { testId: "wizard-next" } }], {
+      ...steps,
+      confirm,
+    });
+    expect(out.steps).toEqual(['Pressed the element with test id "wizard-next".']);
+    expect(confirm).not.toHaveBeenCalled();
+    expect((await inputs("/tables"))?.modeling).toBe("vault");
+  });
+});
+
+// REQ-1921: Show withdrawn, for a person who may preview withdrawn objects: the withdrawn tables
+// and their relationships are read and drawn dashed.
+describe("Show withdrawn", () => {
+  const style = (id: string, key: string) =>
+    (drawn.cy as unknown as { getElementById(id: string): { style(k: string): string } })
+      .getElementById(id)
+      .style(key);
+
+  beforeEach(() => {
+    asked.tables = [];
+    asked.relationships = [];
+  });
+
+  it.each(["tables", "relationships"] as const)(
+    "on the %s ERD is offered to a holder of table registration, off, reading nothing withdrawn",
+    async (page) => {
+      open(`/${page}?view=erd`);
+      const control = await screen.findByTestId("erd-show-withdrawn");
+      expect(control).not.toBeChecked();
+      await diagramHolds("t:1");
+      expect(drawnHas("t:7")).toBe(false);
+      expect(asked.tables.at(-1)).toEqual({ includeWithdrawn: false });
+      expect(asked.relationships.at(-1)).toEqual({ includeWithdrawn: false });
+    },
+  );
+
+  it("on reads the withdrawn tables and relationships and draws them dashed", async () => {
+    open("/tables?view=erd");
+    await diagramHolds("t:1");
+    fireEvent.click(await screen.findByTestId("erd-show-withdrawn"));
+    await diagramHolds("t:7");
+    expect(asked.tables.at(-1)).toEqual({ includeWithdrawn: true });
+    expect(asked.relationships.at(-1)).toEqual({ includeWithdrawn: true });
+    expect(style("t:7", "border-style")).toBe("dashed");
+    expect(style("t:1", "border-style")).toBe("solid");
+    await diagramHolds("r:orders-staging");
+    expect(style("r:orders-staging", "line-style")).toBe("dashed");
+    expect(style("r:orders-customers", "line-style")).toBe("solid");
+  });
+
+  it("is not offered to a person without table registration", async () => {
+    const held = AUTH.capabilities;
+    AUTH.capabilities = ["admin", "create_relationship"];
+    try {
+      open("/relationships?view=erd");
+      await diagramHolds("t:1");
+      expect(screen.queryByTestId("erd-show-withdrawn")).not.toBeInTheDocument();
+      expect(
+        asked.tables.some(
+          (o) => (o as { includeWithdrawn?: boolean } | undefined)?.includeWithdrawn,
+        ),
+      ).toBe(false);
+    } finally {
+      AUTH.capabilities = held;
+    }
   });
 });

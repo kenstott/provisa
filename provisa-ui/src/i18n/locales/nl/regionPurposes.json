@@ -1,0 +1,20 @@
+{
+  "regionPurposes": {
+    "legendTitle": "Waarom een regio bestaat",
+    "explainOnly": "Doelen leggen een regio uit. Ze veranderen niet waar query's draaien, wat een regel toestaat of wat wordt geaccepteerd.",
+    "name": {
+      "residency": "Dataresidentie",
+      "workload": "Workload",
+      "latency": "Latentie",
+      "resilience": "Veerkracht",
+      "dedicated": "Toegewijd"
+    },
+    "explain": {
+      "residency": "Gegevens moeten binnen een jurisdictie blijven.",
+      "workload": "Houdt één workload gescheiden van de andere.",
+      "latency": "Dicht bij de gebruikers of bronnen geplaatst.",
+      "resilience": "Een plek om naar uit te wijken of in te herstellen.",
+      "dedicated": "Infrastructuur die voor één organisatie is gereserveerd, voor haar eigen soevereiniteit erover."
+    }
+  }
+}

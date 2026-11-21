@@ -16,6 +16,8 @@ shows one set of oids on every build, to every role."""
 
 from __future__ import annotations
 
+import sqlglot.expressions as exp
+
 import hashlib
 
 #: PostgreSQL's first oid for a user's object: a table's is this plus its registered id.
@@ -79,14 +81,30 @@ def metric_oid_sql(metric: str) -> str:
     return f"{FIRST_METRIC_OID} + {digest_sql(metric)}"
 
 
-def owner_table_sql(oid: str) -> str:
-    """The registered table the relation oid ``oid`` (SQL) is or belongs to; NULL for a system
-    relation or a metric, which belong to none."""
-    relation = f"CAST({oid} AS BIGINT)"
-    return (
-        f"CASE WHEN {relation} >= {FIRST_METRIC_OID} THEN NULL "
-        f"WHEN {relation} >= {KEY_OID_BASE} THEN ({relation} - {KEY_OID_BASE}) / {KEY_SLOTS} "
-        f"WHEN {relation} >= {FIRST_USER_OID} THEN {relation} - {FIRST_USER_OID} END"
+def owner_table(oid: exp.Expression) -> exp.Expression:  # REQ-913
+    """The registered table the relation oid ``oid`` is or belongs to; NULL for a system relation
+    or a metric, which belong to none. An expression: a row rule is made of it."""
+
+    def relation() -> exp.Expression:
+        return exp.cast(oid.copy(), "BIGINT")
+
+    def at_least(bound: int) -> exp.Expression:
+        return exp.GTE(this=relation(), expression=exp.Literal.number(bound))
+
+    keyed = exp.Div(
+        this=exp.paren(exp.Sub(this=relation(), expression=exp.Literal.number(KEY_OID_BASE))),
+        expression=exp.Literal.number(KEY_SLOTS),
+        typed=True,  # PostgreSQL's integer division, as the column is an integer
+    )
+    return exp.Case(
+        ifs=[
+            exp.If(this=at_least(FIRST_METRIC_OID), true=exp.Null()),
+            exp.If(this=at_least(KEY_OID_BASE), true=keyed),
+            exp.If(
+                this=at_least(FIRST_USER_OID),
+                true=exp.Sub(this=relation(), expression=exp.Literal.number(FIRST_USER_OID)),
+            ),
+        ]
     )
 
 

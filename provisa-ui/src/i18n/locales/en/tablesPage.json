@@ -2,7 +2,7 @@
   "tablesPage": {
     "loading": "Loading tables...",
     "titleViews": "Views",
-    "titleTables": "Registered Tables",
+    "titleTables": "Tables",
     "filterPlaceholderViews": "Filter views…",
     "filterPlaceholderTables": "Filter by source, domain, or table…",
     "addTable": "+ Table",
@@ -11,6 +11,10 @@
     "addViewTitle": "Create a new view in the SQL Explorer",
     "model": "+ Model",
     "modelTitle": "Model an entity or fact (star schema / Data Vault)",
+    "modelMenu": "Choose how to model",
+    "modelEntityFact": "Entity/Fact",
+    "modelStarSchema": "Star Schema",
+    "modelDataVault": "Data Vault",
     "reportXlsx": "Workbook",
     "reportXlsxTitle": "Download the model as a spreadsheet for review, with one sheet each for sources, tables, columns, relationships, views, metrics, materialized views, ontology, data products, data contracts, data quality and data profiling",
     "viewErd": "View ERD",
@@ -77,16 +81,21 @@
     "resizeDetail": "Resize the detail panel",
     "detailPanel": "Table details",
     "closeDetail": "Close the detail panel",
-    "expandDetail": "Expand the panel",
+    "expandDetail": "Enlarge the panel",
     "restoreDetail": "Restore the panel",
     "backToList": "Back to the list",
     "backToDetail": "Back to details",
     "panelRegisterTable": "Register table",
     "panelNewView": "New view",
     "panelNewModel": "New model",
+    "panelStarSchema": "New star schema",
+    "panelDataVault": "New Data Vault",
     "history": {
       "badge": "history",
       "title": "Keeps history: query it as of or as recorded (Time Travel)"
-    }
+    },
+    "withdrawn": "Withdrawn",
+    "withdrawnTitle": "Out of production: no role reads it until it is put back",
+    "sourceWithdrawnTitle": "Its source {{source}} is withdrawn: no role reads it until the source is put back"
   }
 }

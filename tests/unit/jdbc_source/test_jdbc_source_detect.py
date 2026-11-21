@@ -45,29 +45,61 @@ def _by_capability(checks: list[gd.Check]) -> dict[str, gd.Check]:
     return {c.capability: c for c in checks}
 
 
-async def test_a_database_that_answers_every_check_passes_them(org):
-    checks = _by_capability(await gd.detect(_hints("sqlite:///{files}/shop.db", "sqlite"), "", ""))
+@pytest.fixture(scope="module")
+def duckdb_engine():
+    from provisa.federation.engine import build_duckdb_engine
+
+    return build_duckdb_engine().complete_reach()
+
+
+@pytest.fixture(scope="module")
+def trino_engine():
+    from provisa.federation.engine import build_trino_engine
+
+    return build_trino_engine().complete_reach()
+
+
+async def test_a_database_that_answers_every_check_passes_them(org, duckdb_engine):
+    checks = _by_capability(
+        await gd.detect(_hints("sqlite:///{files}/shop.db", "sqlite"), "", "", duckdb_engine)
+    )
     assert list(checks) == ["attach", "predicate", "join", "aggregate", "key_range"]
-    for capability in ("predicate", "join", "aggregate", "key_range"):
+    for capability in ("attach", "predicate", "join", "aggregate", "key_range"):
         assert checks[capability].passed, checks[capability].reason
-    # A sqlite URL has no engine attach: the check says so.
-    assert not checks["attach"].passed and "no engine attach" in checks["attach"].reason
 
 
-async def test_a_check_written_in_a_dialect_the_database_does_not_speak_names_why(org):
+async def test_the_attach_check_is_the_active_engines(org, trino_engine):
+    # A sqlite URL names the built-in sqlite type, which Trino cannot attach: the check says so.
+    checks = _by_capability(
+        await gd.detect(_hints("sqlite:///{files}/shop.db", "sqlite"), "", "", trino_engine)
+    )
+    assert not checks["attach"].passed
+    assert checks["attach"].reason == "the trino engine has no attach for a sqlite source"
+    assert checks["predicate"].passed
+    # A scheme naming no built-in type has none on any engine.
+    assert not gd._attach("vertica+vertica_python://h/db", trino_engine, "").passed
+    assert gd._attach("jdbc:postgresql://h/db", trino_engine, "").reason == (
+        "a jdbc URL never attaches"
+    )
+
+
+async def test_a_check_written_in_a_dialect_the_database_does_not_speak_names_why(
+    org, duckdb_engine
+):
     # T-SQL counts with COUNT_BIG, a function SQLite does not have.
-    checks = _by_capability(await gd.detect(_hints("sqlite:///{files}/shop.db", "tsql"), "", ""))
+    checks = _by_capability(
+        await gd.detect(_hints("sqlite:///{files}/shop.db", "tsql"), "", "", duckdb_engine)
+    )
     assert not checks["aggregate"].passed
     assert "COUNT_BIG" in checks["aggregate"].reason
     assert checks["predicate"].passed
 
 
-async def test_a_source_that_cannot_be_connected_to_fails_every_check_with_why(org):
-    checks = await gd.detect(_hints("postgresql+psycopg2://127.0.0.1:1/none", "postgres"), "u", "p")
-    pushdown = [c for c in checks if c.capability != "attach"]
-    assert pushdown and all(not c.passed and "OperationalError" in c.reason for c in pushdown)
-    attach = _by_capability(checks)["attach"]
-    assert not attach.passed and "not built yet" in attach.reason
+async def test_a_source_that_cannot_be_connected_to_fails_every_check_with_why(org, duckdb_engine):
+    checks = await gd.detect(
+        _hints("postgresql+psycopg2://127.0.0.1:1/none", "postgres"), "u", "p", duckdb_engine
+    )
+    assert checks and all(not c.passed and "OperationalError" in c.reason for c in checks)
 
 
 def test_the_checks_are_written_in_the_sources_dialect():
@@ -80,16 +112,39 @@ def test_the_checks_are_written_in_the_sources_dialect():
 # -- the admin API of the form ---------------------------------------------------------------------
 
 
-def test_the_form_is_offered_the_active_engine_the_dialects_and_the_capabilities():
+def test_the_form_is_offered_the_active_engine_the_dialects_and_the_capabilities(duckdb_engine):
     from provisa.api.admin.jdbc_source_admin import setup
 
-    offered = setup("duckdb")
+    offered = setup(duckdb_engine)
     assert offered.engine == "duckdb"
     assert "ansi" in offered.sql_dialects and "postgres" in offered.sql_dialects
     assert offered.capabilities == ["attach", "predicate", "join", "aggregate", "key_range"]
 
 
-async def test_detect_from_the_form_checks_the_connection_it_describes(org, monkeypatch):
+def test_the_form_is_offered_the_standard_drivers_and_which_the_engine_attaches(
+    duckdb_engine, trino_engine
+):
+    from provisa.api.admin.jdbc_source_admin import setup
+    from provisa.jdbc_source.settings import NAMED_TYPES
+
+    drivers = {d.backend: d for d in setup(duckdb_engine).drivers}
+    assert list(drivers) == list(NAMED_TYPES)
+    # The form writes the URL with the driver Provisa ships for the backend.
+    assert drivers["mysql"].scheme == "mysql+pymysql"
+    assert drivers["postgresql"].scheme == "postgresql"
+    assert drivers["mssql"].source_type == "sqlserver"
+    # A file database is named by its file, not a host.
+    assert drivers["sqlite"].file and drivers["duckdb"].file
+    assert not drivers["postgresql"].file
+    # Live attach is offered where the active engine attaches the driver's built-in type.
+    assert drivers["sqlite"].attach and drivers["postgresql"].attach
+    on_trino = {d.backend: d.attach for d in setup(trino_engine).drivers}
+    assert not on_trino["sqlite"]
+
+
+async def test_detect_from_the_form_checks_the_connection_it_describes(
+    org, monkeypatch, duckdb_engine
+):
     from contextlib import asynccontextmanager
 
     from provisa.api.admin.jdbc_source_admin import JdbcSourceDetectInput, detect
@@ -100,11 +155,12 @@ async def test_detect_from_the_form_checks_the_connection_it_describes(org, monk
 
     monkeypatch.setattr("provisa.core.secrets_store.bound_to_request_org", _bound)
     found = await detect(
-        JdbcSourceDetectInput(url="sqlite:///{files}/shop.db", sql_dialect="sqlite"), "duckdb"
+        JdbcSourceDetectInput(url="sqlite:///{files}/shop.db", sql_dialect="sqlite"),
+        duckdb_engine,
     )
     assert found.engine == "duckdb"
     assert {c.capability: c.passed for c in found.checks} == {
-        "attach": False,
+        "attach": True,
         "predicate": True,
         "join": True,
         "aggregate": True,
@@ -116,7 +172,7 @@ async def test_detect_from_the_form_checks_the_connection_it_describes(org, monk
     with pytest.raises(FileUrlRefused):
         await detect(
             JdbcSourceDetectInput(url="sqlite:///{files}/../../x.db", sql_dialect="sqlite"),
-            "duckdb",
+            duckdb_engine,
         )
 
 
@@ -132,7 +188,6 @@ def test_every_locale_says_each_refusal_of_a_jdbc_source():
         for code in (
             "jdbc_invalid",
             "jdbc_file_refused",
-            "jdbc_attach_unbuilt",
             "jdbc_options_refused",
             "jdbc_driver_refused",
         ):

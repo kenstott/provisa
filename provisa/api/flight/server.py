@@ -142,15 +142,18 @@ async def _resolve_identity_org(state, identity, request: dict[str, object]) -> 
     The same membership rule MCP and pgwire use: the principal's own memberships decide, and a
     ticket's ``org`` is a REQUEST honored only for a principal holding the cross-org right.
     """
+    if not getattr(state, "multitenancy", False):
+        # A single-tenant deployment has one org, and nothing names it (REQ-1235).
+        return state.org_id
     from provisa.api.org_resolve import resolve_session_org
-    from provisa.security.rights import can_act_cross_org, capabilities_for_claims
+    from provisa.auth.held_assignments import may_act_cross_org
 
-    caps = capabilities_for_claims(identity.roles or [], state.platform_roles)
     requested = request.get("org")
+    # REQ-802: the cross_org right of the roles the principal holds, not its credential's claims.
     return await resolve_session_org(
         state,
         user_id=identity.user_id,
-        can_act_any_org=can_act_cross_org(caps),
+        can_act_any_org=await may_act_cross_org(state, identity),
         requested_org=requested if isinstance(requested, str) else None,
         credential_org=identity.active_org_id,  # REQ-1235
         named_by='set "org" in the ticket',
@@ -1967,10 +1970,10 @@ class ProvisaFlightServer(
         raw_rows: list[dict[str, object]], graph_vars: dict[str, Any], warnings: list
     ) -> flight.RecordBatchStream | flight.GeneratorStream:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Assemble a Cypher result's rows into graph values and return them as an Arrow stream."""
-        from provisa.gql.assembler import assemble_rows, take_cut, to_serializable
+        from provisa.gql.assembler import assemble_rows, take_overrun, to_serializable
         from provisa.gql.translator_types import GraphVarKind
 
-        assembled = assemble_rows(take_cut(raw_rows, warnings), graph_vars)
+        assembled = assemble_rows(take_overrun(raw_rows), graph_vars)
         serialized = [to_serializable(r) for r in assembled]
 
         if not serialized:

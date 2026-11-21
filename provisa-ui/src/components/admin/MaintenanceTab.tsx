@@ -17,6 +17,7 @@ import {
   type MaintenanceNotice,
 } from "../../api/maintenance";
 import { shutdownAllServices } from "../../api/lifecycle";
+import { ConfirmDialog } from "../ConfirmDialog";
 
 /**
  * REQ-1466: the platform admin's control over the scheduled-downtime banner.
@@ -81,7 +82,6 @@ export function MaintenanceTab() {
   };
 
   const stopAllServices = async () => {
-    if (!window.confirm(t("maintenanceTab.stopConfirm"))) return;
     setStopBusy(true);
     setStopError("");
     try {
@@ -131,10 +131,7 @@ export function MaintenanceTab() {
               data-testid="maintenance-message"
             />
           </FormField>
-          <FormField
-            hint={t("maintenanceTab.endsAtHint")}
-            size="medium"
-          >
+          <FormField hint={t("maintenanceTab.endsAtHint")} size="medium">
             <TextInput
               type="datetime-local"
               label={t("maintenanceTab.endsAtLabel")}
@@ -185,14 +182,25 @@ export function MaintenanceTab() {
 
       <Card withBorder padding="md">
         <Group>
-          <Button
-            color="red"
-            loading={stopBusy}
-            onClick={stopAllServices}
-            data-testid="stop-all-services"
+          <ConfirmDialog
+            title={t("maintenanceTab.stopTitle")}
+            consequence={t("maintenanceTab.stopConsequence")}
+            confirmLabel={t("common.stop")}
+            onConfirm={stopAllServices}
+            testId="stop-all-services-dialog"
           >
-            {t("maintenanceTab.stopAll")}
-          </Button>
+            {(openConfirm) => (
+              <Button
+                color="red"
+                variant="light"
+                loading={stopBusy}
+                onClick={openConfirm}
+                data-testid="stop-all-services"
+              >
+                {t("maintenanceTab.stopAll")}
+              </Button>
+            )}
+          </ConfirmDialog>
         </Group>
       </Card>
     </Stack>

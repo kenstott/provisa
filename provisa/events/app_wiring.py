@@ -158,13 +158,13 @@ def make_source_probe(state: Any, loaders: dict[str, Any], sources: list[Any]) -
     """``(source, table) -> probe | None``: the token transport a source's own adapter gives for
     a table (``probes.loader_probe``), run with the vault of the org the sources are registered
     in bound -- the probe dials the source with the source's own credential (REQ-1695)."""
-    from provisa.events.probes import loader_probe
+    from provisa.events.probes import source_transport
     from provisa.federation.source_vault import org_vault
 
     wiring = wired_for()
 
     def source_probe(src: Any, tbl: Any) -> Any:
-        transport = loader_probe(loaders, src, tbl)
+        transport = source_transport(state, loaders, src, tbl)
         if transport is None:
             return None
 
@@ -222,8 +222,11 @@ def build_adapter_loaders(state: Any, engine: Any) -> dict[str, Any]:
     loaders["quickbooks"] = make_openapi_loader(state)  # REQ-2197
     gql_sources = getattr(state, "graphql_remote_sources", None)
     if gql_sources:
+        # A connection table lands at the page size its registration priced its query at.
         loaders["graphql_remote"] = make_graphql_remote_loader(
-            gql_sources, state.config.graphql_remote.max_rows
+            gql_sources,
+            state.config.graphql_remote.max_rows,
+            state.config.graphql_remote.max_list_items,
         )
     grpc_sources = getattr(state, "grpc_remote_sources", None)
     if grpc_sources:
@@ -287,6 +290,17 @@ def build_adapter_loaders(state: Any, engine: Any) -> dict[str, Any]:
         loaders["druid"] = make_druid_loader()
     if not engine_attaches(bare_engine, "hive_s3"):  # REQ-1730
         loaders["hive_s3"] = make_hive_s3_loader()
+    # REQ-1998 (MOTHERDUCK LANDS THROUGH ITS POSTGRES ENDPOINT): an engine with no gsheets
+    # extension lands a sheet through the Sheets API, and one that cannot attach MotherDuck lands
+    # it through MotherDuck's Postgres endpoint; one that reads either in place keeps doing so.
+    if not engine_attaches(bare_engine, "google_sheets"):
+        from provisa.events.sheets_reader import make_google_sheets_loader
+
+        loaders["google_sheets"] = make_google_sheets_loader()
+    if not engine_attaches(bare_engine, "motherduck"):
+        from provisa.events.motherduck_reader import make_motherduck_loader
+
+        loaders["motherduck"] = make_motherduck_loader()
     allocator = PortAllocator()
     config = getattr(state, "config", None)
     for src in getattr(config, "sources", None) or []:
@@ -774,6 +788,8 @@ async def wire_event_loop(scheduler: Any, *, state: Any, log: Any, seed: bool = 
         def mv_columns(mv: Any) -> list[tuple[str, str]] | None:
             return _mv_cols.get(view_node(mv))
 
+        from provisa.mv.change_refresh import change_generate
+
         def mv_admit_deltas(mv: Any) -> Any:
             # REQ-1921/1922: the input an incremental view's deltas are rows of (an incremental
             # view reads one table), whose administrator's rule decides what this region keeps.
@@ -902,6 +918,7 @@ async def wire_event_loop(scheduler: Any, *, state: Any, log: Any, seed: bool = 
             expected_events_of=lambda mv: expected_event_nodes(mv, state, graph),
             mv_admit_deltas=mv_admit_deltas,  # REQ-1921/1922
             mv_refreshed=mv_refreshed,
+            mv_change=lambda mv: change_generate(state, engine, mv),  # REQ-2249
         )
         processors = build_processors(
             specs, db=db, dependents_of=dependents_of, on_event=node_event_triggers(state)

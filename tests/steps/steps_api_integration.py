@@ -1160,6 +1160,7 @@ def rest_client_querying_endpoint(shared_data):
     schema, ctx, si = _build_orders_schema_ctx()
     shared_data["schema"] = schema
     shared_data["ctx"] = ctx
+    shared_data["tables"] = si.tables
     shared_data["role_id"] = "admin"
     shared_data["orders_field"] = _resolve_orders_field(schema)
 
@@ -1214,7 +1215,12 @@ def rest_query_string_maps_to_graphql(shared_data):
 
 @then("the request compiles and executes with the same RLS, masking, and routing as GraphQL")
 def rest_same_governance_as_graphql(shared_data):
-    """Assert REST and GraphQL feed the identical governance/routing pipeline."""
+    """Assert REST and GraphQL feed the identical governance/routing pipeline.
+
+    The stand-in state holds the table registry the context was built from, as the real state
+    always does: governance by construction (REQ-039) reads each registered table through the
+    role's governed relation, built from the registry's columns and grants, so a state holding no
+    table serves no column (refused, never read as every column)."""
     import inspect
 
     rest_compiled = shared_data["rest_compiled"]
@@ -1275,7 +1281,17 @@ def rest_same_governance_as_graphql(shared_data):
         },
         source_types={"sales-pg": "postgresql"},
         metrics={},
-        tables=[],
+        # As the real state: the table registry the compilation context was built from. Each
+        # registered reference is read through the role's governed relation, built from these
+        # columns and their grants (REQ-039); a table with no registered columns serves nothing.
+        # Both roles are granted every column, so the row filter and mask are their only difference.
+        tables=[
+            {
+                **t,
+                "columns": [{**c, "visible_to": ["filtered", "unfiltered"]} for c in t["columns"]],
+            }
+            for t in shared_data["tables"]
+        ],
         relationships=[],
         federation_engine=None,
     )

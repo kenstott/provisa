@@ -1,0 +1,29 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# The affirmation demo's card on provisa.dev's live demos page (REQ-2006), generated from this file
+# by scripts/gen-site-demos.mjs. published: true once card.png, a screenshot of the demo in
+# Provisa, is beside it.
+title: Trade affirmation
+description: >-
+  An asset manager's trades split across its order system, its execution system, the brokers'
+  confirmations and the custodian's instructions, matched by a Python code table that names each
+  break. Each break shows the time left to its market's affirmation cutoff and the penalty a failed
+  settlement would accrue, and the trades that matched are affirmed by a command.
+screenshot: card.png
+published: true
+# The oldest Provisa this demo's bundle runs on (REQ-2049): a puller running an older one is refused
+# by name. The first release carrying the demo.
+requires_provisa: 0.1.0a497
+extras:
+- vector
+group: bi
+# The demo's video: its tagline names what the demo shows Provisa being.
+video:
+  tagline: "Before the Cutoff"

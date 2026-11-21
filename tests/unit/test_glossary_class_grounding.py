@@ -33,6 +33,7 @@ if TYPE_CHECKING:
 from provisa.api._meta_views import _META_TABLE_VIEWS
 from provisa.api._ontology_views import ONTOLOGY_TABLE_VIEWS
 from provisa.api.admin import glossary_router
+from provisa.api.admin import reference_library_router as library_api
 from provisa.api.errors import ApiError
 from provisa.core.env_deploy import _decompose, _existing_ids, _roles_after
 from provisa.core.env_merge import requirements
@@ -60,10 +61,12 @@ def _served(monkeypatch):
 
 def _request() -> "Request":
     fake = types.SimpleNamespace(
+        # REQ-2216: an approval reads its Idempotency-Key header; these calls send none.
+        headers={},
         state=types.SimpleNamespace(
             identity=types.SimpleNamespace(user_id="alice", roles=[], acting_roles=[]),
             active_org_id="acme",
-        )
+        ),
     )
     return cast("Request", fake)
 
@@ -90,6 +93,10 @@ def _tbl(name: str, *, keyed: bool) -> Table:
     )
 
 
+async def _embed_terms(org_id: str) -> None:
+    return None
+
+
 @asynccontextmanager
 async def _surface(control_plane, monkeypatch, *, authority=None):
     """Three tables in ``sales`` -- two keyed, one not -- and two abstract terms."""
@@ -108,6 +115,8 @@ async def _surface(control_plane, monkeypatch, *, authority=None):
 
     monkeypatch.setattr(glossary_router, "_pool", _pool)
     monkeypatch.setattr(glossary_router, "_notify", _notify)
+    # REQ-2185: a term's save embeds it in the background (test_reference_library_terms_embedded).
+    monkeypatch.setattr(library_api, "embed_terms", _embed_terms)
     # Which right each endpoint names is asserted below from the router's own source; here the
     # capability half must simply not block the handler. The domain half is the case's own.
     monkeypatch.setattr(glossary_router, "_require_glossary_read", lambda request: None)
@@ -216,14 +225,18 @@ async def test_a_missing_term_or_table_is_404(control_plane, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_deleting_the_term_or_the_table_takes_the_grounding(control_plane, monkeypatch):
+async def test_deleting_the_term_takes_the_grounding_and_retiring_the_table_keeps_it(
+    control_plane, monkeypatch
+):
+    """REQ-2248: a deleted table is retired, and no rule drops a link to it."""
     async with _surface(control_plane, monkeypatch) as (db, ids, _notified):
         await _ground(ids["party"], ids["customers"])
         await _ground(ids["ledger"], ids["accounts"])
         async with db.acquire() as conn:
             await glossary_repo.delete_term(conn, ids["party"])
             await table_repo.delete(conn, ids["accounts"])
-            assert await glossary_repo.term_tables(conn, ids["ledger"]) == []
+            held = await glossary_repo.term_tables(conn, ids["ledger"])
+            assert [t["table_id"] for t in held] == [ids["accounts"]]
         await _ground(ids["ledger"], ids["customers"])
 
 
@@ -1048,7 +1061,8 @@ async def test_grounding_carries_the_keys_and_ungrounding_returns_them_to_the_pr
 @pytest.mark.asyncio
 async def test_a_declared_class_named_for_its_tables_concept_is_curated(cfg_db):
     """A configuration declaring orders' class as "order" -- the very name sync proposes -- states
-    a curated grounding: the export keeps it, and deleting the table keeps the term."""
+    a curated grounding: the export keeps it, and deleting the table keeps the term, still
+    grounding the retired table (REQ-2248)."""
     from provisa.core.config_loader import apply_config
 
     async with cfg_db.acquire() as conn:
@@ -1062,11 +1076,11 @@ async def test_a_declared_class_named_for_its_tables_concept_is_curated(cfg_db):
         ).fetchone()
         await table_repo.delete(conn, orders.id)
         kept = await glossary_repo.get_term(conn, order["id"])
-    assert kept is not None and kept["is_abstract"] is True
+    assert kept is not None and kept["is_abstract"] is False
 
 
 @pytest.mark.asyncio
-async def test_a_proposal_is_not_stated_by_the_export_and_goes_with_its_table(cfg_db):
+async def test_a_proposal_is_not_stated_by_the_export_and_stays_with_its_retired_table(cfg_db):
     from provisa.core.config_loader import apply_config
 
     async with cfg_db.acquire() as conn:
@@ -1080,4 +1094,5 @@ async def test_a_proposal_is_not_stated_by_the_export_and_goes_with_its_table(cf
             )
         ).fetchone()
         await table_repo.delete(conn, orders.id)
-        assert await glossary_repo.get_term(conn, order["id"]) is None
+        # REQ-2248: the table is retired, and the term it proposed stays with it.
+        assert await glossary_repo.get_term(conn, order["id"]) is not None

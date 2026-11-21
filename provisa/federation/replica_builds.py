@@ -124,19 +124,14 @@ def _delta_rebuild_due(record: Any, delta_cfg: Any) -> bool:
 async def _model_row(state: Any, key: ReplicaKey) -> tuple[Any, Any, list[Any]]:
     """The source and table ``key`` names, as the model in this process has them, and every
     registered source (the vault a build dials sources under is bound for all of them)."""
-    from provisa.federation.registry_view import (
-        draft_tables,
-        registered_sources,
-        registered_tables,
-    )
+    from provisa.federation.registry_view import registered_sources, registered_tables
 
     sources = await registered_sources(state)
     source = next((s for s in sources if s.id == key[0]), None)
     table = next(
         (
             t
-            # REQ-1921: a draft's build is asked for by its steward's preview; it is found here.
-            for t in [*await registered_tables(state), *await draft_tables(state)]
+            for t in await registered_tables(state)
             if (t.source_id, t.schema_name, t.table_name) == key
         ),
         None,
@@ -318,16 +313,20 @@ async def build_replica(state: Any, key: ReplicaKey, progress: Progress) -> Buil
         # by key.
         from provisa.events.push_wiring import cdc_capture
         from provisa.kafka import landed_offsets
+        from provisa.kafka.security import PLAINTEXT
 
         captured = cdc_capture(source, table)
-        stopped = await landed_offsets.end_offsets(*captured) if captured else None
+        # A CDC transport names no TLS or SASL settings: a plain cluster (REQ-147).
+        stopped = (
+            await landed_offsets.end_offsets(*captured, security=PLAINTEXT) if captured else None
+        )
         # REQ-1661: never two writers on one replica in a process. The event loop's delta lands
         # take this same lock, keyed on the replica's address.
         async with land_lock(f"{address.schema}.{address.table}"):
             outcome = await job.run(progress)
         if captured and stopped is not None:
             await landed_offsets.record(
-                captured[0], landed_offsets.landed_group(source.id), stopped
+                captured[0], landed_offsets.landed_group(source.id), stopped, security=PLAINTEXT
             )
         # REQ-874: a delta table that fell through to a whole rebuild records why (delta_skipped) and
         # advances the cursor to the source's current max watermark, so the next build resumes as a
@@ -415,7 +414,7 @@ async def _probe_decides(state: Any, key: ReplicaKey, source: Any, table: Any) -
     from provisa.core.change_signal import is_poll
     from provisa.core.secrets import resolve_secrets
     from provisa.events.app_wiring import build_adapter_loaders
-    from provisa.events.probes import can_probe, loader_probe
+    from provisa.events.probes import can_probe, source_transport
     from provisa.federation.residency import resolve_landing_args
 
     if key not in (getattr(state, "replica_nodes", None) or {}):
@@ -431,8 +430,8 @@ async def _probe_decides(state: Any, key: ReplicaKey, source: Any, table: Any) -
         source_path=resolve_secrets(getattr(source, "path", "") or "") or None,  # REQ-788
         file_glob=getattr(table, "file_glob", None),  # REQ-788
         # The source's own adapter asks its provider (a mail source's mailboxes).
-        loader_probe=loader_probe(
-            build_adapter_loaders(state, state.federation_engine), source, table
+        loader_probe=source_transport(
+            state, build_adapter_loaders(state, state.federation_engine), source, table
         )
         is not None,
     )
@@ -617,7 +616,7 @@ async def group_of(state: Any, key: ReplicaKey) -> list[ReplicaKey] | None:
     says come from the same read, that the model declares and that have a replica. None for a
     table read on its own, which is every table of most sources; an empty list for a table
     of a group whose siblings are not declared or have no replica."""
-    from provisa.federation.registry_view import draft_tables, registered_tables
+    from provisa.federation.registry_view import registered_tables
 
     try:
         source, table, _sources = await _model_row(state, key)
@@ -629,7 +628,7 @@ async def group_of(state: Any, key: ReplicaKey) -> list[ReplicaKey] | None:
         return None
     declared = {
         (t.source_id, t.schema_name, t.table_name)
-        for t in [*await registered_tables(state), *await draft_tables(state)]
+        for t in await registered_tables(state)
         if t.source_id == key[0] and t.schema_name == key[1] and t.table_name in names
     }
     siblings: list[ReplicaKey] = []
@@ -1141,6 +1140,7 @@ async def request_if_replicated(state: Any, table_id: int, source_id: str, reaso
     from provisa.federation.replica_converge import whole_copy
     from provisa.federation.replica_routing import owns_replica
     from provisa.federation.strategy import engine_attaches
+    from provisa.jdbc_source.attach import reach_type
 
     engine = state.federation_engine
     source = {s.id: s for s in await registered_sources(state)}.get(source_id)
@@ -1154,7 +1154,7 @@ async def request_if_replicated(state: Any, table_id: int, source_id: str, reaso
     if never_expires(table, source):
         return False  # REQ-2031: landed once; a change at its source is never read again
     served_from_replica = table.id in state.replica_routes.floored or not engine_attaches(
-        engine, source.type.value
+        engine, reach_type(source, engine)
     )
     if not (served_from_replica and whole_copy(source, table, engine)):
         return False

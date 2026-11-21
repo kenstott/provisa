@@ -9,8 +9,10 @@
     "transportLabel": "Transport",
     "stdioRoleLabel": "Bound stdio role",
     "stdioRoleNone": "none set; stdio calls require <code>{{envVar}}</code>",
+    "principalLabel": "Local principal",
+    "principalNone": "none set; local calls are refused until <code>{{envVar}}</code> names one",
     "maxRowsLabel": "Row ceiling (run_sql)",
-    "enableHint": "The MCP server is opt-in. Set the <code>{{enableEnvVar}}</code> environment variable to a port and restart the service to enable it. For the local stdio transport, also set <code>{{roleEnvVar}}</code> to a provisa role.",
+    "enableHint": "The MCP server is opt-in. Set the <code>{{enableEnvVar}}</code> environment variable to a port and restart the service to enable it. For the local stdio transport, also set <code>{{roleEnvVar}}</code> to a provisa role and <code>{{principalEnvVar}}</code> to the principal (user id) those calls act for.",
     "toolsHeading": "Exposed Tools",
     "colTool": "Tool",
     "colDescription": "Description"

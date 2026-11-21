@@ -132,8 +132,9 @@ def test_describe_is_answered_from_metadata_and_execute_reuses_its_governance(pg
             await conn.close()
 
     described, after_describe, rows, governed_total, sent = asyncio.run(_run())
-    # Registered column types (integer / double / varchar), not a probe of the source.
-    assert described == [("id", "int4"), ("amount", "float8"), ("region", "text")]
+    # Registered column types (integer / double / varchar), not a probe of the source: a varchar
+    # column keeps its type on the wire (REQ-1961, VARCHAR AND CHAR KEEP THEIR TYPE).
+    assert described == [("id", "int4"), ("amount", "float8"), ("region", "varchar")]
     assert after_describe == (1, [])  # governed once; the source was never asked
     assert rows == [(1, 19.98, "us-east")]
     assert governed_total == 1  # the Execute reused the Describe's governed statement

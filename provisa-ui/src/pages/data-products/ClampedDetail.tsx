@@ -8,24 +8,47 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// A list entry's detail held to three lines with an ellipsis, opened in place by clicking it (or
+// A list entry's detail held to three lines (or the `lines` it is given) with an ellipsis, opened in place by clicking it (or
 // Enter/Space on it) and closed the same way. Text that fits in three lines is shown as it is, with
 // nothing to toggle.
 
-import { useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import {
+  useLayoutEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type MouseEvent,
+  type ReactNode,
+} from "react";
 import { useTranslation } from "react-i18next";
 import { UnstyledButton } from "@mantine/core";
 
 const LINES = 3;
 
-const CLAMPED: CSSProperties = {
+const clamped = (lines: number): CSSProperties => ({
   display: "-webkit-box",
   WebkitBoxOrient: "vertical",
-  WebkitLineClamp: LINES,
+  WebkitLineClamp: lines,
   overflow: "hidden",
-};
+  overflowWrap: "anywhere",
+});
 
-export function ClampedDetail({ children, testId }: { children: ReactNode; testId: string }) {
+/** `lines` is how many lines the closed text is held to (three unless a list asks for fewer). */
+export function ClampedDetail({
+  children,
+  testId,
+  lines = LINES,
+  onToggle,
+  buttonStyle,
+}: {
+  children: ReactNode;
+  testId: string;
+  lines?: number;
+  /** Called with the click that opens or closes it, for a row that must not take it as its own. */
+  onToggle?: (e: MouseEvent<HTMLButtonElement>) => void;
+  /** Added to the toggle's own style: the type a list row wants it to take. */
+  buttonStyle?: CSSProperties;
+}) {
   const { t } = useTranslation();
   const body = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
@@ -44,17 +67,24 @@ export function ClampedDetail({ children, testId }: { children: ReactNode; testI
   }, [open, cut]);
 
   const detail = (
-    <div ref={body} style={open ? undefined : CLAMPED} data-testid={`${testId}-text`}>
+    <div
+      ref={body}
+      style={open ? { overflowWrap: "anywhere" } : clamped(lines)}
+      data-testid={`${testId}-text`}
+    >
       {children}
     </div>
   );
   if (!cut) return detail;
   return (
     <UnstyledButton
-      onClick={() => setOpen((o) => !o)}
+      onClick={(e) => {
+        onToggle?.(e);
+        setOpen((o) => !o);
+      }}
       aria-expanded={open}
       aria-label={open ? t("dataProductCore.detailCollapse") : t("dataProductCore.detailExpand")}
-      style={{ display: "block", width: "100%", textAlign: "start" }}
+      style={{ display: "block", width: "100%", textAlign: "start", ...buttonStyle }}
       data-testid={testId}
     >
       {detail}

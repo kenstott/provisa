@@ -107,4 +107,9 @@ async def test_the_reachable_remote_table_answers_alone(union_server):
 async def test_a_union_with_a_failing_remote_branch_fails(union_server):
     resp = await _sql(union_server, "SELECT id FROM good_items UNION ALL SELECT id FROM bad_items")
     assert resp.status_code >= 400, f"returned the other branch as complete: {resp.text}"
-    assert "500" in resp.text, resp.text  # the failing remote's own cause reaches the caller
+    # The refusal names the failing source; what it answered (its HTTP 500) is the operator's,
+    # logged where the read failed, not told to the caller (SourceUnavailable, REQ-2006).
+    assert resp.status_code == 503, resp.text
+    body = resp.json()
+    assert body["code"] == "data.source_unavailable", body
+    assert body["params"] == {"source": "remote-gql"}, body

@@ -189,11 +189,17 @@ def test_store_copies_racing_shared_connection_work_never_deadlock(runtime):
             errors.append(exc)
 
     def _shared_connection_peer() -> None:
+        # Work on the engine's connection, as DuckDB 2.0 allows it from another thread: through a
+        # cursor of its own (two threads' calls on the one connection object are refused, never
+        # waited for, since 2.0; the runtime's own statements go through cursors for that).
+        cur = runtime.connection.cursor()
         try:
             while not stop.is_set():
-                runtime.connection.execute("SELECT 1").fetchall()
+                cur.execute("SELECT 1").fetchall()
         except BaseException as exc:
             errors.append(exc)
+        finally:
+            cur.close()
 
     peers = [threading.Thread(target=_shared_connection_peer, daemon=True) for _ in range(3)]
     workers = [threading.Thread(target=_writer_reader, daemon=True) for _ in range(3)]
@@ -236,3 +242,40 @@ def test_a_time_with_its_offset_keeps_the_offset_through_the_copy(runtime):
         "ts": "TIME WITH TIME ZONE[]",
         "n": "INTEGER",
     }
+
+
+def test_the_runtime_works_while_its_connection_is_busy_with_another_call(runtime):
+    """DuckDB 2.0 refuses a call on a connection busy with another, where 1.5 waited: the
+    runtime's own statements (here the store refresh's CREATE SCHEMA a read makes) run on cursors
+    of their own, so a long statement on the engine's connection (the API-result cache writes
+    through it) never makes a concurrent read fail."""
+    import threading
+    import time
+
+    asyncio.run(
+        runtime.persist_mv_table(
+            schema="org_x",
+            table="mv_busy",
+            columns=[("id", "INTEGER")],
+            rows=[{"id": 1}],
+            persist="replace",
+        )
+    )
+    started = threading.Event()
+    failed: list[BaseException] = []
+
+    def _busy() -> None:
+        started.set()
+        try:
+            runtime.connection.execute("SELECT sum(hash(i)) FROM range(600000000) t(i)").fetchall()
+        except BaseException as exc:  # handed to the assertion below
+            failed.append(exc)
+
+    worker = threading.Thread(target=_busy, daemon=True)
+    worker.start()
+    started.wait()
+    time.sleep(0.2)  # the long statement is running on the connection
+    result = asyncio.run(runtime.run("SELECT id FROM mat_store.org_x.mv_busy"))
+    worker.join(timeout=60)
+    assert [tuple(r) for r in result.rows] == [(1,)]
+    assert failed == []

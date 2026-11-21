@@ -16,7 +16,12 @@ import { render, screen } from "../../../test-utils/render";
 
 vi.mock("../../../context/AuthContext", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../../context/AuthContext")>()),
-  useAuth: () => ({ actingRoles: "analyst,steward" }),
+  useAuth: () => ({
+    actingRoles: "analyst,steward",
+    loading: false,
+    capabilities: ["table_registration"],
+    demonstrated: [],
+  }),
 }));
 vi.mock("../../../hooks/useAdminQueries", () => ({
   useTables: () => ({

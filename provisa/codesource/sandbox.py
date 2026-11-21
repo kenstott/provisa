@@ -32,6 +32,17 @@ from provisa.codesource.linux_sandbox import SandboxUnavailable, launcher_argv
 from provisa.codesource.worker import HostCommand
 
 _proxies: dict[frozenset[str], EgressProxy] = {}
+
+
+def _minted_ports() -> tuple[int, ...]:
+    """REQ-2226: the minted-token listener, the one port of Provisa's a worker may reach. A worker
+    only: a reader imports the code to read its types and has no call to read a table for."""
+    from provisa.core import settings_registry
+
+    port = settings_registry.value("server.minted_pgwire_port")
+    return (port,) if port else ()
+
+
 _proxies_lock = threading.Lock()
 
 
@@ -55,9 +66,11 @@ def sandboxed(
     egress: Iterable[str],
 ) -> HostCommand:
     """The host command ``argv`` (given the socket's address), confined to reading ``read`` and
-    the runtime ``executable``'s own directory, with the network only through the egress proxy."""
+    the runtime ``executable``'s own directory, with the network only through the egress proxy
+    and, for a call given a table (REQ-2226), to the minted-token listener's one port."""
     proxy = egress_proxy(egress)
     env = {**env, **proxy.environment()}
+    minted = _minted_ports()
     system = platform.system()
     if system == "Darwin":
 
@@ -69,6 +82,7 @@ def sandboxed(
                 read=[*read, socket_path.parent],
                 socket_path=socket_path,
                 proxy_port=proxy.port,
+                connect_ports=minted,
             )
 
         return HostCommand(argv=_macos, env=env, cwd=cwd)
@@ -77,7 +91,11 @@ def sandboxed(
 
         def _linux(address: str) -> list[str]:
             return launcher_argv(
-                sys.executable, read=readable, proxy_port=proxy.port, argv=argv(address)
+                sys.executable,
+                read=readable,
+                proxy_port=proxy.port,
+                argv=argv(address),
+                connect_ports=minted,
             )
 
         return HostCommand(argv=_linux, env=env, cwd=cwd, inherit_socket=True)

@@ -1,0 +1,18 @@
+# The same match on the public record: the Assistance Listings whose direct award lines in the
+# three states' 2023 Single Audits USAspending most often has no obligation for.
+query PublicUnmatched {
+  a__viewPublicMatch(
+    where: { isDirect: { eq: "Y" } }
+    order_by: [{ unmatchedLines: desc }]
+    limit: 20
+  ) {
+    state
+    aln
+    programName
+    lines
+    matchedLines
+    unmatchedLines
+    expended
+    obligated
+  }
+}

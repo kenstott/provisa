@@ -17,11 +17,23 @@ failed for reasons that had nothing to do with the pin.
 
 from __future__ import annotations
 
+import hashlib
 import os
+import urllib.error
 
 import pytest
 
 import tests.conftest as harness
+import tests.trino_plugins as pins
+
+_BODY = b"the pinned build"
+_REAL_DOWNLOAD = harness._download_trino_plugin
+
+
+def _pin_every_sum_to(monkeypatch, body: bytes) -> None:
+    """Stand-in jars with recorded sums of their own: the real ones are hundreds of megabytes."""
+    digest = hashlib.sha256(body).hexdigest()
+    monkeypatch.setattr(pins, "_TRINO_PLUGIN_SHA256", {n: digest for n in pins._TRINO_PLUGINS})
 
 
 @pytest.fixture
@@ -29,11 +41,15 @@ def plugins(tmp_path, monkeypatch):
     root = tmp_path / "repo"
     (root / "trino" / "plugins").mkdir(parents=True)
     monkeypatch.setattr(harness, "_REPO_ROOT", str(root))
+    # A local run: CI never downloads at collection (test_a_ci_run_never_downloads_at_collection).
+    monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
+    _pin_every_sum_to(monkeypatch, _BODY)
     fetched: list[str] = []
 
     def _fetch(target: str, name: str) -> None:
         os.makedirs(target, exist_ok=True)
-        open(os.path.join(target, f"{name}-{harness._trino_plugin_version(name)}.jar"), "w").close()
+        with open(os.path.join(target, pins.jar_name(name)), "wb") as f:
+            f.write(_BODY)
         fetched.append(name)
 
     monkeypatch.setattr(harness, "_download_trino_plugin", _fetch)
@@ -51,71 +67,193 @@ def test_missing_and_empty_directories_get_the_pinned_build(plugins):
     root, fetched = plugins
     (root / "trino-splunk").mkdir()  # what a docker bind mount leaves behind
     harness._populate_trino_plugins()
-    assert sorted(fetched) == sorted(harness._TRINO_PLUGINS)
+    assert sorted(fetched) == sorted(pins._TRINO_PLUGINS)
 
 
 def test_a_directory_holding_the_pinned_jar_is_used_as_is(plugins):
     root, fetched = plugins
-    for name in harness._TRINO_PLUGINS:
+    for name in pins._TRINO_PLUGINS:
         (root / name).mkdir()
-        (root / name / f"{name}-{harness._trino_plugin_version(name)}.jar").write_text("")
+        (root / name / pins.jar_name(name)).write_bytes(_BODY)
     harness._populate_trino_plugins()
     assert fetched == []
+
+
+def test_the_pinned_file_name_with_other_bytes_is_refused_by_name(plugins):
+    root, fetched = plugins
+    for name in pins._TRINO_PLUGINS:
+        (root / name).mkdir()
+        (root / name / pins.jar_name(name)).write_bytes(_BODY)
+    (root / "trino-cloudops" / pins.jar_name("trino-cloudops")).write_bytes(b"truncated")
+    with pytest.raises(pins.TrinoPluginRefused, match=r"trino-cloudops: .*has sha256 "):
+        harness._populate_trino_plugins()
+    assert fetched == []
+
+
+def test_a_ci_run_never_downloads_at_collection(plugins, monkeypatch):
+    """Release 510: every lane missed the plugin cache and fetched from Maven Central inside
+    collection at once; one was refused with HTTP 429 as an INTERNALERROR. On a runner the jars
+    come from the workflow's restore, so a missing one is refused by name and nothing is fetched."""
+    _, fetched = plugins
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    monkeypatch.setattr(harness, "_download_trino_plugin", _REAL_DOWNLOAD)
+    urls = _serve(monkeypatch, _BODY)
+    with pytest.raises(pins.TrinoPluginRefused, match=r"trino-sharepoint: .* is missing"):
+        harness._populate_trino_plugins()
+    assert fetched == [] and urls == []
+
+
+def test_a_refused_plugin_ends_the_session_by_name_not_as_an_internal_error(monkeypatch):
+    def _refuse() -> None:
+        raise pins.TrinoPluginRefused("Trino plugin trino-file: trino-file-0.109.0.jar is missing")
+
+    monkeypatch.delenv("PYTEST_NO_DOCKER", raising=False)
+    monkeypatch.setattr(harness, "_needs_shared_stack", lambda items: True)
+    monkeypatch.setattr(harness, "_marker_batches", lambda items: [[]])
+    monkeypatch.setattr(harness, "_name_the_broker", lambda batches: None)
+    monkeypatch.setattr(harness, "_populate_trino_plugins", _refuse)
+    with pytest.raises(
+        pytest.exit.Exception, match="trino-file: trino-file-0.109.0.jar is missing"
+    ):
+        harness._DockerServiceManager().pytest_collection_finish(type("S", (), {"items": []})())
+
+
+def _serve(monkeypatch, body: bytes | Exception) -> list[str]:
+    urls: list[str] = []
+
+    def _retrieve(url: str, path: str) -> None:
+        urls.append(url)
+        if isinstance(body, Exception):
+            raise body
+        with open(path, "wb") as f:
+            f.write(body)
+
+    monkeypatch.setattr("urllib.request.urlretrieve", _retrieve)
+    return urls
+
+
+def test_a_fetch_with_other_bytes_is_refused_by_name_and_leaves_no_jar(monkeypatch, tmp_path):
+    _pin_every_sum_to(monkeypatch, _BODY)
+    _serve(monkeypatch, b"an html error page")
+    with pytest.raises(pins.TrinoPluginRefused, match=r"trino-splunk from https://.*has sha256 "):
+        pins.fetch(str(tmp_path / "trino-splunk"), "trino-splunk")
+    assert os.listdir(tmp_path / "trino-splunk") == []
+
+
+def test_a_refused_fetch_is_refused_by_name(monkeypatch, tmp_path):
+    _serve(monkeypatch, urllib.error.HTTPError("u", 429, "Too Many Requests", {}, None))  # type: ignore[arg-type]
+    with pytest.raises(pins.TrinoPluginRefused, match=r"trino-file: https://.* was refused: .*429"):
+        pins.fetch(str(tmp_path / "trino-file"), "trino-file")
+    assert os.listdir(tmp_path / "trino-file") == []
+
+
+def _tree(root, monkeypatch) -> None:
+    _pin_every_sum_to(monkeypatch, _BODY)
+    for name in pins._TRINO_PLUGINS:
+        (root / "trino" / "plugins" / name).mkdir(parents=True)
+        (root / "trino" / "plugins" / name / pins.jar_name(name)).write_bytes(_BODY)
+
+
+def test_verify_passes_every_pinned_jar(monkeypatch, tmp_path):
+    _tree(tmp_path, monkeypatch)
+    pins.verify(str(tmp_path))
+
+
+def test_verify_refuses_a_missing_jar_by_name(monkeypatch, tmp_path):
+    _tree(tmp_path, monkeypatch)
+    (
+        tmp_path / "trino" / "plugins" / "trino-salesforce" / pins.jar_name("trino-salesforce")
+    ).unlink()
+    with pytest.raises(pins.TrinoPluginRefused) as refused:
+        pins.verify(str(tmp_path))
+    assert str(refused.value).splitlines() == [
+        f"Trino plugin trino-salesforce: {tmp_path}/trino/plugins/trino-salesforce/"
+        f"trino-salesforce-0.108.0.jar is missing (the pinned trino-salesforce-0.108.0.jar)"
+    ]
+
+
+def test_verify_refuses_a_mismatched_jar_by_name(monkeypatch, tmp_path):
+    _tree(tmp_path, monkeypatch)
+    jar = tmp_path / "trino" / "plugins" / "trino-splunk" / pins.jar_name("trino-splunk")
+    jar.write_bytes(b"another build")
+    with pytest.raises(pins.TrinoPluginRefused) as refused:
+        pins.verify(str(tmp_path))
+    (line,) = str(refused.value).splitlines()
+    assert line.startswith(f"Trino plugin trino-splunk: {jar} has sha256 ")
+    assert line.endswith(
+        f"not the pinned {pins.jar_name('trino-splunk')}'s {hashlib.sha256(_BODY).hexdigest()}"
+    )
+
+
+def test_the_verify_command_fails_naming_the_jar(monkeypatch, tmp_path, capsys):
+    _tree(tmp_path, monkeypatch)
+    (tmp_path / "trino" / "plugins" / "trino-file" / pins.jar_name("trino-file")).unlink()
+    monkeypatch.setattr(pins, "_REPO_ROOT", str(tmp_path))
+    assert pins.main(["verify"]) == 1
+    assert "::error::Trino plugin trino-file: " in capsys.readouterr().err
+
+
+def test_every_pinned_plugin_has_a_recorded_sum():
+    assert set(pins._TRINO_PLUGIN_SHA256) == set(pins._TRINO_PLUGINS)
+    assert all(len(s) == 64 and int(s, 16) >= 0 for s in pins._TRINO_PLUGIN_SHA256.values())
 
 
 def test_each_plugin_is_fetched_at_its_own_version(monkeypatch, tmp_path):
     # REQ-1946, REQ-1947, REQ-1960: the Salesforce, cloud inventory and file plugins come from the
     # first release that has what Provisa needs of them; every other plugin stays at the one pinned
     # version.
-    assert harness._TRINO_PLUGIN_VERSIONS == {
+    assert pins._TRINO_PLUGIN_VERSIONS == {
         "trino-salesforce": "0.108.0",
         "trino-cloudops": "0.108.0",
         "trino-file": "0.109.0",
     }
-    assert set(harness._TRINO_PLUGIN_VERSIONS) <= set(harness._TRINO_PLUGINS)
+    assert set(pins._TRINO_PLUGIN_VERSIONS) <= set(pins._TRINO_PLUGINS)
+    monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
+    _pin_every_sum_to(monkeypatch, _BODY)
     urls: list[str] = []
-    monkeypatch.setattr(
-        "urllib.request.urlretrieve", lambda url, path: urls.append(f"{url} -> {path}")
-    )
+
+    def _retrieve(url: str, path: str) -> None:
+        urls.append(f"{url} -> {path}")
+        with open(path, "wb") as f:
+            f.write(_BODY)
+
+    monkeypatch.setattr("urllib.request.urlretrieve", _retrieve)
     for name in ("trino-sharepoint", "trino-salesforce", "trino-cloudops", "trino-file"):
         harness._download_trino_plugin(str(tmp_path / name), name)
+        assert os.listdir(tmp_path / name) == [pins.jar_name(name)]
     base = "https://repo1.maven.org/maven2/io/simpleishard"
-    pinned = harness._TRINO_PLUGIN_VERSION
+    pinned = pins._TRINO_PLUGIN_VERSION
     assert urls == [
         f"{base}/trino-sharepoint/{pinned}/trino-sharepoint-{pinned}.jar"
-        f" -> {tmp_path}/trino-sharepoint/trino-sharepoint-{pinned}.jar",
+        f" -> {tmp_path}/trino-sharepoint/trino-sharepoint-{pinned}.jar.part",
         f"{base}/trino-salesforce/0.108.0/trino-salesforce-0.108.0.jar"
-        f" -> {tmp_path}/trino-salesforce/trino-salesforce-0.108.0.jar",
+        f" -> {tmp_path}/trino-salesforce/trino-salesforce-0.108.0.jar.part",
         f"{base}/trino-cloudops/0.108.0/trino-cloudops-0.108.0.jar"
-        f" -> {tmp_path}/trino-cloudops/trino-cloudops-0.108.0.jar",
+        f" -> {tmp_path}/trino-cloudops/trino-cloudops-0.108.0.jar.part",
         f"{base}/trino-file/0.109.0/trino-file-0.109.0.jar"
-        f" -> {tmp_path}/trino-file/trino-file-0.109.0.jar",
+        f" -> {tmp_path}/trino-file/trino-file-0.109.0.jar.part",
     ]
 
 
-def test_the_workflows_fetch_each_plugin_at_the_harness_version():
-    # CI and the harness must fetch the same build of each plugin.
+def test_the_release_and_the_trino_stack_take_the_harness_pin_from_the_action():
+    # CI and the harness must use the same build of each plugin: the release's plugin tarball
+    # and the stack both Trino-backed UI lanes start no longer fetch at versions of their own.
+    # The release primes the action's cache (the pin and sha256s of tests/trino_plugins.py); the
+    # stack script checks the jars its caller restored and fetches nothing.
     from pathlib import Path
 
+    import yaml
+
     repo = Path(__file__).resolve().parents[2]
-    wanted = " ".join(
-        f"{name}:{harness._TRINO_PLUGIN_VERSIONS.get(name, '$VERSION')}"
-        for name in harness._TRINO_PLUGINS
-    )
-    # The release's plugin tarball, and the stack both Trino-backed UI lanes start (one script
-    # now; each lane's workflow carried its own copy).
-    for name in (
-        ".github/workflows/release-prebuilt.yml",
-        "scripts/ci/lanes/trino-stack-prepare.sh",
-    ):
-        text = (repo / name).read_text()
-        assert f'VERSION="{harness._TRINO_PLUGIN_VERSION}"' in text, name
-        loop = " ".join(
-            text[text.index("for spec in") : text.index("; do", text.index("for spec in"))]
-            .replace("\\", " ")
-            .split()
-        )
-        assert loop == f"for spec in {wanted}", name
+    release = yaml.safe_load((repo / ".github/workflows/release-prebuilt.yml").read_text())
+    steps = release["jobs"]["download-plugins"]["steps"]
+    assert {"uses": "./.github/actions/trino-plugins", "with": {"phase": "prime"}}.items() <= next(
+        s for s in steps if s.get("uses") == "./.github/actions/trino-plugins"
+    ).items()
+    stack = (repo / "scripts/ci/lanes/trino-stack-prepare.sh").read_text()
+    assert "python3 tests/trino_plugins.py verify" in stack
+    for name, text in (("release-prebuilt.yml", str(release)), ("trino-stack-prepare.sh", stack)):
+        assert pins._TRINO_PLUGIN_MAVEN not in text and "curl" not in text, name
 
 
 def test_another_build_is_refused_by_name(plugins):
@@ -150,7 +288,7 @@ def test_the_harness_own_fetch_of_an_earlier_pin_is_replaced_by_the_pinned_build
     root, fetched = plugins
     _earlier_pin_downloaded_here(root, "trino-splunk")
     harness._populate_trino_plugins()
-    pinned = f"trino-splunk-{harness._TRINO_PLUGIN_VERSION}.jar"
+    pinned = f"trino-splunk-{pins._TRINO_PLUGIN_VERSION}.jar"
     assert sorted(os.listdir(root / "trino-splunk")) == [pinned]
     assert "trino-splunk" in fetched
     assert harness._downloads(str(root))["trino-splunk"]["file"] == pinned

@@ -2,6 +2,9 @@
   "common": {
     "loading": "Carregando...",
     "cancel": "Cancelar",
+    "stop": "Parar",
+    "stopped": "Interrompida",
+    "stopQuery": "Parar a consulta",
     "save": "Salvar",
     "delete": "Excluir",
     "confirm": "Confirmar",
@@ -9,7 +12,9 @@
     "identity": "Identidade",
     "discardTitle": "Descartar as alterações?",
     "discardBody": "As alterações em {{what}} não foram salvas.",
-    "discard": "Descartar"
+    "discard": "Descartar",
+    "deleting": "Excluindo…",
+    "deleteFailed": "Não excluído: {{reason}}"
   },
   "app": {
     "apiUnreachable": "Não foi possível conectar à API do Provisa.",
@@ -42,12 +47,16 @@
     "yes": "Sim",
     "no": "Não",
     "none": "—",
-    "expandUser": "Mostrar atribuições de {{username}}",
+    "expandUser": "Expandir as atribuições de {{username}}",
     "deleteUser": "Excluir a conta de {{username}}",
     "assignmentsHeading": "Atribuições função:domínio",
     "noAssignments": "Nenhuma atribuição",
     "removeAssignment": "Remover atribuição {{role}}:{{domain}}",
     "roleLabel": "Função",
+    "rolesLabel": "Funções",
+    "rolesPlaceholder": "Escolha uma ou mais funções",
+    "addList": "Adicionar uma lista",
+    "removeList": "Remover esta lista",
     "domainLabel": "Domínio",
     "untilLabel": "Até",
     "untilPlaceholder": "Sem data de término",
@@ -56,7 +65,6 @@
     "noExpiry": "Sem data de término",
     "neverUsed": "Nunca",
     "allDomains": "* (todos os domínios)",
-    "add": "Adicionar",
     "createHeading": "Criar usuário",
     "username": "Nome de usuário",
     "usernameRequired": "Nome de usuário *",
@@ -96,6 +104,6 @@
   },
   "pageError": {
     "title": "Não foi possível mostrar esta página",
-    "body": "Ocorreu uma falha na renderização. O resto do aplicativo continua funcionando: vá para outra página ou recarregue esta."
+    "body": "Ocorreu uma falha durante a renderização. O resto do aplicativo continua funcionando, então vá para outra página ou recarregue esta."
   }
 }

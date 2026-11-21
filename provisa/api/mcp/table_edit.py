@@ -32,6 +32,7 @@ import types
 from typing import Any
 
 from sqlalchemy import select
+from provisa.api.engine_error_names import client_value
 
 
 async def read_table(table_id: int) -> Any:
@@ -158,6 +159,7 @@ def table_input(t: Any) -> Any:
         import_set=t.import_set or None,
         arguments=dict(t.arguments or {}),
         landing_filter=t.landing_filter or None,
+        read_wait=t.read_wait,
         load_protected=t.load_protected,
         off_peak_window=t.off_peak_window,
         off_peak_tz=t.off_peak_tz,
@@ -184,7 +186,6 @@ def table_input(t: Any) -> Any:
         mv_business_day_grain=t.mv_business_day_grain,
         modeling_role=t.modeling_role,
         modeling_history=t.modeling_history,
-        product_id=t.stored_product_id,
         enable_aggregates=t.enable_aggregates,
         enable_group_by=t.enable_group_by,
         live=_live_input(t.live),
@@ -242,4 +243,4 @@ async def save_table(request: Any, table_input_: Any) -> dict:
     result = await Mutation().update_table(info, table_input_)  # pyright: ignore[reportCallIssue]
     if not result.success:
         raise ValueError(result.message)
-    return {"message": result.message}
+    return {"message": client_value(result.message)}

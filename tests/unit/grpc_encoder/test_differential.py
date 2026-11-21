@@ -37,7 +37,10 @@ from provisa.grpc.server import _nodes_field
 from tests.unit.grpc_encoder.python_ref import (
     Service,
     node_reference,
+    has_map,
     python_encode,
+    rows_encode,
+    rows_of,
     rust_encode,
 )
 
@@ -118,10 +121,34 @@ def compare(
         assert not isinstance(sent_exc.value, NotImplementedError), (
             f"the reference raised {exc!r}; the encoder refused instead: {sent_exc.value!r}"
         )
+        if any(has_map(b) for b in batches):
+            return []
+        # REQ-2195: the rows form refuses it too (reading the cells, or writing them)
+        with pytest.raises(Exception):  # noqa: B017, PT011
+            rows_encode(
+                svc.wire,
+                type_name,
+                [rows_of(b) for b in batches],
+                list(batches[0].schema.names),
+                batch_rows=batch_rows,
+                masks=masks,
+            )
         return []
     sent = rust_encode(svc.wire, type_name, batches, batch_rows=batch_rows, masks=masks)
     name = f"{type_name}Batch" if batch_rows else type_name
     assert_same(getattr(decode_as or svc.wire, name), expected, sent)
+    if any(has_map(b) for b in batches):
+        return sent
+    # REQ-2195: the same result as a row result is encoded from its rows, to the same bytes
+    from_rows = rows_encode(
+        svc.wire,
+        type_name,
+        [rows_of(b) for b in batches],
+        list(batches[0].schema.names),
+        batch_rows=batch_rows,
+        masks=masks,
+    )
+    assert from_rows == sent, "the rows form answers otherwise"
     return sent
 
 
@@ -956,16 +983,17 @@ def test_group_nodes(svc):
 
 def test_group_node_relations(svc):
     nodes = [
-        {"id": 1, "customers": {"id": 5, "name": "c"}},
-        {"id": 2, "customers": {}},
-        {"id": 3, "customers": [{"id": 1}]},
+        # the many-to-one field is named as its GraphQL relationship field (REQ-1929)
+        {"id": 1, "customer": {"id": 5, "name": "c"}},
+        {"id": 2, "customer": {}},
+        {"id": 3, "customer": [{"id": 1}]},
     ]
     nodes = json.loads(json.dumps(nodes))
     group = svc.wire.OrdersGroupByRow
     sent = group.FromString(_nodes_field(group, svc.wire.Orders, nodes))
     expected = node_reference(svc.wire, "Orders", nodes)
     assert_same(svc.wire.Orders, expected, [n.SerializeToString() for n in sent.nodes])
-    assert sent.nodes[1].HasField("customers"), "an empty relation is still set"
+    assert sent.nodes[1].HasField("customer"), "an empty relation is still set"
 
 
 def test_group_node_errors_raise(svc):

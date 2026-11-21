@@ -74,6 +74,7 @@ vi.mock("../../hooks/useSecurityQueries", () => ({
   useRLSRules: () => ({ rlsRules: RULES, loading: false, refetch: vi.fn() }),
   useUpsertRole: () => ({ upsertRole: upsertRoleSpy, loading: false }),
   useDeleteRole: () => ({ deleteRole: vi.fn(), loading: false }),
+  useDeleteRoles: () => vi.fn(),
   useUpsertRlsRule: () => ({ upsertRlsRule: vi.fn(), loading: false }),
   useDeleteRlsRule: () => ({ deleteRlsRule: vi.fn(), loading: false }),
   useRevokeRoleGrants: () => ({ revokeFromTable: vi.fn(), revokeFromObject: vi.fn() }),
@@ -94,18 +95,18 @@ const rowIn = (list: string, text: string) =>
   within(screen.getByTestId(list)).getByText(text).closest("tr")!;
 
 describe("the Security lists' search", () => {
-  it("lists the roles matching any word of the search", () => {
+  it("lists the roles matching every word of the search, or either side of or", () => {
     render(<SecurityRolesPage />);
-    fireEvent.change(screen.getByTestId("filter-input"), { target: { value: "analyst locked" } });
+    fireEvent.change(screen.getByTestId("filter-input"), { target: { value: "analyst or locked" } });
     const list = within(screen.getByTestId("roles-list"));
     expect(list.getByText("analyst")).toBeInTheDocument();
     expect(list.getByText("locked")).toBeInTheDocument();
     expect(list.queryByText("steward")).toBeNull();
   });
 
-  it("lists the row rules matching any word of the search", () => {
+  it("lists the row rules matching every word of the search, or either side of or", () => {
     render(<SecurityRlsPage />);
-    fireEvent.change(screen.getByTestId("filter-input"), { target: { value: "analyst payroll" } });
+    fireEvent.change(screen.getByTestId("filter-input"), { target: { value: "analyst or payroll" } });
     const list = within(screen.getByTestId("rules-list"));
     expect(list.getByText("analyst")).toBeInTheDocument();
     expect(list.queryByText("steward")).toBeNull();

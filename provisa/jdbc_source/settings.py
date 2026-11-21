@@ -50,8 +50,53 @@ CAPABILITIES: tuple[str, ...] = (ATTACH, PREDICATE, JOIN, AGGREGATE, KEY_RANGE)
 #: The generic dialect's name (provisa.jdbc_source.dialect).
 ANSI = "ansi"
 
-#: The engine attach a URL's backend can try; any other backend has none.
-_ATTACH_BY_BACKEND: dict[str, str] = {"postgresql": "postgres", "mysql": "mysql"}
+
+#: The SQLAlchemy backend a URL's scheme names (its dialect, without the driver) -> the built-in
+#: source type of the same database.
+NAMED_TYPES: dict[str, str] = {
+    "postgresql": "postgresql",
+    "mysql": "mysql",
+    "mariadb": "mariadb",
+    "mssql": "sqlserver",
+    "oracle": "oracle",
+    "sqlite": "sqlite",
+    "duckdb": "duckdb",
+    "clickhouse": "clickhouse",
+    "snowflake": "snowflake",
+    "bigquery": "bigquery",
+    "databricks": "databricks",
+    "redshift": "redshift",
+    "trino": "trino",
+    "hana": "saphana",
+    "exa": "exasol",
+    "firebird": "firebird",
+    "cockroachdb": "cockroachdb",
+    "singlestoredb": "singlestore",
+    "awsathena": "athena",
+    "druid": "druid",
+    "pinot": "pinot",
+    "hive": "hiveserver2",
+}
+
+
+#: The URL scheme the source form writes for a backend of :data:`NAMED_TYPES`, where SQLAlchemy's
+#: default driver for it is not the one Provisa ships; any other backend is written bare.
+FORM_SCHEMES: dict[str, str] = {
+    "mysql": "mysql+pymysql",
+    "mariadb": "mariadb+pymysql",
+    "oracle": "oracle+oracledb",
+}
+
+
+def form_scheme(backend_name: str) -> str:
+    """The URL scheme the source form writes for ``backend_name``, a key of :data:`NAMED_TYPES`."""
+    return FORM_SCHEMES.get(backend_name, backend_name)
+
+
+def named_type(url: str) -> str | None:
+    """The built-in source type ``url``'s scheme names; None for a jdbc: URL and for a scheme
+    naming none."""
+    return NAMED_TYPES.get(backend(url))
 
 
 class InvalidJdbcSource(ValueError):
@@ -75,12 +120,6 @@ def backend(url: str) -> str:
     if not sep or not scheme:
         raise InvalidJdbcSource(f"{url!r} is not a connection URL: it names no scheme")
     return scheme.split("+", 1)[0].lower()
-
-
-def attach_kind(url: str) -> str | None:
-    """The engine attach the source's URL can try: ``postgres`` for a postgresql URL, ``mysql``
-    for a mysql one, None for any other."""
-    return _ATTACH_BY_BACKEND.get(backend(url))
 
 
 def capabilities_key(engine: str) -> str:
@@ -108,11 +147,12 @@ def _capabilities(url: str, key: str, value: str) -> frozenset[str]:
             f"{key}: {', '.join(unknown)} is not a capability; the capabilities are "
             f"{', '.join(CAPABILITIES)}"
         )
-    if ATTACH in named and attach_kind(url) is None:
-        raise InvalidJdbcSource(
-            f"{key}: a {backend(url)} URL has no engine attach to turn on; only a postgresql or "
-            "mysql URL does"
-        )
+    if ATTACH in named:
+        if named_type(url) is None:
+            raise InvalidJdbcSource(
+                f"{key}: a {backend(url)} URL has no engine attach to turn on: it names no "
+                "built-in source type"
+            )
     return named
 
 

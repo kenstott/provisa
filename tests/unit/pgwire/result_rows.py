@@ -29,6 +29,13 @@ def rows_of(result: Any, limit: int = 0) -> list[list[Any]]:
         if data.raw:
             out.extend(batch)
             continue
+        if data.rows:  # REQ-2195: a row result's rows, as they are
+            for row in batch:
+                cells = list(row)
+                for i, coercer in coerce:
+                    cells[i] = None if cells[i] is None else coercer(cells[i])
+                out.append(cells)
+            continue
         columns = [column_values(c) for c in batch.columns]
         for i, coercer in coerce:
             columns[i] = [None if v is None else coercer(v) for v in columns[i]]

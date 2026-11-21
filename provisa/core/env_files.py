@@ -49,6 +49,7 @@ sorting it would change what it means.
 
 from __future__ import annotations
 
+import functools
 from typing import Any, NamedTuple
 from urllib.parse import quote, unquote
 
@@ -129,15 +130,23 @@ def kind_path(kind_dir: str, *parts: str) -> str:
     return f"{kind_dir}/" + "/".join(_segment(p) for p in parts) + SUFFIX
 
 
+@functools.cache
+def _excluded_columns(table: str) -> frozenset[str]:
+    """What :func:`_model_columns` leaves out of ``table``'s rows: the same for every row of it,
+    so made once per table rather than once per row of every projection."""
+    excluded = STORAGE_COLUMNS | DERIVED_COLUMNS | DERIVED_COLUMNS_BY_TABLE.get(table, frozenset())
+    if table in BINDING_COLUMNS:
+        excluded = excluded | BINDING_COLUMNS[table] | {BINDING_COLUMN}
+    return excluded
+
+
 def _model_columns(table: str, row: dict[str, Any]) -> dict[str, Any]:
     """``row`` less everything that is storage, derivation, or a binding."""
-    excluded = STORAGE_COLUMNS | DERIVED_COLUMNS | DERIVED_COLUMNS_BY_TABLE.get(table, frozenset())
+    excluded = _excluded_columns(table)
     if table == "sources":
         # REQ-1942: the type the model gives it; a row bound to a synthetic store holds the
         # store's in its place.
         row = {**row, "type": model_type(row)}
-    if table in BINDING_COLUMNS:
-        excluded = excluded | BINDING_COLUMNS[table] | {BINDING_COLUMN}
     return {k: v for k, v in row.items() if k not in excluded and v is not None}
 
 
@@ -151,10 +160,17 @@ def dump(tree: dict[str, dict[str, Any]]) -> dict[str, str]:
     return {path: _emit(tree[path]) for path in sorted(tree)}
 
 
+#: How every file is rendered.
+_YAML: dict[str, Any] = {
+    "sort_keys": True,
+    "default_flow_style": False,
+    "allow_unicode": True,
+    "width": 100,
+}
+
+
 def _emit(entity: dict[str, Any]) -> str:
-    return yaml.safe_dump(
-        entity, sort_keys=True, default_flow_style=False, allow_unicode=True, width=100
-    )
+    return yaml.safe_dump(entity, **_YAML)
 
 
 def fingerprint(value: Any) -> Any:
@@ -162,10 +178,15 @@ def fingerprint(value: Any) -> Any:
     equal fingerprints are the same values of the same types (``1``, ``1.0``, ``True`` and ``"1"``
     all differ), so :func:`dump` renders them to the same text."""
     if isinstance(value, dict):
-        return (
-            "dict",
-            tuple(sorted(((fingerprint(k), fingerprint(v)) for k, v in value.items()), key=repr)),
-        )
+        pairs = [(fingerprint(k), fingerprint(v)) for k, v in value.items()]
+        # Ordered by key: a dict's keys are distinct, so their fingerprints' text orders the pairs
+        # as the whole pairs' text does, without writing every value's subtree out at every level
+        # it is nested in. Two keys of one text (keys of different types rendering alike) fall
+        # back to ordering by the whole pair.
+        keyed = {repr(k): (k, v) for k, v in pairs}
+        if len(keyed) == len(pairs):
+            return ("dict", tuple(keyed[text] for text in sorted(keyed)))
+        return ("dict", tuple(sorted(pairs, key=repr)))
     if isinstance(value, (list, tuple)):
         return (type(value).__name__, tuple(fingerprint(v) for v in value))
     return (type(value).__name__, value)
@@ -176,21 +197,64 @@ Rendered = dict[str, tuple[Any, str]]
 
 
 def dump_reusing(
-    tree: dict[str, dict[str, Any]], last: Rendered
+    tree: dict[str, dict[str, Any]],
+    last: Rendered,
+    rebased: tuple[str, str] | None = None,
 ) -> tuple[dict[str, str], Rendered]:
     """:func:`dump`, re-rendering only the entities that differ from ``last``: a model change edits
     a few objects, and rendering every file of the model again for it was most of a write-through's
     time (REQ-1882). Returns the files -- the very text :func:`dump` gives -- and what to pass as
-    ``last`` next time."""
+    ``last`` next time.
+
+    ``rebased``: ``last`` was rendered from a model in schema ``source`` and ``tree`` is its copy
+    in schema ``target`` (an environment created from another, a sandbox cloned from its template:
+    REQ-2006). The copy rebased each row naming ``source`` onto ``target`` (env_copy._rebase), so
+    a built-in table's entity -- most of a model -- differs from the one rendered only in its
+    ``schema_name``. Such an entity's text is the one rendered with that one line naming
+    ``target``."""
+    plain = rebased is not None and all(_plain(schema) for schema in rebased)
     files: dict[str, str] = {}
     rendered: Rendered = {}
     for path in sorted(tree):
-        mark = fingerprint(tree[path])
+        entity = tree[path]
+        mark = fingerprint(entity)
         held = last.get(path)
-        text = held[1] if held is not None and held[0] == mark else _emit(tree[path])
+        if held is not None and held[0] == mark:
+            text = held[1]
+        elif held is not None and plain and _rebased_from(entity, held[0], rebased):
+            assert rebased is not None
+            text = _with_schema(held[1], *rebased)
+        else:
+            text = _emit(entity)
         files[path] = text
         rendered[path] = (mark, text)
     return files, rendered
+
+
+def _plain(schema: str) -> bool:
+    """Whether ``schema`` renders as the plain scalar it is, alone on its key's line."""
+    return yaml.safe_dump({_SCHEMA_KEY: schema}, **_YAML) == f"{_SCHEMA_KEY}: {schema}\n"
+
+
+#: The column a copy rebases (env_copy._SCHEMA_COLUMN).
+_SCHEMA_KEY = "schema_name"
+
+
+def _rebased_from(entity: dict[str, Any], held: Any, rebased: tuple[str, str] | None) -> bool:
+    """Whether ``entity`` is the entity fingerprinted ``held`` with its schema rebased."""
+    if rebased is None or entity.get(_SCHEMA_KEY) != rebased[1]:
+        return False
+    return fingerprint({**entity, _SCHEMA_KEY: rebased[0]}) == held
+
+
+def _with_schema(text: str, source: str, target: str) -> str:
+    """``text`` with its entity's own ``schema_name`` line naming ``target`` for ``source``: the
+    one line at the top level holding the key (a child's is indented under its list)."""
+    lines = text.split("\n")
+    at = [i for i, line in enumerate(lines) if line == f"{_SCHEMA_KEY}: {source}"]
+    assert len(at) == 1, f"an entity's text holds its {_SCHEMA_KEY} line once, not {len(at)} times"
+    lines[at[0]] = f"{_SCHEMA_KEY}: {target}"
+    return "\n".join(lines)
 
 
 def load(files: dict[str, str]) -> dict[str, dict[str, Any]]:

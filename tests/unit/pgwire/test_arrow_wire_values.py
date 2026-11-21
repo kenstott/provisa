@@ -215,3 +215,35 @@ def test_a_uuid_held_as_16_bytes_is_written_as_the_uuid(extension: bool) -> None
     assert values[-1] is None
     assert [t.decode() for t in wire.cells(BVType.UUID, values[:-1], 0)] == [str(u) for u in _UUIDS]
     assert wire.cells(BVType.UUID, values[:-1], 1) == [u.bytes for u in _UUIDS]
+
+
+def test_a_timetz_column_of_differing_offsets_is_written_as_timetz_out() -> None:
+    """A column whose times carry different offsets is held as timetz_out's text, which drops a
+    fraction's trailing zeros as PostgreSQL 17 does: 23:59:59.5-05, not 23:59:59.500000-05. The
+    other clock types already do."""
+    zone = [datetime.timezone(datetime.timedelta(hours=h)) for h in (-5, 2, 0)]
+    times = [
+        datetime.time(23, 59, 59, 500000, tzinfo=zone[0]),
+        datetime.time(12, 30, 45, tzinfo=zone[1]),
+        datetime.time(0, 0, 0, 120, tzinfo=zone[2]),
+    ]
+    written = [t.decode() for t in wire.cells(BVType.TIMETZ, times, 0)]  # type: ignore[union-attr]
+    assert written == ["23:59:59.5-05", "12:30:45+02", "00:00:00.00012+00"]
+    clocks = [datetime.time(23, 59, 59, 500000), datetime.time(12, 30, 45)]
+    assert [t.decode() for t in wire.cells(BVType.TIME, clocks, 0)] == ["23:59:59.5", "12:30:45"]  # type: ignore[union-attr]
+    stamps = [
+        datetime.datetime(2000, 2, 29, 0, 0, 0, 500000),
+        datetime.datetime(2024, 6, 15, 12, 30, 45),
+    ]
+    assert [t.decode() for t in wire.cells(BVType.TIMESTAMP, stamps, 0)] == [  # type: ignore[union-attr]
+        "2000-02-29 00:00:00.5",
+        "2024-06-15 12:30:45",
+    ]
+    instants = [
+        datetime.datetime(2000, 2, 29, 0, 0, 0, 500000, tzinfo=zone[0]),
+        datetime.datetime(2024, 6, 15, 12, 30, 45, tzinfo=zone[1]),
+    ]
+    assert [t.decode() for t in wire.cells(BVType.TIMESTAMPTZ, instants, 0)] == [  # type: ignore[union-attr]
+        "2000-02-29 05:00:00.5+00",
+        "2024-06-15 10:30:45+00",
+    ]

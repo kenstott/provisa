@@ -1558,10 +1558,7 @@ Precedência: variável de ambiente `PROVISA_ENGINE` → campo de configuração
 | `singlestore` | SingleStore | Por dialeto | Não | Nenhum (apenas pouso) | Credenciais por dialeto |
 | `vertica` | Vertica | Por dialeto | Não | Nenhum (apenas pouso) | Credenciais por dialeto |
 | `exasol` | Exasol | Por dialeto | Não | Nenhum (apenas pouso) | Credenciais por dialeto |
-| `teradata` | Teradata Vantage | Por dialeto | Não | Nenhum (apenas pouso) | Credenciais por dialeto |
 | `saphana` | SAP HANA | Por dialeto | Não | Nenhum (apenas pouso) | Credenciais por dialeto |
-| `sapase` | SAP ASE (Sybase) | Por dialeto | Não | Nenhum (apenas pouso) | Credenciais por dialeto |
-| `sqlanywhere` | SAP SQL Anywhere | Por dialeto | Não | Nenhum (apenas pouso) | Credenciais por dialeto |
 | `monetdb` | MonetDB | Por dialeto | Não | Nenhum (apenas pouso) | Credenciais por dialeto |
 | `firebird` | Firebird | Por dialeto | Não | Nenhum (apenas pouso) | Credenciais por dialeto |
 | `sqlalchemy` | Outro banco de dados relacional (por URL de conexão) | Por dialeto | Não | Nenhum (apenas pouso) | Credenciais por dialeto |
@@ -1662,7 +1659,7 @@ PROVISA_ENGINE=synapse
 
 O armazenamento de materialização usa `TENANT_DATABASE_URL` como padrão.
 
-#### Motores de banco de dados relacional (mysql, mariadb, oracle, mssql, db2, redshift, greenplum, cockroachdb, yugabytedb, opengauss, tidb, singlestore, vertica, exasol, teradata, saphana, sapase, sqlanywhere, monetdb, firebird) e `sqlalchemy` {: #relational-database-engines-mysql-mariadb-oracle-mssql-db2-redshift-greenplum-cockroachdb-yugabytedb-opengauss-tidb-singlestore-vertica-exasol-teradata-saphana-sapase-sqlanywhere-monetdb-firebird-and-sqlalchemy }
+#### Motores de banco de dados relacional (mysql, mariadb, oracle, mssql, db2, redshift, greenplum, cockroachdb, yugabytedb, opengauss, tidb, singlestore, vertica, exasol, saphana, monetdb, firebird) e `sqlalchemy` {: #relational-database-engines-mysql-mariadb-oracle-mssql-db2-redshift-greenplum-cockroachdb-yugabytedb-opengauss-tidb-singlestore-vertica-exasol-saphana-monetdb-firebird-and-sqlalchemy }
 
 Uma chave por banco de dados relacional endereçável pela rede, todos no mesmo runtime apenas-pouso (sem federação para fontes externas): cada fonte pousa no armazenamento e é consultada ali. A chave seleciona o banco de dados; `PROVISA_ENGINE_URL` carrega o DSN que seu dialeto espera. `sqlalchemy` é o catch-all para um banco de dados sem chave própria. Armazenamentos embutidos em arquivo (SQLite, Access) não são oferecidos, porque o servidor precisa ser alcançável pela rede.
 
@@ -1757,7 +1754,7 @@ Para fontes do Google Cloud, defina `GOOGLE_APPLICATION_CREDENTIALS` com o camin
 | `FLIGHT_PORT` | `8815` | Porta do servidor Arrow Flight do Provisa |
 | `GRPC_PORT` | `50051` | Porta do servidor gRPC Protobuf do Provisa |
 | `PROVISA_REDIRECT_ENABLED` | `false` | Habilita redirecionamento por limite do lado do servidor |
-| `PROVISA_REDIRECT_THRESHOLD` | `1000` | Limite padrão de contagem de linhas |
+| `PROVISA_REDIRECT_THRESHOLD` | `100000` | Limite padrão de contagem de linhas |
 | `PROVISA_REDIRECT_FORMAT` | `parquet` | Formato de redirecionamento padrão |
 | `PROVISA_REDIRECT_BUCKET` | `provisa-results` | Bucket S3 para resultados redirecionados |
 | `PROVISA_REDIRECT_ENDPOINT` | — | URL de endpoint compatível com S3 |

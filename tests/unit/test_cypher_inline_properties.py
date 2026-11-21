@@ -18,9 +18,11 @@ A DELETE or SET whose MATCH node carries a map writes only the rows it names."""
 # Requirements: REQ-345, REQ-1586
 from __future__ import annotations
 
+import dataclasses
+
 import pytest
 
-from provisa.cypher.parser import CypherParseError, parse_cypher
+from provisa.cypher.parser import parse_cypher
 from provisa.gql.translator import cypher_to_sql
 from provisa.cypher.write_translator import (
     CypherWriteParseError,
@@ -93,9 +95,26 @@ def test_a_relationship_map_is_the_where_it_means():
     )
 
 
-def test_a_map_on_a_variable_length_relationship_is_refused():
-    with pytest.raises(CypherParseError, match="variable-length"):
-        parse_cypher("MATCH (t:GlossaryTerm)-[r:KIND_OF*1..3 {note: 'x'}]->(b) RETURN b")
+def test_a_map_on_a_variable_length_relationship_holds_of_every_hop():
+    """The map is no longer refused: each hop of the walk must hold it (the walk itself is
+    tests/unit/test_cypher_walk_property_map_and_carried_list.py)."""
+    query = parse_cypher("MATCH (t:GlossaryTerm)-[r:KIND_OF*1..3 {note: 'x'}]->(b) RETURN b")
+    found: list[dict] = []
+
+    def walk(node: object) -> None:
+        if dataclasses.is_dataclass(node):
+            if hasattr(node, "every_hop"):
+                found.append(node.every_hop)
+                return
+            for part in dataclasses.fields(node):
+                walk(getattr(node, part.name))
+        elif isinstance(node, (list, tuple)):
+            for item in node:
+                walk(item)
+
+    walk(query)
+    assert [sorted(hop) for hop in found] == [["note"]]
+    assert found[0]["note"].value == "x"
 
 
 def _write(cypher: str) -> str:

@@ -58,8 +58,9 @@ def derive_checker_table(table: Any, source_type: Any) -> str:
         already registered under that name keeps it and its alias;
       * ``DQ_PROMOTIONS`` seeds the REQ-119 promotions, appended to any the operator added.
 
-    Its ``product_id`` is its own, as any member's is (REQ-1443 PRODUCT ASSIGNMENT): it names the
-    product whose owner controls the check, whatever the check scans.
+    The products it is a member of are its own, as any member's are (REQ-1443 PRODUCT ASSIGNMENT;
+    REQ-1634: any number, set on each product): they name the products whose owners control the
+    check, whatever the check scans.
 
     Raises :class:`ValueError` naming the table on any of those. The declared columns are read ONLY
     for their ``visible_to`` and are then replaced; ``visible_to`` must be unanimous, because one
@@ -133,18 +134,20 @@ def check_contract_target(table: Any, dataset: str, contexts: Mapping) -> Any:
 async def write_checker_targets(conn: Any, checked: Mapping[int, int]) -> None:
     """Replace the checker target table with ``checked`` -- each checker table's id with the id
     of the governed table its contract scans -- as one model build resolved them (REQ-2125).
-    Derived state: the build is its only writer, so it never disagrees with the contracts."""
+    Derived state: builds are its only writers, so it never disagrees with the contracts."""
     from sqlalchemy import delete, insert
 
+    from provisa.core.repositories.build_output import replacing_build_output
     from provisa.core.schema_org import checker_targets
 
-    await conn.execute_core(delete(checker_targets))
-    if checked:
-        await conn.execute_core(
-            insert(checker_targets).values(
-                [{"table_id": t, "checked_table_id": c} for t, c in sorted(checked.items())]
+    async with replacing_build_output(conn, checker_targets):
+        await conn.execute_core(delete(checker_targets))
+        if checked:
+            await conn.execute_core(
+                insert(checker_targets).values(
+                    [{"table_id": t, "checked_table_id": c} for t, c in sorted(checked.items())]
+                )
             )
-        )
 
 
 def require_scan_interval(table: Any) -> None:

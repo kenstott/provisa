@@ -16,13 +16,12 @@ Generates:
   - A final SELECT that retrieves shortest/all-shortest path rows
   - Injects _path_id, _depth, _direction columns for the assembler
 
-Rejects unbounded [*] (enforced at parse time, also checked here).
+An unbounded [*] walks to ``max_depth``, the maximum depth (REQ-348).
 """
 
 from __future__ import annotations
 from provisa.compiler.sql_literals import sql_literal
 
-from provisa.gql.translator_types import CypherTranslateError
 from provisa.gql.ir import PathFunction
 from provisa.gql.label_map import CypherLabelMap, RelationshipMapping
 
@@ -60,11 +59,8 @@ def path_to_recursive_sql(  # REQ-345, REQ-346, REQ-348, REQ-351
 
     rel = rels[0]
 
-    if rel.variable_length:
-        if rel.max_hops is None:
-            raise CypherTranslateError(
-                "Unbounded variable-length pattern [*] is not allowed. Specify a depth limit."
-            )
+    # REQ-348: an unbounded [*] walks to the maximum depth.
+    if rel.variable_length and rel.max_hops is not None:
         effective_max = min(rel.max_hops, max_depth)
     else:
         effective_max = max_depth

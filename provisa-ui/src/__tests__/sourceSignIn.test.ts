@@ -9,8 +9,9 @@
 // permission from the copyright holder.
 
 // REQ-1923: the browser's half of signing a source in. The page an issuer returns to takes the
-// one-time code out of its address before anything else, asks no server for anything, and hands
-// the code only to its own opener at an origin of this deployment; the form accepts it only from
+// one-time code out of its address before anything else, calls no API, reads the base domain the
+// deployment declares at runtime (REQ-1276), and hands the code only to its own opener at an
+// origin of this deployment; the form accepts it only from
 // the popup it opened, at the sign-in origin.
 
 import { readFileSync } from "node:fs";
@@ -25,9 +26,12 @@ import {
   signInSource,
   takeIssuerAnswer,
 } from "../lib/sourceSignIn";
+import { declareBaseDomain, onDeclaredBaseDomain } from "./declaredBaseDomain";
 
 const SIGN_IN = "https://cloud.provisa.test";
 const ORG = "https://acme.provisa.test";
+// A deployment whose org subdomains live under the base domain it declares.
+onDeclaredBaseDomain("provisa.test");
 const RETURNED = `${SIGN_IN}/source-sign-in.html?state=made-up-state&code=made-up-code`;
 
 function loc(href: string): Location {
@@ -75,6 +79,14 @@ describe("the page an issuer returns to", () => {
     expect(answer).toEqual({ state: "s", code: null, error: "access_denied" });
   });
 
+  it("carries the company Intuit names in its address (REQ-2197)", () => {
+    const answer = takeIssuerAnswer(
+      loc(`${SIGN_IN}/source-sign-in.html?state=s&code=c&realmId=9341453456789012`),
+      { replaceState: vi.fn() },
+    );
+    expect(answer).toEqual({ state: "s", code: "c", error: null, realm_id: "9341453456789012" });
+  });
+
   it("strips its address before anything else and asks no server for anything", async () => {
     const fetched = vi.spyOn(globalThis, "fetch");
     const replaced = vi.spyOn(window.history, "replaceState");
@@ -97,6 +109,7 @@ describe("the page an issuer returns to", () => {
     expect(html).not.toMatch(/https?:\/\//);
     expect(html.match(/<script[^>]*>/g)).toEqual([
       '<script type="module" src="/src/sourceSignInPage.ts">',
+      '<script defer src="/deployment-config.js">',
     ]);
     expect(html).not.toMatch(/<link|<img|<iframe|@import|url\(/);
   });
@@ -167,6 +180,51 @@ describe("who the return page hands the answer to", () => {
   });
 });
 
+describe("a deployment that declares its base domain only at runtime (REQ-1276)", () => {
+  const answer = { state: "made-up-state", code: "made-up-code", error: null };
+  const html = readFileSync(resolve(__dirname, "../../source-sign-in.html"), "utf8");
+
+  beforeEach(() => {
+    // Nothing built in: the only declaration is the one ui_server serves.
+    vi.stubEnv("VITE_ORG_BASE_DOMAIN", "");
+    declareBaseDomain(null);
+  });
+  afterEach(() => vi.unstubAllEnvs());
+
+  /** What the browser does with the page's own script tags: the declaration arrives if asked for. */
+  function runPageScripts() {
+    const sources = [...html.matchAll(/<script[^>]*\bsrc="([^"]+)"/g)].map((m) => m[1]);
+    if (sources.includes("/deployment-config.js")) declareBaseDomain("provisa.test");
+  }
+
+  it("answers its opener on a sibling host", () => {
+    runPageScripts();
+    const page = returnPage();
+    answerOpener(answer, page.win);
+    page.say(ORG, { type: HELLO });
+    expect(page.opener.postMessage).toHaveBeenCalledWith({ type: ANSWER, ...answer }, ORG);
+  });
+
+  it("takes the code out of the address before the declaration runs", () => {
+    const tags = html.match(/<script[^>]*>/g) ?? [];
+    expect(tags).toEqual([
+      '<script type="module" src="/src/sourceSignInPage.ts">',
+      '<script defer src="/deployment-config.js">',
+    ]);
+  });
+
+  it("does not spend a hello that arrives before the declaration", () => {
+    const page = returnPage();
+    answerOpener(answer, page.win);
+    page.say(ORG, { type: HELLO });
+    expect(page.opener.postMessage).not.toHaveBeenCalled();
+    expect(page.close).not.toHaveBeenCalled();
+    runPageScripts();
+    page.say(ORG, { type: HELLO });
+    expect(page.opener.postMessage).toHaveBeenCalledWith({ type: ANSWER, ...answer }, ORG);
+  });
+});
+
 describe("what the form accepts as the issuer's answer", () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
@@ -212,6 +270,17 @@ describe("what the form accepts as the issuer's answer", () => {
       state: "made-up-state",
       code: "made-up-code",
       error: null,
+    });
+  });
+
+  it("hands on the company an Intuit answer names (REQ-2197)", async () => {
+    const { hear, waiting } = form();
+    hear(SIGN_IN, { ...answer, realm_id: "9341453456789012" });
+    await expect(waiting).resolves.toEqual({
+      state: "made-up-state",
+      code: "made-up-code",
+      error: null,
+      realm_id: "9341453456789012",
     });
   });
 

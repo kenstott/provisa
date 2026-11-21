@@ -305,6 +305,39 @@ class TestHandlerDispatch:
         assert "c1" not in ctx.session.cursors
         handler.send_command_complete.assert_called_with("CLOSE CURSOR\x00")
 
+    def test_declare_and_close_over_the_extended_protocol(self):
+        """REQ-2167: a client that sends DECLARE as Parse/Bind/Describe/Execute (psycopg's
+        send_query_params) has it answered as the simple Query's DECLARE is: the Describe says no
+        data and runs nothing, so the statement never reaches an engine as SQL."""
+        import struct
+
+        handler = self._handler()
+        handler._open_request = MagicMock()
+        handler._session = None
+        handler.send_no_data = MagicMock()
+        handler.send_parameter_description = MagicMock()
+        ctx = self._ctx([[1], [2]], ["a"])
+        ctx.has_error = False
+        declare = "DECLARE conformance_cursor CURSOR FOR SELECT 1 AS a UNION ALL SELECT 2"
+        ctx.stmts = {"": (declare, [])}
+        ctx.portals = {"": ("", [], [])}
+        execute = b"\x00" + struct.pack("!i", 0)
+
+        handler.handle_describe(ctx, b"S\x00")
+        handler.handle_describe(ctx, b"P\x00")
+        assert handler.send_no_data.call_count == 2
+        ctx.execute_sql.assert_not_called()
+
+        handler.handle_execute(ctx, execute)
+        assert "conformance_cursor" in ctx.session.cursors
+        handler.send_command_complete.assert_called_with("DECLARE CURSOR\x00")
+
+        ctx.stmts = {"": ("CLOSE conformance_cursor", [])}
+        handler.handle_describe(ctx, b"P\x00")
+        handler.handle_execute(ctx, execute)
+        assert "conformance_cursor" not in ctx.session.cursors
+        handler.send_command_complete.assert_called_with("CLOSE CURSOR\x00")
+
     def test_fetch_unknown_cursor_sends_invalid_cursor_name(self):
         handler = self._handler()
         ctx = self._ctx([], [])

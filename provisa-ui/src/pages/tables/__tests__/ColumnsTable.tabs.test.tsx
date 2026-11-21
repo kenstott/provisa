@@ -72,7 +72,7 @@ describe("the column editor's tabs", () => {
     expect(header("SQL Alias")).toBeInTheDocument();
     expect(header("Description")).toBeInTheDocument();
     expect(header("Data Type")).toBeNull();
-    expect(header("Visible To (Read)")).toBeNull();
+    expect(header("Read grants")).toBeNull();
 
     tab("type");
     expect(header("Column")).toBeInTheDocument();
@@ -84,7 +84,7 @@ describe("the column editor's tabs", () => {
 
     tab("access");
     expect(header("Column")).toBeInTheDocument();
-    expect(header("Visible To (Read)")).toBeInTheDocument();
+    expect(header("Read grants")).toBeInTheDocument();
     // REQ-2074: who may write is the table's Writes section, not a column's.
     expect(header("Writable By (R/W)")).toBeNull();
     expect(header("Masking")).toBeInTheDocument();
@@ -154,7 +154,7 @@ describe("the column editor's tabs", () => {
     expect(line("Data Type")).toHaveTextContent("text");
     expect(line("PK")).toHaveTextContent("✓");
     expect(line("Scope")).toHaveTextContent("domain");
-    expect(line("Visible To (Read)")).toHaveTextContent("analyst, steward");
+    expect(line("Read grants")).toHaveTextContent("analyst, steward");
     expect(line("Masking")).toHaveTextContent("1 entry");
     // An attribute with no value is left out.
     expect(within(card).queryByText("Writable By (R/W)")).toBeNull();
@@ -165,7 +165,7 @@ describe("the column editor's tabs", () => {
     expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual([
       "Naming",
       "Type and keys",
-      "Access",
+      "Read grants",
     ]);
   });
 });

@@ -20,6 +20,9 @@
     "collapseAll": "全部折叠",
     "expandAll": "全部展开",
     "fitAll": "适应全部",
+    "download": "下载",
+    "fullscreen": "全屏",
+    "exitFullscreen": "退出全屏",
     "downloadSvg": "下载 SVG",
     "downloadPng": "下载 PNG",
     "downloadJpeg": "下载 JPEG",
@@ -31,6 +34,7 @@
     "focusDomains": "域：{{names}}",
     "focusTables": "表：{{names}}",
     "focusMissing": "未找到：{{names}}",
-    "showAll": "全部显示"
+    "showAll": "全部显示",
+    "showWithdrawn": "显示已撤回"
   }
 }

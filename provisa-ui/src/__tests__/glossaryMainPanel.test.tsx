@@ -16,12 +16,16 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "../test-utils/render";
 import { GlossaryTab } from "../components/admin/GlossaryTab";
 import { getStored, setStored } from "../lib/browserStorage";
+import { TEST_VIEWER } from "../test-setup";
+import { readScreen } from "../mcp/screenState";
+import { runUiActions } from "../mcp/uiActions";
 import type { GlossaryTermDetail, GlossaryTermSummary } from "../api/glossary";
 
-vi.mock("../components/admin/TermDag", () => ({ TermDag: () => null }));
-vi.mock("../components/graph3d/GlossaryOntologyView", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../components/graph3d/GlossaryOntologyView")>()),
-  GlossaryOntologyView: () => <div data-testid="ontology-view" />,
+// jsdom draws no canvas: the term page's ontology snippet is tested on its own (TermDag.test.tsx).
+vi.mock("../components/graph3d/OntologyGraph", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../components/graph3d/OntologyGraph")>()),
+  OntologySnippet: () => null,
+  OntologyView: () => <div data-testid="ontology-view" />,
 }));
 vi.mock("../components/admin/StewardshipSummary", () => ({
   StewardshipSummary: () => <div data-testid="summary" />,
@@ -31,6 +35,9 @@ vi.mock("../components/admin/TermEditForm", () => ({
 }));
 vi.mock("../components/admin/TermReadView", () => ({
   TermReadView: () => <div data-testid="term-read-view" />,
+}));
+vi.mock("../components/admin/FindTermsDialog", () => ({
+  FindTermsDialog: () => <div data-testid="find-terms-dialog" />,
 }));
 vi.mock("../api/glossary", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../api/glossary")>()),
@@ -71,6 +78,9 @@ const TERM = {
   pending_on: [],
 } as unknown as GlossaryTermDetail;
 
+// REQ-2260: the term left open, remembered for the viewer as every list page's item is.
+const TERM_LEFT_OPEN = `detail.${TEST_VIEWER}.ontology`;
+
 const open = (entries?: string[]) => render(<GlossaryTab />, { initialEntries: entries });
 
 beforeEach(() => {
@@ -98,7 +108,7 @@ describe("the Glossary's main panel, after a reload", () => {
   });
 
   it("is the graph, where a term was open under it", async () => {
-    setStored("glossary.term", "1");
+    setStored(TERM_LEFT_OPEN, "1");
     setStored("glossary.view", "ontology");
     open();
     expect(await screen.findByTestId("ontology-view")).toBeInTheDocument();
@@ -130,14 +140,14 @@ describe("the Glossary's main panel, after a reload", () => {
   });
 
   it("is the term's form on a reload of its own URL", async () => {
-    setStored("glossary.term", "1");
+    setStored(TERM_LEFT_OPEN, "1");
     setStored("glossary.editing", "true");
     open(["/glossary?term=1"]);
     expect(await screen.findByTestId("term-edit-form")).toBeInTheDocument();
   });
 
   it("opens the term read for a viewer who may no longer curate", async () => {
-    setStored("glossary.term", "1");
+    setStored(TERM_LEFT_OPEN, "1");
     setStored("glossary.editing", "true");
     auth.capabilities = ["glossary_read"];
     open();
@@ -156,20 +166,55 @@ describe("the Glossary's main panel, after a reload", () => {
   });
 
   it("drops a remembered term since deleted", async () => {
-    setStored("glossary.term", "1");
+    setStored(TERM_LEFT_OPEN, "1");
     vi.mocked(fetchGlossaryTerm).mockRejectedValue(new GlossaryTermGone(1));
     open();
-    await waitFor(() => expect(getStored("glossary.term")).toBe(""));
+    await waitFor(() => expect(getStored(TERM_LEFT_OPEN)).toBeNull());
     expect(await screen.findByTestId("summary")).toBeInTheDocument();
   });
 
-  it("yields to a ?term= link, and does not save over what was remembered", async () => {
+  // REQ-2260: the term a link opens is the term left open from then; the view is not saved over.
+  it("yields to a ?term= link, and does not save over the view remembered", async () => {
     setStored("glossary.view", "ontology");
-    setStored("glossary.term", "5");
+    setStored(TERM_LEFT_OPEN, "5");
     open(["/glossary?term=1"]);
     expect(await screen.findByTestId("term-read-view")).toBeInTheDocument();
     expect(fetchGlossaryTerm).toHaveBeenLastCalledWith(1);
     expect(getStored("glossary.view")).toBe("ontology");
-    expect(getStored("glossary.term")).toBe("5");
+    expect(getStored(TERM_LEFT_OPEN)).toBe("1");
+  });
+
+  it("does not reopen a remembered term the viewer can no longer read, and forgets it", async () => {
+    setStored(TERM_LEFT_OPEN, "7");
+    open();
+    expect(await screen.findByTestId("summary")).toBeInTheDocument();
+    await waitFor(() => expect(getStored(TERM_LEFT_OPEN)).toBeNull());
+    expect(fetchGlossaryTerm).not.toHaveBeenCalled();
+  });
+});
+
+// REQ-2115: Polly opens Find terms from the glossary's menu, and read_screen says it is open.
+describe("Polly on the glossary", () => {
+  it("opens Find terms with her steps and reads that it is open", async () => {
+    HTMLElement.prototype.checkVisibility = () => true;
+    window.history.pushState({}, "", "/context/ontology");
+    const inputs = async () => {
+      const read = await readScreen(500);
+      if (typeof read === "string") throw new Error(read);
+      return read.inputs;
+    };
+    open();
+    await screen.findByTestId("summary");
+    expect(await inputs()).toMatchObject({ findTerms: false });
+    const out = await runUiActions(
+      [
+        { do: "press", target: { testId: "glossary-generate-menu" } },
+        { do: "press", target: { testId: "glossary-find-terms-btn" } },
+      ],
+      { confirm: vi.fn(), paceMs: 0, waitMs: 500 },
+    );
+    expect(out.success).toBe(true);
+    expect(await screen.findByTestId("find-terms-dialog")).toBeInTheDocument();
+    expect(await inputs()).toMatchObject({ findTerms: true });
   });
 });

@@ -35,38 +35,33 @@ Encoders that read `arrow_batches()` get no Python row at all; the row consumers
 builds the rows on its executor thread before handing the result back (`ArrowResult.with_rows()`):
 the event loop does no per-row work.
 
-### 1.1 pgwire reads Arrow from every result
+### 1.1 Every encoder takes the result in the form it has
 
 pgwire's DataRow messages are written by the Rust encoder (`provisa._encoders.pgwire`, crate
-`rust/pgwire`) and by nothing else: buenavista's `send_data_rows` hands the encoder each result's
-Arrow record batches, every column's wire type, the result formats and each column's coercers
-(`encode_stream`), and a passthrough's own DataRow messages go through `forward_raw`. There is no
-Python DataRow writer to fall back to.
+`rust/pgwire`) and by nothing else, and so are gRPC's messages (`provisa._encoders.grpc`) and the
+JSON surfaces' documents (`provisa._encoders.json`). Each encoder takes a result in the form it
+has, and nothing converts a result into another form only to encode it:
 
-Every `ResultStream` has `arrow_batches()`:
-
-- an Arrow result (`ArrowResult`, `ArrowStreamResult`) hands on the engine's batches;
-- a row result (`QueryResult`, `StreamingQueryResult`) builds one record batch per row batch it
-  holds, in **one place**: `provisa.core.ir_arrow.row_batch`. That is the fetch boundary of every
-  engine that still returns Python rows (the Postgres engine, the SQLAlchemy routes, the DIRECT
-  drivers not yet switched, the warehouses in 2.1 not yet switched, Trino until J496z, the admin
-  route), and the **interim cost** of those engines: each value is read into Arrow from the Python
-  value the driver built, once more than an Arrow engine's. It ends engine by engine as each read
-  becomes columnar (section 3); the conversion has no other caller.
+- an Arrow result (`ArrowResult`, `ArrowStreamResult`; `executor.result.is_arrow`) hands the
+  encoder the engine's record batches (`arrow_batches()`);
+- a row result (`QueryResult`, `StreamingQueryResult`: a DIRECT driver's rows, a response-cache
+  entry held as rows, an API source, an admin or catalog answer) hands the encoder its batches of
+  rows (`batches()`), and the encoder reads each cell as it is (pgwire `encode_rows_stream`,
+  gRPC `Encoder.encode_rows`, JSON `RowBatches`). A row result has no `arrow_batches()`;
 - a passthrough's result (`DataRowResult`, `DataRowStreamResult`) hands on `datarow_batches()`,
-  forwarded unchanged.
+  forwarded unchanged (`forward_raw`).
 
-`row_batch` keeps each value as the encoder would have read it from the driver's Python value:
-a column Arrow holds as it is (`column_values` reads back the same value, of the same type, at
-the same offset, the same Decimal exponent) is that Arrow; PostgreSQL's infinities become the
-sentinels `column_values` reads as them; an interval with months is month-day-nano. Where Arrow
-cannot hold the values as they are, the column holds what PostgreSQL writes of them, chosen by
-the engine's type name for the column: a numeric of mixed scales (or NaN, Infinity) as
-numeric_out's text, a money or float numeric at its widest scale, a timetz of differing offsets
-as timetz_out's text, an address as inet_out's or cidr_out's, a JSON document of varying keys as
-its JSON text. Aware datetimes of differing offsets are held as instants in UTC (what PostgreSQL
-holds). `tests/unit/pgwire_encoder/test_row_boundary.py` holds each kind of driver value through
-the boundary to PostgreSQL 17's answer.
+Each crate reads a row result's cell into the value model its Arrow reader already produces
+(pgwire `PyVal`, gRPC `V`, JSON `P`: the value `column_values` gives of an Arrow cell), so one set
+of writers answers both forms. A value of a type no rule reads (a range, a point, an address, a
+time with a zone) is written as the text `ir_arrow.text_of` gives of it, chosen by the engine's
+type name for the column. Each encoder's differential holds the rows form to the Arrow form's
+bytes for every value both can hold (`tests/unit/*_encoder/`), and each `test_rows.py` holds a
+driver's own values (UUIDs, addresses, memoryviews, relativedeltas, PostgreSQL's infinities, pytz
+datetimes) to what the encoder answered of them when they were built into Arrow first. Where the
+Arrow form could not hold a value as it is, the rows form now writes the value itself: dicts of
+differing keys are JSON objects (Arrow held their repr's text), an int past 128 bits is a JSON
+number, and a timestamp keeps its own offset rather than an instant in UTC.
 
 What wraps a stream keeps its kind (`executor.result.rewrapped`): the live-read permit guard and
 the response-cache tee hand Arrow on as Arrow (the tee keeps an Arrow IPC entry, which a hit
@@ -78,15 +73,13 @@ DuckDB's lossless export carries `HUGEINT`, `UHUGEINT`, `VARINT`, `BIT` and `TIM
 bytes (Arrow opaque types); the encoder reads them from those bytes as `duckdb_arrow.arrow_rows`
 does, so a DuckDB result reaches the wire with no Python row at all.
 
-### 1.2 gRPC reads Arrow from every result
+### 1.2 gRPC
 
-gRPC's query answers are written by the Rust encoder (`provisa._encoders.grpc`, crate
-`rust/encoders/grpc`) and by nothing else: each Query{Type} / Query{Type}Batch RPC hands its
-result's `arrow_batches()` (ENGINE stream, DIRECT buffered read, response-cache hit, API route)
-to one `Encoder` built from the organisation's compiled service, and yields the serialized
-messages it returns. A DIRECT stream's fetched rows become Arrow at the same fetch boundary as
-every row engine's (`ir_arrow.row_batch`). A group's nodes (Query{Type}GroupBy) are written by
-the encoder from the JSON its nodes column holds. There is no Python value path to fall back to;
+Each Query{Type} / Query{Type}Batch RPC hands its result (ENGINE stream, DIRECT stream or
+buffered read, response-cache hit, API route) to one `Encoder` built from the organisation's
+compiled service, in the form it has (1.1): `encode` per Arrow record batch, `encode_rows` per
+batch of rows (a DIRECT stream's fetched rows go to it as they are fetched). A group's nodes
+(Query{Type}GroupBy) are written by the encoder from the JSON its nodes column holds.
 `rust/encoders/grpc/RESULTS.md` records what each value is written as and the differential.
 
 ## 2. Map
@@ -99,7 +92,7 @@ the encoder from the JSON its nodes column holds. There is no Python value path 
 |---|---|---|---|---|
 | DuckDB (`duckdb_runtime`) | **this change:** `run`/`run_sync` read `to_arrow_table`/`to_arrow_reader` on a lossless-export cursor | `ArrowResult` / `ArrowStreamResult` | the consumer, via `duckdb_arrow.arrow_rows` | — (done) `[code]` |
 | DuckDB, before | `run_sync`: `stream_from_dbapi` (`fetchmany`) unless an INTERVAL/DATE/TIMESTAMP column; `run`: `fetch_rows` | row stream / `QueryResult` | DuckDB's C++ row fetch | its Arrow reader `[code]` |
-| Trino (`TrinoBackend.execute`/`execute_sync`) | `executor.trino.execute_trino`: trino Python client, `fetchall` | `QueryResult` | the trino client, decoding Trino's JSON pages | Zaychik Flight SQL (`execute_arrow`/`execute_stream` already use it) — **blocked, see §4** `[code]` |
+| Trino (`TrinoBackend.execute`/`execute_sync`) | `executor.trino_flight.execute_trino_flight`/`_sync`: ADBC Flight SQL through the Zaychik proxy | `ArrowResult` / `ArrowStreamResult` | `trino_flight.trino_rows` at the consumer | done (option A, §4) `[code]` |
 | Postgres engine (`pg_runtime`) | `run_sync`: psycopg2 named (server-side) cursor, `fetchmany`; `run`: same, drained | row stream / `QueryResult` | psycopg2 text-protocol decode | ADBC postgresql (already pooled for `run_arrow*`, COPY BINARY under the hood) `[code]` |
 | SQLAlchemy engines (`sqlalchemy_runtime`) | `run_sync`: `stream_results` / DB-API `fetchmany`; `run`: `fetchall` | row stream / `QueryResult` | the dialect's DB-API driver | per dialect, §3 |
 | Snowflake (`snowflake_runtime`) | `run_sync`: `fetch_arrow_batches` → `stream_rows_from_arrow` | row stream | `stream_rows_from_arrow` (`column_values` / `to_pylist`) at the fetch | return `ArrowStreamResult` instead (§3) `[code]` |
@@ -115,7 +108,7 @@ the row stream into a `QueryResult` on the executor thread: the same `to_pylist`
 
 | Source | Driver | Python rows built at | Columnar alternative |
 |---|---|---|---|
-| PostgreSQL, pgwire servers | psycopg 3 pool (`drivers/postgresql.py`), server-side cursor for streams | psycopg 3 binary/text loaders | ADBC postgresql; for pgwire, the raw DataRow passthrough is the direct cursor `[code]` |
+| PostgreSQL, pgwire servers | psycopg 3 pool (`drivers/postgresql.py`), server-side cursor for streams | psycopg 3 binary/text loaders | none taken: stays a row source, its rows encoded as they are (ADBC postgresql not taken, see section 3, item 4); for pgwire, the raw DataRow passthrough is the direct cursor `[code]` |
 | DuckDB / MotherDuck | **this change:** `drivers/duckdb_driver.py` reads `to_arrow_table` (an `ArrowResult`) and streams from `to_arrow_reader`; before, `fetchall` / `fetchmany` | `duckdb_arrow.arrow_rows`, in the driver (`execute`) or per fetch (`open_stream`) | — (done) `[code]` |
 | Snowflake | `drivers/snowflake.py`: `fetchall` / `fetchmany` | the connector's row conversion | `fetch_arrow_batches` (the runtime already uses it) or ADBC snowflake (installed, 1.11.0) `[code]` |
 | Databricks | `drivers/databricks.py` via `pooled.py`: `fetchall` / `fetchmany` | the connector | `fetchmany_arrow` / `fetchall_arrow` (the runtime already uses it) `[code]` |
@@ -158,8 +151,18 @@ Ordered by what it costs today and how small the change is.
    `job.result().to_arrow_iterable(bqstorage_client=BigQueryReadClient(...))`. The Storage Read
    API is billed per byte read; a small result read through it costs more than through
    `tabledata.list`. Warehouse lane.
-4. **Postgres engine (`pg_runtime`) and the Postgres DIRECT driver** — `run_sync`/`run` and
-   `open_stream` on the ADBC postgresql connection the runtime already pools for `run_arrow*`
+4. **Postgres DIRECT driver: decided, stays psycopg rows** (maintainer, 2026-11-03). Every encoder now
+   takes a row result's rows as they are, so the Arrow build in Python that made DIRECT Postgres slow is gone; what remains is psycopg's own per-value decode. ADBC
+   postgresql (1.11.0, probed against PostgreSQL 17, J567) was not taken because it cannot give
+   the values the driver serves today: PostgreSQL's `infinity` / `-infinity` dates and timestamps
+   raise inside ADBC ("date value out of range"), so there is no value to encode; uuid, inet,
+   cidr, macaddr, timetz, point and the other geometric types, bit, tsvector, the reg* types and
+   every range arrive as PostgreSQL's binary wire bytes (`arrow.opaque` on binary storage), which
+   an encoder would write as bytes; money arrives as int64 cents; numeric arrives as text with
+   NaN lowercased to `nan`; oid arrives as int32, which overflows past 2^31. Taking ADBC would
+   need readers for those opaque types in each encoder crate and a way past the infinity failure.
+   The rest of this item (the Postgres engine) is unchanged:
+   **Postgres engine (`pg_runtime`)** — `run_sync`/`run` on the ADBC postgresql connection the runtime already pools for `run_arrow*`
    (`cursor.fetch_record_batch()`), returning `ArrowStreamResult`/`ArrowResult`. Open point: the
    rows a row consumer is given must equal psycopg's (interval, infinity, numeric, json, arrays,
    the column type oids pgwire reports) — the same parity test this change wrote for DuckDB
@@ -186,48 +189,66 @@ Ordered by what it costs today and how small the change is.
 | Neo4j | Bolt records | yes | per-record Python objects; graph results are rarely wide or long |
 | Qdrant | its Python client | yes | points arrive as Python objects |
 | Code sources | Python functions | yes | the function produces Python values by definition |
+| Trino (engine) | Zaychik Flight SQL proxy over Trino's client protocol (§4) | no | Trino delivers JSON only; the proxy decodes it to Arrow once, in Java |
 
-## 4. Trino: why the engine read is not yet switched to Flight
+## 4. Trino: the engine read through Flight (option A)
 
-`execute_arrow`/`execute_stream` already read through the Zaychik Flight SQL proxy
-(`executor/trino_flight.py`). Switching `execute`/`execute_sync` to it as well, with no row path
-left, changes answers today. From the proxy's source at the commit the image builds
-(`zaychik/Dockerfile`, `Raiffeisen-DGTL/zaychik-trino-proxy@17fce97`) `[code]`:
+`execute`/`execute_sync` read through the Zaychik Flight SQL proxy only, as `execute_arrow`/
+`execute_stream` already did.
 
-1. **Precision**: TIMESTAMP and TIME are mapped to `Timestamp(MILLISECOND)` /
-   `Time(MILLISECOND)` (`FlightSQLProducerHelper.getArrowTypeFromJdbcType`). Trino's
-   `timestamp(6)` loses its microseconds.
-2. **Types that fail**: a column whose JDBC type is outside the mapped list (BOOLEAN, the
-   integers, DECIMAL, REAL/DOUBLE, the character types, DATE, TIME, TIMESTAMP, the binary types,
-   ARRAY, NULL, STRUCT) raises `Unmapped JDBC type`. The Trino JDBC driver reports `map`, `row`,
-   `uuid`, `json`, `ipaddress` and the interval types as `JAVA_OBJECT`/`OTHER` `[doc]`, not run
-   here: such a query would fail where the trino client answers it.
-3. **Session properties**: every statement opens a fresh JDBC connection
-   (`TrinoConnectionFactory.getConnection`), so `SET SESSION` cannot carry over; the
-   `query_max_execution_time` every read sets, and the FTE `retry_policy` hints, would be lost.
-4. **Type names**: the Arrow schema carries no Trino type name; `column_types` (pgwire
-   RowDescription, MV output introspection) would come from Arrow types (every integer a
-   BIGINT).
-5. **Errors**: failures come back as `CallStatus.INTERNAL` with a message; Trino's error name is
-   gone, so `FederationError` classification, the coordinator-loss retry and `refusal_of` stop
-   working.
-6. **Parameters**: `_substitute_params` inlines only strings, None and `str(value)`; a date,
-   timestamp, decimal or bytes parameter is rendered wrongly.
+Trino itself cannot hand over an Arrow buffer: its client protocol delivers results as JSON,
+paged or spooled, whatever the client. Provisa converts that JSON to Arrow once, in the proxy
+(Java), and the encoders read the Arrow; no Python touches the rows on the way. That one JSON
+decode in the proxy is the remaining cost of a Trino read, and the reason Trino is a documented
+exception to an engine's own Arrow buffer.
 
-Options (decision for the maintainer):
+The proxy at the commit the image builds
+(`Raiffeisen-DGTL/zaychik-trino-proxy@17fce97`) answered differently from the trino client in six
+ways; `zaychik/trino-statement-protocol.patch` and `executor/trino_flight.py` close each `[code]`:
 
-- **A (recommended)**: extend the Zaychik patch set the image already applies: microsecond
-  time/timestamp units; map `JAVA_OBJECT`/`OTHER` to Utf8 (JSON text) and put Trino's type name in
-  each field's metadata; take session properties from a Flight call header into the JDBC
-  `sessionProperties` connection property; return Trino's error name/code in the Flight error
-  detail. Then `execute`/`execute_sync` read Flight only, `column_types` from field metadata,
-  `FederationError` from the error detail, and parameters bound by a typed literal renderer.
-- **B**: keep the trino client for `execute`/`execute_sync` and record Trino in the exceptions
-  table. The requirement allows this only where no columnar endpoint exists, so this needs the
-  requirement amended.
-- **C**: Trino's spooling protocol (Trino 466+) moves results through object storage, but its
-  encodings in Trino 481 are JSON (`json`, `json+zstd`, `json+lz4`) `[doc]`; it saves transfer,
-  not the Python decode. Not a fix on its own.
+1. **Precision**: the proxy ran statements through Trino JDBC and mapped TIMESTAMP/TIME to
+   milliseconds. A Flight statement now runs through the Trino client protocol
+   (`StatementClient`, the protocol the Python client speaks) and TIME/TIMESTAMP are microsecond
+   Arrow types; a value with more than six fractional digits is rounded half-to-even, as the
+   Python client rounds it. A date is read from the protocol's text (proleptic Gregorian), not
+   through `java.sql.Date`.
+2. **Types JDBC could not map** (`JAVA_OBJECT`/`OTHER`: map, row, uuid, json, ipaddress, the
+   intervals; also arrays and time with time zone): Utf8 holding the protocol's text (scalars) or
+   JSON (structural), `trino.encoding` saying which. `trino_rows` decodes them with the Trino
+   client's own value mappers (`trino.mapper`), so a nested value is the Python value the client
+   gave (`NamedRowTuple`, `UUID`, `relativedelta`, ...). A REAL is read as the shortest decimal of
+   the float, as the protocol writes it.
+3. **Session**: every Flight statement is a Trino session of its own. Its `source` (the org),
+   catalog, schema and session properties (the FTE hints, the caller's hints,
+   `query_max_execution_time`) travel in the `x-provisa-trino-context` call header and reach
+   Trino as the client protocol sends them. A statement in a pgwire session set to a time zone
+   names that zone there too (`timeZone`), and the proxy opens the statement's Trino session in
+   it. With no header the proxy keeps the JDBC driver's source `trino-jdbc` (the
+   `global.flight` resource group).
+4. **Type names**: every field carries `trino.type` (the coordinator's own type string, what
+   the trino client's `description` gave) and `trino.type_signature`; `column_types` come from it.
+5. **Errors**: a failed statement's Flight error carries Trino's error name, type, code, message
+   and query id as trailers (`x-trino-error-*`); `trino_flight.engine_error` builds the same
+   `FederationError` (and `SystemCatalogUnavailable`) the trino client's `TrinoQueryError` did, so
+   the coordinator-loss retry and the memory-error refusal work by name. A proxy or coordinator
+   that cannot be reached is `EngineUnreachable` (a `ConnectionError`: retried inside the budget,
+   classified `connection`).
+6. **Parameters**: bound as the trino client binds them, `EXECUTE IMMEDIATE '<sql>' USING
+   <literals>`, with the client's own literal rendering (`trino_flight.render_param`).
+
+The statement runs at GetFlightInfo until Trino names its columns, so the schema the FlightInfo
+announces is the stream's, and a statement Trino rejects is answered there. A failure while the
+rows of a streamed read are being read raises the engine's error at the consumer; it is not
+retried (the materialized `execute` retries the whole read).
+
+An org whose terminal is a coordinator other than the proxy's configured one (an external engine,
+an isolated host) names it in the context header (`server`). The proxy dials it
+only if the deployment declared it at start (`TF_TRINO_ALLOWED_SERVERS`: `scheme://host:port`
+entries, a host may hold `{org_id}`; compose fills it from `PROVISA_ZAYCHIK_ALLOWED_SERVERS`, and
+`docker-compose.isolated-engine.yml` adds the isolated host template). Any other address is refused
+by name (`CoordinatorRefused`) with nothing dialed: a request never chooses where the proxy
+connects. On a provisioning deployment each shard's proxy is a sidecar in front of that shard's own
+coordinator and no statement names one.
 
 ## 5. Measured: DuckDB, 2,000,000 rows
 

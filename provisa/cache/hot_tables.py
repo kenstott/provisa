@@ -18,7 +18,7 @@ import logging
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import Decimal
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from typing import TYPE_CHECKING
 
 from provisa.federation.execution_auth import system_auth
@@ -66,6 +66,10 @@ class HotTableEntry:  # REQ-230, REQ-232
     pk_column: str
     rows: list[dict] = field(default_factory=list)
     column_names: list[str] = field(default_factory=list)
+    #: Each column's IR type, where the rows' reader declares it (the registered table's columns):
+    #: the VALUES CTE casts the column's literals to it (REQ-232), so a jsonb, numeric or date
+    #: value is not read as text. Empty for the rows the manager loads itself (``_store_rows``), which declare none.
+    column_types: Mapping[str, str] = field(default_factory=dict)
     is_api: bool = False
 
 
@@ -295,15 +299,10 @@ class HotTableManager:  # REQ-230, REQ-231, REQ-232, REQ-233, REQ-236, REQ-237, 
         """Load an OpenAPI table into Redis, read as every read of it is: through its endpoint
         and the one caller, with its source's stored address, credential and headers and its
         own paging. Returns row count."""
-        from provisa.api_source.caller import answer_rows, call_api
+        from provisa.api_source.caller import answer_rows
+        from provisa.api_source.contract import call_endpoint
 
-        answer = await call_api(
-            endpoint,
-            dict(endpoint.default_params),
-            base_url=api_source.base_url,
-            auth=api_source.auth,
-            source_headers=api_source.headers,
-        )
+        answer = await call_endpoint(endpoint, api_source, dict(endpoint.default_params))
         rows, cut = answer_rows(endpoint, answer)
         if cut is not None or len(rows) > self._max_rows:
             # More than the tier holds, or more than one read of the table takes: not hot.

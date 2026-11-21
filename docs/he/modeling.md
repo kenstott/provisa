@@ -203,6 +203,7 @@ mutation RegisterEntity($input: EntityInput!) {
 | `validTime` | String | `null` | עמודת זמן התוקף; נדרשת כאשר `history` אינו `"none"` |
 | `recordedTime` | String | `null` | עמודת זמן הרישום; נדרשת כאשר `history` אינו `"none"` |
 | `visibleTo` | [String] | `["public"]` | רשימת נראות תפקידים |
+| `description` | String | `null` | תיאור הטבלה הרשומה |
 
 ### `registerFact`
 
@@ -226,6 +227,7 @@ mutation RegisterFact($input: FactInput!) {
 | `measures` | [MeasureInput] | `[]` | זוגות `{ column, agg }` |
 | `dimensions` | [DimRefInput] | `[]` | זוגות `{ entity, via }` |
 | `visibleTo` | [String] | `["public"]` | רשימת נראות תפקידים |
+| `description` | String | `null` | תיאור הטבלה הרשומה |
 
 `MeasureInput`: `{ column: String, agg: String }`; ברירת המחדל של agg היא `"sum"`.
 

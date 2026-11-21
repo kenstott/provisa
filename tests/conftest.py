@@ -254,6 +254,8 @@ _MARKER_SERVICES: dict[str, list[str]] = {
     "requires_ldap": ["openldap"],
     # REQ-1265: the identity provider the SAML auth provider signs in through.
     "requires_saml_idp": ["saml-idp"],
+    # REQ-2219, REQ-122: the identity provider real entitlement claims are issued by.
+    "requires_keycloak": ["keycloak"],
     # REQ-1873: an operator's own Postgres, one with a major a bundle is built for and one without.
     "requires_pg_ext_targets": ["pg-ext-target-16", "pg-ext-target-15"],
 }
@@ -415,6 +417,7 @@ _ITEST_PORT_ENV = [
     "DATAHUB_GMS_PORT",
     "LDAP_PORT",
     "SAML_IDP_PORT",
+    "KEYCLOAK_PORT",
     # Not a container's port: the test's own service-provider server binds it. It is leased
     # here because the identity provider is told this address when its container starts.
     "SAML_SP_PORT",
@@ -531,10 +534,11 @@ os.environ.setdefault(
 )
 
 
-# The Calcite-derived Trino connector plugins the compose stack bind-mounts, and the Maven
-# coordinates they come from. Kept in step with .github/workflows/build-dmg.yml's
-# download-plugins job and ui-e2e-trino.yml — CI and the test harness must fetch the same
-# build, or a connector behaves differently here than in the shipped image.
+# The Calcite-derived Trino connector plugins the compose stack bind-mounts: their pin, sha256s
+# and fetch live in tests/trino_plugins.py (standard library only, so a workflow step runs it
+# before any environment exists). Kept in step with release-prebuilt.yml and
+# scripts/ci/lanes/trino-stack-prepare.sh -- CI and the test harness must fetch the same build,
+# or a connector behaves differently here than in the shipped image.
 #
 # Maven Central, not the kenstott/calcite GitHub release: the engine-v0.32.0 release was
 # deleted mid-CI-run and every download started 404ing. Central is immutable once published,
@@ -542,50 +546,37 @@ os.environ.setdefault(
 # artifacts). Each published jar is a shaded fat jar carrying its own
 # META-INF/services/io.trino.spi.Plugin and no io.trino.spi classes, so a single jar dropped
 # into trino/plugins/<name>/ is a complete plugin directory.
-_TRINO_PLUGIN_MAVEN = "https://repo1.maven.org/maven2/io/simpleishard"
-_TRINO_PLUGIN_VERSION = "0.106.3"
-_TRINO_PLUGINS = (
-    "trino-sharepoint",
-    "trino-splunk",
-    "trino-file",
-    "trino-salesforce",
-    "trino-cloudops",
+from tests import trino_plugins as _trino_plugins  # noqa: E402
+from tests.trino_plugins import (  # noqa: E402
+    _TRINO_PLUGINS,
+    TrinoPluginRefused,
 )
-# Plugins fetched at a version other than _TRINO_PLUGIN_VERSION; a plugin absent here is at
-# _TRINO_PLUGIN_VERSION. The same table as provisa/runtime_deps/pgwire_bundles.py
-# CONNECTOR_RELEASE, for the same reason, and each entry goes when _TRINO_PLUGIN_VERSION moves.
-#   trino-salesforce: 0.108.0 is the first release that has it (REQ-1946).
-#   trino-cloudops: 0.108.0 is the first whose plugin takes the `schema` property (REQ-1947).
-#   trino-file: 0.109.0 is the first whose plugin takes the `crawl` property (REQ-1960).
-# A plain assignment of literals: integration-suite.yml's "Trino plugin pin" step reads it.
-_TRINO_PLUGIN_VERSIONS = {
-    "trino-salesforce": "0.108.0",
-    "trino-cloudops": "0.108.0",
-    "trino-file": "0.109.0",
-}
 
 
 def _trino_plugin_version(name: str) -> str:
-    return _TRINO_PLUGIN_VERSIONS.get(name, _TRINO_PLUGIN_VERSION)
+    return _trino_plugins.plugin_version(name)
 
 
 def _download_trino_plugin(target: str, name: str) -> None:
-    """Fetch the pinned plugin jar into ``target`` (an empty directory).
+    """Fetch the pinned plugin jar into ``target`` (an empty directory), checked by its sha256.
 
     Tests provision the services they need, and Trino is no exception: without these jars it
     aborts with "No service providers of type io.trino.spi.Plugin", which surfaces only as an
     unhealthy container two minutes into the run. Downloading here turns that into a first-run
-    cost instead of an unexplained stack failure.
-    """
-    import urllib.request
+    cost of a local run instead of an unexplained stack failure.
 
-    version = _trino_plugin_version(name)
-    url = f"{_TRINO_PLUGIN_MAVEN}/{name}/{version}/{name}-{version}.jar"
-    os.makedirs(target, exist_ok=True)
-    print(f"[conftest] downloading Trino plugin {name} from {url}")
-    urllib.request.urlretrieve(  # noqa: S310 — pinned https Maven Central URL
-        url, os.path.join(target, f"{name}-{version}.jar")
-    )
+    A CI run never downloads here: its workflow restores the jars from the cache one job fetched
+    them into and verifies them before pytest (.github/actions/trino-plugins). A jar missing on a
+    runner means that step was left out, and the run is refused by name rather than sending
+    every lane to Maven Central at once (release 510: HTTP 429 mid-collection).
+    """
+    if os.environ.get("GITHUB_ACTIONS") == "true":
+        raise TrinoPluginRefused(
+            f"Trino plugin {name}: {os.path.join(target, _trino_plugins.jar_name(name))} is "
+            "missing. A CI job restores the pinned jars with .github/actions/trino-plugins "
+            "before pytest; it never downloads them at collection."
+        )
+    _trino_plugins.fetch(target, name)
 
 
 # What _populate_trino_plugins itself downloaded, per plugin: {name: {"file", "sha256"}}. It sits
@@ -604,10 +595,7 @@ def _downloads(plugins: str) -> dict[str, dict[str, str]]:
 
 
 def _sha256(path: str) -> str:
-    import hashlib
-
-    with open(path, "rb") as f:
-        return hashlib.sha256(f.read()).hexdigest()
+    return _trino_plugins.sha256(path)
 
 
 def _record_download(plugins: str, name: str, jar: str) -> None:
@@ -652,12 +640,20 @@ def _populate_trino_plugins() -> None:
         # empty directory is "never populated", not "populated with nothing".
         present = sorted(os.listdir(target)) if os.path.isdir(target) else []
         if present == [pinned]:
+            # The pinned file name with other bytes (a truncated fetch, a rebuilt jar) is not the
+            # pinned build: refused by name, never mounted.
+            problem = _trino_plugins.jar_problem(os.path.join(target, pinned), name)
+            if problem is not None:
+                raise TrinoPluginRefused(
+                    f"Trino plugin {name}: {problem}. Empty {target} and the pinned build is "
+                    "downloaded on the next local run."
+                )
             continue
         if present and _downloaded_here(plugins, name, target, present):
             os.unlink(os.path.join(target, present[0]))  # this harness's fetch for an earlier pin
             present = []
         if present:
-            raise RuntimeError(
+            raise TrinoPluginRefused(
                 f"{target} holds {present[:3]}{' ...' if len(present) > 3 else ''}, not the "
                 f"pinned {pinned} (_TRINO_PLUGIN_VERSION). Empty that directory and the pinned "
                 "build is downloaded on the next run."
@@ -723,12 +719,15 @@ class _DockerServiceManager:
         batches = _marker_batches(session.items)
         _name_the_broker(batches)
 
-        # Trino's custom plugin jars (trino/plugins/*) are gitignored build artifacts:
-        # present only where they were built (the primary checkout). A fresh worktree
-        # mounts empty dirs and Trino fails startup ("No service providers ... in the
-        # classpath"). Populate missing plugin dirs from the primary checkout, located
-        # worktree-agnostically via the git common dir.
-        _populate_trino_plugins()
+        # Trino's plugin jars (trino/plugins/*) are gitignored: each directory must hold exactly
+        # the pinned build, checked by sha256, or Trino fails startup ("No service providers ...
+        # in the classpath") or runs a connector other than the pinned one.
+        try:
+            _populate_trino_plugins()
+        except TrinoPluginRefused as exc:
+            # A refusal names the jar and ends the session before any test, not as an
+            # INTERNALERROR traceback from inside collection.
+            pytest.exit(str(exc), returncode=pytest.ExitCode.USAGE_ERROR)
 
         # Sessions killed before their own teardown leave a PID-named project behind; clear
         # those (and only those) so containers/memory are not leaked forever. A live sibling
@@ -902,14 +901,25 @@ def _named_volumes(services: list[str]) -> list[str]:
     )
     model = json.loads(config.stdout)
     declared = model.get("volumes") or {}
-    return sorted(
-        {
-            (declared.get(mount["source"]) or {}).get("name", mount["source"])
-            for service in services
-            for mount in (model["services"].get(service) or {}).get("volumes") or []
+
+    def _sources(service_model: dict) -> set[str]:
+        return {
+            mount["source"]
+            for mount in service_model.get("volumes") or []
             if mount.get("type") == "volume" and mount.get("source")
         }
-    )
+
+    own = {src for service in services for src in _sources(model["services"].get(service) or {})}
+    # A volume another service also mounts is shared state, not this service's own: the session's
+    # Trino mounts hive_warehouse beside hive-metastore and hive-server2, so removing it after a
+    # hive test fails with "volume is in use" while Trino keeps running.
+    shared = {
+        src
+        for name, service_model in model["services"].items()
+        if name not in services
+        for src in _sources(service_model)
+    }
+    return sorted((declared.get(src) or {}).get("name", src) for src in own - shared)
 
 
 @pytest.fixture
@@ -1016,6 +1026,20 @@ def _heavy_db_service(request):  # pyright: ignore
             env=_itest_compose_env(),
             check=False,
         )
+        # `rm -v` leaves the named volumes, so the next test that brings this service up would
+        # boot on the last one's data directory and skip the image's first-boot setup. Observed:
+        # firebird keeps test.fdb on its named volume but its security database on the container
+        # filesystem, so a second firebird test in a session got a fresh security database, an
+        # existing test.fdb, and no FIREBIRD_USER login ("Your user name and password are not
+        # defined"). Each test provisions its own service, so it gets its own cold volumes.
+        volumes = _named_volumes(_with_companions(services))
+        if volumes:
+            subprocess.run(
+                ["docker", "volume", "rm", "-f", *volumes],
+                cwd=_REPO_ROOT,
+                env=_itest_compose_env(),
+                check=True,
+            )
         # After removing heavy services, ensure core services recover from any OOM pressure
         # (e.g. Druid/Cassandra OOM-killing Trino/Postgres). restart: unless-stopped restarts
         # them automatically; --wait blocks until healthy so the next test never races a
@@ -1324,10 +1348,10 @@ def _reserve_flight_port():  # pyright: ignore
     # canonical SQLAlchemy async URL as the platform plane — one place names the
     # driver, so no fixture hand-builds it.
     os.environ.setdefault("TENANT_DATABASE_URL", _cp_url)
-    # REQ-594, REQ-1075: the Lemon Squeezy webhook authenticates by HMAC over the raw body keyed
-    # by this secret, and verify_webhook_signature raises without it. A fixed test value lets the
-    # skip-path tests reach the signature check (and get a clean 400) instead of a 500.
-    os.environ.setdefault("LEMONSQUEEZY_SIGNING_SECRET", "test-signing-secret")
+    # REQ-594, REQ-1075: the Stripe webhook authenticates by HMAC over the timestamped raw body
+    # keyed by this secret, and verify_webhook_signature raises without it. A fixed test value lets
+    # the skip-path tests reach the signature check (and get a clean 400) instead of a 500.
+    os.environ.setdefault("STRIPE_WEBHOOK_SECRET", "whsec_test-signing-secret")
 
 
 @pytest.fixture(scope="session")
@@ -1376,6 +1400,12 @@ async def tenant_db(_reserve_flight_port):
 
     engine = create_engine_from_url(os.environ["TENANT_DATABASE_URL"], pool_size=5, max_overflow=5)
     db = Database(engine, name="org", search_path=None)
+    # pgvector before any module runs schema.sql on this database, as the production path does
+    # (REQ-2185): a module that runs first in its shard otherwise fails on type public.vector.
+    from provisa.core import pgvector
+
+    async with db.acquire() as conn:
+        await pgvector.require(conn)
     yield db
     await db.close()
 
@@ -1604,6 +1634,10 @@ async def live_client(provisa_server):
         yield client
 
 
+#: The live server's own org: no in-process boot of the session serves it (provisa_server).
+_LIVE_SERVER_ORG = "liveserver"
+
+
 @pytest.fixture(scope="session")
 def provisa_server(_reserve_flight_port):
     """Start the Provisa server subprocess if not already running.
@@ -1659,13 +1693,20 @@ def provisa_server(_reserve_flight_port):
     mint_master_key()
     # REQ-1919: the live server's boot is its deployment's first start, as every in-process boot's
     # is (tests.boot_seeds_its_own_deployment): it seeds its org's store from its own file.
+    # The org is its own. It used to be the configuration's (`default`), the org every in-process
+    # boot of the session also serves, and each module's in-process boot empties and reseeds its
+    # org from its own file. The live server, booted once per session, then served whatever the
+    # last module seeded and not sample_config.yaml: after test_schema_query_api seeded
+    # config/provisa.yaml, a live-server MATCH (n) spanned graphql-demo's tables, a source no
+    # integration lane runs, and answered 503 data.source_unavailable.
     import asyncio
 
     from tests.boot_seeds_its_own_deployment import prepare_first_start
 
-    asyncio.run(prepare_first_start(_live_cfg, "live-server"))
+    asyncio.run(prepare_first_start(_live_cfg, "live-server", org_id=_LIVE_SERVER_ORG))
     server_env = {
         **os.environ,
+        "ORG_ID": _LIVE_SERVER_ORG,
         "PG_PASSWORD": os.environ.get("PG_PASSWORD") or "provisa",
         "FLIGHT_PORT": str(_flight_port),
         "PROVISA_CONFIG": _live_cfg,
@@ -1778,3 +1819,14 @@ def sample_config():
     config_path = Path(__file__).parent / "fixtures" / "sample_config.yaml"
     with open(config_path) as f:
         return yaml.safe_load(f)
+
+
+@pytest.fixture
+def rebuild_recorder():
+    """Every call for a schema build that ends in this process during the test, as the build
+    recorded it (provisa/api/rebuild_trace.py): ``.builds`` are the ones that ran, each with its
+    cause, phases, stamps and counts. A test counts them; it never times them (REQ-1914)."""
+    from provisa.api import rebuild_trace
+
+    with rebuild_trace.capture() as recorded:
+        yield recorded

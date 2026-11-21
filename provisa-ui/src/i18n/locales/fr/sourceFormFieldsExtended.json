@@ -90,12 +90,12 @@
     "loadManagementTitle": "Gestion de la charge et fraîcheur",
     "loadManagementHelp": "Le degré de fraîcheur des données requis pour chaque lecteur, mis en balance avec la charge sur la plateforme et les sources en amont.",
     "loadManagementInfoLabel": "À propos de la gestion de la charge et de la fraîcheur",
-    "loadManagementInfo": "Met en balance la fraîcheur des données de chaque lecteur et la charge sur la plateforme et les sources en amont. Idéalement, la source en amont gère sa propre charge ; l'opérateur protège la plateforme, et la source lorsqu'elle ne peut pas se protéger. Ces réglages sont le plancher de l'opérateur : aucune requête ni indication de requête ne peut obtenir des données plus récentes ni charger une source davantage qu'ils ne le permettent. Les lecteurs peuvent seulement choisir d'accepter des données plus anciennes pour gagner en rapidité. Une table que le moteur lit en direct ignore les réglages TTL ; ils s'appliquent dès qu'elle est servie depuis sa réplique (« Répliquer » ou « Protection de charge »).",
+    "loadManagementInfo": "Arbitre entre la fraîcheur des données de chaque lecteur et la charge sur la plateforme et sur les sources en amont. Idéalement, la source en amont gère sa propre charge ; l'opérateur protège la plateforme, et la source en amont quand elle ne peut pas se protéger elle-même. Ces paramètres sont le plancher de l'opérateur. Aucune indication de requête ne peut obtenir des données plus fraîches ni charger une source davantage qu'ils ne le permettent. Les lecteurs peuvent seulement choisir d'accepter des données plus anciennes au profit de la vitesse. Une table que le moteur lit en direct ignore les paramètres de TTL ; ils s'appliquent dès qu'elle est servie depuis sa réplique (Répliquer ou Protégée en charge).",
     "sentinelPath": "Chemin sentinelle",
     "sentinelPathTooltip": "URL d'un fichier marqueur que le producteur met à jour quand ses données changent (file:, ftp:, sftp:, http:, https:). Avec un signal de changement par sonde, Provisa vérifie uniquement ce marqueur pour décider si les données sont à jour. Laissez vide pour aucune sentinelle.",
     "sentinelPathInvalid": "Utilisez une URL file:, ftp:, sftp:, http: ou https:, ou laissez vide.",
     "freshnessGate": "Garantie de fraîcheur des requêtes",
-    "freshnessGateTooltip": "Si activée, une requête qui lit les tables de cette source vérifie d’abord que la copie est encore fraîche (d’après le signal de changement et le TTL du cache) et, si elle est périmée, l’actualise avant de répondre : un lecteur ne reçoit donc jamais une copie plus ancienne que le TTL du cache, et une requête peut attendre cette actualisation. Si désactivée, la copie est actualisée en arrière-plan et les requêtes n’attendent jamais. Nécessite un TTL du cache lorsque le signal de changement relit selon une planification ; sans effet pour les signaux de changement poussés.",
+    "freshnessGateTooltip": "Lorsqu'il est activé, une requête qui lit les tables de cette source vérifie d'abord si la réplique est encore fraîche (selon le signal de changement et le TTL de cache) et, si elle est obsolète, l'actualise avant de répondre. Un lecteur n'obtient jamais une réplique plus ancienne que le TTL de cache, et une requête peut attendre cette actualisation. Lorsqu'il est désactivé, la réplique est actualisée en arrière-plan et les requêtes n'attendent jamais. Nécessite un TTL de cache lorsque le signal de changement relit selon une planification ; sans effet pour les signaux de changement poussés.",
     "maxLiveConcurrency": "Requêtes en direct simultanées max.",
     "maxLiveConcurrencyHelp": "Limite du nombre de requêtes lisant cette source en direct en même temps, sur toutes les instances Provisa partageant ce Redis. Les requêtes au-delà attendent jusqu'à leur propre échéance, puis échouent. Vide = aucune limite. Sans effet lorsque la source est lue depuis sa réplique (Répliquer / protégé contre la charge).",
     "maxLiveConcurrencyPlaceholder": "aucune limite",
@@ -105,6 +105,8 @@
     "accessToken": "Jeton d'accès",
     "accessTokenHint": "Stocké dans le coffre de secrets. Une référence ${secret:NAME} ou ${env:NAME} est également acceptée.",
     "brandNamespaceHint": "Préfixe des noms de table de cette source. Laissez vide pour la valeur par défaut.",
+    "brandBaseUrl": "URL de base",
+    "brandBaseUrlHint": "L'adresse de votre instance, par exemple https://catalog.example.com. Son API est appelée ici et sa description OpenAPI y est lue.",
     "shopifyStore": "Nom de la boutique",
     "shopifyStoreHint": "La partie de l'adresse d'administration de votre boutique avant .myshopify.com, par exemple my-store.",
     "shopifyApiVersion": "Version de l'API",
@@ -225,6 +227,10 @@
     "qbClientSecret": "Secret client",
     "qbClientSecretHint": "Sur la même page que l'ID client. Conservé dans le coffre de secrets.",
     "qbRefreshToken": "Jeton d'actualisation",
-    "qbRefreshTokenHint": "Permet à Provisa de lire l'entreprise. Obtenez-en un dans l'OAuth 2.0 Playground d'Intuit avec la portée Accounting. QuickBooks le remplace à chaque utilisation, et Provisa conserve le plus récent."
+    "qbRefreshTokenHint": "Permet à Provisa de lire l'entreprise. Connectez-vous avec QuickBooks pour en obtenir un, ou collez-en un depuis l'OAuth 2.0 Playground d'Intuit avec la portée Accounting. QuickBooks le remplace à chaque utilisation, et Provisa conserve le plus récent. Un nouveau saisi ici remplace celui conservé lors de l'enregistrement.",
+    "qbSignIn": "Se connecter avec QuickBooks",
+    "qbSignedIn": "Connecté à l'entreprise {{realm}}. Enregistrez la source pour la conserver.",
+    "qbSignInFailed": "La connexion n’a pas pu aboutir.",
+    "wikidataEndpointHint": "Le service de requêtes Wikidata. Sans identifiant ; les tables sont actualisées chaque jour."
   }
 }

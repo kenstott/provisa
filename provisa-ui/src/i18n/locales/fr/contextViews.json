@@ -1,0 +1,16 @@
+{
+  "contextViews": {
+    "colWhereApplied": "Où elle s'applique",
+    "colDependents": "Ce qui en dépend",
+    "detectedHeader": "Détecté sur",
+    "nowhere": "Nulle part",
+    "hiddenPlaces_one": "{{count}} autre que vous ne pouvez pas lire",
+    "hiddenPlaces_other": "{{count}} autres que vous ne pouvez pas lire",
+    "rowFilters_one": "{{count}} filtre de lignes",
+    "rowFilters_other": "{{count}} filtres de lignes",
+    "classifiedAs": "Attribuée par classification : {{kind}}",
+    "noDependents": "Rien",
+    "enabled": "Activé",
+    "disabled": "Désactivé"
+  }
+}

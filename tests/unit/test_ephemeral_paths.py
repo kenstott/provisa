@@ -151,7 +151,7 @@ def test_a_walk_reads_the_relationships_table_once(monkeypatch):
     s = Session(monkeypatch, {})
     s.run("CREATE ({n: 1})-[:T]->({n: 2})-[:U]->({n: 3})")
     sql = s.sql("MATCH p = shortestPath((a {n: 1})-[*..3]->(b)) RETURN length(p)")
-    assert sql.count("FROM cypher__rels") == 1
+    assert sql.count('FROM "cypher__rels"') == 1
     assert store.rel_table("T") not in sql and store.rel_table("U") not in sql
 
 

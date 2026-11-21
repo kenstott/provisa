@@ -46,6 +46,12 @@ def plane(monkeypatch):
     monkeypatch.setattr(router, "_confined", _none)
     monkeypatch.setattr(router, "_org_ready_on_this_node", _none)
     monkeypatch.setattr(router, "_admin_pool", lambda: None)
+
+    async def _member(_user_id, org_id):
+        # every caller here is a current member of acme: the owner path requires it
+        return org_id == "acme"
+
+    monkeypatch.setattr(router, "_is_member", _member)
     monkeypatch.setattr(router, "_caller_user_id", lambda request: request.user)
     monkeypatch.setattr(
         router, "_caller_capabilities", lambda request: held.get(request.user, set())
@@ -53,7 +59,8 @@ def plane(monkeypatch):
 
     def request(user: str, *rights: str):
         held[user] = set(rights)
-        return SimpleNamespace(user=user)
+        # bound to acme, the org every test here acts in: a right is read in the path's org
+        return SimpleNamespace(user=user, state=SimpleNamespace(active_org_id="acme"))
 
     return request
 

@@ -44,6 +44,10 @@ def extract_inputs(sql: str, dialect: str = "postgres") -> set[str]:
     ctes = {c.alias_or_name for c in tree.find_all(exp.CTE)}
     out: set[str] = set()
     for t in tree.find_all(exp.Table):
+        # REQ-2226: a command's SQL uses FROM fn(...) AS alias — sqlglot parses the fn as
+        # exp.Table(this=exp.Anonymous).  Skip those: they are calls, not table references.
+        if not isinstance(t.this, exp.Identifier):
+            continue
         parts = [
             p.name
             for p in (t.args.get("catalog"), t.args.get("db"), t.this)

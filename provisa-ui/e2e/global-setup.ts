@@ -10,9 +10,9 @@ import * as path from "path";
 import { fileURLToPath } from "url";
 
 import { LIVE_MODEL_YAML } from "./liveModel";
-import { startNeo4jContainer } from "./neo4j-container";
 import { startDemoSources } from "./demo-source-containers";
 import { resolveNeededSources } from "./resolve-needed-sources";
+import { warmViteModuleGraph } from "./warm-vite";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CONFIG_PATH = path.resolve(__dirname, "../../config/provisa-install.yaml");
@@ -200,17 +200,12 @@ export default async function globalSetup() {
   // webServer (playwright.config.ts). There is no core backend to bootstrap, so this global setup
   // has nothing to do — and attempting the PUT /admin/config would fail with ECONNREFUSED.
   if (process.env.PROVISA_E2E_ONLY_REGIONS === "1") return;
-  // Start exactly the shared-stack containers (and, separately, the neo4j export container)
-  // this invocation's own spec-file/-g arguments actually need — see resolve-needed-sources.ts.
-  // PROVISA_E2E_SKIP_SHARED_SOURCES=1 forces both to empty regardless, for a case the resolver
+  // Start exactly the shared-stack containers this invocation's own spec-file/-g arguments
+  // actually need — see resolve-needed-sources.ts.
+  // PROVISA_E2E_SKIP_SHARED_SOURCES=1 forces it to empty regardless, for a case the resolver
   // can't see through (e.g. a custom testMatch pattern with no positional file arg).
   const forceSkip = process.env.PROVISA_E2E_SKIP_SHARED_SOURCES === "1";
-  const needed = forceSkip ? { sources: [], neo4jExport: false } : resolveNeededSources();
-  // Start the Neo4j export target now, before any browser exists — see neo4j-container.ts for why
-  // it cannot start mid-run. `docker run -d` returns immediately; the spec still waits for the
-  // engine to accept queries, and by then the container has had the whole bootstrap to boot.
-  // The trino lane does not carry neo4j-docker-export.spec.ts, so it starts nothing.
-  if (process.env.PROVISA_E2E_LANE !== "trino" && needed.neo4jExport) startNeo4jContainer();
+  const needed = forceSkip ? { sources: [] } : resolveNeededSources();
   // REQ-1671: the live sources source-to-query.spec.ts configures through the UI (core lane).
   if (process.env.PROVISA_E2E_LANE !== "trino" && needed.sources.length > 0) {
     startDemoSources(needed.sources);
@@ -246,17 +241,14 @@ export default async function globalSetup() {
     }
   }
 
-  // Pre-warm the Vite dev server: fetch the root so Node compiles the full React bundle once
-  // before 6 workers all navigate concurrently. Without this, all 6 parallel worker processes
-  // trigger simultaneous heavy compilation of Monaco + Cytoscape + Istanbul-instrumented sources,
-  // spiking memory and potentially OOM-crashing the dev server even with the 4 GB heap cap.
-  // global-setup runs serially before any worker starts, so this single fetch amortises the
-  // compile cost across the whole suite rather than concentrating it at suite start.
-  try {
-    await fetch(UI_URL, { signal: AbortSignal.timeout(60000) });
-  } catch (err) {
-    // A connection error here means the Vite server is not up yet — Playwright's webServer
-    // waits for the port before calling globalSetup, so this should not happen.
-    throw new Error(`Vite dev server pre-warm fetch to ${UI_URL} failed`, { cause: err });
-  }
+  // Pre-warm the Vite dev server: every module of the app is fetched once, here, before any
+  // worker starts (warm-vite.ts). Fetching the page alone transforms nothing -- index.html only
+  // names /src/main.tsx -- and left the whole graph to the first test of each worker: run
+  // 43860857546, 42 s of a 120 s test before its first click, beside the same on the other worker.
+  const warmStart = Date.now();
+  const warmed = await warmViteModuleGraph(UI_URL, ["/@vite/client", "/src/main.tsx"]);
+  console.log(
+    `[global-setup] Vite dev server warmed: ${warmed} modules in ` +
+      `${((Date.now() - warmStart) / 1000).toFixed(1)} s`,
+  );
 }

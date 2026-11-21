@@ -32,7 +32,7 @@ CI 工作流（`build-dmg.yml`，名为"Build Provisa Packages"）会在任何 `
 1. **Resolve release metadata** — 从标签后缀检测渠道，推导 PEP 440 版本和资产名称
 2. **Download / package Trino plugins** — 拉取 Calcite Trino 连接器并打包为 tarball
 3. **Pull core / obs / demo Docker images** — 保存服务镜像的 tarball（arm64，另加 amd64 core 供 Windows 容器层使用）
-4. **Build macOS Core / Obs / Demo DMGs** — 在 `macos-14`（Apple Silicon）上运行，离线环境（airgapped）
+4. **Build macOS Core / Obs / Demo DMGs** — 在 `macos-15`（Apple Silicon）上运行，离线环境（airgapped）
 5. **Build Linux AppImage** — core，离线环境
 6. **Build Windows Core installer** — 原生、内嵌 Python、无需 Docker
 7. **Build Windows Container-tier installer** — WSL2 + Trino，按需获取镜像（无需 VirtualBox/OVA）

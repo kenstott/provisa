@@ -203,6 +203,7 @@ mutation RegisterEntity($input: EntityInput!) {
 | `validTime` | String | `null` | Столбец действительного времени; обязателен, если `history` не `"none"` |
 | `recordedTime` | String | `null` | Столбец времени записи; обязателен, если `history` не `"none"` |
 | `visibleTo` | [String] | `["public"]` | Список видимости по ролям |
+| `description` | String | `null` | Описание зарегистрированной таблицы |
 
 ### `registerFact`
 
@@ -226,6 +227,7 @@ mutation RegisterFact($input: FactInput!) {
 | `measures` | [MeasureInput] | `[]` | Пары `{ column, agg }` |
 | `dimensions` | [DimRefInput] | `[]` | Пары `{ entity, via }` |
 | `visibleTo` | [String] | `["public"]` | Список видимости по ролям |
+| `description` | String | `null` | Описание зарегистрированной таблицы |
 
 `MeasureInput`: `{ column: String, agg: String }`; agg по умолчанию `"sum"`.
 

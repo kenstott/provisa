@@ -1,0 +1,23 @@
+{
+  "erdLayouts": {
+    "layout": "布局:{{name}}",
+    "layouts": "布局",
+    "menuHint": "选择、保存或删除此图的已保存排列",
+    "automatic": "自动",
+    "save": "保存",
+    "saveAs": "另存为…",
+    "delete": "删除",
+    "unsaved": "未保存",
+    "unsavedHint": "自保存此布局以来,图已更改",
+    "saveAsTitle": "将布局另存为",
+    "name": "名称",
+    "nameTaken": "名为 {{name}} 的布局已存在",
+    "deleteTitle": "删除布局 {{name}}?",
+    "deleteConsequence": "该布局将对所有人删除。它显示的表和关系不会改变。",
+    "newSinceSaved_one": "自保存布局以来新增 {{count}} 个表",
+    "newSinceSaved_other": "自保存布局以来新增 {{count}} 个表",
+    "place": "放置",
+    "placeHint": "将表添加到布局",
+    "notDrawn": "图尚未绘制"
+  }
+}

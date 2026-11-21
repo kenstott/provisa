@@ -1,0 +1,14 @@
+{
+  "wikidataRegister": {
+    "starters": "入门表",
+    "startersHint": "可供连接的参考表，各带其列。描述、类型和别名之后在各表上细化。",
+    "startersPlaceholder": "选择入门表",
+    "customLabel": "自定义表",
+    "customNone": "无自定义表",
+    "customSparql": "SPARQL 查询",
+    "classNotUsed": "请选择一个类并点击“使用此类”，或选择“无自定义表”。",
+    "columnsReading": "正在从查询的 SELECT 读取列…",
+    "nothingChosen": "请选择要注册的入门表或自定义表。",
+    "columns": "列：{{columns}}"
+  }
+}

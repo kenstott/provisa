@@ -8,8 +8,9 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-2191: a JDBC source's setup (the engine its capabilities are set for, the SQL dialects
-// it may be written in) and its Detect checks, which run only when the admin presses Detect.
+// REQ-2191: a JDBC source's setup (the engine its capabilities are set for, the standard drivers,
+// the SQL dialects it may be written in) and its Detect checks, which run only when the admin
+// presses Detect.
 
 import { gql } from "@apollo/client";
 import { useMutation, useQuery } from "@apollo/client/react";
@@ -18,6 +19,13 @@ const JDBC_SOURCE_SETUP = gql`
   query JdbcSourceSetup {
     jdbcSourceSetup {
       engine
+      drivers {
+        backend
+        sourceType
+        scheme
+        file
+        attach
+      }
       sqlDialects
       capabilities
     }
@@ -37,8 +45,22 @@ const DETECT_JDBC_SOURCE = gql`
   }
 `;
 
+/** A standard driver the form offers (provisa/api/admin/jdbc_source_admin.py). */
+export interface JdbcDriver {
+  backend: string;
+  /** The built-in source type of the same database, which names it. */
+  sourceType: string;
+  /** The URL scheme the form writes for it. */
+  scheme: string;
+  /** Whether its URL names a file rather than a host. */
+  file: boolean;
+  /** Whether the active engine attaches the built-in type, so live attach is offered. */
+  attach: boolean;
+}
+
 export interface JdbcSourceSetup {
   engine: string;
+  drivers: JdbcDriver[];
   sqlDialects: string[];
   capabilities: string[];
 }

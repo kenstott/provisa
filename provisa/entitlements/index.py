@@ -1,0 +1,473 @@
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 7a5e3b0c-1d86-4b03-b1f4-382eb0c1c2f2
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+
+"""The objects a role's lists can select, and how an identifier selects them (REQ-2219, REQ-194).
+
+The index is the names table seen through one role's schema: the role is the ceiling, so what its
+schema does not hold has no entry and no list can reach it. An identifier is the client-facing
+SQL name, segment by segment, ignoring case (REQ-2214). It selects the object it names and,
+naming a node of the hierarchy, everything beneath it: domain contains tables, relationships,
+commands and data products; a table contains columns and metrics.
+"""
+
+# Requirements: REQ-2219, REQ-194, REQ-2214
+
+from __future__ import annotations
+
+from collections.abc import Iterable, Mapping
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any
+
+from provisa.compiler import naming
+from provisa.judgments.bases import BASIS_ID
+from provisa.security.rights import Capability
+
+if TYPE_CHECKING:
+    from provisa.compiler.names_table import NamesTable
+    from provisa.entitlements.lists import EffectiveList
+
+WILDCARD = "*"
+
+TABLE = "table"
+COLUMN = "column"
+METRIC = "metric"
+RELATIONSHIP = "relationship"
+COMMAND = "command"
+DATA_PRODUCT = "data_product"
+
+#: Each object kind, and the list that selects it.
+LIST_OF: dict[str, str] = {
+    TABLE: "tables",
+    COLUMN: "columns",
+    METRIC: "metrics",
+    RELATIONSHIP: "relationships",
+    COMMAND: "commands",
+    DATA_PRODUCT: "data_products",
+}
+
+#: The lists of the semantic hierarchy, the domain's own among them. Their identifiers name
+#: objects of the names table, so one that names nothing can be flagged.
+SEMANTIC_LISTS = frozenset({"domains", *LIST_OF.values()})
+
+#: The kinds the data plane reads: a role that reads data uses them.
+_DATA_PLANE = SEMANTIC_LISTS
+
+#: The kinds of objects outside the names table an owner capability is scoped by (REQ-2219,
+#: OWNER KINDS): a glossary term, named ``domain.term``, and a judgment basis, named by its id.
+GLOSSARY_TERMS = "glossary_terms"
+JUDGMENT_BASES = "judgment_bases"
+_OWNED_KINDS = frozenset({GLOSSARY_TERMS, JUDGMENT_BASES})
+
+#: The other kinds, each with the capabilities that read it (REQ-2219: a list for a kind no
+#: scoped capability of the role uses is flagged).
+_READ_BY: dict[str, frozenset[str]] = {
+    "sources": frozenset({"source_registration", "table_registration"}),
+    "environments": frozenset(
+        {
+            "environment_management",
+            "environment_switch",
+            "environment_owned_management",
+            "environment_data",
+        }
+    ),
+    "roles": frozenset({"user_management", "assign_entitlements"}),
+    "regions": frozenset({"platform_settings", "cross_org"}),
+    GLOSSARY_TERMS: frozenset({Capability.TERM_OWNER.value}),
+    JUDGMENT_BASES: frozenset({Capability.JUDGMENT_BASIS_OWNER.value}),
+}
+
+#: The capabilities of the data plane, each scoped to one kind (REQ-2219, THE ENTITLEMENT MODEL:
+#: read to columns, traverse to relationships, execute to commands, consume to data products), and
+#: the objects of the mask each reaches. A role with a schema holds them; an expiry names them.
+DATA_PLANE_CAPABILITIES: dict[str, tuple[str, frozenset[str]]] = {
+    "read": (LIST_OF[COLUMN], frozenset({TABLE, COLUMN, METRIC})),
+    "traverse": (LIST_OF[RELATIONSHIP], frozenset({RELATIONSHIP})),
+    "execute": (LIST_OF[COMMAND], frozenset({COMMAND})),
+    "consume": (LIST_OF[DATA_PRODUCT], frozenset({DATA_PRODUCT})),
+}
+
+#: Capabilities scoped by a semantic kind through a Provisa-held row of their own: a product's
+#: creator holds data_product_rw on it (``provisa.entitlements.store.record_product_creator``);
+#: the owners of products and relationships, and a domain's steward, hold a row of their
+#: capability on what they own (REQ-2219, OWNER KINDS).
+_SCOPED_BY_ROW: dict[str, str] = {
+    Capability.DATA_PRODUCT_RW.value: LIST_OF[DATA_PRODUCT],
+    Capability.DATA_PRODUCT_OWNER.value: LIST_OF[DATA_PRODUCT],
+    Capability.RELATIONSHIP_OWNER.value: LIST_OF[RELATIONSHIP],
+    Capability.DOMAIN_STEWARD.value: "domains",
+}
+
+
+def capability_scopes() -> dict[str, str | None]:
+    """Each capability and the kind of list that scopes it; None for an unscoped capability, which
+    holds wherever the role is held (REQ-2219, THE ENTITLEMENT MODEL)."""
+    scoped = {cap: kind for kind, caps in _READ_BY.items() for cap in caps}
+    scoped.update(_SCOPED_BY_ROW)
+    out: dict[str, str | None] = {c.value: scoped.get(c.value) for c in Capability}
+    out.update({cap: kind for cap, (kind, _) in DATA_PLANE_CAPABILITIES.items()})
+    return out
+
+
+#: Every kind of list a principal's role grant can carry, in the order a client lists them: the
+#: semantic hierarchy first, then the rest. The write API accepts these and no other.
+KIND_ORDER: tuple[str, ...] = ("domains", *LIST_OF.values(), *_READ_BY)
+KINDS = frozenset(KIND_ORDER)
+
+#: The kinds whose identifiers are picked from the names tree, and how deep it goes for each:
+#: domains are its first level, tables its second, columns its third.
+TREE_DEPTH: dict[str, int] = {"domains": 1, LIST_OF[TABLE]: 2, LIST_OF[COLUMN]: 3}
+
+
+@dataclass(frozen=True)
+class IndexedObject:
+    """One object a list can select: ``bit`` is its position in the mask."""
+
+    bit: int
+    kind: str
+    oid: str
+    # Each spelling an identifier can use, as segments, lower-cased: what matching reads.
+    paths: tuple[tuple[str, ...], ...]
+    # The first path as the model spells it, segment by segment: what a client shows.
+    spelled: tuple[str, ...]
+    domain: str
+    table_id: int | None = None
+    target_table_id: int | None = None
+
+
+def term_paths(name: str, domains: Iterable[str]) -> tuple[tuple[str, ...], ...]:
+    """The spellings a ``domain.term`` identifier selects a glossary term by, lower-cased: one per
+    domain of the term (REQ-2219, OWNER KINDS), the term as its SQL-name form
+    (:func:`provisa.compiler.naming.ontology_name`). An enterprise-wide term (domains ``["*"]``),
+    or one with no domain (REQ-1591: an unscoped term belongs to no domain either), is spelled
+    under ``*``, which only an identifier's ``*`` matches. A term whose name has no SQL-name form
+    has no spelling, so no identifier names it."""
+    term = naming.ontology_name(name)
+    if term is None:
+        return ()
+    spelled = {WILDCARD if d == WILDCARD else naming.domain_to_sql_name(d).lower() for d in domains}
+    return tuple((d, term) for d in sorted(spelled or {WILDCARD}))
+
+
+def selects_term(identifier: str, name: str, domains: Iterable[str]) -> bool:
+    """Whether a glossary_terms ``identifier`` selects the term ``name`` in ``domains``."""
+    return matches(identifier, term_paths(name, domains))
+
+
+def identifier_problem(kind: str, identifier: str) -> str | None:
+    """Why ``identifier`` cannot name an object of ``kind``, or None. A term is named
+    ``domain.term``, an asterisk allowed at either level, or ``*`` for every term; a judgment
+    basis by its id, or ``*`` for every basis (REQ-2219, OWNER KINDS). Every other kind's
+    identifiers are checked against what exists (:func:`check_lists`)."""
+    if kind == GLOSSARY_TERMS and identifier != WILDCARD:
+        segments = identifier.split(".")
+        if len(segments) != 2 or not all(segments):
+            return f"{identifier!r} is not a glossary term: a term is named domain.term"
+    if kind == JUDGMENT_BASES and identifier != WILDCARD and not BASIS_ID.match(identifier):
+        return f"{identifier!r} is not a judgment basis id"
+    return None
+
+
+@dataclass(frozen=True)
+class OwnedObjects:
+    """The objects outside the names table a list can name: each glossary term's spellings
+    (:func:`term_paths`) and every judgment basis id."""
+
+    terms: tuple[tuple[str, ...], ...]
+    bases: frozenset[str]
+
+
+def owned_objects(terms: Iterable[tuple[str, Iterable[str]]], bases: Iterable[str]) -> OwnedObjects:
+    """``terms`` as (name, domain ids) and ``bases`` as ids, as lists are checked against them."""
+    return OwnedObjects(
+        tuple(path for name, domains in terms for path in term_paths(name, domains)),
+        frozenset(bases),
+    )
+
+
+def _owned_known(kind: str, identifier: str, owned: OwnedObjects) -> bool:
+    if kind == GLOSSARY_TERMS:
+        return matches(identifier, owned.terms)
+    return identifier in owned.bases
+
+
+@dataclass(frozen=True)
+class Finding:
+    """A flag on a list (REQ-2219: flagged, never silently ignored)."""
+
+    code: str
+    role_id: str
+    kind: str
+    identifier: str
+    message: str
+
+
+def _lowered(segments: Iterable[str]) -> tuple[str, ...]:
+    return tuple(s.lower() for s in segments)
+
+
+def _segments(identifier: str) -> tuple[str, ...]:
+    return _lowered(identifier.split("."))
+
+
+def matches(identifier: str, paths: Iterable[tuple[str, ...]]) -> bool:
+    """Whether ``identifier`` selects an object spelled ``paths``: segment by segment, ``*`` any
+    segment, and a shorter identifier selects what is beneath it."""
+    wanted = _segments(identifier)
+    return any(
+        len(wanted) <= len(path) and all(w in (WILDCARD, s) for w, s in zip(wanted, path))
+        for path in paths
+    )
+
+
+def covers(identifier: str, other: str) -> bool:
+    """Whether ``identifier`` selects everything ``other`` selects."""
+    return matches(identifier, (_segments(other),))
+
+
+def overlaps(identifier: str, other: str) -> bool:
+    """Whether some object could be selected by both ``identifier`` and ``other``."""
+    return all(
+        a == b or WILDCARD in (a, b)
+        for a, b in zip(_segments(identifier), _segments(other), strict=False)
+    )
+
+
+class ObjectIndex:
+    """The objects of one role's schema, in bit order."""
+
+    def __init__(
+        self,
+        objects: list[IndexedObject],
+        joins: Mapping[tuple[int, int, str, str], int],
+    ) -> None:
+        self.objects = tuple(objects)
+        self.size = len(objects)
+        self._bit = {(o.kind, o.oid): o.bit for o in objects}
+        self._joins = dict(joins)
+        self.table_ids = frozenset(o.table_id for o in objects if o.kind == TABLE)
+
+    def bit_of(self, kind: str, oid: str) -> int | None:
+        return self._bit.get((kind, oid))
+
+    def relationship_bit(self, key: tuple[int, int, str, str]) -> int | None:
+        return self._joins.get(key)
+
+
+def build_index(
+    names: NamesTable, ctx: Any, products: Iterable[tuple[str, str]] = ()
+) -> ObjectIndex:
+    """``names`` through the schema of the role whose compilation context is ``ctx`` (None: the
+    whole model, which only the checks read). ``products`` are (product id, domain id)."""
+    held = None if ctx is None else {tm.table_id for tm in ctx.tables.values()}
+    # Each table's (domain, name) as the model spells them; lower-cased, they are its path.
+    tables: dict[int, tuple[str, str]] = {}
+    for row in names.rows:
+        if row.surface == "sql" and row.object_kind in ("table", "view") and len(row.scope) == 2:
+            assert row.table_id is not None
+            tables[row.table_id] = (row.scope[1], row.name)
+    out: list[IndexedObject] = []
+
+    def add(kind: str, oid: str, spelled: tuple[str, ...], **more: Any) -> None:
+        path = _lowered(spelled)
+        out.append(IndexedObject(len(out), kind, oid, (path,), spelled, path[0], **more))
+
+    for tid, spelled in sorted(tables.items()):
+        if held is None or tid in held:
+            add(TABLE, str(tid), spelled, table_id=tid)
+    for row in names.rows:
+        if row.surface != "sql" or row.object_kind not in (COLUMN, METRIC):
+            continue
+        tid = row.table_id
+        if tid is None or tid not in tables or (held is not None and tid not in held):
+            continue
+        if ctx is not None and (tid, row.physical_name) not in ctx.physical_to_sql:
+            continue
+        add(row.object_kind, row.object_id, (*tables[tid], row.name), table_id=tid)
+    joins = _add_relationships(names, ctx, tables, held, out)
+    _add_flat_objects(names, products, out)
+    return ObjectIndex(out, joins)
+
+
+def _add_relationships(
+    names: NamesTable,
+    ctx: Any,
+    tables: Mapping[int, tuple[str, str]],
+    held: set[int] | None,
+    out: list[IndexedObject],
+) -> dict[tuple[int, int, str, str], int]:
+    """The relationships of the role's schema. A relationship's identifier is its source table
+    and field: ``<table>_<field>``, under its source table's domain (REQ-1531), or bare."""
+    type_ids = {tm.type_name: tm.table_id for tm in ctx.tables.values()} if ctx is not None else {}
+    joins: dict[tuple[int, int, str, str], int] = {}
+    seen: set[str] = set()
+    for row in names.rows:
+        if row.object_kind != RELATIONSHIP or row.surface != "graphql_field":
+            continue
+        tid = row.table_id
+        if row.object_id in seen or tid is None or tid not in tables:
+            continue
+        if held is not None and tid not in held:
+            continue
+        target: int | None = None
+        join = None
+        if ctx is not None:
+            type_name, _, field = row.object_id.partition(".")
+            join = ctx.joins.get((type_name, field))
+            if join is None or type_ids.get(type_name) != tid:
+                continue
+            target = join.target.table_id
+        seen.add(row.object_id)
+        domain, table = tables[tid]
+        spelled = (domain, f"{table}_{row.name}")
+        domain_path, bare = _lowered(spelled)
+        bit = len(out)
+        out.append(
+            IndexedObject(
+                bit,
+                RELATIONSHIP,
+                row.object_id,
+                ((domain_path, bare), (bare,)),
+                spelled,
+                domain_path,
+                table_id=tid,
+                target_table_id=target,
+            )
+        )
+        if join is not None and target is not None:
+            joins[(tid, target, join.source_column, join.target_column)] = bit
+            joins[(target, tid, join.target_column, join.source_column)] = bit
+    return joins
+
+
+def _add_flat_objects(
+    names: NamesTable, products: Iterable[tuple[str, str]], out: list[IndexedObject]
+) -> None:
+    """Commands and data products: each under its domain."""
+    seen: set[str] = set()
+    for row in names.rows:
+        if row.object_kind != COMMAND or row.object_id in seen:
+            continue
+        seen.add(row.object_id)
+        domain = naming.domain_to_sql_name(row.domain_id) if row.domain_id else ""
+        spelled = (domain, row.object_id) if domain else (row.object_id,)
+        path = _lowered(spelled)
+        out.append(
+            IndexedObject(len(out), COMMAND, row.object_id, (path,), spelled, domain.lower())
+        )
+    for product_id, domain_id in sorted(products):
+        spelled = (naming.domain_to_sql_name(domain_id), product_id)
+        path = _lowered(spelled)
+        out.append(IndexedObject(len(out), DATA_PRODUCT, product_id, (path,), spelled, path[0]))
+
+
+def check_lists(
+    role_id: str,
+    role: Mapping[str, Any],
+    lists: Mapping[str, EffectiveList],
+    model_index: ObjectIndex,
+    owned: OwnedObjects,
+) -> list[Finding]:
+    """The flags on a person's lists for ``role_id``: an identifier naming nothing in the model,
+    and a list for a kind the role uses nothing of. ``model_index`` is the whole model's: an
+    object outside the role still exists, and is simply out of its reach. ``owned`` holds the
+    glossary terms and judgment bases, which the names table does not."""
+    findings: list[Finding] = []
+    capabilities = set(role.get("capabilities") or ())
+    has_data_plane = bool(role.get("domain_access"))
+    domains = {o.domain for o in model_index.objects}
+    for kind in sorted(lists):
+        listed = lists[kind]
+        used = (
+            has_data_plane
+            if kind in _DATA_PLANE
+            else bool(_READ_BY.get(kind, frozenset()) & capabilities)
+        )
+        if not used:
+            findings.append(
+                Finding(
+                    "unused_kind",
+                    role_id,
+                    kind,
+                    "",
+                    f"role {role_id!r} uses no {kind!r}, so this list selects nothing",
+                )
+            )
+            continue
+        if kind not in SEMANTIC_LISTS and kind not in _OWNED_KINDS:
+            continue
+        kinds = None if kind == "domains" else {k for k, v in LIST_OF.items() if v == kind}
+        for identifier in listed.identifiers:
+            if identifier == WILDCARD:
+                continue
+            if kind in _OWNED_KINDS:
+                known = _owned_known(kind, identifier, owned)
+            elif kinds is None:
+                known = _segments(identifier)[0] in domains
+            else:
+                known = any(
+                    o.kind in kinds and matches(identifier, o.paths) for o in model_index.objects
+                )
+            if not known:
+                findings.append(
+                    Finding(
+                        "unknown_identifier",
+                        role_id,
+                        kind,
+                        identifier,
+                        f"{identifier!r} in {kind!r} for role {role_id!r} names nothing "
+                        + ("the org holds" if kind in _OWNED_KINDS else "in the names table"),
+                    )
+                )
+    return findings
+
+
+@dataclass(frozen=True)
+class NamesNode:
+    """One node of the names tree: ``id`` is the identifier it is listed as, ``label`` its last
+    segment, both as the model spells them. Checking a node selects everything beneath it; an
+    identifier matches it ignoring case."""
+
+    id: str
+    label: str
+    children: tuple["NamesNode", ...] = ()
+
+
+def _ordered(spellings: Iterable[str]) -> list[str]:
+    return sorted(spellings, key=lambda s: (s.lower(), s))
+
+
+def names_tree(index: ObjectIndex) -> tuple[NamesNode, ...]:
+    """The domains, tables and columns of ``index`` as a tree of the identifiers that select them,
+    each level ordered by label ignoring case: what a picker offers for the kinds of
+    :data:`TREE_DEPTH`. Objects are grouped by their lower-cased path, as matching reads them,
+    and shown as the model spells them (the first object of a path, in bit order, spells it)."""
+    spelled: dict[tuple[str, ...], str] = {}
+    children: dict[tuple[str, ...], set[tuple[str, ...]]] = {(): set()}
+
+    def note(path: tuple[str, ...], spelling: tuple[str, ...]) -> None:
+        for depth in range(1, len(path) + 1):
+            here = path[:depth]
+            spelled.setdefault(here, spelling[depth - 1])
+            children.setdefault(here[:-1], set()).add(here)
+
+    for o in index.objects:
+        if o.kind in (TABLE, COLUMN):
+            note(o.paths[0], o.spelled)
+        elif o.domain:
+            note(o.paths[0][:1], o.spelled[:1])
+
+    def nodes(parent: tuple[str, ...], prefix: str) -> tuple[NamesNode, ...]:
+        by_label = {spelled[p]: p for p in children.get(parent, ())}
+        return tuple(
+            NamesNode(prefix + label, label, nodes(by_label[label], f"{prefix}{label}."))
+            for label in _ordered(by_label)
+        )
+
+    return nodes((), "")

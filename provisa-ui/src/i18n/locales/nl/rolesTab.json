@@ -7,7 +7,7 @@
     "colActions": "Acties",
     "empty": "Geen rollen gevonden.",
     "detailsHidden": "Voor details is gebruikersbeheer vereist.",
-    "noDomains": "geen domeinen — bereikt geen gegevens",
+    "noDomains": "geen domeinen: bereikt geen data",
     "deleteRole": "Rol {{roleId}} verwijderen",
     "deleted": "\"{{roleId}}\" verwijderd",
     "pageInfo": "Pagina {{current}} / {{total}}",

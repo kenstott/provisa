@@ -32,24 +32,37 @@ A WRITE NO SCOPE OWNS IS A DEFECT. When a plane's repository is attached (the pl
 bound, :func:`attach`), a recorded write with no open scope raises :class:`ModelChangeOutsideScope`
 rather than leaving a model change with no commit. With no repository attached — a bare control
 plane, as in a unit test — there is no projection to keep, and nothing is recorded.
+
+A SAVE IS IN FLIGHT UNTIL ITS COMMIT HAS FLUSHED (REQ-1914). A write is recorded before its
+transaction commits, so a save is in flight before anyone can read the stamp it advances; the
+config watcher that reads that stamp waits for the save (:func:`saves_in_flight`).
 """
 
-# Requirements: REQ-1524, REQ-1526, REQ-1543
+# Requirements: REQ-1524, REQ-1526, REQ-1543, REQ-1914
 
 from __future__ import annotations
 
+import asyncio
+import concurrent.futures
 import contextvars
 import logging
 import re
+import threading
 from collections.abc import AsyncGenerator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Concatenate, ParamSpec
 
 if TYPE_CHECKING:
     from provisa.core.database import Database
 
 log = logging.getLogger(__name__)
+
+_P = ParamSpec("_P")
+
+#: An object's model URI (REQ-1385) still to be written under its org: what :func:`uri` makes.
+#: The org is the plane's, known when the change commits rather than when a writer names it.
+ObjectUri = Callable[[str | None], str]
 
 
 @dataclass(frozen=True)
@@ -91,8 +104,11 @@ class _Scope:
     written: dict[tuple[ModelPlane, int], tuple["Database", list[tuple[str, str]]]] = field(
         default_factory=dict
     )
-    names: list[str] = field(default_factory=list)
+    # What each writer said it changed (:func:`name`), written out per plane when it commits.
+    names: list[tuple["str | ObjectUri", ...]] = field(default_factory=list)
     closed: bool = False
+    # REQ-1914: the save this scope is making of each plane it wrote, until that plane's commit.
+    saves: dict[ModelPlane, "concurrent.futures.Future[None]"] = field(default_factory=dict)
 
 
 _SCOPE: contextvars.ContextVar[_Scope | None] = contextvars.ContextVar(
@@ -100,6 +116,11 @@ _SCOPE: contextvars.ContextVar[_Scope | None] = contextvars.ContextVar(
 )
 
 _platform: "Database | None" = None
+
+# REQ-1914: the saves in flight of each plane. A save and the watcher waiting for it are on
+# different threads and event loops, so each save is a concurrent future.
+_saves: dict[ModelPlane, set["concurrent.futures.Future[None]"]] = {}
+_saves_guard = threading.Lock()
 
 # What commits a plane, and which tables a projection carries: handed in by :func:`attach`, so this
 # module (which the control-plane connection imports) depends on neither the repository nor the
@@ -109,12 +130,24 @@ _commit: _Commit | None = None
 _projected_tables: frozenset[str] = frozenset()
 
 
-def attach(admin_db: "Database", *, commit: _Commit, projected: frozenset[str]) -> None:
+# The org segment a commit message's URIs carry for a plane's org: the org itself, or None in a
+# single-tenant deployment, as the metadata export writes them (REQ-697). Handed in by attach.
+_uri_org: Callable[[str], str | None] | None = None
+
+
+def attach(
+    admin_db: "Database",
+    *,
+    commit: _Commit,
+    projected: frozenset[str],
+    uri_org: Callable[[str], str | None],
+) -> None:
     """Attach the platform plane, which holds every environment's position and drift, with the
-    commit (``env_repo.write_through``) and the projected tables (``env_deploy.PROJECTED``). From
-    here on a model write must be owned by a scope."""
-    global _platform, _commit, _projected_tables
-    _platform, _commit, _projected_tables = admin_db, commit, projected
+    commit (``env_repo.write_through``), the projected tables (``env_deploy.PROJECTED``) and the
+    org segment of the model URIs a commit message names (``uri_org``). From here on a model write
+    must be owned by a scope."""
+    global _platform, _commit, _projected_tables, _uri_org
+    _platform, _commit, _projected_tables, _uri_org = admin_db, commit, projected, uri_org
 
 
 def unbind() -> None:
@@ -150,14 +183,55 @@ def record(
         raise ModelChangeOutsideScope(plane, table)
     _database, writes = current.written.setdefault((plane, id(database)), (database, []))
     writes.append((verb, table))
+    if plane not in current.saves:
+        current.saves[plane] = save = concurrent.futures.Future()
+        with _saves_guard:
+            _saves.setdefault(plane, set()).add(save)
 
 
-def name(action: str, kind: str, ident: str | int) -> None:
-    """Name the change a writer is making, for the commit's message: ``upsert relationship
-    orders-to-customers``. Outside a scope, or in one that commits nothing, it says nothing."""
+def saves_in_flight(plane: ModelPlane) -> list["concurrent.futures.Future[None]"]:
+    """The saves of this process that have written ``plane`` and whose commit has not finished
+    (REQ-1914): those in flight now, so a save begun after this is not waited for."""
+    with _saves_guard:
+        return list(_saves.get(plane, ()))
+
+
+async def until_committed(saves: list["concurrent.futures.Future[None]"]) -> None:
+    """Wait for ``saves`` (from :func:`saves_in_flight`) to finish committing. Cancelling the wait
+    leaves the saves as they are: ``asyncio.wait`` does not cancel what it waits for."""
+    if saves:
+        await asyncio.wait([asyncio.wrap_future(save) for save in saves])
+
+
+def _end_saves(current: _Scope) -> None:
+    for plane, save in current.saves.items():
+        with _saves_guard:
+            in_flight = _saves[plane]
+            in_flight.discard(save)
+            if not in_flight:
+                del _saves[plane]
+        save.set_result(None)
+    current.saves.clear()
+
+
+def uri(
+    builder: Callable[Concatenate[str | None, _P], str], *args: _P.args, **kwargs: _P.kwargs
+) -> ObjectUri:
+    """An object's model URI for :func:`name`: a :mod:`provisa.core.model_uri` builder and every
+    argument but the org, which the commit supplies. Bound now, so a writer naming objects in a
+    loop names each one."""
+    return lambda org: builder(org, *args, **kwargs)
+
+
+def name(action: str, *parts: "str | ObjectUri") -> None:
+    """Name the change a writer is making, for the commit's message (REQ-1524): the action, then
+    the changed object by its model URI (:func:`uri`) and any words that place it --
+    ``retire provisa://acme/terms/revenue``. Never a serial id: the identifier is the model name
+    (REQ-1385); tests/unit/test_model_history_names_structural.py holds every writer to that.
+    Outside a scope, or in one that commits nothing, it says nothing."""
     current = _SCOPE.get()
     if current is not None and not current.discard:
-        current.names.append(f"{action} {kind} {ident}")
+        current.names.append((action, *parts))
 
 
 def label(text: str) -> None:
@@ -232,12 +306,19 @@ async def layout() -> AsyncGenerator[None]:
         _SCOPE.reset(token)
 
 
-def _message(current: _Scope, writes: list[tuple[str, str]]) -> str:
-    if len(current.names) == 1:
-        return current.names[0]
-    if current.names:
-        shown = current.names[:20]
-        more = len(current.names) - len(shown)
+def _written(parts: tuple["str | ObjectUri", ...], org: str | None) -> str:
+    return " ".join(part if isinstance(part, str) else part(org) for part in parts)
+
+
+def _message(current: _Scope, writes: list[tuple[str, str]], org_id: str) -> str:
+    assert _uri_org is not None  # attached with the commit that calls for this message
+    org = _uri_org(org_id)
+    names = [_written(parts, org) for parts in current.names]
+    if len(names) == 1:
+        return names[0]
+    if names:
+        shown = names[:20]
+        more = len(names) - len(shown)
         body = "\n".join(f"- {n}" for n in shown) + (f"\n- and {more} more" if more else "")
         return f"{current.label}\n\n{body}"
     tables = sorted({table for _verb, table in writes})
@@ -246,7 +327,15 @@ def _message(current: _Scope, writes: list[tuple[str, str]]) -> str:
 
 async def flush(current: _Scope) -> None:
     """Commit every plane the scope wrote, once each, and forget them. Never raises: a projection
-    that does not land marks its environment drifted (``write_through``)."""
+    that does not land marks its environment drifted (``write_through``). Its saves are over when
+    this ends, however it ends: a watcher is waiting for them (REQ-1914)."""
+    try:
+        await _commit_written(current)
+    finally:
+        _end_saves(current)
+
+
+async def _commit_written(current: _Scope) -> None:
     if not current.written or _platform is None or _commit is None:
         current.written.clear()
         current.names.clear()
@@ -257,7 +346,7 @@ async def flush(current: _Scope) -> None:
     current.written.clear()
     actor = current.actor()
     for (plane, _db_id), (database, writes) in written:
-        message = _message(current, writes)
+        message = _message(current, writes, plane.org_id)
         async with database.acquire() as conn:
             sha = await _commit(
                 conn,

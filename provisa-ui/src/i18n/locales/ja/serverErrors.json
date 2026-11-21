@@ -14,10 +14,25 @@
       "webhook_not_found": "Webhook「{{name}}」が見つかりません",
       "written_table_not_registered": "'{{table}}' はソース '{{source_id}}' の登録済みテーブルではありません",
       "function_exists": "関数「{{name}}」はすでに存在します",
-      "webhook_exists": "Webhook「{{name}}」はすでに存在します"
+      "webhook_exists": "Webhook「{{name}}」はすでに存在します",
+      "mask_constant_not_text": "テキスト以外の列の定数マスクは NULL として読み取られます。保存できるのは NULL のみです: {{column}} ({{type}})"
     },
     "ai_models": {
-      "vector_model_fields_required": "各 vector_models エントリには id、provider、dimensions が必要です"
+      "vector_model_fields_required": "各 vector_models エントリには id、provider、dimensions が必要です",
+      "embedding_library_missing": "埋め込みモデル {{model}} は {{provider}} プロバイダーを使用しており、{{extra}} エクストラが必要です（モジュール {{module}} がインストールされていません）: pip install 'provisa[{{extra}}]'。"
+    },
+    "ai": {
+      "endpoint_address_from_server": "AI エンドポイント {{vendor}} はサーバーの環境からアドレスを取得しますが、このサーバー上の組織はそれを使用しません。管理 > AIモデルで独自のアドレスを設定してください。",
+      "endpoint_key_from_server": "AI エンドポイント {{vendor}} はサーバーの環境からキーを取得しますが、このサーバー上の組織はそれを使用しません。管理 > AIモデルで独自のキーを設定してください。",
+      "endpoint_key_unset": "AI エンドポイント {{vendor}} にキーがありません：{{field}} が設定されていません。",
+      "key_required": "{{vendor}} にキーがありません。管理 > AIモデルで設定してください。",
+      "local_server_from_environment": "{{vendor}} にはサーバー自身のアドレスで接続しますが、このサーバー上の組織はそれを使用しません。管理 > AIモデルで独自のアドレスの AI エンドポイントを宣言してください。",
+      "server_environment_sets": "ここでは {{vendor}} を呼び出せません：サーバーの環境が {{variable}} を設定しており、そのクライアントがすべての組織に対して送信してしまいます。",
+      "vector_model_address_from_server": "埋め込みモデル {{vendor}} はサーバーの環境からアドレスを取得しますが、このサーバー上の組織はそれを使用しません。管理 > AIモデルで独自のアドレスを設定してください。",
+      "vector_model_key_from_server": "埋め込みモデル {{vendor}} はサーバーの環境からキーを取得しますが、このサーバー上の組織はそれを使用しません。管理 > AIモデルで独自のキーを設定してください。",
+      "vector_model_key_unset": "埋め込みモデル {{vendor}} にキーがありません：{{field}} が設定されていません。",
+      "vector_model_local_server": "埋め込みモデル {{vendor}} にはサーバー自身のアドレスで接続しますが、このサーバー上の組織はそれを使用しません。管理 > AIモデルで独自のアドレスを設定してください。",
+      "vendor_uses_server_credentials": "{{vendor}} にはサーバー自身の認証情報で接続しますが、このサーバー上の組織はそれを使用しません。管理 > AIモデルで、キーを受け付けるベンダーまたは AI エンドポイントを選択してください。"
     },
     "api": {
       "answer_cut": "{{table}} の応答は max_pages={{max_pages}} で切り詰められました（{{rows}} 行）。API にはまだデータがあります。すべて読み取るには、エンドポイントの max_pages またはページサイズを増やしてください。",
@@ -41,17 +56,26 @@
       "role_not_assigned": "ロール「{{role_id}}」はこのユーザーに割り当てられていません",
       "simple_provider_not_configured": "Simple 認証プロバイダーが設定されていません",
       "username_exists": "ユーザー名は既に存在します",
-      "not_permitted": "許可されていません"
+      "not_permitted": "許可されていません",
+      "token_scopes_required": "トークンのロールを 1 つ以上選択してください。",
+      "token_scope_not_held": "トークンは、保持しているロールのみ使用できます。",
+      "no_role_held": "「{{user}}」はこの組織でロールを持っていません"
     },
     "authz": {
       "mutation_not_permitted": "ミューテーション「{{field_name}}」は許可されていません：{{reason}}"
     },
     "billing": {
-      "invalid_signature": "Lemon Squeezy の署名が無効です",
-      "tenant_no_ls_customer": "テナントに Lemon Squeezy の顧客がありません",
-      "tenant_not_found": "テナントが見つかりません",
-      "webhook_missing_customer_id": "Webhook に顧客IDがありません",
-      "webhook_missing_tenant_linkage": "Webhook にテナントの関連付けがありません"
+      "checkout_not_complete": "このチェックアウトは完了していないため、関連付けるサブスクリプションはまだありません。",
+      "invalid_signature": "Webhook の署名が無効です",
+      "no_trial": "この組織には試用期間がありません",
+      "org_no_customer": "この組織にはまだ請求アカウントがありません。",
+      "org_not_found": "組織が見つかりません",
+      "reconcile_not_creator": "これを行えるのは組織の作成者だけです",
+      "session_org_mismatch": "このチェックアウトはこの組織のために開かれたものではありません。",
+      "subscription_items_unrecognized": "このサブスクリプションには、このデプロイメントが販売するプラン価格とデータ転送価格の両方が含まれていないため、移行できません。",
+      "trial_already_started": "この組織はすでに試用を開始しています。試用は組織ごとに 1 回提供されます。",
+      "webhook_missing_org_linkage": "webhook のサブスクリプションに組織が示されていません",
+      "webhook_missing_subscription": "webhook にサブスクリプションが示されていません"
     },
     "control_plane": {
       "multitenancy_disabled": "マルチテナントは有効になっていません"
@@ -115,7 +139,6 @@
       "unknown_command": "不明なコマンド「{{name}}」です",
       "write_not_admitted": "ロール '{{role}}' はこの書き込みを実行できません。書き込みには、書き込み権限、書き込む各列への書き込みアクセス、およびロールの行フィルターが許可する行が必要です。",
       "write_not_supported": "'{{table}}' は {{operation}} を受け付けません: そのソースでは実行できません",
-      "table_is_draft": "{{table}} は下書きです: ドメインの所有者が公開するまで停止中です",
       "source_unbound": "ソース '{{source}}' は環境 '{{env}}' に接続がありません: バインドするか、親から再コピーしてください",
       "system_catalog_unavailable": "エンジンのカタログ '{{catalog}}' を登録中です。しばらくしてからもう一度お試しください。",
       "domain_not_accessible": "ロール「{{role_id}}」はドメイン「{{domain}}」にアクセスできません",
@@ -125,7 +148,7 @@
       "viewer_column_unknown": "'{{column}}' はテーブル '{{table}}' の列ではありません",
       "viewer_filter_unknown": "'{{operator}}' は列 '{{column}}' のフィルターではありません",
       "viewer_value_invalid": "'{{column}}' のフィルターでは値 '{{value}}' を使用できません",
-      "replica_building": "{{replica}} のコピーはまだ作成中です。作成は続行されます。完了後にもう一度プレビューを開いてください。",
+      "replica_building": "{{replica}} のレプリカはまだ構築中です。構築は続行されます。完了したらプレビューを開き直してください。",
       "address_invalid": "アドレスを解決できません: {{reason}}",
       "address_not_found": "解決する対象がありません: {{reason}}",
       "mixed_resolve_and_other_fields": "resolve は 1 つの操作で他のルートフィールドと組み合わせることはできません",
@@ -137,25 +160,58 @@
       "graphql_request_not_object": "GraphQL リクエストはクエリを含む JSON オブジェクトです。",
       "graphql_parameter_type": "GraphQL リクエストの {{parameter}} は {{expected}} でなければなりません。",
       "graphql_mutation_over_get": "ミューテーションは GET ではなく、常に POST で送信します。",
-      "listed_only": "ロール {{role}} は {{table}} を一覧表示することしかできません: メタデータは読み取れますが、データは読み取れません"
+      "listed_only": "ロール {{role}} は {{table}} を一覧表示することしかできません: メタデータは読み取れますが、データは読み取れません",
+      "parameter_by_equality_only": "パラメータ {{parameter}} は等値で値を受け取ります: {{parameter}} = 値、{{parameter}} IN (値のリスト)、または {{parameter}} での結合。{{form}} では値が与えられません。",
+      "parameter_unbound_on_branch": "パラメータ {{parameter}} は OR の一方の分岐で値が与えられ、もう一方では与えられていません。すべての分岐で {{parameter}} に値を与えてください。",
+      "parameter_conflict": "パラメータ {{parameter}} に同時に 2 つの異なる値({{first}} と {{second}})が与えられています。値を 1 つにするか、IN または OR で値を列挙してください。",
+      "parameter_calls_over_cap": "このステートメントは {{table}} に {{calls}} 回の呼び出しを必要とします(パラメータに与えた値ごとに 1 回)。1 つのステートメントで行われるのは最大 {{cap}} 回です(設定 {{setting}})。値を減らしてください。",
+      "parameter_not_written": "リレーションシップ {{relationship}} はパラメータ {{parameter}} で結合します。パラメータはステートメントが値にバインドするもので、書き込まれることはありません。書き込みで {{relationship}} は作成されません。",
+      "table_is_withdrawn": "{{table}} は取り下げられています: 元に戻されるまで本番環境の外にあります",
+      "view_awaits_rule_rebuild": "入力の行ルールが変更されたため、ビュー {{view}} を再構築しています。このロールは、そのビルドが公開された後に読み取れます。",
+      "parameter_required": "テーブル '{{table}}' にはパラメーター {{parameters}} が必要です。それぞれに値を指定してください（SQL ではその列に対する WHERE 条件、GraphQL では引数）。",
+      "parameter_wrong_type": "パラメーター {{parameter}} は型 {{type}} の値を取ります。'{{value}}' はその型の値ではありません。",
+      "statement_failed": "ステートメントがサーバー内部で失敗しました ({{kind}}): {{error}}"
     },
     "discovery": {
       "adapter_missing_discover_schema": "「{{source_type}}」のアダプターは discover_schema を実装していません",
+      "answer_unreadable": "モデルの回答に読み取れるリストがありませんでした。",
       "cassandra_discovery_unsupported": "Cassandra のスキーマ検出にはライブの CQL セッションが必要ですが、利用できません。このソースの列を手動で定義してください。",
       "database_not_connected": "データベースが接続されていません",
+      "decided_both_ways": "候補は承認するか、今後は推奨しないかのどちらかで、両方はできません。",
       "domain_id_required": "domain スコープには domain_id が必要です",
       "elasticsearch_index_hint_required": "Elasticsearch の検出には「index」ヒントが必要です。",
       "elasticsearch_mapping_failed": "インデックス「{{index}}」の Elasticsearch マッピングの読み取りに失敗しました：{{error}}",
       "endpoint_already_registered": "エンドポイントは既に登録されています：{{error}}",
+      "model_has_no_room": "モデル {{model}} はリクエストを収められません: {{reason}}",
+      "model_incomplete": "選択したモデルには、ベンダーとモデルの両方を指定します。",
       "no_adapter_for_source_type": "ソースタイプ「{{source_type}}」に登録されたアダプターがありません",
       "no_live_connection": "ソース「{{source_id}}」へのライブ接続がありません。MongoDB のスキーマ検出にはソースプール内のアクティブな接続が必要です。ソースが接続されており、サーバーに到達可能であることを確認してください。",
+      "run_ended": "検出の実行 {{run_id}} はすでに終了しています: {{status}}",
+      "run_failed": "検出の実行 {{run_id}} が失敗しました: {{error}}",
+      "run_not_found": "検出の実行 {{run_id}} が見つかりません",
+      "run_still_going": "検出の実行 {{run_id}} はまだ進行中です。終了してから候補を決定してください。",
       "schema_discovery_unsupported": "ソースタイプ「{{source_type}}」はスキーマ検出をサポートしていません。列を手動で定義してください。",
+      "semantics_unavailable": "セマンティクスを実行できません: リレーションシップ推論に割り当てられたモデル {{model}} にキーがありません。管理 > AIモデルで設定してください。",
+      "source_domains_empty": "選択したソースドメインには、検出が読み取るテーブルがありません。",
       "source_not_found": "ソース「{{source_id}}」が見つかりません",
+      "source_tables_not_read": "選択したソーステーブル ({{count}} 件) はどれも読み取られません: 検出はシステムドメインのテーブルと停止中のテーブルを除外します。",
+      "source_tables_outside_domains": "選択したソーステーブルは、ドメインフィルターで選択したドメインの外にあります: {{names}}。",
       "table_id_required": "table スコープには table_id が必要です",
-      "unknown_source_type": "不明なソースタイプ：{{type}}"
+      "table_not_found": "テーブル {{table_id}} は登録されていません。",
+      "target_domains_empty": "選択したターゲットドメインには、検出が読み取るテーブルがありません。",
+      "target_tables_not_read": "選択したターゲットテーブル ({{count}} 件) はどれも読み取られません: 検出はシステムドメインのテーブルと停止中のテーブルを除外します。",
+      "target_tables_outside_domains": "選択したターゲットテーブルは、ドメインフィルターで選択したドメインの外にあります: {{names}}。",
+      "unknown_source_type": "不明なソースタイプ：{{type}}",
+      "vendor_unknown": "{{vendor}} はここではモデルを一覧表示しません。モデル名を入力してください。"
+    },
+    "llm": {
+      "request_failed": "モデルへのリクエストが失敗しました: {{reason}}",
+      "no_answer_in_time": "モデルは {{seconds}} 秒以内に回答しませんでした。",
+      "empty_answer": "モデルはテキストを返しませんでした。"
     },
     "environments": {
-      "in_use": "{{env}} はまだ {{count}} 件から参照されています。それぞれを削除または変更してから、もう一度削除してください。"
+      "in_use": "{{env}} はまだ {{count}} 件から参照されています。それぞれを削除または変更してから、もう一度削除してください。",
+      "owner_not_member": "{{user}} は環境 {{env}} を作成しましたが、{{org}} のメンバーではありません。所有者としてこの環境で操作するにはメンバーシップが必要です。"
     },
     "front_door": {
       "coordinator_waking": "環境を起動しています。約 5 分で準備が整います。",
@@ -186,7 +242,11 @@
       "unknown_command": "不明なコマンド: '{{name}}'",
       "unknown_impl_kind": "不明な関数 impl_kind：「{{impl_kind}}」",
       "written_table_missing": "コマンド '{{name}}' は登録されていない '{{table}}' に書き込みます",
-      "host_code_refused": "コマンド '{{name}}' は種類 {{impl_kind}} で、サーバーのホスト上でコードを実行します。このデプロイではホストコードはオフです。代わりにコードリゾルバーを使用してください。"
+      "host_code_refused": "コマンド '{{name}}' は種類 {{impl_kind}} で、サーバーのホスト上でコードを実行します。このデプロイではホストコードはオフです。代わりにコードリゾルバーを使用してください。",
+      "no_plain_list": "ソース '{{source_id}}' の必須パラメーターのない操作で '{{operation}}' の行を返すものがないため、そのテーブルはオンのままです",
+      "plain_list_unregistered": "ソース '{{source_id}}' の '{{operation}}' はリスト {{lists}} の行を返します。先にそのリストをテーブルとして登録してください",
+      "table_has_dependents": "関数 '{{name}}' のテーブル '{{table}}' はまだ他のオブジェクトから参照されています。先にそれらの参照を削除してください",
+      "statement_failed": "コマンド '{{name}}' が失敗しました: {{error}}"
     },
     "graphql_remote": {
       "introspection_failed": "イントロスペクションに失敗しました：{{error}}",
@@ -233,12 +293,12 @@
       "auth_required_create": "組織を作成するには認証が必要です",
       "auth_required_leave": "組織を離れるには認証が必要です",
       "auto_join_breadth_unacknowledged": "この自動参加ルールは慎重に確認してください。組織外の人が参加できる可能性があります。{{domains}} のほか、{{admits}} などのアドレスも受け入れます。管理していないドメインの誰でも、組織に自動的に参加できてしまいます。保存するには、このリスクを了承することを確認してください。",
-      "auto_join_public_domain": "auto_join には、自分が管理するドメインに限定したメール規則が必要です。この規則は {{domain}} に一致します。",
+      "auto_join_public_domain": "auto_join には、管理しているドメインに限定したメールルールが必要です。このルールは {{domain}} に一致します。",
       "auto_join_requires_role": "auto_join には auto_join_role が必要です",
-      "auto_join_rule_taken": "このルールに一致する全員を、別の組織がすでに自動参加の対象としています。2 つの組織が同じアドレスを要求することはできません。その組織に招待を依頼するか、自分の組織だけが使うドメインにルールを絞り込んでください。",
+      "auto_join_rule_taken": "別の組織がすでにこのルールに一致する全員を自動参加させています。2 つの組織が同じアドレスを取得することはできません。その組織に招待を依頼するか、自分の組織だけが使うドメインにルールを絞り込んでください。",
       "auto_join_rule_unbounded": "この自動参加ルールには境界がありません。管理していないドメインのアドレスも受け入れてしまいます。「@acme\\\\.com$」のように、所有するドメインに固定してください。",
       "cannot_delete_root": "ルート組織は削除できません",
-      "delete_confirm_required": "「{{org}}」を削除すると、そのすべてのデータが完全に破棄されます。プラットフォーム管理者を含め、誰も復元できません。続行するには「confirm」パラメータに組織IDを再入力してください。",
+      "delete_confirm_required": "「{{org}}」を削除すると、すべてのデータが完全に破棄され、プラットフォーム管理者を含め誰も復元できません。続行するには、「confirm」パラメーターに組織 ID を再入力してください。",
       "invalid_email_rule": "無効なメールルールです：{{error}}",
       "invalid_org_id": "無効な組織ID「{{org}}」です：2〜40文字、小文字の英字と数字のみ、先頭は英字である必要があります。このIDはデータベースのスキーマ名およびサブドメインになり、後から変更できません。",
       "limit_reached": "組織数の上限に達しました：1つのアカウントで作成できる組織は最大{{limit}}件です。別の組織を作成するには、不要になった組織を削除してください。",
@@ -248,7 +308,7 @@
       "not_org_admin": "{{user}} は {{org}} の org_admin を保持していません",
       "org_id_reserved": "組織ID「{{org}}」は予約されています。予約済みID：{{reserved}}。",
       "platform_admin_required": "platform_admin が必要です",
-      "retry_not_failed": "組織「{{org}}」は「{{state}}」であり「failed」ではないため、再試行するものがありません。",
+      "retry_not_failed": "組織「{{org}}」は「failed」ではなく「{{state}}」のため、再試行する対象はありません。",
       "self_role_change": "ユーザーは自分自身のロールを変更できません。別の管理者に依頼してください。",
       "view_not_permitted": "この組織を表示する権限がありません",
       "org_id_sandbox_prefix": "{{prefix}} で始まる組織 ID はデモサンドボックス用に予約されています。",
@@ -295,7 +355,9 @@
       "org_selection_required": "組織の選択が必要です",
       "already_exists": "ロール '{{role}}' はすでに存在します",
       "description_missing": "ロール '{{role}}' には目的の説明が必要です",
-      "right_not_in_parents": "ロール {{role}} は {{right}} を持てません: どの親も持っていません"
+      "right_not_in_parents": "ロール {{role}} は {{right}} を持てません: どの親も持っていません",
+      "platform_right_requires_platform_admin": "{{rights}} を含むロールはプラットフォーム管理者が定義します",
+      "rights_not_held": "ロール {{role}} には、あなたが持っていない {{rights}} が含まれています"
     },
     "schema": {
       "allowed_domains_updated": "ソース「{{source}}」の許可ドメインを更新しました",
@@ -306,13 +368,13 @@
       "cache_purged": "{{count}}件のキャッシュエントリを削除しました",
       "cache_purged_table": "テーブル {{table}} の{{count}}件のキャッシュエントリを削除しました",
       "calendar_deleted": "カレンダー「{{calendar}}」を削除しました",
-      "calendar_in_use": "カレンダー「{{calendar}}」はマテリアライズドビューで使用中です。削除する前にスナップショットスケジュールを解除してください",
+      "calendar_in_use": "カレンダー「{{calendar}}」はマテリアライズドビューで使用されています。削除する前に、それらのスナップショットスケジュールを解除してください。",
       "calendar_not_found": "カレンダー「{{calendar}}」が見つかりません",
       "calendar_saved": "カレンダー「{{calendar}}」{{version}} を保存しました",
       "column_natively_nested": "登録できません：列 {{column}} はソースではネイティブに {{native_type}} であるため、型は {{type}} ではなく json です。",
       "column_types_unresolved": "登録できません：次の列についてソースからデータ型を解決できませんでした：{{columns}}。テーブルをイントロスペクトする（スキーマ検出）か、登録前に各列にデータ型を設定してください。",
       "config_not_found": "設定ファイルが見つかりません",
-      "creation_request_queued": "作成リクエスト #{{id}} としてキューに登録しました。「{{capability}}」を保持するユーザーによる実行または却下を待っています。",
+      "creation_request_queued": "作成リクエスト #{{id}} としてキューに入りました。「{{capability}}」を持つユーザーによる実行または却下を待っています。",
       "db_pool_unavailable": "データベースプールが利用できません",
       "discovery_failed": "スキーマ検出に失敗しました：{{error}}",
       "domain_created": "ドメイン「{{domain}}」を作成しました",
@@ -324,7 +386,7 @@
       "invalid_calendar": "無効なカレンダーです：{{error}}",
       "invalid_cardinality": "無効なカーディナリティです：「{{cardinality}}」",
       "invalid_off_peak_window": "無効なオフピークウィンドウです：{{error}}",
-      "load_protection_gate_required": "{{who}}：負荷保護には少なくとも1つの更新ゲートが必要です。オフピークウィンドウ、cache_ttl の周期、またはプロービングの change_signal（probe/ttl_probe）を設定してください",
+      "load_protection_gate_required": "{{who}}: 負荷保護には少なくとも 1 つの更新ゲートが必要です。オフピークの時間帯、cache_ttl の周期、またはプローブする change_signal(probe/ttl_probe)を設定してください",
       "metric_deleted": "メトリクス「{{metric}}」を削除しました",
       "metric_not_found": "メトリクス「{{metric}}」が見つかりません",
       "metric_saved": "メトリクス「{{metric}}」を保存しました",
@@ -426,8 +488,6 @@
       "mask_unreachable": "到達できないマスクが定義されています: {{entries}}",
       "webhook_not_found": "Webhook「{{webhook}}」が見つかりません",
       "change_streams_unavailable": "ソース '{{source}}' はスタンドアロンの MongoDB サーバーで、change streams を提供しません。native 変更シグナルにはレプリカセットまたはシャードクラスターが必要です。レプリカセットとして実行するか、poll 変更シグナルを使用してください。",
-      "table_draft_set": "テーブル {{table}} を下書きにしました",
-      "table_released": "テーブル {{table}} を公開しました",
       "openapi_no_rows_field": "テーブル {{table}}: 応答には、行を読み取るためのプロパティ {{rows_field}} がありません。",
       "paging_rows_field_fixed": "テーブル {{table}}: 行の場所（{{rows_field}}）はテーブルの登録時に設定されます。別の場所から行を読み取るには、テーブルを登録し直してください。",
       "relationship_request_queued": "リクエスト #{{id}} としてキューに登録しました。リレーションシップを作成できる {{required}} 人の異なるユーザーの承認が必要で、関わる各ドメインに少なくとも 1 人の権限が及んでいる必要があります。",
@@ -444,7 +504,6 @@
       "logs_invalid": "Logs ソース {{source}}: {{error}}",
       "logs_path_refused": "Logs ソース {{source}}: {{reason}}",
       "file_path_leaves_org": "ソース {{source}}: {{path}} は組織のフォルダーの外を指しています。",
-      "file_path_local_refused": "ソース {{source}}: 多数の組織を抱えるサーバーは自身のディスク上のファイルを読み取りません。ファイルをアップロードするか、{files}/… またはリモートのアドレスで指定してください。",
       "relationship_alias_taken": "エイリアス '{{alias}}' は、すでに '{{table}}' からのリレーションシップ '{{relationship}}' のエイリアスです",
       "relationship_ambiguous_table": "テーブル名 '{{table}}' ({{end}}) は複数のソース ({{sources}}) のテーブルを指しています",
       "relationship_unknown_source": "ソーステーブル '{{table}}' は登録されていません",
@@ -456,6 +515,9 @@
       "role_id_taken": "ロール「{{role}}」はすでに存在します",
       "role_updated": "ロール「{{role}}」を更新しました",
       "relationship_id_taken": "リレーションシップ「{{relationship}}」はすでに存在します",
+      "relationship_id_reserved": "リレーションシップ ID「{{id}}」は、組み込みのリレーションシップ用に予約されている接頭辞「{{prefix}}」で始まっています。別の ID を指定してください。",
+      "relationship_source_column_missing": "リレーションシップ「{{relationship}}」にはソース列が指定されていません。リレーションシップはソーステーブルの列で結合します。",
+      "relationship_target_column_missing": "リレーションシップ「{{relationship}}」にはターゲット列が指定されていません。ターゲットが関数でない限り、リレーションシップはターゲットテーブルの列で結合します。",
       "relationship_graphql_alias_taken": "GraphQL エイリアス「{{alias}}」は、すでに「{{table}}」からのリレーションシップ「{{relationship}}」のエイリアスです",
       "trigger_refused": "{{reason}}",
       "scheduled_task_updated": "スケジュールタスク '{{task}}' を更新しました",
@@ -481,11 +543,37 @@
       "kaggle_token_missing": "Kaggle データセット {{owner}}/{{ref}}: データソースに Kaggle API トークンがありません。トークンを入力するデータソースのフォームで追加してください。",
       "jdbc_invalid": "ソース {{source}}: {{error}}",
       "jdbc_file_refused": "ソース {{source}}: URL が {{path}} を指定していますが、このサーバーは組織のためにこれを開けません。",
-      "jdbc_attach_unbuilt": "ソース {{source}}: JDBC ソースのライブアタッチはまだ利用できません（{{engines}} で有効）。行はレプリカとして複製されます。",
       "jdbc_options_refused": "ソース {{source}}: この組織の URL ではドライバーオプション {{options}} を指定できません。",
-      "jdbc_driver_refused": "ソース {{source}}: 顧客の JDBC ドライバーは Provisa 自身の JVM 内でコードとして実行されるため、セルフホスト環境でのみ許可されます。"
+      "jdbc_driver_refused": "ソース {{source}}: 顧客の JDBC ドライバーは Provisa 自身の JVM 内でコードとして実行されるため、セルフホスト環境でのみ許可されます。",
+      "code_resolver_part": "{{kind}} '{{name}}' はコードリゾルバー '{{resolver}}' の一部です。そちらで変更または廃止してください",
+      "code_resolver_no_key": "{{end}} テーブル '{{table}}' に列 '{{column}}' がありません",
+      "code_resolver_no_reader": "両方のキーを見られるロールがないため、一致を見られるロールがありません",
+      "code_resolver_unknown": "コマンド '{{function}}' は登録されていません",
+      "code_resolver_refused": "コードリゾルバー '{{function}}': {{reason}}",
+      "code_resolver_bad_id": "コードリゾルバー ID '{{resolver}}' は名前ではありません。英小文字・数字・アンダースコアで、英字で始めてください",
+      "code_resolver_taken": "コードリゾルバー '{{resolver}}' は既に存在します",
+      "code_resolver_not_found": "コードリゾルバー '{{resolver}}' が見つかりません",
+      "code_resolver_saved": "コードリゾルバー '{{resolver}}' を保存しました",
+      "code_resolver_retired": "コードリゾルバー '{{resolver}}' を廃止しました",
+      "code_resolver_has_dependents": "依存するものがある間はコードリゾルバー '{{resolver}}' を廃止できません",
+      "incremental_no_change": "コードソースに {{table}} 用の @change 関数がありません。@change table={{table}} で宣言してください。",
+      "incremental_needs_rebuild_every": "{{table}} は増分で維持されるため、時刻に従って全体が再ビルドされます。「全体の再ビルド間隔」に間隔を秒単位で設定してください。",
+      "table_derived_from_function": "テーブル '{{name}}' は関数から派生しています。関数のテーブルをオフにすると削除され、列とパラメーターは関数で編集します",
+      "table_withdrawn": "テーブル {{table}} を取り下げました",
+      "table_put_back": "テーブル {{table}} を元に戻しました",
+      "source_withdrawn": "ソース {{source}} を取り下げました",
+      "source_put_back": "ソース {{source}} を元に戻しました",
+      "withdrawn_source_not_previewable": "テーブル {{table}} はプレビューできません: ソース {{source}} が取り下げられており、取り下げられたソースを読むエンジンはありません。",
+      "withdrawn_table_not_previewable": "テーブル {{table}} はプレビューできません: 取り下げられていてレプリカを保持しておらず、エンジンはレプリカ経由でしかそのソースを読めません。",
+      "table_not_withdrawn": "テーブル {{table}} は取り下げられていません: 元に戻せるのは取り下げられたテーブルだけです。本番環境のテーブルを別のリージョンへ移すには、そのリージョンを設定してください。",
+      "source_not_withdrawn": "ソース {{source}} は取り下げられていません: 元に戻せるのは取り下げられたソースだけです。リージョンを変えるには、そのリージョンを設定してください。",
+      "put_back_needs_region": "{{object}} を元に戻すにはリージョンを指定します: 1 つ指定するか、リージョンなしなら指定なしにしてください。",
+      "table_domain_required": "テーブル '{{table}}' にドメインが指定されていません。すべてのテーブルはドメインに登録されます",
+      "mask_constant_not_text": "テキスト以外の列の定数マスクは NULL として読み取られます。保存できるのは NULL のみです: {{column}} ({{type}})"
     },
     "secrets": {
+      "env_reference_object_locked": "このオブジェクトは運用者のものです。サーバー自身の環境を読み取るため、ここでは変更できません。代わりに独自のものを追加してください。",
+      "env_reference_refused": "{{name}} はサーバー自身の環境の変数であり、この組織のものではありません。値を組織のシークレットとして保存し、代わりにそのシークレットを参照してください。",
       "name_refused": "{{name}} は {{service}} 内のこの組織のシークレットに含まれる名前ではありません。名前は組織に対する相対指定であり、組織の外に出ることはできません",
       "name_too_long": "{{name}} は名前として長すぎます。この組織のプレフィックスを付けると {{length}} 文字になり、{{service}} で使用できるのは最大 {{limit}} 文字です",
       "org_not_found": "組織「{{org_id}}」が見つかりません",
@@ -494,7 +582,8 @@
     "security": {
       "unknown_mode": "不明なセキュリティモード「{{mode}}」です",
       "data_residency_refused": "{{object}} のリージョンを設定できません: data_residency の付与は {{value}} を含みません。それを含む data_residency 付与があれば可能です",
-      "data_residency_missing": "{{object}} のリージョンを設定できません: 呼び出し元の data_residency 付与はいずれも {{value}} を含みません。それを含む data_residency 付与があれば可能です"
+      "data_residency_missing": "{{object}} のリージョンを設定できません: 呼び出し元の data_residency 付与はいずれも {{value}} を含みません。それを含む data_residency 付与があれば可能です",
+      "withdraw_residency_refused": "{{object}} を取り下げられません: 保持されている {{value}} を含む data_residency 付与が呼び出し元にありません。それを含む data_residency 付与があれば可能です"
     },
     "settings": {
       "auth_required": "認証が設定されるまで {{field}} は変更できません。",
@@ -515,6 +604,7 @@
       "use_domains_invalid": "use_domains は true、false、または null である必要があります",
       "claims_with_multitenancy": "マルチテナントのデプロイメントは、サインインのクレームからロール割り当てを読み取ることはできません。ロールは組織ごとに自ら付与しており、クレームがそれらを上書きしてしまうためです。割り当てのソースを Provisa に設定してください。",
       "federation_unknown_field": "フェデレーションの設定ではありません: {{fields}}",
+      "engine_unavailable": "{{reason}}",
       "federation_invalid": "フェデレーション設定が無効です: {{error}}",
       "federation_role_unknown": "フェデレーションのロール '{{role}}' はこの組織のロールではありません"
     },
@@ -529,7 +619,8 @@
     "sparql": {
       "columns_not_inferred": "列を推測できませんでした：プローブが行を返さず、SELECT 変数も見つかりませんでした。",
       "probe_failed": "SPARQL エンドポイントのプローブに失敗しました：{{error}}",
-      "source_not_found": "SPARQL ソース「{{source_id}}」が見つかりません"
+      "source_not_found": "SPARQL ソース「{{source_id}}」が見つかりません",
+      "no_select_variables": "クエリに SELECT 変数がありません (SELECT * または SELECT クエリではありません): クエリからカラムを読み取れません"
     },
     "subscribe": {
       "avro_topic_without_registry": "トピック '{{topic}}' は Avro メッセージを含みますが、そのソースには読み取り用のスキーマレジストリが指定されていません。ソースのスキーマレジストリ URL を設定してください",
@@ -540,10 +631,14 @@
       "schema_not_avro": "レジストリ {{registry}} のスキーマ {{schema_id}} は {{kind}} で、Avro ではありません",
       "schema_registry_error": "スキーマレジストリ {{registry}} が HTTP {{http_status}} を返しました: {{error}}",
       "schema_registry_refused_credentials": "スキーマレジストリ {{registry}} がソースの資格情報を拒否しました（HTTP {{http_status}}、認証 '{{method}}'）",
-      "schema_registry_unreachable": "スキーマレジストリ {{registry}} に接続できません: {{error}}",
+      "schema_registry_unreachable": "スキーマレジストリに接続できません: {{error}}",
       "sse_limit_reached": "同時 SSE サブスクリプションの上限に達しました",
       "table_not_found": "テーブル「{{table}}」が見つかりません",
-      "unknown_role": "不明なロール「{{role}}」です"
+      "unknown_role": "不明なロール「{{role}}」です",
+      "owner_role_lost": "サブスクリプションは終了しました: 所有者が、開始時のロールを保持していません ({{roles}})",
+      "sink_cap_reached": "実行中の Kafka シンクはすでに {{cap}} 個あり、オペレーターが許可する上限です ({{setting}})",
+      "sink_needs_write": "ロール「{{role}}」には、Kafka シンクに必要な書き込み権限がありません",
+      "owner_sign_in_expired": "サブスクリプションは終了しました: 開始時のサインインの有効期限が切れました。もう一度サインインして開始し直してください"
     },
     "users": {
       "assignment_not_found": "割り当てが見つかりません",
@@ -587,7 +682,6 @@
       "invalid_limit": "LIMIT {{value}} は行数を表す整数ではありません: LIMIT には 0 以上の数を指定します (例: LIMIT 10)。",
       "invalid_skip": "SKIP {{value}} は行数を表す整数ではありません: SKIP には 0 以上の数を指定します (例: SKIP 10)。",
       "engine_refused": "エンジンがクエリを拒否しました: {{error}}",
-      "parameter_required": "{{reason}}",
       "no_variables": "{{clause}} は {{variable}} を読みますが、文は変数を一つもバインドしていません: 変数は MATCH パターン、WITH、UNWIND、CALL でバインドされます。",
       "undefined_variable_property": "{{clause}} が読む {{variable}} は文中のどこでもバインドされていません: 変数は MATCH パターン、WITH、UNWIND、CALL でバインドされます。ここでバインドされている変数: {{bound}}。 {{suggestion}} のことですか? {{owner}} は :{{label}} にバインドされており、プロパティ {{variable}} があります。",
       "undefined_variable_properties": "{{clause}} が読む {{variable}} は文中のどこでもバインドされていません: 変数は MATCH パターン、WITH、UNWIND、CALL でバインドされます。ここでバインドされている変数: {{bound}}。 {{suggestions}} のことですか? いずれもプロパティ {{variable}} を持つラベルにバインドされています。",
@@ -631,7 +725,10 @@
       "popup_blocked": "ブラウザがログイン ウィンドウをブロックしました。このサイトのポップアップを許可して、もう一度お試しください。",
       "window_closed": "ログイン ウィンドウが完了前に閉じられました。",
       "tenant_invalid": "組織の Microsoft 365 設定にディレクトリ (テナント) が指定されていません。管理者がディレクトリの ID またはドメインを入力します。",
-      "microsoft_account_unread": "サインインは承認されましたが、Microsoft からメールボックスの所有者が示されませんでした。"
+      "microsoft_account_unread": "サインインは承認されましたが、Microsoft からメールボックスの所有者が示されませんでした。",
+      "client_missing": "アプリのクライアント ID とクライアントシークレットを入力してから、サインインしてください。",
+      "client_not_taken": "この種類のソースは、フォームで入力したクライアントではなく、組織のクライアントでサインインします。",
+      "no_account_returned": "サインインは承認されましたが、応答にどのアカウントか ({{parameter}}) が示されていませんでした。もう一度サインインしてください。"
     },
     "mail_platform": {
       "organisation_mailboxes_off": "組織のメールボックスを読み取るソースは、組織で許可されていません。管理者が「管理 › メール」で許可します。",
@@ -653,6 +750,13 @@
     "dbt_sources": {
       "unknown_role": "{{role}} という名前のロールはありません。"
     },
+    "dbt": {
+      "products": {
+        "none_offered": "ソース {{source_id}} には、契約が適用された公開モデルがありません。",
+        "id_taken": "データプロダクト {{data_product}} は既に存在します。",
+        "columns_missing": "{{model}} には契約の列がありません: {{columns}}。"
+      }
+    },
     "google_workspace": {
       "mailboxes_invalid": "その方法ではメールボックスを選択できません: {{error}}",
       "scope_not_delegated": "組織の Google サービス アカウントは {{scopes}} について承認されていません。特権管理者が、Google 管理コンソールの [セキュリティ] › [アクセスとデータ管理] › [API の制御] › [ドメイン全体の委任を管理] で、そのクライアント ID にこのスコープを追加します。新しい承認が反映されるまで最大 24 時間かかることがあります。",
@@ -670,7 +774,11 @@
       "not_a_file_source": "{{type}} ソースにはアップロードでファイルを渡せません。"
     },
     "sources": {
-      "private_destination": "この組織のソースが到達できるのは公開アドレスだけです。{{host}} は {{address}} で、公開アドレスではありません。"
+      "private_destination": "この組織のソースが到達できるのは公開アドレスだけです。{{host}} は {{address}} で、公開アドレスではありません。",
+      "local_path_refused": "この組織のソースは、組織自身のフォルダー外にあるサーバーのディスク上のファイルを読み取りません。{{path}} はそのようなファイルです。ファイルをアップロードするか、{files}/… またはリモートのアドレスで指定してください。"
+    },
+    "egress": {
+      "private_destination": "この組織が呼び出せるのは公開アドレスだけです。{{host}} は {{address}} で、公開アドレスではありません。"
     },
     "sandbox": {
       "wrong_tier": "このサンドボックスは別の場所で提供されています。サンドボックス自身のアドレスから開いてください。",
@@ -708,7 +816,6 @@
       "status_by_action": "用語のステータスは、承認・非推奨化・廃止・復元のいずれかで変わります。",
       "successor_required": "この用語にはまだ列またはテーブルがあります。廃止するとそれらは後継に移ります。後継を選んでください。",
       "successor_role": "{{role}} の後継は {{role}} か概念でなければなりません。「{{successor}}」は {{successor_role}} です。",
-      "no_retirement_history": "モデルの履歴にこの用語の廃止はありません。",
       "finding": {
         "unlinked_tables": "このクラスは、同一エンティティのリレーションシップがすべてを結んでいないテーブルにグラウンディングされています: {{tables}}。",
         "class_and_attribute": "このクラスには、キーではない列もあります: {{columns}}。",
@@ -726,7 +833,12 @@
       "not_bulk_approvable": "まとめて承認できるのは定義済み・紐付け済みの下書きだけです。対象外: {{terms}}。",
       "term_ids_required": "承認する用語を指定してください。",
       "impact_action": "この操作にはプレビューがありません。",
-      "impact_table_required": "バインドはテーブル、またはその列の1つを指定します。"
+      "impact_table_required": "バインドはテーブル、またはその列の1つを指定します。",
+      "name_taken": "'{{name}}' という用語はドメイン {{domain}} に既に存在します。別の名前を選ぶか、用語を別のドメインに置いてください。",
+      "name_taken_unscoped": "'{{name}}' という用語はドメインなしで既に存在するため、すべてのドメインに及びます。別の名前を選んでください。"
+    },
+    "table": {
+      "requires_parameters": "テーブル {{table}} は件数の取得もプロファイルもできません: {{parameters}} が必要です。行を読み取るには、それぞれに値を指定してください。"
     },
     "tag": {
       "not_on_terms": "タグ「{{tag}}」は用語には付けられません。付けられるのは pii だけです。",
@@ -756,6 +868,9 @@
         "successor_retired": "後継 '{{successor}}' は廃止されています。利用中のデータプロダクトを選んでください。",
         "successor_other_domain": "後継 '{{successor}}' はドメイン {{domain}} にあります。プロダクトのメンバーはそのドメインを共有するため、同じドメインの後継を選んでください。"
       },
+      "members": {
+        "domain_has_members": "データプロダクト {{data_product}} は、別のドメインのメンバー({{members}})を含んでいる間は、ドメイン {{domain}} に移せません。先にそれらをプロダクトから外してください。"
+      },
       "finding": {
         "no_members": "このデータプロダクトに属するテーブル、ビュー、コマンドはありません。",
         "member_deprecated": "メンバーテーブル {{table}} は非推奨です。",
@@ -766,6 +881,66 @@
         "no_description": "このデータプロダクトは目的も使い方も記載していません。",
         "successor_retired": "このプロダクトのメンバーを引き継いだデータプロダクト '{{successor}}' も廃止されています。"
       }
+    },
+    "erd": {
+      "database_unavailable": "ERD レイアウトを読み取れません: データベースが利用できません",
+      "layout_not_found": "{{name}} という名前のレイアウトはありません",
+      "layout_name_required": "レイアウトには名前が必要です",
+      "layout_place_unreadable": "レイアウトが、読み取り権限のない {{kind}} を配置しています"
+    },
+    "entitlements": {
+      "database_not_connected": "データベースに接続されていません。",
+      "role_out_of_reach": "ロール {{role_id}} は、あなたが管理するロールの範囲外です。",
+      "role_not_found": "ロール {{role_id}} が見つかりません。",
+      "principal_or_email": "ユーザーかメールのどちらか一方を指定してください。",
+      "principal_required": "ユーザーは必須です。",
+      "email_required": "メールは必須です。",
+      "email_ambiguous": "{{email}} は複数のユーザーのメールです。ユーザーを選択してください。",
+      "reason_required": "理由は必須です。",
+      "unknown_kind": "{{kind}} はエンタイトルメント リストの種類ではありません。",
+      "idp_supersedes": "ID プロバイダーがロール {{role_id}} についてこのユーザーの {{kind}} リストを送信しています。そのリストが優先されるため、ここではなくそちらで変更します。",
+      "blank_identifier": "エントリを空にすることはできません。",
+      "invalid_identifier": "{{identifier}} は有効な {{kind}} のエントリではありません。",
+      "expiry_in_past": "終了日は将来の日付にする必要があります。",
+      "expiry_removes_nothing": "この {{kind}} リストに終了日を設定しても何も削除されません。",
+      "pending_not_found": "ロール {{role_id}} と {{kind}} について {{email}} を待っている付与はありません。"
+    },
+    "mv": {
+      "change_key_missing": "{{function}} がキー列 {{column}} のない行を返しました",
+      "change_key_repeated": "{{function}} が 1 つの結果の中でキー {{key}} を 2 回返しました",
+      "change_cursor_backwards": "{{function}} のカーソルが逆行しました: 保存済みの {{stored}} より前の {{returned}} を返しました"
+    },
+    "preflight": {
+      "confined_unavailable": "{{subject}} のプリフライトチェックは実行されませんでした。この組織では隔離されたプロセス内でのみ実行されますが、そのプロセスを起動できませんでした ({{reason}})。",
+      "confined_failed": "{{subject}} のプリフライトチェックは判定を返しませんでした。隔離されたプロセスが先に終了しました ({{reason}})。"
+    },
+    "redaction": {
+      "rule_invalid": "マスキングルール {{rule}}: {{why}}",
+      "pattern_backtracks": "マスキングルール {{rule}}: このパターンは壊滅的なバックトラックを起こす可能性があります（無制限の繰り返しの中に入れ子になった繰り返し、またはその中で同じテキストから始まりうる選択肢）。その形を使わずに書き直してください。",
+      "pattern_unsupported": "マスキングルール {{rule}}: 組織のルールでは、後方参照、先読みまたは後読み、アトミックグループ、強欲な繰り返し、条件付きグループは使用できません。",
+      "pattern_too_large": "マスキングルール {{rule}}: 繰り返しを展開するとパターンが大きすぎます。繰り返し回数を小さくしてください。",
+      "server_reference": "マスキングルール {{rule}}: このサーバー上の組織はサーバーの環境を参照できません。組織自身の保管庫の ${secret:NAME} を使用してください。"
+    },
+    "debug_logs": {
+      "pattern_refused": "ログのフィルターパターンは拒否されました: {{why}}",
+      "pattern_exceeded": "ログのフィルターパターンは拒否されました: {{length}} 文字のログ行でステップ上限（{{steps}} ステップ）を超えました。"
+    },
+    "import": {
+      "include_outside_upload": "{{path}} はアップロードされたプロジェクトの外にあります。プロジェクトは自身のファイルのみを読み取ります。",
+      "filter_value_refused": "{{value}} は権限フィルターの値にできません。値は文字列、数値、true、false、null、それらのリスト、またはセッション変数です。",
+      "filter_operator_refused": "{{operator}} は権限フィルターを変換できる演算子ではありません。"
+    },
+    "relationship": {
+      "name_taken": "名前「{{name}}」はリレーションシップ「{{held_by}}」が使用しています。別の名前を付けてください。"
+    },
+    "wikidata": {
+      "no_credential": "Wikidata クエリサービスに認証情報は不要です",
+      "bad_id": "{{value}} は Wikidata の {{kind}} ではありません",
+      "bad_language": "{{language}} は言語コードではありません",
+      "bad_column_type": "Wikidata のプロパティに提供されない列の型: {{types}}",
+      "filter_required": "このクラスのインスタンスは {{count}} 件で {{limit}} 件を超えています。フィルターを選択してください",
+      "filter_too_wide": "フィルター後も {{limit}} 件を超えるインスタンスが残っています",
+      "unreachable": "Wikidata に接続できません: {{reason}}"
     }
   }
 }

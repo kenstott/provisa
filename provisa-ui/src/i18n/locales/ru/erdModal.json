@@ -20,6 +20,9 @@
     "collapseAll": "Свернуть все",
     "expandAll": "Развернуть все",
     "fitAll": "Вписать все",
+    "download": "Скачать",
+    "fullscreen": "Во весь экран",
+    "exitFullscreen": "Выйти из полноэкранного режима",
     "downloadSvg": "Скачать SVG",
     "downloadPng": "Скачать PNG",
     "downloadJpeg": "Скачать JPEG",
@@ -31,6 +34,7 @@
     "focusDomains": "Домены: {{names}}",
     "focusTables": "Таблицы: {{names}}",
     "focusMissing": "Не найдено: {{names}}",
-    "showAll": "Показать все"
+    "showAll": "Показать все",
+    "showWithdrawn": "Показывать отозванные"
   }
 }

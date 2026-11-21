@@ -1,0 +1,19 @@
+{
+  "federationRegions": {
+    "intro": "Chaque région exécute ses requêtes sur son propre moteur : le stockage que la plateforme a attribué à cette organisation comme moteur de la région, avec son type de moteur et son URL de connexion.",
+    "readOnlyNote": "L'administrateur de la plateforme attribue le moteur de chaque région. Il est affiché ici en lecture seule.",
+    "sandboxNote": "Ceci est affiché pour expliquer les régions. Il ne peut pas être modifié dans une démo.",
+    "restartNote": "Une modification prend effet au redémarrage des nœuds de la région.",
+    "restartPending": "Enregistré. La modification prend effet au redémarrage des nœuds de la région.",
+    "edit": "Modifier",
+    "store": "Stockage du moteur",
+    "kind": "Type de moteur",
+    "url": "URL",
+    "sharedWith": "Également le moteur de",
+    "storeHelp": "Le stockage que cette région désigne comme son moteur. Le stockage choisi est défini sur la page Plateforme.",
+    "sharedHint": "Également le moteur de {{regions}}. Une modification ici s'y applique aussi.",
+    "kindHelp": "Le moteur que ce stockage exécute.",
+    "urlHelp": "L'URL de connexion du moteur, ou une référence comme ${env:NAME}. Elle est conservée exactement telle que saisie. Un mot de passe qu'elle contient n'est plus jamais affiché ; laissez l'URL inchangée pour le conserver.",
+    "storeMissing": "La région {{region}} désigne {{store}} comme son moteur, et l'organisation n'a aucun stockage {{store}}."
+  }
+}

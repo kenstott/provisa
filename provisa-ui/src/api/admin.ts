@@ -14,10 +14,12 @@ import type { Paging, PagingKind } from "../types/admin";
 import { ORG_HEADER } from "../lib/authFetch";
 import { normalizeRole, type RawRole } from "../lib/roles";
 import type { ApprovedJoin } from "../components/canvas/joinGraph";
+import type { FilterSpec } from "../pages/sql/columnFilter";
 import { serverMessage, requestFailed, type ServerMessageShape } from "../i18n/serverMessage";
 import type { MaskEntry } from "../lib/masks";
 import type { ResultRedirect } from "../types/resultRedirect";
 import { columnKeys, rowByKeys } from "../lib/columnKeys";
+import { selectedDomainsQuery, withSelectedDomains } from "./selectedDomains";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "";
 
@@ -368,7 +370,7 @@ export interface PersonalAccessToken {
   token_hash: string;
   prefix: string;
   name: string;
-  role_id: string | null;
+  // The roles the token may act as, by name: at least one, each a role its issuer held.
   scopes: string[];
   created_at: string;
   expires_at: string | null;
@@ -389,8 +391,7 @@ export async function listPersonalAccessTokens(): Promise<PersonalAccessToken[]>
 
 export async function issuePersonalAccessToken(body: {
   name: string;
-  role_id?: string | null;
-  scopes?: string[];
+  scopes: string[];
   expires_in_days?: number | null;
 }): Promise<{ token: string; prefix: string; name: string; expires_at: string | null }> {
   const res = await fetch(`${API_BASE}/auth/tokens`, {
@@ -568,7 +569,7 @@ export async function previewTable(
   columns: string[];
   rows: Record<string, unknown>[];
   rowCount: number;
-  draft: boolean;
+  withdrawn: boolean;
 }> {
   const resp = await fetch(`${API_BASE}/admin/tables/${tableId}/preview`, {
     method: "POST",
@@ -613,6 +614,9 @@ export interface TableMetadata {
   pagingKind?: PagingKind | null;
   pagination?: Paging | null;
   pagingCeilingRows?: number | null;
+  // REQ-1986: the parameters a read of it must give, by the name a caller gives each; a table
+  // with any is a lookup, listed apart in the picker.
+  requiredParameters?: string[];
 }
 
 export interface ColumnMetadata {
@@ -642,38 +646,442 @@ export async function fetchSdl(roleId: string): Promise<string> {
 
 const API_BASE_RAW = import.meta.env.VITE_API_BASE || "";
 
-export async function discoverRelationships(
-  scope: string,
-  tableId?: number,
-  domainId?: string,
-): Promise<{ candidates_found: number; stored_ids: number[] }> {
-  const resp = await fetch(`${API_BASE_RAW}/admin/discover/relationships`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      scope,
-      table_id: tableId,
-      domain_id: domainId,
-    }),
-  });
-  if (!resp.ok) throw httpError("Discovery", resp.status);
-  return resp.json();
+/** The kinds of relationship discovery: foreign keys read from the sources' own constraints, and
+ *  semantics inferred by an AI model. */
+export type DiscoveryKind = "foreign_keys" | "semantics";
+
+/** REQ-413: what a run can look for: the kinds, and Key value overlap, the measure of the
+ *  semantic pairs whose model confidence lies between its cutoff and the threshold. It is chosen
+ *  only with semantics. */
+export type DiscoveryRunKind = DiscoveryKind | "key_values";
+
+/** An /admin/discover error carrying the server's stable code (e.g. `discovery.vendor_unknown`). */
+export class DiscoveryError extends Error {
+  readonly status: number;
+  readonly code: string | null;
+  constructor(status: number, code: string | null, message: string) {
+    super(message);
+    this.name = "DiscoveryError";
+    this.status = status;
+    this.code = code;
+  }
 }
 
-export async function fetchCandidates(): Promise<unknown[]> {
-  const resp = await fetch(`${API_BASE_RAW}/admin/discover/candidates`);
-  if (!resp.ok) throw httpError("Fetch candidates", resp.status);
-  return resp.json();
+async function discoveryRequest<T>(path: string, label: string, init?: RequestInit): Promise<T> {
+  const resp = await fetch(`${API_BASE_RAW}/admin/discover${path}`, init);
+  if (!resp.ok) {
+    const body = (await resp.json().catch(() => ({ detail: resp.statusText }))) as {
+      code?: string;
+    };
+    throw new DiscoveryError(
+      resp.status,
+      typeof body.code === "string" ? body.code : null,
+      serverMessage(body as ServerMessageShape, requestFailed(label, resp.status)),
+    );
+  }
+  return resp.json() as Promise<T>;
 }
 
-export async function acceptCandidate(id: number, name?: string): Promise<unknown> {
-  const resp = await fetch(`${API_BASE_RAW}/admin/discover/candidates/${id}/accept`, {
-    method: "POST",
+const postJson = (body: unknown): RequestInit => ({
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify(body),
+});
+
+/** REQ-413: what a run looks at. A null table list is every table of the chosen domains; with
+ *  `target_same_as_source` the target fields are ignored. `vendor` and `model` are both given (a
+ *  model for this run only) or both null (the model assigned to relationship inference). */
+export interface DiscoveryScope {
+  kinds: DiscoveryRunKind[];
+  source_domains: string[];
+  source_tables: number[] | null;
+  target_same_as_source: boolean;
+  target_domains: string[];
+  target_tables: number[] | null;
+  vendor: string | null;
+  model: string | null;
+  /** REQ-413 (amended 2026-11-18): Tick from (0 to 1), the score from which the run's proposals
+   *  start ticked; the model is told it and the key value overlap band runs up to it. */
+  threshold: number;
+  /** The distinct sample values read and shown to the model of each compared column. */
+  samples_per_column: number;
+  /** Key value overlap's settings, given while it is chosen, else null: its measure cutoff (0 to
+   *  1), its sample size (the most non-null values read of each column), the share of a source's
+   *  values in a key target at which a pair is a key relationship (0 to 1), and the most a pair
+   *  scores when neither side is a key (0 to 1). */
+  measure_cutoff: number | null;
+  sample_size: number | null;
+  contained_at: number | null;
+  shared_ceiling: number | null;
+}
+
+/** REQ-413: Key value overlap as the signed-in person last set it, remembered as the threshold
+ *  is: chosen, and its settings. */
+export interface KeyValueSettings {
+  chosen: boolean;
+  cutoff: number;
+  sample_size: number;
+  contained_at: number;
+  shared_ceiling: number;
+}
+
+/** REQ-413 (amended 2026-11-18): every threshold and sample size a run uses, as the person last
+ *  set them in the discover dialog. */
+export interface DiscoveryRunSettings {
+  threshold: number;
+  samples_per_column: number;
+  key_values: KeyValueSettings;
+}
+
+/** REQ-413 (amended 2026-11-18): the person's discovery settings, one store: the run settings
+ *  and the filter on a run's Score column the results open with (null: cleared). */
+export interface DiscoverySettings extends DiscoveryRunSettings {
+  score_filter: ScoreFilter | null;
+}
+
+/** The person's settings, which prefill the dialog, and the defaults Reset to defaults
+ *  restores. */
+export function fetchDiscoverySettings(): Promise<
+  DiscoverySettings & { defaults: DiscoverySettings }
+> {
+  return discoveryRequest("/settings", "Discovery settings");
+}
+
+/** Where a model's two limits come from: set by hand, the vendor's published figures, or the
+ *  default pair. */
+export type LimitsSource = "override" | "known" | "default";
+
+export interface DiscoveryModel {
+  vendor: string;
+  model: string;
+  input_tokens: number;
+  output_tokens: number;
+  limits_source: LimitsSource;
+}
+
+/** The Model select's start: the assigned model and every vendor with a key. */
+export interface DiscoveryModels {
+  assigned: (DiscoveryModel & { has_key: boolean }) | null;
+  vendors: string[];
+  semantics_available: boolean;
+}
+
+export interface ModelLimits {
+  vendor: string;
+  model: string;
+  input_tokens: number;
+  output_tokens: number;
+  source: LimitsSource;
+}
+
+/** The type groups columns are compared within. */
+export type TypeGroup = "whole_number" | "decimal" | "text" | "uuid";
+
+/** At most how many calls to the model a run of this scope makes, and the table pairs they list.
+ *  The count reads no table: it is an upper bound from what is registered, and the run may make
+ *  fewer. */
+export interface DiscoveryCount {
+  requests: number;
+  requests_are: "upper_bound";
+  /** Empty: calls list table pairs, not type groups (REQ-413, amended 2026-11-18). */
+  by_group: Partial<Record<TypeGroup, number>>;
+  table_pairs: number;
+  table_pairs_per_request: number;
+  suggestions_per_request?: number;
+  model: DiscoveryModel | null;
+  source_tables: number;
+  target_tables: number;
+  /** REQ-1986: the tables of the scope that require a parameter, so the run never reads them. */
+  tables_not_read: number;
+}
+
+/** What semantic inference did in a run, and when it found none, why. */
+export interface SemanticsReport {
+  suggested: number;
+  empty_reason:
+    "requests_failed" | "unreadable" | "none_proposed" | "below_threshold" | "filtered" | null;
+  requests_total: number;
+  requests_done: number;
+  split: number;
+  proposed: number;
+  /** Elements of an answer that named no two compared columns. */
+  invalid: number;
+  /** Proposals the model itself gave less than the threshold. */
+  below_threshold: number;
+  threshold: number;
+  // The four below are absent from a run recorded before a run kept what it left out.
+  /** Proposals whose two columns are not compared: their classes do not meet. */
+  not_comparable?: number;
+  /** Proposals Jev was asked to score, and those it scored under the threshold. Jev's score is
+   *  shown beside the model's and removes none. */
+  scored?: number;
+  scored_below_threshold?: number;
+  /** Requests whose proposals Jev could not score: they kept the model's confidence. */
+  scoring_failed?: number;
+  /** Pairs measured for Key value overlap, and those of them admitted on matching key values. */
+  measured?: number;
+  admitted?: number;
+  cut_short: number;
+  unreadable: number;
+  /** Each failed request: its group and the server's catalogued message (code and params; the
+   * English `message` is used where this build has no wording for the code). */
+  failed: { group: TypeGroup; code: string; params: Record<string, unknown>; message: string }[];
+  stopped: boolean;
+}
+
+export type RemovedKind = "same_column" | "existing" | "rejected" | "out_of_scope";
+
+/** Why a proposal is not among a run's suggestions: a reason of an answer's reading, or a
+ *  removal. */
+export type ProposalReason =
+  "invalid_shape" | "unknown_column" | "not_comparable" | "below_threshold" | RemovedKind;
+
+/** REQ-413: one column of a measured pair: how many distinct values were read (`more`: it holds
+ *  more than the bound), whether its values are distinct, and why it was not measured. */
+export interface MeasuredSide {
+  values: number | null;
+  more: boolean;
+  distinct: boolean | null;
+  unmeasured: "not_read" | "not_readable" | null;
+}
+
+/** REQ-413: a proposed pair's values measured against each other, at most `bound` distinct values
+ *  read of each column. */
+export interface PairMeasure {
+  bound: number;
+  source: MeasuredSide;
+  target: MeasuredSide;
+  source_in_target: number | null;
+  target_in_source: number | null;
+}
+
+/** REQ-413: a proposal a run read. `reason` null: one of the run's suggestions. One that named no
+ *  two compared columns has no tables or confidence, and `answer` is the element as the model
+ *  wrote it. `score` decides: the measure's where values were compared (`measured`), else the
+ *  model's `confidence`, which is shown beside it; `scored` is Jev's where Jev scored it. */
+export interface RunProposal {
+  id: number;
+  run_id: number;
+  kind: DiscoveryKind;
+  source_table_id: number | null;
+  source_column: string | null;
+  target_table_id: number | null;
+  target_column: string | null;
+  cardinality: string | null;
+  score: number | null;
+  measured: boolean;
+  measure: PairMeasure | null;
+  confidence: number | null;
+  scored: number | null;
+  reasoning: string | null;
+  suggested_name: string | null;
+  reason: ProposalReason | null;
+  answer: string | null;
+  /** Whether a reviewer may accept it or mark it not to be recommended again. */
+  decidable: boolean;
+  /** Whether a reviewer may accept it: decidable, and a many-to-many pair names its dimension. */
+  acceptable: boolean;
+  /** One of its tables requires a parameter, so it is never read: no values were compared. */
+  reduced_information: boolean;
+  /** A suggestion the model rated under the threshold, admitted on key values matching in the
+   *  data: its measure is shown beside the model's confidence. */
+  admitted_on_key_values: boolean;
+  /** A many-to-many pair: the shared dimension accepting it makes, or the registered one it
+   *  joins (``reused``). Null for any other pair. */
+  dimension: { name: string; reused: boolean } | null;
+  /** REQ-1586: a junction suggestion, the junction its two ends are joined through. Null for
+   *  any other pair; absent until the server sends it (join through a junction). */
+  via?: { table_id: number; source_column: string; target_column: string } | null;
+}
+
+/** A run's report once semantics is under way or the run has ended. */
+export interface DiscoveryReport {
+  suggestions: number;
+  stored_ids: number[];
+  removed: Partial<Record<RemovedKind, number>>;
+  decided_by?: Record<string, number>;
+  foreign_keys?: { found: number; suggested: number };
+  semantics?: SemanticsReport;
+  /** Key value overlap's settings, when the run chose it. */
+  key_values?: { cutoff: number; sample_size: number };
+  model?: DiscoveryModel;
+  // What the run compared; absent from a run recorded before a run said so.
+  source_domains?: string[];
+  target_domains?: string[];
+  source_tables?: number;
+  target_tables?: number;
+  target_same_as_source?: boolean;
+  // Tables chosen by name that the run left out; absent from a run recorded before it said so.
+  source_left_out?: number;
+  target_left_out?: number;
+}
+
+/** A run's report while it still reads its tables. */
+export interface DiscoveryReading {
+  phase: "reading";
+  tables_read: number;
+  tables_total: number;
+}
+
+export type DiscoveryRunStatus = "running" | "done" | "stopped" | "failed";
+
+export interface DiscoveryRun {
+  id: number;
+  status: DiscoveryRunStatus;
+  scope: DiscoveryScope;
+  model: string | null;
+  requests_total: number;
+  requests_done: number;
+  suggestions: number;
+  report: DiscoveryReport | DiscoveryReading | null;
+  error: string | null;
+  stop_requested: boolean;
+  stopped_by: string | null;
+  started_by: string | null;
+  started_at: string;
+  finished_at: string | null;
+}
+
+export function isReading(report: DiscoveryRun["report"]): report is DiscoveryReading {
+  return report !== null && "phase" in report && report.phase === "reading";
+}
+
+export function fetchDiscoveryModels(): Promise<DiscoveryModels> {
+  return discoveryRequest("/models", "Discovery models");
+}
+
+/** The models a vendor serves, read live from the vendor with the org's key. */
+export async function fetchVendorModels(vendor: string): Promise<string[]> {
+  const found = await discoveryRequest<{ models: string[] }>(
+    `/vendors/${encodeURIComponent(vendor)}/models`,
+    "Vendor models",
+  );
+  return found.models;
+}
+
+export function fetchModelLimits(vendor: string, model: string): Promise<ModelLimits> {
+  const q = new URLSearchParams({ vendor, model });
+  return discoveryRequest(`/limits?${q}`, "Model limits");
+}
+
+// REQ-2253: a run carries the navbar filter's selection (selectedDomainsQuery), so the server
+// reads, counts and proposes no table outside it.
+
+export function countDiscoveryRun(
+  scope: DiscoveryScope,
+  domains: ReadonlySet<string> | null,
+): Promise<DiscoveryCount> {
+  return discoveryRequest(
+    `/runs/count${selectedDomainsQuery(domains)}`,
+    "Discovery count",
+    postJson(scope),
+  );
+}
+
+export async function startDiscoveryRun(
+  scope: DiscoveryScope,
+  domains: ReadonlySet<string> | null,
+): Promise<DiscoveryRun> {
+  return (
+    await discoveryRequest<{ run: DiscoveryRun }>(
+      `/runs${selectedDomainsQuery(domains)}`,
+      "Discovery",
+      postJson(scope),
+    )
+  ).run;
+}
+
+export async function fetchDiscoveryRun(id: number): Promise<DiscoveryRun> {
+  return (await discoveryRequest<{ run: DiscoveryRun }>(`/runs/${id}`, "Discovery run")).run;
+}
+
+/** The latest runs, newest first. */
+export async function fetchDiscoveryRuns(limit: number): Promise<DiscoveryRun[]> {
+  return (
+    await discoveryRequest<{ runs: DiscoveryRun[] }>(`/runs?limit=${limit}`, "Discovery runs")
+  ).runs;
+}
+
+/** Stop after the request in flight; what was found is kept. */
+export async function stopDiscoveryRun(id: number): Promise<DiscoveryRun> {
+  return (
+    await discoveryRequest<{ run: DiscoveryRun }>(`/runs/${id}/stop`, "Stop discovery", {
+      method: "POST",
+    })
+  ).run;
+}
+
+/** Every proposal of a run no reviewer has decided, the highest score first, and the score from
+ *  which a row starts ticked. */
+export interface RunProposals {
+  proposals: RunProposal[];
+  /** The signed-in person's threshold: rows scoring at least it start ticked. */
+  threshold: number;
+  /** The score a run keeps a suggestion at, which `below_threshold` is against. */
+  kept_at: number;
+  /** The signed-in person's filter on the Score column, in percent, applied when the results
+   *  open (REQ-413, amended 2026-11-18); null when they cleared it. */
+  score_filter: ScoreFilter | null;
+}
+
+/** REQ-413: a filter on a run's Score column, as the list's column filter holds it; a number
+ *  column's menu offers only number operators, which are all the server keeps. */
+export type ScoreFilter = FilterSpec;
+
+/** REQ-413: keep the Score filter set in a run's results as the signed-in person's own; null
+ *  keeps it cleared. */
+export function saveDiscoveryScoreFilter(
+  filter: ScoreFilter | null,
+): Promise<{ filter: ScoreFilter | null }> {
+  return discoveryRequest("/score-filter", "Discovery score filter", {
+    method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name: name ?? null }),
+    body: JSON.stringify({ filter }),
   });
-  if (!resp.ok) throw httpError("Accept", resp.status);
-  return resp.json();
+}
+
+export function fetchRunProposals(runId: number): Promise<RunProposals> {
+  return discoveryRequest(`/runs/${runId}/proposals`, "Run proposals");
+}
+
+/** REQ-413: keep the score from which a run's proposals start ticked as the signed-in person's
+ *  own. */
+export function saveDiscoveryThreshold(threshold: number): Promise<{ threshold: number }> {
+  return discoveryRequest("/threshold", "Discovery threshold", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ threshold }),
+  });
+}
+
+/** What a reviewer decided in a run's result: the proposals to accept, and those not to
+ *  recommend again. One in neither stays undecided. An accepted proposal carries a name only
+ *  where a person typed one; without one the server names it, telling it apart from names
+ *  already held (REQ-415). */
+export interface RunDecisions {
+  accept: { id: number; name?: string }[];
+  not_again: number[];
+}
+
+export interface DecisionResult {
+  id: number;
+  action: "accept" | "not_again";
+  ok: boolean;
+  error?: string;
+  relationship_id?: string;
+}
+
+export async function applyRunDecisions(
+  runId: number,
+  decisions: RunDecisions,
+): Promise<DecisionResult[]> {
+  return (
+    await discoveryRequest<{ results: DecisionResult[] }>(
+      `/runs/${runId}/apply`,
+      "Apply",
+      postJson(decisions),
+    )
+  ).results;
 }
 
 export async function fetchRejectedCount(): Promise<number> {
@@ -689,15 +1097,6 @@ export async function clearRejectedCandidates(): Promise<{ deleted: number }> {
   });
   if (!resp.ok) throw httpError("Clear rejections", resp.status);
   return resp.json();
-}
-
-export async function rejectCandidate(id: number, reason: string): Promise<void> {
-  const resp = await fetch(`${API_BASE_RAW}/admin/discover/candidates/${id}/reject`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ reason }),
-  });
-  if (!resp.ok) throw httpError("Reject", resp.status);
 }
 
 // --- Schema Discovery ---
@@ -899,9 +1298,17 @@ export interface PlatformSettings {
     default_format: string;
     ttl: number;
   };
-  sampling?: {
+  sampling: {
     default_sample_size: number;
   };
+  // REQ-1327: the org's hot-table and replicate settings.
+  hot_tables: {
+    auto_threshold: number;
+    max_rows: number;
+    max_bytes: number;
+    refresh_interval: number | null;
+  };
+  replication: { hot_threshold: number; hot_interval: number; hot_max_rows: number };
   cache: {
     default_ttl: number;
   };
@@ -911,11 +1318,16 @@ export interface PlatformSettings {
     subgraph_name: string;
     role: string | null;
   };
+  // REQ-194 (CLASH POLICY): how the org's names table settles a name clash.
+  names: {
+    clash_policy: "refuse" | "disambiguate";
+  };
   naming: {
-    // Deployment-wide, so absent for an org administrator; the two below are the org's own.
-    domain_prefix?: boolean;
-    convention?: string;
-    sql_convention?: string;
+    // REQ-1327: the org's own, inherited from the deployment where it set none.
+    domain_prefix: boolean;
+    // REQ-194: the GraphQL convention the org's schema is named by.
+    convention: string;
+    sql_convention: string;
     use_domains: boolean | null;
     default_domain: string;
   };
@@ -939,10 +1351,11 @@ export interface PlatformSettings {
     // SubsystemTracesConfig declares.
     subsystem_traces: SubsystemTraces;
   };
-  graphql_remote?: {
-    max_object_depth: number;
-    max_list_depth: number;
-    max_list_items: number;
+  // The row limit is the org's (REQ-1327); the traversal limits are absent for an org administrator.
+  graphql_remote: {
+    max_object_depth?: number;
+    max_list_depth?: number;
+    max_list_items?: number;
     max_rows: number;
   };
   cdc?: {
@@ -1085,8 +1498,9 @@ export async function setFederationEngine(
 }
 
 // --- Per-org engine lane (REQ-1412) ---
-// Which coordinator the ACTING org's queries land on. Separate from the deployment-wide engine
-// KIND above: this one is org_settings, so an org administrator owns it in either tenancy mode.
+// Which coordinator an org's queries land on. Separate from the deployment-wide engine KIND above:
+// the org's own administrator reads and saves it on org_settings, and an operator can set it for a
+// named org on the deployment check.
 
 export type OrgEngineMode = "shared" | "isolated" | "external";
 
@@ -1147,20 +1561,46 @@ export async function fetchOrgEngine(): Promise<OrgEngineState> {
   return resp.json();
 }
 
-export async function setOrgEngine(body: {
+export interface OrgEngineSave {
   mode: OrgEngineMode;
   engine_kind?: string | null;
   external_host?: string | null;
   external_port?: number | null;
   external_url?: string | null;
-}): Promise<{ success: boolean; mode: OrgEngineMode }> {
-  const resp = await fetch(`${API_BASE_RAW}/admin/org-engine`, {
+}
+
+export interface OrgEngineSaved {
+  success: boolean;
+  mode: OrgEngineMode;
+}
+
+async function putOrgEngine(path: string, body: OrgEngineSave): Promise<OrgEngineSaved> {
+  const resp = await fetch(path, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
   if (!resp.ok) throw httpError("Org engine update", resp.status);
   return resp.json();
+}
+
+// REQ-1412: the acting org's administrator, saving the org's own lane.
+export function setOrgEngine(body: OrgEngineSave): Promise<OrgEngineSaved> {
+  return putOrgEngine(`${API_BASE_RAW}/admin/org-engine`, body);
+}
+
+// REQ-1412, REQ-1327: the platform administrator's, naming the org.
+const platformOrgEnginePath = (orgId: string) =>
+  `${API_BASE_RAW}/admin/platform/orgs/${encodeURIComponent(orgId)}/engine`;
+
+export async function fetchPlatformOrgEngine(orgId: string): Promise<OrgEngineState> {
+  const resp = await fetch(platformOrgEnginePath(orgId));
+  if (!resp.ok) throw httpError("Org engine fetch", resp.status);
+  return resp.json();
+}
+
+export function setPlatformOrgEngine(orgId: string, body: OrgEngineSave): Promise<OrgEngineSaved> {
+  return putOrgEngine(platformOrgEnginePath(orgId), body);
 }
 
 // --- The org's own encryption key (REQ-1574) ---
@@ -1272,10 +1712,13 @@ export interface McpServerStatus {
   bridge_command?: string | null;
   bridge_args?: string[];
   stdio_role: string | null;
+  // The principal local calls act for, beside the role; null -> they are refused — REQ-1105.
+  principal: string | null;
   max_rows: number;
   tools: McpTool[];
   enable_env_var: string;
   role_env_var: string;
+  principal_env_var: string;
 }
 
 export async function fetchMcpServer(): Promise<McpServerStatus> {
@@ -1334,14 +1777,6 @@ export async function searchCatalog(
 
 export interface CacheStorageState {
   cache: { enabled: boolean; redis_url: string; default_ttl: number | null };
-  hot_tables: {
-    auto_threshold: number;
-    max_rows: number;
-    max_bytes: number;
-    refresh_interval: number | null;
-  };
-  // REQ-826: when a busy table is replicated (Default threshold, window, size ceiling).
-  replication: { hot_threshold: number; hot_interval: number; hot_max_rows: number };
   materialized_views: { default_ttl: number | null };
   materialize: { store_url: string; default_store_url: string };
   restart_required_note: string;
@@ -1356,8 +1791,6 @@ export async function fetchCacheStorage(): Promise<CacheStorageState> {
 export async function setCacheStorage(
   body: Partial<{
     cache: Partial<CacheStorageState["cache"]>;
-    hot_tables: Partial<CacheStorageState["hot_tables"]>;
-    replication: Partial<CacheStorageState["replication"]>;
     materialized_views: Partial<CacheStorageState["materialized_views"]>;
     materialize: { store_url: string };
   }>,
@@ -1624,6 +2057,9 @@ export async function runSql(
   statement: string | { sql: string; params: (string | number)[] },
   role: string,
   statsEnabled: boolean = false,
+  /** True for one page the caller bounds with its own LIMIT (a grid reading pageSize+1 rows): the
+      server does not measure it against the large-result threshold. */
+  paged: boolean = false,
 ): Promise<{
   columns: string[];
   /** REQ-1937: each column's SQL type, parallel to `columns`; null when the engine reported none. */
@@ -1647,13 +2083,14 @@ export async function runSql(
       // api/acting_role.py), because the server's acting role is one member of the set.
       method: "POST",
       headers,
-      body: JSON.stringify(
-        typeof statement === "string"
+      body: JSON.stringify({
+        ...(typeof statement === "string"
           ? { sql: statement }
           : statement.params.length > 0
             ? statement
-            : { sql: statement.sql },
-      ),
+            : { sql: statement.sql }),
+        ...(paged ? { paged: true } : {}),
+      }),
     });
     if (!resp.ok) {
       return { columns: [], column_types: null, rows: [], error: await refusal(resp, "runSql") };
@@ -1727,9 +2164,10 @@ export async function fetchApprovedJoins(): Promise<ApprovedJoin[]> {
 
 /** The statements of a batch, as /data/sql splits it (a `;` in a string, a comment or a
  * dollar-quoted block does not split). Nothing is run. */
-export async function splitSql(sql: string): Promise<string[]> {
+export async function splitSql(sql: string, signal?: AbortSignal): Promise<string[]> {
   const resp = await fetch(`${API_BASE_RAW}/data/sql/statements`, {
     method: "POST",
+    signal,
     headers: { "Content-Type": "application/json", Accept: "application/json" },
     body: JSON.stringify({ sql }),
   });
@@ -1757,10 +2195,13 @@ export async function runSqlEach(
   // REQ-1937: the values of the statement's $1…$n placeholders, bound by the server; none sent
   // when there are none.
   params: (string | number)[] = [],
+  // Aborts the request (Stop in the SQL editor).
+  signal?: AbortSignal,
 ): Promise<{ answers: StatementAnswer[]; provisa_stats?: unknown; error?: string }> {
   try {
     const resp = await fetch(`${API_BASE_RAW}/data/sql`, {
       method: "POST",
+      signal,
       headers: sqlHeaders(role, statsEnabled),
       body: JSON.stringify(
         params.length > 0 ? { sql, results: "each", params } : { sql, results: "each" },
@@ -1846,16 +2287,24 @@ export async function explainSql(
   return resp.json();
 }
 
+// REQ-2253: an NL request carries the navbar filter's selection (useViewDomains) as a list; null
+// asks for no narrowing and sends none. The server intersects it with the role's domains and sends
+// the model, and reads, nothing outside it.
+function selectedDomainsBody(domains: ReadonlySet<string> | null): { domains?: string[] } {
+  return domains ? { domains: [...domains] } : {};
+}
+
 export async function nlToSql(
   question: string,
-  role: string = "org_admin",
-  strict: boolean = true,
+  role: string,
+  strict: boolean,
+  domains: ReadonlySet<string> | null,
 ): Promise<{ sql: string; cypher?: string; attempts: number; error?: string }> {
   try {
     const resp = await fetch(`${API_BASE_RAW}/data/nl-to-sql`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "X-Provisa-Role": role },
-      body: JSON.stringify({ question, strict }),
+      body: JSON.stringify({ question, strict, ...selectedDomainsBody(domains) }),
     });
     if (!resp.ok) {
       return { sql: "", attempts: 0, error: await refusal(resp, "nlToSql") };
@@ -2140,20 +2589,30 @@ export async function fetchUserAssignments(userId: string): Promise<UserAssignme
   return res.json();
 }
 
-export async function addUserAssignment(
+/** A member's access in this environment, given in one save (REQ-2155). */
+export interface MemberAccess {
+  role_ids: string[];
+  domain_id: string;
+  expires_at: string | null;
+  /** Entitlement lists of grants the save makes (REQ-2219). */
+  entitlements: { role_id: string; kind: string; identifiers: string[] }[];
+  /** Recorded with every list; required when there is one. */
+  reason: string;
+}
+
+/** Grant a member several roles and their entitlement lists at once: all of it, or none. */
+export async function grantMemberAccess(
   userId: string,
-  roleId: string,
-  domainId: string,
-  expiresAt: string | null = null,
-): Promise<UserAssignment> {
-  const res = await fetch(`${API_BASE}/admin/users/${userId}/assignments`, {
+  access: MemberAccess,
+): Promise<{ assignments: UserAssignment[] }> {
+  const res = await fetch(`${API_BASE}/admin/users/${userId}/access`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ role_id: roleId, domain_id: domainId, expires_at: expiresAt }),
+    body: JSON.stringify(access),
   });
   if (!res.ok) {
     const data = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new Error(serverMessage(data, requestFailed("add assignment", res.status)));
+    throw new Error(serverMessage(data, requestFailed("grant access", res.status)));
   }
   return res.json();
 }
@@ -2488,12 +2947,13 @@ export async function recomputeSchemaClusters(): Promise<{
 export async function submitNlQuery(
   q: string,
   role: string,
-  strict: boolean = false,
+  strict: boolean,
+  domains: ReadonlySet<string> | null,
 ): Promise<{ job_id: string }> {
   const res = await fetch(`${API_BASE}/query/nl`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "X-Provisa-Role": role },
-    body: JSON.stringify({ q, strict }),
+    body: JSON.stringify({ q, strict, ...selectedDomainsBody(domains) }),
   });
   if (!res.ok) {
     const data = await res.json().catch(() => ({ error: res.statusText }));
@@ -2780,13 +3240,18 @@ export interface TableSearchAnswer {
 }
 
 /** REQ-464: search a source's schema for the tables a description fits. The steward chooses;
- *  nothing is registered by a search. */
+ *  nothing is registered by a search. REQ-2253: within the navbar filter's selection
+ *  (useViewDomains; null for none). */
 export async function searchSourceTables(
   sourceId: string,
   query: string,
   schemaName: string,
+  selected: ReadonlySet<string> | null,
 ): Promise<TableSearchAnswer> {
-  const params = new URLSearchParams({ q: query, schema_name: schemaName });
+  const params = withSelectedDomains(
+    new URLSearchParams({ q: query, schema_name: schemaName }),
+    selected,
+  );
   const res = await fetch(
     `${API_BASE}/admin/sources/${encodeURIComponent(sourceId)}/tables/search?${params}`,
   );

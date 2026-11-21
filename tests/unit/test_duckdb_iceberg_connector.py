@@ -39,7 +39,7 @@ def test_iceberg_connector_identity():
 def test_details_emits_iceberg_scan_view_over_source_path():
     details = DuckDBIcebergConnector().details(_src("orders", path="s3://bucket/orders"))
     assert details == {
-        "view_ddl": "CREATE VIEW orders AS SELECT * FROM iceberg_scan('s3://bucket/orders')"
+        "view_ddl": "CREATE VIEW \"orders\" AS SELECT * FROM iceberg_scan('s3://bucket/orders')"
     }
 
 

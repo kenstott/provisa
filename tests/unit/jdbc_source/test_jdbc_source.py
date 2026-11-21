@@ -86,7 +86,10 @@ def test_a_capability_is_held_per_engine():
         ({gs.URL: "sqlite:///a.db", gs.SQL_DIALECT: "klingon"}, "'klingon' is not a SQL dialect"),
         ({gs.URL: "no-scheme", gs.SQL_DIALECT: "ansi"}, "names no scheme"),
         (_hints("sqlite:///a.db", duckdb="predicate,functions"), "functions is not a capability"),
-        (_hints("sqlite:///a.db", duckdb="attach"), "a sqlite URL has no engine attach"),
+        (
+            _hints("vertica+vertica_python://h/db", duckdb="attach"),
+            "a vertica URL has no engine attach",
+        ),
     ],
 )
 def test_settings_that_cannot_be_a_source_are_refused_by_name(hints, said):
@@ -95,11 +98,14 @@ def test_settings_that_cannot_be_a_source_are_refused_by_name(hints, said):
 
 
 def test_the_attach_an_engine_can_try_follows_from_the_url_scheme():
-    assert gs.attach_kind("postgresql+psycopg2://h/db") == "postgres"
-    assert gs.attach_kind("postgresql://h/db") == "postgres"
-    assert gs.attach_kind("mysql+pymysql://h/db") == "mysql"
-    assert gs.attach_kind("mssql+pyodbc://h/db") is None
-    assert gs.attach_kind("sqlite:///{files}/a.db") is None
+    from provisa.jdbc_source.attach import named_type
+
+    assert named_type("postgresql+psycopg2://h/db") == "postgresql"
+    assert named_type("postgresql://h/db") == "postgresql"
+    assert named_type("mysql+pymysql://h/db") == "mysql"
+    assert named_type("mssql+pyodbc://h/db") == "sqlserver"
+    assert named_type("sqlite:///{files}/a.db") == "sqlite"
+    assert named_type("vertica+vertica_python://h/db") is None
 
 
 def test_the_sources_dialect_is_the_one_its_admin_chose():
@@ -209,8 +215,11 @@ def test_the_save_refuses_by_name(org, monkeypatch):
     leaves = jdbc_source_refusal(_input(_hints("sqlite:///{files}/../../x.db")))
     assert leaves is not None and leaves.code == "schema.jdbc_file_refused"
     assert leaves.params["path"] == "{files}/../../x.db"
-    attach = jdbc_source_refusal(_input(_hints("postgresql://h/db", "postgres", duckdb="attach")))
-    assert attach is not None and attach.code == "schema.jdbc_attach_unbuilt"
+    # Live attach turned on is kept: the source attaches as the type its URL names.
+    assert (
+        jdbc_source_refusal(_input(_hints("postgresql://h/db", "postgres", duckdb="attach")))
+        is None
+    )
     monkeypatch.setattr("provisa.security.sandbox_egress.held", lambda _org: True)
     options = jdbc_source_refusal(_input(_hints("postgresql://h/db?host=10.0.0.5", "postgres")))
     assert options is not None and options.code == "schema.jdbc_options_refused"
@@ -306,7 +315,9 @@ def test_a_jdbc_url_needs_its_driver_jar_and_class_and_has_no_attach():
         gs.parse(_hints(url))
     hints = {**_hints(url), jdbc.DRIVER_JAR: "{files}/sqlite-jdbc.jar", jdbc.DRIVER_CLASS: "x.D"}
     assert gs.parse(hints).url == url
-    assert gs.attach_kind(url) is None
+    from provisa.jdbc_source.attach import named_type
+
+    assert named_type(url) is None
     with pytest.raises(gs.InvalidJdbcSource, match="jdbc URL has no engine attach"):
         gs.parse({**hints, gs.capabilities_key("duckdb"): "attach"})
 
@@ -332,6 +343,64 @@ def test_a_jdbc_driver_is_refused_by_name_on_a_server_of_many_organizations(org,
     monkeypatch.setattr("provisa.security.sandbox_egress.held", lambda _org: True)
     with pytest.raises(jdbc.JdbcRefused):
         jdbc.refuse_where_not_allowed()
+
+
+def _upload_client(monkeypatch):
+    import sys
+
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from provisa.api.admin import source_files_router
+
+    async def _reprovision(*_args):
+        return None
+
+    async def _pool():
+        return None
+
+    monkeypatch.setattr(source_files_router, "require_capability_request", lambda *_: None)
+    # What the router reaches once the file is kept: a stand-in for the running server's.
+    monkeypatch.setitem(sys.modules, "provisa.api.app", SimpleNamespace(state=SimpleNamespace()))
+    monkeypatch.setitem(
+        sys.modules, "provisa.api.admin.schema_helpers", SimpleNamespace(_get_pool=_pool)
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "provisa.api.admin.schema_mutation_ops",
+        SimpleNamespace(reprovision_source_after_registration=_reprovision),
+    )
+    app = FastAPI()
+    app.include_router(source_files_router.router)
+    return TestClient(app)
+
+
+def test_a_jdbc_driver_jar_is_uploaded_into_the_org_files_area(org, monkeypatch):
+    # The form takes the jar as a file from the admin's machine; it is kept with the source.
+    client = _upload_client(monkeypatch)
+    answer = client.put(
+        "/admin/sources/vendor/file",
+        params={"name": "vendor-jdbc.jar", "type": "jdbc"},
+        content=b"PK\x03\x04jar",
+    )
+    assert answer.status_code == 200, answer.text
+    assert answer.json() == {"path": "{files}/vendor/vendor-jdbc.jar", "bytes": 7}
+    assert (org / "files" / "vendor" / "vendor-jdbc.jar").read_bytes() == b"PK\x03\x04jar"
+
+
+def test_a_jdbc_driver_jar_upload_is_refused_by_name_on_a_server_of_many_organizations(
+    org, monkeypatch
+):
+    client = _upload_client(monkeypatch)
+    monkeypatch.setattr(secrets_providers, "_many_organisations", lambda: True)
+    answer = client.put(
+        "/admin/sources/vendor/file",
+        params={"name": "vendor-jdbc.jar", "type": "jdbc"},
+        content=b"jar",
+    )
+    assert answer.status_code == 403
+    assert "self-hosted" in answer.json()["detail"]
+    assert not (org / "files" / "vendor").exists()
 
 
 def test_jdbc_binds_by_position_in_the_order_the_placeholders_appear():

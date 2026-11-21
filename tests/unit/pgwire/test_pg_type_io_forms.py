@@ -14,6 +14,8 @@ the same statements in tests/integration/test_type_io_on_engines.py."""
 
 # Requirements: REQ-2167, REQ-2171
 
+# ruff: noqa: F811 -- the fixtures are conn and pgwire of the module they are imported from
+
 from __future__ import annotations
 
 import re
@@ -21,6 +23,7 @@ from types import SimpleNamespace
 from typing import Any
 
 import duckdb
+import psycopg2
 import pytest
 
 from provisa.core.pg_error import PostgresError, from_engine
@@ -30,8 +33,10 @@ from provisa.pgwire.server import ProvisaSession, _sqlstate_of, startup_time_zon
 from provisa.pgwire.session_zone import UNKNOWN_ZONE, SessionZone, refuse_other_zone
 from provisa.transpiler.function_macros import MACROS, outcome
 from provisa.transpiler.pg_forms_type_io import ROWS, TRINO, ZONED, readable, zoned_call
+from provisa.transpiler.pg_type_literals import interval_fields, interval_text
 from provisa.transpiler.transpile import transpile, transpile_to_duckdb
 from tests.unit.pgwire.pg17_type_io_answers import RECORDED
+from tests.unit.pgwire.test_type_conversions import conn, pgwire  # noqa: F401
 from tests.unit.pgwire.type_io_corpus import (
     NAME_OF_THE_REFUSAL,
     REFUSALS,
@@ -60,14 +65,25 @@ def connection() -> Any:
 def _difference(connection: Any, sql: str, recorded: str | None = None) -> str | None:
     """How ``sql`` differs from the answer recorded for ``recorded``, by default ``sql`` itself."""
     recorded = recorded or sql
+    written = transpile_to_duckdb(sql)
     try:
-        got = connection.execute(transpile_to_duckdb(sql)).fetchone()[0]
+        if connection.sql(written).types == ["INTERVAL"]:
+            got = _interval_read(connection, written)
+        else:
+            got = connection.execute(written).fetchone()[0]
     except duckdb.Error as raised:
         refusal = from_engine(raised)
         if refusal is None:
             return f"not raised as PostgreSQL's: {raised}"
         return verdict(recorded, RECORDED[recorded], None, f"{refusal.sqlstate}: {refusal}")
     return verdict(recorded, RECORDED[recorded], got, None)
+
+
+def _interval_read(connection: Any, written: str) -> str | None:
+    """An interval as the wire writes it (interval_out of its fields): the driver's timedelta
+    carries its months into days."""
+    _, fields = _fields(connection, written)
+    return None if None in fields else interval_text(*(int(f) for f in fields))
 
 
 @pytest.mark.parametrize("function", sorted(_FUNCTIONS))
@@ -126,6 +142,69 @@ def test_a_call_keeps_the_name_of_its_column():
 def test_the_wire_says_the_type_postgresql_says(sql: str):
     casts = result_casts(sql)
     assert casts is not None and casts[0] is not None and casts[0].oid == RECORDED[sql][0]
+
+
+#: interval_in of a literal the engine's interval holds: each recorded call of no typmod, and the
+#: function check's, which names its type by regtype.
+_INTERVALS = {
+    **{
+        sql: sql
+        for sql, (oid, text) in RECORDED.items()
+        if sql.startswith('SELECT pg_catalog."interval_in"(\'')
+        and "(-1)::integer" in sql
+        and oid == 1186
+        and text not in (None, "infinity", "-infinity")
+    },
+    "SELECT pg_catalog.\"interval_in\"('1 day 02:03:04'::cstring, 'interval'::regtype::oid, "
+    "(-1)::integer) AS v": "SELECT pg_catalog.\"interval_in\"('1 day 02:03:04'::cstring, 1186::oid, "
+    "(-1)::integer) AS v",
+}
+
+
+def _fields(connection: Any, written: str) -> tuple[str, tuple[int, int, int]]:
+    """The type DuckDB answers ``written`` in, and its interval's months, days and microseconds."""
+    return connection.execute(
+        "SELECT typeof(v), (date_part('year', v) * 12 + date_part('month', v), date_part('day', v), "
+        "date_part('hour', v) * 3600000000 + date_part('minute', v) * 60000000 + "
+        f"date_part('microseconds', v)) FROM ({written}) AS r"
+    ).fetchone()
+
+
+@pytest.mark.parametrize("sql", sorted(_INTERVALS))
+def test_interval_in_of_a_literal_is_an_interval_on_duckdb(connection: Any, sql: str):
+    """REQ-2167: the wire says interval only of a value the engine holds as one (_describe_casts);
+    a literal's interval_in folded to its text was sent as text."""
+    kind, fields = _fields(connection, transpile_to_duckdb(sql))
+    assert (kind, tuple(fields)) == ("INTERVAL", interval_fields(RECORDED[_INTERVALS[sql]][1]))
+
+
+@pytest.mark.parametrize("sql", sorted(_INTERVALS))
+def test_interval_in_of_a_literal_reaches_the_wire_as_an_interval(conn: Any, sql: str):
+    """The function check's finding (run 41836627668): the wire said text (25) of interval_in."""
+    res = conn.conn.pgconn.exec_params(sql.encode(), [], result_format=0)
+    assert (res.ftype(0), res.get_value(0, 0).decode()) == RECORDED[_INTERVALS[sql]]
+
+
+@pytest.fixture(scope="module")
+def postgres(embedded_postgres: Any) -> Any:
+    connected = psycopg2.connect(embedded_postgres.dsn())
+    connected.autocommit = True
+    # An interval as interval_out writes it, not the driver's timedelta.
+    as_text = psycopg2.extensions.new_type((1186,), "INTERVAL_TEXT", lambda value, _: value)
+    psycopg2.extensions.register_type(as_text, connected)
+    yield connected
+    connected.close()
+
+
+@pytest.mark.parametrize("sql", sorted(_INTERVALS))
+def test_interval_in_of_a_literal_is_an_interval_on_postgresql(postgres: Any, sql: str):
+    cursor = postgres.cursor()
+    try:
+        cursor.execute(transpile(sql, "postgres"))
+        answer = (cursor.description[0].type_code, cursor.fetchone()[0])
+    finally:
+        cursor.close()
+    assert answer == RECORDED[_INTERVALS[sql]]
 
 
 _ZONED_CALLS = {
@@ -215,6 +294,43 @@ def _zone_after(*statements: str, started: str | None = None) -> str | None:
 )
 def test_the_session_knows_its_zone(statements: list[str], want: str | None):
     assert _zone_after(*statements) == want
+
+
+@pytest.mark.parametrize(
+    "sql, params, want",
+    [
+        ("SELECT set_config('TimeZone', $1, false)", ["Asia/Tokyo"], "Asia/Tokyo"),
+        ("SELECT set_config($1, $2, false)", ["TimeZone", "Asia/Tokyo"], "Asia/Tokyo"),
+        ("SELECT set_config($1, $2, false)", ["timezone", "Asia/Tokyo"], "Asia/Tokyo"),
+        ("SELECT set_config($1, $2, false)", ["search_path", "a"], None),
+        ("SELECT set_config('TimeZone', $1::text, $2)", ["Asia/Tokyo", False], "Asia/Tokyo"),
+        ("SELECT set_config('TimeZone', $1, $2::bool)", ["Asia/Tokyo", "off"], "Asia/Tokyo"),
+        ("SELECT set_config('TimeZone', $1, $2)", ["Asia/Tokyo", True], None),
+        ("SELECT set_config('TimeZone', $1, false)", [None], UNKNOWN_ZONE),
+        ("SELECT set_config($1, 'Asia/Tokyo', false)", [None], UNKNOWN_ZONE),
+        ("SELECT set_config('TimeZone', $2, false)", ["Asia/Tokyo"], UNKNOWN_ZONE),
+        ("SELECT set_config('TimeZone', 'Asia/Tokyo', $1)", None, UNKNOWN_ZONE),
+        ("SELECT set_config('TimeZone', 'Asia/Tokyo', $1)", [None], "Asia/Tokyo"),
+    ],
+)
+def test_a_bound_value_of_set_config_is_read_as_the_literal_would_be(sql, params, want):
+    zone = SessionZone()
+    zone.note(sql, False, False, params)
+    assert zone.current == want
+
+
+def test_set_local_of_a_bound_zone_ends_with_the_block():
+    zone = SessionZone()
+    zone.note("BEGIN", False, True)
+    zone.note("SELECT set_config('TimeZone', $1, $2)", True, True, ["Asia/Tokyo", True])
+    assert zone.current == "Asia/Tokyo"
+    zone.note("COMMIT", True, False)
+    assert zone.current is None
+
+
+def test_a_bound_zone_postgresql_does_not_know_is_refused():
+    with pytest.raises(PostgresError, match='invalid value for parameter "TimeZone"'):
+        SessionZone().note("SELECT set_config('TimeZone', $1, false)", False, False, ["Bad/One"])
 
 
 def test_copy_of_such_a_form_is_refused_in_another_zone():
@@ -320,3 +436,55 @@ def test_a_canonical_geometric_literal_cannot_reach_a_refusal(value: str, refuse
     stem = value.split("::")[1].replace("polygon", "poly")
     sql = f'SELECT pg_catalog."{stem}_send"({value}) AS v'
     assert (NAME_OF_THE_REFUSAL in transpile(sql, "clickhouse")) is refuses
+
+
+@pytest.mark.parametrize(
+    ("value", "said"),
+    [
+        ("a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11", None),
+        ("x", 'invalid input syntax for type uuid: "x"'),
+        (
+            "a0eebc99-9c0b-4ef8-bb6d",
+            'invalid input syntax for type uuid: "a0eebc99-9c0b-4ef8-bb6d"',
+        ),
+    ],
+)
+def test_uuid_in_on_clickhouse_answers_or_raises_by_name_never_an_engine_error(
+    value: str, said: str | None
+):
+    """ClickHouse's NULL of a uuid is a Nullable(UUID): a CAST(NULL AS UUID) is its own error,
+    raised in place of the refusal a value it does not read gets."""
+    import chdb
+
+    written = transpile(f"SELECT pg_catalog.uuid_in('{value}'::cstring) AS v", "clickhouse")
+    if said is None:
+        assert chdb.query(written, "TabSeparated").bytes().decode().strip() == value
+        return
+    with pytest.raises(Exception) as raised:  # noqa: PT011 -- chdb raises its own
+        chdb.query(written, "TabSeparated")
+    refusal = from_engine(raised.value)
+    assert refusal is not None, str(raised.value)[:300]
+    assert str(refusal) in (said, f"uuid_in {NAME_OF_THE_REFUSAL}")
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "SELECT pg_catalog.box_send('(1,1),(0,0)'::box) AS v",
+        "SELECT pg_catalog.point_send('(1,2)'::point) AS v",
+        "SELECT pg_catalog.circle_send('<(0,0),1>'::circle) AS v",
+        "SELECT pg_catalog.line_send('{1,2,3}'::line) AS v",
+        "SELECT pg_catalog.lseg_send('[(0,0),(1,1)]'::lseg) AS v",
+        "SELECT pg_catalog.path_send('[(0,0),(1,1)]'::path) AS v",
+        "SELECT pg_catalog.poly_send('((0,0),(1,1),(2,0))'::polygon) AS v",
+    ],
+)
+def test_a_geometric_send_on_clickhouse_reads_its_numbers_from_a_text_that_is_not_nullable(
+    sql: str,
+):
+    """ClickHouse 24.3 holds no Nullable(Array): extractAll of a Nullable(String) is the engine's
+    error 'Nested type Array(String) cannot be inside Nullable type', not an answer. A NULL is
+    answered before the numbers are read."""
+    written = transpile(sql, "clickhouse")
+    assert "extractAll(" in written
+    assert re.search(r"extractAll\((?!ifNull\()", written) is None, written

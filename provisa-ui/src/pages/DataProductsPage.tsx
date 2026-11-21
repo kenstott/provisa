@@ -9,60 +9,49 @@
 // permission from the copyright holder.
 
 import { PageTitle } from "../components/PageTitle";
-import React, { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useScreenInputs } from "../mcp/screenState";
 import { useTranslation } from "react-i18next";
-import { Alert, Button, Checkbox, Group, Modal, Paper, Table, Text, Title } from "@mantine/core";
+import { Alert, Button, Checkbox, Group, Table, Text } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { Plus, Package } from "lucide-react";
-import {
-  useDomains,
-  useReadTableDetails,
-  useTables,
-  useUpdateTable,
-  useRoles,
-} from "../hooks/useAdminQueries";
+import { useDomains, useTables, useRoles, useRelationships } from "../hooks/useAdminQueries";
 import {
   useCreateDataProduct,
   useUpdateDataProduct,
   useDeleteDataProduct,
-  useSaveDataContract,
-  type DataContractInput,
+  useDeleteDataProducts,
+  useSetDataProductMembers,
   useDataProductFindings,
   useDataProductStatus,
 } from "../hooks/useDataProductMutations";
 import { ProductStatusBadge } from "./data-products/ProductStatusBadge";
-import { buildTableUpdateInput } from "./tables/helpers";
-import type { DataProduct, RegisteredTable } from "../types/admin";
-import { fetchActions, saveFunction, type TrackedFunction } from "../api/actions";
+import type { DataProduct } from "../types/admin";
+import { fetchActions, type TrackedFunction } from "../api/actions";
 import { HelpBubble } from "../components/HelpBubble";
 import { FilterInput } from "../components/admin/FilterInput";
+import { MultiSelect } from "../components/MultiSelect";
+import { useTagAssignments } from "../hooks/useTagQueries";
 import { DataProductDetailPanel } from "./data-products/DataProductDetailPanel";
+import { isProductOwner } from "./data-products/productOwner";
 import { OwnerResolutionIcon } from "../components/OwnerResolution";
 import { useCapability } from "../hooks/useCapability";
 import { fetchProductLineage, type ProductLineage } from "../api/lineage";
 import { catalogTableName, lineageRelationLabel, relationName } from "../naming";
-import { columnDescriber } from "../components/lineage/column-descriptions";
 import { DataProductFormCard } from "./data-products/DataProductFormCard";
 import { useMetaProducts, useMetaReader, useProductCore } from "./data-products/useProductCore";
-import { coreContracts } from "./data-products/productCore";
-import { contractChanged } from "./data-products/contractDraft";
-import { ProductMapButton } from "../components/graph3d/GraphPanel";
+import { ProductMapButton } from "../components/graph3d/OntologyGraph";
 import { EMPTY_FORM, type DataProductForm } from "./data-products/types";
 import { useDependentsDialog } from "../hooks/useDependentsDialog";
-import {
-  ListTable,
-  ListHead,
-  ListRow,
-  ListExpandRow,
-  ListEmpty,
-  ListDetail,
-  ListItems,
-} from "../components/list/ListTable";
+import { ListTable, ListHead, ListRow, ListEmpty, ListItems } from "../components/list/ListTable";
 import { useListSortGroup, type ListColumn } from "../components/list/useListSortGroup";
+import { useRememberedDetail } from "../components/list/useDetailParam";
 import { PageLoading } from "../components/PageLoading";
-import { FormFooter } from "../components/form/FormLayout";
+import { SplitPane } from "../components/list/SplitPane";
+import { useListSelection } from "../components/list/listSelection";
+import { ListBulkBar } from "../components/list/ListBulkBar";
+import type { SharingProduct } from "./data-products/tabs/RelatedTab";
 import { getStored, removeStored, setStored } from "../lib/browserStorage";
 import { matchesQuery } from "../lib/searchItems";
 import { useAuth } from "../context/AuthContext";
@@ -70,7 +59,6 @@ import { heldRoles } from "../lib/roles";
 
 // Exported for the tour, which clears it so the page mounts collapsed and its click on the first
 // row deterministically EXPANDS rather than toggling whatever a prior visit left open.
-export const EXPANDED_STORAGE_KEY = "provisa.data_products.expanded";
 // REQ-2146: the list narrowed to the products with findings, remembered.
 const TO_REVIEW_STORAGE_KEY = "provisa.data_products.toReview";
 
@@ -103,13 +91,14 @@ export function DataProductsPage() {
   const { tables, refetch: refetchTables } = useTables(); // REQ-1634: member-table list + assignment
   const [functions, setFunctions] = useState<TrackedFunction[]>([]); // REQ-1634: member-command list + assignment
   const { roles } = useRoles();
+  // The model's relationships: each dataset's associations in the Related tab.
+  const { relationships } = useRelationships();
   const roleOptions = roles.map((r) => r.id);
   const { createDataProduct, loading: creatingProduct } = useCreateDataProduct();
   const { updateDataProduct, loading: updatingProduct } = useUpdateDataProduct();
   const saving = creatingProduct || updatingProduct;
-  const { deleteDataProduct, loading: deleting } = useDeleteDataProduct();
-  const { updateTable } = useUpdateTable();
-  const readTableDetails = useReadTableDetails();
+  const { deleteDataProduct } = useDeleteDataProduct();
+  const { setDataProductMembers } = useSetDataProductMembers();
   // REQ-1634: New/Edit/Delete and the table picker require the write right; a
   // data_product_read-only caller sees the list and detail view only.
   const canEdit = useCapability("data_product_rw");
@@ -152,62 +141,64 @@ export function DataProductsPage() {
       // localStorage unavailable (private mode, quota) — the filter just won't persist
     }
   };
+  // REQ-2180: the list faceted by the products' tags, parameterized ones included (residency:eu).
+  const [tagFilter, setTagFilter] = useState<string[]>([]);
+  const { tagAssignments } = useTagAssignments();
+  const productTags = useMemo(() => {
+    const byProduct = new Map<string, Set<string>>();
+    for (const a of tagAssignments) {
+      if (a.objectType !== "product" || !a.productId) continue;
+      const tags = byProduct.get(a.productId) ?? new Set<string>();
+      tags.add(a.tagId);
+      byProduct.set(a.productId, tags);
+    }
+    return byProduct;
+  }, [tagAssignments]);
+  const tagOptions = useMemo(
+    () =>
+      [...new Set([...productTags.values()].flatMap((tags) => [...tags]))]
+        .sort()
+        .map((tag) => ({ id: tag, label: tag })),
+    [productTags],
+  );
+  // The list narrowed to the products of the domains chosen; offered the domains of the products
+  // the viewer reads, since a domain with none of them would only empty the list.
+  const [domainFilter, setDomainFilter] = useState<string[]>([]);
+  const productDomainOptions = useMemo(
+    () =>
+      [...new Set(dataProducts.map((p) => p.domainId))]
+        .sort()
+        .map((domain) => ({ id: domain, label: domain })),
+    [dataProducts],
+  );
   const [creating, setCreating] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<DataProductForm>({ ...EMPTY_FORM });
   const [selectedTableIds, setSelectedTableIds] = useState<string[]>([]);
   const [selectedFunctionNames, setSelectedFunctionNames] = useState<string[]>([]);
-  // REQ-2158: the open product's contracts as edited, by table id; each changed one is saved.
-  const [contractDrafts, setContractDrafts] = useState<Record<number, DataContractInput>>({});
-  const { saveDataContract } = useSaveDataContract();
-  // REQ-1659: `?product=<id>` is the deep link a catalog listing (Snowflake Horizon's
-  // documentation box, Analytics Hub) carries back to this page; it names the product to open and
-  // wins over the last-expanded row remembered in localStorage.
-  const [expanded, setExpandedState] = useState<string | null>(() => {
-    const linked = searchParams.get("product");
-    if (linked) return linked;
-    try {
-      return getStored(EXPANDED_STORAGE_KEY);
-    } catch {
-      return null;
-    }
-  });
-  // A link decides the page again whenever it changes while the page stays open.
-  const productParam = searchParams.get("product");
-  const [seededProduct, setSeededProduct] = useState(productParam);
-  if (productParam !== seededProduct) {
-    setSeededProduct(productParam);
-    if (productParam !== null) setExpandedState(productParam);
-  }
+  // REQ-1659, REQ-2241: `?product=<id>` is the open product's panel -- the deep link a catalog
+  // listing (Snowflake Horizon's documentation box, Analytics Hub) carries back to this page.
+  // REQ-2260: a visit without one reopens the product left open.
+  const detail = useRememberedDetail(
+    "products",
+    products.data === null ? null : products.data.map((p) => p.id),
+  );
+  const expanded = detail.id;
   // REQ-2115: Polly's read_screen reads the page's main state from here. A product is named only
   // once the list holds it, so a link to one that does not exist reads as no product.
   useScreenInputs("/data-products", {
     product: dataProducts.some((p) => p.id === expanded) ? expanded : null,
-    contract: searchParams.get("contract"),
     search,
     toReviewOnly,
+    tags: tagFilter,
+    domains: domainFilter,
     creating,
     editing: editingId,
   });
   const setExpanded = (id: string | null) => {
-    setExpandedState(id);
-    setSearchParams(
-      (p) => {
-        const n = new URLSearchParams(p);
-        if (id) n.set("product", id);
-        else n.delete("product");
-        // REQ-2158: a linked contract is the linked product's; another product leaves it behind.
-        if (id !== p.get("product")) n.delete("contract");
-        return n;
-      },
-      { replace: true },
-    );
-    try {
-      if (id) setStored(EXPANDED_STORAGE_KEY, id);
-      else removeStored(EXPANDED_STORAGE_KEY);
-    } catch {
-      // localStorage unavailable (private mode, quota) — expanded state just won't persist
-    }
+    // REQ-2241: opening and closing a product are history entries; Back undoes them.
+    if (id) detail.open(id);
+    else detail.close();
   };
   // REQ-2127: the expanded product's panel core; read again after the product is saved.
   const [coreVersion, setCoreVersion] = useState(0);
@@ -216,10 +207,7 @@ export function DataProductsPage() {
   // changed -- a save, or a retirement that moves them to the successor. Every other status change
   // leaves both as they were, so it does not read them again.
   const [membersVersion, setMembersVersion] = useState(0);
-  // REQ-2158: the open product's contracts, read with its panel core.
-  const contracts = core.data ? coreContracts(core.data) : [];
   const reader = useMetaReader();
-  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [msg, setMsg] = useState("");
   // REQ-2156: the expanded product's lineage, cut to what the reader may read; read again after
   // the product is saved.
@@ -258,20 +246,15 @@ export function DataProductsPage() {
   }, [expanded, membersVersion]);
 
   const domainOptions = domains.map((d) => d.id);
-  const memberTables = (id: string) => tables.filter((tb) => tb.productId === id);
-  // Descriptions for the lineage hover come from EVERY registered table: a contributor's or a
-  // consumer's column is as hoverable as a member's.
-  const describeColumn = useMemo(() => columnDescriber(tables), [tables]);
+  // REQ-1634: a table is in any number of products; its membership is the list of them.
+  const memberTables = (id: string) => tables.filter((tb) => tb.productIds.includes(id));
   // A lineage relation as a reader is shown it (naming.lineageRelationLabel).
   const relationLabel = useMemo(() => {
     const catalog = new Map(tables.map((tb) => [relationName(tb), catalogTableName(tb)]));
     return (relation: string) => lineageRelationLabel(relation, catalog);
   }, [tables]);
-  const memberFunctions = (id: string) => functions.filter((fn) => fn.productId === id);
-
-  // REQ-1667: the relations the detail's swimlanes are built around -- the product's members as
-  // its lineage names them.
-  const lineageMembers = useMemo(() => new Set(lineageGraph?.members ?? []), [lineageGraph]);
+  const memberFunctions = (id: string) =>
+    functions.filter((fn) => (fn.productIds ?? []).includes(id));
 
   const openCreate = () => {
     setFormFocus(undefined);
@@ -310,8 +293,17 @@ export function DataProductsPage() {
     });
     setSelectedTableIds(memberTables(p.id).map((tb) => String(tb.id)));
     setSelectedFunctionNames(memberFunctions(p.id).map((fn) => fn.name));
-    setContractDrafts({});
     setMsg("");
+  };
+
+  // Duplicate, from a product's panel head: the create form filled with the product's definition
+  // and its member tables and commands, under "<id>-copy" (editable; an id that exists is refused
+  // on save by the create). Not copied: its consumers, contracts, offers and bids.
+  const openDuplicate = (p: DataProduct) => {
+    openEdit(p);
+    setEditingId(null);
+    setForm((f) => ({ ...f, id: `${p.id}-copy` }));
+    setCreating(true);
   };
 
   const closeForm = () => {
@@ -342,90 +334,32 @@ export function DataProductsPage() {
       setMsg(result.message || t("dataProductsTab.saveFailed"));
       return;
     }
-    // REQ-1634: table -> product membership is owned by the table row; reconcile the
-    // multi-select against current membership by upserting only the tables that changed.
-    // form.id is known before save (user-typed on create, fixed on edit), so this applies
-    // in both modes once the save has confirmed the row exists.
+    // REQ-1634: membership is the product's own: the multi-select is saved as the product's whole
+    // member list, only when it differs from the current one. A checker table is a member as any
+    // other is (REQ-1443).
     const productId = form.id.trim();
-    const selected = new Set(selectedTableIds);
-    const changed = tables.filter(
-      // REQ-1443 clause 10: a checker table's membership is derived; it is never written.
-      (tb) => tb.dqContract == null && selected.has(String(tb.id)) !== (tb.productId === productId),
-    );
-    // The update takes the whole row; the list holds only what this page shows.
-    let rows = new Map<number, RegisteredTable>();
-    if (changed.length > 0) {
-      try {
-        rows = new Map((await readTableDetails()).map((tb) => [tb.id, tb]));
-      } catch (e) {
-        setMsg(e instanceof Error ? e.message : String(e));
+    const sameSet = (a: string[], b: string[]) =>
+      a.length === b.length && a.every((x) => b.includes(x));
+    const currentTables = memberTables(productId).map((tb) => String(tb.id));
+    const currentFns = memberFunctions(productId).map((fn) => fn.name);
+    const membersChanged =
+      !sameSet(currentTables, selectedTableIds) || !sameSet(currentFns, selectedFunctionNames);
+    if (membersChanged) {
+      const members = await setDataProductMembers(
+        productId,
+        selectedTableIds.map(Number),
+        selectedFunctionNames,
+      );
+      if (!members.success) {
+        setMsg(members.message || t("dataProductsTab.saveFailed"));
+        products.reload();
         return;
       }
-    }
-    for (const tb of changed) {
-      const row = rows.get(tb.id);
-      if (row === undefined) {
-        // Unregistered since the list was read.
-        setMsg(`${t("dataProductsTab.saveFailed")}: ${tb.tableName}`);
-        return;
-      }
-      await updateTable(
-        buildTableUpdateInput({
-          ...row,
-          productId: selected.has(String(tb.id)) ? productId : null,
-        }),
-      );
-    }
-    // REQ-1634: command -> product membership is owned by the function row; reconcile the
-    // multi-select against current membership. Each changed command is updated with its full
-    // existing field set and only productId toggled.
-    const selectedFns = new Set(selectedFunctionNames);
-    const changedFns = functions.filter(
-      (fn) => selectedFns.has(fn.name) !== (fn.productId === productId),
-    );
-    for (const fn of changedFns) {
-      await saveFunction(
-        {
-          name: fn.name,
-          sourceId: fn.sourceId,
-          schemaName: fn.schemaName,
-          functionName: fn.functionName,
-          returns: fn.returns,
-          arguments: fn.arguments,
-          visibleTo: fn.visibleTo,
-          domainId: fn.domainId,
-          description: fn.description,
-          kind: fn.kind,
-          returnSchema: fn.returnSchema,
-          outputColumns: fn.outputColumns,
-          implKind: fn.implKind,
-          binding: fn.binding,
-          materialize: fn.materialize,
-          requiresApproval: fn.requiresApproval, // REQ-1924
-          writesTable: fn.writesTable, // REQ-1924, REQ-871
-          productId: selectedFns.has(fn.name) ? productId : null,
-        },
-        fn.name,
-      );
-    }
-    if (changedFns.length > 0) {
+      await refetchTables();
       const refreshed = await fetchActions();
       setFunctions(refreshed.functions);
     }
-    // REQ-2158: each changed contract is saved on its own; a refusal names the contract and keeps
-    // the form open with what was entered.
-    const refused: string[] = [];
-    for (const c of contracts) {
-      const draft = contractDrafts[c.tableId];
-      if (draft === undefined || !contractChanged(c, draft)) continue;
-      const saved = await saveDataContract(c.tableId, draft);
-      if (!saved.success) refused.push(saved.message);
-    }
-    if (refused.length > 0) {
-      setMsg(refused.join("\n"));
-      products.reload();
-      return;
-    }
+    // REQ-2180: a product's contracts are derived from its offers; none is written here.
     products.reload();
     setCoreVersion((v) => v + 1);
     setMembersVersion((v) => v + 1);
@@ -449,14 +383,15 @@ export function DataProductsPage() {
     setMembersVersion((v) => v + 1);
   };
 
-  const handleDelete = async () => {
-    if (!deleteTarget) return;
-    const result = await deleteDataProduct(deleteTarget);
-    setDeleteTarget(null);
-    if (refusal.refused(result, deleteTarget)) return;
-    if (expanded === deleteTarget) setExpanded(null);
-    if (!result.success) setMsg(result.message || t("dataProductsTab.deleteFailed"));
-    else products.reload();
+  // REQ-2198: the detail's Delete (PanelDelete) shows the delete's progress and says why one
+  // failed; it resolves once the list is read again without the product.
+  const handleDelete = async (id: string) => {
+    const result = await deleteDataProduct(id);
+    if (refusal.refused(result, id)) return false;
+    if (!result.success) throw new Error(result.message || t("dataProductsTab.deleteFailed"));
+    // The deleted product's panel closes with it, unless another has been opened meanwhile.
+    detail.close({ only: id, replace: true });
+    await products.reload();
   };
 
   const formCard = (
@@ -476,9 +411,6 @@ export function DataProductsPage() {
       msg={msg}
       onSave={handleSave}
       onCancel={closeForm}
-      contracts={editingId !== null ? contracts : []}
-      contractDrafts={contractDrafts}
-      setContractDrafts={setContractDrafts}
       focus={formFocus}
     />
   );
@@ -489,9 +421,19 @@ export function DataProductsPage() {
       dataProducts.filter(
         (p) =>
           matchesQuery([p.id, p.name, p.domainId, p.ownerRole, p.purpose], search) &&
-          (!toReviewOnly || productFindings.findings.has(p.id)),
+          (!toReviewOnly || productFindings.findings.has(p.id)) &&
+          tagFilter.every((tag) => productTags.get(p.id)?.has(tag) === true) &&
+          (domainFilter.length === 0 || domainFilter.includes(p.domainId)),
       ),
-    [dataProducts, search, toReviewOnly, productFindings.findings],
+    [
+      dataProducts,
+      search,
+      toReviewOnly,
+      productFindings.findings,
+      tagFilter,
+      productTags,
+      domainFilter,
+    ],
   );
   const productColumns = useMemo<ListColumn<DataProduct>[]>(
     () => [
@@ -520,10 +462,89 @@ export function DataProductsPage() {
     [t],
   );
   const sortGroup = useListSortGroup(filteredProducts, productColumns, "data-products");
+  // REQ-2240: data products selected and deleted together.
+  const shownProductIds = useMemo(() => filteredProducts.map((p) => p.id), [filteredProducts]);
+  const selection = useListSelection(shownProductIds);
+  const deleteDataProducts = useDeleteDataProducts();
+
+  // The products sharing a dataset with the open one, each with the datasets they share.
+  const sharingOf = (id: string): SharingProduct[] => {
+    const own = memberTables(id);
+    return dataProducts
+      .filter((other) => other.id !== id)
+      .map((other) => ({
+        id: other.id,
+        name: other.name,
+        datasets: own
+          .filter((tb) => tb.productIds.includes(other.id))
+          .map((tb) => catalogTableName(tb)),
+      }))
+      .filter((other) => other.datasets.length > 0);
+  };
+
+  // The right-hand panel: the form that creates a product while it is open, otherwise the
+  // selected product -- its detail, with the form that edits it in place of its header.
+  const closePanel = () => {
+    closeForm();
+    setExpanded(null);
+  };
+  const selectedProduct =
+    expanded === null ? null : (dataProducts.find((p) => p.id === expanded) ?? null);
+  const panelTitle = creating
+    ? t("dataProductsTab.createTitle")
+    : selectedProduct
+      ? selectedProduct.name
+      : "";
+  const panelBody = creating ? (
+    <div data-testid="data-product-create-card">{formCard}</div>
+  ) : selectedProduct ? (
+    <div data-testid="data-product-detail">
+      <DataProductDetailPanel
+        p={selectedProduct}
+        core={core.data}
+        coreError={core.error}
+        reader={reader}
+        viewer={viewer}
+        canEdit={mayEdit(selectedProduct)}
+        canDelete={mayEdit(selectedProduct)}
+        owner={ownsProduct(selectedProduct)}
+        seesConsumers={isProductOwner(selectedProduct, selectedRoles)}
+        lineageLoading={lineageLoading}
+        lineageError={lineageError}
+        lineageGraph={lineageGraph}
+        relationLabel={relationLabel}
+        contractsVersion={membersVersion}
+        tables={tables}
+        sharing={sharingOf(selectedProduct.id)}
+        relationships={relationships}
+        actingRole={actingRoles}
+        editForm={editingId === selectedProduct.id ? formCard : undefined}
+        onTagsChanged={() => setCoreVersion((v) => v + 1)}
+        onEdit={(focus) => openEdit(selectedProduct, focus)}
+        onDuplicate={canEdit ? () => openDuplicate(selectedProduct) : undefined}
+        onDelete={() => handleDelete(selectedProduct.id)}
+        products={dataProducts}
+        members={[
+          ...memberTables(selectedProduct.id).map((tb) => tb.tableName),
+          ...memberFunctions(selectedProduct.id).map((fn) => fn.name),
+        ]}
+        findings={productFindings.findings.get(selectedProduct.id) ?? []}
+        onStatusChanged={statusChanged}
+        onStatusFailed={setMsg}
+        statusActions={statusActions}
+        openProduct={(id) => {
+          closeForm();
+          setExpanded(id);
+        }}
+      />
+    </div>
+  ) : null;
 
   return (
+    // The list and its panel share the height the heading leaves; each scrolls by itself.
     <div
-      style={{ flex: 1, overflow: "auto", padding: "1rem 1.25rem" }}
+      className="page-sticky-head"
+      style={{ padding: "1rem 1.25rem" }}
       data-tour="data-products-content"
     >
       <Group justify="space-between" mb="md">
@@ -535,6 +556,24 @@ export function DataProductsPage() {
           onChange={updateSearch}
           placeholder={t("dataProductsTab.filterPlaceholder")}
         />
+        <div data-testid="data-products-tag-facet" style={{ minWidth: 180, maxWidth: 360 }}>
+          <MultiSelect
+            options={tagOptions}
+            value={tagFilter}
+            onChange={setTagFilter}
+            ariaLabel={t("dataProductsTab.tagFacetLabel")}
+            placeholder={t("dataProductsTab.tagFacetPlaceholder")}
+          />
+        </div>
+        <div data-testid="data-products-domain-facet" style={{ minWidth: 180, maxWidth: 360 }}>
+          <MultiSelect
+            options={productDomainOptions}
+            value={domainFilter}
+            onChange={setDomainFilter}
+            ariaLabel={t("dataProductsTab.domainFacetLabel")}
+            placeholder={t("dataProductsTab.domainFacetPlaceholder")}
+          />
+        </div>
         <Checkbox
           size="xs"
           label={t("dataProductsTab.toReview")}
@@ -581,166 +620,126 @@ export function DataProductsPage() {
         </Alert>
       )}
 
-      {creating && (
-        <Paper withBorder p="md" mb="md" data-testid="data-product-create-card">
-          <Title order={5} mb="sm">
-            {t("dataProductsTab.createTitle")}
-          </Title>
-          {formCard}
-        </Paper>
-      )}
-
       {(() => {
         if (loading && dataProducts.length === 0) {
           return <PageLoading message={t("dataProductsTab.loading")} />;
         }
         return (
-          <ListTable testId="data-products-table">
-            <ListHead
-              sortGroup={sortGroup}
-              columns={[
-                { col: "id" },
-                { col: "domain" },
-                { col: "name" },
-                { col: "owner" },
-                { col: "status" },
-                { col: "purpose" },
-              ]}
-            />
-            <Table.Tbody>
-              {filteredProducts.length === 0 && (
-                <ListEmpty colSpan={6} testId="data-products-empty">
-                  {t("dataProductsTab.empty")}
-                </ListEmpty>
-              )}
-              <ListItems
-                state={sortGroup}
-                colSpan={6}
-                rowKey={(p) => p.id}
-                render={(p) => {
-                  const isExpanded = expanded === p.id;
-                  const isEditing = editingId === p.id;
-                  return (
-                    <React.Fragment key={p.id}>
-                      <ListRow
-                        testId={`data-products-row-${p.id}`}
-                        aria-expanded={isExpanded}
-                        onClick={() => {
-                          setExpanded(isExpanded ? null : p.id);
-                          if (isEditing && isExpanded) closeForm();
-                        }}
-                      >
-                        <Table.Td>
-                          <Text size="sm" fw={600} ff="monospace">
-                            {p.id}
-                          </Text>
-                        </Table.Td>
-                        <Table.Td>
-                          <Text size="xs">{p.domainId}</Text>
-                        </Table.Td>
-                        <Table.Td>
-                          <Text size="xs">{p.name}</Text>
-                        </Table.Td>
-                        <Table.Td>
-                          <Group gap={4} wrap="nowrap">
-                            <Text size="xs">{p.ownerRole ?? ""}</Text>
-                            {p.ownerRole && (
-                              <OwnerResolutionIcon
-                                refs={[p.ownerRole]}
-                                ariaLabel={t("dataProductsTab.resolveOwner", { id: p.id })}
+          <SplitPane
+            testId="data-products-split"
+            storageKey="provisa.data_products.detailWidth"
+            title={panelTitle}
+            onClose={closePanel}
+            // Escape closes a product that is only being looked at; it never drops what is typed.
+            closeOnEscape={!creating && editingId === null}
+            labels={{
+              panel: t("dataProductsTab.detailPanel"),
+              resize: t("tablesPage.resizeDetail"),
+              expand: t("tablesPage.expandDetail"),
+              restore: t("tablesPage.restoreDetail"),
+              close: t("tablesPage.closeDetail"),
+              backToList: t("tablesPage.backToList"),
+            }}
+            list={
+              <>
+                <ListBulkBar
+                  selection={selection}
+                  nameOf={(id) => id}
+                  onDelete={deleteDataProducts}
+                  testId="data-products-bulk"
+                />
+                <ListTable testId="data-products-table" selection={selection}>
+                  <ListHead
+                    sortGroup={sortGroup}
+                    columns={[
+                      { col: "id" },
+                      { col: "domain" },
+                      { col: "name" },
+                      { col: "owner" },
+                      { col: "status" },
+                      { col: "purpose" },
+                    ]}
+                  />
+                  <Table.Tbody>
+                    {/* Unreadable, the banner above says why the list is empty; it is not that
+                        none exist. With products read, an empty list is the filters'. */}
+                    {filteredProducts.length === 0 && !products.unreadable && (
+                      <ListEmpty colSpan={6} testId="data-products-empty">
+                        {dataProducts.length === 0
+                          ? t("dataProductsTab.empty")
+                          : t("dataProductsTab.noMatch")}
+                      </ListEmpty>
+                    )}
+                    <ListItems
+                      state={sortGroup}
+                      colSpan={6}
+                      rowKey={(p) => p.id}
+                      render={(p) => {
+                        const isExpanded = expanded === p.id;
+                        return (
+                          <ListRow
+                            key={p.id}
+                            testId={`data-products-row-${p.id}`}
+                            // The row whose detail the right-hand panel is showing.
+                            selected={isExpanded}
+                            aria-expanded={isExpanded}
+                            onClick={() => {
+                              // The row opens its detail in the panel, swaps it, or closes it.
+                              closeForm();
+                              setExpanded(isExpanded ? null : p.id);
+                            }}
+                          >
+                            <Table.Td>
+                              <Text size="sm" fw={600} ff="monospace" truncate="end">
+                                {p.id}
+                              </Text>
+                            </Table.Td>
+                            <Table.Td>
+                              <Text size="xs" truncate="end">
+                                {p.domainId}
+                              </Text>
+                            </Table.Td>
+                            <Table.Td>
+                              <Text size="xs">{p.name}</Text>
+                            </Table.Td>
+                            <Table.Td>
+                              <Group gap={4} wrap="nowrap">
+                                <Text size="xs" truncate="end">
+                                  {p.ownerRole ?? ""}
+                                </Text>
+                                {p.ownerRole && (
+                                  <OwnerResolutionIcon
+                                    refs={[p.ownerRole]}
+                                    ariaLabel={t("dataProductsTab.resolveOwner", { id: p.id })}
+                                  />
+                                )}
+                              </Group>
+                            </Table.Td>
+                            <Table.Td>
+                              <ProductStatusBadge
+                                status={p.status}
+                                testId={`data-products-status-${p.id}`}
                               />
-                            )}
-                          </Group>
-                        </Table.Td>
-                        <Table.Td>
-                          <ProductStatusBadge
-                            status={p.status}
-                            testId={`data-products-status-${p.id}`}
-                          />
-                        </Table.Td>
-                        <Table.Td>
-                          <Text size="xs" c="var(--text-muted)">
-                            {p.purpose}
-                          </Text>
-                        </Table.Td>
-                      </ListRow>
-                      {isExpanded && (
-                        <ListExpandRow colSpan={6} testId="data-product-detail" contained>
-                          <ListDetail>
-                            {isEditing ? (
-                              formCard
-                            ) : (
-                              <DataProductDetailPanel
-                                p={p}
-                                core={core.data}
-                                coreError={core.error}
-                                reader={reader}
-                                viewer={viewer}
-                                canEdit={mayEdit(p)}
-                                canDelete={mayEdit(p)}
-                                owner={ownsProduct(p)}
-                                lineageLoading={lineageLoading}
-                                lineageError={lineageError}
-                                lineageGraph={lineageGraph}
-                                contractsVersion={membersVersion}
-                                lineageMembers={lineageMembers}
-                                describeColumn={describeColumn}
-                                relationLabel={relationLabel}
-                                onEdit={(focus) => openEdit(p, focus)}
-                                onDelete={() => setDeleteTarget(p.id)}
-                                products={dataProducts}
-                                members={[
-                                  ...memberTables(p.id).map((tb) => tb.tableName),
-                                  ...memberFunctions(p.id).map((fn) => fn.name),
-                                ]}
-                                findings={productFindings.findings.get(p.id) ?? []}
-                                onStatusChanged={statusChanged}
-                                onStatusFailed={setMsg}
-                                statusActions={statusActions}
-                                openProduct={(id) => {
-                                  closeForm();
-                                  setExpanded(id);
-                                }}
-                              />
-                            )}
-                          </ListDetail>
-                        </ListExpandRow>
-                      )}
-                    </React.Fragment>
-                  );
-                }}
-              />
-            </Table.Tbody>
-          </ListTable>
+                            </Table.Td>
+                            <Table.Td>
+                              <Text size="xs" c="var(--text-muted)" lineClamp={3}>
+                                {p.purpose}
+                              </Text>
+                            </Table.Td>
+                          </ListRow>
+                        );
+                      }}
+                    />
+                  </Table.Tbody>
+                </ListTable>
+              </>
+            }
+          >
+            {panelBody}
+          </SplitPane>
         );
       })()}
 
-      {/* Delete confirm */}
-      <Modal
-        opened={deleteTarget !== null}
-        onClose={() => setDeleteTarget(null)}
-        title={t("dataProductsTab.deleteTitle")}
-        centered
-        data-testid="data-product-delete-modal"
-      >
-        <Text mb="lg" size="sm">
-          {t("dataProductsTab.deleteConfirm", { id: deleteTarget ?? "" })}
-        </Text>
-        <FormFooter
-          onCancel={() => setDeleteTarget(null)}
-          cancelProps={{ disabled: deleting }}
-          action={
-            <Button
-              color="red"
-              onClick={handleDelete}
-              loading={deleting}
-              data-testid="data-product-delete-confirm"
-            >
-              {t("dataProductsTab.delete")}
-            </Button>
-          }
-        />
-      </Modal>
       {refusal.dialog}
     </div>
   );

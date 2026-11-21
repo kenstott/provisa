@@ -103,7 +103,17 @@ HEADERS: dict[str, tuple[str, ...]] = {
         "tags",
     ),
     VIEWS: ("id", "name", "domain", "source", "tags", "definition", "description"),
-    METRICS: ("id", "metric", "expression", "datatype", "description", "ai context", "from fact"),
+    # REQ-2208: a metric carries registry tags like any other governed object.
+    METRICS: (
+        "id",
+        "metric",
+        "expression",
+        "datatype",
+        "tags",
+        "description",
+        "ai context",
+        "from fact",
+    ),
     MATERIALIZED_VIEWS: (
         "id",
         "name",
@@ -148,10 +158,12 @@ HEADERS: dict[str, tuple[str, ...]] = {
         "inputs",
         "description",
     ),
-    # REQ-1592 (2026-10-27): each output port's contract (REQ-2158), its columns those served.
+    # REQ-1592 (2026-10-27): each output port's contract -- one per offer and dataset, derived
+    # from the offer (REQ-2180) -- its columns those its offer's role reads and the reader is served.
     DATA_CONTRACTS: (
         "id",
         "product",
+        "offer",
         "output port",
         "version",
         "status",
@@ -198,6 +210,9 @@ class ReportHeader:  # REQ-1592
 
     org_id: str
     environment: str
+    # REQ-2261: the stage the environment declares; None only for a deployment without a control
+    # plane, which keeps no environment registry.
+    stage: str | None
     domains: str
     generated_at: "datetime"
     included: tuple[str, ...]
@@ -385,6 +400,10 @@ def _metrics_rows(org_id: str, config: "ProvisaConfig", visible: frozenset[str])
     """
     from provisa.compiler.metric_expand import metric_reference_tables
 
+    tagged: dict[str, list[str]] = {}
+    for assignment in config.tag_assignments:  # REQ-2208
+        if assignment.object_type == "metric" and assignment.metric_name is not None:
+            tagged.setdefault(assignment.metric_name, []).append(assignment.tag_id)
     rows: list[list[Any]] = []
     for metric in config.metrics:
         referenced = set(metric_reference_tables(metric.name, metric.expression))
@@ -396,6 +415,7 @@ def _metrics_rows(org_id: str, config: "ProvisaConfig", visible: frozenset[str])
                 metric.name,
                 metric.expression,
                 metric.datatype or "",
+                ", ".join(tagged.get(metric.name, [])),
                 metric.description or "",
                 metric.ai_context or "",
                 metric.from_fact or "",
@@ -489,35 +509,40 @@ def _products_rows(
 
 
 def _contracts_rows(snapshot: "MetadataSnapshot") -> list[list[Any]]:
-    """Each output port's contract: a member of a product the workbook shows, with the contract
-    its owner declared. A promised column the reader is not served is not named."""
-    product_of = {
-        member: product for product in snapshot.data_products for member in product.members
-    }
+    """Each contract a product the workbook shows gives: one per offer and dataset, derived from
+    the offer (REQ-2180), with the terms the product writes once for all of them. Its columns are
+    those the offer's role reads, a masked one marked so, and the reader is served."""
+    from provisa.api.metadata_export.odps import contract_status, offer_contract_id
+
+    tables = {table.ref.fqn(): table for table in snapshot.tables}
     rows: list[list[Any]] = []
-    for table in snapshot.tables:
-        contract = table.contract
-        product = product_of.get(table.ref)
-        if contract is None or product is None:
-            continue
-        served = {column.name for column in table.columns}
-        rows.append(
-            [
-                table.semantic_uri,
-                product.name,
-                table.name,
-                contract.version,
-                contract.status,
-                contract.description or "",
-                contract.terms.usage or "",
-                contract.terms.limitations or "",
-                ", ".join(
-                    f"{column.name} ({column.type}{', required' if column.required else ''})"
-                    for column in contract.columns
-                    if column.name in served
-                ),
-            ]
-        )
+    for product in snapshot.data_products:
+        for offer in snapshot.offers.get(product.id, ()):
+            for member in product.members:
+                table = tables.get(member.fqn())
+                derived = offer.contracts.get(member.fqn())
+                if table is None or derived is None:
+                    continue
+                served = {column.name for column in table.columns}
+                rows.append(
+                    [
+                        offer_contract_id(offer, table),
+                        product.name,
+                        offer.name,
+                        table.name,
+                        derived.version,
+                        contract_status(product),
+                        product.description,
+                        product.usage,
+                        product.limitations,
+                        ", ".join(
+                            f"{field.name} ({field.type}"
+                            + (f", masked: {field.masked})" if field.masked else ")")
+                            for field in derived.terms.fields
+                            if field.name in served
+                        ),
+                    ]
+                )
     return rows
 
 
@@ -636,6 +661,7 @@ def _write_report_sheet(worksheet, header: ReportHeader) -> None:
     rows = [
         ("Organization", header.org_id),
         ("Environment", header.environment),
+        ("Stage", header.stage if header.stage is not None else "none"),
         ("Domains covered", header.domains),
         ("Generated", header.generated_at.isoformat()),
         ("Sheets included", ", ".join(header.included)),

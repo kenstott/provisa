@@ -325,7 +325,7 @@ class TestWebhookExecution:
 
         with patch("provisa.webhooks.executor.httpx.AsyncClient") as mock_client_cls:
 
-            def capture_timeout(timeout=None):
+            def capture_timeout(timeout=None, **_client_options):
                 captured_timeout["value"] = timeout
                 mock_client = AsyncMock()
                 mock_client.__aenter__ = AsyncMock(return_value=mock_client)
@@ -516,12 +516,14 @@ class TestWebhookApprovalGate:
             patch("provisa.api.app.state", fake_state),
             patch("provisa.api.app._rebuild_schemas", new=AsyncMock()) as rebuild,
             patch(
-                "provisa.core.repositories.creation_request.create",
+                "provisa.api.admin.request_queue.raise_request",
                 new=AsyncMock(return_value=42),
             ) as cr_create,
         ):
             result = await create_webhook(
-                request, WebhookInput(name="notify", url="http://x", domainId="ops")
+                # REQ-2006: a held org's webhook names a public address (an IP literal: no DNS).
+                request,
+                WebhookInput(name="notify", url="http://93.184.216.34/notify", domainId="ops"),
             )
 
         # webhook registered unapproved (exposure gated until the request is executed)

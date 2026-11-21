@@ -18,6 +18,16 @@ import respx
 
 from provisa.graphql_remote.introspect import introspect_schema, _build_headers
 
+
+@pytest.fixture(autouse=True)
+def _one_organisation(monkeypatch):
+    """A deployment of one organization (REQ-2006). The API layer says it at import; these
+    tests import no API layer, so they say it themselves."""
+    from provisa.core import secrets_providers
+
+    monkeypatch.setattr(secrets_providers, "_many_organisations", lambda: False)
+
+
 SAMPLE_SCHEMA = {
     "queryType": {"name": "Query"},
     "mutationType": None,

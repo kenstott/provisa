@@ -95,6 +95,10 @@ def _remote(source: Any) -> tuple[str, int]:
     remote = (getattr(source, "mapping", None) or {}).get("remote") or {}
     if not remote.get("host") or not remote.get("port"):
         raise ValueError(f"code source {source.id!r} names no remote host: connect it again")
+    from provisa.security import sandbox_egress
+
+    # REQ-2006: a held org's remote host is checked at each attach, as it was when it paired.
+    sandbox_egress.require_allowed(remote["host"], int(remote["port"]))
     return remote["host"], int(remote["port"])
 
 

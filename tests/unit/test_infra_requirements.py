@@ -346,7 +346,9 @@ class TestREQ225EmbeddedPostgresAndTrino:
         # REQ-225
         content = yaml.safe_load((REPO_ROOT / "docker-compose.core.yml").read_text())
         pg_image = content["services"]["postgres"]["image"]
-        assert "postgres:16" in pg_image
+        # REQ-2185: PostgreSQL 16 carrying pgvector, which the reference library requires
+        # by tag, no digest: bundles load it from a docker-save tarball, which has no registry digest
+        assert pg_image == "pgvector/pgvector:pg16-trixie"
 
     def test_core_compose_includes_trino(self):
         # REQ-225

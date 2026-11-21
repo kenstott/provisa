@@ -1,0 +1,126 @@
+[
+ {
+  "columns": [
+   "person",
+   "business_day",
+   "direction",
+   "multiple_transactions",
+   "branches",
+   "account_numbers",
+   "cash_total"
+  ],
+  "engine": "duckdb",
+  "ordered": true,
+  "origin": "demo:banksecrecy/1-ctr-required.graphql",
+  "root_field": "b__viewCtrRequired",
+  "rows": [
+   [
+    "Corner Market Inc",
+    "2026-10-14",
+    "withdrawal",
+    3,
+    2,
+    "4417-1004-1676, 4417-2004-4028",
+    "1.2E+4"
+   ],
+   [
+    "Dana Whitmore",
+    "2026-10-09",
+    "deposit",
+    2,
+    2,
+    "4417-1003-3757, 4417-2003-8021",
+    "1.15E+4"
+   ],
+   [
+    "Greenleaf Landscaping LLC",
+    "2026-10-07",
+    "deposit",
+    2,
+    2,
+    "4417-1002-5838, 4417-2002-2014",
+    "1.16E+4"
+   ],
+   [
+    "Harold Finch",
+    "2026-10-05",
+    "deposit",
+    1,
+    1,
+    "4417-1001-7919",
+    "1.25E+4"
+   ],
+   [
+    "Marcus Reed",
+    "2026-10-20",
+    "deposit",
+    2,
+    2,
+    "4417-1006-7514, 4417-2006-6042",
+    "1.87E+4"
+   ]
+  ]
+ },
+ {
+  "columns": [
+   "person",
+   "business_day",
+   "direction",
+   "multiple_transactions",
+   "branches",
+   "account_numbers",
+   "cash_total"
+  ],
+  "engine": "postgres",
+  "ordered": true,
+  "origin": "demo:banksecrecy/1-ctr-required.graphql",
+  "root_field": "b__viewCtrRequired",
+  "rows": [
+   [
+    "Corner Market Inc",
+    "2026-10-14",
+    "withdrawal",
+    3,
+    2,
+    "4417-1004-1676, 4417-2004-4028",
+    "1.2E+4"
+   ],
+   [
+    "Dana Whitmore",
+    "2026-10-09",
+    "deposit",
+    2,
+    2,
+    "4417-1003-3757, 4417-2003-8021",
+    "1.15E+4"
+   ],
+   [
+    "Greenleaf Landscaping LLC",
+    "2026-10-07",
+    "deposit",
+    2,
+    2,
+    "4417-1002-5838, 4417-2002-2014",
+    "1.16E+4"
+   ],
+   [
+    "Harold Finch",
+    "2026-10-05",
+    "deposit",
+    1,
+    1,
+    "4417-1001-7919",
+    "1.25E+4"
+   ],
+   [
+    "Marcus Reed",
+    "2026-10-20",
+    "deposit",
+    2,
+    2,
+    "4417-1006-7514, 4417-2006-6042",
+    "1.87E+4"
+   ]
+  ]
+ }
+]

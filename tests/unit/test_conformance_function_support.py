@@ -23,6 +23,7 @@ from typing import Any
 
 import pytest
 import yaml
+from psycopg.sql import Composable
 
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "scripts" / "conformance"))
@@ -44,6 +45,17 @@ class Fake:
 
     def answer(self, sql: str) -> dict[str, Any]:
         return self.answers.get(sql, {"ok": False, "error": "ERROR:  no such function"})
+
+
+class Refusing(Fake):
+    """As ``Fake``, refusing a statement it does not know with one SQLSTATE and message."""
+
+    def __init__(self, answers: dict[str, dict[str, Any]], *, sqlstate: str, error: str) -> None:
+        super().__init__(answers)
+        self.refusal = {"ok": False, "error": error, "sqlstate": sqlstate}
+
+    def answer(self, sql: str) -> dict[str, Any]:
+        return self.answers.get(sql, self.refusal)
 
 
 def _ok(*values: Any, oid: int = 23) -> dict[str, Any]:
@@ -470,11 +482,11 @@ def test_every_call_equal_is_a_pass_with_its_answers_checked():
 
 
 def test_a_call_with_nothing_compared_is_not_checked_and_says_why():
-    fn = Function("setseed", "double precision", argtypes=("double precision",), volatility="v")
-    entry = _both(fn, "Numeric", _ok(None), _ok(None))
+    fn = Function("f", "polygon[]", argtypes=("polygon[]",), volatility="i")
+    entry = _both(fn, "Geometric", _ok(None), _ok(None))
     assert entry["outcome"] == "not_checked"
     assert not entry["answers_checked"] and not entry["type_and_form_checked"]
-    assert entry["unchecked"] == "volatile"
+    assert entry["unchecked"] == "no sample of polygon[]"
 
 
 def test_a_null_postgresql_answers_holds_provisa_to_null_and_is_no_pass():
@@ -582,6 +594,9 @@ _THEN = "2026-10-31 17:20:18.01903+00"
         (UUID, 2950, _V4, "00000000-0000-4000-8000-000000000000"),
         (RANDOM, 701, "0.8675929329186349", "1.2345e-05"),
         (RANDOM, 701, "0.5", "0"),
+        # Run 42527458223: random(-2.25, 5.125)'s form is a numeric of scale 3, of either sign.
+        (RANDOM, 1700, "-0.803", "1.023"),
+        (RANDOM, 1700, "2.525", "-0.400"),
         (PID, 23, "96517", "1"),
         (USER, 19, "postgres", "conformance"),
         (VERSION, 25, "PostgreSQL 17.11 (Debian) on x86_64, 64-bit", "PostgreSQL 17.11 on Provisa"),
@@ -602,6 +617,8 @@ def test_an_answer_of_the_form_postgresql_answers_in_is_a_pass_type_and_form_che
         (UUID, 2950, _V4, "dfe9efb2-a1e6-172d-835e-a79e9f1d8463"),  # version 1
         (RANDOM, 701, "0.5", "1.5"),
         (RANDOM, 701, "0.5", "-0.5"),
+        (RANDOM, 1700, "-0.803", "1.02"),
+        (RANDOM, 1700, "2.525", "-0.4754636315882823"),
         (PID, 23, "96517", "0"),
         (USER, 19, "postgres", "two words"),
         (VERSION, 25, "PostgreSQL 17.11 on x86_64, 64-bit", "Provisa 1.0"),
@@ -625,6 +642,10 @@ def test_an_answer_of_another_form_is_a_wrong_answer_saying_so(fn, oid, pg, prov
         (869, "::1", "1"),
         (869, "2001:db8::1/64", "2001"),
         (20, "-7", "7.5"),
+        (1700, "-0.803", "1.0234"),
+        (1700, "1.023", "-0.80"),
+        (1700, "1000", "1000.0"),
+        (1700, "-7", "7.5"),
         (16, "t", "true"),
         (3220, "0/14A2520", "14A2520"),
         (5038, "730:730:", "730"),
@@ -661,16 +682,30 @@ def test_a_record_is_held_to_its_number_of_fields():
     assert support.re.fullmatch(form, "(a,b,c,d,e)") is None
 
 
-def test_a_function_only_called_with_null_arguments_is_not_checked():
-    fn = Function("pg_sleep", "double precision", argtypes=("double precision",), volatility="v")
+def test_a_stable_function_only_called_with_null_arguments_is_not_checked():
+    # Its answer is its server's own, and no real value is given it: the NULL call alone.
+    fn = Function("pg_stat_get_buf_alloc", "text", argtypes=("text",), volatility="s")
     entry = _both(fn, "System", _ok("whatever", oid=25), _ok("no form at all", oid=25))
     assert entry["outcome"] == "not_checked"
     assert not entry["type_and_form_checked"] and not entry["answers_checked"]
 
 
+def test_a_volatile_function_only_called_with_null_arguments_has_its_type_checked():
+    """REQ-2167, amended 2026-11-04 (4): a volatile overload is never left not tested for being
+    volatile: its NULL call's result type and NULLs are PostgreSQL's."""
+    fn = Function("f", "double precision", argtypes=("double precision",), volatility="v")
+    entry = _both(fn, "System", _ok("whatever", oid=25), _ok("no form at all", oid=25))
+    assert entry["outcome"] == "pass" and entry["type_and_form_checked"]
+    assert not entry["answers_checked"]
+    assert _both(fn, "System", _ok("whatever", oid=25), _ok("1", oid=23))["outcome"] == (
+        "wrong_answer"
+    )
+
+
 def test_a_null_from_postgresql_leaves_no_form_to_check_and_holds_provisa_to_null():
+    # Volatile: its type and its NULL are PostgreSQL's (REQ-2167, amended 2026-11-04 (4)).
     entry = _both(UUID, "System", _ok(None, oid=2950), _ok(None, oid=2950))
-    assert entry["outcome"] == "not_checked" and not entry["type_and_form_checked"]
+    assert entry["outcome"] == "pass" and entry["type_and_form_checked"]
     entry = _both(UUID, "System", _ok(None, oid=2950), _ok(_V4, oid=2950))
     assert entry["outcome"] == "wrong_answer"
 
@@ -1007,7 +1042,7 @@ def test_the_guaranteed_list_is_answers_checked_and_type_and_form_checked_on_eve
     assert doc["counts"]["a"]["not_checked"] == 1
     assert doc["not_checked_reasons"]["a"] == {"volatile": 1}
     text = support.merged_markdown(doc)
-    assert "| a | 3 | 2 | 0 | 1 | 1 | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 0 |" in text
+    assert "| a | 3 | 2 | 0 | 0 | 0 | 1 | 1 | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |" in text
     assert (
         "| Numeric | 3 | 1 + 1 + 0, 1 not checked, of 3 | 1 + 1 + 0, 1 not checked, of 3 | 2 |"
         in text
@@ -1084,8 +1119,8 @@ def test_the_summary_gives_every_engine_and_every_family():
         }
     )
     text = support.merged_markdown(doc)
-    assert "| a | 2 | 1 | 0 | 1 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 1 | 0 | 0 |" in text
-    assert "| b | 2 | 2 | 0 | 0 | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |" in text
+    assert "| a | 2 | 1 | 0 | 0 | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 |" in text
+    assert "| b | 2 | 2 | 0 | 0 | 0 | 0 | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |" in text
     assert (
         "| Numeric | 1 | 1 + 0 + 0, 0 not checked, of 1 | 1 + 0 + 0, 0 not checked, of 1 | 1 |"
         in text
@@ -1207,10 +1242,11 @@ def _workflow() -> dict[str, Any]:
     return yaml.safe_load(WORKFLOW.read_text())
 
 
-def test_the_workflow_is_dispatched_by_hand_and_is_no_gate():
+def test_the_workflow_runs_by_dispatch_only_and_is_no_gate_on_main():
     doc = _workflow()
     assert doc["name"] == "Conformance (functions)"
-    assert set(doc[True]) == {"workflow_dispatch"}  # YAML reads the key `on` as true
+    triggers = doc[True]  # YAML reads the key `on` as true
+    assert set(triggers) == {"workflow_dispatch"}
     assert doc["permissions"] == {"contents": "read"}
     for path in (REPO / ".github" / "workflows").glob("*.yml"):
         if path != WORKFLOW:
@@ -1343,6 +1379,34 @@ def test_an_answer_about_the_database_is_equivalent_for_those_functions_only():
     assert _compare(want, got, function="xmlcomment").difference is not None
     garbled = _ok("not xml", oid=142)
     assert _compare(want, garbled, function="database_to_xmlschema").difference is not None
+
+
+def test_a_comparison_function_compares_by_sign_alone():
+    # byteacmp's memcmp difference: -222 on one reference platform, -1 on another (run 44547205126).
+    for want, got in (("-222", "-1"), ("133", "1"), ("0", "0"), ("-97", "-1")):
+        compared = _compare(_ok(want, oid=23), _ok(got, oid=23), function="byteacmp")
+        assert compared.difference is None
+        if want != got:
+            assert compared.rules == {report.COMPARISON_SIGN}
+    for want, got in (("-222", "1"), ("0", "-1"), ("1", "0"), ("1", "x")):
+        compared = _compare(_ok(want, oid=23), _ok(got, oid=23), function="bttextcmp")
+        assert compared.difference is not None
+    # Any other function's integer answer still compares by value.
+    assert _compare(_ok("-222", oid=23), _ok("-1", oid=23), function="length").difference
+
+
+def test_the_comparison_functions_are_the_families_comparators():
+    families = (REPO / "scripts" / "conformance" / "function_families.yaml").read_text()
+    for name in (
+        "byteacmp",
+        "btnametextcmp",
+        "bttext_pattern_cmp",
+        "bttextnamecmp",
+        "gin_cmp_tslexeme",
+        "gin_compare_jsonb",
+    ):
+        assert name in support.COMPARISON_FUNCTIONS
+        assert name in families
 
 
 def test_a_record_compares_json_only_in_its_json_fields():
@@ -1530,14 +1594,21 @@ def test_the_rules_are_the_ones_the_requirement_and_the_brief_name():
         report.FLOAT_CLOSE,
         report.JSON_KEY_ORDER,
         report.ARRAY_ORDER,
+        report.CLOCK_FIELD,
+        report.ZONE_PACKAGING,
+        report.COMPARISON_SIGN,
     ]
 
 
 def test_the_report_fails_per_engine_never_overall_and_keeps_a_wrong_answer_in_view():
     doc = _results(("pg", "wrong_answer", []), ("duckdb", "refused", []))
     for text in (report.pgwire_block(doc), report.overview_block(doc)):
-        assert "| Engine | Passed | Skipped by design | Failed |" in text
-        assert "| Postgres | 0 | 0 | 1 |" in text and "| DuckDB | 0 | 0 | 1 |" in text
+        assert (
+            "| Engine | Served | Of which within bound | Skipped by design | Failed | Not tested |"
+            in text
+        )
+        assert "| Postgres | 0 | 0 | 0 | 1 | 0 |" in text
+        assert "| DuckDB | 0 | 0 | 0 | 1 | 0 |" in text
         assert "| Total" not in text and "| All" not in text
     assert "| `abs(integer)` | x |" in report.pgwire_block(doc)
 
@@ -1555,8 +1626,16 @@ def test_the_report_fails_per_engine_never_overall_and_keeps_a_wrong_answer_in_v
             {
                 "outcome": "not_callable",
                 "detail": "PostgreSQL refuses the call: ERROR:  must be called as trigger",
+                "refused_for": "the call",
             },
             "skipped_by_design",
+        ),
+        (
+            {
+                "outcome": "not_callable",
+                "detail": "PostgreSQL refuses the call: ERROR:  must be called as trigger",
+            },
+            "failed",
         ),
         (
             {
@@ -1565,15 +1644,25 @@ def test_the_report_fails_per_engine_never_overall_and_keeps_a_wrong_answer_in_v
             },
             "failed",
         ),
-        ({"outcome": "not_checked"}, "failed"),
+        ({"outcome": "not_checked"}, "not_tested"),
         ({"outcome": "refused"}, "failed"),
         ({"outcome": "wrong_answer"}, "failed"),
         ({"outcome": "error"}, "failed"),
-        ({"outcome": "not_reached"}, "failed"),
+        ({"outcome": "not_reached"}, "not_tested"),
     ],
 )
-def test_every_overload_is_passed_skipped_by_design_or_failed(entry, verdict):
+def test_every_overload_is_passed_skipped_by_design_failed_or_not_tested(entry, verdict):
     assert report.verdict(entry) == verdict
+
+
+def test_the_four_counts_add_up_to_every_overload():
+    outcomes = [
+        {"outcome": o}
+        for o in ("pass", "by_design", "not_checked", "not_reached", "refused", "wrong_answer")
+    ]
+    c = report.result_counts(outcomes)
+    assert (c["passed"], c["skipped_by_design"], c["failed"], c["not_tested"]) == (1, 1, 2, 2)
+    assert c["passed"] + c["skipped_by_design"] + c["failed"] + c["not_tested"] == c["total"]
 
 
 def test_a_cell_says_what_was_checked_of_a_pass_and_a_call_alone_is_none():
@@ -1596,9 +1685,11 @@ def test_both_pages_are_filled_from_the_results_between_their_markers(tmp_path):
     for name in ("pgwire.md", "overview.md"):
         text = (tmp_path / name).read_text()
         assert "stale text" not in text and "After." in text
-        assert "| Postgres | 1 | 0 | 0 |" in text and "| DuckDB | 0 | 0 | 1 |" in text
-        assert "| Postgres | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |" in text
-        assert "| DuckDB | 0 | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 | 0 |" in text
+        assert (
+            "| Postgres | 1 | 0 | 0 | 0 | 0 |" in text and "| DuckDB | 0 | 0 | 0 | 1 | 0 |" in text
+        )
+        assert "| Postgres | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |" in text
+        assert "| DuckDB | 0 | 0 | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 0 |" in text
 
 
 def test_a_page_without_markers_is_refused():
@@ -1637,6 +1728,7 @@ class Served(Fake):
         self.literal, self.column = answer, column
 
     def answer(self, sql: str) -> dict[str, Any]:
+        # An edge call (function_edges.bounded) of a scalar reads no column either.
         reads_a_column = " FROM " in sql
         return self.column if reads_a_column else self.literal
 
@@ -1847,6 +1939,7 @@ def test_the_results_a_floor_reads_keep_their_keys():
         "passed",
         "skipped_by_design",
         "failed",
+        "not_tested",
         "exact",
         "equivalent",
         "not_checked",
@@ -1858,6 +1951,10 @@ def test_the_results_a_floor_reads_keep_their_keys():
         "not_callable",
         "not_reached",
         "total",
+        "right",
+        "within_bound",
+        "differs_wrong_at_edge",
+        "differs_error_at_edge",
     )
     assert not set(report.RESULT_KEYS) & set(report.COLUMN_KEYS)
 
@@ -1898,8 +1995,8 @@ def test_the_column_table_seeds_each_sample_and_registers_as_registration_types(
         def __exit__(self, *_: Any) -> None:
             return None
 
-        def execute(self, sql: str) -> None:
-            statements.append(sql)
+        def execute(self, query: Composable) -> None:
+            statements.append(query.as_string())
 
     monkeypatch.setattr(support.psycopg, "connect", lambda *_a, **_k: Conn())
     monkeypatch.setattr(catalog, "_sized_numeric", lambda *_a: {"data_type": "numeric(38,3)"})
@@ -1907,7 +2004,9 @@ def test_the_column_table_seeds_each_sample_and_registers_as_registration_types(
     support.seed_columns("dsn", out)
     inserts = [s for s in statements if s.startswith("INSERT")]
     assert len(inserts) == support.VALUE_ROWS
-    assert inserts[0].startswith("INSERT INTO conformance.function_columns VALUES (1, 3::smallint")
+    assert inserts[0].startswith(
+        'INSERT INTO "conformance"."function_columns" VALUES (1, 3::smallint'
+    )
     assert "'cat:1 fat:2'::tsvector" in inserts[0] and "'rat:3A'::tsvector" in inserts[2]
     [table] = yaml.safe_load(out.read_text())
     assert table["table"] == "function_columns" and table["source_id"] == "conformance-pg"
@@ -1966,20 +2065,30 @@ def test_a_volatile_function_that_reads_an_object_is_given_one_and_held_to_its_f
 
 
 def test_a_read_answering_the_form_postgresql_answers_passes_type_and_form_checked():
-    pg = _per_call(READ_FILE, {0: _ok(None, oid=25)}, _ok("17\n", oid=25))
+    pg = _per_call(LO_GET, {0: _ok(None, oid=17)}, _ok("\\x616263", oid=17))
     entry = support.measure_overload(
-        READ_FILE,
+        LO_GET,
         "System",
         pg,
-        _per_call(READ_FILE, {0: _ok(None, oid=25)}, _ok("18\n", oid=25)),
+        _per_call(LO_GET, {0: _ok(None, oid=17)}, _ok("\\x616264", oid=17)),
         _route,
         engine="pg",
     )
     assert entry["outcome"] == "pass" and entry["type_and_form_checked"]
     assert entry["unchecked"] == "volatile"
-    other = _per_call(READ_FILE, {0: _ok(None, oid=25)}, _ok("no such thing", oid=25))
-    entry = support.measure_overload(READ_FILE, "System", pg, other, _route, engine="pg")
+    other = _per_call(LO_GET, {0: _ok(None, oid=17)}, _ok("no such thing", oid=17))
+    entry = support.measure_overload(LO_GET, "System", pg, other, _route, engine="pg")
     assert entry["outcome"] == "wrong_answer"
+
+
+def test_a_server_file_read_is_skipped_by_design_whatever_it_answers():
+    """REQ-2167, amended 2026-11-03 (3): no function reads the server's files, so pg_read_file is
+    no longer held to the form of PostgreSQL's file."""
+    pg = _per_call(READ_FILE, {0: _ok(None, oid=25)}, _ok("17\n", oid=25))
+    for answer in ("18\n", "no such thing"):
+        got = _per_call(READ_FILE, {0: _ok(None, oid=25)}, _ok(answer, oid=25))
+        entry = support.measure_overload(READ_FILE, "System", pg, got, _route, engine="pg")
+        assert entry["outcome"] == "by_design" and entry["group"] == support.SERVER_FILES_GROUP
 
 
 def test_a_statistic_of_a_database_or_a_backend_is_asked_of_the_sessions_own():
@@ -2107,16 +2216,26 @@ def test_a_cursor_is_opened_in_a_transaction_around_the_call_and_rolled_back():
 
 
 def test_real_values_postgresql_refuses_or_answers_null_to_say_so_and_stay_not_checked():
+    own = "answers with its own server's state"
+    null_call = {0: _ok(None, oid=20)}
+    refusing = _per_call(DB_COMMITS, null_call, {"ok": False, "error": "ERROR:  no such database"})
+    entry = support.measure_overload(DB_COMMITS, "System", refusing, refusing, _route, engine="pg")
+    assert entry["outcome"] == "not_checked"
+    assert entry["unchecked"] == f"{own}; {support._FORM_REFUSED}"
+    nulls = _per_call(DB_COMMITS, null_call, _ok(None, oid=20))
+    entry = support.measure_overload(DB_COMMITS, "System", nulls, nulls, _route, engine="pg")
+    assert entry["unchecked"] == f"{own}; {support._FORMLESS}"
+
+
+def test_a_volatile_read_postgresql_refuses_real_values_of_is_checked_by_its_null_call():
+    """REQ-2167, amended 2026-11-04 (4): never not tested for being volatile."""
     null_call = {0: _ok(None, oid=17)}
     refusing = _per_call(LO_GET, null_call, {"ok": False, "error": "ERROR:  no such large object"})
     entry = support.measure_overload(
         LO_GET, "Large object", refusing, refusing, _route, engine="pg"
     )
-    assert entry["outcome"] == "not_checked"
-    assert entry["unchecked"] == f"volatile; {support._FORM_REFUSED}"
-    nulls = _per_call(LO_GET, null_call, _ok(None, oid=17))
-    entry = support.measure_overload(LO_GET, "Large object", nulls, nulls, _route, engine="pg")
-    assert entry["unchecked"] == f"volatile; {support._FORMLESS}"
+    assert entry["outcome"] == "pass" and entry["type_and_form_checked"]
+    assert entry["unchecked"] == "volatile"
 
 
 def test_the_fixture_makes_a_multixact_of_two_share_locks_held_at_once(monkeypatch):
@@ -2260,6 +2379,57 @@ def test_any_other_difference_stays_a_wrong_answer(name, sql, difference):
             'ERROR:  relation "conformance.probe_sequence" does not exist',
             support.SEQUENCE_GROUP,
         ),
+        # REQ-2167, amended 2026-11-02, Sequence functions are not supported.
+        (
+            "pg_sequence_parameters",
+            'ERROR:  relation "conformance.probe_sequence" does not exist',
+            support.SEQUENCE_GROUP,
+        ),
+        # REQ-2167, amended 2026-10-27 and 2026-11-03: no function reads the server's files.
+        (
+            "pg_ls_dir",
+            'ERROR:  could not open directory "base": No such file or directory\nCONTEXT:  '
+            "PL/pgSQL function provisa_raise(text,text) line 1 at RAISE",
+            support.SERVER_FILES_GROUP,
+        ),
+        (
+            "pg_stat_file",
+            'ERROR:  could not stat file "PG_VERSION": No such file or directory',
+            support.SERVER_FILES_GROUP,
+        ),
+        # REQ-2167, amended 2026-11-03, Storage, fixture objects and server files (2).
+        (
+            "lo_get",
+            "ERROR:  large object 424243 does not exist",
+            support.CATALOG_IS_THE_MODEL_GROUP,
+        ),
+        (
+            "pg_ls_replslotdir",
+            'ERROR:  replication slot "conformance_slot" does not exist',
+            support.CATALOG_IS_THE_MODEL_GROUP,
+        ),
+        (
+            "pg_xact_status",
+            "ERROR:  transaction ID 753 is in the future",
+            support.CATALOG_IS_THE_MODEL_GROUP,
+        ),
+        (
+            "txid_status",
+            "ERROR:  transaction ID 753 is in the future",
+            support.CATALOG_IS_THE_MODEL_GROUP,
+        ),
+        (
+            "pg_extension_update_paths",
+            'ERROR:  extension "hstore" is not available',
+            support.CATALOG_IS_THE_MODEL_GROUP,
+        ),
+        # REQ-2167, amended 2026-11-03, Storage, fixture objects and server files (1): Provisa
+        # holds no tuple ids.
+        (
+            "currtid2",
+            'ERROR:  relation "conformance.function_columns" does not exist',
+            support.STORAGE_GROUP,
+        ),
     ],
 )
 def test_an_error_a_decision_makes_is_that_decisions(name, error, group):
@@ -2287,3 +2457,1346 @@ def test_a_large_object_write_is_skipped_by_design_under_the_read_only_decision(
     pg = Effects({effect.observe: _ok("1", oid=20)})
     entry = support.measure_overload(LO_CREATE, "Large object", pg, provisa, _route, engine="pg")
     assert entry["outcome"] == "by_design" and entry["group"] == support.LARGE_OBJECT_GROUP
+
+
+# --- decisions of 2026-11-03: storage, fixture objects, server files, server administration ----
+
+
+def _named(name: str, argtypes: tuple[str, ...], rettype: str, volatility: str = "v") -> Function:
+    return Function(
+        name, ", ".join(argtypes), argtypes=argtypes, volatility=volatility, rettype=rettype
+    )
+
+
+@pytest.mark.parametrize(
+    "fn,group",
+    [
+        # REQ-2167, amended 2026-11-03, Storage, fixture objects and server files (1).
+        (_named("pg_relation_size", ("regclass",), "bigint"), support.STORAGE_GROUP),
+        (_named("pg_tablespace_size", ("oid",), "bigint"), support.STORAGE_GROUP),
+        (_named("pg_relation_filepath", ("regclass",), "text", "s"), support.STORAGE_GROUP),
+        # (3): no function reads the server's files.
+        (_named("pg_read_file", ("text", "boolean"), "text"), support.SERVER_FILES_GROUP),
+        (_named("pg_read_binary_file", ("text",), "bytea"), support.SERVER_FILES_GROUP),
+        # pg_stat_file with missing_ok answers as a server without the file: NULL, where the
+        # fixture server has it (2026-11-04).
+        (_named("pg_stat_file", ("text", "boolean"), "record"), support.SERVER_FILES_GROUP),
+        # REQ-579: a collation's version is the server's.
+        (_named("pg_collation_actual_version", ("oid",), "text"), support.SERVER_VERSION_GROUP),
+        (
+            _named("pg_database_collation_actual_version", ("oid",), "text"),
+            support.SERVER_VERSION_GROUP,
+        ),
+    ],
+)
+def test_a_decided_function_s_null_answer_is_skipped_by_design(fn, group):
+    entry = _both(fn, "System", _ok("114688", oid=20), _ok(None, oid=20))
+    assert entry["outcome"] == "by_design" and entry["group"] == group
+    assert entry["requirement"] == support.GROUP_REQUIREMENTS.get(group, "REQ-2167")
+
+
+def test_pg_stat_file_of_one_argument_is_not_decided_whatever_it_answers():
+    """Without missing_ok, a server without the file refuses: that refusal is the decision
+    (_DECIDED_ERRORS), and any other answer is measured."""
+    fn = _named("pg_stat_file", ("text",), "record")
+    entry = _both(fn, "System", _ok("(4096)", oid=2249), _ok(None, oid=2249))
+    assert entry["outcome"] != "by_design"
+
+
+def test_a_collation_s_version_cites_the_server_version_decision():
+    assert support.GROUP_REQUIREMENTS[support.SERVER_VERSION_GROUP] == "REQ-579"
+
+
+def test_a_server_file_read_provisa_refuses_is_skipped_by_design():
+    fn = _named("pg_read_file", ("text",), "text")
+    entry = _both(
+        fn,
+        "System",
+        _ok("17\n", oid=25),
+        {"ok": False, "error": 'ERROR:  could not open file "PG_VERSION" for reading'},
+    )
+    assert entry["outcome"] == "by_design" and entry["group"] == support.SERVER_FILES_GROUP
+
+
+@pytest.mark.parametrize(
+    "name,refusal",
+    [
+        ("pg_wal_replay_pause", "ERROR:  recovery is not in progress"),
+        ("pg_logical_slot_peek_binary_changes", 'ERROR:  logical decoding requires "wal_level"'),
+        ("pg_sync_replication_slots", "ERROR:  replication slots can only be synchronized"),
+        ("pg_last_committed_xact", "ERROR:  could not get commit timestamp data"),
+        ("pg_ls_logdir", 'ERROR:  could not open directory "log"'),
+        ("pg_replication_origin_session_reset", "ERROR:  no replication origin is configured"),
+        ("pg_stop_making_pinned_objects", "ERROR:  cannot advance OID counter anymore"),
+    ],
+)
+def test_a_server_administration_function_is_skipped_by_design_with_postgresql_s_refusal(
+    name, refusal
+):
+    """REQ-2167, amended 2026-11-03, Server administration functions: on every engine, PostgreSQL's
+    refusal named as the reason."""
+    fn = _named(name, (), "void")
+    refused = {"ok": False, "error": refusal}
+    for engine in ("pg", "duckdb"):
+        sqls = [c.sql for c in support.calls(fn, "System")]
+        entry = support.measure_overload(
+            fn,
+            "System",
+            Fake(dict.fromkeys(sqls, refused)),
+            Fake({}),
+            _route,
+            engine=engine,
+        )
+        assert entry["outcome"] == "by_design", engine
+        assert entry["group"] == support.SERVER_ADMINISTRATION_GROUP
+        assert refusal in entry["reason"]
+        assert support.function_report.verdict(entry) == "skipped_by_design"
+        assert support.by_design_groups([entry])[support.SERVER_ADMINISTRATION_GROUP] == [
+            f"{name}(): PostgreSQL refuses the call: {refusal}"
+        ]
+
+
+@pytest.mark.parametrize(
+    "name,sql,difference",
+    [
+        (
+            "has_foreign_data_wrapper_privilege",
+            'SELECT pg_catalog."has_foreign_data_wrapper_privilege"((SELECT oid FROM '
+            "pg_catalog.pg_foreign_data_wrapper WHERE fdwname = 'conformance_fdw'), "
+            "'USAGE'::text) AS v",
+            "None, PostgreSQL 't'",
+        ),
+        (
+            "has_server_privilege",
+            'SELECT pg_catalog."has_server_privilege"((SELECT oid FROM '
+            "pg_catalog.pg_foreign_server WHERE srvname = 'conformance_server'), 'USAGE'::text) AS v",
+            "None, PostgreSQL 't'",
+        ),
+        (
+            "pg_ndistinct_send",
+            'SELECT pg_catalog."pg_ndistinct_send"((SELECT d.stxdndistinct FROM '
+            "pg_catalog.pg_statistic_ext_data AS d JOIN pg_catalog.pg_statistic_ext AS s ON "
+            "s.oid = d.stxoid WHERE s.stxname = 'stats_fixture_ab')::pg_ndistinct) AS v",
+            "None, PostgreSQL '\\\\xa4bf'",
+        ),
+        (
+            "pg_get_expr",
+            'SELECT pg_catalog."pg_get_expr"((SELECT relpartbound FROM pg_catalog.pg_class '
+            "WHERE relname = 'hash_fixture_0')::pg_node_tree, 0::oid) AS v",
+            "None, PostgreSQL 'FOR VALUES WITH (modulus 2, remainder 0)'",
+        ),
+        (
+            "satisfies_hash_partition",
+            'SELECT pg_catalog."satisfies_hash_partition"((SELECT oid FROM pg_catalog.pg_class '
+            "WHERE relname = 'hash_fixture'), 2::integer, 0::integer, 42::integer) AS v",
+            "'f', PostgreSQL 't'",
+        ),
+        (
+            "pg_get_replication_slots",
+            'SELECT pg_catalog."pg_get_replication_slots"() AS v',
+            "0 rows, PostgreSQL 1",
+        ),
+        (
+            "pg_stat_get_db_stat_reset_time",
+            'SELECT pg_catalog."pg_stat_get_db_stat_reset_time"(5::oid) AS v',
+            "None, PostgreSQL '2026-11-03 12:23:32.570024+00'",
+        ),
+        # REQ-2190: an oid that is no collation of PostgreSQL's is one of the model's catalog.
+        (
+            "pg_collation_is_visible",
+            'SELECT pg_catalog."pg_collation_is_visible"(12345::oid) AS v',
+            "'t', PostgreSQL None",
+        ),
+    ],
+)
+def test_an_object_only_the_postgresql_fixture_makes_is_the_catalog_s_model(name, sql, difference):
+    """REQ-2167, amended 2026-11-03, Storage, fixture objects and server files (2)."""
+    assert support.decided_difference(name, sql, difference) == support.CATALOG_IS_THE_MODEL_GROUP
+
+
+@pytest.mark.parametrize("name", ["pg_node_tree_out", "pg_node_tree_send"])
+def test_a_system_views_rule_is_the_catalog_s_model(name):
+    """REQ-2167, CATALOG IS THE MODEL'S: the model's pg_rewrite holds no rule of a system view."""
+    sql = (
+        f'SELECT pg_catalog."{name}"((SELECT r.ev_action FROM pg_catalog.pg_rewrite AS r '
+        "JOIN pg_catalog.pg_class AS c ON c.oid = r.ev_class WHERE c.relname = 'pg_tables' "
+        "AND c.relnamespace = 'pg_catalog'::regnamespace)::pg_node_tree) AS v"
+    )
+    difference = "None, PostgreSQL '({QUERY :commandType 1'"
+    assert support.decided_difference(name, sql, difference) == support.CATALOG_IS_THE_MODEL_GROUP
+    assert support.decided_difference(name, sql, "'x', PostgreSQL 'y'") is None
+
+
+def test_a_fixture_free_call_of_a_fixture_function_stays_a_wrong_answer():
+    sql = 'SELECT pg_catalog."pg_get_expr"(NULL::pg_node_tree, 0::oid) AS v'
+    assert support.decided_difference("pg_get_expr", sql, "'x', PostgreSQL None") is None
+
+
+def test_the_column_table_grants_the_probe_s_role_writes_on_every_column(tmp_path, monkeypatch):
+    """REQ-2167, amended 2026-11-03 (4): the privilege checks compare like with like."""
+
+    class Conn:
+        def __enter__(self) -> Any:
+            return self
+
+        def __exit__(self, *_: Any) -> None:
+            return None
+
+        def execute(self, _sql: str) -> None:
+            return None
+
+    monkeypatch.setattr(support.psycopg, "connect", lambda *_a, **_k: Conn())
+    monkeypatch.setattr(catalog, "_sized_numeric", lambda *_a: {"data_type": "numeric(38,3)"})
+    out = tmp_path / "tables.yaml"
+    support.seed_columns("dsn", out)
+    [table] = yaml.safe_load(out.read_text())
+    names = [c["name"] for c in table["columns"]]
+    grants = {g["operation"]: g for g in table["write_grants"]}
+    assert set(grants) == {"insert", "update", "delete"}
+    assert all(g["role"] == "org_admin" for g in grants.values())
+    assert grants["insert"]["columns"] == names and grants["update"]["columns"] == names
+    from provisa.core.models import WriteGrant
+
+    for grant in table["write_grants"]:
+        WriteGrant(**grant)
+
+
+def test_pg_cursor_s_creation_time_is_compared_by_its_form():
+    """REQ-2167, WHAT GUARANTEED MEANS: the clock's field of pg_cursor cannot be compared."""
+    sql = 'SELECT pg_catalog."pg_cursor"() AS v'
+    want = _ok('("",x,f,f,f,"2026-11-03 12:52:57.771655+00")', oid=2249)
+    got = _ok('("",x,f,f,f,"2026-11-03 12:52:57.772824+00")', oid=2249)
+    compared = support.compare(want, got, values=True, sql=sql, function="pg_cursor")
+    assert compared.difference is None
+    assert report.CLOCK_FIELD in compared.rules
+    other = _ok('("",y,f,f,f,"2026-11-03 12:52:57.772824+00")', oid=2249)
+    assert support.compare(want, other, values=True, sql=sql, function="pg_cursor").difference
+    unformed = _ok('("",x,f,f,f,"yesterday")', oid=2249)
+    assert support.compare(want, unformed, values=True, sql=sql, function="pg_cursor").difference
+
+
+# --- decisions of 2026-11-03: time zones, REFERENCES, a table's XML (REQ-2167) --------------------
+
+_ZONES_SQL = 'SELECT pg_catalog."pg_timezone_names"() AS v'
+
+
+def _zones(*names: str) -> dict[str, Any]:
+    return _ok(*(f"({name},UTC,00:00:00,f)" for name in names), oid=2249)
+
+
+def _compared_zones(want: dict[str, Any], got: dict[str, Any]) -> Any:
+    return support.compare(want, got, values=True, sql=_ZONES_SQL, function="pg_timezone_names")
+
+
+def test_the_zones_compare_by_the_names_both_lists_hold():
+    """REQ-2167, amended 2026-11-03, Time zones follow upstream tzdata: Debian's tzdata drops the
+    backward links (US/Eastern, a link to America/New_York) and adds localtime and posixrules."""
+    want = _zones("America/New_York", "UTC", "localtime", "posixrules")
+    got = _zones("America/New_York", "US/Eastern", "UTC")
+    compared = _compared_zones(want, got)
+    assert compared.difference is None
+    assert report.ZONE_PACKAGING in compared.rules
+
+
+def test_a_posix_rule_zone_tzdata_made_a_backward_link_is_packaging():
+    """tzdata 2024b made CST6CDT and its kin backward links, which Debian drops; the pinned release
+    compiles each apart from the zone it links to (run 42935119044)."""
+    want = _zones("America/Chicago", "America/New_York", "UTC")
+    got = _zones("America/Chicago", "America/New_York", "CST6CDT", "EST5EDT", "UTC")
+    compared = _compared_zones(want, got)
+    assert compared.difference is None
+    assert report.ZONE_PACKAGING in compared.rules
+    # Its zone not listed by PostgreSQL either: a difference.
+    lone = _compared_zones(_zones("UTC"), _zones("UTC", "PST8PDT"))
+    assert lone.difference is not None and "PST8PDT" in lone.difference
+
+
+def test_the_same_zones_need_no_packaging():
+    compared = _compared_zones(_zones("UTC", "Asia/Tokyo"), _zones("Asia/Tokyo", "UTC"))
+    assert compared.difference is None
+    assert report.ZONE_PACKAGING not in compared.rules
+
+
+def test_a_zone_both_lists_hold_compares_its_row():
+    got = _ok("(UTC,UCT,00:00:00,f)", oid=2249)
+    compared = _compared_zones(_zones("UTC", "localtime"), got)
+    assert compared.difference == "'(UTC,UCT,00:00:00,f)', PostgreSQL '(UTC,UTC,00:00:00,f)'"
+
+
+@pytest.mark.parametrize(
+    "want,got,named",
+    [
+        # A zone PostgreSQL lists that is no distribution's own.
+        (("UTC", "Mars/Olympus"), ("UTC",), "Mars/Olympus"),
+        # A zone of the pinned release that is no link to one both lists hold.
+        (("UTC",), ("UTC", "Asia/Tokyo"), "Asia/Tokyo"),
+        # A link whose zone PostgreSQL does not list either.
+        (("UTC",), ("UTC", "US/Eastern"), "US/Eastern"),
+    ],
+)
+def test_a_zone_one_list_holds_for_any_other_reason_differs(want, got, named):
+    compared = _compared_zones(_zones(*want), _zones(*got))
+    assert compared.difference is not None and named in compared.difference
+
+
+@pytest.mark.parametrize(
+    "name,sql",
+    [
+        (
+            "has_table_privilege",
+            "SELECT pg_catalog.\"has_table_privilege\"('conformance.function_columns'::text, "
+            "'REFERENCES'::text) AS v",
+        ),
+        (
+            "has_column_privilege",
+            'SELECT pg_catalog."has_column_privilege"('
+            "'conformance.function_columns'::regclass::oid, 1::smallint, 'REFERENCES'::text) AS v",
+        ),
+        (
+            "has_any_column_privilege",
+            "SELECT pg_catalog.\"has_any_column_privilege\"('conformance.function_columns'::text, "
+            "'REFERENCES'::text) AS v",
+        ),
+    ],
+)
+def test_references_is_never_granted(name, sql):
+    """REQ-2167, amended 2026-11-03, REFERENCES is never granted: 'f' is Provisa's answer."""
+    assert support.decided_difference(name, sql, "'f', PostgreSQL 't'") == support.REFERENCES_GROUP
+    assert support.GROUPS[support.REFERENCES_GROUP]
+
+
+def test_another_privilege_on_the_model_s_table_stays_a_wrong_answer():
+    sql = (
+        "SELECT pg_catalog.\"has_table_privilege\"('conformance.function_columns'::text, "
+        "'SELECT'::text) AS v"
+    )
+    assert support.decided_difference("has_table_privilege", sql, "'f', PostgreSQL 't'") is None
+
+
+_TABLE_XML_SQL = (
+    "SELECT pg_catalog.\"table_to_xml_and_xmlschema\"('conformance.function_columns'::regclass, "
+    "true::boolean, true::boolean, '12'::text) AS v"
+)
+
+
+def _document(database: str, arrays: tuple[str, str], tail: str = "") -> dict[str, Any]:
+    integers, texts = arrays
+    return _ok(
+        f'<xsd:simpleType name="UDT.{database}.pg_catalog._int4">\n'
+        f'<xsd:complexType name="RowType.{database}.conformance.function_columns">\n'
+        f"  <c_integer_array>{integers}</c_integer_array>\n"
+        f"  <c_text_array>{texts}</c_text_array>\n"
+        f"  <c_int4range>(,4)</c_int4range>{tail}\n",
+        oid=142,
+    )
+
+
+def test_a_table_s_xml_differing_in_its_arrays_and_database_alone_is_by_design():
+    """REQ-1965: an array column is the JSON it is registered as; REQ-588: the database is the
+    served one."""
+    want = _document("conformance", ("<element>-7</element><element>42</element>", ""))
+    got = _document("provisa", ("[-7, null, 42]", "[]"))
+    differs = support.compare(want, got, values=True, sql=_TABLE_XML_SQL).difference
+    assert differs is not None
+    group = support.decided_answer("table_to_xml_and_xmlschema", _TABLE_XML_SQL, want, got)
+    assert group == support.TABLE_XML_GROUP
+    assert support.GROUP_REQUIREMENTS[group] == "REQ-1965, REQ-588"
+
+
+def test_a_table_s_xml_differing_in_anything_else_stays_a_wrong_answer():
+    want = _document("conformance", ("<element>-7</element><element>42</element>", ""))
+    for got in (
+        _document("provisa", ("[-7, null, 42]", "[]"), tail="x"),
+        _document("provisa", ("[-7, null, 43]", "[]")),
+    ):
+        assert support.decided_answer("table_to_xml", _TABLE_XML_SQL, want, got) is None
+    assert support.decided_answer("abs", _TABLE_XML_SQL, want, want) is None
+
+
+# REQ-2167, amended 2026-11-04: the server state the client tools read is Provisa's own, and
+# compared by its type and form, never skipped by design.
+_TOOL_SERVER_STATE = (
+    (Function("pg_stat_get_numscans", "oid", argtypes=("oid",), volatility="s"), 20, "1", "0"),
+    (Function("pg_tablespace_location", "oid", argtypes=("oid",), volatility="s"), 25, "", ""),
+    (
+        Function("pg_relation_is_publishable", "regclass", argtypes=("regclass",), volatility="s"),
+        16,
+        "t",
+        "f",
+    ),
+)
+
+
+@pytest.mark.parametrize(("fn", "oid", "pg", "provisa"), _TOOL_SERVER_STATE)
+def test_server_state_a_client_tool_reads_is_compared_by_type_and_form(fn, oid, pg, provisa):
+    assert support.own_answer(fn) is not None
+    assert fn.name not in support.DECIDED_FUNCTIONS
+    assert len(support.form_calls(fn)) == support.VALUE_ROWS
+    entry = _both(fn, "System", _ok(pg, oid=oid), _ok(provisa, oid=oid))
+    assert entry["outcome"] == "pass"
+    assert entry["type_and_form_checked"] and not entry["answers_checked"]
+
+
+@pytest.mark.parametrize("name", ["pg_relation_size", "pg_total_relation_size"])
+def test_relation_sizes_stay_skipped_by_design_as_provisa_holds_no_storage(name):
+    assert support.DECIDED_FUNCTIONS[name] == support.STORAGE_GROUP
+
+
+# --- REQ-2167, amended 2026-11-03 and 2026-11-04: server state, internal types, call shapes ----
+
+_DECIDED_2026_11_04 = [
+    # Backend session statistics are the engine's (amended 2026-11-03).
+    (_named("pg_stat_get_backend_activity", ("integer",), "text", "s"), "SERVER_ADMINISTRATION"),
+    (_named("pg_stat_get_backend_subxact", ("integer",), "record", "s"), "SERVER_ADMINISTRATION"),
+    (_named("pg_stat_get_backend_idset", (), "integer", "s"), "SERVER_ADMINISTRATION"),
+    # (1) PostgreSQL's own server state, the transaction counters beside it.
+    (_named("pg_stat_get_xact_numscans", ("oid",), "bigint"), "SERVER_STATE"),
+    (_named("pg_stat_get_xact_function_calls", ("oid",), "bigint"), "SERVER_STATE"),
+    (_named("pg_current_logfile", ("text",), "text"), "SERVER_STATE"),
+    (_named("pg_hba_file_rules", (), "record"), "SERVER_STATE"),
+    (_named("pg_get_shmem_allocations", (), "record"), "SERVER_STATE"),
+    (_named("pg_lock_status", (), "record"), "SERVER_STATE"),
+    (_named("pg_stat_get_slru", (), "record", "s"), "SERVER_STATE"),
+    (_named("pg_stat_get_wal_senders", (), "record", "s"), "SERVER_STATE"),
+    (_named("pg_ls_tmpdir", ("oid",), "record"), "SERVER_STATE"),
+    (_named("pg_prepared_xact", (), "record"), "SERVER_STATE"),
+    # (2) the session's cursors, a source's sequences, the server's extensions, LATIN encodings.
+    (_named("pg_cursor", (), "record", "s"), "SESSION_CURSORS"),
+    (_named("pg_sequence_last_value", ("regclass",), "bigint"), "SEQUENCE"),
+    (_named("pg_extension_update_paths", ("name",), "record", "s"), "SERVER_EXTENSIONS"),
+    (_named("to_ascii", ("text",), "text", "i"), "SINGLE_BYTE_DATABASE"),
+    # (3) the types no SQL value can have.
+    (
+        _named("anycompatiblenonarray_out", ("anycompatiblenonarray",), "cstring", "i"),
+        "NO_SQL_VALUE",
+    ),
+    (_named("shell_out", ("void",), "cstring", "i"), "NO_SQL_VALUE"),
+    (_named("pg_mcv_list_in", ("cstring",), "pg_mcv_list", "s"), "NO_SQL_VALUE"),
+    (_named("brin_bloom_summary_send", ("pg_brin_bloom_summary",), "bytea", "s"), "NO_SQL_VALUE"),
+    (_named("gtsvectorout", ("gtsvector",), "cstring", "i"), "NO_SQL_VALUE"),
+]
+
+
+@pytest.mark.parametrize(("fn", "group"), _DECIDED_2026_11_04)
+def test_a_function_a_decision_names_is_skipped_by_design_whatever_it_answers(fn, group):
+    group = getattr(support, f"{group}_GROUP")
+    assert support.decided_function(fn) == group
+    for got in (_ok("1"), {"ok": False, "error": "ERROR:  pg_cursor() has no form on pg"}):
+        entry = _both(fn, "System", _ok("1"), got)
+        assert entry["outcome"] == "by_design" and entry["group"] == group
+        assert entry["detail"] == support.GROUPS[group]
+        assert support.function_report.verdict(entry) == "skipped_by_design"
+
+
+def test_a_backend_statistic_provisa_refuses_by_name_is_skipped_by_design():
+    """REQ-2167, amended 2026-11-03, Backend session statistics are the engine's."""
+    refused = {"ok": False, "error": "ERROR:  pg_stat_get_backend_pid() has no form on pg"}
+    fn = _named("pg_stat_get_backend_pid", ("integer",), "integer", "s")
+    entry = _both(fn, "System", _ok("42"), refused)
+    assert entry["group"] == support.SERVER_ADMINISTRATION_GROUP
+    assert "pg_stat_get_backend_* and pg_stat_get_backend_idset" in entry["detail"]
+
+
+def test_the_twenty_five_pseudo_type_and_eight_summary_io_functions_are_decided():
+    decided = {
+        name for name, g in support.DECIDED_FUNCTIONS.items() if g == support.NO_SQL_VALUE_GROUP
+    }
+    summaries = {
+        "brin_bloom_summary_in",
+        "brin_bloom_summary_out",
+        "brin_bloom_summary_send",
+        "brin_minmax_multi_summary_in",
+        "brin_minmax_multi_summary_out",
+        "brin_minmax_multi_summary_send",
+        "gtsvectorin",
+        "gtsvectorout",
+    }
+    assert summaries <= decided and len(decided - summaries) == 25
+    # The forms a value can reach stay compared: an array's output, a recv's internal argument.
+    assert "anyarray_out" not in decided and "anyarray_recv" not in decided
+
+
+def test_only_the_one_argument_to_ascii_is_decided():
+    assert support.decided_function(_named("to_ascii", ("text", "integer"), "text", "i")) is None
+    assert support.decided_function(_named("to_ascii", ("text", "name"), "text", "i")) is None
+
+
+def test_a_function_no_decision_names_is_measured():
+    for fn in (
+        ABS,
+        _named("pg_stat_get_db_xact_commit", ("oid",), "bigint", "s"),
+        _named("pg_current_wal_lsn", (), "pg_lsn"),
+        _named("pg_partition_tree", ("regclass",), "record"),
+    ):
+        assert support.decided_function(fn) is None
+
+
+def test_unknownin_s_refusal_proves_it_internal_and_skipped_by_design():
+    """REQ-2167, amended 2026-11-04 (2): the parser's internal type, which PostgreSQL itself cannot
+    call from SQL."""
+    import pgwire_function_probe as function_probe
+
+    refusal = "ERROR:  failed to find conversion function from unknown to text"
+    fn = _named("unknownin", ("cstring",), "unknown", "i")
+    assert function_probe.refused_for(fn, "XX000", refusal) == function_probe.THE_CALL
+    pg = Refusing({}, sqlstate="XX000", error=refusal)
+    entry = support.measure_overload(fn, "Type operators", pg, Fake({}), _route, engine="pg")
+    assert entry["outcome"] == "not_callable"
+    assert entry["detail"] == f"PostgreSQL refuses the call: {refusal}"
+    assert support.function_report.verdict(entry) == "skipped_by_design"
+
+
+def test_a_volatile_function_answering_a_null_where_postgresql_answers_a_value_is_wrong():
+    """REQ-2167, amended 2026-11-04 (4): its type and form, NULLs too, are PostgreSQL's."""
+    fn = Function("f", "integer", argtypes=("integer",), volatility="v", rettype="text")
+    entry = _both(fn, "System", _ok("x", oid=25), _ok(None, oid=25))
+    assert entry["outcome"] == "wrong_answer"
+    assert entry["detail"]["difference"] == "None, PostgreSQL 'x'"
+
+
+def test_a_volatile_set_provisa_answers_empty_has_its_type_checked():
+    tree = _named("pg_partition_tree", ("regclass",), "record")
+    want = {"ok": True, "fields": [2249], "rows": [("(a,,t,0)",), ("(b,a,t,1)",)]}
+    none = {"ok": True, "fields": [2249], "rows": []}
+    entry = _both(tree, "System", want, none)
+    assert entry["outcome"] == "pass" and entry["type_and_form_checked"]
+    other = {"ok": True, "fields": [25], "rows": []}
+    assert _both(tree, "System", want, other)["outcome"] == "wrong_answer"
+
+
+def test_a_volatile_function_that_acts_is_tested_by_its_side_effect_not_its_type():
+    fn = _named("pg_cancel_backend", ("integer",), "boolean")
+    entry = _both(fn, "System", _ok(None, oid=16), _ok(None, oid=16))
+    assert not entry["type_and_form_checked"]
+    assert entry["outcome"] == "by_design" and entry["group"] == support.NOT_TESTABLE
+
+
+@pytest.mark.parametrize(
+    "name,typ", [("json_to_recordset", "json"), ("jsonb_to_recordset", "jsonb")]
+)
+def test_a_recordset_is_called_in_from_with_a_column_definition_list(name, typ):
+    """REQ-2167, amended 2026-11-04 (5)."""
+    fn = Function(name, typ, argtypes=(typ,), volatility="s", rettype="record")
+    assert support.unchecked(fn, "JSON") is None
+    planned = support.value_calls(fn, "JSON")
+    assert [c.sql for c in planned][0] == (
+        f'SELECT * FROM pg_catalog."{name}"(\'[{{"a": 1, "b": "x"}}, {{"a": 2}}]\'::{typ}) '
+        "AS t(a integer, b text)"
+    )
+    assert len(planned) == support.VALUE_ROWS and all(c.answers for c in planned)
+
+
+@pytest.mark.parametrize(
+    "argtypes",
+    [
+        ("double precision[]", "double precision"),
+        ("double precision[]", "interval"),
+        ("double precision[]", "anyelement"),
+    ],
+)
+def test_a_percentile_of_an_array_of_fractions_is_within_group(argtypes):
+    for name in ("percentile_cont", "percentile_disc"):
+        fn = Function(name, "x", kind="a", aggkind="o", direct=1, argtypes=argtypes, volatility="i")
+        sql = support.value_calls(fn, "Numeric")[0].sql
+        assert sql.startswith(
+            f"SELECT pg_catalog.\"{name}\"('{{0.25,0.5}}'::double precision[]) "
+            "WITHIN GROUP (ORDER BY c1) AS v FROM (VALUES "
+        )
+
+
+@pytest.mark.parametrize(
+    "name,modifier",
+    [
+        *(
+            (f"{t}typmodin", "'{10}'")
+            for t in ("bit", "bpchar", "timestamp", "timestamptz", "time", "timetz", "varbit")
+        ),
+        ("varchartypmodin", "'{10}'"),
+        ("numerictypmodin", "'{12,2}'"),
+        # PostgreSQL refuses a bare number for interval: its fields and precision, INTERVAL(3).
+        ("intervaltypmodin", "'{32767,3}'"),
+    ],
+)
+def test_a_typmodin_reads_a_cstring_array_modifier(name, modifier):
+    fn = Function(name, "cstring[]", argtypes=("cstring[]",), volatility="i", rettype="integer")
+    assert support.unchecked(fn, "Type operators") is None
+    assert [c.sql for c in support.value_calls(fn, "Type operators")] == [
+        f'SELECT pg_catalog."{name}"({modifier}::cstring[]) AS v'
+    ] * support.VALUE_ROWS
+
+
+def test_interval_in_reads_intervals_with_its_type_oid_and_no_typmod():
+    fn = Function(
+        "interval_in",
+        "cstring, oid, integer",
+        argtypes=("cstring", "oid", "integer"),
+        volatility="s",
+        rettype="interval",
+    )
+    assert support.value_calls(fn, "Type operators")[0].sql == (
+        "SELECT pg_catalog.\"interval_in\"('1 day 02:03:04'::cstring, 'interval'::regtype::oid, "
+        "(-1)::integer) AS v"
+    )
+
+
+def test_domain_in_reads_the_fixture_s_domain(monkeypatch):
+    fn = Function(
+        "domain_in",
+        "cstring, oid, integer",
+        argtypes=("cstring", "oid", "integer"),
+        volatility="s",
+        rettype='"any"',
+    )
+    monkeypatch.setattr(support, "FIXTURE", {})
+    assert support.value_calls(fn, "Type operators") == []
+    monkeypatch.setattr(support, "FIXTURE", {"domain": "16393"})
+    assert [c.sql for c in support.value_calls(fn, "Type operators")][:3] == [
+        f"SELECT pg_catalog.\"domain_in\"({v}::cstring, '16393'::oid, (-1)::integer) IS NULL AS v"
+        for v in ("'5'", "NULL", "'1'")
+    ]
+    made = " ".join(support.FIXTURE_SQL)
+    assert f"CREATE DOMAIN conformance.{support.FIXTURE_DOMAIN} AS integer" in made
+    assert support.FIXTURE_DOMAIN in support.FIXTURE_QUERIES["domain"]
+
+
+# --- a call PostgreSQL cannot make (REQ-2167, amended 2026-11-04) -------------------------------
+
+import pgwire_function_probe as function_probe  # noqa: E402
+
+OID_ARG = Function("f", "oid", argtypes=("oid",), volatility="i", rettype="boolean")
+TEXT_ARG = Function("f", "text", argtypes=("text",), volatility="i", rettype="boolean")
+
+
+@pytest.mark.parametrize(
+    ("fn", "sqlstate", "error", "kind"),
+    [
+        (OID_ARG, "0A000", "ERROR:  aclinsert is no longer supported", "the call"),
+        (OID_ARG, "0A000", "ERROR:  cannot display a value of type any", "the call"),
+        (OID_ARG, "42809", "ERROR:  x is not a table", "the call"),
+        (OID_ARG, "39P01", 'ERROR:  function "x" was not called by trigger manager', "the call"),
+        (
+            OID_ARG,
+            "39P03",
+            "ERROR:  x() can only be called in an event trigger function",
+            "the call",
+        ),
+        (OID_ARG, "42P22", "ERROR:  could not determine which collation to use", "the call"),
+        (TEXT_ARG, "42P22", "ERROR:  could not determine which collation to use", "its arguments"),
+        (OID_ARG, "42883", "ERROR:  function f(text) does not exist", "its arguments"),
+        (OID_ARG, "42804", "ERROR:  argument of WHERE must be type boolean", "its arguments"),
+        (OID_ARG, "42846", "ERROR:  cannot cast type integer to point", "its arguments"),
+        (OID_ARG, "22P02", 'ERROR:  invalid input syntax for type integer: "x"', "its arguments"),
+        (OID_ARG, "22003", "ERROR:  integer out of range", "its arguments"),
+        # XX000 and 55P02 are each PostgreSQL's code for both kinds: the message tells them apart.
+        (
+            OID_ARG,
+            "XX000",
+            "ERROR:  aggregate function called in non-aggregate context",
+            "the call",
+        ),
+        (OID_ARG, "XX000", "ERROR:  cache lookup failed for type 1", None),
+        (
+            OID_ARG,
+            "55P02",
+            "ERROR:  function can only be called when server is in binary upgrade mode",
+            "the call",
+        ),
+        (OID_ARG, "55P02", 'ERROR:  parameter "x" cannot be changed now', None),
+        (OID_ARG, "55000", "ERROR:  recovery is not in progress", None),
+        (OID_ARG, "", "ERROR:  no such function", None),
+    ],
+)
+def test_a_refusal_is_of_the_call_or_of_its_arguments_by_its_sqlstate(fn, sqlstate, error, kind):
+    assert function_probe.refused_for(fn, sqlstate, error) == kind
+
+
+#: The seven overloads the amendment names, each with PostgreSQL 17.11's refusal of its value calls.
+SEVEN = [
+    (
+        Function(
+            "int4_avg_combine",
+            "bigint[], bigint[]",
+            argtypes=("bigint[]", "bigint[]"),
+            volatility="i",
+            rettype="bigint[]",
+        ),
+        "XX000",
+        "ERROR:  aggregate function called in non-aggregate context",
+    ),
+    (
+        Function(
+            "range_intersect_agg_transfn",
+            "anyrange, anyrange",
+            argtypes=("anyrange", "anyrange"),
+            volatility="i",
+            rettype="anyrange",
+        ),
+        "XX000",
+        "ERROR:  range_intersect_agg_transfn called in non-aggregate context",
+    ),
+    (
+        Function(
+            "multirange_intersect_agg_transfn",
+            "anymultirange, anymultirange",
+            argtypes=("anymultirange", "anymultirange"),
+            volatility="i",
+            rettype="anymultirange",
+        ),
+        "XX000",
+        "ERROR:  multirange_intersect_agg_transfn called in non-aggregate context",
+    ),
+    (
+        Function("btvarstrequalimage", "oid", argtypes=("oid",), volatility="i", rettype="boolean"),
+        "42P22",
+        "ERROR:  could not determine which collation to use for string comparison",
+    ),
+    (
+        Function(
+            "aclinsert",
+            "aclitem[], aclitem",
+            argtypes=("aclitem[]", "aclitem"),
+            volatility="i",
+            rettype="aclitem[]",
+        ),
+        "0A000",
+        "ERROR:  aclinsert is no longer supported",
+    ),
+    (
+        Function(
+            "aclremove",
+            "aclitem[], aclitem",
+            argtypes=("aclitem[]", "aclitem"),
+            volatility="i",
+            rettype="aclitem[]",
+        ),
+        "0A000",
+        "ERROR:  aclremove is no longer supported",
+    ),
+    (
+        Function(
+            "xmlvalidate", "xml, text", argtypes=("xml", "text"), volatility="i", rettype="boolean"
+        ),
+        "0A000",
+        "ERROR:  xmlvalidate is not implemented",
+    ),
+]
+
+
+@pytest.mark.parametrize(("fn", "sqlstate", "error"), SEVEN, ids=[f.name for f, _, _ in SEVEN])
+def test_an_overload_postgresql_refuses_every_real_call_of_is_skipped_by_design(
+    fn, sqlstate, error
+):
+    """Its NULL call answers NULL without running it (it is strict); every call with a value is
+    refused for the call itself."""
+    planned = support.calls(fn, "Aggregate support")
+    assert any(c.answers for c in planned)
+    null = {planned[0].sql: _ok(None)}
+    pg = Refusing(null, sqlstate=sqlstate, error=error)
+    entry = support.measure_overload(fn, "Aggregate support", pg, Fake(null), _route, engine="pg")
+    assert entry["outcome"] == "not_callable"
+    assert entry["refused_for"] == "the call" and entry["refusal_sqlstates"] == [sqlstate]
+    assert entry["detail"] == f"PostgreSQL refuses the call: {error}"
+    assert report.verdict(entry) == "skipped_by_design"
+
+
+def test_one_refusal_of_the_arguments_leaves_the_overload_not_tested():
+    """Not callable only when every call was refused for the call itself: one refused for the
+    values the check gave it is a gap in the samples."""
+    planned = support.calls(ABS, "Numeric")
+    pg = Fake(
+        {
+            planned[0].sql: _ok(None),
+            planned[1].sql: {"ok": False, "error": "ERROR:  not supported", "sqlstate": "0A000"},
+            planned[2].sql: {"ok": False, "error": "ERROR:  bad", "sqlstate": "22P02"},
+            planned[3].sql: {"ok": False, "error": "ERROR:  not supported", "sqlstate": "0A000"},
+        }
+    )
+    entry = support.measure_overload(
+        ABS, "Numeric", pg, Fake({planned[0].sql: _ok(None)}), _route, engine="pg"
+    )
+    assert entry["outcome"] == "not_checked" and report.verdict(entry) == "not_tested"
+
+
+def test_every_call_refused_for_its_arguments_is_not_tested_not_failed():
+    pg = Refusing({}, sqlstate="42883", error="ERROR:  function abs(text) does not exist")
+    entry = support.measure_overload(ABS, "Numeric", pg, Fake({}), _route, engine="pg")
+    assert entry["outcome"] == "not_checked" and entry["refused_for"] == "its arguments"
+    assert entry["unchecked"] == (
+        "PostgreSQL refused every call for its arguments: ERROR:  function abs(text) does not exist"
+    )
+    assert report.verdict(entry) == "not_tested"
+
+
+def test_every_call_refused_for_the_server_s_state_still_fails():
+    pg = Refusing({}, sqlstate="55000", error="ERROR:  recovery is not in progress")
+    entry = support.measure_overload(ABS, "Numeric", pg, Fake({}), _route, engine="pg")
+    assert entry["outcome"] == "not_callable" and "refused_for" not in entry
+    assert report.verdict(entry) == "failed"
+
+
+def test_an_overload_postgresql_answers_a_value_call_of_is_callable():
+    planned = support.calls(ABS, "Numeric")
+    answered = {planned[0].sql: _ok(None), planned[1].sql: _ok("3")}
+    pg = Refusing(answered, sqlstate="0A000", error="ERROR:  not supported")
+    provisa = Refusing(answered, sqlstate="0A000", error="ERROR:  not supported")
+    entry = support.measure_overload(ABS, "Numeric", pg, provisa, _route, engine="pg")
+    assert entry["outcome"] == "pass"
+
+
+def test_a_null_call_answering_a_value_makes_the_overload_callable():
+    planned = support.calls(ABS, "Numeric")
+    answered = {planned[0].sql: _ok("0")}
+    pg = Refusing(answered, sqlstate="0A000", error="ERROR:  not supported")
+    entry = support.measure_overload(ABS, "Numeric", pg, Fake(answered), _route, engine="pg")
+    assert entry["outcome"] != "not_callable" and "refused_for" not in entry
+
+
+def test_the_data_file_keeps_why_postgresql_refused_the_call():
+    entry = {
+        "outcome": "not_callable",
+        "detail": "PostgreSQL refuses the call: ERROR:  xmlvalidate is not implemented",
+        "refused_for": "the call",
+        "refusal_sqlstates": ["0A000"],
+    }
+    kept = support._outcome(entry)
+    assert kept["refused_for"] == "the call" and kept["refusal_sqlstates"] == ["0A000"]
+    assert report.verdict(kept) == "skipped_by_design"
+
+
+def test_a_server_s_refusal_keeps_its_sqlstate():
+    class Res:
+        status = support.pq.ExecStatus.FATAL_ERROR
+        error_message = b'ERROR:  value for domain d violates check constraint "d_check"\n'
+
+        @staticmethod
+        def error_field(field: Any) -> bytes | None:
+            assert field == support.pq.DiagnosticField.SQLSTATE
+            return b"23514"
+
+    assert support._result(Res()) == {
+        "ok": False,
+        "error": 'ERROR:  value for domain d violates check constraint "d_check"',
+        "sqlstate": "23514",
+    }
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "pg_config",
+        "pg_available_extensions",
+        "pg_available_extension_versions",
+        "pg_current_xact_id_if_assigned",
+        "txid_current_if_assigned",
+        "pg_stat_get_activity",
+        "pg_stat_get_db_checksum_failures",
+        "pg_stat_get_db_checksum_last_failure",
+        "pg_stat_get_snapshot_timestamp",
+        "pg_stat_get_progress_info",
+    ],
+)
+def test_more_of_postgresql_s_own_server_state_is_skipped_by_design(name):
+    assert support.decided_function(_named(name, (), "record", "s")) == (support.SERVER_STATE_GROUP)
+
+
+# --- domain_in: whether its answer IS NULL, and the refusal its domain's CHECK makes --------------
+
+DOMAIN_IN = Function(
+    "domain_in",
+    "cstring, oid, integer",
+    argtypes=("cstring", "oid", "integer"),
+    volatility="s",
+    rettype='"any"',
+)
+CHECK_REFUSAL = {
+    "ok": False,
+    "error": "ERROR:  value for domain conformance.fixture_domain violates check constraint "
+    '"fixture_domain_check"',
+    "sqlstate": "23514",
+}
+
+
+def _domain_in(monkeypatch, provisa_refusal: dict[str, Any]) -> dict[str, Any]:
+    monkeypatch.setattr(support, "FIXTURE", {"domain": "16393"})
+    planned = support.calls(DOMAIN_IN, "Type operators")
+    answers = {planned[0].sql: _ok(None, oid=2276)}
+    for c in planned[1:]:
+        answers[c.sql] = (
+            CHECK_REFUSAL if c.refusal else _ok("t" if "NULL::cstring" in c.sql else "f", oid=16)
+        )
+    got = {**answers, planned[-1].sql: provisa_refusal}
+    return support.measure_overload(
+        DOMAIN_IN, "Type operators", Fake(answers), Fake(got), _route, engine="pg"
+    )
+
+
+def test_domain_in_is_compared_by_whether_its_answer_is_null(monkeypatch):
+    monkeypatch.setattr(support, "FIXTURE", {"domain": "16393"})
+    planned = support.value_calls(DOMAIN_IN, "Type operators")
+    assert all(c.sql.endswith(" IS NULL AS v") and c.answers for c in planned)
+    assert [c.refusal for c in planned] == [False, False, False, True]
+    assert planned[-1].sql == (
+        "SELECT pg_catalog.\"domain_in\"('-1'::cstring, '16393'::oid, (-1)::integer) IS NULL AS v"
+    )
+
+
+def test_domain_in_passes_on_postgresql_s_check_refusal(monkeypatch):
+    entry = _domain_in(monkeypatch, CHECK_REFUSAL)
+    assert entry["outcome"] == "pass" and entry["answers_checked"]
+
+
+def test_domain_in_refused_with_another_sqlstate_is_a_wrong_answer(monkeypatch):
+    other = {**CHECK_REFUSAL, "sqlstate": "22P02"}
+    entry = _domain_in(monkeypatch, other)
+    assert entry["outcome"] == "wrong_answer"
+    assert entry["detail"]["difference"].startswith("refused: 22P02 ")
+
+
+def test_domain_in_answering_a_value_breaking_its_check_is_a_wrong_answer(monkeypatch):
+    entry = _domain_in(monkeypatch, _ok("f", oid=16))
+    assert entry["outcome"] == "wrong_answer"
+    assert entry["detail"]["difference"].startswith("answered [('f',)], PostgreSQL refused: 23514 ")
+
+
+# --- REQ-2167, amended 2026-11-13, AN INTERNAL TYPE IS BY DESIGN ---------------------------------
+
+ENGINES = ("clickhouse", "trino", "duckdb")
+NOT_READ = "does not read this value"
+
+
+def _on(fn: Function, engine: str, provisa: dict[str, Any] | None) -> dict[str, Any]:
+    """``fn`` on ``engine`` where PostgreSQL answers every call and Provisa refuses each with
+    ``provisa``'s error, or answers as PostgreSQL does when ``provisa`` is None."""
+    sqls = [c.sql for c in support.calls(fn, fn_family(fn))]
+    want = {s: _ok("1") for s in sqls}
+    got = want if provisa is None else {s: provisa for s in sqls}
+    return support.measure_overload(fn, fn_family(fn), Fake(want), Fake(got), _route, engine=engine)
+
+
+def fn_family(fn: Function) -> str:
+    return "Aggregate and window" if fn.kind == "a" else "System"
+
+
+def _refusal(fn: Function, text: str, engine: str) -> dict[str, Any]:
+    said = f"{fn.name}() has no form on {engine}" if text == "no form" else f"{fn.name} {text}"
+    return {"ok": False, "error": f"ERROR:  {said}"}
+
+
+REGCLASSIN = Function(
+    "regclassin", "cstring", argtypes=("cstring",), rettype="regclass", volatility="s"
+)
+
+#: One overload of each internal type's own functions, and the refusal text it had in the baseline
+#: run: the type decides, whatever the text.
+OWN_FUNCTIONS = [
+    (REGCLASSIN, NOT_READ),
+    (Function("regclasssend", "regclass", argtypes=("regclass",), rettype="bytea"), "no form"),
+    (Function("regprocout", "regproc", argtypes=("regproc",), rettype="cstring"), NOT_READ),
+    (Function("record_out", "record", argtypes=("record",), rettype="cstring"), NOT_READ),
+    (
+        Function("btrecordcmp", "record, record", argtypes=("record", "record"), rettype="integer"),
+        NOT_READ,
+    ),
+    (
+        Function(
+            "hash_record_extended",
+            "record, bigint",
+            argtypes=("record", "bigint"),
+            rettype="bigint",
+        ),
+        NOT_READ,
+    ),
+    (Function("aclitemin", "cstring", argtypes=("cstring",), rettype="aclitem"), NOT_READ),
+    (
+        Function(
+            "aclitemeq", "aclitem, aclitem", argtypes=("aclitem", "aclitem"), rettype="boolean"
+        ),
+        "no form",
+    ),
+    (
+        Function(
+            "aclcontains",
+            "aclitem[], aclitem",
+            argtypes=("aclitem[]", "aclitem"),
+            rettype="boolean",
+        ),
+        "no form",
+    ),
+    (
+        Function(
+            "aclexplode",
+            "acl aclitem[], OUT grantor oid, OUT grantee oid, OUT privilege_type text, "
+            "OUT is_grantable boolean",
+            argtypes=("aclitem[]",),
+            rettype="record",
+        ),
+        NOT_READ,
+    ),
+    (
+        Function(
+            "array_in",
+            "cstring, oid, integer",
+            argtypes=("cstring", "oid", "integer"),
+            rettype="anyarray",
+        ),
+        NOT_READ,
+    ),
+    (
+        Function(
+            "domain_in",
+            "cstring, oid, integer",
+            argtypes=("cstring", "oid", "integer"),
+            rettype='"any"',
+        ),
+        NOT_READ,
+    ),
+    (
+        Function(
+            "record_in",
+            "cstring, oid, integer",
+            argtypes=("cstring", "oid", "integer"),
+            rettype="record",
+        ),
+        NOT_READ,
+    ),
+    (Function("xid8in", "cstring", argtypes=("cstring",), rettype="xid8"), NOT_READ),
+    (Function("xid8eq", "xid8, xid8", argtypes=("xid8", "xid8"), rettype="boolean"), "no form"),
+    (
+        Function("xid8_larger", "xid8, xid8", argtypes=("xid8", "xid8"), rettype="xid8"),
+        "no form",
+    ),
+    (Function("xid", "xid8", argtypes=("xid8",), rettype="xid"), "no form"),
+    (Function("age", "xid", argtypes=("xid",), rettype="integer", volatility="s"), NOT_READ),
+    (Function("int8_avg", "bigint[]", argtypes=("bigint[]",), rettype="numeric"), NOT_READ),
+    (
+        Function(
+            "int8inc_float8_float8",
+            "bigint, double precision, double precision",
+            argtypes=("bigint", "double precision", "double precision"),
+            rettype="bigint",
+        ),
+        NOT_READ,
+    ),
+]
+
+#: Refused overloads that stay refused by name: a PostgreSQL-only value type (class B), a value
+#: type an engine does not hold yet (class C), and a user-level function that merely takes or
+#: returns an internal type. Each is a gap.
+GAPS = [
+    (Function("jsonpath_in", "cstring", argtypes=("cstring",), rettype="jsonpath"), NOT_READ),
+    (Function("tsqueryout", "tsquery", argtypes=("tsquery",), rettype="cstring"), NOT_READ),
+    (Function("xml_in", "cstring", argtypes=("cstring",), rettype="xml"), NOT_READ),
+    (
+        Function(
+            "numeric_div", "numeric, numeric", argtypes=("numeric", "numeric"), rettype="numeric"
+        ),
+        NOT_READ,
+    ),
+    (Function("network_eq", "inet, inet", argtypes=("inet", "inet"), rettype="boolean"), NOT_READ),
+    (Function("interval_hash", "interval", argtypes=("interval",), rettype="integer"), NOT_READ),
+    # A type with a typmod reads it by the same shape: its own input, not a type's input by oid.
+    (
+        Function(
+            "interval_in",
+            "cstring, oid, integer",
+            argtypes=("cstring", "oid", "integer"),
+            rettype="interval",
+        ),
+        NOT_READ,
+    ),
+    (
+        Function(
+            "numeric_in",
+            "cstring, oid, integer",
+            argtypes=("cstring", "oid", "integer"),
+            rettype="numeric",
+        ),
+        NOT_READ,
+    ),
+    (Function("row_to_json", "record", argtypes=("record",), rettype="json"), "no form"),
+    (
+        Function("record_eq", "record, record", argtypes=("record", "record"), rettype="boolean"),
+        "no form",
+    ),
+    (
+        Function(
+            "record_image_lt",
+            "record, record",
+            argtypes=("record", "record"),
+            rettype="boolean",
+        ),
+        "no form",
+    ),
+    (
+        Function(
+            "ts_headline",
+            "regconfig, text, tsquery, text",
+            argtypes=("regconfig", "text", "tsquery", "text"),
+            rettype="text",
+        ),
+        "no form",
+    ),
+    (
+        Function("min", "xid8", kind="a", argtypes=("xid8",), rettype="xid8", volatility="i"),
+        "no form",
+    ),
+    (
+        Function(
+            "pg_xact_commit_timestamp",
+            "xid",
+            argtypes=("xid",),
+            rettype="timestamp with time zone",
+        ),
+        "no form",
+    ),
+    (
+        Function(
+            "pg_visible_in_snapshot",
+            "xid8, pg_snapshot",
+            argtypes=("xid8", "pg_snapshot"),
+            rettype="boolean",
+        ),
+        "no form",
+    ),
+    (Function("pg_xact_status", "xid8", argtypes=("xid8",), rettype="text"), "no form"),
+]
+
+
+@pytest.mark.parametrize("engine", ENGINES)
+@pytest.mark.parametrize(("fn", "text"), OWN_FUNCTIONS, ids=lambda v: getattr(v, "signature", v))
+def test_an_internal_types_own_function_refused_is_by_design_on_each_engine(fn, text, engine):
+    entry = _on(fn, engine, _refusal(fn, text, engine))
+    assert entry["outcome"] == "by_design", entry
+    assert entry["group"] == support.INTERNAL_TYPE_GROUP
+    assert entry["requirement"] == "REQ-2167"
+    assert entry["detail"] == support.GROUPS[support.INTERNAL_TYPE_GROUP]
+
+
+@pytest.mark.parametrize("engine", ENGINES)
+@pytest.mark.parametrize(("fn", "text"), GAPS, ids=lambda v: getattr(v, "signature", v))
+def test_a_gap_with_the_same_refusal_text_stays_refused_by_name(fn, text, engine):
+    entry = _on(fn, engine, _refusal(fn, text, engine))
+    assert entry["outcome"] == "refused", entry
+    assert report.result_of(entry["outcome"], ()) == report.REFUSED
+
+
+@pytest.mark.parametrize("engine", ENGINES)
+def test_an_internal_types_own_function_the_engine_answers_is_never_moved(engine):
+    entry = _on(REGCLASSIN, engine, None)
+    assert entry["outcome"] == "pass"
+
+
+@pytest.mark.parametrize("engine", ENGINES)
+def test_an_internal_types_own_function_with_an_engine_error_stays_a_defect(engine):
+    raw = {"ok": False, "error": "ERROR:  Code: 46. DB::Exception: Unknown function"}
+    assert _on(REGCLASSIN, engine, raw)["outcome"] == "error"
+
+
+@pytest.mark.parametrize("engine", ENGINES)
+def test_per_engine_the_totals_still_add_up(engine):
+    entries = [
+        *(_on(fn, engine, _refusal(fn, text, engine)) for fn, text in OWN_FUNCTIONS),
+        *(_on(fn, engine, _refusal(fn, text, engine)) for fn, text in GAPS),
+        _on(REGCLASSIN, engine, None),
+    ]
+    c = support.counts(entries)
+    assert c["total"] == len(entries)
+    assert c["passed"] + c["skipped_by_design"] + c["failed"] + c["not_tested"] == c["total"]
+    assert sum(c[o] for o in support.OUTCOMES) == c["total"]
+    assert (c["by_design"], c["refused"], c["pass"]) == (len(OWN_FUNCTIONS), len(GAPS), 1)
+    groups = support.by_design_groups(entries)
+    assert len(groups[support.INTERNAL_TYPE_GROUP]) == len(OWN_FUNCTIONS)
+    results = report.result_counts(
+        support._outcome(e)
+        for e in entries  # noqa: SLF001 - the data file's own shape
+    )
+    assert results["refused_by_name"] == len(GAPS)
+
+
+def test_the_internal_types_are_named_in_one_place():
+    assert set(support.INTERNAL_TYPES) == {
+        "regclass",
+        "regcollation",
+        "regconfig",
+        "regdictionary",
+        "regnamespace",
+        "regoper",
+        "regoperator",
+        "regproc",
+        "regprocedure",
+        "regrole",
+        "regtype",
+        "record",
+        "aclitem",
+        "xid",
+        "xid8",
+    }
+    for fn, _text in OWN_FUNCTIONS:
+        assert support.internal_types_own(fn), fn.signature
+    for fn, _text in GAPS:
+        assert not support.internal_types_own(fn), fn.signature
+
+
+# --- the validator's refusal of a function that reads or acts on its server (REQ-001, V007) -----
+
+from provisa.compiler.sql_validator import GovernanceRefused  # noqa: E402
+from provisa.transpiler import server_functions  # noqa: E402
+
+
+def _refused_as_a_client_reads_it(sql: str) -> str:
+    """The validator's own refusal of ``sql``, as pgwire sends it: its wording is read from the
+    rule, so the measure's pattern fails here when the rule's wording moves."""
+    import sqlglot
+
+    from provisa.compiler.sql_validator import _check_server_functions  # noqa: PLC2701
+
+    violations = _check_server_functions(sqlglot.parse_one(sql, read="postgres"))
+    assert violations, sql
+    return f"ERROR:  {GovernanceRefused(violations)}"
+
+
+def _not_served(name: str) -> str:
+    return _refused_as_a_client_reads_it(f'SELECT pg_catalog."{name}"(NULL) AS v FROM s.t')
+
+
+TS_STAT = Function(
+    "ts_stat",
+    "query text, OUT word text, OUT ndoc integer, OUT nentry integer",
+    argtypes=("text",),
+    volatility="v",
+    rettype="record",
+)
+TS_STAT_WEIGHTS = Function(
+    "ts_stat",
+    "query text, weights text, OUT word text, OUT ndoc integer, OUT nentry integer",
+    argtypes=("text", "text"),
+    volatility="v",
+    rettype="record",
+)
+TS_REWRITE_TEXT = _named("ts_rewrite", ("tsquery", "text"), "tsquery")
+TS_REWRITE = _named("ts_rewrite", ("tsquery", "tsquery", "tsquery"), "tsquery", "i")
+#: The overloads SEC-H7 reports the validator now refuses where the measure calls them.
+NOW_REFUSED = [TS_STAT, TS_STAT_WEIGHTS, TS_REWRITE_TEXT, TS_REWRITE]
+ENGINES = ("pg", "duckdb", "clickhouse", "trino")
+
+
+def _refused_everywhere(fn: Function, family: str, error: str, engine: str) -> dict[str, Any]:
+    """``fn`` on ``engine`` where PostgreSQL answers every call and Provisa refuses each alike."""
+    pg = Fake({c.sql: _ok("x", oid=25) for c in support.calls(fn, family)})
+    refusing = Refusing({}, sqlstate="42501", error=error)
+    return support.measure_overload(fn, family, pg, refusing, _route, engine=engine)
+
+
+def test_the_validators_refusal_is_no_refusal_by_name_and_is_this_decision():
+    said = _not_served("ts_stat")
+    assert said == (
+        "ERROR:  [V007] Function 'ts_stat' is not served: it reads or acts on its server, "
+        "outside the tables a statement is governed by"
+    )
+    assert not refused_by_name(said)  # it is no work to do, so it is not counted as one
+    assert support.decided_error("ts_stat", said) == support.SERVER_FUNCTION_GROUP
+    assert support.GROUPS[support.SERVER_FUNCTION_GROUP]
+    assert support.GROUP_REQUIREMENTS[support.SERVER_FUNCTION_GROUP] == "REQ-001"
+
+
+def test_the_measure_reads_the_validators_own_list():
+    always = server_functions.RUNS_SQL_AS_TEXT | server_functions.ACTS_ON_THE_SERVER
+    from provisa.transpiler.xml_syntax import MAPPINGS
+
+    listed = [
+        *sorted(always - set(MAPPINGS)),  # an XML mapping is refused by its own rule
+        *sorted(server_functions.READS_THE_SERVER - always),  # refused where a table is named
+        *(f"{prefix}x" for prefix in server_functions.ACTING_PREFIXES),
+    ]
+    assert len(listed) > 100
+    for name in listed:
+        assert support.not_served(name, _not_served(name)), name
+
+
+def test_a_refusal_of_a_function_off_the_list_or_of_another_function_is_no_decision():
+    wording = "is not served: it reads or acts on its server, outside the tables"
+    # The wording alone decides nothing: the function must be on the validator's list.
+    assert support.decided_error("abs", f"ERROR:  [V007] Function 'abs' {wording}") is None
+    # A call of abs refused for a listed function in its arguments is about that function.
+    assert support.decided_error("abs", _not_served("pg_read_file")) is None
+    assert support.decided_error("ts_stat", _not_served("pg_read_file")) is None
+    # The product's own functions are refused in other words, and none is PostgreSQL's.
+    own = _refused_as_a_client_reads_it("SELECT provisa_digest('a') AS v")
+    assert "it is the product's own" in own
+    assert support.decided_error("provisa_digest", own) is None
+    # Another rule's refusal is not this decision.
+    assert (
+        support.decided_error("ts_stat", "ERROR:  [V006] Relation 'x' is not a registered table")
+        is None
+    )
+
+
+@pytest.mark.parametrize("engine", ENGINES)
+@pytest.mark.parametrize("fn", NOW_REFUSED, ids=lambda fn: fn.signature)
+def test_an_overload_the_validator_refuses_is_by_design_on_every_engine(fn, engine):
+    entry = _refused_everywhere(fn, "Text search", _not_served(fn.name), engine)
+    assert entry["outcome"] == "by_design", entry
+    assert entry["group"] == support.SERVER_FUNCTION_GROUP
+    assert entry["requirement"] == "REQ-001"
+    assert entry["detail"] == support.GROUPS[support.SERVER_FUNCTION_GROUP]
+    assert report.verdict(entry) == "skipped_by_design"
+    kept = support._outcome(entry)  # noqa: SLF001 - the data file's own shape
+    assert report.result_counts([kept])["refused_by_name"] == 0
+    assert support.by_design_groups([entry])[support.SERVER_FUNCTION_GROUP]
+
+
+@pytest.mark.parametrize("engine", ENGINES)
+def test_a_side_effect_function_the_validator_refuses_is_in_the_same_group_on_every_engine(engine):
+    """Off the PostgreSQL engine a side-effect function is skipped as one; refused by the
+    validator, it is refused on every engine alike, and says so on each."""
+    entry = _refused_everywhere(LO_CREATE, "Large object", _not_served("lo_create"), engine)
+    assert entry["outcome"] == "by_design" and entry["group"] == support.SERVER_FUNCTION_GROUP
+
+
+@pytest.mark.parametrize("engine", ENGINES)
+def test_an_ordinary_refusal_by_name_is_counted_as_before(engine):
+    by_name = f"ERROR:  ts_stat() has no form on {engine}"
+    assert refused_by_name(by_name)
+    for fn in (TS_STAT, ABS):
+        entry = _refused_everywhere(fn, "Text search", by_name, engine)
+        assert entry["outcome"] == "refused", entry
+        assert "group" not in entry
+        assert report.verdict(entry) == "failed"
+        kept = support._outcome(entry)  # noqa: SLF001 - the data file's own shape
+        assert report.result_counts([kept])["refused_by_name"] == 1
+
+
+def test_an_engines_error_of_a_listed_function_is_still_an_error():
+    entry = _refused_everywhere(TS_STAT, "Text search", "ERROR:  syntax error at or near", "pg")
+    assert entry["outcome"] == "error"
+
+
+def test_a_call_refused_for_another_function_is_an_error_not_this_decision():
+    entry = _refused_everywhere(ABS, "Numeric", _not_served("pg_read_file"), "duckdb")
+    assert entry["outcome"] == "error"
+
+
+def test_a_column_call_the_validator_refuses_is_by_design_beside_the_overloads_outcome():
+    """pg_column_compression answers with no table, where the statement is the engine's, and is
+    refused over a governed table."""
+    fn = _named("pg_column_compression", ('"any"',), "text", "s")
+    first = support.column_calls(fn, "System")[0].sql
+    pg = Fake({first: _ok(None, oid=25)})
+    refusing = Refusing({}, sqlstate="42501", error=_not_served(fn.name))
+    assert support.measure_column(fn, "System", pg, refusing) == {
+        "outcome": "by_design",
+        "group": support.SERVER_FUNCTION_GROUP,
+    }
+
+
+def test_a_column_call_skipped_by_design_is_listed_by_its_group(monkeypatch):
+    # Run 44229979813: pg_replication_origin_oid(text) passes on literals; its column call is the
+    # validator's refusal of a server function, a decision (decided_error), kept as its group alone.
+    monkeypatch.setattr(support, "decided_error", lambda name, error: support.SERVER_FUNCTION_GROUP)
+    entry = _measured({"ok": False, "error": REFUSED_ON_COLUMN})
+    assert entry["column"] == {"outcome": "by_design", "group": support.SERVER_FUNCTION_GROUP}
+    doc = _doc(entry)
+    assert doc["by_engine"]["duckdb"]["pass_literal_only_overloads"] == ["to_tsvector(text)"]
+    assert report.literal_only_lists(doc)[4] == (
+        f"| `to_tsvector(text)` | skipped by design ({support.SERVER_FUNCTION_GROUP}) |"
+    )

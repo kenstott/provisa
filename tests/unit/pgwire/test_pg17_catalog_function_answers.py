@@ -134,6 +134,11 @@ def test_a_strict_catalog_function_of_null_is_null(sql):
     assert _value(sql) is None
 
 
+def test_the_root_of_a_null_relation_is_null():
+    """Function check run 42527458223: no answer in 30s (catalog_route read the NULL as a name)."""
+    assert _value('SELECT pg_catalog."pg_partition_root"(NULL::regclass) AS v') is None
+
+
 def test_a_relation_in_no_partition_tree_has_no_root():
     assert (
         _value("SELECT pg_catalog.\"pg_partition_root\"('pg_catalog.pg_class'::regclass) AS v")
@@ -657,7 +662,8 @@ _ITS_CONSTRAINT = "(SELECT oid FROM pg_catalog.pg_constraint WHERE conname = 'pg
         (
             f'SELECT pg_catalog."pg_get_indexdef"({_CLASS_OID_INDEX}::oid, 0::integer, '
             "true::boolean) AS v",
-            "CREATE UNIQUE INDEX pg_class_oid_index ON pg_catalog.pg_class USING btree (oid)",
+            # Pretty names the table as the search path sees it (functions run 41635216812).
+            "CREATE UNIQUE INDEX pg_class_oid_index ON pg_class USING btree (oid)",
         ),
         (
             "SELECT pg_catalog.pg_get_indexdef('pg_catalog.pg_class_relname_nsp_index'::regclass"

@@ -116,8 +116,8 @@ def _register(conn) -> None:
         source_id="src",
         domain_id="sales",
         schema_name="sales",
-        table_name="drafted",
-        draft=True,
+        table_name="withdrawn_one",
+        withdrawn=True,
     )
     descriptions = {"region": "Where it shipped", "number": "Its number"}
     for table_id, column, primary, alias in _COLUMNS:
@@ -205,7 +205,7 @@ def _facts(held: dict[int, set[str]] | None = None, role: str = "analyst", unser
 
 def _told(conn) -> None:
     """What the admin terminal tells a statement's views, in this transaction."""
-    sql, values = set_statement(statement_settings("analyst", True, "provisa", False))
+    sql, values = set_statement(statement_settings("analyst", True, "provisa", False, masked=()))
     for n, value in enumerate(values, 1):
         sql = sql.replace(f"${n}", f"'{value}'", 1)
     conn.exec_driver_sql(sql)
@@ -307,7 +307,7 @@ def test_the_views_list_only_what_a_catalog_lists_as_keys(live):
             "FROM meta.table_keys WHERE kind = 'f' AND column_name NOT IN ('_domain_', '_name_') "
             "ORDER BY key_id, position"
         ).fetchall()
-        # A composite key in the target's order; no semantic join; nothing on a draft.
+        # A composite key in the target's order; no semantic join; nothing on a withdrawn table.
         assert [tuple(r) for r in rows] == [
             ("f", 3, 1, 1, "customerId", "id"),
             ("f", 3, 2, 1, "rb", "b"),
@@ -381,6 +381,34 @@ def test_a_table_privilege_is_the_real_one(live, relation, table_id, privilege):
         assert by_name == by_oid == for_user == expected
 
 
+@pytest.mark.parametrize("who", ("analyst", "pg_monitor", "pg_read_all_data"))
+@pytest.mark.parametrize("column", ("id", "region"))
+def test_a_column_privilege_of_a_user_is_the_real_one(live, who, column):
+    with live.begin() as conn:
+        call = f"has_column_privilege('{who}', 'sales.orders', '{column}', 'SELECT')"
+        assert _form(conn, call) == _real(conn, call)
+
+
+def test_a_computed_argument_answers_as_the_value_it_computes(live):
+    with live.begin() as conn:
+        for plain, computed in (
+            (
+                "has_table_privilege('sales.orders', 'SELECT')",
+                "has_table_privilege(LOWER('Sales.Orders'), UPPER('select'))",
+            ),
+            (
+                "has_table_privilege('analyst', 'sales.orders', 'SELECT')",
+                "has_table_privilege(LOWER('Analyst'), LOWER('Sales.Orders'), 'select')",
+            ),
+            (
+                "has_column_privilege('analyst', 'sales.orders', 'id', 'SELECT')",
+                "has_column_privilege(LOWER('Analyst'), LOWER('Sales.Orders'), LOWER('ID'), 'select')",
+            ),
+            ("pg_get_viewdef('pg_class')", "pg_get_viewdef(LOWER('PG_CLASS'))"),
+        ):
+            assert _form(conn, computed) == _form(conn, plain)
+
+
 def test_a_table_it_cannot_read_is_false_and_one_it_cannot_list_is_unknown(live):
     with live.begin() as conn:
         assert _form(conn, "has_table_privilege('sales.regions', 'SELECT')") is False
@@ -396,7 +424,8 @@ def test_visibility_of_a_relation_is_what_the_catalog_lists(live):
         assert _form(conn, "pg_table_is_visible(1259)") is _real(conn, "pg_table_is_visible(1259)")
         assert _form(conn, "pg_table_is_visible(99999999)") is None
         assert _real(conn, "pg_table_is_visible(99999999)") is None
-        assert _form(conn, f"pg_relation_is_publishable({table_oid(1)})") is True
+        # REQ-2167 (amended 2026-11-04): Provisa publishes no relation.
+        assert _form(conn, f"pg_relation_is_publishable({table_oid(1)})") is False
         assert _form(conn, "pg_relation_is_publishable(99999999)") is False
 
 

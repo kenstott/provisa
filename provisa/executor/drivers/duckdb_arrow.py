@@ -26,7 +26,8 @@ truncated, as DuckDB's rows read it, and a ``TIME`` or ``TIMETZ`` at ``24:00:00`
 PostgreSQL holds and Python's ``time`` does not, is the text DuckDB's rows hold for it.
 
 An error the engine meets while its reader produces a later batch is raised then, past the point
-where the statement was run; ``answered_batches`` raises it as PostgreSQL's own error there.
+where the statement was run, as an ``OSError``; ``answered_batches`` raises it there as PostgreSQL's
+own error, or as the exception DuckDB raises for the same error met as the statement is run.
 """
 
 from __future__ import annotations
@@ -37,6 +38,7 @@ from typing import Any, Callable
 
 import pyarrow as pa
 
+from provisa.codehost.duckdb_sql import engine_error
 from provisa.core.ir_arrow import column_values
 from provisa.core.pg_error import from_engine
 from provisa.core.ir_types import infinite_date, infinite_timestamp, interval_value
@@ -62,9 +64,10 @@ _END_OF_DAY = "24:00:00"
 
 def answered_batches(reader: Any) -> Iterator[pa.RecordBatch]:  # noqa: ANN401 â€” a reader
     """The batches of DuckDB's Arrow ``reader``. DuckDB produces them as they are read, so an
-    error the engine meets in a later batch (PostgreSQL's own, raised by
-    ``provisa.core.pg_error.raising``) is raised here, as an ``OSError`` carrying its message: it
-    is raised as that PostgreSQL error, which the client is answered with."""
+    error the engine meets in a later batch is raised here, as an ``OSError`` carrying its
+    message: PostgreSQL's own (raised by ``provisa.core.pg_error.raising``) is raised as that
+    PostgreSQL error, and any other as the exception DuckDB raises for it when it is met as the
+    statement is run, so the client is answered with its SQLSTATE either way."""
     batches = iter(reader)
     while True:
         try:
@@ -73,9 +76,7 @@ def answered_batches(reader: Any) -> Iterator[pa.RecordBatch]:  # noqa: ANN401 â
             return
         except OSError as error:
             answered = from_engine(error)
-            if answered is None:
-                raise
-            raise answered from error
+            raise (engine_error(error) if answered is None else answered) from error
         yield batch
 
 

@@ -505,7 +505,7 @@ ssh ubuntu@<primary-public-ip> cat ~/.provisa/config.yaml | grep admin_token
    | ------- | ---------- |
    | `provisa/provisa:<version>` | API Provisa |
    | `trinodb/trino:480` | Координатор и рабочие узлы федеративного движка |
-   | `postgres:16` | PostgreSQL внутри кластера (если `postgresql.enabled`) |
+   | `pgvector/pgvector:pg16-trixie` | PostgreSQL внутри кластера (если `postgresql.enabled`) |
    | `edoburu/pgbouncer:latest` | PgBouncer внутри кластера (если `pgbouncer.enabled`) |
    | `redis:7.2` | Redis внутри кластера (если `redis.enabled` и не задан `redis.host`) |
    | `minio/minio:latest` | MinIO внутри кластера (если `minio.enabled`) |
@@ -817,7 +817,7 @@ export REQUESTS_CA_BUNDLE=/path/to/your/proxy-ca.pem
 | `PG_PASSWORD` | | Пароль PostgreSQL |
 | `PROVISA_CONFIG` | `config/provisa.yaml` | Путь к файлу конфигурации |
 | `PROVISA_REDIRECT_ENABLED` | `false` | Включить перенаправление больших результатов в S3 |
-| `PROVISA_REDIRECT_THRESHOLD` | `1000` | Порог по числу строк для перенаправления |
+| `PROVISA_REDIRECT_THRESHOLD` | `100000` | Порог по числу строк для перенаправления |
 | `PROVISA_REDIRECT_BUCKET` | `provisa-results` | Бакет S3 |
 | `PROVISA_REDIRECT_ENDPOINT` | | URL S3-совместимой конечной точки |
 | `PROVISA_REDIRECT_TTL` | `3600` | TTL предподписанного URL (в секундах) |

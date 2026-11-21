@@ -26,7 +26,7 @@ Every query ends up running through the federation engine, which is what lets an
 
 ## All Sources
 
-Provisa registers **76** source types, the ones the Sources form offers. The tables below cover all 76; the index is the count.
+Provisa registers **80** source types, the ones the Sources form offers. The tables below cover all 80; the index is the count.
 
 | # | Group | Source types |
 | --- | --- | --- |
@@ -35,19 +35,19 @@ Provisa registers **76** source types, the ones the Sources form offers. The tab
 | 26–30 | [Analytics / OLAP](#analytics-olap) | `clickhouse`, `druid`, `exasol`, `elasticsearch`, `pinot` |
 | 31–34 | [Data lake / open table formats](#data-lake-open-table-formats) | `iceberg`, `delta_lake`, `hive`, `hive_s3` |
 | 35–39 | [NoSQL](#nosql) | `mongodb`, `cosmosdb`, `qdrant`, `cassandra`, `redis` |
-| 40–41 | [Code sources](code-sources.md) | `node`, `python` |
-| 42–44 | [Streaming](#streaming) | `kafka`, `websocket`, `rss` |
-| 45 | [Push receiver](#push-receiver) | `ingest` |
-| 46–47 | [Graph & semantic](#graph-semantic) | `neo4j`, `sparql` |
-| 48–52 | [File-based](#file-based) | `sqlite`, `csv`, `parquet`, `files`, `logs` |
-| 53–54 | [Observability & other](#observability-other) | `google_sheets`, `prometheus` |
-| 55–63 | [Enterprise SaaS](#enterprise-saas-connectors) | `sharepoint`, `salesforce`, `servicenow`, `jira`, `cloudops`, `splunk`, `google_workspace`, `microsoft_365`, [`quickbooks`](#quickbooks) |
-| 64–70 | [API sources](#api-sources) | `openapi`, `graphql_remote`, `grpc_remote`, GitHub, GitLab, Shopify, Stripe |
-| 71 | [GovData](#govdata) | `govdata` |
-| 72–73 | [Data quality checkers](#data-quality-checkers) | `soda`, `great_expectations` |
-| 74 | [Data profiler](#data-profiler) | `data_profiler` |
-| 75 | [Kaggle datasets](#kaggle-datasets) | Kaggle (staged via Sources form; registers as a `files` source; see [Kaggle datasets](#kaggle-datasets)) |
-| 76 | [Wikipedia](#wikipedia) | Wikipedia (registers as a `files` source that crawls the named pages; see [Wikipedia](#wikipedia)) |
+| 40–43 | [Code sources](code-sources.md) | `node`, `python`, `go`, `rust` |
+| 44–46 | [Streaming](#streaming) | `kafka`, `websocket`, `rss` |
+| 47 | [Push receiver](#push-receiver) | `ingest` |
+| 48–50 | [Graph & semantic](#graph-semantic) | `neo4j`, `sparql`, Wikidata |
+| 51–55 | [File-based](#file-based) | `sqlite`, `csv`, `parquet`, `files`, `logs` |
+| 56–57 | [Observability & other](#observability-other) | `google_sheets`, `prometheus` |
+| 58–66 | [Enterprise SaaS](#enterprise-saas-connectors) | `sharepoint`, `salesforce`, `servicenow`, `jira`, `cloudops`, `splunk`, `google_workspace`, `microsoft_365`, [`quickbooks`](#quickbooks) |
+| 67–74 | [API sources](#api-sources) | `openapi`, [`dbt`](#dbt), `graphql_remote`, `grpc_remote`, GitHub, GitLab, Shopify, Stripe |
+| 75 | [GovData](#govdata) | `govdata` |
+| 76–77 | [Data quality checkers](#data-quality-checkers) | `soda`, `great_expectations` |
+| 78 | [Data profiler](#data-profiler) | `data_profiler` |
+| 79 | [Kaggle datasets](#kaggle-datasets) | Kaggle (staged via Sources form; registers as a `files` source; see [Kaggle datasets](#kaggle-datasets)) |
+| 80 | [Wikipedia](#wikipedia) | Wikipedia (registers as a `files` source that crawls the named pages; see [Wikipedia](#wikipedia)) |
 
 Reference for every source type Provisa supports. "Direct driver" means single-source queries execute against the source natively (sub-100ms). "Connector Name" is the federated connector used when the source participates in multi-source JOINs.
 
@@ -90,13 +90,15 @@ A database with no named source type, reached through any SQLAlchemy dialect Pro
 
 - `url`: the connection URL. Its scheme names the SQLAlchemy dialect and driver, as in `postgresql+psycopg2://db.example.com:5432/sales` or `mssql+pyodbc://host:1433/db?driver=ODBC+Driver+18+for+SQL+Server`. The URL carries no password. The username and password go in the source's own fields, where a `${secret:NAME}` reference works as it does for every source. A scheme whose package is not installed fails the connection and names the missing package.
 - `sql_dialect`: the SQL flavor Provisa writes for the source. It is one of SQLGlot's dialects, or `ansi` for SQLGlot's generic SQL. It is independent of the URL, so a database closest to Postgres can be written as `postgres` behind any driver.
-- `capabilities.<engine>`: the capabilities turned on for the source on that engine, as a comma list of `attach`, `predicate`, `join`, `aggregate` and `key_range`. Each one is off until it is set, and each is held per engine. After an engine swap, nothing is on for the new engine until it is set there. Function pushdown is not offered. Only a `postgresql` or `mysql` URL can turn on `attach`. Live attach is not built yet, so a save that turns it on is refused and the source's rows are replicated into the active engine's store.
+- `capabilities.<engine>`: the capabilities turned on for the source on that engine, as a comma list of `attach`, `predicate`, `join`, `aggregate` and `key_range`. Each one is off until it is set, and each is held per engine. After an engine swap, nothing is on for the new engine until it is set there. Function pushdown is not offered. `attach` is for a URL whose scheme names a built-in source type (`postgresql`, `mysql`, `mariadb`, `mssql`, `oracle`, `sqlite`, `duckdb`, `clickhouse`, `snowflake` and the other built-in types with a SQLAlchemy scheme). With it on, the source attaches the way that built-in type does on the active engine, through that type's own attach, at the host, port, database and user the URL names. If the active engine has no attach for that type, the source's rows are replicated into its store instead. Detect's attach check reports which applies.
 
 A SQLite or DuckDB file is named by its path, written with the organization's tokens: `sqlite:///{files}/shop.db` or `duckdb:///{org}/shop.duckdb`. The file is opened where the token resolves, and a path that leaves the organization's folder is refused, naming the path. On a server of many organizations this is the only file URL allowed. A URL naming any other file is refused, and a DuckDB file is opened with DuckDB's external access off.
 
 Provisa never sends a statement to a JDBC source whole. Its tables are read at their floor, and the engine runs the rest of the statement. A small table can instead be replicated whole by its replicate setting, and it then joins like any other landed table. Register Table offers each column as an optional parameter of kind `column_value`, named `_nf_<column>`: a value for a real column, given by equality, that narrows the read to the rows with that value. A steward can make a parameter required. A query that leaves a required parameter out is refused, naming the table and the parameter, before anything is sent to the source. In SQL a query gives a parameter as a WHERE condition on `_nf_<column>`, and in GraphQL as an argument. The floor reads the table with one SELECT of its columns, with an equality filter for each parameter given. It is written in the source's SQL dialect, and the values are bound rather than written into the text. The rows land for that set of arguments. When the statement alone sets a row limit, the read pulls the cursor in batches and stops once it has enough rows.
 
 A JDBC source can also run a customer's own JDBC driver. Give a `jdbc:` URL plus two more settings: `jdbc_driver_jar`, the driver's jar file (a `{files}/...` path works), and `jdbc_driver_class`, the driver's class name. Provisa opens that driver directly in its own JVM through JPype, with no Calcite involved. The SQL dialect, the capability settings and Detect work as they do for a SQLAlchemy URL. A `jdbc:` URL has no engine attach, so the form doesn't offer one. A customer's jar runs as code inside Provisa's JVM, so this option is for self-hosted installs only. A server of many organizations refuses it, naming the reason, and so does a sandbox organization.
+
+**On the Sources form.** The first field of a JDBC source is **Driver**. Pick one of the standard drivers Provisa ships, each named by its database, or **Your own JDBC driver (jar)**. A standard driver asks for host, port and database, or for a database file for SQLite and DuckDB (written `{files}/…` for one in the organization's files area). The form builds the URL from them. Your own driver asks for the **JDBC URL** (with no password in it), the **Driver class**, and the **JDBC driver jar**, which you upload from your machine into the organization's files area. A server that runs no customer driver refuses the jar by name. Then pick the **SQL dialect** and press **Detect** once the driver's fields are filled. The capability checkboxes (**Live attach**, **Filter pushdown**, **Join pushdown**, **Aggregate pushdown**, **Key-range pushdown**) apply to the active engine, which the form doesn't ask you to name. **Live attach** appears only when the active engine can attach that driver's database type.
 
 For an organization whose sources are held to public addresses (a sandbox, or any organization but the deployment's own on a server of many organizations), the URL may carry only these driver options:
 
@@ -561,7 +563,7 @@ Provisa knows the "See also" heading of these editions: `en`, `de`, `es`, `it`, 
 
 Only tables that editors mark as data tables (`table.wikitable`) become tables, and a table with fewer than 2 rows is not offered.
 
-**Advanced crawl settings.** The form keeps these folded under "Crawl settings" and shows each with its default; leave a field empty to keep it. In a `files` mapping the same names go under `crawl:`, and a name outside this list is refused.
+**Advanced crawl settings.** The form keeps these collapsed under "Crawl settings" and shows each with its default; leave a field empty to keep it. In a `files` mapping the same names go under `crawl:`, and a name outside this list is refused.
 
 | Setting | Wikipedia default | Meaning |
 | --- | --- | --- |
@@ -1012,6 +1014,30 @@ An exclusion that names an operation or argument the specification does not have
 
 A branded source ships its own exclusions as part of its curation, and an operator's are added to them. The Stripe source excludes Stripe's deprecated token and source payment integration: creating a charge, the Tokens and Sources APIs, adding a card or bank account to a customer from a token, and the `source`, `card`, `bank_account` and `default_card` arguments of customer and invoice-payment writes. Payments are taken through Payment Intents, Payment Methods and Setup Intents, which the source offers. Reading and deleting payment sources an account already has stays on offer.
 
+### dbt
+
+A dbt source keeps your dbt project where it is and goes on letting dbt build it. Provisa reads the project's `manifest.json` for definitions and never copies a row or the project.
+
+| The manifest comes from | Set on the source |
+| --- | --- |
+| A URL or artifact location | `location` |
+| An upload | `content` |
+| dbt Cloud's API | `host`, `account_id`, `job_id` and an API token, held as any source's credential is |
+
+Each model is offered as a table, and adding the source registers nothing. When a steward registers a model, it is read through the warehouse source that matches the manifest's adapter and the model's database. The manifest holds no credential and dbt's profiles file is not read, so if no registered source matches, the setup form offers to create one. A model's lineage comes from its compiled SQL.
+
+**Commands.** Each model, test, snapshot and seed is offered as a mutation command, as are `build`, `source freshness`, and each macro of the project and its installed packages through `run-operation`. A command runs only when a call, a trigger or a schedule runs it. It runs wherever dbt already runs:
+
+| Target | How it runs | Set on the source |
+| --- | --- | --- |
+| dbt Cloud | Runs the job through the jobs API with the command as its one step | `spec: cloud` |
+| A script | Runs `dbt` on a command line Provisa can reach | `command_line` |
+| An operator-run connector | Calls a `@command` of a [code source](code-sources.md), with the dbt invocation as a fixed argument a caller cannot change | `connector_source`, `connector_command`, `connector_invocation_argument` (default `invocation`) |
+
+**Freshness.** dbt's `run_results.json` says when each model was last built. Give it as `run_results`, point `run_results_location` at where it is published, or let a dbt Cloud source read it from the job's latest successful run. Refreshing the source reads it again, and an upload can bring run results without a new manifest. To use it, set the model's table to a `probe` or `ttl_probe` change signal with `probe_type: hash`. The table is stale once dbt has built the model again. A model whose latest run failed or was skipped has unknown freshness, and is never read as fresh.
+
+**A new manifest** updates the commands on offer, the lineage and the descriptions of registered models. A description a steward has changed stays as the steward left it, field by field.
+
 ### GovData
 
 GovData serves U.S. government open data, with access partitioned by subject grouping.
@@ -1221,9 +1247,15 @@ A declared extension that is not installable fails loud, with no silent skip or 
 
 ### Template variables
 
-Every `server_options` value, `user_mapping` value, `attach_template`, and `scan_template` may use `{field}` placeholders. Available fields:
+Every `server_options`, `user_mapping` and `table_options` value, `remote_schema`, `attach_template`, `scan_template` and `engine_template` may use `{field}` placeholders. Available fields:
 
 `{id}`, `{host}`, `{port}`, `{database}`, `{username}`, `{password}`, `{path}`, `{schema_name}`, `{table_name}`, plus any key from `federation_hints`. DuckDB attach templates also receive `{alias}`, the internal catalog alias Provisa gives the attached database.
+
+A template takes raw values and never quotes a placeholder. Provisa writes each value with the engine's quoting rules, so a value holding a quote, a semicolon, a backslash or a newline stays inside its literal or name:
+
+- A `pg_fdw` option value is text. The filled value is written as one string literal: `address: "{host}"` becomes `address 'db.example'`. `remote_schema` is written as one identifier.
+- `attach_template`, `scan_template` and `engine_template` are SQL. `{field}` is written as a string literal, `{field:ident}` as an identifier, and `{field:int}` as an integer (a value that is not an integer fails). To join a value with other text, join it in SQL: `'ducklake:' || {path}` in DuckDB, `concat({host}, ':', {port})` in ClickHouse.
+- A placeholder inside quotes in a SQL template (`read_xlsx('{path}')`) fails when the descriptor is read.
 
 A template referencing an unknown field fails loud at attach time, surfacing a descriptor/source mismatch before broken DDL reaches the engine.
 
@@ -1260,7 +1292,7 @@ connectors:
     extension: excel
     install_from_community: false
     probe_symbol: read_xlsx
-    scan_template: "read_xlsx('{path}')"
+    scan_template: "read_xlsx({path})"
 ```
 
 With either descriptor in place, registering a source with the declared `source_type` routes through the custom connector, subject to a successful probe. No other configuration change is needed.

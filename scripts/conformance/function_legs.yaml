@@ -42,7 +42,7 @@ legs:
   - engine: pg
     lane: free
     image: postgres:17.11 (the workflow's PostgreSQL service)
-    engine-url: postgresql://postgres:conformance@127.0.0.1:55432/conformance
+    engine-url: postgresql://postgres:conformance-pg-password@127.0.0.1:15432/conformance
   - engine: clickhouse
     lane: free
     image: in-process (chdb)
@@ -57,7 +57,7 @@ legs:
   - engine: sqlalchemy
     lane: free
     image: postgres:17.11 (the workflow's PostgreSQL service)
-    engine-url: postgresql+psycopg2://postgres:conformance@127.0.0.1:55432/postgres
+    engine-url: postgresql+psycopg2://postgres:conformance-pg-password@127.0.0.1:15432/postgres
 
   # --- containers the integration tests already start (docker-compose.test.yml) -------------
   - engine: clickhouse-server

@@ -29,7 +29,6 @@ import functools
 import importlib.util
 import json
 import logging
-import re
 import sys
 from decimal import Decimal
 
@@ -47,6 +46,7 @@ from provisa.core.request_context import reset_current_org
 from provisa.grpc.auth import org_bound_for_rpc
 from provisa.grpc.descriptor import SERVICE_NAME, bound_descriptor, role_descriptor
 from provisa.core.read_refusal import ReadRefused
+from provisa.executor.result import is_arrow
 
 log = logging.getLogger(__name__)
 
@@ -122,11 +122,12 @@ def _proto_number(value: object) -> object:  # object-ok: an aggregate's value
 
 
 def _row_encoder(msg_cls, out_cols: list[str], restrictions=None, batch_cls=None, batch_rows=0):
-    """The encoder of one RPC's result (REQ-2194, REQ-1965): the result's Arrow batches in, the
-    serialized ``msg_cls`` messages out (``batch_cls`` messages of ``batch_rows`` rows for
-    Query{Type}Batch), each column written to the field ``out_cols`` names and, under a read mask,
-    restricted to its selection (``restrictions``, one per column). No value of the result is a
-    Python object on the way: provisa._encoders.grpc reads the batches and writes the wire."""
+    """The encoder of one RPC's result (REQ-2194, REQ-1965, REQ-2195): the result in the form it
+    has, the engine's Arrow batches or a row result's rows, in; the serialized ``msg_cls``
+    messages out (``batch_cls`` messages of ``batch_rows`` rows for Query{Type}Batch), each column
+    written to the field ``out_cols`` names and, under a read mask, restricted to its selection
+    (``restrictions``, one per column). provisa._encoders.grpc reads the batches, or each row's
+    cells as they are, and writes the wire; a row result is never built into Arrow first."""
     from provisa._encoders import grpc as grpc_encoder
 
     descriptor = msg_cls.DESCRIPTOR
@@ -140,12 +141,25 @@ def _row_encoder(msg_cls, out_cols: list[str], restrictions=None, batch_cls=None
     )
 
 
-def _encoded(encoder, batches):
-    """``(rows, messages)`` for each of ``batches`` (record batches): its row count and the
-    messages it completes; last ``(0, ...)``, Query{Type}Batch's partly filled final message."""
-    for batch in batches:
-        yield batch.num_rows, encoder.encode(batch)
+def _encoded(encoder, result):
+    """``(rows, messages)`` for each batch of ``result`` in the form it has (REQ-2195): an Arrow
+    result's record batches, any other result's row batches; its row count and the messages it
+    completes; last ``(0, ...)``, Query{Type}Batch's partly filled final message."""
+    if is_arrow(result):
+        for batch in result.arrow_batches():
+            yield batch.num_rows, encoder.encode(batch)
+    else:
+        types = _column_types(result)
+        for rows in result.batches():
+            yield len(rows), encoder.encode_rows(rows, types)
     yield 0, encoder.finish()
+
+
+def _column_types(result) -> list[str | None] | None:
+    """The engine's type name of each of a row result's columns, as the encoder reads them."""
+    if not result.column_types:
+        return None
+    return [None if t is None else str(t) for t in result.column_types]
 
 
 def _nodes_field(row_cls, node_cls, nodes: list) -> bytes:
@@ -187,11 +201,6 @@ def _status_for_exception(exc: BaseException) -> grpc.StatusCode:
     if isinstance(exc, ValueError):
         return grpc.StatusCode.INVALID_ARGUMENT
     return grpc.StatusCode.INTERNAL
-
-
-def _pascal_to_snake(name: str) -> str:
-    """Convert PascalCase to snake_case: CustomerSegments -> customer_segments."""
-    return re.sub(r"(?<=[a-z0-9])([A-Z])", r"_\1", name).lower()
 
 
 def _load_module(path: str, name: str):
@@ -601,13 +610,8 @@ class ProvisaServicer:  # REQ-045, REQ-143
             )
         if name.startswith("Query"):
             type_name = name[len("Query") :]
-            # Convert PascalCase type name to snake_case field name
-            field_name = _pascal_to_snake(type_name)
             return self._streaming_rpc(
-                name,
-                lambda request, context: self._handle_query(
-                    request, context, type_name, field_name
-                ),
+                name, lambda request, context: self._handle_query(request, context, type_name)
             )
         if name.startswith("Insert"):
             type_name = name[len("Insert") :]
@@ -905,7 +909,7 @@ class ProvisaServicer:  # REQ-045, REQ-143
         """Stub handler for insert RPCs."""
         await context.abort(grpc.StatusCode.UNIMPLEMENTED, f"Insert{type_name} not yet implemented")
 
-    async def _handle_query(self, request, context, type_name: str, field_name: str):
+    async def _handle_query(self, request, context, type_name: str):
         """Lower a proto query request to GraphQL text and compile it as every GraphQL-shaped
         surface does (``query_ir.grpc_table_to_graphql``), then run the compiled statement through
         the shared governance → routing → physical pipeline. gRPC composes no SQL of its own.
@@ -994,6 +998,7 @@ class ProvisaServicer:  # REQ-045, REQ-143
             FilterError,
             ParameterError,
             ReadMaskError,
+            check_relation_fields,
             grpc_table_to_graphql,
             resolve_read_mask,
         )
@@ -1033,6 +1038,8 @@ class ProvisaServicer:  # REQ-045, REQ-143
         # name before anything is governed or run.
         try:
             read_mask = resolve_read_mask(ctx, type_name, list(request.read_mask.paths))
+            if read_mask is not None:
+                check_relation_fields(descriptor, read_mask, type_name)  # REQ-1929
             lowered = grpc_table_to_graphql(
                 ctx,
                 surface.schema,
@@ -1088,6 +1095,11 @@ class ProvisaServicer:  # REQ-045, REQ-143
             self._emit_trailing_metadata(context, plan.warnings, redirect=delivered.redirect)
             return
 
+        if read_mask is not None and read_mask.relations:
+            async for m in self._nested_rows(context, plan, compiled, msg_cls, read_mask, batch):
+                yield m
+            return
+
         restrictions = read_mask.restrictions if read_mask is not None else None
 
         def _encoder_for(column_names):
@@ -1115,9 +1127,7 @@ class ProvisaServicer:  # REQ-045, REQ-143
             hit = await cached_result(plan, state)
             self._emit_trailing_metadata(context, plan.warnings)  # REQ-1137
             try:
-                for _rows, messages in _encoded(
-                    _encoder_for(hit.column_names), hit.arrow_batches()
-                ):
+                for _rows, messages in _encoded(_encoder_for(hit.column_names), hit):
                     for m in messages:
                         yield m
             except Exception as exc:
@@ -1195,10 +1205,8 @@ class ProvisaServicer:  # REQ-045, REQ-143
 
             try:
                 _delivered = 0  # query_audit_log.row_count
-                # REQ-2194: the engine's Arrow batches, straight to the encoder.
-                for rows, messages in _encoded(
-                    _encoder_for(stream.column_names), stream.arrow_batches()
-                ):
+                # REQ-2194, REQ-2195: the engine's result, Arrow or rows, straight to the encoder.
+                for rows, messages in _encoded(_encoder_for(stream.column_names), stream):
                     _delivered += rows
                     for m in messages:
                         yield m
@@ -1266,7 +1274,6 @@ class ProvisaServicer:  # REQ-045, REQ-143
                 # whole result. A source without a streaming driver still falls through to
                 # execute_native unchanged — no regression for those.
                 if state.source_pools.supports_stream(plan.source_id):
-                    from provisa.core.ir_arrow import row_batch
                     from provisa.federation.runtime_support import _STREAM_BATCH_ROWS
 
                     ds = await state.source_pools.open_stream(
@@ -1274,6 +1281,7 @@ class ProvisaServicer:  # REQ-045, REQ-143
                     )
                     _said = self._emit_trailing_metadata(context, plan.warnings)
                     encoder = _encoder_for(ds.column_names)
+                    types = _column_types(ds)
                     _delivered = 0  # query_audit_log.row_count
                     # The copy an opted-in MISS writes back, held only within the cache's own row
                     # bound: a result past it is still streamed, and is not cached.
@@ -1289,11 +1297,8 @@ class ProvisaServicer:  # REQ-045, REQ-143
                                     _kept = None
                                 else:
                                     _kept.extend(batch)
-                            # REQ-2194: the driver's rows become Arrow at the one fetch boundary
-                            # of a row engine (docs/arch/fetch-paths.md), then the encoder's.
-                            for m in encoder.encode(
-                                row_batch(batch, ds.column_names, ds.column_types)
-                            ):
+                            # REQ-2195: the driver's rows, encoded as they are.
+                            for m in encoder.encode_rows(batch, types):
                                 yield m
                         for m in encoder.finish():
                             yield m
@@ -1330,9 +1335,7 @@ class ProvisaServicer:  # REQ-045, REQ-143
                 # REQ-1137/REQ-1350: trailing metadata (notice, warnings) before the row stream.
                 self._emit_trailing_metadata(context, plan.warnings)
                 try:
-                    for _rows, messages in _encoded(
-                        _encoder_for(result.column_names), result.arrow_batches()
-                    ):
+                    for _rows, messages in _encoded(_encoder_for(result.column_names), result):
                         for m in messages:
                             yield m
                 except Exception as exc:
@@ -1354,14 +1357,62 @@ class ProvisaServicer:  # REQ-045, REQ-143
             context, plan.warnings
         )  # REQ-1137: trailing-metadata nag before the row stream
         try:
-            for _rows, messages in _encoded(
-                _encoder_for(result.column_names), result.arrow_batches()
-            ):
+            for _rows, messages in _encoded(_encoder_for(result.column_names), result):
                 for m in messages:
                     yield m
         except Exception as exc:
             # A value the encoder refuses (J502b) is the client's INVALID_ARGUMENT, as on the
             # streamed routes, not an opaque UNKNOWN.
+            await context.abort(_status_for_exception(exc), str(exc))
+
+    async def _nested_rows(self, context, plan, compiled, msg_cls, read_mask, batch):
+        """A row read whose read mask names relations (REQ-1929): each row with its relations
+        nested, as the GraphQL it lowered to answers it. The compiled statement's result is put
+        into that GraphQL field's rows by the encoder every GraphQL answer takes (a to-one an
+        object, a to-many a list), keyed by proto field (the lowering's aliases); each JSON
+        sub-path selection is applied; and the encoder writes each row as a ``{Type}`` message,
+        a relation field from its object or one message per object of its list — or, for
+        Query{Type}Batch (``batch``), ``{Type}Batch`` messages of ``batch_rows`` rows each."""
+        from provisa._encoders import grpc as grpc_encoder
+        from provisa.executor.json_encoders import graphql_field, result_batches
+        from provisa.executor.serialize import to_one_truncated
+        from provisa.pgwire._pipeline import _execute_plan, cached_result
+
+        state = self._state
+        if plan.cache_hit is not None:
+            result = await cached_result(plan, state)
+        else:
+            result = await _execute_plan(plan, state)
+        try:
+            answer = graphql_field(result_batches(result), compiled.columns)
+            rows = [read_mask.restrict_row(row) for row in json.loads(answer.body)]
+        except Exception as exc:
+            await context.abort(_status_for_exception(exc), str(exc))
+            return
+        # A to-one that matched several rows for one parent answers the first, and says so, as
+        # the GraphQL answer does.
+        warnings = [*plan.warnings, *(to_one_truncated(p) for p in answer.truncated)]
+        self._emit_trailing_metadata(context, warnings)  # REQ-1137
+        service = _encoder_service(msg_cls.DESCRIPTOR.file)
+        try:
+            if batch is None:
+                for m in grpc_encoder.encode_messages(
+                    service, msg_cls.DESCRIPTOR.full_name, json.dumps(rows)
+                ):
+                    yield m
+                return
+            batch_cls, batch_rows = batch
+            rows_field = batch_cls.DESCRIPTOR.fields_by_name["rows"].number
+            for at in range(0, len(rows), batch_rows):
+                # A {Type}Batch is its repeated rows field and nothing else.
+                yield grpc_encoder.encode_nodes(
+                    service,
+                    msg_cls.DESCRIPTOR.full_name,
+                    rows_field,
+                    json.dumps(rows[at : at + batch_rows]),
+                )
+        except Exception as exc:
+            # A value the encoder refuses is the client's INVALID_ARGUMENT, as on every route.
             await context.abort(_status_for_exception(exc), str(exc))
 
     # --- REQ-1359: aggregate / group-by protocol parity -----------------------------------------

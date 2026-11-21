@@ -5,10 +5,9 @@
     "identity": "識別",
     "associations": "関連付け",
     "load": "負荷管理と鮮度",
-    "query": "クエリ",
+    "query": "API",
     "quality": "品質",
     "columns": "列",
-    "writes": "書き込み",
     "source": "ソース",
     "schema": "スキーマ",
     "table": "テーブル",
@@ -18,6 +17,10 @@
     "noTerms": "このテーブルの列を名付ける用語はありません",
     "relationships": "リレーションシップ",
     "noRelationships": "このテーブルはどのリレーションシップにも含まれていません",
+    "metrics": "メトリクス",
+    "noMetrics": "このテーブルを使うメトリクスはありません",
+    "metricTerm": "{{term}}:",
+    "metricMethod": "計算方法: {{method}}",
     "fromSource": "{{value}}（ソースから）",
     "fromSourceAsIs": "ソースの設定どおり",
     "notScheduledLikeSource": "ソースはスケジュールでのみ読み取られますが、このテーブルはそうではありません: クエリがソースを読み取ることがあります。",
@@ -33,9 +36,11 @@
       "skipped": "スキップ"
     },
     "classTerm": "行のインスタンス元",
-    "classTermPlaceholder": "用語を選択",
     "noClassTerm": "用語なし",
     "classTermUnreadable": "用語を読み取れませんでした: {{error}}",
+    "classTermNoModel": "用語を読み取れませんでした: あなたのロールはモデルのテーブルを読み取れません。",
+    "classTermNoEntry": "用語を読み取れませんでした: あなたのロールはモデル内のこのテーブル自身のエントリを読み取れません。",
+    "classTermNoField": "用語を読み取れませんでした: あなたのロールは、テーブルの行がどの用語のインスタンスであるかを読み取れません。",
     "access": "アクセス"
   }
 }

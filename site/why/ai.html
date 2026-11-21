@@ -31,13 +31,9 @@
         <span class="brand-tag">Preview</span>
       </a>
       <nav class="nav-links" aria-label="Primary">
-        <a href="/#interfaces">Interfaces</a>
-        <a href="/#governance">Governance</a>
-        <a href="/#sources">Sources</a>
-        <a href="/compare">Compare</a>
-        <a href="/#deploy">Deploy</a>
-        <a href="/how-it-works">How</a>
+        <a href="/#use-cases">Use cases</a>
         <a href="/demos">Demos</a>
+        <a href="/works-with">Works with</a>
         <a href="/docs">Docs</a>
         <a class="nav-cta" href="/#download">Download</a>
       </nav>
@@ -165,6 +161,72 @@
           individuals.
         </p>
 
+        <h2>Answers from the documents you already keep</h2>
+        <p>
+          Most of what people ask an assistant at work is about their own organization. What
+          does this policy say? How does that process run? The answers are in a short list of
+          documents your teams already write and maintain, in your own words. Provisa keeps
+          them in a reference library. Polly, Provisa's assistant, answers from it, and agents
+          reach the same library over MCP.
+        </p>
+        <p>
+          The rule that answers a question often shares few words with it, so a search for
+          similar wording alone can miss it. Provisa starts with the passages nearest the
+          question, then follows your glossary. The terms the question names or means lead
+          along their relationships to related terms, and the passages those terms cite become
+          candidates too. Each kind of relationship carries its own weight. A synonym counts in
+          full and a loose "related to" much less, and the weight fades with each hop until
+          the walk stops. The passages around each candidate come along for context. What the
+          nearest search found always comes first; the walk only fills the space left.
+        </p>
+        <p>
+          Every candidate reaches the model labelled with how it was found, and the model
+          judges which ones are relevant. It cites only the passages it used.
+        </p>
+        <ul>
+          <li><strong>The documents you choose.</strong> An admin adds each one as a file or
+            a link, and refreshes it when it changes. Adding it reads the document, splits it into
+            passages and embeds them, all as part of the one step, with nothing separate to build or run.</li>
+          <li><strong>The glossary you already curate.</strong> Your glossary terms are the
+            concepts the walk follows, and their relationships are its links. Provisa
+            runs no second extraction over your documents. Find terms reads a document against
+            the terms and synonyms you hold, proposes what's new and offers a merge for what
+            you already have.</li>
+          <li><strong>Only what the role may read.</strong> Each document belongs to domains,
+            or to the whole organization. An assistant working for a role draws only on the
+            documents, terms and relationships that role may read, and only on documents a
+            steward has kept.</li>
+          <li><strong>Every passage cited.</strong> A passage comes with its document, its
+            section or page, and the quoted text, so you can check the answer against the
+            source.</li>
+          <li><strong>No new database.</strong> The passages and their embeddings (the numbers
+            a model uses to compare meaning) are stored in the PostgreSQL database Provisa
+            already runs, under a vector index. The embedding model is the one in your AI
+            Models settings, and it can be a local model with no key.</li>
+          <li><strong>Nothing to tune per use case.</strong> A policy question and a contract
+            question go through the same search, the same glossary walk and the same
+            weights.</li>
+        </ul>
+        <p>
+          Because the library sits beside the governed data, a question about a rule can be
+          answered with the rule and the rows. In the bank secrecy demo, a community bank adds
+          the cash reporting rules (31 CFR 1010.311, 1010.313 and 1010.314) and the suspicious
+          activity rule (31 CFR 1020.320) to its library from their public addresses. Find terms
+          turns the rules' words into glossary terms grounded on the bank's cash tables. Ask
+          Polly what the bank must do about a customer who keeps depositing cash just under
+          $10,000. Each deposit is too small for a currency transaction report, and a search of
+          the rules' text for the question turns up the $10,000 rules and nothing about what to
+          do next. The glossary links deposits just under the threshold to structuring, and
+          structuring to the suspicious activity report, so the walk reaches the rule that the
+          bank must file one, and Polly cites it. The rows come from a governed view that finds
+          every customer depositing just under $10,000 across accounts, branches and days, and
+          only compliance reads it.
+        </p>
+        <p>
+          The questions most organizations actually ask, answered from the documents they
+          already maintain.
+        </p>
+
         <h2>What it looks like</h2>
         <div class="cmp-wrap">
           <table class="cmp">
@@ -239,7 +301,7 @@
         </svg>
         <span class="brand-word">Provisa</span>
       </div>
-      <p class="footer-note">Provisa is a data kernel: a compiler and runtime for building your data control plane. Federation, metrics, ontology and governance from a single model. Nothing to keep in sync. Business Source License 1.1. Non-production use (including evaluation) is free forever, for any size organization. Production use is also free for organizations that, together with their affiliates, have under 100 employees and contractors and under $1M in annual revenue, budget, or expenditures; others need a <a href="mailto:license@provisa.dev">commercial license</a> for production use.</p>
+      <p class="footer-note">Provisa is a compiler and runtime for building your data control plane. Federation, metrics, ontology and governance from a single model. Nothing to keep in sync. Business Source License 1.1. Non-production use (including evaluation) is free forever, for any size organization. Production use is also free for organizations that, together with their affiliates, have under 100 employees and contractors and under $1M in annual revenue, budget, or expenditures; others need a <a href="mailto:license@provisa.dev">commercial license</a> for production use.</p>
       <nav class="footer-links" aria-label="Footer">
         <a href="/why/one-model">One model</a>
         <a href="/why/interfaces">Interfaces</a>
@@ -248,12 +310,15 @@
         <a href="/why/materialized-views">Materialized views</a>
         <a href="/why/catalog">Catalog</a>
         <a href="/why/no-lock-in">No lock-in</a>
+        <a href="/why/environments">Environments</a>
+        <a href="/how-it-works">How it works</a>
+        <a href="/architecture-faq">Architecture FAQ</a>
         <a href="/why/data-mesh">Data mesh</a>
         <a href="/why/ai">Data for AI</a>
         <a href="/why/ontology">Ontology</a>
         <a href="/why/glossary-that-grounds">Glossary that grounds</a>
-        <a href="/vs/starburst">vs Starburst</a>
-        <a href="/vs/denodo">vs Denodo</a>
+        <a href="/vs/starburst">With Starburst</a>
+        <a href="/vs/denodo">With Denodo</a>
         <a href="/vs/hasura">Coming from Hasura</a>
         <a href="/docs">Docs</a>
         <a href="/register">Register (free license)</a>

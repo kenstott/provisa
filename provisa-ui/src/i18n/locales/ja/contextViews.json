@@ -1,0 +1,16 @@
+{
+  "contextViews": {
+    "colWhereApplied": "適用先",
+    "colDependents": "依存するもの",
+    "detectedHeader": "検出先",
+    "nowhere": "なし",
+    "hiddenPlaces_one": "読み取れないものがあと {{count}} 件",
+    "hiddenPlaces_other": "読み取れないものがあと {{count}} 件",
+    "rowFilters_one": "行フィルター {{count}} 件",
+    "rowFilters_other": "行フィルター {{count}} 件",
+    "classifiedAs": "分類により付与: {{kind}}",
+    "noDependents": "なし",
+    "enabled": "有効",
+    "disabled": "無効"
+  }
+}

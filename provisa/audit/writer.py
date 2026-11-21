@@ -139,12 +139,15 @@ class AuditRecord:
     usage_db: Any = None  # Any: the org's model store Database handle
     used_roles: "Callable[[], tuple[str, ...]] | None" = None
 
-    def row(self, model_commit: str | None) -> dict[str, Any]:
+    def row(self, model_commit: str | None, stage: str | None) -> dict[str, Any]:
         """The ``query_audit_log`` row: query text encrypted (REQ-689), its plaintext hash kept.
 
         ``model_commit``: the environment repository's commit the model at ``model_stamp`` equals,
         when that is proven (None otherwise). With a commit, the columns each role could see are
-        recoverable from it; without one the row keeps the visible columns it was given."""
+        recoverable from it; without one the row keeps the visible columns it was given.
+
+        ``stage``: the stage ``model_env`` declares as the row is written (REQ-2261); None only
+        for a deployment without a control plane, which has no environment registry."""
         from provisa.audit.query_log import qualified_table_names
 
         enforced = self.enforced() if callable(self.enforced) else self.enforced
@@ -179,6 +182,7 @@ class AuditRecord:
             **_time_travel_columns(self.time_travel),
             "trace_id": self.trace_id,
             "logged_at": self.logged_at,
+            "stage": stage,
         }
 
 
@@ -222,6 +226,19 @@ async def _deployed_commit(pool: Any, org_id: str, env: str, stamp: int) -> str 
     return row["deployed_sha"]
 
 
+async def _env_stage(pool: Any, org_id: str, env: str) -> str:
+    """The stage ``env`` declares now (REQ-2261). Read per batch, never cached: a stage change
+    applies to the next statement's row."""
+    from provisa.core.env_store import get_env
+
+    row = await get_env(pool, org_id, env)
+    if row is None:
+        raise RuntimeError(
+            f"audit row names environment {env!r}, which org {org_id!r} does not hold"
+        )
+    return row["stage"]
+
+
 async def _mark_used(db: Any, user_id: str, role_ids: list[str]) -> None:
     from provisa.auth.role_grants import mark_used
 
@@ -235,16 +252,30 @@ async def _meter(pool: Any, org_id: str) -> None:
 
 
 def _count(records: "list[AuditRecord]") -> None:
-    """Add a landed batch to its tables' Hot counts (REQ-826), one round trip per count store."""
+    """Add a landed batch to its tables' Hot counts (REQ-826), one round trip per org environment
+    of a count store: each is counted in buckets of that org's interval (REQ-1327), the same the
+    promotion judge reads them with."""
     from provisa.core import settings_registry
+    from provisa.core.request_context import (
+        reset_current_env,
+        reset_current_org,
+        set_current_env,
+        set_current_org,
+    )
     from provisa.federation.replica_hot import batch_hits
 
-    interval = settings_registry.value("replication.hot_interval")
-    by_store: dict[int, list[AuditRecord]] = {}
+    by_store: dict[tuple[int, str, str], list[AuditRecord]] = {}
     for rec in records:
         if rec.hot_counts is not None:
-            by_store.setdefault(id(rec.hot_counts), []).append(rec)
-    for group in by_store.values():
+            by_store.setdefault((id(rec.hot_counts), rec.meter_org, rec.model_env), []).append(rec)
+    for (_, org, env), group in by_store.items():
+        org_token = set_current_org(org)
+        env_token = set_current_env(env)
+        try:
+            interval = settings_registry.value("replication.hot_interval")
+        finally:
+            reset_current_env(env_token)
+            reset_current_org(org_token)
         group[0].hot_counts.add(batch_hits(group), interval)
 
 
@@ -261,6 +292,7 @@ class AuditWriter:
         insert: Callable[[Any, list[dict[str, Any]]], Awaitable[None]] = _insert_rows,
         meter: Callable[[Any, str], Awaitable[None]] = _meter,
         deployed_commit: Callable[[Any, str, str, int], Awaitable[str | None]] = _deployed_commit,
+        env_stage: Callable[[Any, str, str], Awaitable[str]] = _env_stage,
         count: "Callable[[list[AuditRecord]], None]" = _count,
         mark_used: "Callable[[Any, str, list[str]], Awaitable[None]]" = _mark_used,
     ) -> None:
@@ -271,6 +303,7 @@ class AuditWriter:
         self._insert = insert
         self._meter = meter
         self._deployed_commit = deployed_commit
+        self._env_stage = env_stage
         # (control plane, org, env, stamp) → the commit proven for that stamp. A stamp names one
         # model, so once proven it does not change; an unproven stamp is asked again next batch.
         self._proven_commits: dict[tuple[int, str, str, int], str] = {}
@@ -420,7 +453,11 @@ class AuditWriter:
             by_db.setdefault(id(rec.record_db), []).append(rec)
         for group in by_db.values():
             try:
-                rows = [rec.row(await self._model_commit(rec)) for rec in group]
+                stages = await self._stages(group)
+                rows = [
+                    rec.row(await self._model_commit(rec), stages.get(self._stage_key(rec)))
+                    for rec in group
+                ]
                 await self._insert(group[0].record_db, rows)
             except Exception as exc:
                 self.last_error = f"insert failed: {type(exc).__name__}: {exc}"
@@ -483,6 +520,21 @@ class AuditWriter:
             for k in keys:
                 del self._held_usage[k]
                 self._used_on[k] = today
+
+    @staticmethod
+    def _stage_key(rec: AuditRecord) -> tuple[int, str, str]:
+        return (id(rec.meter_pool), rec.meter_org, rec.model_env)
+
+    async def _stages(self, group: list[AuditRecord]) -> dict[tuple[int, str, str], str]:
+        """Each environment's stage, one read per environment in the group (REQ-2261). A record
+        without a control plane (``meter_pool`` None) has no registry and is absent here."""
+        stages: dict[tuple[int, str, str], str] = {}
+        for rec in group:
+            key = self._stage_key(rec)
+            if rec.meter_pool is None or key in stages:
+                continue
+            stages[key] = await self._env_stage(rec.meter_pool, rec.meter_org, rec.model_env)
+        return stages
 
     async def _model_commit(self, rec: AuditRecord) -> str | None:
         """The commit ``rec``'s model equals, when proven. A deployment without a control plane,

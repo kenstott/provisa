@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>How it works — Provisa</title>
-  <meta name="description" content="Provisa is a data kernel: a small set of semantic primitives compiled into one governed query plan and executed by the engine you choose." />
+  <meta name="description" content="Provisa is a small set of semantic primitives compiled into one governed query plan and executed by the engine you choose." />
   <link rel="icon" type="image/svg+xml" href="../favicon.svg" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -31,13 +31,9 @@
         <span class="brand-tag">Preview</span>
       </a>
       <nav class="nav-links" aria-label="Primary">
-        <a href="/#interfaces">Interfaces</a>
-        <a href="/#governance">Governance</a>
-        <a href="/#sources">Sources</a>
-        <a href="/compare">Compare</a>
-        <a href="/#deploy">Deploy</a>
-        <a href="/how-it-works" aria-current="page">How</a>
+        <a href="/#use-cases">Use cases</a>
         <a href="/demos">Demos</a>
+        <a href="/works-with">Works with</a>
         <a href="/docs">Docs</a>
         <a class="nav-cta" href="/#download">Download</a>
       </nav>
@@ -52,6 +48,7 @@
         <p class="lead">
           Governed from the first query.
         </p>
+        <p>Evaluating the architecture? See the <a href="/architecture-faq">Architecture FAQ</a>.</p>
       </div>
 
       <div class="doc-body">
@@ -66,7 +63,7 @@
 
         <h2 id="mechanism">The mechanism</h2>
         <p>
-          Provisa is a data kernel: a compiler and runtime for building your data control plane.
+          Provisa is a compiler and runtime for building your data control plane.
         </p>
         <p>
           The primitives are sources, tables, relationships, terms, roles, capabilities, grants, scope, products, and contracts. Declare them and the whole governed API follows: the query endpoints, the legal join paths, the access rules, and the audit trail.
@@ -80,6 +77,13 @@
         <p>
           It is built the way an operating system is built, on the same philosophy as an OS kernel and its drivers. Source drivers, engine drivers and secrets drivers plug in and swap without reinstalling. Command bindings are the compatibility layer that answers other tools&#8217; calls: APOC for Neo4j tools, catalog functions for SQL clients, fields in GraphQL, tools in MCP. BI tools, notebooks, agents and apps are clients connecting over standard protocols. Provisa drives your systems; it does not run on them and never becomes their engine.
         </p>
+        <figure class="shot">
+          <div class="shot-frame"><a href="/assets/architecture.e58356afb8.jpg">
+            <img src="/assets/architecture.e58356afb8.jpg" width="1536" height="1024" loading="lazy"
+                 alt="Provisa architecture. Consumers reach generated access surfaces: SQL over the PostgreSQL wire, GraphQL, REST, OData, gRPC, Arrow Flight, Cypher and MCP. These feed the Provisa control plane, where the semantic model and the query compiler and planner apply governance and send each query to execution engines and warehouses, which read the data sources. Governance is compiled into every query, and observability is stored as queryable tables.">
+          </a></div>
+          <figcaption>One model, compiled into governed queries for every interface and run on the engines you already have. Select the diagram to open it full size.</figcaption>
+        </figure>
 
         <h2 id="lineage">Where the design comes from</h2>
         <p>
@@ -134,8 +138,21 @@
           Languages are ways of expressing logic, and the logic of data is bounded: select,
           join, aggregate, traverse. Transports are bounded too: whatever the protocol, data
           leaves through a socket as rows, nested documents, graphs, columnar batches or
-          streams. Programming languages have shared one compiler infrastructure for twenty
+          streams. Encoding is bounded as well: fewer than ten are meaningful, from PostgreSQL's wire rows
+          and JSON to protobuf, Arrow, CSV, XML and Bolt's PackStream. Programming languages have
+          shared one compiler infrastructure for twenty
           years; Provisa does the same for data.
+        </p>
+        <p>
+          It also works because data must be expressed relationally before it enters, and that
+          simplifies every tool that reads it. Relational algebra has six primitive operations:
+          selection, projection, union, set difference, Cartesian product and rename; join and
+          the rest are built from them. Even deep traversals can be recursive CTEs, and a
+          property graph's nodes can be expressed as sparsely populated tables by label, and its
+          edges as junction tables, sparse again. Think
+          hard enough and every one of these languages can be expressed in an IR based on
+          extended relational algebra: those six operations plus aggregation, recursion and
+          nesting.
         </p>
         <p>
           Building a compiler front end has also become cheap: parser generators like ANTLR
@@ -147,9 +164,17 @@
           Where languages or protocols differ at the edges, their public conformance suites settle it. Provisa runs them and publishes the results.
         </p>
         <p>
+          So data languages become more about the UX and less about the logic. Conceptually that
+          is a small overstatement: there are a few edge cases, but not a lot, and each
+          language's conformance suite pins them down. Practically, tooling and skill sets really
+          care, and that is why the tradeoff is worth accepting: every team keeps the language and
+          tools it knows, and all of them read one model with one set of rules.
+        </p>
+        <p>
           It also means the pace of change isn't a constraint. New query languages, protocols,
           engines and sources keep arriving; for most stacks each one is a migration. Here, a
-          new language or transport is a front end or an encoder, and a new engine or source is a driver. Those are additions at the edges, and the model and its governance don't change.
+          new language or transport is a front end or an encoder, and a new engine or source is a driver. Those are additions at the edges, and the model and its governance don't change. This compositional model of primitives
+          makes it all plug and play.
         </p>
 
         <h2 id="command-bindings">Command bindings</h2>
@@ -213,7 +238,7 @@
         </svg>
         <span class="brand-word">Provisa</span>
       </div>
-      <p class="footer-note">Provisa is a data kernel: a compiler and runtime for building your data control plane. Federation, metrics, ontology and governance from a single model. Nothing to keep in sync. Business Source License 1.1. Non-production use (including evaluation) is free forever, for any size organization. Production use is also free for organizations that, together with their affiliates, have under 100 employees and contractors and under $1M in annual revenue, budget, or expenditures; others need a <a href="mailto:license@provisa.dev">commercial license</a> for production use.</p>
+      <p class="footer-note">Provisa is a compiler and runtime for building your data control plane. Federation, metrics, ontology and governance from a single model. Nothing to keep in sync. Business Source License 1.1. Non-production use (including evaluation) is free forever, for any size organization. Production use is also free for organizations that, together with their affiliates, have under 100 employees and contractors and under $1M in annual revenue, budget, or expenditures; others need a <a href="mailto:license@provisa.dev">commercial license</a> for production use.</p>
       <nav class="footer-links" aria-label="Footer">
         <a href="/why/one-model">One model</a>
         <a href="/why/interfaces">Interfaces</a>
@@ -222,12 +247,15 @@
         <a href="/why/materialized-views">Materialized views</a>
         <a href="/why/catalog">Catalog</a>
         <a href="/why/no-lock-in">No lock-in</a>
+        <a href="/why/environments">Environments</a>
+        <a href="/how-it-works">How it works</a>
+        <a href="/architecture-faq">Architecture FAQ</a>
         <a href="/why/data-mesh">Data mesh</a>
         <a href="/why/ai">Data for AI</a>
         <a href="/why/ontology">Ontology</a>
         <a href="/why/glossary-that-grounds">Glossary that grounds</a>
-        <a href="/vs/starburst">vs Starburst</a>
-        <a href="/vs/denodo">vs Denodo</a>
+        <a href="/vs/starburst">With Starburst</a>
+        <a href="/vs/denodo">With Denodo</a>
         <a href="/vs/hasura">Coming from Hasura</a>
         <a href="/docs">Docs</a>
         <a href="/register">Register (free license)</a>

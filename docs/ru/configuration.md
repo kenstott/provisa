@@ -1558,10 +1558,7 @@ Provisa выбирает OTLP/HTTP или OTLP/gRPC на основе схемы
 | `singlestore` | SingleStore | По диалекту | Нет | Нет (только приземление данных) | Учётные данные по диалекту |
 | `vertica` | Vertica | По диалекту | Нет | Нет (только приземление данных) | Учётные данные по диалекту |
 | `exasol` | Exasol | По диалекту | Нет | Нет (только приземление данных) | Учётные данные по диалекту |
-| `teradata` | Teradata Vantage | По диалекту | Нет | Нет (только приземление данных) | Учётные данные по диалекту |
 | `saphana` | SAP HANA | По диалекту | Нет | Нет (только приземление данных) | Учётные данные по диалекту |
-| `sapase` | SAP ASE (Sybase) | По диалекту | Нет | Нет (только приземление данных) | Учётные данные по диалекту |
-| `sqlanywhere` | SAP SQL Anywhere | По диалекту | Нет | Нет (только приземление данных) | Учётные данные по диалекту |
 | `monetdb` | MonetDB | По диалекту | Нет | Нет (только приземление данных) | Учётные данные по диалекту |
 | `firebird` | Firebird | По диалекту | Нет | Нет (только приземление данных) | Учётные данные по диалекту |
 | `sqlalchemy` | Другая реляционная база данных (по URL подключения) | По диалекту | Нет | Нет (только приземление данных) | Учётные данные по диалекту |
@@ -1662,7 +1659,7 @@ PROVISA_ENGINE=synapse
 
 Хранилище материализации по умолчанию — `TENANT_DATABASE_URL`.
 
-#### Реляционные движки (mysql, mariadb, oracle, mssql, db2, redshift, greenplum, cockroachdb, yugabytedb, opengauss, tidb, singlestore, vertica, exasol, teradata, saphana, sapase, sqlanywhere, monetdb, firebird) и `sqlalchemy` {: #relational-database-engines-mysql-mariadb-oracle-mssql-db2-redshift-greenplum-cockroachdb-yugabytedb-opengauss-tidb-singlestore-vertica-exasol-teradata-saphana-sapase-sqlanywhere-monetdb-firebird-and-sqlalchemy }
+#### Реляционные движки (mysql, mariadb, oracle, mssql, db2, redshift, greenplum, cockroachdb, yugabytedb, opengauss, tidb, singlestore, vertica, exasol, saphana, monetdb, firebird) и `sqlalchemy` {: #relational-database-engines-mysql-mariadb-oracle-mssql-db2-redshift-greenplum-cockroachdb-yugabytedb-opengauss-tidb-singlestore-vertica-exasol-saphana-monetdb-firebird-and-sqlalchemy }
 
 Один ключ на каждую реляционную базу данных, доступную по сети, все работают на одной и той же среде выполнения "только приземление" (без федерации к внешним источникам): каждый источник приземляется в хранилище и запрашивается там же. Ключ выбирает базу данных; `PROVISA_ENGINE_URL` несёт DSN в формате, который принимает её диалект. `sqlalchemy` — универсальный вариант для базы данных без собственного ключа. Встроенные в файл хранилища (SQLite, Access) не предлагаются, потому что сервер должен быть доступен по сети.
 
@@ -1757,7 +1754,7 @@ sources:
 | `FLIGHT_PORT` | `8815` | Порт сервера Provisa Arrow Flight |
 | `GRPC_PORT` | `50051` | Порт сервера Provisa Protobuf gRPC |
 | `PROVISA_REDIRECT_ENABLED` | `false` | Включает серверное перенаправление по порогу |
-| `PROVISA_REDIRECT_THRESHOLD` | `1000` | Пороговое значение количества строк по умолчанию |
+| `PROVISA_REDIRECT_THRESHOLD` | `100000` | Пороговое значение количества строк по умолчанию |
 | `PROVISA_REDIRECT_FORMAT` | `parquet` | Формат перенаправления по умолчанию |
 | `PROVISA_REDIRECT_BUCKET` | `provisa-results` | Bucket S3 для перенаправленных результатов |
 | `PROVISA_REDIRECT_ENDPOINT` | — | URL S3-совместимого эндпоинта |

@@ -1,13 +1,61 @@
 # CLI Reference
 
-The `provisa` command is the single entry point for the pip-installed embedded tier. It starts the runtime, manages licenses, triggers metadata publishing, deploys models and controls the maintenance banner. You need no Docker, no Node and no external services.
+The `provisa` command is the single entry point for the pip-installed embedded tier. It starts the runtime, manages licenses, triggers metadata publishing, deploys models, queries any front door and controls the maintenance banner. You need no Docker, no Node and no external services.
+
+The `provisa` wheels are attached to each [GitHub release](https://github.com/kenstott/provisa/releases),
+not uploaded to PyPI, and a package index on GitHub Pages lists them:
+`https://kenstott.github.io/provisa/simple/`. Add that index to pip, uv or Poetry. Every other
+dependency, `provisa-client` and `provisa-notebook` among them, still comes from PyPI.
 
 Install it with the `embedded` extra, which also pulls in the offline DuckDB extensions
 and the embedded PostgreSQL model store:
 
 ```bash
-pip install 'provisa[embedded]'
+pip install 'provisa[embedded]' --extra-index-url https://kenstott.github.io/provisa/simple/
 ```
+
+On Linux, add PyTorch's CPU index as well:
+
+```bash
+pip install 'provisa[embedded]' \
+  --extra-index-url https://kenstott.github.io/provisa/simple/ \
+  --extra-index-url https://download.pytorch.org/whl/cpu
+```
+
+With uv, declare the index in `pyproject.toml` and pin `provisa` to it:
+
+```toml
+[[tool.uv.index]]
+name = "provisa"
+url = "https://kenstott.github.io/provisa/simple/"
+explicit = true
+
+[tool.uv.sources]
+provisa = { index = "provisa" }
+```
+
+With Poetry, add the index as a supplemental source and install from it:
+
+```toml
+[[tool.poetry.source]]
+name = "provisa"
+url = "https://kenstott.github.io/provisa/simple/"
+priority = "supplemental"
+```
+
+```bash
+poetry add 'provisa[embedded]' --source provisa
+```
+
+The extra carries the embedding library for the default embedding model (sentence-transformers on a
+CPU-only PyTorch), as every installer does. PyPI's Linux PyTorch wheel is the CUDA build, which pulls
+in about 2.5 GB of GPU libraries Provisa never loads; the CPU index keeps them out. macOS and Windows
+wheels on PyPI are CPU-only already, so the plain command is enough there.
+
+The embedding library adds about 700 MB to the install, most of it PyTorch. The default model itself
+(about 180 MB) is downloaded from the Hugging Face hub the first time it is used. Behind a firewall,
+point that download at a mirror with the `embedding.hub_endpoint` setting; see
+[Runtime Settings](admin.md#runtime-settings).
 
 **Platform requirements.** `provisa run` requires Python 3.12 and a platform with a pgserver
 wheel: linux x86_64, macOS, or Windows x86_64. Linux aarch64 has no pgserver wheel and no source
@@ -35,9 +83,9 @@ export PROVISA_API_URL=https://acme.provisa.org
 export PROVISA_API_TOKEN=<token>
 ```
 
-Subcommands that accept these flags: `metadata export`, every `env` subcommand (`list`, `show`,
-`create`, `delete`, `diff`, `merge`, `deploy`, `revert`, `redo`, `fetch`, `push`, `pull`),
-`maintenance on`, `maintenance off`, `maintenance status`.
+Subcommands that accept these flags: `api`, `query`, `explain`, `metadata export`, every `env`
+subcommand (`list`, `show`, `create`, `delete`, `diff`, `merge`, `deploy`, `revert`, `redo`,
+`fetch`, `push`, `pull`), `maintenance on`, `maintenance off`, `maintenance status`.
 
 ---
 
@@ -61,6 +109,8 @@ provisa run [--demo] [--host HOST] [--api-port PORT] [--ui-port PORT]
 | `--no-browser` | off | Skip opening a browser when the UI is ready; still prints the URL |
 | `--reset` | off | Drop and rebuild the embedded control-plane store before starting; use after a Provisa upgrade if startup reports a schema mismatch |
 | `--data-dir` | `~/.provisa/native` | Directory that holds the embedded PostgreSQL cluster and DuckDB extension cache |
+| `--mode` | `every` | Process mode: `every` serves requests and runs background work; `query` serves requests only; `coordinator` runs background work only. See [How to Scale](how-to-scale.md) |
+| `--region` | _(none)_ | The platform region this node serves. Required when the platform declares regions; refused when it declares none. Set via `PROVISA_REGION` |
 
 ### Environment variables
 
@@ -75,6 +125,8 @@ Set them to override the defaults that `load_profile("native", ...)` would other
 | `PROVISA_DEMO` | Set to `1` by `--demo`; marks the session as a demo run |
 | `PROVISA_DEMO_DIR` | Path to the demo's sample-data directory; set by `--demo` |
 | `PROVISA_DUCKDB_EXT_DIR` | Pre-staged DuckDB extension directory; set automatically from the `provisa-duckdb-ext` package if present; absent means DuckDB downloads from the network on first use |
+| `PROVISA_MODE` | Process mode for this node: `every`, `query`, or `coordinator`. Set automatically by `--mode`; set it directly for container or VM launches that bypass the CLI |
+| `PROVISA_REGION` | Platform region for this node. Set automatically by `--region`; mirrors the same rules |
 
 ### Startup sequence
 
@@ -109,6 +161,15 @@ provisa run --reset
 
 # Point at an external Trino cluster instead of the embedded DuckDB engine
 TRINO_HOST=trino.internal TRINO_PORT=8080 provisa run
+
+# Run as a query node in a scaled deployment
+provisa run --mode query
+
+# Run as a coordinator node
+provisa run --mode coordinator
+
+# Query node in a regional deployment
+provisa run --mode query --region us-east-1
 ```
 
 ---
@@ -157,7 +218,7 @@ Licensed:     no (no license installed)
 
 ## provisa metadata export
 
-Trigger the running server's on-demand metadata publish. The command posts to `POST /admin/metadata-export/publish`, the endpoint the Admin tab's **Publish now** button calls, so both paths send the same full snapshot.
+Trigger the running server's on-demand metadata publish. The command posts to `POST /admin/syncing/publish`, the publish the Context Sync page's **Publish now** runs, to every entry whose direction includes Export, so both paths send the same full snapshot.
 
 ```
 provisa metadata export [--api URL] [--token TOKEN] [--timeout SECONDS]
@@ -184,6 +245,156 @@ provisa metadata export \
 ```
 
 [Metadata Export](metadata-export.md#from-the-command-line) has the full configuration reference, covering providers, credentials, `reconcile_cron` and the snapshot's contents.
+
+---
+
+## provisa api
+
+Call any endpoint on a running instance. One generic command covers every route the API offers, with no code per feature. The server's checks apply as they do to any other caller.
+
+```
+provisa api METHOD PATH [--data BODY] [--api URL] [--token TOKEN] [--timeout SECONDS]
+```
+
+| Argument / Flag | Notes |
+| --- | --- |
+| `METHOD` | One of `GET`, `POST`, `PUT`, `PATCH`, `DELETE` |
+| `PATH` | Path on the instance, including any query string; the instance's base URL is prepended |
+| `--data` | JSON request body. Pass the text directly, `@file` to read a file, or `@-` to read stdin |
+| `--api` | See [Shared options](#shared-options) |
+| `--token` | Bearer token; default `$PROVISA_API_TOKEN` |
+| `--timeout` | Default 30 s |
+
+Stdout is the response body, byte for byte — on success and on a refusal — so a refusal's error code is there to read. HTTP status is not echoed unless it is an error, which prints `HTTP <status>` to stderr.
+
+| Exit code | Meaning |
+| --- | --- |
+| 0 | The instance answered with a success status |
+| 1 | The instance answered with an error status, or could not be reached |
+| 2 | Usage error; no call was made |
+
+```bash
+# Read the acting org's settings
+provisa api GET /admin/settings \
+  --api "$PROVISA_API_URL" --token "$PROVISA_API_TOKEN"
+
+# Apply a config update from a file
+provisa api PUT /admin/config \
+  --data @./config/provisa.yaml \
+  --api "$PROVISA_API_URL" --token "$PROVISA_API_TOKEN"
+
+# Trigger a metadata publish and pipe the JSON response through jq
+provisa api POST /admin/syncing/publish \
+  --api "$PROVISA_API_URL" --token "$PROVISA_API_TOKEN" | jq .
+```
+
+---
+
+## provisa query
+
+Send a statement in any language to a running instance and read the answer. It goes through the same front door a client uses, so the role's rights, row rules, masks and refusals are the server's.
+
+There is no interactive mode. Use psql over pgwire for SQL and cypher-shell over Bolt for Cypher.
+
+```
+provisa query LANGUAGE [STATEMENT] [--file FILE] [--arguments JSON]
+              --role ROLE [--org ORG] [--expect-refused CODE]
+              [--api URL] [--token TOKEN] [--mcp-url URL] [--timeout SECONDS]
+```
+
+| Argument / Flag | Notes |
+| --- | --- |
+| `LANGUAGE` | One of `sql`, `graphql`, `cypher`, `sparql`, `grpc`, `rest`, `mcp` |
+| `STATEMENT` | The statement text (`sql`, `graphql`, `cypher`, `sparql`), the gRPC type name (`grpc`), the path and query string (`rest`), or the tool name (`mcp`). Pass `-` to read from stdin |
+| `--file` | Read the statement from this file instead |
+| `--arguments` | A JSON object: GraphQL variables, Cypher parameters, the gRPC request body, or MCP tool arguments |
+| `--role` | Required. The role the statement runs as; sets `X-Provisa-Role` |
+| `--org` | The organization; sets `X-Org-Provisa` |
+| `--expect-refused CODE` | Exit 0 only when the statement is refused with this exact error code |
+| `--api` | See [Shared options](#shared-options) |
+| `--token` | Bearer token; default `$PROVISA_API_TOKEN` |
+| `--mcp-url` | MCP endpoint; default `$PROVISA_MCP_URL` |
+| `--timeout` | Default 300 s |
+
+Stdout is one JSON document, keys sorted. Stderr carries the status line (`refused: <code>: <detail>` or `failed: <code>: <detail>`).
+
+| Exit code | Meaning |
+| --- | --- |
+| 0 | Answered, or refused with the code `--expect-refused` names |
+| 1 | Refused: the instance declined the statement (HTTP 4xx) |
+| 2 | Usage error |
+| 3 | `--expect-refused` was not met: the statement was answered, or refused under another code |
+| 4 | Failed: the instance could not be reached, or answered 5xx |
+
+Pass `--expect-refused` with the full error code, never bare. A statement with a typo is also refused, and a bare assertion would pass on it.
+
+```bash
+# Run a SQL query as the analyst role
+provisa query sql "SELECT id, name FROM customers LIMIT 5" \
+  --role analyst --api "$PROVISA_API_URL" --token "$PROVISA_API_TOKEN"
+
+# GraphQL query with variables
+provisa query graphql 'query GetOrders($limit: Int) { orders(limit: {value: $limit}) { id } }' \
+  --arguments '{"limit": 10}' \
+  --role analyst
+
+# Cypher query from a file
+provisa query cypher --file queries/find_account.cypher \
+  --arguments '{"id": "acct_42"}' \
+  --role analyst
+
+# Assert that a restricted role is refused on a column it cannot see
+provisa query sql "SELECT ssn FROM customers LIMIT 1" \
+  --role viewer \
+  --expect-refused governance.column_not_visible
+
+# MCP tool call
+provisa query mcp list_tables \
+  --role analyst --mcp-url "$PROVISA_MCP_URL"
+```
+
+---
+
+## provisa explain
+
+Show the SQL that a statement in any language produces. All the same flags as `query` apply; the server runs every compilation and governance step, then returns the plan instead of executing it.
+
+```
+provisa explain LANGUAGE [STATEMENT] [--file FILE] [--arguments JSON]
+                --role ROLE [--org ORG]
+                [--analyze] [--expect-refused CODE]
+                [--api URL] [--token TOKEN] [--mcp-url URL] [--timeout SECONDS]
+```
+
+The `--analyze` flag runs the statement and reports real timings alongside the plan. Without it, nothing is executed.
+
+Stdout is one JSON document with:
+
+| Key | Contents |
+| --- | --- |
+| `semantic` | The statement as the compiler parsed it, with views expanded |
+| `governed` | The statement after governance rules are applied |
+| `optimized` | The statement after the optimizer, with the rules that fired |
+| `route` | Which engine will execute it, and why |
+| `native` | The statement in the target engine's SQL dialect |
+| `engine_plan` | The engine's own query plan (when available) |
+| `timings` | Real execution timings (`--analyze` only) |
+
+A statement the role is not permitted to run prints the refusal and exits 1.
+
+Exit codes are the same as `provisa query`.
+
+```bash
+# See the SQL an analyst's GraphQL query becomes
+provisa explain graphql \
+  'query { orders { id customer { name } } }' \
+  --role analyst
+
+# Check what SQL a Cypher path produces, then run it and time it
+provisa explain cypher \
+  "MATCH (c:Customer)-[:PLACED]->(o:Order) RETURN c.name, count(o)" \
+  --role analyst --analyze
+```
 
 ---
 
@@ -476,9 +687,16 @@ Maintenance notice: ON
 | `provisa run` | Start the embedded API + UI |
 | `provisa run --demo` | Start with pet-store / shelter sample data |
 | `provisa run --reset` | Rebuild the model store before starting |
+| `provisa run --mode query` | Start as a query-only node (scaled deployment) |
+| `provisa run --mode coordinator` | Start as a background-work-only node (scaled deployment) |
+| `provisa run --mode query --region REGION` | Start as a query node in a named region |
 | `provisa license apply <file>` | Install a license file offline |
 | `provisa license status` | Show machine ID and trial / license state |
 | `provisa metadata export` | Publish the metadata snapshot on demand |
+| `provisa api METHOD PATH` | Call any endpoint on a running instance |
+| `provisa query LANG STATEMENT --role ROLE` | Run a statement as a client would |
+| `provisa explain LANG STATEMENT --role ROLE` | Show the SQL a statement produces |
+| `provisa explain LANG STATEMENT --role ROLE --analyze` | Show the plan and time it |
 | `provisa env list --org ORG` | List the org's environments and their builds |
 | `provisa env show --org ORG --env ENV` | Show one environment |
 | `provisa env create --org ORG --env ENV --data-mode MODE` | Create an environment from another |
@@ -500,3 +718,4 @@ Maintenance notice: ON
 - [Environments](environments.md): environment model, protected environments, deploy approval lifecycle
 - [Metadata Export](metadata-export.md): catalog providers, configuration, and what the snapshot contains
 - [Deployment](deployment.md): container tier and cloud deployment
+- [How to Scale](how-to-scale.md): process modes, query nodes, coordinators and regions

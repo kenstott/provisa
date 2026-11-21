@@ -20,6 +20,9 @@
     "collapseAll": "すべて折りたたむ",
     "expandAll": "すべて展開",
     "fitAll": "全体表示",
+    "download": "ダウンロード",
+    "fullscreen": "全画面表示",
+    "exitFullscreen": "全画面表示を終了",
     "downloadSvg": "SVGをダウンロード",
     "downloadPng": "PNGをダウンロード",
     "downloadJpeg": "JPEGをダウンロード",
@@ -31,6 +34,7 @@
     "focusDomains": "ドメイン: {{names}}",
     "focusTables": "テーブル: {{names}}",
     "focusMissing": "見つかりません: {{names}}",
-    "showAll": "すべて表示"
+    "showAll": "すべて表示",
+    "showWithdrawn": "取り下げ中を表示"
   }
 }

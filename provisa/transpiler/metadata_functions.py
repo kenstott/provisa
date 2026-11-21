@@ -31,6 +31,7 @@ never sent to the control plane to answer about itself."""
 from __future__ import annotations
 
 import re
+from collections import Counter
 from dataclasses import dataclass
 from typing import cast
 
@@ -45,6 +46,8 @@ from provisa.pgwire.catalog_pg17_procs import (
     SYSTEM_INDEXES,
     VIEW_DEFINITIONS,
 )
+from provisa.pgwire.catalog_pg17_viewdefs import VIEW_WRAPS
+from provisa.transpiler.metadata_arguments import strict_null
 from provisa.transpiler.metadata_facts import (
     PRIVILEGES,
     ROLE_PRIVILEGES,
@@ -73,6 +76,7 @@ from provisa.transpiler.metadata_server_forms import (
 )
 from provisa.transpiler.metadata_settings import setting
 from provisa.transpiler.pg_forms_system import SERVER_STATE
+from provisa.transpiler.server_functions import READS_THE_SERVER
 
 #: The search path a definition names a table against (catalog_data's search_path).
 _ON_THE_PATH = "('public', 'pg_catalog')"
@@ -345,7 +349,6 @@ COMMENTS = "_provisa_comments"
 #: them, which is the keys.
 LISTED_RELATIONS = "_provisa_listed_relations"
 LISTED_INDEXES = "_provisa_listed_indexes"
-PUBLISHABLE = "_provisa_publishable_relations"
 
 
 def visible_on_the_path(catalog: str, alias: str, name: str, namespace: str) -> str:
@@ -413,10 +416,6 @@ _READ_ONCE: dict[str, str] = {
         f"SELECT _l.oid, {_RELATION_VISIBLE} AS visible FROM meta.catalog_pg_class _l "
         "WHERE _l.relkind = 'i'"
     ),
-    PUBLISHABLE: (
-        "SELECT _c.oid FROM meta.catalog_pg_class _c WHERE _c.relkind IN ('r', 'p') "
-        f"AND _c.relnamespace NOT IN {SYSTEM_SCHEMA_OIDS}"
-    ),
 }
 
 
@@ -461,6 +460,30 @@ _INDEX_DEFINITION = (
     f"COALESCE({_answer(INDEX_DEFINITIONS, key_id_sql('indexoid'))}, "
     f"{_of_system('indexoid', {row[0]: row[11] for row in SYSTEM_INDEXES})})"
 )
+_CATALOG_NAMES = {
+    oid: name for (schema, name), (oid, _) in RELATION_CLASS.items() if schema == "pg_catalog"
+}
+
+
+def system_index_definition(row: tuple, pretty: bool) -> str:
+    """pg_get_indexdef of an index on a system catalog, from its SYSTEM_INDEXES row: plain names
+    the catalog with its schema, pretty as the search path sees it, where pg_catalog is always
+    first (generate_relation_name under PRETTYFLAG_SCHEMA)."""
+    schema = "" if pretty else "pg_catalog."
+    unique = "UNIQUE " if row[5] else ""
+    return (
+        f"CREATE {unique}INDEX {row[1]} ON {schema}{_CATALOG_NAMES[row[2]]} "
+        f"USING btree ({', '.join(row[12])})"
+    )
+
+
+#: pg_get_indexdef(index, 0, pretty): of an index on a system catalog, its pretty definition
+#: where told so; of a key's index, the definition the plain form gives.
+_PRETTY_INDEX_DEFINITION = (
+    f"CASE WHEN pretty THEN COALESCE({_answer(INDEX_DEFINITIONS, key_id_sql('indexoid'))}, "
+    f"{_of_system('indexoid', {r[0]: system_index_definition(r, True) for r in SYSTEM_INDEXES})}) "
+    f"ELSE {_INDEX_DEFINITION} END"
+)
 _SYSTEM_INDEX_COLUMN = " ".join(
     "WHEN '{}:{}' THEN '{}'".format(row[0], n, column.replace("'", "''"))
     for row in SYSTEM_INDEXES
@@ -491,7 +514,6 @@ _LISTED = (
     f"THEN (SELECT _c.visible FROM {LISTED_INDEXES} _c WHERE _c.oid = relation_oid) "
     f"ELSE (SELECT _c.visible FROM {LISTED_RELATIONS} _c WHERE _c.oid = relation_oid) END"
 )
-_PUBLISHABLE = f"COALESCE(relation_oid IN (SELECT _c.oid FROM {PUBLISHABLE} _c), FALSE)"
 
 #: A relation's name as written: a quoted one as it is, an unquoted one folded to lower case.
 _WRITTEN_NAME = (
@@ -500,12 +522,15 @@ _WRITTEN_NAME = (
 )
 #: The relation ``tbl`` names, an oid or a name as regclass reads one, on the search path or by
 #: its schema; the path's first where both hold the name.
-_NAMED_RELATION = (
-    "FROM meta.catalog_pg_class _c JOIN meta.catalog_pg_namespace _n ON _n.oid = _c.relnamespace "
-    f"WHERE {_WRITTEN_NAME} IN (CAST(_c.oid AS TEXT), "
+_RELATIONS = (
+    "FROM meta.catalog_pg_class _c JOIN meta.catalog_pg_namespace _n ON _n.oid = _c.relnamespace"
+)
+_NAMED = (
+    f"{_WRITTEN_NAME} IN (CAST(_c.oid AS TEXT), "
     "_n.nspname || '.' || _c.relname, "
     f"CASE WHEN _n.nspname IN {_ON_THE_PATH} THEN _c.relname END)"
 )
+_NAMED_RELATION = f"{_RELATIONS} WHERE {_NAMED}"
 _PATH_FIRST = " ORDER BY _n.nspname = 'pg_catalog' DESC LIMIT 1"
 
 
@@ -530,23 +555,33 @@ def _held(privileges: str, of_role: str = "") -> str:
 _TABLE_PRIVILEGE = f"(SELECT {_held('priv')} {_NAMED_RELATION}{_PATH_FIRST})"
 
 
-def _column_privilege(of_role: str = "") -> str:
-    """A listed column the role is not served is false: its table is read, and it is not. The
-    session role's, or the model role named ``of_role`` (SQL)."""
+def _column_served(of_role: str = "") -> str:
+    """Whether the role is served the column of ``_a`` and holds a privilege on its relation
+    ``_c``: a listed column the role is not served is false (its table is read, and it is not).
+    The session role's, or the model role named ``of_role`` (SQL)."""
     unserved = (
         f"{ROLE_UNSERVED} _u WHERE _u.role_name = {of_role} AND"
         if of_role
         else f"{UNSERVED} _u WHERE"
     )
     return (
-        f"(SELECT NOT EXISTS (SELECT 1 FROM {unserved} _u.relation_oid = _c.oid "
-        f"AND _u.column_name = _a.attname) AND {_held('priv', of_role)} "
-        "FROM meta.catalog_pg_class _c JOIN meta.catalog_pg_namespace _n "
-        "ON _n.oid = _c.relnamespace JOIN meta.catalog_pg_attribute _a ON _a.attrelid = _c.oid "
-        "AND CAST(col AS TEXT) IN (_a.attname, CAST(_a.attnum AS TEXT)) "
-        f"WHERE {_WRITTEN_NAME} IN (CAST(_c.oid AS TEXT), "
-        "_n.nspname || '.' || _c.relname, "
-        f"CASE WHEN _n.nspname IN {_ON_THE_PATH} THEN _c.relname END){_PATH_FIRST})"
+        f"NOT EXISTS (SELECT 1 FROM {unserved} _u.relation_oid = _c.oid "
+        f"AND _u.column_name = _a.attname) AND {_held('priv', of_role)}"
+    )
+
+
+_ATTRIBUTE_NAMED = (
+    "JOIN meta.catalog_pg_attribute _a ON _a.attrelid = _c.oid "
+    "AND CAST(col AS TEXT) IN (_a.attname, CAST(_a.attnum AS TEXT))"
+)
+
+
+def _column_privilege(of_role: str = "") -> str:
+    """The privilege on a column, as ``_column_served`` reads it: NULL for a column no relation
+    the name gives has."""
+    return (
+        f"(SELECT {_column_served(of_role)} {_RELATIONS} {_ATTRIBUTE_NAMED} "
+        f"WHERE {_NAMED}{_PATH_FIRST})"
     )
 
 
@@ -695,11 +730,62 @@ def _view_definitions(which: int) -> str:
     return f"CASE {_VIEW_OID} {arms} END"
 
 
-#: pg_get_viewdef(view, pretty) or pg_get_viewdef(view, wrap column): pretty but where told false.
-#: A wrap column is read as pretty's own, 0: a longer one would wrap fewer target lists.
+#: The wrap column pg_get_viewdef's second argument says; NULL where it is a boolean.
+_WRAP = (
+    "(CASE WHEN CAST(pretty AS TEXT) ~ '^-?[0-9]+$' THEN CAST(CAST(pretty AS TEXT) AS BIGINT) END)"
+)
+
+
+def _quoted(text: str) -> str:
+    return "'" + text.replace("'", "''") + "'"
+
+
+#: What separates a wrapped definition's lists, and the items of each, in its one literal.
+_LISTS, _ITEMS = "\x1e", "\x1f"
+
+
+def _wrap_literal(texts: tuple[str, ...], separators: tuple) -> str:
+    """A view's definition at a wrap column as one literal: its texts, and before each but the
+    first its separator's form, its one-line form and the wrap columns (``low:high``, ``low:``
+    unbounded) at which the form is written (catalog_pg17_viewdefs.VIEW_WRAPS)."""
+    forms, lines, spans = [""], [""], [""]
+    for form, one_line, at in separators:
+        forms.append(form)
+        lines.append(one_line)
+        spans.append(",".join(f"{low}:{'' if high is None else high}" for low, high in at))
+    lists = (texts, forms, lines, spans)
+    return _quoted(_LISTS.join(_ITEMS.join(items) for items in lists))
+
+
+def _view_definitions_wrapped() -> str:
+    """pg_get_viewdef(view, wrap column): each target list's separators as PostgreSQL 17 writes
+    them at that column; NULL for a relation that is no view PostgreSQL ships. One literal for a
+    view, unnested into its parts: a form spelled out separator by separator is too large a
+    statement to govern."""
+    arms = " ".join(
+        f"WHEN {oid} THEN {_wrap_literal(*written)}" for oid, written in sorted(VIEW_WRAPS.items())
+    )
+    view = f"CASE {_VIEW_OID} {arms} END"
+    lists = ", ".join(
+        f"STRING_TO_ARRAY(SPLIT_PART({view}, CHR(30), {n}), CHR(31))" for n in range(1, 5)
+    )
+    at = (
+        "EXISTS (SELECT 1 FROM UNNEST(STRING_TO_ARRAY(_u.s, ',')) AS _r(r) "
+        f"WHERE {_WRAP} >= CAST(SPLIT_PART(_r.r, ':', 1) AS BIGINT) "
+        f"AND (SPLIT_PART(_r.r, ':', 2) = '' OR {_WRAP} <= CAST(SPLIT_PART(_r.r, ':', 2) AS BIGINT)))"
+    )
+    return (
+        f"(SELECT STRING_AGG(CASE WHEN _u.i = 1 THEN '' WHEN {at} THEN _u.f ELSE _u.l END || _u.t, "
+        f"'' ORDER BY _u.i) FROM UNNEST({lists}) WITH ORDINALITY AS _u(t, f, l, s, i))"
+    )
+
+
+#: pg_get_viewdef(view, pretty) or pg_get_viewdef(view, wrap column): plain where told false,
+#: pretty where told true, and wrapped at a column where given one.
 _PRETTY_VIEWDEF = (
-    "CASE WHEN LOWER(CAST(pretty AS TEXT)) IN ('false', 'f') "
-    f"THEN {_view_definitions(0)} ELSE {_view_definitions(1)} END"
+    "CASE WHEN pretty IS NULL THEN NULL WHEN LOWER(CAST(pretty AS TEXT)) IN ('false', 'f') "
+    f"THEN {_view_definitions(0)} WHEN LOWER(CAST(pretty AS TEXT)) IN ('true', 't') "
+    f"THEN {_view_definitions(1)} ELSE {_view_definitions_wrapped()} END"
 )
 
 #: Every object a catalog holds is on the search path, and the session role holds every role.
@@ -785,7 +871,7 @@ _FORMS: tuple[Form, ...] = (
     _form(
         "pg_get_indexdef",
         "indexoid, position, pretty",
-        f"CASE WHEN position = 0 THEN {_INDEX_DEFINITION} "
+        f"CASE WHEN position = 0 THEN {_PRETTY_INDEX_DEFINITION} "
         f"ELSE COALESCE({_index_column('indexoid', 'position')}, CASE CAST(indexoid AS TEXT) "
         f"|| ':' || CAST(position AS TEXT) {_SYSTEM_INDEX_COLUMN} END) END",
         INDEX_DEFINITIONS,
@@ -804,11 +890,11 @@ _FORMS: tuple[Form, ...] = (
         "'unknown (OID=' || CAST(role_oid AS TEXT) || ')') END AS NAME)",
     ),
     _form("pg_table_is_visible", "relation_oid", _LISTED, LISTED_RELATIONS, LISTED_INDEXES),
+    # REQ-2167 (amended 2026-11-04): Provisa publishes no relation for logical replication.
     _form(
         "pg_relation_is_publishable",
         "relation_oid",
-        f"CASE WHEN relation_oid IS NOT NULL THEN {_PUBLISHABLE} END",
-        PUBLISHABLE,
+        "CASE WHEN relation_oid IS NOT NULL THEN FALSE END",
     ),
     _form(
         "pg_is_other_temp_schema", "schema_oid", "CASE WHEN schema_oid IS NOT NULL THEN FALSE END"
@@ -858,6 +944,10 @@ FORMS: dict[tuple[str, int], Form] = {
     },
     **{(f.name, len(f.params)): f for f in _FORMS},
 }
+#: The forms written in this module, which read an argument where they need it and so answer a
+#: NULL one they do not read: ``expand`` answers a constant NULL to a strict one of them. A server
+#: form (metadata_server_forms) is strict in its own SQL, in the type its engine holds.
+_WRITTEN_HERE = frozenset((f.name, len(f.params)) for f in _FORMS)
 #: The forms of a function called in FROM, where it has columns of its own.
 RELATION_FORMS: dict[tuple[str, int], Form] = {
     (name, arity): Form(
@@ -866,81 +956,6 @@ RELATION_FORMS: dict[tuple[str, int], Form] = {
     for (name, arity), (params, sql) in TABLE_FORMS.items()
 }
 
-#: A function that would read the server, with no form: refused by name, never run on the control
-#: plane. These run SQL they are given, or read what a server keeps, on the connection that calls
-#: them: the role a client's SQL runs as (metadata_settings.CLIENT_ROLE) would otherwise take a
-#: statement past governance. Beside a view of meta they would answer about the control plane
-#: (REQ-2190, ONLY NAMED METADATA READS THE CONTROL PLANE): the list is PostgreSQL's non-immutable
-#: functions that read or change a server's own state and have no form here.
-READS_THE_SERVER = frozenset(
-    {
-        "binary_upgrade_create_empty_extension",
-        "currval",
-        "current_query",
-        "cursor_to_xml",
-        "cursor_to_xmlschema",
-        "database_to_xml",
-        "database_to_xml_and_xmlschema",
-        "database_to_xmlschema",
-        "dblink",
-        "inet_client_addr",
-        "inet_client_port",
-        "inet_server_addr",
-        "inet_server_port",
-        "lastval",
-        "nextval",
-        "pg_advisory_lock",
-        "pg_advisory_lock_shared",
-        "pg_advisory_unlock",
-        "pg_advisory_unlock_all",
-        "pg_advisory_unlock_shared",
-        "pg_advisory_xact_lock",
-        "pg_advisory_xact_lock_shared",
-        "pg_cancel_backend",
-        "pg_column_compression",
-        "pg_event_trigger_ddl_commands",
-        "pg_event_trigger_dropped_objects",
-        "pg_event_trigger_table_rewrite_oid",
-        "pg_event_trigger_table_rewrite_reason",
-        "pg_get_publication_tables",
-        "pg_get_wal_replay_pause_state",
-        "pg_is_wal_replay_paused",
-        "pg_last_committed_xact",
-        "pg_logical_slot_get_binary_changes",
-        "pg_logical_slot_get_changes",
-        "pg_logical_slot_peek_binary_changes",
-        "pg_logical_slot_peek_changes",
-        "pg_ls_logdir",
-        "pg_my_temp_schema",
-        "pg_notify",
-        "pg_read_file_old",
-        "pg_replication_origin_session_reset",
-        "pg_rotate_logfile_old",
-        "pg_sleep",
-        "pg_sleep_for",
-        "pg_sleep_until",
-        "pg_stop_making_pinned_objects",
-        "pg_terminate_backend",
-        "pg_try_advisory_lock",
-        "pg_try_advisory_lock_shared",
-        "pg_try_advisory_xact_lock",
-        "pg_try_advisory_xact_lock_shared",
-        "pg_wal_replay_pause",
-        "pg_wal_replay_resume",
-        "query_to_xml",
-        "query_to_xml_and_xmlschema",
-        "query_to_xmlschema",
-        "schema_to_xml",
-        "schema_to_xml_and_xmlschema",
-        "schema_to_xmlschema",
-        "setval",
-        "table_to_xml",
-        "table_to_xml_and_xmlschema",
-        "table_to_xmlschema",
-        "ts_rewrite",
-        "ts_stat",
-    }
-)
 #: The statistics of a server: a count is 0 and anything else NULL, as where nothing has happened.
 #: Answered by prefix, which covers each function PostgreSQL adds under it.
 STATISTICS_PREFIXES = ("pg_stat_get_", "pg_statio_")
@@ -1028,17 +1043,81 @@ def _object_identifier(value: exp.Expr) -> bool:
     )
 
 
+#: The names a binding of arguments goes by.
+_ARGUMENTS, _ROLE = "_arg", "_role"
+
+
+def _is_cheap(value: exp.Expr) -> bool:
+    """A column or a constant, which costs nothing to write again (and a planner reads through),
+    cast or not: a binding is for an argument that computes."""
+    while isinstance(value, (exp.Cast, exp.Paren)):
+        value = value.this
+    return isinstance(value, (exp.Column, exp.Literal, exp.Null, exp.Boolean))
+
+
+def _binding(values: dict[str, exp.Expr], alias: str) -> exp.Subquery:
+    """One row holding each of ``values`` under its name: the arguments of a form, evaluated once
+    wherever the form names them. Its LIMIT keeps a planner from folding the row back into each
+    use, which would plan the argument as many times as the form names it."""
+    row = exp.select(*(exp.alias_(value.copy(), name) for name, value in values.items())).limit(1)
+    return exp.Subquery(this=row, alias=exp.TableAlias(this=exp.to_identifier(alias)))
+
+
+def _reads_in_a_relation(select: exp.Select) -> bool:
+    """Whether the binding row (``_arg``) is read inside a relation of a FROM or a JOIN (a derived
+    table or a set operation), where the select's own FROM items are not in scope."""
+    for column in select.find_all(exp.Column):
+        if column.table != _ARGUMENTS:
+            continue
+        node = column.parent
+        while node is not None and node is not select:
+            if isinstance(node, exp.Subquery) and isinstance(node.parent, (exp.From, exp.Join)):
+                return True
+            node = node.parent
+    return False
+
+
 def _written(form: Form, args: list[exp.Expr]) -> exp.Expr:
-    """The form with each parameter its argument, which is evaluated wherever the form names it."""
-    values = dict(zip(form.params, args))
+    """The form with each parameter its argument. An argument that computes and that the form names
+    more than once is bound once, in a row the form reads (``_arg``), so it is evaluated and
+    resolved once."""
     reads_as = dict(zip(form.params, form.reads_as))
+    values = {
+        param: _argument(arg, reads_as.get(param, "")) for param, arg in zip(form.params, args)
+    }
+    tree = sqlglot.parse_one(form.sql, read="postgres")
+    uses = Counter(c.name for c in tree.find_all(exp.Column) if not c.table)
+    once = {p for p, v in values.items() if uses[p] > 1 and not _is_cheap(v)}
 
     def bound(node: exp.Expr) -> exp.Expr:
         if isinstance(node, exp.Column) and not node.table and node.name in values:
-            return _argument(values[node.name], reads_as.get(node.name, "")).copy()
+            if node.name in once:
+                return exp.column(node.name, table=_ARGUMENTS)
+            return values[node.name].copy()
         return node
 
-    return sqlglot.parse_one(form.sql, read="postgres").transform(bound)
+    written = tree.transform(bound)
+    if not once:
+        return written
+    row = _binding({p: values[p] for p in values if p in once}, _ARGUMENTS)
+    if isinstance(written, exp.Select):
+        if _reads_in_a_relation(written):
+            # A relation in FROM cannot see its sibling FROM items, so a row joined beside it is
+            # out of its scope: a CTE is in scope of the whole statement, and still evaluated once.
+            # A CTE is read as a relation, so each use is a scalar subquery over it (planned as one
+            # initial plan, evaluated once).
+            def read_from_row(node: exp.Expr) -> exp.Expr:
+                if isinstance(node, exp.Column) and node.table == _ARGUMENTS:
+                    return exp.Subquery(
+                        this=exp.select(exp.column(node.name, table=_ARGUMENTS)).from_(_ARGUMENTS)
+                    )
+                return node
+
+            return cast(exp.Select, written.transform(read_from_row)).with_(
+                _ARGUMENTS, as_=cast(exp.Subquery, row).this, append=True
+            )
+        return written.join(row, join_type="cross")
+    return exp.Subquery(this=exp.select(written).from_(row))
 
 
 def _call(node: exp.Expr) -> exp.Anonymous | None:
@@ -1073,14 +1152,16 @@ def expand(tree: exp.Expr, facts: CatalogFacts) -> exp.Expr:
         name, args = call.name.lower(), list(call.expressions)
         if on_the_engine and name in _IN_THE_MACRO_TABLE:
             return node
+        if (name, len(args)) in _WRITTEN_HERE:
+            null = strict_null(name, args)  # REQ-2236: a strict function is not called with NULL
+            if null is not None:
+                return exp.alias_(null, name) if _is_column(node) else null
         if name == "pg_column_size" and len(args) == 1:
             sized = _column_size(args[0].transform(rewrite))
             return exp.alias_(sized, name) if _is_column(node) else sized
         if (name, len(args)) in _OF_A_USER:
             user, *args = args
-            written = _of_session_role(
-                user, _expanded_form(name, args, rewrite, needed), facts, rewrite, args, needed
-            )
+            written = _of_session_role(user, name, args, facts, rewrite, needed)
         else:
             if (name, len(args)) not in FORMS:
                 if name in READS_THE_SERVER:
@@ -1162,6 +1243,17 @@ def _is_column(node: exp.Expr) -> bool:
 
 #: The types a statistic is 0 of; of any other it is NULL.
 _COUNTS = frozenset({"bigint", "integer", "smallint", "oid", "double precision", "real"})
+#: The counts PostgreSQL 17 answers NULL of where it has none: a function's, which track_functions
+#: (none) never counts, and a database's checksum failures, with data checksums off
+#: (src/backend/utils/adt/pgstatfuncs.c).
+_NOT_COUNTED = frozenset(
+    {
+        f"pg_stat_get_{prefix}function_{count}"
+        for prefix in ("", "xact_")
+        for count in ("calls", "self_time", "total_time")
+    }
+    | {"pg_stat_get_db_checksum_failures"}
+)
 
 
 def _statistic(name: str, args: list[exp.Expr]) -> exp.Expr:
@@ -1170,7 +1262,8 @@ def _statistic(name: str, args: list[exp.Expr]) -> exp.Expr:
     if returns == "record":
         return exp.cast(exp.null(), "TEXT")
     to = exp.DataType.build(returns, dialect="postgres", udt=True)
-    counted = exp.Cast(this=exp.Literal.number(0) if returns in _COUNTS else exp.null(), to=to)
+    counts = returns in _COUNTS and name not in _NOT_COUNTED
+    counted = exp.Cast(this=exp.Literal.number(0) if counts else exp.null(), to=to)
     if not args:
         return counted
     nulls = [exp.Is(this=_argument(a), expression=exp.null()) for a in args if not _constant(a)]
@@ -1225,9 +1318,20 @@ def _relation_form(table: exp.Table, rewrite) -> exp.Expr:
         select = exp.select(exp.alias_(_written(value, [a.transform(rewrite) for a in args]), name))
     else:
         select = cast(exp.Select, _written(form, [a.transform(rewrite) for a in args]))
-    if not alias.columns and len(select.selects) == 1 and not select.is_star:
+    if table.args.get("ordinality"):
+        select = _with_ordinality(select)
+    elif not alias.columns and len(select.selects) == 1 and not select.is_star:
         alias = exp.TableAlias(this=alias.this.copy(), columns=[exp.to_identifier(alias.name)])
     return exp.Subquery(this=select, alias=alias)
+
+
+def _with_ordinality(select: exp.Select) -> exp.Select:
+    """WITH ORDINALITY: the form's rows and a last column numbering them from 1 in the order the
+    form yields them. The alias list names it; with none it is ``ordinality``, as in PostgreSQL."""
+    return exp.select(
+        exp.Star(),
+        exp.alias_(exp.Window(this=exp.RowNumber(), partition_by=[], order=None), "ordinality"),
+    ).from_(exp.Subquery(this=select, alias=exp.TableAlias(this=exp.to_identifier("_o"))))
 
 
 def _expanded_form(name, args, rewrite, needed: set[str]) -> exp.Expr:
@@ -1237,70 +1341,115 @@ def _expanded_form(name, args, rewrite, needed: set[str]) -> exp.Expr:
     return _written(form, [a.transform(rewrite) for a in args])
 
 
-#: A predefined role's privilege on a relation: PostgreSQL's defaults and the role's own rights.
-_PREDEFINED_RELATION = Form(
-    "_predefined_relation_privilege",
-    ("who", "tbl", "priv"),
-    f"(SELECT {any_held('priv', predefined_relation_privileges('who'))} "
-    f"{_NAMED_RELATION}{_PATH_FIRST})",
-)
-
-
 #: Another model role's privilege on a relation, and on a column: from its grants in the model.
-_OTHER_RELATION = Form(
-    "_other_relation_privilege",
-    ("who", "tbl", "priv"),
-    f"(SELECT {_held('priv', role_name('who'))} {_NAMED_RELATION}{_PATH_FIRST})",
-    frozenset({ROLE_PRIVILEGES}),
+_OTHER_FACTS = {
+    False: frozenset({ROLE_PRIVILEGES}),
+    True: frozenset({ROLE_PRIVILEGES, ROLE_UNSERVED}),
+}
+#: The row a user form reads its arguments from, and the relation they name once resolved.
+_IN, _REL = "_in", "_rel"
+_RESOLVED = (
+    "SELECT _c.oid AS oid, _c.relnamespace AS relnamespace, _c.relname AS relname, "
+    "_n.nspname AS nspname"
 )
-_OTHER_COLUMN = Form(
-    "_other_column_privilege",
-    ("who", "tbl", "col", "priv"),
-    _column_privilege(role_name("who")),
-    frozenset({ROLE_PRIVILEGES, ROLE_UNSERVED}),
-)
+
+
+def _is_role_name(node: exp.Expr) -> bool:
+    """Whether ``node`` is the subquery ``role_name`` writes."""
+    if not isinstance(node, exp.Subquery):
+        return False
+    table = node.this.find(exp.Table)
+    return table is not None and table.name == "catalog_pg_roles"
+
+
+def _on_row(sql: str, names: list[str], resolved: bool) -> exp.Expr:
+    """``sql`` read from the row ``_role``: its parameters are the row's columns, the role's name
+    is the row's, and (``resolved``) the relation ``_c`` and ``_n`` and the column ``_a`` name are
+    the one ``_rel`` holds."""
+
+    def bound(node: exp.Expr) -> exp.Expr:
+        if isinstance(node, exp.Column):
+            if not node.table and node.name in names:
+                return exp.column(node.name, table=_ROLE)
+            if resolved and node.table in ("_c", "_n", "_a"):
+                return exp.column(node.name, table=_REL)
+        if resolved and _is_role_name(node):
+            return exp.column("rolname", table=_ROLE)
+        return node
+
+    return sqlglot.parse_one(sql, read="postgres").transform(bound)
 
 
 def _of_session_role(
     user: exp.Expr,
-    answer: exp.Expr,
+    name: str,
+    args: list[exp.Expr],
     facts: CatalogFacts,
     rewrite,
-    args: list[exp.Expr],
     needed: set[str],
 ) -> exp.Expr:
-    """``answer`` where ``user`` is the session role; for one of PostgreSQL's predefined roles,
-    or an oid no role has, what PostgreSQL grants it; for another model role, what its grants in
-    the model give it (REQ-2167, amended 2026-11-03); a name no role has is PostgreSQL's
-    refusal."""
-    user = user.transform(rewrite)
-    named = exp.cast(_argument(user), "TEXT")
+    """The form ``name`` of ``args`` where ``user`` is the session role; for one of PostgreSQL's
+    predefined roles, or an oid no role has, what PostgreSQL grants it; for another model role,
+    what its grants in the model give it (REQ-2167, amended 2026-11-03); a name no role has is
+    PostgreSQL's refusal. The user, each argument, the role's name and the relation the arguments
+    name are each evaluated once, in the row every arm reads."""
     given = [a.transform(rewrite) for a in args]
-    tbl, priv = given[0], given[-1]
-    predefined = _written(_PREDEFINED_RELATION, [user.copy(), tbl.copy(), priv.copy()])
-    other = _OTHER_COLUMN if len(given) == 3 else _OTHER_RELATION
-    needed.update(other.facts)
-    return exp.Case(
-        ifs=[
-            exp.If(
-                this=exp.EQ(this=named, expression=exp.Literal.string(facts.role_id)), true=answer
-            ),
-            exp.If(
-                this=_parsed_condition(no_such_role_name("_who"), user),
-                true=_parsed_condition(refused_role("_who", "BOOLEAN"), user),
-            ),
-            exp.If(this=_parsed_condition(holds_public_alone("_who"), user), true=predefined),
-        ],
-        default=_written(other, [user.copy(), *(a.copy() for a in given)]),
+    column = len(given) == 3
+    names = ["who", "tbl", "col", "priv"] if column else ["who", "tbl", "priv"]
+    needed.update(FORMS[(name, len(given))].facts)
+    needed.update(_OTHER_FACTS[column])
+    inner = _binding(dict(zip(names, [_argument(user.transform(rewrite)), *given])), _IN)
+    role = (
+        exp.select(
+            *(exp.column(n, table=_IN) for n in names),
+            exp.alias_(_on_row(role_name("_in.who"), [], False), "rolname"),
+        )
+        .from_(inner)
+        .limit(1)
+    )
+    role_row = exp.Subquery(this=role, alias=exp.TableAlias(this=exp.to_identifier(_ROLE)))
+    resolve = (
+        f"{_RESOLVED}, _a.attname AS attname {_RELATIONS} LEFT {_ATTRIBUTE_NAMED} "
+        f"WHERE {_NAMED} ORDER BY _a.attname IS NULL, _n.nspname = 'pg_catalog' DESC LIMIT 1"
+        if column
+        else f"{_RESOLVED} {_NAMED_RELATION}{_PATH_FIRST}"
+    )
+    relation = exp.Lateral(
+        this=exp.Subquery(this=_on_row(resolve, ["tbl", "col"], False)),
+        alias=exp.TableAlias(this=exp.to_identifier(_REL)),
     )
 
+    def found(held: str, needs_column: bool = True) -> exp.Expr:
+        """``held``, NULL where no relation (or, of a column, no column) is named."""
+        missing = f"{_REL}.attname IS NULL" if column and needs_column else f"{_REL}.oid IS NULL"
+        return exp.Case(
+            ifs=[exp.If(this=sqlglot.parse_one(missing, read="postgres"), true=exp.null())],
+            default=_on_row(held, names, True),
+        )
 
-def _parsed_condition(sql: str, who: exp.Expr) -> exp.Expr:
-    """``sql`` with ``_who`` the expression ``who``."""
-
-    def bound(node: exp.Expr) -> exp.Expr:
-        if isinstance(node, exp.Column) and not node.table and node.name == "_who":
-            return _argument(who).copy()
-        return node
-
-    return sqlglot.parse_one(sql, read="postgres").transform(bound)
+    session = _column_served() if column else _held("priv")
+    other = _column_served(role_name("who")) if column else _held("priv", role_name("who"))
+    predefined = any_held("priv", predefined_relation_privileges("who"))
+    chosen = exp.Case(
+        ifs=[
+            exp.If(
+                this=exp.EQ(
+                    this=_on_row("CAST(who AS TEXT)", names, True),
+                    expression=exp.Literal.string(facts.role_id),
+                ),
+                true=found(session),
+            ),
+            exp.If(
+                this=_on_row(no_such_role_name("who"), names, True),
+                true=_on_row(refused_role("who", "BOOLEAN"), names, True),
+            ),
+            exp.If(
+                this=_on_row(holds_public_alone("who"), names, True),
+                true=found(predefined, needs_column=False),
+            ),
+        ],
+        default=found(other),
+    )
+    return exp.Subquery(
+        this=exp.select(chosen).from_(role_row).join(relation, join_type="left", on=exp.true())
+    )

@@ -301,6 +301,7 @@ GOVERNANCE_KNOBS = (
 )
 
 OPTIMISTIC_GOVERNANCE = Governance(0, 0.0, False, 0, 0, False)
+PLAN_CACHE_MODES = ("hit", "miss")
 
 
 @dataclass(frozen=True)
@@ -311,6 +312,9 @@ class Knobs:
     cache_probability: float  # share of requests that opt into the response cache
     join_replication: JoinReplication
     governance: Governance = OPTIMISTIC_GOVERNANCE
+    # "hit": a request repeats a statement the server already planned; "miss": every request is a
+    # statement it has not seen (a name of its own), so the server plans and governs it anew
+    plan_cache: str = "hit"
 
 
 @dataclass(frozen=True)

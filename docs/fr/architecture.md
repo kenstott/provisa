@@ -417,7 +417,7 @@ Ces en-têtes implémentent la redirection contrôlée par le client.
 | Variable d'env | Défaut | Objectif |
 | --------- | --------- | --------- |
 | `PROVISA_REDIRECT_ENABLED` | `false` | Active la redirection par seuil côté serveur |
-| `PROVISA_REDIRECT_THRESHOLD` | `1000` | Seuil de nombre de lignes par défaut |
+| `PROVISA_REDIRECT_THRESHOLD` | `100000` | Seuil de nombre de lignes par défaut |
 | `PROVISA_REDIRECT_FORMAT` | `parquet` | Format de redirection par défaut |
 | `PROVISA_REDIRECT_BUCKET` | `provisa-results` | Nom de bucket S3 |
 | `PROVISA_REDIRECT_ENDPOINT` | | URL d'endpoint compatible S3 |
@@ -825,7 +825,7 @@ Pour les charges de travail analytiques volumineuses, utilisez soit :
 | gRPC Provisa | (processus hôte) | 50051 | Serveur gRPC Protobuf |
 | Moteur de fédération | `trinodb/trino` (défaut) ou entrepôt externe | 8080 / variable | Moteur de fédération de requête — Trino pour la pile embarquée ; Snowflake/Databricks/BigQuery/Fabric/Synapse/DuckDB pour les cibles d'entrepôt |
 | Zaychik | `provisa-zaychik` (construit depuis la source) | 8480 | Proxy Arrow Flight SQL pour Trino ; non requis pour les moteurs d'entrepôt |
-| PostgreSQL | `postgres:16` | 5432 | Métadonnées de config + catalogue Iceberg |
+| PostgreSQL | `pgvector/pgvector:pg16-trixie` | 5432 | Métadonnées de config + catalogue Iceberg |
 | MongoDB | `mongo:7` | 27017 | Source de données NoSQL de démo |
 | MinIO | `minio/minio` | 9000/9001 | Stockage d'objet compatible S3 |
 | Redis | `redis:7-alpine` | 6379 | Cache de résultat de requête |

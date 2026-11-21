@@ -28,15 +28,17 @@ references the levels below hold; the outer level gives every column its own nam
 
 from __future__ import annotations
 
+import sqlglot.expressions as exp
+
 from provisa.fakes.kinds import Ordered, Sql
 from provisa.fakes.read_sql import (
     Column,
-    _q,
+    column,
     definition_of,
-    digest_sql,
+    digest,
     expression,
-    seed_sql,
-    uniform_sql,
+    seed,
+    uniform,
 )
 from provisa.fakes.sql_subset import read as read_sql
 
@@ -77,39 +79,50 @@ def _depths(fakes: dict[str, Column]) -> dict[str, int]:
     return depth
 
 
+def _derived(query: exp.Query, alias: str) -> exp.Subquery:
+    return exp.Subquery(
+        this=query, alias=exp.TableAlias(this=exp.to_identifier(alias, quoted=True))
+    )
+
+
 def faked_projection(
-    base: str,
+    base: exp.Table,
     alias: str,
     columns: list[tuple[str, str, str]],
     fakes: dict[str, Column],
     fingerprint: str,
-    row_filter: str | None,
-    carried: dict[str, str] | None = None,
-) -> str:
-    """The projection, in the governed dialect. ``base`` is the base relation as written,
-    ``columns`` every column as (name, data type, family), ``fakes`` the faked ones by name, and
-    ``row_filter`` the role's filter qualified by ``alias``. ``carried``: further outputs (name ->
-    expression over the real row, qualified by ``alias``), computed before any fake and given as
-    they are -- a meta-role's member flags and the real values its members read (REQ-1620)."""
-    a = _q(alias)
-    inner = [f"{a}.{_q(name)}" for name, _, _ in columns]
+    row_filter: exp.Expr | None,  # pyright: ignore[reportPrivateImportUsage]
+    carried: dict[str, exp.Expr] | None = None,  # pyright: ignore[reportPrivateImportUsage]
+) -> exp.Select:  # REQ-1494, REQ-913
+    """The projection, built on the AST. ``base`` is the base relation, ``columns`` every column
+    as (name, data type, family), ``fakes`` the faked ones by name, and ``row_filter`` the role's
+    filter qualified by ``alias``. ``carried``: further outputs (name -> expression over the real
+    row, qualified by ``alias``), computed before any fake and given as they are -- a meta-role's
+    member flags and the real values its members read (REQ-1620)."""
+
+    def real(name: str) -> exp.Column:
+        return exp.column(name, table=alias, quoted=True)
+
+    inner: list[exp.Expr] = [real(name) for name, _, _ in columns]  # pyright: ignore[reportPrivateImportUsage]
     for name in fakes:
-        d = digest_sql(fingerprint, f"{a}.{_q(name)}")
-        inner.append(f"{d} AS {_q(_DIGEST + name)}")
-    inner += [f"{expr} AS {_q(name)}" for name, expr in (carried or {}).items()]
-    where = f" WHERE {row_filter}" if row_filter else ""
-    level = f"SELECT {', '.join(inner)} FROM {base} AS {a}{where}"
-    return f"({layered(level, alias, columns, fakes, keep=tuple(carried or ()))})"
+        inner.append(exp.alias_(digest(fingerprint, real(name)), _DIGEST + name, quoted=True))
+    inner += [exp.alias_(e.copy(), name, quoted=True) for name, e in (carried or {}).items()]
+    source = base.copy()
+    source.set("alias", exp.TableAlias(this=exp.to_identifier(alias, quoted=True)))
+    level = exp.select(*inner).from_(source)
+    if row_filter is not None:
+        level = level.where(row_filter.copy())
+    return layered(level, alias, columns, fakes, keep=tuple(carried or ()))
 
 
 def layered(
-    level: str,
+    level: exp.Query,
     alias: str,
     columns: list[tuple[str, str, str]],
     fakes: dict[str, Column],
     keep: tuple[str, ...] = (),
-    uniforms: dict[str, str] | None = None,
-) -> str:
+    uniforms: dict[str, exp.Expr] | None = None,  # pyright: ignore[reportPrivateImportUsage]
+) -> exp.Select:  # REQ-1494, REQ-913
     """The fakes computed over ``level``, a statement giving every column of ``columns`` and each
     faked column's digest as ``__digest__<name>``: each column's uniform point, then the fakes in
     dependency order, then every column under its own name (faked or as ``level`` gives it). A
@@ -118,25 +131,29 @@ def layered(
     carried through to the outer level as they are. ``uniforms`` gives a faked column's uniform
     point where something else decides it (synthetic generation's dependence, REQ-1939)."""
     families = {name: fam for name, _, fam in columns}
-    a = _q(alias)
     # The uniform point reads the digest the level below computed, once per row.
     held = (
-        [_q(name) for name, _, _ in columns]
-        + [_q(_DIGEST + n) for n in fakes]
-        + [_q(k) for k in keep if k not in {_DIGEST + n for n in fakes}]
+        [name for name, _, _ in columns]
+        + [_DIGEST + n for n in fakes]
+        + [k for k in keep if k not in {_DIGEST + n for n in fakes}]
     )
     # REQ-1494: each column's point is drawn from its digest mixed with its fake's definition.
     decided = uniforms or {}
     points = [
-        f"{decided[n] if n in decided else uniform_sql(seed_sql(_q(_DIGEST + n), definition_of(c)))}"
-        f" AS {_q(_UNIFORM + n)}"
+        exp.alias_(
+            decided[n].copy()
+            if n in decided
+            else uniform(seed(column(_DIGEST + n), definition_of(c))),
+            _UNIFORM + n,
+            quoted=True,
+        )
         for n, c in fakes.items()
     ]
-    level = f"SELECT {', '.join(held + points)} FROM ({level}) AS {a}"
-    held += [_q(_UNIFORM + n) for n in fakes]
+    current = exp.select(*(column(h) for h in held), *points).from_(_derived(level, alias))
+    held += [_UNIFORM + n for n in fakes]
 
-    def faked(name: str) -> str:
-        return _q(_FAKE + name) if name in fakes else _q(name)
+    def faked(name: str) -> exp.Column:
+        return column(_FAKE + name if name in fakes else name)
 
     depths = _depths(fakes)
     for depth in range(1, max(depths.values(), default=0) + 1):
@@ -146,16 +163,17 @@ def layered(
                 continue
             value = expression(
                 col,
-                real=_q(name),
-                u=_q(_UNIFORM + name),
-                digest=_q(_DIGEST + name),
+                real=column(name),
+                u=column(_UNIFORM + name),
+                digest=column(_DIGEST + name),
                 faked=faked,
                 family_of=families.__getitem__,
             )
-            computed.append(f"{value} AS {_q(_FAKE + name)}")
-        level = f"SELECT {', '.join(held + computed)} FROM ({level}) AS {a}"
-        held += [_q(_FAKE + n) for n, d in depths.items() if d == depth]
-    outer = [
-        f"{_q(_FAKE + name)} AS {_q(name)}" if name in fakes else _q(name) for name, _, _ in columns
-    ] + [_q(k) for k in keep]
-    return f"SELECT {', '.join(outer)} FROM ({level}) AS {a}"
+            computed.append(exp.alias_(value, _FAKE + name, quoted=True))
+        current = exp.select(*(column(h) for h in held), *computed).from_(_derived(current, alias))
+        held += [_FAKE + n for n, d in depths.items() if d == depth]
+    outer: list[exp.Expr] = [  # pyright: ignore[reportPrivateImportUsage]
+        exp.alias_(column(_FAKE + name), name, quoted=True) if name in fakes else column(name)
+        for name, _, _ in columns
+    ] + [column(k) for k in keep]
+    return exp.select(*outer).from_(_derived(current, alias))

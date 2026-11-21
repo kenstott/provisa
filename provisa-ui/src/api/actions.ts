@@ -72,12 +72,15 @@ export interface TrackedFunction {
   requiresApproval?: boolean;
   // REQ-1924, REQ-871: "schema.table" of the registered table it writes, where known.
   writesTable?: string | null;
-  // REQ-1634: optional data-product membership.
-  productId?: string | null;
+  // REQ-1634: the products the command is a member of, read-only: set on the product.
+  productIds?: string[];
   // REQ-2001: a statement command's contract, derived from its statement at every build.
   contract?: StatementContract;
   // REQ-2168: the command's name per language.
   languageBindings?: Record<string, LanguageBinding>;
+  // REQ-1986: whether a source operation that reads rows is also exposed as a parameterized
+  // table derived from it; null for a function with no table form.
+  exposedAsTable?: boolean | null;
 }
 
 /** What a statement command's statement declares (REQ-2001), as the server derived it. */
@@ -156,9 +159,10 @@ export async function saveFunction(
     requiresApproval?: boolean;
     // REQ-1924, REQ-871: "schema.table" of the registered table it writes, where known.
     writesTable?: string | null;
-    productId?: string | null;
     // REQ-2168: the command's name per language.
     languageBindings?: Record<string, LanguageBinding>;
+    // REQ-1986: left out, the server keeps it, or at registration takes its default.
+    exposedAsTable?: boolean;
   },
   /** The name of the command saved over (an update), or null for a new one (a create, which
    *  refuses a name that exists). */

@@ -266,10 +266,9 @@ _JSON_TYPES = frozenset({"JSON", "JSONB"})
 def row_batch(  # REQ-2194
     rows: Sequence[Any], names: Sequence[str], declared: Sequence[str | None] | None = None
 ) -> pa.RecordBatch:
-    """Rows a row-returning engine fetched, as one Arrow record batch: the fetch boundary of every
-    engine that has no columnar read yet (docs/arch/fetch-paths.md), so the encoders read Arrow
-    from every engine. This is an interim cost -- each value passes through Python once more --
-    until each engine is columnar.
+    """Rows, as one Arrow record batch. No encoder reads a row result through this (REQ-2195:
+    each encoder takes a row result's rows as they are, docs/arch/fetch-paths.md); it is what a
+    row result's Arrow would be, for a reader that needs Arrow of rows it holds.
 
     Each column holds its values as :func:`column_values` reads them back: the same Python value,
     of the same type (a Decimal with its own exponent, an aware datetime with its own offset), so
@@ -440,8 +439,15 @@ def _offset_text(offset: timedelta) -> str:
     return text
 
 
+def _clock_text(value: time | datetime) -> str:
+    """time_out or timestamp_out of a naive value: a fraction without its trailing zeros."""
+    clock = value.isoformat(" ") if isinstance(value, datetime) else value.isoformat()
+    return clock.rstrip("0") if value.microsecond else clock
+
+
 def _timetz_text(value: time) -> str:
-    clock = value.replace(tzinfo=None).isoformat()
+    """timetz_out: a fraction without its trailing zeros, then the offset."""
+    clock = _clock_text(value.replace(tzinfo=None))
     offset = value.utcoffset()
     return clock if offset is None else clock + _offset_text(offset)
 
@@ -491,9 +497,18 @@ def _text(value: Any, kind: str) -> Any:
         return _numeric_text(value)
     if isinstance(value, time) and value.tzinfo is not None:
         return _timetz_text(value)
+    if isinstance(value, (time, datetime)) and value.tzinfo is None:
+        return _clock_text(value)
     if isinstance(value, _ADDRESSES):
         return _address_text(value, kind)
     return str(value)
+
+
+def text_of(value: Any, declared: str | None) -> Any:  # REQ-2195
+    """What PostgreSQL writes of a row result's cell that no encoder reads by its type (a range,
+    a point, an address, a time with a zone), ``declared`` the engine's type name of its column:
+    the encoders read a row result's cells as they are and take this text of any other."""
+    return _text(value, _declared(declared))
 
 
 def _instants(values: list[Any]) -> pa.Array | None:

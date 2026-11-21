@@ -28,6 +28,7 @@ from sqlglot.optimizer.qualify import qualify
 from sqlglot.schema import MappingSchema
 
 from provisa.pgwire.catalog_pg17 import FUNCTION_RETURNS, RELATIONS, TYPES
+from provisa.pgwire.catalog_pg17_procs import PROCS
 from provisa.pgwire.function_types import call_result_type
 
 # The types whose text and binary forms are those of the wire type a catalog column is served
@@ -122,8 +123,11 @@ def result_types(sql: str) -> tuple[tuple[str, str], ...]:
         tree = sqlglot.parse_one(sql, read="postgres")
     except ParseError:
         return ()  # a call sqlglot reads as syntax (convert): the engine's types describe it
+    # A pg_catalog table function's columns are its OUT parameters: sqlglot will not resolve a
+    # correlated subquery's column while a source's columns are unknown (psql's FDW options read
+    # pg_options_to_table(c.reloptions)).
     qualified = qualify(
-        tree,
+        _with_out_columns(tree),
         db="pg_catalog",
         schema=_schema(),
         dialect="postgres",
@@ -137,6 +141,38 @@ def result_types(sql: str) -> tuple[tuple[str, str], ...]:
         (select.alias_or_name, _function_type(select.unalias()) or _format_type(select.type))
         for select in annotated.selects
     )
+
+
+@functools.cache
+def _out_columns() -> dict[str, tuple[str, ...]]:
+    """Each pg_catalog table function's OUT parameter names, where every overload names the same."""
+    named: dict[str, set[tuple[str, ...]]] = {}
+    for proc in PROCS:
+        modes, names = proc[20], proc[21]
+        if not modes or not names:
+            continue
+        outs = tuple(n for n, m in zip(names, modes, strict=True) if m in ("o", "t", "b"))
+        if outs:
+            named.setdefault(proc[1], set()).add(outs)
+    return {name: next(iter(outs)) for name, outs in named.items() if len(outs) == 1}
+
+
+def _with_out_columns(tree: exp.Expr) -> exp.Expr:
+    """``tree`` with each pg_catalog table function in FROM given its OUT parameters as the
+    alias's columns, as PostgreSQL names them; the alias defaults to the function's name."""
+    for table in tree.find_all(exp.Table):
+        call = table.this
+        if not isinstance(call, exp.Anonymous) or table.alias_column_names:
+            continue
+        if table.db and table.db.lower() != "pg_catalog":
+            continue
+        columns = _out_columns().get(call.name.lower())
+        if columns is None:
+            continue
+        alias = table.args.get("alias") or exp.TableAlias(this=exp.to_identifier(call.name))
+        alias.set("columns", [exp.to_identifier(c) for c in columns])
+        table.set("alias", alias)
+    return tree
 
 
 def _function_type(expression: exp.Expr) -> str:
@@ -159,4 +195,5 @@ def _function_type(expression: exp.Expr) -> str:
 def _format_type(data_type) -> str:
     if data_type is None or data_type.is_type("unknown"):
         return ""
-    return data_type.sql("postgres").lower()
+    # A type named in pg_catalog is the type of its bare name (pg_catalog.regclass is regclass).
+    return data_type.sql("postgres").lower().removeprefix("pg_catalog.")

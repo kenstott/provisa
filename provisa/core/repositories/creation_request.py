@@ -10,7 +10,7 @@ A governed create attempted by a user lacking the authority is persisted here as
 pending request; a rights-holder later executes or rejects it.
 """
 
-# Requirements: REQ-063, REQ-434
+# Requirements: REQ-063, REQ-434, REQ-2215, REQ-2216, REQ-2217
 
 from __future__ import annotations
 
@@ -31,19 +31,32 @@ REQUIRED_APPROVALS: dict[str, int] = {
 }
 
 
-async def create(  # REQ-063, REQ-434, REQ-1948
+async def create(  # REQ-063, REQ-434, REQ-1948, REQ-2216, REQ-2217
     conn: "Connection",
     request_type: str,
     capability: str,
     payload: dict,
     requested_by: str | None,
+    *,
+    environment: str,
+    addressed_roles: list[str],
+    addressed_members: list[dict],
+    unresolved_roles: list[str],
 ) -> int:
-    """Persist a pending creation request; return its id."""
+    """Persist a pending creation request; return its id.
+
+    ``environment`` is the environment the request is for (REQ-2217); ``addressed_roles`` the roles
+    that may decide it, ``addressed_members`` their members as resolved now and
+    ``unresolved_roles`` the roles none could be resolved for (REQ-2215, REQ-2216)."""
     values: dict = {
         "request_type": request_type,
         "capability": capability,
         "payload": payload,
         "requested_by": requested_by,
+        "environment": environment,
+        "addressed_roles": addressed_roles,
+        "addressed_members": addressed_members,
+        "unresolved_roles": unresolved_roles,
     }
     if request_type in REQUIRED_APPROVALS:
         values["required_approvals"] = REQUIRED_APPROVALS[request_type]

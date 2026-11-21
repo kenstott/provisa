@@ -1,0 +1,61 @@
+Id	AccountId	Name	Type	StageName	Amount	CloseDate	IsClosed
+006Hp0000000001Z4a	001Hp0000000001CWb	Larkspur Analytics renewal 2025	Renewal	Closed Won	184000.0	2025-10-10	true
+006Hp0000000002LKw	001Hp0000000001CWb	Larkspur Analytics renewal 2026	Renewal	Proposal/Price Quote	184000.0	2026-10-10	false
+006Hp0000000003ka8	001Hp0000000002gDP	Larkspur Labs renewal 2026	Renewal	Closed Won	96000.0	2026-01-17	true
+006Hp0000000004rR5	001Hp0000000002gDP	Larkspur Labs renewal 2027	Renewal	Negotiation/Review	96000.0	2027-01-17	false
+006Hp0000000005GLI	001Hp0000000003323	Brightwater Health renewal 2026	Renewal	Closed Won	212000.0	2026-01-24	true
+006Hp0000000006Nhf	001Hp0000000003323	Brightwater Health renewal 2027	Renewal	Proposal/Price Quote	212000.0	2027-01-24	false
+006Hp0000000007MnY	001Hp0000000004kv5	Cobalt Freight renewal 2025	Renewal	Closed Won	158000.0	2025-10-28	true
+006Hp000000000817a	001Hp0000000004kv5	Cobalt Freight renewal 2026	Renewal	Negotiation/Review	158000.0	2026-10-28	false
+006Hp00000000099ML	001Hp0000000005Hfi	Ferncliff Retail renewal 2025	Renewal	Closed Won	77000.0	2025-11-07	true
+006Hp0000000010RZ2	001Hp0000000005Hfi	Ferncliff Retail renewal 2026	Renewal	Proposal/Price Quote	77000.0	2026-11-07	false
+006Hp0000000011SjW	001Hp0000000006gPC	Granite Ridge Bank renewal 2025	Renewal	Closed Won	265000.0	2025-11-14	true
+006Hp0000000012pCi	001Hp0000000006gPC	Granite Ridge Bank renewal 2026	Renewal	Negotiation/Review	265000.0	2026-11-14	false
+006Hp00000000131c9	001Hp0000000007ebF	Halcyon Media renewal 2025	Renewal	Closed Won	64000.0	2025-11-21	true
+006Hp0000000014mHq	001Hp0000000007ebF	Halcyon Media renewal 2026	Renewal	Proposal/Price Quote	64000.0	2026-11-21	false
+006Hp00000000158gN	001Hp0000000008MWZ	Ironbark Energy renewal 2025	Renewal	Closed Won	231000.0	2025-11-28	true
+006Hp000000001603O	001Hp0000000008MWZ	Ironbark Energy renewal 2026	Renewal	Negotiation/Review	231000.0	2026-11-28	false
+006Hp0000000017BpW	001Hp0000000009bha	Juniper Logistics renewal 2025	Renewal	Closed Won	88000.0	2025-12-05	true
+006Hp00000000184Pf	001Hp0000000009bha	Juniper Logistics renewal 2026	Renewal	Proposal/Price Quote	88000.0	2026-12-05	false
+006Hp0000000019MVh	001Hp0000000010ZRH	Kestrel Aerospace renewal 2025	Renewal	Closed Won	305000.0	2025-12-12	true
+006Hp0000000020oYY	001Hp0000000010ZRH	Kestrel Aerospace renewal 2026	Renewal	Negotiation/Review	305000.0	2026-12-12	false
+006Hp0000000021FW8	001Hp0000000011lPA	Lumen Dental Group renewal 2025	Renewal	Closed Won	59000.0	2025-10-10	true
+006Hp0000000022PYS	001Hp0000000011lPA	Lumen Dental Group renewal 2026	Renewal	Proposal/Price Quote	59000.0	2026-10-10	false
+006Hp0000000023qLU	001Hp0000000012Smb	Marlowe Insurance renewal 2026	Renewal	Closed Won	143000.0	2026-01-17	true
+006Hp0000000024jee	001Hp0000000012Smb	Marlowe Insurance renewal 2027	Renewal	Negotiation/Review	143000.0	2027-01-17	false
+006Hp0000000025U0d	001Hp00000000133W3	Northgate Foods renewal 2025	Renewal	Closed Won	71000.0	2025-10-24	true
+006Hp0000000026nJ9	001Hp00000000133W3	Northgate Foods renewal 2026	Renewal	Proposal/Price Quote	71000.0	2026-10-24	false
+006Hp0000000027ywR	001Hp0000000014fdS	Oakmont Legal renewal 2026	Renewal	Closed Won	52000.0	2026-05-01	true
+006Hp00000000285oO	001Hp0000000014fdS	Oakmont Legal renewal 2027	Renewal	Negotiation/Review	52000.0	2027-05-01	false
+006Hp0000000029ZFg	001Hp0000000015C5p	Pinecrest Schools renewal 2025	Renewal	Closed Won	46000.0	2025-11-07	true
+006Hp0000000030EKJ	001Hp0000000015C5p	Pinecrest Schools renewal 2026	Renewal	Proposal/Price Quote	46000.0	2026-11-07	false
+006Hp0000000031nYr	001Hp00000000165Bu	Quillon Systems renewal 2026	Renewal	Closed Won	118000.0	2026-05-15	true
+006Hp00000000325VN	001Hp00000000165Bu	Quillon Systems renewal 2027	Renewal	Negotiation/Review	118000.0	2027-05-15	false
+006Hp0000000033gC3	001Hp0000000018sgH	Redfern Hotels renewal 2026	Renewal	Closed Won	99000.0	2026-02-21	true
+006Hp0000000034SkZ	001Hp0000000018sgH	Redfern Hotels renewal 2027	Renewal	Proposal/Price Quote	99000.0	2027-02-21	false
+006Hp0000000035UFb	001Hp00000000198KL	Saltmarsh Brewing renewal 2025	Renewal	Closed Won	28000.0	2025-11-28	true
+006Hp0000000036t7e	001Hp00000000198KL	Saltmarsh Brewing renewal 2026	Renewal	Negotiation/Review	28000.0	2026-11-28	false
+006Hp000000003788x	001Hp0000000020eRQ	Tamarack Mining renewal 2026	Renewal	Closed Won	176000.0	2026-06-05	true
+006Hp0000000038lkx	001Hp0000000020eRQ	Tamarack Mining renewal 2027	Renewal	Proposal/Price Quote	176000.0	2027-06-05	false
+006Hp0000000039prf	001Hp0000000021LA1	Umber Architecture renewal 2026	Renewal	Closed Won	34000.0	2026-06-12	true
+006Hp0000000040kfy	001Hp0000000021LA1	Umber Architecture renewal 2027	Renewal	Negotiation/Review	34000.0	2027-06-12	false
+006Hp0000000041Rvb	001Hp0000000022tqD	Vantage Payroll renewal 2025	Renewal	Closed Won	137000.0	2025-10-10	true
+006Hp0000000042tVq	001Hp0000000022tqD	Vantage Payroll renewal 2026	Renewal	Proposal/Price Quote	137000.0	2026-10-10	false
+006Hp00000000432lW	001Hp0000000023JPO	Willow Creek Clinics renewal 2026	Renewal	Closed Won	81000.0	2026-01-17	true
+006Hp0000000044EMP	001Hp0000000023JPO	Willow Creek Clinics renewal 2027	Renewal	Negotiation/Review	81000.0	2027-01-17	false
+006Hp00000000458Kp	001Hp0000000024mc3	Xylo Robotics renewal 2026	Renewal	Closed Won	112000.0	2026-01-24	true
+006Hp0000000046KxD	001Hp0000000024mc3	Xylo Robotics renewal 2027	Renewal	Proposal/Price Quote	112000.0	2027-01-24	false
+006Hp0000000047Cvs	001Hp00000000250dv	Yarrow Insurance Brokers renewal 2026	Renewal	Closed Won	67000.0	2026-05-01	true
+006Hp0000000048XNH	001Hp00000000250dv	Yarrow Insurance Brokers renewal 2027	Renewal	Negotiation/Review	67000.0	2027-05-01	false
+006Hp0000000049Sc7	001Hp0000000026suO	Zephyr Telecom renewal 2025	Renewal	Closed Won	189000.0	2025-11-07	true
+006Hp0000000050Fah	001Hp0000000026suO	Zephyr Telecom renewal 2026	Renewal	Proposal/Price Quote	189000.0	2026-11-07	false
+006Hp0000000051w5c	001Hp0000000027CUy	Alder & Finch renewal 2026	Renewal	Closed Won	41000.0	2026-02-14	true
+006Hp0000000052qui	001Hp0000000027CUy	Alder & Finch renewal 2027	Renewal	Negotiation/Review	41000.0	2027-02-14	false
+006Hp0000000053Y0n	001Hp0000000028Cad	Bramble Software renewal 2026	Renewal	Closed Won	73000.0	2026-05-22	true
+006Hp0000000054P4E	001Hp0000000028Cad	Bramble Software renewal 2027	Renewal	Proposal/Price Quote	73000.0	2027-05-22	false
+006Hp0000000055ub5	001Hp0000000029hRC	Cinder Studios renewal 2026	Renewal	Closed Won	38000.0	2026-05-28	true
+006Hp0000000056uQL	001Hp0000000029hRC	Cinder Studios renewal 2027	Renewal	Negotiation/Review	38000.0	2027-05-28	false
+006Hp0000000057gLk	001Hp0000000030TRh	Driftwood Travel renewal 2026	Renewal	Closed Won	55000.0	2026-03-07	true
+006Hp0000000058qtM	001Hp0000000030TRh	Driftwood Travel renewal 2027	Renewal	Proposal/Price Quote	55000.0	2027-03-07	false
+006Hp0000000059tne	001Hp0000000031jkz	Elmstead Manufacturing renewal 2025	Renewal	Closed Won	214000.0	2025-12-12	true
+006Hp00000000602aU	001Hp0000000031jkz	Elmstead Manufacturing renewal 2026	Renewal	Negotiation/Review	214000.0	2026-12-12	false

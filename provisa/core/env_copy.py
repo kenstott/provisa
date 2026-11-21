@@ -30,7 +30,7 @@ says this copy IS the creation (``seed``). Afterwards they are the environment's
 may do what (REQ-1539).
 """
 
-# Requirements: REQ-1488, REQ-1489, REQ-1491, REQ-1539
+# Requirements: REQ-1488, REQ-1489, REQ-1491, REQ-1539, REQ-2201
 
 from __future__ import annotations
 
@@ -312,6 +312,7 @@ async def clone_model(
             conn, src_schema, dst_schema, report, REPLACE, True, True, False, landing, apply=True
         )
         await copy_profile_results(conn, src_schema, dst_schema)
+        await copy_term_scans(conn, src_schema, dst_schema)
         return report
 
 
@@ -321,10 +322,13 @@ async def copy_profile_results(conn: "Connection", src_schema: str, dst_schema: 
     A run's results are relations of the org's schema of their own (``<table>_<id>_profile_<kind>``,
     provisa.profiler.schema), not model tables, so the model copy does not move them; a sandbox
     is cloned with its template's table ids, so each keeps its name. Each is replaced whole.
-    Returns the relations copied."""
+    A relation no table of ``src_schema``'s model names (profiler.schema.superseded_results) is
+    not copied. Returns the relations copied."""
     from sqlalchemy import text
 
-    from provisa.profiler.schema import is_result_table_name
+    from provisa.profiler.schema import is_result_table_name, superseded_results
+
+    superseded = set(await superseded_results(conn, src_schema))
 
     names = [
         r[0]
@@ -336,7 +340,7 @@ async def copy_profile_results(conn: "Connection", src_schema: str, dst_schema: 
                 ).bindparams(schema=src_schema)
             )
         ).fetchall()
-        if is_result_table_name(r[0])
+        if is_result_table_name(r[0]) and r[0] not in superseded
     ]
     for name in names:
         src, dst = f'"{src_schema}"."{name}"', f'"{dst_schema}"."{name}"'
@@ -344,6 +348,42 @@ async def copy_profile_results(conn: "Connection", src_schema: str, dst_schema: 
         await conn.execute_core(text(f"CREATE TABLE {dst} (LIKE {src} INCLUDING ALL)"))
         await conn.execute_core(text(f"INSERT INTO {dst} SELECT * FROM {src}"))
     return names
+
+
+#: REQ-2201: a library document, its domains, passages and tags (REQ-2208), and the scans of it with their drafts,
+#: in the order their foreign keys need.
+_SCAN_TABLES = (
+    "reference_documents",
+    "reference_document_domains",
+    "reference_passages",
+    "reference_document_tags",  # REQ-2208: the tags on its documents and their sections
+    "reference_citations",  # REQ-2208: the citations of its documents and their sections
+    "glossary_term_scans",
+    "glossary_term_drafts",
+)
+
+
+async def copy_term_scans(conn: "Connection", src_schema: str, dst_schema: str) -> list[str]:
+    """REQ-2201: the reference library and the scans of it of ``src_schema``, carried into
+    ``dst_schema``: a demo's template holds the scans its bundle carries (provisa.term_finding.carry),
+    and a sandbox opens on them. They are the environment's own (env_classes.NEVER_RUNTIME), so the
+    model copy does not move them; a sandbox is cloned with its template's glossary term ids, so
+    each row keeps its ids. Each table is replaced whole. Returns the tables copied."""
+    tables = [org_metadata.tables[name] for name in _SCAN_TABLES]
+    for table in reversed(tables):
+        await conn.execute_core(delete(_scoped(table, dst_schema)))
+    for table in tables:
+        src, dst = _scoped(table, src_schema), _scoped(table, dst_schema)
+        columns = [c.name for c in table.columns]
+        await conn.execute_core(
+            insert(dst).from_select(columns, select(*(src.c[c] for c in columns)))
+        )
+    await _resync_sequences(conn, tables, dst_schema)
+    # REQ-2185: the copied passages searchable under their dimension's vector index.
+    from provisa.reference_library import store
+
+    await store.index_vectors(conn, dst_schema)
+    return list(_SCAN_TABLES)
 
 
 async def _copy_schemas(

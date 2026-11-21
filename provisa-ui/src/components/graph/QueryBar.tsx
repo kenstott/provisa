@@ -28,9 +28,13 @@ import type { CypherSchema } from "./graph-schema-types";
 import { DEFAULT_QUERY, type GraphLanguage } from "./graph-persistence";
 import { sparqlLanguage } from "./sparqlLanguage";
 import { Tip } from "../Tip";
+import { StopButton } from "../StopButton";
 
 interface QueryBarProps {
   onRun: (query: string) => void;
+  /** A frame's query is running: Stop stands where Run is, and stops it. */
+  running?: boolean;
+  onStop?: () => void;
   initialQuery?: string;
   onQueryChange: (q: string) => void;
   cypherSchema?: CypherSchema;
@@ -55,6 +59,8 @@ const _cypherLangExts = getCypherLanguageExtensions({ cypherLanguage: true } as 
 
 export function QueryBar({
   onRun,
+  running = false,
+  onStop,
   initialQuery,
   onQueryChange,
   cypherSchema,
@@ -215,16 +221,22 @@ export function QueryBar({
           </ActionIcon>
         </Tip>
       )}
-      <Tip text={t("queryBar.run")} named>
-        <ActionIcon
-          className="graph-run-btn"
-          aria-label={t("queryBar.run")}
-          onClick={() => onRun(query.trim())}
-          style={{ alignSelf: "stretch", height: "auto" }}
-        >
-          <Play size={16} aria-hidden />
-        </ActionIcon>
-      </Tip>
+      {running && onStop ? (
+        <div className="graph-stop-slot">
+          <StopButton onClick={onStop} tip={t("common.stopQuery")} testId="graph-stop-btn" />
+        </div>
+      ) : (
+        <Tip text={t("queryBar.run")} named>
+          <ActionIcon
+            className="graph-run-btn"
+            aria-label={t("queryBar.run")}
+            onClick={() => onRun(query.trim())}
+            style={{ alignSelf: "stretch", height: "auto" }}
+          >
+            <Play size={16} aria-hidden />
+          </ActionIcon>
+        </Tip>
+      )}
     </div>
   );
 }

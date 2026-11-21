@@ -21,15 +21,35 @@ const GONE = {
   id: 7,
   name: "legacy_orders",
   dependents: [
-    { kind: "relationship", id: "orders-to-customers", name: "orders-to-customers", via: [] },
-    { kind: "table", id: 12, name: "big_orders", via: ["registered_tables.view_sql"] },
+    {
+      kind: "relationship",
+      id: "orders-to-customers",
+      name: "orders-to-customers",
+      label: "orders-to-customers",
+      via: [],
+    },
+    {
+      kind: "table",
+      id: 12,
+      name: "big_orders",
+      label: "big_orders",
+      via: ["registered_tables.view_sql"],
+    },
   ],
 };
 const LOST_COLUMNS = {
   id: 9,
   name: "customers",
   columns: {
-    region: [{ kind: "row_filter", id: 3, name: "analyst on customers", via: [] }],
+    region: [
+      {
+        kind: "row_filter",
+        id: 3,
+        name: "analyst on customers",
+        label: "analyst on customers",
+        via: [],
+      },
+    ],
   },
 };
 

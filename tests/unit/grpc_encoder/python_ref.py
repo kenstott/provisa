@@ -285,6 +285,44 @@ def rust_encode(
     return out
 
 
+def rows_of(batch: pa.RecordBatch) -> list[tuple]:
+    """A batch as the row result it would be (REQ-2195): each cell the value column_values gives."""
+    return list(zip(*(column_values(c) for c in batch.columns), strict=True))
+
+
+def has_map(batch: pa.RecordBatch) -> bool:
+    """Whether a column holds an Arrow map at any depth. column_values gives a map as a list of
+    (key, value) tuples, which no row source holds (its map is a dict): such a batch has no row
+    form to compare (test_rows.py covers a row source's dicts)."""
+    return any("map<" in str(f.type) for f in batch.schema)
+
+
+def rows_encode(
+    service: OrgDescriptor,
+    type_name: str,
+    rows: Iterable[list[Any]],
+    names: list[str],
+    *,
+    batch_rows: int = 0,
+    masks: list | None = None,
+    types: list[str | None] | None = None,
+) -> list[bytes]:
+    """The wired encoder fed a row result's batches (``encode_rows``), as grpc/server does."""
+    msg_cls = getattr(service, type_name)
+    encoder = _row_encoder(
+        msg_cls,
+        out_cols(msg_cls, names),
+        masks,
+        getattr(service, f"{type_name}Batch") if batch_rows else None,
+        batch_rows,
+    )
+    out: list[bytes] = []
+    for batch in rows:
+        out.extend(encoder.encode_rows(batch, types))
+    out.extend(encoder.finish())
+    return out
+
+
 def node_reference(service: OrgDescriptor, type_name: str, nodes: list[dict]) -> list[bytes]:
     """A group's nodes as the frozen _dict_row_to_message built them."""
     msg_cls = getattr(service, type_name)

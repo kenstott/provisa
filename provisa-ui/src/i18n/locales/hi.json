@@ -2,6 +2,9 @@
   "common": {
     "loading": "लोड हो रहा है...",
     "cancel": "रद्द करें",
+    "stop": "रोकें",
+    "stopped": "रोकी गई",
+    "stopQuery": "क्वेरी रोकें",
     "save": "सहेजें",
     "delete": "हटाएँ",
     "confirm": "पुष्टि करें",
@@ -9,7 +12,9 @@
     "identity": "पहचान",
     "discardTitle": "अपने बदलाव छोड़ दें?",
     "discardBody": "{{what}} में किए गए बदलाव सहेजे नहीं गए हैं।",
-    "discard": "छोड़ें"
+    "discard": "छोड़ें",
+    "deleting": "हटाया जा रहा है…",
+    "deleteFailed": "नहीं हटाया गया: {{reason}}"
   },
   "app": {
     "apiUnreachable": "Provisa API तक नहीं पहुँच सके।",
@@ -42,12 +47,16 @@
     "yes": "हाँ",
     "no": "नहीं",
     "none": "—",
-    "expandUser": "{{username}} के असाइनमेंट दिखाएँ",
+    "expandUser": "{{username}} के असाइनमेंट विस्तृत करें",
     "deleteUser": "{{username}} का खाता हटाएँ",
     "assignmentsHeading": "भूमिका:डोमेन असाइनमेंट",
     "noAssignments": "कोई असाइनमेंट नहीं",
     "removeAssignment": "असाइनमेंट {{role}}:{{domain}} हटाएँ",
     "roleLabel": "भूमिका",
+    "rolesLabel": "भूमिकाएँ",
+    "rolesPlaceholder": "एक या अधिक भूमिकाएँ चुनें",
+    "addList": "सूची जोड़ें",
+    "removeList": "यह सूची हटाएँ",
     "domainLabel": "डोमेन",
     "untilLabel": "तक",
     "untilPlaceholder": "कोई समाप्ति तिथि नहीं",
@@ -56,7 +65,6 @@
     "noExpiry": "कोई समाप्ति तिथि नहीं",
     "neverUsed": "कभी नहीं",
     "allDomains": "* (सभी डोमेन)",
-    "add": "जोड़ें",
     "createHeading": "उपयोगकर्ता बनाएँ",
     "username": "उपयोगकर्ता नाम",
     "usernameRequired": "उपयोगकर्ता नाम *",
@@ -96,6 +104,6 @@
   },
   "pageError": {
     "title": "यह पेज दिखाया नहीं जा सका",
-    "body": "रेंडर करते समय यह विफल हो गया। ऐप का बाकी हिस्सा अभी भी काम करता है: किसी दूसरे पेज पर जाएँ, या इसे फिर से लोड करें।"
+    "body": "रेंडर करते समय त्रुटि हुई। ऐप का बाकी हिस्सा अब भी काम करता है, इसलिए किसी दूसरे पेज पर जाएँ या इस पेज को फिर से लोड करें।"
   }
 }

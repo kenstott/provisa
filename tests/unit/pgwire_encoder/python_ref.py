@@ -36,7 +36,7 @@ import pyarrow as pa
 from buenavista.postgres import BuenaVistaHandler
 
 from provisa.core import ir_arrow
-from provisa.executor.result import ArrowStreamResult
+from provisa.executor.result import ArrowStreamResult, StreamingQueryResult
 from provisa.pgwire.server import ProvisaQueryResult
 from tests.unit.pgwire_encoder import oracle
 
@@ -160,6 +160,51 @@ def wired_encode(
     sink = _Sink(io.BytesIO())
     BuenaVistaHandler.send_data_rows(sink, qr)  # type: ignore[arg-type]
     return sink.wfile.getvalue(), bvtype_names(qr), coercer_names(qr)
+
+
+def rows_wired_encode(
+    schema: pa.Schema,
+    batches: Iterable[pa.RecordBatch],
+    column_types: list[str],
+    formats: list[int] | None = None,
+    *,
+    sql: str = "",
+    shape: list[tuple[str, str]] | None = None,
+    read_shape: list[tuple[str, str]] | None = None,
+    force_types: list[Any] | None = None,
+    force_coerce: list[tuple[int, Any]] | None = None,
+) -> bytes:
+    """What pgwire sends for the same result as a row result (REQ-2195): each batch's rows as
+    column_values gives them, through the product's send path and the encoder's rows form."""
+    stream = StreamingQueryResult([_rows_of(b) for b in batches], list(schema.names), column_types)
+    qr = ProvisaQueryResult(stream, sql, shape=shape, read_shape=read_shape)
+    if force_types is not None:
+        qr._types = list(force_types)
+    if force_coerce is not None:
+        qr._coerce = list(force_coerce)
+    qr.result_format = formats
+    sink = _Sink(io.BytesIO())
+    BuenaVistaHandler.send_data_rows(sink, qr)  # type: ignore[arg-type]
+    return sink.wfile.getvalue()
+
+
+def has_row_form(batch: pa.RecordBatch) -> bool:
+    """Whether a row source can hold this batch's values as column_values gives them: not a map
+    (a list of (key, value) tuples, where a row source holds a dict), nor a DuckDB opaque type
+    (DuckDB's own bytes, which only its Arrow carries), nor a value no Python object holds (a date
+    PostgreSQL holds past year 9999 or BC, REQ-2236), which column_values cannot give."""
+    if any(
+        "map<" in str(f.type) or (f.metadata or {}).get(b"ARROW:extension:name") == b"arrow.opaque"
+        for f in batch.schema
+    ):
+        return False
+    try:
+        _rows_of(batch)
+    except OverflowError:  # CPython's "date value out of range": no row source holds it
+        return False
+    except Exception:  # noqa: BLE001 -- a value column_values refuses (NaT, an unknown zone):
+        return True  # the rows form exists and must refuse it as the Arrow form does
+    return True
 
 
 def wired_encode_count(

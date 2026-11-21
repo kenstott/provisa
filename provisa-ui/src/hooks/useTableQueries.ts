@@ -14,15 +14,19 @@ import type { ErrorLike } from "@apollo/client";
 import type { ListedTable, MutationResult, RegisteredTable, TableRow } from "../types/admin";
 import {
   DeleteTable,
+  DeleteTables,
   RegisterEntity,
   RegisterFact,
   RegisterTable,
+  RegisterTables,
+  TableAccess,
   UpdateTable,
   TableListQuery as TABLE_LIST_QUERY,
   TableRowsQuery as TABLE_ROWS_QUERY,
   TablesQuery as TABLES_QUERY,
 } from "./admin.graphql";
 import { firstLoad } from "./firstLoad";
+import { useBulkDelete } from "./useBulkDelete";
 
 const NO_TABLES: RegisteredTable[] = [];
 const NO_LISTED_TABLES: ListedTable[] = [];
@@ -41,15 +45,29 @@ interface TablesRead<T> {
  * cache and sends no request of its own: the page's mount revalidates the list, and a table
  * mutation or a schema-version bump refetches it while it is shown. Without it, every tab and
  * sub-form mounting under the page re-read the whole catalog. */
-export function useTables(opts: { inPage?: boolean; columns: false }): TablesRead<TableRow>;
-export function useTables(opts?: { inPage?: boolean; columns?: true }): TablesRead<ListedTable>;
+export function useTables(opts: {
+  inPage?: boolean;
+  columns: false;
+  includeWithdrawn?: boolean;
+}): TablesRead<TableRow>;
+export function useTables(opts?: {
+  inPage?: boolean;
+  columns?: true;
+  includeWithdrawn?: boolean;
+}): TablesRead<ListedTable>;
+/** `includeWithdrawn` (REQ-1921): the withdrawn tables too, marked, in the domains the caller may
+ * preview them: a graph view's Show withdrawn, a source's Tables section. */
 export function useTables({
   inPage = false,
   columns = true,
-}: { inPage?: boolean; columns?: boolean } = {}): TablesRead<TableRow> {
+  includeWithdrawn = false,
+}: { inPage?: boolean; columns?: boolean; includeWithdrawn?: boolean } = {}): TablesRead<TableRow> {
   const { data, loading, error, refetch } = useQuery<{ tables: TableRow[] }>(
     columns ? TABLE_LIST_QUERY : TABLE_ROWS_QUERY,
-    { fetchPolicy: inPage ? "cache-first" : "cache-and-network" },
+    {
+      fetchPolicy: inPage ? "cache-first" : "cache-and-network",
+      variables: { includeWithdrawn },
+    },
   );
   return {
     tables: data?.tables ?? NO_LISTED_TABLES,
@@ -59,10 +77,13 @@ export function useTables({
   };
 }
 
-/** The registered tables with every field the table editor reads (TablesQuery). */
-export function useTableDetails() {
+/** The registered tables with every field the table editor reads (TablesQuery). `includeWithdrawn`
+ * (REQ-1921): the withdrawn ones too, marked, in the domains the caller may preview them -- the
+ * Tables page lists them, so they can be put back. */
+export function useTableDetails({ includeWithdrawn = false }: { includeWithdrawn?: boolean } = {}) {
   const { data, loading, error, refetch } = useQuery<{ tables: RegisteredTable[] }>(TABLES_QUERY, {
     fetchPolicy: "cache-and-network",
+    variables: { includeWithdrawn },
   });
   return {
     tables: data?.tables ?? NO_TABLES,
@@ -75,11 +96,16 @@ export function useTableDetails() {
 const TABLE_QUERY_NAMES = ["TablesQuery", "TableListQuery", "TableRowsQuery"];
 
 /** The table queries a view is showing, for a table write's refetchQueries: the write refetches
- * those and no other. A `{ query: TablesQuery }` entry fetched the editor's whole catalog on every
+ * those and no other, and drops every cached table list so none is read stale. A `{ query: TablesQuery }` entry fetched the editor's whole catalog on every
  * write whether or not anything showed it. */
 export function useShownTableQueries(): () => string[] {
   const client = useApolloClient();
   return useCallback(() => {
+    // A write changed the catalog: every cached table list is stale, shown or not. A list nothing
+    // shows is not refetched by name, and a page that reads it cache-first (`inPage`) would
+    // otherwise serve the old one -- a relationship's tables missing from it hid its query links.
+    client.cache.evict({ fieldName: "tables" });
+    client.cache.gc();
     const shown = new Set([...client.getObservableQueries("active")].map((oq) => oq.queryName));
     return TABLE_QUERY_NAMES.filter((name) => shown.has(name));
   }, [client]);
@@ -115,6 +141,48 @@ export function useRegisterTable() {
     },
     loading,
   };
+}
+
+/** REQ-2234: one table of several registered in one action, and what its registration answered. */
+export interface TableRegistrationOutcome {
+  tableName: string;
+  result: MutationResult;
+}
+
+/** REQ-2234: several tables registered in one action, each by registerTable on the server. */
+export function useRegisterTables() {
+  const refetchTables = useShownTableQueries();
+  const [registerTables, { loading }] = useMutation<{
+    registerTables: TableRegistrationOutcome[];
+  }>(RegisterTables, { refetchQueries: refetchTables, awaitRefetchQueries: true });
+  return {
+    registerTables: async (inputs: Record<string, unknown>[]) => {
+      const { data } = await registerTables({ variables: { inputs } });
+      if (!data) throw new Error("registerTables answered nothing");
+      return data.registerTables;
+    },
+    loading,
+  };
+}
+
+/** REQ-2234: the ways to reach a registered table as `role`, each ready to copy. */
+export interface TableAccess {
+  graphql: string;
+  sql: string;
+  /** Null where the pgwire listener is not serving. */
+  pgwire: string | null;
+  /** Null where the REST surface is not mounted. */
+  rest: string | null;
+  mcp: string;
+}
+
+export function useTableAccess(tableId: number | null, role: string | null) {
+  const { data, loading, error } = useQuery<{ tableAccess: TableAccess }>(TableAccess, {
+    variables: { tableId, role },
+    skip: tableId === null || !role,
+    fetchPolicy: "network-only",
+  });
+  return { access: data?.tableAccess ?? null, loading, error: error?.message ?? null };
 }
 
 export function useRegisterEntity() {
@@ -158,6 +226,12 @@ export function useUpdateTable() {
     },
     loading,
   };
+}
+
+/** REQ-2240: several tables deleted in one call; what went and each one refused. */
+export function useDeleteTables() {
+  const refetchTables = useShownTableQueries();
+  return useBulkDelete<number>(DeleteTables, "deleteTables", "ids", refetchTables);
 }
 
 export function useDeleteTable() {

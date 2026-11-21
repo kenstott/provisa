@@ -40,6 +40,7 @@ from sqlalchemy.exc import DBAPIError
 
 from provisa.api._meta_views import (
     _META_TABLE_VIEWS,
+    _OPS_LOG_BASE_TABLE,
     _OPS_LOG_TABLE_ALIAS,
     _OPS_LOG_TABLE_VIEWS,
     _OPS_REPORT_VIEWS,
@@ -393,14 +394,16 @@ async def _reflect_admin_views(
 
 
 async def _seed_ontology_domain(
-    conn: "Connection", org_id: str = "default", env: str | None = None
+    conn: "Connection", org_id: str = "default", env: str | None = None, *, views_made: bool = False
 ) -> None:  # REQ-2163
     """Register the glossary's definition views as the ontology system schema's tables
     (idempotent), as :func:`_seed_meta_domain` registers meta's. The Class tables generated from
-    the glossary are the schema's too, and are not written here."""
+    the glossary are the schema's too, and are not written here. ``views_made``: the views are
+    there already (:func:`_make_built_in_views`)."""
     schema_name = org_schema(org_id, env)
-    for ddl in ONTOLOGY_TABLE_VIEWS.values():
-        await _seed_view(conn, ddl)
+    if not views_made:
+        for ddl in ONTOLOGY_TABLE_VIEWS.values():
+            await _seed_view(conn, ddl)
     await _drop_sibling_environment_registrations(conn, ONTOLOGY_DOMAIN_ID, org_id, schema_name)
     reflected = await _reflect_admin_views(
         conn,
@@ -420,7 +423,7 @@ async def _seed_ontology_domain(
 
 
 async def _seed_meta_domain(
-    conn: "Connection", org_id: str = "default", env: str | None = None
+    conn: "Connection", org_id: str = "default", env: str | None = None, *, views_made: bool = False
 ) -> None:  # REQ-012, REQ-016, REQ-695
     """Register admin tables in the built-in meta domain (idempotent).
 
@@ -428,10 +431,13 @@ async def _seed_meta_domain(
     a branch's runtime is scoped to its own schema — naming ``org_<id>`` here registered the
     branch's meta tables at prod's address, next to the branch's own copies of the same rows, and
     every request to that runtime then failed the (domain, table) uniqueness assertion.
+
+    ``views_made``: the views are there already (:func:`_make_built_in_views`).
     """
     schema_name = org_schema(org_id, env)
-    for ddl in _META_TABLE_VIEWS.values():
-        await _seed_view(conn, ddl)
+    if not views_made:
+        for ddl in _META_TABLE_VIEWS.values():
+            await _seed_view(conn, ddl)
 
     await _drop_sibling_environment_registrations(conn, "meta", org_id, schema_name)
 
@@ -443,6 +449,21 @@ async def _seed_meta_domain(
             _registered_tables_t.c.schema_name == schema_name,
             _registered_tables_t.c.table_name == view_name,
         )
+
+    # REQ-2163: meta's tables are a SET this seed declares, as ops's are (_seed_ops_pg), and a
+    # table an older build declared is retired with what refers to it. The glossary's moved to
+    # ontology, and its kept meta registrations kept their relationships beside the new ones: two
+    # `glossaryRefs` fields on registered_tables, and the schema build refused (J627). The root
+    # org's registry view is meta's too, written by seed_org_registry_view, not here.
+    from provisa.core.org_registry_view import VIEW_NAME as _ORG_REGISTRY_VIEW
+
+    await _table_repo.remove_registrations(
+        conn,
+        _registered_tables_t.c.source_id == "provisa-admin",
+        _registered_tables_t.c.domain_id == "meta",
+        _registered_tables_t.c.schema_name == schema_name,
+        _registered_tables_t.c.table_name.not_in([*_META_TABLES, _ORG_REGISTRY_VIEW]),
+    )
 
     reflected = await _reflect_admin_views(
         conn, schema_name, {_META_TABLE_ALIAS.get(tbl, tbl): tbl for tbl in _META_TABLES}
@@ -492,7 +513,7 @@ async def _seed_meta_domain(
 
 
 async def _seed_ops_domain(
-    conn: "Connection", org_id: str = "default", env: str | None = None
+    conn: "Connection", org_id: str = "default", env: str | None = None, *, views_made: bool = False
 ) -> None:  # REQ-884
     """Expose internal operational logs (query_audit_log, …) as first-class tables in
     the built-in ``ops`` domain, reusing the meta-domain view+seed mechanism.
@@ -506,11 +527,14 @@ async def _seed_ops_domain(
     REQ-1386: also creates and registers the management report views
     (``_OPS_REPORT_VIEWS``) on the same path — always seeded on install, not demo
     data — and designates ``org_admin`` as the ops-domain steward so the domain
-    never surfaces as a REQ-609 PENDING stewardship gap."""
+    never surfaces as a REQ-609 PENDING stewardship gap.
+
+    ``views_made``: the views are there already (:func:`_make_built_in_views`)."""
     schema_name = org_schema(org_id, env)  # REQ-1488: the environment's schema, not the org's
     await _drop_sibling_environment_registrations(conn, "ops", org_id, schema_name)
-    for ddl in _OPS_LOG_TABLE_VIEWS.values():
-        await _seed_view(conn, ddl)
+    if not views_made:
+        for ddl in _OPS_LOG_TABLE_VIEWS.values():
+            await _seed_view(conn, ddl)
 
     for tbl, view_name in _OPS_LOG_TABLE_ALIAS.items():
         table_id = await conn.upsert_returning(
@@ -530,7 +554,9 @@ async def _seed_ops_domain(
         # PKs from the physical table; exposed columns from the curated view.
         pk_cols = {
             c["column_name"]
-            for c in await conn.reflect_columns(tbl, schema=schema_name)
+            for c in await conn.reflect_columns(
+                _OPS_LOG_BASE_TABLE.get(tbl, tbl), schema=schema_name
+            )
             if c["is_primary_key"]
         }
         cols = await conn.reflect_columns(view_name, schema=schema_name)
@@ -565,9 +591,11 @@ async def _seed_ops_domain(
     # REQ-1386: management report views. The unnest spine first (the report views
     # reference it), then each report view, registered like any ops table. Every
     # report view exposes ``id`` as its primary key.
-    await _seed_view(conn, _ops_table_usage_ddl())
+    if not views_made:
+        await _seed_view(conn, _ops_table_usage_ddl())
     for view_name, ddl in _OPS_REPORT_VIEWS.items():
-        await _seed_view(conn, ddl)
+        if not views_made:
+            await _seed_view(conn, ddl)
         table_id = await conn.upsert_returning(
             _registered_tables_t,
             {
@@ -660,6 +688,10 @@ async def _ensure_ops_steward_grant(conn: "Connection") -> None:  # REQ-1386, RE
         )
 
 
+#: Relationship ids only the seed writes: every other id is a modeller's.
+_SEEDED_ID_PREFIXES = ("meta", "ontology")
+
+
 async def _seed_meta_relationships(conn: "Connection") -> None:
     """Seed the meta/ops relationship rows (idempotent, runs after both seeds).
 
@@ -667,7 +699,38 @@ async def _seed_meta_relationships(conn: "Connection") -> None:
     the same ``relationships`` row, differing only in whether the via_* columns are filled, so the
     glossary's edges go in the same way a modeller-declared junction does.
     """
-    from provisa.api._meta_seed import RELATIONSHIP_SEED_COLUMNS, meta_relationship_seed_rows
+    from provisa.api._meta_seed import (
+        RELATIONSHIP_SEED_COLUMNS,
+        meta_relationship_seed_rows,
+        seed_relationship_id_prefixes,
+        undeclared_seed_relationship_ids,
+    )
+    from provisa.core.repositories import relationship as _relationship_repo
+    from provisa.core.repositories.integrity import ObjectRef, remove_parts
+
+    # R510: the seed's relationships are a SET it declares, as meta's tables are
+    # (_seed_meta_domain). An edge whose id changed between versions left its old row holding the
+    # edge's (source_table_id, alias), and the new id's insert was refused
+    # (relationships_source_alias_unique): the boot stopped. The rows are the seed's own, never a
+    # person's, so the ones it no longer declares are removed (as the table seed removes its
+    # tables), not retired: a retired row keeps its alias and would refuse the insert the same.
+    held = (
+        await conn.execute_core(
+            select(_relationships_t.c.id).where(
+                _sa_or(
+                    *(
+                        _relationships_t.c.id.startswith(p, autoescape=True)
+                        for p in seed_relationship_id_prefixes()
+                    )
+                )
+            )
+        )
+    ).scalars()
+    # REQ-2248 (amended 2026-11-15): a startup seed may delete Provisa's own built-in rows
+    # that it no longer declares; they are not a person's objects.
+    for stale_id in undeclared_seed_relationship_ids(held):
+        await remove_parts(conn, ObjectRef("relationship", stale_id))
+        await _relationship_repo.remove_where(conn, _relationships_t.c.id == stale_id)
 
     async def _table_id(source_id: str, table_name: str) -> int | None:
         return (
@@ -681,10 +744,20 @@ async def _seed_meta_relationships(conn: "Connection") -> None:
             )
         ).scalar()
 
+    _rows = meta_relationship_seed_rows()
+    # A seeded edge the code no longer declares is removed: left behind, its field name collides
+    # with the edge that replaced it, and the model cannot be served.
+    _declared = [_cols["id"] for *_, _cols in _rows]
+    await conn.execute_core(
+        _delete(_relationships_t).where(
+            _sa_or(*(_relationships_t.c.id.like(f"{_p}:%") for _p in _SEEDED_ID_PREFIXES)),
+            _relationships_t.c.id.not_in(_declared),
+        )
+    )
     for (_src_source, _src_table), (
         _tgt_source,
         _tgt_table,
-    ), _via_table, _cols in meta_relationship_seed_rows():
+    ), _via_table, _cols in _rows:
         _src_id = await _table_id(_src_source, _src_table)
         _tgt_id = await _table_id(_tgt_source, _tgt_table)
         # The junction lives in the same control-plane source as the endpoints it joins.
@@ -923,7 +996,14 @@ async def _init_control_planes(
     from provisa.core.env_deploy import PROJECTED
     from provisa.core.env_repo import write_through
 
-    model_change.attach(state.admin_db, commit=write_through, projected=PROJECTED)
+    model_change.attach(
+        state.admin_db,
+        commit=write_through,
+        projected=PROJECTED,
+        # REQ-697: a single-tenant deployment names no org in a URI; the tenancy is read when a
+        # change commits, since the config that states it is parsed after this attach.
+        uri_org=lambda org_id: org_id if state.multitenancy else None,
+    )
 
     # schema.sql ships in the wheel (pyproject package-data). It is REQUIRED: the PG path runs it
     # verbatim, and on SQLite its presence gates the portable create_all bootstrap. A missing file
@@ -959,6 +1039,7 @@ async def _seed_built_in_sources(  # REQ-012, REQ-016, REQ-510
     env: str | None = None,
     engine_addressable: bool = True,
     cloned: bool = False,
+    provisioned: bool = False,
 ) -> None:
     """Seed provisa-admin, provisa-otel, and __derived__ source rows; seed meta domain and ops; compute clusters.
 
@@ -978,12 +1059,16 @@ async def _seed_built_in_sources(  # REQ-012, REQ-016, REQ-510
     ``cloned`` (REQ-2006): the org's model was cloned a moment ago from an org this seed ran on in
     this release (a demo sandbox from its template), every row this seed writes with it, rebased
     onto the org's own schema (env_copy._rebase). Only what a schema holds of its own is made: the
-    built-in views those rows register, and the catalog client's grants on them."""
+    built-in views those rows register, and the catalog client's grants on them.
+
+    ``provisioned``: the org's schema was created a moment ago, in this process, and holds none of
+    the built-in views (a demo template's, built anew): they are made as one script
+    (:func:`_make_built_in_views`), and the domain seeds register them."""
     assert state.model_db is not None
     if cloned:
         async with state.model_db.acquire() as _conn:
             async with _conn.advisory_lock(_seed_lock_key(org_id, env)):
-                await _seed_built_in_views(_conn)
+                await _make_built_in_views(_conn)
                 await _seed_catalog_client(_conn, org_schema(org_id, env))  # REQ-2190
         return
     cp_dialect = state.model_db.dialect
@@ -1016,9 +1101,10 @@ async def _seed_built_in_sources(  # REQ-012, REQ-016, REQ-510
                 "username": pg_user or "",
                 "dialect": cp_dialect,
                 "description": _admin_desc,
+                "is_system": True,
             },
             index_elements=["id"],
-            update_columns=_DERIVED_FROM_DEPLOYMENT,
+            update_columns=[*_DERIVED_FROM_DEPLOYMENT, "is_system"],
             set_extra={
                 "description": _sa_func.coalesce(
                     _sa_func.nullif(_sources_t.c.description, ""), _admin_desc
@@ -1037,12 +1123,13 @@ async def _seed_built_in_sources(  # REQ-012, REQ-016, REQ-510
             "username": "provisa",
             "dialect": _engine_name,
             "description": _otel_desc,
+            "is_system": True,
         }
         if engine_endpoint is not None:
             _otel_row["host"], _otel_row["port"] = engine_endpoint
         # REQ-1619: an address the boot does not have is not a column it can update — naming it in
         # update_columns without supplying it is an update of a value this statement never wrote.
-        _otel_update = [c for c in _DERIVED_FROM_DEPLOYMENT if c in _otel_row]
+        _otel_update = [*(c for c in _DERIVED_FROM_DEPLOYMENT if c in _otel_row), "is_system"]
         await _conn.upsert(
             _sources_t,
             _otel_row,
@@ -1063,12 +1150,13 @@ async def _seed_built_in_sources(  # REQ-012, REQ-016, REQ-510
                     "Provisa-managed virtual views — cross-source SQL views defined and "
                     "published by the data team as governed data products"
                 ),
+                "is_system": True,
             },
             index_elements=["id"],
             # `type` alone: the sentinel has no address of its own, so the rest of
             # _DERIVED_FROM_DEPLOYMENT is not in the inserted row and naming it here would be
             # an update of a value this statement never supplies.
-            update_columns=["type"],
+            update_columns=["type", "is_system"],
         )
         # The virtual-views sentinel was renamed __provisa__ -> __derived__ (REQ-1328). The
         # rename only changed what this seed writes, so every schema seeded before it still
@@ -1102,12 +1190,17 @@ async def _seed_built_in_sources(  # REQ-012, REQ-016, REQ-510
         async with _conn.advisory_lock(_seed_lock_key(org_id, env)):
             clock = _SeedClock(org_id)
             await _seed_tag_param_values(_conn)  # REQ-1467
-            await _seed_meta_domain(_conn, org_id=org_id, env=env)
+            if provisioned:
+                await _make_built_in_views(_conn)
+                clock.mark("built-in views")
+            await _seed_meta_domain(_conn, org_id=org_id, env=env, views_made=provisioned)
             clock.mark("meta domain")
-            await _seed_ontology_domain(_conn, org_id=org_id, env=env)  # REQ-2163
+            await _seed_ontology_domain(  # REQ-2163
+                _conn, org_id=org_id, env=env, views_made=provisioned
+            )
             clock.mark("ontology domain")
             await _seed_ops_pg(_conn)
-            await _seed_ops_domain(_conn, org_id=org_id, env=env)  # REQ-884
+            await _seed_ops_domain(_conn, org_id=org_id, env=env, views_made=provisioned)  # REQ-884
             clock.mark("ops domain")
             await _seed_catalog_client(_conn, org_schema(org_id, env))  # REQ-2190
             clock.mark("catalog client")
@@ -1134,14 +1227,33 @@ async def _seed_built_in_views(conn: "Connection") -> None:
     """The built-in views of the meta, ontology and ops domains, made in the order their seeds
     make them (_seed_meta_domain, _seed_ontology_domain, _seed_ops_domain), and nothing they
     register."""
-    for ddl in (
+    for ddl in _built_in_view_ddl():
+        await _seed_view(conn, ddl)
+
+
+def _built_in_view_ddl() -> list[str]:
+    """Each built-in view's DDL, in the order :func:`_seed_built_in_views` makes them."""
+    return [
         *_META_TABLE_VIEWS.values(),
         *ONTOLOGY_TABLE_VIEWS.values(),
         *_OPS_LOG_TABLE_VIEWS.values(),
         _ops_table_usage_ddl(),
         *_OPS_REPORT_VIEWS.values(),
-    ):
-        await _seed_view(conn, ddl)
+    ]
+
+
+async def _make_built_in_views(conn: "Connection") -> None:
+    """The built-in views of a schema provisioned a moment ago, which holds none of them (a demo
+    sandbox's, REQ-2006, or a demo template's built anew): sent as one script, in one round trip. Made one by one, each in its own
+    transaction, they were about 800 round trips to a control plane on another machine -- 9 s of a
+    sandbox's open. A view already there and reshaped is :func:`_seed_built_in_views`' case."""
+    await conn.execute(views_script(_built_in_view_ddl()))
+
+
+def views_script(ddls: list[str]) -> str:
+    """The view DDLs as one script. Each statement's terminator goes on a line of its own: a DDL
+    that ends in a ``--`` comment would otherwise swallow it, and the next CREATE fails."""
+    return "\n".join(f"{ddl.strip().removesuffix(';')}\n;" for ddl in ddls)
 
 
 async def seed_org_registry_view() -> bool:  # REQ-1301
@@ -1154,7 +1266,6 @@ async def seed_org_registry_view() -> bool:  # REQ-1301
     failure propagates.
     """
     from provisa.core.org_registry_view import (
-        ORG_SCHEMAS_LOCK_KEY,
         VIEW_NAME,
         RegistryViewUnavailable,
         refresh_org_registry_view,
@@ -1164,23 +1275,14 @@ async def seed_org_registry_view() -> bool:  # REQ-1301
     assert state.admin_db is not None
     model_db = state.model_db
     assert model_db is not None
-    try:
-        await refresh_org_registry_view(model_db=model_db, admin_db=state.admin_db)
-        # The registration must name the schema the view was actually built in, which is the root
-        # connection's own scope — not a name recomposed from the org id.
-        schema_name = root_schema_name(model_db)
-    except RegistryViewUnavailable as exc:
-        logging.getLogger(__name__).info(
-            "org registry view not available on this deployment: %s", exc
-        )
-        return False
 
-    async with model_db.acquire() as conn:
+    async def _grant_and_register(conn: "Connection") -> None:
+        # Under the rebuild's hold of the lock: an org's schema dropped once it is let go takes the
+        # view with it (CASCADE), and a GRANT or a read of its columns after that fails.
         # REQ-2190: a read of it on the admin terminal runs as the client role, and a rebuild drops
-        # the view and its grant with it. Under the rebuild's lock: workers grant at the same boot.
-        async with conn.advisory_lock(ORG_SCHEMAS_LOCK_KEY):
-            await conn.execute(f'GRANT USAGE ON SCHEMA "{schema_name}" TO {CLIENT_ROLE}')
-            await conn.execute(f'GRANT SELECT ON "{schema_name}".{VIEW_NAME} TO {CLIENT_ROLE}')
+        # the view and its grant with it.
+        await conn.execute(f'GRANT USAGE ON SCHEMA "{schema_name}" TO {CLIENT_ROLE}')
+        await conn.execute(f'GRANT SELECT ON "{schema_name}".{VIEW_NAME} TO {CLIENT_ROLE}')
         table_id = await conn.upsert_returning(
             _registered_tables_t,
             {
@@ -1220,6 +1322,20 @@ async def seed_org_registry_view() -> bool:  # REQ-1301
                         _table_columns_t.c.description, _COL_DESC[VIEW_NAME][col["column_name"]]
                     ),
                 )
+
+    try:
+        # The registration must name the schema the view was actually built in, which is the root
+        # connection's own scope — not a name recomposed from the org id.
+        schema_name = root_schema_name(model_db)
+        await refresh_org_registry_view(
+            model_db=model_db, admin_db=state.admin_db, with_view=_grant_and_register
+        )
+    except RegistryViewUnavailable as exc:
+        logging.getLogger(__name__).info(
+            "org registry view not available on this deployment: %s", exc
+        )
+        return False
+
     return True
 
 
@@ -1263,7 +1379,10 @@ async def _resolve_pk_from_sources() -> None:
         _admin_schemas: dict[str, list[str]] = {}
         for _pk_t in _pk_rows:
             if _pk_t["source_id"] == "provisa-admin" and _pk_t["domain_id"] != ONTOLOGY_DOMAIN_ID:
-                _admin_schemas.setdefault(_pk_t["schema_name"], []).append(_pk_t["table_name"])
+                _registered_as = str(_pk_t["table_name"])
+                _admin_schemas.setdefault(_pk_t["schema_name"], []).append(
+                    _OPS_LOG_BASE_TABLE.get(_registered_as, _registered_as)
+                )
         _admin_columns = {
             _schema: await _pk_conn.reflect_columns_many(_names, schema=_schema)
             for _schema, _names in _admin_schemas.items()
@@ -1278,16 +1397,23 @@ async def _resolve_pk_from_sources() -> None:
                 continue
             primary: list[str]
             alternate: frozenset[str] = frozenset()
-            try:
-                if _pk_t["source_id"] == "provisa-admin":
-                    # Control-plane self-catalog: its tables live in the CP connection, so reflect
-                    # there portably (the abstraction ignores the schema on schema-less backends).
-                    primary = [
-                        c["column_name"]
-                        for c in _admin_columns[_pk_t["schema_name"]][_pk_t["table_name"]]
-                        if c["is_primary_key"]
-                    ]
-                else:
+            if _pk_t["source_id"] == "provisa-admin":
+                # Control-plane self-catalog: its tables live in the CP connection, so reflect
+                # there portably (the abstraction ignores the schema on schema-less backends). An
+                # ops log shown over another table (``requests``) has that table's key. A table
+                # registered here with no relation to read is a defect of the seed, not a source
+                # that cannot be reached now: it is named, not skipped.
+                _registered_as = str(_pk_t["table_name"])
+                _relation = _OPS_LOG_BASE_TABLE.get(_registered_as, _registered_as)
+                _reflected = _admin_columns[_pk_t["schema_name"]].get(_relation)
+                if _reflected is None:
+                    raise RuntimeError(
+                        f"provisa-admin table {_pk_t['schema_name']}.{_pk_t['table_name']} is "
+                        f"registered but has no relation {_relation!r} to read its keys from"
+                    )
+                primary = [c["column_name"] for c in _reflected if c["is_primary_key"]]
+            else:
+                try:
                     declared = await declared_keys(
                         state.source_pools,
                         _pk_t["source_type"],
@@ -1295,20 +1421,20 @@ async def _resolve_pk_from_sources() -> None:
                         _pk_t["schema_name"],
                         _pk_t["table_name"],
                     )
-                    if declared is None:
-                        continue  # no driver for the source here: nothing is read
-                    primary, alternate = list(declared.primary_key), declared.alternate_columns
-            except Exception:
-                # One source that cannot be read now does not stop the others' keys being read
-                # (startup_resilience); it is named, and read again at the next start.
-                _startup_log.warning(
-                    "declared keys of %s.%s.%s could not be read",
-                    _pk_t["source_id"],
-                    _pk_t["schema_name"],
-                    _pk_t["table_name"],
-                    exc_info=True,
-                )
-                continue
+                except Exception:
+                    # One source that cannot be read now does not stop the others' keys being read
+                    # (startup_resilience); it is named, and read again at the next start.
+                    _startup_log.warning(
+                        "declared keys of %s.%s.%s could not be read",
+                        _pk_t["source_id"],
+                        _pk_t["schema_name"],
+                        _pk_t["table_name"],
+                        exc_info=True,
+                    )
+                    continue
+                if declared is None:
+                    continue  # no driver for the source here: nothing is read
+                primary, alternate = list(declared.primary_key), declared.alternate_columns
             for _mark, _columns in (("is_primary_key", primary), ("is_alternate_key", alternate)):
                 if _columns:
                     await _pk_conn.execute_core(

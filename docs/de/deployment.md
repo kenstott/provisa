@@ -505,7 +505,7 @@ Hinweis: Das Provisa-AppImage läuft nicht in einem Kubernetes-Pod. Es braucht F
    | ------- | ---------- |
    | `provisa/provisa:<version>` | Provisa-API |
    | `trinodb/trino:480` | Föderations-Engine-Koordinator + Worker |
-   | `postgres:16` | PostgreSQL im Cluster (falls `postgresql.enabled`) |
+   | `pgvector/pgvector:pg16-trixie` | PostgreSQL im Cluster (falls `postgresql.enabled`) |
    | `edoburu/pgbouncer:latest` | PgBouncer im Cluster (falls `pgbouncer.enabled`) |
    | `redis:7.2` | Redis im Cluster (falls `redis.enabled` und kein `redis.host`) |
    | `minio/minio:latest` | MinIO im Cluster (falls `minio.enabled`) |
@@ -817,7 +817,7 @@ Der Databricks-Connector übernimmt das von `requests` und braucht daher keine D
 | `PG_PASSWORD` | | PostgreSQL-Passwort |
 | `PROVISA_CONFIG` | `config/provisa.yaml` | Pfad zur Konfigurationsdatei |
 | `PROVISA_REDIRECT_ENABLED` | `false` | Aktiviert das Redirect großer Ergebnisse nach S3 |
-| `PROVISA_REDIRECT_THRESHOLD` | `1000` | Schwellenwert für die Zeilenanzahl beim Redirect |
+| `PROVISA_REDIRECT_THRESHOLD` | `100000` | Schwellenwert für die Zeilenanzahl beim Redirect |
 | `PROVISA_REDIRECT_BUCKET` | `provisa-results` | S3-Bucket |
 | `PROVISA_REDIRECT_ENDPOINT` | | S3-kompatible Endpunkt-URL |
 | `PROVISA_REDIRECT_TTL` | `3600` | TTL der Presigned-URL (Sekunden) |

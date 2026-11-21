@@ -82,7 +82,13 @@ def _state(arg_type: str) -> SimpleNamespace:
         "arguments": [{"name": "in", "type": arg_type}],
     }
     return SimpleNamespace(
-        roles={"reader": {"id": "reader", "capabilities": [], "domain_access": ["d"]}},
+        roles={
+            "reader": {
+                "id": "reader",
+                "capabilities": ["command_execution"],
+                "domain_access": ["d"],
+            }
+        },
         tracked_functions={"tck_my_proc": command},
         tracked_webhooks={},
     )

@@ -28,7 +28,11 @@ import pytest
 from provisa.api.data import materialization as mat
 from provisa.cache.values_cte import InlineRows
 
-_TABLE = {"table_name": "movie_hits", "source_id": "atlas"}
+_TABLE = {
+    "table_name": "movie_hits",
+    "source_id": "atlas",
+    "columns": [{"column_name": "title", "data_type": "text"}],
+}
 
 
 def _state(source_ttl=None, default=300, source="atlas"):
@@ -70,11 +74,15 @@ def test_an_endpoints_ttl_is_the_last_one_asked():
 
 # -- a parameterized table keeps only for a TTL of its own (REQ-1986) ----------------------------
 
-_PARAMETER = {"column_name": "_nf_q", "native_filter_type": "query_param"}
+_PARAMETER = {"column_name": "_nf_q", "data_type": "text", "native_filter_type": "query_param"}
 
 
 def _parameterized(**table):
-    return {**_TABLE, "columns": [{"column_name": "title"}, _PARAMETER], **table}
+    return {
+        **_TABLE,
+        "columns": [{"column_name": "title", "data_type": "text"}, _PARAMETER],
+        **table,
+    }
 
 
 @pytest.mark.parametrize(
@@ -167,6 +175,32 @@ async def test_a_small_read_at_ttl_0_is_inlined_with_no_write(monkeypatch, engin
 
 
 @pytest.mark.asyncio
+async def test_an_empty_read_at_ttl_0_is_inlined_typed_as_its_source_declares(
+    monkeypatch, engine_cache
+):
+    """A live read with no rows (a search before its collection is loaded) is inlined as its
+    columns, each typed as its table declares: a view's store table is created from the engine's
+    probe of these columns, and an untyped NULL is DuckDB 2.0's NULL type, which lands as text
+    (``avg(VARCHAR)``) -- 1.4 called it INTEGER, which cut every score to a whole number."""
+    import duckdb
+    import sqlglot
+
+    from provisa.cache.values_cte import build_values_ctes_sql
+
+    _threshold(monkeypatch, 10)
+    read = SimpleNamespace(rows=[], columns=[("id", "bigint"), ("score", "double")])
+
+    async def answer():
+        return read
+
+    inline: dict = {}
+    await _land({**_TABLE, "cache_ttl": 0}, _state(), answer, {}, inline)
+    sql = build_values_ctes_sql('SELECT "id", "score" FROM movie_hits', inline)
+    probe = duckdb.connect().execute(sqlglot.transpile(sql, read="postgres", write="duckdb")[0])
+    assert [(d[0], str(d[1])) for d in probe.description] == [("id", "BIGINT"), ("score", "DOUBLE")]
+
+
+@pytest.mark.asyncio
 async def test_a_large_read_at_ttl_0_lands_in_a_scratch_table_of_the_statement(
     monkeypatch, engine_cache
 ):
@@ -231,7 +265,11 @@ def test_a_plan_with_a_scratch_table_runs_through_the_pipeline_terminal():
     from provisa.pgwire._pipeline import streams_from_terminal
 
     plan = SimpleNamespace(
-        two_step=None, code_write=None, embedded=None, scratch=(("loc", "scratch__x"),)
+        two_step=None,
+        code_write=None,
+        keyed_write=None,
+        embedded=None,
+        scratch=(("loc", "scratch__x"),),
     )
     assert not streams_from_terminal(plan)  # type: ignore[arg-type]
 
@@ -251,7 +289,12 @@ async def test_the_terminal_drops_the_scratch_tables_however_the_statement_ends(
     monkeypatch.setattr(mat, "drop_scratch", _drop)
     monkeypatch.setattr(_pipeline, "_execute_plan_with_secrets", _fails)
     plan = SimpleNamespace(
-        scratch=(("loc", "scratch__x"),), embedded=None, two_step=None, code_write=None, temp=None
+        scratch=(("loc", "scratch__x"),),
+        embedded=None,
+        two_step=None,
+        code_write=None,
+        keyed_write=None,
+        temp=None,
     )
     with pytest.raises(RuntimeError, match="the engine failed"):
         await _pipeline._execute_plan_bound(plan, object())  # type: ignore[arg-type]
@@ -286,7 +329,7 @@ async def test_a_grpc_remote_tables_ttl_is_the_first_one_set(
         "table_name": "s__m",
         "source_id": "grpc_src",
         "cache_ttl": registered,
-        "columns": [{"column_name": "id"}],
+        "columns": [{"column_name": "id", "data_type": "integer"}],
     }
     query = SimpleNamespace(
         columns=[],
@@ -333,7 +376,9 @@ async def test_a_grpc_remote_table_with_arguments_keeps_only_for_its_own_ttl(
         "table_name": "s__m",
         "source_id": "grpc_src",
         "cache_ttl": own,
-        "columns": [{"column_name": "_nf_id", "native_filter_type": "grpc_input"}],
+        "columns": [
+            {"column_name": "_nf_id", "data_type": "text", "native_filter_type": "grpc_input"}
+        ],
     }
     query = SimpleNamespace(
         columns=[],

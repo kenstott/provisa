@@ -6,24 +6,29 @@
 #
 #   prebuilt ─┬─ macos ───┐
 #             ├─ windows ─┤
-#             └─ linux ───┼─ publish-pypi, publish-notebook-pypi ── publish-provisa-pypi ── publish
-#   packages ─────────────┘
+#             └─ linux ───┼─ publish-pypi, publish-notebook-pypi ─┬─ publish
+#   packages ─────────────┘  publish-connector-image ──────────────┘
 #
-# On a tag (v*) the release is built and published as it always was. Run by hand (Actions ->
-# Build Provisa Packages -> Run workflow) it is a DRY RUN: every artifact is built and uploaded
-# to the run under the names the given `version` produces, and nothing leaves the run -- no
-# draft release, no attachment, no PyPI upload, no image push, no signed attestation. A manual
-# run publishes only when it is started ON the tag whose version it names (re-publishing that
-# tag) with `publish` checked.
+# Every job that builds a release asset attaches it to the draft release itself, once
+# (.github/actions/attach-release-assets); the publish leg copies nothing -- it checks the draft
+# has every asset, undrafts it and regenerates the index. The provisa server wheel is not uploaded
+# to PyPI: it outgrew PyPI's 10 GB project limit (alpha.510). Each platform's wheel is a release
+# asset, listed by the package index on GitHub Pages (`pip install provisa --extra-index-url
+# https://kenstott.github.io/provisa/simple/`).
+#
+# A tag starts nothing. Run by hand (Actions -> Build Provisa Packages -> Run workflow) on
+# release/<version>, once the suites are green there, it is the release's DRY RUN, which "Release:
+# cut" requires: every artifact is built and uploaded to the run under the names the given
+# `version` produces (an asset's upload fails when its file is missing), and nothing leaves the
+# run -- no draft release, no attachment, no PyPI upload, no image push, no signed attestation. A run publishes only when it is started ON the tag
+# whose version it names with `publish` checked, which is how "Release: cut" starts it.
 #
 # A failed job is re-run alone with "Re-run failed jobs": the legs that passed are not built
-# again, and the artifacts they uploaded to the run are still there for the leg that reads them.
+# again, their assets are already on the draft, and the artifacts they uploaded to the run are
+# still there for the leg that reads them.
 name: Build Provisa Packages
 
 on:
-  push:
-    tags:
-      - 'v*'
   workflow_dispatch:
     inputs:
       version:
@@ -37,21 +42,39 @@ on:
         type: boolean
         default: false
 
-# One release at a time; a dry run never cancels one (nor another dry run of another ref).
+# Per ref: a dry run never cancels a release on its tag, nor a dry run of another ref.
 concurrency:
-  group: ${{ github.event_name == 'push' && 'release' || format('release-dry-run-{0}', github.ref) }}
+  group: release-build-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  # REQ-2225: the platform connector block, first: every package of the release carries it (each
+  # leg job that packages provisa downloads it over its checkout). On a release the connector's
+  # image is built here and kept in the run; publish-connector-image pushes it after every leg.
+  # A dry run builds no image and ships the empty block.
+  platform-connectors:
+    name: Platform connector block
+    permissions:
+      contents: read
+    uses: ./.github/workflows/release-platform-connectors.yml
+    with:
+      version: ${{ inputs.version || github.ref_name }}
+      publish: ${{ inputs.publish == true && github.ref_type == 'tag' && github.ref_name == inputs.version }}
+
   prebuilt:
     name: Prebuilt inputs
+    needs: platform-connectors
+    # Each job attaches what it builds to the draft release itself (contents).
+    permissions:
+      contents: write
     uses: ./.github/workflows/release-prebuilt.yml
     with:
       version: ${{ inputs.version || github.ref_name }}
-      publish: ${{ github.event_name == 'push' || (inputs.publish == true && github.ref_type == 'tag' && github.ref_name == inputs.version) }}
+      publish: ${{ inputs.publish == true && github.ref_type == 'tag' && github.ref_name == inputs.version }}
 
   packages:
     name: Packages
+    needs: platform-connectors
     # The union of what the leg's jobs ask for: attach SBOMs to the draft release (contents),
     # Sigstore for the JAR's attestation (id-token, attestations).
     permissions:
@@ -61,15 +84,18 @@ jobs:
     uses: ./.github/workflows/release-packages.yml
     with:
       version: ${{ inputs.version || github.ref_name }}
-      publish: ${{ github.event_name == 'push' || (inputs.publish == true && github.ref_type == 'tag' && github.ref_name == inputs.version) }}
+      publish: ${{ inputs.publish == true && github.ref_type == 'tag' && github.ref_name == inputs.version }}
 
   macos:
     name: macOS installers
     needs: prebuilt
+    # Each job attaches what it builds to the draft release itself (contents).
+    permissions:
+      contents: write
     uses: ./.github/workflows/release-macos.yml
     with:
       version: ${{ inputs.version || github.ref_name }}
-      publish: ${{ github.event_name == 'push' || (inputs.publish == true && github.ref_type == 'tag' && github.ref_name == inputs.version) }}
+      publish: ${{ inputs.publish == true && github.ref_type == 'tag' && github.ref_name == inputs.version }}
     secrets:
       APPLE_CERT_P12_BASE64: ${{ secrets.APPLE_CERT_P12_BASE64 }}
       APPLE_CERT_P12_PASSWORD: ${{ secrets.APPLE_CERT_P12_PASSWORD }}
@@ -81,10 +107,13 @@ jobs:
   windows:
     name: Windows installers
     needs: prebuilt
+    # Each job attaches what it builds to the draft release itself (contents).
+    permissions:
+      contents: write
     uses: ./.github/workflows/release-windows.yml
     with:
       version: ${{ inputs.version || github.ref_name }}
-      publish: ${{ github.event_name == 'push' || (inputs.publish == true && github.ref_type == 'tag' && github.ref_name == inputs.version) }}
+      publish: ${{ inputs.publish == true && github.ref_type == 'tag' && github.ref_name == inputs.version }}
     secrets:
       WINDOWS_CERT_PFX_BASE64: ${{ secrets.WINDOWS_CERT_PFX_BASE64 }}
       WINDOWS_CERT_PFX_PASSWORD: ${{ secrets.WINDOWS_CERT_PFX_PASSWORD }}
@@ -93,20 +122,23 @@ jobs:
   linux:
     name: Linux AppImage
     needs: prebuilt
+    # Each job attaches what it builds to the draft release itself (contents).
+    permissions:
+      contents: write
     uses: ./.github/workflows/release-linux.yml
     with:
       version: ${{ inputs.version || github.ref_name }}
-      publish: ${{ github.event_name == 'push' || (inputs.publish == true && github.ref_type == 'tag' && github.ref_name == inputs.version) }}
+      publish: ${{ inputs.publish == true && github.ref_type == 'tag' && github.ref_name == inputs.version }}
 
-  # PyPI, server and client: the orchestrator's own jobs, never a reusable workflow's -- PyPI
+  # PyPI, client and notebook: the orchestrator's own jobs, never a reusable workflow's -- PyPI
   # trusted publishing does not accept a token issued to a reusable workflow
   # (pypa/gh-action-pypi-publish#166). Only after every leg has succeeded; nothing that cannot
   # be taken back happens until every artifact exists. Not run on a dry run.
   publish-pypi:
     name: Publish Python client to PyPI
     # Publishes and does nothing else: not run on a dry run.
-    if: ${{ github.event_name == 'push' || (inputs.publish == true && github.ref_type == 'tag' && github.ref_name == inputs.version) }}
-    needs: [prebuilt, packages, macos, windows, linux]
+    if: ${{ inputs.publish == true && github.ref_type == 'tag' && github.ref_name == inputs.version }}
+    needs: [platform-connectors, prebuilt, packages, macos, windows, linux]
     runs-on: ubuntu-latest
     permissions:
       id-token: write
@@ -125,13 +157,13 @@ jobs:
           attestations: true
 
   # REQ-2071: provisa pins provisa-notebook at its own version, so the notebook package is on PyPI
-  # before provisa is: a `pip install provisa` never resolves to a provisa whose dependency is not
-  # there yet. Built with everything else; published only after every leg has succeeded.
+  # before the release (and the provisa index that lists its wheels) is published: a `pip install
+  # provisa` never resolves to a provisa whose dependency is not there yet. Built with everything else; published only after every leg has succeeded.
   publish-notebook-pypi:
     name: Publish provisa-notebook to PyPI
     # Publishes and does nothing else: not run on a dry run.
-    if: ${{ github.event_name == 'push' || (inputs.publish == true && github.ref_type == 'tag' && github.ref_name == inputs.version) }}
-    needs: [prebuilt, packages, macos, windows, linux]
+    if: ${{ inputs.publish == true && github.ref_type == 'tag' && github.ref_name == inputs.version }}
+    needs: [platform-connectors, prebuilt, packages, macos, windows, linux]
     runs-on: ubuntu-latest
     permissions:
       id-token: write
@@ -149,48 +181,65 @@ jobs:
           skip-existing: true
           attestations: true
 
-  publish-provisa-pypi:
-    name: Publish provisa server to PyPI
+  # REQ-2225: the Spark connector's image, built by platform-connectors and kept in the run, pushed
+  # to the registry byte for byte -- after every leg, and before any package naming it (the provisa
+  # wheel and the installers carry the block) is published. `connector push` refuses an image other
+  # than the one the block's digest names.
+  publish-connector-image:
+    name: Publish Spark connector image
     # Publishes and does nothing else: not run on a dry run.
-    if: ${{ github.event_name == 'push' || (inputs.publish == true && github.ref_type == 'tag' && github.ref_name == inputs.version) }}
-    needs: [prebuilt, packages, macos, windows, linux, publish-notebook-pypi]
+    if: ${{ inputs.publish == true && github.ref_type == 'tag' && github.ref_name == inputs.version }}
+    needs: [platform-connectors, prebuilt, packages, macos, windows, linux]
     runs-on: ubuntu-latest
-    # id-token: write is what lets gh-action-pypi-publish request a Sigstore-signed PEP 740
-    # attestation for each uploaded file — PyPI removed GPG signature uploads in 2023, so this
-    # (not a detached .asc) is the only signing PyPI currently accepts.
     permissions:
-      id-token: write
+      contents: read
+      packages: write
     steps:
-      # REQ-2194: one provisa wheel per platform (each carries the compiled encoders), and the sdist.
-      - name: Download dist
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: ./.github/actions/setup-python
+
+      - name: Download the block
         uses: actions/download-artifact@v4
         with:
-          pattern: provisa-wheel-*-dist
-          path: dist/
-          merge-multiple: true
+          name: platform-connectors
+          path: provisa/core
 
-      - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
+      - name: Download the image
+        uses: actions/download-artifact@v4
         with:
-          packages-dir: dist/
-          skip-existing: true
-          attestations: true
+          name: spark-connector-image
+          path: spark-connector-image
 
-  # After every PyPI publication: the release's attachments and undraft, the image pushes. A
-  # failed or partial run publishes nothing. On a dry run the PyPI jobs are skipped, and a job is
-  # skipped with the jobs it needs unless it says otherwise: this one still runs (its dry run
-  # proves the asset set is whole), and never after a publication that failed or was cancelled.
+      - name: Push the image the block names
+        env:
+          REGISTRY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          uv run provisa connector push spark-connector-image \
+            --config provisa/core/platform_connectors.yaml --name spark \
+            --registry-user "$GITHUB_ACTOR" --registry-password-env REGISTRY_PASSWORD
+
+  # After every PyPI publication: the check that the draft has every asset and its undraft, the
+  # provisa wheel index on GitHub Pages, the image pushes. A failed or partial run publishes
+  # nothing. On a dry run the PyPI jobs are skipped, and a job is skipped with the jobs it needs
+  # unless it says otherwise: this one still runs (its images build without a push), and never
+  # after a publication that failed or was cancelled.
   publish:
     name: Attach and publish
-    needs: [prebuilt, packages, macos, windows, linux, publish-pypi, publish-notebook-pypi, publish-provisa-pypi]
+    needs: [platform-connectors, prebuilt, packages, macos, windows, linux, publish-pypi, publish-notebook-pypi, publish-connector-image]
     if: ${{ !cancelled() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') }}
-    # The union of what the leg's jobs ask for: attach to and undraft the release (contents),
-    # Sigstore attestations (id-token), the image pushes (packages).
+    # The union of what the leg's jobs ask for: undraft the release (contents), the Pages
+    # deployment's token (id-token), the image pushes (packages), the wheel index's deployment
+    # (pages).
     permissions:
       contents: write
       id-token: write
       packages: write
+      pages: write
     uses: ./.github/workflows/release-publish.yml
     with:
       version: ${{ inputs.version || github.ref_name }}
-      publish: ${{ github.event_name == 'push' || (inputs.publish == true && github.ref_type == 'tag' && github.ref_name == inputs.version) }}
+      publish: ${{ inputs.publish == true && github.ref_type == 'tag' && github.ref_name == inputs.version }}

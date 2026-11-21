@@ -40,7 +40,7 @@ _ROLES = {
         "capabilities": ["table_registration", "access_config"],
         "domain_access": ["*"],
     },
-    "reader": {"id": "reader", "capabilities": [], "domain_access": ["*"]},
+    "reader": {"id": "reader", "capabilities": ["command_execution"], "domain_access": ["*"]},
     "outsider": {"id": "outsider", "capabilities": [], "domain_access": ["*"]},
 }
 

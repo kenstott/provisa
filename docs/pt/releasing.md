@@ -32,7 +32,7 @@ O workflow de CI (`build-dmg.yml`, chamado "Build Provisa Packages") dispara em 
 1. **Resolver metadados de release** — detecta o canal a partir do sufixo da tag, deriva a versão PEP 440 e os nomes de asset
 2. **Baixar / empacotar plugins Trino** — puxa conectores Calcite Trino e empacota um tarball
 3. **Puxar imagens Docker core / obs / demo** — salva tarballs de imagem de serviço (arm64, mais amd64 core para o nível de container Windows)
-4. **Build de DMGs Core / Obs / Demo macOS** — roda em `macos-14` (Apple Silicon), air-gapped
+4. **Build de DMGs Core / Obs / Demo macOS** — roda em `macos-15` (Apple Silicon), air-gapped
 5. **Build do AppImage Linux** — core, air-gapped
 6. **Build do instalador Core Windows** — nativo, Python embutido, sem Docker
 7. **Build do instalador de nível Container Windows** — WSL2 + Trino, busca imagens sob demanda (sem VirtualBox/OVA)

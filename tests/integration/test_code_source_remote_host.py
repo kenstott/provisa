@@ -37,6 +37,7 @@ from tests.integration.test_code_sources_e2e import (
     _ROLE,
     _rows,
     _sql,
+    build_provisa_wheel,
     code_source,  # noqa: F401 -- the fixture: the source, its tables registered and released
     runtime_cache,  # noqa: F401 -- the fixture
     server,  # noqa: F401 -- the fixture: an isolated server per language
@@ -66,7 +67,13 @@ def _api(srv, method: str, path: str, **kw) -> httpx.Response:
 
 
 @pytest.fixture(scope="module")
-def remote_host(server, code_source, tmp_path_factory):  # noqa: F811
+def provisa_wheel(runtime_cache):  # noqa: F811
+    """This checkout's Linux provisa wheel, in the build cache's wheelhouse (REQ-2194)."""
+    return build_provisa_wheel(runtime_cache, _ARCH)
+
+
+@pytest.fixture(scope="module")
+def remote_host(server, code_source, provisa_wheel, tmp_path_factory):  # noqa: F811
     """The source's image, built through the API, loaded and run; its port, its pairing code, its
     image and its container's name."""
     started = _api(server, "POST", "/builds", json={"arch": _ARCH, "download": True})

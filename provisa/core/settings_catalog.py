@@ -65,6 +65,20 @@ DECLARED: list[Setting] = [
         unit="points",
     ),
     Setting(
+        key="parameters.max_calls_per_statement",
+        card="limits",
+        type="int",
+        effect="live",  # read when a statement's parameters are bound
+        # REQ-1986: each value a statement gives a table's parameter is one call to its source
+        # (an IN list, the branches of an OR, a join's distinct keys); a statement that needs
+        # more calls to one table than this is refused, naming this setting.
+        req="REQ-1986",
+        env="PROVISA_PARAMETERS_MAX_CALLS_PER_STATEMENT",
+        default=1000,
+        min=1,
+        unit="calls",
+    ),
+    Setting(
         key="logs.preview_lines",
         card="limits",
         type="int",
@@ -96,11 +110,15 @@ DECLARED: list[Setting] = [
         type="int",
         effect="live",  # read when a graph query is compiled
         # REQ-2135: the most hops a variable-length path or property path walks when the query
-        # gives no bound of its own; a result cut at it says so. 10 was the bound before the setting.
+        # gives no bound of its own; a SPARQL result cut at it says so. REQ-348: the maximum an
+        # unbounded Cypher path ([*], [*n..], an unbounded shortestPath) takes; a Cypher walk keeps
+        # the trail rule, so the maximum is a safety limit, very large by design (maintainer
+        # 2026-11-03: 1000), and a walk that would go further fails by name. A recursive statement
+        # runs on Trino with max_recursion_depth one past it.
         req="REQ-2135",
         env="PROVISA_GRAPH_DEPTH_LIMIT",
         config_path=("server", "limits", "graph_depth_limit"),
-        default=10,
+        default=1000,
         min=1,
         unit="hops",
     ),
@@ -159,6 +177,20 @@ DECLARED: list[Setting] = [
         default=1_000_000,
         min=1,
         unit="rows",
+    ),
+    # --- A principal's Kafka sinks (REQ-812) ----------------------------------------------------
+    # Live: read when a sink is started. A client-started sink runs until its owner loses the
+    # role it was started under, so how many one principal holds at once is bounded.
+    Setting(
+        key="subscriptions.max_sinks_per_principal",
+        card="limits",
+        type="int",
+        effect="live",
+        req="REQ-812",  # 5 (maintainer 2026-11-16); a sink past it is refused by name
+        env="PROVISA_MAX_SINKS_PER_PRINCIPAL",
+        default=5,
+        min=1,
+        unit="sinks",
     ),
     # --- A principal's graph session (REQ-2176) ------------------------------------------------
     # Live: read at each sweep. A graph session unused this long is ended.
@@ -228,12 +260,27 @@ DECLARED: list[Setting] = [
         unit="seconds",
     ),
     Setting(
+        key="sparql.query_timeout",
+        card="limits",
+        type="float",
+        effect="live",  # read at each SPARQL call: a preview, a Wikidata lookup, a replica load
+        # REQ-1923 (amended 2026-11-20): complex SPARQL is given a generous deadline, stated as a
+        # setting with its UI; the full read happens in the replica load, never in a request.
+        req="REQ-1923",
+        env="PROVISA_SPARQL_QUERY_TIMEOUT",
+        config_path=("server", "limits", "sparql_query_timeout"),
+        default=300.0,
+        min=1,
+        unit="seconds",
+    ),
+    Setting(
         key="sampling.default_sample_size",
         card="limits",
         type="int",
         effect="live",
         req="REQ-165",
         env="PROVISA_SAMPLE_SIZE",
+        org_owned=True,
         default=10000,
         min=1,
         unit="rows",
@@ -327,7 +374,8 @@ DECLARED: list[Setting] = [
         type="int",
         effect="live",  # carried with each call to a code host, and kept by the host
         # REQ-2100: the memory a code source's DuckDB answers its statements in, past which it
-        # spills to disk; 1024 holds a large answer's working set on a small host.
+        # spills to disk; 1024 holds a large answer's working set on a small host. At least 16 MiB
+        # for each of codesource.duckdb_threads (settings_registry.check_pairs).
         req="REQ-2100",
         env="PROVISA_CODESOURCE_DUCKDB_MEMORY_MB",
         default=1024,
@@ -353,12 +401,40 @@ DECLARED: list[Setting] = [
         type="int",
         effect="live",  # carried with each call to a code host, and kept by the host
         # REQ-2100: the threads a code source's DuckDB answers its statements on; 4 leaves the
-        # host's other cores to the code itself.
+        # host's other cores to the code itself. Each takes at least 16 MiB of
+        # codesource.duckdb_memory_mb (settings_registry.check_pairs).
         req="REQ-2100",
         env="PROVISA_CODESOURCE_DUCKDB_THREADS",
         default=4,
         min=1,
         unit="threads",
+    ),
+    Setting(
+        key="codesource.health_poll_interval",
+        card="limits",
+        type="int",
+        effect="live",  # read before each sweep
+        # REQ-2221: how often Provisa asks a connector's host for its health; 30 seconds notices a
+        # restarted host, which then runs its @on-start again, without loading a healthy one.
+        req="REQ-2221",
+        env="PROVISA_CODESOURCE_HEALTH_POLL_INTERVAL",
+        default=30,
+        min=5,
+        unit="seconds",
+    ),
+    Setting(
+        key="codesource.worker_idle_timeout",
+        card="limits",
+        type="int",
+        effect="live",  # read at each sweep of the worker pool
+        # REQ-1984: how long a code source's, a preflight's or a remote host's worker may go
+        # unused before the pool ends it; 900 keeps a worker warm between a source's reads and
+        # frees an unused one's process within a quarter of an hour.
+        req="REQ-1984",
+        env="PROVISA_CODESOURCE_WORKER_IDLE_TIMEOUT",
+        default=900,
+        min=60,
+        unit="seconds",
     ),
     Setting(
         key="kaggle.api_token",
@@ -599,8 +675,9 @@ DECLARED: list[Setting] = [
         effect="live",  # read when a source's file is downloaded
         # REQ-2113: the directories a CSV or Parquet source's file may be downloaded from by a
         # file mount path, after following symlinks. None by default: each entry lets the
-        # server's own files under it be copied into an org's folder. Refused whatever it holds
-        # on a server of many organizations.
+        # server's own files under it be copied into an org's folder. A held org
+        # (sandbox_egress.held) copies none outside its folder but what its demo declares,
+        # whatever it holds (REQ-1997).
         req="REQ-2113",
         env="PROVISA_SOURCES_DOWNLOAD_ROOTS",
         default=(),
@@ -613,7 +690,8 @@ DECLARED: list[Setting] = [
         effect="live",  # read when a Logs source is saved, previewed and read
         # REQ-1996 (maintainer ruling, 2026-10-12): the directories a Logs source's glob may
         # resolve into, after following symlinks; by default /var/log. Each entry lets the
-        # server's own files under it be read into tables.
+        # server's own files under it be read into tables. A held org (sandbox_egress.held)
+        # reads none outside its folder but what its demo declares (REQ-1997).
         req="REQ-1996",
         env="PROVISA_LOGS_ALLOWED_ROOTS",
         default=("/var/log",),
@@ -727,13 +805,14 @@ DECLARED: list[Setting] = [
         nullable=True,
         secret=True,
     ),
-    # REQ-2077: how long before a role grant expires, or is removed for lack of use, its holder
-    # and the org's admins are told.
+    # REQ-2077, REQ-2219: the one expiring-soon setting: how long before a role grant, or one
+    # entitlement entry of it, ends (or the grant is removed for lack of use) its holder and the
+    # org's admins are told, and the entry's expiring-soon event is emitted.
     Setting(
         key="auth.role_grant_notice_days",
         card="security",
         type="int",
-        effect="live",  # read at each sweep
+        effect="live",  # read at each expiry run and each read of the kinds
         req="REQ-2077",
         env="PROVISA_GRANT_NOTICE_DAYS",
         default=7,
@@ -794,6 +873,19 @@ DECLARED: list[Setting] = [
         guard="confirm",
     ),
     Setting(
+        key="embedding.hub_endpoint",
+        card="network",
+        type="str",
+        effect="live",  # read at each fetch of a local embedding model (provisa/vector/providers.py)
+        # REQ-420: the Hugging Face hub a local embedding model is fetched from (a mirror behind a
+        # firewall). Read here, given to every fetch: huggingface_hub would otherwise read
+        # HF_ENDPOINT itself, once, at import.
+        req="REQ-420",
+        env="HF_ENDPOINT",
+        config_path=("embedding", "hub_endpoint"),
+        default="https://huggingface.co",
+    ),
+    Setting(
         key="server.flight_compression",
         card="network",
         type="enum",
@@ -811,6 +903,21 @@ DECLARED: list[Setting] = [
         effect="restart",  # a listener is bound when the server starts
         req="REQ-1913",
         env="PROVISA_PGWIRE_PORT",
+        default=0,
+        min=0,
+        max=65535,
+        guard="confirm",
+    ),
+    Setting(
+        key="server.minted_pgwire_port",
+        card="network",
+        type="int",
+        effect="restart",  # a listener is bound when the server starts
+        # REQ-2226: the port a code source's sandbox may reach, and a remote host is given. It
+        # accepts only tokens minted for one call. 0 is not started: a command given a table is
+        # then refused, naming this setting.
+        req="REQ-2226",
+        env="PROVISA_MINTED_PGWIRE_PORT",
         default=0,
         min=0,
         max=65535,
@@ -1332,6 +1439,26 @@ DECLARED: list[Setting] = [
         env="PROVISA_MCP_ROLE",
         nullable=True,
         guard="confirm",
+    ),
+    Setting(
+        key="mcp.principal",
+        card="mcp",
+        type="str",
+        effect="live",  # the principal local stdio calls act for; unset, the stdio transport refuses
+        req="REQ-1105",
+        env="PROVISA_MCP_PRINCIPAL",
+        nullable=True,
+        guard="confirm",
+    ),
+    Setting(
+        key="mcp.tools",
+        card="mcp",
+        type="enum",
+        effect="live",  # read when a client's request names no mode on its address
+        req="REQ-2246",
+        env="PROVISA_MCP_TOOLS",
+        default="full",
+        choices=("full", "sip"),
     ),
     Setting(
         key="mcp.external_url",

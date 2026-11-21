@@ -15,7 +15,7 @@ REQ-848 PIPELINE_LAND) instead of a Provisa listener relaying its messages.
   unchanged (it keeps its offsets). A changed definition gets a new pipeline and the old one is
   dropped. A new pipeline starts at the topic's latest offsets, as the relay consumer does.
 - :func:`sweep` drops this org and region's Kafka pipelines whose table is no longer wired: the
-  table was set as draft, deleted or retired. App shutdown never stops a pipeline. It lives in the
+  table was withdrawn, deleted or retired. App shutdown never stops a pipeline. It lives in the
   database and serves every worker.
 - :func:`ripple_new_batches` is the region's scheduled poll. It reads each pipeline's new successful
   batches from SingleStore's batch metadata (no rows) and ripples the table's change to the views
@@ -27,6 +27,8 @@ The functions that touch the store are synchronous and run on a worker thread.
 from __future__ import annotations
 
 from typing import Any
+
+from provisa.kafka.security import PLAINTEXT, KafkaSecurity
 
 from provisa.federation import singlestore_pipeline as sp
 
@@ -77,6 +79,7 @@ def ensure(
     field_mapping: dict[str, str] | None = None,
     schema_registry: str | None = None,
     landed: dict[int, int],
+    security: KafkaSecurity = PLAINTEXT,
 ) -> str:
     """Make ``schema.table`` land from ``origin`` through its continuous pipeline, and return the
     pipeline's name. ``columns`` are (name, IR type) pairs, keyed by ``pk_columns``. ``landed``:
@@ -86,7 +89,7 @@ def ensure(
     from provisa.federation.sqlalchemy_runtime import _ensure_schema, _ensure_table
 
     definition = sp.kafka_definition(
-        origin, columns, pk_columns, field_mapping, schema_registry, bootstrap
+        origin, columns, pk_columns, field_mapping, schema_registry, bootstrap, security
     )
     name = sp.kafka_pipeline_name(schema, table, definition)
     prefix = sp.kafka_table_prefix(schema, table)
@@ -113,12 +116,18 @@ def ensure(
                 pk_columns=pk_columns,
                 field_mapping=field_mapping,
                 schema_registry=schema_registry,
+                security=security,
             )
             try:
                 _execute(conn, [*statements, sp.offsets_from(schema, name, landed)])
-            except Exception:
+            except Exception as exc:
                 # Another worker wiring the same table may have created it first.
                 if name not in _running(conn, schema):
+                    if security.password:
+                        # REQ-147: the DDL holds the password, and the database's error can quote
+                        # the statement; what is raised here is logged by the caller.
+                        scrubbed = str(exc).replace(security.password, "***")
+                        raise RuntimeError(f"pipeline {name}: {scrubbed}") from None
                     raise
         _execute(conn, [sp.start(schema, name)], tolerate=(sp.ALREADY_RUNNING,))
     return name

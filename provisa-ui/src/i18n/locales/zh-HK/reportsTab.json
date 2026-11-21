@@ -14,6 +14,8 @@
     "deleteConfirm": "確定刪除報表 {{name}} 嗎？",
     "deleted": "已刪除報表 {{name}}。",
     "empty": "ops 網域中未註冊任何報表。",
+    "filterPlaceholder": "篩選報表…",
+    "noMatch": "沒有符合的報表",
     "resize": "調整報表清單大小",
     "drift": {
       "title": "自上一週期以來的漂移",

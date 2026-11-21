@@ -2,6 +2,9 @@
   "common": {
     "loading": "載入中...",
     "cancel": "取消",
+    "stop": "停止",
+    "stopped": "已停止",
+    "stopQuery": "停止查詢",
     "save": "儲存",
     "delete": "刪除",
     "confirm": "確認",
@@ -9,7 +12,9 @@
     "identity": "識別",
     "discardTitle": "放棄變更?",
     "discardBody": "對 {{what}} 的變更尚未儲存。",
-    "discard": "放棄"
+    "discard": "放棄",
+    "deleting": "正在刪除…",
+    "deleteFailed": "未刪除：{{reason}}"
   },
   "app": {
     "apiUnreachable": "無法連接 Provisa API。",
@@ -42,12 +47,16 @@
     "yes": "是",
     "no": "否",
     "none": "—",
-    "expandUser": "顯示 {{username}} 的指派",
+    "expandUser": "展開 {{username}} 的指派",
     "deleteUser": "刪除 {{username}} 的帳戶",
     "assignmentsHeading": "角色:網域指派",
     "noAssignments": "沒有指派",
     "removeAssignment": "移除指派 {{role}}:{{domain}}",
     "roleLabel": "角色",
+    "rolesLabel": "角色",
+    "rolesPlaceholder": "選擇一個或多個角色",
+    "addList": "新增清單",
+    "removeList": "移除此清單",
     "domainLabel": "網域",
     "untilLabel": "截止",
     "untilPlaceholder": "無結束日期",
@@ -56,7 +65,6 @@
     "noExpiry": "無結束日期",
     "neverUsed": "從未",
     "allDomains": "*（所有網域）",
-    "add": "新增",
     "createHeading": "建立使用者",
     "username": "使用者名稱",
     "usernameRequired": "使用者名稱 *",
@@ -96,6 +104,6 @@
   },
   "pageError": {
     "title": "無法顯示此頁面",
-    "body": "渲染時出錯。應用程式的其他部分仍可使用：請前往其他頁面，或重新載入此頁面。"
+    "body": "轉譯時發生錯誤。應用程式的其他部分仍可正常使用，請前往其他頁面或重新載入此頁面。"
   }
 }

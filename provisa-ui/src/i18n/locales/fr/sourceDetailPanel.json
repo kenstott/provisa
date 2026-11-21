@@ -14,6 +14,9 @@
     "runProfilerTitle": "Exécuter maintenant pour chaque table membre",
     "profilerNoMembers": "Aucune table n'a rejoint ce profileur.",
     "profilerRan": "{{table}} : profilée",
-    "profilerFailed": "{{table}} : {{error}}"
+    "profilerFailed": "{{table}} : {{error}}",
+    "profilerNotRead": "{{table}} : non lue. Elle exige {{parameters}} et ne peut donc être ni comptée ni profilée.",
+    "withdrawConsequence": "Aucun rôle ne lit aucune de ses tables, aucun moteur ne l'attache et les répliques de ses tables sont supprimées. Sa définition, ses tables et ses autorisations sont conservées, et Remettre la rétablit telle qu'elle était.",
+    "withdrawnNote": "Retirée : aucune de ses tables n'est servie à aucun rôle tant qu'elle n'est pas remise."
   }
 }

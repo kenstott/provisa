@@ -77,6 +77,11 @@ select json_agg(json_build_array(o.oid::bigint, o.conname, o.contype, o.conrelid
 from pg_constraint o where o.connamespace = 11
 """
 
+_OPCLASSES_SQL = """
+select json_agg(json_build_array(o.oid::bigint, o.opcname, o.opcmethod::bigint) order by o.oid)
+from pg_opclass o where o.oid < 16384
+"""
+
 _DESCRIPTIONS_SQL = """
 select json_agg(json_build_array(d.objoid::bigint, d.classoid::bigint, d.objsubid, d.description)
   order by d.classoid, d.objoid, d.objsubid)
@@ -111,7 +116,8 @@ SYSTEM_INDEXES: each index on a system catalog, every one a btree: indexrelid, r
 indnatts, indnkeyatts, indisunique, indisprimary, indkey, indclass, indcollation and indoption
 (each vector's text), pg_get_indexdef's definition, and its columns as pg_get_indexdef names
 each. SYSTEM_CONSTRAINTS: each constraint on a system catalog: oid, conname, contype, conrelid,
-conindid, conkey's text, pg_get_constraintdef's definition."""
+conindid, conkey's text, pg_get_constraintdef's definition. OPCLASSES: each operator class
+PostgreSQL ships: oid, opcname, opcmethod, which amvalidate validates on any engine."""
 
 # Requirements: REQ-2190
 
@@ -142,6 +148,7 @@ def main() -> None:
     views = json.loads(_psql(prefix, _VIEW_DEFINITIONS_SQL))
     indexes = [_tuple(r) for r in json.loads(_psql(prefix, _SYSTEM_INDEXES_SQL))]
     constraints = [tuple(r) for r in json.loads(_psql(prefix, _SYSTEM_CONSTRAINTS_SQL))]
+    opclasses = [tuple(r) for r in json.loads(_psql(prefix, _OPCLASSES_SQL))]
     lines = [_HEADER.format(version=version), "PROCS: tuple[tuple, ...] = (\n"]
     lines += [f"    {row!r},\n" for row in procs]
     lines += [")\n\nORDERED_SET_ARGUMENTS: dict[int, str] = {\n"]
@@ -158,6 +165,8 @@ def main() -> None:
     lines += [f"    {row!r},\n" for row in indexes]
     lines += [")\n\nSYSTEM_CONSTRAINTS: tuple[tuple[int, str, str, int, int, str, str], ...] = (\n"]
     lines += [f"    {row!r},\n" for row in constraints]
+    lines += [")\n\nOPCLASSES: tuple[tuple[int, str, int], ...] = (\n"]
+    lines += [f"    {row!r},\n" for row in opclasses]
     lines += [")\n"]
     OUT_PATH.write_text("".join(lines))
 

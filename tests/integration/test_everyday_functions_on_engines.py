@@ -11,7 +11,8 @@
 """The everyday pg_catalog functions on an engine that is not DuckDB (REQ-2171): each statement of
 tests/unit/pgwire/everyday_function_statements.py, written as Provisa writes it for the engine and
 run there, against PostgreSQL 17's recorded answers. A call is answered as PostgreSQL answers it or
-refused by name: never another value."""
+refused by name: never another value. A statement conformance-functions measures on the engine is
+not replayed here (tests/integration/replay_coverage.py)."""
 
 # Requirements: REQ-2167, REQ-2171
 
@@ -28,6 +29,8 @@ from provisa.core.pg_error import PostgresError, from_engine
 from provisa.transpiler.function_macros import FunctionRefused
 from provisa.transpiler.pg_forms_types import REFUSED
 from provisa.transpiler.transpile import transpile
+from tests.integration.every_case import failures_of_every_case
+from tests.integration.replay_coverage import ENGINES, remaining
 from tests.unit.pgwire.everyday_function_statements import STATEMENTS
 from tests.unit.pgwire.pg17_everyday_function_answers import RECORDED
 
@@ -35,6 +38,15 @@ pytestmark = [pytest.mark.integration]
 
 #: What a statement holds that a dialect has no value of. ClickHouse has no NULL of an array.
 _NO_VALUE = {"clickhouse": ("NULL::integer[]",)}
+#: Each engine's statements of each family that conformance-functions does not measure there.
+_REMAINING: dict[str, dict[str, list[str]]] = {
+    engine: {
+        family: left
+        for family, statements in STATEMENTS.items()
+        if (left := remaining("everyday", engine, statements))
+    }
+    for engine in ENGINES
+}
 
 
 def _text(value: Any) -> str | None:
@@ -79,7 +91,7 @@ def _problem(run: Callable[[str], list[Any]], dialect: str, sql: str) -> str | N
 
 def _check(run: Callable[[str], list[Any]], dialect: str, family: str) -> None:
     served, refused, problems = 0, [], {}
-    for sql in STATEMENTS[family]:
+    for sql in _REMAINING[dialect][family]:
         if any(value in sql for value in _NO_VALUE.get(dialect, ())):
             continue
         problem = _problem(run, dialect, sql)
@@ -94,7 +106,7 @@ def _check(run: Callable[[str], list[Any]], dialect: str, family: str) -> None:
 
 
 @pytest.mark.requires_trino
-@pytest.mark.parametrize("family", STATEMENTS)
+@pytest.mark.parametrize("family", _REMAINING["trino"])
 def test_everyday_functions_on_trino(trino_conn, family):
     def run(sql: str) -> list[Any]:
         cursor = trino_conn.cursor()
@@ -105,8 +117,9 @@ def test_everyday_functions_on_trino(trino_conn, family):
 
 
 @pytest.mark.requires_clickhouse
-@pytest.mark.parametrize("family", STATEMENTS)
-def test_everyday_functions_on_clickhouse(family):
+def test_everyday_functions_on_clickhouse():
+    """One test over every family: requires_clickhouse boots the engine for each test
+    (tests/integration/every_case.py)."""
     import clickhouse_connect
 
     client = clickhouse_connect.get_client(
@@ -115,4 +128,13 @@ def test_everyday_functions_on_clickhouse(family):
         username=os.environ.get("CLICKHOUSE_USER", "default"),
         password=os.environ.get("CLICKHOUSE_PASSWORD", ""),
     )
-    _check(lambda sql: list(client.query(sql).result_rows), "clickhouse", family)
+
+    def run(sql: str) -> list[Any]:
+        return list(client.query(sql).result_rows)
+
+    assert (
+        failures_of_every_case(
+            _REMAINING["clickhouse"], lambda family: _check(run, "clickhouse", family)
+        )
+        == {}
+    )

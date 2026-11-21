@@ -452,14 +452,25 @@ async def analyze_sql(
     it is the same plan reaching the same terminal.
     """
     from provisa.compiler.sql_rewrite import split_sql_statements
-    from provisa.pgwire._pipeline import _execute_plan, _govern_and_route
-    from provisa.transpiler.router import Route
+    from provisa.pgwire._pipeline import _govern_and_route
 
     statements = split_sql_statements(sql)
     if len(statements) != 1:
         raise ValueError("EXPLAIN describes one statement; send a single statement")
 
     plan = await _govern_and_route(statements[0], role_id, as_of=as_of, explain=analyze)
+    return await explained_plan(plan, state, analyze=analyze)
+
+
+async def explained_plan(plan: Any, state: Any, *, analyze: bool) -> dict[str, Any]:
+    """Run a plan the pipeline built to EXPLAIN its statement and report it, whichever of the
+    pipeline's two entrances built it (REQ-1519, REQ-2222)."""
+    from dataclasses import asdict
+
+    from provisa.pgwire._pipeline import _execute_plan
+    from provisa.transpiler.router import Route
+
+    assert plan.stages is not None, "a plan built to EXPLAIN its statement carries its stages"
     is_engine = plan.route == Route.ENGINE
     dialect = state.federation_engine.dialect if is_engine else plan.dialect
     explained_sql = plan.physical_sql if is_engine else plan.sql
@@ -481,6 +492,8 @@ async def analyze_sql(
         # `sql` above is the physical lowering: it names source catalogs and cannot be resubmitted,
         # so this is the form the SQL editor detaches to.
         "semantic_sql": plan.semantic_sql,
+        # REQ-2222: the statement as each stage left it; `native` has no EXPLAIN around it.
+        "stages": asdict(plan.stages),
         "plan": [n.to_dict() for n in nodes],
         "mermaid": build_explain_mermaid(
             nodes,

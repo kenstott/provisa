@@ -59,8 +59,9 @@ def session_vars(state: Any) -> dict[str, str]:
     return out
 
 
-def row_rule(state: Any, table: Any) -> str | None:
-    """The administrator's row rule on ``table`` (its own, else its domain's), None for none."""
+def row_rule(state: Any, table: Any) -> Any:
+    """The administrator's row rule on ``table`` (its own, else its domain's), an expression;
+    None for none."""
     rls = state.rls_contexts.get(ROLE)
     if rls is None:
         return None

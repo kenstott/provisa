@@ -2,7 +2,7 @@
   "jsonApiPage": {
     "title": "Explorador JSON:API",
     "specLink": "Especificación",
-    "description": "Conjuntos de campos dispersos, filtrado, ordenación y paginación. El gobierno se aplica de manera uniforme independientemente del protocolo de transporte.",
+    "description": "Conjuntos de campos dispersos, filtrado, ordenación y paginación. Se aplica el mismo gobierno en todos los protocolos de red.",
     "tableLabel": "Tabla",
     "loadingOption": "Cargando…",
     "selectTablePlaceholder": "Seleccione una tabla",

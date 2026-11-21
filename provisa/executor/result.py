@@ -19,7 +19,10 @@ a result implementing :class:`ResultStream`. Two implementations exist:
   once. Used by the row-producing terminals so large user result sets never materialize.
 
 Both expose the same interface: ``column_names``, ``column_types``, ``iter_rows()``, ``batches()``,
-and a ``rows`` accessor. Streaming consumers (pgwire DataRow, bolt RECORD, gRPC, ndjson/csv/arrow)
+and a ``rows`` accessor. A result holding the engine's Arrow (:class:`ArrowResult`,
+:class:`ArrowStreamResult`, :func:`is_arrow`) also hands on its record batches
+(``arrow_batches()``); a row result has none, so an encoder takes it as rows and nothing builds it
+into Arrow to be encoded (REQ-2195). Streaming consumers (pgwire DataRow, bolt RECORD, gRPC, ndjson/csv/arrow)
 call ``batches()``/``iter_rows()``. Consumers that genuinely need the full set (GraphQL, JSON:API)
 call ``rows`` to buffer explicitly — the buffering is visible in the call, never silent.
 
@@ -31,7 +34,7 @@ from __future__ import annotations
 
 from collections.abc import Generator, Iterable, Iterator
 from dataclasses import dataclass, field
-from typing import Any, Callable, Protocol, runtime_checkable
+from typing import Any, Callable, Protocol, TypeGuard, runtime_checkable
 
 from provisa.core import request_deadline
 
@@ -68,11 +71,6 @@ class ResultStream(Protocol):  # REQ-028
         """Yield rows one at a time across all batches."""
         ...
 
-    def arrow_batches(self) -> Iterator[Any]:
-        """The result as Arrow record batches (REQ-2194): the engine's own, or a row result's
-        rows built into them at its fetch boundary."""
-        ...
-
     @property
     def rows(self) -> list[tuple]:
         """The full row list, materializing a streaming result if necessary."""
@@ -107,6 +105,11 @@ class QueryResult:  # REQ-028
     # set by the pipeline on a HIT; None for a result that was executed. A surface reports
     # HIT/MISS and the entry's age from it (``cache.middleware.build_cache_headers``).
     cache_entry: Any = field(default=None)
+    # REQ-1961: the governed statement's result shape (its plan's ``result_shape``; awaited, each
+    # result column's name and registered type, or None), set by the batch pipeline for a surface
+    # that writes the rows without holding the plan (/data/sql). None for a result no governed
+    # plan answered.
+    result_shape: Any = field(default=None, init=False, repr=False)
     stats: StreamStats = field(init=False)
 
     def __post_init__(self) -> None:
@@ -126,18 +129,6 @@ class QueryResult:  # REQ-028
 
     def materialize(self) -> QueryResult:
         return self
-
-    def arrow_batches(self) -> Iterator[Any]:  # REQ-2194
-        """The rows as Arrow record batches, built here from the rows (``ir_arrow.row_batch``):
-        the fetch boundary of a row-returning engine (docs/arch/fetch-paths.md)."""
-        from provisa.core.ir_arrow import row_batch
-
-        for batch in self.batches(_ARROW_BATCH_ROWS):
-            yield row_batch(batch, self.column_names, self.column_types)
-
-
-#: Rows per record batch a row result is handed to an encoder in (DuckDB's Arrow reader's size).
-_ARROW_BATCH_ROWS = 65_536
 
 
 class DataRowResult(QueryResult):  # REQ-2194
@@ -260,19 +251,6 @@ class StreamingQueryResult:  # REQ-028
         )
         q.stats = self.stats
         return q
-
-    def arrow_batches(self) -> Generator[Any, None, None]:  # REQ-2194
-        """Each row batch as an Arrow record batch, built as it is pulled (``ir_arrow.row_batch``):
-        the fetch boundary of a row-returning engine (docs/arch/fetch-paths.md)."""
-        from provisa.core.ir_arrow import row_batch
-
-        batches = self.batches()
-        try:
-            for batch in batches:
-                if batch:
-                    yield row_batch(batch, self.column_names, self.column_types)
-        finally:
-            batches.close()
 
     def _begin(self) -> None:
         if self._consumed:
@@ -464,6 +442,14 @@ class ArrowResult(QueryResult):  # REQ-2194
                 "ArrowResult rows were replaced; its Arrow table no longer holds them"
             )
         return iter(self.table.to_batches())
+
+
+def is_arrow(result: ResultStream) -> TypeGuard[ArrowResult | ArrowStreamResult]:  # REQ-2195
+    """Whether ``result`` holds the engine's own Arrow (``arrow_batches()`` hands it on): an
+    encoder reads it as Arrow, and any other result from its rows, never built into Arrow."""
+    return isinstance(result, ArrowStreamResult) or (
+        isinstance(result, ArrowResult) and result.table is not None
+    )
 
 
 def rewrapped(  # REQ-2194

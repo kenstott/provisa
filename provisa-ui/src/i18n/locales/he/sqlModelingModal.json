@@ -1,11 +1,11 @@
 {
   "sqlModelingModal": {
     "title": "מידול SQL",
-    "description": "חילוץ תנאי JOIN כמועמדי קשר חדשים — קשרים קיימים אינם נכללים",
+    "description": "חילוץ תנאי JOIN כמועמדים לקשרים חדשים. קשרים קיימים מוחרגים.",
     "close": "סגירה",
     "tabSql": "SQL",
     "tabCanvas": "קנבס",
-    "nlPlaceholder": "שאלה בשפה חופשית — מייצר SQL…",
+    "nlPlaceholder": "אפשר לשאול בשפה טבעית כדי לייצר SQL…",
     "nlLoading": "טוען",
     "generateSql": "יצירת SQL",
     "generating": "מייצר…",

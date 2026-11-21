@@ -1,0 +1,66 @@
+{
+  "proposalsTable": {
+    "intro": "A ticked row is accepted when you apply. Rows scoring at least the threshold start ticked. A row with neither box ticked stays undecided.",
+    "colScore": "Score",
+    "colConfidence": "Confidence",
+    "colJev": "Jev",
+    "colKind": "Kind",
+    "colMeasure": "Measured",
+    "colReasoning": "Reasoning",
+    "colNote": "Note",
+    "colNotAgain": "Don't recommend again",
+    "notAgainAria": "Don't recommend {{name}} again",
+    "kind": {
+      "foreign_keys": "Constraint",
+      "semantics": "Semantic"
+    },
+    "asWritten": "As the model wrote it: {{answer}}",
+    "apply": "Apply",
+    "applyAccept": "Accept {{count}}",
+    "applyNotAgain": "Don't recommend {{count}} again",
+    "applyBoth": "Accept {{accept}}, don't recommend {{notAgain}} again",
+    "applied": "{{accepted}} accepted, {{notAgain}} not to be recommended again.",
+    "failed": "{{count}} could not be applied:",
+    "failed_other": "{{count}} could not be applied:",
+    "none": "This run has no proposal left to decide.",
+    "reason": {
+      "invalid_shape": "Not a relationship as asked for: a field is missing or has the wrong form",
+      "unknown_column": "Names a table or column the request did not compare",
+      "not_comparable": "The two columns have different classes, so they are not compared",
+      "below_threshold": "Scored under the {{threshold}}% a suggestion is kept at.",
+      "same_column": "From a column to itself",
+      "existing": "Already registered",
+      "rejected": "Rejected before",
+      "out_of_scope": "Outside the chosen source and target tables"
+    },
+    "threshold": "Tick from",
+    "thresholdHint": "Your own threshold, kept for your next runs.",
+    "measure": {
+      "inTarget": "{{found}} of {{values}} source values in the target.",
+      "inTargetFirst": "{{found}} of the first {{values}} source values in the target.",
+      "inSource": "{{found}} of {{values}} target values in the source.",
+      "inSourceFirst": "{{found}} of the first {{values}} target values in the source.",
+      "both": "Both columns are keys.",
+      "target": "The target is a key.",
+      "source": "The source is a key.",
+      "neither": "Neither column is a key.",
+      "notRead": {
+        "source": "The source was not read: its table requires a parameter.",
+        "target": "The target was not read: its table requires a parameter."
+      },
+      "notReadable": {
+        "source": "You cannot read the source column.",
+        "target": "You cannot read the target column."
+      },
+      "noValues": "The source holds no values.",
+      "modelScore": "Scored by the model: no values were compared."
+    },
+    "dimensionMade": "Accepting makes the shared dimension {{name}}, which both columns join.",
+    "dimensionJoined": "Accepting joins both columns to the shared dimension {{name}}.",
+    "through": "Through {{table}}.",
+    "twoDimensions": "Its columns already join two different shared dimensions, so it cannot be accepted.",
+    "admittedOnKeyValues": "Admitted on key values matching in the data; the measure is shown beside the model's confidence.",
+    "hiddenByFilter_one": "{{count}} row is hidden by the filter.",
+    "hiddenByFilter_other": "{{count}} rows are hidden by the filter."
+  }
+}

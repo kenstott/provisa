@@ -32,7 +32,7 @@ from provisa.api_source.oauth_grants import CredentialRefused
 from provisa.quickbooks import entities, query
 from provisa.quickbooks import read as qb_read
 from provisa.quickbooks import token as qb_token
-from provisa.quickbooks.entities import columns_of, entity, snake
+from provisa.quickbooks.entities import columns_of, entity
 from provisa.quickbooks.persist import QuickBooksTableRefused, build_endpoint, table_paging
 from provisa.quickbooks.pushdown import pushed_arguments
 from provisa.quickbooks.rows import page_rows
@@ -67,12 +67,21 @@ def test_the_named_entities_are_all_offered():
 
 
 def test_field_names_are_written_in_snake_case():
-    assert snake("TotalAmt") == "total_amt"
-    assert snake("PrimaryEmailAddr") == "primary_email_addr"
-    assert snake("APAccountRef") == "ap_account_ref"
-    assert snake("AllowOnlineACHPayment") == "allow_online_ach_payment"
-    assert snake("domain") == "domain"
-    assert snake("Id") == "id"
+    from provisa.quickbooks.rows import row
+
+    names = ["TotalAmt", "PrimaryEmailAddr", "APAccount", "AllowOnlineACHPayment", "domain", "Id"]
+    assert list(row(dict.fromkeys(names, 1))) == [
+        "total_amt",
+        "primary_email_addr",
+        "ap_account",
+        "allow_online_ach_payment",
+        "domain",
+        "id",
+    ]
+    assert list(row({"APAccountRef": {"value": "1", "name": "AP"}})) == [
+        "ap_account_ref_value",
+        "ap_account_ref_name",
+    ]
 
 
 def test_a_reference_is_two_columns_and_line_items_one_json_column():
@@ -284,6 +293,29 @@ def test_an_or_and_a_join_are_not_pushed():
         )
         == {}
     )
+
+
+_INVOICES = (
+    '(SELECT "i"."id" AS "id", "i"."balance" AS "balance", \'***\' AS "doc_number" '
+    'FROM "qb"."invoice" AS "i" WHERE "i"."txn_date" >= \'2026-01-01\') AS "i"'
+)
+
+
+def test_a_governed_read_pushes_its_row_rule_its_conditions_and_its_limit():
+    args = pushed_arguments(
+        _endpoint(), f"SELECT i.id FROM {_INVOICES} WHERE i.balance > 0 LIMIT 7", "invoice"
+    )
+    assert args == {
+        "query": "SELECT * FROM Invoice WHERE TxnDate >= '2026-01-01' AND Balance > '0'",
+        "max_rows": 7,
+    }
+
+
+def test_a_governed_condition_on_a_masked_column_is_left_to_the_engine():
+    args = pushed_arguments(
+        _endpoint(), f"SELECT i.id FROM {_INVOICES} WHERE i.doc_number = '1' LIMIT 7", "invoice"
+    )
+    assert args == {"query": "SELECT * FROM Invoice WHERE TxnDate >= '2026-01-01'"}
 
 
 def test_a_customer_condition_on_active_replaces_the_read_of_both():
@@ -638,6 +670,135 @@ def test_each_refresh_keeps_the_token_intuit_replaced_it_with(_isolated_store, c
         mock.post(TOKEN_URL).mock(side_effect=intuit)
         asyncio.run(run())
     assert sent == ["rt-entered", "rt-1"]
+
+
+# -- a refresh token entered on the form of a saved source --------------------------------------
+
+
+def _intuit_answering(sent: list[str]):
+    def intuit(request: httpx.Request) -> httpx.Response:
+        sent.append(parse_qs(request.content.decode())["refresh_token"][0])
+        n = len(sent)
+        return httpx.Response(
+            200,
+            json={"access_token": f"at-{n}", "expires_in": 3600, "refresh_token": f"rt-{n}"},
+        )
+
+    return intuit
+
+
+def _read_token(db, url, entered: str = "rt-entered"):
+    from provisa.api_source import oauth_store
+
+    async def earlier() -> str | None:
+        return entered
+
+    return oauth_store.stored_access_token(
+        db,
+        url,
+        "acme",
+        source_id="qb",
+        account="1",
+        exchange=lambda rt: qb_token.exchange(_auth(), rt),
+        replaces=True,
+        earlier=earlier,
+    )
+
+
+def test_a_changed_refresh_token_on_save_replaces_the_kept_one(_isolated_store, control_plane):
+    """The owner enters a new approval on an existing source: it is the one sent next, not the
+    replacement Intuit answered the last refresh with, and the access token held is dropped."""
+    from provisa.federation import mail_sync_state
+
+    db, url = control_plane.org(), control_plane.url
+    sent: list[str] = []
+
+    async def run():
+        assert await _read_token(db, url) == "at-1"  # rt-entered sent, rt-1 kept
+        kept = await qb_token.keep_entered(
+            db, url, "acme", source_id="qb", realm_id="1", entered="rt-new", before="rt-entered"
+        )
+        assert kept is True
+        async with db.acquire() as conn:
+            assert await mail_sync_state.grant(conn, "qb", "1") == "rt-new"
+            assert await mail_sync_state.granted(conn, "qb", "1") == {
+                "com.intuit.quickbooks.accounting"
+            }
+        assert await _read_token(db, url, entered="rt-new") == "at-2"
+
+    with respx.mock() as mock:
+        mock.post(TOKEN_URL).mock(side_effect=_intuit_answering(sent))
+        asyncio.run(run())
+    assert sent == ["rt-entered", "rt-new"]
+
+
+@pytest.mark.parametrize("entered", ["rt-entered", None, ""])
+def test_a_save_that_does_not_change_the_refresh_token_leaves_the_kept_one(
+    _isolated_store, control_plane, entered
+):
+    from provisa.federation import mail_sync_state
+
+    db, url = control_plane.org(), control_plane.url
+    sent: list[str] = []
+
+    async def run():
+        assert await _read_token(db, url) == "at-1"
+        kept = await qb_token.keep_entered(
+            db, url, "acme", source_id="qb", realm_id="1", entered=entered, before="rt-entered"
+        )
+        assert kept is False
+        async with db.acquire() as conn:
+            assert await mail_sync_state.grant(conn, "qb", "1") == "rt-1"
+        assert await _read_token(db, url) == "at-1"  # still held: Intuit is not asked again
+
+    with respx.mock() as mock:
+        mock.post(TOKEN_URL).mock(side_effect=_intuit_answering(sent))
+        asyncio.run(run())
+    assert sent == ["rt-entered"]
+
+
+def test_a_saved_source_hands_its_entered_token_and_resolved_company_to_the_store(monkeypatch):
+    """What a save of a QuickBooks source compares (the tokens as entered) and keeps (the token
+    and the realm id resolved in the organisation's vault)."""
+    kept: list[dict] = []
+
+    async def keep_entered(state_db, platform_url, org_id, **given):
+        kept.append({"state_db": state_db, "platform_url": platform_url, "org_id": org_id, **given})
+        return True
+
+    async def resolved(value: str) -> str:
+        return {"${secret:qb_rt}": "rt-from-vault", "${secret:realm}": "42"}.get(value, value)
+
+    monkeypatch.setattr(qb_token, "keep_entered", keep_entered)
+    monkeypatch.setattr(qb_token, "_resolved", resolved)
+    monkeypatch.setattr(qb_token, "_store", lambda: ("state-store", "platform-url", "acme"))
+    asyncio.run(
+        qb_token.entered_on_save(
+            "qb",
+            database="${secret:realm}",
+            before_mapping={"environment": "sandbox", "refresh_token": "rt-old"},
+            mapping={"environment": "sandbox", "refresh_token": "${secret:qb_rt}"},
+        )
+    )
+    asyncio.run(
+        qb_token.entered_on_save(
+            "qb",
+            database="7",
+            before_mapping={"refresh_token": "${secret:qb_rt}"},
+            mapping={"refresh_token": "${secret:qb_rt}"},
+        )
+    )
+    assert kept == [
+        {
+            "state_db": "state-store",
+            "platform_url": "platform-url",
+            "org_id": "acme",
+            "source_id": "qb",
+            "realm_id": "42",
+            "entered": "rt-from-vault",
+            "before": "rt-old",
+        }
+    ]
 
 
 def test_the_normalizer_is_registered_for_the_api_source_flattener():

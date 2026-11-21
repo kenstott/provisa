@@ -24,6 +24,9 @@ import { Tip } from "./Tip";
  * waiting on the trial or reading server logs. It never gates functionality and disappears the
  * moment a valid license is applied.
  *
+ * It takes its own row at the bottom of the app shell rather than floating over the page: a fixed
+ * badge sat on top of whatever action a page had at its bottom left (a data product's Publish).
+ *
  * Polled rather than pushed, matching MaintenanceBanner: a poll failure keeps the last known state
  * rather than flickering the badge on a transient network error.
  */
@@ -54,26 +57,22 @@ export function LicenseBadge() {
   if (licensed !== false) return null;
 
   return (
-    <Tip text="Provisa is free to register. Registered users' bug reports get priority over unregistered users, plus emails on major releases, use-case walkthroughs, and feature deep dives. Visit provisa.dev/register, or run `provisa license status` for your machine ID.">
-      <Badge
-        component="a"
-        href="https://provisa.dev/register"
-        target="_blank"
-        rel="noreferrer"
-        variant="light"
-        color="gray"
-        leftSection={<BadgeInfo size={12} />}
-        data-testid="license-badge"
-        style={{
-          position: "fixed",
-          bottom: 8,
-          left: 8,
-          zIndex: 100,
-          cursor: "pointer",
-        }}
-      >
-        Unregistered
-      </Badge>
-    </Tip>
+    <div className="app-status-bar">
+      <Tip text="Provisa is free to register. Registered users' bug reports get priority over unregistered users, plus emails on major releases, use-case walkthroughs, and feature deep dives. Visit provisa.dev/register, or run `provisa license status` for your machine ID.">
+        <Badge
+          component="a"
+          href="https://provisa.dev/register"
+          target="_blank"
+          rel="noreferrer"
+          variant="light"
+          color="gray"
+          leftSection={<BadgeInfo size={12} />}
+          data-testid="license-badge"
+          style={{ cursor: "pointer" }}
+        >
+          Unregistered
+        </Badge>
+      </Tip>
+    </div>
   );
 }

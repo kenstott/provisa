@@ -8,7 +8,7 @@
       "purpose": {
         "environment_management": {
           "title": "Les environnements sont une fonctionnalité de production",
-          "body": "Un environnement est une copie complète et gouvernée séparément de votre modèle : sources, tables, politiques, règles de masquage et octrois. Les équipes gardent un environnement dev pour modifier le modèle, un environnement staging pour le revoir, et prod pour servir, puis font avancer la modification en fusionnant un environnement dans le suivant, avec un diff, une approbation et un historique annulable.\n\nVotre bac à sable EST l'un de ces environnements, créé pour vous seul. Leur gestion (création, fusion, déploiement, retrait) revient à l'organisation qui les possède ; la surface est donc montrée ici plutôt que remise : vous pouvez voir ce qu'elle fait, et elle n'agit sur rien."
+          "body": "Un environnement est une copie complète et gouvernée séparément de votre modèle : ses sources, tables, politiques, règles de masquage et octrois. Les équipes modifient le modèle en dev, le révisent en staging et servent depuis prod, en fusionnant un environnement dans le suivant avec un diff, une approbation et un historique annulable.\n\nVotre bac à sable est l'un de ces environnements, créé pour vous seul. La création, la fusion, le déploiement et le retrait des environnements relèvent de l'organisation qui les possède : cette page est donc affichée pour référence et n'agit sur rien."
         }
       }
     }

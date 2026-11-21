@@ -65,7 +65,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { test, expect } from "./coverage";
-import { deleteSourceAndItsTables } from "./delete-source";
+import { retireSource } from "./retire-source-tables";
 import {
   ASKAMERICA_SERVING_BUDGET_MS,
   openRegisterForm,
@@ -161,15 +161,17 @@ test.describe("google_sheets: source to query through the UI (REQ-1742)", () => 
 test.describe("govdata: source to query through the UI (REQ-1742)", () => {
   const apiKey = process.env.FREE_ASKAMERICA_KEY ?? "";
 
-  // The instance serves ONE AskAmerica source: a spec that fails before its own cleanup would leave
-  // its source behind and refuse every later one ("already exists"), so it is removed whatever the
-  // outcome.
+  // The instance serves ONE AskAmerica source (REQ-540), and this test registers a table on the one
+  // it adds. Its cleanup retires that table and then the source, whatever the outcome (REQ-2248: a
+  // source holding only retired tables is retired with them, and a retired one is not counted), so
+  // a retry, or a later AskAmerica spec on the same backend, can add its own. A retry's table is
+  // offered a source-prefixed alias: the retired table keeps its name in the domain.
   let created: string | undefined;
   test.afterEach(async ({ page }) => {
     if (created === undefined) return;
     const id = created;
     created = undefined;
-    await deleteSourceAndItsTables(async (query, variables) => {
+    await retireSource(async (query, variables) => {
       const res = await page.request.post("/admin/graphql", { data: { query, variables } });
       return res.json();
     }, id);
@@ -231,7 +233,23 @@ test.describe("grpc_remote: source to query through the UI (REQ-1742)", () => {
       env: { ...process.env, DEMO_GRPC_REMOTE_PORT: String(PORT) },
       stdio: "pipe",
     });
-    await waitForPort(PORT, 30000);
+    // The server's own output, read as it comes (an unread pipe can fill and stall the child) and
+    // named when it never listens: a server that died says why.
+    let output = "";
+    let ended: string | null = null;
+    server.stdout?.on("data", (d: Buffer) => (output += d.toString()));
+    server.stderr?.on("data", (d: Buffer) => (output += d.toString()));
+    server.on("exit", (code, signal) => (ended = `exited (code ${code}, signal ${signal})`));
+    server.on("error", (e) => (ended = `did not start: ${e.message}`));
+    try {
+      await waitForPort(PORT, 30000);
+    } catch (e) {
+      throw new Error(
+        `${e instanceof Error ? e.message : String(e)}: ${PYTHON} -m demo.grpc_remote_server.server ` +
+          `${ended ?? "is still running"}; its output:\n${output.slice(-4000) || "(none)"}`,
+        { cause: e },
+      );
+    }
   });
 
   test.afterAll(() => {
@@ -276,7 +294,8 @@ test.describe("grpc_remote: source to query through the UI (REQ-1742)", () => {
     await submitSourceAndExpectListed(page, sourceId);
 
     // 2. Register the one table wanted, with the columns wanted.
-    const breedTable = await registerOfferedTable(page, sourceId, "grpc_remote", "ListBreeds", [
+    // SQL addresses the offered table by its snake case alias (REQ-325).
+    await registerOfferedTable(page, sourceId, "grpc_remote", "ListBreeds", [
       "name",
       "species",
       "avg_lifespan_years",
@@ -285,7 +304,7 @@ test.describe("grpc_remote: source to query through the UI (REQ-1742)", () => {
     // 3. SQL page — the demo server's 3 deterministic breed rows
     const rows = await runSqlOnPage(
       page,
-      `SELECT name, species FROM grpc_remote.${breedTable} ORDER BY name`,
+      `SELECT name, species FROM grpc_remote.${namespace}__animal_catalog__list_breeds ORDER BY name`,
     );
     expect(rows).toHaveLength(3);
     expect(rows.map((r) => r[0])).toEqual(["Holland Lop", "Labrador Retriever", "Siamese"]);

@@ -19,15 +19,23 @@ Every overload has one result on each engine:
   exact        every call PostgreSQL answered, the engine answered the same, and something was
                compared: an answer, a type and form, or a side effect
   equivalent   the same but for what ``RULES`` allows, each rule a footnote linked from its cells
+  within bound its samples answered as above, and at an edge value (function_edges.py) the engine
+               raised an error where PostgreSQL answered, never answering otherwise, as a
+               limitation of its polyfill grid row on that engine states: served, as exact and
+               equivalent are (REQ-2236, amended 2026-11-15)
   not checked  the engine answered every call with PostgreSQL's result type, and nothing was
                compared: no pass, a call that ran proves nothing, and it counts as failed
   by design    skipped by design under a decision of REQ-2167, the group naming it
   refused      Provisa refused a call, naming what it refuses (refused_by_name)
-  differs      a wrong answer, or an engine error that is neither an answer nor a named refusal
+  differs      a wrong answer, or an engine error that is neither an answer nor a named refusal;
+               at a sample or at an edge value
 
 ``not_callable`` (PostgreSQL itself answers no call) and ``not_reached`` (the leg did not get there)
 are no result: nothing was compared. ``RESULT_KEYS`` are the keys of each engine's counts in the
 merged JSON, which are what a landing floor may read: they do not change without saying so.
+``passed`` is what is served: exact, equivalent and within bound; ``right`` is exact and equivalent
+alone, and ``within_bound`` the rest. ``differs_wrong_at_edge`` and ``differs_error_at_edge`` are
+the wrong answers and engine errors only an edge call found.
 
 Beside them, ``COLUMN_KEYS`` say which passes hold on a column too (``column_results``): an overload
 that passes on literals and whose column call fails passes on literals only. No result, floor or
@@ -42,6 +50,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any
 
+import function_edges
 import pgwire_function_probe as function_probe
 
 #: Each engine's label on the page, in the page's order.
@@ -49,6 +58,7 @@ ENGINE_LABELS = {"pg": "Postgres", "duckdb": "DuckDB", "trino": "Trino", "clickh
 
 EXACT = "exact"
 EQUIVALENT = "equivalent"
+WITHIN_BOUND = "within_bound"
 REFUSED = "refused"
 DIFFERS = "differs"
 NOT_CHECKED = "not_checked"
@@ -62,6 +72,7 @@ RESULT_KEYS = (
     "passed",
     "skipped_by_design",
     "failed",
+    "not_tested",
     "exact",
     "equivalent",
     "not_checked",
@@ -73,6 +84,10 @@ RESULT_KEYS = (
     "not_callable",
     "not_reached",
     "total",
+    "right",
+    "within_bound",
+    "differs_wrong_at_edge",
+    "differs_error_at_edge",
 )
 
 #: The keys of ``by_engine.<engine>`` beside ``RESULT_KEYS``: of an engine's passes, those that pass
@@ -104,6 +119,9 @@ MODEL_ANSWER = "model-answer"
 FLOAT_CLOSE = "float-tolerance"
 JSON_KEY_ORDER = "json-key-order"
 ARRAY_ORDER = "array-order"
+CLOCK_FIELD = "clock-field"
+ZONE_PACKAGING = "tzdata-packaging"
+COMPARISON_SIGN = "comparison-sign"
 
 RULES = (
     Rule(
@@ -156,6 +174,29 @@ RULES = (
         "Only an `ORDER BY` in the statement fixes the order of an array an aggregate builds. "
         "Without one, its elements compare in any order.",
     ),
+    Rule(
+        CLOCK_FIELD,
+        "A clock's field compared by its form",
+        "A field read from the clock, such as `pg_cursor`'s `creation_time`, differs on every "
+        "call, so it compares by its type's form; the record's other fields compare by value.",
+    ),
+    Rule(
+        ZONE_PACKAGING,
+        "Time zones a distribution packages differently",
+        "`pg_timezone_names` lists the pinned upstream IANA tzdata, as upstream PostgreSQL ships "
+        "it, and compares by the names both lists hold. A name that differs only through a "
+        "distribution's tzdata packaging is skipped by design (time zones follow upstream "
+        "tzdata): Debian drops the backward links, a link Provisa "
+        "lists whose zone both list, and adds `localtime` and `posixrules`.",
+    ),
+    Rule(
+        COMPARISON_SIGN,
+        "A comparison function compared by its sign",
+        "A btree or GIN comparison support function, such as `byteacmp` or `bttextcmp`, is "
+        "documented to return less than zero, zero or greater than zero. PostgreSQL's magnitude "
+        "is a byte difference that varies with its build and platform, so these answers compare "
+        "by sign.",
+    ),
 )
 
 _NUMBERS = {rule.key: i + 1 for i, rule in enumerate(RULES)}
@@ -165,7 +206,7 @@ def result_of(outcome: str, rules: Iterable[str] = ()) -> str:
     """The result of one engine's ``outcome`` (function_support.OUTCOMES)."""
     if outcome == "pass":
         return EQUIVALENT if tuple(rules) else EXACT
-    if outcome in (NOT_CHECKED, BY_DESIGN):
+    if outcome in (NOT_CHECKED, BY_DESIGN, WITHIN_BOUND):
         return outcome
     if outcome == "refused":
         return REFUSED
@@ -179,23 +220,32 @@ def result_of(outcome: str, rules: Iterable[str] = ()) -> str:
 PASSED = "passed"
 SKIPPED_BY_DESIGN = "skipped_by_design"
 FAILED = "failed"
+NOT_TESTED = "not_tested"
 
 
 def verdict(entry: dict[str, Any]) -> str:
-    """An overload's one verdict on an engine: passed, skipped by design or failed (REQ-2167). A
-    pass is passed. A decision's group is skipped by design, and so is an overload PostgreSQL
-    itself cannot call from SQL (INTERNAL FUNCTIONS: an internal argument, or a refusal no server
-    state changes). Everything else failed: not checked, refused by name with no decision behind
-    it, a wrong answer, an engine error, one PostgreSQL refuses for this server's state, and one
-    the leg did not reach."""
+    """An overload's one verdict on an engine: passed, skipped by design, failed or not tested
+    (REQ-2167). A pass is passed, and so is one served within its bound (REQ-2236, amended
+    2026-11-15). A decision's group is skipped by design, and so is an overload
+    PostgreSQL itself cannot call from SQL (INTERNAL FUNCTIONS: an internal argument; amended
+    2026-11-04, A call PostgreSQL cannot make is skipped by design: every call refused for the call
+    itself, ``refused_for`` read from the refusals' SQLSTATEs). An answer the check did not
+    compare, and one the leg did not reach, is not tested (amended 2026-11-03, Not tested is its
+    own count), as is one PostgreSQL refused for the values the check gave it. Everything else failed:
+    refused by name with no decision behind it, a wrong answer, an engine error, and one
+    PostgreSQL refuses for this server's state."""
     outcome = entry["outcome"]
-    if outcome == "pass":
+    if outcome in ("pass", WITHIN_BOUND):
         return PASSED
+    if outcome in (NOT_CHECKED, NOT_REACHED):
+        return NOT_TESTED
     if outcome == BY_DESIGN:
         return SKIPPED_BY_DESIGN
     if outcome == NOT_CALLABLE:
-        detail = entry["detail"]
-        internal = detail == function_probe.NO_CALL or function_probe.proves_internal(detail)
+        internal = (
+            entry["detail"] == function_probe.NO_CALL
+            or entry.get("refused_for") == function_probe.THE_CALL
+        )
         return SKIPPED_BY_DESIGN if internal else FAILED
     return FAILED
 
@@ -209,6 +259,9 @@ def result_counts(outcomes: Iterable[dict[str, Any]]) -> dict[str, int]:
         tally["refused_by_name" if result == REFUSED else result] += 1
         tally["differs_wrong_answer"] += entry["outcome"] == "wrong_answer"
         tally["differs_engine_error"] += entry["outcome"] == "error"
+        tally["right"] += result in (EXACT, EQUIVALENT)
+        tally["differs_wrong_at_edge"] += bool(entry.get("wrong_at_edge"))
+        tally["differs_error_at_edge"] += bool(entry.get("error_at_edge"))
         tally["total"] += 1
     return {key: tally.get(key, 0) for key in RESULT_KEYS}
 
@@ -219,7 +272,7 @@ def _named(function: dict[str, Any]) -> str:
 
 def column_results(functions: list[dict[str, Any]], engine: str) -> dict[str, Any]:
     """``COLUMN_KEYS`` of ``engine``: its passes by what their column call did."""
-    passes = [f for f in functions if f["outcomes"][engine]["outcome"] == "pass"]
+    passes = [f for f in functions if f["outcomes"][engine]["outcome"] in _SERVED]
     called = [f for f in passes if f["outcomes"][engine].get("column")]
     both = [f for f in called if f["outcomes"][engine]["column"]["outcome"] == "pass"]
     literal_only = [f for f in called if f["outcomes"][engine]["column"]["outcome"] != "pass"]
@@ -232,8 +285,12 @@ def column_results(functions: list[dict[str, Any]], engine: str) -> dict[str, An
     }
 
 
+#: The outcomes of function_support.py that are served.
+_SERVED = frozenset({"pass", WITHIN_BOUND})
+
+
 def _served(function: dict[str, Any]) -> bool:
-    return any(o["outcome"] == "pass" for o in function["outcomes"].values())
+    return any(o["outcome"] in _SERVED for o in function["outcomes"].values())
 
 
 def _callable(function: dict[str, Any]) -> bool:
@@ -323,12 +380,16 @@ def cell(outcome: dict[str, Any]) -> str:
         return f"{EQUIVALENT}{check} " + " ".join(_footnote(key) for key in outcome["rules"])
     if result == EXACT:
         return EXACT + check
+    if result == WITHIN_BOUND:
+        return "within bound"
     if result == NOT_CHECKED:
         return "not checked"
     if result == BY_DESIGN:
         return f"skipped by design ({outcome['group']})"
     if result == DIFFERS:
-        return "differs (error)" if outcome["outcome"] == "error" else DIFFERS
+        edge = " at an edge" if outcome.get("wrong_at_edge") or outcome.get("error_at_edge") else ""
+        kind = " (error)" if outcome["outcome"] == "error" else ""
+        return f"{DIFFERS}{edge}{kind}"
     if result == NOT_CALLABLE:
         return "n/a"
     return result.replace("_", " ")
@@ -337,34 +398,80 @@ def cell(outcome: dict[str, Any]) -> str:
 def engine_table(doc: dict[str, Any]) -> list[str]:
     """One row per engine, in overloads. No row adds them up."""
     lines = [
-        "| Engine | Passed | Skipped by design | Failed |",
-        "| --- | ---: | ---: | ---: |",
+        "| Engine | Served | Of which within bound | Skipped by design | Failed | Not tested |",
+        "| --- | ---: | ---: | ---: | ---: | ---: |",
     ]
     for engine in _ordered(doc):
         c = doc["by_engine"][engine]
         lines.append(
-            f"| {_label(engine)} | {c['passed']} | {c['skipped_by_design']} | {c['failed']} |"
+            f"| {_label(engine)} | {c['passed']} | {c['within_bound']} | {c['skipped_by_design']} "
+            f"| {c['failed']} | {c['not_tested']} |"
         )
     lines += [
         "",
-        "In detail: passed is exact and equivalent; skipped by design is the decisions' groups "
-        "and what PostgreSQL itself cannot call; failed is the rest.",
+        "In detail: served is exact, equivalent and within bound; skipped by design is the "
+        "decisions' groups and what PostgreSQL itself cannot call; not tested is what the check "
+        "did not compare or did not reach; failed is the rest. Wrong answers and engine errors "
+        "found only at an edge value are counted again in their own columns.",
         "",
-        "| Engine | Exact | Equivalent | By a decision | PostgreSQL calls none | Not checked "
-        "| Refused by name | Differs: wrong answer | Differs: engine error "
-        "| PostgreSQL refuses here | Not reached |",
-        "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+        "| Engine | Exact | Equivalent | Within bound | By a decision | PostgreSQL calls none "
+        "| Not checked | Refused by name | Differs: wrong answer | Of which at an edge "
+        "| Differs: engine error | Of which at an edge | PostgreSQL refuses here | Not reached |",
+        "| --- |" + " ---: |" * 13,
     ]
     for engine in _ordered(doc):
         c = doc["by_engine"][engine]
         internal = c["skipped_by_design"] - c["by_design"]
         lines.append(
-            f"| {_label(engine)} | {c['exact']} | {c['equivalent']} | {c['by_design']} "
-            f"| {internal} | {c['not_checked']} | {c['refused_by_name']} "
-            f"| {c['differs_wrong_answer']} | {c['differs_engine_error']} "
+            f"| {_label(engine)} | {c['exact']} | {c['equivalent']} | {c['within_bound']} "
+            f"| {c['by_design']} | {internal} | {c['not_checked']} | {c['refused_by_name']} "
+            f"| {c['differs_wrong_answer']} | {c['differs_wrong_at_edge']} "
+            f"| {c['differs_engine_error']} | {c['differs_error_at_edge']} "
             f"| {c['not_callable'] - internal} | {c['not_reached']} |"
         )
     return lines
+
+
+def _plain(literal: str) -> str:
+    """An edge's literal as the page shows it: its text in a code span."""
+    text = literal[1:-1] if literal.startswith("'") and literal.endswith("'") else literal
+    return f"`{text}`" if text.strip() else "the empty value"
+
+
+def edge_method_lines() -> list[str]:
+    """How the edge values are chosen and judged, and the table of them, in plain words, from
+    function_edges itself."""
+    rows = [
+        f"| {typ.strip(chr(34))} | "
+        + "; ".join(f"{edge.kind}: {_plain(edge.literal)}" for edge in edges).replace("|", "\\|")
+        + " |"
+        for typ, edges in function_edges.EDGES.items()
+    ]
+    return [
+        "Three samples show that a function answers ordinary values. Each overload given samples "
+        "is also called with edge values of its argument types: NULL in each argument, an empty "
+        "value, the least and the greatest value the type holds, zero and negative values, "
+        "multi-byte and combining text, and a value PostgreSQL itself raises an error for. Each "
+        "edge call keeps the first sample row and puts one edge value in one argument. An "
+        f"overload gets at most {function_edges.EDGE_CALLS_MAX} edge calls, shared in turn "
+        "among its arguments. An aggregate reads the edge value in two rows.",
+        "",
+        "An edge call is compared as a sample is. Where PostgreSQL raises an error, the engine "
+        "must raise one of the same class; answering is a wrong answer. An engine that raises "
+        "where PostgreSQL answers has not answered wrongly. If every sample is right and no edge "
+        "call answers wrongly, the overload is served within its bound, provided the polyfill "
+        "page for that engine states the limitation. A raise the page does not state is an "
+        "engine error. Where a polyfill page says what a form raises outside its bound, the run "
+        "also checks that an edge call raised it.",
+        "",
+        "<details><summary>The edge values, by argument type</summary>",
+        "",
+        "| Type | Edge values (besides NULL) |",
+        "| --- | --- |",
+        *rows,
+        "",
+        "</details>",
+    ]
 
 
 def column_table(doc: dict[str, Any]) -> list[str]:
@@ -383,6 +490,10 @@ def column_table(doc: dict[str, Any]) -> list[str]:
 
 
 def _column_failure(column: dict[str, Any]) -> str:
+    """What a column call that did not pass did. One skipped by design is its decision's group
+    (function_support.measure_column keeps the group alone); any other carries its detail."""
+    if column["outcome"] == "by_design":
+        return f"skipped by design ({column['group']})".replace("|", "\\|")
     detail = column["detail"]
     said = " ".join((detail.get("error") or detail["difference"]).split())
     return said.replace("|", "\\|")[:200]
@@ -480,6 +591,30 @@ def overload_tables(doc: dict[str, Any]) -> list[str]:
     return lines[:-1]
 
 
+def within_bound_lines(doc: dict[str, Any]) -> list[str]:
+    """Every overload served within a bound, by engine, with the edge call it raised at."""
+    lines: list[str] = []
+    for engine in _ordered(doc):
+        rows = [
+            (f, f["outcomes"][engine]["detail"])
+            for f in doc["functions"]
+            if f["outcomes"][engine]["outcome"] == WITHIN_BOUND
+        ]
+        if not rows:
+            continue
+        lines += [
+            f"<details><summary>{_label(engine)} ({len(rows)})</summary>",
+            "",
+            "| Overload | Raised at | Error |",
+            "| --- | --- | --- |",
+        ]
+        for f, detail in rows:
+            said = " ".join(detail["error"].split()).replace("|", "\\|")[:200]
+            lines.append(f"| {_signature(f)} | {detail['edge']} | {said} |")
+        lines += ["", "</details>", ""]
+    return lines[:-1] or ["None."]
+
+
 def wrong_answers(doc: dict[str, Any]) -> list[str]:
     """Every wrong answer, by engine: each is a defect and stays in view."""
     lines: list[str] = []
@@ -499,6 +634,8 @@ def wrong_answers(doc: dict[str, Any]) -> list[str]:
         ]
         for f, detail in rows:
             said = " ".join(detail["difference"].split()).replace("|", "\\|")[:200]
+            if detail.get("edge"):
+                said = f"at an edge ({detail['edge']}): {said}"
             lines.append(f"| {_signature(f)} | {said} |")
         lines += ["", "</details>", ""]
     return lines[:-1] or ["None."]
@@ -533,7 +670,7 @@ def by_design_lines(doc: dict[str, Any]) -> list[str]:
         return ["No overload is skipped by design."]
     every = sorted({group for e in engines for group in groups[e]})
     return [
-        "Skipped by design (REQ-2167), by group and engine:",
+        "Skipped by design, by group and engine:",
         "",
         "| Group | " + " | ".join(_label(e) for e in engines) + " |",
         "| --- |" + " ---: |" * len(engines),
@@ -605,15 +742,20 @@ def pgwire_block(doc: dict[str, Any]) -> str:
             "| Exact | The engine answered every call as PostgreSQL did, and an answer, a type "
             "and form, or a side effect was compared. |",
             "| Equivalent | The answer passes under a numbered rule below, linked from its row. |",
+            "| Within bound | Every sample was answered as PostgreSQL does. At an edge value the "
+            "engine raised an error instead of answering, and that engine's polyfill page states "
+            "the limitation. It is served. |",
             "| Not checked | The engine answered with PostgreSQL's result type, but nothing was "
             "compared. A call that ran proves nothing, so this is no pass. |",
-            "| Skipped by design | A decision of REQ-2167 skips it: a side-effect function off "
+            "| Skipped by design | A recorded decision skips it: a side-effect function off "
             "the PostgreSQL engine, one whose side effect no client can see, or a refusal by name "
             "a decision makes. |",
             "| Refused by name | Provisa refused the call and said what it refuses. |",
-            "| Differs: wrong answer | The answer is wrong. This is a defect. |",
-            "| Differs: engine error | The engine returned an error and no named refusal. This "
-            "is a defect. |",
+            "| Differs: wrong answer | The answer is wrong, for a sample or an edge value. This is "
+            "a defect. |",
+            "| Differs: engine error | The engine returned an error and no named refusal for a "
+            "sample, gave no answer at all for an edge value, or raised at an edge value where "
+            "its polyfill page states no limitation. This is a defect. |",
             "",
             "A result marked *type and form only* could not be compared by value, so its result "
             "type and, for a string, its canonical form were compared with PostgreSQL's own "
@@ -624,6 +766,10 @@ def pgwire_block(doc: dict[str, Any]) -> str:
             *by_design_lines(doc),
             "",
             *not_checked_lines(doc),
+            "",
+            "### Edge values",
+            "",
+            *edge_method_lines(),
             "",
             "### Literals and columns",
             "",
@@ -643,6 +789,10 @@ def pgwire_block(doc: dict[str, Any]) -> str:
             "name / differs.",
             "",
             *family_table(doc),
+            "",
+            "### Served within a bound",
+            "",
+            *within_bound_lines(doc),
             "",
             "### Wrong answers",
             "",

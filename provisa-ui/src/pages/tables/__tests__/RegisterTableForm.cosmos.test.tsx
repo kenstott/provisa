@@ -62,10 +62,11 @@ describe("RegisterTableForm on a Cosmos DB query (REQ-1982)", () => {
         domainsEnabled
         tables={[]}
         roles={[{ id: "analyst" } as never]}
-        getAvailableColumnsMetadata={vi.fn().mockResolvedValue([])}
         suggestTableAlias={vi.fn().mockResolvedValue("")}
         onContinue={onContinue}
         onCancel={() => {}}
+        onProductsRegistered={vi.fn()}
+        onRegisteredMany={vi.fn()}
         setError={vi.fn()}
       />,
     );

@@ -32,6 +32,7 @@ import {
   TOUR_PREREQUISITES,
   TOPIC_IDS,
   stepRoute,
+  showsRoute,
   tourItinerary,
   stepsTheOrgCanShow,
   PET_STORE_DEMO_SQL,
@@ -51,10 +52,10 @@ import { prerequisitesMet, type OrgHas } from "./tourPrerequisites";
 import { useNamedDemo } from "../context/NamedDemoContext";
 import { TourMenu } from "./TourMenu";
 import { completedTopics, markTopicCompleted } from "./tourTopics";
-import { EXPANDED_STORAGE_KEY as DATA_PRODUCTS_EXPANDED_KEY } from "../pages/DataProductsPage";
+import { forgetDetailForEveryone } from "../components/list/useDetailParam";
 import { useAuth } from "../context/AuthContext";
 import { usePolly } from "../context/pollyState";
-import { hasCapability } from "../lib/capabilities";
+import { viewerMeets } from "./viewerMeets";
 import { prefetchAllPageChunks } from "../pageChunks";
 import { useTourPrefetch } from "../hooks/useAdminQueries";
 import { useOrgHas } from "../hooks/useOrgHas";
@@ -72,6 +73,9 @@ import { readBulk, removeBulk, writeBulk } from "../lib/bulkStorage";
 import { kept } from "../lib/resultWithQuery";
 import { runUiActions } from "../mcp/uiActions";
 import { ANCHOR_WAIT_MS, waitForElement, watchAbsent } from "./waitForElement";
+import { keepClearOf } from "./clearOfGraph";
+import { TourRunningContext } from "./tourRunning";
+import { CancelButton } from "../components/form/CancelButton";
 
 /** REQ-2010: the named demo's own track was walked to its end in this browser. Saved per control
  * plane and org (REQ-2008), so each demo, and each fresh start of one, offers its track first. It
@@ -229,12 +233,8 @@ const PREP_ACTIONS: Record<string, () => void> = {
   collapseDataProducts() {
     // The Data Products step clicks the first row to EXPAND it; a persisted expansion from an
     // earlier visit would make that same click collapse it instead. Nothing to restore: which
-    // row was open is a convenience, not state the visitor authored.
-    try {
-      removeStored(DATA_PRODUCTS_EXPANDED_KEY);
-    } catch {
-      /* localStorage unavailable -- the page mounts collapsed anyway */
-    }
+    // row was open is a convenience, not state the visitor authored (REQ-2260).
+    forgetDetailForEveryone("products");
   },
   seedMcp() {
     try {
@@ -477,7 +477,7 @@ export function TourProvider({ children }: { children: ReactNode }) {
   const [orgHas, setOrgHas] = useState<OrgHas | null>(null);
   const prefetchTourData = useTourPrefetch();
   const whatTheOrgHas = useOrgHas();
-  const { capabilities, actingRoles } = useAuth();
+  const { capabilities, actingRoles, activeOrgId } = useAuth();
   // REQ-2083: what a step that re-runs an earlier statement runs it as, read when the step runs.
   const actingRolesRef = useRef(actingRoles);
   useEffect(() => {
@@ -534,13 +534,12 @@ export function TourProvider({ children }: { children: ReactNode }) {
   // step is last — counts against this instead, so a tour with steps dropped is a shorter whole
   // tour rather than one that ends early or numbers past its end.
   const itineraries = useMemo(() => {
-    const meets = (capability: Parameters<typeof hasCapability>[1]) =>
-      hasCapability(capabilities, capability);
+    const meets = viewerMeets(capabilities, activeOrgId ?? null);
     const out = { core: tourItinerary(meets, "core") } as Record<RunScope, number[]>;
     for (const id of TOPIC_IDS) out[id] = tourItinerary(meets, id);
     out.demo = tourItinerary(meets, "demo", allSteps);
     return out;
-  }, [capabilities, allSteps]);
+  }, [capabilities, activeOrgId, allSteps]);
   // The active tour's steps. Everything below that walked "the tour" walks this. A tour starts only
   // once what the org has is read (startTour sets orgHas before the scope), so a running tour always
   // walks the steps its org can show; with no read yet, no tour runs and nothing walks this.
@@ -698,7 +697,7 @@ export function TourProvider({ children }: { children: ReactNode }) {
         // per visit: the picker toggles, and Retry is a new attempt that picks again.
         const chooseEntry = `${visitRef.current}:${attempt}`;
         if (step.chooseFirst && chosenRef.current !== chooseEntry) {
-          if (route && route !== `${window.location.pathname}${window.location.search}`) {
+          if (route && !showsRoute(route, window.location.pathname, window.location.search)) {
             currentPathRef.current = route;
             navigate(route);
             // The route just taken re-renders the provider, which supersedes this run.
@@ -754,9 +753,10 @@ export function TourProvider({ children }: { children: ReactNode }) {
           route &&
           // The page actually shown, as well as the one the tour last sent the visitor to: a
           // record of the last navigation goes stale when the page changes under the tour, and
-          // a step that trusted it would wait on its own page's anchor from another page.
+          // a step that trusted it would wait on its own page's anchor from another page. The page
+          // shown is the route's with a panel open in its URL too (showsRoute, REQ-2241).
           (route !== currentPathRef.current ||
-            route !== `${window.location.pathname}${window.location.search}`)
+            !showsRoute(route, window.location.pathname, window.location.search))
         ) {
           currentPathRef.current = route;
           if (step.openBranch) {
@@ -886,6 +886,7 @@ export function TourProvider({ children }: { children: ReactNode }) {
         const ends = landing !== null;
         // A provider the copy names is named as a user sees it: "(beta)" while unproven.
         const copy = { atlan: exportProviderName("atlan", "Atlan", t) };
+        const clear = step.clearOf ? keepClearOf(step.clearOf, abort.signal) : null;
         const popover: DriverPopover = {
           title: t(`tour.steps.${step.key}.title`),
           description: step.image
@@ -1032,6 +1033,7 @@ export function TourProvider({ children }: { children: ReactNode }) {
           },
         };
         driverRef.current.highlight({ element, popover });
+
         // A page that renders its anchor again (the SQL explorer's results, once its answer is in)
         // leaves the step lighting a node no longer on the page, its popover in a corner: the
         // step's anchor as it is now is lit again.
@@ -1042,6 +1044,7 @@ export function TourProvider({ children }: { children: ReactNode }) {
           if (!now || !driverRef.current) return;
           lit = now;
           driverRef.current.highlight({ element: now, popover });
+          clear?.();
         });
         relight.observe(document.body, { childList: true, subtree: true });
         abort.signal.addEventListener("abort", () => relight.disconnect(), { once: true });
@@ -1231,58 +1234,60 @@ export function TourProvider({ children }: { children: ReactNode }) {
         }));
 
   return (
-    <TourContext.Provider
-      value={{
-        startTour,
-        coreSeen: hasSeenTour(),
-        running: activeStep !== null,
-        canResume: tourResumeStep() !== null,
-        status,
-        available:
-          TOPIC_IDS.some((id) => itineraries[id].length > 0) ||
-          itineraries.core.length > 0 ||
-          itineraries.demo.length > 0,
-      }}
-    >
-      {children}
-      <TourMenu
-        opened={menuOpen}
-        topics={menuTopics}
-        completed={completedTopics()}
-        demo={
-          namedDemo.name !== null && orgHas !== null && offered("demo", orgHas)
-            ? {
-                name: namedDemo.name,
-                steps: stepsTheOrgCanShow(itineraries.demo, orgHas, allSteps).length,
-                done: trackDone,
-              }
-            : null
-        }
-        onDemo={() => launch("demo", true)}
-        onPick={(id: TopicId) => launch(id, true)}
-        // REQ-2013: the product tour's own start, when the org has what it shows.
-        onCore={orgHas !== null && offered("core", orgHas) ? () => launch("core", true) : null}
-        onClose={() => setMenuOpen(false)}
-      />
-      <TourStatusOverlay
-        status={status}
-        onRetry={() => {
-          setStatus(null);
-          setAttempt((n) => n + 1);
+    <TourRunningContext.Provider value={activeStep !== null}>
+      <TourContext.Provider
+        value={{
+          startTour,
+          coreSeen: hasSeenTour(),
+          running: activeStep !== null,
+          canResume: tourResumeStep() !== null,
+          status,
+          available:
+            TOPIC_IDS.some((id) => itineraries[id].length > 0) ||
+            itineraries.core.length > 0 ||
+            itineraries.demo.length > 0,
         }}
-        onSkip={() => {
-          const i = activeStepRef.current;
-          if (i === null) return;
-          setStatus(null);
-          // The next step on this viewer's itinerary — skipping a step never lands on one their
-          // rights would deny.
-          const next = itineraryRef.current.find((n) => n > i);
-          if (next === undefined) endTour("completed");
-          else setActiveStep(next);
-        }}
-        onExit={() => endTour("dismissed")}
-      />
-    </TourContext.Provider>
+      >
+        {children}
+        <TourMenu
+          opened={menuOpen}
+          topics={menuTopics}
+          completed={completedTopics()}
+          demo={
+            namedDemo.name !== null && orgHas !== null && offered("demo", orgHas)
+              ? {
+                  name: namedDemo.name,
+                  steps: stepsTheOrgCanShow(itineraries.demo, orgHas, allSteps).length,
+                  done: trackDone,
+                }
+              : null
+          }
+          onDemo={() => launch("demo", true)}
+          onPick={(id: TopicId) => launch(id, true)}
+          // REQ-2013: the product tour's own start, when the org has what it shows.
+          onCore={orgHas !== null && offered("core", orgHas) ? () => launch("core", true) : null}
+          onClose={() => setMenuOpen(false)}
+        />
+        <TourStatusOverlay
+          status={status}
+          onRetry={() => {
+            setStatus(null);
+            setAttempt((n) => n + 1);
+          }}
+          onSkip={() => {
+            const i = activeStepRef.current;
+            if (i === null) return;
+            setStatus(null);
+            // The next step on this viewer's itinerary — skipping a step never lands on one their
+            // rights would deny.
+            const next = itineraryRef.current.find((n) => n > i);
+            if (next === undefined) endTour("completed");
+            else setActiveStep(next);
+          }}
+          onExit={() => endTour("dismissed")}
+        />
+      </TourContext.Provider>
+    </TourRunningContext.Provider>
   );
 }
 
@@ -1350,9 +1355,7 @@ function TourStatusOverlay({
                 {t("tour.status.skip")}
               </button>
             )}
-            <button type="button" className="tour-status-btn" onClick={onExit}>
-              {t("tour.status.cancel")}
-            </button>
+            <CancelButton onClick={onExit} />
           </div>
         )}
       </div>

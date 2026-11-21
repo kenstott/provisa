@@ -164,7 +164,7 @@ ONTOLOGY_TABLE_VIEWS: dict[str, str] = {
             JOIN same_entity_edges se ON se.a = ir.table_id
             JOIN registered_tables gt ON gt.class_term_id = ir.term_id AND gt.id = se.b
         )
-        SELECT t.id, t.name, t.definition,
+        SELECT t.id, t.name, t.definition, t.calculation_method,
                CASE WHEN EXISTS (SELECT 1 FROM glossary_term_refs r WHERE r.term_id = t.id)
                       OR EXISTS (SELECT 1 FROM registered_tables r WHERE r.class_term_id = t.id)
                     THEN FALSE ELSE TRUE END AS is_abstract,
@@ -236,12 +236,15 @@ ONTOLOGY_TABLE_VIEWS: dict[str, str] = {
     # owl:ObjectProperty when every column it binds is a many-to-one key to a table with a Class,
     # whose Class is then its rdfs:range; otherwise an owl:DatatypeProperty ranging over its
     # columns' xsd types. Every term has its name as skos:prefLabel and its definition, when it
-    # has one, as skos:definition.
+    # has one, as skos:definition. REQ-1385: a term's IRI is built from its name; one an import
+    # gave it (glossary_terms.iri) is stated equivalent to it.
     "_axioms": f"""
         CREATE OR REPLACE VIEW _axioms_ontology AS
         WITH t AS (
-            SELECT id, name, definition, is_class, is_property, term_domains, tenant_id
-            FROM _terms_ontology WHERE NOT retired
+            -- iri: the IRI an ontology import gave the term, stated equivalent below.
+            SELECT o.id, o.name, o.definition, o.is_class, o.is_property, o.term_domains,
+                   o.tenant_id, g.iri
+            FROM _terms_ontology o JOIN glossary_terms g ON g.id = o.id WHERE NOT o.retired
         ),
         bound AS (
             SELECT r.term_id, rt.class_term_id AS domain_term_id, tc.data_type,
@@ -292,6 +295,16 @@ ONTOLOGY_TABLE_VIEWS: dict[str, str] = {
             SELECT term_id, '{RDFS}range', NULL, {xsd_of_sql("data_type")}, NULL, NULL
             FROM bound
             WHERE term_id NOT IN (SELECT term_id FROM object_properties) AND data_type IS NOT NULL
+            UNION
+            -- A term's IRI is built from its name; one an import gave it is stated
+            -- equivalent: owl:equivalentClass for a Class, owl:equivalentProperty for a Property,
+            -- skos:exactMatch for a Concept.
+            SELECT id,
+                   CASE WHEN is_class THEN '{OWL}equivalentClass'
+                        WHEN is_property THEN '{OWL}equivalentProperty'
+                        ELSE '{SKOS}exactMatch' END,
+                   NULL, iri, NULL, NULL
+            FROM t WHERE iri IS NOT NULL
             UNION
             SELECT id, '{SKOS}prefLabel', NULL, NULL, name, NULL FROM t
             UNION

@@ -156,7 +156,7 @@ Licensed:     no (no license installed)
 
 ## provisa metadata export
 
-מפעיל את פרסום המטא-דאטה לפי דרישה של השרת הפועל. הפקודה שולחת אל `POST /admin/metadata-export/publish`, נקודת הקצה שהכפתור **פרסם כעת** בלשונית Admin קורא לה, כך ששני הנתיבים שולחים את אותה תמונת מצב מלאה.
+מפעיל את פרסום המטא-דאטה לפי דרישה של השרת הפועל. הפקודה שולחת אל `POST /admin/syncing/publish`, נקודת הקצה שהכפתור **פרסם כעת** בלשונית Admin קורא לה, כך ששני הנתיבים שולחים את אותה תמונת מצב מלאה.
 
 ```
 provisa metadata export [--api URL] [--token TOKEN] [--timeout SECONDS]

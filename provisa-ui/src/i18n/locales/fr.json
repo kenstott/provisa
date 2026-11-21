@@ -2,6 +2,9 @@
   "common": {
     "loading": "Chargement...",
     "cancel": "Annuler",
+    "stop": "Arrêter",
+    "stopped": "Arrêtée",
+    "stopQuery": "Arrêter la requête",
     "save": "Enregistrer",
     "delete": "Supprimer",
     "confirm": "Confirmer",
@@ -9,7 +12,9 @@
     "identity": "Identité",
     "discardTitle": "Abandonner vos modifications ?",
     "discardBody": "Vos modifications de {{what}} ne sont pas enregistrées.",
-    "discard": "Abandonner"
+    "discard": "Abandonner",
+    "deleting": "Suppression…",
+    "deleteFailed": "Non supprimé : {{reason}}"
   },
   "app": {
     "apiUnreachable": "Impossible de joindre l'API Provisa.",
@@ -42,12 +47,16 @@
     "yes": "Oui",
     "no": "Non",
     "none": "—",
-    "expandUser": "Afficher les affectations de {{username}}",
+    "expandUser": "Développer les affectations de {{username}}",
     "deleteUser": "Supprimer le compte de {{username}}",
     "assignmentsHeading": "Affectations rôle:domaine",
     "noAssignments": "Aucune affectation",
     "removeAssignment": "Retirer l'affectation {{role}}:{{domain}}",
     "roleLabel": "Rôle",
+    "rolesLabel": "Rôles",
+    "rolesPlaceholder": "Choisissez un ou plusieurs rôles",
+    "addList": "Ajouter une liste",
+    "removeList": "Supprimer cette liste",
     "domainLabel": "Domaine",
     "untilLabel": "Jusqu'au",
     "untilPlaceholder": "Sans date de fin",
@@ -56,7 +65,6 @@
     "noExpiry": "Sans date de fin",
     "neverUsed": "Jamais",
     "allDomains": "* (tous les domaines)",
-    "add": "Ajouter",
     "createHeading": "Créer un utilisateur",
     "username": "Nom d'utilisateur",
     "usernameRequired": "Nom d'utilisateur *",
@@ -96,6 +104,6 @@
   },
   "pageError": {
     "title": "Cette page n’a pas pu être affichée",
-    "body": "Une erreur s’est produite lors du rendu. Le reste de l’application fonctionne : allez sur une autre page ou rechargez celle-ci."
+    "body": "Une erreur s'est produite pendant le rendu. Le reste de l'application fonctionne toujours : allez sur une autre page ou rechargez celle-ci."
   }
 }

@@ -369,7 +369,8 @@ def test_every_direct_route_runs_a_statement_transpile_wrote_for_its_source():
     """The semantic SQL keeps TRY_CAST, which PostgreSQL (and MySQL) do not have: a route that sent
     it to a source as it is would fail there. The statement a direct route runs (``sql_to_run``)
     is only ever ``_direct`` -- or that wrapped as its EXPLAIN -- and ``_direct`` is only ever
-    what ``transpile`` wrote for the source's dialect, kept or newly made."""
+    what ``transpile`` wrote for the source's dialect, kept or newly made, and at most passed
+    through ``direct_physical``."""
     import ast
     from pathlib import Path
 
@@ -389,6 +390,8 @@ def test_every_direct_route_runs_a_statement_transpile_wrote_for_its_source():
         if isinstance(value, ast.Constant) or ast.unparse(value).startswith(("None if", "memo")):
             continue  # not yet made, or the one kept with the governed statement
         call = value.elts[0] if isinstance(value, ast.Tuple) else value
+        if isinstance(call, ast.Call) and getattr(call.func, "id", "") == "direct_physical":
+            call = call.args[0]  # what transpile wrote, with a DIRECT PostgreSQL source's JSON form
         assert isinstance(call, ast.Call) and getattr(call.func, "id", "") == "transpile", (
             ast.unparse(value)
         )

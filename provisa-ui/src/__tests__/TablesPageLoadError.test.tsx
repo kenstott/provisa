@@ -8,13 +8,13 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-1293: a failed `tables` query used to render as an empty "Registered Tables" grid — visually
+// REQ-1293: a failed `tables` query used to render as an empty "Tables" grid — visually
 // identical to "this org has no registered tables", a statement about the org's data that the
 // failed request never established. That is what a user saw after self-creating an org: the demo
 // data was there, the query was not answering, and the page said the org was empty.
 
 import { describe, it, expect, vi } from "vitest";
-import { render, screen } from "../test-utils/render";
+import { render, screen, within } from "../test-utils/render";
 import type { MockedResponse } from "@apollo/client/testing";
 import { AuthProvider } from "../context/AuthContext";
 import { DomainFilterProvider } from "../context/DomainFilterContext";
@@ -42,7 +42,7 @@ describe("TablesPage — failed tables query (REQ-1293)", () => {
   it("reports the failure instead of rendering an empty grid", async () => {
     renderTables([
       {
-        request: { query: TablesQuery },
+        request: { query: TablesQuery, variables: { includeWithdrawn: true } },
         error: new Error("Org selection required"),
       },
     ]);
@@ -57,13 +57,15 @@ describe("TablesPage — failed tables query (REQ-1293)", () => {
   it("stays silent when the query succeeds with no tables", async () => {
     renderTables([
       {
-        request: { query: TablesQuery },
+        request: { query: TablesQuery, variables: { includeWithdrawn: true } },
         result: { data: { tables: [] } },
       },
     ]);
 
     // An answered query that reports zero tables is a real answer; the alert must not claim failure.
-    expect(await screen.findByText(/registered tables/i)).toBeInTheDocument();
+    // Maintainer 2026-11-18: the page title is "Tables", not "Registered Tables".
+    const title = await screen.findByTestId("page-title");
+    expect(within(title).getByRole("heading", { level: 2 })).toHaveTextContent(/^Tables$/);
     expect(screen.queryByTestId("tables-load-error")).not.toBeInTheDocument();
   });
 });

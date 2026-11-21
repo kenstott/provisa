@@ -24,7 +24,9 @@ where the demo runs:
        written out as ``seeded/views.duckdb`` and ``seeded/views.json``, with the records of the
        refreshes that built it (``seeded/refresh_lineage.parquet``, REQ-862), which its template
        and each sandbox start from; and a demo whose setup profiles has its profile runs written
-       out as ``seeded/profile_results.json`` (REQ-2052), which its template loads;
+       out as ``seeded/profile_results.json`` (REQ-2052), which its template loads; and a demo whose
+       setup scans documents for terms has its scans written out as ``seeded/term_scans.json``
+       (REQ-2201), which its template loads;
     2. a sandbox tier runs on a throwaway embedded control plane in seeding mode
        (``PROVISA_DEMO_SEED_EXPORT=true``): it lands the demo's template from those stores and
        writes the seed -- ``seeded/replicas.duckdb`` and ``seeded/replicas.json``
@@ -552,8 +554,9 @@ def polly_steps(demo: Path) -> list[dict]:
 
 
 def answering_config(work: Path, demo: Path) -> Path:
-    """The demo's config.yaml with Polly asked through OpenRouter on the sandbox's model: what the
-    build's server runs when the demo's tour asks Polly anything (REQ-2012)."""
+    """The demo's config.yaml with Polly asked, and documents scanned for terms, through OpenRouter
+    on the sandbox's model: what the build's server runs when the demo's tour asks Polly anything
+    (REQ-2012) or its setup scans a document (REQ-2201)."""
     from provisa.core.settings_registry import setting
 
     config = yaml.safe_load((demo / "config.yaml").read_text())
@@ -561,6 +564,10 @@ def answering_config(work: Path, demo: Path) -> Path:
     config["ai_models"] = {
         **(config.get("ai_models") or {}),
         "mcp_chat": {"vendor": "openrouter", "model": setting("sandbox.ai_model").default},
+        "glossary_term_finding": {
+            "vendor": "openrouter",
+            "model": setting("sandbox.ai_model").default,
+        },
     }
     # In a directory of its own, beside what the demo declares beside its config.yaml: its
     # replica rows and code archives are read from the directory of the config served.
@@ -647,13 +654,23 @@ def _set_up(
     region's address and store (``regional``), so what the setup builds lands in its region's
     store; the setup talks to the visitor's. When its tour asks Polly anything, the same server
     then asks it, and the answers are stored beside the tour (REQ-2012): a visitor is shown them,
-    and nothing is asked live."""
+    and nothing is asked live. When its setup scans a document for terms, the same model reads it
+    (REQ-2201), and the scans are carried (_export_term_scans)."""
+    from provisa.api.demo_templates import demo_scans
+
     asked = polly_steps(demo)
     if asked and not os.environ.get("OPENROUTER_API_KEY"):
         raise SystemExit(
             f"{demo.name}: its tour asks Polly {len(asked)} question(s), answered at the build "
             "through OpenRouter, and OPENROUTER_API_KEY is not set"
         )
+    scanned = demo_scans(demo)
+    if scanned and not os.environ.get("OPENROUTER_API_KEY"):
+        raise SystemExit(
+            f"{demo.name}: its setup scans {len(scanned)} document(s) for terms, read at the build "
+            "through OpenRouter, and OPENROUTER_API_KEY is not set"
+        )
+    answering = bool(asked or scanned)
     host, port, url = _control_plane(work, "setup-cp")
     nodes = (
         setup_nodes(regional.regions, regional.env, redis_url=regional.redis_url, work=work)
@@ -663,8 +680,8 @@ def _set_up(
     common = {
         **_config_env(demo),
         **stores.addresses,
-        **({"OPENROUTER_API_KEY": os.environ["OPENROUTER_API_KEY"]} if asked else {}),
-        "PROVISA_CONFIG": str(answering_config(work, demo) if asked else demo / "config.yaml"),
+        **({"OPENROUTER_API_KEY": os.environ["OPENROUTER_API_KEY"]} if answering else {}),
+        "PROVISA_CONFIG": str(answering_config(work, demo) if answering else demo / "config.yaml"),
         "PROVISA_ENGINE": "duckdb",
         **_duckdb_env(work),
         "ORG_ID": _SETUP_ORG,
@@ -735,6 +752,7 @@ def _set_up(
             answers = answer_tour(base, demo, asked)
             Path(demo_module.tour_answers_path(str(demo))).write_text(json.dumps(answers, indent=2))
         _export_profile_runs(url, demo)
+        _export_term_scans(url, demo)
     finally:
         for server in servers:
             server.terminate()
@@ -760,6 +778,26 @@ def _export_profile_runs(url: str, demo: Path) -> None:
     if not written:
         raise SystemExit(f"{demo.name}: its setup profiled, and the setup server holds no run")
     print(f"{demo.name}: {written} profile result relations carried")
+
+
+def _export_term_scans(url: str, demo: Path) -> None:
+    """REQ-2201: the scans for terms the setup's ``scan`` steps made, with the library documents
+    they read, written out beside the seed (provisa.term_finding.carry) for the demo's template to
+    load: its tour opens the scan done ahead, and a sandbox asks no model for it."""
+    from provisa.api.demo_templates import demo_scans
+    from provisa.core.environments import org_schema
+    from provisa.term_finding.carry import export_scans, scans_path
+
+    wanted = demo_scans(demo)
+    if not wanted:
+        return
+    written = export_scans(url, org_schema(_SETUP_ORG), scans_path(demo))
+    if written < len(wanted):
+        raise SystemExit(
+            f"{demo.name}: its setup scanned {len(wanted)} document(s), and the setup server holds "
+            f"{written} scan(s)"
+        )
+    print(f"{demo.name}: {written} scans for terms carried")
 
 
 def _seed(

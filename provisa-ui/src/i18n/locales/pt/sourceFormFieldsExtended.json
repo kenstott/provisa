@@ -90,12 +90,12 @@
     "loadManagementTitle": "Gestão de carga e atualidade",
     "loadManagementHelp": "Quão atuais os dados precisam ser para cada leitor, equilibrado com a carga sobre a plataforma e as fontes de origem.",
     "loadManagementInfoLabel": "Sobre gestão de carga e atualidade",
-    "loadManagementInfo": "Equilibra quão atuais são os dados de cada leitor com a carga sobre a plataforma e as fontes de origem. Idealmente a fonte gerencia a própria carga; o operador protege a plataforma, e a fonte quando ela não consegue se proteger. Estas configurações são o piso do operador — nenhuma consulta ou dica de requisição pode obter dados mais recentes ou colocar mais carga numa fonte do que elas permitem. Os leitores só podem optar por aceitar dados mais antigos em troca de velocidade. Uma tabela que o motor lê ao vivo ignora as configurações de TTL; elas se aplicam quando a tabela é servida a partir da sua réplica (\"Replicar\" ou \"Protegido contra carga\").",
+    "loadManagementInfo": "Equilibra a atualidade dos dados de cada leitor com a carga na plataforma e nas fontes upstream. O ideal é que o upstream gerencie a própria carga; o operador protege a plataforma, e o upstream quando este não consegue se proteger sozinho. Estas configurações são o piso do operador. Nenhuma dica de consulta ou requisição pode obter dados mais recentes ou impor mais carga a uma fonte do que elas permitem. Os leitores só podem optar por aceitar dados mais antigos em troca de velocidade. Uma tabela que o motor lê ao vivo ignora as configurações de TTL; elas se aplicam quando ela é servida a partir da réplica (Replicar ou Com proteção de carga).",
     "sentinelPath": "Caminho sentinela",
     "sentinelPathTooltip": "URL de um arquivo marcador que o produtor atualiza quando seus dados mudam (file:, ftp:, sftp:, http:, https:). Com um sinal de alteração por sondagem, o Provisa verifica apenas esse marcador para decidir se os dados estão atualizados. Deixe vazio para nenhum sentinela.",
     "sentinelPathInvalid": "Use uma URL file:, ftp:, sftp:, http: ou https:, ou deixe vazio.",
     "freshnessGate": "Garantia de atualidade das consultas",
-    "freshnessGateTooltip": "Quando ativada, uma consulta que lê as tabelas desta fonte verifica primeiro se a cópia ainda está atualizada (pelo sinal de alteração e pelo TTL do cache) e, se estiver desatualizada, atualiza-a antes de responder — assim um leitor nunca recebe uma cópia mais antiga que o TTL do cache, e uma consulta pode aguardar essa atualização. Quando desativada, a cópia é atualizada em segundo plano e as consultas nunca aguardam. Requer um TTL do cache quando o sinal de alteração relê de forma agendada; não tem efeito para sinais de alteração enviados (push).",
+    "freshnessGateTooltip": "Quando ativado, uma consulta que lê as tabelas desta fonte verifica primeiro se a réplica ainda está atual (pelo sinal de alteração e pelo TTL de cache) e, se estiver desatualizada, a atualiza antes de responder. Um leitor nunca recebe uma réplica mais antiga que o TTL de cache, e uma consulta pode aguardar essa atualização. Quando desativado, a réplica é atualizada em segundo plano e as consultas nunca aguardam. Requer um TTL de cache quando o sinal de alteração relê em um agendamento; não tem efeito para sinais de alteração enviados.",
     "maxLiveConcurrency": "Máx. de consultas ao vivo simultâneas",
     "maxLiveConcurrencyHelp": "Limite de consultas lendo esta fonte ao vivo ao mesmo tempo, em todas as instâncias do Provisa que compartilham este Redis. Consultas além dele aguardam até o próprio prazo e depois falham. Vazio = sem limite. Sem efeito quando a fonte é lida da réplica (Replicar / protegido contra carga).",
     "maxLiveConcurrencyPlaceholder": "sem limite",
@@ -105,6 +105,8 @@
     "accessToken": "Token de acesso",
     "accessTokenHint": "Armazenado no cofre de segredos. Também é aceita uma referência ${secret:NAME} ou ${env:NAME}.",
     "brandNamespaceHint": "Prefixo dos nomes de tabela desta fonte. Deixe em branco para usar o padrão.",
+    "brandBaseUrl": "URL base",
+    "brandBaseUrlHint": "O endereço da sua instância, por exemplo https://catalog.example.com. A API é chamada aqui e a descrição OpenAPI é lida a partir dela.",
     "shopifyStore": "Nome da loja",
     "shopifyStoreHint": "A parte do endereço de administração da sua loja antes de .myshopify.com, por exemplo my-store.",
     "shopifyApiVersion": "Versão da API",
@@ -225,6 +227,10 @@
     "qbClientSecret": "Segredo do cliente",
     "qbClientSecretHint": "Da mesma página do ID do cliente. Guardado no cofre de segredos.",
     "qbRefreshToken": "Token de atualização",
-    "qbRefreshTokenHint": "Permite que o Provisa leia a empresa. Obtenha um no OAuth 2.0 Playground da Intuit com o escopo Accounting. O QuickBooks o substitui a cada uso, e o Provisa guarda o mais recente."
+    "qbRefreshTokenHint": "Permite que o Provisa leia a empresa. Entre com o QuickBooks para obter um, ou cole um do OAuth 2.0 Playground da Intuit com o escopo Accounting. O QuickBooks o substitui a cada uso, e o Provisa guarda o mais recente. Um novo inserido aqui substitui o guardado ao salvar.",
+    "qbSignIn": "Entrar com o QuickBooks",
+    "qbSignedIn": "Conectado à empresa {{realm}}. Salve a fonte para mantê-la.",
+    "qbSignInFailed": "Não foi possível concluir o login.",
+    "wikidataEndpointHint": "O serviço de consultas do Wikidata. Sem credencial; as tabelas são atualizadas diariamente."
   }
 }

@@ -43,6 +43,7 @@ from typing import TYPE_CHECKING, Any
 
 from provisa.compiler.sql_literals import sql_literal
 from provisa.core.ir_types import to_ir
+from provisa.core.modeling_tags import RESERVED_TERM_TAG
 
 from provisa.federation.landed_keys import KeyTarget, Parts
 
@@ -72,6 +73,8 @@ _IR_TO_SNOWFLAKE: dict[str, str] = {
 }
 
 TAGS_SCHEMA = "PROVISA_GOVERNANCE"
+TERM_TAG = RESERVED_TERM_TAG.upper()
+_TAG_VALUE_LIMIT = 256  # a Snowflake tag value is at most 256 characters
 PK_TAG = "PRIMARY_KEY"
 FK_TAG = "FOREIGN_KEY"
 OWNED_FK_PREFIX = "provisa_fk_"
@@ -482,12 +485,16 @@ def model_tag_statements(
     (REQ-1655): ``PROVISA_GOVERNANCE.<TAG_ID>`` = the assignment's reason (else the tag id), on the
     object and on each tagged column. A tag the model defines (``known_tags``) that sits on an
     object but is no longer assigned there is unset; a tag of any other origin is never touched.
-    The key tags are the key reconcile's, not this one's."""
+    The key tags are the key reconcile's, not this one's.
+
+    A column's grounded term (REQ-2238) is ``PROVISA_GOVERNANCE.TERM`` = the term's name, set and
+    unset with the steward tags; ``TERM`` is the reconcile's own tag, so one the column no longer
+    carries is unset."""
 
     def tag_fq(name: str) -> str:
         return f'"{tags_database}"."{TAGS_SCHEMA}"."{name}"'
 
-    known = {identifier(t.upper()) for t in known_tags} - {PK_TAG, FK_TAG}
+    known = ({identifier(t.upper()) for t in known_tags} - {PK_TAG, FK_TAG}) | {TERM_TAG}
     stmts: list[str] = []
     used: set[str] = set()
     for identity_ in sorted(targets):
@@ -497,6 +504,8 @@ def model_tag_statements(
             column: {identifier(tag.upper()): value for tag, value in tags}
             for column, tags in (target.column_tags or {}).items()
         }
+        for column, term in (target.column_terms or {}).items():
+            wanted_columns.setdefault(column, {})[TERM_TAG] = term[:_TAG_VALUE_LIMIT]
         for parts, kind in ((target.replica, "TABLE"), (target.view, "VIEW")):
             if parts is None:
                 continue

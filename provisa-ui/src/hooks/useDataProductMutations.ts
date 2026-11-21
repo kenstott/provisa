@@ -13,20 +13,22 @@
 
 import { useMemo } from "react";
 import { useMutation, useQuery } from "@apollo/client/react";
-import type { ContractColumn, ContractSlaProperty, ContractTerms, MutationResult } from "../types/admin";
+import type { MutationResult } from "../types/admin";
 import type { Finding } from "../components/lifecycle/ToReview";
 import {
   DataProductsQuery as DATA_PRODUCTS_QUERY,
   CreateDataProduct,
   UpdateDataProduct,
   DeleteDataProduct,
-  SaveDataContract,
+  SetDataProductMembers,
   PublishDataProduct,
   DeprecateDataProduct,
   RetireDataProduct,
   RestoreDataProduct,
   DataProductFindingsQuery,
+  DeleteDataProducts,
 } from "./admin.graphql";
+import { useBulkDelete } from "./useBulkDelete";
 
 // REQ-1660: mirrors the DataProductInput GraphQL input type field-for-field.
 export interface DataProductInput {
@@ -74,6 +76,23 @@ export function useUpdateDataProduct() {
   };
 }
 
+export function useSetDataProductMembers() {
+  // REQ-1634: a product's members are set on the product, any number of tables and commands.
+  const [setMembers, { loading }] = useMutation<{ setDataProductMembers: MutationResult }>(
+    SetDataProductMembers,
+  );
+  return {
+    setDataProductMembers: async (id: string, tableIds: number[], commandNames: string[]) => {
+      const result = await setMembers({ variables: { id, tableIds, commandNames } });
+      return (result.data?.setDataProductMembers ?? {
+        success: false,
+        message: "",
+      }) as MutationResult;
+    },
+    loading,
+  };
+}
+
 export function useDeleteDataProduct() {
   // REQ-1634
   const [deleteDataProduct, { loading }] = useMutation<{ deleteDataProduct: MutationResult }>(
@@ -84,31 +103,6 @@ export function useDeleteDataProduct() {
     deleteDataProduct: async (id: string) => {
       const result = await deleteDataProduct({ variables: { id } });
       return (result.data?.deleteDataProduct ?? { success: false, message: "" }) as MutationResult;
-    },
-    loading,
-  };
-}
-
-// REQ-2158: mirrors the DataContractInput GraphQL input type field-for-field.
-export interface DataContractInput {
-  version: string;
-  status: string;
-  description: string | null;
-  terms: ContractTerms;
-  sla: ContractSlaProperty[];
-  columns: ContractColumn[];
-}
-
-export function useSaveDataContract() {
-  // REQ-2158: a member's contract is saved on its own; a break at the same version is refused.
-  const [saveDataContract, { loading }] = useMutation<{ saveDataContract: MutationResult }>(
-    SaveDataContract,
-    { refetchQueries: [{ query: DATA_PRODUCTS_QUERY }] },
-  );
-  return {
-    saveDataContract: async (tableId: number, contract: DataContractInput) => {
-      const result = await saveDataContract({ variables: { tableId, contract } });
-      return (result.data?.saveDataContract ?? { success: false, message: "" }) as MutationResult;
     },
     loading,
   };
@@ -171,4 +165,12 @@ export function useDataProductFindings() {
     [data],
   );
   return { findings, refetch, error };
+}
+
+/** REQ-2240: several data products deleted in one call, each through its single delete; the same lists
+ *  read again. */
+export function useDeleteDataProducts() {
+  return useBulkDelete(DeleteDataProducts, "deleteDataProducts", "ids", [
+    { query: DATA_PRODUCTS_QUERY },
+  ]);
 }

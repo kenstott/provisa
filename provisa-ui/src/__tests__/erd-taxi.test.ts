@@ -10,7 +10,7 @@
 
 import { describe, it, expect } from "vitest";
 import cytoscape from "cytoscape";
-import { applyTaxiLanes, clearTaxiLanes, laneRoute } from "../components/erd/sections/erd-taxi";
+import { applyTaxiLanes, clearTaxiLanes, laneRoute } from "../components/provisa-graph/taxi";
 import type { CyInstance, CyElement } from "../components/graph/cytoscape-types";
 
 function graph(
@@ -25,7 +25,7 @@ function graph(
       ...nodes,
       ...edges.map(([source, target], i) => ({
         data: { id: `e${i}`, source, target },
-        classes: "erd-rel",
+        classes: "pg-edge",
       })),
     ],
   }) as unknown as CyInstance;
@@ -57,7 +57,7 @@ function corners(edge: CyElement, route: NonNullable<ReturnType<typeof laneRoute
 describe("laneRoute", () => {
   it("is a right-angle Z between offset boundary endpoints on a slanted vertical pair", () => {
     const cy = graph([["a", "b"]], { a: { x: 0, y: 0 }, b: { x: 100, y: 300 } });
-    const edge = cy.edges(".erd-rel")[0];
+    const edge = cy.edges(".pg-edge")[0];
     const route = laneRoute(edge, 6, -6, 0.46);
     expect(route).not.toBeNull();
     const { s, t, pts } = corners(edge, route!);
@@ -72,7 +72,7 @@ describe("laneRoute", () => {
 
   it("lays a horizontal pair's lane across y", () => {
     const cy = graph([["a", "b"]], { a: { x: 0, y: 0 }, b: { x: 300, y: -40 } });
-    const edge = cy.edges(".erd-rel")[0];
+    const edge = cy.edges(".pg-edge")[0];
     const { s, t, pts } = corners(edge, laneRoute(edge, -6, -6, 0.5)!);
     expect(s).toEqual({ x: 15, y: -6 });
     expect(t).toEqual({ x: 285, y: -46 });
@@ -83,7 +83,7 @@ describe("laneRoute", () => {
 
   it("returns null when the nodes overlap along the corridor", () => {
     const cy = graph([["a", "b"]], { a: { x: 0, y: 0 }, b: { x: 0, y: 20 } });
-    expect(laneRoute(cy.edges(".erd-rel")[0], 6, 6, 0.5)).toBeNull();
+    expect(laneRoute(cy.edges(".pg-edge")[0], 6, 6, 0.5)).toBeNull();
   });
 });
 
@@ -98,7 +98,7 @@ describe("applyTaxiLanes", () => {
       { a: { x: 0, y: 0 }, b: { x: 10, y: 300 } },
     );
     applyTaxiLanes(cy);
-    const edges = cy.edges(".erd-rel");
+    const edges = cy.edges(".pg-edge");
     expect(edges.map((e) => e.style("curve-style"))).toEqual(["segments", "segments", "segments"]);
     // Three lanes close up to fit a 30px headless node: 30 / 4 = 7.5px apart.
     expect(edges.map((e) => e.style("source-endpoint"))).toEqual([
@@ -117,7 +117,7 @@ describe("applyTaxiLanes", () => {
       { a: { x: 0, y: 0 }, b: { x: -50, y: 300 }, c: { x: 50, y: 300 } },
     );
     applyTaxiLanes(cy);
-    const edges = cy.edges(".erd-rel");
+    const edges = cy.edges(".pg-edge");
     // Ordered by where the other end lies, so the two runs do not cross.
     expect(edges.map((e) => e.style("source-endpoint"))).toEqual(["-5px 15px", "5px 15px"]);
     expect(edges.map((e) => e.style("target-endpoint"))).toEqual(["0px -15px", "0px -15px"]);
@@ -135,7 +135,7 @@ describe("applyTaxiLanes", () => {
     );
     applyTaxiLanes(cy);
     // A 30px node fits four lanes at 6px, not 12px.
-    expect(cy.edges(".erd-rel").map((e) => e.style("source-endpoint"))).toEqual([
+    expect(cy.edges(".pg-edge").map((e) => e.style("source-endpoint"))).toEqual([
       "-9px 15px",
       "-3px 15px",
       "3px 15px",
@@ -146,7 +146,7 @@ describe("applyTaxiLanes", () => {
   it("falls back to taxi routing when the nodes overlap along the corridor", () => {
     const cy = graph([["a", "b"]], { a: { x: 0, y: 0 }, b: { x: 0, y: 20 } });
     applyTaxiLanes(cy);
-    const edge = cy.edges(".erd-rel")[0];
+    const edge = cy.edges(".pg-edge")[0];
     expect(edge.style("curve-style")).toBe("taxi");
     expect(edge.style("source-endpoint")).toBe("outside-to-node");
   });
@@ -161,7 +161,7 @@ describe("applyTaxiLanes", () => {
     );
     applyTaxiLanes(cy);
     clearTaxiLanes(cy);
-    cy.edges(".erd-rel").forEach((e) => {
+    cy.edges(".pg-edge").forEach((e) => {
       expect(e.style("source-endpoint")).toBe("outside-to-node");
       expect(e.style("edge-distances")).toBe("intersection");
     });

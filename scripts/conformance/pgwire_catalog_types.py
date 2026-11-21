@@ -33,6 +33,7 @@ the same statement runs unchanged on both servers.
 Usage:
   pgwire_catalog_types.py seed   --pg <dsn>
   pgwire_catalog_types.py config --out <provisa.yaml> --pg-port <port>
+  pgwire_catalog_types.py assignments --extra-access <access.yaml> --user <job user>
   pgwire_catalog_types.py probe  --pg <dsn> --provisa <dsn> --out-json <f> --out-md <f>
   pgwire_catalog_types.py combine --pgspec <f> [--catalog <f>] --out <f>
 
@@ -184,11 +185,24 @@ class Server:
             finally:
                 self.conn = psycopg.connect(self.dsn, autocommit=True)
 
-    def run(self, sql: str, result_format: int = 0) -> dict[str, Any]:
-        """One statement over the extended protocol: its fields, first row, or its error."""
+    def run(
+        self,
+        sql: str,
+        result_format: int = 0,
+        params: list[tuple[int, bytes | None, int]] | None = None,
+    ) -> dict[str, Any]:
+        """One statement over the extended protocol: its fields, first row, or its error.
+        ``params`` are its bind parameters, each (type OID, value, format code)."""
+        params = params or []
         try:
             self._ensure()
-            res = self.conn.pgconn.exec_params(sql.encode(), [], result_format=result_format)
+            res = self.conn.pgconn.exec_params(
+                sql.encode(),
+                [value for _, value, _ in params],
+                param_types=[oid for oid, _, _ in params],
+                param_formats=[fmt for _, _, fmt in params],
+                result_format=result_format,
+            )
         except psycopg.Error as exc:
             return {"ok": False, "error": f"connection: {exc}".strip()}
         if res.status not in (pq.ExecStatus.TUPLES_OK, pq.ExecStatus.COMMAND_OK):
@@ -369,16 +383,11 @@ def provisa_config(pg_port: int, pg_dsn: str) -> dict[str, Any]:
             },
             "assignments_source": "provisa",
             "default_assignments": [{"domain_id": "*", "role_id": "org_admin"}],
-            # The Cypher TCK's session user acts as tck_empty (scripts/conformance/cypher_tck_bolt.py):
-            # a Bolt sign-in holds the role its claims map to, not the control plane's assignments.
-            "role_mapping": [
-                {
-                    "claim": "username",
-                    "type": "exact",
-                    "value": TCK_SESSION_USER,
-                    "role": "tck_empty",
-                }
-            ],
+            # No rule: the control plane holds the assignments, so a sign-in acts only as a role
+            # it holds (REQ-120, REQ-1263). A user acting as a role of its own is assigned it: the
+            # Cypher TCK's session user tck_empty (.github/workflows/conformance-cypher.yml), a
+            # job user the roles of its extra access (job_assignments).
+            "role_mapping": [],
             # The role a pgwire login acts as when its user names none.
             "default_role": "org_admin",
         },
@@ -394,7 +403,7 @@ def provisa_config(pg_port: int, pg_dsn: str) -> dict[str, Any]:
                 # reaches no model domain, so a session's graph is its own alone.
                 "id": "tck_empty",
                 "description": "Reaches no model domain: the openCypher TCK's empty graph",
-                "capabilities": ["query_development", "full_results"],
+                "capabilities": ["query_development", "full_results", "command_execution"],
                 # A domain of its own, which holds no table.
                 "domain_access": ["tck_empty"],
             }
@@ -452,6 +461,34 @@ def provisa_config(pg_port: int, pg_dsn: str) -> dict[str, Any]:
     }
 
 
+_ACCESS_FIELDS = {"domains", "roles", "assignments"}
+
+
+def _access(path: Path) -> dict:
+    import yaml
+
+    access = yaml.safe_load(path.read_text())
+    if set(access) != _ACCESS_FIELDS:
+        raise SystemExit(
+            f"{path}: has {sorted(access)}, where a job's access is {sorted(_ACCESS_FIELDS)}"
+        )
+    return access
+
+
+def job_assignments(extra_access: Path, users: list[str]) -> dict[str, list[dict]]:
+    """The role assignments of a job's extra access, by user (``{username: [{role_id,
+    domain_id}]}``), each given to its user once the user is created (POST
+    /admin/users/{id}/assignments). An assignment naming a user the job does not create is refused
+    by name: no one would hold it."""
+    assignments = _access(extra_access)["assignments"]
+    strangers = sorted(set(assignments) - set(users))
+    if strangers:
+        raise SystemExit(
+            f"{extra_access}: assigns roles to {strangers}, users the job does not create"
+        )
+    return assignments
+
+
 def write_config(
     path: Path,
     pg_port: int,
@@ -464,8 +501,9 @@ def write_config(
     entries a job seeded into the same PostgreSQL, e.g. scripts/conformance/flightsql/fixtures.py)
     registered beside ``types_fixture``, the relationships between them (``extra_relationships``,
     a YAML list of model relationship entries, e.g. scripts/conformance/bolt/fixtures.py), and the
-    domains, roles and role mapping rules its user acts by (``extra_access``, a YAML mapping of
-    ``domains``, ``roles`` and ``role_mapping``, e.g. scripts/conformance/bolt/fixtures.py)."""
+    domains and roles its users act by (``extra_access``, a YAML mapping of ``domains``, ``roles``
+    and ``assignments``, e.g. scripts/conformance/bolt/fixtures.py). The assignments are not the
+    model's: each user is given its own once created (job_assignments)."""
     import yaml
 
     config = provisa_config(pg_port, pg_dsn)
@@ -474,15 +512,9 @@ def write_config(
     if extra_relationships is not None:
         config["relationships"] = yaml.safe_load(extra_relationships.read_text())
     if extra_access is not None:
-        access = yaml.safe_load(extra_access.read_text())
-        fields = {"domains", "roles", "role_mapping"}
-        if set(access) != fields:
-            raise SystemExit(
-                f"{extra_access}: has {sorted(access)}, where a job's access is {sorted(fields)}"
-            )
+        access = _access(extra_access)
         config["domains"].extend(access["domains"])
         config["roles"].extend(access["roles"])
-        config["auth"]["role_mapping"].extend(access["role_mapping"])
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(yaml.safe_dump(config, sort_keys=False))
     print(f"wrote {path}")
@@ -666,7 +698,10 @@ def catalog_functions(
     type that differs, a function not served, or a refusal of this server's state (``refused_here``,
     no proof PostgreSQL cannot call it) that Provisa does not answer with the same error. A Provisa
     server is in that state, so that error is its answer (REQ-2171): it passes on its SQLSTATE and
-    message. What stays failed is taken by family."""
+    message. A call the validator refuses for reading or acting on its server (REQ-001, V007, read
+    by function_probe.not_served, as the function measure reads it) is skipped by design whatever
+    PostgreSQL answers, its refusal of this server's state included: it is so on every engine.
+    What stays failed is taken by family."""
     declared = function_probe.families()
     fns = pg_functions(pg)
     matching: list[str] = []
@@ -674,6 +709,7 @@ def catalog_functions(
     not_served: dict[str, str] = {}
     not_callable: dict[str, str] = {}
     refused_here: dict[str, str] = {}
+    server_functions: dict[str, str] = {}
     for fn in fns:
         sql = function_probe.call(fn)
         if sql is None:
@@ -684,14 +720,25 @@ def catalog_functions(
             why = f"PostgreSQL refuses the call: {want.get('error') or 'no result column'}"
             if function_probe.proves_internal(why):
                 not_callable[fn.signature] = why
-            elif want["ok"] or not same_refusal(want, called(provisa, fn, sql)):
+                continue
+            got = None if want["ok"] else called(provisa, fn, sql)
+            if (
+                got is not None
+                and not got["ok"]
+                and function_probe.not_served(fn.name, got["error"])
+            ):
+                server_functions[fn.signature] = f"{got['error']} ({why})"
+            elif got is None or not same_refusal(want, got):
                 refused_here[fn.signature] = why
             else:
                 matching.append(fn.signature)
             continue
         got = called(provisa, fn, sql)
         if not got["ok"]:
-            not_served[fn.signature] = got["error"]
+            refusals = (
+                server_functions if function_probe.not_served(fn.name, got["error"]) else not_served
+            )
+            refusals[fn.signature] = got["error"]
             continue
         expected = want["fields"][0]["type_oid"]
         oid = got["fields"][0]["type_oid"] if got["fields"] else None
@@ -707,6 +754,10 @@ def catalog_functions(
         **{signature: f"not served: {error}" for signature, error in not_served.items()},
         **{signature: f"no call reaches it: {why}" for signature, why in not_callable.items()},
         **refused_here,
+        **{
+            signature: f"{by_design.SERVER_FUNCTION_REASON}{error}"
+            for signature, error in server_functions.items()
+        },
     }
     unmet = [
         {
@@ -740,6 +791,7 @@ def catalog_functions(
         "not_served": dict(sorted(not_served.items())),
         "not_callable": dict(sorted(not_callable.items())),
         "refused_here": dict(sorted(refused_here.items())),
+        "server_functions": dict(sorted(server_functions.items())),
         "failures_by_family": {
             family: {"count": len(functions), "functions": functions}
             for family, functions in sorted(by_family.items())
@@ -1054,8 +1106,11 @@ def main(argv: list[str]) -> int:
     c.add_argument("--extra-tables", type=Path, help="a job's own seeded fixture tables (YAML)")
     c.add_argument("--extra-relationships", type=Path, help="the relationships between them (YAML)")
     c.add_argument(
-        "--extra-access", type=Path, help="a job's domains, roles and role mapping rules (YAML)"
+        "--extra-access", type=Path, help="a job's domains, roles and assignments (YAML)"
     )
+    a = sub.add_parser("assignments", help="a job user's assignments, one JSON body per line")
+    a.add_argument("--extra-access", required=True, type=Path)
+    a.add_argument("--user", required=True, help="the job user, the one user the job creates")
     p = sub.add_parser("probe")
     p.add_argument("--pg", required=True)
     p.add_argument("--provisa", required=True)
@@ -1078,6 +1133,9 @@ def main(argv: list[str]) -> int:
             args.extra_relationships,
             args.extra_access,
         )
+    elif args.command == "assignments":
+        for assignment in job_assignments(args.extra_access, [args.user]).get(args.user, []):
+            print(json.dumps(assignment))
     elif args.command == "combine":
         catalog = (
             json.loads(args.catalog.read_text()) if args.catalog and args.catalog.exists() else None

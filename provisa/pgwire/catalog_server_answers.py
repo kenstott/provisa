@@ -18,6 +18,7 @@ file or changes anything: Provisa has no server files, sequences or WAL a client
 
 from __future__ import annotations
 
+import calendar
 import re
 
 import sqlglot
@@ -25,14 +26,11 @@ import sqlglot.expressions as exp
 from sqlglot.errors import SqlglotError
 
 from provisa.core.pg_error import PostgresError, raising
+from provisa.transpiler import pg_zones
 from provisa.transpiler.pg_held_types import HELD_AS
-from provisa.transpiler.function_macros import (
-    SERVER_VALUE_NAMES,
-    WAL_SEGMENT,
-    lsn_number,
-    strict,
-    wal_file,
-)
+from provisa.transpiler.function_macros import SERVER_VALUE_NAMES
+from provisa.transpiler.rows.base import strict
+from provisa.transpiler.rows.system import WAL_SEGMENT, lsn_number, wal_file
 
 #: The aliases that let a statement name them in a cast.
 PG_ONLY_TYPES = tuple(
@@ -202,7 +200,11 @@ class _Answers:
     def statements(self) -> tuple[str, ...]:
         scalar = tuple(f"CREATE MACRO {n}{', '.join(o)}" for n, o in self.scalar.items())
         table = tuple(f"CREATE MACRO {n}{', '.join(o)}" for n, o in self.table.items())
-        return scalar + table
+        # The table macros first: DuckDB 2.0 cannot bind a table macro's call of a built-in table
+        # function (pg_timezone_names' engine zones, system.main.pg_timezone_names()) once a scalar
+        # macro of that name exists ("No function matches ... pg_timezone_names(STRING_LITERAL)"),
+        # and binds it, and both overloads after, when the table macro comes first.
+        return table + scalar
 
 
 def _server_objects(a: _Answers) -> None:  # noqa: PLR0915 -- one line per function
@@ -889,22 +891,22 @@ def _catalog_objects(a: _Answers) -> None:
         "unnest(CAST([] AS STRUCT(name VARCHAR, statement VARCHAR, is_holdable BOOLEAN, "
         "is_binary BOOLEAN, is_scrollable BOOLEAN, creation_time TIMESTAMPTZ)[]))",
     )
+    # The pinned release's zones, and PostgreSQL's Default abbreviations (pg_zones).
     a.body(
         "pg_timezone_names",
         "",
         "unnest((SELECT list(struct_pack(name := _z.name, abbrev := _z.abbrev, "
-        "utc_offset := _z.utc_offset, is_dst := _z.is_dst)) FROM pg_timezone_names() _z))",
+        f"utc_offset := _z.utc_offset, is_dst := _z.is_dst)) FROM ({pg_zones.NAMES}) _z))",
     )
     a.body(
         "pg_timezone_abbrevs",
         "",
         "unnest((SELECT list(struct_pack(abbrev := _z.abbrev, utc_offset := _z.utc_offset, "
-        "is_dst := _z.is_dst)) FROM (SELECT DISTINCT abbrev, utc_offset, is_dst "
-        "FROM pg_timezone_names()) _z))",
+        f"is_dst := _z.is_dst)) FROM ({pg_zones.ABBREVS}) _z))",
     )
-    a.table.setdefault("pg_timezone_abbrevs", []).append(
-        "() AS TABLE (SELECT DISTINCT abbrev, utc_offset, is_dst FROM pg_timezone_names())"
-    )
+    # In FROM, each is its rows.
+    a.table.setdefault("pg_timezone_names", []).append(f"() AS TABLE ({pg_zones.NAMES})")
+    a.table.setdefault("pg_timezone_abbrevs", []).append(f"() AS TABLE ({pg_zones.ABBREVS})")
     a.rows(
         "pg_wal_summary_contents",
         "tli, start_lsn, end_lsn",
@@ -958,8 +960,15 @@ def _catalog_objects(a: _Answers) -> None:
         "INTEGER",
         f"CASE WHEN coalesce({is_table}, false) THEN 28 ELSE 0 END",
     )
+    # A system column (attnum of zero or less) is never updatable; past attnum 32760 the bitmapset
+    # member (attnum + 7) wraps an int16 negative, and bms_make_singleton raises XX000.
     a.strict(
-        "pg_column_is_updatable", "rel, att, cascaded", "BOOLEAN", f"coalesce({is_table}, false)"
+        "pg_column_is_updatable",
+        "rel, att, cascaded",
+        "BOOLEAN",
+        "CASE WHEN att <= 0 THEN false WHEN att > 32760 THEN "
+        + raising("XX000", "'negative bitmapset member not allowed'")
+        + f" ELSE coalesce({is_table}, false) END",
     )
     a.strict(
         "pg_filenode_relation",
@@ -1192,7 +1201,22 @@ def input_failure(value: exp.Expr, type_name: exp.Expr) -> tuple[str, str]:
     bits = _INTEGER_RANGES.get(display)
     if bits is not None and re.fullmatch(r"\s*[-+]?\d+\s*", text):
         return f'value "{text}" is out of range for type {display}', "22003"
+    if display == "date" and _day_past_its_month(text):
+        return f'date/time field value out of range: "{text}"', "22008"
     return f'invalid input syntax for type {display}: "{text}"', "22P02"
+
+
+_ISO_DATE = re.compile(r"\s*(\d{4})-(\d{1,2})-(\d{1,2})\s*")
+
+
+def _day_past_its_month(text: str) -> bool:
+    """An ISO date whose month is one and whose day that month does not have: ValidateDate
+    refuses the day as out of range (DTERR_FIELD_OVERFLOW), not as syntax."""
+    found = _ISO_DATE.fullmatch(text)
+    if found is None:
+        return False
+    year, month, day = (int(g) for g in found.groups())
+    return 1 <= month <= 12 and not 1 <= day <= calendar.monthrange(year, month)[1]
 
 
 def input_check(value: exp.Expr, type_name: exp.Expr) -> exp.Expr:

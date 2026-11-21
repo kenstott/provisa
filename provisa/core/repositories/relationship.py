@@ -12,17 +12,20 @@
 
 # Requirements: REQ-018, REQ-019, REQ-020, REQ-399, REQ-400
 
-from provisa.core import model_change
+from provisa.core import model_change, model_uri
+from provisa.core.builtin_relationship_prefix import BUILTIN_RELATIONSHIP_ID_PREFIXES
 from typing import TYPE_CHECKING
 
 from sqlalchemy import delete as _delete, func, or_, select, update
 
 from provisa.compiler.sql_types import key_list
 from provisa.core.models import Relationship
+from provisa.core.repositories import retirement
 from provisa.core.repositories import table as table_repo
 from provisa.core.relationship_names import store_effective_names
+from provisa.core.relationship_naming import RelationshipNameTaken
 from provisa.core.repositories.integrity import Dependent, ObjectRef, guard, remove_parts
-from provisa.core.schema_org import relationships, table_columns
+from provisa.core.schema_org import registered_tables, relationships, table_columns
 
 if TYPE_CHECKING:
     from provisa.core.database import Connection
@@ -36,14 +39,79 @@ class TableNotRegistered(ValueError):
         self.table_name = table_name
 
 
+class ReservedRelationshipPrefix(ValueError):
+    """A relationship id carries a prefix reserved for Provisa's built-in relationships. The
+    startup seed removes built-in rows it no longer declares, recognising them by that prefix, so
+    a relationship a person saved under one would be removed at the next boot."""
+
+    def __init__(self, rel_id: str, prefix: str) -> None:
+        self.rel_id = rel_id
+        self.prefix = prefix
+        super().__init__(
+            f"relationship id {rel_id!r} starts with {prefix!r}, a prefix reserved for "
+            "built-in relationships"
+        )
+
+
+class RelationshipWithoutColumns(ValueError):
+    """A relationship names no column at one end (``end``: "source" or "target"). Every
+    relationship joins on a source column, and on a target column unless its target is a
+    function; one without them joins nothing and is never served (REQ-019)."""
+
+    def __init__(self, rel_id: str, end: str) -> None:
+        self.rel_id = rel_id
+        self.end = end
+        super().__init__(f"relationship {rel_id!r} names no {end} column")
+
+
+def missing_column_end(rel: Relationship) -> str | None:
+    """The end of ``rel`` that names no column, or None when both do."""
+    if not rel.source_column:
+        return "source"
+    if not rel.target_function_name and not rel.target_column:
+        return "target"
+    return None
+
+
+def reserved_prefix_of(rel_id: str) -> str | None:
+    """The reserved built-in prefix ``rel_id`` starts with, or None. The prefixes are the one
+    definition in core that the seed's removal of undeclared rows uses too."""
+    return next((p for p in BUILTIN_RELATIONSHIP_ID_PREFIXES if rel_id.startswith(p)), None)
+
+
 async def upsert(
-    conn: "Connection", rel: Relationship
-) -> None:  # REQ-019, REQ-020, REQ-399, REQ-400, REQ-1919
-    """Upsert a relationship. Resolves table names to registered_tables IDs."""
-    model_change.name("upsert", "relationship", rel.id)  # REQ-1524
+    conn: "Connection", rel: Relationship, *, derive_target_key: bool = True
+) -> None:  # REQ-019, REQ-020, REQ-399, REQ-400, REQ-413, REQ-1919
+    """Upsert a relationship. Resolves table names to registered_tables IDs.
+
+    The source column is marked a foreign key. ``derive_target_key`` also marks a many-to-one or
+    one-to-one target column the target's primary key (or an alternate key where the table has
+    another): an accepted discovery suggestion passes False, marking the foreign key alone
+    (REQ-413: no column is marked a key from a sample or an accepted suggestion).
+
+    Refuses (:class:`RelationshipWithoutColumns`) a relationship naming no column at an end.
+    Refuses (:class:`ReservedRelationshipPrefix`) an id with a built-in prefix: the seed writes
+    its own relationships directly (``startup_seed._seed_meta_relationships``) and is the only
+    writer of those ids; every caller of this function is not the seed."""
+    prefix = reserved_prefix_of(rel.id)
+    if prefix is not None:
+        raise ReservedRelationshipPrefix(rel.id, prefix)
+    missing = missing_column_end(rel)
+    if missing is not None:
+        raise RelationshipWithoutColumns(rel.id, missing)
     source_tbl = await table_repo.find_by_table_name(conn, rel.source_table_id)
     if source_tbl is None:
         raise TableNotRegistered("Source", rel.source_table_id)
+    model_change.name(  # REQ-1524
+        "upsert",
+        model_change.uri(
+            model_uri.named_relationship_uri,
+            source_tbl["domain_id"],
+            source_tbl["alias"] or source_tbl["table_name"],
+            rel.alias,
+            rel.id,
+        ),
+    )
 
     target_tbl_id = None
     if rel.target_function_name:
@@ -63,6 +131,11 @@ async def upsert(
         if via_tbl is None:
             raise TableNotRegistered("Junction", rel.via_table)
         via_tbl_id = via_tbl["id"]
+
+    # REQ-2248: a retired relationship keeps its id; a save under it would bring it back.
+    held = await get(conn, rel.id)
+    if held is not None and held["retired"]:
+        raise retirement.RetiredNameTaken("relationship", rel.id)
 
     if await _provided_elsewhere(conn, rel, source_tbl["id"], target_tbl_id):
         return
@@ -130,9 +203,16 @@ async def upsert(
         )
     except Exception as e:
         if "relationships_source_alias_unique" in str(e):
-            raise ValueError(
-                f"Alias {rel.alias!r} already exists for source table {rel.source_table_id!r}"
-            ) from e
+            # REQ-415: a typed alias that is taken is refused, naming the relationship it is.
+            held_by = (
+                await conn.execute_core(
+                    select(relationships.c.id).where(
+                        relationships.c.source_table_id == source_tbl["id"],
+                        relationships.c.alias == rel.alias,
+                    )
+                )
+            ).scalar_one()
+            raise RelationshipNameTaken("alias", str(rel.alias), held_by) from e
         raise
 
     # REQ-351: its effective names, derived once and stored, for the meta domain and every reader.
@@ -169,7 +249,8 @@ async def upsert(
     from provisa.core.models import Cardinality
 
     if (
-        target_tbl_id
+        derive_target_key
+        and target_tbl_id
         and rel.target_column
         and rel.cardinality
         in (
@@ -254,7 +335,9 @@ async def _provided_elsewhere(
 
 
 async def _remove(conn: "Connection", rel_ids: list[str]) -> None:
-    """Remove offered relationships a declared one is, with their parts (their tag assignments)."""
+    """Remove offered relationships a declared one is, with their parts (their tag assignments).
+    REQ-2248 (amended 2026-11-15): de-duplication may remove a true duplicate; it is not a
+    person's object."""
     for rel_id in rel_ids:
         await remove_parts(conn, ObjectRef("relationship", rel_id))
         await remove_where(conn, relationships.c.id == rel_id)
@@ -266,8 +349,14 @@ async def get(conn: "Connection", rel_id: str) -> dict | None:  # REQ-018, REQ-0
     return dict(row._mapping) if row is not None else None
 
 
-async def list_all(conn: "Connection") -> list[dict]:  # REQ-018, REQ-019
-    result = await conn.execute_core(select(relationships).order_by(relationships.c.id))
+async def list_all(conn: "Connection", *, retired: bool = False) -> list[dict]:  # REQ-018, REQ-019
+    """Every relationship in service; ``retired`` lists the retired ones instead (REQ-2248),
+    with who, when and why."""
+    result = await conn.execute_core(
+        select(relationships)
+        .where(relationships.c.retired.is_(retired))
+        .order_by(relationships.c.id)
+    )
     return [dict(r._mapping) for r in result.fetchall()]
 
 
@@ -285,42 +374,101 @@ class RelationshipDeleteRefused(Exception):
         super().__init__(f"Relationship {rel_id!r} is still relied on by: {named}")
 
 
-async def delete(conn: "Connection", rel_id: str) -> bool:  # REQ-019, REQ-1918
-    """Delete one relationship: THE delete, for every surface. False when there is none.
+async def _name_change(conn: "Connection", action: str, rel_id: str) -> None:  # REQ-1524
+    """Name a change to relationship ``rel_id`` by its model URI: at its source table's model
+    name, by its alias (REQ-1385)."""
+    row = (
+        await conn.execute_core(
+            select(
+                relationships.c.alias,
+                registered_tables.c.domain_id,
+                registered_tables.c.alias.label("table_alias"),
+                registered_tables.c.table_name,
+            )
+            .join(registered_tables, registered_tables.c.id == relationships.c.source_table_id)
+            .where(relationships.c.id == rel_id)
+        )
+    ).one()
+    model_change.name(
+        action,
+        model_change.uri(
+            model_uri.named_relationship_uri,
+            row.domain_id,
+            row.table_alias or row.table_name,
+            row.alias,
+            rel_id,
+        ),
+    )
+
+
+async def delete(  # REQ-019, REQ-1918, REQ-2248
+    conn: "Connection", rel_id: str, *, reason: str | None = None
+) -> bool:
+    """Delete one relationship: THE delete, for every surface. It RETIRES the relationship
+    (REQ-2248): the row, its id, its alias and its tag assignments are kept, the relationship
+    marked retired with ``reason``, the acting person and the time. False when there is none, or
+    it is retired already.
 
     A relationship stands on its own — it goes before the tables it joins. It is refused
     (:class:`RelationshipDeleteRefused`) only while a materialized view is published over it:
     a view joins on the relationship's columns and no other relationship approves that join
-    (REQ-1140). Its tag assignments go with it. One transaction; no cascade is relied on.
+    (REQ-1140). One transaction.
     """
-    model_change.name("delete", "relationship", rel_id)  # REQ-1524
     ref = ObjectRef("relationship", rel_id)
     async with conn.transaction():
-        if await get(conn, rel_id) is None:
+        held = await get(conn, rel_id)
+        if held is None or held["retired"]:
             return False
+        await _name_change(conn, "retire", rel_id)
         blocking = await guard(conn, ref)
         if blocking:
             raise RelationshipDeleteRefused(rel_id, blocking)
-        held = await get(conn, rel_id)
-        assert held is not None  # read above, in this transaction
+        await conn.execute_core(
+            update(relationships)
+            .where(relationships.c.id == rel_id)
+            .values(**retirement.values(reason))
+        )
+        # REQ-2141: retired, it declares no key; the refs its key derived are settled again.
+        from provisa.core.repositories import glossary as glossary_repo
+
         joined = {
             t
             for t in (held["source_table_id"], held["target_table_id"], held["via_table_id"])
             if t is not None
         }
-        await remove_parts(conn, ref)
-        await conn.execute_core(_delete(relationships).where(relationships.c.id == rel_id))
-        # REQ-2141: its foreign key is no longer a key; the ref goes back to a Property.
+        await glossary_repo.rehome_keys(conn, joined)
+    return True
+
+
+async def restore(conn: "Connection", rel_id: str) -> bool:  # REQ-2248
+    """Restore a retired relationship: the same relationship, its retirement cleared, traversable
+    again. Its key declares again, so the refs it derives are settled again (REQ-2141). False
+    when there is none, or it is not retired."""
+    async with conn.transaction():
+        held = await get(conn, rel_id)
+        if held is None or not held["retired"]:
+            return False
+        await _name_change(conn, "restore", rel_id)
+        await conn.execute_core(
+            update(relationships).where(relationships.c.id == rel_id).values(**retirement.cleared())
+        )
         from provisa.core.repositories import glossary as glossary_repo
 
+        joined = {
+            t
+            for t in (held["source_table_id"], held["target_table_id"], held["via_table_id"])
+            if t is not None
+        }
         await glossary_repo.rehome_keys(conn, joined)
     return True
 
 
 async def remove_where(conn: "Connection", *where) -> None:
-    """Remove every relationship matching ``where`` (clauses on ``relationships``) — for the
-    config loader, which declares relationships as a set and replaces that set. It is not a
-    deletion of one object and does not ask the dependency guard."""
+    """Remove every relationship matching ``where`` (clauses on ``relationships``) — for the two
+    callers REQ-2248 (amended 2026-11-15) allows a removal: de-duplication removing a true
+    duplicate (:func:`_remove`) and the startup seed removing a built-in relationship it no
+    longer declares. Any other relationship is retired (:func:`delete`). It does not ask the
+    dependency guard."""
     await conn.execute_core(_delete(relationships).where(*where))
 
 

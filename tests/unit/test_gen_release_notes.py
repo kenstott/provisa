@@ -356,3 +356,22 @@ def test_a_release_before_the_start_is_left_out_of_every_output(repo: Fixture, s
 def test_a_start_that_is_no_tag_fails_the_run(repo: Fixture):
     repo.settings("v9")
     assert repo.run("v1", "v2") == 2
+
+
+@pytest.mark.parametrize(
+    ("subject", "scope"),
+    [
+        ("fix(REQ-039): fail closed when a table is absent", ""),
+        ("fix(REQ-039, REQ-2167): a qualified call is a call", ""),
+        ("fix(REQ-005,REQ-883,REQ-2190): a catalog statement is answered whole", ""),
+        ("fix(R508g3): a synthetic env is built in full", ""),
+        ("fix(r508): the steps fake holds node ids", ""),
+        ("fix(J1185): the last pg differences", ""),
+        ("fix(pgwire): a catalog statement is answered whole", "pgwire"),
+    ],
+)
+def test_a_scope_of_requirement_or_work_item_ids_is_no_scope(subject: str, scope: str):
+    # Requirement ids and work item ids never reach the notes, the scope included (REQ-1989).
+    change = gen._change(subject)
+    assert change is not None
+    assert change[0] == scope

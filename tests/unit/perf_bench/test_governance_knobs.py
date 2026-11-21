@@ -229,7 +229,7 @@ def _table(tid: int, columns: list[dict[str, Any]]) -> dict[str, Any]:
             "tableName": f"t{tid}",
             "arguments": None,
             "businessKey": [],
-            "productId": None,
+            "productIds": [],
             "live": None,
             "uniqueConstraints": [],
             "columns": columns,
@@ -402,7 +402,7 @@ def test_each_table_gets_its_row_rules_each_keeping_every_row(tmp_path: Path) ->
         {
             "tagId": f"bench_gov_rule{i}_t{oid}",
             "roleId": "org_admin",
-            "filterExpr": "order_id IS NOT NULL",
+            "filterExpr": f"order_id IS NOT NULL OR {i} < 0",
             "description": f"Benchmark governance: row rule {i}, every row",
         }
         for i in (1, 2)
@@ -449,6 +449,25 @@ def test_masks_go_first_on_the_columns_no_filter_or_join_reads_and_are_put_back(
     assert all(c["masks"] == [] for c in first["columns"] if c["name"] != "amount")
     restored = [s for s in saves if s["tableName"] == f"t{oid}"][-1]
     assert _plain(next(c for c in restored["columns"] if c["name"] == "amount")["masks"]) == own
+
+
+def test_the_mask_share_counts_the_contract_columns_not_every_deployment_column(
+    tmp_path: Path,
+) -> None:
+    # The deployment's tables have columns the contract never reads (orders has 26, the
+    # contract names 5): a quarter of the contract's columns is masked, as on a deployment
+    # that has only those.
+    setup = _governed_setup(tmp_path, masked_column_share=0.25)
+    resolved = _resolved(setup)
+    tables = _deployment_tables(setup, resolved)
+    for t in tables.values():
+        t["columns"] += [_column(f"unread_{i}") for i in range(21)]
+    admin = _Admin(tables)
+    with governance.AdminGovernance(admin, "org_admin").applied(
+        setup, "graphql", resolved
+    ) as report:
+        pass
+    assert report["masked_columns"]["orders"] == ["amount"]
 
 
 def test_too_few_maskable_columns_is_refused_by_name(tmp_path: Path) -> None:
@@ -552,6 +571,7 @@ def test_the_table_save_is_the_editor_s(tmp_path: Path) -> None:
             "alias": "Orders",
             "description": "every order",
             "arguments": {"since": "2026-01-01"},
+            "readWait": 30,
             "materialize": True,
             "businessKey": ["order_id"],
             "enableAggregates": True,
@@ -580,7 +600,7 @@ def test_the_table_save_is_the_editor_s(tmp_path: Path) -> None:
         }
     )
     read = _as_read_type(t)
-    read.stored_product_id = t["productId"]
+    read.stored_product_ids = t["productIds"]
     from provisa.api.admin.types import ColumnInput, TableInput
 
     def _defaults(input_type: type) -> dict[str, Any]:

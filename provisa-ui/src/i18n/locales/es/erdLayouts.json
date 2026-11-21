@@ -1,0 +1,23 @@
+{
+  "erdLayouts": {
+    "layout": "Diseño: {{name}}",
+    "layouts": "Diseños",
+    "menuHint": "Elegir, guardar o eliminar una disposición guardada de este diagrama",
+    "automatic": "Automático",
+    "save": "Guardar",
+    "saveAs": "Guardar como…",
+    "delete": "Eliminar",
+    "unsaved": "Sin guardar",
+    "unsavedHint": "El diagrama ha cambiado desde que se guardó este diseño",
+    "saveAsTitle": "Guardar diseño como",
+    "name": "Nombre",
+    "nameTaken": "Ya existe un diseño llamado {{name}}",
+    "deleteTitle": "¿Eliminar el diseño {{name}}?",
+    "deleteConsequence": "El diseño se elimina para todos. Las tablas y relaciones que muestra no cambian.",
+    "newSinceSaved_one": "{{count}} tabla nueva desde que se guardó el diseño",
+    "newSinceSaved_other": "{{count}} tablas nuevas desde que se guardó el diseño",
+    "place": "Colocar",
+    "placeHint": "Añadir la tabla al diseño",
+    "notDrawn": "El diagrama aún no está dibujado"
+  }
+}

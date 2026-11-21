@@ -16,9 +16,12 @@ import {
   fetchOrgEngine,
   setOrgEngine,
   type OrgEngineMode,
+  type OrgEngineSave,
   type OrgEngineState,
 } from "../../api/admin";
 import { FieldGroup, FormField, FormFooter, FormLayout } from "../form/FormLayout";
+import { RegionEngineTabs } from "./RegionEngineTabs";
+import { useRegionEngines } from "./useRegionEngines";
 
 /**
  * REQ-1512: on a hosted deployment the engine is REPORTED, not chosen.
@@ -29,7 +32,51 @@ import { FieldGroup, FormField, FormFooter, FormLayout } from "../form/FormLayou
  * something a hosted administrator is invited to consider and then refused. Billing is named
  * instead, that being where the plan which decides all of this is changed.
  */
-function HostedEngineReport({ state }: { state: OrgEngineState }) {
+export function HostedEngineReport({
+  state,
+  billingLink = true,
+}: {
+  state: OrgEngineState;
+  billingLink?: boolean;
+}) {
+  const { t } = useTranslation();
+  return (
+    <Stack gap="md" data-testid="org-engine-hosted">
+      <Text c="dimmed" size="sm">
+        {t("orgEngineTab.hostedIntro")}
+      </Text>
+      <LaneFacts state={state} />
+      {billingLink && <PlanChangeLink />}
+    </Stack>
+  );
+}
+
+/** REQ-1412 (A PLAN DECIDES ITS LANE): where an org on a plan changes its engine (REQ-1510). */
+function PlanChangeLink() {
+  const { t } = useTranslation();
+  return (
+    <Alert color="blue" variant="light" data-testid="org-engine-hosted-change">
+      <Link to="/admin/billing">{t("orgEngineTab.hostedChange")}</Link>
+    </Alert>
+  );
+}
+
+/** The same pointer on the per-region page, which otherwise reads nothing about the org's plan. */
+function RegionPlanChangeLink() {
+  const [state, setState] = useState<OrgEngineState | null>(null);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    fetchOrgEngine()
+      .then(setState)
+      .catch((e) => setError(String(e)));
+  }, []);
+
+  if (error) return <Alert color="red">{error}</Alert>;
+  return state?.plan_derived ? <PlanChangeLink /> : null;
+}
+
+function LaneFacts({ state }: { state: OrgEngineState }) {
   const { t } = useTranslation();
   const laneKey =
     state.mode === "isolated"
@@ -52,46 +99,68 @@ function HostedEngineReport({ state }: { state: OrgEngineState }) {
               : t("orgEngineTab.hostedStateOther", { state: engineState });
 
   return (
-    <Stack gap="md" data-testid="org-engine-hosted">
-      <Text c="dimmed" size="sm">
-        {t("orgEngineTab.hostedIntro")}
+    <Stack gap="xs">
+      <Text fw={600}>{t("orgEngineTab.hostedLane")}</Text>
+      <Text size="sm" data-testid="org-engine-hosted-lane">
+        {t(laneKey)}
       </Text>
-      <Stack gap="xs">
-        <Text fw={600}>{t("orgEngineTab.hostedLane")}</Text>
-        <Text size="sm" data-testid="org-engine-hosted-lane">
-          {t(laneKey)}
+      {state.plan && (
+        <Text size="sm" data-testid="org-engine-hosted-plan">
+          {t("orgEngineTab.hostedPlan", { plan: state.plan })}
         </Text>
-        {state.plan && (
-          <Text size="sm" data-testid="org-engine-hosted-plan">
-            {t("orgEngineTab.hostedPlan", { plan: state.plan })}
-          </Text>
-        )}
-        {state.engine_size && (
-          <Text size="sm" data-testid="org-engine-hosted-size">
-            {t("orgEngineTab.hostedSize", {
-              machine: state.engine_size.machine_type,
-              vcpu: state.engine_size.vcpu,
-              memory: state.engine_size.memory_gib,
-            })}
-          </Text>
-        )}
-        {stateText && (
-          <Text size="sm" data-testid="org-engine-hosted-state">
-            {stateText}
-          </Text>
-        )}
-      </Stack>
-      <Alert color="blue" variant="light" data-testid="org-engine-hosted-change">
-        <Link to="/admin/billing">{t("orgEngineTab.hostedChange")}</Link>
-      </Alert>
+      )}
+      {state.engine_size && (
+        <Text size="sm" data-testid="org-engine-hosted-size">
+          {t("orgEngineTab.hostedSize", {
+            machine: state.engine_size.machine_type,
+            vcpu: state.engine_size.vcpu,
+            memory: state.engine_size.memory_gib,
+          })}
+        </Text>
+      )}
+      {stateText && (
+        <Text size="sm" data-testid="org-engine-hosted-state">
+          {stateText}
+        </Text>
+      )}
     </Stack>
   );
 }
 
-// REQ-1412: the org administrator's engine lane — shared, isolated (Provisa-operated), or external
-// (org-operated). Distinct from FederationEngineTab, which picks the engine KIND for the whole
-// deployment and is gated on platform_settings.
+// REQ-1922: when the org uses regions, its engine in each is the store the platform assigned it
+// there, so this page is a tab per region, as Admin > Federation is; with none, the lane as before.
 export function OrgEngineTab() {
+  const { t } = useTranslation();
+  const regions = useRegionEngines();
+  if (regions.status === "error") return <Alert color="red">{regions.text}</Alert>;
+  if (regions.status === "loading") return <Text>{t("orgEngineTab.loading")}</Text>;
+  if (regions.status === "none") return <OrgEngineLane />;
+  return (
+    <Stack gap="md">
+      <RegionEngineTabs grant={regions.grant} save={regions.save} sandbox={regions.sandbox} />
+      <RegionPlanChangeLink />
+    </Stack>
+  );
+}
+
+// REQ-1412 (THE ORG ADMIN CHANGES ITS LANE): the org's own lane, saved on org_settings.
+function OrgEngineLane() {
+  return <OrgEngineForm load={fetchOrgEngine} save={setOrgEngine} />;
+}
+
+/**
+ * The lane form, for whichever route the caller may use: the org's own, or the platform's naming
+ * an org (PlatformOrgEngine). `load` is expected to be stable; a new one reloads the form.
+ */
+export function OrgEngineForm({
+  load,
+  save: saveLane,
+  billingLink = true,
+}: {
+  load: () => Promise<OrgEngineState>;
+  save: (body: OrgEngineSave) => Promise<unknown>;
+  billingLink?: boolean;
+}) {
   const { t } = useTranslation();
   const [state, setState] = useState<OrgEngineState | null>(null);
   const [mode, setMode] = useState<OrgEngineMode>("shared");
@@ -104,7 +173,7 @@ export function OrgEngineTab() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    fetchOrgEngine()
+    load()
       .then((s) => {
         setState(s);
         setMode(s.mode);
@@ -113,10 +182,10 @@ export function OrgEngineTab() {
         setPort(s.external_port == null ? "" : String(s.external_port));
       })
       .catch((e) => setError(String(e)));
-  }, []);
+  }, [load]);
 
   // REQ-1418: which address the org has to supply comes from the CHOSEN KIND, reported by the
-  // server alongside the kind list — the tab never decides it from the shape of what was typed.
+  // server alongside the kind list — the form never decides it from the shape of what was typed.
   const addressing = state?.external_kinds.find((k) => k.key === kind)?.addressing ?? null;
   const externalIncomplete =
     mode === "external" &&
@@ -132,7 +201,7 @@ export function OrgEngineTab() {
     setError("");
     try {
       const external = mode === "external";
-      await setOrgEngine({
+      await saveLane({
         mode,
         engine_kind: external ? kind : null,
         external_host: external && addressing === "endpoint" ? host.trim() : null,
@@ -158,9 +227,8 @@ export function OrgEngineTab() {
   if (error && !state) return <Alert color="red">{error}</Alert>;
   if (!state) return <Text>{t("orgEngineTab.loading")}</Text>;
   // REQ-1512: a plan decides the lane on a hosted deployment, so the controls below are not offered
-  // there at all. They stay on self-hosted and enterprise deployments, where the lane is genuinely
-  // the organization's own choice.
-  if (state.plan_derived) return <HostedEngineReport state={state} />;
+  // there at all.
+  if (state.plan_derived) return <HostedEngineReport state={state} billingLink={billingLink} />;
 
   return (
     <Stack gap="md">

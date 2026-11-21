@@ -58,12 +58,13 @@ import {
   openRegisterForm,
   openSourcesForm,
   pickSchemaAndTable,
+  submitRegister,
   runSqlOnPage,
-  releaseDraftTables,
+  expectRegisteredLive,
   submitSourceAndExpectListed,
   FORM_FIELD,
 } from "./source-to-query-helpers";
-import { deleteSourceAndItsTables } from "./delete-source";
+import { retireSourceTables } from "./retire-source-tables";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const PROVISION = path.join(ROOT, "demo", "sources", "provision.py");
@@ -207,8 +208,11 @@ async function trinoTableName(sourceId: string): Promise<string> {
   return mine!.dqDataset!.split("/").pop()!;
 }
 
+/** A test's cleanup: retire the table it registered and leave its source (REQ-2248: a source
+ * holding a table, retired or not, is kept). Each source id is stamped per attempt, so a retry
+ * never meets the source or the retired table an earlier attempt left. */
 async function cleanupTrinoSource(sourceId: string) {
-  await deleteSourceAndItsTables(trinoGql, sourceId);
+  await retireSourceTables(trinoGql, sourceId);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -263,13 +267,12 @@ test.describe("source to query through the UI: pinot (REQ-1740)", () => {
     await openRegisterForm(page, sourceId);
     await pickSchemaAndTable(page, "default", "airlinestats");
     await expectDiscoveredColumns(page, ["origin"], 60000);
-    await page.getByTestId("register-table-submit").click();
-    // REQ-2109: the chosen table's settings follow in the editor's sections; Save registers it.
-    await page.getByTestId("table-edit-save").click();
+    // REQ-2234: registered from the Tables field, then saved from its editor.
+    await submitRegister(page);
     const row = page.locator(".data-table tbody tr").filter({ hasText: sourceId }).first();
     await expect(row).toBeVisible({ timeout: 120000 });
     // REQ-1921: registered through the admin, it starts as draft; released, it is read.
-    await releaseDraftTables(page, { sourceId }, TRINO_BACKEND_URL);
+    await expectRegisteredLive(page, { sourceId }, TRINO_BACKEND_URL);
 
     const registered = await trinoTableName(sourceId);
     const rows = await runSqlOnPage(page, `SELECT count(*) AS cnt FROM pet_store.${registered}`);
@@ -418,13 +421,12 @@ test.describe("source to query through the UI: hive_s3 (REQ-229)", () => {
     await openRegisterForm(page, sourceId);
     await pickSchemaAndTable(page, "wh", "widgets");
     await expectDiscoveredColumns(page, ["name"], 60000);
-    await page.getByTestId("register-table-submit").click();
-    // REQ-2109: the chosen table's settings follow in the editor's sections; Save registers it.
-    await page.getByTestId("table-edit-save").click();
+    // REQ-2234: registered from the Tables field, then saved from its editor.
+    await submitRegister(page);
     const row = page.locator(".data-table tbody tr").filter({ hasText: sourceId }).first();
     await expect(row).toBeVisible({ timeout: 120000 });
     // REQ-1921: registered through the admin, it starts as draft; released, it is read.
-    await releaseDraftTables(page, { sourceId }, TRINO_BACKEND_URL);
+    await expectRegisteredLive(page, { sourceId }, TRINO_BACKEND_URL);
 
     const registered = await trinoTableName(sourceId);
     const rows = await runSqlOnPage(
@@ -536,13 +538,12 @@ test.describe("source to query through the UI: hive (REQ-1763)", () => {
     await openRegisterForm(page, sourceId);
     await pickSchemaAndTable(page, "wh", "widgets");
     await expectDiscoveredColumns(page, ["name"], 60000);
-    await page.getByTestId("register-table-submit").click();
-    // REQ-2109: the chosen table's settings follow in the editor's sections; Save registers it.
-    await page.getByTestId("table-edit-save").click();
+    // REQ-2234: registered from the Tables field, then saved from its editor.
+    await submitRegister(page);
     const row = page.locator(".data-table tbody tr").filter({ hasText: sourceId }).first();
     await expect(row).toBeVisible({ timeout: 120000 });
     // REQ-1921: registered through the admin, it starts as draft; released, it is read.
-    await releaseDraftTables(page, { sourceId }, TRINO_BACKEND_URL);
+    await expectRegisteredLive(page, { sourceId }, TRINO_BACKEND_URL);
 
     const registered = await trinoTableName(sourceId);
     const rows = await runSqlOnPage(
@@ -616,13 +617,12 @@ test.describe("source to query through the UI: druid (REQ-1763)", () => {
     await openRegisterForm(page, sourceId);
     await pickSchemaAndTable(page, "druid", "widgets");
     await expectDiscoveredColumns(page, ["name"], 60000);
-    await page.getByTestId("register-table-submit").click();
-    // REQ-2109: the chosen table's settings follow in the editor's sections; Save registers it.
-    await page.getByTestId("table-edit-save").click();
+    // REQ-2234: registered from the Tables field, then saved from its editor.
+    await submitRegister(page);
     const row = page.locator(".data-table tbody tr").filter({ hasText: sourceId }).first();
     await expect(row).toBeVisible({ timeout: 120000 });
     // REQ-1921: registered through the admin, it starts as draft; released, it is read.
-    await releaseDraftTables(page, { sourceId }, TRINO_BACKEND_URL);
+    await expectRegisteredLive(page, { sourceId }, TRINO_BACKEND_URL);
 
     const registered = await trinoTableName(sourceId);
     const rows = await runSqlOnPage(

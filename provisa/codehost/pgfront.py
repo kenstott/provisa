@@ -326,8 +326,13 @@ class FrontHandler(bv.BuenaVistaHandler):
         self.wfile.write(struct.pack("!ci", b"H", 4 + len(response)) + response)
         rows = 0
         chunk = bytearray(_PGCOPY)
-        for batch in result.data().take():
-            messages = encoder.encode_batch(batch, types, [1] * count, result.coercers())
+        data = result.data()
+        for batch in data.take():
+            messages = (
+                encoder.encode_rows(batch, types, [1] * count, result.coercers(), result.kinds())
+                if data.rows
+                else encoder.encode_batch(batch, types, [1] * count, result.coercers())
+            )
             at = 0
             while at < len(messages):
                 (size,) = struct.unpack_from("!i", messages, at + 1)
