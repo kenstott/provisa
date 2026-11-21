@@ -258,6 +258,9 @@ export function RegisterTableForm({
   const domainId =
     chosenDomain ||
     (domainsEnabled && !authored && offeredDomains.length === 1 ? offeredDomains[0] : "");
+  // REQ-1531: a registration names its domain; with domains in use, none chosen registers nothing.
+  // In single-domain mode the server places it in the one domain.
+  const domainMissing = domainsEnabled && !domainId;
   // Leaving the panel once something is chosen asks first (the panel's one mechanism).
   usePanelDirty(Boolean(sourceId || schemaName || tableName), tableName || schemaName || sourceId);
 
@@ -485,7 +488,7 @@ export function RegisterTableForm({
       submitChecker();
       return;
     }
-    if (!sourceId || !schemaName || !tableName) {
+    if (!sourceId || !schemaName || !tableName || domainMissing) {
       setError(t("registerTableForm.errorRequiredFields"));
       return;
     }
@@ -1102,7 +1105,7 @@ export function RegisterTableForm({
             <Button
               onClick={registerCombined}
               loading={manyTables.registering}
-              disabled={!combine.registrable}
+              disabled={!combine.registrable || domainMissing}
               data-testid="register-many-tables-submit"
             >
               {t("registerManyTables.register", { count: 1 })}
@@ -1111,7 +1114,7 @@ export function RegisterTableForm({
             <Button
               onClick={() => void manyTables.registerAll(domainId, onRegisteredMany, setError)}
               loading={manyTables.registering}
-              disabled={manyTables.ticked.length === 0}
+              disabled={manyTables.ticked.length === 0 || domainMissing}
               data-testid="register-many-tables-submit"
             >
               {t("registerManyTables.register", { count: manyTables.ticked.length })}

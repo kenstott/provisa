@@ -568,6 +568,7 @@
       "table_not_withdrawn": "Tabel {{table}} is niet teruggetrokken: alleen een teruggetrokken tabel wordt teruggezet. Stel de regio in om een tabel in productie naar een andere regio te verplaatsen.",
       "source_not_withdrawn": "Bron {{source}} is niet teruggetrokken: alleen een teruggetrokken bron wordt teruggezet. Stel de regio in om die te wijzigen.",
       "put_back_needs_region": "Het terugzetten van {{object}} noemt een regio: geef er een, of geen voor geen regio.",
+      "table_domain_required": "Tabel '{{table}}' noemt geen domein: elke tabel wordt in een domein geregistreerd",
       "mask_constant_not_text": "Een constant masker op een kolom die geen tekst is, wordt gelezen als NULL; alleen NULL kan worden opgeslagen: {{column}} ({{type}})"
     },
     "secrets": {
@@ -617,9 +618,9 @@
     },
     "sparql": {
       "columns_not_inferred": "Kon geen kolommen afleiden: probe retourneerde geen rijen en er zijn geen SELECT-variabelen gevonden.",
-      "no_select_variables": "De query noemt geen SELECT-variabelen (SELECT * of geen SELECT-query): de kolommen zijn er niet uit te lezen",
       "probe_failed": "SPARQL-endpointprobe mislukt: {{error}}",
-      "source_not_found": "SPARQL-bron '{{source_id}}' niet gevonden"
+      "source_not_found": "SPARQL-bron '{{source_id}}' niet gevonden",
+      "no_select_variables": "De query noemt geen SELECT-variabelen (SELECT * of geen SELECT-query): de kolommen zijn er niet uit te lezen"
     },
     "subscribe": {
       "avro_topic_without_registry": "Topic '{{topic}}' bevat Avro-berichten en de bron noemt geen schema-registry om ze mee te lezen: stel de schema-registry-URL van de bron in",
@@ -832,7 +833,9 @@
       "not_bulk_approvable": "Alleen gedefinieerde, verankerde ontwerpen worden samen goedgekeurd; niet: {{terms}}.",
       "term_ids_required": "Noem de goed te keuren termen.",
       "impact_action": "Voor die actie bestaat geen voorbeeld.",
-      "impact_table_required": "Een koppeling noemt een tabel, of een van zijn kolommen."
+      "impact_table_required": "Een koppeling noemt een tabel, of een van zijn kolommen.",
+      "name_taken": "Er bestaat al een term met de naam '{{name}}' in domein {{domain}}. Kies een andere naam of plaats de term in een ander domein.",
+      "name_taken_unscoped": "Er bestaat al een term met de naam '{{name}}' zonder domein, die dus in elk domein geldt. Kies een andere naam."
     },
     "table": {
       "requires_parameters": "De tabel {{table}} kan niet worden geteld of geprofileerd: ze vereist {{parameters}}. Geef elk een waarde om de rijen te lezen."

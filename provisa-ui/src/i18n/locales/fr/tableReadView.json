@@ -44,7 +44,6 @@
     "colTopValues": "Valeurs principales",
     "editDefinitionButton": "Modifier la définition",
     "editDefinitionTitle": "Modifier la définition de la vue (SQL ou sélecteur de métriques/dimensions)",
-    "queryTemplate": "Cypher",
     "writable": "La source accepte",
     "noWrites": "Aucune écriture",
     "notShown": "non affiché",

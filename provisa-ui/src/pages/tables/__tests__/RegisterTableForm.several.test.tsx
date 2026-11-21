@@ -205,6 +205,18 @@ describe("Register Table's fields", () => {
   });
 });
 
+describe("a registration with no domain (REQ-1531)", () => {
+  it("cannot be submitted until a domain is chosen", async () => {
+    renderForm({ domains: ["sales", "finance"] });
+    const user = await opened();
+    await user.click(option("refunds"));
+    expect(submit()).toHaveTextContent("Register 1 table");
+    expect(submit()).toBeDisabled();
+    await user.selectOptions(screen.getByTestId("register-table-domain-select"), "finance");
+    await waitFor(() => expect(submit()).not.toBeDisabled());
+  });
+});
+
 describe("the Tables field", () => {
   it("does not offer a table registered already", async () => {
     renderForm({ registered: ["orders"] });

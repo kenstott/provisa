@@ -436,8 +436,12 @@ async def _dry_run_report(config: ProvisaConfig) -> ImportDryRunReport:  # REQ-2
     from provisa.api.apply_dry_run import NOT_RUN, dry_run_configuration
     from provisa.dq.contract import ContractError
 
+    from provisa.core.domain_policy import TableDomainRequired
+
     try:
         outcome = await dry_run_configuration(config)
+    except TableDomainRequired as refused:  # REQ-1531: refused by name, with its own code
+        raise ApiError(422, refused.code, str(refused), table=refused.table) from refused
     except (ValueError, ContractError) as refused:
         raise ApiError(
             400, "import.refused", str(refused), refusal=type(refused).__name__
@@ -512,7 +516,12 @@ async def apply_import(req: ImportApplyRequest, request: Request) -> ImportApply
         return ImportApplyResponse(
             summary=_summarize(config), dry_run=await _dry_run_report(config)
         )
-    await apply_configuration(config)
+    from provisa.core.domain_policy import TableDomainRequired
+
+    try:
+        await apply_configuration(config)
+    except TableDomainRequired as refused:  # REQ-1531: every imported table names its domain
+        raise ApiError(422, refused.code, str(refused), table=refused.table) from refused
 
     log.info(
         "hasura import applied: %d sources, %d tables, %d roles",

@@ -41,12 +41,6 @@
         "help": "Le score de complexité le plus élevé qu'une instruction peut avoir, pour tous les rôles. Un rôle peut fixer sa propre limite, plus basse. Laissez vide pour ne pas limiter."
       }
     },
-    "sparql": {
-      "query_timeout": {
-        "label": "Délai d'expiration des requêtes SPARQL",
-        "help": "Durée maximale d'une requête SPARQL avant son abandon : une prévisualisation, une recherche de classe Wikidata et chaque chargement de la réplique d'une table SPARQL. Un point de terminaison public peut arrêter une requête plus tôt selon sa propre limite (60 secondes pour Wikidata)."
-      }
-    },
     "sampling": {
       "default_sample_size": {
         "label": "Taille d'échantillon par défaut",
@@ -297,12 +291,6 @@
       "node_url": {
         "label": "Adresse de ce nœud",
         "help": "L'adresse à laquelle les clients joignent ce nœud. L'interface d'un coordinateur le liste comme nœud de données quand la région n'en liste aucun. Le lanceur la définit pour chaque nœud ; si elle n'est pas définie, le nœud n'est pas listé."
-      }
-    },
-    "embedding": {
-      "hub_endpoint": {
-        "label": "Adresse du hub Hugging Face",
-        "help": "Le hub Hugging Face depuis lequel un modèle d'embeddings local est téléchargé, par exemple un miroir dans votre réseau. S'applique au prochain téléchargement de modèle."
       }
     },
     "tls": {
@@ -849,6 +837,10 @@
       "health_poll_interval": {
         "label": "Intervalle d'interrogation de l'état des connecteurs",
         "help": "Fréquence à laquelle chaque processus Provisa interroge l'hôte d'un connecteur sur son état et affiche le résultat sur la source. Un hôte redémarré est détecté à l'interrogation suivante, qui relance sa fonction on-start."
+      },
+      "worker_idle_timeout": {
+        "label": "Délai d'inactivité des workers de code",
+        "help": "Durée pendant laquelle le worker d'une source de code, ou le worker de preflight d'une organisation, peut rester inutilisé avant que Provisa n'arrête son processus. L'appel suivant en démarre un nouveau."
       }
     },
     "config": {
@@ -887,10 +879,22 @@
         "help": "Le nombre maximal d'appels qu'une instruction adresse à une table paramétrée. Chaque valeur qu'une instruction donne à un paramètre est un appel à la source : chaque valeur d'une liste IN, chaque branche d'un OR, chaque clé distincte d'une jointure. Une instruction qui en demande davantage est refusée."
       }
     },
+    "embedding": {
+      "hub_endpoint": {
+        "label": "Adresse du hub Hugging Face",
+        "help": "Le hub Hugging Face depuis lequel un modèle d'embeddings local est téléchargé, par exemple un miroir dans votre réseau. S'applique au prochain téléchargement de modèle."
+      }
+    },
     "subscriptions": {
       "max_sinks_per_principal": {
         "label": "Sinks Kafka en cours d'exécution par personne",
         "help": "Nombre de sinks Kafka qu'une personne peut exécuter en même temps. Une demande d'en démarrer un autre est refusée jusqu'à ce que l'un des siens s'arrête."
+      }
+    },
+    "sparql": {
+      "query_timeout": {
+        "label": "Délai d'expiration des requêtes SPARQL",
+        "help": "Durée maximale d'une requête SPARQL avant son abandon : une prévisualisation, une recherche de classe Wikidata et chaque chargement de la réplique d'une table SPARQL. Un point de terminaison public peut arrêter une requête plus tôt selon sa propre limite (60 secondes pour Wikidata)."
       }
     }
   }

@@ -46,6 +46,8 @@ import { useDescribeUnregistered, type UnregisteredTable } from "../../hooks/use
 
 interface TableEditFormProps {
   editingTable: RegisteredTable;
+  /** REQ-1531: the domains the member may change, offered by the Domain field. */
+  domainChoices: string[];
   setEditingTable: React.Dispatch<React.SetStateAction<RegisteredTable | null>>;
   /**
    * The table as last saved: REQ-2109 judges on it whether its versions exist. Null while the
@@ -88,6 +90,7 @@ interface TableEditFormProps {
 
 export function TableEditForm({
   editingTable,
+  domainChoices,
   setEditingTable,
   savedTable,
   savedProfilerId,
@@ -206,6 +209,7 @@ export function TableEditForm({
             isView={isView}
             source={editSource}
             describe={describe}
+            domainChoices={domainChoices}
             relationships={relationships}
           />
         ))}

@@ -44,7 +44,6 @@
     "colTopValues": "最常見值",
     "editDefinitionButton": "編輯定義",
     "editDefinitionTitle": "編輯檢視定義（SQL 或指標／維度選擇器）",
-    "queryTemplate": "Cypher",
     "writable": "資料來源接受",
     "noWrites": "無寫入",
     "notShown": "未顯示",

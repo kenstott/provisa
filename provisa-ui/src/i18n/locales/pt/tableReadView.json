@@ -44,7 +44,6 @@
     "colTopValues": "Valores mais frequentes",
     "editDefinitionButton": "Editar definição",
     "editDefinitionTitle": "Editar a definição da exibição (SQL ou seletor de métrica/dimensão)",
-    "queryTemplate": "Cypher",
     "writable": "A origem aceita",
     "noWrites": "Sem gravações",
     "notShown": "não exibido",

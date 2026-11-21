@@ -62,12 +62,12 @@ beforeEach(() => {
   preview.mockResolvedValue({ rows: [{ id: "Q1", name: "Paris" }], columns: [], error: null });
 });
 
-function renderForm() {
+function renderForm(domainId = "sales") {
   render(
     <WikidataRegisterForm
       identifiers={null}
       sourceId="wd"
-      domainId="sales"
+      domainId={domainId}
       regionInput={{}}
       roleIds={["admin"]}
       registeredNames={[]}
@@ -154,5 +154,18 @@ describe("WikidataRegisterForm: the table of a class", () => {
     fireEvent.click(within(screen.getByTestId("wikidata-custom-mode")).getByText("SPARQL query"));
     expect(screen.getByTestId("register-table-sparql-table-name")).toHaveValue("");
     expect(screen.getByTestId("register-table-sparql-query")).toHaveValue("");
+  });
+});
+
+// REQ-1531 (amended): a table is registered into a domain; Continue waits until one is chosen.
+describe("WikidataRegisterForm: the domain", () => {
+  it("keeps Continue disabled until a domain is chosen", () => {
+    renderForm("");
+    expect(screen.getByTestId("register-table-submit")).toBeDisabled();
+  });
+
+  it("enables Continue once a domain is chosen", () => {
+    renderForm("sales");
+    expect(screen.getByTestId("register-table-submit")).not.toBeDisabled();
   });
 });

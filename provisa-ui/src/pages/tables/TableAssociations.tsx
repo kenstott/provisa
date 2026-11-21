@@ -20,6 +20,7 @@ import { TagControl } from "../../components/TagControl";
 import { DetailFields, type DetailField } from "../../components/detail/DetailFields";
 import { TableClassTerm } from "./TableClassTerm";
 import { TableMetrics } from "./TableMetrics";
+import { termLabel } from "../../components/admin/termLabel";
 
 /**
  * What a table is associated with besides its data product, the same in its read view and its
@@ -79,6 +80,7 @@ export function TableAssociations({
                 {t("tableSections.noTerms")}
               </Text>
             ) : (
+              // REQ-1591: a name two listed terms share carries its domains
               <Text span size="sm">
                 {terms.map((term, i) => (
                   <span key={term.id}>
@@ -89,7 +91,7 @@ export function TableAssociations({
                       size="sm"
                       data-testid={`table-association-term-${term.id}`}
                     >
-                      {term.name}
+                      {termLabel(term, terms)}
                     </Anchor>
                   </span>
                 ))}
