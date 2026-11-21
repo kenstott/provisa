@@ -622,11 +622,9 @@ _LEAVES_THE_RUN = re.compile(
 )
 
 
-#: The orchestrator's own jobs, not legs: PyPI trusted publishing does not accept a token issued
-#: to a reusable workflow (pypa/gh-action-pypi-publish#166).
-#: The provisa server wheel is not among them: it outgrew PyPI's 10 GB project limit (alpha.510)
-#: and is installed from the release through the GitHub Pages index the publish leg writes.
-_RELEASE_PYPI = ("publish-pypi", "publish-notebook-pypi")
+#: Nothing in the release goes to PyPI (maintainer 2026-11-21): the server, client and notebook
+#: wheels are release assets, installed through the GitHub Pages index the publish leg writes.
+_RELEASE_PYPI: tuple[str, ...] = ()
 #: REQ-2225: the provisa wheel carries the platform connector block, so the release that attaches
 #: it waits for the image the block names, which the orchestrator pushes itself, after every leg.
 _RELEASE_IMAGE_PUSH = "publish-connector-image"
@@ -651,9 +649,8 @@ def _release_legs() -> dict[str, tuple[str, dict]]:
     return legs
 
 
-def test_the_release_orchestrator_calls_legs_and_publishes_to_pypi_itself():
+def test_the_release_orchestrator_calls_legs_and_pushes_the_connector_image_itself():
     jobs = yaml.safe_load(_RELEASE.read_text())["jobs"]
-    pypi = {job: jobs.pop(job) for job in _RELEASE_PYPI}
     image_push = jobs.pop(_RELEASE_IMAGE_PUSH)
     given = {job: body["with"] for job, body in jobs.items()}
     first = next(iter(given.values()))
@@ -667,21 +664,14 @@ def test_the_release_orchestrator_calls_legs_and_publishes_to_pypi_itself():
     assert trigger["workflow_dispatch"]["inputs"]["publish"]["default"] is False
     for body in jobs.values():
         assert "steps" not in body and body.get("secrets") != "inherit"
-    # PyPI's jobs: a download of the run's wheel and the upload, gated as the legs'
-    # publications are, holding only the OIDC token, after every build leg.
     builds = set(jobs) - {"publish"}
-    for job, body in pypi.items():
-        assert body["if"] == _RELEASE_PUBLISH, job
-        assert set(body["needs"]) == builds | _RELEASE_PYPI_AFTER.get(job, set()), job
-        assert body["permissions"] == {"id-token": "write"}, job
-        uses = [str(step.get("uses", "")) for step in body["steps"]]
-        assert uses == ["actions/download-artifact@v4", "pypa/gh-action-pypi-publish@release/v1"]
+    assert not any("pypi" in job for job in jobs)
     # The connector image's push: gated the same way, after every build leg, holding only what a
     # push to the registry needs.
     assert image_push["if"] == _RELEASE_PUBLISH
     assert set(image_push["needs"]) == builds
     assert image_push["permissions"] == {"contents": "read", "packages": "write"}
-    assert set(jobs["publish"]["needs"]) == builds | set(pypi) | {_RELEASE_IMAGE_PUSH}
+    assert set(jobs["publish"]["needs"]) == builds | {_RELEASE_IMAGE_PUSH}
 
 
 def test_every_step_of_the_release_that_leaves_the_run_waits_for_publish():
@@ -702,12 +692,8 @@ def test_every_step_of_the_release_that_leaves_the_run_waits_for_publish():
                 if push is not None:
                     seen += 1
                     assert job_gated or push == "${{ inputs.publish }}", where
-    # PyPI's uploads are the orchestrator's own jobs, gated as a whole by the publish expression.
-    # So is the connector image's push (REQ-2225).
+    # The connector image's push (REQ-2225) is the orchestrator's own job, gated as a whole.
     for job, body in yaml.safe_load(_RELEASE.read_text())["jobs"].items():
-        if job in _RELEASE_PYPI:
-            assert body["if"] == _RELEASE_PUBLISH, job
-            seen += sum("pypi-publish" in str(s.get("uses", "")) for s in body["steps"])
         if job == _RELEASE_IMAGE_PUSH:
             assert body["if"] == _RELEASE_PUBLISH, job
             seen += sum(bool(_LEAVES_THE_RUN.search(str(s.get("run", "")))) for s in body["steps"])
