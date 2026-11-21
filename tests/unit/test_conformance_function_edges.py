@@ -319,6 +319,8 @@ def test_the_grid_states_a_bound_of_a_call_as_the_translator_reads_it():
     stated = edges.grid_bounds(call, "clickhouse")
     assert "0A000" in edges.stated_raises(stated)
     assert edges.grid_bounds('SELECT pg_catalog."abs"(3::integer) AS v', "pg") == ()
+    # An engine whose dialect is no column of the grid: none (run 44918205557's KeyError).
+    assert edges.grid_bounds('SELECT pg_catalog."abs"(3::integer) AS v', "mariadb") == ()
 
 
 # --- counts, the report and the polyfill check ---------------------------------------------------
