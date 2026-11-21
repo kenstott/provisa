@@ -1412,6 +1412,7 @@ RELATIONSHIP_SEED_COLUMNS = (
     "via_type_column",
     "via_type_value",
     "via_label_source",
+    "disable_cypher",
 )
 
 
@@ -1428,6 +1429,10 @@ def meta_relationship_seed_rows() -> list[
     """
     rows: list[tuple[tuple[str, str], tuple[str, str], str | None, dict]] = []
     _blank = dict.fromkeys(RELATIONSHIP_SEED_COLUMNS)
+    # REQ-1586, REQ-2130: a seeded junction's own FK rows are GraphQL's path through it only. The
+    # graph traverses the junction-backed edge, so they are off in Cypher, and the junction keeps
+    # no node there (a junction its own Cypher relationships join keeps its node).
+    _junctions = {(row[1], row[8]) for row in META_JUNCTION_RELATIONSHIPS}
     for (
         _rid,
         _src_source,
@@ -1453,6 +1458,8 @@ def meta_relationship_seed_rows() -> list[
                     "cardinality": _card,
                     "alias": _alias,
                     "graphql_alias": _gql_alias,
+                    "disable_cypher": (_src_source, _src_table) in _junctions
+                    or (_tgt_source, _tgt_table) in _junctions,
                 },
             )
         )
@@ -1491,6 +1498,7 @@ def meta_relationship_seed_rows() -> list[
                     "via_type_column": _via_type_col,
                     "via_type_value": _via_type_val,
                     "via_label_source": _via_label_source,
+                    "disable_cypher": False,
                 },
             )
         )

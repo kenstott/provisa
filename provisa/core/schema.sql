@@ -1093,6 +1093,11 @@ CREATE TABLE IF NOT EXISTS glossary_terms (
     -- provisa/ontology_import): the term's own IRI when imported as a new term, or the IRI of the
     -- imported concept a steward aligned with it as the same entity. Curator work, like a definition.
     iri             TEXT,
+    -- REQ-2259: when the term last changed. Every repository write to its name, definition,
+    -- calculation method, domains, status or an edge at either end sets it; the Glossary's
+    -- recent-change sort orders by it. The DEFAULT dates the rows of a control plane created
+    -- before the column (the ADD COLUMN below needs one for NOT NULL); a term's insert sets it.
+    changed_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
     -- REQ-1591 (amended 2026-11-18): a name is unique only within a domain, and a term's domains
     -- are derived from its refs (glossary.term_domains), so no table constraint can state it; the
     -- create and rename paths refuse a name already held in one of the term's domains.
@@ -1109,6 +1114,7 @@ ALTER TABLE glossary_terms ADD COLUMN IF NOT EXISTS retire_on DATE;
 ALTER TABLE glossary_terms ADD COLUMN IF NOT EXISTS status_by TEXT;
 ALTER TABLE glossary_terms ADD COLUMN IF NOT EXISTS status_at TIMESTAMPTZ;
 ALTER TABLE glossary_terms ADD COLUMN IF NOT EXISTS iri TEXT;
+ALTER TABLE glossary_terms ADD COLUMN IF NOT EXISTS changed_at TIMESTAMPTZ NOT NULL DEFAULT now();  -- REQ-2259
 
 -- REQ-2145: a tag on a glossary term, on a table that predates it. The term's deletion takes its
 -- tags: a term holding a column cannot be deleted (glossary.delete_term), so none of them is a
@@ -2936,8 +2942,15 @@ CREATE TABLE IF NOT EXISTS discovery_run_proposals (
     answer          TEXT,
     decision        TEXT,
     accepted_as     TEXT,
+    -- REQ-1586: a junction suggestion's junction and its two referring columns; null otherwise.
+    via_table_id      INTEGER REFERENCES registered_tables(id),
+    via_source_column TEXT,
+    via_target_column TEXT,
     tenant_id       UUID
 );
+ALTER TABLE discovery_run_proposals ADD COLUMN IF NOT EXISTS via_table_id INTEGER REFERENCES registered_tables(id);
+ALTER TABLE discovery_run_proposals ADD COLUMN IF NOT EXISTS via_source_column TEXT;
+ALTER TABLE discovery_run_proposals ADD COLUMN IF NOT EXISTS via_target_column TEXT;
 
 CREATE TABLE IF NOT EXISTS glossary_term_drafts (
     id              SERIAL PRIMARY KEY,
@@ -3036,4 +3049,32 @@ CREATE TABLE IF NOT EXISTS admin_audit_log (
     subject_id  TEXT NOT NULL,          -- who it was performed against
     detail      JSONB NOT NULL DEFAULT '{}'::jsonb,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- REQ-2266: an access review. Each review is a snapshot, taken on demand or on the org's schedule,
+-- of the grants Provisa holds (user_role_assignments): one row per member, role and domain, with
+-- the entitlement lists of that grant and its last use. The owner of the row's domain confirms or
+-- revokes it; the decision, who made it, when and why stay on the row. A revocation deletes the
+-- grant at once. Mirrors schema_org.access_reviews / access_review_rows.
+CREATE TABLE IF NOT EXISTS access_reviews (
+    id          BIGSERIAL PRIMARY KEY,
+    started_by  TEXT NOT NULL,          -- the person who asked for it, or 'schedule'
+    started_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS access_review_rows (
+    id            BIGSERIAL PRIMARY KEY,
+    review_id     BIGINT NOT NULL REFERENCES access_reviews(id) ON DELETE CASCADE,
+    user_id       TEXT NOT NULL,
+    role_id       TEXT NOT NULL,
+    domain_id     TEXT NOT NULL,
+    entitlements  JSONB NOT NULL DEFAULT '[]'::jsonb,  -- [{kind, capability, identifiers}]
+    expires_at    TIMESTAMPTZ,
+    last_used_at  TIMESTAMPTZ,
+    decision      TEXT CONSTRAINT access_review_rows_decision_check
+                      CHECK (decision IN ('confirmed', 'revoked')),
+    decided_by    TEXT,
+    decided_at    TIMESTAMPTZ,
+    reason        TEXT,
+    UNIQUE (review_id, user_id, role_id, domain_id)
 );

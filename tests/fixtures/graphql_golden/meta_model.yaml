@@ -11649,7 +11649,7 @@ relationships:
   cardinality: many-to-one
   materialize: false
   refresh_interval: 300
-  disable_cypher: false
+  disable_cypher: true
   hide_target_meta: false
   same_entity: false
   parameters: {}
@@ -11664,7 +11664,7 @@ relationships:
   cardinality: many-to-one
   materialize: false
   refresh_interval: 300
-  disable_cypher: false
+  disable_cypher: true
   hide_target_meta: false
   same_entity: false
   parameters: {}
@@ -11730,7 +11730,7 @@ relationships:
   cardinality: many-to-one
   materialize: false
   refresh_interval: 300
-  disable_cypher: false
+  disable_cypher: true
   hide_target_meta: false
   same_entity: false
   parameters: {}
@@ -11745,7 +11745,7 @@ relationships:
   cardinality: many-to-one
   materialize: false
   refresh_interval: 300
-  disable_cypher: false
+  disable_cypher: true
   hide_target_meta: false
   same_entity: false
   parameters: {}
@@ -11781,7 +11781,7 @@ relationships:
   cardinality: one-to-many
   materialize: false
   refresh_interval: 300
-  disable_cypher: false
+  disable_cypher: true
   hide_target_meta: false
   same_entity: false
   parameters: {}
@@ -11813,7 +11813,7 @@ relationships:
   cardinality: one-to-many
   materialize: false
   refresh_interval: 300
-  disable_cypher: false
+  disable_cypher: true
   hide_target_meta: false
   same_entity: false
   parameters: {}
@@ -12142,7 +12142,7 @@ relationships:
   materialize: false
   refresh_interval: 300
   graphql_alias: glossaryRefs
-  disable_cypher: false
+  disable_cypher: true
   hide_target_meta: false
   same_entity: false
   parameters: {}
@@ -12208,7 +12208,7 @@ relationships:
   cardinality: one-to-many
   materialize: false
   refresh_interval: 300
-  disable_cypher: false
+  disable_cypher: true
   hide_target_meta: false
   same_entity: false
   parameters: {}
@@ -12716,7 +12716,7 @@ relationships:
   materialize: false
   refresh_interval: 300
   graphql_alias: glossaryRef
-  disable_cypher: false
+  disable_cypher: true
   hide_target_meta: false
   same_entity: false
   parameters: {}
@@ -13067,7 +13067,7 @@ relationships:
   materialize: false
   refresh_interval: 300
   graphql_alias: term
-  disable_cypher: false
+  disable_cypher: true
   hide_target_meta: false
   same_entity: false
   parameters: {}
@@ -13083,7 +13083,7 @@ relationships:
   materialize: false
   refresh_interval: 300
   graphql_alias: sourceTerm
-  disable_cypher: false
+  disable_cypher: true
   hide_target_meta: false
   same_entity: false
   parameters: {}
@@ -13099,7 +13099,7 @@ relationships:
   materialize: false
   refresh_interval: 300
   graphql_alias: targetTerm
-  disable_cypher: false
+  disable_cypher: true
   hide_target_meta: false
   same_entity: false
   parameters: {}
@@ -13114,7 +13114,7 @@ relationships:
   cardinality: many-to-one
   materialize: false
   refresh_interval: 300
-  disable_cypher: false
+  disable_cypher: true
   hide_target_meta: false
   same_entity: false
   parameters: {}
@@ -13130,7 +13130,7 @@ relationships:
   materialize: false
   refresh_interval: 300
   graphql_alias: column
-  disable_cypher: false
+  disable_cypher: true
   hide_target_meta: false
   same_entity: false
   parameters: {}
@@ -13146,7 +13146,7 @@ relationships:
   materialize: false
   refresh_interval: 300
   graphql_alias: term
-  disable_cypher: false
+  disable_cypher: true
   hide_target_meta: false
   same_entity: false
   parameters: {}
@@ -13224,7 +13224,7 @@ relationships:
   materialize: false
   refresh_interval: 300
   graphql_alias: domains
-  disable_cypher: false
+  disable_cypher: true
   hide_target_meta: false
   same_entity: false
   parameters: {}
@@ -13240,7 +13240,7 @@ relationships:
   materialize: false
   refresh_interval: 300
   graphql_alias: edgesIn
-  disable_cypher: false
+  disable_cypher: true
   hide_target_meta: false
   same_entity: false
   parameters: {}
@@ -13256,7 +13256,7 @@ relationships:
   materialize: false
   refresh_interval: 300
   graphql_alias: edgesOut
-  disable_cypher: false
+  disable_cypher: true
   hide_target_meta: false
   same_entity: false
   parameters: {}
@@ -13352,7 +13352,7 @@ relationships:
   materialize: false
   refresh_interval: 300
   graphql_alias: refs
-  disable_cypher: false
+  disable_cypher: true
   hide_target_meta: false
   same_entity: false
   parameters: {}

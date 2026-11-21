@@ -14,7 +14,7 @@ configuration's, and generated ones over aliased, renamed and differently-cased 
 ``graphql_field`` stored on its row is a field of its source table's GraphQL type reaching its
 target's type, in the schema built from the relationships' own declarations."""
 
-# Requirements: REQ-194, REQ-351
+# Requirements: REQ-194, REQ-351, REQ-1586
 
 from __future__ import annotations
 
@@ -287,8 +287,8 @@ async def _mismatches(plane, model: dict[str, Any]) -> list[str]:
         )
         if joins.get((source, field)) != rel["target_table_id"]:
             out.append(f"{rel['id']}: stored {field!r}, joined as {joined} on {source}")
-        # A junction edge is a Cypher relationship, not a GraphQL field (schema_gen).
-        elif not rel["via_table_id"] and fields[source].get(field) != target:
+        # A junction-backed edge is served as every other relationship is (REQ-1586).
+        elif fields[source].get(field) != target:
             out.append(
                 f"{rel['id']}: stored {field!r}, no such field reaching {target} on {source}"
             )

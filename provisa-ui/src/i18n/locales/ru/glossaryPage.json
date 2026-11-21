@@ -1,0 +1,25 @@
+{
+  "glossaryPage": {
+    "title": "Глоссарий",
+    "intro": "Утверждённые термины вашей организации и их значения.",
+    "search": "Поиск терминов",
+    "searchPlaceholder": "Поиск по названиям и определениям",
+    "domainFilter": "Домены",
+    "domainFilterPlaceholder": "Все домены",
+    "sort": "Сортировка",
+    "sortName": "А–Я",
+    "sortRecent": "Недавно изменённые",
+    "letterBar": "Перейти к букве",
+    "otherLetter": "#",
+    "alsoCalled": "Также называется",
+    "kindOf": "Разновидность",
+    "kinds": "Разновидности",
+    "seeAlso": "См. также",
+    "allDomains": "Все домены",
+    "loadFailed": "Не удалось загрузить глоссарий: {{message}}",
+    "empty": "Утверждённых терминов пока нет.",
+    "noMatch": "Нет подходящих терминов.",
+    "count_one": "Терминов: {{count}}",
+    "count_other": "Терминов: {{count}}"
+  }
+}

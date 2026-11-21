@@ -120,10 +120,10 @@ describe("relationshipQueryRef", () => {
     expect(relationshipQueryRef(placedBy(), [])).toBeNull();
   });
 
-  it("carries a junction and no GraphQL field for a junction-backed edge", () => {
+  it("carries a junction and its stored GraphQL field for a junction-backed edge", () => {
     const r = ref(tagged());
     expect(r.via?.table.tableName).toBe("order_tags");
-    expect(r.graphqlField).toBeNull();
+    expect(r.graphqlField).toBe("tagged");
   });
 });
 
@@ -225,8 +225,14 @@ describe("GraphQL", () => {
     expect(relationshipGraphql(ref(placedBy({ graphqlAlias: "owner" })), reader())).toBeNull();
   });
 
-  it("is none for a junction-backed edge", () => {
-    expect(relationshipGraphql(ref(tagged()), reader())).toBeNull();
+  it("nests a junction-backed edge's field, as the server names it", () => {
+    expect(relationshipGraphql(ref(tagged()), reader())).toBe(
+      "{ sales__orders(limit: 25) { id customerId tagged { id } } }",
+    );
+  });
+
+  it("is none for a junction-backed edge whose field the role's schema does not serve", () => {
+    expect(relationshipGraphql(ref({ ...tagged(), graphqlAlias: "labelled" }), reader())).toBeNull();
   });
 });
 
@@ -241,8 +247,10 @@ describe("REST", () => {
     expect(relationshipRest(ref(placedBy({ graphqlAlias: "owner" })), reader())).toBeNull();
   });
 
-  it("is none for a junction-backed edge", () => {
-    expect(relationshipRest(ref(tagged()), reader())).toBeNull();
+  it("nests a junction-backed edge by its GraphQL field", () => {
+    expect(relationshipRest(ref(tagged()), reader())).toBe(
+      "GET /data/rest/sales/orders?fields=id,customerId,tagged&limit=25",
+    );
   });
 });
 
@@ -274,8 +282,11 @@ describe("gRPC", () => {
     expect(relationshipGrpc(ref(placedBy({ graphqlAlias: "owner" })), reader())).toBeNull();
   });
 
-  it("is none for a junction-backed edge", () => {
-    expect(relationshipGrpc(ref(tagged()), reader())).toBeNull();
+  it("masks a junction-backed edge by its GraphQL field", () => {
+    expect(relationshipGrpc(ref(tagged()), reader())).toEqual({
+      method: "QuerySalesOrders()",
+      body: { read_mask: { paths: ["id", "tagged.id"] }, limit: 25 },
+    });
   });
 });
 
@@ -368,9 +379,9 @@ describe("relationshipQueryLinks", () => {
     expect(links.map((l) => l.surface)).toEqual(["sql", "graphql", "rest", "grpc", "jsonapi"]);
   });
 
-  it("links a junction-backed edge in Cypher, SQL and SPARQL only", () => {
+  it("links a junction-backed edge in every surface that serves it, GraphQL included", () => {
     const links = relationshipQueryLinks(ref(tagged()), all);
-    expect(links.map((l) => l.surface)).toEqual(["cypher", "sql", "sparql"]);
+    expect(links.map((l) => l.surface)).toEqual(["cypher", "sql", "sparql", "graphql", "rest", "grpc"]);
   });
 
   it("leaves out SQL when the role reads neither table", () => {
