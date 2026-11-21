@@ -20,7 +20,9 @@ and how this module reads it:
   call header (:class:`TrinoContext`); every statement is its own Trino session. An org on its
   own coordinator names it there; the proxy dials only a coordinator its deployment declared.
 * **Types** — each Arrow field names its Trino type (``trino.type``, the ``column_types`` a
-  result reports), its type signature and its encoding. A type Arrow has no type for arrives as
+  result reports), its type signature and its encoding. An array of a type Arrow has arrives as
+  an Arrow list of it, nested as deep as the array, so an encoder writes it as an array (pgwire:
+  PostgreSQL's ``{...}``), never as the protocol's JSON text. A type Arrow has no type for arrives as
   Utf8 holding the protocol's text or JSON; :func:`trino_rows` reads it with the Trino client's own
   value mappers, so a row value is the one the Trino client gives.
 * **Errors** — a statement Trino failed carries Trino's error name, type, code, message and query
@@ -331,19 +333,48 @@ def _field_values(f: pa.Field, column: pa.Array | pa.ChunkedArray) -> list[Any]:
     if encoding == b"json":
         mapper = _mapper(f.metadata[SIGNATURE_KEY])
         return [None if v is None else mapper(json.loads(v)) for v in column.to_pylist()]
-    if pa.types.is_float32(f.type):
-        # A REAL is the shortest decimal that names the float, as the protocol writes it and the
-        # Trino client parses it; to_pylist would widen the float (0.1 -> 0.10000000149011612).
-        import numpy as np
-
-        return [None if v is None else float(str(np.float32(v))) for v in column.to_pylist()]
-    if pa.types.is_timestamp(f.type) and f.type.tz is not None:
-        # An instant is carried at UTC with its zone (REQ-2050), as datetime.timezone.utc.
-        return [
-            None if v is None else v.astimezone(datetime.timezone.utc)
-            for v in column_values(column)
-        ]
+    if pa.types.is_list(f.type):
+        # An array of a type Arrow has: a list (nested as deep as the array), each element read
+        # as the same type's column would be.
+        leaf = _leaf_reader(f.type)
+        return [_list_value(v, leaf) for v in column.to_pylist()]
+    reader = _leaf_reader(f.type)
+    if reader is not None:
+        return [None if v is None else reader(v) for v in column_values(column)]
     return column_values(column)
+
+
+def _real(v: float) -> float:
+    """A REAL is the shortest decimal that names the float, as the protocol writes it and the
+    Trino client parses it; to_pylist would widen the float (0.1 -> 0.10000000149011612)."""
+    import numpy as np
+
+    return float(str(np.float32(v)))
+
+
+def _instant(v: datetime.datetime) -> datetime.datetime:
+    """An instant is carried at UTC with its zone (REQ-2050), as datetime.timezone.utc."""
+    return v.astimezone(datetime.timezone.utc)
+
+
+def _leaf_reader(t: pa.DataType) -> Callable[[Any], Any] | None:
+    """What brings a non-null value of ``t`` (a list's innermost element type, for a list) from
+    its Arrow value to the Trino client's; None where the Arrow value is the client's."""
+    while pa.types.is_list(t):
+        t = t.value_type
+    if pa.types.is_float32(t):
+        return _real
+    if pa.types.is_timestamp(t) and t.tz is not None:
+        return _instant
+    return None
+
+
+def _list_value(v: Any, leaf: Callable[[Any], Any] | None) -> Any:
+    if v is None or leaf is None:
+        return v
+    if isinstance(v, list):
+        return [_list_value(e, leaf) for e in v]
+    return leaf(v)
 
 
 def trino_rows(data: pa.RecordBatch | pa.Table) -> list[tuple]:

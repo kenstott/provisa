@@ -336,7 +336,9 @@ Use `@loader` when one call over many keys does better than many calls over one:
         score: float
 
 
-    def churn_score(inputs: ScoreInputs, context: ReadContext) -> list[Score]:
+    def churn_score(
+        inputs: ScoreInputs, context: ReadContext
+    ) -> list[Score] | dict[str, list[Score]]:
         """Churn score of each customer in the batch.
 
         @table
@@ -354,7 +356,6 @@ Use `@loader` when one call over many keys does better than many calls over one:
 
     ```python
     from dataclasses import dataclass
-    from typing import cast
 
     from provisa_sdk import table
     from provisa_services import ReadContext
@@ -374,15 +375,17 @@ Use `@loader` when one call over many keys does better than many calls over one:
 
 
     @table(loader=True)
-    def churn_score(inputs: ScoreInputs, context: ReadContext) -> list[Score]:
+    def churn_score(
+        inputs: ScoreInputs, context: ReadContext
+    ) -> list[Score] | dict[str, list[Score]]:
         """Churn score of each customer in the batch."""
         given = {"customer_id": inputs.customer_id, "plan": inputs.plan, "region": inputs.region}
         keys = context.keys or {"": given}
         rows = {h: {"plan": "basic", "region": "US", **key} for h, key in keys.items()}
         scores = MODEL.predict(features(list(rows.values())))  # one vectorized call for the batch
         out = {h: [Score(r["customer_id"], s)] for (h, r), s in zip(rows.items(), scores)}
-        # A loader call returns the hash of each key to its rows; the declared type is the rows.
-        return cast(list[Score], out if context.keys else out[""])
+        # A loader call returns the hash of each key to its rows; a single call returns the rows.
+        return out if context.keys else out[""]
     ```
 
     `@table(loader=100)` is `@loader 100`.
@@ -915,7 +918,7 @@ The batched `churnScore` in TypeScript:
     export async function churnScore(
       { customer_id = "", plan = "basic", region = "US" }: ScoreInputs,
       context: ReadContext,
-    ): Promise<Score[]> {
+    ): Promise<Score[] | Record<string, Score[]>> {
       const keys = context.keys ?? { "": { customer_id, plan, region } };
       const rows = Object.entries(keys).map(([h, key]) => ({
         h,
@@ -927,8 +930,8 @@ The batched `churnScore` in TypeScript:
       const out: Record<string, Score[]> = Object.fromEntries(
         rows.map((row, i) => [row.h, [{ customer_id: row.customer_id, score: scores[i] }]]),
       );
-      // A loader call returns the hash of each key to its rows; the declared type is the rows.
-      return (context.keys ? out : out[""]) as Score[];
+      // A loader call returns the hash of each key to its rows; a single call returns the rows.
+      return context.keys ? out : out[""];
     }
     ```
 
@@ -955,7 +958,7 @@ The batched `churnScore` in TypeScript:
       async function churnScore(
         { customer_id = "", plan = "basic", region = "US" }: ScoreInputs,
         context: ReadContext,
-      ): Promise<Score[]> {
+      ): Promise<Score[] | Record<string, Score[]>> {
         const keys = context.keys ?? { "": { customer_id, plan, region } };
         const rows = Object.entries(keys).map(([h, key]) => ({
           h,
@@ -967,8 +970,8 @@ The batched `churnScore` in TypeScript:
         const out: Record<string, Score[]> = Object.fromEntries(
           rows.map((row, i) => [row.h, [{ customer_id: row.customer_id, score: scores[i] }]]),
         );
-        // A loader call returns the hash of each key to its rows; the declared type is the rows.
-        return (context.keys ? out : out[""]) as Score[];
+        // A loader call returns the hash of each key to its rows; a single call returns the rows.
+        return context.keys ? out : out[""];
       },
       { loader: true },
     );

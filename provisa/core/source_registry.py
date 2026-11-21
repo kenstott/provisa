@@ -79,6 +79,29 @@ SOURCE_TO_DIALECT: dict[str, str] = {
     **{t: "duckdb" for t in CODE_SOURCE_TYPES},
 }
 
+
+# Federation-engine native-store names that are not source types: SQLAlchemy URL schemes a generic
+# RDB engine reports as its native store (REQ-1922), and wire-compatible forks. Kept apart from
+# SOURCE_TO_DIALECT, whose keys are all source types that must be catalog-reachable.
+ENGINE_DIALECT_ALIASES: dict[str, str] = {
+    "mssql": "tsql",
+    "exa": "exasol",
+    "singlestoredb": "singlestore",
+    "opengauss": "postgres",  # openGauss is a PostgreSQL fork on the pg wire
+}
+
+
+def engine_dialect(store: str) -> str | None:
+    """The sqlglot dialect a federation engine whose native store is ``store`` transpiles to: the
+    store's own name when sqlglot has a dialect of that name, else its ``SOURCE_TO_DIALECT`` or ``ENGINE_DIALECT_ALIASES`` entry,
+    else None (no sqlglot dialect for that product)."""
+    from sqlglot.dialects.dialect import Dialect
+
+    if store in Dialect.classes:
+        return store
+    return SOURCE_TO_DIALECT.get(store) or ENGINE_DIALECT_ALIASES.get(store)
+
+
 # Source types that are CONNECTOR_ONLY — no direct driver, no SQLGlot dialect (REQ-229)
 LAKE_ONLY_SOURCES: set[str] = {"iceberg", "delta_lake", "hive_s3"}
 

@@ -1,0 +1,51 @@
+{
+  "accessReview": {
+    "heading": "סקירת גישה",
+    "help": "כל סקירה מפרטת את הקצאת התפקיד של כל חבר עם ההרשאות שלו והשימוש האחרון, מקובצות לפי תחום. הבעלים של כל תחום מאשר או שולל כל שורה ומציין מדוע. שלילה מסירה את ההקצאה מיד.",
+    "scheduleLabel": "לוח זמנים לסקירה",
+    "scheduleHint": "Cron ב-UTC: דקה שעה יום חודש יום בשבוע. ריק: אין סקירה מתוזמנת.",
+    "scheduleSaved": "לוח הזמנים לסקירה נשמר",
+    "reviewLabel": "סקירה",
+    "reviewOption": "{{when}} · {{by}} · {{decided}} מתוך {{rows}} הוכרעו",
+    "bySchedule": "לפי לוח זמנים",
+    "noReviews": "טרם בוצעה סקירה.",
+    "noRows": "אין שורות בסקירה זו עבור התחומים שבבעלותך.",
+    "start": "התחל סקירה",
+    "started_one": "הסקירה התחילה: {{count}} הקצאה לסקירה",
+    "started_other": "הסקירה התחילה: {{count}} הקצאות לסקירה",
+    "export": "ייצוא CSV",
+    "colDomain": "תחום",
+    "colMember": "חבר",
+    "colRole": "תפקיד",
+    "colEntitlements": "הרשאות",
+    "colLastUsed": "שימוש אחרון",
+    "colDecision": "החלטה",
+    "colActions": "פעולות",
+    "everyDomain": "כל תחום",
+    "wholeRole": "התפקיד כולו",
+    "neverUsed": "אף פעם",
+    "undecided": "לא הוכרע",
+    "decision": {
+      "confirmed": "אושר",
+      "revoked": "נשלל"
+    },
+    "decidedBy": "{{who}}, {{when}}",
+    "confirm": "אשר",
+    "revoke": "שלול",
+    "prompt": {
+      "confirmed": "אשר את הקצאת התפקיד {{role}} של {{member}} בתחום {{domain}}.",
+      "revoked": "שלול את הקצאת התפקיד {{role}} של {{member}} בתחום {{domain}}. היא תוסר מיד."
+    },
+    "reasonLabel": "סיבה",
+    "reasonHint": "מדוע אתה מאשר או שולל גישה זו. היא נרשמת יחד עם החלטתך.",
+    "webhookUrlLabel": "כתובת Webhook",
+    "webhookUrlHint": "כל סקירה מתוזמנת נשלחת לכאן, חתומה בסוד. ריק: אין Webhook.",
+    "webhookSecretLabel": "סוד Webhook",
+    "webhookSecretHint": "לכתיבה בלבד: הוא חותם על כל שליחה ואינו מוצג שוב. השאר ריק כדי לשמור את הקיים.",
+    "webhookSecretHeld": "סוד שמור",
+    "webhookFailed": "הסקירה המתוזמנת לא נשלחה ל-Webhook: {{error}}",
+    "webhookDelivered": "סקירה מתוזמנת זו נשלחה ל-Webhook.",
+    "sourceIdp": "הוקצה דרך ספק הזהויות",
+    "readOnly": "לקריאה בלבד: ל-Provisa אין הקצאה לשלול"
+  }
+}

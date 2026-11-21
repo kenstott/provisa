@@ -1,0 +1,51 @@
+{
+  "accessReview": {
+    "heading": "Revisione degli accessi",
+    "help": "Ogni revisione elenca l'assegnazione di ruolo di ogni membro con i suoi diritti e l'ultimo utilizzo, raggruppate per dominio. Il proprietario di ogni dominio conferma o revoca ogni riga e ne indica il motivo. Una revoca rimuove l'assegnazione immediatamente.",
+    "scheduleLabel": "Pianificazione della revisione",
+    "scheduleHint": "Cron in UTC: minuto ora giorno mese giorno della settimana. Vuoto: nessuna revisione pianificata.",
+    "scheduleSaved": "Pianificazione della revisione salvata",
+    "reviewLabel": "Revisione",
+    "reviewOption": "{{when}} · {{by}} · {{decided}} di {{rows}} decise",
+    "bySchedule": "da pianificazione",
+    "noReviews": "Nessuna revisione è ancora stata eseguita.",
+    "noRows": "Nessuna riga in questa revisione per i domini di cui sei proprietario.",
+    "start": "Avvia una revisione",
+    "started_one": "Revisione avviata: {{count}} assegnazione da esaminare",
+    "started_other": "Revisione avviata: {{count}} assegnazioni da esaminare",
+    "export": "Esporta CSV",
+    "colDomain": "Dominio",
+    "colMember": "Membro",
+    "colRole": "Ruolo",
+    "colEntitlements": "Diritti",
+    "colLastUsed": "Ultimo utilizzo",
+    "colDecision": "Decisione",
+    "colActions": "Azioni",
+    "everyDomain": "Tutti i domini",
+    "wholeRole": "L'intero ruolo",
+    "neverUsed": "Mai",
+    "undecided": "Non deciso",
+    "decision": {
+      "confirmed": "Confermato",
+      "revoked": "Revocato"
+    },
+    "decidedBy": "{{who}}, {{when}}",
+    "confirm": "Conferma",
+    "revoke": "Revoca",
+    "prompt": {
+      "confirmed": "Conferma l'assegnazione del ruolo {{role}} di {{member}} in {{domain}}.",
+      "revoked": "Revoca l'assegnazione del ruolo {{role}} di {{member}} in {{domain}}. Viene rimossa immediatamente."
+    },
+    "reasonLabel": "Motivo",
+    "reasonHint": "Perché confermi o revochi questo accesso. Viene registrato insieme alla tua decisione.",
+    "webhookUrlLabel": "URL del webhook",
+    "webhookUrlHint": "Ogni revisione pianificata viene inviata qui, firmata con il segreto. Vuoto: nessun webhook.",
+    "webhookSecretLabel": "Segreto del webhook",
+    "webhookSecretHint": "Solo scrittura: firma ogni invio e non viene più mostrato. Lascia vuoto per mantenere quello attuale.",
+    "webhookSecretHeld": "Un segreto è memorizzato",
+    "webhookFailed": "La revisione pianificata non è stata inviata al webhook: {{error}}",
+    "webhookDelivered": "Questa revisione pianificata è stata inviata al webhook.",
+    "sourceIdp": "Assegnato tramite il provider di identità",
+    "readOnly": "Sola lettura: Provisa non detiene alcuna assegnazione da revocare"
+  }
+}

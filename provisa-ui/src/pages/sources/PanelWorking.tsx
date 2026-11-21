@@ -20,12 +20,15 @@ export function PanelWorking({
   back,
   onBack,
   testId,
+  actions,
   children,
 }: {
   /** What the way back says: where it leads. */
   back: string;
   onBack: () => void;
   testId: string;
+  /** Actions beside the way back (REQ-2262: Create relationships beside Close). */
+  actions?: ReactNode;
   children: ReactNode;
 }) {
   return (
@@ -42,6 +45,7 @@ export function PanelWorking({
         >
           {back}
         </Button>
+        {actions}
       </div>
       {children}
     </div>

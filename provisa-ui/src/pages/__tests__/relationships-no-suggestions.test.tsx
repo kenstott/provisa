@@ -221,6 +221,7 @@ describe("RelationshipsPage: a run's result leaves the page without a suggested 
         sample_size: null,
         contained_at: null,
         shared_ceiling: null,
+        either_way: false,
       },
       model: null,
       requests_total: 0,

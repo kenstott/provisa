@@ -15,10 +15,22 @@
 import { DestructiveConfirmButton } from "../form/DestructiveConfirmButton";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Alert, Badge, Button, Group, Select, Stack, Table, Text, TextInput } from "@mantine/core";
+import {
+  Alert,
+  Badge,
+  Button,
+  Group,
+  PasswordInput,
+  Select,
+  Stack,
+  Table,
+  Text,
+  TextInput,
+} from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { Download, Play } from "lucide-react";
 import {
+  IDENTITY_PROVIDER,
   SCHEDULE_STARTER,
   accessReviewExportUrl,
   decideAccessReviewRow,
@@ -57,6 +69,9 @@ export function AccessReviews() {
   } | null>(null);
   const [reason, setReason] = useState("");
   const [cron, setCron] = useState("");
+  const [webhookUrl, setWebhookUrl] = useState("");
+  const [webhookSecret, setWebhookSecret] = useState("");
+  const [secretHeld, setSecretHeld] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const report = useCallback(
@@ -96,7 +111,11 @@ export function AccessReviews() {
   useEffect(() => {
     if (!canSchedule) return;
     fetchAccessReviewSchedule()
-      .then((s) => setCron(s.cron ?? ""))
+      .then((s) => {
+        setCron(s.cron ?? "");
+        setWebhookUrl(s.webhook_url ?? "");
+        setSecretHeld(s.webhook_secret_set);
+      })
       .catch(report);
   }, [canSchedule, report]);
 
@@ -116,8 +135,15 @@ export function AccessReviews() {
 
   const saveSchedule = async () => {
     try {
-      const saved = await saveAccessReviewSchedule(cron.trim() === "" ? null : cron.trim());
+      const saved = await saveAccessReviewSchedule(
+        cron.trim() === "" ? null : cron.trim(),
+        webhookUrl.trim() === "" ? null : webhookUrl.trim(),
+        webhookSecret === "" ? null : webhookSecret,
+      );
       setCron(saved.cron ?? "");
+      setWebhookUrl(saved.webhook_url ?? "");
+      setSecretHeld(saved.webhook_secret_set);
+      setWebhookSecret("");
       setError(null);
       notifications.show({ color: "green", message: t("accessReview.scheduleSaved") });
     } catch (e) {
@@ -182,6 +208,7 @@ export function AccessReviews() {
       rows: r.rows,
     }),
   }));
+  const picked = reviews.find((r) => r.id === reviewId);
 
   return (
     <Stack gap="sm" data-testid="access-reviews">
@@ -210,11 +237,41 @@ export function AccessReviews() {
               data-testid="access-review-schedule-cron"
             />
           </FormField>
+          <FormField size="long" hint={t("accessReview.webhookUrlHint")}>
+            <TextInput
+              label={t("accessReview.webhookUrlLabel")}
+              placeholder="https://"
+              value={webhookUrl}
+              onChange={(e) => setWebhookUrl(e.currentTarget.value)}
+              data-testid="access-review-webhook-url"
+            />
+          </FormField>
+          <FormField size="long" hint={t("accessReview.webhookSecretHint")}>
+            <PasswordInput
+              label={t("accessReview.webhookSecretLabel")}
+              placeholder={secretHeld ? t("accessReview.webhookSecretHeld") : undefined}
+              value={webhookSecret}
+              onChange={(e) => setWebhookSecret(e.currentTarget.value)}
+              autoComplete="new-password"
+              data-testid="access-review-webhook-secret"
+            />
+          </FormField>
           <FormFooter
             onSave={saveSchedule}
             saveProps={{ "data-testid": "access-review-schedule-save" }}
           />
         </FormLayout>
+      )}
+
+      {picked?.webhook_status === "failed" && (
+        <Alert color="red" data-testid="access-review-webhook-failed">
+          {t("accessReview.webhookFailed", { error: picked.webhook_error })}
+        </Alert>
+      )}
+      {picked?.webhook_status === "delivered" && (
+        <Text size="sm" c="dimmed" data-testid="access-review-webhook-delivered">
+          {t("accessReview.webhookDelivered")}
+        </Text>
       )}
 
       <FormLayout data-testid="access-review-picker">
@@ -342,7 +399,14 @@ export function AccessReviews() {
                       </Text>
                     )}
                   </Table.Td>
-                  <Table.Td>{r.role_id}</Table.Td>
+                  <Table.Td>
+                    {r.role_id}
+                    {r.source === IDENTITY_PROVIDER && (
+                      <Text size="xs" c="dimmed" data-testid={`access-review-source-${r.id}`}>
+                        {t("accessReview.sourceIdp")}
+                      </Text>
+                    )}
+                  </Table.Td>
                   <Table.Td>
                     <Group gap={4}>
                       {r.entitlements.length === 0 && (
@@ -388,6 +452,11 @@ export function AccessReviews() {
                     )}
                   </Table.Td>
                   <Table.Td>
+                    {r.source === IDENTITY_PROVIDER && (
+                      <Text size="xs" c="dimmed">
+                        {t("accessReview.readOnly")}
+                      </Text>
+                    )}
                     {r.can_decide && (
                       <Group gap={4} wrap="nowrap">
                         <Button

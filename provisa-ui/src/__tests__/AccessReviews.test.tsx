@@ -17,6 +17,7 @@ import { fireEvent, render, screen, waitFor, within } from "../test-utils/render
 
 const api = vi.hoisted(() => ({
   SCHEDULE_STARTER: "schedule",
+  IDENTITY_PROVIDER: "identity_provider",
   fetchAccessReviews: vi.fn(),
   fetchAccessReview: vi.fn(),
   startAccessReview: vi.fn(),
@@ -44,6 +45,7 @@ const ROW = {
   reason: null,
   display_name: null,
   email: null,
+  source: "provisa",
 };
 
 const ROWS = [
@@ -69,17 +71,44 @@ const ROWS = [
     reason: "still on the team",
     can_decide: false,
   },
+  {
+    ...ROW,
+    id: 3,
+    user_id: "di",
+    role_id: "auditor",
+    domain_id: "hr",
+    source: "identity_provider",
+    can_decide: false,
+  },
 ];
 
 beforeEach(() => {
   vi.clearAllMocks();
   rights.held = new Set(["user_management", "org_settings", "domain_steward"]);
   api.fetchAccessReviews.mockResolvedValue([
-    { id: 7, started_by: "schedule", started_at: "2026-11-20T06:00:00Z", rows: 2, decided: 1 },
+    {
+      id: 7,
+      started_by: "schedule",
+      started_at: "2026-11-20T06:00:00Z",
+      rows: 2,
+      decided: 1,
+      webhook_status: null,
+      webhook_error: null,
+    },
   ]);
   api.fetchAccessReview.mockResolvedValue({ id: 7, rows: ROWS });
-  api.fetchAccessReviewSchedule.mockResolvedValue({ cron: "0 6 1 * *" });
-  api.saveAccessReviewSchedule.mockImplementation(async (cron: string | null) => ({ cron }));
+  api.fetchAccessReviewSchedule.mockResolvedValue({
+    cron: "0 6 1 * *",
+    webhook_url: "https://hook.example.test/r",
+    webhook_secret_set: true,
+  });
+  api.saveAccessReviewSchedule.mockImplementation(
+    async (cron: string | null, url: string | null) => ({
+      cron,
+      webhook_url: url,
+      webhook_secret_set: true,
+    }),
+  );
   api.startAccessReview.mockResolvedValue({ id: 8, rows: 3 });
   api.decideAccessReviewRow.mockResolvedValue({ ...ROWS[0], decision: "revoked" });
 });
@@ -130,7 +159,59 @@ describe("AccessReviews", () => {
     await waitFor(() => expect(cron).toHaveValue("0 6 1 * *"));
     fireEvent.change(cron, { target: { value: "" } });
     fireEvent.click(screen.getByTestId("access-review-schedule-save"));
-    await waitFor(() => expect(api.saveAccessReviewSchedule).toHaveBeenCalledWith(null));
+    await waitFor(() =>
+      expect(api.saveAccessReviewSchedule).toHaveBeenCalledWith(
+        null,
+        "https://hook.example.test/r",
+        null,
+      ),
+    );
+  });
+
+  it("saves the webhook URL and a new secret; the held secret is never shown", async () => {
+    render(<AccessReviews />);
+    const url = await screen.findByTestId("access-review-webhook-url");
+    await waitFor(() => expect(url).toHaveValue("https://hook.example.test/r"));
+    const secret = screen.getByTestId("access-review-webhook-secret");
+    expect(secret).toHaveValue("");
+    expect(secret).toHaveAttribute("type", "password");
+    fireEvent.change(secret, { target: { value: "s3cret" } });
+    fireEvent.click(screen.getByTestId("access-review-schedule-save"));
+    await waitFor(() =>
+      expect(api.saveAccessReviewSchedule).toHaveBeenCalledWith(
+        "0 6 1 * *",
+        "https://hook.example.test/r",
+        "s3cret",
+      ),
+    );
+    await waitFor(() => expect(secret).toHaveValue(""));
+  });
+
+  it("says when the scheduled review was not posted to the webhook, with why", async () => {
+    api.fetchAccessReviews.mockResolvedValue([
+      {
+        id: 7,
+        started_by: "schedule",
+        started_at: "2026-11-20T06:00:00Z",
+        rows: 2,
+        decided: 1,
+        webhook_status: "failed",
+        webhook_error: "the request hook at https://h answered 500",
+      },
+    ]);
+    render(<AccessReviews />);
+    expect(await screen.findByTestId("access-review-webhook-failed")).toHaveTextContent(
+      "answered 500",
+    );
+  });
+
+  it("lists an identity provider role read-only with its source, offering no decision", async () => {
+    render(<AccessReviews />);
+    const row = await screen.findByTestId("access-review-row-3");
+    expect(within(row).getByTestId("access-review-source-3")).toBeInTheDocument();
+    expect(screen.queryByTestId("access-review-confirm-3")).toBeNull();
+    expect(screen.queryByTestId("access-review-revoke-3")).toBeNull();
+    expect(screen.getByTestId("access-review-confirm-1")).toBeInTheDocument();
   });
 
   it("shows an owner without user management neither start, export nor schedule", async () => {

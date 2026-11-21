@@ -565,6 +565,7 @@ async def test_turning_it_off_is_refused_while_any_live_object_refers_to_the_tab
 
 @pytest.mark.asyncio
 async def test_a_glossary_reference_and_a_tag_do_not_block_turning_it_off(state, plane):
+    from provisa.core.models import TagAssignment
     from provisa.core.schema_org import glossary_term_refs, glossary_terms, tag_assignments
 
     derived, stored = await _exposed_pet(plane)
@@ -579,7 +580,13 @@ async def test_a_glossary_reference_and_a_tag_do_not_block_turning_it_off(state,
         )
         await conn.execute_core(
             insert(tag_assignments).values(
-                tag_id="pii", base_tag_id="pii", object_type="table", table_id=derived
+                tag_id="pii",
+                base_tag_id="pii",
+                object_type="table",
+                table_id=derived,
+                object_key=TagAssignment(
+                    tag_id="pii", object_type="table", table_id=derived
+                ).object_key(),
             )
         )
     assert await _settle(_body("get_pet", "getPetById", exposed=False), stored) == derived

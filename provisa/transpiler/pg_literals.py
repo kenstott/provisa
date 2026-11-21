@@ -38,6 +38,12 @@ import sqlglot.expressions as exp
 _MAX_PRECISION = 38
 #: The digits a literal's decimal has beside its own.
 _ROOM = 18
+#: The room every target but Trino's gets.
+ROOM = _ROOM
+#: None beside its own, on Trino: Trino holds a sum or product whose exact type passes 38 digits
+#: at a smaller scale (DECIMAL(38, 21) + DECIMAL(20, 1) at scale 19), where its own decimal
+#: arithmetic widens a literal's type of its digits alone to the type its answer needs.
+TIGHT = 0
 
 
 class _NotAnArrayLiteral(ValueError):
@@ -128,7 +134,7 @@ def _as_array(elements: list) -> exp.Expression:  # pyright: ignore[reportPrivat
     )
 
 
-def _exact_numeric(literal: exp.Literal) -> exp.DataType | None:
+def _exact_numeric(literal: exp.Literal, room: int = _ROOM) -> exp.DataType | None:
     try:
         value = decimal.Decimal(literal.this)
     except decimal.InvalidOperation:
@@ -142,7 +148,7 @@ def _exact_numeric(literal: exp.Literal) -> exp.DataType | None:
         return None  # wider than any engine decimal: left to the engine's own cast
     # Room to compute in, and not the widest: an engine cannot widen a list of DECIMAL(38,1) and
     # DECIMAL(38,3), and DuckDB refuses a product of a width that is too narrow.
-    width = min(_MAX_PRECISION, precision + _ROOM)
+    width = min(_MAX_PRECISION, precision + room)
     return exp.DataType.build(f"DECIMAL({width}, {scale})", dialect="postgres")
 
 
@@ -161,7 +167,7 @@ def _fixed_length(to: exp.DataType) -> int | None:
     return int(to.expressions[0].this.this) if to.expressions else 1
 
 
-def _exact_input(node: exp.Expr) -> exp.Expr:
+def _exact_input(node: exp.Expr, room: int = _ROOM) -> exp.Expr:
     """A literal cast as PostgreSQL's input function reads it, where a target's cast would change
     it: a numeric of no precision keeps every digit (DECIMAL is DECIMAL(38,0) on Trino, (18,3) on
     DuckDB and (10,0) on ClickHouse), and a character(n) keeps n characters."""
@@ -170,7 +176,7 @@ def _exact_input(node: exp.Expr) -> exp.Expr:
     to = node.to
     number = _number_of(node.this)
     if number is not None and to.is_type(exp.DataType.Type.DECIMAL) and not to.expressions:
-        exact = _exact_numeric(number)
+        exact = _exact_numeric(number, room)
         return node if exact is None else exp.Cast(this=node.this, to=exact)
     length = _fixed_length(to)
     if length is not None and isinstance(node.this, exp.Literal) and node.this.is_string:
@@ -183,13 +189,14 @@ def _exact_input(node: exp.Expr) -> exp.Expr:
 _SIZED_CAST = re.compile(r"(::|\bas)\s*\"?(numeric|decimal|char|character)\b", re.IGNORECASE)
 
 
-def exact_inputs(pg_sql: str) -> str:
+def exact_inputs(pg_sql: str, room: int = _ROOM) -> str:
     """``pg_sql`` with each literal cast as PostgreSQL's input function reads it (REQ-2171, AN
-    ANSWER THAT DIFFERS IS REFUSED). The text of a statement with none is returned as it is."""
+    ANSWER THAT DIFFERS IS REFUSED). The text of a statement with none is returned as it is.
+    ``room``: the digits a literal's decimal has beside its own (``TIGHT`` on Trino)."""
     if _SIZED_CAST.search(pg_sql) is None:
         return pg_sql
     tree = sqlglot.parse_one(pg_sql, read="postgres")
-    written = tree.transform(_exact_input)
+    written = tree.transform(lambda node: _exact_input(node, room))
     return pg_sql if written == tree else written.sql(dialect="postgres")
 
 

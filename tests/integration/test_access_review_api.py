@@ -284,14 +284,18 @@ def test_the_domains_owner_revokes_a_grant_and_it_ends_at_once(plane):
 def test_the_schedule_is_set_cleared_and_refused_when_not_cron(plane):
     with TestClient(_app(plane)) as client:
         assert client.get("/admin/access-reviews/schedule", headers=_as("alice")).json() == {
-            "cron": None
+            "cron": None,
+            "webhook_url": None,
+            "webhook_secret_set": False,
         }
         saved = client.put(
             "/admin/access-reviews/schedule", headers=_as("alice"), json={"cron": "0 6 1 * *"}
         )
         assert saved.status_code == 200, saved.text
         assert client.get("/admin/access-reviews/schedule", headers=_as("alice")).json() == {
-            "cron": "0 6 1 * *"
+            "cron": "0 6 1 * *",
+            "webhook_url": None,
+            "webhook_secret_set": False,
         }
         bad = client.put(
             "/admin/access-reviews/schedule", headers=_as("alice"), json={"cron": "monthly"}
@@ -305,5 +309,44 @@ def test_the_schedule_is_set_cleared_and_refused_when_not_cron(plane):
             ).status_code
             == 403
         )
+        # The webhook: URL and secret; the secret is never read back, and a later save without
+        # one keeps it.
+        hooked = client.put(
+            "/admin/access-reviews/schedule",
+            headers=_as("alice"),
+            json={
+                "cron": "0 6 1 * *",
+                "webhook_url": "https://hook.example.test/r",
+                "webhook_secret": "s3cret",
+            },
+        )
+        assert hooked.json() == {
+            "cron": "0 6 1 * *",
+            "webhook_url": "https://hook.example.test/r",
+            "webhook_secret_set": True,
+        }
+        assert (
+            "s3cret" not in client.get("/admin/access-reviews/schedule", headers=_as("alice")).text
+        )
+        kept = client.put(
+            "/admin/access-reviews/schedule",
+            headers=_as("alice"),
+            json={"cron": "0 7 1 * *", "webhook_url": "https://hook.example.test/r"},
+        )
+        assert kept.json()["webhook_secret_set"] is True
+        no_secret = client.put(
+            "/admin/access-reviews/schedule",
+            headers=_as("alice"),
+            json={"cron": "0 7 1 * *", "webhook_url": "ftp://x"},
+        )
+        assert no_secret.status_code == 422
+        assert no_secret.json()["code"] == "access_review.webhook_invalid"
         cleared = client.put("/admin/access-reviews/schedule", headers=_as("alice"), json={})
-        assert cleared.json() == {"cron": None}
+        assert cleared.json() == {"cron": None, "webhook_url": None, "webhook_secret_set": False}
+        needs = client.put(
+            "/admin/access-reviews/schedule",
+            headers=_as("alice"),
+            json={"webhook_url": "https://hook.example.test/r"},
+        )
+        assert needs.status_code == 422
+        assert needs.json()["code"] == "access_review.webhook_secret_required"

@@ -299,3 +299,155 @@ async def test_only_the_domains_owner_decides_and_never_on_their_own_access(org,
         ("access_review.revoked", "ana", "bo", "left")
     ]
     assert sorted(r.decision or "" for r in left) == ["", "", "revoked"]
+
+
+# -- the signed webhook and the identity provider's roles (REQ-2266, amended 2026-11-21) ----------
+
+_HOOK_URL = "https://hook.example.test/reviews"
+
+
+def _hook_overrides(secret: str = "s3cret") -> dict:
+    return {
+        ar.SETTINGS_KEY: {
+            ar.CRON_FIELD: "*/5 * * * *",
+            ar.WEBHOOK_FIELD: {"url": _HOOK_URL, "secret": secret},
+        }
+    }
+
+
+def _answering(monkeypatch, status: int) -> list:
+    import httpx
+
+    seen: list[httpx.Request] = []
+
+    def answer(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(status, text="no")
+
+    real = httpx.AsyncClient
+    monkeypatch.setattr(
+        httpx, "AsyncClient", lambda **kw: real(transport=httpx.MockTransport(answer), **kw)
+    )
+    return seen
+
+
+async def _webhook_state(db, review_id: int) -> tuple[str | None, str | None]:
+    async with db.acquire() as conn:
+        (r,) = [x for x in await ar.reviews(conn) if x.id == review_id]
+    return r.webhook_status, r.webhook_error
+
+
+async def test_a_scheduled_review_is_posted_signed_the_way_the_offer_hook_signs(org, monkeypatch):
+    from provisa.core import offer_hooks
+
+    await _grant(org, "bo", "reader", "sales")
+    seen = _answering(monkeypatch, 202)
+    overrides = _hook_overrides()
+    review_id = await ar.run_scheduled(org, overrides, datetime.now(UTC))
+    assert review_id is not None
+    assert await ar.post_scheduled(org, review_id, overrides) == ar.DELIVERED
+    (posted,) = seen
+    assert str(posted.url) == _HOOK_URL
+    # The receiver verifies it with the offer hook's own check, under the shared secret.
+    assert offer_hooks.verified(
+        posted.content, posted.headers[offer_hooks.SIGNATURE_HEADER], "s3cret"
+    )
+    assert not offer_hooks.verified(
+        posted.content, posted.headers[offer_hooks.SIGNATURE_HEADER], "wrong"
+    )
+    import json
+
+    body = json.loads(posted.content)
+    assert body["kind"] == "access_review" and body["review_id"] == review_id
+    assert posted.headers["Idempotency-Key"] == body["id"]
+    assert [(r["user_id"], r["role_id"], r["domain_id"]) for r in body["rows"]] == [
+        ("bo", "reader", "sales")
+    ]
+    assert await _webhook_state(org, review_id) == (ar.DELIVERED, None)
+
+
+async def test_a_failed_post_is_recorded_on_the_review_not_swallowed(org, monkeypatch):
+    await _grant(org, "bo", "reader", "sales")
+    _answering(monkeypatch, 500)
+    overrides = _hook_overrides()
+    review_id = await ar.run_scheduled(org, overrides, datetime.now(UTC))
+    assert await ar.post_scheduled(org, review_id, overrides) == ar.FAILED
+    status, error = await _webhook_state(org, review_id)
+    assert status == ar.FAILED
+    assert _HOOK_URL in error and "500" in error
+
+
+async def test_a_webhook_missing_its_secret_is_recorded_failed(org, monkeypatch):
+    await _grant(org, "bo", "reader", "sales")
+    seen = _answering(monkeypatch, 202)
+    overrides = _hook_overrides(secret="")
+    review_id = await ar.run_scheduled(org, overrides, datetime.now(UTC))
+    assert await ar.post_scheduled(org, review_id, overrides) == ar.FAILED
+    assert seen == []
+    status, error = await _webhook_state(org, review_id)
+    assert status == ar.FAILED and "secret" in error
+
+
+async def test_no_webhook_means_nothing_is_posted_and_nothing_recorded(org, monkeypatch):
+    await _grant(org, "bo", "reader", "sales")
+    seen = _answering(monkeypatch, 202)
+    overrides = {ar.SETTINGS_KEY: {ar.CRON_FIELD: "*/5 * * * *"}}
+    review_id = await ar.run_scheduled(org, overrides, datetime.now(UTC))
+    assert await ar.post_scheduled(org, review_id, overrides) is None
+    assert seen == []
+    assert await _webhook_state(org, review_id) == (None, None)
+
+
+async def test_the_scheduler_run_posts_after_a_scheduled_review_and_an_on_demand_one_is_not_posted(
+    org, monkeypatch
+):
+    await _grant(org, "bo", "reader", "sales")
+    seen = _answering(monkeypatch, 500)
+
+    async def overrides(_db):
+        return _hook_overrides()
+
+    monkeypatch.setattr("provisa.core.org_settings.read_org_overrides", overrides)
+    monkeypatch.setattr("provisa.core.request_context.set_current_org", lambda _o: None)
+    monkeypatch.setattr("provisa.core.request_context.reset_current_org", lambda _t: None)
+    on_demand = await _start(org)
+    assert await _webhook_state(org, on_demand) == (None, None)
+    assert seen == []
+    review_id = await ar.run_org("acme")
+    assert review_id is not None and len(seen) == 1
+    assert await _webhook_state(org, review_id) == (
+        ar.FAILED,
+        (await _webhook_state(org, review_id))[1],
+    )
+    async with org.acquire() as conn:
+        trail = (
+            await conn.execute_core(select(admin_audit_log.c.action, admin_audit_log.c.subject_id))
+        ).fetchall()
+    assert ("access_review.webhook_failed", str(review_id)) in [tuple(t) for t in trail]
+
+
+async def test_roles_held_only_through_the_identity_provider_are_listed_read_only(org):
+    from provisa.core.schema_org import user_idp_roles
+
+    await _grant(org, "bo", "reader", "sales")
+    async with org.acquire() as conn:
+        await conn.execute_core(
+            insert(user_idp_roles).values(
+                [
+                    {"user_id": "bo", "role_id": "reader", "domain_id": "sales"},  # also granted
+                    {"user_id": "cy", "role_id": "clerk", "domain_id": "hr"},  # claims only
+                ]
+            )
+        )
+    review_id = await _start(org)
+    rows = await _rows(org, review_id)
+    assert rows[("bo", "reader", "sales")]["source"] == ar.PROVISA
+    claim = rows[("cy", "clerk", "hr")]
+    assert claim["source"] == ar.IDP
+    for decision in (ar.CONFIRMED, ar.REVOKED):
+        with pytest.raises(ar.ReviewRefused) as refused:
+            async with org.acquire() as conn:
+                await ar.decide(conn, claim["id"], decision, "ana", "why")
+        assert refused.value.code == "access_review.read_only"
+    async with org.acquire() as conn:
+        assert (await ar.row(conn, claim["id"]))["decision"] is None
