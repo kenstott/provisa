@@ -174,7 +174,8 @@ function tagText(tag) {
   return (comment ?? "").trim();
 }
 
-// REQ-1984: the SDK spelling this server reads, from its own copy of the SDK.
+// REQ-1984: the SDK spelling this server reads, from its own copy of the SDK. A bundle that does not
+// import "@provisa/sdk" never loads it, and carries no brand.
 const sdkFile = program.getSourceFile(SDK_TYPES);
 const sdkModule = sdkFile ? checker.getSymbolAtLocation(sdkFile) : undefined;
 const sdkExports = sdkModule ? checker.getExportsOfModule(sdkModule) : [];
@@ -183,9 +184,10 @@ const spellingSymbol = sdkExports.find((s) => s.getName() === "SPELLING");
 const SPELLING = spellingSymbol
   ? checker.getTypeOfSymbolAtLocation(spellingSymbol, spellingSymbol.valueDeclaration).value
   : null;
-if (!brandKey || typeof SPELLING !== "number") throw new Error(`${SDK_TYPES} declares no provisa brand or SPELLING`);
+if (sdkFile && (!brandKey || typeof SPELLING !== "number")) throw new Error(`${SDK_TYPES} declares no provisa brand or SPELLING`);
 
 function brandOf(type) {
+  if (!sdkFile) return null;
   const property = checker.getPropertiesOfType(type).find(isBrand);
   return property ? checker.getNonNullableType(checker.getTypeOfSymbol(property)) : null;
 }

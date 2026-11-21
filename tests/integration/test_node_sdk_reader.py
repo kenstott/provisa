@@ -255,7 +255,7 @@ def test_an_option_that_is_not_a_literal_is_refused_by_name(node, compiler, tmp_
     assert problems == [
         "sized: a @loader size is a literal number, and this one is number",
         "needs: a @requires name is a literal string, and this one is string",
-        "many: a @requires name is a literal string, and this one is readonly string[]",
+        "many: a @requires name is a literal string, and this one is string[]",
         "add: an @insert table is a literal string, and this one is string",
     ]
 

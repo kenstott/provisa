@@ -80,10 +80,8 @@ export type ReadFn =
   | (() => Result<object>)
   | ((inputs: never) => Result<object>)
   | ((inputs: never, context: ReadContext) => Result<object>);
-/** A @loader's function, which takes its read context. */
-export type LoaderFn =
-  | ((context: ReadContext) => Result<object>)
-  | ((inputs: never, context: ReadContext) => Result<object>);
+/** A @loader's function: a @table's that takes its read context, alone or after its inputs. */
+export type LoaderFn<F extends ReadFn> = Parameters<F> extends [ReadContext] | [unknown, ReadContext] ? F : never;
 /** A @stream's function: an async generator. */
 export type StreamFn =
   | (() => AsyncIterable<object>)
@@ -93,8 +91,8 @@ export type StreamFn =
 export type ColumnsFn = (...batches: never[][]) => object[] | Promise<object[]>;
 
 export declare function table<F extends ReadFn>(fn: F): F & Tagged<"table", {}, Spelling>;
-export declare function table<F extends LoaderFn, const O extends TableOptions & { readonly loader: true | number }>(
-  fn: F,
+export declare function table<F extends ReadFn, const O extends TableOptions & { readonly loader: true | number }>(
+  fn: F & LoaderFn<F>,
   options: O,
 ): F & Tagged<"table", O, Spelling>;
 export declare function table<F extends ReadFn, const O extends Options & { readonly loader?: never }>(
