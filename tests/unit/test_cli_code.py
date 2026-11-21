@@ -217,3 +217,33 @@ def test_the_typescript_launcher_runs_uvx_provisa_at_the_packages_version():
         "proj",
         "--json",
     ]
+
+
+def _python_launcher():
+    import importlib.util
+
+    path = Path(__file__).resolve().parents[2] / "provisa-sdk/python/provisa_sdk/__main__.py"
+    spec = importlib.util.spec_from_file_location("provisa_sdk_main", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_the_python_launcher_runs_uvx_provisa_at_the_sdks_own_version(monkeypatch):
+    launcher = _python_launcher()
+    monkeypatch.setattr(launcher, "version", lambda name: "9.8.7" if name == "provisa-sdk" else "")
+    assert launcher.command(["check", "proj", "--json"]) == [
+        "uvx",
+        "provisa==9.8.7",
+        "code",
+        "check",
+        "proj",
+        "--json",
+    ]
+
+
+@pytest.mark.parametrize("args", [[], ["build"]])
+def test_the_python_launcher_refuses_anything_but_check(args):
+    with pytest.raises(SystemExit):
+        _python_launcher().command(args)
