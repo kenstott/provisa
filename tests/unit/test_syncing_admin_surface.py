@@ -115,6 +115,9 @@ def surface(monkeypatch, control_plane):
         RoleState(
             model_db=(_one_db := _TenantDb(control_plane)),
             tenant_db=_one_db,
+            # No platform control plane, as a single-tenant deployment: it keeps no environment
+            # registry, so the export states no stage (REQ-2261).
+            admin_db=None,
             # REQ-1659: the listing links back at the org's public origin, read off config.mail.
             config=types.SimpleNamespace(
                 mail=types.SimpleNamespace(base_url="https://provisa.test")
