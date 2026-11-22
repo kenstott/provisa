@@ -90,13 +90,15 @@ _SNAPSHOT_TEXT = "^[0-9]+:[0-9]+:([0-9]+(,[0-9]+)*)?$"
 
 
 def _ids(snapshot: str) -> str:
-    """The snapshot's in-progress ids as written, each a UInt64 (NULL past its range)."""
-    listed = f"splitByChar(',', splitByChar(':', {snapshot})[3])"
+    """The snapshot's in-progress ids as written, each a UInt64 (NULL past its range). The text is
+    split as not NULL (each caller reads a NULL snapshot first): the server (24.3) holds no array
+    of a Nullable text's split, "Nested type Array(String) cannot be inside Nullable type"."""
+    listed = f"splitByChar(',', splitByChar(':', assumeNotNull({snapshot}))[3])"
     return f"arrayMap(_x -> toUInt64OrNull(_x), arrayFilter(_x -> _x != '', {listed}))"
 
 
 def _part(snapshot: str, which: int) -> str:
-    return f"toUInt64OrNull(splitByChar(':', {snapshot})[{which}])"
+    return f"toUInt64OrNull(splitByChar(':', assumeNotNull({snapshot}))[{which}])"
 
 
 def _invalid(snapshot: str) -> str:
