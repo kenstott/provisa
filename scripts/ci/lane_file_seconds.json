@@ -612,6 +612,7 @@
   "tests/integration/test_type_io_on_engines.py": 53.4,
   "tests/integration/test_ui_data_address_nodes.py": 61.8,
   "tests/integration/test_underscore_digit_names_e2e.py": 21.9,
+  "tests/integration/test_url_engine_null_result_types.py": 30.0,
   "tests/integration/test_vector_similarity_e2e.py": 28.9,
   "tests/integration/test_view_input_refusal_e2e.py": 0.0,
   "tests/integration/test_view_lowering_e2e.py": 27.4,
