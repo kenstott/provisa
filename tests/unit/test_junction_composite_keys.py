@@ -24,6 +24,7 @@ from provisa.compiler.sql_types import JunctionMeta
 from provisa.compiler.sql_validator import (
     approved_joins,
     computed_joins,
+    relationship_keys,
     tables_outside_relationships,
 )
 from provisa.compiler.stage2 import GovernanceContext
@@ -81,6 +82,7 @@ def _guard(sql: str, ctx, gov) -> list[str]:
             {m.table_id: m for m in ctx.tables.values()},
             computed=computed,
             constants=constants,
+            keys=relationship_keys(ctx),
         )
     ]
 
@@ -115,14 +117,16 @@ def test_sql_joining_through_the_junction_on_the_whole_key_is_approved():
 def test_a_mismatched_pair_is_refused_by_name():
     ctx, gov = _model()
     sql = "SELECT l.name FROM left_t l JOIN link k ON k.sa = l.b AND k.sb = l.a"
-    (said,) = _guard(sql, ctx, gov)
-    assert "left_t" in said and "link" in said, said
+    said = _guard(sql, ctx, gov)
+    # Each crossed equality is its own unregistered pairing, refused naming both tables.
+    assert len(said) == 2, said
+    assert all("left_t" in s and "link" in s for s in said), said
 
 
 def test_a_partial_key_is_refused_by_name():
     ctx, gov = _model()
     (said,) = _guard("SELECT l.name FROM left_t l JOIN link k ON k.sa = l.a", ctx, gov)
-    assert "link" in said, said
+    assert "link" in said and "left_t" in said and "composite" in said, said
 
 
 def test_keys_of_unequal_length_are_refused():
