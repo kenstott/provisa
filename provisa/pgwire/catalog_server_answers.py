@@ -29,7 +29,7 @@ from provisa.core.pg_error import PostgresError, raising
 from provisa.transpiler import pg_zones
 from provisa.transpiler.pg_held_types import HELD_AS
 from provisa.transpiler.function_macros import SERVER_VALUE_NAMES
-from provisa.transpiler.metadata_server_forms import FDW_SERVER_OPTIONS
+from provisa.transpiler.metadata_server_forms import FDW_NULL_OPTION, FDW_SERVER_OPTIONS
 from provisa.transpiler.rows.base import strict
 from provisa.transpiler.rows.system import WAL_SEGMENT, lsn_number, wal_file
 
@@ -1068,8 +1068,8 @@ def _catalog_objects(a: _Answers) -> None:
     )
     # postgresql_fdw_validator (src/backend/foreign/foreign.c): the first option name outside the
     # catalog's list is 42601 invalid option, whatever its value; a server (1417) takes the libpq
-    # names, a user mapping (1418) user and password, any other catalog none. A NULL element has
-    # no PostgreSQL answer (untransformRelOptions reads it as a text), so it is refused by name.
+    # names, a user mapping (1418) user and password, any other catalog none. A NULL element is
+    # 22004 before any option is read (FDW_NULL_OPTION).
     server_options = ", ".join(f"'{n}'" for n in FDW_SERVER_OPTIONS)
     option = "split_part(_o, '=', 1)"
     refused = (
@@ -1081,7 +1081,7 @@ def _catalog_objects(a: _Answers) -> None:
         "options, catalog",
         "BOOLEAN",
         "CASE WHEN len(list_filter(options, lambda _o: _o IS NULL)) > 0 THEN "
-        + raising("0A000", "'postgresql_fdw_validator of a NULL option has no form here'")
+        + raising(*FDW_NULL_OPTION)
         + f" WHEN len({refused}) > 0 THEN "
         + raising("42601", f"'invalid option \"' || split_part({refused}[1], '=', 1) || '\"'")
         + " ELSE true END",

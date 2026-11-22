@@ -20,6 +20,7 @@ whole bundle."""
 
 from __future__ import annotations
 
+import hashlib
 import io
 import tarfile
 import threading
@@ -69,8 +70,13 @@ def test_concurrent_fetches_of_one_bundle_download_it_once_and_each_finds_it_who
     body = _tarball()
     downloads: list[int] = []
 
+    checksum = hashlib.sha256(body).hexdigest().encode()
+
     @contextmanager
     def _stream(method, url, **_kw):
+        if url == _SPEC.checksum_url:
+            yield _Response(checksum)
+            return
         downloads.append(1)
         yield _Response(body)
 

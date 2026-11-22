@@ -11,8 +11,9 @@
 """postgresql_fdw_validator(text[], oid) on Trino, ClickHouse and PostgreSQL (REQ-2236: exact, or
 a named refusal): the statement as Provisa writes it for the engine and run there. An option the
 catalog does not list is 42601 naming the first such option, as PostgreSQL's foreign.c raises it;
-a NULL element is refused by name (PostgreSQL's untransformRelOptions reads it as a text). ClickHouse
-24.3's throwIf takes only a constant message, so there an unlisted option is refused by name."""
+an array holding a NULL element is 22004, as PostgreSQL's untransformRelOptions raises it before
+any option is read. ClickHouse 24.3's throwIf takes only a constant message, so there an unlisted
+option is refused by name."""
 
 # Requirements: REQ-2236
 
@@ -43,7 +44,9 @@ CASES = [
     ("{a=1}", 1418, "a"),
     ("{host,b,c}", 1417, "b"),
 ]
-NULL_ELEMENT = ("{host,NULL}", 1417)
+#: Arrays holding a NULL element: 22004 wherever the NULL stands, an unlisted option before it too.
+NULL_ELEMENTS = [("{host,NULL}", 1417), ("{b,NULL}", 1417), ("{NULL}", 12345)]
+NULL_ERROR = ("22004", "null array element not allowed in this context")
 
 
 def _written(options: str, catalog: int, dialect: str) -> str:
@@ -67,13 +70,14 @@ def _check(run: Callable[[str], Any], dialect: str) -> None:
             want = ("0A000", FDW_OPTION_REFUSAL)
         if got != want:
             wrong[(options, catalog)] = got
-    try:
-        run(_written(*NULL_ELEMENT, dialect))
-        wrong[NULL_ELEMENT] = "answered"
-    except Exception as raised:  # noqa: BLE001
-        error = postgres_error(raised) or from_engine(raised)
-        if error is None or error.sqlstate != "0A000":
-            wrong[NULL_ELEMENT] = str(raised)[:200]
+    for options, catalog in NULL_ELEMENTS:
+        try:
+            wrong[(options, catalog)] = run(_written(options, catalog, dialect))
+        except Exception as raised:  # noqa: BLE001
+            error = postgres_error(raised) or from_engine(raised)
+            got = None if error is None else (error.sqlstate, str(error))
+            if got != NULL_ERROR:
+                wrong[(options, catalog)] = got or str(raised)[:200]
     assert not wrong, wrong
 
 
@@ -132,5 +136,11 @@ def test_fdw_validator_on_postgresql(pg_dsn):
                 assert native == (
                     True if name is None else ("42601", f'invalid option "{name}"')
                 ), (options, catalog)
+            for options, catalog in NULL_ELEMENTS:
+                with pytest.raises(psycopg2.Error) as raised:
+                    cur.execute(
+                        "SELECT postgresql_fdw_validator(%s::text[], %s::oid)", (options, catalog)
+                    )
+                assert (raised.value.pgcode, raised.value.diag.message_primary) == NULL_ERROR
     finally:
         con.close()

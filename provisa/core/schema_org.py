@@ -867,6 +867,27 @@ catalog_standing_choices = Table(
     ),
 )
 
+# REQ-2247: each unattended run of a Syncing entry's direction (a scheduled import): when it ran,
+# how it was started, its outcome, what it applied and what it held (each a JSON list of
+# ``{kind, object, reason}``), and the error of a run that failed.
+catalog_sync_runs = Table(
+    "catalog_sync_runs",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("entry", Text, nullable=False),
+    Column("direction", Text, nullable=False),
+    Column("trigger", Text, nullable=False),
+    Column("outcome", Text, nullable=False),
+    Column("applied", JSON, nullable=False),
+    Column("held", JSON, nullable=False),
+    Column("error", Text),
+    Column("started_at", DateTime(timezone=True), nullable=False),
+    Column("finished_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("tenant_id", Uuid),
+    CheckConstraint("direction IN ('export', 'import')", name="catalog_sync_runs_direction_check"),
+    CheckConstraint("outcome IN ('ok', 'failed')", name="catalog_sync_runs_outcome_check"),
+)
+
 # REQ-1387: business glossary. Terms are the normalized vocabulary derived from physical
 # field names; rooted terms hold refs, abstract terms hold none. A term losing its last
 # physical ref is removed unless an abstract term is connected to the rooted graph through

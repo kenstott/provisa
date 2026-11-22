@@ -210,7 +210,11 @@ def test_hana_reuses_the_swap_lanes_container_and_dialect():
 
 def test_the_free_plan_is_every_free_leg_in_file_order_and_no_paid_one():
     planned = legs.plan("free", DOC)
-    free = [leg["engine"] for leg in DOC["legs"] if leg["lane"] == "free"]
+    free = [
+        leg["engine"]
+        for leg in DOC["legs"]
+        if leg["lane"] == "free" and leg["engine"] not in planned["refused"]
+    ]
     assert [e["engine"] for e in planned["matrix"]["include"]] == free
     assert planned["engines"] == ",".join(free)
     assert all(e["secrets"] == "" for e in planned["matrix"]["include"])
@@ -220,8 +224,10 @@ def test_a_warehouse_leg_is_planned_only_when_the_dispatch_names_its_lane():
     lane = legs.plan("warehouse", DOC)["matrix"]["include"]
     assert {e["engine"] for e in lane} == WAREHOUSES
     assert all(e["secrets"].split() == _leg(e["engine"])["secrets"] for e in lane)
-    every = legs.plan("all", DOC)["engines"].split(",")
-    assert set(every) == {leg["engine"] for leg in DOC["legs"]}
+    every = legs.plan("all", DOC)
+    assert set(every["engines"].split(",")) | set(every["refused"]) == {
+        leg["engine"] for leg in DOC["legs"]
+    }
 
 
 def test_a_plan_entry_carries_every_field_the_workflow_reads():
@@ -245,6 +251,81 @@ def test_the_plan_command_writes_the_outputs_the_workflow_reads(capsys):
     out = dict(line.split("=", 1) for line in capsys.readouterr().out.splitlines())
     assert json.loads(out["matrix"]) == legs.plan("free", DOC)["matrix"]
     assert out["engines"] == legs.plan("free", DOC)["engines"]
+    assert json.loads(out["refused"]) == legs.plan("free", DOC)["refused"]
+
+
+def _url_leg(engine: str, url: str) -> dict:
+    return {"engine": engine, "lane": "free", "image": "x", "engine-url": url}
+
+
+def test_a_leg_whose_engine_build_engine_refuses_by_name_is_not_planned_but_named():
+    """Run 44967411891: the firebird and monetdb legs failed at startup, "federation engine 'X' has
+    no sqlglot dialect", and Provisa never answered /health. Such a leg is not run: the plan names
+    it with the refusal, and the merge expects no result of it."""
+    doc = {
+        "legs": [
+            _url_leg("mysql", "mysql+pymysql://u@h/d"),
+            _url_leg("firebird", "firebird+firebird://u@h//d.fdb"),
+            {"engine": "duckdb", "lane": "free", "image": "x"},
+        ],
+        "not_run": {},
+    }
+    planned = legs.plan("free", doc)
+    assert [e["engine"] for e in planned["matrix"]["include"]] == ["mysql", "duckdb"]
+    assert planned["engines"] == "mysql,duckdb"
+    assert list(planned["refused"]) == ["firebird"]
+    assert "refused by name" in planned["refused"]["firebird"]
+    assert "'firebird' has no sqlglot dialect" in planned["refused"]["firebird"]
+
+
+def test_the_refused_set_is_build_engines_own_refusal_leg_for_leg(monkeypatch):
+    """Each URL-driven leg is refused exactly when build_engine, given its URL, raises the
+    no-dialect refusal: the allowlist is the code's (source_registry.engine_dialect), not a list in
+    the workflow. The engine's extra is not what is measured here, so its check is passed."""
+    from provisa.federation import engine as federation
+
+    monkeypatch.setattr(federation, "require_engine_extra", lambda _kind: None)
+    for leg in DOC["legs"]:
+        if leg["engine"] not in legs.url_engine_kinds() or not leg.get("engine-url"):
+            continue
+        monkeypatch.setenv("PROVISA_ENGINE_URL", leg["engine-url"])
+        why = legs.refused(leg)
+        if why is None:
+            federation.build_engine(leg["engine"])
+        else:
+            with pytest.raises(ValueError, match="has no sqlglot dialect"):
+                federation.build_engine(leg["engine"])
+
+
+def test_every_leg_whose_builder_fixes_its_store_is_built_with_a_dialect(monkeypatch):
+    """refused() reads only a URL-driven kind's store: every other leg's builder fixes a store
+    build_engine does not refuse."""
+    from provisa.federation import engine as federation
+
+    monkeypatch.delenv("PROVISA_ENGINE_URL", raising=False)
+    for leg in DOC["legs"]:
+        if leg["engine"] in legs.url_engine_kinds():
+            continue
+        assert legs.refused(leg) is None
+        assert federation._ENGINE_BUILDERS[leg["engine"]]().dialect, leg["engine"]
+
+
+def test_a_warehouse_url_kind_reads_its_store_off_the_kinds_dsn():
+    """redshift and singlestore get their URL from warehouse_leg.py up at run time: their store is
+    the scheme of the DSN _RDB_KINDS gives the kind."""
+    assert legs.native_store({"engine": "redshift", "lane": "warehouse"}) == "redshift"
+    assert legs.native_store({"engine": "singlestore", "lane": "warehouse"}) == "singlestoredb"
+    with pytest.raises(ValueError, match="builder fixes its store"):
+        legs.native_store({"engine": "duckdb", "lane": "free"})
+
+
+def test_the_workflow_hands_the_refusals_from_the_plan_to_the_merge():
+    jobs = _workflow()["jobs"]
+    assert jobs["plan"]["outputs"]["refused"] == "${{ steps.plan.outputs.refused }}"
+    merge = next(s for s in jobs["merge"]["steps"] if s.get("name") == "Merge the legs")
+    assert merge["env"]["REFUSED"] == "${{ needs.plan.outputs.refused }}"
+    assert '--refused "$REFUSED"' in merge["run"]
+    assert "outputs.refused" not in merge["run"]  # quoted names never inlined into the shell
 
 
 @pytest.mark.parametrize(

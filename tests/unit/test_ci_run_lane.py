@@ -414,6 +414,8 @@ def test_the_zaychik_image_action_builds_once_and_every_lane_loads_it():
         "Restore the zaychik image",
         "Build the zaychik image",
         "Cache the zaychik image",
+        "Download the run's zaychik image",
+        "Upload the run's zaychik image",
         "Load the zaychik image",
     ]
     # Computed once, before the build, from the whole build context.
@@ -427,7 +429,9 @@ def test_the_zaychik_image_action_builds_once_and_every_lane_loads_it():
     assert restored["with"] == {
         "path": "~/zaychik-image",
         "key": "${{ steps.zaychik-key.outputs.key }}",
-        "fail-on-cache-miss": "${{ inputs.phase == 'restore' }}",
+        # Runs 45030691606, 45030697705, 45030636599: a lane's restore failed on the miss of an
+        # entry the priming job of the run had saved. A miss is answered by the run's artifact.
+        "fail-on-cache-miss": False,
     }
     miss = "inputs.phase == 'prime' && steps.zaychik-image.outputs.cache-hit != 'true'"
     built = by_name["Build the zaychik image"]
@@ -438,6 +442,22 @@ def test_the_zaychik_image_action_builds_once_and_every_lane_loads_it():
     saved = by_name["Cache the zaychik image"]
     assert saved["if"] == miss and saved["uses"] == "actions/cache/save@v4"
     assert saved["with"] == {"path": "~/zaychik-image", "key": restored["with"]["key"]}
+    # The priming job uploads the tarball on a hit and on a miss; a restore that missed the cache
+    # downloads it, and download-artifact fails by name when the run has none.
+    down = by_name["Download the run's zaychik image"]
+    assert (
+        down["if"] == "inputs.phase == 'restore' && steps.zaychik-image.outputs.cache-hit != 'true'"
+    )
+    assert down["uses"] == "actions/download-artifact@v4"
+    assert down["with"] == {"name": "zaychik-image", "path": "~/zaychik-image"}
+    up = by_name["Upload the run's zaychik image"]
+    assert up["if"] == "inputs.phase == 'prime'"
+    assert up["uses"] == "actions/upload-artifact@v4"
+    assert up["with"]["name"] == down["with"]["name"]
+    assert up["with"]["path"] == "~/zaychik-image/zaychik.tar"
+    assert up["with"]["if-no-files-found"] == "error"
+    # A re-run of the priming job replaces the run's artifact instead of a 409 on the name.
+    assert up["with"]["overwrite"] is True
     loaded = by_name["Load the zaychik image"]
     assert loaded["if"] == "inputs.phase == 'restore'"
     assert loaded["run"] == "docker load -i ~/zaychik-image/zaychik.tar"

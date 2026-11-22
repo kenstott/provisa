@@ -34,6 +34,10 @@ _TRINO = ("trino", "presto", "athena")
 #: The dialects of a source a statement goes to directly that no array row writes a form for.
 _NO_FORMS = tuple(d for d in DIALECTS if d not in {*NATIVE, "duckdb", "clickhouse", *_TRINO})
 
+#: The exact-or-refused engines (provisa/transpiler/polyfill/exact_engines.py): neither holds an
+#: array type, so each array row refuses its call there by name.
+_EXACT = ("db2", "saphana")
+
 #: What the forms raise where PostgreSQL's answer would need a shape a list does not hold.
 _ARRAY_FILL_REFUSED = Refusal("0A000", "array_fill does not read this value")
 _ARRAY_FILL_SHAPE = Limitation(
@@ -227,7 +231,7 @@ ARRAY_UPPER = Feature(
 )
 
 #: The sources a statement goes to directly that hold no array type: array_length is refused there.
-_ARRAY_LESS = ("mysql", "sqlite", "oracle", "tsql", "singlestore", "exasol", "redshift")
+_ARRAY_LESS = ("mysql", "sqlite", "oracle", "tsql", "singlestore", "exasol", "redshift", *_EXACT)
 
 #: The first dimension's length, NULL for an empty or NULL array, on each dialect whose own array
 #: length takes no dimension: the source's length, where it is above 0 (BigQuery's answers 0 of a
@@ -499,14 +503,14 @@ GENERATE_SUBSCRIPTS = Feature(
                 },
             ),
             # Of no order: Trino has no form of either (run 43307392116 sent it as written), nor
-            # ClickHouse (run 43361055823 sent it as written); every other dialect keeps what it
-            # had.
+            # ClickHouse (run 43361055823 sent it as written), nor Db2 or SAP HANA (no array type);
+            # every other dialect keeps what it had.
             Rule(
                 "generate_subscripts($a::anyarray, $d::integer)",
                 {
                     **dict.fromkeys(trino.OTHERS, trino.KEPT),
                     **trino.refused_on_trino("generate_subscripts"),
-                    **_no_form_on("generate_subscripts", ("clickhouse",)),
+                    **_no_form_on("generate_subscripts", ("clickhouse", *_EXACT)),
                 },
             ),
         ),
@@ -534,12 +538,19 @@ ARRAY_APPEND = Feature(
         rules=(
             Rule(
                 "array_append(NULL::anycompatiblearray, $v::anycompatible)",
-                {"clickhouse": "[$v]", **_on_trino("ARRAY[$v]")},
+                {
+                    "clickhouse": "[$v]",
+                    **_on_trino("ARRAY[$v]"),
+                    **_no_form_on("array_append", _EXACT),
+                },
             ),
             # Trino has no array_append: its concatenation, a NULL array read as an empty one.
             Rule(
                 "array_append($a::anycompatiblearray, $v::anycompatible)",
-                _on_trino("CASE WHEN $a IS NULL THEN ARRAY[$v] ELSE $a || ARRAY[$v] END"),
+                {
+                    **_on_trino("CASE WHEN $a IS NULL THEN ARRAY[$v] ELSE $a || ARRAY[$v] END"),
+                    **_no_form_on("array_append", _EXACT),
+                },
             ),
         ),
         limitations={"clickhouse": (_no_array_append("array_append"),)},
@@ -554,12 +565,19 @@ ARRAY_PREPEND = Feature(
         rules=(
             Rule(
                 "array_prepend($v::anycompatible, NULL::anycompatiblearray)",
-                {"clickhouse": "[$v]", **_on_trino("ARRAY[$v]")},
+                {
+                    "clickhouse": "[$v]",
+                    **_on_trino("ARRAY[$v]"),
+                    **_no_form_on("array_prepend", _EXACT),
+                },
             ),
             # Trino has no array_prepend: its concatenation, a NULL array read as an empty one.
             Rule(
                 "array_prepend($v::anycompatible, $a::anycompatiblearray)",
-                _on_trino("CASE WHEN $a IS NULL THEN ARRAY[$v] ELSE ARRAY[$v] || $a END"),
+                {
+                    **_on_trino("CASE WHEN $a IS NULL THEN ARRAY[$v] ELSE ARRAY[$v] || $a END"),
+                    **_no_form_on("array_prepend", _EXACT),
+                },
             ),
         ),
         limitations={"clickhouse": (_no_array_append("array_prepend"),)},
@@ -629,7 +647,8 @@ def _equality(name: str, summary: str, operator: str, trino_test: str) -> Featur
                 Rule(
                     f"{name}($a::anyarray, $b::anyarray)",
                     {
-                        **{d: f"$a {operator} $b" for d in DIALECTS if d not in NATIVE},
+                        **{d: f"$a {operator} $b" for d in DIALECTS if d not in {*NATIVE, *_EXACT}},
+                        **_no_form_on(name, _EXACT),
                         **_on_trino(
                             "CASE WHEN $a IS NULL OR $b IS NULL THEN CAST(NULL AS BOOLEAN) "
                             f"ELSE $a {trino_test} $b END"
@@ -660,10 +679,13 @@ ARRAY_POSITION = Feature(
             # value: PostgreSQL answers NULL, and finds a NULL. Its sequence takes no empty range.
             Rule(
                 "array_position($a::anycompatiblearray, $v::anycompatible)",
-                _on_trino(
-                    "CAST(CASE WHEN cardinality($a) > 0 THEN element_at(filter(sequence(1, "
-                    "cardinality($a)), _i -> $a[_i] IS NOT DISTINCT FROM $v), 1) END AS INTEGER)"
-                ),
+                {
+                    **_on_trino(
+                        "CAST(CASE WHEN cardinality($a) > 0 THEN element_at(filter(sequence(1, "
+                        "cardinality($a)), _i -> $a[_i] IS NOT DISTINCT FROM $v), 1) END AS INTEGER)"
+                    ),
+                    **_no_form_on("array_position", _EXACT),
+                },
             ),
             # From a start (sqlglot reads it as ArrayPosition's zero_based): DuckDB's from its
             # slice; any other dialect refuses it by name.
@@ -768,7 +790,8 @@ def _ordering(name: str, summary: str, others: str) -> Feature:
                 Rule(
                     _ordering_pattern(name),
                     {
-                        **{d: others for d in DIALECTS if d not in NATIVE},
+                        **{d: others for d in DIALECTS if d not in {*NATIVE, *_EXACT}},
+                        **_no_form_on(name, _EXACT),
                         **trino.on_trino(_ORDERED),
                     },
                 ),

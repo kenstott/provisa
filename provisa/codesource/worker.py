@@ -97,7 +97,7 @@ import tempfile
 import threading
 import time
 from collections.abc import Callable, Generator, Iterator, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -144,6 +144,8 @@ def duckdb_bounds() -> dict[str, int]:
 
 #: The variable a host reads the content hash of its code from, which its hello names.
 CODE_HASH_ENV = "PROVISA_CODE_HASH"
+#: REQ-2267: the variable a host reads its generated items' handlers from (manifest.py).
+DISCOVERED_ENV = "PROVISA_DISCOVERED"
 
 #: How long a started host has to connect and say hello.
 START_TIMEOUT_S = 30.0
@@ -214,6 +216,9 @@ class HostCommand:
     cwd: Path
     inherit_socket: bool = False
     services: "ServiceGrant | None" = None
+    #: REQ-2267: each item the code's @discover generated, by name, with the handler serving it
+    #: (manifest.discovered_handlers); empty for code with no @discover.
+    discovered: dict[str, str] = field(default_factory=dict)
 
     def argv_for(self, address: str) -> list[str]:
         return list(self.argv(address))
@@ -544,6 +549,7 @@ class Worker:
             **self._command.env,
             CODE_HASH_ENV: self.content_hash,
             CONNECTIONS_ENV: str(CONNECTIONS),
+            DISCOVERED_ENV: json.dumps(self._command.discovered),
         }
         if self._command.inherit_socket:
             env[THREADPOOL_ENV] = str(_INHERITED_THREADPOOL)

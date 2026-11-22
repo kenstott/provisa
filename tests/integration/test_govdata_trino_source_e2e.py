@@ -212,6 +212,13 @@ def _run(cur, what: str, sql: str, source) -> list:
         return cur.fetchall()
 
 
+# Remove this skip and its calcite_issue mark once an engine with govdata-ops #1416 fixed is pinned (queue row
+# CALCITE-PIN-REVERT).
+@pytest.mark.calcite_issue("govdata-ops#1416")
+@pytest.mark.skip(
+    reason="calcite govdata-ops #1416: on engine-v0.128.9 the served catalog gives Trino no column "
+    "types, so no askamerica table has columns in Trino (warehouse runs 44989259788, 45020340995)"
+)
 def test_trino_reads_an_askamerica_table_live_and_joins_it(catalog):
     cur, source = catalog
 

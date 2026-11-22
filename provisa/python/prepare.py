@@ -17,6 +17,7 @@ from __future__ import annotations
 from typing import Any
 
 from provisa.codesource.install import Lockfile
+from provisa.codesource.manifest import discovered_handlers
 from provisa.codesource.source import CodeConfig, Context, Prepared, granted
 
 
@@ -61,6 +62,7 @@ def prepare(
         entry=entry,
         egress=ctx.egress,
         host_lib=host_lib,
+        discovered=discovered_handlers(manifest),
     )
     return Prepared(
         source_id,

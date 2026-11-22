@@ -120,6 +120,21 @@
     "standingChoicesHelp": "実行時に各種類の差異をどう扱うかを方向ごとに設定します。保留、または固定の選択なしの場合、差異はスチュワードのためにここに残ります。",
     "standingKind": "差異の種類",
     "compare": "カタログと比較",
-    "title": "コンテキスト同期"
+    "title": "コンテキスト同期",
+    "importCron": "インポートのスケジュール",
+    "importCronHelp": "無人インポートの cron 式。各実行は、固定の選択がそう指定し、かつカタログだけが値を変更した場合にのみカタログの値を取り込みます。それ以外の差異はすべてスチュワードのために保留します。要求時のみインポートする場合は空のままにします。",
+    "importCronPlaceholder": "0 3 * * *",
+    "runImportNow": "今すぐインポート",
+    "lastImport": "最終インポート",
+    "neverImported": "まだインポートされていません。",
+    "importOk": "{{applied}} 件を適用、{{held}} 件を保留",
+    "importFailed": "失敗",
+    "importTrigger_schedule": "スケジュール実行、{{when}}",
+    "importTrigger_manual": "手動実行、{{when}}",
+    "importApplied": "適用",
+    "importHeld": "保留",
+    "importKind": "種類",
+    "importObject": "オブジェクト",
+    "importReason": "保留の理由"
   }
 }

@@ -82,7 +82,7 @@ def started(tmp_path):
             str(names),
             *worker,
         ],
-        env={**os.environ, "PROVISA_CODE_HASH": "h1"},
+        env={**os.environ, "PROVISA_CODE_HASH": "h1", "PROVISA_DISCOVERED": "{}"},
         stderr=subprocess.PIPE,
         text=True,
     )

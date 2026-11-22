@@ -951,7 +951,9 @@
       "object_gone": "{{object}} כבר אינו רשום ב-Provisa.",
       "unknown_direction": "{{direction}} אינו כיוון: השתמש בייצוא או בייבוא.",
       "unknown_kind": "{{kind}} אינו סוג הבדל.",
-      "unknown_choice": "{{choice}} אינה בחירה קבועה."
+      "unknown_choice": "{{choice}} אינה בחירה קבועה.",
+      "import_cron_not_importing": "{{entry}} אינו מייבא, ולכן אין לו לוח זמנים לייבוא.",
+      "import_cron_invalid": "{{cron}} אינו ביטוי cron, כגון 0 3 * * *."
     },
     "wikidata": {
       "no_credential": "שירות השאילתות של ויקינתונים אינו דורש אישורים",

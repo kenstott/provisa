@@ -1,0 +1,218 @@
+{
+  "_about": "The names Hasura v2 generates for the same tables under hasura-default and graphql-default (REQ-194, amended 2026-11-20). No Hasura-generated introspection exists in the repository, so each name is derived from Hasura's documented rules: [naming] https://hasura.io/docs/2.0/schema/postgres/naming-convention/ (Supported naming conventions; Behavior of custom table name; Backward compatibility), [query] https://hasura.io/docs/2.0/api-reference/graphql-api/query/ (By PK syntax; Aggregate object; OrderByExp), [mutation] https://hasura.io/docs/2.0/api-reference/graphql-api/mutation/ (insert (upsert) syntax; insert_one syntax; update_by_pk syntax; delete_by_pk syntax; on_conflict argument for Postgres; pk_columns argument; Mutation response). Each entry's 'cite' names the sections it rests on.",
+  "tables": [
+    {
+      "cite": "[query] By PK syntax, Aggregate object; [mutation] insert/insert_one/update/update_by_pk/delete/delete_by_pk syntax, on_conflict argument; [naming] Supported naming conventions (graphql-default: camel fields, Pascal types); Backward compatibility (on_conflict constraint enum type stays snake_case)",
+      "table": "my_table",
+      "schema": "public",
+      "expected": {
+        "hasura-default": {
+          "select": "my_table",
+          "select_by_pk": "my_table_by_pk",
+          "select_aggregate": "my_table_aggregate",
+          "select_stream": "my_table_stream",
+          "insert": "insert_my_table",
+          "insert_one": "insert_my_table_one",
+          "update": "update_my_table",
+          "update_by_pk": "update_my_table_by_pk",
+          "update_many": "update_my_table_many",
+          "delete": "delete_my_table",
+          "delete_by_pk": "delete_my_table_by_pk",
+          "type": "my_table",
+          "bool_exp": "my_table_bool_exp",
+          "order_by": "my_table_order_by",
+          "insert_input": "my_table_insert_input",
+          "set_input": "my_table_set_input",
+          "inc_input": "my_table_inc_input",
+          "aggregate": "my_table_aggregate",
+          "aggregate_fields": "my_table_aggregate_fields",
+          "mutation_response": "my_table_mutation_response",
+          "constraint": "my_table_constraint",
+          "update_column": "my_table_update_column",
+          "select_column": "my_table_select_column",
+          "pk_columns_input": "my_table_pk_columns_input",
+          "on_conflict": "my_table_on_conflict",
+          "updates": "my_table_updates",
+          "stream_cursor_input": "my_table_stream_cursor_input"
+        },
+        "graphql-default": {
+          "select": "myTable",
+          "select_by_pk": "myTableByPk",
+          "select_aggregate": "myTableAggregate",
+          "select_stream": "myTableStream",
+          "insert": "insertMyTable",
+          "insert_one": "insertMyTableOne",
+          "update": "updateMyTable",
+          "update_by_pk": "updateMyTableByPk",
+          "update_many": "updateMyTableMany",
+          "delete": "deleteMyTable",
+          "delete_by_pk": "deleteMyTableByPk",
+          "type": "MyTable",
+          "bool_exp": "MyTableBoolExp",
+          "order_by": "MyTableOrderBy",
+          "insert_input": "MyTableInsertInput",
+          "set_input": "MyTableSetInput",
+          "inc_input": "MyTableIncInput",
+          "aggregate": "MyTableAggregate",
+          "aggregate_fields": "MyTableAggregateFields",
+          "mutation_response": "MyTableMutationResponse",
+          "constraint": "my_table_constraint",
+          "update_column": "MyTableUpdateColumn",
+          "select_column": "MyTableSelectColumn",
+          "pk_columns_input": "MyTablePkColumnsInput",
+          "on_conflict": "MyTableOnConflict",
+          "updates": "MyTableUpdates",
+          "stream_cursor_input": "MyTableStreamCursorInput"
+        }
+      }
+    },
+    {
+      "cite": "[naming] Supported naming conventions: my_table in schema my_schema is MySchemaMyTable, its aggregate field mySchemaMyTableAggregate",
+      "table": "my_table",
+      "schema": "my_schema",
+      "expected": {
+        "hasura-default": {
+          "select": "my_schema_my_table",
+          "select_by_pk": "my_schema_my_table_by_pk",
+          "select_aggregate": "my_schema_my_table_aggregate",
+          "insert_one": "insert_my_schema_my_table_one",
+          "type": "my_schema_my_table",
+          "bool_exp": "my_schema_my_table_bool_exp",
+          "constraint": "my_schema_my_table_constraint"
+        },
+        "graphql-default": {
+          "select": "mySchemaMyTable",
+          "select_by_pk": "mySchemaMyTableByPk",
+          "select_aggregate": "mySchemaMyTableAggregate",
+          "insert_one": "insertMySchemaMyTableOne",
+          "type": "MySchemaMyTable",
+          "bool_exp": "MySchemaMyTableBoolExp",
+          "constraint": "my_schema_my_table_constraint"
+        }
+      }
+    },
+    {
+      "cite": "[naming] Behavior of custom table name, row 1 (table_one: select table_one, by pk table_oneByPk, typename tableOne, insert one insertTable_oneOne); custom table my_table gives my_tableAggregate",
+      "table": "t1",
+      "schema": "public",
+      "custom_name": "table_one",
+      "expected": {
+        "hasura-default": {
+          "select": "table_one",
+          "select_by_pk": "table_one_by_pk",
+          "select_aggregate": "table_one_aggregate",
+          "insert_one": "insert_table_one_one",
+          "type": "table_one",
+          "bool_exp": "table_one_bool_exp",
+          "constraint": "table_one_constraint"
+        },
+        "graphql-default": {
+          "select": "table_one",
+          "select_by_pk": "table_oneByPk",
+          "select_aggregate": "table_oneAggregate",
+          "insert_one": "insertTable_oneOne",
+          "type": "tableOne",
+          "bool_exp": "tableOneBoolExp",
+          "constraint": "table_one_constraint"
+        }
+      }
+    },
+    {
+      "cite": "[naming] Behavior of custom table name, row 2 (tableOne: select tableOne, by pk tableOneByPk, typename tableOne, insert one insertTableOneOne)",
+      "table": "t2",
+      "schema": "public",
+      "custom_name": "tableOne",
+      "expected": {
+        "graphql-default": {
+          "select": "tableOne",
+          "select_by_pk": "tableOneByPk",
+          "type": "tableOne",
+          "insert_one": "insertTableOneOne"
+        }
+      }
+    },
+    {
+      "cite": "[naming] Behavior of custom table name, row 3 (TableOne: select TableOne, by pk TableOneByPk, typename TableOne, insert one insertTableOneOne)",
+      "table": "t3",
+      "schema": "public",
+      "custom_name": "TableOne",
+      "expected": {
+        "graphql-default": {
+          "select": "TableOne",
+          "select_by_pk": "TableOneByPk",
+          "type": "TableOne",
+          "insert_one": "insertTableOneOne"
+        }
+      }
+    },
+    {
+      "cite": "[naming] custom table and field names override the naming convention; a custom root field is the name it sets",
+      "table": "my_table",
+      "schema": "public",
+      "custom_root_fields": {"select_by_pk": "fetchOne", "insert_one": {"name": "add_one"}},
+      "expected": {
+        "hasura-default": {"select": "my_table", "select_by_pk": "fetchOne", "insert_one": "add_one"},
+        "graphql-default": {"select": "myTable", "select_by_pk": "fetchOne", "insert_one": "add_one"}
+      }
+    }
+  ],
+  "fields": {
+    "cite": "[naming] Supported naming conventions (field names: snake case / camel case); custom field names override the convention",
+    "cases": [
+      {"column": "first_name", "hasura-default": "first_name", "graphql-default": "firstName"},
+      {"column": "created_at", "hasura-default": "created_at", "graphql-default": "createdAt"},
+      {"column": "id", "hasura-default": "id", "graphql-default": "id"},
+      {"column": "first_name", "custom_name": "FirstNAME", "hasura-default": "FirstNAME", "graphql-default": "FirstNAME"},
+      {"column": "last_name", "custom_name": "surname_text", "hasura-default": "surname_text", "graphql-default": "surname_text"}
+    ]
+  },
+  "arguments": {
+    "cite": "[naming] Supported naming conventions (arguments: snake case / camel case; orderBy, distinctOn); [query] Argument; [mutation] objects/object/on_conflict/pk_columns/_set/_inc arguments, Mutation response",
+    "cases": [
+      {"name": "where", "graphql-default": "where"},
+      {"name": "limit", "graphql-default": "limit"},
+      {"name": "offset", "graphql-default": "offset"},
+      {"name": "order_by", "graphql-default": "orderBy"},
+      {"name": "distinct_on", "graphql-default": "distinctOn"},
+      {"name": "objects", "graphql-default": "objects"},
+      {"name": "object", "graphql-default": "object"},
+      {"name": "on_conflict", "graphql-default": "onConflict"},
+      {"name": "update_columns", "graphql-default": "updateColumns"},
+      {"name": "pk_columns", "graphql-default": "pkColumns"},
+      {"name": "_set", "graphql-default": "_set"},
+      {"name": "_inc", "graphql-default": "_inc"},
+      {"name": "_is_null", "graphql-default": "_isNull"},
+      {"name": "affected_rows", "graphql-default": "affectedRows"},
+      {"name": "returning", "graphql-default": "returning"},
+      {"name": "stddev_pop", "graphql-default": "stddevPop"},
+      {"name": "var_samp", "graphql-default": "varSamp"}
+    ]
+  },
+  "enum_values": {
+    "cite": "[naming] Supported naming conventions (enum values: as defined / uppercased); Backward compatibility (on_conflict constraint enum values stay as defined); [query] OrderByEnum",
+    "cases": [
+      {"kind": "order_by", "value": "asc", "hasura-default": "asc", "graphql-default": "ASC"},
+      {"kind": "order_by", "value": "desc_nulls_last", "hasura-default": "desc_nulls_last", "graphql-default": "DESC_NULLS_LAST"},
+      {"kind": "enum_table", "value": "active", "hasura-default": "active", "graphql-default": "ACTIVE"},
+      {"kind": "enum_table", "value": "On_Hold", "hasura-default": "On_Hold", "graphql-default": "ON_HOLD"},
+      {"kind": "constraint", "value": "my_table_pkey", "hasura-default": "my_table_pkey", "graphql-default": "my_table_pkey"}
+    ]
+  },
+  "snake_case_exceptions": {
+    "cite": "[naming] Backward compatibility: scalar cast argument types and custom function argument type names keep hasura-default naming under graphql-default",
+    "function_args": [
+      {"function": "search_articles", "hasura-default": "search_articles_args", "graphql-default": "search_articles_args"}
+    ],
+    "cast_exp": [
+      {"scalar": "geography", "hasura-default": "geography_cast_exp", "graphql-default": "geography_cast_exp"},
+      {"scalar": "jsonb", "hasura-default": "jsonb_cast_exp", "graphql-default": "jsonb_cast_exp"}
+    ]
+  },
+  "relationships": {
+    "cite": "[query] BoolExp and TableOrderBy: an array relationship's aggregate is relation-name_aggregate; [naming] a relationship's name is set in metadata and, like every custom name, not re-cased",
+    "cases": [
+      {"name": "order_items", "hasura-default": {"field": "order_items", "aggregate": "order_items_aggregate"}, "graphql-default": {"field": "order_items", "aggregate": "order_itemsAggregate"}},
+      {"name": "author", "hasura-default": {"field": "author", "aggregate": "author_aggregate"}, "graphql-default": {"field": "author", "aggregate": "authorAggregate"}}
+    ]
+  }
+}
