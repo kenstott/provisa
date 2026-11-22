@@ -43,10 +43,11 @@ _EXPECTED = {
     "singlestore": "singlestore",
     "exasol": "exasol",
     "opengauss": "postgres",
+    "db2": "db2",  # provisa/db2/dialect.py
 }
 
 # kinds whose product has no sqlglot dialect: refused by name when the engine is built.
-_REFUSED = {"db2", "saphana", "monetdb", "firebird", "vertica"}
+_REFUSED = {"saphana", "monetdb", "firebird", "vertica"}
 
 
 def test_every_rdb_kind_is_classified() -> None:
