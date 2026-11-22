@@ -11,7 +11,8 @@
 """postgresql_fdw_validator(text[], oid) on Trino, ClickHouse and PostgreSQL (REQ-2236: exact, or
 a named refusal): the statement as Provisa writes it for the engine and run there. An option the
 catalog does not list is 42601 naming the first such option, as PostgreSQL's foreign.c raises it;
-a NULL element is refused by name (PostgreSQL's untransformRelOptions reads it as a text)."""
+a NULL element is refused by name (PostgreSQL's untransformRelOptions reads it as a text). ClickHouse
+24.3's throwIf takes only a constant message, so there an unlisted option is refused by name."""
 
 # Requirements: REQ-2236
 
@@ -27,6 +28,7 @@ import sqlglot
 from provisa.core.pg_error import from_engine, postgres_error
 from provisa.transpiler.metadata_facts import CatalogFacts
 from provisa.transpiler.metadata_functions import expand
+from provisa.transpiler.metadata_server_forms import FDW_OPTION_REFUSAL
 from provisa.transpiler.transpile import transpile
 
 pytestmark = [pytest.mark.integration]
@@ -61,6 +63,8 @@ def _check(run: Callable[[str], Any], dialect: str) -> None:
             error = postgres_error(raised) or from_engine(raised)
             got = None if error is None else (error.sqlstate, str(error))
         want: Any = True if name is None else ("42601", f'invalid option "{name}"')
+        if name is not None and dialect == "clickhouse":
+            want = ("0A000", FDW_OPTION_REFUSAL)
         if got != want:
             wrong[(options, catalog)] = got
     try:

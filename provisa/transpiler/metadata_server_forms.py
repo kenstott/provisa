@@ -172,9 +172,14 @@ _ITS_TYPE = "@TYPE@"
 SERVER_FORM_RAISE = "provisa_raise"
 #: The function a form raises with, on a PostgreSQL that runs forms: the control plane, and a
 #: PostgreSQL engine, which reads a statement with no table.
+#: Its second overload takes the refusal an engine that cannot write the message from a value
+#: raises instead (``raising_or_refused``); PostgreSQL writes it, so the refusal goes unread here.
 RAISE_FUNCTION_SQL = (
     f"CREATE OR REPLACE FUNCTION {SERVER_FORM_RAISE}(sqlstate TEXT, message TEXT) RETURNS TEXT "
     "LANGUAGE plpgsql AS $$ BEGIN "
+    "RAISE EXCEPTION USING ERRCODE = sqlstate, MESSAGE = message; END $$; "
+    f"CREATE OR REPLACE FUNCTION {SERVER_FORM_RAISE}(sqlstate TEXT, message TEXT, refused TEXT) "
+    "RETURNS TEXT LANGUAGE plpgsql AS $$ BEGIN "
     "RAISE EXCEPTION USING ERRCODE = sqlstate, MESSAGE = message; END $$"
 )
 
@@ -182,6 +187,13 @@ RAISE_FUNCTION_SQL = (
 def raising(sqlstate: str, message_sql: str) -> str:
     """SQL raising PostgreSQL's error ``sqlstate`` with the text of ``message_sql``."""
     return f"CAST({SERVER_FORM_RAISE}('{sqlstate}', {message_sql}) AS {_ITS_TYPE})"
+
+
+def raising_or_refused(sqlstate: str, message_sql: str, refusal: str) -> str:
+    """``raising``, where ``message_sql`` is written from a value: an engine whose error takes only
+    a constant message (ClickHouse 24.3's throwIf) raises 0A000 ``refusal`` there instead, by name
+    (REQ-2236, a stated limitation; provisa.transpiler.rows.system's provisa_raise)."""
+    return f"CAST({SERVER_FORM_RAISE}('{sqlstate}', {message_sql}, '{refusal}') AS {_ITS_TYPE})"
 
 
 #: The greatest attnum whose bitmapset member, attnum - FirstLowInvalidHeapAttributeNumber (-7),
@@ -342,6 +354,12 @@ _LO_WRITES = (
     ("lo_from_bytea", "lobj, data:bytea", "BIGINT"),
 )
 
+
+#: The refusal of postgresql_fdw_validator of an option the catalog does not list, where the
+#: engine cannot write PostgreSQL's message naming it.
+FDW_OPTION_REFUSAL = (
+    "postgresql_fdw_validator of an option the catalog does not list has no form here"
+)
 
 #: The server options postgresql_fdw_validator accepts (foreign.c valid_options).
 FDW_SERVER_OPTIONS = (
@@ -1656,7 +1674,8 @@ def _catalog_objects(a: _Answers) -> None:
     )
     # postgresql_fdw_validator (src/backend/foreign/foreign.c): an option name outside the catalog's
     # list is 42601 invalid option, whatever its value. A server (1417) takes the libpq names, a
-    # user mapping (1418) user and password; any other catalog takes none.
+    # user mapping (1418) user and password; any other catalog takes none. The message names the
+    # option, a value: ClickHouse refuses that call by name (raising_or_refused).
     _server_options = ", ".join(f"'{n}'" for n in FDW_SERVER_OPTIONS)
     _option = "SPLIT_PART(COALESCE(_o, ''), '=', 1)"
     _invalid = (
@@ -1672,7 +1691,11 @@ def _catalog_objects(a: _Answers) -> None:
         "CASE WHEN ARRAY_SIZE(ARRAY_FILTER(options, _o -> _o IS NULL)) > 0 THEN "
         + raising("0A000", "'postgresql_fdw_validator of a NULL option has no form here'")
         + f" WHEN ARRAY_SIZE({_refused}) > 0 THEN "
-        + raising("42601", f"'invalid option \"' || SPLIT_PART(({_refused})[1], '=', 1) || '\"'")
+        + raising_or_refused(
+            "42601",
+            f"'invalid option \"' || SPLIT_PART(({_refused})[1], '=', 1) || '\"'",
+            FDW_OPTION_REFUSAL,
+        )
         + " ELSE true END",
     )
     a.strict(

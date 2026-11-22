@@ -59,9 +59,11 @@ def postgres_error(error: Exception) -> PostgresError | None:
     """PostgreSQL's own error, as a statement it ran raised it; None for anything else."""
     cause: BaseException | None = error
     while cause is not None:
-        sqlstate = getattr(cause, "sqlstate", None)
+        detail = getattr(cause, "diag", None)
+        # asyncpg's and psycopg 3's error carry the SQLSTATE themselves; psycopg2's (the pg
+        # engine's driver, provisa.federation.pg_runtime) carries it on its diagnostics alone.
+        sqlstate = getattr(cause, "sqlstate", None) or getattr(detail, "sqlstate", None)
         if isinstance(sqlstate, str) and len(sqlstate) == 5:
-            detail = getattr(cause, "diag", None)
             message = getattr(detail, "message_primary", None) or str(cause)
             return PostgresError(sqlstate, message)
         cause = cause.__cause__ or cause.__context__
