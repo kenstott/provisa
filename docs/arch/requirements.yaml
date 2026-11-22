@@ -98060,3 +98060,26 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     The owner confirms or revokes each row; a revocation takes effect at once, and every confirmation and revocation
     is recorded with who made it, when and why. The scheduled review is exported to the operator''s chosen
     destination. (Amended 2026-11-21 by the maintainer. The operator chooses a signed webhook as the destination of a scheduled review, a URL and a secret, posted after each scheduled review and signed as the offer hook signs its requests. Roles a member holds only through the identity provider claims or a role mapping are listed read-only with their source, since Provisa holds no grant of them to revoke.)'
+- id: REQ-2267
+  status: proposed
+  target: 2026-Q4
+  group: 4. Source Connectors
+  category: OpenAPI Auto-Registration Connector
+  feature: connector-catalog-remote-schemas
+  priority: SHOULD
+  type: behavioral
+  description: 'Maintainer 2026-11-21. Discovered code-source items and live API sources. (1) A code source may
+    export one @discover function, called at discovery and rebuild and never per query, that returns a consistent
+    set of generated tables, queries and commands: each table with its row type, schema and paging; each query
+    naming the table whose rows it returns and its parameters; each command with its input and, when it returns
+    rows, their table. One handler per kind serves every generated item and is called with the item name, under
+    the code-source calling convention (REQ-2100): the handler gets the arguments it supports and DuckDB answers
+    the rest of the statement. Hand-written @table, @query and @command functions stay as they are and may sit
+    beside @discover; the name-collision check covers both, and registration still admits each table. (2)
+    OpenAPI and remote GraphQL become built-in code sources whose @discover wraps the existing mapping and its
+    row-type grouping (REQ-1986: one table per row type served by its plain list, parameterised reads as queries
+    on it, mutations as commands), with today''s pushdown. The first version borrows heavily from the existing
+    OpenAPI and graphql_remote code rather than rewriting it. (3) Code sources are then read live by every
+    federation engine through a Provisa-launched pure-Python pgwire sidecar on the pgwire-calcite backend seam,
+    launched like the other pgwire replicas. New pushdown capabilities are backlogged as their own requirements.'
+
