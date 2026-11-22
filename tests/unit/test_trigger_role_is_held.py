@@ -11,7 +11,7 @@
 """A scheduled SQL trigger is saved only by a caller who holds its role, or holds cross_org.
 
 A SQL trigger's statement runs as its role on every firing, so saving one is acting as that role.
-Scheduling needs only ``org_settings``; without this rule that right would run statements as any
+Scheduling needs only ``query_development`` (REQ-1327); without this rule that right would run statements as any
 role of the org, ``org_admin`` included. It holds wherever a trigger is saved: the GraphQL create,
 enabling a trigger, and the uploaded config. The refusal names the role. The GraphQL create and
 toggle act on the org's model store (REQ-1919); the uploaded config is the deployment's file.
@@ -47,8 +47,8 @@ def cfg_path(tmp_path, monkeypatch, control_plane):
         appmod.state,
         "roles",
         {
-            "scheduler": {"id": "scheduler", "capabilities": ["org_settings"]},
-            "operator": {"id": "operator", "capabilities": ["org_settings", "cross_org"]},
+            "scheduler": {"id": "scheduler", "capabilities": ["query_development"]},
+            "operator": {"id": "operator", "capabilities": ["query_development", "cross_org"]},
             "ops": {"id": "ops", "capabilities": []},
             "org_admin": {"id": "org_admin", "capabilities": ["write"]},
         },

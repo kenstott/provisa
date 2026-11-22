@@ -1020,7 +1020,10 @@ def _argument(value: exp.Expr, reads_as: str = "") -> exp.Expr:
         return exp.Paren(this=exp.cast(exp.Cast(this=value.copy(), to=oid), "BIGINT"))
     if reads_as == "text":
         return exp.cast(value, "TEXT")
-    if reads_as == "bytea":  # no engine reads a bytes' text back, and a form reads only its NULL
+    # An array's own elements are what a form iterates: the engine's array, not array_out's text,
+    # which no engine reads back. bytea: no engine reads a bytes' text back, and a form reads only
+    # its NULL.
+    if reads_as in ("bytea", "array"):
         return value if isinstance(value, _ATOMIC) else exp.Paren(this=value)
     if reads_as:
         # An argument of any type, as the form reads it: a value of a type no form operates on

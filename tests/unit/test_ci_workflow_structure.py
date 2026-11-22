@@ -20,6 +20,7 @@ the shape, with no list of exceptions beyond the one stated below (the NixOS gue
 from __future__ import annotations
 
 import importlib.util
+import os
 import re
 from pathlib import Path
 
@@ -671,7 +672,7 @@ _LEAVES_THE_RUN = re.compile(
 )
 
 
-#: Nothing in the release goes to PyPI (maintainer 2026-11-21): the server, client and notebook
+#: Nothing in the release goes to PyPI (maintainer 2026-11-21): the server, client, notebook and SDK
 #: wheels are release assets, installed through the GitHub Pages index the publish leg writes.
 _RELEASE_PYPI: tuple[str, ...] = ()
 #: REQ-2225: the provisa wheel carries the platform connector block, so the release that attaches
@@ -746,7 +747,7 @@ def test_every_step_of_the_release_that_leaves_the_run_waits_for_publish():
         if job == _RELEASE_IMAGE_PUSH:
             assert body["if"] == _RELEASE_PUBLISH, job
             seen += sum(bool(_LEAVES_THE_RUN.search(str(s.get("run", "")))) for s in body["steps"])
-    assert seen >= 14, f"only {seen} publishing steps found: the pattern no longer matches them"
+    assert seen >= 16, f"only {seen} publishing steps found: the pattern no longer matches them"
 
 
 def test_no_leg_of_the_release_reads_the_pushed_ref():
@@ -1669,3 +1670,74 @@ def test_nothing_in_ci_names_the_plugin_jars_maven_location_but_the_pin():
         if p.is_file() and p.suffix in {".yml", ".yaml", ".sh", ".py"} and maven in p.read_text()
     ]
     assert named == []
+
+
+def test_the_release_builds_both_sdks_and_attaches_them_to_the_draft():
+    """REQ-1984: each SDK is built in the packages leg (a dry run builds both), stamped with the
+    release's version, and attached to the draft release: nothing goes to PyPI or npm (maintainer
+    2026-11-21). A dry run keeps each in the run instead."""
+    legs = dict(_release_legs().values())
+    jobs = legs["release-packages.yml"]["jobs"]
+    py, ts = jobs["build-sdk-python"], jobs["build-sdk-typescript"]
+    assert "needs.metadata.outputs.py_version" in str(py)
+    assert "needs.metadata.outputs.npm_version" in str(ts)
+    for job, artifact, files in (
+        (py, "sdk-python-dist", ("provisa_sdk-*.whl", "provisa_sdk-*.tar.gz")),
+        (ts, "sdk-typescript-dist", ("provisa-sdk-*.tgz",)),
+    ):
+        uploads = [s for s in job["steps"] if "upload-artifact" in s.get("uses", "")]
+        assert [s["with"]["name"] for s in uploads] == [artifact]
+        assert uploads[0]["if"] == "${{ !inputs.publish }}"
+        assert not _LEAVES_THE_RUN.search("\n".join(str(s.get("run", "")) for s in job["steps"]))
+        [attach] = [s for s in job["steps"] if "attach-release-assets" in str(s.get("uses", ""))]
+        assert attach["if"] == "inputs.publish"
+        for pattern in files:
+            assert pattern in attach["with"]["files"], pattern
+    orchestrator = yaml.safe_load(_RELEASE.read_text())["jobs"]
+    assert not any("pypi" in job or "npm" in job for job in orchestrator)
+
+
+def test_no_workflow_publishes_to_npm():
+    """Every package ships as a GitHub release asset only (maintainer 2026-11-21)."""
+    for path in sorted((REPO / ".github").rglob("*.yml")):
+        for n, line in enumerate(path.read_text().splitlines(), 1):
+            if line.lstrip().startswith("#"):
+                continue
+            assert not re.search(r"\bnpm publish\b|registry\.npmjs\.org", line), (
+                f"{path.name}:{n}: {line.strip()}"
+            )
+
+
+def _metadata_outputs(tag: str) -> dict[str, str]:
+    """Runs the metadata action's own script for `tag` and returns what it writes."""
+    import subprocess
+    import tempfile
+
+    action = yaml.safe_load(
+        (REPO / ".github" / "actions" / "release-metadata" / "action.yml").read_text()
+    )
+    [step] = [s for s in action["runs"]["steps"] if s.get("id") == "meta"]
+    with tempfile.NamedTemporaryFile("r+", suffix=".out") as out:
+        subprocess.run(  # noqa: S603 -- the repository's own script, on a made-up tag
+            ["bash", "-c", step["run"]],
+            env={"VERSION": tag, "GITHUB_OUTPUT": out.name, "PATH": os.environ["PATH"]},
+            check=True,
+        )
+        out.seek(0)
+        return dict(line.rstrip("\n").split("=", 1) for line in out if "=" in line)
+
+
+@pytest.mark.parametrize(
+    ("tag", "pypi", "npm"),
+    [
+        ("v0.1.0-alpha.481", "0.1.0a481", "0.1.0-alpha.481"),
+        ("v0.2.0-beta.3", "0.2.0b3", "0.2.0-beta.3"),
+        ("v1.0.0-rc.12", "1.0.0rc12", "1.0.0-rc.12"),
+        ("v1.2.3", "1.2.3", "1.2.3"),
+    ],
+)
+def test_the_sdk_versions_map_from_the_release_tag(tag, pypi, npm):
+    """REQ-1984: PyPI takes the PEP 440 form, npm the tag as semver."""
+    got = _metadata_outputs(tag)
+    assert got["py_version"] == pypi
+    assert got["npm_version"] == npm

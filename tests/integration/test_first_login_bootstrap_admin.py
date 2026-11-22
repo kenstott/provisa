@@ -37,10 +37,12 @@ from sqlalchemy import create_engine, text
 
 from provisa.auth.middleware import AuthMiddleware
 from provisa.core.database import Database, create_engine_from_url
+from provisa.core.db import add_missing_columns
 from provisa.core.schema_admin import REGISTRY_TABLES
 from provisa.core.schema_admin import metadata as admin_metadata
 from provisa.core.schema_org import metadata as org_metadata
 from tests.integration.test_auth_integration import _FirebaseLikeProvider
+from tests.helpers import create_pgvector
 from tests.integration.signin_tables import SIGN_IN_TABLES
 
 # The app serves 'default' as its own org, re-pointed and bound by the harness (REQ-1266).
@@ -83,6 +85,11 @@ def _prepare_sync():
 
         conn.execute(text(f"SET search_path TO {_TENANT_SCHEMA}"))
         org_metadata.create_all(conn, tables=SIGN_IN_TABLES)
+        # The claim builds the org's runtime, whose redaction load (REQ-2087) reads org_settings and
+        # scans every model table, so the rest of the org's model is created as init_schema's
+        # reconciliation creates a table it is missing.
+        create_pgvector(conn)  # the model's reference-library passages are vector columns
+        add_missing_columns(conn, org_metadata.sorted_tables, _TENANT_SCHEMA)
         for rid in ("platform_admin", "analyst", "org_admin"):
             conn.execute(text("INSERT INTO roles (id) VALUES (:i)"), {"i": rid})
     return engine

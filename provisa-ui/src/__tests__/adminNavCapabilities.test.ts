@@ -27,6 +27,7 @@ import {
   meetsRequirement,
   routeRequirement,
 } from "../lib/capabilities";
+import { TOUR_STEPS } from "../tour/tourSteps";
 
 const SRC = resolve(__dirname, "..");
 
@@ -81,7 +82,8 @@ const ORG_SCOPED: Record<string, string> = {
   // REQ-1560, REQ-1327: a person's own vault. Not a grant an administrator makes: the server asks
   // no capability, so every member of an org reaches their own secrets and nobody else's.
   "/admin/my-secrets": "EVERY_MEMBER",
-  "/admin/scheduled-tasks": "org_settings",
+  // REQ-1327: a trigger runs a statement, so its page asks query_development.
+  "/admin/scheduled-tasks": "query_development",
   // REQ-1327: every member sees the requests it made; each row's own right decides it.
   "/admin/requests": "EVERY_MEMBER",
   // REQ-1412: which engine lane the org runs on (shared / SaaS-isolated / its own external
@@ -147,6 +149,20 @@ describe("admin surface capabilities", () => {
       expect(item?.capability, path).toBeNull();
       expect(meetsRequirement([], item!), path).toBe(true);
     }
+  });
+
+  it("opens scheduled tasks to query_development alone, route and nav alike", () => {
+    // REQ-1327 (amended 2026-11-05): triggers ask query_development, not org_settings or
+    // observability, matching the server's scheduledTasks and trigger mutations.
+    expect(routeCapabilities()["/admin/scheduled-tasks"]).toBe("query_development");
+    const item = NAV_GROUPS.flatMap((g) => g.items).find((i) => i.to === "/admin/scheduled-tasks");
+    expect(item?.capability).toBe("query_development");
+    expect(meetsRequirement(["query_development"], item!)).toBe(true);
+    expect(meetsRequirement(["org_settings", "observability"], item!)).toBe(false);
+    expect(IMPORT_RIGHTS).toContain("query_development");
+    // The tour's step onto the page is offered on the same right.
+    const step = TOUR_STEPS.find((st) => st.route === "/admin/scheduled-tasks");
+    expect(step?.capability).toBe("query_development");
   });
 
   it("gates tags on the tag mutations' rights, route and nav alike", () => {

@@ -88,6 +88,7 @@
     "differences": "Differenze con il catalogo",
     "differencesHelp": "Ogni valore che il catalogo contiene in modo diverso da Provisa. Accetta sceglie un lato per una riga, o per un'intera tabella o termine.",
     "diffNoDifferences": "Il catalogo contiene gli stessi valori di Provisa.",
+    "diffBothOff": "Entrambe le direzioni sono disattivate, quindi non viene elencata alcuna differenza.",
     "diffObject": "Oggetto",
     "diffProvisa": "Provisa",
     "diffCatalog": "Catalogo",

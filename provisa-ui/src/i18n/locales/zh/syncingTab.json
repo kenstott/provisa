@@ -88,6 +88,7 @@
     "differences": "与目录的差异",
     "differencesHelp": "目录中与 Provisa 不同的每个值。“接受”为一行，或为整个表或术语选择一方。",
     "diffNoDifferences": "目录中的值与 Provisa 相同。",
+    "diffBothOff": "两个方向均已关闭，因此不列出任何差异。",
     "diffObject": "对象",
     "diffProvisa": "Provisa",
     "diffCatalog": "目录",

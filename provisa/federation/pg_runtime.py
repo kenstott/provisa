@@ -41,7 +41,7 @@ from provisa.federation.pg_quoting import pg_ident, pg_lit
 from provisa.executor.result import QueryResult, ResultStream, StreamingQueryResult
 from provisa.federation.engine import build_pg_engine
 from provisa.federation.runtime_support import _STREAM_BATCH_ROWS
-from provisa.transpiler.metadata_server_forms import RAISE_FUNCTION_SQL, SERVER_FORM_RAISE
+from provisa.transpiler.metadata_server_forms import RAISE_FUNCTIONS_SQL, SERVER_FORM_RAISE
 from provisa.transpiler.pg_type_literals import interval_fields
 
 _log = logging.getLogger(__name__)
@@ -365,7 +365,8 @@ def _install_raise_function(con: Any) -> None:
     role or an engine starting beside this one, is the function."""
     cur = con.cursor()
     try:
-        cur.execute(RAISE_FUNCTION_SQL)
+        for statement in RAISE_FUNCTIONS_SQL:
+            cur.execute(statement)
     except psycopg2.Error as exc:
         cur.execute("SELECT to_regprocedure(%s)", (f"{SERVER_FORM_RAISE}(text, text)",))
         if cur.fetchone()[0] is None:

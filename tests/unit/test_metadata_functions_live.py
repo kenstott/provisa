@@ -23,7 +23,7 @@ from provisa.core import schema_org
 from provisa.core.modeling_tags import append_modeling_tag, column_comment
 from provisa.transpiler.metadata_facts import catalog_facts
 from provisa.transpiler.metadata_functions import VALUE_FORMS, expand
-from provisa.transpiler.metadata_server_forms import RAISE_FUNCTION_SQL
+from provisa.transpiler.metadata_server_forms import RAISE_FUNCTIONS_SQL
 from provisa.transpiler.metadata_oids import KEY_OID_BASE, table_oid
 from provisa.transpiler.metadata_settings import set_statement, statement_settings
 from provisa.transpiler.metadata_views import CATALOG_VIEW_NAMES, NEUTRAL_VIEW_NAMES
@@ -184,7 +184,8 @@ def live(embedded_postgres, control_plane_template):
                 conn.exec_driver_sql(statement)
         conn.exec_driver_sql("CREATE SCHEMA meta")
         # As startup_seed gives the control plane: how a form answers PostgreSQL's own error.
-        conn.exec_driver_sql(RAISE_FUNCTION_SQL)
+        for statement in RAISE_FUNCTIONS_SQL:
+            conn.exec_driver_sql(statement)
         _register(conn)
         for ddl in _META_TABLE_VIEWS.values():
             conn.exec_driver_sql(ddl.replace("%", "%%"))

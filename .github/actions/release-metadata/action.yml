@@ -31,6 +31,8 @@ outputs:
     value: ${{ steps.meta.outputs.jdbc_name }}
   py_version:
     value: ${{ steps.meta.outputs.py_version }}
+  npm_version:
+    value: ${{ steps.meta.outputs.npm_version }}
   obs_images_name:
     value: ${{ steps.meta.outputs.obs_images_name }}
   demo_images_name:
@@ -87,6 +89,9 @@ runs:
         echo "windows_container_name=Provisa-Container-${TAG}-windows-x64.exe" >> "$GITHUB_OUTPUT"
         echo "jdbc_name=provisa-jdbc-${TAG}.jar"                         >> "$GITHUB_OUTPUT"
         echo "py_version=$PY_VERSION"                                    >> "$GITHUB_OUTPUT"
+        # REQ-1984: the TypeScript SDK (npm) takes the tag as semver, as written.
+        NPM_VERSION=$(echo "$TAG" | sed 's/^v//')
+        echo "npm_version=$NPM_VERSION"                                  >> "$GITHUB_OUTPUT"
         echo "obs_images_name=provisa-obs-images-${TAG}.tar.gz"         >> "$GITHUB_OUTPUT"
         echo "demo_images_name=provisa-demo-images-${TAG}.tar.gz"       >> "$GITHUB_OUTPUT"
         echo "core_images_name=provisa-core-images-${TAG}.tar.gz"            >> "$GITHUB_OUTPUT"

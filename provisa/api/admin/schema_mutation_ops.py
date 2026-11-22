@@ -66,8 +66,8 @@ if TYPE_CHECKING:
 
 
 async def _apply_mv_relationship_gate(
-    info: StrawberryInfo, input: TableInput
-) -> MutationResult | None:  # REQ-1140
+    info: StrawberryInfo, input: TableInput, *, approved: bool = False
+) -> MutationResult | None:  # REQ-1140, REQ-1327
     """Gate MV publication on approved relationships (REQ-1140).
 
     Returns None to let publication proceed, or a queued ``MutationResult`` to BLOCK it. A materialized
@@ -125,6 +125,23 @@ async def _apply_mv_relationship_gate(
                 )
             return None
 
+    if approved:
+        # REQ-1327(5): an approved view request is carried out, not queued again. The relationships
+        # it joins over were queued with it; until they are approved it is refused, by name, and
+        # stays pending for a retry.
+        missing = ", ".join(
+            sorted(f"{m.dep.left_table}->{m.dep.right_table}" for m in decision.missing)
+        )
+        return MutationResult(
+            success=False,
+            message=(
+                f"View {input.table_name!r} joins over relationships not yet approved "
+                f"({missing}); approve them, then carry out this request again"
+            ),
+            code="schema.view_relationships_unapproved",
+            params={"view": input.table_name, "relationships": missing},
+        )
+
     # Least-privilege author: queue every missing relationship AND the view, block publication.
     from provisa.api.admin.types import RelationshipInput
 
@@ -138,8 +155,8 @@ async def _apply_mv_relationship_gate(
             target_column=d.right_column,
             cardinality=Cardinality.many_to_one.value,
         )
-        await _queue_creation_request(info, "relationship", "create_relationship", rel_input)
-    return await _queue_creation_request(info, "view", "create_view", input)
+        await _queue_creation_request(info, "relationship", rel_input)
+    return await _queue_creation_request(info, "view", input)
 
 
 def _identity_user(info: StrawberryInfo):
@@ -259,10 +276,13 @@ async def incremental_refused(input: TableInput) -> MutationResult | None:
 
 
 async def register_table(
-    info: StrawberryInfo, input: TableInput
+    info: StrawberryInfo, input: TableInput, *, approved: bool = False
 ) -> (
     MutationResult
-):  # REQ-013, REQ-016, REQ-252, REQ-366, REQ-413, REQ-432, REQ-433, REQ-434, REQ-1140
+):  # REQ-013, REQ-016, REQ-252, REQ-366, REQ-413, REQ-432, REQ-433, REQ-434, REQ-1140, REQ-1327
+    """Register a table or a view. ``approved`` is a view request carried out on its approvals'
+    authority (REQ-1327(5)): the caller's own right to author the view and its domain gates are
+    not asked, since the approval is the authority; the view's content is checked as always."""
     import logging
 
     logging.getLogger(__name__).warning(
@@ -285,7 +305,13 @@ async def register_table(
         return _dbt_refused
     from provisa.api.admin.capabilities import require_capability
 
-    if input.view_sql or input.view_metrics is not None:
+    if approved and (input.view_sql or input.view_metrics is not None):
+        # REQ-1327(5): an approved view request. Its materialized view still publishes only over
+        # approved relationships (REQ-1140); one still missing refuses, rather than queueing again.
+        gate_result = await _apply_mv_relationship_gate(info, input, approved=True)
+        if gate_result is not None:
+            return gate_result
+    elif input.view_sql or input.view_metrics is not None:
         # view registration (free-hand SQL or REQ-1318 metric-composed spec):
         # create_view or query_development suffice
         from provisa.api.admin.capabilities import _identity_from_info, _resolved_capabilities
@@ -297,7 +323,7 @@ async def register_table(
             # REQ-1337: rights only — the two rights that author a view, and nothing in their place.
             if not (caps & {"create_view", "query_development"}):
                 # REQ-434/366: lacking view-create authority queues a request.
-                return await _queue_creation_request(info, "view", "create_view", input)
+                return await _queue_creation_request(info, "view", input)
         # REQ-1531: the view gate has TWO halves. The domain it is registered INTO, and every table
         # its SQL READS — free-hand SQL names those tables directly, so without this a member of one
         # domain publishes another domain's rows into a view its owner does not govern. Out of
@@ -314,7 +340,7 @@ async def register_table(
                         info, cast("Connection", _conn), input.view_sql
                     )
         except PermissionError:
-            return await _queue_creation_request(info, "view", "create_view", input)
+            return await _queue_creation_request(info, "view", input)
         # REQ-1140: a materialized view publishes only over approved relationships; the gate either
         # auto-creates them (rights) or queues them + the view and blocks (returns a queued result).
         # A metric-composed view (view_metrics) joins ONLY through registered relationships by
@@ -329,8 +355,9 @@ async def register_table(
     pool = await _get_pool()
     from provisa.api.admin.domain_guard import require_current_domain
 
-    async with pool.acquire() as _conn:
-        await require_current_domain(info, cast("Connection", _conn), input)
+    if not approved:  # REQ-1327(5): an approved view is saved on the approval's authority
+        async with pool.acquire() as _conn:
+            await require_current_domain(info, cast("Connection", _conn), input)
     # Before the columns are settled: settling them may reach the source.
     _field_refusal = await column_field_refusal(pool, input, input.columns)
     if _field_refusal is not None:

@@ -22,17 +22,17 @@
       "embedding_library_missing": "埋め込みモデル {{model}} は {{provider}} プロバイダーを使用しており、{{extra}} エクストラが必要です（モジュール {{module}} がインストールされていません）: pip install 'provisa[{{extra}}]'。"
     },
     "ai": {
-      "endpoint_address_from_server": "AI エンドポイント {{vendor}} はサーバーの環境からアドレスを取得しますが、このサーバー上の組織はそれを使用しません。管理 > AIモデルで独自のアドレスを設定してください。",
+      "key_required": "{{vendor}} にキーがありません。管理 > AIモデルで設定してください。",
+      "vendor_uses_server_credentials": "{{vendor}} にはサーバー自身の認証情報で接続しますが、このサーバー上の組織はそれを使用しません。管理 > AIモデルで、キーを受け付けるベンダーまたは AI エンドポイントを選択してください。",
       "endpoint_key_from_server": "AI エンドポイント {{vendor}} はサーバーの環境からキーを取得しますが、このサーバー上の組織はそれを使用しません。管理 > AIモデルで独自のキーを設定してください。",
       "endpoint_key_unset": "AI エンドポイント {{vendor}} にキーがありません：{{field}} が設定されていません。",
-      "key_required": "{{vendor}} にキーがありません。管理 > AIモデルで設定してください。",
+      "endpoint_address_from_server": "AI エンドポイント {{vendor}} はサーバーの環境からアドレスを取得しますが、このサーバー上の組織はそれを使用しません。管理 > AIモデルで独自のアドレスを設定してください。",
       "local_server_from_environment": "{{vendor}} にはサーバー自身のアドレスで接続しますが、このサーバー上の組織はそれを使用しません。管理 > AIモデルで独自のアドレスの AI エンドポイントを宣言してください。",
       "server_environment_sets": "ここでは {{vendor}} を呼び出せません：サーバーの環境が {{variable}} を設定しており、そのクライアントがすべての組織に対して送信してしまいます。",
-      "vector_model_address_from_server": "埋め込みモデル {{vendor}} はサーバーの環境からアドレスを取得しますが、このサーバー上の組織はそれを使用しません。管理 > AIモデルで独自のアドレスを設定してください。",
       "vector_model_key_from_server": "埋め込みモデル {{vendor}} はサーバーの環境からキーを取得しますが、このサーバー上の組織はそれを使用しません。管理 > AIモデルで独自のキーを設定してください。",
       "vector_model_key_unset": "埋め込みモデル {{vendor}} にキーがありません：{{field}} が設定されていません。",
-      "vector_model_local_server": "埋め込みモデル {{vendor}} にはサーバー自身のアドレスで接続しますが、このサーバー上の組織はそれを使用しません。管理 > AIモデルで独自のアドレスを設定してください。",
-      "vendor_uses_server_credentials": "{{vendor}} にはサーバー自身の認証情報で接続しますが、このサーバー上の組織はそれを使用しません。管理 > AIモデルで、キーを受け付けるベンダーまたは AI エンドポイントを選択してください。"
+      "vector_model_address_from_server": "埋め込みモデル {{vendor}} はサーバーの環境からアドレスを取得しますが、このサーバー上の組織はそれを使用しません。管理 > AIモデルで独自のアドレスを設定してください。",
+      "vector_model_local_server": "埋め込みモデル {{vendor}} にはサーバー自身のアドレスで接続しますが、このサーバー上の組織はそれを使用しません。管理 > AIモデルで独自のアドレスを設定してください。"
     },
     "api": {
       "answer_cut": "{{table}} の応答は max_pages={{max_pages}} で切り詰められました（{{rows}} 行）。API にはまだデータがあります。すべて読み取るには、エンドポイントの max_pages またはページサイズを増やしてください。",
@@ -174,14 +174,13 @@
     },
     "discovery": {
       "adapter_missing_discover_schema": "「{{source_type}}」のアダプターは discover_schema を実装していません",
-      "answer_unreadable": "モデルの回答に読み取れるリストがありませんでした。",
       "cassandra_discovery_unsupported": "Cassandra のスキーマ検出にはライブの CQL セッションが必要ですが、利用できません。このソースの列を手動で定義してください。",
       "database_not_connected": "データベースが接続されていません",
-      "decided_both_ways": "候補は承認するか、今後は推奨しないかのどちらかで、両方はできません。",
       "domain_id_required": "domain スコープには domain_id が必要です",
       "elasticsearch_index_hint_required": "Elasticsearch の検出には「index」ヒントが必要です。",
       "elasticsearch_mapping_failed": "インデックス「{{index}}」の Elasticsearch マッピングの読み取りに失敗しました：{{error}}",
       "endpoint_already_registered": "エンドポイントは既に登録されています：{{error}}",
+      "decided_both_ways": "候補は承認するか、今後は推奨しないかのどちらかで、両方はできません。",
       "model_has_no_room": "モデル {{model}} はリクエストを収められません: {{reason}}",
       "model_incomplete": "選択したモデルには、ベンダーとモデルの両方を指定します。",
       "no_adapter_for_source_type": "ソースタイプ「{{source_type}}」に登録されたアダプターがありません",
@@ -201,6 +200,7 @@
       "target_tables_not_read": "選択したターゲットテーブル ({{count}} 件) はどれも読み取られません: 検出はシステムドメインのテーブルと停止中のテーブルを除外します。",
       "unknown_source_type": "不明なソースタイプ：{{type}}",
       "vendor_unknown": "{{vendor}} はここではモデルを一覧表示しません。モデル名を入力してください。",
+      "answer_unreadable": "モデルの回答に読み取れるリストがありませんでした。",
       "source_tables_outside_domains": "選択したソーステーブルは、ドメインフィルターで選択したドメインの外にあります: {{names}}。",
       "target_tables_outside_domains": "選択したターゲットテーブルは、ドメインフィルターで選択したドメインの外にあります: {{names}}。"
     },
@@ -483,6 +483,7 @@
       "view_deploy_unsupported_type": "ソース '{{source}}' のタイプは '{{type}}' で、デプロイされたビューをホストできません。サポートされるタイプ: {{supported}}",
       "view_deployed": "ビュー「{{view}}」を「{{source}}」のスキーマ「{{schema}}」にデプロイしました",
       "view_spans_sources": "ビューが複数のソースにまたがっています：{{sources}}",
+      "view_relationships_unapproved": "ビュー '{{view}}' は、まだ承認されていないリレーションシップ ({{relationships}}) で結合しています。それらを承認してから、このリクエストを再度実行してください",
       "webhook_approved": "Webhook「{{webhook}}」を承認しました",
       "webhook_name_required": "Webhook トリガーには webhook_name が必要です",
       "mask_unreachable": "到達できないマスクが定義されています: {{entries}}",
@@ -490,7 +491,7 @@
       "change_streams_unavailable": "ソース '{{source}}' はスタンドアロンの MongoDB サーバーで、change streams を提供しません。native 変更シグナルにはレプリカセットまたはシャードクラスターが必要です。レプリカセットとして実行するか、poll 変更シグナルを使用してください。",
       "openapi_no_rows_field": "テーブル {{table}}: 応答には、行を読み取るためのプロパティ {{rows_field}} がありません。",
       "paging_rows_field_fixed": "テーブル {{table}}: 行の場所（{{rows_field}}）はテーブルの登録時に設定されます。別の場所から行を読み取るには、テーブルを登録し直してください。",
-      "relationship_request_queued": "リクエスト #{{id}} としてキューに登録しました。リレーションシップを作成できる {{required}} 人の異なるユーザーの承認が必要で、関わる各ドメインに少なくとも 1 人の権限が及んでいる必要があります。",
+      "relationship_request_queued": "リクエスト #{{id}} としてキューに登録しました。リレーションシップを承認できる {{required}} 人の異なるユーザーの承認が必要で、関わる各ドメインに少なくとも 1 人の権限が及んでいる必要があります。",
       "request_approved": "作成リクエスト #{{id}} を承認しました",
       "registry_auth_unknown": "ソース '{{source}}': スキーマレジストリ認証 '{{method}}' は {{methods}} のいずれでもありません",
       "registry_url_required": "ソース '{{source}}': スキーマレジストリの設定がありますが、スキーマレジストリ URL がありません",
@@ -692,13 +693,13 @@
       "try_cast_needs_postgres_16": "変換できない可能性のある値の toInteger、toFloat、toBoolean には、このエンジンで PostgreSQL 16 以降が必要です。"
     },
     "requests": {
-      "approver_outside_domains": "リレーションシップを作成するあなたの権限は、このリクエストが関わるドメイン ({{domains}}) のいずれにも及びません",
+      "approver_outside_domains": "リレーションシップを承認するあなたの権限は、このリクエストが関わるドメイン ({{domains}}) のいずれにも及びません",
       "own_request": "自分が作成したリクエストは決定できません",
       "already_approved": "このリクエストはすでに承認済みです",
       "approver_unidentified": "リレーションシップのリクエストはサインインしたユーザーが決定します。この決定にはユーザーがありません",
       "waiting_on_domains": "このリクエストは次のドメインからの承認を待っています: {{domains}}",
       "approvals_incomplete": "このリクエストには {{required}} 人の異なるユーザーの承認が必要です",
-      "tables_not_registered": "このリクエストが指定するテーブル ({{tables}}) は、もう登録されていません。承認はできません。リレーションシップを作成する権限がすべてのドメインに及ぶユーザーが却下できます"
+      "tables_not_registered": "このリクエストが指定するテーブル ({{tables}}) は、もう登録されていません。承認はできません。リレーションシップを承認する権限がすべてのドメインに及ぶユーザーが却下できます"
     },
     "statement": {
       "rows_cut": "回答は {{limit}} 行で打ち切られました。これはこの読み取りに適用される行数制限です ({{kind}})。返された行より多くの行が一致します。",

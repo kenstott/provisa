@@ -88,6 +88,7 @@
     "differences": "Diferencias con el catálogo",
     "differencesHelp": "Cada valor que el catálogo tiene distinto de Provisa. Aceptar toma un lado para una fila, o para toda una tabla o término.",
     "diffNoDifferences": "El catálogo tiene los mismos valores que Provisa.",
+    "diffBothOff": "Ambas direcciones están desactivadas, por lo que no se listan diferencias.",
     "diffObject": "Objeto",
     "diffProvisa": "Provisa",
     "diffCatalog": "Catálogo",

@@ -77,13 +77,13 @@ export function ProposalEditDialog({
             />
           </FormField>
         )}
+        <FormFooter
+          onSave={save}
+          onCancel={onClose}
+          saveProps={{ disabled: trimmed === "", "data-testid": "proposal-edit-save" }}
+          cancelProps={{ "data-testid": "proposal-edit-cancel" }}
+        />
       </FormLayout>
-      <FormFooter
-        onSave={save}
-        onCancel={onClose}
-        saveProps={{ disabled: trimmed === "", "data-testid": "proposal-edit-save" }}
-        cancelProps={{ "data-testid": "proposal-edit-cancel" }}
-      />
     </Modal>
   );
 }

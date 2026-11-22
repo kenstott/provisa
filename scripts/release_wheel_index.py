@@ -39,6 +39,7 @@ PROJECTS = (
     "provisa-notebook",
     "provisa-duckdb-ext",
     "provisa-pg-ext",
+    "provisa-sdk",
 )
 
 

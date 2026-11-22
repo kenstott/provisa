@@ -61,7 +61,7 @@ from provisa.api._catalog_descriptions import (
 )
 from provisa.core.db import init_schema
 from provisa.security.default_grant import VIEWER_ROLE
-from provisa.transpiler.metadata_server_forms import RAISE_FUNCTION_SQL
+from provisa.transpiler.metadata_server_forms import RAISE_FUNCTIONS_SQL
 from provisa.transpiler.metadata_settings import CLIENT_ROLE
 from provisa.core.environments import org_schema
 from provisa.core.repositories import source as _source_repo
@@ -305,7 +305,8 @@ async def _seed_catalog_client(conn: Any, schema_name: str) -> None:
         await conn.execute(f"GRANT {CLIENT_ROLE} TO CURRENT_USER")
     await conn.execute(f'GRANT USAGE ON SCHEMA "{schema_name}" TO {CLIENT_ROLE}')
     await conn.execute(f"GRANT SELECT ON {', '.join(_terminal_relations())} TO {CLIENT_ROLE}")
-    await conn.execute(RAISE_FUNCTION_SQL)
+    for statement in RAISE_FUNCTIONS_SQL:
+        await conn.execute(statement)
 
 
 async def _register_admin_view(

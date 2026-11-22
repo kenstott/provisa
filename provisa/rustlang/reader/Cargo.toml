@@ -11,7 +11,7 @@ name = "reader"
 path = "src/main.rs"
 
 [dependencies]
-syn = { version = "=2.0.111", default-features = false, features = ["full", "parsing", "printing", "clone-impls", "extra-traits"] }
+syn = { version = "=2.0.111", default-features = false, features = ["full", "parsing", "printing", "clone-impls", "extra-traits", "visit"] }
 quote = { version = "=1.0.42", default-features = false }
 proc-macro2 = { version = "=1.0.103", default-features = false }
 serde_json = { version = "=1.0.145", features = ["preserve_order"] }

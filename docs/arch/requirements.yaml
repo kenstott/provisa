@@ -18802,7 +18802,7 @@
     2026-11-10, THE ENGINE RELEASE BUILDS THE BUNDLES:) Maintainer 2026-11-10: the pgwire connector bundles,
     including the files they share, are built, signed and published by the calcite engine release, which
     holds the signing key and repository credentials, for every supported platform. Provisa builds no bundle;
-    it reads the bundles the engine release published at the engine version it pins.'
+    it reads the bundles the engine release published at the engine version it pins. (Amended 2026-11-22 by the maintainer. Installs that stage DuckDB extensions on first launch fetch the provisa-duckdb-ext packages from the release''s own package index on GitHub Pages (https://kenstott.github.io/provisa/simple/), added to pip as an extra index; the machine''s configured index still serves third-party packages. Nothing is fetched from PyPI. No installer carries extensions as a separate release asset: the macOS DMG split of extension files into their own asset and its first-launch restore are removed, so every installer works the same.)'
   use_case: Fully airgapped bundle lets enterprises in no-internet environments install and run Provisa
     from local media.
   code:
@@ -87345,7 +87345,7 @@ And a constant naming a secret that does not exist fails the query, naming the c
     is refused when saved if it could backtrack catastrophically (nested or overlapping repeats, lookaround,
     back references) or is too large, and runs with a step limit linear in the text''s length; past the
     limit the text is withheld and the rule is named to its administrators. A held organization''s rule
-    cannot reference the server''s environment. The deployment''s own rules keep the full pattern syntax.'
+    cannot reference the server''s environment. The deployment''s own rules keep the full pattern syntax. (Amended 2026-11-22 by the maintainer. A secret is redacted only where its value appears as a whole token: bounded by characters that cannot be part of an identifier, or as a whole quoted value. An occurrence inside a longer identifier (for example provisa inside provisa_cache.mv_orders_summary) is left as written, so a short or common-word secret does not rewrite unrelated names in client errors and logs.)'
   use_case: "A warehouse password reaches a connection error; the error the client receives, the span exported to the collector and the container log all read [REDACTED:auto:warehouse_pw] instead of the password."
   scenario: "Given the org's vault holds warehouse_pw and the org adds a rule employee_id with pattern EMP-\\d{6}
 
@@ -97919,7 +97919,7 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     names. (Amended 2026-11-19, RECENT CHANGE IS THE TERM''S LAST WRITE:) Maintainer 2026-11-19. Every
     glossary term records when it last changed: any write to its name, definition, calculation method,
     domains, relations on either end or status sets that time. The Glossary''s recent-change sort orders by
-    it.'
+    it. (Amended 2026-11-21 by the maintainer. Tags lost counts confirmed tag losses (REQ-2145), each recorded when confirmed with its column, tag, the term it left, who and when; the card counts this period''s. Data Products sync status comes from a record of each publish per entry with its time and per-product outcome, read through an endpoint gated on data_product_read. Documents due counts the REQ-2208 review items until attestations (REQ-2209) are built.)'
 - id: REQ-2260
   status: complete
   since: 2026-11

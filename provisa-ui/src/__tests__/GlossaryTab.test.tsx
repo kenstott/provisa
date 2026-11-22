@@ -284,6 +284,7 @@ const REVENUE_DETAIL: GlossaryTermDetail = {
   experts: [{ user_id: "u1", kind: "expert" }],
   tags: [],
   pending_on: [],
+  curatable: true,
   iri: null,
 };
 
@@ -295,6 +296,7 @@ const CHURN_DETAIL: GlossaryTermDetail = {
   experts: [],
   tags: [],
   pending_on: [],
+  curatable: true,
   iri: null,
 };
 
@@ -307,6 +309,7 @@ const MARGIN_DETAIL: GlossaryTermDetail = {
   experts: [],
   tags: [],
   pending_on: [],
+  curatable: true,
   iri: null,
 };
 

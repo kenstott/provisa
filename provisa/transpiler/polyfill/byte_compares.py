@@ -9,7 +9,13 @@
 # permission from the copyright holder.
 
 """btree's byte-order comparisons on ClickHouse (REQ-2236; the function support measure's edge
-values, REQ-2171): each answers the value PostgreSQL's source computes, not only its sign.
+values, REQ-2171): each answers PostgreSQL's sign, and the magnitude of a byte-wise memcmp.
+
+PostgreSQL documents only the sign of a comparison support function's result; the magnitude it
+returns is its platform's memcmp. glibc's AVX2 memcmp answers a difference of byte-swapped words
+(byteacmp('\\x00ff00', '\\xdeadbeef') is -1859584190 there), its byte-wise one the difference of
+the first differing bytes (-222). The function support measure compares these functions by sign
+(scripts/conformance/function_support.COMPARISON_FUNCTIONS).
 
 memcmp's: bttext_pattern_cmp, btbpchar_pattern_cmp (its trailing spaces are padding, bcTruelen),
 btnametextcmp, bttextnamecmp, gin_cmp_tslexeme, gin_compare_jsonb and byteacmp compare the bytes

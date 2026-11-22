@@ -186,6 +186,13 @@ _ASSETS: dict[tuple[str, str], tuple[str, ...]] = {
     ("release-packages.yml", "build-provisa-notebook"): (
         "provisa-notebook/dist/provisa_notebook-*.whl",
     ),
+    ("release-packages.yml", "build-sdk-python"): (
+        "provisa-sdk/python/dist/provisa_sdk-*.whl",
+        "provisa-sdk/python/dist/provisa_sdk-*.tar.gz",
+    ),
+    ("release-packages.yml", "build-sdk-typescript"): (
+        "provisa-sdk/typescript/dist/provisa-sdk-*.tgz",
+    ),
     ("release-packages.yml", "provisa-sbom"): ("provisa-sbom.cdx.json", "provisa-cve-report.json"),
 }
 #: Artifacts a release also keeps in the run, because a job of the same run reads them: the PyPI
@@ -288,6 +295,8 @@ def test_the_publish_leg_copies_no_asset_and_verifies_every_one():
     for wheel in (
         f"provisa_client-{py}-py3-none-any.whl",
         f"provisa_notebook-{py}-py3-none-any.whl",
+        f"provisa_sdk-{py}-py3-none-any.whl",
+        "provisa-sdk-${{ needs.metadata.outputs.npm_version }}.tgz",
         f"provisa-{py}-cp312-cp312-manylinux_2_28_x86_64.whl",
         f"provisa-{py}-cp312-cp312-manylinux_2_28_aarch64.whl",
         f"provisa-{py}-cp312-cp312-macosx_*_arm64.whl",
@@ -459,8 +468,9 @@ def test_the_publish_leg_requires_the_client_and_notebook_wheels_as_release_asse
     step = next(s for s in _publish_job()["steps"] if "Publish release" in s.get("name", ""))
     required = step["env"]["REQUIRED"]
     assert "provisa_client-" in required and "provisa_notebook-" in required
+    assert "provisa_sdk-" in required
     script = (_ROOT / "scripts" / "release_wheel_index.py").read_text()
-    for project in ("provisa", "provisa-client", "provisa-notebook"):
+    for project in ("provisa", "provisa-client", "provisa-notebook", "provisa-sdk"):
         assert f'"{project}",' in script.split("PROJECTS = (")[1].split(")")[0]
 
 

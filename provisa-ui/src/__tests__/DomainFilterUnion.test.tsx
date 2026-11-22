@@ -56,6 +56,15 @@ const OPS: Role = {
   demonstrated: [],
   domain_access: ["ops"],
 };
+// REQ-1327: reaches shelter by its domain_access, but no table there is one it reads.
+const KENNEL: Role = {
+  id: "kennel",
+  description: "What kennel is for.",
+  capabilities: ["query_development"] as Capability[],
+  effectiveCapabilities: ["query_development"] as Capability[],
+  demonstrated: [],
+  domain_access: ["pet-store", "shelter"],
+};
 const LOADER: Role = {
   id: "loader",
   description: "What loader is for.",
@@ -74,6 +83,8 @@ const SERVED: Record<string, string[]> = {
   ops: ["ops", "shelter"],
   // `*` is every data domain: this wildcard role holds no system capability.
   loader: ["pet-store", "shelter"],
+  // REQ-1327: the server lists only domains holding a table the role reads.
+  kennel: ["pet-store"],
 };
 
 function Probe() {
@@ -170,6 +181,13 @@ describe("DomainFilterContext domain resolution", () => {
   it("unions the named domains of several non-wildcard roles", async () => {
     renderWith([ANALYST, OPS]);
     expect(await domainsShown()).toEqual(["meta", "ontology", "ops", "pet-store", "shelter"]);
+  });
+
+  it("lists only the domains the server says hold a table the role reads", async () => {
+    // REQ-1327: kennel's domain_access names shelter, but it reads no table there, so the picker
+    // does not offer it. The picker shows the server's answer, never the role's domain_access.
+    renderWith([KENNEL]);
+    expect(await domainsShown()).toEqual(["pet-store"]);
   });
 
   it("adding a role never removes a domain the user already had", async () => {

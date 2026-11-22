@@ -88,6 +88,7 @@
     "differences": "कैटलॉग से अंतर",
     "differencesHelp": "हर वह मान जो कैटलॉग में Provisa से अलग है। स्वीकार करें किसी पंक्ति, या पूरी तालिका या पद के लिए एक पक्ष चुनता है।",
     "diffNoDifferences": "कैटलॉग में वही मान हैं जो Provisa में हैं।",
+    "diffBothOff": "दोनों दिशाएँ बंद हैं, इसलिए कोई अंतर सूचीबद्ध नहीं है।",
     "diffObject": "ऑब्जेक्ट",
     "diffProvisa": "Provisa",
     "diffCatalog": "कैटलॉग",

@@ -11,9 +11,9 @@
 """Who decides a relationship request, and when it may be carried out (REQ-1948).
 
 A relationship request is decided by the domains it touches: the domain of its source table and
-the domain of its target table. An approval counts only from a user whose right to create
-relationships reaches at least one of them (REQ-1944's reach: the domains of the roles carrying
-the right). The request is executable once two different users, neither the requester, have
+the domain of its target table. An approval counts only from a user whose right to approve
+relationships (approve_relationship, REQ-1327(5)) reaches at least one of them (REQ-1944's reach:
+the domains of the roles carrying the right). The request is executable once two different users, neither the requester, have
 approved AND every domain involved is reached by at least one of them.
 
 Each approval records the involved domains its approver reached when it was given, so the
@@ -22,7 +22,7 @@ question "which domains has this request heard from" is answered from the reques
 The rule is here once; the REST queue and the GraphQL mutations both ask it.
 """
 
-# Requirements: REQ-1948, REQ-1944, REQ-1531
+# Requirements: REQ-1948, REQ-1944, REQ-1531, REQ-1327
 
 from __future__ import annotations
 
@@ -32,8 +32,8 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from provisa.core.database import Connection
 
-#: The right whose reach decides a relationship request.
-RIGHT = "create_relationship"
+#: The right whose reach decides a relationship request (REQ-1327(5), REQ-1948 as amended).
+RIGHT = "approve_relationship"
 
 #: The request type this rule governs.
 REQUEST_TYPE = "relationship"
@@ -106,7 +106,7 @@ def _eligibility_refusal(
             return Refusal(
                 "requests.tables_not_registered",
                 f"The tables this request names ({names}) are no longer registered. It cannot "
-                "be approved; a user whose right to create relationships reaches every domain "
+                "be approved; a user whose right to approve relationships reaches every domain "
                 "may reject it",
                 {"tables": names},
             )
@@ -114,7 +114,7 @@ def _eligibility_refusal(
         names = _named(involved)
         return Refusal(
             "requests.approver_outside_domains",
-            f"Your right to create relationships does not reach a domain this request "
+            f"Your right to approve relationships does not reach a domain this request "
             f"touches ({names})",
             {"domains": names},
         )

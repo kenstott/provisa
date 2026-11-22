@@ -45,6 +45,8 @@ from provisa.codesource.manifest import RUST_RULES, Manifest, read_manifest
 from provisa.rustlang.toolchain import Toolchain
 
 READER = Path(__file__).with_name("reader")
+#: The package of Provisa's optional Rust SDK (REQ-1984), whose registrations the reader reads.
+SDK_PACKAGE = "provisa-sdk"
 _READER_SOURCES = ("Cargo.toml", "Cargo.lock", "src/main.rs")
 
 
@@ -101,6 +103,23 @@ def library_root(crate: Path, manifest: dict[str, Any]) -> Path:
             "the crate has no library (src/lib.rs): a Rust source's functions are a library's",
         )
     return root
+
+
+def sdk_crates(manifest: dict[str, Any]) -> list[str]:
+    """The names the crate's ``Cargo.toml`` gives the SDK, as its code writes them: each
+    dependency, in ``[dependencies]`` or a ``[target.*.dependencies]``, whose package is
+    ``provisa-sdk``. Cargo's rule: a dependency's package is its ``package`` key, else its own
+    name; its name in code has ``-`` written ``_``."""
+    tables = [manifest.get("dependencies", {})]
+    targets = manifest.get("target", {})
+    tables += [t.get("dependencies", {}) for t in targets.values() if isinstance(t, dict)]
+    names = set()
+    for dependencies in tables:
+        for name, spec in dependencies.items():
+            package = spec.get("package", name) if isinstance(spec, dict) else name
+            if package == SDK_PACKAGE:
+                names.add(name.replace("-", "_"))
+    return sorted(names)
 
 
 def cargo_environment(
@@ -193,8 +212,10 @@ def ensure_reader(
 def read_document(reader: Path, crate: Path, toolchain: str) -> dict[str, Any]:
     """What the reader prints of the crate: every public function at its root, with its tags
     and its types as trees (docs/arch/code-sources.md, section 2)."""
-    root = library_root(crate, crate_manifest(crate, toolchain))
-    out = run_cargo([str(reader), str(root.resolve())], {"PATH": ""}, crate)
+    manifest = crate_manifest(crate, toolchain)
+    root = library_root(crate, manifest)
+    argv = [str(reader), str(root.resolve()), *sdk_crates(manifest)]
+    out = run_cargo(argv, {"PATH": ""}, crate)
     return json.loads(out)
 
 
