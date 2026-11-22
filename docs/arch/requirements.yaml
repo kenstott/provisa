@@ -98209,3 +98209,28 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     federation engine through a Provisa-launched pure-Python pgwire sidecar on the pgwire-calcite backend seam,
     launched like the other pgwire replicas. New pushdown capabilities are backlogged as their own requirements. (Amended 2026-11-21 by the maintainer. A generated table may declare a loader with a batch size, under the code-source @loader contract (REQ-2100), and its handler then answers a batch of join keys: a GraphQL remote that fetches by a key list (where _in, or nodes by ids) and an OpenAPI operation that looks up a list of ids give their row type table its loader. The first version supports @discover in Python code sources only; other code-source languages follow as their own requirements, Rust first for speed.) (Amended 2026-11-22. In v0, a generated query or command whose parameter is a TableRef is refused by name at discovery; TableRef parameters stay on hand-written commands.) (Amended 2026-11-22 by the maintainer. The code-source contract carries relationships, so a discover result, built-in or user-written, declares the relationships between its generated tables. It carries warnings, so a read cut at its page limit returns its rows with the same answer-was-cut warning the built-in sources give. Credentials of a code source are stored as secret references and resolved through the secrets service at call time, never written to the code directory)'
 
+- id: REQ-2268
+  status: proposed
+  target: 2027-Q1
+  group: 5. Query Languages, Compilation & Operations
+  category: Cypher Query Frontend (Phase AU)
+  feature: glossary-tags-ontology-queryable-metadata
+  priority: SHOULD
+  type: behavioral
+  description: 'Maintainer 2026-11-22. Tags are served in the Cypher graph like data. Each tag is a Tag node
+    carrying its name, description, owner and the policy it triggers, a shared dimension of the metadata.
+    Each tagged table or column node has a TAGGED edge to the tag, a junction of the metadata, whose
+    properties are who applied it, when, its origin (a person or the model), whether it is confirmed and the
+    glossary term it came from. Only the tables, columns and tags the caller''s role can read appear, with
+    the same masking and visibility as any read. These nodes and edges are generated from the tag
+    assignments: they are not registered relationships, never appear on the Relationships page, and cannot be
+    edited there or in Cypher; they change only when the tags change.'
+  scenario: 'Given a column tagged PII by a steward and confirmed, and a role that reads the column
+
+    When the role runs MATCH (c)-[t:TAGGED]->(g:Tag {name: ''PII''}) RETURN c, t, g
+
+    Then it gets the column, the edge with who applied the tag, when, its origin and confirmed, and the PII tag
+
+    When the role lists the Relationships page
+
+    Then no TAGGED relationship appears, and none can be created or edited there or by a Cypher write'

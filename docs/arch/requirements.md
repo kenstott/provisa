@@ -27259,3 +27259,15 @@ Maintainer 2026-11-21. Discovered code-source items and live API sources. (1) A 
 **Code:** —
 
 **Tests:** —
+
+## 5. Query Languages, Compilation & Operations
+
+### REQ-2268 · Cypher Query Frontend (Phase AU) {#REQ-2268}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Maintainer 2026-11-22. Tags are served in the Cypher graph like data. Each tag is a Tag node carrying its name, description, owner and the policy it triggers, a shared dimension of the metadata. Each tagged table or column node has a TAGGED edge to the tag, a junction of the metadata, whose properties are who applied it, when, its origin (a person or the model), whether it is confirmed and the glossary term it came from. Only the tables, columns and tags the caller's role can read appear, with the same masking and visibility as any read. These nodes and edges are generated from the tag assignments: they are not registered relationships, never appear on the Relationships page, and cannot be edited there or in Cypher; they change only when the tags change.
+
+**Code:** —
+
+**Tests:** —
