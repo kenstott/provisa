@@ -189,6 +189,10 @@ jobs:
         shell: bash
         run: rustup toolchain install 1.95.0 --profile minimal
 
+      # build-dmg.sh stage builds the provisa-notebook wheel; its build takes Pyodide from here.
+      - name: Pyodide downloads
+        uses: ./.github/actions/pyodide-downloads
+
       - name: Build and sign the Container app
         env:
           PROVISA_EDITION: container
