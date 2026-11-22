@@ -730,6 +730,13 @@ def test_every_asset_name_a_leg_uses_is_one_the_metadata_action_resolves():
         assert step["with"] == {"version": "${{ inputs.version }}"}
 
 
+# The artifact each caching action's `phase: prime` uploads, under the caller's key-prefix.
+_PRIMED_ARTIFACT = {
+    "./.github/actions/trino-plugins": "trino-plugins",
+    "./.github/actions/zaychik-image": "zaychik-image",
+}
+
+
 def test_a_leg_that_reads_another_legs_artifact_starts_after_it():
     """Artifacts are the run's: a leg downloads what another leg uploaded, so the orchestrator
     must order them. Every named download in a leg is uploaded in that leg or in one it needs."""
@@ -747,7 +754,13 @@ def test_a_leg_that_reads_another_legs_artifact_starts_after_it():
     for job, bodies in jobs.items():
         for body in bodies:
             for step in body.get("steps") or []:
-                artifact = (step.get("with") or {}).get("name")
+                given = step.get("with") or {}
+                if step.get("uses") in _PRIMED_ARTIFACT and given.get("phase") == "prime":
+                    # The action's prime phase uploads the run's artifact itself.
+                    primed = given.get("key-prefix", "") + _PRIMED_ARTIFACT[step["uses"]]
+                    uploads.setdefault(job, set()).add(primed)
+                    continue
+                artifact = given.get("name")
                 if not artifact:
                     continue
                 if "upload-artifact" in (step.get("uses") or ""):
@@ -1515,7 +1528,7 @@ def test_every_plugin_restore_waits_for_a_job_that_primed_the_cache():
     fetched the jars from Maven Central inside collection at the same moment; core 17/18 got HTTP
     429 as an INTERNALERROR. Now one job per workflow run primes the cache (`phase: prime`: a hit,
     or one download, checksum-verified, saved at once) and every job that restores it (`phase:
-    restore`, which fails on a miss and verifies each jar) waits for that job, so the cache step
+    restore`, which takes a missed entry from the run's artifact and verifies each jar) waits for that job, so the cache step
     precedes pytest and no lane ever downloads."""
     restoring = []
     for path in WORKFLOWS:
@@ -1533,6 +1546,94 @@ def test_every_plugin_restore_waits_for_a_job_that_primed_the_cache():
                     f"that primes them (primers here: {sorted(primers)})"
                 )
     assert restoring, "no job restores the Trino plugins"
+
+
+def test_a_plugin_cache_miss_is_answered_by_the_runs_artifact_not_a_failure_or_a_download():
+    """Runs 44942101401 and 44940962731: the cache entry the priming job saved was evicted before
+    the lane's restore, which failed on the miss. The cache is branch-scoped and evictable; the
+    run's own artifact is not. Priming uploads the verified jars; a restore that missed takes
+    them from there."""
+    steps = yaml.safe_load(
+        (REPO / ".github" / "actions" / "trino-plugins" / "action.yml").read_text()
+    )["runs"]["steps"]
+    for s in steps:
+        if str(s.get("uses", "")).startswith("actions/cache/restore"):
+            assert s["with"]["fail-on-cache-miss"] is False, s["name"]
+    names = [s.get("name") for s in steps]
+    down = steps[names.index("Download the run's Trino plugins")]
+    up = steps[names.index("Upload the run's Trino plugins")]
+    assert down["uses"].startswith("actions/download-artifact")
+    assert up["uses"].startswith("actions/upload-artifact")
+    assert down["with"]["name"] == up["with"]["name"]
+    assert "restore" in down["if"] and "prime" in up["if"]
+    assert names.index("Download the run's Trino plugins") < names.index("Verify Trino plugins")
+    assert names.index("Upload the run's Trino plugins") > names.index(
+        "Verify the provisa-functions plugin"
+    )
+
+
+_ZAYCHIK_ACTION = "./.github/actions/zaychik-image"
+
+
+def _zaychik_phases(body: dict) -> list[str]:
+    """The zaychik-image phases a job runs: its own action steps, or `restore` for a call of the
+    lane workflow with zaychik-image switched on."""
+    if body.get("uses") == _LANE_WORKFLOW:
+        return ["restore"] if (body.get("with") or {}).get("zaychik-image", False) else []
+    return [
+        (s.get("with") or {}).get("phase")
+        for s in body.get("steps") or []
+        if s.get("uses") == _ZAYCHIK_ACTION
+    ]
+
+
+def test_every_zaychik_restore_waits_for_the_one_job_that_primed_the_image():
+    """Runs 45030691606, 45030697705, 45030636599: lanes failed at "Restore the zaychik image" on
+    a cache miss. A restore takes a missed entry from the run's artifact, which exists only once a
+    job of the same run primed it, so every restoring job waits for that job. One job per run
+    primes it: the artifact's name is the run's, and a second upload under it is a 409."""
+    restoring = []
+    for path in WORKFLOWS:
+        if path.name == "lane.yml":
+            continue  # the callee: each caller's job is checked where it calls it
+        jobs = yaml.safe_load(path.read_text()).get("jobs") or {}
+        primers = {j for j, body in jobs.items() if "prime" in _zaychik_phases(body)}
+        assert len(primers) <= 1, f"{path.name}: zaychik-image primed by {sorted(primers)}"
+        for job, body in jobs.items():
+            phases = _zaychik_phases(body)
+            assert set(phases) <= {"prime", "restore"}, f"{path.name}:{job}: {phases}"
+            assert phases.count("prime") <= 1, f"{path.name}:{job}: {phases}"
+            if "restore" in phases and "prime" not in phases:
+                restoring.append(f"{path.name}:{job}")
+                assert _needed(jobs, job) & primers, (
+                    f"{path.name}:{job} restores the zaychik image without waiting for a job "
+                    f"that primes it (primers here: {sorted(primers)})"
+                )
+    assert restoring, "no job restores the zaychik image"
+
+
+def test_a_zaychik_cache_miss_is_answered_by_the_runs_artifact():
+    """The cache entry the priming job saved can be gone by a lane's restore (evicted, or never
+    readable from the lane's scope). The priming job uploads the image as the run's artifact on a
+    hit and on a miss; a restore that missed downloads it, and fails by name only when neither
+    exists."""
+    steps = yaml.safe_load(
+        (REPO / ".github" / "actions" / "zaychik-image" / "action.yml").read_text()
+    )["runs"]["steps"]
+    for s in steps:
+        if str(s.get("uses", "")).startswith("actions/cache/restore"):
+            assert s["with"]["fail-on-cache-miss"] is False, s["name"]
+    names = [s.get("name") for s in steps]
+    down = steps[names.index("Download the run's zaychik image")]
+    up = steps[names.index("Upload the run's zaychik image")]
+    assert down["uses"].startswith("actions/download-artifact")
+    assert up["uses"].startswith("actions/upload-artifact")
+    assert down["with"]["name"] == up["with"]["name"]
+    assert "restore" in down["if"] and "cache-hit != 'true'" in down["if"]
+    assert up["if"] == "inputs.phase == 'prime'"
+    assert up["with"]["if-no-files-found"] == "error"
+    assert names.index("Build the zaychik image") < names.index("Upload the run's zaychik image")
+    assert names.index("Download the run's zaychik image") < names.index("Load the zaychik image")
 
 
 def test_the_lane_workflow_restores_the_plugins_before_its_lane_and_saves_none():
@@ -1572,3 +1673,25 @@ def test_nothing_in_ci_names_the_plugin_jars_maven_location_but_the_pin():
         if p.is_file() and p.suffix in {".yml", ".yaml", ".sh", ".py"} and maven in p.read_text()
     ]
     assert named == []
+
+
+def test_no_job_uploads_a_second_artifact_under_a_name_its_priming_action_uploads():
+    """The trino-plugins and zaychik-image actions' prime phase uploads the run's artifact
+    (`trino-plugins`, `zaychik-image`). release-prebuilt.yml's download-plugins job also uploaded
+    `trino-plugins` itself after priming; a second upload under one name in a run is a 409."""
+    for path in WORKFLOWS:
+        jobs = yaml.safe_load(path.read_text()).get("jobs") or {}
+        for job, body in jobs.items():
+            steps = body.get("steps") or []
+            taken = {
+                (s.get("with") or {}).get("key-prefix", "") + _PRIMED_ARTIFACT[s["uses"]]
+                for s in steps
+                if s.get("uses") in _PRIMED_ARTIFACT
+                and (s.get("with") or {}).get("phase") == "prime"
+            }
+            for s in steps:
+                if str(s.get("uses", "")).startswith("actions/upload-artifact"):
+                    name = (s.get("with") or {}).get("name")
+                    assert name not in taken, (
+                        f"{path.name}:{job} uploads {name!r}, which its priming action uploads"
+                    )

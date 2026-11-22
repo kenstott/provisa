@@ -66,14 +66,8 @@ jobs:
         uses: ./.github/actions/trino-plugins
         with:
           phase: prime
-
-      - name: Upload plugin directories
-        uses: actions/upload-artifact@v4
-        with:
-          name: trino-plugins
-          path: trino/plugins/
-          retention-days: 1
-          compression-level: 0
+          # The prime phase uploads the verified plugins as this run's `trino-plugins` artifact,
+          # which package-plugins downloads. A second upload under that name here was a 409.
 
   package-plugins:
     name: Package Trino plugins tarball for release
