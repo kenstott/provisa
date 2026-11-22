@@ -1,0 +1,11 @@
+{
+  "relShape": {
+    "label": "Type de rel.",
+    "directTip": "Clé étrangère directe",
+    "junctionTip": "Via la table de jonction {{table}}",
+    "dimensionTip": "Via la dimension partagée {{table}}",
+    "dimensionTipUnnamed": "Via une dimension partagée",
+    "prop": "prop",
+    "propTip": "Propriétés : {{properties}}"
+  }
+}

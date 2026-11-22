@@ -1,0 +1,11 @@
+{
+  "relShape": {
+    "label": "関係タイプ",
+    "directTip": "直接の外部キー",
+    "junctionTip": "中間テーブル {{table}} 経由",
+    "dimensionTip": "共有ディメンション {{table}} 経由",
+    "dimensionTipUnnamed": "共有ディメンション経由",
+    "prop": "プロパティ",
+    "propTip": "プロパティ: {{properties}}"
+  }
+}

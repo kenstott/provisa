@@ -169,6 +169,8 @@ const relationship = (id: string, source: number, target: number) => ({
   withdrawn: false,
   viaTableId: null,
   viaTableName: null,
+  shape: "direct",
+  properties: [],
   viaSourceColumn: null,
   viaTargetColumn: null,
   viaTypeColumn: null,

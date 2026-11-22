@@ -228,6 +228,8 @@ const member = {
   parameters: [],
   viaTableId: null,
   viaTableName: null,
+  shape: "direct",
+  properties: [],
   viaSourceColumn: null,
   viaTargetColumn: null,
   viaTypeColumn: null,

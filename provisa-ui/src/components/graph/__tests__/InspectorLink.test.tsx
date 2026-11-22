@@ -34,6 +34,8 @@ const rel = {
   alias: "PLACED_BY",
   graphqlAlias: null,
   cypherType: "PLACED_BY",
+  shape: "direct",
+  properties: [],
 } as unknown as Relationship;
 
 function show(selected: { kind: "node"; data: GNode } | { kind: "edge"; data: GEdge }) {

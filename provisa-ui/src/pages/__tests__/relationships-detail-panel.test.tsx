@@ -39,6 +39,8 @@ const rel = (id: string, source: string, column: string, target: string) => ({
   disableCypher: false,
   parameters: [],
   viaTableName: null,
+  shape: "direct",
+  properties: [],
 });
 
 // Stable objects: a hook that answered a new array each render would re-run the page's effects.
@@ -50,13 +52,18 @@ const RELS = {
   loading: false,
   refetch: vi.fn(),
 };
-const TABLES: { tables: unknown[]; loading: boolean; refetch: () => Promise<unknown> } = { tables: [], loading: false, refetch: () => Promise.resolve() };
+const TABLES: { tables: unknown[]; loading: boolean; refetch: () => Promise<unknown> } = {
+  tables: [],
+  loading: false,
+  refetch: () => Promise.resolve(),
+};
 const DOMAINS = { domains: [] };
 const UPSERT = { upsertRelationship: vi.fn(async () => ({ success: true, message: "" })) };
 const DELETE = {
-  deleteRelationship: vi.fn(
-    async (..._args: unknown[]): Promise<MutationResult> => ({ success: true, message: "" }),
-  ),
+  deleteRelationship: vi.fn(async (..._args: unknown[]): Promise<MutationResult> => ({
+    success: true,
+    message: "",
+  })),
 };
 const AUTH = { capabilities: ["create_relationship"] };
 const FILTER: { domainsEnabled: boolean; domains: string[]; checkedDomains: Set<string> } = {
