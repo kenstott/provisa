@@ -129,6 +129,12 @@ class _Flaky:
             def alive(self):
                 return True
 
+            def touch(self):
+                pass
+
+            def idle_since(self):
+                return None
+
             def stop(self):
                 pass
 
