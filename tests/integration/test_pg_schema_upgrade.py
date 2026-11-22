@@ -481,6 +481,9 @@ _CREATE_ONLY = {
     "glossary_ontology_items": (
         "id import_id ordinal name kind definition iri payload status term_id tenant_id"
     ),
+    "glossary_tag_losses": (
+        "id table_id table_ref column_name tag_id term_id term_name confirmed_by confirmed_at"
+    ),
     "glossary_term_domains": "id term_id domain_id tenant_id",
     "glossary_term_drafts": (
         "id scan_id ordinal name category sense definition definition_kind proposal match_term_id "
