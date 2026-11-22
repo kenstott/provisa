@@ -50,7 +50,7 @@ landed) gives an empty context and asks for the whole table under its inputs.
         ...
 """
 
-# Requirements: REQ-2104, REQ-2105, REQ-2106
+# Requirements: REQ-2104, REQ-2105, REQ-2106, REQ-2267
 from __future__ import annotations
 
 import base64
@@ -61,9 +61,14 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field
+from collections.abc import Callable, Sequence
 from typing import Any, Generic, TypeVar
 
 __all__ = [
+    "Discovered",
+    "DiscoveredCommand",
+    "DiscoveredQuery",
+    "DiscoveredTable",
     "Filter",
     "Order",
     "ReadContext",
@@ -458,3 +463,70 @@ class ReadContext:
             columns=tuple(given["columns"]),
             keys=given.get("keys"),
         )
+
+
+# -- generated items (REQ-2267) ------------------------------------------------------------------
+#
+# A module's one ``@discover`` function, called when the code is read (never per query), returns a
+# :class:`Discovered`: generated tables, queries and commands, each recorded as a hand-written
+# ``@table``, ``@query`` or ``@command`` function is, and served by one handler per kind, a
+# function of the module called with the item's name:
+#
+#     table_handler(name, inputs, context)   # inputs: a dict of the inputs given; a ReadContext
+#     query_handler(name, arguments)         # arguments: a dict of the arguments given
+#     command_handler(name, arguments)
+#
+# A row type, an inputs type and a parameters type are classes, as a hand-written function's are
+# (a dataclass, a TypedDict, a Pydantic model), and may be made at discovery
+# (``dataclasses.make_dataclass``).
+
+
+@dataclass(frozen=True)
+class DiscoveredTable:
+    """A generated table: its ``row`` type, whose fields are its columns, and its ``inputs``
+    type, whose fields are its inputs (None: it takes none). ``loader`` (REQ-2100): its handler
+    is given a join's keys in its read context and answers each key's rows; ``loader_batch`` the
+    largest batch it takes (it implies ``loader``)."""
+
+    name: str
+    row: type
+    inputs: type | None = None
+    description: str = ""
+    loader: bool = False
+    loader_batch: int | None = None
+
+
+@dataclass(frozen=True)
+class DiscoveredQuery:
+    """A generated query: the ``table`` whose rows it returns (generated or hand-written), and
+    its ``parameters`` type, whose fields are its parameters (None: it takes none)."""
+
+    name: str
+    table: str
+    parameters: type | None = None
+    description: str = ""
+
+
+@dataclass(frozen=True)
+class DiscoveredCommand:
+    """A generated command: its ``parameters`` type, and what it returns -- the rows of a
+    ``table``, one value of the type ``returns``, or nothing when it names neither."""
+
+    name: str
+    parameters: type | None = None
+    returns: Any = None
+    table: str | None = None
+    description: str = ""
+
+
+@dataclass(frozen=True)
+class Discovered:
+    """What ``@discover`` returns: its generated items, and the handler of each kind it
+    generates."""
+
+    tables: Sequence[DiscoveredTable] = ()
+    queries: Sequence[DiscoveredQuery] = ()
+    commands: Sequence[DiscoveredCommand] = ()
+    table_handler: Callable[..., Any] | None = None
+    query_handler: Callable[..., Any] | None = None
+    command_handler: Callable[..., Any] | None = None

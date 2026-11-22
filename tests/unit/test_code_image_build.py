@@ -15,7 +15,7 @@ every image runs with the language's host program as its worker (REQ-2100), on t
 here with a base registry answered in-process, the runtimes' archives already in the cache, and the
 installs' commands recorded rather than run."""
 
-# Requirements: REQ-2098, REQ-2100
+# Requirements: REQ-2098, REQ-2100, REQ-2267
 
 from __future__ import annotations
 
@@ -125,7 +125,7 @@ def base(tmp_path: Path) -> oci.Registry:
 
 
 NAMES = {"rates": {"columns": [], "parameters": [], "takes": []}}
-MANIFEST = {"exports": [{"name": "rates"}], "types": {}, "requires": []}
+MANIFEST = {"exports": [{"name": "rates", "handler": None}], "types": {}, "requires": []}
 FRONT = [
     "-I",
     "/opt/provisa/front/front.py",
@@ -227,6 +227,8 @@ def test_a_python_source_is_built_for_linux_with_its_wheels_and_its_host(
     }
     assert "PROVISA_CODE_HASH=" + content_hash(code) in config["Env"]
     assert "PROVISA_MANIFEST_FILE=/opt/provisa/front/manifest.json" in config["Env"]
+    # REQ-2267: the host serves generated items by the handlers baked with the manifest.
+    assert "PROVISA_DISCOVERED={}" in config["Env"]
     paths = _layers_paths(built)
     assert "opt/provisa/front/manifest.json" in paths
     assert {

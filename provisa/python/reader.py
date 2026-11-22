@@ -20,10 +20,15 @@ tags of its docstring (a line that is exactly ``@name``), the docstring's other 
 parameters' and result's types as trees. Nothing is decided here; which functions are tables,
 commands or streams, and what each type maps to, is Provisa's (provisa/codesource/manifest.py).
 
+REQ-2267: the module's one function tagged ``@discover`` is called here, once, and each table,
+query and command it generates (provisa_services.Discovered) is written as an entry of its own, as
+a hand-written ``@table``, ``@query`` or ``@command`` function's would be, carrying the name of the
+handler function that serves it.
+
 Standard library only: the code's environment is the code's, and nothing of Provisa's is on it.
 """
 
-# Requirements: REQ-1993
+# Requirements: REQ-1993, REQ-2267
 from __future__ import annotations
 
 import collections.abc as cabc
@@ -271,6 +276,167 @@ def _load_entry(entry: str) -> types.ModuleType:
     return module
 
 
+#: REQ-2267: the tag of the function whose result is the code's generated items.
+_DISCOVER = "discover"
+_CONTEXT_PARAMETER = {
+    "name": "context",
+    "optional": False,
+    "rest": False,
+    "type": {"kind": "ref", "name": "ReadContext"},
+}
+
+
+class _Discovery:
+    """REQ-2267: what one ``@discover`` call generated, as the reader's entries."""
+
+    def __init__(self, reader: _Reader, module: types.ModuleType, function: str) -> None:
+        self.reader = reader
+        self.module = module
+        self.function = function
+        self.problems: list[str] = []
+
+    def _handler(self, kind: str, fn: typing.Any) -> str | None:
+        """The name of the module's function ``fn`` that serves every generated item of ``kind``."""
+        field = f"{kind}_handler"
+        if fn is None:
+            self.problems.append(f"{self.function}: it generates {kind}s and names no {field}")
+            return None
+        name = getattr(fn, "__name__", "")
+        if not inspect.isfunction(fn) or getattr(self.module, name, None) is not fn:
+            self.problems.append(
+                f"{self.function}: its {field} is no function of the code's own module"
+            )
+            return None
+        return name
+
+    def _fields(self, item: str, kind: type | None, what: str) -> list[dict] | None:
+        """The fields of ``kind``, a class whose fields are the item's inputs or parameters."""
+        if kind is None:
+            return []
+        tree = self.reader.tree(kind)
+        if tree["kind"] != "ref" or tree["name"] not in self.reader.types:
+            self.problems.append(f"{item}: its {what} type is a class whose fields are its {what}")
+            return None
+        return self.reader.types[tree["name"]]["fields"]
+
+    def _parameters(self, item: str, kind: type | None) -> list[dict] | None:
+        fields = self._fields(item, kind, "parameters")
+        if fields is None:
+            return None
+        return [
+            {
+                "name": f["name"],
+                "optional": f["optional"] or f["default"],
+                "rest": False,
+                "type": f["type"],
+            }
+            for f in fields
+        ]
+
+    @staticmethod
+    def _entry(name: str, tags: list[str], arguments: list[dict], description: str) -> dict:
+        return {"name": name, "tags": tags, "tag_arguments": arguments, "description": description}
+
+    def entries(self, discovered: typing.Any, hand_written: list[dict]) -> list[dict]:
+        """The generated items of ``discovered`` (a provisa_services.Discovered), each an entry;
+        a query's or command's ``table`` is one of them or one of ``hand_written``."""
+        if type(discovered).__name__ != "Discovered":
+            self.problems.append(
+                f"{self.function}: @discover returns a provisa_services.Discovered"
+            )
+            return []
+        rows: dict[str, dict] = {}
+        for entry in hand_written:
+            if "table" in entry["tags"] and len(entry["signatures"]) == 1:
+                returns = entry["signatures"][0]["returns"]
+                returns = returns["value"] if returns["kind"] == "promise" else returns
+                if returns["kind"] in ("array", "iterable"):
+                    rows[entry["name"]] = returns["element"]
+        out: list[dict] = []
+        tables = list(discovered.tables)
+        if tables:
+            handler = self._handler("table", discovered.table_handler)
+            for table in tables:
+                rows[table.name] = self.reader.tree(table.row)
+                inputs = self._fields(table.name, table.inputs, "inputs")
+                if handler is None or inputs is None:
+                    continue
+                entry = self._entry(table.name, ["table"], [], table.description)
+                if table.loader_batch is not None:
+                    entry["tag_arguments"].append(
+                        {"tag": "loader", "text": str(table.loader_batch)}
+                    )
+                elif table.loader:
+                    entry["tags"].append("loader")
+                inputs_type = {"kind": "object", "fields": inputs}
+                entry["signatures"] = [
+                    {
+                        "parameters": [
+                            {
+                                "name": "inputs",
+                                "optional": False,
+                                "rest": False,
+                                "type": inputs_type,
+                            },
+                            _CONTEXT_PARAMETER,
+                        ],
+                        "returns": {"kind": "array", "element": rows[table.name]},
+                    }
+                ]
+                entry["handler"] = handler
+                out.append(entry)
+        out.extend(self._commands("query", discovered.queries, discovered.query_handler, rows))
+        out.extend(self._commands("command", discovered.commands, discovered.command_handler, rows))
+        return out
+
+    def _commands(
+        self, kind: str, items: typing.Sequence, fn: typing.Any, rows: dict[str, dict]
+    ) -> list[dict]:
+        items = list(items)
+        if not items:
+            return []
+        handler = self._handler(kind, fn)
+        out = []
+        for item in items:
+            parameters = self._parameters(item.name, item.parameters)
+            table = item.table
+            if table is not None and table not in rows:
+                self.problems.append(f"{item.name}: its table {table} is no table of the code's")
+                continue
+            if handler is None or parameters is None:
+                continue
+            if table is not None:
+                returns = {"kind": "array", "element": rows[table]}
+            elif getattr(item, "returns", None) is not None:
+                returns = self.reader.tree(item.returns)
+            else:
+                returns = {"kind": "undefined"}
+            entry = self._entry(item.name, [kind], [], item.description)
+            entry["signatures"] = [{"parameters": parameters, "returns": returns}]
+            entry["handler"] = handler
+            out.append(entry)
+        return out
+
+
+def _discover(reader: _Reader, module: types.ModuleType, exports: list[dict]) -> tuple[list, list]:
+    """REQ-2267: the module's ``@discover`` function called, and the entries of what it generated,
+    with any problem by name. Two such functions are called neither: the manifest refuses them."""
+    tagged = [e["name"] for e in exports if _DISCOVER in e["tags"]]
+    if len(tagged) != 1:
+        return [], []
+    (function,) = tagged
+    discovery = _Discovery(reader, module, function)
+    try:
+        discovered = getattr(module, function)()
+    except Exception as exc:  # noqa: BLE001 -- the code's own failure, reported by name
+        return [], [f"{function}: @discover failed: {type(exc).__name__}: {exc}"]
+    try:
+        entries = discovery.entries(discovered, exports)
+    except Exception as exc:  # noqa: BLE001 -- a generated type that cannot be read, by name
+        return [], [f"{function}: what it generated cannot be read: {type(exc).__name__}: {exc}"]
+    return entries, discovery.problems
+
+
 def read(entry: str) -> dict:
     reader = _Reader()
     try:
@@ -289,6 +455,9 @@ def read(entry: str) -> dict:
             diagnostics.append(
                 f"{name}: its type hints cannot be read: {type(exc).__name__}: {exc}"
             )
+    generated, problems = _discover(reader, module, exports)
+    exports.extend(generated)
+    diagnostics.extend(problems)
     return {"exports": exports, "types": reader.types, "diagnostics": diagnostics}
 
 
