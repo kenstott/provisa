@@ -82,6 +82,7 @@ from provisa.api.metadata_export.provider import (
 )
 from provisa.api.metadata_export.model import AssetKind, GlossaryTermAsset, junction_payload
 from provisa.api.metadata_export.registry import register_provider
+from provisa.api.metadata_export import sync_values as sv
 from provisa.security import sandbox_egress  # REQ-2006: held to public destinations
 from provisa.core.glossary import NOT_GROUNDED
 
@@ -320,6 +321,54 @@ class GlossaryOutcome:  # REQ-1387, REQ-1389
             and fqn.startswith(f"{self.glossary}.")
             and fqn not in self.failed
         )
+
+
+def _live_description(live: dict[str, Any]) -> str:
+    """A live entity's description. OpenMetadata leaves ``description`` out of an entity that has
+    none; that absence is the empty description Provisa publishes for one (REQ-2247)."""
+    return str(live["description"]) if live.get("description") is not None else ""
+
+
+def _live_labels(
+    labels: list[dict[str, Any]] | None, term_names: dict[str, str]
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """A live entity's tags and glossary links, in Syncing's neutral form (REQ-2247)."""
+    tags, links = [], []
+    for label in labels or []:
+        fqn = str(label.get("tagFQN", ""))
+        if label.get("source") == "Glossary":
+            links.append(term_names.get(fqn, fqn))
+        elif not fqn.startswith(f"{CLASSIFICATION}."):
+            tags.append(fqn)
+    return sv.names(tags), sv.names(links)
+
+
+def _live_table_values(
+    table: TableAsset, live: dict[str, Any], term_names: dict[str, str]
+) -> list[sv.SyncValue]:
+    """One live table's values, addressed by the snapshot table's Provisa names (REQ-2247)."""
+    group = table.ref.fqn()
+    tags, links = _live_labels(live.get("tags"), term_names)
+    owners = sv.names(o["name"] for o in live.get("owners") or [] if o.get("name"))
+    values = [
+        sv.SyncValue(sv.DESCRIPTION, group, group, _live_description(live)),
+        sv.SyncValue(sv.OWNER, group, group, owners),
+        sv.SyncValue(sv.TAG, group, group, tags),
+        sv.SyncValue(sv.GLOSSARY_LINK, group, group, links),
+    ]
+    live_columns = {c.get("name"): c for c in live.get("columns") or []}
+    for column in table.columns:
+        live_column = live_columns.get(column.name)
+        if live_column is None:
+            continue
+        obj = column.ref.fqn()
+        tags, links = _live_labels(live_column.get("tags"), term_names)
+        values += [
+            sv.SyncValue(sv.COLUMN_DESCRIPTION, group, obj, _live_description(live_column)),
+            sv.SyncValue(sv.TAG, group, obj, tags),
+            sv.SyncValue(sv.GLOSSARY_LINK, group, obj, links),
+        ]
+    return values
 
 
 def _assign_terms(snapshot: MetadataSnapshot, entities: list[Entity], outcome: GlossaryOutcome):
@@ -1860,6 +1909,49 @@ class OpenMetadataExport(MetadataExport, CatalogReader):  # REQ-1069
                     continue
                 result.published[entity.kind] = result.published.get(entity.kind, 0) + 1
         return result
+
+    async def _read_live(
+        self, client: httpx.AsyncClient, path: str, fields: str
+    ) -> dict[str, Any] | None:
+        """One live entity by its name, None when the catalog does not hold it. Any other
+        refusal raises, naming the request and the answer (REQ-2247: never an empty read)."""
+        response = await client.get(
+            self._url(path), params={"fields": fields} if fields else None, headers=self._headers()
+        )
+        if response.status_code == 404:
+            return None
+        response.raise_for_status()
+        return response.json()
+
+    async def read(self, snapshot: MetadataSnapshot) -> dict[sv.Key, sv.SyncValue]:
+        """The catalog's description, column descriptions, owners, tags and glossary links of
+        each snapshot table, and the definition of each Provisa term (REQ-2247).
+
+        A glossary label on a term Provisa published reads as that term's name, which is how
+        Provisa names it; any other label keeps its OpenMetadata FQN. Tags under the ``Provisa``
+        classification are governance Provisa enforces and are not read.
+        """
+        plans, _ = to_term_plans(snapshot)
+        terms = [plan for plan in plans if plan.term.term_id > 0]  # not a role's group term
+        term_names = {plan.fqn: plan.term.name for plan in terms}
+        values: list[sv.SyncValue] = []
+        async with httpx.AsyncClient(
+            timeout=self._config.timeout_seconds, event_hooks=sandbox_egress.endpoint_event_hooks()
+        ) as client:
+            for table in snapshot.tables:
+                live = await self._read_live(
+                    client, f"/api/v1/tables/name/{_table_fqn(table)}", "tags,columns,owners"
+                )
+                if live is not None:
+                    values += _live_table_values(table, live, term_names)
+            for plan in terms:
+                live = await self._read_live(client, f"/api/v1/glossaryTerms/name/{plan.fqn}", "")
+                if live is not None:
+                    name = plan.term.name
+                    values.append(
+                        sv.SyncValue(sv.TERM_DEFINITION, name, name, _live_description(live))
+                    )
+        return {v.key: v for v in values}
 
     async def health(self) -> None:
         async with httpx.AsyncClient(
