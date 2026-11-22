@@ -47,9 +47,7 @@ async def test_polly_defines_and_approves_a_concept_and_its_broader_term(
             contexts={"analyst": object()}, roles={"analyst": {"id": "analyst"}}, model_db=db
         )
         party = ids["party"]
-        made = await _call(
-            state, "create_glossary_term", {"name": "customer", "domains": ["sales"]}
-        )
+        made = await _call(state, "create_glossary_term", {"name": "patron", "domains": ["sales"]})
         customer = made["id"]
         await _call(
             state,
