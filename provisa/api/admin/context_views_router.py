@@ -15,8 +15,10 @@
   assigns it.
 * ``GET /admin/context/classification`` -- each classification kind and the columns it was
   detected on (an accepted decision).
+* ``GET /admin/context/tags/lost`` -- the tag losses confirmed this period (REQ-2145), for Context
+  Health's Tags lost card.
 
-Both are gated on ``glossary_read``. Only the tables and columns the caller reads are named
+All are gated on ``glossary_read``. Only the tables and columns the caller reads are named
 (:func:`provisa.api.admin.read_rights.reader_for_request`, REQ-2152); one it does not is counted
 and never named. Editing stays where it is: the tags in Admin, the decisions in the table editor.
 """
@@ -323,3 +325,73 @@ async def classification_awaiting(request: Request) -> dict:
         }
     named, hidden = awaiting_by_table(suggested, decided, reader.column)
     return {"tables": named, "hidden": hidden}
+
+
+def losses_this_period(
+    rows: Iterable[dict], readable: ColumnReadable
+) -> tuple[list[dict], int]:  # REQ-2259
+    """The confirmed tag losses ``rows`` (each with ``table_id``, ``table_ref``, ``column_name``,
+    ``tag_id``, ``term_id``, ``term_name``, ``confirmed_by`` and ``confirmed_at``), those on a
+    column the caller reads named, the rest counted in the second value."""
+    named: list[dict] = []
+    hidden = 0
+    for r in rows:
+        if not readable(r["table_id"], r["column_name"]):
+            hidden += 1
+            continue
+        named.append(
+            {
+                "tableId": r["table_id"],
+                "tableRef": r["table_ref"],
+                "column": r["column_name"],
+                "tag": r["tag_id"],
+                "termId": r["term_id"],
+                "term": r["term_name"],
+                "confirmedBy": r["confirmed_by"],
+                "confirmedAt": r["confirmed_at"].isoformat(),
+            }
+        )
+    return named, hidden
+
+
+@router.get("/tags/lost")
+async def tags_lost(request: Request) -> dict:
+    """REQ-2259 (Context Health), REQ-2145: the tag losses confirmed this period -- since the
+    period the grounding drift is measured from (:func:`provisa.core.term_drift.period_cutoff`)
+    -- newest first. A loss on a column the caller reads is named; one on a column it does not is
+    counted in ``hidden``, never named. ``count`` is both."""
+    _require_glossary_read(request)
+    require_active_org_id(request)
+    from datetime import UTC, datetime
+
+    from provisa.api.admin.read_rights import reader_for_request
+    from provisa.core.schema_org import glossary_tag_losses as gtl
+    from provisa.core.term_drift import period_cutoff
+
+    reader = reader_for_request(request)
+    cutoff = period_cutoff(datetime.now(UTC))
+    pool = await _pool()
+    async with pool.acquire() as conn:
+        rows = (
+            await cast("Connection", conn).execute_core(
+                select(
+                    gtl.c.table_id,
+                    gtl.c.table_ref,
+                    gtl.c.column_name,
+                    gtl.c.tag_id,
+                    gtl.c.term_id,
+                    gtl.c.term_name,
+                    gtl.c.confirmed_by,
+                    gtl.c.confirmed_at,
+                )
+                .where(gtl.c.confirmed_at >= cutoff)
+                .order_by(gtl.c.confirmed_at.desc(), gtl.c.id.desc())
+            )
+        ).fetchall()
+    named, hidden = losses_this_period([dict(r._mapping) for r in rows], reader.column)
+    return {
+        "cutoff": cutoff.isoformat(),
+        "count": len(named) + hidden,
+        "losses": named,
+        "hidden": hidden,
+    }

@@ -21,7 +21,12 @@ import {
   listGlossaryTerms,
   type OntologyDrift,
 } from "../../api/glossary";
-import { fetchClassificationAwaiting, type AwaitingTable } from "../../api/contextViews";
+import {
+  fetchClassificationAwaiting,
+  fetchTagsLost,
+  type AwaitingTable,
+  type TagLoss,
+} from "../../api/contextViews";
 import { fetchReviewsDue, type DocumentReviewsDue } from "../../api/referenceLibrary";
 import { fetchReview, fetchSyncing, type SyncEntry } from "../../api/syncing";
 
@@ -296,15 +301,75 @@ export function DocumentsCard() {
   );
 }
 
-/** REQ-2259, REQ-2145: tags lost. A confirmed tag loss is not recorded yet (job CTX-TAGLOSS), so
- * the card says so rather than showing a number it does not have. */
+/** One confirmed loss: the column and the tag it lost, the term it left, who confirmed it and when. */
+function TagLossRow({ loss, index }: { loss: TagLoss; index: number }) {
+  const { t, i18n } = useTranslation();
+  const when = new Date(loss.confirmedAt).toLocaleDateString(i18n.language);
+  return (
+    <Stack gap={0} data-testid={`health-tags-lost-${index}`}>
+      <Group justify="space-between" wrap="nowrap" gap="sm">
+        <Text size="xs" truncate="end">
+          <EntityLink
+            kind="column"
+            id={loss.column}
+            table={loss.tableId}
+            testId={`health-tags-lost-column-${index}`}
+          >
+            {`${loss.tableRef}.${loss.column}`}
+          </EntityLink>
+        </Text>
+        <Text size="xs">
+          <EntityLink kind="tag" id={loss.tag} testId={`health-tags-lost-tag-${index}`}>
+            {loss.tag}
+          </EntityLink>
+        </Text>
+      </Group>
+      <Text size="xs" c="dimmed" truncate="end">
+        {t("contextHealth.tagsLostTerm")}{" "}
+        {loss.termId === null ? (
+          // The term is gone: its name is all the record keeps.
+          <span data-testid={`health-tags-lost-term-${index}`}>{loss.term}</span>
+        ) : (
+          <EntityLink kind="term" id={loss.termId} testId={`health-tags-lost-term-${index}`}>
+            {loss.term}
+          </EntityLink>
+        )}
+        {" · "}
+        {loss.confirmedBy === null
+          ? t("contextHealth.tagsLostOn", { when })
+          : t("contextHealth.tagsLostByOn", { who: loss.confirmedBy, when })}
+      </Text>
+    </Stack>
+  );
+}
+
+/** REQ-2259, REQ-2145: the tag losses confirmed this period -- the drift card's period -- each
+ * listed when on a column the viewer reads, the rest counted. */
 export function TagsLostCard() {
   const { t } = useTranslation();
+  const read = useRead(fetchTagsLost);
   return (
     <HealthCard title={t("contextHealth.tagsLostTitle")} testId="health-tags-lost">
-      <Text size="sm" c="dimmed" data-testid="health-tags-lost-unrecorded">
-        {t("contextHealth.notYetRecorded")}
-      </Text>
+      <Body read={read} testId="health-tags-lost">
+        {({ count, losses, hidden }) => (
+          <Stack gap={4}>
+            <CountRow
+              label={t("contextHealth.tagsLostCount")}
+              count={count}
+              href="/context/tags"
+              testId="health-tags-lost-total"
+            />
+            {losses.map((loss, i) => (
+              <TagLossRow key={i} loss={loss} index={i} />
+            ))}
+            {hidden > 0 && (
+              <Text size="xs" c="dimmed" data-testid="health-tags-lost-hidden">
+                {t("contextViews.hiddenPlaces", { count: hidden })}
+              </Text>
+            )}
+          </Stack>
+        )}
+      </Body>
     </HealthCard>
   );
 }

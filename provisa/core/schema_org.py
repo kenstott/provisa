@@ -1011,6 +1011,22 @@ glossary_term_experts = Table(
     CheckConstraint("kind IN ('expert', 'author')", name="glossary_term_experts_kind_check"),
 )
 
+# REQ-2259, REQ-2145: each confirmed tag loss, one row per column and tag, with the term the column
+# left, who confirmed it (None when no member signed) and when. Mirrors schema.sql.
+glossary_tag_losses = Table(
+    "glossary_tag_losses",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("table_id", Integer, nullable=False),
+    Column("table_ref", Text, nullable=False),
+    Column("column_name", Text, nullable=False),
+    Column("tag_id", Text, nullable=False),
+    Column("term_id", Integer, ForeignKey("glossary_terms.id", ondelete="SET NULL"), nullable=True),
+    Column("term_name", Text, nullable=False),
+    Column("confirmed_by", Text, nullable=True),
+    Column("confirmed_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+)
+
 materialized_views = Table(
     "materialized_views",
     metadata,

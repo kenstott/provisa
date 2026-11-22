@@ -10,7 +10,7 @@
 
 """REQ-2259: the read endpoints behind the Context group's Tags and Classification pages.
 
-Asserted here: both are gated on glossary_read, read from the router source so the assertion is
+Asserted here: every endpoint is gated on glossary_read, read from the router source so the assertion is
 about the wiring; a table or column the caller does not read is counted and never named; a tag
 lists the row filters keyed on it and the classification kinds that assign it; a kind lists the
 columns it was detected on.
@@ -57,7 +57,7 @@ def _row(table_id: int, column: str | None, **extra) -> dict:
 def test_every_endpoint_is_gated_on_glossary_read():
     source = _ROUTER.read_text()
     blocks = re.split(r"^@router\.", source, flags=re.M)[1:]
-    assert len(blocks) == 3
+    assert len(blocks) == 4
     for block in blocks:
         assert "_require_glossary_read(request)" in block, block[:60]
     assert "Capability.GLOSSARY_READ.value" in source
