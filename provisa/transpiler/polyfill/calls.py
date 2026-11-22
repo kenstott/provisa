@@ -30,11 +30,10 @@ from __future__ import annotations
 
 import sqlglot.expressions as exp
 
-from provisa.transpiler.metadata_server_forms import FDW_OPTION_REFUSAL
 from provisa.transpiler.polyfill import clickhouse, json_built, json_literal, trino
 from provisa.transpiler.polyfill.grid import Feature, Limitation, Rule, Side
 from provisa.transpiler.polyfill.matching import graft
-from provisa.transpiler.polyfill.notation import Refusal, Refused, Rewrite, replacement
+from provisa.transpiler.polyfill.notation import Refused, Rewrite, replacement
 
 FAMILY = "calls of no Trino form"
 
@@ -128,50 +127,6 @@ _NO_CLICKHOUSE_FORM = frozenset(
 #: the order of their families.
 ORDER = 170
 
-#: postgresql_fdw_validator's form (provisa.transpiler.metadata_server_forms, and DuckDB's catalog
-#: answer, provisa.pgwire.catalog_server_answers) is written for the call before the grid reads the
-#: statement: foreign.c's 42601 invalid option, naming the first option the catalog does not list.
-#: A NULL element is refused by name on every engine whose form runs (Trino's SQL is Presto's and
-#: Athena's too). ClickHouse 24.3's throwIf takes only a constant message, so there an unlisted
-#: option is refused by name instead (maintainer 2026-11-21: keep 24.3, state the refusal). Db2 and
-#: SAP HANA have no form of the array filter the form is written with, and refuse it by name.
-_FDW_NULL_OPTION = Limitation(
-    "An option array holding a NULL element is refused with 0A000 by name.",
-    Refusal("0A000", "postgresql_fdw_validator of a NULL option has no form here"),
-)
-_FDW_NO_ARRAY_FILTER = (
-    "Refused with 0A000 by name: the engine has no form of the array filter the validator's form "
-    "is written with."
-)
-_FDW_VALIDATOR = Feature(
-    "postgresql_fdw_validator",
-    FAMILY,
-    "Whether the options of a foreign-data wrapper are valid: 42601 invalid option naming the "
-    "first option the catalog does not list.",
-    read=Side(
-        limitations={
-            **dict.fromkeys(("duckdb", *trino.TRINO), (_FDW_NULL_OPTION,)),
-            "clickhouse": (
-                _FDW_NULL_OPTION,
-                Limitation(
-                    "An option the catalog does not list is refused with 0A000 by name, not "
-                    "PostgreSQL's 42601 naming it: ClickHouse 24.3's throwIf takes only a constant "
-                    "message.",
-                    Refusal("0A000", FDW_OPTION_REFUSAL),
-                ),
-            ),
-            **{
-                dialect: (
-                    Limitation(
-                        _FDW_NO_ARRAY_FILTER,
-                        Refusal("0A000", f"array_length() has no form on {dialect}"),
-                    ),
-                )
-                for dialect in ("db2", "saphana")
-            },
-        }
-    ),
-)
 FEATURES: tuple[Feature, ...] = (
     Feature(
         "generate_series",
@@ -300,5 +255,4 @@ FEATURES: tuple[Feature, ...] = (
         )
         for name, summary in _SERVER.items()
     ),
-    _FDW_VALIDATOR,
 )
