@@ -421,26 +421,25 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # The SDK's tests read each decorator through Provisa's own reader and manifest
+      # (provisa.codesource, provisa.python), so they run in the project's locked environment:
+      # with pytest and pyright alone, provisa.core.package_registries could not import
+      # sqlalchemy (run 45024448489).
       - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
+        uses: ./.github/actions/setup-python
 
       - name: Test
-        run: |
-          pip install pytest pyright -q
-          python -m pytest provisa-sdk/python/tests -q
+        run: uv run --frozen python -m pytest provisa-sdk/python/tests -q
 
       - name: Stamp the version and build
         run: |
           sed -i 's/^version = .*/version = "${{ needs.metadata.outputs.py_version }}"/' \
             provisa-sdk/python/pyproject.toml
-          pip install build -q
-          python -m build provisa-sdk/python/ --outdir provisa-sdk/python/dist/
+          uv build provisa-sdk/python/ --out-dir provisa-sdk/python/dist/
 
       - name: Verify the wheel carries the SDK and the stubs
         run: |
-          python - <<'PY'
+          uv run --frozen python - <<'PY'
           import glob, sys, zipfile
           [wheel] = glob.glob("provisa-sdk/python/dist/provisa_sdk-${{ needs.metadata.outputs.py_version }}-*.whl")
           names = set(zipfile.ZipFile(wheel).namelist())

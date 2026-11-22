@@ -263,6 +263,34 @@ def test_the_lanes_workflow_primes_the_plugin_cache_in_one_job():
     assert step["with"] == {"phase": "prime"}
 
 
+def test_no_job_that_primes_the_plugin_cache_uploads_the_artifact_the_action_uploads():
+    """The prime phase uploads the run's plugin artifact itself; a job that uploads that name
+    again is refused with HTTP 409 (release-prebuilt.yml download-plugins, run 45024448489)."""
+    import yaml
+
+    (upload,) = [
+        s for s in _plugin_cache_action() if s.get("name") == "Upload the run's Trino plugins"
+    ]
+    name = upload["with"]["name"].replace("${{ inputs.key-prefix }}", "")
+    primers = []
+    for path in sorted((REPO / ".github" / "workflows").glob("*.yml")):
+        for job, body in (yaml.safe_load(path.read_text())["jobs"] or {}).items():
+            steps = body.get("steps") or []
+            if not any(
+                s.get("uses") == "./.github/actions/trino-plugins"
+                and (s.get("with") or {}).get("phase") == "prime"
+                for s in steps
+            ):
+                continue
+            primers.append(f"{path.name}:{job}")
+            for s in steps:
+                if (s.get("uses") or "").startswith("actions/upload-artifact"):
+                    assert (s.get("with") or {}).get("name") != name, (
+                        f"{path.name}:{job} uploads '{name}' after the action already did"
+                    )
+    assert "release-prebuilt.yml:download-plugins" in primers
+
+
 def test_the_plugin_cache_action_primes_once_and_every_lane_restores_and_verifies():
     by_name = {step["name"]: step for step in _plugin_cache_action()}
     assert list(by_name) == [

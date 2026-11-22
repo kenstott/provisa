@@ -147,6 +147,21 @@ def test_every_job_that_needs_a_python_environment_gets_it_from_the_action():
             )
 
 
+def test_the_python_sdk_job_tests_in_the_project_environment():
+    """REQ-1984: the SDK's tests read each decorator through Provisa's own reader and manifest,
+    which import the project's dependencies; with pytest and pyright alone,
+    provisa.core.package_registries could not import sqlalchemy (run 45024448489)."""
+    path = REPO / ".github" / "workflows" / "release-packages.yml"
+    steps = yaml.safe_load(path.read_text())["jobs"]["build-sdk-python"]["steps"]
+    uses = [s.get("uses") or "" for s in steps]
+    assert "./.github/actions/setup-python" in uses
+    assert not any(u.startswith("actions/setup-python") for u in uses)
+    (test,) = [s for s in steps if "provisa-sdk/python/tests" in (s.get("run") or "")]
+    assert test["run"].strip().startswith("uv run --frozen "), test["run"]
+    assert uses.index("./.github/actions/setup-python") < steps.index(test)
+    assert not any("pip install" in (s.get("run") or "") for s in steps)
+
+
 def test_every_prebuilt_job_that_builds_the_app_image_frees_runner_disk_first():
     """The arm64 build of provisa/provisa:local (QEMU, the full site-packages copied between
     stages) next to the saved core and Trino images needs more disk than a hosted runner always

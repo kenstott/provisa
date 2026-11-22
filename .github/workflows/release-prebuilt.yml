@@ -62,18 +62,13 @@ jobs:
       # META-INF/services/io.trino.spi.Plugin, so one jar per directory is a complete plugin. The
       # same action restores (or, on a miss, builds once) Provisa's own function plugin
       # (REQ-1494), provisa-functions, beside them.
+      # The action's prime phase uploads the verified plugin directories as the run's
+      # `trino-plugins` artifact, which package-plugins and the installer legs download. A second
+      # upload of that name here was refused with HTTP 409 (run 45024448489).
       - name: Trino plugins
         uses: ./.github/actions/trino-plugins
         with:
           phase: prime
-
-      - name: Upload plugin directories
-        uses: actions/upload-artifact@v4
-        with:
-          name: trino-plugins
-          path: trino/plugins/
-          retention-days: 1
-          compression-level: 0
 
   package-plugins:
     name: Package Trino plugins tarball for release

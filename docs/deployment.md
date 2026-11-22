@@ -33,7 +33,7 @@ Every production path needs the Provisa artifacts before any deployment can run.
 
 The assets come from package repositories an enterprise Artifactory proxy typically carries. The core DuckDB extensions are the `duckdb-extension-*` projects on PyPI and the community extensions are the version parts of `provisa-duckdb-ext`, fetched with `pip download` from the index pip is configured for (`pip.conf`, `PIP_INDEX_URL`). The connector bundles are Maven artifacts (`io.simpleishard:pgwire-<connector>-<platform>` and the `pgwire-shared-<platform>` files they have in common) fetched from `PROVISA_MAVEN_REPOSITORY`, else the mirror of `central` in `~/.m2/settings.xml`, else Maven Central.
 
-`python -m provisa.federation.duckdb_extensions` and `python -m provisa.runtime_deps.pgwire_bundles` check an install and name anything missing. An extension declared by a [custom connector](../config/custom_connectors.yaml) isn't staged; put it in `PROVISA_DUCKDB_EXT_DIR` yourself. A MotherDuck source needs its service reachable: the extension asks `api.motherduck.com` for its build when it loads.
+`python -m provisa.federation.duckdb_extensions` and `python -m provisa.runtime_deps.pgwire_bundles` check an install and name anything missing. An extension declared by a [custom connector](sources.md#custom-connectors) isn't staged; put it in `PROVISA_DUCKDB_EXT_DIR` yourself. A MotherDuck source needs its service reachable: the extension asks `api.motherduck.com` for its build when it loads.
 
 **Air-gapped sites.** Fill the directories once, on a machine of the same OS and architecture that reaches the package repositories, with the same Provisa version:
 
