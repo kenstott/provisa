@@ -132,22 +132,22 @@ const GOVERNOR = [TABLES, CONTEXT, MODEL, PRODUCTS, SECURITY];
 
 // role → [the bar's entries in order, whether the user menu offers Admin, the landing page]
 const EXPECTED: Record<string, [string[], boolean, string]> = {
-  viewer: [READER, true, "/context/glossary"],
+  viewer: [READER, true, "/context/health"],
   analyst: [COMMAND_READER, true, "/schema"],
   data_writer: [COMMAND_READER, true, "/schema"],
   developer: [BUILDER, true, "/schema"],
   modeler: [BUILDER, true, "/schema"],
-  data_product_owner: [READER, true, "/context/glossary"],
+  data_product_owner: [READER, true, "/context/health"],
   security_admin: [GOVERNOR, true, "/tables"],
   data_steward: [
     [TABLES, RELATIONSHIPS, CONTEXT, MODEL, PRODUCTS, SECURITY, EXPLORE],
     true,
     "/schema",
   ],
-  dq_steward: [READER, true, "/context/glossary"],
+  dq_steward: [READER, true, "/context/health"],
   source_admin: [[SOURCES, TABLES, CONTEXT, MODEL, PRODUCTS], true, "/sources"],
-  member_admin: [[CONTEXT, PRODUCTS, SECURITY], true, "/context/glossary"],
-  org_operator: [READER, true, "/context/glossary"],
+  member_admin: [[CONTEXT, PRODUCTS, SECURITY], true, "/context/health"],
+  org_operator: [READER, true, "/context/health"],
   org_admin: [EVERY_ENTRY, true, "/schema"],
   sandbox: [EVERY_ENTRY, true, "/schema"],
   platform_admin: [[], true, "/admin/orgs"],
@@ -205,7 +205,7 @@ describe("the standard roles' navigation", () => {
         [SOURCES]: "/sources",
         [TABLES]: "/tables",
         [RELATIONSHIPS]: "/relationships",
-        [CONTEXT]: "/context/glossary",
+        [CONTEXT]: "/context/health",
       };
       if (entries.includes(EXPLORE)) expect(landing).toBe("/schema");
       else if (entries.length > 0) expect(landing).toBe(bar[entries[0]]);

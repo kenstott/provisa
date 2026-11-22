@@ -26,6 +26,7 @@ from pathlib import Path
 
 from provisa.api.admin.context_views_router import (
     CLASSIFICATION_TAG,
+    awaiting_by_table,
     kind_detections,
     placed,
     tag_usages,
@@ -56,7 +57,7 @@ def _row(table_id: int, column: str | None, **extra) -> dict:
 def test_every_endpoint_is_gated_on_glossary_read():
     source = _ROUTER.read_text()
     blocks = re.split(r"^@router\.", source, flags=re.M)[1:]
-    assert len(blocks) == 2
+    assert len(blocks) == 3
     for block in blocks:
         assert "_require_glossary_read(request)" in block, block[:60]
     assert "Capability.GLOSSARY_READ.value" in source
@@ -136,3 +137,30 @@ def test_the_classification_tag_is_the_one_accepting_assigns():
         Path(__file__).resolve().parents[2] / "provisa/profiler/classifications.py"
     ).read_text()
     assert f'tag_repo.get(conn, "{CLASSIFICATION_TAG}")' in source
+
+
+def test_awaiting_detections_less_decisions_counted_per_readable_table():
+    # REQ-2259 Context Health: the latest run's suggestions, less those decided since; a column
+    # the caller does not read is counted and its table never named.
+    suggested = [
+        _row(1, "email", kind="email_address"),
+        _row(1, "phone", kind="phone_number"),
+        _row(1, "card", kind="payment_card"),
+        _row(2, "email", kind="email_address"),
+        _row(2, "ssn", kind="us_ssn"),
+        _row(3, "x", kind="iban"),
+    ]
+    decided = {(1, "card", "payment_card")}
+    named, hidden = awaiting_by_table(suggested, decided, _readable)
+    assert named == [
+        {"tableId": 1, "tableRef": "s.public.t1", "awaiting": 2},
+        {"tableId": 2, "tableRef": "s.public.t2", "awaiting": 1},
+    ]
+    assert hidden == 2
+
+
+def test_awaiting_is_empty_when_every_detection_is_decided():
+    named, hidden = awaiting_by_table(
+        [_row(1, "email", kind="email_address")], {(1, "email", "email_address")}, _readable
+    )
+    assert (named, hidden) == ([], 0)

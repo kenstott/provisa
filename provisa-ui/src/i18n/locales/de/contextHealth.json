@@ -1,0 +1,31 @@
+{
+  "contextHealth": {
+    "termsTitle": "Begriffe",
+    "termsAgentVisible": "Für Agents sichtbar",
+    "termsFromData": "Freigegeben, mit Daten",
+    "termsNoData": "Freigegeben, ohne Daten",
+    "termsDrafts": "Entwürfe in Prüfung",
+    "driftTitle": "Verankerungsdrift in diesem Zeitraum",
+    "driftLost": "Begriffe, die die Verankerung verloren haben",
+    "driftGained": "Begriffe, die verankert wurden",
+    "driftNew": "Neue Begriffe",
+    "driftNoHistory": "Noch kein früheres Modell zum Vergleich.",
+    "tagsLostTitle": "Verlorene Tags",
+    "notYetRecorded": "Noch nicht erfasst",
+    "classificationTitle": "Klassifizierung",
+    "classificationAwaiting": "Erkennungen, die auf eine Entscheidung warten",
+    "documentsTitle": "Dokumente",
+    "documentsDue": "Dokumente mit fälligen Prüfungen",
+    "documentsReviews_one": "{{count}} Prüfung",
+    "documentsReviews_other": "{{count}} Prüfungen",
+    "syncTitle": "Kontext-Synchronisierung",
+    "syncNone": "Keine externen Systeme synchronisieren mit Provisa.",
+    "syncWaiting_one": "{{count}} Unterschied wartet",
+    "syncWaiting_other": "{{count}} Unterschiede warten",
+    "syncNoRun": "Seit dem Start dieses Servers nicht synchronisiert",
+    "syncRunOk_one": "Letzte Synchronisierung: {{count}} Element veröffentlicht",
+    "syncRunOk_other": "Letzte Synchronisierung: {{count}} Elemente veröffentlicht",
+    "syncRunFailed_one": "Letzte Synchronisierung: {{count}} Fehler",
+    "syncRunFailed_other": "Letzte Synchronisierung: {{count}} Fehler"
+  }
+}

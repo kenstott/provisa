@@ -335,6 +335,8 @@ describe("admin surface capabilities", () => {
     const context = NAV_GROUPS.find((g) => g.id === "context")!;
     const open = context.items.filter((i) => !i.comingSoon);
     expect(Object.fromEntries(open.map((i) => [i.to, i.capability]))).toEqual({
+      // REQ-2259: Context Health, the steward summary and the health cards.
+      "/context/health": "glossary_read",
       "/context/glossary": "glossary_read",
       "/context/ontology": "glossary_read",
       // REQ-2259: the read-only Metrics, Tags and Classification views.
