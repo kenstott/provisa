@@ -159,6 +159,7 @@ from provisa.api.admin.schema_common import (  # noqa: E402
     _preset_wikidata_if_needed,
     google_workspace_refusal,
     excel_hints_refusal,
+    files_source_glob_refusal,
     logs_refusal,
     sandbox_destination_refusal,
     download_source_file,
@@ -3285,6 +3286,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     or file_source_path(input)
                     or jdbc_source_refusal(input)  # REQ-2191
                     or excel_hints_refusal(input)
+                    or files_source_glob_refusal(input)  # REQ-788
                 )  # REQ-1996/1997/2113/2096
                 if _logs_refusal is not None:
                     return _logs_refusal
@@ -3706,6 +3708,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 or file_source_path(input)
                 or jdbc_source_refusal(input)  # REQ-2191
                 or excel_hints_refusal(input)
+                or files_source_glob_refusal(input)  # REQ-788
             )  # REQ-1996/1997/2113/2096
             if _logs_refusal is not None:
                 return _logs_refusal
@@ -5029,9 +5032,14 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     )
                     if _feed_refusal is not None:
                         raise TableSaveRefused(_feed_refusal)
-                    from provisa.api.admin._file_glob import table_file_glob_refusal
+                    from provisa.api.admin._file_glob import (
+                        table_file_glob_refusal,
+                        table_outside_source_glob_refusal,
+                    )
 
-                    _glob_refusal = await table_file_glob_refusal(_conn, model)  # REQ-788
+                    _glob_refusal = await table_file_glob_refusal(
+                        _conn, model
+                    ) or await table_outside_source_glob_refusal(_conn, model)  # REQ-788
                     if _glob_refusal is not None:
                         raise TableSaveRefused(_glob_refusal)
                     from provisa.api.app import state as _app_state

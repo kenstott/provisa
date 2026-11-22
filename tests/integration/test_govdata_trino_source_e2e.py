@@ -41,7 +41,6 @@ import contextlib
 import os
 import subprocess
 import sys
-from pathlib import Path
 
 import pytest
 
@@ -51,9 +50,12 @@ pytestmark = [pytest.mark.integration, pytest.mark.requires_warehouse]
 
 _SOURCE_ID = "askamerica-trino-itest"
 _CATALOG = "askamerica_trino_itest"
-_SCHEMAS = "fec,ref,geo"
-_SCHEMA = "fec"
-_TABLE = "candidates"
+_SCHEMAS = "econ,ref,geo"
+_SCHEMA = "econ"
+# Always materialized (6,001 rows). Its name holds "_", which Trino's getColumns escapes as "\_":
+# read through Trino since engine-v0.128.9, whose pg_catalog emulation escapes LIKE with a
+# backslash as PostgreSQL does (calcite PR #1042, govdata-ops #1423).
+_TABLE = "inflation_metrics"
 _COLD_START_SECONDS = 600
 
 
@@ -122,7 +124,7 @@ def _container_reach() -> dict[str, str]:
 
 @pytest.fixture(scope="module")
 def served(tmp_path_factory):
-    """The source's server, bound where the Trino container reaches it; yields its state dir."""
+    """The source's server, bound where the Trino container reaches it."""
     from provisa.federation import pgwire_replica as pr
 
     data_dir = tmp_path_factory.mktemp("askamerica-trino-state")
@@ -137,7 +139,7 @@ def served(tmp_path_factory):
     try:
         with deployment_org_on_this_node():
             _cold_start(source, pr)
-        yield source, data_dir
+        yield source
     finally:
         with as_deployment_org():
             pr.stop_endpoint(source.id)
@@ -148,22 +150,28 @@ def served(tmp_path_factory):
                 os.environ[name] = value
 
 
-def _adapter_log(data_dir: Path) -> str:
-    logs = sorted(Path(data_dir).rglob("pgwire-server.log"))
-    if not logs:
-        return "(the adapter wrote no log)"
-    return "\n".join(logs[-1].read_text(errors="replace").splitlines()[-80:])
+def _adapter_log(source) -> str:
+    """The end of the adapter's own log. A govdata server runs from the one installed bundle, so
+    its log is beside that bundle, not under this module's state directory (run 44967727447
+    found none there): the server says where."""
+    from provisa.federation import pgwire_replica as pr
+
+    with as_deployment_org():
+        server = pr._endpoint_replica(source)._server
+    if server is None:
+        return "(no server was started)"
+    return server.log_tail()
 
 
 @contextlib.contextmanager
-def _step(what: str, sql: str, data_dir: Path):
+def _step(what: str, sql: str, source):
     """Name the statement a failure happened on and attach the end of the adapter's log."""
     try:
         yield
     except Exception as exc:  # noqa: BLE001 - re-raised with the statement and the adapter's log
         raise AssertionError(
             f"{what} failed on:\n  {sql}\n{type(exc).__name__}: {exc}\n"
-            f"--- adapter log (end) ---\n{_adapter_log(data_dir)}"
+            f"--- adapter log (end) ---\n{_adapter_log(source)}"
         ) from exc
 
 
@@ -174,7 +182,7 @@ def catalog(served):
 
     from provisa.federation.trino_connectors import TrinoGovdataConnector
 
-    source, data_dir = served
+    source = served
     # A module fixture runs before the per-test org binding: the endpoint is the deployment
     # org's, as in served.
     with as_deployment_org():
@@ -187,48 +195,45 @@ def catalog(served):
     cur = conn.cursor()
     cur.execute(f"DROP CATALOG IF EXISTS {_CATALOG}")
     cur.fetchall()
-    with _step("creating the catalog", create, data_dir):
+    with _step("creating the catalog", create, source):
         cur.execute(create)
         cur.fetchall()
     try:
-        yield cur, data_dir
+        yield cur, source
     finally:
         cur.execute(f"DROP CATALOG IF EXISTS {_CATALOG}")
         cur.fetchall()
         conn.close()
 
 
-def _run(cur, what: str, sql: str, data_dir: Path) -> list:
-    with _step(what, sql, data_dir):
+def _run(cur, what: str, sql: str, source) -> list:
+    with _step(what, sql, source):
         cur.execute(sql)
         return cur.fetchall()
 
 
 def test_trino_reads_an_askamerica_table_live_and_joins_it(catalog):
-    cur, data_dir = catalog
+    cur, source = catalog
 
-    schemas = {
-        r[0] for r in _run(cur, "listing schemas", f"SHOW SCHEMAS FROM {_CATALOG}", data_dir)
-    }
+    schemas = {r[0] for r in _run(cur, "listing schemas", f"SHOW SCHEMAS FROM {_CATALOG}", source)}
     # The adapter serves every schema it has; which of them the source offers is the source's own
     # list, enforced by Provisa (federation/askamerica.SchemaNotServed), not by the catalog Trino
     # reads. Each schema the source lists is there.
     assert set(_SCHEMAS.split(",")) <= schemas, schemas
 
     tables = {
-        r[0]
-        for r in _run(cur, "listing tables", f"SHOW TABLES FROM {_CATALOG}.{_SCHEMA}", data_dir)
+        r[0] for r in _run(cur, "listing tables", f"SHOW TABLES FROM {_CATALOG}.{_SCHEMA}", source)
     }
     assert _TABLE in tables, tables
 
-    columns = _run(cur, "describing the table", f"DESCRIBE {_CATALOG}.{_SCHEMA}.{_TABLE}", data_dir)
+    columns = _run(cur, "describing the table", f"DESCRIBE {_CATALOG}.{_SCHEMA}.{_TABLE}", source)
     assert columns, "the table has no columns Trino could map"
 
     rows = _run(
         cur,
         "reading the table alone",
         f"SELECT * FROM {_CATALOG}.{_SCHEMA}.{_TABLE} LIMIT 5",
-        data_dir,
+        source,
     )
     assert len(rows) == 5
 
@@ -237,7 +242,7 @@ def test_trino_reads_an_askamerica_table_live_and_joins_it(catalog):
         cur,
         "a pushed-down predicate",
         f'SELECT count(*) FROM {_CATALOG}.{_SCHEMA}.{_TABLE} WHERE "{first}" IS NOT NULL',
-        data_dir,
+        source,
     )
     assert filtered[0][0] >= 0
 
@@ -246,6 +251,6 @@ def test_trino_reads_an_askamerica_table_live_and_joins_it(catalog):
         "joining with a table of another catalog",
         f"SELECT count(*) FROM (SELECT * FROM {_CATALOG}.{_SCHEMA}.{_TABLE} LIMIT 5) c "
         "CROSS JOIN (SELECT node_id FROM system.runtime.nodes LIMIT 1) n",
-        data_dir,
+        source,
     )
     assert joined[0][0] == 5

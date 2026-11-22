@@ -40,7 +40,7 @@ from typing import IO, Callable, Iterable, cast
 
 # The pinned upstream release the whole bundle set is fetched from (REQ-956). One version knob — a
 # bundle path is always namespaced by this tag, so a version bump caches side by side, never in place.
-RELEASE_TAG = "engine-v0.123.2"
+RELEASE_TAG = "engine-v0.128.9"
 # Connectors whose bundle comes from a release other than RELEASE_TAG. The one table of such
 # overrides; a connector absent here is at RELEASE_TAG. Each entry is removed when RELEASE_TAG
 # moves to (or past) its release. Empty: from engine-v0.117.0 no connector's catalog counts the
