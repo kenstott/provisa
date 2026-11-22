@@ -46,7 +46,7 @@ from typing import Any, Callable
 
 from provisa.core.held_sizes import held
 from provisa.core.secrets import resolve_secrets
-from provisa.federation.cloudops import cloudops_settings
+from provisa.federation.cloudops import cloudops_server_environment, cloudops_settings
 from provisa.federation.connector_config import MissingConnectorConfig
 from provisa.federation.pgwire_endpoint import sign_in_password
 from provisa.federation.salesforce import salesforce_login_url
@@ -793,6 +793,15 @@ def server_environment(source: Any, bundle_dir: Path) -> dict[str, str] | None:
     return None
 
 
+def inherited_environment(source: Any) -> dict[str, str]:
+    """What the source's server inherits of this process's environment: all of it, except that a
+    cloud inventory source's server gets no credential variables of a cloud the source does not
+    name (``cloudops.cloudops_server_environment``, maintainer 2026-11-21)."""
+    if _source_type(source) == "cloudops":
+        return cloudops_server_environment(source, os.environ)
+    return dict(os.environ)
+
+
 #: Where a server's launcher keeps its own state (its catalog cache), named in its environment.
 CALCITE_STATE_ENV = "PGWIRE_CALCITE_STATE_DIR"
 
@@ -830,9 +839,9 @@ def _spawn_process(command: list[str], cwd: Path, env: dict[str, str] | None = N
                 start_new_session=True,
                 stdout=log,
                 stderr=subprocess.STDOUT,
-                # ``env``: added to this process's own, for a server whose model reads names
-                # from its environment (:func:`server_environment`). None inherits unchanged.
-                env=None if env is None else {**os.environ, **env},
+                # ``env``: the server's whole environment (:func:`inherited_environment` and
+                # what it adds, :func:`server_environment`). None inherits unchanged.
+                env=env,
             )
         )
     finally:
@@ -904,7 +913,7 @@ class PgwireServer:  # REQ-955
         self._spec = spec
         self._model = model
         self._ports = ports
-        # Handed to the spawn only when the server needs one (:func:`server_environment`).
+        # The server's whole environment, handed to the spawn when given; None inherits.
         self._environment = environment
         self._spawn = spawn if spawn is not None else _spawn_process
         self._health = health_check if health_check is not None else _tcp_health
@@ -1448,7 +1457,11 @@ class ConnectorReplica:  # REQ-954/955/956
             spawn=self._spawn,
             health_check=self._health,
             port_is_free=self._port_is_free,
-            environment={**(environment or {}), **org_jvm_environment(self._key[0])},
+            environment={
+                **inherited_environment(self._source),
+                **(environment or {}),
+                **org_jvm_environment(self._key[0]),
+            },
         )
         server.start()  # REQ-955 (lifecycle)
         with self._server_lock:
