@@ -1,0 +1,9 @@
+{
+  "proposalEdit": {
+    "title": "Editar candidato",
+    "name": "Nombre de la relación",
+    "cardinality": "Cardinalidad",
+    "cancel": "Cancelar",
+    "save": "Guardar"
+  }
+}

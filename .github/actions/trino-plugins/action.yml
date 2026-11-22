@@ -6,8 +6,9 @@ description: >-
 
   `phase: prime` is that job's (or a lone job's): it restores the cache, and on a miss downloads
   every jar (`python3 tests/trino_plugins.py fetch`, each checked against its sha256) and saves
-  them at once. `phase: restore` is every parallel lane's, in a job that `needs:` the priming one:
-  the cache must hit (a miss fails the step), and each jar is verified before the tests. A lane
+  them at once, then uploads them as the run's artifact. `phase: restore` is every parallel lane's,
+  in a job that `needs:` the priming one: a cache miss takes the jars from that artifact, and each
+  jar is verified before the tests. A lane
   never downloads: release 510's lanes each missed an evicted cache and went to Maven Central
   from inside collection at the same moment, and one was refused with HTTP 429 (run
   44081179966). A missing or mismatched jar fails the verify step by name, before pytest.
@@ -70,8 +71,10 @@ runs:
       with:
         path: trino/plugins/trino-*
         key: ${{ inputs.key-prefix }}trino-plugins-${{ steps.trino-pin.outputs.version }}-jars
-        # A lane's restore must hit: the priming job it needs saved this key in this run.
-        fail-on-cache-miss: ${{ inputs.phase == 'restore' }}
+        # A miss is answered below by the run's artifact, never by a download: the cache is
+        # branch-scoped and evictable, and entries the priming job saved minutes earlier were gone
+        # by the lane's restore (runs 44942101401, 44940962731).
+        fail-on-cache-miss: false
 
     - name: Download Trino plugins
       if: inputs.phase == 'prime' && steps.trino-plugins.outputs.cache-hit != 'true'
@@ -84,10 +87,6 @@ runs:
       with:
         path: trino/plugins/trino-*
         key: ${{ inputs.key-prefix }}trino-plugins-${{ steps.trino-pin.outputs.version }}-jars
-
-    - name: Verify Trino plugins
-      shell: bash
-      run: python3 tests/trino_plugins.py verify
 
     # REQ-1494: Provisa's own function plugin, built from trino-functions/ by Maven. It is built
     # here, once per change to any input of the build (the Maven project, the portable fake
@@ -112,7 +111,7 @@ runs:
       with:
         path: trino/plugins/provisa-functions
         key: ${{ steps.provisa-functions-key.outputs.key }}
-        fail-on-cache-miss: ${{ inputs.phase == 'restore' }}
+        fail-on-cache-miss: false
 
     - name: Build the provisa-functions plugin
       if: inputs.phase == 'prime' && steps.provisa-functions.outputs.cache-hit != 'true'
@@ -126,8 +125,34 @@ runs:
         path: trino/plugins/provisa-functions
         key: ${{ steps.provisa-functions-key.outputs.key }}
 
+    # The run's own copy of every plugin, uploaded by the priming job after it verified them. A
+    # restore whose cache entry was evicted takes the jars from here: an artifact of this run
+    # cannot be evicted, and Maven Central is not asked.
+    - name: Download the run's Trino plugins
+      if: inputs.phase == 'restore' && (steps.trino-plugins.outputs.cache-hit != 'true' || steps.provisa-functions.outputs.cache-hit != 'true')
+      uses: actions/download-artifact@v4
+      with:
+        name: ${{ inputs.key-prefix }}trino-plugins
+        path: trino/plugins
+
+    - name: Verify Trino plugins
+      shell: bash
+      run: python3 tests/trino_plugins.py verify
+
     - name: Verify the provisa-functions plugin
       shell: bash
       run: |
         jar=trino/plugins/provisa-functions/provisa-functions-1.jar
         [ -s "$jar" ] || { echo "::error::$jar is missing after the cache step"; exit 1; }
+
+    - name: Upload the run's Trino plugins
+      if: inputs.phase == 'prime'
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ inputs.key-prefix }}trino-plugins
+        path: |
+          trino/plugins/trino-*
+          trino/plugins/provisa-functions
+        if-no-files-found: error
+        overwrite: true
+        retention-days: 1

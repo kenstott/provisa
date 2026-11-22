@@ -559,8 +559,6 @@
       "incremental_no_change": "למקור הקוד אין פונקציית ‎@change‎ עבור {{table}}. יש להצהיר על אחת באמצעות ‎@change table={{table}}‎.",
       "incremental_needs_rebuild_every": "{{table}} מתוחזקת באופן אינקרמנטלי, ולכן היא נבנית מחדש במלואה לפי שעון. יש לקבוע באיזו תדירות, בשניות, בשדה \"בנייה מחדש מלאה כל\".",
       "table_derived_from_function": "הטבלה '{{name}}' נגזרת מפונקציה: היא מוסרת על ידי כיבוי הטבלה של הפונקציה, והעמודות והפרמטרים שלה נערכים בפונקציה",
-      "table_state_from_function": "הטבלה '{{table}}' נגזרת מהפונקציה '{{name}}' ומצב השחרור שלה הוא של הפונקציה: היא אינה נמשכת או מוחזרת בפני עצמה",
-      "table_region_from_function": "הטבלה '{{table}}' נגזרת מהפונקציה '{{name}}' ויש לה את האזור שלה: היא אינה מועברת לאזור אחר בפני עצמה",
       "table_withdrawn": "הטבלה {{table}} הוסרה מהייצור",
       "table_put_back": "הטבלה {{table}} הוחזרה",
       "source_withdrawn": "המקור {{source}} הוסר מהייצור",
@@ -572,6 +570,8 @@
       "put_back_needs_region": "החזרת {{object}} מציינת אזור: ציינו אזור, או אף אחד ללא אזור.",
       "mask_constant_not_text": "מסכה קבועה על עמודה שאינה טקסט נקראת כ-NULL; ניתן לשמור רק NULL: {{column}} ({{type}})",
       "table_domain_required": "הטבלה '{{table}}' אינה מציינת תחום: כל טבלה נרשמת בתחום",
+      "table_state_from_function": "הטבלה '{{table}}' נגזרת מהפונקציה '{{name}}' ומצב השחרור שלה הוא של הפונקציה: היא אינה נמשכת או מוחזרת בפני עצמה",
+      "table_region_from_function": "הטבלה '{{table}}' נגזרת מהפונקציה '{{name}}' ויש לה את האזור שלה: היא אינה מועברת לאזור אחר בפני עצמה",
       "table_name_reserved": "שם הטבלה '{{table}}' שמור: פקודות של דומיין מוגשות תחת 'commands'. רשמו את הטבלה בשם או בכינוי אחר."
     },
     "secrets": {
@@ -936,6 +936,21 @@
     "relationship": {
       "name_taken": "השם '{{name}}' תפוס על ידי הקשר '{{held_by}}'. יש לתת לקשר הזה שם אחר.",
       "join_through_none": "לקשרים '{{first}}' ו-'{{second}}' אין טבלת ביניים משותפת, או שהקצוות האחרים שלהם כבר מצורפים דרכה."
+    },
+    "syncing": {
+      "not_found": "אין רשומה {{entry}}.",
+      "no_connection": "ל-{{entry}} אין קטלוג לקריאה.",
+      "no_role": "ל-{{entry}} אין תפקיד שבשמו מפרסמים, ולכן אין עדיין מה להשוות. בחר תפקיד בהגדרות שלה.",
+      "read_not_supported": "קריאת ערכים בחזרה מ-{{provider}} עדיין אינה נתמכת.",
+      "no_such_difference": "ההבדל {{difference}} כבר אינו קיים. קרא את הרשימה שוב.",
+      "decided_twice": "{{difference}} הוכרע פעמיים.",
+      "direction_off": "{{entry}} אינה מסנכרנת בכיוון הזה.",
+      "import_kind_unsupported": "לקיחת {{kind}} של קטלוג אל Provisa עדיין אינה נתמכת.",
+      "publish_failed": "הפרסום אל {{entry}} לא הצליח, ולכן דבר לא הוחל.",
+      "object_gone": "{{object}} כבר אינו רשום ב-Provisa.",
+      "unknown_direction": "{{direction}} אינו כיוון: השתמש בייצוא או בייבוא.",
+      "unknown_kind": "{{kind}} אינו סוג הבדל.",
+      "unknown_choice": "{{choice}} אינה בחירה קבועה."
     },
     "wikidata": {
       "no_credential": "שירות השאילתות של ויקינתונים אינו דורש אישורים",

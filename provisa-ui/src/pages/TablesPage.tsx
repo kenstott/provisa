@@ -155,9 +155,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
   // REQ-2260: and the one left open is open again on coming back.
   const detail = useRememberedDetail(
     viewsOnly ? "views" : "tables",
-    tablesLoading
-      ? null
-      : tables.filter((t) => !viewsOnly || t.viewSql).map((t) => String(t.id)),
+    tablesLoading ? null : tables.filter((t) => !viewsOnly || t.viewSql).map((t) => String(t.id)),
   );
   const section: TableSection =
     detail.tab !== null && (TABLE_SECTIONS as string[]).includes(detail.tab)
@@ -238,7 +236,8 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
   const { checkedDomains, domainsEnabled, ensureDomainChecked } = useDomainFilter();
   // REQ-1944: without table_registration the page is a governance surface -- the tables of the
   // domains the caller's hiding rights reach, editable only in how their columns are hidden.
-  const tableEditor = useCapability("table_registration");
+  // REQ-1327: the views surface asks create_view, never table_registration.
+  const tableEditor = useCapability(viewsOnly ? "create_view" : "table_registration");
   const hidingOnly = !tableEditor;
   const { selectedRoles, actingRoles } = useAuth();
   const governedDomains = useMemo(
@@ -1319,19 +1318,22 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
             />
           ) : (
             <>
-              <ListBulkBar
-                selection={selection}
-                nameOf={(key) => {
-                  const found = tables.find((tbl) => String(tbl.id) === key);
-                  if (!found) throw new Error(`table ${key} is not listed`);
-                  return found.tableName;
-                }}
-                // The tables shown are read again by the call itself: a reload() would show the
-                // page loading and take the refusals the bar names with it.
-                onDelete={(keys) => deleteTables(keys.map(Number))}
-                testId="tables-bulk"
-              />
-              <ListTable testId="tables-list" selection={selection}>
+              {/* REQ-1327: the bulk bar and the row checkboxes are for the page's editor. */}
+              {tableEditor && (
+                <ListBulkBar
+                  selection={selection}
+                  nameOf={(key) => {
+                    const found = tables.find((tbl) => String(tbl.id) === key);
+                    if (!found) throw new Error(`table ${key} is not listed`);
+                    return found.tableName;
+                  }}
+                  // The tables shown are read again by the call itself: a reload() would show the
+                  // page loading and take the refusals the bar names with it.
+                  onDelete={(keys) => deleteTables(keys.map(Number))}
+                  testId="tables-bulk"
+                />
+              )}
+              <ListTable testId="tables-list" selection={tableEditor ? selection : undefined}>
                 <ListHead
                   sortGroup={sortGroup}
                   columns={[

@@ -111,7 +111,7 @@ def test_the_view_applies_it_and_is_stored_before_match_deals_reads_it():
     assert 'FROM "bank"."screening" AS s' in view["sql"]
     assert "CROSS JOIN" not in view["sql"]
     relationships = {r["id"]: r for r in _CONFIG["relationships"]}
-    assert relationships["screening-message"]["target_table_id"] == "message"
+    assert relationships["screening-message"]["target_table_id"] == "messages"
     assert relationships["screening-deal"]["target_table_id"] == "deal"
     assert view["materialize"] is True
     assert _FUNCTIONS["match_deals"]["impl_kind"] == "statement"
@@ -258,7 +258,9 @@ def _governed_violations(sql: str) -> list:
             ColumnMetadata(column_name=c["name"], data_type=c["data_type"], is_nullable=True)
             for c in t["columns"]
         ]
-    ids = {t["table_name"]: t["id"] for t in tables}
+    # A relationship names a table by its virtual name, its alias when it has one, as the
+    # server's find_by_table_name resolves it (the watch list's sheets are aliased).
+    ids = {t["alias"] or t["table_name"]: t["id"] for t in tables}
     relationships = [
         {
             **r,

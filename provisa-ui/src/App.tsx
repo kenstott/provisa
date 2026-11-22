@@ -425,6 +425,7 @@ function App() {
                                             element={
                                               <CapabilityGate
                                                 capability="access_config"
+                                                orCapability="user_management"
                                                 fallback={<NotAuthorized />}
                                               >
                                                 <SecurityRolesPage />
@@ -592,7 +593,7 @@ function App() {
                                             path="/views"
                                             element={
                                               <CapabilityGate
-                                                capability="table_registration"
+                                                capability="create_view"
                                                 fallback={<NotAuthorized />}
                                               >
                                                 <ViewsPage />
@@ -685,7 +686,7 @@ function App() {
                                             path="/metrics"
                                             element={
                                               <CapabilityGate
-                                                capability="table_registration"
+                                                capability="create_view"
                                                 fallback={<NotAuthorized />}
                                               >
                                                 <MetricsPage />
@@ -713,6 +714,7 @@ function App() {
                                               // carries (rights.py PLATFORM_BYPASS_CAPABILITIES).
                                               <CapabilityGate
                                                 capability="table_registration"
+                                                orCapability="command_execution"
                                                 fallback={<NotAuthorized />}
                                               >
                                                 <CommandsPage />

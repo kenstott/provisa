@@ -548,15 +548,23 @@
       },
       "insiderIntro": {
         "title": "Insider-Prüfung in einer Bank",
-        "description": "Northgate Partners, eine erfundene Bank, führt eine Beobachtungsliste der Deals, an denen sie arbeitet. Sie möchte wissen, ob jemand dealsensible oder Kundendaten aus der Bank hinaussendet. <strong>bank</strong> ist ihre Datenbank: die Beobachtungsliste, die Mitarbeitenden und ihre E-Mails sowie die Kunden und wer deren Datensätze gelesen hat. Jeder Name und jeder Datensatz hier ist generiert."
+        "description": "Northgate Partners, eine erfundene Bank, führt eine Beobachtungsliste der Deals, an denen sie arbeitet. Sie möchte wissen, ob jemand dealsensible oder Kundendaten aus der Bank hinaussendet. Die Antwort liest drei Systeme zugleich. <strong>bank</strong> ist ihre Postgres-Datenbank: die Mitarbeitenden und ihre Desks, die Kunden und wer deren Datensätze gelesen hat. Jeder Name und jeder Datensatz hier ist generiert."
+      },
+      "insiderWorkbook": {
+        "title": "Die Arbeitsmappe des Control Room",
+        "description": "<strong>control_room</strong> ist eine Excel-Arbeitsmappe, die der Control Room selbst führt. Jedes Blatt ist eine Tabelle: die Deals in Verhandlung, wer für jeden über die Wall geholt wurde, die Gegenparteien der Deals und gegen welche Deals jede E-Mail geprüft wird. Provisa liest die Datei dort, wo sie liegt."
+      },
+      "insiderMailSource": {
+        "title": "Die E-Mails der Bank",
+        "description": "<strong>mail</strong> sind die Microsoft-365-E-Mails der Bank, das Postfach jedes Mitarbeitenden, in denselben Nachrichten- und Empfängertabellen, die eine Google-Workspace-Quelle liefert. Diese Demo erreicht keinen echten Tenant: Das Postfach wird mit der Demo als gespeicherte Kopie der Quelle ausgeliefert, die sich nie aktualisiert."
       },
       "insiderWatchList": {
         "title": "Die Beobachtungsliste",
-        "description": "<strong>deal</strong> ist die Beobachtungsliste des Control Room, mit dem Unternehmen jedes Deals, den Namen, unter denen es bekannt ist, seinem Ticker, seinem Projektcodenamen und ob er bereits öffentlich ist. Es ist die am stärksten eingeschränkte Tabelle hier. Der Control Room liest sie, ein Deal-Team nur den eigenen Deal und ein Prüfer der ersten Ebene nie."
+        "description": "<strong>deal</strong> ist die Beobachtungsliste, das Blatt der Deals in der Arbeitsmappe, mit dem Unternehmen jedes Deals, den Namen, unter denen es bekannt ist, seinem Ticker, seinem Projektcodenamen und ob er bereits öffentlich ist. Es ist die am stärksten eingeschränkte Tabelle hier. Der Control Room liest sie, ein Deal-Team nur den eigenen Deal und ein Prüfer der ersten Ebene nie."
       },
       "insiderMail": {
         "title": "Die Post",
-        "description": "<strong>message</strong> enthält die ausgehenden E-Mails der Mitarbeitenden, mit Absender, Zeitpunkt und wie viele Empfänger außerhalb der Bank oder an einer privaten Adresse waren."
+        "description": "<strong>messages</strong> enthält die gesendeten E-Mails der Mitarbeitenden aus Microsoft 365, jede Nachricht im Postfach ihres Absenders, mit Absender, Zeitpunkt und Text. Ihre Empfänger stehen in <strong>message_recipients</strong>; die Mitarbeiterliste der Bank und die privaten E-Mail-Anbieter in Postgres unterscheiden interne, externe und private Adressen."
       },
       "insiderMatch": {
         "title": "Jede Nachricht gegen jeden Deal",

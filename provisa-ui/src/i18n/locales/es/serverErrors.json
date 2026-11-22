@@ -559,8 +559,6 @@
       "incremental_no_change": "El origen de código no tiene ninguna función @change para {{table}}. Declare una con @change table={{table}}.",
       "incremental_needs_rebuild_every": "{{table}} se mantiene de forma incremental, por lo que se recompila completa por reloj. Indique cada cuánto, en segundos, en «Recompilación completa cada».",
       "table_derived_from_function": "La tabla '{{name}}' se deriva de una función: se elimina desactivando la tabla de la función, y sus columnas y parámetros se editan en la función",
-      "table_state_from_function": "La tabla '{{table}}' se deriva de la función '{{name}}' y tiene su estado de publicación: no se retira ni se restablece por sí sola",
-      "table_region_from_function": "La tabla '{{table}}' se deriva de la función '{{name}}' y tiene su región: no se traslada por sí sola a otra región",
       "table_withdrawn": "Tabla {{table}} retirada",
       "table_put_back": "Tabla {{table}} restablecida",
       "source_withdrawn": "Origen {{source}} retirado",
@@ -572,6 +570,8 @@
       "put_back_needs_region": "Restablecer {{object}} nombra una región: indique una, o ninguna para ninguna región.",
       "mask_constant_not_text": "Una máscara constante en una columna que no es de texto se lee como NULL; solo se puede guardar NULL: {{column}} ({{type}})",
       "table_domain_required": "La tabla '{{table}}' no indica ningún dominio: toda tabla se registra en un dominio",
+      "table_state_from_function": "La tabla '{{table}}' se deriva de la función '{{name}}' y tiene su estado de publicación: no se retira ni se restablece por sí sola",
+      "table_region_from_function": "La tabla '{{table}}' se deriva de la función '{{name}}' y tiene su región: no se traslada por sí sola a otra región",
       "table_name_reserved": "El nombre de tabla '{{table}}' está reservado: los comandos de un dominio se sirven bajo 'commands'. Registre la tabla con otro nombre o alias."
     },
     "secrets": {
@@ -936,6 +936,21 @@
     "relationship": {
       "name_taken": "El nombre «{{name}}» lo ocupa la relación «{{held_by}}». Dé otro nombre a esta.",
       "join_through_none": "Las relaciones '{{first}}' y '{{second}}' no comparten una tabla intermedia, o sus otros extremos ya están unidos a través de ella."
+    },
+    "syncing": {
+      "not_found": "No hay ninguna entrada {{entry}}.",
+      "no_connection": "{{entry}} no tiene ningún catálogo que leer.",
+      "no_role": "{{entry}} no tiene un rol con el que publicar, así que aún no hay nada que comparar. Elija un rol en su configuración.",
+      "read_not_supported": "Leer valores de vuelta desde {{provider}} aún no es compatible.",
+      "no_such_difference": "Ya no hay ninguna diferencia {{difference}}. Vuelva a leer la lista.",
+      "decided_twice": "{{difference}} se decidió dos veces.",
+      "direction_off": "{{entry}} no sincroniza en esa dirección.",
+      "import_kind_unsupported": "Llevar a Provisa el {{kind}} de un catálogo aún no es compatible.",
+      "publish_failed": "La publicación en {{entry}} no tuvo éxito, así que no se aplicó nada.",
+      "object_gone": "{{object}} ya no está registrado en Provisa.",
+      "unknown_direction": "{{direction}} no es una dirección: use Exportar o Importar.",
+      "unknown_kind": "{{kind}} no es un tipo de diferencia.",
+      "unknown_choice": "{{choice}} no es una elección fija."
     },
     "wikidata": {
       "no_credential": "El servicio de consultas de Wikidata no requiere credencial",

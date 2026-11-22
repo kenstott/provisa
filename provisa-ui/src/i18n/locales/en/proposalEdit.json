@@ -1,0 +1,9 @@
+{
+  "proposalEdit": {
+    "title": "Edit candidate",
+    "name": "Relationship name",
+    "cardinality": "Cardinality",
+    "cancel": "Cancel",
+    "save": "Save"
+  }
+}
