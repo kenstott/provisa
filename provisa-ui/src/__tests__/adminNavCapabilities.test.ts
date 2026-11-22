@@ -304,11 +304,23 @@ describe("admin surface capabilities", () => {
     }
   });
 
-  it("draws the Context group where the Ontology and Library links stood, in its order", () => {
-    // REQ-2259: one Context group replaces the two top-level links, before Model.
-    const groups = NAV_BAR.map((e) => (e.kind === "group" ? e.group.id : e.to));
-    expect(groups.indexOf("context")).toBe(groups.indexOf("/relationships") + 1);
-    expect(groups.indexOf("model")).toBe(groups.indexOf("context") + 1);
+  it("draws the bar in build order: Sources, Tables, Relationships, Derived, Context, Products, Security, Explore", () => {
+    // Maintainer 2026-11-22: raw data is modeled, derived datasets are built, context is attached
+    // to both, and products bundle datasets with their meaning.
+    expect(NAV_BAR.map((e) => (e.kind === "group" ? e.group.id : e.to))).toEqual([
+      "/sources",
+      "/tables",
+      "/relationships",
+      "model",
+      "context",
+      "/data-products",
+      "security",
+      "explore",
+    ]);
+  });
+
+  it("draws the Context group in place of the Ontology and Library links, in its order", () => {
+    // REQ-2259: one Context group replaces the two top-level links.
     for (const to of ["/admin/ontology", "/library"]) {
       expect(
         NAV_BAR.some((e) => e.kind === "link" && e.to === to),
