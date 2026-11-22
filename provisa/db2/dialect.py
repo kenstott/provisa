@@ -29,6 +29,8 @@ refusals, each with its reason:
 - casts to ``numeric`` without a precision (Db2's default is ``DECIMAL(5,0)``), ``time`` (Db2's has
   no fractional seconds), ``timestamptz`` (Db2 LUW has none), ``bytea``, ``uuid``, JSON and arrays.
 - regular expressions: Db2's REGEXP_LIKE is ICU's syntax, not PostgreSQL's.
+- a cast to an integer type of a value not known to be integral: Db2 truncates a fraction
+  (``CAST(2.5 AS INTEGER)`` is 2), PostgreSQL rounds (3) (provisa/core/sql_integral.py).
 
 Forms that differ in spelling only: ``LIMIT n OFFSET m`` is ``OFFSET m ROWS FETCH FIRST n ROWS
 ONLY``; a SELECT with no FROM reads ``SYSIBM.SYSDUMMY1``; ``a % b`` is ``MOD(a, b)``; ``ILIKE`` is
@@ -47,6 +49,8 @@ from typing import Any
 import sqlglot.expressions as exp
 from sqlglot import generator
 from sqlglot.dialects.dialect import Dialect, NormalizationStrategy
+
+from provisa.core.sql_integral import fractional_integer_cast
 
 #: The dialect's name, as ``source_registry.engine_dialect`` returns it for a Db2 engine.
 NAME = "db2"
@@ -249,6 +253,8 @@ def _check(node: exp.Expr) -> None:
     if isinstance(node, exp.Cast):
         if isinstance(node, exp.TryCast):
             raise refused("try_cast")
+        if fractional_integer_cast(node):
+            raise refused("a cast to an integer type of a value that may have a fraction")
         return
     if isinstance(node, exp.Length):
         if node.args.get("binary"):
