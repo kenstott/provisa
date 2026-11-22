@@ -41,7 +41,6 @@ import contextlib
 import os
 import subprocess
 import sys
-from pathlib import Path
 
 import pytest
 
@@ -52,14 +51,8 @@ pytestmark = [pytest.mark.integration, pytest.mark.requires_warehouse]
 _SOURCE_ID = "askamerica-trino-itest"
 _CATALOG = "askamerica_trino_itest"
 _SCHEMAS = "econ,ref,geo"
-_SCHEMA = "ref"
-# ref.countries: neither the schema nor the table name contains "_". Calcite's pgwire pg_catalog
-# emulation answers LIKE from DuckDB without PostgreSQL's default backslash escape, so any govdata
-# schema/table name containing "_" is TABLE_NOT_FOUND through Trino (reported to calcite-lead).
-# This reverts to _SCHEMA = "econ", _TABLE = "inflation_metrics" (always materialized, 6,001 rows)
-# once calcite ships the LIKE-escape fix. fec.candidates is avoided too: it shows 0 columns
-# (calcite catalog/describe bug, govdata-ops #1416).
-_TABLE = "countries"
+# The schemas the table read is picked from, in order (see _a_table_with_columns).
+_PICK_FROM = ("ref", "geo")
 _COLD_START_SECONDS = 600
 
 
@@ -128,7 +121,7 @@ def _container_reach() -> dict[str, str]:
 
 @pytest.fixture(scope="module")
 def served(tmp_path_factory):
-    """The source's server, bound where the Trino container reaches it; yields its state dir."""
+    """The source's server, bound where the Trino container reaches it."""
     from provisa.federation import pgwire_replica as pr
 
     data_dir = tmp_path_factory.mktemp("askamerica-trino-state")
@@ -143,7 +136,7 @@ def served(tmp_path_factory):
     try:
         with deployment_org_on_this_node():
             _cold_start(source, pr)
-        yield source, data_dir
+        yield source
     finally:
         with as_deployment_org():
             pr.stop_endpoint(source.id)
@@ -154,22 +147,28 @@ def served(tmp_path_factory):
                 os.environ[name] = value
 
 
-def _adapter_log(data_dir: Path) -> str:
-    logs = sorted(Path(data_dir).rglob("pgwire-server.log"))
-    if not logs:
-        return "(the adapter wrote no log)"
-    return "\n".join(logs[-1].read_text(errors="replace").splitlines()[-80:])
+def _adapter_log(source) -> str:
+    """The end of the adapter's own log. A govdata server runs from the one installed bundle, so
+    its log is beside that bundle, not under this module's state directory (run 44967727447
+    found none there): the server says where."""
+    from provisa.federation import pgwire_replica as pr
+
+    with as_deployment_org():
+        server = pr._endpoint_replica(source)._server
+    if server is None:
+        return "(no server was started)"
+    return server.log_tail()
 
 
 @contextlib.contextmanager
-def _step(what: str, sql: str, data_dir: Path):
+def _step(what: str, sql: str, source):
     """Name the statement a failure happened on and attach the end of the adapter's log."""
     try:
         yield
     except Exception as exc:  # noqa: BLE001 - re-raised with the statement and the adapter's log
         raise AssertionError(
             f"{what} failed on:\n  {sql}\n{type(exc).__name__}: {exc}\n"
-            f"--- adapter log (end) ---\n{_adapter_log(data_dir)}"
+            f"--- adapter log (end) ---\n{_adapter_log(source)}"
         ) from exc
 
 
@@ -180,7 +179,7 @@ def catalog(served):
 
     from provisa.federation.trino_connectors import TrinoGovdataConnector
 
-    source, data_dir = served
+    source = served
     # A module fixture runs before the per-test org binding: the endpoint is the deployment
     # org's, as in served.
     with as_deployment_org():
@@ -193,48 +192,79 @@ def catalog(served):
     cur = conn.cursor()
     cur.execute(f"DROP CATALOG IF EXISTS {_CATALOG}")
     cur.fetchall()
-    with _step("creating the catalog", create, data_dir):
+    with _step("creating the catalog", create, source):
         cur.execute(create)
         cur.fetchall()
     try:
-        yield cur, data_dir
+        yield cur, source
     finally:
         cur.execute(f"DROP CATALOG IF EXISTS {_CATALOG}")
         cur.fetchall()
         conn.close()
 
 
-def _run(cur, what: str, sql: str, data_dir: Path) -> list:
-    with _step(what, sql, data_dir):
+def _run(cur, what: str, sql: str, source) -> list:
+    with _step(what, sql, source):
         cur.execute(sql)
         return cur.fetchall()
 
 
-def test_trino_reads_an_askamerica_table_live_and_joins_it(catalog):
-    cur, data_dir = catalog
+def _a_table_with_columns(cur, source) -> tuple[str, str]:
+    """The first table of ``_PICK_FROM`` whose columns Trino lists, its schema and table names
+    free of "_".
 
-    schemas = {
-        r[0] for r in _run(cur, "listing schemas", f"SHOW SCHEMAS FROM {_CATALOG}", data_dir)
-    }
+    Calcite adapter bugs (engine-v0.128.8, reported to calcite-lead) decide which table can be
+    read, so the table is not fixed:
+    - its pg_catalog emulation answers LIKE without PostgreSQL's default backslash escape, so a
+      name containing "_" is TABLE_NOT_FOUND through Trino (pgwire-calcite LIKE-escape fix,
+      kenstott/calcite PR #1042, ships in engine-v0.128.9);
+    - the served catalog lists some tables with no columns although the adapter's pg_catalog
+      emulation answers pgjdbc's getColumns for them (ref.countries, fec.candidates: DESCRIBE
+      "has no supported columns (all 0 columns are not supported)", run 44967727447;
+      govdata-ops #1416).
+    The steps that follow are the same for any table, so a table Trino can describe gives the
+    assurance a fixed one did."""
+    schemas = ", ".join(f"'{s}'" for s in _PICK_FROM)
+    listed = _run(
+        cur,
+        "listing the tables Trino has columns for",
+        f"SELECT DISTINCT table_schema, table_name FROM {_CATALOG}.information_schema.columns "  # noqa: S608 - constants
+        f"WHERE table_schema IN ({schemas})",
+        source,
+    )
+    usable = sorted(
+        (_PICK_FROM.index(schema), schema, table)
+        for schema, table in listed
+        if "_" not in schema and "_" not in table
+    )
+    assert usable, f"Trino lists columns for no table of {_PICK_FROM} free of '_': {listed}"
+    _, schema, table = usable[0]
+    return schema, table
+
+
+def test_trino_reads_an_askamerica_table_live_and_joins_it(catalog):
+    cur, source = catalog
+
+    schemas = {r[0] for r in _run(cur, "listing schemas", f"SHOW SCHEMAS FROM {_CATALOG}", source)}
     # The adapter serves every schema it has; which of them the source offers is the source's own
     # list, enforced by Provisa (federation/askamerica.SchemaNotServed), not by the catalog Trino
     # reads. Each schema the source lists is there.
     assert set(_SCHEMAS.split(",")) <= schemas, schemas
 
+    schema, table = _a_table_with_columns(cur, source)
     tables = {
-        r[0]
-        for r in _run(cur, "listing tables", f"SHOW TABLES FROM {_CATALOG}.{_SCHEMA}", data_dir)
+        r[0] for r in _run(cur, "listing tables", f"SHOW TABLES FROM {_CATALOG}.{schema}", source)
     }
-    assert _TABLE in tables, tables
+    assert table in tables, tables
 
-    columns = _run(cur, "describing the table", f"DESCRIBE {_CATALOG}.{_SCHEMA}.{_TABLE}", data_dir)
+    columns = _run(cur, "describing the table", f"DESCRIBE {_CATALOG}.{schema}.{table}", source)
     assert columns, "the table has no columns Trino could map"
 
     rows = _run(
         cur,
         "reading the table alone",
-        f"SELECT * FROM {_CATALOG}.{_SCHEMA}.{_TABLE} LIMIT 5",
-        data_dir,
+        f"SELECT * FROM {_CATALOG}.{schema}.{table} LIMIT 5",
+        source,
     )
     assert len(rows) == 5
 
@@ -242,16 +272,16 @@ def test_trino_reads_an_askamerica_table_live_and_joins_it(catalog):
     filtered = _run(
         cur,
         "a pushed-down predicate",
-        f'SELECT count(*) FROM {_CATALOG}.{_SCHEMA}.{_TABLE} WHERE "{first}" IS NOT NULL',
-        data_dir,
+        f'SELECT count(*) FROM {_CATALOG}.{schema}.{table} WHERE "{first}" IS NOT NULL',
+        source,
     )
     assert filtered[0][0] >= 0
 
     joined = _run(
         cur,
         "joining with a table of another catalog",
-        f"SELECT count(*) FROM (SELECT * FROM {_CATALOG}.{_SCHEMA}.{_TABLE} LIMIT 5) c "
+        f"SELECT count(*) FROM (SELECT * FROM {_CATALOG}.{schema}.{table} LIMIT 5) c "
         "CROSS JOIN (SELECT node_id FROM system.runtime.nodes LIMIT 1) n",
-        data_dir,
+        source,
     )
     assert joined[0][0] == 5
