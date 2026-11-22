@@ -427,6 +427,7 @@ def parse_metadata_document(
             kind=raw_src.get("kind", "postgres"),
             connection_info=(raw_src.get("configuration", {}) or {}).get("connection_info", {})
             or {},
+            naming_convention=_naming_convention(raw_src),
         )
         for raw_tbl in raw_src.get("tables", []) or []:
             source.tables.append(_parse_table(raw_tbl))
@@ -477,6 +478,11 @@ def _included(entry: Any, base: Path, root: Path) -> tuple[list, Path]:
     return list(entry or []), base
 
 
+def _naming_convention(raw_src: dict[str, Any]) -> str | None:  # REQ-194
+    """The naming convention a source's ``customization`` names, None when it names none."""
+    return (raw_src.get("customization") or {}).get("naming_convention")
+
+
 def _parse_listed_source(  # REQ-417
     raw: dict[str, Any], databases_dir: Path, root: Path
 ) -> HasuraSource:
@@ -485,6 +491,7 @@ def _parse_listed_source(  # REQ-417
         name=raw.get("name", "default"),
         kind=raw.get("kind", "postgres"),
         connection_info=(raw.get("configuration") or {}).get("connection_info") or {},
+        naming_convention=_naming_convention(raw),
     )
     tables, base = _included(raw.get("tables"), databases_dir, root)
     for entry in tables:

@@ -139,6 +139,9 @@ class HasuraSource:  # REQ-417
     connection_info: dict[str, Any] = field(default_factory=dict)
     tables: list[HasuraTable] = field(default_factory=list)
     functions: list[HasuraFunction] = field(default_factory=list)
+    # REQ-194: the source's customization.naming_convention (hasura-default or graphql-default);
+    # None when the export sets none, so the deployment's default applies.
+    naming_convention: str | None = None
 
 
 @dataclass
