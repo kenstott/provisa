@@ -91,6 +91,8 @@ PLAIN_FIELDS = (
     "datazone_domain_id",
     "timeout_seconds",
     "domains",
+    # REQ-2247: the schedule of the entry's Import.
+    "import_cron",
     *EXPORT_FIELDS,
 )
 
@@ -321,6 +323,10 @@ async def set_syncing(request: Request) -> dict:  # REQ-2247, REQ-2122, REQ-1072
         from provisa.api.metadata_export.publishing import register_org_jobs
 
         await register_org_jobs(scheduler, org_id)
+        # REQ-2247: and the entries' import schedules.
+        from provisa.api.admin.syncing_import import register_import_jobs
+
+        await register_import_jobs(scheduler, org_id)
     return {"success": True, "entries": [c.id for c in config.catalogs]}
 
 
@@ -403,7 +409,7 @@ async def publish_entry(request: Request, entry_id: str) -> dict:  # REQ-2247, R
     return await _publish(org_id, entry_id)
 
 
-async def _entry_differences(org_id: str, entry: CatalogConnection) -> tuple[Any, list[Any]]:
+async def entry_differences(org_id: str, entry: CatalogConnection) -> tuple[Any, list[Any]]:
     """The snapshot the entry is published and its differences with the catalog (REQ-2247).
 
     Refused by name: an entry with no catalog to read, one naming no role (it is read for what it
@@ -466,7 +472,7 @@ async def review_entry(request: Request, entry_id: str) -> dict:  # REQ-2247, RE
     require_org_settings(request)
     org_id = require_active_org_id(request)
     entry = _entry(await stored_settings(), entry_id)
-    _, diffs = await _entry_differences(org_id, entry)
+    _, diffs = await entry_differences(org_id, entry)
     return {
         "id": entry_id,
         "provider": entry.provider,
@@ -556,7 +562,7 @@ async def apply_review(request: Request, entry_id: str) -> dict:  # REQ-2247, RE
     org_id = require_active_org_id(request)
     body = await request.json()
     entry = _entry(await stored_settings(), entry_id)
-    snapshot, diffs = await _entry_differences(org_id, entry)
+    snapshot, diffs = await entry_differences(org_id, entry)
     taken = syncing_review.chosen(diffs, list(body.get("decisions") or []))
     syncing_review.require_sides_run(entry, taken)
     publish = None

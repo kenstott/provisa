@@ -3389,6 +3389,9 @@ class CatalogConnection(BaseModel):  # REQ-2122, REQ-2247
     that names none (REQ-2152, ruling Q1); ``datazone_project_id``, the DataZone project that owns
     the org's data products (REQ-2118); ``delta_share``, whether a unity_catalog catalog also gets
     each product as a Delta Share (REQ-2117).
+
+    ``import_cron`` is the schedule of the entry's Import (REQ-2247), a crontab; empty is no
+    schedule. Only a data catalog that imports has one: an ontology's releases are uploaded.
     """
 
     id: str
@@ -3415,6 +3418,7 @@ class CatalogConnection(BaseModel):  # REQ-2122, REQ-2247
     role: str | None = None
     datazone_project_id: str = ""
     delta_share: bool = False
+    import_cron: str = ""
 
     @field_validator("id")
     @classmethod
@@ -3425,6 +3429,13 @@ class CatalogConnection(BaseModel):  # REQ-2122, REQ-2247
 
     @model_validator(mode="after")
     def _validate(self) -> "CatalogConnection":
+        if self.import_cron:
+            # REQ-2247: a direction that is off never runs, so it has no schedule to run on.
+            if self.type != "data_catalog" or not self.imports:
+                raise ValueError(f"entry {self.id!r} does not import, so it has no import schedule")
+            from provisa.core.cron import cron_trigger
+
+            cron_trigger(self.import_cron)
         if self.type != "data_catalog":
             # Only a data catalog is reached through a provider's adapter, so only it has one.
             given = [name for name in ("provider", *_EXPORT_SETTING_FIELDS) if getattr(self, name)]
