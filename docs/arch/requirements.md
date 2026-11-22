@@ -26796,7 +26796,7 @@ Maintainer 2026-11-09. A @command of a code source, in any language ([REQ-1984](
 
 **Code:** —
 
-**Tests:** `tests/integration/test_code_table_read_e2e.py`
+**Tests:** `tests/integration/test_code_table_read_e2e.py`, `tests/unit/test_code_command_table_arg.py`, `tests/unit/test_minted_call_token.py`, `tests/unit/test_minted_pipeline_column_visibility.py`
 
 ### REQ-2227 · Source Connectors {#REQ-2227}
 
@@ -26806,7 +26806,7 @@ Maintainer 2026-11-09. A Rust code source is a further language for code sources
 
 **Code:** —
 
-**Tests:** —
+**Tests:** `tests/unit/test_rust_source.py`, `tests/unit/test_rust_install.py`, `tests/unit/test_rust_image_linker.py`, `tests/integration/test_rust_worker.py`
 
 ## 12. Migration & Compatibility (Hasura)
 
@@ -26886,7 +26886,7 @@ Maintainer 2026-11-10. Register Table lets a person pick several tables of a sou
 
 **Code:** —
 
-**Tests:** —
+**Tests:** `tests/unit/test_register_tables_batch.py`, `provisa-ui/src/pages/tables/__tests__/RegisterTableForm.several.test.tsx`
 
 ## 4. Source Connectors
 
