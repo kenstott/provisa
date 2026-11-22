@@ -23,6 +23,7 @@ launcher already present under the pinned version) never re-downloads.
 
 from __future__ import annotations
 
+import hashlib
 import os
 import platform
 import shutil
@@ -32,11 +33,11 @@ import threading
 from dataclasses import dataclass
 from http import HTTPStatus
 from pathlib import Path
-from typing import IO, Callable, cast
+from typing import Callable
 
 # The pinned upstream release the whole bundle set is fetched from (REQ-956). One version knob — a
 # bundle path is always namespaced by this tag, so a version bump caches side by side, never in place.
-RELEASE_TAG = "engine-v0.123.2"
+RELEASE_TAG = "engine-v0.128.9"
 # Connectors whose bundle comes from a release other than RELEASE_TAG. The one table of such
 # overrides; a connector absent here is at RELEASE_TAG. Each entry is removed when RELEASE_TAG
 # moves to (or past) its release. Empty: from engine-v0.117.0 no connector's catalog counts the
@@ -143,6 +144,19 @@ class BundleSpec:  # REQ-956 — a pinned (connector, version) coordinate in the
             f"https://github.com/{self.repo}/releases/download/{self.version}/{self.asset_filename}"
         )
 
+    @property
+    def checksum_filename(self) -> str:
+        """The release asset holding the tarball's SHA-256 (``<asset_filename>.sha256``)."""
+        return f"{self.asset_filename}.sha256"
+
+    @property
+    def checksum_url(self) -> str:
+        """The URL of :attr:`checksum_filename` in the same pinned release."""
+        return (
+            f"https://github.com/{self.repo}/releases/download/{self.version}/"
+            f"{self.checksum_filename}"
+        )
+
 
 def bundle_variant() -> str:
     """This host's release tarball variant (REQ-1690). A platform the release does not build for
@@ -205,42 +219,50 @@ Downloader = Callable[[BundleSpec, Path], None]
 
 
 def download_release_asset(spec: BundleSpec, dest: Path) -> None:
-    """Download ``spec``'s release-asset tarball and extract it into ``dest`` (REQ-956). Fails loud on
-    any network / archive error — no partial or silent success. The tarball is expected to contain the
-    bundle tree (``bin/pgwire-<connector>``, ``model/`` …); resolution verifies the launcher after."""
+    """Download ``spec``'s release-asset tarball, verify it against the release's ``.sha256``
+    asset, and extract it into ``dest`` (REQ-956). Fails loud on any network / archive error, a
+    missing ``.sha256`` asset, or a checksum mismatch — no partial or silent success, and no path
+    that skips verification. The tree is laid down beside ``dest`` and renamed into place whole,
+    only once it is fully extracted and holds the ``bin/pgwire-<connector>`` launcher."""
     import httpx
 
     if not spec.download_url.startswith("https://"):
         raise BundleUnavailable(f"refusing non-https bundle URL: {spec.download_url}")
-    # The tarball nests everything under ``<asset_stem>/``; extract beside ``dest`` into a staging
-    # directory of this download's own and rename that directory into place whole, so the bundle
-    # root is ``dest`` (``dest/bin/pgwire-<connector>``) and a reader never sees it half laid down.
+    # Everything happens in a staging directory of this download's own beside ``dest``: the
+    # tarball, its extraction, and the launcher check. A cut-off download, a tampered tarball or an
+    # interrupted extraction leaves nothing at ``dest`` and no staging behind.
     dest.parent.mkdir(parents=True, exist_ok=True)
     staging = Path(tempfile.mkdtemp(prefix=f".{dest.name}.", suffix=".download", dir=dest.parent))
     try:
-        with httpx.stream("GET", spec.download_url, follow_redirects=True, timeout=120.0) as resp:
-            if resp.status_code != HTTPStatus.OK:
-                raise BundleUnavailable(
-                    f"failed to download pgwire bundle {spec.artifact_name} from "
-                    f"{spec.download_url}: HTTP {resp.status_code}"
-                )
-            with tarfile.open(
-                fileobj=cast("IO[bytes]", _StreamReader(resp.iter_bytes())), mode="r|gz"
-            ) as tar:
-                # filter="data" rejects absolute paths, ".." traversal and unsafe links/specials,
-                # so a malicious archive cannot escape staging (Python 3.12 safe-extraction filter).
-                tar.extractall(staging, filter="data")
-        root = staging / spec.asset_stem
+        expected = _expected_sha256(spec)
+        tarball = staging / spec.asset_filename
+        found = _download_to(spec.download_url, tarball, spec)
+        if found != expected:
+            raise BundleUnavailable(
+                f"pgwire bundle {spec.asset_filename} from {spec.download_url} has SHA-256 "
+                f"{found}, not the {expected} its release publishes in {spec.checksum_url}"
+            )
+        extracted = staging / "extract"
+        with tarfile.open(tarball, mode="r:gz") as tar:
+            # filter="data" rejects absolute paths, ".." traversal and unsafe links/specials,
+            # so a malicious archive cannot escape staging (Python 3.12 safe-extraction filter).
+            tar.extractall(extracted, filter="data")
+        root = extracted / spec.asset_stem
         if not root.is_dir():
             raise BundleUnavailable(
                 f"pgwire bundle {spec.asset_filename} does not contain a {spec.asset_stem}/ directory"
             )
+        if not (root / "bin" / spec.artifact_name).is_file():
+            raise BundleUnavailable(
+                f"pgwire bundle {spec.asset_filename} does not contain launcher "
+                f"{spec.asset_stem}/bin/{spec.artifact_name}"
+            )
         if dest.exists():
-            # Left by a download that did not finish (it has no launcher, or this one would not
-            # run): the resolver holds the bundle's lock, so nothing reads it.
+            # Left by an earlier install with no launcher: the resolver holds the bundle's lock,
+            # so nothing reads it.
             shutil.rmtree(dest)
         os.rename(root, dest)
-    except (OSError, httpx.HTTPError, tarfile.TarError) as exc:
+    except (OSError, httpx.HTTPError, tarfile.TarError, EOFError) as exc:
         raise BundleUnavailable(
             f"failed to download pgwire bundle {spec.artifact_name} from {spec.download_url}: {exc}"
         ) from exc
@@ -248,24 +270,49 @@ def download_release_asset(spec: BundleSpec, dest: Path) -> None:
         shutil.rmtree(staging, ignore_errors=True)
 
 
-class _StreamReader:
-    """A read()-only file object over an httpx byte iterator, for streaming tarfile extraction."""
+def _expected_sha256(spec: BundleSpec) -> str:
+    """The SHA-256 the release publishes for ``spec``'s tarball, from its ``.sha256`` asset (the
+    hex digest, optionally followed by the filename). A missing or malformed asset is refused by
+    name: a bundle is never installed unverified."""
+    import httpx
 
-    def __init__(self, chunks) -> None:
-        self._chunks = iter(chunks)
-        self._buf = b""
+    with httpx.stream("GET", spec.checksum_url, follow_redirects=True, timeout=120.0) as resp:
+        if resp.status_code != HTTPStatus.OK:
+            raise BundleUnavailable(
+                f"pgwire bundle {spec.asset_filename} has no checksum asset "
+                f"{spec.checksum_filename} in release {spec.version} ({spec.checksum_url}: "
+                f"HTTP {resp.status_code}); refusing to install it unverified"
+            )
+        text = b"".join(resp.iter_bytes()).decode("ascii", errors="replace")
+    fields = text.split()
+    digest = fields[0].lower() if fields else ""
+    if len(digest) != _SHA256_HEX_LEN or any(c not in "0123456789abcdef" for c in digest):
+        raise BundleUnavailable(
+            f"checksum asset {spec.checksum_filename} in release {spec.version} does not hold a "
+            f"SHA-256 digest: {text[:100]!r}"
+        )
+    return digest
 
-    def read(self, n: int = -1) -> bytes:
-        while n < 0 or len(self._buf) < n:
-            chunk = next(self._chunks, None)
-            if chunk is None:
-                break
-            self._buf += chunk
-        if n < 0:
-            out, self._buf = self._buf, b""
-        else:
-            out, self._buf = self._buf[:n], self._buf[n:]
-        return out
+
+def _download_to(url: str, path: Path, spec: BundleSpec) -> str:
+    """Stream ``url`` into ``path`` and return the SHA-256 hex digest of what arrived."""
+    import httpx
+
+    digest = hashlib.sha256()
+    with httpx.stream("GET", url, follow_redirects=True, timeout=120.0) as resp:
+        if resp.status_code != HTTPStatus.OK:
+            raise BundleUnavailable(
+                f"failed to download pgwire bundle {spec.artifact_name} from {url}: "
+                f"HTTP {resp.status_code}"
+            )
+        with path.open("wb") as out:
+            for chunk in resp.iter_bytes():
+                digest.update(chunk)
+                out.write(chunk)
+    return digest.hexdigest()
+
+
+_SHA256_HEX_LEN = 64
 
 
 class BundleResolver:  # REQ-956

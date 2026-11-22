@@ -115,6 +115,14 @@ class EngineBackend:
 
         return transpile(pg_sql, self.dialect)
 
+    def transpile_typed(self, pg_sql: str, column_types: Any) -> str:
+        """``transpile_physical`` for an engine whose dialect writes a construct by its operands'
+        types (``typed_columns.TYPED_DIALECTS``: Db2, SAP HANA), handed the registered
+        ``column_types`` of the tables ``pg_sql`` reads (REQ-2236)."""
+        from provisa.transpiler.transpile import transpile
+
+        return transpile(pg_sql, self.dialect, column_types=column_types)
+
     def exact_reads(self, state: Any, physical_sql: str) -> str:
         """``physical_sql`` with each read an engine would round at its source made exact there
         (REQ-2167). An engine whose reads keep a source's values as they are changes nothing."""

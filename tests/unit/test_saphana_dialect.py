@@ -15,9 +15,15 @@ construct has a form there giving PostgreSQL's answer, and refused by name where
 
 from __future__ import annotations
 
+import math
+from fractions import Fraction
+
 import pytest
+import sqlglot
+import sqlglot.expressions as exp
 from sqlglot.dialects.dialect import Dialect
 
+from provisa.core import sql_integral
 from provisa.core.source_registry import engine_dialect
 from provisa.transpiler.function_macros import FunctionRefused
 from provisa.transpiler.transpile import transpile
@@ -144,6 +150,14 @@ def test_strings() -> None:
     )
 
 
+def test_substring_of_literal_bounds_is_written() -> None:
+    """HANA is a column of the polyfill grid (REQ-2236): its substr row keeps the engine's call,
+    which the dialect writes where the start is a literal of at least 1 and the length a literal."""
+    assert _hana('SELECT SUBSTRING("a" FROM 2 FOR 3) FROM "t"') == (
+        'SELECT SUBSTRING("a", 2, 3) FROM "t"'
+    )
+
+
 def test_like_takes_postgres_escape_and_ilike_folds_case() -> None:
     assert _hana('SELECT "a" FROM "t" WHERE "a" LIKE \'a\\_%\' AND "b" ILIKE \'%x%\'') == (
         'SELECT "a" FROM "t" WHERE "a" LIKE \'a\\_%\' ESCAPE \'\\\' '
@@ -224,21 +238,96 @@ def test_writes() -> None:
     )
 
 
+# -- integer division: a truncating form where the operands' integer types are known ----------
+
+
+def _hana_value(node: exp.Expr) -> Fraction:
+    """The value HANA gives the written form, by HANA's definitions: an integer quotient is the
+    exact decimal quotient (a bigint's fits HANA's 34 digits), ROUND(x, 0, ROUND_DOWN) rounds
+    toward zero, and a cast of an integral value to an integer type is that value."""
+    if isinstance(node, exp.Literal):
+        return Fraction(int(node.this))
+    if isinstance(node, exp.Neg):
+        return -_hana_value(node.this)
+    if isinstance(node, exp.Paren):
+        return _hana_value(node.this)
+    if isinstance(node, exp.Div):
+        return _hana_value(node.this) / _hana_value(node.expression)
+    if isinstance(node, exp.Round):
+        assert node.args["decimals"].this == "0" and node.args["truncate"].name == "ROUND_DOWN"
+        value = _hana_value(node.this)
+        return Fraction(math.trunc(value))
+    assert isinstance(node, exp.Cast) and node.to.this in sql_integral.INTEGER_TYPES
+    value = _hana_value(node.this)
+    assert value.denominator == 1, "the cast is of an integral value"
+    return value
+
+
+@pytest.mark.parametrize(
+    ("a", "b", "postgres"),
+    [
+        # PostgreSQL's integer division truncates toward zero (its docs: 5 / 2 is 2, -5 / 2 -2).
+        ("7", "2", 3),
+        ("-7", "2", -3),
+        ("7", "-2", -3),
+        ("-7", "-2", 3),
+        ("-1", "2", 0),
+        ("1", "-2", 0),
+        ("-6", "3", -2),
+        ("6", "3", 2),
+        ("0", "-5", 0),
+        ("9223372036854775807", "-2", -4611686018427387903),
+        ("-9223372036854775807", "10", -922337203685477580),
+    ],
+)
+def test_integer_division_gives_postgres_truncated_quotient(a: str, b: str, postgres: int) -> None:
+    written = _hana(f"SELECT {a} / {b}")
+    (value,) = sqlglot.parse_one(written).selects
+    assert "ROUND_DOWN" in written
+    assert _hana_value(value) == postgres
+
+
+def test_integer_division_is_of_the_wider_operands_type() -> None:
+    assert _hana(
+        "SELECT CAST(7 AS SMALLINT) / CAST(2 AS SMALLINT), 7 / CAST(2 AS SMALLINT), "
+        "COUNT(*) / 2, 9223372036854775807 / 2"
+    ) == (
+        "SELECT CAST(ROUND(CAST(7 AS SMALLINT) / CAST(2 AS SMALLINT), 0, ROUND_DOWN) AS SMALLINT), "
+        "CAST(ROUND(7 / CAST(2 AS SMALLINT), 0, ROUND_DOWN) AS INTEGER), "
+        "CAST(ROUND(COUNT(*) / 2, 0, ROUND_DOWN) AS BIGINT), "
+        'CAST(ROUND(9223372036854775807 / 2, 0, ROUND_DOWN) AS BIGINT) FROM "DUMMY"'
+    )
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        'SELECT "a" / "b" FROM "t"',  # untyped columns
+        "SELECT 7.5 / 2",  # a numeric operand
+        'SELECT FLOOR("a") / 2 FROM "t"',  # integral, but PostgreSQL's floor is a double
+        "SELECT 99999999999999999999 / 2",  # past bigint: PostgreSQL's numeric
+    ],
+)
+def test_division_of_operands_not_known_to_be_integers_is_refused(sql: str) -> None:
+    with pytest.raises(FunctionRefused, match="/ of operands not known to be integers"):
+        _hana(sql)
+
+
 # -- refused by name: no HANA form gives PostgreSQL's answer -----------------------------------
 
 
 @pytest.mark.parametrize(
     ("sql", "named"),
     [
-        # HANA's quotient of two integers is a decimal; PostgreSQL's truncates.
-        ('SELECT "a" / "b" FROM "t"', "/"),
+        # HANA's quotient of two integers is a decimal; PostgreSQL's truncates. Untyped columns.
+        ('SELECT "a" / "b" FROM "t"', "/ of operands not known to be integers"),
         ('SELECT AVG("a") FROM "t"', "avg"),
         # HANA returns NULL for any NULL argument; PostgreSQL skips it.
         ('SELECT GREATEST("a", "b") FROM "t"', "greatest"),
         ('SELECT CONCAT("a", "b") FROM "t"', "concat"),
         ('SELECT ROUND("a", 2) FROM "t"', "round"),
-        # The polyfill grid has no substring row for HANA yet.
-        ('SELECT SUBSTRING("a" FROM 2 FOR 3) FROM "t"', "substr"),
+        # HANA's substring of a start below 1 is not PostgreSQL's (the grid's substr row keeps it).
+        ('SELECT SUBSTRING("a" FROM "s" FOR 3) FROM "t"', "substring with a start"),
         # No interval type; the server's clock zone, not the session's.
         ('SELECT "d" + INTERVAL \'1 day\' FROM "t"', "interval"),
         ('SELECT DATE_TRUNC(\'month\', "d") FROM "t"', "timestamp_trunc"),

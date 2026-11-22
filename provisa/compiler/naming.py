@@ -16,6 +16,7 @@ Names must be valid GraphQL identifiers: [_A-Za-z][_0-9A-Za-z]*.
 # Requirements: REQ-154, REQ-155, REQ-156, REQ-157, REQ-194, REQ-195, REQ-411, REQ-412, REQ-416, REQ-1327
 
 import functools
+from dataclasses import dataclass
 import re
 from collections.abc import Callable, Mapping
 from typing import TYPE_CHECKING, Any
@@ -1175,3 +1176,269 @@ def conversion_problems(physical: str) -> list[tuple[str, str]]:  # REQ-194
             ("long_prefix_chain", f"{physical!r} chains {physical.count('__')} '__' qualifiers")
         )
     return found
+
+
+# ── REQ-194 (amended 2026-11-20, HASURA NAMES REPRODUCED EXACTLY): the names Hasura v2 generates ──
+#
+# The names Hasura v2 generates under its two conventions, so a team moving from Hasura keeps its
+# client queries unchanged.
+#
+# Sources, cited by section in tests/fixtures/hasura_naming/expected_names.json:
+#
+# - https://hasura.io/docs/2.0/schema/postgres/naming-convention/ — "Supported naming conventions"
+#   (hasura-default: snake_case fields, types and arguments, enum values as defined;
+#   graphql-default: camelCase fields and arguments, PascalCase types, upper-case enum values; a
+#   table outside ``public`` is qualified by its schema), "Behavior of custom table name" (a custom
+#   name is kept as written where it comes first; prefixed, its first letter is raised; the type
+#   name joins its words), "Backward compatibility" (under graphql-default the on_conflict
+#   constraint enum, scalar cast argument types and function argument types keep snake_case).
+# - https://hasura.io/docs/2.0/api-reference/graphql-api/query/ and .../mutation/ — the root
+#   fields (``_by_pk``, ``_aggregate``, ``insert_<t>_one``, ``update_<t>_by_pk``, ...), the input
+#   and output types and the arguments.
+#
+# Hasura names are built from words, not re-cased strings: a database name's words are its
+# underscore-separated parts. The variant without the snake_case exceptions (Hasura's
+# ``HASURA_FF_NAMING_CONVENTION_SEP_2023`` flag) is not offered (REQ-194: added only if an import
+# needs it).
+
+
+HASURA_DEFAULT = "hasura-default"
+GRAPHQL_DEFAULT = "graphql-default"
+HASURA_CONVENTIONS: tuple[str, ...] = (HASURA_DEFAULT, GRAPHQL_DEFAULT)
+
+
+def preset_of(convention: str) -> str:  # REQ-195
+    """The Provisa preset a Hasura convention is stored as."""
+    return _CONVENTION_ALIASES[_checked(convention)]
+
+
+def _checked(convention: str) -> str:
+    if convention not in HASURA_CONVENTIONS:
+        raise ValueError(
+            f"unknown Hasura naming convention {convention!r}; expected one of "
+            f"{', '.join(HASURA_CONVENTIONS)}"
+        )
+    return convention
+
+
+def _words(name: str) -> list[str]:
+    return [w for w in name.split("_") if w]
+
+
+def _upper_first(word: str) -> str:
+    return word[:1].upper() + word[1:]
+
+
+def _camel(words: list[str]) -> str:
+    """Hasura's camelCase of words: the first lowered at its first letter, each later one raised
+    at its first letter, the rest of each kept."""
+    if not words:
+        return ""
+    return words[0][:1].lower() + words[0][1:] + "".join(_upper_first(w) for w in words[1:])
+
+
+def _pascal(words: list[str]) -> str:
+    return "".join(_upper_first(w) for w in words)
+
+
+def _leading_underscores(name: str) -> str:
+    return name[: len(name) - len(name.lstrip("_"))]
+
+
+@dataclass(frozen=True)
+class _Base:
+    """A table's name as Hasura composes from it: its words (schema-qualified outside
+    ``public``), or a custom name kept as written."""
+
+    words: tuple[str, ...]
+    custom: str | None
+
+
+def _base(table: str, schema: str, custom_name: str | None) -> _Base:
+    if custom_name:
+        return _Base(words=(), custom=custom_name)
+    qualified = table if schema == "public" else f"{schema}_{table}"
+    return _Base(words=tuple(_words(qualified)), custom=None)
+
+
+def _field(convention: str, base: _Base, prefix: str = "", suffix: str = "") -> str:
+    """A root field: ``prefix`` + the table + ``suffix``, each a snake phrase (``insert``,
+    ``by_pk``)."""
+    pre, suf = _words(prefix), _words(suffix)
+    if convention == HASURA_DEFAULT:
+        table = base.custom if base.custom is not None else "_".join(base.words)
+        return "_".join([*pre, table, *suf])
+    if base.custom is not None:
+        # "Behavior of custom table name": kept as written where it comes first, raised at its
+        # first letter after a prefix (insertTable_oneOne), the suffix appended (table_oneByPk).
+        table = _upper_first(base.custom) if pre else base.custom
+        return _camel(pre) + table + _pascal(suf)
+    return _camel([*pre, *base.words, *suf])
+
+
+def _type(convention: str, base: _Base, suffix: str = "") -> str:
+    """A type: the table's type name + ``suffix``, a snake phrase (``bool_exp``)."""
+    suf = _words(suffix)
+    if convention == HASURA_DEFAULT:
+        table = base.custom if base.custom is not None else "_".join(base.words)
+        return "_".join([table, *suf])
+    if base.custom is not None:
+        # "Behavior of custom table name": the typename joins the custom name's words, its first
+        # letter as written (table_one is tableOne, TableOne stays TableOne).
+        parts = base.custom.split("_")
+        table = parts[0] + "".join(_upper_first(p) for p in parts[1:])
+        return table + _pascal(suf)
+    return _pascal([*base.words, *suf])
+
+
+def _snake_type(base: _Base, suffix: str) -> str:
+    """A type that keeps hasura-default naming under both conventions ("Backward
+    compatibility")."""
+    table = base.custom if base.custom is not None else "_".join(base.words)
+    return f"{table}_{suffix}"
+
+
+#: Root field kinds: Hasura's custom_root_fields key -> (prefix, suffix).
+_ROOT_FIELDS: dict[str, tuple[str, str]] = {
+    "select": ("", ""),
+    "select_by_pk": ("", "by_pk"),
+    "select_aggregate": ("", "aggregate"),
+    "select_stream": ("", "stream"),
+    "insert": ("insert", ""),
+    "insert_one": ("insert", "one"),
+    "update": ("update", ""),
+    "update_by_pk": ("update", "by_pk"),
+    "update_many": ("update", "many"),
+    "delete": ("delete", ""),
+    "delete_by_pk": ("delete", "by_pk"),
+}
+
+#: Type kinds -> the suffix after the table's type name ("" is the object type itself).
+_TYPES: dict[str, str] = {
+    "type": "",
+    "bool_exp": "bool_exp",
+    "order_by": "order_by",
+    "insert_input": "insert_input",
+    "set_input": "set_input",
+    "inc_input": "inc_input",
+    "aggregate": "aggregate",
+    "aggregate_fields": "aggregate_fields",
+    "mutation_response": "mutation_response",
+    "update_column": "update_column",
+    "select_column": "select_column",
+    "pk_columns_input": "pk_columns_input",
+    "on_conflict": "on_conflict",
+    "updates": "updates",
+    "stream_cursor_input": "stream_cursor_input",
+}
+
+
+@dataclass(frozen=True)
+class HasuraTableNames:  # REQ-194
+    """Every root field and type Hasura generates for one table."""
+
+    select: str
+    select_by_pk: str
+    select_aggregate: str
+    select_stream: str
+    insert: str
+    insert_one: str
+    update: str
+    update_by_pk: str
+    update_many: str
+    delete: str
+    delete_by_pk: str
+    type: str
+    bool_exp: str
+    order_by: str
+    insert_input: str
+    set_input: str
+    inc_input: str
+    aggregate: str
+    aggregate_fields: str
+    mutation_response: str
+    constraint: str
+    update_column: str
+    select_column: str
+    pk_columns_input: str
+    on_conflict: str
+    updates: str
+    stream_cursor_input: str
+
+
+def _custom_root(value: Any) -> str | None:
+    """A custom_root_fields entry: a name, or (Hasura v2.x) ``{name, comment}``."""
+    if isinstance(value, Mapping):
+        return value.get("name")
+    return value
+
+
+def hasura_table_names(  # REQ-194
+    convention: str,
+    table: str,
+    *,
+    schema: str = "public",
+    custom_name: str | None = None,
+    custom_root_fields: Mapping[str, Any] | None = None,
+) -> HasuraTableNames:
+    """The names Hasura generates for ``schema.table`` under ``convention``. A custom table name
+    and each custom root field are kept as written."""
+    conv = _checked(convention)
+    base = _base(table, schema, custom_name)
+    custom = custom_root_fields or {}
+    names: dict[str, str] = {}
+    for kind, (prefix, suffix) in _ROOT_FIELDS.items():
+        names[kind] = _custom_root(custom.get(kind)) or _field(conv, base, prefix, suffix)
+    for kind, suffix in _TYPES.items():
+        names[kind] = _type(conv, base, suffix)
+    names["constraint"] = _snake_type(base, "constraint")
+    return HasuraTableNames(**names)
+
+
+def hasura_field_name(convention: str, column: str, *, custom_name: str | None = None) -> str:
+    """A column's field name; a custom column name is kept as written (REQ-194)."""
+    conv = _checked(convention)
+    if custom_name:
+        return custom_name
+    if conv == HASURA_DEFAULT:
+        return column
+    return _leading_underscores(column) + _camel(_words(column))
+
+
+def hasura_argument_name(convention: str, name: str) -> str:  # REQ-194
+    """An argument, operator or generated response field (``order_by``, ``_is_null``,
+    ``affected_rows``) as the convention spells it; a leading underscore is kept (``_set``)."""
+    return hasura_field_name(convention, name)
+
+
+def hasura_enum_value(convention: str, value: str, kind: str) -> str:  # REQ-194
+    """An enum value: ``order_by`` (asc, desc_nulls_last, ...), an ``enum_table`` row, or a
+    ``constraint`` name, which keeps hasura-default naming under both conventions."""
+    conv = _checked(convention)
+    if kind not in ("order_by", "enum_table", "constraint"):
+        raise ValueError(f"{kind!r} is not a Hasura enum kind (order_by, enum_table, constraint)")
+    if conv == HASURA_DEFAULT or kind == "constraint":
+        return value
+    return value.upper()
+
+
+def hasura_function_args_type(convention: str, function: str) -> str:  # REQ-194
+    """A custom function's argument type, ``<function>_args`` under both conventions."""
+    _checked(convention)
+    return f"{function}_args"
+
+
+def hasura_cast_exp_type(convention: str, scalar: str) -> str:  # REQ-194
+    """A scalar's cast argument type, ``<scalar>_cast_exp`` under both conventions."""
+    _checked(convention)
+    return f"{scalar}_cast_exp"
+
+
+def hasura_relationship_field(name: str) -> str:  # REQ-194
+    """A relationship's field: the name its metadata sets, as written."""
+    return name
+
+
+def hasura_relationship_aggregate(convention: str, name: str) -> str:  # REQ-194
+    """An array relationship's aggregate field: its name as written, then the suffix."""
+    return name + ("_aggregate" if _checked(convention) == HASURA_DEFAULT else "Aggregate")

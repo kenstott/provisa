@@ -58,11 +58,6 @@ on:
         type: boolean
         required: false
         default: false
-      # The kenstott/calcite ref the servicenow lane builds pgwire-servicenow from.
-      servicenow_calcite_ref:
-        type: string
-        required: false
-        default: ""
       include_microsoft_365:
         type: boolean
         required: false
@@ -600,12 +595,12 @@ jobs:
           uv run python -c \
             "import os; from tests.integration.snowflake_warehouse import set_auto_suspend as a; print('the Snowflake warehouse suspends after', a(os.environ['SNOWFLAKE_WAREHOUSE'], 60), 'idle seconds')"
 
-      - name: GovData engine jar (engine-v0.123.2)
+      - name: GovData engine jar (engine-v0.128.9)
         run: |
           mkdir -p lib
           curl -fsSL -o lib/calcite-govdata-all.jar \
-            https://github.com/kenstott/calcite/releases/download/engine-v0.123.2/sih-govdata.jar
-          echo "aa4b284748a1b0a913a8a3bccdda65f1238003885ed2b4d5f570c4f7f372eb48  lib/calcite-govdata-all.jar" \
+            https://github.com/kenstott/calcite/releases/download/engine-v0.128.9/sih-govdata.jar
+          echo "042baedf838483dc3c280ece661f18b01c058bf05f0d671ddfca2314024d8e97  lib/calcite-govdata-all.jar" \
             | sha256sum -c -
 
       - name: Azure CLI login (Synapse provisioning)
@@ -919,7 +914,6 @@ jobs:
       SERVICENOW_PASSWORD: ${{ secrets.SERVICENOW_PASSWORD }}
       # Where the downloaded bundles live (default_cache_root).
       PROVISA_RUNTIME_DEPS_CACHE: ${{ github.workspace }}/.runtime-deps
-      SERVICENOW_CALCITE_REF: ${{ inputs.servicenow_calcite_ref }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -941,13 +935,11 @@ jobs:
         with:
           phase: restore
 
-      # A missing credential or calcite ref fails the lane by name rather than surfacing as a
-      # skipped test.
+      # A missing credential fails the lane by name rather than surfacing as a skipped test.
       - name: Credentials present
         run: |
           missing=""
-          for v in SERVICENOW_INSTANCE_URL SERVICENOW_USERNAME SERVICENOW_PASSWORD \
-                   SERVICENOW_CALCITE_REF; do
+          for v in SERVICENOW_INSTANCE_URL SERVICENOW_USERNAME SERVICENOW_PASSWORD; do
             [ -n "${!v}" ] || missing="$missing $v"
           done
           if [ -n "$missing" ]; then
@@ -955,26 +947,9 @@ jobs:
             exit 1
           fi
 
-      # The ServiceNow server is built from the calcite ref the dispatch names (REQ-1954), and the
-      # app is pointed at that build; the pinned release is never fetched in its place.
-      - name: Check out the ServiceNow adapter
-        uses: actions/checkout@v4
-        with:
-          repository: kenstott/calcite
-          ref: ${{ inputs.servicenow_calcite_ref }}
-          path: calcite
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: "17"
-      - name: Build pgwire-servicenow
-        working-directory: calcite
-        env:
-          PGWIRE_BUNDLE_VERSION: dev
-        run: |
-          bash pgwire-calcite/packaging/build-bundle.sh servicenow linux-x86_64 "$RUNNER_TEMP/pgw"
-          echo "PROVISA_PGWIRE_BUNDLE_SERVICENOW=$RUNNER_TEMP/pgw/pgwire-servicenow-dev-linux-x86_64" >> "$GITHUB_ENV"
-
+      # The ServiceNow server is the pinned release's pgwire-servicenow bundle
+      # (provisa/runtime_deps/pgwire_bundles.py RELEASE_TAG), fetched by the app as every other
+      # connector's is.
       - name: Stack slots on this runner
         run: bash scripts/ci/lanes/suite-prepare.sh
 

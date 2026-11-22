@@ -31,7 +31,11 @@ name: Conformance (functions)
 # direct path of its platform. An engine with a server runs in the docker-compose.test.yml service
 # the integration tests start for it, or in the demo/sources container another CI lane starts for it
 # (SAP HANA, as the swap UI lane does) (scripts/conformance/engine_service.sh). A leg whose engine
-# does not start is a failure, and its reason is on the report (function_legs.py failure).
+# does not start is a failure, and its reason is on the report (function_legs.py failure). A leg
+# whose engine build_engine refuses by name (a native store with no sqlglot dialect,
+# source_registry.engine_dialect, the allowlist EngineBackend.dialect reads) is not planned: it
+# could only fail at startup. The plan names it with the refusal, the report lists it as refused by
+# name, and the merge judges only the engines that start.
 #
 # The live warehouses (snowflake, databricks, bigquery, fabric, synapse, redshift, motherduck and the
 # hosted singlestore) are the warehouse lane, under the gating of the integration suite's warehouse
@@ -77,6 +81,7 @@ jobs:
     outputs:
       matrix: ${{ steps.plan.outputs.matrix }}
       engines: ${{ steps.plan.outputs.engines }}
+      refused: ${{ steps.plan.outputs.refused }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -387,12 +392,16 @@ jobs:
           pattern: function-support-*
           path: ${{ runner.temp }}/legs
 
+      # The refusals quote engine names, so they reach the shell as a variable, never inlined.
       - name: Merge the legs
+        env:
+          REFUSED: ${{ needs.plan.outputs.refused }}
         run: |
           status=0
           .venv/bin/python scripts/conformance/function_support.py merge \
             --engines "${{ needs.plan.outputs.engines }}" \
             --legs scripts/conformance/function_legs.yaml \
+            --refused "$REFUSED" \
             --in "$RUNNER_TEMP/legs" \
             --out scripts/conformance/function_support.json \
             --out-md "$RUNNER_TEMP/function-support.md" || status=$?

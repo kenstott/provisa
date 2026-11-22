@@ -1089,6 +1089,26 @@ CREATE TABLE IF NOT EXISTS catalog_standing_choices (
     UNIQUE (entry, direction, kind)
 );
 
+-- REQ-2247: each unattended run of a Syncing entry's direction (a scheduled import): when it
+-- ran, how it was started, its outcome, what it applied and what it held (each a JSON list of
+-- {kind, object, reason}), and the error of a run that failed. Mirrors
+-- schema_org.catalog_sync_runs.
+CREATE TABLE IF NOT EXISTS catalog_sync_runs (
+    id          SERIAL PRIMARY KEY,
+    entry       TEXT NOT NULL,
+    direction   TEXT NOT NULL CONSTRAINT catalog_sync_runs_direction_check
+                    CHECK (direction IN ('export', 'import')),
+    trigger     TEXT NOT NULL,
+    outcome     TEXT NOT NULL CONSTRAINT catalog_sync_runs_outcome_check
+                    CHECK (outcome IN ('ok', 'failed')),
+    applied     JSONB NOT NULL,
+    held        JSONB NOT NULL,
+    error       TEXT,
+    started_at  TIMESTAMPTZ NOT NULL,
+    finished_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    tenant_id   UUID
+);
+
 -- REQ-1387: business glossary. Terms are the normalized vocabulary derived from physical
 -- field names (the term unit is the phrase — the full normalized field name). Rooted terms
 -- hold physical refs; abstract terms hold none and connect to the rooted graph through the
