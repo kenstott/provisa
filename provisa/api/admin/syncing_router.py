@@ -23,6 +23,11 @@ own health check, the one the export runs.
 An entry's review lists its differences with its catalog and applies a steward's decisions on them
 (``syncing_review``); taking Provisa's side runs the entry's publish, so it is gated the same way.
 
+An entry that imports may carry an import schedule (``import_cron``); a schedule on an entry that
+does not import, or one that is not a crontab, is refused naming the field. Run import now runs one
+Import through the schedule's own run (``syncing_import.run_import``), and each entry's read carries
+its last Import run: when, its outcome, and what it applied and held with why.
+
 Publishing is premium-gated (REQ-1073): Publish now, turning an entry's Export on or changing its
 export settings, and the organisation-wide reconcile schedule are refused below the entitled tier.
 A direction that is off never runs: Publish now refuses an entry that does not export.
@@ -163,12 +168,74 @@ async def _is_entitled(org_id: str) -> bool:
     return True
 
 
-def _view(entry: CatalogConnection, last_run: dict[str, Any] | None) -> dict[str, Any]:
+def _view(
+    entry: CatalogConnection, last_run: dict[str, Any] | None, last_import: dict[str, Any] | None
+) -> dict[str, Any]:
     return {
         **{name: getattr(entry, name) for name in PLAIN_FIELDS},
         **{f"{name}_set": bool(getattr(entry, name).get_secret_value()) for name in SECRET_FIELDS},
         "last_run": last_run,
+        "last_import": last_import,
     }
+
+
+def _run_view(run: Any) -> dict[str, Any]:
+    """One recorded Import run (``catalog_sync_run.SyncRun``) as the page shows it."""
+    return {
+        "trigger": run.trigger,
+        "outcome": run.outcome,
+        "applied": run.applied,
+        "held": run.held,
+        "error": run.error,
+        "started_at": run.started_at.isoformat(),
+        "finished_at": run.finished_at.isoformat(),
+    }
+
+
+async def _last_imports(entries: list[CatalogConnection]) -> dict[str, dict[str, Any]]:
+    """The last recorded Import run of each data catalog that has one (REQ-2247)."""
+    from provisa.core.repositories import catalog_sync_run
+
+    catalogs = [e.id for e in entries if e.type == "data_catalog"]
+    if not catalogs:
+        return {}
+    last: dict[str, dict[str, Any]] = {}
+    async with _model_db().acquire() as conn:
+        for entry_id in catalogs:
+            runs = await catalog_sync_run.runs(conn, entry_id, "import")
+            if runs:
+                last[entry_id] = _run_view(runs[0])
+    return last
+
+
+def _check_import_cron(entry: dict[str, Any]) -> None:
+    """REQ-2247: refuse an import schedule naming the field, so the page shows it on the field. The
+    model refuses the same entry; this names which field and why, by code."""
+    from provisa.core.cron import cron_trigger
+
+    cron = entry.get("import_cron")
+    if not cron:
+        return
+    entry_id = str(entry.get("id"))
+    if entry.get("type") != "data_catalog" or entry.get("direction") not in ("import", "both"):
+        raise ApiError(
+            400,
+            "syncing.import_cron_not_importing",
+            f"entry {entry_id!r} does not import, so it has no import schedule",
+            entry=entry_id,
+            field="import_cron",
+        )
+    try:
+        cron_trigger(str(cron))
+    except ValueError as exc:
+        raise ApiError(
+            400,
+            "syncing.import_cron_invalid",
+            f"the import schedule of {entry_id!r} is not a crontab: {exc}",
+            entry=entry_id,
+            field="import_cron",
+            cron=str(cron),
+        ) from exc
 
 
 def _merged(stored: list[dict[str, Any]], sent: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -244,6 +311,7 @@ async def get_syncing(request: Request) -> dict:  # REQ-2247, REQ-2122
     settings = await stored_settings()
     config = catalogs_config(settings)
     runs = _LAST_RUN.get(org_id, {})
+    imports = await _last_imports(config.catalogs)
     return {
         "entitled": await _is_entitled(org_id),
         "required_tier": min_tier(Feature.METADATA_EXPORT).value,
@@ -253,7 +321,7 @@ async def get_syncing(request: Request) -> dict:  # REQ-2247, REQ-2122
         # holds too.
         "publishable_roles": _publishable_roles(request),
         "reconcile_cron": _schedule(settings).reconcile_cron,
-        "entries": [_view(c, runs.get(c.id)) for c in config.catalogs],
+        "entries": [_view(c, runs.get(c.id), imports.get(c.id)) for c in config.catalogs],
     }
 
 
@@ -273,6 +341,8 @@ async def set_syncing(request: Request) -> dict:  # REQ-2247, REQ-2122, REQ-1072
     settings = await stored_settings()
     prior = catalogs_config(settings).by_id()
     merged = _merged(list(settings.get(CONFIG_KEY) or []), list(body.get("entries") or []))
+    for sent in merged:
+        _check_import_cron(sent)
     config = catalogs_config({CONFIG_KEY: merged})
     known = await _domain_ids()
     for entry in config.catalogs:
@@ -407,6 +477,35 @@ async def publish_entry(request: Request, entry_id: str) -> dict:  # REQ-2247, R
             entry=entry_id,
         )
     return await _publish(org_id, entry_id)
+
+
+@router.post("/admin/syncing/{entry_id}/import")
+async def import_entry(request: Request, entry_id: str) -> dict:  # REQ-2247
+    """Run import now, for one entry: the scheduled Import's own run, deciding each difference by
+    the standing choices, recorded as a run started by hand. Refused when the entry does not
+    import: a direction that is off never runs, by hand as on a schedule. A read the catalog
+    refused is recorded as a failed run and refused here."""
+    from provisa.api.admin.syncing_import import run_import
+    from provisa.core.repositories import catalog_sync_run
+
+    require_org_settings(request)
+    org_id = require_active_org_id(request)
+    entry = _entry(await stored_settings(), entry_id)
+    if entry.type != "data_catalog":
+        raise ApiError(
+            400, "syncing.no_connection", f"{entry_id!r} has no catalog to read", entry=entry_id
+        )
+    if not entry.imports:
+        raise ApiError(
+            400,
+            "syncing.direction_off",
+            f"{entry_id!r} does not import: its direction is off",
+            entry=entry_id,
+        )
+    result = await run_import(org_id, entry_id, trigger=catalog_sync_run.MANUAL)
+    async with _model_db().acquire() as conn:
+        (last, *_) = await catalog_sync_run.runs(conn, entry_id, "import")
+    return {**result, "last_import": _run_view(last)}
 
 
 async def entry_differences(org_id: str, entry: CatalogConnection) -> tuple[Any, list[Any]]:

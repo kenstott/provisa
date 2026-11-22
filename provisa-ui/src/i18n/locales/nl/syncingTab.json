@@ -120,6 +120,21 @@
     "standingChoicesHelp": "Wat een run met elk soort verschil doet, per richting. Aanhouden, of geen vaste keuze, laat het verschil hier staan voor een steward.",
     "standingKind": "Soort verschil",
     "compare": "Vergelijken met de catalogus",
-    "title": "Contextsynchronisatie"
+    "title": "Contextsynchronisatie",
+    "importCron": "Importschema",
+    "importCronHelp": "Cron-expressie voor een onbewaakte import. Elke run neemt de waarde van de catalogus alleen over waar de vaste keuze dat zegt en alleen de catalogus haar wijzigde; elk ander verschil wordt aangehouden voor een steward. Laat leeg om alleen op verzoek te importeren.",
+    "importCronPlaceholder": "0 3 * * *",
+    "runImportNow": "Nu importeren",
+    "lastImport": "Laatste import",
+    "neverImported": "Nog niet geïmporteerd.",
+    "importOk": "{{applied}} toegepast, {{held}} aangehouden",
+    "importFailed": "Mislukt",
+    "importTrigger_schedule": "Geplande run, {{when}}",
+    "importTrigger_manual": "Handmatig gestart, {{when}}",
+    "importApplied": "Toegepast",
+    "importHeld": "Aangehouden",
+    "importKind": "Soort",
+    "importObject": "Object",
+    "importReason": "Waarom aangehouden"
   }
 }

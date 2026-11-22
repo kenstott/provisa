@@ -52,7 +52,7 @@ async function forget(request: APIRequestContext, id: string) {
     .filter((c) => c.id !== id)
     .map((c) =>
       Object.fromEntries(
-        Object.entries(c).filter(([k]) => !k.endsWith("_set") && k !== "last_run"),
+        Object.entries(c).filter(([k]) => !k.endsWith("_set") && k !== "last_run" && k !== "last_import"),
       ),
     );
   const answer = await request.put(SYNCING, { data: { entries: kept } });
