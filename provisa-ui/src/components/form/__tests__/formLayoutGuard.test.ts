@@ -26,8 +26,6 @@ const SRC = resolve(__dirname, "../../..");
  */
 const NOT_A_FORM: Readonly<Record<string, string>> = {
   "components/admin/FilterInput.tsx": "the search box above a list",
-  // REQ-2259: the read-only Glossary's search, domain filter and sort above its entries.
-  "pages/context/GlossaryPage.tsx": "the search, domain filter and sort above the glossary",
   "components/admin/MergeRequestsPanel.tsx":
     "the open-only filter above the list of merge requests",
   "components/admin/relTypeGuide.tsx": "the related-to filter tick above the glossary term list",
