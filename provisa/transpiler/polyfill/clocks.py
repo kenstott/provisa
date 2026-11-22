@@ -303,6 +303,12 @@ def _day(node: exp.Expr, said: Callable[[exp.Expr], exp.Expr]) -> exp.Expr:
     holds 1970 to 2149 alone."""
     value = node.unnest()
     if isinstance(value, exp.Cast) and value.to.is_type(exp.DataType.Type.DATE):
+        if isinstance(value.this.unnest(), exp.Null):
+            # toDate32(NULL) is Nullable(Nothing), which the server's Arrow output has no type
+            # for (ClickHouse 24.3): a NULL date is a NULL of Date32.
+            return exp.cast(
+                exp.null(), exp.DataType.build("Nullable(Date32)", dialect="clickhouse")
+            )
         return exp.Anonymous(this="toDate32", expressions=[value.this.transform(said)])
     return node.transform(said)
 

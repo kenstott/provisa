@@ -2141,6 +2141,11 @@ def transpile(
         if not results:
             raise ValueError(f"SQLGlot produced no output for: {pg_sql!r}")
         result = results[0]
+    if target_dialect == "clickhouse":
+        # REQ-2236: a NULL column typed, for the server's Arrow output has no type for Nothing.
+        from provisa.transpiler.polyfill.clickhouse import typed_null_columns
+
+        result = typed_null_columns(result)
     if target_dialect == "tsql":
         result = _map_tsql_reserved_schemas(result)
     if target_dialect == "sqlite":
