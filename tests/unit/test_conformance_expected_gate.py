@@ -96,6 +96,13 @@ def test_a_listed_failure_passes(tmp_path, monkeypatch, capsys):
     assert code == 0, capsys.readouterr().err
 
 
+def test_a_failure_listed_under_a_named_queue_job_passes(tmp_path, monkeypatch, capsys):
+    """The queue names its jobs (SPARQL-G1, POLYFILL-G3B2) as well as numbering them."""
+    report = _report([_failure("F", "s1")])
+    code = _run(tmp_path, monkeypatch, report, _expected([_entry("F::s1", job="SPARQL-G1")]))
+    assert code == 0, capsys.readouterr().err
+
+
 def test_no_failures_and_an_empty_list_passes(tmp_path, monkeypatch, capsys):
     code = _run(tmp_path, monkeypatch, _report([]), _expected([]))
     assert code == 0, capsys.readouterr().err
@@ -143,6 +150,7 @@ def test_an_entry_without_a_job_is_refused(tmp_path, monkeypatch, capsys):
     [
         ({"case": "F::s1", "job": "J1275"}, "no since"),
         ({"case": "F::s1", "job": "someone", "since": SINCE}, "job"),
+        ({"case": "F::s1", "job": "SPARQL", "since": SINCE}, "job"),
         ({"case": "F::s1", "job": "J1275", "since": "yesterday"}, "since"),
         ({"job": "J1275", "since": SINCE}, "no case"),
         ({"case": "F::s1", "job": "J1275", "since": SINCE, "owner": "x"}, "owner"),

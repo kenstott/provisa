@@ -86,7 +86,8 @@ EXPECTED = Path(__file__).resolve().parent / "expected"
 PGWIRE_PARTS = ("pgspec", "catalog_relations", "catalog_functions", "type_conversions")
 
 ENTRY_FIELDS = {"case", "job", "since", "reason"}
-JOB = re.compile(r"J\d+[a-z]?")
+#: A queue job: numbered (J1275, J1388b) or named (SPARQL-G1, POLYFILL-G3B2).
+JOB = re.compile(r"J\d+[a-z]?|[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)+")
 SINCE = re.compile(r"\d{4}-\d{2}-\d{2}")
 
 #: Where an overload fails and how: an entry of functions.json's list.
@@ -143,7 +144,7 @@ def _entries(
             if not entry.get(name):
                 raise Refused(f"{where} has no {name}: every listed failure names its {name}")
         if not JOB.fullmatch(str(entry["job"])):
-            raise Refused(f"{where}: job {entry['job']!r} is not a queue job (J<n>)")
+            raise Refused(f"{where}: job {entry['job']!r} is not a queue job (J<n> or NAME-N)")
         if not SINCE.fullmatch(str(entry["since"])):
             raise Refused(f"{where}: since {entry['since']!r} is not a date (YYYY-MM-DD)")
         if entry["case"] in out:
