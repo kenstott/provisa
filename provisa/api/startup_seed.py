@@ -749,11 +749,10 @@ async def _seed_meta_relationships(conn: "Connection") -> None:
     # A seeded edge the code no longer declares is removed: left behind, its field name collides
     # with the edge that replaced it, and the model cannot be served.
     _declared = [_cols["id"] for *_, _cols in _rows]
-    await conn.execute_core(
-        _delete(_relationships_t).where(
-            _sa_or(*(_relationships_t.c.id.like(f"{_p}:%") for _p in _SEEDED_ID_PREFIXES)),
-            _relationships_t.c.id.not_in(_declared),
-        )
+    await _relationship_repo.remove_where(
+        conn,
+        _sa_or(*(_relationships_t.c.id.like(f"{_p}:%") for _p in _SEEDED_ID_PREFIXES)),
+        _relationships_t.c.id.not_in(_declared),
     )
     for (_src_source, _src_table), (
         _tgt_source,
