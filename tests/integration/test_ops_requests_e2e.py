@@ -116,7 +116,7 @@ def _raise(srv: IsolatedServer, environment: str = "prod") -> int:
             sa.text(
                 f"INSERT INTO org_{_ORG}.creation_requests "
                 "(request_type, capability, payload, requested_by, environment, addressed_roles) "
-                "VALUES ('view', 'create_view', CAST(:payload AS jsonb), 'u-ann', :env, "
+                "VALUES ('view', 'approve_view', CAST(:payload AS jsonb), 'u-ann', :env, "
                 "CAST(:roles AS jsonb)) RETURNING id"
             ),
             {

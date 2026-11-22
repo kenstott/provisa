@@ -22,17 +22,17 @@
       "embedding_library_missing": "O modelo de embeddings {{model}} usa o provedor {{provider}}, que precisa do extra {{extra}} (o módulo {{module}} não está instalado): pip install 'provisa[{{extra}}]'."
     },
     "ai": {
-      "endpoint_address_from_server": "O endpoint de IA {{vendor}} obtém seu endereço do ambiente do servidor, que uma organização neste servidor não usa. Atribua a ele um endereço próprio em Administração, Modelos de IA.",
+      "key_required": "{{vendor}} não tem chave. Defina uma em Administração, Modelos de IA.",
+      "vendor_uses_server_credentials": "{{vendor}} é acessado com as credenciais do próprio servidor, que uma organização neste servidor não usa. Escolha um fornecedor que aceite uma chave, ou um endpoint de IA, em Administração, Modelos de IA.",
       "endpoint_key_from_server": "O endpoint de IA {{vendor}} obtém sua chave do ambiente do servidor, que uma organização neste servidor não usa. Atribua a ele uma chave própria em Administração, Modelos de IA.",
       "endpoint_key_unset": "O endpoint de IA {{vendor}} não tem chave: {{field}} não está definido.",
-      "key_required": "{{vendor}} não tem chave. Defina uma em Administração, Modelos de IA.",
+      "endpoint_address_from_server": "O endpoint de IA {{vendor}} obtém seu endereço do ambiente do servidor, que uma organização neste servidor não usa. Atribua a ele um endereço próprio em Administração, Modelos de IA.",
       "local_server_from_environment": "{{vendor}} é acessado no endereço do próprio servidor, que uma organização neste servidor não usa. Declare um endpoint de IA no seu próprio endereço em Administração, Modelos de IA.",
       "server_environment_sets": "{{vendor}} não pode ser chamado aqui: o ambiente do servidor define {{variable}}, que o cliente dele enviaria para todas as organizações.",
-      "vector_model_address_from_server": "O modelo de embedding {{vendor}} obtém seu endereço do ambiente do servidor, que uma organização neste servidor não usa. Atribua a ele um endereço próprio em Administração, Modelos de IA.",
       "vector_model_key_from_server": "O modelo de embedding {{vendor}} obtém sua chave do ambiente do servidor, que uma organização neste servidor não usa. Atribua a ele uma chave própria em Administração, Modelos de IA.",
       "vector_model_key_unset": "O modelo de embedding {{vendor}} não tem chave: {{field}} não está definido.",
-      "vector_model_local_server": "O modelo de embedding {{vendor}} é acessado no endereço do próprio servidor, que uma organização neste servidor não usa. Atribua a ele um endereço próprio em Administração, Modelos de IA.",
-      "vendor_uses_server_credentials": "{{vendor}} é acessado com as credenciais do próprio servidor, que uma organização neste servidor não usa. Escolha um fornecedor que aceite uma chave, ou um endpoint de IA, em Administração, Modelos de IA."
+      "vector_model_address_from_server": "O modelo de embedding {{vendor}} obtém seu endereço do ambiente do servidor, que uma organização neste servidor não usa. Atribua a ele um endereço próprio em Administração, Modelos de IA.",
+      "vector_model_local_server": "O modelo de embedding {{vendor}} é acessado no endereço do próprio servidor, que uma organização neste servidor não usa. Atribua a ele um endereço próprio em Administração, Modelos de IA."
     },
     "api": {
       "answer_cut": "A resposta para {{table}} foi cortada em max_pages={{max_pages}} ({{rows}} linhas): a API tem mais. Aumente max_pages ou o tamanho de página do endpoint para ler tudo.",
@@ -174,14 +174,13 @@
     },
     "discovery": {
       "adapter_missing_discover_schema": "O adaptador para '{{source_type}}' não implementa discover_schema",
-      "answer_unreadable": "A resposta do modelo não continha uma lista legível.",
       "cassandra_discovery_unsupported": "A descoberta de esquema do Cassandra requer uma sessão CQL ativa, que não está disponível. Defina as colunas manualmente para esta fonte.",
       "database_not_connected": "Banco de dados não conectado",
-      "decided_both_ways": "Uma proposta é aceita ou não é recomendada de novo, não as duas coisas.",
       "domain_id_required": "domain_id obrigatório para escopo de domínio",
       "elasticsearch_index_hint_required": "A descoberta do Elasticsearch requer uma dica de 'index'.",
       "elasticsearch_mapping_failed": "Falha ao ler o mapeamento do Elasticsearch para o índice '{{index}}': {{error}}",
       "endpoint_already_registered": "Endpoint já registrado: {{error}}",
+      "decided_both_ways": "Uma proposta é aceita ou não é recomendada de novo, não as duas coisas.",
       "model_has_no_room": "O modelo {{model}} não comporta uma solicitação: {{reason}}",
       "model_incomplete": "Um modelo escolhido indica tanto o fornecedor quanto o modelo.",
       "no_adapter_for_source_type": "Nenhum adaptador registrado para o tipo de fonte '{{source_type}}'",
@@ -201,6 +200,7 @@
       "target_tables_not_read": "Nenhuma das tabelas de destino escolhidas ({{count}}) é lida: a descoberta deixa de fora as tabelas de um domínio do sistema e as fora de serviço.",
       "unknown_source_type": "Tipo de fonte desconhecido: {{type}}",
       "vendor_unknown": "{{vendor}} não lista modelos aqui; digite o nome do modelo.",
+      "answer_unreadable": "A resposta do modelo não continha uma lista legível.",
       "source_tables_outside_domains": "As tabelas de origem escolhidas estão fora dos domínios selecionados no filtro de domínios: {{names}}.",
       "target_tables_outside_domains": "As tabelas de destino escolhidas estão fora dos domínios selecionados no filtro de domínios: {{names}}."
     },
@@ -483,6 +483,7 @@
       "view_deploy_unsupported_type": "A origem '{{source}}' é do tipo '{{type}}', que não pode hospedar uma view implantada; tipos compatíveis: {{supported}}",
       "view_deployed": "Exibição '{{view}}' implantada em '{{source}}' esquema '{{schema}}'",
       "view_spans_sources": "a exibição abrange várias fontes: {{sources}}",
+      "view_relationships_unapproved": "A exibição '{{view}}' faz junções por relacionamentos ainda não aprovados ({{relationships}}); aprove-os e execute esta solicitação novamente",
       "webhook_approved": "Webhook '{{webhook}}' aprovado",
       "webhook_name_required": "webhook_name é obrigatório para um gatilho de webhook",
       "mask_unreachable": "Você definiu uma máscara que não é alcançável: {{entries}}",
@@ -490,7 +491,7 @@
       "change_streams_unavailable": "A origem '{{source}}' é um servidor MongoDB autônomo, que não oferece change streams: o sinal de alteração native exige um replica set ou um cluster fragmentado. Execute-o como replica set ou use o sinal de alteração poll.",
       "openapi_no_rows_field": "Tabela {{table}}: a resposta não tem nenhuma propriedade {{rows_field}} de onde ler linhas.",
       "paging_rows_field_fixed": "Tabela {{table}}: onde estão suas linhas ({{rows_field}}) é definido quando a tabela é registrada. Registre a tabela novamente para ler suas linhas de outro lugar.",
-      "relationship_request_queued": "Enfileirado como solicitação nº {{id}}. Ela precisa de aprovações de {{required}} usuários diferentes que possam criar relacionamentos, com pelo menos um alcançando cada domínio tocado.",
+      "relationship_request_queued": "Enfileirado como solicitação nº {{id}}. Ela precisa de aprovações de {{required}} usuários diferentes que possam aprovar relacionamentos, com pelo menos um alcançando cada domínio tocado.",
       "request_approved": "Solicitação de criação nº {{id}} aprovada",
       "registry_auth_unknown": "Origem '{{source}}': a autenticação do registro de esquemas '{{method}}' não é uma de {{methods}}",
       "registry_url_required": "Origem '{{source}}': há configurações do registro de esquemas, mas nenhuma URL de registro de esquemas",
@@ -692,13 +693,13 @@
       "try_cast_needs_postgres_16": "toInteger, toFloat e toBoolean de um valor que pode não ser convertido exigem PostgreSQL 16 ou posterior neste motor."
     },
     "requests": {
-      "approver_outside_domains": "Seu direito de criar relacionamentos não alcança nenhum domínio tocado por esta solicitação ({{domains}})",
+      "approver_outside_domains": "Seu direito de aprovar relacionamentos não alcança nenhum domínio tocado por esta solicitação ({{domains}})",
       "own_request": "Você não pode decidir uma solicitação que você fez",
       "already_approved": "Você já aprovou esta solicitação",
       "approver_unidentified": "Uma solicitação de relacionamento é decidida por usuários conectados; esta decisão não tem usuário",
       "waiting_on_domains": "Esta solicitação ainda aguarda uma aprovação de: {{domains}}",
       "approvals_incomplete": "Esta solicitação precisa de aprovações de {{required}} usuários diferentes",
-      "tables_not_registered": "As tabelas citadas por esta solicitação ({{tables}}) não estão mais registradas. Ela não pode ser aprovada; um usuário cujo direito de criar relacionamentos alcança todos os domínios pode rejeitá-la"
+      "tables_not_registered": "As tabelas citadas por esta solicitação ({{tables}}) não estão mais registradas. Ela não pode ser aprovada; um usuário cujo direito de aprovar relacionamentos alcança todos os domínios pode rejeitá-la"
     },
     "statement": {
       "rows_cut": "A resposta foi cortada em {{limit}} linhas, o limite de linhas que se aplica a esta leitura ({{kind}}): há mais linhas correspondentes do que as devolvidas.",

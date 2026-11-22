@@ -117,6 +117,9 @@ export interface GlossaryTermDetail extends GlossaryTermSummary {
   pending_on: { term_id: number; name: string }[];
   // REQ-2237: the IRI of an imported concept the term is, set when an ontology import is applied.
   iri: string | null;
+  // REQ-1327: whether the server would accept this caller's edit, status change or delete of
+  // the term (glossary_rw and the per-term curation rule: authorship, enterprise scope, domain).
+  curatable: boolean;
 }
 
 // REQ-1634: a data product's Related Terms panel — terms directly tied to any member-table

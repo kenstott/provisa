@@ -786,8 +786,9 @@ class Query:  # REQ-021, REQ-042
     ) -> list[CreationRequestType]:  # REQ-434, REQ-063, REQ-1948
         """REQ-434/063: pending creation requests, for users holding a create capability.
 
-        Each request names the capability its approval needs (the same one the REST approve/reject/
-        execute routes check), and the caller sees only the requests whose capability they hold.
+        Each request names the right that decides it, set by its type (REQ-1327(5); the same one
+        the REST approve/reject/execute routes check), and the caller sees only the requests
+        whose right they hold.
         A relationship request is shown by the domains it touches instead (REQ-1948).
         """
         import json as _json
@@ -796,6 +797,7 @@ class Query:  # REQ-021, REQ-042
 
         from provisa.api.admin import relationship_approvals as rule
         from provisa.api.admin.capabilities import _identity_from_info, right_reach
+        from provisa.api.admin.request_queue import deciding_right
         from provisa.api.app import state
 
         identity = _identity_from_info(info)
@@ -808,7 +810,7 @@ class Query:  # REQ-021, REQ-042
             rows = await cr_repo.list_pending(cast("Connection", conn))
             for r in rows:
                 if r["request_type"] != rule.REQUEST_TYPE:
-                    if has_capability(info, r["capability"]):
+                    if has_capability(info, deciding_right(r["request_type"])):
                         decidable.add(r["id"])
                 # REQ-1948: a relationship request is shown to the users who can decide it and
                 # to the one who made it.

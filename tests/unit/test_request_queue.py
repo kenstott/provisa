@@ -10,7 +10,9 @@
 
 """REQ-2215, REQ-2216, REQ-2217: raising a request.
 
-Every request names its environment, is addressed to the roles holding the right it names with
+The right that decides a request is set by its type on the server (REQ-1327(5), REQ-1948): a
+view request by approve_view, a relationship request by approve_relationship.
+Every request names its environment, is addressed to the roles holding that right with
 their members resolved, keeps the roles none could be resolved for by name, and is told by email
 only when the org's delivery setting says Provisa sends notices: events only sends none.
 """
@@ -26,22 +28,35 @@ from provisa.api.admin import request_queue as rq
 from provisa.core.role_members import Principal, RoleMembers
 
 ROLES = {
-    "org_admin": {"capabilities": ["create_view", "org_settings"]},
-    "steward": {"capabilities": ["create_view"]},
+    "org_admin": {"capabilities": ["approve_view", "org_settings"]},
+    "steward": {"capabilities": ["approve_view"]},
     "analyst": {"capabilities": ["query"]},
-    "auditor": {"capabilities": ["create_view"]},
+    "auditor": {"capabilities": ["approve_view"]},
+    # Authors a view but does not decide a view request (REQ-1327(5)).
+    "developer": {"capabilities": ["create_view", "create_relationship"]},
 }
 
 MEMBERS = {
     "org_admin": [Principal("root", "Root", "root@x.test")],
     "steward": [Principal("alice", "Alice", "alice@x.test"), Principal("root", "Root", None)],
     "auditor": [],
+    "developer": [Principal("dev", "Dev", "dev@x.test")],
 }
 
 
 def test_a_request_is_addressed_to_every_role_holding_its_right():
-    assert rq.addressed_roles("create_view", ROLES) == ["auditor", "org_admin", "steward"]
+    assert rq.addressed_roles("approve_view", ROLES) == ["auditor", "org_admin", "steward"]
     assert rq.addressed_roles("nobody_holds_this", ROLES) == []
+
+
+def test_the_approve_rights_decide_view_and_relationship_requests():
+    assert rq.deciding_right("view") == "approve_view"
+    assert rq.deciding_right("relationship") == "approve_relationship"
+
+
+def test_an_unknown_request_type_has_no_deciding_right():
+    with pytest.raises(ValueError, match="'grant'"):
+        rq.deciding_right("grant")
 
 
 def test_members_are_listed_once_with_the_roles_they_are_reached_through():
@@ -132,9 +147,7 @@ def raised(monkeypatch):
 
 
 async def test_a_request_records_its_environment_roles_members_and_unresolved_roles(raised):
-    rid = await rq.raise_request(
-        AsyncMock(), "view", "create_view", {"name": "v"}, "alice", state=raised.state
-    )
+    rid = await rq.raise_request(AsyncMock(), "view", {"name": "v"}, "alice", state=raised.state)
     assert rid == 17
     assert raised.stored["environment"] == "dev"
     assert raised.stored["addressed_roles"] == ["auditor", "org_admin", "steward"]
@@ -142,10 +155,16 @@ async def test_a_request_records_its_environment_roles_members_and_unresolved_ro
     assert raised.stored["unresolved_roles"] == ["auditor"]
 
 
+async def test_the_server_sets_the_deciding_right_by_type_never_the_requester(raised):
+    # No capability is passed: a view request stores approve_view and is addressed to its holders,
+    # not to the developer who may author a view.
+    await rq.raise_request(AsyncMock(), "view", {"name": "v"}, "alice", state=raised.state)
+    assert raised.stored["capability"] == "approve_view"
+    assert "developer" not in raised.stored["addressed_roles"]
+
+
 async def test_email_delivery_tells_each_member_with_an_address_but_the_requester(raised):
-    await rq.raise_request(
-        AsyncMock(), "view", "create_view", {"name": "v"}, "alice", state=raised.state
-    )
+    await rq.raise_request(AsyncMock(), "view", {"name": "v"}, "alice", state=raised.state)
     assert [to for to, _, _ in raised.sent] == ["root@x.test"]
     _, subject, body = raised.sent[0]
     assert "#17" in subject
@@ -155,24 +174,18 @@ async def test_email_delivery_tells_each_member_with_an_address_but_the_requeste
 
 async def test_events_only_sends_no_email(raised):
     raised.settings["requests"] = {"delivery": "events"}
-    await rq.raise_request(
-        AsyncMock(), "view", "create_view", {"name": "v"}, "bob", state=raised.state
-    )
+    await rq.raise_request(AsyncMock(), "view", {"name": "v"}, "bob", state=raised.state)
     assert raised.sent == []
     assert raised.stored["addressed_members"]  # the row still names who may decide
 
 
 async def test_both_sends_email(raised):
     raised.settings["requests"] = {"delivery": "both"}
-    await rq.raise_request(
-        AsyncMock(), "view", "create_view", {"name": "v"}, "bob", state=raised.state
-    )
+    await rq.raise_request(AsyncMock(), "view", {"name": "v"}, "bob", state=raised.state)
     assert sorted(to for to, _, _ in raised.sent) == ["alice@x.test", "root@x.test"]
 
 
 async def test_no_mail_provider_sends_nothing(raised):
     raised.state.config.mail.provider = ""
-    await rq.raise_request(
-        AsyncMock(), "view", "create_view", {"name": "v"}, "bob", state=raised.state
-    )
+    await rq.raise_request(AsyncMock(), "view", {"name": "v"}, "bob", state=raised.state)
     assert raised.sent == []

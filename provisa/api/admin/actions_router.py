@@ -939,7 +939,6 @@ async def create_webhook(
         request_id = await raise_request(
             conn,
             "webhook",
-            "webhook_registration",
             {"name": body.name},
             # The user who registered or edited it, so the request is not theirs to approve.
             getattr(getattr(request.state, "identity", None), "user_id", None),

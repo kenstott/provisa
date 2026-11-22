@@ -529,12 +529,12 @@ class TestWebhookApprovalGate:
         # webhook registered unapproved (exposure gated until the request is executed)
         assert result["approved"] is False
         assert result["creationRequestId"] == 42
-        # a webhook_registration request was enqueued for this webhook
+        # a webhook request was enqueued for this webhook; the server sets the right that
+        # decides it by its type (REQ-1327(5)), so none is passed
         cr_create.assert_awaited_once()
         cr_args = cr_create.await_args.args
         assert cr_args[1] == "webhook"
-        assert cr_args[2] == "webhook_registration"
-        assert cr_args[3] == {"name": "notify"}
+        assert cr_args[2] == {"name": "notify"}
         rebuild.assert_awaited_once()
 
     @pytest.mark.asyncio(loop_scope="session")

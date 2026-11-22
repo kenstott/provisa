@@ -22,12 +22,12 @@ import json
 from typing import TYPE_CHECKING, Any, cast
 
 from fastapi import APIRouter, HTTPException, Query, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy import and_, func, select, update
 
 from provisa.api.admin import relationship_approvals as approvals_rule
 from provisa.api.admin._guards import require_active_org_id
-from provisa.api.admin.request_queue import raise_request
+from provisa.api.admin.request_queue import deciding_right, raise_request
 from provisa.api.errors import ApiError
 from provisa.api.idempotency import once
 from provisa.core.repositories import creation_request as cr_repo
@@ -129,7 +129,7 @@ def _require_capability(request: Request, capability: str) -> None:
 
 
 def _reach(request: Request) -> frozenset[str] | None:
-    """The domains the caller's right to create relationships reaches (REQ-1944, REQ-1948)."""
+    """The domains the caller's right to approve relationships reaches (REQ-1944, REQ-1948)."""
     from provisa.api.admin.capabilities import right_reach
     from provisa.api.app import state
 
@@ -203,9 +203,10 @@ async def _carry_out(
     """Create what a request that has had its approvals asks for, and mark it executed.
 
     Every type goes through ``perform_request_creation`` — the code the direct mutation uses.
-    A relationship is stored on its approvals' authority (REQ-1948); a view, table or source is
-    created as the caller, whose own capability and domain gates apply. A creation that fails
-    leaves the request pending, answered with the failure's own code.
+    A relationship or a view is created on its approvals' authority, not under the approver's own
+    create right (REQ-1327(5), REQ-1948); a table or source is created as the caller, whose own
+    capability and domain gates apply. A creation that fails leaves the request pending, answered
+    with the failure's own code.
     """
     import types
 
@@ -215,8 +216,8 @@ async def _carry_out(
     try:
         result = await perform_request_creation(cast("Any", info), row)
     except PermissionError as e:
-        # The direct mutation's own gate refused the caller (a view, table or source is created
-        # as the caller): the same answer, and the same codes, the REST gates give.
+        # The direct mutation's own gate refused the caller (a table or source is created as the
+        # caller): the same answer, and the same codes, the REST gates give.
         code = "auth.missing_capability" if str(e).startswith("Missing") else "auth.domain_denied"
         await _refuse(request, row, "execute", involved, approvals_rule.Refusal(code, str(e)), 403)
         raise
@@ -232,8 +233,12 @@ async def _carry_out(
 
 
 class SubmitBody(BaseModel):
+    """A request names what it is for; the right that decides it is set by its type on the server
+    (REQ-1327(5), REQ-1948), so a body naming a ``capability`` (or any other field) is refused."""
+
+    model_config = ConfigDict(extra="forbid")
+
     request_type: str
-    capability: str
     payload: dict
 
 
@@ -270,7 +275,7 @@ async def submit_request(body: SubmitBody, request: Request):  # REQ-063, REQ-43
     async with pool.acquire() as _conn:
         conn = cast("Connection", _conn)
         rid = await raise_request(
-            conn, body.request_type, body.capability, payload, _user_id(request), state=_state()
+            conn, body.request_type, payload, _user_id(request), state=_state()
         )
     return {"id": rid, "status": "pending"}
 
@@ -345,7 +350,7 @@ async def list_requests(  # REQ-063, REQ-434, REQ-1948
                     else []
                 )
             else:
-                decides = _holds(request, row["capability"])
+                decides = _holds(request, deciding_right(row["request_type"]))
                 repeat = approvals_rule.repeat_refusal(
                     user_id=user_id, requested_by=row["requested_by"], approvals=row["approvals"]
                 )
@@ -385,9 +390,9 @@ async def _approve(request_id: int, request: Request) -> dict:
         row = await _pending(conn, request_id)
         if _is_relationship(row):
             return await _approve_relationship(conn, row, request)
-        # Every type: the right the request names, never the requester's own yes, one yes per
+        # Every type: the right that decides its type, never the requester's own yes, one yes per
         # user; the approval that completes the count creates what the request asks for.
-        _require_capability(request, row["capability"])
+        _require_capability(request, deciding_right(row["request_type"]))
         none: frozenset[str] = frozenset()
         await _refuse(
             request,
@@ -488,8 +493,8 @@ async def _reject(request_id: int, body: RejectBody, request: Request) -> dict:
             requested_by=row["requested_by"],
         )
         if not _is_relationship(row) and not withdrawn:
-            # Its author may take a request back; anyone else needs the right it names.
-            _require_capability(request, row["capability"])
+            # Its author may take a request back; anyone else needs the right that decides it.
+            _require_capability(request, deciding_right(row["request_type"]))
         valid = _REJECTION_REASONS.get(row["request_type"], [])
         if body.reason not in valid:
             raise HTTPException(
@@ -551,7 +556,7 @@ async def execute_request(request_id: int, request: Request):  # REQ-063, REQ-36
             await _carry_out(conn, row, request, involved)
             return {"id": request_id, "status": "executed"}
         # Every other type: executing is not a way around the approvals either.
-        _require_capability(request, row["capability"])
+        _require_capability(request, deciding_right(row["request_type"]))
         none: frozenset[str] = frozenset()
         await _refuse(
             request,
