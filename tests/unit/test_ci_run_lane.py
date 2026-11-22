@@ -622,27 +622,24 @@ def test_the_servicenow_lane_runs_only_when_a_dispatch_asks_for_it_with_its_secr
     assert "pytest.mark.requires_servicenow" in source
 
 
-def test_the_servicenow_lane_builds_its_server_from_the_calcite_ref_it_is_given():
-    """REQ-1954: the e2e reads through a pgwire-servicenow built from the calcite ref the dispatch
-    names, and the app is told where that build is; the pinned release is never fetched."""
-    steps = {s.get("name"): s for s in _job_steps("servicenow")}
-    names = list(steps)
-    checkout = next(
-        s for s in _job_steps("servicenow") if s.get("with", {}).get("path") == "calcite"
-    )
-    assert checkout["with"]["repository"] == "kenstott/calcite"
-    assert checkout["with"]["ref"] == "${{ inputs.servicenow_calcite_ref }}"
-    build = steps["Build pgwire-servicenow"]
-    assert "build-bundle.sh servicenow linux-x86_64" in build["run"]
-    assert "PROVISA_PGWIRE_BUNDLE_SERVICENOW=" in build["run"]
-    assert names.index("Build pgwire-servicenow") < names.index("Run lane")
-    assert "SERVICENOW_CALCITE_REF" in _credentials_step("servicenow")["run"]
+def test_the_servicenow_lane_reads_the_pinned_release_bundle():
+    """REQ-1954: the e2e reads through the pinned release's pgwire-servicenow, fetched by the app
+    as every other connector's bundle is; the lane builds no server of its own and takes no
+    calcite ref, so a dispatch needs nothing beyond the instance's credentials."""
+    steps = _job_steps("servicenow")
+    assert not [s for s in steps if s.get("with", {}).get("repository") == "kenstott/calcite"]
+    assert not [s for s in steps if "build-bundle.sh" in s.get("run", "")]
+    job = _lanes_workflow()["jobs"]["servicenow"]
+    assert job["env"]["PROVISA_RUNTIME_DEPS_CACHE"] == "${{ github.workspace }}/.runtime-deps"
+    assert "PROVISA_PGWIRE_BUNDLE_SERVICENOW" not in str(job)
+    assert "CALCITE_REF" not in _credentials_step("servicenow")["run"]
     import yaml
 
+    lanes = _lanes_workflow()
+    assert "servicenow_calcite_ref" not in lanes[True]["workflow_call"]["inputs"]
     caller = yaml.safe_load((REPO / ".github" / "workflows" / "integration-suite.yml").read_text())
-    assert caller["jobs"]["lanes"]["with"]["servicenow_calcite_ref"] == (
-        "${{ inputs.servicenow_calcite_ref || '' }}"
-    )
+    assert "servicenow_calcite_ref" not in caller[True]["workflow_dispatch"]["inputs"]
+    assert "servicenow_calcite_ref" not in caller["jobs"]["lanes"]["with"]
 
 
 _M365_TESTS = (

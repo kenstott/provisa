@@ -228,7 +228,9 @@ def crawl_directory(
     Parameters
     ----------
     root:
-        Local filesystem path or fsspec URI (e.g. ``s3://bucket/prefix/``).
+        Local filesystem path or fsspec URI (e.g. ``s3://bucket/prefix/``). A root that is a
+        glob (``…/complaints*.csv``) is a files source's own glob: the directory before it is
+        walked and only the files the glob matches are returned (REQ-788).
     depth:
         Maximum recursion depth. ``None`` means unlimited.
     pattern:
@@ -265,7 +267,15 @@ def crawl_directory(
     Raises ``ValueError`` if *root* is not a directory.
     Raises ``OSError`` / fsspec errors for inaccessible paths.
     """
+    import os
+
+    from provisa.file_source.files_glob import source_glob_files, split_source_path
+
     effective_depth = 0 if not recursive else depth
+    # REQ-788: the source's glob decides its files; the walk is of the directory before it.
+    in_glob = source_glob_files(root)
+    allowed = None if in_glob is None else {os.path.normpath(f) for f in in_glob}
+    root = split_source_path(root)[0]
 
     if _is_fsspec_uri(root):
         file_paths = _walk_fsspec(
@@ -282,6 +292,8 @@ def crawl_directory(
     for fp in file_paths:
         source_type = _source_type_for_path(fp)
         if source_type is None:
+            continue
+        if allowed is not None and os.path.normpath(fp) not in allowed:
             continue
         if pattern is not None and not fnmatch.fnmatch(Path(fp).name, pattern):
             continue
