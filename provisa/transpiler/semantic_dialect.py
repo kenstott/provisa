@@ -58,10 +58,12 @@ Trino.Generator.TRANSFORMS[exp.Log] = lambda self, expression: (
     if expression.expression
     else self.func("LOG", exp.Literal.number(10), expression.this)
 )
-_trino_extract = Trino.Generator.TRANSFORMS.get(exp.Extract, Generator.extract_sql)
+# Trino's own extract_sql (its EPOCH parts as TO_UNIXTIME), not the base Generator's: Trino
+# writes EXTRACT(EPOCH ...) in that method, and has no EPOCH field of EXTRACT.
+_trino_extract = Trino.Generator.extract_sql
 
 
-def _trino_extract_year(self: Generator, expression: exp.Extract) -> str:
+def _trino_extract_year(self: Trino.Generator, expression: exp.Extract) -> str:
     """EXTRACT(YEAR ...) on Trino counts year 0 as 1 BC (the ISO calendar); PostgreSQL has no year
     0, so a year <= 0 reads one lower (Trino's -4712 is PostgreSQL's -4713). The correction reads
     YEAR(value), which parses back as exp.Year, so SQL generated again (the pipeline regenerates
