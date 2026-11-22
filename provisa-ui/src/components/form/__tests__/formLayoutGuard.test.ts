@@ -26,6 +26,8 @@ const SRC = resolve(__dirname, "../../..");
  */
 const NOT_A_FORM: Readonly<Record<string, string>> = {
   "components/admin/FilterInput.tsx": "the search box above a list",
+  "components/admin/syncing/SyncProductFilter.tsx":
+    "the data product filter above Context Sync's list of entries",
   "components/admin/MergeRequestsPanel.tsx":
     "the open-only filter above the list of merge requests",
   "components/admin/relTypeGuide.tsx": "the related-to filter tick above the glossary term list",

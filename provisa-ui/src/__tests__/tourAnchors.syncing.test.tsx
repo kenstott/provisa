@@ -56,6 +56,7 @@ const MARQUEZ: SyncEntry = {
   aws_secret_access_key_set: false,
   last_run: null,
   last_import: null,
+  products: [],
 };
 
 const BASE: SyncingState = {
