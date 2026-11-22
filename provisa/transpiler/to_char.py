@@ -38,7 +38,7 @@ import sqlglot
 import sqlglot.expressions as exp
 from sqlglot.dialects.postgres import Postgres
 
-from provisa.transpiler.pg_literals import values_cast
+from provisa.transpiler.pg_literals import text_literal, values_cast
 
 
 class _CallsKept(Postgres):
@@ -761,12 +761,17 @@ def _translated(call: exp.Anonymous) -> exp.Expr:
     value, fmt = call.expressions
     if isinstance(fmt, exp.Null) or (isinstance(fmt, exp.Cast) and isinstance(fmt.this, exp.Null)):
         return exp.cast(exp.null(), "TEXT")  # to_char is strict: a NULL format answers NULL
-    if not (isinstance(fmt, exp.Literal) and fmt.is_string):
+    cast = values_cast(value) if isinstance(value, exp.Column) else value
+    if isinstance(cast, exp.Cast) and cast.to.this == exp.DataType.Type.INTERVAL:
+        # formatting.c reads an interval's fields, which the forms here (a timestamp's) do not.
+        raise NotImplementedError("to_char() of an interval has no form on duckdb")
+    literal = text_literal(fmt)
+    if literal is None:
         raise NotImplementedError(
             "to_char: a format that is not a literal is not supported; each of its elements is "
             "translated where the statement is read"
         )
-    pattern = fmt.this
+    pattern = literal.this
     if _is_numeric(pattern) and _zoned(value) is None:  # a timestamp's template is a date's
         return exp.Paren(this=_numeric(value, pattern))
     return written(pattern, value, "duckdb", _zoned(value))

@@ -34,7 +34,7 @@ from sqlglot.dialects.postgres import Postgres
 from provisa.core.pg_error import raising
 from provisa.transpiler import function_macros, pg_syntax, pg_xml
 from provisa.transpiler.pg_forms_types import REFUSED
-from provisa.transpiler.pg_literals import postgres_literals
+from provisa.transpiler.pg_literals import postgres_literals, text_literal
 
 _REGEXP_MATCHES = "provisa_regexp_matches"
 _ENCODE_ESCAPE = "provisa_encode_escape"
@@ -309,13 +309,14 @@ def _regex_substring(value: str, pattern: exp.Expr) -> str:
     match's; NULL for no match. DuckDB chooses a group by a constant, so a pattern is a literal."""
     if _is_null(pattern):
         return "CAST(NULL AS TEXT)"
-    if not (isinstance(pattern, exp.Literal) and pattern.is_string):
+    literal = text_literal(pattern)
+    if literal is None:
         raise NotImplementedError(
             "substring: a pattern that is not a literal is not supported; its group is chosen "
             "where the statement is read"
         )
-    text = pattern.sql(dialect="postgres")
-    group = 1 if capture_groups(pattern.this) else 0
+    text = literal.sql(dialect="postgres")
+    group = 1 if capture_groups(literal.this) else 0
     return f"CASE WHEN {value} ~ {text} THEN {_REGEXP_GROUP}({value}, {text}, {group}) END"
 
 
@@ -323,7 +324,8 @@ def _decoded(value: str, fmt: exp.Expr, name: str) -> str:
     """encode(bytea, format) and decode(text, format), by the format the statement names."""
     if _is_null(fmt):
         return f"CAST(NULL AS {'TEXT' if name == 'encode' else 'BYTEA'})"
-    written = fmt.this.lower() if isinstance(fmt, exp.Literal) and fmt.is_string else None
+    literal = text_literal(fmt)
+    written = literal.this.lower() if literal is not None else None
     if written is None:
         raise NotImplementedError(
             f"{name}: a format that is not a literal is not supported; it is chosen where the "
