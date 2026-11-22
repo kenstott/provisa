@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import re
 from collections import Counter
+from collections.abc import Iterator
 from dataclasses import dataclass
 from typing import cast
 
@@ -76,6 +77,7 @@ from provisa.transpiler.metadata_server_forms import (
 )
 from provisa.transpiler.metadata_settings import setting
 from provisa.transpiler.pg_forms_system import SERVER_STATE
+from provisa.transpiler.pg_literals import array_input
 from provisa.transpiler.server_functions import READS_THE_SERVER
 
 #: The search path a definition names a table against (catalog_data's search_path).
@@ -1023,7 +1025,9 @@ def _argument(value: exp.Expr, reads_as: str = "") -> exp.Expr:
     # An array's own elements are what a form iterates: the engine's array, not array_out's text,
     # which no engine reads back. bytea: no engine reads a bytes' text back, and a form reads only
     # its NULL.
-    if reads_as in ("bytea", "array"):
+    if reads_as == "elements":
+        value = _elements(value)
+    if reads_as in ("bytea", "array", "elements"):
         return value if isinstance(value, _ATOMIC) else exp.Paren(this=value)
     if reads_as:
         # An argument of any type, as the form reads it: a value of a type no form operates on
@@ -1037,6 +1041,58 @@ def _argument(value: exp.Expr, reads_as: str = "") -> exp.Expr:
     if isinstance(value, exp.Cast) and value.to.sql(dialect="postgres").lower() == "pg_node_tree":
         value = value.this  # the cast names pg_get_expr's argument type; a catalog keeps text
     return value if isinstance(value, _ATOMIC) else exp.Paren(this=value)
+
+
+def _elements(value: exp.Expr) -> exp.Expr:
+    """An array argument read as its elements in storage order, of one dimension, as PostgreSQL's
+    deconstruct_array reads an array of any dimensions (an ``elements`` parameter). Only an array
+    the statement writes, as text or as constructors, has more than one dimension on an engine
+    (an array of arrays, provisa.transpiler.pg_literals.array_input); any other value is as it
+    is."""
+    expression = cast(exp.Expression, value)  # pyright: ignore[reportPrivateImportUsage]
+    written = cast(exp.Expr, array_input(expression))
+    node = written.unnest()
+    of = node if isinstance(node, exp.Cast) else None
+    array = (of.this if of is not None else node).unnest()
+    if not isinstance(array, exp.Array) or not any(
+        isinstance(e.unnest(), exp.Array) for e in array.expressions
+    ):
+        return value
+    flat = exp.Array(expressions=list(_flattened(array)))
+    if of is None:
+        return flat
+    text = value.unnest()
+    if isinstance(text, exp.Cast) and isinstance(text.this, exp.Literal):
+        # Written as text again, each element quoted (array_in reads any element quoted): a
+        # constant the form names as often as it needs, as the statement's own text form is.
+        return exp.Cast(this=exp.Literal.string(_array_text(flat)), to=text.to.copy())
+    element = of.to
+    while element.is_type(exp.DataType.Type.ARRAY) and element.expressions:
+        element = element.expressions[0]
+    to = exp.DataType(this=exp.DataType.Type.ARRAY, expressions=[element.copy()], nested=True)
+    return exp.Cast(this=flat, to=to)
+
+
+def _array_text(array: exp.Array) -> str:
+    """array_in's text of ``array``, whose elements are strings or NULL: each string quoted, its
+    quotes and backslashes escaped."""
+    items = []
+    for item in array.expressions:
+        if isinstance(item, exp.Null):
+            items.append("NULL")
+        else:
+            escaped = item.name.replace("\\", "\\\\").replace('"', '\\"')
+            items.append(f'"{escaped}"')
+    return "{" + ",".join(items) + "}"
+
+
+def _flattened(array: exp.Array) -> Iterator[exp.Expr]:
+    for item in array.expressions:
+        inner = item.unnest()
+        if isinstance(inner, exp.Array):
+            yield from _flattened(inner)
+        else:
+            yield item.copy()
 
 
 def _object_identifier(value: exp.Expr) -> bool:

@@ -81811,7 +81811,7 @@
     defaults, carrying nothing from a selected object; Duplicate is a head action of the panel that opens
     the create form prefilled from that object, with a new identity required and nothing dependent copied.
     A duplicated source keeps credentials as the same secret references, never copied values, and copies
-    no registered tables. A page with no create form states its exception.'
+    no registered tables. A page with no create form states its exception. (Amended 2026-11-22 by the maintainer. A missing or invalid field never disables a form''s primary action. Clicking it validates, marks each missing field inline and moves focus to the first. A primary action is disabled only when there is nothing to act on, such as zero items ticked, and its label then says so. Required fields carry their marker before any attempt. A UI guard test enforces this for every form.)'
   use_case: An operator fills in a source or table form on a laptop or a wide monitor and sees short fields side by side, identifiers set apart at the top, and the buttons where every form has them.
   related_reqs:
   - REQ-1350
@@ -82730,7 +82730,7 @@
     failure is a fix on main. A release candidate is cut from a green nightly and runs the full suites once;
     each fix reruns only its failing tests; failures are triaged into blockers, fixed on the branch, and
     known issues, which ship listed in the release notes. A full set is never rerun in answer to a fix.
-    Earlier text here requiring repeated full sets per release, or full suites per branch, is superseded.'
+    Earlier text here requiring repeated full sets per release, or full suites per branch, is superseded. (Amended 2026-11-22 by the maintainer. A release converges in under one day from cut to publish. The packaging dry run runs every night on main beside integration and e2e, so a packaging defect becomes a fix job on main, not a release blocker. A release is cut only from a nightly where unit, lint, the requirements check, integration, e2e and the packaging dry run are all green. At the cut the release full set and the packaging dry run run in parallel. A red unit, lint or requirements check on main stops the line: the next landing batch takes only the fixes for it.) (Amended 2026-11-22 again by the maintainer: the stop-the-line clause above is superseded by a ratchet. A red unit, lint or requirements check on main does not freeze landing. A branch lands only if it adds no failing test or check compared with main''s current failure set, so main''s failures can only fall. The red run is triaged at once, its failures grouped by root cause, and each group becomes one fix job at the front of the queue.)'
   notes: 'Maintainer 2026-10-12, through the lead: release notes generated between two tags and committed with the release, the release body set from them, and a generation failure blocks the tag; he chose a hand-run cut workflow that commits the notes before it tags (option A of ci-fix''s two), and that releases are made only through it. "A hand-written release page is never overwritten" is the lead''s instruction. The rest -- the workflow starting every workflow a v* tag starts, since a tag it pushes starts none -- is ci-fix''s implementation. Group, category, priority and type are ci-fix''s choices. Roadmap audit 2026-10-13: delivered; verified against the code'
   code:
   - .github/workflows/release-cut.yml
@@ -88307,7 +88307,7 @@ And its prod source reads the shop's database with it, while the stored source k
     script can record its application id, a link to its UI, its input paths and its row counts, so the trail
     shows what Provisa called and points to what Spark ran. (Amended 2026-11-09, GO HAS THE SERVICES TOO:)
     Maintainer 2026-11-09: Go code sources (REQ-2200) get the provisa_services module with the same calls
-    as Python and Node, including audit.'
+    as Python and Node, including audit. (Amended 2026-11-22 by the maintainer, per REQ-2112. Outside Provisa a signed-in developer reaches the services through a server route keyed to their personal access token, scoped to their dev-mode source and their role and audited like a worker''s reads; a module run with neither a worker token nor a developer''s token still finds the services absent and is tested by mocking them.)'
   use_case: "A Python scoring table caches the rates it fetches from a partner API through http.get, reads its threshold from a setting a steward tunes, logs what it scored, and its calls show on the request's trace beside the query that triggered them."
   scenario: "Given a python source scorer with settings {threshold: 0.8} whose code calls ps.settings.get('threshold') and ps.cache.set('rates', r, ttl=3600)
 
@@ -88596,7 +88596,7 @@ Then the auditor sees the 30 attached disks without a customer-managed key, each
   feature: connector-catalog-streams-logs-and-public-data
   priority: SHOULD
   type: behavioral
-  description: "A Visual Studio Code extension for Node and Python code sources, published on the VS Code Marketplace. In the open workspace it lists the functions Provisa would serve as @table or command, with the columns and parameters Provisa infers for each, before anything is registered. It points a code source at the workspace folder in dev mode against a chosen Provisa instance, so an edit is read by the next query. It marks the pushdown conventions inline (raw column names, {op}_{column} parameters, the tag and Annotated forms) and flags a filter parameter that names no column. From the command palette it runs Build image and copies the compose snippet through the API the Provisa UI uses (REQ-2098), with no backend of its own. It reaches the code-source services shim ($PROVISA_SERVICES: secrets, the LLM endpoint and the rest) locally with the developer's own credentials. It edits no model and offers no query editor: GraphQL, SQL and Cypher authoring use the existing VS Code extensions pointed at Provisa (the role-scoped SDL, pgwire), and a docs page says how. (Amended 2026-11-21 by the maintainer. The extension marks the tag and Annotated forms and the SDK forms inline. The pushdown-conventions clause, raw column names and filter parameters, is superseded, since the SDK types ReadContext only.)"
+  description: "A Visual Studio Code extension for Node and Python code sources, published on the VS Code Marketplace. In the open workspace it lists the functions Provisa would serve as @table or command, with the columns and parameters Provisa infers for each, before anything is registered. It points a code source at the workspace folder in dev mode against a chosen Provisa instance, so an edit is read by the next query. It marks the pushdown conventions inline (raw column names, {op}_{column} parameters, the tag and Annotated forms) and flags a filter parameter that names no column. From the command palette it runs Build image and copies the compose snippet through the API the Provisa UI uses (REQ-2098), with no backend of its own. It reaches the code-source services shim ($PROVISA_SERVICES: secrets, the LLM endpoint and the rest) locally with the developer's own credentials. It edits no model and offers no query editor: GraphQL, SQL and Cypher authoring use the existing VS Code extensions pointed at Provisa (the role-scoped SDL, pgwire), and a docs page says how. (Amended 2026-11-21 by the maintainer. The extension marks the tag and Annotated forms and the SDK forms inline. The pushdown-conventions clause, raw column names and filter parameters, is superseded, since the SDK types ReadContext only.) (Amended 2026-11-22 by the maintainer. The services shim is reached locally through the developer's personal access token route of REQ-2106, forwarded by the extension into VS Code terminals and debug sessions. The extension ships as a .vsix release asset on GitHub; no public registry, the Marketplace included, until the maintainer changes channels.)"
   use_case: A developer writes a Python function in VS Code, sees the table Provisa would make of it, queries it against a Provisa instance in dev mode as they edit, and builds its image without leaving the editor.
   scenario: "Given a Python workspace with a function decorated @table and a Provisa instance the extension is signed in to
 
@@ -96458,6 +96458,9 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   - data-engineer
   tests:
   - tests/integration/test_code_table_read_e2e.py
+  - tests/unit/test_code_command_table_arg.py
+  - tests/unit/test_minted_call_token.py
+  - tests/unit/test_minted_pipeline_column_visibility.py
 - id: REQ-2227
   value: A code source can be written in Rust, with the same tables, commands and streams as a Node, Python
     or Go code source.
@@ -96495,6 +96498,11 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     Then the function runs in the sandbox and its rows are returned'
   stakeholders:
   - data-engineer
+  tests:
+  - tests/unit/test_rust_source.py
+  - tests/unit/test_rust_install.py
+  - tests/unit/test_rust_image_linker.py
+  - tests/integration/test_rust_worker.py
 - id: REQ-2228
   value: 'A dbt project is a source type: its manifest offers its models as governed tables and commands,
     while dbt keeps building them.'
@@ -96792,6 +96800,9 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     table_registration in a domain picks all three on Register Table and registers them; then all three are
     registered in that domain with the defaults one registration would give each, and a table one of them
     refuses is named while the others are registered.'
+  tests:
+  - tests/unit/test_register_tables_batch.py
+  - provisa-ui/src/pages/tables/__tests__/RegisterTableForm.several.test.tsx
 
 - id: REQ-2235
   status: in-progress
@@ -96977,7 +96988,7 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     2026-11-15. A function form that an engine cannot answer only for edge values (an extreme, an empty
     value, a value where PostgreSQL itself differs) is not refused. It is served, and a call raises an error
     when the edge value occurs. A form is refused by name only when it cannot be answered for ordinary values.
-    The conformance measure counts such a form as served within its bound, and tests that the edge raises. (Amended 2026-11-21 by the maintainer for the Db2 engine. Two Db2 behaviours are stated limitations of the grid rather than refusals: a cast to text is bounded at 8168 characters, and string equality ignores trailing blanks; each is listed in the grid and the docs.) (Amended 2026-11-21 by the maintainer for the SAP HANA engine. Integer division gives pg''s truncated integer by writing a truncating form when the compiler supplies the operand types; until then it is refused by name. These HANA behaviours are stated grid limitations rather than refusals: text and unbounded varchar are bounded at 5000 characters (NVARCHAR(5000)); text sorts and compares in binary order, not the locale collation; SUM over bigint can overflow where pg widens to numeric; and, unverified until a live HANA leg, timestamps keep 7 fractional digits and LENGTH may count characters outside the BMP differently. A cast to an integer type of a value not known to be integral is refused by name on HANA and on Db2, where both truncate and pg rounds.)'
+    The conformance measure counts such a form as served within its bound, and tests that the edge raises. (Amended 2026-11-21 by the maintainer for the Db2 engine. Two Db2 behaviours are stated limitations of the grid rather than refusals: a cast to text is bounded at 8168 characters, and string equality ignores trailing blanks; each is listed in the grid and the docs.) (Amended 2026-11-21 by the maintainer for the SAP HANA engine. Integer division gives pg''s truncated integer by writing a truncating form when the compiler supplies the operand types; until then it is refused by name. These HANA behaviours are stated grid limitations rather than refusals: text and unbounded varchar are bounded at 5000 characters (NVARCHAR(5000)); text sorts and compares in binary order, not the locale collation; SUM over bigint can overflow where pg widens to numeric; and, unverified until a live HANA leg, timestamps keep 7 fractional digits and LENGTH may count characters outside the BMP differently. A cast to an integer type of a value not known to be integral is refused by name on HANA and on Db2, where both truncate and pg rounds.) (Amended 2026-11-22 by the maintainer. The polyfill check credits a stated limit per feature and engine, held when any overload of that feature on that engine raised it, and a limit excuses only the errors matching its own values and SQLSTATE. The edge set covers what a limit names, such as NaN and infinite shapes and empty-matching patterns. A limit no edge call can reach, such as an aggregate past 2^40 values, stands as a statement of record the check exempts. A form that raises PostgreSQL''s own error where PostgreSQL raises it, or raises on a value PostgreSQL never holds, is not a limit and its row does not say it raises. The measured rows are regenerated from each full functions run)'
   use_case: A PostgreSQL user on DuckDB, Trino or another engine reads one page that says, feature by
     feature, what is native, what is polyfilled and how, and what differs or is refused, and that page
     cannot drift from what the product does.
@@ -97800,7 +97811,7 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     as the data product Access section draws its per-table links (the same icons, tips and component), in
     its Identity section. Each opens that surface''s Explore editor with a query that reads the table, run
     at once, using the names the role sees and a row limit. A surface the table is not exposed on shows
-    no link.'
+    no link. (Amended 2026-11-22 by the maintainer. A table''s query links are drawn as a relationship''s are, an icon with its surface name beside it, from one shared rendering, and appear as soon as a table is registered. A table whose aggregates are enabled shows, on its API section, a query link per surface that serves its aggregates to the acting role, opening Explore with an aggregate query, and a group-by query when group-by is enabled, run at once.)'
   tests:
   - provisa-ui/src/components/relationships/__tests__/RelationshipQueryLinks.placements.test.tsx
   - provisa-ui/src/components/relationships/__tests__/relationshipQueries.test.ts
@@ -98196,5 +98207,59 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     on it, mutations as commands), with today''s pushdown. The first version borrows heavily from the existing
     OpenAPI and graphql_remote code rather than rewriting it. (3) Code sources are then read live by every
     federation engine through a Provisa-launched pure-Python pgwire sidecar on the pgwire-calcite backend seam,
-    launched like the other pgwire replicas. New pushdown capabilities are backlogged as their own requirements. (Amended 2026-11-21 by the maintainer. A generated table may declare a loader with a batch size, under the code-source @loader contract (REQ-2100), and its handler then answers a batch of join keys: a GraphQL remote that fetches by a key list (where _in, or nodes by ids) and an OpenAPI operation that looks up a list of ids give their row type table its loader. The first version supports @discover in Python code sources only; other code-source languages follow as their own requirements, Rust first for speed.) (Amended 2026-11-22. In v0, a generated query or command whose parameter is a TableRef is refused by name at discovery; TableRef parameters stay on hand-written commands.)'
+    launched like the other pgwire replicas. New pushdown capabilities are backlogged as their own requirements. (Amended 2026-11-21 by the maintainer. A generated table may declare a loader with a batch size, under the code-source @loader contract (REQ-2100), and its handler then answers a batch of join keys: a GraphQL remote that fetches by a key list (where _in, or nodes by ids) and an OpenAPI operation that looks up a list of ids give their row type table its loader. The first version supports @discover in Python code sources only; other code-source languages follow as their own requirements, Rust first for speed.) (Amended 2026-11-22. In v0, a generated query or command whose parameter is a TableRef is refused by name at discovery; TableRef parameters stay on hand-written commands.) (Amended 2026-11-22 by the maintainer. The code-source contract carries relationships, so a discover result, built-in or user-written, declares the relationships between its generated tables. It carries warnings, so a read cut at its page limit returns its rows with the same answer-was-cut warning the built-in sources give. Credentials of a code source are stored as secret references and resolved through the secrets service at call time, never written to the code directory)'
 
+- id: REQ-2268
+  status: proposed
+  target: 2027-Q1
+  group: 5. Query Languages, Compilation & Operations
+  category: Cypher Query Frontend (Phase AU)
+  feature: glossary-tags-ontology-queryable-metadata
+  priority: SHOULD
+  type: behavioral
+  description: 'Maintainer 2026-11-22. Tags are served in the Cypher graph like data. Each tag is a Tag node
+    carrying its name, description, owner and the policy it triggers, a shared dimension of the metadata.
+    Each tagged table or column node has a TAGGED edge to the tag, a junction of the metadata, whose
+    properties are who applied it, when, its origin (a person or the model), whether it is confirmed and the
+    glossary term it came from. Only the tables, columns and tags the caller''s role can read appear, with
+    the same masking and visibility as any read. These nodes and edges are generated from the tag
+    assignments: they are not registered relationships, never appear on the Relationships page, and cannot be
+    edited there or in Cypher; they change only when the tags change.'
+  scenario: 'Given a column tagged PII by a steward and confirmed, and a role that reads the column
+
+    When the role runs MATCH (c)-[t:TAGGED]->(g:Tag {name: ''PII''}) RETURN c, t, g
+
+    Then it gets the column, the edge with who applied the tag, when, its origin and confirmed, and the PII tag
+
+    When the role lists the Relationships page
+
+    Then no TAGGED relationship appears, and none can be created or edited there or by a Cypher write'
+
+- id: REQ-2269
+  status: proposed
+  target: 2026-Q4
+  group: 11. Platform, Infrastructure & Delivery
+  category: Installer & Packaging
+  feature: installation-linux
+  priority: SHOULD
+  type: behavioral
+  description: 'Maintainer 2026-11-22 (idea raised 2026-11-20). One script installs Provisa with a Trino federation
+    engine on an existing Linux host, a virtual machine or bare metal, run on the host or from a workstation
+    over SSH. It installs Provisa from the release''s own assets on GitHub, never the provisa package from a
+    public registry; starts Trino in Docker with Provisa''s plugins; writes a configuration whose federation
+    engine is Trino; runs Provisa as a system service; and ends with a health check that names what failed.
+    Running it again upgrades the install in place. The nightly packaging lane runs the same script on a clean
+    machine and then the smoke checks against the result, so the path a user installs by is tested every night.'
+  scenario: 'Given a clean Linux machine with Docker and the release''s assets
+
+    When the install script runs for that release
+
+    Then Provisa runs as a service with Trino as its federation engine and the health check passes
+
+    When the smoke checks run against it
+
+    Then one known query answers through each front door, each default source reads, and a restricted role gets less
+
+    When the script runs again for a newer release
+
+    Then the install is upgraded in place and the health check passes'

@@ -34,6 +34,7 @@ from graphql import (
     VariableNode,
 )
 
+from provisa.compiler.naming import compiled_operator, compiled_order_direction
 from provisa.compiler.params import ParamCollector
 from provisa.compiler.sql_literals import sql_literal
 from provisa.compiler.sql_types import (
@@ -212,7 +213,8 @@ def _compile_virtual_col_filter(
 ) -> list[str]:
     """Compile filter predicates for a virtual column against its compile-time value."""
     parts: list[str] = []
-    for op, val in filter_obj.items():
+    for name, val in filter_obj.items():
+        op = compiled_operator(name)  # REQ-194: Hasura's _eq is eq
         if op == "eq":
             parts.append("TRUE" if vv == str(val) else "FALSE")
         elif op == "neq":
@@ -249,7 +251,8 @@ def _compile_column_filter(
     (``text_cast``)."""
     cast_type = text_cast(data_type)
     parts: list[str] = []
-    for op, val in filter_obj.items():
+    for name, val in filter_obj.items():
+        op = compiled_operator(name)  # REQ-194: Hasura's _eq is eq
         if op == "eq":
             rhs = _comparison_value(val, collector, cast_type)
             parts.append(f"{col} = {rhs}")
@@ -606,7 +609,8 @@ def _compile_order_by(
     parts: list[str] = []
     _e2p = exposed_to_physical or {}
 
-    def _dir(direction: str) -> str:
+    def _dir(given: str) -> str:
+        direction = compiled_order_direction(given)  # REQ-194: graphql-default's DESC is desc
         return _REVERSED_DIRECTION.get(direction, direction) if reverse else direction
 
     for item in order_by_list:

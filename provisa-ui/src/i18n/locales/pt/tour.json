@@ -814,11 +814,11 @@
       },
       "opioidsAsPublic": {
         "title": "Executar como o público",
-        "description": "O explorador SQL agora é executado com o papel public, o do painel do conselho e dos moradores. As consultas a seguir veem apenas o que esse papel permite."
+        "description": "O explorador SQL agora é executado com o papel resident, o do painel do conselho e dos moradores. As consultas a seguir veem apenas o que esse papel permite."
       },
       "opioidsPublic": {
         "title": "Como o público vê",
-        "description": "O painel do conselho é a exibição overdose_burden_by_county, executada aqui com a função pública. Ela mostra os residentes, as mortes, a taxa de mortalidade e o dinheiro federal por residente de cada condado, e não lê nenhuma das alocações do fundo nem os prestadores pagos."
+        "description": "O painel do conselho é a exibição overdose_burden_by_county, executada aqui com o papel resident. Ela mostra os residentes, as mortes, a taxa de mortalidade e o dinheiro federal por residente de cada condado, e não lê nenhuma das alocações do fundo nem os prestadores pagos."
       },
       "opioidsByRegion": {
         "title": "Por região, em GraphQL",

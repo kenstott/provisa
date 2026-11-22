@@ -32,6 +32,7 @@ from graphql import (
 )
 
 from provisa.compiler.introspect import ColumnMetadata
+from provisa.compiler.naming import hasura_type_name
 from provisa.compiler.type_map import FILTER_TYPE_MAP, column_type_to_graphql
 
 GraphQLFloat: GraphQLScalarType = cast(GraphQLScalarType, _GraphQLFloat)
@@ -106,12 +107,23 @@ def _named(
     )
 
 
+def _agg_type_name(
+    type_name: str, provisa_suffix: str, hasura_suffix: str, hasura: str | None
+) -> str:
+    """An aggregate type's name: Provisa's (``OrdersSumFields``), or for a Hasura-preset table
+    Hasura's (``orders_sum_fields`` / ``OrdersSumFields``, REQ-194)."""
+    if hasura is None:
+        return f"{type_name}{provisa_suffix}"
+    return hasura_type_name(hasura, type_name, hasura_suffix)
+
+
 def build_agg_fields_type(  # REQ-196
     type_name: str,
     visible_columns: list[dict],
     column_metadata: dict[str, ColumnMetadata],
     field_names: dict[str, str],
     metrics: list[dict] | None = None,
+    hasura: str | None = None,
 ) -> GraphQLObjectType:
     """Build {TypeName}AggregateFields type (count, sum, avg, stddev, variance, min, max).
 
@@ -139,21 +151,30 @@ def build_agg_fields_type(  # REQ-196
             metric_fields[m["name"]] = GraphQLField(m_type, description=m_desc)  # type: ignore[arg-type]
         metrics_type = cast(
             GraphQLObjectType,
-            GraphQLObjectType(f"{type_name}MetricsFields", lambda f=metric_fields: f),
+            GraphQLObjectType(
+                _agg_type_name(type_name, "MetricsFields", "metrics_fields", hasura),
+                lambda f=metric_fields: f,
+            ),
         )
 
     sum_type: GraphQLObjectType | None = None
     if numeric_cols:
         sum_fields = {col_name: GraphQLField(GraphQLFloat) for col_name, _ in numeric_cols}
         sum_type = cast(
-            GraphQLObjectType, GraphQLObjectType(f"{type_name}SumFields", lambda f=sum_fields: f)
+            GraphQLObjectType,
+            GraphQLObjectType(
+                _agg_type_name(type_name, "SumFields", "sum_fields", hasura), lambda f=sum_fields: f
+            ),
         )
 
     avg_type: GraphQLObjectType | None = None
     if numeric_cols:
         avg_fields = {col_name: GraphQLField(GraphQLFloat) for col_name, _ in numeric_cols}
         avg_type = cast(
-            GraphQLObjectType, GraphQLObjectType(f"{type_name}AvgFields", lambda f=avg_fields: f)
+            GraphQLObjectType,
+            GraphQLObjectType(
+                _agg_type_name(type_name, "AvgFields", "avg_fields", hasura), lambda f=avg_fields: f
+            ),
         )
 
     stddev_type: GraphQLObjectType | None = None
@@ -162,12 +183,18 @@ def build_agg_fields_type(  # REQ-196
         stddev_fields = {col_name: GraphQLField(GraphQLFloat) for col_name, _ in numeric_cols}
         stddev_type = cast(
             GraphQLObjectType,
-            GraphQLObjectType(f"{type_name}StddevFields", lambda f=stddev_fields: f),
+            GraphQLObjectType(
+                _agg_type_name(type_name, "StddevFields", "stddev_fields", hasura),
+                lambda f=stddev_fields: f,
+            ),
         )
         variance_fields = {col_name: GraphQLField(GraphQLFloat) for col_name, _ in numeric_cols}
         variance_type = cast(
             GraphQLObjectType,
-            GraphQLObjectType(f"{type_name}VarianceFields", lambda f=variance_fields: f),
+            GraphQLObjectType(
+                _agg_type_name(type_name, "VarianceFields", "variance_fields", hasura),
+                lambda f=variance_fields: f,
+            ),
         )
 
     min_type: GraphQLObjectType | None = None
@@ -177,7 +204,10 @@ def build_agg_fields_type(  # REQ-196
             gql_type = column_type_to_graphql(column_type)
             min_fields[col_name] = GraphQLField(gql_type)  # type: ignore[arg-type]
         min_type = cast(
-            GraphQLObjectType, GraphQLObjectType(f"{type_name}MinFields", lambda f=min_fields: f)
+            GraphQLObjectType,
+            GraphQLObjectType(
+                _agg_type_name(type_name, "MinFields", "min_fields", hasura), lambda f=min_fields: f
+            ),
         )
 
     max_type: GraphQLObjectType | None = None
@@ -187,7 +217,10 @@ def build_agg_fields_type(  # REQ-196
             gql_type = column_type_to_graphql(column_type)
             max_fields[col_name] = GraphQLField(gql_type)  # type: ignore[arg-type]
         max_type = cast(
-            GraphQLObjectType, GraphQLObjectType(f"{type_name}MaxFields", lambda f=max_fields: f)
+            GraphQLObjectType,
+            GraphQLObjectType(
+                _agg_type_name(type_name, "MaxFields", "max_fields", hasura), lambda f=max_fields: f
+            ),
         )
 
     agg_inner_fields: dict[str, GraphQLField] = {
@@ -212,7 +245,7 @@ def build_agg_fields_type(  # REQ-196
     return cast(
         GraphQLObjectType,
         GraphQLObjectType(
-            f"{type_name}AggregateFields",
+            _agg_type_name(type_name, "AggregateFields", "aggregate_fields", hasura),
             lambda f=agg_inner_fields: f,
         ),
     )
@@ -286,6 +319,7 @@ def build_aggregate_types(  # REQ-196
     row_type: GraphQLObjectType,
     field_names: dict[str, str],
     agg_fields_type: GraphQLObjectType | None = None,
+    hasura: str | None = None,
 ) -> GraphQLObjectType | None:
     """Build <Table>Aggregate type with aggregate fields and nodes.
 
@@ -293,13 +327,13 @@ def build_aggregate_types(  # REQ-196
     """
     if agg_fields_type is None:
         agg_fields_type = build_agg_fields_type(
-            type_name, visible_columns, column_metadata, field_names
+            type_name, visible_columns, column_metadata, field_names, hasura=hasura
         )
 
     aggregate_type = cast(
         GraphQLObjectType,
         GraphQLObjectType(
-            f"{type_name}Aggregate",
+            _agg_type_name(type_name, "Aggregate", "aggregate", hasura),
             lambda: {
                 "aggregate": GraphQLField(agg_fields_type),
                 "nodes": GraphQLField(GraphQLList(GraphQLNonNull(row_type))),

@@ -41,8 +41,14 @@ MASK_REPLACE = "XXX-XX-\\3"
 RLS_FILTER = "region_id = current_setting('provisa.region')"
 
 # The roles a tag names: every standard role (REQ-2155) and config role that reaches a domain
-# (platform_admin reaches none) -- the config's own being clerk, admin, and any a test adds.
-_STANDARD = sorted(r for r, spec in STANDARD_ROLES.items() if spec.domain_access)
+# (platform_admin reaches none) -- the config's own being clerk, admin, and any a test adds. A role
+# holding no capability, own or inherited, holds no domain and reads nothing: public, which starts
+# holding nothing (REQ-1058, REQ-1059), is no data audience until it is given a read right.
+_STANDARD = sorted(
+    r
+    for r, spec in STANDARD_ROLES.items()
+    if spec.domain_access and (spec.capabilities or spec.parents)
+)
 # Every role: each standard role descends from viewer; the config's roles are named.
 _EVERYONE = ["viewer", "clerk", "admin"]
 

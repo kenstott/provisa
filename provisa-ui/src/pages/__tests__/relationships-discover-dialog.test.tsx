@@ -597,6 +597,36 @@ describe("Discovery dialog: the run's proposals, in one table", () => {
     expect(applyButton()).toHaveTextContent("Accept 4");
   });
 
+  it("puts the two decisions side by side first and Edit alone in the trailing actions column", async () => {
+    await endedRun();
+    const table = screen.getByTestId("discover-proposals");
+    const head = within(table).getAllByRole("columnheader");
+    expect(within(head[0]).getByTestId("list-select-all")).toBeInTheDocument();
+    expect(head[1]).toHaveTextContent(/^Never suggest$/);
+    expect(head[head.length - 1]).toHaveClass("list-actions");
+    expect(head[head.length - 1]).toHaveTextContent(/^$/);
+    const cells = within(screen.getByTestId("proposal-501")).getAllByRole("cell");
+    expect(within(cells[0]).getByTestId("list-select-501")).toBeInTheDocument();
+    expect(within(cells[1]).getByTestId("proposal-not-again-501")).toBeInTheDocument();
+    const last = cells[cells.length - 1];
+    expect(last).toHaveClass("list-actions");
+    expect(within(last).getByTestId("proposal-edit-501")).toBeInTheDocument();
+    expect(within(last).queryAllByRole("checkbox")).toEqual([]);
+    // The short header's full meaning is in the help line above the table.
+    expect(screen.getByText(/never suggested again/)).toBeInTheDocument();
+  });
+
+  it("a row with neither box ticked stays undecided and is left out of Apply", async () => {
+    await endedRun();
+    expect(acceptBox(503).checked).toBe(false);
+    expect(notAgainBox(503).checked).toBe(false);
+    fireEvent.click(notAgainBox(503));
+    fireEvent.click(notAgainBox(503));
+    expect(acceptBox(503).checked).toBe(false);
+    expect(notAgainBox(503).checked).toBe(false);
+    expect(applyButton()).toHaveTextContent("Accept 4");
+  });
+
   it("the header's box ticks every row that can be decided, or none", async () => {
     await endedRun();
     fireEvent.click(notAgainBox(503));

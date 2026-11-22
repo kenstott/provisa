@@ -52,7 +52,7 @@ steps:
     ORDER BY b.deaths_per_million_spent DESC NULLS LAST
     LIMIT 15
 - key: opioidsAsPublic
-  role: public
+  role: resident
 - key: opioidsPublic
   sql: >-
     SELECT b.county_name, b.population, b.deaths, b.death_rate, b.federal_per_resident

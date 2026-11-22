@@ -24,6 +24,7 @@
     "namingConventionHint": "GraphQL फ़ील्ड नामों पर लागू केसिंग, जिसका पालन Cypher प्रॉपर्टी कुंजियाँ भी करती हैं। Cypher लेबल हमेशा PascalCase में होते हैं। gRPC, JSON:API और OpenAPI हर कॉलम की डेटाबेस वर्तनी बनाए रखते हैं।",
     "namingConventionSnake": "snake_case",
     "namingConventionHasura": "Hasura (snake_case)",
+    "namingConventionHasuraGraphqlDefault": "Hasura graphql-default (camelCase)",
     "namingConventionApollo": "Apollo (camelCase)",
     "sqlNamingConvention": "SQL नामकरण परिपाटी",
     "sqlNamingConventionHint": "SQL प्लेन के नामों पर लागू केसिंग, जिसे pgwire, Bolt और सिमैंटिक-SQL इंटरफ़ेस क्वेरी करते हैं। यह GraphQL कन्वेंशन से अलग सेट होती है, इसलिए एक प्लेन का नाम बदलने से दूसरा प्रभावित नहीं होता।",

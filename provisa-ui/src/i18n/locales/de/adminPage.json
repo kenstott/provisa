@@ -24,6 +24,7 @@
     "namingConventionHint": "Schreibweise für GraphQL-Feldnamen, der auch die Cypher-Eigenschaftsschlüssel folgen. Cypher-Labels sind immer PascalCase. gRPC, JSON:API und OpenAPI behalten die Datenbankschreibweise jeder Spalte bei.",
     "namingConventionSnake": "snake_case",
     "namingConventionHasura": "Hasura (snake_case)",
+    "namingConventionHasuraGraphqlDefault": "Hasura graphql-default (camelCase)",
     "namingConventionApollo": "Apollo (camelCase)",
     "sqlNamingConvention": "SQL-Namenskonvention",
     "sqlNamingConventionHint": "Schreibweise für Namen auf der SQL-Ebene, die von den pgwire-, Bolt- und Semantic-SQL-Schnittstellen abgefragt wird. Sie wird getrennt von der GraphQL-Konvention festgelegt, sodass das Umbenennen auf einer Ebene die andere unberührt lässt.",
