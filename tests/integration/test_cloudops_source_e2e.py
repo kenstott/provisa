@@ -218,32 +218,12 @@ async def test_every_table_is_read_and_names_only_configured_clouds(endpoint, ta
             )
 
 
-#: The environment variables the adapter reads for a cloud when the model leaves that cloud's
-#: operands out (cloud-ops CloudOpsSchemaFactory.getConfigValue, engine-v0.128.9).
-_ADAPTER_ENV_FALLBACKS = {
-    "azure": (
-        "AZURE_TENANT_ID",
-        "AZURE_CLIENT_ID",
-        "AZURE_CLIENT_SECRET",
-        "AZURE_SUBSCRIPTION_IDS",
-    ),
-    "aws": ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_ACCOUNT_IDS"),
-    "gcp": ("GCP_CREDENTIALS_PATH", "GCP_PROJECT_IDS"),
-}
-
-
 @_aio
-async def test_a_source_naming_aws_reads_aws_and_no_other_cloud(tmp_path, monkeypatch):
-    # Calcite adapter bug (engine-v0.128.9, reported to calcite-lead): CloudOpsSchemaFactory
-    # validates every cloud from its environment fallbacks whatever ``providers`` names, so the
-    # warehouse lane's own AZURE_TENANT_ID/AZURE_CLIENT_ID/AZURE_CLIENT_SECRET (its Fabric and
-    # Purview service principal), inherited by the server, read as a half-configured Azure and the
-    # server exits ("Azure is configured without azure.subscriptionIds", run 44967727447). Until
-    # the adapter scopes its fallbacks to ``providers``, the clouds this source does not name are
-    # cleared from the environment the server inherits; the assertion is unchanged.
-    for cloud in set(_CLOUDS) - {"aws"}:
-        for name in _ADAPTER_ENV_FALLBACKS[cloud]:
-            monkeypatch.delenv(name, raising=False)
+async def test_a_source_naming_aws_reads_aws_and_no_other_cloud(tmp_path):
+    # The server inherits no AZURE_/AWS_/GCP_/GOOGLE_ variable whatever clouds the source names
+    # (cloudops.cloudops_server_environment, maintainer 2026-11-22), so the lane's own Azure
+    # service principal cannot read as a half-configured Azure; the source's AWS credentials
+    # reach the server only as operands of its model.
     source = _source("cloudops-itest-aws", ("aws",))
     with _serving(source, tmp_path) as served:
         counts = await _providers(served, "cloudops_itest_aws", "storage_resources")
