@@ -29,13 +29,14 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, insert, text
 
 import provisa.core
-from provisa.core.db import assert_standard_roles
+from provisa.core.db import add_missing_columns, assert_standard_roles
 from provisa.api.auth_router import router as auth_router
 from provisa.core.database import Database, create_engine_from_url
 from provisa.core.schema_admin import REGISTRY_TABLES
 from provisa.core.schema_admin import metadata as admin_metadata
 from provisa.core.schema_admin import orgs
 from provisa.core.schema_admin import superadmin_bootstrap
+from provisa.core.schema_org import metadata as org_metadata
 from tests.helpers import create_pgvector
 
 # REQ-1266: the app serves the bootstrap org and is bound to it (the harness re-points then binds).
@@ -73,6 +74,10 @@ def _prepare_sync():
         conn.execute(text(f"SET search_path TO {_ORG_SCHEMA}"))
         create_pgvector(conn)  # schema.sql has vector columns
         conn.execute(text(schema_sql))
+        # init_schema then creates what schema.sql does not (provisa_sources, REQ-1742) from the
+        # metadata. The claim builds the org's runtime, whose redaction load (REQ-2087) scans every
+        # model table, so the plane has to be the one init_schema leaves.
+        add_missing_columns(conn, org_metadata.sorted_tables, _ORG_SCHEMA)
         # REQ-2155: the standard roles are written by init_schema, not schema.sql.
         assert_standard_roles(conn, _ORG_SCHEMA)
     return engine
