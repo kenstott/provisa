@@ -15,7 +15,7 @@ under a compose project of its own (db/init.sql generates the fund's counties an
 real Provisa server (DuckDB engine, its own control plane) loads the demo's config.yaml as is: the
 fund read live, and the four govdata county tables landed from AskAmerica as TTL -1 replicas on
 their first read, each through its landing filter (Ohio's counties, 2023). The answer's view is
-read live and built; the public role reads it and none of the fund's allocations; and the demo's
+read live and built; the resident role reads it and none of the fund's allocations; and the demo's
 example queries, its tour's statements and its REST call answer rows.
 
 Credentials
@@ -223,13 +223,15 @@ def test_the_answer_is_the_same_live_and_built(server):
 
 
 def test_the_public_reads_the_dashboard_and_no_allocation(server):
-    assert len(query(server, f"SELECT county_name, death_rate FROM {_VIEW}", "public")) == _COUNTIES
+    assert (
+        len(query(server, f"SELECT county_name, death_rate FROM {_VIEW}", "resident")) == _COUNTIES
+    )
     # Neither the allocations nor the answer that reads them.
     for sql in (
         'SELECT provider FROM "opioids"."allocations"',
         f"SELECT county_name FROM {_ANSWER}",
     ):
-        resp = _post(server, "/data/sql", {"sql": sql}, "public")
+        resp = _post(server, "/data/sql", {"sql": sql}, "resident")
         assert resp.status_code != 200, (sql, resp.text)
 
 
