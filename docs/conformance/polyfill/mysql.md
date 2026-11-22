@@ -8,7 +8,7 @@ This page lists every feature that has a polyfill or a limitation on MySQL. A fe
 
 When MySQL is a serving engine reading a source it attaches directly, it may push work into that source, with the source's semantics, so a result can depend on the pair; the cases known are fixed by hints, listed under each source.
 
-Rules on this page: 400, of which 324 are only the name of a rewrite function. A rule is printed as the translator runs it: the PostgreSQL pattern, its holes written `$name` (typed with `::type`), then the dialect's replacement.
+Rules on this page: 400, of which 250 are only the name of a rewrite function. A rule is printed as the translator runs it: the PostgreSQL pattern, its holes written `$name` (typed with `::type`), then the dialect's replacement.
 
 274 of the grid's 625 features are native on MySQL and left out.
 
@@ -94,16 +94,16 @@ CASE WHEN $a &lt; $b THEN $a WHEN $a &gt;= $b THEN $b END</code></pre></td><td><
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>arraycontains</strong><br>Whether an array holds every element of another; a NULL element of the other is held by none.</td><td><pre><code>arraycontains($a::anyarray, $b::anyarray)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: arraycontains($a::anyarray, $b::anyarray). <code>0A000</code> arraycontains() has no form on mysql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>arraycontained</strong><br>Whether every element of an array is held by another; a NULL element is held by none.</td><td><pre><code>arraycontained($a::anyarray, $b::anyarray)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: arraycontained($a::anyarray, $b::anyarray). <code>0A000</code> arraycontained() has no form on mysql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>arrayoverlap</strong><br>Whether two arrays hold an element in common; a NULL element is in common with none.</td><td><pre><code>arrayoverlap($a::anyarray, $b::anyarray)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: arrayoverlap($a::anyarray, $b::anyarray). <code>0A000</code> arrayoverlap() has no form on mysql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>array_remove</strong><br>An array without each element equal to a value, a NULL equal to a NULL.</td><td><pre><code>array_remove($a::anycompatiblearray, $v::anycompatible)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_remove($a::anycompatiblearray, $v::anycompatible). <code>0A000</code> array_remove() has no form on mysql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>pg_timezone_names</strong><br>The zones of the tz database, each with its abbreviation, offset and daylight flag now.</td><td><pre><code>pg_timezone_names()
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_timezone_names(). <code>0A000</code> pg_timezone_names() has no form on mysql</li></ul></td><td></td><td></td></tr>
@@ -234,7 +234,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>int2int4_sum</strong><br>The sum of avg(smallint) and avg(integer)&#x27;s {count, sum} state.</td><td><pre><code>int2int4_sum($a)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: int2int4_sum($a). <code>0A000</code> int2int4_sum() has no form on mysql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>int2_sum</strong><br>A step of an integer sum, in a bigint that wraps past its range.</td><td><pre><code>int2_sum($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -258,7 +258,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>numeric</strong><br>An integer as a numeric.</td><td><pre><code>numeric($v)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (jsonb); a call of (double precision), (real) at some of its values. <code>0A000</code> numeric() has no form on mysql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>bool</strong><br>An integer as a truth value: false for 0.</td><td><pre><code>bool($v)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -270,19 +270,19 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>int2</strong><br>A jsonb number as smallint.</td><td><pre><code>int2($v)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: int2($v). <code>0A000</code> int2() has no form on mysql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>int4</strong><br>A jsonb number as integer.</td><td><pre><code>int4($v)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (&quot;char&quot;), (bigint), (bit), (double precision), (jsonb), (numeric), (real), (smallint). <code>0A000</code> int4() has no form on mysql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>int8</strong><br>A jsonb number as bigint, and an oid as a bigint.</td><td><pre><code>int8($v)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: int8($v). <code>0A000</code> int8() has no form on mysql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>float8</strong><br>A jsonb number as double precision.</td><td><pre><code>float8($v)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: float8($v). <code>0A000</code> float8() has no form on mysql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>float4</strong><br>A jsonb number as real.</td><td><pre><code>float4($v)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: float4($v). <code>0A000</code> float4() has no form on mysql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>float4eq</strong><br>Whether a real is equal to a real, NaN after every other value.</td><td><pre><code>float4eq($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -393,25 +393,25 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>sqrt</strong><br>The square root of a value of zero or more.</td><td><pre><code>sqrt($x)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (numeric) with an argument the statement says is of that type, not a NULL. <code>0A000</code> sqrt() has no form on mysql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>log</strong><br>The base 10 logarithm of a value above zero.</td><td><pre><code>log($x)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (numeric) with an argument the statement says is of that type, not a NULL. <code>0A000</code> log() has no form on mysql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>log10</strong><br>The base 10 logarithm of a value above zero.</td><td><pre><code>log10($x)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (numeric) with an argument the statement says is of that type, not a NULL. <code>0A000</code> log10() has no form on mysql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>exp</strong><br>e raised to a power; 22003 where a finite power overflows or underflows.</td><td><pre><code>exp($x)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (numeric) with an argument the statement says is of that type, not a NULL. <code>0A000</code> exp() has no form on mysql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>ln</strong><br>The natural logarithm of a value above zero.</td><td><pre><code>ln($x)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (numeric) with an argument the statement says is of that type, not a NULL. <code>0A000</code> ln() has no form on mysql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>tanh</strong><br>The hyperbolic tangent.</td><td><pre><code>tanh($x)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>power</strong><br>A value raised to a power.</td><td><pre><code>power($x, $y)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (numeric, numeric), (numeric, numeric) with an argument the statement says is of that type, not a NULL. <code>0A000</code> power() has no form on mysql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>pow</strong><br>A value raised to a power.</td><td><pre><code>pow($x, $y)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -420,16 +420,16 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>sind</strong><br>The sin of an angle in degrees, exact at 0, 30, 45, 60 and 90 as PostgreSQL&#x27;s.</td><td><pre><code>sind($x)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: sind($x). <code>0A000</code> sind() has no form on mysql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>cosd</strong><br>The cos of an angle in degrees, exact at 0, 30, 45, 60 and 90 as PostgreSQL&#x27;s.</td><td><pre><code>cosd($x)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: cosd($x). <code>0A000</code> cosd() has no form on mysql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>tand</strong><br>The tan of an angle in degrees, exact at 0, 30, 45, 60 and 90 as PostgreSQL&#x27;s.</td><td><pre><code>tand($x)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: tand($x). <code>0A000</code> tand() has no form on mysql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>cotd</strong><br>The cot of an angle in degrees, exact at 0, 30, 45, 60 and 90 as PostgreSQL&#x27;s.</td><td><pre><code>cotd($x)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: cotd($x). <code>0A000</code> cotd() has no form on mysql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>sign</strong><br>The sign of a value: -1, 0 or 1; 0 of NaN.</td><td><pre><code>sign($x)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -465,16 +465,16 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>date_mi</strong><br>The days from one date to another.</td><td><pre><code>date_mi($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: date_mi($a, $b). <code>0A000</code> date_mi() has no form on mysql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>date_pli</strong><br>A date moved forward by a number of days.</td><td><pre><code>date_pli($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: date_pli($a, $b). <code>0A000</code> date_pli() has no form on mysql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>date_mii</strong><br>A date moved back by a number of days.</td><td><pre><code>date_mii($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: date_mii($a, $b). <code>0A000</code> date_mii() has no form on mysql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>integer_pl_date</strong><br>A number of days plus a date (+).</td><td><pre><code>integer_pl_date($n, $d)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: integer_pl_date($n, $d). <code>0A000</code> integer_pl_date() has no form on mysql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>make_date</strong><br>A date of a year, a month and a day.</td><td><pre><code>make_date($y, $m, $d)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -483,33 +483,33 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>clock_timestamp</strong><br>The time now, read as the statement runs.</td><td><pre><code>clock_timestamp()
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: clock_timestamp(). <code>0A000</code> clock_timestamp() has no form on mysql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>to_char(timestamp, text)</strong><br>A timestamp&#x27;s or an instant&#x27;s text in a template.</td><td><pre><code>to_char($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>mxid_age</strong><br>The age of a multixact id: INT_MAX for 0, and 1 less it, as Provisa makes no multixact.</td><td><pre><code>mxid_age($x)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: mxid_age($x). <code>0A000</code> mxid_age() has no form on mysql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>pg_char_to_encoding</strong><br>An encoding&#x27;s number by any of PostgreSQL&#x27;s names of it; -1 for a name of none.</td><td><pre><code>pg_char_to_encoding($n)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_char_to_encoding($n). <code>0A000</code> pg_char_to_encoding() has no form on mysql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>pg_size_pretty</strong><br>A bigint count of bytes in the largest unit below its limit, as dbsize.c writes it.</td><td><pre><code>pg_size_pretty($v)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (numeric) at some of its values. <code>0A000</code> pg_size_pretty() has no form on mysql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>pg_encoding_max_length</strong><br>The most bytes of a character of an encoding, by its number.</td><td><pre><code>pg_encoding_max_length($v)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_encoding_max_length($v). <code>0A000</code> pg_encoding_max_length() has no form on mysql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>jsonb_exists</strong><br>Whether a text is a top-level key, a string element, or the scalar string of a jsonb.</td><td><pre><code>jsonb_exists($v, $k)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: jsonb_exists($v, $k). <code>0A000</code> jsonb_exists() has no form on mysql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>jsonb_exists_any</strong><br>Whether any text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>jsonb_exists_all</strong><br>Whether every text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>jsonb_object_keys</strong><br>An object&#x27;s distinct keys, in jsonb&#x27;s order: the shorter first, then by bytes.</td><td><pre><code>jsonb_object_keys($v)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: jsonb_object_keys($v). <code>0A000</code> jsonb_object_keys() has no form on mysql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>json_object_keys</strong><br>An object&#x27;s keys as written, a repeated key each time.</td><td><pre><code>json_object_keys($v)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: json_object_keys($v). <code>0A000</code> json_object_keys() has no form on mysql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>to_json</strong><br>A value as its JSON.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>to_jsonb</strong><br>A value as its JSON.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>json_build_array</strong><br>A JSON array of the values given.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -575,82 +575,82 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>ntile</strong><br>The bucket of a row in a window, as an integer.</td><td><pre><code>function provisa.transpiler.polyfill.clickhouse.bucketed: ntile over a window, as PostgreSQL&#x27;s integer: every engine&#x27;s is a bigint. On ClickHouse a</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>numeric_mod</strong><br>The remainder of one numeric divided by another, at the larger scale of the two.</td><td><pre><code>numeric_mod($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: numeric_mod($a, $b). <code>0A000</code> numeric_mod() has no form on mysql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>spg_poly_quad_compress</strong><br>A polygon&#x27;s bounding box, as the SP-GiST quad tree&#x27;s compress function answers it.</td><td><pre><code>spg_poly_quad_compress($v)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: spg_poly_quad_compress($v). <code>0A000</code> spg_poly_quad_compress() has no form on mysql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>avg</strong><br>The mean of a group&#x27;s values.</td><td><pre><code>avg($v)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (bigint), (integer), (interval), (numeric), (smallint) with an argument the statement says is of that type, not a NULL. <code>0A000</code> avg() has no form on mysql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>variance</strong><br>The sample variance of a group&#x27;s values.</td><td><pre><code>variance($v)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (bigint), (integer), (numeric), (smallint), (bigint), (integer), (numeric), (smallint) with an argument the statement says is of that type, not a NULL. <code>0A000</code> variance() has no form on mysql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>var_samp</strong><br>The sample variance of a group&#x27;s values.</td><td><pre><code>var_samp($v)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>var_pop</strong><br>The population variance of a group&#x27;s values.</td><td><pre><code>var_pop($v)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (bigint), (integer), (numeric), (smallint) with an argument the statement says is of that type, not a NULL. <code>0A000</code> var_pop() has no form on mysql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>stddev</strong><br>The sample standard deviation of a group&#x27;s values.</td><td><pre><code>stddev($v)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (bigint), (integer), (numeric), (smallint) with an argument the statement says is of that type, not a NULL. <code>0A000</code> stddev() has no form on mysql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>stddev_samp</strong><br>The sample standard deviation of a group&#x27;s values.</td><td><pre><code>stddev_samp($v)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (bigint), (integer), (numeric), (smallint) with an argument the statement says is of that type, not a NULL. <code>0A000</code> stddev_samp() has no form on mysql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>stddev_pop</strong><br>The population standard deviation of a group&#x27;s values.</td><td><pre><code>stddev_pop($v)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (bigint), (integer), (numeric), (smallint) with an argument the statement says is of that type, not a NULL. <code>0A000</code> stddev_pop() has no form on mysql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>xid8eq</strong><br>Two xid8 values equal.</td><td><pre><code>xid8eq($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: xid8eq($a, $b). <code>0A000</code> xid8eq() has no form on mysql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>xid8ne</strong><br>Two xid8 values not equal.</td><td><pre><code>xid8ne($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: xid8ne($a, $b). <code>0A000</code> xid8ne() has no form on mysql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>xid8lt</strong><br>One xid8 before another.</td><td><pre><code>xid8lt($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: xid8lt($a, $b). <code>0A000</code> xid8lt() has no form on mysql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>xid8le</strong><br>One xid8 before or equal to another.</td><td><pre><code>xid8le($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: xid8le($a, $b). <code>0A000</code> xid8le() has no form on mysql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>xid8gt</strong><br>One xid8 after another.</td><td><pre><code>xid8gt($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: xid8gt($a, $b). <code>0A000</code> xid8gt() has no form on mysql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>xid8ge</strong><br>One xid8 after or equal to another.</td><td><pre><code>xid8ge($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: xid8ge($a, $b). <code>0A000</code> xid8ge() has no form on mysql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>xid8send</strong><br>An xid8&#x27;s binary form.</td><td><pre><code>xid8send($v)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: xid8send($v). <code>0A000</code> xid8send() has no form on mysql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>pg_snapshot_xmin</strong><br>A snapshot&#x27;s earliest active id.</td><td><pre><code>pg_snapshot_xmin($s)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_snapshot_xmin($s). <code>0A000</code> pg_snapshot_xmin() has no form on mysql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>pg_snapshot_xmax</strong><br>A snapshot&#x27;s first unassigned id.</td><td><pre><code>pg_snapshot_xmax($s)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_snapshot_xmax($s). <code>0A000</code> pg_snapshot_xmax() has no form on mysql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>pg_snapshot_xip</strong><br>A snapshot&#x27;s in-progress ids, as rows.</td><td><pre><code>pg_snapshot_xip($s)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_snapshot_xip($s). <code>0A000</code> pg_snapshot_xip() has no form on mysql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>pg_snapshot_send</strong><br>A snapshot&#x27;s binary form.</td><td><pre><code>pg_snapshot_send($s)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_snapshot_send($s). <code>0A000</code> pg_snapshot_send() has no form on mysql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>txid_snapshot_xmin</strong><br>A snapshot&#x27;s earliest active id.</td><td><pre><code>txid_snapshot_xmin($s)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: txid_snapshot_xmin($s). <code>0A000</code> txid_snapshot_xmin() has no form on mysql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>txid_snapshot_xmax</strong><br>A snapshot&#x27;s first unassigned id.</td><td><pre><code>txid_snapshot_xmax($s)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: txid_snapshot_xmax($s). <code>0A000</code> txid_snapshot_xmax() has no form on mysql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>txid_snapshot_xip</strong><br>A snapshot&#x27;s in-progress ids, as rows.</td><td><pre><code>txid_snapshot_xip($s)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: txid_snapshot_xip($s). <code>0A000</code> txid_snapshot_xip() has no form on mysql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>txid_snapshot_send</strong><br>A snapshot&#x27;s binary form.</td><td><pre><code>txid_snapshot_send($s)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: txid_snapshot_send($s). <code>0A000</code> txid_snapshot_send() has no form on mysql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>pg_visible_in_snapshot</strong><br>Whether a transaction id is visible in a snapshot.</td><td><pre><code>pg_visible_in_snapshot($x, $s)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_visible_in_snapshot($x, $s). <code>0A000</code> pg_visible_in_snapshot() has no form on mysql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>txid_visible_in_snapshot</strong><br>Whether a transaction id is visible in a snapshot.</td><td><pre><code>txid_visible_in_snapshot($x, $s)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: txid_visible_in_snapshot($x, $s). <code>0A000</code> txid_visible_in_snapshot() has no form on mysql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>to_hex</strong><br>An integer&#x27;s hexadecimal digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>to_oct</strong><br>An integer&#x27;s octal digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>to_bin</strong><br>An integer&#x27;s binary digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -785,88 +785,88 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>timestamptz(timestamptz, integer)</strong><br>An instant rounded to a number of digits of a second.</td><td><pre><code>timestamptz($a, $n)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: timestamptz($a, $n). <code>0A000</code> timestamptz() has no form on mysql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>area(shape)</strong><br>PostgreSQL&#x27;s box_area, circle_area, path_area.</td><td><pre><code>area($a)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: area($a). <code>0A000</code> area() has no form on mysql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>center(shape)</strong><br>PostgreSQL&#x27;s circle_center.</td><td><pre><code>center($a)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (circle). <code>0A000</code> center() has no form on mysql</li><li>Refused for a call of (box). <code>0A000</code> point() has no form on mysql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>circle_center(shape)</strong><br>PostgreSQL&#x27;s circle_center.</td><td><pre><code>circle_center($a)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: circle_center($a). <code>0A000</code> center() has no form on mysql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>diagonal(shape)</strong><br>PostgreSQL&#x27;s box_diagonal.</td><td><pre><code>diagonal($a)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: diagonal($a). <code>0A000</code> diagonal() has no form on mysql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>height(shape)</strong><br>PostgreSQL&#x27;s box_height.</td><td><pre><code>height($a)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: height($a). <code>0A000</code> height() has no form on mysql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>width(shape)</strong><br>PostgreSQL&#x27;s box_width.</td><td><pre><code>width($a)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: width($a). <code>0A000</code> width() has no form on mysql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>radius(shape)</strong><br>PostgreSQL&#x27;s circle_radius.</td><td><pre><code>radius($a)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: radius($a). <code>0A000</code> radius() has no form on mysql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>isclosed(shape)</strong><br>PostgreSQL&#x27;s path_isclosed.</td><td><pre><code>isclosed($a)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: isclosed($a). <code>0A000</code> isclosed() has no form on mysql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>isopen(shape)</strong><br>PostgreSQL&#x27;s path_isopen.</td><td><pre><code>isopen($a)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: isopen($a). <code>0A000</code> isopen() has no form on mysql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>ishorizontal(shape, shape)</strong><br>PostgreSQL&#x27;s point_horiz.</td><td><pre><code>ishorizontal($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: ishorizontal($a, $b). <code>0A000</code> ishorizontal() has no form on mysql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>isvertical(shape, shape)</strong><br>PostgreSQL&#x27;s point_vert.</td><td><pre><code>isvertical($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: isvertical($a, $b). <code>0A000</code> isvertical() has no form on mysql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>ishorizontal(shape)</strong><br>PostgreSQL&#x27;s line_horizontal, lseg_horizontal.</td><td><pre><code>ishorizontal($a)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: ishorizontal($a). <code>0A000</code> ishorizontal() has no form on mysql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>isvertical(shape)</strong><br>PostgreSQL&#x27;s line_vertical, lseg_vertical.</td><td><pre><code>isvertical($a)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: isvertical($a). <code>0A000</code> isvertical() has no form on mysql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>isparallel(shape, shape)</strong><br>PostgreSQL&#x27;s line_parallel, lseg_parallel.</td><td><pre><code>isparallel($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: isparallel($a, $b). <code>0A000</code> isparallel() has no form on mysql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>isperp(shape, shape)</strong><br>PostgreSQL&#x27;s line_perp, lseg_perp.</td><td><pre><code>isperp($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: isperp($a, $b). <code>0A000</code> isperp() has no form on mysql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>line_horizontal(shape)</strong><br>PostgreSQL&#x27;s line_horizontal.</td><td><pre><code>line_horizontal($a)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: line_horizontal($a). <code>0A000</code> ishorizontal() has no form on mysql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>line_vertical(shape)</strong><br>PostgreSQL&#x27;s line_vertical.</td><td><pre><code>line_vertical($a)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: line_vertical($a). <code>0A000</code> isvertical() has no form on mysql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>line_parallel(shape, shape)</strong><br>PostgreSQL&#x27;s line_parallel.</td><td><pre><code>line_parallel($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: line_parallel($a, $b). <code>0A000</code> isparallel() has no form on mysql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>line_perp(shape, shape)</strong><br>PostgreSQL&#x27;s line_perp.</td><td><pre><code>line_perp($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: line_perp($a, $b). <code>0A000</code> isperp() has no form on mysql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>lseg_horizontal(shape)</strong><br>PostgreSQL&#x27;s lseg_horizontal.</td><td><pre><code>lseg_horizontal($a)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: lseg_horizontal($a). <code>0A000</code> ishorizontal() has no form on mysql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>lseg_vertical(shape)</strong><br>PostgreSQL&#x27;s lseg_vertical.</td><td><pre><code>lseg_vertical($a)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: lseg_vertical($a). <code>0A000</code> isvertical() has no form on mysql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>lseg_parallel(shape, shape)</strong><br>PostgreSQL&#x27;s lseg_parallel.</td><td><pre><code>lseg_parallel($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: lseg_parallel($a, $b). <code>0A000</code> isparallel() has no form on mysql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>lseg_perp(shape, shape)</strong><br>PostgreSQL&#x27;s lseg_perp.</td><td><pre><code>lseg_perp($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: lseg_perp($a, $b). <code>0A000</code> isperp() has no form on mysql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>lseg_length(shape)</strong><br>PostgreSQL&#x27;s lseg_length.</td><td><pre><code>lseg_length($a)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: lseg_length($a). <code>0A000</code> length() has no form on mysql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>path_length(shape)</strong><br>PostgreSQL&#x27;s path_length.</td><td><pre><code>path_length($a)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: path_length($a). <code>0A000</code> length() has no form on mysql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>pt_contained_circle(shape, shape)</strong><br>PostgreSQL&#x27;s pt_contained_circle.</td><td><pre><code>pt_contained_circle($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pt_contained_circle($a, $b). <code>0A000</code> pt_contained_circle() has no form on mysql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>pt_contained_poly(shape, shape)</strong><br>PostgreSQL&#x27;s pt_contained_poly.</td><td><pre><code>pt_contained_poly($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pt_contained_poly($a, $b). <code>0A000</code> pt_contained_poly() has no form on mysql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>btrim</strong><br>Text without the characters of a set at its start and end.</td><td><pre><code>btrim($t::text, $c::text)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -956,7 +956,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>length(bytea)</strong><br>A bytea&#x27;s number of bytes.</td><td><pre><code>length($a)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (lseg), (path), (tsvector). <code>0A000</code> length() has no form on mysql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>bit_length(bytea)</strong><br>A bytea&#x27;s number of bits.</td><td><pre><code>bit_length($a)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -985,24 +985,24 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>get_byte(bytea, integer)</strong><br>A byte of a bytea.</td><td><pre><code>get_byte($a, $n)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: get_byte($a, $n). <code>0A000</code> get_byte() has no form on mysql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>set_byte(bytea, integer, integer)</strong><br>A bytea with one of its bytes replaced.</td><td><pre><code>set_byte($a, $n, $v)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: set_byte($a, $n, $v). <code>0A000</code> set_byte() has no form on mysql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>like(bytea, bytea)</strong><br>Whether a bytea matches a LIKE pattern.</td><td><pre><code>$a LIKE $b
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>bytealike(bytea, bytea)</strong><br>Whether a bytea matches a LIKE pattern.</td><td><pre><code>bytealike($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: bytealike($a, $b). <code>0A000</code> bytealike() has no form on mysql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>notlike(bytea, bytea)</strong><br>Whether a bytea does not match a LIKE pattern.</td><td><pre><code>notlike($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>$a NOT LIKE $b
+refused (its error is under the limitations)</code></pre><pre><code>$a NOT LIKE $b
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused: notlike($a, $b). <code>0A000</code> notlike() has no form on mysql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>byteanlike(bytea, bytea)</strong><br>Whether a bytea does not match a LIKE pattern.</td><td><pre><code>byteanlike($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: byteanlike($a, $b). <code>0A000</code> byteanlike() has no form on mysql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>like_escape(bytea, bytea)</strong><br>A LIKE pattern with its escape byte written as a backslash.</td><td><pre><code>like_escape($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
