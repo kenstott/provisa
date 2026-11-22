@@ -1147,6 +1147,15 @@ def _infer_row_bvtype(rows: list[Any], col_idx: int) -> BVType:
     return BVType.TEXT
 
 
+def _valueless_columns(head: Any, count: int, rows: bool) -> list[bool]:  # REQ-2167
+    """Which columns of a row result's first batch hold NULL alone: their inferred type is no
+    type at all, so the statement's declared type describes them."""
+    if not rows:
+        return [False] * count
+    batch = head or ()
+    return [all(i >= len(row) or row[i] is None for row in batch) for i in range(count)]
+
+
 def _batch_rows(batch: Any) -> int:
     return batch.num_rows
 
@@ -1244,16 +1253,29 @@ def _describe_casts(
     typmods: list[int],
     coerce: list[Tuple[int, Callable[[Any], Any]]],
     served: Sequence[str | None] = (),
+    valueless: Sequence[bool] = (),
 ) -> None:  # REQ-2167
     """A result column that is a cast to a PostgreSQL type is described with the cast's OID and
     typmod where its value has that type's wire form (cast_types), its value brought to it. A
-    column the engine could not type (``served``, its own type names) has none to differ."""
-    from provisa.pgwire.cast_types import result_casts
+    column the engine could not type (``served``, its own type names) has none to differ. A
+    column of a row result the engine gave no type and whose first rows hold NULL alone
+    (``valueless``) was typed by no value: it is described as declared, and a later value is the
+    engine's own."""
+    from provisa.pgwire.cast_types import declared_casts, result_casts
 
     casts = result_casts(sql) if sql else None
     if casts is None or len(casts) != len(types):
         return
+    declared = declared_casts(sql) if any(valueless) else casts
     for i, cast_type in enumerate(casts):
+        if i < len(valueless) and valueless[i]:
+            described = declared[i] if declared is not None else None
+            if described is None:
+                continue
+            types[i], oids[i], typmods[i] = described.bvtype, described.oid, described.typmod
+            if described.coerce is not None:
+                coerce.append((i, described.coerce))
+            continue
         if cast_type is None:
             continue
         untyped = i < len(served) and str(served[i]).upper() in _UNTYPED_RESULTS
@@ -1538,8 +1560,17 @@ class ProvisaQueryResult(BVQueryResult):  # REQ-529, REQ-028
             value_of = _ENGINE_VALUES.get(str(served).upper())
             if value_of is not None:
                 self._coerce.append((i, value_of))
+        valueless = _valueless_columns(self._head, len(self._cols), self._rows)
+        if ctypes:
+            valueless = [v and ctypes[i] is None for i, v in enumerate(valueless)]
         _describe_casts(
-            original_sql, self._types, self._type_oids, self._typmods, self._coerce, ctypes or ()
+            original_sql,
+            self._types,
+            self._type_oids,
+            self._typmods,
+            self._coerce,
+            ctypes or (),
+            valueless,
         )
         # REQ-2190: a type PostgreSQL named that the wire has no form of its own for.
         for i, oid in enumerate(getattr(engine_result, "column_type_oids", None) or ()):
