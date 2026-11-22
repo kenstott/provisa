@@ -9,8 +9,10 @@
 // permission from the copyright holder.
 
 // REQ-413: a discovery run's result, one table: every proposal the run read, foreign key
-// constraints and semantic ones together, the highest score first. A row's first box accepts it;
-// its last marks it not to be recommended again; with neither it stays undecided. A proposal that
+// constraints and semantic ones together, the highest score first. A row's two decisions sit side
+// by side at its start: the first box accepts it, the second marks it never to be suggested again;
+// ticking one clears the other, and with neither it stays undecided. Edit is the row's action, in
+// the actions column pinned at its end. A proposal that
 // cannot be decided (it names no two compared columns, or repeats what is already there) is
 // listed with why and has no box. One Apply says what it will do, with the counts. Each row
 // shows its pair's values measured against each other; the Score is the measure's where values
@@ -42,7 +44,13 @@ import { Pencil, X } from "lucide-react";
 import type { DiscoveryKind, RunProposal } from "../../api/admin";
 import { FormField, FormLayout } from "../form/FormLayout";
 import { BreakableName } from "../list/BreakableName";
-import { ListActionsHead, ListHead, ListRow, ListTable } from "../list/ListTable";
+import {
+  ListActions,
+  ListActionsHead,
+  ListHead,
+  ListRow,
+  ListTable,
+} from "../list/ListTable";
 import type { ListSelection } from "../list/listSelection";
 import { useListSortGroup, type ListColumn } from "../list/useListSortGroup";
 import { ColumnFilterMenu } from "../../pages/sql/ColumnFilterMenu";
@@ -396,6 +404,11 @@ export function ProposalsTable({
             <ListHead
               sortGroup={sort}
               columns={[
+                // The two decisions sit together at the row's start: the list's own box accepts,
+                // this one marks the row never to be suggested again.
+                <span key="not-again" data-testid="discover-col-not-again">
+                  {t("proposalsTable.colNotAgain")}
+                </span>,
                 ...filterCols.map((c) => ({
                   col: c.key,
                   filter: (
@@ -410,11 +423,9 @@ export function ProposalsTable({
                     />
                   ),
                 })),
-                // Pinned at the row's end, as a list's actions are: where the list is wider
-                // than the dialog it scrolls under this column, which is never cut.
-                <ListActionsHead key="not-again">
-                  <span style={{ whiteSpace: "normal" }}>{t("proposalsTable.colNotAgain")}</span>
-                </ListActionsHead>,
+                // The row's actions, pinned at its end as a list's actions are: where the list is
+                // wider than the dialog it scrolls under this column, which is never cut.
+                <ListActionsHead key="actions" />,
               ]}
             />
             <Table.Tbody>
@@ -428,6 +439,17 @@ export function ProposalsTable({
                     testId={`proposal-${p.id}`}
                     itemKey={p.acceptable ? p.id : undefined}
                   >
+                    <Table.Td>
+                      {p.decidable && (
+                        <Checkbox
+                          size="xs"
+                          aria-label={t("proposalsTable.notAgainAria", { name })}
+                          data-testid={`proposal-not-again-${p.id}`}
+                          checked={state.notAgain.has(p.id)}
+                          onChange={() => state.toggleNotAgain(p.id)}
+                        />
+                      )}
+                    </Table.Td>
                     <Table.Td data-testid={`proposal-score-${p.id}`}>
                       {p.score === null ? "" : `${percent(p.score)}%`}
                     </Table.Td>
@@ -452,8 +474,7 @@ export function ProposalsTable({
                     <Table.Td>{t(`proposalsTable.kind.${p.kind}`)}</Table.Td>
                     <Table.Td>{reasoning(p)}</Table.Td>
                     <Table.Td>{note(p)}</Table.Td>
-                    {/* The cell a row's actions take (ListActions), written as the table cell it is. */}
-                    <Table.Td className="list-actions">
+                    <ListActions>
                       {p.acceptable && (
                         <ActionIcon
                           size="sm"
@@ -465,16 +486,7 @@ export function ProposalsTable({
                           <Pencil size={14} />
                         </ActionIcon>
                       )}
-                      {p.decidable && (
-                        <Checkbox
-                          size="xs"
-                          aria-label={t("proposalsTable.notAgainAria", { name })}
-                          data-testid={`proposal-not-again-${p.id}`}
-                          checked={state.notAgain.has(p.id)}
-                          onChange={() => state.toggleNotAgain(p.id)}
-                        />
-                      )}
-                    </Table.Td>
+                    </ListActions>
                   </ListRow>
                 );
               })}

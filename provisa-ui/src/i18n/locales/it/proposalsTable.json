@@ -1,6 +1,6 @@
 {
   "proposalsTable": {
-    "intro": "Una riga selezionata viene accettata quando si applica. Le righe con punteggio almeno pari alla soglia partono selezionate. Una riga senza caselle selezionate resta indecisa.",
+    "intro": "Seleziona la prima casella di una riga per accettarla quando applichi, oppure «Non suggerire mai» perché non venga mai più suggerita. Le righe con punteggio almeno pari alla soglia partono selezionate per l'accettazione. Una riga senza caselle selezionate resta indecisa.",
     "colScore": "Punteggio",
     "colConfidence": "Attendibilità",
     "colJev": "Jev",
@@ -8,8 +8,8 @@
     "colMeasure": "Misurato",
     "colReasoning": "Motivazione",
     "colNote": "Nota",
-    "colNotAgain": "Non consigliare più",
-    "notAgainAria": "Non consigliare più {{name}}",
+    "colNotAgain": "Non suggerire mai",
+    "notAgainAria": "Non suggerire mai più {{name}}",
     "kind": {
       "foreign_keys": "Vincolo",
       "semantics": "Semantica",
