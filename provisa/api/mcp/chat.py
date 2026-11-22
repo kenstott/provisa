@@ -1202,7 +1202,7 @@ _SYSTEM = (
     "publish_data_product/deprecate_data_product/retire_data_product/restore_data_product -- "
     "create_data_product never changes it -- and governed metrics with upsert_metric/delete_metric, directly — no "
     "admin_mutation needed, they carry their own capability check and fail loud if the "
-    "caller lacks it (data_product_rw / table_registration). create_data_product and upsert_metric "
+    "caller lacks it (data_product_rw / create_view). create_data_product and upsert_metric "
     "are both upserts by id/name — an existing one is silently overwritten in full, so call "
     "list_data_products or check the metric first if you mean to change only some fields, not "
     "replace it. A metric's `expression` must be an aggregate SQL expression over semantic "

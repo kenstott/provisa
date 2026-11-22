@@ -182,7 +182,7 @@ async def test_a_row_its_own_rights_check_refuses_is_named_and_the_others_go():
 
 _KINDS = [
     # bulk mutation, single delete, the right asked once before any row
-    ("delete_metrics", "delete_metric", "table_registration"),
+    ("delete_metrics", "delete_metric", "create_view"),  # REQ-1327
     ("delete_sources", "delete_source", "source_registration"),
     ("delete_roles", "delete_role", "user_management"),
     ("delete_domains", "delete_domain", "org_settings"),
