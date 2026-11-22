@@ -146,9 +146,10 @@ def test_the_native_launchers_export_the_directories_the_command_fills():
 
 @pytest.mark.parametrize("dockerfile", ["Dockerfile", "Dockerfile.dev"])
 def test_the_images_are_built_with_the_assets_inside_them(dockerfile):
-    """provisa is /app in the final image, not site-packages: -I could not import it."""
+    """provisa is /app in the final image, not site-packages: -I could not import it. The release
+    image's RUN gives pip a find-links directory first (a dry run's own provisa-duckdb-ext wheels)."""
     text = (_REPO / dockerfile).read_text()
-    assert "RUN python -m provisa.runtime_deps.stage_assets" in text
+    assert " python -m provisa.runtime_deps.stage_assets\n" in text
     assert "--except" not in text and "-I -m provisa.runtime_deps" not in text
 
 

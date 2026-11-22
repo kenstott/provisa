@@ -18,12 +18,23 @@ on:
         description: Attach the wheels to the tag's draft release. False on a dry run.
         type: boolean
         default: false
+  # A release dry run builds the wheels in its own run (release-prebuilt.yml, duckdb-extensions):
+  # its app image takes them from the run's provisa-duckdb-ext-wheels artifact, since a dry run
+  # publishes nothing to the Pages index (run 45030695628). It never attaches (publish: false).
+  workflow_call:
+    inputs:
+      publish:
+        description: Attach the wheels to the tag's draft release. False on a dry run.
+        type: boolean
+        required: true
 
 permissions:
   contents: write
 
+# Per calling workflow and ref: called from a release, github.ref is the release's tag, the same one
+# "Release: cut" dispatches this workflow on; neither cancels the other.
 concurrency:
-  group: build-duckdb-ext-${{ github.ref }}
+  group: build-duckdb-ext-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:

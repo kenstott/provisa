@@ -184,6 +184,59 @@ def test_every_prebuilt_job_that_builds_the_app_image_frees_runner_disk_first():
     assert set(builders) == {"pull-images-core", "pull-images-core-amd64"}, builders
 
 
+def test_a_dry_run_app_image_stages_the_duckdb_extension_wheels_its_own_run_built():
+    """Run 45030695628: a release dry run publishes nothing, so the Pages index had no
+    provisa-duckdb-ext wheels and the app image's stage step refused at Dockerfile
+    `RUN python -m provisa.runtime_deps.stage_assets`. The dry run builds the wheels in its own
+    run and every app image build takes them as a build context; a release leaves that directory
+    empty and reads the Pages index. Neither source holding a wheel still stops the build."""
+    dockerfile = (REPO / "Dockerfile").read_text()
+    assert dockerfile.count("\nFROM scratch AS duckdb-ext-wheels\n") == 1
+    stage = (
+        "RUN --mount=type=bind,from=duckdb-ext-wheels,target=/duckdb-ext-wheels \\\n"
+        "    PIP_FIND_LINKS=/duckdb-ext-wheels python -m provisa.runtime_deps.stage_assets\n"
+    )
+    assert stage in dockerfile
+    assert dockerfile.count("provisa.runtime_deps.stage_assets") == 1
+
+    extensions = yaml.safe_load(
+        (REPO / ".github" / "workflows" / "build-duckdb-extensions.yml").read_text()
+    )
+    called = extensions[True]["workflow_call"]["inputs"]["publish"]
+    assert called == {**called, "type": "boolean", "required": True}
+    # Called from a release on its tag, it must not cancel the run "Release: cut" dispatches there.
+    assert "${{ github.workflow }}" in extensions["concurrency"]["group"]
+    upload = next(
+        s
+        for s in extensions["jobs"]["wheel"]["steps"]
+        if s.get("uses", "").startswith("actions/upload-artifact")
+    )
+    assert upload["with"]["name"] == "provisa-duckdb-ext-wheels"
+
+    jobs = yaml.safe_load((REPO / ".github" / "workflows" / "release-prebuilt.yml").read_text())[
+        "jobs"
+    ]
+    leg = jobs["duckdb-extensions"]
+    assert leg["uses"] == "./.github/workflows/build-duckdb-extensions.yml"
+    assert leg["with"] == {"publish": False}  # "Release: cut" dispatches the attaching run
+    for job in ("pull-images-core", "pull-images-core-amd64"):
+        body = jobs[job]
+        assert "duckdb-extensions" in body["needs"], job
+        steps = body["steps"]
+        names = [s.get("name") for s in steps]
+        download = steps[names.index("DuckDB extension wheels (dry run)")]
+        assert download["if"] == "${{ !inputs.publish }}", job
+        assert download["uses"].startswith("actions/download-artifact@"), job
+        assert download["with"] == {
+            "name": upload["with"]["name"],
+            "path": "${{ runner.temp }}/duckdb-ext-wheels",
+        }, job
+        build = next(s for s in steps if "-t provisa/provisa:local" in (s.get("run") or ""))
+        assert steps.index(download) < steps.index(build), job
+        assert build["env"]["DUCKDB_EXT_WHEELS"] == download["with"]["path"], job
+        assert '--build-context duckdb-ext-wheels="$DUCKDB_EXT_WHEELS"' in build["run"], job
+
+
 # --- one lane workflow (stage 2) ------------------------------------------------------------------
 
 LANE = "./.github/workflows/lane.yml"
@@ -876,8 +929,31 @@ def test_a_leg_that_reads_another_legs_artifact_starts_after_it():
     """Artifacts are the run's: a leg downloads what another leg uploaded, so the orchestrator
     must order them. Every named download in a leg is uploaded in that leg or in one it needs. A
     step that uses a local composite action uploads and downloads what that action's steps do for
-    the inputs it passes."""
+    the inputs it passes, and a job that calls a local workflow what that workflow's jobs do (the
+    dry run's duckdb-extensions job uploads the wheels its image builds read)."""
     orchestrator = yaml.safe_load(_RELEASE.read_text())["jobs"]
+
+    def per_matrix_entry(body: dict) -> list[dict]:
+        entries = ((body.get("strategy") or {}).get("matrix") or {}).get("include") or [{}]
+
+        def named(step: dict, entry: dict) -> dict:
+            with_ = dict(step.get("with") or {})
+            if isinstance(with_.get("name"), str):
+                for key, value in entry.items():
+                    with_["name"] = with_["name"].replace(f"${{{{ matrix.{key} }}}}", str(value))
+            return {**step, "with": with_}
+
+        return [
+            {**body, "steps": [named(st, entry) for st in body.get("steps") or []]}
+            for entry in entries
+        ]
+
+    def expanded(body: dict) -> list[dict]:
+        called = str(body.get("uses") or "")
+        if not called.startswith("./.github/workflows/"):
+            return [body]
+        inner = yaml.safe_load((REPO / called).read_text())["jobs"].values()
+        return [b for job in inner for m in per_matrix_entry(job) for b in expanded(m)]
 
     def needed(job: str) -> set[str]:
         direct = orchestrator[job].get("needs") or []
@@ -889,7 +965,7 @@ def test_a_leg_that_reads_another_legs_artifact_starts_after_it():
     jobs = {job: [body] for job, body in orchestrator.items() if job in _RELEASE_OWN}
     jobs.update({job: list(leg["jobs"].values()) for job, (_n, leg) in _release_legs().items()})
     for job, bodies in jobs.items():
-        for body in bodies:
+        for body in (b for top in bodies for b in expanded(top)):
             for step in _effective_steps(body.get("steps") or []):
                 artifact = (step.get("with") or {}).get("name")
                 if not artifact:
