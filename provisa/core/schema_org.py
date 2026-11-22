@@ -869,7 +869,7 @@ catalog_standing_choices = Table(
 
 # REQ-2247: each unattended run of a Syncing entry's direction (a scheduled import): when it ran,
 # how it was started, its outcome, what it applied and what it held (each a JSON list of
-# ``{kind, object, reason}``), and the error of a run that failed.
+# ``{kind, object, reason_code, params}``), and the error of a run that failed.
 catalog_sync_runs = Table(
     "catalog_sync_runs",
     metadata,
