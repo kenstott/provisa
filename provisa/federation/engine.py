@@ -1137,7 +1137,9 @@ def build_sqlalchemy_engine(  # REQ-905: any SQLAlchemy-reachable store, zero co
         # comment already documents for this family.
         # Db2 LUW reads a three-part name only for a federated object (a nickname's server); a
         # local table is schema.table. From Db2's SQL reference, not yet verified live.
-        catalog_qualified=backend not in ("oracle", "db2", "ibm_db_sa"),
+        # SAP HANA likewise: a three-part name reaches another tenant database only where
+        # cross-database access is enabled; a local table is schema.table (HANA's SQL reference).
+        catalog_qualified=backend not in ("oracle", "db2", "ibm_db_sa", "hana"),
         backend_factory=SqlAlchemyBackend,  # in-process terminal driving SqlAlchemyFederationRuntime
         # REQ-1730: was `_platform_db_materialize_default` — the shared PLATFORM Postgres, not this
         # engine's own store. A SELF_ONLY engine's whole point is "every source lands into me" (see
