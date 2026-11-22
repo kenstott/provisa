@@ -12,7 +12,8 @@
     "notAgainAria": "No volver a recomendar {{name}}",
     "kind": {
       "foreign_keys": "Restricción",
-      "semantics": "Semántica"
+      "semantics": "Semántica",
+      "key_names": "Coincidencia de nombre"
     },
     "asWritten": "Tal como lo escribió el modelo: {{answer}}",
     "apply": "Aplicar",
@@ -53,7 +54,9 @@
         "target": "No puede leer la columna de destino."
       },
       "noValues": "El origen no contiene valores.",
-      "modelScore": "Puntuado por el modelo: no se compararon valores."
+      "modelScore": "Puntuado por el modelo: no se compararon valores.",
+      "ruleForeignKeys": "Generada por una clave externa declarada: no se compararon valores.",
+      "ruleKeyNames": "Generada por un nombre y tipo de clave coincidentes: no se compararon valores."
     },
     "dimensionMade": "Al aceptarla se crea la dimensión compartida {{name}}, a la que se unen ambas columnas.",
     "dimensionJoined": "Al aceptarla, ambas columnas se unen a la dimensión compartida {{name}}.",

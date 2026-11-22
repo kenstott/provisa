@@ -28,6 +28,7 @@ import {
   Title,
 } from "@mantine/core";
 import { useAuth } from "../context/AuthContext";
+import { useCapability } from "../hooks/useCapability";
 import { useDomainFilter } from "../context/DomainFilterContext";
 import { Pencil, Plus, Terminal } from "lucide-react";
 import { FilterInput } from "../components/admin/FilterInput";
@@ -53,11 +54,7 @@ import type { Role } from "../types/auth";
 import { PanelDelete } from "../components/list/PanelDelete";
 import { PanelDuplicate } from "../components/list/PanelDuplicate";
 import { PanelActions, SplitPane } from "../components/list/SplitPane";
-import {
-  commandId,
-  readCommandId,
-  useRememberedDetail,
-} from "../components/list/useDetailParam";
+import { commandId, readCommandId, useRememberedDetail } from "../components/list/useDetailParam";
 import { PanelWorking } from "./sources/PanelWorking";
 import { TagControl } from "../components/TagControl";
 import type { ActionType, FormState } from "./commands/types";
@@ -90,6 +87,9 @@ export function CommandsPage() {
   const { checkedDomains } = useDomainFilter();
   const getAvailableFunctions = useAvailableFunctionsLazy();
   const { activeOrgId } = useAuth();
+  // REQ-1327: authoring a command asks table_registration; a role holding only command_execution
+  // is shown the read-only list of the commands assigned to it.
+  const mayAuthor = useCapability("table_registration");
   const orgId = activeOrgId ?? "root";
   const domainHints = domains.map((d) => d.id);
   const [functions, setFunctions] = useState<TrackedFunction[]>([]);
@@ -617,20 +617,24 @@ export function CommandsPage() {
             )}
             <PanelActions>
               <Group gap="sm" wrap="nowrap">
-                <ActionIcon
-                  aria-label={t("commandsPage.editAria", { name: fn.name })}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleEdit("function", fn.name);
-                  }}
-                >
-                  <Pencil size={14} />
-                </ActionIcon>
-                <PanelDuplicate
-                  name={fn.name}
-                  onDuplicate={() => handleDuplicate("function", fn.name)}
-                  testId="command-duplicate-fn"
-                />
+                {mayAuthor && (
+                  <ActionIcon
+                    aria-label={t("commandsPage.editAria", { name: fn.name })}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleEdit("function", fn.name);
+                    }}
+                  >
+                    <Pencil size={14} />
+                  </ActionIcon>
+                )}
+                {mayAuthor && (
+                  <PanelDuplicate
+                    name={fn.name}
+                    onDuplicate={() => handleDuplicate("function", fn.name)}
+                    testId="command-duplicate-fn"
+                  />
+                )}
                 <Button
                   onClick={(e) => {
                     e.stopPropagation();
@@ -644,18 +648,20 @@ export function CommandsPage() {
                     : t("commandsPage.testButton")}
                 </Button>
                 {/* REQ-2198: resolves once the list is read again without it. */}
-                <PanelDelete
-                  itemKey={`fn:${fn.name}`}
-                  title={t("commandsPage.deleteFunctionTitle", { name: fn.name })}
-                  consequence={t("commandsPage.deleteFunctionConsequence")}
-                  ariaLabel={t("commandsPage.deleteFunctionAria", { name: fn.name })}
-                  testId={`command-delete-fn-${fn.name}`}
-                  onDelete={async () => {
-                    await deleteFunction(fn.name);
-                    await load();
-                    detail.close({ only: commandId("function", fn.name) });
-                  }}
-                />
+                {mayAuthor && (
+                  <PanelDelete
+                    itemKey={`fn:${fn.name}`}
+                    title={t("commandsPage.deleteFunctionTitle", { name: fn.name })}
+                    consequence={t("commandsPage.deleteFunctionConsequence")}
+                    ariaLabel={t("commandsPage.deleteFunctionAria", { name: fn.name })}
+                    testId={`command-delete-fn-${fn.name}`}
+                    onDelete={async () => {
+                      await deleteFunction(fn.name);
+                      await load();
+                      detail.close({ only: commandId("function", fn.name) });
+                    }}
+                  />
+                )}
               </Group>
             </PanelActions>
           </Stack>
@@ -680,20 +686,24 @@ export function CommandsPage() {
             <WebhookRead wh={wh} />
             <PanelActions>
               <Group gap="sm" wrap="nowrap">
-                <ActionIcon
-                  aria-label={t("commandsPage.editAria", { name: wh.name })}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleEdit("webhook", wh.name);
-                  }}
-                >
-                  <Pencil size={14} />
-                </ActionIcon>
-                <PanelDuplicate
-                  name={wh.name}
-                  onDuplicate={() => handleDuplicate("webhook", wh.name)}
-                  testId="command-duplicate-wh"
-                />
+                {mayAuthor && (
+                  <ActionIcon
+                    aria-label={t("commandsPage.editAria", { name: wh.name })}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleEdit("webhook", wh.name);
+                    }}
+                  >
+                    <Pencil size={14} />
+                  </ActionIcon>
+                )}
+                {mayAuthor && (
+                  <PanelDuplicate
+                    name={wh.name}
+                    onDuplicate={() => handleDuplicate("webhook", wh.name)}
+                    testId="command-duplicate-wh"
+                  />
+                )}
                 <Button
                   onClick={(e) => {
                     e.stopPropagation();
@@ -707,18 +717,20 @@ export function CommandsPage() {
                     : t("commandsPage.testButton")}
                 </Button>
                 {/* REQ-2198: resolves once the list is read again without it. */}
-                <PanelDelete
-                  itemKey={`wh:${wh.name}`}
-                  title={t("commandsPage.deleteWebhookTitle", { name: wh.name })}
-                  consequence={t("commandsPage.deleteWebhookConsequence")}
-                  ariaLabel={t("commandsPage.deleteWebhookAria", { name: wh.name })}
-                  testId={`command-delete-wh-${wh.name}`}
-                  onDelete={async () => {
-                    await deleteWebhook(wh.name);
-                    await load();
-                    detail.close({ only: commandId("webhook", wh.name) });
-                  }}
-                />
+                {mayAuthor && (
+                  <PanelDelete
+                    itemKey={`wh:${wh.name}`}
+                    title={t("commandsPage.deleteWebhookTitle", { name: wh.name })}
+                    consequence={t("commandsPage.deleteWebhookConsequence")}
+                    ariaLabel={t("commandsPage.deleteWebhookAria", { name: wh.name })}
+                    testId={`command-delete-wh-${wh.name}`}
+                    onDelete={async () => {
+                      await deleteWebhook(wh.name);
+                      await load();
+                      detail.close({ only: commandId("webhook", wh.name) });
+                    }}
+                  />
+                )}
               </Group>
             </PanelActions>
           </Stack>
@@ -753,7 +765,7 @@ export function CommandsPage() {
           placeholder={t("commandsPage.filterPlaceholder")}
         />
         <div className="page-actions">
-          {!editingName && !showForm && (
+          {mayAuthor && !editingName && !showForm && (
             <Button
               leftSection={<Plus size={14} />}
               data-testid="commands-toggle-form"

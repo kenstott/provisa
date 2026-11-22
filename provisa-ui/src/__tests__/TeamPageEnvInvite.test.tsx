@@ -64,7 +64,9 @@ vi.mock("../context/AuthContext", () => ({
   }),
 }));
 vi.mock("../hooks/useAdminQueries", () => ({
-  useRoles: () => ({ roles: [{ id: "analyst" }] }),
+  useRoles: () => ({
+    roles: [{ id: "analyst", capabilities: ["query"], effectiveCapabilities: ["query"] }],
+  }),
 }));
 vi.mock("@mantine/notifications", () => ({ notifications: { show: vi.fn() } }));
 

@@ -1,0 +1,23 @@
+// Copyright (c) 2026 Kenneth Stott
+// Canary: 47d76ea9-312d-4eff-aabf-67d055f84cd8
+//
+// This source code is licensed under the Business Source License 1.1
+// found in the LICENSE file in the root directory of this source tree.
+//
+// NOTICE: Use of this software for training artificial intelligence or
+// machine learning models is strictly prohibited without explicit written
+// permission from the copyright holder.
+
+package source
+
+type Row struct {
+	ID   int64  `json:"id"`
+	Name string `json:"name"`
+}
+
+// Rows is the rows from the API.
+//
+// @table
+// @requires API_KEY:secret
+// @requires REGION
+func Rows() []Row { return nil }

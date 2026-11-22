@@ -943,22 +943,42 @@ def _drop_source_on_engine(state, source_id: str) -> None:
 
 
 async def _analyze_source_on_engine(state, pool, model, input: SourceInput) -> None:
-    """Fire engine ANALYZE on all registered tables for this source (errors swallowed)."""
+    """Fire engine ANALYZE on all registered tables for this source (errors swallowed). Each
+    table carries its columns: ANALYZE leaves out a table whose metadata states required
+    parameters (REQ-1986)."""
+    from provisa.core.schema_org import table_columns
 
     class _TblRef:
-        def __init__(self, source_id: str, schema_name: str, table_name: str) -> None:
+        def __init__(
+            self, source_id: str, schema_name: str, table_name: str, columns: list[dict]
+        ) -> None:
             self.source_id = source_id
             self.schema_name = schema_name
             self.table_name = table_name
+            self.columns = columns
 
     async with pool.acquire() as _conn:
         _res = await _conn.execute_core(
-            select(registered_tables.c.schema_name, registered_tables.c.table_name).where(
-                registered_tables.c.source_id == input.id
-            )
+            select(
+                registered_tables.c.id,
+                registered_tables.c.schema_name,
+                registered_tables.c.table_name,
+            ).where(registered_tables.c.source_id == input.id)
         )
         rows = _res.fetchall()
-    table_refs = [_TblRef(input.id, r.schema_name, r.table_name) for r in rows]
+        _cols = await _conn.execute_core(
+            select(
+                table_columns.c.table_id,
+                table_columns.c.column_name,
+                table_columns.c.native_filter_type,
+                table_columns.c.native_filter_required,
+                table_columns.c.required_by_steward,
+            ).where(table_columns.c.table_id.in_([r.id for r in rows]))
+        )
+        columns: dict[int, list[dict]] = {r.id: [] for r in rows}
+        for c in _cols.fetchall():
+            columns[c.table_id].append(dict(c._mapping))
+    table_refs = [_TblRef(input.id, r.schema_name, r.table_name, columns[r.id]) for r in rows]
     if table_refs:
         # REQ-1266: analyze the catalog the source is registered at, not the bare name.
         state.federation_engine.analyze(

@@ -46,6 +46,7 @@
       "existing": "已登記",
       "rejected": "之前已拒絕",
       "out_of_scope": "不在所選表之內"
-    }
+    },
+    "keyNames": "鍵名稱和類型：找到 {{found}} 個，建議 {{count}} 個。"
   }
 }

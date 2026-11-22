@@ -10,6 +10,9 @@
     "rest": "REST",
     "mcp": "Вызов инструмента MCP",
     "copy": "Копировать: {{what}}",
-    "close": "Закрыть"
+    "close": "Закрыть",
+    "createRelationships": "Создать связи",
+    "relationshipsCreated_one": "Создана {{count}} связь.",
+    "relationshipsCreated_other": "Создано связей: {{count}}."
   }
 }

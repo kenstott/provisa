@@ -12,7 +12,8 @@
     "notAgainAria": "{{name}} niet opnieuw aanbevelen",
     "kind": {
       "foreign_keys": "Constraint",
-      "semantics": "Semantisch"
+      "semantics": "Semantisch",
+      "key_names": "Naamovereenkomst"
     },
     "asWritten": "Zoals het model het schreef: {{answer}}",
     "apply": "Toepassen",
@@ -53,7 +54,9 @@
         "target": "Je kunt de doelkolom niet lezen."
       },
       "noValues": "De bron bevat geen waarden.",
-      "modelScore": "Score van het model: er zijn geen waarden vergeleken."
+      "modelScore": "Score van het model: er zijn geen waarden vergeleken.",
+      "ruleForeignKeys": "Voortgekomen uit een gedeclareerde foreign key: er zijn geen waarden vergeleken.",
+      "ruleKeyNames": "Voortgekomen uit een overeenkomende sleutelnaam en overeenkomend type: er zijn geen waarden vergeleken."
     },
     "dimensionMade": "Accepteren maakt de gedeelde dimensie {{name}}, waaraan beide kolommen worden gekoppeld.",
     "dimensionJoined": "Accepteren koppelt beide kolommen aan de gedeelde dimensie {{name}}.",

@@ -13,6 +13,11 @@ name: Build DuckDB Extensions
 
 on:
   workflow_dispatch:
+    inputs:
+      publish:
+        description: Attach the wheels to the tag's draft release. False on a dry run.
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -76,12 +81,12 @@ jobs:
             dist/provisa-duckdb-ext-${{ matrix.label }}.tar.gz.sha256
 
       - name: Ensure release exists
-        if: startsWith(github.ref, 'refs/tags/')
+        if: inputs.publish
         uses: ./.github/actions/ensure-release
 
       # gh release upload only ADDS assets — never flips draft/prerelease.
       - name: Attach to draft release
-        if: startsWith(github.ref, 'refs/tags/')
+        if: inputs.publish
         # Force bash: the windows-x64 leg defaults to pwsh, which can't parse the
         # bash line-continuation / set -euo pipefail below.
         shell: bash
@@ -102,16 +107,16 @@ jobs:
   # airport, firebird) and prints, by name, any it leaves out to stay under the limit.
   # pip/uv pick the running platform's wheel; the runtime
   # (provisa.federation.duckdb_extensions.stage_bundled_extensions) copies its blobs out on first run,
-  # so `provisa[embedded]` gets the extensions through PyPI/Artifactory, never extensions.duckdb.org.
+  # so `provisa[embedded]` gets the extensions through the release's wheel index, never extensions.duckdb.org.
+  # Nothing goes to PyPI (maintainer 2026-11-21): the wheels are release assets.
   # No sdist: it would carry every platform's blobs again. The label -> tag map is
   # packaging/duckdb-ext/collect.py's PLATFORMS, whose labels are this workflow's mirror matrix.
   wheel:
-    name: Build + publish provisa-duckdb-ext wheel
+    name: Build + attach provisa-duckdb-ext wheels
     needs: mirror
     runs-on: ubuntu-latest
     permissions:
       contents: write   # attaches SBOM/CVE report + upload release assets (workflow default)
-      id-token: write   # PEP 740 Sigstore attestation via gh-action-pypi-publish
     steps:
       - uses: actions/checkout@v4
 
@@ -154,7 +159,7 @@ jobs:
       # from extensions.duckdb.org, not a Python dependency graph — it has no lockfile/requirements
       # of its own, so a pip-audit CVE scan only covers the build-time toolchain (build/setuptools),
       # not the bundled .duckdb_extension blobs themselves. Included for consistency with the other
-      # three PyPI packages (provisa, provisa-client, provisa-pg-ext); a real audit of the mirrored
+      # other release wheels (provisa, provisa-client, provisa-pg-ext); a real audit of the mirrored
       # binaries would need per-extension version tracking against DuckDB's own advisories, which
       # scripts/ci/mirror_duckdb_extensions.py does not currently do.
       # `pip-audit`/`cyclonedx-py environment` with no scope audit the ACTIVE interpreter's entire
@@ -163,7 +168,7 @@ jobs:
       # gate failure (an ambient old `certifi`, unrelated to anything this wheel ships). Scope both
       # tools to a clean venv containing only `build`, so the scan reflects what this job actually
       # installed.
-      - name: Generate SBOM + CVE scan of the build toolchain (gates PyPI publish)
+      - name: Generate SBOM + CVE scan of the build toolchain (gates the release attach)
         run: |
           set -o pipefail
           python -m venv /tmp/toolchain-venv
@@ -175,35 +180,21 @@ jobs:
             -o sbom/provisa-duckdb-ext-sbom.cdx.json
           /tmp/toolchain-venv/bin/pip-audit --timeout 60 -f json | tee sbom/provisa-duckdb-ext-cve-report.json
 
-      - name: Publish provisa-duckdb-ext to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
+      # The wheels are attached to the draft by this job; the publish leg verifies them and the
+      # Pages index (scripts/release_wheel_index.py) links them. Nothing goes to PyPI.
+      - name: Attach the wheels, SBOM and CVE report to the draft release
+        if: inputs.publish
+        uses: ./.github/actions/attach-release-assets
         with:
-          packages-dir: dist-ext/
-          skip-existing: true
-          attestations: true
+          tag: ${{ github.ref_name }}
+          files: |
+            dist-ext/provisa_duckdb_ext-*.whl
+            sbom/provisa-duckdb-ext-sbom.cdx.json
+            sbom/provisa-duckdb-ext-cve-report.json
 
-      - name: Ensure release exists
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: ./.github/actions/ensure-release
-
-      - name: Attach SBOM + CVE report to draft release
-        if: startsWith(github.ref, 'refs/tags/')
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-          TAG: ${{ github.ref_name }}
-        run: |
-          set -euo pipefail
-          gh release upload "$TAG" \
-            sbom/provisa-duckdb-ext-sbom.cdx.json \
-            sbom/provisa-duckdb-ext-cve-report.json \
-            --clobber
-
-      # gh release upload only ADDS assets — never flips draft/prerelease.
-      - name: Attach wheel to draft release
-        if: startsWith(github.ref, 'refs/tags/')
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-          TAG: ${{ github.ref_name }}
-        run: |
-          set -euo pipefail
-          gh release upload "$TAG" dist-ext/* --clobber
+      # Kept in the run for the dry run's inspection.
+      - name: Upload wheels
+        uses: actions/upload-artifact@v4
+        with:
+          name: provisa-duckdb-ext-wheels
+          path: dist-ext/

@@ -80,6 +80,8 @@
       "newTables": "{{count}} tabla registrada desde su última ejecución está en {{domains}}, que esa ejecución no revisó.",
       "newTables_other": "{{count}} tablas registradas desde su última ejecución están en {{domains}}, que esa ejecución no revisó.",
       "addNewTables": "Añadir a esta ejecución"
-    }
+    },
+    "keyNames": "Nombres y tipos de clave",
+    "reviewDone": "Listo"
   }
 }
