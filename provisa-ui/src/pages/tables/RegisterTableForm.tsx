@@ -41,7 +41,7 @@ import { tableChoices } from "./tableChoices";
 import type { TableRegistrationOutcome } from "../../hooks/useTableQueries";
 import { DQ_PLACEHOLDER_COLUMN, registeredColumns } from "./registrationColumns";
 import { useTranslation } from "react-i18next";
-import { Button, NumberInput, SegmentedControl, Select, Text, TextInput } from "@mantine/core";
+import { Button, Loader, NumberInput, SegmentedControl, Select, Text, TextInput } from "@mantine/core";
 import { domainToSqlName, toSnakeCase } from "../../naming";
 import { useAvailableSchemas, useAvailableTables } from "../../hooks/useAdminQueries";
 import {
@@ -674,9 +674,12 @@ export function RegisterTableForm({
     }
     void manyTables.registerAll(domainId, onRegisteredMany, setError, outcome.combined);
   };
+  // A glob typed and its matches not yet answered: the field shows the loader while it checks.
+  const globChecking =
+    combine.typedGlob.trim() !== "" && (combine.checking || combine.preview === null);
   const globHint = !combine.typedGlob.trim()
     ? t("combineFiles.globHint")
-    : combine.checking || combine.preview === null
+    : globChecking
       ? t("combineFiles.checking")
       : combine.preview.files.length === 0
         ? t("combineFiles.noMatch")
@@ -890,6 +893,7 @@ export function RegisterTableForm({
               onChange={manyTables.setTicked}
               placeholder={t("registerManyTables.pickTables")}
               disabled={listing || choices.length === 0}
+              loading={listing || (startingTables && !startingTablesTimedOut)}
             />
           </FormField>
         )}
@@ -902,6 +906,11 @@ export function RegisterTableForm({
                 placeholder={t("combineFiles.globPlaceholder")}
                 value={combine.typedGlob}
                 onChange={(e) => combine.setTypedGlob(e.currentTarget.value)}
+                rightSection={
+                  globChecking ? (
+                    <Loader size="xs" data-testid="register-tables-file-glob-checking" />
+                  ) : undefined
+                }
                 data-testid="register-tables-file-glob"
               />
             </FormField>
