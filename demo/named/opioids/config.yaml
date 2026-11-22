@@ -56,7 +56,8 @@ roles:
 - id: public
   parents: [analyst]
   description: "The public and the council: the dashboard and the counties, never an allocation."
-  capabilities: [data_product_read, glossary_read, query_development]
+  # REQ-1058: public is read-only; reading needs no query_development (REQ-2155).
+  capabilities: [data_product_read, glossary_read]
   domain_access:
   - opioids
 server:
