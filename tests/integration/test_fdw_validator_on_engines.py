@@ -104,13 +104,14 @@ def test_fdw_validator_on_clickhouse():
 def test_fdw_validator_on_postgresql(pg_dsn):
     import psycopg2
 
-    from provisa.transpiler.metadata_server_forms import RAISE_FUNCTION_SQL
+    from provisa.transpiler.metadata_server_forms import RAISE_FUNCTIONS_SQL
 
     con = psycopg2.connect(pg_dsn)
     con.autocommit = True
     try:
         with con.cursor() as cur:
-            cur.execute(RAISE_FUNCTION_SQL)
+            for statement in RAISE_FUNCTIONS_SQL:
+                cur.execute(statement)
 
         def run(sql: str) -> Any:
             with con.cursor() as cur:

@@ -170,17 +170,15 @@ def _held_by_predefined(name: str) -> str:
 _ITS_TYPE = "@TYPE@"
 
 SERVER_FORM_RAISE = "provisa_raise"
-#: The function a form raises with, on a PostgreSQL that runs forms: the control plane, and a
-#: PostgreSQL engine, which reads a statement with no table.
-#: Its second overload takes the refusal an engine that cannot write the message from a value
-#: raises instead (``raising_or_refused``); PostgreSQL writes it, so the refusal goes unread here.
-RAISE_FUNCTION_SQL = (
-    f"CREATE OR REPLACE FUNCTION {SERVER_FORM_RAISE}(sqlstate TEXT, message TEXT) RETURNS TEXT "
+#: The functions a form raises with, on a PostgreSQL that runs forms: the control plane, and a
+#: PostgreSQL engine, which reads a statement with no table. One statement each, for a driver that
+#: prepares what it sends. The second takes the refusal an engine that cannot write the message
+#: from a value raises instead (``raising_or_refused``); PostgreSQL writes the message.
+RAISE_FUNCTIONS_SQL = tuple(
+    f"CREATE OR REPLACE FUNCTION {SERVER_FORM_RAISE}({params}) RETURNS TEXT "
     "LANGUAGE plpgsql AS $$ BEGIN "
-    "RAISE EXCEPTION USING ERRCODE = sqlstate, MESSAGE = message; END $$; "
-    f"CREATE OR REPLACE FUNCTION {SERVER_FORM_RAISE}(sqlstate TEXT, message TEXT, refused TEXT) "
-    "RETURNS TEXT LANGUAGE plpgsql AS $$ BEGIN "
     "RAISE EXCEPTION USING ERRCODE = sqlstate, MESSAGE = message; END $$"
+    for params in ("sqlstate TEXT, message TEXT", "sqlstate TEXT, message TEXT, refused TEXT")
 )
 
 
