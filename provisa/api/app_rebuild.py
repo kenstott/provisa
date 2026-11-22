@@ -417,10 +417,18 @@ async def serve_registered_tables(state) -> None:
     from provisa.api.admin.schema_common import restart_source_server
     from provisa.core.secrets import resolve_secrets
     from provisa.federation.jira import form_of
-    from provisa.federation.served_tables import SERVES_REGISTERED_TABLES, serve_tables
+    from provisa.federation.served_tables import (
+        SERVES_REGISTERED_TABLES,
+        file_glob_specs,
+        serve_tables,
+    )
 
     config = state.config
+    glob_specs = file_glob_specs(list(config.tables))
     for source in config.sources:
+        if source.type.value == "files":
+            await _serve_glob_tables(state, source, glob_specs.get(source.id, []))
+            continue
         if source.type.value not in SERVES_REGISTERED_TABLES:
             continue
         own = [t for t in config.tables if t.source_id == source.id]
@@ -435,6 +443,30 @@ async def serve_registered_tables(state) -> None:
             resolve_secrets(source.password, credential=True) if source.password else "",
             catalog_name=state.source_catalogs[source.id],
         )
+
+
+async def _serve_glob_tables(state, source, specs: list[dict]) -> None:
+    """REQ-788: give a files source's server the glob tables now registered from it. Its file
+    adapter merges each glob table from every file the glob matches, in the model it is started
+    with; a glob table registered after the server started (the source's discovery starts it) is
+    not in that model, so a read of it named a relation the server never served. Where the glob
+    tables changed, the server is started again with them, and the engine lets go of its attach
+    of the source -- a native engine's attach holds the old server's catalog -- so the next read
+    attaches the source anew, against the new server."""
+    from provisa.api.admin.schema_common import restart_source_server
+    from provisa.core.secrets import resolve_secrets
+    from provisa.federation.served_tables import serve_glob_tables
+
+    if not serve_glob_tables(source.id, specs):
+        return
+    await restart_source_server(source)
+    catalog = state.source_catalogs[source.id]
+    state.federation_engine.drop_source(source.id, catalog_name=catalog)
+    state.federation_engine.register_source(
+        source,
+        resolve_secrets(source.password, credential=True) if source.password else "",
+        catalog_name=catalog,
+    )
 
 
 async def _finalize_rebuild_state(_rebuild_log: logging.Logger) -> None:
