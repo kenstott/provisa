@@ -25,7 +25,7 @@ other.
 
 What the adapter returns
 ------------------------
-The source's pgwire server is the pinned release's (engine-v0.128.8). The assertions are what the
+The source's pgwire server is the pinned release's (engine-v0.128.9). The assertions are what the
 adapter answers today, to be tightened when a later release fills it in. The last two points were
 seen on engine-v0.108.0's server and are still avoided here:
 
@@ -219,7 +219,7 @@ async def test_every_table_is_read_and_names_only_configured_clouds(endpoint, ta
 
 
 #: The environment variables the adapter reads for a cloud when the model leaves that cloud's
-#: operands out (cloud-ops CloudOpsSchemaFactory.getConfigValue, engine-v0.128.8).
+#: operands out (cloud-ops CloudOpsSchemaFactory.getConfigValue, engine-v0.128.9).
 _ADAPTER_ENV_FALLBACKS = {
     "azure": (
         "AZURE_TENANT_ID",
@@ -234,7 +234,7 @@ _ADAPTER_ENV_FALLBACKS = {
 
 @_aio
 async def test_a_source_naming_aws_reads_aws_and_no_other_cloud(tmp_path, monkeypatch):
-    # Calcite adapter bug (engine-v0.128.8, reported to calcite-lead): CloudOpsSchemaFactory
+    # Calcite adapter bug (engine-v0.128.9, reported to calcite-lead): CloudOpsSchemaFactory
     # validates every cloud from its environment fallbacks whatever ``providers`` names, so the
     # warehouse lane's own AZURE_TENANT_ID/AZURE_CLIENT_ID/AZURE_CLIENT_SECRET (its Fabric and
     # Purview service principal), inherited by the server, read as a half-configured Azure and the

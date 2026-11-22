@@ -595,12 +595,12 @@ jobs:
           uv run python -c \
             "import os; from tests.integration.snowflake_warehouse import set_auto_suspend as a; print('the Snowflake warehouse suspends after', a(os.environ['SNOWFLAKE_WAREHOUSE'], 60), 'idle seconds')"
 
-      - name: GovData engine jar (engine-v0.128.8)
+      - name: GovData engine jar (engine-v0.128.9)
         run: |
           mkdir -p lib
           curl -fsSL -o lib/calcite-govdata-all.jar \
-            https://github.com/kenstott/calcite/releases/download/engine-v0.128.8/sih-govdata.jar
-          echo "e757ef9c0c389104c82262ea5339918e5e0fccd24b2b46dd2491ff71ba68c7bc  lib/calcite-govdata-all.jar" \
+            https://github.com/kenstott/calcite/releases/download/engine-v0.128.9/sih-govdata.jar
+          echo "042baedf838483dc3c280ece661f18b01c058bf05f0d671ddfca2314024d8e97  lib/calcite-govdata-all.jar" \
             | sha256sum -c -
 
       - name: Azure CLI login (Synapse provisioning)

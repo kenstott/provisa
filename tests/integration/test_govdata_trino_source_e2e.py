@@ -51,8 +51,11 @@ pytestmark = [pytest.mark.integration, pytest.mark.requires_warehouse]
 _SOURCE_ID = "askamerica-trino-itest"
 _CATALOG = "askamerica_trino_itest"
 _SCHEMAS = "econ,ref,geo"
-# The schemas the table read is picked from, in order (see _a_table_with_columns).
-_PICK_FROM = ("ref", "geo")
+_SCHEMA = "econ"
+# Always materialized (6,001 rows). Its name holds "_", which Trino's getColumns escapes as "\_":
+# read through Trino since engine-v0.128.9, whose pg_catalog emulation escapes LIKE with a
+# backslash as PostgreSQL does (calcite PR #1042, govdata-ops #1423).
+_TABLE = "inflation_metrics"
 _COLD_START_SECONDS = 600
 
 
@@ -209,39 +212,6 @@ def _run(cur, what: str, sql: str, source) -> list:
         return cur.fetchall()
 
 
-def _a_table_with_columns(cur, source) -> tuple[str, str]:
-    """The first table of ``_PICK_FROM`` whose columns Trino lists, its schema and table names
-    free of "_".
-
-    Calcite adapter bugs (engine-v0.128.8, reported to calcite-lead) decide which table can be
-    read, so the table is not fixed:
-    - its pg_catalog emulation answers LIKE without PostgreSQL's default backslash escape, so a
-      name containing "_" is TABLE_NOT_FOUND through Trino (pgwire-calcite LIKE-escape fix,
-      kenstott/calcite PR #1042, ships in engine-v0.128.9);
-    - the served catalog lists some tables with no columns although the adapter's pg_catalog
-      emulation answers pgjdbc's getColumns for them (ref.countries, fec.candidates: DESCRIBE
-      "has no supported columns (all 0 columns are not supported)", run 44967727447;
-      govdata-ops #1416).
-    The steps that follow are the same for any table, so a table Trino can describe gives the
-    assurance a fixed one did."""
-    schemas = ", ".join(f"'{s}'" for s in _PICK_FROM)
-    listed = _run(
-        cur,
-        "listing the tables Trino has columns for",
-        f"SELECT DISTINCT table_schema, table_name FROM {_CATALOG}.information_schema.columns "  # noqa: S608 - constants
-        f"WHERE table_schema IN ({schemas})",
-        source,
-    )
-    usable = sorted(
-        (_PICK_FROM.index(schema), schema, table)
-        for schema, table in listed
-        if "_" not in schema and "_" not in table
-    )
-    assert usable, f"Trino lists columns for no table of {_PICK_FROM} free of '_': {listed}"
-    _, schema, table = usable[0]
-    return schema, table
-
-
 def test_trino_reads_an_askamerica_table_live_and_joins_it(catalog):
     cur, source = catalog
 
@@ -251,19 +221,18 @@ def test_trino_reads_an_askamerica_table_live_and_joins_it(catalog):
     # reads. Each schema the source lists is there.
     assert set(_SCHEMAS.split(",")) <= schemas, schemas
 
-    schema, table = _a_table_with_columns(cur, source)
     tables = {
-        r[0] for r in _run(cur, "listing tables", f"SHOW TABLES FROM {_CATALOG}.{schema}", source)
+        r[0] for r in _run(cur, "listing tables", f"SHOW TABLES FROM {_CATALOG}.{_SCHEMA}", source)
     }
-    assert table in tables, tables
+    assert _TABLE in tables, tables
 
-    columns = _run(cur, "describing the table", f"DESCRIBE {_CATALOG}.{schema}.{table}", source)
+    columns = _run(cur, "describing the table", f"DESCRIBE {_CATALOG}.{_SCHEMA}.{_TABLE}", source)
     assert columns, "the table has no columns Trino could map"
 
     rows = _run(
         cur,
         "reading the table alone",
-        f"SELECT * FROM {_CATALOG}.{schema}.{table} LIMIT 5",
+        f"SELECT * FROM {_CATALOG}.{_SCHEMA}.{_TABLE} LIMIT 5",
         source,
     )
     assert len(rows) == 5
@@ -272,7 +241,7 @@ def test_trino_reads_an_askamerica_table_live_and_joins_it(catalog):
     filtered = _run(
         cur,
         "a pushed-down predicate",
-        f'SELECT count(*) FROM {_CATALOG}.{schema}.{table} WHERE "{first}" IS NOT NULL',
+        f'SELECT count(*) FROM {_CATALOG}.{_SCHEMA}.{_TABLE} WHERE "{first}" IS NOT NULL',
         source,
     )
     assert filtered[0][0] >= 0
@@ -280,7 +249,7 @@ def test_trino_reads_an_askamerica_table_live_and_joins_it(catalog):
     joined = _run(
         cur,
         "joining with a table of another catalog",
-        f"SELECT count(*) FROM (SELECT * FROM {_CATALOG}.{schema}.{table} LIMIT 5) c "
+        f"SELECT count(*) FROM (SELECT * FROM {_CATALOG}.{_SCHEMA}.{_TABLE} LIMIT 5) c "
         "CROSS JOIN (SELECT node_id FROM system.runtime.nodes LIMIT 1) n",
         source,
     )
