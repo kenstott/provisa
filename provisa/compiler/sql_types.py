@@ -43,6 +43,7 @@ class _TableInfoProto(Protocol):
     alias: str | None
     metrics: list[dict]  # REQ-1319: role-visible single-table metrics for this table
     write_ops: frozenset[str]  # REQ-209: the operations the table's source takes
+    gql_convention_override: str | None  # the table's own GraphQL convention; None: the active one
 
 
 # --- Compilation context (built from SchemaInput alongside schema) ---
@@ -63,6 +64,9 @@ class TableMeta:
     source_type: str = ""  # source type string (e.g. "iceberg", "postgresql") for time-travel
     original_table_name: str = ""  # pre-alias name (e.g. "registered_tables"); empty if no alias
     display_name: str = ""  # user-visible name (DB alias); empty → derived from field_name
+    # REQ-194, REQ-467: the table's own GraphQL convention (its root-field variants' spelling);
+    # None: the active convention (naming.active_gql_convention).
+    gql_convention: str | None = None
 
 
 def extracts_paths(source_type: str, table: str) -> bool:  # REQ-151, REQ-152

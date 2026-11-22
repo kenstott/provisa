@@ -115,5 +115,16 @@ def _probed_keywords() -> frozenset[str]:
     return frozenset(found)
 
 
+#: Keywords the pinned sqlglot reads back as a column but writes bare, which the engines reject
+#: (IN is reserved in Postgres and DuckDB): the table quotes them too.
+_WRITTEN_BARE_RESERVED = frozenset({"in"})
+
+
 def test_the_keyword_table_is_the_pinned_sqlglots():
-    assert SQL_KEYWORDS == _probed_keywords()
+    assert SQL_KEYWORDS == _probed_keywords() | _WRITTEN_BARE_RESERVED
+
+
+def test_a_reserved_word_sqlglot_writes_bare_is_still_bare():
+    """Each extra word of the table is one sqlglot still writes bare; when it quotes it, drop it."""
+    for word in _WRITTEN_BARE_RESERVED:
+        assert exp.column("x", table=word).sql(dialect="postgres") == f"{word}.x"

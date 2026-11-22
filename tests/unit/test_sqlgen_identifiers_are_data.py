@@ -75,12 +75,12 @@ READS = {
         lambda h: [{h: "asc"}],
     ),
     "aggregate where": (
-        "query($v: X) { orders_aggregate(where: $v) { aggregate { count } } }",
+        "query($v: X) { ordersAggregate(where: $v) { aggregate { count } } }",
         lambda h: {h: {"eq": 1}},
     ),
-    "group_by by": ("query($v: [X!]) { orders_group_by(by: $v) { count } }", lambda h: [h]),
+    "group_by by": ("query($v: [X!]) { ordersGroupBy(by: $v) { count } }", lambda h: [h]),
     "group_by having": (
-        "query($v: X) { orders_group_by(by: [region], having: $v) { count } }",
+        "query($v: X) { ordersGroupBy(by: [region], having: $v) { count } }",
         lambda h: {"sum": {h: {"gt": 1}}},
     ),
 }
@@ -154,7 +154,7 @@ def test_a_group_by_where_after_a_filter_binds_each_value_to_its_own_placeholder
     regions = [f"r{i}" for i in range(12)]
     (compiled,) = compile_query(
         parse(
-            "query($w: X) { orders_group_by(by: [region], where: $w) "
+            "query($w: X) { ordersGroupBy(by: [region], where: $w) "
             '{ region aggregate(where: {status: {eq: "open"}}) { count } } }'
         ),
         ctx,

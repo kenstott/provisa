@@ -66,6 +66,8 @@ def _make_session(roles: list[str], bolt_version: tuple[int, int] = (5, 4)):
     session = BoltSession(writer, bolt_version)  # type: ignore[arg-type]
     session.roles = list(roles)
     session.role_id = roles[0] if roles else None
+    # The home role sign-in resolves: the first held role.
+    session.default_role = roles[0] if roles else None
     return session, writer
 
 

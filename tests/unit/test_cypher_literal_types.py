@@ -19,10 +19,9 @@ different types -- read as text -- is compared in string space."""
 
 from __future__ import annotations
 
-from types import SimpleNamespace
-
 import pytest
 
+from provisa.compiler.sql_types import CompilationContext, TableMeta
 from provisa.gql.label_map import CypherLabelMap
 from provisa.cypher.parser import parse_cypher
 from provisa.gql.translator import cypher_to_sql
@@ -36,8 +35,8 @@ _COLUMNS = [
 ]
 
 
-def _table(table_id: int, name: str) -> SimpleNamespace:
-    return SimpleNamespace(
+def _table(table_id: int, name: str) -> TableMeta:
+    return TableMeta(
         type_name=f"Sales_{name.title()}",
         table_id=table_id,
         source_id="pg",
@@ -61,7 +60,7 @@ def _label_map(text_keyed: bool = False) -> CypherLabelMap:
     if text_keyed:
         tables["sales__codes"] = _table(2, "codes")
         columns[2] = [("id", "varchar"), ("name", "varchar")]
-    ctx = SimpleNamespace(
+    ctx = CompilationContext(
         tables=tables,
         joins={},
         aggregate_columns=columns,

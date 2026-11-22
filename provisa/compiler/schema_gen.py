@@ -44,6 +44,7 @@ from provisa.compiler.aggregate_gen import (
 )
 from provisa.compiler.naming import (
     active_gql_convention,
+    root_field_variant,
     apply_gql_name,
     bare_field_name,
     domain_to_sql_name,
@@ -905,10 +906,10 @@ def _build_aggregate_query_field(
         agg_args["where"] = GraphQLArgument(agg_where)
     # REQ-1986, REQ-1991: an aggregate over a parameterized table takes its parameters.
     _build_native_filter_args(t, agg_args)
-    if (t.gql_convention_override or active_gql_convention()) == "apollo_graphql":
-        agg_field_name = f"{t.field_name}Aggregate"
-    else:
-        agg_field_name = f"{t.field_name}_aggregate"
+    # REQ-194, REQ-467: the variant's name is the authority's, as the names table holds it.
+    agg_field_name = root_field_variant(
+        t.field_name, "aggregate", t.gql_convention_override or active_gql_convention()
+    )
     return agg_field_name, GraphQLField(agg_type, args=agg_args)
 
 
@@ -981,11 +982,9 @@ def _build_group_by_query_field(
     # REQ-1986, REQ-1991: a group-by over a parameterized table takes its parameters.
     _build_native_filter_args(t, gb_args)
 
-    conv = t.gql_convention_override or active_gql_convention()
-    if conv == "apollo_graphql":
-        gb_field_name = f"{t.field_name}GroupBy"
-    else:
-        gb_field_name = f"{t.field_name}_group_by"
+    gb_field_name = root_field_variant(
+        t.field_name, "group_by", t.gql_convention_override or active_gql_convention()
+    )
 
     return gb_field_name, GraphQLField(
         GraphQLNonNull(GraphQLList(GraphQLNonNull(group_by_row_type))),
@@ -1012,7 +1011,9 @@ def _build_connection_query_field(
     conn_ob = order_by_types.get(t.table_id)
     if conn_ob:
         conn_args["order_by"] = GraphQLArgument(GraphQLList(GraphQLNonNull(conn_ob)))
-    return f"{t.field_name}_connection", GraphQLField(conn_type, args=conn_args)
+    return root_field_variant(
+        t.field_name, "connection", t.gql_convention_override or active_gql_convention()
+    ), GraphQLField(conn_type, args=conn_args)
 
 
 def _build_mutation_fields_for_table(  # REQ-032, REQ-033, REQ-034, REQ-036, REQ-037, REQ-212
