@@ -1617,7 +1617,7 @@ def subscription_request_with_sink_header(shared_data, monkeypatch):
 
 
 @when("the request is accepted")
-def subscription_request_accepted(shared_data):
+def subscription_request_accepted(shared_data, tmp_path):
     """Invoke the REAL handle_subscription_sse; assert it takes the Kafka-sink branch.
 
     The only external boundary mocked is the live Kafka broker (KafkaProducer),
@@ -1643,6 +1643,17 @@ def subscription_request_accepted(shared_data):
     state.pg_notify_tables = set()
     state.table_watermarks = {}
     state.source_pools = {}
+    # The deployment's platform-state store, where the sink is listed while it runs (REQ-812,
+    # provisa/core/platform_state/sinks.py): a real Database, as the handler opens a transaction
+    # on it under the principal's advisory lock.
+    from provisa.core.database import Database, create_engine_from_url
+    from provisa.core.schema_admin import running_sinks
+
+    sink_engine = create_engine_from_url(
+        f"sqlite:///{tmp_path / 'platform-state.db'}", pool_size=5, max_overflow=0
+    )
+    running_sinks.create(sink_engine)
+    state.platform_state_db = Database(sink_engine, name="platform-state", holds="platform_state")
 
     rls = RLSContext.empty()
 
