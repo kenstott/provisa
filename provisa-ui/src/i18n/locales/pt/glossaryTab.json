@@ -201,7 +201,6 @@
     "impactTablesLost_other": "Os agentes perdem o caminho para {{count}} tabelas.",
     "impactNone": "A ancoragem de nenhum termo muda, e os agentes alcançam as mesmas tabelas.",
     "impactLoading": "A calcular o que isto muda…",
-    "stewardshipHint": "Resumo de stewardship: o que os agentes veem e o que aguarda um steward.",
     "stewardshipTitle": "Resumo de stewardship",
     "agentVisibleTitle": "Termos que os agentes veem",
     "waitingTitle": "Uma aprovação para alcançar dados",

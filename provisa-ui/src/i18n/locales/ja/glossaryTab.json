@@ -201,7 +201,6 @@
     "impactTablesLost_other": "エージェントが {{count}} 件のテーブルへの経路を失います。",
     "impactNone": "どの用語の紐付けも変わらず、エージェントは同じテーブルに到達します。",
     "impactLoading": "変更内容を確認しています…",
-    "stewardshipHint": "スチュワードシップの概要: エージェントに見えるものと、スチュワードを待っているもの。",
     "stewardshipTitle": "スチュワードシップの概要",
     "agentVisibleTitle": "エージェントに見える用語",
     "waitingTitle": "データに到達するまであと 1 回の承認",

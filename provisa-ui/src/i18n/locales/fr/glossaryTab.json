@@ -201,7 +201,6 @@
     "impactTablesLost_other": "Les agents perdent leur chemin vers {{count}} tables.",
     "impactNone": "L'ancrage d'aucun terme ne change, et les agents atteignent les mêmes tables.",
     "impactLoading": "Calcul de ce que cela change…",
-    "stewardshipHint": "Synthèse de stewardship : ce que les agents voient, et ce qui attend un steward.",
     "stewardshipTitle": "Synthèse de stewardship",
     "agentVisibleTitle": "Termes visibles par les agents",
     "waitingTitle": "Une approbation avant d'atteindre les données",

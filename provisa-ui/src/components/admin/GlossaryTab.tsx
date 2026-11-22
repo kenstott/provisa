@@ -14,6 +14,7 @@
 // experts, abstract terms and their typed edges.
 
 import { PageTitle } from "../PageTitle";
+import { GlossaryNoTerm } from "./GlossaryNoTerm";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -55,7 +56,6 @@ import { TermReadView } from "./TermReadView";
 import { TermListBadges } from "./TermRoleBadge";
 import { TermToReview, type FindingFix } from "./TermToReview";
 import { TermImpactPreview } from "./TermImpactPreview";
-import { StewardshipSummary } from "./StewardshipSummary";
 import { defaultFindDomains, tableNames, toReview } from "./termFindings";
 import { RelatedToFilter, RelatedToHint, RelatedToReviewModal } from "./relTypeGuide";
 import { RELATED_TO_PARAM } from "../../lib/reportCellHref";
@@ -553,11 +553,11 @@ export function GlossaryTab() {
               {t("glossaryTab.newTerm")}
             </Button>
           )}
-          <Tip text={t("glossaryTab.stewardshipHint")} named>
+          <Tip text={t("glossaryTab.noTermHint")} named>
             <ActionIcon
               size="input-sm"
               variant={!ontology && selectedId === null ? "light" : "subtle"}
-              aria-label={t("glossaryTab.stewardshipHint")}
+              aria-label={t("glossaryTab.noTermHint")}
               onClick={() => {
                 setOntology(false);
                 setImports(false);
@@ -743,12 +743,8 @@ export function GlossaryTab() {
                 <Loader size="xs" />
               </Group>
             ) : !detail ? (
-              // REQ-2144: with no term open, the stewardship summary.
-              <StewardshipSummary
-                canEdit={canEdit}
-                navigateToTerm={navigateToTerm}
-                onApproved={() => void refreshList()}
-              />
+              // REQ-2259: the stewardship summary (REQ-2144) is on Context Health.
+              <GlossaryNoTerm />
             ) : (
               <PanelDeleteLock host={deleting}>
                 <Stack gap="md" pb="md">

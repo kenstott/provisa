@@ -25,9 +25,6 @@ vi.mock("../components/graph3d/OntologyGraph", async (importOriginal) => ({
   OntologySnippet: () => null,
   OntologyView: () => <div data-testid="ontology-view" />,
 }));
-vi.mock("../components/admin/StewardshipSummary", () => ({
-  StewardshipSummary: () => <div data-testid="summary" />,
-}));
 vi.mock("../components/admin/TermEditForm", () => ({
   TermEditForm: () => <div data-testid="term-edit-form" />,
 }));

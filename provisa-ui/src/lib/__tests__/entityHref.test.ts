@@ -13,7 +13,7 @@
 
 import { describe, expect, it } from "vitest";
 import { detailHref } from "../../components/list/useDetailParam";
-import { entityHref, entityLink, pageRequirement } from "../entityHref";
+import { entityHref, entityLink, pageLink, pageRequirement } from "../entityHref";
 
 describe("entityHref is detailHref for each thing with a panel", () => {
   it.each([
@@ -49,6 +49,11 @@ describe("the context layer's kinds (REQ-2259)", () => {
   it("links a classification kind to the Context group's Classification page", () => {
     expect(entityHref("classification", "email")).toBe("/context/classification");
   });
+
+  it("links a library document to its panel on the Documents page", () => {
+    expect(entityHref("document", 4)).toBe(detailHref("library", 4));
+    expect(entityLink(["glossary_read"], "document", 4)).toBe("/context/documents?document=4");
+  });
 });
 
 describe("a link is drawn only when the viewer holds the target page's right (REQ-2259)", () => {
@@ -71,6 +76,14 @@ describe("a link is drawn only when the viewer holds the target page's right (RE
       entityHref("column", "amount", 3),
     );
     expect(entityLink(["glossary_read"], "column", "amount", 3)).toBeUndefined();
+  });
+
+  it("links a count to its page, narrowed by a query, only for a holder of that page's right", () => {
+    expect(pageLink(["org_settings"], "/context/sync")).toBe("/context/sync");
+    expect(pageLink(["glossary_read"], "/context/sync")).toBeUndefined();
+    expect(pageLink(["glossary_read"], "/context/ontology?search=x")).toBe(
+      "/context/ontology?search=x",
+    );
   });
 
   it("refuses a page no navigation entry gates", () => {

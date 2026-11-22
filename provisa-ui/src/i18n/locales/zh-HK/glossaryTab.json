@@ -201,7 +201,6 @@
     "impactTablesLost_other": "智能體失去通往 {{count}} 張表的路徑。",
     "impactNone": "沒有術語的錨定改變，智能體到達的表也相同。",
     "impactLoading": "正在計算此操作的影響…",
-    "stewardshipHint": "數據管理概要：智能體能看到甚麼，以及甚麼在等待數據管理員。",
     "stewardshipTitle": "數據管理概要",
     "agentVisibleTitle": "智能體能看到的術語",
     "waitingTitle": "再批准一次即可到達資料",

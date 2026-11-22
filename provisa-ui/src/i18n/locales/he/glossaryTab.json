@@ -201,7 +201,6 @@
     "impactTablesLost_other": "סוכנים מאבדים את הנתיב ל-{{count}} טבלאות.",
     "impactNone": "העיגון של אף מונח אינו משתנה, וסוכנים מגיעים לאותן טבלאות.",
     "impactLoading": "מחשב מה זה משנה…",
-    "stewardshipHint": "סיכום stewardship: מה סוכנים רואים ומה ממתין ל-steward.",
     "stewardshipTitle": "סיכום stewardship",
     "agentVisibleTitle": "מונחים שסוכנים רואים",
     "waitingTitle": "אישור אחד מהגעה לנתונים",

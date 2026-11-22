@@ -9,7 +9,7 @@
 // permission from the copyright holder.
 
 // The Glossary page's main panel reopens as it was left: the graph, a term read, a term in its
-// form, or the stewardship summary. A ?term= link decides its own visit and is not saved over; a
+// form, or no term (REQ-2259: the stewardship summary moved to Context Health). A ?term= link decides its own visit and is not saved over; a
 // remembered term since deleted is dropped.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
@@ -26,9 +26,6 @@ vi.mock("../components/graph3d/OntologyGraph", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../components/graph3d/OntologyGraph")>()),
   OntologySnippet: () => null,
   OntologyView: () => <div data-testid="ontology-view" />,
-}));
-vi.mock("../components/admin/StewardshipSummary", () => ({
-  StewardshipSummary: () => <div data-testid="summary" />,
 }));
 vi.mock("../components/admin/TermEditForm", () => ({
   TermEditForm: () => <div data-testid="term-edit-form" />,
@@ -94,9 +91,9 @@ beforeEach(() => {
 afterEach(() => vi.clearAllMocks());
 
 describe("the Glossary's main panel, after a reload", () => {
-  it("is the summary, with nothing saved", async () => {
+  it("is no term, with nothing saved", async () => {
     open();
-    expect(await screen.findByTestId("summary")).toBeInTheDocument();
+    expect(await screen.findByTestId("glossary-no-term")).toBeInTheDocument();
   });
 
   it("is the graph", async () => {
@@ -155,14 +152,14 @@ describe("the Glossary's main panel, after a reload", () => {
     expect(screen.queryByTestId("term-edit-form")).not.toBeInTheDocument();
   });
 
-  it("is the summary again once it is chosen", async () => {
+  it("is no term again once the open term is closed", async () => {
     const view = open();
     fireEvent.click(await screen.findByText("Revenue"));
     await screen.findByTestId("term-read-view");
     fireEvent.click(screen.getByTestId("glossary-stewardship-btn"));
     view.unmount();
     open();
-    expect(await screen.findByTestId("summary")).toBeInTheDocument();
+    expect(await screen.findByTestId("glossary-no-term")).toBeInTheDocument();
   });
 
   it("drops a remembered term since deleted", async () => {
@@ -170,7 +167,7 @@ describe("the Glossary's main panel, after a reload", () => {
     vi.mocked(fetchGlossaryTerm).mockRejectedValue(new GlossaryTermGone(1));
     open();
     await waitFor(() => expect(getStored(TERM_LEFT_OPEN)).toBeNull());
-    expect(await screen.findByTestId("summary")).toBeInTheDocument();
+    expect(await screen.findByTestId("glossary-no-term")).toBeInTheDocument();
   });
 
   // REQ-2260: the term a link opens is the term left open from then; the view is not saved over.
@@ -187,7 +184,7 @@ describe("the Glossary's main panel, after a reload", () => {
   it("does not reopen a remembered term the viewer can no longer read, and forgets it", async () => {
     setStored(TERM_LEFT_OPEN, "7");
     open();
-    expect(await screen.findByTestId("summary")).toBeInTheDocument();
+    expect(await screen.findByTestId("glossary-no-term")).toBeInTheDocument();
     await waitFor(() => expect(getStored(TERM_LEFT_OPEN)).toBeNull());
     expect(fetchGlossaryTerm).not.toHaveBeenCalled();
   });
@@ -204,7 +201,7 @@ describe("Polly on the glossary", () => {
       return read.inputs;
     };
     open();
-    await screen.findByTestId("summary");
+    await screen.findByTestId("glossary-no-term");
     expect(await inputs()).toMatchObject({ findTerms: false });
     const out = await runUiActions(
       [
@@ -216,5 +213,14 @@ describe("Polly on the glossary", () => {
     expect(out.success).toBe(true);
     expect(await screen.findByTestId("find-terms-dialog")).toBeInTheDocument();
     expect(await inputs()).toMatchObject({ findTerms: true });
+  });
+});
+
+// REQ-2259: the stewardship summary is Context Health's; with no term open the page points there.
+describe("the Glossary with no term open", () => {
+  it("links to Context Health, where the stewardship summary is", async () => {
+    open();
+    const link = await screen.findByTestId("glossary-health-link");
+    expect(link).toHaveAttribute("href", "/context/health");
   });
 });

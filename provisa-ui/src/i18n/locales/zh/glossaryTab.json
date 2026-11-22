@@ -201,7 +201,6 @@
     "impactTablesLost_other": "智能体失去通往 {{count}} 张表的路径。",
     "impactNone": "没有术语的锚定发生变化，智能体到达的表也相同。",
     "impactLoading": "正在计算此操作的影响…",
-    "stewardshipHint": "数据管理概要：智能体能看到什么，以及什么在等待数据管理员。",
     "stewardshipTitle": "数据管理概要",
     "agentVisibleTitle": "智能体能看到的术语",
     "waitingTitle": "再批准一次即可到达数据",
