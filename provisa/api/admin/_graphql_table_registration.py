@@ -437,11 +437,18 @@ async def stage_registration(
 
 async def stored_key_fetches(state: Any, source_id: str, table_name: str) -> dict[str, dict]:
     """The columns registered ``table_name`` fetches its rows by, a list at a time (REQ-1865,
-    graphql_remote.by_keys), as its registration holds them. A table registered before they were
+    graphql_remote.by_keys), as its registration -- the one in progress, or the stored one --
+    holds them. A table registered before they were
     kept has none held: they are read off the source's schema now and kept, in this process and
     with the source's row."""
     reg = state.graphql_remote_sources[source_id]
-    entry = next(t for t in reg["tables"] if t.get("sql_name") == table_name)
+    # A table in its own registration is still pending (REQ-1929): its save is checked before
+    # the transaction that stores it, and the pending entry already carries its key fetches.
+    entry = held_table(state, source_id, table_name)
+    if entry is None:
+        raise KeyError(
+            f"table {table_name!r} of source {source_id!r} is neither registered nor pending"
+        )
     if BY_KEYS in entry:
         return entry[BY_KEYS]
     offered = await source_offer(state, source_id)
