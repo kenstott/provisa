@@ -357,7 +357,8 @@ def test_each_literal_row_is_the_grid_s_and_states_its_limitation(name):
 @pytest.mark.parametrize("name", ["date_pli", "date_mii", "integer_pl_date"])
 def test_each_day_row_states_its_bound_on_clickhouse(name):
     feature = next(f for f in GRID.features if f.name == name)
-    (limitation,) = feature.read.limitations["clickhouse"]
+    # Its bound; any other is a refusal of the translator's it states (polyfill.measured).
+    (limitation,) = [lim for lim in feature.read.limitations["clickhouse"] if lim.refusal is None]
     assert "1900-01-01 .. 2299-12-31" in limitation.text and "22008" in limitation.text
 
 
