@@ -97811,7 +97811,7 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     as the data product Access section draws its per-table links (the same icons, tips and component), in
     its Identity section. Each opens that surface''s Explore editor with a query that reads the table, run
     at once, using the names the role sees and a row limit. A surface the table is not exposed on shows
-    no link.'
+    no link. (Amended 2026-11-22 by the maintainer. A table''s query links are drawn as a relationship''s are, an icon with its surface name beside it, from one shared rendering, and appear as soon as a table is registered. A table whose aggregates are enabled shows, on its API section, a query link per surface that serves its aggregates to the acting role, opening Explore with an aggregate query, and a group-by query when group-by is enabled, run at once.)'
   tests:
   - provisa-ui/src/components/relationships/__tests__/RelationshipQueryLinks.placements.test.tsx
   - provisa-ui/src/components/relationships/__tests__/relationshipQueries.test.ts
