@@ -31,6 +31,7 @@ from provisa.api.metadata_export.snowflake_horizon import (
     _object_kind,
     ListingMember,
     PublishedAddresses,
+    address_tag_statements,
     comment_statements,
     listing_manifest,
     listing_statements,
@@ -1067,3 +1068,18 @@ def test_without_an_environment_no_table_claims_a_stage(monkeypatch):  # REQ-226
     result = asyncio.run(_exporter().publish(snapshot))
     assert result.ok, result.errors
     assert not any("PROVISA_STAGE" in s for s in rt._conn.cursor_obj.sql)
+
+
+def test_address_tag_statements_tag_each_table_with_its_provisa_address():  # REQ-2122
+    table = _table_asset("petstore-api", "public", "pets")
+    schema = '"landing"."PROVISA_GOVERNANCE"'
+    assert address_tag_statements([table], _ADDR) == [
+        f"CREATE SCHEMA IF NOT EXISTS {schema};",
+        f'CREATE TAG IF NOT EXISTS {schema}."PROVISA_URI";',
+        'ALTER TABLE "landing"."org_acme_export"."petstore-api__public__pets" SET TAG '
+        f"{schema}.\"PROVISA_URI\" = '{table.semantic_uri}';",
+    ]
+
+
+def test_address_tag_statements_are_empty_without_tables():
+    assert address_tag_statements([], _ADDR) == []

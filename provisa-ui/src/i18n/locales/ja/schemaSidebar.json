@@ -1,8 +1,8 @@
 {
   "schemaSidebar": {
     "title": "スキーマ",
-    "collapse": "スキーマパネルを折りたたむ",
-    "expand": "スキーマパネルを展開",
+    "collapse": "スキーマパネルを隠す",
+    "expand": "スキーマパネルを表示",
     "dragToCanvas": "キャンバスへドラッグ",
     "doubleClickToInsert": "ダブルクリックで修飾名を挿入",
     "insertTableReference": "SQLエディターにテーブル参照を挿入",

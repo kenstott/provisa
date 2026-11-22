@@ -61,13 +61,14 @@ router = APIRouter(prefix="/admin/discover")
 SelectedDomains = Annotated[list[str] | None, Query()]
 
 #: The kinds of discovery a run can be asked for: foreign keys read from the sources' own
-#: constraints, and semantics inferred by the model assigned to relationship inference.
-DiscoveryKind = Literal["foreign_keys", "semantics"]
+#: constraints, semantics inferred by the model assigned to relationship inference, and matching
+#: key names and types among the registered columns (REQ-2262).
+DiscoveryKind = Literal["foreign_keys", "semantics", "key_names"]
 
 #: What a run the dialog starts can look for: the kinds, and Key value overlap, the measure of the
 #: semantic pairs in the band between its cutoff and the threshold (REQ-413, amended 2026-11-16),
 #: chosen only with semantics.
-RunKind = Literal["foreign_keys", "semantics", "key_values"]
+RunKind = Literal["foreign_keys", "semantics", "key_names", "key_values"]
 KEY_VALUES = "key_values"
 
 #: Where a model and its key are set, as the admin UI names it.
@@ -101,6 +102,9 @@ class AcceptEach(BaseModel):
 
     id: int
     name: str | None = None
+    # REQ-2262: the cardinality the reviewer set in the row's edit dialog; only a one-to-many or
+    # many-to-one proposal takes one (a junction or shared-dimension accept fixes its own).
+    cardinality: Literal["many-to-one", "one-to-many", "one-to-one"] | None = None
 
 
 _log = _logging.getLogger(__name__)
@@ -145,13 +149,14 @@ def _semantics_availability(model: SemanticModel) -> dict[str, Any]:
 
 @router.get("/kinds")
 async def discovery_kinds(request: Request):  # REQ-413
-    """Which kinds of discovery can run: foreign keys always; semantics when the model assigned to
-    relationship inference has its key."""
+    """Which kinds of discovery can run: foreign keys and key names always; semantics when the
+    model assigned to relationship inference has its key."""
     require_capability_request(request, "create_relationship")
     pool = state.model_db
     assert pool is not None
     return {
         "foreign_keys": {"available": True},
+        "key_names": {"available": True},
         "semantics": _semantics_availability(await semantic_model(pool)),
     }
 
@@ -182,6 +187,9 @@ class RunScope(BaseModel):  # REQ-413
     sample_size: int | None = Field(default=None, ge=1)
     contained_at: float | None = Field(default=None, ge=0.0, le=1.0)
     shared_ceiling: float | None = Field(default=None, ge=0.0, le=1.0)
+    #: REQ-2262: a relationship between the source and target sets counts in either direction;
+    #: the review after registration asks it, the tables just registered against every table.
+    either_way: bool = False
 
     def key_values(self) -> KeyValueOverlap | None:
         """Key value overlap as asked: refused without semantics, whose pairs it measures, and
@@ -227,6 +235,12 @@ class RunScope(BaseModel):  # REQ-413
                 "discovery.model_incomplete",
                 "A chosen model names both its vendor and its model",
             )
+        if self.either_way and self.target_same_as_source:
+            raise ApiError(
+                400,
+                "discovery.either_way_needs_target",
+                "Either direction compares a source set with a target set of its own",
+            )
         return RunSpec(
             kinds=frozenset(cast("Kind", k) for k in self.kinds if k != KEY_VALUES),
             source_domains=tuple(self.source_domains),
@@ -240,6 +254,7 @@ class RunScope(BaseModel):  # REQ-413
             threshold=self.threshold,
             samples_per_column=self.samples_per_column,
             within=within,
+            either_way=self.either_way,
         )
 
 
@@ -617,7 +632,11 @@ async def trigger_discovery(
             "run": ended.view(),
             "candidates_found": report["suggestions"],
             "stored_ids": report["stored_ids"],
-            **{kind: report[kind] for kind in ("foreign_keys", "semantics") if kind in report},
+            **{
+                kind: report[kind]
+                for kind in ("foreign_keys", "key_names", "semantics")
+                if kind in report
+            },
         }
 
 
@@ -849,18 +868,29 @@ async def apply_decisions(request: Request, run_id: int, body: ApplyRequest):  #
             )
         for each in body.accept:
             try:
-                if await proposals_repo.junction_of(conn, run_id, each.id) is not None:
+                is_junction = await proposals_repo.junction_of(conn, run_id, each.id) is not None
+                is_shared = not is_junction and await proposals_repo.shared_pair(
+                    conn, run_id, each.id
+                )
+                if each.cardinality is not None and (is_junction or is_shared):
+                    raise ValueError(
+                        f"Proposal {each.id} joins through a junction or shared dimension; "
+                        "its cardinality is not set on accept"
+                    )
+                if is_junction:
                     # REQ-1586: a junction suggestion joins its two ends through the junction.
                     relationship_id = await join_through.accept_proposal(
                         request, conn, run_id, each.id, each.name
                     )
-                elif await proposals_repo.shared_pair(conn, run_id, each.id):
+                elif is_shared:
                     # REQ-413: a many-to-many pair is accepted as a shared dimension.
                     relationship_id = await discovery_dimension.accept(
                         request, conn, run_id, each.id, each.name
                     )
                 else:
-                    relationship_id = await proposals_repo.accept(conn, run_id, each.id, each.name)
+                    relationship_id = await proposals_repo.accept(
+                        conn, run_id, each.id, each.name, each.cardinality
+                    )
             except Exception as exc:  # reported per proposal, the rest go on
                 _log.warning("Apply: accepting proposal %s failed: %s", each.id, exc)
                 results.append(

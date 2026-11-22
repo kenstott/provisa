@@ -1,6 +1,7 @@
 {
  "core": {
   "tests/integration/test_abac_hook_endpoint.py": 0.0,
+  "tests/integration/test_access_review_api.py": 12.0,
   "tests/integration/test_action_governance.py": 0.0,
   "tests/integration/test_adbc.py": 39.1,
   "tests/integration/test_admin_api.py": 0.0,
@@ -48,6 +49,8 @@
   "tests/integration/test_cassandra_native_fetch.py": 96.7,
   "tests/integration/test_cassandra_pipeline_e2e.py": 0.0,
   "tests/integration/test_cassandra_source_e2e.py": 78.3,
+  "tests/integration/test_catalog_brand_drift.py": 0.0,
+  "tests/integration/test_catalog_brands_live.py": 0.0,
   "tests/integration/test_catalog_read_only_e2e.py": 31.5,
   "tests/integration/test_catalog_registrar_pgbouncer.py": 2.2,
   "tests/integration/test_central_secrets_org_namespace_pg.py": 0.3,
@@ -104,6 +107,7 @@
   "tests/integration/test_custom_connectors_pg_e2e.py": 1.6,
   "tests/integration/test_customer360_demo.py": 83.9,
   "tests/integration/test_cypher_endpoint.py": 0.0,
+  "tests/integration/test_cypher_http_masking_e2e.py": 30.0,
   "tests/integration/test_cypher_integration_extra.py": 0.0,
   "tests/integration/test_cypher_list_functions_pg.py": 26.1,
   "tests/integration/test_cypher_list_map_engines.py": 65.0,
@@ -146,6 +150,7 @@
   "tests/integration/test_discovery_shared_dimension_e2e.py": 120.0,
   "tests/integration/test_join_through_e2e.py": 120.0,
   "tests/integration/test_discovery_run_e2e.py": 60.0,
+  "tests/integration/test_relationship_review_e2e.py": 60.0,
   "tests/integration/test_domain_delete_guarded.py": 69.6,
   "tests/integration/test_domain_policy_integration.py": 2.5,
   "tests/integration/test_domain_tree_every_transport.py": 28.6,
@@ -447,6 +452,7 @@
   "tests/integration/test_protocol_aggregate_parity.py": 26.8,
   "tests/integration/test_provisioning_demo.py": 89.5,
   "tests/integration/test_public_columns_every_surface_e2e.py": 32.2,
+  "tests/integration/test_public_visitor_host_org.py": 5.0,
   "tests/integration/test_push_listener_survives_broker.py": 0.0,
   "tests/integration/test_python_worker.py": 8.1,
   "tests/integration/test_qdrant_source_e2e.py": 30.0,
@@ -589,6 +595,7 @@
   "tests/integration/test_triggers_on_change_e2e.py": 30.9,
   "tests/integration/test_trino_arrow_parity.py": 30.0,
   "tests/integration/test_trino_clickhouse_catalog_e2e.py": 20.5,
+  "tests/integration/test_trino_edge_answers.py": 20.0,
   "tests/integration/test_trino_flight_engine_e2e.py": 0.7,
   "tests/integration/test_trino_fte_exchange.py": 2.2,
   "tests/integration/test_trino_like_escape.py": 0.5,
@@ -741,6 +748,10 @@
   "tests/steps/steps_warm_tables_local_ssd_via_trino_file_cache.py": 0.8,
   "tests/steps/steps_warm_tables_replica_profile_low_latency_placement.py": 1.2,
   "tests/steps/steps_zaychik_flight_sql_proxy.py": 1.6,
-  "tests/integration/test_demo_http_surfaces_e2e.py": 240.0
+  "tests/integration/test_demo_http_surfaces_e2e.py": 240.0,
+  "tests/integration/test_node_sdk_reader.py": 12.0,
+  "tests/integration/test_code_sdk_spellings_node.py": 20.0,
+  "tests/integration/test_code_sdk_spellings_go.py": 60.0,
+  "tests/integration/test_go_sdk_reader.py": 45.0
  }
 }

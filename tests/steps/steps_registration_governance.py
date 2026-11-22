@@ -59,11 +59,11 @@ REQ-417: Hasura v2 migration tool maps Hasura Remote Schemas to Provisa graphql_
 registrations instead of skipping them with "NOT SUPPORTED" warning. Migration preserves Remote
 Schema name, URL, headers, and authentication configuration.
 
-REQ-433: A datasource may be associated with multiple domains. Any domain owner may register any
-unclaimed table from that source. Once a table is claimed by one domain, no other domain may
-register it — first-come ownership model. Unique constraint enforced on
-(source_id, normalized_table_name). The UI greys out claimed tables regardless of which domain
-claimed them.
+REQ-433: Model objects are named per domain. A source's table may be registered in more than one
+domain, once per domain; uniqueness is (domain, table name). A second table of the same name in a
+domain is refused by name. Removing a table retires it (REQ-2248); registering the same source table
+again in that domain restores the retired table with its id, relationships and tags. The register form
+does not grey out a table another domain registered.
 
 REQ-434: Creation-request mechanism. Any governed create operation (view,
 relationship, etc.) attempted by a user lacking the authority to perform it
@@ -1000,22 +1000,29 @@ def _rank_candidates(candidates: list[Any]) -> list[Any]:
 
 
 # ---------------------------------------------------------------------------
-# REQ-433 — first-come dataset ownership (in-memory registry mirroring
-# _dataset_ownership_conflict semantics via the real normalizer)
+# REQ-433 — per-domain table naming (in-memory registry using the real
+# normalizer; retired rows restore on re-registration, REQ-2248)
 # ---------------------------------------------------------------------------
 
 
-class DatasetOwnershipRegistry:
-    """First-come table ownership across domains sharing a source (REQ-433).
+@dataclass
+class _RegisteredTable:
+    id: int
+    domain_id: str
+    source_id: str
+    source_table: str
+    name: str
+    relationships: list[str] = field(default_factory=list)
+    tags: list[str] = field(default_factory=list)
+    retired: bool = False
 
-    Uses the production normalizer (``apply_sql_name(name, 'snake').lower()``)
-    so (source_id, normalized_table_name) is the ownership key — identical to
-    ``_dataset_ownership_conflict`` in provisa/api/admin/schema.py.
-    """
+
+class DomainTableRegistry:
+    """Tables keyed by (domain, normalized name) (REQ-433)."""
 
     def __init__(self) -> None:
-        # (source_id, normalized_name) -> owning domain_id
-        self._claims: dict[tuple[str, str], str] = {}
+        self._rows: dict[tuple[str, str], _RegisteredTable] = {}
+        self._next_id = 1
 
     @staticmethod
     def _normalize(name: str) -> str:
@@ -1023,29 +1030,32 @@ class DatasetOwnershipRegistry:
 
         return apply_sql_name(name, "snake").lower()
 
-    def conflict(self, source_id: str, table_name: str, domain_id: str) -> str | None:
-        """Return an error string if a DIFFERENT domain already owns the dataset."""
-        key = (source_id, self._normalize(table_name))
-        owner = self._claims.get(key)
-        if owner is not None and owner != domain_id:
-            return (
-                f"Table {table_name!r} on source {source_id!r} is already claimed by "
-                f"domain {owner!r} (first-come ownership)."
+    def register(
+        self, domain_id: str, source_id: str, source_table: str, name: str
+    ) -> _RegisteredTable:
+        key = (domain_id, self._normalize(name))
+        row = self._rows.get(key)
+        if row is not None:
+            if row.retired and (row.source_id, row.source_table) == (source_id, source_table):
+                row.retired = False
+                return row
+            raise RegistrationError(
+                f"Table {name!r} is already registered in domain {domain_id!r}."
             )
-        return None
+        row = _RegisteredTable(self._next_id, domain_id, source_id, source_table, name)
+        self._next_id += 1
+        self._rows[key] = row
+        return row
 
-    def claim(self, source_id: str, table_name: str, domain_id: str) -> None:
-        err = self.conflict(source_id, table_name, domain_id)
-        if err is not None:
-            raise RegistrationError(err)
-        self._claims[(source_id, self._normalize(table_name))] = domain_id
+    def delete(self, domain_id: str, name: str) -> None:
+        self._rows[(domain_id, self._normalize(name))].retired = True
 
-    def is_claimed(self, source_id: str, table_name: str) -> bool:
-        return (source_id, self._normalize(table_name)) in self._claims
+    def get(self, domain_id: str, name: str) -> _RegisteredTable:
+        return self._rows[(domain_id, self._normalize(name))]
 
-    def is_greyed_out_for(self, source_id: str, table_name: str, domain_id: str) -> bool:
-        """UI greys out a table for any domain that is not its owner (REQ-433)."""
-        return self.conflict(source_id, table_name, domain_id) is not None
+    def is_greyed_out_for(self, source_id: str, source_table: str, domain_id: str) -> bool:
+        """The register form greys out nothing a different domain registered (REQ-433)."""
+        return False
 
 
 # ---------------------------------------------------------------------------
@@ -1541,33 +1551,6 @@ class _FakePgDriver:
         return _FakeDriverResult(self._inbound)
 
 
-class _FakeConfigConn:
-    """Stands in for the asyncpg config connection."""
-
-    def __init__(self):
-        self.inserted: list[dict] = []
-        self._table_ids = {"orders": 1, "customers": 2}
-
-    async def fetchrow(self, sql, source_id, table_name):
-        tid = self._table_ids.get(table_name)
-        return {"id": tid} if tid is not None else None
-
-    async def execute(self, sql, *args):
-        rel_id, src_id, tgt_id, src_col, tgt_col, cardinality, alias = args
-        self.inserted.append(
-            {
-                "id": rel_id,
-                "source_table_id": src_id,
-                "target_table_id": tgt_id,
-                "source_column": src_col,
-                "target_column": tgt_col,
-                "cardinality": cardinality,
-                "alias": alias,
-            }
-        )
-        return "INSERT 0 1"
-
-
 class _FakeSourcePools:
     def __init__(self, source_id, driver):
         self._sid = source_id
@@ -1584,40 +1567,63 @@ import asyncio as _asyncio  # noqa: E402
 
 
 @given("a database source with FK constraints")
-def _req413_source(shared_data):
-    # orders.customer_id -> customers.id
+def _req413_source(shared_data, control_plane):
+    # orders.customer_id -> customers.id; the source driver is the only fake (client boundary),
+    # the registered tables live in the test's own PostgreSQL control plane.
     driver = _FakePgDriver(
         outbound=[("customer_id", "customers", "id")],
         inbound=[],
     )
     shared_data["r413_pools"] = _FakeSourcePools("sales_pg", driver)
-    shared_data["r413_conn"] = _FakeConfigConn()
+    shared_data["r413_plane"] = control_plane
+
+    async def _seed():
+        async with control_plane.org().acquire() as conn:
+            await conn.execute("INSERT INTO domains (id) VALUES ('d')")
+            await conn.execute("INSERT INTO sources (id, type) VALUES ('sales_pg', 'postgresql')")
+            for table_id, name in ((1, "orders"), (2, "customers")):
+                await conn.execute(
+                    "INSERT INTO registered_tables (id, source_id, domain_id, schema_name,"
+                    f" table_name) VALUES ({table_id}, 'sales_pg', 'd', 'public', '{name}')"
+                )
+
+    _asyncio.run(_seed())
 
 
 @when("schema introspection runs")
 def _req413_run(shared_data):
     from provisa.discovery.fk_introspect import auto_register_fk_relationships
 
-    inserted = _asyncio.run(
-        auto_register_fk_relationships(
-            shared_data["r413_pools"],
-            "postgresql",
-            "sales_pg",
-            "public",
-            "orders",
-            shared_data["r413_conn"],
-        )
-    )
-    shared_data["r413_inserted"] = inserted
+    async def _run():
+        async with shared_data["r413_plane"].org().acquire() as conn:
+            return await auto_register_fk_relationships(
+                shared_data["r413_pools"],
+                "postgresql",
+                "sales_pg",
+                "public",
+                "orders",
+                conn,
+            )
+
+    shared_data["r413_inserted"] = _asyncio.run(_run())
 
 
 @then("GQL relationships are auto-generated from the FK metadata")
 def _req413_then(shared_data):
+    from sqlalchemy import select
+
+    from provisa.core.schema_org import relationships as rel_t
+
     # Both directions inserted: many-to-one and one-to-many.
     assert shared_data["r413_inserted"] == 2
-    rows = shared_data["r413_conn"].inserted
-    cards = {r["cardinality"] for r in rows}
-    assert cards == {"many-to-one", "one-to-many"}
+
+    async def _rows():
+        async with shared_data["r413_plane"].org().acquire() as conn:
+            res = await conn.execute_core(select(rel_t))
+            return [dict(r._mapping) for r in res.fetchall()]
+
+    rows = _asyncio.run(_rows())
+    assert {r["cardinality"] for r in rows} == {"many-to-one", "one-to-many"}
     m2o = next(r for r in rows if r["cardinality"] == "many-to-one")
     assert m2o["source_table_id"] == 1 and m2o["target_table_id"] == 2
     assert m2o["alias"] == "customers"  # default (non-Hasura) style
@@ -1747,38 +1753,76 @@ def _req417_then(shared_data):
 
 
 # ---------------------------------------------------------------------------
-# REQ-433 — first-come dataset ownership across domains
+# REQ-433 — per-domain table naming
 # ---------------------------------------------------------------------------
 
 
-@given("a datasource shared across multiple domains")
-def _req433_source(shared_data):
-    shared_data["r433_registry"] = DatasetOwnershipRegistry()
-    shared_data["r433_source"] = "shared_pg"
+_R433_SRC, _R433_TBL = "shared_pg", "public.orders"
 
 
-@when("a domain owner claims a table")
-def _req433_claim(shared_data):
-    reg = shared_data["r433_registry"]
-    reg.claim(shared_data["r433_source"], "Orders", "sales")
+@given("tables registered in domains A and B")
+def _req433_given(shared_data):
+    shared_data["r433_reg"] = DomainTableRegistry()
 
 
-@then(
-    "no other domain may claim that same physical table; the UI greys it out for all other domains"
+@when("a table named orders is registered in domain A and a table named orders in domain B")
+def _req433_register_both(shared_data):
+    reg = shared_data["r433_reg"]
+    shared_data["r433_a"] = reg.register("A", _R433_SRC, _R433_TBL, "orders")
+    shared_data["r433_b"] = reg.register("B", _R433_SRC, _R433_TBL, "orders")
+
+
+@then("both registrations succeed, each name being unique only within its own domain")
+def _req433_both_succeed(shared_data):
+    assert shared_data["r433_a"].id != shared_data["r433_b"].id
+    assert shared_data["r433_a"].domain_id == "A"
+    assert shared_data["r433_b"].domain_id == "B"
+
+
+@when("a second table named orders is registered in domain A")
+def _req433_second(shared_data):
+    try:
+        shared_data["r433_reg"].register("A", _R433_SRC, _R433_TBL, "Orders")
+    except RegistrationError as exc:
+        shared_data["r433_error"] = exc
+    else:
+        shared_data["r433_error"] = None
+    shared_data["r433_a"].relationships.append("orders_to_customers")
+    shared_data["r433_a"].tags.append("pii")
+
+
+@then("it is refused by name")
+def _req433_refused(shared_data):
+    err = shared_data["r433_error"]
+    assert err is not None
+    assert "orders" in str(err).lower()
+
+
+@when(
+    "the table orders in domain A is deleted and the same source table is registered again in "
+    "domain A"
 )
-def _req433_then(shared_data):
-    reg = shared_data["r433_registry"]
-    src = shared_data["r433_source"]
-    # Different domain, normalized-equal name is blocked (first-come).
-    err = reg.conflict(src, "orders", "marketing")
-    assert err is not None and "sales" in err
-    with pytest.raises(RegistrationError):
-        reg.claim(src, "orders", "marketing")
-    # The owning domain may re-register.
-    assert reg.conflict(src, "orders", "sales") is None
-    # UI greys the table out for every non-owning domain.
-    assert reg.is_greyed_out_for(src, "orders", "marketing") is True
-    assert reg.is_greyed_out_for(src, "orders", "sales") is False
+def _req433_delete_reregister(shared_data):
+    reg = shared_data["r433_reg"]
+    reg.delete("A", "orders")
+    shared_data["r433_restored"] = reg.register("A", _R433_SRC, _R433_TBL, "orders")
+
+
+@then("the retired table is restored with its id, relationships and tags")
+def _req433_restored(shared_data):
+    restored = shared_data["r433_restored"]
+    assert restored.id == shared_data["r433_a"].id
+    assert restored.retired is False
+    assert restored.relationships == ["orders_to_customers"]
+    assert restored.tags == ["pii"]
+
+
+@then("the register form does not grey out a table another domain registered")
+def _req433_not_greyed(shared_data):
+    reg = shared_data["r433_reg"]
+    assert reg.get("B", "orders").id == shared_data["r433_b"].id
+    assert reg.is_greyed_out_for(_R433_SRC, _R433_TBL, "B") is False
+    assert reg.is_greyed_out_for(_R433_SRC, _R433_TBL, "A") is False
 
 
 # ---------------------------------------------------------------------------

@@ -1936,6 +1936,13 @@ class Table(
     def _a_sources_table_name(cls, v: str) -> str:
         return source_object_name(v, "table")
 
+    @model_validator(mode="after")
+    def _not_the_reserved_name(self) -> "Table":  # REQ-1929
+        from provisa.core.domain_policy import require_table_name
+
+        require_table_name(self.table_name, self.alias)
+        return self
+
     @field_validator("gql_naming_convention")
     @classmethod
     def _preset_convention(cls, v: str | None) -> str | None:  # REQ-195, REQ-416

@@ -79,13 +79,13 @@ def job_id(org_id: str) -> str:
 
 def register_org(scheduler: "AsyncIOScheduler", org_id: str) -> None:
     """Retire ``org_id``'s due terms daily. A job already held is kept."""
-    from apscheduler.triggers.cron import CronTrigger
+    from provisa.core.cron import cron_trigger
 
     if scheduler.get_job(job_id(org_id)) is not None:
         return
     scheduler.add_job(
         retire_org,
-        trigger=CronTrigger.from_crontab(CRON),
+        trigger=cron_trigger(CRON),
         args=[org_id],
         id=job_id(org_id),
         name=JOB_ID,

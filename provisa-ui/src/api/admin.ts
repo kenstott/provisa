@@ -646,9 +646,9 @@ export async function fetchSdl(roleId: string): Promise<string> {
 
 const API_BASE_RAW = import.meta.env.VITE_API_BASE || "";
 
-/** The kinds of relationship discovery: foreign keys read from the sources' own constraints, and
- *  semantics inferred by an AI model. */
-export type DiscoveryKind = "foreign_keys" | "semantics";
+/** The kinds of relationship discovery: foreign keys read from the sources' own constraints,
+ *  semantics inferred by an AI model, and matching key names and types (REQ-2262). */
+export type DiscoveryKind = "foreign_keys" | "semantics" | "key_names";
 
 /** REQ-413: what a run can look for: the kinds, and Key value overlap, the measure of the
  *  semantic pairs whose model confidence lies between its cutoff and the threshold. It is chosen
@@ -713,6 +713,9 @@ export interface DiscoveryScope {
   sample_size: number | null;
   contained_at: number | null;
   shared_ceiling: number | null;
+  /** REQ-2262: a relationship between the source and target sets counts in either direction:
+   *  the review after registration, the tables just registered against every table. */
+  either_way: boolean;
 }
 
 /** REQ-413: Key value overlap as the signed-in person last set it, remembered as the threshold
@@ -901,6 +904,7 @@ export interface DiscoveryReport {
   removed: Partial<Record<RemovedKind, number>>;
   decided_by?: Record<string, number>;
   foreign_keys?: { found: number; suggested: number };
+  key_names?: { found: number; suggested: number };
   semantics?: SemanticsReport;
   /** Key value overlap's settings, when the run chose it. */
   key_values?: { cutoff: number; sample_size: number };
@@ -1056,10 +1060,10 @@ export function saveDiscoveryThreshold(threshold: number): Promise<{ threshold: 
 
 /** What a reviewer decided in a run's result: the proposals to accept, and those not to
  *  recommend again. One in neither stays undecided. An accepted proposal carries a name only
- *  where a person typed one; without one the server names it, telling it apart from names
+ *  where a person typed one in the row's edit dialog (with the cardinality they set there); without one the server names it, telling it apart from names
  *  already held (REQ-415). */
 export interface RunDecisions {
-  accept: { id: number; name?: string }[];
+  accept: { id: number; name?: string; cardinality?: string }[];
   not_again: number[];
 }
 

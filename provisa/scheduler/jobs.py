@@ -31,7 +31,7 @@ import pyarrow as pa
 
 from provisa.compiler.sql_literals import sql_literal
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from apscheduler.triggers.cron import CronTrigger
+from provisa.core.cron import cron_trigger
 
 from provisa.core.trino_system_catalogs import OTEL_CATALOG
 from provisa.observability.ops_schema import CATALOG_DRIVER_SCOPES, REQUEST_SPAN_ATTR
@@ -1088,7 +1088,7 @@ def _add_trigger_jobs(scheduler: Any, triggers: list[ScheduledTrigger], org_id: 
     for trigger in triggers:
         if trigger.cron is None:
             continue
-        cron = CronTrigger.from_crontab(trigger.cron)
+        cron = cron_trigger(trigger.cron)
         job_id = trigger_job_id(trigger.id, org_id)
         scheduler.add_job(
             _run_scheduled,
@@ -1153,6 +1153,10 @@ async def register_org_triggers(  # REQ-1003, REQ-1266
         from provisa.entitlements.expiry_run import register_org as register_org_expiry_run
 
         register_org_expiry_run(scheduler, org_id)
+        # REQ-2266: and its access review schedule, checked for a review that is due.
+        from provisa.entitlements.access_review import register_org as register_org_access_review
+
+        register_org_access_review(scheduler, org_id)
         # REQ-2144: and its deprecated terms, retired on their planned date.
         from provisa.scheduler.planned_retirement import register_org as register_org_retirements
 

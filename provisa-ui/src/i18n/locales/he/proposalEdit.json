@@ -1,0 +1,9 @@
+{
+  "proposalEdit": {
+    "title": "עריכת מועמד",
+    "name": "שם הקשר",
+    "cardinality": "קרדינליות",
+    "cancel": "ביטול",
+    "save": "שמירה"
+  }
+}

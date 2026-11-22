@@ -38,6 +38,30 @@ It is the system of record, and it is planted wrong in the ways real hubs are:
     customer, and the records that replaced Tamarack's and Yarrow's are in no master: coverage gaps.
   * The hub still points at Tamarack Mining's deleted ServiceNow company and Yarrow Insurance
     Brokers' deleted Stripe customer: stale links.
+
+The four systems hold people too (REQ-2034, amended 2026-11-14): Salesforce contacts, ServiceNow
+users (each incident's caller), the person who raised each Jira bug through the support portal,
+and the billing contact on a Stripe customer. The hub keeps a master person for each contact and
+links the other systems' people to it. The August bulk import was a matching model's run
+(match-v2): it linked every Stripe customer and every person outside Salesforce, each link with
+its score. The people are planted the way real ones go wrong:
+
+  * Cobalt Freight's John Smith is Jon Smith at jsmith@ in ServiceNow, Kestrel's Jeffrey Marsh is
+    Jeffery Marsh at jmarsh@ and Ironbark's Katherine Doyle is Catherine Doyle at cdoyle@: one
+    person each, written differently.
+  * Marlowe's Robert Harlan is Bob in ServiceNow and Lumen Dental's Elizabeth Moreno is Liz: a
+    nickname no string similarity reaches.
+  * Two Maria Lopezes, one at Cobalt Freight and one at Juniper Logistics, are two people. The
+    model linked Juniper's to Cobalt's.
+  * Daniel Okafor moved from Granite Ridge Bank to Vantage Payroll: a contact at each. The model
+    linked his new Jira reporter address to his old master.
+
+And four records no rule can give a customer: Harbor Lane Bakery, billed in Stripe with no
+Salesforce account; "Halcyon Mdia Grp", a ServiceNow company typed by the desk; Tessa Rowe Design,
+a Stripe customer on a personal mailbox; and a Jira bug whose Customer field says "TBD".
+
+One organization is misspelled where the fuzzy tier still finds it: Redfern Hotels' Jira bugs say
+"Redfern Hottles", a match below the high band that is flagged low.
 """
 
 from __future__ import annotations
@@ -76,9 +100,32 @@ INCIDENT_COLUMNS = [
     "company",
     "company__display",
     "correlation_id",
+    "caller_id",
 ]
-BUG_COLUMNS = ["key", "id", "summary", "status", "created", "updated", "priority", "customer"]
-CUSTOMER_COLUMNS = ["id", "name", "email", "created", "currency", "delinquent", "description"]
+BUG_COLUMNS = [
+    "key",
+    "id",
+    "summary",
+    "status",
+    "created",
+    "updated",
+    "priority",
+    "customer",
+    "reporter_name",
+    "reporter_email",
+]
+CUSTOMER_COLUMNS = [
+    "id",
+    "name",
+    "email",
+    "created",
+    "currency",
+    "delinquent",
+    "description",
+    "billing_contact_name",
+]
+CONTACT_COLUMNS = ["Id", "AccountId", "FirstName", "LastName", "Email", "Title", "CreatedDate"]
+SYS_USER_COLUMNS = ["sys_id", "first_name", "last_name", "email", "company", "sys_created_on"]
 INVOICE_COLUMNS = [
     "id",
     "customer",
@@ -161,7 +208,7 @@ COMPANIES = [
         212000,
         "Brightwater Health, Inc.",
         "https://brightwaterhealth.com",
-        ("Brightwater",),
+        ("Brightwater Health",),
         "Brightwater Health",
         "finance@brightwaterhealth.com",
     ),
@@ -190,7 +237,7 @@ COMPANIES = [
         77000,
         "Ferncliff Retail Ltd",
         "https://ferncliff.co",
-        ("ferncliff-retail", "Ferncliff"),
+        ("ferncliff-retail", "Ferncliff Retail"),
         "Ferncliff Retail Ltd",
         "accounts@ferncliff.co",
         blocked=1,
@@ -353,7 +400,7 @@ COMPANIES = [
         118000,
         "Quillon Systems GmbH",
         "https://quillon.com",
-        ("Quillon",),
+        ("Quillon Systems",),
         "Quillon Systems GmbH",
         "rechnung@quillon.com",
         extra_accounts=(("Quillon Systems Inc.", "http://www.quillon.com/us"),),
@@ -368,7 +415,7 @@ COMPANIES = [
         99000,
         "Redfern Hotels",
         "https://redfernhotels.com",
-        ("Redfern Hotels",),
+        ("Redfern Hottles",),  # a misspelling the fuzzy tier matches low
         "Redfern Hotels",
         "accounts@redfernhotels.com",
     ),
@@ -559,11 +606,302 @@ COMPANIES = [
         214000,
         "Elmstead Manufacturing Co.",
         "https://elmstead.com",
-        ("Elmstead",),
+        ("Elmstead Manufacturing",),
         "Elmstead Manufacturing",
         "ap@elmstead.com",
     ),
 ]
+
+
+@dataclass
+class Person:
+    """One person at a customer, and how each system holds them."""
+
+    company: str  # the Company.key they work at
+    first: str  # Salesforce's spelling: the contact's
+    last: str
+    email: str
+    title: str
+    snow: tuple[str, str, str] | None = None  # ServiceNow user (first, last, email); None: none
+    jira: tuple[str, str] | None = None  # the portal's reporter (name, email) on the company's bugs
+    stripe: bool = False  # the billing contact on the company's Stripe customer
+    caller: bool = False  # raises the company's open P1 incidents
+    sf: bool = True  # a Salesforce contact
+    joined: int = 0  # days before AS_OF the contact was created; 0: with the account
+
+
+PEOPLE = [
+    Person(
+        "cobalt",
+        "Maria",
+        "Lopez",
+        "maria.lopez@cobaltfreight.com",
+        "VP Operations",
+        snow=("Maria", "Lopez", "maria.lopez@cobaltfreight.com"),
+        caller=True,
+    ),
+    # One person, two spellings and two address formats.
+    Person(
+        "cobalt",
+        "John",
+        "Smith",
+        "john.smith@cobaltfreight.com",
+        "IT Director",
+        snow=("Jon", "Smith", "jsmith@cobaltfreight.com"),
+        jira=("John Smith", "jsmith@cobaltfreight.com"),
+    ),
+    # Another Maria Lopez, at another customer: another person.
+    Person(
+        "juniper",
+        "Maria",
+        "Lopez",
+        "mlopez@juniperlogistics.com",
+        "Controller",
+        snow=("Maria", "Lopez", "maria.lopez@juniperlogistics.com"),
+        stripe=True,
+    ),
+    Person("juniper", "Peter", "Nguyen", "peter.nguyen@juniperlogistics.com", "IT Manager"),
+    Person(
+        "ironbark",
+        "Katherine",
+        "Doyle",
+        "katherine.doyle@ironbarkenergy.com",
+        "Head of Digital",
+        snow=("Catherine", "Doyle", "cdoyle@ironbarkenergy.com"),
+        caller=True,
+    ),
+    Person(
+        "ironbark",
+        "Liam",
+        "Walsh",
+        "liam.walsh@ironbarkenergy.com",
+        "Platform Engineer",
+        jira=("Liam Walsh", "liam.walsh@ironbarkenergy.com"),
+    ),
+    # A nickname: Liz in ServiceNow.
+    Person(
+        "lumen",
+        "Elizabeth",
+        "Moreno",
+        "elizabeth.moreno@lumendental.com",
+        "Practice Manager",
+        snow=("Liz", "Moreno", "liz@lumendental.com"),
+        caller=True,
+    ),
+    Person("lumen", "Arjun", "Patel", "arjun.patel@lumendental.com", "Finance Lead", stripe=True),
+    # A nickname: Bob in ServiceNow.
+    Person(
+        "marlowe",
+        "Robert",
+        "Harlan",
+        "robert.harlan@marloweins.com",
+        "CTO",
+        snow=("Bob", "Harlan", "bob.harlan@marloweins.com"),
+        caller=True,
+    ),
+    Person(
+        "marlowe",
+        "Grace",
+        "Kim",
+        "grace.kim@marloweins.com",
+        "Claims Systems Lead",
+        jira=("Grace Kim", "grace.kim@marloweins.com"),
+    ),
+    # Daniel Okafor moved from Granite Ridge Bank to Vantage Payroll: a contact at each.
+    Person(
+        "granite",
+        "Daniel",
+        "Okafor",
+        "daniel.okafor@graniteridgebank.com",
+        "Payments Architect",
+        snow=("Daniel", "Okafor", "daniel.okafor@graniteridgebank.com"),
+    ),
+    Person(
+        "granite",
+        "Helen",
+        "Brooks",
+        "helen.brooks@graniteridgebank.com",
+        "Treasury Manager",
+        stripe=True,
+    ),
+    Person(
+        "vantage",
+        "Daniel",
+        "Okafor",
+        "dokafor@vantagepayroll.com",
+        "Director of Engineering",
+        jira=("Daniel Okafor", "dokafor@vantagepayroll.com"),
+        joined=40,
+    ),
+    Person(
+        "vantage",
+        "Samira",
+        "Haddad",
+        "samira.haddad@vantagepayroll.com",
+        "Operations Lead",
+        snow=("Samira", "Haddad", "samira.haddad@vantagepayroll.com"),
+    ),
+    Person(
+        "kestrel",
+        "Jeffrey",
+        "Marsh",
+        "jeffrey.marsh@kestrelaero.com",
+        "Avionics Program Manager",
+        snow=("Jeffery", "Marsh", "jmarsh@kestrelaero.com"),
+    ),
+    Person("kestrel", "Olivia", "Grant", "olivia.grant@kestrelaero.com", "Procurement"),
+    Person(
+        "larkspur-analytics",
+        "Nadia",
+        "Petrov",
+        "nadia.petrov@larkspuranalytics.com",
+        "COO",
+        snow=("Nadia", "Petrov", "nadia.petrov@larkspuranalytics.com"),
+        stripe=True,
+    ),
+    Person(
+        "larkspur-labs",
+        "Tomas",
+        "Lind",
+        "tomas.lind@larkspurlabs.io",
+        "Lab Systems Manager",
+        stripe=True,
+    ),
+    Person(
+        "ferncliff",
+        "Oliver",
+        "Hughes",
+        "oliver.hughes@ferncliff.co",
+        "eCommerce Director",
+        jira=("Oliver Hughes", "oliver.hughes@ferncliff.co"),
+    ),
+    Person(
+        "halcyon",
+        "Priya",
+        "Shah",
+        "priya.shah@halcyonmedia.tv",
+        "Head of Production",
+        snow=("Priya", "Shah", "priya.shah@halcyonmedia.tv"),
+        jira=("Priya Shah", "priya.shah@halcyonmedia.tv"),
+    ),
+    # A ServiceNow user with no contact in Salesforce.
+    Person(
+        "halcyon",
+        "Tom",
+        "Becker",
+        "tom.becker@halcyonmedia.tv",
+        "Editor",
+        snow=("Tom", "Becker", "tom.becker@halcyonmedia.tv"),
+        sf=False,
+    ),
+    Person(
+        "pinecrest",
+        "Rachel",
+        "Adams",
+        "rachel.adams@pinecrestschools.org",
+        "IT Coordinator",
+        jira=("Rachel Adams", "rachel.adams@pinecrestschools.org"),
+    ),
+    Person(
+        "zephyr",
+        "Marcus",
+        "Bell",
+        "marcus.bell@zephyrtel.com",
+        "Network Operations",
+        snow=("Marcus", "Bell", "marcus.bell@zephyrtel.com"),
+        caller=True,
+    ),
+    Person(
+        "brightwater",
+        "Hannah",
+        "Cole",
+        "hannah.cole@brightwaterhealth.com",
+        "Clinical Systems Lead",
+        snow=("Hannah", "Cole", "hannah.cole@brightwaterhealth.com"),
+    ),
+    Person(
+        "elmstead",
+        "Victor",
+        "Sousa",
+        "victor.sousa@elmstead.com",
+        "Plant IT Manager",
+        snow=("Victor", "Sousa", "victor.sousa@elmstead.com"),
+        jira=("Victor Sousa", "victor.sousa@elmstead.com"),
+    ),
+    Person("northgate", "Emma", "Clarke", "emma.clarke@northgatefoods.com", "Supply Chain Lead"),
+    Person(
+        "redfern",
+        "James",
+        "Whitaker",
+        "james.whitaker@redfernhotels.com",
+        "Finance Director",
+        stripe=True,
+    ),
+    Person("quillon", "Lena", "Fischer", "lena.fischer@quillon.com", "Head of IT"),
+    Person(
+        "willow",
+        "Anna",
+        "Reid",
+        "anna.reid@willowcreekclinics.org",
+        "Operations Manager",
+        snow=("Anna", "Reid", "anna.reid@willowcreekclinics.org"),
+    ),
+    Person(
+        "saltmarsh",
+        "Ben",
+        "Carter",
+        "ben@saltmarshbrewing.com",
+        "Owner",
+        stripe=True,
+    ),
+    Person("tamarack", "Ian", "Frost", "ian.frost@tamarackmining.com", "Mine Systems Engineer"),
+    Person(
+        "xylo",
+        "Mei",
+        "Chen",
+        "mei.chen@xylorobotics.ai",
+        "Robotics Software Lead",
+        jira=("Mei Chen", "mei.chen@xylorobotics.ai"),
+    ),
+]
+
+#: Billed in Stripe and in no other system: (key, name, email, billing contact). Harbor Lane
+#: Bakery's billing runs outside the CRM; Tessa Rowe Design is billed on a personal mailbox.
+STRIPE_ONLY = (
+    ("harbor-lane", "Harbor Lane Bakery", "ap@harborlanebakery.com", None),
+    ("tessa-rowe", "Tessa Rowe Design", "tessa.rowe.design@gmail.com", "Tessa Rowe"),
+)
+#: A company the service desk opened by hand, its name mistyped, with no website.
+SNOW_TYPO = ("halcyon-typo", "Halcyon Mdia Grp")
+#: The Customer field of a bug raised before anyone knew whose it was.
+JIRA_PLACEHOLDER = "TBD"
+
+#: The matching model whose run the August bulk import was.
+MODEL_VERSION = "match-v2"
+#: The model's score on the links it made wrong or found hard, by (system, the record's
+#: system_key's owner): every other link it made scores 0.91 and above (see _model_score).
+#: Wrong links score 0.60 to 0.80; Saltmarsh's (a personal mailbox, matched by name) and Jon
+#: Smith's are right but low.
+WRONG_ORG_SCORES = {"larkspur-analytics": 0.71, "larkspur-labs": 0.66}
+WILLOW_DUPLICATE_SCORE = 0.64
+LOW_RIGHT_ORG_SCORES = {"saltmarsh": 0.78}
+#: The person links the model made wrong, (company, last name, system) -> (the company of the
+#: master it linked to instead, its score), and the ones it scored low: right, a guess, or none.
+WRONG_PERSON_LINKS = {
+    ("juniper", "Lopez", "servicenow"): ("cobalt", 0.77),
+    ("vantage", "Okafor", "jira"): ("granite", 0.69),
+}
+LOW_PERSON_SCORES = {
+    ("cobalt", "Smith", "servicenow"): 0.71,
+    ("marlowe", "Harlan", "servicenow"): 0.83,
+}
+#: The person mentions the model left unlinked.
+UNLINKED_PEOPLE = {("lumen", "Moreno", "servicenow")}
+
+
+def _model_score(*parts: str) -> float:
+    """A confident model score, 0.91 to 0.99, the same on every run for the same link."""
+    return round(0.91 + int(_hex("score", *parts, n=6), 16) % 81 / 1000, 2)
 
 
 def _hex(*parts: str | int, n: int = 32) -> str:
@@ -613,8 +951,12 @@ class Data:
     bugs: list[dict] = field(default_factory=list)
     customers: list[dict] = field(default_factory=list)
     invoices: list[dict] = field(default_factory=list)
+    contacts: list[dict] = field(default_factory=list)
+    users: list[dict] = field(default_factory=list)
     masters: list[dict] = field(default_factory=list)
     xref: list[dict] = field(default_factory=list)
+    person_masters: list[dict] = field(default_factory=list)
+    xref_person: list[dict] = field(default_factory=list)
     syncs: list[dict] = field(default_factory=list)
 
 
@@ -627,6 +969,7 @@ def build(as_of: date) -> Data:
     bulk_import = datetime.combine(add_months(as_of, -3) + timedelta(days=13), time(2, 30))
     account_n = opp_n = inc_n = bug_n = 0
     by_key: dict[str, dict] = {}  # each company's ids in each system
+    billing_contact = {p.company: f"{p.first} {p.last}" for p in PEOPLE if p.stripe}
 
     for i, c in enumerate(COMPANIES):
         ids: dict = {"accounts": []}
@@ -702,10 +1045,103 @@ def build(as_of: date) -> Data:
                     "currency": "usd",
                     "delinquent": c.overdue > 0,
                     "description": None,
+                    "billing_contact_name": billing_contact.get(c.key),
                 }
             )
             if "stale-stripe" in c.tags:
                 ids["stale_stripe"] = "cus_" + _b62("customer", c.key, "deleted", n=14)
+
+    # The records no rule gives a customer: Stripe customers billed outside the CRM, and the
+    # company the service desk typed by hand.
+    for k, (key, name, email, contact) in enumerate(STRIPE_ONLY):
+        cus = "cus_" + _b62("customer", key, n=14)
+        by_key[key] = {"stripe": cus}
+        d.customers.append(
+            {
+                "id": cus,
+                "name": name,
+                "email": email,
+                "created": epoch(
+                    datetime.combine(as_of - timedelta(days=210 - 30 * k), time(10, 5))
+                ),
+                "currency": "usd",
+                "delinquent": False,
+                "description": None,
+                "billing_contact_name": contact,
+            }
+        )
+    typo_key, typo_name = SNOW_TYPO
+    d.companies.append(
+        {
+            "sys_id": _hex("core_company", typo_key),
+            "name": typo_name,
+            "website": None,
+            "city": None,
+            "country": "US",
+            "customer": True,
+            "sys_created_on": ts(datetime.combine(as_of - timedelta(days=75), time(16, 40))),
+        }
+    )
+
+    # People: each contact under its company's first account, each ServiceNow user under its
+    # company, and the portal reporter each company's bugs carry.
+    contact_n = 0
+    people: list[dict] = []  # each person's ids, in PEOPLE's order
+    for k, p in enumerate(PEOPLE):
+        ids = {
+            "created": datetime.combine(
+                as_of - timedelta(days=p.joined or 600 - 9 * k), time(11, 15)
+            )
+        }
+        people.append(ids)
+        company = by_key[p.company]
+        if p.sf:
+            contact_n += 1
+            ids["contact"] = sf_id("003", contact_n)
+            d.contacts.append(
+                {
+                    "Id": ids["contact"],
+                    "AccountId": company["accounts"][0],
+                    "FirstName": p.first,
+                    "LastName": p.last,
+                    "Email": p.email,
+                    "Title": p.title,
+                    "CreatedDate": ts(ids["created"]),
+                }
+            )
+        if p.snow is not None:
+            first, last, email = p.snow
+            ids["user"] = _hex("sys_user", p.company, email)
+            d.users.append(
+                {
+                    "sys_id": ids["user"],
+                    "first_name": first,
+                    "last_name": last,
+                    "email": email,
+                    "company": company["company"],
+                    "sys_created_on": ts(ids["created"] + timedelta(days=20)),
+                }
+            )
+        if p.jira is not None:
+            ids["reporter"] = p.jira
+        if p.stripe:
+            ids["billing"] = company["stripe"]
+    users = {
+        c.key: [people[k]["user"] for k, p in enumerate(PEOPLE) if p.company == c.key and p.snow]
+        for c in COMPANIES
+    }
+    callers = {
+        c.key: [people[k]["user"] for k, p in enumerate(PEOPLE) if p.company == c.key and p.caller]
+        for c in COMPANIES
+    }
+    reporters = {p.company: people[k]["reporter"] for k, p in enumerate(PEOPLE) if p.jira}
+
+    def caller(c: Company, n: int, urgent: bool) -> str | None:
+        """Who raised a company's incident: its named caller for an urgent one, else its users in
+        turn; none when the company has no ServiceNow user."""
+        if urgent and callers[c.key]:
+            return callers[c.key][0]
+        return users[c.key][n % len(users[c.key])] if users[c.key] else None
 
     # The Larkspur swap's evidence: the overdue invoice is on Larkspur Analytics' own customer.
     # Stripe invoices: one a month for six months, each due 30 days after it is raised. Every
@@ -740,10 +1176,35 @@ def build(as_of: date) -> Data:
                     "collection_method": "send_invoice",
                 }
             )
+    # Billed outside the CRM: three months, each paid.
+    for key, *_ in STRIPE_ONLY:
+        for back in range(3, 0, -1):
+            raised = datetime.combine(add_months(month0, -back), time(8, 0))
+            d.invoices.append(
+                {
+                    "id": "in_" + _b62("invoice", key, back, n=24),
+                    "customer": by_key[key]["stripe"],
+                    "number": f"{_b62('prefix', key, n=6).upper()}-{4 - back:04d}",
+                    "status": "paid",
+                    "amount_due": 42000,
+                    "amount_remaining": 0,
+                    "currency": "usd",
+                    "created": epoch(raised),
+                    "due_date": epoch(raised + timedelta(days=30)),
+                    "collection_method": "send_invoice",
+                }
+            )
 
     # ServiceNow incidents: a resolved history for every company, and the planted open P1s. An open
     # P1 is fixed in Jira: its correlation_id names the bug.
-    def bug(summary: str, status: str, priority: str, opened: datetime, customer: str) -> str:
+    def bug(
+        summary: str,
+        status: str,
+        priority: str,
+        opened: datetime,
+        customer: str,
+        reporter: tuple[str, str] | None,
+    ) -> str:
         nonlocal bug_n
         bug_n += 1
         key = f"ENG-{400 + bug_n}"
@@ -757,6 +1218,8 @@ def build(as_of: date) -> Data:
                 "updated": ts(opened + timedelta(days=3)),
                 "priority": priority,
                 "customer": customer,
+                "reporter_name": reporter[0] if reporter else None,
+                "reporter_email": reporter[1] if reporter else None,
             }
         )
         return key
@@ -770,6 +1233,7 @@ def build(as_of: date) -> Data:
         opened: datetime,
         resolved: datetime | None,
         fix: str | None,
+        caller_id: str | None,
     ) -> None:
         nonlocal inc_n
         inc_n += 1
@@ -785,6 +1249,7 @@ def build(as_of: date) -> Data:
                 "company": company,
                 "company__display": c.snow_name,
                 "correlation_id": fix,
+                "caller_id": caller_id,
             }
         )
 
@@ -799,9 +1264,17 @@ def build(as_of: date) -> Data:
     for i, c in enumerate(COMPANIES):
         ids = by_key[c.key]
         jira_names = ids.get("jira", ())
+        reporter = reporters.get(c.key)
         for j, name in enumerate(jira_names):
             opened = datetime.combine(as_of - timedelta(days=60 + 11 * i + 5 * j), noon)
-            bug(f"{topics[(i + j) % len(topics)]} ({c.name})", "Done", "Medium", opened, name)
+            bug(
+                f"{topics[(i + j) % len(topics)]} ({c.name})",
+                "Done",
+                "Medium",
+                opened,
+                name,
+                reporter,
+            )
         company = ids.get("company")
         if company is None:
             continue
@@ -815,9 +1288,12 @@ def build(as_of: date) -> Data:
             opened,
             opened + timedelta(days=2),
             None,
+            caller(c, 0, False),
         )
         opened = datetime.combine(as_of - timedelta(days=20 + i % 9), time(14, 10))
-        incident(c, company, topics[(i + 2) % len(topics)], 2, 3, opened, None, None)
+        incident(
+            c, company, topics[(i + 2) % len(topics)], 2, 3, opened, None, None, caller(c, 1, False)
+        )
         if c.key == "zephyr":
             opened = datetime.combine(as_of - timedelta(days=12), time(7, 55))
             incident(
@@ -829,6 +1305,7 @@ def build(as_of: date) -> Data:
                 opened,
                 opened + timedelta(hours=9),
                 None,
+                caller(c, 0, True),
             )
         for p in range(c.open_p1):
             opened = datetime.combine(as_of - timedelta(days=4 + p + i % 5), time(3, 20))
@@ -839,6 +1316,7 @@ def build(as_of: date) -> Data:
                 "Highest",
                 opened,
                 jira_names[0],
+                reporter,
             )
             incident(
                 c,
@@ -849,6 +1327,7 @@ def build(as_of: date) -> Data:
                 opened,
                 None,
                 fix,
+                caller(c, p, True),
             )
         # A blocked fix with no P1 behind it.
         if c.blocked and not c.open_p1:
@@ -859,6 +1338,7 @@ def build(as_of: date) -> Data:
                 "High",
                 opened,
                 jira_names[-1],
+                reporter,
             )
         # Open, not P1, not blocked: what does not count.
         if jira_names:
@@ -869,16 +1349,38 @@ def build(as_of: date) -> Data:
                 "Low",
                 opened,
                 jira_names[0],
+                reporter,
             )
+    # A bug raised before anyone knew whose it was.
+    bug(
+        "Uploads stall at 99% on large media files",
+        "To Do",
+        "Medium",
+        datetime.combine(as_of - timedelta(days=6), time(15, 30)),
+        JIRA_PLACEHOLDER,
+        reporters["halcyon"],
+    )
 
     # The hub: a master each, linked to each system's ids by the first load, the steward's links
-    # since, and the August bulk import.
+    # since, and the August bulk import: the matching model's run, each of its links scored.
     def master(n: int, name: str, created: datetime) -> str:
         master_id = f"MC-{10000 + n}"
         d.masters.append({"master_id": master_id, "name": name, "created_at": ts(created)})
         return master_id
 
-    def link(master_id: str, system: str, key: str, at: datetime, by: str) -> None:
+    def scored(by: str, score: float | None) -> dict:
+        """A link's match metadata: the first load's rules, a person's hand, or the model's run
+        and its score."""
+        if by == "bulk import":
+            assert score is not None, "a model link carries its score"
+            return {"match_method": "model", "match_score": score, "model_version": MODEL_VERSION}
+        assert score is None, f"a {by} link has no score"
+        method = "rule" if by == "initial load" else "steward"
+        return {"match_method": method, "match_score": None, "model_version": None}
+
+    def link(
+        master_id: str, system: str, key: str, at: datetime, by: str, score: float | None = None
+    ) -> None:
         d.xref.append(
             {
                 "master_id": master_id,
@@ -886,6 +1388,7 @@ def build(as_of: date) -> Data:
                 "system_key": key,
                 "linked_at": ts(at),
                 "linked_by": by,
+                **scored(by, score),
             }
         )
 
@@ -915,11 +1418,13 @@ def build(as_of: date) -> Data:
         if "stripe" in ids and "gap-stripe" not in c.tags:
             if c.key in larkspur_swap:
                 other = by_key[larkspur_swap[c.key]]["stripe"]
-                link(m, "stripe", other, bulk_import, "bulk import")
+                link(m, "stripe", other, bulk_import, "bulk import", WRONG_ORG_SCORES[c.key])
             elif "stale-stripe" in c.tags:
                 link(m, "stripe", ids["stale_stripe"], at, by)
             else:
-                link(m, "stripe", ids["stripe"], at + timedelta(days=1), by)
+                # The model linked every billed customer the hub still held.
+                score = LOW_RIGHT_ORG_SCORES.get(c.key) or _model_score("stripe", c.key)
+                link(m, "stripe", ids["stripe"], bulk_import, "bulk import", score)
     # Duplicate customers: a second master for Brightwater's ServiceNow company (opened by the
     # support desk) and for Willow Creek's Jira customer (the bulk import).
     n += 1
@@ -934,7 +1439,70 @@ def build(as_of: date) -> Data:
     n += 1
     dup = master(n, "Willow Creek Clinics (support)", bulk_import)
     for name in by_key["willow"]["jira"]:
-        link(dup, "jira", name, bulk_import, "bulk import")
+        link(dup, "jira", name, bulk_import, "bulk import", WILLOW_DUPLICATE_SCORE)
+
+    # People: a master person for each contact, under its company's master, linked to the contact
+    # by the first load (or a steward, for a contact made since). The model's run linked each
+    # other system's person to a master person, wrongly in places (WRONG_PERSON_LINKS).
+    def person_link(
+        pm: str, system: str, key: str, at: datetime, by: str, score: float | None
+    ) -> None:
+        d.xref_person.append(
+            {
+                "person_master_id": pm,
+                "system": system,
+                "system_key": key,
+                "linked_at": ts(at),
+                "linked_by": by,
+                **scored(by, score),
+            }
+        )
+
+    person_master: dict[tuple[str, str], str] = {}  # (company, last name) -> master person
+    for k, p in enumerate(PEOPLE):
+        if not p.sf:
+            continue
+        ids = people[k]
+        pm = f"MP-{20001 + len(d.person_masters)}"
+        person_master[(p.company, p.last)] = pm
+        at, by = (
+            (first_load, "initial load")
+            if ids["created"] <= first_load
+            else (
+                ids["created"] + timedelta(days=1),
+                "steward",
+            )
+        )
+        d.person_masters.append(
+            {
+                "person_master_id": pm,
+                "name": f"{p.first} {p.last}",
+                "email": p.email,
+                "master_id": masters[p.company],
+                "created_at": ts(at),
+            }
+        )
+        person_link(pm, "salesforce", ids["contact"], at, by, None)
+    for k, p in enumerate(PEOPLE):
+        ids = people[k]
+        mentions = (
+            ("servicenow", ids.get("user")),
+            ("jira", ids["reporter"][1] if "reporter" in ids else None),
+            ("stripe", ids.get("billing")),
+        )
+        for system, key in mentions:
+            planted = (p.company, p.last, system)
+            if key is None or planted in UNLINKED_PEOPLE:
+                continue
+            if planted in WRONG_PERSON_LINKS:
+                other, score = WRONG_PERSON_LINKS[planted]
+                pm = person_master[(other, p.last)]
+            elif p.sf:
+                pm = person_master[(p.company, p.last)]
+                score = LOW_PERSON_SCORES.get(planted) or _model_score("person", system, key)
+            else:
+                continue  # no contact: the model had no master to link it to
+            person_link(pm, system, key, bulk_import, "bulk import", score)
 
     synced = datetime.combine(as_of, time(6, 0))
     for k, system in enumerate(("salesforce", "servicenow", "jira", "stripe")):
@@ -976,9 +1544,10 @@ HUB_SCHEMA = """\
 -- machine learning models is strictly prohibited without explicit written
 -- permission from the copyright holder.
 --
--- Halyard Software's customer master hub (schema mdm), written by generate.py: master customers, the
--- crosswalk from each master to each system's own id, and when the hub last synced from each
--- system. Read live by the customer360 demo.
+-- Halyard Software's customer master hub (schema mdm), written by generate.py: master customers and
+-- master people, the crosswalks from each master to each system's own id with how each link was
+-- made (a rule of the first load, a steward, or a matching model's run and its score), and when the
+-- hub last synced from each system. Read live by the customer360 demo (REQ-2034).
 
 CREATE SCHEMA mdm;
 
@@ -994,7 +1563,32 @@ CREATE TABLE mdm.xref (
   system_key varchar NOT NULL,
   linked_at timestamp NOT NULL,
   linked_by varchar NOT NULL,
-  PRIMARY KEY (system, system_key)
+  match_method varchar NOT NULL CHECK (match_method IN ('rule', 'steward', 'model')),
+  match_score numeric(3, 2) CHECK (match_score BETWEEN 0 AND 1),
+  model_version varchar,
+  PRIMARY KEY (system, system_key),
+  CHECK ((match_method = 'model') = (match_score IS NOT NULL AND model_version IS NOT NULL))
+);
+
+CREATE TABLE mdm.master_person (
+  person_master_id varchar PRIMARY KEY,
+  name varchar NOT NULL,
+  email varchar NOT NULL,
+  master_id varchar NOT NULL REFERENCES mdm.master_customer (master_id),
+  created_at timestamp NOT NULL
+);
+
+CREATE TABLE mdm.xref_person (
+  person_master_id varchar NOT NULL REFERENCES mdm.master_person (person_master_id),
+  system varchar NOT NULL CHECK (system IN ('salesforce', 'servicenow', 'jira', 'stripe')),
+  system_key varchar NOT NULL,
+  linked_at timestamp NOT NULL,
+  linked_by varchar NOT NULL,
+  match_method varchar NOT NULL CHECK (match_method IN ('rule', 'steward', 'model')),
+  match_score numeric(3, 2) CHECK (match_score BETWEEN 0 AND 1),
+  model_version varchar,
+  PRIMARY KEY (system, system_key),
+  CHECK ((match_method = 'model') = (match_score IS NOT NULL AND model_version IS NOT NULL))
 );
 
 CREATE TABLE mdm.sync_run (
@@ -1004,11 +1598,28 @@ CREATE TABLE mdm.sync_run (
 """
 
 
+LINK_COLUMNS = [
+    "system",
+    "system_key",
+    "linked_at",
+    "linked_by",
+    "match_method",
+    "match_score",
+    "model_version",
+]
+
+
 def write_hub(path: Path, d: Data) -> None:
     out = [HUB_SCHEMA]
     for table, columns, rows in (
         ("mdm.master_customer", ["master_id", "name", "created_at"], d.masters),
-        ("mdm.xref", ["master_id", "system", "system_key", "linked_at", "linked_by"], d.xref),
+        ("mdm.xref", ["master_id", *LINK_COLUMNS], d.xref),
+        (
+            "mdm.master_person",
+            ["person_master_id", "name", "email", "master_id", "created_at"],
+            d.person_masters,
+        ),
+        ("mdm.xref_person", ["person_master_id", *LINK_COLUMNS], d.xref_person),
         ("mdm.sync_run", ["system", "synced_at"], d.syncs),
     ):
         values = ",\n".join("  (" + ", ".join(_sql(r[c]) for c in columns) + ")" for r in rows)
@@ -1024,8 +1635,10 @@ def write(root: Path, as_of: date) -> Data:
     write_tsv(
         rows / "salesforce" / "salesforce.Opportunity.tsv", OPPORTUNITY_COLUMNS, d.opportunities
     )
+    write_tsv(rows / "salesforce" / "salesforce.Contact.tsv", CONTACT_COLUMNS, d.contacts)
     write_tsv(rows / "servicenow" / "servicenow.core_company.tsv", COMPANY_COLUMNS, d.companies)
     write_tsv(rows / "servicenow" / "servicenow.incident.tsv", INCIDENT_COLUMNS, d.incidents)
+    write_tsv(rows / "servicenow" / "servicenow.sys_user.tsv", SYS_USER_COLUMNS, d.users)
     write_tsv(rows / "jira" / "jira.bug.tsv", BUG_COLUMNS, d.bugs)
     write_tsv(rows / "stripe" / "default.get_customers.tsv", CUSTOMER_COLUMNS, d.customers)
     write_tsv(rows / "stripe" / "default.get_invoices.tsv", INVOICE_COLUMNS, d.invoices)
@@ -1041,9 +1654,10 @@ def main() -> None:
     d = write(HERE, args.as_of)
     print(
         f"customer360 as of {args.as_of}: {len(d.accounts)} accounts, {len(d.opportunities)} opportunities,"
+        f" {len(d.contacts)} contacts, {len(d.users)} ServiceNow users,"
         f" {len(d.companies)} companies, {len(d.incidents)} incidents, {len(d.bugs)} bugs,"
         f" {len(d.customers)} Stripe customers, {len(d.invoices)} invoices; hub {len(d.masters)} masters,"
-        f" {len(d.xref)} links"
+        f" {len(d.xref)} links; {len(d.person_masters)} master people, {len(d.xref_person)} person links"
     )
 
 

@@ -26,7 +26,7 @@ Every query ends up running through the federation engine, which is what lets an
 
 ## All Sources
 
-Provisa registers **80** source types, the ones the Sources form offers. The tables below cover all 80; the index is the count.
+Provisa registers **82** source types, the ones the Sources form offers. The tables below cover all 82; the index is the count.
 
 | # | Group | Source types |
 | --- | --- | --- |
@@ -42,12 +42,12 @@ Provisa registers **80** source types, the ones the Sources form offers. The tab
 | 51–55 | [File-based](#file-based) | `sqlite`, `csv`, `parquet`, `files`, `logs` |
 | 56–57 | [Observability & other](#observability-other) | `google_sheets`, `prometheus` |
 | 58–66 | [Enterprise SaaS](#enterprise-saas-connectors) | `sharepoint`, `salesforce`, `servicenow`, `jira`, `cloudops`, `splunk`, `google_workspace`, `microsoft_365`, [`quickbooks`](#quickbooks) |
-| 67–74 | [API sources](#api-sources) | `openapi`, [`dbt`](#dbt), `graphql_remote`, `grpc_remote`, GitHub, GitLab, Shopify, Stripe |
-| 75 | [GovData](#govdata) | `govdata` |
-| 76–77 | [Data quality checkers](#data-quality-checkers) | `soda`, `great_expectations` |
-| 78 | [Data profiler](#data-profiler) | `data_profiler` |
-| 79 | [Kaggle datasets](#kaggle-datasets) | Kaggle (staged via Sources form; registers as a `files` source; see [Kaggle datasets](#kaggle-datasets)) |
-| 80 | [Wikipedia](#wikipedia) | Wikipedia (registers as a `files` source that crawls the named pages; see [Wikipedia](#wikipedia)) |
+| 67–76 | [API sources](#api-sources) | `openapi`, [`dbt`](#dbt), `graphql_remote`, `grpc_remote`, GitHub, GitLab, Shopify, Stripe, OpenMetadata, DataHub |
+| 77 | [GovData](#govdata) | `govdata` |
+| 78–79 | [Data quality checkers](#data-quality-checkers) | `soda`, `great_expectations` |
+| 80 | [Data profiler](#data-profiler) | `data_profiler` |
+| 81 | [Kaggle datasets](#kaggle-datasets) | Kaggle (staged via Sources form; registers as a `files` source; see [Kaggle datasets](#kaggle-datasets)) |
+| 82 | [Wikipedia](#wikipedia) | Wikipedia (registers as a `files` source that crawls the named pages; see [Wikipedia](#wikipedia)) |
 
 Reference for every source type Provisa supports. "Direct driver" means single-source queries execute against the source natively (sub-100ms). "Connector Name" is the federated connector used when the source participates in multi-source JOINs.
 
@@ -982,6 +982,48 @@ As with any OpenAPI source, each `GET` operation is a table on offer and each ot
 **Exclusions.** Stripe's deprecated token and Sources payment integration is left out of the shipped specification. The list is under [Exclusions on a specification-built source](#exclusions-on-a-specification-built-source). An operator's own `exclusions` are added to the brand's.
 
 `stripe` also appears in `SourceType` among the stubbed Supabase `wrappers` types. A Stripe source added through the form is an `openapi` source, not that stub.
+
+#### Governance catalogs: OpenMetadata and DataHub {: #governance-catalogs }
+
+OpenMetadata and DataHub are branded sources carried by `openapi`. Each appears in the Sources form under its own name, under Enterprise. You read the catalog live, so its tables, tags, owners, domains and glossary terms can be joined with any other data in Provisa. Nothing syncs in either direction. When the catalog and your Provisa model disagree, you find out with a query.
+
+Each customer runs these catalogs at their own address. The form asks for that address as the **Base URL** (an `http` or `https` address with no trailing slash) and for a token. Provisa reads the OpenAPI specification from your running instance when you add the source and again at every refresh, because it changes between releases. None ships with Provisa.
+
+| | OpenMetadata | DataHub |
+|---|---|---|
+| Base URL | The address you open OpenMetadata at, such as `https://openmetadata.example.com`, without `/api` | The address of the metadata service (GMS), such as `https://datahub.example.com/gms` |
+| API called at | `<base URL>/api` | The server its specification names, on the GMS host. Each entity list is at `<base URL>/openapi/v3/entity/<entity>` |
+| Specification read from | `<base URL>/swagger.json` | `<base URL>/openapi/v3/api-docs/10-openapi-v3` |
+| Token | A bot's JWT token, from **Settings > Bots** | A personal access token or a service account's token, from **Settings > Access Tokens** |
+| Token checked with | `GET /v1/users/loggedInUser` | `GET /openapi/v3/entity/corpuser?count=1` |
+
+The token is sent as a bearer token and checked once before the source is added. A rejected token fails registration with `openapi.credential_rejected`. A missing token or base URL fails before any call, naming the field.
+
+**What you register.** Adding the source registers no tables. Every list the specification offers is a table you can register:
+
+- OpenMetadata: `/v1/tables` (each table with its columns and their tags, owners, domains and certification), `/v1/glossaryTerms`, `/v1/domains`, `/v1/dataProducts`, `/v1/classifications`, `/v1/tags`, `/v1/users`, `/v1/teams`, `/v1/dataQuality/testCases` and the test case results.
+- DataHub: one list per entity, among them `dataset`, `glossaryterm`, `domain`, `dataproduct`, `tag`, `corpuser` and `corpgroup`. Each row carries the aspects you ask for in the table's `aspects` argument, for example `schemaMetadata`, `globalTags`, `ownership`, `glossaryTerms` and `domains`.
+
+OpenMetadata returns only the fields you ask for in its `fields` parameter. Set it as a fixed argument of the table, for example `columns,tags,owners,domains,certification`.
+
+**Paging.** Both catalogs answer a list one page at a time with a cursor for the next page. OpenMetadata answers `{data, paging: {after}, errors, warnings}`, and DataHub answers `{scrollId, entities}`. The paging Provisa proposes when you register a table reads the rows from `data` or `entities` and follows `paging.after` or `scrollId` until a page comes back without one. A cursor may be a dotted path into the answer, so a plain OpenAPI source with the same shape pages the same way.
+
+**Finding disagreements.** The catalog's tables join with the `meta` tables that hold your Provisa model. With an OpenMetadata table registered as `catalog.list_tables`, this query lists the columns the catalog classifies as personal data that Provisa does not mask:
+
+```sql
+SELECT r.table_name, c.column_name
+FROM meta.registered_tables r
+JOIN meta.table_columns c ON c.table_id = r.id
+JOIN catalog.list_tables t ON t.name = r.table_name
+WHERE t.columns @> jsonb_build_array(
+    jsonb_build_object('name', c.column_name, 'tags', '[{"tagFQN": "PII.Sensitive"}]'::jsonb)
+  )
+  AND NOT c.masks @> '[{"mask": {}}]'::jsonb;
+```
+
+The same pattern finds owners that differ between the catalog and your domains, and tables certified in one and missing from the other.
+
+Until a brand exists for another catalog, you can add it as a plain OpenAPI source with its own base URL and specification URL.
 
 #### Exclusions on a specification-built source
 

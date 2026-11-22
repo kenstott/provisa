@@ -1,0 +1,25 @@
+{
+  "glossaryPage": {
+    "title": "Glossar",
+    "intro": "Die freigegebenen Begriffe Ihrer Organisation und ihre Bedeutung.",
+    "search": "Begriffe suchen",
+    "searchPlaceholder": "Namen und Definitionen durchsuchen",
+    "domainFilter": "Domänen",
+    "domainFilterPlaceholder": "Alle Domänen",
+    "sort": "Sortierung",
+    "sortName": "A–Z",
+    "sortRecent": "Zuletzt geändert",
+    "letterBar": "Zu Buchstabe springen",
+    "otherLetter": "#",
+    "alsoCalled": "Auch genannt",
+    "kindOf": "Eine Art von",
+    "kinds": "Arten",
+    "seeAlso": "Siehe auch",
+    "allDomains": "Alle Domänen",
+    "loadFailed": "Das Glossar konnte nicht geladen werden: {{message}}",
+    "empty": "Noch keine freigegebenen Begriffe.",
+    "noMatch": "Keine passenden Begriffe.",
+    "count_one": "{{count}} Begriff",
+    "count_other": "{{count}} Begriffe"
+  }
+}

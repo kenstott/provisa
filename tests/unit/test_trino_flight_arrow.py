@@ -72,6 +72,11 @@ def _field(name: str, arrow: pa.DataType, trino_type: str, sig: dict, encoding: 
 
 _VARCHAR = _type("varchar", _long(2147483647))
 
+
+def _array(element: dict) -> dict:
+    return _type("array", {"kind": "TYPE", "value": element})
+
+
 #: (Trino type, signature, Arrow type, encoding, the value as the proxy writes it, the value as
 #: the Trino protocol carries it -- what the Trino Python client maps).
 _CORPUS: list[tuple[str, dict, pa.DataType, str, Any, Any]] = [
@@ -155,11 +160,69 @@ _CORPUS: list[tuple[str, dict, pa.DataType, str, Any, Any]] = [
     ("interval year to month", _type("interval year to month"), pa.string(), "text", "1-2", "1-2"),
     (
         "array(integer)",
-        _type("array", {"kind": "TYPE", "value": _type("integer")}),
+        _array(_type("integer")),
+        pa.list_(pa.int32()),
+        "arrow",
+        [1, None, 3],
+        [1, None, 3],
+    ),
+    (
+        "array(bigint)",
+        _array(_type("bigint")),
+        pa.list_(pa.int64()),
+        "arrow",
+        [4, 2**40],
+        [4, 2**40],
+    ),
+    (
+        "array(double)",
+        _array(_type("double")),
+        pa.list_(pa.float64()),
+        "arrow",
+        [4.0, 6.5, None, float("nan")],
+        [4.0, 6.5, None, "NaN"],
+    ),
+    ("array(real)", _array(_type("real")), pa.list_(pa.float32()), "arrow", [0.1], [0.1]),
+    (
+        "array(varchar)",
+        _array(_VARCHAR),
+        pa.list_(pa.string()),
+        "arrow",
+        ["cat", None, "fat"],
+        ["cat", None, "fat"],
+    ),
+    (
+        "array(array(integer))",
+        _array(_array(_type("integer"))),
+        pa.list_(pa.list_(pa.int32())),
+        "arrow",
+        [[1], [], None, [2, None]],
+        [[1], [], None, [2, None]],
+    ),
+    (
+        "array(decimal(10,2))",
+        _array(_type("decimal", _long(10), _long(2))),
+        pa.list_(pa.decimal128(10, 2)),
+        "arrow",
+        [Decimal("1.50")],
+        ["1.50"],
+    ),
+    (
+        "array(timestamp(3) with time zone)",
+        _array(_type("timestamp with time zone", _long(3))),
+        pa.list_(pa.timestamp("us", tz="UTC")),
+        "arrow",
+        [datetime(2024, 1, 2, 1, 4, 5, 123000, tzinfo=timezone.utc)],
+        ["2024-01-02 03:04:05.123 +02:00"],
+    ),
+    ("array(unknown)", _array(_type("unknown")), pa.list_(pa.null()), "arrow", [None], [None]),
+    (
+        "array(uuid)",
+        _array(_type("uuid")),
         pa.string(),
         "json",
-        "[1,null,3]",
-        [1, None, 3],
+        '["12151fd2-7586-11e9-8f9e-2a86e4085a59"]',
+        ["12151fd2-7586-11e9-8f9e-2a86e4085a59"],
     ),
     (
         "map(varchar, double)",
@@ -181,10 +244,10 @@ _CORPUS: list[tuple[str, dict, pa.DataType, str, Any, Any]] = [
     ),
     (
         "array(timestamp(9))",
-        _type("array", {"kind": "TYPE", "value": _type("timestamp", _long(9))}),
-        pa.string(),
-        "json",
-        '["2024-01-02 03:04:05.123456500"]',
+        _array(_type("timestamp", _long(9))),
+        pa.list_(pa.timestamp("us")),
+        "arrow",
+        [datetime(2024, 1, 2, 3, 4, 5, 123456)],
         ["2024-01-02 03:04:05.123456500"],
     ),
     ("unknown", _type("unknown"), pa.null(), "arrow", None, None),

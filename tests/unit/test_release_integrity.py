@@ -49,11 +49,9 @@ _LEGS = {
     "linux": "release-linux.yml",
     "publish": "release-publish.yml",
 }
-# PyPI's own jobs are the orchestrator's: PyPI trusted publishing does not accept a token issued
-# to a reusable workflow (pypa/gh-action-pypi-publish#166), which every leg is.
-# The provisa server wheel is not uploaded to PyPI (it outgrew the 10 GB project limit, alpha.510):
-# the publish leg attaches it to the release and lists it in the GitHub Pages index.
-_PYPI = ("publish-pypi", "publish-notebook-pypi")
+# Nothing in the release goes to PyPI (maintainer 2026-11-21): the server, client and notebook
+# wheels are release assets, and the publish leg lists them in the GitHub Pages index.
+_PYPI: tuple[str, ...] = ()
 #: REQ-2225: the orchestrator's other publication, the Spark connector's image that
 #: platform-connectors built and kept in the run.
 _IMAGE_PUSH = "publish-connector-image"
@@ -373,8 +371,6 @@ def test_no_publication_is_reachable_without_every_build():
                 if _publishes(step):
                     where[job] = leg
     assert where == {
-        "publish-pypi": "orchestrator",
-        "publish-notebook-pypi": "orchestrator",
         _IMAGE_PUSH: "orchestrator",
         "publish-release": "publish",
         "publish-wheel-index": "publish",
@@ -444,25 +440,58 @@ def test_an_image_push_is_seen_as_a_publication(step, publishes):
     assert _publishes(step) is publishes
 
 
-def test_pypi_is_published_from_the_orchestrator_never_a_reusable_workflow():
-    """PyPI trusted publishing does not accept a token whose job_workflow_ref is a reusable
-    workflow: alpha.483's PyPI jobs, then in release-publish.yml, failed with invalid-publisher
-    (run 38588660256). Every PyPI upload is a job of build-dmg.yml itself, gated as its other
-    publications are and holding the OIDC token."""
-    for path in sorted(_WORKFLOWS.glob("*.yml")):
-        workflow = yaml.safe_load(path.read_text())
-        reusable = "workflow_call" in (workflow.get(True) or {})
-        for job, body in (workflow.get("jobs") or {}).items():
-            uploads = any(
-                "pypi-publish" in str(step.get("uses", "")) for step in body.get("steps") or []
-            )
-            if uploads:
-                assert not reusable, f"{path.name}:{job} publishes to PyPI from a reusable workflow"
+def test_no_release_workflow_publishes_to_pypi():
+    """Nothing in the release is uploaded to PyPI (maintainer 2026-11-21): no release workflow
+    uses the PyPI publish action or twine, and the orchestrator has no id-token job."""
+    for path in [_WORKFLOWS / "build-dmg.yml", *sorted(_WORKFLOWS.glob("release-*.yml"))]:
+        text = path.read_text()
+        for line in text.splitlines():
+            if line.lstrip().startswith("#"):
+                continue
+            assert "pypi-publish" not in line and "twine upload" not in line, path.name
     orchestrator = _load("build-dmg.yml")["jobs"]
-    gate = orchestrator["publish"]["with"]["publish"]
-    for job in _PYPI:
-        assert orchestrator[job]["permissions"] == {"id-token": "write"}, job
-        assert orchestrator[job]["if"] == gate, job
+    assert not any("pypi" in job for job in orchestrator)
+
+
+def test_the_publish_leg_requires_the_client_and_notebook_wheels_as_release_assets():
+    """The wheels that went to PyPI are release assets the undraft verifies, and the Pages index
+    lists them beside the server wheel."""
+    step = next(s for s in _publish_job()["steps"] if "Publish release" in s.get("name", ""))
+    required = step["env"]["REQUIRED"]
+    assert "provisa_client-" in required and "provisa_notebook-" in required
+    script = (_ROOT / "scripts" / "release_wheel_index.py").read_text()
+    for project in ("provisa", "provisa-client", "provisa-notebook"):
+        assert f'"{project}",' in script.split("PROJECTS = (")[1].split(")")[0]
+
+
+def test_the_extension_wheels_are_attached_not_published_to_pypi():
+    """provisa-duckdb-ext and provisa-pg-ext are release assets (maintainer 2026-11-21): each
+    workflow attaches its wheels under the publish input, none uses the PyPI publish action or
+    twine, none holds an id-token, and the publish leg requires the wheels and the index lists them."""
+    for name, wheels in (
+        ("build-duckdb-extensions.yml", "dist-ext/provisa_duckdb_ext-*.whl"),
+        ("build-pg-extensions.yml", "dist-pg-ext/provisa_pg_ext-*.whl"),
+    ):
+        text = (_ROOT / ".github" / "workflows" / name).read_text()
+        for line in text.splitlines():
+            if not line.lstrip().startswith("#"):
+                assert "pypi-publish" not in line and "twine upload" not in line, name
+        workflow = _load(name)
+        assert workflow[True]["workflow_dispatch"]["inputs"]["publish"]["default"] is False
+        job = workflow["jobs"]["wheel"]
+        assert "id-token" not in job["permissions"]
+        attach = [s for s in job["steps"] if s.get("uses") == _ATTACH]
+        assert len(attach) == 1 and attach[0]["if"] == "inputs.publish", name
+        assert wheels in attach[0]["with"]["files"]
+    cut = (_WORKFLOWS / "release-cut.yml").read_text()
+    for name in ("build-duckdb-extensions.yml", "build-pg-extensions.yml"):
+        assert name in cut
+    assert 'gh workflow run "$workflow" --ref "$VERSION" -f publish=true' in cut
+    step = next(s for s in _publish_job()["steps"] if "Publish release" in s.get("name", ""))
+    required = step["env"]["REQUIRED"]
+    assert "provisa_pg_ext-" in required and required.count("provisa_duckdb_ext-") == 4
+    script = (_ROOT / "scripts" / "release_wheel_index.py").read_text()
+    assert '"provisa-duckdb-ext",' in script and '"provisa-pg-ext",' in script
 
 
 if __name__ == "__main__":

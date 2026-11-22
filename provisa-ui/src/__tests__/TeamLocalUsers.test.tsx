@@ -14,9 +14,20 @@ import { resolve } from "path";
 import { describe, expect, it, vi } from "vitest";
 import { render, screen } from "../test-utils/render";
 
+const ORG_ADMIN_CAPS = ["user_management", "org_settings"];
+let mockCapabilities: string[] = ORG_ADMIN_CAPS;
+
 vi.mock("../hooks/useAdminQueries", () => ({
-  useRoles: () => ({ roles: [{ id: "analyst" }] }),
+  useRoles: () => ({
+    roles: [
+      { id: "org_admin", capabilities: ORG_ADMIN_CAPS, effectiveCapabilities: ORG_ADMIN_CAPS },
+      { id: "analyst", capabilities: ["query"], effectiveCapabilities: ["query"] },
+    ],
+  }),
   useDomains: () => ({ domains: [{ id: "" }, { id: "sales" }] }),
+}));
+vi.mock("../context/AuthContext", () => ({
+  useAuth: () => ({ capabilities: mockCapabilities }),
 }));
 vi.mock("../components/admin/LocalUsersTab", () => ({
   LocalUsersTab: ({ allRoles, allDomains }: { allRoles: string[]; allDomains: string[] }) => (
@@ -28,6 +39,14 @@ import { TeamLocalUsers } from "../components/admin/TeamLocalUsers";
 
 describe("Team's Local users section", () => {
   it("assigns the org's roles and named domains", () => {
+    mockCapabilities = ORG_ADMIN_CAPS;
+    render(<TeamLocalUsers />);
+    expect(screen.getByText("org_admin,analyst|sales")).toBeInTheDocument();
+  });
+
+  it("offers user_management alone no role that carries an administrator's rights", () => {
+    // REQ-1327 (amended 2026-11-16): granting org_admin is an org_admin's act.
+    mockCapabilities = ["user_management"];
     render(<TeamLocalUsers />);
     expect(screen.getByText("analyst|sales")).toBeInTheDocument();
   });

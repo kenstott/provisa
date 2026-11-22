@@ -10,6 +10,9 @@
     "rest": "REST",
     "mcp": "MCP ツール呼び出し",
     "copy": "{{what}}をコピー",
-    "close": "閉じる"
+    "close": "閉じる",
+    "createRelationships": "リレーションシップを作成",
+    "relationshipsCreated_one": "{{count}} 件のリレーションシップを作成しました。",
+    "relationshipsCreated_other": "{{count}} 件のリレーションシップを作成しました。"
   }
 }

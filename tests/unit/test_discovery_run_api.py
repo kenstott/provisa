@@ -1851,10 +1851,48 @@ async def _answered(world: _World, answers: list[dict], **scope: Any) -> tuple[d
     return run, _named((await discovery.list_proposals(_REQUEST, run["id"]))["proposals"])
 
 
-def _apply(accept: list[tuple[int, str]] = (), not_again: list[int] = ()) -> Any:
+def _apply(
+    accept: list[tuple[int, str]] = (),
+    not_again: list[int] = (),
+    cardinality: dict[int, str] | None = None,
+) -> Any:
     return discovery.ApplyRequest(
-        accept=[discovery.AcceptEach(id=i, name=n) for i, n in accept], not_again=list(not_again)
+        accept=[
+            discovery.AcceptEach(id=i, name=n, cardinality=(cardinality or {}).get(i))
+            for i, n in accept
+        ],
+        not_again=list(not_again),
     )
+
+
+async def test_applying_takes_the_name_and_cardinality_the_reviewer_edited(monkeypatch, tmp_path):
+    """REQ-2262: an edited row is accepted under the name and cardinality set in its dialog."""
+    db = await _store(f"sqlite+pysqlite:///{tmp_path / 'store.db'}")
+    await _three_tables(db)
+    world = _World(monkeypatch, db, config=_ASSIGNED, api_keys={"openai": "k"})
+    _stores_meet_half_the_customers(world)
+    run, listed = await _answered(world, [_suggestion((1, "customer_id"), (2, "id"), 0.95)])
+    (kept,) = listed
+    done = await discovery.apply_decisions(
+        _REQUEST,
+        run["id"],
+        _apply([(kept["id"], "my-edit")], cardinality={kept["id"]: "one-to-many"}),
+    )
+    assert done["results"] == [
+        {"id": kept["id"], "action": "accept", "ok": True, "relationship_id": "my-edit"}
+    ]
+    async with db.acquire() as conn:
+        row = (
+            await conn.execute_core(
+                select(so.relationships.c.cardinality).where(so.relationships.c.id == "my-edit")
+            )
+        ).one()
+    assert row.cardinality == "one-to-many"
+
+
+async def test_applying_refuses_a_cardinality_that_is_not_one(monkeypatch, tmp_path):
+    with pytest.raises(ValueError):
+        discovery.AcceptEach(id=1, name="x", cardinality="many-to-many")
 
 
 async def test_applying_accepts_what_is_ticked_marks_what_is_not_wanted_and_leaves_the_rest(
@@ -2008,6 +2046,7 @@ async def test_the_latest_run_a_person_started_is_listed_for_that_person(monkeyp
         "sample_size": None,
         "contained_at": None,
         "shared_ceiling": None,
+        "either_way": False,
     }
 
 
@@ -2547,12 +2586,15 @@ async def test_accepting_a_junction_suggestion_creates_one_relationship_through_
         "customer_id",
         "store_id",
     )
-    remaining = (await discovery.list_proposals(_REQUEST, run["id"]))["proposals"]
+    remaining = _named((await discovery.list_proposals(_REQUEST, run["id"]))["proposals"])
     assert [r["via"] for r in remaining] == [None, None]
-    # A later run finding the legs again finds the relationship through orders already there.
-    _, again = await _answered(world, _JUNCTION_LEGS)
-    (joined,) = [r for r in again if r["via"] is not None]
-    assert joined["reason"] == "existing" and joined["acceptable"] is False
+    # A later run finding the legs again finds the relationship through orders already there:
+    # kept with why, and not listed (REQ-413, amended 2026-11-18: an existing pair is left out).
+    # Its legs are existing too, as a junction relationship's legs are (amended 2026-11-16).
+    later, again = await _answered(world, _JUNCTION_LEGS)
+    assert again == []
+    (joined,) = [r for r in await _proposals(db, later["id"]) if r["via_table_id"] is not None]
+    assert joined["left_out"] == "existing"
 
 
 async def test_a_junction_suggestion_marked_not_again_is_left_out_of_later_runs(
@@ -2567,9 +2609,11 @@ async def test_a_junction_suggestion_marked_not_again_is_left_out_of_later_runs(
         _REQUEST, run["id"], _apply(not_again=[combined["id"]])
     )
     assert marked["results"] == [{"id": combined["id"], "action": "not_again", "ok": True}]
-    _, again = await _answered(world, _JUNCTION_LEGS)
-    (joined,) = [r for r in again if r["via"] is not None]
-    assert joined["reason"] == "rejected" and joined["decidable"] is False
+    # Kept with why, and not listed (REQ-413, amended 2026-11-18: a not-again pair is left out).
+    later, again = await _answered(world, _JUNCTION_LEGS)
+    assert [r["via"] for r in again] == [None, None]
+    (joined,) = [r for r in await _proposals(db, later["id"]) if r["via_table_id"] is not None]
+    assert joined["left_out"] == "rejected"
 
 
 async def test_a_pair_with_a_table_that_requires_a_parameter_keeps_the_models_score_and_says_so(

@@ -80,6 +80,8 @@
       "newTables": "自你上次執行以來登記的 {{count}} 個表位於 {{domains}} 中，那次執行沒有查看這些域。",
       "newTables_other": "自你上次執行以來登記的 {{count}} 個表位於 {{domains}} 中，那次執行沒有查看這些域。",
       "addNewTables": "加入本次執行"
-    }
+    },
+    "keyNames": "鍵名稱和類型",
+    "reviewDone": "完成"
   }
 }

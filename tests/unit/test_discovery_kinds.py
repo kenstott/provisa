@@ -242,6 +242,7 @@ async def test_no_model_configured_reports_semantics_unavailable(monkeypatch, tm
     kinds = await discovery.discovery_kinds(_REQUEST)
     assert kinds == {
         "foreign_keys": {"available": True},
+        "key_names": {"available": True},
         "semantics": {"available": False, "model": "anthropic:claude-test", "reason": "no_key"},
     }
     with pytest.raises(ApiError) as refused:

@@ -26,7 +26,7 @@
 
 ## 所有数据源 {: #all-sources }
 
-Provisa 注册了 **80** 种数据源类型，即 Sources 表单所提供的类型。下表覆盖全部 80 种；索引即为计数。
+Provisa 注册了 **82** 种数据源类型，即 Sources 表单所提供的类型。下表覆盖全部 82 种；索引即为计数。
 
 | # | 分组 | 数据源类型 |
 | --- | --- | --- |
@@ -42,12 +42,12 @@ Provisa 注册了 **80** 种数据源类型，即 Sources 表单所提供的类�
 | 51–55 | [基于文件](#file-based) | `sqlite`、`csv`、`parquet`、`files`、`logs` |
 | 56–57 | [可观测性及其他](#observability-other) | `google_sheets`、`prometheus` |
 | 58–66 | [企业级 SaaS](#enterprise-saas-connectors) | `sharepoint`、`salesforce`、`servicenow`、`jira`、`cloudops`、`splunk`、`google_workspace`, `microsoft_365`, `quickbooks` |
-| 67–74 | [API 数据源](#api-sources) | `openapi`、[`dbt`](#dbt)、`graphql_remote`、`grpc_remote`、GitHub、GitLab、Shopify、Stripe |
-| 75 | [GovData](#govdata) | `govdata` |
-| 76–77 | [数据质量检查器](#data-quality-checkers) | `soda`、`great_expectations` |
-| 78 | [数据剖析器](#data-profiler) | `data_profiler` |
-| 79 | [Kaggle 数据集](#kaggle-datasets) | Kaggle（通过 Sources 表单暂存；注册为 `files` 数据源 — 参见 [Kaggle 数据集](#kaggle-datasets)） |
-| 80 | [Wikipedia](#wikipedia) | Wikipedia（注册为抓取所指定页面的 `files` 数据源 — 参见 [Wikipedia](#wikipedia)） |
+| 67–76 | [API 数据源](#api-sources) | `openapi`、[`dbt`](#dbt)、`graphql_remote`、`grpc_remote`、GitHub、GitLab、Shopify、Stripe、OpenMetadata、DataHub |
+| 77 | [GovData](#govdata) | `govdata` |
+| 78–79 | [数据质量检查器](#data-quality-checkers) | `soda`、`great_expectations` |
+| 80 | [数据剖析器](#data-profiler) | `data_profiler` |
+| 81 | [Kaggle 数据集](#kaggle-datasets) | Kaggle（通过 Sources 表单暂存；注册为 `files` 数据源 — 参见 [Kaggle 数据集](#kaggle-datasets)） |
+| 82 | [Wikipedia](#wikipedia) | Wikipedia（注册为抓取所指定页面的 `files` 数据源 — 参见 [Wikipedia](#wikipedia)） |
 
 Provisa 支持的每种数据源类型的参考。"Direct driver"（直连驱动）表示单数据源查询直接针对该数据源原生执行（亚 100 毫秒）。"Connector Name"（连接器名称）是当该数据源参与多数据源 JOIN 时所使用的联邦连接器。
 

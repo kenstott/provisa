@@ -46,6 +46,7 @@
       "existing": "already registered",
       "rejected": "rejected before",
       "out_of_scope": "outside the chosen tables"
-    }
+    },
+    "keyNames": "Key names and types: {{found}} found, {{count}} suggested."
   }
 }

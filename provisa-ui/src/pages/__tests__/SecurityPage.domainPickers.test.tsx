@@ -16,6 +16,11 @@ import userEvent from "@testing-library/user-event";
 import { render, screen, fireEvent, within } from "../../test-utils/render";
 import { openNewRole } from "../../test-utils/securityRoles";
 
+vi.mock("../../hooks/useCapability", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../hooks/useCapability")>()),
+  // REQ-1327: the roles page acts for a holder of the rights its actions ask.
+  useCapability: () => true,
+}));
 vi.mock("../../context/DomainFilterContext", () => ({
   useDomainFilter: () => ({
     domains: [],

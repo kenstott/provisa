@@ -1,7 +1,7 @@
 {
   "schemaBrowser": {
-    "collapsePanel": "Свернуть панель схемы",
-    "expandPanel": "Развернуть панель схемы",
+    "collapsePanel": "Скрыть панель схемы",
+    "expandPanel": "Показать панель схемы",
     "heading": "Схема",
     "groupMetrics": "Метрики",
     "groupFacts": "Факты",

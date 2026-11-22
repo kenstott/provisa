@@ -294,7 +294,7 @@ async def test_a_table_schema_sql_does_not_create_lands_in_the_org_schema(own_da
         "as_of",  # REQ-1163: the time travel the statement read at
         "as_recorded",
         "logged_at",
-        "stage",  # REQ-2261: the environment stage the statement ran in
+        "stage",  # REQ-2261: the stage of the environment the statement ran in
     }
     assert _column_shapes(db, _SCHEMA, "query_audit_log") == declared
     with db.engine.begin() as conn:
@@ -390,6 +390,11 @@ async def test_two_starts_reconciling_one_org_schema_at_once_both_succeed(own_da
 # created with. It holds what history shows and grows only by a new table's first columns; a column
 # added to an existing table does NOT go here, it gets an ALTER.
 _CREATE_ONLY = {
+    "access_review_rows": (
+        "id review_id user_id role_id domain_id source entitlements expires_at last_used_at decision "
+        "decided_by decided_at reason"
+    ),
+    "access_reviews": "id started_by started_at webhook_status webhook_error webhook_at",
     "admin_audit_log": "id action actor_id subject_id detail created_at",
     "api_endpoints": "id source_id path method table_name columns ttl created_at",
     "api_sources": "id type base_url spec_url auth created_at",

@@ -92,6 +92,9 @@ const MetricsPage = lazyPage(() =>
 const LibraryPage = lazyPage(() =>
   import("./pages/library/LibraryPage").then((m) => ({ default: m.LibraryPage })),
 );
+const GlossaryPage = lazyPage(() =>
+  import("./pages/context/GlossaryPage").then((m) => ({ default: m.GlossaryPage })),
+);
 const OntologyPage = lazyPage(() =>
   import("./pages/context/OntologyPage").then((m) => ({ default: m.OntologyPage })),
 );
@@ -422,6 +425,7 @@ function App() {
                                             element={
                                               <CapabilityGate
                                                 capability="access_config"
+                                                orCapability="user_management"
                                                 fallback={<NotAuthorized />}
                                               >
                                                 <SecurityRolesPage />
@@ -589,10 +593,22 @@ function App() {
                                             path="/views"
                                             element={
                                               <CapabilityGate
-                                                capability="table_registration"
+                                                capability="create_view"
                                                 fallback={<NotAuthorized />}
                                               >
                                                 <ViewsPage />
+                                              </CapabilityGate>
+                                            }
+                                          />
+                                          {/* REQ-2259: the read-only Glossary, approved terms only. */}
+                                          <Route
+                                            path="/context/glossary"
+                                            element={
+                                              <CapabilityGate
+                                                capability="glossary_read"
+                                                fallback={<NotAuthorized />}
+                                              >
+                                                <GlossaryPage />
                                               </CapabilityGate>
                                             }
                                           />
@@ -600,7 +616,10 @@ function App() {
                                           <Route
                                             path="/context/ontology"
                                             element={
-                                              <CapabilityGate capability="glossary_read" fallback={<NotAuthorized />}>
+                                              <CapabilityGate
+                                                capability="glossary_read"
+                                                fallback={<NotAuthorized />}
+                                              >
                                                 <OntologyPage />
                                               </CapabilityGate>
                                             }
@@ -643,7 +662,10 @@ function App() {
                                           <Route
                                             path="/context/documents"
                                             element={
-                                              <CapabilityGate capability="glossary_read" fallback={<NotAuthorized />}>
+                                              <CapabilityGate
+                                                capability="glossary_read"
+                                                fallback={<NotAuthorized />}
+                                              >
                                                 <LibraryPage />
                                               </CapabilityGate>
                                             }
@@ -652,7 +674,10 @@ function App() {
                                           <Route
                                             path="/context/sync"
                                             element={
-                                              <CapabilityGate capability="org_settings" fallback={<NotAuthorized />}>
+                                              <CapabilityGate
+                                                capability="org_settings"
+                                                fallback={<NotAuthorized />}
+                                              >
                                                 <ContextSyncPage />
                                               </CapabilityGate>
                                             }
@@ -661,7 +686,7 @@ function App() {
                                             path="/metrics"
                                             element={
                                               <CapabilityGate
-                                                capability="table_registration"
+                                                capability="create_view"
                                                 fallback={<NotAuthorized />}
                                               >
                                                 <MetricsPage />
@@ -689,6 +714,7 @@ function App() {
                                               // carries (rights.py PLATFORM_BYPASS_CAPABILITIES).
                                               <CapabilityGate
                                                 capability="table_registration"
+                                                orCapability="command_execution"
                                                 fallback={<NotAuthorized />}
                                               >
                                                 <CommandsPage />

@@ -894,6 +894,9 @@ glossary_terms = Table(
     # REQ-2237: the IRI of the imported concept the term is (schema.sql).
     Column("iri", Text),
     # REQ-1591: no unique name; a name is unique only within a domain (schema.sql).
+    # REQ-2259: when the term last changed; the server default dates rows older than the
+    # column (schema.sql), and every repository write sets it.
+    Column("changed_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     Column("tenant_id", Uuid),
 )
 
@@ -3035,6 +3038,56 @@ glossary_ontology_alignments = Table(
     ),
 )
 
+
+# REQ-2266: an access review and its rows. See the matching block in schema.sql.
+access_reviews = Table(
+    "access_reviews",
+    metadata,
+    Column("id", BigInteger(), primary_key=True, autoincrement=True),
+    Column("started_by", Text, nullable=False),  # the person who asked for it, or "schedule"
+    Column("started_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    # The scheduled review's post to the org's webhook: NULL when none was due (on demand, or no
+    # webhook set), else 'delivered' or 'failed' with the failure's text and the time of the try.
+    Column("webhook_status", Text),
+    Column("webhook_error", Text),
+    Column("webhook_at", DateTime(timezone=True)),
+    CheckConstraint(
+        "webhook_status IN ('delivered', 'failed')", name="access_reviews_webhook_status_check"
+    ),
+)
+
+access_review_rows = Table(
+    "access_review_rows",
+    metadata,
+    Column("id", BigInteger(), primary_key=True, autoincrement=True),
+    Column(
+        "review_id",
+        BigInteger(),
+        ForeignKey("access_reviews.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    Column("user_id", Text, nullable=False),
+    Column("role_id", Text, nullable=False),
+    Column("domain_id", Text, nullable=False),
+    # Where the member holds the role: 'provisa' (a grant Provisa holds, which the owner can
+    # revoke) or 'identity_provider' (claims or a role mapping: listed read-only).
+    Column("source", Text, nullable=False, server_default="provisa"),
+    # The grant's entitlement lists when the review was taken: [{kind, capability, identifiers}].
+    Column("entitlements", JSON, nullable=False, default=list, server_default="[]"),
+    Column("expires_at", DateTime(timezone=True)),
+    Column("last_used_at", DateTime(timezone=True)),
+    Column("decision", Text),
+    Column("decided_by", Text),
+    Column("decided_at", DateTime(timezone=True)),
+    Column("reason", Text),
+    CheckConstraint(
+        "decision IN ('confirmed', 'revoked')", name="access_review_rows_decision_check"
+    ),
+    CheckConstraint(
+        "source IN ('provisa', 'identity_provider')", name="access_review_rows_source_check"
+    ),
+    UniqueConstraint("review_id", "user_id", "role_id", "domain_id"),
+)
 
 admin_audit_log = Table(
     "admin_audit_log",
