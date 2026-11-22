@@ -68,7 +68,7 @@ async def test_a_confirmed_loss_writes_a_row_with_column_tag_term_who_and_when(
         "column_name": "home_address",
         "tag_id": "pii",
         "term_id": ids["address"],
-        "term_name": "home_address",
+        "term_name": "home address",
         "confirmed_by": "alice",
     }
     assert row["confirmed_at"] >= before - timedelta(seconds=5)
