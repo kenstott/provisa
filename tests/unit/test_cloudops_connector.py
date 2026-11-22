@@ -260,3 +260,100 @@ def test_its_cloud_secrets_are_fields_of_the_source_kept_as_typed(monkeypatch):
         "azure_client_secret": "from-the-environment",
         "aws_secret_access_key": "typed-as-a-value",
     }
+
+
+# -- its server gets credentials only for the clouds it names ---------------------------------------
+
+# Credential variables the deployment's own environment may hold for each cloud: what the cloud
+# SDKs and the adapter's fallbacks read (maintainer 2026-11-21, job CLOUDOPS-ENV).
+_DEPLOYMENT_CREDENTIALS = {
+    "azure": {"AZURE_TENANT_ID": "lane-tenant", "AZURE_CLIENT_SECRET": "lane-az-secret"},
+    "aws": {"AWS_ACCESS_KEY_ID": "lane-akia", "AWS_SECRET_ACCESS_KEY": "lane-aws-secret"},
+    "gcp": {
+        "GCP_PROJECT_IDS": "lane-proj",
+        "GOOGLE_APPLICATION_CREDENTIALS": "/lane/gcp-key.json",
+    },
+}
+_MAPPINGS = {"azure": AZURE, "aws": AWS, "gcp": GCP}
+
+
+def _launched_environment(tmp_path, monkeypatch, clouds: tuple[str, ...]) -> dict[str, str]:
+    """The environment a cloudops source naming ``clouds`` launches its server with, the
+    deployment's environment holding every cloud's credential variables."""
+    from types import SimpleNamespace
+
+    from tests.helpers import ready_org_folder
+
+    for names in _DEPLOYMENT_CREDENTIALS.values():
+        for name, value in names.items():
+            monkeypatch.setenv(name, value)
+    monkeypatch.setenv("PROVISA_TEST_UNRELATED", "kept")
+    monkeypatch.setenv("PROVISA_DATA_DIR", str(tmp_path / "data"))
+    ready_org_folder()  # REQ-1992: the org's folder, as its runtime makes it ready
+    bundle = tmp_path / "bundle"
+    (bundle / "bin").mkdir(parents=True)
+    mapping = {k: v for cloud in clouds for k, v in _MAPPINGS[cloud].items()}
+    spawned: list[dict[str, str]] = []
+
+    def spawn(command, cwd, env=None):
+        spawned.append(env)
+        return SimpleNamespace(exit_code=lambda: None)
+
+    replica = pr.ConnectorReplica(
+        _source(mapping),
+        resolver=SimpleNamespace(resolve=lambda spec: bundle),  # type: ignore[arg-type]
+        allocator=pr.PortAllocator(is_free=lambda port: True),
+        spawn=spawn,
+        health_check=lambda host, port: True,
+        port_is_free=lambda port: True,
+        prepare_catalog=lambda ports, password: None,
+    )
+    replica.start()
+    assert len(spawned) == 1
+    return spawned[0]
+
+
+@pytest.mark.parametrize(
+    "clouds",
+    [
+        ("azure",),
+        ("aws",),
+        ("gcp",),
+        ("azure", "aws"),
+        ("azure", "gcp"),
+        ("aws", "gcp"),
+        ("azure", "aws", "gcp"),
+    ],
+)
+def test_its_server_is_launched_with_credentials_only_for_the_clouds_it_names(
+    tmp_path, monkeypatch, clouds
+):
+    env = _launched_environment(tmp_path, monkeypatch, clouds)
+    # Compared by name: a failure must not print the environment (it holds real secrets).
+    expected = {
+        name: value
+        for cloud, names in _DEPLOYMENT_CREDENTIALS.items()
+        if cloud in clouds
+        for name, value in names.items()
+    }
+    every = {name for names in _DEPLOYMENT_CREDENTIALS.values() for name in names}
+    assert sorted(name for name in every if name in env) == sorted(expected)
+    assert all(env[name] == value for name, value in expected.items())
+    assert env.get("PROVISA_TEST_UNRELATED") == "kept"
+
+
+def test_the_spawn_hands_the_server_exactly_the_environment_it_is_given(tmp_path, monkeypatch):
+    """The real spawn does not add this process's environment back: what was withheld stays
+    withheld."""
+    recorded: dict = {}
+
+    class _Popen:
+        def __init__(self, command, **kwargs):
+            recorded.update(kwargs)
+
+    monkeypatch.setenv("AZURE_CLIENT_SECRET", "lane-az-secret")
+    monkeypatch.setattr(pr.subprocess, "Popen", _Popen)
+    pr._spawn_process(["launcher"], tmp_path, {"ONLY": "this"})
+    # Compared by name: a failure must not print the environment (it holds real secrets).
+    assert sorted(recorded["env"]) == ["ONLY"]
+    assert recorded["env"]["ONLY"] == "this"

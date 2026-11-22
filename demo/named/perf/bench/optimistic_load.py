@@ -880,9 +880,17 @@ def _client_process(
         )
         # the connection is open and the statement is prepared / cached: the request no knob
         # applies to, with the opt-in if any request carries it
-        warm_ups = [
-            (renderer.render(w), w.role) for w in _warmup_specs(gen, ep.setup, transport, opt_in)
-        ]
+        try:
+            warm_ups = [
+                (renderer.render(w), w.role)
+                for w in _warmup_specs(gen, ep.setup, transport, opt_in)
+            ]
+        except Exception as exc:  # noqa: BLE001 - reported in the step's result, not as
+            # "client did not connect": a request the harness cannot render is its own defect
+            first_error.append(f"render: {_brief(exc)}")
+            connected.abort()
+            client.close()
+            return
         try:
             for warm_query, warm_role in warm_ups:
                 client.call(warm_query, warm_role)
