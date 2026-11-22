@@ -271,12 +271,14 @@ def test_the_plugin_cache_action_primes_once_and_every_lane_restores_and_verifie
         "Restore Trino plugins",
         "Download Trino plugins",
         "Cache Trino plugins",
-        "Verify Trino plugins",
         "provisa-functions key",
         "Restore the provisa-functions plugin",
         "Build the provisa-functions plugin",
         "Cache the provisa-functions plugin",
+        "Download the run's Trino plugins",
+        "Verify Trino plugins",
         "Verify the provisa-functions plugin",
+        "Upload the run's Trino plugins",
     ]
     restored = by_name["Restore Trino plugins"]["with"]
     # The pin behind a prefix that is empty for every caller but the action's own self-test.
@@ -289,8 +291,10 @@ def test_the_plugin_cache_action_primes_once_and_every_lane_restores_and_verifie
         "path": restored["path"],
         "key": restored["key"],
     }
-    # A lane's restore must hit; only the priming phase downloads, once, and saves at once.
-    assert restored["fail-on-cache-miss"] == "${{ inputs.phase == 'restore' }}"
+    # Only the priming phase downloads, once, and saves at once. A lane's restore that misses
+    # (the cache is branch-scoped and evictable: runs 44942101401, 44940962731) takes the jars
+    # from the run's artifact, which priming uploads after it verified them.
+    assert restored["fail-on-cache-miss"] is False
     for step in ("Download Trino plugins", "Cache Trino plugins"):
         assert by_name[step]["if"] == (
             "inputs.phase == 'prime' && steps.trino-plugins.outputs.cache-hit != 'true'"
@@ -307,7 +311,7 @@ def test_the_plugin_cache_action_builds_provisa_functions_once_and_every_lane_re
     (conftest's first-use build) and each asked Maven Central for its plugins at the same moment;
     core 13/18 got HTTP 429 for maven-compiler-plugin, bench a failed resolution of
     maven-resources-plugin. The priming phase builds it once, keyed by every input of the build,
-    and a lane's restore must hit, so no lane runs Maven."""
+    and a lane's restore that misses takes it from the run's artifact, so no lane runs Maven."""
     by_name = {step["name"]: step for step in _plugin_cache_action()}
     restored = by_name["Restore the provisa-functions plugin"]
     assert restored["id"] == "provisa-functions"
@@ -328,7 +332,7 @@ def test_the_plugin_cache_action_builds_provisa_functions_once_and_every_lane_re
     )
     assert key["run"] == 'echo "key=$KEY" >> "$GITHUB_OUTPUT"'
     assert restored["with"]["key"] == "${{ steps.provisa-functions-key.outputs.key }}"
-    assert restored["with"]["fail-on-cache-miss"] == "${{ inputs.phase == 'restore' }}"
+    assert restored["with"]["fail-on-cache-miss"] is False  # the run's artifact answers a miss
     miss = "inputs.phase == 'prime' && steps.provisa-functions.outputs.cache-hit != 'true'"
     built = by_name["Build the provisa-functions plugin"]
     assert built["if"] == miss and built["run"] == "scripts/build_trino_functions.sh"
