@@ -41126,7 +41126,7 @@
   description: First verified Firebase login provisions a user_profile record, decoupled from the local_users/bcrypt-password
     path. No password is created for Firebase identities. Firebase ID token serves as the credential.
     Provisioning occurs in the initial POST /auth/register on a Firebase identity (REQ-121 validates Firebase
-    auth; REQ-124 is hard-gated to provider=="basic" and cannot onboard Firebase identities).
+    auth; REQ-124 is hard-gated to provider=="basic" and cannot onboard Firebase identities). (Amended 2026-11-22 by the maintainer, to the built behaviour. The user_profile is upserted on every sign-in by the auth middleware, not provisioned only in POST /auth/register.)
   use_case: Enables self-service signup on cloud.provisa.dev with Firebase as the primary identity provider,
     separating password-managed local users from federated identities.
   code:
@@ -78516,7 +78516,8 @@
     and orgs_router tests named do not exist as described.'
   superseded_by: REQ-1337
 - id: REQ-518
-  status: in-progress
+  status: superseded
+  superseded_by: REQ-2187
   group: 10. UI & Admin Surfaces
   category: Admin UI
   feature: semantic-model-erd
@@ -85949,7 +85950,7 @@
     and proposes the fake (propose_fakes), the answer stored with the tour. (Amended 2026-11-05, THE ASSISTANT
     IS ASKED ABOUT A NAMED COLUMN:) customers.email declares its fake in the demo, so the assistant is asked
     which fake it would propose for customers.email from its latest profile, and answers through propose_fakes
-    with that column named: a named column is proposed from its profile even when it declares a fake.'
+    with that column named: a named column is proposed from its profile even when it declares a fake. (Amended 2026-11-22 by the maintainer, to the built demo. The environments the demo creates are preprod and dev.)'
   use_case: 'A visitor opens the environments and test data demo and sees how Provisa answers: Can I test against
     realistic data without touching production?'
   scenario: 'Given the environments and test data demo started from its bundle
@@ -97478,7 +97479,7 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     Context Sync (REQ-2259). (Amended 2026-11-19, MERGE FILLS AN EMPTY DEFINITION:) Maintainer 2026-11-19.
     Merging a catalog term into an existing term records the provenance on the chosen term and copies the
     catalog''s definition only when the term has none, as the ontology import does for a same-as match. The
-    difference list leaves out the glossary Provisa itself publishes to that catalog, and its group terms.'
+    difference list leaves out the glossary Provisa itself publishes to that catalog, and its group terms. (Amended 2026-11-22 by the maintainer. A difference that has never been exchanged is listed under both Export and Import, since neither side is known to have moved; once exchanged, a difference is listed only under the direction whose side moved, or both when both moved.)'
   scenario: 'Given a catalog entry whose asset descriptions differ from Provisa''s for forty columns and
     two owners
 
