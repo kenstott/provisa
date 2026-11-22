@@ -10,6 +10,8 @@
     "driftGained": "Terms that gained grounding",
     "driftNew": "New terms",
     "driftNoHistory": "No earlier model to compare with yet.",
+    "tagsLostTitle": "Tags lost",
+    "notYetRecorded": "Not yet recorded",
     "classificationTitle": "Classification",
     "classificationAwaiting": "Detections awaiting a decision",
     "documentsTitle": "Documents",

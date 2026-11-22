@@ -296,6 +296,19 @@ export function DocumentsCard() {
   );
 }
 
+/** REQ-2259, REQ-2145: tags lost. A confirmed tag loss is not recorded yet (job CTX-TAGLOSS), so
+ * the card says so rather than showing a number it does not have. */
+export function TagsLostCard() {
+  const { t } = useTranslation();
+  return (
+    <HealthCard title={t("contextHealth.tagsLostTitle")} testId="health-tags-lost">
+      <Text size="sm" c="dimmed" data-testid="health-tags-lost-unrecorded">
+        {t("contextHealth.notYetRecorded")}
+      </Text>
+    </HealthCard>
+  );
+}
+
 /** The differences an entry has waiting: a catalog read for them, or why it could not be read. An
  * entry that is not a data catalog, or names no role, has none to read (syncing_router). */
 type Waiting =

@@ -10,6 +10,8 @@
     "driftGained": "शब्द जिन्हें आधार मिला",
     "driftNew": "नए शब्द",
     "driftNoHistory": "तुलना के लिए अभी कोई पिछला मॉडल नहीं है।",
+    "tagsLostTitle": "खोए गए टैग",
+    "notYetRecorded": "अभी दर्ज नहीं",
     "classificationTitle": "वर्गीकरण",
     "classificationAwaiting": "निर्णय की प्रतीक्षा में पहचानें",
     "documentsTitle": "दस्तावेज़",

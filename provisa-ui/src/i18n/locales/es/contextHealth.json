@@ -10,6 +10,8 @@
     "driftGained": "Términos que ganaron el anclaje",
     "driftNew": "Términos nuevos",
     "driftNoHistory": "Aún no hay un modelo anterior con el que comparar.",
+    "tagsLostTitle": "Etiquetas perdidas",
+    "notYetRecorded": "Aún no se registra",
     "classificationTitle": "Clasificación",
     "classificationAwaiting": "Detecciones pendientes de decisión",
     "documentsTitle": "Documentos",

@@ -10,6 +10,8 @@
     "driftGained": "获得锚定的术语",
     "driftNew": "新术语",
     "driftNoHistory": "尚无可比较的早期模型。",
+    "tagsLostTitle": "丢失的标签",
+    "notYetRecorded": "尚未记录",
     "classificationTitle": "分类",
     "classificationAwaiting": "等待决定的检测结果",
     "documentsTitle": "文档",

@@ -168,6 +168,13 @@ describe("Context Health's cards, from real reads", () => {
     expect(screen.getByTestId("health-documents-11")).toHaveTextContent("Privacy policy");
   });
 
+  it("holds a Tags lost card that says losses are not yet recorded", async () => {
+    render(<ContextHealthPage />);
+    expect(await screen.findByTestId("health-tags-lost-unrecorded")).toHaveTextContent(
+      "Not yet recorded",
+    );
+  });
+
   it("shows a card's read refused in words, the other cards unaffected", async () => {
     api.fetchReviewsDue.mockRejectedValue(new Error("Reviews due failed (500)"));
     render(<ContextHealthPage />);

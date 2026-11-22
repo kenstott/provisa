@@ -20,6 +20,7 @@ import {
   DocumentsCard,
   DriftCard,
   SyncCard,
+  TagsLostCard,
   TermsCard,
 } from "./ContextHealthCards";
 
@@ -43,6 +44,7 @@ export function ContextHealthPage() {
         <SimpleGrid cols={{ base: 1, sm: 2, xl: 3 }} spacing="md">
           <TermsCard seq={approvals} />
           <DriftCard />
+          <TagsLostCard />
           <ClassificationCard />
           <DocumentsCard />
           {readsSync && <SyncCard />}

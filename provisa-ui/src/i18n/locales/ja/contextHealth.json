@@ -10,6 +10,8 @@
     "driftGained": "紐付けを得た用語",
     "driftNew": "新しい用語",
     "driftNoHistory": "比較できる以前のモデルはまだありません。",
+    "tagsLostTitle": "失われたタグ",
+    "notYetRecorded": "まだ記録されていません",
     "classificationTitle": "分類",
     "classificationAwaiting": "判断待ちの検出",
     "documentsTitle": "ドキュメント",

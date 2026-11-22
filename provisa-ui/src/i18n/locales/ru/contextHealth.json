@@ -10,6 +10,8 @@
     "driftGained": "Термины, получившие привязку",
     "driftNew": "Новые термины",
     "driftNoHistory": "Пока нет более ранней модели для сравнения.",
+    "tagsLostTitle": "Потерянные теги",
+    "notYetRecorded": "Пока не записывается",
     "classificationTitle": "Классификация",
     "classificationAwaiting": "Обнаружения, ожидающие решения",
     "documentsTitle": "Документы",

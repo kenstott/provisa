@@ -39,7 +39,7 @@ test("Context Health shows the steward summary and a card per signal, read from 
     await expect(page).toHaveURL(/\/context\/health$/);
 
     await expect(page.getByTestId("glossary-stewardship")).toBeVisible({ timeout: 60_000 });
-    for (const card of ["terms", "drift", "classification", "documents", "sync"]) {
+    for (const card of ["terms", "drift", "tags-lost", "classification", "documents", "sync"]) {
       await expect(page.getByTestId(`health-${card}`)).toBeVisible();
       await expect(page.getByTestId(`health-${card}-error`)).toHaveCount(0);
     }
