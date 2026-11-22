@@ -9,7 +9,9 @@
 
 import { test, expect } from "./coverage";
 
-test("the Context group opens the Ontology, Documents and Context Sync pages", async ({ page }) => {
+test("the Context group opens the Ontology, Documents, Context Sync and Context Health pages", async ({
+  page,
+}) => {
   await page.goto("/");
   await expect(page.locator(".navbar-links").getByRole("link", { name: "Ontology" })).toHaveCount(
     0,
@@ -29,10 +31,10 @@ test("the Context group opens the Ontology, Documents and Context Sync pages", a
   await expect(page).toHaveURL(/\/context\/sync$/);
   await expect(page.getByTestId("syncing")).toBeVisible();
 
-  // The group's pages still to come are listed, not linked.
-  for (const label of ["Context Health"]) {
-    await expect(subnav.getByText(`${label} — coming soon`)).toBeVisible();
-  }
+  // REQ-2259: Context Health is open, the group's first page.
+  await subnav.getByRole("link", { name: "Context Health", exact: true }).click();
+  await expect(page).toHaveURL(/\/context\/health$/);
+  await expect(page.getByTestId("context-health")).toBeVisible();
 });
 
 test("Admin no longer lists Syncing", async ({ page }) => {

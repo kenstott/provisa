@@ -309,6 +309,30 @@ async def _cited_by_tags(
     }
 
 
+def reviews_due(cited: dict) -> int:  # REQ-2259, REQ-2208
+    """How many review items a document's citations hold (``cited_by``'s answer): each term
+    citation whose words the document no longer holds, and each tag or tag assignment citation
+    whose section changed or is gone."""
+    return int(cited["drifted"]) + sum(
+        bool(c["needs_review"]) for c in [*cited["tags"], *cited["tag_assignments"]]
+    )
+
+
+@router.get("/reviews-due")
+async def documents_reviews_due(request: Request) -> dict:  # REQ-2259, REQ-2208
+    """Context Health's documents card: each document the caller reads whose citations hold a
+    review item (:func:`reviews_due`), with how many, among the citations the caller reads."""
+    scope = _read_scope(request)
+    async with _pool().acquire() as conn:
+        readable = [d for d in await store.documents(conn) if _may_read(scope, d.domains)]
+    due = []
+    for d in readable:
+        count = reviews_due(await cited_by(d.id, request))
+        if count:
+            due.append({"id": d.id, "title": d.title, "reviews": count})
+    return {"documents": due}
+
+
 async def _job_embedder() -> library.Embedder:
     """The org's vector model for a background job: an org without one fails the job by name."""
     try:

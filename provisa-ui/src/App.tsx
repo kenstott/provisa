@@ -92,6 +92,9 @@ const MetricsPage = lazyPage(() =>
 const LibraryPage = lazyPage(() =>
   import("./pages/library/LibraryPage").then((m) => ({ default: m.LibraryPage })),
 );
+const ContextHealthPage = lazyPage(() =>
+  import("./pages/context/ContextHealthPage").then((m) => ({ default: m.ContextHealthPage })),
+);
 const GlossaryPage = lazyPage(() =>
   import("./pages/context/GlossaryPage").then((m) => ({ default: m.GlossaryPage })),
 );
@@ -597,6 +600,18 @@ function App() {
                                                 fallback={<NotAuthorized />}
                                               >
                                                 <ViewsPage />
+                                              </CapabilityGate>
+                                            }
+                                          />
+                                          {/* REQ-2259: Context Health, the steward summary and the health cards. */}
+                                          <Route
+                                            path="/context/health"
+                                            element={
+                                              <CapabilityGate
+                                                capability="glossary_read"
+                                                fallback={<NotAuthorized />}
+                                              >
+                                                <ContextHealthPage />
                                               </CapabilityGate>
                                             }
                                           />

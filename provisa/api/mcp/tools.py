@@ -1285,7 +1285,7 @@ async def upsert_metric(  # REQ-1856
     from provisa.core.models import Metric as MetricModel
     from provisa.core.repositories import metric as metric_repo
 
-    require_capability_request(request, "table_registration")
+    require_capability_request(request, "create_view")  # REQ-1327: metric authoring
     from provisa.security.default_grant import default_read_grant as _default_read_grant
 
     model = MetricModel(
@@ -1318,7 +1318,7 @@ async def delete_metric(state: Any, role: str, request: Any, name: str) -> dict:
     from provisa.api.admin.capabilities import require_capability_request
     from provisa.core.repositories import metric as metric_repo
 
-    require_capability_request(request, "table_registration")
+    require_capability_request(request, "create_view")  # REQ-1327: metric authoring
     pool = state.model_db
     assert pool is not None
     async with pool.acquire() as conn:

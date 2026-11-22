@@ -11,7 +11,8 @@
 """Central redaction: one rule list applied wherever Provisa writes text out (REQ-2087).
 
 A rule is a named regular expression, or a ``${secret:...}`` / ``${env:...}`` reference resolved
-when the rules are built and matched literally. A match becomes ``[REDACTED:<rule>]`` in what
+when the rules are built and matched literally, as a whole token only (never inside a longer
+identifier). A match becomes ``[REDACTED:<rule>]`` in what
 Provisa records (logs, spans, the audit trail), and a bare ``[REDACTED]`` in text sent to a client
 (:func:`client_redact`): a client is never told which rule or which variable a word matched. The
 list:
@@ -70,6 +71,20 @@ MIN_SECRET_LENGTH = 4
 CLIENT_MARKER = "[REDACTED]"
 #: A marker that names its rule, as the records carry it.
 _NAMED_MARKER = re.compile(r"\[REDACTED:[^\]\n]*\]")
+#: A character that can be part of an identifier: a secret edged by one is matched only
+#: where no identifier character stands beside that edge (REQ-2087, amended 2026-11-22).
+_IDENTIFIER_CHAR = re.compile(r"\w")
+
+
+def _whole_token(value: str) -> str:
+    """``value`` as a literal pattern matching only a whole token (REQ-2087, amended 2026-11-22):
+    an edge character that can be part of an identifier must not have an identifier character
+    beside it, so ``provisa`` inside ``provisa_cache`` is left as written. An edge that cannot be
+    part of an identifier needs no bound: no neighbour can make the value part of one. A quoted
+    value is bounded by its quotes."""
+    head = r"(?<!\w)" if _IDENTIFIER_CHAR.match(value[0]) else ""
+    tail = r"(?!\w)" if _IDENTIFIER_CHAR.match(value[-1]) else ""
+    return f"{head}{re.escape(value)}{tail}"
 
 
 def _marker(name: str, named: bool) -> str:
@@ -237,7 +252,7 @@ class Redactor:
         usable = {v: n for v, n in literals.items() if len(v) >= MIN_SECRET_LENGTH}
         self._names = usable
         self._literal = (
-            re.compile("|".join(re.escape(v) for v in sorted(usable, key=len, reverse=True)))
+            re.compile("|".join(_whole_token(v) for v in sorted(usable, key=len, reverse=True)))
             if usable
             else None
         )
