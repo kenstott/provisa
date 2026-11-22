@@ -587,7 +587,7 @@ def when_analyze_runs_on_cache_table(shared_data: dict) -> None:
 
 
 @then("ANALYZE failures are logged but do not raise or fail the materialization")
-def then_analyze_failures_logged_not_raised(shared_data: dict, caplog) -> None:
+def then_analyze_failures_logged_not_raised(shared_data: dict, caplog, monkeypatch) -> None:
     # The tolerant helper reported failure (False) rather than raising.
     assert shared_data["analyze_succeeded"] is False, (
         "expected ANALYZE to report failure (False) under a failing connector"
@@ -605,6 +605,15 @@ def then_analyze_failures_logged_not_raised(shared_data: dict, caplog) -> None:
     def failing_executor(stmt: str) -> None:
         raise RuntimeError("connector does not support ANALYZE for this table")
 
+    # Central redaction is process-wide (REQ-2087): a secret an earlier test's in-process server
+    # resolved -- the shared database's password "provisa", the cache schema's prefix -- is
+    # matched in every later log record by the filter on the handlers that server's start-up
+    # installed, before caplog's handler reads the record. This step reads its own record under
+    # the built-in rules only, and the earlier state is restored after it.
+    from provisa.security import redaction
+
+    monkeypatch.setattr(redaction, "_process", redaction.Redactor(list(redaction.BUILTINS), {}))
+    monkeypatch.setattr(redaction, "_per_org", {})
     with caplog.at_level(logging.WARNING, logger="provisa.executor.materialize"):
         result = analyze_cache_table(cache_table, failing_executor)
 

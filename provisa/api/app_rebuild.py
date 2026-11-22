@@ -142,6 +142,12 @@ async def _register_user_views_in_state(
         # build reads, and one finding the set empty would expand a stored view's read of its
         # stored table into the statement (V006).
         _stored_reads: set[str] = set()
+        # The view map and the bitemporal reads are built aside too, from copies, and published in
+        # one assignment each: a request on another thread walks the published dicts while this
+        # build runs, and a dict changed in place under a walk fails it ("dictionary changed size
+        # during iteration").
+        _view_map: dict[str, str] = dict(state.view_sql_map)
+        _bt_reads: dict = dict(state.bitemporal_view_reads)
         _view_rows = [
             dict(_r._mapping)
             for _r in (
@@ -242,10 +248,10 @@ async def _register_user_views_in_state(
                     f"mv_{_vr['table_name']}",
                     catalog_qualified=state.federation_engine.engine.catalog_qualified,
                 )
-                state.view_sql_map[_key] = view_read_sql(_mv_ref, _bt_spec)
+                _view_map[_key] = view_read_sql(_mv_ref, _bt_spec)
                 # REQ-1163: remember (target, spec) so a request-level as-of can overlay an as-of
                 # reconstruction over this view's append log at query time.
-                state.bitemporal_view_reads[_key] = (_mv_ref, _bt_spec)
+                _bt_reads[_key] = (_mv_ref, _bt_spec)
                 if _bt_spec.inherited is not None:
                     # REQ-2064, REQ-2109: it declared none of the times its reads answer.
                     from provisa.mv.bitemporal_inherit import with_inherited_read_columns
@@ -268,10 +274,10 @@ async def _register_user_views_in_state(
                     catalog_qualified=state.federation_engine.engine.catalog_qualified,
                 )
                 _vr["materialize"] = True  # landed, declared or not
-                state.view_sql_map[_key] = f"SELECT * FROM {_stored}"
+                _view_map[_key] = f"SELECT * FROM {_stored}"
                 _stored_reads.add(_key)
             else:
-                state.view_sql_map[_key] = _semantic_sql
+                _view_map[_key] = _semantic_sql
             if _vr.get("materialize"):
                 from provisa.mv.models import MVDefinition, MVStatus
                 from provisa.mv.readable_inputs import read_table_names
@@ -366,7 +372,6 @@ async def _register_user_views_in_state(
                     )  # REQ-961
                     _existing.expected_events = _vr.get("mv_expected_events")  # REQ-961
                     _existing.business_day_grain = bool(_vr.get("mv_business_day_grain"))  # REQ-962
-        state.stored_view_reads = _stored_reads
         # REQ-1921: a view that is withdrawn is offered to no reader, wherever this runs (each
         # region on its reload): no statement expands it. A materialized one stays registered
         # above, with its build DISABLED -- the scheduler and the rewriter skip a disabled build
@@ -378,8 +383,8 @@ async def _register_user_views_in_state(
             if not _vr["withdrawn"]:
                 continue
             _key = view_key(_vr["schema_name"], _vr["table_name"])
-            state.view_sql_map.pop(_key, None)
-            state.bitemporal_view_reads.pop(_key, None)
+            _view_map.pop(_key, None)
+            _bt_reads.pop(_key, None)
             if not _vr.get("materialize") and state.mv_registry.get(f"view-{_vr['table_name']}"):
                 state.mv_registry.unregister(f"view-{_vr['table_name']}")
         # REQ-1918: a view's read and its build are parts of it. A view deleted leaves neither,
@@ -390,10 +395,13 @@ async def _register_user_views_in_state(
         for _mv in state.mv_registry.all():
             if _mv.view_table is not None and _mv.view_table not in _built:
                 state.mv_registry.unregister(_mv.id)
-        for _name in [n for n in state.view_sql_map if n not in _views]:
-            state.view_sql_map.pop(_name)
-            state.bitemporal_view_reads.pop(_name, None)
-            state.stored_view_reads.discard(_name)
+        for _name in [n for n in _view_map if n not in _views]:
+            _view_map.pop(_name)
+            _bt_reads.pop(_name, None)
+            _stored_reads.discard(_name)
+        state.view_sql_map = _view_map
+        state.bitemporal_view_reads = _bt_reads
+        state.stored_view_reads = _stored_reads
         # REQ-2109: a bitemporal table updated in place keeps its versions in a log Provisa
         # captures, an MV of its own refreshed on that MV's interval.
         from provisa.mv.bitemporal_capture import register_logs

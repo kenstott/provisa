@@ -349,3 +349,24 @@ async def test_a_view_applying_a_column_transform_is_landed_and_read_from_its_st
         == 'SELECT * FROM "store"."views"."mv_clean_suppliers"'
     )
     assert state.stored_view_reads == {"views.clean_suppliers"}
+
+
+async def test_a_rebuild_publishes_new_maps_and_leaves_the_ones_a_request_walks(rebuilt):
+    """A request on another thread walks the view map, the bitemporal reads and the stored reads
+    it took while a rebuild runs. The rebuild builds new ones and publishes each in one
+    assignment: the ones the request holds never change under it (a dict changed in place under a
+    walk fails it with "dictionary changed size during iteration")."""
+    state = await rebuilt("big_orders", withdrawn=False, materialize=False)
+    held_map = state.view_sql_map
+    held_bt = state.bitemporal_view_reads
+    held_stored = state.stored_view_reads
+    before = dict(held_map)
+
+    state = await rebuilt("big_orders", withdrawn=True, materialize=False)
+
+    assert held_map == before, "the map the request walks is not changed"
+    assert "views.big_orders" in held_map
+    assert "views.big_orders" not in state.view_sql_map
+    assert state.view_sql_map is not held_map
+    assert state.bitemporal_view_reads is not held_bt
+    assert state.stored_view_reads is not held_stored
