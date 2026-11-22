@@ -24,6 +24,7 @@
     "namingConventionHint": "Convenzione di maiuscole applicata ai nomi dei campi GraphQL, seguita anche dalle chiavi di proprietà Cypher. Le etichette Cypher sono sempre in PascalCase. gRPC, JSON:API e OpenAPI mantengono la grafia di database di ogni colonna.",
     "namingConventionSnake": "snake_case",
     "namingConventionHasura": "Hasura (snake_case)",
+    "namingConventionHasuraGraphqlDefault": "Hasura graphql-default (camelCase)",
     "namingConventionApollo": "Apollo (camelCase)",
     "sqlNamingConvention": "Convenzione di denominazione SQL",
     "sqlNamingConventionHint": "Convenzione di maiuscole applicata ai nomi del piano SQL, interrogato dalle superfici pgwire, Bolt e SQL semantico. Si imposta separatamente dalla convenzione GraphQL, quindi rinominare su un piano lascia invariato l'altro.",

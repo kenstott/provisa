@@ -265,6 +265,7 @@
   "it/adminPage.json::adminPage.namingConventionApollo": "Apollo (camelCase)",
   "it/adminPage.json::adminPage.namingConventionCamel": "camelCase",
   "it/adminPage.json::adminPage.namingConventionHasura": "Hasura (snake_case)",
+  "it/adminPage.json::adminPage.namingConventionHasuraGraphqlDefault": "Hasura graphql-default (camelCase)",
   "it/adminPage.json::adminPage.namingConventionHint": "Casing applied to GraphQL field names, which Cypher property keys follow as well. Cypher labels are always PascalCase. gRPC, JSON:API and OpenAPI keep each column's database spelling.",
   "it/adminPage.json::adminPage.namingConventionNone": "None (raw DB names)",
   "it/adminPage.json::adminPage.namingConventionPascal": "PascalCase",

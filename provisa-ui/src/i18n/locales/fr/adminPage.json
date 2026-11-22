@@ -24,6 +24,7 @@
     "namingConventionHint": "Casse appliquée aux noms de champs GraphQL, que suivent aussi les clés de propriétés Cypher. Les étiquettes Cypher sont toujours en PascalCase. gRPC, JSON:API et OpenAPI conservent l'orthographe de chaque colonne dans la base de données.",
     "namingConventionSnake": "snake_case",
     "namingConventionHasura": "Hasura (snake_case)",
+    "namingConventionHasuraGraphqlDefault": "Hasura graphql-default (camelCase)",
     "namingConventionApollo": "Apollo (camelCase)",
     "sqlNamingConvention": "Convention de nommage SQL",
     "sqlNamingConventionHint": "Casse appliquée aux noms du plan SQL, qu'interrogent les surfaces pgwire, Bolt et SQL sémantique. Elle se règle séparément de la convention GraphQL, si bien que renommer sur un plan laisse l'autre intact.",
