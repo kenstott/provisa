@@ -679,7 +679,7 @@ export function RegisterTableForm({
     combine.typedGlob.trim() !== "" && (combine.checking || combine.preview === null);
   const globHint = !combine.typedGlob.trim()
     ? t("combineFiles.globHint")
-    : globChecking
+    : combine.checking || combine.preview === null
       ? t("combineFiles.checking")
       : combine.preview.files.length === 0
         ? t("combineFiles.noMatch")
