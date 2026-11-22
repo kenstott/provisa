@@ -35,9 +35,13 @@ that SQLSTATE on at least one edge call.
 
 from __future__ import annotations
 
+import functools
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from typing import Any
+
+from provisa.transpiler.polyfill.grid import Limitation
 
 #: The most edge calls one overload gets: with its NULL call, three samples and up to three column
 #: calls, at most 15 statements per overload on each server.
@@ -214,6 +218,20 @@ EDGES: dict[str, tuple[Edge, ...]] = {
     "daterange": (Edge(SPECIAL, "'[-infinity,infinity]'"), _UNBOUNDED_RANGE),
     "tsrange": (_UNBOUNDED_RANGE,),
     "tstzrange": (_UNBOUNDED_RANGE,),
+    # A shape holding NaN or an infinity: what the ClickHouse geometric rows say they raise on.
+    "point": (Edge(SPECIAL, "'(NaN,1)'"), Edge(SPECIAL, "'(Infinity,1)'")),
+    "line": (Edge(SPECIAL, "'{NaN,1,0}'"), Edge(SPECIAL, "'{1,-1,Infinity}'")),
+    "lseg": (Edge(SPECIAL, "'[(0,0),(NaN,1)]'"), Edge(SPECIAL, "'[(0,0),(Infinity,1)]'")),
+    "box": (Edge(SPECIAL, "'(NaN,1),(0,0)'"), Edge(SPECIAL, "'(Infinity,1),(0,0)'")),
+    "path": (
+        Edge(SPECIAL, "'((0,0),(NaN,1),(1,1))'"),
+        Edge(SPECIAL, "'((0,0),(Infinity,1),(1,1))'"),
+    ),
+    "polygon": (
+        Edge(SPECIAL, "'((0,0),(NaN,1),(1,1))'"),
+        Edge(SPECIAL, "'((0,0),(Infinity,1),(1,1))'"),
+    ),
+    "circle": (Edge(SPECIAL, "'<(NaN,0),1>'"), Edge(SPECIAL, "'<(0,0),Infinity>'")),
     "int4multirange": (Edge(SPECIAL, "'{(,)}'"),),
     "int8multirange": (Edge(SPECIAL, "'{(,)}'"),),
     "nummultirange": (Edge(SPECIAL, "'{(,)}'"),),
@@ -226,6 +244,33 @@ NULL_EDGE = Edge(NULL, "NULL")
 def edges_of(concrete: str, *, with_null: bool) -> tuple[Edge, ...]:
     """The edge values of the type ``concrete``, NULL first when ``with_null``."""
     return ((NULL_EDGE,) if with_null else ()) + EDGES.get(concrete, ())
+
+
+#: The edge values of an argument given literals of its own (function_support.ARG_VALUES), by
+#: function and position: a regular expression's pattern, whose empty pattern matches the empty
+#: text everywhere (the ClickHouse regexp rows say it raises where it counts, places or splits).
+#: These are called first, so the round robin reaches them whatever the arity.
+_EMPTY_PATTERN = (Edge(EMPTY, "''"),)
+GIVEN_EDGES: dict[tuple[str, int], tuple[Edge, ...]] = {
+    (name, 1): _EMPTY_PATTERN
+    for name in (
+        "regexp_count",
+        "regexp_instr",
+        "regexp_like",
+        "regexp_match",
+        "regexp_matches",
+        "regexp_replace",
+        "regexp_split_to_array",
+        "regexp_split_to_table",
+        "regexp_substr",
+    )
+}
+
+
+def given_edges(function: str, position: int) -> tuple[Edge, ...]:
+    """The edge values of ``function``'s argument ``position`` where it is given literals of its
+    own: ``GIVEN_EDGES``, none for any other."""
+    return GIVEN_EDGES.get((function, position), ())
 
 
 def chosen(per_position: list[tuple[int, tuple[Edge, ...]]]) -> list[tuple[int, Edge]]:
@@ -249,15 +294,154 @@ def sqlstate_class(sqlstate: str) -> str:
 
 # --- what the polyfill grid says of an overload's bound ----------------------------------------
 
-#: An SQLSTATE a limitation says its form raises: "raises 0A000", "raises PostgreSQL's 22003".
-_RAISES = re.compile(r"\braises?\s+(?:PostgreSQL's\s+)?([0-9A-Z]{5})\b")
+#: An SQLSTATE a limitation says its form raises, and the message it gives in parentheses after
+#: it where it gives one: "raises 0A000 (f() has no exact form on clickhouse)", "raises
+#: PostgreSQL's 22003". A message may hold one level of parentheses of its own ("f()").
+_RAISES = re.compile(
+    r"\braises?\s+(?:PostgreSQL's\s+)?([0-9A-Z]{5})\b(?:\s*\(((?:[^()]|\([^()]*\))*)\))?"
+)
 
-#: Of a call's statement on an engine: the texts of its grid row's limitations there, none when the
-#: grid has no row of it or the row states none.
-Bounds = Callable[[str, str], tuple[str, ...]]
+#: Of a call's statement on an engine: its grid row's limitations there, none when the grid has no
+#: row of it or the row states none.
+Bounds = Callable[[str, str], tuple[Limitation, ...]]
 
 
-def grid_bounds(statement: str, engine: str) -> tuple[str, ...]:
+@dataclass(frozen=True)
+class StatedError:
+    """An error a limitation states: its SQLSTATE, and its message where the limitation gives it
+    (None: the limitation names the SQLSTATE alone, and any message of it is the one stated)."""
+
+    sqlstate: str
+    message: str | None = None
+
+    def matches(self, sqlstate: str, message: str) -> bool:
+        return sqlstate == self.sqlstate and self.message in (None, message)
+
+
+def raised_error(raised: Mapping[str, Any]) -> tuple[str, str]:
+    """The SQLSTATE and the primary message of an edge call's raise (``edge_raised``)."""
+    message = str(raised.get("error", "")).split("\n", 1)[0].removeprefix("ERROR:").strip()
+    return str(raised.get("sqlstate", "")), message
+
+
+def bound_errors(limitation: Limitation) -> tuple[StatedError, ...]:
+    """The errors ``limitation``'s text says its form raises outside its bound: what makes a row
+    bounded, and what its overloads are held to raising at an edge."""
+    return tuple(
+        StatedError(state, message or None) for state, message in _RAISES.findall(limitation.text)
+    )
+
+
+def stated_errors(limitation: Limitation) -> tuple[StatedError, ...]:
+    """Every error ``limitation`` states: its refusal, and the raises its text names. An edge raise
+    is within the bound of a limitation only where it is one of these (REQ-2236, amended
+    2026-11-22: a limit excuses only the errors matching its own values and SQLSTATE)."""
+    refusal = limitation.refusal
+    own = (StatedError(refusal.sqlstate, refusal.message),) if refusal is not None else ()
+    return own + bound_errors(limitation)
+
+
+def excuses(limitation: Limitation, raised: Mapping[str, Any]) -> bool:
+    """Whether the edge raise ``raised`` is an error ``limitation`` states."""
+    sqlstate, message = raised_error(raised)
+    return any(e.matches(sqlstate, message) for e in stated_errors(limitation))
+
+
+def bound_excuses(limitation: Limitation, raised: Mapping[str, Any]) -> bool:
+    """Whether the edge raise ``raised`` is an error ``limitation``'s text says its form raises
+    outside its bound: what holds a bounded limitation (``bound_errors``)."""
+    sqlstate, message = raised_error(raised)
+    return any(e.matches(sqlstate, message) for e in bound_errors(limitation))
+
+
+def stated_by_dialect(grid: Any, dialect: str) -> dict[tuple[str, str], str]:
+    """The errors with a message any limitation of ``grid`` states on ``dialect``, by SQLSTATE and
+    message, each to the feature whose limitation states it: a value's own reading (a literal past
+    the engine's type) raises the error its own row states, whatever call it is an argument of."""
+    out: dict[tuple[str, str], str] = {}
+    for feature in grid.features:
+        for limitation in feature.read.limitations.get(dialect, ()):
+            for error in stated_errors(limitation):
+                if error.message is not None:
+                    out.setdefault((error.sqlstate, error.message), feature.name)
+    return out
+
+
+def stated_elsewhere(engine: str, raised: Mapping[str, Any]) -> bool:
+    """Whether the polyfill grid states the edge raise ``raised``, its SQLSTATE and its message, in
+    a limitation of any row on ``engine``'s dialect (``stated_by_dialect``)."""
+    import polyfill_check
+
+    dialect = polyfill_check.ENGINE_DIALECTS[engine]
+    return raised_error(raised) in _grid_stated(dialect)
+
+
+@functools.cache
+def _grid_stated(dialect: str) -> dict[tuple[str, str], str]:
+    import polyfill_check
+
+    return stated_by_dialect(polyfill_check.GRID, dialect)
+
+
+@dataclass(frozen=True)
+class OfRecord:
+    """A limit no edge call can reach, standing as a statement of record: the check does not hold
+    its feature's overloads to raising it (REQ-2236, amended 2026-11-22). Named by the feature,
+    the dialect and the error its limitation states, never by its wording."""
+
+    feature: str
+    dialect: str
+    error: StatedError
+    why: str
+
+
+_PAST_2_40 = "a group of more than 2^40 values: no edge call reads that many rows"
+#: The limits no edge call reaches, by feature and dialect.
+STATEMENTS_OF_RECORD: tuple[OfRecord, ...] = (
+    *(
+        OfRecord(
+            name,
+            "clickhouse",
+            StatedError(
+                "0A000", f"{name} of more than {1 << 40} values has no exact form on clickhouse"
+            ),
+            _PAST_2_40,
+        )
+        for name in (
+            "avg",
+            "variance",
+            "var_samp",
+            "var_pop",
+            "stddev",
+            "stddev_samp",
+            "stddev_pop",
+        )
+    ),
+    OfRecord(
+        "bpchar",
+        "clickhouse",
+        StatedError("0A000"),
+        "a length past 10485760 characters: no edge call pads a text that far",
+    ),
+    OfRecord(
+        "string_to_array",
+        "clickhouse",
+        StatedError("0A000"),
+        "a NULL text that is no literal: every edge call writes its NULL as a literal",
+    ),
+)
+
+
+def of_record(feature: str, dialect: str, limitation: Limitation) -> bool:
+    """Whether ``limitation`` of ``feature`` on ``dialect`` is a statement of record."""
+    errors = bound_errors(limitation)
+    return any(
+        r.feature == feature and r.dialect == dialect and r.error in errors
+        for r in STATEMENTS_OF_RECORD
+    )
+
+
+def grid_bounds(statement: str, engine: str) -> tuple[Limitation, ...]:
     """The limitations the polyfill grid's row of the call ``statement`` makes states on
     ``engine``'s dialect, read as the translator reads it: the function unqualified, the statement
     parsed as PostgreSQL's, its first column's expression looked up. None when the grid has no row
@@ -290,12 +474,13 @@ def grid_bounds(statement: str, engine: str) -> tuple[str, ...]:
     except Refused as refused:
         # A rewrite function refusing the call for its values: its row lists that refusal as a
         # limitation (notation.Refused), which is what the row states of the call.
-        return (f"refused: {refused.refusal.sqlstate} {refused.refusal.message}",)
+        text = f"refused: {refused.refusal.sqlstate} {refused.refusal.message}"
+        return (Limitation(text, refused.refusal),)
     if applied is None:
         return ()
-    return tuple(lim.text for lim in applied.feature.read.limitations.get(dialect, ()))
+    return tuple(applied.feature.read.limitations.get(dialect, ()))
 
 
-def stated_raises(limitations: tuple[str, ...]) -> list[str]:
+def stated_raises(limitations: tuple[Limitation, ...]) -> list[str]:
     """The SQLSTATEs the limitations say the form raises: what makes a row bounded."""
-    return sorted({m for text in limitations for m in _RAISES.findall(text)})
+    return sorted({e.sqlstate for lim in limitations for e in bound_errors(lim)})

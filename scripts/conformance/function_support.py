@@ -169,6 +169,8 @@ import yaml
 from psycopg import pq
 from psycopg import sql as psql
 
+from provisa.transpiler.polyfill.grid import Limitation
+
 import function_edges
 import function_report
 import pgwire_catalog_types as catalog
@@ -1784,7 +1786,8 @@ def edge_calls(fn: Function, family: str) -> list[Call]:
     """``fn`` called with edge values (function_edges): an overload ``value_calls`` gives its
     samples, each call its first sample row with one argument an edge value of its type, at most
     ``function_edges.EDGE_CALLS_MAX``. An argument given literals of its own (``ARG_VALUES``: a
-    unit, a pattern, a format) keeps them; an aggregate or a window function reads the edge row
+    unit, a pattern, a format) keeps them, but for the edges ``function_edges.given_edges`` gives
+    it (a regexp's empty pattern), called first; an aggregate or a window function reads the edge row
     twice. None for an overload written whole (``VALUE_STATEMENTS``, domain_in), one of no
     argument, and a hypothetical-set aggregate, whose one argument is direct and ordered both."""
     if (
@@ -1797,7 +1800,13 @@ def edge_calls(fn: Function, family: str) -> list[Call]:
         return []
     given = _given(fn)
     with_null = len(fn.argtypes) > 1 or fn.kind in ("a", "w")
+    # An argument given literals of its own takes only the edges function_edges gives it there,
+    # first, so the round robin reaches them whatever the arity (an empty regexp pattern).
     per_position = [
+        (i, function_edges.given_edges(fn.name, i))
+        for i in sorted(given)
+        if function_edges.given_edges(fn.name, i)
+    ] + [
         (i, function_edges.edges_of(function_probe.CONCRETE.get(t, t), with_null=with_null))
         for i, t in enumerate(fn.argtypes)
         if i not in given
@@ -3409,25 +3418,47 @@ def measure_overload(
     return entry
 
 
-def _held_to_its_bound(entry: dict[str, Any], limitations: tuple[str, ...], engine: str) -> None:
+def _held_to_its_bound(
+    entry: dict[str, Any],
+    limitations: tuple[Limitation, ...],
+    engine: str,
+    elsewhere: Callable[[str, dict[str, Any]], bool] | None = None,
+) -> None:
     """An overload whose edge calls ran, held to what its grid row on ``engine`` states. One that
-    raised at an edge is within its bound only where the row states a limitation there; with none
-    it is an error, which the grid does not state. A row whose limitation says what its form raises
-    is bounded: its overload must raise that SQLSTATE on an edge call (``bound_raised``)."""
+    raised at an edge is within its bound only where each raise is an error a limitation of its
+    row states, its SQLSTATE and, where the limitation gives it, its message
+    (``function_edges.excuses``), or one the grid states of the value's own reading on the engine
+    (``elsewhere``: a literal past the engine's type); any other raise is an error the grid does
+    not state (REQ-2236, amended 2026-11-22). A row whose limitation says what its form raises is
+    bounded: ``bound_raised`` says whether this overload raised such an error; the polyfill check
+    credits the bound per feature and engine (polyfill_check)."""
+    stated_elsewhere = function_edges.stated_elsewhere if elsewhere is None else elsewhere
     if limitations:
-        entry["bound_stated"] = list(limitations)
-    if entry["outcome"] == WITHIN_BOUND and not limitations:
-        entry["outcome"] = "error"
-        entry["error_at_edge"] = True
-        entry["detail"] = {
-            **entry["detail"],
-            "unstated": f"it raises at an edge value; its grid row on {engine} states no bound",
-        }
-    stated = function_edges.stated_raises(limitations)
-    if stated and entry["outcome"] in ("pass", WITHIN_BOUND):
-        entry["bound_sqlstates"] = stated
+        entry["bound_stated"] = [lim.text for lim in limitations]
+    raised = entry.get("edge_raised", ())
+    if entry["outcome"] == WITHIN_BOUND:
+        unstated = [
+            r
+            for r in raised
+            if not any(function_edges.excuses(lim, r) for lim in limitations)
+            and not stated_elsewhere(engine, r)
+        ]
+        if unstated:
+            sqlstate, message = function_edges.raised_error(unstated[0])
+            why = (
+                f"it raises {sqlstate} {message!r} at an edge value; no limitation of its grid "
+                f"row on {engine} states that error"
+                if limitations
+                else f"it raises at an edge value; its grid row on {engine} states no bound"
+            )
+            entry["outcome"] = "error"
+            entry["error_at_edge"] = True
+            entry["detail"] = {**unstated[0], "unstated": why}
+    bounded = [lim for lim in limitations if function_edges.bound_errors(lim)]
+    if bounded and entry["outcome"] in ("pass", WITHIN_BOUND):
+        entry["bound_sqlstates"] = function_edges.stated_raises(limitations)
         entry["bound_raised"] = any(
-            raised.get("sqlstate") in stated for raised in entry.get("edge_raised", ())
+            function_edges.bound_excuses(lim, r) for lim in bounded for r in raised
         )
 
 
