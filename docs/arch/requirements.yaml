@@ -34742,7 +34742,7 @@
     public publishing requires a premium public-tier SKU. (Amended 2026-11-20, GATED BY A PREMIUM
     ENTITLEMENT:) Maintainer 2026-11-20. High-volume anonymous publishing is gated by an entitlement
     feature, PUBLIC_HIGH_VOLUME, at the premium tier, enforced like the other entitlement features; the
-    price-list name lives in the private commercial requirement.'
+    price-list name lives in the private commercial requirement. (Amended 2026-11-21 by the maintainer. An org holding the premium public high-volume feature has its anonymous traffic capped at its own tier caps; without it, anonymous traffic gets the tightest caps. It is built after REQ-1058 and REQ-1059 give the anonymous public path.)'
   use_case: Protects shared infrastructure from resource exhaustion by anonymous users. Free-tier public
     endpoints are rate-limited; high-volume use is gated to premium. Prevents adversarial abuse or accidental
     DoS by published datasets.
@@ -96915,7 +96915,7 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     2026-11-15. A function form that an engine cannot answer only for edge values (an extreme, an empty
     value, a value where PostgreSQL itself differs) is not refused. It is served, and a call raises an error
     when the edge value occurs. A form is refused by name only when it cannot be answered for ordinary values.
-    The conformance measure counts such a form as served within its bound, and tests that the edge raises.'
+    The conformance measure counts such a form as served within its bound, and tests that the edge raises. (Amended 2026-11-21 by the maintainer for the Db2 engine. Two Db2 behaviours are stated limitations of the grid rather than refusals: a cast to text is bounded at 8168 characters, and string equality ignores trailing blanks; each is listed in the grid and the docs.)'
   use_case: A PostgreSQL user on DuckDB, Trino or another engine reads one page that says, feature by
     feature, what is native, what is polyfilled and how, and what differs or is refused, and that page
     cannot drift from what the product does.
