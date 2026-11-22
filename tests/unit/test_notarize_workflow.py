@@ -212,7 +212,7 @@ _EXTENSIONS = {
 
 def _payload(tmp_path: Path, extensions: bool = False) -> Path:
     """A build-dmg.sh beside a native-payload/runtime holding each kind of file it meets; with
-    ``extensions``, the DuckDB extension files too (as pip installs them, before the split)."""
+    ``extensions``, the DuckDB extension files too (a runtime the build refuses)."""
     macos = tmp_path / "macos"
     runtime = macos / "native-payload/runtime"
     (macos / "Provisa.app/Contents/MacOS").mkdir(parents=True)
@@ -284,12 +284,11 @@ def test_macho_files_finds_every_mach_o_by_magic_and_nothing_else(tmp_path):
 
 
 def test_the_native_runtime_is_signed_like_the_app_with_executables_last(tmp_path):
-    macos = _payload(tmp_path, extensions=True)
+    macos = _payload(tmp_path, extensions=False)  # provisa[embedded] installs no DuckDB extension
     result = _build_dmg(
         macos,
         _fake_tools(tmp_path),
-        "APPLE_DEVELOPER_ID='Developer ID Application: X'\n"
-        "split_duckdb_extensions\nsign_native_payload",
+        "APPLE_DEVELOPER_ID='Developer ID Application: X'\nsign_native_payload",
     )
     assert result.returncode == 0, result.stderr
     calls = (tmp_path / "calls").read_text().splitlines()
@@ -298,7 +297,7 @@ def test_the_native_runtime_is_signed_like_the_app_with_executables_last(tmp_pat
     signed = " ".join(calls)
     for rel in ("libpython3.12.dylib", "backend_c.cpython-312-darwin.so", "_fat.abi3.so"):
         assert rel in signed
-    # codesign refuses a DuckDB-signed extension: none is left in the runtime to pass to it.
+    # codesign refuses a DuckDB-signed extension: the runtime holds none to pass to it.
     assert "duckdb_extension" not in signed
     # The executable is signed after the libraries it loads, with the .app's entitlements.
     assert "python3.12" in calls[-1]
@@ -339,7 +338,7 @@ def test_the_handoff_verify_fails_and_names_a_duckdb_extension_left_in_the_runti
     for rel in _EXTENSIONS:
         assert (
             f"native-payload/runtime/{rel} is a DuckDB extension: the DMG carries none; first "
-            "launch stages them (provisa.runtime_deps.stage_assets)." in result.stderr
+            "launch stages them." in result.stderr
         )
 
 

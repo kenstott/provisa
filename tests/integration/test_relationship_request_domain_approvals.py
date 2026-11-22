@@ -63,12 +63,16 @@ _READERS = [
     "hr_modeler",
     "org_modeler",
     "sales_builder",
+    "sales_maker",
+    "view_maker",
+    "operator",
 ]
 _SCHEMA_SQL = os.path.abspath(
     os.path.join(os.path.dirname(__file__), "..", "..", "provisa", "core", "schema.sql")
 )
 
-# user -> the role they hold. Each modeler role carries create_relationship in one domain.
+# user -> the role they hold. Each modeler role carries approve_relationship, the right that
+# decides a relationship request (REQ-1327(5), REQ-1948), in one domain.
 _USERS = {
     "asker": "sales_reader",
     "sam": "sales_modeler",
@@ -80,9 +84,14 @@ _USERS = {
     # The other request types: two holders of the rights those requests name, in sales.
     "tina": "sales_builder",
     "tom": "sales_builder",
+    # A creator who may not approve: create_relationship and create_view, no approve right.
+    "carl": "sales_maker",
+    "vic": "view_maker",
+    # org_operator's rights: approve_view without create_view (REQ-1327(5)).
+    "opal": "operator",
 }
 # Roles a user holds besides the one above. fay reads sales (REQ-2152: a relationship is asked
-# for only between tables its asker reads) without holding create_relationship there, so a
+# for only between tables its asker reads) without holding create_relationship, so a
 # relationship owned by a sales table is a request she makes, not one she creates.
 _ALSO_HOLDS = {"fay": ["sales_reader"]}
 
@@ -168,14 +177,17 @@ async def plane(monkeypatch):
             )
         for role_id, caps, access in (
             ("sales_reader", ["query_development"], ["sales"]),
-            ("sales_modeler", ["create_relationship"], ["sales"]),
-            ("finance_modeler", ["create_relationship"], ["finance"]),
-            ("hr_modeler", ["create_relationship"], ["hr"]),
-            ("org_modeler", ["create_relationship"], ["*"]),
+            ("sales_modeler", ["approve_relationship"], ["sales"]),
+            ("finance_modeler", ["approve_relationship"], ["finance"]),
+            ("hr_modeler", ["approve_relationship"], ["hr"]),
+            ("org_modeler", ["approve_relationship"], ["*"]),
+            ("sales_maker", ["create_relationship"], ["sales"]),
+            ("view_maker", ["create_view"], ["sales"]),
+            ("operator", ["approve_view"], ["*"]),
             (
                 "sales_builder",
                 [
-                    "create_view",
+                    "approve_view",
                     "table_registration",
                     "source_registration",
                     "webhook_registration",
@@ -509,19 +521,50 @@ async def test_a_request_submitted_over_rest_is_held_to_the_same_count(plane):
         "target_column": "id",
         "cardinality": "many-to-one",
     }
-    made = await _post(
+    made = await _post(plane, "asker", "", request_type="relationship", payload=payload)
+    assert made.status_code == 200, made.text
+    rid = made.json()["id"]
+    listed = (await _listed(plane, "sam"))[rid]
+    assert listed["required_approvals"] == 2
+    # The server set the right that decides it, by the request's type (REQ-1327(5)).
+    assert listed["capability"] == "approve_relationship"
+    assert (await _post(plane, "sam", f"{rid}/approve")).json()["status"] == "pending"
+    assert await _stored(plane, "orders_customers") is None
+
+
+async def test_a_client_chosen_capability_is_refused_not_stored(plane):
+    """The deciding right is set by the request type on the server, never by the requester
+    (REQ-1948 as amended): a body naming one is refused and nothing is queued."""
+    payload = {
+        "id": "orders_customers",
+        "source_table_id": "orders",
+        "target_table_id": "customers",
+        "source_column": "ref_id",
+        "target_column": "id",
+        "cardinality": "many-to-one",
+    }
+    chosen = await _post(
         plane,
         "asker",
         "",
         request_type="relationship",
-        capability="create_relationship",
+        capability="user_management",
         payload=payload,
     )
-    assert made.status_code == 200, made.text
-    rid = made.json()["id"]
-    assert (await _listed(plane, "sam"))[rid]["required_approvals"] == 2
-    assert (await _post(plane, "sam", f"{rid}/approve")).json()["status"] == "pending"
-    assert await _stored(plane, "orders_customers") is None
+    assert chosen.status_code == 422, chosen.text
+    assert await _listed(plane, "asker") == {}
+
+
+async def test_the_right_to_create_relationships_does_not_decide_a_request(plane):
+    # carl may create relationships in sales but holds no approve_relationship (REQ-1327(5)).
+    rid = await _ask("asker", "orders_customers", "orders", "customers")
+    assert rid not in await _listed(plane, "carl")
+    refused = await _post(plane, "carl", f"{rid}/approve")
+    assert refused.status_code == 403
+    assert refused.json()["code"] == "requests.approver_outside_domains"
+    rejected = await _post(plane, "carl", f"{rid}/reject", reason="duplicate")
+    assert rejected.status_code == 403
+    assert (await _listed(plane, "sam"))[rid]["approvals"] == []
 
 
 async def test_a_creation_that_fails_leaves_the_request_pending_for_a_retry(plane):
@@ -583,7 +626,7 @@ _TABLE = {
     "columns": [],
 }
 _OTHER_TYPES = {
-    "view": ("create_view", {**_TABLE, "view_sql": "SELECT id FROM orders"}, "register_table"),
+    "view": ("approve_view", {**_TABLE, "view_sql": "SELECT id FROM orders"}, "register_table"),
     "table": ("table_registration", _TABLE, "register_table"),
     "source": ("source_registration", {"id": "crm", "type": "postgresql"}, "create_source"),
 }
@@ -595,12 +638,15 @@ class _Creation:
 
     def __init__(self) -> None:
         self.calls: list[tuple[str, Any]] = []
+        # Whether each call was carried out on the approval's authority (a view, REQ-1327(5)).
+        self.approved: list[bool] = []
         self.fail = False
 
-    async def __call__(self, _self: Any, info: Any, input: Any):
+    async def __call__(self, info: Any, input: Any, *, approved: bool = False):
         from provisa.api.admin.types import MutationResult
 
         self.calls.append((info.context["request"].state.identity.user_id, input))
+        self.approved.append(approved)
         if self.fail:
             return MutationResult(success=False, message="no", code="schema.test_refused")
         return MutationResult(success=True, message="made", code="schema.test_made")
@@ -636,11 +682,18 @@ async def _status(plane, rid: int) -> tuple[str, list]:
 def other(request, monkeypatch):
     capability, payload, method = _OTHER_TYPES[request.param]
     creation = _Creation()
+    if request.param == "view":
+        # A view is carried out on the approval's authority, through the registration op itself
+        # rather than the mutation that asks the caller's own right (REQ-1327(5)).
+        from provisa.api.admin import schema_mutation_ops
 
-    async def _direct(self, info, input):
-        return await creation(self, info, input)
+        monkeypatch.setattr(schema_mutation_ops, method, creation)
+    else:
 
-    monkeypatch.setattr(schema_mutation.Mutation, method, _direct)
+        async def _direct(self, info, input):
+            return await creation(info, input)
+
+        monkeypatch.setattr(schema_mutation.Mutation, method, _direct)
     return types.SimpleNamespace(
         kind=request.param, capability=capability, payload=payload, creation=creation
     )
@@ -658,10 +711,34 @@ async def test_rest_approval_creates_what_any_request_asks_for(plane, other):
     assert approved.json()["status"] == "executed"
     # Created once, as the approver, from the request's own payload.
     assert [user for user, _ in other.creation.calls] == ["tina"]
+    # Only a view is carried out on the approval's authority (REQ-1327(5)).
+    assert other.creation.approved == [other.kind == "view"]
     made = other.creation.calls[0][1]
     assert (made.id if other.kind == "source" else made.table_name) in ("crm", "leads")
     assert (await _status(plane, rid))[0] == "executed"
     assert (await _post(plane, "tom", f"{rid}/approve")).status_code == 409
+
+
+async def test_a_view_request_is_decided_by_approve_view_and_carried_out_on_its_authority(
+    plane, monkeypatch
+):
+    # REQ-1327(5): opal holds approve_view as org_operator does, and no create_view; vic holds
+    # create_view and no approve_view.
+    from provisa.api.admin import schema_mutation_ops
+
+    creation = _Creation()
+    monkeypatch.setattr(schema_mutation_ops, "register_table", creation)
+    rid = await _queue(plane, "view", "approve_view", _OTHER_TYPES["view"][1], "asker")
+    assert rid not in await _listed(plane, "vic")
+    lacking = await _post(plane, "vic", f"{rid}/approve")
+    assert lacking.status_code == 403 and "approve_view" in lacking.text
+    assert (await _post(plane, "vic", f"{rid}/reject", reason="duplicate")).status_code == 403
+
+    assert (await _listed(plane, "opal"))[rid]["can_decide"] is True
+    approved = await _post(plane, "opal", f"{rid}/approve")
+    assert approved.status_code == 200, approved.text
+    assert approved.json()["status"] == "executed"
+    assert [user for user, _ in creation.calls] == ["opal"] and creation.approved == [True]
 
 
 async def test_the_requester_and_a_repeat_approver_are_refused_for_any_type(plane, other):

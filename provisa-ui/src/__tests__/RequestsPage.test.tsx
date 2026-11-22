@@ -25,7 +25,7 @@ import { RequestsPage } from "../pages/RequestsPage";
 
 const base = {
   request_type: "relationship",
-  capability: "create_relationship",
+  capability: "approve_relationship",
   payload: { id: "orders_invoices" },
   status: "pending",
   rejection_reason: null,
@@ -87,7 +87,7 @@ const VIEW = {
   ...base,
   id: 4,
   request_type: "view",
-  capability: "create_view",
+  capability: "approve_view",
   required_approvals: 1,
   requested_by: "asker",
   approvals: [],

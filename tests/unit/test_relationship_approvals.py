@@ -32,9 +32,11 @@ def _approval(user: str, *domains: str) -> dict:
 # --- the reach of the right (REQ-1944's pairing, reused) ---------------------------------------
 
 _ROLES = {
-    "sales_modeler": {"capabilities": ["create_relationship"], "domain_access": ["sales"]},
+    "sales_modeler": {"capabilities": ["approve_relationship"], "domain_access": ["sales"]},
     "finance_reader": {"capabilities": ["query_development"], "domain_access": ["finance"]},
-    "org_modeler": {"capabilities": ["create_relationship"], "domain_access": ["*"]},
+    "org_modeler": {"capabilities": ["approve_relationship"], "domain_access": ["*"]},
+    # Creates relationships everywhere, approves none (REQ-1327(5)).
+    "org_creator": {"capabilities": ["create_relationship"], "domain_access": ["*"]},
 }
 
 
@@ -53,8 +55,26 @@ def _many_domains(monkeypatch):
     monkeypatch.setattr(domain_policy, "single_domain", lambda: False)
 
 
+def test_the_deciding_right_is_approve_relationship():
+    # REQ-1327(5), REQ-1948 as amended: holders of approve_relationship decide.
+    assert ra.RIGHT == "approve_relationship"
+
+
+def test_the_right_to_create_relationships_reaches_no_request():
+    assert right_reach(_identity("u", "org_creator"), _state(), ra.RIGHT) == frozenset()
+    refusal = ra.approval_refusal(
+        user_id="u",
+        requested_by="asker",
+        approvals=[],
+        involved=BOTH,
+        reach=right_reach(_identity("u", "org_creator"), _state(), ra.RIGHT),
+    )
+    assert refusal is not None and refusal.code == "requests.approver_outside_domains"
+    assert "approve relationships" in refusal.message
+
+
 def test_the_right_reaches_only_the_domains_of_the_roles_carrying_it():
-    # The finance role carries no create_relationship, so finance is not reached.
+    # The finance role carries no approve_relationship, so finance is not reached.
     reach = right_reach(_identity("u", "sales_modeler", "finance_reader"), _state(), ra.RIGHT)
     assert reach == SALES
 

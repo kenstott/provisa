@@ -286,9 +286,9 @@ assert (pathlib.Path(provisa.__file__).parent / '_encoders.THIRD_PARTY_NOTICES')
 # ── The DuckDB extensions are not in the DMG (REQ-294) ──────────────────────
 # DuckDB extensions are Mach-O with DuckDB's own signature appended after the image: codesign
 # refuses them, and Apple rejects a DMG that carries them unsigned. provisa[embedded] installs none;
-# first launch stages them outside the .app with the one stage command (provisa.runtime_deps.stage_assets),
+# first launch (first-launch.sh) stages them outside the .app with the one stage command,
 # from the release's Pages index, as every installer does. A runtime holding one fails the build.
-DUCKDB_EXTENSIONS_REFUSAL="is a DuckDB extension: the DMG carries none; first launch stages them (provisa.runtime_deps.stage_assets)."
+DUCKDB_EXTENSIONS_REFUSAL="is a DuckDB extension: the DMG carries none; first launch stages them."
 
 # ── Build SwiftUI launcher and embed binary ───────────────────────────────────
 build_launcher() {

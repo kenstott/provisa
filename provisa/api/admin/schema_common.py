@@ -133,13 +133,14 @@ def request_payload(input) -> dict:  # REQ-434
     return {k: v for k, v in dataclasses.asdict(input).items() if not isinstance(v, unset)}
 
 
-async def _queue_creation_request(  # REQ-434
-    info, request_type: str, capability: str, input
+async def _queue_creation_request(  # REQ-434, REQ-1327
+    info, request_type: str, input
 ) -> MutationResult:
-    """Persist a governed create the caller is not authorized to perform (REQ-434)."""
+    """Persist a governed create the caller is not authorized to perform (REQ-434). The right
+    that decides it is set by its type (request_queue.deciding_right)."""
 
     from provisa.api.admin.capabilities import _identity_from_info
-    from provisa.api.admin.request_queue import raise_request
+    from provisa.api.admin.request_queue import deciding_right, raise_request
     from provisa.api.app import state
     from provisa.core.repositories import creation_request as cr_repo
 
@@ -149,7 +150,7 @@ async def _queue_creation_request(  # REQ-434
     pool = await _get_pool()
     async with pool.acquire() as conn:
         rid = await raise_request(
-            cast("Connection", conn), request_type, capability, payload, requested_by, state=state
+            cast("Connection", conn), request_type, payload, requested_by, state=state
         )
     if request_type in cr_repo.REQUIRED_APPROVALS:
         # REQ-1948: a relationship request is decided by the domains it touches.
@@ -158,11 +159,12 @@ async def _queue_creation_request(  # REQ-434
             success=True,
             message=(
                 f"Queued as request #{rid}. It needs approvals from {required} different users "
-                f"who may create relationships, at least one reaching each domain it touches."
+                f"who may approve relationships, at least one reaching each domain it touches."
             ),
             code="schema.relationship_request_queued",
             params={"id": rid, "required": required},
         )
+    capability = deciding_right(request_type)
     return MutationResult(
         success=True,
         message=(

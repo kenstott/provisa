@@ -74,6 +74,7 @@ const TERM = {
   experts: [],
   tags: [],
   pending_on: [],
+  curatable: true,
 } as unknown as GlossaryTermDetail;
 
 const VALUES = ["net revenue", "Revenue after refunds and discounts.", "net revenue-copy"];

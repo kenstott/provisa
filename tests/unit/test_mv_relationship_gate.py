@@ -193,7 +193,7 @@ def _gate_env(monkeypatch):
 
     monkeypatch.setattr(rel_repo, "upsert", _upsert)
 
-    async def _queue(info, rtype, cap, inp):
+    async def _queue(info, rtype, inp):
         rec["queued"].append((rtype, getattr(inp, "id", getattr(inp, "table_name", "?"))))
         from provisa.api.admin.types import MutationResult
 

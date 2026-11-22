@@ -78,6 +78,7 @@ const DETAIL: GlossaryTermDetail = {
   experts: [],
   tags: [],
   pending_on: [],
+  curatable: true,
   iri: null,
 };
 

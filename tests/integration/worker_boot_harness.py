@@ -63,7 +63,7 @@ _TRANSPORTS = ("http", "pgwire", "flight", "grpc", "bolt", "mcp", "airport")
 FLIGHT_QUERY = "SELECT id, region FROM sales.orders"
 
 
-def _config(pg_host: str, pg_port: int, database: str) -> dict:
+def _config(pg_host: str, pg_port: int, database: str, pg_user: str = "provisa") -> dict:
     return {
         "sources": [
             {
@@ -72,7 +72,7 @@ def _config(pg_host: str, pg_port: int, database: str) -> dict:
                 "host": pg_host,
                 "port": pg_port,
                 "database": database,
-                "username": "provisa",
+                "username": pg_user,
                 "password": "${env:PG_PASSWORD}",
             }
         ],
@@ -198,7 +198,7 @@ class WorkerBoot:
     def start(self) -> None:
         host, port, user, password = self._pg
         cfg_path = Path(self.data_dir) / "provisa.yaml"
-        config = {**_config(host, port, self.database), **self._extra_config}
+        config = {**_config(host, port, self.database, user), **self._extra_config}
         cfg_path.write_text(yaml.safe_dump(config))
         redirect = self._redirect_endpoint or f"http://127.0.0.1:{self._dead_port}"
         env = {

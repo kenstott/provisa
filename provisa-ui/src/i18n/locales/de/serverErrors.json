@@ -22,17 +22,17 @@
       "embedding_library_missing": "Das Embedding-Modell {{model}} verwendet den Anbieter {{provider}}, der das Extra {{extra}} benötigt (das Modul {{module}} ist nicht installiert): pip install 'provisa[{{extra}}]'."
     },
     "ai": {
-      "endpoint_address_from_server": "Der KI-Endpunkt {{vendor}} bezieht seine Adresse aus der Umgebung des Servers, die eine Organisation auf diesem Server nicht verwendet. Geben Sie ihm unter Admin, KI-Modelle eine eigene Adresse.",
+      "key_required": "{{vendor}} hat keinen Schlüssel. Legen Sie einen unter Admin, KI-Modelle fest.",
+      "vendor_uses_server_credentials": "{{vendor}} wird mit den eigenen Zugangsdaten des Servers erreicht, die eine Organisation auf diesem Server nicht verwendet. Wählen Sie unter Admin, KI-Modelle einen Anbieter, der einen Schlüssel annimmt, oder einen KI-Endpunkt.",
       "endpoint_key_from_server": "Der KI-Endpunkt {{vendor}} bezieht seinen Schlüssel aus der Umgebung des Servers, die eine Organisation auf diesem Server nicht verwendet. Geben Sie ihm unter Admin, KI-Modelle einen eigenen Schlüssel.",
       "endpoint_key_unset": "Der KI-Endpunkt {{vendor}} hat keinen Schlüssel: {{field}} ist nicht gesetzt.",
-      "key_required": "{{vendor}} hat keinen Schlüssel. Legen Sie einen unter Admin, KI-Modelle fest.",
+      "endpoint_address_from_server": "Der KI-Endpunkt {{vendor}} bezieht seine Adresse aus der Umgebung des Servers, die eine Organisation auf diesem Server nicht verwendet. Geben Sie ihm unter Admin, KI-Modelle eine eigene Adresse.",
       "local_server_from_environment": "{{vendor}} wird unter der eigenen Adresse des Servers erreicht, die eine Organisation auf diesem Server nicht verwendet. Legen Sie unter Admin, KI-Modelle einen KI-Endpunkt mit Ihrer eigenen Adresse an.",
       "server_environment_sets": "{{vendor}} kann hier nicht aufgerufen werden: Die Umgebung des Servers setzt {{variable}}, das sein Client für jede Organisation senden würde.",
-      "vector_model_address_from_server": "Das Embedding-Modell {{vendor}} bezieht seine Adresse aus der Umgebung des Servers, die eine Organisation auf diesem Server nicht verwendet. Geben Sie ihm unter Admin, KI-Modelle eine eigene Adresse.",
       "vector_model_key_from_server": "Das Embedding-Modell {{vendor}} bezieht seinen Schlüssel aus der Umgebung des Servers, die eine Organisation auf diesem Server nicht verwendet. Geben Sie ihm unter Admin, KI-Modelle einen eigenen Schlüssel.",
       "vector_model_key_unset": "Das Embedding-Modell {{vendor}} hat keinen Schlüssel: {{field}} ist nicht gesetzt.",
-      "vector_model_local_server": "Das Embedding-Modell {{vendor}} wird unter der eigenen Adresse des Servers erreicht, die eine Organisation auf diesem Server nicht verwendet. Geben Sie ihm unter Admin, KI-Modelle eine eigene Adresse.",
-      "vendor_uses_server_credentials": "{{vendor}} wird mit den eigenen Zugangsdaten des Servers erreicht, die eine Organisation auf diesem Server nicht verwendet. Wählen Sie unter Admin, KI-Modelle einen Anbieter, der einen Schlüssel annimmt, oder einen KI-Endpunkt."
+      "vector_model_address_from_server": "Das Embedding-Modell {{vendor}} bezieht seine Adresse aus der Umgebung des Servers, die eine Organisation auf diesem Server nicht verwendet. Geben Sie ihm unter Admin, KI-Modelle eine eigene Adresse.",
+      "vector_model_local_server": "Das Embedding-Modell {{vendor}} wird unter der eigenen Adresse des Servers erreicht, die eine Organisation auf diesem Server nicht verwendet. Geben Sie ihm unter Admin, KI-Modelle eine eigene Adresse."
     },
     "api": {
       "answer_cut": "Die Antwort für {{table}} wurde bei max_pages={{max_pages}} abgeschnitten ({{rows}} Zeilen): Die API hat weitere Daten. Erhöhen Sie max_pages oder die Seitengröße des Endpunkts, um alles zu lesen.",
@@ -174,14 +174,13 @@
     },
     "discovery": {
       "adapter_missing_discover_schema": "Adapter für '{{source_type}}' implementiert discover_schema nicht",
-      "answer_unreadable": "Die Antwort des Modells enthielt keine lesbare Liste.",
       "cassandra_discovery_unsupported": "Die Cassandra-Schemaerkennung erfordert eine aktive CQL-Sitzung, die nicht verfügbar ist. Definieren Sie die Spalten für diese Quelle manuell.",
       "database_not_connected": "Datenbank nicht verbunden",
-      "decided_both_ways": "Ein Vorschlag wird akzeptiert oder nicht erneut empfohlen, nicht beides.",
       "domain_id_required": "domain_id für den Domänen-Geltungsbereich erforderlich",
       "elasticsearch_index_hint_required": "Die Elasticsearch-Erkennung erfordert einen 'index'-Hinweis.",
       "elasticsearch_mapping_failed": "Elasticsearch-Mapping für Index '{{index}}' konnte nicht gelesen werden: {{error}}",
       "endpoint_already_registered": "Endpunkt bereits registriert: {{error}}",
+      "decided_both_ways": "Ein Vorschlag wird akzeptiert oder nicht erneut empfohlen, nicht beides.",
       "model_has_no_room": "Das Modell {{model}} kann keine Anfrage aufnehmen: {{reason}}",
       "model_incomplete": "Ein gewähltes Modell nennt sowohl seinen Anbieter als auch sein Modell.",
       "no_adapter_for_source_type": "Kein Adapter für Quellentyp '{{source_type}}' registriert",
@@ -201,6 +200,7 @@
       "target_tables_not_read": "Keine der gewählten Zieltabellen ({{count}}) wird gelesen: Die Erkennung lässt Tabellen einer Systemdomäne und Tabellen außer Betrieb aus.",
       "unknown_source_type": "Unbekannter Quellentyp: {{type}}",
       "vendor_unknown": "{{vendor}} listet hier keine Modelle auf; geben Sie den Modellnamen ein.",
+      "answer_unreadable": "Die Antwort des Modells enthielt keine lesbare Liste.",
       "source_tables_outside_domains": "Die gewählten Quelltabellen liegen außerhalb der im Domänenfilter ausgewählten Domänen: {{names}}.",
       "target_tables_outside_domains": "Die gewählten Zieltabellen liegen außerhalb der im Domänenfilter ausgewählten Domänen: {{names}}."
     },
@@ -483,6 +483,7 @@
       "view_deploy_unsupported_type": "Quelle '{{source}}' hat den Typ '{{type}}' und kann keine bereitgestellte Sicht hosten; unterstützte Typen: {{supported}}",
       "view_deployed": "Sicht '{{view}}' in '{{source}}' Schema '{{schema}}' bereitgestellt",
       "view_spans_sources": "Sicht erstreckt sich über mehrere Quellen: {{sources}}",
+      "view_relationships_unapproved": "Die Sicht '{{view}}' verknüpft über Beziehungen, die noch nicht genehmigt sind ({{relationships}}); genehmigen Sie diese und führen Sie diesen Antrag dann erneut aus",
       "webhook_approved": "Webhook '{{webhook}}' genehmigt",
       "webhook_name_required": "webhook_name ist für einen Webhook-Trigger erforderlich",
       "mask_unreachable": "Sie haben eine Maske definiert, die nicht erreichbar ist: {{entries}}",
@@ -490,7 +491,7 @@
       "change_streams_unavailable": "Quelle '{{source}}' ist ein eigenständiger MongoDB-Server, der keine Change Streams bereitstellt: Das native Änderungssignal erfordert ein Replica Set oder einen Sharded Cluster. Betreiben Sie ihn als Replica Set oder verwenden Sie das Änderungssignal poll.",
       "openapi_no_rows_field": "Tabelle {{table}}: Die Antwort hat keine Eigenschaft {{rows_field}}, aus der Zeilen gelesen werden könnten.",
       "paging_rows_field_fixed": "Tabelle {{table}}: Wo ihre Zeilen liegen ({{rows_field}}), wird bei der Registrierung der Tabelle festgelegt. Registrieren Sie die Tabelle erneut, um ihre Zeilen von anderer Stelle zu lesen.",
-      "relationship_request_queued": "Als Antrag #{{id}} eingereiht. Er braucht Genehmigungen von {{required}} verschiedenen Benutzern, die Beziehungen anlegen dürfen, wobei mindestens einer jede berührte Domäne erreicht.",
+      "relationship_request_queued": "Als Antrag #{{id}} eingereiht. Er braucht Genehmigungen von {{required}} verschiedenen Benutzern, die Beziehungen genehmigen dürfen, wobei mindestens einer jede berührte Domäne erreicht.",
       "request_approved": "Erstellungsanfrage #{{id}} genehmigt",
       "registry_auth_unknown": "Quelle '{{source}}': Die Schema-Registry-Authentifizierung '{{method}}' ist keine von {{methods}}",
       "registry_url_required": "Quelle '{{source}}': Schema-Registry-Einstellungen sind angegeben, aber keine Schema-Registry-URL",
@@ -692,13 +693,13 @@
       "try_cast_needs_postgres_16": "toInteger, toFloat und toBoolean für einen Wert, der sich möglicherweise nicht umwandeln lässt, erfordern auf dieser Engine PostgreSQL 16 oder neuer."
     },
     "requests": {
-      "approver_outside_domains": "Ihr Recht, Beziehungen anzulegen, reicht in keine Domäne, die dieser Antrag berührt ({{domains}})",
+      "approver_outside_domains": "Ihr Recht, Beziehungen zu genehmigen, reicht in keine Domäne, die dieser Antrag berührt ({{domains}})",
       "own_request": "Sie können über einen eigenen Antrag nicht entscheiden",
       "already_approved": "Sie haben diesen Antrag bereits genehmigt",
       "approver_unidentified": "Über einen Beziehungsantrag entscheiden angemeldete Benutzer; dieser Entscheidung ist kein Benutzer zugeordnet",
       "waiting_on_domains": "Dieser Antrag wartet noch auf eine Genehmigung aus: {{domains}}",
       "approvals_incomplete": "Dieser Antrag braucht Genehmigungen von {{required}} verschiedenen Benutzern",
-      "tables_not_registered": "Die Tabellen, die dieser Antrag nennt ({{tables}}), sind nicht mehr registriert. Er kann nicht genehmigt werden; ein Benutzer, dessen Recht, Beziehungen anzulegen, in jede Domäne reicht, kann ihn ablehnen"
+      "tables_not_registered": "Die Tabellen, die dieser Antrag nennt ({{tables}}), sind nicht mehr registriert. Er kann nicht genehmigt werden; ein Benutzer, dessen Recht, Beziehungen zu genehmigen, in jede Domäne reicht, kann ihn ablehnen"
     },
     "statement": {
       "rows_cut": "Die Antwort wurde bei {{limit}} Zeilen abgeschnitten, dem für diese Abfrage geltenden Zeilenlimit ({{kind}}): Es passen mehr Zeilen, als zurückgegeben wurden.",

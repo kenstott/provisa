@@ -789,7 +789,6 @@ REVIEWED: frozenset[tuple[str, str, str]] = frozenset(
         ("connector_duckdb.py", "details", "', '.join(options)"),  # snowflake: options of lit()
         ("connector_duckdb.py", "details", "provider"),  # azure: keywords and lit()
         # duckdb_runtime.py
-        ("duckdb_runtime.py", "_attach_databricks", "ext"),  # "httpfs" or "iceberg"
         ("duckdb_runtime.py", "_point_databricks_view", "options"),  # DuckDB's option names, lit()
         ("duckdb_runtime.py", "_point_databricks_view", "phys"),  # _phys_name: ident()
         ("duckdb_runtime.py", "_point_databricks_view", "scan_args"),  # the connector's constant

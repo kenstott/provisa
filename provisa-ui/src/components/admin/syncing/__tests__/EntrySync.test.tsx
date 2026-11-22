@@ -229,6 +229,19 @@ describe("an entry's difference list", () => {
     expect(screen.getByTestId(`syncing-accept-catalog-description-${GROUP}`)).toBeEnabled();
   });
 
+  it("says why nothing is listed when both directions are off", async () => {
+    mockReview.mockResolvedValue({
+      ...REVIEW,
+      directions: { export: false, import: false },
+      total: 0,
+      kinds: [],
+    });
+    render(<EntrySync entryId="mz" />);
+    expect(await screen.findByTestId("syncing-diff-none")).toHaveTextContent(
+      "Both directions are off, so no differences are listed.",
+    );
+  });
+
   it("shows a refusal by name in plain words", async () => {
     mockReview.mockRejectedValue(new Error("This catalog's values cannot be read back yet."));
     render(<EntrySync entryId="mz" />);

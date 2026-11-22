@@ -670,8 +670,11 @@ def _domains_response(monkeypatch, role: dict) -> list[str]:
     from provisa.api import app as appmod
     from provisa.api.data.sdl import get_domains
 
+    # REQ-1327: the role's compiled context, as the build compiles it: ``hr`` holds no table, so
+    # a role reaching it reads nothing there.
     state = types.SimpleNamespace(
         roles={role["id"]: role},
+        contexts={role["id"]: build_context(_schema_input(role))},
         schema_build_cache={
             "domains": [{"id": d} for d in ("", "meta", "ontology", "ops", "pet-store", "hr")]
         },
@@ -686,15 +689,32 @@ def _domains_response(monkeypatch, role: dict) -> list[str]:
     "role_id,shown",
     [
         pytest.param(ROLE, ["meta", "ontology", "pet-store"], id="pet_analyst"),
-        pytest.param("analyst", ["hr", "ontology", "pet-store"], id="wildcard-no-ops"),
-        pytest.param(
-            "org_admin", ["hr", "meta", "ontology", "ops", "pet-store"], id="wildcard-with-ops"
-        ),
+        pytest.param("analyst", ["ontology", "pet-store"], id="wildcard-no-ops"),
+        pytest.param("org_admin", ["meta", "ontology", "ops", "pet-store"], id="wildcard-with-ops"),
         pytest.param(LONER, ["pet-store"], id="no-viewer-ancestor"),
     ],
 )
-def test_data_domains_answers_the_flattened_list(monkeypatch, role_id, shown):
+def test_data_domains_lists_the_domains_with_a_table_the_role_reads(monkeypatch, role_id, shown):
+    """REQ-1327: the Domains picker lists a domain only when the acting role reads at least one
+    table in it. The wildcard roles reach ``hr`` but no table is there, so it is not listed."""
     assert _domains_response(monkeypatch, _flat(role_id)) == shown
+
+
+def test_data_domains_lists_nothing_for_a_role_with_no_data_surface(monkeypatch):
+    """REQ-1327: a role the build compiled no context for reads no table, so lists no domain."""
+    from provisa.api import app as appmod
+    from provisa.api.data.sdl import get_domains
+
+    role = _flat(ROLE)
+    state = types.SimpleNamespace(
+        roles={role["id"]: role},
+        contexts={},
+        schema_build_cache={"domains": [{"id": d} for d in ("meta", "pet-store")]},
+    )
+    monkeypatch.setattr(appmod, "state", state)
+    request = types.SimpleNamespace(state=types.SimpleNamespace(role=role["id"]))
+    response = asyncio.run(get_domains(request, role["id"], None))  # type: ignore[arg-type]
+    assert json.loads(response.body) == []
 
 
 def test_a_per_domain_schema_may_name_a_system_domain_the_role_holds():

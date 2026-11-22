@@ -127,7 +127,9 @@ async def test_a_second_table_at_a_taken_address_is_refused_naming_the_holder(cl
     assert newcomer["params"]["domain"] == domains.domain
     assert newcomer["params"]["address"] == _ALIAS
     assert newcomer["params"]["holder"] == f"__derived__.views.{first}"
-    assert f"__derived__.views.{first}" in newcomer["message"]
+    # Named as its registration names it: a client's text has a physical address rewritten to
+    # its model name, which for the holder is the address itself (engine_error_names.model_named).
+    assert f"table '{first}' of source '__derived__' (schema 'views')" in newcomer["message"]
     tables = await _gql(client, "{ tables { tableName domainId } }")
     assert [t["tableName"] for t in tables["tables"] if t["domainId"] == domains.domain] == [first]
 

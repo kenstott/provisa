@@ -152,8 +152,11 @@ async def get_domains(  # REQ-471
     x_provisa_role: str = Header(None, alias="X-Provisa-Role"),
     x_role: str = Header(None, alias="X-Role"),
 ):
-    """Return domain IDs the requesting role reaches: its data domains and, by capability, the
-    system domains (its flattened domain_access)."""
+    """Return the domain IDs the requesting role reaches (its flattened domain_access: its data
+    domains and, by capability, the system domains, REQ-1132) and in which it reads at least one
+    table (REQ-1327): a reached domain with no table its compiled context serves offers the picker
+    nothing to show. Reach stays part of the answer because the SQL context also serves meta's
+    default tier to a role that does not reach meta, to which meta is no domain."""
     from provisa.api.acting_role import header_role
     from provisa.api.app import state
 
@@ -163,13 +166,17 @@ async def get_domains(  # REQ-471
     role = state.roles.get(role_id)
     if role is None:
         raise ApiError(404, "data.no_role", f"No role {role_id!r}", role_id=role_id)
+    # A role with no data surface (a control-plane role, one reaching no domain) has no compiled
+    # context and reads no table (role_visibility's rule), so it lists no domain.
+    ctx = state.contexts.get(role_id)
+    read = {meta.domain_id for meta in ctx.tables.values()} if ctx is not None else set()
     all_domains = [
         d["id"] for d in (state.schema_build_cache.get("domains") or []) if d["id"] != ""
     ]
     from provisa.security.rights import reaches_domain
 
     access = role["domain_access"]
-    return JSONResponse([d for d in all_domains if reaches_domain(access, d)])
+    return JSONResponse([d for d in all_domains if d in read and reaches_domain(access, d)])
 
 
 @router.get("/data/sdl", response_class=PlainTextResponse)

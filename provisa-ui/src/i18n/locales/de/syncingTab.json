@@ -88,6 +88,7 @@
     "differences": "Unterschiede zum Katalog",
     "differencesHelp": "Jeder Wert, den der Katalog anders hält als Provisa. Übernehmen wählt eine Seite für eine Zeile oder für eine ganze Tabelle oder einen ganzen Begriff.",
     "diffNoDifferences": "Der Katalog hält dieselben Werte wie Provisa.",
+    "diffBothOff": "Beide Richtungen sind aus, daher werden keine Unterschiede aufgelistet.",
     "diffObject": "Objekt",
     "diffProvisa": "Provisa",
     "diffCatalog": "Katalog",

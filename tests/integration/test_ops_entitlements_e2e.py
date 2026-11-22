@@ -172,12 +172,16 @@ class _Subscription:
 
 
 def test_org_admin_reads_the_store_with_valid_periods(server):
+    # The server's model build has already written each role's default and ceiling rows
+    # (source 'role', no principal) into the same store (write_role_rows), so the read is
+    # narrowed to alice's provisa lists, the rows this test writes.
     first = _put_list(server, ["sales.orders"], "2026-01-01T00:00:00Z")
     second = _put_list(server, ["sales.*"], "2026-02-01T00:00:00Z")
     response = _sql(
         server,
         "SELECT id, source, principal, role_id, kind, identifiers, valid_from, valid_to, "
-        "recorded_at FROM ops.entitlements ORDER BY id",
+        "recorded_at FROM ops.entitlements WHERE source = 'provisa' AND principal = 'alice' "
+        "ORDER BY id",
         _ROLE,
     )
     assert response.status_code == 200, f"{response.text}\n{server.dump_stderr_debug()[-6000:]}"

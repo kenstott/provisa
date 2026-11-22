@@ -65,6 +65,7 @@ const REVENUE_DETAIL: GlossaryTermDetail = {
   experts: [{ user_id: "alice", kind: "expert" }],
   tags: [],
   pending_on: [],
+  curatable: true,
   iri: null,
 };
 

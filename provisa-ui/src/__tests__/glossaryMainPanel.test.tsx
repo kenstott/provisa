@@ -76,6 +76,7 @@ const TERM = {
   experts: [],
   tags: [],
   pending_on: [],
+  curatable: true,
 } as unknown as GlossaryTermDetail;
 
 // REQ-2260: the term left open, remembered for the viewer as every list page's item is.
