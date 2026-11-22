@@ -75,6 +75,7 @@ UNREGISTERED = "unregistered"  # a column equality that is no registered relatio
 NOT_EQUALITY = "not_equality"  # matched by something other than a column equality
 NO_CONDITION = "no_condition"  # combined with nothing relating them
 NEVER_TRUE = "never_true"  # joined on a condition that is never true: no relationship named
+PARTIAL_KEY = "partial_key"  # joined on part of a composite relationship key (REQ-1586)
 
 #: The alias a condition's side is written under when it is compared with a registered one.
 _ANY = "__a"
@@ -723,6 +724,7 @@ def unrelated_tables(
     computed: set[tuple[int, int, str, str]] = frozenset(),  # type: ignore[assignment]
     constants: set[tuple[int, int, str, str]] = frozenset(),  # type: ignore[assignment]
     primary_keys: dict[int, frozenset[str]] | None = None,
+    keys: set[tuple[int, int, tuple[str, ...], tuple[str, ...]]] = frozenset(),  # type: ignore[assignment]
 ) -> list[Unrelated]:
     """The pairs of registered tables ``tree`` combines outside the ``registered`` relationships
     -- (table id, table id, column, column), both directions. ``computed``: the relationships
@@ -739,7 +741,13 @@ def unrelated_tables(
     row and reaches no other; a table with no registered key has no such case. A filter only:
     IN / NOT IN / EXISTS / NOT EXISTS over the same table decides which rows appear and brings
     no second copy's columns out. Anything else that brings out a second copy of the table is a
-    pairing like any other, and needs a relationship registered from the table to itself."""
+    pairing like any other, and needs a relationship registered from the table to itself.
+
+    ``keys``: the registered relationships' keys, as (table id, table id, columns, columns), both
+    directions (``sql_validator.relationship_keys``). A pair of columns registered only as part of
+    a key of more than one column relates two instances only when the statement equates every
+    column pair of that key between them (REQ-1586); on part of it, it relates rows the
+    relationship does not, and is refused as PARTIAL_KEY."""
     queries = [tree] if isinstance(tree, exp.Query) else []
     if not queries:
         queries = [q for q in tree.find_all(exp.Query) if q.find_ancestor(exp.Query) is None]
@@ -757,6 +765,7 @@ def unrelated_tables(
                 computed,
                 constants,
                 primary_keys or {},
+                keys,
             )
     return found
 
@@ -843,8 +852,17 @@ def _unrelated_in(
     computed: set[tuple[int, int, str, str]],
     constants: set[tuple[int, int, str, str]],
     primary_keys: dict[int, frozenset[str]],
+    keys: set[tuple[int, int, tuple[str, ...], tuple[str, ...]]],
 ) -> list[Unrelated]:
     resolver = _Resolver(resolve_table_id, columns_of)
+    # Column pairs a single-column key registers, and those only a composite key does (REQ-1586).
+    single = {(a, b, ac[0], bc[0]) for a, b, ac, bc in keys if len(ac) == 1}
+    composite = {
+        (a, b, x, y) for a, b, ac, bc in keys if len(ac) > 1 for x, y in zip(ac, bc, strict=True)
+    } - single
+    # (instance, instance) -> the composite-key column pairs the statement equates between them,
+    # each in both directions as (table id, table id, column, column)
+    part_of_key: dict[frozenset[int], set[tuple[int, int, str, str]]] = {}
     # (instance, instance) of one table -> the key columns the statement equates between them
     same_row: dict[frozenset[int], set[str]] = {}
     # instance -> the IN / EXISTS subquery it is read in, innermost (absent: in none)
@@ -911,6 +929,15 @@ def _unrelated_in(
                 ):
                     # Settled once every condition is read: the same row only on the whole key.
                     same_row.setdefault(frozenset({a.instance, b.instance}), set()).add(a.column)
+                    continue
+                if (a.table_id, b.table_id, a.column, b.column) in composite:
+                    # Settled once every condition is read: related only on the whole key.
+                    part_of_key.setdefault(frozenset({a.instance, b.instance}), set()).update(
+                        {
+                            (a.table_id, b.table_id, a.column, b.column),
+                            (b.table_id, a.table_id, b.column, a.column),
+                        }
+                    )
                     continue
                 if (a.table_id, b.table_id, a.column, b.column) in registered or same_remote_source(
                     a.table_id, b.table_id
@@ -1140,6 +1167,20 @@ def _unrelated_in(
         else:
             for column in sorted(columns):
                 refuse(Unrelated(table_id, table_id, UNREGISTERED, column, column))
+    # Two instances joined on a composite key's columns are related when some such key has every
+    # one of its column pairs equated between them; on part of it, the part is refused.
+    for instances, equated in part_of_key.items():
+        whole = any(
+            all((a, b, x, y) in equated for x, y in zip(ac, bc, strict=True))
+            for a, b, ac, bc in keys
+            if len(ac) > 1 and (a, b, ac[0], bc[0]) in equated
+        )
+        if whole:
+            edges.add(instances)
+            continue
+        for a, b, x, y in sorted(equated):
+            if (a, x) <= (b, y):
+                refuse(Unrelated(a, b, PARTIAL_KEY, x, y))
 
     # Tables a statement combines must be connected by its registered pairings: one combined
     # with nothing relating it to the rest is a product of the two.

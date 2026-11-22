@@ -223,6 +223,18 @@ VALUE_FUNCTIONS_OF_THE_SERVER = (
             ),
         },
     ),
+    # A form's error whose message is written from a value (metadata_server_forms
+    # .raising_or_refused): ClickHouse 24.3's throwIf takes only a constant message, so there the
+    # call is refused by name with 0A000 ``refused``, a constant, where the error would be raised.
+    _macro(
+        "provisa_raise",
+        "sqlstate, message, refused",
+        f"error('{MARK} ' || sqlstate || ': ' || message)",
+        others={
+            _TRINO: f"fail('{MARK} ' || sqlstate || ': ' || message)",
+            frozenset({"clickhouse"}): f"toString(throwIf(1, '{MARK} 0A000: ' || refused))",
+        },
+    ),
 )
 
 #: A value of a sequence, which only its database can answer: a NULL is strict's.

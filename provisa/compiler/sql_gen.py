@@ -38,6 +38,7 @@ from graphql import (
     VariableDefinitionNode,
 )
 
+from provisa.compiler import names_table
 from provisa.compiler.params import ParamCollector
 
 from provisa.compiler.sql_types import (
@@ -95,7 +96,7 @@ def _compile_root_field(  # REQ-009, REQ-011, REQ-032, REQ-033, REQ-034, REQ-035
 ) -> CompiledQuery:
     """Compile a single root query field to SQL."""
     root_name = field_node.alias.value if field_node.alias else field_node.name.value
-    table = ctx.tables[field_node.name.value]
+    table = names_table.root_table(ctx, field_node.name.value)  # REQ-467
     collector = ParamCollector()
     sources = StatementSources(table)
 
@@ -599,7 +600,7 @@ def _compile_connection_field(  # REQ-218
     from provisa.compiler.cursor import apply_cursor_pagination, extract_sort_columns
 
     root_name = field_node.alias.value if field_node.alias else field_node.name.value
-    table = ctx.tables[field_node.name.value]
+    table = names_table.root_table(ctx, field_node.name.value)  # REQ-467
     collector = ParamCollector()
     sources = StatementSources(table)
 
@@ -800,8 +801,12 @@ def compile_query(  # REQ-007, REQ-009, REQ-010, REQ-011, REQ-262, REQ-263, REQ-
         for sel in definition.selection_set.selections:
             if isinstance(sel, FieldNode):
                 field_name = sel.name.value
-                if field_name not in ctx.tables:
+                # REQ-467: a root field resolves through the names table (REQ-194); its surface
+                # says which of the table's root fields it is.
+                resolved = names_table.root_field(ctx, field_name)
+                if resolved is None:
                     raise UnknownRootField(field_name)
+                surface = resolved[0]
                 with _stage(_tracer, "compiler.compile_query", name="compile") as span:
                     from provisa.compiler.aggregates import (
                         _compile_aggregate_field,
@@ -809,21 +814,21 @@ def compile_query(  # REQ-007, REQ-009, REQ-010, REQ-011, REQ-262, REQ-263, REQ-
                     )
 
                     span.set_attribute("graphql.field", field_name)
-                    if field_name.endswith("_aggregate") or field_name.endswith("Aggregate"):
+                    if surface == "graphql_aggregate":
                         compiled = _compile_aggregate_field(
                             sel,
                             ctx,
                             variables,
                             use_catalog,
                         )
-                    elif field_name.endswith("_group_by") or field_name.endswith("GroupBy"):
+                    elif surface == "graphql_group_by":
                         compiled = _compile_group_by_field(
                             sel,
                             ctx,
                             variables,
                             use_catalog,
                         )
-                    elif field_name.endswith("_connection"):
+                    elif surface == "graphql_connection":
                         compiled = _compile_connection_field(
                             sel,
                             ctx,

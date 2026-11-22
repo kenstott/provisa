@@ -559,8 +559,6 @@
       "incremental_no_change": "Die Codequelle hat keine @change-Funktion für {{table}}. Deklarieren Sie eine mit @change table={{table}}.",
       "incremental_needs_rebuild_every": "{{table}} wird inkrementell gepflegt und daher nach Zeitplan vollständig neu aufgebaut. Legen Sie unter „Vollständiger Neuaufbau alle“ fest, wie oft (in Sekunden).",
       "table_derived_from_function": "Die Tabelle '{{name}}' ist von einer Funktion abgeleitet: Sie wird entfernt, indem die Tabelle der Funktion ausgeschaltet wird, und ihre Spalten und Parameter werden an der Funktion bearbeitet",
-      "table_state_from_function": "Die Tabelle '{{table}}' ist von der Funktion '{{name}}' abgeleitet und hat deren Freigabestatus: Sie wird nicht für sich allein zurückgezogen oder wieder eingesetzt",
-      "table_region_from_function": "Die Tabelle '{{table}}' ist von der Funktion '{{name}}' abgeleitet und hat deren Region: Sie wird nicht für sich allein in eine andere Region verschoben",
       "table_withdrawn": "Tabelle {{table}} zurückgezogen",
       "table_put_back": "Tabelle {{table}} wieder in Betrieb genommen",
       "source_withdrawn": "Quelle {{source}} zurückgezogen",
@@ -572,6 +570,8 @@
       "put_back_needs_region": "Wer {{object}} wieder in Betrieb nimmt, nennt eine Region: geben Sie eine an, oder keine für keine Region.",
       "mask_constant_not_text": "Eine konstante Maske auf einer Nicht-Text-Spalte wird als NULL gelesen; nur NULL kann gespeichert werden: {{column}} ({{type}})",
       "table_domain_required": "Tabelle '{{table}}' nennt keine Domäne: Jede Tabelle wird in einer Domäne registriert",
+      "table_state_from_function": "Die Tabelle '{{table}}' ist von der Funktion '{{name}}' abgeleitet und hat deren Freigabestatus: Sie wird nicht für sich allein zurückgezogen oder wieder eingesetzt",
+      "table_region_from_function": "Die Tabelle '{{table}}' ist von der Funktion '{{name}}' abgeleitet und hat deren Region: Sie wird nicht für sich allein in eine andere Region verschoben",
       "table_name_reserved": "Der Tabellenname '{{table}}' ist reserviert: Die Commands einer Domäne werden unter 'commands' bereitgestellt. Registrieren Sie die Tabelle unter einem anderen Namen oder Alias."
     },
     "secrets": {
@@ -936,6 +936,21 @@
     "relationship": {
       "name_taken": "Der Name „{{name}}“ ist bereits von der Beziehung „{{held_by}}“ belegt. Benennen Sie diese anders.",
       "join_through_none": "Die Beziehungen '{{first}}' und '{{second}}' haben keine gemeinsame Zwischentabelle, oder ihre anderen Enden sind bereits darüber verknüpft."
+    },
+    "syncing": {
+      "not_found": "Es gibt keinen Eintrag {{entry}}.",
+      "no_connection": "{{entry}} hat keinen Katalog zum Lesen.",
+      "no_role": "{{entry}} hat keine Rolle, als die veröffentlicht wird, daher gibt es noch nichts zu vergleichen. Wählen Sie eine Rolle in seinen Einstellungen.",
+      "read_not_supported": "Werte aus {{provider}} zurückzulesen, wird noch nicht unterstützt.",
+      "no_such_difference": "Es gibt keinen Unterschied {{difference}} mehr. Lesen Sie die Liste erneut.",
+      "decided_twice": "{{difference}} wurde zweimal entschieden.",
+      "direction_off": "{{entry}} synchronisiert nicht in diese Richtung.",
+      "import_kind_unsupported": "{{kind}} eines Katalogs in Provisa zu übernehmen, wird noch nicht unterstützt.",
+      "publish_failed": "Die Veröffentlichung an {{entry}} war nicht erfolgreich, daher wurde nichts übernommen.",
+      "object_gone": "{{object}} ist in Provisa nicht mehr registriert.",
+      "unknown_direction": "{{direction}} ist keine Richtung: Verwenden Sie Export oder Import.",
+      "unknown_kind": "{{kind}} ist keine Art von Unterschied.",
+      "unknown_choice": "{{choice}} ist keine feste Wahl."
     },
     "wikidata": {
       "no_credential": "Der Wikidata-Abfragedienst benötigt keine Anmeldedaten",

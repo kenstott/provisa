@@ -1,0 +1,9 @@
+{
+  "proposalEdit": {
+    "title": "編輯候選項",
+    "name": "關係名稱",
+    "cardinality": "基數",
+    "cancel": "取消",
+    "save": "儲存"
+  }
+}

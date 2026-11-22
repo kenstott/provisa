@@ -64,6 +64,7 @@
     "twoDimensions": "其欄位已關聯到兩個不同的共用維度，因此無法接受。",
     "admittedOnKeyValues": "因數據中鍵值相符而採納；測量結果顯示於模型置信度旁邊。",
     "hiddenByFilter_one": "篩選器隱藏了 {{count}} 行。",
-    "hiddenByFilter_other": "篩選器隱藏了 {{count}} 行。"
+    "hiddenByFilter_other": "篩選器隱藏了 {{count}} 行。",
+    "editAria": "編輯 {{name}}"
   }
 }

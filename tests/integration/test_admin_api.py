@@ -233,5 +233,6 @@ class TestViewRegistrationRefreshPolicy:
         assert view is not None, "registered view missing from tables query"
         assert view["sourceId"] == "__derived__"
         assert view["refreshPolicySummary"] is None
-        # REQ-1634: no role's compiled schema exposes this brand-new domain/table yet.
-        assert view["graphqlFieldName"] is None
+        # REQ-1634, REQ-1882: the field name is read from the model-wide path map, which
+        # registerTable's rebuild has refreshed before it answers -- no role's surface is built.
+        assert view["graphqlFieldName"] == "vrd__regTestView"
