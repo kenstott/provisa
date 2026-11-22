@@ -114,7 +114,7 @@ describe("the Library in the app", () => {
       context!.kind === "group" ? context!.group.items.find((i) => i.to === "/context/documents") : undefined;
     expect(documents).toMatchObject({ labelKey: "navBar.itemDocuments", capability: "glossary_read" });
     expect(read("App.tsx")).toMatch(
-      /path="\/context\/documents"\s+element=\{\s+<CapabilityGate capability="glossary_read"/,
+      /path="\/context\/documents"\s+element=\{\s+<CapabilityGate\s+capability="glossary_read"/,
     );
     expect(read("App.tsx")).not.toContain('path="/library"');
   });
