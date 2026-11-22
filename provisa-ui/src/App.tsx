@@ -764,7 +764,7 @@ function App() {
                       requires `cross_org`. The seed decides which role carries each, so an
                       org_admin cannot reach these even by typing the URL.
                       REQ-1349 adds the two org-scoped rights: `org_settings` for surfaces whose
-                      subject is the acting org (its AI/NL provider, domains, scheduled tasks,
+                      subject is the acting org (its AI/NL provider, domains,
                       approvals) and `observability` for read-only performance and health. */}
                                           {(
                                             [
@@ -774,7 +774,8 @@ function App() {
                                               // REQ-1560: a person's own vault is not a grant; the server's
                                               // personal vault asks no capability, so every member reaches it.
                                               ["/admin/my-secrets", EVERY_MEMBER],
-                                              ["/admin/scheduled-tasks", "org_settings"],
+                                              // REQ-1327: a trigger runs a statement, so its page asks query_development.
+                                              ["/admin/scheduled-tasks", "query_development"],
                                               ["/admin/org-engine", "org_settings"], // REQ-1412
                                               ["/admin/encryption", "platform_settings"],
                                               ["/admin/auth", "platform_settings"],

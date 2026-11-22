@@ -44,7 +44,7 @@ def _info(monkeypatch):
 
     from provisa.auth.models import RoleAssignment
 
-    info, request = grant(monkeypatch, "org_settings")
+    info, request = grant(monkeypatch, "query_development")  # REQ-1327
     # The role a SQL trigger runs as is one of this org's roles, and one the caller holds.
     app_mod.state.roles["ops"] = {"id": "ops"}
     request.state.assignments = [RoleAssignment(role_id="ops", domain_id="*")]

@@ -793,7 +793,7 @@ export const TOUR_STEPS: TourStep[] = [
   },
   {
     route: "/admin/scheduled-tasks",
-    capability: "org_settings",
+    capability: "query_development", // REQ-1327: the page's own right
     element: '[data-testid="scheduled-tasks-toggle-form"]',
     key: "stepScheduled",
   },
