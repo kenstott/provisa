@@ -5,7 +5,7 @@
     "specUpload": "Carica",
     "specCloud": "dbt Cloud",
     "locationLabel": "URL del manifest o posizione dell'artefatto",
-    "locationPlaceholder": "https://example.com/manifest.json o s3://bucket/target/manifest.json",
+    "locationPlaceholder": "https://example.com/manifest.json oppure s3://bucket/target/manifest.json",
     "uploadLabel": "File manifest.json",
     "cloudHostLabel": "URL di dbt Cloud",
     "accountLabel": "ID account",
@@ -13,15 +13,15 @@
     "tokenLabel": "Token API",
     "tokenHint": "Conservato con questa origine e usato per leggere il manifest ed eseguire i job.",
     "commandLineLabel": "Comando che esegue dbt",
-    "commandLineHint": "I comandi vengono eseguiti così dove dbt è installato, ad esempio dbt --project-dir /srv/project.",
+    "commandLineHint": "Eseguito dove è installato dbt, ad esempio dbt --project-dir /srv/project.",
     "previewButton": "Anteprima del manifest",
     "summary": "{{project}} ({{adapter}}): {{models}} modelli e {{commands}} comandi disponibili.",
     "warehouseFound": "{{database}} viene letto tramite l'origine {{source}}.",
-    "warehouseMissing": "Nessuna origine registrata legge il database {{adapter}} {{database}}. Creane una:",
+    "warehouseMissing": "Nessuna origine registrata legge il database {{adapter}} {{database}}. Crearne una:",
     "warehouseId": "ID della nuova origine",
     "warehouseHost": "Account o host",
     "warehouseUser": "Nome utente",
     "warehouseCredential": "Credenziale",
-    "adapterUnknown": "L'adattatore {{adapter}} non ha un tipo di origine corrispondente. Registra prima il suo warehouse, poi aggiungi questa origine."
+    "adapterUnknown": "L'adattatore {{adapter}} non ha un tipo di origine corrispondente. Registrare prima il suo data warehouse, poi aggiungere questa origine."
   }
 }

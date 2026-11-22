@@ -321,7 +321,8 @@ class TestSimpleSelect:
         import pickle
 
         _, ctx = schema_and_ctx
-        for query in ("{ orders { id customer { name } } }", "{ orders_aggregate { count } }"):
+        # The aggregate is named as the schema serves it under the convention (REQ-194, REQ-467).
+        for query in ("{ orders { id customer { name } } }", "{ ordersAggregate { count } }"):
             for compiled in compile_query(parse(query), ctx):
                 assert type(compiled.sources) is set
                 assert type(compiled.table_ids) is frozenset

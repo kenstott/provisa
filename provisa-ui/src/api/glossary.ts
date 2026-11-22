@@ -97,6 +97,8 @@ export interface GlossaryEdge {
   term_id: number;
   rel_type: GlossaryRelType;
   name: string;
+  // REQ-1591: the related term's domains, which tell related terms of one name apart
+  domains: string[];
 }
 
 export interface GlossaryExpert {
@@ -228,11 +230,33 @@ export async function updateGlossaryTerm(
   if (!res.ok) throw await mutationError(res, "updateGlossaryTerm");
 }
 
-export async function generateAllGlossaryDefinitions(): Promise<{ generated: number }> {
-  const res = await fetch(`${API_BASE}/admin/glossary/definitions/generate`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-  });
+// REQ-2253: an AI assistant's request carries the navbar filter's selection the same way
+// (repeated ``domains=``; null asks for no narrowing), so the server limits what it reads, sends to
+// the model and writes to the selected domains.
+function selectedDomainsQuery(domains: ReadonlySet<string> | null): string {
+  if (!domains) return "";
+  const params = new URLSearchParams();
+  for (const d of domains) params.append("domains", d);
+  return `?${params.toString()}`;
+}
+
+// REQ-1387: a draft says which bound tables gave no samples, so the curator knows the AI read no
+// values from them.
+export interface GeneratedDefinition {
+  definition: string;
+  tables_without_samples: string[];
+}
+
+export async function generateAllGlossaryDefinitions(
+  domains: ReadonlySet<string> | null,
+): Promise<{ generated: number; tables_without_samples: string[] }> {
+  const res = await fetch(
+    `${API_BASE}/admin/glossary/definitions/generate${selectedDomainsQuery(domains)}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    },
+  );
   if (!res.ok) throw await mutationError(res, "generateAllGlossaryDefinitions");
   return res.json();
 }
@@ -337,25 +361,31 @@ export function onlyRelatedTo(t: GlossaryTermDetail): boolean {
   );
 }
 
-export async function generateGlossaryRelationships(): Promise<{
+export async function generateGlossaryRelationships(domains: ReadonlySet<string> | null): Promise<{
   added: number;
   review: RelatedToReview[];
 }> {
-  const res = await fetch(`${API_BASE}/admin/glossary/relationships/generate`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-  });
+  const res = await fetch(
+    `${API_BASE}/admin/glossary/relationships/generate${selectedDomainsQuery(domains)}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    },
+  );
   if (!res.ok) throw await mutationError(res, "generateGlossaryRelationships");
   return res.json();
 }
 
-export async function generateGlossaryDefinition(termId: number): Promise<string> {
-  const res = await fetch(`${API_BASE}/admin/glossary/terms/${termId}/definition/generate`, {
-    method: "POST",
-  });
+export async function generateGlossaryDefinition(
+  termId: number,
+  domains: ReadonlySet<string> | null,
+): Promise<GeneratedDefinition> {
+  const res = await fetch(
+    `${API_BASE}/admin/glossary/terms/${termId}/definition/generate${selectedDomainsQuery(domains)}`,
+    { method: "POST" },
+  );
   if (!res.ok) throw await mutationError(res, "generateGlossaryDefinition");
-  const data = (await res.json()) as { definition: string };
-  return data.definition;
+  return res.json();
 }
 
 export async function deleteGlossaryTerm(termId: number): Promise<void> {
@@ -561,22 +591,17 @@ export async function deprecateGlossaryTerm(
 }
 
 /** What a retired term applied to (REQ-2144): its columns (table path and column) and tables at
- * the model commit before its retirement. None when the model's history holds no retirement of it
- * (404 glossary.no_retirement_history). */
+ * the model commit before its retirement. When the model's history holds no retirement of it, the
+ * same shape comes back emptied: ``retired_in`` and ``as_of`` null, no columns, no tables. */
 export interface AppliedHistory {
-  retired_in: string;
+  retired_in: string | null;
   as_of: string | null;
   columns: { table: string; column: string }[];
   tables: string[];
 }
 
-export async function fetchAppliedHistory(termId: number): Promise<AppliedHistory | null> {
+export async function fetchAppliedHistory(termId: number): Promise<AppliedHistory> {
   const res = await fetch(`${API_BASE}/admin/glossary/terms/${termId}/applied-history`);
-  if (res.status === 404) {
-    const data = await res.json();
-    if (data.code === "glossary.no_retirement_history") return null;
-    throw new Error(serverMessage(data, requestFailed("fetchAppliedHistory", res.status)));
-  }
   if (!res.ok) throw await mutationError(res, "fetchAppliedHistory");
   return res.json();
 }
@@ -718,5 +743,33 @@ export interface StewardshipSummary {
 export async function fetchStewardshipSummary(): Promise<StewardshipSummary> {
   const res = await fetch(`${API_BASE}/admin/glossary/stewardship`);
   if (!res.ok) throw await mutationError(res, "fetchStewardshipSummary");
+  return res.json();
+}
+
+/** REQ-2259: one approved term as the Glossary page shows it. */
+export interface GlossaryEntryTerm {
+  id: number;
+  name: string;
+  definition: string | null;
+  domains: string[];
+  changed_at: string;
+}
+
+/** REQ-2259: an edge the Glossary page draws: a kind of / kinds, see also, also called. */
+export interface GlossaryEntryEdge {
+  from_term_id: number;
+  to_term_id: number;
+  rel_type: "KIND_OF" | "RELATED_TO" | "SYNONYM_OF";
+}
+
+/** REQ-2259: the approved terms the caller reads and the edges between them. */
+export interface GlossaryEntries {
+  terms: GlossaryEntryTerm[];
+  edges: GlossaryEntryEdge[];
+}
+
+export async function fetchGlossaryEntries(): Promise<GlossaryEntries> {
+  const res = await fetch(`${API_BASE}/admin/glossary/entries`);
+  if (!res.ok) throw await mutationError(res, "fetchGlossaryEntries");
   return res.json();
 }

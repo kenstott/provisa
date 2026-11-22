@@ -43,15 +43,10 @@
       "invalid": "not naming two compared columns",
       "not_comparable": "between columns of different classes",
       "same_column": "from a column to itself",
-      "primary_key_to_primary_key": "primary key to primary key",
-      "both_repeating": "values repeated on both sides",
       "existing": "already registered",
-      "pending": "already waiting",
       "rejected": "rejected before",
-      "matches_foreign_key": "matching a foreign key found in this run",
-      "out_of_scope": "outside the chosen tables",
-      "weaker": "repeating a pair of columns a stronger proposal was kept for",
-      "many_to_many": "with neither column a key"
-    }
+      "out_of_scope": "outside the chosen tables"
+    },
+    "keyNames": "Key names and types: {{found}} found, {{count}} suggested."
   }
 }

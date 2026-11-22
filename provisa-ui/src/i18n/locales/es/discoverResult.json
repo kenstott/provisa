@@ -25,7 +25,7 @@
     "partial": "Falló {{failed}} de {{count}} solicitud, por lo que el resultado es parcial.",
     "partial_other": "Fallaron {{failed}} de {{count}} solicitudes, por lo que el resultado es parcial.",
     "semanticsNoneProposed": "Semántica: ninguna. El modelo no propuso ninguna relación.",
-    "semanticsBelowThreshold": "Semántica: ninguna. Todas las propuestas quedaron por debajo del {{threshold}} % con el que se conserva una sugerencia.",
+    "semanticsBelowThreshold": "Semántica: ninguna. Todas las propuestas puntuaron por debajo del {{threshold}} % a partir del cual se conserva una sugerencia.",
     "semanticsFiltered": "Semántica: ninguna. Todas las sugerencias se omitieron, por los motivos indicados abajo.",
     "split": "{{count}} solicitud se dividió por la mitad y se volvió a enviar.",
     "split_other": "{{count}} solicitudes se dividieron por la mitad y se volvieron a enviar.",
@@ -35,23 +35,18 @@
     "jevBelow_other": "Jev puntuó {{count}} propuestas por debajo del {{threshold}} %. Cada una se muestra junto a la puntuación del modelo, que es la que decide.",
     "scoringFailed": "Jev no pudo puntuar las propuestas de {{count}} solicitud, así que conservaron la confianza del modelo.",
     "scoringFailed_other": "Jev no pudo puntuar las propuestas de {{count}} solicitudes, así que conservaron la confianza del modelo.",
-    "failedRequest": "Para columnas de tipo {{group}}: {{message}}",
+    "failedRequest": "Para {{group}} columnas: {{message}}",
     "leftOut": "No sugeridas: {{list}}.",
     "leftOutItem": "{{label}} ({{count}})",
     "removed": {
-      "below_threshold": "con una puntuación inferior al {{threshold}} %",
+      "below_threshold": "puntuó menos del {{threshold}} %",
       "invalid": "no nombran dos columnas comparadas",
       "not_comparable": "entre columnas de clases distintas",
       "same_column": "de una columna a sí misma",
-      "primary_key_to_primary_key": "clave primaria a clave primaria",
-      "both_repeating": "valores repetidos en ambos lados",
       "existing": "ya registradas",
-      "pending": "ya pendientes",
       "rejected": "rechazadas antes",
-      "matches_foreign_key": "coinciden con una clave foránea encontrada en esta ejecución",
-      "out_of_scope": "fuera de las tablas elegidas",
-      "weaker": "repiten un par de columnas para el que se conservó una propuesta más fuerte",
-      "many_to_many": "sin que ninguna columna sea una clave"
-    }
+      "out_of_scope": "fuera de las tablas elegidas"
+    },
+    "keyNames": "Nombres y tipos de clave: {{found}} encontradas, {{count}} sugeridas."
   }
 }

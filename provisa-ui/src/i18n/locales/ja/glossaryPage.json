@@ -1,0 +1,25 @@
+{
+  "glossaryPage": {
+    "title": "用語集",
+    "intro": "組織で承認された用語とその意味。",
+    "search": "用語を検索",
+    "searchPlaceholder": "名前と定義を検索",
+    "domainFilter": "ドメイン",
+    "domainFilterPlaceholder": "すべてのドメイン",
+    "sort": "並べ替え",
+    "sortName": "A–Z",
+    "sortRecent": "最近変更",
+    "letterBar": "文字へ移動",
+    "otherLetter": "#",
+    "alsoCalled": "別名",
+    "kindOf": "上位概念",
+    "kinds": "下位概念",
+    "seeAlso": "関連項目",
+    "allDomains": "すべてのドメイン",
+    "loadFailed": "用語集を読み込めませんでした: {{message}}",
+    "empty": "承認済みの用語はまだありません。",
+    "noMatch": "一致する用語はありません。",
+    "count_one": "{{count}} 件の用語",
+    "count_other": "{{count}} 件の用語"
+  }
+}

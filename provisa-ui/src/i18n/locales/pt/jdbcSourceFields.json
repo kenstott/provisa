@@ -16,7 +16,7 @@
     "checkPassed": "{{capability}}: aprovado",
     "checkFailed": "{{capability}}: reprovado ({{reason}})",
     "jdbcDriverJar": "JAR do driver JDBC",
-    "jdbcDriverJarHint": "O arquivo JAR do driver, enviado do seu computador. Somente instalações auto-hospedadas.",
+    "jdbcDriverJarHint": "O arquivo jar do driver, enviado da sua máquina. Somente instalações auto-hospedadas.",
     "jdbcDriverClass": "Classe do driver",
     "driver": "Driver",
     "jarDriver": "Seu próprio driver JDBC (JAR)",

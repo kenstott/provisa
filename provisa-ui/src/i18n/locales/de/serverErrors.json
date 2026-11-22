@@ -14,10 +14,12 @@
       "webhook_not_found": "Webhook '{{name}}' nicht gefunden",
       "written_table_not_registered": "'{{table}}' ist keine registrierte Tabelle der Quelle '{{source_id}}'",
       "function_exists": "Die Funktion '{{name}}' existiert bereits",
-      "webhook_exists": "Der Webhook '{{name}}' existiert bereits"
+      "webhook_exists": "Der Webhook '{{name}}' existiert bereits",
+      "mask_constant_not_text": "Eine konstante Maske auf einer Nicht-Text-Spalte wird als NULL gelesen; nur NULL kann gespeichert werden: {{column}} ({{type}})"
     },
     "ai_models": {
-      "vector_model_fields_required": "jeder vector_models-Eintrag erfordert id, provider und dimensions"
+      "vector_model_fields_required": "jeder vector_models-Eintrag erfordert id, provider und dimensions",
+      "embedding_library_missing": "Das Embedding-Modell {{model}} verwendet den Anbieter {{provider}}, der das Extra {{extra}} benötigt (das Modul {{module}} ist nicht installiert): pip install 'provisa[{{extra}}]'."
     },
     "ai": {
       "endpoint_address_from_server": "Der KI-Endpunkt {{vendor}} bezieht seine Adresse aus der Umgebung des Servers, die eine Organisation auf diesem Server nicht verwendet. Geben Sie ihm unter Admin, KI-Modelle eine eigene Adresse.",
@@ -146,7 +148,7 @@
       "viewer_column_unknown": "'{{column}}' ist keine Spalte der Tabelle '{{table}}'",
       "viewer_filter_unknown": "'{{operator}}' ist kein Filter der Spalte '{{column}}'",
       "viewer_value_invalid": "Der Filter auf '{{column}}' kann den Wert '{{value}}' nicht verwenden",
-      "replica_building": "Die Kopie von {{replica}} wird noch erstellt. Der Aufbau läuft weiter; öffnen Sie die Vorschau erneut, sobald er abgeschlossen ist.",
+      "replica_building": "Das Replikat von {{replica}} wird noch erstellt. Die Erstellung läuft weiter; öffnen Sie die Vorschau erneut, wenn sie abgeschlossen ist.",
       "address_invalid": "Die Adresse kann nicht aufgelöst werden: {{reason}}",
       "address_not_found": "Nichts aufzulösen: {{reason}}",
       "mixed_resolve_and_other_fields": "resolve kann in einer Operation nicht mit anderen Wurzelfeldern kombiniert werden",
@@ -167,7 +169,8 @@
       "table_is_withdrawn": "{{table}} ist zurückgezogen: außer Produktion, bis sie wieder in Betrieb genommen wird",
       "view_awaits_rule_rebuild": "Die Ansicht {{view}} wird wegen einer Änderung der Zeilenregeln für ihre Eingaben neu erstellt. Diese Rolle kann sie lesen, sobald dieser Build veröffentlicht ist.",
       "parameter_required": "Die Tabelle '{{table}}' erfordert den Parameter bzw. die Parameter {{parameters}}: Geben Sie jedem einen Wert (in SQL eine WHERE-Bedingung auf seiner Spalte, in GraphQL ein Argument).",
-      "parameter_wrong_type": "Der Parameter {{parameter}} nimmt einen Wert vom Typ {{type}}; '{{value}}' ist keiner."
+      "parameter_wrong_type": "Der Parameter {{parameter}} nimmt einen Wert vom Typ {{type}}; '{{value}}' ist keiner.",
+      "statement_failed": "Die Anweisung ist im Server fehlgeschlagen ({{kind}}): {{error}}"
     },
     "discovery": {
       "adapter_missing_discover_schema": "Adapter für '{{source_type}}' implementiert discover_schema nicht",
@@ -197,7 +200,9 @@
       "target_domains_empty": "Die gewählten Zieldomänen enthalten keine Tabelle, die die Erkennung liest.",
       "target_tables_not_read": "Keine der gewählten Zieltabellen ({{count}}) wird gelesen: Die Erkennung lässt Tabellen einer Systemdomäne und Tabellen außer Betrieb aus.",
       "unknown_source_type": "Unbekannter Quellentyp: {{type}}",
-      "vendor_unknown": "{{vendor}} listet hier keine Modelle auf; geben Sie den Modellnamen ein."
+      "vendor_unknown": "{{vendor}} listet hier keine Modelle auf; geben Sie den Modellnamen ein.",
+      "source_tables_outside_domains": "Die gewählten Quelltabellen liegen außerhalb der im Domänenfilter ausgewählten Domänen: {{names}}.",
+      "target_tables_outside_domains": "Die gewählten Zieltabellen liegen außerhalb der im Domänenfilter ausgewählten Domänen: {{names}}."
     },
     "llm": {
       "request_failed": "Die Anfrage an das Modell ist fehlgeschlagen: {{reason}}",
@@ -209,7 +214,7 @@
       "owner_not_member": "{{user}} hat die Umgebung {{env}} erstellt, ist aber kein Mitglied von {{org}}; um darin als Eigentümer zu handeln, ist eine Mitgliedschaft erforderlich."
     },
     "front_door": {
-      "coordinator_waking": "Die Umgebung wird gestartet. Sie ist in etwa fünf Minuten bereit.",
+      "coordinator_waking": "Die Umgebung startet. Sie ist in etwa fünf Minuten bereit.",
       "coordinator_updating": "Die Umgebung wird aktualisiert. Sie ist in Kürze wieder verfügbar."
     },
     "functions": {
@@ -240,7 +245,8 @@
       "host_code_refused": "Befehl '{{name}}' ist vom Typ {{impl_kind}} und führt Code auf dem Host des Servers aus. Host-Code ist in dieser Bereitstellung ausgeschaltet; verwenden Sie stattdessen einen Code-Resolver.",
       "no_plain_list": "Keine Operation der Quelle '{{source_id}}' ohne Pflichtparameter liefert die Zeilen von '{{operation}}', daher bleibt ihre Tabelle eingeschaltet",
       "plain_list_unregistered": "'{{operation}}' der Quelle '{{source_id}}' liefert die Zeilen ihrer Liste {{lists}}; registrieren Sie diese Liste zuerst als Tabelle",
-      "table_has_dependents": "Auf die Tabelle '{{table}}' der Funktion '{{name}}' verweisen noch andere Objekte; entfernen Sie zuerst diese Verweise"
+      "table_has_dependents": "Auf die Tabelle '{{table}}' der Funktion '{{name}}' verweisen noch andere Objekte; entfernen Sie zuerst diese Verweise",
+      "statement_failed": "Befehl '{{name}}' fehlgeschlagen: {{error}}"
     },
     "graphql_remote": {
       "introspection_failed": "Introspektion fehlgeschlagen: {{error}}",
@@ -287,22 +293,22 @@
       "auth_required_create": "Zum Erstellen einer Organisation ist eine Authentifizierung erforderlich",
       "auth_required_leave": "Zum Verlassen einer Organisation ist eine Authentifizierung erforderlich",
       "auto_join_breadth_unacknowledged": "Prüfen Sie diese Regel für den automatischen Beitritt sorgfältig, sonst lassen Sie möglicherweise Personen von außerhalb Ihrer Organisation zu: Neben {{domains}} akzeptiert sie auch Adressen wie {{admits}}. Jede Person bei einer Domäne, die Sie nicht kontrollieren, könnte Ihrer Organisation dann automatisch beitreten. Bestätigen Sie, dass Sie dieses Risiko akzeptieren, um sie zu speichern.",
-      "auto_join_public_domain": "auto_join benötigt eine E-Mail-Regel, die auf eine von Ihnen kontrollierte Domain beschränkt ist — diese trifft auf {{domain}} zu.",
+      "auto_join_public_domain": "auto_join erfordert eine E-Mail-Regel, die auf eine Domäne beschränkt ist, die Sie kontrollieren. Diese passt auf {{domain}}.",
       "auto_join_requires_role": "auto_join erfordert auto_join_role",
-      "auto_join_rule_taken": "Eine andere Organisation nimmt bereits automatisch alle auf, die dieser Regel entsprechen. Zwei Organisationen können nicht dieselben Adressen beanspruchen – bitten Sie sie um eine Einladung oder grenzen Sie Ihre Regel auf eine Domäne ein, die nur Ihre Organisation nutzt.",
+      "auto_join_rule_taken": "Eine andere Organisation lässt bereits alle automatisch beitreten, die auf diese Regel passen. Zwei Organisationen können nicht dieselben Adressen beanspruchen. Bitten Sie dort um eine Einladung oder beschränken Sie Ihre Regel auf eine Domäne, die nur Ihre Organisation verwendet.",
       "auto_join_rule_unbounded": "Diese Regel für den automatischen Beitritt hat keine Begrenzung: Sie würde Adressen bei Domänen zulassen, die Sie nicht kontrollieren. Verankern Sie sie an einer Domäne, die Ihnen gehört, z. B. \"@acme\\\\.com$\".",
       "cannot_delete_root": "Die Root-Organisation kann nicht gelöscht werden",
-      "delete_confirm_required": "Das Löschen von '{{org}}' zerstört alle zugehörigen Daten dauerhaft — niemand, auch kein Plattformadministrator, kann sie wiederherstellen. Wiederholen Sie die Organisations-ID im Parameter 'confirm', um fortzufahren.",
+      "delete_confirm_required": "Das Löschen von „{{org}}“ vernichtet alle ihre Daten dauerhaft, und niemand, auch kein Plattformadministrator, kann sie wiederherstellen. Wiederholen Sie die Org-ID im Parameter „confirm“, um fortzufahren.",
       "invalid_email_rule": "Ungültige E-Mail-Regel: {{error}}",
       "invalid_org_id": "Ungültige Organisations-ID '{{org}}': 2–40 Zeichen, nur Kleinbuchstaben und Ziffern, beginnend mit einem Buchstaben. Die ID wird zum Datenbank-Schemanamen und zur Subdomain und kann später nicht geändert werden.",
       "limit_reached": "Organisationslimit erreicht: Ein einzelnes Konto kann höchstens {{limit}} Organisationen erstellen. Löschen Sie eine nicht mehr benötigte, um eine weitere zu erstellen.",
       "membership_not_found": "Mitgliedschaft nicht gefunden",
-      "no_tenant_runtime": "Organisation '{{org}}' hat keine Mandanten-Laufzeit — sie wird möglicherweise noch bereitgestellt.",
+      "no_tenant_runtime": "Die Organisation „{{org}}“ hat keine Mandanten-Laufzeit. Möglicherweise wird sie noch bereitgestellt.",
       "not_found": "Organisation nicht gefunden",
       "not_org_admin": "{{user}} besitzt kein org_admin in {{org}}",
       "org_id_reserved": "Organisations-ID '{{org}}' ist reserviert. Reservierte IDs: {{reserved}}.",
       "platform_admin_required": "platform_admin erforderlich",
-      "retry_not_failed": "Organisation '{{org}}' ist '{{state}}', nicht 'failed' — nichts zu wiederholen.",
+      "retry_not_failed": "Die Organisation „{{org}}“ ist „{{state}}“, nicht „failed“, daher gibt es nichts zu wiederholen.",
       "self_role_change": "Ein Benutzer kann seine eigene Rolle nicht ändern. Bitten Sie einen anderen Administrator.",
       "view_not_permitted": "Keine Berechtigung, diese Organisation anzuzeigen",
       "org_id_sandbox_prefix": "Org-IDs, die mit {{prefix}} beginnen, sind für Demo-Sandboxes reserviert.",
@@ -362,13 +368,13 @@
       "cache_purged": "{{count}} Cache-Einträge geleert",
       "cache_purged_table": "{{count}} Cache-Einträge für Tabelle {{table}} geleert",
       "calendar_deleted": "Kalender '{{calendar}}' gelöscht",
-      "calendar_in_use": "Kalender '{{calendar}}' wird von materialisierten Sichten verwendet — entfernen Sie deren Snapshot-Zeitplan vor dem Löschen",
+      "calendar_in_use": "Der Kalender „{{calendar}}“ wird von materialisierten Sichten verwendet. Entfernen Sie deren Snapshot-Zeitplan, bevor Sie ihn löschen.",
       "calendar_not_found": "Kalender '{{calendar}}' nicht gefunden",
       "calendar_saved": "Kalender '{{calendar}}' {{version}} gespeichert",
       "column_natively_nested": "Registrierung nicht möglich: Die Spalte {{column}} ist in ihrer Quelle nativ {{native_type}}, ihr Typ ist daher json, nicht {{type}}.",
       "column_types_unresolved": "Registrierung nicht möglich: Für folgende Spalte(n) konnte kein Datentyp aus der Quelle ermittelt werden: {{columns}}. Introspizieren Sie die Tabelle (Schema erkennen) oder legen Sie vor der Registrierung für jede Spalte einen Datentyp fest.",
       "config_not_found": "Konfigurationsdatei nicht gefunden",
-      "creation_request_queued": "Als Erstellungsanfrage #{{id}} eingereiht — wartet darauf, dass ein Benutzer mit '{{capability}}' sie ausführt oder ablehnt.",
+      "creation_request_queued": "Als Erstellungsanfrage #{{id}} eingereiht; sie wartet auf einen Benutzer mit „{{capability}}“, der sie ausführt oder ablehnt.",
       "db_pool_unavailable": "Datenbank-Pool nicht verfügbar",
       "discovery_failed": "Schemaerkennung fehlgeschlagen: {{error}}",
       "domain_created": "Domäne '{{domain}}' erstellt",
@@ -380,7 +386,7 @@
       "invalid_calendar": "ungültiger Kalender: {{error}}",
       "invalid_cardinality": "Ungültige Kardinalität: '{{cardinality}}'",
       "invalid_off_peak_window": "ungültiges Nebenzeiten-Fenster: {{error}}",
-      "load_protection_gate_required": "{{who}}: Lastschutz erfordert mindestens ein Aktualisierungs-Gate — legen Sie ein Nebenzeiten-Fenster, eine cache_ttl-Kadenz oder ein prüfendes change_signal (probe/ttl_probe) fest",
+      "load_protection_gate_required": "{{who}}: Lastschutz erfordert mindestens ein Aktualisierungs-Gate. Legen Sie ein Nebenzeitfenster, eine cache_ttl-Kadenz oder ein prüfendes change_signal (probe/ttl_probe) fest",
       "metric_deleted": "Metrik '{{metric}}' gelöscht",
       "metric_not_found": "Metrik '{{metric}}' nicht gefunden",
       "metric_saved": "Metrik '{{metric}}' gespeichert",
@@ -561,7 +567,12 @@
       "withdrawn_table_not_previewable": "Für Tabelle {{table}} ist keine Vorschau möglich: Sie ist zurückgezogen und hält kein Replikat, und die Engine liest ihre Quelle nur über ein solches.",
       "table_not_withdrawn": "Tabelle {{table}} ist nicht zurückgezogen: nur eine zurückgezogene Tabelle wird wieder in Betrieb genommen. Um eine Tabelle in Produktion in eine andere Region zu verschieben, setzen Sie ihre Region.",
       "source_not_withdrawn": "Quelle {{source}} ist nicht zurückgezogen: nur eine zurückgezogene Quelle wird wieder in Betrieb genommen. Um ihre Region zu ändern, setzen Sie ihre Region.",
-      "put_back_needs_region": "Wer {{object}} wieder in Betrieb nimmt, nennt eine Region: geben Sie eine an, oder keine für keine Region."
+      "put_back_needs_region": "Wer {{object}} wieder in Betrieb nimmt, nennt eine Region: geben Sie eine an, oder keine für keine Region.",
+      "mask_constant_not_text": "Eine konstante Maske auf einer Nicht-Text-Spalte wird als NULL gelesen; nur NULL kann gespeichert werden: {{column}} ({{type}})",
+      "table_domain_required": "Tabelle '{{table}}' nennt keine Domäne: Jede Tabelle wird in einer Domäne registriert",
+      "table_state_from_function": "Die Tabelle '{{table}}' ist von der Funktion '{{name}}' abgeleitet und hat deren Freigabestatus: Sie wird nicht für sich allein zurückgezogen oder wieder eingesetzt",
+      "table_region_from_function": "Die Tabelle '{{table}}' ist von der Funktion '{{name}}' abgeleitet und hat deren Region: Sie wird nicht für sich allein in eine andere Region verschoben",
+      "table_name_reserved": "Der Tabellenname '{{table}}' ist reserviert: Die Commands einer Domäne werden unter 'commands' bereitgestellt. Registrieren Sie die Tabelle unter einem anderen Namen oder Alias."
     },
     "secrets": {
       "env_reference_object_locked": "Dieses Objekt gehört dem Betreiber: Es liest die eigene Umgebung des Servers und kann hier nicht geändert werden. Legen Sie stattdessen ein eigenes an.",
@@ -611,7 +622,8 @@
     "sparql": {
       "columns_not_inferred": "Spalten konnten nicht abgeleitet werden: Der Probe-Aufruf lieferte keine Zeilen und keine SELECT-Variablen.",
       "probe_failed": "Prüfung des SPARQL-Endpunkts fehlgeschlagen: {{error}}",
-      "source_not_found": "SPARQL-Quelle '{{source_id}}' nicht gefunden"
+      "source_not_found": "SPARQL-Quelle '{{source_id}}' nicht gefunden",
+      "no_select_variables": "Die Abfrage nennt keine SELECT-Variablen (SELECT * oder keine SELECT-Abfrage): Ihre Spalten lassen sich nicht daraus lesen"
     },
     "subscribe": {
       "avro_topic_without_registry": "Topic '{{topic}}' enthält Avro-Nachrichten, und seine Quelle nennt keine Schema-Registry zum Lesen: Setzen Sie die Schema-Registry-URL der Quelle",
@@ -622,7 +634,7 @@
       "schema_not_avro": "Schema {{schema_id}} in der Registry {{registry}} ist {{kind}}, nicht Avro",
       "schema_registry_error": "Die Schema-Registry {{registry}} antwortete mit HTTP {{http_status}}: {{error}}",
       "schema_registry_refused_credentials": "Die Schema-Registry {{registry}} hat die Zugangsdaten der Quelle abgelehnt (HTTP {{http_status}}, Authentifizierung '{{method}}')",
-      "schema_registry_unreachable": "Die Schema-Registry ist nicht erreichbar: {{error}}",
+      "schema_registry_unreachable": "Die Schema Registry ist nicht erreichbar: {{error}}",
       "sse_limit_reached": "Maximale Anzahl gleichzeitiger SSE-Abonnements erreicht",
       "table_not_found": "Tabelle '{{table}}' nicht gefunden",
       "unknown_role": "Unbekannte Rolle '{{role}}'",
@@ -807,7 +819,6 @@
       "status_by_action": "Der Status eines Begriffs ändert sich über Freigeben, Als veraltet markieren, Außer Dienst stellen oder Wiederherstellen.",
       "successor_required": "Dieser Begriff hat noch Spalten oder Tabellen; beim Ausmustern gehen sie an einen Nachfolger über. Wählen Sie einen aus.",
       "successor_role": "Der Nachfolger einer {{role}} muss eine {{role}} oder ein Konzept sein; '{{successor}}' ist eine {{successor_role}}.",
-      "no_retirement_history": "Die Historie des Modells enthält keine Ausmusterung dieses Begriffs.",
       "finding": {
         "unlinked_tables": "Diese Klasse ist in Tabellen verankert, die Same-Entity-Beziehungen nicht alle verbinden: {{tables}}.",
         "class_and_attribute": "Diese Klasse hat außerdem Spalten, die nicht ihre Schlüssel sind: {{columns}}.",
@@ -825,7 +836,9 @@
       "not_bulk_approvable": "Nur definierte, verankerte Entwürfe werden gemeinsam freigegeben; nicht: {{terms}}.",
       "term_ids_required": "Nennen Sie die freizugebenden Begriffe.",
       "impact_action": "Für diese Aktion gibt es keine Vorschau.",
-      "impact_table_required": "Eine Bindung nennt eine Tabelle oder eine ihrer Spalten."
+      "impact_table_required": "Eine Bindung nennt eine Tabelle oder eine ihrer Spalten.",
+      "name_taken": "Ein Begriff namens '{{name}}' existiert bereits in der Domäne {{domain}}. Wählen Sie einen anderen Namen oder legen Sie den Begriff in einer anderen Domäne ab.",
+      "name_taken_unscoped": "Ein Begriff namens '{{name}}' existiert bereits ohne Domäne und gilt daher für jede Domäne. Wählen Sie einen anderen Namen."
     },
     "table": {
       "requires_parameters": "Die Tabelle {{table}} kann nicht gezählt oder profiliert werden: Sie verlangt {{parameters}}. Geben Sie jedem einen Wert, um ihre Zeilen zu lesen."
@@ -892,7 +905,8 @@
       "blank_identifier": "Ein Eintrag darf nicht leer sein.",
       "expiry_in_past": "Ein Enddatum muss in der Zukunft liegen.",
       "expiry_removes_nothing": "Ein Enddatum für diese Liste {{kind}} würde nichts entfernen.",
-      "pending_not_found": "Keine Gewährung wartet auf {{email}} für Rolle {{role_id}} und {{kind}}."
+      "pending_not_found": "Keine Gewährung wartet auf {{email}} für Rolle {{role_id}} und {{kind}}.",
+      "invalid_identifier": "{{identifier}} ist kein gültiger Eintrag vom Typ {{kind}}."
     },
     "mv": {
       "change_key_missing": "{{function}} hat eine Zeile ohne ihre Schlüsselspalte {{column}} zurückgegeben",
@@ -920,7 +934,45 @@
       "filter_operator_refused": "{{operator}} ist kein Operator, mit dem ein Berechtigungsfilter umgewandelt werden kann."
     },
     "relationship": {
-      "name_taken": "Der Name '{{name}}' ist bereits von der Beziehung '{{held_by}}' belegt. Benennen Sie diese anders."
+      "name_taken": "Der Name „{{name}}“ ist bereits von der Beziehung „{{held_by}}“ belegt. Benennen Sie diese anders.",
+      "join_through_none": "Die Beziehungen '{{first}}' und '{{second}}' haben keine gemeinsame Zwischentabelle, oder ihre anderen Enden sind bereits darüber verknüpft."
+    },
+    "syncing": {
+      "not_found": "Es gibt keinen Eintrag {{entry}}.",
+      "no_connection": "{{entry}} hat keinen Katalog zum Lesen.",
+      "no_role": "{{entry}} hat keine Rolle, als die veröffentlicht wird, daher gibt es noch nichts zu vergleichen. Wählen Sie eine Rolle in seinen Einstellungen.",
+      "read_not_supported": "Werte aus {{provider}} zurückzulesen, wird noch nicht unterstützt.",
+      "no_such_difference": "Es gibt keinen Unterschied {{difference}} mehr. Lesen Sie die Liste erneut.",
+      "decided_twice": "{{difference}} wurde zweimal entschieden.",
+      "direction_off": "{{entry}} synchronisiert nicht in diese Richtung.",
+      "import_kind_unsupported": "{{kind}} eines Katalogs in Provisa zu übernehmen, wird noch nicht unterstützt.",
+      "publish_failed": "Die Veröffentlichung an {{entry}} war nicht erfolgreich, daher wurde nichts übernommen.",
+      "object_gone": "{{object}} ist in Provisa nicht mehr registriert.",
+      "unknown_direction": "{{direction}} ist keine Richtung: Verwenden Sie Export oder Import.",
+      "unknown_kind": "{{kind}} ist keine Art von Unterschied.",
+      "unknown_choice": "{{choice}} ist keine feste Wahl."
+    },
+    "wikidata": {
+      "no_credential": "Der Wikidata-Abfragedienst benötigt keine Anmeldedaten",
+      "bad_id": "{{value}} ist keine Wikidata-{{kind}}",
+      "bad_language": "{{language}} ist kein Sprachcode",
+      "bad_column_type": "Für eine Wikidata-Eigenschaft nicht angebotene Spaltentypen: {{types}}",
+      "filter_required": "Diese Klasse hat {{count}} Instanzen, mehr als {{limit}}: Wählen Sie einen Filter",
+      "filter_too_wide": "Der Filter lässt mehr als {{limit}} Instanzen übrig",
+      "unreachable": "Wikidata ist nicht erreichbar: {{reason}}"
+    },
+    "access_review": {
+      "not_found": "Keine solche Zugriffsprüfung",
+      "row_not_found": "Keine solche Prüfzeile",
+      "already_decided": "Diese Zeile ist bereits entschieden",
+      "reason_required": "Bitte begründen",
+      "decision_invalid": "Eine Entscheidung ist „confirmed“ oder „revoked“",
+      "cron_invalid": "Kein Cron-Ausdruck mit fünf Feldern: {{cron}}",
+      "not_owner": "Nur der Eigentümer der Domäne {{domain}} entscheidet über diese Zeile",
+      "own_access": "Sie können Ihren eigenen Zugriff nicht prüfen. Bitten Sie einen anderen Eigentümer.",
+      "read_only": "Diese Rolle wird über den Identitätsanbieter vergeben; Provisa hält keine Zuweisung, die bestätigt oder widerrufen werden könnte",
+      "webhook_invalid": "Die Webhook-URL ist nicht verwendbar: {{url}}",
+      "webhook_secret_required": "Ein Webhook braucht das Geheimnis, mit dem geplante Prüfungen signiert werden"
     }
   }
 }

@@ -49,18 +49,15 @@ _LEGS = {
     "linux": "release-linux.yml",
     "publish": "release-publish.yml",
 }
-# PyPI's own jobs are the orchestrator's: PyPI trusted publishing does not accept a token issued
-# to a reusable workflow (pypa/gh-action-pypi-publish#166), which every leg is.
-_PYPI = ("publish-pypi", "publish-notebook-pypi", "publish-provisa-pypi")
+# Nothing in the release goes to PyPI (maintainer 2026-11-21): the server, client and notebook
+# wheels are release assets, and the publish leg lists them in the GitHub Pages index.
+_PYPI: tuple[str, ...] = ()
 #: REQ-2225: the orchestrator's other publication, the Spark connector's image that
 #: platform-connectors built and kept in the run.
 _IMAGE_PUSH = "publish-connector-image"
 #: Build jobs whose names do not start with build-/package-: the platform connector block.
 _BUILDS_ALSO = frozenset({"platform-connectors"})
-#: REQ-2071: provisa pins provisa-notebook at its own version, so provisa waits for it on PyPI.
-#: REQ-2225: the provisa wheel carries the platform connector block, so it waits for the image the
-#: block names.
-_PYPI_AFTER = {"publish-provisa-pypi": {"publish-notebook-pypi", _IMAGE_PUSH}}
+_PYPI_AFTER: dict[str, set[str]] = {}
 
 #: What leaves the run: a PyPI upload, a release attachment or undraft, an image push -- by
 #: docker, oras, skopeo or crane, or by `provisa connector` (`push`, or a `build`/`rebuild`, which
@@ -68,7 +65,7 @@ _PYPI_AFTER = {"publish-provisa-pypi": {"publish-notebook-pypi", _IMAGE_PUSH}}
 _PUBLISHES = re.compile(
     r"pypi-publish|softprops/action-gh-release|gh release edit|twine upload"
     r"|docker push|oras push|oras cp|skopeo copy|crane push|crane copy"
-    r"|provisa connector push|--registry-password-env|docker/login-action"
+    r"|provisa connector push|--registry-password-env|docker/login-action|actions/deploy-pages"
 )
 _CONNECTOR_BUILD = re.compile(r"provisa connector (build|rebuild)\b")
 
@@ -143,40 +140,6 @@ def test_build_dmg_publish_job_depends_on_all_builds():
     )
 
 
-def test_build_dmg_publish_uses_fail_on_unmatched_files():
-    """softprops/action-gh-release must use fail_on_unmatched_files: true."""
-    publish_job = _publish_job()
-    steps = publish_job.get("steps", [])
-
-    attach_step = None
-    for step in steps:
-        if step.get("name") == "Attach installers to draft release":
-            attach_step = step
-            break
-
-    assert attach_step is not None, "Missing 'Attach installers to draft release' step"
-    assert attach_step.get("with", {}).get("fail_on_unmatched_files") is True, (
-        "fail_on_unmatched_files must be true to prevent partial releases"
-    )
-
-
-def test_build_dmg_publish_keeps_draft_status():
-    """publish step must upload as draft: true (never as published)."""
-    publish_job = _publish_job()
-    steps = publish_job.get("steps", [])
-
-    attach_step = None
-    for step in steps:
-        if step.get("name") == "Attach installers to draft release":
-            attach_step = step
-            break
-
-    assert attach_step is not None, "Missing 'Attach installers to draft release' step"
-    assert attach_step.get("with", {}).get("draft") is True, (
-        "Attach step must use draft: true to keep release unpublished until verified"
-    )
-
-
 def test_sibling_workflows_use_gh_release_upload_clobber():
     """Sibling workflows (duckdb, pg, exports) must use gh release upload --clobber."""
     for workflow_name in (
@@ -191,46 +154,186 @@ def test_sibling_workflows_use_gh_release_upload_clobber():
         )
 
 
-def test_release_manifest_includes_all_installer_types():
-    """publish-release files list must include all expected installer types."""
-    publish_job = _publish_job()
-    steps = publish_job.get("steps", [])
+_ATTACH = "./.github/actions/attach-release-assets"
 
-    attach_step = None
-    for step in steps:
-        if step.get("name") == "Attach installers to draft release":
-            attach_step = step
-            break
+#: Every release asset, by the job that builds it: the metadata outputs (or file names) its attach
+#: step names. That job attaches it to the draft itself; nothing copies it there later.
+_ASSETS: dict[tuple[str, str], tuple[str, ...]] = {
+    ("release-prebuilt.yml", "package-plugins"): ("outputs.plugins_name",),
+    ("release-prebuilt.yml", "pull-images-core"): ("outputs.trino_image_name",),
+    ("release-prebuilt.yml", "pull-images-core-amd64"): ("outputs.trino_image_amd64_name",),
+    ("release-prebuilt.yml", "package-obs-images"): ("outputs.obs_images_name",),
+    ("release-prebuilt.yml", "package-demo-images"): ("outputs.demo_images_name",),
+    ("release-prebuilt.yml", "package-core-images"): ("outputs.core_images_name",),
+    ("release-prebuilt.yml", "package-core-images-amd64"): ("outputs.core_images_amd64_name",),
+    # The DMGs are notarized after the builds: the notarize workflow's job attaches them
+    # (tests/unit/test_notarize_workflow.py), the Core build attaches what Apple never sees.
+    ("release-macos.yml", "build-macos-core"): ("outputs.duckdb_extensions_name",),
+    ("release-windows.yml", "build-windows-core"): ("outputs.windows_name",),
+    ("release-windows.yml", "build-windows-container"): ("outputs.windows_container_name",),
+    ("release-linux.yml", "build-linux"): ("outputs.linux_name",),
+    ("release-packages.yml", "build-jdbc"): (
+        "outputs.jdbc_name",
+        "provisa-jdbc-sbom.cdx.json",
+        "provisa-jdbc-cve-report.json",
+    ),
+    ("release-packages.yml", "build-provisa-wheel"): ("dist/provisa-*.whl",),
+    ("release-packages.yml", "build-python-client"): (
+        "provisa-client/dist/provisa_client-*.whl",
+        "provisa-client-sbom.cdx.json",
+        "provisa-client-cve-report.json",
+    ),
+    ("release-packages.yml", "build-provisa-notebook"): (
+        "provisa-notebook/dist/provisa_notebook-*.whl",
+    ),
+    ("release-packages.yml", "provisa-sbom"): ("provisa-sbom.cdx.json", "provisa-cve-report.json"),
+}
+#: Artifacts a release also keeps in the run, because a job of the same run reads them: the PyPI
+#: uploads read the client and notebook wheels.
+_READ_IN_THE_RUN = {"python-client-dist", "provisa-notebook-dist"}
 
-    assert attach_step is not None, "Missing 'Attach installers to draft release' step"
-    # One list: the "Release assets present" step holds it, proves every file is there (on a dry
-    # run too, where nothing is attached), and hands it to the attach step.
-    assert attach_step["with"]["files"] == "${{ steps.assets.outputs.files }}"
-    assets_step = next(s for s in steps if s.get("id") == "assets")
-    assert steps.index(assets_step) < steps.index(attach_step)
-    assert "if" not in assets_step, "the asset check runs on every run"
-    files_str = assets_step["env"]["FILES"]
-    assert isinstance(files_str, str)
+
+def _attach_steps(name: str, job: str) -> list[dict]:
+    return [s for s in _load(name)["jobs"][job]["steps"] if s.get("uses") == _ATTACH]
+
+
+def test_each_job_that_builds_a_release_asset_attaches_it_to_the_draft_itself():
+    """Uploaded once, by the job that built it: alpha.510's publish leg downloaded every artifact
+    (multi-GB image tarballs) and uploaded it again, 30+ minutes; GitHub has no server-side copy
+    from an artifact to a release asset."""
+    for (name, job), wanted in _ASSETS.items():
+        body = _load(name)["jobs"][job]
+        [step] = _attach_steps(name, job)
+        where = f"{name}:{job}"
+        # Only a release attaches: a dry run attaches nothing.
+        assert step["if"] == "inputs.publish", where
+        assert step["with"]["tag"] == "${{ inputs.version }}", where
+        for asset in wanted:
+            assert asset in step["with"]["files"], (where, asset)
+        # The token may write the release, and the local action and the tag's notes page are on
+        # disk: the job's first step is its checkout.
+        assert body["permissions"]["contents"] == "write", where
+        assert body["steps"][0]["uses"] == "actions/checkout@v4", where
+    # No other job attaches anything.
+    for name in {n for n, _j in _ASSETS} | set(_LEGS.values()):
+        for job, body in _load(name)["jobs"].items():
+            if "uses" in body:
+                continue  # a called workflow; its own jobs are checked where it is tested
+            if (name, job) not in _ASSETS:
+                assert not _attach_steps(name, job), f"{name}:{job}"
+
+
+def test_the_orchestrator_lets_each_leg_that_attaches_write_the_release():
+    """A nested job cannot exceed its caller, and the repository's default token only reads."""
+    orchestrator = _load("build-dmg.yml")["jobs"]
+    for leg in {n for n, _j in _ASSETS}:
+        caller = next(j for j, b in orchestrator.items() if b.get("uses", "").endswith(leg))
+        assert orchestrator[caller]["permissions"]["contents"] == "write", caller
+
+
+def test_a_dry_run_attaches_nothing_and_keeps_each_built_asset_in_the_run():
+    """A dry run (the release's packaging check) leaves the run nothing, and its artifacts are
+    where its installers are taken from: each asset is uploaded to the run on a dry run, and the
+    upload fails when the file is missing -- the proof the asset set is whole. On a release the
+    artifact is skipped unless another job of the run reads it."""
+    for (name, job), _wanted in _ASSETS.items():
+        if job == "provisa-sbom":
+            continue  # reports, attached only; the dry run's scan already gates the job
+        steps = _load(name)["jobs"][job]["steps"]
+        uploads = [s for s in steps if s.get("uses") == "actions/upload-artifact@v4"]
+        kept = [s for s in uploads if s["with"]["name"] in _READ_IN_THE_RUN]
+        dry = [s for s in uploads if s.get("if") == "${{ !inputs.publish }}"]
+        where = f"{name}:{job}"
+        assert len(kept) + len(dry) == 1, (where, [s["with"]["name"] for s in uploads])
+        for step in kept:
+            assert "if" not in step, where
+        for step in dry:
+            assert step["with"]["if-no-files-found"] == "error", where
+
+
+def test_the_attach_action_drafts_and_uploads_and_never_undrafts():
+    text = (_ROOT / ".github" / "actions" / "attach-release-assets" / "action.yml").read_text()
+    action = yaml.safe_load(text)
+    assert set(action["inputs"]) == {"tag", "files"}, "a switch belongs to the caller's if"
+    steps = action["runs"]["steps"]
+    assert steps[0]["uses"] == "./.github/actions/ensure-release"
+    assert steps[0]["with"] == {"tag": "${{ inputs.tag }}"}
+    run = steps[1]["run"]
+    assert 'gh release upload "$TAG" "${upload[@]}" --clobber' in run
+    assert '[ "$missing" = 0 ]' in run
+    assert "gh release edit" not in text and "--draft=false" not in text
+    assert "if" not in steps[0] and "if" not in steps[1]
+
+
+def test_the_publish_leg_copies_no_asset_and_verifies_every_one():
+    """The publish leg downloads nothing and attaches nothing: it reads the draft's asset list,
+    refuses to undraft when any expected asset is missing, and undrafts."""
+    text = (_WORKFLOWS / "release-publish.yml").read_text()
+    assert "download-artifact" not in text
+    assert "softprops/action-gh-release" not in text and "gh release upload" not in text
+    assert _ATTACH not in text
+    steps = _publish_job()["steps"]
+    [verify] = [s for s in steps if s["name"].startswith("Publish release")]
+    assert verify["if"] == "inputs.publish"
+    required = verify["env"]["REQUIRED"]
+    names = {
+        a.removeprefix("outputs.")
+        for wanted in _ASSETS.values()
+        for a in wanted
+        if a.startswith("outputs.")
+    }
+    for output in names:
+        assert f"${{{{ needs.metadata.outputs.{output} }}}}" in required, output
+    py = "${{ needs.metadata.outputs.py_version }}"
+    for wheel in (
+        f"provisa_client-{py}-py3-none-any.whl",
+        f"provisa_notebook-{py}-py3-none-any.whl",
+        f"provisa-{py}-cp312-cp312-manylinux_2_28_x86_64.whl",
+        f"provisa-{py}-cp312-cp312-manylinux_2_28_aarch64.whl",
+        f"provisa-{py}-cp312-cp312-macosx_*_arm64.whl",
+        f"provisa-{py}-cp312-cp312-win_amd64.whl",
+    ):
+        assert wheel in required.splitlines(), wheel
+    assert "gh release view" in verify["run"] and "exit 1" in verify["run"]
+
+
+def test_the_release_publishes_the_macos_duckdb_extensions_asset_with_its_checksum():
+    """The Core DMG ships no DuckDB extension (codesign cannot sign them, so Apple rejected the
+    DMG): they are a release asset of their own, named by release-metadata, built by the Core
+    build, and attached with the .sha256 beside it (maintainer decision 2026-11-11)."""
+    metadata = (_ROOT / ".github/actions/release-metadata/action.yml").read_text()
     assert (
-        'compgen -G "$pattern"' in assets_step["run"] and '[ "$missing" = 0 ]' in assets_step["run"]
+        'echo "duckdb_extensions_name=provisa-duckdb-extensions-${TAG}-macOS-arm64.tar.gz"'
+        in metadata
     )
+    name = "${{ needs.metadata.outputs.duckdb_extensions_name }}"
 
-    # The files section should reference all expected installer types via metadata outputs. The
-    # Runtime DMG (dmg_runtime_name) was removed from the installer set (native venv tier replaced it),
-    # so it is intentionally absent from both the workflow outputs and this list.
-    expected_patterns = [
-        "dmg_name",
-        "dmg_obs_name",
-        "dmg_demo_name",
-        "linux_name",
-        "windows_name",
-        "windows_container_name",
-        "jdbc_name",
+    macos = _load("release-macos.yml")["jobs"]
+    assert "duckdb_extensions_name" in macos["metadata"]["outputs"]
+    core = macos["build-macos-core"]["steps"]
+    build = next(s for s in core if "build-dmg.sh stage" in s.get("run", ""))
+    assert build["env"]["DUCKDB_EXTENSIONS_ASSET"] == name
+    upload = next(
+        s
+        for s in core
+        if s.get("uses", "").startswith("actions/upload-artifact")
+        and s["with"]["name"] == "macos-duckdb-extensions-dist"
+    )
+    attach = next(s for s in core if s.get("uses") == _ATTACH)
+    assert core.index(build) < core.index(upload) < core.index(attach)
+    assert upload["with"]["path"].splitlines() == [
+        f"packaging/macos/dist/{name}",
+        f"packaging/macos/dist/{name}.sha256",
     ]
-    for pattern in expected_patterns:
-        assert pattern in files_str, (
-            f"Installer manifest must include {pattern} to ensure complete release"
-        )
+    assert upload["with"]["if-no-files-found"] == "error"
+    assert attach["with"]["files"].splitlines() == upload["with"]["path"].splitlines()
+
+    publish = _publish_job()
+    assert "duckdb_extensions_name" in _load("release-publish.yml")["jobs"]["metadata"]["outputs"]
+    verify = next(s for s in publish["steps"] if s.get("name", "").startswith("Publish release"))
+    required = verify["env"]["REQUIRED"].splitlines()
+    assert name.replace("needs.metadata", "needs.metadata") in required
+    assert f"{name}.sha256" in required
 
 
 def test_a_cve_scan_gives_the_advisory_lookup_time_to_answer():
@@ -268,11 +371,9 @@ def test_no_publication_is_reachable_without_every_build():
                 if _publishes(step):
                     where[job] = leg
     assert where == {
-        "publish-pypi": "orchestrator",
-        "publish-notebook-pypi": "orchestrator",
-        "publish-provisa-pypi": "orchestrator",
         _IMAGE_PUSH: "orchestrator",
         "publish-release": "publish",
+        "publish-wheel-index": "publish",
         "publish-engine-image": "publish",
         "publish-zaychik-image": "publish",
     }
@@ -339,26 +440,118 @@ def test_an_image_push_is_seen_as_a_publication(step, publishes):
     assert _publishes(step) is publishes
 
 
-def test_pypi_is_published_from_the_orchestrator_never_a_reusable_workflow():
-    """PyPI trusted publishing does not accept a token whose job_workflow_ref is a reusable
-    workflow: alpha.483's PyPI jobs, then in release-publish.yml, failed with invalid-publisher
-    (run 38588660256). Every PyPI upload is a job of build-dmg.yml itself, gated as its other
-    publications are and holding the OIDC token."""
-    for path in sorted(_WORKFLOWS.glob("*.yml")):
-        workflow = yaml.safe_load(path.read_text())
-        reusable = "workflow_call" in (workflow.get(True) or {})
-        for job, body in (workflow.get("jobs") or {}).items():
-            uploads = any(
-                "pypi-publish" in str(step.get("uses", "")) for step in body.get("steps") or []
-            )
-            if uploads:
-                assert not reusable, f"{path.name}:{job} publishes to PyPI from a reusable workflow"
+def test_no_release_workflow_publishes_to_pypi():
+    """Nothing in the release is uploaded to PyPI (maintainer 2026-11-21): no release workflow
+    uses the PyPI publish action or twine, and the orchestrator has no id-token job."""
+    for path in [_WORKFLOWS / "build-dmg.yml", *sorted(_WORKFLOWS.glob("release-*.yml"))]:
+        text = path.read_text()
+        for line in text.splitlines():
+            if line.lstrip().startswith("#"):
+                continue
+            assert "pypi-publish" not in line and "twine upload" not in line, path.name
     orchestrator = _load("build-dmg.yml")["jobs"]
-    gate = orchestrator["publish"]["with"]["publish"]
-    for job in _PYPI:
-        assert orchestrator[job]["permissions"] == {"id-token": "write"}, job
-        assert orchestrator[job]["if"] == gate, job
+    assert not any("pypi" in job for job in orchestrator)
+
+
+def test_the_publish_leg_requires_the_client_and_notebook_wheels_as_release_assets():
+    """The wheels that went to PyPI are release assets the undraft verifies, and the Pages index
+    lists them beside the server wheel."""
+    step = next(s for s in _publish_job()["steps"] if "Publish release" in s.get("name", ""))
+    required = step["env"]["REQUIRED"]
+    assert "provisa_client-" in required and "provisa_notebook-" in required
+    script = (_ROOT / "scripts" / "release_wheel_index.py").read_text()
+    for project in ("provisa", "provisa-client", "provisa-notebook"):
+        assert f'"{project}",' in script.split("PROJECTS = (")[1].split(")")[0]
+
+
+def test_the_extension_wheels_are_attached_not_published_to_pypi():
+    """provisa-duckdb-ext and provisa-pg-ext are release assets (maintainer 2026-11-21): each
+    workflow attaches its wheels under the publish input, none uses the PyPI publish action or
+    twine, none holds an id-token, and the publish leg requires the wheels and the index lists them."""
+    for name, wheels in (
+        ("build-duckdb-extensions.yml", "dist-ext/provisa_duckdb_ext-*.whl"),
+        ("build-pg-extensions.yml", "dist-pg-ext/provisa_pg_ext-*.whl"),
+    ):
+        text = (_ROOT / ".github" / "workflows" / name).read_text()
+        for line in text.splitlines():
+            if not line.lstrip().startswith("#"):
+                assert "pypi-publish" not in line and "twine upload" not in line, name
+        workflow = _load(name)
+        assert workflow[True]["workflow_dispatch"]["inputs"]["publish"]["default"] is False
+        job = workflow["jobs"]["wheel"]
+        assert "id-token" not in job["permissions"]
+        attach = [s for s in job["steps"] if s.get("uses") == _ATTACH]
+        assert len(attach) == 1 and attach[0]["if"] == "inputs.publish", name
+        assert wheels in attach[0]["with"]["files"]
+    cut = (_WORKFLOWS / "release-cut.yml").read_text()
+    for name in ("build-duckdb-extensions.yml", "build-pg-extensions.yml"):
+        assert name in cut
+    assert 'gh workflow run "$workflow" --ref "$VERSION" -f publish=true' in cut
+    step = next(s for s in _publish_job()["steps"] if "Publish release" in s.get("name", ""))
+    required = step["env"]["REQUIRED"]
+    assert "provisa_pg_ext-" in required and required.count("provisa_duckdb_ext-") == 4
+    script = (_ROOT / "scripts" / "release_wheel_index.py").read_text()
+    assert '"provisa-duckdb-ext",' in script and '"provisa-pg-ext",' in script
 
 
 if __name__ == "__main__":
     pytest.main([__file__, "-q"])
+
+
+# ── The provisa server off PyPI: release assets through a GitHub Pages index ─────────────────
+
+
+def test_the_provisa_server_wheel_is_never_uploaded_to_pypi():
+    """alpha.510's upload failed with PyPI's 10 GB project limit, and the release waited on it.
+    No job downloads the server's wheels for a PyPI upload, and the publish leg needs no such job."""
+    orchestrator = _load("build-dmg.yml")["jobs"]
+    assert "publish-provisa-pypi" not in orchestrator
+    assert "publish-provisa-pypi" not in orchestrator["publish"]["needs"]
+    for job, body in orchestrator.items():
+        steps = body.get("steps") or []
+        if not any("pypi-publish" in str(s.get("uses", "")) for s in steps):
+            continue
+        for step in steps:
+            given = step.get("with") or {}
+            assert not str(given.get("pattern", "")).startswith("provisa-wheel-"), job
+
+
+def test_the_publish_leg_can_be_dispatched_to_publish_a_release_whose_leg_was_skipped():
+    """A release whose publish leg was skipped is published by dispatching the leg on its version:
+    its assets are already on the draft, so the dispatch verifies, undrafts and writes the index,
+    reading no other run."""
+    on = _load("release-publish.yml")[True]
+    assert set(on["workflow_call"]["inputs"]) == {"version", "publish"}
+    dispatch = on["workflow_dispatch"]["inputs"]
+    assert set(dispatch) == {"version", "publish"}
+    for name, kind in (("version", "string"), ("publish", "boolean")):
+        assert dispatch[name]["type"] == kind, name
+        assert dispatch[name]["required"] is True, name
+        assert "default" not in dispatch[name], name
+    assert _publish_job()["permissions"] == {"contents": "write"}
+    # The orchestrator grants what the leg's jobs ask for: a nested job cannot exceed its caller.
+    granted = _load("build-dmg.yml")["jobs"]["publish"]["permissions"]
+    leg = _load("release-publish.yml")["jobs"]
+    for body in leg.values():
+        for scope, level in (body.get("permissions") or {}).items():
+            assert granted.get(scope) in (level, "write"), (scope, level)
+
+
+def test_the_wheel_index_is_regenerated_on_pages_after_the_release_is_published():
+    """After the undraft, every published release's provisa wheels are listed in a PEP 503 index
+    on GitHub Pages, generated by the tested script; never on a dry run."""
+    job = _load("release-publish.yml")["jobs"]["publish-wheel-index"]
+    assert job["if"] == "inputs.publish"
+    assert job["needs"] == ["publish-release"]
+    assert job["permissions"] == {"contents": "read", "pages": "write", "id-token": "write"}
+    assert job["environment"]["name"] == "github-pages"
+    runs = "\n".join(s.get("run", "") for s in job["steps"])
+    assert "--paginate --slurp > releases.json" in runs
+    assert "scripts/release_wheel_index.py releases.json site" in runs
+    uses = [s.get("uses") for s in job["steps"] if s.get("uses")]
+    assert uses == [
+        "actions/checkout@v4",
+        "actions/upload-pages-artifact@v3",
+        "actions/deploy-pages@v4",
+    ]
+    assert (_ROOT / "scripts" / "release_wheel_index.py").is_file()

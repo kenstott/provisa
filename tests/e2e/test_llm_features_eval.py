@@ -158,18 +158,22 @@ async def _inferred(tables: list[TableFacts], min_confidence: float) -> set[tupl
     below its threshold when ``min_confidence`` is lower."""
     from provisa.discovery.run import SYSTEM_PROMPT
     from provisa.discovery.runner import execute
+    from provisa.discovery.threshold import DEFAULT
     from provisa.discovery.windows import plan
     from provisa.llm.client import ProvisaLLMClient
 
     max_tokens = 4_096
-    k, requests = plan(tables, None, 32_000, max_tokens)
+    planned = plan(tables, None, 32_000, max_tokens)
     client = ProvisaLLMClient("relationship_inference", config=_OPENROUTER_CONFIG, api_keys={})
 
     def ask(prompt: str, max_out: int):
         return client.complete_sync_detailed(prompt, SYSTEM_PROMPT, max_out)
 
-    tally, kept = await execute(requests, k, max_tokens, ask, _Watcher())
+    tally, kept = await execute(
+        planned, max_tokens, ask, _Watcher(), threshold=DEFAULT, key_values=None
+    )
     assert tally.failed == [], f"a request failed: {tally.failed}"
+    assert tally.unanswered == [], f"table pairs left unanswered: {tally.unanswered}"
     found = [*kept, *(r.proposal for r in tally.left_out if r.left_out == "below_threshold")]
     return {p.edge for p in found if p is not None and p.confidence >= min_confidence}
 
@@ -292,28 +296,33 @@ def _drop_tables():
 
 
 def test_discovery_suggests_the_permit_key_a_folder_of_files_shares(record_property):
-    """One request, with a short answer: the text columns of the five files, as a run sends them.
-    inspections.permit_id names building_permits.permit_id, and the model is to say so at the
-    confidence a suggestion is kept at, by the rubric the request states. Everything it answered
+    """One call, with a short answer: the table pairs of the five files, as a run sends them.
+    inspections.permit_id names building_permits.permit_id, and the model is to say so, under the
+    pair of those two tables, at the confidence a suggestion is kept at, by the rubric the call
+    states. Everything it answered
     is recorded with the test's result (``discovery_answer``)."""
     import json
 
-    from provisa.discovery.analyzer import read_answer_list
-    from provisa.discovery.columns import TEXT
     from provisa.discovery.run import SYSTEM_PROMPT
-    from provisa.discovery.runner import MIN_CONFIDENCE, Tally, read_items
+    from provisa.discovery.runner import Tally, read_answers, read_pair_answers
+    from provisa.discovery.threshold import DEFAULT
     from provisa.discovery.windows import plan
     from provisa.llm.client import ProvisaLLMClient
 
-    max_tokens = 1_950  # thirteen suggestions at most
-    k, requests = plan(_drop_tables(), None, 32_000, max_tokens)
-    (request,) = [r for r in requests if r.group == TEXT]
+    max_tokens = 4_096
+    planned = plan(_drop_tables(), None, 32_000, max_tokens)
+    (call,) = [
+        c
+        for c in planned.calls
+        if any({p.source.table_id, p.target.table_id} == {313, 310} for p in c.pairs)
+    ]
     client = ProvisaLLMClient("relationship_inference", config=_OPENROUTER_CONFIG, api_keys={})
-    answer = client.complete_sync_detailed(request.prompt(k), SYSTEM_PROMPT, max_tokens)
-    read = read_answer_list(answer.text, answer.cut_off)
+    answer = client.complete_sync_detailed(call.prompt(DEFAULT), SYSTEM_PROMPT, max_tokens)
+    read = read_pair_answers(answer.text, answer.cut_off)
     assert read.items is not None, f"no list in the answer: {answer.text!r}"
-    tally = Tally(total=1)
-    kept = read_items(request, read.items, tally)
+    tally = Tally(total=1, threshold=DEFAULT)
+    _, found, _, _ = read_answers(call, read.items, tally)
+    kept = [p for p in found if p.confidence >= DEFAULT]
     said = [
         {"edge": p.edge, "confidence": p.confidence, "left_out": None, "reasoning": p.reasoning}
         for p in kept
@@ -329,5 +338,5 @@ def test_discovery_suggests_the_permit_key_a_folder_of_files_shares(record_prope
     record_property("discovery_model", f"{answer.vendor}:{answer.model}")
     record_property("discovery_answer", json.dumps(said))
     permit = [p for p in kept if p.pair == frozenset({(313, "permit_id"), (310, "permit_id")})]
-    assert permit, f"the permit key was not kept at {MIN_CONFIDENCE} or more; answered: {said}"
+    assert permit, f"the permit key was not kept at {DEFAULT} or more; answered: {said}"
     assert permit[0].start == (313, "permit_id"), f"the wrong way round: {said}"

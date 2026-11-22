@@ -41,6 +41,7 @@ from provisa.core.schema_org import (
     table_columns,
 )
 from provisa.core.repositories.mask_lists import refuse_unreachable_masks
+from provisa.security.masking import refuse_non_text_constant
 from provisa.fakes.portable import pinned_version
 from provisa.security.rights import Capability
 
@@ -519,7 +520,8 @@ async def _require_landed_if_member(  # REQ-1634
 async def _upsert(
     conn: "Connection", table: Table, declared: "DeclaredKeys | None", withdrawn: bool | None
 ) -> int | None:
-    domain_id = domain_policy.resolve_domain_id(table.domain_id)
+    domain_id = domain_policy.table_domain_id(table.domain_id, table.table_name)  # REQ-1531
+    domain_policy.require_table_name(table.table_name, table.alias)  # REQ-1929
     await _require_not_retired(conn, table)
     await _require_free_sql_address(conn, table, domain_id)
     await _require_label_not_a_domain(conn, table)
@@ -915,6 +917,8 @@ async def _upsert(
         for name, (_, entries) in _whys.items()
     }
     await refuse_unreachable_masks(conn, _stored_masks)  # REQ-2059
+    for _name, _masks in _stored_masks.items():  # REQ-2131
+        refuse_non_text_constant(_name, _masks, _stored[_name][0])
     # Replace columns: delete existing, insert new
     await conn.execute_core(_delete(table_columns).where(table_columns.c.table_id == table_id))
     for col in table.columns:
@@ -1001,6 +1005,8 @@ async def _upsert(
             for c in table.columns
             if getattr(c, "native_filter_type", None) is None and not c.name.startswith("_nf_")
         ],
+        # REQ-1591: the domain this upsert writes, which tells same-named terms apart.
+        domain=domain_id,
         table_context=getattr(table, "alias", None) or table.table_name,
     )
     return table_id
@@ -1212,6 +1218,25 @@ async def restore(conn: "Connection", table_id: int) -> bool:  # REQ-2248
             .values(**retirement.cleared())
         )
     return True
+
+
+async def restore_registered(conn: "Connection", table: Table) -> bool:  # REQ-433, REQ-2248
+    """Registering a source table that was removed restores it: the same table (its id, columns
+    and links), its retirement cleared, so the registration that follows saves it into the
+    domain it names. REQ-433 (amended 2026-11-20): removing a table frees it at once, a table
+    registered with no domain included. A different table at a retired table's name is still
+    refused (:func:`_require_not_retired`). False when no retired table is that source table."""
+    held = (
+        await conn.execute_core(
+            select(registered_tables.c.id).where(
+                registered_tables.c.source_id == table.source_id,
+                registered_tables.c.schema_name == table.schema_name,
+                registered_tables.c.table_name == table.table_name,
+                registered_tables.c.retired.is_(True),
+            )
+        )
+    ).fetchone()
+    return held is not None and await restore(conn, int(held.id))
 
 
 async def restore_column(conn: "Connection", table_id: int, column_name: str) -> bool:  # REQ-2248

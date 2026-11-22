@@ -24,9 +24,8 @@ from typing import TYPE_CHECKING, Any
 from provisa.compiler.naming import (
     apply_cql_label as _apply_cql_label,
     apply_cql_property as _apply_cql_property,
-    unprefixed_field_name,
 )
-from provisa.compiler.sql_rewrite import semantic_table_name
+from provisa.compiler import names_table as _names_table
 from provisa.compiler.sql_types import key_list
 from provisa.core import domain_policy
 from provisa.compiler.complexity import api_source_types
@@ -230,6 +229,9 @@ class RelationshipMapping:
     #: traverses it only from its source to its target. A model relationship is a join, which a
     #: directed pattern may read from either end (False).
     directed: bool = False
+    #: REQ-1586: a registered relationship row declares this edge (JoinMeta.registered); a
+    #: synthetic edge (HAS_TABLE) does not. Only a registered edge keeps a junction's node.
+    registered: bool = False
 
     @property
     def properties(self) -> dict[str, str]:
@@ -733,19 +735,31 @@ def _drop_junction_nodes(  # REQ-1586
     nodes_by_table: dict[str, list[str]],
     aliases: dict[str, list[RelationshipMapping]],
 ) -> None:
-    """Remove every declared junction table from the node side of the Cypher schema.
+    """Remove every declared junction table no registered relationship of its own joins from the
+    node side of the Cypher schema.
 
     A declared junction is an edge, not an entity: it must not appear as a label a pattern can
     match, as a pill a client can drag onto a canvas, or under a domain's label list. It stays a
     registered table and is still queryable in SQL and GraphQL — this drops it from the graph
     schema only.
 
-    The junction's own foreign keys also produced ordinary FK edges into and out of it. Those
-    edges are what the junction edge replaces, and they name a label that no longer exists, so
-    they go with the node — otherwise any consumer resolving an endpoint label (the graph-schema
-    endpoint, a label count) reads a key that was just removed. Mutates every dict passed in.
+    Edges into and out of a dropped junction name a label that no longer exists, so they go with
+    the node — otherwise any consumer resolving an endpoint label (the graph-schema endpoint, a
+    label count) reads a key that was just removed.
+
+    (Amended 2026-11-18) A junction that registered relationships of its own join (as after Join
+    through, which keeps its two hops beside the joined relationship) keeps its node and every
+    edge, so all three relationships are offered in Cypher as in SQL and GraphQL. A synthetic edge
+    (HAS_TABLE) is no relationship of its own. Mutates every dict passed in.
     """
-    junction_types = {rm.via.type_name for rm in relationships.values() if rm.via is not None}
+    declared = {rm.via.type_name for rm in relationships.values() if rm.via is not None}
+    joined = {
+        label
+        for rm in relationships.values()
+        if rm.via is None and rm.registered
+        for label in (rm.source_label, rm.target_label)
+    }
+    junction_types = declared - joined
     if not junction_types:
         return
     for rel_key, rm in list(relationships.items()):
@@ -826,6 +840,7 @@ def _build_node_mappings(
         (tid, ctx_typed.exposed_to_physical.get((tid, name), name))
         for tid, name in ctx_typed.gql_json_columns
     }
+    names = _names_table.context_names(ctx_typed)
     for field_name, table_meta in ctx_typed.tables.items():
         if (
             field_name.endswith("_connection")
@@ -877,10 +892,8 @@ def _build_node_mappings(
             # Single-domain mode: the default domain is implicit — never label with it.
             domain_id = None
         domain_label = _apply_cql_label(domain_id) if domain_id else None
-        # REQ-2163: a system schema's SDL prefix (on_, op_) is no part of its bare label.
-        _, table_label = _split_cypher_labels(
-            unprefixed_field_name(field_name, table_meta.domain_id)
-        )
+        # REQ-467: the table's label is the names table's (REQ-194), never derived here.
+        table_label = names.table_row(table_meta.table_id, "cypher_label").name
         cypher_label = f"{domain_label}:{table_label}" if domain_label else table_label
         logical_table = _strip_domain_prefix(table_meta.table_name, domain_id)
         physical_table = table_meta.table_name
@@ -900,7 +913,7 @@ def _build_node_mappings(
             catalog_name=table_meta.catalog_name,
             schema_name=table_meta.schema_name,
             table_name=logical_table,
-            query_name=semantic_table_name(table_meta),
+            query_name=names.table_row(table_meta.table_id, "sql").name,
             properties=props,
             physical_properties=phys_props,
             native_filter_columns=nf_cols,
@@ -991,6 +1004,7 @@ def _build_relationship_mappings(
     relationships: dict[str, RelationshipMapping],
 ) -> dict[str, list[RelationshipMapping]]:
     """Populate relationships from ctx joins; return aliases dict."""
+    names = _names_table.context_names(ctx_typed)
     aliases: dict[str, list[RelationshipMapping]] = {}
     for (source_type_name, gql_field_name), join_meta in ctx_typed.joins.items():
         if getattr(join_meta, "disable_cypher", False):
@@ -1004,12 +1018,10 @@ def _build_relationship_mappings(
             if _via_meta is not None
             else {},
         )
-        # REQ-1586: a junction edge is named by its nomination, not by the GraphQL field it would
-        # have had — the field name describes the junction table, the nomination describes the edge.
-        rel_type = (
-            junction_rel_type(via)
-            if via is not None
-            else (cypher_alias if cypher_alias else _to_rel_type(gql_field_name, cardinality))
+        # REQ-467: the edge's type is the names table's (REQ-194): a junction edge named by its
+        # nomination (REQ-1586), any other by its alias or its field.
+        rel_type = names.object_name(
+            "relationship", f"{source_type_name}.{gql_field_name}", "cypher_rel_type"
         )
         src_json_key = getattr(join_meta, "source_json_key", None)
         _base_source_expr = getattr(join_meta, "source_expr", None)
@@ -1031,6 +1043,7 @@ def _build_relationship_mappings(
             target_expr=getattr(join_meta, "target_expr", None),
             many=(cardinality == "one-to-many"),
             via=via,
+            registered=join_meta.registered,
         )
         rel_key = f"{rel_type}::{source_type_name}→{join_meta.target.type_name}"
         relationships[rel_key] = rm
@@ -1234,6 +1247,7 @@ def _add_cross_domain_nodes(
                 source_expr=_xsource_expr,
                 many=(rel_cardinality == "one-to-many"),
                 via=xvia,
+                registered=True,  # every row of all_relationships is a registered relationship
             )
             relationships[rel_key] = xrel
             aliases.setdefault(rel_type, []).append(xrel)
@@ -1351,18 +1365,6 @@ def _table_label_from_table_name(table_name: str, domain_id: str | None) -> str:
         if table_name.lower().startswith(prefix):
             table_name = table_name[len(prefix) :]
     return _apply_cql_label(table_name)
-
-
-def _split_cypher_labels(field_name: str) -> tuple[str | None, str]:
-    """Derive (domain_label, table_label) from a GQL field name.
-
-    "sales_analytics__orders" → ("SalesAnalytics", "Orders")
-    "orders"                  → (None, "Orders")
-    """
-    if "__" in field_name:
-        domain_part, table_part = field_name.split("__", 1)
-        return _apply_cql_label(domain_part), _apply_cql_label(table_part)
-    return None, _apply_cql_label(field_name)
 
 
 # ---------------------------------------------------------------------------

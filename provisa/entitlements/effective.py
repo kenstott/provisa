@@ -44,7 +44,13 @@ from provisa.entitlements.lists import (
     effective_lists,
 )
 from provisa.entitlements.mask import EntitlementMask
-from provisa.entitlements.runtime import ListReach, list_reach, principal_mask, role_defaults
+from provisa.entitlements.runtime import (
+    ListReach,
+    list_reach,
+    owned_of,
+    principal_mask,
+    role_defaults,
+)
 
 _NOTHING_HELD = HeldEntitlements()
 _EVERY_CAPABILITY = "*"
@@ -113,7 +119,7 @@ def _findings(state: Any, role_id: str, role: dict, lists: dict) -> tuple[Findin
     index = model_index(state)
     if index is None:
         return ()
-    return tuple(check_lists(role_id, role, lists, index))
+    return tuple(check_lists(role_id, role, lists, index, owned_of(state)))
 
 
 def access_view(

@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import importlib.util
 import re
-import sys
 from pathlib import Path
 
 import pytest
@@ -179,7 +178,14 @@ _LEAF_CHECK = "ci-leaf-check.yml"
 # credentials or cluster tooling, and the lane workflow declares only the few secrets its callers
 # pass by name instead of inheriting every one.
 _OWN_STEPS = {
-    "integration-suite-lanes.yml": {"cluster", "warehouse", "salesforce", "athena", "servicenow"},
+    "integration-suite-lanes.yml": {
+        "cluster",
+        "warehouse",
+        "salesforce",
+        "athena",
+        "servicenow",
+        "microsoft_365",
+    },
     # REQ-2012: carries the paid model keys of its own, as the live-account jobs do.
     "polly-bakeoff.yml": {"bakeoff"},
     # REQ-2006: walks the bundle it built before publishing it, with the build's live keys.
@@ -282,13 +288,16 @@ _WAREHOUSE_SECRETS = {
     "SNOWFLAKE_ACCOUNT", "SNOWFLAKE_USER", "SNOWFLAKE_PASSWORD", "SNOWFLAKE_WAREHOUSE",
     "DATABRICKS_SERVER_HOSTNAME", "DATABRICKS_HTTP_PATH", "DATABRICKS_TOKEN",
     "GOOGLE_CLOUD_PROJECT", "GOOGLE_APPLICATION_CREDENTIALS_JSON", "GSHEETS_TEST_SHEET_ID",
-    "FABRIC_SQL_SERVER", "FABRIC_DATABASE", "FABRIC_RESOURCE_GROUP", "FABRIC_CAPACITY_NAME",
-    "FABRIC_WORKSPACE_ID",
+    "FABRIC_RESOURCE_GROUP", "FABRIC_CAPACITY_NAME",
     "AZURE_CLIENT_ID", "AZURE_CLIENT_SECRET", "AZURE_TENANT_ID",
 }  # fmt: skip
 _LIVE_SOURCE_SECRETS = _WAREHOUSE_SECRETS | {
     "SP_TENANT_ID", "SP_CLIENT_ID", "SP_SITE_URL", "SP_CERT_PASSWORD",
     "FREE_ASKAMERICA_KEY", "KAGGLE_API_TOKEN", "STRIPE_API_KEY",
+    # SingleStore Cloud shared-tier workspace: a live source, not a warehouse (its spec is in the
+    # core-provisioning project, source-to-query-community-ext.spec.ts).
+    "SINGLESTORE_HOST", "SINGLESTORE_PORT", "SINGLESTORE_USERNAME", "SINGLESTORE_PASSWORD",
+    "SINGLESTORE_DATABASE",
 }  # fmt: skip
 _WAREHOUSE_UI = ("integration-suite-lanes.yml", "warehouse-ui")
 
@@ -371,7 +380,7 @@ def test_the_core_ui_lanes_credential_files_are_private_and_removed():
     # Maintainer 2026-11-10 ("Paid cloud resources"): the Fabric capacity is the run's own --
     # made by the prepare script, deleted (and read back gone) by the after-script whatever the
     # lane's outcome.
-    assert "scripts/fabric_e2e.py up" in prepare
+    assert 'scripts/fabric_e2e.py up "$GITHUB_ENV"' in prepare
     assert "scripts/fabric_e2e.py down" in after and "suspend_capacity()" not in after
     # REQ-254: the warehouses the cloud-warehouse spec wakes are stopped again, whatever happened.
     assert "stop_warehouse" in after and "suspend_warehouse" in after
@@ -391,13 +400,13 @@ def test_the_warehouse_lane_leaves_every_compute_it_runs_stopped_whatever_happen
     steps = {s.get("name"): s for s in job["steps"]}
     run_lane = [s.get("name") for s in job["steps"]].index("Run lane")
     for name, call in (
-        ("Delete this run's Fabric capacity", "scripts/fabric_e2e.py down"),
+        ("Delete this run's Fabric workspace and capacity", "scripts/fabric_e2e.py down"),
         ("Leave the Databricks warehouse stopped", "stop_warehouse"),
         ("Leave the Snowflake warehouse suspended", "suspend_warehouse"),
     ):
         step = steps[name]
         assert [s.get("name") for s in job["steps"]].index(name) > run_lane, name
-        if name == "Delete this run's Fabric capacity":
+        if name == "Delete this run's Fabric workspace and capacity":
             # Whenever the step that creates the capacity ran, whatever its outcome (below).
             assert step["if"] == _FABRIC_DOWN_IF, name
         else:
@@ -412,9 +421,33 @@ def test_the_warehouse_lane_creates_its_own_fabric_capacity_before_any_test():
         "jobs"
     ]["warehouse"]
     names = [s.get("name") for s in job["steps"]]
-    up = names.index("This run's Fabric capacity")
+    up = names.index("This run's Fabric capacity, workspace and warehouse")
     assert up < names.index("Run lane")
-    assert "scripts/fabric_e2e.py up" in job["steps"][up]["run"]
+    assert 'scripts/fabric_e2e.py up "$GITHUB_ENV"' in job["steps"][up]["run"]
+
+
+# Maintainer 2026-11-21: the Fabric workspace and warehouse are the run's own. Their endpoint,
+# database and workspace id are written by ``scripts/fabric_e2e.py up`` to $GITHUB_ENV, never read
+# from a standing secret.
+_FABRIC_RUN_OUTPUTS = ("FABRIC_SQL_SERVER", "FABRIC_DATABASE", "FABRIC_WORKSPACE_ID")
+
+
+def test_fabric_endpoint_database_and_workspace_are_run_outputs_not_secrets():
+    """No workflow passes, declares or reads a standing Fabric workspace, warehouse or endpoint,
+    and no step's own environment sets those names: a step-level value would hide the one
+    ``up`` wrote to $GITHUB_ENV."""
+    for path in sorted((REPO / ".github" / "workflows").glob("*.yml")):
+        text = path.read_text()
+        for name in _FABRIC_RUN_OUTPUTS:
+            assert f"secrets.{name}" not in text, f"{path.name}: secrets.{name}"
+    for where, step in _steps():
+        assert not set(step.get("env") or {}) & set(_FABRIC_RUN_OUTPUTS), where
+    for workflow in ("lane.yml", "integration-suite-lanes.yml"):
+        doc = yaml.safe_load((REPO / ".github" / "workflows" / workflow).read_text())
+        declared = set(doc[True]["workflow_call"].get("secrets") or {})
+        assert not declared & set(_FABRIC_RUN_OUTPUTS), workflow
+        for job in doc["jobs"].values():
+            assert not set(job.get("env") or {}) & set(_FABRIC_RUN_OUTPUTS), workflow
 
 
 # The delete step's condition: it runs whenever the create step ran, and only then.
@@ -436,30 +469,50 @@ def _fabric_test_files() -> set[str]:
     }
 
 
-def test_the_warehouse_lane_never_creates_a_fabric_capacity_and_selects_no_fabric_test():
-    """Maintainer 2026-11-11 ("skip fabric tests for now"): no lane selects a requires_fabric
-    test, so the capacity step never runs (assignToCapacity returns 403 until the CI service
-    principal is Admin on the Fabric workspace; run 42930869189). The delete step stays tied to
-    the create step's outcome, so it is skipped with it."""
+def _fabric_up_runs(condition: str, tests: str) -> bool:
+    """The create step's ``if:`` evaluated for a run's ``inputs.tests``. The condition may only be
+    ``inputs.tests == ''`` or'd with ``contains(inputs.tests, '<file>')`` clauses; anything else
+    fails here rather than being guessed at."""
+    runs = False
+    for clause in (c.strip() for c in condition.split("||")):
+        if clause == "inputs.tests == ''":
+            runs = runs or tests == ""
+            continue
+        named = re.fullmatch(r"contains\(inputs\.tests, '([^']+)'\)", clause)
+        assert named, f"unexpected clause in the Fabric capacity step's condition: {clause!r}"
+        runs = runs or named.group(1) in tests
+    return runs
+
+
+def test_the_warehouse_lane_creates_a_fabric_capacity_only_for_a_run_selecting_a_fabric_test():
+    """REQ-254: a lane run that selects no Fabric test creates no capacity. The whole lane (no
+    inputs.tests) still makes it; a targeted run makes it only when it names a test file that
+    reaches Fabric -- every such file, so none runs without one. The delete step runs whenever
+    the create step ran, whatever happened, and is skipped with it."""
     job = yaml.safe_load((REPO / ".github/workflows/integration-suite-lanes.yml").read_text())[
         "jobs"
     ]["warehouse"]
     steps = {s.get("name"): s for s in job["steps"]}
-    up = steps["This run's Fabric capacity"]
+    up = steps["This run's Fabric capacity, workspace and warehouse"]
     assert up["id"] == "fabric-capacity"
-    assert up["if"] is False  # YAML `if: false`: the step never runs
-    assert steps["Delete this run's Fabric capacity"]["if"] == _FABRIC_DOWN_IF
+    condition = up["if"]
+    fabric = _fabric_test_files()
+    assert fabric, "no integration test reaches Fabric: the condition below would be vacuous"
+    assert set(re.findall(r"contains\(inputs\.tests, '([^']+)'\)", condition)) == fabric
 
+    assert _fabric_up_runs(condition, "")
+    for f in sorted(fabric):
+        assert _fabric_up_runs(condition, f), f
+        assert _fabric_up_runs(
+            condition, f"tests/integration/test_google_sheets_source_e2e.py {f}::test_x"
+        ), f
+    # Run 42930869189: a targeted Google Sheets run made (and paid for) a capacity it never used.
+    assert not _fabric_up_runs(condition, "tests/integration/test_google_sheets_source_e2e.py")
+    assert not _fabric_up_runs(
+        condition, "tests/integration/test_metadata_export_purview_e2e.py::test_x"
+    )
 
-def test_run_lane_s_warehouse_lane_excludes_requires_fabric():
-    spec = importlib.util.spec_from_file_location("run_lane", REPO / "scripts/ci/run_lane.py")
-    run_lane = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = run_lane
-    spec.loader.exec_module(run_lane)
-    assert "and not requires_fabric" in run_lane.LANES["warehouse"].marker
-    for name, lane in run_lane.LANES.items():
-        if name != "warehouse":
-            assert "requires_fabric" not in lane.marker.replace("not requires_fabric", ""), name
+    assert steps["Delete this run's Fabric workspace and capacity"]["if"] == _FABRIC_DOWN_IF
 
 
 def test_every_integration_file_reaching_fabric_carries_requires_fabric():
@@ -612,18 +665,19 @@ _RELEASE = REPO / ".github" / "workflows" / "build-dmg.yml"
 _LEAVES_THE_RUN = re.compile(
     r"gh release (upload|edit|create|view)|softprops/action-gh-release|pypi-publish|"
     r"attest-build-provenance|docker/login-action|\./\.github/actions/ensure-release|twine upload|"
-    r"docker push|oras push|skopeo copy|crane push|provisa connector push|--registry-password-env"
+    r"\./\.github/actions/attach-release-assets|"
+    r"docker push|oras push|skopeo copy|crane push|provisa connector push|--registry-password-env|"
+    r"actions/deploy-pages"
 )
 
 
-#: The orchestrator's own jobs, not legs: PyPI trusted publishing does not accept a token issued
-#: to a reusable workflow (pypa/gh-action-pypi-publish#166).
-_RELEASE_PYPI = ("publish-pypi", "publish-notebook-pypi", "publish-provisa-pypi")
-#: REQ-2071: provisa pins provisa-notebook at its own version, so provisa waits for it on PyPI.
-#: REQ-2225: the provisa wheel carries the platform connector block, so it waits for the image the
-#: block names, which the orchestrator pushes itself, after every build leg.
+#: Nothing in the release goes to PyPI (maintainer 2026-11-21): the server, client and notebook
+#: wheels are release assets, installed through the GitHub Pages index the publish leg writes.
+_RELEASE_PYPI: tuple[str, ...] = ()
+#: REQ-2225: the provisa wheel carries the platform connector block, so the release that attaches
+#: it waits for the image the block names, which the orchestrator pushes itself, after every leg.
 _RELEASE_IMAGE_PUSH = "publish-connector-image"
-_RELEASE_PYPI_AFTER = {"publish-provisa-pypi": {"publish-notebook-pypi", _RELEASE_IMAGE_PUSH}}
+_RELEASE_PYPI_AFTER: dict[str, set[str]] = {}
 #: Every orchestrator job that is not a leg.
 _RELEASE_OWN = (*_RELEASE_PYPI, _RELEASE_IMAGE_PUSH)
 _RELEASE_PUBLISH = (
@@ -644,9 +698,8 @@ def _release_legs() -> dict[str, tuple[str, dict]]:
     return legs
 
 
-def test_the_release_orchestrator_calls_legs_and_publishes_to_pypi_itself():
+def test_the_release_orchestrator_calls_legs_and_pushes_the_connector_image_itself():
     jobs = yaml.safe_load(_RELEASE.read_text())["jobs"]
-    pypi = {job: jobs.pop(job) for job in _RELEASE_PYPI}
     image_push = jobs.pop(_RELEASE_IMAGE_PUSH)
     given = {job: body["with"] for job, body in jobs.items()}
     first = next(iter(given.values()))
@@ -660,21 +713,14 @@ def test_the_release_orchestrator_calls_legs_and_publishes_to_pypi_itself():
     assert trigger["workflow_dispatch"]["inputs"]["publish"]["default"] is False
     for body in jobs.values():
         assert "steps" not in body and body.get("secrets") != "inherit"
-    # PyPI's jobs: a download of the run's wheel and the upload, gated as the legs'
-    # publications are, holding only the OIDC token, after every build leg.
     builds = set(jobs) - {"publish"}
-    for job, body in pypi.items():
-        assert body["if"] == _RELEASE_PUBLISH, job
-        assert set(body["needs"]) == builds | _RELEASE_PYPI_AFTER.get(job, set()), job
-        assert body["permissions"] == {"id-token": "write"}, job
-        uses = [str(step.get("uses", "")) for step in body["steps"]]
-        assert uses == ["actions/download-artifact@v4", "pypa/gh-action-pypi-publish@release/v1"]
+    assert not any("pypi" in job for job in jobs)
     # The connector image's push: gated the same way, after every build leg, holding only what a
     # push to the registry needs.
     assert image_push["if"] == _RELEASE_PUBLISH
     assert set(image_push["needs"]) == builds
     assert image_push["permissions"] == {"contents": "read", "packages": "write"}
-    assert set(jobs["publish"]["needs"]) == builds | set(pypi) | {_RELEASE_IMAGE_PUSH}
+    assert set(jobs["publish"]["needs"]) == builds | {_RELEASE_IMAGE_PUSH}
 
 
 def test_every_step_of_the_release_that_leaves_the_run_waits_for_publish():
@@ -695,12 +741,8 @@ def test_every_step_of_the_release_that_leaves_the_run_waits_for_publish():
                 if push is not None:
                     seen += 1
                     assert job_gated or push == "${{ inputs.publish }}", where
-    # PyPI's uploads are the orchestrator's own jobs, gated as a whole by the publish expression.
-    # So is the connector image's push (REQ-2225).
+    # The connector image's push (REQ-2225) is the orchestrator's own job, gated as a whole.
     for job, body in yaml.safe_load(_RELEASE.read_text())["jobs"].items():
-        if job in _RELEASE_PYPI:
-            assert body["if"] == _RELEASE_PUBLISH, job
-            seen += sum("pypi-publish" in str(s.get("uses", "")) for s in body["steps"])
         if job == _RELEASE_IMAGE_PUSH:
             assert body["if"] == _RELEASE_PUBLISH, job
             seen += sum(bool(_LEAVES_THE_RUN.search(str(s.get("run", "")))) for s in body["steps"])
@@ -1071,7 +1113,7 @@ def test_the_reusable_workflows_are_checked_only_after_every_action_is():
     assert level_zero == {
         job for job, body in jobs.items() if str(body.get("name", "")).startswith("action / ")
     }
-    assert len(level_zero) == 13
+    assert len(level_zero) == 15
     assert jobs["level-1"]["needs"] == ["lane-results", "release-results"]
 
 
@@ -1226,6 +1268,30 @@ def test_focused_tests_refuses_an_integration_file_by_name(tests):
 def test_focused_tests_passes_files_that_need_no_stack():
     done = _refusal("tests/unit/test_a.py tests/unit/test_b.py::test_c")
     assert done.returncode == 0 and done.stdout == ""
+
+
+def test_the_microsoft_365_lane_reads_its_secrets_from_the_live_environment_and_checks_them():
+    """The repository is at GitHub's 100-secret cap: the live lanes' secrets move to the `live`
+    environment (maintainer 2026-11-10). The microsoft_365 job names that environment, reads the
+    same secret names, and still fails by name, before the lane runs, when one is missing.
+    The tenant has one mailbox, the maintainer's: no second address is read from any secret."""
+    path = REPO / ".github" / "workflows" / "integration-suite-lanes.yml"
+    job = yaml.safe_load(path.read_text())["jobs"]["microsoft_365"]
+    assert job["environment"] == "live"
+    required = (
+        "M365_TENANT_ID",
+        "M365_CLIENT_ID",
+        "M365_CLIENT_SECRET",
+        "M365_TEST_MAILBOXES",
+    )
+    for name in required:
+        assert job["env"][name] == f"${{{{ secrets.{name} }}}}", name
+    names = [s.get("name") for s in job["steps"]]
+    assert names.index("Credentials present") < names.index("Run lane")
+    check = job["steps"][names.index("Credentials present")]["run"]
+    loop = re.search(r"for v in (.*?); do", check, re.S)
+    assert loop is not None and set(loop.group(1).split()) == set(required)
+    assert "exit 1" in check and "environment live" in check
 
 
 def test_the_odbc_install_refreshes_only_microsofts_package_list():
@@ -1522,7 +1588,7 @@ def test_every_plugin_restore_waits_for_a_job_that_primed_the_cache():
     fetched the jars from Maven Central inside collection at the same moment; core 17/18 got HTTP
     429 as an INTERNALERROR. Now one job per workflow run primes the cache (`phase: prime`: a hit,
     or one download, checksum-verified, saved at once) and every job that restores it (`phase:
-    restore`, which fails on a miss and verifies each jar) waits for that job, so the cache step
+    restore`, which takes a missed entry from the run's artifact and verifies each jar) waits for that job, so the cache step
     precedes pytest and no lane ever downloads."""
     restoring = []
     for path in WORKFLOWS:
@@ -1540,6 +1606,30 @@ def test_every_plugin_restore_waits_for_a_job_that_primed_the_cache():
                     f"that primes them (primers here: {sorted(primers)})"
                 )
     assert restoring, "no job restores the Trino plugins"
+
+
+def test_a_plugin_cache_miss_is_answered_by_the_runs_artifact_not_a_failure_or_a_download():
+    """Runs 44942101401 and 44940962731: the cache entry the priming job saved was evicted before
+    the lane's restore, which failed on the miss. The cache is branch-scoped and evictable; the
+    run's own artifact is not. Priming uploads the verified jars; a restore that missed takes
+    them from there."""
+    steps = yaml.safe_load(
+        (REPO / ".github" / "actions" / "trino-plugins" / "action.yml").read_text()
+    )["runs"]["steps"]
+    for s in steps:
+        if str(s.get("uses", "")).startswith("actions/cache/restore"):
+            assert s["with"]["fail-on-cache-miss"] is False, s["name"]
+    names = [s.get("name") for s in steps]
+    down = steps[names.index("Download the run's Trino plugins")]
+    up = steps[names.index("Upload the run's Trino plugins")]
+    assert down["uses"].startswith("actions/download-artifact")
+    assert up["uses"].startswith("actions/upload-artifact")
+    assert down["with"]["name"] == up["with"]["name"]
+    assert "restore" in down["if"] and "prime" in up["if"]
+    assert names.index("Download the run's Trino plugins") < names.index("Verify Trino plugins")
+    assert names.index("Upload the run's Trino plugins") > names.index(
+        "Verify the provisa-functions plugin"
+    )
 
 
 def test_the_lane_workflow_restores_the_plugins_before_its_lane_and_saves_none():

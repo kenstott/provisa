@@ -314,6 +314,33 @@ NULL_ARRAY = Feature(
     ),
 )
 
+#: percentile_cont and percentile_disc keep the old table's forms (function_macros._EXACT): the
+#: sorted keys, and the first past each fraction or the line between the two either side of it.
+PERCENTILE = Feature(
+    "percentile_cont and percentile_disc",
+    FAMILY,
+    "The percentile of a group's keys at a fraction, or at each of an array of them.",
+    read=Side(
+        rules=tuple(
+            Rule(f"{name}($f) WITHIN GROUP (ORDER BY $k)", {"clickhouse": trino.KEPT}, True)
+            for name in ("percentile_cont", "percentile_disc")
+        ),
+        limitations={
+            "clickhouse": (
+                Limitation(
+                    "Of an array of fractions, no keys (no rows, or only NULL ones) have no "
+                    "answer: ClickHouse holds no NULL of an array, so the call raises.",
+                    Refusal(
+                        "0A000",
+                        "percentile of an array of fractions over no keys does not read this value",
+                    ),
+                ),
+            )
+        },
+    ),
+)
+
+
 #: The units shorter than a minute, by the microseconds in one: dateTrunc keeps no fraction.
 SUBMINUTE = {
     "second": 1_000_000,
@@ -1562,9 +1589,13 @@ SPG_POLY_QUAD_COMPRESS = Feature(
     ),
 )
 
+#: The family's place in the grid (polyfill.GRID), which tries the rules of one function in
+#: the order of their families.
+ORDER = 260
 FEATURES: tuple[Feature, ...] = (
     NULL_ARRAY,
     ARRAY_AGG,
+    PERCENTILE,
     DATE_TRUNC,
     DATE,
     TIME,

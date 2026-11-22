@@ -10,6 +10,9 @@
     "rest": "REST",
     "mcp": "קריאה לכלי MCP",
     "copy": "העתקת {{what}}",
-    "close": "סגירה"
+    "close": "סגירה",
+    "createRelationships": "יצירת קשרים",
+    "relationshipsCreated_one": "נוצר {{count}} קשר.",
+    "relationshipsCreated_other": "נוצרו {{count}} קשרים."
   }
 }

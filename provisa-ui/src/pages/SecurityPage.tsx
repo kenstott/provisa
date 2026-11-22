@@ -30,6 +30,7 @@ import {
 import { FilterInput } from "../components/admin/FilterInput";
 import { HelpBubble } from "../components/HelpBubble";
 import { MultiSelect } from "../components/MultiSelect";
+import { useCapability } from "../hooks/useCapability";
 import { useRoles, useDomains } from "../hooks/useAdminQueries";
 import {
   useUpsertRole,
@@ -58,7 +59,7 @@ import { useRegionChoices } from "../hooks/useRegionQueries";
 import { ListTable, ListHead, ListRow, ListItems } from "../components/list/ListTable";
 import { useListSortGroup, type ListColumn } from "../components/list/useListSortGroup";
 import { PanelActions, SplitPane } from "../components/list/SplitPane";
-import { derivedId, readDerivedId, useDetailParam } from "../components/list/useDetailParam";
+import { derivedId, readDerivedId, useRememberedDetail } from "../components/list/useDetailParam";
 import { PanelDelete } from "../components/list/PanelDelete";
 import { PanelDuplicate } from "../components/list/PanelDuplicate";
 import { serverMessage } from "../i18n/serverMessage";
@@ -107,6 +108,9 @@ export function SecurityRolesPage() {
     />
   ));
   const { t } = useTranslation();
+  // REQ-1327: defining a role (add, edit, duplicate, delete) asks user_management; access_config
+  // alone reads the roles.
+  const mayDefine = useCapability("user_management");
   const { setDomains: setContextDomains, setSelectedDomain } = useDomainFilter();
   const { roles, loading: rolesLoading, refetch: refetchRoles } = useRoles();
   const { domains, loading: domainsLoading, refetch: refetchDomains } = useDomains();
@@ -120,7 +124,8 @@ export function SecurityRolesPage() {
   const [showRoleForm, setShowRoleForm] = useState(false);
   const [roleForm, setRoleForm] = useState(EMPTY_ROLE);
   // REQ-2241: `?role=<id>&section=<tab>` is the open role's panel and its tab.
-  const detail = useDetailParam("roles");
+  // REQ-2260: and the one left open (a role or a derived role) is open again on coming back.
+  const detail = useRememberedDetail("roles", loading ? null : roles.map((r) => r.id));
   const expandedRole = detail.id;
   const setExpandedRole = (id: string | null) => (id === null ? detail.close() : detail.open(id));
   const [editingRoleInRow, setEditingRoleInRow] = useState<string | null>(null);
@@ -134,7 +139,15 @@ export function SecurityRolesPage() {
     description: string;
   } | null>(null);
   // REQ-2241: `?derived=<attribute>:<value>` is the open derived role's panel (derivedId).
-  const derivedDetail = useDetailParam("derived");
+  const derivedDetail = useRememberedDetail(
+    "derived",
+    derived === null
+      ? null
+      : derived.roles.flatMap((d) => [
+          derivedId(d.attribute, null),
+          ...d.values.map((v) => derivedId(d.attribute, v)),
+        ]),
+  );
   const derivedPick: DerivedPick | null =
     derivedDetail.id === null ? null : readDerivedId(derivedDetail.id);
   const setDerivedPick = (pick: DerivedPick | null) =>
@@ -405,7 +418,7 @@ export function SecurityRolesPage() {
       <>
         {/* Its actions sit in the panel's head; while its form is open the head is the form's. A
             standard role is Provisa's and locked (REQ-2155): it has none. */}
-        {editingRoleInRow !== r.id && !r.standard && (
+        {mayDefine && editingRoleInRow !== r.id && !r.standard && (
           <PanelActions>
             <fieldset className="panel-action-set">
               <Group gap="xs">
@@ -631,7 +644,7 @@ export function SecurityRolesPage() {
         {/* Nested Group: the parent spreads its children, and the bubble explains this
             button, so it has to travel with it. */}
         <Group gap="xs">
-          {!showRoleForm && !showDerivedForm && (
+          {mayDefine && !showRoleForm && !showDerivedForm && (
             // REQ-2078: a role is granted rights; a derived one comes from an attribute.
             <Menu position="bottom-end" withinPortal>
               <Menu.Target>
@@ -699,13 +712,20 @@ export function SecurityRolesPage() {
         }}
         list={
           <>
-            <ListBulkBar
-              selection={selection}
-              nameOf={(id) => id}
-              onDelete={deleteRoles}
-              testId="roles-bulk"
-            />
-            <ListTable minWidth={480} testId="roles-list" selection={selection}>
+            {/* REQ-1327: the bulk bar and the row checkboxes are for a holder of the page's write right. */}
+            {mayDefine && (
+              <ListBulkBar
+                selection={selection}
+                nameOf={(id) => id}
+                onDelete={deleteRoles}
+                testId="roles-bulk"
+              />
+            )}
+            <ListTable
+              minWidth={480}
+              testId="roles-list"
+              selection={mayDefine ? selection : undefined}
+            >
               <ListHead
                 sortGroup={roleSortGroup}
                 columns={[

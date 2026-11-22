@@ -19,7 +19,7 @@ import { readScreen } from "../mcp/screenState";
 import { ONTOLOGY_SETTINGS, savedGraphSettings } from "../pages/tables/profile3d/graphSettings";
 
 function Page() {
-  const { ontology, selectedId } = useGlossaryPanel(false);
+  const { ontology, selectedId } = useGlossaryPanel(false, null);
   return <div data-testid="page">{`${ontology ? "graph" : "terms"}:${selectedId}`}</div>;
 }
 
@@ -37,16 +37,16 @@ async function inputs() {
 beforeEach(() => {
   HTMLElement.prototype.checkVisibility = () => true;
   localStorage.clear();
-  window.history.pushState({}, "", "/admin/ontology");
+  window.history.pushState({}, "", "/context/ontology");
 });
 afterEach(() => cleanup());
 
 describe("the ontology page", () => {
   it("opens on the panel and term a link names, and again when the link changes", async () => {
     render(
-      <MemoryRouter initialEntries={["/admin/ontology?panel=graph"]}>
-        <Go label="term" to="/admin/ontology?term=7" />
-        <Go label="graph" to="/admin/ontology?panel=graph" />
+      <MemoryRouter initialEntries={["/context/ontology?panel=graph"]}>
+        <Go label="term" to="/context/ontology?term=7" />
+        <Go label="graph" to="/context/ontology?panel=graph" />
         <Page />
       </MemoryRouter>,
     );
@@ -64,9 +64,9 @@ describe("the ontology page", () => {
   it("takes a payload: the panel, a term, and the graph's controls", async () => {
     const graph = { flat: true, layout: "layered", layers: ["ontology", "data"] };
     render(
-      <MemoryRouter initialEntries={["/admin/ontology"]}>
-        <Go label="graph" to="/admin/ontology" state={{ panel: "graph", graph }} />
-        <Go label="term" to="/admin/ontology" state={{ term: 3 }} />
+      <MemoryRouter initialEntries={["/context/ontology"]}>
+        <Go label="graph" to="/context/ontology" state={{ panel: "graph", graph }} />
+        <Go label="term" to="/context/ontology" state={{ term: 3 }} />
         <Page />
       </MemoryRouter>,
     );

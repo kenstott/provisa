@@ -14,10 +14,12 @@
       "webhook_not_found": "Webhook '{{name}}' niet gevonden",
       "written_table_not_registered": "'{{table}}' is geen geregistreerde tabel van bron '{{source_id}}'",
       "function_exists": "Functie '{{name}}' bestaat al",
-      "webhook_exists": "Webhook '{{name}}' bestaat al"
+      "webhook_exists": "Webhook '{{name}}' bestaat al",
+      "mask_constant_not_text": "Een constant masker op een kolom die geen tekst is, wordt gelezen als NULL; alleen NULL kan worden opgeslagen: {{column}} ({{type}})"
     },
     "ai_models": {
-      "vector_model_fields_required": "elk vector_models-item vereist id, provider en dimensions"
+      "vector_model_fields_required": "elk vector_models-item vereist id, provider en dimensions",
+      "embedding_library_missing": "Het embeddingmodel {{model}} gebruikt de provider {{provider}}, die de extra {{extra}} nodig heeft (de module {{module}} is niet geïnstalleerd): pip install 'provisa[{{extra}}]'."
     },
     "ai": {
       "endpoint_address_from_server": "Het AI-eindpunt {{vendor}} haalt zijn adres uit de omgeving van de server, die een organisatie op deze server niet gebruikt. Geef het onder Beheer, AI-modellen een eigen adres.",
@@ -64,7 +66,7 @@
     },
     "billing": {
       "checkout_not_complete": "Deze checkout is niet voltooid, dus er is nog geen abonnement om te koppelen.",
-      "invalid_signature": "Ongeldige webhook-handtekening",
+      "invalid_signature": "Ongeldige webhookhandtekening",
       "no_trial": "Deze organisatie heeft geen proefperiode",
       "org_no_customer": "Deze organisatie heeft nog geen factureringsaccount.",
       "org_not_found": "Organisatie niet gevonden",
@@ -146,7 +148,7 @@
       "viewer_column_unknown": "'{{column}}' is geen kolom van tabel '{{table}}'",
       "viewer_filter_unknown": "'{{operator}}' is geen filter van kolom '{{column}}'",
       "viewer_value_invalid": "Het filter op '{{column}}' kan de waarde '{{value}}' niet gebruiken",
-      "replica_building": "De kopie van {{replica}} wordt nog opgebouwd. De opbouw gaat door; open het voorbeeld opnieuw zodra deze klaar is.",
+      "replica_building": "De replica van {{replica}} wordt nog gebouwd. Het bouwen gaat door; open de preview opnieuw zodra het klaar is.",
       "address_invalid": "Het adres kan niet worden opgelost: {{reason}}",
       "address_not_found": "Niets op te lossen: {{reason}}",
       "mixed_resolve_and_other_fields": "resolve kan in één bewerking niet met andere rootvelden worden gecombineerd",
@@ -167,7 +169,8 @@
       "table_is_withdrawn": "{{table}} is teruggetrokken: buiten productie tot hij wordt teruggezet",
       "view_awaits_rule_rebuild": "De view {{view}} wordt opnieuw opgebouwd vanwege een wijziging in de rijregels op de invoer. Deze rol kan hem lezen zodra die build is gepubliceerd.",
       "parameter_required": "Tabel '{{table}}' vereist de parameter(s) {{parameters}}: geef elk een waarde (een WHERE-voorwaarde op de kolom in SQL, een argument in GraphQL).",
-      "parameter_wrong_type": "De parameter {{parameter}} neemt een waarde van type {{type}}; '{{value}}' is dat niet."
+      "parameter_wrong_type": "De parameter {{parameter}} neemt een waarde van type {{type}}; '{{value}}' is dat niet.",
+      "statement_failed": "De instructie is mislukt binnen de server ({{kind}}): {{error}}"
     },
     "discovery": {
       "adapter_missing_discover_schema": "Adapter voor '{{source_type}}' implementeert discover_schema niet",
@@ -197,7 +200,9 @@
       "target_domains_empty": "De gekozen doeldomeinen bevatten geen tabel die detectie leest.",
       "target_tables_not_read": "Geen van de gekozen doeltabellen ({{count}}) wordt gelezen: detectie laat tabellen van een systeemdomein en tabellen buiten gebruik weg.",
       "unknown_source_type": "Onbekend brontype: {{type}}",
-      "vendor_unknown": "{{vendor}} toont hier geen modellen; voer de modelnaam in."
+      "vendor_unknown": "{{vendor}} toont hier geen modellen; voer de modelnaam in.",
+      "source_tables_outside_domains": "De gekozen brontabellen vallen buiten de domeinen die in het domeinfilter zijn geselecteerd: {{names}}.",
+      "target_tables_outside_domains": "De gekozen doeltabellen vallen buiten de domeinen die in het domeinfilter zijn geselecteerd: {{names}}."
     },
     "llm": {
       "request_failed": "Het verzoek aan het model is mislukt: {{reason}}",
@@ -209,7 +214,7 @@
       "owner_not_member": "{{user}} heeft omgeving {{env}} gemaakt, maar is geen lid van {{org}}; om erin als eigenaar te handelen is lidmaatschap vereist."
     },
     "front_door": {
-      "coordinator_waking": "De omgeving wordt gestart. Deze is over ongeveer vijf minuten gereed.",
+      "coordinator_waking": "De omgeving start op. Hij is over ongeveer vijf minuten klaar.",
       "coordinator_updating": "De omgeving wordt bijgewerkt. Deze is binnenkort weer beschikbaar."
     },
     "functions": {
@@ -240,7 +245,8 @@
       "host_code_refused": "Opdracht '{{name}}' is van het type {{impl_kind}}, dat code uitvoert op de host van de server. Hostcode staat uit op deze implementatie; gebruik in plaats daarvan een code-resolver.",
       "no_plain_list": "Geen enkele bewerking van bron '{{source_id}}' zonder verplichte parameter geeft de rijen van '{{operation}}' terug, dus de tabel blijft ingeschakeld",
       "plain_list_unregistered": "'{{operation}}' van bron '{{source_id}}' geeft de rijen van de lijst {{lists}} terug; registreer die lijst eerst als tabel",
-      "table_has_dependents": "Naar de tabel '{{table}}' van functie '{{name}}' wordt nog verwezen door andere objecten; verwijder eerst die verwijzingen"
+      "table_has_dependents": "Naar de tabel '{{table}}' van functie '{{name}}' wordt nog verwezen door andere objecten; verwijder eerst die verwijzingen",
+      "statement_failed": "Opdracht '{{name}}' is mislukt: {{error}}"
     },
     "graphql_remote": {
       "introspection_failed": "Introspectie mislukt: {{error}}",
@@ -287,22 +293,22 @@
       "auth_required_create": "Verificatie vereist om een organisatie te maken",
       "auth_required_leave": "Verificatie vereist om een organisatie te verlaten",
       "auto_join_breadth_unacknowledged": "Bekijk deze regel voor automatische deelname zorgvuldig, anders laat je mogelijk mensen van buiten je organisatie toe: naast {{domains}} accepteert hij ook adressen zoals {{admits}}. Iedereen op een domein dat je niet beheert, zou dan automatisch lid van je organisatie kunnen worden. Bevestig dat je dat risico accepteert om op te slaan.",
-      "auto_join_public_domain": "auto_join vereist een e-mailregel die beperkt is tot een domein dat u beheert — deze komt overeen met {{domain}}.",
+      "auto_join_public_domain": "auto_join vereist een e-mailregel die beperkt is tot een domein dat je beheert. Deze komt overeen met {{domain}}.",
       "auto_join_requires_role": "auto_join vereist auto_join_role",
-      "auto_join_rule_taken": "Een andere organisatie laat al iedereen automatisch deelnemen die aan deze regel voldoet. Twee organisaties kunnen niet dezelfde adressen claimen — vraag hen om een uitnodiging, of beperk je regel tot een domein dat alleen je organisatie gebruikt.",
+      "auto_join_rule_taken": "Een andere organisatie laat iedereen die aan deze regel voldoet al automatisch toetreden. Twee organisaties kunnen niet dezelfde adressen claimen. Vraag hen om een uitnodiging, of beperk de regel tot een domein dat alleen de eigen organisatie gebruikt.",
       "auto_join_rule_unbounded": "Deze regel voor automatische deelname heeft geen grens: hij zou adressen toelaten op domeinen die je niet beheert. Verankker hem aan een domein dat je bezit, bijv. \"@acme\\\\.com$\".",
       "cannot_delete_root": "De root-organisatie kan niet worden verwijderd",
-      "delete_confirm_required": "Het verwijderen van '{{org}}' vernietigt alle bijbehorende gegevens permanent — niemand, ook geen platformbeheerder, kan ze herstellen. Herhaal de organisatie-id in de parameter 'confirm' om door te gaan.",
+      "delete_confirm_required": "Het verwijderen van '{{org}}' vernietigt al haar data permanent, en niemand, ook geen platformbeheerder, kan die herstellen. Herhaal de organisatie-ID in de parameter 'confirm' om door te gaan.",
       "invalid_email_rule": "Ongeldige e-mailregel: {{error}}",
       "invalid_org_id": "Ongeldige organisatie-id '{{org}}': 2-40 tekens, alleen kleine letters en cijfers, beginnend met een letter. De id wordt de databaseschemanaam en het subdomein en kan later niet worden gewijzigd.",
       "limit_reached": "Organisatielimiet bereikt: één account mag maximaal {{limit}} organisaties maken. Verwijder een organisatie die niet meer nodig is om een nieuwe te maken.",
       "membership_not_found": "Lidmaatschap niet gevonden",
-      "no_tenant_runtime": "Organisatie '{{org}}' heeft geen tenantruntime — mogelijk wordt deze nog ingericht.",
+      "no_tenant_runtime": "Organisatie '{{org}}' heeft geen tenant-runtime. Mogelijk wordt die nog ingericht.",
       "not_found": "Organisatie niet gevonden",
       "not_org_admin": "{{user}} heeft geen org_admin in {{org}}",
       "org_id_reserved": "Organisatie-id '{{org}}' is gereserveerd. Gereserveerde id's: {{reserved}}.",
       "platform_admin_required": "platform_admin vereist",
-      "retry_not_failed": "Organisatie '{{org}}' is '{{state}}', niet 'failed' — niets om opnieuw te proberen.",
+      "retry_not_failed": "Organisatie '{{org}}' is '{{state}}', niet 'failed', dus er is niets om opnieuw te proberen.",
       "self_role_change": "Een gebruiker kan de eigen rol niet wijzigen. Vraag een andere beheerder.",
       "view_not_permitted": "Geen toestemming om deze organisatie te bekijken",
       "org_id_sandbox_prefix": "Organisatie-id's die met {{prefix}} beginnen, zijn gereserveerd voor demo-sandboxes.",
@@ -362,13 +368,13 @@
       "cache_purged": "{{count}} cache-items verwijderd",
       "cache_purged_table": "{{count}} cache-items verwijderd voor tabel {{table}}",
       "calendar_deleted": "kalender '{{calendar}}' verwijderd",
-      "calendar_in_use": "kalender '{{calendar}}' is in gebruik door gematerialiseerde views — verwijder eerst hun snapshotschema voordat de kalender wordt verwijderd",
+      "calendar_in_use": "Kalender '{{calendar}}' wordt gebruikt door gematerialiseerde views. Verwijder hun snapshotplanning voordat je hem verwijdert.",
       "calendar_not_found": "kalender '{{calendar}}' niet gevonden",
       "calendar_saved": "kalender '{{calendar}}' {{version}} opgeslagen",
       "column_natively_nested": "Registreren niet mogelijk: kolom {{column}} is in de bron van nature {{native_type}}, dus het type is json, niet {{type}}.",
       "column_types_unresolved": "Registreren niet mogelijk: er kon geen datatype uit de bron worden bepaald voor kolom(men): {{columns}}. Introspecteer de tabel (Schema detecteren) of stel voor elke kolom een datatype in voordat wordt geregistreerd.",
       "config_not_found": "Configuratiebestand niet gevonden",
-      "creation_request_queued": "In wachtrij geplaatst als aanmaakverzoek #{{id}} — in afwachting van een gebruiker met '{{capability}}' om het uit te voeren of af te wijzen.",
+      "creation_request_queued": "In de wachtrij als aanmaakverzoek #{{id}}, wachtend op een gebruiker met '{{capability}}' om het uit te voeren of af te wijzen.",
       "db_pool_unavailable": "Databasepool niet beschikbaar",
       "discovery_failed": "Schemadetectie mislukt: {{error}}",
       "domain_created": "Domein '{{domain}}' gemaakt",
@@ -380,7 +386,7 @@
       "invalid_calendar": "ongeldige kalender: {{error}}",
       "invalid_cardinality": "Ongeldige kardinaliteit: '{{cardinality}}'",
       "invalid_off_peak_window": "ongeldig dalurenvenster: {{error}}",
-      "load_protection_gate_required": "{{who}}: belastingsbescherming vereist ten minste één vernieuwingspoort — stel een dalurenvenster, een cache_ttl-cadans of een probing change_signal (probe/ttl_probe) in",
+      "load_protection_gate_required": "{{who}}: belastingbescherming vereist minstens één verversingsvoorwaarde. Stel een daluurvenster, een cache_ttl-cadans of een pollend change_signal (probe/ttl_probe) in",
       "metric_deleted": "Metric '{{metric}}' verwijderd",
       "metric_not_found": "Metric '{{metric}}' niet gevonden",
       "metric_saved": "Metric '{{metric}}' opgeslagen",
@@ -561,7 +567,12 @@
       "withdrawn_table_not_previewable": "Tabel {{table}} kan niet worden bekeken: hij is teruggetrokken en houdt geen replica, en de engine leest de bron alleen via een replica.",
       "table_not_withdrawn": "Tabel {{table}} is niet teruggetrokken: alleen een teruggetrokken tabel wordt teruggezet. Stel de regio in om een tabel in productie naar een andere regio te verplaatsen.",
       "source_not_withdrawn": "Bron {{source}} is niet teruggetrokken: alleen een teruggetrokken bron wordt teruggezet. Stel de regio in om die te wijzigen.",
-      "put_back_needs_region": "Het terugzetten van {{object}} noemt een regio: geef er een, of geen voor geen regio."
+      "put_back_needs_region": "Het terugzetten van {{object}} noemt een regio: geef er een, of geen voor geen regio.",
+      "mask_constant_not_text": "Een constant masker op een kolom die geen tekst is, wordt gelezen als NULL; alleen NULL kan worden opgeslagen: {{column}} ({{type}})",
+      "table_domain_required": "Tabel '{{table}}' noemt geen domein: elke tabel wordt in een domein geregistreerd",
+      "table_state_from_function": "Tabel '{{table}}' is afgeleid van de functie '{{name}}' en heeft haar releasestatus: ze wordt niet op zichzelf teruggetrokken of teruggezet",
+      "table_region_from_function": "De tabel '{{table}}' is afgeleid van de functie '{{name}}' en heeft haar regio: ze wordt niet op zichzelf naar een andere regio verplaatst",
+      "table_name_reserved": "De tabelnaam '{{table}}' is gereserveerd: de commando's van een domein worden onder 'commands' aangeboden. Registreer de tabel onder een andere naam of alias."
     },
     "secrets": {
       "env_reference_object_locked": "Dit object is van de beheerder: het leest de eigen omgeving van de server en kan hier niet worden gewijzigd. Voeg in plaats daarvan een eigen object toe.",
@@ -611,7 +622,8 @@
     "sparql": {
       "columns_not_inferred": "Kon geen kolommen afleiden: probe retourneerde geen rijen en er zijn geen SELECT-variabelen gevonden.",
       "probe_failed": "SPARQL-endpointprobe mislukt: {{error}}",
-      "source_not_found": "SPARQL-bron '{{source_id}}' niet gevonden"
+      "source_not_found": "SPARQL-bron '{{source_id}}' niet gevonden",
+      "no_select_variables": "De query noemt geen SELECT-variabelen (SELECT * of geen SELECT-query): de kolommen zijn er niet uit te lezen"
     },
     "subscribe": {
       "avro_topic_without_registry": "Topic '{{topic}}' bevat Avro-berichten en de bron noemt geen schema-registry om ze mee te lezen: stel de schema-registry-URL van de bron in",
@@ -622,7 +634,7 @@
       "schema_not_avro": "Schema {{schema_id}} in registry {{registry}} is {{kind}}, geen Avro",
       "schema_registry_error": "Schema-registry {{registry}} antwoordde met HTTP {{http_status}}: {{error}}",
       "schema_registry_refused_credentials": "Schema-registry {{registry}} weigerde de inloggegevens van de bron (HTTP {{http_status}}, authenticatie '{{method}}')",
-      "schema_registry_unreachable": "Schema-registry is niet bereikbaar: {{error}}",
+      "schema_registry_unreachable": "Schema registry is niet bereikbaar: {{error}}",
       "sse_limit_reached": "maximum aantal gelijktijdige SSE-abonnementen bereikt",
       "table_not_found": "Tabel '{{table}}' niet gevonden",
       "unknown_role": "Onbekende rol '{{role}}'",
@@ -807,7 +819,6 @@
       "status_by_action": "De status van een term verandert via Goedkeuren, Afschaffen, Buiten gebruik stellen of Herstellen.",
       "successor_required": "Deze term heeft nog kolommen of tabellen; buiten gebruik stellen verplaatst ze naar een opvolger. Kies er een.",
       "successor_role": "De opvolger van een {{role}} moet een {{role}} of een concept zijn; '{{successor}}' is een {{successor_role}}.",
-      "no_retirement_history": "De geschiedenis van het model bevat geen buitengebruikstelling van deze term.",
       "finding": {
         "unlinked_tables": "Deze klasse is verankerd in tabellen die same-entity-relaties niet allemaal verbinden: {{tables}}.",
         "class_and_attribute": "Deze klasse heeft ook kolommen die niet haar sleutels zijn: {{columns}}.",
@@ -825,7 +836,9 @@
       "not_bulk_approvable": "Alleen gedefinieerde, verankerde ontwerpen worden samen goedgekeurd; niet: {{terms}}.",
       "term_ids_required": "Noem de goed te keuren termen.",
       "impact_action": "Voor die actie bestaat geen voorbeeld.",
-      "impact_table_required": "Een koppeling noemt een tabel, of een van zijn kolommen."
+      "impact_table_required": "Een koppeling noemt een tabel, of een van zijn kolommen.",
+      "name_taken": "Er bestaat al een term met de naam '{{name}}' in domein {{domain}}. Kies een andere naam of plaats de term in een ander domein.",
+      "name_taken_unscoped": "Er bestaat al een term met de naam '{{name}}' zonder domein, dus hij geldt voor elk domein. Kies een andere naam."
     },
     "table": {
       "requires_parameters": "De tabel {{table}} kan niet worden geteld of geprofileerd: ze vereist {{parameters}}. Geef elk een waarde om de rijen te lezen."
@@ -892,7 +905,8 @@
       "blank_identifier": "Een item mag niet leeg zijn.",
       "expiry_in_past": "Een einddatum moet in de toekomst liggen.",
       "expiry_removes_nothing": "Een einddatum op deze lijst {{kind}} zou niets verwijderen.",
-      "pending_not_found": "Er wacht geen verlening op {{email}} voor rol {{role_id}} en {{kind}}."
+      "pending_not_found": "Er wacht geen verlening op {{email}} voor rol {{role_id}} en {{kind}}.",
+      "invalid_identifier": "{{identifier}} is geen geldige {{kind}}-vermelding."
     },
     "mv": {
       "change_key_missing": "{{function}} gaf een rij terug zonder de sleutelkolom {{column}}",
@@ -920,7 +934,45 @@
       "filter_operator_refused": "{{operator}} is geen operator waarmee een machtigingsfilter kan worden omgezet."
     },
     "relationship": {
-      "name_taken": "De naam '{{name}}' is al in gebruik door relatie '{{held_by}}'. Geef deze een andere naam."
+      "name_taken": "De naam '{{name}}' is al in gebruik door relatie '{{held_by}}'. Geef deze een andere naam.",
+      "join_through_none": "De relaties '{{first}}' en '{{second}}' delen geen tussentabel, of hun andere uiteinden zijn er al via gekoppeld."
+    },
+    "syncing": {
+      "not_found": "Er is geen vermelding {{entry}}.",
+      "no_connection": "{{entry}} heeft geen catalogus om te lezen.",
+      "no_role": "{{entry}} heeft geen rol om als te publiceren, dus er valt nog niets te vergelijken. Kies een rol in de instellingen.",
+      "read_not_supported": "Waarden terug lezen uit {{provider}} wordt nog niet ondersteund.",
+      "no_such_difference": "Er is geen verschil {{difference}} meer. Lees de lijst opnieuw.",
+      "decided_twice": "{{difference}} is twee keer beslist.",
+      "direction_off": "{{entry}} synchroniseert niet in die richting.",
+      "import_kind_unsupported": "De {{kind}} van een catalogus in Provisa overnemen wordt nog niet ondersteund.",
+      "publish_failed": "Publiceren naar {{entry}} is niet gelukt, dus er is niets toegepast.",
+      "object_gone": "{{object}} is niet meer geregistreerd in Provisa.",
+      "unknown_direction": "{{direction}} is geen richting: gebruik Exporteren of Importeren.",
+      "unknown_kind": "{{kind}} is geen soort verschil.",
+      "unknown_choice": "{{choice}} is geen vaste keuze."
+    },
+    "wikidata": {
+      "no_credential": "De Wikidata-querydienst vraagt geen inloggegevens",
+      "bad_id": "{{value}} is geen Wikidata-{{kind}}",
+      "bad_language": "{{language}} is geen taalcode",
+      "bad_column_type": "Kolomtypen die niet worden aangeboden voor een Wikidata-eigenschap: {{types}}",
+      "filter_required": "Deze klasse heeft {{count}} instanties, meer dan {{limit}}: kies een filter",
+      "filter_too_wide": "Het filter laat meer dan {{limit}} instanties over",
+      "unreachable": "Wikidata is niet bereikbaar: {{reason}}"
+    },
+    "access_review": {
+      "not_found": "Geen dergelijke toegangsreview",
+      "row_not_found": "Geen dergelijke reviewrij",
+      "already_decided": "Deze rij is al beslist",
+      "reason_required": "Geef een reden op",
+      "decision_invalid": "Een beslissing is confirmed of revoked",
+      "cron_invalid": "Geen cron-expressie met vijf velden: {{cron}}",
+      "not_owner": "Alleen de eigenaar van domein {{domain}} beslist over deze rij",
+      "own_access": "U kunt uw eigen toegang niet beoordelen. Vraag een andere eigenaar.",
+      "read_only": "Deze rol wordt toegewezen via de identiteitsprovider; Provisa bewaart geen toewijzing om te bevestigen of in te trekken",
+      "webhook_invalid": "De webhook-URL is niet bruikbaar: {{url}}",
+      "webhook_secret_required": "Een webhook heeft het geheim nodig waarmee geplande reviews worden ondertekend"
     }
   }
 }

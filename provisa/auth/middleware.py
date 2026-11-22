@@ -35,6 +35,7 @@ from provisa.core.schema_admin import (
 from provisa.core.schema_org import user_directory
 from provisa.security.rights import (
     ORG_ADMIN_ROLE,
+    PUBLIC_ROLE,
     PLATFORM_ADMIN_ROLE,  # GRANTED (bootstrap/recovery assignment) — never read as a gate
     can_act_cross_org as _can_act_cross_org,
     capabilities_for_claims as _capabilities_for_claims,
@@ -71,6 +72,7 @@ def _deny(
     *,
     cause: str | None = None,
     code: str | None = None,
+    params: dict[str, str] | None = None,
 ) -> JSONResponse:
     """Every auth denial records WHY, at WARNING, with the request identity.
 
@@ -87,8 +89,20 @@ def _deny(
         detail,
         f" ({cause})" if cause else "",
     )
-    content = {"detail": detail} if code is None else {"detail": detail, "code": code}
+    content: dict[str, object] = {"detail": detail}
+    if code is not None:
+        content["code"] = code
+    if params is not None:
+        content["params"] = params
     return JSONResponse(status_code=status, content=content)
+
+
+#: The platform-plane endpoints, which serve a principal that belongs to no org and holds no role
+#: yet: /auth/redeem-invite CREATES the first membership, /auth/claim-bootstrap the first grant,
+#: /auth/me reports none, /setup and /admin/orgs run onboarding, /billing pays for an org that is
+#: not a membership yet (REQ-1476). REQ-2006: /sandboxes opens the caller's own demo sandbox, an
+#: org they do not belong to yet. They touch no tenant data.
+_PLATFORM_PLANE_PATHS = ("/auth/", "/setup", "/admin/orgs", "/billing", "/sandboxes/")
 
 
 def _basic_username(scheme: str, token: str) -> str | None:
@@ -250,21 +264,22 @@ def _forget_recorded_idp_roles(org_id: str) -> None:
         del _recorded_idp_roles[key]
 
 
-async def _record_idp_roles(db_pool, identity: AuthIdentity) -> None:  # REQ-2219
+async def _record_idp_roles(db_pool, identity: AuthIdentity) -> bool:  # REQ-2219
     """Mirror the role claims this sign-in's token carries, as the identity provider's attributes
     are recorded, so the roles a person holds are listed with the identity provider as their
     origin. Read as enforcement reads them (:func:`resolve_assignments`); written only when they
-    differ from what this process last wrote."""
+    differ from what this process last wrote. Returns whether they did."""
     from provisa.core.request_context import current_env, current_org
     from provisa.entitlements import roles
 
     claimed = resolve_assignments(identity)
     key = (current_org.get(), current_env.get(), identity.user_id)
     if _recorded_idp_roles.get(key) == claimed:
-        return
+        return False
     async with db_pool.acquire() as conn:
         await roles.mirror_idp_roles(conn, identity.user_id, claimed)
     _recorded_idp_roles[key] = claimed
+    return True
 
 
 _recorded_idp_lists: dict[tuple[str | None, str | None, str], dict] = {}
@@ -276,11 +291,23 @@ def _forget_recorded_idp_lists(org_id: str) -> None:
         del _recorded_idp_lists[key]
 
 
-async def _record_idp_entitlements(db_pool, identity: AuthIdentity) -> None:  # REQ-2219
+def forget_person_idp(user_id: str) -> None:  # REQ-2219
+    """Forget what this process last recorded of ``user_id``'s identity provider, in every org and
+    environment, once their account is removed: its store copies are gone with it, and a later
+    sign-in under that id records afresh."""
+    for cache in (_recorded_idp, _recorded_idp_roles, _recorded_idp_lists):
+        for key in [k for k in cache if k[2] == user_id]:
+            del cache[key]
+
+
+async def _record_idp_entitlements(  # REQ-2219
+    db_pool, identity: AuthIdentity, roles_changed: bool = False
+) -> None:
     """Keep the lists this sign-in's token carries in the store, so a write for this person is
     refused where the identity provider speaks. Written only when it differs from what this
     process last wrote. A token whose lists cannot be read records nothing: the request is
-    refused where the lists are bound."""
+    refused where the lists are bound. When the lists, the role claims (``roles_changed``) or an
+    attached grant changed what the person holds, their effective rows are recomputed."""
     from provisa.api.app import state
     from provisa.core.request_context import current_env, current_org
     from provisa.entitlements import store
@@ -291,12 +318,20 @@ async def _record_idp_entitlements(db_pool, identity: AuthIdentity) -> None:  # 
     except EntitlementClaimError:
         return
     key = (current_org.get(), current_env.get(), identity.user_id)
+    changed = roles_changed
     if _recorded_idp_lists.get(key) != lists:
         async with db_pool.acquire() as conn:
             await store.mirror_idp(conn, identity.user_id, lists)
         state.idp_entitlements = {**state.idp_entitlements, identity.user_id: lists}
         _recorded_idp_lists[key] = lists
-    await _attach_pending_entitlements(db_pool, identity, lists)
+        changed = True
+    if await _attach_pending_entitlements(db_pool, identity, lists):
+        changed = True
+    if changed:
+        from provisa.entitlements import effective_store
+
+        async with db_pool.acquire() as conn:
+            await effective_store.write_person(conn, state, identity.user_id)
 
 
 # REQ-2219: (org, environment, user, email) whose waiting grants this process has attached.
@@ -309,14 +344,14 @@ def _forget_attached_pending(org_id: str) -> None:
         _attached_pending.discard(key)
 
 
-async def _attach_pending_entitlements(db_pool, identity: AuthIdentity, lists) -> None:  # REQ-2219
+async def _attach_pending_entitlements(db_pool, identity: AuthIdentity, lists) -> bool:  # REQ-2219
     """Attach the grants waiting on this sign-in token's email to its principal, through the write
     API's own write, after the token's lists are mirrored: where the token sends a list for the
     grant's role and kind, the grant is refused as the write API refuses it. Each outcome goes to
     the org's administrative trail, as set by whoever granted it.
 
     REQ-1261: only an address the identity's provider verified is matched. A grant waiting on an
-    address stays waiting for a sign-in that proves it."""
+    address stays waiting for a sign-in that proves it. Returns whether a grant attached."""
     from provisa.api.app import state
     from provisa.core.org_membership import record_admin_action
     from provisa.core.request_context import current_env, current_org, require_current_org
@@ -324,7 +359,7 @@ async def _attach_pending_entitlements(db_pool, identity: AuthIdentity, lists) -
 
     email = verified_email(identity)
     if not email:
-        return
+        return False
     key = (
         current_org.get(),
         current_env.get(),
@@ -332,11 +367,12 @@ async def _attach_pending_entitlements(db_pool, identity: AuthIdentity, lists) -
         pending.normalize_email(email),
     )
     if key in _attached_pending:
-        return
+        return False
     async with db_pool.acquire() as conn:
         async with conn.transaction():
             outcomes = await pending.attach(conn, identity.user_id, email, lists)
-        if any(outcome == pending.ATTACHED for _grant, outcome in outcomes):
+        attached = any(outcome == pending.ATTACHED for _grant, outcome in outcomes)
+        if attached:
             state.held_entitlements = await store.load_held(conn)
     # The pool resolves to the bound org's model store, so the entries are that org's.
     org_id = require_current_org()
@@ -356,6 +392,7 @@ async def _attach_pending_entitlements(db_pool, identity: AuthIdentity, lists) -
             },
         )
     _attached_pending.add(key)
+    return attached
 
 
 def _platform_roles() -> dict[str, dict]:  # REQ-1327, REQ-1337
@@ -552,12 +589,15 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
                 {
                     "user_id": identity.user_id,
                     "email": identity.email,
+                    # REQ-2219: whether this sign-in's provider verified the address; a write by
+                    # email names this person only by a verified one.
+                    "email_verified": identity.email_verified,
                     "display_name": identity.display_name,
                     "provider": provider_name,
                     "last_seen": func.now(),
                 },
                 index_elements=["user_id"],
-                update_columns=["email", "display_name", "provider", "last_seen"],
+                update_columns=["email", "email_verified", "display_name", "provider", "last_seen"],
             )
         # REQ-1439: the same identity, copied into the tenant plane, so the ops report views can
         # LEFT JOIN a name onto the user_id they log. The platform profile above is the record of
@@ -569,19 +609,21 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
                 {
                     "user_id": identity.user_id,
                     "email": identity.email,
+                    "email_verified": identity.email_verified,
                     "display_name": identity.display_name,
                     "updated_at": func.now(),
                 },
                 index_elements=["user_id"],
-                update_columns=["email", "display_name", "updated_at"],
+                update_columns=["email", "email_verified", "display_name", "updated_at"],
             )
         await _record_idp_attributes(self._db_pool, identity)
+        roles_changed = False
         if self._assignments_source == "claims" and identity.credential != "pat":
             # REQ-1263: a personal access token carries no sign-in. Its owner's roles are READ
             # from this mirror (held_assignments.mirrored_claims); a request under the token
             # never rewrites it.
-            await _record_idp_roles(self._db_pool, identity)
-        await _record_idp_entitlements(self._db_pool, identity)
+            roles_changed = await _record_idp_roles(self._db_pool, identity)
+        await _record_idp_entitlements(self._db_pool, identity, roles_changed)
 
     async def _read_assignments(self, identity: AuthIdentity) -> list[RoleAssignment]:
         """Read the user's role assignments from the tenant control plane scoped to the currently
@@ -748,6 +790,73 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
             return await self._resolve_identity(request)
         finally:
             reset_current_org(token)
+
+    async def _public_visitor_org(self, request: Request) -> str | JSONResponse | None:  # REQ-1058
+        """The org a credential-less request is the public visitor of.
+
+        None when it is no org's visitor -- the Host names no org (the control-plane host and the
+        ``x-org-provisa`` header never do: REQ-1058 takes the Host subdomain only), the org does
+        not exist, or the path is the platform plane, which serves signed-in people only. The
+        caller then refuses it as it refuses any request without a credential. A JSONResponse
+        when the named org is refused by name.
+        """
+        if request.url.path.startswith(_PLATFORM_PLANE_PATHS):
+            return None
+        org_id = org_from_host(request.headers.get("host"))
+        if org_id is None:
+            return None
+        if org_id != self._default_org_id:
+            if self._admin_pool is None:
+                return _deny(
+                    request,
+                    503,
+                    f"Cannot resolve org {org_id!r}: no admin plane",
+                    cause="no_admin_pool",
+                )
+            from provisa.core.org_membership import bindable_org
+
+            async with self._admin_pool.acquire() as conn:
+                if (await conn.execute_core(bindable_org(org_id))).fetchone() is None:
+                    return None
+            from provisa.api.errors import ApiError
+            from provisa.api.sandbox_tier import require_this_tier
+
+            try:
+                require_this_tier(org_id)
+            except ApiError as refused:
+                return _deny(
+                    request,
+                    refused.status_code,
+                    str(refused.detail),
+                    cause="wrong_tier",
+                    code=refused.code,
+                )
+        return org_id
+
+    @staticmethod
+    def _bind_public_visitor(request: Request, org_id: str) -> None:  # REQ-1058
+        """Bind ``request`` as ``org_id``'s public visitor.
+
+        The visitor acts as the org's PUBLIC_ROLE and nothing else (REQ-1059). Its id is never
+        ``anonymous``: that is the unsecured dev principal every capability gate exempts. The colon
+        keeps it out of every account namespace (a Basic username cannot carry one).
+        """
+        request.state.identity = AuthIdentity(
+            user_id=f"public:{org_id}",
+            email=None,
+            display_name=PUBLIC_ROLE,
+            roles=[PUBLIC_ROLE],
+            raw_claims={},
+            active_org_id=org_id,
+            acting_roles=[PUBLIC_ROLE],
+            # A visitor is no member, so the org records nothing of it.
+            org_attributes={},
+            derived_roles={},
+        )
+        request.state.role = PUBLIC_ROLE
+        request.state.assignments = [RoleAssignment(role_id=PUBLIC_ROLE, domain_id="*")]
+        request.state.can_cross_org = False
+        request.state.active_org_id = org_id
 
     async def _resolve_identity(self, request: Request):  # REQ-486
         # Where this request's org runtime is, when it is not the default one: a meta-role is
@@ -944,6 +1053,15 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
             # is still refused here, so a bad token can never be laundered into an anonymous signup.
             if request.url.path == "/auth/register" and not auth_header:
                 return None
+            # REQ-1058: a request presenting NO credential on a host that names an org is that
+            # org's public visitor. A presented-but-invalid credential is refused like any other.
+            if not auth_header:
+                visitor_org = await self._public_visitor_org(request)
+                if isinstance(visitor_org, JSONResponse):
+                    return visitor_org
+                if visitor_org is not None:
+                    self._bind_public_visitor(request, visitor_org)
+                    return None
             return _deny(request, 401, "Missing or invalid Authorization header")
 
         try:
@@ -1124,11 +1242,7 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
             # this the gate below 401'd /billing/trial/start and /billing/reservation and signup
             # could not finish on a commerce deploy. Safe because /billing is control plane — every
             # org-scoped handler authorizes itself with require_org_billing_access_or_creator.
-            platform_plane = request.url.path.startswith(
-                # REQ-2006: /sandboxes opens the caller's own demo sandbox, an org they do not
-                # belong to yet.
-                ("/auth/", "/setup", "/admin/orgs", "/billing", "/sandboxes/")
-            )
+            platform_plane = request.url.path.startswith(_PLATFORM_PLANE_PATHS)
             requested_org = _requested_org_from_host(request)
             credential_org = identity.active_org_id
             if credential_org is not None:
@@ -1394,6 +1508,28 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
                 return _deny(
                     request, 403, f"platform_admin confers no rights in org {active_org_id!r}"
                 )
+        if (
+            token_roles is None
+            and self._assignments_source == "provisa"
+            and not assignments
+            and not request.url.path.startswith(_PLATFORM_PLANE_PATHS)
+        ):
+            # REQ-120 (amended 2026-11-01), REQ-802: where Provisa holds the assignments, a sign-in
+            # holding no role in the org acts as none -- never as the deployment's default role,
+            # which nobody granted it -- and is refused by name, as every wire sign-in refuses it
+            # (provisa.auth.held_assignments.sign_in_roles). The platform-plane endpoints still
+            # serve it: they exist for a principal that holds nothing yet.
+            from provisa.auth.held_assignments import NoRoleHeld
+
+            refused = NoRoleHeld(identity.user_id)
+            return _deny(
+                request,
+                403,
+                str(refused),
+                cause="no role held",
+                code=refused.code,
+                params=refused.params,
+            )
 
         # REQ-273: a client may request a specific role via X-Provisa-Role, but the server
         # honors it only when the authenticated user is actually assigned that role — a bare
@@ -1406,11 +1542,16 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
             r.strip() for r in (request.headers.get("x-provisa-role") or "").split(",") if r.strip()
         ]
         acting_set: list[str] = []
+        held_data_roles = list(dict.fromkeys(_data_plane_roles))
+        if not requested_roles and token_roles is None and len(held_data_roles) > 1:
+            # REQ-2155: a request naming no role, holding several data roles, acts as their union;
+            # naming one narrows. A personal access token keeps its first live scope (REQ-1263).
+            acting_set = held_data_roles
         # REQ-2057: the derived roles the request names, with the parent of each sub-role (a grant
         # to the parent reaches it). They qualify what the named roles are granted.
         qualifiers: list[str] = []
         held_derived = identity.derived_roles or {}
-        if requested_roles:
+        if requested_roles or len(acting_set) > 1:
             assigned_role_ids = {a.role_id for a in assignments}
             for requested_role in requested_roles:
                 if _is_control_plane_role(requested_role, _all_roles):

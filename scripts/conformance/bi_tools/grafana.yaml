@@ -1,0 +1,84 @@
+tool: grafana
+version: 13.3.0 (plugin 13.0.6)
+captured: '2026-11-04'
+method: 'Automated: grafana/grafana:13.3.0 (bundled grafana-postgresql-datasource 13.0.6) through its
+  HTTP API: the data source added and checked, then the SQL its query editor sends (postgresMetaQuery.ts)
+  run through /api/ds/query.'
+browse:
+- POST /api/datasources
+- GET /api/datasources/uid/:uid/health
+- getVersion, getTimescaleDBVersion, showTables
+- 'getSchema of each table: conformance.bi_customer, conformance.bi_order, conformance.probe_identity,
+  conformance.types_fixture'
+statements:
+- id: 1
+  protocol: simple
+  sql: -- ping
+- id: 2
+  protocol: simple
+  sql: SELECT current_setting('server_version_num')::int/100 as version
+- id: 3
+  protocol: simple
+  sql: SELECT extversion FROM pg_extension WHERE extname = 'timescaledb'
+- id: 4
+  protocol: simple
+  sql: "SELECT\n    CASE WHEN \n          quote_ident(table_schema) IN (\n          SELECT\n         \
+    \   CASE WHEN trim(s[i]) = '\"$user\"' THEN user ELSE trim(s[i]) END\n          FROM\n           \
+    \ generate_series(\n              array_lower(string_to_array(current_setting('search_path'),','),1),\n\
+    \              array_upper(string_to_array(current_setting('search_path'),','),1)\n            ) as\
+    \ i,\n            string_to_array(current_setting('search_path'),',') s\n          )\n      THEN quote_ident(table_name)\n\
+    \      ELSE quote_ident(table_schema) || '.' || quote_ident(table_name)\n    END AS \"table\"\n  \
+    \  FROM information_schema.tables\n    WHERE quote_ident(table_schema) NOT IN ('information_schema',\n\
+    \                             'pg_catalog',\n                             '_timescaledb_cache',\n\
+    \                             '_timescaledb_catalog',\n                             '_timescaledb_internal',\n\
+    \                             '_timescaledb_config',\n                             'timescaledb_information',\n\
+    \                             'timescaledb_experimental')\n    ORDER BY CASE WHEN \n          quote_ident(table_schema)\
+    \ IN (\n          SELECT\n            CASE WHEN trim(s[i]) = '\"$user\"' THEN user ELSE trim(s[i])\
+    \ END\n          FROM\n            generate_series(\n              array_lower(string_to_array(current_setting('search_path'),','),1),\n\
+    \              array_upper(string_to_array(current_setting('search_path'),','),1)\n            ) as\
+    \ i,\n            string_to_array(current_setting('search_path'),',') s\n          ) THEN 0 ELSE 1\
+    \ END, 1"
+- id: 5
+  protocol: simple
+  sql: "SELECT quote_ident(column_name) AS \"column\", data_type AS \"type\"\n    FROM information_schema.columns\n\
+    \    WHERE\n      CASE WHEN array_length(parse_ident('conformance.bi_customer'),1) = 2\n        THEN\
+    \ quote_ident(table_schema) = (parse_ident('conformance.bi_customer'))[1]\n          AND quote_ident(table_name)\
+    \ = (parse_ident('conformance.bi_customer'))[2]\n        ELSE quote_ident(table_name) = 'conformance.bi_customer'\n\
+    \          AND \n          quote_ident(table_schema) IN (\n          SELECT\n            CASE WHEN\
+    \ trim(s[i]) = '\"$user\"' THEN user ELSE trim(s[i]) END\n          FROM\n            generate_series(\n\
+    \              array_lower(string_to_array(current_setting('search_path'),','),1),\n             \
+    \ array_upper(string_to_array(current_setting('search_path'),','),1)\n            ) as i,\n      \
+    \      string_to_array(current_setting('search_path'),',') s\n          )\n      END"
+- id: 6
+  protocol: simple
+  sql: "SELECT quote_ident(column_name) AS \"column\", data_type AS \"type\"\n    FROM information_schema.columns\n\
+    \    WHERE\n      CASE WHEN array_length(parse_ident('conformance.bi_order'),1) = 2\n        THEN\
+    \ quote_ident(table_schema) = (parse_ident('conformance.bi_order'))[1]\n          AND quote_ident(table_name)\
+    \ = (parse_ident('conformance.bi_order'))[2]\n        ELSE quote_ident(table_name) = 'conformance.bi_order'\n\
+    \          AND \n          quote_ident(table_schema) IN (\n          SELECT\n            CASE WHEN\
+    \ trim(s[i]) = '\"$user\"' THEN user ELSE trim(s[i]) END\n          FROM\n            generate_series(\n\
+    \              array_lower(string_to_array(current_setting('search_path'),','),1),\n             \
+    \ array_upper(string_to_array(current_setting('search_path'),','),1)\n            ) as i,\n      \
+    \      string_to_array(current_setting('search_path'),',') s\n          )\n      END"
+- id: 7
+  protocol: simple
+  sql: "SELECT quote_ident(column_name) AS \"column\", data_type AS \"type\"\n    FROM information_schema.columns\n\
+    \    WHERE\n      CASE WHEN array_length(parse_ident('conformance.probe_identity'),1) = 2\n      \
+    \  THEN quote_ident(table_schema) = (parse_ident('conformance.probe_identity'))[1]\n          AND\
+    \ quote_ident(table_name) = (parse_ident('conformance.probe_identity'))[2]\n        ELSE quote_ident(table_name)\
+    \ = 'conformance.probe_identity'\n          AND \n          quote_ident(table_schema) IN (\n     \
+    \     SELECT\n            CASE WHEN trim(s[i]) = '\"$user\"' THEN user ELSE trim(s[i]) END\n     \
+    \     FROM\n            generate_series(\n              array_lower(string_to_array(current_setting('search_path'),','),1),\n\
+    \              array_upper(string_to_array(current_setting('search_path'),','),1)\n            ) as\
+    \ i,\n            string_to_array(current_setting('search_path'),',') s\n          )\n      END"
+- id: 8
+  protocol: simple
+  sql: "SELECT quote_ident(column_name) AS \"column\", data_type AS \"type\"\n    FROM information_schema.columns\n\
+    \    WHERE\n      CASE WHEN array_length(parse_ident('conformance.types_fixture'),1) = 2\n       \
+    \ THEN quote_ident(table_schema) = (parse_ident('conformance.types_fixture'))[1]\n          AND quote_ident(table_name)\
+    \ = (parse_ident('conformance.types_fixture'))[2]\n        ELSE quote_ident(table_name) = 'conformance.types_fixture'\n\
+    \          AND \n          quote_ident(table_schema) IN (\n          SELECT\n            CASE WHEN\
+    \ trim(s[i]) = '\"$user\"' THEN user ELSE trim(s[i]) END\n          FROM\n            generate_series(\n\
+    \              array_lower(string_to_array(current_setting('search_path'),','),1),\n             \
+    \ array_upper(string_to_array(current_setting('search_path'),','),1)\n            ) as i,\n      \
+    \      string_to_array(current_setting('search_path'),',') s\n          )\n      END"

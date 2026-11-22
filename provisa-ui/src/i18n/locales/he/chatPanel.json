@@ -29,7 +29,7 @@
     "no": "לא",
     "typeSomethingElse": "הקלדת משהו אחר",
     "confirm": "אישור",
-    "confirmed": "אושר — אפשר להמשיך.",
+    "confirmed": "אושר. אפשר להמשיך.",
     "cancelled": "בוטל.",
     "chooseFile": "קובץ לשליחה",
     "graphCaption": "צמתים: {{nodes}} · קשרים: {{relationships}}",

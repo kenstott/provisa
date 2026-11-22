@@ -38,6 +38,7 @@ from graphql import (
     VariableDefinitionNode,
 )
 
+from provisa.compiler import names_table
 from provisa.compiler.params import ParamCollector
 
 from provisa.compiler.sql_types import (
@@ -57,6 +58,7 @@ from provisa.compiler.sql_rewrite import (
 from provisa.compiler.sql_where import (
     RelationshipConditions,
     join_exprs,
+    junction_hop,
     where_names_relationship,
     native_arg_conditions,
     native_args,
@@ -94,7 +96,7 @@ def _compile_root_field(  # REQ-009, REQ-011, REQ-032, REQ-033, REQ-034, REQ-035
 ) -> CompiledQuery:
     """Compile a single root query field to SQL."""
     root_name = field_node.alias.value if field_node.alias else field_node.name.value
-    table = ctx.tables[field_node.name.value]
+    table = names_table.root_table(ctx, field_node.name.value)  # REQ-467
     collector = ParamCollector()
     sources = StatementSources(table)
 
@@ -162,6 +164,9 @@ def _compile_root_field(  # REQ-009, REQ-011, REQ-032, REQ-033, REQ-034, REQ-035
             sources.add_table(join_meta.target)
 
             src_expr, tgt_expr = join_exprs(join_meta, root_alias, join_alias, ctx, table.table_id)
+            # REQ-1586: a junction-backed relationship reaches its rows through its junction.
+            hop = junction_hop(join_meta, root_alias, join_alias, use_catalog, sources)
+            joined = hop.joined if hop is not None else f"{tgt_expr} = {src_expr}"
             _below = _below_takes_lateral_args(sel, ctx, join_meta.target.type_name)
             _use_agg = (
                 not flat
@@ -192,6 +197,7 @@ def _compile_root_field(  # REQ-009, REQ-011, REQ-032, REQ-033, REQ-034, REQ-035
                             ctx, join_meta.target.type_name, use_catalog, sources
                         ),
                         ctx.aggregate_columns,
+                        hop,
                     )
                 )
                 if sel.selection_set:
@@ -213,7 +219,7 @@ def _compile_root_field(  # REQ-009, REQ-011, REQ-032, REQ-033, REQ-034, REQ-035
                         variables,
                         cardinality=join_meta.cardinality,
                         flat=flat,
-                        joined=f"{tgt_expr} = {src_expr}",
+                        joined=joined,
                     )
                     has_lateral_ops_joins |= _child_lateral
             elif _use_agg and sel.selection_set:
@@ -221,6 +227,9 @@ def _compile_root_field(  # REQ-009, REQ-011, REQ-032, REQ-033, REQ-034, REQ-035
                 _target_ref = travel_ref(_table_ref(join_meta.target, use_catalog), sel, variables)
                 _from_clause = f"{_target_ref} {_q(join_alias)}"
                 _where_expr = f"{tgt_expr} = {src_expr}"
+                if hop is not None:
+                    _from_clause = hop.from_clause(_from_clause)
+                    _where_expr = hop.to_source
                 _rel_key = sel.alias.value if sel.alias else sel_name
                 _pv = (
                     join_meta.child_src_val
@@ -259,11 +268,14 @@ def _compile_root_field(  # REQ-009, REQ-011, REQ-032, REQ-033, REQ-034, REQ-035
                     )
                 )
             else:
-                _join_on = f"{src_expr} = {tgt_expr}"
-                join_clauses.append(
-                    f"LEFT JOIN {travel_ref(_table_ref(join_meta.target, use_catalog), sel, variables)}"
+                _target_from = (
+                    f"{travel_ref(_table_ref(join_meta.target, use_catalog), sel, variables)}"
                     f" {_q(join_alias)}"
-                    f" ON {_join_on}"
+                )
+                join_clauses.append(
+                    f"LEFT JOIN {_target_from} ON {src_expr} = {tgt_expr}"
+                    if hop is None
+                    else hop.left_joins(_target_from)
                 )
                 if sel.selection_set:
                     alias_counter, _child_lateral = _collect_nested_columns(
@@ -284,7 +296,7 @@ def _compile_root_field(  # REQ-009, REQ-011, REQ-032, REQ-033, REQ-034, REQ-035
                         variables,
                         cardinality=join_meta.cardinality,
                         flat=flat,
-                        joined=f"{tgt_expr} = {src_expr}",
+                        joined=joined,
                     )
                     has_lateral_ops_joins |= _child_lateral
         else:
@@ -588,7 +600,7 @@ def _compile_connection_field(  # REQ-218
     from provisa.compiler.cursor import apply_cursor_pagination, extract_sort_columns
 
     root_name = field_node.alias.value if field_node.alias else field_node.name.value
-    table = ctx.tables[field_node.name.value]
+    table = names_table.root_table(ctx, field_node.name.value)  # REQ-467
     collector = ParamCollector()
     sources = StatementSources(table)
 
@@ -789,8 +801,12 @@ def compile_query(  # REQ-007, REQ-009, REQ-010, REQ-011, REQ-262, REQ-263, REQ-
         for sel in definition.selection_set.selections:
             if isinstance(sel, FieldNode):
                 field_name = sel.name.value
-                if field_name not in ctx.tables:
+                # REQ-467: a root field resolves through the names table (REQ-194); its surface
+                # says which of the table's root fields it is.
+                resolved = names_table.root_field(ctx, field_name)
+                if resolved is None:
                     raise UnknownRootField(field_name)
+                surface = resolved[0]
                 with _stage(_tracer, "compiler.compile_query", name="compile") as span:
                     from provisa.compiler.aggregates import (
                         _compile_aggregate_field,
@@ -798,21 +814,21 @@ def compile_query(  # REQ-007, REQ-009, REQ-010, REQ-011, REQ-262, REQ-263, REQ-
                     )
 
                     span.set_attribute("graphql.field", field_name)
-                    if field_name.endswith("_aggregate") or field_name.endswith("Aggregate"):
+                    if surface == "graphql_aggregate":
                         compiled = _compile_aggregate_field(
                             sel,
                             ctx,
                             variables,
                             use_catalog,
                         )
-                    elif field_name.endswith("_group_by") or field_name.endswith("GroupBy"):
+                    elif surface == "graphql_group_by":
                         compiled = _compile_group_by_field(
                             sel,
                             ctx,
                             variables,
                             use_catalog,
                         )
-                    elif field_name.endswith("_connection"):
+                    elif surface == "graphql_connection":
                         compiled = _compile_connection_field(
                             sel,
                             ctx,

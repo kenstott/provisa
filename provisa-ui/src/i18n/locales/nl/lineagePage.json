@@ -1,9 +1,9 @@
 {
   "lineagePage": {
     "title": "Gegevensherkomst",
-    "intro": "Ga na waar gegevens vandaan komen. Plak hieronder een query en Provisa herleidt elke resultaatkolom via de transformaties en opdrachtaanroepen naar de oorspronkelijke bronkolommen — zo beantwoordt u 'wat voedt deze kolom?' voordat u een view of opdracht publiceert. Of kies <b>Volledige herkomst</b> om de herkomst van alle geregistreerde views en datasets in één keer te zien.",
+    "intro": "Plak hieronder een query en Provisa herleidt elke resultaatkolom via de transformaties en opdrachtaanroepen tot de oorspronkelijke bronkolommen, zodat zichtbaar is wat een kolom voedt voordat een view of opdracht wordt gepubliceerd. Of kies <b>Volledige lineage</b> om de herkomst over alle geregistreerde views en datasets te zien.",
     "queryLabel": "Te analyseren query",
-    "queryHelp": "Elke SELECT die uw geregistreerde tabellen, views of opdrachten leest. Deze query wordt alleen geanalyseerd, nooit uitgevoerd — er wordt niets uitgevoerd en er worden geen gegevens gelezen.",
+    "queryHelp": "Elke SELECT die geregistreerde tabellen, views of opdrachten leest. Hij wordt geanalyseerd en nooit uitgevoerd, dus er wordt geen data gelezen.",
     "copy": "Query kopiëren",
     "copied": "Gekopieerd",
     "roleLabel": "Herkomst voor rol",
@@ -12,9 +12,9 @@
     "complete": "Volledige herkomst",
     "error": "Herkomstfout",
     "cyclesTitle": "Cycli gevonden",
-    "cycleFeedback": "(toegestaan — kruist een gematerialiseerde grens)",
-    "cycleError": "(geen materialisatiegrens — waarschijnlijk een ontwerpfout)",
+    "cycleFeedback": "(toegestaan: overschrijdt een gematerialiseerde grens)",
+    "cycleError": "(geen materialisatiegrens: waarschijnlijk een ontwerpfout)",
     "emptyTitle": "Niets om te tonen",
-    "emptyBody": "Er is geen herkomst gevonden. Volledige herkomst omvat uw geregistreerde views, en er zijn er nog geen gedefinieerd. Registreer een view (Afgeleid → Views) of analyseer hierboven een query om de herkomst te zien."
+    "emptyBody": "Geen lineage gevonden. Volledige lineage omvat de geregistreerde views, en er is er nog geen gedefinieerd. Registreer een view (Afgeleid → Views) of analyseer hierboven een query om de lineage ervan te zien."
   }
 }

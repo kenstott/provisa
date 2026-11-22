@@ -37,6 +37,7 @@ _TABLES = (
     "table_columns",
     "tag_assignments",
     "relationships",
+    "naming_rules",
     "relationship_candidates",
     "discovery_runs",
     "discovery_run_proposals",
@@ -352,7 +353,8 @@ async def test_a_pending_pair_is_still_decided_in_a_later_runs_table(tmp_path):
             )
         )
     later = await _run(db)
-    again = await _proposal(db, later, _EDGE, left_out="pending")
+    # REQ-413 (amended 2026-11-18): a pair still waiting is listed in the later run.
+    again = await _proposal(db, later, _EDGE)
     async with db.acquire() as conn:
         assert await proposals.accept(cast(Any, conn), later, again, "visit-pet") == "visit-pet"
     assert await _status(db, _EDGE) == "accepted"
@@ -375,21 +377,26 @@ def test_no_route_lists_or_decides_suggestions_apart_from_a_runs_result():
 
 
 class _NoReads:
-    """A values reader that fails the test on any read: a known pair is never measured."""
+    """A measure reader that fails the test on any read: a known pair is never measured."""
 
-    async def values(self, table: TableFacts, column: str, bound: int) -> Any:
+    def column(self, table: TableFacts, column: str) -> Any:
         raise AssertionError(f"read {table.table_name}.{column}: a known pair is not measured")
 
-    async def found(self, table: TableFacts, column: str, among: Any) -> frozenset[Any]:
-        raise AssertionError(f"looked up {table.table_name}.{column}: a known pair is not measured")
+    async def rows(self, tables: Any, sql: str) -> list[tuple]:
+        raise AssertionError(f"queried {sql}: a known pair is not measured")
 
 
 def _measurer(known: Known):
+    from provisa.discovery.context import CONTAINED_AT, SHARED_CEILING, Scoring
     from provisa.discovery.measure import DISTINCT_BOUND, Measurer
 
     tables = {tid: _facts(tid) for tid in _SHAPES}
     return Measurer(
-        _NoReads(), tables, decided=known.existing | known.rejected, bound=DISTINCT_BOUND
+        _NoReads(),
+        tables,
+        decided=known.existing | known.rejected,
+        bound=DISTINCT_BOUND,
+        scoring=Scoring(CONTAINED_AT, SHARED_CEILING),
     )
 
 

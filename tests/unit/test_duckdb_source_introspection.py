@@ -42,6 +42,7 @@ def sqlite_source(tmp_path):
         federation_hints={},
         mapping={},
         max_live_concurrency=None,  # REQ-1909: a source always carries its cap
+        download_from=None,  # REQ-1997: a source always carries it
         schema_name="main",
         table_name="orders",
     )
@@ -97,8 +98,19 @@ def test_extension_connectors_attach_under_a_private_alias(source_type):
         federation_hints={"project": "proj"},
         mapping={},
         max_live_concurrency=None,  # REQ-1909: a source always carries its cap
+        download_from=None,  # REQ-1997: a source always carries it
     )
     details = engine.connector_for(source_type).details(src)
     assert details["raw_alias"] == "_src_shop"
     assert 'AS "_src_shop"' in details["attach"]
     assert 'AS "shop"' not in details["attach"]
+
+
+def test_the_attach_view_of_a_source_carries_where_its_file_is_downloaded_from(sqlite_source):
+    """REQ-1997: the sandbox check every engine attach passes (engine.resolve) reads the
+    source's download_from, so the backend's attach view of a source carries it."""
+    from provisa.federation.backend import EngineBackend
+
+    fetched = SimpleNamespace(**{**vars(sqlite_source), "download_from": "https://x.test/a.db"})
+    merged = EngineBackend._merged_source(fetched, "main", "orders")  # pyright: ignore[reportPrivateUsage]
+    assert merged.download_from == "https://x.test/a.db"

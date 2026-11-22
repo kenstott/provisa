@@ -1,8 +1,8 @@
 {
   "proposalsTable": {
-    "intro": "套用時會接受已剔選的列。評分至少達到閾值的列預設剔選。兩個方格都未剔選的列保持未決定。",
+    "intro": "已勾選的行會在套用時被接受。分數達到門檻的行預設為勾選。兩個方塊都未勾選的行會保持未決定。",
     "colScore": "評分",
-    "colModel": "模型",
+    "colConfidence": "信賴度",
     "colJev": "Jev",
     "colKind": "類型",
     "colMeasure": "量度結果",
@@ -12,7 +12,8 @@
     "notAgainAria": "不再推薦 {{name}}",
     "kind": {
       "foreign_keys": "約束",
-      "semantics": "語意"
+      "semantics": "語意",
+      "key_names": "名稱配對"
     },
     "asWritten": "模型的原文：{{answer}}",
     "apply": "套用",
@@ -27,17 +28,11 @@
       "invalid_shape": "不是所要求形式的關係：欠缺欄位或欄位形式有誤",
       "unknown_column": "引用了請求未比較的表或欄",
       "not_comparable": "兩欄的類別不同，因此不作比較",
-      "below_threshold": "評分低於保留建議所需的 {{threshold}}%。",
+      "below_threshold": "分數低於保留建議所需的 {{threshold}}%。",
       "same_column": "由某欄指向其本身",
-      "primary_key_to_primary_key": "主索引鍵到主索引鍵",
-      "both_repeating": "兩邊均有重複值，因此任何一邊都不是「一」的一方",
       "existing": "已登記",
-      "pending": "已在建議中等候",
       "rejected": "之前已拒絕",
-      "matches_foreign_key": "與今次執行中找到的外部索引鍵相同",
-      "out_of_scope": "不在所選的來源表和目標表之內",
-      "weaker": "同樣兩欄已保留了更強的提議",
-      "many_to_many": "兩欄都不是鍵"
+      "out_of_scope": "不在所選的來源表和目標表之內"
     },
     "threshold": "剔選起點",
     "thresholdHint": "你自己的閾值，會為你之後的執行保留。",
@@ -59,11 +54,17 @@
         "target": "你無法讀取目標欄。"
       },
       "noValues": "來源沒有值。",
-      "modelScore": "模型評分：未有比較任何值。"
+      "modelScore": "模型評分：未有比較任何值。",
+      "ruleForeignKeys": "由已宣告的外鍵產生：未比較任何值。",
+      "ruleKeyNames": "由配對的鍵名稱和類型產生：未比較任何值。"
     },
     "dimensionMade": "接受後會建立共用維度 {{name}}，兩欄都與其關聯。",
     "dimensionJoined": "接受後，兩欄都會關聯到共用維度 {{name}}。",
+    "through": "經由 {{table}}。",
     "twoDimensions": "其欄位已關聯到兩個不同的共用維度，因此無法接受。",
-    "admittedOnKeyValues": "因數據中鍵值相符而採納；測量結果顯示於模型置信度旁邊。"
+    "admittedOnKeyValues": "因數據中鍵值相符而採納；測量結果顯示於模型置信度旁邊。",
+    "hiddenByFilter_one": "篩選器隱藏了 {{count}} 行。",
+    "hiddenByFilter_other": "篩選器隱藏了 {{count}} 行。",
+    "editAria": "編輯 {{name}}"
   }
 }

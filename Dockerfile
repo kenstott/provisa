@@ -18,6 +18,7 @@ RUN apt-get update \
 COPY --from=rust-toolchain /usr/local/cargo /usr/local/cargo
 COPY --from=rust-toolchain /usr/local/rustup /usr/local/rustup
 ENV CARGO_HOME=/usr/local/cargo RUSTUP_HOME=/usr/local/rustup PATH=/usr/local/cargo/bin:$PATH
+ENV PIP_DEFAULT_TIMEOUT=120 PIP_RETRIES=10
 # zig on PATH: the build runs in an isolated environment whose python has no ziglang.
 RUN pip install --no-cache-dir "build==1.6.1" "cargo-zigbuild==0.24.0" "ziglang==0.17.0" \
  && ln -s "$(python -c 'import os, ziglang; print(os.path.dirname(ziglang.__file__))')/zig" /usr/local/bin/zig \
@@ -54,6 +55,9 @@ FROM scratch AS pyodide-downloads
 # Stage 2: install Python deps from pre-built wheels (stays on builder layer only)
 FROM python:3.12-slim AS installer
 WORKDIR /app
+# pip's 15 s default read timeout ended release 510's ninth image build mid-download (run
+# 44446333901, TimeoutError in ssl read); a read that times out partway is not retried.
+ENV PIP_DEFAULT_TIMEOUT=120 PIP_RETRIES=10
 COPY pyproject.toml .
 COPY vendor/ ./vendor/
 # [firebase] pulls firebase-admin — the container is the single artifact for cloud deploys where
@@ -70,7 +74,8 @@ COPY vendor/ ./vendor/
 #   docker build --build-arg PROVISA_EXTRAS=firebase,vector,soda .
 # Every package at the version uv.lock pins — the versions the tests ran on — never pip's newest
 # (an unpinned install shipped sqlglot 30.23 while the suite ran 30.9). torch comes from the CPU
-# index at the locked version; its CUDA-only dependencies (triton, nvidia-*, cuda-*) are left out.
+# index at the locked version: the lock takes Linux's torch from that index ([tool.uv.sources]), so
+# its line is the `+cpu` one; the export names no index, so it is installed on its own.
 ARG PROVISA_EXTRAS=firebase,vector
 COPY uv.lock .
 # REQ-2071: provisa-notebook (the Data Science area's Pyodide) is a dependency that lives beside
@@ -84,7 +89,7 @@ RUN --mount=type=bind,from=pyodide-downloads,target=/pyodide-downloads,rw \
     uv export --frozen --no-dev --no-emit-project --no-hashes --no-annotate --no-header \
       $(echo "${PROVISA_EXTRAS}" | tr ',' '\n' | sed 's/^/--extra /') -o /tmp/locked.txt \
  && grep -vE '^(torch|triton|nvidia-|cuda-|-e )' /tmp/locked.txt > /tmp/requirements.txt \
- && pip install --no-cache-dir "$(grep '^torch==' /tmp/locked.txt | cut -d' ' -f1)" \
+ && pip install --no-cache-dir "$(grep -E '^torch==[^ ]+\+cpu ' /tmp/locked.txt | cut -d' ' -f1)" \
       --index-url https://download.pytorch.org/whl/cpu \
  && pip install --no-cache-dir --no-deps -r /tmp/requirements.txt \
  && PROVISA_NOTEBOOK_DOWNLOADS=/pyodide-downloads PYTHONPATH=provisa-notebook \
@@ -113,11 +118,13 @@ RUN cd graph-render && npm ci --no-audit --no-fund
 COPY provisa-ui/graph-render/src ./graph-render/src
 COPY provisa-ui/src/components/graph ./src/components/graph
 COPY provisa-ui/src/components/provisa-graph ./src/components/provisa-graph
+COPY provisa-ui/src/theme/palette.ts ./src/theme/palette.ts
 RUN cd graph-render && npm run build && npm prune --omit=dev
 
 # Stage 4: lean runtime image — no wheels, only app source + installed packages
 FROM python:3.12-slim
 WORKDIR /app
+ENV PIP_DEFAULT_TIMEOUT=120 PIP_RETRIES=10
 # REQ-1992: an org may keep its file folder encrypted (gocryptfs over FUSE). The container needs
 # /dev/fuse and CAP_SYS_ADMIN for it (docker-compose.app.yml, the Helm chart); without them the
 # setting is refused by name and plain folders are unaffected.

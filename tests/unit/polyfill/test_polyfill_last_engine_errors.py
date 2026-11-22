@@ -165,8 +165,10 @@ def test_bool_and_numeric_of_a_json_value_are_refused_by_name_on_clickhouse(sql)
 
 def test_the_clickhouse_limitation_states_what_differs():
     feature = next(f for f in GRID.features if f.name == "numeric")
-    (stated,) = feature.read.limitations["clickhouse"]
+    # of a jsonb value, then of a float literal (CONF-CH4)
+    stated, of_a_float = feature.read.limitations["clickhouse"]
     assert "exponent" in stated.text and "invalid" in stated.text
+    assert of_a_float.text.startswith("Of a double or a real")
 
 
 @pytest.mark.parametrize(

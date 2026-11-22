@@ -90,12 +90,12 @@
     "loadManagementTitle": "负载管理与时效性",
     "loadManagementHelp": "每位读者所需数据的时效性，与平台及上游数据源的负载相权衡。",
     "loadManagementInfoLabel": "关于负载管理与时效性",
-    "loadManagementInfo": "在每位读者数据的时效性与平台及上游数据源的负载之间取得平衡。理想情况下由上游自行管理负载；运维人员保护平台，并在上游无法自我保护时保护上游。这些设置是运维人员设定的下限——任何查询或请求提示都无法获得比其允许的更新的数据，也无法给数据源带来更多负载。读者只能选择为速度接受更旧的数据。引擎实时读取的表会忽略 TTL 设置；当该表由其副本提供时（“复制”或“负载保护”），这些设置才生效。",
+    "loadManagementInfo": "在每位读者所获数据的新鲜度与平台及上游数据源的负载之间取得平衡。理想情况下，上游自行管理负载；运营者保护平台，并在上游无法自我保护时保护上游。这些设置是运营者的底线。任何查询或请求提示都无法获得比这些设置允许的更新的数据，或对数据源施加更大的负载。读者只能选择接受更旧的数据以换取速度。引擎实时读取的表会忽略 TTL 设置；一旦改为从副本提供服务（复制或负载保护），这些设置即生效。",
     "sentinelPath": "哨兵路径",
     "sentinelPathTooltip": "生产方在数据变化时更新的标记文件 URL（file:、ftp:、sftp:、http:、https:）。使用探测型变更信号时，Provisa 只检查此标记来判断数据是否最新。无哨兵时留空。",
     "sentinelPathInvalid": "请使用 file:、ftp:、sftp:、http: 或 https: URL，或留空。",
     "freshnessGate": "查询时效性保证",
-    "freshnessGateTooltip": "开启后，读取此数据源的表的查询会先检查副本是否仍然新鲜（依据变更信号和缓存 TTL），若已过期，则在应答前先刷新——因此读取方绝不会得到比缓存 TTL 更旧的副本，查询可能需要等待该刷新。关闭时，副本在后台刷新，查询从不等待。当变更信号按计划重新读取时需要缓存 TTL；对推送的变更信号无效。",
+    "freshnessGateTooltip": "开启后，读取此数据源表的查询会先根据变更信号和缓存 TTL 检查副本是否仍然新鲜，若已过期则在应答前刷新。读者永远不会拿到比缓存 TTL 更旧的副本，查询可能需要等待该刷新。关闭后，副本在后台刷新，查询永不等待。当变更信号按计划重新读取时需要缓存 TTL；对推送型变更信号无效。",
     "maxLiveConcurrency": "最大并发实时查询数",
     "maxLiveConcurrencyHelp": "在共享此 Redis 的所有 Provisa 实例中，同时实时读取此数据源的查询上限。超出的查询等待至各自的截止时间后失败。留空 = 不限制。当数据源从其副本读取时（复制 / 负载保护）无效。",
     "maxLiveConcurrencyPlaceholder": "不限制",
@@ -105,6 +105,12 @@
     "accessToken": "访问令牌",
     "accessTokenHint": "存储在密钥保管库中。也接受 ${secret:NAME} 或 ${env:NAME} 引用。",
     "brandNamespaceHint": "此数据源表名的前缀。留空则使用默认值。",
+    "brandBaseUrl": "基础 URL",
+    "brandBaseUrlHint": "您的实例地址，例如 https://catalog.example.com。在此调用其 API，并从此处读取其 OpenAPI 描述。",
+    "openmetadataBaseUrlHint": "您打开 OpenMetadata 的地址，例如 https://openmetadata.example.com，不含 /api。在 /api 下调用其 API，并从 /swagger.json 读取其 OpenAPI 描述。",
+    "openmetadataTokenHint": "OpenMetadata 机器人的 JWT 令牌，位于 Settings > Bots。存储在密钥保管库中。也接受 ${secret:NAME} 或 ${env:NAME} 引用。",
+    "datahubBaseUrlHint": "您的 DataHub 元数据服务（GMS）地址，例如 https://datahub.example.com/gms。从 /openapi/v3/api-docs/10-openapi-v3 读取其 OpenAPI 描述。",
+    "datahubTokenHint": "DataHub 个人访问令牌或服务账号令牌，位于 Settings > Access Tokens。存储在密钥保管库中。也接受 ${secret:NAME} 或 ${env:NAME} 引用。",
     "shopifyStore": "店铺名称",
     "shopifyStoreHint": "店铺后台地址中 .myshopify.com 之前的部分，例如 my-store。",
     "shopifyApiVersion": "API 版本",
@@ -228,6 +234,7 @@
     "qbRefreshTokenHint": "允许 Provisa 读取该公司。使用 QuickBooks 登录以获取，或粘贴在 Intuit 的 OAuth 2.0 Playground 中使用 Accounting 范围获取的令牌。QuickBooks 每次使用后都会替换它，Provisa 会保留最新的令牌。在此输入的新令牌会在保存时替换保留的令牌。",
     "qbSignIn": "使用 QuickBooks 登录",
     "qbSignedIn": "已登录公司 {{realm}}。保存数据源以保留此登录。",
-    "qbSignInFailed": "无法完成登录。"
+    "qbSignInFailed": "无法完成登录。",
+    "wikidataEndpointHint": "Wikidata 查询服务。无需凭据；表每天从中刷新。"
   }
 }

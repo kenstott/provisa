@@ -75,6 +75,7 @@ CARRIED: frozenset[str] = frozenset(
         "glossary_term_edges",
         "glossary_term_experts",
         "glossary_term_statements",  # REQ-2237: what an imported ontology stated about a term
+        "glossary_term_sources",  # REQ-2247: the catalogs a term was sourced from
         "glossary_term_domains",
         "materialized_views",
         "calendars",
@@ -138,6 +139,9 @@ NEVER_SENSITIVE: frozenset[str] = frozenset(
         "entitlement_expiries",
         # REQ-2219: a grant waiting on a typed email attaches to this environment's principal.
         "entitlement_pending",
+        # REQ-2219: what each person's entitlements come to, computed from those rows: this
+        # environment's own, as they are.
+        "effective_entitlements",
         # REQ-2180: a bid is keyed by this environment's principals and what accepting it granted
         # them, as the entitlements are.
         "data_product_bids",
@@ -182,6 +186,9 @@ NEVER_RUNTIME: frozenset[str] = frozenset(
         "trigger_runs",
         "preserved_snapshots",
         "admin_audit_log",
+        # REQ-2266: the access reviews of this environment's grants, and their decisions.
+        "access_reviews",
+        "access_review_rows",
         # REQ-2098: the image builds made in this environment.
         "code_source_builds",
         # REQ-2105: what this environment's code sources spent on the LLM service.
@@ -214,6 +221,10 @@ NEVER_RUNTIME: frozenset[str] = frozenset(
         "glossary_ontology_items",
         "glossary_ontology_alignments",
         "catalog_bindings",
+        # REQ-2247: what this environment last exchanged with its own Syncing entries' systems.
+        "catalog_exchanges",
+        # REQ-2247: the standing choices of this environment's own Syncing entries.
+        "catalog_standing_choices",
         "email_send_authority_audit",
         # REQ-1742: grpc_remote_router.py's own per-table registration log for this process's
         # grpc_remote sources — nothing else reads it, and it belongs to the environment that
@@ -243,6 +254,8 @@ NEVER_RUNTIME: frozenset[str] = frozenset(
         "lineage_edges",
         # REQ-2229: what the tools pointed at this environment reported to it.
         "openlineage_run_datasets",
+        # REQ-2263: the dataset facets those tools reported to it.
+        "openlineage_dataset_facets",
         # REQ-2125: resolved from its own contracts by its own model build.
         "checker_targets",
         # REQ-194: its own names table and refused clashes, from its own model build.

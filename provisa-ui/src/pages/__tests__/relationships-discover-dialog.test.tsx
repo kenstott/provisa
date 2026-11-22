@@ -55,6 +55,7 @@ import {
   startMock,
   stopMock,
   vendorModelsMock,
+  SELECTED,
 } from "./discoverDialog.fixtures";
 
 vi.mock("../../hooks/useAdminQueries", async () =>
@@ -104,8 +105,7 @@ describe("Discovery dialog: the run's scope", () => {
 
   it("never offers a system domain's table, which a run would leave out", async () => {
     await openDialog();
-    // Every domain offered (shop is ticked from the Domains picker): every table a run could read.
-    await pick("Source domains", "crm");
+    // Every domain ticked in the Domains picker is offered and chosen: every table a run could read.
     await userEvent.click(screen.getByRole("textbox", { name: "Source tables" }));
     const offered = (await screen.findAllByRole("option", { hidden: true })).map(
       (o) => o.textContent,
@@ -118,7 +118,7 @@ describe("Discovery dialog: the run's scope", () => {
     await openDialog();
     fireEvent.click(runButton());
     await waitFor(() => expect(startMock).toHaveBeenCalledTimes(1));
-    expect(startMock).toHaveBeenCalledWith(SCOPE);
+    expect(startMock).toHaveBeenCalledWith(SCOPE, SELECTED);
   });
 
   it("sends the source tables chosen", async () => {
@@ -126,7 +126,9 @@ describe("Discovery dialog: the run's scope", () => {
     await pick("Source tables", "orders");
     await waitFor(() => expect(lastScope().source_tables).toEqual([1]), SLOW);
     fireEvent.click(runButton());
-    await waitFor(() => expect(startMock).toHaveBeenCalledWith({ ...SCOPE, source_tables: [1] }));
+    await waitFor(() =>
+      expect(startMock).toHaveBeenCalledWith({ ...SCOPE, source_tables: [1] }, SELECTED),
+    );
   });
 
   it("hides the target while Same as source is ticked, and sends the target set when it is not", async () => {
@@ -145,11 +147,14 @@ describe("Discovery dialog: the run's scope", () => {
     );
     fireEvent.click(runButton());
     await waitFor(() =>
-      expect(startMock).toHaveBeenCalledWith({
-        ...SCOPE,
-        target_same_as_source: false,
-        target_domains: ["crm"],
-      }),
+      expect(startMock).toHaveBeenCalledWith(
+        {
+          ...SCOPE,
+          target_same_as_source: false,
+          target_domains: ["crm"],
+        },
+        SELECTED,
+      ),
     );
   });
 
@@ -165,7 +170,10 @@ describe("Discovery dialog: the run's scope", () => {
     ).toBe(semanticsBox());
     fireEvent.click(runButton());
     await waitFor(() =>
-      expect(startMock).toHaveBeenCalledWith({ ...SCOPE, ...UNMEASURED, kinds: ["foreign_keys"] }),
+      expect(startMock).toHaveBeenCalledWith(
+        { ...SCOPE, ...UNMEASURED, kinds: ["foreign_keys"] },
+        SELECTED,
+      ),
     );
   });
 
@@ -185,12 +193,12 @@ describe("Discovery dialog: the run's scope", () => {
 });
 
 describe("Discovery dialog: the request count before Run", () => {
-  it("shows at most how many requests the run makes, by type group, and that it is a bound", async () => {
+  it("shows at most how many calls the run makes, the table pairs they cover, and that it is a bound", async () => {
     await openDialog();
     await waitFor(
       () =>
         expect(screen.getByTestId("discover-count")).toHaveTextContent(
-          "At most 3 requests to the model: whole numbers 2, text 1.",
+          "At most 3 calls to the model, covering 40 table pairs. A pair left unanswered may be asked again.",
         ),
       SLOW,
     );
@@ -258,12 +266,12 @@ describe("Discovery dialog: the request count before Run", () => {
   it("counts again when the scope changes", async () => {
     await openDialog();
     await waitFor(() => expect(countMock).toHaveBeenCalled(), SLOW);
-    countMock.mockResolvedValue({ ...COUNT, requests: 5, by_group: { text: 5 } });
+    countMock.mockResolvedValue({ ...COUNT, requests: 1, table_pairs: 1 });
     await pick("Source domains", "crm");
-    await waitFor(() => expect(lastScope().source_domains).toEqual(["shop", "crm"]), SLOW);
+    await waitFor(() => expect(lastScope().source_domains).toEqual(["shop"]), SLOW);
     await waitFor(() =>
       expect(screen.getByTestId("discover-count")).toHaveTextContent(
-        "At most 5 requests to the model: text 5.",
+        "At most 1 call to the model, covering 1 table pair. A pair left unanswered may be asked again.",
       ),
     );
   });
@@ -312,7 +320,10 @@ describe("Discovery dialog: the model for this run", () => {
     await waitFor(() => expect(runButton()).toBeEnabled());
     fireEvent.click(runButton());
     await waitFor(() =>
-      expect(startMock).toHaveBeenCalledWith({ ...SCOPE, vendor: "openai", model: "gpt-4.1" }),
+      expect(startMock).toHaveBeenCalledWith(
+        { ...SCOPE, vendor: "openai", model: "gpt-4.1" },
+        SELECTED,
+      ),
     );
   });
 
@@ -367,7 +378,7 @@ describe("Discovery dialog: the run in progress", () => {
   });
 
   it("a run whose every request failed says so in the dialog's run block, never on the page", async () => {
-    const failed = (group: "whole_number" | "date") => ({
+    const failed = (group: "whole_number" | "text") => ({
       group,
       code: "llm.request_failed",
       params: { reason: "overloaded" },
@@ -385,7 +396,7 @@ describe("Discovery dialog: the run in progress", () => {
         requests_done: 2,
         proposed: 0,
         below_threshold: 0,
-        failed: [failed("whole_number"), failed("date")],
+        failed: [failed("whole_number"), failed("text")],
       },
     };
     runMock.mockResolvedValue(
@@ -401,7 +412,7 @@ describe("Discovery dialog: the run in progress", () => {
       "For whole numbers columns: The request to the model failed: overloaded",
     );
     expect(shown).toHaveTextContent(
-      "For dates columns: The request to the model failed: overloaded",
+      "For text columns: The request to the model failed: overloaded",
     );
     expect(shown).not.toHaveTextContent("proposed no relationships");
     // REQ-413 (amended 2026-11-16): the page shows no run summary, and with no suggestion
@@ -411,7 +422,12 @@ describe("Discovery dialog: the run in progress", () => {
   });
 
   it("Stop asks the server to stop and keeps what was found", async () => {
-    proposalsMock.mockResolvedValue({ proposals: [proposal({})], threshold: 0.7, kept_at: 0.7 });
+    proposalsMock.mockResolvedValue({
+      proposals: [proposal({})],
+      threshold: 0.7,
+      kept_at: 0.7,
+      score_filter: null,
+    });
     runMock.mockResolvedValue(
       runOf({ requests_total: 3, requests_done: 1, suggestions: 1, report: REPORT }),
     );
@@ -544,7 +560,6 @@ describe("Discovery dialog: the run's proposals, in one table", () => {
     await endedRun();
     expect(acceptBox(500).checked).toBe(true);
     expect(acceptBox(501).checked).toBe(true);
-    // Already waiting from an earlier run: an ordinary row.
     expect(acceptBox(502).checked).toBe(true);
     expect(acceptBox(503).checked).toBe(false);
     // The model's score decides: Jev's 31% beside its 92% does not untick it.
@@ -557,7 +572,9 @@ describe("Discovery dialog: the run's proposals, in one table", () => {
   it("lists a proposal that cannot be decided with its reason and no box", async () => {
     await endedRun();
     const repeated = screen.getByTestId("proposal-505");
-    expect(repeated).toHaveTextContent("Matches a foreign key found in this run");
+    expect(repeated).toHaveTextContent(
+      "The two columns have different classes, so they are not compared",
+    );
     const unknown = screen.getByTestId("proposal-506");
     expect(unknown).toHaveTextContent("Names a table or column the request did not compare");
     expect(unknown).toHaveTextContent(
@@ -624,6 +641,7 @@ describe("Discovery dialog: the run's proposals, in one table", () => {
       proposals: PROPOSALS.filter((p) => ![500, 504].includes(p.id)),
       threshold: 0.7,
       kept_at: 0.7,
+      score_filter: null,
     });
     expect(applyButton()).toHaveTextContent("Accept 2, don't recommend 1 again");
     fireEvent.click(applyButton());
@@ -712,6 +730,43 @@ describe("Discovery dialog: its size by what it shows", () => {
     await endedRun();
     expect(modalSize()).toBe("100%");
   });
+
+  it("keeps the standard size when the ended run proposed nothing", async () => {
+    runMock.mockResolvedValue(runOf({ status: "done", report: REPORT }));
+    proposalsMock.mockResolvedValue({
+      proposals: [],
+      threshold: 0.7,
+      kept_at: 0.7,
+      score_filter: null,
+    });
+    await openDialog();
+    fireEvent.click(runButton());
+    await screen.findByTestId("discover-no-proposals", {}, SLOW);
+    expect(modalSize()).toBe(STANDARD);
+  });
+
+  it("returns to the standard size once Apply leaves nothing to decide", async () => {
+    await endedRun();
+    expect(modalSize()).toBe("100%");
+    applyMock.mockResolvedValue(
+      PROPOSALS.filter((p) => p.acceptable).map((p) => ({
+        id: p.id,
+        action: "accept",
+        ok: true,
+        relationship_id: `r-${p.id}`,
+      })),
+    );
+    proposalsMock.mockResolvedValue({
+      proposals: [],
+      threshold: 0.7,
+      kept_at: 0.7,
+      score_filter: null,
+    });
+    fireEvent.click(applyButton());
+    await screen.findByTestId("discover-applied");
+    await screen.findByTestId("discover-no-proposals");
+    expect(modalSize()).toBe(STANDARD);
+  });
 });
 
 describe("Discovery dialog: an ended run's layout", () => {
@@ -744,7 +799,12 @@ describe("Discovery dialog: an ended run's layout", () => {
 
   it("shows New run when the run proposed nothing", async () => {
     runMock.mockResolvedValue(runOf({ status: "done", report: REPORT }));
-    proposalsMock.mockResolvedValue({ proposals: [], threshold: 0.7, kept_at: 0.7 });
+    proposalsMock.mockResolvedValue({
+      proposals: [],
+      threshold: 0.7,
+      kept_at: 0.7,
+      score_filter: null,
+    });
     await openDialog();
     fireEvent.click(runButton());
     await screen.findByTestId("discover-no-proposals", {}, SLOW);
@@ -826,7 +886,12 @@ describe("Discovery dialog: each pair measured on its data, ticked from the pers
 
   async function measuredRun(threshold = 0.7) {
     runMock.mockResolvedValue(runOf({ status: "done", report: REPORT }));
-    proposalsMock.mockResolvedValue({ proposals: MEASURED, threshold, kept_at: 0.7 });
+    proposalsMock.mockResolvedValue({
+      proposals: MEASURED,
+      threshold,
+      kept_at: 0.7,
+      score_filter: null,
+    });
     await openDialog();
     fireEvent.click(runButton());
     await screen.findByTestId("proposal-601", {}, SLOW);
@@ -847,6 +912,28 @@ describe("Discovery dialog: each pair measured on its data, ticked from the pers
     expect(screen.getByTestId("proposal-measure-603")).toHaveTextContent(
       "The source was not read: its table requires a parameter. " +
         "The target is a key. Scored by the model: no values were compared.",
+    );
+  });
+
+  it("names the rule that produced a candidate no values were compared for", async () => {
+    runMock.mockResolvedValue(runOf({ status: "done", report: REPORT }));
+    proposalsMock.mockResolvedValue({
+      proposals: [
+        proposal({ id: 701, kind: "foreign_keys", measured: false, measure: null }),
+        proposal({ id: 702, kind: "key_names", measured: false, measure: null }),
+      ],
+      threshold: 0.7,
+      kept_at: 0.7,
+      score_filter: null,
+    });
+    await openDialog();
+    fireEvent.click(runButton());
+    await screen.findByTestId("proposal-701", {}, SLOW);
+    expect(screen.getByTestId("proposal-measure-701")).toHaveTextContent(
+      "Produced by a declared foreign key: no values were compared.",
+    );
+    expect(screen.getByTestId("proposal-measure-702")).toHaveTextContent(
+      "Produced by a matching key name and type: no values were compared.",
     );
   });
 
@@ -889,6 +976,7 @@ describe("Discovery dialog: each pair measured on its data, ticked from the pers
       ],
       threshold: 0.7,
       kept_at: 0.7,
+      score_filter: null,
     });
     await openDialog();
     fireEvent.click(runButton());
@@ -912,6 +1000,7 @@ describe("Discovery dialog: each pair measured on its data, ticked from the pers
       ],
       threshold: 0.7,
       kept_at: 0.7,
+      score_filter: null,
     });
     await openDialog();
     fireEvent.click(runButton());

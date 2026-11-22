@@ -62,10 +62,15 @@ def test_a_statement_with_nothing_to_read_is_left_as_written():
     assert exact_inputs(sql) == sql
 
 
-@pytest.mark.parametrize("dialect", ["trino", "clickhouse"])
-def test_a_numeric_literal_keeps_its_scale(dialect):
+@pytest.mark.parametrize(
+    ("dialect", "decimal"), [("trino", "DECIMAL(2, 1)"), ("clickhouse", "DECIMAL(20, 1)")]
+)
+def test_a_numeric_literal_keeps_its_scale(dialect, decimal):
+    """On Trino the literal's decimal is of its digits alone (pg_literals.TIGHT): Trino's own
+    arithmetic widens it to the type an answer needs, where room beside it pushed a sum's type
+    past 38 digits and Trino held it at a smaller scale."""
     written = transpile("SELECT 2.5::numeric AS v", dialect)
-    assert "DECIMAL(20, 1)" in written.replace("Decimal", "DECIMAL")
+    assert decimal in written.replace("Decimal", "DECIMAL")
 
 
 @pytest.mark.parametrize(
@@ -184,7 +189,9 @@ def test_a_clickhouse_timestamp_keeps_its_fraction():
 
 
 def test_a_clickhouse_refusal_raises_where_a_nullable_cast_reads_null():
-    written = transpile("SELECT masklen('::1'::inet) AS v", "clickhouse")
+    # a literal PostgreSQL refuses as the statement is read (masklen of an inet literal is
+    # answered on ClickHouse since CONF-CH4)
+    written = transpile("SELECT numerictypmodin('{1001}'::cstring[]) AS v", "clickhouse")
     assert "accurateCast(materialize(" in written
 
 

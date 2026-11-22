@@ -1,0 +1,7 @@
+{
+  "proposalEdit": {
+    "title": "候補を編集",
+    "name": "リレーションシップ名",
+    "cardinality": "カーディナリティ"
+  }
+}

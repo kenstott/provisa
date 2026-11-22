@@ -3858,23 +3858,20 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
         except PermissionError as exc:
             self._send_pg_error("FATAL", "28000", str(exc))
             return
-        from provisa.auth.held_assignments import sign_in_roles
+        from provisa.auth.held_assignments import default_request, sign_in_roles
 
         try:
             # The role the sign-in acts as and the roles it may name, as every transport reads
             # them, in the session's org. REQ-1263: a personal access token's are its scopes its
             # owner still holds; with none it is refused.
             role, may_name = run_on_connection_loop(
-                sign_in_roles(
-                    _state,
-                    identity,
-                    getattr(ctx.session, "org_id", None),
-                    naming=bool(requested),
-                )
+                sign_in_roles(_state, identity, getattr(ctx.session, "org_id", None))
             )
         except PermissionError as exc:
             self._send_pg_error("FATAL", "42501", str(exc))
             return
+        # REQ-2155: naming no role acts as the union of the roles held.
+        requested = requested or default_request(_state, identity, role, may_name)
         members: tuple[str, ...] = (role,)
         qualifiers: tuple[str, ...] = ()
         if requested:

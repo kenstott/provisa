@@ -192,17 +192,23 @@ def test_dynamic_source_registers_and_analyzes_at_the_recorded_catalog(state, mo
     model = Source(id="pet-store-pg", type=SourceType.postgresql, database="provisa")
     source_input = SourceInput(id="pet-store-pg", type="postgresql", database="provisa")
 
-    class _Result:
-        def fetchall(self):
-            class _Row:
-                schema_name = "public"
-                table_name = "pets"
+    class _Row:
+        id = 1
+        schema_name = "public"
+        table_name = "pets"
 
-            return [_Row()]
+    class _Result:
+        def __init__(self, rows: list) -> None:
+            self._rows = rows
+
+        def fetchall(self):
+            return self._rows
 
     class _Conn:
-        async def execute_core(self, _stmt):
-            return _Result()
+        async def execute_core(self, stmt):
+            # The source's tables, then their columns (none is a parameter).
+            selects_columns = "table_columns" in {t.name for t in stmt.get_final_froms()}
+            return _Result([] if selects_columns else [_Row()])
 
         async def __aenter__(self):
             return self

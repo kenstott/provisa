@@ -1143,6 +1143,73 @@ def test_merge_reads_a_leg_from_wherever_its_artifact_landed_and_fails_on_a_miss
     assert json.loads(out.read_text())["guaranteed"]["functions"] == []
 
 
+LEGS = {
+    "legs": [
+        {"engine": "a", "lane": "free", "image": "a:1"},
+        {"engine": "b", "lane": "free", "image": "b:2"},
+        {"engine": "w", "lane": "warehouse", "image": "none (account)"},
+    ],
+    "not_run": {"z": "no container image"},
+}
+
+
+def test_the_report_lists_each_leg_its_image_and_why_a_failed_one_left_no_result(tmp_path):
+    legs = tmp_path / "legs.yaml"
+    legs.write_text(yaml.safe_dump(LEGS))
+    (tmp_path / "in" / "function-support-a").mkdir(parents=True)
+    (tmp_path / "in" / "function-support-a" / "function-support-a.json").write_text(
+        json.dumps(_report("a", _entry("abs", "pass")))
+    )
+    (tmp_path / "in" / "function-support-b").mkdir()
+    (tmp_path / "in" / "function-support-b" / "leg-failure-b.json").write_text(
+        json.dumps({"engine": "b", "reason": "b: the leg failed starting the engine's server"})
+    )
+    out, md = tmp_path / "out.json", tmp_path / "out.md"
+    assert support.merge(["a", "b"], tmp_path / "in", out, md, legs) == 1
+    doc = json.loads(out.read_text())
+    assert doc["legs"] == {
+        "a": {"lane": "free", "image": "a:1"},
+        "b": {"lane": "free", "image": "b:2"},
+    }
+    assert doc["leg_failures"] == {"b": "b: the leg failed starting the engine's server"}
+    assert doc["not_dispatched"] == {"w": "the warehouse lane, not dispatched in this run"}
+    assert doc["not_run"] == {"z": "no container image"}
+    text = md.read_text()
+    assert "| a | free | a:1 | complete |" in text
+    assert "| b | free | b:2 | failed: b: the leg failed starting the engine's server |" in text
+    assert "- z: no container image" in text
+    assert "- w: the warehouse lane, not dispatched in this run" in text
+
+
+def test_a_failed_leg_with_no_reason_is_still_failed_on_the_report(tmp_path):
+    legs = tmp_path / "legs.yaml"
+    legs.write_text(yaml.safe_dump(LEGS))
+    (tmp_path / "in").mkdir()
+    out, md = tmp_path / "out.json", tmp_path / "out.md"
+    assert support.merge(["a"], tmp_path / "in", out, md, legs) == 1
+    assert "| a | free | a:1 | failed: the leg left no result and no reason |" in md.read_text()
+
+
+def test_a_leg_reason_is_ignored_when_the_leg_left_its_result(tmp_path):
+    legs = tmp_path / "legs.yaml"
+    legs.write_text(yaml.safe_dump(LEGS))
+    leg = tmp_path / "in" / "function-support-a"
+    leg.mkdir(parents=True)
+    (leg / "function-support-a.json").write_text(json.dumps(_report("a", _entry("abs", "pass"))))
+    (leg / "leg-failure-a.json").write_text(json.dumps({"engine": "a", "reason": "late"}))
+    out, md = tmp_path / "out.json", tmp_path / "out.md"
+    assert support.merge(["a"], tmp_path / "in", out, md, legs) == 0
+    assert json.loads(out.read_text())["leg_failures"] == {}
+
+
+def test_the_merge_refuses_an_engine_with_no_leg(tmp_path):
+    legs = tmp_path / "legs.yaml"
+    legs.write_text(yaml.safe_dump(LEGS))
+    (tmp_path / "in").mkdir()
+    with pytest.raises(SystemExit, match="no leg"):
+        support.merge(["q"], tmp_path / "in", tmp_path / "o.json", tmp_path / "o.md", legs)
+
+
 def test_a_leg_whose_server_went_away_is_incomplete():
     report = {**_report("a", _entry("abs", "pass")), "server_gone": "Provisa stopped answering"}
     assert support.merged({"a": report})["engines_incomplete"] == ["a"]
@@ -1161,6 +1228,11 @@ def test_the_model_runs_on_the_engine_the_job_names(monkeypatch):
     on_clickhouse = catalog.provisa_config(5432, "dsn")
     assert on_clickhouse["federation_engine"] == "clickhouse"
     assert on_clickhouse["sources"][0]["federation_hints"] == {"schema": "conformance"}
+    monkeypatch.setenv("PROVISA_ENGINE", "clickhouse-server")
+    on_server = catalog.provisa_config(5432, "dsn")
+    assert on_server["sources"][0]["federation_hints"] == {"schema": "conformance"}
+    monkeypatch.setenv("PROVISA_ENGINE", "mysql")
+    assert "federation_hints" not in catalog.provisa_config(5432, "dsn")["sources"][0]
 
 
 WORKFLOW = REPO / ".github" / "workflows" / "conformance-functions.yml"
@@ -1181,18 +1253,36 @@ def test_the_workflow_runs_by_dispatch_only_and_is_no_gate_on_main():
             assert "conformance-functions" not in path.read_text(), path
 
 
-def test_the_merge_names_every_engine_of_the_matrix():
+def test_the_merge_names_every_engine_the_plan_runs():
     jobs = _workflow()["jobs"]
-    engines = [leg["engine"] for leg in jobs["probe"]["strategy"]["matrix"]["include"]]
-    assert engines == ["duckdb", "pg", "clickhouse", "trino"]
+    assert jobs["probe"]["needs"] == "plan"
+    assert jobs["probe"]["strategy"]["matrix"] == "${{ fromJSON(needs.plan.outputs.matrix) }}"
     assert jobs["probe"]["strategy"]["fail-fast"] is False
+    plan = next(s for s in jobs["plan"]["steps"] if s.get("name") == "Plan the legs")
+    assert "function_legs.py plan --lanes \"${{ inputs.lanes || 'free' }}\"" in plan["run"]
+    assert jobs["plan"]["outputs"]["engines"] == "${{ steps.plan.outputs.engines }}"
     merge = next(s for s in jobs["merge"]["steps"] if s.get("name") == "Merge the legs")
-    assert f"--engines {','.join(engines)} " in merge["run"]
-    assert jobs["merge"]["if"] == "${{ !cancelled() }}"
+    assert '--engines "${{ needs.plan.outputs.engines }}"' in merge["run"]
+    assert "--legs scripts/conformance/function_legs.yaml" in merge["run"]
+    assert jobs["merge"]["needs"] == ["plan", "probe"]
+    assert jobs["merge"]["if"] == "${{ !cancelled() && needs.plan.result == 'success' }}"
 
 
-def test_the_workflow_carries_no_secret():
-    assert "secrets." not in WORKFLOW.read_text()
+def test_a_dispatch_runs_the_free_lane_unless_it_names_another():
+    lanes = _workflow()[True]["workflow_dispatch"]["inputs"]["lanes"]
+    assert lanes["default"] == "free"
+    assert lanes["options"] == ["free", "warehouse", "all"]
+
+
+def test_only_a_warehouse_leg_reads_a_secret_and_in_no_environment_of_its_own():
+    probe = _workflow()["jobs"]["probe"]
+    assert "environment" not in probe
+    with_secrets = [s for s in probe["steps"] if "secrets." in json.dumps(s)]
+    assert [s["name"] for s in with_secrets] == ["Bring up the warehouse"]
+    assert with_secrets[0]["if"] == "matrix.lane == 'warehouse'"
+    for name, job in _workflow()["jobs"].items():
+        if name != "probe":
+            assert "secrets" not in json.dumps(job), name
 
 
 def test_a_leg_boots_the_shared_instance_on_its_own_engine():
@@ -1289,6 +1379,34 @@ def test_an_answer_about_the_database_is_equivalent_for_those_functions_only():
     assert _compare(want, got, function="xmlcomment").difference is not None
     garbled = _ok("not xml", oid=142)
     assert _compare(want, garbled, function="database_to_xmlschema").difference is not None
+
+
+def test_a_comparison_function_compares_by_sign_alone():
+    # byteacmp's memcmp difference: -222 on one reference platform, -1 on another (run 44547205126).
+    for want, got in (("-222", "-1"), ("133", "1"), ("0", "0"), ("-97", "-1")):
+        compared = _compare(_ok(want, oid=23), _ok(got, oid=23), function="byteacmp")
+        assert compared.difference is None
+        if want != got:
+            assert compared.rules == {report.COMPARISON_SIGN}
+    for want, got in (("-222", "1"), ("0", "-1"), ("1", "0"), ("1", "x")):
+        compared = _compare(_ok(want, oid=23), _ok(got, oid=23), function="bttextcmp")
+        assert compared.difference is not None
+    # Any other function's integer answer still compares by value.
+    assert _compare(_ok("-222", oid=23), _ok("-1", oid=23), function="length").difference
+
+
+def test_the_comparison_functions_are_the_families_comparators():
+    families = (REPO / "scripts" / "conformance" / "function_families.yaml").read_text()
+    for name in (
+        "byteacmp",
+        "btnametextcmp",
+        "bttext_pattern_cmp",
+        "bttextnamecmp",
+        "gin_cmp_tslexeme",
+        "gin_compare_jsonb",
+    ):
+        assert name in support.COMPARISON_FUNCTIONS
+        assert name in families
 
 
 def test_a_record_compares_json_only_in_its_json_fields():
@@ -1478,6 +1596,7 @@ def test_the_rules_are_the_ones_the_requirement_and_the_brief_name():
         report.ARRAY_ORDER,
         report.CLOCK_FIELD,
         report.ZONE_PACKAGING,
+        report.COMPARISON_SIGN,
     ]
 
 

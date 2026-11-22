@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from provisa.compiler.view_expand import expand_view_refs
 
-_VIEWS = {"view_x": "SELECT 1 AS a"}
+_VIEWS = {"city.view_x": "SELECT 1 AS a"}
 
 
 def test_a_view_named_in_a_string_literal_is_left_as_written():
@@ -31,5 +31,5 @@ def test_a_view_named_in_a_string_literal_is_left_as_written():
 
 def test_the_same_reference_outside_a_literal_is_still_expanded():
     assert expand_view_refs("SELECT a FROM city.view_x", _VIEWS) == (
-        "SELECT a FROM (SELECT 1 AS a) view_x"
+        'SELECT a FROM (SELECT 1 AS a) "view_x"'
     )

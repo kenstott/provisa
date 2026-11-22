@@ -37,6 +37,7 @@ import {
   openRegisterForm,
   openSourceDiscovery,
   openSourcesForm,
+  openListRowDetail,
   pickSchemaAndTable,
   runSqlOnPage,
   expectRegisteredLive,
@@ -377,8 +378,7 @@ test.describe("source to query through the UI — streaming/push types (REQ-1739
     await page.goto("/tables");
     await page.waitForSelector(".page-header", { timeout: 15000 });
     const row = page.locator(".data-table tbody tr").filter({ hasText: sourceId }).first();
-    await row.waitFor({ timeout: 15000 });
-    await row.click();
+    await openListRowDetail(row);
     const editBtn = page.getByTestId("table-read-view-edit").first();
     await editBtn.waitFor({ timeout: 10000 });
     await editBtn.click();
@@ -501,8 +501,11 @@ test.describe("source to query through the UI: kafka (REQ-1739/REQ-1745/REQ-1766
   test.afterAll(async () => {
     // Nothing is left by the afterEach above unless it failed; a table left in service against
     // the stack going down would be rebuilt against a refused connection for the rest of the lane.
-    await retireTestSourcesTables();
-    provisionKafka("down");
+    try {
+      await retireTestSourcesTables();
+    } finally {
+      provisionKafka("down");
+    }
   });
 
   test("kafka: add the source, register a table, land a produced message, query it", async ({
@@ -538,8 +541,7 @@ test.describe("source to query through the UI: kafka (REQ-1739/REQ-1745/REQ-1766
     await page.goto("/tables");
     await page.waitForSelector(".page-header", { timeout: 15000 });
     const row = page.locator(".data-table tbody tr").filter({ hasText: sourceId }).first();
-    await row.waitFor({ timeout: 15000 });
-    await row.click();
+    await openListRowDetail(row);
     const editBtn = page.getByTestId("table-read-view-edit").first();
     await editBtn.waitFor({ timeout: 10000 });
     await editBtn.click();
@@ -704,8 +706,7 @@ test.describe("source to query through the UI: kafka (REQ-1739/REQ-1745/REQ-1766
     await page.goto("/tables");
     await page.waitForSelector(".page-header", { timeout: 15000 });
     const row = page.locator(".data-table tbody tr").filter({ hasText: sourceId }).first();
-    await row.waitFor({ timeout: 15000 });
-    await row.click();
+    await openListRowDetail(row);
     const editBtn = page.getByTestId("table-read-view-edit").first();
     await editBtn.waitFor({ timeout: 10000 });
     await editBtn.click();
@@ -814,8 +815,7 @@ test.describe("source to query through the UI: kafka (REQ-1739/REQ-1745/REQ-1766
     await page.goto("/tables");
     await page.waitForSelector(".page-header", { timeout: 15000 });
     const row = page.locator(".data-table tbody tr").filter({ hasText: sourceId }).first();
-    await row.waitFor({ timeout: 15000 });
-    await row.click();
+    await openListRowDetail(row);
     const editBtn = page.getByTestId("table-read-view-edit").first();
     await editBtn.waitFor({ timeout: 10000 });
     await editBtn.click();

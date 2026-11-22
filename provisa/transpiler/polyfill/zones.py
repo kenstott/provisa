@@ -103,4 +103,7 @@ TIMEZONE = Feature(
     ),
 )
 
+#: The family's place in the grid (polyfill.GRID), which tries the rules of one function in
+#: the order of their families.
+ORDER = 40
 FEATURES: tuple[Feature, ...] = (PG_TIMEZONE_NAMES, TIMEZONE)

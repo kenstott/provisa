@@ -24,20 +24,49 @@
 // A Go function's leading context.Context is the call's own (cancelled when the call is), not
 // one of its inputs, so it is written as a flag on the signature and not as a parameter. A
 // trailing error result is how a Go function fails, so it is not part of what it returns.
+//
+// A function's tags may also come from Provisa's optional SDK (REQ-1984): a package-level
+// registration such as var _ = provisa.Table[In, Row](Fn) adds to Fn's export the tags its doc
+// comment would carry. A registration is found by the SDK's import path, never by the name the
+// import is given; see registrations.
 package main
 
 import (
 	"encoding/json"
 	"fmt"
 	"go/ast"
+	"go/constant"
+	"go/token"
 	"go/types"
 	"os"
+	"path/filepath"
 	"reflect"
 	"regexp"
 	"sort"
 	"strings"
 
 	"golang.org/x/tools/go/packages"
+	"golang.org/x/tools/go/types/typeutil"
+)
+
+// The optional SDK (REQ-1984): its import path, the spelling of it this reader reads, the tag each
+// registration adds, and the tag each option adds.
+const (
+	sdkPath     = "provisa.dev/sdk/go"
+	sdkSpelling = 1
+)
+
+var (
+	sdkRegistrations = map[string]string{
+		"Table": "table", "Stream": "stream", "Command": "command", "Query": "query",
+		"Columns": "columns", "OnStart": "on-start", "OnStop": "on-stop", "Health": "health",
+		"Change": "change",
+	}
+	sdkOptions = map[string]string{
+		"Requires": "requires", "Insert": "insert", "Update": "update", "Delete": "delete",
+	}
+	// A @change registration's positional arguments after the function, each one tag line.
+	changeParts = []string{"table", "key", "removed", "cursor"}
 )
 
 var (
@@ -421,8 +450,220 @@ func read(dir, pattern string) document {
 			doc.Exports = append(doc.Exports, r.function(decl, fn))
 		}
 	}
+	r.registrations(doc.Exports)
 	doc.Diagnostics = append(doc.Diagnostics, r.diagnostics...)
 	return doc
+}
+
+// sdkFunc is the SDK function call calls, by name, or "" when it calls none of the SDK's.
+func (r *reader) sdkFunc(call *ast.CallExpr) string {
+	fn, ok := typeutil.Callee(r.pkg.TypesInfo, call).(*types.Func)
+	if !ok || fn.Pkg() == nil || fn.Pkg().Path() != sdkPath {
+		return ""
+	}
+	return fn.Origin().Name()
+}
+
+func (r *reader) refuse(format string, args ...any) {
+	r.diagnostics = append(r.diagnostics, fmt.Sprintf(format, args...))
+}
+
+func unknownSDK(name string) string {
+	return fmt.Sprintf("%s.%s is not a registration this server reads; it reads SDK spelling %d",
+		sdkPath, name, sdkSpelling)
+}
+
+// registrations adds to exports the tags of each SDK registration: a package-level var whose
+// value calls an SDK registration, in any file of the package. Its first argument names an
+// exported top-level function of the package; every option's arguments are constants. Any other
+// SDK call is refused by name, so a registration the reader cannot see never passes silently.
+func (r *reader) registrations(exports []export) {
+	byName := map[string]*export{}
+	for i := range exports {
+		byName[exports[i].Name] = &exports[i]
+	}
+	read := map[*ast.CallExpr]bool{}
+	for _, file := range r.pkg.Syntax {
+		for _, d := range file.Decls {
+			decl, ok := d.(*ast.GenDecl)
+			if !ok || decl.Tok != token.VAR {
+				continue
+			}
+			for _, spec := range decl.Specs {
+				for _, value := range spec.(*ast.ValueSpec).Values {
+					call, ok := ast.Unparen(value).(*ast.CallExpr)
+					if !ok {
+						continue
+					}
+					if name := r.sdkFunc(call); name != "" {
+						r.register(call, name, byName, read)
+					}
+				}
+			}
+		}
+	}
+	for _, file := range r.pkg.Syntax {
+		ast.Inspect(file, func(n ast.Node) bool {
+			call, ok := n.(*ast.CallExpr)
+			if !ok || read[call] {
+				return true
+			}
+			if name := r.sdkFunc(call); name != "" {
+				at := r.pkg.Fset.Position(call.Pos())
+				r.refuse("%s:%d: provisa.%s is called outside a package-level registration "+
+					"(var _ = provisa.%s(...)), where Provisa does not read it",
+					filepath.Base(at.Filename), at.Line, name, name)
+			}
+			return true
+		})
+	}
+}
+
+// register reads one registration, call, of the SDK function name.
+func (r *reader) register(call *ast.CallExpr, name string, byName map[string]*export, read map[*ast.CallExpr]bool) {
+	read[call] = true
+	tag, known := sdkRegistrations[name]
+	if !known {
+		if _, option := sdkOptions[name]; option {
+			r.refuse("provisa.%s is an option, given to a registration such as provisa.Table", name)
+		} else {
+			r.refuse("%s", unknownSDK(name))
+		}
+		return
+	}
+	if len(call.Args) == 0 {
+		return // the compiler refuses it
+	}
+	written := types.ExprString(call.Args[0])
+	if literal, isLiteral := ast.Unparen(call.Args[0]).(*ast.FuncLit); isLiteral {
+		written = types.ExprString(literal.Type) + " {...}"
+	}
+	ident, ok := ast.Unparen(call.Args[0]).(*ast.Ident)
+	var fn *types.Func
+	if ok {
+		fn, _ = r.pkg.TypesInfo.Uses[ident].(*types.Func)
+	}
+	if fn == nil || fn.Pkg() != r.pkg.Types || fn.Parent() != r.pkg.Types.Scope() {
+		r.refuse("provisa.%s(%s): a registration names a top-level function of this package, "+
+			"not %s", name, written, written)
+		return
+	}
+	target, exported := byName[fn.Name()]
+	if !exported {
+		r.refuse("provisa.%s(%s): %s is not exported, and Provisa serves an exported function",
+			name, written, written)
+		return
+	}
+	options := call.Args[1:]
+	if name == "Change" {
+		if len(call.Args) < 1+len(changeParts) {
+			return // the compiler refuses it
+		}
+		for i, part := range changeParts {
+			value, ok := r.changeValue(call.Args[1+i])
+			if !ok {
+				r.refuse("%s: provisa.Change's %s is a constant, not %s",
+					target.Name, part, types.ExprString(call.Args[1+i]))
+				continue
+			}
+			target.TagArguments = append(target.TagArguments, tagArg{tag, part + "=" + value})
+		}
+		options = call.Args[1+len(changeParts):]
+	} else if !contains(target.Tags, tag) {
+		target.Tags = append(target.Tags, tag)
+	}
+	if call.Ellipsis.IsValid() {
+		r.refuse("%s: provisa.%s's options are written out, each a call, not spread from a slice",
+			target.Name, name)
+		return
+	}
+	for _, option := range options {
+		r.option(option, name, target, read)
+	}
+}
+
+// option reads one option of a registration of target.
+func (r *reader) option(arg ast.Expr, registration string, target *export, read map[*ast.CallExpr]bool) {
+	call, ok := ast.Unparen(arg).(*ast.CallExpr)
+	name := ""
+	if ok {
+		name = r.sdkFunc(call)
+	}
+	if name == "" {
+		r.refuse("%s: an option of provisa.%s is a call such as provisa.Requires(...), not %s",
+			target.Name, registration, types.ExprString(arg))
+		return
+	}
+	read[call] = true
+	tag, known := sdkOptions[name]
+	if !known {
+		r.refuse("%s: %s", target.Name, unknownSDK(name))
+		return
+	}
+	if len(call.Args) == 0 {
+		return // the compiler refuses it
+	}
+	text, ok := r.constantString(call.Args[0])
+	if !ok {
+		r.refuse("%s: provisa.%s takes a constant, not %s",
+			target.Name, name, types.ExprString(call.Args[0]))
+		return
+	}
+	for _, flag := range call.Args[1:] {
+		value := r.pkg.TypesInfo.Types[flag].Value
+		if value == nil || value.Kind() != constant.Bool {
+			r.refuse("%s: provisa.%s(%s, ...) takes provisa.Secret, a constant, not %s",
+				target.Name, name, text, types.ExprString(flag))
+			return
+		}
+	}
+	if len(call.Args) > 2 {
+		r.refuse("%s: provisa.%s(%s, ...) says once whether it is a secret", target.Name, name, text)
+		return
+	}
+	if len(call.Args) == 2 && constant.BoolVal(r.pkg.TypesInfo.Types[call.Args[1]].Value) {
+		text += ":secret"
+	}
+	target.TagArguments = append(target.TagArguments, tagArg{tag, text})
+}
+
+// constantString is e's value when e is a string constant.
+func (r *reader) constantString(e ast.Expr) (string, bool) {
+	value := r.pkg.TypesInfo.Types[e].Value
+	if value == nil || value.Kind() != constant.String {
+		return "", false
+	}
+	return constant.StringVal(value), true
+}
+
+// changeValue is a provisa.Change part as its tag line writes it: a string constant, or for the
+// key a []string literal of string constants, joined by commas.
+func (r *reader) changeValue(e ast.Expr) (string, bool) {
+	if text, ok := r.constantString(e); ok {
+		return text, true
+	}
+	literal, ok := ast.Unparen(e).(*ast.CompositeLit)
+	if !ok || len(literal.Elts) == 0 {
+		return "", false
+	}
+	columns := make([]string, len(literal.Elts))
+	for i, element := range literal.Elts {
+		text, ok := r.constantString(element)
+		if !ok {
+			return "", false
+		}
+		columns[i] = text
+	}
+	return strings.Join(columns, ","), true
+}
+
+func contains(values []string, value string) bool {
+	for _, v := range values {
+		if v == value {
+			return true
+		}
+	}
+	return false
 }
 
 func main() {

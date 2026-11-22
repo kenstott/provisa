@@ -13,7 +13,7 @@ import type { APIRequestContext, Page } from "@playwright/test";
 import { isAssignableDomain } from "../src/lib/internalDomains";
 
 /**
- * REQ-2247, REQ-2122: the Syncing page, driven in a browser against the real server.
+ * REQ-2247, REQ-2122: the Context Sync page, driven in a browser against the real server.
  *
  * An entry is connected once: its type, its direction and, for a data catalog, its provider,
  * address, credential and the domains that work with it. What is checked is what the server keeps
@@ -60,7 +60,7 @@ async function forget(request: APIRequestContext, id: string) {
 }
 
 async function openPage(page: Page) {
-  await page.goto("/admin/syncing");
+  await page.goto("/context/sync");
   await expect(page.getByTestId("syncing-add")).toBeVisible({ timeout: 60000 });
 }
 

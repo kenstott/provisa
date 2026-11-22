@@ -38,7 +38,7 @@ vi.mock("../../context/AuthContext", async (importOriginal) => ({
     role: "admin",
     selectedRoles: [{ id: "admin", effectiveCapabilities: [], effectiveResidencyValues: [] }],
     // REQ-1944: the table editor's right -- without it the page is the governance-only view.
-    capabilities: ["admin", "table_registration"],
+    capabilities: ["admin", "table_registration", "create_view"],
     domainAccess: ["*"],
   }),
 }));

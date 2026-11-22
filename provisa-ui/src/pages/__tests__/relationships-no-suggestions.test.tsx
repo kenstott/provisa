@@ -45,6 +45,7 @@ const REGISTERED = {
 };
 const RELS = { relationships: [REGISTERED], loading: false, refetch: vi.fn() };
 const TABLES = {
+  refetch: () => Promise.resolve(),
   tables: [
     {
       id: 1,
@@ -99,13 +100,24 @@ vi.mock("../../api/admin", async (importOriginal) => ({
   startDiscoveryRun: vi.fn(),
   fetchDiscoveryRun: vi.fn(),
   fetchDiscoveryRuns: vi.fn(),
-  fetchRunProposals: vi.fn().mockResolvedValue({ proposals: [], threshold: 0.7, kept_at: 0.7 }),
-  // REQ-413: Key value overlap as a person who has set none has it; the form waits for it.
-  fetchDiscoveryKeyValues: vi.fn().mockResolvedValue({
-    chosen: true,
-    cutoff: 0.2,
-    sample_size: 10000,
-    defaults: { chosen: true, cutoff: 0.2, sample_size: 10000 },
+  fetchRunProposals: vi
+    .fn()
+    .mockResolvedValue({ proposals: [], threshold: 0.7, kept_at: 0.7, score_filter: null }),
+  // REQ-413: the run settings of a person who has set none; the form waits for them.
+  fetchDiscoverySettings: vi.fn().mockImplementation(async () => {
+    const defaults = {
+      threshold: 0.7,
+      samples_per_column: 5,
+      key_values: {
+        chosen: true,
+        cutoff: 0.2,
+        sample_size: 10000,
+        contained_at: 0.95,
+        shared_ceiling: 0.6,
+      },
+      score_filter: { op: "ge", a: "10" },
+    };
+    return { ...defaults, defaults };
   }),
 }));
 vi.mock("../../api/actions", () => ({
@@ -184,6 +196,8 @@ describe("RelationshipsPage: a run's result leaves the page without a suggested 
       requests: 0,
       requests_are: "upper_bound",
       by_group: {},
+      table_pairs: 0,
+      table_pairs_per_request: 27,
       model: null,
       source_tables: 2,
       target_tables: 2,
@@ -201,6 +215,13 @@ describe("RelationshipsPage: a run's result leaves the page without a suggested 
         target_tables: null,
         vendor: null,
         model: null,
+        threshold: 0.7,
+        samples_per_column: 5,
+        measure_cutoff: null,
+        sample_size: null,
+        contained_at: null,
+        shared_ceiling: null,
+        either_way: false,
       },
       model: null,
       requests_total: 0,
@@ -232,6 +253,7 @@ describe("RelationshipsPage: a run's result leaves the page without a suggested 
       proposals: waiting,
       threshold: 0.7,
       kept_at: 0.7,
+      score_filter: null,
     });
     render(<RelationshipsPage />);
     await screen.findByTestId("relationships-split");

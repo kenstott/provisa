@@ -85,6 +85,7 @@ from typing import TYPE_CHECKING, Any
 
 import httpx
 
+from provisa.api.catalog_import.reader import CatalogReader, CatalogTerm
 from provisa.core.http_failure import describe_http_failure
 from provisa.api.metadata_export.provider import (
     AssetError,
@@ -92,8 +93,9 @@ from provisa.api.metadata_export.provider import (
     MetadataExport,
     PublishResult,
 )
-from provisa.api.metadata_export.model import junction_payload
+from provisa.api.metadata_export.model import GovernanceSignal, junction_payload
 from provisa.api.metadata_export.registry import register_provider
+from provisa.api.metadata_export import sync_values as sv
 from provisa.security import sandbox_egress  # REQ-2006: held to public destinations
 
 if TYPE_CHECKING:
@@ -204,6 +206,101 @@ def _tags_for(snapshot: MetadataSnapshot, asset_fqn: str) -> list[dict[str, str]
         if tag.asset is not None and tag.asset.fqn() == asset_fqn
     ]
     return governance + registry
+
+
+def _live_text(*aspects: dict[str, Any] | None) -> str:
+    """The first non-empty ``description`` of the aspects given, edited before ingested. An
+    aspect with none is the empty description Provisa publishes for one (REQ-2247)."""
+    for aspect in aspects:
+        if aspect is not None and aspect.get("description"):
+            return str(aspect["description"])
+    return ""
+
+
+def _live_tag_names(*tag_lists: list[dict[str, Any]] | None) -> tuple[str, ...]:
+    """Tags in Syncing's neutral form: a registry tag by its Provisa id, a governance tag left
+    out, any other by its name (REQ-2247)."""
+    signals = {f"{TAG_PREFIX}{signal.value}" for signal in GovernanceSignal}
+    names = []
+    for tags in tag_lists:
+        for entry in tags or []:
+            name = str(entry.get("tag", "")).removeprefix("urn:li:tag:")
+            if name in signals:
+                continue
+            names.append(name.removeprefix(TAG_PREFIX))
+    return sv.names(names)
+
+
+def _live_term_names(term_prefix: str, *term_lists: list[dict[str, Any]] | None) -> tuple[str, ...]:
+    """Glossary links in Syncing's neutral form: a term in Provisa's node by its name, any other
+    by its URN (REQ-2247)."""
+    names = []
+    for terms in term_lists:
+        for entry in terms or []:
+            urn = str(entry.get("urn", ""))
+            names.append(urn.removeprefix(term_prefix) if urn.startswith(term_prefix) else urn)
+    return sv.names(names)
+
+
+def _live_dataset_values(
+    table: TableAsset, live: dict[str, dict[str, Any] | None], term_prefix: str
+) -> list[sv.SyncValue]:
+    """One live dataset's values, addressed by the snapshot table's Provisa names (REQ-2247)."""
+    group = table.ref.fqn()
+    owners = sv.names(
+        str(o["owner"]).removeprefix("urn:li:corpuser:")
+        for o in (live["ownership"] or {}).get("owners") or []
+    )
+    values = [
+        sv.SyncValue(
+            sv.DESCRIPTION,
+            group,
+            group,
+            _live_text(live["editableDatasetProperties"], live["datasetProperties"]),
+        ),
+        sv.SyncValue(sv.OWNER, group, group, owners),
+        sv.SyncValue(sv.TAG, group, group, _live_tag_names((live["globalTags"] or {}).get("tags"))),
+        sv.SyncValue(
+            sv.GLOSSARY_LINK,
+            group,
+            group,
+            _live_term_names(term_prefix, (live["glossaryTerms"] or {}).get("terms")),
+        ),
+    ]
+    ingested = {f.get("fieldPath"): f for f in (live["schemaMetadata"] or {}).get("fields") or []}
+    edited = {
+        f.get("fieldPath"): f
+        for f in (live["editableSchemaMetadata"] or {}).get("editableSchemaFieldInfo") or []
+    }
+    for column in table.columns:
+        name = _field_path(column.ref)
+        field, edit = ingested.get(name), edited.get(name)
+        if field is None and edit is None:
+            continue
+        obj = column.ref.fqn()
+        values += [
+            sv.SyncValue(sv.COLUMN_DESCRIPTION, group, obj, _live_text(edit, field)),
+            sv.SyncValue(
+                sv.TAG,
+                group,
+                obj,
+                _live_tag_names(
+                    ((field or {}).get("globalTags") or {}).get("tags"),
+                    ((edit or {}).get("globalTags") or {}).get("tags"),
+                ),
+            ),
+            sv.SyncValue(
+                sv.GLOSSARY_LINK,
+                group,
+                obj,
+                _live_term_names(
+                    term_prefix,
+                    ((field or {}).get("glossaryTerms") or {}).get("terms"),
+                    ((edit or {}).get("glossaryTerms") or {}).get("terms"),
+                ),
+            ),
+        ]
+    return values
 
 
 def _tag_definitions(snapshot: MetadataSnapshot) -> list[AspectProposal]:
@@ -764,6 +861,9 @@ def to_proposals(snapshot: MetadataSnapshot) -> list[AspectProposal]:
                 }
             )
         custom["provisaUri"] = table.semantic_uri  # REQ-1385: also the clickable externalUrl
+        if snapshot.environment is not None:  # REQ-2261: tells production assets from others
+            custom["provisaEnvironment"] = snapshot.environment.name
+            custom["provisaStage"] = snapshot.environment.stage
         properties: dict[str, Any] = {
             # REQ-1385: the presented name is the business name; qualifiedName is the binding.
             "name": table.aliases[0] if table.aliases else table.name,
@@ -869,7 +969,7 @@ def to_proposals(snapshot: MetadataSnapshot) -> list[AspectProposal]:
 
 
 @register_provider
-class DataHubExport(MetadataExport):  # REQ-1069
+class DataHubExport(MetadataExport, CatalogReader):  # REQ-1069
     """Publish a snapshot to DataHub as aspect proposals."""
 
     provider_name = "datahub"
@@ -1347,9 +1447,147 @@ class DataHubExport(MetadataExport):  # REQ-1069
                     )
         return result
 
+    async def _read_aspect(
+        self, client: httpx.AsyncClient, urn: str, aspect: str
+    ) -> dict[str, Any] | None:
+        """One live aspect's value, None when the entity has none. Any other refusal raises,
+        naming the request and the answer (REQ-2247: never an empty read)."""
+        route = f"{self.aspects_path}/{quote(urn, safe='')}?aspect={aspect}&version=0"
+        response = await client.get(self._url(route), headers=self._headers())
+        if response.status_code == 404:
+            return None
+        response.raise_for_status()
+        # GMS wraps the value in its record-class key ({"aspect": {"com.linkedin...": {...}}}).
+        for value in (response.json().get("aspect") or {}).values():
+            if isinstance(value, dict):
+                return value
+        return None
+
+    async def read(self, snapshot: MetadataSnapshot) -> dict[sv.Key, sv.SyncValue]:
+        """The catalog's description, column descriptions, owners, tags and glossary links of
+        each snapshot dataset, and the definition of each Provisa term (REQ-2247).
+
+        What a DataHub user sees is read: a description or field edited in DataHub (the
+        ``editable*`` aspects) over the one Provisa ingested, and a field's tags and terms from
+        both. A term in Provisa's node reads as its name; any other keeps its URN. ``provisa_``
+        governance tags are rules Provisa enforces and are not read; a registry tag reads as its
+        Provisa tag id.
+        """
+        term_prefix = glossary_term_urn(snapshot.org_id, "")
+        values: list[sv.SyncValue] = []
+        async with httpx.AsyncClient(
+            timeout=self._config.timeout_seconds, event_hooks=sandbox_egress.endpoint_event_hooks()
+        ) as client:
+            for table in snapshot.tables:
+                urn = dataset_urn(table.ref)
+                live = {
+                    aspect: await self._read_aspect(client, urn, aspect)
+                    for aspect in (
+                        "datasetProperties",
+                        "editableDatasetProperties",
+                        "schemaMetadata",
+                        "editableSchemaMetadata",
+                        "ownership",
+                        "globalTags",
+                        "glossaryTerms",
+                    )
+                }
+                if live["datasetProperties"] is None and live["schemaMetadata"] is None:
+                    continue  # the catalog does not hold this dataset
+                values += _live_dataset_values(table, live, term_prefix)
+            for term in snapshot.glossary_terms:
+                info = await self._read_aspect(
+                    client, glossary_term_urn(snapshot.org_id, term.name), "glossaryTermInfo"
+                )
+                if info is not None:
+                    definition = str(info["definition"]) if info.get("definition") else ""
+                    values.append(
+                        sv.SyncValue(sv.TERM_DEFINITION, term.name, term.name, definition)
+                    )
+        return {v.key: v for v in values}
+
     async def health(self) -> None:
         async with httpx.AsyncClient(
             timeout=self._config.timeout_seconds, event_hooks=sandbox_egress.endpoint_event_hooks()
         ) as client:
             response = await client.get(self._url(self.health_path), headers=self._headers())
         response.raise_for_status()
+
+    #: GMS's GraphQL endpoint and the terms read per scroll page (REQ-2247).
+    graphql_path = "/api/graphql"
+    glossary_page_size = 100
+
+    async def list_glossary(self) -> list[CatalogTerm]:  # REQ-2247
+        """Every glossary term, read by scrolling the search index to its last page. A term's
+        broader terms are its IsA (Inherits) terms, the relation the export writes KIND_OF as."""
+        terms: list[CatalogTerm] = []
+        scroll_id: str | None = None
+        async with httpx.AsyncClient(
+            timeout=self._config.timeout_seconds, event_hooks=sandbox_egress.endpoint_event_hooks()
+        ) as client:
+            while True:
+                scroll: dict[str, Any] = {
+                    "types": ["GLOSSARY_TERM"],
+                    "query": "*",
+                    "count": self.glossary_page_size,
+                }
+                if scroll_id is not None:
+                    scroll["scrollId"] = scroll_id
+                response = await client.post(
+                    self._url(self.graphql_path),
+                    json={"query": _GLOSSARY_QUERY, "variables": {"input": scroll}},
+                    headers=self._headers(),
+                )
+                response.raise_for_status()
+                body = response.json()
+                if body.get("errors"):
+                    raise RuntimeError(
+                        f"DataHub glossary listing failed: {body['errors'][0].get('message')}"
+                    )
+                page = body["data"]["scrollAcrossEntities"]
+                terms.extend(_catalog_term(r["entity"]) for r in page["searchResults"])
+                scroll_id = page.get("nextScrollId")
+                if not scroll_id:
+                    return terms
+
+
+#: The most IsA terms read for one glossary term; a term with more is refused, never truncated.
+_MAX_BROADER = 1000
+
+# REQ-2247: one scroll page of glossary terms with each one's IsA (Inherits) terms.
+_GLOSSARY_QUERY = (
+    "query provisaGlossary($input: ScrollAcrossEntitiesInput!) {"
+    " scrollAcrossEntities(input: $input) { nextScrollId searchResults { entity { urn"
+    " ... on GlossaryTerm { properties { name definition }"
+    f' isA: relationships(input: {{types: ["IsA"], direction: OUTGOING, start: 0,'
+    f" count: {_MAX_BROADER}}}) {{ total relationships {{ entity {{ urn"
+    " ... on GlossaryTerm { properties { name } } } } } } } } } }"
+)
+
+
+def _catalog_term(entity: dict[str, Any]) -> CatalogTerm:  # REQ-2247
+    """A glossary term as the listing returns it; one without its info aspect is refused."""
+    urn = entity["urn"]
+    props = entity.get("properties")
+    if props is None:
+        raise RuntimeError(f"DataHub glossary term {urn} has no glossaryTermInfo")
+    isa = entity["isA"]
+    if isa["total"] > len(isa["relationships"]):
+        raise RuntimeError(
+            f"DataHub glossary term {urn} has {isa['total']} IsA terms; at most {_MAX_BROADER} are read"
+        )
+    broader = []
+    for rel in isa["relationships"]:
+        parent = rel["entity"].get("properties")
+        if parent is None:
+            raise RuntimeError(
+                f"DataHub glossary term {urn} inherits from {rel['entity']['urn']}, "
+                "which has no glossaryTermInfo"
+            )
+        broader.append(parent["name"])
+    return CatalogTerm(
+        name=props["name"],
+        definition=(props.get("definition") or "").strip() or None,
+        broader=tuple(broader),
+        ref=urn,
+    )

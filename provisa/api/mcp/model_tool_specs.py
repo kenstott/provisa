@@ -492,8 +492,61 @@ async def dispatch(state: Any, role: str, name: str, args: dict, request: Any) -
     """Run tool ``name`` with ``args`` as keywords (only the fields the model sent)."""
     if request is None:
         raise ValueError(f"{name} requires a verified request context")
+    await _refuse_outside_selection(state, name, args)
     fn = getattr(model_tools, name)
     return await fn(state, role, request, **args)
+
+
+#: The arguments that name a registered table by id.
+_TABLE_ARGS = ("table_id", "expectations_table_id", "checker_table_id")
+
+#: The tools that act on what spans every domain: an environment's data, the synthetic datasets
+#: (each over tables of any domain), the whole model's config.
+_WHOLE_ORG = {
+    "list_synthetic_datasets": "The synthetic datasets",
+    "list_synthetic_profile_runs": "An environment's synthetic profile runs",
+    "define_synthetic_dataset": "A synthetic dataset",
+    "generate_synthetic_dataset": "A synthetic dataset",
+    "get_synthetic_report": "A synthetic dataset",
+    "drop_synthetic_dataset": "A synthetic dataset",
+    "get_environment_detail": "An environment's data",
+    "set_environment_data": "An environment's data",
+    "set_source_binding": "An environment's data",
+    "recopy_environment_sources": "An environment's data",
+    "get_environment_synthetic_plan": "An environment's data",
+    "generate_environment_model": "An environment's data",
+    "reset_environment_mutations": "An environment's data",
+    "export_model_config": "The model's config",
+}
+
+
+async def _refuse_outside_selection(state: Any, name: str, args: dict) -> None:
+    """REQ-2253: under a selection in the domain filter, a tool reads and changes nothing outside
+    it -- a table named by id, a domain named, a profiler's member tables -- and a tool acting on
+    what spans every domain is refused by name. No selection: nothing is asked."""
+    from provisa.security.selected_domains import current, refuse_object, refuse_whole_org
+
+    if current() is None:
+        return
+    if name in _WHOLE_ORG:
+        refuse_whole_org(_WHOLE_ORG[name])
+    if name == "find_table_id":
+        refuse_object(f"Domain {args['domain']!r}", {args["domain"]})
+    from provisa.api.admin.domain_guard import table_domain
+
+    pool = state.model_db
+    assert pool is not None
+    async with pool.acquire() as conn:
+        for key in _TABLE_ARGS:
+            if args.get(key) is not None:
+                table_id = int(args[key])
+                refuse_object(f"Table {table_id}", {await table_domain(conn, table_id)})
+        if name == "run_profiler":
+            from provisa.profiler.source import members
+
+            for member in await members(conn, args["source_id"]):
+                domain = await table_domain(conn, member["id"])
+                refuse_object(f"Table {member['table_name']!r}", {domain})
 
 
 SYSTEM_SECTION = (
@@ -517,4 +570,124 @@ SYSTEM_SECTION = (
     "refusal from any of these is the admin's own message — report it to the user as it is. "
     "Tables are named by numeric id: get it from find_table_id, never guess one. Per the page-first rule, navigate to /tables before a profiler, constraint, check or fake "
     "change, and to /admin/environments before a synthetic dataset change."
+)
+
+
+# -- tags: the tag assignment form's and the tag editor's edits ----------------------------------
+
+_OBJECT = {
+    "object_kind": {
+        "type": "string",
+        "enum": [
+            "source",
+            "table",
+            "column",
+            "relationship",
+            "command",
+            "product",
+            "term",
+            "rls_rule",
+            "role",
+            "metric",
+            "document",
+            "section",
+        ],
+    },
+    "object_key": {
+        "type": "string",
+        "description": "As read_screen's tags give it: <kind>:<id>, column:<table id>:<column>.",
+    },
+    "tag_id": {
+        "type": "string",
+        "description": "Tag id with its parameter if any (entity:customer).",
+    },
+}
+_CITATION = {
+    "type": "object",
+    "description": "A library document or one of its sections, by heading or by page.",
+    "properties": {
+        "document_id": {"type": "integer"},
+        "section_heading": {"type": "string"},
+        "section_page": {"type": "integer"},
+    },
+    "required": ["document_id"],
+}
+_CONFIRMED = " Shown to the user to confirm in the chat; written at once over MCP."
+
+TAG_SPECS: list[dict] = [
+    {
+        "name": "assign_tag",
+        "description": (
+            "Put a tag on an object or change that assignment (assignTag): reason, expiry (ISO "
+            "date) and citations, the whole set, where the tag asks for them." + _CONFIRMED
+        ),
+        "input_schema": _obj(
+            {
+                **_OBJECT,
+                "reason": {"type": "string"},
+                "expires_on": {"type": "string"},
+                "citations": {"type": "array", "items": _CITATION},
+            },
+            ["object_kind", "object_key", "tag_id"],
+        ),
+    },
+    {
+        "name": "unassign_tag",
+        "description": (
+            "Take a tag off an object (unassignTag); an inherited or derived tag is refused."
+            + _CONFIRMED
+        ),
+        "input_schema": _obj(_OBJECT, ["object_kind", "object_key", "tag_id"]),
+    },
+    {
+        "name": "cite_tag_assignment",
+        "description": (
+            "An assignment of a tag cites a document or section (citeTagAssignment); citing again "
+            "re-records it, confirming one that needs review." + _CONFIRMED
+        ),
+        "input_schema": _obj(
+            {**_OBJECT, "citation": _CITATION},
+            ["object_kind", "object_key", "tag_id", "citation"],
+        ),
+    },
+    {
+        "name": "uncite_tag_assignment",
+        "description": (
+            "Take a citation off one assignment of a tag (unciteTagAssignment)." + _CONFIRMED
+        ),
+        "input_schema": _obj(
+            {**_OBJECT, "citation": _CITATION},
+            ["object_kind", "object_key", "tag_id", "citation"],
+        ),
+    },
+    {
+        "name": "cite_tag_definition",
+        "description": (
+            "A tag's definition cites the document or section saying why it exists "
+            "(citeTagDefinition); citing again re-records it." + _CONFIRMED
+        ),
+        "input_schema": _obj(
+            {"tag_id": _OBJECT["tag_id"], "citation": _CITATION}, ["tag_id", "citation"]
+        ),
+    },
+    {
+        "name": "uncite_tag_definition",
+        "description": (
+            "Take a citation off a tag's definition (unciteTagDefinition)." + _CONFIRMED
+        ),
+        "input_schema": _obj(
+            {"tag_id": _OBJECT["tag_id"], "citation": _CITATION}, ["tag_id", "citation"]
+        ),
+    },
+]
+
+TAG_NAMES: frozenset[str] = frozenset(s["name"] for s in TAG_SPECS)
+
+TAG_SYSTEM_SECTION = (
+    "Tag edits: assign_tag, unassign_tag, cite_tag_assignment, uncite_tag_assignment, "
+    "cite_tag_definition, uncite_tag_definition are the tag assignment form's and the tag "
+    "editor's own changes. Name the object by object_kind and object_key exactly as read_screen's "
+    "tags report it. Each is a proposal: the user sees the change and confirms it before it is "
+    "written, so never ask a separate yes/no first; a refusal is the form's own message, report "
+    "it as it is."
 )

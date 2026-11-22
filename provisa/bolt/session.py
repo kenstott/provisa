@@ -22,6 +22,7 @@ from typing import Any
 from sqlalchemy import select
 
 import provisa.bolt.messages as msg
+from provisa.auth.held_assignments import NoRoleHeld, may_act_cross_org
 from provisa.auth.throttle import LockedOut
 from provisa.bolt.packstream import pack_message
 from provisa.bolt.websocket import BoltWriter
@@ -130,6 +131,9 @@ class BoltSession:
         self._identity: Any = None
         # All role_ids the authenticated user holds; each surfaces as a "provisa_<role>" database.
         self.roles: list[str] = []
+        # What the home database acts as (REQ-2155): the comma-separated set of every held role,
+        # acting as their union; a personal access token's first live scope (REQ-1263).
+        self.default_role: str | None = None
         # Active role for the current tx/run, chosen via the Bolt `db` field. Defaults to roles[0].
         self.role_id: str | None = None
         # db selected by the most recent BEGIN (explicit-tx path).
@@ -351,7 +355,10 @@ class BoltSession:
                 else all_roles
             )
             self._identity = None
-            return (principal or "anonymous", ordered) if ordered else None
+            if not ordered:
+                return None
+            self.default_role = ordered[0]
+            return principal or "anonymous", ordered
 
         identity = await self._authenticate(app_state, scheme, principal, credentials)
         if identity is None:
@@ -359,6 +366,9 @@ class BoltSession:
         roles = await self._selectable_roles(app_state, identity)
         if not roles:
             return None
+        from provisa.auth.held_assignments import default_request
+
+        self.default_role = default_request(app_state, identity, roles[0], roles)
         self._credential_org = identity.active_org_id
         self._identity = identity
         return identity.user_id, roles
@@ -416,9 +426,10 @@ class BoltSession:
             # No admin default: an identity matching no mapping rule is refused, not escalated.
             raise RuntimeError("bolt auth requires auth.default_role to be configured")
         try:
-            _acts_as, ordered = await sign_in_roles(
-                app_state, identity, identity.active_org_id, naming=True
-            )
+            _acts_as, ordered = await sign_in_roles(app_state, identity, identity.active_org_id)
+        except NoRoleHeld:
+            # REQ-120, REQ-802: refused by name, as every wire sign-in refuses it (handle_hello).
+            raise
         except PermissionError:
             # REQ-1263: a personal access token none of whose scopes its owner still holds.
             return []
@@ -531,9 +542,10 @@ class BoltSession:
 
         if not self.roles:
             return None
-        default = self.roles[0]
         if not db or db in ("system", "provisa", "neo4j"):
-            return default, False
+            if self.default_role is None:
+                raise RuntimeError("bolt session holds roles but no home role was resolved")
+            return self.default_role, False
         for prefix, include_ops in (("provisa_ops_", True), ("provisa_", False)):
             if isinstance(db, str) and db.startswith(prefix):
                 named = [r.strip() for r in db[len(prefix) :].split(",") if r.strip()]
@@ -574,6 +586,9 @@ class BoltSession:
             except LockedOut as locked:
                 self.send_failure(_RATE_LIMIT_CODE, str(locked))
                 return
+            except NoRoleHeld as refused:
+                self.send_failure("Neo.ClientError.Security.Unauthorized", str(refused))
+                return
             if resolved is None:
                 self.send_failure(
                     "Neo.ClientError.Security.Unauthorized",
@@ -610,6 +625,11 @@ class BoltSession:
         except LockedOut as locked:
             self.send_failure(_RATE_LIMIT_CODE, str(locked))
             return
+        except NoRoleHeld as refused:
+            # REQ-120, REQ-802: a sign-in holding no role is told so by name, not "Invalid
+            # credentials" -- its credential was valid.
+            self.send_failure("Neo.ClientError.Security.Unauthorized", str(refused))
+            return
         if resolved is None:
             self.send_failure(
                 "Neo.ClientError.Security.Unauthorized",
@@ -626,6 +646,7 @@ class BoltSession:
         self._credential_org = None
         self._identity = None
         self.roles = []
+        self.default_role = None
         self.role_id = None
         self.state = State.AUTHENTICATION
         self.send_success({})
@@ -755,12 +776,24 @@ class BoltSession:
         from provisa.api.app import ensure_serving_runtime, state as app_state
         from provisa.api.org_resolve import org_named_by_host_or_database, resolve_session_org
 
-        # REQ-1337: resolve the claims to RIGHTS and test cross_org — never the role name.
-        caps = capabilities_for_claims(self.roles, app_state.platform_roles)
+        if not app_state.multitenancy:
+            # A single-tenant deployment has one org, and nothing names it or opens another
+            # (REQ-1235): there is no cross-org right to judge, so no holdings are read.
+            can_act_any_org = False
+        elif self._identity is None:
+            # Unsecured: the roles a driver names are taken at their word, as the HTTP middleware
+            # takes X-Provisa-Role's (REQ-1952); there is no principal to read holdings for.
+            can_act_any_org = can_act_cross_org(
+                capabilities_for_claims(self.roles, app_state.platform_roles)
+            )
+        else:
+            # REQ-1337, REQ-802: the cross_org RIGHT of the roles the principal holds on the
+            # platform plane -- never the role name, and never the session's selectable roles.
+            can_act_any_org = await may_act_cross_org(app_state, self._identity)
         org_id = await resolve_session_org(
             app_state,
             user_id=self.user_id,
-            can_act_any_org=can_act_cross_org(caps),
+            can_act_any_org=can_act_any_org,
             requested_org=org_named_by_host_or_database(self._requested_org(), database_org),
             credential_org=self._credential_org,
             named_by=(
@@ -818,7 +851,7 @@ class BoltSession:
             and db.lower() in await self._created_databases(_app_state)
         ):
             # A database the principal created names its home database (provisa.bolt.databases).
-            resolved = self.roles[0], False
+            resolved = self._resolve_db("provisa", derived_held)
 
         log.debug(
             "[BOLT] RUN cypher=%r db=%r resolved=%r state=%s",

@@ -46,7 +46,7 @@
     "nextPage": "עמוד הבא",
     "lastPage": "עמוד אחרון",
     "roleLabel": "פועל כתפקיד",
-    "validationRoleRequired": "טריגר SQL או פקודה רץ בתפקיד: בחרו אחד.",
+    "validationRoleRequired": "טריגר SQL או טריגר פקודה רץ בתפקיד מסוים, ולכן יש לבחור תפקיד.",
     "runsAs": "פועל כ-{{role}}",
     "deleteTitle": "למחוק את הטריגר \"{{name}}\"?",
     "deleteConsequence": "הטריגר יוסר ולא ירוץ יותר.",

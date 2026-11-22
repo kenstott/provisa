@@ -70,8 +70,10 @@ def _load(con: duckdb.DuckDBPyConnection, root: Path) -> None:
     files = {
         ("salesforce", "Account"): "salesforce/salesforce.Account.tsv",
         ("salesforce", "Opportunity"): "salesforce/salesforce.Opportunity.tsv",
+        ("salesforce", "Contact"): "salesforce/salesforce.Contact.tsv",
         ("servicenow", "core_company"): "servicenow/servicenow.core_company.tsv",
         ("servicenow", "incident"): "servicenow/servicenow.incident.tsv",
+        ("servicenow", "sys_user"): "servicenow/servicenow.sys_user.tsv",
         ("jira", "bug"): "jira/jira.bug.tsv",
         ("stripe", "get_customers"): "stripe/default.get_customers.tsv",
         ("stripe", "get_invoices"): "stripe/default.get_invoices.tsv",
@@ -86,7 +88,7 @@ def _load(con: duckdb.DuckDBPyConnection, root: Path) -> None:
         "timestamp": "TIMESTAMP",
     }
     for table in _CONFIG["tables"]:
-        if table["source_id"] == "hub":
+        if table["source_id"] in ("hub", "er"):  # Postgres's: the hub loaded below
             continue
         path = root / "replica_rows" / files[(table["source_id"], table["table"])]
         lines = path.read_text().rstrip("\n").split("\n")
@@ -168,10 +170,15 @@ def test_the_check_finds_what_was_planted(shipped):
         " COALESCE(evidence_customer, '') FROM hub_findings ORDER BY 1, 2, 3",
     )
     assert found == [
+        # The records no rule gives a customer (REQ-2034, amended 2026-11-14): the hub holds none.
+        ("coverage gap", "jira", "TBD", "", ""),
         ("coverage gap", "jira", "Xylo Robotics", "", "Xylo Robotics"),
         ("coverage gap", "servicenow", "Alder and Finch", "", "Alder & Finch"),
+        ("coverage gap", "servicenow", "Halcyon Mdia Grp", "", ""),
         ("coverage gap", "servicenow", "Tamarack Mining Corp", "", "Tamarack Mining"),
         ("coverage gap", "stripe", "Bramble Software Inc", "", "Bramble Software"),
+        ("coverage gap", "stripe", "Harbor Lane Bakery", "", ""),
+        ("coverage gap", "stripe", "Tessa Rowe Design", "", ""),
         ("coverage gap", "stripe", "Yarrow Insurance Brokers Ltd", "", "Yarrow Insurance Brokers"),
         (
             "duplicate customer",
@@ -244,14 +251,14 @@ def test_any_day_tells_the_same_story(tmp_path, as_of):
 def test_no_graphql_field_name_clash_between_columns_and_relationships():
     """A relationship whose GraphQL field name matches a column name on its source table raises
     NamesClashRefused at server startup (REQ-194).  Catch it without containers by using
-    derive_graphql_alias (the same function store_effective_names calls to store the
-    relationship's graphql_field) and checking its result against the source table's columns.
+    derive_graphql_alias on the target's GraphQL field name (what store_effective_names stores as
+    the relationship's graphql_field) and checking its result against the source table's columns.
 
     A graphql_alias on the relationship overrides the stored graphql_field and prevents any
     such conflict; relationships without one are checked here.
     """
     from provisa.core.config_loader import views_as_tables
-    from provisa.core.relationship_names import derive_graphql_alias
+    from provisa.core.relationship_names import derive_graphql_alias, target_field_name
 
     raw = yaml.safe_load((_DEMO / "config.yaml").read_text())
     expanded = views_as_tables(raw)
@@ -269,6 +276,7 @@ def test_no_graphql_field_name_clash_between_columns_and_relationships():
         tid: {c["name"] for c in t.get("columns", [])} for tid, t in table_by_id.items()
     }
     raw_table_name: dict[str, str] = {tid: t["table"] for tid, t in table_by_id.items()}
+    alias_of: dict[str, str | None] = {tid: t.get("alias") for tid, t in table_by_id.items()}
 
     clashes: list[str] = []
     for rel in expanded.get("relationships", []):
@@ -286,8 +294,10 @@ def test_no_graphql_field_name_clash_between_columns_and_relationships():
         if not tgt_raw:
             continue
 
-        # store_effective_names stores graphql_field using derive_graphql_alias on the raw name
-        gql_field = derive_graphql_alias(tgt_raw, cardinality)
+        # store_effective_names stores graphql_field named for the target's GraphQL field
+        gql_field = derive_graphql_alias(
+            target_field_name(tgt_raw, alias_of[tgt_id], [], None), cardinality
+        )
         src_cols = col_names.get(src_id, set())
         if gql_field and gql_field in src_cols:
             clashes.append(

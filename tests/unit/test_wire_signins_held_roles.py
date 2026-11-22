@@ -173,12 +173,58 @@ def _bearer_transport(transport: str):
     return _call
 
 
+def _bolt(state: Any) -> str:
+    """A Bolt session's home database (the database a driver names when it names none), acting
+    as what it resolves to at RUN."""
+    from provisa.bolt.session import BoltSession
+
+    session = BoltSession(cast(Any, None), (5, 0))
+    with patch("provisa.api.app.state", state):
+        resolved = asyncio.run(session._resolve_user("bearer", "", _SESSION))
+        if resolved is None:
+            raise _Refused("bolt refused the sign-in")
+        session.user_id, session.roles = resolved
+        session.org_id = _ORG
+        home = session._resolve_db(None)
+        assert home is not None
+        role_id = home[0]
+        if "," in role_id or role_id not in session.roles:
+            return session._meta_role(state, role_id)
+        return role_id
+
+
+def _mcp(state: Any) -> str:
+    from provisa.api.mcp.server import _roles_for_identity
+    from provisa.auth.bearer import validate_bearer_credential
+
+    identity = asyncio.run(validate_bearer_credential(state, _SESSION, "mcp"))
+    return asyncio.run(_roles_for_identity(identity, state, _ORG))[0]
+
+
 _TRANSPORTS = {
     "pgwire": _pgwire,
     "flight": _flight,
     "grpc": _bearer_transport("grpc"),
     "airport": _bearer_transport("airport"),
 }
+
+#: Every surface but HTTP (tests/unit/test_auth_middleware.py), for the union default (REQ-2155).
+_SURFACES = {**_TRANSPORTS, "bolt": _bolt, "mcp": _mcp}
+
+
+@pytest.fixture
+def built(monkeypatch) -> list[list[str]]:
+    """Meta-roles are built by id from the roles they are made of; each build is recorded."""
+    seen: list[list[str]] = []
+
+    def _ensure(state, members, qualifiers=()):  # noqa: ARG001  # ensure_meta_role's
+        seen.append(sorted(members))
+        meta_id = "meta:" + "+".join(sorted(members))
+        state.meta_roles[meta_id] = sorted(members)  # what a built meta-role records
+        return meta_id
+
+    monkeypatch.setattr("provisa.security.meta_role.ensure_meta_role", _ensure)
+    return seen
 
 
 @pytest.mark.parametrize("transport", _TRANSPORTS)
@@ -188,10 +234,50 @@ def test_a_sign_in_naming_no_role_acts_as_a_role_it_holds(transport, holdings):
     assert _TRANSPORTS[transport](_state("provisa")) == "org_admin"
 
 
-@pytest.mark.parametrize("transport", _TRANSPORTS)
-def test_a_sign_in_keeps_the_default_role_when_it_holds_it(transport, holdings):
+@pytest.mark.parametrize("transport", _SURFACES)
+def test_a_sign_in_naming_no_role_acts_as_the_union_of_the_roles_it_holds(
+    transport, holdings, built
+):
+    """REQ-2155: holding several roles, a sign-in that names none acts with their union -- their
+    meta-role -- on every surface. It acted as the default role analyst alone."""
     holdings[_USER] = ["steward", "analyst"]
-    assert _TRANSPORTS[transport](_state("provisa")) == "analyst"
+    assert _SURFACES[transport](_state("provisa")) == "meta:analyst+steward"
+    assert built == [["analyst", "steward"]]
+
+
+def test_naming_one_held_role_narrows_to_it(holdings, built, monkeypatch):
+    """REQ-2155: choosing a single role is the narrowing, on a bearer sign-in, pgwire and Bolt."""
+    from provisa.auth.bearer import authorize_role_or_probe, validate_bearer_credential
+    from provisa.bolt.session import BoltSession
+
+    holdings[_USER] = ["steward", "analyst"]
+    state = _state("provisa")
+    identity = asyncio.run(validate_bearer_credential(state, _SESSION, "flight"))
+    assert (
+        authorize_role_or_probe(
+            state, identity, "steward", transport="flight", endpoint="flight", run=asyncio.run
+        )
+        == "steward"
+    )
+    monkeypatch.setattr(
+        "provisa.pgwire.server.requested_role",
+        lambda params: "steward",  # noqa: ARG005
+    )
+    assert _pgwire(state) == "steward"
+    session = BoltSession(cast(Any, None), (5, 0))
+    with patch("provisa.api.app.state", state):
+        resolved = asyncio.run(session._resolve_user("bearer", "", _SESSION))
+    assert resolved is not None
+    session.user_id, session.roles = resolved
+    assert session._resolve_db("provisa_steward") == ("steward", False)
+    assert built == []
+
+
+@pytest.mark.parametrize("transport", _SURFACES)
+def test_a_sign_in_holding_one_role_acts_as_it(transport, holdings, built):
+    holdings[_USER] = ["steward"]
+    assert _SURFACES[transport](_state("provisa")) == "steward"
+    assert built == []
 
 
 @pytest.mark.parametrize("transport", _TRANSPORTS)

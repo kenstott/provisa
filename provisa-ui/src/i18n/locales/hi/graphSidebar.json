@@ -24,7 +24,7 @@
     "history": "इतिहास",
     "noHistory": "अभी कोई इतिहास नहीं",
     "favorites": "पसंदीदा",
-    "noFavorites": "अभी कोई पसंदीदा नहीं — परिणाम फ़्रेम में ★ पर क्लिक करें",
+    "noFavorites": "अभी कोई पसंदीदा नहीं। किसी परिणाम फ़्रेम में ★ पर क्लिक करें।",
     "matchAllNodes": "MATCH (n) RETURN n LIMIT 25",
     "matchAllRels": "MATCH p=()-->() RETURN p LIMIT 25",
     "firstPage": "पहला पेज",

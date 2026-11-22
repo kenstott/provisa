@@ -707,8 +707,8 @@ export const TOUR_STEPS: TourStep[] = [
   },
   {
     // REQ-1387: the business glossary — curation plus AI-assisted definitions/relationships.
-    route: "/admin/ontology",
-    // REQ-1590: stricter than the route's own gate. /admin/ontology opens to `glossary_read`, but
+    route: "/context/ontology",
+    // REQ-1590: stricter than the route's own gate. /context/ontology opens to `glossary_read`, but
     // what this step points at is the AI-generation menu, which only a curator is shown — so a
     // read-only viewer skips the step rather than waiting out an anchor that never mounts.
     capability: "glossary_rw",
@@ -716,22 +716,22 @@ export const TOUR_STEPS: TourStep[] = [
     key: "stepGlossary",
   },
   {
-    route: "/admin/ontology",
+    route: "/context/ontology",
     capability: "glossary_rw",
     element: '[data-testid="glossary-new-btn"]',
     key: "stepGlossaryTerm",
   },
   {
     // REQ-1945: publishing the model, its data products and lineage out to a catalog. The anchor is
-    // the Syncing page root (REQ-2247), which paints in both the entitled and not-entitled states.
-    route: "/admin/syncing",
+    // the Context Sync page root (REQ-2247, REQ-2259), which paints in both the entitled and not-entitled states.
+    route: "/context/sync",
     capability: "org_settings",
     element: '[data-tour="syncing"]',
     key: "stepPublish",
   },
   {
     route: "/views",
-    capability: "table_registration",
+    capability: "create_view",
     prefetch: "settings",
     element: '.subnav a[href="/views"]',
     readySelector: VIEWS_READY,
@@ -739,7 +739,7 @@ export const TOUR_STEPS: TourStep[] = [
   },
   {
     route: "/views",
-    capability: "table_registration",
+    capability: "create_view",
     prefetch: "settings",
     element: '.subnav a[href="/views"]',
     readySelector: VIEWS_READY,
@@ -747,7 +747,7 @@ export const TOUR_STEPS: TourStep[] = [
   },
   {
     route: "/metrics",
-    capability: "table_registration",
+    capability: "create_view",
     element: '[data-testid="metrics-new-button"]',
     key: "stepMetrics",
   },

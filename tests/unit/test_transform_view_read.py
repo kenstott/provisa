@@ -103,8 +103,9 @@ def _state(
     )
     state = SimpleNamespace(
         mv_registry=registry,
-        stored_view_reads={"clean_suppliers"},
-        view_sql_map={"clean_suppliers": READ},
+        source_catalogs={},  # the default org: its views lowered under __derived__
+        stored_view_reads={"fx.clean_suppliers"},
+        view_sql_map={"fx.clean_suppliers": READ},
         column_transforms={"clean_address": CLEAN_ADDRESS},
         role_build_inputs={
             "withdrawn_tables": [],  # no table is out of service
@@ -145,7 +146,12 @@ RANK_SUPPLIERS = {
 
 def _gov() -> GovernanceContext:
     gov = GovernanceContext()
-    gov.table_map = {"fx.suppliers": 1, "suppliers": 1, "clean_suppliers": 2}
+    gov.table_map = {
+        "fx.suppliers": 1,
+        "suppliers": 1,
+        "fx.clean_suppliers": 2,
+        "clean_suppliers": 2,
+    }
     return gov
 
 
@@ -159,7 +165,7 @@ def _relations(sql: str) -> set[str]:
 @pytest.mark.parametrize("status", [MVStatus.FRESH, MVStatus.STALE])
 def test_a_transform_view_keeps_its_reference_through_governance(status):
     governed, validated = semantic_statement(
-        STATEMENT, {"clean_suppliers": READ}, _state(status), _gov()
+        STATEMENT, {"fx.clean_suppliers": READ}, _state(status), _gov()
     )
     # Governance judges the view as the registered table it is, its own rules on top.
     assert governed == STATEMENT
@@ -169,8 +175,8 @@ def test_a_transform_view_keeps_its_reference_through_governance(status):
 
 @pytest.mark.parametrize("status", [MVStatus.FRESH, MVStatus.STALE])
 def test_a_transform_view_is_answered_from_its_stored_table(status):
-    bodies = unnarrowed_view_bodies(STATEMENT, {"clean_suppliers": READ}, _state(status))
-    assert bodies == {"clean_suppliers": READ}
+    bodies = unnarrowed_view_bodies(STATEMENT, {"fx.clean_suppliers": READ}, _state(status))
+    assert bodies == {"fx.clean_suppliers": READ}
 
 
 # --- REQ-2131 (amended 2026-11-16): the stored rows read under the reader's rules ----------------
@@ -190,9 +196,9 @@ def _answered(statement: str, state: SimpleNamespace, gov: GovernanceContext) ->
     from provisa.compiler.view_expand import expand_view_refs
     from provisa.mv.view_read import read_stored_views
 
-    governed, _ = semantic_statement(statement, {"clean_suppliers": READ}, state, gov)
+    governed, _ = semantic_statement(statement, {"fx.clean_suppliers": READ}, state, gov)
     governed = asyncio.run(read_stored_views(governed, state, gov))
-    bodies = unnarrowed_view_bodies(governed, {"clean_suppliers": READ}, state)
+    bodies = unnarrowed_view_bodies(governed, {"fx.clean_suppliers": READ}, state)
     return expand_view_refs(governed, bodies)
 
 
@@ -250,7 +256,7 @@ def test_a_masked_input_masks_the_outputs_derived_from_it_and_no_other(status):
 @pytest.mark.parametrize("status", [MVStatus.FRESH, MVStatus.STALE])
 def test_a_mask_on_a_plain_input_masks_its_own_output_only(status):
     items = _items(_answered(STATEMENT, _state(status), _reader(masked=("id",))))
-    assert items["id"] == "'***'"
+    assert items["id"] == "NULL"  # an integer output reads a constant mask as NULL (REQ-2131)
     assert {items[c] for c in ("street", "city", "country")} == {
         f'"clean_suppliers"."{c}"' for c in ("street", "city", "country")
     }
@@ -261,8 +267,10 @@ def test_a_reader_whose_rules_narrow_nothing_reads_the_stored_rows_as_they_are(s
     """Another role's rule makes the build keep region; this reader has none, so it reads the
     stored rows as they are."""
     answered = _answered(STATEMENT, _state(status, {1: _east()}), _reader())
-    # The statement only has the view put in at optimization, as for an administrator.
-    assert answered == f"SELECT id, city FROM ({READ}) clean_suppliers WHERE city = 'Springfield 3'"
+    # Each output as stored, unfiltered; the view's own columns only, never the kept region.
+    assert _items(answered) == {c: f'"clean_suppliers"."{c}"' for c in _OUTPUTS}
+    assert "__rule_input" not in answered
+    assert answered.endswith("WHERE city = 'Springfield 3'")
 
 
 def test_rows_and_masks_hold_together():
@@ -395,7 +403,7 @@ def test_a_code_command_view_read_by_a_restricted_role_gets_only_its_rows_masked
     )
     assert f"WHERE {HELD.replace('suppliers__', 's__')} = 'east'" in answered
     items = _items(answered)
-    assert items["score"] == "'***'"
+    assert items["score"] == "NULL"  # a double output keeps its type: NULL, never '***'
     assert items["id"] == '"clean_suppliers"."id"'
     assert "rank_suppliers" not in answered  # no command is called on a read
 
@@ -424,7 +432,7 @@ def test_a_mask_on_a_table_a_code_command_is_given_masks_its_outputs():
     called_only = "SELECT r.supplier_id AS id, r.score FROM rank_suppliers('fx.suppliers') AS r"
     state = _state(MVStatus.FRESH, definition=called_only)
     items = _items(_answered(RANKED_STATEMENT, state, _ranked_reader(masked=("region",))))
-    assert items == {"id": "'***'", "score": "'***'"}
+    assert items == {"id": "NULL", "score": "NULL"}
 
 
 # --- REQ-2131 (amended 2026-11-16): a rule change builds the view again --------------------------
@@ -471,7 +479,9 @@ def test_a_reader_the_change_does_not_touch_keeps_reading_and_nothing_is_probed(
     state = _state(MVStatus.FRESH, {1: _east()})
     _changed(state)
     answered = _answered(STATEMENT, state, _reader())
-    assert answered == f"SELECT id, city FROM ({READ}) clean_suppliers WHERE city = 'Springfield 3'"
+    # It reads the stored rows unfiltered, the view's own columns only.
+    assert _items(answered) == {c: f'"clean_suppliers"."{c}"' for c in _OUTPUTS}
+    assert "__rule_input" not in answered
     assert state.federation_engine.probes == []
 
 
@@ -559,9 +569,9 @@ def test_a_key_output_is_masked_only_by_a_mask_on_its_key_column():
     state = _state(MVStatus.FRESH, definition=CALLED_ONLY)
     state.relationships = [SUPPLIER_TO_VIEW]
     items = _items(_answered(RANKED_STATEMENT, state, _ranked_reader(masked=("region",))))
-    assert items == {"id": '"clean_suppliers"."id"', "score": "'***'"}
+    assert items == {"id": '"clean_suppliers"."id"', "score": "NULL"}
     items = _items(_answered(RANKED_STATEMENT, state, _ranked_reader(masked=("id",))))
-    assert items == {"id": "'***'", "score": "'***'"}
+    assert items == {"id": "NULL", "score": "NULL"}
 
 
 def test_a_junction_edge_through_the_view_is_no_relationship_to_filter_by():
@@ -615,3 +625,75 @@ def test_a_build_of_another_shape_lands_beside_the_last_never_into_it(monkeypatc
         asyncio.run(governed_build._transformed_rows_sql(SimpleNamespace(), mv, None, _Engine()))
     (first, _), (second, _) = landed
     assert first.startswith("mv_columns_view-clean_suppliers_") and first != second
+
+
+# --- REQ-2131 (amended 2026-11-16): one stored build, each reader under its own rules -------------
+#
+# The build is landed once, governed as the organisation's administrator (mv/governed_build.py),
+# so its stored rows hold every supplier, every address in clear and the input column each role's
+# row rule reads. These run each reader's statement against those stored rows in DuckDB: what a
+# reader gets is its own rules' answer, never the build's.
+
+_SUPPLIERS = [
+    (1, "1 Main St", "Springfield", "US", "east"),
+    (2, "2 Elm St", "Shelbyville", "US", "west"),
+    (3, "3 Oak St", "Ogdenville", "US", "east"),
+]
+
+
+def _run(statement: str, state: SimpleNamespace, gov: GovernanceContext) -> list[tuple]:
+    """The reader's statement, as it runs for them, over the build's stored rows."""
+    import duckdb
+
+    answered = _answered(statement, state, gov)
+    con = duckdb.connect()
+    try:
+        con.execute("ATTACH ':memory:' AS mat_store")
+        con.execute("CREATE SCHEMA mat_store.org_default_mv_cache")
+        con.execute(
+            "CREATE TABLE mat_store.org_default_mv_cache.mv_clean_suppliers (id INTEGER, "
+            "street VARCHAR, city VARCHAR, country VARCHAR, "
+            "__rule_input_suppliers__region VARCHAR)"
+        )
+        con.executemany(
+            "INSERT INTO mat_store.org_default_mv_cache.mv_clean_suppliers VALUES (?, ?, ?, ?, ?)",
+            _SUPPLIERS,
+        )
+        cursor = con.execute(answered)
+        names = [d[0] for d in cursor.description]
+        assert names == ["id", "street", "city", "country"]  # the kept input is no reader's
+        return sorted(cursor.fetchall())
+    finally:
+        con.close()
+
+
+_EVERY = "SELECT * FROM clean_suppliers"
+
+
+def test_two_readers_of_one_stored_build_each_get_their_own_rules_answer():
+    state = _state(MVStatus.FRESH, {1: _east()})
+    every = [row[:4] for row in _SUPPLIERS]
+    # The administrator reads the stored rows as they are.
+    assert _run(_EVERY, state, _reader()) == every
+    # east_reader's row rule on region, no column of the view, keeps only the east suppliers.
+    assert _run(_EVERY, state, _reader(row_rule=True)) == [every[0], every[2]]
+    # masked_reader sees raw_address masked: every output computed from it is masked, id is not.
+    assert _run(_EVERY, state, _reader(masked=("raw_address",))) == [
+        (i, "***", "***", "***") for i, *_ in every
+    ]
+    # Both rules on one reader: filtered and masked.
+    assert _run(_EVERY, state, _reader(row_rule=True, masked=("raw_address",))) == [
+        (1, "***", "***", "***"),
+        (3, "***", "***", "***"),
+    ]
+
+
+def test_a_reader_naming_the_kept_input_column_is_refused():
+    """The column a row rule reads is kept beside the outputs for Provisa's own filter; it is no
+    column of the view, so no reader -- unrestricted or not -- may name it."""
+    state = _state(MVStatus.FRESH, {1: _east()})
+    for gov in (_reader(), _reader(row_rule=True)):
+        with pytest.raises(Exception, match="__rule_input_suppliers__region"):
+            _answered(
+                'SELECT id, "__rule_input_suppliers__region" FROM clean_suppliers', state, gov
+            )

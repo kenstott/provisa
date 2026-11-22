@@ -18,9 +18,11 @@ configuration rather than the release's."""
 
 from __future__ import annotations
 
+import bisect
 import datetime
 import importlib.resources
 import re
+import struct
 import zoneinfo
 
 from provisa.pgwire.catalog_pg17_abbrevs import TIMEZONE_ABBREVS
@@ -95,27 +97,58 @@ _STEP = datetime.timedelta(days=7)
 Reading = tuple[str, int, bool]
 
 
-def _reading(instant: datetime.datetime, rules: zoneinfo.ZoneInfo) -> Reading:
+def _daylight_flags(zone: str) -> tuple[tuple[int, ...], tuple[bool, ...]]:
+    """The pinned release's compiled ``zone`` (its TZif v2 body): each transition's second since
+    the epoch, and the daylight flag of the local time type it begins."""
+    data = importlib.resources.files("tzdata.zoneinfo").joinpath(*zone.split("/")).read_bytes()
+
+    def counts(at: int) -> tuple[int, ...]:
+        return struct.unpack(">6l", data[at + 20 : at + 44])
+
+    isutc, isstd, leap, times, types, chars = counts(0)
+    at = 44 + times * 5 + types * 6 + chars + leap * 8 + isstd + isutc
+    _, _, _, times, types, _ = counts(at)
+    at += 44
+    seconds = struct.unpack(f">{times}q", data[at : at + 8 * times])
+    begun = data[at + 8 * times : at + 9 * times]
+    at += 9 * times
+    flags = [bool(data[at + 6 * k + 4]) for k in range(types)]
+    return seconds, tuple(flags[k] for k in begun)
+
+
+def _reading(
+    instant: datetime.datetime,
+    rules: zoneinfo.ZoneInfo,
+    daylight: tuple[tuple[int, ...], tuple[bool, ...]],
+) -> Reading:
+    """The daylight flag is the one the local time type in effect carries, as PostgreSQL's
+    localtime reads it (zoneinfo's dst() is a guess before the last transition: 0 for Havana's
+    CDT); past the last transition it is the release's rule's (a nonzero daylight offset, a
+    negative one too: Europe/Dublin's winter)."""
     local = instant.astimezone(rules)
     offset = local.utcoffset() or datetime.timedelta(0)
-    return local.tzname() or "", int(offset.total_seconds()), bool(local.dst())
+    seconds, flags = daylight
+    after = bisect.bisect_right(seconds, int(instant.timestamp()))
+    dst = flags[after - 1] if 0 < after < len(seconds) else bool(local.dst())
+    return local.tzname() or "", int(offset.total_seconds()), dst
 
 
 def _changes(zone: str, start: datetime.datetime) -> list[tuple[int, Reading]]:
     """The readings ``zone`` takes from ``start`` to the horizon, each from the second (since the
     epoch) it takes effect: the first in effect at ``start``, from 0."""
     rules = zoneinfo.ZoneInfo(zone)
-    changes = [(0, _reading(start, rules))]
+    daylight = _daylight_flags(zone)
+    changes = [(0, _reading(start, rules, daylight))]
     at = start
     while at < start + _HORIZON:
         after = at + _STEP
-        if _reading(after, rules) != changes[-1][1]:
+        if _reading(after, rules, daylight) != changes[-1][1]:
             low, high = at, after
             while high - low > datetime.timedelta(seconds=1):
                 middle = low + (high - low) / 2
-                same = _reading(middle, rules) == changes[-1][1]
+                same = _reading(middle, rules, daylight) == changes[-1][1]
                 low, high = (middle, high) if same else (low, middle)
-            changes.append((int(high.timestamp()), _reading(high, rules)))
+            changes.append((int(high.timestamp()), _reading(high, rules, daylight)))
         at = after
     return changes
 

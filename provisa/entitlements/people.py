@@ -135,10 +135,42 @@ async def with_email(
     model_db: "Database",
     org_id: str,
     email: str,
-    *,
-    multitenancy: bool,
 ) -> list[Person]:
-    """The people of ``org_id`` whose email is ``email``, case-insensitively."""
+    """The people of ``org_id`` whose email is ``email``, case-insensitively, by an address an
+    identity provider verified at their latest sign-in (REQ-2219, amended 2026-11-18). A local
+    account's address was typed by whoever made it, so it names no one here; neither does an
+    address never verified. ``model_db`` is scoped to ``org_id``'s schema."""
     wanted = email.strip().lower()
-    candidates = await search(admin_db, model_db, org_id, wanted, multitenancy=multitenancy)
-    return [p for p in candidates if (p.email or "").strip().lower() == wanted]
+    found: dict[str, _Found] = {}
+    async with admin_db.acquire() as conn:
+        rows = await conn.execute_core(
+            select(
+                user_org_memberships.c.user_id,
+                user_profiles.c.display_name,
+                user_profiles.c.email,
+            )
+            .select_from(
+                user_org_memberships.join(
+                    user_profiles, user_profiles.c.user_id == user_org_memberships.c.user_id
+                )
+            )
+            .where(
+                user_org_memberships.c.org_id == org_id,
+                user_profiles.c.email_verified.is_(True),
+                func.lower(func.trim(user_profiles.c.email)) == wanted,
+            )
+        )
+        for row in rows.fetchall():
+            _note(found, row.user_id, row.display_name, row.email)
+    async with model_db.acquire() as conn:
+        rows = await conn.execute_core(
+            select(
+                user_directory.c.user_id, user_directory.c.display_name, user_directory.c.email
+            ).where(
+                user_directory.c.email_verified.is_(True),
+                func.lower(func.trim(user_directory.c.email)) == wanted,
+            )
+        )
+        for row in rows.fetchall():
+            _note(found, row.user_id, row.display_name, row.email)
+    return [Person(p, _first(f.names), _first(f.emails)) for p, f in found.items()]

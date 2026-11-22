@@ -20,17 +20,11 @@ import type { DiscoveryReport, RemovedKind, SemanticsReport, TypeGroup } from ".
 import { serverMessage } from "../../i18n/serverMessage";
 
 /** The order the kinds left out are listed in. */
-const REMOVED_ORDER: RemovedKind[] = [
-  "same_column",
-  "primary_key_to_primary_key",
-  "both_repeating",
-  "existing",
-  "pending",
-  "rejected",
-  "matches_foreign_key",
-  "out_of_scope",
-  "weaker",
-];
+const REMOVED_ORDER: RemovedKind[] = ["same_column", "existing", "rejected", "out_of_scope"];
+
+/** The compared type groups, as the server orders them (provisa/discovery/columns.py GROUPS).
+ *  A date or timestamp is never a key candidate, so neither is a group (REQ-413). */
+export const GROUP_ORDER: readonly TypeGroup[] = ["whole_number", "decimal", "text", "uuid"];
 
 export function typeGroupLabel(group: TypeGroup, t: TFunction): string {
   return t(`discoverDialog.group.${group}`);
@@ -116,6 +110,7 @@ function leftOut(report: DiscoveryReport, t: TFunction): string | null {
 function scopeLines(report: DiscoveryReport, t: TFunction): string[] {
   const kinds = [
     ...(report.foreign_keys ? [t("discoverDialog.foreignKeys")] : []),
+    ...(report.key_names ? [t("discoverDialog.keyNames")] : []),
     ...(report.semantics ? [t("discoverDialog.semantics")] : []),
     ...(report.key_values ? [t("discoverDialog.keyValues")] : []),
   ];
@@ -166,6 +161,14 @@ export function discoveryResultLines(report: DiscoveryReport, t: TFunction): str
       t("discoverResult.foreignKeys", {
         found: report.foreign_keys.found,
         count: report.foreign_keys.suggested,
+      }),
+    );
+  }
+  if (report.key_names) {
+    lines.push(
+      t("discoverResult.keyNames", {
+        found: report.key_names.found,
+        count: report.key_names.suggested,
       }),
     );
   }

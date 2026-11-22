@@ -14,10 +14,12 @@ import type { Paging, PagingKind } from "../types/admin";
 import { ORG_HEADER } from "../lib/authFetch";
 import { normalizeRole, type RawRole } from "../lib/roles";
 import type { ApprovedJoin } from "../components/canvas/joinGraph";
+import type { FilterSpec } from "../pages/sql/columnFilter";
 import { serverMessage, requestFailed, type ServerMessageShape } from "../i18n/serverMessage";
 import type { MaskEntry } from "../lib/masks";
 import type { ResultRedirect } from "../types/resultRedirect";
 import { columnKeys, rowByKeys } from "../lib/columnKeys";
+import { selectedDomainsQuery, withSelectedDomains } from "./selectedDomains";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "";
 
@@ -644,9 +646,9 @@ export async function fetchSdl(roleId: string): Promise<string> {
 
 const API_BASE_RAW = import.meta.env.VITE_API_BASE || "";
 
-/** The kinds of relationship discovery: foreign keys read from the sources' own constraints, and
- *  semantics inferred by an AI model. */
-export type DiscoveryKind = "foreign_keys" | "semantics";
+/** The kinds of relationship discovery: foreign keys read from the sources' own constraints,
+ *  semantics inferred by an AI model, and matching key names and types (REQ-2262). */
+export type DiscoveryKind = "foreign_keys" | "semantics" | "key_names";
 
 /** REQ-413: what a run can look for: the kinds, and Key value overlap, the measure of the
  *  semantic pairs whose model confidence lies between its cutoff and the threshold. It is chosen
@@ -698,25 +700,54 @@ export interface DiscoveryScope {
   target_tables: number[] | null;
   vendor: string | null;
   model: string | null;
-  /** Key value overlap's measure cutoff (0 to 1) and sample size (the most distinct values read
-   *  of each column): given while it is chosen, else null. Absent from a run recorded before. */
-  measure_cutoff?: number | null;
-  sample_size?: number | null;
+  /** REQ-413 (amended 2026-11-18): Tick from (0 to 1), the score from which the run's proposals
+   *  start ticked; the model is told it and the key value overlap band runs up to it. */
+  threshold: number;
+  /** The distinct sample values read and shown to the model of each compared column. */
+  samples_per_column: number;
+  /** Key value overlap's settings, given while it is chosen, else null: its measure cutoff (0 to
+   *  1), its sample size (the most non-null values read of each column), the share of a source's
+   *  values in a key target at which a pair is a key relationship (0 to 1), and the most a pair
+   *  scores when neither side is a key (0 to 1). */
+  measure_cutoff: number | null;
+  sample_size: number | null;
+  contained_at: number | null;
+  shared_ceiling: number | null;
+  /** REQ-2262: a relationship between the source and target sets counts in either direction:
+   *  the review after registration, the tables just registered against every table. */
+  either_way: boolean;
 }
 
 /** REQ-413: Key value overlap as the signed-in person last set it, remembered as the threshold
- *  is: chosen, its measure cutoff (0 to 1) and its sample size. */
+ *  is: chosen, and its settings. */
 export interface KeyValueSettings {
   chosen: boolean;
   cutoff: number;
   sample_size: number;
+  contained_at: number;
+  shared_ceiling: number;
 }
 
-/** The person's Key value overlap, and the defaults Reset to defaults restores. */
-export function fetchDiscoveryKeyValues(): Promise<
-  KeyValueSettings & { defaults: KeyValueSettings }
+/** REQ-413 (amended 2026-11-18): every threshold and sample size a run uses, as the person last
+ *  set them in the discover dialog. */
+export interface DiscoveryRunSettings {
+  threshold: number;
+  samples_per_column: number;
+  key_values: KeyValueSettings;
+}
+
+/** REQ-413 (amended 2026-11-18): the person's discovery settings, one store: the run settings
+ *  and the filter on a run's Score column the results open with (null: cleared). */
+export interface DiscoverySettings extends DiscoveryRunSettings {
+  score_filter: ScoreFilter | null;
+}
+
+/** The person's settings, which prefill the dialog, and the defaults Reset to defaults
+ *  restores. */
+export function fetchDiscoverySettings(): Promise<
+  DiscoverySettings & { defaults: DiscoverySettings }
 > {
-  return discoveryRequest("/key-values", "Key value overlap");
+  return discoveryRequest("/settings", "Discovery settings");
 }
 
 /** Where a model's two limits come from: set by hand, the vendor's published figures, or the
@@ -747,15 +778,18 @@ export interface ModelLimits {
 }
 
 /** The type groups columns are compared within. */
-export type TypeGroup =
-  "whole_number" | "decimal" | "text" | "uuid" | "date" | "timestamp" | "timestamptz";
+export type TypeGroup = "whole_number" | "decimal" | "text" | "uuid";
 
-/** At most how many model requests a run of this scope makes, by type group. The count reads no
- *  table: it is an upper bound from what is registered, and the run may make fewer. */
+/** At most how many calls to the model a run of this scope makes, and the table pairs they list.
+ *  The count reads no table: it is an upper bound from what is registered, and the run may make
+ *  fewer. */
 export interface DiscoveryCount {
   requests: number;
   requests_are: "upper_bound";
+  /** Empty: calls list table pairs, not type groups (REQ-413, amended 2026-11-18). */
   by_group: Partial<Record<TypeGroup, number>>;
+  table_pairs: number;
+  table_pairs_per_request: number;
   suggestions_per_request?: number;
   model: DiscoveryModel | null;
   source_tables: number;
@@ -798,17 +832,7 @@ export interface SemanticsReport {
   stopped: boolean;
 }
 
-export type RemovedKind =
-  | "same_column"
-  | "primary_key_to_primary_key"
-  | "both_repeating"
-  | "existing"
-  | "pending"
-  | "rejected"
-  | "matches_foreign_key"
-  | "out_of_scope"
-  | "weaker"
-  | "many_to_many";
+export type RemovedKind = "same_column" | "existing" | "rejected" | "out_of_scope";
 
 /** Why a proposal is not among a run's suggestions: a reason of an answer's reading, or a
  *  removal. */
@@ -868,6 +892,9 @@ export interface RunProposal {
   /** A many-to-many pair: the shared dimension accepting it makes, or the registered one it
    *  joins (``reused``). Null for any other pair. */
   dimension: { name: string; reused: boolean } | null;
+  /** REQ-1586: a junction suggestion, the junction its two ends are joined through. Null for
+   *  any other pair. */
+  via: { table_id: number; source_column: string; target_column: string } | null;
 }
 
 /** A run's report once semantics is under way or the run has ended. */
@@ -877,6 +904,7 @@ export interface DiscoveryReport {
   removed: Partial<Record<RemovedKind, number>>;
   decided_by?: Record<string, number>;
   foreign_keys?: { found: number; suggested: number };
+  key_names?: { found: number; suggested: number };
   semantics?: SemanticsReport;
   /** Key value overlap's settings, when the run chose it. */
   key_values?: { cutoff: number; sample_size: number };
@@ -940,12 +968,31 @@ export function fetchModelLimits(vendor: string, model: string): Promise<ModelLi
   return discoveryRequest(`/limits?${q}`, "Model limits");
 }
 
-export function countDiscoveryRun(scope: DiscoveryScope): Promise<DiscoveryCount> {
-  return discoveryRequest("/runs/count", "Discovery count", postJson(scope));
+// REQ-2253: a run carries the navbar filter's selection (selectedDomainsQuery), so the server
+// reads, counts and proposes no table outside it.
+
+export function countDiscoveryRun(
+  scope: DiscoveryScope,
+  domains: ReadonlySet<string> | null,
+): Promise<DiscoveryCount> {
+  return discoveryRequest(
+    `/runs/count${selectedDomainsQuery(domains)}`,
+    "Discovery count",
+    postJson(scope),
+  );
 }
 
-export async function startDiscoveryRun(scope: DiscoveryScope): Promise<DiscoveryRun> {
-  return (await discoveryRequest<{ run: DiscoveryRun }>("/runs", "Discovery", postJson(scope))).run;
+export async function startDiscoveryRun(
+  scope: DiscoveryScope,
+  domains: ReadonlySet<string> | null,
+): Promise<DiscoveryRun> {
+  return (
+    await discoveryRequest<{ run: DiscoveryRun }>(
+      `/runs${selectedDomainsQuery(domains)}`,
+      "Discovery",
+      postJson(scope),
+    )
+  ).run;
 }
 
 export async function fetchDiscoveryRun(id: number): Promise<DiscoveryRun> {
@@ -976,6 +1023,25 @@ export interface RunProposals {
   threshold: number;
   /** The score a run keeps a suggestion at, which `below_threshold` is against. */
   kept_at: number;
+  /** The signed-in person's filter on the Score column, in percent, applied when the results
+   *  open (REQ-413, amended 2026-11-18); null when they cleared it. */
+  score_filter: ScoreFilter | null;
+}
+
+/** REQ-413: a filter on a run's Score column, as the list's column filter holds it; a number
+ *  column's menu offers only number operators, which are all the server keeps. */
+export type ScoreFilter = FilterSpec;
+
+/** REQ-413: keep the Score filter set in a run's results as the signed-in person's own; null
+ *  keeps it cleared. */
+export function saveDiscoveryScoreFilter(
+  filter: ScoreFilter | null,
+): Promise<{ filter: ScoreFilter | null }> {
+  return discoveryRequest("/score-filter", "Discovery score filter", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ filter }),
+  });
 }
 
 export function fetchRunProposals(runId: number): Promise<RunProposals> {
@@ -994,10 +1060,10 @@ export function saveDiscoveryThreshold(threshold: number): Promise<{ threshold: 
 
 /** What a reviewer decided in a run's result: the proposals to accept, and those not to
  *  recommend again. One in neither stays undecided. An accepted proposal carries a name only
- *  where a person typed one; without one the server names it, telling it apart from names
+ *  where a person typed one in the row's edit dialog (with the cardinality they set there); without one the server names it, telling it apart from names
  *  already held (REQ-415). */
 export interface RunDecisions {
-  accept: { id: number; name?: string }[];
+  accept: { id: number; name?: string; cardinality?: string }[];
   not_again: number[];
 }
 
@@ -2225,16 +2291,24 @@ export async function explainSql(
   return resp.json();
 }
 
+// REQ-2253: an NL request carries the navbar filter's selection (useViewDomains) as a list; null
+// asks for no narrowing and sends none. The server intersects it with the role's domains and sends
+// the model, and reads, nothing outside it.
+function selectedDomainsBody(domains: ReadonlySet<string> | null): { domains?: string[] } {
+  return domains ? { domains: [...domains] } : {};
+}
+
 export async function nlToSql(
   question: string,
-  role: string = "org_admin",
-  strict: boolean = true,
+  role: string,
+  strict: boolean,
+  domains: ReadonlySet<string> | null,
 ): Promise<{ sql: string; cypher?: string; attempts: number; error?: string }> {
   try {
     const resp = await fetch(`${API_BASE_RAW}/data/nl-to-sql`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "X-Provisa-Role": role },
-      body: JSON.stringify({ question, strict }),
+      body: JSON.stringify({ question, strict, ...selectedDomainsBody(domains) }),
     });
     if (!resp.ok) {
       return { sql: "", attempts: 0, error: await refusal(resp, "nlToSql") };
@@ -2519,20 +2593,30 @@ export async function fetchUserAssignments(userId: string): Promise<UserAssignme
   return res.json();
 }
 
-export async function addUserAssignment(
+/** A member's access in this environment, given in one save (REQ-2155). */
+export interface MemberAccess {
+  role_ids: string[];
+  domain_id: string;
+  expires_at: string | null;
+  /** Entitlement lists of grants the save makes (REQ-2219). */
+  entitlements: { role_id: string; kind: string; identifiers: string[] }[];
+  /** Recorded with every list; required when there is one. */
+  reason: string;
+}
+
+/** Grant a member several roles and their entitlement lists at once: all of it, or none. */
+export async function grantMemberAccess(
   userId: string,
-  roleId: string,
-  domainId: string,
-  expiresAt: string | null = null,
-): Promise<UserAssignment> {
-  const res = await fetch(`${API_BASE}/admin/users/${userId}/assignments`, {
+  access: MemberAccess,
+): Promise<{ assignments: UserAssignment[] }> {
+  const res = await fetch(`${API_BASE}/admin/users/${userId}/access`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ role_id: roleId, domain_id: domainId, expires_at: expiresAt }),
+    body: JSON.stringify(access),
   });
   if (!res.ok) {
     const data = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new Error(serverMessage(data, requestFailed("add assignment", res.status)));
+    throw new Error(serverMessage(data, requestFailed("grant access", res.status)));
   }
   return res.json();
 }
@@ -2867,12 +2951,13 @@ export async function recomputeSchemaClusters(): Promise<{
 export async function submitNlQuery(
   q: string,
   role: string,
-  strict: boolean = false,
+  strict: boolean,
+  domains: ReadonlySet<string> | null,
 ): Promise<{ job_id: string }> {
   const res = await fetch(`${API_BASE}/query/nl`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "X-Provisa-Role": role },
-    body: JSON.stringify({ q, strict }),
+    body: JSON.stringify({ q, strict, ...selectedDomainsBody(domains) }),
   });
   if (!res.ok) {
     const data = await res.json().catch(() => ({ error: res.statusText }));
@@ -3159,13 +3244,18 @@ export interface TableSearchAnswer {
 }
 
 /** REQ-464: search a source's schema for the tables a description fits. The steward chooses;
- *  nothing is registered by a search. */
+ *  nothing is registered by a search. REQ-2253: within the navbar filter's selection
+ *  (useViewDomains; null for none). */
 export async function searchSourceTables(
   sourceId: string,
   query: string,
   schemaName: string,
+  selected: ReadonlySet<string> | null,
 ): Promise<TableSearchAnswer> {
-  const params = new URLSearchParams({ q: query, schema_name: schemaName });
+  const params = withSelectedDomains(
+    new URLSearchParams({ q: query, schema_name: schemaName }),
+    selected,
+  );
   const res = await fetch(
     `${API_BASE}/admin/sources/${encodeURIComponent(sourceId)}/tables/search?${params}`,
   );

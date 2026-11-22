@@ -7,7 +7,7 @@
     "redirectHint": "Alle Ergebnisse werden nach S3 umgeleitet",
     "queryStats": "Abfragestatistiken",
     "schemaError": "Schemafehler: {{message}}",
-    "redirectReady": "Umleitung bereit — {{rowCount}} Zeilen ({{contentType}})",
+    "redirectReady": "Weiterleitung bereit: {{rowCount}} Zeilen ({{contentType}})",
     "download": "Herunterladen",
     "dismissRedirect": "Umleitungshinweis ausblenden",
     "formatNone": "Keins",

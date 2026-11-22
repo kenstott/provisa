@@ -77,7 +77,7 @@ def _state(role: dict) -> SimpleNamespace:
             _table(2, "customers", ["id"]),
             _table(3, "orders_customers", ["id"]),
         ],
-        view_sql_map={"orders_customers": _VIEW_SQL},
+        view_sql_map={"sales.orders_customers": _VIEW_SQL},
         mv_registry=SimpleNamespace(get=lambda _key: None),
         role_build_inputs={"withdrawn_tables": []},
         source_types={"pg": "postgresql"},

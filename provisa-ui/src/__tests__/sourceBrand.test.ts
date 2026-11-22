@@ -12,7 +12,12 @@
 // as the generic source that carries it.
 
 import { describe, expect, it } from "vitest";
-import { SOURCE_TYPES } from "../pages/sources/constants";
+import {
+  BRAND_AUTH,
+  BRAND_SETUP,
+  BRAND_TOKEN_HINT,
+  SOURCE_TYPES,
+} from "../pages/sources/constants";
 import {
   backendType,
   carrierOf,
@@ -43,6 +48,23 @@ describe("branded source types", () => {
     expect(carrierOf("openapi")).toBe("openapi");
     expect(sourceTypeLabel("openapi", '{"brand":"stripe"}')).toBe("Stripe");
     expect(sourceTypeLabel("openapi", "{}")).toBe("REST API (OpenAPI)");
+  });
+
+  // REQ-2265: governance catalogs read live, carried by the OpenAPI source.
+  it.each([
+    ["openmetadata", "OpenMetadata"],
+    ["datahub", "DataHub"],
+  ])("offers %s under Enterprise, carried by the OpenAPI source", (brand, label) => {
+    expect(SOURCE_TYPES.find((s) => s.value === brand)).toMatchObject({
+      label,
+      category: "Enterprise",
+    });
+    expect(backendType(brand)).toBe("openapi");
+    expect(carrierOf(brand)).toBe("openapi");
+    expect(BRAND_AUTH[brand]).toBe("token");
+    expect(BRAND_SETUP[brand].map((f) => [f.name, f.required])).toEqual([["base_url", true]]);
+    expect(BRAND_TOKEN_HINT[brand]).toBe(`sourceFormFieldsExtended.${brand}TokenHint`);
+    expect(sourceTypeLabel("openapi", JSON.stringify({ brand }))).toBe(label);
   });
 
   it("shows a files source staged from a Kaggle dataset as Kaggle", () => {

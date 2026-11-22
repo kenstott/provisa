@@ -48,6 +48,27 @@
     "changeResolver": "Change code resolver",
     "retireResolver": "Retire code resolver",
     "retireResolverTitle": "Retire code resolver {{resolver}}?",
-    "retireResolverConsequence": "Its matches view and its three relationships are retired together. Their names stay taken."
+    "retireResolverConsequence": "Its matches view and its three relationships are retired together. Their names stay taken.",
+    "queryLinks": {
+      "heading": "Query it",
+      "tableMissing": "Query links are unavailable: table {{ids}} this relationship names is not among the registered tables.",
+      "tablesUnread": "Query links are unavailable: the registered tables could not be read ({{error}}).",
+      "cypher": "Read {{name}} in Cypher",
+      "sql": "Read {{name}} in SQL",
+      "sparql": "Read {{name}} in SPARQL",
+      "graphql": "Read {{name}} in GraphQL",
+      "rest": "Read {{name}} in REST",
+      "grpc": "Read {{name}} in gRPC",
+      "jsonapi": "Read {{name}} in JSON:API",
+      "surfaces": {
+        "cypher": "Cypher",
+        "sql": "SQL",
+        "sparql": "SPARQL",
+        "graphql": "GraphQL",
+        "rest": "REST",
+        "grpc": "gRPC",
+        "jsonapi": "JSON:API"
+      }
+    }
   }
 }

@@ -63,6 +63,7 @@ from provisa.api.admin.capabilities import (
 )
 from provisa.api.admin._retired_objects import RetiredObjectType
 from provisa.api.admin.types import (
+    JoinThroughType,
     JsonScalar,
     CombinedFileType,
     FileColumnsDifferType,
@@ -449,7 +450,7 @@ def _mvs_read(state: Any, scope: CatalogScope) -> list[Any]:
         over = [mv.id[len("view-") :]] if mv.id.startswith("view-") else mv.source_tables
         return all(reads(name) for name in over)
 
-    return [mv for mv in state.mv_registry._mvs.values() if _readable(mv)]
+    return [mv for mv in state.mv_registry.all() if _readable(mv)]
 
 
 async def _table_region_maps(
@@ -1331,6 +1332,34 @@ class Query:  # REQ-021, REQ-042
                     for r in listed
                 ]
                 return [t for t in answered if scope.whole or t.columns]
+
+    @strawberry.field
+    async def join_through(
+        self, info: StrawberryInfo, first_id: str, second_id: str
+    ) -> Optional["JoinThroughType"]:  # REQ-1586
+        """What joining the two relationships through the table they share makes, or null: they
+        share no middle table, or their other ends are joined through it already."""
+        from provisa.api.admin import join_through
+
+        require_capability(info, "create_relationship")
+        pool = await _get_pool()
+        async with pool.acquire() as conn:
+            planned = await join_through.plan(cast("Connection", conn), first_id, second_id)
+        if planned is None:
+            return None
+        t = planned.through
+        return JoinThroughType(
+            shape=t.shape,
+            name=planned.named.rel_id,
+            source_table=planned.source_table,
+            source_column=t.source_column,
+            target_table=planned.target_table,
+            target_column=t.target_column,
+            via_table=planned.via_table,
+            via_source_column=t.via_source_column,
+            via_target_column=t.via_target_column,
+            attributes=list(planned.attributes),
+        )
 
     @strawberry.field
     async def relationships(
@@ -2593,56 +2622,39 @@ class Query:  # REQ-021, REQ-042
     # ── AI: Generate table description ──
 
     @strawberry.field
-    async def generate_table_description(self, info: StrawberryInfo, table_id: str) -> str:
-        """Use LLM to generate a description for a registered table."""
+    async def generate_table_description(
+        self,
+        info: StrawberryInfo,
+        table_id: Optional[str] = None,
+        source_id: Optional[str] = None,
+        schema_name: Optional[str] = None,
+        table_name: Optional[str] = None,
+        columns: Optional[list[str]] = None,
+    ) -> str:
+        """Use LLM to generate a description for a table: a registered one by ``table_id``, or one
+        the Register table form is about to register by its source, schema, name and columns."""
         require_capability(info, "table_registration")
-        import sys
-
-        print(
-            f"[DEBUG] generate_table_description called: table_id={table_id}",
-            file=sys.stderr,
-            flush=True,
+        subject = await _describe_subject(
+            info, table_id, source_id, schema_name, table_name, columns
+        )
+        if isinstance(subject, str):
+            return subject
+        prompt = (
+            f"You are a data catalog assistant. Write a concise one-to-two sentence description "
+            f"for a database table named '{subject.table_name}' in schema '{subject.schema_name}' "
+            f"from source '{subject.source_id}'. "
+            f"Columns: {', '.join(subject.columns)}. "
+            f"Respond with only the description text, no preamble."
         )
         try:
-            pool = await _get_pool()
-            tid = int(table_id)
-            async with pool.acquire() as conn:
-                _res = await conn.execute_core(
-                    select(registered_tables).where(registered_tables.c.id == tid)
-                )
-                row = _res.fetchone()
-                if row is None:
-                    print(
-                        f"[DEBUG] table {table_id} not found — save the view/table first",
-                        file=sys.stderr,
-                        flush=True,
-                    )
-                    return "Save the view first before generating descriptions"
-                _cres = await conn.execute_core(
-                    select(table_columns.c.column_name)
-                    .where(table_columns.c.table_id == tid)
-                    .order_by(table_columns.c.id)
-                )
-                col_rows = _cres.fetchall()
-            table_name = row.table_name
-            schema_name = row.schema_name
-            source_id = row.source_id
-            columns = [r.column_name for r in col_rows]
-            prompt = (
-                f"You are a data catalog assistant. Write a concise one-to-two sentence description "
-                f"for a database table named '{table_name}' in schema '{schema_name}' "
-                f"from source '{source_id}'. "
-                f"Columns: {', '.join(columns)}. "
-                f"Respond with only the description text, no preamble."
-            )
             result = await _call_llm(prompt, "table_description", max_tokens=256)
-            logging.getLogger(__name__).info(
-                "generateTableDescription result: %s", result[:100] if result else "(empty)"
-            )
-            return result
         except Exception as e:
             logging.getLogger(__name__).exception("generateTableDescription failed: %s", e)
             return ""
+        logging.getLogger(__name__).info(
+            "generateTableDescription result: %s", result[:100] if result else "(empty)"
+        )
+        return result
 
     @strawberry.field
     async def column_dependents(  # REQ-1484
@@ -2686,58 +2698,81 @@ class Query:  # REQ-021, REQ-042
 
     @strawberry.field
     async def generate_column_description(
-        self, info: StrawberryInfo, table_id: str, column_name: str
+        self,
+        info: StrawberryInfo,
+        column_name: str,
+        table_id: Optional[str] = None,
+        source_id: Optional[str] = None,
+        schema_name: Optional[str] = None,
+        table_name: Optional[str] = None,
+        columns: Optional[list[str]] = None,
     ) -> str:
-        """Use LLM to generate a description for a single column."""
+        """Use LLM to generate a description for a single column of a registered table
+        (``table_id``) or of one the Register table form is about to register."""
         require_capability(info, "table_registration")
-        import sys
-
-        print(
-            f"[DEBUG] generate_column_description called: table_id={table_id}, column_name={column_name}",
-            file=sys.stderr,
-            flush=True,
+        subject = await _describe_subject(
+            info, table_id, source_id, schema_name, table_name, columns
+        )
+        if isinstance(subject, str):
+            return subject
+        others = ", ".join(c for c in subject.columns if c != column_name)
+        prompt = (
+            f"You are a data catalog assistant. Write a concise one-sentence description "
+            f"for the column '{column_name}' in table '{subject.table_name}' "
+            f"(schema '{subject.schema_name}', source '{subject.source_id}'). "
+            f"Other columns in this table: {others}. "
+            f"Respond with only the description text, no preamble."
         )
         try:
-            pool = await _get_pool()
-            tid = int(table_id)
-            async with pool.acquire() as conn:
-                _res = await conn.execute_core(
+            return await _call_llm(prompt, "column_description", max_tokens=128)
+        except Exception as e:
+            logging.getLogger(__name__).exception("generateColumnDescription failed: %s", e)
+            return ""
+
+
+async def _describe_subject(
+    info: StrawberryInfo,
+    table_id: Optional[str],
+    source_id: Optional[str],
+    schema_name: Optional[str],
+    table_name: Optional[str],
+    columns: Optional[list[str]],
+):
+    """The table a description is written for, after the caller is checked to read its source;
+    a string is the answer to give in its place (the registered form's id is not a table)."""
+    from provisa.api.admin.describe_subject import (
+        DescribeSubject,
+        require_source_readable,
+        unregistered_subject,
+    )
+
+    subject = unregistered_subject(table_id, source_id, schema_name, table_name, columns)
+    if isinstance(subject, str):
+        try:
+            tid = int(subject)
+        except ValueError:
+            return ""
+        pool = await _get_pool()
+        async with pool.acquire() as conn:
+            row = (
+                await conn.execute_core(
                     select(registered_tables).where(registered_tables.c.id == tid)
                 )
-                row = _res.fetchone()
-                if row is None:
-                    print(
-                        f"[DEBUG] table {table_id} not found — save the view/table first",
-                        file=sys.stderr,
-                        flush=True,
-                    )
-                    return "Save the view first before generating descriptions"
-                _cres = await conn.execute_core(
+            ).fetchone()
+            if row is None:
+                return "Save the view first before generating descriptions"
+            col_rows = (
+                await conn.execute_core(
                     select(table_columns.c.column_name)
                     .where(table_columns.c.table_id == tid)
                     .order_by(table_columns.c.id)
                 )
-                col_rows = _cres.fetchall()
-            table_name = row.table_name
-            schema_name = row.schema_name
-            source_id = row.source_id
-            all_columns = [r.column_name for r in col_rows]
-            prompt = (
-                f"You are a data catalog assistant. Write a concise one-sentence description "
-                f"for the column '{column_name}' in table '{table_name}' (schema '{schema_name}', "
-                f"source '{source_id}'). Other columns in this table: {', '.join(c for c in all_columns if c != column_name)}. "
-                f"Respond with only the description text, no preamble."
-            )
-            result = await _call_llm(prompt, "column_description", max_tokens=128)
-            print(
-                f"[DEBUG] _call_llm result: {result[:100] if result else '(empty)'}",
-                file=sys.stderr,
-                flush=True,
-            )
-            return result
-        except Exception as e:
-            logging.getLogger(__name__).exception("generateColumnDescription failed: %s", e)
-            return ""
+            ).fetchall()
+        subject = DescribeSubject(
+            row.source_id, row.schema_name, row.table_name, [r.column_name for r in col_rows]
+        )
+    require_source_readable(info, subject.source_id)
+    return subject
 
 
 async def _require_live_attach(source_id: str, what: str) -> None:

@@ -314,7 +314,7 @@ async def test_generate_explore_queries_answers_all_nine_surfaces_under_the_call
     seen: dict = {}
 
     async def fake_run_nl_job(
-        job_id, question, role, app_state, job_store, llm, strict=False, *, deliver
+        job_id, question, role, app_state, job_store, llm, strict=False, *, deliver, scope
     ):
         seen["role"] = role
         job = await job_store.get(job_id)

@@ -1,9 +1,9 @@
 {
   "lineagePage": {
     "title": "Linaje de datos",
-    "intro": "Rastree de dónde provienen los datos. Pegue una consulta abajo y Provisa relaciona cada columna del resultado, a través de sus transformaciones y llamadas a comandos, con las columnas de origen — así puede responder «¿qué alimenta esta columna?» antes de publicar una vista o un comando. O elija <b>Linaje completo</b> para ver la procedencia de todas las vistas y conjuntos de datos registrados a la vez.",
+    "intro": "Pegue una consulta abajo y Provisa rastrea cada columna del resultado a través de sus transformaciones y llamadas a comandos hasta las columnas de origen, para que vea qué alimenta una columna antes de publicar una vista o un comando. O elija <b>Linaje completo</b> para ver la procedencia en todas las vistas y conjuntos de datos registrados.",
     "queryLabel": "Consulta a analizar",
-    "queryHelp": "Cualquier SELECT que lea sus tablas, vistas o comandos registrados. Esta consulta solo se analiza, nunca se ejecuta: no se ejecuta nada ni se lee ningún dato.",
+    "queryHelp": "Cualquier SELECT que lea sus tablas, vistas o comandos registrados. Se analiza y nunca se ejecuta, así que no se lee ningún dato.",
     "copy": "Copiar consulta",
     "copied": "Copiado",
     "roleLabel": "Linaje para el rol",

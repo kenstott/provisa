@@ -1,0 +1,7 @@
+{
+  "proposalEdit": {
+    "title": "Edit candidate",
+    "name": "Relationship name",
+    "cardinality": "Cardinality"
+  }
+}

@@ -26,7 +26,7 @@ Los orígenes de **materialización** tampoco tienen conector federado. Provisa 
 
 ## Todos los orígenes {: #all-sources }
 
-Provisa registra **79** tipos de origen, los que ofrece el formulario de Orígenes. Las tablas siguientes cubren los 79; el índice es el recuento.
+Provisa registra **82** tipos de origen, los que ofrece el formulario de Orígenes. Las tablas siguientes cubren los 82; el índice es el recuento.
 
 | # | Grupo | Tipos de origen |
 | --- | --- | --- |
@@ -38,16 +38,16 @@ Provisa registra **79** tipos de origen, los que ofrece el formulario de Orígen
 | 40–43 | [Fuentes de código](code-sources.md) | `node`, `python`, `go`, `rust` |
 | 44–46 | [Streaming](#streaming) | `kafka`, `websocket`, `rss` |
 | 47 | [Receptor push](#push-receiver) | `ingest` |
-| 48–49 | [Grafo y semántica](#graph-semantic) | `neo4j`, `sparql` |
-| 50–54 | [Basados en archivos](#file-based) | `sqlite`, `csv`, `parquet`, `files`, `logs` |
-| 55–56 | [Observabilidad y otros](#observability-other) | `google_sheets`, `prometheus` |
-| 57–65 | [SaaS empresarial](#enterprise-saas-connectors) | `sharepoint`, `salesforce`, `servicenow`, `jira`, `cloudops`, `splunk`, `google_workspace`, `microsoft_365`, `quickbooks` |
-| 66–73 | [Orígenes de API](#api-sources) | `openapi`, [`dbt`](#dbt), `graphql_remote`, `grpc_remote`, GitHub, GitLab, Shopify, Stripe |
-| 74 | [GovData](#govdata) | `govdata` |
-| 75–76 | [Verificadores de calidad de datos](#data-quality-checkers) | `soda`, `great_expectations` |
-| 77 | [Perfilador de datos](#data-profiler) | `data_profiler` |
-| 78 | [Conjuntos de datos de Kaggle](#kaggle-datasets) | Kaggle (preparado mediante el formulario de Orígenes; se registra como un origen `files` — véase [Conjuntos de datos de Kaggle](#kaggle-datasets)) |
-| 79 | [Wikipedia](#wikipedia) | Wikipedia (se registra como un origen `files` que rastrea las páginas indicadas — véase [Wikipedia](#wikipedia)) |
+| 48–50 | [Grafo y semántica](#graph-semantic) | `neo4j`, `sparql`, Wikidata |
+| 51–55 | [Basados en archivos](#file-based) | `sqlite`, `csv`, `parquet`, `files`, `logs` |
+| 56–57 | [Observabilidad y otros](#observability-other) | `google_sheets`, `prometheus` |
+| 58–66 | [SaaS empresarial](#enterprise-saas-connectors) | `sharepoint`, `salesforce`, `servicenow`, `jira`, `cloudops`, `splunk`, `google_workspace`, `microsoft_365`, `quickbooks` |
+| 67–76 | [Orígenes de API](#api-sources) | `openapi`, [`dbt`](#dbt), `graphql_remote`, `grpc_remote`, GitHub, GitLab, Shopify, Stripe, OpenMetadata, DataHub |
+| 77 | [GovData](#govdata) | `govdata` |
+| 78–79 | [Verificadores de calidad de datos](#data-quality-checkers) | `soda`, `great_expectations` |
+| 80 | [Perfilador de datos](#data-profiler) | `data_profiler` |
+| 81 | [Conjuntos de datos de Kaggle](#kaggle-datasets) | Kaggle (preparado mediante el formulario de Orígenes; se registra como un origen `files` — véase [Conjuntos de datos de Kaggle](#kaggle-datasets)) |
+| 82 | [Wikipedia](#wikipedia) | Wikipedia (se registra como un origen `files` que rastrea las páginas indicadas — véase [Wikipedia](#wikipedia)) |
 
 Referencia de todos los tipos de origen que soporta Provisa. "Controlador directo" significa que las consultas de un solo origen se ejecutan de forma nativa contra el origen (menos de 100 ms). "Nombre del conector" es el conector federado que se usa cuando el origen participa en JOIN entre varios orígenes.
 

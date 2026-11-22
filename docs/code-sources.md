@@ -16,27 +16,53 @@ Code resolvers are one of three ways to write business logic in Provisa. See [Bu
 
 ## A first resolver {: #an-example }
 
-```python
-from dataclasses import dataclass
+=== "Docstring"
+
+    ```python
+    from dataclasses import dataclass
 
 
-@dataclass
-class Region:
-    code: str
-    name: str
+    @dataclass
+    class Region:
+        code: str
+        name: str
 
 
-def regions() -> list[Region]:
-    """Sales regions.
+    def regions() -> list[Region]:
+        """Sales regions.
+
+        @table
+        """
+        return [
+            Region(code="emea", name="Europe, Middle East and Africa"),
+            Region(code="amer", name="Americas"),
+            Region(code="apac", name="Asia Pacific"),
+        ]
+    ```
+
+=== "SDK"
+
+    ```python
+    from dataclasses import dataclass
+
+    from provisa_sdk import table
+
+
+    @dataclass
+    class Region:
+        code: str
+        name: str
+
 
     @table
-    """
-    return [
-        Region(code="emea", name="Europe, Middle East and Africa"),
-        Region(code="amer", name="Americas"),
-        Region(code="apac", name="Asia Pacific"),
-    ]
-```
+    def regions() -> list[Region]:
+        """Sales regions."""
+        return [
+            Region(code="emea", name="Europe, Middle East and Africa"),
+            Region(code="amer", name="Americas"),
+            Region(code="apac", name="Asia Pacific"),
+        ]
+    ```
 
 To serve it:
 
@@ -64,6 +90,8 @@ FROM sales.regions
 
 Node works the same way, with JSDoc tags and TypeScript types; see [Node](#node).
 
+Each example shows the tag in a docstring or JSDoc first. Its **SDK** tab shows the same function written with Provisa's optional SDK, `provisa-sdk` for Python, `@provisa/sdk` for TypeScript or `provisa.dev/sdk/go` for Go, where each tag is a decorator, a wrapper or a registration. Provisa reads the two as the same function. The SDK adds one thing: your type checker holds the function to its tag's rules while you write it, so a `@table` that returns one object or a `@loader` without a read context fails in your editor instead of when Provisa reads the code. Code that imports nothing of Provisa's keeps working, and the docstring form stays.
+
 ## Build {: #build }
 
 ### What a function becomes {: #what-a-function-becomes }
@@ -88,7 +116,7 @@ The row type gives the columns:
 - A `@table` function can also return or yield Arrow instead of rows: a pyarrow `Table`, `RecordBatch` or `RecordBatchReader` in Python, or an apache-arrow `Table` or `RecordBatch` in Node. Arrow is sent as it is, its columns matched to the row type's by name, and any column the row type doesn't declare is dropped. Python casts each column to its declared type; in Node each column must already have it.
 - A decimal column holds up to 29 whole digits and 9 decimal places. A value with more is refused by name and never rounded.
 - A field's own documentation becomes its column's description when you register the table: a Pydantic `Field(description=...)`, or a doc comment on a TypeScript property.
-- A loose row type (`Any` or a `dict` in Python, `any`, `unknown` or a `Record` in TypeScript) has no columns to read. Provisa calls the function once with no arguments and suggests columns from the rows that come back. When the function has a required parameter it can't be called that way, so you type the columns yourself when you register the table.
+- A loose row type (`Any` or a `dict` in Python, `any`, `unknown` or a `Record` in TypeScript) has no columns to read, so it is refused, naming the function. Declare a typed row whose fields are the columns. A single field of a typed row may be loose; it becomes a JSON column.
 
 ### Parameters {: #parameters }
 
@@ -99,28 +127,55 @@ A `@table` or `@stream` function takes up to two parameters, in this order:
 
 Either can be left out. Any other signature is refused, naming the function. This one scores one account:
 
-```python
-from dataclasses import dataclass
+=== "Docstring"
+
+    ```python
+    from dataclasses import dataclass
 
 
-@dataclass
-class Risk:
-    score: float
-    reasons: list[str]
+    @dataclass
+    class Risk:
+        score: float
+        reasons: list[str]
 
 
-@dataclass
-class RiskInputs:
-    account_id: str
+    @dataclass
+    class RiskInputs:
+        account_id: str
 
 
-def churn_risk(inputs: RiskInputs) -> list[Risk]:
-    """Churn risk of one account.
+    def churn_risk(inputs: RiskInputs) -> list[Risk]:
+        """Churn risk of one account.
+
+        @table
+        """
+        return [Risk(score=0.82, reasons=["no logins in 30 days"])]
+    ```
+
+=== "SDK"
+
+    ```python
+    from dataclasses import dataclass
+
+    from provisa_sdk import table
+
+
+    @dataclass
+    class Risk:
+        score: float
+        reasons: list[str]
+
+
+    @dataclass
+    class RiskInputs:
+        account_id: str
+
 
     @table
-    """
-    return [Risk(score=0.82, reasons=["no logins in 30 days"])]
-```
+    def churn_risk(inputs: RiskInputs) -> list[Risk]:
+        """Churn risk of one account."""
+        return [Risk(score=0.82, reasons=["no logins in 30 days"])]
+    ```
 
 Each field of the inputs object is a parameter. In GraphQL a parameter is a field argument:
 
@@ -165,29 +220,69 @@ A function that declares a `ReadContext` parameter is told what the read asks of
 | `columns` | The return columns the read names |
 | `keys` | A `@loader`'s join keys (see [Batched keys](#batched-keys)); none otherwise |
 
-```python
-from collections.abc import Iterator
-from dataclasses import dataclass
+=== "Docstring"
 
-from provisa_services import ReadContext
+    ```python
+    from collections.abc import Iterator
+    from dataclasses import dataclass
 
-
-@dataclass
-class OrderInputs:
-    region: str = "EU"
+    from provisa_services import ReadContext
 
 
-def orders(inputs: OrderInputs, context: ReadContext) -> Iterator[Order]:
-    """Orders of one region.
+    @dataclass
+    class Order:
+        id: int
+        status: str
+        total: float
+
+
+    @dataclass
+    class OrderInputs:
+        region: str = "EU"
+
+
+    def orders(inputs: OrderInputs, context: ReadContext) -> Iterator[Order]:
+        """Orders of one region.
+
+        @table
+        """
+        query = api.orders(region=inputs.region)
+        for f in context.filters:
+            if f.column == "status" and f.op == "eq":
+                query = query.where(status=f.value)  # fetch only what the read keeps
+        yield from query
+    ```
+
+=== "SDK"
+
+    ```python
+    from dataclasses import dataclass
+
+    from provisa_sdk import Stream, table
+    from provisa_services import ReadContext
+
+
+    @dataclass
+    class Order:
+        id: int
+        status: str
+        total: float
+
+
+    @dataclass
+    class OrderInputs:
+        region: str = "EU"
+
 
     @table
-    """
-    query = api.orders(region=inputs.region)
-    for f in context.filters:
-        if f.column == "status" and f.op == "eq":
-            query = query.where(status=f.value)  # fetch only what the read keeps
-    yield from query
-```
+    def orders(inputs: OrderInputs, context: ReadContext) -> Stream[Order]:
+        """Orders of one region."""
+        query = api.orders(region=inputs.region)
+        for f in context.filters:
+            if f.column == "status" and f.op == "eq":
+                query = query.where(status=f.value)  # fetch only what the read keeps
+        yield from query
+    ```
 
 In TypeScript, `import type { ReadContext } from "@provisa/services"`.
 
@@ -220,38 +315,80 @@ Use `@loader` when one call over many keys does better than many calls over one:
 - Batching requests to an API or a language model that accepts many inputs at once.
 - Setting up once per batch, such as loading a model or opening a connection.
 
-```python
-from dataclasses import dataclass
+=== "Docstring"
 
-from provisa_services import ReadContext
+    ```python
+    from dataclasses import dataclass
 
-
-@dataclass
-class ScoreInputs:
-    customer_id: str | None = None
-    plan: str = "basic"
-    region: str = "US"
+    from provisa_services import ReadContext
 
 
-@dataclass
-class Score:
-    customer_id: str
-    score: float
+    @dataclass
+    class ScoreInputs:
+        customer_id: str | None = None
+        plan: str = "basic"
+        region: str = "US"
 
 
-def churn_score(inputs: ScoreInputs, context: ReadContext) -> list[Score]:
-    """Churn score of each customer in the batch.
+    @dataclass
+    class Score:
+        customer_id: str
+        score: float
 
-    @table
-    @loader
-    """
-    given = {"customer_id": inputs.customer_id, "plan": inputs.plan, "region": inputs.region}
-    keys = context.keys or {"": given}
-    rows = {h: {"plan": "basic", "region": "US", **key} for h, key in keys.items()}
-    scores = MODEL.predict(features(list(rows.values())))  # one vectorized call for the batch
-    out = {h: [Score(r["customer_id"], s)] for (h, r), s in zip(rows.items(), scores)}
-    return out if context.keys else out[""]  # a loader call returns the hash of key to rows
-```
+
+    def churn_score(
+        inputs: ScoreInputs, context: ReadContext
+    ) -> list[Score] | dict[str, list[Score]]:
+        """Churn score of each customer in the batch.
+
+        @table
+        @loader
+        """
+        given = {"customer_id": inputs.customer_id, "plan": inputs.plan, "region": inputs.region}
+        keys = context.keys or {"": given}
+        rows = {h: {"plan": "basic", "region": "US", **key} for h, key in keys.items()}
+        scores = MODEL.predict(features(list(rows.values())))  # one vectorized call for the batch
+        out = {h: [Score(r["customer_id"], s)] for (h, r), s in zip(rows.items(), scores)}
+        return out if context.keys else out[""]  # a loader call returns the hash of key to rows
+    ```
+
+=== "SDK"
+
+    ```python
+    from dataclasses import dataclass
+
+    from provisa_sdk import table
+    from provisa_services import ReadContext
+
+
+    @dataclass
+    class ScoreInputs:
+        customer_id: str | None = None
+        plan: str = "basic"
+        region: str = "US"
+
+
+    @dataclass
+    class Score:
+        customer_id: str
+        score: float
+
+
+    @table(loader=True)
+    def churn_score(
+        inputs: ScoreInputs, context: ReadContext
+    ) -> list[Score] | dict[str, list[Score]]:
+        """Churn score of each customer in the batch."""
+        given = {"customer_id": inputs.customer_id, "plan": inputs.plan, "region": inputs.region}
+        keys = context.keys or {"": given}
+        rows = {h: {"plan": "basic", "region": "US", **key} for h, key in keys.items()}
+        scores = MODEL.predict(features(list(rows.values())))  # one vectorized call for the batch
+        out = {h: [Score(r["customer_id"], s)] for (h, r), s in zip(rows.items(), scores)}
+        # A loader call returns the hash of each key to its rows; a single call returns the rows.
+        return out if context.keys else out[""]
+    ```
+
+    `@table(loader=100)` is `@loader 100`.
 
 Joined to a table of customers, its context holds keys such as `{"9f2c...": {"customer_id": "637", "plan": "pro", "region": "EU"}, "41ab...": {"customer_id": "638"}, ...}`. The second key carries only `customer_id`, so its plan and region take the defaults. The function returns `{"9f2c...": [...], "41ab...": [...], ...}`.
 
@@ -261,21 +398,47 @@ A function tagged `@columns` computes new columns from the columns of rows you a
 
 Each parameter is one input column, given as a list of that batch's values in row order. The function returns a list with one object per input row, and the object's fields are the output columns. In Python:
 
-```python
-@dataclass
-class Address:
-    street: str
-    city: str
-    country: str
+=== "Docstring"
+
+    ```python
+    from dataclasses import dataclass
 
 
-def clean_address(raw_address: list[str]) -> list[Address]:
-    """Each raw address of the batch, as its parts.
+    @dataclass
+    class Address:
+        street: str
+        city: str
+        country: str
+
+
+    def clean_address(raw_address: list[str]) -> list[Address]:
+        """Each raw address of the batch, as its parts.
+
+        @columns
+        """
+        ...
+    ```
+
+=== "SDK"
+
+    ```python
+    from dataclasses import dataclass
+
+    from provisa_sdk import Batch, Results, columns
+
+
+    @dataclass
+    class Address:
+        street: str
+        city: str
+        country: str
+
 
     @columns
-    """
-    ...
-```
+    def clean_address(raw_address: Batch[str]) -> Results[Address]:
+        """Each raw address of the batch, as its parts."""
+        ...
+    ```
 
 In TypeScript, declare it as `clean_address(raw_address: string[]): Promise<Address[]>` with `@columns` in its JSDoc.
 
@@ -334,30 +497,75 @@ SQL and GraphQL writes to a code table go to its source's commands. A `@command`
 
 A key value is an object of the table's key columns, or the value itself when the key is one column. The table needs a primary key for an update or a delete.
 
-```python
-from dataclasses import dataclass
+=== "Docstring"
+
+    ```python
+    from dataclasses import dataclass
 
 
-@dataclass
-class OrderChanges:
-    status: str | None = None
-    total: float | None = None
+    @dataclass
+    class Order:
+        id: int
+        status: str
+        total: float
 
 
-def add_orders(rows: list[Order]) -> int:
-    """@command"""
-    return api.create(rows)
+    @dataclass
+    class OrderChanges:
+        status: str | None = None
+        total: float | None = None
 
 
-def set_orders(keys: list[int], changes: OrderChanges) -> int:
-    """@command"""
-    return api.update(keys, changes)
+    def add_orders(rows: list[Order]) -> int:
+        """@command"""
+        return api.create(rows)
 
 
-def remove_orders(keys: list[int]) -> int:
-    """@command"""
-    return api.delete(keys)
-```
+    def set_orders(keys: list[int], changes: OrderChanges) -> int:
+        """@command"""
+        return api.update(keys, changes)
+
+
+    def remove_orders(keys: list[int]) -> int:
+        """@command"""
+        return api.delete(keys)
+    ```
+
+=== "SDK"
+
+    ```python
+    from dataclasses import dataclass
+
+    from provisa_sdk import command
+
+
+    @dataclass
+    class Order:
+        id: int
+        status: str
+        total: float
+
+
+    @dataclass
+    class OrderChanges:
+        status: str | None = None
+        total: float | None = None
+
+
+    @command
+    def add_orders(rows: list[Order]) -> int:
+        return api.create(rows)
+
+
+    @command
+    def set_orders(keys: list[int], changes: OrderChanges) -> int:
+        return api.update(keys, changes)
+
+
+    @command
+    def remove_orders(keys: list[int]) -> int:
+        return api.delete(keys)
+    ```
 
 Writing works the way it does for any table:
 
@@ -370,40 +578,121 @@ Writing works the way it does for any table:
 
 When two commands fit one operation, tag the one it is with `@insert <table>`, `@update <table>` or `@delete <table>`, where `<table>` is the table's `@table` function. Two that fit with no tag are refused when you register the table, and so is a tag on a command that doesn't fit. A write to a table with no command bound for it is refused, naming the operation.
 
+=== "Docstring"
+
+    ```python
+    from dataclasses import dataclass
+
+
+    @dataclass
+    class Order:
+        id: int
+        status: str
+        total: float
+
+
+    def import_orders(rows: list[Order]) -> int:
+        """The insert of orders.
+
+        @command
+        @insert orders
+        """
+        return api.create(rows)
+    ```
+
+=== "SDK"
+
+    ```python
+    from dataclasses import dataclass
+
+    from provisa_sdk import command
+
+
+    @dataclass
+    class Order:
+        id: int
+        status: str
+        total: float
+
+
+    @command(insert="orders")
+    def import_orders(rows: list[Order]) -> int:
+        """The insert of orders."""
+        return api.create(rows)
+    ```
+
+    `@command(update="orders")` and `@command(delete="orders")` are the other two.
+
 ### Relating two tables: code resolvers {: #code-resolvers }
 
 Sometimes equal column values don't tell you which rows of two tables belong together. A store sits inside a region, a document resembles another, or a name nearly matches. A code resolver decides it with your own algorithm. It is a `@query` that takes the source table and the target table as its two table parameters, in that order, and returns one row per match. Each row carries the key of each side and any other column you compute, such as a score.
 
-```python
-from dataclasses import dataclass
+=== "Docstring"
 
-from provisa_services import TableRef
+    ```python
+    from dataclasses import dataclass
 
-
-@dataclass
-class Store:
-    id: int
-    lat: float
-    lon: float
+    from provisa_services import TableRef
 
 
-@dataclass
-class Region:
-    id: int
-    polygon: str
+    @dataclass
+    class Store:
+        id: int
+        lat: float
+        lon: float
 
 
-@dataclass
-class Match:
-    store_id: int
-    region_id: int
-    score: float
+    @dataclass
+    class Region:
+        id: int
+        polygon: str
 
 
-def stores_in_regions(stores: TableRef[Store], regions: TableRef[Region]) -> list[Match]:
-    """@query"""
-    ...
-```
+    @dataclass
+    class Match:
+        store_id: int
+        region_id: int
+        score: float
+
+
+    def stores_in_regions(stores: TableRef[Store], regions: TableRef[Region]) -> list[Match]:
+        """@query"""
+        ...
+    ```
+
+=== "SDK"
+
+    ```python
+    from dataclasses import dataclass
+
+    from provisa_sdk import query
+    from provisa_services import TableRef
+
+
+    @dataclass
+    class Store:
+        id: int
+        lat: float
+        lon: float
+
+
+    @dataclass
+    class Region:
+        id: int
+        polygon: str
+
+
+    @dataclass
+    class Match:
+        store_id: int
+        region_id: int
+        score: float
+
+
+    @query
+    def stores_in_regions(stores: TableRef[Store], regions: TableRef[Region]) -> list[Match]:
+        ...
+    ```
 
 Register the function as a command. Then, on the Relationships page, add a relationship whose target type is **Code resolver**. Pick the source table and its key, the target table and its key, the resolver, and the columns of its rows that hold each key. Provisa keeps the choice as objects of kinds it already has:
 
@@ -423,27 +712,81 @@ GraphQL follows the two plain relationships as two nested levels: `stores { stor
 
 By default every refresh runs the resolver again and replaces all the matches. When that costs too much, add a second function to the same source, tagged `@change`. Provisa then asks it only for the matches that changed since the last run.
 
-```python
-@dataclass
-class Changed:
-    store_id: int
-    region_id: int
-    removed: bool
-    seq: int
+=== "Docstring"
+
+    ```python
+    from dataclasses import dataclass
+
+    from provisa_services import TableRef
 
 
-def store_regions_changes(
-    stores: TableRef[Store], regions: TableRef[Region], since: int | None = None
-) -> list[Changed]:
-    """Store-region matches changed since ``since``.
+    @dataclass
+    class Store:
+        id: int
 
-    @change table=store_regions
-    @change key=store_id,region_id
-    @change removed=removed
-    @change cursor=seq
-    """
-    ...
-```
+
+    @dataclass
+    class Region:
+        id: int
+
+
+    @dataclass
+    class Changed:
+        store_id: int
+        region_id: int
+        removed: bool
+        seq: int
+
+
+    def store_regions_changes(
+        stores: TableRef[Store], regions: TableRef[Region], since: int | None = None
+    ) -> list[Changed]:
+        """Store-region matches changed since ``since``.
+
+        @change table=store_regions
+        @change key=store_id,region_id
+        @change removed=removed
+        @change cursor=seq
+        """
+        ...
+    ```
+
+=== "SDK"
+
+    ```python
+    from dataclasses import dataclass
+
+    from provisa_sdk import change
+    from provisa_services import TableRef
+
+
+    @dataclass
+    class Store:
+        id: int
+
+
+    @dataclass
+    class Region:
+        id: int
+
+
+    @dataclass
+    class Changed:
+        store_id: int
+        region_id: int
+        removed: bool
+        seq: int
+
+
+    @change(table="store_regions", key=["store_id", "region_id"], removed="removed", cursor="seq")
+    def store_regions_changes(
+        stores: TableRef[Store], regions: TableRef[Region], since: int | None = None
+    ) -> list[Changed]:
+        """Store-region matches changed since ``since``."""
+        ...
+    ```
+
+The function's own `Store` and `Region` name only the key columns it reads.
 
 The four tag lines state what only you know.
 
@@ -506,57 +849,135 @@ Code with dependencies needs a lockfile, and every install follows it exactly. W
 
 The scored account in TypeScript:
 
-```typescript
-export interface Risk {
-  score: number;
-  reasons: string[];
-}
+=== "JSDoc"
 
-export interface RiskInputs {
-  account_id: string;
-}
+    ```typescript
+    export interface Risk {
+      score: number;
+      reasons: string[];
+    }
 
-/** Churn risk of one account.
- * @table
- */
-export async function churnRisk(inputs: RiskInputs): Promise<Risk[]> {
-  return [{ score: 0.82, reasons: ["no logins in 30 days"] }];
-}
-```
+    export interface RiskInputs {
+      account_id: string;
+    }
+
+    /** Churn risk of one account.
+     * @table
+     */
+    export async function churnRisk(inputs: RiskInputs): Promise<Risk[]> {
+      return [{ score: 0.82, reasons: ["no logins in 30 days"] }];
+    }
+    ```
+
+=== "SDK"
+
+    ```typescript
+    import { table } from "@provisa/sdk";
+
+    export interface Risk {
+      score: number;
+      reasons: string[];
+    }
+
+    export interface RiskInputs {
+      account_id: string;
+    }
+
+    /** Churn risk of one account. */
+    export const churnRisk = table(async function churnRisk(inputs: RiskInputs): Promise<Risk[]> {
+      return [{ score: 0.82, reasons: ["no logins in 30 days"] }];
+    });
+    ```
+
+    Each wrapper returns the function it is given. Its type carries the tag, which is all the declarations keep of it, so the export is a `const`.
 
 The batched `churnScore` in TypeScript:
 
-```typescript
-import type { ReadContext } from "@provisa/services";
+=== "JSDoc"
 
-export interface ScoreInputs {
-  customer_id?: string;
-  plan?: string;
-  region?: string;
-}
+    ```typescript
+    import type { ReadContext } from "@provisa/services";
 
-export interface Score {
-  customer_id: string;
-  score: number;
-}
+    declare function predict(rows: object[]): Promise<number[]>; // your model client
 
-/** Churn score of each customer in the batch.
- * @table
- * @loader
- */
-export async function churnScore(
-  { customer_id, plan = "basic", region = "US" }: ScoreInputs,
-  context: ReadContext,
-): Promise<Score[]> {
-  const keys = context.keys ?? { "": { customer_id, plan, region } };
-  const rows = Object.entries(keys).map(([h, key]) => [h, { plan: "basic", region: "US", ...key }] as const);
-  const scores = await model.predict(rows.map(([, row]) => row)); // one call for the whole batch
-  const out = Object.fromEntries(
-    rows.map(([h, row], i) => [h, [{ customer_id: row.customer_id, score: scores[i] }]]),
-  );
-  return context.keys ? out : out[""]; // a loader call returns the hash of key to rows
-}
-```
+    export interface ScoreInputs {
+      customer_id?: string;
+      plan?: string;
+      region?: string;
+    }
+
+    export interface Score {
+      customer_id: string;
+      score: number;
+    }
+
+    /** Churn score of each customer in the batch.
+     * @table
+     * @loader
+     */
+    export async function churnScore(
+      { customer_id = "", plan = "basic", region = "US" }: ScoreInputs,
+      context: ReadContext,
+    ): Promise<Score[] | Record<string, Score[]>> {
+      const keys = context.keys ?? { "": { customer_id, plan, region } };
+      const rows = Object.entries(keys).map(([h, key]) => ({
+        h,
+        customer_id: String(key.customer_id),
+        plan: String(key.plan ?? "basic"),
+        region: String(key.region ?? "US"),
+      }));
+      const scores = await predict(rows); // one call for the whole batch
+      const out: Record<string, Score[]> = Object.fromEntries(
+        rows.map((row, i) => [row.h, [{ customer_id: row.customer_id, score: scores[i] }]]),
+      );
+      // A loader call returns the hash of each key to its rows; a single call returns the rows.
+      return context.keys ? out : out[""];
+    }
+    ```
+
+=== "SDK"
+
+    ```typescript
+    import { table, type ReadContext } from "@provisa/sdk";
+
+    declare function predict(rows: object[]): Promise<number[]>; // your model client
+
+    export interface ScoreInputs {
+      customer_id?: string;
+      plan?: string;
+      region?: string;
+    }
+
+    export interface Score {
+      customer_id: string;
+      score: number;
+    }
+
+    /** Churn score of each customer in the batch. */
+    export const churnScore = table(
+      async function churnScore(
+        { customer_id = "", plan = "basic", region = "US" }: ScoreInputs,
+        context: ReadContext,
+      ): Promise<Score[] | Record<string, Score[]>> {
+        const keys = context.keys ?? { "": { customer_id, plan, region } };
+        const rows = Object.entries(keys).map(([h, key]) => ({
+          h,
+          customer_id: String(key.customer_id),
+          plan: String(key.plan ?? "basic"),
+          region: String(key.region ?? "US"),
+        }));
+        const scores = await predict(rows); // one call for the whole batch
+        const out: Record<string, Score[]> = Object.fromEntries(
+          rows.map((row, i) => [row.h, [{ customer_id: row.customer_id, score: scores[i] }]]),
+        );
+        // A loader call returns the hash of each key to its rows; a single call returns the rows.
+        return context.keys ? out : out[""];
+      },
+      { loader: true },
+    );
+    ```
+
+    `{ loader: 100 }` is `@loader 100`.
 
 ### Go {: #go }
 
@@ -570,27 +991,74 @@ export async function churnScore(
 
 The scored account in Go:
 
-```go
-package scoring
+=== "Doc comment"
 
-import "context"
+    ```go
+    package scoring
 
-type Risk struct {
-	Score   float64  `json:"score"`
-	Reasons []string `json:"reasons"`
-}
+    import "context"
 
-type RiskInputs struct {
-	AccountID string `json:"account_id"`
-}
+    type Risk struct {
+    	Score   float64  `json:"score"`
+    	Reasons []string `json:"reasons"`
+    }
 
-// ChurnRisk is the churn risk of one account.
-//
-// @table
-func ChurnRisk(ctx context.Context, in RiskInputs) ([]Risk, error) {
-	return []Risk{{Score: 0.82, Reasons: []string{"no logins in 30 days"}}}, nil
-}
-```
+    type RiskInputs struct {
+    	AccountID string `json:"account_id"`
+    }
+
+    // ChurnRisk is the churn risk of one account.
+    //
+    // @table
+    func ChurnRisk(ctx context.Context, in RiskInputs) ([]Risk, error) {
+    	return []Risk{{Score: 0.82, Reasons: []string{"no logins in 30 days"}}}, nil
+    }
+    ```
+
+=== "SDK"
+
+    ```go
+    package scoring
+
+    import (
+    	"context"
+
+    	provisa "provisa.dev/sdk/go"
+    )
+
+    type Risk struct {
+    	Score   float64  `json:"score"`
+    	Reasons []string `json:"reasons"`
+    }
+
+    type RiskInputs struct {
+    	AccountID string `json:"account_id"`
+    }
+
+    // ChurnRisk is the churn risk of one account.
+    func ChurnRisk(ctx context.Context, in RiskInputs) ([]Risk, error) {
+    	return []Risk{{Score: 0.82, Reasons: []string{"no logins in 30 days"}}}, nil
+    }
+
+    var _ = provisa.Table[RiskInputs, Risk](ChurnRisk)
+    ```
+
+The SDK tab registers the function with `provisa.dev/sdk/go`, an ordinary module your `go.mod` requires and `go.sum` pins. A registration is a package-level `var _ =` whose value names an exported top-level function of the package; Provisa reads it as the tags it stands for, whatever name the import is given:
+
+| Registration | Tag |
+|---|---|
+| `provisa.Table[I, R](F)`, `provisa.Stream[I, R](F)` | `@table`, `@stream` |
+| `provisa.Command(F)`, `provisa.Query(F)`, `provisa.Columns(F)` | `@command`, `@query`, `@columns` |
+| `provisa.OnStart(F)`, `provisa.OnStop(F)`, `provisa.Health(F)` | `@on-start`, `@on-stop`, `@health` |
+| `provisa.Change(F, "t", []string{"k"}, "removed", "seq")` | `@change table=t`, `key=k`, `removed=removed`, `cursor=seq` |
+| option `provisa.Requires("NAME")`, `provisa.Requires("NAME", provisa.Secret)` | `@requires NAME`, `@requires NAME:secret` |
+| command option `provisa.Insert("t")`, `provisa.Update("t")`, `provisa.Delete("t")` | `@insert t`, `@update t`, `@delete t` |
+
+- `I` is the inputs struct, `provisa.NoInputs` when the function takes none, and `R` is the row. Go infers neither through the SDK's constraints, so you write them.
+- The compiler checks a `Table`, `Stream`, `OnStart`, `OnStop` or `Health` function's signature against its tag's rules. A command, query, column transform or change function can take any parameters, so Provisa checks those when it reads the code.
+- Every option's arguments are constants. A registration naming a closure, a method or a variable, an option that isn't a constant, and an SDK call outside a package-level registration are refused, naming each.
+- `provisa.TableRef[Row]` is a table a command or query takes. A doc-comment source declares its own generic `TableRef` type instead; Provisa knows either by its name.
+- The column aliases `provisa.Text`, `BigInt`, `Double`, `Boolean`, `Timestamp` and `Json` are the Go types they name.
 
 ## Deployment {: #deployment }
 

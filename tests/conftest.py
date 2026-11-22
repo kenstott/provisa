@@ -191,6 +191,11 @@ def _needs_shared_stack(items) -> bool:
         return False
     here = os.path.dirname(__file__)
     self_provisioned = tuple(os.path.join(here, sub) + os.sep for sub in ("unit", "mvmvp"))
+    # The Python SDK's tests (provisa-sdk/python/tests) run pyright and read files; like
+    # tests/unit they touch no service, so they may share a run with tests/unit.
+    self_provisioned += (
+        os.path.join(os.path.dirname(here), "provisa-sdk", "python", "tests") + os.sep,
+    )
     # A local_platform test runs on the local platform (tests/local_platform.py), not the stack —
     # unless the session asks for the real services (PROVISA_TEST_PLATFORM=docker: the nightly run
     # of the same tests against real Postgres and Redis, to catch divergence).
@@ -397,6 +402,13 @@ _ITEST_PORT_ENV = [
     "CLICKHOUSE_PORT",
     "FIREBIRD_PORT",
     "EXASOL_PORT",
+    # The engines only Conformance (functions) starts (docker-compose.test.yml): leased all the
+    # same, so a stack that ever starts one binds no fixed port.
+    "MYSQL_PORT",
+    "MONETDB_PORT",
+    "OPENGAUSS_PORT",
+    "VERTICA_PORT",
+    "DB2_PORT",
     "SPLUNK_MGMT_PORT",
     "SPLUNK_HEC_PORT",
     "AIRPORT_PORT",
@@ -894,14 +906,25 @@ def _named_volumes(services: list[str]) -> list[str]:
     )
     model = json.loads(config.stdout)
     declared = model.get("volumes") or {}
-    return sorted(
-        {
-            (declared.get(mount["source"]) or {}).get("name", mount["source"])
-            for service in services
-            for mount in (model["services"].get(service) or {}).get("volumes") or []
+
+    def _sources(service_model: dict) -> set[str]:
+        return {
+            mount["source"]
+            for mount in service_model.get("volumes") or []
             if mount.get("type") == "volume" and mount.get("source")
         }
-    )
+
+    own = {src for service in services for src in _sources(model["services"].get(service) or {})}
+    # A volume another service also mounts is shared state, not this service's own: the session's
+    # Trino mounts hive_warehouse beside hive-metastore and hive-server2, so removing it after a
+    # hive test fails with "volume is in use" while Trino keeps running.
+    shared = {
+        src
+        for name, service_model in model["services"].items()
+        if name not in services
+        for src in _sources(service_model)
+    }
+    return sorted((declared.get(src) or {}).get("name", src) for src in own - shared)
 
 
 @pytest.fixture

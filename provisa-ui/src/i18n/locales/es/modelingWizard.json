@@ -210,7 +210,7 @@
       "description": "Borrador de descripción",
       "notCreatedTitle": "Registrado, no creado",
       "ruleNotCreated": "Regla del business vault «{{rule}}»: registrada en la descripción de su tabla; créela como vista sobre estas tablas.",
-      "draftNote": "Cada descripción es un primer borrador que un steward revisará en Tablas registradas.",
+      "draftNote": "Cada descripción es un primer borrador que un steward revisará en la página Tablas.",
       "create": "Crear",
       "nameRequired": "Dé un nombre a cada tabla.",
       "nameTaken": "Dos tablas tienen el mismo nombre. Dé a cada una el suyo."
@@ -219,8 +219,8 @@
       "created_one": "{{count}} tabla creada",
       "created_other": "{{count}} tablas creadas",
       "stopped": "Detenido en {{name}}",
-      "draftNote": "Sus descripciones son primeros borradores: revíselas en Tablas registradas.",
-      "oneWay": "El asistente solo crea. Modifique estas tablas en Tablas registradas o en el formulario de entidad/hecho; el asistente no las regenera.",
+      "draftNote": "Sus descripciones son primeros borradores: revíselas en la página Tablas.",
+      "oneWay": "El asistente solo crea. Modifique estas tablas en la página Tablas o en el formulario de entidad/hecho; el asistente no las regenera.",
       "relatesTo": "relacionado con {{tables}}",
       "status": {
         "created": "Creada",

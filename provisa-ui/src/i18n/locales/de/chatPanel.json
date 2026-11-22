@@ -29,7 +29,7 @@
     "no": "Nein",
     "typeSomethingElse": "Etwas anderes eingeben",
     "confirm": "Bestätigen",
-    "confirmed": "Bestätigt — los geht's.",
+    "confirmed": "Bestätigt. Fahren Sie fort.",
     "cancelled": "Abgebrochen.",
     "chooseFile": "Zu sendende Datei",
     "graphCaption": "Knoten: {{nodes}} · Beziehungen: {{relationships}}",

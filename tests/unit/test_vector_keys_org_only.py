@@ -28,7 +28,7 @@ import pytest
 # imported here so that a test's own answer (the ``many`` and ``one`` fixtures) is not replaced by
 # a later import.
 import provisa.api.app  # noqa: F401
-from provisa.core import secrets, secrets_providers
+from provisa.core import org_secrets, secrets, secrets_providers
 from provisa.core.org_secrets import AiKeyRequired
 from provisa.vector.providers import HuggingFaceLocalProvider, get_provider
 from provisa.vector.registry import VectorModel
@@ -182,6 +182,60 @@ async def test_a_model_that_declares_no_key_is_sent_none(many, sent):
     assert sent.carries_nothing_of_the_environment()
 
 
+def _stored(monkeypatch, keys: dict[str, str]) -> None:
+    """The organization's stored vendor keys, read from the model store the API layer names."""
+    store = object()
+
+    async def read(model_db):
+        assert model_db is store
+        return keys
+
+    monkeypatch.setattr(org_secrets, "_request_model_db", lambda: store)
+    monkeypatch.setattr(org_secrets, "read_org_api_keys", read)
+
+
+async def test_an_openai_model_with_no_key_of_its_own_takes_the_organizations_openai_key(
+    many, monkeypatch, sent
+):
+    _stored(monkeypatch, {"openai": "org-openai-key"})
+    await get_provider("openai").embed(["q"], _openai(None, base_url=None))
+    assert sent.hosts() == ["api.openai.com"]
+    assert sent.requests[0][1]["authorization"] == "Bearer org-openai-key"
+    assert sent.carries_nothing_of_the_environment()
+
+
+async def test_the_organizations_openai_key_goes_to_openai_only(many, monkeypatch, sent):
+    """A model at another address that declares no key is sent none: the stored OpenAI key is
+    OpenAI's, never handed to a third party's address."""
+    _stored(monkeypatch, {"openai": "org-openai-key"})
+    await get_provider("openai").embed(["q"], _openai(None))
+    assert sent.hosts() == ["embed.example"]
+    assert "authorization" not in sent.requests[0][1]
+
+
+async def test_an_openai_model_with_no_key_anywhere_is_refused_on_a_server_of_many(
+    many, monkeypatch, sent
+):
+    monkeypatch.setenv("OPENAI_API_KEY", "env-openai-key")
+    _stored(monkeypatch, {})
+    with pytest.raises(AiKeyRequired) as refused:
+        await get_provider("openai").embed(["q"], _openai(None, base_url=None))
+    assert refused.value.code == "ai.key_required"
+    assert refused.value.params == {"vendor": "openai"}
+    assert sent.requests == []
+
+
+async def test_an_install_of_one_with_no_stored_openai_key_uses_its_environments(
+    one, monkeypatch, sent
+):
+    """REQ-1395 as amended 2026-11-16: an install of one organization reads OPENAI_API_KEY when
+    the organization stored no key."""
+    monkeypatch.setenv("OPENAI_API_KEY", "env-openai-key")
+    _stored(monkeypatch, {})
+    await get_provider("openai").embed(["q"], _openai(None, base_url=None))
+    assert sent.requests[0][1]["authorization"] == "Bearer env-openai-key"
+
+
 # --- the address ---------------------------------------------------------------------------------
 
 
@@ -221,6 +275,22 @@ async def test_ollama_at_an_organizations_own_address_is_reached(many, sent):
     assert sent.hosts() == ["ollama.example", "ollama.example"]
 
 
+async def test_an_install_of_one_resolves_an_address_from_its_environment(one, sent):
+    await get_provider("openai").embed(["q"], _openai("EMBED_KEY", base_url="${env:EMBED_URL}"))
+    assert sent.hosts() == ["env-embed.example"]
+    assert sent.requests[0][0] == "https://env-embed.example/v1/embeddings"
+
+
+async def test_an_install_of_one_resolves_its_ollama_address_from_its_environment(
+    one, monkeypatch, sent
+):
+    monkeypatch.setenv("OLLAMA_AT", "http://ollama.internal:11434")
+    model = _ollama("${env:OLLAMA_AT}")
+    assert await get_provider("ollama").embed(["q"], model) == [[0.1, 0.2]]
+    assert await get_provider("ollama").reported_version(model) == "sha-1"
+    assert sent.hosts() == ["ollama.internal", "ollama.internal"]
+
+
 async def test_an_install_of_one_reaches_its_own_ollama(one, sent):
     assert await get_provider("ollama").embed(["q"], _ollama()) == [[0.1, 0.2]]
     assert sent.hosts() == ["localhost"]
@@ -231,35 +301,72 @@ async def test_an_install_of_one_reaches_its_own_ollama(one, sent):
 
 @pytest.fixture
 def loaded(monkeypatch) -> list[dict[str, Any]]:
-    """sentence-transformers, recording what each model is loaded with."""
+    """The hub and sentence-transformers, recording each snapshot fetch and each model load."""
     calls: list[dict[str, Any]] = []
 
+    def snapshot_download(repo_id, **kwargs):
+        calls.append({"fetch": repo_id, **kwargs})
+        return f"/hub/{repo_id}/snapshots/abc"
+
     class SentenceTransformer:
-        def __init__(self, model_id, **kwargs):
-            calls.append({"id": model_id, **kwargs})
+        def __init__(self, path, **kwargs):
+            calls.append({"load": path, **kwargs})
 
         def encode(self, texts):
             return [[0.5, 0.5] for _ in texts]
 
     module = ModuleType("sentence_transformers")
     module.SentenceTransformer = SentenceTransformer  # type: ignore[attr-defined]
+    hub = ModuleType("huggingface_hub")
+    hub.snapshot_download = snapshot_download  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "sentence_transformers", module)
+    monkeypatch.setitem(sys.modules, "huggingface_hub", hub)
     monkeypatch.setattr(HuggingFaceLocalProvider, "_cache", {})
+    monkeypatch.setattr(HuggingFaceLocalProvider, "_snapshots", {})
     return calls
 
 
+_MINILM = "sentence-transformers/all-MiniLM-L6-v2"
+
+
 def _local():
-    return VectorModel(
-        id="sentence-transformers/all-MiniLM-L6-v2", provider="huggingface", dimensions=2
-    )
+    return VectorModel(id=_MINILM, provider="huggingface", dimensions=2)
+
+
+def _fetch(loaded: list[dict[str, Any]]) -> dict[str, Any]:
+    (fetch,) = [call for call in loaded if "fetch" in call]
+    return fetch
 
 
 async def test_a_local_model_is_fetched_with_no_server_token_on_a_server_of_many(many, loaded):
     """huggingface_hub sends the server's HF_TOKEN with a download when it is given no token."""
     assert await HuggingFaceLocalProvider().embed(["q"], _local()) == [[0.5, 0.5]]
-    assert loaded == [{"id": "sentence-transformers/all-MiniLM-L6-v2", "token": False}]
+    assert _fetch(loaded)["token"] is False
+    assert {"load": f"/hub/{_MINILM}/snapshots/abc", "token": False} in loaded
 
 
 async def test_an_install_of_one_fetches_a_local_model_as_its_environment_says(one, loaded):
     await HuggingFaceLocalProvider().embed(["q"], _local())
-    assert loaded == [{"id": "sentence-transformers/all-MiniLM-L6-v2", "token": None}]
+    assert _fetch(loaded)["token"] is None
+
+
+async def test_a_local_model_is_fetched_from_the_hub_the_setting_names(one, monkeypatch, loaded):
+    """HF_ENDPOINT is read through the settings resolver (embedding.hub_endpoint) and given to the
+    fetch, so huggingface_hub's own read of it at import decides nothing."""
+    monkeypatch.setenv("HF_ENDPOINT", "https://hub-mirror.example/")
+    await HuggingFaceLocalProvider().embed(["q"], _local())
+    assert _fetch(loaded)["endpoint"] == "https://hub-mirror.example"
+
+
+async def test_with_no_hub_setting_a_local_model_is_fetched_from_hugging_face(
+    one, monkeypatch, loaded
+):
+    monkeypatch.delenv("HF_ENDPOINT", raising=False)
+    await HuggingFaceLocalProvider().embed(["q"], _local())
+    assert _fetch(loaded)["endpoint"] == "https://huggingface.co"
+
+
+async def test_no_other_frameworks_weights_are_fetched(one, loaded):
+    await HuggingFaceLocalProvider().embed(["q"], _local())
+    ignored = _fetch(loaded)["ignore_patterns"]
+    assert {"onnx/*", "openvino/*", "*.h5", "*.msgpack", "*.ot"} <= set(ignored)

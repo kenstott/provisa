@@ -1,0 +1,55 @@
+name: Attach to draft release
+description: >-
+  Attach the files a release job just built straight to the release's draft, once: the draft is
+  created if missing (ensure-release, never undrafted here), then `gh release upload --clobber`.
+  The job that builds an asset uploads it; the publish leg only verifies the draft's asset set and
+  undrafts it. Nothing is copied through a workflow artifact on the way (GitHub has no server-side
+  copy from an artifact to a release asset, and alpha.510's download-then-upload took 30+ minutes).
+
+  This action has no switch of its own, as ensure-release has none: a leg skips it with
+  `if: inputs.publish`, so a dry run attaches nothing.
+inputs:
+  tag:
+    description: The release's tag (the version the leg was given).
+    required: true
+  files:
+    description: >-
+      The files to attach, one per line. A line may be a glob (a platform's wheel); every line
+      must match at least one file, or nothing is attached and the step fails.
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Ensure draft release exists
+      uses: ./.github/actions/ensure-release
+      with:
+        tag: ${{ inputs.tag }}
+
+    - name: Attach to the draft release
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+        GH_REPO: ${{ github.repository }}
+        TAG: ${{ inputs.tag }}
+        FILES: ${{ inputs.files }}
+      run: |
+        set -euo pipefail
+        upload=()
+        missing=0
+        while IFS= read -r pattern; do
+          [ -z "$pattern" ] && continue
+          matched=0
+          for file in $pattern; do
+            if [ -f "$file" ]; then
+              upload+=("$file")
+              matched=1
+            fi
+          done
+          if [ "$matched" = 0 ]; then
+            echo "::error::no file for release asset: $pattern"
+            missing=1
+          fi
+        done <<< "$FILES"
+        [ "$missing" = 0 ]
+        gh release upload "$TAG" "${upload[@]}" --clobber
+        printf 'attached to %s: %s\n' "$TAG" "${upload[*]}"

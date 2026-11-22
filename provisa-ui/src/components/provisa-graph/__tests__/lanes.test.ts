@@ -544,16 +544,9 @@ describe("the name of a line beside the term lane (J1227)", () => {
         b: box(cy, n.id()),
       }));
       const lane = box(cy, "lane:term");
-      const starts = labels.map((l) => {
-        const path = besideRoutes(cy, "term").get(l.id) as At[];
-        return {
-          id: l.id,
-          track: path[1].x,
-          lo: Math.min(path[1].y, path[2].y),
-          hi: Math.max(path[1].y, path[2].y),
-        };
-      });
+      const routes = besideRoutes(cy, "term");
       cy.destroy();
+      const firstTrack = Math.min(...[...routes.values()].map((p) => p[1].x));
       expect(labels.length, "lines beside the lane with names").toBeGreaterThan(0);
       for (const l of labels) {
         for (const n of nodes)
@@ -562,11 +555,19 @@ describe("the name of a line beside the term lane (J1227)", () => {
           l.b.x1 >= lane.x1 && l.b.x2 <= lane.x2 && l.b.y1 >= lane.y1 && l.b.y2 <= lane.y2,
           `${l.text} (${l.id}) inside the term lane's box`,
         ).toBe(true);
-        // On the outer side of its own track, beside its run down it.
-        const s = starts.find((x) => x.id === l.id)!;
-        expect(l.b.x1, `${l.id} right of its track`).toBeGreaterThan(s.track);
-        const mid = (l.b.y1 + l.b.y2) / 2;
-        expect(mid >= s.lo - 1e-9 && mid <= s.hi + 1e-9, `${l.id} beside its run`).toBe(true);
+        // On its own line: its middle on one of the line's two runs across from a node to the
+        // track, the whole name between that node and the tracks, so no line runs down through it.
+        const path = routes.get(l.id) as At[];
+        const mid = { x: (l.b.x1 + l.b.x2) / 2, y: (l.b.y1 + l.b.y2) / 2 };
+        const runs = [
+          [path[0], path[1]],
+          [path[3], path[2]],
+        ];
+        const run = runs.find(
+          ([n, t]) => Math.abs(mid.y - n.y) < 1e-6 && l.b.x1 > n.x && l.b.x2 < t.x,
+        );
+        expect(run, `${l.text} (${l.id}) on its own run from a node to its track`).toBeDefined();
+        expect(l.b.x2, `${l.id} short of the first track`).toBeLessThan(firstTrack);
       }
       for (let i = 0; i < labels.length; i++)
         for (let j = i + 1; j < labels.length; j++)

@@ -598,9 +598,8 @@ def _install_two_mvs(monkeypatch) -> None:
             allowed_lateness=None,
         )
 
-    registry = types.SimpleNamespace(
-        _mvs={"a": _mv("mv_orders", ["orders"]), "b": _mv("mv_staff", ["staff"])}
-    )
+    views = [_mv("mv_orders", ["orders"]), _mv("mv_staff", ["staff"])]
+    registry = types.SimpleNamespace(all=lambda: list(views))
     monkeypatch.setattr(appmod.state, "mv_registry", registry, raising=False)
     monkeypatch.setattr("provisa.mv.bitemporal_capture.logged_table_id", lambda mv_id: None)
 
@@ -667,3 +666,48 @@ def test_a_withdrawn_tables_name_is_read_by_the_caller_it_is_served_to():
         whole=False, reach=None, served={1: {"id"}}, governance=False, role="registrar"
     )
     assert not schema_query._names_read(state, unserved)("withdrawn_one")
+
+
+# --- REQ-2253: an AI-assisted call (an MCP chat tool call, admin_query) ----------------------------
+
+
+async def test_an_ai_assisted_call_is_answered_only_the_selected_domains_tables():
+    """Under a selection in the domain filter, bound for an MCP chat tool call, the admin catalog
+    answers the tables of the selected domains alone, signed in or not; unbound it is unchanged."""
+    from provisa.security.selected_domains import within
+
+    for info in (_caller("registrar_all"), _caller("registrar_all", anonymous=True)):
+        with within(frozenset({"hr"})):
+            assert await _tables(info) == {"staff": _COLUMNS[3]}
+        assert set(await _tables(info)) == {"orders", "customers", "staff"}
+
+
+async def test_an_ai_assisted_call_is_answered_only_the_selected_domains():
+    from provisa.security.selected_domains import within
+
+    async def _ids(info):
+        return [d.id for d in await Query().domains(info)]
+
+    for info in (_caller("registrar_all"), _caller("registrar_all", anonymous=True)):
+        with within(frozenset({"sales"})):
+            assert await _ids(info) == ["sales"]
+        assert await _ids(info) == ["hr", "marketing", "sales"]
+    # A selection never widens authority: the analyst reaches sales alone.
+    with within(frozenset({"hr"})):
+        assert await _ids(_caller("analyst")) == []
+
+
+async def test_admin_query_answers_only_the_selected_domains():
+    """The chat's admin_query runs the admin schema's own resolvers, so it reads what the catalog
+    narrowed above answers."""
+    from provisa.api.mcp import admin_api
+    from provisa.security.selected_domains import within
+
+    request = _caller("registrar_all").context["request"]
+    query = "{ tables { tableName } }"
+    with within(frozenset({"hr"})):
+        narrowed = await admin_api.run_query(query, None, request=request)
+    whole = await admin_api.run_query(query, None, request=request)
+    assert narrowed["errors"] == [] and whole["errors"] == []
+    assert [t["tableName"] for t in narrowed["data"]["tables"]] == ["staff"]
+    assert {t["tableName"] for t in whole["data"]["tables"]} == {"orders", "customers", "staff"}

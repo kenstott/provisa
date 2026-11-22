@@ -13,6 +13,8 @@
     "replace": "Remplacement",
     "value": "Valeur constante",
     "valuePlaceholder": "Valeur (vide pour NULL)",
+    "readsNull": "Lu comme NULL : cette colonne n'est pas du texte, un masque constant ne peut donc être que NULL.",
+    "notTextConstant": "Cette colonne n'est pas du texte : un masque constant est lu comme NULL, seul NULL (vide) peut donc être enregistré.",
     "precision": "Précision",
     "year": "Année",
     "month": "Mois",

@@ -44,10 +44,11 @@ import re
 from collections.abc import AsyncIterator
 from typing import Any
 
-from provisa.api.mcp import admin_api, model_tool_specs, polly_pages, polly_usage
+from provisa.api.mcp import admin_api, model_tool_specs, polly_pages, polly_usage, tag_edit
 from provisa.api.mcp import tools as mcp_tools
 from provisa.api.mcp.column_state import DESCRIBE_TABLE
 from provisa.api.mcp.sql_quoting import quote_identifiers
+from provisa.nl.scope import Scope
 from provisa.core.org_secrets import (
     NO_KEY,
     AiKeyRequired,
@@ -782,7 +783,7 @@ _CLIENT_TOOLS: list[Any] = [
         "name": "navigate",
         "description": (
             "Navigate the browser to a route within the Provisa app. Common ones: /sources, "
-            "/tables (the ERD at /tables?view=erd), /relationships, /admin/ontology, /schema. Explore's query surfaces "
+            "/tables (the ERD at /tables?view=erd), /relationships, /context/ontology, /schema. Explore's query surfaces "
             "(never guess a route for these — NOT /explore, the MCP explorer, a separate chat, and NOT "
             "/admin/explorer, which doesn't exist): /query (GraphQL), /graph (Cypher), /sparql "
             "(SPARQL), /sql, /grpc, /jsonapi, /openapi, /nl (Natural Language). When you have "
@@ -860,7 +861,9 @@ _CLIENT_TOOLS: list[Any] = [
                         "Optional: steps on the screen the route opens, taken in order and shown "
                         "to the user as each happens -- only when the user asked to be shown, "
                         "demoed or taught. Each names its element by `target`: "
-                        '{"testId": "<data-testid>"} or {"role": "button"|"textbox"|"combobox"|'
+                        '{"testId": "<data-testid>"} (with "within": "<data-testid>" of the '
+                        "element it is in, when the screen has several, as each object's tag "
+                        'chips are in its own tag control) or {"role": "button"|"textbox"|"combobox"|'
                         '"checkbox"|"radio"|"switch"|"option"|"tab"|"link", "name": "<its '
                         'accessible name>"}. Steps: {"do": "fill", "target": ..., "value": '
                         '"<text>"} types into a field; {"do": "choose", "target": ..., "option": '
@@ -880,6 +883,7 @@ _CLIENT_TOOLS: list[Any] = [
                                 "type": "object",
                                 "properties": {
                                     "testId": {"type": "string"},
+                                    "within": {"type": "string"},
                                     "role": {"type": "string"},
                                     "name": {"type": "string"},
                                 },
@@ -999,7 +1003,10 @@ _CLIENT_TOOLS: list[Any] = [
             "OpenAPI: operation, parameters, body, requestUrl; each with status and error); the "
             "visible labelled form fields with their values "
             "(a password shows as dots, as on screen); and each result grid's columns and row "
-            "count, never its rows; and, under `dataNode`, the data node a coordinator-served UI "
+            "count, never its rows; under `tags`, each object on screen with tag chips: its kind, key, "
+            "the test id of its tag control (control), readOnly, and each tag's id, via (assigned, "
+            "inherited or derived), citationGap, needsReview and expired; and, under `dataNode`, "
+            "the data node a coordinator-served UI "
             "sends its data calls to, or null when it is not coordinator-served. Call it whenever "
             "the user refers to 'this', 'the query' or anything on the screen, before you answer "
             "or act on it."
@@ -1007,6 +1014,9 @@ _CLIENT_TOOLS: list[Any] = [
         "input_schema": {"type": "object", "properties": {}},
     },
 ]
+# The tag edits are proposals: the chat hands the browser each as the admin_mutation it is
+# (_prepare_client_call), which the person confirms before it is sent from their own session.
+_CLIENT_TOOLS.extend(model_tool_specs.TAG_SPECS)
 _CLIENT_TOOL_NAMES = frozenset(t["name"] for t in _CLIENT_TOOLS)
 
 # REQ-1796: Anthropic's own HOSTED tools — executed entirely on Anthropic's servers within the
@@ -1157,7 +1167,7 @@ _SYSTEM = (
     "THE PAGE-FIRST RULE: before performing an action that corresponds to a specific admin page (creating or "
     "registering a source/table, editing a ontology term, upserting/deleting a relationship, "
     "running a GraphQL query in Explorer, or anything else with a dedicated screen), call navigate "
-    "to that page FIRST (e.g. /admin/ontology for any ontology edit), then perform the action — so "
+    "to that page FIRST (e.g. /context/ontology for any ontology edit), then perform the action — so "
     "the user sees, on their own screen, the same page you're acting on, not just a chat "
     "transcript. Do this every single time that kind of action comes up, not just the first time "
     "in a conversation — a later ontology edit needs its own navigate call exactly as much as the "
@@ -1184,7 +1194,7 @@ _SYSTEM = (
     "glossary_terms first to avoid creating a duplicate term. A term's status is set by people "
     "(approve_glossary_term approves a defined draft); its grounding is computed from its "
     "edges and bindings and is never set. Per "
-    "the page-first rule above: navigate to /admin/ontology before calling any of these — every time, for "
+    "the page-first rule above: navigate to /context/ontology before calling any of these — every time, for "
     "every term you touch in the turn, not only the first.\n\n"
     "Manage data products with list_data_products/list_data_product_findings/create_data_product/"
     "set_data_product_members/delete_data_product -- a product's members are set on the product "
@@ -1204,6 +1214,10 @@ _SYSTEM = (
     + model_tool_specs.SYSTEM_SECTION
     + "\n\n"
     + polly_pages.SYSTEM_SECTION
+    + "\n\n"
+    + polly_pages.TAG_CONTROLS
+    + " "
+    + model_tool_specs.TAG_SYSTEM_SECTION
     + "\n\n"
     "THE QUERY SURFACES: Provisa has TEN query surfaces under Explore, each its "
     "own route and each with its own exact deep-link format — never assume one surface's names or "
@@ -1574,7 +1588,20 @@ def _split_artifact(result: Any) -> tuple[Any, dict | None]:
 
 
 async def _execute_tool(
-    state: Any, role: str, name: str, args: dict, *, request: Any = None
+    state: Any, role: str, name: str, args: dict, *, scope: Scope, request: Any = None
+) -> Any:
+    """Run one tool call within ``scope`` (REQ-2253): the domains selected in the domain filter,
+    intersected with the role's (``provisa.nl.scope.selected_scope``), or None for no selection.
+    Every read the call makes -- the catalog it lists and describes, the statements it runs --
+    stays inside it."""
+    from provisa.security.selected_domains import within
+
+    with within(scope):
+        return await _dispatch_tool(state, role, name, args, scope=scope, request=request)
+
+
+async def _dispatch_tool(
+    state: Any, role: str, name: str, args: dict, *, scope: Scope, request: Any = None
 ) -> Any:
     """Dispatch one tool call to the governed MCP tool, with the role pinned by the endpoint.
 
@@ -1592,7 +1619,9 @@ async def _execute_tool(
     if name == "cypher_field_names":
         return await mcp_tools.cypher_field_names(state, role, args["schema"], args["table"])
     if name == "generate_explore_queries":
-        return await mcp_tools.generate_explore_queries(state, role, args["question"])
+        return await mcp_tools.generate_explore_queries(
+            state, role, args["question"], domains=None if scope is None else sorted(scope)
+        )
     if name == "search_catalog":
         return await mcp_tools.search_catalog(state, role, args["query"], k=int(args.get("k", 5)))
     if name == "search_reference_library":  # REQ-2185
@@ -1799,6 +1828,11 @@ async def _execute_tool(
         return await mcp_tools.delete_metric(state, role, request, args["name"])
     if name in model_tool_specs.NAMES:
         return await model_tool_specs.dispatch(state, role, name, args, request)
+    if name in model_tool_specs.TAG_NAMES:
+        raise ValueError(
+            f"{name} is not run by the chat: it is shown to the user, who must confirm it in "
+            "their browser before it is written"
+        )
     raise ValueError(f"unknown tool {name!r}")
 
 
@@ -1892,6 +1926,9 @@ def _prepare_client_call(call: dict, confirmation: str | None = None) -> tuple[d
     """
     if confirmation is not None:
         call = {**call, "confirmation": confirmation}
+    if call["name"] in model_tool_specs.TAG_NAMES:
+        handed = tag_edit.as_admin_mutation(call["name"], call["input"])
+        return {**call, "name": "admin_mutation", "input": handed}, None
     state = call["input"].get("state") if call["name"] == "navigate" else None
     if not isinstance(state, dict) or not isinstance(state.get("sql"), str):
         return call, None
@@ -1907,7 +1944,7 @@ def _tool_error(exc: BaseException) -> str:
 
 
 async def _checked_graph_navigates(
-    state: Any, role: str, calls: list[dict]
+    state: Any, role: str, calls: list[dict], *, scope: Scope
 ) -> tuple[dict[str, str], dict[str, str]]:
     """Each Graph page navigate, by call id: refused -- its Cypher statement could not run, or
     would draw no edges -- with the tool result the model gets instead (the statement never
@@ -1915,6 +1952,7 @@ async def _checked_graph_navigates(
     can confirm. The browser reports only that it navigated, never what the page drew, so the
     confirmation says what the page was handed and that the drawing is not reported back."""
     from provisa.api.mcp.cypher_check import check_graph_read, graph_query
+    from provisa.security.selected_domains import within
 
     refused: dict[str, str] = {}
     confirmed: dict[str, str] = {}
@@ -1932,7 +1970,8 @@ async def _checked_graph_navigates(
                     "already on screen; the page does not report back what it drew."
                 )
             continue
-        read = await check_graph_read(state, role, query)
+        with within(scope):  # REQ-2253: a statement outside the selected domains does not run
+            read = await check_graph_read(state, role, query)
         if read.problem is not None:
             refused[call["id"]] = client_text(
                 "Not navigated: this Cypher statement does not run, so it was not put on the "
@@ -1949,6 +1988,20 @@ async def _checked_graph_navigates(
             + ". The page runs it; it does not report back the rows it drew."
         )
     return refused, confirmed
+
+
+def _refused_tag_edits(calls: list[dict]) -> dict[str, str]:
+    """Each tag edit that cannot be put to the person, by call id, with why: an object key that
+    names no object, a malformed citation. The model corrects it; nothing is shown or written."""
+    refused: dict[str, str] = {}
+    for call in calls:
+        if call["name"] not in model_tool_specs.TAG_NAMES:
+            continue
+        try:
+            tag_edit.as_admin_mutation(call["name"], call["input"])
+        except (ValueError, KeyError, TypeError) as problem:
+            refused[call["id"]] = f"Not proposed: {problem}"
+    return refused
 
 
 def _split_tool_calls(calls: list[dict]) -> tuple[list[dict], list[dict]]:
@@ -2099,6 +2152,7 @@ async def _run_chat_anthropic(
     *,
     max_iterations: int,
     budget: Any,
+    scope: Scope,
     request: Any = None,
     current_route: str | None = None,
 ) -> AsyncIterator[dict]:
@@ -2232,7 +2286,9 @@ async def _run_chat_anthropic(
             yield {"type": "tool_use", "name": block.name, "input": block.input}
             try:
                 result, artifact = _split_artifact(
-                    await _execute_tool(state, role, block.name, dict(block.input), request=request)
+                    await _execute_tool(
+                        state, role, block.name, dict(block.input), scope=scope, request=request
+                    )
                 )
                 content = json.dumps(result, default=str)
                 is_error = False
@@ -2252,9 +2308,9 @@ async def _run_chat_anthropic(
                 }
             )
 
-        refused, confirmed = await _checked_graph_navigates(
-            state, role, [{"id": b.id, "name": b.name, "input": b.input} for b in client_blocks]
-        )
+        raw_blocks = [{"id": b.id, "name": b.name, "input": b.input} for b in client_blocks]
+        refused, confirmed = await _checked_graph_navigates(state, role, raw_blocks, scope=scope)
+        refused |= _refused_tag_edits(raw_blocks)
         for block in client_blocks:
             if block.id in refused:
                 yield {"type": "tool_result", "name": block.name, "is_error": True}
@@ -2408,6 +2464,7 @@ async def _run_chat_aisuite(
     *,
     max_iterations: int,
     budget: Any,
+    scope: Scope,
     request: Any = None,
     current_route: str | None = None,
 ) -> AsyncIterator[dict]:
@@ -2544,7 +2601,9 @@ async def _run_chat_aisuite(
             yield {"type": "tool_use", "name": call["name"], "input": call["input"]}
             try:
                 result, artifact = _split_artifact(
-                    await _execute_tool(state, role, call["name"], call["input"], request=request)
+                    await _execute_tool(
+                        state, role, call["name"], call["input"], scope=scope, request=request
+                    )
                 )
                 content = json.dumps(result, default=str)
                 is_error = False
@@ -2564,7 +2623,8 @@ async def _run_chat_aisuite(
                 }
             )
 
-        refused, confirmed = await _checked_graph_navigates(state, role, client_calls)
+        refused, confirmed = await _checked_graph_navigates(state, role, client_calls, scope=scope)
+        refused |= _refused_tag_edits(client_calls)
         for call in client_calls:
             if call["id"] in refused:
                 yield {"type": "tool_result", "name": call["name"], "is_error": True}
@@ -2618,6 +2678,7 @@ async def run_chat(
     max_iterations: int = 8,
     request: Any = None,
     current_route: str | None = None,
+    domains: list[str] | None = None,
 ) -> AsyncIterator[dict]:
     """Drive the model's tool-use loop, yielding UI events until it stops calling tools.
 
@@ -2635,8 +2696,16 @@ async def run_chat(
     ``current_route`` is the frontend's own current URL (REQ-1800), sent with every turn — this
     answers "what page am I on" without a tool round-trip, since the browser already knows its
     own route for free; see _system_prompt.
+
+    ``domains`` (REQ-2253) is the domain filter's selection: every tool call works within it,
+    intersected with the role's domain access. None (no selection) is the role's whole surface.
     """
     mcp_tools.require_role(role, state)  # raises ValueError / PermissionError
+    from provisa.nl.scope import selected_scope
+    from provisa.security.rights import require_role as _role_of
+
+    # No selection leaves the role's surface alone, and its authority is not read for it.
+    scope = None if domains is None else selected_scope(_role_of(state.roles, role), domains)
 
     configured, reason = await _llm_configured(state)
     if not configured:
@@ -2668,6 +2737,7 @@ async def run_chat(
             convo,
             max_iterations=max_iterations,
             budget=budget,
+            scope=scope,
             request=request,
             current_route=current_route,
         )
@@ -2679,6 +2749,7 @@ async def run_chat(
             vendor,
             max_iterations=max_iterations,
             budget=budget,
+            scope=scope,
             request=request,
             current_route=current_route,
         )

@@ -613,6 +613,22 @@ entitlement_expiries = Table(
     Column("recorded_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
 )
 
+# REQ-2219: one effective row per person, role and capability. See the matching block in schema.sql.
+effective_entitlements = Table(
+    "effective_entitlements",
+    metadata,
+    Column("id", BigInteger, primary_key=True, autoincrement=True),
+    Column("principal", Text, nullable=False),
+    Column("role_id", Text, nullable=False),
+    Column("capability", Text, nullable=False),
+    Column("bits", Text),  # hex; NULL for a capability with no mask
+    Column("model_version", Text, nullable=False),
+    Column("expansion", JSON(none_as_null=True)),  # NULL: unscoped
+    Column("removed", Boolean, nullable=False, server_default=false()),
+    Column("valid_from", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("recorded_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+)
+
 # REQ-2219, ONE API, THREE WAYS TO USE IT: a list granted by typed email to a person not yet seen.
 # Append-only, keyed by (email, role_id, kind): the last row is the grant's state. ``outcome`` is
 # NULL while it waits; ``principal`` names whom a sign-in attached it to, or was refused for.
@@ -813,6 +829,44 @@ catalog_bindings = Table(
     UniqueConstraint("target", "semantic_uri"),
 )
 
+# REQ-2247, REQ-2122: the value last exchanged with a Syncing entry, per entry, direction, kind of
+# difference and object (a table, column or term by its Provisa name). Written when a publish
+# succeeds and when a steward accepts a difference; the import review shows it beside both values.
+catalog_exchanges = Table(
+    "catalog_exchanges",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("entry", Text, nullable=False),
+    Column("direction", Text, nullable=False),
+    Column("kind", Text, nullable=False),
+    Column("object", Text, nullable=False),
+    Column("value", JSON, nullable=False),
+    Column("decided_by", Text, nullable=False),
+    Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("tenant_id", Uuid),
+    UniqueConstraint("entry", "direction", "kind", "object"),
+    CheckConstraint("direction IN ('export', 'import')", name="catalog_exchanges_direction_check"),
+)
+
+# REQ-2247: a Syncing entry's standing choice per direction and kind of difference: take Provisa's
+# value, take the other system's, or hold. A kind with no row has no standing choice.
+catalog_standing_choices = Table(
+    "catalog_standing_choices",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("entry", Text, nullable=False),
+    Column("direction", Text, nullable=False),
+    Column("kind", Text, nullable=False),
+    Column("choice", Text, nullable=False),
+    Column("decided_by", Text, nullable=False),
+    Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("tenant_id", Uuid),
+    UniqueConstraint("entry", "direction", "kind"),
+    CheckConstraint(
+        "direction IN ('export', 'import')", name="catalog_standing_choices_direction_check"
+    ),
+)
+
 # REQ-1387: business glossary. Terms are the normalized vocabulary derived from physical
 # field names; rooted terms hold refs, abstract terms hold none. A term losing its last
 # physical ref is removed unless an abstract term is connected to the rooted graph through
@@ -839,8 +893,11 @@ glossary_terms = Table(
     Column("status_at", DateTime(timezone=True)),
     # REQ-2237: the IRI of the imported concept the term is (schema.sql).
     Column("iri", Text),
+    # REQ-1591: no unique name; a name is unique only within a domain (schema.sql).
+    # REQ-2259: when the term last changed; the server default dates rows older than the
+    # column (schema.sql), and every repository write sets it.
+    Column("changed_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     Column("tenant_id", Uuid),
-    UniqueConstraint("name"),
 )
 
 # Physical ref = (table_id, column_name): the stable column identity — table_columns.id is
@@ -905,6 +962,19 @@ glossary_term_statements = Table(
     Column("statement", Text, nullable=False),
     Column("tenant_id", Uuid),
     UniqueConstraint("term_id", "ordinal"),
+)
+
+# REQ-2247: the catalogs a term was sourced from, one row a catalog. See schema.sql.
+glossary_term_sources = Table(
+    "glossary_term_sources",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("term_id", Integer, ForeignKey("glossary_terms.id", ondelete="CASCADE"), nullable=False),
+    Column("catalog", Text, nullable=False),
+    Column("catalog_ref", Text, nullable=False),
+    Column("sourced_at", DateTime(timezone=True), nullable=False),
+    Column("tenant_id", Uuid),
+    UniqueConstraint("term_id", "catalog"),
 )
 
 # People who can answer questions about the term or who authored its definition.
@@ -1114,6 +1184,24 @@ openlineage_run_datasets = Table(
         "dataset_namespace",
         "dataset_name",
         name="openlineage_run_datasets_key",
+    ),
+)
+
+# REQ-2263: each dataset's latest schema, documentation and ownership facet any OpenLineage event
+# carried, with the run and event time it came from
+# (provisa.core.repositories.openlineage_facets). One row per dataset and facet.
+openlineage_dataset_facets = Table(
+    "openlineage_dataset_facets",
+    metadata,
+    Column("dataset_namespace", Text, primary_key=True),
+    Column("dataset_name", Text, primary_key=True),
+    Column("facet", Text, primary_key=True),
+    Column("payload", JSON, nullable=False),
+    Column("run_id", Text, nullable=False),
+    Column("event_time", DateTime(timezone=True), nullable=False),
+    CheckConstraint(
+        "facet IN ('schema', 'documentation', 'ownership')",
+        name="openlineage_dataset_facets_facet_check",
     ),
 )
 
@@ -1966,6 +2054,9 @@ user_directory = Table(
     Column("user_id", Text, primary_key=True),
     Column("display_name", Text),
     Column("email", Text),
+    # REQ-2219 (amended 2026-11-18): whether the identity provider verified this address at the
+    # person's latest sign-in; only a verified address names this person in a write by email.
+    Column("email_verified", Boolean, nullable=False, server_default=false()),
     Column("email_opt_in", Boolean, nullable=False, server_default=true()),
     # REQ-413: the score from which a discovery run's proposals start ticked, the person's own.
     Column("discovery_threshold", Float, nullable=False, server_default="0.7"),
@@ -1975,6 +2066,16 @@ user_directory = Table(
     Column("discovery_key_values", Boolean, nullable=False, server_default=true()),
     Column("discovery_measure_cutoff", Float, nullable=False, server_default="0.2"),
     Column("discovery_sample_size", Integer, nullable=False, server_default="10000"),
+    # REQ-413 (amended 2026-11-18): the share of values in a key target at which a pair is a key
+    # relationship, the most a pair scores when neither side is a key, and the sample values
+    # shown per column (provisa.discovery.threshold.DEFAULTS), each set in the discover dialog.
+    Column("discovery_contained_at", Float, nullable=False, server_default="0.95"),
+    Column("discovery_shared_ceiling", Float, nullable=False, server_default="0.6"),
+    Column("discovery_samples_per_column", Integer, nullable=False, server_default="5"),
+    # REQ-413 (amended 2026-11-18): the filter on a run's Score column, the person's own as the
+    # threshold is: JSON {"op", "a", "b"} as the list's column filter holds it; NULL when they
+    # cleared it. A person who has set none has Score >= 10%.
+    Column("discovery_score_filter", Text, nullable=True, server_default='{"op": "ge", "a": "10"}'),
     Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
 )
 
@@ -2101,6 +2202,10 @@ query_audit_log = Table(
     Column("as_of", Text),
     Column("as_recorded", Text),
     Column("logged_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    # REQ-2261: the stage (production | preprod | test | development) the environment declared when
+    # the statement ran, so reports filter and group by it. NULL only for a deployment without a
+    # control plane, which keeps no environment registry to read a stage from.
+    Column("stage", Text),
 )
 
 # Service-level breaches (REQ-506). A row is opened when a measure goes past its limit and closed
@@ -2754,6 +2859,12 @@ discovery_run_proposals = Table(
     Column("answer", Text, nullable=True),
     Column("decision", Text, nullable=True),
     Column("accepted_as", Text, nullable=True),
+    # REQ-1586: a suggestion joining two ends through a junction both its legs refer from: the
+    # junction and its two referring columns (source_column = via_source_column, via_target_column
+    # = target_column). Null for every other proposal.
+    Column("via_table_id", Integer, ForeignKey("registered_tables.id"), nullable=True),
+    Column("via_source_column", Text, nullable=True),
+    Column("via_target_column", Text, nullable=True),
     Column("tenant_id", Uuid),
 )
 
@@ -2928,6 +3039,56 @@ glossary_ontology_alignments = Table(
 )
 
 
+# REQ-2266: an access review and its rows. See the matching block in schema.sql.
+access_reviews = Table(
+    "access_reviews",
+    metadata,
+    Column("id", BigInteger(), primary_key=True, autoincrement=True),
+    Column("started_by", Text, nullable=False),  # the person who asked for it, or "schedule"
+    Column("started_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    # The scheduled review's post to the org's webhook: NULL when none was due (on demand, or no
+    # webhook set), else 'delivered' or 'failed' with the failure's text and the time of the try.
+    Column("webhook_status", Text),
+    Column("webhook_error", Text),
+    Column("webhook_at", DateTime(timezone=True)),
+    CheckConstraint(
+        "webhook_status IN ('delivered', 'failed')", name="access_reviews_webhook_status_check"
+    ),
+)
+
+access_review_rows = Table(
+    "access_review_rows",
+    metadata,
+    Column("id", BigInteger(), primary_key=True, autoincrement=True),
+    Column(
+        "review_id",
+        BigInteger(),
+        ForeignKey("access_reviews.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    Column("user_id", Text, nullable=False),
+    Column("role_id", Text, nullable=False),
+    Column("domain_id", Text, nullable=False),
+    # Where the member holds the role: 'provisa' (a grant Provisa holds, which the owner can
+    # revoke) or 'identity_provider' (claims or a role mapping: listed read-only).
+    Column("source", Text, nullable=False, server_default="provisa"),
+    # The grant's entitlement lists when the review was taken: [{kind, capability, identifiers}].
+    Column("entitlements", JSON, nullable=False, default=list, server_default="[]"),
+    Column("expires_at", DateTime(timezone=True)),
+    Column("last_used_at", DateTime(timezone=True)),
+    Column("decision", Text),
+    Column("decided_by", Text),
+    Column("decided_at", DateTime(timezone=True)),
+    Column("reason", Text),
+    CheckConstraint(
+        "decision IN ('confirmed', 'revoked')", name="access_review_rows_decision_check"
+    ),
+    CheckConstraint(
+        "source IN ('provisa', 'identity_provider')", name="access_review_rows_source_check"
+    ),
+    UniqueConstraint("review_id", "user_id", "role_id", "domain_id"),
+)
+
 admin_audit_log = Table(
     "admin_audit_log",
     metadata,
@@ -2940,12 +3101,14 @@ admin_audit_log = Table(
 )
 
 
-# REQ-2006: every source of the DDL that lands in an org's control-plane schema from code, by its
-# path in this package: its tables (beside this metadata, which ddl_fingerprint compiles), views,
-# functions and triggers. A demo template kept across a cloud patch is trusted only when the code
-# that built it had the same text here (no migrations: one built by older code lacks what is new,
-# e.g. relation "config_stamp" does not exist). A module that runs DDL is in this list or in the
-# guard's list of DDL that never lands in an org's schema
+# REQ-2006: every source of the DDL that lands in an org's control-plane schema from code and stays
+# there, by its path in this package: its tables (beside this metadata, which ddl_fingerprint
+# compiles), functions and triggers. A demo template kept across a cloud patch is trusted only when
+# the code that built it had the same shape here (no migrations: one built by older code lacks what
+# is new, e.g. relation "config_stamp" does not exist). The built-in views are not: every runtime
+# build makes them again from the running code (startup_seed._seed_view) and a sandbox's are made
+# fresh (_make_built_in_views), so a kept template is served the patched code's views. A module
+# that runs DDL is in this list or in the guard's list of DDL that never lands in an org's schema
 # (tests/unit/test_demo_template_warm_start.py), so a new source cannot be missed.
 ORG_SCHEMA_DDL_SOURCES: tuple[str, ...] = (
     "core/schema.sql",
@@ -2955,11 +3118,6 @@ ORG_SCHEMA_DDL_SOURCES: tuple[str, ...] = (
     "core/env_copy.py",
     "audit/query_log.py",
     "mv/schema.sql",
-    "api/_meta_views.py",
-    "api/_ontology_views.py",
-    "api/_ontology_quality_views.py",
-    "api/_pg_catalog_views.py",
-    "api/startup_seed.py",
     "grpc/field_numbering.py",
     "live/watermark.py",
     "profiler/schema.py",
@@ -2984,12 +3142,16 @@ def ddl_sources() -> dict[str, bytes]:
 
 def fingerprint_of(tables: MetaData, sources: dict[str, bytes]) -> str:
     """The first 16 hex of SHA-256 over an org schema's DDL: each of ``tables``' CREATE TABLE and
-    CREATE INDEX, compiled for PostgreSQL in name order, and the text of each of ``sources`` (the
-    modules and scripts that run the rest of it), in path order."""
+    CREATE INDEX, compiled for PostgreSQL in name order, and the shape of each of ``sources`` (the
+    modules and scripts that run the rest of it; ddl_text.source_shape), in path order. A comment,
+    a docstring or a layout change in a source is not a change of shape: each once reset every
+    demo template at the next cloud patch."""
     import hashlib
 
     from sqlalchemy.dialects import postgresql
     from sqlalchemy.schema import CreateIndex, CreateTable
+
+    from provisa.core.ddl_text import source_shape
 
     dialect = postgresql.dialect()
     digest = hashlib.sha256()
@@ -2999,7 +3161,7 @@ def fingerprint_of(tables: MetaData, sources: dict[str, bytes]) -> str:
         for index in sorted(table.indexes, key=lambda i: str(i.name)):
             digest.update(str(CreateIndex(index).compile(dialect=dialect)).encode())
     for path in sorted(sources):
-        digest.update(path.encode() + b"\0" + sources[path])
+        digest.update(path.encode() + b"\0" + source_shape(path, sources[path]))
     return digest.hexdigest()[:16]
 
 

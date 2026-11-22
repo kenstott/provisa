@@ -25,7 +25,7 @@
     "partial": "{{failed}} von {{count}} Anfrage ist fehlgeschlagen, das Ergebnis ist daher unvollständig.",
     "partial_other": "{{failed}} von {{count}} Anfragen sind fehlgeschlagen, das Ergebnis ist daher unvollständig.",
     "semanticsNoneProposed": "Semantik: keine. Das Modell hat keine Beziehungen vorgeschlagen.",
-    "semanticsBelowThreshold": "Semantik: keine. Jeder Vorschlag wurde unter den {{threshold}} % bewertet, ab denen ein Vorschlag behalten wird.",
+    "semanticsBelowThreshold": "Semantik: keine. Jeder Vorschlag lag unter den {{threshold}} %, ab denen ein Vorschlag behalten wird.",
     "semanticsFiltered": "Semantik: keine. Jeder Vorschlag wurde ausgelassen, aus den unten genannten Gründen.",
     "split": "{{count}} Anfrage wurde halbiert und erneut gestellt.",
     "split_other": "{{count}} Anfragen wurden halbiert und erneut gestellt.",
@@ -35,23 +35,18 @@
     "jevBelow_other": "Jev hat {{count}} Vorschläge unter {{threshold}} % bewertet. Jeder wird neben der Bewertung des Modells angezeigt, die entscheidet.",
     "scoringFailed": "Jev konnte die Vorschläge von {{count}} Anfrage nicht bewerten; sie behielten die Konfidenz des Modells.",
     "scoringFailed_other": "Jev konnte die Vorschläge von {{count}} Anfragen nicht bewerten; sie behielten die Konfidenz des Modells.",
-    "failedRequest": "Für Spalten vom Typ {{group}}: {{message}}",
+    "failedRequest": "Für {{group}} Spalten: {{message}}",
     "leftOut": "Nicht vorgeschlagen: {{list}}.",
     "leftOutItem": "{{label}} ({{count}})",
     "removed": {
-      "below_threshold": "mit weniger als {{threshold}} % bewertet",
+      "below_threshold": "Bewertung unter {{threshold}} %",
       "invalid": "nennt keine zwei verglichenen Spalten",
       "not_comparable": "zwischen Spalten unterschiedlicher Klassen",
       "same_column": "von einer Spalte zu sich selbst",
-      "primary_key_to_primary_key": "Primärschlüssel zu Primärschlüssel",
-      "both_repeating": "Werte auf beiden Seiten wiederholt",
       "existing": "bereits registriert",
-      "pending": "wartet bereits",
       "rejected": "zuvor abgelehnt",
-      "matches_foreign_key": "entspricht einem in diesem Lauf gefundenen Fremdschlüssel",
-      "out_of_scope": "außerhalb der gewählten Tabellen",
-      "weaker": "wiederholt ein Spaltenpaar, für das ein stärkerer Vorschlag behalten wurde",
-      "many_to_many": "ohne Schlüssel in einer der beiden Spalten"
-    }
+      "out_of_scope": "außerhalb der gewählten Tabellen"
+    },
+    "keyNames": "Schlüsselnamen und -typen: {{found}} gefunden, {{count}} vorgeschlagen."
   }
 }

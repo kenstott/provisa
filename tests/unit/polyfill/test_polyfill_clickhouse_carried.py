@@ -238,9 +238,10 @@ def test_a_call_inside_another_is_carried(runtime):
     "sql",
     [
         # btrim and regexp_like of flags are ClickHouse's own rows now, not DuckDB's carried form
-        # (polyfill.texts, polyfill.regex; tests/unit/polyfill/test_polyfill_clickhouse_texts.py).
+        # (polyfill.texts, polyfill.regex; tests/unit/polyfill/test_polyfill_clickhouse_texts.py),
+        # as exp of a double is (polyfill.floats; test_polyfill_clickhouse_exponentials.py).
         "SELECT pg_catalog.oidvectorlt('10'::oidvector, '9'::oidvector) AS v",
-        'SELECT pg_catalog."exp"(710.0::double precision) AS v',
+        'SELECT pg_catalog."exp"(710.0::numeric) AS v',
     ],
 )
 def test_an_overload_not_carried_stays_refused_by_name(sql):

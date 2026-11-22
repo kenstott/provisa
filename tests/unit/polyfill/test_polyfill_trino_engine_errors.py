@@ -564,8 +564,6 @@ def _expanded(sql: str) -> str:
     [
         ("pg_isolation_test_session_is_blocked", "NULL::integer, NULL::integer[]"),
         ("pg_isolation_test_session_is_blocked", "1::integer, '{1,NULL,3}'::integer[]"),
-        ("postgresql_fdw_validator", "NULL::text[], NULL::oid"),
-        ("postgresql_fdw_validator", "'{a,\"b c\",NULL}'::text[], 1::oid"),
     ],
 )
 def test_a_server_forms_array_is_its_text_as_array_out_writes_it_on_trino(function, args):
@@ -580,6 +578,24 @@ def test_a_server_forms_array_is_its_text_as_array_out_writes_it_on_trino(functi
     ]
     assert unread == []
     assert "array_to_string" in _calls(tree)  # sqlglot's name of Trino's array_join
+
+
+@pytest.mark.parametrize("args", ["NULL::text[], NULL::oid", "'{a,\"b c\",NULL}'::text[], 1::oid"])
+def test_postgresql_fdw_validator_reads_the_array_itself_on_trino(args):
+    """The validator walks the option elements, so its form takes the engine's own array and never
+    its text: no cast of an array to varchar, and no array_to_string."""
+    tree = sqlglot.parse_one(
+        transpile_to_trino(_expanded(_call("postgresql_fdw_validator", args))), read="trino"
+    )
+    unread = [
+        c
+        for c in tree.find_all(exp.Cast)
+        if c.to.is_type(exp.DataType.Type.VARCHAR)
+        and isinstance(c.this, exp.Cast)
+        and c.this.to.is_type(exp.DataType.Type.ARRAY)
+    ]
+    assert unread == []
+    assert "array_to_string" not in _calls(tree)
 
 
 def test_an_array_of_text_is_quoted_as_array_out_quotes_it_on_trino():

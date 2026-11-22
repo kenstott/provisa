@@ -605,6 +605,9 @@ def _route_publish(monkeypatch, snapshot, db, exporters: dict) -> None:
             tenant_db=_one_db,
             contexts={},
             multitenancy=False,
+            # No platform control plane, as a single-tenant deployment: it keeps no environment
+            # registry, so the export states no stage (REQ-2261).
+            admin_db=None,
             # REQ-1659: the listing links back at the org's public origin, read off config.mail.
             config=types.SimpleNamespace(
                 mail=types.SimpleNamespace(base_url="https://provisa.test")
@@ -906,6 +909,9 @@ async def test_a_retired_product_is_sent_only_where_it_was_published(
             tenant_db=_one_db,
             contexts={},
             multitenancy=False,
+            # No platform control plane, as a single-tenant deployment: it keeps no environment
+            # registry, so the export states no stage (REQ-2261).
+            admin_db=None,
             config=types.SimpleNamespace(
                 mail=types.SimpleNamespace(base_url="https://provisa.test")
             ),
@@ -927,3 +933,47 @@ async def test_a_retired_product_is_sent_only_where_it_was_published(
     # c360 retires: it was published here, so it is sent, retired, to be withdrawn.
     await publish(product("c360", "retired"), product("old", "retired"))
     assert sent[-1] == [("c360", "retired")]
+
+
+@pytest.mark.asyncio
+async def test_a_publish_hands_a_catalog_only_its_domains_tables(
+    snapshot, control_plane, monkeypatch
+):
+    """REQ-2122: the single publish path narrows the snapshot to the catalog's domains, so a
+    finance catalog is never sent the sales table."""
+    import dataclasses
+
+    from provisa.api.metadata_export import publishing
+    from provisa.api.metadata_export.provider import PublishResult
+
+    sales_table = snapshot.tables[0]
+    finance_table = dataclasses.replace(sales_table, domain_id="finance")
+    two_domains = dataclasses.replace(snapshot, tables=[sales_table, finance_table])
+    seen: list[list[str]] = []
+
+    class _Exporter:
+        stored_bindings: dict = {}
+        needs_export_views = False
+        binds_products = True
+
+        async def publish(self, published_snapshot):
+            seen.append([t.domain_id for t in published_snapshot.tables])
+            return PublishResult(provider_name="atlas", published={})
+
+    _route_publish(monkeypatch, two_domains, control_plane.org(), {"finance-catalog": _Exporter()})
+
+    async def _export_config(org_id, *, only=None):
+        return MetadataExportConfig(), [
+            MetadataExportTarget(
+                id="finance-catalog",
+                provider="atlas",
+                endpoint="https://catalog.example",
+                domains=["finance"],
+                role="steward",
+            )
+        ]
+
+    monkeypatch.setattr(publishing, "_export_config", _export_config)
+
+    assert (await publishing.publish_snapshot("acme"))["finance-catalog"].ok
+    assert seen == [["finance"]]

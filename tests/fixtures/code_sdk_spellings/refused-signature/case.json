@@ -1,0 +1,35 @@
+{
+  "python": {
+    "doc": {
+      "problems": [
+        "rows: a @table function takes (inputs, context) -- an object whose fields are its inputs, and a ReadContext, either left out -- not (context, inputs)"
+      ]
+    },
+    "sdk": {
+      "problems": [
+        "rows: a @table function takes (inputs, context) -- an object whose fields are its inputs, and a ReadContext, either left out -- not (context, inputs)"
+      ],
+      "checker": "rejects"
+    }
+  },
+  "typescript": {
+    "doc": {
+      "problems": [
+        "rows: a @table function takes (inputs, context) -- an object whose fields are its inputs, and a ReadContext, either left out -- not (context, inputs)"
+      ]
+    },
+    "sdk": {
+      "checker": "rejects"
+    }
+  },
+  "go": {
+    "doc": {
+      "problems": [
+        "Rows: a @table function takes (inputs, context) -- an object whose fields are its inputs, and a ReadContext, either left out -- not (in, more)"
+      ]
+    },
+    "sdk": {
+      "checker": "rejects"
+    }
+  }
+}

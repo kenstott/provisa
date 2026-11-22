@@ -6,7 +6,7 @@
     "signInTitle": "Accedi",
     "firstLoginHeading": "Configura questa distribuzione",
     "firstLoginTitle": "Questo è il primo accesso",
-    "firstLoginBody": "Nessuno amministra ancora questa distribuzione. Chi accede per primo diventa l'amministratore della piattaforma — con pieno controllo su organizzazioni, utenti e origini dati. Scegliere un metodo di accesso qui sotto per assumere il ruolo.",
+    "firstLoginBody": "Nessuno amministra ancora questo deployment. Chi accede per primo diventa l'amministratore della piattaforma, con pieno controllo su organizzazioni, utenti e origini dati. Scegliere un metodo di accesso qui sotto per rivendicarlo.",
     "signInWithGoogle": "Accedi con Google",
     "signInWithGithub": "Accedi con GitHub",
     "signInWithMicrosoft": "Accedi con Microsoft",
@@ -36,9 +36,9 @@
     "signInWithSso": "Accedi con Single Sign-On",
     "samlSignInFailed": "L'accesso Single Sign-On non è stato completato. Riprova o rivolgiti all'amministratore.",
     "sandboxBuildingTitle": "Creazione della tua sandbox…",
-    "sandboxBuildingBody": "Stiamo preparando una copia privata dei dati di esempio solo per te: possono volerci un paio di minuti.",
+    "sandboxBuildingBody": "Preparazione di una copia privata dei dati di esempio. Può richiedere un paio di minuti.",
     "sandboxTryTitle": "Prova Provisa gratis",
-    "sandboxTryBody": "Esplora l'intera piattaforma con dati di esempio, senza carta di credito. La tua sandbox è temporanea: scompare quando esci.",
+    "sandboxTryBody": "Esplora l'intera piattaforma con dati di esempio. Nessuna carta di credito richiesta. La sandbox è temporanea e scompare alla disconnessione.",
     "sandboxHeading": "Prova Provisa"
   }
 }

@@ -31,7 +31,7 @@ config and the credential resolve from that org's settings, and the org id is bo
 publish — so a reconcile for one org cannot read another's target, let alone publish to it.
 """
 
-# Requirements: REQ-1072, REQ-1073, REQ-2247
+# Requirements: REQ-1072, REQ-1073, REQ-2247, REQ-2122
 
 from __future__ import annotations
 
@@ -48,6 +48,7 @@ from provisa.api.metadata_export.dq_outcomes import read_latest_outcomes
 from provisa.api.metadata_export.provider import AssetError, AssetRefStub, PublishResult
 from provisa.api.metadata_export.registry import metadata_export
 from provisa.api.metadata_export.scope import for_domains, for_role
+from provisa.api.metadata_export.sync_values import provisa_values
 from provisa.control_plane.entitlements import (
     EntitlementError,
     Feature,
@@ -64,7 +65,7 @@ if TYPE_CHECKING:
     from provisa.api.metadata_export.model import OfferExport, ServingEndpoints, TableAsset
     from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
-    from provisa.api.metadata_export.model import MetadataSnapshot
+    from provisa.api.metadata_export.model import EnvironmentStage, MetadataSnapshot
 
     from provisa.core.models import ProvisaConfig
 
@@ -248,6 +249,24 @@ def _snapshot_uris(snapshot: Any) -> set[str]:
     return uris
 
 
+async def environment_stage(org_id: str) -> "EnvironmentStage | None":  # REQ-2261
+    """The environment this context is served by and the stage it declares, which every catalog
+    and lineage export carries. None for a deployment without a control plane: it keeps no
+    environment registry, so there is no stage to state."""
+    from provisa.api.app import state
+    from provisa.api.metadata_export.model import EnvironmentStage
+    from provisa.core.env_store import get_env
+    from provisa.core.request_context import active_env
+
+    if state.admin_db is None:
+        return None
+    env = active_env()
+    row = await get_env(state.admin_db, org_id, env)
+    if row is None:
+        raise ExportNotAllowed(f"org {org_id!r} has no environment {env!r} to export from")
+    return EnvironmentStage(name=env, stage=row["stage"])
+
+
 async def org_snapshot(org_id: str, *, product_id: str | None = None) -> "MetadataSnapshot":
     """The bound org's full metadata snapshot: what every target is published (REQ-1072) and
     what its ODPS and ODCS documents are built from (REQ-2118). ``org_id`` is the bound org.
@@ -288,7 +307,8 @@ async def org_snapshot(org_id: str, *, product_id: str | None = None) -> "Metada
     # config, so it is read here and handed to the builder exactly as the term graph is.
     dq_outcomes = await read_latest_outcomes(model, product_id=product_id)
     base_url = state.config.mail.base_url if state.config else None
-    return build_snapshot(
+    environment = await environment_stage(org_id)
+    snapshot = build_snapshot(
         model,
         org_id=org_id,
         uri_org_id=org_id if state.multitenancy else None,
@@ -305,6 +325,7 @@ async def org_snapshot(org_id: str, *, product_id: str | None = None) -> "Metada
         endpoints=serving_endpoints(state, org_id, base_url),
         offers=offers,
     )
+    return dataclasses.replace(snapshot, environment=environment)
 
 
 async def offer_exports(conn: Any) -> dict[str, tuple["OfferExport", ...]]:
@@ -436,7 +457,7 @@ async def publish_snapshot(org_id: str, *, only: str | None = None) -> dict[str,
     """
     from provisa.api.app import state
     from provisa.core.request_context import reset_current_org, set_current_org
-    from provisa.core.repositories import catalog_binding
+    from provisa.core.repositories import catalog_binding, catalog_exchange
 
     token = set_current_org(org_id)
     try:
@@ -462,13 +483,7 @@ async def publish_snapshot(org_id: str, *, only: str | None = None) -> dict[str,
                 )
                 continue
             exporter = metadata_export(target)
-            # REQ-2122: a catalog is published its domains' tables and data products alone;
-            # REQ-2152 (Q1): and only what the role it is published as reads.
-            published = for_role(
-                for_domains(snapshot, target.domains),
-                await role_reader(state, target.role),
-                role_reach(state, target.role),
-            )
+            published = await for_entry(state, snapshot, target.domains, target.role)
             async with model_db.acquire() as conn:
                 # REQ-1389: hand the provider the vendor ids captured by its earlier publishes,
                 # so a physically re-addressed asset rebinds the SAME catalog entity instead of
@@ -511,8 +526,41 @@ async def publish_snapshot(org_id: str, *, only: str | None = None) -> dict[str,
                     await catalog_binding.remove_stale_bindings(
                         conn, target.id, keep_uris=_snapshot_uris(published) | set(result.bindings)
                     )
+            if result.ok:
+                # REQ-2247: what this publish sent is the value last exchanged with the entry.
+                async with model_db.acquire() as conn:
+                    await catalog_exchange.record(
+                        conn,
+                        target.id,
+                        "export",
+                        ((v.kind, v.object, v.value) for v in provisa_values(sent).values()),
+                        decided_by=catalog_exchange.PUBLISH,
+                    )
             results[target.id] = result
         return results
+    finally:
+        reset_current_org(token)
+
+
+async def for_entry(
+    state: Any, snapshot: "MetadataSnapshot", domains: list[str], role: str
+) -> "MetadataSnapshot":
+    """What an entry is published, and what its catalog is read back for: its domains' tables and
+    data products alone (REQ-2122), and only what the role it is published as reads (REQ-2152)."""
+    return for_role(
+        for_domains(snapshot, domains), await role_reader(state, role), role_reach(state, role)
+    )
+
+
+async def entry_snapshot(org_id: str, domains: list[str], role: str) -> "MetadataSnapshot":
+    """The snapshot one entry is published, built for ``org_id`` (REQ-2247: the import review
+    compares the catalog with exactly what the entry is sent)."""
+    from provisa.api.app import state
+    from provisa.core.request_context import reset_current_org, set_current_org
+
+    token = set_current_org(org_id)
+    try:
+        return await for_entry(state, await org_snapshot(org_id), domains, role)
     finally:
         reset_current_org(token)
 
@@ -638,7 +686,7 @@ async def register_org_jobs(scheduler: AsyncIOScheduler, org_id: str) -> None:
     finally:
         reset_current_org(token)
 
-    from apscheduler.triggers.cron import CronTrigger
+    from provisa.core.cron import cron_trigger
     from apscheduler.triggers.interval import IntervalTrigger
 
     scheduler.add_job(
@@ -655,7 +703,7 @@ async def register_org_jobs(scheduler: AsyncIOScheduler, org_id: str) -> None:
     )
     scheduler.add_job(
         reconcile_org,
-        trigger=CronTrigger.from_crontab(config.reconcile_cron),
+        trigger=cron_trigger(config.reconcile_cron),
         args=[org_id],
         id=reconcile_job_id(org_id),
         name=f"metadata_export:reconcile:{org_id}",

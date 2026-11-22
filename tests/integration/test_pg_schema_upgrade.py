@@ -294,6 +294,7 @@ async def test_a_table_schema_sql_does_not_create_lands_in_the_org_schema(own_da
         "as_of",  # REQ-1163: the time travel the statement read at
         "as_recorded",
         "logged_at",
+        "stage",  # REQ-2261: the stage of the environment the statement ran in
     }
     assert _column_shapes(db, _SCHEMA, "query_audit_log") == declared
     with db.engine.begin() as conn:
@@ -389,6 +390,11 @@ async def test_two_starts_reconciling_one_org_schema_at_once_both_succeed(own_da
 # created with. It holds what history shows and grows only by a new table's first columns; a column
 # added to an existing table does NOT go here, it gets an ALTER.
 _CREATE_ONLY = {
+    "access_review_rows": (
+        "id review_id user_id role_id domain_id source entitlements expires_at last_used_at decision "
+        "decided_by decided_at reason"
+    ),
+    "access_reviews": "id started_by started_at webhook_status webhook_error webhook_at",
     "admin_audit_log": "id action actor_id subject_id detail created_at",
     "api_endpoints": "id source_id path method table_name columns ttl created_at",
     "api_sources": "id type base_url spec_url auth created_at",
@@ -397,6 +403,8 @@ _CREATE_ONLY = {
         "week_start holidays weekend created_at"
     ),
     "catalog_bindings": "id semantic_uri vendor_ref physical_key updated_at",
+    "catalog_exchanges": "id entry direction kind object value decided_by updated_at tenant_id",
+    "catalog_standing_choices": "id entry direction kind choice decided_by updated_at tenant_id",
     "checker_latest_runs": "table_id scan_id scan_time outcome",
     "checker_targets": "table_id checked_table_id",
     "code_source_builds": (
@@ -425,7 +433,20 @@ _CREATE_ONLY = {
     "data_products": "id domain_id name",
     "dbt_manifests": "source_id definitions updated_at",
     "dbt_node_runs": "source_id unique_id status generated_at built_at",
+    "discovery_run_proposals": (
+        "id run_id kind source_table_id source_column target_table_id target_column confidence "
+        "scored score cardinality measure reasoning suggested_name left_out answer decision "
+        "accepted_as tenant_id"
+    ),
+    "discovery_runs": (
+        "id status scope model requests_total requests_done suggestions report error "
+        "stop_requested stopped_by started_by started_at finished_at launch progress_at tenant_id"
+    ),
     "domains": "id description",
+    "effective_entitlements": (
+        "id principal role_id capability bits model_version expansion removed valid_from "
+        "recorded_at"
+    ),
     "email_send_authority_audit": (
         "id email_address user_id granted_by org_id action reason created_at"
     ),
@@ -472,6 +493,7 @@ _CREATE_ONLY = {
         "id document_id document_title document_source domains status error summary started_by "
         "started_at finished_at tenant_id"
     ),
+    "glossary_term_sources": "id term_id catalog catalog_ref sourced_at tenant_id",
     "glossary_term_statements": "id term_id ordinal kind statement tenant_id",
     "glossary_term_vectors": "term_id embedding_model digest vector tenant_id",
     "glossary_terms": "id name definition deprecated tenant_id",
@@ -513,6 +535,7 @@ _CREATE_ONLY = {
     "naming_rules": "id pattern replacement",
     "node_freshness_state": "node content_hash probe_token updated_at",
     "node_ids": "id composite_id label properties",
+    "openlineage_dataset_facets": "dataset_namespace dataset_name facet payload run_id event_time",
     "openlineage_run_datasets": (
         "id job_namespace job_name run_id event_time direction dataset_namespace dataset_name "
         "column_lineage"
@@ -824,6 +847,9 @@ ALTER TABLE file_source_mtimes ADD CONSTRAINT file_source_mtimes_table_id_fkey
 -- tag_assignments: uniqueness was on tag_id before base_tag_id was introduced (333860e7).
 ALTER TABLE tag_assignments ADD CONSTRAINT tag_assignments_tag_id_object_key_key
     UNIQUE (tag_id, object_key);
+
+-- glossary_terms: a name was unique across every domain before REQ-1591's 2026-11-18 amendment.
+ALTER TABLE glossary_terms ADD CONSTRAINT glossary_terms_name_key UNIQUE (name);
 """
 
 # Every constraint the script must drop, keyed by table.
@@ -838,6 +864,7 @@ _REMOVED_CONSTRAINT_NAMES: dict[str, set[str]] = {
     "mv_delta_ledger": {"mv_delta_ledger_mv_id_fkey"},
     "file_source_mtimes": {"file_source_mtimes_table_id_fkey"},
     "tag_assignments": {"tag_assignments_tag_id_object_key_key"},
+    "glossary_terms": {"glossary_terms_name_key"},
 }
 
 
@@ -923,6 +950,8 @@ async def test_schema_sql_drops_constraints_removed_from_the_create(own_database
             "VALUES ($1, 'analyst_rls', decode('00', 'hex'), 'U')",
             tbl_id,
         )
+        # REQ-1591: a name is unique only within a domain, so two terms may share one.
+        await conn.execute("INSERT INTO glossary_terms (name) VALUES ('order'), ('order')")
 
 
 async def test_constraints_reach_a_table_holding_rows_that_have_no_key(own_database):

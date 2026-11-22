@@ -48,6 +48,27 @@
     "changeResolver": "更改代碼解析器",
     "retireResolver": "停用代碼解析器",
     "retireResolverTitle": "停用代碼解析器 {{resolver}}？",
-    "retireResolverConsequence": "其配對視圖和三個關係會一起停用。它們的名稱仍被佔用。"
+    "retireResolverConsequence": "其配對視圖和三個關係會一起停用。它們的名稱仍被佔用。",
+    "queryLinks": {
+      "heading": "查詢",
+      "tableMissing": "查詢連結無法使用：此關係所指的表格 {{ids}} 不在已註冊的表格中。",
+      "tablesUnread": "查詢連結無法使用：無法讀取已註冊的表格（{{error}}）。",
+      "cypher": "用 Cypher 讀取 {{name}}",
+      "sql": "用 SQL 讀取 {{name}}",
+      "sparql": "用 SPARQL 讀取 {{name}}",
+      "graphql": "用 GraphQL 讀取 {{name}}",
+      "rest": "用 REST 讀取 {{name}}",
+      "grpc": "用 gRPC 讀取 {{name}}",
+      "jsonapi": "用 JSON:API 讀取 {{name}}",
+      "surfaces": {
+        "cypher": "Cypher",
+        "sql": "SQL",
+        "sparql": "SPARQL",
+        "graphql": "GraphQL",
+        "rest": "REST",
+        "grpc": "gRPC",
+        "jsonapi": "JSON:API"
+      }
+    }
   }
 }

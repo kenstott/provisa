@@ -62,7 +62,6 @@ const ORG_SCOPED: Record<string, string> = {
   "/admin/system-health": "observability",
   "/admin/observability": "observability",
   "/admin/ai-models": "org_settings",
-  "/admin/syncing": "org_settings", // REQ-2247: the org's own outside systems kept in step
   // REQ-1327: an import writes objects of several layers; any of their rights opens the page
   // (asserted below with the rest of its requirement).
   "/admin/import": "table_registration", // REQ-1483: Hasura v2 / DDN import
@@ -71,10 +70,6 @@ const ORG_SCOPED: Record<string, string> = {
   // REQ-2147, REQ-1327: classification is the steward's, on the decisions' own right.
   "/admin/classification-kinds": "sensitive_data",
   "/admin/reports": "observability", // REQ-1386: ops-domain report viewer (read-only)
-  // REQ-1590: the org's own business glossary, on its own read right. Looking a term up to
-  // understand a column is not administering the org, so every seeded role reaches the surface;
-  // curation inside it is gated on `glossary_rw`.
-  "/admin/ontology": "glossary_read", // REQ-1387
   "/admin/domains": "org_settings",
   // REQ-1487: the org's environments — its branches, the merges between them, and the repository
   // the model is projected into. All of it is the acting org's own model, so none of it is
@@ -284,8 +279,6 @@ describe("admin surface capabilities", () => {
     // A surface an org administrator may reach but cannot see is unreachable in practice.
     const nav = navBarAdminCapabilities();
     for (const [path, capability] of Object.entries(ORG_SCOPED)) {
-      // The glossary's nav entry is the top-level NavBar link, asserted below.
-      if (path === "/admin/ontology") continue;
       // REQ-1469: billing's nav entry is the account-menu item in NavBar.tsx, asserted below.
       if (path === "/admin/billing") continue;
       // The health table was merged into the dashboard, so /admin/system-health is a deep link to
@@ -295,13 +288,65 @@ describe("admin surface capabilities", () => {
     }
   });
 
-  it("shows the glossary as a top-level nav entry gated on its route's right", () => {
-    // REQ-1387: Glossary is a top-level menu item, not an Admin group item — but the gate
-    // must still match the /admin/ontology route or the link 403s (or hides the surface).
-    // The bar's links are the NAV_BAR list NavBar renders.
-    const link = barLink("/admin/ontology");
-    expect(link.capability).toBe("glossary_read"); // REQ-1590
-    expect(routeCapabilities()["/admin/ontology"]).toBe("glossary_read");
+  it("draws the Context group where the Ontology and Library links stood, in its order", () => {
+    // REQ-2259: one Context group replaces the two top-level links, before Model.
+    const groups = NAV_BAR.map((e) => (e.kind === "group" ? e.group.id : e.to));
+    expect(groups.indexOf("context")).toBe(groups.indexOf("/relationships") + 1);
+    expect(groups.indexOf("model")).toBe(groups.indexOf("context") + 1);
+    for (const to of ["/admin/ontology", "/library"]) {
+      expect(
+        NAV_BAR.some((e) => e.kind === "link" && e.to === to),
+        to,
+      ).toBe(false);
+    }
+    const context = NAV_GROUPS.find((g) => g.id === "context")!;
+    expect(context.items.map((i) => i.to)).toEqual([
+      "/context/health",
+      "/context/glossary",
+      "/context/ontology",
+      "/context/metrics",
+      "/context/tags",
+      "/context/classification",
+      "/context/documents",
+      "/context/sync",
+    ]);
+  });
+
+  it("gates every open Context page on the right its route requires", () => {
+    // REQ-1590: the ontology and the documents on the glossary's read right; REQ-2247: Context
+    // Sync keeps the org_settings it had in Admin. Each has its own <Route> in App.tsx.
+    const appSource = readFileSync(resolve(SRC, "App.tsx"), "utf-8");
+    const context = NAV_GROUPS.find((g) => g.id === "context")!;
+    const open = context.items.filter((i) => !i.comingSoon);
+    expect(Object.fromEntries(open.map((i) => [i.to, i.capability]))).toEqual({
+      "/context/glossary": "glossary_read",
+      "/context/ontology": "glossary_read",
+      // REQ-2259: the read-only Metrics, Tags and Classification views.
+      "/context/metrics": "glossary_read",
+      "/context/tags": "glossary_read",
+      "/context/classification": "glossary_read",
+      "/context/documents": "glossary_read",
+      "/context/sync": "org_settings",
+    });
+    for (const item of open) {
+      const routeAt = appSource.indexOf(`path="${item.to}"`);
+      expect(routeAt, item.to).toBeGreaterThan(-1);
+      const capability = /capability="([a-z_]+)"/.exec(
+        appSource.slice(routeAt, routeAt + 400),
+      )?.[1];
+      expect(capability, item.to).toBe(item.capability);
+    }
+  });
+
+  it("no longer lists Syncing in Admin, nor routes the moved pages at their old addresses", () => {
+    // REQ-2259: Context Sync moved out of Admin; no redirects are kept for the old addresses.
+    const admin = NAV_GROUPS.find((g) => g.id === "admin")!;
+    expect(admin.items.some((i) => i.to === "/admin/syncing")).toBe(false);
+    const routes = routeCapabilities();
+    for (const old of ["/admin/syncing", "/admin/ontology"])
+      expect(routes[old], old).toBeUndefined();
+    const appSource = readFileSync(resolve(SRC, "App.tsx"), "utf-8");
+    expect(appSource).not.toContain('path="/library"');
   });
 
   it("gates every top-level nav link on the right its route requires", () => {

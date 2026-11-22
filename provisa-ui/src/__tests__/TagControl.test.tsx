@@ -537,7 +537,7 @@ describe("TagControl: pii on a column", () => {
       "Define 'Email' to mark it.",
     );
     fireEvent.click(screen.getByTestId("pii-define-term"));
-    expect(navigateTo).toHaveBeenCalledWith("/admin/ontology?term=7");
+    expect(navigateTo).toHaveBeenCalledWith("/context/ontology?term=7");
   });
 
   it("shows a column pii through its term, and unmarks it on the term", async () => {

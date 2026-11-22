@@ -392,9 +392,12 @@ def test_a_qualified_call_inside_a_qualified_call_is_read_too():
     assert "pg_catalog" not in written.lower()
 
 
-@pytest.mark.parametrize("dialect", ["trino", "clickhouse"])
-def test_a_numeric_literal_keeps_its_digits(dialect: str):
-    assert "DECIMAL(21, 2)" in transpile("SELECT (-2.25)::numeric AS v", dialect).upper()
+@pytest.mark.parametrize(
+    ("dialect", "decimal"), [("trino", "DECIMAL(3, 2)"), ("clickhouse", "DECIMAL(21, 2)")]
+)
+def test_a_numeric_literal_keeps_its_digits(dialect: str, decimal: str):
+    """On Trino a literal's decimal is of its digits alone (pg_literals.TIGHT)."""
+    assert decimal in transpile("SELECT (-2.25)::numeric AS v", dialect).upper()
 
 
 def test_a_numeric_of_a_column_stays_as_said():
@@ -462,7 +465,8 @@ def test_regexp_replace_with_the_g_flag_is_every_match():
     [
         ("SELECT '\\xdead'::bytea AS v", "FROM_HEX('dead')"),
         ("SELECT 'abc'::character AS v", "CAST('a' AS CHAR)"),
-        ("SELECT (-2.25)::numeric AS v", "DECIMAL(21, 2)"),
+        # of its digits alone on Trino (pg_literals.TIGHT)
+        ("SELECT (-2.25)::numeric AS v", "DECIMAL(3, 2)"),
     ],
 )
 def test_a_literal_keeps_what_its_cast_says(sql: str, want: str):
@@ -473,7 +477,9 @@ def test_a_literal_keeps_what_its_cast_says(sql: str, want: str):
     "sql",
     [
         "SELECT date_part('century'::text, x::timestamp) AS v FROM t",
-        "SELECT ln(x) AS v FROM t",
+        # ln of a numeric: its exact digits, which ClickHouse's double does not hold (ln of a
+        # double is polyfill.floats' row)
+        "SELECT ln(x::numeric) AS v FROM t",
         'SELECT pg_catalog."in_range"(a::time, b::time, c::interval, true, false) AS v FROM t',
     ],
 )

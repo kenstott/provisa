@@ -8,8 +8,7 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Which way a suggested relationship runs, and which suggestions are removed before anything is
-shown (REQ-413).
+"""Which way a suggested relationship runs, and which pairs are left out of a run's list (REQ-413).
 
 A relationship starts at the referring column and ends at the one side, many-to-one. When both
 directions are suggested one is kept, by the first rule that decides (:data:`RULES` in order): a
@@ -19,14 +18,18 @@ the model's statement of many-to-one; the higher confidence; only then a bounded
 column read for repeated values, the side with none being the one side, reported as unique in a
 sample of N rows; last, the table whose domain and name sort first.
 
-Removed, each kind counted (:class:`Removed`): a column to that same column (two different columns
-of one table are kept); primary key to primary key; both sides repeating in that sample; a match
-for an existing relationship in either direction; one pending or rejected; a semantic suggestion
-matching a foreign key of the same run, the foreign key being kept; a proposal of a pair of
-columns another proposal of that pair was kept for (``weaker``).
+A run lists every pair it found (amended 2026-11-18). Left out, each kind counted
+(:class:`Removed`), are only: a column to that same column (not a pair; two different columns of
+one table are kept); a pair already registered, in either direction (a junction's legs and
+accepted pairs among them); a pair marked not to be recommended again, in either direction; a
+pair with an end outside the run's source or target tables. Two directions of one pair are one
+row, and a semantic proposal of a foreign key's pair is shown once, as the foreign key, its note
+joining the key's. Any other rule only sets a pair's cardinality, score and note: primary key to
+primary key, both sides repeating in the sample (many-to-many), neither column's values distinct,
+a pair still waiting from an earlier run.
 
-Nothing removed is dropped: each removed proposal is given back with why (:class:`LeftOut`), so a
-run can keep it and a reviewer can read it.
+Each pair left out is given back with why (:class:`LeftOut`), so a run can keep it and a reviewer
+can read it.
 """
 
 # Requirements: REQ-413
@@ -42,7 +45,7 @@ from provisa.discovery.columns import TableFacts
 if TYPE_CHECKING:
     from provisa.discovery.measure import Measure
 
-Kind = Literal["foreign_keys", "semantics"]
+Kind = Literal["foreign_keys", "semantics", "key_names"]
 ColumnRef = tuple[int, str]  # (table id, column name)
 Edge = tuple[int, str, int, str]  # (start table, start column, end table, end column)
 
@@ -77,6 +80,9 @@ class Proposal:
     #: that gives it; None where no values were compared, and the model's confidence stands.
     measure: Measure | None = None
     score: float | None = None
+    #: Both columns repeated their values in a sample (:func:`decide`): many-to-many unless a
+    #: measure says otherwise.
+    repeating: bool = False
 
     @property
     def rank(self) -> float:
@@ -86,9 +92,10 @@ class Proposal:
 
     @property
     def cardinality(self) -> str:
-        """The measure's cardinality where it says one, else many-to-one as it was proposed."""
+        """The measure's cardinality where it says one, else many-to-many where both columns
+        repeated in a sample, else many-to-one as it was proposed."""
         measured = None if self.measure is None else self.measure.cardinality()
-        return measured or "many-to-one"
+        return measured or ("many-to-many" if self.repeating else "many-to-one")
 
     @property
     def edge(self) -> Edge:
@@ -115,22 +122,12 @@ def from_answer(
 
 @dataclass
 class Removed:
-    """How many suggestions each removal took out."""
+    """How many proposals each reason left out of the run's list."""
 
     same_column: int = 0
-    primary_key_to_primary_key: int = 0
-    both_repeating: int = 0
     existing: int = 0
-    pending: int = 0
     rejected: int = 0
-    matches_foreign_key: int = 0
     out_of_scope: int = 0
-    #: Proposals of a pair of columns another proposal of that pair was kept for.
-    weaker: int = 0
-    #: Proposals whose measure found neither column's values distinct: no relationship starts at
-    #: one and ends at the other's key, so none is a suggestion (a semantic one is scored under
-    #: the threshold by the measure; a foreign key constraint is not scored out).
-    many_to_many: int = 0
 
     def as_dict(self) -> dict[str, int]:
         return dict(self.__dict__)
@@ -202,7 +199,8 @@ async def decide(
     read_sample: SampleReader,
 ) -> Decision | None:
     """The direction of one pair of columns proposed both ways, by the first rule that decides
-    (:data:`RULES`). None: both columns repeat in their samples, and the pair is removed."""
+    (:data:`RULES`). None: both columns repeat in their samples, so neither is the one side
+    (:func:`settle` lists the pair as many-to-many)."""
     a, b = sorted(proposals[0].pair)
     starts = {p.start for p in proposals}
 
@@ -271,7 +269,7 @@ def _marked(p: Proposal, tables: dict[int, TableFacts]) -> Proposal:
         f"{'requires a parameter and is' if len(unread) == 1 else 'require parameters and are'} "
         "never read"
     )
-    return replace(p, reasoning=f"{p.reasoning}; {note}" if p.reasoning else note)
+    return _noted(p, note)
 
 
 def turned(p: Proposal) -> Proposal:
@@ -329,10 +327,13 @@ async def settle(
     target_ids: set[int],
     known: Known,
     read_sample: SampleReader,
+    *,
+    either_way: bool = False,
 ) -> Outcome:
     """The suggestions to show, from every proposal of a run: removals applied, one direction
     kept per pair of columns, only relationships starting in the source set and ending in the
-    target set."""
+    target set; ``either_way`` (REQ-2262), also those starting in the target set and ending in
+    the source set."""
     removed = Removed()
     left_out: list[LeftOut] = []
 
@@ -341,55 +342,72 @@ async def settle(
         left_out.append(LeftOut(p, reason))
 
     decided_by: dict[str, int] = {}
-    fk_pairs = {p.pair for p in proposals if p.kind == "foreign_keys"}
-    pending: list[Proposal] = []
+    by_pair: dict[frozenset[ColumnRef], list[Proposal]] = {}
     for p in proposals:
         if p.start == p.end:
             leave_out(p, "same_column")
-        elif _is_pk(tables, p.start) and _is_pk(tables, p.end):
-            leave_out(p, "primary_key_to_primary_key")
-        elif p.kind == "semantics" and p.pair in fk_pairs:
-            leave_out(p, "matches_foreign_key")
         else:
-            pending.append(p)
-
-    by_pair: dict[frozenset[ColumnRef], list[Proposal]] = {}
-    for p in pending:
-        by_pair.setdefault(p.pair, []).append(p)
+            by_pair.setdefault(p.pair, []).append(p)
 
     kept: list[Proposal] = []
     for group in by_pair.values():
         if not _needs_decision(group):
-            chosen = max(group, key=lambda p: p.rank)
-            kept.append(chosen)
+            chosen = min(group, key=lambda p: (p.kind != "foreign_keys", -p.rank))
+            shown_as = chosen
         else:
             decision = await decide(group, tables, known, read_sample)
+            repeating = decision is None
             if decision is None:
-                # One pair of columns, counted once; each of its proposals is left out for it.
-                removed.both_repeating += 1
-                left_out.extend(LeftOut(p, "both_repeating") for p in group)
-                continue
+                a, b = sorted(group[0].pair)
+                decision = _fixed_order(tables, a, b)
             decided_by[decision.rule] = decided_by.get(decision.rule, 0) + 1
             chosen, shown_as = _kept(group, decision)
-            kept.append(shown_as)
-        passed_over = list(group)
-        passed_over.remove(chosen)
-        for p in passed_over:
-            leave_out(p, "weaker")
+            if repeating:
+                shown_as = _noted(replace(shown_as, repeating=True), _BOTH_REPEATING)
+        # Two directions of one pair are one row; a semantic proposal of a foreign key's pair
+        # is shown once, as the foreign key, its note joining the key's.
+        if chosen.kind == "foreign_keys":
+            for p in group:
+                if p.kind == "semantics":
+                    shown_as = _noted(shown_as, _also_proposed(p))
+        kept.append(shown_as)
 
     shown: list[Proposal] = []
     for p in kept:
         reverse = (p.end[0], p.end[1], p.start[0], p.start[1])
-        if p.start[0] not in source_ids or p.end[0] not in target_ids:
+        forward = p.start[0] in source_ids and p.end[0] in target_ids
+        backward = either_way and p.end[0] in source_ids and p.start[0] in target_ids
+        if not (forward or backward):
             leave_out(p, "out_of_scope")
         elif p.edge in known.existing or reverse in known.existing:
             leave_out(p, "existing")
-        elif p.edge in known.pending:
-            leave_out(p, "pending")
-        elif p.edge in known.rejected:
+        elif p.edge in known.rejected or reverse in known.rejected:
             leave_out(p, "rejected")
-        elif p.cardinality == "many-to-many":
-            leave_out(p, "many_to_many")
         else:
-            shown.append(_marked(p, tables))
+            shown.append(_marked(_judged(p, tables, known), tables))
     return Outcome(shown, removed, decided_by, left_out)
+
+
+_BOTH_REPEATING = "values repeat on both sides in a sample, so neither column is the one side"
+
+
+def _noted(p: Proposal, note: str) -> Proposal:
+    return replace(p, reasoning=f"{p.reasoning}; {note}" if p.reasoning else note)
+
+
+def _also_proposed(p: Proposal) -> str:
+    said = f": {p.reasoning}" if p.reasoning else ""
+    return f"also proposed by the model at {round(p.confidence * 100)}%{said}"
+
+
+def _judged(p: Proposal, tables: dict[int, TableFacts], known: Known) -> Proposal:
+    """``p`` with the notes of the rules that once left such a pair out and now only describe
+    it (REQ-413, amended 2026-11-18)."""
+    if _is_pk(tables, p.start) and _is_pk(tables, p.end):
+        p = _noted(p, "both columns are primary keys")
+    if p.cardinality == "many-to-many" and not p.repeating:
+        p = _noted(p, "neither column's values are distinct")
+    reverse = (p.end[0], p.end[1], p.start[0], p.start[1])
+    if p.edge in known.pending or reverse in known.pending:
+        p = _noted(p, "suggested by an earlier run and not yet decided")
+    return p

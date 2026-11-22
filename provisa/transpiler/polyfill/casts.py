@@ -96,4 +96,7 @@ ARRAY_OUT = Feature(
 )
 
 
+#: The family's place in the grid (polyfill.GRID), which tries the rules of one function in
+#: the order of their families.
+ORDER = 180
 FEATURES: tuple[Feature, ...] = (ARRAY_OUT,)

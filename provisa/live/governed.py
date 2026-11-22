@@ -8,52 +8,63 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Live delivery is governed per subscriber key (REQ-286, REQ-336, REQ-1266).
+"""Live delivery is governed per subscriber key (REQ-286, REQ-336, REQ-1266, REQ-2219).
 
 Every row a live stream delivers -- a poll's rows, a change notification's row -- is read through
-the ONE governed pipeline as its subscriber: the role, and the session values its rules read.
-Row rules, column visibility and masks apply exactly as to a query; nothing is fanned out from a
-raw read of the table.
+the ONE governed pipeline as its subscriber: the role, the session values its rules read, and the
+person whose entitlement lists narrow the role. Row rules, column visibility, masks and the
+person's entitlement mask apply exactly as to a query; nothing is fanned out from a raw read of
+the table.
 
-The governance key is everything governance resolves against: the org, the role, and the session
-values (``session_vars_for``: the role's constants, overlaid by what the request bound). Equal keys
-see equal rows, so a poll is shared by the subscribers of one key and never across keys.
+The governance key is everything governance resolves against: the org, the role, the session
+values (``session_vars_for``: the role's constants, overlaid by what the request bound), and the
+bound person (``provisa.entitlements.runtime.bound_request``). A poll runs outside the request,
+so it binds the key's person again for each read: what Provisa holds for them is read at that
+read, so a change between polls narrows the next one. Equal keys see equal rows, so a poll is
+shared by the subscribers of one key and never across keys.
 """
 
-# Requirements: REQ-286, REQ-336, REQ-1266
+# Requirements: REQ-286, REQ-336, REQ-1266, REQ-2219
 
 from __future__ import annotations
 
 import hashlib
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from provisa.api.errors import ApiError
 
 if TYPE_CHECKING:
     from provisa.compiler.sql_types import TableMeta
+    from provisa.entitlements.runtime import EntitlementRequest
 
 
 @dataclass(frozen=True)
 class GovernanceKey:
-    """What a live delivery is governed as: an org's role, with the session values rules read."""
+    """What a live delivery is governed as: an org's role, with the session values rules read,
+    for the person whose entitlement lists narrow it (None: work no person is doing)."""
 
     org_id: str
     role_id: str
     session_vars: tuple[tuple[str, str], ...]
+    # Compared by the person it names; its lists are a mapping, so it is not part of the hash.
+    person: "EntitlementRequest | None" = field(default=None, hash=False)
 
     @property
     def digest(self) -> str:
         """A stable short name for the key, for job ids and bookkeeping rows."""
-        raw = repr((self.org_id, self.role_id, self.session_vars)).encode()
+        who = None if self.person is None else (self.person.user_id, self.person.idp_hash)
+        raw = repr((self.org_id, self.role_id, self.session_vars, who)).encode()
         return hashlib.sha256(raw).hexdigest()[:16]
 
 
 def subscriber_key(role_id: str | None) -> GovernanceKey:
     """The key of the bound request's subscriber: its role in the bound org, and the session
-    values governance would resolve its rules against for this request."""
+    values governance would resolve its rules against for this request, as the person bound to
+    it (REQ-2219)."""
     from provisa.api.app import state
     from provisa.core.request_context import require_current_org, session_vars_for
+    from provisa.entitlements.runtime import bound_request
 
     org_id = require_current_org()
     if not role_id:
@@ -61,7 +72,9 @@ def subscriber_key(role_id: str | None) -> GovernanceKey:
     role = state.roles.get(role_id)
     if role is None:
         raise ApiError(403, "subscribe.unknown_role", f"Unknown role {role_id!r}", role=role_id)
-    return GovernanceKey(org_id, role_id, tuple(sorted(session_vars_for(role).items())))
+    return GovernanceKey(
+        org_id, role_id, tuple(sorted(session_vars_for(role).items())), bound_request()
+    )
 
 
 def output_key(role_id: str) -> GovernanceKey:
@@ -119,16 +132,18 @@ def primary_key(meta: "TableMeta") -> list[str]:
 async def governed_rows(
     sql: str, key: GovernanceKey, params: list | None = None
 ) -> list[dict[str, Any]]:
-    """Run ``sql`` through the one governed pipeline as ``key``, in its org."""
+    """Run ``sql`` through the one governed pipeline as ``key``, in its org, as its person."""
     from provisa.core.request_context import reset_current_org, set_current_org
+    from provisa.entitlements.runtime import bound_request_scope
     from provisa.pgwire._pipeline import _execute_plan, _govern_and_route
 
     token = set_current_org(key.org_id)
     try:
-        plan = await _govern_and_route(
-            sql, key.role_id, session_vars=dict(key.session_vars), params=params
-        )
-        result = await _execute_plan(plan)
+        with bound_request_scope(key.person):
+            plan = await _govern_and_route(
+                sql, key.role_id, session_vars=dict(key.session_vars), params=params
+            )
+            result = await _execute_plan(plan)
     finally:
         reset_current_org(token)
     return [dict(zip(result.column_names, row)) for row in result.rows]

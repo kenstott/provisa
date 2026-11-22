@@ -1,0 +1,14 @@
+{
+  "wikidataRegister": {
+    "starters": "Starttabellen",
+    "startersHint": "Referentietabellen om mee te koppelen, elk met hun kolommen. Beschrijvingen, typen en aliassen worden daarna per tabel verfijnd.",
+    "startersPlaceholder": "Kies starttabellen",
+    "customLabel": "Eigen tabel",
+    "customNone": "Geen eigen tabel",
+    "customSparql": "SPARQL-query",
+    "classNotUsed": "Kies een klasse en klik op Deze klasse gebruiken, of kies Geen eigen tabel.",
+    "columnsReading": "De kolommen worden uit de SELECT van de query gelezen…",
+    "nothingChosen": "Kies een starttabel of een eigen tabel om te registreren.",
+    "columns": "Kolommen: {{columns}}"
+  }
+}

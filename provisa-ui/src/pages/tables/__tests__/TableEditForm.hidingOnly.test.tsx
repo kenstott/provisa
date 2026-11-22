@@ -124,6 +124,7 @@ function renderForm(hidingOnly: boolean) {
     <TableEditForm
       hidingOnly={hidingOnly}
       savedProfilerId={null}
+      domainChoices={[]}
       editingTable={makeTable({ columns: [EMAIL] })}
       savedTable={makeTable({ columns: [EMAIL] })}
       setEditingTable={vi.fn()}

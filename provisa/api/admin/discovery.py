@@ -10,23 +10,24 @@
 
 """Admin API router for LLM relationship discovery."""
 
-# Requirements: REQ-018, REQ-167, REQ-413, REQ-612
+# Requirements: REQ-018, REQ-167, REQ-413, REQ-612, REQ-2253
 
 from __future__ import annotations
 
 import asyncio
 import logging as _logging
 from dataclasses import dataclass, replace
-from typing import TYPE_CHECKING, Any, Literal, cast
+from typing import TYPE_CHECKING, Annotated, Any, Literal, cast
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Query, Request
 from pydantic import BaseModel, ConfigDict, Field
 
-from provisa.api.admin import discovery_dimension
+from provisa.api.admin import discovery_dimension, join_through
 from provisa.api.app import state
 from provisa.api.errors import ApiError
 from provisa.core.relationship_naming import RelationshipNameTaken
 from provisa.discovery import candidates as candidates_repo
+from provisa.discovery import gather
 from provisa.discovery import proposals as proposals_repo
 from provisa.discovery import runs as runs_repo
 from provisa.discovery import threshold as threshold_repo
@@ -44,7 +45,7 @@ from provisa.discovery.run import (
 from provisa.discovery.windows import NoRoomError
 from provisa.otel_compat import get_tracer as _get_tracer
 from provisa.otel_compat import stage as _stage
-from provisa.api.admin.capabilities import require_capability_request
+from provisa.api.admin.capabilities import require_capability_request, selected_domains_request
 from provisa.api.engine_error_names import client_text
 
 if TYPE_CHECKING:
@@ -54,17 +55,20 @@ _tracer = _get_tracer(__name__)
 
 router = APIRouter(prefix="/admin/discover")
 
-#: The confidence a semantic suggestion needs to be kept.
-MIN_CONFIDENCE = 0.7
+# REQ-2253: the navbar filter's selection, as repeated ``domains=`` parameters
+# (capabilities.selected_domains_request). Annotated so a handler awaited directly defaults to
+# None, not to the Query marker.
+SelectedDomains = Annotated[list[str] | None, Query()]
 
 #: The kinds of discovery a run can be asked for: foreign keys read from the sources' own
-#: constraints, and semantics inferred by the model assigned to relationship inference.
-DiscoveryKind = Literal["foreign_keys", "semantics"]
+#: constraints, semantics inferred by the model assigned to relationship inference, and matching
+#: key names and types among the registered columns (REQ-2262).
+DiscoveryKind = Literal["foreign_keys", "semantics", "key_names"]
 
 #: What a run the dialog starts can look for: the kinds, and Key value overlap, the measure of the
 #: semantic pairs in the band between its cutoff and the threshold (REQ-413, amended 2026-11-16),
 #: chosen only with semantics.
-RunKind = Literal["foreign_keys", "semantics", "key_values"]
+RunKind = Literal["foreign_keys", "semantics", "key_names", "key_values"]
 KEY_VALUES = "key_values"
 
 #: Where a model and its key are set, as the admin UI names it.
@@ -98,6 +102,9 @@ class AcceptEach(BaseModel):
 
     id: int
     name: str | None = None
+    # REQ-2262: the cardinality the reviewer set in the row's edit dialog; only a one-to-many or
+    # many-to-one proposal takes one (a junction or shared-dimension accept fixes its own).
+    cardinality: Literal["many-to-one", "one-to-many", "one-to-one"] | None = None
 
 
 _log = _logging.getLogger(__name__)
@@ -142,13 +149,14 @@ def _semantics_availability(model: SemanticModel) -> dict[str, Any]:
 
 @router.get("/kinds")
 async def discovery_kinds(request: Request):  # REQ-413
-    """Which kinds of discovery can run: foreign keys always; semantics when the model assigned to
-    relationship inference has its key."""
+    """Which kinds of discovery can run: foreign keys and key names always; semantics when the
+    model assigned to relationship inference has its key."""
     require_capability_request(request, "create_relationship")
     pool = state.model_db
     assert pool is not None
     return {
         "foreign_keys": {"available": True},
+        "key_names": {"available": True},
         "semantics": _semantics_availability(await semantic_model(pool)),
     }
 
@@ -165,20 +173,34 @@ class RunScope(BaseModel):  # REQ-413
     target_tables: list[int] | None = None
     vendor: str | None = None
     model: str | None = None
-    #: Key value overlap's settings, given exactly when it is chosen: the measure cutoff, and the
-    #: sample size (the most distinct values read of each column).
+    #: The score from which the run's proposals start ticked, the person's Tick from as set in the
+    #: dialog (REQ-413, amended 2026-11-18): the model is told it, a proposal at it or above is
+    #: kept unmeasured, and the key value overlap band runs up to it.
+    threshold: float = Field(ge=0.0, le=1.0)
+    #: The distinct sample values read and shown to the model of each compared column.
+    samples_per_column: int = Field(ge=1)
+    #: Key value overlap's settings, given exactly when it is chosen: the measure cutoff, the
+    #: sample size (the most non-null values read of each column), the share of a source's values
+    #: in a key target at which the pair is a key relationship, and the most a pair scores when
+    #: neither side is a key.
     measure_cutoff: float | None = Field(default=None, ge=0.0, le=1.0)
     sample_size: int | None = Field(default=None, ge=1)
+    contained_at: float | None = Field(default=None, ge=0.0, le=1.0)
+    shared_ceiling: float | None = Field(default=None, ge=0.0, le=1.0)
+    #: REQ-2262: a relationship between the source and target sets counts in either direction;
+    #: the review after registration asks it, the tables just registered against every table.
+    either_way: bool = False
 
     def key_values(self) -> KeyValueOverlap | None:
         """Key value overlap as asked: refused without semantics, whose pairs it measures, and
-        refused unless its two settings are given exactly when it is chosen."""
+        refused unless its settings are given exactly when it is chosen."""
+        given = (self.measure_cutoff, self.sample_size, self.contained_at, self.shared_ceiling)
         if KEY_VALUES not in self.kinds:
-            if self.measure_cutoff is not None or self.sample_size is not None:
+            if any(v is not None for v in given):
                 raise ApiError(
                     400,
                     "discovery.key_values_settings_unchosen",
-                    "A measure cutoff and sample size are given only with Key value overlap",
+                    "Key value overlap's settings are given only with Key value overlap",
                 )
             return None
         if "semantics" not in self.kinds:
@@ -187,21 +209,37 @@ class RunScope(BaseModel):  # REQ-413
                 "discovery.key_values_needs_semantics",
                 "Key value overlap measures the pairs Semantic proposes: choose Semantic with it",
             )
-        if self.measure_cutoff is None or self.sample_size is None:
+        if (
+            self.measure_cutoff is None
+            or self.sample_size is None
+            or self.contained_at is None
+            or self.shared_ceiling is None
+        ):
             raise ApiError(
                 400,
                 "discovery.key_values_settings_missing",
-                "Key value overlap needs its measure cutoff and its sample size",
+                "Key value overlap needs its measure cutoff, sample size, key containment share "
+                "and shared value ceiling",
             )
-        return KeyValueOverlap(self.measure_cutoff, self.sample_size)
+        return KeyValueOverlap(
+            self.measure_cutoff, self.sample_size, self.contained_at, self.shared_ceiling
+        )
 
-    def spec(self, role: str) -> RunSpec:
-        """The run asked for, by the person acting as ``role``: its pairs are measured as it."""
+    def spec(self, role: str, within: frozenset[str] | None) -> RunSpec:
+        """The run asked for, by the person acting as ``role``: its pairs are measured as it, and
+        no table outside ``within`` (the selected domains as the person may reach them, REQ-2253;
+        None: no narrowing) is read or proposed."""
         if (self.vendor is None) != (self.model is None):
             raise ApiError(
                 400,
                 "discovery.model_incomplete",
                 "A chosen model names both its vendor and its model",
+            )
+        if self.either_way and self.target_same_as_source:
+            raise ApiError(
+                400,
+                "discovery.either_way_needs_target",
+                "Either direction compares a source set with a target set of its own",
             )
         return RunSpec(
             kinds=frozenset(cast("Kind", k) for k in self.kinds if k != KEY_VALUES),
@@ -213,6 +251,10 @@ class RunScope(BaseModel):  # REQ-413
             model=None if self.vendor is None or self.model is None else (self.vendor, self.model),
             role=role,
             key_values=self.key_values(),
+            threshold=self.threshold,
+            samples_per_column=self.samples_per_column,
+            within=within,
+            either_way=self.either_way,
         )
 
 
@@ -345,25 +387,54 @@ def _refuse_empty(
     )
 
 
-async def _require_tables(spec: RunSpec) -> None:  # REQ-413
+async def _refuse_outside(
+    conn: "Connection",
+    side: str,
+    resolved: list[int],
+    named: tuple[int, ...] | None,
+    within: frozenset[str] | None,
+) -> None:
+    """REQ-2253: a set whose chosen tables all lie outside the selected domains is refused,
+    naming them; none is read."""
+    if resolved or named is None or within is None:
+        return
+    outside = await gather.outside_selected_domains(conn, named, within)
+    if outside:
+        raise ApiError(
+            400,
+            f"discovery.{side}_tables_outside_domains",
+            f"The chosen {side} tables are outside the selected domains: {', '.join(outside)}",
+            tables=outside,
+            names=", ".join(outside),
+        )
+
+
+async def _require_tables(spec: RunSpec) -> None:  # REQ-413, REQ-2253
     """Refuse, before anything runs, a scope whose source or target resolves to no table."""
     pool = state.model_db
     assert pool is not None
     async with pool.acquire() as _conn:
-        source, target = await table_sets(cast("Connection", _conn), spec)
+        conn = cast("Connection", _conn)
+        source, target = await table_sets(conn, spec)
+        await _refuse_outside(conn, "source", source, spec.source_tables, spec.within)
+        if target is not None:
+            await _refuse_outside(conn, "target", target, spec.target_tables, spec.within)
     _refuse_empty("source", source, spec.source_tables)
     if target is not None:
         _refuse_empty("target", target, spec.target_tables)
 
 
 @router.post("/runs/count")
-async def count_run(request: Request, body: RunScope):  # REQ-413
-    """Before Run: at most how many requests the run would make, by type group, for the chosen
+async def count_run(
+    request: Request, body: RunScope, domains: SelectedDomains = None
+):  # REQ-413, REQ-2253
+    """Before Run: at most how many calls the run would make, and the table pairs they list, for the chosen
     kinds, model and sets. Computed from the model store alone: no table is read, no source is
     asked and no model is called, so it can be asked again on every change of the scope. It is
-    an upper bound (``requests_are``): the run reads the tables and may make fewer."""
+    an upper bound (``requests_are``): the run reads the tables and may make fewer. ``domains``
+    is the navbar filter's selection: no table outside it is counted."""
     require_capability_request(request, "create_relationship")
-    spec = body.spec(_acting(request))
+    spec = body.spec(_acting(request), selected_domains_request(request, domains))
     model = await _run_model(spec)
     await _require_tables(spec)
     try:
@@ -453,10 +524,13 @@ def _launch(run_id: int, spec: RunSpec, model: ChosenModel | None) -> None:
 
 
 @router.post("/runs")
-async def start_run(request: Request, body: RunScope):  # REQ-413
-    """Start a run in the background; answered at once with the run, running."""
+async def start_run(
+    request: Request, body: RunScope, domains: SelectedDomains = None
+):  # REQ-413, REQ-2253
+    """Start a run in the background; answered at once with the run, running. ``domains`` is the
+    navbar filter's selection: no table outside it is read or proposed."""
     require_capability_request(request, "create_relationship")
-    spec = body.spec(_acting(request))
+    spec = body.spec(_acting(request), selected_domains_request(request, domains))
     model = await _run_model(spec)
     await _require_tables(spec)
     pool = state.model_db
@@ -469,7 +543,7 @@ async def start_run(request: Request, body: RunScope):  # REQ-413
             model=None if model is None else model.label,
             started_by=_caller(request),
         )
-        await _remember_key_values(conn, request, body)
+        await _remember(conn, request, body)
         started = await runs_repo.run(conn, run_id)
     assert started is not None
     _launch(run_id, spec, model)
@@ -508,19 +582,29 @@ async def _source_domains(conn: "Connection", body: DiscoverRequest) -> list[str
 
 @router.post("/relationships")
 async def trigger_discovery(
-    request: Request, body: DiscoverRequest
-):  # REQ-018, REQ-167, REQ-413, REQ-612
+    request: Request, body: DiscoverRequest, domains: SelectedDomains = None
+):  # REQ-018, REQ-167, REQ-413, REQ-612, REQ-2253
     """A discovery run done while the caller waits: started, performed and stored as a run the
     dialog starts (its proposals kept, Jev's scores beside the model's), and answered with the
-    run and what each kind found."""
+    run and what each kind found. ``domains`` is the navbar filter's selection: no table outside
+    it is read or proposed."""
     require_capability_request(request, "create_relationship")
     pool = state.model_db
     assert pool is not None
     with _stage(_tracer, "admin.discovery") as span:
         async with pool.acquire() as _conn:
-            domains = await _source_domains(cast("Connection", _conn), body)
-        scope = RunScope(kinds=list[RunKind](body.kinds), source_domains=domains)
-        spec = scope.spec(_acting(request))
+            conn = cast("Connection", _conn)
+            domains = await _source_domains(conn, body)
+            # REQ-413 (amended 2026-11-18): a run started here, with no dialog, takes the
+            # settings the person last set in it.
+            kept = await threshold_repo.read_settings(conn, _person(request))
+        scope = RunScope(
+            kinds=list[RunKind](body.kinds),
+            source_domains=domains,
+            threshold=kept.threshold,
+            samples_per_column=kept.samples_per_column,
+        )
+        spec = scope.spec(_acting(request), selected_domains_request(request, domains))
         model = await _run_model(spec)
         async with pool.acquire() as _conn:
             run_id = await runs_repo.start(
@@ -548,7 +632,11 @@ async def trigger_discovery(
             "run": ended.view(),
             "candidates_found": report["suggestions"],
             "stored_ids": report["stored_ids"],
-            **{kind: report[kind] for kind in ("foreign_keys", "semantics") if kind in report},
+            **{
+                kind: report[kind]
+                for kind in ("foreign_keys", "key_names", "semantics")
+                if kind in report
+            },
         }
 
 
@@ -621,13 +709,18 @@ async def list_proposals(request: Request, run_id: int):  # REQ-413
     assert pool is not None
     async with pool.acquire() as _conn:
         conn = cast("Connection", _conn)
-        await _held(conn, run_id)
+        held = await _held(conn, run_id)
+        kept = await threshold_repo.read_settings(conn, _person(request))
         return {
             "proposals": await proposals_repo.listed(conn, state, run_id),
-            "threshold": await threshold_repo.read(conn, _person(request)),
-            # The score a run keeps a suggestion at: a proposal's reason below_threshold is
-            # against it, whatever the person's threshold.
-            "kept_at": MIN_CONFIDENCE,
+            "threshold": kept.threshold,
+            # The person's filter on the Score column, applied when the results open
+            # (REQ-413, amended 2026-11-18); None when they cleared it.
+            "score_filter": kept.score_filter,
+            # The score the run keeps a suggestion at: the threshold it was started with
+            # (REQ-413, amended 2026-11-18); a proposal's reason below_threshold is against it,
+            # whatever the person's threshold is now.
+            "kept_at": held.scope["threshold"],
         }
 
 
@@ -645,32 +738,41 @@ class ThresholdBody(BaseModel):  # REQ-413
     threshold: float = Field(ge=0.0, le=1.0)
 
 
-async def _remember_key_values(conn: "Connection", request: Request, body: RunScope) -> None:
-    """Keep Key value overlap as the run's person set it (REQ-413, amended 2026-11-16): chosen
-    or not, and, chosen, its cutoff and sample size. It is offered only with semantics, so a run
-    without semantics leaves it as it was; unchosen, the cutoff and sample size last set stay."""
-    if "semantics" not in body.kinds:
-        return
+async def _remember(conn: "Connection", request: Request, body: RunScope) -> None:
+    """Keep the settings the run's person set in the dialog (REQ-413, amended 2026-11-18) for
+    their next runs: their threshold always; with semantics, the samples per column and Key value
+    overlap, chosen or not, and, chosen, its settings. A run without semantics, where those are not
+    offered, leaves them as they were; Key value overlap unchosen keeps its settings last set."""
     person = _person(request)
-    asked = body.key_values()
-    if asked is None:
-        last = await threshold_repo.read_key_values(conn, person)
-        kept = replace(last, chosen=False)
-    else:
-        kept = threshold_repo.KeyValueSettings(True, asked.cutoff, asked.sample_size)
-    await threshold_repo.keep_key_values(conn, person, kept)
+    last = await threshold_repo.read_settings(conn, person)
+    samples, kv = last.samples_per_column, last.key_values
+    if "semantics" in body.kinds:
+        samples = body.samples_per_column
+        asked = body.key_values()
+        kv = (
+            replace(kv, chosen=False)
+            if asked is None
+            else threshold_repo.KeyValueSettings(
+                True, asked.cutoff, asked.sample_size, asked.contained_at, asked.shared_ceiling
+            )
+        )
+    await threshold_repo.keep_settings(
+        conn,
+        person,
+        replace(last, threshold=body.threshold, samples_per_column=samples, key_values=kv),
+    )
 
 
-@router.get("/key-values")
-async def get_key_values(request: Request):  # REQ-413
-    """The signed-in person's Key value overlap, remembered as the threshold is, and the
-    defaults Reset to defaults restores."""
+@router.get("/settings")
+async def get_settings(request: Request):  # REQ-413
+    """The signed-in person's settings: the run settings, which prefill the discover dialog, and
+    the Score filter the results open with; and the defaults Reset to defaults restores."""
     require_capability_request(request, "create_relationship")
     pool = state.model_db
     assert pool is not None
     async with pool.acquire() as _conn:
-        kept = await threshold_repo.read_key_values(cast("Connection", _conn), _person(request))
-    return {**kept.as_dict(), "defaults": threshold_repo.KEY_VALUES_DEFAULT.as_dict()}
+        kept = await threshold_repo.read_settings(cast("Connection", _conn), _person(request))
+    return {**kept.as_dict(), "defaults": threshold_repo.DEFAULTS.as_dict()}
 
 
 @router.get("/threshold")
@@ -680,7 +782,8 @@ async def get_threshold(request: Request):  # REQ-413
     pool = state.model_db
     assert pool is not None
     async with pool.acquire() as _conn:
-        return {"threshold": await threshold_repo.read(cast("Connection", _conn), _person(request))}
+        kept = await threshold_repo.read_settings(cast("Connection", _conn), _person(request))
+    return {"threshold": kept.threshold}
 
 
 @router.put("/threshold")
@@ -690,10 +793,44 @@ async def put_threshold(request: Request, body: ThresholdBody):  # REQ-413
     pool = state.model_db
     assert pool is not None
     async with pool.acquire() as _conn:
-        kept = await threshold_repo.keep(
-            cast("Connection", _conn), _person(request), body.threshold
+        conn = cast("Connection", _conn)
+        person = _person(request)
+        last = await threshold_repo.read_settings(conn, person)
+        kept = await threshold_repo.keep_settings(
+            conn, person, replace(last, threshold=body.threshold)
         )
-    return {"threshold": kept}
+    return {"threshold": kept.threshold}
+
+
+class ScoreFilter(BaseModel):  # REQ-413
+    """A filter on a run's Score column, as the list's column filter holds it: an operator and
+    its operands, in percent."""
+
+    op: Literal["eq", "ne", "lt", "le", "gt", "ge", "between", "isEmpty", "notEmpty", "in"]
+    a: str | None = None
+    b: str | None = None
+    values: list[str] | None = None
+
+
+class ScoreFilterBody(BaseModel):  # REQ-413
+    """The Score filter a person set in a run's results; None: they cleared it."""
+
+    filter: ScoreFilter | None
+
+
+@router.put("/score-filter")
+async def put_score_filter(request: Request, body: ScoreFilterBody):  # REQ-413
+    """Keep the Score filter set in a run's results as the signed-in person's own."""
+    require_capability_request(request, "create_relationship")
+    pool = state.model_db
+    assert pool is not None
+    spec = None if body.filter is None else body.filter.model_dump(exclude_none=True)
+    async with pool.acquire() as _conn:
+        conn = cast("Connection", _conn)
+        person = _person(request)
+        last = await threshold_repo.read_settings(conn, person)
+        kept = await threshold_repo.keep_settings(conn, person, replace(last, score_filter=spec))
+    return {"filter": kept.score_filter}
 
 
 class ApplyRequest(BaseModel):
@@ -731,13 +868,29 @@ async def apply_decisions(request: Request, run_id: int, body: ApplyRequest):  #
             )
         for each in body.accept:
             try:
-                if await proposals_repo.shared_pair(conn, run_id, each.id):
+                is_junction = await proposals_repo.junction_of(conn, run_id, each.id) is not None
+                is_shared = not is_junction and await proposals_repo.shared_pair(
+                    conn, run_id, each.id
+                )
+                if each.cardinality is not None and (is_junction or is_shared):
+                    raise ValueError(
+                        f"Proposal {each.id} joins through a junction or shared dimension; "
+                        "its cardinality is not set on accept"
+                    )
+                if is_junction:
+                    # REQ-1586: a junction suggestion joins its two ends through the junction.
+                    relationship_id = await join_through.accept_proposal(
+                        request, conn, run_id, each.id, each.name
+                    )
+                elif is_shared:
                     # REQ-413: a many-to-many pair is accepted as a shared dimension.
                     relationship_id = await discovery_dimension.accept(
                         request, conn, run_id, each.id, each.name
                     )
                 else:
-                    relationship_id = await proposals_repo.accept(conn, run_id, each.id, each.name)
+                    relationship_id = await proposals_repo.accept(
+                        conn, run_id, each.id, each.name, each.cardinality
+                    )
             except Exception as exc:  # reported per proposal, the rest go on
                 _log.warning("Apply: accepting proposal %s failed: %s", each.id, exc)
                 results.append(

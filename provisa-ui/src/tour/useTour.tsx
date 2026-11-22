@@ -52,7 +52,7 @@ import { prerequisitesMet, type OrgHas } from "./tourPrerequisites";
 import { useNamedDemo } from "../context/NamedDemoContext";
 import { TourMenu } from "./TourMenu";
 import { completedTopics, markTopicCompleted } from "./tourTopics";
-import { EXPANDED_STORAGE_KEY as DATA_PRODUCTS_EXPANDED_KEY } from "../pages/DataProductsPage";
+import { forgetDetailForEveryone } from "../components/list/useDetailParam";
 import { useAuth } from "../context/AuthContext";
 import { usePolly } from "../context/pollyState";
 import { viewerMeets } from "./viewerMeets";
@@ -233,12 +233,8 @@ const PREP_ACTIONS: Record<string, () => void> = {
   collapseDataProducts() {
     // The Data Products step clicks the first row to EXPAND it; a persisted expansion from an
     // earlier visit would make that same click collapse it instead. Nothing to restore: which
-    // row was open is a convenience, not state the visitor authored.
-    try {
-      removeStored(DATA_PRODUCTS_EXPANDED_KEY);
-    } catch {
-      /* localStorage unavailable -- the page mounts collapsed anyway */
-    }
+    // row was open is a convenience, not state the visitor authored (REQ-2260).
+    forgetDetailForEveryone("products");
   },
   seedMcp() {
     try {

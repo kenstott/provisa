@@ -260,6 +260,20 @@ DECLARED: list[Setting] = [
         unit="seconds",
     ),
     Setting(
+        key="sparql.query_timeout",
+        card="limits",
+        type="float",
+        effect="live",  # read at each SPARQL call: a preview, a Wikidata lookup, a replica load
+        # REQ-1923 (amended 2026-11-20): complex SPARQL is given a generous deadline, stated as a
+        # setting with its UI; the full read happens in the replica load, never in a request.
+        req="REQ-1923",
+        env="PROVISA_SPARQL_QUERY_TIMEOUT",
+        config_path=("server", "limits", "sparql_query_timeout"),
+        default=300.0,
+        min=1,
+        unit="seconds",
+    ),
+    Setting(
         key="sampling.default_sample_size",
         card="limits",
         type="int",
@@ -406,6 +420,20 @@ DECLARED: list[Setting] = [
         env="PROVISA_CODESOURCE_HEALTH_POLL_INTERVAL",
         default=30,
         min=5,
+        unit="seconds",
+    ),
+    Setting(
+        key="codesource.worker_idle_timeout",
+        card="limits",
+        type="int",
+        effect="live",  # read at each sweep of the worker pool
+        # REQ-1984: how long a code source's, a preflight's or a remote host's worker may go
+        # unused before the pool ends it; 900 keeps a worker warm between a source's reads and
+        # frees an unused one's process within a quarter of an hour.
+        req="REQ-1984",
+        env="PROVISA_CODESOURCE_WORKER_IDLE_TIMEOUT",
+        default=900,
+        min=60,
         unit="seconds",
     ),
     Setting(
@@ -843,6 +871,19 @@ DECLARED: list[Setting] = [
         min=1,
         max=65535,
         guard="confirm",
+    ),
+    Setting(
+        key="embedding.hub_endpoint",
+        card="network",
+        type="str",
+        effect="live",  # read at each fetch of a local embedding model (provisa/vector/providers.py)
+        # REQ-420: the Hugging Face hub a local embedding model is fetched from (a mirror behind a
+        # firewall). Read here, given to every fetch: huggingface_hub would otherwise read
+        # HF_ENDPOINT itself, once, at import.
+        req="REQ-420",
+        env="HF_ENDPOINT",
+        config_path=("embedding", "hub_endpoint"),
+        default="https://huggingface.co",
     ),
     Setting(
         key="server.flight_compression",

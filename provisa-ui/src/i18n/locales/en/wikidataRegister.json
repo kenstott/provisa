@@ -1,0 +1,14 @@
+{
+  "wikidataRegister": {
+    "starters": "Starter tables",
+    "startersHint": "Reference tables to join to, each with its columns. Descriptions, types and aliases are refined on each table afterwards.",
+    "startersPlaceholder": "Pick starter tables",
+    "customLabel": "Custom table",
+    "customNone": "No custom table",
+    "customSparql": "SPARQL query",
+    "classNotUsed": "Choose a class and press Use this class, or choose No custom table.",
+    "columnsReading": "Reading the columns from the query's SELECT…",
+    "nothingChosen": "Choose a starter table or a custom table to register.",
+    "columns": "Columns: {{columns}}"
+  }
+}

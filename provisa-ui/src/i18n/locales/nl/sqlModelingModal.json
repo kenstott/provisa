@@ -1,11 +1,11 @@
 {
   "sqlModelingModal": {
     "title": "SQL-modellering",
-    "description": "Extraheer JOIN-voorwaarden als nieuwe relatiekandidaten — bestaande relaties worden uitgesloten",
+    "description": "JOIN-voorwaarden extraheren als nieuwe kandidaat-relaties. Bestaande relaties zijn uitgesloten.",
     "close": "Sluiten",
     "tabSql": "SQL",
     "tabCanvas": "Canvas",
-    "nlPlaceholder": "Stel een vraag in gewone taal — genereert SQL…",
+    "nlPlaceholder": "Vraag in gewone taal om SQL te genereren…",
     "nlLoading": "Laden",
     "generateSql": "SQL genereren",
     "generating": "Genereren…",

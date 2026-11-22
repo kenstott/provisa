@@ -13,6 +13,8 @@
     "replace": "替换内容",
     "value": "常量值",
     "valuePlaceholder": "值（留空表示 NULL）",
+    "readsNull": "读取为 NULL：此列不是文本，因此常量脱敏规则只能为 NULL。",
+    "notTextConstant": "此列不是文本：常量脱敏规则读取为 NULL，因此只能保存 NULL（留空）。",
     "precision": "精度",
     "year": "年",
     "month": "月",

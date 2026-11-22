@@ -19,7 +19,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from provisa.compiler.aggregate_gen import _classify_columns
-from provisa.compiler.naming import to_pascal_case
+from provisa.compiler.context import ModelNotServable, _join_field_name
+from provisa.compiler.naming import _to_snake_case, to_pascal_case
 from provisa.core import command_bindings
 from provisa.core.ir_arrays import ArrayType
 from provisa.compiler.schema_gen import (
@@ -160,8 +161,33 @@ def _to_proto_field_name(gql_name: str) -> str:
     return gql_name.replace("__", "_")
 
 
+def proto_relation_field_name(graphql_field: str) -> str:  # REQ-1929
+    """The ``{Type}`` message field a relationship takes: its GraphQL relationship field in proto3
+    snake_case (``buildingPermit`` is ``building_permit``). The one translation proto_gen declares
+    the field by and a ``read_mask`` path is resolved by."""
+    return _to_proto_field_name(_to_snake_case(graphql_field))
+
+
+class ProtoFieldCollision(ModelNotServable):  # REQ-1929
+    """Two names of one GraphQL type that translate to one field of its gRPC ``{Type}`` message:
+    refused at model compile, naming both, rather than one hiding the other."""
+
+    code = "model.grpc_field_collision"
+
+    def __init__(self, type_name: str, field: str, held_by: str, refused: str) -> None:
+        self.type_name = type_name
+        self.field = field
+        self.held_by = held_by
+        self.refused = refused
+        self.params = {"type": type_name, "field": field, "held_by": held_by, "refused": refused}
+        super().__init__(
+            f"{refused} would be gRPC field {field!r} of message {type_name}, which {held_by} "
+            f"already is: give the relationship a GraphQL alias that translates to its own field"
+        )
+
+
 # GraphQL scalar name (command argument type) → proto3 type. Mirrors the REST surface's
-# _arg_type_to_openapi mapping so a command's arg shape is identical across surfaces (REQ-1156).
+# _argument_schema mapping (api/rest/openapi_spec.py) so a command's arg shape is identical across surfaces (REQ-1156).
 _ARG_PROTO_TYPE: dict[str, str] = {"int": "int64", "float": "double", "boolean": "bool"}
 
 
@@ -397,13 +423,22 @@ def generate_proto(
         domain_prefix=si.domain_prefix,
         domain_alias_map=domain_alias_map,
     )
+    table_lookup = {t.table_id: t for t in tables}
+    visible_rels = [r for r in si.relationships if _can_see_relationship(r, table_lookup)]
+    # REQ-1929: each table relationship is a field of its source's {Type} message named by its
+    # GraphQL relationship field -- the name its join registers under (compiler/context.py) -- read
+    # off the GraphQL-style table names before they are proto-cased below. A computed relationship
+    # reaches a function, not a table message, and has no field here.
+    rel_graphql_names = {
+        r["id"]: _join_field_name(r, table_lookup[r["target_table_id"]], table_lookup)
+        for r in visible_rels
+        if not r.get("target_function_name")
+    }
+
     # Convert GQL-style names (PS__Pets / ps__pets) to proto3 conventions (PsPets / ps_pets)
     for t in tables:
         t.type_name = _to_proto_type_name(t.type_name)
         t.field_name = _to_proto_field_name(t.field_name)
-
-    table_lookup = {t.table_id: t for t in tables}
-    visible_rels = [r for r in si.relationships if _can_see_relationship(r, table_lookup)]
 
     all_columns: list[tuple[str, str]] = []
     for t in tables:
@@ -449,16 +484,22 @@ def generate_proto(
             c["column_name"] for c in sorted_cols if t.column_metadata.get(c["column_name"])
         ]
 
-        used_fields: set[str] = set(col_names)
-        rel_fields: list[tuple[dict, Any]] = []
+        # REQ-1929: one field per relationship, named by its GraphQL relationship field translated
+        # to a proto field, so several relationships to one table are each a field. Two names that
+        # translate to one field are refused, naming both.
+        held: dict[str, str] = {c: f"column {c!r}" for c in col_names}
+        rel_fields: list[tuple[dict, Any, str]] = []
         for rel in visible_rels:
-            if rel["source_table_id"] == t.table_id:
-                target = table_lookup.get(rel["target_table_id"])
-                if target is None or target.field_name in used_fields:
-                    continue
-                used_fields.add(target.field_name)
-                rel_fields.append((rel, target))
-        rel_names = [target.field_name for _rel, target in rel_fields]
+            if rel["source_table_id"] != t.table_id or rel["id"] not in rel_graphql_names:
+                continue
+            graphql_name = rel_graphql_names[rel["id"]]
+            name = proto_relation_field_name(graphql_name)
+            holder = f"relationship {graphql_name!r} ({rel['id']})"
+            if name in held:
+                raise ProtoFieldCollision(t.type_name, name, held[name], holder)
+            held[name] = holder
+            rel_fields.append((rel, table_lookup[rel["target_table_id"]], name))
+        rel_names = [name for _rel, _target, name in rel_fields]
 
         # REQ-1903: columns + relation fields share ONE number space per table (they're all fields
         # of the same {Type} message), numbered stably across regenerations.
@@ -481,12 +522,12 @@ def generate_proto(
             presence = "" if proto_type == "google.protobuf.Timestamp" else "optional "
             lines.append(f"  {presence}{proto_type} {col['column_name']} = {field_num};")
 
-        for rel, target in rel_fields:
-            field_num = row_numbers[target.field_name]
+        for rel, target, name in rel_fields:
+            field_num = row_numbers[name]
             if rel["cardinality"] in ("many-to-one", "one-to-one"):
-                lines.append(f"  {target.type_name} {target.field_name} = {field_num};")
+                lines.append(f"  {target.type_name} {name} = {field_num};")
             elif rel["cardinality"] == "one-to-many":
-                lines.append(f"  repeated {target.type_name} {target.field_name} = {field_num};")
+                lines.append(f"  repeated {target.type_name} {name} = {field_num};")
             else:
                 raise ValueError(
                     f"unhandled relationship cardinality {rel['cardinality']!r} for {rel['id']!r}"

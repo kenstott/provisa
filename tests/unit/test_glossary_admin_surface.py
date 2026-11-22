@@ -28,10 +28,11 @@ from sqlalchemy import insert
 if TYPE_CHECKING:
     from fastapi import Request
 
-from provisa.api.admin import glossary_router
+from provisa.api.admin import definition_context, glossary_router
 from provisa.api.errors import ApiError
 from provisa.core.models import Column, Table
 from provisa.core.repositories import table as table_repo
+from provisa.llm.client import Completion
 from provisa.core.schema_org import (
     domains,
     sources,
@@ -153,7 +154,8 @@ async def test_curation_mutations_notify_the_exporter(control_plane, monkeypatch
         detail = await glossary_router.get_term(_request(), customer)
         assert detail["definition"] == "The buyer."
         assert detail["edges_out"] == [
-            {"term_id": created["id"], "rel_type": "KIND_OF", "name": "party"}
+            # REQ-1591: a related term carries its domains
+            {"term_id": created["id"], "rel_type": "KIND_OF", "name": "party", "domains": ["d"]}
         ]
         assert detail["experts"] == [{"user_id": "bob", "kind": "author"}]
         assert len(notified) == 4  # every mutation queued a publish
@@ -248,7 +250,9 @@ async def test_edge_type_is_correctable_in_place(control_plane, monkeypatch):
         )
         detail = await glossary_router.get_term(_request(), customer)
         # One edge, same endpoints and direction, corrected type.
-        assert detail["edges_out"] == [{"term_id": party, "rel_type": "KIND_OF", "name": "party"}]
+        assert detail["edges_out"] == [
+            {"term_id": party, "rel_type": "KIND_OF", "name": "party", "domains": ["d"]}
+        ]
 
         with pytest.raises(ApiError) as unknown:
             await glossary_router.retype_edge(
@@ -344,10 +348,16 @@ async def test_generate_definition_drafts_without_persisting(control_plane, monk
         return "A paying party."
 
     monkeypatch.setattr(schema_helpers, "_call_llm", _fake_llm)
+    # REQ-1387 (amended 2026-11-18): the columns' sample values are read as the curator, the role
+    # the auth middleware binds on every request; their read is test_glossary_definition_context's.
+    monkeypatch.setattr(definition_context, "column_samples", AsyncMock(return_value={}))
+    curator = _request()
+    curator.state.role = "steward"
     async with _surface(control_plane, monkeypatch) as (_db, notified):
         customer = await _term_id("customer")
-        result = await glossary_router.generate_definition(_request(), customer)
-        assert result == {"definition": "A paying party."}
+        result = await glossary_router.generate_definition(curator, customer)
+        # REQ-1387: every bound table gave samples, so none is named as unsampled.
+        assert result == {"definition": "A paying party.", "tables_without_samples": []}
         # The prompt grounds the model in the term's physical binding.
         assert "customer" in prompts[0] and "orders.cust_id" in prompts[0]
         # Generation is a draft, not a mutation: nothing persisted, no publish queued.
@@ -355,7 +365,7 @@ async def test_generate_definition_drafts_without_persisting(control_plane, monk
         assert detail["definition"] is None
         assert notified == []
         with pytest.raises(ApiError) as err:
-            await glossary_router.generate_definition(_request(), 99999)
+            await glossary_router.generate_definition(curator, 99999)
         assert err.value.status_code == 404
 
 
@@ -402,17 +412,17 @@ async def test_relationship_assistant_steers_to_grounding_types(control_plane, m
         '              "component_type": ["  ", "purchase moment"], "common_whole": "party"}}]'
     )
 
-    async def _fake_llm(prompt: str, operation: str, max_tokens: int = 256) -> str:
+    async def _fake_llm(prompt: str, operation: str, max_tokens: int = 256) -> Completion:
         prompts.append(prompt)
         assert operation == "glossary_relationships"
-        return reply
+        return Completion(reply, "anthropic", "m", None, False)
 
     async def _no_jev(_pool, _vendor):
         return None
 
     from provisa.core import org_secrets
 
-    monkeypatch.setattr(schema_helpers, "_call_llm", _fake_llm)
+    monkeypatch.setattr(schema_helpers, "_call_llm_detailed", _fake_llm)
     monkeypatch.setattr(org_secrets, "org_ai_key_or_none", _no_jev)
     async with _surface(control_plane, monkeypatch) as (_db, notified):
         result = await glossary_router.generate_relationships(_request())

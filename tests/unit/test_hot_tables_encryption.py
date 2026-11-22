@@ -42,7 +42,7 @@ async def _raw(mgr, table_id: int):
 
 async def test_payload_stored_encrypted_and_roundtrips():
     mgr = _mgr(EnvelopeEncryption(LocalKeychain(os.urandom(32))))
-    await mgr._store_rows(1, "t", _ROWS, "id", "cat", "sch")
+    await mgr._store_rows(1, "t", _ROWS, "id", "cat", "sch", {})
     raw = await _raw(mgr, 1)
     assert "alice" not in raw  # ciphertext at rest — no plaintext row values
     assert await mgr.get_rows(1) == _ROWS
@@ -51,7 +51,7 @@ async def test_payload_stored_encrypted_and_roundtrips():
 async def test_wrong_key_cannot_read():
     key_a = LocalKeychain(os.urandom(32))
     mgr = _mgr(EnvelopeEncryption(key_a))
-    await mgr._store_rows(1, "t", _ROWS, "id", "cat", "sch")
+    await mgr._store_rows(1, "t", _ROWS, "id", "cat", "sch", {})
     # A second manager on the shared fakeredis server with a different key.
     mgr2 = _mgr(EnvelopeEncryption(LocalKeychain(os.urandom(32))))
     await mgr2._connect()
@@ -66,12 +66,12 @@ async def test_wrong_key_cannot_read():
 
 async def test_null_encryption_default_passthrough():
     mgr = _mgr(NullEncryption())
-    await mgr._store_rows(1, "t", _ROWS, "id", "cat", "sch")
+    await mgr._store_rows(1, "t", _ROWS, "id", "cat", "sch", {})
     assert await mgr.get_rows(1) == _ROWS
 
 
 async def test_default_encryption_is_null():
     # No encryption arg → platform default passthrough, behaviour preserved.
     mgr = _mgr()
-    await mgr._store_rows(1, "t", _ROWS, "id", "cat", "sch")
+    await mgr._store_rows(1, "t", _ROWS, "id", "cat", "sch", {})
     assert await mgr.get_rows(1) == _ROWS

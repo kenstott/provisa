@@ -33,6 +33,7 @@ from provisa.pgwire import catalog
 from provisa.pgwire.catalog_route import addressed_statement
 from provisa.transpiler.metadata_facts import CatalogFacts
 from provisa.transpiler.metadata_functions import MetadataFunctionRefused
+from provisa.transpiler.metadata_server_forms import RAISE_FUNCTIONS_SQL
 from provisa.security.rights import Capability, has_capability
 from provisa.transpiler.metadata_settings import (
     CLIENT_ROLE,
@@ -188,11 +189,8 @@ def plane_engine(held: Any) -> Engine:
             conn.exec_driver_sql(ddl.replace("%", "%%"))
         for name in (*NEUTRAL_VIEW_NAMES, *CATALOG_VIEW_NAMES):
             conn.exec_driver_sql(f"CREATE VIEW meta.{name} AS SELECT * FROM {_SCHEMA}.{name}")
-        conn.exec_driver_sql(
-            "CREATE OR REPLACE FUNCTION provisa_raise(sqlstate TEXT, message TEXT) RETURNS TEXT "
-            "LANGUAGE plpgsql AS $$ BEGIN "
-            "RAISE EXCEPTION USING ERRCODE = sqlstate, MESSAGE = message; END $$"
-        )
+        for statement in RAISE_FUNCTIONS_SQL:
+            conn.exec_driver_sql(statement)
     return engine
 
 
@@ -237,6 +235,7 @@ class Plane:
             _can_write(role_id, state),
             request.database,
             False,
+            masked=(),
             session=request.session,
         )
         setting, values = set_statement(settings)

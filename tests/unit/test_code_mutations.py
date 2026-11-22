@@ -173,3 +173,10 @@ def test_keys_are_objects_of_the_key_columns_or_bare_values():
     rows = [(1, "x"), (2, "y")]
     assert keys_of(rows, ["id"], bare=True) == [1, 2]
     assert keys_of(rows, ["id"], bare=False) == [{"id": 1}, {"id": 2}]
+
+
+@pytest.mark.parametrize("tag", ["insert", "update", "delete"])
+def test_a_write_tag_in_the_tags_list_is_accepted(tag):
+    # Issue #342: readers list a bare write tag under tags; it is not an unknown tag.
+    tagged = _fn("add", ["command", tag], [("rows", _list(_ref("Order")))], N)
+    assert _manifest(tagged) is not None

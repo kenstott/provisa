@@ -35,13 +35,17 @@ from typing import Any
 from provisa.entitlements.index import (
     WILDCARD,
     Finding,
+    ObjectIndex,
+    OwnedObjects,
     build_index,
     check_lists,
     covers,
     matches,
+    owned_objects,
 )
 from provisa.entitlements.lists import (
     IDP,
+    PROVISA,
     ExpiryRule,
     HeldEntitlements,
     IdpLists,
@@ -52,6 +56,7 @@ from provisa.entitlements.lists import (
     rule_ends,
 )
 from provisa.entitlements.mask import EntitlementMask, MemberInput, compute_mask
+from provisa.security.inheritance import OWN_DOMAIN_ACCESS
 from provisa.security.rights import role_ids_from_claims
 
 log = logging.getLogger(__name__)
@@ -114,7 +119,21 @@ def restored_entitlements(captured: dict | None) -> Iterator[None]:
         kind: {name: tuple(values) for name, values in lists.items()}
         for kind, lists in captured["idp"].items()
     }
-    token = _current.set(EntitlementRequest(captured["user_id"], idp, captured["idp_hash"]))
+    with bound_request_scope(EntitlementRequest(captured["user_id"], idp, captured["idp_hash"])):
+        yield
+
+
+def bound_request() -> EntitlementRequest | None:
+    """The person bound to this call, to bind again where later work on their behalf runs outside
+    it (a live poll, REQ-286): without it that work would see the whole role. None for no person."""
+    return _current.get()
+
+
+@contextmanager
+def bound_request_scope(request: EntitlementRequest | None) -> Iterator[None]:
+    """Bind ``request`` (from :func:`bound_request`) for the block: None binds no person, so the
+    block is work no person is doing, never a person from the surrounding context."""
+    token = _current.set(request)
     try:
         yield
     finally:
@@ -131,20 +150,47 @@ def _role_context(state: Any, role_id: str) -> Any:
 
 
 def role_defaults(role: Mapping[str, Any]) -> Mapping[str, list[str]]:
-    """The role's default lists. Defaults naming exactly the domains the role is offered to are
-    the role itself, so a plain role grant is unchanged; they narrow nothing."""
+    """The role's default lists. Defaults naming exactly the domains the role is offered to (its
+    ceiling: its own stored domain access, before the domain tree and its inherited domains are
+    folded in) are the role itself, so a plain role grant is unchanged; they narrow nothing."""
     defaults = dict(role.get("default_entitlements") or {})
     domains = defaults.get("domains")
-    offered = role.get("domain_access")
-    if domains is not None and offered is not None and set(domains) == set(offered):
+    if domains is not None and set(domains) == set(role[OWN_DOMAIN_ACCESS]):
         defaults.pop("domains")
     return defaults
+
+
+def owned_of(state: Any) -> OwnedObjects:
+    """The glossary terms and judgment bases the org holds, as lists naming them are checked
+    (REQ-2219, OWNER KINDS)."""
+    return owned_objects(state.glossary_term_refs, state.judgment_basis_ids)
 
 
 def _members(role_id: str) -> tuple[str, ...]:
     from provisa.security.meta_role import members_of  # noqa: PLC0415
 
     return members_of(role_id)
+
+
+def _index(state: Any, version: tuple, role_id: str, context: Any) -> ObjectIndex:
+    """The objects of ``role_id``'s schema, whose compilation context is ``context``, in bit
+    order; built once per model version."""
+    names = state.names_table
+    products = tuple(state.data_product_refs)
+    return state.entitlement_masks.index(
+        (version, role_id), lambda: build_index(names, context, products)
+    )
+
+
+def role_index(state: Any, role_id: str) -> ObjectIndex | None:
+    """The objects of ``role_id``'s schema in bit order: what its masks' bits are positions in.
+    None for a role with no schema. Raises when there is no model yet."""
+    context = _role_context(state, role_id)
+    if context is None:
+        return None
+    if state.names_table is None:
+        raise RuntimeError("there is no model yet to index a role's schema against")
+    return _index(state, (state.schema_boot_id, state.schema_version), role_id, context)
 
 
 def _compute(
@@ -159,8 +205,8 @@ def _compute(
     names = state.names_table
     products = tuple(state.data_product_refs)
 
-    def index_of(role: str, context: Any) -> Any:
-        return cache.index((version, role), lambda: build_index(names, context, products))
+    def index_of(role: str, context: Any) -> ObjectIndex:
+        return _index(state, version, role, context)
 
     context = _role_context(state, role_id)
     if context is None:
@@ -168,13 +214,14 @@ def _compute(
     model_index = cache.index((version, "*"), lambda: build_index(names, None, products))
     members: list[MemberInput] = []
     findings: list[Finding] = []
+    owned = owned_of(state)
     for member in _members(role_id):
         member_context = _role_context(state, member)
         role = state.roles.get(member)
         if member_context is None or role is None:
             continue  # a qualifier with no schema of its own reaches nothing
         lists = effective_lists(member, request.idp, held, role_defaults(role))
-        findings.extend(check_lists(member, role, lists, model_index))
+        findings.extend(check_lists(member, role, lists, model_index, owned))
         expiries = tuple(r for r in held.expiries if r.role_id == member)
         members.append(MemberInput(member, lists, index_of(member, member_context), expiries))
     return compute_mask(role_id, index_of(role_id, context), members, version, now, tuple(findings))
@@ -267,18 +314,17 @@ def list_reach(
     return ListReach(listed, tuple(dict.fromkeys(ended)))
 
 
-def reaches_role(state: Any, target_role: str, capabilities: Collection[str]) -> bool:
-    """Whether the bound person's ``roles`` lists reach ``target_role``, through a role they act as
-    that holds one of ``capabilities`` (REQ-2219). A list naming a role covers it and every role
-    with it as an ancestor; a role with no ``roles`` list reaches every role. An expiry rule passed
-    on the grant ends what it names of that reach. Raises when no
-    person is bound: this answers an authorization question, and no person cannot be read as
-    anyone."""
+def _reaches(
+    state: Any, kind: str, paths: tuple[tuple[str, ...], ...], capabilities: Collection[str]
+) -> bool:
+    """Whether the bound person's ``kind`` lists reach an object spelled ``paths``, through a role
+    they act as that holds one of ``capabilities`` (REQ-2219). A role with no ``kind`` list
+    reaches every one. An expiry rule passed on the grant ends what it names of that reach.
+    Raises when no person is bound: this answers an authorization question, and no person cannot
+    be read as anyone."""
     request = _current.get()
     if request is None:
-        raise RuntimeError("no person is bound to this call: who may reach a role cannot be read")
-    chain = state.role_chains.get(target_role, [target_role])
-    paths = tuple((role.lower(),) for role in chain)
+        raise RuntimeError(f"no person is bound to this call: who may reach {kind} cannot be read")
     held = state.held_entitlements.get(request.user_id, _NOTHING_HELD)
     wanted = set(capabilities)
     now = datetime.now(UTC)
@@ -287,20 +333,43 @@ def reaches_role(state: Any, target_role: str, capabilities: Collection[str]) ->
             role = state.roles.get(member)
             if role is None:
                 continue
-            listed = effective_lists(member, request.idp, held, role_defaults(role)).get("roles")
+            listed = effective_lists(member, request.idp, held, role_defaults(role)).get(kind)
             rules = tuple(r for r in held.expiries if r.role_id == member)
             for capability in wanted & set(role.get("capabilities") or ()):
-                reach = list_reach(
-                    None if listed is None else listed.identifiers,
-                    None if listed is None else listed.origin,
-                    rules,
-                    capability,
-                    "roles",
-                    now,
-                )
+                # The rows Provisa holds for the capability alone (a domain's steward, REQ-2219
+                # OWNER KINDS), else the kind's list, else every one (effective._listed).
+                own = [
+                    i
+                    for row in held.lists
+                    if row.role_id == member and row.capability == capability
+                    for i in row.identifiers
+                ]
+                if own:
+                    identifiers, origin = tuple(own), PROVISA
+                elif listed is not None:
+                    identifiers, origin = listed.identifiers, listed.origin
+                else:
+                    identifiers, origin = None, None
+                reach = list_reach(identifiers, origin, rules, capability, kind, now)
                 if reach.reaches(paths):
                     return True
     return False
+
+
+def reaches_role(state: Any, target_role: str, capabilities: Collection[str]) -> bool:
+    """Whether the bound person's ``roles`` lists reach ``target_role``, through a role they act as
+    that holds one of ``capabilities`` (REQ-2219). A list naming a role covers it and every role
+    with it as an ancestor; a role with no ``roles`` list reaches every role."""
+    chain = state.role_chains.get(target_role, [target_role])
+    return _reaches(state, "roles", tuple((role.lower(),) for role in chain), capabilities)
+
+
+def reaches_domain(state: Any, spellings: Collection[str], capabilities: Collection[str]) -> bool:
+    """Whether the bound person's ``domains`` lists reach a domain spelled any of ``spellings``
+    (its own id and name and its ancestors', REQ-1363: a list naming a parent covers the domains
+    under it), through a role they act as that holds one of ``capabilities`` (REQ-2219, REQ-2266:
+    a domain's owner is whoever ``domain_steward`` reaches it for)."""
+    return _reaches(state, "domains", tuple((s.lower(),) for s in spellings), capabilities)
 
 
 def warnings(state: Any, role_id: str) -> tuple[Finding, ...]:

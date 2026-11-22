@@ -1,10 +1,10 @@
 {
   "mailTab": {
     "loading": "Caricamento…",
-    "intro": "Il server di posta tramite cui questo deployment invia i messaggi della piattaforma: inviti e altre notifiche. Sono elencati tutti i trasporti noti alla build; quello che richiede un pacchetto lo indica.",
+    "intro": "Il server di posta tramite cui questo deployment invia inviti e altri avvisi della piattaforma. Sono elencati tutti i trasporti noti alla build; uno che richiede un pacchetto lo indica.",
     "providerLabel": "Trasporto",
-    "providerRequires": "{{label}} — installa {{library}}",
-    "secretOnFile": "Una credenziale è memorizzata — digita per sostituirla",
+    "providerRequires": "{{label}} (installare {{library}})",
+    "secretOnFile": "È registrata una credenziale. Digitare per sostituirla.",
     "secretNotSet": "Non impostato",
     "fromAddressLabel": "Indirizzo mittente",
     "fromAddressHelp": "L'indirizzo che vedono i destinatari. La maggior parte dei trasporti richiede che sia un mittente verificato.",
@@ -12,7 +12,7 @@
     "baseUrlHelp": "L'indirizzo a cui puntano i link in un messaggio, ad esempio un link di invito.",
     "timeoutLabel": "Timeout (secondi)",
     "save": "Salva impostazioni di posta",
-    "saved": "Impostazioni di posta salvate — invio tramite {{provider}}.",
+    "saved": "Impostazioni di posta salvate. Invio tramite {{provider}}.",
     "testTitle": "Invia un messaggio di prova",
     "testIntro": "Invia tramite il trasporto configurato, con le stesse credenziali usate da un invito, e registra il tentativo qui sotto.",
     "testRecipient": "Invia a",

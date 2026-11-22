@@ -1168,6 +1168,43 @@ class _Row:
     aggregate: bool = False
 
 
+def _make_interval(sql: _Sql, args: list[str]) -> str:
+    """make_interval(years, months, weeks, days, hours, mins, secs) (PostgreSQL 17, timestamp.c):
+    each step checked as its C checks it (pg_mul and pg_add overflow), 22008 where one overflows,
+    the seconds NaN or infinite, or the answer an infinity's fields; the seconds scaled to
+    microseconds and rounded half to even (rint). NULL of any NULL argument."""
+    if "NULL" in args:
+        return _NULL_HELD
+    y, mo, w, d, h, mi = (f"toInt128({a})" for a in args[:6])
+    secs = args[6]
+    year_months, week_days = f"({y} * 12)", f"({w} * 7)"
+    months, days = f"({year_months} + {mo})", f"({week_days} + {d})"
+    scaled = f"(if(isNaN({secs}) OR isInfinite({secs}), 0.0, {secs}) * 1000000.0)"
+    seconds_us = f"toInt128(roundBankers(if({_fits(scaled, 64)}, {scaled}, 0.0)))"
+    hours_us, mins_us = f"({h} * {_HOUR_US})", f"({mi} * {_MINUTE_US})"
+    micros = f"({hours_us} + {mins_us} + {seconds_us})"
+
+    def outside32(v: str) -> str:
+        return f"({v} < {_I32_MIN} OR {v} > {_I32_MAX})"
+
+    def outside64(v: str) -> str:
+        return f"({v} < {_I64_MIN} OR {v} > {_I64_MAX})"
+
+    steps = " OR ".join(
+        [
+            f"isNaN({secs}) OR isInfinite({secs}) OR NOT {_fits(scaled, 64)}",
+            outside32(year_months),
+            outside32(week_days),
+            outside64(hours_us),
+            outside64(mins_us),
+            outside64(f"({hours_us} + {mins_us})"),
+        ]
+    )
+    raised = _raise("22008", _RANGE, steps)
+    checked = _raise("22008", _RANGE, _outside(months, days, micros))
+    return _fields_raising(months, days, micros, f"{raised} + {checked}")
+
+
 def _rows() -> dict[str, _Row]:
     rows: dict[str, _Row] = {}
     for name, op in _COMPARISONS.items():
@@ -1235,6 +1272,7 @@ def _rows() -> dict[str, _Row]:
     rows["interval"] = _Row(frozenset({"interval"}), "T", _time_interval, True)
     rows["time_mi_time"] = _Row(frozenset({"time_mi_time"}), "TT", _time_mi_time, True)
     rows["time"] = _Row(frozenset({"time"}), "i", _interval_time, False)
+    rows["make_interval"] = _Row(frozenset({"make_interval"}), "fffffff", _make_interval, True)
     return rows
 
 
@@ -1324,7 +1362,7 @@ def _mentions_interval(node: exp.Expr) -> bool:
             return True
         if isinstance(inner, exp.DataType) and inner.this in _INTERVAL_OR_CLOCK:
             return True  # a time less a time is an interval (time_mi_time)
-        if isinstance(inner, exp.Interval):
+        if isinstance(inner, (exp.Interval, exp.MakeInterval)):
             return True
         if isinstance(inner, exp.Anonymous) and inner.name.lower() in _NAMES - _SHARED:
             return True
@@ -1698,6 +1736,12 @@ _DOCS["interval_mul"] = _Doc(
 )
 _DOCS["mul_d_interval"] = _Doc(
     "mul_d_interval(double precision, interval)", "A number times an interval (*).", _SCALED_STATED
+)
+_DOCS["make_interval"] = _Doc(
+    "make_interval(integer, integer, integer, integer, integer, integer, double precision)",
+    "An interval of years, months, weeks, days, hours, minutes and seconds.",
+    " Of its seven arguments written, each a number literal or a NULL; any other is refused by "
+    "name." + _TEXT_STATED + _RANGE_STATED,
 )
 _DOCS["interval_div"] = _Doc(
     "interval_div(interval, double precision)",
@@ -2104,7 +2148,10 @@ def _feature(name: str) -> Feature:
     )
 
 
-#: The rows. isfinite's is read before instants' (polyfill.GRID lists this family first).
+#: The family's place in the grid (polyfill.GRID), which tries the rules of one function in
+#: the order of their families.
+ORDER = 300
+#: The rows. isfinite's is read before instants' (this family's ORDER is below instants').
 FEATURES: tuple[Feature, ...] = (*(_feature(name) for name in _ROWS), _literal_feature())
 
 __all__ = ["FEATURES", "HELD", "LITERAL", "interval_read", "interval_text", "keyword_read"]

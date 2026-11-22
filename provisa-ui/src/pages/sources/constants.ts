@@ -204,8 +204,14 @@ export const SOURCE_TYPES = [
   { value: "shopify", label: "Shopify", category: "Enterprise", defaultPort: 443 },
   // REQ-1923: carried by the OpenAPI source, with the system's pinned spec supplied.
   { value: "stripe", label: "Stripe", category: "Enterprise", defaultPort: 443 },
+  // REQ-2265: a governance catalog read live, carried by the OpenAPI source with its spec read
+  // from the customer's own instance.
+  { value: "openmetadata", label: "OpenMetadata", category: "Enterprise", defaultPort: 443 },
+  { value: "datahub", label: "DataHub", category: "Enterprise", defaultPort: 443 },
   // REQ-1960: carried by the File Crawler's HTML crawl, with the site's page layout supplied.
   { value: "wikipedia", label: "Wikipedia", category: "File", defaultPort: 0 },
+  // REQ-1923: carried by the SPARQL source, with the Wikidata query service as its endpoint.
+  { value: "wikidata", label: "Wikidata", category: "Graph", defaultPort: 443 },
   { value: "splunk", label: "Splunk", category: "Enterprise", defaultPort: 8089 },
   // Data Quality (REQ-1443) — a checker scans a governed table through a Provisa pgwire endpoint,
   // whose host, port, database and account its steward enters like any database's (#276). soda is Elastic
@@ -317,24 +323,33 @@ export const BRAND_CARRIER: Record<string, string> = {
   gitlab: "graphql",
   shopify: "graphql",
   stripe: "openapi",
+  openmetadata: "openapi", // REQ-2265
+  datahub: "openapi", // REQ-2265: its OpenAPI v3 spec
   wikipedia: "files", // REQ-1960
+  wikidata: "sparql",
 };
 
 // REQ-1923/REQ-1960: the credential each brand asks for, stated by the brand. None is given
 // by default: a brand asks for what its own service takes, and one read without a credential
-// asks for nothing. "token" is a token the brand's API is called with.
-export type BrandAuth = "token" | "none";
+// asks for nothing. "token" is a token the brand's API is called with; "client_credentials" is
+// an OAuth client ID and secret exchanged for a token at the brand's token endpoint (REQ-2265,
+// the OpenAPI source's oauth2_client_credentials auth).
+export type BrandAuth = "token" | "client_credentials" | "none";
 export const BRAND_AUTH: Record<string, BrandAuth> = {
   github: "token",
   gitlab: "token",
   shopify: "token",
   stripe: "token",
+  openmetadata: "token", // REQ-2265: a bot's JWT token
+  datahub: "token", // REQ-2265: a personal access token or a service account's token
   wikipedia: "none",
+  wikidata: "none",
 };
 
 // REQ-1923: what a brand reached at a per-customer address asks for besides its credential,
 // sent as the registration's `setup` under each field's `name` (the brand's setup fields,
-// provisa/graphql_remote/brands.py). A field with a `defaultValue` starts filled with it.
+// provisa/graphql_remote/brands.py and provisa/openapi/brands.py). A field with a
+// `defaultValue` starts filled with it.
 export interface BrandSetupField {
   name: string;
   labelKey: string;
@@ -346,7 +361,38 @@ export interface BrandSetupField {
 // The Admin API version a Shopify source is added with unless the steward names another: the
 // newest stable one when the shipped schema was baked (SHOPIFY_API_VERSION in brands.py).
 export const SHOPIFY_API_VERSION = "2026-10";
+// REQ-2265: the setup field of an OpenAPI brand each customer runs at its own host: the base URL
+// its calls go to, and its spec is read from when the brand reads it from the instance.
+export const BRAND_BASE_URL_FIELD: BrandSetupField = {
+  name: "base_url",
+  labelKey: "sourceFormFieldsExtended.brandBaseUrl",
+  hintKey: "sourceFormFieldsExtended.brandBaseUrlHint",
+  placeholder: "https://catalog.example.com",
+  required: true,
+};
+
+// REQ-2265: what a brand's credential is, where the generic "access token" says too little to
+// find it (an i18n key for the token field's hint).
+export const BRAND_TOKEN_HINT: Record<string, string> = {
+  openmetadata: "sourceFormFieldsExtended.openmetadataTokenHint",
+  datahub: "sourceFormFieldsExtended.datahubTokenHint",
+};
 export const BRAND_SETUP: Record<string, BrandSetupField[]> = {
+  // REQ-2265: the host the instance runs at (provisa/openapi/brands.py).
+  openmetadata: [
+    {
+      ...BRAND_BASE_URL_FIELD,
+      hintKey: "sourceFormFieldsExtended.openmetadataBaseUrlHint",
+      placeholder: "https://openmetadata.example.com",
+    },
+  ],
+  datahub: [
+    {
+      ...BRAND_BASE_URL_FIELD,
+      hintKey: "sourceFormFieldsExtended.datahubBaseUrlHint",
+      placeholder: "https://datahub.example.com/gms",
+    },
+  ],
   shopify: [
     {
       name: "store",

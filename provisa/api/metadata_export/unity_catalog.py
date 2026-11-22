@@ -26,6 +26,9 @@ table the engine reads in place, its external table (``DatabricksFederationRunti
 - The schema's comment holds the product's purpose, limitations, usage, service level and
   support; its owner, team, version and status are ``provisa_product:<field>`` tags (a tag value
   holds 256 characters, so the prose stays in the comment).
+- Each view carries the environment the snapshot was read in and that environment's stage as the
+  ``provisa_environment`` and ``provisa_stage`` tags (REQ-2261), so a catalog can tell production
+  assets from others; neither is written when the snapshot names no environment.
 - A view in the product's schema that is no longer a member is dropped.
 - With ``delta_share`` set, the schema's views are also published as the Delta Share
   ``provisa_<product id>``, for other data teams of the enterprise; a recipient is granted it in
@@ -52,6 +55,7 @@ if TYPE_CHECKING:
     from provisa.api.metadata_export.model import (
         ColumnAsset,
         DataProductAsset,
+        EnvironmentStage,
         GovernanceTag,
         GroundedTerm,
         MetadataSnapshot,
@@ -62,6 +66,11 @@ GOVERNANCE_PREFIX = "provisa_governance:"
 #: REQ-2238: the tag naming a view column's grounded term.
 TERM_TAG = "provisa_term"
 PRODUCT_PREFIX = "provisa_product:"
+#: REQ-2261: the tags naming a view's environment and that environment's stage.
+ENVIRONMENT_TAG = "provisa_environment"
+STAGE_TAG = "provisa_stage"
+#: REQ-2122: the tag holding a view's Provisa address (semantic URI).
+URI_TAG = "provisa_uri"
 _TAG_VALUE_LIMIT = 256
 
 Parts = tuple[str, str, str]
@@ -109,7 +118,8 @@ def schema_tags(product: "DataProductAsset") -> dict[str, str]:
         "version": product.version,
         "status": product.status,
     }
-    return {
+    uri = {f"{PRODUCT_PREFIX}uri": product.semantic_uri}  # REQ-2122
+    return uri | {
         f"{PRODUCT_PREFIX}{k}": v[:_TAG_VALUE_LIMIT] for k, v in fields.items() if v is not None
     }
 
@@ -177,6 +187,24 @@ def term_statements(
         for column in table.columns
         if (term := terms_by_column.get(column.ref.fqn())) is not None
     ]
+
+
+def environment_statements(view: Parts, environment: "EnvironmentStage | None") -> list[str]:
+    """The environment and its stage as tags on the view (REQ-2261); none without an
+    environment."""
+    if environment is None:
+        return []
+    return [
+        f"ALTER VIEW {q(*view)} SET TAGS ("
+        f"'{ENVIRONMENT_TAG}' = '{lit(environment.name[:_TAG_VALUE_LIMIT])}', "
+        f"'{STAGE_TAG}' = '{lit(environment.stage)}')"
+    ]
+
+
+def address_statements(view: Parts, table: "TableAsset") -> list[str]:
+    """The view's Provisa address as the ``provisa_uri`` tag (REQ-2122): Unity Catalog has no URL
+    property, and a tag is its free-form key/value metadata."""
+    return [f"ALTER VIEW {q(*view)} SET TAGS ('{URI_TAG}' = '{lit(table.semantic_uri)}')"]
 
 
 def _owned(tag: str) -> bool:
@@ -371,6 +399,10 @@ class UnityCatalogExport(MetadataExport):  # REQ-2117
             for stmt in governance_statements(view, table, governance):
                 cur.execute(stmt)
             for stmt in term_statements(view, table, terms):
+                cur.execute(stmt)
+            for stmt in environment_statements(view, snapshot.environment):
+                cur.execute(stmt)
+            for stmt in address_statements(view, table):
                 cur.execute(stmt)
             views[name] = view
             members[name] = member

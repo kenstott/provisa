@@ -24,7 +24,7 @@
     "history": "היסטוריה",
     "noHistory": "אין היסטוריה עדיין",
     "favorites": "מועדפים",
-    "noFavorites": "אין מועדפים עדיין — יש ללחוץ על ★ במסגרת תוצאה",
+    "noFavorites": "אין עדיין מועדפים. יש ללחוץ על ★ במסגרת תוצאות.",
     "matchAllNodes": "MATCH (n) RETURN n LIMIT 25",
     "matchAllRels": "MATCH p=()-->() RETURN p LIMIT 25",
     "firstPage": "עמוד ראשון",

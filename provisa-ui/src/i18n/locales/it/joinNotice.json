@@ -7,20 +7,20 @@
     "ack": "Ho capito",
     "leave": "Questa non è la mia organizzazione",
     "leaveError": "Non è stato possibile lasciare l'organizzazione.",
-    "sandboxIntro": "Sei sulla nostra istanza starter condivisa, in un ambiente isolato tutto tuo. I dati di esempio sono una copia privata: nulla di ciò che fai qui è visibile a un altro visitatore e nulla qui tocca i dati di qualcun altro.",
+    "sandboxIntro": "Ci si trova sulla nostra istanza starter condivisa, in un ambiente isolato tutto per sé. I dati di esempio sono una copia privata. Gli altri visitatori non vedono ciò che si fa qui, e nulla qui tocca i dati di altri.",
     "sandboxOpen": "Quasi ogni operazione ti è aperta: registra le tue fonti, modellale, scrivi criteri e regole di mascheramento e interroga il risultato in SQL, GraphQL o Cypher.",
-    "sandboxHeldBack": "Restano riservati i controlli a livello di organizzazione: cambiare o gestire gli ambienti, invitare persone e conferire ruoli, le impostazioni dell'organizzazione e l'osservabilità a livello di organizzazione. Quelle pagine restano visibili, contrassegnate come parte del sistema di produzione.",
-    "sandboxTemporary": "Il tuo ambiente è temporaneo. La disconnessione lo cancella, e viene anche recuperato dopo un giorno di inattività. Nulla di ciò che costruisci qui è pensato per essere conservato.",
+    "sandboxHeldBack": "I controlli a livello di organizzazione sono riservati: cambiare o gestire ambienti, invitare persone e conferire ruoli, le impostazioni dell'organizzazione e l'osservabilità a livello di organizzazione. Quelle pagine restano visibili, contrassegnate come parte del sistema di produzione.",
+    "sandboxTemporary": "L'ambiente è temporaneo. Disconnettersi lo cancella, e viene anche recuperato dopo un giorno di inattività.",
     "sandboxUpgrade": "Quando sei pronto per un'organizzazione che persiste, passa a un piano Starter.",
     "sandboxAck": "Inizia a esplorare",
     "demoSandboxTitle": "Benvenuto nella tua sandbox demo",
     "demoSandboxIntro": "Questa sandbox è la tua copia della demo, e una versione leggera di Provisa. Questi sono i suoi limiti:",
-    "demoSandboxEngine": "Funziona su un motore DuckDB a processo singolo, non sul motore usato dalle organizzazioni in produzione.",
+    "demoSandboxEngine": "Funziona su un motore DuckDB a processo singolo. Le organizzazioni di produzione usano un motore diverso.",
     "demoSandboxMemory": "Il suo motore può usare al massimo {{memory}} di memoria; una query che ne richiede di più viene rifiutata.",
     "demoSandboxDisk": "Può occupare al massimo {{disk}} su disco, i suoi dati e i file che hai caricato insieme; una scrittura oltre viene rifiutata.",
     "demoSandboxConflicts": "Modifiche fatte nello stesso momento da più dispositivi possono essere rifiutate come conflitto. Riprova.",
     "demoSandboxExpires": "Viene eliminata, con tutto ciò che contiene, dopo {{idle}} senza utilizzo.",
     "demoSandboxHeldBack": "Non puoi invitare altre persone, né cambiare o gestire ambienti.",
-    "demoSandboxSources": "Le origini di esempio sono di sola lettura: ciò che scrivi resta dentro la sandbox."
+    "demoSandboxSources": "Le origini di esempio sono in sola lettura, quindi ciò che si scrive resta all'interno della sandbox."
   }
 }

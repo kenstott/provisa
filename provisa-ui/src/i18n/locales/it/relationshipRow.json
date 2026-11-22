@@ -48,6 +48,27 @@
     "changeResolver": "Modifica resolver di codice",
     "retireResolver": "Ritira resolver di codice",
     "retireResolverTitle": "Ritirare il resolver di codice {{resolver}}?",
-    "retireResolverConsequence": "La sua vista delle corrispondenze e le sue tre relazioni vengono ritirate insieme. I loro nomi restano occupati."
+    "retireResolverConsequence": "La sua vista delle corrispondenze e le sue tre relazioni vengono ritirate insieme. I loro nomi restano occupati.",
+    "queryLinks": {
+      "heading": "Interroga",
+      "tableMissing": "I link di query non sono disponibili: la tabella {{ids}} indicata da questa relazione non è tra le tabelle registrate.",
+      "tablesUnread": "I link di query non sono disponibili: non è stato possibile leggere le tabelle registrate ({{error}}).",
+      "cypher": "Leggi {{name}} in Cypher",
+      "sql": "Leggi {{name}} in SQL",
+      "sparql": "Leggi {{name}} in SPARQL",
+      "graphql": "Leggi {{name}} in GraphQL",
+      "rest": "Leggi {{name}} in REST",
+      "grpc": "Leggi {{name}} in gRPC",
+      "jsonapi": "Leggi {{name}} in JSON:API",
+      "surfaces": {
+        "cypher": "Cypher",
+        "sql": "SQL",
+        "sparql": "SPARQL",
+        "graphql": "GraphQL",
+        "rest": "REST",
+        "grpc": "gRPC",
+        "jsonapi": "JSON:API"
+      }
+    }
   }
 }

@@ -176,6 +176,7 @@ import pgwire_function_probe as function_probe
 from function_report import (
     ARRAY_ORDER,
     CLOCK_FIELD,
+    COMPARISON_SIGN,
     ENUM_LABEL,
     FLOAT_CLOSE,
     JSON_KEY_ORDER,
@@ -328,6 +329,78 @@ MODEL_FUNCTIONS = frozenset(
         "schema_to_xmlschema",
     }
 )
+
+#: The comparison functions: btree support function 1 (BTORDER_PROC) and GIN's compare and
+#: compare_partial. PostgreSQL documents only the sign of their result, "less than zero, zero, or
+#: greater than zero" (https://www.postgresql.org/docs/current/btree-support-funcs.html,
+#: https://www.postgresql.org/docs/current/gin-extensibility.html); the magnitude several return
+#: is a memcmp difference that varies with the reference platform (runs 44424562465 and
+#: 44451548477 disagreed). Their answers compare by sign (function_report.COMPARISON_SIGN).
+COMPARISON_FUNCTIONS = frozenset(
+    {
+        "bitcmp",
+        "bpcharcmp",
+        "btarraycmp",
+        "btboolcmp",
+        "btbpchar_pattern_cmp",
+        "btcharcmp",
+        "btfloat48cmp",
+        "btfloat4cmp",
+        "btfloat84cmp",
+        "btfloat8cmp",
+        "btint24cmp",
+        "btint28cmp",
+        "btint2cmp",
+        "btint42cmp",
+        "btint48cmp",
+        "btint4cmp",
+        "btint82cmp",
+        "btint84cmp",
+        "btint8cmp",
+        "btnamecmp",
+        "btnametextcmp",
+        "btoidcmp",
+        "btoidvectorcmp",
+        "btrecordcmp",
+        "btrecordimagecmp",
+        "bttext_pattern_cmp",
+        "bttextcmp",
+        "bttextnamecmp",
+        "bttidcmp",
+        "byteacmp",
+        "cash_cmp",
+        "date_cmp",
+        "date_cmp_timestamp",
+        "date_cmp_timestamptz",
+        "enum_cmp",
+        "gin_cmp_prefix",
+        "gin_cmp_tslexeme",
+        "gin_compare_jsonb",
+        "interval_cmp",
+        "jsonb_cmp",
+        "macaddr8_cmp",
+        "macaddr_cmp",
+        "multirange_cmp",
+        "network_cmp",
+        "numeric_cmp",
+        "pg_lsn_cmp",
+        "range_cmp",
+        "time_cmp",
+        "timestamp_cmp",
+        "timestamp_cmp_date",
+        "timestamp_cmp_timestamptz",
+        "timestamptz_cmp",
+        "timestamptz_cmp_date",
+        "timestamptz_cmp_timestamp",
+        "timetz_cmp",
+        "tsquery_cmp",
+        "tsvector_cmp",
+        "uuid_cmp",
+        "varbitcmp",
+        "xid8cmp",
+    }
+)
+_SIGNED_INTEGER = re.compile(r"-?\d+")
 
 _FLOAT_OIDS = frozenset({700, 701})
 _FLOAT_ARRAY_OIDS = frozenset({1021, 1022})
@@ -2151,7 +2224,24 @@ def _value_rules(
         return json_rules(want, got, sql)
     if oid == _RECORD_OID:
         return _record_rules(want, got, sql, function)
+    if function in COMPARISON_FUNCTIONS:
+        return _sign_rules(want, got)
     return None
+
+
+def _sign(text: str) -> int | None:
+    if _SIGNED_INTEGER.fullmatch(text) is None:
+        return None
+    number = int(text)
+    return (number > 0) - (number < 0)
+
+
+def _sign_rules(want: str, got: str) -> Rules:
+    """A comparison function's answer by its sign, the only part PostgreSQL documents."""
+    sign = _sign(want)
+    if sign is None or sign != _sign(got):
+        return None
+    return frozenset({COMPARISON_SIGN})
 
 
 def _model_answer(function: str, want: str | None, got: str | None) -> bool:
@@ -4270,18 +4360,82 @@ def _family_cell(outcomes: list[dict[str, Any]]) -> str:
     )
 
 
-def merge(engines: list[str], indir: Path, out: Path, out_md: Path) -> int:
+def _one(indir: Path, name: str) -> dict[str, Any] | None:
+    found = sorted(indir.rglob(name))
+    if len(found) > 1:
+        raise SystemExit(f"more than one {name} under {indir}: {found}")
+    return json.loads(found[0].read_text()) if found else None
+
+
+def legs_section(
+    engines: list[str], legs: dict[str, Any], failures: dict[str, dict[str, Any]]
+) -> dict[str, Any]:
+    """What the report says of the run's legs (function_legs.yaml): each engine's lane and image,
+    why a leg left no result, the legs of a lane this run did not dispatch, and the engine kinds no
+    leg runs, with the reason."""
+    by_engine = {leg["engine"]: leg for leg in legs["legs"]}
+    unknown = sorted(set(engines) - set(by_engine))
+    if unknown:
+        raise SystemExit(f"engines with no leg in function_legs.yaml: {unknown}")
+    return {
+        "legs": {
+            engine: {"lane": by_engine[engine]["lane"], "image": by_engine[engine]["image"]}
+            for engine in engines
+        },
+        "leg_failures": {
+            engine: failures[engine]["reason"] for engine in engines if engine in failures
+        },
+        "not_dispatched": {
+            engine: f"the {leg['lane']} lane, not dispatched in this run"
+            for engine, leg in sorted(by_engine.items())
+            if engine not in engines
+        },
+        "not_run": dict(sorted(legs["not_run"].items())),
+    }
+
+
+def legs_markdown(doc: dict[str, Any]) -> str:
+    """The run's legs, their images and results, and the engines it did not run."""
+    lines = ["### Legs", "", "| engine | lane | image | leg |", "|---|---|---|---|"]
+    for engine, leg in doc["legs"].items():
+        if engine in doc["leg_failures"]:
+            result = "failed: " + doc["leg_failures"][engine]
+        elif engine in doc["engines_without_a_result"]:
+            result = "failed: the leg left no result and no reason"
+        elif engine in doc["engines_incomplete"]:
+            result = "incomplete: its server went away"
+        else:
+            result = "complete"
+        lines.append(f"| {engine} | {leg['lane']} | {leg['image']} | {result} |")
+    lines += ["", "#### Engines not run", ""]
+    lines += [
+        f"- {engine}: {why}" for engine, why in {**doc["not_dispatched"], **doc["not_run"]}.items()
+    ] or ["None."]
+    lines.append("")
+    return "\n".join(lines)
+
+
+def merge(
+    engines: list[str], indir: Path, out: Path, out_md: Path, legs: Path | None = None
+) -> int:
     """``function-support-<engine>.json`` of each engine, anywhere under ``indir``, as one file.
-    Fails when a leg left no result or stopped short: the list is then not a guarantee."""
-    reports: dict[str, dict[str, Any] | None] = {}
-    for engine in engines:
-        found = sorted(indir.rglob(f"function-support-{engine}.json"))
-        if len(found) > 1:
-            raise SystemExit(f"{engine}: more than one result under {indir}: {found}")
-        reports[engine] = json.loads(found[0].read_text()) if found else None
+    Fails when a leg left no result or stopped short: the list is then not a guarantee. With
+    ``legs`` (function_legs.yaml), the report also lists each leg's image, why a failed leg left no
+    result (``leg-failure-<engine>.json``), and the engines not run."""
+    reports = {engine: _one(indir, f"function-support-{engine}.json") for engine in engines}
     doc = merged(reports)
+    if legs is not None:
+        failures = {
+            engine: found
+            for engine in engines
+            if (found := _one(indir, f"leg-failure-{engine}.json")) is not None
+            and reports[engine] is None
+        }
+        doc = {**doc, **legs_section(engines, yaml.safe_load(legs.read_text()), failures)}
     out.write_text(json.dumps(doc, indent=1) + "\n")
     text = merged_markdown(doc)
+    if legs is not None:
+        text += "\n" + legs_markdown(doc)
     out_md.write_text(text + "\n")
     print(text)
     return 1 if doc["engines_incomplete"] else 0
@@ -4311,6 +4465,9 @@ def main(argv: list[str]) -> int:
     g.add_argument("--in", dest="indir", required=True, type=Path)
     g.add_argument("--out", required=True, type=Path)
     g.add_argument("--out-md", required=True, type=Path)
+    g.add_argument(
+        "--legs", type=Path, help="function_legs.yaml: each leg's image, the rest's reason"
+    )
     args = parser.parse_args(argv[1:])
     if args.command == "measure":
         return measure(args.engine, args.pg, args.provisa, args.out_json, args.out_md, args.limit)
@@ -4318,7 +4475,7 @@ def main(argv: list[str]) -> int:
         seed_columns(args.pg, args.out)
         seed_fixture(args.pg)
         return 0
-    return merge(args.engines.split(","), args.indir, args.out, args.out_md)
+    return merge(args.engines.split(","), args.indir, args.out, args.out_md, args.legs)
 
 
 if __name__ == "__main__":

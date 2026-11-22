@@ -122,6 +122,8 @@ export interface ListSortCol {
   width?: string;
   /** The most width, in pixels, this column asks for, where the list's own cap does not suit it. */
   cap?: number;
+  /** The column's filter control (ColumnFilterMenu), drawn after its sort and group controls. */
+  filter?: ReactNode;
 }
 
 /** A static header cell that needs a width. */
@@ -250,7 +252,14 @@ export function ListHead<T = never>({
             if (!sortGroup) throw new Error("ListHead: a { col } header needs sortGroup");
             return (
               <Table.Th key={i} style={{ whiteSpace: "nowrap", width: c.width }}>
-                <ListSortCell state={sortGroup} col={c.col} />
+                {c.filter ? (
+                  <Group gap={4} wrap="nowrap" component="span">
+                    <ListSortCell state={sortGroup} col={c.col} />
+                    {c.filter}
+                  </Group>
+                ) : (
+                  <ListSortCell state={sortGroup} col={c.col} />
+                )}
               </Table.Th>
             );
           }
@@ -282,6 +291,8 @@ export function ListGroupRow({
   count,
   collapsed,
   onToggle,
+  actions,
+  testId,
 }: {
   colSpan: number;
   level: number;
@@ -289,11 +300,16 @@ export function ListGroupRow({
   count: number;
   collapsed: boolean;
   onToggle: () => void;
+  /** What acts on the whole group (a side taken for every row of it), after the heading's label,
+   *  where a narrow list still shows them. A click or key inside them acts there and does not
+   *  open or close the group. */
+  actions?: ReactNode;
+  testId?: string;
 }) {
   const isL1 = level === 1;
   const span = colSpan + useSelectColumns();
   return (
-    <Table.Tr>
+    <Table.Tr data-testid={testId}>
       <Table.Td
         colSpan={span}
         role="button"
@@ -317,8 +333,30 @@ export function ListGroupRow({
           userSelect: "none",
         }}
       >
-        {collapsed ? "▶" : "▼"} {label}{" "}
-        <span style={{ fontWeight: "normal", opacity: 0.7 }}>({count})</span>
+        {actions === undefined ? (
+          <>
+            {collapsed ? "▶" : "▼"} {label}{" "}
+            <span style={{ fontWeight: "normal", opacity: 0.7 }}>({count})</span>
+          </>
+        ) : (
+          <Group wrap="wrap" gap="xs">
+            <span>
+              {collapsed ? "▶" : "▼"} {label}{" "}
+              <span style={{ fontWeight: "normal", opacity: 0.7 }}>({count})</span>
+            </span>
+            {/* Not the heading's toggle: what is clicked or typed in here stays here. */}
+            <span
+              role="presentation"
+              style={{ cursor: "default" }}
+              onClick={(e) => e.stopPropagation()}
+              onKeyDown={(e) => e.stopPropagation()}
+            >
+              <Group gap="xs" wrap="wrap">
+                {actions}
+              </Group>
+            </span>
+          </Group>
+        )}
       </Table.Td>
     </Table.Tr>
   );

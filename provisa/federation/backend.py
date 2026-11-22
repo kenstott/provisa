@@ -27,7 +27,7 @@ from provisa.core.session_time_zone import carrying_zone
 import asyncio
 import logging
 from contextlib import contextmanager
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -74,21 +74,6 @@ class EngineBackend:
     #: A statement reading a faked column is refused, by the column's name, on one that does not.
     computes_fakes = False
 
-    # `native_store` (engine.py's generic `_RDB_KINDS` loop) is the SQLAlchemy URL scheme name —
-    # the identity used for landing/storage-backend comparisons (materialization.py,
-    # query_residency.py) — which is not always SQLGlot's own dialect name for that same product
-    # (SUPPORTED_DIALECTS in transpiler/transpile.py enumerates SQLGlot's actual names). Verified
-    # live (REQ-1730 engine-swap harness, 2026-09-20): registering the generic "mssql" engine and
-    # querying it raised `sqlglot.errors.ParseError: Unknown dialect 'mssql'. Did you mean mysql?`
-    # — SQLGlot names Microsoft SQL Server's dialect "tsql", not "mssql". Translate only at this
-    # transpile-target seam, never `native_store` itself, so every other native_store comparison
-    # keeps naming the actual storage backend. Only mssql is mapped here (the one mismatch actually
-    # reproduced); the other generic `_RDB_KINDS` entries whose SQLAlchemy scheme differs from any
-    # SQLGlot dialect name (mariadb/greenplum/cockroachdb/yugabytedb/opengauss/tidb/vertica/
-    # saphana/monetdb/db2/firebird) are tracked, not guessed at, in a filed
-    # issue — SQLGlot compatibility per product needs verifying, not assuming.
-    _SQLGLOT_DIALECT_ALIASES: dict[str, str] = {"mssql": "tsql"}
-
     def __init__(self, engine: FederationEngine) -> None:
         self.engine = engine
         # (source_id, table_name) -> why its replica could not be reconciled to the registered
@@ -107,10 +92,19 @@ class EngineBackend:
 
     @property
     def dialect(self) -> str:
-        """The physical SQL dialect the engine speaks (transpile target). Named by native_store
-        for native engines (duckdb → ``duckdb``); falls back to the engine name."""
+        """The physical SQL dialect the engine speaks (transpile target), from
+        ``source_registry.engine_dialect`` over its native store (the engine name when it has
+        none). An engine whose product has no sqlglot dialect is refused by name."""
+        from provisa.core.source_registry import engine_dialect
+
         store = self.engine.native_store or self.engine.name
-        return self._SQLGLOT_DIALECT_ALIASES.get(store, store)
+        dialect = engine_dialect(store)
+        if dialect is None:
+            raise ValueError(
+                f"federation engine {self.engine.name!r} (native store {store!r}) has no "
+                "sqlglot dialect; its SQL cannot be transpiled"
+            )
+        return dialect
 
     def transpile_physical(self, pg_sql: str) -> str:
         """Transpile governed PostgreSQL-dialect SQL to the engine's physical dialect. Native
@@ -797,6 +791,8 @@ class EngineBackend:
             file_glob_tables=getattr(source, "file_glob_tables", []) or [],
             # REQ-1909: read directly by DuckDBPostgresConnector.details.
             max_live_concurrency=source.max_live_concurrency,
+            # REQ-1997: read by the sandbox check every attach passes (engine.resolve).
+            download_from=source.download_from,
             schema_name=schema_name,
             table_name=table_name,
         )
@@ -932,6 +928,7 @@ class EngineBackend:
                 federation_hints=getattr(source, "federation_hints", {}),
                 file_glob_tables=getattr(source, "file_glob_tables", []) or [],  # REQ-788
                 max_live_concurrency=source.max_live_concurrency,  # REQ-1909
+                download_from=source.download_from,  # REQ-1997: the sandbox check reads it
                 schema_name=schema_name,
                 table_name=table_name,
             )
@@ -1581,27 +1578,24 @@ class TrinoBackend(EngineBackend):
         span_attrs: dict[str, str] | None = None,
         extra_table_attrs: list[dict[str, str]] | None = None,
     ) -> QueryResult:
-        from provisa.executor.trino import execute_trino
+        """REQ-2194: the read reaches Provisa as Arrow through the Zaychik Flight SQL proxy; the
+        rows are built from it on the executor thread. Every Flight statement is its own Trino
+        session, so ``fresh`` is what every read already is; ``conn_kwargs`` name the session
+        (source, catalog, schema) when a caller passes its own."""
+        from provisa.executor.trino_flight import execute_trino_flight
 
-        if fresh and conn_kwargs is None:
-            conn_kwargs = state.engine_conn_kwargs
-        conn = state.engine_conn
-        # REQ-1043/REQ-1244: a bound-but-unconnected terminal (bind_terminal — sleeping cluster,
-        # wake-on-traffic) has kwargs and no conn; execute_trino's liveness path connects from
-        # state.engine_conn_kwargs on this first query. Only a terminal with NEITHER is an error.
-        if conn is None and conn_kwargs is None and not state.engine_conn_kwargs:
-            raise RuntimeError(f"engine {self.engine.name!r} connection not available")
-        _conn = cast("Any", conn)
+        del fresh  # every statement through the proxy runs in a session of its own
+        transport = self._flight_transport(state)
+        context = self._flight_context(state, session_hints, conn_kwargs)
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(
             None,
             carrying_zone(
-                lambda: execute_trino(
-                    _conn,
+                lambda: execute_trino_flight(
+                    transport,
                     sql,
-                    params=params,
-                    session_hints=session_hints,
-                    conn_kwargs=conn_kwargs,
+                    params,
+                    context=context,
                     span_attrs=span_attrs,
                     extra_table_attrs=extra_table_attrs,
                 )
@@ -1615,14 +1609,55 @@ class TrinoBackend(EngineBackend):
         params: list | None = None,
         *,
         session_hints: dict[str, str] | None = None,
-    ) -> QueryResult:
-        from provisa.executor.trino import execute_trino
+    ) -> ResultStream:
+        """REQ-2194: the engine's Arrow batches as they arrive from the proxy; a consumer that
+        reads rows has each batch turned into them as it pulls it."""
+        from provisa.executor.trino_flight import execute_trino_flight_sync
 
-        conn = state.engine_conn
-        # Same wake-on-traffic contract as execute(): kwargs-only means execute_trino connects.
-        if conn is None and not state.engine_conn_kwargs:
+        return execute_trino_flight_sync(
+            self._flight_transport(state),
+            sql,
+            params,
+            context=self._flight_context(state, session_hints, None),
+        )
+
+    def _flight_context(
+        self, state: Any, session_hints: dict[str, str] | None, conn_kwargs: dict | None
+    ) -> Any:
+        """The Trino session a statement runs in: the terminal's source (the org, REQ-056),
+        catalog and schema (REQ-1623), and its session properties -- the deployment's FTE hints
+        (REQ-302), the caller's hints over them, and the query timeout every read carries
+        (REQ-1913) unless a hint sets one."""
+        from provisa.executor.trino import _trino_query_timeout
+        from provisa.executor.trino_flight import TrinoContext
+
+        kwargs = conn_kwargs if conn_kwargs is not None else state.engine_conn_kwargs
+        if not kwargs:
             raise RuntimeError(f"engine {self.engine.name!r} connection not available")
-        return execute_trino(cast("Any", conn), sql, params=params, session_hints=session_hints)
+        hints = dict(session_hints or {})
+        hints.setdefault("query_max_execution_time", f"{_trino_query_timeout()}s")
+        return TrinoContext(
+            source=kwargs["source"],
+            catalog=kwargs.get("catalog"),
+            schema=kwargs.get("schema"),
+            properties={**state.engine_session_hints, **hints},
+            server=self._own_coordinator(state, kwargs),
+        )
+
+    @staticmethod
+    def _own_coordinator(state: Any, kwargs: dict) -> str | None:
+        """The coordinator the statement names when the active org's terminal is not the one the
+        proxy is configured with: its own engine (REQ-1412) or its isolated host (REQ-1043). The
+        proxy dials it only if the deployment declared it, else refuses by name. On a
+        provisioning deployment each shard's proxy is a sidecar in front of that shard's own
+        coordinator (REQ-1518), so a statement never names one."""
+        from provisa.federation import k8s_provisioner as k8s
+
+        if k8s.provisioning_available():
+            return None
+        if state.active_engine_endpoint is None and state.active_isolated_org is None:
+            return None
+        return f"{kwargs['http_scheme']}://{kwargs['host']}:{kwargs['port']}"
 
     # -- engine-specific transports (Arrow via Zaychik Flight SQL proxy) --------
 
@@ -1681,9 +1716,19 @@ class TrinoBackend(EngineBackend):
     def execute_arrow(self, state: Any, sql: str, params: list | None = None):
         from provisa.executor.trino_flight import execute_trino_flight_arrow
 
-        return execute_trino_flight_arrow(self._flight_transport(state), sql, params)
+        return execute_trino_flight_arrow(
+            self._flight_transport(state),
+            sql,
+            params,
+            context=self._flight_context(state, None, None),
+        )
 
     def execute_stream(self, state: Any, sql: str, params: list | None = None):
         from provisa.executor.trino_flight import execute_trino_flight_stream
 
-        return execute_trino_flight_stream(self._flight_transport(state), sql, params)
+        return execute_trino_flight_stream(
+            self._flight_transport(state),
+            sql,
+            params,
+            context=self._flight_context(state, None, None),
+        )

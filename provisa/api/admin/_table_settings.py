@@ -434,6 +434,24 @@ async def save_carried_region(
 
     if not carried(inp.region) or inp.region == stored_region:
         return
+    from provisa.api.admin._function_table import derived_region_refusal
+    from provisa.core.schema_org import registered_tables
+
+    stored = (
+        await conn.execute_core(select(registered_tables).where(registered_tables.c.id == table_id))
+    ).fetchone()
+    if stored is not None:
+        derived = await derived_region_refusal(conn, dict(stored._mapping))
+        if derived is not None:  # REQ-1986: the derived table has its function's region
+            function, why = derived
+            raise TableSaveRefused(
+                MutationResult(
+                    success=False,
+                    message=why,
+                    code="schema.table_region_from_function",
+                    params={"table": inp.table_name, "name": function},
+                )
+            )
     refusal = _residency_refusal(info, f"table {inp.table_name}", stored_region, inp.region)
     if refusal is not None:
         raise TableSaveRefused(refusal)
