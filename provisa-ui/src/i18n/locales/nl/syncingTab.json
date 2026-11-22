@@ -88,6 +88,7 @@
     "differences": "Verschillen met de catalogus",
     "differencesHelp": "Elke waarde die de catalogus anders bevat dan Provisa. Accepteren kiest één kant voor een rij, of voor een hele tabel of term.",
     "diffNoDifferences": "De catalogus bevat dezelfde waarden als Provisa.",
+    "diffBothOff": "Beide richtingen staan uit, dus er worden geen verschillen weergegeven.",
     "diffObject": "Object",
     "diffProvisa": "Provisa",
     "diffCatalog": "Catalogus",

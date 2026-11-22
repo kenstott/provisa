@@ -201,9 +201,11 @@ function DifferenceList({
   const running = standing === null ? [] : EXCHANGE_DIRECTIONS.filter((d) => review.directions[d]);
 
   if (review.total === 0) {
+    // A direction that is off lists no differences (REQ-2247): both off says why.
+    const bothOff = !review.directions.export && !review.directions.import;
     return (
       <Text size="sm" c="dimmed" data-testid="syncing-diff-none">
-        {t("syncingTab.diffNoDifferences")}
+        {t(bothOff ? "syncingTab.diffBothOff" : "syncingTab.diffNoDifferences")}
       </Text>
     );
   }

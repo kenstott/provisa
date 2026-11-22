@@ -88,6 +88,7 @@
     "differences": "הבדלים מול הקטלוג",
     "differencesHelp": "כל ערך שהקטלוג מחזיק באופן שונה מ-Provisa. 'קבל' בוחר צד עבור שורה, או עבור טבלה או מונח שלמים.",
     "diffNoDifferences": "הקטלוג מחזיק באותם ערכים כמו Provisa.",
+    "diffBothOff": "שני הכיוונים כבויים, ולכן לא מוצגים הבדלים.",
     "diffObject": "אובייקט",
     "diffProvisa": "Provisa",
     "diffCatalog": "קטלוג",
