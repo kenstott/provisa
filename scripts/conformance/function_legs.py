@@ -139,18 +139,25 @@ def native_store(leg: dict[str, Any]) -> str:
     return url.split("://", 1)[0].split("+", 1)[0]
 
 
-def refused(leg: dict[str, Any]) -> str | None:
-    """Why ``build_engine`` refuses the leg's engine by name, or None when it builds it. The
-    refusal is ``EngineBackend.dialect``'s: a native store with no sqlglot dialect
-    (``source_registry.engine_dialect``, its allowlist). Only a URL-driven kind's store varies; every
-    other kind's builder fixes a store that has a dialect (a unit test holds each to it)."""
+def url_dialect(leg: dict[str, Any]) -> str | None:
+    """The sqlglot dialect ``build_engine`` gives a URL-driven leg's engine, or None when it has
+    none: ``EngineBackend.dialect``, which is ``source_registry.engine_dialect`` of its native store.
+    The one lookup of a URL-driven engine's dialect, which ``refused`` and polyfill_check share."""
     from provisa.core.source_registry import engine_dialect
 
+    return engine_dialect(native_store(leg))
+
+
+def refused(leg: dict[str, Any]) -> str | None:
+    """Why ``build_engine`` refuses the leg's engine by name, or None when it builds it. The
+    refusal is ``EngineBackend.dialect``'s: a native store with no sqlglot dialect (``url_dialect``).
+    Only a URL-driven kind's store varies; every other kind's builder fixes a store that has a
+    dialect (a unit test holds each to it)."""
     if leg["engine"] not in url_engine_kinds():
         return None
-    store = native_store(leg)
-    if engine_dialect(store) is not None:
+    if url_dialect(leg) is not None:
         return None
+    store = native_store(leg)
     return (
         f"refused by name: build_engine refuses federation engine {leg['engine']!r}, its native "
         f"store {store!r} has no sqlglot dialect (source_registry.engine_dialect)"

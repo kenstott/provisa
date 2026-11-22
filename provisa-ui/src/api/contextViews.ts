@@ -59,3 +59,18 @@ export const fetchContextClassification = () =>
     "fetchContextClassification",
     "/admin/context/classification",
   );
+
+/** REQ-2259: a table the caller reads, with its detections awaiting a decision. */
+export interface AwaitingTable {
+  tableId: number;
+  tableRef: string;
+  awaiting: number;
+}
+
+/** REQ-2259 (Context Health): each table's latest profile run's detections no one has decided,
+ * per table the caller reads; those on columns it does not read are counted in ``hidden``. */
+export const fetchClassificationAwaiting = () =>
+  get<{ tables: AwaitingTable[]; hidden: number }>(
+    "fetchClassificationAwaiting",
+    "/admin/context/classification/awaiting",
+  );

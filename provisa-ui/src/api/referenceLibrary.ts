@@ -201,3 +201,14 @@ export async function reembedLibrary(): Promise<ReembedOutcome> {
 export async function removeLibraryDocument(id: number): Promise<void> {
   await ok(await fetch(`${BASE}/${id}`, send("DELETE")), "Remove document");
 }
+
+/** REQ-2259, REQ-2208: a document the caller reads whose citations hold review items. */
+export interface DocumentReviewsDue {
+  id: number;
+  title: string;
+  reviews: number;
+}
+
+export async function fetchReviewsDue(): Promise<{ documents: DocumentReviewsDue[] }> {
+  return ok(await fetch(`${API_BASE}/admin/reference-library/reviews-due`), "Reviews due");
+}

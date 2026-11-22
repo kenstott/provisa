@@ -286,3 +286,25 @@ def test_fetch_reports_an_admin_error() -> None:
     )
     with pytest.raises(lookup.LookupError_, match="/admin/graphql"):
         lookup.fetch(client, "org_admin")
+
+
+def test_a_row_with_relationships_reads_its_rest_fields_from_the_any_of_form() -> None:
+    """REQ-1929: the fields items of a row with relationships are anyOf [the field enum, a
+    dot-path]; the served shape comes from the product's own generator, so drift is caught."""
+    from graphql import GraphQLField, GraphQLObjectType, GraphQLString
+
+    from provisa.api.rest.openapi_spec import _fields_items
+
+    raw = fx.build()
+    related = GraphQLObjectType("PbOrderItems", {"itemId": GraphQLField(GraphQLString)})
+    op = raw.rest_spec["paths"]["/perf-bench/orders"]["get"]
+    fields = next(p for p in op["parameters"] if p["name"] == "fields")
+    ref_name = fields["schema"]["items"]["$ref"].rsplit("/", 1)[1]
+    fields["schema"]["items"] = _fields_items(ref_name, [("items", related, True)])
+    assert "anyOf" in fields["schema"]["items"]
+    names = lookup.resolve([ORDERS], [], raw).tables[ORDERS.key]
+    assert {c: s["rest"] for c, s in names.columns.items()} == {
+        "order_id": "orderId",
+        "customer_id": "customerId",
+        "region": "region",
+    }

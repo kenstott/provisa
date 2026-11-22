@@ -10,13 +10,13 @@
 
 // REQ-2144 (A STEWARD SEES THE IMPACT OF EACH ACTION): the stewardship summary -- the terms agents
 // can see, the terms one approval from reaching data, and the approved terms that reach no
-// data -- and the defined, grounded drafts a steward approves together.
+// data -- and the defined, grounded drafts a steward approves together. REQ-2259: it is Context
+// Health's one action, and each term links to the Ontology page through the entity link helper.
 
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Alert,
-  Anchor,
   Badge,
   Button,
   Checkbox,
@@ -37,26 +37,18 @@ import {
   type StewardshipSummary as Summary,
   type TermRef,
 } from "../../api/glossary";
+import { EntityLink } from "../EntityLink";
 import { FormField, FormFooter, FormLayout } from "../form/FormLayout";
 import { TermStatusBadge } from "./TermRoleBadge";
 
-function TermLink({
-  term,
-  navigateToTerm,
-}: {
-  term: TermRef;
-  navigateToTerm: (termId: number) => void;
-}) {
+/** A term, linked to the Ontology page for a viewer who holds its right (REQ-2259). */
+function TermLink({ term }: { term: TermRef }) {
   return (
-    <Anchor
-      component="button"
-      type="button"
-      size="sm"
-      onClick={() => navigateToTerm(term.term_id)}
-      data-testid={`stewardship-term-${term.term_id}`}
-    >
-      {term.name}
-    </Anchor>
+    <Text span size="sm">
+      <EntityLink kind="term" id={term.term_id} testId={`stewardship-term-${term.term_id}`}>
+        {term.name}
+      </EntityLink>
+    </Text>
   );
 }
 
@@ -87,11 +79,9 @@ function Section({
 /** The summary, read when shown and again after a bulk approval (``onApproved`` tells the page). */
 export function StewardshipSummary({
   canEdit,
-  navigateToTerm,
   onApproved,
 }: {
   canEdit: boolean;
-  navigateToTerm: (termId: number) => void;
   onApproved: () => void;
 }) {
   const { t } = useTranslation();
@@ -187,7 +177,7 @@ export function StewardshipSummary({
             ? none
             : summary.agent_visible.map((term) => (
                 <Group key={term.term_id} gap={6} wrap="nowrap">
-                  <TermLink term={term} navigateToTerm={navigateToTerm} />
+                  <TermLink term={term} />
                   {term.status === "draft" && <TermStatusBadge status="draft" />}
                 </Group>
               ))}
@@ -201,7 +191,7 @@ export function StewardshipSummary({
             ? none
             : summary.waiting_on_one_approval.map((term) => (
                 <Text key={term.term_id} size="sm">
-                  <TermLink term={term} navigateToTerm={navigateToTerm} />{" "}
+                  <TermLink term={term} />{" "}
                   <Text span size="xs" c="dimmed">
                     {t("glossaryTab.waitingApprove", {
                       terms: term.approve.map((a) => a.name).join(", "),
@@ -218,7 +208,7 @@ export function StewardshipSummary({
           {summary.approved_not_grounded.length === 0
             ? none
             : summary.approved_not_grounded.map((term) => (
-                <TermLink key={term.term_id} term={term} navigateToTerm={navigateToTerm} />
+                <TermLink key={term.term_id} term={term} />
               ))}
         </Section>
       </SimpleGrid>

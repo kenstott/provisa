@@ -211,3 +211,115 @@ async def classification_in_context(request: Request) -> dict:
         for r in rows
     ]
     return {"kinds": kind_detections(catalogue(), disabled, accepted, reader.column)}
+
+
+def awaiting_by_table(
+    suggested: Iterable[dict], decided: set[tuple[int, str, str]], readable: ColumnReadable
+) -> tuple[list[dict], int]:  # REQ-2259
+    """The classification detections awaiting a decision, per table: ``suggested`` rows (each
+    with ``table_id``, ``table_ref``, ``column_name`` -- the physical column -- and ``kind``)
+    from each table's latest profile run, less those ``decided`` since (``(table_id, column,
+    kind)``). A detection on a column the caller reads is counted under its table, named; one on
+    a column it does not is counted in the second value, its table never named."""
+    named: dict[int, dict] = {}
+    hidden = 0
+    for r in suggested:
+        if (r["table_id"], r["column_name"], r["kind"]) in decided:
+            continue
+        if not readable(r["table_id"], r["column_name"]):
+            hidden += 1
+            continue
+        entry = named.setdefault(
+            r["table_id"], {"tableId": r["table_id"], "tableRef": r["table_ref"], "awaiting": 0}
+        )
+        entry["awaiting"] += 1
+    return sorted(named.values(), key=lambda e: e["tableRef"]), hidden
+
+
+@router.get("/classification/awaiting")
+async def classification_awaiting(request: Request) -> dict:
+    """REQ-2259 (Context Health): the detections of each table's latest measured profile run that
+    no one has accepted or rejected, counted per table the caller reads; a detection on a column
+    it does not read is counted, never named. A table never profiled has no detections."""
+    _require_glossary_read(request)
+    require_active_org_id(request)
+    from sqlalchemy import text
+
+    from provisa.api.admin.read_rights import reader_for_request
+    from provisa.core.schema_org import profiler_classifications as pc
+    from provisa.core.schema_org import registered_tables as rt
+    from provisa.profiler.declared import measured
+    from provisa.profiler.schema import (
+        is_result_table_name,
+        parse_result_table_name,
+        result_sa_table,
+    )
+
+    reader = reader_for_request(request)
+    pool = await _pool()
+    suggested: list[dict] = []
+    async with pool.acquire() as conn:
+        _conn = cast("Connection", conn)
+        tables = {
+            r.id: r
+            for r in (
+                await _conn.execute_core(
+                    select(rt.c.id, rt.c.source_id, rt.c.schema_name, rt.c.table_name).where(
+                        rt.c.retired.is_(False)
+                    )
+                )
+            ).fetchall()
+        }
+        # The result relations that exist: a table a profiler has not run on has none.
+        relations = (
+            await _conn.execute_core(
+                text(
+                    "SELECT table_name FROM information_schema.tables "
+                    "WHERE table_schema = current_schema() AND table_type = 'BASE TABLE'"
+                )
+            )
+        ).fetchall()
+        held = {parse_result_table_name(r[0]) for r in relations if is_result_table_name(r[0])}
+        for table_id, row in tables.items():
+            name = row.table_name
+            if (name, table_id, "runs") not in held or (
+                name,
+                table_id,
+                "classifications",
+            ) not in held:
+                continue
+            runs = result_sa_table(name, table_id, "runs")
+            latest = (
+                await _conn.execute_core(
+                    select(runs.c.run_id)
+                    .where(runs.c.status == "succeeded", measured(runs))
+                    .order_by(runs.c.run_time.desc())
+                    .limit(1)
+                )
+            ).fetchone()
+            if latest is None:
+                continue
+            found = result_sa_table(name, table_id, "classifications")
+            for r in (
+                await _conn.execute_core(
+                    select(found.c.physical_column, found.c.kind).where(
+                        found.c.run_id == latest[0], found.c.status == "suggested"
+                    )
+                )
+            ).fetchall():
+                suggested.append(
+                    {
+                        "table_id": table_id,
+                        "table_ref": _table_ref(row),
+                        "column_name": str(r.physical_column),
+                        "kind": str(r.kind),
+                    }
+                )
+        decided = {
+            (r.table_id, r.physical_column, r.kind)
+            for r in (
+                await _conn.execute_core(select(pc.c.table_id, pc.c.physical_column, pc.c.kind))
+            ).fetchall()
+        }
+    named, hidden = awaiting_by_table(suggested, decided, reader.column)
+    return {"tables": named, "hidden": hidden}

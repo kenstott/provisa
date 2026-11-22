@@ -12,7 +12,7 @@ import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { Anchor } from "@mantine/core";
 import { useAuth } from "../context/AuthContext";
-import { entityLink, type EntityKind } from "../lib/entityHref";
+import { entityLink, pageLink, type EntityKind } from "../lib/entityHref";
 
 /** REQ-2259: a link to another page's thing, drawn only when the viewer holds that page's right;
  * otherwise its name as plain text. */
@@ -34,6 +34,27 @@ export function EntityLink({
   if (href === undefined) return <span data-testid={testId}>{children}</span>;
   return (
     <Anchor component={Link} to={href} data-testid={testId}>
+      {children}
+    </Anchor>
+  );
+}
+
+/** REQ-2259: a link to a page (or a page narrowed by its query), drawn only when the viewer holds
+ * that page's right; otherwise its words as plain text. */
+export function EntityPageLink({
+  href,
+  children,
+  testId,
+}: {
+  href: string;
+  children: ReactNode;
+  testId?: string;
+}) {
+  const { capabilities } = useAuth();
+  const to = pageLink(capabilities, href);
+  if (to === undefined) return <span data-testid={testId}>{children}</span>;
+  return (
+    <Anchor component={Link} to={to} data-testid={testId}>
       {children}
     </Anchor>
   );
