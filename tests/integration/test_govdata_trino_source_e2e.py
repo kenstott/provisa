@@ -51,11 +51,11 @@ pytestmark = [pytest.mark.integration, pytest.mark.requires_warehouse]
 _SOURCE_ID = "askamerica-trino-itest"
 _CATALOG = "askamerica_trino_itest"
 _SCHEMAS = "econ,ref,geo"
-# The table read is the first of these Trino lists columns for (see _a_table_with_columns).
-# econ.inflation_metrics (always materialized, 6,001 rows) leads; it is the fixed table this test
-# reverts to once a fixed engine is pinned.
-_PREFERRED = ("econ", "inflation_metrics")
-_PICK_FROM = ("econ", "ref", "geo")
+_SCHEMA = "econ"
+# Always materialized (6,001 rows). Its name holds "_", which Trino's getColumns escapes as "\_":
+# read through Trino since engine-v0.128.9, whose pg_catalog emulation escapes LIKE with a
+# backslash as PostgreSQL does (calcite PR #1042, govdata-ops #1423).
+_TABLE = "inflation_metrics"
 _COLD_START_SECONDS = 600
 
 
@@ -212,36 +212,12 @@ def _run(cur, what: str, sql: str, source) -> list:
         return cur.fetchall()
 
 
-def _a_table_with_columns(cur, source) -> tuple[str, str]:
-    """The table this test reads: ``_PREFERRED`` when Trino lists its columns, else the first
-    table of ``_PICK_FROM`` Trino lists columns for.
-
-    TEMPORARY, revert to the fixed ``econ.inflation_metrics`` once a fixed engine is pinned.
-    Calcite adapter bug (engine-v0.128.9, reported to calcite-lead, govdata-ops #1416): the served
-    catalog lists some tables with no columns, so DESCRIBE answers "Table 'econ.inflation_metrics'
-    has no supported columns (all 0 columns are not supported)" (warehouse run 44989259788; on
-    engine-v0.128.8 ref.countries and fec.candidates the same, run 44967727447). Trino's
-    information_schema.columns leaves out a table it can map no column of, so a table listed
-    there describes with columns. The steps that follow (list, describe, read, pushed-down
-    predicate, join with another catalog) are the same for any table, so a table Trino can
-    describe gives the assurance the fixed one did."""
-    schemas = ", ".join(f"'{s}'" for s in _PICK_FROM)
-    listed = _run(
-        cur,
-        "listing the tables Trino has columns for",
-        f"SELECT DISTINCT table_schema, table_name FROM {_CATALOG}.information_schema.columns "  # noqa: S608 - constants
-        f"WHERE table_schema IN ({schemas})",
-        source,
-    )
-    with_columns = {(schema, table) for schema, table in listed}
-    if _PREFERRED in with_columns:
-        return _PREFERRED
-    usable = sorted((_PICK_FROM.index(schema), schema, table) for schema, table in with_columns)
-    assert usable, f"Trino lists columns for no table of {_PICK_FROM}: {listed}"
-    _, schema, table = usable[0]
-    return schema, table
-
-
+# Remove this skip once an engine with govdata-ops #1416 fixed is pinned (queue row
+# CALCITE-PIN-REVERT).
+@pytest.mark.skip(
+    reason="calcite govdata-ops #1416: on engine-v0.128.9 the served catalog gives Trino no column "
+    "types, so no askamerica table has columns in Trino (warehouse runs 44989259788, 45020340995)"
+)
 def test_trino_reads_an_askamerica_table_live_and_joins_it(catalog):
     cur, source = catalog
 
@@ -251,19 +227,18 @@ def test_trino_reads_an_askamerica_table_live_and_joins_it(catalog):
     # reads. Each schema the source lists is there.
     assert set(_SCHEMAS.split(",")) <= schemas, schemas
 
-    schema, table = _a_table_with_columns(cur, source)
     tables = {
-        r[0] for r in _run(cur, "listing tables", f"SHOW TABLES FROM {_CATALOG}.{schema}", source)
+        r[0] for r in _run(cur, "listing tables", f"SHOW TABLES FROM {_CATALOG}.{_SCHEMA}", source)
     }
-    assert table in tables, tables
+    assert _TABLE in tables, tables
 
-    columns = _run(cur, "describing the table", f"DESCRIBE {_CATALOG}.{schema}.{table}", source)
+    columns = _run(cur, "describing the table", f"DESCRIBE {_CATALOG}.{_SCHEMA}.{_TABLE}", source)
     assert columns, "the table has no columns Trino could map"
 
     rows = _run(
         cur,
         "reading the table alone",
-        f"SELECT * FROM {_CATALOG}.{schema}.{table} LIMIT 5",
+        f"SELECT * FROM {_CATALOG}.{_SCHEMA}.{_TABLE} LIMIT 5",
         source,
     )
     assert len(rows) == 5
@@ -272,7 +247,7 @@ def test_trino_reads_an_askamerica_table_live_and_joins_it(catalog):
     filtered = _run(
         cur,
         "a pushed-down predicate",
-        f'SELECT count(*) FROM {_CATALOG}.{schema}.{table} WHERE "{first}" IS NOT NULL',
+        f'SELECT count(*) FROM {_CATALOG}.{_SCHEMA}.{_TABLE} WHERE "{first}" IS NOT NULL',
         source,
     )
     assert filtered[0][0] >= 0
@@ -280,7 +255,7 @@ def test_trino_reads_an_askamerica_table_live_and_joins_it(catalog):
     joined = _run(
         cur,
         "joining with a table of another catalog",
-        f"SELECT count(*) FROM (SELECT * FROM {_CATALOG}.{schema}.{table} LIMIT 5) c "
+        f"SELECT count(*) FROM (SELECT * FROM {_CATALOG}.{_SCHEMA}.{_TABLE} LIMIT 5) c "
         "CROSS JOIN (SELECT node_id FROM system.runtime.nodes LIMIT 1) n",
         source,
     )
