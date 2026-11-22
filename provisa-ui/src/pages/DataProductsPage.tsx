@@ -642,13 +642,16 @@ export function DataProductsPage() {
             }}
             list={
               <>
-                <ListBulkBar
-                  selection={selection}
-                  nameOf={(id) => id}
-                  onDelete={deleteDataProducts}
-                  testId="data-products-bulk"
-                />
-                <ListTable testId="data-products-table" selection={selection}>
+                {/* REQ-1327: the bulk bar and the row checkboxes are for a holder of data_product_rw. */}
+                {canEdit && (
+                  <ListBulkBar
+                    selection={selection}
+                    nameOf={(id) => id}
+                    onDelete={deleteDataProducts}
+                    testId="data-products-bulk"
+                  />
+                )}
+                <ListTable testId="data-products-table" selection={canEdit ? selection : undefined}>
                   <ListHead
                     sortGroup={sortGroup}
                     columns={[

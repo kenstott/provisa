@@ -559,7 +559,6 @@
       "incremental_no_change": "代碼來源沒有針對 {{table}} 的 @change 函數。請使用 @change table={{table}} 宣告一個。",
       "incremental_needs_rebuild_every": "{{table}} 採用增量維護，因此會依時鐘完整重建。請在「完整重建間隔」中設定間隔（秒）。",
       "table_derived_from_function": "表 '{{name}}' 衍生自函數：透過關閉該函數的表來刪除它，其欄和參數在函數上編輯",
-      "table_state_from_function": "表 '{{table}}' 衍生自函數 '{{name}}'，並具有其發佈狀態：不能單獨撤回或恢復",
       "table_withdrawn": "表 {{table}} 已撤下",
       "table_put_back": "表 {{table}} 已恢復",
       "source_withdrawn": "來源 {{source}} 已撤下",
@@ -571,6 +570,8 @@
       "put_back_needs_region": "恢復 {{object}} 需指定一個區域：請給出一個區域，無區域則不給出。",
       "mask_constant_not_text": "非文字欄上的常數遮罩讀取為 NULL；只能儲存 NULL：{{column}} ({{type}})",
       "table_domain_required": "表 '{{table}}' 未指定域：每個表都註冊在一個域中",
+      "table_state_from_function": "表 '{{table}}' 衍生自函數 '{{name}}'，並具有其發佈狀態：不能單獨撤回或恢復",
+      "table_region_from_function": "表 '{{table}}' 衍生自函數 '{{name}}'，並沿用其區域：不能單獨將其移動到其他區域",
       "table_name_reserved": "表名 '{{table}}' 為保留名稱：域的指令在 'commands' 下提供。請使用其他名稱或別名註冊該表。"
     },
     "secrets": {
@@ -935,6 +936,21 @@
     "relationship": {
       "name_taken": "名稱「{{name}}」已被關係「{{held_by}}」使用。請為此關係另取名稱。",
       "join_through_none": "關係 '{{first}}' 和 '{{second}}' 沒有共同的中間表，或者它們的另一端已經透過該表連接。"
+    },
+    "syncing": {
+      "not_found": "不存在項目 {{entry}}。",
+      "no_connection": "{{entry}} 沒有可讀取的目錄。",
+      "no_role": "{{entry}} 沒有用於發佈的角色，因此暫無可比較的內容。請在其設定中選擇角色。",
+      "read_not_supported": "尚未支援從 {{provider}} 讀回值。",
+      "no_such_difference": "差異 {{difference}} 已不存在。請重新讀取清單。",
+      "decided_twice": "{{difference}} 被決定了兩次。",
+      "direction_off": "{{entry}} 不在該方向同步。",
+      "import_kind_unsupported": "尚未支援將目錄的 {{kind}} 帶入 Provisa。",
+      "publish_failed": "發佈至 {{entry}} 未成功，因此未套用任何內容。",
+      "object_gone": "{{object}} 已不再於 Provisa 中登記。",
+      "unknown_direction": "{{direction}} 不是方向：請使用匯出或匯入。",
+      "unknown_kind": "{{kind}} 不是差異類型。",
+      "unknown_choice": "{{choice}} 不是固定選擇。"
     },
     "wikidata": {
       "no_credential": "Wikidata 查詢服務毋須憑證",

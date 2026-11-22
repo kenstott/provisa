@@ -80,6 +80,8 @@
       "newTables": "{{count}} tabel die sinds uw laatste run is geregistreerd, staat in {{domains}}, dat die run niet heeft bekeken.",
       "newTables_other": "{{count}} tabellen die sinds uw laatste run zijn geregistreerd, staan in {{domains}}, dat die run niet heeft bekeken.",
       "addNewTables": "Aan deze run toevoegen"
-    }
+    },
+    "keyNames": "Sleutelnamen en -typen",
+    "reviewDone": "Klaar"
   }
 }

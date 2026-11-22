@@ -79,6 +79,31 @@ SOURCE_TO_DIALECT: dict[str, str] = {
     **{t: "duckdb" for t in CODE_SOURCE_TYPES},
 }
 
+
+# Federation-engine native-store names that are not source types: SQLAlchemy URL schemes a generic
+# RDB engine reports as its native store (REQ-1922), and wire-compatible forks. Kept apart from
+# SOURCE_TO_DIALECT, whose keys are all source types that must be catalog-reachable.
+ENGINE_DIALECT_ALIASES: dict[str, str] = {
+    "mssql": "tsql",
+    "exa": "exasol",
+    "singlestoredb": "singlestore",
+    "opengauss": "postgres",  # openGauss is a PostgreSQL fork on the pg wire
+    "ibm_db_sa": "db2",  # ibm_db_sa's own URL scheme for Db2 (provisa/db2/dialect.py)
+    "hana": "saphana",  # sqlalchemy-hana's URL scheme for SAP HANA (provisa/saphana/dialect.py)
+}
+
+
+def engine_dialect(store: str) -> str | None:
+    """The sqlglot dialect a federation engine whose native store is ``store`` transpiles to: the
+    store's own name when sqlglot has a dialect of that name, else its ``SOURCE_TO_DIALECT`` or ``ENGINE_DIALECT_ALIASES`` entry,
+    else None (no sqlglot dialect for that product)."""
+    from sqlglot.dialects.dialect import Dialect
+
+    if store in Dialect.classes:
+        return store
+    return SOURCE_TO_DIALECT.get(store) or ENGINE_DIALECT_ALIASES.get(store)
+
+
 # Source types that are CONNECTOR_ONLY — no direct driver, no SQLGlot dialect (REQ-229)
 LAKE_ONLY_SOURCES: set[str] = {"iceberg", "delta_lake", "hive_s3"}
 
@@ -307,3 +332,9 @@ import provisa.qdrant.dialect  # noqa: E402, F401
 
 # REQ-2191: the ``ansi`` dialect a JDBC source may be written in, registered likewise.
 import provisa.jdbc_source.dialect  # noqa: E402, F401
+
+# REQ-2236: the ``db2`` dialect a Db2 federation engine is written in (``engine_dialect``).
+import provisa.db2.dialect  # noqa: E402, F401
+
+# REQ-2236: the ``saphana`` dialect a SAP HANA federation engine is written in (``engine_dialect``).
+import provisa.saphana.dialect  # noqa: E402, F401

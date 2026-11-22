@@ -115,8 +115,9 @@ class MetadataExport(ABC):  # REQ-1068
     def stored_bindings(self) -> dict[str, tuple[str, str]]:
         """The vendor bindings captured by earlier publishes (REQ-1389).
 
-        A property rather than a method: this is state the publish path loads in, not an
-        operation on the catalog.
+        A property rather than a method: the port stays outbound-only — ``publish`` and
+        ``health`` are its whole callable surface — and this is state the publish path
+        loads in, not an operation on the catalog.
         """
         return self._bindings
 

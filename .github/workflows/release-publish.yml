@@ -131,6 +131,11 @@ jobs:
             provisa-${{ needs.metadata.outputs.py_version }}-cp312-cp312-manylinux_2_28_aarch64.whl
             provisa-${{ needs.metadata.outputs.py_version }}-cp312-cp312-macosx_*_arm64.whl
             provisa-${{ needs.metadata.outputs.py_version }}-cp312-cp312-win_amd64.whl
+            provisa_pg_ext-*-py3-none-any.whl
+            provisa_duckdb_ext-*-py3-none-macosx_*_arm64.whl
+            provisa_duckdb_ext-*-py3-none-manylinux_2_28_x86_64.whl
+            provisa_duckdb_ext-*-py3-none-manylinux_2_28_aarch64.whl
+            provisa_duckdb_ext-*-py3-none-win_amd64.whl
         run: |
           set -euo pipefail
 

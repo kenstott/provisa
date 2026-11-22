@@ -27,6 +27,7 @@ from __future__ import annotations
 import pytest
 from sqlalchemy import insert, select
 
+from provisa.api.catalog_import.reader import CatalogReader
 from provisa.api.errors import ApiError
 from provisa.api.metadata_export import sync_values as sv
 from provisa.api.metadata_export.model import (
@@ -106,7 +107,7 @@ def _catalog_values(**changed: object) -> dict:
     return values
 
 
-class _Catalog:
+class _Catalog(CatalogReader):
     """A provider whose catalog holds ``values``, publishing ``result``."""
 
     needs_export_views = False
@@ -116,6 +117,11 @@ class _Catalog:
         self.values = values
         self.result = result or PublishResult(provider_name="openmetadata", published={"t": 1})
         self.published = 0
+
+    provider_name = "openmetadata"
+
+    async def list_glossary(self):
+        raise AssertionError("the review reads values, not the glossary")
 
     async def read(self, snapshot):
         assert snapshot.tables[0].ref == TABLE, "read for what the entry is sent"
@@ -249,7 +255,7 @@ async def test_the_review_lists_differences_grouped_with_counts_and_last_exchang
         (sv.COLUMN_DESCRIPTION, 2),
         (sv.TAG, 1),
     ]
-    assert all(k["standing_choice"] is None for k in body["kinds"])
+    assert all(k["standing_choice"] == {"export": None, "import": None} for k in body["kinds"])
     columns = body["kinds"][1]
     assert [(g["group"], g["count"]) for g in columns["groups"]] == [(GROUP, 2)]
     assert [r["object"] for r in columns["groups"][0]["rows"]] == [
@@ -290,7 +296,7 @@ async def test_a_provider_that_does_not_read_is_refused_by_name(entry, monkeypat
     with pytest.raises(ApiError) as caught:
         await _review()
     assert caught.value.status_code == 400
-    assert "'atlas' is not supported for reading yet" in str(caught.value)
+    assert "is not supported for reading yet" in str(caught.value)
 
 
 @pytest.mark.asyncio

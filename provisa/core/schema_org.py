@@ -848,6 +848,25 @@ catalog_exchanges = Table(
     CheckConstraint("direction IN ('export', 'import')", name="catalog_exchanges_direction_check"),
 )
 
+# REQ-2247: a Syncing entry's standing choice per direction and kind of difference: take Provisa's
+# value, take the other system's, or hold. A kind with no row has no standing choice.
+catalog_standing_choices = Table(
+    "catalog_standing_choices",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("entry", Text, nullable=False),
+    Column("direction", Text, nullable=False),
+    Column("kind", Text, nullable=False),
+    Column("choice", Text, nullable=False),
+    Column("decided_by", Text, nullable=False),
+    Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("tenant_id", Uuid),
+    UniqueConstraint("entry", "direction", "kind"),
+    CheckConstraint(
+        "direction IN ('export', 'import')", name="catalog_standing_choices_direction_check"
+    ),
+)
+
 # REQ-1387: business glossary. Terms are the normalized vocabulary derived from physical
 # field names; rooted terms hold refs, abstract terms hold none. A term losing its last
 # physical ref is removed unless an abstract term is connected to the rooted graph through

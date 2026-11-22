@@ -124,6 +124,8 @@ _SEEDED_ROLE_CAPS: dict[str, list[str]] = {
     "platform_admin": ["admin", "superadmin", "platform_settings", "cross_org"],
     "org_admin": ["user_management", "source_registration", "access_config", "query_development"],
     "analyst": ["usage", "query_development"],
+    # REQ-1327 (amended 2026-11-16): a role holding user_management and nothing else of org_admin's.
+    "people_lead": ["user_management"],
 }
 
 # alice administers acme; bob is an ordinary member of it; pat is the platform administrator,
@@ -136,6 +138,7 @@ _TOKENS = {
     "tok-pat": "pat",
     "tok-viv": "viv",
     "tok-dana": "dana",
+    "tok-uma": "uma",
 }
 
 
@@ -179,6 +182,7 @@ def _prepare_sync():
             ("viv", "sandbox"),
             ("dana", "sandbox"),
             ("dana", "acme"),
+            ("uma", "acme"),
         ):
             conn.execute(insert(user_org_memberships).values(user_id=user_id, org_id=org_id))
 
@@ -220,6 +224,11 @@ def _prepare_sync():
         )
         conn.execute(
             insert(user_role_assignments).values(user_id="bob", role_id="analyst", domain_id="*")
+        )
+        conn.execute(
+            insert(user_role_assignments).values(
+                user_id="uma", role_id="people_lead", domain_id="*"
+            )
         )
 
         conn.execute(text(f"SET search_path TO {_ORG_SCHEMAS['sandbox']}"))
@@ -500,6 +509,71 @@ def test_grant_then_revoke_org_admin_is_audited(planes):  # REQ-1303, REQ-1308
         r[0] for r in _rows(planes.sync, _ORG_SCHEMAS["acme"], select(admin_audit_log.c.action))
     ]
     assert actions == ["grant_org_admin", "revoke_org_admin"]
+
+
+def _uma_in_acme() -> dict[str, str]:
+    """uma holds user_management in acme and none of org_admin's other rights."""
+    return {**_auth("tok-uma"), "x-org-provisa": "acme"}
+
+
+def _org_admins_of_acme(planes) -> set[str]:
+    return {
+        r[0]
+        for r in _rows(
+            planes.sync,
+            _ORG_SCHEMAS["acme"],
+            select(user_role_assignments.c.user_id).where(
+                user_role_assignments.c.role_id == "org_admin"
+            ),
+        )
+    }
+
+
+def test_user_management_alone_cannot_delete_the_org(planes):  # REQ-1327
+    """REQ-1327 (amended 2026-11-16): deleting an organization is an org_admin's act."""
+    with TestClient(_make_app(planes)) as client:
+        resp = client.delete("/admin/orgs/acme?confirm=acme", headers=_uma_in_acme())
+    assert resp.status_code == 403, resp.text
+    assert resp.json()["code"] == "platform.right_required"
+    assert _rows(planes.sync, _ADMIN_SCHEMA, select(orgs.c.id).where(orgs.c.id == "acme"))
+    assert planes.deprovisioned == []
+
+
+def test_user_management_alone_cannot_grant_or_revoke_org_admin(planes):  # REQ-1327
+    """REQ-1327 (amended 2026-11-16): granting and revoking org_admin are an org_admin's acts, and
+    removing an org_admin from the org removes the role, so it is refused alike. Nothing is
+    written to the org's trail for a refused act."""
+    with TestClient(_make_app(planes)) as client:
+        granted = client.post("/admin/orgs/acme/admins/bob", headers=_uma_in_acme())
+        revoked = client.delete("/admin/orgs/acme/admins/alice", headers=_uma_in_acme())
+        removed = client.delete("/admin/orgs/acme/members/alice", headers=_uma_in_acme())
+        # user_management still removes a member who holds no administrator's role.
+        ordinary = client.delete("/admin/orgs/acme/members/bob", headers=_uma_in_acme())
+    for resp in (granted, revoked, removed):
+        assert resp.status_code == 403, resp.text
+        assert resp.json()["code"] == "platform.right_required"
+    assert ordinary.status_code == 200, ordinary.text
+    assert _org_admins_of_acme(planes) == {"alice"}
+    actions = [
+        r[0] for r in _rows(planes.sync, _ORG_SCHEMAS["acme"], select(admin_audit_log.c.action))
+    ]
+    assert actions == ["remove_member"]
+
+
+def test_the_platform_appoints_an_org_admin_audited_in_the_org(planes):  # REQ-1327, REQ-1303
+    """The platform administrator keeps the audited recovery of an org's administration."""
+    with TestClient(_make_app(planes)) as client:
+        granted = client.post("/admin/orgs/acme/admins/bob", headers=_auth("tok-pat"))
+        assert granted.status_code == 200, granted.text
+        revoked = client.delete("/admin/orgs/acme/admins/bob", headers=_auth("tok-pat"))
+        assert revoked.status_code == 200, revoked.text
+    assert _org_admins_of_acme(planes) == {"alice"}
+    trail = _rows(
+        planes.sync,
+        _ORG_SCHEMAS["acme"],
+        select(admin_audit_log.c.action, admin_audit_log.c.actor_id),
+    )
+    assert [tuple(r) for r in trail] == [("grant_org_admin", "pat"), ("revoke_org_admin", "pat")]
 
 
 def test_self_role_change_is_refused(planes):  # REQ-1308

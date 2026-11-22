@@ -1,0 +1,5 @@
+{
+  "unspelled": {
+    "go": "The read context is not offered for Go yet (docs/code-sources.md, Go), so no Go function takes a ReadContext."
+  }
+}

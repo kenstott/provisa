@@ -55,15 +55,47 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 from provisa.transpiler.polyfill import GRID, Applied, Feature, Grid, Refusal  # noqa: E402
-from provisa.transpiler.polyfill.grid import DIALECTS  # noqa: E402
+from provisa.transpiler.polyfill.grid import column_of  # noqa: E402
 from provisa.transpiler.polyfill.notation import Form, Refused  # noqa: E402
 
-#: The dialect of each engine a Conformance (functions) run measures, by the name its leg has.
+#: The dialect Provisa transpiles each engine's SQL to, by the name its leg has
+#: (function_legs.yaml): what the engine's backend names (provisa/federation/backend.py
+#: EngineBackend.dialect). A generic SQLAlchemy engine's is the scheme of its URL, mssql read as
+#: tsql; where that is no grid column (column_of), the grid states nothing of the engine and the
+#: translator sends it no rewrite. A unit test holds every leg to an entry, and each URL-driven
+#: one to its leg's URL.
 ENGINE_DIALECTS = {
+    # Engines whose backend names its own dialect.
     "duckdb": "duckdb",
+    "motherduck": "duckdb",
     "pg": "postgres",
     "clickhouse": "clickhouse",
     "trino": "trino",
+    "snowflake": "snowflake",
+    "databricks": "databricks",
+    "bigquery": "bigquery",
+    "fabric": "tsql",
+    "synapse": "tsql",
+    # URL-driven engines: the scheme of the leg's engine URL (redshift's and singlestore's are
+    # written by warehouse_leg.py, in the scheme of the engine kind's DSN).
+    "sqlalchemy": "postgresql",
+    "clickhouse-server": "clickhouse",
+    "mysql": "mysql",
+    "mariadb": "mariadb",
+    "tidb": "mysql",
+    "mssql": "tsql",
+    "oracle": "oracle",
+    "firebird": "firebird",
+    "cockroachdb": "cockroachdb",
+    "yugabytedb": "postgresql",
+    "greenplum": "postgresql",
+    "exasol": "exa",
+    "monetdb": "monetdb",
+    "opengauss": "opengauss",
+    "db2": "db2",
+    "saphana": "hana",
+    "redshift": "redshift",
+    "singlestore": "singlestoredb",
 }
 
 HOLDS = "holds"
@@ -195,7 +227,9 @@ def checked(run: dict[str, Any], grid: Grid = GRID) -> list[Finding]:
         node = call_of(entry["function"], entry["overload"])
         for engine, outcome in sorted(entry["outcomes"].items()):
             dialect = ENGINE_DIALECTS[engine]
-            assert dialect in DIALECTS, dialect
+            if column_of(dialect) is None:
+                # No column of the grid: it states nothing of the engine to hold it to.
+                continue
             try:
                 applied = grid.read(node, dialect)
             except Refused as refused:

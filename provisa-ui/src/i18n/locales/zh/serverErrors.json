@@ -559,7 +559,6 @@
       "incremental_no_change": "代码源没有针对 {{table}} 的 @change 函数。请使用 @change table={{table}} 声明一个。",
       "incremental_needs_rebuild_every": "{{table}} 采用增量维护，因此会按时钟完整重建。请在“完整重建间隔”中设置间隔（秒）。",
       "table_derived_from_function": "表 '{{name}}' 派生自函数：通过关闭该函数的表来删除它，其列和参数在函数上编辑",
-      "table_state_from_function": "表 '{{table}}' 派生自函数 '{{name}}'，并具有其发布状态：不能单独撤回或恢复",
       "table_withdrawn": "表 {{table}} 已撤下",
       "table_put_back": "表 {{table}} 已恢复",
       "source_withdrawn": "源 {{source}} 已撤下",
@@ -571,6 +570,8 @@
       "put_back_needs_region": "恢复 {{object}} 需指定一个区域：请给出一个区域，无区域则不给出。",
       "mask_constant_not_text": "非文本列上的常量脱敏规则读取为 NULL；只能保存 NULL：{{column}} ({{type}})",
       "table_domain_required": "表 '{{table}}' 未指定域：每个表都注册在一个域中",
+      "table_state_from_function": "表 '{{table}}' 派生自函数 '{{name}}'，并具有其发布状态：不能单独撤回或恢复",
+      "table_region_from_function": "表 '{{table}}' 派生自函数 '{{name}}'，并沿用其区域：不能单独将其移动到其他区域",
       "table_name_reserved": "表名 '{{table}}' 为保留名称：域的命令在 'commands' 下提供。请使用其他名称或别名注册该表。"
     },
     "secrets": {
@@ -935,6 +936,21 @@
     "relationship": {
       "name_taken": "名称“{{name}}”已被关系“{{held_by}}”占用。请为此关系另取名称。",
       "join_through_none": "关系 '{{first}}' 和 '{{second}}' 没有共同的中间表，或者它们的另一端已经通过该表连接。"
+    },
+    "syncing": {
+      "not_found": "不存在条目 {{entry}}。",
+      "no_connection": "{{entry}} 没有可读取的目录。",
+      "no_role": "{{entry}} 没有用于发布的角色，因此暂无可比较的内容。请在其设置中选择一个角色。",
+      "read_not_supported": "尚不支持从 {{provider}} 回读值。",
+      "no_such_difference": "差异 {{difference}} 已不存在。请重新读取列表。",
+      "decided_twice": "{{difference}} 被决定了两次。",
+      "direction_off": "{{entry}} 不在该方向同步。",
+      "import_kind_unsupported": "尚不支持将目录的 {{kind}} 带入 Provisa。",
+      "publish_failed": "发布到 {{entry}} 未成功，因此未应用任何内容。",
+      "object_gone": "{{object}} 已不再在 Provisa 中注册。",
+      "unknown_direction": "{{direction}} 不是一个方向：请使用导出或导入。",
+      "unknown_kind": "{{kind}} 不是一种差异类型。",
+      "unknown_choice": "{{choice}} 不是固定选择。"
     },
     "wikidata": {
       "no_credential": "Wikidata 查询服务不需要凭据",

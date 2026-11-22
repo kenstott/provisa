@@ -226,6 +226,9 @@ def normalized_reach(domains: Iterable[str]) -> list[str]:
 # platform_admin.
 PLATFORM_ADMIN_ROLE = "platform_admin"
 ORG_ADMIN_ROLE = "org_admin"
+#: REQ-1058/REQ-1059: the role an unauthenticated visitor acts as in the org its Host names. It
+#: grants what the org has published to it and nothing else.
+PUBLIC_ROLE = "public"
 #: A meta-role's id: this prefix, then its members joined by ``+`` (security/meta_role.py).
 META_PREFIX = "meta:"
 

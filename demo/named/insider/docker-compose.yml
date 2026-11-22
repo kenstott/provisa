@@ -8,9 +8,11 @@
 # permission from the copyright holder.
 #
 # The named demo "insider" (start-ui-install.sh --demo insider; REQ-2056). This file is its one
-# start point: `docker compose up -d` brings up its database, Northgate Partners' watch list,
-# employees, customers and mailbox loaded from the generated db/*.tsv (db/init.sql). setup.yaml then
-# matches the mail to the watch list (the match_deals command).
+# start point: `docker compose up -d` brings up its database, Northgate Partners' employees,
+# customers and compliance lists loaded from the generated db/*.tsv (db/init.sql). The bank's mail is
+# its Microsoft 365 source's declared rows (replica_rows/mail/) and the watch list the control room's
+# workbook (control_room/watch_list.xlsx), neither a service. setup.yaml then matches the mail to the
+# watch list (the match_deals command).
 #
 #   postgres  the demo's database, with the role Provisa reads and writes it as.
 #

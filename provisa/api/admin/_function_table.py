@@ -271,6 +271,19 @@ async def derived_edit_refusal(conn: "Connection", model: Any) -> str | None:
     )
 
 
+async def derived_region_refusal(conn: "Connection", table: dict) -> tuple[str, str] | None:
+    """The function the table ``table`` (a registered table row) is derived from and why the
+    table may not be moved to another region on its own, or None for a table no function
+    derives: a derived table has its function's region (REQ-1986)."""
+    function = await deriving_function(conn, table)
+    if function is None:
+        return None
+    return function, (
+        f"Table {table['table_name']!r} is derived from the function {function!r} and has its "
+        "region; it is not moved to another region on its own."
+    )
+
+
 async def derived_delete_refusal(conn: "Connection", table: dict) -> str | None:
     """Why the table ``table`` (a registered table row) may not be deleted on its own, or None:
     it is derived from a function, and goes only when the function's table is turned off."""

@@ -9,7 +9,9 @@
 #
 # The insider demo where it runs from its bundle (start-ui-install.sh --demo insider; REQ-2049):
 # the database, loaded from the dump the bundle build wrote (dump/postgres/<database>.sql) -- setup.yaml's
-# match signals with it -- read only (db/reader.sql): every sandbox of the demo shares it.
+# match signals with it -- read only (db/reader.sql): every sandbox of the demo shares it. The
+# bank's mail ships in the bundle's seed as its Microsoft 365 source's replica, and the control
+# room's workbook as a file beside config.yaml: neither is a service.
 
 x-demo-labels: &demo-labels
   com.provisa.demo: insider
