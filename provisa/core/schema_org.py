@@ -869,7 +869,7 @@ catalog_standing_choices = Table(
 
 # REQ-2247: each unattended run of a Syncing entry's direction (a scheduled import): when it ran,
 # how it was started, its outcome, what it applied and what it held (each a JSON list of
-# ``{kind, object, reason}``), and the error of a run that failed.
+# ``{kind, object, reason_code, params}``), and the error of a run that failed.
 catalog_sync_runs = Table(
     "catalog_sync_runs",
     metadata,
@@ -1009,6 +1009,22 @@ glossary_term_experts = Table(
     Column("tenant_id", Uuid),
     UniqueConstraint("term_id", "user_id"),
     CheckConstraint("kind IN ('expert', 'author')", name="glossary_term_experts_kind_check"),
+)
+
+# REQ-2259, REQ-2145: each confirmed tag loss, one row per column and tag, with the term the column
+# left, who confirmed it (None when no member signed) and when. Mirrors schema.sql.
+glossary_tag_losses = Table(
+    "glossary_tag_losses",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("table_id", Integer, nullable=False),
+    Column("table_ref", Text, nullable=False),
+    Column("column_name", Text, nullable=False),
+    Column("tag_id", Text, nullable=False),
+    Column("term_id", Integer, ForeignKey("glossary_terms.id", ondelete="SET NULL"), nullable=True),
+    Column("term_name", Text, nullable=False),
+    Column("confirmed_by", Text, nullable=True),
+    Column("confirmed_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
 )
 
 materialized_views = Table(

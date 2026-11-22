@@ -135,6 +135,12 @@
     "importHeld": "保留",
     "importKind": "種類",
     "importObject": "オブジェクト",
-    "importReason": "保留の理由"
+    "importReason": "保留の理由",
+    "holdReason_no_choice": "この種類には固定の選択がありません",
+    "holdReason_held_by_choice": "固定の選択が保留です",
+    "holdReason_edited_in_provisa": "前回の交換以降に Provisa で編集されました",
+    "holdReason_never_exchanged": "一度も交換されていないため、どちら側が変わったか不明です",
+    "holdReason_not_importable": "Provisa はこの種類をまだカタログから取り込めません",
+    "holdReason_left_to_export": "固定の選択は Provisa の値で、エクスポートが送信します"
   }
 }

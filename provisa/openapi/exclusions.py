@@ -210,11 +210,12 @@ def excluded_operation_ids(spec: dict, exclusions: Exclusions) -> dict[str, str]
     return found
 
 
-def load_source_spec(spec_path: str, mapping: dict | None, *, source_id: str) -> dict:
+def load_source_spec(spec_path: str, mapping: dict | None, *, source_id: str, auth: Any) -> dict:
     """The specification an OpenAPI source is built from: the one ``spec_path`` names (a brand's
     arrives with the brand's exclusions already applied) without the source's own exclusions,
     which an operator sets under ``exclusions`` in the source's mapping. THE way a registered
-    source's specification is loaded, so every consumer sees the same one."""
+    source's specification is loaded, so every consumer sees the same one. ``auth``: the
+    source's own, which a spec read over http(s) is requested with (REQ-2265); None for none."""
     from provisa.openapi.loader import load_spec
     from provisa.openapi.servicenow import SPEC_SCHEME, companion_spec
 
@@ -222,7 +223,9 @@ def load_source_spec(spec_path: str, mapping: dict | None, *, source_id: str) ->
     # REQ-1954: a ServiceNow source's companion assembles its document from what its mapping
     # names, read from the instance.
     spec = (
-        companion_spec(mapping or {}) if spec_path.startswith(SPEC_SCHEME) else load_spec(spec_path)
+        companion_spec(mapping or {})
+        if spec_path.startswith(SPEC_SCHEME)
+        else load_spec(spec_path, auth)
     )
     return apply(spec, Exclusions.parse((mapping or {}).get("exclusions"), who=who), who=who)
 
@@ -235,7 +238,7 @@ def _normal(operation_id: str) -> str:
 
 
 def source_excluded_operations(
-    spec_path: str, mapping: dict | None, *, source_id: str
+    spec_path: str, mapping: dict | None, *, source_id: str, auth: Any
 ) -> dict[str, str]:
     """``operationId`` -> "METHOD path" for every operation the source of ``spec_path`` does not
     offer: its brand's exclusions (read against the vendor's specification as published) and the
@@ -252,7 +255,7 @@ def source_excluded_operations(
         published = (
             companion_spec(mapping or {})
             if spec_path.startswith(SPEC_SCHEME)
-            else load_spec(spec_path)
+            else load_spec(spec_path, auth)
         )
         found.update(excluded_operation_ids(published, own))
     return found

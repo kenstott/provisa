@@ -257,3 +257,58 @@ def test_the_functions_workflow_reports_the_check_and_does_not_gate_on_it():
     assert "GITHUB_STEP_SUMMARY" in step["run"]
     uploaded = next(s for s in steps if s.get("uses", "").startswith("actions/upload-artifact"))
     assert "polyfill-check" in uploaded["with"]["path"]
+
+
+#: Run 45028182859's G12 overloads (polyfill triage 2026-11-22): each passed on its engine, and the
+#: check's probe of it, one NULL of each listed type with the argument names and VARIADIC read as
+#: part of the type, met a rewrite function's refusal the run's call never meets.
+_RUN_PASSED = [
+    ("json_build_object", 'VARIADIC "any"', "trino"),
+    ("json_build_object", 'VARIADIC "any"', "clickhouse"),
+    ("jsonb_build_object", 'VARIADIC "any"', "trino"),
+    ("json_build_array", 'VARIADIC "any"', "clickhouse"),
+    ("json_agg", "anyelement", "clickhouse"),
+    ("to_jsonb", "anyelement", "clickhouse-server"),
+    ("to_json", "anyelement", "clickhouse"),
+    ("json_object_agg", 'key "any", value "any"', "clickhouse"),
+    ("jsonb_extract_path", "from_json jsonb, VARIADIC path_elems text[]", "clickhouse"),
+    ("jsonb_delete", "from_json jsonb, VARIADIC path_elems text[]", "clickhouse-server"),
+]
+
+
+@pytest.mark.parametrize(("function", "overload", "engine"), _RUN_PASSED)
+def test_an_overload_the_run_passed_is_not_refused_by_the_probe(function, overload, engine):
+    """Where the grid reads the call (on trino a text key keeps json_build_object as written, so
+    there is nothing to read), it holds."""
+    for finding in check.checked(_run(function, overload, **{engine: _PASS})):
+        assert finding.feature != check.REWRITE_REFUSAL, finding.why
+        assert finding.verdict == check.HOLDS, finding.why
+
+
+@pytest.mark.parametrize(
+    ("function", "overload", "call"),
+    [
+        (
+            "json_build_object",
+            'VARIADIC "any"',
+            "JSON_BUILD_OBJECT(CAST('k' AS TEXT), CAST(NULL AS INT))",
+        ),
+        (
+            "jsonb_extract_path",
+            "from_json jsonb, VARIADIC path_elems text[]",
+            "JSONB_EXTRACT_PATH(CAST(NULL AS JSONB), VARIADIC CAST(NULL AS TEXT[]))",
+        ),
+        (
+            "json_object_agg",
+            'key "any", value "any"',
+            "JSON_OBJECT_AGG(CAST('k' AS TEXT), CAST(NULL AS INT))",
+        ),
+        ("json_agg", "anyelement", "JSON_AGG(CAST(NULL AS INT))"),
+        ("age", "timestamp with time zone", "AGE(CAST(NULL AS TIMESTAMPTZ))"),
+        ("now", "", "NOW()"),
+    ],
+)
+def test_the_probe_is_the_runs_null_call(function, overload, call):
+    """pgwire_function_probe's NULL call: its given arguments, else a NULL of each argument type
+    (a pseudo-type its concrete type), the last passed VARIADIC where it is an array."""
+    assert check.call_of(function, overload).sql("postgres") == call

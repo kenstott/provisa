@@ -49,7 +49,9 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
+import sqlglot
 import sqlglot.expressions as exp
+from sqlglot.errors import ParseError
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
@@ -61,6 +63,7 @@ from provisa.transpiler.polyfill.notation import Form, Refused  # noqa: E402
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import function_legs  # noqa: E402
+import pgwire_function_probe as function_probe  # noqa: E402
 
 #: The dialect Provisa transpiles the SQL of each engine whose backend names its own dialect to
 #: (provisa/federation/backend.py EngineBackend.dialect), by the name its leg has (function_legs.yaml).
@@ -124,17 +127,42 @@ class Finding:
     statement: str = ""
 
 
+def _argument_type(argument: str) -> tuple[str, bool]:
+    """The type of one argument of an identity argument list (pg_get_function_identity_arguments:
+    ``[VARIADIC ][name ]type``), and whether it is VARIADIC. A name is the first word of an
+    argument that does not read whole as a type: a type of several words (``timestamp with time
+    zone``) reads whole, a named one (``from_json json``) does not."""
+    variadic = argument.startswith("VARIADIC ")
+    argument = argument.removeprefix("VARIADIC ").strip()
+    words = argument.split(" ", 1)
+    if len(words) == 2:
+        try:
+            exp.DataType.build(argument, dialect="postgres")
+        except ParseError:
+            argument = words[1].strip()
+    return argument, variadic
+
+
+def _cast_null(argtype: str) -> exp.Expr:
+    concrete = function_probe.CONCRETE.get(argtype, argtype)
+    return exp.Cast(this=exp.Null(), to=exp.DataType.build(concrete, dialect="postgres", udt=True))
+
+
 def call_of(function: str, overload: str) -> exp.Expr:
-    """A call of ``function`` with one argument of each type ``overload`` lists, as the run calls it
-    (pg_catalog."f"(NULL::t, ...)): what the grid reads of it is what it reads of the run's."""
-    types = [t.strip() for t in overload.split(",")] if overload.strip() else []
-    return exp.Anonymous(
-        this=function,
-        expressions=[
-            exp.Cast(this=exp.Null(), to=exp.DataType.build(t, dialect="postgres", udt=True))
-            for t in types
-        ],
-    )
+    """The run's NULL call of ``function`` (pgwire_function_probe.call): the arguments it gives the
+    overload (``ARGUMENTS``), else a NULL of each argument type, a pseudo-type cast to its concrete
+    type (``CONCRETE``), and a VARIADIC array passed VARIADIC (a VARIADIC ``"any"`` is one argument
+    of its own, pg_proc's provariadic). What the grid reads of it is what it reads of the run's."""
+    given = function_probe.ARGUMENTS.get(f"{function}({overload})")
+    if given is not None:
+        args = [sqlglot.parse_one(arg, read="postgres") for arg in given]
+        return exp.Anonymous(this=function, expressions=args)
+    arguments = [_argument_type(a.strip()) for a in overload.split(",")] if overload.strip() else []
+    args = []
+    for argtype, variadic in arguments:
+        arg = _cast_null(argtype)
+        args.append(exp.Variadic(this=arg) if variadic and argtype != '"any"' else arg)
+    return exp.Anonymous(this=function, expressions=args)
 
 
 def _said(form: Form | None) -> str:
