@@ -1661,7 +1661,9 @@ def subscription_request_accepted(shared_data):
                     rls=rls,
                     state=state,
                     variables=None,
-                    role={"id": role_id},
+                    # REQ-812/REQ-868: a sink needs the write right; admin holds it through
+                    # data_writer (REQ-2155, provisa/core/standard_roles.yaml).
+                    role={"id": role_id, "capabilities": ["write"]},
                     role_id=role_id,
                     raw_request=shared_data["raw_request"],
                     directives=None,
