@@ -116,8 +116,9 @@ def test_trinos_array_position_is_not_sent(sql):
 
 
 def test_duckdb_keeps_its_own_array_position():
-    """DuckDB's list_position answers NULL where it finds nothing: the row gives it no form."""
-    assert ARRAY_POSITION.read.rules[0].forms.keys() == set(_TRINO)
+    """DuckDB's list_position answers NULL where it finds nothing: the row gives it no form. Its
+    forms are Trino's and the refusals of Db2 and SAP HANA, which hold no array type."""
+    assert ARRAY_POSITION.read.rules[0].forms.keys() == {*_TRINO, "db2", "saphana"}
     sql = transpile_to_duckdb("SELECT pg_catalog.\"array_position\"('{}'::integer[], 5) AS v")
     assert duckdb.connect().execute(sql).fetchall() == [(None,)]
 
