@@ -27,6 +27,16 @@
 //! crate declares; a type from another crate is read only where its serde form is known (chrono's
 //! dates, serde_json's Value, rust_decimal's Decimal). A trailing Result is how a Rust function
 //! fails, so it is not part of what it returns.
+//!
+//! A function's tags may also come from Provisa's optional SDK (REQ-1984): a registration such as
+//! `provisa_sdk::table!(rows, secret = "API_KEY");` at the crate's root adds to `rows` the tags its
+//! doc comment would carry. With no name resolution, a registration is known by its path: the SDK
+//! crate's name (each name `Cargo.toml` gives the provisa-sdk package, passed after the root file,
+//! and each `use provisa_sdk as x;`), or a name a root `use provisa_sdk::{...}` or
+//! `use provisa_sdk::*` brings in. Its function is named by an identifier and every option's value
+//! is a literal; anything else, and an SDK macro invoked anywhere but at the crate's root, is
+//! refused by name. The SDK's type aliases (`provisa_sdk::Rows<T>` and the rest) are read as the
+//! types they name.
 
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -35,11 +45,168 @@ use std::path::{Path, PathBuf};
 use quote::ToTokens;
 use serde_json::{json, Map, Value};
 use syn::ext::IdentExt;
+use syn::punctuated::Punctuated;
+use syn::visit::Visit;
 use syn::{
     Attribute, Expr, ExprLit, Fields, FnArg, GenericArgument, GenericParam, Ident, Item, ItemEnum,
     ItemFn, ItemStruct, ItemType, Lit, LitStr, Meta, Pat, PathArguments, ReturnType, Type,
-    TypeParamBound,
+    TypeParamBound, UseTree,
 };
+
+/// Provisa's optional SDK (REQ-1984): the spelling of it this reader reads, the tag each
+/// registration adds, the options each takes, the parts of a change registration, and the SDK's
+/// type aliases.
+const SDK_SPELLING: u32 = 1;
+const SDK_MACROS: &[(&str, &str)] = &[
+    ("table", "table"),
+    ("stream", "stream"),
+    ("command", "command"),
+    ("query", "query"),
+    ("columns", "columns"),
+    ("change", "change"),
+    ("on_start", "on-start"),
+    ("on_stop", "on-stop"),
+    ("health", "health"),
+];
+const SDK_MACRO_NAMES: &[&str] =
+    &["table", "stream", "command", "query", "columns", "change", "on_start", "on_stop", "health"];
+const READ_OPTIONS: &[&str] = &["requires", "secret"];
+const COMMAND_OPTIONS: &[&str] = &["requires", "secret", "insert", "update", "delete"];
+const CHANGE_PARTS: &[&str] = &["table", "key", "removed", "cursor"];
+const SDK_TYPES: &[&str] = &["Rows", "Stream", "Batch", "Results", "Text", "BigInt", "Double", "Boolean"];
+
+fn sdk_tag(name: &str) -> Option<&'static str> {
+    SDK_MACROS.iter().find(|(m, _)| *m == name).map(|(_, tag)| *tag)
+}
+
+/// The options a registration takes beside its function.
+fn sdk_options(name: &str) -> Vec<&'static str> {
+    match name {
+        "command" => COMMAND_OPTIONS.to_vec(),
+        "change" => [CHANGE_PARTS, READ_OPTIONS].concat(),
+        "on_stop" | "health" => Vec::new(),
+        _ => READ_OPTIONS.to_vec(),
+    }
+}
+
+/// What the crate's root says of the SDK: the names its crate goes by, the names a root `use`
+/// brings in from it (each to the SDK item it is), whether a root `use` brings in all of it, and
+/// the macros the root defines itself, which a glob import does not shadow.
+#[derive(Default)]
+struct Sdk {
+    crates: HashSet<String>,
+    names: HashMap<String, String>,
+    glob: bool,
+    local_macros: HashSet<String>,
+}
+
+impl Sdk {
+    fn from_root(crates: &[String], all: &[(String, Item)]) -> Sdk {
+        let mut sdk = Sdk { crates: crates.iter().cloned().collect(), ..Sdk::default() };
+        let root = || all.iter().filter(|(module, _)| module.is_empty()).map(|(_, item)| item);
+        for item in root() {
+            match item {
+                Item::ExternCrate(e) if sdk.crates.contains(&name_of(&e.ident)) => {
+                    if let Some((_, alias)) = &e.rename {
+                        sdk.crates.insert(name_of(alias));
+                    }
+                }
+                Item::Macro(m) => {
+                    if let Some(ident) = &m.ident {
+                        sdk.local_macros.insert(name_of(ident));
+                    }
+                }
+                _ => {}
+            }
+        }
+        // Twice: a `use provisa_sdk as p;` may come after the `use p::...` it names.
+        for _ in 0..2 {
+            for item in root() {
+                if let Item::Use(u) = item {
+                    sdk.uses(&u.tree, false);
+                }
+            }
+        }
+        sdk
+    }
+
+    /// The names a root `use` tree brings in from the SDK; `under` once the tree is below the
+    /// SDK crate's own name. A path deeper than the SDK's root names nothing the SDK offers.
+    fn uses(&mut self, tree: &UseTree, under: bool) {
+        match tree {
+            UseTree::Path(p) if !under && self.crates.contains(&name_of(&p.ident)) => self.uses(&p.tree, true),
+            UseTree::Name(n) if under && n.ident != "self" => {
+                self.names.insert(name_of(&n.ident), name_of(&n.ident));
+            }
+            UseTree::Rename(r) if under && r.ident == "self" => {
+                self.crates.insert(name_of(&r.rename));
+            }
+            UseTree::Rename(r) if under => {
+                self.names.insert(name_of(&r.rename), name_of(&r.ident));
+            }
+            UseTree::Rename(r) if self.crates.contains(&name_of(&r.ident)) => {
+                self.crates.insert(name_of(&r.rename));
+            }
+            UseTree::Glob(_) if under => self.glob = true,
+            UseTree::Group(g) => {
+                for item in &g.items {
+                    self.uses(item, under);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// The SDK item `path` names: `<the SDK crate>::item`, or, where the root's `use`s apply
+    /// (`root`), a name one brought in, or one of `offered` a glob import brought in that `local`
+    /// does not declare. A module's own `use`s are not followed.
+    fn resolve(&self, path: &syn::Path, root: bool, offered: &[&str], local: impl Fn(&str) -> bool) -> Option<String> {
+        let segments: Vec<String> = path.segments.iter().map(|s| name_of(&s.ident)).collect();
+        match segments.as_slice() {
+            [krate, item] if self.crates.contains(krate) => Some(item.clone()),
+            [name] if root && path.leading_colon.is_none() => match self.names.get(name) {
+                Some(item) => Some(item.clone()),
+                None if self.glob && offered.contains(&name.as_str()) && !local(name) => Some(name.clone()),
+                None => None,
+            },
+            _ => None,
+        }
+    }
+
+    fn macro_item(&self, path: &syn::Path, root: bool) -> Option<String> {
+        self.resolve(path, root, SDK_MACRO_NAMES, |name| self.local_macros.contains(name))
+    }
+}
+
+/// Every SDK macro invoked inside an item: none is read there.
+struct Nested<'a> {
+    sdk: &'a Sdk,
+    root: bool,
+    found: Vec<String>,
+}
+
+impl<'ast> Visit<'ast> for Nested<'_> {
+    fn visit_macro(&mut self, mac: &'ast syn::Macro) {
+        if let Some(item) = self.sdk.macro_item(&mac.path, self.root) {
+            self.found.push(item);
+        }
+    }
+}
+
+/// A registration's value, as its tag line writes it: a text literal, or, for a change's key,
+/// an array of text literals joined by commas.
+fn literal(value: &Expr, list: bool) -> Option<String> {
+    match value {
+        Expr::Lit(ExprLit { lit: Lit::Str(s), .. }) => Some(s.value()),
+        Expr::Array(array) if list && !array.elems.is_empty() => {
+            let parts: Option<Vec<String>> = array.elems.iter().map(|e| literal(e, false)).collect();
+            parts.map(|p| p.join(","))
+        }
+        Expr::Paren(p) => literal(&p.expr, list),
+        Expr::Group(g) => literal(&g.expr, list),
+        _ => None,
+    }
+}
 
 enum Decl {
     Struct(ItemStruct),
@@ -57,6 +224,7 @@ struct Reader {
     types: Map<String, Value>,
     reading: HashSet<String>,
     diagnostics: Vec<String>,
+    sdk: Sdk,
 }
 
 fn unsupported(text: &str) -> Value {
@@ -336,6 +504,10 @@ impl Reader {
         if local && self.declared.contains_key(&name) {
             return self.named(&name, ty);
         }
+        let declared = &self.declared;
+        if let Some(item) = self.sdk.resolve(&tp.path, true, SDK_TYPES, |n| declared.contains_key(n)) {
+            return self.sdk_type(&item, &args, ty);
+        }
         match (name.as_str(), args.as_slice()) {
             ("String" | "str" | "char", []) => json!({"kind": "string"}),
             ("bool", []) => json!({"kind": "boolean"}),
@@ -363,6 +535,129 @@ impl Reader {
             _ if self.declared.contains_key(&name) => self.named(&name, ty),
             _ => unsupported(&text(ty)),
         }
+    }
+
+    /// One of the SDK's type aliases, read as the type it names.
+    fn sdk_type(&mut self, item: &str, args: &[&Type], ty: &Type) -> Value {
+        match (item, args) {
+            ("Rows" | "Batch" | "Results", [inner]) => json!({"kind": "array", "element": self.tree(inner)}),
+            ("Stream", [inner]) => self.iterable(Some(inner), ty),
+            ("Text", []) => json!({"kind": "string"}),
+            ("BigInt", []) => json!({"kind": "number", "integer": true}),
+            ("Double", []) => json!({"kind": "number"}),
+            ("Boolean", []) => json!({"kind": "boolean"}),
+            _ => unsupported(&format!(
+                "{} (not a type of provisa_sdk spelling {SDK_SPELLING}, as written)",
+                text(ty)
+            )),
+        }
+    }
+
+    /// Adds to `exports` the tags of one registration, `mac`, of the SDK macro `item`. Its first
+    /// argument names a `pub fn` at the crate's root (one of `exports`; `private` are the root's
+    /// other functions); each option is `key = literal`, a key the registration takes.
+    fn register(&mut self, item: &str, mac: &syn::Macro, exports: &mut [Value], private: &HashSet<String>) {
+        let Some(tag) = sdk_tag(item) else {
+            self.diagnostics.push(format!(
+                "provisa_sdk::{item}! is not a registration this server reads; it reads SDK spelling {SDK_SPELLING}"
+            ));
+            return;
+        };
+        let written = format!("provisa_sdk::{item}!({})", text(&mac.tokens));
+        let arguments = match mac.parse_body_with(Punctuated::<Expr, syn::Token![,]>::parse_terminated) {
+            Ok(arguments) => arguments,
+            Err(err) => {
+                self.diagnostics.push(format!("{written}: its arguments cannot be read: {err}"));
+                return;
+            }
+        };
+        let mut arguments = arguments.into_iter();
+        let function = match arguments.next() {
+            Some(Expr::Path(p)) if p.qself.is_none() && p.path.get_ident().is_some() => {
+                name_of(p.path.get_ident().expect("an identifier"))
+            }
+            Some(other) => {
+                self.diagnostics.push(format!(
+                    "{written}: a registration names a pub fn at the crate's root, not {}",
+                    text(&other)
+                ));
+                return;
+            }
+            None => {
+                self.diagnostics.push(format!("{written}: a registration names a pub fn at the crate's root"));
+                return;
+            }
+        };
+        let Some(target) = exports.iter().position(|e| e["name"] == function.as_str()) else {
+            let why = if private.contains(&function) {
+                format!("{function} is not pub, and Provisa serves a pub fn")
+            } else {
+                format!("there is no fn {function} at the crate's root")
+            };
+            self.diagnostics.push(format!("{written}: {why}"));
+            return;
+        };
+        let allowed = sdk_options(item);
+        let mut added = Vec::new();
+        let mut parts = Vec::new();
+        for argument in arguments {
+            let Expr::Assign(assign) = &argument else {
+                self.diagnostics.push(format!(
+                    "{function}: an option of provisa_sdk::{item}! is key = literal, not {}",
+                    text(&argument)
+                ));
+                continue;
+            };
+            let key = match &*assign.left {
+                Expr::Path(p) if p.path.get_ident().is_some() => name_of(p.path.get_ident().expect("an identifier")),
+                other => {
+                    self.diagnostics.push(format!(
+                        "{function}: an option of provisa_sdk::{item}! is key = literal, not {} = ...",
+                        text(other)
+                    ));
+                    continue;
+                }
+            };
+            if !allowed.contains(&key.as_str()) {
+                let why = if key == "loader" {
+                    ": a Rust source has no read context, so no @loader".to_string()
+                } else {
+                    String::new()
+                };
+                self.diagnostics.push(format!("{function}: provisa_sdk::{item}! takes no option {key}{why}"));
+                continue;
+            }
+            let Some(value) = literal(&assign.right, key == "key") else {
+                self.diagnostics.push(format!(
+                    "{function}: provisa_sdk::{item}!'s {key} is a literal, not {}",
+                    text(&*assign.right)
+                ));
+                continue;
+            };
+            match key.as_str() {
+                "requires" => added.push(json!({"tag": "requires", "text": value})),
+                "secret" => added.push(json!({"tag": "requires", "text": format!("{value}:secret")})),
+                part if CHANGE_PARTS.contains(&part) && item == "change" => {
+                    parts.push(part.to_string());
+                    added.push(json!({"tag": "change", "text": format!("{part}={value}")}));
+                }
+                write => added.push(json!({"tag": write, "text": value})),
+            }
+        }
+        if item == "change" && parts != CHANGE_PARTS {
+            self.diagnostics.push(format!(
+                "{function}: provisa_sdk::change! gives table, key, removed and cursor, once each and in that order"
+            ));
+            return;
+        }
+        let export = &mut exports[target];
+        if item != "change" {
+            let tags = export["tags"].as_array_mut().expect("an export's tags");
+            if !tags.iter().any(|t| t == tag) {
+                tags.push(Value::String(tag.to_string()));
+            }
+        }
+        export["tag_arguments"].as_array_mut().expect("an export's tag arguments").extend(added);
     }
 
     /// A type the crate declares: a struct as a named object type, an enum of unit variants as
@@ -632,18 +927,44 @@ fn items(found: Vec<Item>, dir: &Path, module: &str, out: &mut Vec<(String, Item
     }
 }
 
-fn read(root: &Path) -> Value {
+/// The crate's document; `sdk_crates` are the names its `Cargo.toml` gives the SDK.
+fn read(root: &Path, sdk_crates: &[String]) -> Value {
     let mut all = Vec::new();
     let mut diagnostics = Vec::new();
     let dir = root.parent().map(Path::to_path_buf).unwrap_or_default();
     load(root, &dir, "", &mut all, &mut diagnostics);
+    let sdk = Sdk::from_root(sdk_crates, &all);
+    let mut registrations = Vec::new();
+    let mut nested = Vec::new();
+    for (module, item) in &all {
+        match item {
+            Item::Macro(m) if module.is_empty() && m.ident.is_none() => match sdk.macro_item(&m.mac.path, true) {
+                Some(found) => registrations.push((found, m.mac.clone())),
+                None => continue,
+            },
+            other => {
+                let mut finder = Nested { sdk: &sdk, root: module.is_empty(), found: Vec::new() };
+                finder.visit_item(other);
+                let place = if module.is_empty() { "inside an item".to_string() } else { format!("in module {module}") };
+                nested.extend(finder.found.into_iter().map(|found| {
+                    format!(
+                        "provisa_sdk::{found}! is invoked {place}, where Provisa does not read it; \
+                         a registration is an item at the crate's root"
+                    )
+                }));
+            }
+        }
+    }
+    diagnostics.extend(nested);
     let mut reader = Reader {
         declared: HashMap::new(),
         types: Map::new(),
         reading: HashSet::new(),
         diagnostics,
+        sdk,
     };
     let mut functions = Vec::new();
+    let mut private = HashSet::new();
     for (module, item) in all {
         let (name, decl) = match item {
             Item::Struct(s) => (name_of(&s.ident), Decl::Struct(s)),
@@ -653,19 +974,26 @@ fn read(root: &Path) -> Value {
                 functions.push(f);
                 continue;
             }
+            Item::Fn(f) if module.is_empty() => {
+                private.insert(name_of(&f.sig.ident));
+                continue;
+            }
             _ => continue,
         };
         reader.declared.entry(name).or_default().push(Declared { module, decl });
     }
-    let exports: Vec<Value> = functions.iter().map(|f| reader.function(f)).collect();
+    let mut exports: Vec<Value> = functions.iter().map(|f| reader.function(f)).collect();
+    for (item, mac) in &registrations {
+        reader.register(item, mac, &mut exports, &private);
+    }
     json!({"exports": exports, "types": reader.types, "diagnostics": reader.diagnostics})
 }
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
-    if args.len() != 2 {
-        eprintln!("usage: reader <the crate's root file>");
+    if args.len() < 2 {
+        eprintln!("usage: reader <the crate's root file> [the name Cargo.toml gives provisa-sdk]...");
         std::process::exit(2);
     }
-    println!("{}", read(Path::new(&args[1])));
+    println!("{}", read(Path::new(&args[1]), &args[2..]));
 }
