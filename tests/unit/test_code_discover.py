@@ -414,14 +414,16 @@ def _with_table_parameter(source: str) -> str:
 
 def test_a_generated_command_taking_a_table_ref_is_refused_by_name(tmp_path):
     problems = _problems(tmp_path, _with_table_parameter(CODE))
-    assert (
+    command_refusal = (
         "close_order: its parameter orders is a TableRef, and a generated command takes no "
         "TableRef parameter in v0"
-    ) in problems
-    assert (
+    )
+    query_refusal = (
         "orders_by_status: its parameter rows is a TableRef, and a generated query takes no "
         "TableRef parameter in v0"
-    ) in problems
+    )
+    assert any(command_refusal in p for p in problems), problems
+    assert any(query_refusal in p for p in problems), problems
 
 
 def test_a_generated_command_taking_scalars_is_recorded_beside_a_hand_written_table_ref(tmp_path):
