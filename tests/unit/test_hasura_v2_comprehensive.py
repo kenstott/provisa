@@ -755,7 +755,10 @@ class TestMapSource:
     def _source(conn, overridden=False):
         collector = WarningCollector()
         hs = HasuraSource(name="default", kind="postgres", connection_info=conn)
-        return _map_source(hs, collector, overridden=overridden), collector
+        return (
+            _map_source(hs, collector, overridden=overridden, default_convention="hasura-default"),
+            collector,
+        )
 
     def test_full_postgres_url(self):
         src, collector = self._source(
