@@ -101,6 +101,8 @@ const NOT_A_FORM: Readonly<Record<string, string>> = {
  * Everything else is still held: a full-size Save or Cancel, a stretched button, an action row.
  */
 const IN_PLACE_EDIT: Readonly<Record<string, string>> = {
+  "components/admin/syncing/EntrySync.tsx":
+    "a kind's standing choice set in place in its row of a list, or in its heading",
   "pages/sources/ServiceNowApiList.tsx":
     "an API of a ServiceNow instance switched on or off in place in its row",
   "components/ChatPanel.tsx":

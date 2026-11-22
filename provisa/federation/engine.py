@@ -1135,7 +1135,9 @@ def build_sqlalchemy_engine(  # REQ-905: any SQLAlchemy-reachable store, zero co
         # cockroachdb, …) are UNVERIFIED for this trait, tracked rather than guessed at, same
         # discipline as the sqlglot-dialect-name gap `EngineBackend._SQLGLOT_DIALECT_ALIASES`'s own
         # comment already documents for this family.
-        catalog_qualified=backend != "oracle",
+        # Db2 LUW reads a three-part name only for a federated object (a nickname's server); a
+        # local table is schema.table. From Db2's SQL reference, not yet verified live.
+        catalog_qualified=backend not in ("oracle", "db2", "ibm_db_sa"),
         backend_factory=SqlAlchemyBackend,  # in-process terminal driving SqlAlchemyFederationRuntime
         # REQ-1730: was `_platform_db_materialize_default` — the shared PLATFORM Postgres, not this
         # engine's own store. A SELF_ONLY engine's whole point is "every source lands into me" (see

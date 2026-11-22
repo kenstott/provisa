@@ -731,7 +731,7 @@ export const TOUR_STEPS: TourStep[] = [
   },
   {
     route: "/views",
-    capability: "table_registration",
+    capability: "create_view",
     prefetch: "settings",
     element: '.subnav a[href="/views"]',
     readySelector: VIEWS_READY,
@@ -739,7 +739,7 @@ export const TOUR_STEPS: TourStep[] = [
   },
   {
     route: "/views",
-    capability: "table_registration",
+    capability: "create_view",
     prefetch: "settings",
     element: '.subnav a[href="/views"]',
     readySelector: VIEWS_READY,
@@ -747,7 +747,7 @@ export const TOUR_STEPS: TourStep[] = [
   },
   {
     route: "/metrics",
-    capability: "table_registration",
+    capability: "create_view",
     element: '[data-testid="metrics-new-button"]',
     key: "stepMetrics",
   },

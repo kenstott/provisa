@@ -64,6 +64,7 @@
     "twoDimensions": "De kolommen zijn al gekoppeld aan twee verschillende gedeelde dimensies, dus deze kan niet worden geaccepteerd.",
     "admittedOnKeyValues": "Toegelaten omdat de sleutelwaarden in de gegevens overeenkomen; de meting staat naast de betrouwbaarheid van het model.",
     "hiddenByFilter_one": "{{count}} rij wordt verborgen door het filter.",
-    "hiddenByFilter_other": "{{count}} rijen worden verborgen door het filter."
+    "hiddenByFilter_other": "{{count}} rijen worden verborgen door het filter.",
+    "editAria": "{{name}} bewerken"
   }
 }

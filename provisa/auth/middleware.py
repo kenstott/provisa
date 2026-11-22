@@ -35,6 +35,7 @@ from provisa.core.schema_admin import (
 from provisa.core.schema_org import user_directory
 from provisa.security.rights import (
     ORG_ADMIN_ROLE,
+    PUBLIC_ROLE,
     PLATFORM_ADMIN_ROLE,  # GRANTED (bootstrap/recovery assignment) — never read as a gate
     can_act_cross_org as _can_act_cross_org,
     capabilities_for_claims as _capabilities_for_claims,
@@ -790,6 +791,73 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
         finally:
             reset_current_org(token)
 
+    async def _public_visitor_org(self, request: Request) -> str | JSONResponse | None:  # REQ-1058
+        """The org a credential-less request is the public visitor of.
+
+        None when it is no org's visitor -- the Host names no org (the control-plane host and the
+        ``x-org-provisa`` header never do: REQ-1058 takes the Host subdomain only), the org does
+        not exist, or the path is the platform plane, which serves signed-in people only. The
+        caller then refuses it as it refuses any request without a credential. A JSONResponse
+        when the named org is refused by name.
+        """
+        if request.url.path.startswith(_PLATFORM_PLANE_PATHS):
+            return None
+        org_id = org_from_host(request.headers.get("host"))
+        if org_id is None:
+            return None
+        if org_id != self._default_org_id:
+            if self._admin_pool is None:
+                return _deny(
+                    request,
+                    503,
+                    f"Cannot resolve org {org_id!r}: no admin plane",
+                    cause="no_admin_pool",
+                )
+            from provisa.core.org_membership import bindable_org
+
+            async with self._admin_pool.acquire() as conn:
+                if (await conn.execute_core(bindable_org(org_id))).fetchone() is None:
+                    return None
+            from provisa.api.errors import ApiError
+            from provisa.api.sandbox_tier import require_this_tier
+
+            try:
+                require_this_tier(org_id)
+            except ApiError as refused:
+                return _deny(
+                    request,
+                    refused.status_code,
+                    str(refused.detail),
+                    cause="wrong_tier",
+                    code=refused.code,
+                )
+        return org_id
+
+    @staticmethod
+    def _bind_public_visitor(request: Request, org_id: str) -> None:  # REQ-1058
+        """Bind ``request`` as ``org_id``'s public visitor.
+
+        The visitor acts as the org's PUBLIC_ROLE and nothing else (REQ-1059). Its id is never
+        ``anonymous``: that is the unsecured dev principal every capability gate exempts. The colon
+        keeps it out of every account namespace (a Basic username cannot carry one).
+        """
+        request.state.identity = AuthIdentity(
+            user_id=f"public:{org_id}",
+            email=None,
+            display_name=PUBLIC_ROLE,
+            roles=[PUBLIC_ROLE],
+            raw_claims={},
+            active_org_id=org_id,
+            acting_roles=[PUBLIC_ROLE],
+            # A visitor is no member, so the org records nothing of it.
+            org_attributes={},
+            derived_roles={},
+        )
+        request.state.role = PUBLIC_ROLE
+        request.state.assignments = [RoleAssignment(role_id=PUBLIC_ROLE, domain_id="*")]
+        request.state.can_cross_org = False
+        request.state.active_org_id = org_id
+
     async def _resolve_identity(self, request: Request):  # REQ-486
         # Where this request's org runtime is, when it is not the default one: a meta-role is
         # built in it (_meta_role).
@@ -985,6 +1053,15 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
             # is still refused here, so a bad token can never be laundered into an anonymous signup.
             if request.url.path == "/auth/register" and not auth_header:
                 return None
+            # REQ-1058: a request presenting NO credential on a host that names an org is that
+            # org's public visitor. A presented-but-invalid credential is refused like any other.
+            if not auth_header:
+                visitor_org = await self._public_visitor_org(request)
+                if isinstance(visitor_org, JSONResponse):
+                    return visitor_org
+                if visitor_org is not None:
+                    self._bind_public_visitor(request, visitor_org)
+                    return None
             return _deny(request, 401, "Missing or invalid Authorization header")
 
         try:
