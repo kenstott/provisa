@@ -17,33 +17,9 @@ import { render, screen } from "../../../test-utils/render";
 vi.mock("../../../api/glossary", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../../api/glossary")>()),
   fetchRelatedGlossaryTerms: vi.fn().mockResolvedValue([
-    {
-      id: 7,
-      name: "care level",
-      definition: null,
-      is_abstract: false,
-      status: "approved",
-      grounding: "grounded",
-      domains: [],
-    },
-    {
-      id: 9,
-      name: "average lifespan years",
-      definition: null,
-      is_abstract: false,
-      status: "approved",
-      grounding: "grounded",
-      domains: [],
-    },
-    {
-      id: 11,
-      name: "animal",
-      definition: null,
-      is_abstract: true,
-      status: "approved",
-      grounding: "grounded",
-      domains: [],
-    },
+    { id: 7, name: "care level", definition: null, is_abstract: false, status: "approved", grounding: "grounded", domains: [] },
+    { id: 9, name: "average lifespan years", definition: null, is_abstract: false, status: "approved", grounding: "grounded", domains: [] },
+    { id: 11, name: "animal", definition: null, is_abstract: true, status: "approved", grounding: "grounded", domains: [] },
   ]),
 }));
 vi.mock("../../../hooks/useAdminQueries", async (importOriginal) => ({
