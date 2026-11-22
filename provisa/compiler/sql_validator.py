@@ -55,6 +55,7 @@ from provisa.compiler.sql_where import SERVED_WITH_EVERY_TABLE
 from provisa.compiler import temp_tables
 from provisa.compiler.cte_utils import cte_in_scope, cte_names, names_a_cte_in_scope
 from provisa.compiler.sql_gen import CompilationContext, TableMeta
+from provisa.compiler.sql_types import key_list
 from provisa.compiler.stage2 import (
     GovernanceContext,
     approved_join_key,
@@ -279,6 +280,7 @@ def _violations(
             computed=computed,
             constants=constants,
             primary_keys=registered_primary_keys(raw_tables),
+            keys=relationship_keys(ctx),
         )
     # A table named by its field name (the domain-prefixed ``sa__orders``) is admitted by
     # _check_registered_relations through ctx.tables; its columns are judged by the same rule.
@@ -644,11 +646,24 @@ def _alias_map(
 _REMOTE_SOURCE_TYPES: frozenset[str] = frozenset({"graphql_remote", "grpc_remote"})
 
 
-def approved_joins(ctx: CompilationContext) -> set[tuple[int, int, str, str]]:
-    """The joins the registered relationships approve: (table, table, column, column), each in
-    both directions, a junction-backed relationship as its two hops (REQ-1586)."""
+def relationship_keys(
+    ctx: CompilationContext,
+) -> set[tuple[int, int, tuple[str, ...], tuple[str, ...]]]:
+    """The keys the registered relationships join on: (table, table, columns, columns), each in
+    both directions, the two lists paired positionally; a junction-backed relationship as its two
+    legs and its end-to-end pair (REQ-1586). A key of more than one column is joined on all of
+    it (join_guard). Keys of unequal length are a malformed declaration and are refused."""
     type_to_meta = {meta.type_name: meta for meta in ctx.tables.values()}
-    approved: set[tuple[int, int, str, str]] = set()
+    keys: set[tuple[int, int, tuple[str, ...], tuple[str, ...]]] = set()
+
+    def add(a: int, b: int, a_cols: tuple[str, ...], b_cols: tuple[str, ...]) -> None:
+        if len(a_cols) != len(b_cols):
+            raise ValueError(
+                f"relationship key {a_cols} of table {a} does not pair with {b_cols} of table {b}"
+            )
+        keys.add((a, b, a_cols, b_cols))
+        keys.add((b, a, b_cols, a_cols))
+
     for (type_name, _), jm in ctx.joins.items():
         src = type_to_meta.get(type_name)
         if not src:
@@ -662,18 +677,25 @@ def approved_joins(ctx: CompilationContext) -> set[tuple[int, int, str, str]]:
             # Registered with a computed edge: its own condition is what is approved
             # (computed_joins), not an equality of the two columns it is computed from.
             continue
-        approved.add((src.table_id, jm.target.table_id, jm.source_column, jm.target_column))
-        approved.add((jm.target.table_id, src.table_id, jm.target_column, jm.source_column))
+        source_key, target_key = key_list(jm.source_column), key_list(jm.target_column)
+        add(src.table_id, jm.target.table_id, source_key, target_key)
         via = jm.via
-        if via is not None and len(via.source_columns) == 1 and len(via.target_columns) == 1:
+        if via is not None:
             via_id = via.table.table_id
-            v_src_col = via.source_columns[0]
-            v_tgt_col = via.target_columns[0]
-            approved.add((src.table_id, via_id, jm.source_column, v_src_col))
-            approved.add((via_id, src.table_id, v_src_col, jm.source_column))
-            approved.add((via_id, jm.target.table_id, v_tgt_col, jm.target_column))
-            approved.add((jm.target.table_id, via_id, jm.target_column, v_tgt_col))
-    return approved
+            add(src.table_id, via_id, source_key, tuple(via.source_columns))
+            add(via_id, jm.target.table_id, tuple(via.target_columns), target_key)
+    return keys
+
+
+def approved_joins(ctx: CompilationContext) -> set[tuple[int, int, str, str]]:
+    """The joins the registered relationships approve: (table, table, column, column), each in
+    both directions, a junction-backed relationship as its two hops (REQ-1586); a composite key
+    as each of its column pairs, in order (:func:`relationship_keys`)."""
+    return {
+        (a, b, a_col, b_col)
+        for a, b, a_cols, b_cols in relationship_keys(ctx)
+        for a_col, b_col in zip(a_cols, b_cols, strict=True)
+    }
 
 
 def canvas_joins(ctx: CompilationContext) -> list[tuple[int, str, int, str]]:
@@ -755,12 +777,14 @@ def tables_outside_relationships(  # REQ-603
     computed: set[tuple[int, int, str, str]] = frozenset(),  # type: ignore[assignment]
     constants: set[tuple[int, int, str, str]] = frozenset(),  # type: ignore[assignment]
     primary_keys: dict[int, frozenset[str]] | None = None,
+    keys: set[tuple[int, int, tuple[str, ...], tuple[str, ...]]] = frozenset(),  # type: ignore[assignment]
 ) -> list[ValidationViolation]:
     """V002 for each pair of registered tables ``tree`` combines outside the registered
     relationships, however the statement is written (provisa.compiler.join_guard)."""
     from provisa.compiler.join_guard import (
         NEVER_TRUE,
         NOT_EQUALITY,
+        PARTIAL_KEY,
         UNREGISTERED,
         unrelated_tables,
     )
@@ -801,6 +825,7 @@ def tables_outside_relationships(  # REQ-603
         computed=computed,
         constants=constants,
         primary_keys=primary_keys,
+        keys=keys,
     ):
         left, right = name(pair.left_table), name(pair.right_table)
         if pair.reason == UNREGISTERED and pair.written is not None:
@@ -822,6 +847,12 @@ def tables_outside_relationships(  # REQ-603
             said = (
                 f"Invalid JOIN: {left}.{pair.left_column} = {right}.{pair.right_column} — no "
                 f"approved relationship exists between these tables on these columns"
+            )
+        elif pair.reason == PARTIAL_KEY:
+            said = (
+                f"Invalid JOIN: {left}.{pair.left_column} = {right}.{pair.right_column} is part "
+                f"of a composite relationship key -- {left} and {right} are joined on every "
+                f"column of it"
             )
         elif pair.reason == NEVER_TRUE:
             said = (

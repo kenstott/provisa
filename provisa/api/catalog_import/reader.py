@@ -10,7 +10,8 @@
 
 """The CatalogReader port (REQ-2247, TERMS SOURCED FROM CATALOGS).
 
-Inbound: ``list_glossary`` reads a catalog's whole business glossary, so a term present only in the
+Inbound: ``read`` reads the values of the assets a Syncing entry links, for the import review
+(REQ-2247); ``list_glossary`` reads a catalog's whole business glossary, so a term present only in the
 catalog can become a draft Provisa term. Separate from the outbound ``MetadataExport`` port
 (REQ-1068); an adapter that does both implements both.
 """
@@ -31,13 +32,9 @@ if TYPE_CHECKING:
 class GlossaryListingUnsupported(NotImplementedError):  # REQ-2247
     """Raised when a catalog provider that cannot read its glossary is asked to list it."""
 
-
-class CatalogReadNotSupported(RuntimeError):  # REQ-2247
-    """Raised when a provider that cannot read its catalog's values back is asked to."""
-
-    def __init__(self, provider_name: str) -> None:
-        super().__init__(f"catalog provider {provider_name!r} is not supported for reading yet")
-        self.provider_name = provider_name
+    def __init__(self, provider: str) -> None:
+        self.provider = provider
+        super().__init__(f"catalog provider {provider!r} is not supported for reading yet")
 
 
 @dataclass(frozen=True)
@@ -73,6 +70,5 @@ class CatalogReader(ABC):  # REQ-2247
         the neutral form of :mod:`provisa.api.metadata_export.sync_values`, keyed the same way as
         Provisa's. An asset the catalog does not hold has no values; a failed read raises.
 
-        Read through the same checked, pinned client the publish uses (SEC-H6/SEC-H6b).
-        """
+        Read through the same checked, pinned client the publish uses (SEC-H6/SEC-H6b)."""
         ...

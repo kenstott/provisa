@@ -41,8 +41,7 @@ from provisa.api.metadata_export.model import (
     TableAsset,
 )
 from provisa.api.metadata_export.openmetadata import OpenMetadataExport, to_term_plans
-from provisa.api.catalog_import.reader import CatalogReader
-from provisa.api.metadata_export.registry import metadata_export
+from provisa.api.catalog_import import GlossaryListingUnsupported, catalog_reader
 from provisa.core.models import MetadataExportTarget
 
 TABLE = AssetRef(AssetKind.TABLE, ("wh", "public", "orders"))
@@ -314,8 +313,9 @@ async def test_datahub_refused_read_raises(monkeypatch, egress):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("provider", ["atlas", "collibra", "atlan", "openlineage"])
-async def test_a_provider_that_does_not_read_is_not_a_catalog_reader(provider):
-    assert not isinstance(metadata_export(_target(provider)), CatalogReader)
+async def test_a_provider_that_does_not_read_is_refused_by_name(provider):
+    with pytest.raises(GlossaryListingUnsupported, match=f"{provider!r}"):
+        catalog_reader(_target(provider))
 
 
 def test_provisa_values_cover_every_kind_on_every_asset():

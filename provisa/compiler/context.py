@@ -121,6 +121,7 @@ def _register_table_in_ctx(
         source_type=src_type,
         original_table_name=t.table_name if physical_name != t.table_name else "",
         display_name=t.alias or "",
+        gql_convention=t.gql_convention_override,
     )
     ctx.tables[t.field_name] = meta
     _display = semantic_table_name(meta)

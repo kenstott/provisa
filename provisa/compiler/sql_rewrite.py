@@ -233,11 +233,13 @@ class _Replacements:
 def _context_stamp(ctx: CompilationContext) -> tuple[Any, ...]:
     """What a lookup derived from ``ctx`` was derived from. A context is built once
     (compiler/context.py) and only read afterwards, so this is a guard, not the design's
-    invalidation: its tables and joins compared by identity (a table re-registered under a name is
-    a new TableMeta), the column and virtual-column maps by object and size."""
+    invalidation: each map compared by object and size, so the stamp costs the same whatever the
+    model's size (a statement reads it once per derived lookup; tests/unit/test_lowering_memo.py)."""
     return (
-        tuple(ctx.tables.values()),
-        tuple(ctx.joins.values()),
+        id(ctx.tables),
+        len(ctx.tables),
+        id(ctx.joins),
+        len(ctx.joins),
         id(ctx.physical_to_sql),
         len(ctx.physical_to_sql),
         id(ctx.virtual_columns),
@@ -247,7 +249,7 @@ def _context_stamp(ctx: CompilationContext) -> tuple[Any, ...]:
     )
 
 
-def _derived(ctx: CompilationContext, kind: str, build: Any) -> Any:
+def context_derived(ctx: CompilationContext, kind: Any, build: Any) -> Any:
     """``build(ctx)``, kept on the context (``CompilationContext.lowering_memo``) for every later
     statement of it: keyed by the SQL naming convention in force (an org's own convention names
     its tables otherwise, REQ-1327) and rebuilt when the context's stamp differs from the one it
@@ -346,6 +348,9 @@ def _table_lookups(ctx: CompilationContext) -> TableLookups:
     # (naming.table_id_of), never the other's
     by_catalog_name: dict[tuple[str, str, str], tuple[str, str, str]] = {}
 
+    from provisa.compiler.names_table import context_names
+
+    names = context_names(ctx)
     seen: set[tuple[str, str]] = set()
     for meta in ctx.tables.values():
         key = (meta.schema_name, meta.table_name)
@@ -373,12 +378,13 @@ def _table_lookups(ctx: CompilationContext) -> TableLookups:
             by_schema_name[(sl, orig_nl)] = (meta.catalog_name, meta.schema_name, meta.table_name)
         # Map domain-name schema variant → physical (e.g. "shelter"."shelter__animal_breeds" → "graphql_remote"."shelter__animal_breeds")
         if meta.domain_id:
-            from provisa.compiler.naming import domain_to_sql_name
-
-            domain_sl = domain_to_sql_name(meta.domain_id).lower()
-            # The name the model serves it under, which an alias makes another than its physical
-            # one: left unresolved, its published columns are not lowered (_lower_column_aliases).
-            by_schema_name[(domain_sl, semantic_table_name(meta).lower())] = (
+            # REQ-467: the name the model serves it under, and the schema it is served in, read
+            # from the names table (its SQL row is scoped to its domain's SQL schema). An alias
+            # makes it another than its physical one: left unresolved, its published columns are
+            # not lowered (_lower_column_aliases).
+            sql_row = names.table_row(meta.table_id, "sql")
+            domain_sl = sql_row.scope[1].lower()
+            by_schema_name[(domain_sl, sql_row.name.lower())] = (
                 meta.catalog_name,
                 meta.schema_name,
                 meta.table_name,
@@ -410,7 +416,7 @@ def normalize_table_refs(sql: str, ctx: CompilationContext) -> str:  # REQ-641
     """
     import sqlglot.expressions as exp
 
-    by_name, by_schema_name, by_field, by_catalog_name = _derived(
+    by_name, by_schema_name, by_field, by_catalog_name = context_derived(
         ctx, "table_lookups", _table_lookups
     )
 
@@ -512,7 +518,7 @@ def normalize_table_refs(sql: str, ctx: CompilationContext) -> str:  # REQ-641
 def published_columns(ctx: CompilationContext) -> dict[int, dict[str, str]]:
     """:func:`_published_columns`, derived once per context: read, never changed, by its
     callers."""
-    return _derived(ctx, "published_columns", _published_columns)
+    return context_derived(ctx, "published_columns", _published_columns)
 
 
 def _published_columns(ctx: CompilationContext) -> dict[int, dict[str, str]]:
@@ -546,7 +552,7 @@ def _published_columns(ctx: CompilationContext) -> dict[int, dict[str, str]]:
 
 def _column_renames(ctx: CompilationContext) -> dict[tuple[str, str], dict[str, str]]:
     """:func:`_derived_column_renames`, derived once per context."""
-    return _derived(ctx, "column_renames", _derived_column_renames)
+    return context_derived(ctx, "column_renames", _derived_column_renames)
 
 
 def _derived_column_renames(ctx: CompilationContext) -> dict[tuple[str, str], dict[str, str]]:
@@ -724,7 +730,9 @@ def _lower_virtual_columns(tree: exp.Expression, ctx: CompilationContext) -> Non
     PostgreSQL does."""
     from sqlglot.optimizer.scope import traverse_scope
 
-    by_physical: dict[tuple[str, str], int] = _derived(ctx, "virtual_tables", _virtual_tables)
+    by_physical: dict[tuple[str, str], int] = context_derived(
+        ctx, "virtual_tables", _virtual_tables
+    )
     if not by_physical or not isinstance(tree, exp.Query):
         return
     for scope in traverse_scope(tree):
@@ -811,7 +819,7 @@ def rewrite_semantic_to_physical(sql: str, ctx: CompilationContext) -> str:  # R
     # the ref to its physical name before that alias existed, so normalize then aliased it to the
     # PHYSICAL name and the qualifiers were stranded — "missing FROM-clause entry for table
     # query_audit_log" on every ops/meta table whose physical name differs from its semantic one.
-    sql = _derived(ctx, "semantic_to_physical", _semantic_to_physical).apply(
+    sql = context_derived(ctx, "semantic_to_physical", _semantic_to_physical).apply(
         normalize_table_refs(sql, ctx)
     )
     # DIRECT route: a native driver addresses schema.table, not catalog.schema.table — strip the
@@ -850,7 +858,9 @@ def rewrite_semantic_to_catalog_physical(sql: str, ctx: CompilationContext) -> s
     which only rewrites semantic → uncatalogued schema.table.
     """
     sql = translate_epoch_temporal_columns(  # REQ-1908
-        _derived(ctx, "semantic_to_catalog_physical", _semantic_to_catalog_physical).apply(sql),
+        context_derived(ctx, "semantic_to_catalog_physical", _semantic_to_catalog_physical).apply(
+            sql
+        ),
         ctx.epoch_columns,
     )
     sql = mark_subtype_operations(sql, ctx.subtype_columns)  # REQ-2171
