@@ -27,6 +27,7 @@ import sqlglot.expressions as exp
 
 from provisa.compiler.schema_types import physical_table_name
 from provisa.federation.replica_address import TableKey, engine_table_keys
+from provisa.transpiler.typed_columns import TYPED_DIALECTS
 
 #: Where a key with no catalog (a replica's address on an engine whose SQL has none) is held in
 #: the schema, which has one depth for every table: a statement names such a table by schema and
@@ -43,10 +44,7 @@ def registered_column_types(state: Any, engine: Any) -> dict[str, Any]:
     by_key: dict[TableKey, dict[str, exp.DataType]] = {}
     shared: set[TableKey] = set()
     for table in state.tables:
-        columns = {
-            column.column_name: exp.DataType.build(column.data_type, dialect="postgres", udt=True)
-            for column in state.schema_build_cache["column_types"].get(table["id"], ())
-        }
+        columns = _registered_columns(state, table)
         if not columns:
             continue  # no column of it is registered: nothing to type it by
         name = physical_table_name(physical, table["source_id"], table["table_name"])
@@ -65,3 +63,46 @@ def registered_column_types(state: Any, engine: Any) -> dict[str, Any]:
             continue
         nested.setdefault(catalog or _NO_CATALOG, {}).setdefault(schema, {})[table] = columns
     return nested
+
+
+def source_column_types(state: Any, source_id: str) -> dict[str, Any]:
+    """The column types of each table registered on ``source_id``, as a sqlglot schema keyed by
+    the name a statement sent straight to that source (the DIRECT route) gives it: schema and
+    table, with no catalog (``sql_rewrite.rewrite_semantic_to_physical``). A name two tables of
+    different columns share is left out, as in :func:`registered_column_types`."""
+    physical = state.kafka_table_physical
+    by_key: dict[tuple[str, str], dict[str, exp.DataType]] = {}
+    shared: set[tuple[str, str]] = set()
+    for table in state.tables:
+        if table["source_id"] != source_id:
+            continue
+        columns = _registered_columns(state, table)
+        if not columns:
+            continue  # no column of it is registered: nothing to type it by
+        key = (table["schema_name"], physical_table_name(physical, source_id, table["table_name"]))
+        if key in by_key and by_key[key] != columns:
+            shared.add(key)
+        by_key[key] = columns
+    schemas: dict[str, Any] = {}
+    for (schema, table), columns in by_key.items():
+        if (schema, table) not in shared:
+            schemas.setdefault(schema, {})[table] = columns
+    return {_NO_CATALOG: schemas} if schemas else {}
+
+
+def direct_column_types(state: Any, source_id: str, dialect: str) -> dict[str, Any] | None:
+    """The column types a statement sent straight to ``source_id`` in ``dialect`` is transpiled
+    with: the source's registered types for a dialect that writes by its operands' types
+    (``typed_columns.TYPED_DIALECTS``: Db2, SAP HANA), None for every other dialect, which reads
+    none."""
+    if dialect not in TYPED_DIALECTS:
+        return None
+    return source_column_types(state, source_id)
+
+
+def _registered_columns(state: Any, table: dict[str, Any]) -> dict[str, exp.DataType]:
+    """The registered columns of ``table`` by name, each with its PostgreSQL type."""
+    return {
+        column.column_name: exp.DataType.build(column.data_type, dialect="postgres", udt=True)
+        for column in state.schema_build_cache["column_types"].get(table["id"], ())
+    }
