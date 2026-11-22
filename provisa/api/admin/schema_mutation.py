@@ -262,7 +262,7 @@ async def _save_relationship_as_caller(
     if not has_capability(info, "create_relationship"):
         if not creating:
             require_capability(info, "create_relationship")
-        return await _queue_creation_request(info, "relationship", "create_relationship", input)
+        return await _queue_creation_request(info, "relationship", input)
     from provisa.api.admin.capabilities import _identity_from_info
 
     _invalid = _cardinality_problem(input)
@@ -303,7 +303,7 @@ async def _save_relationship_as_caller(
         if not creating:
             raise
         # REQ-434/1531: out of domain queues a request, the same answer a missing right gets.
-        return await _queue_creation_request(info, "relationship", "create_relationship", input)
+        return await _queue_creation_request(info, "relationship", input)
     _cross_domain = _tgt_row is not None and _tgt_row["domain_id"] != _src_row["domain_id"]
     # REQ-020: record the defining steward as owner.
     _identity = _identity_from_info(info)
@@ -1455,8 +1455,10 @@ async def _execution_refusal(info: StrawberryInfo, req: dict) -> "MutationResult
 
     if req["request_type"] == rule.REQUEST_TYPE:
         return await _relationship_decision_refusal(info, req, executing=True)
+    from provisa.api.admin.request_queue import deciding_right
+
     try:
-        require_capability(info, req["capability"])
+        require_capability(info, deciding_right(req["request_type"]))
     except PermissionError as e:
         return MutationResult(success=False, message=str(e))
     identity = _identity_from_info(info)
@@ -1512,10 +1514,12 @@ async def perform_request_creation(info: StrawberryInfo, req: dict) -> MutationR
     """Create what a creation request asks for, through the code the direct mutation uses.
 
     The one place a request of any type is carried out, for the REST queue and the GraphQL
-    mutation alike. A relationship is stored on its approvals' authority (REQ-1948); a view,
-    table or source is created as the caller, under the caller's own gates; a webhook is exposed
-    by the schema rebuild once its request is marked executed (REQ-209). The caller marks the
-    request executed when this succeeds.
+    mutation alike. A relationship or a view is stored on its approvals' authority, not under the
+    approver's own create right (REQ-1327(5), REQ-1948): a holder of approve_view who may not
+    author a view still carries out the view it approved. A table or source is created as the
+    caller, under the caller's own gates; a webhook is exposed by the schema rebuild once its
+    request is marked executed (REQ-209). The caller marks the request executed when this
+    succeeds.
     """
     from provisa.api.admin.capabilities import _identity_from_info
 
@@ -1528,7 +1532,9 @@ async def perform_request_creation(info: StrawberryInfo, req: dict) -> MutationR
             needs_review=False,
             creating=True,  # a request is for a new relationship
         )
-    if kind in ("view", "table"):  # REQ-1792: "table" is the MCP-proposal kind
+    if kind == "view":  # REQ-1327(5): on the approval's authority
+        return await _ops.register_table(info, _rebuild_table_input(req["payload"]), approved=True)
+    if kind == "table":  # REQ-1792: "table" is the MCP-proposal kind
         table = _rebuild_table_input(req["payload"])
         # Same strawberry-decorator signature limitation as the other in-module mutation calls.
         return await Mutation().register_table(info, table)  # pyright: ignore[reportCallIssue]
@@ -6075,15 +6081,17 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     return refusal
             identity = _identity_from_info(info)
             resolved_by = getattr(identity, "user_id", None) if identity is not None else None
-            # Its author may take a request back; anyone else needs the right it names.
+            # Its author may take a request back; anyone else needs the right that decides it.
             withdrawn = _rule.is_withdrawal(
                 request_type=req["request_type"],
                 user_id=resolved_by,
                 requested_by=req["requested_by"],
             )
             if req["request_type"] != "relationship" and not withdrawn:
+                from provisa.api.admin.request_queue import deciding_right
+
                 try:
-                    require_capability(info, req["capability"])
+                    require_capability(info, deciding_right(req["request_type"]))
                 except PermissionError as e:
                     return MutationResult(success=False, message=str(e))
             await cr_repo.mark_rejected(

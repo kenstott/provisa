@@ -22,17 +22,17 @@
       "embedding_library_missing": "Het embeddingmodel {{model}} gebruikt de provider {{provider}}, die de extra {{extra}} nodig heeft (de module {{module}} is niet geïnstalleerd): pip install 'provisa[{{extra}}]'."
     },
     "ai": {
-      "endpoint_address_from_server": "Het AI-eindpunt {{vendor}} haalt zijn adres uit de omgeving van de server, die een organisatie op deze server niet gebruikt. Geef het onder Beheer, AI-modellen een eigen adres.",
+      "key_required": "{{vendor}} heeft geen sleutel. Stel er een in onder Beheer, AI-modellen.",
+      "vendor_uses_server_credentials": "{{vendor}} wordt bereikt met de eigen inloggegevens van de server, die een organisatie op deze server niet gebruikt. Kies onder Beheer, AI-modellen een leverancier die een sleutel accepteert, of een AI-eindpunt.",
       "endpoint_key_from_server": "Het AI-eindpunt {{vendor}} haalt zijn sleutel uit de omgeving van de server, die een organisatie op deze server niet gebruikt. Geef het onder Beheer, AI-modellen een eigen sleutel.",
       "endpoint_key_unset": "Het AI-eindpunt {{vendor}} heeft geen sleutel: {{field}} is niet ingesteld.",
-      "key_required": "{{vendor}} heeft geen sleutel. Stel er een in onder Beheer, AI-modellen.",
+      "endpoint_address_from_server": "Het AI-eindpunt {{vendor}} haalt zijn adres uit de omgeving van de server, die een organisatie op deze server niet gebruikt. Geef het onder Beheer, AI-modellen een eigen adres.",
       "local_server_from_environment": "{{vendor}} wordt bereikt op het eigen adres van de server, dat een organisatie op deze server niet gebruikt. Leg onder Beheer, AI-modellen een AI-eindpunt op uw eigen adres vast.",
       "server_environment_sets": "{{vendor}} kan hier niet worden aangeroepen: de omgeving van de server stelt {{variable}} in, die zijn client voor elke organisatie zou meesturen.",
-      "vector_model_address_from_server": "Het embeddingmodel {{vendor}} haalt zijn adres uit de omgeving van de server, die een organisatie op deze server niet gebruikt. Geef het onder Beheer, AI-modellen een eigen adres.",
       "vector_model_key_from_server": "Het embeddingmodel {{vendor}} haalt zijn sleutel uit de omgeving van de server, die een organisatie op deze server niet gebruikt. Geef het onder Beheer, AI-modellen een eigen sleutel.",
       "vector_model_key_unset": "Het embeddingmodel {{vendor}} heeft geen sleutel: {{field}} is niet ingesteld.",
-      "vector_model_local_server": "Het embeddingmodel {{vendor}} wordt bereikt op het eigen adres van de server, dat een organisatie op deze server niet gebruikt. Geef het onder Beheer, AI-modellen een eigen adres.",
-      "vendor_uses_server_credentials": "{{vendor}} wordt bereikt met de eigen inloggegevens van de server, die een organisatie op deze server niet gebruikt. Kies onder Beheer, AI-modellen een leverancier die een sleutel accepteert, of een AI-eindpunt."
+      "vector_model_address_from_server": "Het embeddingmodel {{vendor}} haalt zijn adres uit de omgeving van de server, die een organisatie op deze server niet gebruikt. Geef het onder Beheer, AI-modellen een eigen adres.",
+      "vector_model_local_server": "Het embeddingmodel {{vendor}} wordt bereikt op het eigen adres van de server, dat een organisatie op deze server niet gebruikt. Geef het onder Beheer, AI-modellen een eigen adres."
     },
     "api": {
       "answer_cut": "Het antwoord voor {{table}} is afgekapt bij max_pages={{max_pages}} ({{rows}} rijen): de API heeft meer. Verhoog max_pages of de paginagrootte van het endpoint om alles te lezen.",
@@ -174,14 +174,13 @@
     },
     "discovery": {
       "adapter_missing_discover_schema": "Adapter voor '{{source_type}}' implementeert discover_schema niet",
-      "answer_unreadable": "Het antwoord van het model bevatte geen leesbare lijst.",
       "cassandra_discovery_unsupported": "Cassandra-schemadetectie vereist een actieve CQL-sessie, die niet beschikbaar is. Definieer de kolommen voor deze bron handmatig.",
       "database_not_connected": "Database niet verbonden",
-      "decided_both_ways": "Een voorstel wordt geaccepteerd of niet opnieuw aanbevolen, niet allebei.",
       "domain_id_required": "domain_id vereist voor domeinbereik",
       "elasticsearch_index_hint_required": "Elasticsearch-detectie vereist een 'index'-hint.",
       "elasticsearch_mapping_failed": "Kan Elasticsearch-mapping voor index '{{index}}' niet lezen: {{error}}",
       "endpoint_already_registered": "Endpoint al geregistreerd: {{error}}",
+      "decided_both_ways": "Een voorstel wordt geaccepteerd of niet opnieuw aanbevolen, niet allebei.",
       "model_has_no_room": "Het model {{model}} kan geen verzoek bevatten: {{reason}}",
       "model_incomplete": "Een gekozen model noemt zowel de leverancier als het model.",
       "no_adapter_for_source_type": "Geen adapter geregistreerd voor brontype '{{source_type}}'",
@@ -201,6 +200,7 @@
       "target_tables_not_read": "Geen van de gekozen doeltabellen ({{count}}) wordt gelezen: detectie laat tabellen van een systeemdomein en tabellen buiten gebruik weg.",
       "unknown_source_type": "Onbekend brontype: {{type}}",
       "vendor_unknown": "{{vendor}} toont hier geen modellen; voer de modelnaam in.",
+      "answer_unreadable": "Het antwoord van het model bevatte geen leesbare lijst.",
       "source_tables_outside_domains": "De gekozen brontabellen vallen buiten de domeinen die in het domeinfilter zijn geselecteerd: {{names}}.",
       "target_tables_outside_domains": "De gekozen doeltabellen vallen buiten de domeinen die in het domeinfilter zijn geselecteerd: {{names}}."
     },
@@ -483,6 +483,7 @@
       "view_deploy_unsupported_type": "Bron '{{source}}' is van type '{{type}}' en kan geen geïmplementeerde view hosten; ondersteunde typen: {{supported}}",
       "view_deployed": "View '{{view}}' geïmplementeerd naar '{{source}}' schema '{{schema}}'",
       "view_spans_sources": "view omvat meerdere bronnen: {{sources}}",
+      "view_relationships_unapproved": "View '{{view}}' koppelt via relaties die nog niet zijn goedgekeurd ({{relationships}}); keur ze goed en voer dit verzoek daarna opnieuw uit",
       "webhook_approved": "Webhook '{{webhook}}' goedgekeurd",
       "webhook_name_required": "webhook_name is vereist voor een webhooktrigger",
       "mask_unreachable": "U hebt een masker gedefinieerd dat niet bereikbaar is: {{entries}}",
@@ -490,7 +491,7 @@
       "change_streams_unavailable": "Bron '{{source}}' is een zelfstandige MongoDB-server, die geen change streams levert: het native wijzigingssignaal vereist een replica set of een sharded cluster. Draai hem als replica set, of gebruik het wijzigingssignaal poll.",
       "openapi_no_rows_field": "Tabel {{table}}: het antwoord heeft geen eigenschap {{rows_field}} om rijen uit te lezen.",
       "paging_rows_field_fixed": "Tabel {{table}}: waar de rijen staan ({{rows_field}}) wordt ingesteld bij het registreren van de tabel. Registreer de tabel opnieuw om de rijen ergens anders te lezen.",
-      "relationship_request_queued": "In wachtrij geplaatst als verzoek #{{id}}. Het heeft goedkeuringen nodig van {{required}} verschillende gebruikers die relaties mogen aanmaken, van wie er minstens één tot elk geraakt domein reikt.",
+      "relationship_request_queued": "In wachtrij geplaatst als verzoek #{{id}}. Het heeft goedkeuringen nodig van {{required}} verschillende gebruikers die relaties mogen goedkeuren, van wie er minstens één tot elk geraakt domein reikt.",
       "request_approved": "Aanmaakverzoek #{{id}} goedgekeurd",
       "registry_auth_unknown": "Bron '{{source}}': schema-registryauthenticatie '{{method}}' is geen van {{methods}}",
       "registry_url_required": "Bron '{{source}}': er zijn schema-registryinstellingen opgegeven maar geen schema-registry-URL",
@@ -692,13 +693,13 @@
       "try_cast_needs_postgres_16": "toInteger, toFloat en toBoolean van een waarde die mogelijk niet converteert, vereisen PostgreSQL 16 of later op deze engine."
     },
     "requests": {
-      "approver_outside_domains": "Uw recht om relaties aan te maken reikt niet tot een domein dat dit verzoek raakt ({{domains}})",
+      "approver_outside_domains": "Uw recht om relaties goed te keuren reikt niet tot een domein dat dit verzoek raakt ({{domains}})",
       "own_request": "U kunt niet beslissen over een verzoek dat u zelf hebt gedaan",
       "already_approved": "U hebt dit verzoek al goedgekeurd",
       "approver_unidentified": "Over een relatieverzoek beslissen aangemelde gebruikers; deze beslissing heeft geen gebruiker",
       "waiting_on_domains": "Dit verzoek wacht nog op een goedkeuring van: {{domains}}",
       "approvals_incomplete": "Dit verzoek heeft goedkeuringen van {{required}} verschillende gebruikers nodig",
-      "tables_not_registered": "De tabellen die dit verzoek noemt ({{tables}}), zijn niet meer geregistreerd. Het kan niet worden goedgekeurd; een gebruiker wiens recht om relaties aan te maken tot elk domein reikt, kan het afwijzen"
+      "tables_not_registered": "De tabellen die dit verzoek noemt ({{tables}}), zijn niet meer geregistreerd. Het kan niet worden goedgekeurd; een gebruiker wiens recht om relaties goed te keuren tot elk domein reikt, kan het afwijzen"
     },
     "statement": {
       "rows_cut": "Het antwoord is afgekapt op {{limit}} rijen, de rijlimiet die voor deze leesactie geldt ({{kind}}): er komen meer rijen overeen dan er zijn teruggegeven.",

@@ -1923,7 +1923,6 @@ async def _queue_mcp_proposal(
     state: Any,
     role: str,
     request_type: str,
-    capability: str,
     reason: str,
     rebuilt_input: Any,
     request: Any,
@@ -1935,7 +1934,7 @@ async def _queue_mcp_proposal(
     GraphQL caller falls back to, so a rights-holder must execute or reject it via the admin UI
     (Requests page) regardless of what capability the MCP credential itself carries."""
 
-    from provisa.api.admin.request_queue import raise_request
+    from provisa.api.admin.request_queue import deciding_right, raise_request
 
     if not reason or not reason.strip():
         raise ValueError("reason is required — say why this was discovered/proposed")
@@ -1951,16 +1950,14 @@ async def _queue_mcp_proposal(
     pool = state.model_db
     assert pool is not None
     async with pool.acquire() as conn:
-        request_id = await raise_request(
-            conn, request_type, capability, payload, proposer, state=state
-        )
+        request_id = await raise_request(conn, request_type, payload, proposer, state=state)
     return {
         "request_id": request_id,
         "status": "pending",
         "message": (
             client_text(
                 f"Queued as creation request #{request_id} — awaiting a user holding "
-                f"{capability!r} to review and approve on the Requests page."
+                f"{deciding_right(request_type)!r} to review and approve on the Requests page."
             )
         ),
     }
@@ -2036,7 +2033,6 @@ async def propose_source(
         state,
         role,
         "source",
-        "source_registration",
         reason,
         source_input,
         request,
@@ -2088,7 +2084,6 @@ async def propose_table(
         state,
         role,
         "table",
-        "table_registration",
         reason,
         table_input,
         request,

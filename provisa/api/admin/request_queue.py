@@ -10,8 +10,11 @@
 
 """Raising a request: what it is for, who it is addressed to, and who is told (REQ-2215..2217).
 
-Every request names the environment it is for (REQ-2217). It is addressed to the roles that hold
-the right it names -- the roles whose members may decide it -- and those roles' members are
+The right that decides a request is set here by its type, never by the requester (REQ-1327(5),
+REQ-1948): a view request is decided by approve_view, a relationship request by
+approve_relationship. Every request names the environment it is for (REQ-2217). It is addressed
+to the roles that hold the right that decides it -- the roles whose members may decide it -- and
+those roles' members are
 resolved when it is raised (REQ-2215) and kept on the request, which ops.requests publishes
 (REQ-2216). A role none of whose members can be resolved is kept by name.
 
@@ -20,7 +23,7 @@ REQ-2216 names), ``events`` (Provisa sends no notice; a workflow tool subscribes
 or ``both``.
 """
 
-# Requirements: REQ-2215, REQ-2216, REQ-2217
+# Requirements: REQ-2215, REQ-2216, REQ-2217, REQ-1327, REQ-1948
 
 from __future__ import annotations
 
@@ -46,6 +49,26 @@ DeliveryMode = Literal["email", "events", "both"]
 DELIVERY_MODES: tuple[DeliveryMode, ...] = ("email", "events", "both")
 #: REQ-2216: "email (built in, the default)" -- the requirement's own default, not a fallback.
 DEFAULT_DELIVERY: DeliveryMode = "email"
+
+
+#: The right that decides each request type (REQ-1327(5), REQ-1948). A type not listed here
+#: cannot be raised.
+DECIDING_RIGHT: dict[str, str] = {
+    "view": "approve_view",
+    "relationship": "approve_relationship",
+    "webhook": "webhook_registration",  # REQ-209
+    "source": "source_registration",  # REQ-1792
+    "table": "table_registration",  # REQ-1792
+}
+
+
+def deciding_right(request_type: str) -> str:
+    """The right whose holders decide a request of ``request_type``; an unknown type is refused."""
+    if request_type not in DECIDING_RIGHT:
+        raise ValueError(
+            f"Unknown request type {request_type!r}; it must be one of {', '.join(DECIDING_RIGHT)}"
+        )
+    return DECIDING_RIGHT[request_type]
 
 
 def delivery_of(settings: dict[str, Any]) -> DeliveryMode:
@@ -95,14 +118,13 @@ def unresolved_of(resolved: list[RoleMembers]) -> list[str]:
 async def raise_request(  # REQ-2215, REQ-2216, REQ-2217
     conn: "Connection",
     request_type: str,
-    capability: str,
     payload: dict,
     requested_by: str | None,
     *,
     state: Any,
 ) -> int:
     """Persist a pending request for the environment this call is bound to, addressed to the roles
-    holding ``capability`` with their members resolved, and tell those members by email when the
+    holding the right that decides its type (:func:`deciding_right`) with their members resolved, and tell those members by email when the
     org's delivery setting says Provisa sends notices. Returns the request id.
 
     ``state`` is the app state of the org the request is raised in: its roles, model store,
@@ -113,6 +135,7 @@ async def raise_request(  # REQ-2215, REQ-2216, REQ-2217
     assert state.model_db is not None, "the org's model store is bound with its runtime"
     org_id = require_current_org()
     environment = active_env()
+    capability = deciding_right(request_type)
     role_ids = addressed_roles(capability, state.roles)
     resolved = await resolve_addressees(
         ProvisaAssignmentsResolver(state.model_db), org_id, role_ids

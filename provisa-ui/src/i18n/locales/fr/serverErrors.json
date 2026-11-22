@@ -22,17 +22,17 @@
       "embedding_library_missing": "Le modèle d'embeddings {{model}} utilise le fournisseur {{provider}}, qui nécessite l'extra {{extra}} (le module {{module}} n'est pas installé) : pip install 'provisa[{{extra}}]'."
     },
     "ai": {
-      "endpoint_address_from_server": "Le point de terminaison IA {{vendor}} prend son adresse dans l'environnement du serveur, qu'une organisation de ce serveur n'utilise pas. Donnez-lui une adresse qui vous est propre dans Admin, Modèles IA.",
+      "key_required": "{{vendor}} n'a pas de clé. Définissez-en une dans Admin, Modèles IA.",
+      "vendor_uses_server_credentials": "{{vendor}} est joint avec les identifiants propres au serveur, qu'une organisation de ce serveur n'utilise pas. Choisissez un fournisseur qui accepte une clé, ou un point de terminaison IA, dans Admin, Modèles IA.",
       "endpoint_key_from_server": "Le point de terminaison IA {{vendor}} prend sa clé dans l'environnement du serveur, qu'une organisation de ce serveur n'utilise pas. Donnez-lui une clé qui vous est propre dans Admin, Modèles IA.",
       "endpoint_key_unset": "Le point de terminaison IA {{vendor}} n'a pas de clé : {{field}} n'est pas défini.",
-      "key_required": "{{vendor}} n'a pas de clé. Définissez-en une dans Admin, Modèles IA.",
+      "endpoint_address_from_server": "Le point de terminaison IA {{vendor}} prend son adresse dans l'environnement du serveur, qu'une organisation de ce serveur n'utilise pas. Donnez-lui une adresse qui vous est propre dans Admin, Modèles IA.",
       "local_server_from_environment": "{{vendor}} est joint à l'adresse propre au serveur, qu'une organisation de ce serveur n'utilise pas. Déclarez un point de terminaison IA à votre propre adresse dans Admin, Modèles IA.",
       "server_environment_sets": "{{vendor}} ne peut pas être appelé ici : l'environnement du serveur définit {{variable}}, que son client enverrait pour chaque organisation.",
-      "vector_model_address_from_server": "Le modèle d'embedding {{vendor}} prend son adresse dans l'environnement du serveur, qu'une organisation de ce serveur n'utilise pas. Donnez-lui une adresse qui vous est propre dans Admin, Modèles IA.",
       "vector_model_key_from_server": "Le modèle d'embedding {{vendor}} prend sa clé dans l'environnement du serveur, qu'une organisation de ce serveur n'utilise pas. Donnez-lui une clé qui vous est propre dans Admin, Modèles IA.",
       "vector_model_key_unset": "Le modèle d'embedding {{vendor}} n'a pas de clé : {{field}} n'est pas défini.",
-      "vector_model_local_server": "Le modèle d'embedding {{vendor}} est joint à l'adresse propre au serveur, qu'une organisation de ce serveur n'utilise pas. Donnez-lui une adresse qui vous est propre dans Admin, Modèles IA.",
-      "vendor_uses_server_credentials": "{{vendor}} est joint avec les identifiants propres au serveur, qu'une organisation de ce serveur n'utilise pas. Choisissez un fournisseur qui accepte une clé, ou un point de terminaison IA, dans Admin, Modèles IA."
+      "vector_model_address_from_server": "Le modèle d'embedding {{vendor}} prend son adresse dans l'environnement du serveur, qu'une organisation de ce serveur n'utilise pas. Donnez-lui une adresse qui vous est propre dans Admin, Modèles IA.",
+      "vector_model_local_server": "Le modèle d'embedding {{vendor}} est joint à l'adresse propre au serveur, qu'une organisation de ce serveur n'utilise pas. Donnez-lui une adresse qui vous est propre dans Admin, Modèles IA."
     },
     "api": {
       "answer_cut": "La réponse pour {{table}} a été tronquée à max_pages={{max_pages}} ({{rows}} lignes) : l'API en a davantage. Augmentez max_pages ou la taille de page du point de terminaison pour tout lire.",
@@ -174,14 +174,13 @@
     },
     "discovery": {
       "adapter_missing_discover_schema": "L'adaptateur pour « {{source_type}} » n'implémente pas discover_schema",
-      "answer_unreadable": "La réponse du modèle ne contenait aucune liste lisible.",
       "cassandra_discovery_unsupported": "La découverte de schéma Cassandra requiert une session CQL active, qui n'est pas disponible. Définissez les colonnes manuellement pour cette source.",
       "database_not_connected": "Base de données non connectée",
-      "decided_both_ways": "Une proposition est acceptée ou n'est plus recommandée, pas les deux.",
       "domain_id_required": "domain_id requis pour la portée domaine",
       "elasticsearch_index_hint_required": "La découverte Elasticsearch requiert un indice « index ».",
       "elasticsearch_mapping_failed": "Échec de lecture du mapping Elasticsearch pour l'index « {{index}} » : {{error}}",
       "endpoint_already_registered": "Endpoint déjà enregistré : {{error}}",
+      "decided_both_ways": "Une proposition est acceptée ou n'est plus recommandée, pas les deux.",
       "model_has_no_room": "Le modèle {{model}} ne peut pas contenir une requête : {{reason}}",
       "model_incomplete": "Un modèle choisi indique à la fois son fournisseur et son modèle.",
       "no_adapter_for_source_type": "Aucun adaptateur enregistré pour le type de source « {{source_type}} »",
@@ -201,6 +200,7 @@
       "target_tables_not_read": "Aucune des tables cibles choisies ({{count}}) n'est lue : la découverte laisse de côté les tables d'un domaine système et celles hors service.",
       "unknown_source_type": "Type de source inconnu : {{type}}",
       "vendor_unknown": "{{vendor}} ne liste aucun modèle ici ; saisissez le nom du modèle.",
+      "answer_unreadable": "La réponse du modèle ne contenait aucune liste lisible.",
       "source_tables_outside_domains": "Les tables source choisies sont en dehors des domaines sélectionnés dans le filtre de domaines : {{names}}.",
       "target_tables_outside_domains": "Les tables cibles choisies sont en dehors des domaines sélectionnés dans le filtre de domaines : {{names}}."
     },
@@ -483,6 +483,7 @@
       "view_deploy_unsupported_type": "La source « {{source}} » est de type « {{type}} », qui ne peut pas héberger une vue déployée ; types pris en charge : {{supported}}",
       "view_deployed": "Vue « {{view}} » déployée sur « {{source}} », schéma « {{schema}} »",
       "view_spans_sources": "la vue s'étend sur plusieurs sources : {{sources}}",
+      "view_relationships_unapproved": "La vue '{{view}}' s'appuie sur des relations pas encore approuvées ({{relationships}}) ; approuvez-les, puis exécutez à nouveau cette demande",
       "webhook_approved": "Webhook « {{webhook}} » approuvé",
       "webhook_name_required": "webhook_name est requis pour un déclencheur webhook",
       "mask_unreachable": "Vous avez défini un masque qui n'est pas accessible : {{entries}}",
@@ -490,7 +491,7 @@
       "change_streams_unavailable": "La source '{{source}}' est un serveur MongoDB autonome, qui ne fournit pas de change streams : le signal de modification native exige un replica set ou un cluster shardé. Exécutez-le en replica set ou utilisez le signal de modification poll.",
       "openapi_no_rows_field": "Table {{table}} : la réponse n'a aucune propriété {{rows_field}} où lire des lignes.",
       "paging_rows_field_fixed": "Table {{table}} : l'endroit où se trouvent ses lignes ({{rows_field}}) est défini à l'enregistrement de la table. Enregistrez de nouveau la table pour lire ses lignes ailleurs.",
-      "relationship_request_queued": "Mis en file comme demande n° {{id}}. Elle requiert les approbations de {{required}} utilisateurs différents autorisés à créer des relations, dont au moins un atteint chaque domaine concerné.",
+      "relationship_request_queued": "Mis en file comme demande n° {{id}}. Elle requiert les approbations de {{required}} utilisateurs différents autorisés à approuver des relations, dont au moins un atteint chaque domaine concerné.",
       "request_approved": "Demande de création n° {{id}} approuvée",
       "registry_auth_unknown": "Source '{{source}}' : l'authentification du registre de schémas '{{method}}' ne fait pas partie de {{methods}}",
       "registry_url_required": "Source '{{source}}' : des paramètres du registre de schémas sont fournis mais aucune URL de registre de schémas",
@@ -692,13 +693,13 @@
       "try_cast_needs_postgres_16": "toInteger, toFloat et toBoolean d'une valeur qui peut ne pas se convertir nécessitent PostgreSQL 16 ou ultérieur sur ce moteur."
     },
     "requests": {
-      "approver_outside_domains": "Votre droit de créer des relations n'atteint aucun domaine concerné par cette demande ({{domains}})",
+      "approver_outside_domains": "Votre droit d'approuver des relations n'atteint aucun domaine concerné par cette demande ({{domains}})",
       "own_request": "Vous ne pouvez pas décider d'une demande que vous avez faite",
       "already_approved": "Vous avez déjà approuvé cette demande",
       "approver_unidentified": "Une demande de relation est décidée par des utilisateurs connectés ; cette décision n'a pas d'utilisateur",
       "waiting_on_domains": "Cette demande attend encore une approbation de : {{domains}}",
       "approvals_incomplete": "Cette demande requiert les approbations de {{required}} utilisateurs différents",
-      "tables_not_registered": "Les tables nommées par cette demande ({{tables}}) ne sont plus enregistrées. Elle ne peut pas être approuvée ; un utilisateur dont le droit de créer des relations atteint tous les domaines peut la rejeter"
+      "tables_not_registered": "Les tables nommées par cette demande ({{tables}}) ne sont plus enregistrées. Elle ne peut pas être approuvée ; un utilisateur dont le droit d'approuver des relations atteint tous les domaines peut la rejeter"
     },
     "statement": {
       "rows_cut": "La réponse a été coupée à {{limit}} lignes, la limite de lignes qui s'applique à cette lecture ({{kind}}) : plus de lignes correspondent que celles renvoyées.",
