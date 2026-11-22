@@ -120,6 +120,21 @@
     "standingChoicesHelp": "每次執行按方向對每種差異的處理方式。保留待定或無固定選擇時，差異會留在此處由資料管理員處理。",
     "standingKind": "差異類型",
     "compare": "與目錄比較",
-    "title": "上下文同步"
+    "title": "上下文同步",
+    "importCron": "匯入排程",
+    "importCronHelp": "無人值守匯入的 Cron 表達式。每次執行僅在固定選擇如此規定且只有目錄更改了該值時才採用目錄的值；其他差異一律保留待定，由資料管理員處理。留空則僅按需匯入。",
+    "importCronPlaceholder": "0 3 * * *",
+    "runImportNow": "立即匯入",
+    "lastImport": "上次匯入",
+    "neverImported": "尚未匯入。",
+    "importOk": "已套用 {{applied}}，保留待定 {{held}}",
+    "importFailed": "失敗",
+    "importTrigger_schedule": "排程執行，{{when}}",
+    "importTrigger_manual": "手動執行，{{when}}",
+    "importApplied": "已套用",
+    "importHeld": "保留待定",
+    "importKind": "類型",
+    "importObject": "物件",
+    "importReason": "保留原因"
   }
 }

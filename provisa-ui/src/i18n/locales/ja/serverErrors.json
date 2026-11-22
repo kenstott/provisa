@@ -951,7 +951,9 @@
       "object_gone": "{{object}} は Provisa に登録されていません。",
       "unknown_direction": "{{direction}} は方向ではありません。エクスポートまたはインポートを使用してください。",
       "unknown_kind": "{{kind}} は差異の種類ではありません。",
-      "unknown_choice": "{{choice}} は固定の選択ではありません。"
+      "unknown_choice": "{{choice}} は固定の選択ではありません。",
+      "import_cron_not_importing": "{{entry}} はインポートしないため、インポートのスケジュールはありません。",
+      "import_cron_invalid": "{{cron}} は cron 式ではありません（例: 0 3 * * *）。"
     },
     "wikidata": {
       "no_credential": "Wikidata クエリサービスに認証情報は不要です",

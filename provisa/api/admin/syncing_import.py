@@ -100,8 +100,10 @@ def _named(diff: sr.Difference, reason: str | None = None) -> dict[str, Any]:
     return named
 
 
-async def run_import(org_id: str, entry_id: str) -> dict[str, Any]:
-    """Run ``entry_id``'s Import once, unattended, and record it. Returns what it applied and held.
+async def run_import(org_id: str, entry_id: str, *, trigger: str) -> dict[str, Any]:
+    """Run ``entry_id``'s Import once and record it, started by ``trigger`` (its schedule, or an
+    administrator's Run now). Returns what it applied and held. Run now decides exactly as the
+    schedule does: by the standing choices, never by the administrator who pressed it.
 
     A read the catalog refused is recorded as a failed run and re-raised: a run that fails quietly
     leaves Provisa drifting with nothing to say so.
@@ -124,7 +126,7 @@ async def run_import(org_id: str, entry_id: str) -> dict[str, Any]:
                 conn,
                 entry_id,
                 sr.IMPORT,
-                trigger=catalog_sync_run.SCHEDULE,
+                trigger=trigger,
                 outcome=catalog_sync_run.FAILED,
                 applied=[],
                 held=[],
@@ -144,7 +146,7 @@ async def run_import(org_id: str, entry_id: str) -> dict[str, Any]:
             conn,
             entry_id,
             sr.IMPORT,
-            trigger=catalog_sync_run.SCHEDULE,
+            trigger=trigger,
             outcome=catalog_sync_run.OK,
             applied=applied,
             held=held,
@@ -166,7 +168,7 @@ async def import_job(org_id: str, entry_id: str) -> dict[str, Any] | None:
 
     token = set_current_org(org_id)
     try:
-        return await run_import(org_id, entry_id)
+        return await run_import(org_id, entry_id, trigger=catalog_sync_run.SCHEDULE)
     except SyncDirectionOff as exc:
         logger.debug("syncing import skipped: %s", exc)
         return None
