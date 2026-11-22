@@ -428,8 +428,13 @@ def test_download_unnests_the_tarball(tmp_path, monkeypatch):  # REQ-1690
         tar.addfile(launcher, io.BytesIO(payload))
     body = buf.getvalue()
 
+    import hashlib
+
     class _Resp:
         status_code = 200
+
+        def __init__(self, payload: bytes) -> None:
+            self._payload = payload
 
         def __enter__(self):
             return self
@@ -438,16 +443,18 @@ def test_download_unnests_the_tarball(tmp_path, monkeypatch):  # REQ-1690
             return False
 
         def iter_bytes(self):
-            yield body[:100]
-            yield body[100:]
+            yield self._payload[:100]
+            yield self._payload[100:]
 
     import httpx
 
     def _fake_stream(method, url, **kwargs):
         assert method == "GET"
-        assert url == spec.download_url
         assert kwargs.get("follow_redirects") is True
-        return _Resp()
+        if url == spec.checksum_url:
+            return _Resp(hashlib.sha256(body).hexdigest().encode())
+        assert url == spec.download_url
+        return _Resp(body)
 
     monkeypatch.setattr(httpx, "stream", _fake_stream)
     dest = tmp_path / "engine-v0.82.1" / "pgwire-file"

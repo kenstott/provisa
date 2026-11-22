@@ -120,6 +120,21 @@
     "standingChoicesHelp": "Cosa fa un'esecuzione con ogni tipo di differenza, per direzione. Trattieni, o nessuna scelta fissa, lascia la differenza qui per uno steward.",
     "standingKind": "Tipo di differenza",
     "compare": "Confronta con il catalogo",
-    "title": "Sincronizzazione del contesto"
+    "title": "Sincronizzazione del contesto",
+    "importCron": "Pianificazione dell'importazione",
+    "importCronHelp": "Espressione cron per un'importazione non presidiata. Ogni esecuzione prende il valore del catalogo solo dove la scelta fissa lo prevede e solo il catalogo l'ha cambiato; ogni altra differenza viene trattenuta per uno steward. Lasciare vuoto per importare solo su richiesta.",
+    "importCronPlaceholder": "0 3 * * *",
+    "runImportNow": "Importa ora",
+    "lastImport": "Ultima importazione",
+    "neverImported": "Non ancora importato.",
+    "importOk": "{{applied}} applicate, {{held}} trattenute",
+    "importFailed": "Non riuscita",
+    "importTrigger_schedule": "Esecuzione pianificata, {{when}}",
+    "importTrigger_manual": "Avviata a mano, {{when}}",
+    "importApplied": "Applicate",
+    "importHeld": "Trattenute",
+    "importKind": "Tipo",
+    "importObject": "Oggetto",
+    "importReason": "Perché è stata trattenuta"
   }
 }

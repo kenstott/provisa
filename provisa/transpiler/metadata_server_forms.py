@@ -359,6 +359,11 @@ FDW_OPTION_REFUSAL = (
     "postgresql_fdw_validator of an option the catalog does not list has no form here"
 )
 
+#: postgresql_fdw_validator's error for an option array holding a NULL element: untransformRelOptions
+#: deconstructs the array allowing no NULL (arrayfuncs.c deconstruct_array) before it reads any
+#: option, so it is raised wherever the NULL stands.
+FDW_NULL_OPTION = ("22004", "'null array element not allowed in this context'")
+
 #: The server options postgresql_fdw_validator accepts (foreign.c valid_options).
 FDW_SERVER_OPTIONS = (
     "authtype",
@@ -1685,9 +1690,9 @@ def _catalog_objects(a: _Answers) -> None:
         "postgresql_fdw_validator",
         "options:array, catalog:bigint",
         "BOOLEAN",
-        # A NULL element has no PostgreSQL answer (untransformRelOptions reads it as a text).
+        # A NULL element is 22004 before any option is read (FDW_NULL_OPTION).
         "CASE WHEN ARRAY_SIZE(ARRAY_FILTER(options, _o -> _o IS NULL)) > 0 THEN "
-        + raising("0A000", "'postgresql_fdw_validator of a NULL option has no form here'")
+        + raising(*FDW_NULL_OPTION)
         + f" WHEN ARRAY_SIZE({_refused}) > 0 THEN "
         + raising_or_refused(
             "42601",
