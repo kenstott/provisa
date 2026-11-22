@@ -296,6 +296,9 @@ class TestOrgEmailRuleOnRedemption:
             "email_rule": "@acme\\.com$",
             "auto_join": False,
             "auto_join_role": None,
+            # REQ-1250: the org's join policy reads back with its other settings; an org is
+            # invite_only (False) until an admin opens it to requests.
+            "open_to_requests": False,
         }
 
     async def test_an_address_the_rule_would_refuse_joins_by_invitation(self, client):
