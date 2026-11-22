@@ -11375,5 +11375,12 @@
   "es/yourData.json::yourData.rest": "REST",
   "es/yourData.json::yourData.sql": "SQL",
   "es/yourData.json::yourData.title": "Your data",
-  "glossaryTab.json::glossaryTab.tablesWithoutSamples": "No sample values were read from: {{tables}}."
+  "glossaryTab.json::glossaryTab.tablesWithoutSamples": "No sample values were read from: {{tables}}.",
+  "es/relationshipRow.json::relationshipRow.queryLinks.aggregate.cypher": "Count {{name}} in Cypher",
+  "es/relationshipRow.json::relationshipRow.queryLinks.aggregate.sql": "Count {{name}} in SQL",
+  "es/relationshipRow.json::relationshipRow.queryLinks.aggregate.sparql": "Count {{name}} in SPARQL",
+  "es/relationshipRow.json::relationshipRow.queryLinks.aggregate.graphql": "Count {{name}} in GraphQL",
+  "es/relationshipRow.json::relationshipRow.queryLinks.aggregate.rest": "Count {{name}} in REST",
+  "es/relationshipRow.json::relationshipRow.queryLinks.aggregate.grpc": "Count {{name}} in gRPC",
+  "es/relationshipRow.json::relationshipRow.queryLinks.aggregate.jsonapi": "Count {{name}} in JSON:API"
 }

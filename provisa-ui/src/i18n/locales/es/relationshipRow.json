@@ -68,6 +68,15 @@
         "rest": "REST",
         "grpc": "gRPC",
         "jsonapi": "JSON:API"
+      },
+      "aggregate": {
+        "cypher": "Contar {{name}} en Cypher",
+        "sql": "Contar {{name}} en SQL",
+        "sparql": "Contar {{name}} en SPARQL",
+        "graphql": "Contar {{name}} en GraphQL",
+        "rest": "Contar {{name}} en REST",
+        "grpc": "Contar {{name}} en gRPC",
+        "jsonapi": "Contar {{name}} en JSON:API"
       }
     }
   }

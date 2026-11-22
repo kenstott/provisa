@@ -12,7 +12,9 @@
 // Explore editor with the relationship's query, run at once, and each named by its surface. In the
 // relationship's detail panel, where they stand under their own heading, each shows its surface's
 // name beside its glyph; in a data product's Access section they are drawn as a table's links are
-// there, an icon button whose tip names the surface.
+// there, an icon button whose tip names the surface. A table's own links (its Identity section, and
+// its aggregates on its API section) are drawn by the same rendering under their heading
+// (amended 2026-11-22).
 
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
@@ -24,6 +26,7 @@ import {
   relationshipQueryLinks,
   type QueryLink,
   type RelationshipQueryRef,
+  type RelationshipSurface,
   type RelationshipSurfaces,
 } from "./relationshipQueries";
 
@@ -84,24 +87,24 @@ function QueryLinkButton({
   );
 }
 
-export function RelationshipQueryLinks({
-  rel,
-  name,
-  surfaces,
+/** A list of query links, one per surface: under their own heading each named by its surface
+ * beside its glyph, as a relationship's detail panel and a table's sections draw them; without one
+ * an icon button each, as a data product's Access section draws them. */
+export function QueryLinkRow({
+  links,
+  labelOf,
   heading,
   testIdPrefix,
 }: {
-  rel: RelationshipQueryRef;
-  /** What the tips call the relationship: the name the panel shows it by. */
-  name: string;
-  surfaces: RelationshipSurfaces;
-  /** Shown before the links, where they stand on their own (the detail panel). */
+  links: { surface: RelationshipSurface; link: QueryLink }[];
+  /** Each link's tip: what it reads, on which surface. */
+  labelOf: (surface: RelationshipSurface) => string;
+  /** Shown before the links, where they stand on their own. */
   heading?: string;
   testIdPrefix: string;
 }) {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const links = relationshipQueryLinks(rel, surfaces);
   if (links.length === 0) return null;
   const open = (link: QueryLink) => navigate(link.to, { state: link.state });
   const named = heading !== undefined;
@@ -109,16 +112,16 @@ export function RelationshipQueryLinks({
     <Group
       gap={4}
       wrap={named ? "wrap" : "nowrap"}
-      mb={heading !== undefined ? "md" : 0}
+      mb={named ? "md" : 0}
       data-testid={`${testIdPrefix}-query-links`}
     >
-      {heading !== undefined && (
+      {named && (
         <Text component="span" fz="sm" c="dimmed" mr={4}>
           {heading}
         </Text>
       )}
       {links.map(({ surface, link }) => {
-        const label = t(`relationshipRow.queryLinks.${surface}`, { name });
+        const label = labelOf(surface);
         const testId = `${testIdPrefix}-query-${surface}`;
         return named ? (
           <QueryLinkButton
@@ -136,5 +139,31 @@ export function RelationshipQueryLinks({
         );
       })}
     </Group>
+  );
+}
+
+export function RelationshipQueryLinks({
+  rel,
+  name,
+  surfaces,
+  heading,
+  testIdPrefix,
+}: {
+  rel: RelationshipQueryRef;
+  /** What the tips call the relationship: the name the panel shows it by. */
+  name: string;
+  surfaces: RelationshipSurfaces;
+  /** Shown before the links, where they stand on their own (the detail panel). */
+  heading?: string;
+  testIdPrefix: string;
+}) {
+  const { t } = useTranslation();
+  return (
+    <QueryLinkRow
+      links={relationshipQueryLinks(rel, surfaces)}
+      labelOf={(surface) => t(`relationshipRow.queryLinks.${surface}`, { name })}
+      heading={heading}
+      testIdPrefix={testIdPrefix}
+    />
   );
 }

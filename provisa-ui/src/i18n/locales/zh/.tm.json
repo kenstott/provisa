@@ -11374,5 +11374,12 @@
   "zh/yourData.json::yourData.relationshipsCreated_other": "{{count}} relationships created.",
   "zh/yourData.json::yourData.rest": "REST",
   "zh/yourData.json::yourData.sql": "SQL",
-  "zh/yourData.json::yourData.title": "Your data"
+  "zh/yourData.json::yourData.title": "Your data",
+  "zh/relationshipRow.json::relationshipRow.queryLinks.aggregate.cypher": "Count {{name}} in Cypher",
+  "zh/relationshipRow.json::relationshipRow.queryLinks.aggregate.sql": "Count {{name}} in SQL",
+  "zh/relationshipRow.json::relationshipRow.queryLinks.aggregate.sparql": "Count {{name}} in SPARQL",
+  "zh/relationshipRow.json::relationshipRow.queryLinks.aggregate.graphql": "Count {{name}} in GraphQL",
+  "zh/relationshipRow.json::relationshipRow.queryLinks.aggregate.rest": "Count {{name}} in REST",
+  "zh/relationshipRow.json::relationshipRow.queryLinks.aggregate.grpc": "Count {{name}} in gRPC",
+  "zh/relationshipRow.json::relationshipRow.queryLinks.aggregate.jsonapi": "Count {{name}} in JSON:API"
 }

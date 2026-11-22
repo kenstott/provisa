@@ -11374,5 +11374,12 @@
   "nl/yourData.json::yourData.relationshipsCreated_other": "{{count}} relationships created.",
   "nl/yourData.json::yourData.rest": "REST",
   "nl/yourData.json::yourData.sql": "SQL",
-  "nl/yourData.json::yourData.title": "Your data"
+  "nl/yourData.json::yourData.title": "Your data",
+  "nl/relationshipRow.json::relationshipRow.queryLinks.aggregate.cypher": "Count {{name}} in Cypher",
+  "nl/relationshipRow.json::relationshipRow.queryLinks.aggregate.sql": "Count {{name}} in SQL",
+  "nl/relationshipRow.json::relationshipRow.queryLinks.aggregate.sparql": "Count {{name}} in SPARQL",
+  "nl/relationshipRow.json::relationshipRow.queryLinks.aggregate.graphql": "Count {{name}} in GraphQL",
+  "nl/relationshipRow.json::relationshipRow.queryLinks.aggregate.rest": "Count {{name}} in REST",
+  "nl/relationshipRow.json::relationshipRow.queryLinks.aggregate.grpc": "Count {{name}} in gRPC",
+  "nl/relationshipRow.json::relationshipRow.queryLinks.aggregate.jsonapi": "Count {{name}} in JSON:API"
 }

@@ -68,6 +68,15 @@
         "rest": "REST",
         "grpc": "gRPC",
         "jsonapi": "JSON:API"
+      },
+      "aggregate": {
+        "cypher": "用 Cypher 统计 {{name}}",
+        "sql": "用 SQL 统计 {{name}}",
+        "sparql": "用 SPARQL 统计 {{name}}",
+        "graphql": "用 GraphQL 统计 {{name}}",
+        "rest": "用 REST 统计 {{name}}",
+        "grpc": "用 gRPC 统计 {{name}}",
+        "jsonapi": "用 JSON:API 统计 {{name}}"
       }
     }
   }

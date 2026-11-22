@@ -353,7 +353,9 @@ export function TableReadView({
       {/* The section in view, as a demo tour step anchors on it (`open: <section>`); Columns
           carries its own. */}
       <div data-testid={section === "columns" ? undefined : `table-section-${section}-panel`}>
-        {section === "identity" && <IdentityRead table={table} source={source} actingRole={actingRole} />}
+        {section === "identity" && (
+          <IdentityRead table={table} source={source} actingRole={actingRole} />
+        )}
         {section === "associations" && (
           <TableAssociations
             table={table}
@@ -364,7 +366,7 @@ export function TableReadView({
         {section === "load" && <LoadRead table={table} source={source} />}
         {section === "query" && (
           <>
-            <QueryRead table={table} />
+            <QueryRead table={table} actingRole={actingRole} />
             {/* REQ-1986: the table's parameters and which are required. */}
             <ParametersPanel columns={table.columns} />
           </>

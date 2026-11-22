@@ -68,6 +68,15 @@
         "rest": "REST",
         "grpc": "gRPC",
         "jsonapi": "JSON:API"
+      },
+      "aggregate": {
+        "cypher": "ספירת {{name}} ב-Cypher",
+        "sql": "ספירת {{name}} ב-SQL",
+        "sparql": "ספירת {{name}} ב-SPARQL",
+        "graphql": "ספירת {{name}} ב-GraphQL",
+        "rest": "ספירת {{name}} ב-REST",
+        "grpc": "ספירת {{name}} ב-gRPC",
+        "jsonapi": "ספירת {{name}} ב-JSON:API"
       }
     }
   }

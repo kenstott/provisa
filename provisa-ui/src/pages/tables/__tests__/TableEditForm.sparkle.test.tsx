@@ -105,11 +105,13 @@ describe("TableEditForm describes a table it is creating", () => {
         result: { data: { generateTableDescription: "Trades as booked." } },
       },
     ]);
-    await userEvent.setup().click(
-      within(screen.getByTestId("table-section-identity-panel")).getByTestId(
-        "description-field-generate",
-      ),
-    );
+    await userEvent
+      .setup()
+      .click(
+        within(screen.getByTestId("table-section-identity-panel")).getByTestId(
+          "description-field-generate",
+        ),
+      );
     await waitFor(() =>
       expect(setEditingTable).toHaveBeenCalledWith(
         expect.objectContaining({ description: "Trades as booked." }),
@@ -132,11 +134,7 @@ describe("TableEditForm describes a table it is creating", () => {
     expect(sparkles()).toHaveLength(2);
     await userEvent.setup().click(sparkles()[1]);
     await waitFor(() =>
-      expect(updateEditCol).toHaveBeenCalledWith(
-        1,
-        "description",
-        "The day the trade was booked.",
-      ),
+      expect(updateEditCol).toHaveBeenCalledWith(1, "description", "The day the trade was booked."),
     );
     expect(generateColumnDescription).not.toHaveBeenCalled();
   });

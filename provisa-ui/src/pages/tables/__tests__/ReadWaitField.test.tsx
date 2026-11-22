@@ -34,7 +34,9 @@ const choose = (text: string) => {
 describe("ReadWaitField", () => {
   it("shows the request timeout when the table sets nothing, with no seconds to enter", () => {
     renderField(null);
-    expect(screen.getByTestId("table-read-wait-select")).toHaveValue("Wait for the request timeout");
+    expect(screen.getByTestId("table-read-wait-select")).toHaveValue(
+      "Wait for the request timeout",
+    );
     expect(screen.queryByTestId("table-read-wait-seconds")).toBeNull();
   });
 
