@@ -20,12 +20,14 @@ test("Context Health shows the steward summary and a card per signal, read from 
 }, testInfo) => {
   const before = await request.get("/admin/glossary/terms?include_deprecated=false");
   if (!before.ok()) throw new Error(`listing terms: ${before.status()} ${await before.text()}`);
-  const drafts = ((await before.json()) as { status: string }[]).filter(
-    (t) => t.status === "draft",
-  ).length;
+  const terms = (await before.json()) as { name: string; status: string; domains: string[] }[];
+  const drafts = terms.filter((t) => t.status === "draft").length;
+  // A term needs at least one domain; the draft sits in the seeded "species" term's domains.
+  const species = terms.find((t) => t.name === "species");
+  if (!species) throw new Error('no glossary term "species"');
   const tag = `ch${Date.now().toString(36)}${testInfo.retry}`;
   const made = await request.post("/admin/glossary/terms", {
-    data: { name: `${tag} draft`, definition: "Waiting for a steward." },
+    data: { name: `${tag} draft`, definition: "Waiting for a steward.", domains: species.domains },
   });
   if (!made.ok()) throw new Error(`creating a draft: ${made.status()} ${await made.text()}`);
   const id = ((await made.json()) as { id: number }).id;
