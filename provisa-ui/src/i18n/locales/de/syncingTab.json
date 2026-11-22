@@ -135,6 +135,12 @@
     "importHeld": "Zurückgehalten",
     "importKind": "Art",
     "importObject": "Objekt",
-    "importReason": "Warum zurückgehalten"
+    "importReason": "Warum zurückgehalten",
+    "holdReason_no_choice": "Keine feste Wahl für diese Art",
+    "holdReason_held_by_choice": "Die feste Wahl ist Zurückhalten",
+    "holdReason_edited_in_provisa": "Seit dem letzten Austausch in Provisa bearbeitet",
+    "holdReason_never_exchanged": "Nie ausgetauscht, daher ist unbekannt, welche Seite sich geändert hat",
+    "holdReason_not_importable": "Provisa kann diese Art noch nicht aus einem Katalog übernehmen",
+    "holdReason_left_to_export": "Die feste Wahl ist der Wert von Provisa, den Exportieren sendet"
   }
 }
