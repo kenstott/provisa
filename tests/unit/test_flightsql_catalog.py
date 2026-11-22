@@ -98,6 +98,8 @@ class _State:
 
     def __init__(self):
         self.contexts = {_ROLE: _context()}
+        # The org's mask rules (OrgRuntime.masking_rules): none masks a column here.
+        self.masking_rules: dict = {}
         self.schema_build_cache = {"column_types": _COLUMN_TYPES}
 
 

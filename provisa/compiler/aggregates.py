@@ -21,6 +21,7 @@ from __future__ import annotations
 
 from graphql import FieldNode  # noqa: F401
 
+from provisa.compiler import names_table
 from provisa.compiler import sql_where as _sw
 from provisa.compiler import sql_selection as _ssel
 from provisa.compiler.params import ParamCollector  # noqa: F401
@@ -427,7 +428,7 @@ def _compile_group_by_field(  # REQ-196, REQ-197, REQ-213
 ) -> CompiledQuery:
     """Compile a _group_by root query field to SQL (REQ-654, REQ-655)."""
     root_name = field_node.alias.value if field_node.alias else field_node.name.value
-    table = ctx.tables[field_node.name.value]
+    table = names_table.root_table(ctx, field_node.name.value)  # REQ-467
     collector = ParamCollector()
     sources = StatementSources(table)
 
@@ -638,7 +639,7 @@ def _compile_aggregate_field(  # REQ-196, REQ-197, REQ-198, REQ-199
 ) -> CompiledQuery:
     """Compile an _aggregate root query field to SQL."""
     root_name = field_node.alias.value if field_node.alias else field_node.name.value
-    table = ctx.tables[field_node.name.value]
+    table = names_table.root_table(ctx, field_node.name.value)  # REQ-467
     collector = ParamCollector()
     sources = StatementSources(table)
 

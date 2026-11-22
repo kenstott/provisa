@@ -11,9 +11,10 @@
 // REQ-2247: one Syncing entry in the page's detail panel. Read, it is its fields drawn read-only,
 // and for a data catalog its connection test, Publish now (only while its direction includes
 // Export) and the result of its last publish. Edited, it is the same fields with Save and Cancel
-// in the panel's head. A type with no run of its own yet is offered none. Duplicate, beside Edit and
-// Delete, opens the create form filled from the entry (SyncingTab); that form says when the
-// entry's credentials have to be entered again (`note`).
+// in the panel's head. A type with no run of its own yet is offered none. A data catalog's
+// comparison with its catalog (its differences and standing choices, EntrySync) opens below.
+// Duplicate, beside Edit and Delete, opens the create form filled from the entry (SyncingTab);
+// that form says when the entry's credentials have to be entered again (`note`).
 
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -31,6 +32,8 @@ import { PanelActions } from "../../list/SplitPane";
 import { PanelDelete } from "../../list/PanelDelete";
 import { PanelDuplicate } from "../../list/PanelDuplicate";
 import { Tip } from "../../Tip";
+import { CollapsibleItem, Collapsibles } from "../../collapsible/Collapsible";
+import { EntrySync } from "./EntrySync";
 import { EntryFields, type EntryFieldsProps, type Secrets } from "./EntryFields";
 
 /** The result of a publish: what it published, and each asset the system refused with why. */
@@ -278,6 +281,20 @@ export function EntryPanel({
               {t("syncingTab.neverRun")}
             </Text>
           ) : null)}
+        {/* The catalog is read only when the steward opens the comparison. */}
+        {isCatalog && (
+          <Collapsibles id="admin.syncing.entry">
+            <CollapsibleItem
+              value="compare"
+              title={t("syncingTab.compare")}
+              defaultOpen={false}
+              mountWhenOpen
+              testId="syncing-compare"
+            >
+              <EntrySync entryId={entry.id} />
+            </CollapsibleItem>
+          </Collapsibles>
+        )}
       </Stack>
     </>
   );

@@ -80,6 +80,8 @@ def _through_inquiries(type_value: str | None) -> JoinMeta:
             type_column="status" if type_value else None,
             type_value=type_value,
             attributes=(("message", "message"),),
+            # The registry holds every junction with its edge's label source (REQ-1586).
+            label_source="column" if type_value else "table",
         ),
         registered=True,
     )

@@ -116,7 +116,13 @@ def _state(
     if guarded:
         # The set's relationships: orders to clips through the bridge, and its two hops.
         orders, clips, bridge = (ctx.tables[n] for n in ("orders", "clips", "order_clips"))
-        via = JunctionMeta(table=bridge, source_columns=("order_id",), target_columns=("clip_id",))
+        # The registry holds every junction with its edge's label source (REQ-1586).
+        via = JunctionMeta(
+            table=bridge,
+            source_columns=("order_id",),
+            target_columns=("clip_id",),
+            label_source="table",
+        )
         ctx.joins = {
             ("Orders", "ORDER_CLIPS"): JoinMeta(
                 "id", "id", "integer", "integer", clips, "many-to-many", via=via

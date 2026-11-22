@@ -644,7 +644,12 @@ def _make_tenant_db(control_plane):
 
 
 def _make_bootstrap_app(provider: AuthProvider, admin_db, tenant_db) -> Starlette:
-    routes = [Route("/echo", _echo_identity)]
+    # The claim endpoint's path, standing in for it: a platform-plane path the middleware serves
+    # to a caller who holds no role yet (_PLATFORM_PLANE_PATHS).
+    routes = [
+        Route("/echo", _echo_identity),
+        Route("/auth/claim-bootstrap", _echo_identity, methods=["POST"]),
+    ]
     app = Starlette(routes=routes)
     app.add_middleware(
         AuthMiddleware,
@@ -738,7 +743,7 @@ class TestSingleAdminBootstrap:
             _make_bootstrap_app(provider, admin_db, tenant_db), raise_server_exceptions=True
         )
 
-        resp = client.get("/echo", headers={"Authorization": "Bearer tok-alice"})
+        resp = client.post("/auth/claim-bootstrap", headers={"Authorization": "Bearer tok-alice"})
         assert resp.status_code == 200, (
             "an unclaimed slot is not 'registration closed' — POST /auth/claim-bootstrap has to be "
             "reachable by an authenticated caller or the slot could never be claimed"

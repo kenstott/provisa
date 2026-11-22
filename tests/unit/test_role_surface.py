@@ -26,7 +26,7 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -35,7 +35,7 @@ from provisa.api.role_surface import RoleSurface, SurfacePart, role_surface
 
 
 if TYPE_CHECKING:
-    from provisa.compiler.sql_gen import CompilationContext
+    pass
 
 
 def _held(state, role_id: str) -> RoleSurface:
@@ -367,11 +367,10 @@ def test_the_build_is_the_only_writer_of_surfaces():
 def test_an_unknown_root_field_is_a_client_error_by_name():
     from graphql import parse
 
-    from provisa.compiler.sql_gen import UnknownRootField, compile_query
+    from provisa.compiler.sql_gen import CompilationContext, UnknownRootField, compile_query
 
-    ctx = SimpleNamespace(tables={})
     with pytest.raises(UnknownRootField) as refused:
-        compile_query(parse("{ s__customers { id } }"), cast("CompilationContext", ctx), None)
+        compile_query(parse("{ s__customers { id } }"), CompilationContext(), None)
     assert refused.value.field_name == "s__customers"
     assert refused.value.code == "data.unknown_root_field"
     assert refused.value.params == {"field": "s__customers"}

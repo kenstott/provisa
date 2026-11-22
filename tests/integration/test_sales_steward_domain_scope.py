@@ -113,6 +113,9 @@ async def plane(monkeypatch):
     monkeypatch.setattr(appmod.state, "tenant_db", db, raising=False)
     monkeypatch.setattr(appmod.state, "model_db", db, raising=False)
     monkeypatch.setattr(appmod.state, "roles", loaded, raising=False)
+    # No role surface an earlier test in this process registered is held: replacing a part below
+    # would otherwise build each such role against the build inputs this test puts in place.
+    monkeypatch.setattr(appmod.state._active_runtime(), "surfaces", {})
     # No schema build runs here: no draft table is compiled aside (catalog_scope reads the list).
     monkeypatch.setattr(
         appmod.state,

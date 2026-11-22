@@ -232,9 +232,10 @@ def _two_catalogs_context():  # noqa: ANN202
             table_name="v1",
             domain_id="sales",
         ),
-        "pg_v1": TableMeta(
+        # An ops table's field carries its schema's SDL prefix (REQ-2163).
+        "op_pg_v1": TableMeta(
             table_id=9,
-            field_name="pg_v1",
+            field_name="op_pg_v1",
             type_name="PgV1",
             source_id="pg",
             catalog_name="pg",

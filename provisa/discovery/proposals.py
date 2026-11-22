@@ -385,12 +385,18 @@ async def _candidate_of(conn: "Connection", run_id: int, proposal_id: int) -> in
     return candidate_id
 
 
-async def accept(conn: "Connection", run_id: int, proposal_id: int, name: str | None) -> str:
+async def accept(
+    conn: "Connection",
+    run_id: int,
+    proposal_id: int,
+    name: str | None,
+    cardinality: str | None = None,
+) -> str:
     """Accept one proposal of the run as a suggestion is accepted
     (:func:`provisa.discovery.candidates.accept`); the relationship it became."""
     async with conn.transaction():
         candidate_id = await _candidate_of(conn, run_id, proposal_id)
-        accepted = await candidates_repo.accept(conn, candidate_id, name)
+        accepted = await candidates_repo.accept(conn, candidate_id, name, cardinality)
         await conn.execute_core(
             update(rows_t)
             .where(rows_t.c.id == proposal_id)

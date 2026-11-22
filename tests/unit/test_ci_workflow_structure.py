@@ -178,7 +178,14 @@ _LEAF_CHECK = "ci-leaf-check.yml"
 # credentials or cluster tooling, and the lane workflow declares only the few secrets its callers
 # pass by name instead of inheriting every one.
 _OWN_STEPS = {
-    "integration-suite-lanes.yml": {"cluster", "warehouse", "salesforce", "athena", "servicenow"},
+    "integration-suite-lanes.yml": {
+        "cluster",
+        "warehouse",
+        "salesforce",
+        "athena",
+        "servicenow",
+        "microsoft_365",
+    },
     # REQ-2012: carries the paid model keys of its own, as the live-account jobs do.
     "polly-bakeoff.yml": {"bakeoff"},
     # REQ-2006: walks the bundle it built before publishing it, with the build's live keys.
@@ -1261,6 +1268,30 @@ def test_focused_tests_refuses_an_integration_file_by_name(tests):
 def test_focused_tests_passes_files_that_need_no_stack():
     done = _refusal("tests/unit/test_a.py tests/unit/test_b.py::test_c")
     assert done.returncode == 0 and done.stdout == ""
+
+
+def test_the_microsoft_365_lane_reads_its_secrets_from_the_live_environment_and_checks_them():
+    """The repository is at GitHub's 100-secret cap: the live lanes' secrets move to the `live`
+    environment (maintainer 2026-11-10). The microsoft_365 job names that environment, reads the
+    same secret names, and still fails by name, before the lane runs, when one is missing.
+    The tenant has one mailbox, the maintainer's: no second address is read from any secret."""
+    path = REPO / ".github" / "workflows" / "integration-suite-lanes.yml"
+    job = yaml.safe_load(path.read_text())["jobs"]["microsoft_365"]
+    assert job["environment"] == "live"
+    required = (
+        "M365_TENANT_ID",
+        "M365_CLIENT_ID",
+        "M365_CLIENT_SECRET",
+        "M365_TEST_MAILBOXES",
+    )
+    for name in required:
+        assert job["env"][name] == f"${{{{ secrets.{name} }}}}", name
+    names = [s.get("name") for s in job["steps"]]
+    assert names.index("Credentials present") < names.index("Run lane")
+    check = job["steps"][names.index("Credentials present")]["run"]
+    loop = re.search(r"for v in (.*?); do", check, re.S)
+    assert loop is not None and set(loop.group(1).split()) == set(required)
+    assert "exit 1" in check and "environment live" in check
 
 
 def test_the_odbc_install_refreshes_only_microsofts_package_list():

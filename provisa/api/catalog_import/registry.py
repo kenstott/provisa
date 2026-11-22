@@ -36,7 +36,5 @@ def catalog_reader(target: MetadataExportTarget) -> CatalogReader:
     """
     adapter = metadata_export(target)
     if not isinstance(adapter, CatalogReader):
-        raise GlossaryListingUnsupported(
-            f"catalog provider {target.provider!r} does not list its catalog's glossary"
-        )
+        raise GlossaryListingUnsupported(target.provider)
     return adapter
