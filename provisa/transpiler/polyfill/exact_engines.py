@@ -104,10 +104,14 @@ _REFUSED: tuple[Feature, ...] = (
     _refused(
         "integer division",
         "a / b of two integers.",
-        "/",
+        "/ of operands not known to be integers",
         {
-            HANA: "HANA's quotient of two integers is a decimal; PostgreSQL's is the truncated "
-            "integer. It is refused until the compiler supplies the operands' types."
+            HANA: "HANA's quotient of two integers is a decimal; PostgreSQL's is the integer "
+            "truncated toward zero. Where both operands' integer types are known (literals, "
+            "counts, casts, and integer columns where the compiler supplies the column types), "
+            "a / b is CAST(ROUND(a / b, 0, ROUND_DOWN) AS t), t the wider operand's type: "
+            "PostgreSQL's answer, negative operands included. Where they are not known, it is "
+            "refused (provisa/core/sql_integral.py)."
         },
     ),
     _refused(
@@ -195,7 +199,9 @@ _REFUSED: tuple[Feature, ...] = (
         "CAST(a AS integer) of a value not known to be integral.",
         "a cast to an integer type of a value that may have a fraction",
         _both(
-            "It truncates a fraction (CAST(2.5 AS INTEGER) is 2); PostgreSQL rounds (3) "
+            "It truncates a fraction (CAST(2.5 AS INTEGER) is 2); PostgreSQL rounds (3). A "
+            "value known to be integral (a literal, a count, integer arithmetic, and an integer "
+            "column where the compiler supplies the column types) is cast as written "
             "(provisa/core/sql_integral.py)."
         ),
     ),

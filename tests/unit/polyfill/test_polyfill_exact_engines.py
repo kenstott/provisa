@@ -84,7 +84,8 @@ def test_every_refusal_the_dialect_names_is_a_row(dialect: str):
         (
             "saphana",
             'SELECT "a" / "b" FROM "t"',
-            "/ has no form on SAP HANA that gives PostgreSQL's answer",
+            "/ of operands not known to be integers has no form on SAP HANA that gives "
+            "PostgreSQL's answer",
         ),
         (
             "saphana",
@@ -127,8 +128,9 @@ def test_refusal_reads_the_row(dialect: str, construct: str, named: dict, messag
 
 def test_db2_division_is_no_refusal_of_the_grid():
     """Db2's quotient of two integers truncates as PostgreSQL's: only HANA's row refuses /."""
-    assert "/" not in _row_constructs("db2")
-    assert "/" in _row_constructs("saphana")
+    division = "/ of operands not known to be integers"
+    assert not {c for c in _row_constructs("db2") if c.startswith("/")}
+    assert division in _row_constructs("saphana")
 
 
 @pytest.mark.parametrize(
@@ -143,7 +145,7 @@ def test_db2_division_is_no_refusal_of_the_grid():
         ("saphana", "7 fractional digits"),
         ("saphana", "LENGTH may count"),
         ("saphana", "a cast to an integer type of a value that may have a fraction"),
-        ("saphana", "until the compiler supplies the operands"),
+        ("saphana", "where the compiler supplies the column types"),
     ],
 )
 def test_each_stated_limitation_is_on_the_engines_page(dialect: str, phrase: str):

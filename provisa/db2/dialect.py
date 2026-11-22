@@ -445,6 +445,8 @@ class Db2(Dialect):
     name is folded to upper case."""
 
     NULL_ORDERING = "nulls_are_large"
+    # Db2's quotient of two integers is the integer truncated toward zero, as PostgreSQL's.
+    TYPED_DIVISION = True
     NORMALIZATION_STRATEGY = NormalizationStrategy.UPPERCASE
 
     Generator = Db2Generator
