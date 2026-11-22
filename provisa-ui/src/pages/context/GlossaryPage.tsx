@@ -14,6 +14,7 @@
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
+import { FormField, FormLayout } from "../../components/form/FormLayout";
 import {
   Alert,
   Anchor,
@@ -125,28 +126,32 @@ export function GlossaryPage() {
           </Text>
         </div>
         <Group gap="sm" align="flex-end" wrap="wrap">
-          <TextInput
-            label={t("glossaryPage.search")}
-            placeholder={t("glossaryPage.searchPlaceholder")}
-            value={search}
-            onChange={(e) => setSearch(e.currentTarget.value)}
-            style={{ flex: "1 1 240px" }}
-            data-testid="glossary-search"
-          />
-          <MultiSelect
-            label={t("glossaryPage.domainFilter")}
-            placeholder={
-              domains.length === 0 ? t("glossaryPage.domainFilterPlaceholder") : undefined
-            }
-            data={domainOptions}
-            value={domains}
-            onChange={setDomains}
-            clearable
-            searchable
-            style={{ flex: "1 1 220px" }}
-            comboboxProps={{ withinPortal: true }}
-            data-testid="glossary-domain-filter"
-          />
+          <FormLayout style={{ flex: "1 1 auto" }}>
+            <FormField size="medium">
+              <TextInput
+                label={t("glossaryPage.search")}
+                placeholder={t("glossaryPage.searchPlaceholder")}
+                value={search}
+                onChange={(e) => setSearch(e.currentTarget.value)}
+                data-testid="glossary-search"
+              />
+            </FormField>
+            <FormField size="medium">
+              <MultiSelect
+                label={t("glossaryPage.domainFilter")}
+                placeholder={
+                  domains.length === 0 ? t("glossaryPage.domainFilterPlaceholder") : undefined
+                }
+                data={domainOptions}
+                value={domains}
+                onChange={setDomains}
+                clearable
+                searchable
+                comboboxProps={{ withinPortal: true }}
+                data-testid="glossary-domain-filter"
+              />
+            </FormField>
+          </FormLayout>
           <Stack gap={4}>
             <Text size="sm" fw={500}>
               {t("glossaryPage.sort")}
