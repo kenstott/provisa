@@ -3130,7 +3130,7 @@
     snake_case exceptions (Hasura''s 2023 naming feature flag) is added only if an import needs it. Both
     presets are always offered; importing from Hasura picks the one its metadata names (a source''s
     customization.naming_convention, or the deployment default). Each preset is proved against a schema that
-    Hasura itself generates for the same tables, compared name by name. (Amended 2026-11-20 by the maintainer. Inflection uses lemminflect plus a recorded supplement word list kept as dictionary data in provisa/core/inflection.py (person and people, doc and docs, dataset and datasets, and the other common words lemminflect lacks); a word in neither stays as written.)'
+    Hasura itself generates for the same tables, compared name by name. (Amended 2026-11-20 by the maintainer. Inflection uses lemminflect plus a recorded supplement word list kept as dictionary data in provisa/core/inflection.py (person and people, doc and docs, dataset and datasets, and the other common words lemminflect lacks); a word in neither stays as written.) (Amended 2026-11-22 by the maintainer. A table whose naming convention is a Hasura preset is served in Hasura shapes. Its primary key appears in x_constraint as <table>_pkey, PostgreSQL''s default name, since Provisa does not store the source''s constraint name; a declared UNIQUE constraint keeps its declared name. Under graphql-default the x_select_column values are the served camelCase column field names. Streaming subscriptions (x_stream) are served as their own feature.)'
   use_case: Consistent multi-language naming with a single authority ensures client-facing names are predictable
     and independent of physical schema.
   code:
