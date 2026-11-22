@@ -87,7 +87,9 @@ def _seed() -> None:
     ora.close()
 
 
-@pytest.fixture(scope="module")
+# Per test, not per module: Oracle is a heavy service, brought up for each test and torn down
+# after it (tests/conftest.py _HEAVY_MARKERS), so each test's container is seeded afresh.
+@pytest.fixture
 def seeded():
     _seed()
 
@@ -197,7 +199,7 @@ def _config() -> dict:
     }
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture
 def server(seeded, tmp_path_factory):
     from tests.integration.isolated_server import IsolatedServer
 
