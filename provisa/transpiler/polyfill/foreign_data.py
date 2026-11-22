@@ -15,10 +15,11 @@ provisa.pgwire.catalog_server_answers) is written for the call before the grid r
 so the row holds no rule: it states where the form differs from PostgreSQL. The form is foreign.c's:
 an option array holding a NULL element is 22004, as untransformRelOptions deconstructs the array
 before it reads an option; otherwise the first option the catalog does not list is 42601 invalid
-option naming it. That is exact on DuckDB and on Trino (whose SQL is Presto's and Athena's too).
-ClickHouse 24.3's throwIf takes only a constant message, so there an unlisted option is refused by
-name instead (maintainer 2026-11-21: keep 24.3, state the refusal). Db2 and SAP HANA have no form of
-the array filter the form is written with, and refuse it by name."""
+option naming it, an options array of any dimensions read as its elements in storage order. That is
+exact on DuckDB and on Trino (whose SQL is Presto's and Athena's too). ClickHouse 24.3's throwIf
+takes only a constant message, so there an unlisted option is refused by name instead (maintainer
+2026-11-21: keep 24.3, state the refusal). Db2 and SAP HANA have no form of the array filter the
+form is written with, and refuse it by name."""
 
 # Requirements: REQ-2236
 
