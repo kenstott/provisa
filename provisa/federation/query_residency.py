@@ -713,6 +713,11 @@ async def ensure_resident(
             raise ReplicaAgeUnknown(".".join(key))
         replicas_read[key] = record.current_at
 
+    # When the read began, before it first looks at any record: a landing after this answers
+    # it whatever its TTL (_landed_since). Taken later, a build that lands between the read's
+    # look (still building) and its wait would be one the read never counts, and a table with a
+    # cache_ttl of 0 (REQ-2003), stale the moment it lands, would be waited for to the deadline.
+    asked_at = datetime.now(UTC)
     for source in sources:
         tables = tables_by_source.get(source.id)
         if not tables:
@@ -793,7 +798,6 @@ async def ensure_resident(
         return Residency(replicas_read=replicas_read, answered_in=answered_in)
     built = [(key[0], key[2]) for _source, _table, key in waiting]
     started = time.monotonic()
-    asked_at = datetime.now(UTC)
     budget = request_deadline.remaining()
 
     def _out_of_time(key: ReplicaKey, waited: float) -> bool:
@@ -809,6 +813,7 @@ async def ensure_resident(
     with request_deadline.clock_stopped(max(own_wait.values(), default=0.0)):
         while waiting:
             still: list[tuple[Any, Any, replica_state.ReplicaKey]] = []
+            asked_again = False
             async with db.acquire() as conn:
                 for source, t, key in waiting:
                     record = await replica_state.read(conn, key)
@@ -816,9 +821,18 @@ async def ensure_resident(
                     if record is not None and record.build_state == replica_state.FAILED:
                         raise replica_state.ReplicaBuildFailed(".".join(key), record.last_error)
                     if _stale(source, t, record) and not _landed_since(record, asked_at):
+                        if not _build_coming(record) and not never_expires(t, source):
+                            # The build this read joined landed before the read began (its
+                            # copy of the record was a moment old): none is coming, so it asks.
+                            await replica_state.request_build(
+                                conn, key, replica_state.REASON_READ, retry=retry
+                            )
+                            asked_again = True
                         still.append((source, t, key))
                     else:
                         _read_from(key, record)
+            if asked_again:
+                replica_builds.kick(org_id)
             waiting = still
             if not waiting:
                 break
@@ -833,6 +847,13 @@ async def ensure_resident(
     return Residency(
         built=built, replicas_read=replicas_read, answered_in=answered_in, no_rows=no_rows
     )
+
+
+def _build_coming(record: Any) -> bool:
+    """Whether a build of ``record``'s replica is requested or running."""
+    from provisa.federation.replica_state import BUILDING, REQUESTED
+
+    return record is not None and record.build_state in (REQUESTED, BUILDING)
 
 
 def _landed_since(record: Any, asked_at: datetime) -> bool:

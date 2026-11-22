@@ -112,6 +112,10 @@ def trail(monkeypatch) -> list[dict]:
             rows.append(dict(stmt.compile().params))
 
     class Db:
+        # A handle with no model plane, as record_admin_action reads it (org_membership): it
+        # names no org of its own to compare with the one the entry is about.
+        model = None
+
         @asynccontextmanager
         async def acquire(self):
             yield Conn()
