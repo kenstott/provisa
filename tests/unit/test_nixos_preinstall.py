@@ -335,25 +335,14 @@ def test_the_guest_scripts_run_the_file_in_the_users_home(script):
     assert "MOUNTED its payload" in runtime and "EXTRACT-AND-RUN" in runtime
 
 
-@pytest.mark.parametrize(
-    ("source", "network", "online"),
-    [("", "up", True), ("", "down", False), ("bundled", "up", False)],
-)
-def test_first_launch_installs_the_wheels_it_carries_when_asked(source, network, online):
-    """PROVISA_INSTALL_SOURCE=bundled: this build's wheels, even where PyPI answers — what the
-    proof installs. Otherwise the network decides, as before."""
+def test_first_launch_installs_the_wheels_it_carries_online_or_not():
+    """The AppImage installs the build that was downloaded: its own wheelhouse, never a release
+    from an index, whether or not the network is up. No switch picks another source."""
     first_launch = (_ROOT / "packaging/linux/first-launch.sh").read_text()
-    start = first_launch.index("_online() {")
-    function = first_launch[start : first_launch.index("\n}\n", start) + 3]
-    script = (
-        'curl() { [ "$NETWORK" = up ]; }\n'
-        + function
-        + "if _online; then echo online; else echo bundled; fi\n"
-    )
-    done = subprocess.run(
-        ["bash", "-euo", "pipefail", "-c", script],
-        env={"PROVISA_INSTALL_SOURCE": source, "NETWORK": network, "PATH": _PATH},
-        capture_output=True,
-        text=True,
-    )
-    assert done.stdout.strip() == ("online" if online else "bundled"), done.stderr
+    assert "PROVISA_INSTALL_SOURCE" not in first_launch
+    assert "pypi.org" not in first_launch
+    body = first_launch[first_launch.index("setup_native_venv() {") :]
+    body = body[: body.index("\n}\n")]
+    assert '--no-index --find-links "$wheels" "provisa[embedded]"' in body
+    installs = (_ROOT / "packaging/nixos/ci/appimage-installs.sh").read_text()
+    assert "PROVISA_INSTALL_SOURCE" not in installs
