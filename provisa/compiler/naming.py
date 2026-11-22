@@ -634,19 +634,35 @@ def _apply_table_convention(name: str, convention: str) -> str:
     return safe  # snake_case
 
 
+def _registered_as(source_id: str, schema_name: str, table_name: str) -> str:
+    """A table as its registration names it: its name, source and schema, each quoted. Never the
+    dotted ``source.schema.table``: a client's text has a table's physical address rewritten to
+    its model name (api/engine_error_names.model_named), which for the table holding an address
+    is that address itself, so the refusal would no longer say which table holds it."""
+    return f"table {table_name!r} of source {source_id!r} (schema {schema_name!r})"
+
+
 class SqlAddressTaken(ValueError):  # REQ-1933
     """A table's SQL address (``domain.table``) is already another registered table's. Two
-    tables never share one: nothing would decide which of them a statement reads."""
+    tables never share one: nothing would decide which of them a statement reads. ``holder``
+    and ``newcomer`` are ``(source_id, schema_name, table_name)``; the attributes of the same
+    names carry them dotted."""
 
-    def __init__(self, domain_id: str, address: str, holder: str, newcomer: str) -> None:
+    def __init__(
+        self,
+        domain_id: str,
+        address: str,
+        holder: tuple[str, str, str],
+        newcomer: tuple[str, str, str],
+    ) -> None:
         self.domain_id = domain_id
         self.address = address
-        self.holder = holder
-        self.newcomer = newcomer
+        self.holder = ".".join(holder)
+        self.newcomer = ".".join(newcomer)
         super().__init__(
-            f"{newcomer} would be {domain_to_sql_name(domain_id)}.{address}, which is already "
-            f"{holder}'s address in domain {domain_id!r}. Give it a different name or alias, or "
-            "register it in another domain."
+            f"The {_registered_as(*newcomer)} would be {domain_to_sql_name(domain_id)}.{address}, "
+            f"which is already the address of the {_registered_as(*holder)} in domain "
+            f"{domain_id!r}. Give it a different name or alias, or register it in another domain."
         )
 
 
@@ -666,12 +682,12 @@ def refuse_taken_sql_addresses(tables: "list[dict]", naming_rules: list[dict]) -
     """Raise :class:`SqlAddressTaken` for the first table whose SQL address an earlier one in
     ``tables`` already has in the same domain. Each entry carries ``domain_id``, ``source_id``,
     ``schema_name``, ``table_name`` and ``alias`` (and may carry ``gql_naming_convention``)."""
-    held: dict[tuple[str, str], str] = {}
+    held: dict[tuple[str, str], tuple[str, str, str]] = {}
     for t in tables:
         address = table_sql_address(
             t["table_name"], t.get("alias"), naming_rules, t.get("gql_naming_convention")
         )
-        who = f"{t['source_id']}.{t['schema_name']}.{t['table_name']}"
+        who = (t["source_id"], t["schema_name"], t["table_name"])
         key = (t["domain_id"], address)
         if key in held and held[key] != who:
             raise SqlAddressTaken(t["domain_id"], address, held[key], who)

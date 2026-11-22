@@ -26,6 +26,7 @@ import json
 import os
 import urllib.error
 import urllib.request
+import uuid
 
 import psycopg
 import pytest
@@ -37,6 +38,8 @@ pytestmark = [pytest.mark.integration]
 
 _PG_HOST = os.environ.get("PG_HOST", "localhost")
 _PG_PORT = int(os.environ.get("PG_PORT", "5432"))
+_PG_USER = os.environ.get("PG_USER", "provisa")
+_PG_PASSWORD = os.environ.get("PG_PASSWORD", "provisa")
 _ROLE = "org_admin"
 _LARGE_OBJECT = 424243
 _META_REFUSAL = "has no form over the meta domain"
@@ -44,9 +47,38 @@ _ADVANCES = "SELECT nextval(''public.h7_seq'')::text::tsvector"
 
 
 @pytest.fixture(scope="module")
-def server():
+def launch_role():
+    """A database role of this test's own, with a password no refusal can contain. The server's
+    source credential is matched by central redaction in every text a client is told (REQ-1557,
+    REQ-2087), and the shared database's password is "provisa", the prefix of the product's own
+    function names: under it the refusal of ``provisa_fake_method`` is told as
+    ``[REDACTED]_fake_method``. A superuser, as the shared role is: the launch makes its own
+    database, control plane and sequence."""
+    role, password = f"h7_{uuid.uuid4().hex[:10]}", uuid.uuid4().hex
+    admin = sa.create_engine(
+        f"postgresql+psycopg://{_PG_USER}:{_PG_PASSWORD}@{_PG_HOST}:{_PG_PORT}/provisa",
+        isolation_level="AUTOCOMMIT",
+    )
+    with admin.connect() as conn:
+        conn.execute(sa.text(f"CREATE ROLE {role} LOGIN SUPERUSER PASSWORD '{password}'"))
+    try:
+        yield role, password
+    finally:
+        with admin.connect() as conn:
+            conn.execute(sa.text(f"DROP ROLE {role}"))
+        admin.dispose()
+
+
+@pytest.fixture(scope="module")
+def server(launch_role):
+    role, password = launch_role
     boot = WorkerBoot(
-        1, pg_host=_PG_HOST, pg_port=_PG_PORT, env={"PROVISA_REDIRECT_ENABLED": "false"}
+        1,
+        pg_host=_PG_HOST,
+        pg_port=_PG_PORT,
+        pg_user=role,
+        pg_password=password,
+        env={"PROVISA_REDIRECT_ENABLED": "false"},
     )
     boot.create_database()
     try:

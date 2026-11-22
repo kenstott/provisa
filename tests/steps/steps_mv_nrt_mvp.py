@@ -113,6 +113,9 @@ def _register(ctx, monkeypatch):
         # The model those inputs resolve against (provisa/mv/view_inputs.py): ``orders``.
         tables=[{"id": 1, "source_id": "pg", "schema_name": "public", "table_name": "orders"}],
         source_catalogs={},
+        # The org's commands: a view's build also reads the tables its command calls are given
+        # (provisa/mv/readable_inputs.read_table_names, REQ-2249). This view calls none.
+        tracked_functions={},
         contexts={},
         # The model-wide context the view's inputs also resolve against: none beyond ``tables``.
         view_context=None,
