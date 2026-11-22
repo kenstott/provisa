@@ -28,6 +28,7 @@ from sqlalchemy import text
 from provisa.core.database import Database, create_engine_from_url
 from provisa.core.db import STANDARD_ROLES, init_schema
 from provisa.security.inheritance import effective_capabilities
+from provisa.security.rights import PUBLIC_READ_RIGHTS, PUBLIC_ROLE
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
 
@@ -88,6 +89,18 @@ async def test_no_seeded_role_carries_the_bypass_capabilities(tenant_db):
     assert set(seeded["platform_admin"]) == {"platform_settings", "cross_org"}
     for role_id in ("platform_admin", "org_admin", "developer", "analyst", "modeler", "sandbox"):
         assert not ({"admin", "superadmin"} & set(seeded[role_id])), role_id
+
+
+async def test_the_public_role_is_seeded_read_only(tenant_db):
+    """REQ-1058: the role an unauthenticated visitor is bound to is seeded in every org with the
+    other standard roles, and holds no write capability -- nothing at all until the org publishes
+    to it (REQ-1059)."""
+    seeded = await _system_roles(tenant_db)
+
+    assert PUBLIC_ROLE in seeded
+    assert set(seeded[PUBLIC_ROLE]) <= PUBLIC_READ_RIGHTS
+    assert "write" not in seeded[PUBLIC_ROLE]
+    assert seeded[PUBLIC_ROLE] == []
 
 
 async def test_modeler_is_the_only_system_role_that_may_join_outside_the_catalog(tenant_db):

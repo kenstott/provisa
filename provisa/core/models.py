@@ -1653,6 +1653,14 @@ class WriteGrant(BaseModel):  # REQ-2074
     why: dict[str, Any] | None = None
 
     @model_validator(mode="after")
+    def _never_to_public(self) -> "WriteGrant":  # REQ-1058
+        from provisa.security.rights import PUBLIC_ROLE, public_write_grant_message
+
+        if self.role == PUBLIC_ROLE:
+            raise ValueError(public_write_grant_message(self.operation))
+        return self
+
+    @model_validator(mode="after")
     def _fits_its_operation(self) -> "WriteGrant":
         where = f"{self.operation} grant for {self.role!r}"
         if self.operation == "delete" and (self.columns or self.check or self.presets):
@@ -2547,6 +2555,15 @@ class Role(BaseModel):  # REQ-003, REQ-005, REQ-042, REQ-059, REQ-060, REQ-369
     @classmethod
     def _described(cls, value: str, info) -> str:  # REQ-2080
         return required_description("Role", repr(info.data.get("id")), value)
+
+    @model_validator(mode="after")
+    def _public_is_read_only(self) -> "Role":  # REQ-1058
+        from provisa.security.rights import public_read_only_refusal
+
+        refused = public_read_only_refusal(self.id, self.capabilities)
+        if refused is not None:
+            raise ValueError(refused)
+        return self
 
     @field_validator("session_vars")
     @classmethod
@@ -3948,17 +3965,17 @@ class ConnectorRequirement(BaseModel):  # REQ-2221
         return self
 
 
-def _is_int(value: object) -> bool:
+def _is_int(value: object) -> bool:  # object-ok: raw connector-file value
     return isinstance(value, int) and not isinstance(value, bool)
 
 
-def _bad_cache_ttl(value: object) -> str | None:
+def _bad_cache_ttl(value: object) -> str | None:  # object-ok: raw connector-file value
     from provisa.core.cache_ttl import cache_ttl_refusal
 
     return "is a whole number of seconds" if not _is_int(value) else cache_ttl_refusal(value)  # type: ignore[arg-type]
 
 
-def _bad_change_signal(value: object) -> str | None:
+def _bad_change_signal(value: object) -> str | None:  # object-ok: raw connector-file value
     from provisa.core.change_signal import resolve
 
     if not isinstance(value, str):
@@ -3970,7 +3987,7 @@ def _bad_change_signal(value: object) -> str | None:
     return None
 
 
-def _bad_zone(value: object) -> str | None:
+def _bad_zone(value: object) -> str | None:  # object-ok: raw connector-file value
     from zoneinfo import ZoneInfo
 
     if not isinstance(value, str):
@@ -3982,11 +3999,11 @@ def _bad_zone(value: object) -> str | None:
     return None
 
 
-def _flag(value: object) -> str | None:
+def _flag(value: object) -> str | None:  # object-ok: raw connector-file value
     return None if isinstance(value, bool) else "is true or false"
 
 
-def _text(value: object) -> str | None:
+def _text(value: object) -> str | None:  # object-ok: raw connector-file value
     return None if isinstance(value, str) else "is text"
 
 
