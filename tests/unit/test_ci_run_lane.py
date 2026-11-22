@@ -271,12 +271,14 @@ def test_the_plugin_cache_action_primes_once_and_every_lane_restores_and_verifie
         "Restore Trino plugins",
         "Download Trino plugins",
         "Cache Trino plugins",
-        "Verify Trino plugins",
         "provisa-functions key",
         "Restore the provisa-functions plugin",
         "Build the provisa-functions plugin",
         "Cache the provisa-functions plugin",
+        "Download the run's Trino plugins",
+        "Verify Trino plugins",
         "Verify the provisa-functions plugin",
+        "Upload the run's Trino plugins",
     ]
     restored = by_name["Restore Trino plugins"]["with"]
     # The pin behind a prefix that is empty for every caller but the action's own self-test.
@@ -289,8 +291,9 @@ def test_the_plugin_cache_action_primes_once_and_every_lane_restores_and_verifie
         "path": restored["path"],
         "key": restored["key"],
     }
-    # A lane's restore must hit; only the priming phase downloads, once, and saves at once.
-    assert restored["fail-on-cache-miss"] == "${{ inputs.phase == 'restore' }}"
+    # Only the priming phase downloads, once, and saves at once. A miss is answered by the run's
+    # artifact, never by a failure or a download (runs 44942101401, 44940962731).
+    assert restored["fail-on-cache-miss"] is False
     for step in ("Download Trino plugins", "Cache Trino plugins"):
         assert by_name[step]["if"] == (
             "inputs.phase == 'prime' && steps.trino-plugins.outputs.cache-hit != 'true'"
@@ -328,7 +331,8 @@ def test_the_plugin_cache_action_builds_provisa_functions_once_and_every_lane_re
     )
     assert key["run"] == 'echo "key=$KEY" >> "$GITHUB_OUTPUT"'
     assert restored["with"]["key"] == "${{ steps.provisa-functions-key.outputs.key }}"
-    assert restored["with"]["fail-on-cache-miss"] == "${{ inputs.phase == 'restore' }}"
+    # A miss is answered by the run's artifact (runs 44942101401, 44940962731).
+    assert restored["with"]["fail-on-cache-miss"] is False
     miss = "inputs.phase == 'prime' && steps.provisa-functions.outputs.cache-hit != 'true'"
     built = by_name["Build the provisa-functions plugin"]
     assert built["if"] == miss and built["run"] == "scripts/build_trino_functions.sh"
@@ -382,6 +386,8 @@ def test_the_zaychik_image_action_builds_once_and_every_lane_loads_it():
         "Restore the zaychik image",
         "Build the zaychik image",
         "Cache the zaychik image",
+        "Download the run's zaychik image",
+        "Upload the run's zaychik image",
         "Load the zaychik image",
     ]
     # Computed once, before the build, from the whole build context.
@@ -395,7 +401,9 @@ def test_the_zaychik_image_action_builds_once_and_every_lane_loads_it():
     assert restored["with"] == {
         "path": "~/zaychik-image",
         "key": "${{ steps.zaychik-key.outputs.key }}",
-        "fail-on-cache-miss": "${{ inputs.phase == 'restore' }}",
+        # Runs 45030691606, 45030697705, 45030636599: a lane's restore failed on the miss of an
+        # entry the priming job of the run had saved. A miss is answered by the run's artifact.
+        "fail-on-cache-miss": False,
     }
     miss = "inputs.phase == 'prime' && steps.zaychik-image.outputs.cache-hit != 'true'"
     built = by_name["Build the zaychik image"]
@@ -406,6 +414,22 @@ def test_the_zaychik_image_action_builds_once_and_every_lane_loads_it():
     saved = by_name["Cache the zaychik image"]
     assert saved["if"] == miss and saved["uses"] == "actions/cache/save@v4"
     assert saved["with"] == {"path": "~/zaychik-image", "key": restored["with"]["key"]}
+    # The priming job uploads the tarball on a hit and on a miss; a restore that missed the cache
+    # downloads it, and download-artifact fails by name when the run has none.
+    down = by_name["Download the run's zaychik image"]
+    assert (
+        down["if"] == "inputs.phase == 'restore' && steps.zaychik-image.outputs.cache-hit != 'true'"
+    )
+    assert down["uses"] == "actions/download-artifact@v4"
+    assert down["with"] == {"name": "zaychik-image", "path": "~/zaychik-image"}
+    up = by_name["Upload the run's zaychik image"]
+    assert up["if"] == "inputs.phase == 'prime'"
+    assert up["uses"] == "actions/upload-artifact@v4"
+    assert up["with"]["name"] == down["with"]["name"]
+    assert up["with"]["path"] == "~/zaychik-image/zaychik.tar"
+    assert up["with"]["if-no-files-found"] == "error"
+    # A re-run of the priming job replaces the run's artifact instead of a 409 on the name.
+    assert up["with"]["overwrite"] is True
     loaded = by_name["Load the zaychik image"]
     assert loaded["if"] == "inputs.phase == 'restore'"
     assert loaded["run"] == "docker load -i ~/zaychik-image/zaychik.tar"
@@ -622,27 +646,24 @@ def test_the_servicenow_lane_runs_only_when_a_dispatch_asks_for_it_with_its_secr
     assert "pytest.mark.requires_servicenow" in source
 
 
-def test_the_servicenow_lane_builds_its_server_from_the_calcite_ref_it_is_given():
-    """REQ-1954: the e2e reads through a pgwire-servicenow built from the calcite ref the dispatch
-    names, and the app is told where that build is; the pinned release is never fetched."""
-    steps = {s.get("name"): s for s in _job_steps("servicenow")}
-    names = list(steps)
-    checkout = next(
-        s for s in _job_steps("servicenow") if s.get("with", {}).get("path") == "calcite"
-    )
-    assert checkout["with"]["repository"] == "kenstott/calcite"
-    assert checkout["with"]["ref"] == "${{ inputs.servicenow_calcite_ref }}"
-    build = steps["Build pgwire-servicenow"]
-    assert "build-bundle.sh servicenow linux-x86_64" in build["run"]
-    assert "PROVISA_PGWIRE_BUNDLE_SERVICENOW=" in build["run"]
-    assert names.index("Build pgwire-servicenow") < names.index("Run lane")
-    assert "SERVICENOW_CALCITE_REF" in _credentials_step("servicenow")["run"]
+def test_the_servicenow_lane_reads_the_pinned_release_bundle():
+    """REQ-1954: the e2e reads through the pinned release's pgwire-servicenow, fetched by the app
+    as every other connector's bundle is; the lane builds no server of its own and takes no
+    calcite ref, so a dispatch needs nothing beyond the instance's credentials."""
+    steps = _job_steps("servicenow")
+    assert not [s for s in steps if s.get("with", {}).get("repository") == "kenstott/calcite"]
+    assert not [s for s in steps if "build-bundle.sh" in s.get("run", "")]
+    job = _lanes_workflow()["jobs"]["servicenow"]
+    assert job["env"]["PROVISA_RUNTIME_DEPS_CACHE"] == "${{ github.workspace }}/.runtime-deps"
+    assert "PROVISA_PGWIRE_BUNDLE_SERVICENOW" not in str(job)
+    assert "CALCITE_REF" not in _credentials_step("servicenow")["run"]
     import yaml
 
+    lanes = _lanes_workflow()
+    assert "servicenow_calcite_ref" not in lanes[True]["workflow_call"]["inputs"]
     caller = yaml.safe_load((REPO / ".github" / "workflows" / "integration-suite.yml").read_text())
-    assert caller["jobs"]["lanes"]["with"]["servicenow_calcite_ref"] == (
-        "${{ inputs.servicenow_calcite_ref || '' }}"
-    )
+    assert "servicenow_calcite_ref" not in caller[True]["workflow_dispatch"]["inputs"]
+    assert "servicenow_calcite_ref" not in caller["jobs"]["lanes"]["with"]
 
 
 _M365_TESTS = (

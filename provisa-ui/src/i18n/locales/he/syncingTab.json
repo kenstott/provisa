@@ -120,6 +120,21 @@
     "standingChoicesHelp": "מה הרצה עושה עם כל סוג הבדל, לפי כיוון. השהיה, או היעדר בחירה קבועה, משאירה את ההבדל כאן עבור אחראי נתונים.",
     "standingKind": "סוג ההבדל",
     "compare": "השווה מול הקטלוג",
-    "title": "סנכרון הקשר"
+    "title": "סנכרון הקשר",
+    "importCron": "לוח זמנים לייבוא",
+    "importCronHelp": "ביטוי cron לייבוא ללא השגחה. כל הרצה לוקחת את ערך הקטלוג רק היכן שהבחירה הקבועה קובעת זאת ורק הקטלוג שינה אותו; כל הבדל אחר מושהה עבור אחראי נתונים. השאירו ריק כדי לייבא לפי דרישה בלבד.",
+    "importCronPlaceholder": "0 3 * * *",
+    "runImportNow": "ייבוא כעת",
+    "lastImport": "ייבוא אחרון",
+    "neverImported": "טרם יובא.",
+    "importOk": "{{applied}} הוחלו, {{held}} הושהו",
+    "importFailed": "נכשל",
+    "importTrigger_schedule": "הרצה מתוזמנת, {{when}}",
+    "importTrigger_manual": "הורץ ידנית, {{when}}",
+    "importApplied": "הוחלו",
+    "importHeld": "הושהו",
+    "importKind": "סוג",
+    "importObject": "אובייקט",
+    "importReason": "סיבת ההשהיה"
   }
 }

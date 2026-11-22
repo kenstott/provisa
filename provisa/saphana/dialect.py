@@ -19,10 +19,16 @@ Each HANA behaviour relied on is from SAP's HANA SQL reference, not yet verified
 Exact or refused (REQ-2236): a statement is written for HANA only when each construct in it has a
 form there that gives PostgreSQL's answer. Each node of the statement must be of a kind listed in
 :data:`_EXACT`, or have its own check; any other construct is refused by name (:class:`HanaRefused`)
-before any SQL is written, so no construct reaches HANA in a form whose answer may differ. Among the
-refusals, each with its reason:
+before any SQL is written, so no construct reaches HANA in a form whose answer may differ. Each
+refusal, its reason, and the SQLSTATE and message a client receives are rows of the polyfill grid
+(provisa/transpiler/polyfill/exact_engines.py), which :func:`refused` reads, and are listed on
+the engine's page (docs/conformance/polyfill/). Among the refusals, each with its reason:
 
-- ``/``: HANA's quotient of two integers is a decimal; PostgreSQL's is the truncated integer.
+- ``/`` of operands whose integer types are not known: HANA's quotient of two integers is a
+  decimal; PostgreSQL's is the integer truncated toward zero. Where both operands' integer types
+  are known (literals, counts, casts, and integer columns where the caller supplied the column
+  types, provisa/core/sql_integral.py), ``a / b`` is ``CAST(ROUND(a / b, 0, ROUND_DOWN) AS t)``:
+  ROUND_DOWN rounds toward zero, as PostgreSQL truncates, and ``t`` is the wider operand's type.
 - ``avg``: HANA's AVG result type and scale are not PostgreSQL's numeric.
 - ``greatest``/``least``/``concat``: HANA returns NULL for any NULL argument; PostgreSQL skips it.
 - ``round``/``power``: HANA's result type follows its arguments; PostgreSQL's does not.
@@ -59,7 +65,7 @@ import sqlglot.expressions as exp
 from sqlglot import generator
 from sqlglot.dialects.dialect import Dialect, NormalizationStrategy
 
-from provisa.core.sql_integral import fractional_integer_cast
+from provisa.core.sql_integral import fractional_integer_cast, integer_type
 
 #: The dialect's name, as ``source_registry.engine_dialect`` returns it for a HANA engine.
 NAME = "saphana"
@@ -186,9 +192,10 @@ def _refused_class() -> type[Exception]:
     from provisa.transpiler.function_macros import FunctionRefused
 
     class _Refused(FunctionRefused, HanaRefused):
-        def __init__(self, construct: str) -> None:
+        def __init__(self, construct: str, sqlstate: str, message: str) -> None:
             FunctionRefused.__init__(self, construct, NAME)
-            self.args = (f"{construct} has no form on SAP HANA that gives PostgreSQL's answer",)
+            self.sqlstate = sqlstate
+            self.args = (message,)
 
         def __str__(self) -> str:
             return str(self.args[0])
@@ -196,17 +203,21 @@ def _refused_class() -> type[Exception]:
     return _Refused
 
 
-def refused(construct: str) -> Exception:
-    """The refusal of ``construct`` on HANA."""
-    return _refused_class()(construct)
+def refused(construct: str, **named: str) -> Exception:
+    """The refusal of ``construct`` on HANA: the polyfill grid's row that names it, its SQLSTATE and
+    message (REQ-2236, THE REFUSAL LIVES IN THE GRID; provisa/transpiler/polyfill/exact_engines.py).
+    Where the construct named depends on the statement, ``construct`` is the row's, braces and all
+    (``"extract of {field}"``), and ``named`` fills them."""
+    from provisa.transpiler.polyfill.exact_engines import refusal
+
+    row = refusal(NAME, construct, **named)
+    return _refused_class()(construct.format(**named), row.sqlstate, row.message)
 
 
 def _name_of(node: exp.Expr) -> str:
     """How a refusal names ``node``: the function's name, or the construct's kind."""
     if isinstance(node, exp.Anonymous):
         return node.name.lower()
-    if isinstance(node, exp.Div):
-        return "/"
     if isinstance(node, exp.Func):
         names = type(node).sql_names()
         if names:
@@ -235,19 +246,20 @@ def _param_value(dtype: exp.DataType, index: int) -> int | None:
     return None
 
 
-def _type_refusal(dtype: exp.DataType) -> str | None:
-    """Why a value of ``dtype`` has no HANA form with PostgreSQL's values; None where it has one."""
+def _type_refusal(dtype: exp.DataType) -> Exception | None:
+    """The refusal of a value of ``dtype``, which has no HANA form with PostgreSQL's values; None
+    where it has one."""
     kind = dtype.this
     if kind not in _TYPES:
-        return f"the type {dtype.sql(dialect='postgres').lower()}"
+        return refused("the type {type}", type=dtype.sql(dialect="postgres").lower())
     if kind == exp.DType.DECIMAL:
         precision = _param_value(dtype, 0)
         if precision is None or precision > _DECIMAL_MAX:
-            return f"numeric without a precision of at most {_DECIMAL_MAX}"
+            return refused("numeric without a precision of at most {max}", max=str(_DECIMAL_MAX))
     elif kind == exp.DType.VARCHAR and dtype.expressions:
         length = _param_value(dtype, 0)
         if length is None or length > _NVARCHAR_MAX:
-            return f"varchar longer than {_NVARCHAR_MAX}"
+            return refused("{kind} longer than {max}", kind="varchar", max=str(_NVARCHAR_MAX))
     return None
 
 
@@ -267,12 +279,16 @@ def _check(node: exp.Expr) -> None:  # noqa: C901 -- one branch per construct wi
     if isinstance(node, exp.DataType):
         why = _type_refusal(node)
         if why is not None:
-            raise refused(why)
+            raise why
         return
     if isinstance(node, exp.Cast):
         why = _cast_refusal(node)
         if why is not None:
             raise refused(why)
+        return
+    if isinstance(node, exp.Div):
+        if integer_type(node) is None:
+            raise refused("/ of operands not known to be integers")
         return
     if isinstance(node, exp.Length):
         if node.args.get("binary"):
@@ -296,7 +312,7 @@ def _check(node: exp.Expr) -> None:  # noqa: C901 -- one branch per construct wi
     if isinstance(node, exp.Extract):
         field = node.this.name.upper() if isinstance(node.this, (exp.Var, exp.Identifier)) else ""
         if field not in _EXTRACT_FIELDS:
-            raise refused(f"extract of {field.lower() or 'a computed field'}")
+            raise refused("extract of {field}", field=field.lower() or "a computed field")
         return
     if isinstance(node, exp.Ceil):
         if node.args.get("decimals") is not None:
@@ -320,7 +336,7 @@ def _check(node: exp.Expr) -> None:  # noqa: C901 -- one branch per construct wi
         return
     if isinstance(node, exp.SetOperation):
         if isinstance(node, (exp.Intersect, exp.Except)) and not node.args.get("distinct"):
-            raise refused(f"{type(node).__name__.lower()} all")
+            raise refused("{kind} all", kind=type(node).__name__.lower())
         return
     if isinstance(node, exp.WindowSpec):
         if str(node.args.get("kind") or "").upper() == "RANGE" and any(
@@ -534,7 +550,17 @@ class SapHanaGenerator(generator.Generator):
             length = _param_value(expression, 0)
             # varchar with no length is PostgreSQL's unbounded text, at HANA's longest
             return f"NVARCHAR({_NVARCHAR_MAX if length is None else length})"
-        raise refused(f"the type {kind.name.lower()}")
+        raise refused("the type {type}", type=kind.name.lower())
+
+    def div_sql(self, expression: exp.Div) -> str:
+        # check() accepted only a quotient of two integers: PostgreSQL's integer of the wider
+        # operand's type, truncated toward zero. HANA's quotient is an exact decimal (a bigint
+        # quotient's integer part and fraction fit its 34 digits), which ROUND_DOWN truncates
+        # toward zero, so the cast is of an integral value.
+        kind = integer_type(expression)
+        assert kind is not None, "check() refuses a quotient of operands not known to be integers"
+        quotient = f"{self.sql(expression, 'this')} / {self.sql(expression, 'expression')}"
+        return f"CAST(ROUND({quotient}, 0, ROUND_DOWN) AS {_TYPES[kind]})"
 
     def substring_sql(self, expression: exp.Substring) -> str:
         args = [expression.this, expression.args.get("start"), expression.args.get("length")]

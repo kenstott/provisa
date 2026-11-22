@@ -126,7 +126,19 @@ class EngineRuntime:  # REQ-825, REQ-840
 
         # REQ-615: a session's temporary table is read at its address in the engine's store.
         pg_sql = address_temp_tables(pg_sql, self._state)
-        physical = self._backend.transpile_physical(self._search_replica_indexes(pg_sql))
+        addressed = self._search_replica_indexes(pg_sql)
+        from provisa.transpiler.typed_columns import TYPED_DIALECTS
+
+        if self._backend.dialect in TYPED_DIALECTS:
+            # REQ-2236: a dialect that writes by its operands' types is handed the registered
+            # column types, by the names the addressed statement gives its tables.
+            from provisa.federation.typed_transpile import registered_column_types
+
+            physical = self._backend.transpile_typed(
+                addressed, registered_column_types(self._state, self.engine)
+            )
+        else:
+            physical = self._backend.transpile_physical(addressed)
         return self._backend.exact_reads(self._state, physical)
 
     def _search_replica_indexes(self, pg_sql: str) -> str:

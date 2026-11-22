@@ -129,6 +129,12 @@ class _Flaky:
             def alive(self):
                 return True
 
+            def touch(self):
+                pass
+
+            def idle_since(self):
+                return None
+
             def stop(self):
                 pass
 
@@ -176,7 +182,7 @@ def host(tmp_path):
             str(names),
             *[sys.executable, "-I", str(HOST), "{fd}", str(code), "shop"],
         ],
-        env={**os.environ, "PROVISA_CODE_HASH": hashed},
+        env={**os.environ, "PROVISA_CODE_HASH": hashed, "PROVISA_DISCOVERED": "{}"},
         stderr=subprocess.PIPE,
         text=True,
     )

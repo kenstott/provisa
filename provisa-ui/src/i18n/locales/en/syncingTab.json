@@ -120,6 +120,21 @@
     "standingChoicesHelp": "What a run does with each kind of difference, per direction. Hold, or no standing choice, leaves the difference here for a steward.",
     "standingKind": "Kind of difference",
     "compare": "Compare with the catalog",
-    "title": "Context Sync"
+    "title": "Context Sync",
+    "importCron": "Import schedule",
+    "importCronHelp": "Cron expression for an unattended Import. Each run takes the catalog's value only where the standing choice says so and the catalog alone changed; it holds every other difference for a steward. Leave empty to import only on demand.",
+    "importCronPlaceholder": "0 3 * * *",
+    "runImportNow": "Run import now",
+    "lastImport": "Last import",
+    "neverImported": "Not imported yet.",
+    "importOk": "Applied {{applied}}, held {{held}}",
+    "importFailed": "Failed",
+    "importTrigger_schedule": "Scheduled run, {{when}}",
+    "importTrigger_manual": "Run by hand, {{when}}",
+    "importApplied": "Applied",
+    "importHeld": "Held",
+    "importKind": "Kind",
+    "importObject": "Object",
+    "importReason": "Why it was held"
   }
 }

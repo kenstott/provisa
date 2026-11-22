@@ -2190,6 +2190,30 @@ def test_a_caller_that_waits_has_an_unanswered_preparation_sent_again_within_its
     assert answers == []
 
 
+def test_a_server_that_exits_while_its_catalog_is_unanswered_is_told_why(monkeypatch):
+    """An unanswered preparation is sent again only while the server runs: a server that has
+    exited answers nothing, ever, so the wait reports its exit and its log's end at once rather
+    than "still starting" for the rest of the wait (warehouse run 44946515029: a cloudops source's
+    600 s cold start was answered STARTING after some 300 refused connections)."""
+    monkeypatch.setattr(pr, "_CATALOG_RESEND_SECONDS", 0.01)
+    sent: list[int] = []
+
+    def prepare(ports, password):
+        sent.append(1)
+        raise ConnectionRefusedError()
+
+    replica = _replica_with_server(
+        healthy=True, exit_code=None, catalog_ready=False, prepare=prepare
+    )
+    replica._server.exit_code = lambda: 1 if sent else None  # type: ignore[union-attr]
+    started = time.monotonic()
+    with pytest.raises(pr.ServerExited, match="exited with code 1") as raised:
+        replica.await_catalog(pr.PortPair(5440, "127.0.0.1", 5540), 30)
+    assert "the log's end" in str(raised.value)
+    assert time.monotonic() - started < 5
+    assert len(sent) == 1
+
+
 def test_a_caller_that_waits_is_told_still_starting_once_its_wait_is_out(monkeypatch):
     monkeypatch.setattr(pr, "_CATALOG_RESEND_SECONDS", 0.01)
 

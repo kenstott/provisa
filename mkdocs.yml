@@ -189,6 +189,8 @@ nav:
           - "Hive": conformance/polyfill/hive.md
           - "Exasol": conformance/polyfill/exasol.md
           - "Druid": conformance/polyfill/druid.md
+          - "Db2": conformance/polyfill/db2.md
+          - "SAP HANA": conformance/polyfill/saphana.md
   - Clients:
       - Python Client: python-client.md
   - Administration:

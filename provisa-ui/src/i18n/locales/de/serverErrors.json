@@ -951,7 +951,9 @@
       "object_gone": "{{object}} ist in Provisa nicht mehr registriert.",
       "unknown_direction": "{{direction}} ist keine Richtung: Verwenden Sie Export oder Import.",
       "unknown_kind": "{{kind}} ist keine Art von Unterschied.",
-      "unknown_choice": "{{choice}} ist keine feste Wahl."
+      "unknown_choice": "{{choice}} ist keine feste Wahl.",
+      "import_cron_not_importing": "{{entry}} importiert nicht und hat daher keinen Importzeitplan.",
+      "import_cron_invalid": "{{cron}} ist kein Cron-Ausdruck wie 0 3 * * *."
     },
     "wikidata": {
       "no_credential": "Der Wikidata-Abfragedienst benötigt keine Anmeldedaten",

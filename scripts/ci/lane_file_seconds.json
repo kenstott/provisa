@@ -420,6 +420,7 @@
   "tests/integration/test_pg_passthrough_stale_statement.py": 197.0,
   "tests/integration/test_pg_replica_one_database_e2e.py": 22.5,
   "tests/integration/test_pg_runtime_e2e.py": 0.9,
+  "tests/integration/test_pg_runtime_sqlstate.py": 15.0,
   "tests/integration/test_pg_schema_upgrade.py": 13.2,
   "tests/integration/test_pg_table_floor_build_e2e.py": 28.0,
   "tests/integration/test_pgwire_bound_params.py": 6.8,

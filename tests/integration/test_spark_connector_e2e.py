@@ -271,6 +271,7 @@ class _Host:
         env = {
             **os.environ,
             "PROVISA_CODE_HASH": self.hashed,
+            "PROVISA_DISCOVERED": "{}",
             "PROVISA_MANIFEST_FILE": str(work / "manifest.json"),
             "PROVISA_CONNECTOR_SCRIPT": "script",
             **({"SPARK_HOME": str(_phome)} if _phome is not None else {}),

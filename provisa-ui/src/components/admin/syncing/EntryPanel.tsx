@@ -13,6 +13,9 @@
 // Export) and the result of its last publish. Edited, it is the same fields with Save and Cancel
 // in the panel's head. A type with no run of its own yet is offered none. A data catalog's
 // comparison with its catalog (its differences and standing choices, EntrySync) opens below.
+// While its direction includes Import, a data catalog offers Run import now and shows its last
+// Import run: when, how it was started, its outcome, and what it applied and held with why. A
+// refused import schedule is shown on its field.
 // Duplicate, beside Edit and Delete, opens the create form filled from the entry (SyncingTab);
 // that form says when the entry's credentials have to be entered again (`note`).
 
@@ -22,7 +25,11 @@ import { ActionIcon, Alert, Badge, Button, Group, Stack, Table, Text, Title } fr
 import { Check, Pencil, TriangleAlert } from "lucide-react";
 import {
   exportsTo,
+  importsFrom,
+  SyncingRefused,
   type EntryHealth,
+  type ImportRun,
+  type ImportRunItem,
   type PublishOutcome,
   type SyncEntry,
   type SyncSecretField,
@@ -74,9 +81,90 @@ export function LastRun({ outcome }: { outcome: PublishOutcome }) {
   );
 }
 
+/** The differences an Import run applied or held, each with why it was held. */
+function ImportItems({
+  items,
+  testId,
+  withReason,
+}: {
+  items: ImportRunItem[];
+  testId: string;
+  withReason: boolean;
+}) {
+  const { t } = useTranslation();
+  return (
+    <Table data-testid={testId}>
+      <Table.Thead>
+        <Table.Tr>
+          <Table.Th>{t("syncingTab.importKind")}</Table.Th>
+          <Table.Th>{t("syncingTab.importObject")}</Table.Th>
+          {withReason && <Table.Th>{t("syncingTab.importReason")}</Table.Th>}
+        </Table.Tr>
+      </Table.Thead>
+      <Table.Tbody>
+        {items.map((item) => (
+          <Table.Tr key={`${item.kind}:${item.object}`}>
+            <Table.Td>{t(`syncingTab.kind_${item.kind}`)}</Table.Td>
+            <Table.Td>{item.object}</Table.Td>
+            {withReason && <Table.Td>{item.reason}</Table.Td>}
+          </Table.Tr>
+        ))}
+      </Table.Tbody>
+    </Table>
+  );
+}
+
+/** The entry's last Import run: when, how it was started, its outcome, what it applied and held. */
+export function LastImport({ run }: { run: ImportRun }) {
+  const { t, i18n } = useTranslation();
+  const ok = run.outcome === "ok";
+  return (
+    <Stack gap={4} data-testid="syncing-last-import">
+      <Title order={6}>{t("syncingTab.lastImport")}</Title>
+      <Group gap="xs">
+        <Badge color={ok ? "green" : "red"} data-testid="syncing-last-import-badge">
+          {ok
+            ? t("syncingTab.importOk", { applied: run.applied.length, held: run.held.length })
+            : t("syncingTab.importFailed")}
+        </Badge>
+        <Text size="sm" c="dimmed" data-testid="syncing-last-import-when">
+          {t(`syncingTab.importTrigger_${run.trigger}`, {
+            when: new Date(run.started_at).toLocaleString(i18n.language),
+          })}
+        </Text>
+      </Group>
+      {run.error && (
+        <Text size="sm" c="red" data-testid="syncing-last-import-error">
+          {run.error}
+        </Text>
+      )}
+      {run.applied.length > 0 && (
+        <>
+          <Text size="sm" fw={500}>
+            {t("syncingTab.importApplied")}
+          </Text>
+          <ImportItems
+            items={run.applied}
+            testId="syncing-last-import-applied"
+            withReason={false}
+          />
+        </>
+      )}
+      {run.held.length > 0 && (
+        <>
+          <Text size="sm" fw={500}>
+            {t("syncingTab.importHeld")}
+          </Text>
+          <ImportItems items={run.held} testId="syncing-last-import-held" withReason />
+        </>
+      )}
+    </Stack>
+  );
+}
+
 type Shared = Omit<
   EntryFieldsProps,
-  "entry" | "secrets" | "isNew" | "onChange" | "onSecret" | "entitled"
+  "entry" | "secrets" | "isNew" | "onChange" | "onSecret" | "entitled" | "importCronProblem"
 >;
 
 export function EntryPanel({
@@ -89,6 +177,7 @@ export function EntryPanel({
   onDelete,
   onTest,
   onPublish,
+  onRunImport,
   onDuplicate,
   note,
 }: {
@@ -102,6 +191,8 @@ export function EntryPanel({
   onDelete: () => Promise<void>;
   onTest: () => Promise<EntryHealth>;
   onPublish: () => Promise<PublishOutcome | undefined>;
+  /** Runs the entry's Import once now; rejects with the reason it was refused or failed. */
+  onRunImport: () => Promise<void>;
   /** Opens the create form filled from this entry. */
   onDuplicate: () => void;
   /** What the create form says above its fields: what a duplicate did not copy. */
@@ -112,20 +203,29 @@ export function EntryPanel({
   const [draft, setDraft] = useState<SyncEntry>(entry);
   const [secrets, setSecrets] = useState<Secrets>({});
   const [problem, setProblem] = useState<string | null>(null);
+  const [importCronProblem, setImportCronProblem] = useState<string | undefined>(undefined);
   const [busy, setBusy] = useState("");
   const [health, setHealth] = useState<EntryHealth | null>(null);
 
   const isCatalog = entry.type === "data_catalog";
   const exporting = isCatalog && exportsTo(entry.direction);
+  const importing = isCatalog && importsFrom(entry.direction);
 
   if (editing) {
     const save = async () => {
       setProblem(null);
+      setImportCronProblem(undefined);
       try {
         await onSave(draft, secrets);
         setSecrets({});
         setEditing(false);
       } catch (e) {
+        // A refused import schedule of this entry is shown on its field; any other refusal above
+        // the buttons.
+        if (e instanceof SyncingRefused && e.field === "import_cron" && e.entry === draft.id) {
+          setImportCronProblem(e.message);
+          return;
+        }
         setProblem(e instanceof Error ? e.message : String(e));
       }
     };
@@ -150,7 +250,11 @@ export function EntryPanel({
           secrets={secrets}
           isNew={isNew}
           entitled={entitled}
-          onChange={(p) => setDraft((prev) => ({ ...prev, ...p }))}
+          importCronProblem={importCronProblem}
+          onChange={(p) => {
+            if ("import_cron" in p) setImportCronProblem(undefined);
+            setDraft((prev) => ({ ...prev, ...p }));
+          }}
           onSecret={(field: SyncSecretField, value: string) =>
             setSecrets((prev) => ({ ...prev, [field]: value }))
           }
@@ -167,6 +271,7 @@ export function EntryPanel({
             setDraft(entry);
             setSecrets({});
             setProblem(null);
+            setImportCronProblem(undefined);
             setEditing(false);
           }}
           saveProps={{
@@ -221,6 +326,17 @@ export function EntryPanel({
                 }
               >
                 {t("syncingTab.publishNow")}
+              </Button>
+            )}
+            {/* A direction that is off never runs: Run import now is offered only while it
+            imports. */}
+            {importing && (
+              <Button
+                loading={busy === "import"}
+                data-testid="syncing-run-import"
+                onClick={() => act("import", onRunImport)}
+              >
+                {t("syncingTab.runImportNow")}
               </Button>
             )}
             <Tip text={t("syncingTab.edit")} named>
@@ -279,6 +395,14 @@ export function EntryPanel({
           ) : exporting ? (
             <Text size="sm" c="dimmed" data-testid="syncing-never-run">
               {t("syncingTab.neverRun")}
+            </Text>
+          ) : null)}
+        {isCatalog &&
+          (entry.last_import ? (
+            <LastImport run={entry.last_import} />
+          ) : importing ? (
+            <Text size="sm" c="dimmed" data-testid="syncing-never-imported">
+              {t("syncingTab.neverImported")}
             </Text>
           ) : null)}
         {/* The catalog is read only when the steward opens the comparison. */}

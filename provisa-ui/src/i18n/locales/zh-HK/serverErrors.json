@@ -951,7 +951,9 @@
       "object_gone": "{{object}} 已不再於 Provisa 中登記。",
       "unknown_direction": "{{direction}} 不是方向：請使用匯出或匯入。",
       "unknown_kind": "{{kind}} 不是差異類型。",
-      "unknown_choice": "{{choice}} 不是固定選擇。"
+      "unknown_choice": "{{choice}} 不是固定選擇。",
+      "import_cron_not_importing": "{{entry}} 不匯入，因此沒有匯入排程。",
+      "import_cron_invalid": "{{cron}} 不是 Cron 表達式，例如 0 3 * * *。"
     },
     "wikidata": {
       "no_credential": "Wikidata 查詢服務毋須憑證",

@@ -47,6 +47,7 @@ const MARQUEZ: SyncEntry = {
   role: "steward",
   datazone_project_id: "",
   delta_share: false,
+  import_cron: "",
   api_key_set: false,
   token_set: false,
   entra_client_secret_set: false,
@@ -54,6 +55,7 @@ const MARQUEZ: SyncEntry = {
   aws_access_key_id_set: false,
   aws_secret_access_key_set: false,
   last_run: null,
+  last_import: null,
 };
 
 const BASE: SyncingState = {

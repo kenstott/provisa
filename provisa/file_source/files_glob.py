@@ -74,24 +74,116 @@ def require_same_columns(glob: str, per_file: dict[str, Sequence[str]]) -> list[
     return agreed
 
 
-def matched_files(source_path: str, file_glob: str) -> list[str]:
-    """The files a table's ``file_glob`` matches, sorted. ``file_glob`` is evaluated under the
-    source's directory: the directory of ``source_path`` when it names a file or is itself a
-    glob, else ``source_path`` itself when it is a directory. A local path uses :mod:`glob`; an
-    fsspec URI (``s3://`` …) uses fsspec's own globbing. The match is the caller's to act on —
-    an empty match is not raised here."""
+class FileOutsideSourceGlob(ValueError):
+    """A table's ``file_glob`` matched a file its source's own glob does not (REQ-788): the
+    source's glob decides its files, so a table of the source cannot read past it."""
+
+    code = "schema.file_outside_source_glob"
+
+    def __init__(self, table_glob: str, file: str, source_glob: str) -> None:
+        self.params = {"glob": table_glob, "file": file, "source_glob": source_glob}
+        super().__init__(
+            f"file {file!r} matched by glob {table_glob!r} is outside the source's glob "
+            f"{source_glob!r}; a table of the source reads only the files its glob matches"
+        )
+
+
+class SourceGlobMatchesNothing(ValueError):
+    """A files source's path is a glob that matches no file (REQ-788)."""
+
+    code = "schema.source_glob_matches_nothing"
+
+    def __init__(self, source_glob: str) -> None:
+        self.params = {"glob": source_glob}
+        super().__init__(f"the source's glob {source_glob!r} matches no file")
+
+
+def _is_uri(path: str) -> bool:
+    """Whether ``path`` is an fsspec URI (``s3://``, ``memory://``, ``file://`` …)."""
+    return "://" in path
+
+
+def split_source_path(source_path: str) -> tuple[str, str | None]:
+    """A files source's path as ``(directory, glob)``: the directory is the path up to its first
+    segment holding a glob character, and the glob is the rest, relative to that directory. A
+    path with no glob character is ``(source_path, None)``: a directory or a single file, as it
+    is written. Glob characters are the :mod:`glob` module's own (``glob.has_magic``)."""
+    import glob as _glob
+
+    if not _glob.has_magic(source_path):
+        return source_path, None
+    prefix = ""
+    rest = source_path
+    if _is_uri(source_path):
+        proto, rest = source_path.split("://", 1)
+        prefix = f"{proto}://"
+    parts = rest.split("/")
+    first = next(i for i, part in enumerate(parts) if _glob.has_magic(part))
+    directory = "/".join(parts[:first])
+    if not directory and rest.startswith("/"):
+        directory = "/"
+    return f"{prefix}{directory}", "/".join(parts[first:])
+
+
+def _glob_paths(base: str, pattern: str) -> list[str]:
+    """The files ``pattern`` matches under ``base``, sorted: :mod:`glob` for a local path,
+    fsspec's own globbing for a URI. A directory is not a file of the match."""
     import glob as _glob
     import os
 
-    if "://" in source_path and not source_path.startswith("file://"):
+    if _is_uri(base):
         import fsspec
 
-        base = source_path.rsplit("/", 1)[0] if not source_path.endswith("/") else source_path[:-1]
-        fs, _, _ = fsspec.get_fs_token_paths(base)
-        proto = source_path.split("://", 1)[0]
-        return sorted(f"{proto}://{m}" for m in fs.glob(f"{base}/{file_glob}"))
-    base = source_path if os.path.isdir(source_path) else os.path.dirname(source_path)
-    return sorted(_glob.glob(os.path.join(base, file_glob), recursive=True))
+        fs, root = fsspec.core.url_to_fs(base)
+        proto = base.split("://", 1)[0]
+        found = fs.glob(f"{root.rstrip('/')}/{pattern}", detail=True)
+        return sorted(f"{proto}://{m}" for m, info in found.items() if info["type"] == "file")
+    found = _glob.glob(os.path.join(base, pattern), recursive=True)
+    return sorted(m for m in found if os.path.isfile(m))
+
+
+def source_glob_files(source_path: str) -> list[str] | None:
+    """The files a files source's glob decides (REQ-788), sorted; None when the source's path is
+    no glob (a directory or one file, whose files are not narrowed). An empty list is a glob that
+    matches nothing; :func:`require_source_glob_matches` refuses it by name."""
+    base, pattern = split_source_path(source_path)
+    if pattern is None:
+        return None
+    return _glob_paths(base, pattern)
+
+
+def require_source_glob_matches(source_path: str) -> None:
+    """Raise :class:`SourceGlobMatchesNothing` when the source's path is a glob that matches no
+    file. A path with no glob is not checked here."""
+    files = source_glob_files(source_path)
+    if files is not None and not files:
+        raise SourceGlobMatchesNothing(source_path)
+
+
+def matched_files(source_path: str, file_glob: str) -> list[str]:
+    """The files a table's ``file_glob`` matches, sorted. ``file_glob`` is evaluated under the
+    source's directory: the directory of ``source_path`` when it names a file, the directory
+    before the glob when it is itself a glob, else ``source_path`` itself when it is a directory.
+    A local path uses :mod:`glob`; an fsspec URI (``s3://`` …) uses fsspec's own globbing.
+
+    Under a globbed source a matched file the source's glob does not match is refused by name
+    (:class:`FileOutsideSourceGlob`): the source's glob decides its files. An empty match is
+    the caller's to act on and is not raised here."""
+    import os
+
+    base, source_glob = split_source_path(source_path)
+    if source_glob is None:
+        if _is_uri(source_path):
+            base = source_path[:-1] if source_path.endswith("/") else source_path.rsplit("/", 1)[0]
+        elif not os.path.isdir(source_path):
+            base = os.path.dirname(source_path)
+    files = _glob_paths(base, file_glob)
+    if source_glob is not None:
+        allowed = set(_glob_paths(base, source_glob))
+        outside = next((f for f in files if f not in allowed), None)
+        if outside is not None:
+            raise FileOutsideSourceGlob(file_glob, outside, source_path)
+    return files
 
 
 def validate_glob_table(
@@ -213,13 +305,13 @@ def stat_matched_files(source_path: str, file_glob: str) -> list[tuple[str, floa
     import os
 
     files = matched_files(source_path, file_glob)
-    if "://" in source_path and not source_path.startswith("file://"):
+    if _is_uri(source_path):
         import fsspec
 
-        fs, _, _ = fsspec.get_fs_token_paths(source_path)
         out = []
         for f in files:
-            info = fs.info(f)
+            fs, path = fsspec.core.url_to_fs(f)
+            info = fs.info(path)
             out.append((f, float(info.get("mtime", 0) or 0), int(info.get("size", 0) or 0)))
         return out
     return [(f, os.path.getmtime(f), os.path.getsize(f)) for f in files]

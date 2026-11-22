@@ -111,6 +111,18 @@ STANDARD_ROLE_RIGHTS: dict[str, frozenset[str]] = {
 }
 
 
+def _public_read_only() -> None:  # REQ-1058
+    """The public role is read-only: refused by name at import if its definition holds more."""
+    from provisa.security.rights import PUBLIC_ROLE, public_read_only_refusal
+
+    refused = public_read_only_refusal(PUBLIC_ROLE, STANDARD_ROLE_RIGHTS[PUBLIC_ROLE])
+    if refused is not None:
+        raise ValueError(refused)
+
+
+_public_read_only()
+
+
 def sandbox_demonstrated() -> list[str]:  # REQ-1602, REQ-1608
     """The rights the sandbox is SHOWN but does not hold: what org_admin holds that it does not,
     so its surfaces stay on the page, disabled and badged -- all but user_management, whose page
