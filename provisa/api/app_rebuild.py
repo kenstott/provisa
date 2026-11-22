@@ -424,7 +424,10 @@ async def serve_registered_tables(state) -> None:
     )
 
     config = state.config
-    glob_specs = file_glob_specs(list(config.tables))
+    # A glob table registered through the admin API (the Register Table form's "Or files
+    # matching") is a model-store row in state.tables (set by the build before this runs), never
+    # in the configuration file's tables.
+    glob_specs = file_glob_specs([*config.tables, *state.tables])
     for source in config.sources:
         if source.type.value == "files":
             await _serve_glob_tables(state, source, glob_specs.get(source.id, []))

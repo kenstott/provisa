@@ -108,18 +108,22 @@ async def test_a_glob_table_registered_later_restarts_the_server_and_reattaches_
             ("register", catalog_name)
         ),
     )
-    tables: list = []
+    # The configuration file declares a per-file table; the glob table is registered through the
+    # admin API, so it is a model-store row in state.tables and never in config.tables.
     state = SimpleNamespace(
-        config=SimpleNamespace(sources=[_files_source(str(tmp_path))], tables=tables),
+        config=SimpleNamespace(
+            sources=[_files_source(str(tmp_path))],
+            tables=[SimpleNamespace(**{**_glob_row(), "table_name": "other", "file_glob": None})],
+        ),
+        tables=[],
         federation_engine=engine,
         source_catalogs={"test": "_src_test"},
     )
     # The source discovered, its per-file tables only: nothing to start again.
-    tables.append(SimpleNamespace(**{**_glob_row(), "table_name": "other", "file_glob": None}))
     await app_rebuild.serve_registered_tables(state)
     assert calls == []
     # A glob table registered: the server is started again with it, and the source attached anew.
-    tables.append(SimpleNamespace(**_glob_row()))
+    state.tables = [_glob_row()]
     await app_rebuild.serve_registered_tables(state)
     assert calls == [("restart", "test"), ("drop", "_src_test"), ("register", "_src_test")]
     # Unchanged: left running.
