@@ -2,8 +2,6 @@
   "proposalEdit": {
     "title": "Kandidaat bewerken",
     "name": "Naam van de relatie",
-    "cardinality": "Kardinaliteit",
-    "cancel": "Annuleren",
-    "save": "Opslaan"
+    "cardinality": "Kardinaliteit"
   }
 }

@@ -2,8 +2,6 @@
   "proposalEdit": {
     "title": "Kandidat bearbeiten",
     "name": "Name der Beziehung",
-    "cardinality": "Kardinalität",
-    "cancel": "Abbrechen",
-    "save": "Speichern"
+    "cardinality": "Kardinalität"
   }
 }
