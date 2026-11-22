@@ -860,6 +860,31 @@ def _join_request_ttl():  # REQ-1250
     return timedelta(days=CreateInviteBody.model_fields["expires_in_days"].default)
 
 
+async def _require_join_requester(request: Request) -> str:  # REQ-1250
+    """The gate on asking to join: REQ-1250's "Requesters must be Firebase-authenticated".
+
+    Returns the caller's own user id, the only requester a request can name: no body or query
+    field names one, so nobody can file a request on another person's behalf. Not signed in: 401;
+    signed in some other way (basic, a PAT, a non-Firebase IdP): 403.
+    """
+    from provisa.core.repositories.org_join_request import REQUIRED_PROVIDER, requester_provider
+
+    user_id = _caller_user_id(request)
+    if user_id is None:
+        raise ApiError(401, "orgs.auth_required_join", "Authentication required to ask to join")
+    identity = request.state.identity
+    if (
+        identity.credential != "idp"
+        or await requester_provider(_admin_pool(), user_id) != REQUIRED_PROVIDER
+    ):
+        raise ApiError(
+            403,
+            "orgs.join_request_firebase_required",
+            "Asking to join an org requires a Firebase sign-in",
+        )
+    return user_id
+
+
 @router.post("/{org_id}/join-requests", status_code=202)
 async def request_to_join(org_id: str, request: Request):  # REQ-1250
     """Ask to join ``org_id``.
@@ -871,23 +896,12 @@ async def request_to_join(org_id: str, request: Request):  # REQ-1250
     their request rate (429).
     """
     from provisa.core.repositories.org_join_request import (
-        REQUIRED_PROVIDER,
         JoinRequestRateLimited,
-        requester_provider,
         submit_join_request,
     )
 
-    user_id = _caller_user_id(request)
-    if user_id is None:
-        raise ApiError(401, "orgs.auth_required_join", "Authentication required to ask to join")
-    identity = request.state.identity
+    user_id = await _require_join_requester(request)
     pool = _admin_pool()
-    if identity.credential != "idp" or await requester_provider(pool, user_id) != REQUIRED_PROVIDER:
-        raise ApiError(
-            403,
-            "orgs.join_request_firebase_required",
-            "Asking to join an org requires a Firebase sign-in",
-        )
     try:
         await submit_join_request(pool, user_id=user_id, org_id=org_id, ttl=_join_request_ttl())
     except JoinRequestRateLimited as limited:

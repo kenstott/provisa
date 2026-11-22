@@ -16,6 +16,7 @@ this process's copy says is fresh costs no control-plane read."""
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import itertools
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
@@ -718,6 +719,92 @@ async def test_a_read_of_a_table_with_a_ttl_of_0_is_answered_by_the_build_it_wai
         assert await _ensure(state, {"pets-db"}) == [("pets-db", "pets")]
         assert await _ensure(state, {"pets-db"}) == [("pets-db", "pets")]  # each read, its own
     assert wiring.built == [_key(pets), _key(pets)]
+
+
+@pytest.mark.asyncio
+async def test_a_ttl_0_build_that_lands_just_after_the_read_looks_answers_the_read(
+    wiring, plane, monkeypatch
+):
+    """REQ-2003: a read that finds a build running joins it. When that build lands right after
+    the read looked, its landing answers the read: the read began before it landed. Counted
+    from a later moment, a cache_ttl 0 replica -- stale the moment it lands -- would never
+    answer, and the read would wait out its deadline for a build that had already finished."""
+    pets = _table("pets-db", "pets", cache_ttl=0)
+    state = _state([_source("pets-db")], [pets], _Backend(), plane)
+    wiring.hold = True  # nothing but the build already running lands
+    async with plane.acquire() as conn:
+        await replica_state.request_build(conn, _key(pets), "model")
+        await replica_state.claim(
+            conn, _key(pets), holder="test:1", retry=RetryPolicy(60, 3600), now=datetime.now(UTC)
+        )
+    real_read = replica_state.read
+    looks: list[bool] = []
+    landed: list[bool] = []
+
+    async def read(conn, key):
+        record = await real_read(conn, key)
+        if not landed and record is not None and record.build_state == replica_state.BUILDING:
+            looks.append(True)
+        if len(looks) == 2 and not landed:
+            # The read looks, asks (joining the build), and looks again; the running build
+            # lands just after that last look, before the read starts to wait.
+            landed.append(True)
+            await replica_state.record_completed(
+                conn,
+                key,
+                rows_copied=1,
+                method="stream_batches",
+                content_hash=None,
+                store=STORE,
+                next_refresh_at=None,
+                now=datetime.now(UTC),
+            )
+        return record
+
+    monkeypatch.setattr(replica_state, "read", read)
+    from provisa.core import request_deadline
+
+    with request_deadline.within(3.0):
+        assert await _ensure(state, {"pets-db"}) == [("pets-db", "pets")]
+    assert landed == [True]
+
+
+@pytest.mark.asyncio
+async def test_a_stale_replica_with_no_build_coming_is_asked_for_again_by_its_waiting_read(
+    wiring, plane, monkeypatch
+):
+    """A read that joined a build it saw running in this process's copy of the record -- a
+    moment old, the build already landed before the read began -- has no build coming for a
+    cache_ttl 0 table. It asks for one, and the landing of that build answers it."""
+    pets = _table("pets-db", "pets", cache_ttl=0)
+    state = _state([_source("pets-db")], [pets], _Backend(), plane)
+    await _built(plane, pets, at=datetime.now(UTC) - timedelta(seconds=5))
+    landed = await _record(plane, pets)
+    assert landed is not None
+    # The copy shows the first build still running: nothing landed yet, so nothing to answer
+    # from while it refreshes (REQ-860).
+    building = dataclasses.replace(
+        landed, build_state=replica_state.BUILDING, completed_at=None, built_store=None
+    )
+    from provisa.federation.replica_state_view import view_for
+
+    view = view_for(state)
+    real_known = view.known
+    shown: list[bool] = []
+
+    def known(org_id, key):
+        if len(shown) < 2:  # the read's first look and its look under the replica's lock
+            shown.append(True)
+            return True, building
+        return real_known(org_id, key)
+
+    monkeypatch.setattr(view, "known", known)
+    monkeypatch.setattr(view, "age", lambda org_id, key: 0.0)  # a moment old: joined unread
+    from provisa.core import request_deadline
+
+    with request_deadline.within(3.0):
+        assert await _ensure(state, {"pets-db"}) == [("pets-db", "pets")]
+    assert wiring.built == [_key(pets)]
 
 
 @pytest.mark.asyncio

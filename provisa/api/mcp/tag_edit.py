@@ -29,6 +29,8 @@ from typing import Any
 # The schema's own converter: the GraphQL argument and input field names strawberry publishes.
 from strawberry.utils.str_converters import to_camel_case
 
+from provisa.api.engine_error_names import client_value
+
 # Each kind's key after ``<kind>:``: the input fields it names, in order, and how each is read.
 # The last field takes the rest of the key, so a column name or a source id may hold a colon.
 _KEYS: dict[str, tuple[tuple[str, type], ...]] = {
@@ -227,7 +229,7 @@ async def run(request: Any, name: str, args: dict) -> dict[str, Any]:
     result = await mutation(info, **built)
     return {
         "success": result.success,
-        "message": result.message,
+        "message": client_value(result.message),
         "code": result.code,
         "params": result.params,
     }
