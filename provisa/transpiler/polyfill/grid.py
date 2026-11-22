@@ -30,6 +30,10 @@ from dataclasses import dataclass, field
 
 import sqlglot.expressions as exp
 
+# The dialects of the Db2 and SAP HANA columns, registered with sqlglot by their definition: the
+# columns' forms are read in them. Neither module imports the transpiler where it is defined.
+import provisa.db2.dialect  # noqa: F401
+import provisa.saphana.dialect  # noqa: F401
 from provisa.transpiler.polyfill import notation
 from provisa.transpiler.polyfill.matching import Bindings, match
 from provisa.transpiler.polyfill.notation import Form, Refusal, Rewrite, RuleError
@@ -70,6 +74,8 @@ DIALECTS: Mapping[str, Connector] = {
     "hive": Connector("Hive", "hive"),
     "exasol": Connector("Exasol", "exasol"),
     "druid": Connector("Druid", "druid"),
+    "db2": Connector("Db2", "db2"),
+    "saphana": Connector("SAP HANA", "saphana"),
 }
 
 

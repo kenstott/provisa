@@ -361,7 +361,8 @@ async def test_a_registry_that_is_not_there_is_refused_by_name_within_its_bounds
     with pytest.raises(SchemaRegistryRefusal) as refused:
         await _watch(provider, [], count=1)
     assert refused.value.code == "subscribe.schema_registry_unreachable"
-    assert refused.value.params["registry"] == gone
+    # The address is named once, in the error (J1448b): the request that failed, at this registry.
+    assert f"GET {gone}/" in refused.value.params["error"], refused.value.params
     assert time.monotonic() - began < avro_registry.CONNECT_SECONDS + 5
 
 
@@ -498,4 +499,4 @@ async def test_a_registry_that_demands_a_certificate_refuses_a_source_that_prese
     with pytest.raises(SchemaRegistryRefusal) as refused:
         await _watch(provider, [], count=1)
     assert refused.value.code == "subscribe.schema_registry_unreachable"
-    assert refused.value.params["registry"] == mtls_registry.url
+    assert f"GET {mtls_registry.url}/" in refused.value.params["error"], refused.value.params

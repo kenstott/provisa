@@ -36,13 +36,14 @@ from tests.unit.mcp_local_principal import act_for
 
 _BASE = "http://127.0.0.1:8000"
 
-# The analyst reads and runs commands; the steward also curates the glossary and edits tables.
+# The analyst reads and runs commands; the steward also curates the glossary, edits tables and
+# authors metrics (create_view, REQ-1327).
 _READS = ["query_development", "command_execution", "glossary_read"]
 _ROLES = {
     "analyst": {"id": "analyst", "capabilities": _READS, "domain_access": ["*"]},
     "steward": {
         "id": "steward",
-        "capabilities": [*_READS, "glossary_rw", "table_registration"],
+        "capabilities": [*_READS, "glossary_rw", "table_registration", "create_view"],
         "domain_access": ["*"],
     },
 }

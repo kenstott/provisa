@@ -159,6 +159,7 @@ from provisa.api.admin.schema_common import (  # noqa: E402
     _preset_wikidata_if_needed,
     google_workspace_refusal,
     excel_hints_refusal,
+    files_source_glob_refusal,
     logs_refusal,
     sandbox_destination_refusal,
     download_source_file,
@@ -1146,7 +1147,8 @@ async def _save_metric(
     from provisa.core.models import Metric as MetricModel
     from provisa.core.repositories import metric as metric_repo
 
-    require_capability(info, "table_registration")
+    # REQ-1327 (amended 2026-11-14, item 2): authoring a metric asks create_view.
+    require_capability(info, "create_view")
     from provisa.api.admin.capabilities import acting_role_of
     from provisa.security.default_grant import default_read_grant
 
@@ -2474,7 +2476,10 @@ def _refuse_soda_on_hosted_plane(source_type: str) -> MutationResult | None:  # 
 
 
 def _residency_refusal(
-    info, what: str, before: object, after: str | None
+    info,
+    what: str,
+    before: object,  # object-ok: a region or residency.CREATED
+    after: str | None,
 ) -> MutationResult | None:  # REQ-1921
     """The refusal of a region change the caller's data_residency grant does not cover, naming
     the value; None when it may be made (``capabilities.require_residency_change``)."""
@@ -3291,6 +3296,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     or file_source_path(input)
                     or jdbc_source_refusal(input)  # REQ-2191
                     or excel_hints_refusal(input)
+                    or files_source_glob_refusal(input)  # REQ-788
                 )  # REQ-1996/1997/2113/2096
                 if _logs_refusal is not None:
                     return _logs_refusal
@@ -3712,6 +3718,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 or file_source_path(input)
                 or jdbc_source_refusal(input)  # REQ-2191
                 or excel_hints_refusal(input)
+                or files_source_glob_refusal(input)  # REQ-788
             )  # REQ-1996/1997/2113/2096
             if _logs_refusal is not None:
                 return _logs_refusal
@@ -4770,7 +4777,8 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         from provisa.api.admin.capabilities import require_capability
         from provisa.core.repositories import metric as metric_repo
 
-        require_capability(info, "table_registration")
+        # REQ-1327 (amended 2026-11-14, item 2): authoring a metric asks create_view.
+        require_capability(info, "create_view")
         from provisa.api.admin.domain_guard import metric_domains, require_domains
 
         pool = await _get_pool()
@@ -5035,9 +5043,14 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     )
                     if _feed_refusal is not None:
                         raise TableSaveRefused(_feed_refusal)
-                    from provisa.api.admin._file_glob import table_file_glob_refusal
+                    from provisa.api.admin._file_glob import (
+                        table_file_glob_refusal,
+                        table_outside_source_glob_refusal,
+                    )
 
-                    _glob_refusal = await table_file_glob_refusal(_conn, model)  # REQ-788
+                    _glob_refusal = await table_file_glob_refusal(
+                        _conn, model
+                    ) or await table_outside_source_glob_refusal(_conn, model)  # REQ-788
                     if _glob_refusal is not None:
                         raise TableSaveRefused(_glob_refusal)
                     from provisa.api.app import state as _app_state
@@ -5476,7 +5489,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         """Several metrics deleted in one call, each by deleteMetric."""
         from provisa.api.admin._bulk_delete import delete_each, same_name
 
-        require_capability(info, "table_registration")
+        require_capability(info, "create_view")  # REQ-1327
         return await delete_each(names, same_name, lambda n: _single().delete_metric(info, n))
 
     @strawberry.mutation
@@ -5672,7 +5685,11 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         from provisa.core.repositories import grants
         from provisa.core.schema_org import metrics, tracked_functions, tracked_webhooks
 
-        require_capability(info, "table_registration")
+        # REQ-1327: a metric is authored on create_view; commands and webhooks on
+        # table_registration.
+        require_capability(
+            info, "create_view" if kind == GrantKind.METRIC else "table_registration"
+        )
         table = {
             GrantKind.METRIC: metrics,
             GrantKind.COMMAND: tracked_functions,

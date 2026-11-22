@@ -1653,6 +1653,14 @@ class WriteGrant(BaseModel):  # REQ-2074
     why: dict[str, Any] | None = None
 
     @model_validator(mode="after")
+    def _never_to_public(self) -> "WriteGrant":  # REQ-1058
+        from provisa.security.rights import PUBLIC_ROLE, public_write_grant_message
+
+        if self.role == PUBLIC_ROLE:
+            raise ValueError(public_write_grant_message(self.operation))
+        return self
+
+    @model_validator(mode="after")
     def _fits_its_operation(self) -> "WriteGrant":
         where = f"{self.operation} grant for {self.role!r}"
         if self.operation == "delete" and (self.columns or self.check or self.presets):
@@ -2548,6 +2556,15 @@ class Role(BaseModel):  # REQ-003, REQ-005, REQ-042, REQ-059, REQ-060, REQ-369
     def _described(cls, value: str, info) -> str:  # REQ-2080
         return required_description("Role", repr(info.data.get("id")), value)
 
+    @model_validator(mode="after")
+    def _public_is_read_only(self) -> "Role":  # REQ-1058
+        from provisa.security.rights import public_read_only_refusal
+
+        refused = public_read_only_refusal(self.id, self.capabilities)
+        if refused is not None:
+            raise ValueError(refused)
+        return self
+
     @field_validator("session_vars")
     @classmethod
     def _session_vars_named(cls, value: dict[str, str]) -> dict[str, str]:  # REQ-1682
@@ -3389,6 +3406,9 @@ class CatalogConnection(BaseModel):  # REQ-2122, REQ-2247
     that names none (REQ-2152, ruling Q1); ``datazone_project_id``, the DataZone project that owns
     the org's data products (REQ-2118); ``delta_share``, whether a unity_catalog catalog also gets
     each product as a Delta Share (REQ-2117).
+
+    ``import_cron`` is the schedule of the entry's Import (REQ-2247), a crontab; empty is no
+    schedule. Only a data catalog that imports has one: an ontology's releases are uploaded.
     """
 
     id: str
@@ -3415,6 +3435,7 @@ class CatalogConnection(BaseModel):  # REQ-2122, REQ-2247
     role: str | None = None
     datazone_project_id: str = ""
     delta_share: bool = False
+    import_cron: str = ""
 
     @field_validator("id")
     @classmethod
@@ -3425,6 +3446,13 @@ class CatalogConnection(BaseModel):  # REQ-2122, REQ-2247
 
     @model_validator(mode="after")
     def _validate(self) -> "CatalogConnection":
+        if self.import_cron:
+            # REQ-2247: a direction that is off never runs, so it has no schedule to run on.
+            if self.type != "data_catalog" or not self.imports:
+                raise ValueError(f"entry {self.id!r} does not import, so it has no import schedule")
+            from provisa.core.cron import cron_trigger
+
+            cron_trigger(self.import_cron)
         if self.type != "data_catalog":
             # Only a data catalog is reached through a provider's adapter, so only it has one.
             given = [name for name in ("provider", *_EXPORT_SETTING_FIELDS) if getattr(self, name)]
@@ -3948,17 +3976,17 @@ class ConnectorRequirement(BaseModel):  # REQ-2221
         return self
 
 
-def _is_int(value: object) -> bool:
+def _is_int(value: object) -> bool:  # object-ok: raw connector-file value
     return isinstance(value, int) and not isinstance(value, bool)
 
 
-def _bad_cache_ttl(value: object) -> str | None:
+def _bad_cache_ttl(value: object) -> str | None:  # object-ok: raw connector-file value
     from provisa.core.cache_ttl import cache_ttl_refusal
 
     return "is a whole number of seconds" if not _is_int(value) else cache_ttl_refusal(value)  # type: ignore[arg-type]
 
 
-def _bad_change_signal(value: object) -> str | None:
+def _bad_change_signal(value: object) -> str | None:  # object-ok: raw connector-file value
     from provisa.core.change_signal import resolve
 
     if not isinstance(value, str):
@@ -3970,7 +3998,7 @@ def _bad_change_signal(value: object) -> str | None:
     return None
 
 
-def _bad_zone(value: object) -> str | None:
+def _bad_zone(value: object) -> str | None:  # object-ok: raw connector-file value
     from zoneinfo import ZoneInfo
 
     if not isinstance(value, str):
@@ -3982,11 +4010,11 @@ def _bad_zone(value: object) -> str | None:
     return None
 
 
-def _flag(value: object) -> str | None:
+def _flag(value: object) -> str | None:  # object-ok: raw connector-file value
     return None if isinstance(value, bool) else "is true or false"
 
 
-def _text(value: object) -> str | None:
+def _text(value: object) -> str | None:  # object-ok: raw connector-file value
     return None if isinstance(value, str) else "is text"
 
 

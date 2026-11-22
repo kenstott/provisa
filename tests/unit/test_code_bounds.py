@@ -69,7 +69,7 @@ def _start(tmp_path: Path) -> tuple[subprocess.Popen, int, str | None]:
             str(names),
             *host,
         ],
-        env={**os.environ, "PROVISA_CODE_HASH": "h1"},
+        env={**os.environ, "PROVISA_CODE_HASH": "h1", "PROVISA_DISCOVERED": "{}"},
         stderr=subprocess.PIPE,
         text=True,
     )

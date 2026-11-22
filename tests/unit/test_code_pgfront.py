@@ -120,12 +120,14 @@ def _start_host(tmp_path: Path, frontlib: Path | None):
     port = 0
     worker = [sys.executable, "-I", str(HOST), "{fd}", str(code), "shop"]
     if frontlib is None:
-        python, env = [sys.executable], {**os.environ, "PROVISA_CODE_HASH": "h1"}
+        python = [sys.executable]
+        env = {**os.environ, "PROVISA_CODE_HASH": "h1", "PROVISA_DISCOVERED": "{}"}
     else:
         python = [sys.executable, "-I"]
         env = {
             **{k: v for k, v in os.environ.items() if k != "PYTHONPATH"},
             "PROVISA_CODE_HASH": "h1",
+            "PROVISA_DISCOVERED": "{}",
             "PROVISA_FRONT_LIB": str(frontlib),
         }
     process = subprocess.Popen(  # noqa: S603 -- the test's own interpreter and Provisa's front end

@@ -34666,7 +34666,7 @@
   description: 'Public-publish anonymous access: unauthenticated requests carry no tenant_id claim; the
     org is resolved from Host subdomain only, and the request is bound to a built-in read-only ''public''
     role scoped to that org. TenantMiddleware gains a Host-based resolution path for the no-claim case
-    instead of returning 401.'
+    instead of returning 401. (Amended 2026-11-22 by the maintainer. The built-in public role is read-only. A write grant naming public is refused by name on every path, and a Hasura import whose role named public carries insert, update or delete permissions is refused by name, not trimmed. The read rights public may hold are capped at glossary_read, data_product_read, catalog_read and dq_read until REQ-1059 decides what publishing needs.)'
   use_case: Enables orgs to publish datasets anonymously without requiring end-user authentication. Public
     role allows intentional, opt-in data sharing without building separate anonymous infrastructure. Distinct
     from the Firebase-anonymous sandbox uid (REQ-1034).
@@ -40779,7 +40779,8 @@
     '
   superseded_by: REQ-1276
 - id: REQ-1239
-  status: in-progress
+  status: complete
+  since: 2026-10
   group: 13. Multi-Tenancy & Organizations
   category: Deployment & Infrastructure
   feature: deployment-tls
@@ -40802,6 +40803,7 @@
   - provisa/bolt/server.py
   - terraform/gcp/scripts/issue-wildcard-cert.sh
   tests:
+  - tests/unit/test_tls_renewal.py
   scenario: 'Given a Provisa SaaS deployment on provisa.dev
 
     When the infrastructure runs cert provisioning via ACME
@@ -41126,7 +41128,7 @@
   description: First verified Firebase login provisions a user_profile record, decoupled from the local_users/bcrypt-password
     path. No password is created for Firebase identities. Firebase ID token serves as the credential.
     Provisioning occurs in the initial POST /auth/register on a Firebase identity (REQ-121 validates Firebase
-    auth; REQ-124 is hard-gated to provider=="basic" and cannot onboard Firebase identities).
+    auth; REQ-124 is hard-gated to provider=="basic" and cannot onboard Firebase identities). (Amended 2026-11-22 by the maintainer, to the built behaviour. The user_profile is upserted on every sign-in by the auth middleware, not provisioned only in POST /auth/register.)
   use_case: Enables self-service signup on cloud.provisa.dev with Firebase as the primary identity provider,
     separating password-managed local users from federated identities.
   code:
@@ -59969,7 +59971,8 @@
   - data-products.md
   - metadata-export.md
 - id: REQ-1636
-  status: in-progress
+  status: superseded
+  superseded_by: REQ-2118
   since: 2026-10
   group: 1. Access Governance & Security
   category: Data Catalog Integration
@@ -76352,7 +76355,26 @@
 
     '
 - id: REQ-1929
-  status: in-progress
+  status: complete
+  tests:
+  - tests/unit/test_req1929_role_surfaces.py
+  - tests/unit/test_req1929_command_routes.py
+  - tests/unit/test_req1929_reserved_commands_name.py
+  - tests/unit/test_openapi_spec.py
+  - tests/unit/test_proto_gen.py
+  - tests/unit/test_role_surface.py
+  - tests/unit/test_command_surface_discovery.py
+  - tests/unit/test_relationship_field_collision.py
+  - tests/unit/test_grpc_field_per_relationship.py
+  - tests/unit/test_grpc_read_mask_relations.py
+  - tests/unit/test_rest_nested_fields.py
+  - tests/unit/test_nl_derived_nesting.py
+  - tests/unit/test_jsonapi_no_pk_include.py
+  - tests/unit/test_jsonapi_one_to_many_include.py
+  - tests/unit/test_graphql_remote_relationship_columns.py
+  - tests/unit/test_graphql_table_registration.py
+  - tests/unit/test_graphql_registration_column_in_use.py
+  since: 2026-11
   group: 8. Client Access & Protocols
   category: Protocol Support
   feature: graphql-schema
@@ -77239,8 +77261,17 @@
     does not exist; grep for same_dataset/dataset_identity finds no implementation. Maintainer 2026-10-03:
     unbuilt; prioritised by score.'
 - id: REQ-467
-  status: accepted
-  scenario: 'Given a dataset reference in any query language When it is resolved Then one identity service names the same dataset and its query name for every language'
+  status: complete
+  tests:
+  - tests/unit/test_names_resolution.py
+  since: 2026-11
+  scenario: 'Given a registered table whose names table entry gives its SQL name, Cypher label and GraphQL root field, including an alias
+  
+    When a query names it in SQL, Cypher or GraphQL
+  
+    Then each resolves to the same table through the names table, in that language''s form under the active naming convention
+  
+    '
   group: 3. Source Registration & Data Modeling
   category: Naming Convention
   feature: semantic-model-naming
@@ -78516,7 +78547,8 @@
     and orgs_router tests named do not exist as described.'
   superseded_by: REQ-1337
 - id: REQ-518
-  status: in-progress
+  status: superseded
+  superseded_by: REQ-2187
   group: 10. UI & Admin Surfaces
   category: Admin UI
   feature: semantic-model-erd
@@ -85926,7 +85958,7 @@
     Lead 2026-10-21: the demo shows all three tiers (basic metrics, drift, synthesis); the build''s profile runs
     travel in the bundle, since a template rebuilt on every Provisa version would otherwise measure no drift.'
 - id: REQ-2053
-  status: in-progress
+  status: complete
   since: 2026-10
   group: 10. UI & Admin Surfaces
   category: UI
@@ -85949,7 +85981,7 @@
     and proposes the fake (propose_fakes), the answer stored with the tour. (Amended 2026-11-05, THE ASSISTANT
     IS ASKED ABOUT A NAMED COLUMN:) customers.email declares its fake in the demo, so the assistant is asked
     which fake it would propose for customers.email from its latest profile, and answers through propose_fakes
-    with that column named: a named column is proposed from its profile even when it declares a fake.'
+    with that column named: a named column is proposed from its profile even when it declares a fake. (Amended 2026-11-22 by the maintainer, to the built demo. The environments the demo creates are preprod and dev.)'
   use_case: 'A visitor opens the environments and test data demo and sees how Provisa answers: Can I test against
     realistic data without touching production?'
   scenario: 'Given the environments and test data demo started from its bundle
@@ -87793,7 +87825,7 @@ And reaffirming it records the tag again with today's decider and evidence and r
   docs:
   - security.md
 - id: REQ-2100
-  status: in-progress
+  status: complete
   since: 2026-10
   group: 4. Source Connectors
   category: Source Connectors
@@ -88149,6 +88181,9 @@ And reaffirming it records the tag again with today's decider and evidence and r
   - tests/unit/test_code_image_build.py
   - tests/unit/test_code_loader.py
   - tests/unit/test_node_host_argument_sets.py
+  - tests/unit/test_code_mutations.py
+  - tests/unit/test_code_bounds.py
+  - tests/unit/test_code_pgfront.py
   docs:
   - code-sources.md
 - id: REQ-2098
@@ -89535,7 +89570,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   - provisa-ui/src/__tests__/termGrounding.test.tsx
 - id: REQ-2131
   value: 'Process columns in batch with a Python or Node function, reducing round-trip overhead on large tables.'
-  status: in-progress
+  status: complete
   since: 2026-10
   group: 4. Source Connectors
   category: Source Connectors
@@ -89654,6 +89689,12 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   - tests/unit/test_columns_stage.py
   - tests/integration/test_code_columns_e2e.py
   - tests/unit/test_column_transform_grants_folded.py
+  - tests/unit/test_transform_view_read.py
+  - tests/integration/test_transform_view_reader_rules_e2e.py
+  - tests/unit/test_mask_keeps_column_type.py
+  - tests/unit/test_mask_constant_not_text.py
+  - tests/unit/test_masked_column_nullable.py
+  - tests/unit/test_catalog_views_live.py
 - id: REQ-2132
   value: 'State the business meaning of each data quality check in plain language, not just its technical predicate.'
   status: complete
@@ -89705,7 +89746,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   target: "2027-Q1"
 - id: REQ-2133
   value: 'A preflight check can call Provisa''s own services—LLM, vectors, cache, data quality—before a source refresh.'
-  status: in-progress
+  status: complete
   since: 2026-10
   group: 9. Live Data & Events
   category: Table Processor (Shared)
@@ -89760,6 +89801,9 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   - tests/unit/test_preflight_dq_services.py
   - tests/integration/test_hold_on_failing_checks_e2e.py
   - provisa-ui/src/pages/tables/__tests__/TableEditForm.holdOnFailingChecks.test.tsx
+  - tests/unit/test_preflight_metering_audit.py
+  - tests/integration/test_preflight_sandboxed.py
+  - tests/unit/test_preflight_confined.py
   relates_to:
   - REQ-1165
   - REQ-941
@@ -91011,7 +91055,25 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   - tests/unit/pgwire/test_table_privilege_and_default.py
 - id: REQ-2155
   value: 'Start from built-in analyst, steward and operator roles and extend them, instead of building access from scratch.'
-  status: in-progress
+  status: complete
+  tests:
+  - tests/unit/test_standard_roles.py
+  - tests/unit/test_role_narrowing.py
+  - tests/unit/test_role_inheritance.py
+  - tests/unit/test_reserved_role_redefinition.py
+  - tests/unit/test_environment_rights_seed.py
+  - tests/unit/test_wire_signins_held_roles.py
+  - tests/unit/test_pat_scopes_are_roles.py
+  - tests/unit/test_role_assignments_every_transport.py
+  - tests/unit/test_member_access_one_save.py
+  - tests/unit/test_command_admission_fixture_roles.py
+  - tests/unit/test_data_steward_domain_scope.py
+  - provisa-ui/src/__tests__/MemberAccessForm.test.tsx
+  - provisa-ui/src/__tests__/standardRoleNav.test.tsx
+  - provisa-ui/src/pages/security/__tests__/RoleFormParts.test.tsx
+  - provisa-ui/src/pages/security/__tests__/roleParents.test.ts
+  - tests/integration/test_leak_loop.py
+  since: 2026-10
   target: 2026-Q4
   group: 1. Access Governance & Security
   category: Security
@@ -97478,7 +97540,7 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     Context Sync (REQ-2259). (Amended 2026-11-19, MERGE FILLS AN EMPTY DEFINITION:) Maintainer 2026-11-19.
     Merging a catalog term into an existing term records the provenance on the chosen term and copies the
     catalog''s definition only when the term has none, as the ontology import does for a same-as match. The
-    difference list leaves out the glossary Provisa itself publishes to that catalog, and its group terms.'
+    difference list leaves out the glossary Provisa itself publishes to that catalog, and its group terms. (Amended 2026-11-22 by the maintainer. A difference that has never been exchanged is listed under both Export and Import, since neither side is known to have moved; once exchanged, a difference is listed only under the direction whose side moved, or both when both moved.) (Amended 2026-11-22 by the maintainer. A scheduled, unattended import applies a standing choice only to a difference that has been exchanged before. A difference never exchanged is held as a waiting difference for a person to decide, even when the standing choice says take, since the run cannot tell whether the Provisa value is a local edit.)'
   scenario: 'Given a catalog entry whose asset descriptions differ from Provisa''s for forty columns and
     two owners
 
@@ -97938,7 +98000,30 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     is cleared. What is remembered is per viewer in that browser, kept across reloads and sign-ins on it,
     and never shared with other viewers or devices.'
 - id: REQ-2261
-  status: proposed
+  status: complete
+  scenario: 'Given an org whose original environment is production and a new environment added as development
+  
+    When an admin changes the new environment''s stage to preprod
+  
+    Then the change is recorded in the audit log with the old and new stage
+  
+    And no capability check changes for anyone in either environment
+  
+    And query audit rows, the OpenLineage and catalog exports carry each environment''s stage
+  
+    And the audit reports can be filtered and grouped by stage, and the environment switcher shows the stage beside each name
+  
+    When a stage outside production, preprod, test and development is given
+  
+    Then it is refused
+  
+    '
+  tests:
+  - tests/unit/test_environment_stage.py
+  - provisa-ui/src/__tests__/EnvSwitcher.test.tsx
+  - provisa-ui/src/__tests__/EnvironmentsTab.test.tsx
+  - tests/integration/test_pg_schema_upgrade.py
+  since: 2026-11
   target: 2026-Q4
   group: 13. Multi-Tenancy & Organizations
   category: Environments
@@ -97957,7 +98042,15 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     catalog can tell production assets from others; the environment switcher shows the stage beside each
     environment''s name. (Amended 2026-11-21 by the maintainer. Cost grouped by stage is withdrawn from this requirement; cost reporting, if wanted, is its own requirement.)'
 - id: REQ-2262
-  status: proposed
+  status: complete
+  tests:
+  - tests/unit/test_relationship_review.py
+  - tests/integration/test_relationship_review_e2e.py
+  - tests/unit/test_discovery_run_api.py
+  - provisa-ui/src/pages/sources/__tests__/AfterSaveSteps.relationships.test.tsx
+  - provisa-ui/src/pages/__tests__/relationship-review.test.tsx
+  - provisa-ui/src/components/relationships/__tests__/ProposalEditDialog.test.tsx
+  since: 2026-11
   target: 2026-Q4
   group: 3. Source Registration & Data Modeling
   category: Registration & Governance
@@ -98048,7 +98141,29 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     added as a plain OpenAPI source. (Amended 2026-11-20, maintainer: DataHub is read through its OpenAPI v3 spec ({base_url}/openapi/v3/api-docs) by the same OpenAPI passthrough brand mechanism as OpenMetadata, not the GraphQL source; a list answer whose next-page cursor is nested (paging.after, scrollId) is paged by the generic OpenAPI source, which takes a dotted cursor path and the required array as the rows.) (Amended 2026-11-20 by the maintainer. When a brand instance''s spec needs authentication to fetch, the spec request carries the same credential as the source''s data calls.) (Amended 2026-11-20, correcting the earlier amendment''s wording. DataHub''s entity endpoints are in the spec group at {base_url}/openapi/v3/api-docs/10-openapi-v3, not the bare /openapi/v3/api-docs address.)'
 
 - id: REQ-2266
-  status: proposed
+  status: complete
+  scenario: 'Given an org with a domain whose owner is its domain steward, members granted roles in it, and a member holding a role only through an identity provider claim
+  
+    When a review is started on demand, or its schedule comes due
+  
+    Then it lists each grant in force with its entitlements and last use, grouped by domain, and the identity provider role read-only with its source
+  
+    When the domain''s owner revokes a row with a reason
+  
+    Then the grant ends at once and the revocation is recorded with who, when and why
+  
+    And the owner cannot decide on their own access
+  
+    When a scheduled review completes with a webhook URL and secret configured
+  
+    Then the review is posted signed the way the offer hook signs, and a failed post is recorded on the review
+  
+    '
+  tests:
+  - tests/unit/test_access_review.py
+  - tests/integration/test_access_review_api.py
+  - provisa-ui/src/__tests__/AccessReviews.test.tsx
+  since: 2026-11
   target: 2026-Q4
   group: 1. Access Governance & Security
   category: Security
@@ -98081,5 +98196,5 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     on it, mutations as commands), with today''s pushdown. The first version borrows heavily from the existing
     OpenAPI and graphql_remote code rather than rewriting it. (3) Code sources are then read live by every
     federation engine through a Provisa-launched pure-Python pgwire sidecar on the pgwire-calcite backend seam,
-    launched like the other pgwire replicas. New pushdown capabilities are backlogged as their own requirements. (Amended 2026-11-21 by the maintainer. A generated table may declare a loader with a batch size, under the code-source @loader contract (REQ-2100), and its handler then answers a batch of join keys: a GraphQL remote that fetches by a key list (where _in, or nodes by ids) and an OpenAPI operation that looks up a list of ids give their row type table its loader. The first version supports @discover in Python code sources only; other code-source languages follow as their own requirements, Rust first for speed.)'
+    launched like the other pgwire replicas. New pushdown capabilities are backlogged as their own requirements. (Amended 2026-11-21 by the maintainer. A generated table may declare a loader with a batch size, under the code-source @loader contract (REQ-2100), and its handler then answers a batch of join keys: a GraphQL remote that fetches by a key list (where _in, or nodes by ids) and an OpenAPI operation that looks up a list of ids give their row type table its loader. The first version supports @discover in Python code sources only; other code-source languages follow as their own requirements, Rust first for speed.) (Amended 2026-11-22. In v0, a generated query or command whose parameter is a TableRef is refused by name at discovery; TableRef parameters stay on hand-written commands.)'
 

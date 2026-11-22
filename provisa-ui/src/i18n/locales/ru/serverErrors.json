@@ -951,7 +951,9 @@
       "object_gone": "{{object}} больше не зарегистрирован в Provisa.",
       "unknown_direction": "{{direction}} не является направлением: используйте Экспорт или Импорт.",
       "unknown_kind": "{{kind}} не является видом различия.",
-      "unknown_choice": "{{choice}} не является постоянным выбором."
+      "unknown_choice": "{{choice}} не является постоянным выбором.",
+      "import_cron_not_importing": "{{entry}} не импортирует, поэтому у него нет расписания импорта.",
+      "import_cron_invalid": "{{cron}} — не cron-выражение (например, 0 3 * * *)."
     },
     "wikidata": {
       "no_credential": "Службе запросов Викиданных не нужны учётные данные",

@@ -23,3 +23,9 @@ import zoneinfo
 os.environ["PYTHONTZPATH"] = ""
 zoneinfo.reset_tzpath(to=())
 zoneinfo.ZoneInfo.clear_cache()
+
+# The HTTP client's request log never carries a URL's query string (a source's credential may be
+# in it): installed here, so every Provisa process has it before its first request.
+from provisa.observability import http_log_redaction  # noqa: E402
+
+http_log_redaction.install()

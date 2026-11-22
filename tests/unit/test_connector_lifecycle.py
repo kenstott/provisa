@@ -264,6 +264,7 @@ class Host:
         env = {
             **os.environ,
             "PROVISA_CODE_HASH": self.hashed,
+            "PROVISA_DISCOVERED": "{}",
             "LIFECYCLE_TRAIL": str(self.trail),
         }
         if self.has_manifest:

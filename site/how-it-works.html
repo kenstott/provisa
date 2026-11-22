@@ -87,7 +87,7 @@
 
         <h2 id="lineage">Where the design comes from</h2>
         <p>
-          Provisa's design comes from two places. Devops supplied the method, and data disciplines and regulated industries supplied the problems to solve and the bar the answer has to clear.
+          Provisa's design comes from three places. Devops supplied the method, data disciplines and regulated industries supplied the problems to solve and the bar the answer has to clear, and a set of observations about data and meaning decided where the lines fall. Those are listed under <a href="#rests-on">What the design rests on</a>.
         </p>
         <p>
           Both aim at the smallest possible set of primitives with which you can define, secure and operate a data estate.
@@ -133,6 +133,44 @@
           <li><strong>Review before production.</strong> A change reaches production through a merge request, approved by someone other than the person who asked for it.</li>
         </ul>
 
+        <h2 id="rests-on">What the design rests on</h2>
+        <p>
+          Each design choice follows from an observation about how data and meaning behave. They come in two groups, and the two meet in governance.
+        </p>
+
+        <h3 id="rests-on-data">Data</h3>
+        <ul>
+          <li><strong>Data operations are relational algebra with two extensions, plus commands.</strong> Recursion and nesting are the extensions. Anything with an opaque side effect is a command, offered by a platform.</li>
+          <li><strong>Sources reduce to three contracts.</strong> An operation returns a list of objects, reports changes, or causes a side effect.</li>
+          <li><strong>Most useful solutions combine several sources in one answer.</strong> The place where that happens is a federation engine, or engine.</li>
+          <li><strong>Engines are plentiful.</strong> Trino is the pure case, but most databases already are one.</li>
+          <li><strong>Engines differ in cost and performance, so using them well means substituting one for another.</strong></li>
+          <li><strong>The entry criterion for an engine is that it speaks SQL.</strong> Substitution needs every engine to understand the same algebra, and SQL is its one widely implemented form.</li>
+          <li><strong>Federation runs compute to compute or compute to storage.</strong> The PostgreSQL wire protocol is the convention for the first and covers live data. Iceberg is the standard for the second and covers data at rest.</li>
+          <li><strong>Staging is a bounded set of recipes.</strong> Source type and destination type decide whether data is read in place, replicated, materialized or cached.</li>
+          <li><strong>Derivations are algebra composed with commands.</strong> Most new data is a query whose result is kept.</li>
+          <li><strong>Query languages are syntaxes over the same algebra, so the language is a preference.</strong></li>
+          <li><strong>Transport, encoding and query language are separate concerns.</strong> History coupled them; nothing in a question requires it.</li>
+          <li><strong>Consistent governance is good governance, and it can only be universal if it is expressed in relational algebra.</strong> When rules differ by system, the most permissive path becomes the real policy.</li>
+        </ul>
+
+        <h3 id="rests-on-meaning">Meaning</h3>
+        <ul>
+          <li><strong>Meaning is a human experience.</strong> Machines can propose it; people settle it.</li>
+          <li><strong>Meaning can be represented formally through standards, and the standards define the metadata.</strong></li>
+          <li><strong>Meaning is most useful when grounded in facts, and facts are data.</strong> Grounded meaning can be checked against the data it describes.</li>
+          <li><strong>A metric is meaning grounded in a computed fact.</strong></li>
+          <li><strong>Meaning has relationships, and relationships define context.</strong></li>
+          <li><strong>Words mean different things in different contexts, and time is part of the context.</strong> A collision is a word meaning different things in the same context.</li>
+          <li><strong>To stay current, meaning must be part of the operating model.</strong> A catalog that describes the system from outside falls out of date because nothing breaks when it is wrong.</li>
+          <li><strong>Meaning is the bridge between language, data and data governance.</strong></li>
+        </ul>
+
+        <h3 id="rests-on-bridge">Where they meet</h3>
+        <p>
+          Meaning is grounded in data, and data governance is relational algebra. So a rule written in meaning compiles into the algebra and applies universally, through every source, engine, language and transport.
+        </p>
+
         <h2 id="one-compiler">Why one compiler can speak every language</h2>
         <p>
           Languages are ways of expressing logic, and the logic of data is bounded: select,
@@ -151,8 +189,8 @@
           property graph's nodes can be expressed as sparsely populated tables by label, and its
           edges as junction tables, sparse again. Think
           hard enough and every one of these languages can be expressed in an IR based on
-          extended relational algebra: those six operations plus aggregation, recursion and
-          nesting.
+          extended relational algebra (those six operations plus aggregation) with two
+          extensions: recursion and nesting.
         </p>
         <p>
           Building a compiler front end has also become cheap: parser generators like ANTLR

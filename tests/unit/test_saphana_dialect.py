@@ -144,6 +144,14 @@ def test_strings() -> None:
     )
 
 
+def test_substring_of_literal_bounds_is_written() -> None:
+    """HANA is a column of the polyfill grid (REQ-2236): its substr row keeps the engine's call,
+    which the dialect writes where the start is a literal of at least 1 and the length a literal."""
+    assert _hana('SELECT SUBSTRING("a" FROM 2 FOR 3) FROM "t"') == (
+        'SELECT SUBSTRING("a", 2, 3) FROM "t"'
+    )
+
+
 def test_like_takes_postgres_escape_and_ilike_folds_case() -> None:
     assert _hana('SELECT "a" FROM "t" WHERE "a" LIKE \'a\\_%\' AND "b" ILIKE \'%x%\'') == (
         'SELECT "a" FROM "t" WHERE "a" LIKE \'a\\_%\' ESCAPE \'\\\' '
@@ -237,8 +245,8 @@ def test_writes() -> None:
         ('SELECT GREATEST("a", "b") FROM "t"', "greatest"),
         ('SELECT CONCAT("a", "b") FROM "t"', "concat"),
         ('SELECT ROUND("a", 2) FROM "t"', "round"),
-        # The polyfill grid has no substring row for HANA yet.
-        ('SELECT SUBSTRING("a" FROM 2 FOR 3) FROM "t"', "substr"),
+        # HANA's substring of a start below 1 is not PostgreSQL's (the grid's substr row keeps it).
+        ('SELECT SUBSTRING("a" FROM "s" FOR 3) FROM "t"', "substring with a start"),
         # No interval type; the server's clock zone, not the session's.
         ('SELECT "d" + INTERVAL \'1 day\' FROM "t"', "interval"),
         ('SELECT DATE_TRUNC(\'month\', "d") FROM "t"', "timestamp_trunc"),
