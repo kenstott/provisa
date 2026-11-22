@@ -748,7 +748,7 @@ describe("SyncingTab", () => {
       outcome: "ok",
       applied: [{ kind: "description", object: "wh.public.orders" }],
       held: [
-        { kind: "owner", object: "wh.public.orders", reason: "no standing choice" },
+        { kind: "owner", object: "wh.public.orders", reason_code: "no_choice", params: {} },
       ],
       error: null,
       started_at: "2026-11-22T08:00:00+00:00",
@@ -769,7 +769,7 @@ describe("SyncingTab", () => {
     expect(within(applied).getByText("Table descriptions")).toBeInTheDocument();
     const held = within(last).getByTestId("syncing-last-import-held");
     expect(within(held).getByText("Owners")).toBeInTheDocument();
-    expect(within(held).getByText("no standing choice")).toBeInTheDocument();
+    expect(within(held).getByText("No standing choice for this kind")).toBeInTheDocument();
   });
 
   it("shows a failed import with its error", async () => {

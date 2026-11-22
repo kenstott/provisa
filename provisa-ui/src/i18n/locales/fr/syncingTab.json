@@ -135,6 +135,12 @@
     "importHeld": "En attente",
     "importKind": "Type",
     "importObject": "Objet",
-    "importReason": "Raison de la mise en attente"
+    "importReason": "Raison de la mise en attente",
+    "holdReason_no_choice": "Aucun choix permanent pour ce type",
+    "holdReason_held_by_choice": "Le choix permanent est de mettre en attente",
+    "holdReason_edited_in_provisa": "Modifié dans Provisa depuis le dernier échange",
+    "holdReason_never_exchanged": "Jamais échangé : on ne sait pas quel côté a changé",
+    "holdReason_not_importable": "Provisa ne peut pas encore reprendre ce type depuis un catalogue",
+    "holdReason_left_to_export": "Le choix permanent est la valeur de Provisa, qu'Exporter envoie"
   }
 }

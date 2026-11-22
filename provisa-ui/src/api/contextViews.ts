@@ -74,3 +74,26 @@ export const fetchClassificationAwaiting = () =>
     "fetchClassificationAwaiting",
     "/admin/context/classification/awaiting",
   );
+
+/** REQ-2259, REQ-2145: a confirmed tag loss on a column the caller reads -- the tag the column
+ * stopped carrying, the term it carried it through (``termId`` null once that term is gone), who
+ * confirmed it (null when no member signed) and when. */
+export interface TagLoss {
+  tableId: number;
+  tableRef: string;
+  column: string;
+  tag: string;
+  termId: number | null;
+  term: string;
+  confirmedBy: string | null;
+  confirmedAt: string;
+}
+
+/** REQ-2259 (Context Health): the tag losses confirmed since ``cutoff`` (the drift period's start),
+ * newest first. ``count`` holds them all; those on columns the caller does not read are counted in
+ * ``hidden`` and not listed. */
+export const fetchTagsLost = () =>
+  get<{ cutoff: string; count: number; losses: TagLoss[]; hidden: number }>(
+    "fetchTagsLost",
+    "/admin/context/tags/lost",
+  );

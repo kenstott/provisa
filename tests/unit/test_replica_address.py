@@ -19,10 +19,12 @@ that address; a table read live is left as written."""
 from __future__ import annotations
 
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
 from provisa.federation import engine as engine_module
+from provisa.federation.backend import EngineBackend
 from provisa.federation.engine import _ENGINE_BUILDERS, build_engine
 from provisa.federation.replica_address import (
     AmbiguousReplica,
@@ -253,13 +255,16 @@ def test_a_name_two_sources_share_is_refused_not_answered_from_one_of_them():
 # -- the runtime seam every engine statement passes -----------------------------------------------
 
 
-class _Backend:
+class _Backend(EngineBackend):
+    """The real backend's dialect (REQ-2236: the seam reads it to choose the transpile), with the
+    transpile and exact-read terminals stood in."""
+
     computes_fakes = True  # REQ-1494: the seam also checks the engine computes a statement's fakes
 
     def transpile_physical(self, pg_sql: str) -> str:
         return f"<engine dialect> {pg_sql}"
 
-    def exact_reads(self, state, physical_sql: str) -> str:
+    def exact_reads(self, state: Any, physical_sql: str) -> str:
         del state
         return physical_sql  # an engine whose reads keep a source's values as they are
 
@@ -267,7 +272,8 @@ class _Backend:
 def _runtime(routes: ReplicaRoutes | None, engine_name: str = "trino"):
     from provisa.federation.runtime import EngineRuntime
 
-    engine = SimpleNamespace(name=engine_name, backend=_Backend(), catalog_qualified=True)
+    engine = SimpleNamespace(name=engine_name, native_store=None, catalog_qualified=True)
+    engine.backend = _Backend(engine)  # type: ignore[arg-type]
     return EngineRuntime(engine, SimpleNamespace(replica_routes=routes))  # type: ignore[arg-type]
 
 

@@ -362,7 +362,10 @@ async def _handle_mutation(
     from provisa.compiler.directives import NO_CACHE_HINT
     from provisa.pgwire._pipeline import _execute_plan, _govern_and_route_compiled
 
-    results = []
+    from provisa.compiler.mutation_gen import mutation_answer
+    from provisa.executor.serialize import result_records
+
+    data: dict = {}
     for mutation in mutations:
         try:
             plan = await _govern_and_route_compiled(
@@ -381,14 +384,9 @@ async def _handle_mutation(
             log.exception("Mutation execution failed")
             raise HTTPException(status_code=500, detail=str(e))
         affected = result.rowcount if result.rowcount is not None else len(result.rows)
-        results.append({"affected_rows": affected})
+        # REQ-194: each field answers in its own shape -- Provisa's {affected_rows}, Hasura's
+        # mutation_response or one row -- from the rows its statement returned, JSON-safe.
+        returned = [tuple(record.values()) for record in result_records(result)]
+        data[mutation.response_key] = mutation_answer(mutation, returned, affected)
 
-    # Return first mutation result (single mutation support for now)
-    mutation_name = None
-    for d in document.definitions:
-        if hasattr(d, "selection_set"):
-            for sel in d.selection_set.selections:
-                mutation_name = sel.name.value
-                break
-
-    return {"data": {mutation_name: results[0] if results else None}}
+    return {"data": data}

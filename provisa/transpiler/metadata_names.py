@@ -24,7 +24,7 @@ from provisa.transpiler.metadata_settings import setting
 #: A convention's output form, as naming._canonical_convention names it.
 _CAMEL = "camelCase"
 #: The stored presets whose output form is camelCase (naming._canonical_convention).
-_CAMEL_PRESETS = "('apollo_graphql')"
+_CAMEL_PRESETS = "('apollo_graphql', 'hasura_graphql_default')"
 
 
 def snake_case_sql(name: str) -> str:

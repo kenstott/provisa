@@ -53,14 +53,11 @@ CLOUDOPS_CLOUDS: dict[str, dict[str, tuple[tuple[str, str], ...]]] = {
 }
 CLOUDOPS_GCP_CREDENTIALS_KEY = "gcp_credentials_path"
 
-# The environment variable prefixes a cloud's credentials are read from (the cloud SDKs' default
-# chains and the adapter's own fallbacks). A source's server inherits none of a cloud the source
-# does not name (maintainer 2026-11-21): the deployment's own credentials are not the source's.
-CLOUDOPS_ENV_PREFIXES: dict[str, tuple[str, ...]] = {
-    "azure": ("AZURE_",),
-    "aws": ("AWS_",),
-    "gcp": ("GCP_", "GOOGLE_"),
-}
+# The environment variable prefixes cloud credentials are read from (the cloud SDKs' default
+# chains and the adapter's own fallbacks). A source's server inherits none of them, for any cloud
+# (maintainer 2026-11-22, job CLOUDOPS-ENV2): the deployment's own credentials are not the
+# source's. The source's declared credentials reach its server in its model (``cloudops_settings``).
+CLOUDOPS_ENV_PREFIXES: tuple[str, ...] = ("AZURE_", "AWS_", "GCP_", "GOOGLE_")
 
 
 def cloudops_settings(source: Any) -> dict[str, Any]:
@@ -107,14 +104,9 @@ def cloudops_settings(source: Any) -> dict[str, Any]:
     return {"providers": ",".join(named), **settings}
 
 
-def cloudops_server_environment(source: Any, environ: Mapping[str, str]) -> dict[str, str]:
-    """``environ`` without the credential variables of every cloud ``source`` does not name
-    (``CLOUDOPS_ENV_PREFIXES``): the environment its pgwire server is launched with."""
-    named = set(cloudops_settings(source)["providers"].split(","))
-    withheld = tuple(
-        prefix
-        for cloud, prefixes in CLOUDOPS_ENV_PREFIXES.items()
-        if cloud not in named
-        for prefix in prefixes
-    )
-    return {name: value for name, value in environ.items() if not name.startswith(withheld)}
+def cloudops_server_environment(environ: Mapping[str, str]) -> dict[str, str]:
+    """``environ`` without any cloud credential variable (``CLOUDOPS_ENV_PREFIXES``): the
+    environment a cloudops source's pgwire server is launched with, whatever clouds it names."""
+    return {
+        name: value for name, value in environ.items() if not name.startswith(CLOUDOPS_ENV_PREFIXES)
+    }

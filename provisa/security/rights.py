@@ -249,17 +249,14 @@ def public_read_only_refusal(role_id: str, capabilities: Iterable[str]) -> str |
     if not refused:
         return None
     return (
-        f"Role {PUBLIC_ROLE!r} is read-only (REQ-1058): it cannot hold {', '.join(refused)}; "
+        f"Role {PUBLIC_ROLE!r} is read-only: it cannot hold {', '.join(refused)}; "
         f"it may hold only {', '.join(sorted(PUBLIC_READ_RIGHTS))}"
     )
 
 
 def public_write_grant_message(operation: str) -> str:  # REQ-1058
     """Why a write grant naming the public role is refused."""
-    return (
-        f"Role {PUBLIC_ROLE!r} is read-only (REQ-1058): it cannot be given a write grant "
-        f"({operation})"
-    )
+    return f"Role {PUBLIC_ROLE!r} is read-only: it cannot be given a write grant ({operation})"
 
 
 #: A meta-role's id: this prefix, then its members joined by ``+`` (security/meta_role.py).

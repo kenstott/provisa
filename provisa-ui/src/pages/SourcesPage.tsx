@@ -1174,7 +1174,11 @@ export function SourcesPage() {
         body: JSON.stringify(
           openapiSpecMode === "inline"
             ? { spec_content: openapiSpecInline }
-            : { spec_path: openapiSpecPath },
+            : {
+                spec_path: openapiSpecPath,
+                // REQ-2265: a spec behind the source's auth is read with it
+                auth_config: authType !== "none" ? { type: authType, ...authFields } : null,
+              },
         ),
       });
       if (!resp.ok) {

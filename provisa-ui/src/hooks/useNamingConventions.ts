@@ -26,6 +26,7 @@ export function useNamingConventions(): string[] {
 const LABELS: Record<string, string> = {
   snake: "adminPage.namingConventionSnake",
   hasura_graphql: "adminPage.namingConventionHasura",
+  hasura_graphql_default: "adminPage.namingConventionHasuraGraphqlDefault",
   apollo_graphql: "adminPage.namingConventionApollo",
 };
 

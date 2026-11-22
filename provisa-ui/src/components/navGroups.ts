@@ -440,12 +440,15 @@ export const NAV_BAR: NavBarEntry[] = [
     tour: "nav-relationships",
     capability: "create_relationship",
   },
-  // REQ-2259: the Context group stands where the Ontology and Library links stood.
-  { kind: "group", group: group("context") },
+  // Maintainer 2026-11-22: build order. Raw data is modeled (Sources, Tables, Relationships),
+  // derived datasets are built (Derived), meaning is attached to both (Context), and products
+  // bundle datasets with their meaning (Products).
   { kind: "group", group: group("model") },
-  // REQ-1634: Data Products is a top-level list/detail page, placed right after Model so it reads
-  // as a peer of the modeling surfaces. It is its own entry, gated on the data product read right
-  // every standard role but platform_admin holds, so it stays in the bar where Model is not drawn.
+  // REQ-2259: the context layer's one group.
+  { kind: "group", group: group("context") },
+  // REQ-1634: Data Products is a top-level list/detail page. It is its own entry, gated on the data
+  // product read right every standard role but platform_admin holds, so it stays in the bar where
+  // Derived is not drawn.
   {
     kind: "link",
     to: "/data-products",

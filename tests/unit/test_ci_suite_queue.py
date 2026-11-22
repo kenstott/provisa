@@ -86,7 +86,9 @@ def test_the_dispatchers_choices_reach_the_lanes():
     secrets = _caller()["jobs"]["lanes"]["secrets"]
     declared = called[True]["workflow_call"]["secrets"]
     assert secrets == {name: f"${{{{ secrets.{name} }}}}" for name in declared}
-    assert len(declared) == 77  # OPENROUTER_API_KEY: the LLM eval tests' key
+    # 78: the four M365_* of the microsoft_365 lane (cf4435301e) in, the three standing FABRIC_*
+    # out now that each run makes its own workspace (25f7cfe1a6).
+    assert len(declared) == 78
 
 
 def _pipelines_without_pipefail(script: str) -> list[str]:

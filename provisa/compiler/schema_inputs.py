@@ -32,8 +32,14 @@ from graphql import (
     GraphQLScalarType,
 )
 
+from provisa.compiler import hasura_schema
 from provisa.compiler.enum_detect import build_enum_filter_types, resolve_column_type
-from provisa.compiler.naming import SYSTEM_SCHEMA_GQL_PREFIX, apply_gql_name, to_type_name
+from provisa.compiler.naming import (
+    SYSTEM_SCHEMA_GQL_PREFIX,
+    apply_gql_name,
+    hasura_argument_name,
+    to_type_name,
+)
 from provisa.compiler.type_map import (
     FILTER_TYPE_MAP,
     array_graphql_type,
@@ -185,6 +191,16 @@ def _gql_col_name(col: dict, table: _TableInfo) -> str:
     return conv if conv else raw
 
 
+def _comparison(
+    table: _TableInfo, provisa_filter: GraphQLInputObjectType
+) -> GraphQLInputObjectType:
+    """The comparison a column of ``table`` is filtered by: Provisa's filter, or for a
+    Hasura-preset table its Hasura comparison expression (REQ-194)."""
+    if table.hasura is None:
+        return provisa_filter
+    return hasura_schema.hasura_comparison(table.hasura, provisa_filter)
+
+
 def _build_where_input(  # REQ-008, REQ-221, REQ-2136
     table: _TableInfo,
     type_name: str,
@@ -212,24 +228,25 @@ def _build_where_input(  # REQ-008, REQ-221, REQ-2136
             # a scalar comparison of its element type.
             continue
         if enum_filter:
-            input_fields[gql_name] = GraphQLInputField(enum_filter)
+            input_fields[gql_name] = GraphQLInputField(_comparison(table, enum_filter))
         else:
             gql_type = registered_graphql_type(meta.data_type, meta.subtype)
             scalar = gql_type.of_type if isinstance(gql_type, GraphQLList) else gql_type
             filter_type = FILTER_TYPE_MAP.get(scalar)
             if filter_type:
-                input_fields[gql_name] = GraphQLInputField(filter_type)
+                input_fields[gql_name] = GraphQLInputField(_comparison(table, filter_type))
 
     # Virtual columns support eq/neq filtering
     _str_filter = FILTER_TYPE_MAP.get(GraphQLString)
     if _str_filter:
-        input_fields["_name_"] = GraphQLInputField(_str_filter)
-        input_fields["_domain_"] = GraphQLInputField(_str_filter)
+        input_fields["_name_"] = GraphQLInputField(_comparison(table, _str_filter))
+        input_fields["_domain_"] = GraphQLInputField(_comparison(table, _str_filter))
 
     if not input_fields:
         return None
 
-    name = f"{type_name}Where"
+    # REQ-194: a Hasura-preset table has one bool_exp, which every field filtering it takes.
+    name = hasura_schema.type_name(table, "bool_exp") if table.hasura else f"{type_name}Where"
     where_input_holder: list[GraphQLInputObjectType] = []
 
     def thunk():
@@ -270,10 +287,13 @@ def _build_order_by_inputs(  # REQ-200, REQ-201, REQ-202
         if not visible_col_names:
             continue
 
+        # REQ-194: a Hasura-preset table orders by Hasura's order_by enum.
+        direction = hasura_schema.hasura_order_by_enum(t.hasura) if t.hasura else OrderDirection
+
         # Capture t in closure for the thunk
-        def make_fields(table=t, cols=visible_col_names):
+        def make_fields(table=t, cols=visible_col_names, direction=direction):
             fields: dict[str, GraphQLInputField] = {
-                name: GraphQLInputField(OrderDirection) for name in cols
+                name: GraphQLInputField(direction) for name in cols
             }
             # Add nested relationship ordering
             for rel in visible_rels:
@@ -286,9 +306,8 @@ def _build_order_by_inputs(  # REQ-200, REQ-201, REQ-202
                         )
             return fields
 
-        ob_type = cast(
-            GraphQLInputObjectType, GraphQLInputObjectType(f"{t.type_name}OrderBy", make_fields)
-        )
+        ob_name = hasura_schema.type_name(t, "order_by") if t.hasura else f"{t.type_name}OrderBy"
+        ob_type = cast(GraphQLInputObjectType, GraphQLInputObjectType(ob_name, make_fields))
         order_by_types[t.table_id] = ob_type
 
     return order_by_types
@@ -304,6 +323,9 @@ def _build_distinct_on_enum(
     ]
     if not visible_col_names:
         return None
+    if table.hasura:
+        # REQ-194: Hasura's distinct_on takes its select_column enum.
+        return hasura_schema.column_enum(table, "select_column", visible_col_names)
     return cast(
         GraphQLEnumType,
         GraphQLEnumType(
@@ -314,6 +336,20 @@ def _build_distinct_on_enum(
 
 
 def _build_db_field_args(
+    where_input: GraphQLInputObjectType | None,
+    order_by_input: GraphQLInputObjectType | None,
+    distinct_enum: GraphQLEnumType | None,
+    hasura: str | None = None,
+) -> dict[str, GraphQLArgument]:
+    """A table field's filter, order, paging and distinct arguments; for a Hasura-preset table
+    (``hasura``, its convention) each named as the convention spells it (``orderBy``, REQ-194)."""
+    args = _db_field_args(where_input, order_by_input, distinct_enum)
+    if hasura is None:
+        return args
+    return {hasura_argument_name(hasura, name): arg for name, arg in args.items()}
+
+
+def _db_field_args(
     where_input: GraphQLInputObjectType | None,
     order_by_input: GraphQLInputObjectType | None,
     distinct_enum: GraphQLEnumType | None,

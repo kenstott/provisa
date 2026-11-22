@@ -297,6 +297,20 @@ async def store_openapi_auth(conn: Connection, source_id: str, auth: dict | None
     )
 
 
+async def stored_openapi_auth(conn: Connection, source_id: str) -> dict | None:  # REQ-2265
+    """The auth stored for ``source_id``'s calls (:func:`store_openapi_auth`), decrypted, in
+    the shape :func:`api_auth` writes. None where none is stored: the source's calls then carry
+    no credential either, so neither does a re-read of its spec."""
+    from provisa.encryption import encryption_service
+
+    row = (
+        await conn.execute_core(select(api_sources.c.auth).where(api_sources.c.id == source_id))
+    ).fetchone()
+    if row is None or row.auth is None:
+        return None
+    return json.loads(encryption_service().decrypt(bytes(row.auth)).decode("utf-8"))
+
+
 async def register_openapi_endpoint(
     conn: Connection, table: Table, *, spec: dict, ttl: int
 ) -> None:

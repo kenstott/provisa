@@ -135,6 +135,12 @@
     "importHeld": "रोके गए",
     "importKind": "प्रकार",
     "importObject": "ऑब्जेक्ट",
-    "importReason": "रोकने का कारण"
+    "importReason": "रोकने का कारण",
+    "holdReason_no_choice": "इस प्रकार के लिए कोई स्थायी विकल्प नहीं",
+    "holdReason_held_by_choice": "स्थायी विकल्प रोकें है",
+    "holdReason_edited_in_provisa": "पिछले आदान-प्रदान के बाद Provisa में संपादित",
+    "holdReason_never_exchanged": "कभी आदान-प्रदान नहीं हुआ, इसलिए पता नहीं कि कौन-सा पक्ष बदला",
+    "holdReason_not_importable": "Provisa अभी इस प्रकार को कैटलॉग से नहीं ले सकता",
+    "holdReason_left_to_export": "स्थायी विकल्प Provisa का मान है, जिसे निर्यात भेजता है"
   }
 }

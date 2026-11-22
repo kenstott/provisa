@@ -23,6 +23,7 @@ indexed or said.
 from __future__ import annotations
 
 from types import SimpleNamespace
+from typing import Any
 
 import duckdb
 import pyarrow as pa
@@ -31,6 +32,7 @@ import sqlglot
 
 from provisa.core.ir_types import to_physical
 from provisa.core.statement_warnings import collecting
+from provisa.federation.backend import EngineBackend
 from provisa.federation.replica_address import ReplicaRoute, ReplicaRoutes
 from provisa.federation.replica_target import PostgresStoreTarget, _pg_swap, pg_statement_copy
 from provisa.federation.residency import resolve_landing_args
@@ -315,13 +317,17 @@ def test_the_distance_is_written_in_each_engine_s_indexed_form():
 # -- the engine seam ---------------------------------------------------------------------------
 
 
-class _Backend:
+class _Backend(EngineBackend):
+    """The real backend's dialect (REQ-2236: the seam reads it to choose the transpile), with the
+    index, transpile and exact-read terminals stood in."""
+
     computes_fakes = True
 
-    def __init__(self, indexes: bool) -> None:
+    def __init__(self, engine: Any, indexes: bool) -> None:
+        super().__init__(engine)
         self._indexes = indexes
 
-    def indexes_replica_vectors(self, state) -> bool:
+    def indexes_replica_vectors(self, state: Any) -> bool:
         del state
         return self._indexes
 
@@ -338,7 +344,8 @@ def _runtime(indexes: bool):
 
     route = ReplicaRoute("src", "docs", _REPLICA)
     routes = ReplicaRoutes(engine_name="duckdb", routes={(None, "src", "docs"): route})
-    engine = SimpleNamespace(name="duckdb", backend=_Backend(indexes), catalog_qualified=False)
+    engine = SimpleNamespace(name="duckdb", native_store=None, catalog_qualified=False)
+    engine.backend = _Backend(engine, indexes)
     return EngineRuntime(engine, SimpleNamespace(replica_routes=routes))  # type: ignore[arg-type]
 
 
