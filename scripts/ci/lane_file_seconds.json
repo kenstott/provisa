@@ -452,6 +452,7 @@
   "tests/integration/test_protocol_aggregate_parity.py": 26.8,
   "tests/integration/test_provisioning_demo.py": 89.5,
   "tests/integration/test_public_columns_every_surface_e2e.py": 32.2,
+  "tests/integration/test_public_visitor_host_org.py": 5.0,
   "tests/integration/test_push_listener_survives_broker.py": 0.0,
   "tests/integration/test_python_worker.py": 8.1,
   "tests/integration/test_qdrant_source_e2e.py": 30.0,
