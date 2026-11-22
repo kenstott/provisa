@@ -146,10 +146,17 @@ def test_the_native_launchers_export_the_directories_the_command_fills():
 
 @pytest.mark.parametrize("dockerfile", ["Dockerfile", "Dockerfile.dev"])
 def test_the_images_are_built_with_the_assets_inside_them(dockerfile):
-    """provisa is /app in the final image, not site-packages: -I could not import it. The release
-    image's RUN gives pip a find-links directory first (a dry run's own provisa-duckdb-ext wheels)."""
+    """provisa is /app in the final image, not site-packages: -I could not import it. Both images'
+    RUN gives pip a find-links directory, the duckdb-ext-wheels stage, which a build's own run fills
+    with the provisa-duckdb-ext wheels it built (empty, the Pages index is the only source)."""
     text = (_REPO / dockerfile).read_text()
     assert " python -m provisa.runtime_deps.stage_assets\n" in text
+    assert "\nFROM scratch AS duckdb-ext-wheels\n" in text
+    assert (
+        "RUN --mount=type=bind,from=duckdb-ext-wheels,target=/duckdb-ext-wheels \\\n"
+        "    PIP_FIND_LINKS=/duckdb-ext-wheels python -m provisa.runtime_deps.stage_assets\n"
+    ) in text
+    assert text.count("provisa.runtime_deps.stage_assets") == 1
     assert "--except" not in text and "-I -m provisa.runtime_deps" not in text
 
 

@@ -18,6 +18,7 @@ its setup from the action and never repeats the commands.
 | `setup-ui` | Node at `.nvmrc`, `provisa-ui/node_modules`, optionally Chromium | `install`, `graph-render`, `playwright` (`none`, `chromium`) |
 | `trino-plugins` | the pinned Trino plugin jars, restored or saved under one key | `phase` (`restore`, `save`), `cache-hit`, `key-prefix` |
 | `zaychik-image` | the `zaychik:latest` image the core services start, loaded; built and saved once per change to `zaychik/` | `phase` (`prime`, `restore`) |
+| `duckdb-ext-wheels` | this commit's provisa-duckdb-ext wheels for the runner's Linux platform, in the directory `PROVISA_DUCKDB_EXT_WHEELS` names (an image build's `duckdb-ext-wheels` context); mirrored and built once per change to their sources, a miss elsewhere answered by the run's artifact | `phase` (`prime`, `restore`); output `dir` |
 | `pyodide-downloads` | every file `provisa_notebook.build` downloads (Pyodide and its packages), from the cache or one download, in the directory `PROVISA_NOTEBOOK_DOWNLOADS` names | `python`; outputs `dir`, `cache-hit` |
 | `mssql-odbc` | ODBC Driver 18, registered | none |
 | `docs-site-deps` | MkDocs and its plugins | none |

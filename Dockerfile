@@ -52,11 +52,13 @@ COPY --from=provisa-wheel-build /wheels/ /
 # once per pin (.github/actions/pyodide-downloads) and no image build asks the CDN again.
 FROM scratch AS pyodide-downloads
 
-# The provisa-duckdb-ext wheels a release dry run built in its own run (REQ-294). Empty here, so a
-# plain `docker build` and a release take them from the release's Pages index. A build given
+# The provisa-duckdb-ext wheels the build's own run built (REQ-294). Empty here, so a plain
+# `docker build` takes them from the release's Pages index. A build given
 # `--build-context duckdb-ext-wheels=DIR` has DIR in this stage's place, and the stage step below
-# gives pip DIR as a find-links source beside its indexes: a dry run publishes nothing, so the Pages
-# index has no wheels of its own for it (run 45030695628).
+# gives pip DIR as a find-links source beside its indexes. Every CI and release build passes one:
+# the Pages index holds only what a release already published, and an image is built before its
+# own release publishes anything (run 45030695628). CI fills DIR with the runner's platform's wheels
+# (.github/actions/duckdb-ext-wheels); a release with every platform's (build-duckdb-extensions).
 FROM scratch AS duckdb-ext-wheels
 
 # Stage 2: install Python deps from pre-built wheels (stays on builder layer only)

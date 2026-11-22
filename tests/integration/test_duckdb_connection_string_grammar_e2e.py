@@ -59,6 +59,12 @@ def _sa_execute(statements: list[str]) -> None:
         cur = conn.cursor()
         for statement in statements:
             cur.execute(statement)
+            # A statement can leave further results pending on the connection: row counts of a
+            # multi-statement batch, and the "transactions are being rolled back" messages ROLLBACK
+            # IMMEDIATE returns while a session is still in the database. Undrained, the next
+            # statement fails with "Connection is busy with results for another command".
+            while cur.nextset():
+                pass
     finally:
         conn.close()
 

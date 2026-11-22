@@ -69,6 +69,8 @@ jobs:
         uses: ./.github/actions/trino-plugins
         with:
           phase: prime
+          # The prime phase uploads the verified plugins as this run's `trino-plugins` artifact,
+          # which package-plugins downloads. A second upload under that name here was a 409.
 
   package-plugins:
     name: Package Trino plugins tarball for release
@@ -118,10 +120,11 @@ jobs:
 
   # ── DuckDB extension wheels ─────────────────────────────────────────────────
 
-  # REQ-294: the app image stages provisa-duckdb-ext's wheels at build time. A release takes them
-  # from its Pages index; a dry run publishes nothing there (run 45030695628: pip found none), so
-  # its image builds take the wheels this job builds in the same run, its provisa-duckdb-ext-wheels
-  # artifact. It never attaches anything: "Release: cut" dispatches the attaching run on the tag.
+  # REQ-294: the app image stages provisa-duckdb-ext's wheels at build time. The Pages index holds
+  # them only after publish, and the images are built before it: a dry run publishes nothing (run
+  # 45030695628: pip found none) and a release has not published yet. So both image builds take the
+  # wheels this job builds in the same run, its provisa-duckdb-ext-wheels artifact. It never
+  # attaches anything: "Release: cut" dispatches the attaching run on the tag.
   duckdb-extensions:
     name: DuckDB extension wheels
     permissions:
@@ -185,11 +188,11 @@ jobs:
       - name: Pyodide downloads
         uses: ./.github/actions/pyodide-downloads
 
-      # A dry run's image takes provisa-duckdb-ext from the wheels this run built (duckdb-extensions);
-      # a release's directory stays empty and its image reads the Pages index. Outside the checkout,
-      # so the image's main build context does not carry it.
-      - name: DuckDB extension wheels (dry run)
-        if: ${{ !inputs.publish }}
+      # The image takes provisa-duckdb-ext from the wheels this run built (duckdb-extensions), a
+      # release's as a dry run's: the image is built before publish writes the Pages index, which
+      # then holds no wheels of this release. Outside the checkout, so the image's main build
+      # context does not carry it.
+      - name: DuckDB extension wheels
         uses: actions/download-artifact@v4
         with:
           name: provisa-duckdb-ext-wheels
@@ -234,7 +237,6 @@ jobs:
           docker save --platform linux/arm64 provisa/zaychik:local | gzip -9 > images/zaychik-local.tar.gz
           # App image in the core-images tarball so the Docker tier can docker load it
           # on demand (macOS/arm64) — no in-VM/host build needed.
-          mkdir -p "$DUCKDB_EXT_WHEELS"
           docker build --platform linux/arm64 \
             --build-context pyodide-downloads="$PROVISA_NOTEBOOK_DOWNLOADS" \
             --build-context duckdb-ext-wheels="$DUCKDB_EXT_WHEELS" \
@@ -348,11 +350,11 @@ jobs:
       - name: Pyodide downloads
         uses: ./.github/actions/pyodide-downloads
 
-      # A dry run's image takes provisa-duckdb-ext from the wheels this run built (duckdb-extensions);
-      # a release's directory stays empty and its image reads the Pages index. Outside the checkout,
-      # so the image's main build context does not carry it.
-      - name: DuckDB extension wheels (dry run)
-        if: ${{ !inputs.publish }}
+      # The image takes provisa-duckdb-ext from the wheels this run built (duckdb-extensions), a
+      # release's as a dry run's: the image is built before publish writes the Pages index, which
+      # then holds no wheels of this release. Outside the checkout, so the image's main build
+      # context does not carry it.
+      - name: DuckDB extension wheels
         uses: actions/download-artifact@v4
         with:
           name: provisa-duckdb-ext-wheels
@@ -394,7 +396,6 @@ jobs:
           tar -czf "trino-image/${{ needs.metadata.outputs.trino_image_amd64_name }}" -C trino-inner trino-481.tar.gz
           docker build --platform linux/amd64 -t provisa/zaychik:local ./zaychik
           docker save --platform linux/amd64 provisa/zaychik:local | gzip -9 > images/zaychik-local.tar.gz
-          mkdir -p "$DUCKDB_EXT_WHEELS"
           docker build --platform linux/amd64 \
             --build-context pyodide-downloads="$PROVISA_NOTEBOOK_DOWNLOADS" \
             --build-context duckdb-ext-wheels="$DUCKDB_EXT_WHEELS" \

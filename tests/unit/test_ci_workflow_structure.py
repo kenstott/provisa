@@ -49,6 +49,7 @@ _OWNED = {
     r"key: (\$\{\{ inputs.key-prefix \}\})?trino-plugins-": "trino-plugins",
     r"KEY: (\$\{\{ inputs.key-prefix \}\})?provisa-functions-": "trino-plugins",
     r"key: pyodide-downloads-": "pyodide-downloads",
+    r"duckdb-ext-wheels-\$\{\{ steps\.label": "duckdb-ext-wheels",
     r"gh release create": "ensure-release",
     r"rm -rf /usr/share/dotnet": "free-runner-disk",
 }
@@ -184,20 +185,22 @@ def test_every_prebuilt_job_that_builds_the_app_image_frees_runner_disk_first():
     assert set(builders) == {"pull-images-core", "pull-images-core-amd64"}, builders
 
 
-def test_a_dry_run_app_image_stages_the_duckdb_extension_wheels_its_own_run_built():
+def test_a_release_app_image_stages_the_duckdb_extension_wheels_its_own_run_built():
     """Run 45030695628: a release dry run publishes nothing, so the Pages index had no
     provisa-duckdb-ext wheels and the app image's stage step refused at Dockerfile
-    `RUN python -m provisa.runtime_deps.stage_assets`. The dry run builds the wheels in its own
-    run and every app image build takes them as a build context; a release leaves that directory
-    empty and reads the Pages index. Neither source holding a wheel still stops the build."""
-    dockerfile = (REPO / "Dockerfile").read_text()
-    assert dockerfile.count("\nFROM scratch AS duckdb-ext-wheels\n") == 1
-    stage = (
-        "RUN --mount=type=bind,from=duckdb-ext-wheels,target=/duckdb-ext-wheels \\\n"
-        "    PIP_FIND_LINKS=/duckdb-ext-wheels python -m provisa.runtime_deps.stage_assets\n"
-    )
-    assert stage in dockerfile
-    assert dockerfile.count("provisa.runtime_deps.stage_assets") == 1
+    `RUN python -m provisa.runtime_deps.stage_assets`. A real release builds its images before
+    publish writes the Pages index, so it is no different. Both build the wheels in their own run
+    and every app image build takes them as a build context. Neither source holding a wheel still
+    stops the build."""
+    for name in ("Dockerfile", "Dockerfile.dev"):
+        dockerfile = (REPO / name).read_text()
+        assert dockerfile.count("\nFROM scratch AS duckdb-ext-wheels\n") == 1, name
+        stage = (
+            "RUN --mount=type=bind,from=duckdb-ext-wheels,target=/duckdb-ext-wheels \\\n"
+            "    PIP_FIND_LINKS=/duckdb-ext-wheels python -m provisa.runtime_deps.stage_assets\n"
+        )
+        assert stage in dockerfile, name
+        assert dockerfile.count("provisa.runtime_deps.stage_assets") == 1, name
 
     extensions = yaml.safe_load(
         (REPO / ".github" / "workflows" / "build-duckdb-extensions.yml").read_text()
@@ -224,8 +227,9 @@ def test_a_dry_run_app_image_stages_the_duckdb_extension_wheels_its_own_run_buil
         assert "duckdb-extensions" in body["needs"], job
         steps = body["steps"]
         names = [s.get("name") for s in steps]
-        download = steps[names.index("DuckDB extension wheels (dry run)")]
-        assert download["if"] == "${{ !inputs.publish }}", job
+        # A release's image as a dry run's: built before publish writes the Pages index.
+        download = steps[names.index("DuckDB extension wheels")]
+        assert "if" not in download, job
         assert download["uses"].startswith("actions/download-artifact@"), job
         assert download["with"] == {
             "name": upload["with"]["name"],
@@ -235,6 +239,100 @@ def test_a_dry_run_app_image_stages_the_duckdb_extension_wheels_its_own_run_buil
         assert steps.index(download) < steps.index(build), job
         assert build["env"]["DUCKDB_EXT_WHEELS"] == download["with"]["path"], job
         assert '--build-context duckdb-ext-wheels="$DUCKDB_EXT_WHEELS"' in build["run"], job
+
+
+_DUCKDB_EXT_ACTION = "./.github/actions/duckdb-ext-wheels"
+
+
+def _workflow_jobs(name: str) -> dict:
+    return yaml.safe_load((REPO / ".github" / "workflows" / name).read_text())["jobs"]
+
+
+def _action_step(steps: list[dict], phase: str) -> int:
+    [index] = [
+        i
+        for i, s in enumerate(steps)
+        if s.get("uses") == _DUCKDB_EXT_ACTION and (s.get("with") or {}).get("phase") == phase
+    ]
+    return index
+
+
+def test_every_ci_image_build_is_given_this_commits_duckdb_extension_wheels():
+    """REQ-294: an image of a commit no release published finds no provisa-duckdb-ext wheels on
+    the Pages index, and its stage step stops. Every CI build of Dockerfile or Dockerfile.dev is
+    given the wheels the duckdb-ext-wheels action built from this commit, before it builds."""
+    # The dev image, built by the tests the integration lanes and the cluster lane run.
+    for path in (
+        "tests/e2e/test_helm_minikube.py",
+        "tests/integration/test_master_key_survives_recreate_compose.py",
+    ):
+        text = (REPO / path).read_text()
+        assert "Dockerfile.dev" in text, path
+        assert "*duckdb_ext_wheels.build_context_args()," in text, path
+    from tests import duckdb_ext_wheels
+
+    assert duckdb_ext_wheels.STAGE == "duckdb-ext-wheels"
+    lanes = _workflow_jobs("integration-suite-lanes.yml")
+    _action_step(lanes["trino-plugins"]["steps"], "prime")
+    cluster = lanes["cluster"]
+    assert "trino-plugins" in cluster["needs"]
+    names = [s.get("name") for s in cluster["steps"]]
+    assert _action_step(cluster["steps"], "restore") < names.index("Run lane")
+    suite = lanes["suite"]
+    assert "trino-plugins" in suite["needs"]
+    assert suite["with"]["duckdb-ext-wheels"] is True
+    lane = yaml.safe_load((REPO / LANE.removeprefix("./")).read_text())
+    assert lane[True]["workflow_call"]["inputs"]["duckdb-ext-wheels"]["default"] is False
+    steps = lane["jobs"]["lane"]["steps"]
+    restore = _action_step(steps, "restore")
+    assert steps[restore]["if"] == "inputs.duckdb-ext-wheels"
+    assert restore < [s.get("name") for s in steps].index("Run lane")
+
+    # The app image: docker-image.yml's build, and the AppImage's (release and NixOS).
+    image = _workflow_jobs("docker-image.yml")["image"]["steps"]
+    [build] = [i for i, s in enumerate(image) if "docker build" in (s.get("run") or "")]
+    assert _action_step(image, "prime") < build
+    assert '--build-context duckdb-ext-wheels="$PROVISA_DUCKDB_EXT_WHEELS"' in image[build]["run"]
+    for workflow, job in (("release-linux.yml", "build-linux"), ("nixos.yml", "appimage-build")):
+        steps = _workflow_jobs(workflow)[job]["steps"]
+        [build] = [i for i, s in enumerate(steps) if "build-appimage.sh" in (s.get("run") or "")]
+        assert _action_step(steps, "prime") < build, workflow
+    appimage = (REPO / "packaging/linux/build-appimage.sh").read_text()
+    assert (
+        'duckdb_ext=(--build-context "duckdb-ext-wheels=${PROVISA_DUCKDB_EXT_WHEELS}")' in appimage
+    )
+    assert '${duckdb_ext[@]+"${duckdb_ext[@]}"} \\\n' in appimage
+
+
+def test_the_duckdb_ext_wheels_action_builds_only_on_a_priming_miss():
+    """The prime phase mirrors and builds only when the cache misses; the restore phase never
+    builds, and takes the run's artifact on a miss. Both name the directory for the image build."""
+    action = yaml.safe_load((REPO / ".github/actions/duckdb-ext-wheels/action.yml").read_text())
+    steps = {s["name"]: s for s in action["runs"]["steps"]}
+    miss = "steps.cache.outputs.cache-hit != 'true'"
+    build = steps["Mirror the DuckDB extensions and build the wheels"]
+    assert build["if"] == f"inputs.phase == 'prime' && {miss}"
+    assert "scripts/ci/mirror_duckdb_extensions.py" in build["run"]
+    assert "scripts/ci/build_duckdb_ext_wheels.sh" in build["run"]
+    assert steps["Cache the duckdb-ext wheels"]["if"] == f"inputs.phase == 'prime' && {miss}"
+    download = steps["Download the run's duckdb-ext wheels"]
+    assert download["if"] == f"inputs.phase == 'restore' && {miss}"
+    upload = steps["Upload the run's duckdb-ext wheels"]
+    assert upload["if"] == "inputs.phase == 'prime'"
+    assert download["with"]["name"] == upload["with"]["name"] == "duckdb-ext-wheels"
+    assert upload["with"]["if-no-files-found"] == "error"
+    restore = steps["Restore the duckdb-ext wheels"]["with"]
+    assert restore["key"] == steps["Cache the duckdb-ext wheels"]["with"]["key"]
+    assert "PROVISA_DUCKDB_EXT_WHEELS=" in steps["duckdb-ext wheels directory"]["run"]
+    # The key covers what decides the wheels' content.
+    key = steps["duckdb-ext wheels key"]["env"]["KEY"]
+    for source in (
+        "packaging/duckdb-ext/**",
+        "scripts/ci/mirror_duckdb_extensions.py",
+        "scripts/ci/build_duckdb_ext_wheels.sh",
+        "provisa/federation/duckdb_extensions.py",
+    ):
+        assert f"'{source}'" in key, source
 
 
 # --- one lane workflow (stage 2) ------------------------------------------------------------------
@@ -925,6 +1023,23 @@ def test_composite_action_steps_follow_the_callers_inputs():
     ]
 
 
+# The artifact each caching action's `phase: prime` uploads, under the caller's key-prefix.
+_PRIMED_ARTIFACT = {
+    "./.github/actions/trino-plugins": "trino-plugins",
+    "./.github/actions/zaychik-image": "zaychik-image",
+    "./.github/actions/duckdb-ext-wheels": "duckdb-ext-wheels",
+}
+
+
+def _primed_upload(step: dict) -> str | None:
+    """The artifact a caching action step uploads: its prime phase uploads the run's artifact
+    under the caller's key-prefix; any other step of it uploads none."""
+    given = step.get("with") or {}
+    if step.get("uses") not in _PRIMED_ARTIFACT or given.get("phase") != "prime":
+        return None
+    return given.get("key-prefix", "") + _PRIMED_ARTIFACT[step["uses"]]
+
+
 def test_a_leg_that_reads_another_legs_artifact_starts_after_it():
     """Artifacts are the run's: a leg downloads what another leg uploaded, so the orchestrator
     must order them. Every named download in a leg is uploaded in that leg or in one it needs. A
@@ -1284,7 +1399,7 @@ def test_the_reusable_workflows_are_checked_only_after_every_action_is():
     assert level_zero == {
         job for job, body in jobs.items() if str(body.get("name", "")).startswith("action / ")
     }
-    assert len(level_zero) == 15
+    assert len(level_zero) == 16
     assert jobs["level-1"]["needs"] == ["lane-results", "release-results"]
 
 
@@ -1975,3 +2090,20 @@ def test_the_sdk_versions_map_from_the_release_tag(tag, pypi, npm):
     got = _metadata_outputs(tag)
     assert got["py_version"] == pypi
     assert got["npm_version"] == npm
+
+
+def test_no_job_uploads_a_second_artifact_under_a_name_its_priming_action_uploads():
+    """The trino-plugins and zaychik-image actions' prime phase uploads the run's artifact
+    (`trino-plugins`, `zaychik-image`). release-prebuilt.yml's download-plugins job also uploaded
+    `trino-plugins` itself after priming; a second upload under one name in a run is a 409."""
+    for path in WORKFLOWS:
+        jobs = yaml.safe_load(path.read_text()).get("jobs") or {}
+        for job, body in jobs.items():
+            steps = body.get("steps") or []
+            taken = {_primed_upload(s) for s in steps} - {None}
+            for s in steps:
+                if str(s.get("uses", "")).startswith("actions/upload-artifact"):
+                    name = (s.get("with") or {}).get("name")
+                    assert name not in taken, (
+                        f"{path.name}:{job} uploads {name!r}, which its priming action uploads"
+                    )

@@ -92,17 +92,23 @@ def test_the_duckdb_platforms_are_the_ones_pgwire_bundles_are_published_for():
 
 def test_the_wheel_job_builds_each_platform_alone_and_retags_it():
     run = _steps("wheel")["Build one wheel per platform"]["run"]
-    assert "for label in $(python packaging/duckdb-ext/collect.py labels)" in run
-    assert 'collect.py collect mirror-extracted "$label" "$part"' in run
+    # Every platform: the script builds every label collect.py knows when it is named none.
+    assert "bash scripts/ci/build_duckdb_ext_wheels.sh mirror-extracted dist-ext\n" in run
+    script = (REPO / "scripts/ci/build_duckdb_ext_wheels.sh").read_text()
+    assert 'set -- $(python "$collect" labels)' in script
+    assert 'for label in "$@"; do' in script
+    assert 'python "$collect" collect "$mirror" "$label" "$part"' in script
     # One project, split across version parts: each part builds a wheel per platform (REQ-294).
-    assert "for part in $(python packaging/duckdb-ext/collect.py parts)" in run
-    assert 'collect.py set-version "$part"' in run
+    assert 'for part in $(python "$collect" parts); do' in script
+    assert 'python "$collect" set-version "$part"' in script
     # A previous platform's blobs in setuptools' build dir would ride along in the next wheel.
-    assert "rm -rf packaging/duckdb-ext/build packaging/duckdb-ext/*.egg-info" in run
-    assert "python -m build --wheel --outdir" in run
-    assert "--sdist" not in run  # an sdist would carry every platform's blobs again
-    assert 'collect.py wheel-tag "$label"' in run
-    assert "python -m wheel tags --remove" in run
+    assert "rm -rf packaging/duckdb-ext/build packaging/duckdb-ext/*.egg-info" in script
+    assert "python -m build --wheel --outdir" in script
+    assert "--sdist" not in script  # an sdist would carry every platform's blobs again
+    assert 'python "$collect" wheel-tag "$label"' in script
+    assert "python -m wheel tags --remove" in script
+    # The per-part version is the build's, not the checkout's.
+    assert 'trap \'cp "$saved" "$pyproject"' in script
 
 
 def test_each_wheels_size_is_checked_before_attaching():

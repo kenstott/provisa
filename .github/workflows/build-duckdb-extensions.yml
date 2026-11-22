@@ -148,22 +148,7 @@ jobs:
         run: |
           set -euo pipefail
           python -m pip install --upgrade build wheel
-          mkdir -p dist-ext
-          for part in $(python packaging/duckdb-ext/collect.py parts); do
-            python packaging/duckdb-ext/collect.py set-version "$part"
-            for label in $(python packaging/duckdb-ext/collect.py labels); do
-              python packaging/duckdb-ext/collect.py collect mirror-extracted "$label" "$part"
-              # setuptools reuses build/ and *.egg-info between builds: the previous platform's blobs
-              # would ride along in this one's wheel.
-              rm -rf packaging/duckdb-ext/build packaging/duckdb-ext/*.egg-info "wheel-build/$label"
-              python -m build --wheel --outdir "wheel-build/$label" packaging/duckdb-ext
-              python -m wheel tags --remove \
-                --platform-tag "$(python packaging/duckdb-ext/collect.py wheel-tag "$label")" \
-                "wheel-build/$label"/provisa_duckdb_ext-*-py3-none-any.whl
-              mv "wheel-build/$label"/*.whl dist-ext/
-            done
-          done
-          ls -l dist-ext
+          bash scripts/ci/build_duckdb_ext_wheels.sh mirror-extracted dist-ext
 
       - name: Check each wheel is under PyPI's 100 MB limit
         run: python packaging/duckdb-ext/collect.py check-wheels dist-ext

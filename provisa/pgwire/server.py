@@ -67,7 +67,7 @@ from buenavista.postgres import (
 
 from provisa.core import request_deadline
 from provisa.core.egress import CountingWriter
-from provisa.core.pg_error import MARK, PostgresError, from_engine
+from provisa.core.pg_error import MARK, PostgresError, driver_sqlstate, from_engine
 from provisa.core.limits import request_timeout_for  # REQ-1905: pgwire's own request timeout
 from provisa.core.session_time_zone import bind_zone, reset_zone
 from provisa.pgwire.session_zone import (
@@ -234,7 +234,8 @@ def _coded(exc: BaseException) -> str | None:
 
 
 def _sqlstate_of(exception: BaseException) -> str:
-    """The SQLSTATE an error is reported with: the one a source reported (psycopg, asyncpg), else
+    """The SQLSTATE an error is reported with: the one a source's driver reported (psycopg2,
+    psycopg, asyncpg: pg_error.driver_sqlstate), else
     the one PostgreSQL's own error raised on the engine carries (pg_error.raising), else
     PostgreSQL's code for the engine error's class -- read through the chain of errors that
     carried it up (the pipeline re-raises a statement's failure from it) -- else XX000."""
@@ -244,8 +245,8 @@ def _sqlstate_of(exception: BaseException) -> str:
         chain.append(seen)
         seen = seen.__cause__ or seen.__context__
     for err in chain:
-        own = getattr(err, "sqlstate", None)
-        if isinstance(own, str) and len(own) == 5:
+        own = driver_sqlstate(err)
+        if own is not None:
             return own
     for err in chain:
         raised = from_engine(err) if isinstance(err, Exception) else None  # REQ-2167

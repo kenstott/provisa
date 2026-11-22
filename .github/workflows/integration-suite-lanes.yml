@@ -301,7 +301,8 @@ jobs:
   trino-plugins:
     name: Trino plugins
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # A miss of all three caches builds the plugin, the zaychik image and the duckdb-ext wheels.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
         with:
@@ -310,6 +311,12 @@ jobs:
         with:
           phase: prime
       - uses: ./.github/actions/zaychik-image
+        with:
+          phase: prime
+      # The app image the cluster lane and test_master_key_survives_recreate_compose.py build stages
+      # this commit's provisa-duckdb-ext wheels (REQ-294): built here once per change to their
+      # sources, restored by those lanes.
+      - uses: ./.github/actions/duckdb-ext-wheels
         with:
           phase: prime
 
@@ -338,6 +345,7 @@ jobs:
       zaychik-image: true
       # tests/integration/test_master_key_survives_recreate_compose.py builds the app image.
       pyodide-downloads: true
+      duckdb-ext-wheels: true
       image-cache: true
       splunk-cim-cache: true
       env: |
@@ -399,6 +407,12 @@ jobs:
       # The image the test builds takes Pyodide from this directory (tests/pyodide_downloads.py).
       - name: Pyodide downloads
         uses: ./.github/actions/pyodide-downloads
+
+      # ... and this commit's provisa-duckdb-ext wheels from this one (tests/duckdb_ext_wheels.py).
+      - name: DuckDB extension wheels
+        uses: ./.github/actions/duckdb-ext-wheels
+        with:
+          phase: restore
 
       - name: Install minikube and helm
         run: |

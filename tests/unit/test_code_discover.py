@@ -34,6 +34,8 @@ from provisa.codesource.manifest import (
     NODE_RULES,
     PYTHON_RULES,
     ManifestRefused,
+    Named,
+    TableOf,
     discovered_handlers,
     manifest_from_json,
     manifest_json,
@@ -392,3 +394,48 @@ def test_discover_is_refused_outside_python_by_name():
     with pytest.raises(ManifestRefused) as refused:
         read_manifest(raw, NODE_RULES)
     assert "discover: @discover is read from a Python code source only" in refused.value.problems
+
+
+# -- a TableRef parameter on a generated query or command (v0) -------------------------------------
+
+
+def _with_table_parameter(source: str) -> str:
+    imported = source.replace("    ReadContext,\n)", "    ReadContext,\n    TableRef,\n)")
+    changed = imported.replace(
+        'CloseParams = make_dataclass("CloseParams", [("order_id", int)])',
+        'CloseParams = make_dataclass("CloseParams", [("order_id", int), ("orders", TableRef[Order])])',
+    ).replace(
+        'StatusParams = make_dataclass("StatusParams", [("status", str)])',
+        'StatusParams = make_dataclass("StatusParams", [("status", str), ("rows", TableRef[Order])])',
+    )
+    assert changed.count("TableRef") == 3, changed
+    return changed
+
+
+def test_a_generated_command_taking_a_table_ref_is_refused_by_name(tmp_path):
+    problems = _problems(tmp_path, _with_table_parameter(CODE))
+    command_refusal = (
+        "close_order: its parameter orders is a TableRef, and a generated command takes no "
+        "TableRef parameter in v0"
+    )
+    query_refusal = (
+        "orders_by_status: its parameter rows is a TableRef, and a generated query takes no "
+        "TableRef parameter in v0"
+    )
+    assert any(command_refusal in p for p in problems), problems
+    assert any(query_refusal in p for p in problems), problems
+
+
+def test_a_generated_command_taking_scalars_is_recorded_beside_a_hand_written_table_ref(tmp_path):
+    source = CODE.replace("    ReadContext,\n)", "    ReadContext,\n    TableRef,\n)") + (
+        "\n\ndef archive(orders: TableRef[Order]) -> str:\n"
+        '    """@command"""\n'
+        '    return "archived"\n'
+    )
+    manifest = read_manifest(_read(tmp_path, source), PYTHON_RULES)
+    close = manifest.export("close_order")
+    assert [(p.name, p.required) for p in close.parameters] == [("order_id", True)]
+    archive = manifest.export("archive")
+    assert archive.kind == "command"
+    assert archive.handler is None
+    assert archive.parameters[0].shape == TableOf(Named("Order"))
