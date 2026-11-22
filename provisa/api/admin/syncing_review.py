@@ -48,6 +48,8 @@ if TYPE_CHECKING:
 PROVISA = "provisa"
 CATALOG = "catalog"
 SIDES = (PROVISA, CATALOG)
+EXPORT = "export"
+IMPORT = "import"
 
 #: The kinds a steward can take the catalog's value of; the others are refused by name.
 IMPORTABLE = (sv.DESCRIPTION, sv.COLUMN_DESCRIPTION, sv.TERM_DEFINITION)
@@ -72,6 +74,17 @@ class Difference:  # REQ-2247
         if self.last.value == self.ours.value:
             return CATALOG
         return "both"
+
+    @property
+    def directions(self) -> tuple[str, ...]:
+        """The directions that list this difference (REQ-2247): one that Provisa moved off the
+        value last exchanged is Export's to send, one the catalog moved is Import's to take; one
+        both moved, or never exchanged, is listed by each direction."""
+        if self.changed == PROVISA:
+            return (EXPORT,)
+        if self.changed == CATALOG:
+            return (IMPORT,)
+        return (EXPORT, IMPORT)
 
     def view(self) -> dict[str, Any]:
         last = self.last
@@ -133,6 +146,13 @@ def grouped(diffs: list[Difference], standing: dict[str, dict[str, str]]) -> dic
             for kind, groups in by_kind.items()
         ],
     }
+
+
+def listed(entry: CatalogConnection, diffs: list[Difference]) -> list[Difference]:
+    """The differences the entry lists: a direction that is off lists none (REQ-2247), so both off
+    lists nothing and one off lists only the other direction's."""
+    running = {d for d, on in ((EXPORT, entry.exports), (IMPORT, entry.imports)) if on}
+    return [d for d in diffs if running.intersection(d.directions)]
 
 
 def chosen(diffs: list[Difference], decisions: list[dict[str, Any]]) -> dict[str, list[Difference]]:

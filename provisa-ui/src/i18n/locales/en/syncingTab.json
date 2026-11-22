@@ -88,6 +88,7 @@
     "differences": "Differences with the catalog",
     "differencesHelp": "Each value the catalog holds differently from Provisa. Accept takes one side for a row, or for a whole table or term.",
     "diffNoDifferences": "The catalog holds the same values as Provisa.",
+    "diffBothOff": "Both directions are off, so no differences are listed.",
     "diffObject": "Object",
     "diffProvisa": "Provisa",
     "diffCatalog": "Catalog",

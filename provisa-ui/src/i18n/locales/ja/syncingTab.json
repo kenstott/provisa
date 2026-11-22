@@ -88,6 +88,7 @@
     "differences": "カタログとの差異",
     "differencesHelp": "カタログが Provisa と異なる値を保持している各項目です。承認すると、行ごと、またはテーブルや用語ごとにどちらか一方を採用します。",
     "diffNoDifferences": "カタログは Provisa と同じ値を保持しています。",
+    "diffBothOff": "両方向とも無効のため、差分は一覧表示されません。",
     "diffObject": "オブジェクト",
     "diffProvisa": "Provisa",
     "diffCatalog": "カタログ",

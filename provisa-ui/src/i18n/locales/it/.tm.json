@@ -9002,6 +9002,7 @@
   "it/syncingTab.json::syncingTab.deleteTitle": "Delete {{id}}?",
   "it/syncingTab.json::syncingTab.deltaShare": "Also publish each product as a Delta Share",
   "it/syncingTab.json::syncingTab.deltaShareHelp": "Other data teams receive the share once a Databricks admin grants it to their recipient. Only members stored in Delta can be shared.",
+  "it/syncingTab.json::syncingTab.diffBothOff": "Both directions are off, so no differences are listed.",
   "it/syncingTab.json::syncingTab.diffCatalog": "Catalog",
   "it/syncingTab.json::syncingTab.diffChanged": "Changed since",
   "it/syncingTab.json::syncingTab.diffExportOff": "This entry does not export, so Provisa's value cannot be sent to the catalog.",

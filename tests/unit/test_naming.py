@@ -77,6 +77,26 @@ class TestOneSqlAddressPerTable:
         assert refused.value.holder == "pg1.sales.us_orders"
         assert refused.value.newcomer == "pg1.public.orders"
 
+    def test_the_refusal_names_the_holder_in_a_form_a_client_is_told(self, monkeypatch):
+        """A client's text has each physical address of a table rewritten to its model name
+        (engine_error_names.model_named), which for the holder is the very address it holds: the
+        message names each table by its registration, never dotted, so the holder stays named."""
+        from provisa.api import engine_error_names
+
+        with pytest.raises(SqlAddressTaken) as refused:
+            refuse_taken_sql_addresses(
+                [_t("us_orders"), _t("orders", schema="public")],
+                [{"pattern": "^us_", "replacement": ""}],
+            )
+        monkeypatch.setattr(
+            engine_error_names,
+            "_names",
+            lambda org: {"pg1.sales.us_orders": '"sales"."orders"'},
+        )
+        told = engine_error_names.model_named(str(refused.value), "an-org")
+        assert "table 'us_orders' of source 'pg1' (schema 'sales')" in told
+        assert "table 'orders' of source 'pg1' (schema 'public')" in told
+
     def test_two_sources_tables_of_one_name_in_a_domain_are_refused(self):
         with pytest.raises(SqlAddressTaken):
             refuse_taken_sql_addresses(
