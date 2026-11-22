@@ -780,6 +780,22 @@ def test_every_asset_name_a_leg_uses_is_one_the_metadata_action_resolves():
         assert step["with"] == {"version": "${{ inputs.version }}"}
 
 
+# The artifact each caching action's `phase: prime` uploads, under the caller's key-prefix.
+_PRIMED_ARTIFACT = {
+    "./.github/actions/trino-plugins": "trino-plugins",
+    "./.github/actions/zaychik-image": "zaychik-image",
+}
+
+
+def _primed_upload(step: dict) -> str | None:
+    """The artifact a caching action step uploads: its prime phase uploads the run's artifact
+    under the caller's key-prefix; any other step of it uploads none."""
+    given = step.get("with") or {}
+    if step.get("uses") not in _PRIMED_ARTIFACT or given.get("phase") != "prime":
+        return None
+    return given.get("key-prefix", "") + _PRIMED_ARTIFACT[step["uses"]]
+
+
 def test_a_leg_that_reads_another_legs_artifact_starts_after_it():
     """Artifacts are the run's: a leg downloads what another leg uploaded, so the orchestrator
     must order them. Every named download in a leg is uploaded in that leg or in one it needs."""
@@ -797,7 +813,12 @@ def test_a_leg_that_reads_another_legs_artifact_starts_after_it():
     for job, bodies in jobs.items():
         for body in bodies:
             for step in body.get("steps") or []:
-                artifact = (step.get("with") or {}).get("name")
+                given = step.get("with") or {}
+                primed = _primed_upload(step)
+                if primed:
+                    uploads.setdefault(job, set()).add(primed)
+                    continue
+                artifact = given.get("name")
                 if not artifact:
                     continue
                 if "upload-artifact" in (step.get("uses") or ""):
@@ -1805,3 +1826,20 @@ def test_the_sdk_versions_map_from_the_release_tag(tag, pypi, npm):
     got = _metadata_outputs(tag)
     assert got["py_version"] == pypi
     assert got["npm_version"] == npm
+
+
+def test_no_job_uploads_a_second_artifact_under_a_name_its_priming_action_uploads():
+    """The trino-plugins and zaychik-image actions' prime phase uploads the run's artifact
+    (`trino-plugins`, `zaychik-image`). release-prebuilt.yml's download-plugins job also uploaded
+    `trino-plugins` itself after priming; a second upload under one name in a run is a 409."""
+    for path in WORKFLOWS:
+        jobs = yaml.safe_load(path.read_text()).get("jobs") or {}
+        for job, body in jobs.items():
+            steps = body.get("steps") or []
+            taken = {_primed_upload(s) for s in steps} - {None}
+            for s in steps:
+                if str(s.get("uses", "")).startswith("actions/upload-artifact"):
+                    name = (s.get("with") or {}).get("name")
+                    assert name not in taken, (
+                        f"{path.name}:{job} uploads {name!r}, which its priming action uploads"
+                    )
