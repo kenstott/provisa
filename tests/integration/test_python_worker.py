@@ -27,7 +27,7 @@ import pytest
 
 from provisa.codesource import worker as w
 from provisa.codesource.arrow_rows import row_schema, schema_text
-from provisa.codesource.manifest import Named, Scalar
+from provisa.codesource.manifest import Named, Scalar, discovered_handlers
 from provisa.python.source import host_command, read_code
 
 pytestmark = [pytest.mark.integration]
@@ -62,6 +62,7 @@ def _start(code: Path, runtimes, egress=()) -> w.Worker:
         entry="orders",
         egress=list(egress),
         host_lib=host_lib,
+        discovered={},
     )
     started = w.Worker("python-src", "h", command)
     started.start()
@@ -213,6 +214,7 @@ def test_dependencies_are_installed_from_the_lockfile_and_imported_in_the_sandbo
         entry=entry,
         egress=[],
         host_lib=runtimes[3],
+        discovered=discovered_handlers(manifest),
     )
     started = w.Worker("rates-src", installed.content_hash, command)
     started.start()

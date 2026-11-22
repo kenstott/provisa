@@ -151,6 +151,8 @@ const EXPECTED: Record<string, [string[], boolean, string]> = {
   org_admin: [EVERY_ENTRY, true, "/schema"],
   sandbox: [EVERY_ENTRY, true, "/schema"],
   platform_admin: [[], true, "/admin/orgs"],
+  // REQ-1058: the visitor role holds nothing until the org publishes to it.
+  public: [[], true, "/admin/my-secrets"],
 };
 
 function topNavLabels(): string[] {

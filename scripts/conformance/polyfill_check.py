@@ -58,45 +58,46 @@ from provisa.transpiler.polyfill import GRID, Applied, Feature, Grid, Refusal  #
 from provisa.transpiler.polyfill.grid import column_of  # noqa: E402
 from provisa.transpiler.polyfill.notation import Form, Refused  # noqa: E402
 
-#: The dialect Provisa transpiles each engine's SQL to, by the name its leg has
-#: (function_legs.yaml): what the engine's backend names (provisa/federation/backend.py
-#: EngineBackend.dialect). A generic SQLAlchemy engine's is source_registry.engine_dialect of the
-#: scheme of its URL; a scheme with no sqlglot dialect (firebird, monetdb) is named as written, no
-#: grid column (column_of): the grid states nothing of the engine and the translator sends it no
-#: rewrite. A unit test holds every leg to an entry, and each URL-driven one to its leg's URL.
-ENGINE_DIALECTS = {
-    # Engines whose backend names its own dialect.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+import function_legs  # noqa: E402
+
+#: The dialect Provisa transpiles the SQL of each engine whose backend names its own dialect to
+#: (provisa/federation/backend.py EngineBackend.dialect), by the name its leg has (function_legs.yaml).
+_FIXED_DIALECTS = {
     "duckdb": "duckdb",
     "motherduck": "duckdb",
     "pg": "postgres",
     "clickhouse": "clickhouse",
+    "clickhouse-server": "clickhouse",
     "trino": "trino",
     "snowflake": "snowflake",
     "databricks": "databricks",
     "bigquery": "bigquery",
     "fabric": "tsql",
     "synapse": "tsql",
-    # URL-driven engines: the dialect of the scheme of the leg's engine URL (redshift's and
-    # singlestore's are written by warehouse_leg.py, in the scheme of the engine kind's DSN).
-    "sqlalchemy": "postgres",
-    "clickhouse-server": "clickhouse",
-    "mysql": "mysql",
-    "mariadb": "mysql",
-    "tidb": "mysql",
-    "mssql": "tsql",
-    "oracle": "oracle",
-    "firebird": "firebird",
-    "cockroachdb": "postgres",
-    "yugabytedb": "postgres",
-    "greenplum": "postgres",
-    "exasol": "exasol",
-    "monetdb": "monetdb",
-    "opengauss": "postgres",
-    "db2": "db2",
-    "saphana": "saphana",
-    "redshift": "redshift",
-    "singlestore": "singlestore",
 }
+
+
+def _engine_dialects() -> dict[str, str]:
+    """The dialect Provisa transpiles each engine's SQL to, by the name its leg has: a fixed
+    builder's own (``_FIXED_DIALECTS``), and a URL-driven engine's the one its backend reads off
+    its URL (``function_legs.url_dialect``, the lookup ``function_legs.refused`` shares). A URL-driven
+    engine with no sqlglot dialect (firebird, monetdb) is one ``build_engine`` refuses by name; it is
+    named by its native store, which is no grid column (column_of): the grid states nothing of it.
+    A unit test holds every leg to an entry."""
+    dialects = dict(_FIXED_DIALECTS)
+    kinds = function_legs.url_engine_kinds()
+    for leg in function_legs.load()["legs"]:
+        if leg["engine"] in kinds:
+            dialect = function_legs.url_dialect(leg)
+            dialects[leg["engine"]] = (
+                dialect if dialect is not None else function_legs.native_store(leg)
+            )
+    return dialects
+
+
+ENGINE_DIALECTS = _engine_dialects()
 
 HOLDS = "holds"
 FAILS = "fails"

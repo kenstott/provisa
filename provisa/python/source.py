@@ -28,6 +28,7 @@ from __future__ import annotations
 import json
 import subprocess  # nosec B404 - argv-list invocation only, never shell=True
 from collections.abc import Callable, Iterable, Sequence
+from dataclasses import replace
 from pathlib import Path
 
 from provisa.codesource.bundle import BundleRefused
@@ -137,10 +138,12 @@ def host_command(
     entry: str,
     egress: Sequence[str],
     host_lib: Path,
+    discovered: dict[str, str],
 ) -> HostCommand:
     """How the source's Python runs the host on its code, sandboxed. ``host_lib`` is where the
-    host's own pyarrow is (REQ-2098), which it reads its rows' schema with and sends them in."""
-    return sandboxed(
+    host's own pyarrow is (REQ-2098), which it reads its rows' schema with and sends them in;
+    ``discovered`` (REQ-2267) each generated item's handler, by item name."""
+    command = sandboxed(
         lambda address: [str(python), "-I", str(HOST), address, str(code), entry],
         executable=python,
         read=[HOST.parent, code, python_home, host_lib],
@@ -148,3 +151,4 @@ def host_command(
         cwd=code,
         egress=egress,
     )
+    return replace(command, discovered=discovered)

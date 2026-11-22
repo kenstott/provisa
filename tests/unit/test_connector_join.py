@@ -82,7 +82,7 @@ def _start_host(tmp_path: Path, manifest: dict | None):
     hashed = content_hash(code)
     names = tmp_path / "names.json"
     names.write_text("{}")
-    env = {**os.environ, "PROVISA_CODE_HASH": hashed}
+    env = {**os.environ, "PROVISA_CODE_HASH": hashed, "PROVISA_DISCOVERED": "{}"}
     if manifest is not None:
         baked = tmp_path / "manifest.json"
         baked.write_text(json.dumps(manifest))

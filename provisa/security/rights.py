@@ -229,6 +229,39 @@ ORG_ADMIN_ROLE = "org_admin"
 #: REQ-1058/REQ-1059: the role an unauthenticated visitor acts as in the org its Host names. It
 #: grants what the org has published to it and nothing else.
 PUBLIC_ROLE = "public"
+#: REQ-1058: the public role is read-only. These read rights are the most it may ever hold; any other
+#: capability (``write`` first among them) and any write grant naming it is refused by name.
+PUBLIC_READ_RIGHTS: frozenset[str] = frozenset(
+    {
+        Capability.GLOSSARY_READ.value,
+        Capability.DATA_PRODUCT_READ.value,
+        Capability.CATALOG_READ.value,
+        Capability.DQ_READ.value,
+    }
+)
+
+
+def public_read_only_refusal(role_id: str, capabilities: Iterable[str]) -> str | None:  # REQ-1058
+    """Why ``role_id`` may not hold ``capabilities``: the public role holds read rights only."""
+    if role_id != PUBLIC_ROLE:
+        return None
+    refused = sorted(set(capabilities) - PUBLIC_READ_RIGHTS)
+    if not refused:
+        return None
+    return (
+        f"Role {PUBLIC_ROLE!r} is read-only (REQ-1058): it cannot hold {', '.join(refused)}; "
+        f"it may hold only {', '.join(sorted(PUBLIC_READ_RIGHTS))}"
+    )
+
+
+def public_write_grant_message(operation: str) -> str:  # REQ-1058
+    """Why a write grant naming the public role is refused."""
+    return (
+        f"Role {PUBLIC_ROLE!r} is read-only (REQ-1058): it cannot be given a write grant "
+        f"({operation})"
+    )
+
+
 #: A meta-role's id: this prefix, then its members joined by ``+`` (security/meta_role.py).
 META_PREFIX = "meta:"
 

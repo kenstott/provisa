@@ -13,8 +13,11 @@
 Reads every lane's JUnit XML (``<dir>/<lane>/junit.xml``, as each job uploads it) and writes a
 Markdown table: lane, passed, failed, errors, skipped, and the first line of each failure, so a
 failure can be routed without opening every job. A skip counts against its lane: a lane with any
-skip is not green. A lane directory without a junit.xml, or no artifacts directory at all, is
-named as a lane with no results. Exits non-zero when any lane is not green.
+skip is not green, but for a known calcite skip: a test skipped for a calcite adapter bug, whose
+skip message starts with ``KNOWN_CALCITE_SKIP`` and names the issue (tests/skip_is_failure.py). It
+is counted and listed on its own, never as a pass, and leaves its lane green (maintainer
+2026-11-21: a calcite bug must not hold Provisa). A lane directory without a junit.xml, or no
+artifacts directory at all, is named as a lane with no results. Exits non-zero when any lane is not green.
 
 Usage: lane_report.py <artifacts-dir> [<run-url>]
 """
@@ -26,6 +29,10 @@ import xml.etree.ElementTree as ET  # noqa: S405 - parsing our own jobs' JUnit o
 from dataclasses import dataclass, field
 from pathlib import Path
 
+# The prefix tests/skip_is_failure.py gives a known calcite skip's reason (its own copy;
+# tests/unit/test_skip_is_failure.py checks the two agree).
+KNOWN_CALCITE_SKIP = "known calcite skip"
+
 
 @dataclass
 class LaneResult:
@@ -34,6 +41,7 @@ class LaneResult:
     failed: int = 0
     errors: int = 0
     skipped: int = 0
+    calcite_skipped: int = 0
     problems: list[str] = field(default_factory=list)
     no_results: bool = False
 
@@ -53,6 +61,10 @@ def read_lane(lane: str, junit: Path) -> LaneResult:
             continue
         message = (outcome.get("message") or (outcome.text or "")).strip().splitlines()
         first = message[0][:200] if message else ""
+        if outcome.tag == "skipped" and first.startswith(KNOWN_CALCITE_SKIP):
+            result.calcite_skipped += 1
+            result.problems.append(f"KNOWN CALCITE SKIP {name}: {first}")
+            continue
         if outcome.tag == "failure":
             result.failed += 1
         elif outcome.tag == "error":
@@ -77,6 +89,8 @@ def report(artifacts: Path, run_url: str = "") -> tuple[str, bool]:
     ]
     for r in results:
         mark = "ok" if r.green else "**not green**"
+        if r.calcite_skipped:
+            mark += f", {r.calcite_skipped} known calcite skip(s)"
         if r.no_results:
             mark = "**no results**"
         lines.append(f"| {r.lane} | {r.passed} | {r.failed} | {r.errors} | {r.skipped} | {mark} |")
