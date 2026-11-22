@@ -2558,7 +2558,7 @@ class Query:  # REQ-021, REQ-042
     async def scheduled_tasks(self, info: StrawberryInfo) -> list[ScheduledTaskType]:
         """List the caller's org's triggers, from its model -- on a schedule or on a table's
         change or event (REQ-2054) -- with their last run and a schedule's next."""
-        require_capability(info, "observability")
+        require_capability(info, "query_development")  # REQ-1327: a trigger runs a statement
         from provisa.api.admin._table_ops import _get_pool
         from provisa.api.app import state
         from provisa.core.repositories import scheduled_trigger as trigger_repo

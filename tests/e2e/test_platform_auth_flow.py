@@ -95,7 +95,7 @@ def _in_org(username: str, org_id: str) -> dict[str, str]:
 
 
 def _as_scheduler() -> dict[str, str]:
-    """alice's request acting as ``scheduler``, the role that carries org_settings and
+    """alice's request acting as ``scheduler``, the role that carries query_development and
     table_registration (TestScheduledTriggerRunsAsAHeldRole). Rights come from the roles a
     request acts as, the default role when it names none (REQ-2060), so a request using
     scheduler's rights names it. Every role alice holds still counts as held: a trigger or test
@@ -401,7 +401,7 @@ class TestOnlyAssignedRoleRidesHeader:
 class TestScheduledTriggerRunsAsAHeldRole:
     """REQ-1003: a scheduled SQL trigger runs as its role on every firing, so it is saved only by
     a caller who holds that role (or holds cross_org). alice holds analyst and is given a role
-    carrying org_settings, the right that schedules triggers, and table_registration, the right
+    carrying query_development, the right that schedules triggers (REQ-1327), and table_registration, the right
     that test-calls a command (the next class); she does not hold org_admin."""
 
     _SQL = "INSERT INTO audit.d SELECT '{{YYYY-MM-DD}}'"
@@ -435,7 +435,7 @@ class TestScheduledTriggerRunsAsAHeldRole:
             json={
                 "id": "scheduler",
                 "description": "Test role.",
-                "capabilities": ["org_settings", "table_registration"],
+                "capabilities": ["query_development", "table_registration"],
                 "domain_access": ["*"],
             },
             headers=_in_org("founder", org1),
@@ -450,7 +450,7 @@ class TestScheduledTriggerRunsAsAHeldRole:
 
     async def test_a_role_created_over_rest_grants_at_once(self, client):
         # A REST-created role's right is honoured on the next request, with no other change in
-        # between to rebuild the runtime's roles. A webhook trigger needs only org_settings, so
+        # between to rebuild the runtime's roles. A webhook trigger needs only query_development, so
         # its refusal for a webhook that does not exist says the right was granted.
         query = (
             'mutation { createScheduledTask(id: "rest-grant", name: "rest-grant", '

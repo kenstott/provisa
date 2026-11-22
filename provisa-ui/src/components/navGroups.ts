@@ -211,7 +211,7 @@ export const NAV_GROUPS: NavGroup[] = [
       {
         to: "/admin/scheduled-tasks",
         labelKey: "navBar.itemScheduler",
-        capability: "org_settings",
+        capability: "query_development", // REQ-1327: a trigger runs a statement
       },
       {
         to: "/admin/federation-engine",
