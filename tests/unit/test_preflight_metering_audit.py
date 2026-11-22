@@ -51,20 +51,24 @@ def world(monkeypatch):
     points: list[dict] = []
     seen_grants: list = []
 
-    class Conn:
-        async def execute_core(self, stmt):
-            rows.append(dict(stmt.compile().params))
-
     class Db:
-        model = None
+        # The trail row carries no org: the org is the model store it is written to.
+        def __init__(self, org_id):
+            self.model = SimpleNamespace(org_id=org_id)
 
         @asynccontextmanager
         async def acquire(self):
+            store = self.model.org_id
+
+            class Conn:
+                async def execute_core(self, stmt):
+                    rows.append({"store": store, **stmt.compile().params})
+
             yield Conn()
 
     @asynccontextmanager
     async def bound(grant):
-        yield Db(), {}
+        yield Db(grant.org_id), {}
 
     monkeypatch.setattr("provisa.codesource.llm_service.org_bound", bound)
 
@@ -127,7 +131,7 @@ async def test_an_audit_event_is_a_row_in_the_orgs_trail_as_the_view(world):
     await run_preflight(check, {}, _ctx())
     (row,) = world.rows
     assert row["action"] == service_ops.CODE_AUDIT
-    assert row["org_id"] == "acme"
+    assert row["store"] == "acme"
     assert row["actor_id"] == f"source:{_SUBJECT}" and row["subject_id"] == "preflight.checked"
     assert row["detail"]["source"] == _SUBJECT and row["detail"]["fields"] == {"rows": 3}
 
