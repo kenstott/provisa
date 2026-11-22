@@ -1205,7 +1205,8 @@ def _hasura_on_conflict(
 ) -> GraphQLInputObjectType:
     """``<t>_on_conflict``: the constraint whose conflict it handles and the columns it updates
     then (none: the row is left as it is)."""
-    assert t.hasura is not None
+    conv = t.hasura
+    assert conv is not None
     constraint = cast(
         GraphQLEnumType,
         GraphQLEnumType(t.hasura_constraint, {c: GraphQLEnumValue(c) for c in constraints}),
@@ -1217,7 +1218,7 @@ def _hasura_on_conflict(
             hasura_schema.type_name(t, "on_conflict"),
             lambda: {
                 "constraint": GraphQLInputField(GraphQLNonNull(constraint)),
-                hasura_argument_name(t.hasura or "", "update_columns"): GraphQLInputField(
+                hasura_argument_name(conv, "update_columns"): GraphQLInputField(
                     GraphQLNonNull(GraphQLList(GraphQLNonNull(update_column))),
                     default_value=[],
                 ),

@@ -40,6 +40,7 @@ from graphql import (
 from provisa.compiler.naming import (
     HASURA_DEFAULT,
     HASURA_ORDER_DIRECTIONS,
+    hasura_argument_name,
     hasura_comparison_type,
     hasura_enum_value,
     hasura_operator,
@@ -140,12 +141,16 @@ def by_pk_field(
 
 def mutation_response(t: _TableInfo, row_type: GraphQLObjectType) -> GraphQLObjectType:
     """``<table>_mutation_response``: the rows a mutation touched, counted and returned."""
+    conv = t.hasura
+    assert conv is not None
     return cast(
         GraphQLObjectType,
         GraphQLObjectType(
             type_name(t, "mutation_response"),
             lambda: {
-                "affected_rows": GraphQLField(GraphQLNonNull(GraphQLInt)),
+                hasura_argument_name(conv, "affected_rows"): GraphQLField(
+                    GraphQLNonNull(GraphQLInt)
+                ),
                 "returning": GraphQLField(GraphQLNonNull(GraphQLList(GraphQLNonNull(row_type)))),
             },
         ),

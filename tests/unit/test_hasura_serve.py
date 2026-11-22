@@ -270,3 +270,125 @@ def test_an_imported_graphql_default_source_is_the_graphql_default_preset():
     assert naming.preset_of("hasura-default") == "hasura_graphql"
     assert naming.hasura_convention_of("graphql-default") == "graphql-default"
     assert naming.hasura_convention_of("apollo_graphql") is None
+
+
+# ── mutations ──────────────────────────────────────────────────────────────────────────────────
+
+
+def _mutation(built, text: str):
+    from provisa.compiler.mutation_gen import compile_mutation
+
+    schema, ctx = built
+    doc = parse(text)
+    errors = validate(schema, doc)
+    assert not errors, errors
+    (result,) = compile_mutation(doc, ctx, {"pg": "postgresql"})
+    return result
+
+
+def test_insert_objects_with_on_conflict_writes_every_row_and_updates_the_named_columns():
+    m = _mutation(
+        _built("hasura_graphql"),
+        'mutation { insert_order_lines(objects: [{id: 1, customer_name: "a", total: 2}, '
+        "{id: 2, total: 3}], on_conflict: {constraint: order_lines_pkey, update_columns: [total]}) "
+        "{ affected_rows returning { id } } }",
+    )
+    assert m.sql == (
+        'INSERT INTO "public"."order_lines" ("id", "customer_name", "total")'
+        " VALUES ($1, $2, $3), ($4, DEFAULT, $5)"
+        ' ON CONFLICT ("id") DO UPDATE SET "total" = EXCLUDED."total"'
+        ' RETURNING "id"'
+    )
+    assert m.params == [1, "a", 2, 2, 3]
+
+
+def test_an_on_conflict_updating_no_column_leaves_the_row():
+    m = _mutation(
+        _built("hasura_graphql"),
+        "mutation { insert_order_lines(objects: [{id: 1}], "
+        "on_conflict: {constraint: order_lines_pkey, update_columns: []}) { affected_rows } }",
+    )
+    assert 'ON CONFLICT ("id") DO NOTHING' in m.sql
+
+
+def test_insert_one_returns_the_row_it_wrote():
+    m = _mutation(
+        _built("hasura_graphql"),
+        'mutation { insert_order_lines_one(object: {id: 1, customer_name: "a"}) { id t: total } }',
+    )
+    assert m.sql == (
+        'INSERT INTO "public"."order_lines" ("id", "customer_name") VALUES ($1, $2)'
+        ' RETURNING "id", "total"'
+    )
+    from provisa.compiler.mutation_gen import mutation_answer
+
+    assert mutation_answer(m, [(1, 9)], 1) == {"id": 1, "t": 9}
+    assert mutation_answer(m, [], 0) is None
+
+
+def test_update_sets_the_rows_its_where_names():
+    m = _mutation(
+        _built("hasura_graphql"),
+        "mutation { update_order_lines(_set: {total: 3}, where: {id: {_eq: 1}}) "
+        "{ affected_rows } }",
+    )
+    assert 'UPDATE "public"."order_lines" SET "total" = $1 WHERE "id" = $2' in m.sql
+    assert m.params == [3, 1]
+    from provisa.compiler.mutation_gen import mutation_answer
+
+    assert mutation_answer(m, [(1,), (1,)], 2) == {"affected_rows": 2}
+
+
+def test_update_by_pk_sets_the_row_of_its_key():
+    m = _mutation(
+        _built("hasura_graphql"),
+        "mutation { update_order_lines_by_pk(pk_columns: {id: 1}, _set: {total: 3}) { id total } }",
+    )
+    assert m.sql == (
+        'UPDATE "public"."order_lines" SET "total" = $1 WHERE "id" = $2 RETURNING "id", "total"'
+    )
+    assert m.params == [3, 1]
+
+
+def test_delete_by_pk_deletes_the_row_of_its_key():
+    m = _mutation(_built("hasura_graphql"), "mutation { delete_order_lines_by_pk(id: 1) { id } }")
+    assert m.sql == 'DELETE FROM "public"."order_lines" WHERE "id" = $1 RETURNING "id"'
+    assert m.params == [1]
+
+
+def test_delete_returns_the_rows_it_deleted():
+    m = _mutation(
+        _built("hasura_graphql"),
+        "mutation { delete_order_lines(where: {total: {_lt: 1}}) "
+        "{ n: affected_rows returning { id } } }",
+    )
+    assert m.sql == 'DELETE FROM "public"."order_lines" WHERE "total" < $1 RETURNING "id"'
+    from provisa.compiler.mutation_gen import mutation_answer
+
+    assert mutation_answer(m, [(4,), (5,)], 2) == {"n": 2, "returning": [{"id": 4}, {"id": 5}]}
+
+
+def test_graphql_default_mutations_take_its_spellings():
+    built = _built("hasura_graphql_default")
+    m = _mutation(
+        built,
+        'mutation { insertOrderLinesOne(object: {id: 1, customerName: "a"}, '
+        "onConflict: {constraint: order_lines_pkey, updateColumns: [customerName]}) { id } }",
+    )
+    assert 'ON CONFLICT ("id") DO UPDATE SET "customer_name" = EXCLUDED."customer_name"' in m.sql
+    m = _mutation(
+        built,
+        'mutation { updateOrderLinesByPk(pkColumns: {id: 1}, _set: {customerName: "x"}) '
+        "{ customerName } }",
+    )
+    assert m.sql == (
+        'UPDATE "public"."order_lines" SET "customer_name" = $1 WHERE "id" = $2'
+        ' RETURNING "customer_name"'
+    )
+    m = _mutation(
+        built,
+        "mutation { insertOrderLines(objects: [{id: 1}]) { affectedRows } }",
+    )
+    from provisa.compiler.mutation_gen import mutation_answer
+
+    assert mutation_answer(m, [(1,)], 1) == {"affectedRows": 1}
