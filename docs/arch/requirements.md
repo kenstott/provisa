@@ -27271,3 +27271,15 @@ Maintainer 2026-11-22. Tags are served in the Cypher graph like data. Each tag i
 **Code:** —
 
 **Tests:** —
+
+## 11. Platform, Infrastructure & Delivery
+
+### REQ-2269 · Installer & Packaging {#REQ-2269}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Maintainer 2026-11-22 (idea raised 2026-11-20). One script installs Provisa with a Trino federation engine on an existing Linux host, a virtual machine or bare metal, run on the host or from a workstation over SSH. It installs Provisa from the release's own assets on GitHub, never the provisa package from a public registry; starts Trino in Docker with Provisa's plugins; writes a configuration whose federation engine is Trino; runs Provisa as a system service; and ends with a health check that names what failed. Running it again upgrades the install in place. The nightly packaging lane runs the same script on a clean machine and then the smoke checks against the result, so the path a user installs by is tested every night.
+
+**Code:** —
+
+**Tests:** —
