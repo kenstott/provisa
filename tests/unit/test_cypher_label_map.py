@@ -15,6 +15,7 @@ import pytest
 
 from provisa.gql.label_map import CypherLabelMap, NodeMapping, _resolve_id_column
 from provisa.compiler.introspect import ColumnMetadata
+from provisa.compiler.sql_types import CompilationContext, TableMeta
 
 
 # ---------------------------------------------------------------------------
@@ -131,9 +132,7 @@ def test_node_mapping_traversal_only_can_be_set():
 
 def _make_ctx(owned_table_id: int = 1):
     """Minimal fake CompilationContext with one table in 'sales' domain."""
-    from types import SimpleNamespace
-
-    table = SimpleNamespace(
+    table = TableMeta(
         type_name="Sales_Orders",
         table_id=owned_table_id,
         source_id="pg",
@@ -147,7 +146,7 @@ def _make_ctx(owned_table_id: int = 1):
         display_name="",
         original_table_name="",
     )
-    ctx = SimpleNamespace(
+    ctx = CompilationContext(
         tables={"sales__orders": table},
         joins={},
         aggregate_columns={owned_table_id: [("id", "integer"), ("amount", "float")]},
@@ -330,9 +329,7 @@ def test_from_schema_no_cross_domain_rel_when_target_already_owned():
     """No traversal_only node added when target table is already in the role's context."""
     ctx = _make_ctx(owned_table_id=1)
     # Add a second owned table manually to ctx
-    from types import SimpleNamespace
-
-    table2 = SimpleNamespace(
+    table2 = TableMeta(
         type_name="Sales_Products",
         table_id=2,
         source_id="pg",

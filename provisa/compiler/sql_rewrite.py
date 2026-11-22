@@ -233,11 +233,13 @@ class _Replacements:
 def _context_stamp(ctx: CompilationContext) -> tuple[Any, ...]:
     """What a lookup derived from ``ctx`` was derived from. A context is built once
     (compiler/context.py) and only read afterwards, so this is a guard, not the design's
-    invalidation: its tables and joins compared by identity (a table re-registered under a name is
-    a new TableMeta), the column and virtual-column maps by object and size."""
+    invalidation: each map compared by object and size, so the stamp costs the same whatever the
+    model's size (a statement reads it once per derived lookup; tests/unit/test_lowering_memo.py)."""
     return (
-        tuple(ctx.tables.values()),
-        tuple(ctx.joins.values()),
+        id(ctx.tables),
+        len(ctx.tables),
+        id(ctx.joins),
+        len(ctx.joins),
         id(ctx.physical_to_sql),
         len(ctx.physical_to_sql),
         id(ctx.virtual_columns),
