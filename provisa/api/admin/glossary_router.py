@@ -111,6 +111,14 @@ def _require_glossary_rw(request: Request) -> None:
     _require_right(request, Capability.GLOSSARY_RW.value)
 
 
+def _holds_glossary_rw(request: Request) -> bool:
+    """The non-raising form of :func:`_require_glossary_rw`, for a detail that says whether its
+    term may be changed (REQ-1327: edit and delete are offered only where the server accepts them)."""
+    from provisa.api.admin._platform_guard import has_right
+
+    return has_right(request, Capability.GLOSSARY_RW.value)
+
+
 def _authority(request: Request) -> frozenset[str] | None:
     """The domains this caller may reach, ``None`` for unlimited (REQ-1591)."""
     from provisa.api.admin.capabilities import allowed_domains_request
@@ -374,6 +382,11 @@ async def get_term(request: Request, term_id: int) -> dict:
             raise ApiError(404, "glossary.term_not_found", f"term {term_id} not found")
         await _require_term_readable(_conn, term_id, request)
         grounds = await glossary_repo.term_tables(_conn, term_id)
+        # REQ-1327: whether every curation route would accept this caller on this term, so the UI
+        # offers edit and delete only where they would succeed.
+        term["curatable"] = (
+            _holds_glossary_rw(request) and await _curation_refusal(_conn, term_id, request) is None
+        )
     from provisa.api.admin.read_rights import reader_for_request
 
     # REQ-2152: the refs, and the counts, of the columns and tables its caller is served.

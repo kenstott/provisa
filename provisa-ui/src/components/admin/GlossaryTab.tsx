@@ -36,22 +36,13 @@ import {
 } from "@mantine/core";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { notifications } from "@mantine/notifications";
-import {
-  Archive,
-  ArchiveRestore,
-  BadgeCheck,
-  BookOpen,
-  ClipboardList,
-  Hourglass,
-  Pencil,
-  Plus,
-  Sparkles,
-} from "lucide-react";
+import { BadgeCheck, BookOpen, ClipboardList, Pencil, Plus, Sparkles } from "lucide-react";
 import { useScreenInputs } from "../../mcp/screenState";
 import { OntologyToggle, OntologyView } from "../graph3d/OntologyGraph";
 import { FilterInput } from "./FilterInput";
 import { TermEditForm } from "./TermEditForm";
 import { TermReadView } from "./TermReadView";
+import { TermCurationActions } from "./TermCurationActions";
 import { TermListBadges } from "./TermRoleBadge";
 import { TermToReview, type FindingFix } from "./TermToReview";
 import { TermImpactPreview } from "./TermImpactPreview";
@@ -79,7 +70,6 @@ import {
   generateGlossaryRelationships,
   fetchGlossaryFindings,
   listAttributablePeople,
-  restoreGlossaryTerm,
   type AttributablePerson,
   type GlossaryFinding,
 } from "../../api/glossary";
@@ -101,9 +91,9 @@ import type {
 } from "../../api/glossary";
 import { FormField, FormFooter, FormIdentifiers, FormLayout } from "../form/FormLayout";
 import { Tip } from "../Tip";
-import { PanelDelete, PanelDeleteLock } from "../list/PanelDelete";
+import { PanelDeleteLock } from "../list/PanelDelete";
 import { PanelDuplicate } from "../list/PanelDuplicate";
-import { PanelNoticeContext, usePanelDeleting } from "../list/panelActions";
+import { usePanelDeleting } from "../list/panelActions";
 import {
   readStoredBool,
   readStoredString,
@@ -188,6 +178,10 @@ export function GlossaryTab() {
 
   const navigate = useNavigate();
   const [detail, setDetail] = useState<GlossaryTermDetail | null>(null);
+  // REQ-1327: a term's edit, status changes and delete are offered only where the server would
+  // accept them: glossary_rw AND the term's own curation rule (authorship, enterprise scope,
+  // domain), which the detail reports. Duplicating is a create, so glossary_rw alone offers it.
+  const canCurate = canEdit && detail !== null && detail.curatable;
   const [detailLoading, setDetailLoading] = useState(false);
 
   // Editable copies of the selected term's name/definition.
@@ -769,113 +763,33 @@ export function GlossaryTab() {
                   {canEdit && !editing && (
                     // Edit opens the whole term as one form; Retire and Delete act at once.
                     <Group gap="xs" data-toolbar>
-                      <Button
-                        variant="default"
-                        leftSection={<Pencil size={14} />}
-                        onClick={() => setEditing(true)}
-                        data-testid="glossary-edit-btn"
-                      >
-                        {t("glossaryTab.edit")}
-                      </Button>
+                      {canCurate && (
+                        <Button
+                          variant="default"
+                          leftSection={<Pencil size={14} />}
+                          onClick={() => setEditing(true)}
+                          data-testid="glossary-edit-btn"
+                        >
+                          {t("glossaryTab.edit")}
+                        </Button>
+                      )}
                       <PanelDuplicate
                         name={detail.name}
                         onDuplicate={() => openDuplicateTerm(detail)}
                         testId="glossary-duplicate-btn"
                         labelled
                       />
-                      {/* REQ-1387, REQ-2144: each status change is a person's act. A defined draft is
-                        approved, its impact seen first; an approved term deprecated, with a
-                        reason; any term in service retired; a deprecation or a retirement undone. */}
-                      {detail.status === "draft" && (
-                        <Tip
-                          text={
-                            (detail.definition ?? "").trim()
-                              ? t("glossaryTab.approveHint")
-                              : t("glossaryTab.approveNeedsDefinition")
-                          }
-                        >
-                          <span>
-                            <Button
-                              variant="light"
-                              color="teal"
-                              leftSection={<BadgeCheck size={14} />}
-                              disabled={!(detail.definition ?? "").trim()}
-                              onClick={() => setApproveOpen(true)}
-                              data-testid="glossary-approve-btn"
-                            >
-                              {t("glossaryTab.approve")}
-                            </Button>
-                          </span>
-                        </Tip>
-                      )}
-                      {detail.status === "approved" && (
-                        <Tip text={t("glossaryTab.deprecateHint")}>
-                          <Button
-                            variant="light"
-                            color="gray"
-                            leftSection={<Hourglass size={14} />}
-                            onClick={() => setDeprecateOpen(true)}
-                            data-testid="glossary-deprecate-btn"
-                          >
-                            {t("glossaryTab.deprecate")}
-                          </Button>
-                        </Tip>
-                      )}
-                      {detail.status !== "retired" && (
-                        <Tip text={t("glossaryTab.retireHint")}>
-                          <Button
-                            variant="light"
-                            color="orange"
-                            leftSection={<Archive size={14} />}
-                            onClick={() => setRetireOpen(true)}
-                            data-testid="glossary-retire-btn"
-                          >
-                            {t("glossaryTab.retire")}
-                          </Button>
-                        </Tip>
-                      )}
-                      {(detail.status === "deprecated" || detail.status === "retired") && (
-                        <Tip text={t("glossaryTab.unretireHint")}>
-                          <Button
-                            variant="light"
-                            color="teal"
-                            leftSection={<ArchiveRestore size={14} />}
-                            onClick={() =>
-                              void act(
-                                () => restoreGlossaryTerm(detail.id),
-                                t("glossaryTab.unretireDone"),
-                              )
-                            }
-                            data-testid="glossary-restore-btn"
-                          >
-                            {t("glossaryTab.unretire")}
-                          </Button>
-                        </Tip>
-                      )}
-                      <PanelNoticeContext.Provider value={deleteNotice}>
-                        <PanelDelete
-                          itemKey={detail.id}
-                          text={t("glossaryTab.delete")}
-                          ariaLabel={t("glossaryTab.delete")}
-                          title={t("glossaryTab.deleteTitle")}
-                          consequence={t("glossaryTab.deleteConfirm", { name: detail.name })}
-                          disabled={
-                            detail.refs.length > 0 ||
-                            detail.edges_out.length > 0 ||
-                            detail.edges_in.length > 0
-                          }
-                          tip={
-                            detail.refs.length === 0 &&
-                            detail.edges_out.length === 0 &&
-                            detail.edges_in.length === 0
-                              ? null
-                              : t("glossaryTab.deleteDisabledHint")
-                          }
-                          testId="glossary-delete-btn"
-                          confirmTestId="glossary-delete-confirm"
+                      {canCurate && (
+                        <TermCurationActions
+                          detail={detail}
+                          act={act}
+                          onApprove={() => setApproveOpen(true)}
+                          onDeprecate={() => setDeprecateOpen(true)}
+                          onRetire={() => setRetireOpen(true)}
+                          deleteNotice={deleteNotice}
                           onDelete={() => deleteTerm(detail)}
                         />
-                      </PanelNoticeContext.Provider>
+                      )}
                     </Group>
                   )}
 
@@ -903,7 +817,7 @@ export function GlossaryTab() {
                               },
                             ];
                           case "tag_wrong_kind":
-                            return canEdit
+                            return canCurate
                               ? f.params.tags.split(", ").map((tag) => ({
                                   label: t("glossaryTab.findingUnmark", { tag }),
                                   run: () =>
@@ -919,7 +833,7 @@ export function GlossaryTab() {
                                 }))
                               : [];
                           case "retirement_blocked":
-                            return canEdit
+                            return canCurate
                               ? [
                                   {
                                     label: t("glossaryTab.findingFix_retirement_blocked"),
@@ -949,7 +863,7 @@ export function GlossaryTab() {
                           case "class_and_attribute":
                           case "no_data":
                           case "approved_not_grounded":
-                            return canEdit ? [edit] : [];
+                            return canCurate ? [edit] : [];
                         }
                       }}
                     />
@@ -979,7 +893,7 @@ export function GlossaryTab() {
                       otherTermOptions={otherTermOptions}
                       relLabel={relLabel}
                       navigateToTerm={navigateToTerm}
-                      canEdit={canEdit}
+                      canEdit={canCurate}
                       onTagsChanged={() => void loadDetail(detail.id, true)}
                     />
                   )}

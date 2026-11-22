@@ -110,6 +110,7 @@ const REVENUE_DETAIL: GlossaryTermDetail = {
   tags: [],
   pending_on: [],
   iri: null,
+  curatable: true,
 };
 
 /** Mount the tab and open Revenue. */
@@ -179,6 +180,19 @@ describe("glossary read-only mode", () => {
     for (const testid of FORM_CONTROLS) {
       expect(screen.queryByTestId(testid), testid).not.toBeNull();
     }
+  });
+
+  it("withholds a term's edit, status changes and delete where the server would refuse them", async () => {
+    // REQ-1327: glossary_rw is not enough on its own: the term's curation rule (an author's claim,
+    // the enterprise scope, the curator's domains) decides, and the detail reports its answer.
+    auth.capabilities = ["glossary_read", "glossary_rw"];
+    mockFetchTerm.mockResolvedValue({ ...REVENUE_DETAIL, curatable: false });
+    await openRevenue();
+    for (const testid of ["glossary-edit-btn", "glossary-retire-btn", "glossary-delete-btn"]) {
+      expect(screen.queryByTestId(testid), testid).toBeNull();
+    }
+    // Duplicating is a create, which glossary_rw alone allows.
+    expect(screen.getByTestId("glossary-duplicate-btn")).toBeInTheDocument();
   });
 
   it("says why the curation controls are absent", async () => {

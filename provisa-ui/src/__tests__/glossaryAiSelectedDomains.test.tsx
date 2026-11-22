@@ -81,6 +81,7 @@ const TERM = {
   experts: [],
   tags: [],
   pending_on: [],
+  curatable: true,
 } as unknown as GlossaryTermDetail;
 
 async function openGenerateMenu() {

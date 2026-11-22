@@ -1096,3 +1096,26 @@ async def test_a_proposal_is_not_stated_by_the_export_and_stays_with_its_retired
         await table_repo.delete(conn, orders.id)
         # REQ-2248: the table is retired, and the term it proposed stays with it.
         assert await glossary_repo.get_term(conn, order["id"]) is not None
+
+
+# --- the detail says whether its term may be changed (REQ-1327) -------------------------------
+
+
+@pytest.mark.asyncio
+async def test_the_detail_says_whether_the_caller_may_change_the_term(control_plane, monkeypatch):
+    """REQ-1327: a term's edit and delete are offered only where the server would accept them, so
+    the detail carries the curation rule's own answer for its caller."""
+    async with _surface(control_plane, monkeypatch, authority=frozenset({"sales"})) as (
+        db,
+        ids,
+        _notified,
+    ):
+        monkeypatch.setattr(glossary_router, "_holds_glossary_rw", lambda request: True)
+        async with db.acquire() as conn:
+            await glossary_repo.add_expert(conn, ids["party"], "bob", kind="author")
+        party = await glossary_router.get_term(_request(), ids["party"])
+        ledger = await glossary_router.get_term(_request(), ids["ledger"])
+        assert (party["curatable"], ledger["curatable"]) == (False, True)
+        # without glossary_rw nothing is curatable, whatever the term
+        monkeypatch.setattr(glossary_router, "_holds_glossary_rw", lambda request: False)
+        assert (await glossary_router.get_term(_request(), ids["ledger"]))["curatable"] is False
