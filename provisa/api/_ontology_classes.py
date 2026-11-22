@@ -75,5 +75,8 @@ async def register_class_tables(conn: "Connection", tables: list[dict]) -> None:
     state.class_tables = {class_view_key(row): row for row in rows}
     state.refused_classes = refused
     state.class_bodies = {}
-    for row in rows:
-        state.view_sql_map[class_view_key(row)] = whole_body(row)
+    # Published in one assignment: a request on another thread may be walking the map now.
+    state.view_sql_map = {
+        **state.view_sql_map,
+        **{class_view_key(row): whole_body(row) for row in rows},
+    }

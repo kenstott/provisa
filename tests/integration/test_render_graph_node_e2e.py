@@ -6,7 +6,7 @@
 
 """E2E: render_graph through the real renderer -- the MCP tool runs Node on provisa-ui/graph-render's
 bundle, which draws with the UI's own Cytoscape stylesheet and layouts, and answers a PNG on the
-page's background for the theme.
+graph canvas colour for the theme.
 
 The renderer is built here first (npm ci, npm run build), as the image's graph-render stage builds
 it; the run needs node and npm on PATH."""
@@ -59,8 +59,9 @@ def _first_pixel(png: bytes) -> str:
     return "#" + row[1:4].hex()
 
 
-@pytest.mark.parametrize(("theme", "background"), [("light", "#ffffff"), ("dark", "#0f1117")])
-def test_render_graph_draws_a_png_on_the_page_s_background(built, monkeypatch, theme, background):
+# The Cypher graph's canvas colour (graphTokens canvas), the colour every label box is drawn in.
+@pytest.mark.parametrize(("theme", "background"), [("light", "#f8f9fa"), ("dark", "#242424")])
+def test_render_graph_draws_a_png_on_the_graph_canvas_colour(built, monkeypatch, theme, background):
     monkeypatch.setattr(tools, "GRAPH_RENDERER", built)
     ada = {
         "id": 1,
