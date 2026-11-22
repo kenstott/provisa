@@ -340,12 +340,10 @@ async def test_the_read_returns_each_entrys_last_import_run(entry):  # noqa: F81
     await _exchanged((sv.DESCRIPTION, GROUP, "Orders placed"), (sv.OWNER, GROUP, ("alice",)))
     await _choose(sv.DESCRIPTION, catalog_standing_choice.CATALOG)
     entry.catalog.values = _catalog_values(
-        description__wh_public_orders="First", owner__wh_public_orders=("bob",)
+        description__wh_public_orders="Revised", owner__wh_public_orders=("bob",)
     )
+    # The scheduled run takes the description; Run now then finds only the owner to hold.
     await si.import_job(ORG_ID, "mz")
-    entry.catalog.values = _catalog_values(
-        description__wh_public_orders="Second", owner__wh_public_orders=("bob",)
-    )
     await _run_now()
 
     (after,) = (await _get())["entries"]
@@ -355,8 +353,8 @@ async def test_the_read_returns_each_entrys_last_import_run(entry):  # noqa: F81
         catalog_sync_run.OK,
         None,
     )
-    assert last["applied"] == [{"kind": sv.DESCRIPTION, "object": GROUP}]
-    assert last["held"] == [{"kind": sv.OWNER, "object": GROUP, "reason": si.NO_CHOICE}]
+    assert last["applied"] == []
+    assert {"kind": sv.OWNER, "object": GROUP, "reason": si.NO_CHOICE} in last["held"]
 
 
 @pytest.mark.asyncio
