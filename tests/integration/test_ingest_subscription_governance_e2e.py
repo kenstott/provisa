@@ -10,10 +10,10 @@
 
 """An ingest table's SSE subscription is governed per subscriber -- on a real server (REQ-336).
 
-One server with an ingest source ``pushed`` and its table ``events(ext_id, region, email)``.
+One server with an ingest source ``pushed`` and its table ``signup_events(ext_id, region, email)``.
 ``east_reader`` reads only the east rows (a row rule) and every reader but ``org_admin`` reads
-``email`` as ``***`` (a mask). Both subscribe to ``GET /data/subscribe/events``; rows are then
-pushed through ``POST /data/ingest/pushed/events``. The ingest provider polls the table's
+``email`` as ``***`` (a mask). Both subscribe to ``GET /data/subscribe/signup_events``; rows are then
+pushed through ``POST /data/ingest/pushed/signup_events``. The ingest provider polls the table's
 ``_updated_at`` watermark and each new row is read back as the subscriber: ``east_reader`` is
 delivered the east row only, masked; ``org_admin`` is delivered both, clear.
 
@@ -48,59 +48,56 @@ _DELIVERY_S = 60.0
 
 @pytest.fixture(scope="module")
 def server():
-    base = _config(_PG_HOST, _PG_PORT, "unused")
     boot = WorkerBoot(
-        1,
-        pg_host=_PG_HOST,
-        pg_port=_PG_PORT,
-        extra_config={
-            "sources": base["sources"] + [{"id": "pushed", "type": "ingest"}],
-            "tables": [
-                {
-                    "source_id": "pushed",
-                    "domain_id": "sales",
-                    # The org's control-plane schema, where ingest writes (REQ-1771).
-                    "schema": "org_default",
-                    "table": "events",
-                    "columns": [
-                        {
-                            "name": "ext_id",
-                            "data_type": "text",
-                            "visible_to": _ROLES,
-                            "is_primary_key": True,
-                        },
-                        {"name": "region", "data_type": "text", "visible_to": _ROLES},
-                        {
-                            "name": "email",
-                            "data_type": "text",
-                            "visible_to": _ROLES,
-                            "masks": [
-                                {"to": [_ADMIN], "mask": None},
-                                {"mask": {"type": "constant", "value": _MASK}},
-                            ],
-                        },
-                    ],
-                },
-            ],
-            "roles": [
-                {
-                    "id": _EAST,
-                    "description": "Test role.",
-                    "capabilities": ["query_development", "full_results"],
-                    "domain_access": ["*"],
-                },
-            ],
-            "rls_rules": [
-                {
-                    "description": "Test rule.",
-                    "table_id": "events",
-                    "role_id": _EAST,
-                    "filter": "region = 'east'",
-                }
-            ],
-        },
-        env={"PROVISA_REDIRECT_ENABLED": "false"},
+        1, pg_host=_PG_HOST, pg_port=_PG_PORT, env={"PROVISA_REDIRECT_ENABLED": "false"}
     )
+    base = _config(_PG_HOST, _PG_PORT, boot.database)
+    boot._extra_config = {
+        "sources": base["sources"] + [{"id": "pushed", "type": "ingest"}],
+        "tables": [
+            {
+                "source_id": "pushed",
+                "domain_id": "sales",
+                # The org's control-plane schema, where ingest writes (REQ-1771).
+                "schema": "org_default",
+                "table": "signup_events",
+                "columns": [
+                    {
+                        "name": "ext_id",
+                        "data_type": "text",
+                        "visible_to": _ROLES,
+                        "is_primary_key": True,
+                    },
+                    {"name": "region", "data_type": "text", "visible_to": _ROLES},
+                    {
+                        "name": "email",
+                        "data_type": "text",
+                        "visible_to": _ROLES,
+                        "masks": [
+                            {"to": [_ADMIN], "mask": None},
+                            {"mask": {"type": "constant", "value": _MASK}},
+                        ],
+                    },
+                ],
+            },
+        ],
+        "roles": [
+            {
+                "id": _EAST,
+                "description": "Test role.",
+                "capabilities": ["query_development", "full_results"],
+                "domain_access": ["*"],
+            },
+        ],
+        "rls_rules": [
+            {
+                "description": "Test rule.",
+                "table_id": "signup_events",
+                "role_id": _EAST,
+                "filter": "region = 'east'",
+            }
+        ],
+    }
     boot.create_database()
     try:
         boot.start()
@@ -111,12 +108,12 @@ def server():
 
 
 class _Subscriber(threading.Thread):
-    """One subscription to ``events`` as ``role``, collecting each delivered change until it has
+    """One subscription to ``signup_events`` as ``role``, collecting each delivered change until it has
     ``want`` of them or the delivery window ends."""
 
     def __init__(self, boot, role: str, want: int) -> None:
         super().__init__(daemon=True)
-        self.url = f"http://127.0.0.1:{boot.ports['http']}/data/subscribe/events"
+        self.url = f"http://127.0.0.1:{boot.ports['http']}/data/subscribe/signup_events"
         self.role = role
         self.want = want
         self.connected = threading.Event()
@@ -151,7 +148,7 @@ class _Subscriber(threading.Thread):
 
 def _push(boot, rows: list[dict]) -> None:
     resp = httpx.post(
-        f"http://127.0.0.1:{boot.ports['http']}/data/ingest/pushed/events",
+        f"http://127.0.0.1:{boot.ports['http']}/data/ingest/pushed/signup_events",
         json=rows,
         headers={"X-Provisa-Role": _ADMIN},
         timeout=120,

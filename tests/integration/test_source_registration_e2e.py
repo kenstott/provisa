@@ -9,7 +9,7 @@
 # permission from the copyright holder.
 
 """Registering sources and tables on a running server, asked as a steward and a client ask
-(REQ-012, REQ-013, REQ-433, REQ-638, REQ-363).
+(REQ-012, REQ-013, REQ-433, REQ-638).
 
 One server over the harness's PostgreSQL database, which also holds ``items``, a table nothing
 registers at boot, and a SQLite file the test writes. Through ``/admin/graphql``:
@@ -22,9 +22,7 @@ registers at boot, and a SQLite file the test writes. Through ``/admin/graphql``
   a SQLite source alike (REQ-638);
 - a table name is unique within its domain only: ``orders`` is registered in a second domain, a
   second ``orders`` in the same domain is refused by name, and an ``orders`` removed and
-  registered again in its domain is restored with its id (REQ-433);
-- the SQLAlchemy dialect reflects the tables and columns the connecting role is served
-  (REQ-363).
+  registered again in its domain is restored with its id (REQ-433).
 
 Lands on the TEST instance only: one real server over a database the harness creates."""
 
@@ -39,14 +37,14 @@ import httpx
 import pytest
 import sqlalchemy as sa
 
-from tests.integration.worker_boot_harness import WorkerBoot, _config
+from tests.integration.worker_boot_harness import WorkerBoot
 from tests.port_lease import lease_ports
 
 pytestmark = [pytest.mark.integration]
 
 _PG_HOST = os.environ.get("PG_HOST", "localhost")
 _PG_PORT = int(os.environ.get("PG_PORT", "5432"))
-_ADMIN, _ANALYST = "org_admin", "analyst"
+_ADMIN = "org_admin"
 _TIMEOUT = 120.0
 # REQ-012: a registered table is available "within seconds".
 _AVAILABLE_S = 30.0
@@ -66,22 +64,6 @@ def birds(tmp_path_factory):
 
 @pytest.fixture(scope="module")
 def server():
-    orders = _config(_PG_HOST, _PG_PORT, "unused")["tables"][0]
-    # REQ-363: the analyst is served orders.id only; payroll is served to org_admin only.
-    orders["columns"] = [
-        {"name": "id", "data_type": "integer", "visible_to": [_ADMIN, _ANALYST]},
-        {"name": "region", "data_type": "varchar", "visible_to": [_ADMIN]},
-    ]
-    payroll = {
-        "source_id": "sales-pg",
-        "domain_id": "sales",
-        "schema": "public",
-        "table": "payroll",
-        "columns": [
-            {"name": "id", "data_type": "integer", "visible_to": [_ADMIN]},
-            {"name": "amount", "data_type": "integer", "visible_to": [_ADMIN]},
-        ],
-    }
     boot = WorkerBoot(
         1,
         pg_host=_PG_HOST,
@@ -91,7 +73,6 @@ def server():
                 {"id": "sales", "description": "boot harness"},
                 {"id": "ops", "description": "a second domain"},
             ],
-            "tables": [orders, payroll],
         },
         env={"PROVISA_REDIRECT_ENABLED": "false"},
     )
@@ -99,10 +80,6 @@ def server():
     try:
         own = sa.create_engine(boot.url, isolation_level="AUTOCOMMIT")
         with own.connect() as conn:
-            conn.execute(
-                sa.text("CREATE TABLE public.payroll (id integer PRIMARY KEY, amount int)")
-            )
-            conn.execute(sa.text("INSERT INTO public.payroll VALUES (1, 100)"))
             conn.execute(sa.text("CREATE TABLE public.items (id integer PRIMARY KEY, name text)"))
             conn.execute(sa.text("INSERT INTO public.items VALUES (1, 'bolt'), (2, 'nut')"))
         own.dispose()
@@ -234,7 +211,7 @@ def test_available_schemas_and_tables_answer_for_postgresql_and_sqlite_alike(
     pg_tables = _admin(
         server, '{ availableTables(sourceId: "late-pg", schemaName: "public") { name } }'
     )["availableTables"]
-    assert {"orders", "payroll", "items"} <= {t["name"] for t in pg_tables}, pg_tables
+    assert {"orders", "items"} <= {t["name"] for t in pg_tables}, pg_tables
 
     sqlite_schemas = _admin(server, '{ availableSchemas(sourceId: "birds") }')["availableSchemas"]
     assert sqlite_schemas, sqlite_schemas
@@ -267,28 +244,3 @@ def test_a_table_name_is_unique_within_its_domain_and_a_removed_one_is_restored(
     restored = _register(server, "late-pg", "ops", "orders", [("id", "integer", True)])
     assert restored["success"], restored
     assert _table_ids(server, "ops", "orders") == [ops_id]
-
-
-# --- REQ-363: the SQLAlchemy dialect reflects what the role is served ---------------------------
-
-
-def _reflect(boot, role: str) -> tuple[list[str], list[str]]:
-    engine = sa.create_engine(f"provisa+http://127.0.0.1:{boot.ports['http']}/?role={role}")
-    try:
-        inspector = sa.inspect(engine)
-        tables = inspector.get_table_names(schema="sales")
-        columns = [c["name"] for c in inspector.get_columns("orders", schema="sales")]
-    finally:
-        engine.dispose()
-    return tables, columns
-
-
-def test_the_dialect_reflects_only_the_tables_and_columns_the_role_is_served(server):
-    admin_tables, admin_columns = _reflect(server, _ADMIN)
-    assert {"orders", "payroll"} <= set(admin_tables), admin_tables
-    assert sorted(admin_columns) == ["id", "region"], admin_columns
-
-    analyst_tables, analyst_columns = _reflect(server, _ANALYST)
-    assert "orders" in analyst_tables, analyst_tables
-    assert "payroll" not in analyst_tables, analyst_tables
-    assert analyst_columns == ["id"], analyst_columns

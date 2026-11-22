@@ -97,10 +97,17 @@ def server(endpoint):
                 _role(_NL_OTHER, None),
             ],
             "nl": {"rate_limit": 1},
-            "ai_endpoints": [{"id": "test-endpoint", "style": "openai", "base_url": endpoint.url}],
+            "ai_endpoints": [
+                {
+                    "id": "test-endpoint",
+                    "style": "openai",
+                    "base_url": endpoint.url,
+                    "api_key_env": "PROVISA_TEST_LLM_KEY",
+                }
+            ],
             "ai_models": {"sql_generation": {"vendor": "test-endpoint", "model": _MODEL}},
         },
-        env={"PROVISA_REDIRECT_ENABLED": "false"},
+        env={"PROVISA_REDIRECT_ENABLED": "false", "PROVISA_TEST_LLM_KEY": "test-key"},
     )
     boot.create_database()
     try:

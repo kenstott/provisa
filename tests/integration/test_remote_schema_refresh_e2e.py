@@ -162,7 +162,7 @@ def test_an_openapi_refresh_keeps_its_tables_and_their_rules(instance):
     """REQ-321."""
     _rule_outlives_refresh(
         instance,
-        "get_inventory",
+        "inventory",  # its virtual name: the alias it is registered under
         "SELECT status, count FROM default.get_inventory",
         "status",
         "/admin/openapi/refresh/petstore-api",
@@ -195,7 +195,9 @@ def test_a_grpc_remote_refresh_keeps_its_tables_their_rules_and_its_import_paths
         "{ name } }",
         {"s": source_id, "n": "grpc_remote"},
     )["availableTables"]
-    (table,) = [t["name"] for t in offered if "list_breeds" in t["name"]]
+    matching = [t["name"] for t in offered if "listbreeds" in t["name"].lower().replace("_", "")]
+    assert len(matching) == 1, offered
+    table = matching[0]
     added = _admin_gql(
         instance,
         "mutation($t: TableInput!) { registerTable(input: $t) { success message } }",
@@ -217,7 +219,7 @@ def test_a_grpc_remote_refresh_keeps_its_tables_their_rules_and_its_import_paths
     _rule_outlives_refresh(
         instance,
         table,
-        f"SELECT name, species FROM grpc_remote.{table}",
+        f"SELECT name, species FROM grpc_remote.{namespace}__animal_catalog__list_breeds",
         "species",
         f"/admin/grpc-remote/refresh/{source_id}",
     )
