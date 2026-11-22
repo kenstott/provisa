@@ -81811,7 +81811,7 @@
     defaults, carrying nothing from a selected object; Duplicate is a head action of the panel that opens
     the create form prefilled from that object, with a new identity required and nothing dependent copied.
     A duplicated source keeps credentials as the same secret references, never copied values, and copies
-    no registered tables. A page with no create form states its exception.'
+    no registered tables. A page with no create form states its exception. (Amended 2026-11-22 by the maintainer. A missing or invalid field never disables a form''s primary action. Clicking it validates, marks each missing field inline and moves focus to the first. A primary action is disabled only when there is nothing to act on, such as zero items ticked, and its label then says so. Required fields carry their marker before any attempt. A UI guard test enforces this for every form.)'
   use_case: An operator fills in a source or table form on a laptop or a wide monitor and sees short fields side by side, identifiers set apart at the top, and the buttons where every form has them.
   related_reqs:
   - REQ-1350
