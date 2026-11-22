@@ -102,6 +102,9 @@ class AcceptEach(BaseModel):
 
     id: int
     name: str | None = None
+    # REQ-2262: the cardinality the reviewer set in the row's edit dialog; only a one-to-many or
+    # many-to-one proposal takes one (a junction or shared-dimension accept fixes its own).
+    cardinality: Literal["many-to-one", "one-to-many", "one-to-one"] | None = None
 
 
 _log = _logging.getLogger(__name__)
@@ -865,18 +868,29 @@ async def apply_decisions(request: Request, run_id: int, body: ApplyRequest):  #
             )
         for each in body.accept:
             try:
-                if await proposals_repo.junction_of(conn, run_id, each.id) is not None:
+                is_junction = await proposals_repo.junction_of(conn, run_id, each.id) is not None
+                is_shared = not is_junction and await proposals_repo.shared_pair(
+                    conn, run_id, each.id
+                )
+                if each.cardinality is not None and (is_junction or is_shared):
+                    raise ValueError(
+                        f"Proposal {each.id} joins through a junction or shared dimension; "
+                        "its cardinality is not set on accept"
+                    )
+                if is_junction:
                     # REQ-1586: a junction suggestion joins its two ends through the junction.
                     relationship_id = await join_through.accept_proposal(
                         request, conn, run_id, each.id, each.name
                     )
-                elif await proposals_repo.shared_pair(conn, run_id, each.id):
+                elif is_shared:
                     # REQ-413: a many-to-many pair is accepted as a shared dimension.
                     relationship_id = await discovery_dimension.accept(
                         request, conn, run_id, each.id, each.name
                     )
                 else:
-                    relationship_id = await proposals_repo.accept(conn, run_id, each.id, each.name)
+                    relationship_id = await proposals_repo.accept(
+                        conn, run_id, each.id, each.name, each.cardinality
+                    )
             except Exception as exc:  # reported per proposal, the rest go on
                 _log.warning("Apply: accepting proposal %s failed: %s", each.id, exc)
                 results.append(

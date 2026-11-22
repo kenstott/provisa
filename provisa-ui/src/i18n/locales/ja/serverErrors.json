@@ -559,8 +559,6 @@
       "incremental_no_change": "コードソースに {{table}} 用の @change 関数がありません。@change table={{table}} で宣言してください。",
       "incremental_needs_rebuild_every": "{{table}} は増分で維持されるため、時刻に従って全体が再ビルドされます。「全体の再ビルド間隔」に間隔を秒単位で設定してください。",
       "table_derived_from_function": "テーブル '{{name}}' は関数から派生しています。関数のテーブルをオフにすると削除され、列とパラメーターは関数で編集します",
-      "table_state_from_function": "テーブル '{{table}}' は関数 '{{name}}' から派生しており、そのリリース状態を持ちます。テーブル単独で取り下げたり戻したりはできません",
-      "table_region_from_function": "テーブル '{{table}}' は関数 '{{name}}' から派生しており、その関数のリージョンを持ちます。単独で別のリージョンへ移動することはできません",
       "table_withdrawn": "テーブル {{table}} を取り下げました",
       "table_put_back": "テーブル {{table}} を元に戻しました",
       "source_withdrawn": "ソース {{source}} を取り下げました",
@@ -572,6 +570,8 @@
       "put_back_needs_region": "{{object}} を元に戻すにはリージョンを指定します: 1 つ指定するか、リージョンなしなら指定なしにしてください。",
       "mask_constant_not_text": "テキスト以外の列の定数マスクは NULL として読み取られます。保存できるのは NULL のみです: {{column}} ({{type}})",
       "table_domain_required": "テーブル '{{table}}' にドメインが指定されていません。すべてのテーブルはドメインに登録されます",
+      "table_state_from_function": "テーブル '{{table}}' は関数 '{{name}}' から派生しており、そのリリース状態を持ちます。テーブル単独で取り下げたり戻したりはできません",
+      "table_region_from_function": "テーブル '{{table}}' は関数 '{{name}}' から派生しており、その関数のリージョンを持ちます。単独で別のリージョンへ移動することはできません",
       "table_name_reserved": "テーブル名 '{{table}}' は予約されています。ドメインのコマンドは 'commands' の下で提供されます。別の名前またはエイリアスでテーブルを登録してください。"
     },
     "secrets": {
@@ -936,6 +936,21 @@
     "relationship": {
       "name_taken": "名前「{{name}}」はリレーションシップ「{{held_by}}」が使用しています。別の名前を付けてください。",
       "join_through_none": "リレーションシップ '{{first}}' と '{{second}}' には共通の中間テーブルがないか、もう一方の端がすでにそのテーブルを介して結合されています。"
+    },
+    "syncing": {
+      "not_found": "エントリ {{entry}} はありません。",
+      "no_connection": "{{entry}} には読み取るカタログがありません。",
+      "no_role": "{{entry}} にはパブリッシュに使うロールがないため、まだ比較対象がありません。設定でロールを選択してください。",
+      "read_not_supported": "{{provider}} からの値の読み戻しはまだサポートされていません。",
+      "no_such_difference": "差異 {{difference}} はもう存在しません。一覧を再読み込みしてください。",
+      "decided_twice": "{{difference}} が二重に決定されました。",
+      "direction_off": "{{entry}} はその方向に同期しません。",
+      "import_kind_unsupported": "カタログの {{kind}} を Provisa に取り込む機能はまだサポートされていません。",
+      "publish_failed": "{{entry}} へのパブリッシュが成功しなかったため、何も適用されませんでした。",
+      "object_gone": "{{object}} は Provisa に登録されていません。",
+      "unknown_direction": "{{direction}} は方向ではありません。エクスポートまたはインポートを使用してください。",
+      "unknown_kind": "{{kind}} は差異の種類ではありません。",
+      "unknown_choice": "{{choice}} は固定の選択ではありません。"
     },
     "wikidata": {
       "no_credential": "Wikidata クエリサービスに認証情報は不要です",

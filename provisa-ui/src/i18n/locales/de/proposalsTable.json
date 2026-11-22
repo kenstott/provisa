@@ -64,6 +64,7 @@
     "twoDimensions": "Ihre Spalten sind bereits mit zwei verschiedenen gemeinsamen Dimensionen verknüpft, daher kann sie nicht akzeptiert werden.",
     "admittedOnKeyValues": "Aufgrund übereinstimmender Schlüsselwerte in den Daten aufgenommen; die Messung steht neben der Konfidenz des Modells.",
     "hiddenByFilter_one": "{{count}} Zeile wird vom Filter ausgeblendet.",
-    "hiddenByFilter_other": "{{count}} Zeilen werden vom Filter ausgeblendet."
+    "hiddenByFilter_other": "{{count}} Zeilen werden vom Filter ausgeblendet.",
+    "editAria": "{{name}} bearbeiten"
   }
 }

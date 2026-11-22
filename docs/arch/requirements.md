@@ -302,7 +302,7 @@ Per-role rate limits configurable in `provisa.yaml`: max requests per second, ma
 
 **Code:** `provisa/api/`
 
-**Tests:** `tests/unit/test_rate_limiting.py`, `tests/integration/test_rate_limiting_integration.py`, `provisa-ui/e2e/security-rate-limiting.spec.ts`
+**Tests:** `tests/unit/test_rate_limiting.py`, `tests/integration/test_rate_limiting_integration.py`
 
 **Docs:** [security.md](../security.md)
 
@@ -316,7 +316,7 @@ The NL query service (`POST /query/nl`) has an independent rate limit configurab
 
 **Code:** `provisa/nl/`
 
-**Tests:** `tests/unit/test_rate_limiting.py`, `tests/integration/test_rate_limiting_integration.py`, `provisa-ui/e2e/security-rate-limiting.spec.ts`
+**Tests:** `tests/unit/test_rate_limiting.py`, `tests/integration/test_rate_limiting_integration.py`
 
 **Docs:** [api-reference.md](../api-reference.md), [architecture.md](../architecture.md), [security.md](../security.md)
 
@@ -386,7 +386,7 @@ The gRPC approval hook maintains a single persistent channel per Provisa instanc
 
 **Code:** `provisa/auth/approval_hook.py`
 
-**Tests:** `tests/integration/test_audit_auth_integration.py`, `tests/unit/test_abac_hook_extended.py`, `tests/unit/test_approval_hook.py`, `provisa-ui/e2e/security-rate-limiting.spec.ts`
+**Tests:** `tests/integration/test_audit_auth_integration.py`, `tests/unit/test_abac_hook_extended.py`, `tests/unit/test_approval_hook.py`
 
 **Docs:** [remote-schemas.md](../remote-schemas.md), [security.md](../security.md)
 
@@ -440,7 +440,7 @@ SET LOCAL scopes app.tenant_id to the current database transaction. When the tra
 
 **Code:** `provisa/auth/middleware.py`
 
-**Tests:** `tests/e2e/test_security.py`, `tests/unit/test_tenancy_requirements.py`, `tests/integration/test_security_integration_extra.py`, `provisa-ui/e2e/security-rate-limiting.spec.ts`
+**Tests:** `tests/e2e/test_security.py`, `tests/unit/test_tenancy_requirements.py`, `tests/integration/test_security_integration_extra.py`, `tests/integration/test_demo_http_surfaces_e2e.py`
 
 ### REQ-596 · Audit Logging {#REQ-596}
 
@@ -610,7 +610,7 @@ Source registration is privileged; validates connection, calls Trino dynamic cat
 
 **Code:** `provisa/core/`
 
-**Tests:** `tests/integration/test_introspect.py`, `tests/integration/test_schema_gen.py`, `tests/unit/test_core_registration.py`, `tests/unit/test_source_registration_validation.py`, `provisa-ui/e2e/registration-admin.spec.ts`
+**Tests:** `tests/integration/test_introspect.py`, `tests/integration/test_schema_gen.py`, `tests/unit/test_core_registration.py`, `tests/unit/test_source_registration_validation.py`, `tests/steps/steps_registration_governance.py`
 
 **Docs:** [admin-graphql.md](../admin-graphql.md), [admin.md](../admin.md), [api-reference.md](../api-reference.md)
 
@@ -624,7 +624,7 @@ Source registration does not expose data: no table is queryable until explicitly
 
 **Code:** `provisa/core/`
 
-**Tests:** `tests/integration/test_schema_gen.py`, `tests/integration/test_introspect.py`, `tests/unit/test_core_registration.py`, `provisa-ui/e2e/registration-admin.spec.ts`
+**Tests:** `tests/integration/test_schema_gen.py`, `tests/integration/test_introspect.py`, `tests/unit/test_core_registration.py`, `tests/integration/test_config_reload_schema_rename.py`
 
 **Docs:** [admin-graphql.md](../admin-graphql.md)
 
@@ -1006,7 +1006,7 @@ The SQLAlchemy dialect introspects table and column metadata via `POST /data/gra
 
 **Code:** `provisa/compiler/`, `provisa/security/`
 
-**Tests:** `tests/unit/test_visibility.py`, `tests/unit/test_enforcement_metadata.py`, `tests/integration/test_registration_governance_integration.py`, `provisa-ui/e2e/registration-admin.spec.ts`
+**Tests:** `tests/unit/test_visibility.py`, `tests/unit/test_enforcement_metadata.py`, `tests/integration/test_registration_governance_integration.py`
 
 **Docs:** [python-client.md](../python-client.md), [security.md](../security.md)
 
@@ -1110,7 +1110,7 @@ Auto-generate GQL relationships from FK constraints in database schema introspec
 
 **Code:** `provisa/compiler/introspect.py`
 
-**Tests:** `tests/unit/test_discovery_requirements.py`, `tests/integration/test_registration_governance_integration.py`, `provisa-ui/e2e/registration-admin.spec.ts`
+**Tests:** `tests/unit/test_discovery_requirements.py`, `tests/integration/test_registration_governance_integration.py`
 
 ### REQ-414 · Registration & Governance {#REQ-414}
 
@@ -1122,7 +1122,7 @@ Demo/install example schema must include at least one FK relationship to exercis
 
 **Code:** `demo/files/create_demo_files.py`
 
-**Tests:** `tests/e2e/test_installer.py`, `tests/unit/test_core_registration.py`, `tests/integration/test_registration_governance_integration.py`, `provisa-ui/e2e/registration-admin.spec.ts`
+**Tests:** `tests/e2e/test_installer.py`, `tests/unit/test_core_registration.py`, `tests/integration/test_registration_governance_integration.py`, `tests/integration/test_demo_http_surfaces_e2e.py`
 
 **Docs:** [cli.md](../cli.md)
 
@@ -1184,7 +1184,7 @@ A datasource may be associated with multiple domains. Any domain owner may regis
 
 **Code:** `provisa/api/admin/schema_helpers.py`, `provisa/api/admin/schema_mutation.py`, `provisa/api/admin/schema_mutation_ops.py`, `provisa/core/schema_org.py`, `provisa-ui/src/pages/tables/RegisterTableForm.tsx`, `provisa-ui/src/pages/TablesPage.tsx`
 
-**Tests:** `tests/unit/test_dataset_uniqueness.py`, `provisa-ui/e2e/registration-admin.spec.ts`
+**Tests:** `tests/unit/test_dataset_uniqueness.py`
 
 ### REQ-434 · Registration & Governance {#REQ-434}
 
@@ -1350,7 +1350,7 @@ The UI calls one availableSchemas endpoint and one availableTables endpoint. Bac
 
 **Code:** `provisa/api/admin/schema.py`, `provisa/api/admin/introspect.py`
 
-**Tests:** `tests/integration/test_introspect.py`, `tests/unit/test_available_tables.py`, `tests/unit/test_core_registration.py`, `provisa-ui/e2e/security-rate-limiting.spec.ts`
+**Tests:** `tests/integration/test_introspect.py`, `tests/unit/test_available_tables.py`, `tests/unit/test_core_registration.py`
 
 ### REQ-639 · Registration & Governance {#REQ-639}
 
@@ -1486,7 +1486,7 @@ Neo4j table registration includes a query preview step. On submission, Provisa e
 
 **Code:** `provisa/neo4j/`, `provisa/sparql/`, `provisa/api_source/`
 
-**Tests:** `tests/integration/test_direct_exec.py`, `tests/integration/test_neo4j_exec.py`, `tests/unit/test_cypher_graph_fns.py`, `tests/unit/test_neo4j_normalizers.py`, `tests/unit/test_neo4j_preview.py`, `provisa-ui/e2e/registration-admin.spec.ts`
+**Tests:** `tests/integration/test_direct_exec.py`, `tests/integration/test_neo4j_exec.py`, `tests/unit/test_cypher_graph_fns.py`, `tests/unit/test_neo4j_normalizers.py`, `tests/unit/test_neo4j_preview.py`, `tests/steps/steps_query_api_sources_neo4j_sparql.py`
 
 **Docs:** [sources.md](../sources.md)
 
@@ -1596,7 +1596,7 @@ Remote schema introspection is re-run on demand via an "Refresh Schema" admin mu
 
 **Code:** `provisa/graphql_remote/`
 
-**Tests:** `tests/integration/test_graphql_execution.py`, `tests/integration/test_graphql_remote_integration.py`, `tests/integration/test_graphql_remote_source.py`, `tests/unit/test_graphql_remote_introspect.py`, `tests/unit/test_graphql_remote_mapper.py`, `tests/unit/test_remote_adapter_contract.py`, `tests/unit/test_schema_service.py`, `provisa-ui/e2e/registration-admin.spec.ts`
+**Tests:** `tests/integration/test_graphql_execution.py`, `tests/integration/test_graphql_remote_integration.py`, `tests/integration/test_graphql_remote_source.py`, `tests/unit/test_graphql_remote_introspect.py`, `tests/unit/test_graphql_remote_mapper.py`, `tests/unit/test_remote_adapter_contract.py`, `tests/unit/test_schema_service.py`
 
 **Docs:** [remote-schemas.md](../remote-schemas.md)
 
@@ -1732,7 +1732,7 @@ Spec refresh is triggered on demand via an admin mutation. On refresh, existing 
 
 **Code:** `provisa/openapi/`
 
-**Tests:** `tests/unit/test_openapi_loader.py`, `tests/integration/test_openapi_source.py`, `provisa-ui/e2e/registration-admin.spec.ts`
+**Tests:** `tests/unit/test_openapi_loader.py`, `tests/integration/test_openapi_source.py`, `tests/steps/steps_openapi_auto_registration_connector.py`
 
 **Docs:** [remote-schemas.md](../remote-schemas.md)
 
@@ -1844,7 +1844,7 @@ Proto schema refresh is triggered on demand via an admin mutation. On refresh, P
 
 **Code:** `provisa/grpc_remote/`
 
-**Tests:** `tests/integration/test_grpc_execution.py`, `tests/unit/test_grpc_remote_loader.py`, `tests/unit/test_remote_adapter_contract.py`, `tests/unit/test_schema_service.py`, `provisa-ui/e2e/registration-admin.spec.ts`
+**Tests:** `tests/integration/test_grpc_execution.py`, `tests/unit/test_grpc_remote_loader.py`, `tests/unit/test_remote_adapter_contract.py`, `tests/unit/test_schema_service.py`, `tests/steps/steps_grpc_remote_schema_connector_req_322_329.py`
 
 **Docs:** [remote-schemas.md](../remote-schemas.md)
 
@@ -1858,7 +1858,7 @@ A new `ingest` source type allows external services (OTEL Collector, Fluentd, cu
 
 **Code:** `provisa/ingest/`
 
-**Tests:** `tests/unit/test_ingest_ddl.py`, `tests/unit/test_ingest_router.py`, `tests/integration/test_ingest_push_integration.py`, `provisa-ui/e2e/infrastructure.spec.ts`
+**Tests:** `tests/unit/test_ingest_ddl.py`, `tests/unit/test_ingest_router.py`, `tests/integration/test_ingest_push_integration.py`, `tests/integration/test_demo_http_surfaces_e2e.py`
 
 **Docs:** [sources.md](../sources.md)
 
@@ -1910,7 +1910,7 @@ The ingest endpoint accepts a single JSON object or a JSON array of objects per 
 
 **Code:** `provisa/ingest/`
 
-**Tests:** `tests/unit/test_ingest_ddl.py`, `tests/unit/test_ingest_router.py`, `tests/integration/test_ingest_push_integration.py`, `provisa-ui/e2e/infrastructure.spec.ts`
+**Tests:** `tests/unit/test_ingest_ddl.py`, `tests/unit/test_ingest_router.py`, `tests/integration/test_ingest_push_integration.py`, `tests/integration/test_demo_http_surfaces_e2e.py`
 
 **Docs:** [sources.md](../sources.md)
 
@@ -1924,7 +1924,7 @@ Ingest tables are subscribable via the standard SSE endpoint (`GET /data/subscri
 
 **Code:** `provisa/ingest/`
 
-**Tests:** `tests/unit/test_ingest_ddl.py`, `tests/unit/test_ingest_router.py`, `tests/integration/test_ingest_push_integration.py`, `provisa-ui/e2e/infrastructure.spec.ts`
+**Tests:** `tests/unit/test_ingest_ddl.py`, `tests/unit/test_ingest_router.py`, `tests/integration/test_ingest_push_integration.py`
 
 ### REQ-337 · Ingest Sources — Governed HTTP Push Receiver (REQ-331–337) {#REQ-337}
 
@@ -2314,7 +2314,7 @@ Remote schema source registrations (GraphQL, gRPC, OpenAPI) accept a `relationsh
 
 **Code:** `provisa/graphql_remote/mapper.py`, `provisa/api/admin/graphql_remote_router.py`, `provisa/api/admin/grpc_remote_router.py`, `provisa/api/admin/openapi_router.py`
 
-**Tests:** `tests/integration/test_graphql_execution.py`, `tests/integration/test_graphql_remote_source.py`, `tests/unit/test_graphql_remote_mapper.py`, `tests/unit/test_remote_adapter_contract.py`, `tests/unit/test_schema_service.py`, `provisa-ui/e2e/registration-admin.spec.ts`
+**Tests:** `tests/integration/test_graphql_execution.py`, `tests/integration/test_graphql_remote_source.py`, `tests/unit/test_graphql_remote_mapper.py`, `tests/unit/test_remote_adapter_contract.py`, `tests/unit/test_schema_service.py`, `tests/integration/test_demo_http_surfaces_e2e.py`
 
 ### REQ-599 · GraphQL Remote Schema Connector (REQ-307–313) {#REQ-599}
 
@@ -2720,7 +2720,7 @@ Webhook-backed mutations: an external HTTP endpoint called as a GraphQL mutation
 
 **Code:** `provisa/compiler/`, `provisa/executor/`, `provisa/webhooks/`
 
-**Tests:** `tests/e2e/test_mutations.py`, `tests/integration/test_compiler_integration.py`, `tests/unit/test_actions.py`, `tests/unit/test_function_gen.py`, `provisa-ui/e2e/registration-admin.spec.ts`
+**Tests:** `tests/e2e/test_mutations.py`, `tests/integration/test_compiler_integration.py`, `tests/unit/test_actions.py`, `tests/unit/test_function_gen.py`
 
 **Docs:** [api-reference.md](../api-reference.md), [sources.md](../sources.md)
 
@@ -2776,7 +2776,7 @@ Naming convention changes (global, source, or table level) reflected immediately
 
 **Code:** `provisa/compiler/sql_gen.py`
 
-**Tests:** `tests/e2e/test_naming_reload.py`, `tests/integration/test_schema_gen.py`, `tests/unit/test_schema_service.py`, `tests/unit/test_sql_gen.py`, `provisa-ui/e2e/registration-admin.spec.ts`
+**Tests:** `tests/e2e/test_naming_reload.py`, `tests/integration/test_schema_gen.py`, `tests/unit/test_schema_service.py`, `tests/unit/test_sql_gen.py`
 
 **Docs:** [admin-graphql.md](../admin-graphql.md), [admin.md](../admin.md), [api-reference.md](../api-reference.md)
 
@@ -2864,7 +2864,7 @@ Provisa exposes a `POST /query/cypher` endpoint that accepts a Cypher SELECT que
 
 **Code:** `provisa/cypher/`
 
-**Tests:** `tests/integration/test_cypher_router_api.py`, `tests/integration/test_cypher_endpoint.py`, `tests/unit/test_cypher_graph_fns.py`, `tests/unit/test_cypher_parser.py`, `tests/unit/test_cypher_translator.py`, `tests/unit/test_cypher_tck_comparison.py`, `tests/unit/test_cypher_tck_equality.py`, `tests/unit/test_cypher_tck_lists.py`, `tests/unit/test_cypher_tck_maps.py`, `tests/unit/test_cypher_tck_precedence.py`, `tests/unit/test_cypher_tck_quantifiers.py`, `tests/unit/test_cypher_tck_temporal.py`, `tests/unit/test_sql_to_cypher.py`, `provisa-ui/e2e/cypher-api.spec.ts`
+**Tests:** `tests/integration/test_cypher_router_api.py`, `tests/integration/test_cypher_endpoint.py`, `tests/unit/test_cypher_graph_fns.py`, `tests/unit/test_cypher_parser.py`, `tests/unit/test_cypher_translator.py`, `tests/unit/test_cypher_tck_comparison.py`, `tests/unit/test_cypher_tck_equality.py`, `tests/unit/test_cypher_tck_lists.py`, `tests/unit/test_cypher_tck_maps.py`, `tests/unit/test_cypher_tck_precedence.py`, `tests/unit/test_cypher_tck_quantifiers.py`, `tests/unit/test_cypher_tck_temporal.py`, `tests/unit/test_sql_to_cypher.py`
 
 **Docs:** [api-reference.md](../api-reference.md), [cypher.md](../cypher.md), [remote-schemas.md](../remote-schemas.md)
 
@@ -2980,7 +2980,7 @@ Provisa exposes a `POST /query/nl` endpoint accepting a natural language questio
 
 **Code:** `provisa/nl/`
 
-**Tests:** `tests/unit/test_nl_loop.py`, `tests/unit/test_nl_runner.py`, `tests/integration/test_nl_endpoint.py`, `provisa-ui/e2e/cypher-api.spec.ts`
+**Tests:** `tests/unit/test_nl_loop.py`, `tests/unit/test_nl_runner.py`, `tests/integration/test_nl_endpoint.py`
 
 **Docs:** [api-reference.md](../api-reference.md)
 
@@ -3220,7 +3220,7 @@ GraphQL queries with multiple root fields are compiled into separate SQL queries
 
 **Code:** `provisa/api/data/sdl.py`
 
-**Tests:** `tests/integration/test_schema_gen.py`, `tests/unit/test_compiler_requirements.py`, `tests/unit/test_schema_service.py`, `provisa-ui/e2e/cypher-api.spec.ts`
+**Tests:** `tests/integration/test_schema_gen.py`, `tests/unit/test_compiler_requirements.py`, `tests/unit/test_schema_service.py`, `tests/integration/test_demo_http_surfaces_e2e.py`
 
 **Docs:** [api-reference.md](../api-reference.md)
 
@@ -3566,7 +3566,7 @@ Cypher write endpoints return the number of rows affected (rows inserted for CRE
 
 **Code:** `provisa/api/rest/cypher_router.py`
 
-**Tests:** `tests/e2e/test_mutations.py`, `tests/unit/test_cypher_translator.py`, `tests/unit/test_sql_to_cypher.py`, `tests/integration/test_cypher_endpoint.py`, `provisa-ui/e2e/cypher-write-affected-rows.spec.ts`
+**Tests:** `tests/e2e/test_mutations.py`, `tests/unit/test_cypher_translator.py`, `tests/unit/test_sql_to_cypher.py`, `tests/integration/test_cypher_endpoint.py`, `tests/integration/test_demo_http_surfaces_e2e.py`
 
 **Docs:** [cypher.md](../cypher.md)
 
@@ -3596,7 +3596,7 @@ Single-source queries route to direct RDBMS connection; SQLGlot transpiles to ta
 
 **Code:** `provisa/executor/`, `provisa/transpiler/`
 
-**Tests:** `tests/e2e/test_routing.py`, `tests/integration/test_direct_exec.py`, `tests/integration/test_execution_routing.py`, `tests/unit/test_routing.py`, `provisa-ui/e2e/execution-routing.spec.ts`
+**Tests:** `tests/e2e/test_routing.py`, `tests/integration/test_direct_exec.py`, `tests/integration/test_execution_routing.py`, `tests/unit/test_routing.py`
 
 **Docs:** [architecture.md](../architecture.md), [pgwire.md](../pgwire.md), [sources.md](../sources.md)
 
@@ -3610,7 +3610,7 @@ Cross-source queries route to Trino; SQLGlot transpiles to Trino SQL. Target: 30
 
 **Code:** `provisa/executor/`, `provisa/transpiler/`
 
-**Tests:** `tests/unit/test_routing.py`, `tests/e2e/test_routing.py`, `tests/integration/test_execution_routing.py`, `provisa-ui/e2e/execution-routing.spec.ts`
+**Tests:** `tests/unit/test_routing.py`, `tests/e2e/test_routing.py`, `tests/integration/test_execution_routing.py`
 
 **Docs:** [architecture.md](../architecture.md), [deployment.md](../deployment.md), [pgwire.md](../pgwire.md), [sources.md](../sources.md)
 
@@ -3624,7 +3624,7 @@ Large results above threshold redirect to blob storage with presigned URL and TT
 
 **Code:** `provisa/executor/`, `provisa/transpiler/`, `provisa/executor/redirect.py`, `provisa/api/data/endpoint.py`
 
-**Tests:** `tests/e2e/test_large_result.py`, `tests/e2e/test_routing.py`, `tests/integration/test_direct_exec.py`, `tests/integration/test_execution_routing.py`, `tests/unit/test_redirect_s3.py`, `tests/unit/test_routing.py`, `provisa-ui/e2e/execution-routing.spec.ts`, `tests/unit/test_redirect_request_floor.py`
+**Tests:** `tests/e2e/test_large_result.py`, `tests/e2e/test_routing.py`, `tests/integration/test_direct_exec.py`, `tests/integration/test_execution_routing.py`, `tests/unit/test_redirect_s3.py`, `tests/unit/test_routing.py`, `tests/unit/test_redirect_request_floor.py`
 
 **Docs:** [api-reference.md](../api-reference.md), [architecture.md](../architecture.md), [deployment.md](../deployment.md)
 
@@ -3652,7 +3652,7 @@ Steward routing override configurable per table/view for edge cases where defaul
 
 **Code:** `provisa/executor/`, `provisa/transpiler/`
 
-**Tests:** `tests/e2e/test_routing.py`, `tests/integration/test_direct_exec.py`, `tests/integration/test_execution_routing.py`, `tests/unit/test_routing.py`, `provisa-ui/e2e/execution-routing.spec.ts`
+**Tests:** `tests/e2e/test_routing.py`, `tests/integration/test_direct_exec.py`, `tests/integration/test_execution_routing.py`, `tests/unit/test_routing.py`
 
 **Docs:** [architecture.md](../architecture.md)
 
@@ -3808,7 +3808,7 @@ Warm tables are frequently queried RDBMS tables materialized into a low-latency,
 
 **Code:** `provisa/mv/`
 
-**Tests:** `tests/unit/test_apq_cache.py`, `tests/unit/test_cache_key.py`, `tests/unit/test_catalog_cache.py`, `tests/unit/test_warm_tables.py`
+**Tests:** `tests/unit/test_apq_cache.py`, `tests/unit/test_cache_key.py`, `tests/unit/test_catalog_cache.py`, `tests/unit/test_replica_hot_evaluation.py`
 
 **Docs:** [architecture.md](../architecture.md)
 
@@ -3822,7 +3822,7 @@ Warm table auto-promotion -- [SUPERSEDED by REQ-239 amendment, 2026-10-03 -- pro
 
 **Code:** `provisa/mv/`
 
-**Tests:** `tests/unit/test_apq_cache.py`, `tests/unit/test_cache_key.py`, `tests/unit/test_warm_tables.py`, `tests/integration/test_execution_routing.py`
+**Tests:** `tests/unit/test_apq_cache.py`, `tests/unit/test_cache_key.py`, `tests/unit/test_replica_hot_evaluation.py`, `tests/integration/test_execution_routing.py`
 
 **Docs:** [architecture.md](../architecture.md), [regions.md](../regions.md)
 
@@ -3836,7 +3836,7 @@ Warm table auto-promotion -- [SUPERSEDED by REQ-239 amendment, 2026-10-03 -- pro
 
 **Code:** `provisa/mv/`
 
-**Tests:** `tests/integration/test_direct_exec.py`, `tests/unit/test_apq_cache.py`, `tests/unit/test_cache_key.py`, `tests/unit/test_catalog_cache.py`, `tests/unit/test_warm_tables.py`
+**Tests:** `tests/integration/test_direct_exec.py`, `tests/unit/test_apq_cache.py`, `tests/unit/test_cache_key.py`, `tests/unit/test_catalog_cache.py`, `tests/unit/test_replica_hot_evaluation.py`
 
 ### REQ-241 · Warm Tables (Replica Profile — Low-Latency Placement) {#REQ-241}
 
@@ -3848,7 +3848,7 @@ A table lives in at most one cache tier; hot wins over warm. [SUPERSEDED by REQ-
 
 **Code:** `provisa/mv/`
 
-**Tests:** `tests/unit/test_apq_cache.py`, `tests/unit/test_cache_key.py`, `tests/unit/test_warm_tables.py`, `tests/integration/test_execution_routing.py`
+**Tests:** `tests/unit/test_apq_cache.py`, `tests/unit/test_cache_key.py`, `tests/unit/test_replica_hot_evaluation.py`, `tests/integration/test_execution_routing.py`
 
 **Docs:** [admin-graphql.md](../admin-graphql.md), [architecture.md](../architecture.md)
 
@@ -3972,7 +3972,7 @@ All data responses include cache status headers: `X-Provisa-Cache: HIT|MISS` on 
 
 **Code:** `provisa/cache/middleware.py`
 
-**Tests:** `tests/unit/test_cache_headers_requirements.py`, `tests/unit/test_http_cache_opt_in.py`, `tests/unit/test_misc_requirements.py`, `tests/unit/test_cache_headers_requirements.py`, `tests/integration/test_execution_routing.py`, `provisa-ui/e2e/security-rate-limiting.spec.ts`
+**Tests:** `tests/unit/test_cache_headers_requirements.py`, `tests/unit/test_http_cache_opt_in.py`, `tests/unit/test_misc_requirements.py`, `tests/unit/test_cache_headers_requirements.py`, `tests/integration/test_execution_routing.py`, `tests/integration/test_demo_http_surfaces_e2e.py`
 
 **Docs:** [api-reference.md](../api-reference.md)
 
@@ -4086,7 +4086,7 @@ Arrow buffer via gRPC Arrow Flight endpoint; Trino produces Arrow natively.
 
 **Code:** `provisa/executor/`
 
-**Tests:** `tests/unit/test_formats.py`, `tests/integration/test_output_formats.py`, `provisa-ui/e2e/execution-routing.spec.ts`
+**Tests:** `tests/unit/test_formats.py`, `tests/integration/test_output_formats.py`
 
 **Docs:** [remote-schemas.md](../remote-schemas.md)
 
@@ -4100,7 +4100,7 @@ Client-controlled redirect via `X-Provisa-Redirect-Format` and `X-Provisa-Redire
 
 **Code:** `provisa/executor/`, `provisa/executor/redirect.py`
 
-**Tests:** `tests/e2e/test_large_result.py`, `tests/integration/test_blob_upload.py`, `tests/unit/test_redirect.py`, `provisa-ui/e2e/execution-routing.spec.ts`, `tests/unit/test_redirect_request_floor.py`
+**Tests:** `tests/e2e/test_large_result.py`, `tests/integration/test_blob_upload.py`, `tests/unit/test_redirect.py`, `tests/unit/test_redirect_request_floor.py`
 
 **Docs:** [api-reference.md](../api-reference.md), [architecture.md](../architecture.md), [deployment.md](../deployment.md)
 
@@ -4180,7 +4180,7 @@ Arrow Flight server (port 8815) streams record batches via gRPC. Full security p
 
 **Code:** `provisa/api/flight/`
 
-**Tests:** `tests/integration/test_arrow_flight_integration.py`, `tests/unit/test_flight_server_helpers.py`, `tests/unit/test_zaychik_flight_unit.py`, `provisa-ui/e2e/execution-routing.spec.ts`
+**Tests:** `tests/integration/test_arrow_flight_integration.py`, `tests/unit/test_flight_server_helpers.py`, `tests/unit/test_zaychik_flight_unit.py`
 
 **Docs:** [api-reference.md](../api-reference.md), [architecture.md](../architecture.md), [deployment.md](../deployment.md), [python-client.md](../python-client.md)
 
@@ -4868,9 +4868,9 @@ The extended-query protocol (Bind/Execute) supports binary-encoded parameters. S
 
 **Use case:** Binary parameter encoding support enables psycopg2 and asyncpg to send typed parameters without text serialization, preserving full type fidelity for numeric and temporal values.
 
-**Code:** `vendor/buenavista/buenavista/postgres.py`, `vendor/buenavista/buenavista/core.py`, `provisa/pgwire/server.py`, `provisa/pgwire/_pipeline.py`, `provisa/federation/duckdb_runtime.py`, `provisa/federation/pg_runtime.py`, `provisa/federation/runtime_support.py`, `provisa/compiler/params.py`, `provisa/pgwire/result_shape.py`
+**Code:** `vendor/buenavista/buenavista/postgres.py`, `vendor/buenavista/buenavista/core.py`, `provisa/pgwire/server.py`, `provisa/pgwire/_pipeline.py`, `provisa/federation/duckdb_runtime.py`, `provisa/federation/pg_runtime.py`, `provisa/federation/runtime_support.py`, `provisa/compiler/params.py`, `provisa/compiler/result_shape.py`
 
-**Tests:** `tests/integration/test_pgwire_integration.py`, `tests/unit/pgwire/test_wire_protocol.py`, `tests/unit/test_pgwire_requirements.py`, `tests/unit/pgwire/test_extended_protocol_portals.py`, `tests/unit/pgwire/test_describe_parity_duckdb.py`, `tests/unit/test_bind_positionally.py`, `tests/integration/test_pgwire_describe_parity_pg.py`, `tests/integration/test_pgwire_bound_params.py`, `tests/integration/test_pgwire_single_pass.py`, `tests/unit/pgwire/test_result_shape.py`, `tests/unit/pgwire/test_statement_stages.py`, `tests/integration/test_pgwire_client_regressions.py`
+**Tests:** `tests/integration/test_pgwire_integration.py`, `tests/unit/pgwire/test_wire_protocol.py`, `tests/unit/test_pgwire_requirements.py`, `tests/unit/pgwire/test_extended_protocol_portals.py`, `tests/unit/pgwire/test_describe_parity_duckdb.py`, `tests/unit/test_bind_positionally.py`, `tests/integration/test_pgwire_describe_parity_pg.py`, `tests/integration/test_pgwire_bound_params.py`, `tests/integration/test_pgwire_single_pass.py`, `tests/unit/test_result_shape.py`, `tests/unit/pgwire/test_statement_stages.py`, `tests/integration/test_pgwire_client_regressions.py`
 
 **Docs:** [pgwire.md](../pgwire.md)
 
@@ -5982,7 +5982,7 @@ The `GET /health` (or `HEAD /health`) and `GET /setup/status` endpoints are alwa
 
 **Code:** `provisa/api/app.py`
 
-**Tests:** `tests/e2e/test_health_checks.py`, `tests/integration/test_infra.py`, `tests/unit/test_infra_requirements.py`, `provisa-ui/e2e/infrastructure.spec.ts`
+**Tests:** `tests/e2e/test_health_checks.py`, `tests/integration/test_infra.py`, `tests/unit/test_infra_requirements.py`, `tests/integration/test_demo_http_surfaces_e2e.py`
 
 **Docs:** [admin.md](../admin.md), [api-reference.md](../api-reference.md)
 
@@ -6426,7 +6426,7 @@ Upsert mutations: `INSERT ... ON CONFLICT ... DO UPDATE`. New `upsert_<table>` m
 
 **Code:** `provisa/compiler/`, `provisa/scheduler/`
 
-**Tests:** `tests/unit/test_upsert_distinct_on.py`, `tests/unit/test_column_presets.py`, `tests/integration/test_mutation_parity_integration.py`
+**Tests:** `tests/unit/test_upsert_distinct_on.py`, `tests/integration/test_mutation_parity_integration.py`
 
 **Docs:** [configuration.md](../configuration.md)
 
@@ -6440,7 +6440,7 @@ Upsert mutations: `INSERT ... ON CONFLICT ... DO UPDATE`. New `upsert_<table>` m
 
 **Code:** `provisa/compiler/`, `provisa/scheduler/`
 
-**Tests:** `tests/unit/test_upsert_distinct_on.py`, `tests/unit/test_column_presets.py`, `tests/integration/test_mutation_parity_integration.py`
+**Tests:** `tests/unit/test_upsert_distinct_on.py`, `tests/integration/test_mutation_parity_integration.py`
 
 **Docs:** [configuration.md](../configuration.md)
 
@@ -6454,7 +6454,7 @@ Column presets -- auto-set column values on insert/update from session variables
 
 **Code:** `provisa/compiler/`, `provisa/scheduler/`
 
-**Tests:** `tests/unit/test_upsert_distinct_on.py`, `tests/unit/test_column_presets.py`, `tests/integration/test_mutation_parity_integration.py`
+**Tests:** `tests/unit/test_upsert_distinct_on.py`, `tests/integration/test_mutation_parity_integration.py`
 
 **Docs:** [architecture.md](../architecture.md), [configuration.md](../configuration.md)
 
@@ -6468,7 +6468,7 @@ Inherited roles: a role hierarchy where [SUPERSEDED by [REQ-2155](#REQ-2155), 20
 
 **Code:** `provisa/compiler/`, `provisa/scheduler/`
 
-**Tests:** `tests/integration/test_mutation_parity_integration.py`, `tests/unit/test_column_presets.py`, `tests/unit/test_inherited_roles_extended.py`, `tests/unit/test_upsert_distinct_on.py`
+**Tests:** `tests/integration/test_mutation_parity_integration.py`, `tests/unit/test_inherited_roles_extended.py`, `tests/unit/test_upsert_distinct_on.py`
 
 **Docs:** [admin-graphql.md](../admin-graphql.md), [architecture.md](../architecture.md), [configuration.md](../configuration.md), [security.md](../security.md)
 
@@ -6482,7 +6482,7 @@ Scheduled triggers: time-based execution of registered webhooks or internal func
 
 **Code:** `provisa/compiler/`, `provisa/scheduler/`
 
-**Tests:** `tests/integration/test_mutation_parity_integration.py`, `tests/unit/test_column_presets.py`, `tests/unit/test_scheduled_triggers.py`, `tests/unit/test_scheduler.py`, `tests/unit/test_upsert_distinct_on.py`
+**Tests:** `tests/integration/test_mutation_parity_integration.py`, `tests/unit/test_scheduled_triggers.py`, `tests/unit/test_scheduler.py`, `tests/unit/test_upsert_distinct_on.py`
 
 **Docs:** [architecture.md](../architecture.md), [configuration.md](../configuration.md)
 
@@ -6496,7 +6496,7 @@ Batch mutations already supported by the GraphQL spec: multiple mutations in one
 
 **Code:** `provisa/compiler/`, `provisa/scheduler/`
 
-**Tests:** `tests/integration/test_mutation_parity_integration.py`, `tests/unit/test_batch_mutations.py`, `tests/unit/test_column_presets.py`, `tests/unit/test_upsert_distinct_on.py`
+**Tests:** `tests/integration/test_mutation_parity_integration.py`, `tests/unit/test_batch_mutations.py`, `tests/unit/test_upsert_distinct_on.py`
 
 ### REQ-218 · Hasura v2 Parity: Medium-Complexity Features {#REQ-218}
 
@@ -6508,7 +6508,7 @@ Cursor-based pagination: `first`, `after`, `last`, `before` args on root query f
 
 **Code:** `provisa/compiler/`, `provisa/scheduler/`
 
-**Tests:** `tests/integration/test_mutation_parity_integration.py`, `tests/unit/test_column_presets.py`, `tests/unit/test_cursor_pagination.py`, `tests/unit/test_upsert_distinct_on.py`
+**Tests:** `tests/integration/test_mutation_parity_integration.py`, `tests/unit/test_cursor_pagination.py`, `tests/unit/test_upsert_distinct_on.py`
 
 **Docs:** [architecture.md](../architecture.md)
 
@@ -6522,7 +6522,7 @@ Subscriptions via Server-Sent Events (SSE) -- `GET /data/subscribe/<table>` endp
 
 **Code:** `provisa/compiler/`, `provisa/scheduler/`
 
-**Tests:** `tests/unit/test_upsert_distinct_on.py`, `tests/unit/test_column_presets.py`, `tests/integration/test_mutation_parity_integration.py`, `provisa-ui/e2e/infrastructure.spec.ts`
+**Tests:** `tests/unit/test_upsert_distinct_on.py`, `tests/integration/test_mutation_parity_integration.py`, `tests/integration/test_demo_http_surfaces_e2e.py`
 
 **Docs:** [api-reference.md](../api-reference.md)
 
@@ -6536,7 +6536,7 @@ Database event triggers: table changes (insert/update/delete) fire webhooks. Pos
 
 **Code:** `provisa/compiler/`, `provisa/scheduler/`
 
-**Tests:** `tests/integration/test_event_triggers_integration.py`, `tests/integration/test_mutation_parity_integration.py`, `tests/unit/test_column_presets.py`, `tests/unit/test_event_triggers.py`, `tests/unit/test_upsert_distinct_on.py`
+**Tests:** `tests/integration/test_event_triggers_integration.py`, `tests/integration/test_mutation_parity_integration.py`, `tests/unit/test_event_triggers.py`, `tests/unit/test_upsert_distinct_on.py`
 
 **Docs:** [architecture.md](../architecture.md)
 
@@ -6550,7 +6550,7 @@ Enum table auto-detection: introspect `pg_enum` at schema build time, generate G
 
 **Code:** `provisa/compiler/`, `provisa/scheduler/`
 
-**Tests:** `tests/unit/test_column_presets.py`, `tests/unit/test_enum_detection.py`, `tests/unit/test_upsert_distinct_on.py`, `tests/integration/test_registration_governance_integration.py`
+**Tests:** `tests/unit/test_enum_detection.py`, `tests/unit/test_upsert_distinct_on.py`, `tests/integration/test_registration_governance_integration.py`
 
 **Docs:** [architecture.md](../architecture.md)
 
@@ -6564,7 +6564,7 @@ REST endpoint auto-generation -- for each root query field, generate `GET /data/
 
 **Code:** `provisa/compiler/`, `provisa/scheduler/`
 
-**Tests:** `tests/e2e/test_query_pipeline.py`, `tests/integration/test_rest_endpoints.py`, `tests/unit/test_column_presets.py`, `tests/unit/test_upsert_distinct_on.py`, `provisa-ui/e2e/infrastructure.spec.ts`
+**Tests:** `tests/e2e/test_query_pipeline.py`, `tests/integration/test_rest_endpoints.py`, `tests/unit/test_upsert_distinct_on.py`, `tests/integration/test_demo_http_surfaces_e2e.py`
 
 ### REQ-621 · Hasura Migration Converters {#REQ-621}
 
@@ -6958,7 +6958,7 @@ Neo4j export endpoint accepts graph nodes and edges via POST /data/neo4j-export,
 
 **Code:** `provisa/api/rest/cypher_router.py`
 
-**Tests:** `provisa-ui/e2e/neo4j-docker-export.spec.ts`, `tests/unit/test_neo4j_export.py`
+**Tests:** `tests/integration/test_demo_http_surfaces_e2e.py`, `tests/unit/test_neo4j_export.py`
 
 ### REQ-714 · Neo4j Export {#REQ-714}
 
@@ -6970,7 +6970,7 @@ Nodes are MERGE'd into Neo4j using _provisa_id as the deduplication key, with la
 
 **Code:** `provisa/api/rest/cypher_router.py`
 
-**Tests:** `provisa-ui/e2e/neo4j-docker-export.spec.ts`, `tests/unit/test_neo4j_export.py`
+**Tests:** `tests/integration/test_demo_http_surfaces_e2e.py`, `tests/unit/test_neo4j_export.py`
 
 ### REQ-715 · Neo4j Export {#REQ-715}
 
@@ -6982,7 +6982,7 @@ Node properties are written to Neo4j using SET n += {...} with Cypher literal en
 
 **Code:** `provisa/api/rest/cypher_router.py`
 
-**Tests:** `provisa-ui/e2e/neo4j-docker-export.spec.ts`, `tests/unit/test_neo4j_export.py`
+**Tests:** `tests/integration/test_demo_http_surfaces_e2e.py`, `tests/unit/test_neo4j_export.py`
 
 ### REQ-716 · Neo4j Export {#REQ-716}
 
@@ -6994,7 +6994,7 @@ Edges are MERGE'd by matching source and target nodes on _provisa_id, with relat
 
 **Code:** `provisa/api/rest/cypher_router.py`
 
-**Tests:** `provisa-ui/e2e/neo4j-docker-export.spec.ts`, `tests/unit/test_neo4j_export.py`
+**Tests:** `tests/integration/test_demo_http_surfaces_e2e.py`, `tests/unit/test_neo4j_export.py`
 
 ### REQ-717 · Neo4j Export {#REQ-717}
 
@@ -7006,7 +7006,7 @@ Neo4j export endpoint uses HTTP Basic authentication via Authorization header (b
 
 **Code:** `provisa/api/rest/cypher_router.py`
 
-**Tests:** `provisa-ui/e2e/neo4j-docker-export.spec.ts`, `tests/unit/test_neo4j_export.py`
+**Tests:** `tests/integration/test_demo_http_surfaces_e2e.py`, `tests/unit/test_neo4j_export.py`
 
 ### REQ-718 · Neo4j Export {#REQ-718}
 
@@ -7018,7 +7018,7 @@ Connection errors to Neo4j return HTTP 502; timeouts return 504; authentication 
 
 **Code:** `provisa/api/rest/cypher_router.py`
 
-**Tests:** `provisa-ui/e2e/neo4j-docker-export.spec.ts`, `tests/unit/test_neo4j_export.py`
+**Tests:** `tests/integration/test_demo_http_surfaces_e2e.py`, `tests/unit/test_neo4j_export.py`
 
 ### REQ-719 · Neo4j Export {#REQ-719}
 
@@ -7030,7 +7030,7 @@ Neo4j export endpoint returns {imported: N, errors: [...]} structure, allowing p
 
 **Code:** `provisa/api/rest/cypher_router.py`
 
-**Tests:** `provisa-ui/e2e/neo4j-docker-export.spec.ts`, `tests/unit/test_neo4j_export.py`
+**Tests:** `tests/integration/test_demo_http_surfaces_e2e.py`, `tests/unit/test_neo4j_export.py`
 
 ### REQ-720 · Neo4j Export {#REQ-720}
 
@@ -7042,7 +7042,7 @@ E2E export flow batches nodes and edges separately to avoid transaction timeouts
 
 **Code:** `provisa/api/rest/cypher_router.py`
 
-**Tests:** `provisa-ui/e2e/neo4j-docker-export.spec.ts`, `tests/unit/test_neo4j_export.py`
+**Tests:** `tests/integration/test_demo_http_surfaces_e2e.py`, `tests/unit/test_neo4j_export.py`
 
 ## 4. Source Connectors
 
@@ -7372,7 +7372,7 @@ Cypher graph variables (nodes, edges, paths) returned in the RETURN clause are s
 
 **Code:** `provisa/gql/assembler.py`, `provisa/gql/graph_rewriter.py`
 
-**Tests:** `tests/unit/test_cypher_assembler.py`, `tests/unit/test_cypher_graph_rewriter.py`, `tests/integration/test_cypher_integration_extra.py`, `provisa-ui/e2e/cypher-api.spec.ts`
+**Tests:** `tests/unit/test_cypher_assembler.py`, `tests/unit/test_cypher_graph_rewriter.py`, `tests/integration/test_cypher_integration_extra.py`, `tests/integration/test_demo_http_surfaces_e2e.py`
 
 **Docs:** [cypher.md](../cypher.md)
 
@@ -7386,7 +7386,7 @@ Cypher graph variables (nodes, edges, paths) returned in the RETURN clause are s
 
 **Code:** `provisa/gql/translator.py`
 
-**Tests:** `tests/unit/test_cypher_translator_paths.py`, `provisa-ui/e2e/cypher-variable-length-path.spec.ts`, `tests/integration/test_cypher_integration_extra.py`
+**Tests:** `tests/unit/test_cypher_translator_paths.py`, `tests/integration/test_demo_http_surfaces_e2e.py`, `tests/integration/test_cypher_integration_extra.py`
 
 ### REQ-752 · Cypher Query Frontend (Phase AU) {#REQ-752}
 
@@ -7410,7 +7410,7 @@ Path object RETURN (e.g., `RETURN p`) emits a JSON_OBJECT with `nodes` (array of
 
 **Code:** `provisa/gql/translator.py`, `provisa/gql/graph_rewriter.py`
 
-**Tests:** `tests/unit/test_cypher_translator_exprs.py`, `provisa-ui/e2e/cypher-variable-length-path.spec.ts`, `tests/integration/test_cypher_integration_extra.py`
+**Tests:** `tests/unit/test_cypher_translator_exprs.py`, `tests/integration/test_demo_http_surfaces_e2e.py`, `tests/integration/test_cypher_integration_extra.py`
 
 ### REQ-754 · Cypher Query Frontend (Phase AU) {#REQ-754}
 
@@ -7686,7 +7686,7 @@ OPTIONAL MATCH chains (e.g., `OPTIONAL MATCH (a)-[r1]->(b) OPTIONAL MATCH (b)-[r
 
 **Code:** `provisa/gql/translator.py`
 
-**Tests:** `provisa-ui/e2e/cypher-breed-filter.spec.ts`, `tests/unit/test_cypher_frontend.py`, `tests/integration/test_cypher_integration_extra.py`
+**Tests:** `tests/integration/test_demo_http_surfaces_e2e.py`, `tests/unit/test_cypher_frontend.py`, `tests/integration/test_cypher_integration_extra.py`
 
 ### REQ-777 · Cypher Query Frontend (Phase AU) {#REQ-777}
 
@@ -7698,7 +7698,7 @@ UNION ALL queries (e.g., `MATCH (n) RETURN ... UNION ALL MATCH (m) RETURN ...`) 
 
 **Code:** `provisa/gql/translator.py`
 
-**Tests:** `provisa-ui/e2e/cypher-union-all-email.spec.ts`, `tests/unit/test_cypher_frontend.py`, `tests/integration/test_cypher_integration_extra.py`
+**Tests:** `tests/integration/test_demo_http_surfaces_e2e.py`, `tests/unit/test_cypher_frontend.py`, `tests/integration/test_cypher_integration_extra.py`
 
 ### REQ-778 · Cypher Query Frontend (Phase AU) {#REQ-778}
 
@@ -7710,7 +7710,7 @@ UNION ALL queries (e.g., `MATCH (n) RETURN ... UNION ALL MATCH (m) RETURN ...`) 
 
 **Code:** `provisa/api/rest/cypher_router.py`, `provisa/api/data/endpoint.py`
 
-**Tests:** `provisa-ui/e2e/cypher-breed-filter.spec.ts`, `provisa-ui/e2e/cypher-variable-length-path.spec.ts`, `provisa-ui/e2e/cypher-union-all-email.spec.ts`, `tests/unit/test_cypher_frontend.py`, `tests/integration/test_cypher_integration_extra.py`
+**Tests:** `tests/integration/test_demo_http_surfaces_e2e.py`, `tests/unit/test_cypher_frontend.py`, `tests/integration/test_cypher_integration_extra.py`
 
 ## 10. UI & Admin Surfaces
 
@@ -7874,7 +7874,7 @@ GET /data/graph-schema endpoint returns the current graph schema including all n
 
 **Code:** `provisa/api/data/endpoint.py`
 
-**Tests:** `provisa-ui/e2e/neo4j-docker-export.spec.ts`, `tests/unit/test_neo4j_cypher_endpoint.py`
+**Tests:** `tests/integration/test_demo_http_surfaces_e2e.py`, `tests/unit/test_neo4j_cypher_endpoint.py`
 
 ### REQ-793 · Neo4j Export {#REQ-793}
 
@@ -7886,7 +7886,7 @@ POST /data/cypher endpoint accepts parameterless Cypher queries and returns row 
 
 **Code:** `provisa/api/rest/cypher_router.py`
 
-**Tests:** `provisa-ui/e2e/neo4j-docker-export.spec.ts`, `tests/unit/test_neo4j_cypher_endpoint.py`
+**Tests:** `tests/integration/test_demo_http_surfaces_e2e.py`, `tests/unit/test_neo4j_cypher_endpoint.py`
 
 ### REQ-794 · Neo4j Export {#REQ-794}
 
@@ -7898,7 +7898,7 @@ Query result values are introspected for node and edge structures. Nodes are ide
 
 **Code:** `provisa/api/rest/cypher_router.py`
 
-**Tests:** `provisa-ui/e2e/neo4j-docker-export.spec.ts`, `tests/unit/test_neo4j_cypher_endpoint.py`
+**Tests:** `tests/integration/test_demo_http_surfaces_e2e.py`, `tests/unit/test_neo4j_cypher_endpoint.py`
 
 ### REQ-795 · Neo4j Export {#REQ-795}
 
@@ -7910,7 +7910,7 @@ POST /data/neo4j-export endpoint accepts edge-only requests (empty nodes array) 
 
 **Code:** `provisa/api/rest/cypher_router.py`
 
-**Tests:** `provisa-ui/e2e/neo4j-docker-export.spec.ts`, `tests/unit/test_neo4j_cypher_endpoint.py`
+**Tests:** `tests/integration/test_demo_http_surfaces_e2e.py`, `tests/unit/test_neo4j_cypher_endpoint.py`
 
 ### REQ-796 · Neo4j Export {#REQ-796}
 
@@ -7922,7 +7922,7 @@ X-Role header (e.g., "DEV") grants access to /data/cypher and /data/graph-schema
 
 **Code:** `provisa/api/rest/cypher_router.py`, `provisa/api/data/endpoint.py`
 
-**Tests:** `provisa-ui/e2e/neo4j-docker-export.spec.ts`, `tests/unit/test_neo4j_cypher_endpoint.py`
+**Tests:** `tests/integration/test_demo_http_surfaces_e2e.py`, `tests/unit/test_neo4j_cypher_endpoint.py`
 
 ### REQ-797 · Neo4j Export {#REQ-797}
 
@@ -7934,7 +7934,7 @@ E2E neo4j export validates exported graph integrity: node and relationship count
 
 **Code:** `provisa/api/rest/cypher_router.py`
 
-**Tests:** `provisa-ui/e2e/neo4j-docker-export.spec.ts`, `tests/unit/test_neo4j_cypher_endpoint.py`
+**Tests:** `tests/integration/test_demo_http_surfaces_e2e.py`, `tests/unit/test_neo4j_cypher_endpoint.py`
 
 ## 5. Query Languages, Compilation & Operations
 
@@ -8354,7 +8354,7 @@ Pluggable admin/metadata store, decoupled from Postgres, selected via a SQLAlche
 
 **Code:** `provisa/core/meta_rls.py`, `provisa/core/db.py`, `provisa/core/database.py`, `provisa/core/duckdb_store.py`, `provisa/core/repositories/source.py`, `provisa/core/schema.sql`, `provisa/core/schema_org.py`, `provisa/api/app.py`, `provisa/api/app_loaders.py`, `provisa/api_source/fill_cache.py`
 
-**Tests:** `tests/unit/test_admin_store.py`, `tests/unit/test_control_plane_shared_engine.py`
+**Tests:** `tests/unit/test_control_plane_shared_engine.py`
 
 **Docs:** [configuration.md](../configuration.md)
 
@@ -8648,7 +8648,7 @@ Org isolation is polymorphic on a schema-capable vs not-schema-capable axis. Sch
 
 **Code:** `provisa/core/database.py`
 
-**Tests:** `tests/unit/test_org_router.py`
+**Tests:** —
 
 ### REQ-853 · Control-Plane Store Portability {#REQ-853}
 
@@ -10524,7 +10524,7 @@ Support one-time physical data move expressed as standard SQL CREATE TABLE {sche
 
 **Code:** `provisa/executor/writable.py`, `provisa/federation/store_writer.py`, `provisa/pgwire/server.py`
 
-**Tests:** `tests/unit/test_ctas.py`
+**Tests:** —
 
 ### REQ-997 · Execution & Routing {#REQ-997}
 
@@ -10536,7 +10536,7 @@ Execution routing for CTAS: resolve the write path via existing resolve_write_pa
 
 **Code:** `provisa/executor/writable.py`, `provisa/federation/store_writer.py`, `provisa/executor/direct.py`
 
-**Tests:** `tests/unit/test_ctas.py`
+**Tests:** —
 
 ### REQ-998 · Name Resolution {#REQ-998}
 
@@ -10548,7 +10548,7 @@ The load-bearing invariant: schema.table must be globally unique across the enti
 
 **Code:** —
 
-**Tests:** `tests/unit/test_ctas.py`
+**Tests:** —
 
 ### REQ-999 · Name Resolution {#REQ-999}
 
@@ -10560,7 +10560,7 @@ Catalog is optional in the grammar and, when present, always names the source. I
 
 **Code:** —
 
-**Tests:** `tests/unit/test_ctas.py`
+**Tests:** —
 
 ### REQ-1000 · Name Resolution {#REQ-1000}
 
@@ -10572,7 +10572,7 @@ Placement disambiguation at CREATE only: a new unique schema.table normally land
 
 **Code:** —
 
-**Tests:** `tests/unit/test_ctas.py`
+**Tests:** —
 
 ### REQ-1001 · Transaction Safety {#REQ-1001}
 
@@ -10584,7 +10584,7 @@ Transactional safety for the move: create-temp → bulk-load → atomic swap so 
 
 **Code:** `provisa/federation/store_writer.py`
 
-**Tests:** `tests/unit/test_ctas.py`
+**Tests:** —
 
 ### REQ-1002 · Type Coercion {#REQ-1002}
 
@@ -10596,7 +10596,7 @@ Cross-engine result-schema → target DDL type coercion policy: the SELECT resul
 
 **Code:** `provisa/federation/store_writer.py`, `provisa/core/ir_types.py`
 
-**Tests:** `tests/unit/test_ctas.py`
+**Tests:** —
 
 ### REQ-1003 · Scheduled Execution {#REQ-1003}
 
@@ -10652,7 +10652,7 @@ The SPA static server routing is deterministic and driven by the browser Sec-Fet
 
 **Code:** `provisa/ui_server.py`
 
-**Tests:** `provisa-ui/e2e/infrastructure.spec.ts`, `tests/e2e/test_health_checks.py`, `tests/unit/test_ui_server_routing.py`
+**Tests:** `tests/e2e/test_health_checks.py`, `tests/unit/test_ui_server_routing.py`
 
 ### REQ-1007 · Multi-Tier Deployment {#REQ-1007}
 
@@ -11230,7 +11230,7 @@ Publishing is a governance grant, not new machinery: each org has a built-in 'pu
 
 **Status:** 💡 proposed · **Priority:** MUST · **Type:** constraint
 
-Hard caps on anonymous public traffic: unauthenticated published endpoints are internet-facing with no login gate, so they inherit the tightest rate limits and query-cost caps ([REQ-1044](#REQ-1044)/1045). High-volume public publishing requires a premium public-tier SKU. (Amended 2026-11-20, GATED BY A PREMIUM ENTITLEMENT:) Maintainer 2026-11-20. High-volume anonymous publishing is gated by an entitlement feature, PUBLIC_HIGH_VOLUME, at the premium tier, enforced like the other entitlement features; the price-list name lives in the private commercial requirement.
+Hard caps on anonymous public traffic: unauthenticated published endpoints are internet-facing with no login gate, so they inherit the tightest rate limits and query-cost caps ([REQ-1044](#REQ-1044)/1045). High-volume public publishing requires a premium public-tier SKU. (Amended 2026-11-20, GATED BY A PREMIUM ENTITLEMENT:) Maintainer 2026-11-20. High-volume anonymous publishing is gated by an entitlement feature, PUBLIC_HIGH_VOLUME, at the premium tier, enforced like the other entitlement features; the price-list name lives in the private commercial requirement. (Amended 2026-11-21 by the maintainer. An org holding the premium public high-volume feature has its anonymous traffic capped at its own tier caps; without it, anonymous traffic gets the tightest caps. It is built after [REQ-1058](#REQ-1058) and [REQ-1059](#REQ-1059) give the anonymous public path.)
 
 **Use case:** Protects shared infrastructure from resource exhaustion by anonymous users. Free-tier public endpoints are rate-limited; high-volume use is gated to premium. Prevents adversarial abuse or accidental DoS by published datasets.
 
@@ -11272,9 +11272,9 @@ Pluggable metadata export provider pattern: an abstract MetadataExport interface
 
 **Use case:** Allows Provisa to act as the authoritative upstream feeding customers' existing data-governance catalogs (OpenMetadata, Atlan, Collibra, DataHub, Apache Atlas), rather than competing with them. Keeps Provisa as runtime enforcement engine while projecting metadata to the customer's catalog of record.
 
-**Code:** `provisa/api/metadata_export/provider.py`, `provisa/api/metadata_export/registry.py`, `provisa/core/models.py`, `provisa/core/org_settings.py`, `provisa/api/admin/metadata_export_router.py`
+**Code:** `provisa/api/metadata_export/provider.py`, `provisa/api/metadata_export/registry.py`, `provisa/core/models.py`, `provisa/core/org_settings.py`, `provisa/api/admin/syncing_router.py`
 
-**Tests:** `tests/unit/test_metadata_export_provider.py`, `tests/unit/test_metadata_export_outbound.py`, `tests/unit/test_metadata_export_admin_surface.py`
+**Tests:** `tests/unit/test_metadata_export_provider.py`, `tests/unit/test_metadata_export_outbound.py`, `tests/unit/test_syncing_admin_surface.py`
 
 ### REQ-1069 · Data Catalog Integration {#REQ-1069}
 
@@ -11320,7 +11320,7 @@ Sync mechanism: metadata changes push to the external catalog event-driven via t
 
 **Use case:** Event-driven sync ensures near-real-time metadata propagation for operational responsiveness; scheduled full reconcile handles dropped events and corrects drift. Per-org scoping ensures multi-tenant isolation and per-customer credential management.
 
-**Code:** `provisa/api/metadata_export/publishing.py`, `provisa/api/app.py`, `provisa/api/app_startup.py`, `provisa/api/admin/metadata_export_router.py`, `provisa/cli.py`
+**Code:** `provisa/api/metadata_export/publishing.py`, `provisa/api/app.py`, `provisa/api/app_startup.py`, `provisa/api/admin/syncing_router.py`, `provisa/cli.py`
 
 **Tests:** `tests/unit/test_metadata_export_publishing.py`, `tests/unit/test_metadata_export_gate.py`, `tests/unit/test_cli_metadata_export.py`, `tests/features/REQ-1072.feature`
 
@@ -11334,9 +11334,9 @@ Premium-gated metadata export: the metadata export connector is an enterprise/pr
 
 **Use case:** Metadata export to external catalogs is a high-touch enterprise feature. Restricted to premium tiers to simplify support and monetize integration value to enterprises already operating external DG systems.
 
-**Code:** `provisa/control_plane/entitlements.py`, `provisa/api/admin/metadata_export_router.py`, `provisa/api/metadata_export/publishing.py`
+**Code:** `provisa/control_plane/entitlements.py`, `provisa/api/admin/syncing_router.py`, `provisa/api/metadata_export/publishing.py`
 
-**Tests:** `tests/unit/test_entitlements.py`, `tests/unit/test_metadata_export_admin_surface.py`, `tests/unit/test_metadata_export_gate.py`
+**Tests:** `tests/unit/test_entitlements.py`, `tests/unit/test_syncing_admin_surface.py`, `tests/unit/test_metadata_export_gate.py`
 
 **Docs:** [metadata-export.md](../metadata-export.md)
 
@@ -11350,9 +11350,9 @@ Metadata export admin surface: an Admin tab that configures the per-org export t
 
 **Use case:** A data-governance admin configures and operates the catalog connection without editing YAML, and diagnoses a partial publish from the assets the target rejected rather than from server logs.
 
-**Code:** `provisa/api/admin/metadata_export_router.py`, `provisa-ui/src/components/admin/MetadataExportTab.tsx`, `provisa-ui/src/api/metadataExport.ts`
+**Code:** `provisa/api/admin/syncing_router.py`, `provisa-ui/src/components/admin/syncing/SyncingTab.tsx`, `provisa-ui/src/api/syncing.ts`
 
-**Tests:** `tests/unit/test_metadata_export_admin_surface.py`, `provisa-ui/src/__tests__/MetadataExportTab.test.tsx`, `provisa-ui/e2e/metadata-export-admin.spec.ts`
+**Tests:** `tests/unit/test_syncing_admin_surface.py`, `provisa-ui/src/__tests__/SyncingTab.test.tsx`, `provisa-ui/e2e/syncing-admin.spec.ts`
 
 **Docs:** [cli.md](../cli.md), [commands.md](../commands.md)
 
@@ -12412,7 +12412,7 @@ Per-role query limits complement per-role request-rate limits ([REQ-369](#REQ-36
 
 **Code:** `provisa/compiler/complexity.py`, `provisa/compiler/limits.py`, `provisa/pgwire/_pipeline.py`, `provisa/api/data/endpoint.py`, `provisa/core/settings_catalog.py`, `provisa/core/models.py`
 
-**Tests:** `tests/unit/test_query_limits.py`, `tests/unit/test_hasura_api_limits.py`, `tests/integration/test_complexity_guard_every_surface.py`, `provisa-ui/src/pages/__tests__/SecurityPage.roleLimits.test.tsx`, `provisa-ui/e2e/security-query-limits.spec.ts`
+**Tests:** `tests/unit/test_query_limits.py`, `tests/unit/test_hasura_api_limits.py`, `tests/integration/test_complexity_guard_every_surface.py`, `provisa-ui/src/pages/__tests__/SecurityPage.roleLimits.test.tsx`
 
 **Docs:** [security.md](../security.md)
 
@@ -12570,7 +12570,7 @@ pgwire ENGINE route streams the engine's result set lazily instead of materializ
 
 **Use case:** Streaming prevents OOM on large result sets by deferring row materialization to the client's consumption rate. SaaS deployments with resource-constrained pods require all user-facing query results to stream unbounded data.
 
-**Code:** `provisa/pgwire/server.py`, `provisa/pgwire/_pipeline.py`, `provisa/pgwire/result_shape.py`, `provisa/federation/runtime.py`
+**Code:** `provisa/pgwire/server.py`, `provisa/pgwire/_pipeline.py`, `provisa/compiler/result_shape.py`, `provisa/federation/runtime.py`
 
 **Tests:** `tests/unit/test_pgwire_lazy_result.py`, `tests/integration/test_pgwire_integration.py`, `tests/integration/test_preflight_streaming.py`, `tests/e2e/test_preflight_streaming_e2e.py`
 
@@ -13148,7 +13148,7 @@ Every credential (API key / token / session) is scoped to exactly one organizati
 
 **Code:** `provisa/auth/middleware.py`
 
-**Tests:** `tests/integration/test_auth_org_scoping.py`, `tests/unit/test_auth_middleware.py`
+**Tests:** `tests/unit/test_auth_middleware.py`
 
 ### REQ-1233 · Org Identity & Subdomain Addressing {#REQ-1233}
 
@@ -13200,7 +13200,7 @@ For wire protocols, the credential is org-scoped (per [REQ-1232](#REQ-1232)), so
 
 **Code:** `provisa/pgwire/server.py`, `provisa/bolt/server.py`, `provisa/auth/middleware.py`
 
-**Tests:** `tests/integration/test_wire_sni_cross_check.py`
+**Tests:** —
 
 ### REQ-1237 · Org Identity & Subdomain Addressing {#REQ-1237}
 
@@ -13212,7 +13212,7 @@ OIDC/social identity is person-scoped; Provisa mints the org-scoped session. Goo
 
 **Code:** `provisa/auth/providers/oauth.py:74-80`, `provisa/auth/providers/keycloak.py:68-70`, `provisa/auth/middleware.py:240-280`
 
-**Tests:** `tests/integration/test_oidc_to_org_session.py`
+**Tests:** —
 
 ### REQ-1238 · Org Identity & Subdomain Addressing {#REQ-1238}
 
@@ -13224,7 +13224,7 @@ The `x-org-id` header path in provisa/auth/middleware.py:252-253 currently passe
 
 **Code:** `provisa/auth/middleware.py:251-253`
 
-**Tests:** `tests/integration/test_x_org_id_validation.py`, `tests/unit/test_auth_middleware.py`
+**Tests:** `tests/unit/test_auth_middleware.py`
 
 ### REQ-1239 · Deployment & Infrastructure {#REQ-1239}
 
@@ -13236,7 +13236,7 @@ Wildcard TLS for `*.provisa.dev` via ACME DNS-01. Obtain a true wildcard `*.prov
 
 **Code:** `packaging/linux/first-launch.sh:443-451`, `provisa/api/app.py`, `provisa/pgwire/server.py`, `provisa/bolt/server.py`, `terraform/gcp/scripts/issue-wildcard-cert.sh`
 
-**Tests:** `tests/integration/test_wildcard_cert_provisioning.py`, `tests/e2e/test_acme_dns01_renewal.py`
+**Tests:** —
 
 ### REQ-1240 · Deployment & Infrastructure {#REQ-1240}
 
@@ -13248,7 +13248,7 @@ Cloudflare DNS split: Zone `provisa.dev` stays on Cloudflare. `provisa.dev` + `w
 
 **Code:** `packaging/linux/first-launch.sh`, `terraform/gcp-saas/dns.tf`
 
-**Tests:** `tests/integration/test_dns_split_routing.py`
+**Tests:** —
 
 ### REQ-1241 · Deployment & Infrastructure {#REQ-1241}
 
@@ -13260,7 +13260,7 @@ A session is always scoped to exactly one org and therefore one federation engin
 
 **Code:** `provisa/api/app.py:270`, `provisa/api/_query_helpers.py:126`
 
-**Tests:** `tests/unit/test_session_org_invariant.py`
+**Tests:** —
 
 ### REQ-1242 · Deployment & Infrastructure {#REQ-1242}
 
@@ -13272,7 +13272,7 @@ In-session org switch (e.g., click "switch to acme" in UI) [SUPERSEDED by [REQ-1
 
 **Code:** `provisa/api/auth_router.py`, `provisa/auth/middleware.py`
 
-**Tests:** `tests/integration/test_org_switch_ergonomic.py`, `provisa-ui/e2e/org-switcher.spec.ts`
+**Tests:** —
 
 ### REQ-1243 · Deployment & Infrastructure {#REQ-1243}
 
@@ -13308,7 +13308,7 @@ Control-plane persistence is required for multi-instance fleet deployments. The 
 
 **Code:** `provisa/control_plane/store.py:16`, `provisa/core/database.py`, `provisa/core/schema_admin.py`
 
-**Tests:** `tests/integration/test_control_plane_persistence.py`, `tests/integration/test_multi_instance_coordination.py`
+**Tests:** —
 
 ## 2. Authentication & Identity
 
@@ -13322,7 +13322,7 @@ First verified Firebase login provisions a user_profile record, decoupled from t
 
 **Code:** `provisa/api/auth_router.py`, `provisa/auth/`, `provisa/core/schema_admin.py`, `provisa/auth/middleware.py`
 
-**Tests:** `tests/integration/test_firebase_signup.py`, `tests/unit/test_firebase_user_provisioning.py`
+**Tests:** —
 
 ## 10. UI & Admin Surfaces
 
@@ -13336,7 +13336,7 @@ Self-service signup landing on cloud.provisa.dev presents two options to a not-l
 
 **Code:** —
 
-**Tests:** `provisa-ui/e2e/auth-landing.spec.ts`
+**Tests:** —
 
 ## 13. Multi-Tenancy & Organizations
 
@@ -13386,7 +13386,7 @@ Admin approval/denial of org_join_requests. When an admin approves a request, th
 
 **Code:** `provisa/api/admin/orgs_router.py`, `provisa/api/auth_router.py`
 
-**Tests:** `tests/integration/test_org_join_request_approval.py`
+**Tests:** —
 
 ## 10. UI & Admin Surfaces
 
@@ -13400,7 +13400,7 @@ Admin UI surface (extend OrgsTab.tsx / add admin router endpoint) to list pendin
 
 **Code:** `provisa-ui/src/components/admin/OrgsTab.tsx`, `provisa/api/admin/orgs_router.py`
 
-**Tests:** `provisa-ui/e2e/admin-join-requests.spec.ts`
+**Tests:** —
 
 ## 11. Platform, Infrastructure & Delivery
 
@@ -14550,7 +14550,7 @@ UI language is selected solely from the browser's navigator.language setting (re
 
 **Code:** `provisa-ui/src/i18n/index.ts`
 
-**Tests:** `provisa-ui/e2e/i18n.spec.ts`, `provisa-ui/src/__tests__/i18nLanguageSelection.test.ts`
+**Tests:** `provisa-ui/src/__tests__/i18nLanguageSelection.test.ts`
 
 ## 13. Multi-Tenancy & Organizations
 
@@ -14904,7 +14904,7 @@ Standardize "metadata export" terminology: module path provisa/api/metadata_expo
 
 **Use case:** Consistent naming across code, config, API, and UI reduces cognitive load and improves discoverability for users and maintainers.
 
-**Code:** `provisa/api/metadata_export/`, `provisa/api/admin/metadata_export_router.py`, `provisa/control_plane/entitlements.py`, `provisa-ui/src/components/admin/MetadataExportTab.tsx`, `docs/metadata-export.md`
+**Code:** `provisa/api/metadata_export/`, `provisa/api/admin/syncing_router.py`, `provisa/control_plane/entitlements.py`, `provisa-ui/src/components/admin/syncing/SyncingTab.tsx`, `docs/metadata-export.md`
 
 **Tests:** —
 
@@ -16252,7 +16252,7 @@ Write authority is granted into an environment and never carried between environ
 
 **Code:** `provisa/core/env_copy.py`, `provisa/security/mutation_authz.py`, `provisa/security/rights.py`, `provisa/core/repositories/table.py`
 
-**Tests:** `tests/unit/test_env_write_authority.py`
+**Tests:** —
 
 ### REQ-1493 · Environments {#REQ-1493}
 
@@ -16304,7 +16304,7 @@ An environment's governed model is versioned as immutable builds, which is what 
 
 **Code:** `provisa/api/admin/environments_router.py`, `provisa/cli.py`, `provisa/core/env_approvals.py`, `provisa/core/env_copy.py`, `provisa/core/env_deploy.py`, `provisa/core/env_repo.py`
 
-**Tests:** `tests/integration/test_env_deploy.py`, `tests/integration/test_env_deploy_approvals.py`, `tests/unit/test_env_builds.py`, `tests/unit/test_env_deploy_endpoint.py`
+**Tests:** `tests/integration/test_env_deploy.py`, `tests/integration/test_env_deploy_approvals.py`, `tests/unit/test_env_deploy_endpoint.py`
 
 **Docs:** [cli.md](../cli.md)
 
@@ -16344,7 +16344,7 @@ An organization may replicate an environment whole -- bindings, secrets, users a
 
 **Code:** `provisa/core/env_copy.py`, `provisa/api/admin/environments_router.py`
 
-**Tests:** `tests/unit/test_env_replicate.py`
+**Tests:** —
 
 ### REQ-1500 · Environments {#REQ-1500}
 
@@ -16356,7 +16356,7 @@ A non-prod environment can be exported as a configuration a desktop Provisa load
 
 **Code:** `provisa/core/environments.py`
 
-**Tests:** `tests/unit/test_env_export.py`
+**Tests:** —
 
 ### REQ-1501 · Environments {#REQ-1501}
 
@@ -16444,7 +16444,7 @@ Environments are gated by an entitlement feature, not by a product name. The gat
 
 **Code:** `provisa/control_plane/entitlements.py`, `provisa/core/environments.py`, `provisa/api/admin/environments_router.py`, `provisa-ui/src/components/admin/BillingTab.tsx`
 
-**Tests:** `tests/unit/test_env_entitlement.py`
+**Tests:** —
 
 **Docs:** [environments.md](../environments.md)
 
@@ -17428,7 +17428,7 @@ The ERD draws a junction-backed relationship ([REQ-1586](#REQ-1586)) through the
 
 **Use case:** A modeller opening the ERD sees that pets relate to pets through pet_companions, and which three relationship types that associative table carries.
 
-**Code:** `provisa-ui/src/components/erd/erd-model.ts`, `provisa-ui/src/components/erd/sections/erd-stylesheet.ts`, `provisa-ui/src/components/erd/sections/erd-palette.ts`, `provisa-ui/src/types/admin.ts`, `provisa-ui/src/hooks/admin.graphql`, `provisa/api/admin/types.py`, `provisa/api/admin/_row_mappers.py`
+**Code:** `provisa-ui/src/components/erd/erd-model.ts`, `provisa-ui/src/components/erd/erd-graph.ts`, `provisa-ui/src/types/admin.ts`, `provisa-ui/src/hooks/admin.graphql`, `provisa/api/admin/types.py`, `provisa/api/admin/_row_mappers.py`
 
 **Tests:** `provisa-ui/src/__tests__/erd-model.test.ts`, `tests/integration/test_schema_query_api.py`
 
@@ -17520,7 +17520,7 @@ A MEMBERSHIP MAY BE CONFINED TO ONE ENVIRONMENT, AND THE CONFINEMENT IS WHAT MAK
 
 **Code:** `provisa/core/db.py`, `provisa/core/schema.sql`, `provisa/core/org_invite.py`, `provisa/core/env_copy.py`, `provisa/core/env_create.py`, `provisa/api/invite_env.py`, `provisa/api/admin/invites_router.py`
 
-**Tests:** `tests/unit/test_sandbox_role_seed.py`, `tests/unit/test_open_invite.py`
+**Tests:** `tests/unit/test_open_invite.py`
 
 ### REQ-1598 · Multi-Tenancy & Organizations {#REQ-1598}
 
@@ -17572,7 +17572,7 @@ A ROLE MAY BE SHOWN A RIGHT IT DOES NOT HOLD. Alongside its capabilities, a role
 
 **Code:** `provisa/core/schema.sql`, `provisa/core/schema_org.py`, `provisa/core/db.py`, `provisa/api/admin/roles_router.py`, `provisa-ui/src/components/DemonstratedFeature.tsx`, `provisa-ui/src/components/CapabilityGate.tsx`, `provisa-ui/src/lib/capabilities.ts`, `provisa-ui/src/context/AuthContext.tsx`, `provisa-ui/src/components/EnvSwitcher.tsx`
 
-**Tests:** `provisa-ui/src/__tests__/CapabilityGate.test.tsx`, `provisa-ui/src/__tests__/DemonstratedUnion.test.ts`, `provisa-ui/src/__tests__/EnvSwitcher.test.tsx`, `tests/unit/test_sandbox_role_seed.py`, `tests/integration/test_invite_env_capture.py`
+**Tests:** `provisa-ui/src/__tests__/CapabilityGate.test.tsx`, `provisa-ui/src/__tests__/DemonstratedUnion.test.ts`, `provisa-ui/src/__tests__/EnvSwitcher.test.tsx`, `tests/integration/test_invite_env_capture.py`
 
 ### REQ-1603 · Access Governance & Security {#REQ-1603}
 
@@ -17984,9 +17984,9 @@ New bigquery_dataplex.py MetadataExport adapter, the BigQuery counterpart to [RE
 
 **Use case:** Lets a data product declared in Provisa also show up as a consumable listing of its own inside BigQuery's own catalog/marketplace surface (Dataplex + Analytics Hub) via the same metadata-export pipeline that already populates external metadata tools and Snowflake Horizon ([REQ-1635](#REQ-1635)).
 
-**Code:** `provisa/api/metadata_export/bigquery_dataplex.py`, `provisa/api/metadata_export/builder.py`, `provisa/federation/bigquery_runtime.py`
+**Code:** `provisa/api/metadata_export/dataplex.py`, `provisa/api/metadata_export/builder.py`, `provisa/federation/bigquery_runtime.py`
 
-**Tests:** `tests/steps/steps_data_products.py`, `tests/unit/test_metadata_export_engine_native.py`
+**Tests:** `tests/steps/steps_data_products.py`, `tests/unit/test_metadata_export_dataplex.py`
 
 **Docs:** [metadata-export.md](../metadata-export.md)
 
@@ -18158,7 +18158,7 @@ MetadataSnapshot.org_id must serve dual roles: (1) as a required real tenant/sys
 
 **Use case:** Merging org_id into a single parameter breaks BigQuery Dataplex and other adapters' runtime resolution and namespace construction if set to None. Separation preserves correctness of adapter-specific logic while allowing URI display customization per deployment topology.
 
-**Code:** `provisa/api/metadata_export/model.py`, `provisa/api/metadata_export/builder.py`, `provisa/api/metadata_export/refs.py`, `provisa/api/metadata_export/bigquery_dataplex.py`, `provisa/api/metadata_export/atlas.py`, `provisa/api/metadata_export/atlan.py`, `provisa/api/metadata_export/datahub.py`, `provisa/api/metadata_export/openlineage.py`, `provisa/api/metadata_export/openmetadata.py`, `provisa/api/metadata_export/workbook.py`
+**Code:** `provisa/api/metadata_export/model.py`, `provisa/api/metadata_export/builder.py`, `provisa/api/metadata_export/refs.py`, `provisa/api/metadata_export/dataplex.py`, `provisa/api/metadata_export/atlas.py`, `provisa/api/metadata_export/atlan.py`, `provisa/api/metadata_export/datahub.py`, `provisa/api/metadata_export/openlineage.py`, `provisa/api/metadata_export/openmetadata.py`, `provisa/api/metadata_export/workbook.py`
 
 **Tests:** `tests/unit/test_metadata_snapshot_builder.py`
 
@@ -18282,7 +18282,7 @@ BigQuery gains the eager landing terminal the other native stores have: the land
 
 **Use case:** Without an eager terminal a BigQuery deployment had no landed catalog until the first refresh, no keys or descriptions in the BigQuery console, and the Analytics Hub export never ran.
 
-**Code:** `provisa/federation/bigquery_store.py`, `provisa/federation/bigquery_runtime.py`, `provisa/api/metadata_export/bigquery_dataplex.py`
+**Code:** `provisa/federation/bigquery_store.py`, `provisa/federation/bigquery_runtime.py`, `provisa/api/metadata_export/dataplex.py`
 
 **Tests:** `tests/unit/test_bigquery_store.py`
 
@@ -18298,9 +18298,9 @@ A Data Product's catalog listing links back to the product's page in Provisa, wh
 
 **Use case:** A consumer reading the listing in Snowsight or the Analytics Hub console can reach the product's owner, members, lineage and terms in one click instead of searching for it in Provisa.
 
-**Code:** `provisa/core/mail.py`, `provisa/api/metadata_export/builder.py`, `provisa/api/metadata_export/publishing.py`, `provisa/api/metadata_export/snowflake_horizon.py`, `provisa/api/metadata_export/bigquery_dataplex.py`, `provisa-ui/src/pages/DataProductsPage.tsx`
+**Code:** `provisa/core/mail.py`, `provisa/api/metadata_export/builder.py`, `provisa/api/metadata_export/publishing.py`, `provisa/api/metadata_export/snowflake_horizon.py`, `provisa/api/metadata_export/dataplex.py`, `provisa-ui/src/pages/DataProductsPage.tsx`
 
-**Tests:** `tests/unit/test_mail_port.py`, `tests/unit/test_metadata_snapshot_builder.py`, `tests/unit/test_snowflake_horizon_export.py`, `tests/unit/test_metadata_export_engine_native.py`, `provisa-ui/src/pages/__tests__/data-products-deep-link.test.tsx`
+**Tests:** `tests/unit/test_mail_port.py`, `tests/unit/test_metadata_snapshot_builder.py`, `tests/unit/test_snowflake_horizon_export.py`, `tests/unit/test_metadata_export_dataplex.py`, `provisa-ui/src/pages/__tests__/data-products-deep-link.test.tsx`
 
 **Docs:** [metadata-export.md](../metadata-export.md)
 
@@ -19496,9 +19496,9 @@ provisa-ui/e2e/demo-source-containers.ts hardcoded its Docker Compose project pr
 
 **Use case:** Running multiple isolated core-lane e2e suites concurrently on one host (this session's own fanned-out multi-agent verification workflow) must not have them collide on shared Docker fixture identity, only on genuinely shared host resources (memory/CPU), which is a separate, expected constraint to budget around rather than eliminate.
 
-**Code:** `provisa-ui/e2e/demo-source-containers.ts`, `provisa-ui/e2e/neo4j-container.ts`
+**Code:** `provisa-ui/e2e/demo-source-containers.ts`
 
-**Tests:** `provisa-ui/e2e/source-to-query.spec.ts`, `provisa-ui/e2e/neo4j-docker-export.spec.ts`
+**Tests:** `provisa-ui/e2e/source-to-query.spec.ts`, `tests/integration/test_demo_http_surfaces_e2e.py`
 
 ## 4. Source Connectors
 
@@ -21354,7 +21354,7 @@ One rule governs the deletion of every kind of object. An object has parts and d
 
 **Code:** `provisa/core/repositories/integrity.py`
 
-**Tests:** `tests/unit/test_model_store_guard.py`, `tests/integration/test_model_store_guard_pg.py`
+**Tests:** `tests/unit/test_model_store_guard.py`
 
 ## 11. Platform, Infrastructure & Delivery
 
@@ -21442,7 +21442,7 @@ A source's write operations are registered as commands one at a time, the way it
 
 **Code:** `provisa/executor/source_operation.py`, `provisa/executor/function_dispatch.py`, `provisa/api/admin/actions_router.py`, `provisa/api/data/action_exec.py`, `provisa/api/data/table_written.py`, `provisa/pgwire/_pipeline.py`
 
-**Tests:** `tests/unit/test_source_operation_commands.py`, `tests/unit/test_replica_build_after_write.py`, `provisa-ui/src/__tests__/CommandFormFields.test.tsx`, `provisa-ui/e2e/source-operation-commands.spec.ts`
+**Tests:** `tests/unit/test_source_operation_commands.py`, `tests/unit/test_replica_build_after_write.py`, `provisa-ui/src/__tests__/CommandFormFields.test.tsx`, `tests/integration/test_demo_http_surfaces_e2e.py`
 
 **Docs:** [commands.md](../commands.md), [remote-schemas.md](../remote-schemas.md), [security.md](../security.md)
 
@@ -21864,9 +21864,9 @@ Materialized and cached data isolation via per-tenant S3 prefixes: DuckDB, Parqu
 
 NL-assisted table candidate discovery for registration. When a registered source has a large schema (hundreds or thousands of tables), stewards search across registered source schemas — table names, column names, descriptions — using natural language ("customer invoicing and payment tables"). A two-pass approach: fast fuzzy text filter narrows candidates, then LLM (haiku) provides semantic ranking with confidence scores. Steward judgment is required: the feature surfaces candidates and does not claim them. Implementation in admin API and unclaimed tables UI. The search reads an index of each source. Table names are indexed when the source is installed. Column names are filled in afterwards, a schema at a time, by one rule for every kind of source, so a search made soon after install may not find a table by a column name; the answer says whether table names are complete and whether column names are complete, still loading or unavailable. Selecting a table reads its columns from the source at once, whatever the index holds, and records them in the index. (Amended 2026-11-15, A MODEL HAS AN INPUT LIMIT AND AN OUTPUT LIMIT:) Maintainer 2026-11-15. Each assigned model on the AI models page shows two limits, in tokens: the most it can read in one request and the longest answer it can write. A model Provisa knows is prefilled from the vendor's published figures and can be changed; a model it does not know uses a default pair (32,000 in, 4,096 out), shown in the same fields and marked as the default. Text is converted to tokens at one fixed ratio, 3 characters per token. There is no spending cap per request.
 
-**Code:** `provisa/discovery/table_search.py`, `provisa/api/admin/table_search_router.py`, `provisa/discovery/catalog_cache.py`, `provisa-ui/src/pages/tables/NlTableSearch.tsx`
+**Code:** `provisa/discovery/table_search.py`, `provisa/api/admin/table_search_router.py`, `provisa/discovery/catalog_cache.py`
 
-**Tests:** `tests/unit/test_table_search.py`, `provisa-ui/src/pages/tables/__tests__/NlTableSearch.test.tsx`
+**Tests:** `tests/unit/test_table_search.py`
 
 **Docs:** [api-reference.md](../api-reference.md), [architecture.md](../architecture.md)
 
@@ -22414,7 +22414,7 @@ The Admin/Orgs page is superadmin-only, enforced by an `isSuperAdmin` gate that 
 
 ERD modal: The Entity Relationship Diagram is presented as a modal dialog (not an inline panel or separate page), rendering a Cytoscape-based visualization of all registered tables and their relationships. Modal is self-contained, no new backend endpoints required; data sourced from existing `useTables`, `useRelationships`, and `useDomains` hooks. ERD modal is reachable via a toolbar button on both the Tables page (`provisa-ui/src/pages/TablesPage.tsx`) and the Relationships page (`provisa-ui/src/pages/RelationshipsPage.tsx`). | Toolbar-accessible ERD modal lets stewards explore table schemas and relationships without context-switching. | provisa-ui/src/components/graph/CytoscapeErd.tsx, provisa-ui/src/pages/TablesPage.tsx, provisa-ui/src/pages/RelationshipsPage.tsx | tests/e2e/test_erd_modal.py
 
-**Code:** `provisa-ui/src/components/erd/ErdModal.tsx`, `provisa-ui/src/components/erd/ErdPanel.tsx`, `provisa-ui/src/pages/TablesPage.tsx`, `provisa-ui/src/pages/RelationshipsPage.tsx`
+**Code:** `provisa-ui/src/components/erd/ErdPanel.tsx`, `provisa-ui/src/pages/TablesPage.tsx`, `provisa-ui/src/pages/RelationshipsPage.tsx`
 
 **Tests:** —
 
@@ -22960,7 +22960,7 @@ A registered table's SQL address is unique within its domain. The address is the
 
 **Code:** `provisa/compiler/naming.py`, `provisa/compiler/schema_gen.py`, `provisa/core/repositories/table.py`, `provisa/core/config_loader.py`, `provisa/api/admin/schema_mutation_ops.py`, `provisa/api/admin/schema_mutation.py`
 
-**Tests:** `tests/unit/test_sql_address_one_per_domain.py`, `tests/unit/test_naming.py`, `tests/unit/test_load_manages_what_config_declared.py`, `tests/integration/test_sql_address_one_per_domain_api.py`
+**Tests:** `tests/unit/test_sql_address_one_per_domain.py`, `tests/unit/test_naming.py`, `tests/integration/test_sql_address_one_per_domain_api.py`
 
 ## 4. Source Connectors
 
@@ -23736,7 +23736,7 @@ The external MCP server reaches the graph surface as the UI does. run_cypher run
 
 **Use case:** An agent connected to Provisa over MCP asks a graph question and gets back the graph as rows, as elements, and as a picture that matches what the Provisa graph page would show.
 
-**Code:** `provisa/api/mcp/tools.py`, `provisa/api/mcp/server.py`, `provisa/core/settings_catalog.py`, `provisa-ui/graph-render/src/draw.ts`, `provisa-ui/graph-render/src/look.ts`, `provisa-ui/graph-render/src/main.ts`, `provisa-ui/src/components/erd/erd-layout-options.ts`, `Dockerfile`
+**Code:** `provisa/api/mcp/tools.py`, `provisa/api/mcp/server.py`, `provisa/core/settings_catalog.py`, `provisa-ui/graph-render/src/draw.ts`, `provisa-ui/graph-render/src/look.ts`, `provisa-ui/graph-render/src/main.ts`, `provisa-ui/src/components/erd/ErdLayoutMenu.tsx`, `Dockerfile`
 
 **Tests:** `tests/unit/test_mcp_graph_tools.py`, `tests/integration/test_render_graph_node_e2e.py`, `provisa-ui/graph-render/test/render.test.mjs`, `provisa-ui/src/components/graph/__tests__/graphRenderLook.test.ts`
 
@@ -24536,7 +24536,7 @@ A feature demo, data profiling: The built-in Data Profiler ([REQ-1934](#REQ-1934
 
 **Code:** —
 
-**Tests:** `tests/unit/test_profile_carry.py`, `tests/unit/test_demo_template_profiles.py`, `tests/integration/test_profiling_sandbox_e2e.py`
+**Tests:** `tests/unit/test_profile_carry.py`, `tests/unit/test_demo_template_profiles.py`, `tests/integration/test_profiling_demo.py`, `tests/integration/test_sandbox_visitor_walk.py`
 
 ### REQ-2053 · UI {#REQ-2053}
 
@@ -24548,7 +24548,7 @@ A feature demo, environments and test data: The model's git-branch environments 
 
 **Code:** `demo/named/testdata/config.yaml`, `demo/named/testdata/setup.yaml`, `demo/named/testdata/tour.yaml`, `demo/named/testdata/generate.py`, `scripts/run_demo_setup.py`, `start-ui-install.sh`, `provisa-ui/src/tour/demoTour.ts`, `provisa/api/demo_templates.py`, `provisa/api/demo_sandbox.py`, `provisa/auth/pat.py`
 
-**Tests:** `tests/integration/test_testdata_demo.py`, `tests/integration/test_demo_sandboxes_e2e.py`, `tests/unit/test_env_credentials.py`, `tests/unit/test_sandbox_role_seed.py`, `tests/unit/test_demo_setup.py`, `tests/unit/test_named_demo_tour.py`, `provisa-ui/src/__tests__/tourDemoTrack.test.tsx`
+**Tests:** `tests/integration/test_testdata_demo.py`, `tests/integration/test_demo_sandboxes_e2e.py`, `tests/unit/test_env_credentials.py`, `tests/unit/test_demo_setup.py`, `tests/unit/test_named_demo_tour.py`, `provisa-ui/src/__tests__/tourDemoTrack.test.tsx`
 
 ## 9. Live Data & Events
 
@@ -25234,9 +25234,9 @@ A Node or Python code source's tables are reached two more ways beside landing (
 
 **Use case:** A data team's pricing function returns quotes with a score column: an analyst filters WHERE score >= 0.8 ORDER BY score DESC LIMIT 10 and joins the quotes to the warehouse's customers; the single-table read is answered by the host directly, the join by the engine attaching the host, and the function's author wrote no filtering, sorting or SQL.
 
-**Code:** `provisa/codesource/pushdown.py`, `provisa/codesource/names.py`, `provisa/codesource/manifest.py`, `provisa/python/reader.py`, `provisa/node/reader.mjs`, `provisa/codehost/residual.py`, `provisa/codehost/front.py`, `provisa/codehost/front_requirements.txt`, `provisa/codesource/image_build.py`, `provisa/codesource/builds.py`, `provisa/codesource/remote.py`, `provisa/codesource/direct.py`, `provisa/codesource/worker.py`, `provisa/transpiler/router.py`, `provisa/api/data/materialization.py`, `provisa/pgwire/_pipeline.py`, `provisa/codehost/pgfront.py`, `provisa/codehost/pgcatalog.py`, `provisa/codesource/attach.py`, `provisa/codesource/engine_identity.py`, `provisa/federation/codehost_connectors.py`, `provisa/federation/k8s_provisioner.py`, `provisa/core/trino_catalog_files.py`, `docker-compose.app.yml`, `docker-compose.core.yml`, `provisa/codesource/loader.py`, `provisa/codesource/table.py`, `provisa/python/host.py`, `provisa/node/host-core.mjs`
+**Code:** `provisa/codesource/names.py`, `provisa/codesource/manifest.py`, `provisa/python/reader.py`, `provisa/node/reader.mjs`, `provisa/codehost/residual.py`, `provisa/codehost/front.py`, `provisa/codehost/front_requirements.txt`, `provisa/codesource/image_build.py`, `provisa/codesource/builds.py`, `provisa/codesource/remote.py`, `provisa/codesource/direct.py`, `provisa/codesource/worker.py`, `provisa/transpiler/router.py`, `provisa/api/data/materialization.py`, `provisa/pgwire/_pipeline.py`, `provisa/codehost/pgfront.py`, `provisa/codehost/pgcatalog.py`, `provisa/codesource/attach.py`, `provisa/codesource/engine_identity.py`, `provisa/federation/codehost_connectors.py`, `provisa/federation/k8s_provisioner.py`, `provisa/core/trino_catalog_files.py`, `docker-compose.app.yml`, `docker-compose.core.yml`, `provisa/codesource/loader.py`, `provisa/codesource/table.py`, `provisa/python/host.py`, `provisa/node/host-core.mjs`
 
-**Tests:** `tests/unit/test_code_pushdown.py`, `tests/unit/test_code_direct.py`, `tests/unit/test_code_remote_host.py`, `tests/unit/test_code_remote_host_node.py`, `tests/unit/test_code_image_build.py`, `tests/integration/test_code_source_built_host_trino.py`, `tests/unit/test_code_loader.py`, `tests/unit/test_node_host_argument_sets.py`
+**Tests:** `tests/unit/test_code_direct.py`, `tests/unit/test_code_remote_host.py`, `tests/unit/test_code_remote_host_node.py`, `tests/unit/test_code_image_build.py`, `tests/unit/test_code_loader.py`, `tests/unit/test_node_host_argument_sets.py`
 
 **Docs:** [code-sources.md](../code-sources.md)
 
@@ -25462,7 +25462,7 @@ The data product export publishes Provisa's data products as listings in the int
 
 **Code:** —
 
-**Tests:** `tests/unit/test_metadata_export_odps_fields.py`, `tests/unit/test_metadata_export_odps_odcs.py`, `tests/unit/test_metadata_export_provider.py`, `tests/unit/test_metadata_export_admin_surface.py`, `provisa-ui/src/__tests__/MetadataExportTab.test.tsx`, `tests/integration/test_metadata_export_wiring.py`, `tests/unit/test_metadata_export_dataplex.py`, `tests/unit/test_bigquery_store.py`, `tests/integration/test_metadata_export_dataplex_e2e.py`, `tests/unit/test_metadata_export_purview.py`, `tests/integration/test_metadata_export_purview_e2e.py`, `tests/unit/test_metadata_export_datazone.py`, `tests/integration/test_metadata_export_datazone_e2e.py`
+**Tests:** `tests/unit/test_metadata_export_odps_fields.py`, `tests/unit/test_metadata_export_odps_odcs.py`, `tests/unit/test_metadata_export_provider.py`, `tests/unit/test_syncing_admin_surface.py`, `provisa-ui/src/__tests__/SyncingTab.test.tsx`, `tests/integration/test_metadata_export_wiring.py`, `tests/unit/test_metadata_export_dataplex.py`, `tests/unit/test_bigquery_store.py`, `tests/integration/test_metadata_export_dataplex_e2e.py`, `tests/unit/test_metadata_export_purview.py`, `tests/integration/test_metadata_export_purview_e2e.py`, `tests/unit/test_metadata_export_datazone.py`, `tests/integration/test_metadata_export_datazone_e2e.py`
 
 ### REQ-2119 · Data Catalog Integration {#REQ-2119}
 
@@ -25862,7 +25862,7 @@ A feature that works but is not yet proven for production, such as a metadata ex
 
 **Code:** —
 
-**Tests:** `provisa-ui/src/__tests__/CatalogsTab.test.tsx`
+**Tests:** `provisa-ui/src/__tests__/SyncingTab.test.tsx`
 
 ## 11. Platform, Infrastructure & Delivery
 
@@ -26158,7 +26158,7 @@ Cypher's temporal values are read as openCypher defines them. A duration is a va
 
 Every 3D stage (BaseScene: the graph explorer, the inline product graph, the Ontology View and the profile graphs) shows the most information it can from where it looks. After its layout settles, and whenever the data or layout changes, the stage computes a best view: the principal axes of the node positions give a first direction (looking along the axis of least spread), refined by scoring evenly spread candidate directions on the projected scene for hidden nodes, crossing edges, the smallest on-screen gap between nodes and overlapping labels. Looseness is set against that view: node and label sizes are scaled so the smallest on-screen gap is at least a label's width, and the layout is re-run only where sizing cannot meet it. When turning pauses on idle ([REQ-2123](#REQ-2123)), the camera eases to the best view instead of stopping where it was; an active turn rotates about the axis that keeps the most-spread plane facing the viewer. Under prefers-reduced-motion the stage opens at the best view with no easing. Where no view can show a dense part without overlap, the stage does not hide it: filtering and focus on a selected node's neighbourhood remain the way to read it. (Amended 2026-10-27, A 2D OPTION ON EVERY NETWORK GRAPH:) Maintainer 2026-10-27: every 3D network graph (the graph explorer, the inline product graph, the Ontology View and the Product map) offers a 2D/3D toggle. In 2D the same stage lays the graph out flat and locks a face-on orthographic camera with pan and zoom and no turning; selection, expansion and the detail panel work the same. Each graph remembers the choice per user. The label-spacing rule above applies in 2D as in 3D. (Amended 2026-10-27, A LAYERED LAYOUT WHERE EDGES HAVE DIRECTION:) Maintainer 2026-10-27: every network graph can be laid out in layers. Each edge kind is one of three classes: RANKS (one end above the other: term KIND_OF, PART_OF and VALID_VALUE_OF; domain to table; product to member table; table to column; term to the columns bound to it; a command, check or profile under its table), FLOWS (one end before the other: lineage, column lineage, term DERIVED_FROM and REPLACES) or LATERAL (neither: term RELATED_TO, SYNONYM_OF, PREFERRED_TERM_FOR, TRANSLATION_OF and ANTONYM_OF; a relationship between tables; a tag). A layered layout places each node one level below the deepest node ranking or flowing into it, every parent kept (a node with two parents sits under both, not under one), orders each level by sweeps that cut crossings, and ignores an edge that closes a cycle; ranks run top-down and flows left-to-right. Lateral edges are drawn as arcs laid over the rank and flow edges and never move a node. When a view opens, the layout is layered if its drawn rank and flow edges are all of one class and form no cycle, else force; a Force/Layered control lets the reader override it, Layered disabled where a cycle makes it impossible. A layered layout is flat in 3D as the tree is. It extends today's tree layout (the Taxonomy preset becomes a layered view) and holds in both the 2D and 3D views. (Amended 2026-10-27, THE 2D VIEW IS A LANE DIAGRAM:) 2026-10-28: the Graph panel's 2D view is a lane diagram read left to right: the term hierarchy, then the columns its terms bind, then their tables, then the products those tables belong to. Inside the term lane only rank edges (kind of, part of, valid value of) are drawn, top-down; a chain ends at the columns that bind it. A table's unbound columns are one '+N columns' node that expands in place on a click. The product lane is optional: a table in no product ends at the tables lane, and on the Ontology preset every product the tables belong to is shown. Lateral and flow edges and lineage are not drawn in this view. It is the existing graph view laid out with ELK's layered algorithm in fixed lane partitions, so every interaction (clicking through to a node's page, hover, selection, the detail panel) is kept, and its diagram can be copied as Mermaid text. The 3D view stays the free-form explorer. (Amended 2026-10-27, EVERY LANE NODE INFORMS AND LINKS:) 2026-10-28: every node of the lane diagram carries what helps a reader understand and move on, in its hover card and the detail panel, with each name a link to its own page: a term its definition, status and steward; a column its type, its sensitivity or mask, its description and its table's column; a table its domain, source, freshness or row count where known, and quality status; a product its status, owner and member count; and a '+N columns' node the names of the columns it holds. (Amended 2026-10-27, 2D SHOWS ONLY 2D CONTROLS:) 2026-10-28: in 2D the lane diagram is the only layout, so the layout toggle is not shown, and no control that applies only to the 3D view appears; those controls show only when 3D is selected. (Amended 2026-10-27, ONE ONTOLOGY GRAPH; EVERY OTHER GRAPH IS A SNIPPET OF IT:) 2026-10-28: there is one graph, the model's ontology in lanes (terms, the columns they bind, their tables, the products those tables belong to), drawn by one component. Every other graph is a snippet of it, named by a focus and a depth: a term's page opens it focused on that term (its ancestors and descendants, and the columns, tables and products it reaches); a product's panel opens it focused on that product; a domain or tag filter narrows it; the Ontology page shows it whole. The component's options are focus, depth, domains, tags, whether lateral edges are drawn, and 2D or 3D. [SUPERSEDED by REQ-2174 A TERM OPENS ON ITSELF, 2026-11-11 -- expanding a term opens on that term alone, as a product does. Kept here for history; do not implement against it.] Expanding a snippet opens the whole ontology with the same focus selected. [END SUPERSEDED BLOCK] The separate term graph and product graph implementations are replaced by these presets. (Amended 2026-10-27, THE ONE GRAPH'S PRESETS AND LAYERS:) 2026-10-28: a snippet is a glance (2D or 3D, depth 1 to 4 hops, and expand; no filters or detail panel), and clicking a node in a snippet opens that node's page. Lateral edges are drawn by default, their toggle shown in 3D. [SUPERSEDED by REQ-2174 THE PRODUCT MAP OPENS ON PRODUCTS, 2026-11-12 -- the Product map opens on products, their tables and the links between products, not on the whole ontology. Kept here for history; do not implement against it.] The Product map is the whole ontology with the Data layer on and its own remembered settings. [END SUPERSEDED BLOCK] Nothing the product graph showed is lost: the one graph has optional layers for a product's commands, its quality checks, links to other products and product lineage, off by default in snippets and available in the full view. (Amended 2026-10-28, EDGES THAT DO NOT GROUND ARE DOTTED:) In every graph that shows term edges (the term page's term graph, the one ontology graph in 2D and 3D, the lane view and their snippets), an edge that conducts grounding under [REQ-1387](#REQ-1387) (KIND_OF, PART_OF and VALID_VALUE_OF from broader to narrower, SYNONYM_OF, and a term's binding to a column) is drawn solid, and an edge that does not (RELATED_TO and every other type, and a retired edge) is drawn dotted. The legend says so, and hovering a dotted edge says it does not ground. (Amended 2026-10-29, LABELS STAY READABLE; COLLIDING LABELS HIDE:) Maintainer 2026-10-29 (labels too small; the 3D graph not round): a label never shrinks below a readable size (11.5px) and grows with zoom up to 20px; where labels would overlap, the lower-ranked one is hidden (its node's full name stays in the hover card) instead of every label being scaled down. Crowded nodes may still shrink. In 3D the layout is drawn as built: no pair is moved apart in the view's plane, so a force layout keeps its shape; the 2D views may still move a crowded pair apart. (Amended 2026-10-29, LABELS AT HALF THEIR DRAWN SIZE:) Maintainer 2026-10-30: the labels are readable but too large, half their drawn size. A label is drawn between 9px and 10px, replacing 11.5px and 20px. (Amended 2026-10-29, A VIEW OPENS IN FORCE:) Maintainer 2026-10-31: a view opens in force, unless its preset names its own layout or the reader has saved a choice. Taxonomy keeps its top-down tree ([REQ-2130](#REQ-2130)). Layered stays disabled where a cycle makes it impossible. This replaces opening layered when the drawn edges are of one class and form no cycle. (Amended 2026-11-05, ONE GRAPH, RULES PER PRESET:) The one ontology graph is one component whose presets carry their own rules. The Ontology preset, and the Ontology page, follow [REQ-2130](#REQ-2130) (amended 2026-10-29): only what a shown term reaches is drawn, and no relationship, join or lineage edge between tables or columns is drawn. The Product map preset and the product panels' snippets keep the product layers (commands, quality, product links, lineage) and the member tables, so nothing the product graph showed is lost. The owner-tables relationship layer is not offered in the Ontology preset. (Amended 2026-11-07, WHAT THE GRAPH DRAWS:) The graph's columns are Products, Tables, Columns and Terms, and a hop is one step across them, counted from the focus item alone (a product's count no longer also starts from its member tables). The hop control is labelled with its focus, 'Hops from <focus>: 1 2 3 4': 1 its tables and commands, 2 their columns, 3 the terms those columns are tied to, 4 other columns tied to the same terms. A 'Related tables' checkbox draws the tables directly related to the drawn tables by relationships, named on the link, and the products those tables belong to; it follows one step only, never a related table's own columns, terms or relationships. The Terms, Domains and Tags filters stay; the filter of term-to-term link types is named 'Term relationships'. A product's panel opens at 1 hop with Related tables on, matching its Related Tables card; the full graph opens at 2 hops with Related tables off. A table's columns not tied to a term shown fold into one node labelled 'N columns with no term in this view'. Reset view folds every table back as well as resetting the camera. The 2D view is the simple one: Product, its tables, their columns and the terms those columns are tied to, left to right, with the links between terms (filtered by Term relationships), and nothing else -- no related tables and no lineage. Its hop control, 'Hops from <product>', counts along that path: 1 the product's tables, 2 their columns, 3 the terms those columns are tied to, and each hop beyond 3 one more step through term-to-term links; a table's columns not tied to a term fold into one node. Hops, Related tables, Term relationships and every other layer belong to the 3D view, where table relationships and term relationships are told apart by more than colour (a table link solid and named by the relationship, a term link dashed and named by its type). The graph's Lineage layer is named 'Inputs' and shows where the product comes from, never who consumes it: the graph is read by a consumer or prospective consumer. Each input links to the member table that reads it (not to the product), an input that is another product's member stands for that product, and column lineage stays on unfolded tables. A product page's Lineage panel is titled 'Column lineage: where this product comes from', its lanes named Inputs and This product's tables (Upstream hop n beyond the inputs), with no downstream lanes; its hint states what it draws (each published column and the input column it comes from), and the Input Ports card links to it. A product's Consumers card is shown only to those who own the product: a session acting as the product's owner_role, or holding data_product_rw with entitlements ([REQ-2219](#REQ-2219)) that reach that product, which its creator holds from creation; no one else sees it (maintainer 2026-11-07). (Amended 2026-11-08, A VIEW BETWEEN AN INPUT AND A TABLE IS ON THE EDGE:) On a product page's column lineage, a view between an input and the product's table is not drawn as its own box: the input's column links straight to the table's column, and the link names the views it reads through (for example 'via sales.v_customers'). The panel's lanes stay Inputs and This product's tables, with Upstream hop n beyond the inputs (maintainer 2026-11-08). (Amended 2026-11-09, A PRODUCT OPENS ON ITSELF:) Maintainer 2026-11-09: expanding a data product's graph opens on that product alone, its member tables, their columns and the terms grounded on them, with a control that shows the rest of the model. [SUPERSEDED by REQ-2174 A TERM OPENS ON ITSELF, 2026-11-11 -- expanding a term opens on that term alone, as a product does. Kept here for history; do not implement against it.] Expanding a term still opens the whole ontology with the term selected. [END SUPERSEDED BLOCK] (Amended 2026-11-11, EACH SIBLING TERM ON ITS OWN ROW:) Maintainer 2026-11-11: in the lane diagram's term lane, sibling terms (Dog and Cat under Pet) are not drawn side by side, where their edges leave from different positions and cross regardless of order; each term takes its own row, and the rank lines that join a term to its parent run beside the lane, not through its rows, so each lane can be ordered freely to minimise crossings. On the Pet Health graph the diagram has fewer crossings than before the lanes were spread (42). (Amended 2026-11-11, A TERM OPENS ON ITSELF:) Maintainer 2026-11-11: expanding a term's graph opens on that term alone, as a product's does on the product: the term, its ancestors and descendants, and the columns, tables and products it reaches, at full hops, with the same control that shows the rest of the model. The rest of the ontology is not read or drawn until that control asks for it. No expanded snippet opens on the whole ontology; only the Ontology page's own graph does. (Amended 2026-11-12, THE PRODUCT MAP OPENS ON PRODUCTS:) Maintainer 2026-11-12: opened whole, the Product map was the Ontology page's graph with product boxes beside it. It opens instead on what its name says: every product, its member tables, and the links between products, with columns and terms folded away until the reader asks for them (the same show-the-rest control and layer choices the graph already has). It is still the one graph and keeps its own remembered settings; a reader who has saved other settings for it opens on those. (Amended 2026-11-12, THE TOGGLE IS CALLED ASSOCIATIONS:) Maintainer 2026-11-12: the 3D toggle for the lines that link things without ranking them (related, synonym, preferred term, translation, antonym) is labelled Associations, with a tooltip naming them. Lateral is the layout's word and is not shown to a reader. What the toggle does is unchanged. (Amended 2026-11-12, A HOP IS A STEP BETWEEN TERMS:) Maintainer 2026-11-12: the hops control counts steps between terms only. Every term drawn brings its grounding with it, whatever the hop count: the columns it is bound to, their tables, and the products that hold them; a column is never drawn without its table. So a term three term-steps from the focus is shown, with its column and table, at three hops, where before the column and the table each took a further hop. A product's graph follows the same rule: the product's own tables, columns and the terms grounded on them come with it, and hops count steps onward between terms. The control stays a row of buttons and gains All after 4: All follows the connected part to its end, under the existing limit on how many nodes a graph draws. (Amended 2026-11-19, OWNERSHIP READ FROM ENTITLEMENTS:) Maintainer 2026-11-19. The Consumers card reads the data product's owners from its data_product_owner entitlements ([REQ-2219](#REQ-2219), 2026-11-19).
 
-**Code:** `provisa-ui/src/pages/tables/profile3d/bestView.ts`, `provisa-ui/src/pages/tables/profile3d/baseScene.ts`, `provisa-ui/src/pages/tables/profile3d/forceLayout.ts`, `provisa-ui/src/pages/tables/profile3d/relations/relationsScene.ts`, `provisa-ui/src/components/graph3d/graphScene.ts`, `provisa-ui/src/components/graph3d/graphModel.ts`, `provisa-ui/src/components/graph3d/GraphStage.tsx`, `provisa-ui/src/components/graph3d/GraphExplorer.tsx`, `provisa-ui/src/components/graph3d/KnowledgeGraphPanel.tsx`, `provisa-ui/src/components/graph3d/DimensionToggle.tsx`
+**Code:** `provisa-ui/src/pages/tables/profile3d/bestView.ts`, `provisa-ui/src/pages/tables/profile3d/baseScene.ts`, `provisa-ui/src/pages/tables/profile3d/forceLayout.ts`, `provisa-ui/src/pages/tables/profile3d/relations/relationsScene.ts`, `provisa-ui/src/components/graph3d/graphScene.ts`, `provisa-ui/src/components/graph3d/graphModel.ts`, `provisa-ui/src/components/graph3d/GraphStage.tsx`, `provisa-ui/src/components/graph3d/GraphExplorer.tsx`, `provisa-ui/src/components/graph3d/DimensionToggle.tsx`
 
 **Tests:** `provisa-ui/src/pages/tables/profile3d/__tests__/bestView.test.ts`, `provisa-ui/src/pages/tables/profile3d/__tests__/sceneBestView.test.tsx`, `provisa-ui/src/pages/tables/profile3d/__tests__/turnPause.test.tsx`, `provisa-ui/src/components/graph3d/__tests__/graphModel.test.ts`
 
@@ -26906,7 +26906,7 @@ Maintainer 2026-11-10, a future objective. Every connector is built on one of a 
 
 **Status:** ⚙ in-progress · **Priority:** MUST · **Type:** structural
 
-Maintainer 2026-11-11, on conformance discipline. How pgwire gives PostgreSQL's answer on an engine that is not PostgreSQL is called a polyfill: a PostgreSQL feature an engine lacks, or holds differently, is supplied by Provisa so a PostgreSQL client gets PostgreSQL's behaviour unchanged. Each feature has a read polyfill -- how its values and operations are computed on the engine and returned -- and a write polyfill -- how its values reach the engine in literals, parameters, predicates and writes (INSERT, UPDATE). The code holds one grid, the single source of this knowledge, keyed by feature and engine: for each, the read polyfill and its limitations and the write polyfill and its limitations. A blank polyfill means the engine does it natively; a blank limitation means none; otherwise the limitation states each difference from PostgreSQL, or that the feature is refused, with the error a client sees. The translator takes its forms from the grid, so a polyfill exists exactly where the grid says it does. The documentation shows the same grid, generated from the code, never written by hand: per engine, column 1 the feature (for example array sorting), then the read polyfill, its limitations, the write polyfill, its limitations. The conformance runs check the grid: a feature the grid marks native or polyfilled that answers otherwise than PostgreSQL is a failure, and so is a refusal or difference the grid does not state. (Amended 2026-11-11, THE REFUSAL LIVES IN THE GRID:) Maintainer 2026-11-11. A refusal is part of its grid row: the SQLSTATE and the message a client receives are held in the grid, read or write side, and the translator raises the refusal from that row, so the documented error and the error a client gets are the same text. The generated page shows them in the limitations column, and conformance checks a refused feature's SQLSTATE and message against its row. (Amended 2026-11-11, THE DOCS SAY POLYFILL:) Maintainer 2026-11-11. The documentation is rewritten to the term: every page that describes how Provisa gives PostgreSQL's behaviour on an engine that is not PostgreSQL (the conformance pages, the pgwire and engine pages, the function and type references) says polyfill, read polyfill and write polyfill, and points to the generated grid for the details instead of restating them. (Amended 2026-11-11, A PAGE PER ENGINE, EVERY POLYFILL LISTED:) Maintainer 2026-11-11. The generated documentation is one page per engine. A page lists every feature that has a polyfill (read or write) or a limitation on that engine, each with its read polyfill, read limitations, write polyfill and write limitations; a feature the engine does natively with no difference is left out. Each page states that rule at its top and counts the features left out as native, and the conformance check is what makes the omission hold: a feature left out that answers otherwise than PostgreSQL fails the run. [SUPERSEDED by REQ-2236, 2026-11-11 -- the summary is one table per engine, not a cross-engine matrix. Kept here for history; do not implement against it.] Beside the pages, a generated summary shows each feature across the engines (native, polyfilled, differs, refused) for choosing an engine. [END SUPERSEDED BLOCK] Both come from the one grid in code. (Amended 2026-11-11, A POLYFILL IS A RULE THE TRANSLATOR RUNS:) Maintainer 2026-11-11. A grid row's polyfill is written as a rule in a notation the translator itself executes, not described beside the code that does it: a pattern in PostgreSQL SQL with typed holes (array_length($a::anyarray, 1)) and, for each engine, a replacement in that engine's SQL with the same holes (duckdb: len($a); trino: cardinality($a)), or a refusal with its SQLSTATE and message. Both sides are parsed by sqlglot in their own dialects into trees with placeholder nodes, and a rule matches tree against tree and grafts the matched subtrees into the replacement, so applying a rule is AST manipulation, never string handling. A write polyfill is a rule of the same form whose pattern is a value going in (a cast, a parameter or literal of a type, an assigned column). Where a polyfill is logic a rule cannot state (recursing to an array's depth, choosing by a value's type, a check that refuses a bad value at run time), the rule's replacement names a helper, and the helper is the exception. The documentation prints each rule verbatim, with the helper's name and one-line purpose where one is used, so what the docs show is what runs. Each engine's page counts its rows that are rules and those that use helpers. (Amended 2026-11-11, THE ESCAPE HATCH IS A FUNCTION NAME:) Maintainer 2026-11-11. The escape hatch is that a rule can be just the name of its rewrite function: where a polyfill cannot be stated as a pattern and replacement, the row's rule is that function's name, the function does the matching and the rewrite on the tree, and the documentation prints the name with its one-line purpose. Every row still has a rule; the count of rules that are only a function name is what each engine's page reports. (Amended 2026-11-11, ENGINES ONLY; SOURCES GET HINTS AS BUGS ARE FOUND:) Maintainer 2026-11-11: accounting for every connected database's limitations, as source or as engine, is a combinatorial explosion, the same problem Trino has. The grid covers the serving engines only: PostgreSQL behaviour on each engine Provisa serves from. A predicate an engine pushes down to a source, and a single-source read sent DIRECT, are evaluated by that source with its own semantics, and the documentation says so once; a difference that comes from the source is not a polyfill gap. Pushdown keeps its present behaviour, with no conservative default added. A specific source or engine bug, once encountered, is handled by a hint: a rule in the same notation keyed by source type (and, where it matters, its version or a setting) that either keeps an operation from being pushed to it or pushes it rewritten. Each hint comes with the test that reproduced the bug, and the generated documentation lists it under that source as a known difference and its fix. (Amended 2026-11-11, EVERY CONNECTOR PROVISA SENDS SQL TO; SECOND ORDER BY HINTS:) Maintainer 2026-11-11, refining the scope above. The grid covers every connector Provisa itself sends SQL to -- every serving engine, and every source a statement is sent to DIRECT -- since the engines are a subset of the connectors: each such connector's dialect has its rows and its page. What the grid does not cover is the second order: an engine reading a source it attaches directly, pushing work into that source with the source's semantics. That is the combinatorial explosion, and it is handled by hints as bugs are found, as stated above. (Amended 2026-11-11, A HINT IS A REWRITE FOR AN ENGINE AND SOURCE PAIR:) Maintainer 2026-11-11, replacing the description of hints above. The second order is not so much an explosion as outside Provisa's oversight: an engine decides at run time, by its own planner, how it uses a source it has attached and what it pushes into it, and Provisa does not see that. A statement cannot be switched to a replica, and the engine's reach is wanted. So a hint is a rewrite of Provisa's own statement for an engine and source pair: a rule in the same notation, keyed by the engine and the source type, that differs from the engine's default rule and replaces it wherever the expression reads a column from an attached source of that type. Its replacement must mean the same whether the engine evaluates it or pushes it into the source. Each hint comes with the test that reproduced the bug, checking the answer, and the engine's generated page lists its hints under each source. (Amended 2026-11-11, SQL CONNECTORS ONLY; EVERY ROW NAMES WHAT IT WAS MADE ON:) Maintainer 2026-11-11. A polyfill is only for a connector that executes a variant of SQL -- a serving engine, or a source a statement is sent to DIRECT; a connector that does not run SQL (REST, GraphQL, gRPC, files, code sources) has no polyfill page, its data reaching a statement through Provisa's reader or the engine, whose rows cover it. The documentation shows the direct polyfills and the engine polyfills. Every row names what it was made and verified on, printed from the configuration of the test that proves it, never written by hand: an engine's own rows on data the engine holds itself, a direct row on that source alone, a hint on its engine and source pair (with the source's version or setting where the hint depends on it). Each engine's page states that when the engine reads a source it attaches directly, it may push work into that source, so a result can depend on the pair, and its hints are the cases known. (Amended 2026-11-11, EACH ENGINE HAS A BASELINE PAIR:) Maintainer 2026-11-11. Each engine's rows are made and verified on its baseline: the place its data mostly lives. Trino's baseline is Trino with PostgreSQL, its materialize store, so trino/pg is the pair most Trino reads take; DuckDB's is its own store; PostgreSQL as an engine, its own tables; the warehouses (Snowflake, Databricks, BigQuery, Fabric), their own or Iceberg tables. The baseline is printed as the rows' provenance, and a hint exists only for a pair that differs from it. (Amended 2026-11-11, THE COMPLETE TEST IS A LONG-TERM OBJECTIVE, NOT A RELEASE GATE:) Maintainer 2026-11-11. With the grid defined, a complete test is possible: every row on every SQL connector's baseline and every hint on its pair, each answer checked against PostgreSQL. It is expensive, so it is a long-term objective and never a release gate; the release gates stay as [REQ-1989](#REQ-1989) states them. Connectors that run in containers can be covered on a schedule; the paid warehouses run on demand only, each run creating and destroying what it uses (the paid-cloud rule). The generated pages print, for each row, the last run that verified it. (Amended 2026-11-11, THE SUMMARY IS PIVOTED, ONE TABLE PER ENGINE:) Maintainer 2026-11-11: a feature-by-engine matrix with a column per dialect is unreadable; it is fine to store the grid that way, not to show it. The summary page is one section per engine, each the same table as that engine's own page: one row per feature that is not native there (feature, read polyfill, read limitations, write polyfill, write limitations), the native features counted, not listed. (Amended 2026-11-13, AN ANSWER WITHIN A STATED BOUND COMES BEFORE A REFUSAL:) Maintainer 2026-11-13: on an engine where a function's common case is exact, the function answers there and its difference from PostgreSQL is a limitation written on its grid row and shown on that engine's page; outside the exact cases it raises, with PostgreSQL's error where the case can be detected, and never returns an approximate or rounded value; a refusal by name is for a function with no exact common case. The order for every function on every engine: the exact answer; an answer within a stated and enforced bound; a refusal by name. (Amended 2026-11-13, THE GRID DECIDES BEFORE A TYPE IS REFUSED:) Maintainer 2026-11-13: a call whose argument type an engine does not hold (on ClickHouse: timestamptz, interval, timetz, bit, varbit, tid, aclitem, xml) is refused by name only when no grid row answers that call on that engine; a row that answers it is read first. A timestamptz on ClickHouse is held as DateTime64(6, 'UTC'): exact from 1900-01-01 to 2299-12-31, raising outside, stated as the limitation on that engine's page. (Amended 2026-11-15, TIMETZ ON CLICKHOUSE IS A PAIR OF NUMBERS:) Maintainer 2026-11-15. On ClickHouse, which holds no time-with-zone type, a timetz value is a pair: microseconds of the day and the zone offset in seconds. It is exact, as the interval representation is, and the timetz overloads are served over it rather than refused. (Amended 2026-11-15, AN EDGE CASE RAISES; IT DOES NOT REFUSE THE FORM:) Maintainer 2026-11-15. A function form that an engine cannot answer only for edge values (an extreme, an empty value, a value where PostgreSQL itself differs) is not refused. It is served, and a call raises an error when the edge value occurs. A form is refused by name only when it cannot be answered for ordinary values. The conformance measure counts such a form as served within its bound, and tests that the edge raises.
+Maintainer 2026-11-11, on conformance discipline. How pgwire gives PostgreSQL's answer on an engine that is not PostgreSQL is called a polyfill: a PostgreSQL feature an engine lacks, or holds differently, is supplied by Provisa so a PostgreSQL client gets PostgreSQL's behaviour unchanged. Each feature has a read polyfill -- how its values and operations are computed on the engine and returned -- and a write polyfill -- how its values reach the engine in literals, parameters, predicates and writes (INSERT, UPDATE). The code holds one grid, the single source of this knowledge, keyed by feature and engine: for each, the read polyfill and its limitations and the write polyfill and its limitations. A blank polyfill means the engine does it natively; a blank limitation means none; otherwise the limitation states each difference from PostgreSQL, or that the feature is refused, with the error a client sees. The translator takes its forms from the grid, so a polyfill exists exactly where the grid says it does. The documentation shows the same grid, generated from the code, never written by hand: per engine, column 1 the feature (for example array sorting), then the read polyfill, its limitations, the write polyfill, its limitations. The conformance runs check the grid: a feature the grid marks native or polyfilled that answers otherwise than PostgreSQL is a failure, and so is a refusal or difference the grid does not state. (Amended 2026-11-11, THE REFUSAL LIVES IN THE GRID:) Maintainer 2026-11-11. A refusal is part of its grid row: the SQLSTATE and the message a client receives are held in the grid, read or write side, and the translator raises the refusal from that row, so the documented error and the error a client gets are the same text. The generated page shows them in the limitations column, and conformance checks a refused feature's SQLSTATE and message against its row. (Amended 2026-11-11, THE DOCS SAY POLYFILL:) Maintainer 2026-11-11. The documentation is rewritten to the term: every page that describes how Provisa gives PostgreSQL's behaviour on an engine that is not PostgreSQL (the conformance pages, the pgwire and engine pages, the function and type references) says polyfill, read polyfill and write polyfill, and points to the generated grid for the details instead of restating them. (Amended 2026-11-11, A PAGE PER ENGINE, EVERY POLYFILL LISTED:) Maintainer 2026-11-11. The generated documentation is one page per engine. A page lists every feature that has a polyfill (read or write) or a limitation on that engine, each with its read polyfill, read limitations, write polyfill and write limitations; a feature the engine does natively with no difference is left out. Each page states that rule at its top and counts the features left out as native, and the conformance check is what makes the omission hold: a feature left out that answers otherwise than PostgreSQL fails the run. [SUPERSEDED by REQ-2236, 2026-11-11 -- the summary is one table per engine, not a cross-engine matrix. Kept here for history; do not implement against it.] Beside the pages, a generated summary shows each feature across the engines (native, polyfilled, differs, refused) for choosing an engine. [END SUPERSEDED BLOCK] Both come from the one grid in code. (Amended 2026-11-11, A POLYFILL IS A RULE THE TRANSLATOR RUNS:) Maintainer 2026-11-11. A grid row's polyfill is written as a rule in a notation the translator itself executes, not described beside the code that does it: a pattern in PostgreSQL SQL with typed holes (array_length($a::anyarray, 1)) and, for each engine, a replacement in that engine's SQL with the same holes (duckdb: len($a); trino: cardinality($a)), or a refusal with its SQLSTATE and message. Both sides are parsed by sqlglot in their own dialects into trees with placeholder nodes, and a rule matches tree against tree and grafts the matched subtrees into the replacement, so applying a rule is AST manipulation, never string handling. A write polyfill is a rule of the same form whose pattern is a value going in (a cast, a parameter or literal of a type, an assigned column). Where a polyfill is logic a rule cannot state (recursing to an array's depth, choosing by a value's type, a check that refuses a bad value at run time), the rule's replacement names a helper, and the helper is the exception. The documentation prints each rule verbatim, with the helper's name and one-line purpose where one is used, so what the docs show is what runs. Each engine's page counts its rows that are rules and those that use helpers. (Amended 2026-11-11, THE ESCAPE HATCH IS A FUNCTION NAME:) Maintainer 2026-11-11. The escape hatch is that a rule can be just the name of its rewrite function: where a polyfill cannot be stated as a pattern and replacement, the row's rule is that function's name, the function does the matching and the rewrite on the tree, and the documentation prints the name with its one-line purpose. Every row still has a rule; the count of rules that are only a function name is what each engine's page reports. (Amended 2026-11-11, ENGINES ONLY; SOURCES GET HINTS AS BUGS ARE FOUND:) Maintainer 2026-11-11: accounting for every connected database's limitations, as source or as engine, is a combinatorial explosion, the same problem Trino has. The grid covers the serving engines only: PostgreSQL behaviour on each engine Provisa serves from. A predicate an engine pushes down to a source, and a single-source read sent DIRECT, are evaluated by that source with its own semantics, and the documentation says so once; a difference that comes from the source is not a polyfill gap. Pushdown keeps its present behaviour, with no conservative default added. A specific source or engine bug, once encountered, is handled by a hint: a rule in the same notation keyed by source type (and, where it matters, its version or a setting) that either keeps an operation from being pushed to it or pushes it rewritten. Each hint comes with the test that reproduced the bug, and the generated documentation lists it under that source as a known difference and its fix. (Amended 2026-11-11, EVERY CONNECTOR PROVISA SENDS SQL TO; SECOND ORDER BY HINTS:) Maintainer 2026-11-11, refining the scope above. The grid covers every connector Provisa itself sends SQL to -- every serving engine, and every source a statement is sent to DIRECT -- since the engines are a subset of the connectors: each such connector's dialect has its rows and its page. What the grid does not cover is the second order: an engine reading a source it attaches directly, pushing work into that source with the source's semantics. That is the combinatorial explosion, and it is handled by hints as bugs are found, as stated above. (Amended 2026-11-11, A HINT IS A REWRITE FOR AN ENGINE AND SOURCE PAIR:) Maintainer 2026-11-11, replacing the description of hints above. The second order is not so much an explosion as outside Provisa's oversight: an engine decides at run time, by its own planner, how it uses a source it has attached and what it pushes into it, and Provisa does not see that. A statement cannot be switched to a replica, and the engine's reach is wanted. So a hint is a rewrite of Provisa's own statement for an engine and source pair: a rule in the same notation, keyed by the engine and the source type, that differs from the engine's default rule and replaces it wherever the expression reads a column from an attached source of that type. Its replacement must mean the same whether the engine evaluates it or pushes it into the source. Each hint comes with the test that reproduced the bug, checking the answer, and the engine's generated page lists its hints under each source. (Amended 2026-11-11, SQL CONNECTORS ONLY; EVERY ROW NAMES WHAT IT WAS MADE ON:) Maintainer 2026-11-11. A polyfill is only for a connector that executes a variant of SQL -- a serving engine, or a source a statement is sent to DIRECT; a connector that does not run SQL (REST, GraphQL, gRPC, files, code sources) has no polyfill page, its data reaching a statement through Provisa's reader or the engine, whose rows cover it. The documentation shows the direct polyfills and the engine polyfills. Every row names what it was made and verified on, printed from the configuration of the test that proves it, never written by hand: an engine's own rows on data the engine holds itself, a direct row on that source alone, a hint on its engine and source pair (with the source's version or setting where the hint depends on it). Each engine's page states that when the engine reads a source it attaches directly, it may push work into that source, so a result can depend on the pair, and its hints are the cases known. (Amended 2026-11-11, EACH ENGINE HAS A BASELINE PAIR:) Maintainer 2026-11-11. Each engine's rows are made and verified on its baseline: the place its data mostly lives. Trino's baseline is Trino with PostgreSQL, its materialize store, so trino/pg is the pair most Trino reads take; DuckDB's is its own store; PostgreSQL as an engine, its own tables; the warehouses (Snowflake, Databricks, BigQuery, Fabric), their own or Iceberg tables. The baseline is printed as the rows' provenance, and a hint exists only for a pair that differs from it. (Amended 2026-11-11, THE COMPLETE TEST IS A LONG-TERM OBJECTIVE, NOT A RELEASE GATE:) Maintainer 2026-11-11. With the grid defined, a complete test is possible: every row on every SQL connector's baseline and every hint on its pair, each answer checked against PostgreSQL. It is expensive, so it is a long-term objective and never a release gate; the release gates stay as [REQ-1989](#REQ-1989) states them. Connectors that run in containers can be covered on a schedule; the paid warehouses run on demand only, each run creating and destroying what it uses (the paid-cloud rule). The generated pages print, for each row, the last run that verified it. (Amended 2026-11-11, THE SUMMARY IS PIVOTED, ONE TABLE PER ENGINE:) Maintainer 2026-11-11: a feature-by-engine matrix with a column per dialect is unreadable; it is fine to store the grid that way, not to show it. The summary page is one section per engine, each the same table as that engine's own page: one row per feature that is not native there (feature, read polyfill, read limitations, write polyfill, write limitations), the native features counted, not listed. (Amended 2026-11-13, AN ANSWER WITHIN A STATED BOUND COMES BEFORE A REFUSAL:) Maintainer 2026-11-13: on an engine where a function's common case is exact, the function answers there and its difference from PostgreSQL is a limitation written on its grid row and shown on that engine's page; outside the exact cases it raises, with PostgreSQL's error where the case can be detected, and never returns an approximate or rounded value; a refusal by name is for a function with no exact common case. The order for every function on every engine: the exact answer; an answer within a stated and enforced bound; a refusal by name. (Amended 2026-11-13, THE GRID DECIDES BEFORE A TYPE IS REFUSED:) Maintainer 2026-11-13: a call whose argument type an engine does not hold (on ClickHouse: timestamptz, interval, timetz, bit, varbit, tid, aclitem, xml) is refused by name only when no grid row answers that call on that engine; a row that answers it is read first. A timestamptz on ClickHouse is held as DateTime64(6, 'UTC'): exact from 1900-01-01 to 2299-12-31, raising outside, stated as the limitation on that engine's page. (Amended 2026-11-15, TIMETZ ON CLICKHOUSE IS A PAIR OF NUMBERS:) Maintainer 2026-11-15. On ClickHouse, which holds no time-with-zone type, a timetz value is a pair: microseconds of the day and the zone offset in seconds. It is exact, as the interval representation is, and the timetz overloads are served over it rather than refused. (Amended 2026-11-15, AN EDGE CASE RAISES; IT DOES NOT REFUSE THE FORM:) Maintainer 2026-11-15. A function form that an engine cannot answer only for edge values (an extreme, an empty value, a value where PostgreSQL itself differs) is not refused. It is served, and a call raises an error when the edge value occurs. A form is refused by name only when it cannot be answered for ordinary values. The conformance measure counts such a form as served within its bound, and tests that the edge raises. (Amended 2026-11-21 by the maintainer for the Db2 engine. Two Db2 behaviours are stated limitations of the grid rather than refusals: a cast to text is bounded at 8168 characters, and string equality ignores trailing blanks; each is listed in the grid and the docs.)
 
 **Use case:** A PostgreSQL user on DuckDB, Trino or another engine reads one page that says, feature by feature, what is native, what is polyfilled and how, and what differs or is refused, and that page cannot drift from what the product does.
 

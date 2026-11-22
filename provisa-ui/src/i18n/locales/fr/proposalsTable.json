@@ -64,6 +64,7 @@
     "twoDimensions": "Ses colonnes sont déjà jointes à deux dimensions partagées différentes, elle ne peut donc pas être acceptée.",
     "admittedOnKeyValues": "Admise parce que les valeurs de clé concordent dans les données ; la mesure est affichée à côté de la confiance du modèle.",
     "hiddenByFilter_one": "{{count}} ligne est masquée par le filtre.",
-    "hiddenByFilter_other": "{{count}} lignes sont masquées par le filtre."
+    "hiddenByFilter_other": "{{count}} lignes sont masquées par le filtre.",
+    "editAria": "Modifier {{name}}"
   }
 }

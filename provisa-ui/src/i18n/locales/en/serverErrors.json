@@ -559,8 +559,6 @@
       "incremental_no_change": "The code source has no @change function for {{table}}. Declare one with @change table={{table}}.",
       "incremental_needs_rebuild_every": "{{table}} is kept incrementally, so it is rebuilt whole on a clock. Set how often, in seconds, in \"Whole rebuild every\".",
       "table_derived_from_function": "Table '{{name}}' is derived from a function: it is removed by turning off the function's table, and its columns and parameters are edited on the function",
-      "table_state_from_function": "Table '{{table}}' is derived from the function '{{name}}' and has its release state: it is not withdrawn or put back on its own",
-      "table_region_from_function": "Table '{{table}}' is derived from the function '{{name}}' and has its region: it is not moved to another region on its own",
       "table_withdrawn": "Table {{table}} withdrawn",
       "table_put_back": "Table {{table}} put back",
       "source_withdrawn": "Source {{source}} withdrawn",
@@ -572,6 +570,8 @@
       "put_back_needs_region": "Putting back {{object}} names a region: give one, or none for no region.",
       "mask_constant_not_text": "A constant mask on a non-text column reads as NULL; only NULL can be saved: {{column}} ({{type}})",
       "table_domain_required": "Table '{{table}}' names no domain: every table is registered in a domain",
+      "table_state_from_function": "Table '{{table}}' is derived from the function '{{name}}' and has its release state: it is not withdrawn or put back on its own",
+      "table_region_from_function": "Table '{{table}}' is derived from the function '{{name}}' and has its region: it is not moved to another region on its own",
       "table_name_reserved": "Table name '{{table}}' is reserved: a domain's commands are served under 'commands'. Register the table under another name or alias."
     },
     "secrets": {
@@ -936,6 +936,21 @@
     "relationship": {
       "name_taken": "The name '{{name}}' is taken by relationship '{{held_by}}'. Name this one otherwise.",
       "join_through_none": "Relationships '{{first}}' and '{{second}}' share no middle table, or their other ends are already joined through it."
+    },
+    "syncing": {
+      "not_found": "There is no entry {{entry}}.",
+      "no_connection": "{{entry}} has no catalog to read.",
+      "no_role": "{{entry}} has no role to publish as, so there is nothing to compare yet. Choose a role in its settings.",
+      "read_not_supported": "Reading values back from {{provider}} is not supported yet.",
+      "no_such_difference": "There is no longer a difference {{difference}}. Read the list again.",
+      "decided_twice": "{{difference}} was decided twice.",
+      "direction_off": "{{entry}} does not sync in that direction.",
+      "import_kind_unsupported": "Taking a catalog's {{kind}} into Provisa is not supported yet.",
+      "publish_failed": "Publishing to {{entry}} did not succeed, so nothing was applied.",
+      "object_gone": "{{object}} is no longer registered in Provisa.",
+      "unknown_direction": "{{direction}} is not a direction: use Export or Import.",
+      "unknown_kind": "{{kind}} is not a kind of difference.",
+      "unknown_choice": "{{choice}} is not a standing choice."
     },
     "wikidata": {
       "no_credential": "The Wikidata query service takes no credential",

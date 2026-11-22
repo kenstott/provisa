@@ -8,15 +8,15 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""REQ-1068 is outbound-only, and that is a structural property of the package.
+"""The export port stays outbound; the one way back in is the inbound ``CatalogReader.read``.
 
-Provisa publishes governance metadata to external catalogs and never reads one back as the
-source of truth. A future adapter that added a ``fetch_from_catalog`` helper would violate
-the requirement without breaking any behavioural test, so the constraint is asserted
-against the source tree itself.
+REQ-1068 was outbound-only; REQ-2122 superseded that: a steward may read descriptions, owners,
+tags and glossary links back from a catalog, and REQ-2247 lists the differences for review. That
+read is ``CatalogReader.read`` (the inbound port), not the export port, and nothing else: no adapter grows its own ``fetch_from_catalog``
+helper that would bring a catalog's values into Provisa past the review.
 """
 
-# Requirements: REQ-1068
+# Requirements: REQ-1068, REQ-2122, REQ-2247
 
 from __future__ import annotations
 
@@ -56,7 +56,7 @@ def test_no_inbound_entry_points(path: Path):
     )
 
 
-def test_port_declares_no_read_method():
+def test_export_port_declares_no_read_method_and_catalog_reader_owns_read():
     from provisa.api.metadata_export.provider import MetadataExport
 
     declared = {
@@ -65,3 +65,7 @@ def test_port_declares_no_read_method():
         if not name.startswith("_") and callable(vars(MetadataExport)[name])
     }
     assert declared == {"publish", "health"}
+
+    from provisa.api.catalog_import.reader import CatalogReader
+
+    assert "read" in CatalogReader.__abstractmethods__

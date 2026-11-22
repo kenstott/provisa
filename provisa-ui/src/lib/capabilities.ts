@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import type { Capability } from "../types/auth";
+import type { Capability, Role } from "../types/auth";
 
 /**
  * Does this capability set confer `cap`? Only by holding it: no capability stands in for another
@@ -151,4 +151,45 @@ export function meetsRequirement(capabilities: string[], req: CapabilityRequirem
     return true;
   }
   return req.orCapability !== undefined && hasCapability(capabilities, req.orCapability);
+}
+
+/** The id of the standard role every organization is seeded with (rights.ORG_ADMIN_ROLE). */
+const ORG_ADMIN_ROLE = "org_admin";
+
+/**
+ * REQ-1327 (amended 2026-11-16): the rights of `orgAdminRights` that `held` lacks -- none for an
+ * org_admin, or for the platform (`cross_org`), which keeps an org's lifecycle and the appointment
+ * of its admins. The client twin of rights.org_admin_rights_missing.
+ */
+function orgAdminRightsMissing(orgAdminRights: readonly string[], held: string[]): string[] {
+  if (held.includes("cross_org")) return [];
+  return orgAdminRights.filter((r) => !held.includes(r));
+}
+
+/**
+ * REQ-1327 (amended 2026-11-16): may a caller holding `held` delete the organization, or grant or
+ * revoke org_admin in it? Only an org_admin -- every right the org's org_admin role carries -- or
+ * the platform; user_management alone allows none of them. Before the org's roles are read there
+ * is no org_admin role to compare with, and nothing is offered.
+ */
+export function administersOrg(roles: readonly Role[], held: string[]): boolean {
+  const orgAdmin = roles.find((r) => r.id === ORG_ADMIN_ROLE);
+  return (
+    orgAdmin !== undefined &&
+    orgAdminRightsMissing(orgAdmin.effectiveCapabilities, held).length === 0
+  );
+}
+
+/**
+ * REQ-1327 (amended 2026-11-16): the roles a caller holding `held` may confer. A role carrying
+ * user_management is an org administrator's -- read off its rights, never its name (REQ-1337) --
+ * and is conferred only by a holder of every right it carries, or by the platform. The client twin
+ * of rights.admin_role_grant_missing.
+ */
+export function conferrableRoles<R extends Role>(roles: readonly R[], held: string[]): R[] {
+  return roles.filter(
+    (r) =>
+      !r.effectiveCapabilities.includes("user_management") ||
+      orgAdminRightsMissing(r.effectiveCapabilities, held).length === 0,
+  );
 }
