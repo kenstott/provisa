@@ -36,6 +36,7 @@ from provisa.federation.duckdb_extensions import (
     write_manifest,
 )
 from provisa.federation.duckdb_pg_functions import register
+
 # Registers PostgresAsWritten in sqlglot's Dialect.classes, which the dialect parameters below read:
 # imported here so every collection (the full run and each shard) builds the same parameters.
 import provisa.compiler.sql_validator  # noqa: E402,F401,I001
