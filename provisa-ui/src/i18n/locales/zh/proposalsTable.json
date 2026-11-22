@@ -12,7 +12,8 @@
     "notAgainAria": "不再推荐 {{name}}",
     "kind": {
       "foreign_keys": "约束",
-      "semantics": "语义"
+      "semantics": "语义",
+      "key_names": "名称匹配"
     },
     "asWritten": "模型的原文：{{answer}}",
     "apply": "应用",
@@ -53,7 +54,9 @@
         "target": "你无法读取目标列。"
       },
       "noValues": "源中没有值。",
-      "modelScore": "模型评分：未比较任何值。"
+      "modelScore": "模型评分：未比较任何值。",
+      "ruleForeignKeys": "由已声明的外键生成：未比较任何值。",
+      "ruleKeyNames": "由匹配的键名称和类型生成：未比较任何值。"
     },
     "dimensionMade": "接受后会创建共享维度 {{name}}，两列都与其关联。",
     "dimensionJoined": "接受后，两列都会关联到共享维度 {{name}}。",
@@ -61,6 +64,7 @@
     "twoDimensions": "其列已关联到两个不同的共享维度，因此无法接受。",
     "admittedOnKeyValues": "因数据中键值匹配而采纳；测量结果显示在模型置信度旁边。",
     "hiddenByFilter_one": "筛选器隐藏了 {{count}} 行。",
-    "hiddenByFilter_other": "筛选器隐藏了 {{count}} 行。"
+    "hiddenByFilter_other": "筛选器隐藏了 {{count}} 行。",
+    "editAria": "编辑 {{name}}"
   }
 }

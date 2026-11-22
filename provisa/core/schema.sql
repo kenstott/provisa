@@ -1054,6 +1054,41 @@ DO $$ BEGIN
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 
+-- REQ-2247, REQ-2122: the value last exchanged with a Syncing entry, per entry, direction (export:
+-- Provisa to the system; import: the system to Provisa), kind of difference and object (a table,
+-- column or term by its Provisa name). Written when a publish succeeds and when a steward accepts
+-- a difference, so the import review can show which side changed since. Mirrors
+-- schema_org.catalog_exchanges.
+CREATE TABLE IF NOT EXISTS catalog_exchanges (
+    id          SERIAL PRIMARY KEY,
+    entry       TEXT NOT NULL,
+    direction   TEXT NOT NULL CONSTRAINT catalog_exchanges_direction_check
+                    CHECK (direction IN ('export', 'import')),
+    kind        TEXT NOT NULL,
+    object      TEXT NOT NULL,
+    value       JSONB NOT NULL,
+    decided_by  TEXT NOT NULL,
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    tenant_id   UUID,
+    UNIQUE (entry, direction, kind, object)
+);
+
+-- REQ-2247: a Syncing entry's standing choice per direction (export, import) and kind of
+-- difference: take Provisa's value, take the other system's, or hold. A kind with no row has no
+-- standing choice. Mirrors schema_org.catalog_standing_choices.
+CREATE TABLE IF NOT EXISTS catalog_standing_choices (
+    id          SERIAL PRIMARY KEY,
+    entry       TEXT NOT NULL,
+    direction   TEXT NOT NULL CONSTRAINT catalog_standing_choices_direction_check
+                    CHECK (direction IN ('export', 'import')),
+    kind        TEXT NOT NULL,
+    choice      TEXT NOT NULL,
+    decided_by  TEXT NOT NULL,
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    tenant_id   UUID,
+    UNIQUE (entry, direction, kind)
+);
+
 -- REQ-1387: business glossary. Terms are the normalized vocabulary derived from physical
 -- field names (the term unit is the phrase — the full normalized field name). Rooted terms
 -- hold physical refs; abstract terms hold none and connect to the rooted graph through the

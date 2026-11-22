@@ -31,7 +31,7 @@ config and the credential resolve from that org's settings, and the org id is bo
 publish — so a reconcile for one org cannot read another's target, let alone publish to it.
 """
 
-# Requirements: REQ-1072, REQ-1073, REQ-2247
+# Requirements: REQ-1072, REQ-1073, REQ-2247, REQ-2122
 
 from __future__ import annotations
 
@@ -48,6 +48,7 @@ from provisa.api.metadata_export.dq_outcomes import read_latest_outcomes
 from provisa.api.metadata_export.provider import AssetError, AssetRefStub, PublishResult
 from provisa.api.metadata_export.registry import metadata_export
 from provisa.api.metadata_export.scope import for_domains, for_role
+from provisa.api.metadata_export.sync_values import provisa_values
 from provisa.control_plane.entitlements import (
     EntitlementError,
     Feature,
@@ -456,7 +457,7 @@ async def publish_snapshot(org_id: str, *, only: str | None = None) -> dict[str,
     """
     from provisa.api.app import state
     from provisa.core.request_context import reset_current_org, set_current_org
-    from provisa.core.repositories import catalog_binding
+    from provisa.core.repositories import catalog_binding, catalog_exchange
 
     token = set_current_org(org_id)
     try:
@@ -482,13 +483,7 @@ async def publish_snapshot(org_id: str, *, only: str | None = None) -> dict[str,
                 )
                 continue
             exporter = metadata_export(target)
-            # REQ-2122: a catalog is published its domains' tables and data products alone;
-            # REQ-2152 (Q1): and only what the role it is published as reads.
-            published = for_role(
-                for_domains(snapshot, target.domains),
-                await role_reader(state, target.role),
-                role_reach(state, target.role),
-            )
+            published = await for_entry(state, snapshot, target.domains, target.role)
             async with model_db.acquire() as conn:
                 # REQ-1389: hand the provider the vendor ids captured by its earlier publishes,
                 # so a physically re-addressed asset rebinds the SAME catalog entity instead of
@@ -531,8 +526,41 @@ async def publish_snapshot(org_id: str, *, only: str | None = None) -> dict[str,
                     await catalog_binding.remove_stale_bindings(
                         conn, target.id, keep_uris=_snapshot_uris(published) | set(result.bindings)
                     )
+            if result.ok:
+                # REQ-2247: what this publish sent is the value last exchanged with the entry.
+                async with model_db.acquire() as conn:
+                    await catalog_exchange.record(
+                        conn,
+                        target.id,
+                        "export",
+                        ((v.kind, v.object, v.value) for v in provisa_values(sent).values()),
+                        decided_by=catalog_exchange.PUBLISH,
+                    )
             results[target.id] = result
         return results
+    finally:
+        reset_current_org(token)
+
+
+async def for_entry(
+    state: Any, snapshot: "MetadataSnapshot", domains: list[str], role: str
+) -> "MetadataSnapshot":
+    """What an entry is published, and what its catalog is read back for: its domains' tables and
+    data products alone (REQ-2122), and only what the role it is published as reads (REQ-2152)."""
+    return for_role(
+        for_domains(snapshot, domains), await role_reader(state, role), role_reach(state, role)
+    )
+
+
+async def entry_snapshot(org_id: str, domains: list[str], role: str) -> "MetadataSnapshot":
+    """The snapshot one entry is published, built for ``org_id`` (REQ-2247: the import review
+    compares the catalog with exactly what the entry is sent)."""
+    from provisa.api.app import state
+    from provisa.core.request_context import reset_current_org, set_current_org
+
+    token = set_current_org(org_id)
+    try:
+        return await for_entry(state, await org_snapshot(org_id), domains, role)
     finally:
         reset_current_org(token)
 

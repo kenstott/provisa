@@ -80,6 +80,8 @@
       "newTables": "{{count}} table enregistrée depuis votre dernière exécution se trouve dans {{domains}}, que cette exécution n'a pas examiné.",
       "newTables_other": "{{count}} tables enregistrées depuis votre dernière exécution se trouvent dans {{domains}}, que cette exécution n'a pas examiné.",
       "addNewTables": "Ajouter à cette exécution"
-    }
+    },
+    "keyNames": "Noms et types de clés",
+    "reviewDone": "Terminé"
   }
 }

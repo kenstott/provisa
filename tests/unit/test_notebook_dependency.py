@@ -96,9 +96,13 @@ def test_every_installer_and_launcher_builds_the_notebook_from_this_repository()
 _ACTION = "./.github/actions/pyodide-downloads"
 _CONTEXT = '--build-context pyodide-downloads="$PROVISA_NOTEBOOK_DOWNLOADS"'
 # What makes a job step build provisa-notebook's assets on the runner or in an image.
+# build-dmg.sh builds it only in its stage (or default) step: `verify` checks signatures and `dmg`
+# wraps an already staged .app (bundle_native_payload is skipped), and `chmod +x` runs nothing.
 _BUILDS_THE_NOTEBOOK = re.compile(
     r"provisa_notebook\.build(?! --download-only)"
-    r"|build-notebook-wheel\.sh|build-dmg\.sh|build-appimage\.sh|build-sfx\.ps1"
+    r"|build-notebook-wheel\.sh"
+    r"|(?<!chmod \+x packaging/macos/)build-dmg\.sh(?! (?:verify|dmg)\b)"
+    r"|build-appimage\.sh|build-sfx\.ps1"
     r"|docker build[^\n]*(?:\\\n[^\n]*)*?-t provisa/provisa:"
 )
 

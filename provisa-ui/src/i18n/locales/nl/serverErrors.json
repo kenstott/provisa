@@ -559,7 +559,6 @@
       "incremental_no_change": "De codebron heeft geen @change-functie voor {{table}}. Declareer er een met @change table={{table}}.",
       "incremental_needs_rebuild_every": "{{table}} wordt incrementeel bijgehouden en daarom volgens een klok volledig herbouwd. Stel bij 'Volledige herbouw elke' in hoe vaak (in seconden).",
       "table_derived_from_function": "Tabel '{{name}}' is afgeleid van een functie: ze wordt verwijderd door de tabel van de functie uit te schakelen, en de kolommen en parameters worden op de functie bewerkt",
-      "table_state_from_function": "Tabel '{{table}}' is afgeleid van de functie '{{name}}' en heeft haar releasestatus: ze wordt niet op zichzelf teruggetrokken of teruggezet",
       "table_withdrawn": "Tabel {{table}} teruggetrokken",
       "table_put_back": "Tabel {{table}} teruggezet",
       "source_withdrawn": "Bron {{source}} teruggetrokken",
@@ -571,6 +570,8 @@
       "put_back_needs_region": "Het terugzetten van {{object}} noemt een regio: geef er een, of geen voor geen regio.",
       "mask_constant_not_text": "Een constant masker op een kolom die geen tekst is, wordt gelezen als NULL; alleen NULL kan worden opgeslagen: {{column}} ({{type}})",
       "table_domain_required": "Tabel '{{table}}' noemt geen domein: elke tabel wordt in een domein geregistreerd",
+      "table_state_from_function": "Tabel '{{table}}' is afgeleid van de functie '{{name}}' en heeft haar releasestatus: ze wordt niet op zichzelf teruggetrokken of teruggezet",
+      "table_region_from_function": "De tabel '{{table}}' is afgeleid van de functie '{{name}}' en heeft haar regio: ze wordt niet op zichzelf naar een andere regio verplaatst",
       "table_name_reserved": "De tabelnaam '{{table}}' is gereserveerd: de commando's van een domein worden onder 'commands' aangeboden. Registreer de tabel onder een andere naam of alias."
     },
     "secrets": {
@@ -935,6 +936,21 @@
     "relationship": {
       "name_taken": "De naam '{{name}}' is al in gebruik door relatie '{{held_by}}'. Geef deze een andere naam.",
       "join_through_none": "De relaties '{{first}}' en '{{second}}' delen geen tussentabel, of hun andere uiteinden zijn er al via gekoppeld."
+    },
+    "syncing": {
+      "not_found": "Er is geen vermelding {{entry}}.",
+      "no_connection": "{{entry}} heeft geen catalogus om te lezen.",
+      "no_role": "{{entry}} heeft geen rol om als te publiceren, dus er valt nog niets te vergelijken. Kies een rol in de instellingen.",
+      "read_not_supported": "Waarden terug lezen uit {{provider}} wordt nog niet ondersteund.",
+      "no_such_difference": "Er is geen verschil {{difference}} meer. Lees de lijst opnieuw.",
+      "decided_twice": "{{difference}} is twee keer beslist.",
+      "direction_off": "{{entry}} synchroniseert niet in die richting.",
+      "import_kind_unsupported": "De {{kind}} van een catalogus in Provisa overnemen wordt nog niet ondersteund.",
+      "publish_failed": "Publiceren naar {{entry}} is niet gelukt, dus er is niets toegepast.",
+      "object_gone": "{{object}} is niet meer geregistreerd in Provisa.",
+      "unknown_direction": "{{direction}} is geen richting: gebruik Exporteren of Importeren.",
+      "unknown_kind": "{{kind}} is geen soort verschil.",
+      "unknown_choice": "{{choice}} is geen vaste keuze."
     },
     "wikidata": {
       "no_credential": "De Wikidata-querydienst vraagt geen inloggegevens",

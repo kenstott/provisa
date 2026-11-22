@@ -131,39 +131,6 @@ jobs:
       version: ${{ inputs.version || github.ref_name }}
       publish: ${{ inputs.publish == true && github.ref_type == 'tag' && github.ref_name == inputs.version }}
 
-  # REQ-1984: the TypeScript SDK's npm upload, after every leg. The Python SDK is a release
-  # asset (build-sdk-python attaches it), not on PyPI (maintainer 2026-11-21).
-  publish-sdk-npm:
-    name: Publish @provisa/sdk to npm
-    # Publishes and does nothing else: not run on a dry run.
-    if: ${{ inputs.publish == true && github.ref_type == 'tag' && github.ref_name == inputs.version }}
-    needs: [platform-connectors, prebuilt, packages, macos, windows, linux]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write   # npm trusted publishing and provenance
-    steps:
-      - name: Download dist
-        uses: actions/download-artifact@v4
-        with:
-          name: sdk-typescript-dist
-          path: dist/
-
-      - name: Set up Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          registry-url: https://registry.npmjs.org
-
-      # A prerelease never takes `latest`: its channel is its dist-tag.
-      - name: Publish to npm
-        run: |
-          set -euo pipefail
-          [ "$(ls dist/*.tgz | wc -l)" = 1 ]
-          npm publish dist/*.tgz --access public --provenance --tag "${DIST_TAG}"
-        env:
-          DIST_TAG: ${{ contains(inputs.version, '-alpha') && 'alpha' || contains(inputs.version, '-beta') && 'beta' || contains(inputs.version, '-rc') && 'rc' || 'latest' }}
-
   # REQ-2225: the Spark connector's image, built by platform-connectors and kept in the run, pushed
   # to the registry byte for byte -- after every leg, and before any package naming it (the provisa
   # wheel and the installers carry the block) is published. `connector push` refuses an image other
@@ -212,7 +179,7 @@ jobs:
   # publication that failed or was cancelled.
   publish:
     name: Attach and publish
-    needs: [platform-connectors, prebuilt, packages, macos, windows, linux, publish-sdk-npm, publish-connector-image]
+    needs: [platform-connectors, prebuilt, packages, macos, windows, linux, publish-connector-image]
     if: ${{ !cancelled() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') }}
     # The union of what the leg's jobs ask for: undraft the release (contents), the Pages
     # deployment's token (id-token), the image pushes (packages), the wheel index's deployment

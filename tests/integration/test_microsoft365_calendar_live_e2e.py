@@ -19,9 +19,12 @@ source's tables read back, row for row; a meeting change Graph would announce is
 the source tells nobody, and made once it does; and the change token of the source's calendars
 and task lists moves when they are written.
 
-It makes a calendar and a To Do list of its own in the first test mailbox, writes only into them,
-and removes both when it ends, whether it passed or not. A calendar or list an earlier run that
-did not end left behind (its name carries the run marker) is removed first. No server, engine or
+The tenant has one licensed mailbox, the maintainer's own (maintainer 2026-11-10), and it is the
+one written to. The test makes a calendar and a To Do list of its own there, under names unique
+to the run, writes only into them -- never the default calendar or list, so the maintainer's own
+events and tasks are untouched -- and removes both when it ends, whether it passed or not. A
+calendar or list an earlier run that did not end left behind (its name carries the run marker)
+is removed first. No server, engine or
 container is used, so run it with the stack switched off:
 
     PYTEST_NO_DOCKER=1 .venv/bin/python3 -m pytest \\
@@ -35,10 +38,15 @@ granted these application permissions, with admin consent:
     Calendars.ReadWrite
     Tasks.ReadWrite.All
 
-  M365_TENANT_ID, M365_CLIENT_ID, M365_CLIENT_SECRET, M365_TEST_MAILBOXES (the first is written
-  to; a second, when named, is the attendee a meeting change is announced to).
+  M365_TENANT_ID, M365_CLIENT_ID, M365_CLIENT_SECRET, M365_TEST_MAILBOXES (its first address is
+  the tenant's one licensed mailbox, written to and the organiser).
 
-In no CI lane, like the mail test; a credential that is not set fails it by name.
+The tenant has no second mailbox. The meeting test's attendee is that same mailbox: every
+assertion is on the organiser's side -- the refusal, the attendee row as written, which change is
+told.
+
+In CI it runs in the mail test's lane, microsoft_365, when a dispatch asks for it
+(include_microsoft_365); a credential that is not set fails it by name.
 """
 
 # Requirements: REQ-1994
@@ -86,7 +94,8 @@ def _mailboxes() -> tuple[str, ...]:
 
 
 ADA = _mailboxes()[0] if _HAVE_CREDS else ""
-OTHER = _mailboxes()[1] if _HAVE_CREDS and len(_mailboxes()) > 1 else None
+
+
 ROOT = f"/users/{quote(ADA, safe='')}"
 
 
@@ -143,6 +152,22 @@ def _sweep(token, everything: bool) -> None:
                     graph.write("DELETE", f"{ROOT}/todo/lists/{quote(item['id'], safe='')}")
 
 
+def _assert_none_left(token) -> None:
+    """Read back after the sweep: a calendar or To Do list of the test's mark still there fails."""
+    with httpx.Client() as client:
+        graph = _graph(client, token)
+        left = [
+            c.get("name")
+            for c in calendar.calendars(graph, ADA)
+            if (c.get("name") or "").startswith(_MARK)
+        ]
+        for page in graph.pages(f"{ROOT}/todo/lists"):
+            left += [
+                i.get("displayName") for i in page if (i.get("displayName") or "").startswith(_MARK)
+            ]
+    assert not left, f"test residue left in the tenant mailbox: {left}"
+
+
 @pytest.fixture(scope="module")
 def made(token):
     """A calendar and a To Do list of this run's own, removed when the module ends."""
@@ -155,6 +180,7 @@ def made(token):
         yield SimpleNamespace(calendar=made_calendar["id"], task_list=made_list["id"])
     finally:
         _sweep(token, everything=True)
+        _assert_none_left(token)
 
 
 def _ours(rows: list[dict], made) -> list[dict]:
@@ -234,8 +260,8 @@ def test_a_series_is_one_rrule_with_one_occurrence_moved_and_another_cancelled(t
     assert master["cancelled_occurrences"], "Graph names the cancelled occurrence on the master"
 
 
-@pytest.mark.skipif(OTHER is None, reason="M365_TEST_MAILBOXES names no second mailbox")
 def test_a_meeting_is_changed_only_when_the_source_tells_its_attendees(token, made):
+    attendee = ADA
     _run(
         token,
         "INSERT INTO events (calendar_id, title, start_at, end_at) VALUES ($1, $2, $3, $4)",
@@ -246,19 +272,19 @@ def test_a_meeting_is_changed_only_when_the_source_tells_its_attendees(token, ma
         _run(
             token,
             "INSERT INTO event_attendees (event_id, address) VALUES ($1, $2)",
-            [meeting["id"], OTHER],
+            [meeting["id"], attendee],
         )
     assert (
         _run(
             token,
             "INSERT INTO event_attendees (event_id, address) VALUES ($1, $2)",
-            [meeting["id"], OTHER],
+            [meeting["id"], attendee],
             send_updates=True,
         )
         == 1
     )
     people = [r for r in _rows(token, "event_attendees") if r["event_id"] == meeting["id"]]
-    assert [p["address"].lower() for p in people] == [OTHER]
+    assert [p["address"].lower() for p in people] == [attendee]
     # Now a meeting: its own reminder changes silently, its title does not.
     assert (
         _run(token, "UPDATE events SET is_reminder_on = false WHERE id = $1", [meeting["id"]]) == 1

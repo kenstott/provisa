@@ -413,6 +413,8 @@ jobs:
   build-sdk-python:
     name: Build provisa-sdk (Python)
     runs-on: ubuntu-latest
+    permissions:
+      contents: write   # attaches what it builds to the draft release
     needs: [metadata]
     steps:
       - name: Checkout
@@ -447,7 +449,9 @@ jobs:
               print("missing:", missing); sys.exit(1)
           PY
 
+      # A dry run keeps it in the run; the upload fails when the file is missing.
       - name: Upload dist
+        if: ${{ !inputs.publish }}
         uses: actions/upload-artifact@v4
         with:
           name: sdk-python-dist
@@ -464,11 +468,13 @@ jobs:
             provisa-sdk/python/dist/provisa_sdk-*.whl
             provisa-sdk/python/dist/provisa_sdk-*.tar.gz
 
-  # REQ-1984: the TypeScript SDK (npm @provisa/sdk), at the release's version as semver. Packed
-  # here; published by the orchestrator (publish-sdk-npm), after every leg.
+  # REQ-1984: the TypeScript SDK (@provisa/sdk), at the release's version as semver. Packed here
+  # and attached to the draft release as an asset: nothing goes to npm (maintainer 2026-11-21).
   build-sdk-typescript:
     name: Build @provisa/sdk (TypeScript)
     runs-on: ubuntu-latest
+    permissions:
+      contents: write   # attaches what it builds to the draft release
     needs: [metadata]
     steps:
       - name: Checkout
@@ -495,13 +501,22 @@ jobs:
             echo "$listing" | grep -qx "$member" || { echo "missing: $member"; exit 1; }
           done
 
+      # A dry run keeps it in the run; the upload fails when the file is missing.
       - name: Upload dist
+        if: ${{ !inputs.publish }}
         uses: actions/upload-artifact@v4
         with:
           name: sdk-typescript-dist
           path: provisa-sdk/typescript/dist/
           if-no-files-found: error
           retention-days: 1
+
+      - name: Attach the tarball to the draft release
+        if: inputs.publish
+        uses: ./.github/actions/attach-release-assets
+        with:
+          tag: ${{ inputs.version }}
+          files: provisa-sdk/typescript/dist/provisa-sdk-*.tgz
 
   build-jdbc:
     name: Build JDBC driver

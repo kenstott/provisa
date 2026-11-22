@@ -24,11 +24,23 @@ name: Conformance (functions)
 # the per-engine sections of docs/conformance/pgwire.md and overview.md from it, and uploads all
 # three. It is failed when any leg left no complete result: such a list guarantees nothing.
 #
-# Engines left out: the paid warehouses (snowflake, databricks, bigquery, fabric, synapse,
-# motherduck) need credentials; clickhouse-server is the clickhouse leg's runtime on a server of
-# its own, so it would repeat that leg; the SQLAlchemy engines (mysql, mssql and the rest) each
-# need a server, and landing the fixture into it, that no conformance job has booted yet, and a
-# leg that leaves no result leaves no guaranteed list.
+# The legs are scripts/conformance/function_legs.yaml, one per engine kind of
+# provisa/core/engine_kinds.py that runs in a container a hosted runner can boot, which also says
+# why each other kind is not run; the plan job reads it and the merge lists it on the report. Every
+# direct-only source can be an engine (maintainer, 2026-11-03), so a leg measures the engine and the
+# direct path of its platform. An engine with a server runs in the docker-compose.test.yml service
+# the integration tests start for it, or in the demo/sources container another CI lane starts for it
+# (SAP HANA, as the swap UI lane does) (scripts/conformance/engine_service.sh). A leg whose engine
+# does not start is a failure, and its reason is on the report (function_legs.py failure).
+#
+# The live warehouses (snowflake, databricks, bigquery, fabric, synapse, redshift, motherduck and the
+# hosted singlestore) are the warehouse lane, under the gating of the integration suite's warehouse
+# lane (integration-suite-lanes.yml, warehouse job), whose repository secrets they read and no
+# others: planned only by a dispatch with lanes warehouse or all; each secret a leg reads checked
+# by name before anything runs; a leg that wakes compute every run shares (Snowflake, Databricks,
+# the Fabric capacity) in that lane's live-cloud-warehouses concurrency group, never cancelled; and
+# what a leg woke or provisioned left stopped, suspended, paused or deleted whatever happened
+# (REQ-254; scripts/conformance/warehouse_leg.py). No push or schedule runs this workflow.
 
 on:
   # Runs on dispatch for a release (gh workflow run <workflow> --ref <release branch>): it gates the
@@ -39,6 +51,12 @@ on:
         description: "Commit or branch to test (default: the dispatched one)"
         required: false
         default: ""
+      lanes:
+        description: "free: the engines a hosted runner boots; warehouse: the warehouse lane's live warehouses, by its secrets; all: both"
+        required: false
+        type: choice
+        default: free
+        options: [free, warehouse, all]
 
 permissions:
   contents: read
@@ -52,28 +70,45 @@ defaults:
     shell: bash
 
 jobs:
+  plan:
+    name: legs
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      engines: ${{ steps.plan.outputs.engines }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+
+      - name: Set up Python
+        uses: ./.github/actions/setup-python
+        with:
+          extras: dev
+
+      - name: Plan the legs
+        id: plan
+        run: |
+          .venv/bin/python scripts/conformance/function_legs.py plan --lanes "${{ inputs.lanes || 'free' }}" \
+            | tee -a "$GITHUB_OUTPUT"
+
   probe:
     name: functions on ${{ matrix.engine }}
+    needs: plan
     runs-on: ubuntu-latest
-    timeout-minutes: 130
+    timeout-minutes: 160
+    # A leg that wakes shared warehouse compute waits for any run of the warehouse lane (or of
+    # another such leg) that holds it, and is never cancelled by one (integration-suite-lanes.yml,
+    # warehouse job, REQ-254); every other leg is a group of its own.
+    concurrency:
+      group: ${{ matrix.concurrency || format('conformance-functions-{0}-{1}', github.run_id, matrix.engine) }}
+      queue: max
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - engine: duckdb
-          # The PostgreSQL service below, as the engine.
-          - engine: pg
-            engine-url: postgresql://postgres:conformance-pg-password@127.0.0.1:15432/conformance
-          # chdb, in-process.
-          - engine: clickhouse
-          # The compose stack the Trino UI lane runs: the engine, its object store, its Arrow
-          # proxy, its metastore, and the control plane Trino reads over JDBC.
-          - engine: trino
-            control-plane-url: postgresql+psycopg://provisa:provisa@localhost:5432/provisa
-            boot-attempts: "300"
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
     env:
       PROVISA_ENGINE: ${{ matrix.engine }}
-      PROVISA_ENGINE_URL: ${{ matrix.engine-url }}
       PROVISA_API_PORT: "8901"
       PROVISA_PGWIRE_PORT: "8906"
       CONFORMANCE_PG_HOST: 127.0.0.1
@@ -112,7 +147,64 @@ jobs:
       - name: Set up Python
         uses: ./.github/actions/setup-python
         with:
-          extras: dev
+          extras: ${{ matrix.extras }}
+
+      # The matrix carries no URL: the runner masks a URL's credentials and drops the plan's
+      # output when it holds one, which leaves this job no legs. Each comes from the legs file.
+      - name: The leg's URLs
+        run: .venv/bin/python scripts/conformance/function_legs.py urls --engine "$PROVISA_ENGINE" >> "$GITHUB_ENV"
+
+      - name: Install ODBC Driver 18
+        id: odbc
+        if: matrix.odbc
+        timeout-minutes: 10
+        uses: ./.github/actions/mssql-odbc
+
+      # The SQLAlchemy dialect the engine URL names, where the locked environment has none, into
+      # this leg's environment alone.
+      - name: Install the engine's client
+        id: client
+        if: matrix.pip != '' || matrix.apt != ''
+        run: |
+          if [ -n "${{ matrix.apt }}" ]; then
+            sudo apt-get -o DPkg::Lock::Timeout=300 update -q
+            sudo DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=300 install -y -q ${{ matrix.apt }}
+          fi
+          if [ -n "${{ matrix.pip }}" ]; then
+            uv pip install --python .venv/bin/python ${{ matrix.pip }}
+          fi
+
+      - name: Start the engine's server
+        id: service
+        if: matrix.service != '' || matrix.demo-source != ''
+        env:
+          SERVICE: ${{ matrix.service }}
+          SERVICE_ENV: ${{ matrix.service-env }}
+          DEMO_SOURCE: ${{ matrix.demo-source }}
+          WAIT: ${{ matrix.wait }}
+          READY_SQL: ${{ matrix.ready-sql }}
+          SETUP_URL: ${{ env.LEG_SETUP_URL }}
+          SETUP_SQL: ${{ matrix.setup-sql }}
+          SOURCE_HOST: ${{ matrix.source-host }}
+        run: |
+          if [ -n "$DEMO_SOURCE" ]; then
+            bash scripts/conformance/engine_service.sh demo "$DEMO_SOURCE"
+          else
+            # shellcheck disable=SC2086 # SERVICE_ENV is NAME=value words, one argument each
+            bash scripts/conformance/engine_service.sh up "$SERVICE" "$WAIT" $SERVICE_ENV
+          fi
+          if [ -n "$SETUP_SQL" ]; then
+            .venv/bin/python scripts/conformance/function_legs.py wait --url "$SETUP_URL" --sql "$READY_SQL" --timeout "$WAIT"
+            .venv/bin/python scripts/conformance/function_legs.py setup --url "$SETUP_URL" --sql "$SETUP_SQL"
+          fi
+          if [ -n "$READY_SQL" ]; then
+            .venv/bin/python scripts/conformance/function_legs.py wait --url "$PROVISA_ENGINE_URL" --sql "$READY_SQL" --timeout "$WAIT"
+          fi
+          # An engine in a container that reads the conformance PostgreSQL itself reaches it by the
+          # runner's own address.
+          if [ "$SOURCE_HOST" = runner ]; then
+            echo "CONFORMANCE_PG_HOST=$(hostname -I | cut -d' ' -f1)" >> "$GITHUB_ENV"
+          fi
 
       # The Trino leg alone mounts the pinned plugin jars, so it primes them itself: a cache hit,
       # or one fetch from Maven Central, checksum-verified (.github/actions/trino-plugins). The
@@ -128,6 +220,7 @@ jobs:
       # address the other side dials: playwright.config.ts's Trino webServer, name for name. The
       # conformance source is addressed by the runner's own address, which both can reach.
       - name: Start the Trino stack
+        id: trino
         if: matrix.engine == 'trino'
         run: |
           bash scripts/ci/test-store-env.sh | tee -a "$GITHUB_ENV" > "$RUNNER_TEMP/store-env"
@@ -143,7 +236,43 @@ jobs:
             echo "PROVISA_ENGINE_LAKEHOUSE_METASTORE_PORT=9083"
           } >> "$GITHUB_ENV"
 
+      # A warehouse leg's warehouse, from the warehouse lane's repository secrets (its job's env in
+      # integration-suite-lanes.yml, name for name): those this leg names are checked, given to the
+      # instance through $GITHUB_ENV, and what it uses woken or provisioned, with its engine URL.
+      - name: Bring up the warehouse
+        id: warehouse
+        if: matrix.lane == 'warehouse'
+        env:
+          SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+          SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+          SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+          SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
+          SNOWFLAKE_DATABASE: ${{ secrets.SNOWFLAKE_DATABASE }}
+          DATABRICKS_SERVER_HOSTNAME: ${{ secrets.DATABRICKS_SERVER_HOSTNAME }}
+          DATABRICKS_HTTP_PATH: ${{ secrets.DATABRICKS_HTTP_PATH }}
+          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+          GOOGLE_CLOUD_PROJECT: ${{ secrets.GOOGLE_CLOUD_PROJECT }}
+          GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
+          FABRIC_CAPACITY_NAME: ${{ secrets.FABRIC_CAPACITY_NAME }}
+          FABRIC_RESOURCE_GROUP: ${{ secrets.FABRIC_RESOURCE_GROUP }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          REDSHIFT_AWS_ACCESS_KEY_ID: ${{ secrets.REDSHIFT_AWS_ACCESS_KEY_ID }}
+          REDSHIFT_AWS_SECRET_ACCESS_KEY: ${{ secrets.REDSHIFT_AWS_SECRET_ACCESS_KEY }}
+          REDSHIFT_AWS_REGION: ${{ secrets.REDSHIFT_AWS_REGION }}
+          MOTHERDUCK_API_TOKEN: ${{ secrets.MOTHERDUCK_API_TOKEN }}
+          SINGLESTORE_HOST: ${{ secrets.SINGLESTORE_HOST }}
+          SINGLESTORE_PORT: ${{ secrets.SINGLESTORE_PORT }}
+          SINGLESTORE_USERNAME: ${{ secrets.SINGLESTORE_USERNAME }}
+          SINGLESTORE_PASSWORD: ${{ secrets.SINGLESTORE_PASSWORD }}
+          SINGLESTORE_DATABASE: ${{ secrets.SINGLESTORE_DATABASE }}
+        run: |
+          .venv/bin/python scripts/conformance/warehouse_leg.py up --engine "$PROVISA_ENGINE" \
+            --state "$RUNNER_TEMP/warehouse" --env-file "$GITHUB_ENV"
+
       - name: Seed the table column calls read
+        id: seed
         run: |
           .venv/bin/python scripts/conformance/function_support.py seed-columns \
             --pg "host=$CONFORMANCE_PG_HOST port=$CONFORMANCE_PG_PORT dbname=$CONFORMANCE_PG_DATABASE user=$CONFORMANCE_PG_USER password=$CONFORMANCE_PG_PASSWORD" \
@@ -154,12 +283,13 @@ jobs:
         uses: ./.github/actions/conformance-instance
         with:
           extra-tables: ${{ runner.temp }}/function-columns.yaml
-          control-plane-url: ${{ matrix.control-plane-url }}
-          boot-attempts: ${{ matrix.boot-attempts || '90' }}
+          control-plane-url: ${{ env.LEG_CONTROL_PLANE_URL }}
+          boot-attempts: ${{ matrix.boot-attempts }}
 
       # The runner's memory, disk and largest processes each minute, in this step's own log: a leg
       # the runner gives up on mid-step leaves no artifact, and its log is then the only record.
       - name: Measure every pg_catalog function
+        id: measure
         timeout-minutes: 110
         run: |
           mkdir -p "$RUNNER_TEMP/report"
@@ -187,6 +317,26 @@ jobs:
           cat "$RUNNER_TEMP/report/function-support-$PROVISA_ENGINE.md" >> "$GITHUB_STEP_SUMMARY"
           cp "$RUNNER_TEMP/provisa/server.log" "$RUNNER_TEMP/report/server-$PROVISA_ENGINE.log"
 
+      # Why the leg left no result, which the merge puts on the report beside it: the step that
+      # failed and the end of the engine's and the instance's logs.
+      - name: Record why the leg failed
+        if: ${{ failure() }}
+        env:
+          STEPS: ${{ toJSON(steps) }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/report"
+          logs=(--log "$RUNNER_TEMP/provisa/server.log")
+          if [ -n "${{ matrix.demo-source }}" ]; then
+            bash scripts/conformance/engine_service.sh demo-logs "${{ matrix.demo-source }}" "$RUNNER_TEMP/report/engine-$PROVISA_ENGINE.log"
+            logs+=(--log "$RUNNER_TEMP/report/engine-$PROVISA_ENGINE.log")
+          elif [ -n "${{ matrix.service }}" ]; then
+            bash scripts/conformance/engine_service.sh logs "${{ matrix.service }}" "$RUNNER_TEMP/report/engine-$PROVISA_ENGINE.log"
+            logs+=(--log "$RUNNER_TEMP/report/engine-$PROVISA_ENGINE.log")
+          fi
+          .venv/bin/python scripts/conformance/function_legs.py failure --engine "$PROVISA_ENGINE" \
+            --steps "$STEPS" "${logs[@]}" --out "$RUNNER_TEMP/report/leg-failure-$PROVISA_ENGINE.json" \
+            | tee -a "$GITHUB_STEP_SUMMARY"
+
       - name: Upload results
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
@@ -205,10 +355,21 @@ jobs:
           if [ -f "$RUNNER_TEMP/provisa/server.pid" ]; then kill "$(cat "$RUNNER_TEMP/provisa/server.pid")" || true; fi
           if [ -d "$RUNNER_TEMP/provisa/control-pg" ]; then .venv/bin/python -m provisa.core.control_plane_pg stop "$RUNNER_TEMP/provisa/control-pg" || true; fi
 
+      # REQ-254: what the leg woke or provisioned is left stopped, suspended, paused or deleted,
+      # whatever happened, after the instance that used it is gone; one that does not end so fails
+      # the step, as the warehouse lane's own "Leave the ... stopped" steps do. The secrets are
+      # those "Bring up the warehouse" gave the job.
+      - name: Leave the warehouse stopped
+        if: ${{ always() && matrix.lane == 'warehouse' }}
+        run: |
+          .venv/bin/python scripts/conformance/warehouse_leg.py down --engine "$PROVISA_ENGINE" \
+            --state "$RUNNER_TEMP/warehouse" \
+            || { echo "::error::the $PROVISA_ENGINE leg's warehouse could not be confirmed stopped: check it, it may be billing"; exit 1; }
+
   merge:
     name: results by engine
-    needs: probe
-    if: ${{ !cancelled() }}
+    needs: [plan, probe]
+    if: ${{ !cancelled() && needs.plan.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -230,7 +391,8 @@ jobs:
         run: |
           status=0
           .venv/bin/python scripts/conformance/function_support.py merge \
-            --engines duckdb,pg,clickhouse,trino \
+            --engines "${{ needs.plan.outputs.engines }}" \
+            --legs scripts/conformance/function_legs.yaml \
             --in "$RUNNER_TEMP/legs" \
             --out scripts/conformance/function_support.json \
             --out-md "$RUNNER_TEMP/function-support.md" || status=$?

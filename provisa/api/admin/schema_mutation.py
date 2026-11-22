@@ -2717,6 +2717,58 @@ def _region_refused(refused: ValueError, params: dict) -> MutationResult:
     )
 
 
+async def _set_table_region(
+    info: StrawberryInfo, table_id: int, region: str | None
+) -> MutationResult:  # REQ-1921
+    """The setTableRegion mutation: refused for a table derived from a function (REQ-1986)."""
+    from provisa.core.repositories import region as region_repo
+
+    pool = await _get_pool()
+    async with pool.acquire() as conn:
+        _row = await conn.execute_core(
+            select(registered_tables).where(registered_tables.c.id == table_id)
+        )
+        row = _row.fetchone()
+        if row is None:
+            return MutationResult(
+                success=False,
+                message=f"Table {table_id} not found",
+                code="schema.table_not_found",
+                params={"table": table_id},
+            )
+        require_capability(info, "table_registration", domain_id=row.domain_id)
+        from provisa.api.admin._function_table import derived_region_refusal
+
+        _derived = await derived_region_refusal(conn, dict(row._mapping))
+        if _derived is not None:  # REQ-1986: the derived table has its function's region
+            _function, _why = _derived
+            return MutationResult(
+                success=False,
+                message=_why,
+                code="schema.table_region_from_function",
+                params={"table": row.table_name, "name": _function},
+            )
+        refused_here = _residency_refusal(info, f"table {row.table_name}", row.region, region)
+        if refused_here is not None:
+            return refused_here
+        try:
+            name = await region_repo.set_table_region(conn, table_id, region)
+        except ValueError as refused:
+            return MutationResult(
+                success=False,
+                message=str(refused),
+                code="schema.region_refused",
+                params={"table": table_id, "region": region, "reason": str(refused)},
+            )
+    await _rebuild_schemas()
+    return MutationResult(
+        success=True,
+        message=f"region of table {name!r} set to {region or 'none'}",
+        code="schema.table_region_set",
+        params={"table": table_id, "region": region},
+    )
+
+
 async def _set_table_withdrawn(
     info: StrawberryInfo, table_id: int, withdrawn: bool, region: str | None
 ) -> MutationResult:  # REQ-1921
@@ -6561,45 +6613,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
     ) -> MutationResult:  # REQ-1921
         """Set where one table's data lives (None = no region): the one place a registered
         table's region changes. Its copies follow — built in the new region, retired elsewhere."""
-        from provisa.core.repositories import region as region_repo
-
-        pool = await _get_pool()
-        async with pool.acquire() as conn:
-            _row = await conn.execute_core(
-                select(
-                    registered_tables.c.domain_id,
-                    registered_tables.c.table_name,
-                    registered_tables.c.region,
-                ).where(registered_tables.c.id == table_id)
-            )
-            row = _row.fetchone()
-            if row is None:
-                return MutationResult(
-                    success=False,
-                    message=f"Table {table_id} not found",
-                    code="schema.table_not_found",
-                    params={"table": table_id},
-                )
-            require_capability(info, "table_registration", domain_id=row.domain_id)
-            refused_here = _residency_refusal(info, f"table {row.table_name}", row.region, region)
-            if refused_here is not None:
-                return refused_here
-            try:
-                name = await region_repo.set_table_region(conn, table_id, region)
-            except ValueError as refused:
-                return MutationResult(
-                    success=False,
-                    message=str(refused),
-                    code="schema.region_refused",
-                    params={"table": table_id, "region": region, "reason": str(refused)},
-                )
-        await _rebuild_schemas()
-        return MutationResult(
-            success=True,
-            message=f"region of table {name!r} set to {region or 'none'}",
-            code="schema.table_region_set",
-            params={"table": table_id, "region": region},
-        )
+        return await _set_table_region(info, table_id, region)
 
     @strawberry.mutation
     async def withdraw_table(self, info: StrawberryInfo, table_id: int) -> MutationResult:

@@ -463,3 +463,32 @@ def test_the_pgwire_workflow_seeds_the_tables_and_replays_after_the_catalog():
     assert "bi_tools/replay.py replay" in steps[replayed]["run"]
     summarise = steps[names.index("Summarise")]["run"]
     assert "bi_tools/replay.py docs" in summarise and "bi-tools.md" in summarise
+
+
+# --- publication per tool (REQ-2204) -------------------------------------------------------------
+
+
+def test_the_static_tools_table_lists_no_tool_the_replay_publishes():
+    page = replay.DOCS.read_text()
+    static = page[page.index("## Tools") :]
+    for tool in replay.TITLES.values():
+        assert f"| {tool} |" not in static
+
+
+def test_markdown_lists_every_replayed_tool_once_in_the_counts_table(monkeypatch):
+    monkeypatch.setattr(by_design, "groups", lambda surface: [])
+    text = replay.markdown(_report())
+    for title in replay.TITLES.values():
+        assert text.count(f"\n| {title} | ") == 1
+
+
+def test_docs_command_writes_the_results_into_the_page(monkeypatch, tmp_path):
+    monkeypatch.setattr(by_design, "groups", lambda surface: [])
+    page = tmp_path / "pgwire.md"
+    page.write_text(f"intro\n{replay.BEGIN}\nold\n{replay.END}\nrest\n")
+    report = tmp_path / "bi-tools.json"
+    report.write_text(json.dumps(_report()))
+    assert replay.main(["docs", str(report), "--page", str(page)]) == 0
+    text = page.read_text()
+    assert "old" not in text and text.startswith("intro\n") and text.endswith("rest\n")
+    assert "| psql | 17.11 | 2026-11-04 | Automated | 2 | 1 | 0 | 1 | 0 |" in text
