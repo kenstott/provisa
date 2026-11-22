@@ -2,7 +2,7 @@
 
 **Suite:** W3C SPARQL 1.1 test suite (query, update, result formats).
 
-**Pass rate:** The W3C SPARQL 1.1 test suite does not run in CI. An in-process run is the current measure.
+**Pass rate:** Not yet measured. The Conformance (SPARQL) workflow runs the full suite in CI when it is dispatched for a release. A test that fails and is not on `scripts/conformance/expected/sparql.json` fails the run, and so does a listed test that passes.
 
 ## How the suite runs
 

@@ -537,7 +537,7 @@ def test_the_written_file_reads_back_and_lists_one_entry_a_line():
 
 # --- the committed files --------------------------------------------------------------------------
 
-CASE_SURFACES = ("cypher", "bolt", "flight-sql", "pgwire", "graphql")
+CASE_SURFACES = ("cypher", "bolt", "flight-sql", "pgwire", "graphql", "sparql")
 
 
 @pytest.mark.parametrize("surface", CASE_SURFACES)
@@ -577,6 +577,7 @@ GATED = {
     "conformance-flight-sql.yml": ("flight-sql", "baseline_gate.py cases flight-sql"),
     "conformance-pgwire.yml": ("pgwire", "baseline_gate.py cases pgwire"),
     "conformance-graphql.yml": ("graphql", "baseline_gate.py cases graphql"),
+    "conformance-sparql.yml": ("sparql", "baseline_gate.py cases sparql"),
     "conformance-functions.yml": ("merge", "baseline_gate.py functions"),
 }
 
