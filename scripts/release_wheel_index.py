@@ -10,7 +10,7 @@
 
 """The provisa package index: a PEP 503 simple index of the wheels on GitHub releases.
 
-Nothing is published to PyPI (maintainer 2026-11-21). The server, client and notebook wheels are
+Nothing is published to PyPI (maintainer 2026-11-21). The server, client, notebook and extension wheels are
 installed from the release assets through this index, served on GitHub Pages (``pip install provisa --extra-index-url
 <pages>/simple/``). "Release: attach and publish" (.github/workflows/release-publish.yml) runs it
 after each release is published, over every release of the repository:
@@ -33,7 +33,13 @@ import sys
 from collections.abc import Iterable
 from pathlib import Path
 
-PROJECTS = ("provisa", "provisa-client", "provisa-notebook")
+PROJECTS = (
+    "provisa",
+    "provisa-client",
+    "provisa-notebook",
+    "provisa-duckdb-ext",
+    "provisa-pg-ext",
+)
 
 
 def normalize(name: str) -> str:

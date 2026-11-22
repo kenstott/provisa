@@ -89,7 +89,10 @@ async def list_pending(conn: "Connection", state: Any) -> list[dict]:  # REQ-018
 
 
 async def accept(
-    conn: "Connection", candidate_id: int, rel_id: str | None = None
+    conn: "Connection",
+    candidate_id: int,
+    rel_id: str | None = None,
+    cardinality: str | None = None,
 ) -> dict:  # REQ-019, REQ-020, REQ-413
     """Accept a candidate: mark it accepted and register its relationship through the existing
     derivation (:func:`provisa.core.repositories.relationship.upsert`), which marks the referring
@@ -109,6 +112,9 @@ async def accept(
         if found is None:
             raise ValueError(f"Candidate {candidate_id} not found or not in suggested status")
         row = dict(found._mapping)
+        if cardinality is not None:
+            # An override the reviewer set in the edit dialog (REQ-2262), checked as a Cardinality.
+            row["cardinality"] = Cardinality(cardinality).value
 
         tables = {
             int(r.id): r

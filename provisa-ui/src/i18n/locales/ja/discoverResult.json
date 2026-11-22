@@ -46,6 +46,7 @@
       "existing": "登録済み",
       "rejected": "以前に却下",
       "out_of_scope": "選んだテーブルの範囲外"
-    }
+    },
+    "keyNames": "キー名と型: {{found}} 件検出、{{count}} 件提案。"
   }
 }

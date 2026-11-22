@@ -1,0 +1,51 @@
+{
+  "accessReview": {
+    "heading": "Revisión de accesos",
+    "help": "Cada revisión lista la asignación de rol de cada miembro con sus derechos y su último uso, agrupada por dominio. El propietario de cada dominio confirma o revoca cada fila e indica el motivo. Una revocación elimina la asignación de inmediato.",
+    "scheduleLabel": "Programación de la revisión",
+    "scheduleHint": "Cron en UTC: minuto hora día mes día de la semana. Vacío: sin revisión programada.",
+    "scheduleSaved": "Programación de la revisión guardada",
+    "reviewLabel": "Revisión",
+    "reviewOption": "{{when}} · {{by}} · {{decided}} de {{rows}} decididas",
+    "bySchedule": "según programación",
+    "noReviews": "Aún no se ha realizado ninguna revisión.",
+    "noRows": "No hay filas en esta revisión para los dominios de los que es propietario.",
+    "start": "Iniciar una revisión",
+    "started_one": "Revisión iniciada: {{count}} asignación por revisar",
+    "started_other": "Revisión iniciada: {{count}} asignaciones por revisar",
+    "export": "Exportar CSV",
+    "colDomain": "Dominio",
+    "colMember": "Miembro",
+    "colRole": "Rol",
+    "colEntitlements": "Derechos",
+    "colLastUsed": "Último uso",
+    "colDecision": "Decisión",
+    "colActions": "Acciones",
+    "everyDomain": "Todos los dominios",
+    "wholeRole": "El rol completo",
+    "neverUsed": "Nunca",
+    "undecided": "Sin decidir",
+    "decision": {
+      "confirmed": "Confirmado",
+      "revoked": "Revocado"
+    },
+    "decidedBy": "{{who}}, {{when}}",
+    "confirm": "Confirmar",
+    "revoke": "Revocar",
+    "prompt": {
+      "confirmed": "Confirmar la asignación del rol {{role}} de {{member}} en {{domain}}.",
+      "revoked": "Revocar la asignación del rol {{role}} de {{member}} en {{domain}}. Se elimina de inmediato."
+    },
+    "reasonLabel": "Motivo",
+    "reasonHint": "Por qué confirma o revoca este acceso. Se registra junto con su decisión.",
+    "webhookUrlLabel": "URL del webhook",
+    "webhookUrlHint": "Cada revisión programada se envía aquí, firmada con el secreto. Vacío: sin webhook.",
+    "webhookSecretLabel": "Secreto del webhook",
+    "webhookSecretHint": "Solo escritura: firma cada envío y no se vuelve a mostrar. Déjelo vacío para conservar el actual.",
+    "webhookSecretHeld": "Hay un secreto guardado",
+    "webhookFailed": "La revisión programada no se envió al webhook: {{error}}",
+    "webhookDelivered": "Esta revisión programada se envió al webhook.",
+    "sourceIdp": "Asignado a través del proveedor de identidad",
+    "readOnly": "Solo lectura: Provisa no tiene ninguna asignación que revocar"
+  }
+}

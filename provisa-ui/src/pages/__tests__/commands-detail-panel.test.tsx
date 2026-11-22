@@ -74,7 +74,7 @@ vi.mock("../../context/AuthContext", async (importOriginal) => ({
   useAuth: () => ({
     role: "admin",
     selectedRoles: ["admin"],
-    capabilities: ["admin"],
+    capabilities: ["admin", "table_registration"],
     domainAccess: ["*"],
     activeOrgId: "acme",
   }),

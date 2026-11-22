@@ -12,7 +12,8 @@
     "notAgainAria": "{{name}} nicht erneut empfehlen",
     "kind": {
       "foreign_keys": "Constraint",
-      "semantics": "Semantisch"
+      "semantics": "Semantisch",
+      "key_names": "Namensübereinstimmung"
     },
     "asWritten": "Wie das Modell es schrieb: {{answer}}",
     "apply": "Anwenden",
@@ -53,7 +54,9 @@
         "target": "Sie können die Zielspalte nicht lesen."
       },
       "noValues": "Die Quelle enthält keine Werte.",
-      "modelScore": "Vom Modell bewertet: Es wurden keine Werte verglichen."
+      "modelScore": "Vom Modell bewertet: Es wurden keine Werte verglichen.",
+      "ruleForeignKeys": "Aus einem deklarierten Fremdschlüssel erzeugt: Es wurden keine Werte verglichen.",
+      "ruleKeyNames": "Aus übereinstimmendem Schlüsselnamen und Typ erzeugt: Es wurden keine Werte verglichen."
     },
     "dimensionMade": "Beim Akzeptieren entsteht die gemeinsame Dimension {{name}}, mit der beide Spalten verknüpft werden.",
     "dimensionJoined": "Beim Akzeptieren werden beide Spalten mit der gemeinsamen Dimension {{name}} verknüpft.",
@@ -61,6 +64,7 @@
     "twoDimensions": "Ihre Spalten sind bereits mit zwei verschiedenen gemeinsamen Dimensionen verknüpft, daher kann sie nicht akzeptiert werden.",
     "admittedOnKeyValues": "Aufgrund übereinstimmender Schlüsselwerte in den Daten aufgenommen; die Messung steht neben der Konfidenz des Modells.",
     "hiddenByFilter_one": "{{count}} Zeile wird vom Filter ausgeblendet.",
-    "hiddenByFilter_other": "{{count}} Zeilen werden vom Filter ausgeblendet."
+    "hiddenByFilter_other": "{{count}} Zeilen werden vom Filter ausgeblendet.",
+    "editAria": "{{name}} bearbeiten"
   }
 }

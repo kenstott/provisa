@@ -390,6 +390,11 @@ async def test_two_starts_reconciling_one_org_schema_at_once_both_succeed(own_da
 # created with. It holds what history shows and grows only by a new table's first columns; a column
 # added to an existing table does NOT go here, it gets an ALTER.
 _CREATE_ONLY = {
+    "access_review_rows": (
+        "id review_id user_id role_id domain_id source entitlements expires_at last_used_at decision "
+        "decided_by decided_at reason"
+    ),
+    "access_reviews": "id started_by started_at webhook_status webhook_error webhook_at",
     "admin_audit_log": "id action actor_id subject_id detail created_at",
     "api_endpoints": "id source_id path method table_name columns ttl created_at",
     "api_sources": "id type base_url spec_url auth created_at",
@@ -398,6 +403,8 @@ _CREATE_ONLY = {
         "week_start holidays weekend created_at"
     ),
     "catalog_bindings": "id semantic_uri vendor_ref physical_key updated_at",
+    "catalog_exchanges": "id entry direction kind object value decided_by updated_at tenant_id",
+    "catalog_standing_choices": "id entry direction kind choice decided_by updated_at tenant_id",
     "checker_latest_runs": "table_id scan_id scan_time outcome",
     "checker_targets": "table_id checked_table_id",
     "code_source_builds": (

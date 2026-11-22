@@ -345,9 +345,17 @@ def analyze_source_tables(  # REQ-636, REQ-1266
     if catalog_name not in analyze_capable_catalogs(conn):
         log.debug("ANALYZE %s skipped: connector collects no statistics", catalog_name)
         return
+    from provisa.core.parameters import not_read_reason, parameter_facts, required_of
+
     cur = conn.cursor()
     for tbl in tables:
         if tbl.source_id != source.id:
+            continue
+        # REQ-1986: ANALYZE reads the table whole; a table whose metadata states required
+        # parameters gives no such read, so it is left out from its metadata, never tried.
+        required = required_of(parameter_facts(tbl.columns))
+        if required:
+            log.debug("ANALYZE %s skipped: it %s", tbl.table_name, not_read_reason(required))
             continue
         schema = _validate_identifier(tbl.schema_name)
         table = _validate_identifier(tbl.table_name)

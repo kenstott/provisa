@@ -6,6 +6,11 @@ name: Build PG Extensions
 
 on:
   workflow_dispatch:
+    inputs:
+      publish:
+        description: Attach the wheels to the tag's draft release. False on a dry run.
+        type: boolean
+        default: false
 
 permissions:
   contents: write   # upload release assets
@@ -106,12 +111,12 @@ jobs:
             dist/provisa-pg-ext-${{ matrix.os }}-${{ matrix.arch }}.tar.gz.sha256
 
       - name: Ensure release exists
-        if: startsWith(github.ref, 'refs/tags/')
+        if: inputs.publish
         uses: ./.github/actions/ensure-release
 
       # gh release upload only ADDS assets — never flips draft/prerelease.
       - name: Attach to draft release
-        if: startsWith(github.ref, 'refs/tags/')
+        if: inputs.publish
         env:
           GITHUB_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
@@ -130,7 +135,7 @@ jobs:
   windows:
     name: pg-ext windows-x64 (experimental)
     runs-on: windows-latest
-    if: startsWith(github.ref, 'refs/tags/')
+    if: inputs.publish
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4
@@ -148,16 +153,15 @@ jobs:
         run: python scripts/ci/win_pgserver_probe.py
 
   # Collect every platform's built bundles into ONE universal py3-none-any wheel (provisa-pg-ext) and
-  # publish it to PyPI so `provisa[embedded]` gets the FDW binaries through PyPI/Artifactory — never
-  # github.com/releases. The runtime (provisa.pg_extensions.catalog) stages the running platform's
-  # blobs out of this wheel via provisa_pg_ext.ext_root(). Mirrors build-duckdb-extensions.yml.
+  # attach it to the release (nothing goes to PyPI, maintainer 2026-11-21) so `provisa[embedded]`
+  # gets the FDW binaries through the release's wheel index. The runtime (provisa.pg_extensions.catalog) stages the
+  # running platform's blobs out of this wheel via provisa_pg_ext.ext_root(). Mirrors build-duckdb-extensions.yml.
   wheel:
-    name: Build + publish provisa-pg-ext wheel
+    name: Build + attach provisa-pg-ext wheel
     needs: unix
     runs-on: ubuntu-latest
     permissions:
       contents: write   # attaches SBOM/CVE report + upload release assets (workflow default)
-      id-token: write   # PEP 740 Sigstore attestation via gh-action-pypi-publish
     steps:
       - uses: actions/checkout@v4
 
@@ -197,7 +201,7 @@ jobs:
       # azure-cli deps, ansible/bcc, …), not this job's build toolchain, and produced a false-positive
       # gate failure in build-duckdb-extensions.yml (an ambient old `certifi`, unrelated to anything
       # the wheel ships). Scope both tools to a clean venv containing only `build`.
-      - name: Generate SBOM + CVE scan of the build toolchain (gates PyPI publish)
+      - name: Generate SBOM + CVE scan of the build toolchain (gates the release attach)
         run: |
           set -o pipefail
           python -m venv /tmp/toolchain-venv
@@ -211,47 +215,36 @@ jobs:
             -o sbom/provisa-pg-ext-sbom.cdx.json
           /tmp/toolchain-venv/bin/pip-audit --timeout 60 -f json | tee sbom/provisa-pg-ext-cve-report.json
 
-      - name: Publish provisa-pg-ext to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
+      # The wheel is attached to the draft by this job; the publish leg verifies it and the Pages
+      # index (scripts/release_wheel_index.py) links it.
+      - name: Attach the wheel, SBOM and CVE report to the draft release
+        if: inputs.publish
+        uses: ./.github/actions/attach-release-assets
         with:
-          packages-dir: dist-pg-ext/
-          skip-existing: true
-          attestations: true
+          tag: ${{ github.ref_name }}
+          files: |
+            dist-pg-ext/provisa_pg_ext-*.whl
+            dist-pg-ext/provisa_pg_ext-*.tar.gz
+            sbom/provisa-pg-ext-sbom.cdx.json
+            sbom/provisa-pg-ext-cve-report.json
 
-      - name: Ensure release exists
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: ./.github/actions/ensure-release
+      # Kept in the run for the dry run's inspection.
+      - name: Upload wheels
+        uses: actions/upload-artifact@v4
+        with:
+          name: provisa-pg-ext-wheels
+          path: dist-pg-ext/
 
-      - name: Attach SBOM + CVE report to draft release
-        if: startsWith(github.ref, 'refs/tags/')
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-          TAG: ${{ github.ref_name }}
-        run: |
-          set -euo pipefail
-          gh release upload "$TAG" \
-            sbom/provisa-pg-ext-sbom.cdx.json \
-            sbom/provisa-pg-ext-cve-report.json \
-            --clobber
-
-      # gh release upload only ADDS assets — never flips draft/prerelease.
-      - name: Attach wheel to draft release
-        if: startsWith(github.ref, 'refs/tags/')
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-          TAG: ${{ github.ref_name }}
-        run: |
-          set -euo pipefail
-          gh release upload "$TAG" dist-pg-ext/* --clobber
-
-  # The version just published, installed from PyPI into a clean virtualenv on each platform and
+  # The wheel just attached to the draft, downloaded from it and installed into a clean virtualenv on each platform and
   # proven there (scripts/ci/pg_ext_clean_staging.py): the smoke test above runs where the bundle
   # was built; this runs where nothing of the build is. It stages through the product's own staging
   # (which links the venv interpreter's libpython beside plpython3, REQ-1494) and runs the fake
   # functions in PL/Python: faker and pyyaml are what that product code imports (as uv.lock pins them).
   verify-published:
-    name: verify published ${{ matrix.platform }}
+    name: verify attached ${{ matrix.platform }}
     needs: wheel
+    # The draft's asset is what is proven, so a dry run (nothing attached) has nothing to verify.
+    if: inputs.publish
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
@@ -264,16 +257,18 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Install the published wheel into a clean venv
+      - name: Install the attached wheel into a clean venv
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
         run: |
+          set -euo pipefail
           version=$(python -c "import tomllib; print(tomllib.load(open('packaging/pg-ext/pyproject.toml','rb'))['project']['version'])")
+          mkdir "$RUNNER_TEMP/assets"
+          gh release download "$TAG" --pattern "provisa_pg_ext-$version-*.whl" --dir "$RUNNER_TEMP/assets"
           python -m venv "$RUNNER_TEMP/v"
-          # PyPI serves a new upload within a minute or two; ask until it does, bounded.
-          for i in $(seq 1 20); do
-            "$RUNNER_TEMP/v/bin/pip" install -q --no-cache-dir "provisa-pg-ext==$version" \
-              pixeltable-pgserver==0.5.1 "psycopg[binary]" faker==40.41.0 pyyaml==6.0.3 && break
-            [ "$i" = 20 ] && { echo "::error::provisa-pg-ext==$version not installable from PyPI"; exit 1; }
-            sleep 15
-          done
+          "$RUNNER_TEMP/v/bin/pip" install -q --no-cache-dir "$RUNNER_TEMP"/assets/provisa_pg_ext-"$version"-*.whl \
+            pixeltable-pgserver==0.5.1 "psycopg[binary]" faker==40.41.0 pyyaml==6.0.3
       - name: Stage it and read through every FDW
         run: env -i HOME="$HOME" PATH=/usr/bin:/bin "$RUNNER_TEMP/v/bin/python" scripts/ci/pg_ext_clean_staging.py ${{ matrix.platform }}

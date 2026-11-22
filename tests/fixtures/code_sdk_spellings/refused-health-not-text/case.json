@@ -34,5 +34,15 @@
       ],
       "checker": "rejects"
     }
+  },
+  "go": {
+    "doc": {
+      "problems": [
+        "Status: @health returns its status as text"
+      ]
+    },
+    "sdk": {
+      "checker": "rejects"
+    }
   }
 }

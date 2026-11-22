@@ -915,6 +915,28 @@ describe("Discovery dialog: each pair measured on its data, ticked from the pers
     );
   });
 
+  it("names the rule that produced a candidate no values were compared for", async () => {
+    runMock.mockResolvedValue(runOf({ status: "done", report: REPORT }));
+    proposalsMock.mockResolvedValue({
+      proposals: [
+        proposal({ id: 701, kind: "foreign_keys", measured: false, measure: null }),
+        proposal({ id: 702, kind: "key_names", measured: false, measure: null }),
+      ],
+      threshold: 0.7,
+      kept_at: 0.7,
+      score_filter: null,
+    });
+    await openDialog();
+    fireEvent.click(runButton());
+    await screen.findByTestId("proposal-701", {}, SLOW);
+    expect(screen.getByTestId("proposal-measure-701")).toHaveTextContent(
+      "Produced by a declared foreign key: no values were compared.",
+    );
+    expect(screen.getByTestId("proposal-measure-702")).toHaveTextContent(
+      "Produced by a matching key name and type: no values were compared.",
+    );
+  });
+
   it("a many-to-many row is accepted as the shared dimension it names", async () => {
     applyMock.mockResolvedValue([
       { id: 602, action: "accept", ok: true, relationship_id: "neighborhood" },

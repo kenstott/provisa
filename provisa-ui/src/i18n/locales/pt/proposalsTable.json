@@ -12,7 +12,8 @@
     "notAgainAria": "Não recomendar {{name}} de novo",
     "kind": {
       "foreign_keys": "Restrição",
-      "semantics": "Semântica"
+      "semantics": "Semântica",
+      "key_names": "Correspondência de nome"
     },
     "asWritten": "Como o modelo escreveu: {{answer}}",
     "apply": "Aplicar",
@@ -53,7 +54,9 @@
         "target": "Você não pode ler a coluna de destino."
       },
       "noValues": "A origem não contém valores.",
-      "modelScore": "Pontuação do modelo: nenhum valor foi comparado."
+      "modelScore": "Pontuação do modelo: nenhum valor foi comparado.",
+      "ruleForeignKeys": "Gerada por uma chave estrangeira declarada: nenhum valor foi comparado.",
+      "ruleKeyNames": "Gerada por um nome e tipo de chave correspondentes: nenhum valor foi comparado."
     },
     "dimensionMade": "Aceitar cria a dimensão compartilhada {{name}}, à qual as duas colunas se juntam.",
     "dimensionJoined": "Aceitar junta as duas colunas à dimensão compartilhada {{name}}.",
@@ -61,6 +64,7 @@
     "twoDimensions": "Suas colunas já se juntam a duas dimensões compartilhadas diferentes, então não pode ser aceita.",
     "admittedOnKeyValues": "Admitido porque os valores-chave correspondem nos dados; a medida é exibida ao lado da confiança do modelo.",
     "hiddenByFilter_one": "{{count}} linha está oculta pelo filtro.",
-    "hiddenByFilter_other": "{{count}} linhas estão ocultas pelo filtro."
+    "hiddenByFilter_other": "{{count}} linhas estão ocultas pelo filtro.",
+    "editAria": "Editar {{name}}"
   }
 }

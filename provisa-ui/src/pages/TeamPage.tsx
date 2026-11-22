@@ -61,6 +61,7 @@ import { TeamLocalUsers } from "../components/admin/TeamLocalUsers";
 import { PersonEntitlements } from "../components/entitlements/PersonEntitlements";
 import { EntitlementGrants } from "../components/entitlements/EntitlementGrants";
 import { useCapability } from "../hooks/useCapability";
+import { administersOrg, conferrableRoles } from "../lib/capabilities";
 
 // REQ-1266: org_admin self-service team management. The org_admin invites people into their
 // active org and picks the role each invitee is granted on redemption (the invite carries
@@ -69,8 +70,12 @@ import { useCapability } from "../hooks/useCapability";
 // only ever surfaces the current org's invites. Roles are shaped at Security → Roles.
 export function TeamPage() {
   const { t } = useTranslation();
-  const { activeOrgId, userId, multitenancy } = useAuth();
+  const { activeOrgId, userId, multitenancy, capabilities } = useAuth();
   const { roles } = useRoles();
+  // REQ-1327 (amended 2026-11-14, 2026-11-16): deleting the org and granting or revoking org_admin
+  // are an org_admin's acts (or the platform's); user_management alone allows none, so their
+  // controls are shown only where the server would accept them.
+  const isOrgAdmin = administersOrg(roles, capabilities);
   // REQ-2219: granting and ending a person's entitlement lists is assign_entitlements.
   const canAssign = useCapability("assign_entitlements");
   // REQ-2266: access reviews are taken by user_management and decided by each domain's owner.
@@ -185,7 +190,11 @@ export function TeamPage() {
     }
   };
 
-  const roleOptions = roles.map((r) => ({ value: r.id, label: r.id }));
+  // REQ-1327 (amended 2026-11-16): an invitation offers only the roles the caller may confer.
+  const roleOptions = conferrableRoles(roles, capabilities).map((r) => ({
+    value: r.id,
+    label: r.id,
+  }));
 
   // REQ-1594: an invitation is spent when it has no redemptions left, which "used_at is set" stopped
   // describing once a link could admit more than one person. A null ceiling never arrives there.
@@ -400,37 +409,41 @@ export function TeamPage() {
                           </Table.Td>
                           <Table.Td onClick={(e) => e.stopPropagation()}>
                             <Group gap="xs">
-                              <Tip text={lastAdmin ? t("teamPage.lastAdminHint") : undefined}>
-                                <Button
-                                  size="compact-xs"
-                                  variant="default"
-                                  disabled={lastAdmin}
-                                  onClick={() => handleToggleAdmin(m)}
-                                  data-testid={`team-toggle-admin-${m.user_id}`}
+                              {isOrgAdmin && (
+                                <Tip text={lastAdmin ? t("teamPage.lastAdminHint") : undefined}>
+                                  <Button
+                                    size="compact-xs"
+                                    variant="default"
+                                    disabled={lastAdmin}
+                                    onClick={() => handleToggleAdmin(m)}
+                                    data-testid={`team-toggle-admin-${m.user_id}`}
+                                  >
+                                    {m.is_org_admin ? t("teamPage.demote") : t("teamPage.promote")}
+                                  </Button>
+                                </Tip>
+                              )}
+                              {(isOrgAdmin || !m.is_org_admin) && (
+                                <Tip
+                                  text={
+                                    m.user_id === userId
+                                      ? t("teamPage.selfRemoveHint")
+                                      : lastAdmin
+                                        ? t("teamPage.lastAdminHint")
+                                        : undefined
+                                  }
                                 >
-                                  {m.is_org_admin ? t("teamPage.demote") : t("teamPage.promote")}
-                                </Button>
-                              </Tip>
-                              <Tip
-                                text={
-                                  m.user_id === userId
-                                    ? t("teamPage.selfRemoveHint")
-                                    : lastAdmin
-                                      ? t("teamPage.lastAdminHint")
-                                      : undefined
-                                }
-                              >
-                                <Button
-                                  size="compact-xs"
-                                  color="red"
-                                  variant="light"
-                                  disabled={lastAdmin || m.user_id === userId}
-                                  onClick={() => handleRemoveMember(m)}
-                                  data-testid={`team-remove-${m.user_id}`}
-                                >
-                                  {t("teamPage.removeButton")}
-                                </Button>
-                              </Tip>
+                                  <Button
+                                    size="compact-xs"
+                                    color="red"
+                                    variant="light"
+                                    disabled={lastAdmin || m.user_id === userId}
+                                    onClick={() => handleRemoveMember(m)}
+                                    data-testid={`team-remove-${m.user_id}`}
+                                  >
+                                    {t("teamPage.removeButton")}
+                                  </Button>
+                                </Tip>
+                              )}
                             </Group>
                           </Table.Td>
                         </ListRow>
@@ -720,7 +733,7 @@ export function TeamPage() {
           </CollapsibleItem>
         )}
 
-        {multitenancy && (
+        {multitenancy && isOrgAdmin && (
           <CollapsibleItem
             value="danger"
             controlTestId="team-section-danger"
@@ -749,7 +762,7 @@ export function TeamPage() {
         )}
       </Collapsibles>
 
-      {multitenancy && (
+      {multitenancy && isOrgAdmin && (
         <Modal
           opened={deleteOpen}
           onClose={() => setDeleteOpen(false)}
