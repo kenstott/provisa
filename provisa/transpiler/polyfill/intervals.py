@@ -1625,7 +1625,10 @@ _TEXT_STATED = (
     " An interval answer in the select list is interval_out's text (IntervalStyle postgres); one "
     "anywhere else but another interval call is refused by name."
 )
-_RANGE_STATED = " A field that overflows raises 22008 (interval out of range), as PostgreSQL does."
+_RANGE_STATED = (
+    " A field that overflows is PostgreSQL's error 22008 (interval out of range), where PostgreSQL"
+    " raises it."
+)
 
 
 @dataclass(frozen=True)
@@ -1715,7 +1718,8 @@ _DOCS: dict[str, _Doc] = {
     "sum": _Doc(
         "sum(interval)",
         "The sum of a group's intervals.",
-        _TEXT_STATED + " A total past a field raises 22008 (interval out of range). PostgreSQL "
+        _TEXT_STATED
+        + " A total past a field is PostgreSQL's error 22008 (interval out of range). PostgreSQL "
         "raises it where a running total overflows, which depends on its scan's order: where the "
         "rows of one sign alone reach a field's end and the total does not, 0A000 is raised. A "
         "window, DISTINCT or FILTER is refused by name.",
@@ -1727,9 +1731,10 @@ _SCALED_STATED = (
     "days scaled and truncated, their fractions cascaded down (a month at 30 days, a day at 86400 "
     "seconds, each rounded to a microsecond), then the time rounded half to even. The factor is "
     "read as the statement writes it: a number, a NULL, or one cast to a number; one a row "
-    "computes is refused by name. A field that overflows, or a NaN factor, raises 22008, and a "
-    "division by zero 22012, as PostgreSQL's do; an infinite factor's infinite answer is refused "
-    "(0A000), and a division by an infinite one answers a zero interval, as PostgreSQL 17's does."
+    "computes is refused by name. A field that overflows, or a NaN factor, is PostgreSQL's error "
+    "22008, and a division by zero its 22012, where PostgreSQL raises them; an infinite factor's "
+    "infinite answer is refused (0A000), and a division by an infinite one answers a zero "
+    "interval, as PostgreSQL 17's does."
 )
 _DOCS["interval_mul"] = _Doc(
     "interval_mul(interval, double precision)", "An interval times a number (*).", _SCALED_STATED

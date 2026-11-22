@@ -309,6 +309,16 @@ def _day(node: exp.Expr, said: Callable[[exp.Expr], exp.Expr]) -> exp.Expr:
             return exp.cast(
                 exp.null(), exp.DataType.build("Nullable(Date32)", dialect="clickhouse")
             )
+        from provisa.transpiler.polyfill.clickhouse import dated
+
+        # A text the statement writes: its day as the date row reads it (PostgreSQL's 22008 of a
+        # day that does not exist, 0A000 outside Date32's years), not toDate32's parse error.
+        try:
+            read = dated(value, _CLICKHOUSE)
+        except Refused as refused:
+            raise _refused("date_in", refused.refusal) from refused
+        if read is not None:
+            return read
         return exp.Anonymous(this="toDate32", expressions=[value.this.transform(said)])
     return node.transform(said)
 

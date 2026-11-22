@@ -167,9 +167,9 @@ def _visible(signed: bool) -> str:
 _SNAPSHOT_READ = (
     "Exact: ClickHouse holds a snapshot as its text, read as PostgreSQL's input reads it (each id "
     "a 64-bit number, the in-progress ids in order, each once). Text a column holds that "
-    "PostgreSQL's input would have refused, and an id past 2^64 - 1, raises 22P02 (invalid input "
-    "syntax for type pg_snapshot) when the call reads it, without the text PostgreSQL's message "
-    "quotes."
+    "PostgreSQL's input would have refused, an id past 2^64 - 1 among it, which PostgreSQL so "
+    "never holds, is PostgreSQL's error 22P02 (invalid input syntax for type pg_snapshot) when "
+    "the call reads it, without the text PostgreSQL's message quotes."
 )
 
 # --- an integer's digits ------------------------------------------------------------------------
