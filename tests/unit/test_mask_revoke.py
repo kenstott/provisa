@@ -52,7 +52,16 @@ def _table(masks: list[dict]) -> Table:
 
 async def _stored(conn) -> list[dict]:
     [masks] = [r[0] for r in (await conn.execute_core(select(table_columns.c.masks))).fetchall()]
-    return [{"to": e.get("to"), "mask": e.get("mask")} for e in masks]
+    # The store writes every field of a mask; the unset ones are None.
+    return [
+        {
+            "to": e["to"],
+            "mask": None
+            if e["mask"] is None
+            else {k: v for k, v in e["mask"].items() if v is not None or k == "value"},
+        }
+        for e in masks
+    ]
 
 
 async def _chains(conn) -> dict[str, list[str]]:
