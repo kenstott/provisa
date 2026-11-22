@@ -16,6 +16,8 @@ from provisa.core import org_files
 from provisa.security import sandbox_egress  # REQ-2006
 import json
 import pathlib
+from typing import Any
+
 import yaml
 
 # Requirements: REQ-314, REQ-315, REQ-2265
@@ -32,9 +34,41 @@ def parse_text(content: str) -> dict:  # REQ-315, REQ-407
         return json.loads(content)
 
 
-def load_spec(spec_path: str) -> dict:  # REQ-314, REQ-315
+def _fetch(spec_path: str, auth: Any) -> str:  # REQ-2265
+    """The text at ``spec_path`` (http/https), requested with ``auth`` applied exactly as the
+    source's data calls apply it (``api_source.caller._apply_auth``): the same header or query
+    parameter, its secret references resolved at the call. A refusal names the status and the
+    address without the credential, and carries no chained error that could."""
+    import httpx
+    from pydantic import TypeAdapter
+
+    from provisa.api_source.caller import _apply_auth
+    from provisa.core.auth_models import ApiAuth
+
+    headers: dict[str, str] = {}
+    params: dict[str, str] = {}
+    _apply_auth(
+        None if auth is None else TypeAdapter(ApiAuth).validate_python(auth), headers, params
+    )
+    r = sandbox_egress.checked_get(spec_path, timeout=30, headers=headers, params=params)
+    if r.is_success:
+        return r.text
+    shown = httpx.Request("GET", spec_path)
+    raise httpx.HTTPStatusError(
+        f"{r.status_code} {r.reason_phrase} reading the OpenAPI spec at {spec_path}",
+        request=shown,
+        response=httpx.Response(r.status_code, request=shown),
+    )
+
+
+def load_spec(spec_path: str, auth: Any = None) -> dict:  # REQ-314, REQ-315, REQ-2265
     """Load OpenAPI spec from a local file path or remote URL (http/https), or the spec a
     branded source ships with (``brand:<id>``, REQ-1923).
+
+    ``auth``: the source's auth (core.auth_models.ApiAuth, or its stored shape as
+    ``api_source.openapi_endpoint.api_auth`` writes it); a remote spec is requested with it as
+    the source's data calls are (REQ-2265). None for a source without one. A file or a shipped
+    spec is read without it.
 
     Raises FileNotFoundError for missing local paths.
     Raises httpx.HTTPError for HTTP failures.
@@ -50,9 +84,7 @@ def load_spec(spec_path: str) -> dict:  # REQ-314, REQ-315
     # REQ-1997: what the location is decides how it is read, never whether a file of that name
     # happens to exist; a held org's specification on the server's own disk is in its own folder.
     if not on_own_disk(spec_path) and spec_path.startswith(("http://", "https://")):
-        r = sandbox_egress.checked_get(spec_path, timeout=30)
-        r.raise_for_status()
-        text = r.text
+        text = _fetch(spec_path, auth)
     else:
         require_own_disk(spec_path)
         p = pathlib.Path(org_files.resolve_path(spec_path))

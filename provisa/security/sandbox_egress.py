@@ -464,15 +464,21 @@ def endpoint_sync_event_hooks(org_id: str | None = None) -> dict:
     return http_sync_event_hooks(org_id, PrivateEndpointRefused)
 
 
-def checked_get(url: str, *, timeout: float) -> "httpx.Response":
-    """``httpx.get(url, follow_redirects=True)``, with every hop of a sandbox org's request
-    checked (:func:`http_sync_event_hooks`)."""
+def checked_get(
+    url: str,
+    *,
+    timeout: float,
+    headers: dict[str, str] | None = None,
+    params: dict[str, str] | None = None,
+) -> "httpx.Response":
+    """``httpx.get(url, headers=headers, params=params, follow_redirects=True)``, with every
+    hop of a sandbox org's request checked (:func:`http_sync_event_hooks`)."""
     import httpx
 
     with httpx.Client(
         timeout=timeout, follow_redirects=True, event_hooks=http_sync_event_hooks()
     ) as client:
-        return client.get(url)
+        return client.get(url, headers=headers, params=params)
 
 
 def pinned_address(

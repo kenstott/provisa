@@ -50,14 +50,23 @@ logger = logging.getLogger(__name__)
 #: Who decided a value a run took: the steward's standing choice.
 STANDING_CHOICE = "standing_choice"
 
-# Why a difference is held.
-NO_CHOICE = "no standing choice"
-HELD_BY_CHOICE = "standing choice is hold"
-EDITED_IN_PROVISA = "edited in Provisa since the last exchange"
-NEVER_EXCHANGED = "never exchanged, so which side moved is unknown"
-NOT_IMPORTABLE = "Provisa cannot take this kind from a catalog yet"
-# Why a difference is left alone by Import.
-LEFT_TO_EXPORT = "standing choice is Provisa's value, which Export sends"
+# Why a difference is held, as a reason code the UI renders in the viewer's language (the
+# ``syncingTab.holdReason_<code>`` strings), never English text.
+NO_CHOICE = "no_choice"  # no standing choice for its kind
+HELD_BY_CHOICE = "held_by_choice"  # the standing choice is hold
+EDITED_IN_PROVISA = "edited_in_provisa"  # edited in Provisa since the last exchange
+NEVER_EXCHANGED = "never_exchanged"  # never exchanged, so which side moved is unknown
+NOT_IMPORTABLE = "not_importable"  # Provisa cannot take this kind from a catalog yet
+# Why a difference is left alone by Import: the standing choice is Provisa's value, which Export sends.
+LEFT_TO_EXPORT = "left_to_export"
+REASON_CODES = (
+    NO_CHOICE,
+    HELD_BY_CHOICE,
+    EDITED_IN_PROVISA,
+    NEVER_EXCHANGED,
+    NOT_IMPORTABLE,
+    LEFT_TO_EXPORT,
+)
 
 
 @dataclass
@@ -93,10 +102,15 @@ def plan(diffs: list[sr.Difference], choices: dict[str, str]) -> ImportPlan:
     return out
 
 
-def _named(diff: sr.Difference, reason: str | None = None) -> dict[str, Any]:
+def _named(diff: sr.Difference, reason_code: str | None = None) -> dict[str, Any]:
+    """``diff`` as a run names it: its kind and object, and for one held or left, the reason code
+    with its parameters (``{kind, object, reason_code, params}``) the UI renders through i18n."""
     named: dict[str, Any] = {"kind": diff.ours.kind, "object": diff.ours.object}
-    if reason is not None:
-        named["reason"] = reason
+    if reason_code is not None:
+        if reason_code not in REASON_CODES:
+            raise ValueError(f"unknown hold reason code {reason_code!r}")
+        named["reason_code"] = reason_code
+        named["params"] = {}
     return named
 
 

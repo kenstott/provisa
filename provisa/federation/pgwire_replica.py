@@ -808,10 +808,11 @@ def server_environment(source: Any, bundle_dir: Path) -> dict[str, str] | None:
 
 def inherited_environment(source: Any) -> dict[str, str]:
     """What the source's server inherits of this process's environment: all of it, except that a
-    cloud inventory source's server gets no credential variables of a cloud the source does not
-    name (``cloudops.cloudops_server_environment``, maintainer 2026-11-21)."""
+    cloud inventory source's server gets no cloud credential variable at all; it authenticates
+    only with what its model declares (``cloudops.cloudops_server_environment``, maintainer
+    2026-11-22)."""
     if _source_type(source) == "cloudops":
-        return cloudops_server_environment(source, os.environ)
+        return cloudops_server_environment(os.environ)
     return dict(os.environ)
 
 

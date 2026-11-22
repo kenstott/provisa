@@ -3130,7 +3130,7 @@
     snake_case exceptions (Hasura''s 2023 naming feature flag) is added only if an import needs it. Both
     presets are always offered; importing from Hasura picks the one its metadata names (a source''s
     customization.naming_convention, or the deployment default). Each preset is proved against a schema that
-    Hasura itself generates for the same tables, compared name by name. (Amended 2026-11-20 by the maintainer. Inflection uses lemminflect plus a recorded supplement word list kept as dictionary data in provisa/core/inflection.py (person and people, doc and docs, dataset and datasets, and the other common words lemminflect lacks); a word in neither stays as written.)'
+    Hasura itself generates for the same tables, compared name by name. (Amended 2026-11-20 by the maintainer. Inflection uses lemminflect plus a recorded supplement word list kept as dictionary data in provisa/core/inflection.py (person and people, doc and docs, dataset and datasets, and the other common words lemminflect lacks); a word in neither stays as written.) (Amended 2026-11-22 by the maintainer. A table whose naming convention is a Hasura preset is served in Hasura shapes. Its primary key appears in x_constraint as <table>_pkey, PostgreSQL''s default name, since Provisa does not store the source''s constraint name; a declared UNIQUE constraint keeps its declared name. Under graphql-default the x_select_column values are the served camelCase column field names. Streaming subscriptions (x_stream) are served as their own feature.) (Amended 2026-11-22 by the maintainer. A Hasura x_stream subscription whose cursor column the caller''s role sees masked is refused, naming the column. A stream rereads one second after a short batch, a fixed interval matching Hasura''s default.)'
   use_case: Consistent multi-language naming with a single authority ensures client-facing names are predictable
     and independent of physical schema.
   code:
@@ -57677,7 +57677,7 @@
     GraphQL. (Amended 2026-11-18, A RELATIONSHIP NOT SERVED TO CYPHER DOES NOT KEEP A JUNCTION''S NODE:)
     Lead 2026-11-18, clarifying the junction-node rule: only relationships served to Cypher count as joining
     a junction; a relationship excluded from Cypher (such as the meta catalog''s own hop rows into the glossary
-    junctions, which serve GraphQL only) does not keep the junction''s node.'
+    junctions, which serve GraphQL only) does not keep the junction''s node. (Amended 2026-11-22 by the maintainer. Every relationship shows its model type wherever it is listed or detailed, the discover rows, the Relationships list and the Cypher relationship detail. Direct, through a junction (an edge whose other columns are its properties), or through a shared dimension (a node of its own and an edge). A dimension made by accepting a discover pair is marked as a dimension, and discovery joins a pair to an existing registered dimension table whose key holds the values, so the dimension can carry its own details such as name, location and description.)'
   use_case: A steward walks a glossary hierarchy three levels deep in one Cypher pattern, and filters
     the edges by an attribute stored on the junction row, instead of traversing a reified node whose half-hops
     make variable-length depth meaningless.
@@ -81811,7 +81811,7 @@
     defaults, carrying nothing from a selected object; Duplicate is a head action of the panel that opens
     the create form prefilled from that object, with a new identity required and nothing dependent copied.
     A duplicated source keeps credentials as the same secret references, never copied values, and copies
-    no registered tables. A page with no create form states its exception.'
+    no registered tables. A page with no create form states its exception. (Amended 2026-11-22 by the maintainer. A missing or invalid field never disables a form''s primary action. Clicking it validates, marks each missing field inline and moves focus to the first. A primary action is disabled only when there is nothing to act on, such as zero items ticked, and its label then says so. Required fields carry their marker before any attempt. A UI guard test enforces this for every form.)'
   use_case: An operator fills in a source or table form on a laptop or a wide monitor and sees short fields side by side, identifiers set apart at the top, and the buttons where every form has them.
   related_reqs:
   - REQ-1350
@@ -97981,7 +97981,7 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     names. (Amended 2026-11-19, RECENT CHANGE IS THE TERM''S LAST WRITE:) Maintainer 2026-11-19. Every
     glossary term records when it last changed: any write to its name, definition, calculation method,
     domains, relations on either end or status sets that time. The Glossary''s recent-change sort orders by
-    it. (Amended 2026-11-21 by the maintainer. Tags lost counts confirmed tag losses (REQ-2145), each recorded when confirmed with its column, tag, the term it left, who and when; the card counts this period''s. Data Products sync status comes from a record of each publish per entry with its time and per-product outcome, read through an endpoint gated on data_product_read. Documents due counts the REQ-2208 review items until attestations (REQ-2209) are built.)'
+    it. (Amended 2026-11-21 by the maintainer. Tags lost counts confirmed tag losses (REQ-2145), each recorded when confirmed with its column, tag, the term it left, who and when; the card counts this period''s. Data Products sync status comes from a record of each publish per entry with its time and per-product outcome, read through an endpoint gated on data_product_read. Documents due counts the REQ-2208 review items until attestations (REQ-2209) are built.) (Amended 2026-11-22 by the maintainer. The top navigation follows build order. Sources, Tables, Relationships, Derived, Context, Products, Security, Explore. Derived comes before Context because meaning is attached to raw and derived datasets alike, and Products bundle datasets with their meaning.)'
 - id: REQ-2260
   status: complete
   since: 2026-11

@@ -1286,6 +1286,23 @@ CREATE TABLE IF NOT EXISTS glossary_term_experts (
     UNIQUE (term_id, user_id)
 );
 
+-- REQ-2259, REQ-2145: each confirmed tag loss -- a move a person confirmed that took a restricting
+-- tag off a column, carried through the term the column left. One row per column and tag, with
+-- who confirmed it (NULL when no member signed) and when. Read by Context Health's Tags lost card.
+-- The table and term are kept by name too, so the record outlives either. Mirrors
+-- schema_org.glossary_tag_losses.
+CREATE TABLE IF NOT EXISTS glossary_tag_losses (
+    id            SERIAL PRIMARY KEY,
+    table_id      INTEGER NOT NULL,
+    table_ref     TEXT NOT NULL,
+    column_name   TEXT NOT NULL,
+    tag_id        TEXT NOT NULL,
+    term_id       INTEGER REFERENCES glossary_terms(id) ON DELETE SET NULL,
+    term_name     TEXT NOT NULL,
+    confirmed_by  TEXT,
+    confirmed_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- Materialized Views (Phase P)
 CREATE TABLE IF NOT EXISTS materialized_views (
     id              TEXT PRIMARY KEY,

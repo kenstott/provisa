@@ -660,6 +660,35 @@ def result_casts(sql: str) -> tuple[CastType | None, ...] | None:
     return tuple(out)
 
 
+@functools.lru_cache(maxsize=4096)
+def declared_casts(sql: str) -> tuple[CastType | None, ...] | None:  # REQ-2167
+    """``result_casts``, with a root cast it leaves to the engine's own type given the type it
+    declares: a result column whose rows hold NULL alone on an engine that types no column has no
+    engine type to describe it, and is described as the statement declares it."""
+    import sqlglot
+    import sqlglot.expressions as exp
+
+    from provisa.pgwire.function_types import argument_type
+
+    casts = result_casts(sql)
+    if casts is None or None not in casts:
+        return casts
+    tree = sqlglot.parse_one(sql, read="postgres")
+    assert isinstance(tree, exp.Select)  # result_casts answered: a single SELECT
+    selects = tree.selects
+    if len(selects) != len(casts):
+        return casts  # a star's columns: only the engine knows them
+    out: list[CastType | None] = []
+    for cast, select in zip(casts, selects):
+        expression = select.unalias()
+        while isinstance(expression, exp.Paren):
+            expression = expression.this
+        if cast is None and isinstance(expression, exp.Cast):
+            cast = _RETURNED.get(argument_type(expression) or "")
+        out.append(cast)
+    return tuple(out)
+
+
 #: The registered types described with a typmod of their own (REQ-1961, amended 2026-10-28):
 #: a sized numeric, and the character types a text column's native type may be.
 _CHARACTER_KINDS = ("VARCHAR", "CHAR", "BPCHAR")

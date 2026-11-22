@@ -814,11 +814,11 @@
       },
       "opioidsAsPublic": {
         "title": "Uitvoeren als het publiek",
-        "description": "De SQL-verkenner draait nu als de rol public, de rol van het dashboard van de raad en de inwoners. De query's hierna zien alleen wat die rol toestaat."
+        "description": "De SQL-verkenner draait nu als de rol resident, de rol van het dashboard van de raad en de inwoners. De query's hierna zien alleen wat die rol toestaat."
       },
       "opioidsPublic": {
         "title": "Zo ziet het publiek het",
-        "description": "Het dashboard van de raad is de view overdose_burden_by_county, hier uitgevoerd onder de publieke rol. Hij toont per county de inwoners, sterfgevallen, het sterftecijfer en het federale geld per inwoner, en leest geen van de toewijzingen van het fonds of de betaalde aanbieders."
+        "description": "Het dashboard van de raad is de view overdose_burden_by_county, hier uitgevoerd onder de rol resident. Hij toont per county de inwoners, sterfgevallen, het sterftecijfer en het federale geld per inwoner, en leest geen van de toewijzingen van het fonds of de betaalde aanbieders."
       },
       "opioidsByRegion": {
         "title": "Per regio, in GraphQL",

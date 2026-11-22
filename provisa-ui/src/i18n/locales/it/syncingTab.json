@@ -135,6 +135,12 @@
     "importHeld": "Trattenute",
     "importKind": "Tipo",
     "importObject": "Oggetto",
-    "importReason": "Perché è stata trattenuta"
+    "importReason": "Perché è stata trattenuta",
+    "holdReason_no_choice": "Nessuna scelta fissa per questo tipo",
+    "holdReason_held_by_choice": "La scelta fissa è trattieni",
+    "holdReason_edited_in_provisa": "Modificato in Provisa dall'ultimo scambio",
+    "holdReason_never_exchanged": "Mai scambiato, quindi non si sa quale lato è cambiato",
+    "holdReason_not_importable": "Provisa non può ancora prendere questo tipo da un catalogo",
+    "holdReason_left_to_export": "La scelta fissa è il valore di Provisa, che Esporta invia"
   }
 }
