@@ -78,6 +78,7 @@ GATE_NAMES = frozenset(
         "_require_table_registration",
         "_require_user_management",
         "_member",
+        "_require_join_requester",  # REQ-1250: a Firebase sign-in; the requester is the caller
     }
 )
 
