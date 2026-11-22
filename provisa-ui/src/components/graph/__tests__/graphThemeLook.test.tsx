@@ -31,6 +31,8 @@ const { cy, cytoscape } = vi.hoisted(() => {
     forEach: vi.fn(),
     length: 0,
     removeClass: () => collection,
+    // A caption-field or size change restyles every node (graph-stylesheet restyleCaptions).
+    updateStyle: () => collection,
     addClass: () => collection,
     filter: () => collection,
     map: () => [],
@@ -91,7 +93,10 @@ const rule = (rules: Rule[], selector: string) => {
 /** The colour a node's caption takes when it runs beneath its node (it does not fit inside). */
 const outsideCaption = (rules: Rule[]) => {
   const colour = rule(rules, "node").color as (e: unknown) => string;
-  const ele = { data: (k: string) => (k === "label" ? "A label far too long to fit" : undefined), width: () => 20 };
+  const ele = {
+    data: (k: string) => (k === "label" ? "A label far too long to fit" : undefined),
+    width: () => 20,
+  };
   return colour(ele);
 };
 
@@ -108,12 +113,15 @@ describe("the Cypher graph's look follows the theme", () => {
     },
   );
 
-  it.each(["light", "dark"] as const)("captions and edge labels in the %s text colours", (scheme) => {
-    const rules = sheet(scheme);
-    expect(outsideCaption(rules)).toBe(look(scheme).text);
-    expect(rule(rules, "edge").color).toBe(look(scheme).textMuted);
-    expect(rule(rules, "edge[?_metaEdge]").color).toBe(look(scheme).accent);
-  });
+  it.each(["light", "dark"] as const)(
+    "captions and edge labels in the %s text colours",
+    (scheme) => {
+      const rules = sheet(scheme);
+      expect(outsideCaption(rules)).toBe(look(scheme).text);
+      expect(rule(rules, "edge").color).toBe(look(scheme).textMuted);
+      expect(rule(rules, "edge[?_metaEdge]").color).toBe(look(scheme).accent);
+    },
+  );
 
   it("the light cluster-edge label is not drawn on a dark box (the 2026-11-17 report)", () => {
     const box = rule(sheet("light"), "edge[?_metaEdge]")["text-background-color"];
@@ -228,17 +236,20 @@ describe("the canvas is the colour the label boxes are drawn in", () => {
   });
   afterEach(() => vi.unstubAllGlobals());
 
-  it.each(["light", "dark"] as const)("paints the %s canvas in the tokens' canvas colour", (scheme) => {
-    render(
-      <Providers scheme={scheme}>
-        <GraphCanvas {...BASE_PROPS} />
-      </Providers>,
-    );
-    const created = cytoscape.mock.calls.at(-1)![0] as { style: unknown };
-    const canvas = screen.getByTestId("graph-canvas-wrap").style.backgroundColor;
-    expect(canvas).toBe(rgb(look(scheme).canvas));
-    expect(canvas).toBe(rgb(metaBox(created.style) as string));
-  });
+  it.each(["light", "dark"] as const)(
+    "paints the %s canvas in the tokens' canvas colour",
+    (scheme) => {
+      render(
+        <Providers scheme={scheme}>
+          <GraphCanvas {...BASE_PROPS} />
+        </Providers>,
+      );
+      const created = cytoscape.mock.calls.at(-1)![0] as { style: unknown };
+      const canvas = screen.getByTestId("graph-canvas-wrap").style.backgroundColor;
+      expect(canvas).toBe(rgb(look(scheme).canvas));
+      expect(canvas).toBe(rgb(metaBox(created.style) as string));
+    },
+  );
 
   it("repaints the canvas on a theme switch", () => {
     const { rerender } = render(
