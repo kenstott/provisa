@@ -391,10 +391,9 @@ notarize_app() {
 
   info "Submitting app bundle for notarization..."
   local submit_out submit_err submit_rc
-  submit_out=$(xcrun notarytool submit "$zip_path" "${notary_args[@]}" --output-format json 2>/tmp/notary-submit-err) \
-    && submit_rc=0 || submit_rc=$?
-  submit_err=$(cat /tmp/notary-submit-err 2>/dev/null || true)
-  rm -f "$zip_path" /tmp/notary-submit-err
+  notary_submit "$zip_path" "${notary_args[@]}"
+  submit_out=$NOTARY_SUBMIT_OUT submit_err=$NOTARY_SUBMIT_ERR submit_rc=$NOTARY_SUBMIT_RC
+  rm -f "$zip_path"
   if [ $submit_rc -ne 0 ]; then
     if printf '%s\n%s' "$submit_out" "$submit_err" | grep -qi "required agreement\|403"; then
       info "WARNING: Notarization skipped — Apple Developer agreement missing or expired (HTTP 403). DMG will be unsigned."
