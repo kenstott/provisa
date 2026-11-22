@@ -2475,7 +2475,10 @@ def _refuse_soda_on_hosted_plane(source_type: str) -> MutationResult | None:  # 
 
 
 def _residency_refusal(
-    info, what: str, before: object, after: str | None
+    info,
+    what: str,
+    before: object,  # object-ok: a region or residency.CREATED
+    after: str | None,
 ) -> MutationResult | None:  # REQ-1921
     """The refusal of a region change the caller's data_residency grant does not cover, naming
     the value; None when it may be made (``capabilities.require_residency_change``)."""
@@ -5674,7 +5677,11 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         from provisa.core.repositories import grants
         from provisa.core.schema_org import metrics, tracked_functions, tracked_webhooks
 
-        require_capability(info, "table_registration")
+        # REQ-1327: a metric is authored on create_view; commands and webhooks on
+        # table_registration.
+        require_capability(
+            info, "create_view" if kind == GrantKind.METRIC else "table_registration"
+        )
         table = {
             GrantKind.METRIC: metrics,
             GrantKind.COMMAND: tracked_functions,
