@@ -78,7 +78,11 @@ export function DetailCard({
     </Group>
   );
   return (
-    <div style={wide ? CARD_WIDE : CARD_IN_COLUMN} data-tour={tourId} data-testid={testId}>
+    <div
+      style={wide ? CARD_WIDE : CARD_IN_COLUMN}
+      data-tour={tourId}
+      data-testid={testId}
+    >
       <Collapsibles id={`data-product.${section}`}>
         <CollapsibleItem value={section} title={heading} controlTestId={`${testId}-toggle`}>
           <div style={CARD_BODY}>{children}</div>

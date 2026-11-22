@@ -53,7 +53,9 @@ export function qualitySummary(promises: ProductDqEntry[]): QualitySummary {
     }
     failing += c.failing_checks.length;
     passing += checks - c.failing_checks.length;
-    failingNames.push(...c.failing_checks.map((f) => [f.column, f.name].filter(Boolean).join(" ")));
+    failingNames.push(
+      ...c.failing_checks.map((f) => [f.column, f.name].filter(Boolean).join(" ")),
+    );
     if (lastRun === null || Date.parse(c.latest_run_at) > Date.parse(lastRun)) {
       lastRun = c.latest_run_at;
     }
