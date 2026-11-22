@@ -413,7 +413,12 @@ def _hasura_stream_sse(  # REQ-194
     """A Hasura-preset table's ``<table>_stream``: each batch past the cursor, as an SSE frame,
     read through the query pipeline (``_answer``) so it is governed as a query is."""
     from provisa.api.role_surface import built_surface
-    from provisa.compiler.hasura_stream import StreamRefused, stream_batches, stream_request
+    from provisa.compiler.hasura_stream import (
+        StreamRefused,
+        masked_fields,
+        stream_batches,
+        stream_request,
+    )
     from provisa.subscriptions.owner import bounded_by_owner, ensure_held, owner_of
 
     if (directives and directives.sink_topic) or raw_request.headers.get("x-provisa-sink"):
@@ -423,7 +428,8 @@ def _hasura_stream_sse(  # REQ-194
     operation = next(d for d in document.definitions if isinstance(d, OperationDefinitionNode))
     field = next(s for s in operation.selection_set.selections if isinstance(s, FieldNode))
     try:
-        req = stream_request(schema, operation, field, table_meta, variables)
+        masked = masked_fields(state.masking_rules, ctx, table_meta, role_id)
+        req = stream_request(schema, operation, field, table_meta, variables, masked)
     except StreamRefused as exc:
         return _error_stream([str(exc)])
     owner = owner_of(raw_request, state, role_id)

@@ -17,6 +17,10 @@ order_by: [{<col>: asc}], limit: batch_size)``, answered through the one query p
 rules, masks and visibility apply to it exactly as to a query. ``DESC`` reads ``_lt`` and
 ``desc``. As Hasura does, the stream takes one cursor on one column, and a cursor without an
 ordering is ascending.
+
+A cursor column the caller's role reads masked is refused, naming the column (REQ-194, amended
+2026-11-22): each batch's WHERE compares the real value while the cursor would move on to the
+masked one, so the stream would error or skip rows.
 """
 
 # Requirements: REQ-194
@@ -24,7 +28,7 @@ ordering is ascending.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, AsyncIterator, Awaitable, Callable
+from typing import Any, AsyncIterator, Awaitable, Callable, Mapping
 
 from graphql import (
     ArgumentNode,
@@ -50,7 +54,8 @@ from graphql.execution.values import get_argument_values, get_variable_values
 
 from provisa.compiler.hasura_dialect import table_hasura
 from provisa.compiler.naming import hasura_argument_name, hasura_enum_value, hasura_operator
-from provisa.compiler.sql_types import TableMeta
+from provisa.compiler.sql_types import CompilationContext, TableMeta
+from provisa.security.masking import MaskingRule, columns_masked_for
 
 #: The response key the cursor column is read back under, beside the client's selection, and
 #: removed from each row before the row is sent.
@@ -84,9 +89,11 @@ def stream_request(
     field: FieldNode,
     table: TableMeta,
     variables: dict | None,
+    masked: frozenset[str],
 ) -> StreamRequest:
     """``field``, a ``<table>_stream`` field of ``operation``, read against ``schema`` with the
-    request's ``variables``."""
+    request's ``variables``. ``masked``: the table's column fields the caller's role reads masked
+    (``masked_fields``)."""
     conv = table_hasura(table)
     if conv is None:
         raise StreamRefused(f"{field.name.value!r} is not a Hasura-preset table's stream")
@@ -115,6 +122,11 @@ def stream_request(
             f"{sorted(initial)}"
         )
     ((column, value),) = initial.items()
+    if column in masked:
+        raise StreamRefused(
+            f"the stream cursor column {column!r} is masked for this role: each batch compares "
+            "its real value while the cursor would move on the masked one"
+        )
     # Hasura's cursor_ordering is ascending when the cursor names none (REQ-194 serves Hasura's
     # streaming subscription as Hasura does).
     ascending = cursor.get(arg("ordering"), "ASC") == "ASC"
@@ -145,6 +157,22 @@ def stream_request(
         where_type=where_type,
         column_type=column_type,
         selection=field.selection_set,
+    )
+
+
+def masked_fields(
+    masking_rules: Mapping[tuple[int, str], Mapping[str, tuple[MaskingRule, str]]],
+    ctx: CompilationContext,
+    table: TableMeta,
+    role_id: str,
+) -> frozenset[str]:
+    """The column fields of ``table`` that ``role_id`` reads masked, of ``state.masking_rules``.
+    A fake is the column's own declaration, never a mask (REQ-1942). A masked column the role is
+    not served has no field in its context, and no cursor can name it."""
+    return frozenset(
+        ctx.physical_to_gql[key]
+        for key in columns_masked_for(masking_rules, role_id)
+        if key[0] == table.table_id and key in ctx.physical_to_gql
     )
 
 

@@ -33,7 +33,12 @@ from graphql import (
 
 from provisa.compiler import naming
 from provisa.compiler.context import build_context
-from provisa.compiler.hasura_stream import StreamRefused, stream_batches, stream_request
+from provisa.compiler.hasura_stream import (
+    StreamRefused,
+    masked_fields,
+    stream_batches,
+    stream_request,
+)
 from provisa.compiler.introspect import ColumnMetadata
 from provisa.compiler.names_table import root_field
 from provisa.compiler.rls import RLSContext, as_rule
@@ -207,9 +212,11 @@ def _runner(db, built, *, rls=None, masking_rules=None):
     return run, asked
 
 
-async def _frames(built, text: str, run, variables=None, polls: int = 0) -> list[dict]:
+async def _frames(
+    built, text: str, run, variables=None, polls: int = 0, masking_rules=None
+) -> list[dict]:
     """The frames the stream sends, reading again ``polls`` times after a batch that was not
-    full."""
+    full; ``masking_rules`` are the masks the role ``admin`` reads the table through."""
     schema, ctx = built
     doc = parse(text)
     errors = validate(schema, doc)
@@ -218,7 +225,8 @@ async def _frames(built, text: str, run, variables=None, polls: int = 0) -> list
     (field,) = op.selection_set.selections
     found = root_field(ctx, field.name.value)  # type: ignore[union-attr]
     assert found is not None
-    req = stream_request(schema, op, field, found[1], variables)  # type: ignore[arg-type]
+    masked = masked_fields(masking_rules or {}, ctx, found[1], "admin")
+    req = stream_request(schema, op, field, found[1], variables, masked)  # type: ignore[arg-type]
     left = [polls]
 
     async def idle() -> bool:
@@ -336,6 +344,71 @@ async def test_a_mask_governs_every_batch(db):
     ]
 
 
+_CONSTANT = MaskingRule(mask_type=MaskType.constant, value=None)
+
+
+@pytest.mark.parametrize(
+    ("preset", "stream", "cursor", "masked"),
+    [
+        ("hasura_graphql", "order_lines_stream", "initial_value", "customer_name"),
+        ("hasura_graphql_default", "orderLinesStream", "initialValue", "customerName"),
+    ],
+)
+async def test_a_stream_on_a_masked_cursor_column_is_refused_naming_it(
+    db, preset, stream, cursor, masked
+):
+    """REQ-194 (amended 2026-11-22): each batch's WHERE compares the real value while the cursor
+    would move on the masked one, so a cursor the role reads masked is refused by name."""
+    built = _built(preset)
+    rules = {(1, "admin"): {"customer_name": (_CONSTANT, "varchar")}}
+    run, asked = _runner(db, built, masking_rules=rules)
+    batch = "batch_size" if preset == "hasura_graphql" else "batchSize"
+    with pytest.raises(StreamRefused, match=f"cursor column {masked!r} .*masked"):
+        await _frames(
+            built,
+            f'subscription {{ {stream}({batch}: 2, cursor: {{{cursor}: {{{masked}: "c0"}}}})'
+            " { id } }",
+            run,
+            masking_rules=rules,
+        )
+    assert asked == []
+
+
+async def test_a_stream_on_an_unmasked_cursor_column_streams_beside_a_masked_one(db):
+    built = _built("hasura_graphql")
+    rules = {(1, "admin"): {"customer_name": (_CONSTANT, "varchar")}}
+    run, _ = _runner(db, built, masking_rules=rules)
+    frames = await _frames(
+        built,
+        "subscription { order_lines_stream(batch_size: 2,"
+        " cursor: {initial_value: {id: 4}}) { id customer_name } }",
+        run,
+        masking_rules=rules,
+    )
+    assert _ids(frames, "order_lines_stream") == [[5, 6], [7]]
+    assert all(r["customer_name"] is None for f in frames for r in f["data"]["order_lines_stream"])
+
+
+async def test_a_fake_on_the_cursor_column_is_not_a_mask(db):
+    """A fake is the column's own declaration, never a mask (REQ-1942): a condition on it reads
+    the fake values the cursor moves on, so the stream is not refused."""
+    schema, ctx = _built("hasura_graphql")
+    fake = MaskingRule(mask_type=MaskType.fake, value="name")
+    found = root_field(ctx, "order_lines_stream")
+    assert found is not None
+    rules = {(1, "admin"): {"customer_name": (fake, "varchar")}}
+    assert masked_fields(rules, ctx, found[1], "admin") == frozenset()
+
+
+def test_another_roles_mask_does_not_refuse_the_stream():
+    _, ctx = _built("hasura_graphql")
+    found = root_field(ctx, "order_lines_stream")
+    assert found is not None
+    rules = {(1, "analyst"): {"customer_name": (_CONSTANT, "varchar")}}
+    assert masked_fields(rules, ctx, found[1], "admin") == frozenset()
+    assert masked_fields(rules, ctx, found[1], "analyst") == frozenset({"customer_name"})
+
+
 async def test_graphql_default_streams_with_its_spellings(db):
     built = _built("hasura_graphql_default")
     run, asked = _runner(db, built)
@@ -421,6 +494,7 @@ async def test_the_subscription_transport_sends_each_batch_as_an_sse_frame(db):
     raw_request.headers = {}
     raw_request.is_disconnected = AsyncMock(return_value=True)
     state = MagicMock()
+    state.masking_rules = {}
     with (
         patch(
             "provisa.api.role_surface.built_surface",
@@ -439,3 +513,48 @@ async def test_the_subscription_transport_sends_each_batch_as_an_sse_frame(db):
     frames = [json.loads(str(c).removeprefix("data: ")) for c in chunks]
     assert _ids(frames, "order_lines_stream") == [[2, 3, 4, 5], [6, 7]]
     assert roles == ["admin", "admin"] and len(asked) == 2
+
+
+async def test_the_subscription_transport_refuses_a_masked_cursor_by_name(db):
+    """The transport reads the role's masks from the server state: a stream whose cursor column
+    the role reads masked is answered with one frame of errors naming the column, and no batch is
+    read."""
+    import json
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from provisa.api.data import subscription_sse
+
+    schema, ctx = _built("hasura_graphql")
+    asked: list[str] = []
+
+    async def answer(text, *_args):
+        asked.append(text)
+        raise AssertionError("a refused stream reads no batch")
+
+    doc = parse(
+        "subscription { order_lines_stream(batch_size: 4,"
+        ' cursor: {initial_value: {customer_name: "c1"}}) { id } }'
+    )
+    raw_request = MagicMock()
+    raw_request.headers = {}
+    state = MagicMock()
+    state.masking_rules = {(1, "admin"): {"customer_name": (_CONSTANT, "varchar")}}
+    with (
+        patch(
+            "provisa.api.role_surface.built_surface",
+            return_value=SimpleNamespace(schema=schema, context=ctx),
+        ),
+        patch.object(subscription_sse, "_answer", answer),
+        patch("provisa.subscriptions.owner.owner_of", return_value=object()),
+        patch("provisa.subscriptions.owner.ensure_held", AsyncMock(return_value=None)),
+        patch("provisa.api.request_timeout.outlive_deadline"),
+    ):
+        response = await subscription_sse.handle_subscription_sse(
+            doc, ctx, None, state, None, {"id": "admin"}, "admin", raw_request
+        )
+        chunks = [c async for c in response.body_iterator]  # type: ignore[union-attr]
+    (frame,) = [json.loads(str(c).removeprefix("data: ")) for c in chunks]
+    (error,) = frame["errors"]
+    assert "'customer_name'" in error["message"] and "masked" in error["message"]
+    assert asked == []
