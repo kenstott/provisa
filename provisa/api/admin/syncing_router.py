@@ -186,7 +186,7 @@ def _run_view(run: Any) -> dict[str, Any]:
         "outcome": run.outcome,
         "applied": run.applied,
         "held": run.held,
-        "error": run.error,
+        "error": client_value(run.error),
         "started_at": run.started_at.isoformat(),
         "finished_at": run.finished_at.isoformat(),
     }
