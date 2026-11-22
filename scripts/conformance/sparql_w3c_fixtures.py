@@ -41,6 +41,9 @@ what stops it, and its cases fail with that reason. Which are those:
 * a language-tagged literal, a datatype no column type answers, an ill-typed lexical form;
 * two literal values of one predicate on one subject, or one predicate of both literals and
   resources;
+* one predicate from the subjects of one table to objects in several tables: each pair of tables
+  is a relationship, a predicate is one relationship type (its one IRI), and a type names one
+  relationship of its table (REQ-388);
 * a subject of several classes.
 
 Usage (in the job's .venv, before the instance starts):
@@ -272,6 +275,14 @@ def adapt(ident: str, graph: Graph) -> Fixture:
     if both:
         fixture.refusal = f"The dataset gives <{sorted(both)[0]}> both literals and resources"
         return fixture
+    spread = _spread_predicate(edges)
+    if spread is not None:
+        pred, source = spread
+        fixture.refusal = (
+            f"The dataset gives <{pred}> objects in several tables from the subjects of {source}, "
+            "and a relationship type names one relationship of its table"
+        )
+        return fixture
     fixture.tables = list(tables.values())
     fixture.edges = list(edges.values())
     for pred, name in columns.items():
@@ -295,6 +306,20 @@ def adapt(ident: str, graph: Graph) -> Fixture:
                 t.class_term = name
             fixture.classes[str(cls)] = f"{BASE}/vocab/term/{_seg(name)}"
     return fixture
+
+
+def _spread_predicate(edges: dict[tuple[str, str, str], Edge]) -> tuple[str, str] | None:
+    """(predicate, source table) of the first predicate whose edges from one table reach several
+    target tables, or None. Its edges would be relationships of one table under its one type,
+    which REQ-388 forbids; a SPARQL predicate IRI is its relationship type
+    (provisa.sparql_query.vocabulary.edge_iri), so no second type can stand for it."""
+    targets: dict[tuple[str, str], set[str]] = defaultdict(set)
+    for pred, source, target in edges:
+        targets[(pred, source)].add(target)
+    for (pred, source), held in sorted(targets.items()):
+        if len(held) > 1:
+            return pred, source
+    return None
 
 
 def _term_name(column: str) -> str:
