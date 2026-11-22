@@ -26,7 +26,8 @@ A dataset becomes, in schema ``conformance``:
   columns sharing one name, and an approved Property term (REQ-2163) is its one IRI; a class held
   by several tables likewise has a Class term;
 * a junction table and a relationship per predicate with IRI or blank node objects, between each
-  pair of node tables it joins.
+  pair of node tables it joins: its type is the predicate's, its GraphQL field the junction's name,
+  apart from every column's.
 
 Subjects, predicates and classes then have the model's IRIs (provisa.gql.iri, vocabulary), so
 :func:`Fixture.term_map` maps the query's constant IRIs onto them and the answer's back; a blank
@@ -415,6 +416,10 @@ def relationship_entries(f: Fixture) -> list[dict]:
         {
             "id": e.via,
             "alias": e.rel_type,
+            # Its GraphQL field is its junction's name: named for its type, D013_P0 is field
+            # d013P0, the field of column d013_p0 (REQ-1929). Its type, the predicate's IRI
+            # (vocabulary.edge_iri), is the alias still.
+            "graphql_alias": e.via,
             "cardinality": "one-to-many",
             "source_table_id": e.source,
             "source_column": "id",
