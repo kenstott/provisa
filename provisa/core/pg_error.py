@@ -55,15 +55,28 @@ def from_engine(error: Exception) -> PostgresError | None:
     return None if marked is None else PostgresError(marked["sqlstate"], marked["message"].strip())
 
 
+def driver_sqlstate(error: BaseException) -> str | None:
+    """The SQLSTATE a database driver's error carries itself; None for any other error.
+    asyncpg's and psycopg 3's error name it ``sqlstate``; psycopg2's (the pg engine's driver,
+    provisa.federation.pg_runtime) names it ``pgcode`` and repeats it on its diagnostics."""
+    detail = getattr(error, "diag", None)
+    for code in (
+        getattr(error, "sqlstate", None),
+        getattr(error, "pgcode", None),
+        getattr(detail, "sqlstate", None),
+    ):
+        if isinstance(code, str) and len(code) == 5:
+            return code
+    return None
+
+
 def postgres_error(error: Exception) -> PostgresError | None:
     """PostgreSQL's own error, as a statement it ran raised it; None for anything else."""
     cause: BaseException | None = error
     while cause is not None:
-        detail = getattr(cause, "diag", None)
-        # asyncpg's and psycopg 3's error carry the SQLSTATE themselves; psycopg2's (the pg
-        # engine's driver, provisa.federation.pg_runtime) carries it on its diagnostics alone.
-        sqlstate = getattr(cause, "sqlstate", None) or getattr(detail, "sqlstate", None)
-        if isinstance(sqlstate, str) and len(sqlstate) == 5:
+        sqlstate = driver_sqlstate(cause)
+        if sqlstate is not None:
+            detail = getattr(cause, "diag", None)
             message = getattr(detail, "message_primary", None) or str(cause)
             return PostgresError(sqlstate, message)
         cause = cause.__cause__ or cause.__context__
