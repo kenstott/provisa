@@ -16,7 +16,7 @@ read is ``CatalogReader.read`` (the inbound port), not the export port, and noth
 helper that would bring a catalog's values into Provisa past the review.
 """
 
-# Requirements: REQ-1068, REQ-2122, REQ-2247
+# Requirements: REQ-1068
 
 from __future__ import annotations
 
