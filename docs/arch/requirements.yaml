@@ -97540,7 +97540,7 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     Context Sync (REQ-2259). (Amended 2026-11-19, MERGE FILLS AN EMPTY DEFINITION:) Maintainer 2026-11-19.
     Merging a catalog term into an existing term records the provenance on the chosen term and copies the
     catalog''s definition only when the term has none, as the ontology import does for a same-as match. The
-    difference list leaves out the glossary Provisa itself publishes to that catalog, and its group terms. (Amended 2026-11-22 by the maintainer. A difference that has never been exchanged is listed under both Export and Import, since neither side is known to have moved; once exchanged, a difference is listed only under the direction whose side moved, or both when both moved.)'
+    difference list leaves out the glossary Provisa itself publishes to that catalog, and its group terms. (Amended 2026-11-22 by the maintainer. A difference that has never been exchanged is listed under both Export and Import, since neither side is known to have moved; once exchanged, a difference is listed only under the direction whose side moved, or both when both moved.) (Amended 2026-11-22 by the maintainer. A scheduled, unattended import applies a standing choice only to a difference that has been exchanged before. A difference never exchanged is held as a waiting difference for a person to decide, even when the standing choice says take, since the run cannot tell whether the Provisa value is a local edit.)'
   scenario: 'Given a catalog entry whose asset descriptions differ from Provisa''s for forty columns and
     two owners
 
