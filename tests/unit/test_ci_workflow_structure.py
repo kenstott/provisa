@@ -730,6 +730,13 @@ def test_every_asset_name_a_leg_uses_is_one_the_metadata_action_resolves():
         assert step["with"] == {"version": "${{ inputs.version }}"}
 
 
+# The artifact each caching action's `phase: prime` uploads, under the caller's key-prefix.
+_PRIMED_ARTIFACT = {
+    "./.github/actions/trino-plugins": "trino-plugins",
+    "./.github/actions/zaychik-image": "zaychik-image",
+}
+
+
 def test_a_leg_that_reads_another_legs_artifact_starts_after_it():
     """Artifacts are the run's: a leg downloads what another leg uploaded, so the orchestrator
     must order them. Every named download in a leg is uploaded in that leg or in one it needs."""
@@ -747,7 +754,13 @@ def test_a_leg_that_reads_another_legs_artifact_starts_after_it():
     for job, bodies in jobs.items():
         for body in bodies:
             for step in body.get("steps") or []:
-                artifact = (step.get("with") or {}).get("name")
+                given = step.get("with") or {}
+                if step.get("uses") in _PRIMED_ARTIFACT and given.get("phase") == "prime":
+                    # The action's prime phase uploads the run's artifact itself.
+                    primed = given.get("key-prefix", "") + _PRIMED_ARTIFACT[step["uses"]]
+                    uploads.setdefault(job, set()).add(primed)
+                    continue
+                artifact = given.get("name")
                 if not artifact:
                     continue
                 if "upload-artifact" in (step.get("uses") or ""):
@@ -1660,3 +1673,25 @@ def test_nothing_in_ci_names_the_plugin_jars_maven_location_but_the_pin():
         if p.is_file() and p.suffix in {".yml", ".yaml", ".sh", ".py"} and maven in p.read_text()
     ]
     assert named == []
+
+
+def test_no_job_uploads_a_second_artifact_under_a_name_its_priming_action_uploads():
+    """The trino-plugins and zaychik-image actions' prime phase uploads the run's artifact
+    (`trino-plugins`, `zaychik-image`). release-prebuilt.yml's download-plugins job also uploaded
+    `trino-plugins` itself after priming; a second upload under one name in a run is a 409."""
+    for path in WORKFLOWS:
+        jobs = yaml.safe_load(path.read_text()).get("jobs") or {}
+        for job, body in jobs.items():
+            steps = body.get("steps") or []
+            taken = {
+                (s.get("with") or {}).get("key-prefix", "") + _PRIMED_ARTIFACT[s["uses"]]
+                for s in steps
+                if s.get("uses") in _PRIMED_ARTIFACT
+                and (s.get("with") or {}).get("phase") == "prime"
+            }
+            for s in steps:
+                if str(s.get("uses", "")).startswith("actions/upload-artifact"):
+                    name = (s.get("with") or {}).get("name")
+                    assert name not in taken, (
+                        f"{path.name}:{job} uploads {name!r}, which its priming action uploads"
+                    )
