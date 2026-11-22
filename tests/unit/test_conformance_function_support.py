@@ -1395,6 +1395,22 @@ def test_a_comparison_function_compares_by_sign_alone():
     assert _compare(_ok("-222", oid=23), _ok("-1", oid=23), function="length").difference
 
 
+def test_clickhouse_memcmp_answers_of_run_44317102725_compare_by_sign():
+    # The reference PostgreSQL's glibc AVX2 memcmp answers a difference of byte-swapped words;
+    # ClickHouse's byte_compares rows answer the first differing bytes' difference.
+    for function, want, got in (
+        ("btnametextcmp", "1117421634", "133"),
+        ("bttext_pattern_cmp", "1117421634", "133"),
+        ("bttextnamecmp", "1117421634", "133"),
+        ("gin_cmp_tslexeme", "1117421634", "133"),
+        ("gin_compare_jsonb", "1117421634", "133"),
+        ("byteacmp", "-1859584190", "-222"),
+    ):
+        compared = _compare(_ok(want, oid=23), _ok(got, oid=23), function=function)
+        assert compared.difference is None, function
+        assert compared.rules == {report.COMPARISON_SIGN}, function
+
+
 def test_the_comparison_functions_are_the_families_comparators():
     families = (REPO / "scripts" / "conformance" / "function_families.yaml").read_text()
     for name in (
