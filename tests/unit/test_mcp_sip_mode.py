@@ -134,6 +134,7 @@ async def test_the_catalog_tool_names_each_other_group_and_its_purpose():
         "glossary",
         "data_products",
         "metric_management",
+        "tags",
         "proposals",
         "test_data",
     }

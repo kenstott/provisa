@@ -41,7 +41,7 @@ from provisa.core.schema_org import (
 )
 from tests.unit.gate_identity import serve_every_column
 
-RIGHTS = ["table_registration", "create_relationship"]
+RIGHTS = ["table_registration", "create_relationship", "create_view"]
 ROLES = {
     "sales_steward": {"id": "sales_steward", "capabilities": RIGHTS, "domain_access": ["sales"]},
     "everywhere": {"id": "everywhere", "capabilities": RIGHTS, "domain_access": ["*"]},

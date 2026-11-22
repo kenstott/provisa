@@ -244,8 +244,9 @@ RIGHTS_OF: dict[str, frozenset[str]] = {
     "restore_data_product": _PRODUCT_RW,
     "list_data_product_findings": _PRODUCT_READ,
     # metric_management
-    "upsert_metric": _TABLE_EDITOR,
-    "delete_metric": _TABLE_EDITOR,
+    # REQ-1327 (amended 2026-11-14, item 2): authoring a metric asks create_view.
+    "upsert_metric": frozenset({"create_view"}),
+    "delete_metric": frozenset({"create_view"}),
     # proposals: anyone may propose; a person with the right reviews it
     "propose_source": _NONE,
     "propose_table": _NONE,
