@@ -791,6 +791,8 @@ class EngineBackend:
             file_glob_tables=getattr(source, "file_glob_tables", []) or [],
             # REQ-1909: read directly by DuckDBPostgresConnector.details.
             max_live_concurrency=source.max_live_concurrency,
+            # REQ-1997: read by the sandbox check every attach passes (engine.resolve).
+            download_from=source.download_from,
             schema_name=schema_name,
             table_name=table_name,
         )
@@ -926,6 +928,7 @@ class EngineBackend:
                 federation_hints=getattr(source, "federation_hints", {}),
                 file_glob_tables=getattr(source, "file_glob_tables", []) or [],  # REQ-788
                 max_live_concurrency=source.max_live_concurrency,  # REQ-1909
+                download_from=source.download_from,  # REQ-1997: the sandbox check reads it
                 schema_name=schema_name,
                 table_name=table_name,
             )

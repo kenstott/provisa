@@ -44,10 +44,11 @@ _EXPECTED = {
     "exasol": "exasol",
     "opengauss": "postgres",
     "db2": "db2",  # provisa/db2/dialect.py
+    "saphana": "saphana",  # provisa/saphana/dialect.py
 }
 
 # kinds whose product has no sqlglot dialect: refused by name when the engine is built.
-_REFUSED = {"saphana", "monetdb", "firebird", "vertica"}
+_REFUSED = {"monetdb", "firebird", "vertica"}
 
 
 def test_every_rdb_kind_is_classified() -> None:
@@ -80,6 +81,6 @@ def test_sqlalchemy_kind_dialect_follows_url_scheme(
 
 
 def test_sqlalchemy_kind_unknown_scheme_refused(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("PROVISA_ENGINE_URL", "hana+hdbcli://u:p@h:1/db")
+    monkeypatch.setenv("PROVISA_ENGINE_URL", "monetdb://u:p@h:1/db")
     with pytest.raises(ValueError, match="'sqlalchemy'.*no sqlglot dialect"):
         build_engine("sqlalchemy")

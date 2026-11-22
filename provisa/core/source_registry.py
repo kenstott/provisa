@@ -89,6 +89,7 @@ ENGINE_DIALECT_ALIASES: dict[str, str] = {
     "singlestoredb": "singlestore",
     "opengauss": "postgres",  # openGauss is a PostgreSQL fork on the pg wire
     "ibm_db_sa": "db2",  # ibm_db_sa's own URL scheme for Db2 (provisa/db2/dialect.py)
+    "hana": "saphana",  # sqlalchemy-hana's URL scheme for SAP HANA (provisa/saphana/dialect.py)
 }
 
 
@@ -334,3 +335,6 @@ import provisa.jdbc_source.dialect  # noqa: E402, F401
 
 # REQ-2236: the ``db2`` dialect a Db2 federation engine is written in (``engine_dialect``).
 import provisa.db2.dialect  # noqa: E402, F401
+
+# REQ-2236: the ``saphana`` dialect a SAP HANA federation engine is written in (``engine_dialect``).
+import provisa.saphana.dialect  # noqa: E402, F401
