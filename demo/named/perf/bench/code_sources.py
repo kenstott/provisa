@@ -142,7 +142,7 @@ def pgwire(rows: int, root: Path) -> dict[str, Any]:
             str(names),
             *host,
         ],
-        env={**os.environ, "PROVISA_CODE_HASH": "bench"},
+        env={**os.environ, "PROVISA_CODE_HASH": "bench", "PROVISA_DISCOVERED": "{}"},
         stderr=subprocess.PIPE,
         text=True,
     )

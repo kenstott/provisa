@@ -175,6 +175,7 @@ class _Host:
         self.env = {
             **os.environ,
             "PROVISA_CODE_HASH": self.hashed,
+            "PROVISA_DISCOVERED": "{}",
             "PROVISA_MANIFEST_FILE": str(baked),
             "PROVISA_CONNECTOR_SCRIPT": _SCRIPT_REQUIRE,
         }

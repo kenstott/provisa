@@ -31,7 +31,7 @@ the pinned copy Provisa gives the local worker (``PROVISA_HOST_LIB``, put after 
 paths, so code that installs its own pyarrow keeps it), or the one in a remote host's image.
 """
 
-# Requirements: REQ-1993, REQ-2098
+# Requirements: REQ-1993, REQ-2098, REQ-2267
 from __future__ import annotations
 
 import asyncio
@@ -74,6 +74,9 @@ CONNECTIONS_ENV = "PROVISA_HOST_CONNECTIONS"
 PREFLIGHT = "_provisa_preflight"
 #: Put on a preflight's queue of pulled batches when Provisa cancels the call.
 _STOPPED = object()
+#: REQ-2267: each item the code's @discover generated, by name, with the handler function that
+#: serves it, as JSON (provisa/codesource/worker.py DISCOVERED_ENV): given to every host.
+DISCOVERED_ENV = "PROVISA_DISCOVERED"
 
 
 def _is_model(value: typing.Any) -> bool:
@@ -276,10 +279,38 @@ def _bind_call(call_id: int, traceparent: str | None) -> None:
         context.attach(propagate.extract({"traceparent": traceparent}))
 
 
+def discovered_handlers() -> dict[str, str]:
+    """REQ-2267: the generated items' handlers, by item name, as the host is given them."""
+    return json.loads(os.environ[DISCOVERED_ENV])
+
+
+def offered(module: typing.Any, discovered: dict[str, str]) -> list[str]:
+    """What the hello offers (REQ-2267): the code's own functions but the handlers, which are
+    called only for the items they serve, and every generated item."""
+    handlers = set(discovered.values())
+    return [n for n in exported(module) if n not in handlers] + list(discovered)
+
+
+def _handler_arguments(
+    name: str, takes: list[str] | None, args: list, names: list[str], context: typing.Any
+) -> list:
+    """REQ-2267: a handler's arguments for the generated item ``name``: a table handler's
+    ``(name, inputs, context)``, ``inputs`` a dict of the inputs the read gives and ``context`` a
+    ReadContext; a query or command handler's ``(name, arguments)``, a dict of those given."""
+    given = {n: v for n, v in zip(names, args, strict=True) if v is not _ABSENT}
+    if takes is None:
+        return [name, given]
+    return [name, given, sys.modules["provisa_services"].ReadContext._from_wire(context)]
+
+
 class Host:
-    def __init__(self, module: typing.Any, writer: asyncio.StreamWriter) -> None:
+    def __init__(
+        self, module: typing.Any, writer: asyncio.StreamWriter, discovered: dict[str, str]
+    ) -> None:
         self.module = module
         self.writer = writer
+        #: REQ-2267: each generated item's handler, by item name.
+        self.discovered = discovered
         self.running: dict[int, asyncio.Task] = {}
         #: Each call's credit (REQ-2100): how many more rows frames it may send before its
         #: reader takes one.
@@ -404,9 +435,14 @@ class Host:
         started = time.process_time()
         _bind_call(call_id, traceparent)
         try:
-            fn = getattr(self.module, name, None)
-            if not inspect.isfunction(fn) or name not in exported(self.module):
-                raise LookupError(f"the code has no function {name}")
+            handler = self.discovered.get(name)
+            if handler is not None:
+                # REQ-2267: a generated item, served by its kind's handler, called with its name.
+                fn = getattr(self.module, handler)
+            else:
+                fn = getattr(self.module, name, None)
+                if not inspect.isfunction(fn) or name not in exported(self.module):
+                    raise LookupError(f"the code has no function {name}")
             rows_schema = None
             if schema is not None:
                 import base64
@@ -414,7 +450,13 @@ class Host:
                 pa = _arrow()
                 rows_schema = pa.ipc.open_stream(pa.py_buffer(base64.b64decode(schema))).schema
             for args, names, own in calls:
-                if takes is None:
+                if handler is not None:
+                    read = own if own is not None else context
+                    positional = _handler_arguments(
+                        name, takes, from_wire(args), names, from_wire(read)
+                    )
+                    keywords = {}
+                elif takes is None:
                     positional, keywords = _call_arguments(from_wire(args), names)
                 else:
                     # A call's own context (a loader's batch of keys), else the read's.
@@ -559,6 +601,7 @@ def _is_arrow(value: typing.Any) -> bool:
 
 async def run(address: str, code: str, entry: str) -> None:
     module = load(code, entry)
+    discovered = discovered_handlers()
     if address.startswith("fd:"):
         # The Linux sandbox refuses the host any new socket but TCP: Provisa hands it these.
         socks = [socket.socket(fileno=int(fd)) for fd in address[3:].split(",")]
@@ -571,7 +614,7 @@ async def run(address: str, code: str, entry: str) -> None:
     served = []
     for sock in socks:
         reader, writer = await asyncio.open_connection(sock=sock)
-        served.append(asyncio.create_task(serve(module, reader, writer)))
+        served.append(asyncio.create_task(serve(module, reader, writer, discovered)))
     # One connection closing is Provisa stopping the worker: the others' calls end with it.
     done, pending = await asyncio.wait(served, return_when=asyncio.FIRST_COMPLETED)
     for task in pending:
@@ -599,17 +642,20 @@ def load(code: str, entry: str) -> typing.Any:  # the code's entry module
 
 
 async def serve(
-    module: typing.Any, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
+    module: typing.Any,
+    reader: asyncio.StreamReader,
+    writer: asyncio.StreamWriter,
+    discovered: dict[str, str],
 ) -> None:
     """Say hello on the connection and serve its calls until it closes: Provisa's, or in a built
     image its front end's (provisa/codehost/front.py, REQ-2100)."""
-    host = Host(module, writer)
+    host = Host(module, writer, discovered)
     await host.send(
         {
             "op": "hello",
             "protocol": PROTOCOL,
             "code_hash": os.environ["PROVISA_CODE_HASH"],
-            "exports": exported(module),
+            "exports": offered(module, discovered),
         }
     )
     while True:
