@@ -1165,7 +1165,7 @@ def test_the_report_lists_each_leg_its_image_and_why_a_failed_one_left_no_result
         json.dumps({"engine": "b", "reason": "b: the leg failed starting the engine's server"})
     )
     out, md = tmp_path / "out.json", tmp_path / "out.md"
-    assert support.merge(["a", "b"], tmp_path / "in", out, md, legs) == 1
+    assert support.merge(["a", "b"], tmp_path / "in", out, md, legs, refused={}) == 1
     doc = json.loads(out.read_text())
     assert doc["legs"] == {
         "a": {"lane": "free", "image": "a:1"},
@@ -1186,7 +1186,7 @@ def test_a_failed_leg_with_no_reason_is_still_failed_on_the_report(tmp_path):
     legs.write_text(yaml.safe_dump(LEGS))
     (tmp_path / "in").mkdir()
     out, md = tmp_path / "out.json", tmp_path / "out.md"
-    assert support.merge(["a"], tmp_path / "in", out, md, legs) == 1
+    assert support.merge(["a"], tmp_path / "in", out, md, legs, refused={}) == 1
     assert "| a | free | a:1 | failed: the leg left no result and no reason |" in md.read_text()
 
 
@@ -1198,7 +1198,7 @@ def test_a_leg_reason_is_ignored_when_the_leg_left_its_result(tmp_path):
     (leg / "function-support-a.json").write_text(json.dumps(_report("a", _entry("abs", "pass"))))
     (leg / "leg-failure-a.json").write_text(json.dumps({"engine": "a", "reason": "late"}))
     out, md = tmp_path / "out.json", tmp_path / "out.md"
-    assert support.merge(["a"], tmp_path / "in", out, md, legs) == 0
+    assert support.merge(["a"], tmp_path / "in", out, md, legs, refused={}) == 0
     assert json.loads(out.read_text())["leg_failures"] == {}
 
 
@@ -1207,7 +1207,46 @@ def test_the_merge_refuses_an_engine_with_no_leg(tmp_path):
     legs.write_text(yaml.safe_dump(LEGS))
     (tmp_path / "in").mkdir()
     with pytest.raises(SystemExit, match="no leg"):
-        support.merge(["q"], tmp_path / "in", tmp_path / "o.json", tmp_path / "o.md", legs)
+        support.merge(
+            ["q"], tmp_path / "in", tmp_path / "o.json", tmp_path / "o.md", legs, refused={}
+        )
+
+
+def test_an_engine_refused_by_name_is_listed_as_refused_and_never_judged(tmp_path):
+    """The plan's refusals (function_legs.py plan) are on the report as refused by name, not as a
+    lane left undispatched, and the merge expects no result of them: the run passes on the rest."""
+    legs = tmp_path / "legs.yaml"
+    legs.write_text(yaml.safe_dump(LEGS))
+    leg = tmp_path / "in" / "function-support-a"
+    leg.mkdir(parents=True)
+    (leg / "function-support-a.json").write_text(json.dumps(_report("a", _entry("abs", "pass"))))
+    out, md = tmp_path / "out.json", tmp_path / "out.md"
+    why = "refused by name: build_engine refuses federation engine 'b'"
+    assert support.merge(["a"], tmp_path / "in", out, md, legs, refused={"b": why}) == 0
+    doc = json.loads(out.read_text())
+    assert doc["refused_by_name"] == {"b": why}
+    assert "b" not in doc["not_dispatched"] and "b" not in doc["legs"]
+    assert f"- b: {why}" in md.read_text()
+
+
+def test_the_merge_refuses_an_engine_both_run_and_refused(tmp_path):
+    legs = tmp_path / "legs.yaml"
+    legs.write_text(yaml.safe_dump(LEGS))
+    (tmp_path / "in").mkdir()
+    with pytest.raises(SystemExit, match="both run and refused"):
+        support.merge(
+            ["a"], tmp_path / "in", tmp_path / "o.json", tmp_path / "o.md", legs, refused={"a": "x"}
+        )
+
+
+def test_the_legs_file_and_the_refusals_are_given_together(tmp_path):
+    legs = tmp_path / "legs.yaml"
+    legs.write_text(yaml.safe_dump(LEGS))
+    (tmp_path / "in").mkdir()
+    with pytest.raises(ValueError, match="with the refused engines"):
+        support.merge(["a"], tmp_path / "in", tmp_path / "o.json", tmp_path / "o.md", legs)
+    with pytest.raises(ValueError, match="with the legs file"):
+        support.merge(["a"], tmp_path / "in", tmp_path / "o.json", tmp_path / "o.md", refused={})
 
 
 def test_a_leg_whose_server_went_away_is_incomplete():
