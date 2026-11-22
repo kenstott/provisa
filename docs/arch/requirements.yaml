@@ -97919,7 +97919,7 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     names. (Amended 2026-11-19, RECENT CHANGE IS THE TERM''S LAST WRITE:) Maintainer 2026-11-19. Every
     glossary term records when it last changed: any write to its name, definition, calculation method,
     domains, relations on either end or status sets that time. The Glossary''s recent-change sort orders by
-    it.'
+    it. (Amended 2026-11-21 by the maintainer. Tags lost counts confirmed tag losses (REQ-2145), each recorded when confirmed with its column, tag, the term it left, who and when; the card counts this period''s. Data Products sync status comes from a record of each publish per entry with its time and per-product outcome, read through an endpoint gated on data_product_read. Documents due counts the REQ-2208 review items until attestations (REQ-2209) are built.)'
 - id: REQ-2260
   status: complete
   since: 2026-11
