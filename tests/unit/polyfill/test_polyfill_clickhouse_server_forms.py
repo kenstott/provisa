@@ -1,3 +1,13 @@
+# Copyright (c) 2026 Kenneth Stott
+# Canary: f9f7e6f0-34e6-4cc4-bd88-039dbbe13081
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+
 """ClickHouse's forms both of its legs take: embedded chDB and the 24.3 server (REQ-2236; the
 polyfill triage of 2026-11-22, groups G4 to G6 and G11).
 
