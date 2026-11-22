@@ -56,6 +56,11 @@ const RULES = [
   },
 ];
 
+vi.mock("../../hooks/useCapability", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../hooks/useCapability")>()),
+  // REQ-1327: the roles page acts for a holder of the rights its actions ask.
+  useCapability: () => true,
+}));
 vi.mock("../../context/DomainFilterContext", () => ({
   useDomainFilter: () => ({
     domains: [],

@@ -16,6 +16,11 @@ import { act, screen, waitFor } from "@testing-library/react";
 import { useNavigate } from "react-router-dom";
 import { render } from "../../test-utils/render";
 
+vi.mock("../../hooks/useCapability", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../hooks/useCapability")>()),
+  // REQ-1327: the roles page acts for a holder of the rights its actions ask.
+  useCapability: () => true,
+}));
 vi.mock("../../context/DomainFilterContext", () => ({
   useDomainFilter: () => ({
     setDomains: vi.fn(),

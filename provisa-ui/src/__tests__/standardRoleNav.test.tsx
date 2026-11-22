@@ -125,27 +125,29 @@ const EVERY_ENTRY = [
   EXPLORE,
 ];
 const READER = [CONTEXT, PRODUCTS];
-const BUILDER = [RELATIONSHIPS, CONTEXT, PRODUCTS, EXPLORE];
+// REQ-1327 (amended 2026-11-14): a holder of command_execution or create_view is shown Derived.
+const COMMAND_READER = [CONTEXT, MODEL, PRODUCTS, EXPLORE];
+const BUILDER = [RELATIONSHIPS, CONTEXT, MODEL, PRODUCTS, EXPLORE];
 const GOVERNOR = [TABLES, CONTEXT, MODEL, PRODUCTS, SECURITY];
 
 // role → [the bar's entries in order, whether the user menu offers Admin, the landing page]
 const EXPECTED: Record<string, [string[], boolean, string]> = {
-  viewer: [READER, true, "/context/ontology"],
-  analyst: [[...READER, EXPLORE], true, "/schema"],
-  data_writer: [[...READER, EXPLORE], true, "/schema"],
+  viewer: [READER, true, "/context/glossary"],
+  analyst: [COMMAND_READER, true, "/schema"],
+  data_writer: [COMMAND_READER, true, "/schema"],
   developer: [BUILDER, true, "/schema"],
   modeler: [BUILDER, true, "/schema"],
-  data_product_owner: [READER, true, "/context/ontology"],
+  data_product_owner: [READER, true, "/context/glossary"],
   security_admin: [GOVERNOR, true, "/tables"],
   data_steward: [
     [TABLES, RELATIONSHIPS, CONTEXT, MODEL, PRODUCTS, SECURITY, EXPLORE],
     true,
     "/schema",
   ],
-  dq_steward: [READER, true, "/context/ontology"],
+  dq_steward: [READER, true, "/context/glossary"],
   source_admin: [[SOURCES, TABLES, CONTEXT, MODEL, PRODUCTS], true, "/sources"],
-  member_admin: [READER, true, "/context/ontology"],
-  org_operator: [READER, true, "/context/ontology"],
+  member_admin: [[CONTEXT, PRODUCTS, SECURITY], true, "/context/glossary"],
+  org_operator: [READER, true, "/context/glossary"],
   org_admin: [EVERY_ENTRY, true, "/schema"],
   sandbox: [EVERY_ENTRY, true, "/schema"],
   platform_admin: [[], true, "/admin/orgs"],
@@ -203,7 +205,7 @@ describe("the standard roles' navigation", () => {
         [SOURCES]: "/sources",
         [TABLES]: "/tables",
         [RELATIONSHIPS]: "/relationships",
-        [CONTEXT]: "/context/ontology",
+        [CONTEXT]: "/context/glossary",
       };
       if (entries.includes(EXPLORE)) expect(landing).toBe("/schema");
       else if (entries.length > 0) expect(landing).toBe(bar[entries[0]]);

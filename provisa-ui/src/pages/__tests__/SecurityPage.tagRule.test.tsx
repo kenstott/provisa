@@ -22,6 +22,11 @@ const upsertRlsRuleSpy = vi.fn(async (_input: Record<string, unknown>) => ({
 }));
 const deleteRlsRuleSpy = vi.fn(async (..._args: unknown[]) => ({ success: true, message: "" }));
 
+vi.mock("../../hooks/useCapability", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../hooks/useCapability")>()),
+  // REQ-1327: the roles page acts for a holder of the rights its actions ask.
+  useCapability: () => true,
+}));
 vi.mock("../../context/DomainFilterContext", () => ({
   useDomainFilter: () => ({
     setDomains: vi.fn(),
