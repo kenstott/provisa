@@ -87345,7 +87345,7 @@ And a constant naming a secret that does not exist fails the query, naming the c
     is refused when saved if it could backtrack catastrophically (nested or overlapping repeats, lookaround,
     back references) or is too large, and runs with a step limit linear in the text''s length; past the
     limit the text is withheld and the rule is named to its administrators. A held organization''s rule
-    cannot reference the server''s environment. The deployment''s own rules keep the full pattern syntax.'
+    cannot reference the server''s environment. The deployment''s own rules keep the full pattern syntax. (Amended 2026-11-22 by the maintainer. A secret is redacted only where its value appears as a whole token: bounded by characters that cannot be part of an identifier, or as a whole quoted value. An occurrence inside a longer identifier (for example provisa inside provisa_cache.mv_orders_summary) is left as written, so a short or common-word secret does not rewrite unrelated names in client errors and logs.)'
   use_case: "A warehouse password reaches a connection error; the error the client receives, the span exported to the collector and the container log all read [REDACTED:auto:warehouse_pw] instead of the password."
   scenario: "Given the org's vault holds warehouse_pw and the org adds a rule employee_id with pattern EMP-\\d{6}
 
