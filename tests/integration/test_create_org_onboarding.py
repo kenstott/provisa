@@ -162,11 +162,20 @@ def planes(monkeypatch):
     async def _fake_grant_org_role(_tenant_db, user_id, role_id, *, granter_capabilities):
         grants.append((user_id, role_id))
 
+    # REQ-2219: the creator's grant changes their effective rows, recomputed in the new org's prod
+    # model store. The stand-in runtime has no store (its model plane is the admin schema), so the
+    # recompute is recorded, as the stubbed grant is.
+    recorded: list[tuple[str, list[str]]] = []
+
+    async def _fake_record_people(org_id, principals):
+        recorded.append((org_id, sorted(principals)))
+
     monkeypatch.setattr(org_provisioning, "provision_org", _fake_provision_org)
     monkeypatch.setattr("provisa.api.app.build_org_runtime", _fake_build_org_runtime, raising=False)
     monkeypatch.setattr(org_membership, "grant_org_role", _fake_grant_org_role)
+    monkeypatch.setattr("provisa.api.effective_rows.record_people", _fake_record_people)
 
-    yield admin_db, tenant_db, sync_engine, grants
+    yield admin_db, tenant_db, sync_engine, grants, recorded
 
     # This flow registers orgs into the process-global org_registry via the stubbed
     # build_org_runtime above (a bare SimpleNamespace with no federation_engine). Unlike
@@ -205,7 +214,7 @@ def _q(sync_engine, stmt):
 
 
 def test_create_org_provisions_and_reaches_ready(planes):
-    admin_db, tenant_db, sync_engine, grants = planes
+    admin_db, tenant_db, sync_engine, grants, recorded = planes
     with TestClient(_make_app(admin_db, tenant_db), raise_server_exceptions=True) as client:
         resp = client.post(
             "/admin/orgs/",
@@ -247,12 +256,14 @@ def test_create_org_provisions_and_reaches_ready(planes):
 
     # Background task granted the creator org_admin in the tenant plane.
     assert ("carol", "org_admin") in grants
+    # ... and recomputed the creator's effective rows in the new org (REQ-2219).
+    assert ("carolco", ["carol"]) in recorded
 
 
 def test_create_org_requires_authenticated_identity(planes):
     # Anonymous is allowed only in dev/no-auth; here auth is configured, so an unauthenticated
     # request is rejected before any org is registered.
-    admin_db, tenant_db, sync_engine, _ = planes
+    admin_db, tenant_db, sync_engine, _, _ = planes
     with TestClient(_make_app(admin_db, tenant_db), raise_server_exceptions=True) as client:
         resp = client.post("/admin/orgs/", json={"id": "nope", "name": "No"})
     assert resp.status_code == 401
@@ -260,7 +271,7 @@ def test_create_org_requires_authenticated_identity(planes):
 
 
 def test_duplicate_org_id_rejected(planes):
-    admin_db, tenant_db, sync_engine, _ = planes
+    admin_db, tenant_db, sync_engine, _, _ = planes
     with TestClient(_make_app(admin_db, tenant_db), raise_server_exceptions=True) as client:
         first = client.post(
             "/admin/orgs/",

@@ -121,7 +121,17 @@ def planes(monkeypatch):
 
     monkeypatch.setattr("provisa.api.app.ensure_org_runtime", _org_runtime, raising=False)
 
-    yield admin_db, tenant_db, sync_engine
+    # REQ-2219: the redemption's grant changes the redeemer's effective rows, recomputed in the
+    # invited org's prod model store. The stand-in runtime above is no registered runtime with a
+    # built model, so the recompute is recorded.
+    recorded: list[tuple[str, list[str]]] = []
+
+    async def _record_people(org_id, principals):
+        recorded.append((org_id, sorted(principals)))
+
+    monkeypatch.setattr("provisa.api.effective_rows.record_people", _record_people)
+
+    yield admin_db, tenant_db, sync_engine, recorded
 
     with sync_engine.begin() as conn:
         conn.execute(text(f"DROP SCHEMA IF EXISTS {_ADMIN_SCHEMA} CASCADE"))
@@ -159,7 +169,7 @@ def test_redeem_admitted_even_when_email_rule_excludes(planes):
     an auditor, an IdP account carrying a different address — with an error the invitee could
     do nothing about. The invitation is the admission decision, so it admits and burns.
     """
-    admin_db, tenant_db, sync_engine = planes
+    admin_db, tenant_db, sync_engine, recorded = planes
     with TestClient(_make_app(admin_db, tenant_db), raise_server_exceptions=True) as client:
         resp = client.post(
             "/auth/redeem-invite",
@@ -168,6 +178,7 @@ def test_redeem_admitted_even_when_email_rule_excludes(planes):
         )
     assert resp.status_code == 200, resp.text
     assert resp.json()["org_id"] == "acme"
+    assert recorded == [("acme", ["alice"])]
     membership = _q(
         sync_engine,
         _ADMIN_SCHEMA,
@@ -186,7 +197,7 @@ def test_redeem_admitted_even_when_email_rule_excludes(planes):
 
 
 def test_redeem_allowed_when_email_rule_matches(planes):
-    admin_db, tenant_db, sync_engine = planes
+    admin_db, tenant_db, sync_engine, recorded = planes
     with TestClient(_make_app(admin_db, tenant_db), raise_server_exceptions=True) as client:
         resp = client.post(
             "/auth/redeem-invite",
@@ -195,6 +206,7 @@ def test_redeem_allowed_when_email_rule_matches(planes):
         )
     assert resp.status_code == 200, resp.text
     assert resp.json()["org_id"] == "widget"
+    assert recorded == [("widget", ["alice"])]
     membership = _q(
         sync_engine,
         _ADMIN_SCHEMA,
