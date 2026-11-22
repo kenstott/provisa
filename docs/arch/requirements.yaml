@@ -96461,6 +96461,9 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   - data-engineer
   tests:
   - tests/integration/test_code_table_read_e2e.py
+  - tests/unit/test_code_command_table_arg.py
+  - tests/unit/test_minted_call_token.py
+  - tests/unit/test_minted_pipeline_column_visibility.py
 - id: REQ-2227
   value: A code source can be written in Rust, with the same tables, commands and streams as a Node, Python
     or Go code source.
@@ -96498,6 +96501,11 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     Then the function runs in the sandbox and its rows are returned'
   stakeholders:
   - data-engineer
+  tests:
+  - tests/unit/test_rust_source.py
+  - tests/unit/test_rust_install.py
+  - tests/unit/test_rust_image_linker.py
+  - tests/integration/test_rust_worker.py
 - id: REQ-2228
   value: 'A dbt project is a source type: its manifest offers its models as governed tables and commands,
     while dbt keeps building them.'
@@ -96795,6 +96803,9 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     table_registration in a domain picks all three on Register Table and registers them; then all three are
     registered in that domain with the defaults one registration would give each, and a table one of them
     refuses is named while the others are registered.'
+  tests:
+  - tests/unit/test_register_tables_batch.py
+  - provisa-ui/src/pages/tables/__tests__/RegisterTableForm.several.test.tsx
 
 - id: REQ-2235
   status: in-progress
