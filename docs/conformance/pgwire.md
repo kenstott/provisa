@@ -4512,7 +4512,72 @@ How each tool was captured:
 To capture again at a new version, run `scripts/conformance/bi_tools/capture.py run` (Docker). Each tool's statements are stored in `scripts/conformance/bi_tools/<tool>.yaml` with the tool's version and the bind parameters it sent.
 
 <!-- bi-tools-results:begin -->
-No run has filled this section yet.
+## BI tools' catalog statements (PostgreSQL 17.11 (Debian 17.11-1.pgdg13+2))
+
+Each statement a tool sent to browse the schema, replayed on PostgreSQL and on Provisa; the columns each answer describes (name, order, type, typmod) are compared, or the refusal where PostgreSQL refuses. Catalog content is not compared: it is the role's governed view of the model.
+
+| Tool | Version | Captured | Method | Statements | Passed | Skipped by design | Failed | Not tested |
+| --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: |
+| psql | 17.11 | 2026-11-04 | Automated: postgres:17.11's psql (-X), one session, through the recording proxy. | 40 | 28 | 0 | 12 | 0 |
+| DBeaver | 25.1.4 | 2026-11-04 | By hand: dbeaver 25.1.4 on macOS, through the recording proxy (capture.py serve), following the steps in browse. | 75 | 73 | 0 | 2 | 0 |
+| Metabase | v0.64.5 | 2026-11-04 | Automated: metabase/metabase:v0.64.5 through its HTTP API: setup, add the database (first sync, analysis), sync_schema, then the database's and each table's metadata. | 36 | 29 | 0 | 7 | 0 |
+| Grafana | 13.3.0 (plugin 13.0.6) | 2026-11-04 | Automated: grafana/grafana:13.3.0 (bundled grafana-postgresql-datasource 13.0.6) through its HTTP API: the data source added and checked, then the SQL its query editor sends (postgresMetaQuery.ts) run through /api/ds/query. | 8 | 2 | 0 | 6 | 0 |
+
+<details><summary>psql: failed (12)</summary>
+
+| Statement | Difference |
+| --- | --- |
+| `#4 SELECT n.nspname as "Schema", c.relname as "Name", CASE c.relkind WHEN 'r' THEN 'table' WHEN 'v' THEN 'view' WHEN 'm' THEN 'materialized view' WHEN 'i' THEN ...` | Provisa error: ERROR: [V003] Column pg_catalog.default: 'pg_catalog' names no relation in scope (a column is qualified by its relation's name or alias as the FROM clause writes it) |
+| `#5 SELECT n.nspname as "Schema", c.relname as "Name", CASE c.relkind WHEN 'r' THEN 'table' WHEN 'v' THEN 'view' WHEN 'm' THEN 'materialized view' WHEN 'i' THEN ...` | Provisa error: ERROR: [V003] Column pg_catalog.default: 'pg_catalog' names no relation in scope (a column is qualified by its relation's name or alias as the FROM clause writes it) |
+| `#6 SELECT n.nspname as "Schema", c.relname as "Name", CASE c.relkind WHEN 'r' THEN 'table' WHEN 'v' THEN 'view' WHEN 'm' THEN 'materialized view' WHEN 'i' THEN ...` | Provisa error: ERROR: [V003] Column pg_catalog.default: 'pg_catalog' names no relation in scope (a column is qualified by its relation's name or alias as the FROM clause writes it) |
+| `#8 SELECT n.nspname as "Schema", p.proname as "Name", pg_catalog.pg_get_function_result(p.oid) as "Result data type", pg_catalog.pg_get_function_arguments(p.oid...` | Provisa error: ERROR: [V003] Column pg_catalog.default: 'pg_catalog' names no relation in scope (a column is qualified by its relation's name or alias as the FROM clause writes it) |
+| `#9 SELECT c.oid, n.nspname, c.relname FROM pg_catalog.pg_class c LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace WHERE c.relname OPERATOR(pg_catal...` | Provisa error: ERROR: [V003] Column pg_catalog.default: 'pg_catalog' names no relation in scope (a column is qualified by its relation's name or alias as the FROM clause writes it) |
+| `#10 SELECT c.relchecks, c.relkind, c.relhasindex, c.relhasrules, c.relhastriggers, c.relrowsecurity, c.relforcerowsecurity, false AS relhasoids, c.relispartition...` | Provisa error: ERROR: Cannot resolve 'x' due to missing source schemas |
+| `#17 SELECT c.oid, n.nspname, c.relname FROM pg_catalog.pg_class c LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace WHERE c.relname OPERATOR(pg_catal...` | Provisa error: ERROR: [V003] Column pg_catalog.default: 'pg_catalog' names no relation in scope (a column is qualified by its relation's name or alias as the FROM clause writes it) |
+| `#18 SELECT c.relchecks, c.relkind, c.relhasindex, c.relhasrules, c.relhastriggers, c.relrowsecurity, c.relforcerowsecurity, false AS relhasoids, c.relispartition...` | Provisa error: ERROR: Cannot resolve 'x' due to missing source schemas |
+| `#26 SELECT t.tgname, pg_catalog.pg_get_triggerdef(t.oid, true), t.tgenabled, t.tgisinternal, CASE WHEN t.tgparentid != 0 THEN (SELECT u.tgrelid::pg_catalog.regcl...` | parent: type text (oid 25), PostgreSQL regclass (oid 2205) |
+| `#29 SELECT c.oid, n.nspname, c.relname FROM pg_catalog.pg_class c LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace WHERE c.relname OPERATOR(pg_catal...` | Provisa error: ERROR: [V003] Column pg_catalog.default: 'pg_catalog' names no relation in scope (a column is qualified by its relation's name or alias as the FROM clause writes it) |
+| `#30 SELECT c.relchecks, c.relkind, c.relhasindex, c.relhasrules, c.relhastriggers, c.relrowsecurity, c.relforcerowsecurity, false AS relhasoids, c.relispartition...` | Provisa error: ERROR: Cannot resolve 'x' due to missing source schemas |
+| `#38 SELECT t.tgname, pg_catalog.pg_get_triggerdef(t.oid, true), t.tgenabled, t.tgisinternal, CASE WHEN t.tgparentid != 0 THEN (SELECT u.tgrelid::pg_catalog.regcl...` | parent: type text (oid 25), PostgreSQL regclass (oid 2205) |
+
+</details>
+
+<details><summary>DBeaver: failed (2)</summary>
+
+| Statement | Difference |
+| --- | --- |
+| `#11 select string_agg(word, ',') from pg_catalog.pg_get_keywords() where word <> ALL ('{a,abs,absolute,action,ada,add,admin,after,all,allocate,alter,always,and,a...` | missing columns: string_agg; extra columns: group_concat |
+| `#57 SELECT tf.* FROM conformance.types_fixture AS tf` | c_numeric: typmod 2490376, PostgreSQL -1; c_int4_array: type jsonb (oid 3802), PostgreSQL _int4 (oid 1007); c_text_array: type jsonb (oid 3802), PostgreSQL _text (oid 1009); c_float8_array: type jsonb (oid 3802), PostgreSQL _float8 (oid 1022) |
+
+</details>
+
+<details><summary>Metabase: failed (7)</summary>
+
+| Statement | Difference |
+| --- | --- |
+| `#4 select current_catalog` | current_catalog: type text (oid 25), PostgreSQL name (oid 19) |
+| `#14 SELECT "c"."column_name" AS "name", CASE WHEN "c"."udt_schema" IN ('public', 'pg_catalog') THEN FORMAT('%s', "c"."udt_name") ELSE FORMAT('"%s"."%s"', "c"."ud...` | name: type sql_identifier (oid 13302), PostgreSQL name (oid 19); table-schema: type sql_identifier (oid 13302), PostgreSQL name (oid 19); table-name: type sql_identifier (oid 13302), PostgreSQL name (oid 19); database-default: type character_data (oid 13300), PostgreSQL varchar (oid 1043) |
+| `#15 SELECT "c"."column_name" AS "name", CASE WHEN "c"."udt_schema" IN ('public', 'pg_catalog') THEN FORMAT('%s', "c"."udt_name") ELSE FORMAT('"%s"."%s"', "c"."ud...` | name: type sql_identifier (oid 13302), PostgreSQL name (oid 19); table-schema: type sql_identifier (oid 13302), PostgreSQL name (oid 19); table-name: type sql_identifier (oid 13302), PostgreSQL name (oid 19); database-default: type character_data (oid 13300), PostgreSQL varchar (oid 1043) |
+| `#17 SELECT "c"."column_name" AS "name", CASE WHEN "c"."udt_schema" IN ('public', 'pg_catalog') THEN FORMAT('%s', "c"."udt_name") ELSE FORMAT('"%s"."%s"', "c"."ud...` | name: type sql_identifier (oid 13302), PostgreSQL name (oid 19); table-schema: type sql_identifier (oid 13302), PostgreSQL name (oid 19); table-name: type sql_identifier (oid 13302), PostgreSQL name (oid 19); database-default: type character_data (oid 13300), PostgreSQL varchar (oid 1043) |
+| `#19 SELECT "c"."column_name" AS "name", CASE WHEN "c"."udt_schema" IN ('public', 'pg_catalog') THEN FORMAT('%s', "c"."udt_name") ELSE FORMAT('"%s"."%s"', "c"."ud...` | name: type sql_identifier (oid 13302), PostgreSQL name (oid 19); table-schema: type sql_identifier (oid 13302), PostgreSQL name (oid 19); table-name: type sql_identifier (oid 13302), PostgreSQL name (oid 19); database-default: type character_data (oid 13300), PostgreSQL varchar (oid 1043) |
+| `#22 SELECT "c"."column_name" AS "name", CASE WHEN "c"."udt_schema" IN ('public', 'pg_catalog') THEN FORMAT('%s', "c"."udt_name") ELSE FORMAT('"%s"."%s"', "c"."ud...` | name: type sql_identifier (oid 13302), PostgreSQL name (oid 19); table-schema: type sql_identifier (oid 13302), PostgreSQL name (oid 19); table-name: type sql_identifier (oid 13302), PostgreSQL name (oid 19); database-default: type character_data (oid 13300), PostgreSQL varchar (oid 1043) |
+| `#32 -- Metabase SELECT "conformance"."types_fixture"."c_bool" AS "c_bool", SUBSTRING(("conformance"."types_fixture"."c_jsonb"#>> (array[$1]::text[]))::text, 1, 1...` | c_numeric: typmod 2490376, PostgreSQL -1 |
+
+</details>
+
+<details><summary>Grafana: failed (6)</summary>
+
+| Statement | Difference |
+| --- | --- |
+| `#2 SELECT current_setting('server_version_num')::int/100 as version` | version: type int8 (oid 20), PostgreSQL int4 (oid 23) |
+| `#4 SELECT CASE WHEN quote_ident(table_schema) IN ( SELECT CASE WHEN trim(s[i]) = '"$user"' THEN user ELSE trim(s[i]) END FROM generate_series( array_lower(strin...` | Provisa error: ERROR: [V006] Table function 'STRING_TO_ARRAY' is not a governed relation |
+| `#5 SELECT quote_ident(column_name) AS "column", data_type AS "type" FROM information_schema.columns WHERE CASE WHEN array_length(parse_ident('conformance.bi_cus...` | Provisa error: ERROR: [V006] Table function 'STRING_TO_ARRAY' is not a governed relation |
+| `#6 SELECT quote_ident(column_name) AS "column", data_type AS "type" FROM information_schema.columns WHERE CASE WHEN array_length(parse_ident('conformance.bi_ord...` | Provisa error: ERROR: [V006] Table function 'STRING_TO_ARRAY' is not a governed relation |
+| `#7 SELECT quote_ident(column_name) AS "column", data_type AS "type" FROM information_schema.columns WHERE CASE WHEN array_length(parse_ident('conformance.probe_...` | Provisa error: ERROR: [V006] Table function 'STRING_TO_ARRAY' is not a governed relation |
+| `#8 SELECT quote_ident(column_name) AS "column", data_type AS "type" FROM information_schema.columns WHERE CASE WHEN array_length(parse_ident('conformance.types_...` | Provisa error: ERROR: [V006] Table function 'STRING_TO_ARRAY' is not a governed relation |
+
+</details>
+
 <!-- bi-tools-results:end -->
 
 ## Tools
