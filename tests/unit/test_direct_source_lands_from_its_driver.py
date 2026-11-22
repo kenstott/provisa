@@ -103,7 +103,7 @@ async def test_a_natively_nested_column_is_landed_as_json_the_source_produces():
 
     assert source_projection(columns, "duckdb") == (
         '"id", to_json("tags") AS "tags", '
-        'to_json(list_transform("amounts", x1 -> CAST(x1 AS VARCHAR))) AS "amounts"'
+        'to_json(list_transform("amounts", LAMBDA x1 : CAST(x1 AS VARCHAR))) AS "amounts"'
     )
     assert source_projection(columns, "postgres") == (
         '"id", to_jsonb("tags") AS "tags", '
