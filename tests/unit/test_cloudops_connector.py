@@ -14,12 +14,16 @@ bundle name, and that the source reads only."""
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 import pytest
 
 from provisa.core.catalog import _build_catalog_properties
 from provisa.core.models import Source, SourceType
 from provisa.executor.writable import is_written_through_pgwire_server, resolve_write_path
 from provisa.executor.write_capability import table_write_ops, table_write_returns_rows
+from provisa.federation import cloudops
 from provisa.federation import pgwire_replica as pr
 from provisa.federation.connector_base import Mechanism
 from provisa.federation.engine import (
@@ -262,10 +266,11 @@ def test_its_cloud_secrets_are_fields_of_the_source_kept_as_typed(monkeypatch):
     }
 
 
-# -- its server gets credentials only for the clouds it names ---------------------------------------
+# -- its server authenticates only with the credentials the source declares -----------------------
 
 # Credential variables the deployment's own environment may hold for each cloud: what the cloud
-# SDKs and the adapter's fallbacks read (maintainer 2026-11-21, job CLOUDOPS-ENV).
+# SDKs and the adapter's fallbacks read. None reaches a cloudops source's server, whatever clouds
+# it names (maintainer 2026-11-22, job CLOUDOPS-ENV2).
 _DEPLOYMENT_CREDENTIALS = {
     "azure": {"AZURE_TENANT_ID": "lane-tenant", "AZURE_CLIENT_SECRET": "lane-az-secret"},
     "aws": {"AWS_ACCESS_KEY_ID": "lane-akia", "AWS_SECRET_ACCESS_KEY": "lane-aws-secret"},
@@ -275,11 +280,20 @@ _DEPLOYMENT_CREDENTIALS = {
     },
 }
 _MAPPINGS = {"azure": AZURE, "aws": AWS, "gcp": GCP}
+_CLOUD_SETS = [
+    ("azure",),
+    ("aws",),
+    ("gcp",),
+    ("azure", "aws"),
+    ("azure", "gcp"),
+    ("aws", "gcp"),
+    ("azure", "aws", "gcp"),
+]
 
 
-def _launched_environment(tmp_path, monkeypatch, clouds: tuple[str, ...]) -> dict[str, str]:
-    """The environment a cloudops source naming ``clouds`` launches its server with, the
-    deployment's environment holding every cloud's credential variables."""
+def _launch(tmp_path, monkeypatch, clouds: tuple[str, ...]) -> tuple[dict[str, str], dict]:
+    """The environment and the model a cloudops source naming ``clouds`` launches its server
+    with, the deployment's environment holding every cloud's credential variables."""
     from types import SimpleNamespace
 
     from tests.helpers import ready_org_folder
@@ -293,10 +307,11 @@ def _launched_environment(tmp_path, monkeypatch, clouds: tuple[str, ...]) -> dic
     bundle = tmp_path / "bundle"
     (bundle / "bin").mkdir(parents=True)
     mapping = {k: v for cloud in clouds for k, v in _MAPPINGS[cloud].items()}
-    spawned: list[dict[str, str]] = []
+    spawned: list[tuple[dict[str, str], dict]] = []
 
     def spawn(command, cwd, env=None):
-        spawned.append(env)
+        model = json.loads((Path(cwd) / "model" / "model.json").read_text())
+        spawned.append((env, model))
         return SimpleNamespace(exit_code=lambda: None)
 
     replica = pr.ConnectorReplica(
@@ -313,33 +328,34 @@ def _launched_environment(tmp_path, monkeypatch, clouds: tuple[str, ...]) -> dic
     return spawned[0]
 
 
-@pytest.mark.parametrize(
-    "clouds",
-    [
-        ("azure",),
-        ("aws",),
-        ("gcp",),
-        ("azure", "aws"),
-        ("azure", "gcp"),
-        ("aws", "gcp"),
-        ("azure", "aws", "gcp"),
-    ],
-)
-def test_its_server_is_launched_with_credentials_only_for_the_clouds_it_names(
-    tmp_path, monkeypatch, clouds
-):
-    env = _launched_environment(tmp_path, monkeypatch, clouds)
-    # Compared by name: a failure must not print the environment (it holds real secrets).
+@pytest.mark.parametrize("clouds", _CLOUD_SETS)
+def test_its_server_inherits_no_deployment_cloud_credential_variable(tmp_path, monkeypatch, clouds):
+    env, _ = _launch(tmp_path, monkeypatch, clouds)
+    # Compared by name only: a failure must not print the environment (it holds real secrets).
+    cloud_prefixes = ("AZURE_", "AWS_", "GCP_", "GOOGLE_")
+    assert sorted(name for name in env if name.startswith(cloud_prefixes)) == []
+    assert "PROVISA_TEST_UNRELATED" in env
+
+
+@pytest.mark.parametrize("clouds", _CLOUD_SETS)
+def test_its_declared_credentials_reach_the_server_in_its_model(tmp_path, monkeypatch, clouds):
+    """What the source declares is how its server authenticates: each named cloud's credentials
+    and scope are operands of the model the server is started on."""
+    _, model = _launch(tmp_path, monkeypatch, clouds)
+    (schema,) = model["schemas"]
+    operand = schema["operand"]
     expected = {
-        name: value
-        for cloud, names in _DEPLOYMENT_CREDENTIALS.items()
-        if cloud in clouds
-        for name, value in names.items()
+        operand_key
+        for cloud in clouds
+        for key, operand_key in (
+            *cloudops.CLOUDOPS_CLOUDS[cloud]["required"],
+            *cloudops.CLOUDOPS_CLOUDS[cloud]["optional"],
+        )
+        if key in _MAPPINGS[cloud]
     }
-    every = {name for names in _DEPLOYMENT_CREDENTIALS.values() for name in names}
-    assert sorted(name for name in every if name in env) == sorted(expected)
-    assert all(env[name] == value for name, value in expected.items())
-    assert env.get("PROVISA_TEST_UNRELATED") == "kept"
+    # Compared by name only: a failure must not print a credential.
+    assert sorted(set(operand) - {"providers"}) == sorted(expected)
+    assert sorted(operand["providers"].split(",")) == sorted(clouds)
 
 
 def test_the_spawn_hands_the_server_exactly_the_environment_it_is_given(tmp_path, monkeypatch):
