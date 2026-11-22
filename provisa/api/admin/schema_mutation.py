@@ -5538,7 +5538,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         """Several scheduled tasks deleted in one call, each by deleteScheduledTask."""
         from provisa.api.admin._bulk_delete import delete_each, scheduled_task_name
 
-        require_capability(info, "org_settings")
+        require_capability(info, "query_development")  # REQ-1327: a trigger runs a statement
         return await delete_each(
             task_ids,
             scheduled_task_name,
@@ -7349,7 +7349,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         self, info: StrawberryInfo, task_id: str, enabled: bool
     ) -> MutationResult:
         """Enable or disable one of the caller's org's scheduled triggers (REQ-1003)."""
-        require_capability(info, "org_settings")
+        require_capability(info, "query_development")  # REQ-1327: a trigger runs a statement
         from provisa.api.admin._table_ops import _get_pool
         from provisa.core.repositories import scheduled_trigger as trigger_repo
 
@@ -7397,7 +7397,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
     ) -> MutationResult:
         """Create a trigger -- on a cron schedule, or (REQ-2054) on a table's change or event --
         running a webhook, a SQL statement or a command, and register it live (REQ-1003/1004)."""
-        require_capability(info, "org_settings")
+        require_capability(info, "query_development")  # REQ-1327: a trigger runs a statement
         return await _ops.create_scheduled_task_op(
             info.context["request"],
             id,
@@ -7431,7 +7431,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
     ) -> MutationResult:
         """Give one of the org's triggers a new definition -- checked as a new one is -- and
         register it live; whether it is enabled stays as it was."""
-        require_capability(info, "org_settings")
+        require_capability(info, "query_development")  # REQ-1327: a trigger runs a statement
         return await _ops.create_scheduled_task_op(
             info.context["request"],
             id,
@@ -7453,7 +7453,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         self, info: StrawberryInfo, task_id: str
     ) -> MutationResult:  # REQ-1003
         """Remove a scheduled trigger from config and the live scheduler."""
-        require_capability(info, "org_settings")
+        require_capability(info, "query_development")  # REQ-1327: a trigger runs a statement
         return await _ops.delete_scheduled_task_op(task_id)
 
     @strawberry.mutation

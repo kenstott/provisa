@@ -44,6 +44,7 @@ _W509 = "provisa-0.1.0a509-cp312-cp312-manylinux_2_28_x86_64.whl"
 _W510 = "provisa-0.1.0a510-cp312-cp312-macosx_11_0_arm64.whl"
 _CLIENT = "provisa_client-0.1.0a510-py3-none-any.whl"
 _NOTEBOOK = "provisa_notebook-0.1.0a510-py3-none-any.whl"
+_SDK = "provisa_sdk-0.1.0a510-py3-none-any.whl"
 _PG_EXT = "provisa_pg_ext-0.2.0-py3-none-any.whl"
 _DUCKDB_EXT = "provisa_duckdb_ext-0.2.2-py3-none-manylinux_2_28_x86_64.whl"
 
@@ -87,8 +88,8 @@ def test_only_the_projects_wheels_of_published_releases_are_listed(tmp_path):
     assert re.findall(r'href="([^"]+)"', root) == ["provisa/"]
 
 
-def test_the_client_and_notebook_wheels_are_indexed_beside_the_server(tmp_path):
-    names = [_W510, _CLIENT, _NOTEBOOK]
+def test_the_client_notebook_and_sdk_wheels_are_indexed_beside_the_server(tmp_path):
+    names = [_W510, _CLIENT, _NOTEBOOK, _SDK]
     listed = index.write_index(
         [_release("v0.1.0-alpha.510", [*names, _PG_EXT, _DUCKDB_EXT])], tmp_path
     )
@@ -100,8 +101,13 @@ def test_the_client_and_notebook_wheels_are_indexed_beside_the_server(tmp_path):
         "provisa-notebook/",
         "provisa-duckdb-ext/",
         "provisa-pg-ext/",
+        "provisa-sdk/",
     ]
-    for project, name in (("provisa-client", _CLIENT), ("provisa-notebook", _NOTEBOOK)):
+    for project, name in (
+        ("provisa-client", _CLIENT),
+        ("provisa-notebook", _NOTEBOOK),
+        ("provisa-sdk", _SDK),
+    ):
         page = (tmp_path / "simple" / project / "index.html").read_text()
         assert name in page
 
@@ -144,11 +150,11 @@ def test_the_same_wheel_on_two_releases_is_refused(tmp_path):
 
 def test_main_reads_the_slurped_paginated_listing(tmp_path, capsys):
     pages = [
-        [_release("v0.1.0-alpha.510", [_W510, _CLIENT, _NOTEBOOK, _PG_EXT, _DUCKDB_EXT])],
+        [_release("v0.1.0-alpha.510", [_W510, _CLIENT, _NOTEBOOK, _PG_EXT, _DUCKDB_EXT, _SDK])],
         [_release("v0.1.0-alpha.509", [_W509])],
     ]
     listing = tmp_path / "releases.json"
     listing.write_text(json.dumps(pages))
     assert index.main([str(listing), str(tmp_path / "site")]) == 0
-    assert "6 wheel(s) indexed" in capsys.readouterr().out
+    assert "7 wheel(s) indexed" in capsys.readouterr().out
     assert (tmp_path / "site" / "simple" / "provisa" / "index.html").is_file()

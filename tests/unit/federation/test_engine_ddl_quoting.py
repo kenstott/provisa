@@ -771,6 +771,9 @@ _SQL_TEXT = re.compile(
 #: of the module, or a name of the engine's own. (module, function, expression).
 REVIEWED: frozenset[tuple[str, str, str]] = frozenset(
     {
+        # duckdb_extensions.py: an extension name of the registry; the module's repository constant
+        ("duckdb_extensions.py", "load_statement", "extension"),
+        ("duckdb_extensions.py", "load_statement", "EXTENSION_REPOSITORIES[extension][0]"),
         # connector_duckdb.py
         ("connector_duckdb.py", "_attach_options", "kind"),  # "sqlite" or "duckdb", from the caller
         ("connector_duckdb.py", "details", "_attach_options(source, 'sqlite')"),  # option keywords
@@ -1083,11 +1086,6 @@ PENDING: frozenset[tuple[str, str, str]] = frozenset(
         ("delta.py", "source_max_watermark", "src"),
         ("delta.py", "source_max_watermark", "wm"),
         # duckdb_extensions.py
-        ("duckdb_extensions.py", "bring_up_statements", "EXTENSION_REPOSITORIES[extension][0]"),
-        ("duckdb_extensions.py", "bring_up_statements", "extension"),
-        ("duckdb_extensions.py", "install_statements", "extension"),
-        ("duckdb_extensions.py", "install_statements", "prefix"),
-        ("duckdb_extensions.py", "install_statements", "repository"),
         ("duckdb_extensions.py", "load_staged", "extension"),
         ("duckdb_extensions.py", "load_staged", "repository"),
         # exact_numeric.py

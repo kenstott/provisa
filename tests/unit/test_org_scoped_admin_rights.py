@@ -13,7 +13,7 @@
 An org administrator in a multitenant deployment holds neither ``platform_settings`` nor
 ``cross_org``, which left every Admin surface invisible to them. The fix is vocabulary, not a role
 check (REQ-1337): ``org_settings`` names the surfaces whose subject is the acting org — its AI/NL
-provider, domains, scheduled tasks, approvals — and ``observability`` names the read-only
+provider, domains, approvals (scheduled tasks ask ``query_development``, REQ-1327) — and ``observability`` names the read-only
 performance and health views. Asserted here:
 
 * both rights exist as capabilities and are distinct from platform bypass;

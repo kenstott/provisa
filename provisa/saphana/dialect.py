@@ -59,6 +59,8 @@ import sqlglot.expressions as exp
 from sqlglot import generator
 from sqlglot.dialects.dialect import Dialect, NormalizationStrategy
 
+from provisa.core.sql_integral import fractional_integer_cast
+
 #: The dialect's name, as ``source_registry.engine_dialect`` returns it for a HANA engine.
 NAME = "saphana"
 
@@ -162,8 +164,6 @@ _TYPES: dict[exp.DType, str | None] = {
     exp.DType.TIMESTAMP: "TIMESTAMP",
 }
 
-_INTEGER_TYPES = frozenset({exp.DType.SMALLINT, exp.DType.INT, exp.DType.BIGINT})
-
 #: Where a predicate is a condition, as HANA takes one: the clause or argument that holds it.
 _CONDITION_ARGS: dict[type[exp.Expr], str] = {
     exp.Where: "this",
@@ -251,26 +251,13 @@ def _type_refusal(dtype: exp.DataType) -> str | None:
     return None
 
 
-def _integral(node: exp.Expr) -> bool:
-    """Whether ``node``'s value is known to be an integer: an integer literal, a count or rank, or
-    a cast to an integer type."""
-    if isinstance(node, exp.Paren):
-        return _integral(node.this)
-    if isinstance(node, exp.Literal):
-        return not node.is_string and node.this.isdigit()
-    if isinstance(node, (exp.Count, exp.RowNumber, exp.Rank, exp.DenseRank)):
-        return True
-    return isinstance(node, exp.Cast) and node.to.this in _INTEGER_TYPES
-
-
 def _cast_refusal(node: exp.Cast) -> str | None:
     """Why ``node``'s conversion has no HANA form with PostgreSQL's answer; None where it has one."""
     if isinstance(node, exp.TryCast):
         return "try_cast"
-    target = node.to.this
-    if target in _INTEGER_TYPES and not _integral(node.this):
+    if fractional_integer_cast(node):
         return "a cast to an integer type of a value that may have a fraction"
-    if target == exp.DType.BOOLEAN and not isinstance(node.this, (exp.Boolean, exp.Null)):
+    if node.to.this == exp.DType.BOOLEAN and not isinstance(node.this, (exp.Boolean, exp.Null)):
         return "a cast to boolean of a value that is not a boolean"
     return None
 

@@ -267,7 +267,7 @@ def test_an_empty_directory_fetches_the_pinned_requirements_once(tmp_path):
     assert [p.name for p in target.iterdir() if p.name.startswith(".wheels.")] == []
 
 
-def test_pip_download_is_the_configured_index_and_binary_only(monkeypatch, tmp_path):
+def test_pip_download_adds_the_release_pages_index_to_the_configured_one(monkeypatch, tmp_path):
     ran: list[list[str]] = []
     monkeypatch.setattr(
         stage_duckdb_extensions.subprocess,
@@ -277,8 +277,12 @@ def test_pip_download_is_the_configured_index_and_binary_only(monkeypatch, tmp_p
     stage_duckdb_extensions.pip_download(["x==1"], tmp_path)
     assert ran[0][1:5] == ["-m", "pip", "download", "--no-deps"]
     assert "--only-binary=:all:" in ran[0] and ran[0][-1] == "x==1"
-    # No --index-url: pip's own configuration names where (an enterprise Artifactory).
-    assert not any("index" in arg for arg in ran[0])
+    # REQ-294 (2026-11-22): provisa-duckdb-ext comes from the release's Pages index, added as an
+    # extra index; no --index-url, so pip's own configuration still serves the third-party wheels.
+    at = ran[0].index("--extra-index-url")
+    assert ran[0][at + 1] == "https://kenstott.github.io/provisa/simple/"
+    assert stage_duckdb_extensions.RELEASE_INDEX == "https://kenstott.github.io/provisa/simple/"
+    assert not any(arg.startswith("--index-url") or arg == "-i" for arg in ran[0])
 
 
 def test_a_failed_pip_download_names_the_requirements_and_the_fix(monkeypatch, tmp_path):

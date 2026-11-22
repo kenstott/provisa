@@ -148,6 +148,7 @@ def test_the_import_page_opens_on_the_orgs_object_rights_never_the_platforms():
         "table_registration",
         "create_relationship",
         "masking_config",
+        "query_development",  # REQ-1327: an imported trigger
     }
 
 

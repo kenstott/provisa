@@ -70,7 +70,7 @@ SECTION_RIGHTS: dict[str, tuple[str, ...]] = {
     "rls_rules": (_C.MASKING_CONFIG.value,),
     "functions": (_C.TABLE_REGISTRATION.value,),
     "webhooks": (_C.TABLE_REGISTRATION.value,),
-    "scheduled_triggers": (_C.ORG_SETTINGS.value,),
+    "scheduled_triggers": (_C.QUERY_DEVELOPMENT.value,),  # REQ-1327
     "naming": (_C.TABLE_REGISTRATION.value,),
 }
 

@@ -83,6 +83,7 @@ export const IMPORT_RIGHTS: Capability[] = [
   "glossary_rw",
   "masking_config",
   "org_settings",
+  "query_development", // REQ-1327: an imported trigger
   "source_registration",
   "table_registration",
   "user_management",

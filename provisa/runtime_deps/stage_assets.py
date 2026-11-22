@@ -7,8 +7,9 @@
 """The one stage command of every Provisa install (REQ-294, EVERY INSTALLER WORKS THE SAME).
 
 Places the DuckDB extensions and the pgwire connector bundles in local directories outside the
-installed application, once, at install or first launch, using the machine's configured package
-index: pip's for the extensions, the Maven repository for the bundles. A directory already filled,
+installed application, once, at install or first launch: the extensions with pip, from its
+configured index plus the release's Pages index for provisa-duckdb-ext; the bundles from the Maven
+repository. A directory already filled,
 as a devops step does for an air-gapped site, is used without fetching anything.
 
   python -I -m provisa.runtime_deps.stage_assets [home]

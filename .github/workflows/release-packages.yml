@@ -35,6 +35,7 @@ jobs:
     outputs:
       jdbc_name: ${{ steps.meta.outputs.jdbc_name }}
       py_version: ${{ steps.meta.outputs.py_version }}
+      npm_version: ${{ steps.meta.outputs.npm_version }}
     steps:
       - uses: actions/checkout@v4
       - id: meta
@@ -407,6 +408,116 @@ jobs:
           name: provisa-notebook-dist
           path: provisa-notebook/dist/
           retention-days: 1
+
+  # REQ-1984: the Python SDK (provisa-sdk), at the release's version. Built and tested here, and
+  # attached to the draft release as an asset: nothing goes to PyPI (maintainer 2026-11-21).
+  build-sdk-python:
+    name: Build provisa-sdk (Python)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # attaches what it builds to the draft release
+    needs: [metadata]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Test
+        run: |
+          pip install pytest pyright -q
+          python -m pytest provisa-sdk/python/tests -q
+
+      - name: Stamp the version and build
+        run: |
+          sed -i 's/^version = .*/version = "${{ needs.metadata.outputs.py_version }}"/' \
+            provisa-sdk/python/pyproject.toml
+          pip install build -q
+          python -m build provisa-sdk/python/ --outdir provisa-sdk/python/dist/
+
+      - name: Verify the wheel carries the SDK and the stubs
+        run: |
+          python - <<'PY'
+          import glob, sys, zipfile
+          [wheel] = glob.glob("provisa-sdk/python/dist/provisa_sdk-${{ needs.metadata.outputs.py_version }}-*.whl")
+          names = set(zipfile.ZipFile(wheel).namelist())
+          need = {"provisa_sdk/__init__.py", "provisa_sdk/py.typed", "provisa_services-stubs/__init__.pyi"}
+          missing = sorted(need - names)
+          if missing:
+              print("missing:", missing); sys.exit(1)
+          PY
+
+      # A dry run keeps it in the run; the upload fails when the file is missing.
+      - name: Upload dist
+        if: ${{ !inputs.publish }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdk-python-dist
+          path: provisa-sdk/python/dist/
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Attach the wheel and sdist to the draft release
+        if: inputs.publish
+        uses: ./.github/actions/attach-release-assets
+        with:
+          tag: ${{ inputs.version }}
+          files: |
+            provisa-sdk/python/dist/provisa_sdk-*.whl
+            provisa-sdk/python/dist/provisa_sdk-*.tar.gz
+
+  # REQ-1984: the TypeScript SDK (@provisa/sdk), at the release's version as semver. Packed here
+  # and attached to the draft release as an asset: nothing goes to npm (maintainer 2026-11-21).
+  build-sdk-typescript:
+    name: Build @provisa/sdk (TypeScript)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # attaches what it builds to the draft release
+    needs: [metadata]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+
+      - name: Stamp the version and pack
+        run: |
+          cd provisa-sdk/typescript
+          npm version "${{ needs.metadata.outputs.npm_version }}" --no-git-tag-version
+          mkdir dist
+          npm pack --pack-destination dist/
+
+      - name: Verify the tarball carries the SDK
+        run: |
+          set -euo pipefail
+          tarball="provisa-sdk/typescript/dist/provisa-sdk-${{ needs.metadata.outputs.npm_version }}.tgz"
+          listing=$(tar -tzf "$tarball")
+          for member in package/package.json package/index.js package/index.d.ts package/services.d.ts package/bin/check.js; do
+            echo "$listing" | grep -qx "$member" || { echo "missing: $member"; exit 1; }
+          done
+
+      # A dry run keeps it in the run; the upload fails when the file is missing.
+      - name: Upload dist
+        if: ${{ !inputs.publish }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdk-typescript-dist
+          path: provisa-sdk/typescript/dist/
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Attach the tarball to the draft release
+        if: inputs.publish
+        uses: ./.github/actions/attach-release-assets
+        with:
+          tag: ${{ inputs.version }}
+          files: provisa-sdk/typescript/dist/provisa-sdk-*.tgz
 
   build-jdbc:
     name: Build JDBC driver

@@ -283,33 +283,12 @@ assert (pathlib.Path(provisa.__file__).parent / '_encoders.THIRD_PARTY_NOTICES')
   ok "Native runtime staged ($(du -sh "$runtime" | cut -f1), provisa installed)."
 }
 
-# ── Take the DuckDB extensions out of the native runtime (core edition) ──────
+# ── The DuckDB extensions are not in the DMG (REQ-294) ──────────────────────
 # DuckDB extensions are Mach-O with DuckDB's own signature appended after the image: codesign
-# refuses them, re-signing would break the signature DuckDB loads them under, and Apple rejects the
-# DMG that carries them unsigned ("The signature of the binary is invalid"). So the Core DMG ships
-# none (maintainer decision 2026-11-11, "Separate release asset"): every extension file of the
-# runtime (the blob, its .info, a repository's trust anchor) goes into DUCKDB_EXTENSIONS_ASSET at its
-# path under the runtime, a release asset of its own. Its sha256 is baked into the .app before it is
-# signed, and first-launch.sh restores the asset into the staged runtime only when it matches.
-DUCKDB_EXTENSIONS_ASSET="${DUCKDB_EXTENSIONS_ASSET:-provisa-duckdb-extensions-${VERSION:-dev}-macOS-arm64.tar.gz}"
-DUCKDB_EXTENSIONS_PIN="duckdb-extensions.sha256"   # in Contents/Resources: "<sha256>  <asset>"
-split_duckdb_extensions() {
-  local runtime="${NATIVE_PAYLOAD_DIR}/runtime" asset="${OUT_DIR}/${DUCKDB_EXTENSIONS_ASSET}"
-  local files=() f
-  while IFS= read -r f; do files+=("$f"); done \
-    < <(cd "$runtime" && find . -type f -name '*.duckdb_extension*' | LC_ALL=C sort)
-  if [ "${#files[@]}" -eq 0 ]; then
-    err "No DuckDB extension in the native runtime: provisa[embedded] did not install them."
-    exit 1
-  fi
-  mkdir -p "$OUT_DIR" "${APP_BUNDLE}/Contents/Resources"
-  # COPYFILE_DISABLE: macOS tar would add an AppleDouble ._<file> for each file's xattrs.
-  COPYFILE_DISABLE=1 tar -czf "$asset" -C "$runtime" "${files[@]}"
-  ( cd "$runtime" && rm -f "${files[@]}" )
-  ( cd "$OUT_DIR" && shasum -a 256 "$DUCKDB_EXTENSIONS_ASSET" > "${DUCKDB_EXTENSIONS_ASSET}.sha256" )
-  cp "${asset}.sha256" "${APP_BUNDLE}/Contents/Resources/${DUCKDB_EXTENSIONS_PIN}"
-  ok "${#files[@]} DuckDB extension files moved to ${DUCKDB_EXTENSIONS_ASSET}."
-}
+# refuses them, and Apple rejects a DMG that carries them unsigned. provisa[embedded] installs none;
+# first launch stages them outside the .app with the one stage command (provisa.runtime_deps.stage_assets),
+# from the release's Pages index, as every installer does. A runtime holding one fails the build.
+DUCKDB_EXTENSIONS_REFUSAL="is a DuckDB extension: the DMG carries none; first launch stages them (provisa.runtime_deps.stage_assets)."
 
 # ── Build SwiftUI launcher and embed binary ───────────────────────────────────
 build_launcher() {
@@ -460,9 +439,9 @@ verify_signed() {
     bad=1
   fi
   if [ "$EDITION" = "core" ]; then
-    # The DuckDB extensions ship as their own release asset (split_duckdb_extensions), never here.
+    # The DMG carries no DuckDB extension (REQ-294): first launch stages them.
     while IFS= read -r f; do
-      err "${f#"${SCRIPT_DIR}/"} is a DuckDB extension: it ships in ${DUCKDB_EXTENSIONS_ASSET}, not the DMG."
+      err "${f#"${SCRIPT_DIR}/"} ${DUCKDB_EXTENSIONS_REFUSAL}"
       bad=1
     done < <(find "${NATIVE_PAYLOAD_DIR}/runtime" -type f -name '*.duckdb_extension*')
     while IFS= read -r f; do
@@ -505,7 +484,7 @@ create_dmg() {
     local ext
     ext="$(find "${NATIVE_PAYLOAD_DIR}/runtime" -type f -name '*.duckdb_extension*' | head -1)"
     if [ -n "$ext" ]; then
-      err "${ext} is a DuckDB extension: it ships in ${DUCKDB_EXTENSIONS_ASSET}, not the DMG (split_duckdb_extensions)."
+      err "${ext} ${DUCKDB_EXTENSIONS_REFUSAL}"
       exit 1
     fi
     cp -R "${NATIVE_PAYLOAD_DIR}/runtime" "${tmp_dmg}/runtime"
@@ -575,7 +554,6 @@ main() {
       download_otel_agent  # opentelemetry-javaagent.jar into Resources/observability/trino-otel/
     else
       bundle_native_payload # interpreter with provisa[embedded] + UI installed
-      split_duckdb_extensions # extensions -> their own release asset; its sha256 into Resources
     fi
     build_launcher       # compile SwiftUI launcher and embed binary
     embed_scripts

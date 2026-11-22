@@ -62,6 +62,7 @@ jobs:
       windows_container_name: ${{ steps.meta.outputs.windows_container_name }}
       jdbc_name: ${{ steps.meta.outputs.jdbc_name }}
       py_version: ${{ steps.meta.outputs.py_version }}
+      npm_version: ${{ steps.meta.outputs.npm_version }}
       obs_images_name: ${{ steps.meta.outputs.obs_images_name }}
       demo_images_name: ${{ steps.meta.outputs.demo_images_name }}
       core_images_name: ${{ steps.meta.outputs.core_images_name }}
@@ -69,7 +70,6 @@ jobs:
       trino_image_name: ${{ steps.meta.outputs.trino_image_name }}
       trino_image_amd64_name: ${{ steps.meta.outputs.trino_image_amd64_name }}
       plugins_name: ${{ steps.meta.outputs.plugins_name }}
-      duckdb_extensions_name: ${{ steps.meta.outputs.duckdb_extensions_name }}
     steps:
       - uses: actions/checkout@v4
       - id: meta
@@ -123,10 +123,10 @@ jobs:
             ${{ needs.metadata.outputs.trino_image_name }}
             ${{ needs.metadata.outputs.trino_image_amd64_name }}
             ${{ needs.metadata.outputs.plugins_name }}
-            ${{ needs.metadata.outputs.duckdb_extensions_name }}
-            ${{ needs.metadata.outputs.duckdb_extensions_name }}.sha256
             provisa_client-${{ needs.metadata.outputs.py_version }}-py3-none-any.whl
             provisa_notebook-${{ needs.metadata.outputs.py_version }}-py3-none-any.whl
+            provisa_sdk-${{ needs.metadata.outputs.py_version }}-py3-none-any.whl
+            provisa-sdk-${{ needs.metadata.outputs.npm_version }}.tgz
             provisa-${{ needs.metadata.outputs.py_version }}-cp312-cp312-manylinux_2_28_x86_64.whl
             provisa-${{ needs.metadata.outputs.py_version }}-cp312-cp312-manylinux_2_28_aarch64.whl
             provisa-${{ needs.metadata.outputs.py_version }}-cp312-cp312-macosx_*_arm64.whl

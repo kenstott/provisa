@@ -7,11 +7,10 @@ description: >-
 
   `phase: prime` is one job's: it restores the image, and on a miss builds it (the build compose
   runs: ./zaychik, tagged zaychik:latest) and saves it. `phase: restore` is every lane's, in a job
-  that `needs:` the priming one: a cache miss is answered by the run's artifact, and the image is
-  loaded, so compose finds zaychik:latest and builds nothing. A cache miss takes the tarball from
-  the run's artifact, uploaded by the priming job: the cache is evictable (run 44954524280), an
-  artifact of the run is not. A lane with an image cache of its own restores this after that
-  cache, so a zaychik:latest kept there from an older zaychik/ is replaced.
+  that `needs:` the priming one: the cache must hit (a miss fails the step), and the image is
+  loaded, so compose finds zaychik:latest and builds nothing. A lane with an image cache of its
+  own restores this after that cache, so a zaychik:latest kept there from an older zaychik/ is
+  replaced.
 inputs:
   phase:
     description: prime | restore
@@ -43,8 +42,7 @@ runs:
       with:
         path: ~/zaychik-image
         key: ${{ steps.zaychik-key.outputs.key }}
-        # A miss is answered below by the run's artifact, never by a rebuild.
-        fail-on-cache-miss: false
+        fail-on-cache-miss: ${{ inputs.phase == 'restore' }}
 
     - name: Build the zaychik image
       if: inputs.phase == 'prime' && steps.zaychik-image.outputs.cache-hit != 'true'
@@ -60,23 +58,6 @@ runs:
       with:
         path: ~/zaychik-image
         key: ${{ steps.zaychik-key.outputs.key }}
-
-    - name: Download the run's zaychik image
-      if: inputs.phase == 'restore' && steps.zaychik-image.outputs.cache-hit != 'true'
-      uses: actions/download-artifact@v4
-      with:
-        name: zaychik-image
-        path: ~/zaychik-image
-
-    - name: Upload the run's zaychik image
-      if: inputs.phase == 'prime'
-      uses: actions/upload-artifact@v4
-      with:
-        name: zaychik-image
-        path: ~/zaychik-image/zaychik.tar
-        if-no-files-found: error
-        overwrite: true
-        retention-days: 1
 
     - name: Load the zaychik image
       if: inputs.phase == 'restore'

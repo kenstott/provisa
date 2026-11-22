@@ -65,6 +65,13 @@ def test_the_notebook_wheel_is_a_release_asset_and_not_published_to_pypi():
     assert any("provisa_notebook-*.whl" in files for files in attach)
     publish = (WORKFLOWS / "release-publish.yml").read_text()
     assert "provisa_notebook-${{ needs.metadata.outputs.py_version }}-py3-none-any.whl" in publish
+    assert "provisa_sdk-${{ needs.metadata.outputs.py_version }}-py3-none-any.whl" in publish
+    sdk_attach = [
+        s["with"]["files"]
+        for s in packages["build-sdk-python"]["steps"]
+        if "attach-release-assets" in str(s.get("uses", ""))
+    ]
+    assert any("provisa_sdk-*.whl" in files for files in sdk_attach)
 
 
 def test_every_installer_and_launcher_builds_the_notebook_from_this_repository():
@@ -89,9 +96,13 @@ def test_every_installer_and_launcher_builds_the_notebook_from_this_repository()
 _ACTION = "./.github/actions/pyodide-downloads"
 _CONTEXT = '--build-context pyodide-downloads="$PROVISA_NOTEBOOK_DOWNLOADS"'
 # What makes a job step build provisa-notebook's assets on the runner or in an image.
+# build-dmg.sh builds it only in its stage (or default) step: `verify` checks signatures and `dmg`
+# wraps an already staged .app (bundle_native_payload is skipped), and `chmod +x` runs nothing.
 _BUILDS_THE_NOTEBOOK = re.compile(
     r"provisa_notebook\.build(?! --download-only)"
-    r"|build-notebook-wheel\.sh|build-dmg\.sh|build-appimage\.sh|build-sfx\.ps1"
+    r"|build-notebook-wheel\.sh"
+    r"|(?<!chmod \+x packaging/macos/)build-dmg\.sh(?! (?:verify|dmg)\b)"
+    r"|build-appimage\.sh|build-sfx\.ps1"
     r"|docker build[^\n]*(?:\\\n[^\n]*)*?-t provisa/provisa:"
 )
 

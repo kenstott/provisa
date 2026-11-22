@@ -16,6 +16,8 @@ has a form there giving PostgreSQL's answer, and refused by name where one has n
 from __future__ import annotations
 
 import pytest
+from sqlglot import parse_one
+from sqlglot.optimizer.annotate_types import annotate_types
 from sqlglot.dialects.dialect import Dialect
 
 from provisa.core.source_registry import engine_dialect
@@ -112,15 +114,55 @@ def test_dates() -> None:
 def test_casts_and_type_names() -> None:
     assert _db2(
         'SELECT CAST("a" AS TEXT), CAST("b" AS VARCHAR(10)), CAST("c" AS BOOLEAN), '
-        'CAST("d" AS DOUBLE PRECISION), CAST("e" AS NUMERIC(10, 2)), CAST("f" AS BIGINT), '
-        'CAST("g" AS INTEGER), CAST("h" AS SMALLINT), CAST("i" AS REAL), CAST("j" AS CHAR(3)) '
+        'CAST("d" AS DOUBLE PRECISION), CAST("e" AS NUMERIC(10, 2)), CAST(1 AS BIGINT), '
+        'CAST(2 AS INTEGER), CAST(3 AS SMALLINT), CAST("i" AS REAL), CAST("j" AS CHAR(3)) '
         'FROM "t"'
     ) == (
         'SELECT CAST("a" AS VARCHAR(8168 CODEUNITS32)), CAST("b" AS VARCHAR(10 CODEUNITS32)), '
         'CAST("c" AS BOOLEAN), CAST("d" AS DOUBLE), CAST("e" AS DECIMAL(10, 2)), '
-        'CAST("f" AS BIGINT), CAST("g" AS INTEGER), CAST("h" AS SMALLINT), CAST("i" AS REAL), '
+        'CAST(1 AS BIGINT), CAST(2 AS INTEGER), CAST(3 AS SMALLINT), CAST("i" AS REAL), '
         'CAST("j" AS CHAR(3 CODEUNITS32)) FROM "t"'
     )
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "SELECT CAST(2.5 AS INTEGER)",
+        'SELECT CAST("a" AS SMALLINT) FROM "t"',
+        'SELECT CAST("a" AS INTEGER) FROM "t"',
+        'SELECT CAST("a" AS BIGINT) FROM "t"',
+        'SELECT CAST("a" * 2 AS INTEGER) FROM "t"',
+        "SELECT CAST(1.5 + 1 AS BIGINT)",
+    ],
+)
+def test_integer_cast_of_a_value_that_may_have_a_fraction_is_refused(sql: str) -> None:
+    # Db2 truncates (CAST(2.5 AS INTEGER) is 2); PostgreSQL rounds (3).
+    with pytest.raises(FunctionRefused, match="integer type") as refused:
+        _db2(sql)
+    assert refused.value.code == "query.function_unsupported"
+    assert refused.value.params["dialect"] == "db2"
+
+
+def test_integer_cast_of_an_integral_value_is_written() -> None:
+    assert _db2(
+        "SELECT CAST(3 AS INTEGER), CAST(-3 AS SMALLINT), CAST(COUNT(*) AS INTEGER), "
+        'CAST(COUNT("a") + 1 AS BIGINT), CAST((2 * 3) % 4 AS BIGINT), '
+        'CAST(FLOOR("b") AS INTEGER) FROM "t" GROUP BY "a", "b"'
+    ) == (
+        "SELECT CAST(3 AS INTEGER), CAST(-3 AS SMALLINT), CAST(COUNT(*) AS INTEGER), "
+        'CAST(COUNT("a") + 1 AS BIGINT), CAST(MOD((2 * 3), 4) AS BIGINT), '
+        'CAST(FLOOR("b") AS INTEGER) FROM "t" GROUP BY "a", "b"'
+    )
+
+
+def test_integer_cast_of_an_integer_column_is_written() -> None:
+    # An integer column is integral where the caller supplied the column types.
+    tree = annotate_types(
+        parse_one('SELECT CAST("t"."a" AS SMALLINT) FROM "t"', read="postgres"),
+        schema={"t": {"a": "INT"}},
+    )
+    assert tree.sql(dialect="db2") == 'SELECT CAST("t"."a" AS SMALLINT) FROM "t"'
 
 
 def test_strings_count_characters() -> None:

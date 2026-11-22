@@ -69,13 +69,8 @@ def test_a_dmg_build_job_does_not_notarize_and_hands_its_dmg_on_unnotarized(job_
         assert secret not in text, f"{job_id} still gets {secret}"
     assert "notarize" not in text.lower().replace("-unnotarized", "")
     uploads = [s for s in job["steps"] if _is_upload(s)]
-    # Core also hands on the DuckDB extensions asset: no code Apple notarizes (it never rides in a
-    # DMG), so the release attaches it as built.
-    extensions = ["macos-duckdb-extensions-dist"] if job_id == "build-macos-core" else []
-    assert [u["with"]["name"] for u in uploads] == [
-        f"{_BUILD_JOBS[job_id]}-unnotarized",
-        *extensions,
-    ]
+    # REQ-294 (2026-11-22): Core hands on no DuckDB extensions asset; first launch stages them.
+    assert [u["with"]["name"] for u in uploads] == [f"{_BUILD_JOBS[job_id]}-unnotarized"]
     # Not the artifact the release attaches: that one is the notarized DMG's.
     assert not uploads[0]["with"]["name"].endswith("-dist")
 
@@ -343,8 +338,8 @@ def test_the_handoff_verify_fails_and_names_a_duckdb_extension_left_in_the_runti
     assert result.returncode == 1
     for rel in _EXTENSIONS:
         assert (
-            f"native-payload/runtime/{rel} is a DuckDB extension: it ships in "
-            "provisa-duckdb-extensions-dev-macOS-arm64.tar.gz, not the DMG." in result.stderr
+            f"native-payload/runtime/{rel} is a DuckDB extension: the DMG carries none; first "
+            "launch stages them (provisa.runtime_deps.stage_assets)." in result.stderr
         )
 
 
@@ -514,42 +509,19 @@ def test_the_script_fails_when_the_app_bundle_is_missing(tmp_path):
     assert "App bundle not found" in proc.stderr
 
 
-# ── The DuckDB extensions leave the Core DMG for a release asset of their own ───────────────────
+# ── The Core DMG carries no DuckDB extension (REQ-294, amended 2026-11-22) ─────────────────────
 # codesign refuses them (DuckDB's signature follows the Mach-O image), and Apple rejected the DMG
-# that held them unsigned: "The signature of the binary is invalid" (maintainer decision 2026-11-11,
-# "Separate release asset").
-
-_ASSET = "provisa-duckdb-extensions-dev-macOS-arm64.tar.gz"
+# that held them unsigned. No installer carries them as a separate release asset: first launch
+# stages them with the one stage command, from the release's Pages index.
 
 
-def test_the_split_moves_every_duckdb_extension_file_into_a_checksummed_asset(tmp_path):
-    import hashlib
-    import tarfile
-
-    macos = _payload(tmp_path, extensions=True)
-    runtime = macos / "native-payload/runtime"
-    result = _build_dmg(macos, _fake_tools(tmp_path), "split_duckdb_extensions")
-    assert result.returncode == 0, result.stderr
-    # The runtime the DMG carries holds no DuckDB extension file, and keeps everything else.
-    assert not [p for p in runtime.rglob("*") if ".duckdb_extension" in p.name]
-    assert (runtime / "lib/site-packages/zstandard/backend_c.cpython-312-darwin.so").is_file()
-    # The asset holds each at its path under the runtime, with its content.
-    asset = macos / "dist" / _ASSET
-    with tarfile.open(asset) as tar:
-        members = {m.name.removeprefix("./"): tar.extractfile(m).read() for m in tar if m.isfile()}
-    assert members == _EXTENSIONS
-    # Its sha256 is published beside it and pinned in the .app, which is signed after this.
-    digest = hashlib.sha256(asset.read_bytes()).hexdigest()
-    assert (macos / "dist" / f"{_ASSET}.sha256").read_text() == f"{digest}  {_ASSET}\n"
-    pin = macos / "Provisa.app/Contents/Resources/duckdb-extensions.sha256"
-    assert pin.read_text() == f"{digest}  {_ASSET}\n"
-
-
-def test_the_split_fails_when_the_runtime_holds_no_duckdb_extension(tmp_path):
-    macos = _payload(tmp_path)
-    result = _build_dmg(macos, _fake_tools(tmp_path), "split_duckdb_extensions")
-    assert result.returncode == 1
-    assert "No DuckDB extension in the native runtime" in result.stderr
+def test_the_build_makes_no_duckdb_extensions_asset():
+    script = (_REPO / "packaging/macos/build-dmg.sh").read_text()
+    for gone in ("split_duckdb_extensions", "DUCKDB_EXTENSIONS_ASSET", "duckdb-extensions.sha256"):
+        assert gone not in script
+    core = yaml.safe_dump(_load("release-macos.yml")["jobs"]["build-macos-core"])
+    assert "duckdb_extensions_name" not in core and "DUCKDB_EXTENSIONS_ASSET" not in core
+    assert "duckdb_extensions_name" not in _load("release-macos.yml")["jobs"]["metadata"]["outputs"]
 
 
 def test_the_core_dmg_is_not_made_from_a_runtime_holding_a_duckdb_extension(tmp_path):
@@ -557,19 +529,13 @@ def test_the_core_dmg_is_not_made_from_a_runtime_holding_a_duckdb_extension(tmp_
     (macos / "native-payload/runtime/bin/python3.12").chmod(0o755)
     result = _build_dmg(macos, _fake_tools(tmp_path), "create_dmg")
     assert result.returncode == 1
-    assert "is a DuckDB extension: it ships in" in result.stderr
+    assert "is a DuckDB extension: the DMG carries none; first launch stages them" in result.stderr
     assert not (macos / "dist/Provisa.dmg").exists()
 
 
-def test_the_core_build_splits_the_extensions_out_before_anything_is_signed():
+def test_the_core_build_signs_the_runtime_as_bundled():
     main = (_REPO / "packaging/macos/build-dmg.sh").read_text().split("main() {")[1]
-    order = [
-        "bundle_native_payload",
-        "split_duckdb_extensions",
-        "sign_app",
-        "sign_native_payload",
-        "stage_app",
-    ]
+    order = ["bundle_native_payload", "sign_app", "sign_native_payload", "stage_app"]
     assert [main.index(step) for step in order] == sorted(main.index(step) for step in order)
 
 
