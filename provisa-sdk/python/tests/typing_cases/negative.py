@@ -63,6 +63,11 @@ def loader_text(context: ReadContext) -> list[Row]:
     return []
 
 
+@stream  # error: a stream returning the loader's union
+def keyed_stream(inputs: Inputs) -> list[Row] | dict[str, list[Row]]:
+    return []
+
+
 @stream  # error: a stream returning a list
 def not_a_generator(inputs: Inputs) -> list[Row]:
     return []

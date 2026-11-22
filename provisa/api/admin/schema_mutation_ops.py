@@ -275,7 +275,7 @@ async def register_table(
 
     land_transform_view(input)  # REQ-2131
     # REQ-1531/REQ-433: a registration names its domain, on every path; refused before anything else.
-    _no_domain = table_domain_refusal(input.domain_id, input.table_name)
+    _no_domain = table_domain_refusal(input.domain_id, input.table_name, input.alias)
     if _no_domain is not None:
         return _no_domain
     from provisa.api.admin._dbt_table_registration import read_through_warehouse

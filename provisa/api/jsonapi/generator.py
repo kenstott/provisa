@@ -21,6 +21,7 @@ from __future__ import annotations
 
 from provisa.api.role_surface import role_surface
 
+import json
 import logging
 from typing import Any
 
@@ -699,6 +700,101 @@ def create_jsonapi_router(state: Any) -> APIRouter:  # REQ-256, REQ-257, REQ-266
         request: Request, domain_id: str, table_name: str
     ):
         return await _serve(request, domain_id, table_name, None)
+
+    # REQ-1929: a command is the role's GraphQL command field, under its REST command binding:
+    # GET reads a Query field, POST runs a Mutation field. Before the resource lookup, which
+    # /<domain>/commands/<name> would otherwise match.
+    @jsonapi_router.get("/{domain_id}/commands/{command_name}")
+    async def _jsonapi_command_read(  # pyright: ignore[reportUnusedFunction]
+        request: Request, domain_id: str, command_name: str
+    ):
+        return await _command(request, domain_id, command_name, read=True)
+
+    @jsonapi_router.post("/{domain_id}/commands/{command_name}")
+    async def _jsonapi_command_run(  # pyright: ignore[reportUnusedFunction]
+        request: Request, domain_id: str, command_name: str
+    ):
+        return await _command(request, domain_id, command_name, read=False)
+
+    async def _command(request: Request, domain_id: str, command_name: str, *, read: bool):
+        """A command call, answered as a JSON:API non-resource document: the rows under
+        ``meta.rows``. A read takes filter[], sort and page[] as a collection does, with the
+        command's declared arguments by name; a write takes them as the body's ``meta``."""
+        from provisa.api.command_fields import (
+            argument_values,
+            column_value,
+            command_at,
+            read_command,
+        )
+        from provisa.api.data.action_exec import (
+            bind_named_args,
+            invoke_tracked_function,
+            unknown_command,
+        )
+        from provisa.api.errors import ApiError
+
+        role_id = getattr(request.state, "role", None)
+        if not role_id:
+            return _jsonapi_error_response(401, "Unauthorized", "authenticated role required")
+        surface = role_surface(state, role_id)
+        if surface is None:
+            return _jsonapi_error_response(
+                400, "Bad Request", f"No schema available for role {role_id!r}"
+            )
+        try:
+            cf = command_at(surface.schema, domain_id, command_name, "rest")
+            if cf is None:
+                raise unknown_command(command_name)
+            if cf.is_read != read:
+                return _jsonapi_error_response(
+                    405,
+                    "Method Not Allowed",
+                    f"command {command_name!r} is "
+                    f"{'read with GET' if cf.is_read else 'run with POST'}",
+                )
+            if read:
+                params = dict(request.query_params)
+                try:
+                    limit, offset = page_to_limit_offset(parse_page_params(params))
+                except ValueError as e:
+                    return _jsonapi_error_response(400, "Bad Request", str(e))
+                where: dict[str, dict[str, Any]] = {}
+                for column, conditions in _parse_filters(params).items():
+                    for op, value in conditions.items():
+                        where.setdefault(column, {})[f"_{op}"] = (
+                            [column_value(cf, column, v) for v in value]
+                            if isinstance(value, list)
+                            else column_value(cf, column, value)
+                        )
+                rows = await read_command(
+                    state,
+                    surface,
+                    cf,
+                    role_id,
+                    arguments=argument_values(cf, params),
+                    where=where,
+                    order_by=[f"{o['field']} {o['dir']}" for o in _parse_sort(params.get("sort"))],
+                    limit=limit,
+                    offset=offset,
+                )
+            else:
+                raw = await request.body()
+                try:
+                    body = json.loads(raw) if raw.strip() else {}
+                except json.JSONDecodeError as e:
+                    return _jsonapi_error_response(400, "Bad Request", f"body is not JSON: {e}")
+                given = body.get("meta", {}) if isinstance(body, dict) else None
+                if not isinstance(given, dict):
+                    return _jsonapi_error_response(
+                        400, "Bad Request", "the body's meta must be an object of arguments"
+                    )
+                args = bind_named_args(cf.command, given, state, role_id)
+                rows = await invoke_tracked_function(cf.command, args, state, role_id)
+        except ApiError as e:
+            return _jsonapi_error_response(e.status_code, e.code, str(e.detail))
+        except PermissionError as e:
+            return _jsonapi_error_response(403, "Forbidden", str(e))
+        return OrjsonResponse(content={"meta": {"rows": rows}}, media_type=JSONAPI_CONTENT_TYPE)
 
     @jsonapi_router.get("/{domain_id}/{table_name}/{resource_id:path}")
     async def _jsonapi_resource_endpoint(  # pyright: ignore[reportUnusedFunction]

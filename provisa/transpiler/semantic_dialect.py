@@ -58,6 +58,21 @@ Trino.Generator.TRANSFORMS[exp.Log] = lambda self, expression: (
     if expression.expression
     else self.func("LOG", exp.Literal.number(10), expression.this)
 )
+_trino_extract = Trino.Generator.TRANSFORMS.get(exp.Extract, Generator.extract_sql)
+
+
+def _trino_extract_year(self: Generator, expression: exp.Extract) -> str:
+    """EXTRACT(YEAR ...) on Trino counts year 0 as 1 BC (the ISO calendar); PostgreSQL has no year
+    0, so a year <= 0 reads one lower (Trino's -4712 is PostgreSQL's -4713). The correction reads
+    YEAR(value), which parses back as exp.Year, so SQL generated again (the pipeline regenerates
+    Trino SQL more than once) is not corrected a second time."""
+    if expression.name.upper() != "YEAR":
+        return _trino_extract(self, expression)
+    year = self.func("YEAR", expression.expression)
+    return f"CASE WHEN {year} <= 0 THEN {year} - 1 ELSE {year} END"
+
+
+Trino.Generator.TRANSFORMS[exp.Extract] = _trino_extract_year
 #: The names that have one spelling on ClickHouse: its other functions take any case.
 for _function, _name in (
     (exp.Cbrt, "cbrt"),

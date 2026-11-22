@@ -1,0 +1,51 @@
+{
+  "accessReview": {
+    "heading": "アクセスレビュー",
+    "help": "各レビューは、ドメインごとにグループ化して、各メンバーのロール付与とその権限および最終使用日時を一覧にします。各ドメインの所有者が各行を承認または取り消し、理由を記入します。取り消すとその付与はただちに削除されます。",
+    "scheduleLabel": "レビュースケジュール",
+    "scheduleHint": "UTC の cron：分 時 日 月 曜日。空：定期レビューなし。",
+    "scheduleSaved": "レビュースケジュールを保存しました",
+    "reviewLabel": "レビュー",
+    "reviewOption": "{{when}} · {{by}} · {{rows}} 件中 {{decided}} 件を決定済み",
+    "bySchedule": "スケジュールによる",
+    "noReviews": "まだレビューは実施されていません。",
+    "noRows": "このレビューには、あなたが所有するドメインの行がありません。",
+    "start": "レビューを開始",
+    "started_one": "レビューを開始しました：確認する付与 {{count}} 件",
+    "started_other": "レビューを開始しました：確認する付与 {{count}} 件",
+    "export": "CSV をエクスポート",
+    "colDomain": "ドメイン",
+    "colMember": "メンバー",
+    "colRole": "ロール",
+    "colEntitlements": "権限",
+    "colLastUsed": "最終使用",
+    "colDecision": "決定",
+    "colActions": "操作",
+    "everyDomain": "すべてのドメイン",
+    "wholeRole": "ロール全体",
+    "neverUsed": "なし",
+    "undecided": "未決定",
+    "decision": {
+      "confirmed": "承認済み",
+      "revoked": "取り消し済み"
+    },
+    "decidedBy": "{{who}}、{{when}}",
+    "confirm": "承認",
+    "revoke": "取り消し",
+    "prompt": {
+      "confirmed": "{{domain}} における {{member}} のロール {{role}} の付与を承認します。",
+      "revoked": "{{domain}} における {{member}} のロール {{role}} の付与を取り消します。ただちに削除されます。"
+    },
+    "reasonLabel": "理由",
+    "reasonHint": "このアクセスを承認または取り消す理由。決定とともに記録されます。",
+    "webhookUrlLabel": "Webhook URL",
+    "webhookUrlHint": "定期レビューはここに送信され、シークレットで署名されます。空：Webhook なし。",
+    "webhookSecretLabel": "Webhook シークレット",
+    "webhookSecretHint": "書き込み専用：各送信に署名し、再表示されません。現在のものを保持するには空のままにします。",
+    "webhookSecretHeld": "シークレットが保存されています",
+    "webhookFailed": "定期レビューを Webhook に送信できませんでした：{{error}}",
+    "webhookDelivered": "この定期レビューは Webhook に送信されました。",
+    "sourceIdp": "ID プロバイダー経由で付与",
+    "readOnly": "読み取り専用：Provisa には取り消せる付与がありません"
+  }
+}

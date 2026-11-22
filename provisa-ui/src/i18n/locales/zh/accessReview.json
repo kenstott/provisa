@@ -1,0 +1,51 @@
+{
+  "accessReview": {
+    "heading": "访问审查",
+    "help": "每次审查按域分组，列出每位成员的角色授予及其权限和最近使用情况。每个域的所有者确认或撤销每一行并说明原因。撤销会立即移除该授予。",
+    "scheduleLabel": "审查计划",
+    "scheduleHint": "UTC 的 cron：分 时 日 月 星期。留空：不进行定期审查。",
+    "scheduleSaved": "审查计划已保存",
+    "reviewLabel": "审查",
+    "reviewOption": "{{when}} · {{by}} · 已决定 {{decided}}/{{rows}}",
+    "bySchedule": "按计划",
+    "noReviews": "尚未进行任何审查。",
+    "noRows": "此审查中没有您所拥有的域的行。",
+    "start": "开始审查",
+    "started_one": "审查已开始：{{count}} 项授予待审查",
+    "started_other": "审查已开始：{{count}} 项授予待审查",
+    "export": "导出 CSV",
+    "colDomain": "域",
+    "colMember": "成员",
+    "colRole": "角色",
+    "colEntitlements": "权限",
+    "colLastUsed": "最近使用",
+    "colDecision": "决定",
+    "colActions": "操作",
+    "everyDomain": "所有域",
+    "wholeRole": "整个角色",
+    "neverUsed": "从未",
+    "undecided": "未决定",
+    "decision": {
+      "confirmed": "已确认",
+      "revoked": "已撤销"
+    },
+    "decidedBy": "{{who}}，{{when}}",
+    "confirm": "确认",
+    "revoke": "撤销",
+    "prompt": {
+      "confirmed": "确认 {{member}} 在 {{domain}} 中的 {{role}} 授予。",
+      "revoked": "撤销 {{member}} 在 {{domain}} 中的 {{role}} 授予。它将立即被移除。"
+    },
+    "reasonLabel": "原因",
+    "reasonHint": "您确认或撤销此访问的原因。它会与您的决定一并记录。",
+    "webhookUrlLabel": "Webhook URL",
+    "webhookUrlHint": "每次定期审查都会发送到此处，并用密钥签名。留空：不使用 Webhook。",
+    "webhookSecretLabel": "Webhook 密钥",
+    "webhookSecretHint": "只写：用于为每次发送签名，之后不再显示。留空则保留现有密钥。",
+    "webhookSecretHeld": "已保存密钥",
+    "webhookFailed": "定期审查未能发送到 Webhook：{{error}}",
+    "webhookDelivered": "此定期审查已发送到 Webhook。",
+    "sourceIdp": "通过身份提供商授予",
+    "readOnly": "只读：Provisa 没有可撤销的授予"
+  }
+}

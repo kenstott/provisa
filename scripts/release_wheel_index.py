@@ -8,10 +8,10 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""The provisa server's package index: a PEP 503 simple index of the wheels on GitHub releases.
+"""The provisa package index: a PEP 503 simple index of the wheels on GitHub releases.
 
-The server wheel outgrew PyPI's 10 GB project limit, so it is installed from the release assets
-through this index, served on GitHub Pages (``pip install provisa --extra-index-url
+Nothing is published to PyPI (maintainer 2026-11-21). The server, client, notebook and extension wheels are
+installed from the release assets through this index, served on GitHub Pages (``pip install provisa --extra-index-url
 <pages>/simple/``). "Release: attach and publish" (.github/workflows/release-publish.yml) runs it
 after each release is published, over every release of the repository:
 
@@ -33,7 +33,13 @@ import sys
 from collections.abc import Iterable
 from pathlib import Path
 
-PROJECT = "provisa"
+PROJECTS = (
+    "provisa",
+    "provisa-client",
+    "provisa-notebook",
+    "provisa-duckdb-ext",
+    "provisa-pg-ext",
+)
 
 
 def normalize(name: str) -> str:
@@ -87,18 +93,23 @@ def _page(title: str, links: list[tuple[str, str]]) -> str:
     )
 
 
-def write_index(releases: list[dict], out: Path, project: str = PROJECT) -> list[str]:
-    """Write the simple index for ``project`` under ``out``; the wheel file names it lists."""
-    wheels = project_wheels(releases, project)
-    if not wheels:
-        raise ValueError(f"no published release carries a {project} wheel")
-    name = normalize(project)
+def write_index(releases: list[dict], out: Path, projects: tuple[str, ...] = PROJECTS) -> list[str]:
+    """Write the simple index for ``projects`` under ``out``; the wheel file names it lists."""
     simple = out / "simple"
-    (simple / name).mkdir(parents=True, exist_ok=True)
-    (simple / "index.html").write_text(_page("Simple index", [(f"{name}/", name)]))
-    links = [(f"{url}#sha256={sha}", filename) for filename, url, sha in wheels]
-    (simple / name / "index.html").write_text(_page(f"Links for {name}", links))
-    return [wheel[0] for wheel in wheels]
+    names: list[str] = []
+    listed: list[str] = []
+    for project in projects:
+        wheels = project_wheels(releases, project)
+        if not wheels:
+            raise ValueError(f"no published release carries a {project} wheel")
+        name = normalize(project)
+        (simple / name).mkdir(parents=True, exist_ok=True)
+        links = [(f"{url}#sha256={sha}", filename) for filename, url, sha in wheels]
+        (simple / name / "index.html").write_text(_page(f"Links for {name}", links))
+        names.append(name)
+        listed.extend(wheel[0] for wheel in wheels)
+    (simple / "index.html").write_text(_page("Simple index", [(f"{n}/", n) for n in names]))
+    return listed
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -112,7 +123,7 @@ def main(argv: list[str] | None = None) -> int:
     # --slurp wraps each page of the paginated listing in an outer list.
     releases = [release for page in pages for release in page]
     listed = write_index(releases, args.out)
-    print(f"{len(listed)} {PROJECT} wheel(s) indexed")
+    print(f"{len(listed)} wheel(s) indexed")
     for filename in listed:
         print(f"  {filename}")
     return 0

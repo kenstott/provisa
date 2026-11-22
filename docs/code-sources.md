@@ -90,7 +90,7 @@ FROM sales.regions
 
 Node works the same way, with JSDoc tags and TypeScript types; see [Node](#node).
 
-Each example shows the tag in a docstring or JSDoc first. Its **SDK** tab shows the same function written with Provisa's optional SDK, `provisa-sdk` for Python or `@provisa/sdk` for TypeScript, where each tag is a decorator or a wrapper. Provisa reads the two as the same function. The SDK adds one thing: your type checker holds the function to its tag's rules while you write it, so a `@table` that returns one object or a `@loader` without a read context fails in your editor instead of when Provisa reads the code. Code that imports nothing of Provisa's keeps working, and the docstring form stays.
+Each example shows the tag in a docstring or JSDoc first. Its **SDK** tab shows the same function written with Provisa's optional SDK, `provisa-sdk` for Python, `@provisa/sdk` for TypeScript or `provisa.dev/sdk/go` for Go, where each tag is a decorator, a wrapper or a registration. Provisa reads the two as the same function. The SDK adds one thing: your type checker holds the function to its tag's rules while you write it, so a `@table` that returns one object or a `@loader` without a read context fails in your editor instead of when Provisa reads the code. Code that imports nothing of Provisa's keeps working, and the docstring form stays.
 
 ## Build {: #build }
 
@@ -336,7 +336,9 @@ Use `@loader` when one call over many keys does better than many calls over one:
         score: float
 
 
-    def churn_score(inputs: ScoreInputs, context: ReadContext) -> list[Score]:
+    def churn_score(
+        inputs: ScoreInputs, context: ReadContext
+    ) -> list[Score] | dict[str, list[Score]]:
         """Churn score of each customer in the batch.
 
         @table
@@ -354,7 +356,6 @@ Use `@loader` when one call over many keys does better than many calls over one:
 
     ```python
     from dataclasses import dataclass
-    from typing import cast
 
     from provisa_sdk import table
     from provisa_services import ReadContext
@@ -374,15 +375,17 @@ Use `@loader` when one call over many keys does better than many calls over one:
 
 
     @table(loader=True)
-    def churn_score(inputs: ScoreInputs, context: ReadContext) -> list[Score]:
+    def churn_score(
+        inputs: ScoreInputs, context: ReadContext
+    ) -> list[Score] | dict[str, list[Score]]:
         """Churn score of each customer in the batch."""
         given = {"customer_id": inputs.customer_id, "plan": inputs.plan, "region": inputs.region}
         keys = context.keys or {"": given}
         rows = {h: {"plan": "basic", "region": "US", **key} for h, key in keys.items()}
         scores = MODEL.predict(features(list(rows.values())))  # one vectorized call for the batch
         out = {h: [Score(r["customer_id"], s)] for (h, r), s in zip(rows.items(), scores)}
-        # A loader call returns the hash of each key to its rows; the declared type is the rows.
-        return cast(list[Score], out if context.keys else out[""])
+        # A loader call returns the hash of each key to its rows; a single call returns the rows.
+        return out if context.keys else out[""]
     ```
 
     `@table(loader=100)` is `@loader 100`.
@@ -915,7 +918,7 @@ The batched `churnScore` in TypeScript:
     export async function churnScore(
       { customer_id = "", plan = "basic", region = "US" }: ScoreInputs,
       context: ReadContext,
-    ): Promise<Score[]> {
+    ): Promise<Score[] | Record<string, Score[]>> {
       const keys = context.keys ?? { "": { customer_id, plan, region } };
       const rows = Object.entries(keys).map(([h, key]) => ({
         h,
@@ -927,8 +930,8 @@ The batched `churnScore` in TypeScript:
       const out: Record<string, Score[]> = Object.fromEntries(
         rows.map((row, i) => [row.h, [{ customer_id: row.customer_id, score: scores[i] }]]),
       );
-      // A loader call returns the hash of each key to its rows; the declared type is the rows.
-      return (context.keys ? out : out[""]) as Score[];
+      // A loader call returns the hash of each key to its rows; a single call returns the rows.
+      return context.keys ? out : out[""];
     }
     ```
 
@@ -955,7 +958,7 @@ The batched `churnScore` in TypeScript:
       async function churnScore(
         { customer_id = "", plan = "basic", region = "US" }: ScoreInputs,
         context: ReadContext,
-      ): Promise<Score[]> {
+      ): Promise<Score[] | Record<string, Score[]>> {
         const keys = context.keys ?? { "": { customer_id, plan, region } };
         const rows = Object.entries(keys).map(([h, key]) => ({
           h,
@@ -967,8 +970,8 @@ The batched `churnScore` in TypeScript:
         const out: Record<string, Score[]> = Object.fromEntries(
           rows.map((row, i) => [row.h, [{ customer_id: row.customer_id, score: scores[i] }]]),
         );
-        // A loader call returns the hash of each key to its rows; the declared type is the rows.
-        return (context.keys ? out : out[""]) as Score[];
+        // A loader call returns the hash of each key to its rows; a single call returns the rows.
+        return context.keys ? out : out[""];
       },
       { loader: true },
     );
@@ -988,27 +991,74 @@ The batched `churnScore` in TypeScript:
 
 The scored account in Go:
 
-```go
-package scoring
+=== "Doc comment"
 
-import "context"
+    ```go
+    package scoring
 
-type Risk struct {
-	Score   float64  `json:"score"`
-	Reasons []string `json:"reasons"`
-}
+    import "context"
 
-type RiskInputs struct {
-	AccountID string `json:"account_id"`
-}
+    type Risk struct {
+    	Score   float64  `json:"score"`
+    	Reasons []string `json:"reasons"`
+    }
 
-// ChurnRisk is the churn risk of one account.
-//
-// @table
-func ChurnRisk(ctx context.Context, in RiskInputs) ([]Risk, error) {
-	return []Risk{{Score: 0.82, Reasons: []string{"no logins in 30 days"}}}, nil
-}
-```
+    type RiskInputs struct {
+    	AccountID string `json:"account_id"`
+    }
+
+    // ChurnRisk is the churn risk of one account.
+    //
+    // @table
+    func ChurnRisk(ctx context.Context, in RiskInputs) ([]Risk, error) {
+    	return []Risk{{Score: 0.82, Reasons: []string{"no logins in 30 days"}}}, nil
+    }
+    ```
+
+=== "SDK"
+
+    ```go
+    package scoring
+
+    import (
+    	"context"
+
+    	provisa "provisa.dev/sdk/go"
+    )
+
+    type Risk struct {
+    	Score   float64  `json:"score"`
+    	Reasons []string `json:"reasons"`
+    }
+
+    type RiskInputs struct {
+    	AccountID string `json:"account_id"`
+    }
+
+    // ChurnRisk is the churn risk of one account.
+    func ChurnRisk(ctx context.Context, in RiskInputs) ([]Risk, error) {
+    	return []Risk{{Score: 0.82, Reasons: []string{"no logins in 30 days"}}}, nil
+    }
+
+    var _ = provisa.Table[RiskInputs, Risk](ChurnRisk)
+    ```
+
+The SDK tab registers the function with `provisa.dev/sdk/go`, an ordinary module your `go.mod` requires and `go.sum` pins. A registration is a package-level `var _ =` whose value names an exported top-level function of the package; Provisa reads it as the tags it stands for, whatever name the import is given:
+
+| Registration | Tag |
+|---|---|
+| `provisa.Table[I, R](F)`, `provisa.Stream[I, R](F)` | `@table`, `@stream` |
+| `provisa.Command(F)`, `provisa.Query(F)`, `provisa.Columns(F)` | `@command`, `@query`, `@columns` |
+| `provisa.OnStart(F)`, `provisa.OnStop(F)`, `provisa.Health(F)` | `@on-start`, `@on-stop`, `@health` |
+| `provisa.Change(F, "t", []string{"k"}, "removed", "seq")` | `@change table=t`, `key=k`, `removed=removed`, `cursor=seq` |
+| option `provisa.Requires("NAME")`, `provisa.Requires("NAME", provisa.Secret)` | `@requires NAME`, `@requires NAME:secret` |
+| command option `provisa.Insert("t")`, `provisa.Update("t")`, `provisa.Delete("t")` | `@insert t`, `@update t`, `@delete t` |
+
+- `I` is the inputs struct, `provisa.NoInputs` when the function takes none, and `R` is the row. Go infers neither through the SDK's constraints, so you write them.
+- The compiler checks a `Table`, `Stream`, `OnStart`, `OnStop` or `Health` function's signature against its tag's rules. A command, query, column transform or change function can take any parameters, so Provisa checks those when it reads the code.
+- Every option's arguments are constants. A registration naming a closure, a method or a variable, an option that isn't a constant, and an SDK call outside a package-level registration are refused, naming each.
+- `provisa.TableRef[Row]` is a table a command or query takes. A doc-comment source declares its own generic `TableRef` type instead; Provisa knows either by its name.
+- The column aliases `provisa.Text`, `BigInt`, `Double`, `Boolean`, `Timestamp` and `Json` are the Go types they name.
 
 ## Deployment {: #deployment }
 

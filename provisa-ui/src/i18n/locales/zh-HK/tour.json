@@ -548,15 +548,23 @@
       },
       "insiderIntro": {
         "title": "銀行的內幕資料審查",
-        "description": "虛構的銀行 Northgate Partners 維護一份其正在處理之交易的觀察名單。它想知道是否有人將交易敏感數據或客戶數據傳送至銀行以外。<strong>bank</strong> 是它的數據庫：觀察名單、員工及其電郵，以及客戶和查閱過其記錄的人。這裡所有姓名和記錄都是產生出來的。"
+        "description": "虛構的銀行 Northgate Partners 維護一份其正在處理之交易的觀察名單。它想知道是否有人將交易敏感數據或客戶數據傳送至銀行以外。答案同時讀取三個系統。<strong>bank</strong> 是它的 Postgres 數據庫：員工及其所屬部門，以及客戶和查閱過其記錄的人。這裡所有姓名和記錄都是產生出來的。"
+      },
+      "insiderWorkbook": {
+        "title": "控制室的活頁簿",
+        "description": "<strong>control_room</strong> 是控制室自行維護的 Excel 活頁簿。每張工作表都是一個資料表：正在商議的交易、每宗交易中被帶過資訊隔離牆的人、交易的對手方，以及每封電郵要與哪些交易比對。Provisa 在檔案所在之處直接讀取它。"
+      },
+      "insiderMailSource": {
+        "title": "銀行的電郵",
+        "description": "<strong>mail</strong> 是銀行的 Microsoft 365 電郵，即每位員工的郵箱，採用與 Google Workspace 資料來源相同的郵件及收件人資料表。本示範不會連接任何真實租戶：郵箱作為該資料來源的儲存副本隨示範一併提供，並且永不重新整理。"
       },
       "insiderWatchList": {
         "title": "觀察名單",
-        "description": "<strong>deal</strong> 是控制室的觀察名單，包括每宗交易的公司、其別稱、股票代號、項目代號，以及是否已公開。這是此處限制最嚴格的資料表。控制室可以讀取，交易團隊只能讀取自己的交易，第一線審核員則完全不能讀取。"
+        "description": "<strong>deal</strong> 是觀察名單，即活頁簿中的交易工作表，包括每宗交易的公司、其別稱、股票代號、項目代號，以及是否已公開。這是此處限制最嚴格的資料表。控制室可以讀取，交易團隊只能讀取自己的交易，第一線審核員則完全不能讀取。"
       },
       "insiderMail": {
         "title": "電郵",
-        "description": "<strong>message</strong> 保存員工的外寄電郵，包括寄件人、時間，以及有多少收件人在銀行以外或使用個人地址。"
+        "description": "<strong>messages</strong> 存放員工從 Microsoft 365 發出的電郵，每封電郵位於其寄件人的郵箱內，包括寄件人、發送時間和內文。收件人位於 <strong>message_recipients</strong>；Postgres 中的銀行員工名單和個人電郵供應商用以區分內部、外部及個人地址。"
       },
       "insiderMatch": {
         "title": "每封電郵對照每宗交易",

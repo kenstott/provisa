@@ -559,6 +559,8 @@
       "incremental_no_change": "The code source has no @change function for {{table}}. Declare one with @change table={{table}}.",
       "incremental_needs_rebuild_every": "{{table}} is kept incrementally, so it is rebuilt whole on a clock. Set how often, in seconds, in \"Whole rebuild every\".",
       "table_derived_from_function": "Table '{{name}}' is derived from a function: it is removed by turning off the function's table, and its columns and parameters are edited on the function",
+      "table_state_from_function": "Table '{{table}}' is derived from the function '{{name}}' and has its release state: it is not withdrawn or put back on its own",
+      "table_region_from_function": "Table '{{table}}' is derived from the function '{{name}}' and has its region: it is not moved to another region on its own",
       "table_withdrawn": "Table {{table}} withdrawn",
       "table_put_back": "Table {{table}} put back",
       "source_withdrawn": "Source {{source}} withdrawn",
@@ -569,7 +571,8 @@
       "source_not_withdrawn": "Source {{source}} is not withdrawn: only a withdrawn source is put back. To change its region, set its region.",
       "put_back_needs_region": "Putting back {{object}} names a region: give one, or none for no region.",
       "mask_constant_not_text": "A constant mask on a non-text column reads as NULL; only NULL can be saved: {{column}} ({{type}})",
-      "table_domain_required": "Table '{{table}}' names no domain: every table is registered in a domain"
+      "table_domain_required": "Table '{{table}}' names no domain: every table is registered in a domain",
+      "table_name_reserved": "Table name '{{table}}' is reserved: a domain's commands are served under 'commands'. Register the table under another name or alias."
     },
     "secrets": {
       "env_reference_object_locked": "This object is the operator's: it reads the server's own environment and cannot be changed here. Add one of your own instead.",
@@ -951,7 +954,10 @@
       "decision_invalid": "A decision is confirmed or revoked",
       "cron_invalid": "Not a five-field cron expression: {{cron}}",
       "not_owner": "Only the owner of domain {{domain}} decides this row",
-      "own_access": "You cannot review your own access. Ask another owner."
+      "own_access": "You cannot review your own access. Ask another owner.",
+      "read_only": "This role is held through the identity provider; Provisa holds no grant of it to confirm or revoke",
+      "webhook_invalid": "The webhook URL is not usable: {{url}}",
+      "webhook_secret_required": "A webhook needs the secret scheduled reviews are signed with"
     }
   }
 }

@@ -521,6 +521,7 @@ async def _upsert(
     conn: "Connection", table: Table, declared: "DeclaredKeys | None", withdrawn: bool | None
 ) -> int | None:
     domain_id = domain_policy.table_domain_id(table.domain_id, table.table_name)  # REQ-1531
+    domain_policy.require_table_name(table.table_name, table.alias)  # REQ-1929
     await _require_not_retired(conn, table)
     await _require_free_sql_address(conn, table, domain_id)
     await _require_label_not_a_domain(conn, table)
