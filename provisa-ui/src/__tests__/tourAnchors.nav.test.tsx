@@ -28,6 +28,8 @@ vi.mock("../context/AuthContext", () => ({
       "access_config",
       "query_development",
       "observability",
+      // REQ-1327: the Model group's Views (step20, step21) is shown to a holder of create_view.
+      "create_view",
     ],
     demonstrated: [],
     loading: false,

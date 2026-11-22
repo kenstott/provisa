@@ -201,6 +201,8 @@
     "impactTablesLost_other": "智能体失去通往 {{count}} 张表的路径。",
     "impactNone": "没有术语的锚定发生变化，智能体到达的表也相同。",
     "impactLoading": "正在计算此操作的影响…",
+    "noTermHint": "关闭已打开的术语",
+    "stewardshipOnHealth": "数据管理概要位于“上下文健康状况”",
     "stewardshipTitle": "数据管理概要",
     "agentVisibleTitle": "智能体能看到的术语",
     "waitingTitle": "再批准一次即可到达数据",

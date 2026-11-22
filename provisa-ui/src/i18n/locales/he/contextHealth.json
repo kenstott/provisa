@@ -1,0 +1,29 @@
+{
+  "contextHealth": {
+    "termsTitle": "מונחים",
+    "termsAgentVisible": "גלויים לסוכנים",
+    "termsFromData": "מאושרים, מגיעים לנתונים",
+    "termsNoData": "מאושרים, אינם מגיעים לנתונים",
+    "termsDrafts": "טיוטות בבדיקה",
+    "driftTitle": "סטיית עיגון בתקופה זו",
+    "driftLost": "מונחים שאיבדו עיגון",
+    "driftGained": "מונחים שקיבלו עיגון",
+    "driftNew": "מונחים חדשים",
+    "driftNoHistory": "אין עדיין מודל קודם להשוואה.",
+    "classificationTitle": "סיווג",
+    "classificationAwaiting": "זיהויים הממתינים להחלטה",
+    "documentsTitle": "מסמכים",
+    "documentsDue": "מסמכים עם בדיקות שהגיע מועדן",
+    "documentsReviews_one": "בדיקה {{count}}",
+    "documentsReviews_other": "{{count}} בדיקות",
+    "syncTitle": "סנכרון הקשר",
+    "syncNone": "אין מערכות חיצוניות המסתנכרנות עם Provisa.",
+    "syncWaiting_one": "הבדל {{count}} ממתין",
+    "syncWaiting_other": "{{count}} הבדלים ממתינים",
+    "syncNoRun": "לא סונכרן מאז שהשרת הופעל",
+    "syncRunOk_one": "סנכרון אחרון: פריט {{count}} פורסם",
+    "syncRunOk_other": "סנכרון אחרון: {{count}} פריטים פורסמו",
+    "syncRunFailed_one": "סנכרון אחרון: כשל {{count}}",
+    "syncRunFailed_other": "סנכרון אחרון: {{count}} כשלים"
+  }
+}

@@ -201,6 +201,8 @@
     "impactTablesLost_other": "Agents verliezen hun pad naar {{count}} tabellen.",
     "impactNone": "De verankering van geen enkele term verandert, en agents bereiken dezelfde tabellen.",
     "impactLoading": "Bepalen wat dit verandert…",
+    "noTermHint": "Open term sluiten",
+    "stewardshipOnHealth": "Het stewardship-overzicht staat op Contextstatus",
     "stewardshipTitle": "Stewardship-overzicht",
     "agentVisibleTitle": "Termen die agents kunnen zien",
     "waitingTitle": "Eén goedkeuring van het bereiken van data",

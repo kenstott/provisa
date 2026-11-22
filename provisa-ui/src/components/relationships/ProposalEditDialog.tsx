@@ -15,7 +15,8 @@
 
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Button, Group, Modal, Select, Stack, TextInput } from "@mantine/core";
+import { Modal, Select, TextInput } from "@mantine/core";
+import { FormField, FormFooter, FormLayout } from "../form/FormLayout";
 import type { RowEdit } from "./useRunProposals";
 
 const CARDINALITIES = ["many-to-one", "one-to-many", "one-to-one"] as const;
@@ -55,32 +56,34 @@ export function ProposalEditDialog({
 
   return (
     <Modal opened onClose={onClose} title={t("proposalEdit.title")} centered>
-      <Stack gap="sm">
-        <TextInput
-          label={t("proposalEdit.name")}
-          data-testid="proposal-edit-name"
-          value={nameValue}
-          onChange={(e) => setNameValue(e.currentTarget.value)}
-        />
-        {cardinality !== null && (
-          <Select
-            label={t("proposalEdit.cardinality")}
-            data-testid="proposal-edit-cardinality"
-            data={CARDINALITIES.map((c) => ({ value: c, label: c }))}
-            value={cardinalityValue}
-            onChange={setCardinalityValue}
-            allowDeselect={false}
+      <FormLayout>
+        <FormField size="medium">
+          <TextInput
+            label={t("proposalEdit.name")}
+            data-testid="proposal-edit-name"
+            value={nameValue}
+            onChange={(e) => setNameValue(e.currentTarget.value)}
           />
+        </FormField>
+        {cardinality !== null && (
+          <FormField size="short">
+            <Select
+              label={t("proposalEdit.cardinality")}
+              data-testid="proposal-edit-cardinality"
+              data={CARDINALITIES.map((c) => ({ value: c, label: c }))}
+              value={cardinalityValue}
+              onChange={setCardinalityValue}
+              allowDeselect={false}
+            />
+          </FormField>
         )}
-        <Group justify="flex-end" gap="xs">
-          <Button variant="default" onClick={onClose} data-testid="proposal-edit-cancel">
-            {t("proposalEdit.cancel")}
-          </Button>
-          <Button onClick={save} disabled={trimmed === ""} data-testid="proposal-edit-save">
-            {t("proposalEdit.save")}
-          </Button>
-        </Group>
-      </Stack>
+      </FormLayout>
+      <FormFooter
+        onSave={save}
+        onCancel={onClose}
+        saveProps={{ disabled: trimmed === "", "data-testid": "proposal-edit-save" }}
+        cancelProps={{ "data-testid": "proposal-edit-cancel" }}
+      />
     </Modal>
   );
 }

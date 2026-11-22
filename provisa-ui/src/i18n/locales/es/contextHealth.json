@@ -1,0 +1,29 @@
+{
+  "contextHealth": {
+    "termsTitle": "Términos",
+    "termsAgentVisible": "Visibles para los agentes",
+    "termsFromData": "Aprobados, con datos",
+    "termsNoData": "Aprobados, sin datos",
+    "termsDrafts": "Borradores en revisión",
+    "driftTitle": "Deriva del anclaje en este período",
+    "driftLost": "Términos que perdieron el anclaje",
+    "driftGained": "Términos que ganaron el anclaje",
+    "driftNew": "Términos nuevos",
+    "driftNoHistory": "Aún no hay un modelo anterior con el que comparar.",
+    "classificationTitle": "Clasificación",
+    "classificationAwaiting": "Detecciones pendientes de decisión",
+    "documentsTitle": "Documentos",
+    "documentsDue": "Documentos con revisiones pendientes",
+    "documentsReviews_one": "{{count}} revisión",
+    "documentsReviews_other": "{{count}} revisiones",
+    "syncTitle": "Sincronización del contexto",
+    "syncNone": "Ningún sistema externo se sincroniza con Provisa.",
+    "syncWaiting_one": "{{count}} diferencia pendiente",
+    "syncWaiting_other": "{{count}} diferencias pendientes",
+    "syncNoRun": "Sin sincronizar desde que se inició este servidor",
+    "syncRunOk_one": "Última sincronización: {{count}} elemento publicado",
+    "syncRunOk_other": "Última sincronización: {{count}} elementos publicados",
+    "syncRunFailed_one": "Última sincronización: {{count}} error",
+    "syncRunFailed_other": "Última sincronización: {{count}} errores"
+  }
+}

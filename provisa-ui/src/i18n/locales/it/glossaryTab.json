@@ -201,6 +201,8 @@
     "impactTablesLost_other": "Gli agenti perdono il percorso verso {{count}} tabelle.",
     "impactNone": "L'ancoraggio di nessun termine cambia e gli agenti raggiungono le stesse tabelle.",
     "impactLoading": "Calcolo di ciò che cambia…",
+    "noTermHint": "Chiudi il termine aperto",
+    "stewardshipOnHealth": "Il riepilogo di stewardship è in Stato del contesto",
     "stewardshipTitle": "Riepilogo di stewardship",
     "agentVisibleTitle": "Termini visibili agli agenti",
     "waitingTitle": "Un'approvazione per raggiungere i dati",

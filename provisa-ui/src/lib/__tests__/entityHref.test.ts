@@ -59,7 +59,8 @@ describe("the context layer's kinds (REQ-2259)", () => {
 describe("a link is drawn only when the viewer holds the target page's right (REQ-2259)", () => {
   it.each([
     ["term", "glossary_read"],
-    ["metric", "table_registration"],
+    // REQ-1327: the Model group's Metrics page is gated on create_view.
+    ["metric", "create_view"],
     ["classification", "glossary_read"],
     ["product", "data_product_read"],
     ["source", "source_registration"],

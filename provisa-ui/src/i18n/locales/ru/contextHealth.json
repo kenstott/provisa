@@ -1,0 +1,29 @@
+{
+  "contextHealth": {
+    "termsTitle": "Термины",
+    "termsAgentVisible": "Видимые агентам",
+    "termsFromData": "Утверждённые, с данными",
+    "termsNoData": "Утверждённые, без данных",
+    "termsDrafts": "Черновики на рассмотрении",
+    "driftTitle": "Дрейф привязки за этот период",
+    "driftLost": "Термины, потерявшие привязку",
+    "driftGained": "Термины, получившие привязку",
+    "driftNew": "Новые термины",
+    "driftNoHistory": "Пока нет более ранней модели для сравнения.",
+    "classificationTitle": "Классификация",
+    "classificationAwaiting": "Обнаружения, ожидающие решения",
+    "documentsTitle": "Документы",
+    "documentsDue": "Документы с назревшими проверками",
+    "documentsReviews_one": "{{count}} проверка",
+    "documentsReviews_other": "{{count}} проверок",
+    "syncTitle": "Синхронизация контекста",
+    "syncNone": "Ни одна внешняя система не синхронизируется с Provisa.",
+    "syncWaiting_one": "Ожидает различий: {{count}}",
+    "syncWaiting_other": "Ожидает различий: {{count}}",
+    "syncNoRun": "Не синхронизировалось с запуска этого сервера",
+    "syncRunOk_one": "Последняя синхронизация: опубликовано элементов — {{count}}",
+    "syncRunOk_other": "Последняя синхронизация: опубликовано элементов — {{count}}",
+    "syncRunFailed_one": "Последняя синхронизация: сбоев — {{count}}",
+    "syncRunFailed_other": "Последняя синхронизация: сбоев — {{count}}"
+  }
+}

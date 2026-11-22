@@ -201,6 +201,8 @@
     "impactTablesLost_other": "Os agentes perdem o caminho para {{count}} tabelas.",
     "impactNone": "A ancoragem de nenhum termo muda, e os agentes alcançam as mesmas tabelas.",
     "impactLoading": "A calcular o que isto muda…",
+    "noTermHint": "Fechar o termo aberto",
+    "stewardshipOnHealth": "O resumo de stewardship está em Saúde do contexto",
     "stewardshipTitle": "Resumo de stewardship",
     "agentVisibleTitle": "Termos que os agentes veem",
     "waitingTitle": "Uma aprovação para alcançar dados",

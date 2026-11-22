@@ -1,0 +1,29 @@
+{
+  "contextHealth": {
+    "termsTitle": "用語",
+    "termsAgentVisible": "エージェントに見える",
+    "termsFromData": "承認済み、データに到達",
+    "termsNoData": "承認済み、データに未到達",
+    "termsDrafts": "レビュー中の下書き",
+    "driftTitle": "今期間の紐付けドリフト",
+    "driftLost": "紐付けを失った用語",
+    "driftGained": "紐付けを得た用語",
+    "driftNew": "新しい用語",
+    "driftNoHistory": "比較できる以前のモデルはまだありません。",
+    "classificationTitle": "分類",
+    "classificationAwaiting": "判断待ちの検出",
+    "documentsTitle": "ドキュメント",
+    "documentsDue": "レビュー期限のドキュメント",
+    "documentsReviews_one": "{{count}} 件のレビュー",
+    "documentsReviews_other": "{{count}} 件のレビュー",
+    "syncTitle": "コンテキスト同期",
+    "syncNone": "Provisa と同期する外部システムはありません。",
+    "syncWaiting_one": "{{count}} 件の差分が待機中",
+    "syncWaiting_other": "{{count}} 件の差分が待機中",
+    "syncNoRun": "このサーバーの起動以降、同期されていません",
+    "syncRunOk_one": "前回の同期: {{count}} 件を公開",
+    "syncRunOk_other": "前回の同期: {{count}} 件を公開",
+    "syncRunFailed_one": "前回の同期: {{count}} 件の失敗",
+    "syncRunFailed_other": "前回の同期: {{count}} 件の失敗"
+  }
+}
