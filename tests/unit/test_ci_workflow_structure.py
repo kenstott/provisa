@@ -1958,6 +1958,23 @@ def test_every_zaychik_restore_waits_for_the_one_job_that_primed_the_image():
     assert restoring, "no job restores the zaychik image"
 
 
+def test_the_zaychik_image_is_primed_in_the_default_branch_cache_scope():
+    """Run 45044138083: a branch's priming job missed (the only entry was a sibling branch's,
+    which a branch cannot read) and built zaychik/ by Maven, which Maven Central refused with a
+    429. A workflow on main primes the entry whenever zaychik/ or the action changes, and daily
+    after an eviction, so every branch's prime reads main's entry and builds nothing."""
+    doc = yaml.safe_load((REPO / ".github" / "workflows" / "zaychik-image.yml").read_text())
+    on = doc[True]
+    assert on["push"]["branches"] == ["main"]
+    assert {"zaychik/**", ".github/actions/zaychik-image/**"} <= set(on["push"]["paths"])
+    assert on["schedule"] and "workflow_dispatch" in on
+    (job,) = doc["jobs"].values()
+    assert _zaychik_phases(job) == ["prime"]
+    # The key covers the build's whole context, so main's entry is the one a branch computes.
+    action = (REPO / ".github" / "actions" / "zaychik-image" / "action.yml").read_text()
+    assert "zaychik-image-${{ hashFiles('zaychik/**') }}" in action
+
+
 def test_a_zaychik_cache_miss_is_answered_by_the_runs_artifact():
     """The cache entry the priming job saved can be gone by a lane's restore (evicted, or never
     readable from the lane's scope). The priming job uploads the image as the run's artifact on a
