@@ -104,6 +104,10 @@ jobs:
         shell: bash
         run: rustup toolchain install 1.95.0 --profile minimal
 
+      # build-dmg.sh stage builds the provisa-notebook wheel; its build takes Pyodide from here.
+      - name: Pyodide downloads
+        uses: ./.github/actions/pyodide-downloads
+
       # The runtime's DuckDB extensions leave it here for their own release asset (codesign cannot
       # sign them, and Apple rejects the DMG that holds them unsigned); the .app pins its sha256.
       - name: Build and sign the app
