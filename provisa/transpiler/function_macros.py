@@ -92,9 +92,12 @@ from provisa.transpiler.pg_literals import values_cast
 
 
 class FunctionRefused(ValueError):
-    """A call of a function the routed dialect neither has nor has a form of."""
+    """A call of a function the routed dialect neither has nor has a form of: the client receives
+    PostgreSQL's SQLSTATE for a feature it lacks, 0A000 feature_not_supported (REQ-2236; a grid
+    row's refusal states its own, RowRefused)."""
 
     code = "query.function_unsupported"
+    sqlstate = "0A000"
 
     def __init__(self, function: str, dialect: str) -> None:
         self.params = {"function": function, "dialect": dialect}

@@ -215,6 +215,8 @@ NEVER_RUNTIME: frozenset[str] = frozenset(
         # queue of the terms they propose, drafts until a steward decides on them.
         "glossary_term_scans",
         "glossary_term_drafts",
+        # REQ-2259, REQ-2145: the tag losses confirmed in this environment, evidence of its own moves.
+        "glossary_tag_losses",
         # REQ-2237: the ontologies imported into this environment's glossary and the alignments
         # proposed for them, until a steward decides on each and applies the import.
         "glossary_ontology_imports",

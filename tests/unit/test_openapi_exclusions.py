@@ -228,22 +228,23 @@ def test_a_sources_own_exclusions_are_applied_when_its_specification_is_loaded(t
     path = tmp_path / "spec.json"
     path.write_text(json.dumps(_spec()))
     mapping = {"exclusions": {"operations": [{"method": "POST", "path": "/tokens"}]}}
-    loaded = ex.load_source_spec(str(path), mapping, source_id="shop")
+    loaded = ex.load_source_spec(str(path), mapping, source_id="shop", auth=None)
     assert "/tokens" not in loaded["paths"]
-    assert "/tokens" in ex.load_source_spec(str(path), {}, source_id="shop")["paths"]
-    assert "/tokens" in ex.load_source_spec(str(path), None, source_id="shop")["paths"]
+    assert "/tokens" in ex.load_source_spec(str(path), {}, source_id="shop", auth=None)["paths"]
+    assert "/tokens" in ex.load_source_spec(str(path), None, source_id="shop", auth=None)["paths"]
     with pytest.raises(ex.ExclusionError, match="^source shop: "):
         ex.load_source_spec(
             str(path),
             {"exclusions": {"operations": [{"method": "POST", "path": "/absent"}]}},
             source_id="shop",
+            auth=None,
         )
 
 
 def test_an_operator_excludes_more_from_a_brands_source():
     """A branded source arrives with the brand's exclusions applied; the operator's are added."""
     mapping = {"exclusions": {"operations": [{"method": "POST", "path": "/v1/refunds"}]}}
-    loaded = ex.load_source_spec("brand:stripe", mapping, source_id="pay")
+    loaded = ex.load_source_spec("brand:stripe", mapping, source_id="pay", auth=None)
     assert "post" not in loaded["paths"]["/v1/refunds"]
     assert "post" in brand_spec("stripe")["paths"]["/v1/refunds"]  # the brand's own is unchanged
     assert "/v1/tokens" not in loaded["paths"]
@@ -375,18 +376,18 @@ def test_a_registered_table_or_command_an_exclusion_covers_is_named_with_its_ope
 
 def test_a_sources_excluded_operations_are_its_brands_and_the_operators():
     own = {"exclusions": {"operations": [{"method": "POST", "path": "/v1/refunds"}]}}
-    excluded = ex.source_excluded_operations("brand:stripe", own, source_id="pay")
+    excluded = ex.source_excluded_operations("brand:stripe", own, source_id="pay", auth=None)
     assert excluded["PostCharges"] == "POST /v1/charges"  # the brand's
     assert excluded["PostCustomersCustomerSources"] == "POST /v1/customers/{customer}/sources"
     assert excluded["PostRefunds"] == "POST /v1/refunds"  # the operator's
     assert "PostPaymentIntents" not in excluded
-    brand_only = ex.source_excluded_operations("brand:stripe", None, source_id="pay")
+    brand_only = ex.source_excluded_operations("brand:stripe", None, source_id="pay", auth=None)
     assert "PostRefunds" not in brand_only and len(brand_only) == len(excluded) - 1
 
 
 def test_a_deployment_that_registered_stripes_legacy_commands_is_told_which(tmp_path):
     """The case that prompted the mechanism: a command registered before the curation."""
-    excluded = ex.source_excluded_operations("brand:stripe", None, source_id="pay")
+    excluded = ex.source_excluded_operations("brand:stripe", None, source_id="pay", auth=None)
     reported = ex.covered_registrations(
         excluded,
         tables=["GetCustomers"],
@@ -401,10 +402,10 @@ def test_a_source_of_the_stewards_own_specification_has_only_its_own_exclusions(
     path = tmp_path / "spec.json"
     path.write_text(json.dumps(_spec()))
     own = {"exclusions": {"operations": [{"method": "POST", "path": "/tokens"}]}}
-    assert ex.source_excluded_operations(str(path), own, source_id="shop") == {
+    assert ex.source_excluded_operations(str(path), own, source_id="shop", auth=None) == {
         "CreateToken": "POST /tokens"
     }
-    assert ex.source_excluded_operations(str(path), {}, source_id="shop") == {}
+    assert ex.source_excluded_operations(str(path), {}, source_id="shop", auth=None) == {}
 
 
 def test_the_boot_loader_reports_what_an_exclusion_covers():

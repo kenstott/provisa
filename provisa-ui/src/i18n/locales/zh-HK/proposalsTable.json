@@ -1,6 +1,6 @@
 {
   "proposalsTable": {
-    "intro": "已勾選的行會在套用時被接受。分數達到門檻的行預設為勾選。兩個方塊都未勾選的行會保持未決定。",
+    "intro": "勾選一行的第一個方塊即會在套用時接受該行，勾選「不再建議」則以後不會再建議該行。分數達到門檻的行預設勾選為接受。兩個方塊都未勾選的行會保持未決定。",
     "colScore": "評分",
     "colConfidence": "信賴度",
     "colJev": "Jev",
@@ -8,8 +8,8 @@
     "colMeasure": "量度結果",
     "colReasoning": "理由",
     "colNote": "備註",
-    "colNotAgain": "不再推薦",
-    "notAgainAria": "不再推薦 {{name}}",
+    "colNotAgain": "不再建議",
+    "notAgainAria": "不再建議 {{name}}",
     "kind": {
       "foreign_keys": "約束",
       "semantics": "語意",

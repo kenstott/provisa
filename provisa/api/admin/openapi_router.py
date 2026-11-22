@@ -71,6 +71,9 @@ class OpenAPIRegisterRequest(BaseModel):
 class OpenAPIPreviewRequest(BaseModel):
     spec_path: str = ""
     spec_content: str = ""  # inline YAML or JSON; takes precedence over spec_path
+    # REQ-2265: the auth the source will be registered with, in a registration's shape; a spec
+    # behind it is read with it.
+    auth_config: dict | None = None
 
 
 async def _load_and_register(  # REQ-314, REQ-315, REQ-316, REQ-317, REQ-320, REQ-407
@@ -101,13 +104,26 @@ async def _load_and_register(  # REQ-314, REQ-315, REQ-316, REQ-317, REQ-320, RE
     from provisa.openapi.loader import load_spec, parse_text
     from provisa.openapi.mapper import parse_spec
     from provisa.api.app import state
+    from provisa.api_source.openapi_endpoint import api_auth, stored_openapi_auth
 
+    if state.model_db is None:
+        raise ApiError(503, "openapi.database_not_connected", "Database not connected")
+
+    pool = state.model_db
+    assert pool is not None
     if spec_content:
         spec = parse_text(spec_content)
     else:
         from provisa.core.secrets import resolve_secrets as _resolve_secrets
 
-        spec = load_spec(_resolve_secrets(spec_path))
+        # REQ-2265: the spec is read with the credential the source's calls carry: the one this
+        # registration supplies, or on a refresh the one stored.
+        if store_auth:
+            spec_auth = api_auth(auth_config)
+        else:
+            async with pool.acquire() as _conn:
+                spec_auth = await stored_openapi_auth(cast("Connection", _conn), source_id)
+        spec = load_spec(_resolve_secrets(spec_path), spec_auth)
 
     # Resolve base_url: explicit override > spec servers[0].url, a relative one read against
     # where the spec was read from (REQ-2265)
@@ -115,11 +131,6 @@ async def _load_and_register(  # REQ-314, REQ-315, REQ-316, REQ-317, REQ-320, RE
 
     resolved_base_url = base_url.strip() or spec_server_url(spec, spec_path or "")
 
-    if state.model_db is None:
-        raise ApiError(503, "openapi.database_not_connected", "Database not connected")
-
-    pool = state.model_db
-    assert pool is not None
     async with pool.acquire() as _conn:
         from provisa.core.models import Source, SourceType
         from provisa.core.repositories import source as source_repo
@@ -152,7 +163,6 @@ async def _load_and_register(  # REQ-314, REQ-315, REQ-316, REQ-317, REQ-320, RE
         # REQ-316/REQ-318: what the source's tables are called through (api_source.caller):
         # its base URL, and its auth when this call is the registration that supplies it.
         from provisa.api_source.openapi_endpoint import (
-            api_auth,
             register_openapi_source,
             store_openapi_auth,
         )
@@ -294,10 +304,13 @@ async def _branded(body: OpenAPIRegisterRequest) -> OpenAPIRegisterRequest:
         # REQ-2265: where its calls go is the server its running instance's spec names.
         import asyncio
 
+        from provisa.api_source.openapi_endpoint import api_auth
         from provisa.openapi.loader import load_spec
 
         try:
-            spec = await asyncio.to_thread(load_spec, brand.source_spec_path(setup))
+            # REQ-2265: an instance whose spec needs authentication is asked with the
+            # credential its data calls carry.
+            spec = await asyncio.to_thread(load_spec, brand.source_spec_path(setup), api_auth(auth))
         except Exception as exc:
             raise ApiError(
                 422,
@@ -422,6 +435,7 @@ async def refresh_openapi_source(request: Request, source_id: str):  # REQ-321
 async def preview_openapi_spec(request: Request, body: OpenAPIPreviewRequest):  # REQ-315, REQ-407
     """Parse spec and return discovered queries/mutations without persisting."""
     require_capability_request(request, "source_registration")
+    from provisa.api_source.openapi_endpoint import api_auth
     from provisa.openapi.loader import load_spec, parse_text
     from provisa.openapi.mapper import parse_spec
 
@@ -429,7 +443,7 @@ async def preview_openapi_spec(request: Request, body: OpenAPIPreviewRequest):  
         if body.spec_content:
             spec = parse_text(body.spec_content)
         else:
-            spec = load_spec(body.spec_path)
+            spec = load_spec(body.spec_path, api_auth(body.auth_config))  # REQ-2265
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except Exception as exc:

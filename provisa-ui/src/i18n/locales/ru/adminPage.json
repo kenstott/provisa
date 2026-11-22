@@ -24,6 +24,7 @@
     "namingConventionHint": "Регистр, применяемый к именам полей GraphQL; ему следуют и ключи свойств Cypher. Метки Cypher всегда в PascalCase. gRPC, JSON:API и OpenAPI сохраняют написание каждого столбца в базе данных.",
     "namingConventionSnake": "snake_case",
     "namingConventionHasura": "Hasura (snake_case)",
+    "namingConventionHasuraGraphqlDefault": "Hasura graphql-default (camelCase)",
     "namingConventionApollo": "Apollo (camelCase)",
     "sqlNamingConvention": "Соглашение об именовании SQL",
     "sqlNamingConventionHint": "Регистр, применяемый к именам в плоскости SQL, к которой обращаются интерфейсы pgwire, Bolt и семантического SQL. Он задаётся отдельно от соглашения GraphQL, поэтому переименование в одной плоскости не затрагивает другую.",

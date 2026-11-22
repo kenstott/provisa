@@ -619,6 +619,10 @@ async def _load_openapi_specs() -> None:
                 )
             ).fetchall()
         ]
+        # REQ-2265: each spec is re-read with the credential its source's calls carry.
+        from provisa.api_source.openapi_endpoint import stored_openapi_auth
+
+        _auth_of = {_r["id"]: await stored_openapi_auth(conn, _r["id"]) for _r in openapi_rows}
     from provisa.openapi.exclusions import (
         covered_registrations,
         load_source_spec,
@@ -649,9 +653,16 @@ async def _load_openapi_specs() -> None:
         with tolerate_startup_failure(f"OpenAPI spec for {_row['id']!r}"):
             _resolved_path = _resolve_secrets(_row["path"])
             # REQ-1957: without what the source's own exclusions name.
-            _spec = load_source_spec(_resolved_path, _row["mapping"], source_id=_row["id"])
+            _spec = load_source_spec(
+                _resolved_path, _row["mapping"], source_id=_row["id"], auth=_auth_of[_row["id"]]
+            )
             for _gone in covered_registrations(
-                source_excluded_operations(_resolved_path, _row["mapping"], source_id=_row["id"]),
+                source_excluded_operations(
+                    _resolved_path,
+                    _row["mapping"],
+                    source_id=_row["id"],
+                    auth=_auth_of[_row["id"]],
+                ),
                 tables=_tables_of.get(_row["id"], []),
                 commands=_commands_of.get(_row["id"], []),
             ):

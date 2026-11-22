@@ -46,19 +46,37 @@ def _source(**fields) -> Source:
     return Source(id=f"grammar_{uuid.uuid4().hex[:6]}", **fields)
 
 
-def _sa_execute(statements: list[str]) -> None:
+def _sa_connect():
     import pyodbc
 
-    conn = pyodbc.connect(
+    return pyodbc.connect(
         "DRIVER={ODBC Driver 18 for SQL Server};"
         f"SERVER=localhost,{os.environ['SQLSERVER_PORT']};"
         f"UID=sa;PWD={_SA_PASSWORD};Encrypt=yes;TrustServerCertificate=yes",
         autocommit=True,
     )
+
+
+def _sa_query(statement: str) -> list[tuple]:
+    conn = _sa_connect()
+    try:
+        return [tuple(row) for row in conn.cursor().execute(statement).fetchall()]
+    finally:
+        conn.close()
+
+
+def _sa_execute(statements: list[str]) -> None:
+    conn = _sa_connect()
     try:
         cur = conn.cursor()
         for statement in statements:
             cur.execute(statement)
+            # A statement can leave further results pending on the connection: row counts of a
+            # multi-statement batch, and the "transactions are being rolled back" messages ROLLBACK
+            # IMMEDIATE returns while a session is still in the database. Undrained, the next
+            # statement fails with "Connection is busy with results for another command".
+            while cur.nextset():
+                pass
     finally:
         conn.close()
 
@@ -80,13 +98,24 @@ def mssql_login():
     try:
         yield login
     finally:
-        _sa_execute(
-            [
-                f"ALTER DATABASE [{_MSSQL_DATABASE}] SET SINGLE_USER WITH ROLLBACK IMMEDIATE",
-                f"DROP DATABASE [{_MSSQL_DATABASE}]",
-                f"DROP LOGIN [{login}]",
-            ]
+        # The sessions still in the database name what kept it, should the drop be refused.
+        holders = _sa_query(
+            "SELECT session_id, login_name, program_name, status FROM sys.dm_exec_sessions "
+            f"WHERE database_id = DB_ID(N'{_MSSQL_DATABASE}')"
         )
+        try:
+            # One batch: no login can take the single-user database between the ALTER and the
+            # DROP. ROLLBACK IMMEDIATE ends a session whose logout the server has not yet
+            # processed (the test's DETACH closed its sockets just before).
+            _sa_execute(
+                [
+                    f"ALTER DATABASE [{_MSSQL_DATABASE}] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; "
+                    f"DROP DATABASE [{_MSSQL_DATABASE}]",
+                    f"DROP LOGIN [{login}]",
+                ]
+            )
+        except Exception as exc:
+            raise AssertionError(f"database still in use by sessions {holders}") from exc
 
 
 @pytest.mark.requires_sqlserver
@@ -103,12 +132,19 @@ def test_a_sql_server_password_and_database_holding_separators_sign_in(mssql_log
     )
     details = connector.details(source)
     con = duckdb.connect()
+    attached = False
     try:
         for statement in connector._bring_up():
             con.execute(statement)
         con.execute(details["attach"])
+        attached = True
         rows = con.execute(f'SELECT id FROM "{details["raw_alias"]}".dbo.probe').fetchall()
     finally:
+        # The mssql extension keeps its connection pools in a process-wide registry that only a
+        # DETACH empties: closing the DuckDB connection alone leaves the pool's sessions signed
+        # in to the database, and the fixture's DROP DATABASE is then refused (3702, in use).
+        if attached:
+            con.execute(f'DETACH "{details["raw_alias"]}"')
         con.close()
     assert rows == [(7,)]
 

@@ -114,7 +114,8 @@ async def test_creation_requests_lists_only_those_the_caller_may_act_on(monkeypa
     rows = [
         {
             "id": 1,
-            "request_type": "webhook",
+            # REQ-1327(5): the request's type sets the right that decides it.
+            "request_type": "table",
             "capability": "table_registration",
             "requested_by": "a",
             "status": "pending",

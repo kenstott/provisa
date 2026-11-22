@@ -24,7 +24,11 @@ refusal, its reason, and the SQLSTATE and message a client receives are rows of 
 (provisa/transpiler/polyfill/exact_engines.py), which :func:`refused` reads, and are listed on
 the engine's page (docs/conformance/polyfill/). Among the refusals, each with its reason:
 
-- ``/``: HANA's quotient of two integers is a decimal; PostgreSQL's is the truncated integer.
+- ``/`` of operands whose integer types are not known: HANA's quotient of two integers is a
+  decimal; PostgreSQL's is the integer truncated toward zero. Where both operands' integer types
+  are known (literals, counts, casts, and integer columns where the caller supplied the column
+  types, provisa/core/sql_integral.py), ``a / b`` is ``CAST(ROUND(a / b, 0, ROUND_DOWN) AS t)``:
+  ROUND_DOWN rounds toward zero, as PostgreSQL truncates, and ``t`` is the wider operand's type.
 - ``avg``: HANA's AVG result type and scale are not PostgreSQL's numeric.
 - ``greatest``/``least``/``concat``: HANA returns NULL for any NULL argument; PostgreSQL skips it.
 - ``round``/``power``: HANA's result type follows its arguments; PostgreSQL's does not.
@@ -61,7 +65,7 @@ import sqlglot.expressions as exp
 from sqlglot import generator
 from sqlglot.dialects.dialect import Dialect, NormalizationStrategy
 
-from provisa.core.sql_integral import fractional_integer_cast
+from provisa.core.sql_integral import fractional_integer_cast, integer_type
 
 #: The dialect's name, as ``source_registry.engine_dialect`` returns it for a HANA engine.
 NAME = "saphana"
@@ -214,8 +218,6 @@ def _name_of(node: exp.Expr) -> str:
     """How a refusal names ``node``: the function's name, or the construct's kind."""
     if isinstance(node, exp.Anonymous):
         return node.name.lower()
-    if isinstance(node, exp.Div):
-        return "/"
     if isinstance(node, exp.Func):
         names = type(node).sql_names()
         if names:
@@ -283,6 +285,10 @@ def _check(node: exp.Expr) -> None:  # noqa: C901 -- one branch per construct wi
         why = _cast_refusal(node)
         if why is not None:
             raise refused(why)
+        return
+    if isinstance(node, exp.Div):
+        if integer_type(node) is None:
+            raise refused("/ of operands not known to be integers")
         return
     if isinstance(node, exp.Length):
         if node.args.get("binary"):
@@ -545,6 +551,16 @@ class SapHanaGenerator(generator.Generator):
             # varchar with no length is PostgreSQL's unbounded text, at HANA's longest
             return f"NVARCHAR({_NVARCHAR_MAX if length is None else length})"
         raise refused("the type {type}", type=kind.name.lower())
+
+    def div_sql(self, expression: exp.Div) -> str:
+        # check() accepted only a quotient of two integers: PostgreSQL's integer of the wider
+        # operand's type, truncated toward zero. HANA's quotient is an exact decimal (a bigint
+        # quotient's integer part and fraction fit its 34 digits), which ROUND_DOWN truncates
+        # toward zero, so the cast is of an integral value.
+        kind = integer_type(expression)
+        assert kind is not None, "check() refuses a quotient of operands not known to be integers"
+        quotient = f"{self.sql(expression, 'this')} / {self.sql(expression, 'expression')}"
+        return f"CAST(ROUND({quotient}, 0, ROUND_DOWN) AS {_TYPES[kind]})"
 
     def substring_sql(self, expression: exp.Substring) -> str:
         args = [expression.this, expression.args.get("start"), expression.args.get("length")]

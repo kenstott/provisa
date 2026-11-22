@@ -11,7 +11,7 @@
 """The runs of a Syncing entry's direction: scheduled ones nobody watched, and Run now (REQ-2247).
 
 One row per run: the entry, the direction, how it was started (``schedule`` or ``manual``), its outcome (``ok``
-or ``failed``), what it applied and what it held, each a list of ``{kind, object, reason}``, and
+or ``failed``), what it applied and what it held, each a list of ``{kind, object, reason_code, params}``, and
 the error of a run that failed. The entry's page shows its last run with what it applied and held.
 """
 

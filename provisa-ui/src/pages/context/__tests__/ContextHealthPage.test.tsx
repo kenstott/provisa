@@ -26,6 +26,7 @@ const api = vi.hoisted(() => ({
   fetchStewardshipSummary: vi.fn(),
   fetchOntologyDrift: vi.fn(),
   fetchClassificationAwaiting: vi.fn(),
+  fetchTagsLost: vi.fn(),
   fetchReviewsDue: vi.fn(),
   fetchSyncing: vi.fn(),
   fetchReview: vi.fn(),
@@ -39,6 +40,7 @@ vi.mock("../../../api/glossary", async (importOriginal) => ({
 vi.mock("../../../api/contextViews", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../../api/contextViews")>()),
   fetchClassificationAwaiting: api.fetchClassificationAwaiting,
+  fetchTagsLost: api.fetchTagsLost,
 }));
 vi.mock("../../../api/referenceLibrary", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../../api/referenceLibrary")>()),
@@ -95,6 +97,33 @@ beforeEach(() => {
   api.fetchClassificationAwaiting.mockResolvedValue({
     tables: [{ tableId: 9, tableRef: "pg.public.customers", awaiting: 3 }],
     hidden: 2,
+  });
+  api.fetchTagsLost.mockResolvedValue({
+    cutoff: "2026-10-01T00:00:00+00:00",
+    count: 3,
+    hidden: 1,
+    losses: [
+      {
+        tableId: 9,
+        tableRef: "pg.public.customers",
+        column: "home_address",
+        tag: "pii",
+        termId: 21,
+        term: "Home address",
+        confirmedBy: "alice",
+        confirmedAt: "2026-11-20T14:00:00+00:00",
+      },
+      {
+        tableId: 9,
+        tableRef: "pg.public.customers",
+        column: "email",
+        tag: "pii",
+        termId: null,
+        term: "Email",
+        confirmedBy: null,
+        confirmedAt: "2026-11-02T09:00:00+00:00",
+      },
+    ],
   });
   api.fetchReviewsDue.mockResolvedValue({
     documents: [{ id: 11, title: "Privacy policy", reviews: 2 }],
@@ -168,11 +197,24 @@ describe("Context Health's cards, from real reads", () => {
     expect(screen.getByTestId("health-documents-11")).toHaveTextContent("Privacy policy");
   });
 
-  it("holds a Tags lost card that says losses are not yet recorded", async () => {
+  it("counts this period's confirmed tag losses and lists each, naming only readable columns", async () => {
     render(<ContextHealthPage />);
-    expect(await screen.findByTestId("health-tags-lost-unrecorded")).toHaveTextContent(
-      "Not yet recorded",
+    expect(await count("health-tags-lost-total")).toHaveTextContent("3");
+    const first = screen.getByTestId("health-tags-lost-0");
+    expect(within(first).getByTestId("health-tags-lost-column-0")).toHaveTextContent(
+      "pg.public.customers.home_address",
     );
+    expect(within(first).getByTestId("health-tags-lost-tag-0")).toHaveTextContent("pii");
+    expect(within(first).getByTestId("health-tags-lost-term-0")).toHaveTextContent(
+      "Home address",
+    );
+    expect(first).toHaveTextContent("alice");
+    // A loss no member signed names no one; a term since deleted is its name alone.
+    const second = screen.getByTestId("health-tags-lost-1");
+    expect(second).not.toHaveTextContent("alice");
+    expect(within(second).getByTestId("health-tags-lost-term-1").tagName).toBe("SPAN");
+    expect(screen.getByTestId("health-tags-lost-hidden")).toHaveTextContent("1");
+    expect(screen.queryByTestId("health-tags-lost-unrecorded")).not.toBeInTheDocument();
   });
 
   it("shows a card's read refused in words, the other cards unaffected", async () => {
@@ -199,6 +241,17 @@ describe("links are drawn only for the right their page asks (REQ-2259)", () => 
     expect(await count("health-drift-lost")).not.toHaveAttribute("href");
     expect(screen.getByTestId("health-drift-lost").tagName).toBe("SPAN");
     expect(screen.getByTestId("health-classification-table-9")).not.toHaveAttribute("href");
+    // The Tags lost count links to the Tags page; the column to its table page, a right it lacks.
+    expect(await count("health-tags-lost-total")).toHaveAttribute("href", "/context/tags");
+    expect(screen.getByTestId("health-tags-lost-column-0").tagName).toBe("SPAN");
+  });
+
+  it("draws the Tags lost count as plain text for a viewer without the Tags page's right", async () => {
+    auth.capabilities = [];
+    render(<ContextHealthPage />);
+    expect(await count("health-tags-lost-total")).toHaveTextContent("3");
+    expect(screen.getByTestId("health-tags-lost-total").tagName).toBe("SPAN");
+    expect(screen.getByTestId("health-tags-lost-term-0").tagName).toBe("SPAN");
   });
 
   it("a holder of the report's and the table page's rights follows those links too", async () => {
@@ -211,6 +264,10 @@ describe("links are drawn only for the right their page asks (REQ-2259)", () => 
     expect(screen.getByTestId("health-classification-table-9")).toHaveAttribute(
       "href",
       "/tables?table=9&section=quality",
+    );
+    expect(await count("health-tags-lost-column-0")).toHaveAttribute(
+      "href",
+      "/tables?table=9&section=columns&column=home_address",
     );
   });
 

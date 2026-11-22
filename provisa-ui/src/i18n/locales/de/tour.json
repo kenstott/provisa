@@ -814,11 +814,11 @@
       },
       "opioidsAsPublic": {
         "title": "Als Öffentlichkeit ausführen",
-        "description": "Der SQL-Explorer läuft jetzt als Rolle public, die Rolle des Dashboards des Rates und der Einwohner. Die folgenden Abfragen sehen nur, was sie erlaubt."
+        "description": "Der SQL-Explorer läuft jetzt als Rolle resident, die Rolle des Dashboards des Rates und der Einwohner. Die folgenden Abfragen sehen nur, was sie erlaubt."
       },
       "opioidsPublic": {
         "title": "So sieht es die Öffentlichkeit",
-        "description": "Das Dashboard des Rats ist die Sicht overdose_burden_by_county, hier unter der öffentlichen Rolle ausgeführt. Sie zeigt für jedes County Einwohner, Todesfälle, Sterberate und Bundesmittel pro Einwohner und liest weder die Zuweisungen des Fonds noch die bezahlten Anbieter."
+        "description": "Das Dashboard des Rats ist die Sicht overdose_burden_by_county, hier unter der Rolle resident ausgeführt. Sie zeigt für jedes County Einwohner, Todesfälle, Sterberate und Bundesmittel pro Einwohner und liest weder die Zuweisungen des Fonds noch die bezahlten Anbieter."
       },
       "opioidsByRegion": {
         "title": "Nach Region, in GraphQL",

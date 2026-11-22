@@ -217,8 +217,9 @@ async def inherited_snapshot(
     conn: "Connection", table_ids: "Iterable[int] | None" = None
 ) -> dict[tuple[int, str], dict]:
     """Each tagged column's tags, by (table_id, column_name): ``{"tags": {base ids it carries
-    through its term}, "carried": {every base id it carries}, "terms": {term_id: name}}`` -- the
-    before of a move, for :func:`tag_changes_of_moves`."""
+    through its term}, "carried": {every base id it carries}, "terms": {term_id: name}, "via":
+    {base id: (term_id, name) it carries it through}}`` -- the before of a move, for
+    :func:`tag_changes_of_moves`."""
     out: dict[tuple[int, str], dict] = {}
     for key, tags in (await effective_column_tags(conn, table_ids)).items():
         through = [t for t in tags if t["via"] == "term"]
@@ -226,8 +227,46 @@ async def inherited_snapshot(
             "tags": {t["base_tag_id"] for t in through},
             "carried": {t["base_tag_id"] for t in tags},
             "terms": {t["term_id"]: t["term"] for t in through},
+            "via": {t["base_tag_id"]: (t["term_id"], t["term"]) for t in through},
         }
     return out
+
+
+async def record_tag_losses(
+    conn: "Connection",
+    before: dict[tuple[int, str], dict],
+    found: list[dict],
+    names: dict[int, str],
+) -> None:
+    """REQ-2259, REQ-2145: record each confirmed loss -- a restricting tag a moved column stopped
+    carrying, with the term it carried it through before the move -- as one
+    ``glossary_tag_losses`` row, confirmed by the change's actor (None when no member signed).
+    A column's own tags never change on a move, so every tag it stopped carrying came through its
+    term."""
+    from provisa.core import model_change
+    from provisa.core.schema_org import glossary_tag_losses
+
+    by = model_change.actor()
+    rows = []
+    for c in found:
+        key = (c["table_id"], c["column"])
+        for tag_id in c["gone"]:
+            if tag_id not in RESTRICTING_TAGS:
+                continue
+            term_id, term_name = before[key]["via"][tag_id]
+            rows.append(
+                {
+                    "table_id": c["table_id"],
+                    "table_ref": names[c["table_id"]],
+                    "column_name": c["column"],
+                    "tag_id": tag_id,
+                    "term_id": term_id,
+                    "term_name": term_name,
+                    "confirmed_by": by,
+                }
+            )
+    if rows:
+        await conn.execute_core(glossary_tag_losses.insert().values(rows))
 
 
 async def tag_changes_of_moves(
@@ -333,4 +372,6 @@ async def tag_changes_of_moves(
     ]
     if lost - set(confirm_tag_loss):
         raise TagLossRefused(summary)
+    if lost:
+        await record_tag_losses(conn, before, found, names)
     return summary

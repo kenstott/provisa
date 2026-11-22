@@ -88,7 +88,9 @@ async def test_a_scheduled_import_takes_the_description_and_holds_the_owner(entr
 
     assert body is not None
     assert body["applied"] == [{"kind": sv.DESCRIPTION, "object": GROUP}]
-    assert body["held"] == [{"kind": sv.OWNER, "object": GROUP, "reason": si.NO_CHOICE}]
+    assert body["held"] == [
+        {"kind": sv.OWNER, "object": GROUP, "reason_code": si.NO_CHOICE, "params": {}}
+    ]
     assert await _table_description() == "Orders, as revised in the catalog"
     last = (await _latest())[(sv.DESCRIPTION, GROUP)]
     assert (last.direction, last.value, last.decided_by) == (
@@ -122,7 +124,9 @@ async def test_the_run_is_recorded_with_its_outcome_and_what_it_applied_and_held
         None,
     )
     assert run.applied == [{"kind": sv.DESCRIPTION, "object": GROUP}]
-    assert run.held == [{"kind": sv.OWNER, "object": GROUP, "reason": si.HELD_BY_CHOICE}]
+    assert run.held == [
+        {"kind": sv.OWNER, "object": GROUP, "reason_code": si.HELD_BY_CHOICE, "params": {}}
+    ]
     assert run.started_at <= run.finished_at
 
 
@@ -140,7 +144,7 @@ async def test_a_value_edited_in_provisa_since_the_last_exchange_is_not_overwrit
     assert body is not None
     assert body["applied"] == []
     assert body["held"] == [
-        {"kind": sv.DESCRIPTION, "object": GROUP, "reason": si.EDITED_IN_PROVISA}
+        {"kind": sv.DESCRIPTION, "object": GROUP, "reason_code": si.EDITED_IN_PROVISA, "params": {}}
     ]
     assert await _table_description() is None, "Provisa's description is not written"
     assert (await _latest())[(sv.DESCRIPTION, GROUP)].value == "What both once held"
@@ -159,7 +163,12 @@ async def test_a_value_never_exchanged_is_held(entry):  # noqa: F811
 
     assert body is not None
     assert body["held"] == [
-        {"kind": sv.COLUMN_DESCRIPTION, "object": COL_ID, "reason": si.NEVER_EXCHANGED}
+        {
+            "kind": sv.COLUMN_DESCRIPTION,
+            "object": COL_ID,
+            "reason_code": si.NEVER_EXCHANGED,
+            "params": {},
+        }
     ]
     assert await _stored(table_columns, "description", table_id=11, column_name="id") is None
     assert await _latest() == {}
@@ -175,7 +184,9 @@ async def test_a_kind_provisa_cannot_take_yet_is_held_by_name(entry):  # noqa: F
     body = await si.import_job(ORG_ID, "mz")
 
     assert body is not None
-    assert body["held"] == [{"kind": sv.TAG, "object": GROUP, "reason": si.NOT_IMPORTABLE}]
+    assert body["held"] == [
+        {"kind": sv.TAG, "object": GROUP, "reason_code": si.NOT_IMPORTABLE, "params": {}}
+    ]
     assert (await _latest())[(sv.TAG, GROUP)].value == ()
 
 
@@ -190,7 +201,9 @@ async def test_a_standing_choice_of_provisas_value_changes_nothing_on_import(ent
 
     assert body is not None
     assert (body["applied"], body["held"]) == ([], [])
-    assert body["left"] == [{"kind": sv.DESCRIPTION, "object": GROUP, "reason": si.LEFT_TO_EXPORT}]
+    assert body["left"] == [
+        {"kind": sv.DESCRIPTION, "object": GROUP, "reason_code": si.LEFT_TO_EXPORT, "params": {}}
+    ]
     assert await _table_description() is None
     assert entry.catalog.published == 0, "Import never changes the catalog"
 
@@ -354,7 +367,9 @@ async def test_the_read_returns_each_entrys_last_import_run(entry):  # noqa: F81
         None,
     )
     assert last["applied"] == []
-    assert {"kind": sv.OWNER, "object": GROUP, "reason": si.NO_CHOICE} in last["held"]
+    assert {"kind": sv.OWNER, "object": GROUP, "reason_code": si.NO_CHOICE, "params": {}} in last[
+        "held"
+    ]
 
 
 @pytest.mark.asyncio
@@ -373,3 +388,33 @@ async def test_a_refused_import_schedule_names_the_field(surface, over, code):  
     assert (exc.value.status_code, exc.value.code) == (400, code)
     assert exc.value.params["field"] == "import_cron"
     assert exc.value.params["entry"] == "mz"
+
+
+def test_each_hold_reason_is_a_stable_code_the_ui_translates():
+    """A run records a reason code, never English text: the Syncing page renders each code through
+    i18n (``syncingTab.holdReason_<code>``) in the viewer's language."""
+    assert si.REASON_CODES == (
+        "no_choice",
+        "held_by_choice",
+        "edited_in_provisa",
+        "never_exchanged",
+        "not_importable",
+        "left_to_export",
+    )
+    for code in si.REASON_CODES:
+        assert code.isidentifier() and code == code.lower(), code
+
+
+def test_an_unknown_reason_code_is_refused():
+    """A held entry names only a code the UI has a string for."""
+    from types import SimpleNamespace
+
+    diff = SimpleNamespace(ours=SimpleNamespace(kind=sv.OWNER, object=GROUP))
+    with pytest.raises(ValueError, match="unknown hold reason code"):
+        si._named(diff, "no standing choice")  # type: ignore[arg-type]
+    assert si._named(diff, si.NO_CHOICE) == {  # type: ignore[arg-type]
+        "kind": sv.OWNER,
+        "object": GROUP,
+        "reason_code": "no_choice",
+        "params": {},
+    }

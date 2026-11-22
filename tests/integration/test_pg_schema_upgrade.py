@@ -405,6 +405,9 @@ _CREATE_ONLY = {
     "catalog_bindings": "id semantic_uri vendor_ref physical_key updated_at",
     "catalog_exchanges": "id entry direction kind object value decided_by updated_at tenant_id",
     "catalog_standing_choices": "id entry direction kind choice decided_by updated_at tenant_id",
+    "catalog_sync_runs": (
+        "id entry direction trigger outcome applied held error started_at finished_at tenant_id"
+    ),
     "checker_latest_runs": "table_id scan_id scan_time outcome",
     "checker_targets": "table_id checked_table_id",
     "code_source_builds": (
@@ -480,6 +483,9 @@ _CREATE_ONLY = {
     ),
     "glossary_ontology_items": (
         "id import_id ordinal name kind definition iri payload status term_id tenant_id"
+    ),
+    "glossary_tag_losses": (
+        "id table_id table_ref column_name tag_id term_id term_name confirmed_by confirmed_at"
     ),
     "glossary_term_domains": "id term_id domain_id tenant_id",
     "glossary_term_drafts": (

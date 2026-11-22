@@ -47,6 +47,7 @@ from provisa.transpiler.pg_literals import (
     postgres_literals,
 )
 from provisa.transpiler.to_char import to_char_for_duckdb
+from provisa.transpiler.typed_columns import TYPED_DIALECTS, ColumnTypes, typed
 from provisa.transpiler.transpile_correlated import (
     rewrite_correlated_subqueries_for_trino,
 )
@@ -1966,8 +1967,13 @@ _OWN_TRY_CASTS = {
 
 
 def transpile(
-    pg_sql: str, target_dialect: str, *, pgvector: bool = False, quote_identifiers: bool = False
-) -> str:  # REQ-066, REQ-068, REQ-229, REQ-423
+    pg_sql: str,
+    target_dialect: str,
+    *,
+    pgvector: bool = False,
+    quote_identifiers: bool = False,
+    column_types: ColumnTypes | None = None,
+) -> str:  # REQ-066, REQ-068, REQ-229, REQ-423, REQ-2236
     """Transpile PostgreSQL-dialect SQL to a target dialect.
 
     Args:
@@ -1977,6 +1983,10 @@ def transpile(
             own operator a similarity search is then written with (REQ-423).
         quote_identifiers: send every identifier quoted, for a source written in another
             dialect's text whose database folds an unquoted name to upper case (REQ-1671).
+        column_types: the registered column types of the tables the statement reads, by the
+            names it gives them, for a dialect whose forms read their operands' types
+            (``typed_columns.TYPED_DIALECTS``, REQ-2236). Without them such a dialect refuses
+            what it cannot write untyped.
 
     Returns:
         SQL string in target dialect.
@@ -2105,6 +2115,14 @@ def transpile(
         # REQ-2171: its instants and its refusals as PostgreSQL's, whatever wrote them.
         lowered = clickhouse_semantics(
             lowered if lowered is not None else sqlglot.parse_one(pg_sql, read="postgres")
+        )
+    if column_types is not None:
+        # REQ-2236: last before the dialect writes, so no rewrite above drops the types.
+        if target_dialect not in TYPED_DIALECTS:
+            raise ValueError(f"the {target_dialect} dialect reads no column types")
+        lowered = typed(
+            lowered if lowered is not None else sqlglot.parse_one(pg_sql, read="postgres"),
+            column_types,
         )
     if target_dialect == "exasol":
         result = _exasol_stored_case(

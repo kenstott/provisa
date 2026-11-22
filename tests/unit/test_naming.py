@@ -162,10 +162,10 @@ class TestNamingConvention:
         assert apply_convention("orderItems", "hasura-default") == "order_items"
 
     def test_graphql_default_literal_maps_to_camel(self):
-        # REQ-195: graphql-default → camelCase.
+        # REQ-195: graphql-default → camelCase, as its own Hasura preset (REQ-194, 2026-11-22).
         from provisa.compiler.naming import apply_convention, normalize_convention
 
-        assert normalize_convention("graphql-default") == "apollo_graphql"
+        assert normalize_convention("graphql-default") == "hasura_graphql_default"
         assert apply_convention("order_items", "graphql-default") == "orderItems"
 
     def test_ddn_graphql_literal_maps_to_camel(self):

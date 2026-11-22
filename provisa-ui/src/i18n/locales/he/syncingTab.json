@@ -135,6 +135,12 @@
     "importHeld": "הושהו",
     "importKind": "סוג",
     "importObject": "אובייקט",
-    "importReason": "סיבת ההשהיה"
+    "importReason": "סיבת ההשהיה",
+    "holdReason_no_choice": "אין בחירה קבועה לסוג זה",
+    "holdReason_held_by_choice": "הבחירה הקבועה היא השהיה",
+    "holdReason_edited_in_provisa": "נערך ב-Provisa מאז ההחלפה האחרונה",
+    "holdReason_never_exchanged": "מעולם לא הוחלף, ולכן לא ידוע איזה צד השתנה",
+    "holdReason_not_importable": "Provisa עדיין לא יכול לקחת סוג זה מקטלוג",
+    "holdReason_left_to_export": "הבחירה הקבועה היא הערך של Provisa, שהייצוא שולח"
   }
 }

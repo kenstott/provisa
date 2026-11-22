@@ -20,6 +20,8 @@ Table aliases (t0, t1, ...) used when JOINs are present.
 
 from __future__ import annotations
 
+import dataclasses
+
 
 from collections.abc import Iterable, Mapping
 from typing import TYPE_CHECKING, Protocol
@@ -38,7 +40,7 @@ from graphql import (
     VariableDefinitionNode,
 )
 
-from provisa.compiler import names_table
+from provisa.compiler import hasura_dialect, names_table
 from provisa.compiler.params import ParamCollector
 
 from provisa.compiler.sql_types import (
@@ -806,7 +808,15 @@ def compile_query(  # REQ-007, REQ-009, REQ-010, REQ-011, REQ-262, REQ-263, REQ-
                 resolved = names_table.root_field(ctx, field_name)
                 if resolved is None:
                     raise UnknownRootField(field_name)
-                surface = resolved[0]
+                surface, root_table = resolved
+                # REQ-194: a Hasura-preset table's fields are read with Hasura's spellings.
+                sel = hasura_dialect.compiled_field(sel, root_table, ctx)
+                if surface == "graphql_by_pk":
+                    by_pk = _compile_root_field(
+                        hasura_dialect.by_pk_as_read(sel, root_table), ctx, variables, use_catalog
+                    )
+                    results.append(dataclasses.replace(by_pk, single_row=True))
+                    continue
                 with _stage(_tracer, "compiler.compile_query", name="compile") as span:
                     from provisa.compiler.aggregates import (
                         _compile_aggregate_field,

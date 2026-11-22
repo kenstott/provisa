@@ -433,11 +433,12 @@ def is_own_catalog(catalog: str, source_id: str) -> bool:  # REQ-194
 
 
 # REQ-195: Hasura v2 / DDN literals map to internal presets.
-#   hasura-default  → snake_case   graphql-default → camelCase
-#   graphql (DDN namingConvention) → camelCase
+#   hasura-default  → hasura_graphql (snake_case, Hasura's shapes)
+#   graphql-default → hasura_graphql_default (camelCase, Hasura's shapes, custom names as written)
+#   graphql (DDN namingConvention) → apollo_graphql (camelCase)
 _CONVENTION_ALIASES = {
     "hasura-default": "hasura_graphql",
-    "graphql-default": "apollo_graphql",
+    "graphql-default": "hasura_graphql_default",
     "graphql": "apollo_graphql",
 }
 
@@ -449,7 +450,28 @@ def normalize_convention(convention: str) -> str:  # REQ-195, REQ-416
 
 #: REQ-416: the naming conventions a table, a source or the deployment may name, in the order the
 #: admin offers them; VALID_CONVENTIONS adds the Hasura/DDN literals that resolve to them.
-PRESET_CONVENTIONS: tuple[str, ...] = ("snake", "hasura_graphql", "apollo_graphql")
+PRESET_CONVENTIONS: tuple[str, ...] = (
+    "snake",
+    "hasura_graphql",
+    "hasura_graphql_default",
+    "apollo_graphql",
+)
+
+#: REQ-194 (2026-11-22, Hasura shapes served): the presets whose tables are served in Hasura's
+#: shapes (root fields, types, arguments, operators), each with the Hasura convention it names.
+HASURA_PRESETS: dict[str, str] = {
+    "hasura_graphql": "hasura-default",
+    "hasura_graphql_default": "graphql-default",
+}
+
+
+def hasura_convention_of(convention: str | None) -> str | None:  # REQ-194
+    """The Hasura convention a table's convention serves (``hasura-default`` or
+    ``graphql-default``), None for a convention served in Provisa's own shapes."""
+    if convention is None:
+        return None
+    return HASURA_PRESETS.get(normalize_convention(convention))
+
 
 VALID_CONVENTIONS = frozenset(set(PRESET_CONVENTIONS) | set(_CONVENTION_ALIASES))
 
@@ -494,17 +516,18 @@ def _canonical_convention(convention: str) -> str:
         raise ValueError(
             f"unknown naming convention {convention!r}; expected one of {sorted(VALID_CONVENTIONS)}"
         )
-    # REQ-194: hasura_graphql is snake_case; apollo_graphql is camelCase.
+    # REQ-194: hasura_graphql is snake_case; apollo_graphql and hasura_graphql_default are
+    # camelCase.
     if convention in ("snake", "hasura_graphql"):
         return "snake_case"
-    return "camelCase"  # apollo_graphql
+    return "camelCase"  # apollo_graphql, hasura_graphql_default
 
 
 def mutation_style(convention: str) -> str:  # REQ-411, REQ-412
     """Return 'snake' or 'camel' mutation prefix style for a given convention."""
     if normalize_convention(convention) in ("snake", "hasura_graphql"):
         return "snake"
-    return "camel"  # apollo_graphql
+    return "camel"  # apollo_graphql, hasura_graphql_default
 
 
 # REQ-1327: the deployment's conventions: what an org with no convention of its own inherits. An
@@ -705,6 +728,10 @@ def generate_name(  # REQ-154, REQ-155, REQ-157, REQ-194, REQ-1933
     convention's casing. A name is never qualified to make it unique: two tables of one address in
     a domain are refused (:func:`refuse_taken_sql_addresses`, REQ-1933)."""
     if alias:
+        if normalize_convention(convention) == "hasura_graphql_default":
+            # REQ-194: graphql-default keeps a custom table name as written, as Hasura does
+            # ("Behavior of custom table name").
+            return alias
         return _apply_table_convention(alias, convention)
     result = _apply_table_convention(_apply_naming_rules(table_name, naming_rules), convention)
     if not result:
@@ -1442,3 +1469,141 @@ def hasura_relationship_field(name: str) -> str:  # REQ-194
 def hasura_relationship_aggregate(convention: str, name: str) -> str:  # REQ-194
     """An array relationship's aggregate field: its name as written, then the suffix."""
     return name + ("_aggregate" if _checked(convention) == HASURA_DEFAULT else "Aggregate")
+
+
+# ── REQ-194 (2026-11-22, HASURA SHAPES SERVED): a Hasura-preset table's served names ──────────
+#
+# A table whose convention is a Hasura preset (HASURA_PRESETS) is served in Hasura's shapes: its
+# root fields, types, arguments, operators and order_by values are named as Hasura names them
+# under that convention. Every root field and type is its table's root field or type name plus a
+# Hasura phrase, so each is composed from those two names (the domain prefix, where domains prefix
+# their fields, stays in front, as on every other table).
+
+
+def hasura_served_names(  # REQ-194
+    preset: str, table_name: str, naming_rules: list[dict], alias: str | None
+) -> HasuraTableNames:
+    """A Hasura-preset table's names, unprefixed: from its alias as written, else from its name
+    after the naming rules (``hasura_table_names``)."""
+    conv = HASURA_PRESETS[normalize_convention(preset)]
+    if alias:
+        custom = _to_field_name(alias) if conv == HASURA_DEFAULT else alias
+        names = hasura_table_names(conv, custom, custom_name=custom)
+    else:
+        named = _to_field_name(_apply_naming_rules(table_name, naming_rules))
+        if not named:
+            raise ValueError(
+                f"Naming rules produced empty name for table {table_name!r}. "
+                f"Check naming rule configuration."
+            )
+        # hasura-default keeps the database name as defined; graphql-default composes its words.
+        names = hasura_table_names(
+            conv, named, custom_name=named if conv == HASURA_DEFAULT else None
+        )
+    return names
+
+
+def _hasura_phrase(convention: str, phrase: str, *, first: bool) -> str:
+    words = _words(phrase)
+    if convention == HASURA_DEFAULT:
+        return "_".join(words)
+    return _camel(words) if first else _pascal(words)
+
+
+def hasura_root_field(  # REQ-194
+    convention: str, field_name: str, prefix: str = "", suffix: str = ""
+) -> str:
+    """A Hasura root field of the table whose root field is ``field_name``: ``prefix`` and
+    ``suffix`` are snake phrases (``insert``, ``by_pk``), spelled in ``convention``
+    (``insert_orders_one`` / ``insertOrdersOne``). A domain prefix stays in front."""
+    conv = _checked(convention)
+    domain, table = field_name.split("__", 1) if "__" in field_name else ("", field_name)
+    if conv == HASURA_DEFAULT:
+        name = "_".join(p for p in (prefix and "_".join(_words(prefix)), table) if p)
+        if suffix:
+            name = f"{name}_{'_'.join(_words(suffix))}"
+    else:
+        head = _hasura_phrase(conv, prefix, first=True) if prefix else ""
+        name = head + (_upper_first(table) if head else table)
+        if suffix:
+            name += _hasura_phrase(conv, suffix, first=False)
+    return f"{domain}__{name}" if domain else name
+
+
+def hasura_type_name(convention: str, type_name: str, suffix: str) -> str:  # REQ-194
+    """A Hasura type of the table whose type is ``type_name``: ``suffix`` a snake phrase
+    (``bool_exp``) spelled in ``convention`` (``orders_bool_exp`` / ``OrdersBoolExp``)."""
+    conv = _checked(convention)
+    if conv == HASURA_DEFAULT:
+        return f"{type_name}_{'_'.join(_words(suffix))}"
+    return type_name + _hasura_phrase(conv, suffix, first=False)
+
+
+#: The comparison operators a Hasura comparison expression offers, as Provisa's compiler names
+#: them (sql_where): each is served as ``_<op>`` in the table's convention.
+HASURA_OPERATORS: tuple[str, ...] = (
+    "eq",
+    "neq",
+    "gt",
+    "gte",
+    "lt",
+    "lte",
+    "in",
+    "is_null",
+    "like",
+    "ilike",
+)
+
+
+def hasura_operator(convention: str, op: str) -> str:  # REQ-194
+    """Provisa operator ``op`` as a Hasura comparison expression names it (``_eq``,
+    ``_is_null`` / ``_isNull``)."""
+    return hasura_argument_name(convention, f"_{op}")
+
+
+#: Each Hasura operator spelling, under either convention, to the operator the compiler reads.
+_PROVISA_OPERATOR: dict[str, str] = {
+    hasura_operator(conv, op): op for conv in HASURA_CONVENTIONS for op in HASURA_OPERATORS
+}
+
+
+def compiled_operator(name: str) -> str:  # REQ-194
+    """The operator the compiler reads for a where condition's operator ``name``: a Hasura
+    spelling (``_eq``, ``_isNull``) is its Provisa operator; any other name is itself."""
+    return _PROVISA_OPERATOR.get(name, name)
+
+
+def hasura_comparison_type(convention: str, scalar: str) -> str:  # REQ-194
+    """A scalar's comparison expression type: ``Int_comparison_exp`` / ``IntComparisonExp``."""
+    conv = _checked(convention)
+    if conv == HASURA_DEFAULT:
+        return f"{scalar}_comparison_exp"
+    return scalar + _pascal(["comparison", "exp"])
+
+
+def hasura_order_by_type(convention: str) -> str:  # REQ-194
+    """The order_by direction enum: ``order_by`` / ``OrderBy``."""
+    return "order_by" if _checked(convention) == HASURA_DEFAULT else "OrderBy"
+
+
+#: Hasura's order_by directions, as hasura-default spells them.
+HASURA_ORDER_DIRECTIONS: tuple[str, ...] = (
+    "asc",
+    "asc_nulls_first",
+    "asc_nulls_last",
+    "desc",
+    "desc_nulls_first",
+    "desc_nulls_last",
+)
+
+
+def compiled_order_direction(value: str) -> str:  # REQ-194
+    """The direction the compiler reads for an order_by value: graphql-default's ``DESC`` is
+    ``desc``."""
+    return value.lower()
+
+
+def hasura_pk_constraint(table_name: str) -> str:  # REQ-194
+    """The on_conflict constraint value naming a table's primary key: PostgreSQL's default name
+    for it, ``<table>_pkey``, as Hasura lists the database's constraint."""
+    return f"{table_name}_pkey"

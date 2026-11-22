@@ -1,6 +1,6 @@
 {
   "proposalsTable": {
-    "intro": "Uma linha marcada é aceita quando você aplica. Linhas com pontuação igual ou acima do limite começam marcadas. Uma linha sem nenhuma caixa marcada fica indefinida.",
+    "intro": "Marque a primeira caixa de uma linha para aceitá-la quando você aplicar, ou \"Nunca sugerir\" para que ela nunca mais seja sugerida. Linhas com pontuação igual ou acima do limite começam marcadas para aceitar. Uma linha sem nenhuma caixa marcada fica indefinida.",
     "colScore": "Pontuação",
     "colConfidence": "Confiança",
     "colJev": "Jev",
@@ -8,8 +8,8 @@
     "colMeasure": "Medido",
     "colReasoning": "Raciocínio",
     "colNote": "Observação",
-    "colNotAgain": "Não recomendar de novo",
-    "notAgainAria": "Não recomendar {{name}} de novo",
+    "colNotAgain": "Nunca sugerir",
+    "notAgainAria": "Nunca mais sugerir {{name}}",
     "kind": {
       "foreign_keys": "Restrição",
       "semantics": "Semântica",

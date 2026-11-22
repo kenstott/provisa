@@ -403,6 +403,8 @@ class _Discovery:
             if table is not None and table not in rows:
                 self.problems.append(f"{item.name}: its table {table} is no table of the code's")
                 continue
+            if parameters is not None and self._takes_a_table(kind, item.name, parameters):
+                continue
             if handler is None or parameters is None:
                 continue
             if table is not None:
@@ -416,6 +418,17 @@ class _Discovery:
             entry["handler"] = handler
             out.append(entry)
         return out
+
+    def _takes_a_table(self, kind: str, item: str, parameters: list[dict]) -> bool:
+        """REQ-2267 (v0): a generated query or command takes no TableRef parameter -- its handler
+        would be given the table as a raw dict -- so each such parameter is refused by name."""
+        tables = [p["name"] for p in parameters if p["type"]["kind"] == "table_ref"]
+        for name in tables:
+            self.problems.append(
+                f"{item}: its parameter {name} is a TableRef, and a generated {kind} takes no "
+                "TableRef parameter in v0"
+            )
+        return bool(tables)
 
 
 def _discover(reader: _Reader, module: types.ModuleType, exports: list[dict]) -> tuple[list, list]:
