@@ -123,7 +123,7 @@ def serve(monkeypatch):
         served.append((current_org.get(), dict(current_session_vars.get())))
         yield getattr(self._pb2, type_name)(id=request.limit)
 
-    async def _built(_org_id):
+    async def _built(_org_id, _env=None):
         return None
 
     monkeypatch.setattr(grpc_server.ProvisaServicer, "_handle_query_bound", _rows)
