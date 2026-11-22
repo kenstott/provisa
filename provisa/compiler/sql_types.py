@@ -389,6 +389,8 @@ class CompiledQuery:
     group_by_columns: list[str] = field(default_factory=list)
     # table_name → {gql_field_name: gql_selection_string} for undeclared graphql_remote OBJECT fields
     gql_remote_extra_selections: dict[str, dict[str, str]] = field(default_factory=dict)
+    # REQ-194: a Hasura ``_by_pk`` read, answered as its one row (or null), not a list.
+    single_row: bool = False
 
     def with_sql(self, new_sql: str) -> "CompiledQuery":
         """Return a copy of this CompiledQuery with sql replaced."""
