@@ -106,7 +106,9 @@ function ImportItems({
           <Table.Tr key={`${item.kind}:${item.object}`}>
             <Table.Td>{t(`syncingTab.kind_${item.kind}`)}</Table.Td>
             <Table.Td>{item.object}</Table.Td>
-            {withReason && <Table.Td>{item.reason}</Table.Td>}
+            {withReason && (
+              <Table.Td>{t(`syncingTab.holdReason_${item.reason_code}`, item.params)}</Table.Td>
+            )}
           </Table.Tr>
         ))}
       </Table.Tbody>

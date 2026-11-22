@@ -551,8 +551,9 @@ def _load_openapi_specs(config: ProvisaConfig) -> dict[str, dict]:
                 from provisa.openapi.exclusions import load_source_spec
 
                 # REQ-1957: without what the source's own exclusions name.
+                # REQ-2265: read with the credential the source's calls carry.
                 openapi_specs[src.id] = load_source_spec(
-                    resolve_secrets(src.path), src.mapping, source_id=src.id
+                    resolve_secrets(src.path), src.mapping, source_id=src.id, auth=src.auth
                 )
             except Exception as _e:
                 log.warning("Failed to load OpenAPI spec for %s: %s", src.id, _e)

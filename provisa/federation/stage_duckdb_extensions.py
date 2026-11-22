@@ -19,7 +19,7 @@ from __future__ import annotations
 import subprocess
 import sys
 import tempfile
-from collections.abc import Callable, Sequence
+from collections.abc import Callable
 from pathlib import Path
 
 from provisa.core import engine_memory
@@ -30,8 +30,8 @@ from provisa.federation.duckdb_extensions import (
     wheel_requirements,
 )
 
-#: Fetch these requirements' wheels into a directory. Injected so tests never reach an index.
-Fetcher = Callable[[Sequence[str], Path], None]
+#: Fetch one requirement's wheel into a directory. Injected so tests never reach an index.
+Fetcher = Callable[[str, Path], None]
 
 #: The release's package index on GitHub Pages (scripts/release_wheel_index.py writes it): it serves
 #: provisa-duckdb-ext. Added to pip as an extra index (REQ-294, amended 2026-11-22).
@@ -41,18 +41,18 @@ RELEASE_INDEX = "https://kenstott.github.io/provisa/simple/"
 RUN_DIRECTORY = Path.home() / ".provisa" / "native" / "duckdb-ext"
 
 
-def pip_download(requirements: Sequence[str], dest: Path) -> None:
-    """``pip download`` the wheels for this platform from the index pip is configured for and the
-    release's Pages index."""
+def pip_download(requirement: str, dest: Path) -> None:
+    """``pip download`` one requirement's wheel for this platform from the index pip is configured
+    for and the release's Pages index."""
     command = [
         *(sys.executable, "-m", "pip", "download", "--no-deps", "--only-binary=:all:"),
         *("--extra-index-url", RELEASE_INDEX),
     ]
     try:
-        subprocess.run([*command, "--dest", str(dest), *requirements], check=True)
+        subprocess.run([*command, "--dest", str(dest), requirement], check=True)
     except subprocess.CalledProcessError as failed:
         raise BundledExtensionsMissing(
-            f"pip could not fetch the DuckDB extension wheels ({', '.join(requirements)}): exit "
+            f"pip could not fetch the DuckDB extension wheel {requirement}: exit "
             f"{failed.returncode}. Check the package index pip is configured for and {RELEASE_INDEX}, or pre-fill the "
             f"directory {engine_memory.EXT_DIR_ENV} names."
         ) from failed
@@ -64,8 +64,13 @@ def stage(target: Path, *, fetch: Fetcher = pip_download) -> bool:
         return False
     target.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(dir=target, prefix=".wheels.") as work:
-        fetch(wheel_requirements(), Path(work))
-        stage_wheels(sorted(Path(work).glob("*.whl")), target)
+        # One fetch per requirement, each into its own directory: the version parts are versions of
+        # one distribution (provisa-duckdb-ext), which a single pip resolve refuses to hold together.
+        for index, requirement in enumerate(wheel_requirements()):
+            dest = Path(work) / str(index)
+            dest.mkdir()
+            fetch(requirement, dest)
+        stage_wheels(sorted(Path(work).glob("*/*.whl")), target)
     return True
 
 

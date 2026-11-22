@@ -1861,6 +1861,14 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
             streams = list(self._streams)
         for stream in streams:
             stream.end_at_close()
-        for raw_alias in list(self._file_holders):
-            self._let_file_go(raw_alias)
-        self._con.close()
+        try:
+            # Every raw attach is DETACHed before the close: the mssql extension keeps its pools
+            # in a process-wide registry that only a DETACH empties, so a close alone leaves the
+            # pool's sessions signed in to the server for the life of the process (R511-S6A).
+            for raw_alias in sorted(self._raw_attached):
+                self._on_instance(f"DETACH {ident(raw_alias)}")
+                self._raw_attached.discard(raw_alias)
+            for raw_alias in list(self._file_holders):
+                self._let_file_go(raw_alias)
+        finally:
+            self._con.close()

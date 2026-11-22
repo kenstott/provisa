@@ -135,6 +135,12 @@
     "importHeld": "保留待定",
     "importKind": "类型",
     "importObject": "对象",
-    "importReason": "保留原因"
+    "importReason": "保留原因",
+    "holdReason_no_choice": "此类型没有固定选择",
+    "holdReason_held_by_choice": "固定选择为保留待定",
+    "holdReason_edited_in_provisa": "自上次交换以来已在 Provisa 中编辑",
+    "holdReason_never_exchanged": "从未交换过，无法确定哪一方发生了变化",
+    "holdReason_not_importable": "Provisa 尚不能从目录采用此类型",
+    "holdReason_left_to_export": "固定选择为 Provisa 的值，由导出发送"
   }
 }

@@ -698,6 +698,16 @@ def _scratch_attach(conn: Any, connector_details: dict) -> None:
         conn.execute(connector_details["attach"])
 
 
+def _scratch_detach(conn: Any, connector_details: dict) -> None:
+    """DETACH what :func:`_scratch_attach` attached, before the scratch connection closes: the
+    mssql extension keeps its pools in a process-wide registry that only a DETACH empties, so a
+    close alone leaves the pool's sessions signed in to the server (R511-S6A)."""
+    from provisa.federation.duckdb_quoting import ident
+
+    if "attach" in connector_details:
+        conn.execute(f"DETACH {ident(connector_details['raw_alias'])}")
+
+
 def _duckdb_extension_scratch_read(connector_details: dict, select_sql: str) -> list[dict]:
     """Read rows through a THROWAWAY in-memory DuckDB connection ATTACHed via a community
     extension's own ``details()`` DDL (REQ-1730) — for a source type DuckDB reaches only by
@@ -712,9 +722,12 @@ def _duckdb_extension_scratch_read(connector_details: dict, select_sql: str) -> 
     conn = engine_memory.connect()
     try:
         _scratch_attach(conn, connector_details)
-        cursor = conn.execute(select_sql)
-        columns = [d[0] for d in cursor.description]
-        return [dict(zip(columns, row)) for row in cursor.fetchall()]
+        try:
+            cursor = conn.execute(select_sql)
+            columns = [d[0] for d in cursor.description]
+            return [dict(zip(columns, row)) for row in cursor.fetchall()]
+        finally:
+            _scratch_detach(conn, connector_details)
     finally:
         conn.close()
 
@@ -729,13 +742,16 @@ def _duckdb_extension_scratch_batches(
     conn = engine_memory.connect()
     try:
         _scratch_attach(conn, connector_details)
-        cursor = conn.execute(select_sql)
-        names = [d[0] for d in cursor.description]
-        while True:
-            chunk = cursor.fetchmany(batch_rows)
-            if not chunk:
-                return
-            yield [dict(zip(names, row)) for row in chunk]
+        try:
+            cursor = conn.execute(select_sql)
+            names = [d[0] for d in cursor.description]
+            while True:
+                chunk = cursor.fetchmany(batch_rows)
+                if not chunk:
+                    return
+                yield [dict(zip(names, row)) for row in chunk]
+        finally:
+            _scratch_detach(conn, connector_details)
     finally:
         conn.close()
 

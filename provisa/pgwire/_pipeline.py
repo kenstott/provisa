@@ -2895,6 +2895,7 @@ async def route_governed(
     from provisa.api.app import state
     from provisa.audit.pipeline import begin_audit
     from provisa.transpiler.router import Route
+    from provisa.federation.typed_transpile import direct_column_types
     from provisa.transpiler.transpile import direct_physical, transpile
 
     if not stamp_is_valid(governed.stamp):
@@ -3531,6 +3532,8 @@ async def route_governed(
                     pgvector=_similarity.mentions(_physical)
                     and state.source_pools.vector_capability(_direct_sid) == "pgvector",
                     quote_identifiers=_quoted,
+                    # REQ-2236: Db2 and SAP HANA write by their operands' registered types.
+                    column_types=direct_column_types(state, _direct_sid, dialect),
                 ),
                 dialect,
             )
@@ -6116,6 +6119,7 @@ async def _route_compiled(
         rewrite_semantic_to_physical,
     )
     from provisa.transpiler.router import Route
+    from provisa.federation.typed_transpile import direct_column_types
     from provisa.transpiler.transpile import direct_physical, transpile
 
     _compiled_tree = compiled_tree
@@ -6550,6 +6554,8 @@ async def _route_compiled(
                         pgvector=_similarity.mentions(physical_sql)
                         and state.source_pools.vector_capability(_direct_sid) == "pgvector",
                         quote_identifiers=_quoted,
+                        # REQ-2236: Db2 and SAP HANA write by their operands' registered types.
+                        column_types=direct_column_types(state, _direct_sid, dialect),
                     ),
                     dialect,
                 ),

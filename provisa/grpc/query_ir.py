@@ -23,7 +23,7 @@ from dataclasses import dataclass
 from typing import Any, Mapping, Sequence
 
 from provisa.compiler.aggregate_gen import _is_comparable, _is_numeric
-from provisa.compiler.naming import active_gql_convention, apply_gql_name
+from provisa.compiler.naming import active_gql_convention, apply_gql_name, root_field_variant
 from provisa.grpc.proto_gen import _physical_to_proto
 
 
@@ -524,17 +524,13 @@ def _row_selection(ctx: Any, table_id: int, read_mask: ReadMask | None) -> str:
 def _aggregate_field_name(field_name: str) -> str:
     """The GraphQL root field name schema_gen's ``_build_aggregate_query_field`` exposes for this
     table (REQ-1359), so gRPC's synthesized query text targets exactly what the schema built."""
-    if active_gql_convention() == "apollo_graphql":
-        return f"{field_name}Aggregate"
-    return f"{field_name}_aggregate"
+    return root_field_variant(field_name, "aggregate", active_gql_convention())
 
 
 def _group_by_field_name(field_name: str) -> str:
     """The GraphQL root field name schema_gen's ``_build_group_by_query_field`` exposes for this
     table (REQ-1359)."""
-    if active_gql_convention() == "apollo_graphql":
-        return f"{field_name}GroupBy"
-    return f"{field_name}_group_by"
+    return root_field_variant(field_name, "group_by", active_gql_convention())
 
 
 AGG_FUNCS = ("count", "sum", "avg", "stddev", "variance", "min", "max")

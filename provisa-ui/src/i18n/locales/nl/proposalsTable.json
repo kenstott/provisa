@@ -1,6 +1,6 @@
 {
   "proposalsTable": {
-    "intro": "Een aangevinkte rij wordt geaccepteerd bij toepassen. Rijen met een score van minstens de drempel beginnen aangevinkt. Een rij zonder aangevinkt vakje blijft onbeslist.",
+    "intro": "Vink het eerste vakje van een rij aan om die bij toepassen te accepteren, of 'Nooit voorstellen' zodat die nooit meer wordt voorgesteld. Rijen met een score van minstens de drempel beginnen aangevinkt om te accepteren. Een rij zonder aangevinkt vakje blijft onbeslist.",
     "colScore": "Score",
     "colConfidence": "Betrouwbaarheid",
     "colJev": "Jev",
@@ -8,8 +8,8 @@
     "colMeasure": "Gemeten",
     "colReasoning": "Redenering",
     "colNote": "Opmerking",
-    "colNotAgain": "Niet opnieuw aanbevelen",
-    "notAgainAria": "{{name}} niet opnieuw aanbevelen",
+    "colNotAgain": "Nooit voorstellen",
+    "notAgainAria": "{{name}} nooit meer voorstellen",
     "kind": {
       "foreign_keys": "Constraint",
       "semantics": "Semantisch",

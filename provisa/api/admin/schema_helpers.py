@@ -137,15 +137,19 @@ async def _ensure_openapi_spec(source_id: str) -> bool:
             )
         )
         _r = result.fetchone()
-    row = dict(_r._mapping) if _r is not None else None
-    if not row or row["type"] != "openapi" or not row["path"]:
-        return False
+        row = dict(_r._mapping) if _r is not None else None
+        if not row or row["type"] != "openapi" or not row["path"]:
+            return False
+        # REQ-2265: the spec is read with the credential the source's calls carry.
+        from provisa.api_source.openapi_endpoint import stored_openapi_auth
+
+        auth = await stored_openapi_auth(conn, source_id)
     from provisa.core.secrets import resolve_secrets as _resolve_secrets
     from provisa.openapi.exclusions import load_source_spec
 
     resolved_path = _resolve_secrets(row["path"])
     # REQ-1957: without what the source's own exclusions name.
-    spec = load_source_spec(resolved_path, row["mapping"], source_id=source_id)
+    spec = load_source_spec(resolved_path, row["mapping"], source_id=source_id, auth=auth)
     servers = spec.get("servers", [])
     base_url = servers[0].get("url", "") if servers else ""
     if (

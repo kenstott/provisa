@@ -183,9 +183,33 @@ def _without_labels(value, labels):
     return value
 
 
+# REQ-194 (dcb6300ba8, 2026-11-21): a relationship field's head noun that neither the supplement,
+# the dictionary nor lemminflect knows stays as written, where the split's rule appended "s". These
+# are the relationship field names each model renamed so; the comparison expects the new name.
+_RENAMED_RELATIONSHIP_FIELDS = {
+    "bench:perf": {"placeds": "placed"},
+}
+
+
+def _with_field_names(value, renames):
+    """A _structure with each relationship field name in ``renames`` replaced by its new name."""
+    if isinstance(value, tuple) and len(value) == 2 and isinstance(value[1], dict):
+        fields = {k: _with_field_names(v, renames) for k, v in value[1].items()}
+        if value[0] == "RelationshipMapping" and fields.get("field_name") in renames:
+            fields["field_name"] = renames[fields["field_name"]]
+        return (value[0], fields)
+    if isinstance(value, dict):
+        return {k: _with_field_names(v, renames) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_with_field_names(v, renames) for v in value]
+    return value
+
+
 @pytest.mark.parametrize("origin", sorted(_MODEL_MAPS))
 def test_each_models_label_map_is_built_as_before_the_split(origin):
     config = _MODELS.get(origin) or f"demo/named/{origin.split(':', 1)[1]}/config.yaml"
     built = _structure(cypher_golden.model_label_map(_REPO / config))
     built = _without_labels(built, _KEPT_JUNCTION_LABELS.get(origin, frozenset()))
-    assert built == _structure(cypher_golden.load_blob(_MODEL_MAPS[origin]))
+    expected = _structure(cypher_golden.load_blob(_MODEL_MAPS[origin]))
+    expected = _with_field_names(expected, _RENAMED_RELATIONSHIP_FIELDS.get(origin, {}))
+    assert built == expected

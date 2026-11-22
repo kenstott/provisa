@@ -1,6 +1,6 @@
 {
   "proposalsTable": {
-    "intro": "A ticked row is accepted when you apply. Rows scoring at least the threshold start ticked. A row with neither box ticked stays undecided.",
+    "intro": "Tick a row's first box to accept it when you apply, or Never suggest so it is never suggested again. Rows scoring at least the threshold start ticked to accept. A row with neither box ticked stays undecided.",
     "colScore": "Score",
     "colConfidence": "Confidence",
     "colJev": "Jev",
@@ -8,8 +8,8 @@
     "colMeasure": "Measured",
     "colReasoning": "Reasoning",
     "colNote": "Note",
-    "colNotAgain": "Don't recommend again",
-    "notAgainAria": "Don't recommend {{name}} again",
+    "colNotAgain": "Never suggest",
+    "notAgainAria": "Never suggest {{name}} again",
     "kind": {
       "foreign_keys": "Constraint",
       "semantics": "Semantic",

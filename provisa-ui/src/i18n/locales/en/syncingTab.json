@@ -135,6 +135,12 @@
     "importHeld": "Held",
     "importKind": "Kind",
     "importObject": "Object",
-    "importReason": "Why it was held"
+    "importReason": "Why it was held",
+    "holdReason_no_choice": "No standing choice for this kind",
+    "holdReason_held_by_choice": "The standing choice is hold",
+    "holdReason_edited_in_provisa": "Edited in Provisa since the last exchange",
+    "holdReason_never_exchanged": "Never exchanged, so which side moved is unknown",
+    "holdReason_not_importable": "Provisa cannot take this kind from a catalog yet",
+    "holdReason_left_to_export": "The standing choice is Provisa's value, which Export sends"
   }
 }

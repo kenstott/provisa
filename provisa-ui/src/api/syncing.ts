@@ -28,11 +28,24 @@ export const exportsTo = (direction: SyncDirection) =>
 export const importsFrom = (direction: SyncDirection) =>
   direction === "import" || direction === "both";
 
-/** One difference an Import run applied, or held with why. */
+/** Why an Import run held a difference, or left it to Export: a code the page renders through
+ * i18n (`syncingTab.holdReason_<code>`), never English text from the server (REQ-2247). */
+export const HOLD_REASON_CODES = [
+  "no_choice",
+  "held_by_choice",
+  "edited_in_provisa",
+  "never_exchanged",
+  "not_importable",
+  "left_to_export",
+] as const;
+export type HoldReasonCode = (typeof HOLD_REASON_CODES)[number];
+
+/** One difference an Import run applied, or held with its reason code and that code's parameters. */
 export interface ImportRunItem {
   kind: string;
   object: string;
-  reason?: string;
+  reason_code?: HoldReasonCode;
+  params?: Record<string, string>;
 }
 
 /** One recorded Import run: started by its schedule or by Run import now (REQ-2247). */

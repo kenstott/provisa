@@ -250,19 +250,28 @@ def test_a_directory_already_filled_fetches_nothing(tmp_path):
     assert stage_duckdb_extensions.stage(target, fetch=never) is False
 
 
-def test_an_empty_directory_fetches_the_pinned_requirements_once(tmp_path):
+def test_an_empty_directory_fetches_each_pinned_requirement_on_its_own(tmp_path):
+    """One pip resolve cannot hold two versions of provisa-duckdb-ext (ResolutionImpossible, dry run
+    45060756154): each requirement, every version part included, is fetched alone into its own
+    directory."""
     ver, plat = _version_platform()
-    asked: list[list[str]] = []
+    built = _full(tmp_path / "built", ver, plat)
+    asked: list[tuple[str, Path]] = []
 
-    def fetch(requirements, dest):
-        asked.append(list(requirements))
-        _full(dest / "x", ver, plat)
-        for wheel in (dest / "x" / "wheels").iterdir():
-            wheel.rename(dest / wheel.name)
+    def fetch(requirement, dest):
+        assert isinstance(requirement, str)
+        assert not any(dest.iterdir()), "each requirement gets its own empty directory"
+        asked.append((requirement, dest))
+        if len(asked) == 1:
+            for wheel in built:
+                (dest / wheel.name).write_bytes(wheel.read_bytes())
 
     target = tmp_path / "staged"
     assert stage_duckdb_extensions.stage(target, fetch=fetch) is True
-    assert asked == [wheel_requirements()]
+    assert [requirement for requirement, _ in asked] == wheel_requirements()
+    assert len({dest for _, dest in asked}) == len(asked)
+    parts = [r for r, _ in asked if r.startswith(f"{duckdb_extensions.EXT_PACKAGE}==")]
+    assert len(parts) == EXT_PACKAGE_PARTS
     assert is_staged(target)
     assert [p.name for p in target.iterdir() if p.name.startswith(".wheels.")] == []
 
@@ -274,7 +283,7 @@ def test_pip_download_adds_the_release_pages_index_to_the_configured_one(monkeyp
         "run",
         lambda command, check: ran.append(command) or types.SimpleNamespace(returncode=0),
     )
-    stage_duckdb_extensions.pip_download(["x==1"], tmp_path)
+    stage_duckdb_extensions.pip_download("x==1", tmp_path)
     assert ran[0][1:5] == ["-m", "pip", "download", "--no-deps"]
     assert "--only-binary=:all:" in ran[0] and ran[0][-1] == "x==1"
     # REQ-294 (2026-11-22): provisa-duckdb-ext comes from the release's Pages index, added as an
@@ -291,7 +300,7 @@ def test_a_failed_pip_download_names_the_requirements_and_the_fix(monkeypatch, t
 
     monkeypatch.setattr(stage_duckdb_extensions.subprocess, "run", run)
     with pytest.raises(BundledExtensionsMissing, match="x==1") as refused:
-        stage_duckdb_extensions.pip_download(["x==1"], tmp_path)
+        stage_duckdb_extensions.pip_download("x==1", tmp_path)
     assert "PROVISA_DUCKDB_EXT_DIR" in str(refused.value)
 
 

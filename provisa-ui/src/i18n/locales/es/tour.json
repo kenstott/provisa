@@ -814,11 +814,11 @@
       },
       "opioidsAsPublic": {
         "title": "Ejecutar como el público",
-        "description": "El explorador SQL ahora se ejecuta con el rol public, el que usan el panel del concejo y los vecinos. Las consultas que siguen ven solo lo que ese rol permite."
+        "description": "El explorador SQL ahora se ejecuta con el rol resident, el que usan el panel del concejo y los vecinos. Las consultas que siguen ven solo lo que ese rol permite."
       },
       "opioidsPublic": {
         "title": "Como lo ve el público",
-        "description": "El panel del consejo es la vista overdose_burden_by_county, ejecutada aquí con el rol público. Muestra los residentes, las muertes, la tasa de mortalidad y el dinero federal por residente de cada condado, y no lee ninguna de las asignaciones del fondo ni los proveedores pagados."
+        "description": "El panel del consejo es la vista overdose_burden_by_county, ejecutada aquí con el rol resident. Muestra los residentes, las muertes, la tasa de mortalidad y el dinero federal por residente de cada condado, y no lee ninguna de las asignaciones del fondo ni los proveedores pagados."
       },
       "opioidsByRegion": {
         "title": "Por región, en GraphQL",
