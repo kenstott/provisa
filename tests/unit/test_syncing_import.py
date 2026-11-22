@@ -221,7 +221,7 @@ async def test_a_direction_that_is_off_applies_nothing_and_records_no_run(entry)
 
     assert await si.import_job(ORG_ID, "mz") is None
     with pytest.raises(SyncDirectionOff):
-        await si.run_import(ORG_ID, "mz")
+        await si.run_import(ORG_ID, "mz", trigger=catalog_sync_run.MANUAL)
     assert await _table_description() is None
     assert (await _latest())[(sv.DESCRIPTION, GROUP)].value == "Orders placed"
     assert await _runs() == []
@@ -278,3 +278,98 @@ def test_an_entry_that_does_not_import_has_no_import_schedule():
     with pytest.raises(ValueError):
         CatalogConnection(**_catalog(import_cron="not a cron"))
     assert CatalogConnection(**_catalog(import_cron="0 3 * * *")).import_cron == "0 3 * * *"
+
+
+# --- Run import now and the last run (the page) ------------------------------------------------
+
+
+async def _run_now(org_request=None) -> dict:
+    from provisa.api.admin.syncing_router import import_entry
+    from tests.unit.test_syncing_admin_surface import _request
+
+    return await import_entry(org_request or _request(), "mz")
+
+
+@pytest.mark.asyncio
+async def test_run_import_now_runs_once_and_records_a_run_started_by_hand(entry):  # noqa: F811
+    await _register_orders()
+    await _exchanged((sv.DESCRIPTION, GROUP, "Orders placed"))
+    await _choose(sv.DESCRIPTION, catalog_standing_choice.CATALOG)
+    entry.catalog.values = _catalog_values(description__wh_public_orders="Revised")
+
+    body = await _run_now()
+
+    assert body["applied"] == [{"kind": sv.DESCRIPTION, "object": GROUP}]
+    (run,) = await _runs()
+    assert (run.trigger, run.outcome) == (catalog_sync_run.MANUAL, catalog_sync_run.OK)
+    assert body["last_import"]["trigger"] == catalog_sync_run.MANUAL
+    assert body["last_import"]["applied"] == [{"kind": sv.DESCRIPTION, "object": GROUP}]
+    assert await _table_description() == "Revised"
+
+
+@pytest.mark.asyncio
+async def test_run_import_now_is_refused_without_the_org_settings_right(entry, monkeypatch):  # noqa: F811
+    import provisa.api.admin.capabilities as capmod
+
+    monkeypatch.setattr(capmod, "_resolved_capabilities", lambda identity, state: set())
+    with pytest.raises(ApiError) as exc:
+        await _run_now()
+    assert exc.value.status_code == 403
+    assert await _runs() == []
+
+
+@pytest.mark.asyncio
+async def test_run_import_now_on_an_entry_that_does_not_import_is_refused(entry):  # noqa: F811
+    entry.settings["catalogs"] = [
+        _catalog(provider="openmetadata", role="steward", direction="export")
+    ]
+    with pytest.raises(ApiError) as exc:
+        await _run_now()
+    assert (exc.value.status_code, exc.value.code) == (400, "syncing.direction_off")
+    assert await _runs() == []
+
+
+@pytest.mark.asyncio
+async def test_the_read_returns_each_entrys_last_import_run(entry):  # noqa: F811
+    from tests.unit.test_syncing_admin_surface import _get
+
+    (before,) = (await _get())["entries"]
+    assert before["last_import"] is None
+
+    await _register_orders()
+    await _exchanged((sv.DESCRIPTION, GROUP, "Orders placed"), (sv.OWNER, GROUP, ("alice",)))
+    await _choose(sv.DESCRIPTION, catalog_standing_choice.CATALOG)
+    entry.catalog.values = _catalog_values(
+        description__wh_public_orders="Revised", owner__wh_public_orders=("bob",)
+    )
+    # The scheduled run takes the description; Run now then finds only the owner to hold.
+    await si.import_job(ORG_ID, "mz")
+    await _run_now()
+
+    (after,) = (await _get())["entries"]
+    last = after["last_import"]
+    assert (last["trigger"], last["outcome"], last["error"]) == (
+        catalog_sync_run.MANUAL,
+        catalog_sync_run.OK,
+        None,
+    )
+    assert last["applied"] == []
+    assert {"kind": sv.OWNER, "object": GROUP, "reason": si.NO_CHOICE} in last["held"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("over", "code"),
+    [
+        ({"direction": "export"}, "syncing.import_cron_not_importing"),
+        ({"import_cron": "not a cron"}, "syncing.import_cron_invalid"),
+    ],
+)
+async def test_a_refused_import_schedule_names_the_field(surface, over, code):  # noqa: F811
+    from tests.unit.test_syncing_admin_surface import _put
+
+    with pytest.raises(ApiError) as exc:
+        await _put([_catalog(**{"import_cron": "0 3 * * *", **over})])
+    assert (exc.value.status_code, exc.value.code) == (400, code)
+    assert exc.value.params["field"] == "import_cron"
+    assert exc.value.params["entry"] == "mz"

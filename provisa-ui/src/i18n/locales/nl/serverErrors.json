@@ -951,7 +951,9 @@
       "object_gone": "{{object}} is niet meer geregistreerd in Provisa.",
       "unknown_direction": "{{direction}} is geen richting: gebruik Exporteren of Importeren.",
       "unknown_kind": "{{kind}} is geen soort verschil.",
-      "unknown_choice": "{{choice}} is geen vaste keuze."
+      "unknown_choice": "{{choice}} is geen vaste keuze.",
+      "import_cron_not_importing": "{{entry}} importeert niet en heeft dus geen importschema.",
+      "import_cron_invalid": "{{cron}} is geen cron-expressie, zoals 0 3 * * *."
     },
     "wikidata": {
       "no_credential": "De Wikidata-querydienst vraagt geen inloggegevens",

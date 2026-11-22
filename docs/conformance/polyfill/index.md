@@ -1019,7 +1019,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Trino](trino.md)
 
-173 of the grid's 625 features are native on Trino and left out.
+174 of the grid's 625 features are native on Trino and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>an array of dimensions</strong><br>cardinality, unnest and array_to_string of an array of more than one dimension: of every element, in storage order.</td><td><pre><code>function provisa.transpiler.polyfill.array_dimensions.of_dimensions: cardinality, unnest or array_to_string of an array of more than one dimension: of every</code></pre></td><td></td><td></td><td></td></tr>
@@ -1597,7 +1597,6 @@ function provisa.transpiler.polyfill.instants.to_char_written: Each keyword of a
 <tr><td><strong>pg_my_temp_schema</strong><br>The oid of the session&#x27;s temporary schema.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_pg_my_temp_schema: pg_my_temp_schema: Refused by name: the dialect has no form of it.</code></pre></td><td><ul><li>Refused by name: the dialect has no form of it.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>pg_postmaster_start_time</strong><br>The time the server started.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_pg_postmaster_start_time: pg_postmaster_start_time: Refused by name: the dialect has no form of it.</code></pre></td><td><ul><li>Refused by name: the dialect has no form of it.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>pg_isolation_test_session_is_blocked</strong><br>Whether a session waits on another&#x27;s lock.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_pg_isolation_test_session_is_blocked: pg_isolation_test_session_is_blocked: Refused by name: the dialect has no form of it.</code></pre></td><td><ul><li>Refused by name: the dialect has no form of it.</li></ul></td><td></td><td></td></tr>
-<tr><td><strong>postgresql_fdw_validator</strong><br>Whether the options of a foreign-data wrapper are valid.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_postgresql_fdw_validator: postgresql_fdw_validator: Refused by name: the dialect has no form of it.</code></pre></td><td><ul><li>Refused by name: the dialect has no form of it.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>array_out</strong><br>An array&#x27;s text, as a cast of it to text writes it: {1,NULL,3}.</td><td><pre><code>function provisa.transpiler.polyfill.casts.array_text: An array cast to text, as array_out writes it: an array of integers or of text said so of a</code></pre></td><td><ul><li>Only an array said to be of smallint, integer, bigint, text or character varying, of one dimension and holding no call: any other is refused by name, as Trino casts no array to text.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>age</strong><br>The age of a transaction id: INT_MAX for one that is no normal id (0, 1, 2).</td><td><pre><code>function provisa.transpiler.polyfill.server.age_of_xid: age(xid): the special xids answered, a normal one refused where it runs; age of anything</code></pre></td><td><ul><li>Of a normal xid, refused by name where it runs: its age is the current transaction id less it, and the engine holds no transaction id. <code>0A000</code> age does not read this value</li><li>Of a timestamp, or of an xid within a call: refused by name, as no form of an interval is held here.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>mxid_age</strong><br>The age of a multixact id: INT_MAX for 0, and 1 less it, as Provisa makes no multixact.</td><td><pre><code>mxid_age($x)
@@ -2150,7 +2149,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Presto](presto.md)
 
-173 of the grid's 625 features are native on Presto and left out.
+174 of the grid's 625 features are native on Presto and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>an array of dimensions</strong><br>cardinality, unnest and array_to_string of an array of more than one dimension: of every element, in storage order.</td><td><pre><code>function provisa.transpiler.polyfill.array_dimensions.of_dimensions: cardinality, unnest or array_to_string of an array of more than one dimension: of every</code></pre></td><td></td><td></td><td></td></tr>
@@ -2728,7 +2727,6 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>pg_my_temp_schema</strong><br>The oid of the session&#x27;s temporary schema.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_pg_my_temp_schema: pg_my_temp_schema: Refused by name: the dialect has no form of it.</code></pre></td><td><ul><li>Refused by name: the dialect has no form of it.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>pg_postmaster_start_time</strong><br>The time the server started.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_pg_postmaster_start_time: pg_postmaster_start_time: Refused by name: the dialect has no form of it.</code></pre></td><td><ul><li>Refused by name: the dialect has no form of it.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>pg_isolation_test_session_is_blocked</strong><br>Whether a session waits on another&#x27;s lock.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_pg_isolation_test_session_is_blocked: pg_isolation_test_session_is_blocked: Refused by name: the dialect has no form of it.</code></pre></td><td><ul><li>Refused by name: the dialect has no form of it.</li></ul></td><td></td><td></td></tr>
-<tr><td><strong>postgresql_fdw_validator</strong><br>Whether the options of a foreign-data wrapper are valid.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_postgresql_fdw_validator: postgresql_fdw_validator: Refused by name: the dialect has no form of it.</code></pre></td><td><ul><li>Refused by name: the dialect has no form of it.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>array_out</strong><br>An array&#x27;s text, as a cast of it to text writes it: {1,NULL,3}.</td><td><pre><code>function provisa.transpiler.polyfill.casts.array_text: An array cast to text, as array_out writes it: an array of integers or of text said so of a</code></pre></td><td><ul><li>Only an array said to be of smallint, integer, bigint, text or character varying, of one dimension and holding no call: any other is refused by name, as Trino casts no array to text.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>age</strong><br>The age of a transaction id: INT_MAX for one that is no normal id (0, 1, 2).</td><td><pre><code>function provisa.transpiler.polyfill.server.age_of_xid: age(xid): the special xids answered, a normal one refused where it runs; age of anything</code></pre></td><td><ul><li>Of a normal xid, refused by name where it runs: its age is the current transaction id less it, and the engine holds no transaction id. <code>0A000</code> age does not read this value</li><li>Of a timestamp, or of an xid within a call: refused by name, as no form of an interval is held here.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>mxid_age</strong><br>The age of a multixact id: INT_MAX for 0, and 1 less it, as Provisa makes no multixact.</td><td><pre><code>mxid_age($x)
@@ -3281,7 +3279,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Athena](athena.md)
 
-173 of the grid's 625 features are native on Athena and left out.
+174 of the grid's 625 features are native on Athena and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>an array of dimensions</strong><br>cardinality, unnest and array_to_string of an array of more than one dimension: of every element, in storage order.</td><td><pre><code>function provisa.transpiler.polyfill.array_dimensions.of_dimensions: cardinality, unnest or array_to_string of an array of more than one dimension: of every</code></pre></td><td></td><td></td><td></td></tr>
@@ -3859,7 +3857,6 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>pg_my_temp_schema</strong><br>The oid of the session&#x27;s temporary schema.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_pg_my_temp_schema: pg_my_temp_schema: Refused by name: the dialect has no form of it.</code></pre></td><td><ul><li>Refused by name: the dialect has no form of it.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>pg_postmaster_start_time</strong><br>The time the server started.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_pg_postmaster_start_time: pg_postmaster_start_time: Refused by name: the dialect has no form of it.</code></pre></td><td><ul><li>Refused by name: the dialect has no form of it.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>pg_isolation_test_session_is_blocked</strong><br>Whether a session waits on another&#x27;s lock.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_pg_isolation_test_session_is_blocked: pg_isolation_test_session_is_blocked: Refused by name: the dialect has no form of it.</code></pre></td><td><ul><li>Refused by name: the dialect has no form of it.</li></ul></td><td></td><td></td></tr>
-<tr><td><strong>postgresql_fdw_validator</strong><br>Whether the options of a foreign-data wrapper are valid.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_postgresql_fdw_validator: postgresql_fdw_validator: Refused by name: the dialect has no form of it.</code></pre></td><td><ul><li>Refused by name: the dialect has no form of it.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>array_out</strong><br>An array&#x27;s text, as a cast of it to text writes it: {1,NULL,3}.</td><td><pre><code>function provisa.transpiler.polyfill.casts.array_text: An array cast to text, as array_out writes it: an array of integers or of text said so of a</code></pre></td><td><ul><li>Only an array said to be of smallint, integer, bigint, text or character varying, of one dimension and holding no call: any other is refused by name, as Trino casts no array to text.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>age</strong><br>The age of a transaction id: INT_MAX for one that is no normal id (0, 1, 2).</td><td><pre><code>function provisa.transpiler.polyfill.server.age_of_xid: age(xid): the special xids answered, a normal one refused where it runs; age of anything</code></pre></td><td><ul><li>Of a normal xid, refused by name where it runs: its age is the current transaction id less it, and the engine holds no transaction id. <code>0A000</code> age does not read this value</li><li>Of a timestamp, or of an xid within a call: refused by name, as no form of an interval is held here.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>mxid_age</strong><br>The age of a multixact id: INT_MAX for 0, and 1 less it, as Provisa makes no multixact.</td><td><pre><code>mxid_age($x)
@@ -4412,7 +4409,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [ClickHouse](clickhouse.md)
 
-83 of the grid's 625 features are native on ClickHouse and left out.
+82 of the grid's 625 features are native on ClickHouse and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>an array of dimensions</strong><br>cardinality, unnest and array_to_string of an array of more than one dimension: of every element, in storage order.</td><td><pre><code>function provisa.transpiler.polyfill.array_dimensions.of_dimensions: cardinality, unnest or array_to_string of an array of more than one dimension: of every</code></pre></td><td></td><td></td><td></td></tr>
@@ -4962,6 +4959,7 @@ function provisa.transpiler.polyfill.instants.to_char_written: Each keyword of a
 <tr><td><strong>pg_conf_load_time</strong><br>The time the server&#x27;s configuration was last read.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_pg_conf_load_time: pg_conf_load_time: Refused by name: the dialect has no form of it.</code></pre></td><td><ul><li>Refused by name: the dialect has no form of it.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>pg_my_temp_schema</strong><br>The oid of the session&#x27;s temporary schema.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_pg_my_temp_schema: pg_my_temp_schema: Refused by name: the dialect has no form of it.</code></pre></td><td><ul><li>Refused by name: the dialect has no form of it.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>pg_postmaster_start_time</strong><br>The time the server started.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_pg_postmaster_start_time: pg_postmaster_start_time: Refused by name: the dialect has no form of it.</code></pre></td><td><ul><li>Refused by name: the dialect has no form of it.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>postgresql_fdw_validator</strong><br>Whether the options of a foreign-data wrapper are valid: 22004 for an option array holding a NULL element, else 42601 invalid option naming the first option the catalog does not list.</td><td></td><td><ul><li>An option the catalog does not list is refused with 0A000 by name, not PostgreSQL&#x27;s 42601 naming it: ClickHouse 24.3&#x27;s throwIf takes only a constant message. <code>0A000</code> postgresql_fdw_validator of an option the catalog does not list has no form here</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>age</strong><br>The age of a transaction id: INT_MAX for one that is no normal id (0, 1, 2).</td><td><pre><code>function provisa.transpiler.polyfill.server.age_of_xid: age(xid): the special xids answered, a normal one refused where it runs; age of anything</code></pre></td><td><ul><li>Of a normal xid, refused by name where it runs: its age is the current transaction id less it, and the engine holds no transaction id. <code>0A000</code> age does not read this value</li><li>Of a timestamp, or of an xid within a call: refused by name, as no form of an interval is held here.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>mxid_age</strong><br>The age of a multixact id: INT_MAX for 0, and 1 less it, as Provisa makes no multixact.</td><td><pre><code>mxid_age($x)
 =&gt;
@@ -17831,7 +17829,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Db2](db2.md)
 
-239 of the grid's 625 features are native on Db2 and left out.
+238 of the grid's 625 features are native on Db2 and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -18320,6 +18318,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>to_char(timestamp, text)</strong><br>A timestamp&#x27;s or an instant&#x27;s text in a template.</td><td><pre><code>to_char($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>postgresql_fdw_validator</strong><br>Whether the options of a foreign-data wrapper are valid: 22004 for an option array holding a NULL element, else 42601 invalid option naming the first option the catalog does not list.</td><td></td><td><ul><li>Refused with 0A000 by name: the engine has no form of the array filter the validator&#x27;s form is written with. <code>0A000</code> array_length() has no form on db2</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>mxid_age</strong><br>The age of a multixact id: INT_MAX for 0, and 1 less it, as Provisa makes no multixact.</td><td><pre><code>mxid_age($x)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -18892,7 +18891,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [SAP HANA](saphana.md)
 
-226 of the grid's 625 features are native on SAP HANA and left out.
+225 of the grid's 625 features are native on SAP HANA and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -19381,6 +19380,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>to_char(timestamp, text)</strong><br>A timestamp&#x27;s or an instant&#x27;s text in a template.</td><td><pre><code>to_char($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>postgresql_fdw_validator</strong><br>Whether the options of a foreign-data wrapper are valid: 22004 for an option array holding a NULL element, else 42601 invalid option naming the first option the catalog does not list.</td><td></td><td><ul><li>Refused with 0A000 by name: the engine has no form of the array filter the validator&#x27;s form is written with. <code>0A000</code> array_length() has no form on saphana</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>mxid_age</strong><br>The age of a multixact id: INT_MAX for 0, and 1 less it, as Provisa makes no multixact.</td><td><pre><code>mxid_age($x)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>

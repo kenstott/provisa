@@ -4368,15 +4368,22 @@ def _one(indir: Path, name: str) -> dict[str, Any] | None:
 
 
 def legs_section(
-    engines: list[str], legs: dict[str, Any], failures: dict[str, dict[str, Any]]
+    engines: list[str],
+    legs: dict[str, Any],
+    failures: dict[str, dict[str, Any]],
+    refused: dict[str, str],
 ) -> dict[str, Any]:
     """What the report says of the run's legs (function_legs.yaml): each engine's lane and image,
-    why a leg left no result, the legs of a lane this run did not dispatch, and the engine kinds no
-    leg runs, with the reason."""
+    why a leg left no result, the legs build_engine refuses by name (function_legs.py plan, which
+    does not run them), the legs of a lane this run did not dispatch, and the engine kinds no leg
+    runs, with the reason."""
     by_engine = {leg["engine"]: leg for leg in legs["legs"]}
-    unknown = sorted(set(engines) - set(by_engine))
+    unknown = sorted((set(engines) | set(refused)) - set(by_engine))
     if unknown:
         raise SystemExit(f"engines with no leg in function_legs.yaml: {unknown}")
+    both = sorted(set(engines) & set(refused))
+    if both:
+        raise SystemExit(f"engines both run and refused by name: {both}")
     return {
         "legs": {
             engine: {"lane": by_engine[engine]["lane"], "image": by_engine[engine]["image"]}
@@ -4385,10 +4392,11 @@ def legs_section(
         "leg_failures": {
             engine: failures[engine]["reason"] for engine in engines if engine in failures
         },
+        "refused_by_name": dict(sorted(refused.items())),
         "not_dispatched": {
             engine: f"the {leg['lane']} lane, not dispatched in this run"
             for engine, leg in sorted(by_engine.items())
-            if engine not in engines
+            if engine not in engines and engine not in refused
         },
         "not_run": dict(sorted(legs["not_run"].items())),
     }
@@ -4408,20 +4416,29 @@ def legs_markdown(doc: dict[str, Any]) -> str:
             result = "complete"
         lines.append(f"| {engine} | {leg['lane']} | {leg['image']} | {result} |")
     lines += ["", "#### Engines not run", ""]
-    lines += [
-        f"- {engine}: {why}" for engine, why in {**doc["not_dispatched"], **doc["not_run"]}.items()
-    ] or ["None."]
+    not_run = {**doc["refused_by_name"], **doc["not_dispatched"], **doc["not_run"]}
+    lines += [f"- {engine}: {why}" for engine, why in not_run.items()] or ["None."]
     lines.append("")
     return "\n".join(lines)
 
 
 def merge(
-    engines: list[str], indir: Path, out: Path, out_md: Path, legs: Path | None = None
+    engines: list[str],
+    indir: Path,
+    out: Path,
+    out_md: Path,
+    legs: Path | None = None,
+    *,
+    refused: dict[str, str] | None = None,
 ) -> int:
     """``function-support-<engine>.json`` of each engine, anywhere under ``indir``, as one file.
     Fails when a leg left no result or stopped short: the list is then not a guarantee. With
-    ``legs`` (function_legs.yaml), the report also lists each leg's image, why a failed leg left no
-    result (``leg-failure-<engine>.json``), and the engines not run."""
+    ``legs`` (function_legs.yaml) and ``refused`` (the plan's engines build_engine refuses by name),
+    the report also lists each leg's image, why a failed leg left no result
+    (``leg-failure-<engine>.json``), and the engines not run: refused by name, not dispatched, or
+    no leg. A refused engine is never judged: it is not one of ``engines``."""
+    if legs is None and refused is not None:
+        raise ValueError("the refused engines are given with the legs file")
     reports = {engine: _one(indir, f"function-support-{engine}.json") for engine in engines}
     doc = merged(reports)
     if legs is not None:
@@ -4431,7 +4448,12 @@ def merge(
             if (found := _one(indir, f"leg-failure-{engine}.json")) is not None
             and reports[engine] is None
         }
-        doc = {**doc, **legs_section(engines, yaml.safe_load(legs.read_text()), failures)}
+        if refused is None:
+            raise ValueError("the legs file is given with the refused engines")
+        doc = {
+            **doc,
+            **legs_section(engines, yaml.safe_load(legs.read_text()), failures, refused),
+        }
     out.write_text(json.dumps(doc, indent=1) + "\n")
     text = merged_markdown(doc)
     if legs is not None:
@@ -4468,6 +4490,11 @@ def main(argv: list[str]) -> int:
     g.add_argument(
         "--legs", type=Path, help="function_legs.yaml: each leg's image, the rest's reason"
     )
+    g.add_argument(
+        "--refused",
+        type=json.loads,
+        help="with --legs: the plan's refused output, engine -> why build_engine refuses it",
+    )
     args = parser.parse_args(argv[1:])
     if args.command == "measure":
         return measure(args.engine, args.pg, args.provisa, args.out_json, args.out_md, args.limit)
@@ -4475,7 +4502,9 @@ def main(argv: list[str]) -> int:
         seed_columns(args.pg, args.out)
         seed_fixture(args.pg)
         return 0
-    return merge(args.engines.split(","), args.indir, args.out, args.out_md, args.legs)
+    return merge(
+        args.engines.split(","), args.indir, args.out, args.out_md, args.legs, refused=args.refused
+    )
 
 
 if __name__ == "__main__":

@@ -378,7 +378,7 @@ def test_a_test_instance_never_gives_a_server_a_port_local_dev_uses():
 def test_every_connector_is_fetched_from_the_pin():
     # engine-v0.117.0 is the first release whose catalog counts no rows; every bundle is at the pin.
     assert rd.CONNECTOR_RELEASE == {}
-    assert rd.RELEASE_TAG == "engine-v0.123.2"
+    assert rd.RELEASE_TAG == "engine-v0.128.9"
     pinned = rd.RELEASE_TAG.removeprefix("engine-v")
     for source_type, connector in rd.BUNDLE_CONNECTOR.items():
         spec = rd.bundle_spec_for(source_type)
@@ -428,8 +428,13 @@ def test_download_unnests_the_tarball(tmp_path, monkeypatch):  # REQ-1690
         tar.addfile(launcher, io.BytesIO(payload))
     body = buf.getvalue()
 
+    import hashlib
+
     class _Resp:
         status_code = 200
+
+        def __init__(self, payload: bytes) -> None:
+            self._payload = payload
 
         def __enter__(self):
             return self
@@ -438,16 +443,18 @@ def test_download_unnests_the_tarball(tmp_path, monkeypatch):  # REQ-1690
             return False
 
         def iter_bytes(self):
-            yield body[:100]
-            yield body[100:]
+            yield self._payload[:100]
+            yield self._payload[100:]
 
     import httpx
 
     def _fake_stream(method, url, **kwargs):
         assert method == "GET"
-        assert url == spec.download_url
         assert kwargs.get("follow_redirects") is True
-        return _Resp()
+        if url == spec.checksum_url:
+            return _Resp(hashlib.sha256(body).hexdigest().encode())
+        assert url == spec.download_url
+        return _Resp(body)
 
     monkeypatch.setattr(httpx, "stream", _fake_stream)
     dest = tmp_path / "engine-v0.82.1" / "pgwire-file"

@@ -951,7 +951,9 @@
       "object_gone": "{{object}} अब Provisa में पंजीकृत नहीं है।",
       "unknown_direction": "{{direction}} कोई दिशा नहीं है: निर्यात या आयात का उपयोग करें।",
       "unknown_kind": "{{kind}} अंतर का कोई प्रकार नहीं है।",
-      "unknown_choice": "{{choice}} कोई स्थायी विकल्प नहीं है।"
+      "unknown_choice": "{{choice}} कोई स्थायी विकल्प नहीं है।",
+      "import_cron_not_importing": "{{entry}} आयात नहीं करता, इसलिए उसका कोई आयात शेड्यूल नहीं है।",
+      "import_cron_invalid": "{{cron}} Cron अभिव्यक्ति नहीं है, जैसे 0 3 * * *।"
     },
     "wikidata": {
       "no_credential": "विकिडेटा क्वेरी सेवा को किसी क्रेडेंशियल की आवश्यकता नहीं है",

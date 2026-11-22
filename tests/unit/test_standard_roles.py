@@ -48,6 +48,7 @@ class TestTheSet:
             "org_admin",
             "sandbox",
             "platform_admin",
+            "public",
         }
 
     def test_every_parent_is_a_standard_role_and_there_is_no_cycle(self):
@@ -56,7 +57,8 @@ class TestTheSet:
         role_chains([{"id": rid, "parents": list(s.parents)} for rid, s in STANDARD_ROLES.items()])
 
     def test_every_data_role_inherits_viewer(self):
-        for rid in set(STANDARD_ROLES) - {"viewer", "platform_admin"}:
+        # public (REQ-1058/REQ-1059) starts with zero visibility: it reads only what is published to it.
+        for rid in set(STANDARD_ROLES) - {"viewer", "platform_admin", "public"}:
             assert _rights("viewer") <= _rights(rid), rid
 
     def test_every_standard_role_has_a_description(self):

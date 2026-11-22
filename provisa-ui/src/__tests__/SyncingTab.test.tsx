@@ -28,6 +28,7 @@ vi.mock("../api/syncing", async (importOriginal) => ({
   setSyncing: vi.fn(),
   checkEntry: vi.fn(),
   publishEntry: vi.fn(),
+  runImport: vi.fn(),
 }));
 
 vi.mock("../hooks/useAdminQueries", async (importOriginal) => ({
@@ -40,12 +41,21 @@ vi.mock("../hooks/useAdminQueries", async (importOriginal) => ({
   }),
 }));
 
-import { checkEntry, fetchSyncing, publishEntry, setSyncing } from "../api/syncing";
+import {
+  checkEntry,
+  fetchSyncing,
+  publishEntry,
+  runImport,
+  setSyncing,
+  SyncingRefused,
+  type ImportRun,
+} from "../api/syncing";
 
 const mockFetch = vi.mocked(fetchSyncing);
 const mockSet = vi.mocked(setSyncing);
 const mockCheck = vi.mocked(checkEntry);
 const mockPublish = vi.mocked(publishEntry);
+const mockRunImport = vi.mocked(runImport);
 
 const MARQUEZ: SyncEntry = {
   id: "marquez",
@@ -66,6 +76,7 @@ const MARQUEZ: SyncEntry = {
   role: "steward",
   datazone_project_id: "",
   delta_share: false,
+  import_cron: "",
   api_key_set: true,
   token_set: false,
   entra_client_secret_set: false,
@@ -73,6 +84,7 @@ const MARQUEZ: SyncEntry = {
   aws_access_key_id_set: false,
   aws_secret_access_key_set: false,
   last_run: null,
+  last_import: null,
 };
 
 const TERMS: SyncEntry = {
@@ -120,6 +132,7 @@ describe("SyncingTab", () => {
     mockSet.mockReset();
     mockCheck.mockReset();
     mockPublish.mockReset();
+    mockRunImport.mockReset();
     mockSet.mockResolvedValue(SAVED);
   });
 
@@ -617,5 +630,173 @@ describe("SyncingTab", () => {
     fireEvent.click(screen.getByTestId("syncing-save"));
 
     expect(await screen.findByText("catalog 'marquez' has no endpoint")).toBeInTheDocument();
+  });
+
+  // --- the import schedule, Run import now and the last import (REQ-2247) ----------------------
+
+  it("offers the import schedule only for a data catalog that imports, and saves it", async () => {
+    mockFetch.mockResolvedValue(state([MARQUEZ, TERMS]));
+    render(<SyncingTab />);
+
+    await open("terms");
+    fireEvent.click(await screen.findByTestId("syncing-edit"));
+    expect(screen.queryByTestId("syncing-import-cron")).toBeNull();
+    fireEvent.click(screen.getByTestId("syncing-cancel"));
+
+    await open("marquez");
+    fireEvent.click(await screen.findByTestId("syncing-edit"));
+    expect(screen.queryByTestId("syncing-import-cron")).toBeNull();
+    await pick("syncing-direction", "Export and Import");
+    fireEvent.change(screen.getByTestId("syncing-import-cron"), {
+      target: { value: "0 3 * * *" },
+    });
+    fireEvent.click(screen.getByTestId("syncing-save"));
+
+    await waitFor(() => expect(mockSet).toHaveBeenCalledTimes(1));
+    const sent = mockSet.mock.calls[0][0].entries.find((e) => e.id === "marquez");
+    expect([sent?.direction, sent?.import_cron]).toEqual(["both", "0 3 * * *"]);
+  });
+
+  it("drops the import schedule when the entry stops importing", async () => {
+    mockFetch.mockResolvedValue(
+      state([{ ...MARQUEZ, direction: "both", import_cron: "0 3 * * *" }]),
+    );
+    render(<SyncingTab />);
+
+    await open("marquez");
+    fireEvent.click(await screen.findByTestId("syncing-edit"));
+    expect(screen.getByTestId("syncing-import-cron")).toHaveValue("0 3 * * *");
+    await pick("syncing-direction", "Export");
+    expect(screen.queryByTestId("syncing-import-cron")).toBeNull();
+    fireEvent.click(screen.getByTestId("syncing-save"));
+
+    await waitFor(() => expect(mockSet).toHaveBeenCalledTimes(1));
+    expect(mockSet.mock.calls[0][0].entries[0].import_cron).toBe("");
+  });
+
+  it("shows the server's refusal of the import schedule on its field", async () => {
+    mockFetch.mockResolvedValue(state([{ ...MARQUEZ, direction: "both" }]));
+    mockSet.mockRejectedValue(
+      new SyncingRefused("nightly is not a cron expression", "marquez", "import_cron"),
+    );
+    render(<SyncingTab />);
+
+    await open("marquez");
+    fireEvent.click(await screen.findByTestId("syncing-edit"));
+    fireEvent.change(screen.getByTestId("syncing-import-cron"), { target: { value: "nightly" } });
+    fireEvent.click(screen.getByTestId("syncing-save"));
+
+    expect(await screen.findByText("nightly is not a cron expression")).toBeInTheDocument();
+    expect(screen.getByTestId("syncing-import-cron")).toHaveAttribute("aria-invalid", "true");
+    // Still editing: the refused value is there to correct.
+    expect(screen.getByTestId("syncing-import-cron")).toHaveValue("nightly");
+  });
+
+  it("runs an import now through the endpoint and reads the entry again", async () => {
+    mockFetch.mockResolvedValue(state([{ ...MARQUEZ, direction: "import" }]));
+    mockRunImport.mockResolvedValue({
+      id: "marquez",
+      applied: [],
+      held: [],
+      left: [],
+      last_import: {
+        trigger: "manual",
+        outcome: "ok",
+        applied: [],
+        held: [],
+        error: null,
+        started_at: "2026-11-22T08:00:00+00:00",
+        finished_at: "2026-11-22T08:00:01+00:00",
+      },
+    });
+    render(<SyncingTab />);
+
+    await open("marquez");
+    expect(await screen.findByTestId("syncing-never-imported")).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("syncing-run-import"));
+
+    await waitFor(() => expect(mockRunImport).toHaveBeenCalledWith("marquez"));
+    await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(2));
+  });
+
+  it("says why Run import now failed", async () => {
+    mockFetch.mockResolvedValue(state([{ ...MARQUEZ, direction: "import" }]));
+    mockRunImport.mockRejectedValue(new Error("reading 'marquez' failed: 403"));
+    render(<SyncingTab />);
+
+    await open("marquez");
+    fireEvent.click(await screen.findByTestId("syncing-run-import"));
+
+    expect(await screen.findByTestId("syncing-problem")).toHaveTextContent(
+      "reading 'marquez' failed: 403",
+    );
+  });
+
+  it("offers no Run import now for an entry whose Import is off", async () => {
+    mockFetch.mockResolvedValue(state([MARQUEZ]));
+    render(<SyncingTab />);
+
+    await open("marquez");
+    await screen.findByTestId("syncing-edit");
+    expect(screen.queryByTestId("syncing-run-import")).toBeNull();
+    expect(screen.queryByTestId("syncing-never-imported")).toBeNull();
+  });
+
+  it("shows the last import: its outcome, what it applied, and what it held with why", async () => {
+    const run: ImportRun = {
+      trigger: "schedule",
+      outcome: "ok",
+      applied: [{ kind: "description", object: "wh.public.orders" }],
+      held: [
+        { kind: "owner", object: "wh.public.orders", reason: "no standing choice" },
+      ],
+      error: null,
+      started_at: "2026-11-22T08:00:00+00:00",
+      finished_at: "2026-11-22T08:00:01+00:00",
+    };
+    mockFetch.mockResolvedValue(state([{ ...MARQUEZ, direction: "both", last_import: run }]));
+    render(<SyncingTab />);
+
+    await open("marquez");
+    const last = await screen.findByTestId("syncing-last-import");
+    expect(within(last).getByTestId("syncing-last-import-badge")).toHaveTextContent(
+      "Applied 1, held 1",
+    );
+    expect(within(last).getByTestId("syncing-last-import-when")).toHaveTextContent(
+      /^Scheduled run, /,
+    );
+    const applied = within(last).getByTestId("syncing-last-import-applied");
+    expect(within(applied).getByText("Table descriptions")).toBeInTheDocument();
+    const held = within(last).getByTestId("syncing-last-import-held");
+    expect(within(held).getByText("Owners")).toBeInTheDocument();
+    expect(within(held).getByText("no standing choice")).toBeInTheDocument();
+  });
+
+  it("shows a failed import with its error", async () => {
+    mockFetch.mockResolvedValue(
+      state([
+        {
+          ...MARQUEZ,
+          direction: "import",
+          last_import: {
+            trigger: "manual",
+            outcome: "failed",
+            applied: [],
+            held: [],
+            error: "reading 'marquez' failed: 403",
+            started_at: "2026-11-22T08:00:00+00:00",
+            finished_at: "2026-11-22T08:00:01+00:00",
+          },
+        },
+      ]),
+    );
+    render(<SyncingTab />);
+
+    await open("marquez");
+    expect(await screen.findByTestId("syncing-last-import-badge")).toHaveTextContent("Failed");
+    expect(screen.getByTestId("syncing-last-import-when")).toHaveTextContent(/^Run by hand, /);
+    expect(screen.getByTestId("syncing-last-import-error")).toHaveTextContent(
+      "reading 'marquez' failed: 403",
+    );
   });
 });
