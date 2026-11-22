@@ -241,3 +241,44 @@ async def test_the_endpoint_answers_429_over_the_rate(plane, routed, monkeypatch
     with pytest.raises(ApiError) as limited:
         await routed.request_to_join("nobody", _request(ASKER, "idp"))  # type: ignore[arg-type]
     assert limited.value.status_code == 429
+
+
+async def test_the_gate_refuses_a_caller_without_a_firebase_sign_in(plane, routed):
+    """The handler's gate (the one test_admin_routes_gated recognises) refuses on its own."""
+    from provisa.api.errors import ApiError
+
+    await _firebase_profile(plane, "basic-user", provider="basic")
+    await _firebase_profile(plane, ASKER)
+    for request, status in (
+        (_request("anonymous", None), 401),
+        (_request("basic-user", "idp"), 403),
+        (_request(ASKER, "pat"), 403),
+    ):
+        with pytest.raises(ApiError) as refused:
+            await routed._require_join_requester(request)  # type: ignore[arg-type]
+        assert refused.value.status_code == status
+    assert await routed._require_join_requester(_request(ASKER, "idp")) == ASKER  # type: ignore[arg-type]
+
+
+def test_a_request_names_no_requester_but_the_caller():
+    """Nothing the client sends can name whom a request is for: the handler takes only the org id
+    from the path and the request, and the requester comes from the caller's identity."""
+    import inspect
+
+    from provisa.api.admin.orgs_router import request_to_join
+
+    assert list(inspect.signature(request_to_join).parameters) == ["org_id", "request"]
+
+
+async def test_the_request_is_filed_for_the_signed_in_caller_only(plane, routed):
+    await _org(plane, "open", open_to_requests=True)
+    await _firebase_profile(plane, ASKER)
+    await _firebase_profile(plane, "fb-someone-else")
+    await routed.request_to_join("open", _request(ASKER, "idp"))  # type: ignore[arg-type]
+    async with plane.acquire() as conn:
+        rows = (
+            await conn.execute_core(
+                select(org_join_requests.c.user_id).where(org_join_requests.c.org_id == "open")
+            )
+        ).fetchall()
+    assert [r[0] for r in rows] == [ASKER]
