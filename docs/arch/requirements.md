@@ -11206,7 +11206,7 @@ Cloudflare wildcard routing: HTTP traffic is proxied via Cloudflare (*.provisa.i
 
 **Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
 
-Public-publish anonymous access: unauthenticated requests carry no tenant_id claim; the org is resolved from Host subdomain only, and the request is bound to a built-in read-only 'public' role scoped to that org. TenantMiddleware gains a Host-based resolution path for the no-claim case instead of returning 401.
+Public-publish anonymous access: unauthenticated requests carry no tenant_id claim; the org is resolved from Host subdomain only, and the request is bound to a built-in read-only 'public' role scoped to that org. TenantMiddleware gains a Host-based resolution path for the no-claim case instead of returning 401. (Amended 2026-11-22 by the maintainer. The built-in public role is read-only. A write grant naming public is refused by name on every path, and a Hasura import whose role named public carries insert, update or delete permissions is refused by name, not trimmed. The read rights public may hold are capped at glossary_read, data_product_read, catalog_read and dq_read until [REQ-1059](#REQ-1059) decides what publishing needs.)
 
 **Use case:** Enables orgs to publish datasets anonymously without requiring end-user authentication. Public role allows intentional, opt-in data sharing without building separate anonymous infrastructure. Distinct from the Firebase-anonymous sandbox uid ([REQ-1034](#REQ-1034)).
 
