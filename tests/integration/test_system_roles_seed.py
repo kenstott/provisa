@@ -110,22 +110,27 @@ async def test_the_tenant_roles_hold_the_authority_the_requirement_names(tenant_
     assert {"user_management", "source_registration", "masking_config", "access_config"} <= set(
         seeded["org_admin"]
     )
-    # developer builds against the data.
-    assert {"query_development", "create_view", "create_relationship", "full_results", "write"} <= (
-        set(seeded["developer"])
-    )
+    # developer authors the model; REQ-2155 (amended 2026-11-20): one job per role, so writing data
+    # and full results are data_writer's, not developer's.
+    assert {"query_development", "create_view", "create_relationship"} <= set(seeded["developer"])
+    assert not ({"write", "full_results"} & set(seeded["developer"]))
+    assert {"write", "full_results"} <= set(seeded["data_writer"])
     # analyst reads: no authoring, no governance, no member management.
     # glossary_read is read access to the org's term definitions — reading, which is what the role
     # is for; it authors nothing (glossary_rw and org_glossary_rw stay out). data_product_read
     # (REQ-1638) mirrors glossary_read for data products — read-only; data_product_rw stays out.
     # command_execution (REQ-870): a command assigned to the role, reaching its domain, may be
     # called by it; developer, data_steward, org_admin and the sandbox hold it through analyst.
+    # environment_switch is every role's floor and dq_read is reading data (REQ-2155, amended
+    # 2026-11-20).
     assert set(seeded["analyst"]) == {
         "usage",
         "query_development",
         "command_execution",
+        "dq_read",
         "glossary_read",
         "data_product_read",
+        "environment_switch",
     }
     assert "data_product_rw" not in set(seeded["analyst"])
     assert not ({"create_view", "user_management", "write"} & set(seeded["analyst"]))

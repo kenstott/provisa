@@ -74,21 +74,6 @@ class EngineBackend:
     #: A statement reading a faked column is refused, by the column's name, on one that does not.
     computes_fakes = False
 
-    # `native_store` (engine.py's generic `_RDB_KINDS` loop) is the SQLAlchemy URL scheme name —
-    # the identity used for landing/storage-backend comparisons (materialization.py,
-    # query_residency.py) — which is not always SQLGlot's own dialect name for that same product
-    # (SUPPORTED_DIALECTS in transpiler/transpile.py enumerates SQLGlot's actual names). Verified
-    # live (REQ-1730 engine-swap harness, 2026-09-20): registering the generic "mssql" engine and
-    # querying it raised `sqlglot.errors.ParseError: Unknown dialect 'mssql'. Did you mean mysql?`
-    # — SQLGlot names Microsoft SQL Server's dialect "tsql", not "mssql". Translate only at this
-    # transpile-target seam, never `native_store` itself, so every other native_store comparison
-    # keeps naming the actual storage backend. Only mssql is mapped here (the one mismatch actually
-    # reproduced); the other generic `_RDB_KINDS` entries whose SQLAlchemy scheme differs from any
-    # SQLGlot dialect name (mariadb/greenplum/cockroachdb/yugabytedb/opengauss/tidb/vertica/
-    # saphana/monetdb/db2/firebird) are tracked, not guessed at, in a filed
-    # issue — SQLGlot compatibility per product needs verifying, not assuming.
-    _SQLGLOT_DIALECT_ALIASES: dict[str, str] = {"mssql": "tsql"}
-
     def __init__(self, engine: FederationEngine) -> None:
         self.engine = engine
         # (source_id, table_name) -> why its replica could not be reconciled to the registered
@@ -107,10 +92,19 @@ class EngineBackend:
 
     @property
     def dialect(self) -> str:
-        """The physical SQL dialect the engine speaks (transpile target). Named by native_store
-        for native engines (duckdb → ``duckdb``); falls back to the engine name."""
+        """The physical SQL dialect the engine speaks (transpile target), from
+        ``source_registry.engine_dialect`` over its native store (the engine name when it has
+        none). An engine whose product has no sqlglot dialect is refused by name."""
+        from provisa.core.source_registry import engine_dialect
+
         store = self.engine.native_store or self.engine.name
-        return self._SQLGLOT_DIALECT_ALIASES.get(store, store)
+        dialect = engine_dialect(store)
+        if dialect is None:
+            raise ValueError(
+                f"federation engine {self.engine.name!r} (native store {store!r}) has no "
+                "sqlglot dialect; its SQL cannot be transpiled"
+            )
+        return dialect
 
     def transpile_physical(self, pg_sql: str) -> str:
         """Transpile governed PostgreSQL-dialect SQL to the engine's physical dialect. Native
@@ -797,6 +791,8 @@ class EngineBackend:
             file_glob_tables=getattr(source, "file_glob_tables", []) or [],
             # REQ-1909: read directly by DuckDBPostgresConnector.details.
             max_live_concurrency=source.max_live_concurrency,
+            # REQ-1997: read by the sandbox check every attach passes (engine.resolve).
+            download_from=source.download_from,
             schema_name=schema_name,
             table_name=table_name,
         )
@@ -932,6 +928,7 @@ class EngineBackend:
                 federation_hints=getattr(source, "federation_hints", {}),
                 file_glob_tables=getattr(source, "file_glob_tables", []) or [],  # REQ-788
                 max_live_concurrency=source.max_live_concurrency,  # REQ-1909
+                download_from=source.download_from,  # REQ-1997: the sandbox check reads it
                 schema_name=schema_name,
                 table_name=table_name,
             )

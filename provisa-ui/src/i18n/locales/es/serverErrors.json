@@ -570,6 +570,8 @@
       "put_back_needs_region": "Restablecer {{object}} nombra una región: indique una, o ninguna para ninguna región.",
       "mask_constant_not_text": "Una máscara constante en una columna que no es de texto se lee como NULL; solo se puede guardar NULL: {{column}} ({{type}})",
       "table_domain_required": "La tabla '{{table}}' no indica ningún dominio: toda tabla se registra en un dominio",
+      "table_state_from_function": "La tabla '{{table}}' se deriva de la función '{{name}}' y tiene su estado de publicación: no se retira ni se restablece por sí sola",
+      "table_region_from_function": "La tabla '{{table}}' se deriva de la función '{{name}}' y tiene su región: no se traslada por sí sola a otra región",
       "table_name_reserved": "El nombre de tabla '{{table}}' está reservado: los comandos de un dominio se sirven bajo 'commands'. Registre la tabla con otro nombre o alias."
     },
     "secrets": {
@@ -835,7 +837,7 @@
       "term_ids_required": "Indique los términos que se van a aprobar.",
       "impact_action": "No hay vista previa para esa acción.",
       "impact_table_required": "Una vinculación nombra una tabla o una de sus columnas.",
-      "name_taken": "Ya existe un término llamado '{{name}}' en el dominio {{domain}}. Elija otro nombre o coloque el término en otro dominio.",
+      "name_taken": "Ya existe un término llamado '{{name}}' en el dominio {{domain}}. Elija otro nombre o ponga el término en otro dominio.",
       "name_taken_unscoped": "Ya existe un término llamado '{{name}}' sin dominio, por lo que alcanza todos los dominios. Elija otro nombre."
     },
     "table": {
@@ -935,6 +937,21 @@
       "name_taken": "El nombre «{{name}}» lo ocupa la relación «{{held_by}}». Dé otro nombre a esta.",
       "join_through_none": "Las relaciones '{{first}}' y '{{second}}' no comparten una tabla intermedia, o sus otros extremos ya están unidos a través de ella."
     },
+    "syncing": {
+      "not_found": "No hay ninguna entrada {{entry}}.",
+      "no_connection": "{{entry}} no tiene ningún catálogo que leer.",
+      "no_role": "{{entry}} no tiene un rol con el que publicar, así que aún no hay nada que comparar. Elija un rol en su configuración.",
+      "read_not_supported": "Leer valores de vuelta desde {{provider}} aún no es compatible.",
+      "no_such_difference": "Ya no hay ninguna diferencia {{difference}}. Vuelva a leer la lista.",
+      "decided_twice": "{{difference}} se decidió dos veces.",
+      "direction_off": "{{entry}} no sincroniza en esa dirección.",
+      "import_kind_unsupported": "Llevar a Provisa el {{kind}} de un catálogo aún no es compatible.",
+      "publish_failed": "La publicación en {{entry}} no tuvo éxito, así que no se aplicó nada.",
+      "object_gone": "{{object}} ya no está registrado en Provisa.",
+      "unknown_direction": "{{direction}} no es una dirección: use Exportar o Importar.",
+      "unknown_kind": "{{kind}} no es un tipo de diferencia.",
+      "unknown_choice": "{{choice}} no es una elección fija."
+    },
     "wikidata": {
       "no_credential": "El servicio de consultas de Wikidata no requiere credencial",
       "bad_id": "{{value}} no es un {{kind}} de Wikidata",
@@ -943,6 +960,19 @@
       "filter_required": "Esta clase tiene {{count}} instancias, más de {{limit}}: elija un filtro",
       "filter_too_wide": "El filtro deja más de {{limit}} instancias",
       "unreachable": "No se pudo acceder a Wikidata: {{reason}}"
+    },
+    "access_review": {
+      "not_found": "No existe esa revisión de accesos",
+      "row_not_found": "No existe esa fila de la revisión",
+      "already_decided": "Esta fila ya está decidida",
+      "reason_required": "Indique el motivo",
+      "decision_invalid": "Una decisión es confirmed o revoked",
+      "cron_invalid": "No es una expresión cron de cinco campos: {{cron}}",
+      "not_owner": "Solo el propietario del dominio {{domain}} decide esta fila",
+      "own_access": "No puede revisar su propio acceso. Pídaselo a otro propietario.",
+      "read_only": "Este rol se asigna a través del proveedor de identidad; Provisa no tiene ninguna asignación que confirmar o revocar",
+      "webhook_invalid": "La URL del webhook no es utilizable: {{url}}",
+      "webhook_secret_required": "Un webhook necesita el secreto con el que se firman las revisiones programadas"
     }
   }
 }

@@ -154,20 +154,20 @@ describe("tour itinerary", () => {
   it("drops a routeless step along with the route it continues on", () => {
     // The Views chapter: /views is the route owner, and the steps after it that omit `route` are
     // continuations of that page — several via a clickBefore the owner's step opened. Withholding
-    // table_registration must take the whole chapter, not just the step that names the route.
-    const kept = tourItinerary((c) => c !== "table_registration");
+    // create_view must take the whole chapter, not just the step that names the route.
+    const kept = tourItinerary((c) => c !== "create_view");
     for (const i of kept) {
       const route = stepRoute(i);
       if (route === undefined) continue;
       const owner = TOUR_STEPS.slice(0, i + 1).findLast((s) => s.route);
-      expect(owner?.capability).not.toBe("table_registration");
+      expect(owner?.capability).not.toBe("create_view");
     }
     // And it really did remove some — a filter that dropped nothing would pass the loop above.
     expect(kept.length).toBeLessThan(TOUR_STEPS.length);
   });
 
   it("keeps the steps of the chapters that survive", () => {
-    const kept = tourItinerary((c) => c !== "table_registration");
+    const kept = tourItinerary((c) => c !== "create_view");
     const keys = kept.map((i) => TOUR_STEPS[i].key);
     expect(keys).toContain("step0"); // /sources — source_registration, untouched
     expect(keys).not.toContain("step20"); // /views

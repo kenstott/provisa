@@ -80,6 +80,8 @@ const state: RunProposalsState = {
   accept: new Set(),
   notAgain: new Set(),
   toggleAccept: () => {},
+  edits: new Map(),
+  setEdit: () => {},
   toggleNotAgain: () => {},
   toggleAcceptAll: () => {},
   apply: async () => {},

@@ -570,6 +570,8 @@
       "put_back_needs_region": "Repor {{object}} indica uma região: indique uma, ou nenhuma para nenhuma região.",
       "mask_constant_not_text": "Uma máscara constante em uma coluna que não é de texto é lida como NULL; só é possível salvar NULL: {{column}} ({{type}})",
       "table_domain_required": "A tabela '{{table}}' não indica nenhum domínio: toda tabela é registrada em um domínio",
+      "table_state_from_function": "A tabela '{{table}}' é derivada da função '{{name}}' e tem o seu estado de publicação: não é retirada nem reposta por si só",
+      "table_region_from_function": "A tabela '{{table}}' é derivada da função '{{name}}' e tem a sua região: não é movida sozinha para outra região",
       "table_name_reserved": "O nome de tabela '{{table}}' é reservado: os comandos de um domínio são servidos sob 'commands'. Registre a tabela com outro nome ou alias."
     },
     "secrets": {
@@ -836,7 +838,7 @@
       "impact_action": "Não há pré-visualização para essa ação.",
       "impact_table_required": "Uma vinculação nomeia uma tabela ou uma das suas colunas.",
       "name_taken": "Já existe um termo chamado '{{name}}' no domínio {{domain}}. Escolha outro nome ou coloque o termo em outro domínio.",
-      "name_taken_unscoped": "Já existe um termo chamado '{{name}}' sem domínio, que portanto alcança todos os domínios. Escolha outro nome."
+      "name_taken_unscoped": "Já existe um termo chamado '{{name}}' sem domínio, portanto ele alcança todos os domínios. Escolha outro nome."
     },
     "table": {
       "requires_parameters": "A tabela {{table}} não pode ser contada nem perfilada: exige {{parameters}}. Dê um valor a cada um para ler as suas linhas."
@@ -935,6 +937,21 @@
       "name_taken": "O nome '{{name}}' já é usado pelo relacionamento '{{held_by}}'. Dê outro nome a este.",
       "join_through_none": "Os relacionamentos '{{first}}' e '{{second}}' não compartilham uma tabela intermediária, ou suas outras extremidades já estão unidas através dela."
     },
+    "syncing": {
+      "not_found": "Não existe nenhuma entrada {{entry}}.",
+      "no_connection": "{{entry}} não tem nenhum catálogo para ler.",
+      "no_role": "{{entry}} não tem uma função com a qual publicar, portanto ainda não há nada para comparar. Escolha uma função nas configurações.",
+      "read_not_supported": "Ler valores de volta de {{provider}} ainda não é compatível.",
+      "no_such_difference": "Não existe mais a diferença {{difference}}. Leia a lista novamente.",
+      "decided_twice": "{{difference}} foi decidido duas vezes.",
+      "direction_off": "{{entry}} não sincroniza nessa direção.",
+      "import_kind_unsupported": "Trazer para o Provisa o {{kind}} de um catálogo ainda não é compatível.",
+      "publish_failed": "A publicação em {{entry}} não teve êxito, portanto nada foi aplicado.",
+      "object_gone": "{{object}} não está mais registrado no Provisa.",
+      "unknown_direction": "{{direction}} não é uma direção: use Exportar ou Importar.",
+      "unknown_kind": "{{kind}} não é um tipo de diferença.",
+      "unknown_choice": "{{choice}} não é uma escolha fixa."
+    },
     "wikidata": {
       "no_credential": "O serviço de consultas do Wikidata não exige credencial",
       "bad_id": "{{value}} não é um {{kind}} do Wikidata",
@@ -943,6 +960,19 @@
       "filter_required": "Esta classe tem {{count}} instâncias, mais de {{limit}}: escolha um filtro",
       "filter_too_wide": "O filtro deixa mais de {{limit}} instâncias",
       "unreachable": "Não foi possível acessar o Wikidata: {{reason}}"
+    },
+    "access_review": {
+      "not_found": "Essa revisão de acessos não existe",
+      "row_not_found": "Essa linha da revisão não existe",
+      "already_decided": "Esta linha já foi decidida",
+      "reason_required": "Informe o motivo",
+      "decision_invalid": "Uma decisão é confirmed ou revoked",
+      "cron_invalid": "Não é uma expressão cron de cinco campos: {{cron}}",
+      "not_owner": "Somente o proprietário do domínio {{domain}} decide esta linha",
+      "own_access": "Você não pode revisar o seu próprio acesso. Peça a outro proprietário.",
+      "read_only": "Esta função é atribuída pelo provedor de identidade; o Provisa não mantém nenhuma atribuição para confirmar ou revogar",
+      "webhook_invalid": "A URL do webhook não é utilizável: {{url}}",
+      "webhook_secret_required": "Um webhook precisa do segredo com o qual as revisões agendadas são assinadas"
     }
   }
 }

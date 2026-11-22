@@ -56,6 +56,11 @@ on:
         type: boolean
         required: false
         default: false
+      include_microsoft_365:
+        description: "Also run the Microsoft 365 lane (the maintainer's live tenant)"
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: read
@@ -109,6 +114,10 @@ jobs:
       AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
       AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
       AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      M365_TENANT_ID: ${{ secrets.M365_TENANT_ID }}
+      M365_CLIENT_ID: ${{ secrets.M365_CLIENT_ID }}
+      M365_CLIENT_SECRET: ${{ secrets.M365_CLIENT_SECRET }}
+      M365_TEST_MAILBOXES: ${{ secrets.M365_TEST_MAILBOXES }}
       BIGQUERY_LOCATION: ${{ secrets.BIGQUERY_LOCATION }}
       BIGQUERY_TEST_GCS_BUCKET: ${{ secrets.BIGQUERY_TEST_GCS_BUCKET }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -175,6 +184,7 @@ jobs:
       include_salesforce: ${{ inputs.include_salesforce || false }}
       include_athena: ${{ inputs.include_athena || false }}
       include_servicenow: ${{ inputs.include_servicenow || false }}
+      include_microsoft_365: ${{ inputs.include_microsoft_365 || false }}
     concurrency:
       group: ${{ (inputs.tests || '') == '' && 'integration-suite' || format('integration-suite-targeted-{0}', github.ref) }}
       queue: max

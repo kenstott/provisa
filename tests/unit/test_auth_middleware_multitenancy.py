@@ -1217,3 +1217,87 @@ def test_a_sign_in_holding_a_default_assignment_acts_as_it():
     resp = TestClient(app).get("/test", headers=_auth("u1"))
     assert resp.status_code == 200
     assert resp.json()["role"] == "developer"
+
+
+# --- REQ-1058 anonymous public access: the org comes from the Host subdomain ------
+
+
+@pytest.fixture
+def _org_base(monkeypatch):
+    """The deployment addresses its orgs under provisa.org (REQ-1276)."""
+    monkeypatch.setenv("VITE_ORG_BASE_DOMAIN", "provisa.org")
+
+
+def _public_app(orgs: list[str]):
+    """A multi-tenant app whose admin plane holds ``orgs``; no caller is a member of any."""
+    admin = _Pool(
+        rows_by_table={
+            "orgs": [{"id": o} for o in orgs],
+            "user_org_memberships": [{"org_id": "acme"}],
+        }
+    )
+    db = _Pool(rows_by_table={"user_role_assignments": [{"role_id": "analyst", "domain_id": "*"}]})
+    return _make_app(assignments_source="provisa", db_pool=db, admin_pool=admin, multitenancy=True)
+
+
+def test_tokenless_request_on_an_org_host_is_bound_to_that_org_req1058(_org_base):
+    from provisa.security.rights import PUBLIC_ROLE
+
+    resp = TestClient(_public_app(["acme"]), base_url="http://acme.provisa.org").get("/test")
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["active_org_id"] == "acme"
+    assert body["role"] == PUBLIC_ROLE
+    assert body["roles"] == [PUBLIC_ROLE]
+
+
+def test_the_public_visitor_is_not_the_unsecured_dev_principal_req1058(_org_base):
+    # "anonymous" is the unsecured dev principal every capability gate exempts; a visitor on a
+    # secured deployment must never be mistaken for it.
+    from provisa.audit.context import ANONYMOUS_USER
+
+    resp = TestClient(_public_app(["acme"]), base_url="http://acme.provisa.org").get("/test")
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["user_id"] != ANONYMOUS_USER
+
+
+def test_tokenless_request_on_a_host_naming_no_org_stays_401_req1058(_org_base):
+    resp = TestClient(_public_app(["acme"]), base_url="http://provisa.org").get("/test")
+    assert resp.status_code == 401
+
+
+def test_tokenless_request_on_a_host_naming_an_unknown_org_stays_401_req1058(_org_base):
+    # The fake admin plane ignores the WHERE clause, so "no such org" is an empty registry.
+    resp = TestClient(_public_app([]), base_url="http://ghost.provisa.org").get("/test")
+    assert resp.status_code == 401
+
+
+def test_tokenless_request_naming_its_org_by_header_stays_401_req1058(_org_base):
+    # REQ-1058: the anonymous org comes from the Host subdomain only.
+    resp = TestClient(_public_app(["acme"]), base_url="http://cloud.provisa.org").get(
+        "/test", headers={"x-org-provisa": "acme"}
+    )
+    assert resp.status_code == 401
+
+
+def test_invalid_credential_on_an_org_host_is_not_laundered_into_a_visitor_req1058(_org_base):
+    resp = TestClient(_public_app(["acme"]), base_url="http://acme.provisa.org").get(
+        "/test", headers={"Authorization": "Bearer not-a-token"}
+    )
+    assert resp.status_code == 401
+
+
+def test_tokenless_request_on_the_platform_plane_stays_401_req1058(_org_base):
+    resp = TestClient(_public_app(["acme"]), base_url="http://acme.provisa.org").get("/auth/me")
+    assert resp.status_code == 401
+
+
+def test_a_token_on_an_org_host_is_resolved_as_before_req1058(_org_base):
+    resp = TestClient(_public_app(["acme"]), base_url="http://acme.provisa.org").get(
+        "/test", headers=_auth("u1")
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["user_id"] == "u1"
+    assert body["role"] == "analyst"
+    assert body["active_org_id"] == "acme"

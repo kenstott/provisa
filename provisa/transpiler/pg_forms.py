@@ -1218,16 +1218,9 @@ _DATE_PARTS = ("year", "quarter", "month", "day", "hour", "minute")
 _INSTANT = "CAST(value AS TIMESTAMP)"
 
 
-#: A year as PostgreSQL counts it on an engine whose EXTRACT(YEAR) counts the years before Christ
-#: as the ISO calendar does: its year 0 is 1 BC, PostgreSQL's -1 (Trino's of 4713 BC is -4712).
-_ISO_YEAR = f"EXTRACT(YEAR FROM {_INSTANT})"
-PG_YEAR_OF_ISO = f"CASE WHEN {_ISO_YEAR} <= 0 THEN {_ISO_YEAR} - 1 ELSE {_ISO_YEAR} END"
-
-
-def _date_part_of(extras: str, otherwise: str, year: str = _ISO_YEAR) -> str:
+def _date_part_of(extras: str, otherwise: str) -> str:
     named = " ".join(
-        f"WHEN LOWER(part) = '{name}' THEN "
-        + (year if name == "year" else f"EXTRACT({name.upper()} FROM {_INSTANT})")
+        f"WHEN LOWER(part) = '{name}' THEN " + f"EXTRACT({name.upper()} FROM {_INSTANT})"
         for name in _DATE_PARTS
     )
     return f"CASE WHEN part IS NULL OR value IS NULL THEN NULL {named} {extras} {otherwise} END"
@@ -1241,13 +1234,6 @@ _DATE_PART_EXTRAS = (
 
 def date_part_form(called: str) -> str:
     return _date_part_of(_DATE_PART_EXTRAS, f"ELSE {not_served(called, 'BIGINT')}")
-
-
-def trino_date_part_form(called: str) -> str:
-    """date_part and extract on Trino, whose year of a value before Christ is the ISO calendar's."""
-    return _date_part_of(
-        _DATE_PART_EXTRAS, f"ELSE {not_served(called, 'BIGINT')}", year=PG_YEAR_OF_ISO
-    )
 
 
 #: A part that is no constant is refused by name (engine_refusals), as a refusal here would be

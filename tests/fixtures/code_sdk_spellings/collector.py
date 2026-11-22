@@ -22,9 +22,9 @@ Two places hold cases:
 
 ``case.json`` holds, per language, per spelling, ``problems`` (the manifest's refusal, every
 problem in order; absent means accepted) and ``checker`` (``accepts`` or ``rejects``: whether the
-language's type checker, pyright or the pinned tsc, passes the SDK spelling; absent means
-``accepts``). A TypeScript SDK spelling the checker rejects does not build, so it is never read and
-states no problems. ``unspelled`` names a language, or a ``<language>/<spelling>``, the case leaves
+language's type checker, pyright, the pinned tsc or go build, passes the SDK spelling; absent
+means ``accepts``). A TypeScript or Go SDK spelling the checker rejects does not build, so it is
+never read and states no problems. ``unspelled`` names a language, or a ``<language>/<spelling>``, the case leaves
 out, with the reason.
 """
 
@@ -41,15 +41,15 @@ from provisa.codesource.manifest import LOADER, PROVISA_TAGS, REQUIRES, WRITE_TA
 HERE = Path(__file__).resolve().parent
 DOCS = HERE.parents[2] / "docs" / "code-sources.md"
 
-#: The languages an SDK is built for. Go and Rust join when their SDKs do.
-BUILT = ("python", "typescript")
+#: The languages an SDK is built for. Rust joins when its SDK does.
+BUILT = ("python", "typescript", "go")
 SPELLINGS = ("doc", "sdk")
 #: Each language's file of a spelling.
-FILES = {"python": "source.py", "typescript": "index.ts"}
+FILES = {"python": "source.py", "typescript": "index.ts", "go": "source.go"}
 #: The fence language of each built language in the docs.
-FENCES = {"python": "python", "typescript": "typescript"}
+FENCES = {"python": "python", "typescript": "typescript", "go": "go"}
 #: The label of a docs example's first tab, which holds the tag form.
-DOC_TABS = {"python": "Docstring", "typescript": "JSDoc"}
+DOC_TABS = {"python": "Docstring", "typescript": "JSDoc", "go": "Doc comment"}
 SDK_TAB = "SDK"
 #: Every tag a code source's function may carry.
 TAGS = frozenset(PROVISA_TAGS | {LOADER, REQUIRES, *WRITE_TAGS})
@@ -57,9 +57,12 @@ TAGS = frozenset(PROVISA_TAGS | {LOADER, REQUIRES, *WRITE_TAGS})
 SDK_IMPORTS = {
     "python": re.compile(r"^\s*(from provisa_sdk import|import provisa_sdk)\b", re.M),
     "typescript": re.compile(r"""from ["']@provisa/sdk["']"""),
+    "go": re.compile(r'^\s*(?:import\s+)?(?:[\w.]+\s+)?"provisa\.dev/sdk/go"', re.M),
 }
+#: The languages whose type checker must pass a spelling before it can be read at all.
+COMPILED = frozenset({"typescript", "go"})
 
-_TAG_LINE = re.compile(r'^\s*(?:/\*\*|\*|""")?\s*@(?P<tag>[a-z][a-z-]*)\b', re.M)
+_TAG_LINE = re.compile(r'^\s*(?:/\*\*|\*|"""|//)?\s*@(?P<tag>[a-z][a-z-]*)\b', re.M)
 _FENCE = re.compile(r"^(?P<indent> *)```(?P<lang>\w+)\s*$")
 _TAB = re.compile(r'^=== "(?P<label>[^"]+)"\s*$')
 _ANCHOR = re.compile(r"^#+ .*\{: #(?P<anchor>[\w-]+) \}\s*$")
@@ -97,7 +100,8 @@ class Case:
 
 
 def tags_of(code: str) -> set[str]:
-    """The Provisa tags a spelling's code carries, on docstring, JSDoc or decorator lines."""
+    """The Provisa tags a spelling's code carries, on docstring, JSDoc, doc-comment or decorator
+    lines."""
     return {m.group("tag") for m in _TAG_LINE.finditer(code)} & TAGS
 
 
@@ -109,9 +113,9 @@ def _spelling(code: str, stated: dict, language: str, spelling: str) -> Spelling
     checker = stated.get("checker", "accepts")
     if checker not in ("accepts", "rejects") or (spelling == "doc" and "checker" in stated):
         raise ValueError(f"{language}/{spelling}: checker is accepts or rejects, on sdk only")
-    unread = language == "typescript" and checker == "rejects"
+    unread = language in COMPILED and checker == "rejects"
     if unread and "problems" in stated:
-        raise ValueError(f"{language}/{spelling}: a spelling tsc rejects is never read")
+        raise ValueError(f"{language}/{spelling}: a spelling its checker rejects is never read")
     problems = None if unread else tuple(stated.get("problems", ()))
     return Spelling(code, problems, checker == "accepts")
 

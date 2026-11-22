@@ -829,6 +829,44 @@ catalog_bindings = Table(
     UniqueConstraint("target", "semantic_uri"),
 )
 
+# REQ-2247, REQ-2122: the value last exchanged with a Syncing entry, per entry, direction, kind of
+# difference and object (a table, column or term by its Provisa name). Written when a publish
+# succeeds and when a steward accepts a difference; the import review shows it beside both values.
+catalog_exchanges = Table(
+    "catalog_exchanges",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("entry", Text, nullable=False),
+    Column("direction", Text, nullable=False),
+    Column("kind", Text, nullable=False),
+    Column("object", Text, nullable=False),
+    Column("value", JSON, nullable=False),
+    Column("decided_by", Text, nullable=False),
+    Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("tenant_id", Uuid),
+    UniqueConstraint("entry", "direction", "kind", "object"),
+    CheckConstraint("direction IN ('export', 'import')", name="catalog_exchanges_direction_check"),
+)
+
+# REQ-2247: a Syncing entry's standing choice per direction and kind of difference: take Provisa's
+# value, take the other system's, or hold. A kind with no row has no standing choice.
+catalog_standing_choices = Table(
+    "catalog_standing_choices",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("entry", Text, nullable=False),
+    Column("direction", Text, nullable=False),
+    Column("kind", Text, nullable=False),
+    Column("choice", Text, nullable=False),
+    Column("decided_by", Text, nullable=False),
+    Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("tenant_id", Uuid),
+    UniqueConstraint("entry", "direction", "kind"),
+    CheckConstraint(
+        "direction IN ('export', 'import')", name="catalog_standing_choices_direction_check"
+    ),
+)
+
 # REQ-1387: business glossary. Terms are the normalized vocabulary derived from physical
 # field names; rooted terms hold refs, abstract terms hold none. A term losing its last
 # physical ref is removed unless an abstract term is connected to the rooted graph through
@@ -3008,6 +3046,14 @@ access_reviews = Table(
     Column("id", BigInteger(), primary_key=True, autoincrement=True),
     Column("started_by", Text, nullable=False),  # the person who asked for it, or "schedule"
     Column("started_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    # The scheduled review's post to the org's webhook: NULL when none was due (on demand, or no
+    # webhook set), else 'delivered' or 'failed' with the failure's text and the time of the try.
+    Column("webhook_status", Text),
+    Column("webhook_error", Text),
+    Column("webhook_at", DateTime(timezone=True)),
+    CheckConstraint(
+        "webhook_status IN ('delivered', 'failed')", name="access_reviews_webhook_status_check"
+    ),
 )
 
 access_review_rows = Table(
@@ -3023,6 +3069,9 @@ access_review_rows = Table(
     Column("user_id", Text, nullable=False),
     Column("role_id", Text, nullable=False),
     Column("domain_id", Text, nullable=False),
+    # Where the member holds the role: 'provisa' (a grant Provisa holds, which the owner can
+    # revoke) or 'identity_provider' (claims or a role mapping: listed read-only).
+    Column("source", Text, nullable=False, server_default="provisa"),
     # The grant's entitlement lists when the review was taken: [{kind, capability, identifiers}].
     Column("entitlements", JSON, nullable=False, default=list, server_default="[]"),
     Column("expires_at", DateTime(timezone=True)),
@@ -3033,6 +3082,9 @@ access_review_rows = Table(
     Column("reason", Text),
     CheckConstraint(
         "decision IN ('confirmed', 'revoked')", name="access_review_rows_decision_check"
+    ),
+    CheckConstraint(
+        "source IN ('provisa', 'identity_provider')", name="access_review_rows_source_check"
     ),
     UniqueConstraint("review_id", "user_id", "role_id", "domain_id"),
 )

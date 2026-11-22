@@ -80,6 +80,8 @@
       "newTables": "自您上次运行以来注册的 {{count}} 个表位于 {{domains}} 中，那次运行没有查看这些域。",
       "newTables_other": "自您上次运行以来注册的 {{count}} 个表位于 {{domains}} 中，那次运行没有查看这些域。",
       "addNewTables": "添加到本次运行"
-    }
+    },
+    "keyNames": "键名称和类型",
+    "reviewDone": "完成"
   }
 }

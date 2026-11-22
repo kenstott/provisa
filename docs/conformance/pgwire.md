@@ -4519,7 +4519,5 @@ No run has filled this section yet.
 
 | Tool | Version | Date | Method |
 | --- | --- | --- | --- |
-| psql | — | — | Verified by replay |
-| DBeaver | — | — | Covered by driver (Postgres JDBC) |
 | Tableau | — | — | Covered by driver (Postgres JDBC/ODBC) |
 | DataGrip | — | — | Not yet verified |

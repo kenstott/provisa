@@ -15,6 +15,7 @@ import { Tip } from "../../components/Tip";
 import { RlsRuleRead } from "./RlsRuleRead";
 import { RULE_RIGHTS, RULE_RIGHT_LABEL } from "./ruleRights";
 import React, { useState, useEffect, useCallback } from "react";
+import { useCapability } from "../../hooks/useCapability";
 import { useNavPayload } from "../../hooks/useNavPayload";
 import { useTranslation } from "react-i18next";
 import { Pencil } from "lucide-react";
@@ -75,6 +76,8 @@ const EMPTY_RULE = {
 
 export function SecurityRlsPage() {
   const { t } = useTranslation();
+  // REQ-1327: row rule actions ask masking_config; access_config alone reads the rules.
+  const mayAuthor = useCapability("masking_config");
   const {
     domains: filterDomains,
     checkedDomains,
@@ -570,7 +573,7 @@ export function SecurityRlsPage() {
     ((r) => (
       <>
         {/* Its actions sit in the panel's head; while its form is open the head is the form's. */}
-        {editingRuleInRow !== r.id && (
+        {mayAuthor && editingRuleInRow !== r.id && (
           <PanelActions>
             <fieldset className="panel-action-set">
               <Group gap="xs">
@@ -656,7 +659,7 @@ export function SecurityRlsPage() {
         {/* Nested Group: the parent spreads its children, and the bubble explains this
             button, so it has to travel with it. */}
         <Group gap="xs">
-          {!showRuleForm && (
+          {mayAuthor && !showRuleForm && (
             <Button
               data-testid="toggle-rule-form"
               onClick={() => {

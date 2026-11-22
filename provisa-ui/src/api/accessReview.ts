@@ -23,6 +23,9 @@ export interface AccessReviewSummary {
   started_at: string;
   rows: number;
   decided: number;
+  /** A scheduled review's post to the webhook: null when none was due. */
+  webhook_status: "delivered" | "failed" | null;
+  webhook_error: string | null;
 }
 
 export interface ReviewEntitlement {
@@ -48,6 +51,17 @@ export interface AccessReviewRow {
   decided_at: string | null;
   reason: string | null;
   can_decide: boolean;
+  /** "identity_provider": held through claims or a role mapping, listed read-only. */
+  source: "provisa" | "identity_provider";
+}
+
+export const IDENTITY_PROVIDER = "identity_provider";
+
+export interface AccessReviewSchedule {
+  cron: string | null;
+  webhook_url: string | null;
+  /** The secret is write-only: the server says only whether one is held. */
+  webhook_secret_set: boolean;
 }
 
 export const SCHEDULE_STARTER = "schedule";
@@ -91,10 +105,19 @@ export function accessReviewExportUrl(id: number): string {
   return `${BASE}/${id}/export`;
 }
 
-export function fetchAccessReviewSchedule(): Promise<{ cron: string | null }> {
+export function fetchAccessReviewSchedule(): Promise<AccessReviewSchedule> {
   return call("fetchAccessReviewSchedule", `${BASE}/schedule`);
 }
 
-export function saveAccessReviewSchedule(cron: string | null): Promise<{ cron: string | null }> {
-  return call("saveAccessReviewSchedule", `${BASE}/schedule`, json("PUT", { cron }));
+/** `webhookSecret` null keeps the held secret. */
+export function saveAccessReviewSchedule(
+  cron: string | null,
+  webhookUrl: string | null,
+  webhookSecret: string | null,
+): Promise<AccessReviewSchedule> {
+  return call(
+    "saveAccessReviewSchedule",
+    `${BASE}/schedule`,
+    json("PUT", { cron, webhook_url: webhookUrl, webhook_secret: webhookSecret }),
+  );
 }

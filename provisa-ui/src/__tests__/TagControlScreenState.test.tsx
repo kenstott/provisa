@@ -183,4 +183,24 @@ describe("TagControl on read_screen", () => {
     unmount();
     expect(await screenTags()).toEqual([]);
   });
+
+  // The key must be what the tags report and the tag-edit tools key the object by.
+  it.each([
+    ["source", { sourceId: "pg:main" }, "source:pg:main"],
+    ["table", { tableId: 3 }, "table:3"],
+    ["column", { tableId: 3, columnName: "a:b" }, "column:3:a:b"],
+    ["relationship", { relationshipId: "r1" }, "relationship:r1"],
+    ["command", { commandName: "refund" }, "command:refund"],
+    ["product", { productId: "p1" }, "product:p1"],
+    ["term", { termId: 9 }, "term:9"],
+    ["rls_rule", { rlsRuleId: 4 }, "rls_rule:4"],
+    ["role", { roleId: "analyst" }, "role:analyst"],
+    ["metric", { metricName: "revenue" }, "metric:revenue"],
+    ["document", { documentId: 7 }, "document:7"],
+  ])("keys a %s as the tags report keys it", async (kind, props, key) => {
+    mockTags = [];
+    mockAssignments = [];
+    render(<TagControl objectType={kind as never} {...props} />);
+    expect((await screenTags()).map((o) => [o.kind, o.key])).toEqual([[kind, key]]);
+  });
 });

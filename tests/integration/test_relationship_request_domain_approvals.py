@@ -118,6 +118,8 @@ def _api() -> FastAPI:
         )
         # The acting role, as the auth middleware sets it on every request (REQ-2152 reads it).
         request.state.role = _acting(user)
+        # The org the auth middleware resolves; the admin trail is stored under it.
+        request.state.active_org_id = _ORG_ID
         return await call_next(request)
 
     @app.exception_handler(ApiError)

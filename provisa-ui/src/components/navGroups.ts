@@ -86,12 +86,17 @@ export const NAV_GROUPS: NavGroup[] = [
     id: "model",
     labelKey: "navBar.groupModel",
     items: [
-      { to: "/views", labelKey: "navBar.itemViews", capability: "table_registration" },
-      { to: "/metrics", labelKey: "navBar.itemMetrics", capability: "table_registration" }, // REQ-1317
+      { to: "/views", labelKey: "navBar.itemViews", capability: "create_view" },
+      { to: "/metrics", labelKey: "navBar.itemMetrics", capability: "create_view" }, // REQ-1317
       // Gated with the rest of the Model group: the endpoints behind Commands require no capability
       // of their own, and `admin` is the platform wildcard, so naming it here hid the entry from
       // every org role.
-      { to: "/commands", labelKey: "navBar.itemCommands", capability: "table_registration" },
+      {
+        to: "/commands",
+        labelKey: "navBar.itemCommands",
+        capability: "table_registration",
+        orCapability: "command_execution",
+      },
       // REQ-1160/1161: gated with the rest of the Model group. `admin` is the platform wildcard, so
       // naming it here hid Lineage from every org role while the endpoint required nothing.
       { to: "/lineage", labelKey: "navBar.itemLineage", capability: "view_governance" },
@@ -101,7 +106,12 @@ export const NAV_GROUPS: NavGroup[] = [
     id: "security",
     labelKey: "navBar.groupSecurity",
     items: [
-      { to: "/security/roles", labelKey: "navBar.itemRoles", capability: "access_config" },
+      {
+        to: "/security/roles",
+        labelKey: "navBar.itemRoles",
+        capability: "access_config",
+        orCapability: "user_management",
+      },
       { to: "/security/rls", labelKey: "navBar.itemRlsRules", capability: "access_config" },
     ],
   },

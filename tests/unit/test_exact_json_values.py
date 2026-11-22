@@ -570,9 +570,10 @@ def test_a_float_in_a_values_cte_is_read_as_a_double_not_a_decimal():
     import duckdb
     import sqlglot
 
-    from provisa.cache.values_cte import build_values_cte_sql
+    from provisa.cache.values_cte import InlineRows, build_values_cte_sql
 
-    entry = SimpleNamespace(column_names=["id", "bonus"], rows=[{"id": 1, "bonus": 2.0}])
+    # No declared column types: the float's type comes from the value alone.
+    entry = InlineRows(column_names=["id", "bonus"], rows=[{"id": 1, "bonus": 2.0}])
     sql = build_values_cte_sql('SELECT "id", "bonus" FROM "t"', "t", entry)
     con = duckdb.connect()
     rel = con.sql(sqlglot.transpile(sql, read="postgres", write="duckdb")[0])
