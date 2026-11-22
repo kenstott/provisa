@@ -1,3 +1,13 @@
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 9dfc8bf0-6aa5-4970-97ba-a4abb9940933
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+
 """No installer or start script installs the ``provisa`` package from a package index.
 
 Nothing goes to PyPI since 2026-11-21 (the newest there is 0.1.0a509): every install takes the
