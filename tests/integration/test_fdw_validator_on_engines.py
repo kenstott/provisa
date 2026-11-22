@@ -43,9 +43,18 @@ CASES = [
     ("{host,user}", 1417, "user"),
     ("{a=1}", 1418, "a"),
     ("{host,b,c}", 1417, "b"),
+    # untransformRelOptions deconstructs an array of any dimensions into its elements in order.
+    ("{{a,b},{c,d}}", 12345, "a"),
+    ("{{host,port},{dbname,user}}", 1417, "user"),
+    ("{{host,port},{dbname,port=1}}", 1417, None),
 ]
 #: Arrays holding a NULL element: 22004 wherever the NULL stands, an unlisted option before it too.
-NULL_ELEMENTS = [("{host,NULL}", 1417), ("{b,NULL}", 1417), ("{NULL}", 12345)]
+NULL_ELEMENTS = [
+    ("{host,NULL}", 1417),
+    ("{b,NULL}", 1417),
+    ("{NULL}", 12345),
+    ("{{host,port},{b,NULL}}", 1417),
+]
 NULL_ERROR = ("22004", "null array element not allowed in this context")
 
 

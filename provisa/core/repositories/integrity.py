@@ -172,6 +172,7 @@ KINDS: dict[str, Kind] = {
     "erd_layout": Kind("erd_layouts", "name"),  # REQ-2189
     "data_product_offer": Kind("data_product_offers", "id"),  # REQ-2180
     "data_product_bid": Kind("data_product_bids", "id"),  # REQ-2180
+    "access_review": Kind("access_reviews", "id"),  # REQ-2266
 }
 
 _P, _D, _L = Standing.PART, Standing.DEPENDENT, Standing.LINK
@@ -421,6 +422,9 @@ REFERENCES: tuple[Reference, ...] = (
     _part("glossary_ontology_alignments", "item_id", "ontology_item"),
     _part("glossary_ontology_alignments", "other_item_id", "ontology_item"),
     _part("glossary_ontology_alignments", "term_id", "glossary_term"),
+    # --- to an access review ---------------------------------------------------------------------
+    # REQ-2266: a review's rows are what it found and what was decided on each; they go with it.
+    _part("access_review_rows", "review_id", "access_review"),
 )
 
 

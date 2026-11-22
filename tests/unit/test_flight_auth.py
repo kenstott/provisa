@@ -25,6 +25,7 @@ import pytest
 
 from provisa.api.flight import server as flight_server
 from provisa.api.flight.server import ProvisaFlightServer
+from provisa.api.role_surface import RoleSurface
 from provisa.auth.models import AuthIdentity
 
 
@@ -38,6 +39,10 @@ class FakeState:
         self.org_id = "default"
         self.admin_db = None
         self.roles = {}
+        # The roles with a data surface (REQ-2155: a sign-in naming no role acts as the union of
+        # the held roles that have one). The auditor role reaches no domain here, so an identity
+        # holding steward and auditor acts as steward.
+        self.surfaces = {"analyst": RoleSurface(), "steward": RoleSurface()}
         # The org's member attributes and its claim types: none recorded, none declared (REQ-2057).
         self.user_attributes = {}
         self.settings_overrides = {"derived_roles": []}

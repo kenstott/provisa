@@ -240,6 +240,7 @@ Entry settings:
 | `role` | The role a data catalog is published as. The catalog is sent exactly what that role reads: the columns it is served, the tables holding one, the data products with such a table, and the relationships, lineage, tags and glossary links among them. An entry naming no role is sent nothing, and its publish reports the missing role. |
 | `datazone_project_id` | The project that owns the data products published to a `datazone` catalog. A `datazone` catalog whose direction includes Export without it is refused when it is saved. |
 | `delta_share` | Whether a `unity_catalog` catalog also gets each product as a Delta Share. |
+| `import_cron` | Cron schedule of a data catalog's Import. Each run reads the catalog's differences with Provisa and decides each by the steward's standing choice for its kind: a catalog value is taken only when the catalog alone moved since the last exchange, so an unattended run never overwrites a local edit; everything else is held for review. Empty means no schedule. An entry whose direction does not include Import, or a value that is not a crontab, is refused when it is saved. |
 
 Export schedule:
 

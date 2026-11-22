@@ -219,7 +219,8 @@ def test_a_surface_at_its_baseline_is_judged_by_its_list(tmp_path, monkeypatch, 
 
 # --- functions -----------------------------------------------------------------------------------
 
-import function_report  # noqa: E402  (beside the gate, on the path above)
+import function_legs  # noqa: E402  (beside the gate, on the path above)
+import function_report  # noqa: E402
 import functions_baseline  # noqa: E402
 
 RIGHT = {"outcome": "pass"}
@@ -546,10 +547,13 @@ def test_each_committed_expected_file_is_well_formed(surface):
 
 
 def test_the_committed_functions_file_is_well_formed():
-    """Its counts are its list's own, base calls and edge calls apart, and every entry names its
-    engine, overload, failing call and what was said."""
+    """Its counts are its list's own, base calls and edge calls apart, every entry names its
+    engine, overload, failing call and what was said, and it judges every engine the run that
+    writes it measures: the free lane's legs that build_engine builds (function_legs.py plan, the
+    workflow's matrix), so an engine the run measures is never left unjudged."""
     path, engines, listed = gate.load_functions_expected()
-    assert set(engines) == {"clickhouse", "duckdb", "pg", "trino"}
+    planned = function_legs.plan("free", function_legs.load())["engines"].split(",")
+    assert sorted(engines) == sorted(planned)
     assert json.loads(path.read_text())["measured"]["run"]
     for counts in engines.values():
         edge = counts["edge"]

@@ -352,6 +352,7 @@
   "tests/integration/test_mongodb_pipeline_tables_e2e.py": 96.3,
   "tests/integration/test_motherduck_duckdb_e2e.py": 0.0,
   "tests/integration/test_motherduck_engine_store_e2e.py": 0.0,
+  "tests/integration/test_mssql_close_leaves_no_session.py": 20.0,
   "tests/integration/test_multi_org_onboarding_flow.py": 9.2,
   "tests/integration/test_mutation_parity_integration.py": 0.1,
   "tests/integration/test_mutations.py": 0.1,

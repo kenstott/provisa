@@ -161,6 +161,11 @@ PAGES: dict[str, PollyPage] = {
     "/admin/ai-models": PollyPage("AI model settings"),
     "/admin/package-registries": PollyPage("package registries"),
     "/admin/container-registries": PollyPage("container registries"),
+    "/context/health": PollyPage(
+        "context health: the steward summary, whose bulk approval is the page's one action, and a "
+        "card per health signal (terms, documents, classification, drift, tags lost, and sync for a "
+        "holder of the Context Sync right)"
+    ),
     "/context/sync": PollyPage(
         "context sync: the outside systems kept in step with Provisa (data catalogs, ontologies, "
         "custom), each with its direction and, for a data catalog, its export settings"

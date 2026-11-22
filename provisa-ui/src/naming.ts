@@ -84,14 +84,19 @@ export function toCamelCase(name: string): string {
 }
 
 /** Mirror of Python PRESET_CONVENTIONS (REQ-416): the conventions the server stores. */
-export const PRESET_CONVENTIONS = ["snake", "hasura_graphql", "apollo_graphql"] as const;
+export const PRESET_CONVENTIONS = [
+  "snake",
+  "hasura_graphql",
+  "hasura_graphql_default",
+  "apollo_graphql",
+] as const;
 
 export type NamingPreset = (typeof PRESET_CONVENTIONS)[number];
 
 /** Mirror of Python _CONVENTION_ALIASES: the Hasura/DDN literals and the preset each names. */
 const CONVENTION_ALIASES: Readonly<Record<string, NamingPreset>> = {
   "hasura-default": "hasura_graphql",
-  "graphql-default": "apollo_graphql",
+  "graphql-default": "hasura_graphql_default",
   graphql: "apollo_graphql",
 };
 
@@ -126,12 +131,13 @@ export function presetConvention(convention: string): NamingPreset {
 
 /**
  * Mirror of Python apply_convention: apply a naming convention preset (or a Hasura/DDN literal for
- * one) to a name. snake and hasura_graphql name in snake_case, apollo_graphql in camelCase. Any
- * other name throws: naming.py refuses it, and reading it as snake renamed in silence.
+ * one) to a name. snake and hasura_graphql name in snake_case, apollo_graphql and
+ * hasura_graphql_default in camelCase. Any other name throws: naming.py refuses it, and reading it
+ * as snake renamed in silence.
  */
 export function applyConvention(name: string, convention: string): string {
   const preset = presetConvention(convention);
-  if (preset === "apollo_graphql") return toCamelCase(name);
+  if (preset === "apollo_graphql" || preset === "hasura_graphql_default") return toCamelCase(name);
   return toSnakeCase(name);
 }
 

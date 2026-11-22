@@ -24,6 +24,7 @@
     "namingConventionHint": "GraphQL のフィールド名に適用される大文字小文字の規則で、Cypher のプロパティキーもこれに従います。Cypher のラベルは常に PascalCase です。gRPC、JSON:API、OpenAPI は各列のデータベース上の表記を保持します。",
     "namingConventionSnake": "snake_case",
     "namingConventionHasura": "Hasura (snake_case)",
+    "namingConventionHasuraGraphqlDefault": "Hasura graphql-default (camelCase)",
     "namingConventionApollo": "Apollo (camelCase)",
     "sqlNamingConvention": "SQL 命名規則",
     "sqlNamingConventionHint": "SQL プレーン上の名前に適用される大文字小文字の規則で、pgwire、Bolt、セマンティック SQL の各サーフェスがこれを照会します。GraphQL の規則とは別に設定されるため、一方のプレーンで名前を変えてももう一方には影響しません。",

@@ -24,6 +24,7 @@
     "namingConventionHint": "Casing applied to GraphQL field names, which Cypher property keys follow as well. Cypher labels are always PascalCase. gRPC, JSON:API and OpenAPI keep each column's database spelling.",
     "namingConventionSnake": "snake_case",
     "namingConventionHasura": "Hasura (snake_case)",
+    "namingConventionHasuraGraphqlDefault": "Hasura graphql-default (camelCase)",
     "namingConventionApollo": "Apollo (camelCase)",
     "sqlNamingConvention": "SQL Naming Convention",
     "sqlNamingConventionHint": "Casing applied to names on the SQL plane, which the pgwire, Bolt and semantic-SQL surfaces query. It is set separately from the GraphQL convention, so renaming one plane leaves the other alone.",

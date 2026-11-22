@@ -814,11 +814,11 @@
       },
       "opioidsAsPublic": {
         "title": "以公众身份运行",
-        "description": "SQL 浏览器现在以 public 角色运行，即议会仪表板和居民使用的角色。接下来的查询只能看到该角色允许的内容。"
+        "description": "SQL 浏览器现在以 resident 角色运行，即议会仪表板和居民使用的角色。接下来的查询只能看到该角色允许的内容。"
       },
       "opioidsPublic": {
         "title": "公众看到的样子",
-        "description": "理事会的仪表板是视图 overdose_burden_by_county，这里以公众角色运行。它显示每个县的居民人数、死亡人数、死亡率和人均联邦资金，不读取基金的任何拨款或获付款的服务提供方。"
+        "description": "理事会的仪表板是视图 overdose_burden_by_county，这里以 resident 角色运行。它显示每个县的居民人数、死亡人数、死亡率和人均联邦资金，不读取基金的任何拨款或获付款的服务提供方。"
       },
       "opioidsByRegion": {
         "title": "按地区，用 GraphQL",

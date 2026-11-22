@@ -1678,7 +1678,9 @@ def _catalog_objects(a: _Answers) -> None:
     # postgresql_fdw_validator (src/backend/foreign/foreign.c): an option name outside the catalog's
     # list is 42601 invalid option, whatever its value. A server (1417) takes the libpq names, a
     # user mapping (1418) user and password; any other catalog takes none. The message names the
-    # option, a value: ClickHouse refuses that call by name (raising_or_refused).
+    # option, a value: ClickHouse refuses that call by name (raising_or_refused). untransformRelOptions
+    # deconstructs an options array of any dimensions into its elements in storage order, so the
+    # options are read as their elements (an ``elements`` parameter): '{{a,b},{c,d}}' as '{a,b,c,d}'.
     _server_options = ", ".join(f"'{n}'" for n in FDW_SERVER_OPTIONS)
     _option = "SPLIT_PART(COALESCE(_o, ''), '=', 1)"
     _invalid = (
@@ -1688,7 +1690,7 @@ def _catalog_objects(a: _Answers) -> None:
     _refused = f"ARRAY_FILTER(options, _o -> {_invalid})"
     a.strict(
         "postgresql_fdw_validator",
-        "options:array, catalog:bigint",
+        "options:elements, catalog:bigint",
         "BOOLEAN",
         # A NULL element is 22004 before any option is read (FDW_NULL_OPTION).
         "CASE WHEN ARRAY_SIZE(ARRAY_FILTER(options, _o -> _o IS NULL)) > 0 THEN "
