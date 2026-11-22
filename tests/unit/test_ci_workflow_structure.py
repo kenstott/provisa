@@ -1559,6 +1559,70 @@ def test_a_plugin_cache_miss_is_answered_by_the_runs_artifact_not_a_failure_or_a
     )
 
 
+_ZAYCHIK_ACTION = "./.github/actions/zaychik-image"
+
+
+def _zaychik_phases(body: dict) -> list[str]:
+    """The zaychik-image phases a job runs: its own action steps, or `restore` for a call of the
+    lane workflow with zaychik-image switched on."""
+    if body.get("uses") == _LANE_WORKFLOW:
+        return ["restore"] if (body.get("with") or {}).get("zaychik-image", False) else []
+    return [
+        (s.get("with") or {}).get("phase")
+        for s in body.get("steps") or []
+        if s.get("uses") == _ZAYCHIK_ACTION
+    ]
+
+
+def test_every_zaychik_restore_waits_for_the_one_job_that_primed_the_image():
+    """Runs 45030691606, 45030697705, 45030636599: lanes failed at "Restore the zaychik image" on
+    a cache miss. A restore takes a missed entry from the run's artifact, which exists only once a
+    job of the same run primed it, so every restoring job waits for that job. One job per run
+    primes it: the artifact's name is the run's, and a second upload under it is a 409."""
+    restoring = []
+    for path in WORKFLOWS:
+        if path.name == "lane.yml":
+            continue  # the callee: each caller's job is checked where it calls it
+        jobs = yaml.safe_load(path.read_text()).get("jobs") or {}
+        primers = {j for j, body in jobs.items() if "prime" in _zaychik_phases(body)}
+        assert len(primers) <= 1, f"{path.name}: zaychik-image primed by {sorted(primers)}"
+        for job, body in jobs.items():
+            phases = _zaychik_phases(body)
+            assert set(phases) <= {"prime", "restore"}, f"{path.name}:{job}: {phases}"
+            assert phases.count("prime") <= 1, f"{path.name}:{job}: {phases}"
+            if "restore" in phases and "prime" not in phases:
+                restoring.append(f"{path.name}:{job}")
+                assert _needed(jobs, job) & primers, (
+                    f"{path.name}:{job} restores the zaychik image without waiting for a job "
+                    f"that primes it (primers here: {sorted(primers)})"
+                )
+    assert restoring, "no job restores the zaychik image"
+
+
+def test_a_zaychik_cache_miss_is_answered_by_the_runs_artifact():
+    """The cache entry the priming job saved can be gone by a lane's restore (evicted, or never
+    readable from the lane's scope). The priming job uploads the image as the run's artifact on a
+    hit and on a miss; a restore that missed downloads it, and fails by name only when neither
+    exists."""
+    steps = yaml.safe_load(
+        (REPO / ".github" / "actions" / "zaychik-image" / "action.yml").read_text()
+    )["runs"]["steps"]
+    for s in steps:
+        if str(s.get("uses", "")).startswith("actions/cache/restore"):
+            assert s["with"]["fail-on-cache-miss"] is False, s["name"]
+    names = [s.get("name") for s in steps]
+    down = steps[names.index("Download the run's zaychik image")]
+    up = steps[names.index("Upload the run's zaychik image")]
+    assert down["uses"].startswith("actions/download-artifact")
+    assert up["uses"].startswith("actions/upload-artifact")
+    assert down["with"]["name"] == up["with"]["name"]
+    assert "restore" in down["if"] and "cache-hit != 'true'" in down["if"]
+    assert up["if"] == "inputs.phase == 'prime'"
+    assert up["with"]["if-no-files-found"] == "error"
+    assert names.index("Build the zaychik image") < names.index("Upload the run's zaychik image")
+    assert names.index("Download the run's zaychik image") < names.index("Load the zaychik image")
+
+
 def test_the_lane_workflow_restores_the_plugins_before_its_lane_and_saves_none():
     steps = yaml.safe_load((REPO / ".github" / "workflows" / "lane.yml").read_text())["jobs"][
         "lane"
