@@ -11346,5 +11346,6 @@
   "fr/yourData.json::yourData.rest": "REST",
   "fr/yourData.json::yourData.sql": "SQL",
   "fr/yourData.json::yourData.title": "Your data",
-  "glossaryTab.json::glossaryTab.tablesWithoutSamples": "No sample values were read from: {{tables}}."
+  "glossaryTab.json::glossaryTab.tablesWithoutSamples": "No sample values were read from: {{tables}}.",
+  "fr/adminPage.json::adminPage.namingConventionHasuraGraphqlDefault": "Hasura graphql-default (camelCase)"
 }

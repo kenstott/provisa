@@ -11347,5 +11347,6 @@
   "it/yourData.json::yourData.relationshipsCreated_other": "{{count}} relationships created.",
   "it/yourData.json::yourData.rest": "REST",
   "it/yourData.json::yourData.sql": "SQL",
-  "it/yourData.json::yourData.title": "Your data"
+  "it/yourData.json::yourData.title": "Your data",
+  "it/adminPage.json::adminPage.namingConventionHasuraGraphqlDefault": "Hasura graphql-default (camelCase)"
 }

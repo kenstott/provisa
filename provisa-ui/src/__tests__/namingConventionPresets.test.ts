@@ -22,6 +22,11 @@ describe("applyConvention takes the server's presets", () => {
     expect(applyConvention("Order_ID", "apollo_graphql")).toBe("orderID");
   });
 
+  it("hasura_graphql_default names in camelCase, and is what graphql-default names", () => {
+    expect(applyConvention("order_id", "hasura_graphql_default")).toBe("orderId");
+    expect(presetConvention("graphql-default")).toBe("hasura_graphql_default");
+  });
+
   it("hasura_graphql and snake name in snake_case", () => {
     expect(applyConvention("orderId", "hasura_graphql")).toBe("order_id");
     expect(applyConvention("orderId", "snake")).toBe("order_id");
