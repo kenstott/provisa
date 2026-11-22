@@ -795,9 +795,88 @@ def test_every_asset_name_a_leg_uses_is_one_the_metadata_action_resolves():
         assert step["with"] == {"version": "${{ inputs.version }}"}
 
 
+_INPUT_REF = re.compile(r"\$\{\{\s*inputs\.([\w-]+)\s*\}\}")
+_INPUT_TEST = re.compile(r"^\(?\s*inputs\.([\w-]+)\s*(==|!=)\s*'([^']*)'\s*\)?$")
+
+
+def _effective_steps(steps: list[dict]) -> list[dict]:
+    """A job's steps with each local composite action (`uses: ./.github/actions/<name>`) replaced
+    by the steps of its action.yml that its inputs let run. A conjunct of a step's `if` that tests
+    an input against a literal is decided from the caller's `with:` (an input it does not pass
+    takes the action's default, and GitHub gives an input with neither the empty string); any
+    other conjunct depends on the run and is taken as possibly true. `${{ inputs.<name> }}` in a
+    step's `with:` is replaced the same way, so an artifact name comes out as the caller sees it."""
+    out: list[dict] = []
+    for step in steps:
+        uses = step.get("uses") or ""
+        if not uses.startswith("./.github/actions/"):
+            out.append(step)
+            continue
+        action = yaml.safe_load((REPO / uses / "action.yml").read_text())
+        if action["runs"]["using"] != "composite":
+            out.append(step)
+            continue
+        declared = action.get("inputs") or {}
+        given = step.get("with") or {}
+        for name in given:
+            assert name in declared, f"{uses} takes no input {name!r}"
+        # GitHub's own rule: an input neither passed nor defaulted reads as ''.
+        values = {
+            name: str(given.get(name, spec.get("default", ""))) for name, spec in declared.items()
+        }
+
+        def runs(condition: object) -> bool:
+            for conjunct in str(condition).split("&&"):
+                test = _INPUT_TEST.match(conjunct.strip())
+                if test is None:
+                    continue
+                name, op, literal = test.groups()
+                assert name in values, f"{uses} tests undeclared input {name!r}"
+                if (values[name] == literal) != (op == "=="):
+                    return False
+            return True
+
+        inner = []
+        for sub in action["runs"]["steps"]:
+            if "if" in sub and not runs(sub["if"]):
+                continue
+            with_ = {
+                key: _INPUT_REF.sub(lambda m: values[m.group(1)], val)
+                if isinstance(val, str)
+                else val
+                for key, val in (sub.get("with") or {}).items()
+            }
+            inner.append({**sub, "with": with_})
+        out.extend(_effective_steps(inner))
+    return out
+
+
+def test_composite_action_steps_follow_the_callers_inputs():
+    """The trino-plugins action uploads its artifact only in the prime phase and downloads it only
+    in the restore phase, under the name the caller's key-prefix gives it."""
+    step = {"uses": "./.github/actions/trino-plugins"}
+
+    def artifacts(inputs: dict, kind: str) -> list[str]:
+        return [
+            s["with"]["name"]
+            for s in _effective_steps([{**step, "with": inputs}])
+            if kind in (s.get("uses") or "")
+        ]
+
+    assert artifacts({"phase": "prime"}, "upload-artifact") == ["trino-plugins"]
+    assert artifacts({"phase": "prime"}, "download-artifact") == []
+    assert artifacts({"phase": "restore"}, "upload-artifact") == []
+    assert artifacts({"phase": "restore"}, "download-artifact") == ["trino-plugins"]
+    assert artifacts({"phase": "prime", "key-prefix": "x-"}, "upload-artifact") == [
+        "x-trino-plugins"
+    ]
+
+
 def test_a_leg_that_reads_another_legs_artifact_starts_after_it():
     """Artifacts are the run's: a leg downloads what another leg uploaded, so the orchestrator
-    must order them. Every named download in a leg is uploaded in that leg or in one it needs."""
+    must order them. Every named download in a leg is uploaded in that leg or in one it needs. A
+    step that uses a local composite action uploads and downloads what that action's steps do for
+    the inputs it passes."""
     orchestrator = yaml.safe_load(_RELEASE.read_text())["jobs"]
 
     def needed(job: str) -> set[str]:
@@ -811,7 +890,7 @@ def test_a_leg_that_reads_another_legs_artifact_starts_after_it():
     jobs.update({job: list(leg["jobs"].values()) for job, (_n, leg) in _release_legs().items()})
     for job, bodies in jobs.items():
         for body in bodies:
-            for step in body.get("steps") or []:
+            for step in _effective_steps(body.get("steps") or []):
                 artifact = (step.get("with") or {}).get("name")
                 if not artifact:
                     continue
