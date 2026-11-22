@@ -814,11 +814,11 @@
       },
       "opioidsAsPublic": {
         "title": "Run as the public",
-        "description": "The SQL explorer now runs as the public role, the role the council's dashboard and residents use. The statements that follow see only what it allows."
+        "description": "The SQL explorer now runs as the resident role, the role the council's dashboard and residents use. The statements that follow see only what it allows."
       },
       "opioidsPublic": {
         "title": "As the public sees it",
-        "description": "The council's dashboard is the view overdose_burden_by_county, run here as the public role. It shows each county's residents, deaths, death rate and federal money per resident, and reads none of the fund's allocations or the providers paid."
+        "description": "The council's dashboard is the view overdose_burden_by_county, run here as the resident role. It shows each county's residents, deaths, death rate and federal money per resident, and reads none of the fund's allocations or the providers paid."
       },
       "opioidsByRegion": {
         "title": "By region, in GraphQL",

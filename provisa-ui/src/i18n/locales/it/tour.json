@@ -814,11 +814,11 @@
       },
       "opioidsAsPublic": {
         "title": "Esegui come pubblico",
-        "description": "L'esploratore SQL ora viene eseguito con il ruolo public, quello della dashboard del consiglio e dei cittadini. Le query che seguono vedono solo ciò che il ruolo consente."
+        "description": "L'esploratore SQL ora viene eseguito con il ruolo resident, quello della dashboard del consiglio e dei cittadini. Le query che seguono vedono solo ciò che il ruolo consente."
       },
       "opioidsPublic": {
         "title": "Come la vede il pubblico",
-        "description": "La dashboard del consiglio è la vista overdose_burden_by_county, eseguita qui con il ruolo pubblico. Mostra per ogni contea residenti, decessi, tasso di mortalità e fondi federali per residente, e non legge nessuno degli stanziamenti del fondo né i fornitori pagati."
+        "description": "La dashboard del consiglio è la vista overdose_burden_by_county, eseguita qui con il ruolo resident. Mostra per ogni contea residenti, decessi, tasso di mortalità e fondi federali per residente, e non legge nessuno degli stanziamenti del fondo né i fornitori pagati."
       },
       "opioidsByRegion": {
         "title": "Per regione, in GraphQL",

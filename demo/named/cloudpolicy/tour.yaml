@@ -62,7 +62,7 @@ steps:
     ORDER BY disks DESC
 - key: cloudpolicyTrigger
   route: /admin/scheduled-tasks
-  capability: org_settings
+  capability: query_development
   trigger: daily-review
 - key: cloudpolicyTrend
   route: /sql
