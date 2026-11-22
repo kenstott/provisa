@@ -272,10 +272,16 @@ def _spec_param_enum(spec: Mapping[str, Any], op: Mapping[str, Any], name: str) 
         if p.get("name") != name:
             continue
         items = (p.get("schema") or {}).get("items") or {}
-        ref = items.get("$ref")
-        if ref:
-            return list(spec["components"]["schemas"][ref.rsplit("/", 1)[1]]["enum"])
-        return list(items.get("enum") or [])
+        # A row with relationships takes a field or a dot-path through them (REQ-1929): the
+        # items are anyOf [the field enum, a path pattern], and the enum is the row's fields.
+        forms = items["anyOf"] if "anyOf" in items else [items]
+        names: list[str] = []
+        for form in forms:
+            ref = form.get("$ref")
+            if ref:
+                names += spec["components"]["schemas"][ref.rsplit("/", 1)[1]]["enum"]
+            names += form.get("enum") or []
+        return names
     return []
 
 
