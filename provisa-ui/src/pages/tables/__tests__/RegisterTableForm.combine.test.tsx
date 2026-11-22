@@ -252,6 +252,23 @@ describe("Combine into one table", () => {
     expect(registerTables).not.toHaveBeenCalled();
   });
 
+  it("shows the field loader while a typed glob is checked, and drops it once it answers", async () => {
+    // The server has not answered the typed glob yet.
+    previewOf.mockImplementation((glob: string | null) => (glob ? null : { ...PICKED }));
+    const user = userEvent.setup();
+    renderForm();
+    const glob = await screen.findByTestId("register-tables-file-glob");
+    expect(screen.queryByTestId("register-tables-file-glob-checking")).not.toBeInTheDocument();
+    await user.type(glob, "complaints_*.cs");
+    expect(screen.getByTestId("register-tables-file-glob-checking")).toBeInTheDocument();
+    expect(screen.getByText("Checking the files…")).toBeInTheDocument();
+
+    // The server answers: the next render reads the matches and the loader goes.
+    previewOf.mockImplementation((g: string | null) => ({ ...PICKED, glob: g ?? "" }));
+    await user.type(glob, "v");
+    expect(screen.queryByTestId("register-tables-file-glob-checking")).not.toBeInTheDocument();
+  });
+
   it("keeps a typed glob as typed", async () => {
     previewOf.mockImplementation((glob: string | null) => ({
       ...PICKED,

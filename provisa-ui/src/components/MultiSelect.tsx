@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { Button, Group, MultiSelect as MantineMultiSelect } from "@mantine/core";
+import { Button, Group, Loader, MultiSelect as MantineMultiSelect } from "@mantine/core";
 import type { CSSProperties, ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Tip } from "./Tip";
@@ -60,6 +60,7 @@ export function MultiSelect({
   ariaLabel,
   placeholder,
   disabled,
+  loading,
   description,
   required,
   withAsterisk,
@@ -81,6 +82,8 @@ export function MultiSelect({
   ariaLabel?: string;
   placeholder?: string;
   disabled?: boolean;
+  /** Its options are still being fetched: the standard field loader shows at its right. */
+  loading?: boolean;
   description?: ReactNode;
   required?: boolean;
   withAsterisk?: boolean;
@@ -163,6 +166,7 @@ export function MultiSelect({
       searchable
       clearable={!disabled}
       disabled={disabled}
+      rightSection={loading ? <Loader size="xs" data-testid="multi-select-loading" /> : undefined}
       size="sm"
       comboboxProps={{ withinPortal: true }}
       // A selection with many values (e.g. every role, in a table cell like
