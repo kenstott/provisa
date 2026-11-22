@@ -505,6 +505,15 @@ async def test_the_domain_list_is_the_acting_roles(monkeypatch):
         {"domains": [{"id": "sales"}, {"id": "finance"}]},
         raising=False,
     )
+    # REQ-1327: a reached domain is listed when the role reads a table in it; A reads one in each
+    # domain, so reach alone decides what it is listed.
+    tables = {
+        1: types.SimpleNamespace(domain_id="sales"),
+        2: types.SimpleNamespace(domain_id="finance"),
+    }
+    monkeypatch.setattr(
+        appmod.state, "contexts", {A: types.SimpleNamespace(tables=tables)}, raising=False
+    )
     monkeypatch.setattr("provisa.core.domain_policy.single_domain", lambda: False)
     none: Any = None
     resp = await sdl.get_domains(_acting(A), x_provisa_role=none, x_role=none)

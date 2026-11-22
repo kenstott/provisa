@@ -211,6 +211,17 @@ def graphql_field(
     return FieldAnswer(body, rows, joined, truncated)
 
 
+def single_row_body(body: bytes) -> bytes:  # REQ-194
+    """A Hasura ``_by_pk`` read's answer from its rows' JSON list: its one row, or null when no
+    row has the key. A key names at most one row, so two rows are an error, never a pick."""
+    import orjson
+
+    rows = orjson.loads(body)
+    if len(rows) > 1:
+        raise ValueError(f"a primary key named {len(rows)} rows; a key names at most one")
+    return orjson.dumps(rows[0]) if rows else b"null"
+
+
 def graphql_aggregate(batches: Any, columns: list[ColumnRef], agg_alias: str) -> bytes:
     """A GraphQL aggregate root field's answer (REQ-196, REQ-197): its aggregates under
     ``agg_alias`` and its nodes, when selected."""

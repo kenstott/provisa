@@ -60,12 +60,18 @@ async function offered(conventions: string[]): Promise<string[]> {
 
 describe("the naming conventions a table may name (REQ-416)", () => {
   it("are the server's, with Inherit, and no others", async () => {
-    expect(await offered(["snake", "hasura_graphql", "apollo_graphql"])).toEqual([
+    expect(
+      await offered(["snake", "hasura_graphql", "hasura_graphql_default", "apollo_graphql"]),
+    ).toEqual([
       t("tablesPage.inheritSource"),
       t("adminPage.namingConventionSnake"),
       t("adminPage.namingConventionHasura"),
+      t("adminPage.namingConventionHasuraGraphqlDefault"),
       t("adminPage.namingConventionApollo"),
     ]);
+    expect(t("adminPage.namingConventionHasuraGraphqlDefault")).toBe(
+      "Hasura graphql-default (camelCase)",
+    );
   });
 
   it("follow what the server lists, not a list the UI keeps", async () => {

@@ -231,3 +231,46 @@ def test_the_grid_row_is_exact_where_the_form_runs(dialect):
 
     grid, row = _row()
     assert grid.status(row, dialect) is Status.NATIVE
+
+
+#: (options PostgreSQL's untransformRelOptions deconstructs, the catalog, the option its 42601
+#: names): deconstruct_array reads a multidimensional array's elements in storage order, so a
+#: two-dimensional options array is read as the one-dimensional array of its elements.
+_DIMENSIONS = [
+    ("{a,b,c,d}", 12345, "a"),
+    ("{{a,b},{c,d}}", 12345, "a"),
+    ("{{host,port},{dbname,user}}", 1417, "user"),
+]
+
+
+@pytest.mark.parametrize(("options", "catalog", "name"), _DIMENSIONS)
+def test_trino_reads_a_two_dimensional_options_array_as_its_elements(options, catalog, name):
+    """On Trino a two-dimensional text[] is an array(array(varchar)), which the form's text
+    functions do not take (TYPE_MISMATCH in COALESCE, run 45042021798): the form reads its elements
+    in storage order, as one dimension."""
+    written = _written(options, catalog, "trino")
+    elements = options.replace("{", "").replace("}", "").split(",")
+    flat = "ARRAY[" + ", ".join(f"'{e}'" for e in elements) + "]"
+    assert f"CAST({flat} AS ARRAY(VARCHAR))" in written
+    assert written == _written("{" + ",".join(elements) + "}", catalog, "trino")
+    assert "ARRAY[ARRAY[" not in written
+    assert "ARRAY(ARRAY(" not in written
+    assert "invalid option" in written
+
+
+@pytest.mark.parametrize(
+    ("options", "catalog", "name"),
+    [*_DIMENSIONS, ("{{host,port},{dbname,port=1}}", 1417, None)],
+)
+def test_clickhouse_reads_a_two_dimensional_options_array_as_its_elements(options, catalog, name):
+    sql = _written(options, catalog, "clickhouse")
+    if name is None:
+        assert str(chdb.query(sql, "CSV")).strip() == "true"
+        return
+    with pytest.raises(Exception, match=f"postgresql-error 0A000: {FDW_OPTION_REFUSAL}"):
+        chdb.query(sql, "CSV")
+
+
+def test_a_two_dimensional_options_array_with_a_null_element_is_22004():
+    with pytest.raises(Exception, match=f"postgresql-error {NULL_ELEMENT}"):
+        chdb.query(_written("{{host,port},{b,NULL}}", 1417, "clickhouse"), "CSV")

@@ -23,6 +23,7 @@ import pytest
 
 from provisa.pgwire.server import ProvisaHandler
 from provisa.transpiler.function_macros import FunctionRefused, RowRefused
+from provisa.transpiler.pg_xml import XmlFunctionRefused
 from provisa.transpiler.polyfill.notation import Refusal
 from provisa.transpiler.transpile import transpile
 
@@ -76,3 +77,14 @@ def test_the_row_stated_sqlstate_wins() -> None:
     assert (fields["C"], fields["M"]) == ("22025", "invalid escape string")
     # the class's own code is untouched by a row's
     assert FunctionRefused("area", "tsql").sqlstate == "0A000"
+
+
+@pytest.mark.parametrize("dialect", ["trino", "mysql"])
+def test_a_refused_xml_function_reaches_the_client_as_0a000(dialect: str) -> None:
+    with pytest.raises(XmlFunctionRefused) as caught:
+        transpile("SELECT xpath('/a', x) FROM t", dialect)
+    fields = _fields(caught.value)
+    assert (fields["C"], fields["M"]) == (
+        "0A000",
+        f"xpath needs XML, which {dialect} has no SQL for",
+    )

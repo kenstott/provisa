@@ -137,3 +137,7 @@ class _TableInfo:
     deprecation_reason: str | None = None
     # REQ-1415: the tag ids assigned to the table, listed in its description suffix.
     tags: list[str] = field(default_factory=list)
+    # REQ-194: the Hasura convention the table is served in (hasura-default or graphql-default),
+    # None for Provisa's own shapes; and, for a Hasura one, its on_conflict constraint enum.
+    hasura: str | None = None
+    hasura_constraint: str = ""

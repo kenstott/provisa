@@ -374,6 +374,7 @@ async def test_the_values_reader_reads_at_most_the_sample_size(monkeypatch):
     reader = gather.values_reader(SimpleNamespace(), "analyst")
     got = await reader.values(_tbl(1, "a", _col("x")), "x", 2)
     assert calls[0].endswith("LIMIT 3")
+    assert isinstance(got, measure.Values)
     assert got.read == (1, 2) and got.more is True
     assert measure.DISTINCT_BOUND == 10_000
 
@@ -399,6 +400,10 @@ def _row(**over: Any) -> SimpleNamespace:
         "suggested_name": None,
         "left_out": None,
         "answer": None,
+        # REQ-1586: a discovery_run_proposals row carries its junction columns, empty off one.
+        "via_table_id": None,
+        "via_source_column": None,
+        "via_target_column": None,
     }
     row.update(over)
     return SimpleNamespace(**row)
