@@ -311,14 +311,15 @@ def test_the_admin_trail_and_a_span_keep_the_named_marker():
 
 
 def test_the_client_form_matches_what_the_named_form_matches():
-    """Matching is the same for both forms, anywhere in the text; only the marker differs."""
+    """Matching is the same for both forms; only the marker differs. A secret is matched as a whole
+    token, so one inside a longer identifier is left as written in both (amended 2026-11-22)."""
     text = f"relation {SECRET}.orders, {SECRET}_slot, non{SECRET} and card 4111 1111 1111 1111"
     assert redaction.redact(text) == (
-        f"relation [REDACTED:auto:env:{VARIABLE}].orders, [REDACTED:auto:env:{VARIABLE}]_slot, "
-        f"non[REDACTED:auto:env:{VARIABLE}] and card [REDACTED:card_number]"
+        f"relation [REDACTED:auto:env:{VARIABLE}].orders, {SECRET}_slot, "
+        f"non{SECRET} and card [REDACTED:card_number]"
     )
     assert redaction.client_redact(text) == (
-        "relation [REDACTED].orders, [REDACTED]_slot, non[REDACTED] and card [REDACTED]"
+        f"relation [REDACTED].orders, {SECRET}_slot, non{SECRET} and card [REDACTED]"
     )
     # A card number that fails its check is no match in either form.
     assert redaction.client_redact("4111 1111 1111 1112") == "4111 1111 1111 1112"
