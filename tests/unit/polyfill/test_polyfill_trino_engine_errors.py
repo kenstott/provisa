@@ -388,7 +388,6 @@ def test_transaction_timestamp_is_the_statements_now_on_trino():
         ("pg_my_temp_schema", ""),
         ("pg_postmaster_start_time", ""),
         ("pg_isolation_test_session_is_blocked", "NULL::integer, NULL::integer[]"),
-        ("postgresql_fdw_validator", "NULL::text[], NULL::oid"),
         ("generate_subscripts", "NULL::integer[], NULL::integer"),
     ],
 )
