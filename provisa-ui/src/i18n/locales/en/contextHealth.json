@@ -1,0 +1,31 @@
+{
+  "contextHealth": {
+    "termsTitle": "Terms",
+    "termsAgentVisible": "Visible to agents",
+    "termsFromData": "Approved, reaching data",
+    "termsNoData": "Approved, reaching no data",
+    "termsDrafts": "Drafts in review",
+    "driftTitle": "Grounding drift this period",
+    "driftLost": "Terms that lost grounding",
+    "driftGained": "Terms that gained grounding",
+    "driftNew": "New terms",
+    "driftNoHistory": "No earlier model to compare with yet.",
+    "tagsLostTitle": "Tags lost",
+    "notYetRecorded": "Not yet recorded",
+    "classificationTitle": "Classification",
+    "classificationAwaiting": "Detections awaiting a decision",
+    "documentsTitle": "Documents",
+    "documentsDue": "Documents with reviews due",
+    "documentsReviews_one": "{{count}} review",
+    "documentsReviews_other": "{{count}} reviews",
+    "syncTitle": "Context Sync",
+    "syncNone": "No outside systems sync with Provisa.",
+    "syncWaiting_one": "{{count}} difference waiting",
+    "syncWaiting_other": "{{count}} differences waiting",
+    "syncNoRun": "Not synced since this server started",
+    "syncRunOk_one": "Last sync: {{count}} item published",
+    "syncRunOk_other": "Last sync: {{count}} items published",
+    "syncRunFailed_one": "Last sync: {{count}} failure",
+    "syncRunFailed_other": "Last sync: {{count}} failures"
+  }
+}

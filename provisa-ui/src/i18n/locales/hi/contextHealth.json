@@ -1,0 +1,31 @@
+{
+  "contextHealth": {
+    "termsTitle": "शब्द",
+    "termsAgentVisible": "एजेंटों को दिखाई देने वाले",
+    "termsFromData": "स्वीकृत, डेटा तक पहुँचने वाले",
+    "termsNoData": "स्वीकृत, किसी डेटा तक नहीं पहुँचने वाले",
+    "termsDrafts": "समीक्षा में ड्राफ़्ट",
+    "driftTitle": "इस अवधि में आधार विचलन",
+    "driftLost": "शब्द जिनका आधार खो गया",
+    "driftGained": "शब्द जिन्हें आधार मिला",
+    "driftNew": "नए शब्द",
+    "driftNoHistory": "तुलना के लिए अभी कोई पिछला मॉडल नहीं है।",
+    "tagsLostTitle": "खोए गए टैग",
+    "notYetRecorded": "अभी दर्ज नहीं",
+    "classificationTitle": "वर्गीकरण",
+    "classificationAwaiting": "निर्णय की प्रतीक्षा में पहचानें",
+    "documentsTitle": "दस्तावेज़",
+    "documentsDue": "समीक्षा बकाया वाले दस्तावेज़",
+    "documentsReviews_one": "{{count}} समीक्षा",
+    "documentsReviews_other": "{{count}} समीक्षाएँ",
+    "syncTitle": "संदर्भ सिंक",
+    "syncNone": "कोई बाहरी सिस्टम Provisa के साथ सिंक नहीं होता।",
+    "syncWaiting_one": "{{count}} अंतर प्रतीक्षा में",
+    "syncWaiting_other": "{{count}} अंतर प्रतीक्षा में",
+    "syncNoRun": "इस सर्वर के शुरू होने के बाद से सिंक नहीं हुआ",
+    "syncRunOk_one": "पिछला सिंक: {{count}} आइटम प्रकाशित",
+    "syncRunOk_other": "पिछला सिंक: {{count}} आइटम प्रकाशित",
+    "syncRunFailed_one": "पिछला सिंक: {{count}} विफलता",
+    "syncRunFailed_other": "पिछला सिंक: {{count}} विफलताएँ"
+  }
+}

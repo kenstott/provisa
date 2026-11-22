@@ -32,7 +32,9 @@ export type EntityKind =
   | "lineage"
   // REQ-2259: the context layer's metrics and classification kinds.
   | "metric"
-  | "classification";
+  | "classification"
+  // REQ-2259: a reference library document, on the Context group's Documents page.
+  | "document";
 
 const q = (v: string | number) => encodeURIComponent(String(v));
 
@@ -72,6 +74,8 @@ export function entityHref(kind: EntityKind, id: string | number, table?: number
       // REQ-2259: the Context group's Classification page; it has no panel per kind, so the link
       // names the page.
       return "/context/classification";
+    case "document":
+      return detailHref("library", id);
   }
 }
 
@@ -98,6 +102,12 @@ export function entityLink(
   table?: number,
 ): string | undefined {
   const href = entityHref(kind, id, table);
+  return meetsRequirement(capabilities, pageRequirement(href)) ? href : undefined;
+}
+
+/** REQ-2259: ``href`` -- a page, or a page narrowed by its query -- when ``capabilities`` open the
+ * page it leads to, else `undefined`: a count on Context Health links to the page it counts. */
+export function pageLink(capabilities: string[], href: string): string | undefined {
   return meetsRequirement(capabilities, pageRequirement(href)) ? href : undefined;
 }
 

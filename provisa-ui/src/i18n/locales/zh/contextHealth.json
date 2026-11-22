@@ -1,0 +1,31 @@
+{
+  "contextHealth": {
+    "termsTitle": "术语",
+    "termsAgentVisible": "智能体可见",
+    "termsFromData": "已批准，可到达数据",
+    "termsNoData": "已批准，未到达任何数据",
+    "termsDrafts": "审核中的草稿",
+    "driftTitle": "本周期的锚定漂移",
+    "driftLost": "失去锚定的术语",
+    "driftGained": "获得锚定的术语",
+    "driftNew": "新术语",
+    "driftNoHistory": "尚无可比较的早期模型。",
+    "tagsLostTitle": "丢失的标签",
+    "notYetRecorded": "尚未记录",
+    "classificationTitle": "分类",
+    "classificationAwaiting": "等待决定的检测结果",
+    "documentsTitle": "文档",
+    "documentsDue": "有待审阅的文档",
+    "documentsReviews_one": "{{count}} 项审阅",
+    "documentsReviews_other": "{{count}} 项审阅",
+    "syncTitle": "上下文同步",
+    "syncNone": "没有外部系统与 Provisa 同步。",
+    "syncWaiting_one": "{{count}} 处差异待处理",
+    "syncWaiting_other": "{{count}} 处差异待处理",
+    "syncNoRun": "自此服务器启动以来尚未同步",
+    "syncRunOk_one": "上次同步：已发布 {{count}} 项",
+    "syncRunOk_other": "上次同步：已发布 {{count}} 项",
+    "syncRunFailed_one": "上次同步：{{count}} 项失败",
+    "syncRunFailed_other": "上次同步：{{count}} 项失败"
+  }
+}

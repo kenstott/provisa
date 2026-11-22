@@ -1,0 +1,31 @@
+{
+  "contextHealth": {
+    "termsTitle": "Termes",
+    "termsAgentVisible": "Visibles par les agents",
+    "termsFromData": "Approuvés, atteignant des données",
+    "termsNoData": "Approuvés, n'atteignant aucune donnée",
+    "termsDrafts": "Brouillons en revue",
+    "driftTitle": "Dérive de l'ancrage sur cette période",
+    "driftLost": "Termes ayant perdu leur ancrage",
+    "driftGained": "Termes ayant gagné un ancrage",
+    "driftNew": "Nouveaux termes",
+    "driftNoHistory": "Aucun modèle antérieur avec lequel comparer pour l'instant.",
+    "tagsLostTitle": "Tags perdus",
+    "notYetRecorded": "Pas encore enregistré",
+    "classificationTitle": "Classification",
+    "classificationAwaiting": "Détections en attente de décision",
+    "documentsTitle": "Documents",
+    "documentsDue": "Documents avec des revues à faire",
+    "documentsReviews_one": "{{count}} revue",
+    "documentsReviews_other": "{{count}} revues",
+    "syncTitle": "Synchronisation du contexte",
+    "syncNone": "Aucun système externe ne se synchronise avec Provisa.",
+    "syncWaiting_one": "{{count}} différence en attente",
+    "syncWaiting_other": "{{count}} différences en attente",
+    "syncNoRun": "Non synchronisé depuis le démarrage de ce serveur",
+    "syncRunOk_one": "Dernière synchronisation : {{count}} élément publié",
+    "syncRunOk_other": "Dernière synchronisation : {{count}} éléments publiés",
+    "syncRunFailed_one": "Dernière synchronisation : {{count}} échec",
+    "syncRunFailed_other": "Dernière synchronisation : {{count}} échecs"
+  }
+}
