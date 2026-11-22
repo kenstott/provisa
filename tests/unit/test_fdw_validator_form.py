@@ -10,7 +10,8 @@
 
 """postgresql_fdw_validator on Trino, DuckDB and PostgreSQL raises 42601 for an option outside the
 catalog's list, as PostgreSQL does, instead of answering t. ClickHouse 24.3's throwIf takes only a
-constant message, so there such a call is refused by name, per row (REQ-2236, a stated limitation)."""
+constant message, so there such a call is refused by name, per row (REQ-2236, a stated limitation).
+An array holding a NULL element is 22004 on every engine, as PostgreSQL raises it."""
 
 # Requirements: REQ-2236
 
@@ -96,10 +97,24 @@ def test_clickhouse_refuses_per_row_only_where_a_row_has_an_unlisted_option():
         chdb.query(_over_rows("('{host}'::text[]), ('{b}'::text[])"), "CSV")
 
 
-def test_clickhouse_refuses_a_null_option_by_name():
-    sql = _written("{host,NULL}", 1417, "clickhouse")
-    with pytest.raises(Exception, match="postgresql-error 0A000: postgresql_fdw_validator"):
+#: PostgreSQL's error for an option array holding a NULL element (arrayfuncs.c deconstruct_array,
+#: called by untransformRelOptions with no nulls array), whatever the element's place.
+NULL_ELEMENT = "22004: null array element not allowed in this context"
+
+
+@pytest.mark.parametrize("options", ["{host,NULL}", "{b,NULL}", "{NULL}"])
+def test_clickhouse_raises_22004_for_a_null_option(options):
+    sql = _written(options, 1417, "clickhouse")
+    with pytest.raises(Exception, match=f"postgresql-error {NULL_ELEMENT}"):
         chdb.query(sql, "CSV")
+
+
+@pytest.mark.parametrize("dialect", ["trino", "postgres"])
+def test_the_form_raises_22004_for_a_null_option(dialect):
+    written = _written("{host,NULL}", 1417, dialect)
+    assert "22004" in written
+    assert "null array element not allowed in this context" in written
+    assert "of a NULL option" not in written
 
 
 def _duckdb(options: str, catalog: int):
@@ -138,9 +153,10 @@ def test_duckdb_raises_42601_naming_the_first_option_the_catalog_does_not_list(
         _duckdb(options, catalog)
 
 
-def test_duckdb_refuses_a_null_option_by_name():
-    with pytest.raises(Exception, match="0A000.*postgresql_fdw_validator"):
-        _duckdb("['host', NULL]", 1417)
+@pytest.mark.parametrize("options", ["['host', NULL]", "['b', NULL]", "[NULL]::VARCHAR[]"])
+def test_duckdb_raises_22004_for_a_null_option(options):
+    with pytest.raises(Exception, match=NULL_ELEMENT):
+        _duckdb(options, 1417)
 
 
 def test_duckdb_answers_null_for_a_null_argument():
@@ -187,3 +203,31 @@ def test_clickhouse_null_element_does_not_assume_not_null_on_the_element():
     written = _written("{host,NULL}", 1417, "clickhouse")
     assert "assumeNotNull(COALESCE(_o, ''))" in written
     assert "assumeNotNull(_o)" not in written
+
+
+def _row():
+    from provisa.transpiler.polyfill import GRID
+
+    (row,) = [f for f in GRID.features if f.name == "postgresql_fdw_validator"]
+    return GRID, row
+
+
+def test_the_grid_row_is_a_family_of_its_own():
+    grid, row = _row()
+    assert row.family == "foreign-data wrapper options"
+    assert [f.name for f in grid.features if f.family == row.family] == [row.name]
+
+
+@pytest.mark.parametrize("dialect", ["duckdb", "trino", "presto", "athena", "clickhouse"])
+def test_the_grid_row_states_no_null_option_limitation(dialect):
+    _, row = _row()
+    for limitation in row.read.limitations.get(dialect, ()):
+        assert "NULL" not in limitation.text
+
+
+@pytest.mark.parametrize("dialect", ["duckdb", "trino", "presto", "athena"])
+def test_the_grid_row_is_exact_where_the_form_runs(dialect):
+    from provisa.transpiler.polyfill.grid import Status
+
+    grid, row = _row()
+    assert grid.status(row, dialect) is Status.NATIVE

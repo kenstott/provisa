@@ -52,7 +52,10 @@ _CAPABILITIES = [
 _RESTRICTED = "catalog_restricted"
 _NO_META = "catalog_no_meta"
 _EVERYTHING = "catalog_everything"
-_CATALOG_READER = "developer"  # REQ-2155: a parent holding what the role is given
+# REQ-2155: a role holds what it is given intersected with what its parents hold. developer holds
+# catalog_read and query_development; full_results is data_writer's (standard_roles.yaml), and
+# write, which data_writer also holds, is not given, so these roles do not hold it.
+_PARENTS = ["developer", "data_writer"]
 _ITS_DOMAIN = "sales-analytics"
 _WITHHELD_COLUMN = ("customers", "email")
 
@@ -65,14 +68,14 @@ def _config(tmp_dir: Path) -> str:
     cfg["roles"] += [
         {
             "id": _RESTRICTED,
-            "parents": [_CATALOG_READER],
+            "parents": list(_PARENTS),
             "description": "Test role.",
             "capabilities": list(_CAPABILITIES),
             "domain_access": [_ITS_DOMAIN],
         },
         {
             "id": _EVERYTHING,
-            "parents": [_CATALOG_READER],
+            "parents": list(_PARENTS),
             "description": "Test role.",
             "capabilities": list(_CAPABILITIES),
             "domain_access": ["*"],

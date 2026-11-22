@@ -90,8 +90,10 @@ def _node(sql: str) -> exp.Expr:
 
 def test_the_columns_are_every_connector_dialect_provisa_sends_sql_to():
     """REQ-2236, EVERY CONNECTOR PROVISA SENDS SQL TO; SQL CONNECTORS ONLY: every dialect the direct
-    route knows but Qdrant's, which is lowered to its API and runs no SQL."""
-    assert set(DIALECTS) == set(CAPABILITIES) - {"qdrant"}
+    route knows but Qdrant's, which is lowered to its API and runs no SQL, and the dialects of the
+    federation engines Provisa writes its own SQL for (provisa/db2, provisa/saphana), which the
+    direct route does not list."""
+    assert set(DIALECTS) == set(CAPABILITIES) - {"qdrant"} | {"db2", "saphana"}
 
 
 @pytest.mark.parametrize(

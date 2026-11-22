@@ -289,3 +289,68 @@ async def test_once_every_grant_is_revoked_the_role_can_be_deleted(plane, rebuil
         await _object(info, "leaving", kind, name)
     async with plane.acquire() as conn:
         assert await role_repo.delete(conn, "leaving") is True
+
+
+# --- The right each kind asks (REQ-1327: a metric is authored on create_view) -----------------
+
+ROLES = {
+    "builder": {"id": "builder", "capabilities": ["create_view"], "domain_access": ["*"]},
+    "registrar": {
+        "id": "registrar",
+        "capabilities": ["table_registration"],
+        "domain_access": ["*"],
+    },
+    "reader": {"id": "reader", "capabilities": ["query_development"], "domain_access": ["*"]},
+}
+NAMES = {GrantKind.METRIC: "revenue", GrantKind.COMMAND: "refund", GrantKind.WEBHOOK: "notify"}
+
+
+@pytest.fixture
+def gated(monkeypatch, plane) -> Database:
+    monkeypatch.setattr(appmod.state, "roles", ROLES, raising=False)
+    return plane
+
+
+def _as(role_id: str) -> Any:
+    identity = types.SimpleNamespace(user_id="u1", roles=[role_id], acting_roles=[role_id])
+    request = types.SimpleNamespace(
+        state=types.SimpleNamespace(identity=identity, active_org_id=ORG, role=role_id)
+    )
+    return types.SimpleNamespace(context={"request": request})
+
+
+async def test_a_create_view_holder_revokes_a_role_from_a_metric(gated, rebuilds, commits):
+    result = await _object(_as("builder"), "leaving", GrantKind.METRIC, "revenue")
+    assert (result.success, result.code) == (True, "schema.role_revoked_from_object")
+    assert (await _grants(gated))["metric"] == [["staying"]]
+
+
+async def test_a_table_registration_holder_is_refused_a_metric_revoke(gated, rebuilds):
+    with pytest.raises(PermissionError, match="create_view"):
+        await _object(_as("registrar"), "leaving", GrantKind.METRIC, "revenue")
+    assert (await _grants(gated))["metric"] == [["leaving", "staying"]]
+    assert rebuilds == []
+
+
+@pytest.mark.parametrize("kind", [GrantKind.COMMAND, GrantKind.WEBHOOK])
+async def test_a_table_registration_holder_still_revokes_from_a_command_or_webhook(
+    gated, rebuilds, commits, kind
+):
+    result = await _object(_as("registrar"), "leaving", kind, NAMES[kind])
+    assert (result.success, result.code) == (True, "schema.role_revoked_from_object")
+    assert (await _grants(gated))[kind.value] == [["staying"]]
+
+
+@pytest.mark.parametrize(
+    ("kind", "right"),
+    [
+        (GrantKind.METRIC, "create_view"),
+        (GrantKind.COMMAND, "table_registration"),
+        (GrantKind.WEBHOOK, "table_registration"),
+    ],
+)
+async def test_a_holder_of_neither_right_is_refused(gated, rebuilds, kind, right):
+    with pytest.raises(PermissionError, match=right):
+        await _object(_as("reader"), "leaving", kind, NAMES[kind])
+    assert (await _grants(gated))[kind.value] == [["leaving", "staying"]]
+    assert rebuilds == []

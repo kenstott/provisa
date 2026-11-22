@@ -120,6 +120,21 @@
     "standingChoicesHelp": "Was ein Lauf mit jeder Art von Unterschied tut, je Richtung. Zurückhalten oder keine feste Wahl lässt den Unterschied hier für einen Steward.",
     "standingKind": "Art des Unterschieds",
     "compare": "Mit dem Katalog vergleichen",
-    "title": "Kontext-Synchronisierung"
+    "title": "Kontext-Synchronisierung",
+    "importCron": "Importzeitplan",
+    "importCronHelp": "Cron-Ausdruck für einen unbeaufsichtigten Import. Jeder Lauf übernimmt den Wert des Katalogs nur, wo die feste Wahl es vorsieht und nur der Katalog ihn geändert hat; jeden anderen Unterschied hält er für einen Steward zurück. Leer lassen, um nur auf Anforderung zu importieren.",
+    "importCronPlaceholder": "0 3 * * *",
+    "runImportNow": "Jetzt importieren",
+    "lastImport": "Letzter Import",
+    "neverImported": "Noch nicht importiert.",
+    "importOk": "{{applied}} übernommen, {{held}} zurückgehalten",
+    "importFailed": "Fehlgeschlagen",
+    "importTrigger_schedule": "Geplanter Lauf, {{when}}",
+    "importTrigger_manual": "Von Hand gestartet, {{when}}",
+    "importApplied": "Übernommen",
+    "importHeld": "Zurückgehalten",
+    "importKind": "Art",
+    "importObject": "Objekt",
+    "importReason": "Warum zurückgehalten"
   }
 }

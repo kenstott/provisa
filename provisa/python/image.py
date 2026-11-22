@@ -11,9 +11,10 @@
 """A Python source's part of its image (REQ-2098): the pinned Python and pyarrow for the image's
 platform, the code's wheels installed for it (wheels only), the host and the code."""
 
-# Requirements: REQ-2098
+# Requirements: REQ-2098, REQ-2267
 from __future__ import annotations
 
+import json
 import tempfile
 from collections.abc import Sequence
 from pathlib import Path
@@ -30,6 +31,7 @@ from provisa.codesource.image_build import (
     uv_install_env,
 )
 from provisa.codesource.install import Http, Runner
+from provisa.codesource.worker import DISCOVERED_ENV
 from provisa.python import install
 from provisa.python.install import LOCKFILES
 from provisa.runtime_deps.code_runtimes import CodeRuntimeResolver
@@ -101,6 +103,15 @@ def layers(
         f"{ROOT}/code",
         entry,
     ]
-    env = {"PYTHONDONTWRITEBYTECODE": "1", "PYTHONUNBUFFERED": "1"}
+    # REQ-2267: the generated items' handlers, from the manifest baked beside the names, for the
+    # host to serve each item by.
+    discovered = {
+        e["name"]: e["handler"] for e in plan.manifest["exports"] if e["handler"] is not None
+    }
+    env = {
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTHONUNBUFFERED": "1",
+        DISCOVERED_ENV: json.dumps(discovered),
+    }
     # The code's own Python runs the front end too.
     return ImageParts(layers, worker, env, runs_front=True)

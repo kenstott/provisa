@@ -14,7 +14,7 @@ function parameter -- required by the source exactly when the function gives it 
 (REQ-1986). Nothing is registered until a steward registers it.
 """
 
-# Requirements: REQ-1984, REQ-1993, REQ-1986
+# Requirements: REQ-1984, REQ-1993, REQ-1986, REQ-2267
 from __future__ import annotations
 
 from typing import Any
@@ -118,10 +118,12 @@ async def exports(state: Any, source_id: str) -> list[tuple[str, str]] | None:
     source = await _source(state, source_id)
     if source is None:
         return None
-    from provisa.codesource.manifest import LIFECYCLE_TAGS
+    from provisa.codesource.manifest import DISCOVER, LIFECYCLE_TAGS
 
     prepared = await prepare(source.id, source.type.value, source.mapping, await context_for(state))
-    return [(e.name, e.kind) for e in prepared.manifest.exports if e.kind not in LIFECYCLE_TAGS]
+    # REQ-2267: the @discover function is offered as what it generates, never itself.
+    hidden = LIFECYCLE_TAGS | {DISCOVER}
+    return [(e.name, e.kind) for e in prepared.manifest.exports if e.kind not in hidden]
 
 
 async def columns(state: Any, source_id: str, function: str) -> list[dict] | None:

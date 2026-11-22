@@ -113,12 +113,71 @@ def matrix_entry(leg: dict[str, Any]) -> dict[str, Any]:
     return entry
 
 
+def url_engine_kinds() -> frozenset[str]:
+    """The engine kinds ``build_sqlalchemy_engine`` builds, whose native store is read off the
+    engine URL: ``sqlalchemy`` and each network database of ``_RDB_KINDS``."""
+    from provisa.federation.engine import _RDB_KINDS
+
+    return frozenset({"sqlalchemy"} | {kind for kind, _label, _dsn in _RDB_KINDS})
+
+
+def native_store(leg: dict[str, Any]) -> str:
+    """The native store ``build_engine`` gives a URL-driven leg's engine: the backend of its URL,
+    as ``build_sqlalchemy_engine`` reads it (``postgresql+psycopg2`` is ``postgresql``). The leg's
+    engine URL, or, for a warehouse leg whose URL ``warehouse_leg.py up`` writes at run time, the
+    DSN ``_RDB_KINDS`` gives its kind."""
+    from provisa.federation.engine import _RDB_KINDS
+
+    engine = leg["engine"]
+    if engine not in url_engine_kinds():
+        raise ValueError(f"{engine}: not a URL-driven engine kind; its builder fixes its store")
+    url = leg.get("engine-url") or next(
+        (dsn for kind, _label, dsn in _RDB_KINDS if kind == engine), ""
+    )
+    if not url:
+        raise ValueError(f"{engine}: a URL-driven leg names its engine URL")
+    return url.split("://", 1)[0].split("+", 1)[0]
+
+
+def url_dialect(leg: dict[str, Any]) -> str | None:
+    """The sqlglot dialect ``build_engine`` gives a URL-driven leg's engine, or None when it has
+    none: ``EngineBackend.dialect``, which is ``source_registry.engine_dialect`` of its native store.
+    The one lookup of a URL-driven engine's dialect, which ``refused`` and polyfill_check share."""
+    from provisa.core.source_registry import engine_dialect
+
+    return engine_dialect(native_store(leg))
+
+
+def refused(leg: dict[str, Any]) -> str | None:
+    """Why ``build_engine`` refuses the leg's engine by name, or None when it builds it. The
+    refusal is ``EngineBackend.dialect``'s: a native store with no sqlglot dialect (``url_dialect``).
+    Only a URL-driven kind's store varies; every other kind's builder fixes a store that has a
+    dialect (a unit test holds each to it)."""
+    if leg["engine"] not in url_engine_kinds():
+        return None
+    if url_dialect(leg) is not None:
+        return None
+    store = native_store(leg)
+    return (
+        f"refused by name: build_engine refuses federation engine {leg['engine']!r}, its native "
+        f"store {store!r} has no sqlglot dialect (source_registry.engine_dialect)"
+    )
+
+
 def plan(lanes: str, doc: dict[str, Any]) -> dict[str, Any]:
-    """The matrix of the legs in ``lanes``, and the engines the merge expects of them."""
+    """The matrix of the legs in ``lanes`` that ``build_engine`` builds, the engines the merge
+    expects of them, and the engines it refuses by name, each with why: a leg of a refused engine
+    could only fail at startup, so it is not run, and the report lists it as refused."""
     if lanes not in LANES:
         raise ValueError(f"lanes must be one of {sorted(LANES)}, not {lanes!r}")
-    legs = [matrix_entry(leg) for leg in doc["legs"] if leg["lane"] in LANES[lanes]]
-    return {"matrix": {"include": legs}, "engines": ",".join(leg["engine"] for leg in legs)}
+    lane = [leg for leg in doc["legs"] if leg["lane"] in LANES[lanes]]
+    refusals = {leg["engine"]: why for leg in lane if (why := refused(leg)) is not None}
+    legs = [matrix_entry(leg) for leg in lane if leg["engine"] not in refusals]
+    return {
+        "matrix": {"include": legs},
+        "engines": ",".join(leg["engine"] for leg in legs),
+        "refused": refusals,
+    }
 
 
 def urls(engine: str, doc: dict[str, Any]) -> dict[str, str]:
@@ -208,6 +267,7 @@ def main(argv: list[str]) -> int:
         planned = plan(args.lanes, load())
         print(f"matrix={json.dumps(planned['matrix'])}")
         print(f"engines={planned['engines']}")
+        print(f"refused={json.dumps(planned['refused'])}")
         return 0
     if args.command == "urls":
         for variable, value in urls(args.engine, load()).items():

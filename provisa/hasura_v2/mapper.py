@@ -16,6 +16,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from provisa.compiler.naming import HASURA_DEFAULT, preset_of
 from provisa.core import domain_policy
 from provisa.security.rights import ORG_ADMIN_ROLE, Capability
 from provisa.core.models import (
@@ -106,11 +107,12 @@ def _connection_fields(url: str) -> dict[str, Any]:
 
 
 def _map_source(
-    hs: HasuraSource, collector: WarningCollector, *, overridden: bool
-) -> Source:  # REQ-417
+    hs: HasuraSource, collector: WarningCollector, *, overridden: bool, default_convention: str
+) -> Source:  # REQ-417, REQ-194
     """The source as its connection_info states it. A URL Hasura reads from an environment
     variable is not in the export: nothing is made up for it, and unless the import's source
-    settings supply it (``overridden``) the report says to."""
+    settings supply it (``overridden``) the report says to. Its GraphQL names follow the naming
+    convention its customization names, else ``default_convention`` (REQ-194)."""
     conn = hs.connection_info or {}
     db_url = conn.get("database_url", "")
     fields: dict[str, Any] = {}
@@ -129,7 +131,13 @@ def _map_source(
         fields["pool_min"] = int(pool["min_connections"])
     if pool.get("max_connections"):
         fields["pool_max"] = int(pool["max_connections"])
-    source = Source(id=hs.name, type=_source_type_from_kind(hs.kind), **fields)
+    convention = hs.naming_convention or default_convention
+    source = Source(
+        id=hs.name,
+        type=_source_type_from_kind(hs.kind),
+        gql_naming_convention=preset_of(convention),
+        **fields,
+    )
     collector.carry("sources", hs.name, f"{source.type.value} source {hs.name}")
     return source
 
@@ -921,10 +929,21 @@ def convert_metadata(
     domain_map = domain_map or {}
     source_overrides = source_overrides or {}
 
-    # Sources
+    # Sources. REQ-194: a source without customization.naming_convention takes the deployment's
+    # (HASURA_GRAPHQL_DEFAULT_NAMING_CONVENTION); unset, it is hasura-default, Hasura's own
+    # default ("Set default naming convention for all sources",
+    # https://hasura.io/docs/2.0/schema/postgres/naming-convention/).
+    default_convention = (auth_env or {}).get(
+        "HASURA_GRAPHQL_DEFAULT_NAMING_CONVENTION", HASURA_DEFAULT
+    )
     sources: list[Source] = []
     for hs in metadata.sources:
-        src = _map_source(hs, collector, overridden=hs.name in source_overrides)
+        src = _map_source(
+            hs,
+            collector,
+            overridden=hs.name in source_overrides,
+            default_convention=default_convention,
+        )
         # Apply overrides
         if hs.name in source_overrides:
             overrides = source_overrides[hs.name]

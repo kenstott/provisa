@@ -116,7 +116,6 @@ _SERVER = {
     "pg_my_temp_schema": "The oid of the session's temporary schema.",
     "pg_postmaster_start_time": "The time the server started.",
     "pg_isolation_test_session_is_blocked": "Whether a session waits on another's lock.",
-    "postgresql_fdw_validator": "Whether the options of a foreign-data wrapper are valid.",
 }
 
 #: The server functions ClickHouse has no form of either (run 43410717058 sent each as written).
@@ -127,6 +126,7 @@ _NO_CLICKHOUSE_FORM = frozenset(
 #: The family's place in the grid (polyfill.GRID), which tries the rules of one function in
 #: the order of their families.
 ORDER = 170
+
 FEATURES: tuple[Feature, ...] = (
     Feature(
         "generate_series",

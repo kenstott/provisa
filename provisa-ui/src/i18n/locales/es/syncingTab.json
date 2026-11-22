@@ -120,6 +120,21 @@
     "standingChoicesHelp": "Lo que hace una ejecución con cada tipo de diferencia, por dirección. Retener, o no tener elección fija, deja la diferencia aquí para un responsable.",
     "standingKind": "Tipo de diferencia",
     "compare": "Comparar con el catálogo",
-    "title": "Sincronización del contexto"
+    "title": "Sincronización del contexto",
+    "importCron": "Programación de importación",
+    "importCronHelp": "Expresión cron para una importación desatendida. Cada ejecución toma el valor del catálogo solo donde la elección fija lo indica y solo el catálogo lo cambió; retiene cualquier otra diferencia para un responsable. Déjelo vacío para importar solo a petición.",
+    "importCronPlaceholder": "0 3 * * *",
+    "runImportNow": "Importar ahora",
+    "lastImport": "Última importación",
+    "neverImported": "Aún no importado.",
+    "importOk": "{{applied}} aplicadas, {{held}} retenidas",
+    "importFailed": "Fallida",
+    "importTrigger_schedule": "Ejecución programada, {{when}}",
+    "importTrigger_manual": "Ejecutada a mano, {{when}}",
+    "importApplied": "Aplicadas",
+    "importHeld": "Retenidas",
+    "importKind": "Tipo",
+    "importObject": "Objeto",
+    "importReason": "Por qué se retuvo"
   }
 }
