@@ -350,7 +350,7 @@ def then_ops_reaches_create_order(shared_data: dict) -> None:
         {
             "id": "ops",
             "description": "Test role.",
-            "capabilities": ["usage"],
+            "capabilities": ["usage", "command_execution"],
             "domain_access": ["sales"],
         },
     )
@@ -364,14 +364,14 @@ def then_assignment_and_domain_are_both_needed(shared_data: dict) -> None:
     from provisa.security.mutation_authz import command_reachable
 
     record = shared_data["function_record"]
-    # Capabilities held: a role with none needs only the assignment (command_reachable, REQ-2155),
-    # so the domain is what this role is refused on.
+    # Holding command_execution (REQ-870), so the domain and the assignment are what each role is
+    # refused on.
     assert not command_reachable(
         record,
         {
             "id": "ops",
             "description": "Test role.",
-            "capabilities": ["usage"],
+            "capabilities": ["usage", "command_execution"],
             "domain_access": ["finance"],
         },
     )
@@ -380,7 +380,7 @@ def then_assignment_and_domain_are_both_needed(shared_data: dict) -> None:
         {
             "id": "analyst",
             "description": "Test role.",
-            "capabilities": ["usage"],
+            "capabilities": ["usage", "command_execution"],
             "domain_access": ["*"],
         },
     )

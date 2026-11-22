@@ -6,7 +6,7 @@
     "fitToScreen": "Ajuster à l'écran",
     "switchToHierarchy": "Passer à la disposition hiérarchique",
     "switchToForce": "Passer à la disposition par forces",
-    "nudgeLayout": "Ajuster la disposition — décale les nœuds sélectionnés (ou tous si aucun n'est sélectionné) ; maintenez pour continuer à itérer",
+    "nudgeLayout": "Déplace légèrement les nœuds sélectionnés, ou tous si aucun n'est sélectionné. Maintenez enfoncé pour continuer les itérations.",
     "edgeLength": "Longueur des arêtes",
     "edgeLengthValue": "{{value}} px"
   }

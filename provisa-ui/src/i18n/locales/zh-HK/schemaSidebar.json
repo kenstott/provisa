@@ -1,8 +1,8 @@
 {
   "schemaSidebar": {
     "title": "結構描述",
-    "collapse": "摺疊結構描述面板",
-    "expand": "展開結構描述面板",
+    "collapse": "隱藏結構描述面板",
+    "expand": "顯示結構描述面板",
     "dragToCanvas": "拖曳至畫布",
     "doubleClickToInsert": "按兩下以插入完整名稱",
     "insertTableReference": "在 SQL 編輯器中插入表格參照",

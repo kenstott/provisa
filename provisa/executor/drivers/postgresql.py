@@ -38,7 +38,7 @@ import re
 import struct
 import threading
 import weakref
-from collections.abc import Generator
+from collections.abc import Generator, Iterator
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any, cast
 
@@ -140,6 +140,37 @@ def _q(sql: str) -> QueryNoTemplate:
     """psycopg types its query parameter as a LiteralString to catch string-built SQL; this SQL is
     the governed pipeline's output with its values bound as parameters, not interpolated."""
     return cast(QueryNoTemplate, sql)
+
+
+def quoted_select(schema: str, table: str, names: list[str]) -> pg_sql.Composed:
+    """A read of ``names`` from ``schema.table``, every identifier quoted."""
+    return pg_sql.SQL("SELECT {} FROM {}.{}").format(
+        pg_sql.SQL(", ").join(pg_sql.Identifier(name) for name in names),
+        pg_sql.Identifier(schema),
+        pg_sql.Identifier(table),
+    )
+
+
+def stream_rows(
+    settings: dict[str, Any], query: pg_sql.Composed, batch_rows: int
+) -> Iterator[list[dict[str, Any]]]:
+    """The rows ``query`` reads from the Postgres-wire endpoint ``settings`` name, over a
+    connection of its own (outside the source pools; the endpoint need not be a PostgreSQL
+    server), ``batch_rows`` at a time as dicts keyed by column name; the connection is closed
+    however the iteration ends."""
+    with psycopg.connect(**settings) as conn:
+        cursor = conn.cursor()
+        names: list[str] = []
+        batch: list[dict[str, Any]] = []
+        for row in cursor.stream(query, size=batch_rows):
+            if not names:
+                names = [d.name for d in cursor.description or []]
+            batch.append(dict(zip(names, row)))
+            if len(batch) >= batch_rows:
+                yield batch
+                batch = []
+        if batch:
+            yield batch
 
 
 def _wait_s(default: float) -> float:
@@ -514,20 +545,56 @@ class PostgreSQLDriver(DirectDriver):  # REQ-052, REQ-053, REQ-068, REQ-550
             with conn.cursor() as cur:
                 with request_deadline.cancel_on_deadline(conn.cancel):
                     cur.execute(_q(exec_sql), args)
+                    rows = self._fetched(cur)
+                return self._result(conn, cur, rows)
+
+    # Async only for the DirectDriver awaitable contract; executes synchronously in-thread.
+    async def execute_in_one_transaction(
+        self, statements: list[tuple[str, dict[str, Any]]], *, read_only: bool = False
+    ) -> QueryResult:  # REQ-1988
+        """Each statement, in psycopg's named-parameter form with its bound values, in order in
+        one transaction on one connection: all commit or, on any failure, none does. Answers the
+        last statement's result.
+
+        ``read_only`` makes the database itself refuse a write (SQLSTATE 25006): the transaction's
+        first statement is ``SET TRANSACTION READ ONLY``, which lasts to its end only, so the
+        pooled connection goes back read-write."""
+        if not statements:
+            raise ValueError("no statement to run")
+        with self._borrow() as conn, conn.transaction():
+            if read_only:
+                conn.execute(_q("SET TRANSACTION READ ONLY"))
+            if current_zone.get() is not None:
+                _tell_zone(conn, statements[0][0])
+            with conn.cursor() as cur:
+                with request_deadline.cancel_on_deadline(conn.cancel):
                     rows: list[tuple] = []
-                    if cur.description:
-                        # In chunks, not one fetchall(): converting a large result is a single
-                        # C call the request's deadline cannot end until it returns (REQ-1905,
-                        # measured at 0.9-3.5 s for 6M rows). Between chunks it can.
-                        while chunk := cur.fetchmany(_FETCH_CHUNK_ROWS):
-                            rows.extend(tuple(r) for r in chunk)
-                            request_deadline.check()
-                desc = cur.description or []
-                columns = [d.name for d in desc]
-                col_types = self._type_names(conn, [d.type_code for d in desc])
-                # A statement with no result set (a data write without RETURNING) reports how
-                # many rows it changed; the driver's count is the only place that is known.
-                affected = cur.rowcount if cur.description is None and cur.rowcount >= 0 else None
+                    for sql, params in statements:
+                        cur.execute(_q(sql), params)
+                        rows = self._fetched(cur)
+                return self._result(conn, cur, rows)
+
+    @staticmethod
+    def _fetched(cur: psycopg.Cursor[Any]) -> list[tuple]:
+        rows: list[tuple] = []
+        if cur.description:
+            # In chunks, not one fetchall(): converting a large result is a single C call the
+            # request's deadline cannot end until it returns (REQ-1905, measured at 0.9-3.5 s for
+            # 6M rows). Between chunks it can.
+            while chunk := cur.fetchmany(_FETCH_CHUNK_ROWS):
+                rows.extend(tuple(r) for r in chunk)
+                request_deadline.check()
+        return rows
+
+    def _result(
+        self, conn: psycopg.Connection[Any], cur: psycopg.Cursor[Any], rows: list[tuple]
+    ) -> QueryResult:
+        desc = cur.description or []
+        columns = [d.name for d in desc]
+        col_types = self._type_names(conn, [d.type_code for d in desc])
+        # A statement with no result set (a data write without RETURNING) reports how many rows
+        # it changed; the driver's count is the only place that is known.
+        affected = cur.rowcount if cur.description is None and cur.rowcount >= 0 else None
         return QueryResult(
             rows=rows, column_names=columns, column_types=col_types, rowcount=affected
         )

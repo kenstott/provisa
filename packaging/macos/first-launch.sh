@@ -470,6 +470,72 @@ _find_payload() {
   return 1
 }
 
+# ── The DuckDB extensions: their own release asset (maintainer decision 2026-11-11) ──
+# The Core DMG carries no DuckDB extension: DuckDB's own signature, appended after the Mach-O
+# image, cannot be Developer ID signed, and Apple rejects a DMG that holds them. build-dmg.sh moves
+# them into a release asset and pins its sha256 in Resources/duckdb-extensions.sha256
+# ("<sha256>  <asset>"). This restores them into the staged runtime, at the paths they had there;
+# `provisa start` then stages them into the DuckDB extension directory (stage_bundled_extensions).
+# The asset is the one beside the installer (air-gapped), else this version's release download.
+# Either way its checksum must match the pin; with neither, setup stops and says where to put it.
+DUCKDB_EXTENSIONS_PIN="${RESOURCES}/duckdb-extensions.sha256"
+
+# The directory holding the disk image the .app runs from, when it runs from one.
+_installer_dir() {
+  [[ "$BUNDLE_DIR" == /Volumes/* ]] || return 0
+  local rest="${BUNDLE_DIR#/Volumes/}"
+  local volume="/Volumes/${rest%%/*}"
+  { hdiutil info 2>/dev/null || true; } | awk -F'\t' -v volume="$volume" '
+    /^image-path/ { image = $0; sub(/^image-path[ ]*:[ ]*/, "", image) }
+    /^=+$/        { image = "" }
+    $NF == volume && image != "" { print image; exit }
+  ' | while IFS= read -r image; do dirname "$image"; done
+}
+
+stage_duckdb_extensions() {
+  local venv="$1" want asset got src="" cand dir download=""
+  if [ ! -f "$DUCKDB_EXTENSIONS_PIN" ]; then
+    err "This Provisa.app has no ${DUCKDB_EXTENSIONS_PIN##*/}: it cannot verify its DuckDB extensions. Download Provisa again."
+    exit 1
+  fi
+  read -r want asset < "$DUCKDB_EXTENSIONS_PIN"
+
+  dir="$(_installer_dir)"
+  for cand in ${dir:+"${dir}/${asset}"} \
+              "$(dirname "$BUNDLE_DIR")/${asset}" \
+              "${HOME}/Downloads/${asset}" \
+              /Volumes/*/"${asset}"; do
+    [ -f "$cand" ] && src="$cand" && break
+  done
+
+  local url="https://github.com/kenstott/provisa/releases/download/${PROVISA_VERSION}/${asset}"
+  if [ -z "$src" ]; then
+    if [ -z "$PROVISA_VERSION" ] || [ "$PROVISA_VERSION" = "dev" ]; then
+      err "DuckDB extensions not found: ${asset}. Place it next to the Provisa installer (the .dmg) or in ~/Downloads, then open Provisa again."
+      exit 1
+    fi
+    info "Downloading the DuckDB extensions (${asset})..."
+    download="${PROVISA_HOME}/${asset}"
+    if ! curl -fL --retry 3 --retry-delay 5 -o "$download" "$url"; then
+      rm -f "$download"
+      err "DuckDB extensions not found: ${asset} is not beside the installer and could not be downloaded from ${url}. Place ${asset} next to the Provisa installer (the .dmg) or in ~/Downloads, then open Provisa again."
+      exit 1
+    fi
+    src="$download"
+  fi
+
+  got="$(shasum -a 256 "$src" | awk '{print $1}')"
+  if [ "$got" != "$want" ]; then
+    [ -n "$download" ] && rm -f "$download"
+    err "${src}: sha256 ${got} does not match ${want}, the checksum this Provisa pins for ${asset}."
+    exit 1
+  fi
+  info "Staging the DuckDB extensions from ${src}..."
+  tar -xzf "$src" -C "$venv"
+  [ -n "$download" ] && rm -f "$download"
+  ok "DuckDB extensions staged (${asset}, sha256 verified)."
+}
+
 # ── Native tier: stage the prebuilt runtime (REQ-979) ────────────────────────
 # The DMG ships `runtime/` — a python-build-standalone interpreter with provisa[embedded],
 # uvicorn, mcp-proxy, and the built UI ALREADY installed (build-dmg.sh does the pip work).
@@ -502,6 +568,9 @@ stage_native_runtime() {
   rm -rf "$venv"
   mkdir -p "$venv"
   cp -R "$src"/. "${venv}/"
+  # The copied stamp would mark a runtime whose extensions are not staged yet as up to date.
+  rm -f "${venv}/.runtime-version"
+  stage_duckdb_extensions "$venv"
   # Gatekeeper: everything copied off a downloaded DMG carries com.apple.quarantine, and a
   # quarantined .dylib/.so inside the runtime is refused at load time, not just at launch.
   xattr -dr com.apple.quarantine "$venv" 2>/dev/null || true

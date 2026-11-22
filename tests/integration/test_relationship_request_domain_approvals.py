@@ -36,6 +36,7 @@ from provisa.api.admin.creation_requests_router import router
 from provisa.api.errors import ApiError
 from provisa.core.database import Database, create_engine_from_url
 from provisa.core.db import init_schema
+from provisa.security.inheritance import with_own_domains
 from provisa.core.schema_org import (
     admin_audit_log,
     domains,
@@ -117,6 +118,8 @@ def _api() -> FastAPI:
         )
         # The acting role, as the auth middleware sets it on every request (REQ-2152 reads it).
         request.state.role = _acting(user)
+        # The org the auth middleware resolves; the admin trail is stored under it.
+        request.state.active_org_id = _ORG_ID
         return await call_next(request)
 
     @app.exception_handler(ApiError)
@@ -183,16 +186,23 @@ async def plane(monkeypatch):
             await conn.execute_core(
                 insert(roles).values(id=role_id, capabilities=caps, domain_access=access)
             )
-        loaded = {r["id"]: r for r in await role_repo.list_all(conn)}
+        loaded = {r["id"]: r for r in with_own_domains(await role_repo.list_all(conn))}
     monkeypatch.setattr(appmod.state, "tenant_db", db, raising=False)
     monkeypatch.setattr(appmod.state, "model_db", db, raising=False)
     monkeypatch.setattr(appmod.state, "roles", loaded, raising=False)
     # No schema build runs here: no draft table is compiled aside (catalog_scope reads the list).
-    monkeypatch.setattr(appmod.state, "role_build_inputs", {"draft_tables": []}, raising=False)
+    monkeypatch.setattr(
+        appmod.state,
+        "role_build_inputs",
+        {"withdrawn_tables": []},
+        raising=False,
+    )
     # Nor is any table compiled: every table is judged by its stored grants, whatever an earlier
     # test in this process left in the runtime (catalog_scope reads tables and contexts).
     monkeypatch.setattr(appmod.state, "tables", [], raising=False)
-    monkeypatch.setattr(appmod.state, "contexts", {}, raising=False)
+    # Every role's surface goes, whole: one an earlier test registered and never read is unbuilt,
+    # and dropping one part of it (state.contexts = {}) would build it from the stub above.
+    monkeypatch.setattr(appmod.state._active_runtime(), "surfaces", {})
     # The meta-roles of the users holding several roles: what each acts as, as the runtime's
     # meta-roles answer it (security/meta_role.acting_roles); any other role is itself.
     from provisa.security import meta_role
@@ -234,8 +244,11 @@ async def plane(monkeypatch):
 def _info(user: str) -> Any:
     identity = types.SimpleNamespace(user_id=user, roles=_held(user), acting_roles=_held(user))
     # The acting role, as the auth middleware sets it on every request (REQ-2152 reads it).
+    # headers={} satisfies idempotency.once (REQ-2216), which reads request.headers.get(); with
+    # no Idempotency-Key header the check is a no-op and once() delegates immediately.
     request = types.SimpleNamespace(
-        state=types.SimpleNamespace(identity=identity, active_org_id=_ORG_ID, role=_acting(user))
+        state=types.SimpleNamespace(identity=identity, active_org_id=_ORG_ID, role=_acting(user)),
+        headers={},
     )
     return types.SimpleNamespace(context={"request": request})
 

@@ -11,8 +11,9 @@
 // The three screens of the source-to-query e2e (REQ-1671), as steps both lanes' specs share:
 // the Sources form, the Register Table form, and the SQL page's results grid.
 
+import type { Locator } from "@playwright/test";
 import { BACKEND_URL, expect, type Page } from "./coverage";
-import { deleteSourceAndItsTables } from "./delete-source";
+import { retireSourceTables, type AdminGql } from "./retire-source-tables";
 
 export const DOMAIN = "pet-store"; // shipped by both lanes' configs; its SQL schema is pet_store
 
@@ -33,14 +34,14 @@ export async function addSourceOfType(page: Page, type: string) {
 }
 
 // The cache TTL a spec asked for while filling the short create step, by page: the step asks
-// only what a source needs in order to exist, so the TTL is set in the edit form the new source
-// opens in (submitSourceAndExpectListed), unless the step itself shows the field.
+// only what a source needs in order to exist, so the TTL is set in the new source's edit form,
+// opened from its read view (submitSourceAndExpectListed), unless the step itself shows the field.
 const askedCacheTtl = new WeakMap<Page, number>();
 
 /** Give a new source the cache TTL its tables need (REQ-1907): a source the engine serves from a
  *  replica must have a landing clock before a table is registered. A kind that cannot exist
  *  without one shows the field in the create step, and it is filled there; for any other kind
- *  it is set, right after the source is created, in the edit form it opens in. */
+ *  it is set, right after the source is created, in its edit form. */
 export async function setSourceCacheTtl(page: Page, seconds: number) {
   // The panel is open with no toggle wherever it is shown.
   if ((await page.getByTestId("source-load-management-panel").count()) === 0) {
@@ -50,18 +51,32 @@ export async function setSourceCacheTtl(page: Page, seconds: number) {
   await page.getByTestId("cache-ttl-input").fill(String(seconds));
 }
 
-/** Remove every source the tests registered on this worker's backend, with its tables.
+/** Retire every table in service on the sources the tests registered on this worker's backend.
+ * The sources themselves stay (REQ-2248: a source holding a table, retired or not, is kept).
  *
- * For a spec's teardown, BEFORE it takes its stack down. A source left registered against a
- * server that is gone is not inert: the backend goes on building its tables' replicas for as
- * long as the registration exists -- the hiveserver2 case's table was retried 29 times over the
- * remaining 83 minutes of the core lane, each with a refused connection and a traceback (run
- * 37918605161) -- and every read of the whole model meets it.
+ * For a spec's teardown, BEFORE it takes its stack down. A table left in service against a
+ * server that is gone is not inert: the backend goes on building its replica for as long as it
+ * is served -- the hiveserver2 case's table was retried 29 times over the remaining 83 minutes
+ * of the core lane, each with a refused connection and a traceback (run 37918605161) -- and
+ * every read of the whole model meets it. A retired table is no longer served.
  *
  * The tests' sources are told from the model's own by their ids: `e2e_<kind>_<13-digit stamp>`,
  * which no source of the demo model has. */
-export async function removeTestSources(baseUrl: string = BACKEND_URL): Promise<string[]> {
-  const gql = async (query: string, variables: Record<string, unknown> = {}) => {
+export async function retireTestSourcesTables(baseUrl: string = BACKEND_URL): Promise<string[]> {
+  const gql = adminGql(baseUrl);
+  const listed = await gql("{ sources { id } }");
+  if (listed.errors)
+    throw new Error(`sources could not be listed: ${JSON.stringify(listed.errors)}`);
+  const mine = ((listed.data?.sources ?? []) as Array<{ id: string }>)
+    .map((s) => s.id)
+    .filter((id) => /^e2e_[a-z0-9_]+_\d{13}$/.test(id));
+  for (const id of mine) await retireSourceTables(gql, id);
+  return mine;
+}
+
+/** One admin GraphQL document posted to the backend at `baseUrl` as org_admin, its parsed body. */
+function adminGql(baseUrl: string): AdminGql {
+  return async (query: string, variables: Record<string, unknown> = {}) => {
     const res = await fetch(`${baseUrl}/admin/graphql`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-provisa-role": "org_admin" },
@@ -70,14 +85,15 @@ export async function removeTestSources(baseUrl: string = BACKEND_URL): Promise<
     if (!res.ok) throw new Error(`admin GraphQL answered ${res.status}: ${await res.text()}`);
     return res.json();
   };
-  const listed = await gql("{ sources { id } }");
-  if (listed.errors)
-    throw new Error(`sources could not be listed: ${JSON.stringify(listed.errors)}`);
-  const mine = ((listed.data?.sources ?? []) as Array<{ id: string }>)
-    .map((s) => s.id)
-    .filter((id) => /^e2e_[a-z0-9_]+_\d{13}$/.test(id));
-  for (const id of mine) await deleteSourceAndItsTables(gql, id);
-  return mine;
+}
+
+/** Retire the tables of one source a test created (retireSourceTables), on the backend at
+ * `baseUrl`, leaving the source. For a test's own cleanup of what it registered. */
+export async function retireTestSourceTables(
+  sourceId: string,
+  baseUrl: string = BACKEND_URL,
+): Promise<void> {
+  await retireSourceTables(adminGql(baseUrl), sourceId);
 }
 
 // A source form field, by its label. The sources list behind the form has sortable column headers
@@ -109,45 +125,49 @@ export async function submitSourceAndExpectListed(page: Page, sourceId: string) 
   });
   // The row is listed as soon as the create returns, before the settings saved with it (cache,
   // Replicate, region...) -- each of which rebuilds the model. The create is done when the new
-  // source opens in edit; a step that navigates before then waits behind those rebuilds (run
+  // source's panel opens; a step that navigates before then waits behind those rebuilds (run
   // 40227062159: the next page's tables query outlasted its 15 s).
-  const save = page.getByTestId("sources-edit-submit");
-  await expect(save).toBeVisible({ timeout: 60000 });
+  // REQ-2234: the panel opens first on the "Register tables" step; skipping the step shows the
+  // source, saved, in its read view (REQ-1974).
+  await page.getByTestId("register-tables-skip").click({ timeout: 60000 });
+  const edit = page.getByTestId("source-detail-edit");
+  await expect(edit).toBeVisible({ timeout: 60000 });
   const seconds = askedCacheTtl.get(page);
   if (seconds === undefined) return;
   askedCacheTtl.delete(page);
-  // The new source is selected and its detail is open in edit, everything else at defaults.
+  // The new source is selected and read, everything else at defaults: Edit opens its form.
   // The edit form is in sections; the cache TTL is on the Load and timeliness one.
+  await edit.click();
+  const save = page.getByTestId("sources-edit-submit");
+  await expect(save).toBeVisible({ timeout: 60000 });
   await page.getByTestId("source-section-load").click();
   await page.getByTestId("cache-ttl-input").fill(String(seconds));
   await save.click();
   // Saved: the panel shows the source's detail again.
-  await expect(page.getByTestId("source-detail-edit")).toBeVisible({ timeout: 60000 });
+  await expect(edit).toBeVisible({ timeout: 60000 });
 }
 
 /**
- * Open the schema discovery of a source whose detail panel is open. Its Discover button is in the
- * panel's head, which shows no actions in edit, and a just-created source opens in edit: the edit
- * is left first.
+ * Open the schema discovery of a source whose detail panel is open in its read view, as a
+ * just-created source's is: its Discover button is in the panel's head.
  */
 export async function openSourceDiscovery(page: Page, sourceId: string) {
-  const discover = page.getByTestId(`sources-discover-${sourceId}`);
-  const cancelEdit = page.getByTestId("sources-edit-cancel");
-  // A just-created source's edit opens once the list has it again; a source left in its read
-  // view shows Discover. The head never shows both.
-  await expect(cancelEdit.or(discover)).toBeVisible({ timeout: 60000 });
-  if (await cancelEdit.isVisible()) await cancelEdit.click();
-  await discover.click();
+  await page.getByTestId(`sources-discover-${sourceId}`).click({ timeout: 60000 });
   await expect(page.getByTestId("schema-discovery")).toBeVisible({ timeout: 10000 });
 }
 
-export async function openRegisterForm(page: Page, sourceId: string, domain: string = DOMAIN) {
+/** Opens the Tables page's Register Table form, nothing chosen in it. */
+export async function openTablesAddForm(page: Page) {
   await page.goto("/tables");
   // The header renders once the first TablesQuery answers (TablesPage's initial-load gate), measured
   // at 7-16s on a shared CI runner while schema rebuilds run: the same 60s openSourcesForm gives it.
   await page.waitForSelector(".page-header", { timeout: 60000 });
   await page.getByRole("button", { name: /\+ Table/i }).click();
   await page.waitForSelector(".form-card", { timeout: 5000 });
+}
+
+export async function openRegisterForm(page: Page, sourceId: string, domain: string = DOMAIN) {
+  await openTablesAddForm(page);
   // Apollo may serve the sources list from cache first; the new source arrives with the refetch.
   await expect(
     page.getByTestId("register-table-source-select").locator(`option[value='${sourceId}']`),
@@ -223,59 +243,184 @@ export async function waitForSourceServing(
   }
 }
 
-/** Pick a schema and a table in the pickers, waiting for each to be introspected from the source. */
-export async function pickSchemaAndTable(page: Page, schema: string, table: string) {
-  const schemaSelect = page.getByTestId("register-table-schema-select");
-  await expect(schemaSelect.locator(`option[value='${schema}']`)).toHaveCount(1, {
-    timeout: 120000,
-  });
-  if ((await schemaSelect.inputValue()) !== schema) await schemaSelect.selectOption(schema);
-  const tableSelect = page.getByTestId("register-table-table-select");
-  await expect(tableSelect.locator(`option[value='${table}']`)).toHaveCount(1, { timeout: 120000 });
-  await tableSelect.selectOption(table);
-  // Column metadata loads asynchronously after the table selection (RegisterTableForm's own
-  // useEffect) and the submit button is never disabled while it is in flight — an openapi table
-  // additionally needs a live HTTP round-trip (dynamic column inference off the response shape)
-  // that can lose the race with the caller's next action under load, leaving submit clicked
-  // before any column has populated and "At least one column must be selected" silently blocking
-  // it forever. Wait for the discovered columns before returning control to the caller.
-  await expect(discoveredColumns(page).first()).toBeVisible({ timeout: 30000 });
+/** Escapes `text` for use in a RegExp. */
+const escaped = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/** REQ-2234: Register Table's one Tables field, the standard multi-select. */
+export function tablesField(page: Page) {
+  return page.getByTestId("register-tables-field").getByRole("textbox");
+}
+
+/** The Tables field's option for `table` in its open list. A native `<option>` (the Source
+ * select's, whose source id can equal a table's name) is not one of them. */
+export function tableOption(page: Page, table: string) {
+  return page
+    .getByRole("option", { name: new RegExp(`^${escaped(table)}`) })
+    .and(page.locator("[data-combobox-option]"));
+}
+
+/** The names the Tables field's open list offers. An option's text is the table's name, followed
+ * by Register where it needs input. */
+export async function listedTableNames(page: Page): Promise<string[]> {
+  return page
+    .locator("[data-combobox-option]")
+    .evaluateAll((opts) => opts.map((o) => (o.textContent ?? "").replace(/Register$/, "")));
+}
+
+/** Waits until the source's schemas have answered. The Schema field is shown, disabled, while
+ * they load, and is gone once they answer with one schema (REQ-2234): whether it is asked is
+ * known only after the load. */
+export async function schemasLoaded(page: Page, timeout = 120000): Promise<void> {
+  await expect(
+    page.getByTestId("register-table-schema-select").and(page.locator(":disabled")),
+  ).toHaveCount(0, { timeout });
 }
 
 /**
- * Where the register form shows the columns discovery found: the short step names them in one
- * summary line; the longer path (a query API's preview) lists each in its column table.
+ * Opens a list row's detail panel. The click lands on the row's first own cell: a list whose rows
+ * can be selected (REQ-2240) puts a checkbox cell first, which keeps its click to itself, and the
+ * row's centre can land on a cell's own control (a tag button).
  */
-function discoveredColumns(page: Page) {
-  return page
-    .getByTestId("register-table-columns-summary")
-    .or(page.locator('[data-testid^="register-table-col-selected-"]'));
+export async function openListRow(row: Locator): Promise<void> {
+  await row.locator("td:not(.list-select)").first().click();
 }
 
-/** Waits until discovery has found each named column, on either form of the register step. */
+/**
+ * Opens a list row's detail panel unless it is already open. REQ-2260: a list page reopens the
+ * detail its viewer left open (kept across reloads), and a click on the open item's row closes it.
+ * A row's `aria-selected` says whether its detail is the open one.
+ */
+export async function openListRowDetail(row: Locator): Promise<void> {
+  await row.waitFor();
+  if ((await row.getAttribute("aria-selected")) !== "true") await openListRow(row);
+}
+
+// The table the last pick named: Register goes on with it (picked, or registered on its own).
+let pickedTable: string | null = null;
+
+/**
+ * Pick a schema (where the source has more than one) and a table in the Tables field, waiting
+ * for each to be introspected from the source. A table discovery says needs input is offered
+ * but cannot be picked: it is registered on its own by its option's Register (continueRegister).
+ */
+export async function pickSchemaAndTable(page: Page, schema: string, table: string) {
+  await expect(page.getByTestId("register-tables-field")).toBeVisible({ timeout: 120000 });
+  const schemaSelect = page.getByTestId("register-table-schema-select");
+  await schemasLoaded(page);
+  if ((await schemaSelect.count()) > 0) {
+    await expect(schemaSelect.locator(`option[value='${schema}']`)).toHaveCount(1, {
+      timeout: 120000,
+    });
+    if ((await schemaSelect.inputValue()) !== schema) await schemaSelect.selectOption(schema);
+  }
+  await pickTable(page, table);
+}
+
+/** Picks `table` in the Tables field once its columns are read; one that needs input is left
+ * for its own Register. */
+export async function pickTable(page: Page, table: string) {
+  const field = tablesField(page);
+  await expect(field).toBeEnabled({ timeout: 120000 });
+  await field.click();
+  const option = tableOption(page, table);
+  const onItsOwn = page.getByTestId(`option-action-${table}`);
+  // Read: it can be picked, or it carries its own Register.
+  await expect(option.and(page.locator(":not([data-combobox-disabled])")).or(onItsOwn)).toBeVisible(
+    { timeout: 120000 },
+  );
+  if ((await onItsOwn.count()) === 0) await option.click();
+  await page.keyboard.press("Escape");
+  pickedTable = table;
+}
+
+/** Whether `table` is picked in the Tables field (shown as a pill). */
+async function isPicked(page: Page, table: string): Promise<boolean> {
+  const pills = page.getByTestId("register-tables-field").locator(".mantine-Pill-label");
+  return (await pills.filter({ hasText: new RegExp(`^${escaped(table)}$`) }).count()) > 0;
+}
+
+/** Waits until discovery has found each named column. Register Table lists no columns
+ * (REQ-2234): they are read from the server, as the Tables field reads them. */
 export async function expectDiscoveredColumns(page: Page, names: string[], timeout = 60000) {
-  const summary = page.getByTestId("register-table-columns-summary");
-  for (const name of names) {
-    // In the summary a name stands between "): " or ", " and ", " or ". ".
-    const named = new RegExp(`(: |, )${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(,|\\.)`);
-    await expect(
-      summary
-        .filter({ hasText: named })
-        .or(page.getByTestId(`register-table-col-selected-${name}`)),
-    ).toBeVisible({ timeout });
+  if ((await page.locator('[data-testid^="register-table-col-selected-"]').count()) > 0) {
+    for (const name of names) {
+      await expect(page.getByTestId(`register-table-col-selected-${name}`)).toBeVisible({
+        timeout,
+      });
+    }
+    return;
+  }
+  const found = await columnsOf(page, pickedTable as string, timeout);
+  for (const name of names) expect(found, `discovery found no column ${name}`).toContain(name);
+}
+
+/** How many columns discovery found for the table picked. */
+export async function discoveredColumnCount(page: Page): Promise<number> {
+  const query = page.locator('[data-testid^="register-table-col-selected-"]');
+  if ((await query.count()) > 0) return query.count();
+  return (await columnsOf(page, pickedTable as string, 30000)).length;
+}
+
+/**
+ * One admin GraphQL read issued BY THE PAGE (its own fetch, same origin), parsed. A read about what
+ * the form shows must reach the backend the page itself talks to: a spec that points the page at
+ * another backend with `page.route()` (the Trino lane's routeToTrinoBackend, engine-swap's reboot
+ * backend) rewrites only requests the page issues. `page.request` is a separate APIRequestContext
+ * that `page.route()` never intercepts, so a read through it asks the default backend, which has
+ * never heard of a source the page created on the routed one.
+ */
+async function pageGraphql(
+  page: Page,
+  query: string,
+  variables: Record<string, unknown>,
+): Promise<{ data?: Record<string, unknown> | null; errors?: { message: string }[] }> {
+  return page.evaluate(
+    async ({ query, variables }) => {
+      const res = await fetch("/admin/graphql", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query, variables }),
+      });
+      return res.json();
+    },
+    { query, variables },
+  );
+}
+
+/** The columns discovery gives `table` of the source and schema chosen on the form. */
+async function columnsOf(page: Page, table: string, timeout: number): Promise<string[]> {
+  const sourceId = await page.getByTestId("register-table-source-select").inputValue();
+  const schemaSelect = page.getByTestId("register-table-schema-select");
+  const schemaName =
+    (await schemaSelect.count()) > 0
+      ? await schemaSelect.inputValue()
+      : (await availableSchemas(page, sourceId))[0];
+  const deadline = Date.now() + timeout;
+  for (;;) {
+    const body = await pageGraphql(
+      page,
+      "query($s: String!, $sc: String!, $t: String!) { availableColumnsMetadata(sourceId: $s, schemaName: $sc, tableName: $t) { name } }",
+      { s: sourceId, sc: schemaName, t: table },
+    );
+    const cols = body.data?.availableColumnsMetadata as { name: string }[] | null | undefined;
+    if (cols && cols.length > 0) return cols.map((c) => c.name);
+    if (Date.now() >= deadline) {
+      const errors = (body.errors ?? []).map((e) => e.message).join("; ");
+      throw new Error(
+        `no columns discovered for ${table}` +
+          ` (source ${sourceId}, schema ${schemaName})${errors ? `: ${errors}` : ""}`,
+      );
+    }
+    await page.waitForTimeout(2000);
   }
 }
 
-/** How many columns discovery found, on either form of the register step. */
-export async function discoveredColumnCount(page: Page): Promise<number> {
-  await expect(discoveredColumns(page).first()).toBeVisible({ timeout: 30000 });
-  const summary = page.getByTestId("register-table-columns-summary");
-  if (await summary.isVisible()) {
-    const counted = /\((\d+)\)/.exec((await summary.textContent()) ?? "");
-    expect(counted, "the register step's column summary gives no count").not.toBeNull();
-    return Number(counted![1]);
-  }
-  return page.locator('[data-testid^="register-table-col-selected-"]').count();
+async function availableSchemas(page: Page, sourceId: string): Promise<string[]> {
+  const body = await pageGraphql(page, "query($s: String!) { availableSchemas(sourceId: $s) }", {
+    s: sourceId,
+  });
+  expect(body.errors, JSON.stringify(body.errors)).toBeUndefined();
+  return body.data?.availableSchemas as string[];
 }
 
 /**
@@ -292,45 +437,38 @@ export interface RegisteredColumnEdits {
 }
 
 /**
- * REQ-1921: a table or view registered through the admin starts as draft — out of service until
- * its domain's owners release it. Release every draft table matching ``match`` (a source's, or one
- * table by name), as a domain owner does after registering it and before anything reads it.
- * Returns how many were released.
+ * REQ-1921: a table or view registered through the admin is live on registration. Asserts every
+ * table matching ``match`` (a source's, or one table by name) is listed and none is withdrawn, and
+ * returns how many matched.
  */
-export async function releaseDraftTables(
+export async function expectRegisteredLive(
   page: Page,
   match: { sourceId?: string; tableName?: string },
   baseUrl = "",
 ): Promise<number> {
   const res = await page.request.post(`${baseUrl}/admin/graphql`, {
-    data: { query: "{ tables { id sourceId tableName draft } }" },
+    data: { query: "{ tables { id sourceId tableName withdrawn } }" },
   });
   expect(res.ok(), await res.text()).toBeTruthy();
-  const tables = (await res.json()).data.tables as {
+  const body = await res.json();
+  expect(body.errors, JSON.stringify(body.errors)).toBeUndefined();
+  const tables = body.data.tables as {
     id: number;
     sourceId: string;
     tableName: string;
-    draft: boolean;
+    withdrawn: boolean;
   }[];
-  const drafts = tables.filter(
+  const matched = tables.filter(
     (t) =>
-      t.draft &&
       (match.sourceId === undefined || t.sourceId === match.sourceId) &&
       (match.tableName === undefined || t.tableName === match.tableName),
   );
-  for (const t of drafts) {
-    const released = await page.request.post(`${baseUrl}/admin/graphql`, {
-      data: {
-        query: `mutation($id: Int!) { setTableDraft(tableId: $id, draft: false) { success message } }`,
-        variables: { id: t.id },
-      },
-    });
-    expect(released.ok(), await released.text()).toBeTruthy();
-    const body = await released.json();
-    expect(body.errors, JSON.stringify(body.errors)).toBeUndefined();
-    expect(body.data.setTableDraft.success, body.data.setTableDraft.message).toBeTruthy();
-  }
-  return drafts.length;
+  expect(matched.length, `no registered table matches ${JSON.stringify(match)}`).toBeGreaterThan(0);
+  expect(
+    matched.filter((t) => t.withdrawn).map((t) => t.tableName),
+    "a registered table is live, never withdrawn",
+  ).toEqual([]);
+  return matched.length;
 }
 
 /**
@@ -344,29 +482,120 @@ export async function submitRegister(page: Page, cacheTtlSeconds = 300): Promise
 }
 
 /**
+ * Click `target` and return the parsed answer of the /admin/graphql operation it sends whose body
+ * matches `operation`. The answer is read in the page, from a clone of the response the app's own
+ * fetch receives (apolloClient.ts calls the global fetch on every request), not through
+ * Response.json(): that reads Chromium's inspector cache, which evicted a 198-byte UpdateTable
+ * answer the moment it landed while the Vite dev server streamed the next page's modules
+ * (run 44756391787, "Request content was evicted from inspector cache").
+ */
+async function clickAndReadAdminAnswer(
+  page: Page,
+  target: Locator,
+  operation: RegExp,
+): Promise<{ errors?: unknown; data: Record<string, unknown> }> {
+  await page.evaluate(
+    ({ source, flags }) => {
+      const pattern = new RegExp(source, flags);
+      const w = window as unknown as { __adminAnswer?: string; fetch: typeof fetch };
+      delete w.__adminAnswer;
+      const original = w.fetch;
+      w.fetch = async (input, init) => {
+        const response = await original(input, init);
+        const sent = typeof init?.body === "string" ? init.body : "";
+        if (String(input).includes("/admin/graphql") && pattern.test(sent)) {
+          w.fetch = original;
+          w.__adminAnswer = await response.clone().text();
+        }
+        return response;
+      };
+    },
+    { source: operation.source, flags: operation.flags },
+  );
+  await target.click();
+  const answer = await page.waitForFunction(
+    () => (window as unknown as { __adminAnswer?: string }).__adminAnswer,
+    undefined,
+    { timeout: 120000 },
+  );
+  return JSON.parse((await answer.jsonValue()) as string);
+}
+
+/**
  * Save the registration and wait for its answer, asserted whole. The registration rebuilds the
  * schemas before it answers, so a wait for what it lands (a row, a badge) starts here, not at the
  * click: on a busy runner the registration alone took 19.7 s of a 20 s wait (run 40177970935).
  */
 export async function saveRegistration(page: Page): Promise<void> {
-  const registered = page.waitForResponse(
-    (r) =>
-      r.url().includes("/admin/graphql") &&
-      (r.request().postData() ?? "").includes("RegisterTable"),
-    { timeout: 120000 },
+  // A table registered on its own is registered by this Save; one picked in the Tables field was
+  // registered already, and this Save updates it.
+  const body = await clickAndReadAdminAnswer(
+    page,
+    page.getByTestId("table-edit-save"),
+    /RegisterTable\b|UpdateTable\b/,
   );
-  await page.getByTestId("table-edit-save").click();
-  const body = await (await registered).json();
   expect(body.errors, JSON.stringify(body)).toBeUndefined();
-  expect(body.data.registerTable.success, JSON.stringify(body)).toBe(true);
+  const answer = (body.data.registerTable ?? body.data.updateTable) as { success: boolean };
+  expect(answer.success, JSON.stringify(body)).toBe(true);
 }
 
-/** The register step's Continue: the chosen table's settings follow in the editor's sections,
- * where Save registers it (REQ-2109). */
+/**
+ * The register step's action, ending in the table's editor with its Save in view. A table picked
+ * in the Tables field is registered with its defaults (REQ-2234), then opened in its panel's edit
+ * form, where Save saves what the test sets. A table that needs input is registered on its own
+ * from its option's Register, opened unsaved in the same edit form, where Save registers it
+ * (REQ-2109); a Cache TTL its source does not state is given there.
+ */
 async function continueRegister(page: Page, cacheTtlSeconds: number): Promise<void> {
-  const cacheTtl = page.getByTestId("register-table-cache-ttl");
-  if ((await cacheTtl.count()) > 0) await cacheTtl.fill(String(cacheTtlSeconds));
-  await page.getByTestId("register-table-submit").click();
+  // An authored table (a checker's, a query's) keeps its Continue.
+  const authored = page.getByTestId("register-table-submit");
+  if ((await authored.count()) > 0) {
+    const cacheTtl = page.getByTestId("register-table-cache-ttl");
+    if ((await cacheTtl.count()) > 0) await cacheTtl.fill(String(cacheTtlSeconds));
+    await authored.click();
+    await expect(page.getByTestId("table-edit-save")).toBeVisible({ timeout: 30000 });
+    return;
+  }
+  const table = pickedTable as string;
+  if (await isPicked(page, table)) {
+    const sourceId = await page.getByTestId("register-table-source-select").inputValue();
+    const body = await clickAndReadAdminAnswer(
+      page,
+      page.getByTestId("register-many-tables-submit"),
+      /RegisterTables\b/,
+    );
+    expect(body.errors, JSON.stringify(body)).toBeUndefined();
+    const outcomes = body.data.registerTables as { result: { success: boolean } }[];
+    expect(
+      outcomes.every((o) => o.result.success),
+      JSON.stringify(body),
+    ).toBe(true);
+    await openTableEditor(page, sourceId, table);
+    return;
+  }
+  await tablesField(page).click();
+  await page.getByTestId(`option-action-${table}`).click();
+  await expect(page.getByTestId("table-edit-save")).toBeVisible({ timeout: 30000 });
+  // A table of a source that needs a Cache TTL for each table is given one before its Save.
+  await page.getByTestId("table-section-load").click();
+  const cacheTtl = page.getByLabel(/^Cache TTL/);
+  if ((await cacheTtl.count()) > 0 && (await cacheTtl.inputValue()) === "")
+    await cacheTtl.fill(String(cacheTtlSeconds));
+  await page.getByTestId("table-section-identity").click();
+}
+
+/** Opens the registered table of `sourceId` named `table` in its panel's edit form. */
+export async function openTableEditor(page: Page, sourceId: string, table: string) {
+  await page.goto("/tables");
+  await page.waitForSelector(".page-header", { timeout: 15000 });
+  const rows = page.locator(".data-table tbody tr").filter({ hasText: sourceId });
+  const named = rows.filter({ hasText: new RegExp(table.replace(/_/g, "[_ ]?"), "i") });
+  const row = (await named.count()) > 0 ? named.first() : rows.first();
+  await row.waitFor({ timeout: 120000 });
+  await openListRowDetail(row);
+  const edit = page.getByTestId("table-read-view-edit").first();
+  await edit.waitFor({ timeout: 15000 });
+  await edit.click();
   await expect(page.getByTestId("table-edit-save")).toBeVisible({ timeout: 30000 });
 }
 
@@ -418,13 +647,14 @@ export async function submitRegisterAndExpectListed(
       .getByRole("textbox", { name: "Page size", exact: true })
       .fill(String(columns.pageSize));
   }
-  const save = page.getByTestId("table-edit-save");
-  await save.click();
-  // Registration rebuilds the schemas; the row lands in the tables list when it is done.
+  // The Save registers the table or updates the one registered from the Tables field; either
+  // rebuilds the schemas before it answers (an update took 15-24 s on a CI runner, run
+  // 43521446753), so the wait is for its answer, not a fixed time after the click.
+  await saveRegistration(page);
   const row = page.locator(".data-table tbody tr").filter({ hasText: sourceId }).first();
   await expect(row).toBeVisible({ timeout: timeoutMs });
-  await expect(save).toBeHidden({ timeout: 15000 });
-  await releaseDraftTables(page, { sourceId }, baseUrl);
+  await expect(page.getByTestId("table-edit-save")).toBeHidden({ timeout: 15000 });
+  await expectRegisteredLive(page, { sourceId }, baseUrl);
   const res = await page.request.post(`${baseUrl}/admin/graphql`, {
     data: { query: "{ tables { sourceId dqDataset } }" },
   });
@@ -462,7 +692,10 @@ export async function registeredTableNames(page: Page, sourceId: string): Promis
 /**
  * Register one of the tables a remote source offers (REQ-308, REQ-322): adding such a source
  * registers nothing, so the table is found in what the source offers and registered with the
- * columns named, each visible to every role. Returns the table's registered name.
+ * columns named, each granted to org_admin, the role runSqlOnPage reads as. A named grant is used
+ * as given (REQ-2154, amended 2026-11-10): "*" names no role, so a column granted ["*"] is served
+ * to none and the table is in no role's schema (run 43067159378: V006 on the SQL page).
+ * Returns the table's registered name.
  */
 export async function registerOfferedTable(
   page: Page,
@@ -492,10 +725,11 @@ export async function registerOfferedTable(
       variables: {
         t: {
           sourceId,
-          domainId: "",
+          // REQ-1531: every table is registered in a domain (the demo's).
+          domainId: "pet-store",
           schemaName,
           tableName,
-          columns: columns.map((name) => ({ name, visibleTo: ["*"] })),
+          columns: columns.map((name) => ({ name, visibleTo: ["org_admin"] })),
         },
       },
     },
@@ -505,7 +739,7 @@ export async function registerOfferedTable(
   expect(json.errors, JSON.stringify(json.errors)).toBeUndefined();
   expect(json.data.registerTable.success, json.data.registerTable.message).toBeTruthy();
   expect(await registeredTableNames(page, sourceId)).toEqual([tableName]);
-  await releaseDraftTables(page, { sourceId, tableName: tableName as string });
+  await expectRegisteredLive(page, { sourceId, tableName: tableName as string });
   return tableName as string;
 }
 
@@ -573,9 +807,16 @@ export async function runSqlOnPage(
     await page.waitForTimeout(SOURCE_STARTING_RETRY_AFTER_MS);
   }
   // The first query on a materialize-only source lands it first; allow for that. A statement that
-  // matched nothing is answered too, with no grid: a caller polling for rows asks again.
+  // matched nothing is answered too, with no grid: a caller polling for rows asks again. A
+  // statement the page answers with an error fails here with that error, not after waiting out
+  // the test for a grid that cannot come (run 43067159378: a V006 sat on the page for 120 s).
   const grid = page.getByTestId("download-csv-btn");
-  await expect(grid.or(page.getByTestId("sql-results-empty"))).toBeVisible({ timeout: 120000 });
+  const empty = page.getByTestId("sql-results-empty");
+  const error = page.getByTestId("sql-results-error");
+  await expect(grid.or(empty).or(error)).toBeVisible({ timeout: 120000 });
+  if (await error.isVisible()) {
+    throw new Error(`the SQL page answered ${sql} with an error: ${await error.innerText()}`);
+  }
   if (!(await grid.isVisible())) return [];
   const rows = page.locator(".sql-results-table tbody tr");
   return rows.evaluateAll((trs) =>

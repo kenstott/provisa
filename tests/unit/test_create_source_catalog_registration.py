@@ -23,6 +23,8 @@ into the test cannot detect the formula changing.
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 
 from provisa.core.catalog import _to_catalog_name
@@ -59,6 +61,8 @@ def state(monkeypatch):
     monkeypatch.setattr(app_state, "source_cache", {}, raising=False)
     monkeypatch.setattr(app_state, "source_federation_hints", {}, raising=False)
     monkeypatch.setattr(app_state, "federation_engine", _NativeEngine(), raising=False)
+    # The loader types provisa-admin by the control plane's backend (open before it runs).
+    monkeypatch.setattr(app_state, "model_db", SimpleNamespace(dialect="postgresql"), raising=False)
     yield app_state
     monkeypatch.undo()
     reset_current_org(token)
@@ -98,6 +102,7 @@ def test_non_default_org_prefixes_the_source_id_derived_name(state):
     # that org's runtime, never the default one (REQ-1266).
     tenant = OrgRuntime(org_id="tenant-a")
     tenant.federation_engine = state.federation_engine
+    tenant.model_db = state.model_db  # the org's store, open before its sources are loaded
     state.org_registry.set("tenant-a", tenant)
     token = current_org.set("tenant-a")
     try:
@@ -187,17 +192,23 @@ def test_dynamic_source_registers_and_analyzes_at_the_recorded_catalog(state, mo
     model = Source(id="pet-store-pg", type=SourceType.postgresql, database="provisa")
     source_input = SourceInput(id="pet-store-pg", type="postgresql", database="provisa")
 
-    class _Result:
-        def fetchall(self):
-            class _Row:
-                schema_name = "public"
-                table_name = "pets"
+    class _Row:
+        id = 1
+        schema_name = "public"
+        table_name = "pets"
 
-            return [_Row()]
+    class _Result:
+        def __init__(self, rows: list) -> None:
+            self._rows = rows
+
+        def fetchall(self):
+            return self._rows
 
     class _Conn:
-        async def execute_core(self, _stmt):
-            return _Result()
+        async def execute_core(self, stmt):
+            # The source's tables, then their columns (none is a parameter).
+            selects_columns = "table_columns" in {t.name for t in stmt.get_final_froms()}
+            return _Result([] if selects_columns else [_Row()])
 
         async def __aenter__(self):
             return self

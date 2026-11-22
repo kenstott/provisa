@@ -31,6 +31,7 @@ from provisa.api.metadata_export.snowflake_horizon import (
     _object_kind,
     ListingMember,
     PublishedAddresses,
+    address_tag_statements,
     comment_statements,
     listing_manifest,
     listing_statements,
@@ -360,7 +361,7 @@ def _table_asset(
 def test_comment_statements_sets_table_comment_on_a_real_table():
     table = _table_asset("petstore-api", "public", "pets", description="Pets for sale")
     kinds = {("landing", "org_acme_export", "petstore-api__public__pets"): "TABLE"}
-    stmts = comment_statements([table], kinds, [], _ADDR)
+    stmts = comment_statements([table], kinds, [], _ADDR, {})
     assert stmts == [
         'ALTER TABLE "landing"."org_acme_export"."petstore-api__public__pets" SET COMMENT = \'Pets for sale\';'
     ]
@@ -369,7 +370,7 @@ def test_comment_statements_sets_table_comment_on_a_real_table():
 def test_comment_statements_sets_view_comment_via_alter_view():
     table = _table_asset("petstore-api", "public", "pets", description="Pets for sale")
     kinds = {("landing", "org_acme_export", "petstore-api__public__pets"): "VIEW"}
-    stmts = comment_statements([table], kinds, [], _ADDR)
+    stmts = comment_statements([table], kinds, [], _ADDR, {})
     assert stmts == [
         'ALTER VIEW "landing"."org_acme_export"."petstore-api__public__pets" SET COMMENT = \'Pets for sale\';'
     ]
@@ -384,9 +385,37 @@ def test_comment_statements_sets_column_comment_via_modify_column_on_a_table():
     )
     table = _table_asset("petstore-api", "public", "pets", columns=[column])
     kinds = {("landing", "org_acme_export", "petstore-api__public__pets"): "TABLE"}
-    stmts = comment_statements([table], kinds, [], _ADDR)
+    stmts = comment_statements([table], kinds, [], _ADDR, {})
     assert stmts == [
         'ALTER TABLE "landing"."org_acme_export"."petstore-api__public__pets" MODIFY COLUMN "name" COMMENT \'Pet name\';'
+    ]
+
+
+def test_comment_statements_appends_the_columns_grounded_term_and_its_definition():
+    # REQ-2238: Horizon has no glossary, so the column's comment names its term and definition.
+    from provisa.api.metadata_export.model import GroundedTerm
+
+    column = ColumnAsset(
+        ref=_column_ref("petstore-api", "public", "pets", "name"),
+        name="name",
+        data_type="text",
+        description="Pet name",
+    )
+    table = _table_asset("petstore-api", "public", "pets", columns=[column])
+    kinds = {("landing", "org_acme_export", "petstore-api__public__pets"): "TABLE"}
+    term = GroundedTerm(
+        term_id=1,
+        name="pet name",
+        definition="What a pet answers to.",
+        status="draft",
+        semantic_uri="provisa://acme/terms/pet%20name",
+        role="property",
+        refs=(column.ref,),
+    )
+    stmts = comment_statements([table], kinds, [], _ADDR, {column.ref.fqn(): term})
+    assert stmts == [
+        'ALTER TABLE "landing"."org_acme_export"."petstore-api__public__pets" MODIFY COLUMN '
+        "\"name\" COMMENT 'Pet name\\n\\n[provisa:term pet name draft] What a pet answers to.';"
     ]
 
 
@@ -399,7 +428,7 @@ def test_comment_statements_sets_column_comment_via_alter_column_on_a_view():
     )
     table = _table_asset("petstore-api", "public", "pets", columns=[column])
     kinds = {("landing", "org_acme_export", "petstore-api__public__pets"): "VIEW"}
-    stmts = comment_statements([table], kinds, [], _ADDR)
+    stmts = comment_statements([table], kinds, [], _ADDR, {})
     assert stmts == [
         'ALTER VIEW "landing"."org_acme_export"."petstore-api__public__pets" ALTER COLUMN "name" COMMENT \'Pet name\';'
     ]
@@ -407,7 +436,7 @@ def test_comment_statements_sets_column_comment_via_alter_column_on_a_view():
 
 def test_comment_statements_skips_tables_missing_from_kinds():
     table = _table_asset("petstore-api", "public", "pets", description="Pets for sale")
-    assert comment_statements([table], {}, [], _ADDR) == []
+    assert comment_statements([table], {}, [], _ADDR, {}) == []
 
 
 def test_comment_statements_skips_columns_and_tables_with_no_description():
@@ -419,7 +448,7 @@ def test_comment_statements_skips_columns_and_tables_with_no_description():
     )
     table = _table_asset("petstore-api", "public", "pets", columns=[column])
     kinds = {("landing", "org_acme_export", "petstore-api__public__pets"): "TABLE"}
-    assert comment_statements([table], kinds, [], _ADDR) == []
+    assert comment_statements([table], kinds, [], _ADDR, {}) == []
 
 
 def test_comment_statements_appends_governance_note_to_table_comment():
@@ -434,7 +463,7 @@ def test_comment_statements_appends_governance_note_to_table_comment():
             exempt_roles=("owner",),
         )
     ]
-    stmts = comment_statements([table], kinds, tags, _ADDR)
+    stmts = comment_statements([table], kinds, tags, _ADDR, {})
     assert stmts == [
         'ALTER TABLE "landing"."org_acme_export"."petstore-api__public__pets" SET COMMENT = '
         # A line break is written as Snowflake's \n escape: the comment Snowflake stores is the
@@ -454,7 +483,7 @@ def test_comment_statements_uses_governance_note_alone_when_no_description():
             rule_id="rule-7",
         )
     ]
-    stmts = comment_statements([table], kinds, tags, _ADDR)
+    stmts = comment_statements([table], kinds, tags, _ADDR, {})
     assert stmts == [
         'ALTER TABLE "landing"."org_acme_export"."petstore-api__public__pets" SET COMMENT = '
         "'[provisa:governance masked rule=rule-7]';"
@@ -549,9 +578,10 @@ def test_publish_is_a_noop_when_engine_is_not_snowflake(monkeypatch):
         lambda: "duckdb:///local",
     )
     snapshot = SimpleNamespace(
+        environment=None,
         data_products=[
             _FakeDataProduct("c360", "customer_360", "desc", [_table_ref("s", "p", "t")])
-        ]
+        ],
     )
     result = asyncio.run(_exporter().publish(snapshot))
     assert result.ok
@@ -563,7 +593,7 @@ def test_publish_is_a_noop_when_snapshot_has_no_data_products(monkeypatch):
         "provisa.api.metadata_export.snowflake_horizon.configured_engine_url",
         lambda: "snowflake://user:pass@acct/db/schema",
     )
-    snapshot = SimpleNamespace(data_products=[])
+    snapshot = SimpleNamespace(environment=None, data_products=[])
     result = asyncio.run(_exporter().publish(snapshot))
     assert result.ok
     assert result.total_published() == 0
@@ -583,7 +613,7 @@ def test_publish_creates_share_and_listing_for_each_data_product(monkeypatch):
     product = _FakeDataProduct(
         "c360", "customer_360", "Customer 360", [_table_ref("petstore-api", "public", "customers")]
     )
-    snapshot = SimpleNamespace(data_products=[product])
+    snapshot = SimpleNamespace(environment=None, data_products=[product])
     result = asyncio.run(_exporter().publish(snapshot))
     assert result.ok
     assert result.published["data_products"] == 1
@@ -617,7 +647,7 @@ def test_publish_creates_listing_with_publish_true_when_product_opts_in(monkeypa
         [_table_ref("petstore-api", "public", "customers")],
         status="live",
     )
-    snapshot = SimpleNamespace(data_products=[product])
+    snapshot = SimpleNamespace(environment=None, data_products=[product])
     result = asyncio.run(_exporter().publish(snapshot))
     assert result.ok
     joined = " | ".join(rt._conn.cursor_obj.sql)
@@ -642,7 +672,7 @@ def test_publish_reports_error_when_support_contact_missing(monkeypatch):
         [_table_ref("petstore-api", "public", "customers")],
         support_contact=None,
     )
-    snapshot = SimpleNamespace(data_products=[product])
+    snapshot = SimpleNamespace(environment=None, data_products=[product])
     result = asyncio.run(_exporter().publish(snapshot))
     assert not result.ok
     assert "support_contact" in result.errors[0].message
@@ -662,7 +692,7 @@ def test_publish_reports_error_when_member_table_not_landed(monkeypatch):
     product = _FakeDataProduct(
         "c360", "customer_360", "Customer 360", [_table_ref("petstore-api", "public", "customers")]
     )
-    snapshot = SimpleNamespace(data_products=[product])
+    snapshot = SimpleNamespace(environment=None, data_products=[product])
     result = asyncio.run(_exporter().publish(snapshot))
     assert not result.ok
     assert "landing terminal missing" in result.errors[0].message
@@ -673,7 +703,7 @@ def test_publish_is_a_noop_when_snapshot_has_no_products_or_tags(monkeypatch):
         "provisa.api.metadata_export.snowflake_horizon.configured_engine_url",
         lambda: "snowflake://user:pass@acct/db/schema",
     )
-    snapshot = SimpleNamespace(data_products=[], governance_tags=[])
+    snapshot = SimpleNamespace(environment=None, data_products=[], governance_tags=[])
     result = asyncio.run(_exporter().publish(snapshot))
     assert result.ok
     assert result.total_published() == 0
@@ -691,6 +721,7 @@ def test_publish_reports_error_when_governance_tag_has_no_matching_table_asset(m
     )
     monkeypatch.setattr(rt, "close", lambda: None)
     snapshot = SimpleNamespace(
+        environment=None,
         data_products=[],
         tables=[],
         governance_tags=[
@@ -730,6 +761,7 @@ def test_publish_features_members_with_their_object_kind_and_masked_columns(monk
         [_table_ref("pet-store-sqlite", "pet_store", "pets")],
     )
     snapshot = SimpleNamespace(
+        environment=None,
         data_products=[product],
         tables=[
             _table_asset(
@@ -803,7 +835,9 @@ def test_publish_reports_and_withholds_an_ip_literal_documentation_link(monkeypa
         [_table_ref("petstore-api", "public", "customers")],
         documentation_url="http://10.0.0.5/data-products?product=c360",
     )
-    result = asyncio.run(_exporter().publish(snapshot=SimpleNamespace(data_products=[product])))
+    result = asyncio.run(
+        _exporter().publish(snapshot=SimpleNamespace(environment=None, data_products=[product]))
+    )
     assert result.published["data_products"] == 1
     assert [e.message for e in result.errors] and "IP address" in result.errors[0].message
     create = next(s for s in rt._conn.cursor_obj.sql if s.startswith("CREATE ORGANIZATION"))
@@ -820,7 +854,9 @@ def test_publish_puts_the_product_page_url_in_the_manifest(monkeypatch):
         [_table_ref("petstore-api", "public", "customers")],
         documentation_url="https://acme.example.test/data-products?product=c360",
     )
-    result = asyncio.run(_exporter().publish(snapshot=SimpleNamespace(data_products=[product])))
+    result = asyncio.run(
+        _exporter().publish(snapshot=SimpleNamespace(environment=None, data_products=[product]))
+    )
     assert result.ok, result.errors
     create = next(s for s in rt._conn.cursor_obj.sql if s.startswith("CREATE ORGANIZATION"))
     assert 'documentation: "https://acme.example.test/data-products?product=c360"' in create
@@ -832,7 +868,9 @@ def test_publish_alters_the_listing_when_the_live_manifest_drifted(monkeypatch):
     product = _FakeDataProduct(
         "c360", "customer_360", "desc", [_table_ref("petstore-api", "public", "customers")]
     )
-    result = asyncio.run(_exporter().publish(snapshot=SimpleNamespace(data_products=[product])))
+    result = asyncio.run(
+        _exporter().publish(snapshot=SimpleNamespace(environment=None, data_products=[product]))
+    )
     assert result.ok, result.errors
     alters = [s for s in rt._conn.cursor_obj.sql if s.startswith("ALTER LISTING")]
     assert len(alters) == 1
@@ -854,7 +892,9 @@ def test_publish_revokes_share_grants_on_former_members(monkeypatch):
     product = _FakeDataProduct(
         "c360", "customer_360", "desc", [_table_ref("petstore-api", "public", "customers")]
     )
-    result = asyncio.run(_exporter().publish(snapshot=SimpleNamespace(data_products=[product])))
+    result = asyncio.run(
+        _exporter().publish(snapshot=SimpleNamespace(environment=None, data_products=[product]))
+    )
     assert result.ok, result.errors
     revokes = [s for s in rt._conn.cursor_obj.sql if s.startswith("REVOKE")]
     assert revokes == [
@@ -889,7 +929,9 @@ def test_publish_applies_descriptions_to_a_view(monkeypatch):
     )
     monkeypatch.setattr(rt, "close", lambda: None)
     table = _table_asset("petstore-api", "public", "pets", description="Pets for sale")
-    snapshot = SimpleNamespace(data_products=[], governance_tags=[], model_tags=[], tables=[table])
+    snapshot = SimpleNamespace(
+        environment=None, data_products=[], governance_tags=[], model_tags=[], tables=[table]
+    )
     result = asyncio.run(_exporter().publish(snapshot))
     assert result.ok
     assert result.published["descriptions"] == 1
@@ -912,7 +954,9 @@ def test_publish_reports_error_when_described_table_not_landed(monkeypatch):
     )
     monkeypatch.setattr(rt, "close", lambda: None)
     table = _table_asset("petstore-api", "public", "pets", description="Pets for sale")
-    snapshot = SimpleNamespace(data_products=[], governance_tags=[], model_tags=[], tables=[table])
+    snapshot = SimpleNamespace(
+        environment=None, data_products=[], governance_tags=[], model_tags=[], tables=[table]
+    )
     result = asyncio.run(_exporter().publish(snapshot))
     assert not result.ok
     assert "landing terminal missing" in result.errors[0].message
@@ -932,7 +976,7 @@ def test_publish_refuses_to_guess_when_no_export_views_were_handed_in(monkeypatc
     )
     exporter = SnowflakeHorizonExport(SimpleNamespace(enabled=True, provider="snowflake_horizon"))  # type: ignore[arg-type]
     with pytest.raises(RuntimeError, match="export view addresses"):
-        asyncio.run(exporter.publish(SimpleNamespace(data_products=[product])))
+        asyncio.run(exporter.publish(SimpleNamespace(environment=None, data_products=[product])))
     assert rt._conn.cursor_obj.sql == []  # nothing was shared at a guessed address
 
 
@@ -942,7 +986,9 @@ def test_publish_shares_a_live_attached_table_where_it_is_attached(monkeypatch):
     product = _FakeDataProduct(
         "lake", "lake_events", "Lake events", [_table_ref("lake", "sales", "events")]
     )
-    result = asyncio.run(_exporter().publish(SimpleNamespace(data_products=[product])))
+    result = asyncio.run(
+        _exporter().publish(SimpleNamespace(environment=None, data_products=[product]))
+    )
     assert result.ok, result.errors
     joined = " | ".join(rt._conn.cursor_obj.sql)
     assert (
@@ -963,7 +1009,9 @@ def test_a_retired_product_leaves_its_share_empty_and_its_listing_unpublished(mo
     )
     _snowflake(monkeypatch, rt)
     product = _FakeDataProduct("c360", "customer_360", "desc", [], status="retired")
-    result = asyncio.run(_exporter().publish(snapshot=SimpleNamespace(data_products=[product])))
+    result = asyncio.run(
+        _exporter().publish(snapshot=SimpleNamespace(environment=None, data_products=[product]))
+    )
     assert result.ok, result.errors
     sql = rt._conn.cursor_obj.sql
     assert [s for s in sql if s.startswith("REVOKE")] == [
@@ -972,3 +1020,66 @@ def test_a_retired_product_leaves_its_share_empty_and_its_listing_unpublished(mo
     assert not [s for s in sql if s.startswith("GRANT SELECT")]
     listing = [s for s in sql if "LISTING" in s and "PUBLISH =" in s]
     assert listing and all(s.rstrip().endswith("PUBLISH = FALSE;") for s in listing)
+
+
+def test_publish_tags_each_table_with_the_environment_and_its_stage(monkeypatch):  # REQ-2261
+    from provisa.api.metadata_export.model import EnvironmentStage
+
+    monkeypatch.setattr(
+        "provisa.api.metadata_export.snowflake_horizon.configured_engine_url",
+        lambda: "snowflake://user:pass@acct/db/schema",
+    )
+    rt = _runtime(existing_objects=True, kind="VIEW")
+    monkeypatch.setattr(
+        "provisa.api.metadata_export.snowflake_horizon.SnowflakeFederationRuntime",
+        lambda url: rt,
+    )
+    monkeypatch.setattr(rt, "close", lambda: None)
+    # Undescribed: the environment alone is reason enough to reach the table.
+    table = _table_asset("petstore-api", "public", "pets")
+    snapshot = SimpleNamespace(
+        environment=EnvironmentStage(name="eu", stage="production"),
+        data_products=[],
+        governance_tags=[],
+        model_tags=[],
+        tables=[table],
+    )
+    result = asyncio.run(_exporter().publish(snapshot))
+    assert result.ok, result.errors
+    assert result.published["environment_tags"] == 1
+    sql = rt._conn.cursor_obj.sql
+    tag = '"landing"."PROVISA_GOVERNANCE"'
+    assert f"CREATE SCHEMA IF NOT EXISTS {tag};" in sql
+    assert f'CREATE TAG IF NOT EXISTS {tag}."PROVISA_ENVIRONMENT";' in sql
+    assert f'CREATE TAG IF NOT EXISTS {tag}."PROVISA_STAGE";' in sql
+    assert (
+        'ALTER TABLE "landing"."org_acme_export"."petstore-api__public__pets" SET TAG '
+        f"{tag}.\"PROVISA_ENVIRONMENT\" = 'eu', {tag}.\"PROVISA_STAGE\" = 'production';"
+    ) in sql
+
+
+def test_without_an_environment_no_table_claims_a_stage(monkeypatch):  # REQ-2261
+    rt = _runtime(existing_objects=True)
+    _snowflake(monkeypatch, rt)
+    table = _table_asset("petstore-api", "public", "pets", description="Pets for sale")
+    snapshot = SimpleNamespace(
+        environment=None, data_products=[], governance_tags=[], model_tags=[], tables=[table]
+    )
+    result = asyncio.run(_exporter().publish(snapshot))
+    assert result.ok, result.errors
+    assert not any("PROVISA_STAGE" in s for s in rt._conn.cursor_obj.sql)
+
+
+def test_address_tag_statements_tag_each_table_with_its_provisa_address():  # REQ-2122
+    table = _table_asset("petstore-api", "public", "pets")
+    schema = '"landing"."PROVISA_GOVERNANCE"'
+    assert address_tag_statements([table], _ADDR) == [
+        f"CREATE SCHEMA IF NOT EXISTS {schema};",
+        f'CREATE TAG IF NOT EXISTS {schema}."PROVISA_URI";',
+        'ALTER TABLE "landing"."org_acme_export"."petstore-api__public__pets" SET TAG '
+        f"{schema}.\"PROVISA_URI\" = '{table.semantic_uri}';",
+    ]
+
+
+def test_address_tag_statements_are_empty_without_tables():
+    assert address_tag_statements([], _ADDR) == []

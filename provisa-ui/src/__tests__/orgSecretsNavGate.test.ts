@@ -52,8 +52,13 @@ describe("the Org Secrets nav entry", () => {
     // REQ-1327: the rule is the nav's, not one entry's. The retired wildcard strings open no
     // entry, and each entry opens for a caller holding exactly its own right.
     for (const item of admin.items) {
-      expect(meetsRequirement(["admin", "superadmin"], item), item.to).toBe(false);
-      const own = item.andCapability ? [item.capability, item.andCapability] : [item.capability];
+      // REQ-1327: an entry asking no right (`capability: null`) opens for everyone, wildcard
+      // strings included, exactly as for a caller holding nothing.
+      expect(meetsRequirement(["admin", "superadmin"], item), item.to).toBe(
+        meetsRequirement([], item),
+      );
+      const named = item.capability === null ? [] : [item.capability];
+      const own = item.andCapability ? [...named, item.andCapability] : named;
       expect(meetsRequirement(own, item), item.to).toBe(true);
     }
   });
@@ -64,10 +69,20 @@ describe("the Org Secrets nav entry", () => {
     for (const item of admin.items) {
       const opens = meetsRequirement(platformAdmin, item);
       const namesPlatformRight =
+        // REQ-1327: an entry every member opens (My Secrets, Requests) opens for this caller too.
+        item.capability === null ||
         platformAdmin.includes(item.capability) ||
-        (item.orCapability !== undefined && platformAdmin.includes(item.orCapability));
+        (item.orCapability !== undefined && platformAdmin.includes(item.orCapability)) ||
+        // REQ-1576, REQ-1327: /admin/email also holds the deployment's mail transport, and names
+        // the deployment check, both platform rights together, to open for it.
+        (item.orAllOf !== undefined && item.orAllOf.every((c) => platformAdmin.includes(c)));
       expect(opens, item.to).toBe(namesPlatformRight);
-      if (dataRights.includes(item.capability) && item.orCapability === undefined) {
+      if (
+        item.capability !== null &&
+        dataRights.includes(item.capability) &&
+        item.orCapability === undefined &&
+        item.orAllOf === undefined
+      ) {
         expect(opens, item.to).toBe(false);
       }
     }

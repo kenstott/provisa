@@ -18,17 +18,34 @@ transport (:func:`settle`): the deployment's bootstrap administrator holds platf
 its seated roles (REQ-1297), and in a tenant org a role carrying a platform right is not held
 (REQ-1297, REQ-1337). HTTP, Bolt, pgwire and every bearer sign-in (Flight, gRPC, Airport) read
 them here, so a principal holds the same roles on each.
+
+A personal access token becomes roles here too (REQ-1263): the assignments read for one are its
+OWNER'S, and :func:`settle` keeps of them only the roles the token's scopes name. So a token acts
+only as a scope its owner still holds, on every transport, and a scope the owner has lost is dead.
+:func:`sign_in_roles` answers what a sign-in acts as and may name from them.
 """
 
-# Requirements: REQ-120, REQ-551
+# Requirements: REQ-120, REQ-551, REQ-1263
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from typing import Any
 
 from provisa.auth.models import AuthIdentity, RoleAssignment
 from provisa.core.assignments_source import CLAIMS, PROVISA
+
+
+class NoRoleHeld(PermissionError):  # REQ-120, REQ-802
+    """A sign-in whose identity holds no role in the org it signs in to, where Provisa holds the
+    assignments: it acts as none, and is refused by name rather than acting as the deployment's
+    default role, which nobody granted it."""
+
+    code = "auth.no_role_held"
+
+    def __init__(self, user_id: str) -> None:
+        self.params = {"user": user_id}
+        super().__init__(f"{user_id!r} holds no role in this organization")
 
 
 async def read_assignments(
@@ -57,6 +74,59 @@ async def read_assignments(
         RoleAssignment(role_id=a["role_id"], domain_id=a.get("domain_id", "*"))
         for a in default_assignments
     ]
+
+
+def token_scopes(identity: Any) -> list[str] | None:  # REQ-1263
+    """The role names a personal access token may act as, in the order the token lists them;
+    None for any other credential."""
+    if getattr(identity, "credential", None) != "pat":
+        return None
+    return list(identity.raw_claims["scopes"])
+
+
+def live_scopes(identity: Any, held: Iterable[str]) -> list[str] | None:  # REQ-1263
+    """The scopes of a personal access token that are among ``held`` (its owner's roles, read
+    now), in the token's order: the roles it may act as, the first when it names none. None for
+    any other credential."""
+    scopes = token_scopes(identity)
+    if scopes is None:
+        return None
+    held = set(held)
+    return [s for s in scopes if s in held]
+
+
+async def mirrored_claims(db_pool: Any, user_id: str) -> list[RoleAssignment]:  # REQ-1263
+    """The role claims ``user_id``'s identity provider sent at their last sign-in, as the org bound
+    now mirrors them (``user_idp_roles``; provisa.entitlements.roles.mirror_idp_roles). Where
+    roles come from the sign-in's claims, a personal access token carries no sign-in of its own:
+    these are what its owner holds."""
+    from sqlalchemy import select
+
+    from provisa.core.schema_org import user_idp_roles
+
+    async with db_pool.acquire() as conn:
+        rows = await conn.execute_core(
+            select(user_idp_roles.c.role_id, user_idp_roles.c.domain_id)
+            .where(user_idp_roles.c.user_id == user_id)
+            .order_by(user_idp_roles.c.role_id, user_idp_roles.c.domain_id)
+        )
+        return [RoleAssignment(role_id=r.role_id, domain_id=r.domain_id) for r in rows.fetchall()]
+
+
+async def read_held(
+    db_pool: Any, identity: AuthIdentity, source: str, default_assignments: list[dict]
+) -> list[RoleAssignment]:
+    """What ``identity``'s principal holds in the org bound now, before :func:`settle`: from
+    ``source`` (``auth.assignments_source``), the control plane's assignments or the sign-in's
+    role claims. A personal access token's are its owner's: the same assignments, or the claims
+    the owner's last sign-in carried (:func:`mirrored_claims`)."""
+    from provisa.auth.role_mapping import resolve_assignments
+
+    if source == PROVISA:
+        return await read_assignments(db_pool, identity, default_assignments)
+    if token_scopes(identity) is None:
+        return resolve_assignments(identity)
+    return await mirrored_claims(db_pool, identity.user_id)
 
 
 def dedup(assignments: list[RoleAssignment]) -> list[RoleAssignment]:
@@ -122,6 +192,7 @@ def _root_org_id(state: Any) -> str:  # REQ-1286
 async def settle(
     assignments: list[RoleAssignment],
     *,
+    identity: Any,
     claimant: bool,
     org_id: str | None,
     root_org_id: str | None,
@@ -134,7 +205,11 @@ async def settle(
     platform right is not held, judged by that org's own role definitions (``tenant_roles``, read
     when not given). ``root_org_id`` is the deployment's own org on a multi-tenant deployment,
     None on a single-tenant one, which has no tenant org. ``roles_now``: the roles registry the
-    claimant's roles are judged by."""
+    claimant's roles are judged by.
+
+    REQ-1263: ``identity`` is the sign-in the assignments were read for. A personal access token
+    keeps, of what its owner holds, only the roles its scopes name -- the one place a token's
+    identity becomes roles, for every transport."""
     from provisa.security.rights import (
         PLATFORM_ADMIN_ROLE,
         carries_platform_right,
@@ -148,6 +223,9 @@ async def settle(
         assert org_id is not None  # a tenant org is a bound one
         roles = tenant_roles if tenant_roles is not None else await org_roles(org_id, roles_now)
         assignments = [a for a in assignments if not carries_platform_right(a.role_id, roles)]
+    scopes = token_scopes(identity)
+    if scopes is not None:
+        assignments = [a for a in assignments if a.role_id in scopes]
     return assignments
 
 
@@ -156,27 +234,102 @@ async def held_assignments(
 ) -> list[RoleAssignment]:
     """``identity``'s assignments, from the source the deployment names, read in ``org_id`` (the
     org its sign-in is bound to; None, the default org's)."""
-    from provisa.auth.role_mapping import resolve_assignments
+    from provisa.api.org_runtime import ActiveOrgPool
+    from provisa.core.request_context import reset_current_org, set_current_org
 
     auth = state.auth_config or {}
-    if auth.get("assignments_source", CLAIMS) != PROVISA:
-        read = resolve_assignments(identity)
-    else:
-        from provisa.api.org_runtime import ActiveOrgPool
-        from provisa.core.request_context import reset_current_org, set_current_org
-
-        token = set_current_org(org_id) if org_id is not None else None
-        try:
-            read = await read_assignments(
-                ActiveOrgPool(), identity, auth.get("default_assignments") or []
-            )
-        finally:
-            if token is not None:
-                reset_current_org(token)
+    token = set_current_org(org_id) if org_id is not None else None
+    try:
+        read = await read_held(
+            ActiveOrgPool(),
+            identity,
+            auth.get("assignments_source", CLAIMS),
+            auth.get("default_assignments") or [],
+        )
+    finally:
+        if token is not None:
+            reset_current_org(token)
     return await settle(
         read,
+        identity=identity,
         claimant=await is_bootstrap_claimant(state, identity.user_id),
         org_id=org_id,
         # A single-tenant deployment has no tenant org (as the HTTP middleware reads it).
         root_org_id=_root_org_id(state) if getattr(state, "multitenancy", False) else None,
+    )
+
+
+async def sign_in_roles(
+    state: Any, identity: AuthIdentity, org_id: str | None
+) -> tuple[str, list[str]]:  # REQ-273, REQ-1263, REQ-120
+    """What a sign-in holds on a transport that is not the HTTP API: its first role, and the roles
+    it may name (that role first), read on every sign-in. One that names none acts as the union of
+    the roles it may name (:func:`default_request`, REQ-2155).
+
+    The role an identity's claims map to (``role_mapping``, else ``default_role``) is first,
+    beside the roles it holds. Where Provisa holds the assignments they are read on every
+    sign-in, and a mapped role the identity does not hold gives way to one it holds, as on the HTTP
+    API: a sign-in acts as a role it holds, on every transport (REQ-120, amended 2026-11-01;
+    REQ-802). One that holds none is refused by name (:class:`NoRoleHeld`).
+
+    A personal access token acts only as its scopes its owner still holds (REQ-1263): the first of
+    them when it names none, never the mapped role. With none held it is refused."""
+    from provisa.auth.role_mapping import resolve_role
+
+    auth = state.auth_config
+    default_role = auth.get("default_role")
+    if not default_role:
+        # No admin default: an identity matching no mapping rule is refused, not escalated.
+        raise PermissionError("identity matched no role and no default_role is configured")
+    mapped = resolve_role(identity, auth.get("role_mapping", []), default_role)
+    provisa_held = auth.get("assignments_source", CLAIMS) == PROVISA
+    held = list(dict.fromkeys(a.role_id for a in await held_assignments(state, identity, org_id)))
+    live = live_scopes(identity, held)
+    if live is not None:
+        if not live:
+            from provisa.security.role_probe import NOT_PERMITTED
+
+            raise PermissionError(NOT_PERMITTED)
+        return live[0], live
+    if provisa_held:
+        if not held:
+            raise NoRoleHeld(identity.user_id)
+        if mapped not in held:
+            mapped = held[0]
+    return mapped, [mapped, *[r for r in held if r != mapped]]
+
+
+def default_request(
+    state: Any, identity: AuthIdentity, acts_as: str, may_name: list[str]
+) -> str:  # REQ-2155
+    """What a sign-in that names no role acts as, written as a request naming roles: holding
+    several roles, all of them, so it acts as their union -- their meta-role
+    (provisa.security.meta_role), which leaves out a role with no data surface such as
+    platform_admin; holding one, ``acts_as``. Naming a single role is the narrowing. The roles held
+    are ``may_name`` (:func:`sign_in_roles`), less a role the claims are mapped to that they do not
+    name, as the HTTP API counts them. A personal access token acts as ``acts_as``, the first of
+    its scopes its owner still holds (REQ-1263)."""
+    if token_scopes(identity) is not None:
+        return acts_as
+    held = list(dict.fromkeys(may_name))
+    if (state.auth_config or {}).get("assignments_source", CLAIMS) != PROVISA:
+        from provisa.auth.role_mapping import resolve_assignments
+
+        claimed = {a.role_id for a in resolve_assignments(identity)}
+        held = [r for r in held if r in claimed]
+    return ",".join(held) if len(held) > 1 else acts_as
+
+
+async def may_act_cross_org(state: Any, identity: AuthIdentity) -> bool:  # REQ-1337, REQ-802
+    """Whether ``identity`` holds the cross_org right, judged from what its principal holds on the
+    platform plane (the deployment's own org) -- its assignments where Provisa holds them, a
+    token's scopes its owner still holds -- as the HTTP API judges it, never from the role claims
+    a credential carries. Read before any org is bound to the sign-in, with the deployment's own
+    org bound: the platform plane lives in its schema, as the HTTP middleware reads it (REQ-1266,
+    REQ-1327)."""
+    from provisa.security.rights import can_act_cross_org, capabilities_for_claims
+
+    held = await held_assignments(state, identity, _root_org_id(state))
+    return can_act_cross_org(
+        capabilities_for_claims({a.role_id for a in held}, state.platform_roles)
     )

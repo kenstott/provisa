@@ -225,7 +225,12 @@ async def test_chat_routes_the_new_tools_and_lists_them_for_the_model(app_state)
     assert model_tool_specs.SYSTEM_SECTION in chat._SYSTEM
     with pytest.raises(ApiError, match="source_registration"):
         await chat._execute_tool(
-            app_state, "viewer", "run_profiler", {"source_id": "p"}, request=_request("viewer")
+            app_state,
+            "viewer",
+            "run_profiler",
+            {"source_id": "p"},
+            scope=None,
+            request=_request("viewer"),
         )
 
 
@@ -578,6 +583,7 @@ def _column(name: str, data_type: str, **kw: Any) -> admin_types.TableColumnType
 def _table(**kw: Any) -> admin_types.RegisteredTableType:
     base: dict[str, Any] = {
         "id": 7,
+        "registered_at": "2026-11-17T00:00:00+00:00",
         "source_id": "pg",
         "domain_id": "sales",
         "schema_name": "public",
@@ -600,7 +606,8 @@ def _table(**kw: Any) -> admin_types.RegisteredTableType:
         "profiler_source_id": "prof",
         "stored_product_ids": ["p1"],
         "region": None,  # REQ-1921
-        "draft": False,  # REQ-1921
+        "withdrawn": False,  # REQ-1921
+        "source_withdrawn": False,  # REQ-1921
         "row_materialize": False,  # REQ-1865
     }
     base.update(kw)

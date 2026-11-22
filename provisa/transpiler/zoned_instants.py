@@ -26,7 +26,7 @@ to_json of an instant on Trino is written here, where the statement says the val
 to timestamptz, as the compiler states a registered column's type, or the clock): PostgreSQL's
 text of it as a JSON string. Trino refuses a cast of an instant to JSON while it types the
 statement, which no branch can avoid, so an instant the statement does not say is one is refused by
-name there (execute_trino), and one it says is inside an array or a row is refused by name here,
+name there (trino_flight), and one it says is inside an array or a row is refused by name here,
 as is one json_agg or json_build_object reads: Trino's forms of them cast it to JSON too.
 ClickHouse has no form of to_json."""
 
@@ -41,7 +41,9 @@ from dataclasses import dataclass
 import sqlglot
 import sqlglot.expressions as exp
 
+
 from provisa.core.pg_error import PostgresError
+from provisa.pgwire import function_types
 from provisa.core.session_time_zone import (
     StatementZone,
     clickhouse_spelling,
@@ -182,36 +184,25 @@ class _Engine:
 #: as sqlglot writes them, are a DateTime, which drops the fraction and reaches Arrow as a count of
 #: seconds; and ClickHouse 24.3's dateTrunc refuses a millisecond and a microsecond, in a branch not
 #: taken too, as it types every branch.
-_CLICKHOUSE_SUBMINUTE = {
-    "SECOND": 1_000_000,
-    "MILLISECOND": 1_000,
-    "MILLISECONDS": 1_000,
-    "MICROSECOND": 1,
-    "MICROSECONDS": 1,
-}
-
-
-def _clickhouse_floor(v: str, unit: str) -> str:
-    """The microseconds since the epoch of the start of sub-minute ``unit`` of DateTime64 ``v``."""
-    micro = f"toUnixTimestamp64Micro({v})"
-    return f"{micro} - positiveModulo({micro}, {_CLICKHOUSE_SUBMINUTE[unit]})"
-
-
 def _clickhouse_trunc(_v: str, local: str, unit: str, zone: str) -> str:
-    """The session's start of ``unit`` as Provisa's instant, DateTime64(6, 'UTC'): dateTrunc's own
-    is a DateTime, or a Date for a month or a year, which is midnight in ``zone``."""
-    if unit in _CLICKHOUSE_SUBMINUTE:
-        return f"fromUnixTimestamp64Micro({_clickhouse_floor(local, unit)}, 'UTC')"
-    return f"toTimeZone(toDateTime64(dateTrunc('{unit}', {local}), 6, '{zone}'), 'UTC')"
+    """The session's start of ``unit`` as Provisa's instant, DateTime64(6, 'UTC'): the grid's
+    builder (polyfill.clickhouse.truncated) of the wall clock in ``zone``."""
+    from provisa.transpiler.polyfill import clickhouse  # read when called, as semantic_dialect's
+
+    start = clickhouse.truncated(unit, sqlglot.parse_one(local, read="clickhouse"), zone)
+    return f"toTimeZone({start.sql(dialect='clickhouse')}, 'UTC')"
 
 
 def _clickhouse_plain_trunc(v: str, unit: str) -> str | None:
-    """The start of sub-minute ``unit`` of a plain timestamp (or a date), as a DateTime64(6) that
-    declares no zone, as ``v`` declares none: the same count, so the same wall time, its fraction
-    kept. None for a longer unit, whose own dateTrunc answers."""
-    if unit not in _CLICKHOUSE_SUBMINUTE:
+    """The start of sub-minute ``unit`` of a plain timestamp (or a date), by the grid's builder,
+    its fraction kept. None for a longer unit, whose dateTrunc the same builder writes."""
+    from provisa.transpiler.polyfill import clickhouse  # read when called, as semantic_dialect's
+
+    if unit.lower() not in clickhouse.SUBMINUTE:
         return None
-    return f"fromUnixTimestamp64Micro({_clickhouse_floor(f'toDateTime64({v}, 6)', unit)})"
+    return clickhouse.truncated(unit, sqlglot.parse_one(v, read="clickhouse")).sql(
+        dialect="clickhouse"
+    )
 
 
 _ENGINES = {
@@ -253,9 +244,15 @@ def _zone_named(engine: _Engine) -> str:
 
 
 def _may_be_instant(value: exp.Expr) -> bool:
-    """False for what the statement itself says is no instant, which needs no asking."""
+    """False for what the statement itself says is no instant, which needs no asking: a call
+    PostgreSQL types as an interval is one too (its text is the interval rows' own)."""
     if isinstance(value, exp.Paren):
         return _may_be_instant(value.this)
+    if (
+        isinstance(value, (exp.Func, exp.Dot))
+        and function_types.call_result_type(value) == "interval"
+    ):
+        return False
     if isinstance(value, exp.Cast):
         return value.to.is_type(exp.DataType.Type.TIMESTAMPTZ)
     if isinstance(value, exp.Anonymous):
@@ -271,11 +268,11 @@ def _instant_form(node: exp.Expr, value: exp.Expr, engine: _Engine, dialect: str
     """``node``'s answer for an instant ``value``; None where the zone cannot move it. A zone the
     engine has no spelling of is refused here, where a form is written in it."""
     is_text = isinstance(node, exp.Cast) and node.to.this in _TEXTS
-    is_day = isinstance(node, exp.Date) or (isinstance(node, exp.Cast) and node.to.this in _DAY)
+    is_day = _is_day(node)
     written_on_utc = is_text or (engine.own_day_differs and (is_day or _is_trunc(node, engine)))
     if current_zone.get() is None and not written_on_utc:
         return None
-    v = value.sql(dialect=dialect)
+    v = _written(value, dialect)
     if isinstance(node, exp.Cast) and is_text:
         return engine.text(engine.local(v, _zone_named(engine)))
     if is_day:
@@ -300,18 +297,87 @@ def _plain_form(node: exp.Expr, value: exp.Expr, engine: _Engine, dialect: str) 
     """``node``'s answer for a ``value`` that is no instant, None where the engine's own answers."""
     if not isinstance(node, exp.TimestampTrunc):
         return None
-    return engine.plain_trunc(value.sql(dialect=dialect), node.text("unit").upper())
+    return engine.plain_trunc(_written(value, dialect), node.text("unit").upper())
+
+
+#: ClickHouse's instant, which a statement's timestamp is held as (transpile.clickhouse_semantics
+#: writes every other): its DateTime holds no day before 1970.
+CLICKHOUSE_INSTANT = "Nullable(DateTime64(6, 'UTC'))"
+_TIMESTAMPS = (exp.DataType.Type.TIMESTAMP, exp.DataType.Type.TIMESTAMPTZ)
+
+
+def _written(node: exp.Expr, dialect: str) -> str:
+    """``node``'s SQL in ``dialect``: on ClickHouse each timestamp it casts to its DateTime64(6),
+    as the statement's other timestamps are written, never its DateTime."""
+    if dialect != "clickhouse":
+        return node.sql(dialect=dialect)
+    from provisa.transpiler.polyfill import instants  # the grid's rows read this module
+
+    def held(part: exp.Expr) -> exp.Expr:
+        outside = instants.outside_cast(part)
+        if outside is not None:
+            return outside  # REQ-2167: a literal DateTime64 would hold at its type's end raises
+        if isinstance(part, exp.DataType) and part.this in _TIMESTAMPS:
+            return exp.DataType.build(CLICKHOUSE_INSTANT, dialect="clickhouse")
+        return part
+
+    return node.copy().transform(held).sql(dialect=dialect)
+
+
+#: Where a form holds a value a call computes, on ClickHouse: the value itself is grafted there.
+_HELD_VALUE = f"{_MARKED}zoned_value"
+
+
+def _computed(value: exp.Expr) -> bool:
+    """Whether ``value`` holds a call a function's form writes later (REQ-2236): one written here
+    as ClickHouse's text would lose the types the statement says of its arguments, so the grid's
+    row of it would not read them, and a value outside its bound would be held at the range's end."""
+    return any(
+        isinstance(node, exp.Anonymous)
+        or (isinstance(node, exp.Func) and not isinstance(node, exp.Cast))
+        for node in value.walk()
+    )
+
+
+def _is_day(node: exp.Expr) -> bool:
+    return isinstance(node, exp.Date) or (isinstance(node, exp.Cast) and node.to.this in _DAY)
+
+
+def _with_value(node: exp.Expr) -> exp.Expr:
+    """``node`` with its value the place :data:`_HELD_VALUE` marks."""
+    marked = node.copy()
+    value = marked.expression if isinstance(marked, exp.Extract) else marked.this
+    value.replace(exp.column(_HELD_VALUE))
+    return marked
 
 
 def _form(node: exp.Expr, engine: _Engine, dialect: str) -> exp.Expr | None:
+    if isinstance(node, exp.TimestampTrunc) and node.args.get("zone") is not None:
+        return None  # the start of a unit at the zone the call names: a function's form, or none
     value = node.expression if isinstance(node, exp.Extract) else node.this
     plain = _plain_form(node, value, engine, dialect)
-    instant = _instant_form(node, value, engine, dialect) if _may_be_instant(value) else None
+    held = dialect == "clickhouse" and _computed(value)
+    instant = (
+        _instant_form(node, exp.column(_HELD_VALUE) if held else value, engine, dialect)
+        if _may_be_instant(value)
+        else None
+    )
     if instant is None:
         return None if plain is None else sqlglot.parse_one(plain, read=dialect)
-    asked = engine.is_instant(value.sql(dialect=dialect))
-    otherwise = node.sql(dialect=dialect) if plain is None else plain
+    v = _HELD_VALUE if held else _written(value, dialect)
+    asked = engine.is_instant(v)
+    if dialect == "clickhouse" and _is_day(node):
+        # Its own Date (DATE(), CAST AS DATE) holds 1970 to 2149: a day is Date32's.
+        otherwise = f"toDate32({v})"
+    elif plain is None:
+        otherwise = _written(_with_value(node) if held else node, dialect)
+    else:
+        otherwise = plain
     form = sqlglot.parse_one(f"CASE WHEN {asked} THEN {instant} ELSE {otherwise} END", read=dialect)
+    if held:
+        form = form.transform(
+            lambda n: value.copy() if isinstance(n, exp.Column) and n.name == _HELD_VALUE else n
+        )
     if isinstance(node, exp.Cast) and node.to.this in _TEXTS:
         # The text the statement says it is, which a function's overload reads (sha256(c::varchar)
         # is refused), and c::varchar(5) the text cut.
@@ -354,7 +420,7 @@ def _json_of_instant(node: exp.Expr, dialect: str) -> exp.Expr | None:
     if not _said_instant(value):
         return None
     engine = _ENGINES[dialect]
-    local = engine.local(value.sql(dialect=dialect), _zone_named(engine))
+    local = engine.local(_written(value, dialect), _zone_named(engine))
     return sqlglot.parse_one(_trino_json(local), read=dialect)
 
 
@@ -375,6 +441,11 @@ def _refuse_json_of_said_instant(tree: exp.Expr) -> None:
             raise PostgresError("0A000", f"{name} of a timestamptz is not available on Trino")
 
 
+#: The meta key marking a form written here: the engine's SQL already, which a grid row may hold
+#: as it stands (polyfill.json_built.held).
+WRITTEN = f"{_MARKED}zoned_written"
+
+
 def written(sql: str, tree: exp.Expr | None, dialect: str) -> exp.Expr | None:
     """``tree`` (the parse of ``sql``, or None for it not yet parsed) with each read of an instant
     in the session's zone, on ``dialect``; ``tree`` as it was where nothing is to be written."""
@@ -389,6 +460,7 @@ def written(sql: str, tree: exp.Expr | None, dialect: str) -> exp.Expr | None:
     for node in reversed(list(nodes)):  # the deepest first: a form holds its value's form
         form = _form(node, engine, dialect)
         if form is not None:
+            form.meta[WRITTEN] = True
             node.replace(form)
             wrote = True
     for node in list(parsed.find_all(exp.Anonymous)):

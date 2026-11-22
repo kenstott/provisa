@@ -38,6 +38,25 @@ _STAGES = ExplainStages(
     native='SELECT "id" FROM "public"."orders" WHERE "region" = \'EU\' LIMIT 10',
 )
 _COMPILED = SimpleNamespace(sql="SELECT id FROM sales.orders", params=[7])
+_ORDERS_ROW = {
+    "id": 11,
+    "source_id": "pg",
+    "domain_id": "sales",
+    "schema_name": "public",
+    "table_name": "orders",
+}
+_RETURNS_ROW = {**_ORDERS_ROW, "id": 12, "table_name": "returns"}
+_CLASS_ROW = {
+    "id": -5,
+    "source_id": "__derived__",
+    "domain_id": "ontology",
+    "schema_name": "ontology",
+    "table_name": "Sale",
+    "class_bindings": [{"table_id": 12}, {"table_id": 11}],
+}
+_TABLES = (_ORDERS_ROW, _RETURNS_ROW, _CLASS_ROW)
+_ORDERS_READ = {"address": "pg/public/orders", "domain": "sales", "table": "orders"}
+_RETURNS_READ = {"address": "pg/public/returns", "domain": "sales", "table": "returns"}
 
 
 def _plan() -> SimpleNamespace:
@@ -51,6 +70,7 @@ def _plan() -> SimpleNamespace:
         optimizations=["limit_pushdown"],
         semantic_sql=None,
         stages=_STAGES,
+        table_ids=(11,),
     )
 
 
@@ -72,6 +92,7 @@ async def door(monkeypatch):
         "roles",
         {"org_admin": {"id": "org_admin", "capabilities": ["query_development"]}},
     )
+    monkeypatch.setattr(app_mod.state, "tables", list(_TABLES), raising=False)
     surface = SimpleNamespace(schema=MagicMock(), context=MagicMock())
     monkeypatch.setattr(
         "provisa.api.data.endpoint_explain.role_surface",
@@ -114,6 +135,7 @@ def _assert_explained(response, language: str) -> None:
     assert statement["dialect"] == "postgres"
     assert statement["analyzed"] is False
     assert statement["plan"][0]["op"] == "Seq Scan orders"
+    assert statement["tables"] == [_ORDERS_READ]
 
 
 def _compiled_handoff(door, sdl_joins: bool) -> tuple:
@@ -132,6 +154,23 @@ def _patch_compile(monkeypatch) -> MagicMock:
     compile_mock = MagicMock(return_value=[_COMPILED])
     monkeypatch.setattr("provisa.api.generated_plan.compile_generated_graphql", compile_mock)
     return compile_mock
+
+
+class TestTablesRead:
+    async def test_each_table_once_in_address_order(self, door):
+        door.raw.return_value = SimpleNamespace(**{**vars(_plan()), "table_ids": (12, 11)})
+        response = await _explain(door, "sql", "SELECT 1")
+        assert response.json()["statements"][0]["tables"] == [_ORDERS_READ, _RETURNS_READ]
+
+    async def test_an_ontology_class_reports_the_tables_it_is_bound_to(self, door):
+        door.raw.return_value = SimpleNamespace(**{**vars(_plan()), "table_ids": (-5, 11)})
+        response = await _explain(door, "sql", "SELECT 1")
+        assert response.json()["statements"][0]["tables"] == [_ORDERS_READ, _RETURNS_READ]
+
+    async def test_a_statement_reading_no_table_reports_none(self, door):
+        door.raw.return_value = SimpleNamespace(**{**vars(_plan()), "table_ids": ()})
+        response = await _explain(door, "sql", "SELECT 1")
+        assert response.json()["statements"][0]["tables"] == []
 
 
 class TestEachLanguage:

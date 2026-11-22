@@ -17,7 +17,7 @@
  * REQ-1327: the org's settings and the platform's are separate panels, each behind its own right.
  * The response cache TTL and the hot-table and replicate settings are the org's
  * (GET/PUT /admin/settings); the store connections and the materialized-view defaults are the
- * platform's (GET/PUT /admin/cache-storage), rendered only for it.
+ * platform's (GET/PUT /admin/cache-storage), on the Platform page.
  */
 
 import { useCallback, useEffect, useState } from "react";
@@ -156,7 +156,7 @@ export function ResponseCacheSettingsPanel() {
   );
 }
 
-/** Response Cache → the store connection that TTL is written into (the platform's, REQ-1327). */
+/** Platform page: the store connection the response cache is written into (REQ-1327). */
 export function HotCacheStoreSettingsPanel() {
   const { t } = useTranslation();
   const { s, setS, save, saving, msg, error, forbidden } = useCacheStorage(["cache"]);
@@ -294,7 +294,7 @@ export function HotTablesSettingsPanel() {
   );
 }
 
-/** Materialized Store → Settings: the default MV refresh TTL and the store the results land in. */
+/** Platform page: the default MV refresh TTL and the store the results land in (REQ-1327). */
 export function MaterializedSettingsPanel() {
   const { t } = useTranslation();
   const { s, setS, save, saving, msg, error, forbidden } = useCacheStorage([
@@ -305,7 +305,10 @@ export function MaterializedSettingsPanel() {
   if (!s) return error ? <Alert color="red">{error}</Alert> : null;
 
   return (
-    <SettingsPanel testId="materialized-settings">
+    <SettingsPanel
+      testId="materialized-settings"
+      title={t("cacheManager.materialized.materializedViews")}
+    >
       <FormLayout>
         <FormField help={t("cacheStorageTab.mvDefaultTtlHint")} size="short">
           <NumberInput

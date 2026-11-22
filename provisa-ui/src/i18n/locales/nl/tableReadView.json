@@ -31,7 +31,7 @@
     "policiesTitle": "RLS-beleid voor deze tabel bekijken",
     "editButtonLabel": "Tabel {{name}} bewerken",
     "deleteButtonLabel": "Tabel {{name}} verwijderen",
-    "profileHeading": "Profiel — {{count}} bemonsterde rijen",
+    "profileHeading": "Profiel: {{count}} steekproefrijen",
     "colNulls": "Nulls",
     "colNullsTitle": "Null-waarden",
     "colBlanks": "Leeg",
@@ -44,17 +44,15 @@
     "colTopValues": "Meest voorkomende waarden",
     "editDefinitionButton": "Definitie bewerken",
     "editDefinitionTitle": "De viewdefinitie bewerken (SQL of metriek-/dimensiekiezer)",
-    "queryTemplate": "Cypher",
     "writable": "De bron accepteert",
     "noWrites": "Geen schrijfacties",
     "notShown": "niet getoond",
-    "draftLabel": "Concept",
-    "draftTooltip": "Concept: buiten gebruik — in geen enkel schema en door niemand gelezen. Vink uit om de tabel vrij te geven; vink aan om haar buiten gebruik te stellen.",
-    "draftNoRightTooltip": "Een tabel vrijgeven of terugzetten naar concept vereist het recht Tabelregistratie in het domein van de tabel.",
-    "draftPreviewNote": "Conceptvoorbeeld: lezers kunnen deze tabel nog niet zien.",
     "keepsHistory": "Bewaart historie: elke versie, met wanneer het gebeurde en wanneer het werd vastgelegd.",
     "keepsHistoryQuery": "Bevraag het per een datum of zoals vastgelegd",
     "deleteTitle": "Tabel {{name}} verwijderen?",
-    "deleteConsequence": "De registratie van de tabel wordt verwijderd."
+    "deleteConsequence": "De registratie van de tabel wordt verwijderd.",
+    "withdrawConsequence": "Geen rol leest haar via welke interface ook, geen engine koppelt haar en haar replica wordt verwijderd. Definitie, rechten en relaties blijven, en Terugzetten herstelt haar zoals ze was.",
+    "withdrawnNote": "Teruggetrokken: geen rol leest deze tabel totdat ze wordt teruggezet. Het voorbeeld leest haar nog wel.",
+    "sourceWithdrawnNote": "Haar bron {{source}} is teruggetrokken: geen rol leest deze tabel totdat de bron wordt teruggezet."
   }
 }

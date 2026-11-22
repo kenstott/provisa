@@ -24,7 +24,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 import pytest
 
-from provisa.api_source import caller
+from provisa.api_source import caller, oauth_grants
 from provisa.api_source.caller import (
     ApiAnswerNotJson,
     ApiCallError,
@@ -389,6 +389,41 @@ class TestPaginate:
         ]
 
     @pytest.mark.asyncio
+    async def test_a_cursor_nested_in_the_answer_is_read_by_its_dotted_path(self):
+        # REQ-2265: OpenMetadata answers {data, paging: {after}}; the last page has no after.
+        pagination = PaginationConfig(
+            type=PaginationType.cursor, cursor_param="after", cursor_field="paging.after"
+        )
+        client = MagicMock()
+        client.request = AsyncMock(
+            side_effect=[
+                _resp(200, {"data": [1], "paging": {"after": "c1", "total": 3}}),
+                _resp(200, {"data": [2], "paging": {"after": "c2", "total": 3}}),
+                _resp(200, {"data": [3], "paging": {"total": 3}}),
+            ]
+        )
+        endpoint = _endpoint(pagination=pagination)
+        pages = await _paginate(client, endpoint, "/tables", {}, {}, None, 30.0)
+        assert [p["data"] for p in pages] == [[1], [2], [3]]
+        assert [c.kwargs["params"] for c in client.request.await_args_list] == [
+            {},
+            {"after": "c1"},
+            {"after": "c2"},
+        ]
+
+    @pytest.mark.asyncio
+    async def test_a_nested_cursor_whose_holder_is_absent_ends_the_paging(self):
+        pagination = PaginationConfig(
+            type=PaginationType.cursor, cursor_param="after", cursor_field="paging.after"
+        )
+        client = MagicMock()
+        client.request = AsyncMock(return_value=_resp(200, {"data": [1]}))
+        endpoint = _endpoint(pagination=pagination)
+        pages = await _paginate(client, endpoint, "/tables", {}, {}, None, 30.0)
+        assert pages == [{"data": [1]}]
+        assert client.request.await_count == 1
+
+    @pytest.mark.asyncio
     async def test_cursor_pagination_default_names(self):
         pagination = PaginationConfig(type=PaginationType.cursor, max_pages=3)
         endpoint = _endpoint(pagination=pagination)
@@ -667,17 +702,14 @@ class TestApplyAuth:
 
 class TestFetchOauth2Token:
     def setup_method(self):
-        caller._oauth2_cache.clear()
+        oauth_grants._tokens.clear()
 
     def teardown_method(self):
-        caller._oauth2_cache.clear()
+        oauth_grants._tokens.clear()
 
     def test_fetches_and_caches(self):
-        oauth = MagicMock(
-            client_id="cid1",
-            client_secret="secret1",
-            token_url="http://token",
-            scope=None,
+        oauth = ApiAuthOAuth2ClientCredentials(
+            client_id="cid1", client_secret="secret1", token_url="http://token"
         )
         resp = MagicMock()
         resp.raise_for_status = MagicMock()
@@ -691,11 +723,8 @@ class TestFetchOauth2Token:
         assert "scope" not in sent_data
 
     def test_uses_cache_on_second_call(self):
-        oauth = MagicMock(
-            client_id="cid2",
-            client_secret="secret2",
-            token_url="http://token2",
-            scope="read",
+        oauth = ApiAuthOAuth2ClientCredentials(
+            client_id="cid2", client_secret="secret2", token_url="http://token2", scope="read"
         )
         resp = MagicMock()
         resp.raise_for_status = MagicMock()
@@ -707,13 +736,11 @@ class TestFetchOauth2Token:
         post_mock.assert_called_once()
 
     def test_expired_cache_refetches(self):
-        oauth = MagicMock(
-            client_id="cid3",
-            client_secret="secret3",
-            token_url="http://token3",
-            scope=None,
+        oauth = ApiAuthOAuth2ClientCredentials(
+            client_id="cid3", client_secret="secret3", token_url="http://token3"
         )
-        caller._oauth2_cache["cid3:http://token3"] = ("stale-tok", 0.0)
+        key = oauth_grants.held_key(oauth.type, "http://token3", "cid3", "secret3", "")
+        oauth_grants._tokens[key] = ("stale-tok", 0.0)
         resp = MagicMock()
         resp.raise_for_status = MagicMock()
         resp.json.return_value = {"access_token": "fresh-tok", "expires_in": 3600}
@@ -721,6 +748,18 @@ class TestFetchOauth2Token:
             token = _fetch_oauth2_token(oauth)
         assert token == "fresh-tok"
         post_mock.assert_called_once()
+
+    def test_a_token_with_no_stated_life_is_not_held(self):
+        oauth = ApiAuthOAuth2ClientCredentials(
+            client_id="cid4", client_secret="secret4", token_url="http://token4"
+        )
+        resp = MagicMock()
+        resp.raise_for_status = MagicMock()
+        resp.json.side_effect = [{"access_token": "tok-1"}, {"access_token": "tok-2"}]
+        with patch("httpx.Client.post", return_value=resp):
+            assert _fetch_oauth2_token(oauth) == "tok-1"
+            assert _fetch_oauth2_token(oauth) == "tok-2"
+        assert oauth_grants._tokens == {}
 
 
 # ---------------------------------------------------------------------------

@@ -1,0 +1,18 @@
+{
+  "yourData": {
+    "title": "Ihre Daten",
+    "loading": "Gerade registrierte Tabellen werden gelesen…",
+    "openQuery": "Im Query Explorer öffnen",
+    "otherWays": "Weitere Wege zu dieser Tabelle",
+    "graphql": "GraphQL-Abfrage",
+    "pgwire": "Verbindungszeichenfolge für einen SQL-Client (pgwire)",
+    "sql": "SQL",
+    "rest": "REST",
+    "mcp": "MCP-Tool-Aufruf",
+    "copy": "{{what}} kopieren",
+    "close": "Schließen",
+    "createRelationships": "Beziehungen erstellen",
+    "relationshipsCreated_one": "{{count}} Beziehung erstellt.",
+    "relationshipsCreated_other": "{{count}} Beziehungen erstellt."
+  }
+}

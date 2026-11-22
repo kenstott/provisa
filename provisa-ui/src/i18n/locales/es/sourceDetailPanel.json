@@ -14,6 +14,9 @@
     "runProfilerTitle": "Ejecutar ahora para cada tabla miembro",
     "profilerNoMembers": "Ninguna tabla se ha unido a este perfilador.",
     "profilerRan": "{{table}}: perfilada",
-    "profilerFailed": "{{table}}: {{error}}"
+    "profilerFailed": "{{table}}: {{error}}",
+    "profilerNotRead": "{{table}}: no leída. Exige {{parameters}}, por lo que no se puede contar ni perfilar.",
+    "withdrawConsequence": "Ningún rol lee ninguna de sus tablas, ningún motor lo conecta y se eliminan las réplicas de sus tablas. Su definición, tablas y permisos se conservan, y Restituir lo devuelve tal como estaba.",
+    "withdrawnNote": "Retirado: ninguna de sus tablas sirve a ningún rol hasta que se restituya."
   }
 }

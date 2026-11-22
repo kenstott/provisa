@@ -106,9 +106,14 @@ async function stubDeployment(
   await page.route("**/auth/bootstrap-status", (route: Route) =>
     route.fulfill({ json: { unclaimed: slotUnclaimed } }),
   );
-  await page.route("**/admin/graphql", (route: Route) =>
-    route.fulfill({ json: { data: { roles: [], domains: [] } } }),
-  );
+  // A member lands on a page that runs RegionChoices (REQ-1921: no regions declared). A read
+  // answered without a field it asked for is an uncaught Apollo error, which fails the test.
+  await page.route("**/admin/graphql", (route: Route) => {
+    const op = (route.request().postDataJSON() as { operationName?: string } | null)?.operationName;
+    if (op === "RegionChoices")
+      return route.fulfill({ json: { data: { regionChoices: { regions: [], connected: null } } } });
+    return route.fulfill({ json: { data: { roles: [], domains: [] } } });
+  });
 }
 
 const stored = (page: Page, key: string) => page.evaluate((k) => localStorage.getItem(k), key);

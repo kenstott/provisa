@@ -358,6 +358,120 @@ def test_the_junctions_own_fk_edges_go_with_the_node_they_terminate_on():
     assert all(r.source_label in nodes and r.target_label in nodes for r in relationships.values())
 
 
+def _edge_node() -> NodeMapping:
+    return NodeMapping(
+        label="Meta:GlossaryTermEdge",
+        type_name="GlossaryTermEdge",
+        domain_label="Meta",
+        table_label="GlossaryTermEdge",
+        table_id=2,
+        source_id="provisa-admin",
+        id_column="id",
+        pk_columns=[],
+        catalog_name="provisa_admin",
+        schema_name="public",
+        table_name="glossary_term_edges",
+        properties={},
+    )
+
+
+def _registered_edge(rel_type: str, source: str, target: str) -> RelationshipMapping:
+    """An FK/PK edge a registered relationship row declares (as each hop of a Join through)."""
+    rm = _fk_edge(rel_type, source, target)
+    rm.registered = True
+    return rm
+
+
+def test_a_junction_its_own_registered_relationships_join_keeps_its_node_and_edges():
+    """REQ-1586 (amended 2026-11-18): a junction that registered relationships of its own join
+    keeps its node and those edges, so after a Join through the two hops are offered in Cypher
+    beside the joined relationship, as in SQL and GraphQL."""
+    from provisa.gql.label_map import _drop_junction_nodes
+
+    kind_of = _junction_edge()
+    into = _registered_edge("GLOSSARY_TERM_EDGES", "GlossaryTerm", "GlossaryTermEdge")
+    out_of = _registered_edge("GLOSSARY_TERM", "GlossaryTermEdge", "GlossaryTerm")
+    nodes = {"GlossaryTerm": _term_node(), "GlossaryTermEdge": _edge_node()}
+    domains = {"Meta": ["GlossaryTerm", "GlossaryTermEdge"]}
+    nodes_by_table = {"GlossaryTerm": ["GlossaryTerm"], "GlossaryTermEdge": ["GlossaryTermEdge"]}
+    relationships = {"KIND_OF": kind_of, "IN": into, "OUT": out_of}
+    aliases = {"KIND_OF": [kind_of], "GLOSSARY_TERM_EDGES": [into], "GLOSSARY_TERM": [out_of]}
+
+    _drop_junction_nodes(nodes, relationships, domains, nodes_by_table, aliases)
+
+    assert set(nodes) == {"GlossaryTerm", "GlossaryTermEdge"}
+    assert domains == {"Meta": ["GlossaryTerm", "GlossaryTermEdge"]}
+    assert nodes_by_table["GlossaryTermEdge"] == ["GlossaryTermEdge"]
+    assert set(relationships) == {"KIND_OF", "IN", "OUT"}
+    assert set(aliases) == {"KIND_OF", "GLOSSARY_TERM_EDGES", "GLOSSARY_TERM"}
+
+
+def test_a_junction_only_synthetic_edges_reach_stays_dropped():
+    """REQ-1586: an edge no registered relationship declares (HAS_TABLE, which every table gets)
+    is not a relationship of the junction's own, so the junction's node still leaves the graph and
+    the edge goes with it."""
+    from provisa.gql.label_map import _drop_junction_nodes
+
+    kind_of = _junction_edge()
+    has_table = _fk_edge("HAS_TABLE", "GlossaryTermEdge", "Meta_RegisteredTables")
+    nodes = {"GlossaryTerm": _term_node(), "GlossaryTermEdge": _edge_node()}
+    relationships = {"KIND_OF": kind_of, "HAS": has_table}
+    aliases = {"KIND_OF": [kind_of], "HAS_TABLE": [has_table]}
+
+    _drop_junction_nodes(nodes, relationships, {}, {}, aliases)
+
+    assert set(nodes) == {"GlossaryTerm"}
+    assert set(relationships) == {"KIND_OF"}
+    assert set(aliases) == {"KIND_OF"}
+
+
+def test_a_registered_join_marks_its_relationship_mapping_registered():
+    """REQ-1586: the registered loop's JoinMeta says it came from a relationship row, and the
+    label map carries that onto the edge; a synthetic join (HAS_TABLE) does not."""
+    from provisa.compiler.sql_types import CompilationContext, JoinMeta, TableMeta
+    from provisa.gql.label_map import _build_relationship_mappings
+
+    def _tm(table_id: int, type_name: str) -> TableMeta:
+        return TableMeta(
+            table_id=table_id,
+            field_name=type_name.lower(),
+            type_name=type_name,
+            source_id="s",
+            catalog_name="c",
+            schema_name="public",
+            table_name=type_name.lower(),
+        )
+
+    joins = {
+        ("Inquiries", "pets"): JoinMeta(
+            source_column="pet_id",
+            target_column="id",
+            source_column_type="integer",
+            target_column_type="integer",
+            target=_tm(2, "Pets"),
+            cardinality="many-to-one",
+            registered=True,
+        ),
+        ("Inquiries", "_meta"): JoinMeta(
+            source_column="__table_id__",
+            target_column="table_query_name",
+            source_column_type="text",
+            target_column_type="text",
+            target=_tm(3, "Meta_RegisteredTables"),
+            cardinality="many-to-one",
+            cypher_alias="HAS_TABLE",
+        ),
+    }
+    ctx = CompilationContext(joins=joins)
+    relationships: dict[str, RelationshipMapping] = {}
+
+    _build_relationship_mappings(ctx, relationships)
+
+    by_type = {rm.rel_type: rm for rm in relationships.values()}
+    assert by_type["HAS_TABLE"].registered is False
+    assert [rm.registered for t, rm in by_type.items() if t != "HAS_TABLE"] == [True]
+
+
 # ---------------------------------------------------------------------------
 # Composite ends: each end lists its columns in order, paired positionally
 # ---------------------------------------------------------------------------

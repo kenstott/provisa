@@ -37,7 +37,7 @@
     "warningMessage": "O que fazer",
     "warningLocation": "Local",
     "configHeading": "Configuração gerada",
-    "configHelp": "Edite antes de aplicar se a conversão errou — dados de conexão, nomes de domínio, nomes de papéis. O que você aplica é exatamente o que aparece aqui.",
+    "configHelp": "Edite os detalhes de conexão, os nomes de domínio ou os nomes de função se a conversão errou. O que você aplicar é exatamente o que é mostrado aqui.",
     "apply": "Aplicar a esta organização",
     "applied": "Aplicado: {{sources}} fontes de dados, {{tables}} tabelas, {{roles}} papéis.",
     "domainNew": "novo domínio",

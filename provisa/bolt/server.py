@@ -26,6 +26,7 @@ import ssl
 import threading
 
 import provisa.bolt.messages as msg
+from provisa.api.engine_error_names import client_text
 from provisa.bolt.framing import read_message, write_message
 from provisa.bolt.messages import (
     MAGIC,
@@ -148,7 +149,7 @@ async def _serve(session: BoltSession, reader: BoltReader, writer: BoltWriter) -
                     msg.FAILURE,
                     {
                         "code": "Neo.ClientError.Request.Invalid",
-                        "message": f"Decode error: {exc}",
+                        "message": client_text(f"Decode error: {exc}"),
                     },
                 ),
             )

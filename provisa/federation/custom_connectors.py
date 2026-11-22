@@ -31,14 +31,18 @@ for the declared symbol — failing loud when the declared extension is not stag
 from __future__ import annotations
 
 import os
+import string
+from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
-
 
 from provisa.compiler.naming import attach_catalog, engine_attach_name
 from provisa.federation.connector_base import Capability, Connector, Mechanism, ProbeResult
 from provisa.federation.connector_base import probe_pg_extension
+from provisa.federation.clickhouse_quoting import TABLE_PLACEHOLDER, ch_ident, ch_lit
 from provisa.federation.connector_duckdb import _DuckDBExtensionConnector
+from provisa.federation.duckdb_quoting import ident, lit
+from provisa.federation.pg_quoting import pg_ident, pg_lit
 
 if TYPE_CHECKING:
     from provisa.core.models import Source
@@ -73,15 +77,91 @@ def _source_fields(source: Any) -> dict[str, str]:
     return fields
 
 
-def _fmt(template: str, fields: dict[str, str]) -> str:
-    """Substitute {field} placeholders. A template referencing an unknown field fails LOUD (KeyError),
-    surfacing a descriptor/source mismatch rather than silently emitting a broken statement."""
-    return template.format(**fields)
+# -- the template contract (SEC-C6b) ------------------------------------------------------------
+#
+# A template takes raw values: it never quotes a placeholder itself. Two template shapes exist.
+#
+#   * A VALUE template (a pg_fdw OPTIONS value, a pg_fdw remote_schema) is plain text, not SQL.
+#     ``{field}`` is replaced by the raw value and the whole result is then written as one literal
+#     (an option value) or one identifier (the remote schema) with the engine's quoting helper.
+#   * A CLAUSE template (duckdb attach_template / scan_template, clickhouse engine_template) is a
+#     SQL fragment. Each placeholder is written by the engine's quoting helper where it stands:
+#     ``{field}`` as a string literal, ``{field:ident}`` as an identifier, ``{field:int}`` as an
+#     integer (a value that is not one is refused). A value composed with other text is composed in
+#     SQL (``'ducklake:' || {path}``, ``concat({host}, ':', {port})``). A placeholder inside quotes
+#     in a clause template would be written into a literal or a name it can end, so such a template
+#     is refused when the descriptor is read.
+
+_QUOTERS: dict[str, tuple[Callable[[str], str], Callable[..., str]]] = {
+    "postgres": (pg_lit, pg_ident),
+    "duckdb": (lit, ident),
+    "clickhouse": (ch_lit, ch_ident),
+}
 
 
-def _opts(options: dict[str, str], fields: dict[str, str]) -> str:
-    """Render an OPTIONS(...) body: ``key 'value', …`` with each value templated."""
-    return ", ".join(f"{k} '{_fmt(v, fields)}'" for k, v in options.items())
+class _ClauseFormatter(string.Formatter):
+    """Writes each placeholder of a clause template through ``engine``'s quoting helpers."""
+
+    def __init__(self, engine: str) -> None:
+        self._lit, self._ident = _QUOTERS[engine]
+
+    def convert_field(self, value: Any, conversion: str | None) -> Any:
+        if conversion is not None:
+            raise ValueError(f"a template placeholder takes no conversion (!{conversion})")
+        return value
+
+    def format_field(self, value: Any, format_spec: str) -> str:
+        text = str(value)
+        if format_spec == "":
+            return self._lit(text)
+        if format_spec == "ident":
+            return self._ident(text)
+        if format_spec == "int":
+            return str(int(text))
+        raise ValueError(
+            f"template placeholder spec {format_spec!r}: expected none (a literal), "
+            "'ident' or 'int'"
+        )
+
+
+def _check_clause_template(template: str, engine: str) -> str:
+    """``template`` when no placeholder of it stands inside quotes; else ValueError. A ClickHouse
+    quoted string or name reads a backslash escape, so the character after one is skipped there."""
+    quote: str | None = None
+    for literal_text, field, _spec, _conversion in string.Formatter().parse(template):
+        escaped = False
+        for ch in literal_text:
+            if escaped:
+                escaped = False
+            elif quote is not None and ch == "\\" and engine == "clickhouse":
+                escaped = True
+            elif quote is None and ch in "'\"`":
+                quote = ch
+            elif ch == quote:
+                quote = None
+        if field is not None and quote is not None:
+            raise ValueError(
+                f"template {template!r}: placeholder {{{field}}} stands inside {quote}...{quote}; "
+                "a template takes raw values and Provisa quotes each one, so write it unquoted"
+            )
+    return template
+
+
+def _clause(template: str, engine: str, fields: dict[str, str]) -> str:
+    """A clause template with each placeholder written by ``engine``'s quoting helpers. A template
+    naming an unknown field fails LOUD (KeyError): a descriptor/source mismatch, not broken DDL."""
+    return _ClauseFormatter(engine).vformat(template, (), fields)
+
+
+def _value(template: str, fields: dict[str, str]) -> str:
+    """A value template with ``{field}`` replaced by the raw value: text, quoted by the caller as one
+    literal or identifier. An unknown field fails LOUD (KeyError)."""
+    return string.Formatter().vformat(template, (), fields)
+
+
+def _pg_options(options: dict[str, str], fields: dict[str, str]) -> str:
+    """An OPTIONS(...) body: ``"key" 'value', …``, each value a value template written as a literal."""
+    return ", ".join(f"{pg_ident(k)} {pg_lit(_value(v, fields))}" for k, v in options.items())
 
 
 class GenericPgFdwConnector(Connector):  # REQ-1177
@@ -109,24 +189,25 @@ class GenericPgFdwConnector(Connector):  # REQ-1177
         fields = _source_fields(source)
         server = engine_attach_name("fdw", attach_catalog(source))
         ddl = [
-            f"CREATE EXTENSION IF NOT EXISTS {self._fdw}",
-            f'CREATE SERVER IF NOT EXISTS "{server}" FOREIGN DATA WRAPPER {self._fdw} '
-            f"OPTIONS ({_opts(self._server_options, fields)})",
+            f"CREATE EXTENSION IF NOT EXISTS {pg_ident(self._fdw)}",
+            f"CREATE SERVER IF NOT EXISTS {pg_ident(server)} "
+            f"FOREIGN DATA WRAPPER {pg_ident(self._fdw)} "
+            f"OPTIONS ({_pg_options(self._server_options, fields)})",
         ]
         if self._user_mapping is not None:
             # A bare (no-OPTIONS) user mapping is the SQL/MED form a no-auth FDW needs (mongo_fdw against
             # an unauthenticated MongoDB): the mapping must EXIST, but an empty username/password would
             # make the driver attempt a failing auth. `user_mapping: {}` ⇒ bare; keys ⇒ OPTIONS(...).
-            um = f'CREATE USER MAPPING IF NOT EXISTS FOR CURRENT_USER SERVER "{server}"'
+            um = f"CREATE USER MAPPING IF NOT EXISTS FOR CURRENT_USER SERVER {pg_ident(server)}"
             if self._user_mapping:
-                um += f" OPTIONS ({_opts(self._user_mapping, fields)})"
+                um += f" OPTIONS ({_pg_options(self._user_mapping, fields)})"
             ddl.append(um)
         if self._supports_import:
             local_schema = engine_attach_name("fdw", attach_catalog(source))
             ddl += [
-                f'CREATE SCHEMA IF NOT EXISTS "{local_schema}"',
-                f"IMPORT FOREIGN SCHEMA {_fmt(self._remote_schema, fields)} "
-                f'FROM SERVER "{server}" INTO "{local_schema}"',
+                f"CREATE SCHEMA IF NOT EXISTS {pg_ident(local_schema)}",
+                f"IMPORT FOREIGN SCHEMA {pg_ident(_value(self._remote_schema, fields))} "
+                f"FROM SERVER {pg_ident(server)} INTO {pg_ident(local_schema)}",
             ]
             return {"attach_ddl": ddl, "local_schema": local_schema}
         # No IMPORT: the pg runtime completes an explicit CREATE FOREIGN TABLE from column metadata,
@@ -134,7 +215,7 @@ class GenericPgFdwConnector(Connector):  # REQ-1177
         return {
             "server_ddl": ddl,
             "server": server,
-            "table_options": f"OPTIONS ({_opts(self._table_options, fields)})",
+            "table_options": f"OPTIONS ({_pg_options(self._table_options, fields)})",
         }
 
 
@@ -148,14 +229,14 @@ class GenericDuckDbAttachConnector(_DuckDBExtensionConnector):  # REQ-1177
         self.probe_symbol = d["probe_symbol"]
         self.install_from_community = d.get("install_from_community", True)
         self.mechanism = Mechanism(d.get("mechanism", "attach_rw"))
-        self._attach_template: str = d["attach_template"]
+        self._attach_template: str = _check_clause_template(d["attach_template"], "duckdb")
         self._remote_schema: str | None = d.get("remote_schema")
 
     def details(self, source: Source) -> dict:
         fields = _source_fields(source)
         alias = f"_src_{source.id}"
         fields["alias"] = alias
-        out: dict = {"attach": _fmt(self._attach_template, fields), "raw_alias": alias}
+        out: dict = {"attach": _clause(self._attach_template, "duckdb", fields), "raw_alias": alias}
         if self._remote_schema:
             out["remote_schema"] = self._remote_schema
         return out
@@ -171,22 +252,21 @@ class GenericDuckDbScanConnector(_DuckDBExtensionConnector):  # REQ-1177
         self.probe_symbol = d["probe_symbol"]
         self.install_from_community = d.get("install_from_community", True)
         self.mechanism = Mechanism.SCAN  # a scanner view reads the file/object in place
-        self._scan_template: str = d["scan_template"]
+        self._scan_template: str = _check_clause_template(d["scan_template"], "duckdb")
 
     def capability(self) -> Capability:
         return Capability(predicate_pushdown=True)
 
     def details(self, source: Source) -> dict:
         fields = _source_fields(source)
-        return {
-            "view_ddl": f"CREATE VIEW {source.id} AS SELECT * FROM {_fmt(self._scan_template, fields)}"
-        }
+        scan = _clause(self._scan_template, "duckdb", fields)
+        return {"view_ddl": f"CREATE VIEW {ident(source.id)} AS SELECT * FROM {scan}"}
 
 
 async def _probe_clickhouse_engine(fetch, ch_engine: str) -> ProbeResult:  # REQ-1178
     """Probe a ClickHouse integration table engine against its STANDARD discovery catalog
     (system.table_engines) — present ⇒ available, absent ⇒ unavailable with remediation."""
-    rows = await fetch(f"SELECT 1 FROM system.table_engines WHERE name = '{ch_engine}'")
+    rows = await fetch(f"SELECT 1 FROM system.table_engines WHERE name = {ch_lit(ch_engine)}")
     if rows:
         return ProbeResult(True, f"ClickHouse engine {ch_engine} available")
     return ProbeResult(
@@ -205,7 +285,7 @@ class _GenericClickHouseConnector(Connector):  # REQ-1178
         self.source_type = d["source_type"]
         self.key = d.get("key") or f"custom_{d['source_type']}"
         self._ch_engine: str = d["ch_engine"]
-        self._engine_template: str = d["engine_template"]
+        self._engine_template: str = _check_clause_template(d["engine_template"], "clickhouse")
 
     def capability(self) -> Capability:
         return Capability(predicate_pushdown=True)
@@ -228,8 +308,8 @@ class GenericClickHouseDatabaseConnector(_GenericClickHouseConnector):  # REQ-11
         local_schema = engine_attach_name("ch", attach_catalog(source))
         return {
             "attach_ddl": [
-                f'CREATE DATABASE IF NOT EXISTS "{local_schema}" '
-                f"ENGINE = {_fmt(self._engine_template, fields)}"
+                f"CREATE DATABASE IF NOT EXISTS {ch_ident(local_schema)} "
+                f"ENGINE = {_clause(self._engine_template, 'clickhouse', fields)}"
             ],
             "local_schema": local_schema,
         }
@@ -243,10 +323,13 @@ class GenericClickHouseTableConnector(_GenericClickHouseConnector):  # REQ-1178
 
     def details(self, source: Source) -> dict:
         fields = _source_fields(source)
-        fields["table"] = (
-            "{table}"  # runtime binds the collection/table name; keep it a placeholder
-        )
-        return {"engine_clause": _fmt(self._engine_template, fields), "requires_columns": True}
+        # The runtime binds the collection/table name: {table} is written as the literal
+        # '{table}', which clickhouse_quoting.bind_table replaces with the name as a literal.
+        fields["table"] = TABLE_PLACEHOLDER
+        return {
+            "engine_clause": _clause(self._engine_template, "clickhouse", fields),
+            "requires_columns": True,
+        }
 
 
 class GenericClickHouseScanConnector(_GenericClickHouseConnector):  # REQ-1178
@@ -258,7 +341,7 @@ class GenericClickHouseScanConnector(_GenericClickHouseConnector):  # REQ-1178
     def details(self, source: Source) -> dict:
         fields = _source_fields(source)
         return {
-            "engine_clause": _fmt(self._engine_template, fields),
+            "engine_clause": _clause(self._engine_template, "clickhouse", fields),
             "infer": True,
             "validate": True,
         }

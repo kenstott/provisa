@@ -1,7 +1,7 @@
 {
   "orgEncryptionTab": {
     "loading": "Carregando…",
-    "intro": "A chave de criptografia sob a qual os dados desta organização são encapsulados. Ela pode ser definida, substituída e rotacionada aqui; nunca é exibida, e nada nesta implantação pode mostrá-la a você nem a qualquer outra pessoa.",
+    "intro": "A chave de criptografia sob a qual os dados desta organização são encapsulados. Aqui é possível defini-la, substituí-la e rotacioná-la. Nada nesta implantação pode exibi-la para você ou para qualquer outra pessoa.",
     "fingerprintLabel": "Impressão digital",
     "supplied": "Fornecida",
     "generated": "Gerada aqui",
@@ -9,14 +9,14 @@
     "retired": "{{count}} chave(s) aposentada(s) ainda legível(is)",
     "unset": "Esta organização não definiu uma chave própria. Seus dados são encapsulados sob a chave da implantação.",
     "modeLabel": "Como definir a chave",
-    "modeGenerate": "Gerar uma — ela existe apenas no chaveiro e não é mostrada a ninguém",
+    "modeGenerate": "Gerar uma. Ela existe apenas no chaveiro e não é mostrada a ninguém.",
     "modeSupply": "Fornecer a minha (base64, 32 bytes)",
     "keyLabel": "Chave",
     "keyHelp": "Base64 de 32 bytes aleatórios, ex.: openssl rand -base64 32. Ela é gravada uma vez e nunca lida de volta.",
-    "rotationNote": "Rotacionar altera a chave sob a qual os dados NOVOS são encapsulados. A chave anterior é aposentada no chaveiro e continua descriptografando o que já gravou, então nada se torna ilegível — e por isso uma rotação não é uma revogação.",
+    "rotationNote": "A rotação muda a chave sob a qual os novos dados são encapsulados. A chave anterior é retirada para o chaveiro e continua descriptografando o que gravou, então os dados existentes continuam legíveis, e uma rotação não é uma revogação.",
     "set": "Definir chave",
     "rotate": "Rotacionar chave",
-    "applied": "Chave {{keyId}} ativa — impressão digital {{fingerprint}}",
+    "applied": "Chave {{keyId}} ativa, impressão digital {{fingerprint}}",
     "panelTitle": "Chave da organização"
   }
 }

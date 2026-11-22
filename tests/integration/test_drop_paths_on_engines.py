@@ -288,3 +288,20 @@ async def test_the_vocabulary_and_the_schema_say_what_a_drop_needs(server):
     assert joins["SUBMITTED"] != joins["ABOUT"]
     rels = {r["type"]: r["join"] for r in schema["relationship_types"]}
     assert rels["SUBMITTED"] == rels["SUBMITTED_BY"]
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "MATCH ()-[r:ASSIGNED_TO]->() RETURN r LIMIT 25",
+        "MATCH ()-[r:ROSTERED]-() RETURN r LIMIT 25",
+        "MATCH (a)-[r:ASSIGNED_TO]->(u:{users}) RETURN u.name AS u",
+    ],
+    ids=["type-chip", "undirected", "free-left"],
+)
+async def test_a_free_node_never_reads_a_parameterized_table(server, query):
+    # REQ-2135: the relationship-type chip on a type only assignments_by_breed carries is no read
+    # of it (no argument was asked for): it answers no rows, never the table's parameter refusal.
+    labels = await _labels(server)
+    body = await _cypher(server, query.format(users=labels["users"]))
+    assert body["rows"] == []

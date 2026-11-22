@@ -80,22 +80,27 @@ def test_the_base_exclusions_are_test_alls():
 
 def test_a_shard_runs_only_its_files():
     run_lane = _runner()
-    cmd = run_lane.command("core", "2/6", [])
-    files = run_lane.shard(run_lane.test_files(("tests/integration", "tests/steps")), 2, 6)
+    total = run_lane.SUITE["core"][0]
+    cmd = run_lane.command("core", f"2/{total}", [])
+    files = run_lane.pack(run_lane.lane_files("core"), run_lane.recorded_seconds("core"), total)[1]
+    assert cmd[3 : 3 + len(files)] == files
+    cmd = run_lane.command("app", "2/3", [])
+    files = run_lane.shard(run_lane.test_files(("tests/integration", "tests/steps")), 2, 3)
     assert cmd[3 : 3 + len(files)] == files
     assert "--durations=50" in cmd
 
 
-def test_all_is_every_suite_lane_with_its_shards():
-    include = _runner().matrix("all")["include"]
-    assert [m["shard"] for m in include if m["lane"] == "core"] == [f"{k}/6" for k in range(1, 7)]
+def test_all_is_every_suite_lane_with_its_shards(monkeypatch):
+    monkeypatch.delenv("PROVISA_LANE_TESTS", raising=False)
+    run_lane = _runner()
+    include = run_lane.matrix("all")["include"]
+    core = run_lane.SUITE["core"][0]
+    assert [m["shard"] for m in include if m["lane"] == "core"] == [
+        f"{k}/{core}" for k in range(1, core + 1)
+    ]
     assert [m["shard"] for m in include if m["lane"] == "app"] == ["1/3", "2/3", "3/3"]
     assert {"lane": "kafka", "shard": "", "timeout": 90} in include
-    assert not [
-        m
-        for m in include
-        if m["lane"] in ("cluster", "warehouse", "salesforce", "athena", "servicenow")
-    ]
+    assert not [m for m in include if m["lane"] in ("cluster", *_runner().LIVE)]
 
 
 def test_a_selection_runs_only_those_lanes():
@@ -223,66 +228,248 @@ def _plugin_cache_action() -> list[dict]:
 
 
 _RESTORE = {"uses": "./.github/actions/trino-plugins", "with": {"phase": "restore"}}
-_SAVE = {
-    "uses": "./.github/actions/trino-plugins",
-    "with": {"phase": "save", "cache-hit": "${{ steps.trino-plugins.outputs.cache-hit }}"},
-}
 
 
-def _plugin_cache_steps(steps: list[dict]) -> tuple[int, int]:
-    """Where a job restores and saves the Trino plugins through the one action that does it;
-    asserts each call is the action's, unaltered."""
+def _plugin_cache_step(steps: list[dict], phase: str = "restore") -> int:
+    """Where a job restores the Trino plugins through the one action that does it; asserts the
+    call is the action's, unaltered, and that the job saves nothing of its own."""
     by_name = {step.get("name"): (i, step) for i, step in enumerate(steps)}
     at_restore, restore = by_name["Restore Trino plugins"]
-    at_save, save = by_name["Cache Trino plugins"]
     assert restore["id"] == "trino-plugins"
-    assert {k: restore[k] for k in _RESTORE} == _RESTORE
-    assert {k: save[k] for k in _SAVE} == _SAVE
-    assert "always()" in save["if"]
-    return at_restore, at_save
+    wanted = {"uses": "./.github/actions/trino-plugins", "with": {"phase": phase}}
+    assert {k: restore[k] for k in wanted} == wanted
+    assert "Cache Trino plugins" not in by_name
+    return at_restore
 
 
 @pytest.mark.parametrize(
     "job", ["suite", "cluster", "warehouse", "salesforce", "athena", "servicenow"]
 )
-def test_every_collecting_job_caches_the_pinned_trino_plugins_around_its_lane(job):
-    """tests/conftest.py fetches the pinned Trino plugin jars from Maven Central at collection, and
-    a refused fetch ended the lane before any test ran (run 37573213103: neo4j 403, kafka 404).
-    Each job that collects tests restores them by pin before its lane and saves them after --
-    through .github/actions/trino-plugins, so no job can carry a copy that has drifted."""
+def test_every_collecting_job_restores_the_pinned_trino_plugins_before_its_lane(job):
+    """A lane never fetches the plugin jars: each restores the cache the workflow's trino-plugins
+    job primed, verified, before its lane (release 510: every lane missed an evicted cache and
+    fetched from Maven Central inside collection at once; run 44081179966 got HTTP 429)."""
     steps = _suite_steps() if job == "suite" else _job_steps(job)
     lane = [step.get("name") for step in steps].index("Run lane")
-    at_restore, at_save = _plugin_cache_steps(steps)
-    assert at_restore < lane < at_save
+    assert _plugin_cache_step(steps) < lane
+    needs = (_suite_job() if job == "suite" else _lanes_workflow()["jobs"][job])["needs"]
+    assert "trino-plugins" in needs
 
 
-def test_the_plugin_cache_action_restores_and_saves_under_one_key():
+def test_the_lanes_workflow_primes_the_plugin_cache_in_one_job():
+    prime = _lanes_workflow()["jobs"]["trino-plugins"]
+    assert "needs" not in prime  # it starts with the plan, not after it
+    (step,) = [s for s in prime["steps"] if s.get("uses") == "./.github/actions/trino-plugins"]
+    assert step["with"] == {"phase": "prime"}
+
+
+def test_the_plugin_cache_action_primes_once_and_every_lane_restores_and_verifies():
     by_name = {step["name"]: step for step in _plugin_cache_action()}
     assert list(by_name) == [
+        "Trino plugin phase",
         "Trino plugin pin",
         "Restore Trino plugins",
-        "Trino plugins fetched",
+        "Download Trino plugins",
         "Cache Trino plugins",
+        "Verify Trino plugins",
+        "provisa-functions key",
+        "Restore the provisa-functions plugin",
+        "Build the provisa-functions plugin",
+        "Cache the provisa-functions plugin",
+        "Verify the provisa-functions plugin",
     ]
     restored = by_name["Restore Trino plugins"]["with"]
-    assert by_name["Cache Trino plugins"]["with"] == restored
     # The pin behind a prefix that is empty for every caller but the action's own self-test.
     # A restore that misses takes an entry its key is a prefix of: a self-test key that extended
     # the real one put stand-in jars into Trino (run 40005357162).
     assert restored["key"] == (
         "${{ inputs.key-prefix }}trino-plugins-${{ steps.trino-pin.outputs.version }}-jars"
     )
-    assert "inputs.phase == 'restore'" in by_name["Restore Trino plugins"]["if"]
-    # Saved whatever the tests' outcome, and only when the restore missed and every jar is there.
-    for step in ("Trino plugins fetched", "Cache Trino plugins"):
-        assert "always()" in by_name[step]["if"] and "inputs.phase == 'save'" in by_name[step]["if"]
-    assert "inputs.cache-hit != 'true'" in by_name["Trino plugins fetched"]["if"]
+    assert by_name["Cache Trino plugins"]["with"] == {
+        "path": restored["path"],
+        "key": restored["key"],
+    }
+    # A lane's restore must hit; only the priming phase downloads, once, and saves at once.
+    assert restored["fail-on-cache-miss"] == "${{ inputs.phase == 'restore' }}"
+    for step in ("Download Trino plugins", "Cache Trino plugins"):
+        assert by_name[step]["if"] == (
+            "inputs.phase == 'prime' && steps.trino-plugins.outputs.cache-hit != 'true'"
+        )
+    assert by_name["Download Trino plugins"]["run"] == "python3 tests/trino_plugins.py fetch"
+    # Every phase verifies each jar's sha256 before the job goes on, and never conditionally.
+    assert by_name["Verify Trino plugins"]["run"] == "python3 tests/trino_plugins.py verify"
+    assert "if" not in by_name["Verify Trino plugins"]
+
+
+def test_the_plugin_cache_action_builds_provisa_functions_once_and_every_lane_restores_it():
+    """Run 44216356740 (release 510, bench and core 13/18): the cache held only the pinned
+    trino-* jars, so every lane built Provisa's own function plugin with Maven inside collection
+    (conftest's first-use build) and each asked Maven Central for its plugins at the same moment;
+    core 13/18 got HTTP 429 for maven-compiler-plugin, bench a failed resolution of
+    maven-resources-plugin. The priming phase builds it once, keyed by every input of the build,
+    and a lane's restore must hit, so no lane runs Maven."""
+    by_name = {step["name"]: step for step in _plugin_cache_action()}
+    restored = by_name["Restore the provisa-functions plugin"]
+    assert restored["id"] == "provisa-functions"
+    assert restored["uses"] == "actions/cache/restore@v4"
+    assert restored["with"]["path"] == "trino/plugins/provisa-functions"
+    # Every input of the build is in the key: the pom and sources, the portable fake definitions
+    # it mounts, and the script that names the Maven image; never trino-functions/target/, which
+    # the build writes. The prefix goes first, as for the pinned jars (run 40005357162). The key
+    # is computed once, before the build, and both the restore and the save read it: a hash taken
+    # again at the save included the build's output and named a key no lane restored (run
+    # 44299143758).
+    key = by_name["provisa-functions key"]
+    assert key["id"] == "provisa-functions-key"
+    assert key["env"]["KEY"] == (
+        "${{ inputs.key-prefix }}provisa-functions-${{ hashFiles('trino-functions/pom.xml', "
+        "'trino-functions/src/**', 'provisa/fakes/portable/**', "
+        "'scripts/build_trino_functions.sh') }}-jar"
+    )
+    assert key["run"] == 'echo "key=$KEY" >> "$GITHUB_OUTPUT"'
+    assert restored["with"]["key"] == "${{ steps.provisa-functions-key.outputs.key }}"
+    assert restored["with"]["fail-on-cache-miss"] == "${{ inputs.phase == 'restore' }}"
+    miss = "inputs.phase == 'prime' && steps.provisa-functions.outputs.cache-hit != 'true'"
+    built = by_name["Build the provisa-functions plugin"]
+    assert built["if"] == miss and built["run"] == "scripts/build_trino_functions.sh"
+    saved = by_name["Cache the provisa-functions plugin"]
+    assert saved["if"] == miss and saved["uses"] == "actions/cache/save@v4"
+    assert saved["with"] == {"path": restored["with"]["path"], "key": restored["with"]["key"]}
+    verify = by_name["Verify the provisa-functions plugin"]
+    assert "if" not in verify
+    assert "trino/plugins/provisa-functions/provisa-functions-1.jar" in verify["run"]
+
+
+def test_the_maven_image_that_builds_provisa_functions_is_pinned_to_one_release():
+    """The plugin's cache key hashes the build script, so the script names one Maven release: a
+    floating tag changes the default plugin versions (and so what Maven fetches) under an
+    unchanged key."""
+    import re
+
+    script = (REPO / "scripts" / "build_trino_functions.sh").read_text()
+    images = re.findall(r"\bmaven:\S+", script)
+    assert len(images) == 1, images
+    assert re.fullmatch(r"maven:\d+\.\d+\.\d+-eclipse-temurin-\d+", images[0]), images
+
+
+def test_no_lane_builds_provisa_functions_itself():
+    """The Trino stack script (UI Trino, swap and functions-conformance lanes) checks the jar its
+    caller restored; it never runs the Maven build of its own."""
+    stack = (REPO / "scripts" / "ci" / "lanes" / "trino-stack-prepare.sh").read_text()
+    assert "build_trino_functions.sh" not in stack
+    assert "trino/plugins/provisa-functions/provisa-functions-1.jar" in stack
+
+
+def _zaychik_image_action() -> list[dict]:
+    import yaml
+
+    action = REPO / ".github" / "actions" / "zaychik-image" / "action.yml"
+    return yaml.safe_load(action.read_text())["runs"]["steps"]
+
+
+_ZAYCHIK_RESTORE = {"uses": "./.github/actions/zaychik-image", "with": {"phase": "restore"}}
+
+
+def test_the_zaychik_image_action_builds_once_and_every_lane_loads_it():
+    """Run 44379779451 (release 510, kafka lane): compose found no zaychik:latest and built it
+    inside the lane, and Maven's lookup of the `dependency:` prefix on Maven Central failed after
+    752 s. The priming phase builds the image once per change to zaychik/ and saves it; a lane's
+    restore must hit and loads it, so no lane runs Maven."""
+    by_name = {step["name"]: step for step in _zaychik_image_action()}
+    assert list(by_name) == [
+        "zaychik image phase",
+        "zaychik image key",
+        "Restore the zaychik image",
+        "Build the zaychik image",
+        "Cache the zaychik image",
+        "Load the zaychik image",
+    ]
+    # Computed once, before the build, from the whole build context.
+    key = by_name["zaychik image key"]
+    assert key["id"] == "zaychik-key"
+    assert key["env"]["KEY"] == "zaychik-image-${{ hashFiles('zaychik/**') }}"
+    assert key["run"] == 'echo "key=$KEY" >> "$GITHUB_OUTPUT"'
+    restored = by_name["Restore the zaychik image"]
+    assert restored["id"] == "zaychik-image"
+    assert restored["uses"] == "actions/cache/restore@v4"
+    assert restored["with"] == {
+        "path": "~/zaychik-image",
+        "key": "${{ steps.zaychik-key.outputs.key }}",
+        "fail-on-cache-miss": "${{ inputs.phase == 'restore' }}",
+    }
+    miss = "inputs.phase == 'prime' && steps.zaychik-image.outputs.cache-hit != 'true'"
+    built = by_name["Build the zaychik image"]
+    assert built["if"] == miss
+    # The build compose runs for the zaychik service: context ./zaychik, tag zaychik:latest.
+    assert "docker build -t zaychik:latest ./zaychik" in built["run"]
+    assert "docker save -o ~/zaychik-image/zaychik.tar zaychik:latest" in built["run"]
+    saved = by_name["Cache the zaychik image"]
+    assert saved["if"] == miss and saved["uses"] == "actions/cache/save@v4"
+    assert saved["with"] == {"path": "~/zaychik-image", "key": restored["with"]["key"]}
+    loaded = by_name["Load the zaychik image"]
+    assert loaded["if"] == "inputs.phase == 'restore'"
+    assert loaded["run"] == "docker load -i ~/zaychik-image/zaychik.tar"
+
+
+def test_the_compose_zaychik_service_is_the_image_the_action_builds():
+    import yaml
+
+    core = yaml.safe_load((REPO / "docker-compose.core.yml").read_text())
+    service = core["services"]["zaychik"]
+    assert (service["build"], service["image"]) == ("./zaychik", "zaychik:latest")
+
+
+def test_the_lanes_workflow_primes_the_zaychik_image_in_the_priming_job():
+    prime = _lanes_workflow()["jobs"]["trino-plugins"]
+    (step,) = [s for s in prime["steps"] if s.get("uses") == "./.github/actions/zaychik-image"]
+    assert step["with"] == {"phase": "prime"}
+
+
+@pytest.mark.parametrize(
+    "job", ["suite", "cluster", "warehouse", "salesforce", "athena", "servicenow"]
+)
+def test_every_collecting_job_loads_the_zaychik_image_before_its_lane(job):
+    steps = _suite_steps() if job == "suite" else _job_steps(job)
+    names = [step.get("name") for step in steps]
+    at = names.index("Restore the zaychik image")
+    assert {k: steps[at][k] for k in _ZAYCHIK_RESTORE} == _ZAYCHIK_RESTORE
+    assert at < names.index("Run lane")
+    if job == "suite":
+        assert _suite_job()["with"]["zaychik-image"] is True
+        assert steps[at]["if"] == "inputs.zaychik-image"
+        # After the lane's own image cache, whose zaychik:latest may be from an older zaychik/.
+        assert names.index("Load images") < at
+    else:
+        assert "trino-plugins" in _lanes_workflow()["jobs"][job]["needs"]
+
+
+def test_no_lane_builds_the_zaychik_image_itself():
+    workflow = (REPO / ".github" / "workflows" / "integration-suite-lanes.yml").read_text()
+    assert "build zaychik" not in workflow
+    assert "docker build" not in workflow
+
+
+def test_the_zaychik_build_names_its_maven_plugin_by_coordinates_on_a_pinned_maven():
+    """A plugin prefix is resolved from Maven Central's group metadata, and a failed read of it is
+    reported only as "No plugin found for prefix" (run 44379779451). The image's Maven release is
+    pinned, as the provisa-functions build's is."""
+    import re
+
+    dockerfile = (REPO / "zaychik" / "Dockerfile").read_text()
+    assert re.search(r"^FROM maven:\d+\.\d+\.\d+-eclipse-temurin-\d+ AS build$", dockerfile, re.M)
+    assert re.search(
+        r"^ARG DEPENDENCY_PLUGIN=org\.apache\.maven\.plugins:maven-dependency-plugin:\d+\.\d+\.\d+$",
+        dockerfile,
+        re.M,
+    )
+    assert not re.search(r"\bmvn\b[^\n]*\sdependency:", dockerfile)
 
 
 def test_the_plugin_cache_self_test_keys_cannot_stand_in_for_the_real_key():
     """Run 40005357162: the warehouse job's restore missed the real key and took the self-test's
     entry, whose key extended it; its stand-in jars went into Trino. The self-test's part goes
-    before the key, so the real key is never a prefix of a self-test key."""
+    before the key, so the real key is never a prefix of a self-test key, and the self-test saves
+    nothing under a key of its own."""
     import yaml
 
     leaf = yaml.safe_load((REPO / ".github" / "workflows" / "ci-leaf-check.yml").read_text())
@@ -291,11 +478,14 @@ def test_the_plugin_cache_self_test_keys_cannot_stand_in_for_the_real_key():
         for s in leaf["jobs"]["trino-plugins"]["steps"]
         if s.get("uses") == "./.github/actions/trino-plugins"
     ]
-    assert uses and all(
-        w["key-prefix"] == "leafcheck-${{ github.run_id }}-${{ github.run_attempt }}-"
-        and "key-suffix" not in w
-        for w in uses
-    )
+    prefixed = [w for w in uses if "key-prefix" in w]
+    assert prefixed == [
+        {
+            "phase": "restore",
+            "key-prefix": "leafcheck-${{ github.run_id }}-${{ github.run_attempt }}-",
+        }
+    ]
+    assert [w["phase"] for w in uses if "key-prefix" not in w] == ["prime", "restore"]
 
 
 def test_the_trino_plugin_pin_step_names_the_harness_pin():
@@ -306,16 +496,15 @@ def test_the_trino_plugin_pin_step_names_the_harness_pin():
     out = subprocess.run(  # noqa: S603 — the workflow's own step, run at the repo root
         ["bash", "-c", script], cwd=REPO, capture_output=True, text=True, check=True
     ).stdout
-    import tests.conftest as harness
+    import tests.trino_plugins as pins
 
     # The cache key names the pin and every plugin fetched at a version of its own.
-    own = harness._TRINO_PLUGIN_VERSIONS
-    key = "_".join([harness._TRINO_PLUGIN_VERSION, *(f"{n}-{own[n]}" for n in sorted(own))])
+    own = pins._TRINO_PLUGIN_VERSIONS
+    key = "_".join([pins._TRINO_PLUGIN_VERSION, *(f"{n}-{own[n]}" for n in sorted(own))])
     lines = out.splitlines()
     assert lines[0] == f"version={key}"
     assert lines[1].removeprefix("jars=").split() == [
-        f"trino/plugins/{n}/{n}-{harness._trino_plugin_version(n)}.jar"
-        for n in harness._TRINO_PLUGINS
+        f"trino/plugins/{n}/{pins.jar_name(n)}" for n in pins._TRINO_PLUGINS
     ]
 
 
@@ -348,9 +537,14 @@ def test_the_live_salesforce_test_is_in_no_lane_but_its_own():
     assert run_lane.LANES["salesforce"].marker == "requires_salesforce"
     # Every other lane excludes the live tests through the base exclusion or its own marker.
     for name, lane in run_lane.LANES.items():
-        if name in ("warehouse", "salesforce", "athena", "servicenow", "polly_bakeoff"):
+        if name in (*run_lane.LIVE, "polly_bakeoff"):
             continue
-        assert "not requires_warehouse" in lane.marker or name in ("isolated", "e2e", "cluster")
+        assert "not requires_warehouse" in lane.marker or name in (
+            "isolated",
+            "smoke",
+            "e2e",
+            "cluster",
+        )
     for test in ("test_salesforce_source_e2e.py", "test_cloudops_source_e2e.py"):
         source = (REPO / "tests" / "integration" / test).read_text()
         assert "pytest.mark.requires_warehouse" in source  # so no push lane selects it
@@ -451,6 +645,87 @@ def test_the_servicenow_lane_builds_its_server_from_the_calcite_ref_it_is_given(
     )
 
 
+_M365_TESTS = (
+    "tests/integration/test_microsoft365_live_e2e.py",
+    "tests/integration/test_microsoft365_calendar_live_e2e.py",
+)
+_M365_SECRETS = ("M365_TENANT_ID", "M365_CLIENT_ID", "M365_CLIENT_SECRET", "M365_TEST_MAILBOXES")
+
+
+def test_the_microsoft_365_lane_runs_only_when_a_dispatch_asks_for_it_with_its_secrets():
+    """REQ-1923, REQ-1994: the maintainer's tenant is used only when a dispatch asks for it
+    (maintainer 2026-11-10), and a missing credential fails the lane by name."""
+    run_lane = _runner()
+    assert run_lane.LANES["microsoft_365"].marker == "requires_microsoft_365"
+    assert "microsoft_365" in run_lane.LIVE and "microsoft_365" not in run_lane.SUITE
+    job = _lanes_workflow()["jobs"]["microsoft_365"]
+    assert job["if"] == (
+        "(github.event_name == 'workflow_dispatch' && inputs.include_microsoft_365) "
+        "&& needs.plan.outputs.microsoft_365 == 'true'"
+    )
+    names = _M365_SECRETS
+    assert {k: job["env"][k] for k in names} == {k: f"${{{{ secrets.{k} }}}}" for k in names}
+    # The tests drive the loader directly: no stack is brought up for them.
+    assert job["env"]["PYTEST_NO_DOCKER"] == "1"
+    assert "microsoft_365 --junitxml results/microsoft_365/junit.xml" in str(
+        [s.get("run") for s in _job_steps("microsoft_365")]
+    )
+    import yaml
+
+    caller = yaml.safe_load((REPO / ".github" / "workflows" / "integration-suite.yml").read_text())
+    assert caller[True]["workflow_dispatch"]["inputs"]["include_microsoft_365"]["default"] is False
+    assert caller["jobs"]["lanes"]["with"]["include_microsoft_365"] == (
+        "${{ inputs.include_microsoft_365 || false }}"
+    )
+    for name in names:
+        assert caller["jobs"]["lanes"]["secrets"][name] == f"${{{{ secrets.{name} }}}}"
+    assert "microsoft_365" in _lanes_workflow()["jobs"]["report"]["needs"]
+
+
+def test_the_microsoft_365_lane_selects_every_live_m365_test_and_the_warehouse_lane_none():
+    """Both live M365 modules carry requires_warehouse (a skip fails them by name) and
+    requires_microsoft_365: only the microsoft_365 lane selects them. The warehouse lane's
+    exclusion still holds -- its nightly job is handed no M365 secret."""
+    run_lane = _runner()
+    for path in _M365_TESTS:
+        tests = run_lane.test_markers(path)
+        assert tests
+        for test, variants in tests.items():
+            for marks in variants:
+                assert {"requires_warehouse", "requires_microsoft_365"} <= marks, test
+                lanes = [
+                    lane
+                    for lane in run_lane.LANES
+                    if run_lane._in_lane(lane, path) and run_lane.selects(lane, marks)
+                ]
+                assert lanes == ["microsoft_365"], (test, lanes)
+    assert not set(_M365_SECRETS) & set(_lanes_workflow()["jobs"]["warehouse"]["env"])
+
+
+def test_a_targeted_m365_run_is_routed_to_its_lane_only_when_the_dispatch_includes_it(
+    monkeypatch, capsys
+):
+    run_lane = _runner()
+    monkeypatch.setenv("PROVISA_LANE_TESTS", " ".join(_M365_TESTS))
+    monkeypatch.setenv("PROVISA_INCLUDE_LIVE", ",,,,")
+    with pytest.raises(ValueError) as refused:
+        run_lane.matrix("all")
+    assert "needs microsoft_365" in str(refused.value)
+    monkeypatch.setenv("PROVISA_INCLUDE_LIVE", ",,,,microsoft_365")
+    assert run_lane.matrix("all")["include"] == []
+    assert run_lane.routes(run_lane.runnable_lanes()) == {"microsoft_365": list(_M365_TESTS)}
+    run_lane.main(["--has-targets", "microsoft_365"])
+    assert capsys.readouterr().out.strip() == "true"
+    run_lane.main(["--has-targets", "warehouse"])
+    assert capsys.readouterr().out.strip() == "false"
+    monkeypatch.delenv("PROVISA_INCLUDE_LIVE")
+    assert run_lane.targets("microsoft_365", None) == list(_M365_TESTS)
+    cmd = run_lane.command("microsoft_365", None, [])
+    at = cmd.index("-m", 3)  # after `python -m pytest`
+    assert cmd[3:at] == list(_M365_TESTS)
+    assert cmd[at + 1 : at + 4] == ["requires_microsoft_365", "-o", "addopts="]
+
+
 def test_the_salesforce_lane_keeps_its_describe_caches_between_runs_by_org():
     steps = {s.get("name"): s for s in _job_steps("salesforce")}
     names = list(steps)
@@ -498,6 +773,7 @@ _SALESFORCE_SECRETS = [
     [
         ("warehouse", [*_CLOUDOPS_SECRETS, "CLOUDOPS_GCP_CREDENTIALS_JSON_BASE64"]),
         ("salesforce", _SALESFORCE_SECRETS),
+        ("microsoft_365", list(_M365_SECRETS)),
     ],
 )
 def test_a_live_lane_declares_its_secrets_and_fails_by_name_when_one_is_missing(job, secrets):
@@ -509,7 +785,9 @@ def test_a_live_lane_declares_its_secrets_and_fails_by_name_when_one_is_missing(
     for name in secrets:
         assert declared[name] == f"${{{{ secrets.{name} }}}}"
         assert name in checked
-    assert "repo secrets not set:$missing" in script and "exit 1" in script
+    # The microsoft_365 job reads its secrets from the `live` environment (maintainer 2026-11-10).
+    where = "secrets of environment live" if job == "microsoft_365" else "repo secrets"
+    assert f"{where} not set:$missing" in script and "exit 1" in script
 
 
 def test_the_cloudops_gcp_key_reaches_the_test_as_a_file_and_is_never_printed():
@@ -546,13 +824,14 @@ def _collects_the_container_suite(command: str) -> bool:
 
 
 def test_every_job_that_collects_the_container_suite_restores_the_trino_plugins_by_pin():
-    """tests/conftest.py fetches the pinned Trino plugin jars from Maven Central when it collects
-    tests/integration, tests/steps or tests/e2e, and a refused fetch ends the run before any
-    test. The release run of the amd64-only engines workflow stopped there (37874425655: HTTP 404
-    for a jar that exists): it was the one job that collected those tests without the suite's
-    cache. Every such job restores and saves through the one plugin-cache action -- as a call of
-    the lane workflow with `trino-plugins: true`, or with the action's two steps of its own."""
-    collecting, in_a_guest = [], []
+    """The container suite mounts the pinned Trino plugin jars, and a fetch from inside collection
+    ended the run before any test (37874425655: HTTP 404; release 510's lane core 17/18: HTTP 429,
+    run 44081179966). Every job that collects tests/integration, tests/steps or tests/e2e restores
+    them through the one plugin-cache action before its tests -- as a call of the lane workflow
+    with `trino-plugins: true`, or with the action's step of its own. A NixOS lane restores them on
+    the runner before the guest boots, since the guest copies the checkout jars and all.
+    (test_ci_workflow_structure.py checks each restore needs the job that primes the cache.)"""
+    collecting, no_stack = [], []
     for workflow, job, body in _workflow_jobs():
         if body.get("uses") == LANE:
             if _collects_the_container_suite(str(body["with"]["run"])):
@@ -566,19 +845,22 @@ def test_every_job_that_collects_the_container_suite_restores_the_trino_plugins_
         tests_at = [i for i, run in runs if _collects_the_container_suite(run)]
         if not tests_at:
             continue
-        if any("packaging/nixos/vm-run" in run for _i, run in runs):
-            # Runs inside a NixOS guest, which has no access to the runner's cache: it fetches
-            # the jars from Maven Central on every run and is exposed to the same refusal. Named
-            # here so it is seen, not hidden; closing it means carrying the jars into the guest.
-            in_a_guest.append(f"{workflow}:{job}")
+        if (body.get("env") or {}).get("PYTEST_NO_DOCKER") == "1":
+            # tests/conftest.py brings up no stack and fetches no plugin under PYTEST_NO_DOCKER.
+            no_stack.append(f"{workflow}:{job}")
             continue
         collecting.append(f"{workflow}:{job}")
         names = [s.get("name") for s in steps]
-        assert "Restore Trino plugins" in names and "Cache Trino plugins" in names, (
+        assert "Restore Trino plugins" in names, (
             f"{workflow}:{job} collects the container suite without the Trino plugin cache"
         )
-        at_restore, at_save = _plugin_cache_steps(steps)
-        assert at_restore < tests_at[0] < at_save, f"{workflow}:{job}"
+        phase = next(s for s in steps if s.get("name") == "Restore Trino plugins")["with"]["phase"]
+        assert _plugin_cache_step(steps, phase) < tests_at[0], f"{workflow}:{job}"
+        if any("packaging/nixos/vm-run" in run for _i, run in runs):
+            boot = next(
+                i for i, s in enumerate(steps) if s.get("uses") == "./.github/actions/nixos-vm"
+            )
+            assert _plugin_cache_step(steps, phase) < boot, f"{workflow}:{job}"
     assert sorted(collecting) == [
         "amd64-engines.yml:exasol",
         "demo-bundles.yml:bundle",
@@ -588,18 +870,23 @@ def test_every_job_that_collects_the_container_suite_restores_the_trino_plugins_
         "integration-suite-lanes.yml:servicenow",
         "integration-suite-lanes.yml:suite",
         "integration-suite-lanes.yml:warehouse",
+        "nixos.yml:lane",
         "polly-bakeoff.yml:bakeoff",
     ], collecting
-    assert in_a_guest == ["nixos.yml:lane"], in_a_guest
+    assert no_stack == ["integration-suite-lanes.yml:microsoft_365"], no_stack
 
 
-@pytest.mark.parametrize("lane", ["warehouse", "salesforce", "athena", "servicenow"])
+@pytest.mark.parametrize(
+    "lane", ["warehouse", "salesforce", "athena", "servicenow", "microsoft_365"]
+)
 def test_a_live_lane_runs_only_the_named_tests_of_a_targeted_run(lane):
     # A targeted dispatch with include_warehouse ran the whole warehouse lane (~108 tests, 35+
     # minutes): the live jobs were not handed the run's named tests.
     job = _lanes_workflow()["jobs"][lane]
     assert job["env"]["PROVISA_LANE_TESTS"] == "${{ inputs.tests }}"
-    assert job["needs"] == "plan"
+    # microsoft_365 runs with PYTEST_NO_DOCKER: it restores and needs no plugin jars.
+    expected = "plan" if lane == "microsoft_365" else ["plan", "trino-plugins"]
+    assert job["needs"] == expected
     assert job["if"].endswith(f"&& needs.plan.outputs.{lane} == 'true'")
     plan = _lanes_workflow()["jobs"]["plan"]
     assert plan["outputs"][lane] == f"${{{{ steps.plan.outputs.{lane} }}}}"
@@ -868,7 +1155,7 @@ def test_every_test_of_the_repository_is_read_and_some_lane_selects_it():
                     for lane in runner.LANES
                     if runner._in_lane(lane, path) and runner.selects(lane, marks)
                 ]
-                assert lanes or marks & _NO_CI_LANE, (test, sorted(marks))
+                assert lanes or marks & runner.NO_CI_LANE.keys(), (test, sorted(marks))
 
 
 def test_a_live_lane_is_planned_whole_for_a_run_that_names_no_test(monkeypatch, capsys):
@@ -881,8 +1168,9 @@ def test_a_live_lane_is_planned_whole_for_a_run_that_names_no_test(monkeypatch, 
 def test_the_plan_routes_the_cluster_job_and_passes_the_included_live_lanes():
     step = next(s for s in _lanes_workflow()["jobs"]["plan"]["steps"] if s.get("id") == "plan")
     assert "run_lane.py --has-targets cluster" in step["run"]
-    for lane in ("warehouse", "salesforce", "athena", "servicenow"):
+    for lane in ("warehouse", "salesforce", "athena", "servicenow", "microsoft_365"):
         assert f"inputs.include_{lane} && '{lane}'" in step["env"]["PROVISA_INCLUDE_LIVE"]
+        assert f"outputs.{lane} }}}}" in str(_lanes_workflow()["jobs"]["plan"]["outputs"])
 
 
 def test_the_leak_lane_runs_only_when_named(monkeypatch):
@@ -902,3 +1190,178 @@ def test_the_leak_lane_runs_only_when_named(monkeypatch):
     )
     marks = addopts[addopts.index("-m") + 1]
     assert "not leak" in marks.split(" and "), marks
+
+
+# --- an untargeted "all" run: every test under the suite's paths has a lane ---------------------
+
+# A cluster test placed under tests/integration: the cluster lane reads only its own file, and every
+# lane of the suite's paths excludes cluster, so no lane selects it, and cluster is no NO_CI_LANE
+# marker.
+_NO_LANE = """
+import pytest
+
+pytestmark = [pytest.mark.integration, pytest.mark.cluster]
+
+
+def test_installs():
+    pass
+"""
+_NO_LANE_FILE = "tests/integration/test_no_lane.py"
+
+
+def test_an_all_run_is_refused_while_a_test_is_selected_by_no_lane(runner, monkeypatch):
+    monkeypatch.delenv("PROVISA_LANE_TESTS", raising=False)
+    assert runner.unselected() == []  # the fixture's modules: each has a lane, demo_walk's too
+    assert {e["lane"] for e in runner.matrix("all")["include"]} >= {"core", "kafka"}
+    (runner.REPO / _NO_LANE_FILE).write_text(_NO_LANE)
+    assert runner.unselected() == [f"{_NO_LANE_FILE}::test_installs [cluster, integration]"]
+    with pytest.raises(ValueError) as refused:
+        runner.matrix("all")
+    assert f"{_NO_LANE_FILE}::test_installs [cluster, integration]" in str(refused.value)
+    assert "selected by no lane" in str(refused.value)
+    # A selection of lanes, and a targeted run, are not "all": the rule is the untargeted run's.
+    assert [e["lane"] for e in runner.matrix("kafka")["include"]] == ["kafka"]
+    monkeypatch.setenv("PROVISA_LANE_TESTS", f"{_MIXED_FILE}::TestKafka")
+    assert [e["lane"] for e in runner.matrix("all")["include"]] == ["kafka"]
+
+
+def test_a_variant_no_lane_selects_is_named_though_its_test_has_a_lane(runner, monkeypatch):
+    monkeypatch.delenv("PROVISA_LANE_TESTS", raising=False)
+    (runner.REPO / _NO_LANE_FILE).write_text(
+        _PARAMETRIZED.replace("pytest.mark.requires_neo4j", "pytest.mark.cluster")
+    )
+    assert runner.unselected() == [
+        f"{_NO_LANE_FILE}::test_through_the_server [cluster, integration]"
+    ]
+
+
+@pytest.mark.parametrize("exempt", ["packaging", "requires_google_workspace", "requires_shopify"])
+def test_a_test_no_lane_selects_is_refused_unless_it_carries_a_no_ci_lane_marker(
+    runner, monkeypatch, exempt
+):
+    """Maintainer 2026-11-10: the rule, with named exemptions. A lane-less test is refused; the same
+    test carrying a NO_CI_LANE marker runs where that marker's reason says, and is not."""
+    monkeypatch.delenv("PROVISA_LANE_TESTS", raising=False)
+    assert exempt in runner.NO_CI_LANE
+    assert "cluster" not in runner.NO_CI_LANE
+    (runner.REPO / _NO_LANE_FILE).write_text(_NO_LANE)
+    with pytest.raises(ValueError, match="selected by no lane") as refused:
+        runner.matrix("all")
+    assert f"{_NO_LANE_FILE}::test_installs [cluster, integration]" in str(refused.value)
+    (runner.REPO / _NO_LANE_FILE).write_text(
+        _NO_LANE.replace("pytest.mark.cluster]", f"pytest.mark.cluster, pytest.mark.{exempt}]")
+    )
+    assert runner.unselected() == []
+    assert {e["lane"] for e in runner.matrix("all")["include"]} >= {"core", "kafka"}
+
+
+def test_an_exemption_covers_only_the_variants_that_carry_it(runner, monkeypatch):
+    """A parameter marked with an exempt marker excuses that variant; its unmarked sibling that no
+    lane selects is still named. (test_certified's warehouse variant has a lane: warehouse.)"""
+    monkeypatch.delenv("PROVISA_LANE_TESTS", raising=False)
+    (runner.REPO / _NO_LANE_FILE).write_text(
+        _PARAMETRIZED.replace(
+            "pytestmark = [pytest.mark.integration]",
+            "pytestmark = [pytest.mark.integration, pytest.mark.cluster]",
+        ).replace("pytest.mark.requires_neo4j", "pytest.mark.requires_quickbooks")
+    )
+    assert runner.unselected() == [
+        f"{_NO_LANE_FILE}::test_certified [cluster, integration, parametrize]",
+        f"{_NO_LANE_FILE}::test_through_the_server [cluster, integration]",
+    ]
+
+
+def test_every_no_ci_lane_marker_says_where_its_tests_run_and_is_a_registered_marker():
+    runner = _runner()
+    registered = {
+        line.split(":", 1)[0].strip()
+        for line in tomllib.loads((REPO / "pyproject.toml").read_text())["tool"]["pytest"][
+            "ini_options"
+        ]["markers"]
+    }
+    for marker, reason in runner.NO_CI_LANE.items():
+        assert marker in registered, marker
+        assert reason.strip(), marker
+
+
+def test_the_smoke_check_runs_in_the_smoke_workflow_and_in_no_suite_lane():
+    # REQ-1989: tests/smoke needs the UI's node modules and Chromium, which smoke.yml installs and
+    # no suite lane does (release 509: the isolated lane failed every run with "Cannot find package
+    # '@playwright/test'"). The lane selects by marker and directory: the smoke module's `isolated`
+    # marker must not pull it into the isolated lane.
+    runner = _runner()
+    path = "tests/smoke/test_main_is_startable.py"
+    assert "isolated" in (REPO / path).read_text()  # still marked: the module is not softened
+    assert not runner._in_lane("isolated", path)
+    assert runner._in_lane("smoke", path)
+    assert "smoke" not in runner.SUITE
+    assert "smoke" in runner.ELSEWHERE
+    workflow = (REPO / ".github" / "workflows" / "smoke.yml").read_text()
+    assert "pytest -m isolated tests/smoke/test_main_is_startable.py" in " ".join(workflow.split())
+    assert "playwright: chromium" in workflow
+
+
+@pytest.mark.parametrize("lane", sorted(_runner().SUITE))
+def test_a_suite_lane_stops_starting_tests_before_its_job_limit_cancels_it(lane):
+    """core 3/6 of release 509 ran its tests one after another until its 150-minute job limit
+    cancelled it: no junit, no durations, and no log. A suite lane starts tests only for its
+    budget, so the last one started ends inside the job's limit with the job's other steps."""
+    run_lane = _runner()
+    budget = run_lane.budget_s(lane)
+    assert budget is not None and budget > 0
+    limit = run_lane.SUITE[lane][1] * 60
+    assert budget + run_lane.TEST_TIMEOUT_S + run_lane.JOB_STEPS_S <= limit
+    cmd = run_lane.command(lane, None, [])
+    assert cmd[cmd.index("tests.lane_budget") - 1] == "-p"
+
+
+def _session_under_budget(tmp_path, deadline: float):
+    import os
+    import subprocess
+
+    (tmp_path / "pytest.ini").write_text("[pytest]\n")
+    (tmp_path / "test_two.py").write_text(
+        "def test_one():\n    pass\n\n\ndef test_two():\n    pass\n"
+    )
+    env = {**os.environ, "PROVISA_LANE_DEADLINE": str(deadline), "PYTHONPATH": str(REPO)}
+    return subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            "-c",
+            str(tmp_path / "pytest.ini"),
+            "-p",
+            "tests.lane_budget",
+            "-p",
+            "no:cacheprovider",
+            "--durations=5",
+            "--junitxml",
+            str(tmp_path / "junit.xml"),
+            str(tmp_path / "test_two.py"),
+        ],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=False,
+    )
+
+
+def test_past_its_budget_a_lane_fails_naming_the_tests_it_did_not_run(tmp_path):
+    import time
+
+    done = _session_under_budget(tmp_path, time.time() - 1)
+    out = done.stdout + done.stderr
+    assert done.returncode == 1, out
+    assert "lane budget spent: 2 of 2 tests not run, from test_two.py::test_one" in out
+    assert (tmp_path / "junit.xml").is_file()
+
+
+def test_inside_its_budget_a_lane_runs_every_test(tmp_path):
+    import time
+
+    done = _session_under_budget(tmp_path, time.time() + 3600)
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert "2 passed" in done.stdout

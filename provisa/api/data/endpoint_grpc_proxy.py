@@ -50,6 +50,7 @@ from provisa.grpc.query_ir import (
 from provisa.grpc.proto_gen import _to_proto_field_name
 from provisa.compiler.directives import cache_hint_from_grpc_metadata
 from provisa.pgwire._pipeline import _execute_plan, _govern_and_route_compiled
+from provisa.core.parameter_binding import ParameterBindingRefused
 from provisa.core.read_refusal import ReadRefused
 from provisa.compiler.complexity import ComplexityLimitExceeded
 from provisa.compiler.sql_validator import GovernanceRefused
@@ -61,7 +62,7 @@ router = APIRouter(prefix="/data", tags=["data"])
 
 def _read_mask_paths(body: dict) -> list[str]:
     """The request body's ``read_mask.paths`` (proto field names, dot-notation into JSON-valued
-    fields). An absent ``read_mask`` or ``paths`` is the empty mask — every field."""
+    fields and through relation fields, REQ-1929). An absent ``read_mask`` or ``paths`` is the empty mask — every field."""
     read_mask = body.get("read_mask")
     if read_mask is None:
         return []
@@ -429,6 +430,8 @@ async def grpc_proxy(type_name: str, request: Request):  # REQ-045, REQ-266
             raise  # REQ-1174: answered as 413 by the app's handler
         except ReadRefused:
             raise  # refused by name; the app answers it (core/read_refusal.py)
+        except ParameterBindingRefused:
+            raise  # REQ-1986: the app answers it under its code (400)
         except GovernanceRefused:
             raise  # REQ-2222: the app answers it under its code
         except PermissionError as exc:
@@ -497,12 +500,24 @@ async def grpc_proxy(type_name: str, request: Request):  # REQ-045, REQ-266
         raise  # REQ-1174: answered as 413 by the app's handler
     except ReadRefused:
         raise  # refused by name; the app answers it (core/read_refusal.py)
+    except ParameterBindingRefused:
+        raise  # REQ-1986: the app answers it under its code (400)
     except GovernanceRefused:
         raise  # REQ-2222: the app answers it under its code
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc))
     except Exception as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    if read_mask is not None and read_mask.relations:
+        # REQ-1929: a mask naming relations reads each row with them nested, as the GraphQL it
+        # lowered to answers it, keyed by proto field (the lowering's aliases).
+        import json
+
+        from provisa.executor.json_encoders import graphql_field, result_batches
+
+        answer = graphql_field(result_batches(result), compiled.columns)
+        return OrjsonResponse([read_mask.restrict_row(r) for r in json.loads(answer.body)])
 
     # Key each row by the proto field name (the physical column → proto name authority). The query
     # already selected only the masked columns; a JSON sub-path selection is applied to its value.

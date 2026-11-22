@@ -72,3 +72,35 @@ def test_all_lanes_passing_is_green(tmp_path):
 
 def test_no_lane_results_is_not_green(tmp_path):
     assert _report().report(tmp_path)[1] is False
+
+
+def test_a_lane_without_junit_is_named_and_not_green(tmp_path):
+    _junit(tmp_path, "core-1", '<testcase classname="tests.a" name="test_ok"/>')
+    (tmp_path / "kafka").mkdir()
+    text, green = _report().report(tmp_path)
+    assert "| kafka | 0 | 0 | 0 | 0 | **no results** |" in text
+    assert "No results: lane kafka wrote no junit.xml." in text
+    assert green is False
+
+
+def test_a_missing_artifacts_directory_is_reported_not_a_crash(tmp_path):
+    text, green = _report().report(tmp_path / "artifacts")
+    assert "No results: the artifacts directory" in text
+    assert green is False
+
+
+def test_main_exits_non_zero_for_a_missing_artifacts_directory(tmp_path, capsys):
+    assert _report().main([str(tmp_path / "artifacts")]) == 1
+    assert "No results" in capsys.readouterr().out
+
+
+def test_no_integration_test_writes_a_folder_beside_the_lane_results():
+    # The report reads every folder under results/ as a lane, so a test's own output there is a
+    # file: a folder with no junit.xml fails the run though every lane passed (run 43634925767).
+    import re
+
+    offenders = []
+    for path in sorted((REPO / "tests" / "integration").rglob("*.py")):
+        for found in re.finditer(r'"results"\s*/\s*"([^"]+)"\s*/', path.read_text()):
+            offenders.append(f"{path.relative_to(REPO)}: results/{found.group(1)}/")
+    assert offenders == []

@@ -307,6 +307,33 @@ describe("CommandFormFields — a call that needs approval (REQ-1924)", () => {
   });
 });
 
+describe("CommandFormFields — a function's table (REQ-1986)", () => {
+  it("lets the steward turn a registered reading operation's table on and off", async () => {
+    const { default: userEvent } = await import("@testing-library/user-event");
+    render(
+      <RemoteHarness
+        initial={{
+          actionType: "function",
+          implKind: "source_operation",
+          sourceId: "gh",
+          kind: "query",
+          exposedAsTable: true,
+        }}
+      />,
+    );
+    const toggle = screen.getByTestId("command-exposed-as-table-switch");
+    expect(toggle).toBeChecked();
+    expect(screen.getByText("Also a table")).toBeInTheDocument();
+    await userEvent.click(toggle);
+    expect(toggle).not.toBeChecked();
+  });
+
+  it("offers no switch to a function with no table form, or one not yet registered", () => {
+    render(<Harness initial={{ actionType: "function", implKind: "source_procedure" }} />);
+    expect(screen.queryByTestId("command-exposed-as-table-switch")).not.toBeInTheDocument();
+  });
+});
+
 describe("CommandFormFields — the table a command writes (REQ-1924, REQ-871)", () => {
   it("offers the selected source's registered tables", () => {
     render(
@@ -353,6 +380,57 @@ describe("CommandFormFields — a database source's routines on offer (REQ-887)"
   });
 });
 
+// REQ-2230: a Snowflake source offers operations among its routines; one picked is called as it
+// is, while a routine is still described by the form.
+describe("CommandFormFields — a Snowflake source's operations", () => {
+  function SnowflakeHarness({ functionName }: { functionName: string }) {
+    const [form, setForm] = useState<FormState>({
+      ...EMPTY_FORM,
+      actionType: "function",
+      implKind: "source_procedure",
+      sourceId: "sf",
+      schemaName: "ANALYTICS",
+      functionName,
+    });
+    return (
+      <CommandFormFields
+        form={form}
+        setForm={setForm}
+        sources={[{ id: "sf", type: "snowflake" } as never]}
+        tables={[]}
+        domainHints={[]}
+        availableFunctions={[{ name: functionName, comment: "" }]}
+        loadingFunctions={false}
+        roleOptions={[]}
+      />
+    );
+  }
+
+  it.each([
+    "refresh_dynamic_table.DAILY_SALES",
+    "suspend_dynamic_table.DAILY_SALES",
+    "resume_dynamic_table.DAILY_SALES",
+    "execute_task.NIGHTLY",
+    "suspend_task.NIGHTLY",
+    "resume_task.NIGHTLY",
+  ])("leaves the arguments and answer of %s to the operation", (functionName) => {
+    render(<SnowflakeHarness functionName={functionName} />);
+    expect(screen.queryByText("Arguments")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("command-return-type-select")).not.toBeInTheDocument();
+  });
+
+  it("still asks for the arguments and answer of a routine", () => {
+    render(<SnowflakeHarness functionName="MY_PROC" />);
+    expect(screen.getByText("Arguments")).toBeInTheDocument();
+    expect(screen.getByTestId("command-return-type-select")).toBeInTheDocument();
+  });
+
+  it("leaves the schema for the steward to name", () => {
+    render(<SnowflakeHarness functionName="execute_task.NIGHTLY" />);
+    expect(screen.getByTestId("command-schema-input")).not.toHaveAttribute("readonly");
+  });
+});
+
 describe("CommandFormFields — lists laid out as the shared form lays out a list", () => {
   it("sets each output column apart as one entry, its row and its governance together", () => {
     render(
@@ -390,5 +468,57 @@ describe("CommandFormFields — lists laid out as the shared form lays out a lis
     const remove = screen.getByRole("button", { name: /Remove argument name/i });
     expect(remove.parentElement).toHaveClass("form-field-group--bare");
     expect(remove.parentElement).toContainElement(screen.getByDisplayValue("name"));
+  });
+});
+
+// REQ-1988: a command holding native SQL for a relational source asks for the source it runs on
+// and its SQL; its kind, written table and output are declared as for any command.
+describe("CommandFormFields — native SQL on a relational source (REQ-1988)", () => {
+  it("offers the relational sources it runs on and asks for the SQL", () => {
+    render(
+      <RemoteHarness
+        initial={{
+          actionType: "function",
+          implKind: "source_query",
+          arguments: [{ name: "id", type: "Int" }],
+        }}
+      />,
+    );
+    expect(screen.getByTestId("command-binding-native-sql")).toBeInTheDocument();
+    // An argument is a value bound as a parameter: it takes no relation.
+    expect(screen.queryByTestId("command-arg-kind-0")).not.toBeInTheDocument();
+    expect(screen.getByTestId("command-writes-table-select")).toBeInTheDocument();
+    expect(screen.getByTestId("command-return-type-select")).toBeInTheDocument();
+    expect(screen.getByText("Kind")).toBeInTheDocument();
+    expect(screen.queryByTestId("command-materialize-switch")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("command-function-input")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("command-native-sql-source-select"));
+    expect(screen.getByRole("option", { name: "pg (postgresql)" })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "gh (graphql_remote)" })).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("img", { name: /Write an argument as \{\{name\}\}/ }),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps the SQL in the binding as it is typed", () => {
+    render(<RemoteHarness initial={{ actionType: "function", implKind: "source_query" }} />);
+    const sql = "DELETE FROM app.notes WHERE id = {{id}}; SELECT count(*) FROM app.notes";
+    fireEvent.change(screen.getByTestId("command-binding-native-sql"), {
+      target: { value: sql },
+    });
+    expect(screen.getByTestId("command-binding-native-sql")).toHaveValue(sql);
+  });
+
+  it("is not offered for a MongoDB pipeline command", () => {
+    render(
+      <RemoteHarness
+        initial={{
+          actionType: "function",
+          implKind: "source_query",
+          binding: { inputCollection: "movies", pipeline: [] },
+        }}
+      />,
+    );
+    expect(screen.queryByTestId("command-binding-native-sql")).not.toBeInTheDocument();
   });
 });

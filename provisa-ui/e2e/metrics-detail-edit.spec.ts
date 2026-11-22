@@ -12,9 +12,12 @@
 import { test, expect, BACKEND_URL } from "./coverage";
 
 const ADMIN_GQL = `${BACKEND_URL}/admin/graphql`;
-const FACT_NAME = "e2e_pet_sales";
+// REQ-2248: deleting a table retires it and keeps its name, so a name is never registered twice;
+// each run (and each retry, which loads the module afresh) registers a fact of its own.
+const RUN = Date.now().toString(36);
+const FACT_NAME = `e2e_pet_sales_${RUN}`;
 const FACT_METRIC = `${FACT_NAME}_price_sum`;
-const BUILT_METRIC = "e2e_avg_pet_price";
+const BUILT_METRIC = `e2e_avg_pet_price_${RUN}`;
 
 async function gql(query: string, variables: Record<string, unknown> = {}) {
   const res = await fetch(ADMIN_GQL, {
@@ -38,7 +41,6 @@ async function cleanup() {
 }
 
 test.beforeAll(async () => {
-  await cleanup();
   const res = await gql(
     `mutation R($input: FactInput!) { registerFact(input: $input) { success message } }`,
     {
@@ -59,20 +61,14 @@ test.beforeAll(async () => {
   if (!result?.success) {
     throw new Error(`registerFact failed: ${result?.message ?? JSON.stringify(res.errors)}`);
   }
-  // REQ-1921: registered through the admin, the fact starts as draft; released, it is read.
-  const listed = await gql(`{ tables { id tableName } }`);
-  const fact = ((listed.data?.tables ?? []) as Array<{ id: number; tableName: string }>).find(
-    (t) => t.tableName === FACT_NAME,
-  );
+  // REQ-1921: registered, the fact is live: listed and read with no further step.
+  const listed = await gql(`{ tables { id tableName withdrawn } }`);
+  if (listed.errors) throw new Error(`tables query failed: ${JSON.stringify(listed.errors)}`);
+  const fact = (
+    listed.data!.tables as Array<{ id: number; tableName: string; withdrawn: boolean }>
+  ).find((t) => t.tableName === FACT_NAME);
   if (!fact) throw new Error(`registered fact ${FACT_NAME} is not listed`);
-  const released = await gql(
-    `mutation($id: Int!) { setTableDraft(tableId: $id, draft: false) { success message } }`,
-    { id: fact.id },
-  );
-  const draft = released.data?.setTableDraft as { success?: boolean } | undefined;
-  if (!draft?.success) {
-    throw new Error(`setTableDraft failed: ${JSON.stringify(released)}`);
-  }
+  if (fact.withdrawn) throw new Error(`registered fact ${FACT_NAME} is withdrawn`);
 });
 
 test.afterAll(cleanup);
@@ -102,9 +98,7 @@ test("REQ-1323: row click opens detail panel with source fact; edit lives inside
   // prefilled with the builder pickers parsed from the expression.
   await page.getByTestId(`metric-detail-edit-${FACT_METRIC}`).click();
   await expect(page.getByTestId("metric-form")).toBeVisible();
-  await expect(page.getByTestId("metric-expression-input")).toHaveValue(
-    `SUM(${FACT_NAME}.price)`,
-  );
+  await expect(page.getByTestId("metric-expression-input")).toHaveValue(`SUM(${FACT_NAME}.price)`);
   // MetricsPage derives factTables from the tables query, so the picker stays disabled until that
   // query lands — it returns every registered table with its columns (~200 KB). Asserting the
   // prefilled value straight away reads the still-disabled empty input.
@@ -131,9 +125,7 @@ test("REQ-1324: builder composes AGG(fact.column); delete lives inside detail", 
   await page.getByRole("option", { name: "price" }).click();
   await page.getByTestId("metric-builder-agg").click();
   await page.getByRole("option", { name: "AVG" }).click();
-  await expect(page.getByTestId("metric-expression-input")).toHaveValue(
-    `AVG(${FACT_NAME}.price)`,
-  );
+  await expect(page.getByTestId("metric-expression-input")).toHaveValue(`AVG(${FACT_NAME}.price)`);
   // REQ-1324: datatype derives from the aggregate.
   await expect(page.getByTestId("metric-datatype-input")).toHaveValue("numeric");
 

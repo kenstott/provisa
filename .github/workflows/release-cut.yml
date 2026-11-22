@@ -141,6 +141,7 @@ jobs:
         run: |
           set -euo pipefail
           gh workflow run build-dmg.yml --ref "$VERSION" -f version="$VERSION" -f publish=true
-          for workflow in build-duckdb-extensions.yml build-pg-extensions.yml release-exports.yml; do
-            gh workflow run "$workflow" --ref "$VERSION"
+          for workflow in build-duckdb-extensions.yml build-pg-extensions.yml; do
+            gh workflow run "$workflow" --ref "$VERSION" -f publish=true
           done
+          gh workflow run release-exports.yml --ref "$VERSION"

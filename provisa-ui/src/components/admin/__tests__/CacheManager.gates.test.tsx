@@ -8,20 +8,18 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-1327: on the Cache page the org's panels show to every holder of the page and the platform's
-// store panels only to a platform administrator.
+// REQ-1327: each panel of the Cache page shows only to the right that holds it: the org's settings
+// to org_settings, the materialized views' operations to table_registration. The platform's store
+// panels are on the Platform page, never here.
 
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen } from "../../../test-utils/render";
 
-const settings = vi.hoisted(() => ({ deployment: false }));
-vi.mock("../../../context/AuthContext", () => ({
-  useAuth: () => ({ capabilities: ["org_settings"] }),
+const auth = vi.hoisted(() => ({
+  capabilities: [] as string[],
+  demonstrated: [] as string[],
 }));
-vi.mock("../../../api/admin", async (orig) => ({
-  ...(await orig<typeof import("../../../api/admin")>()),
-  fetchSettings: vi.fn(async () => ({ features: { deployment_settings: settings.deployment } })),
-}));
+vi.mock("../../../context/AuthContext", () => ({ useAuth: () => auth }));
 vi.mock("../../../hooks/useAdminOpsQueries", async (orig) => ({
   ...(await orig<typeof import("../../../hooks/useAdminOpsQueries")>()),
   useCacheStats: () => ({
@@ -42,6 +40,10 @@ vi.mock("../../../hooks/useAdminOpsQueries", async (orig) => ({
   useCacheTableStats: () => ({ cacheTableStats: [], refetch: vi.fn() }),
   usePurgeCacheByTable: () => ({ purgeCacheByTable: vi.fn() }),
   useHotTables: () => ({ hotTables: [], loading: false, error: undefined, refetch: vi.fn() }),
+  useMVList: () => ({ mvList: [], loading: false, error: undefined, refetch: vi.fn() }),
+  useMaterializeStoreInfo: () => ({ materializeStoreInfo: null }),
+  useRefreshMV: () => ({ refreshMV: vi.fn() }),
+  useToggleMV: () => ({ toggleMV: vi.fn() }),
 }));
 vi.mock("../../../hooks/useAdminQueries", async (orig) => ({
   ...(await orig<typeof import("../../../hooks/useAdminQueries")>()),
@@ -56,25 +58,60 @@ vi.mock("../CacheStorageTab", () => ({
   ResponseCacheSettingsPanel: () => <div data-testid="org-ttl-panel" />,
   HotCacheStoreSettingsPanel: () => <div data-testid="platform-store-panel" />,
   HotTablesSettingsPanel: () => <div data-testid="org-hot-panel" />,
-  MaterializedSettingsPanel: () => null,
+  MaterializedSettingsPanel: () => <div data-testid="platform-materialize-panel" />,
 }));
 
 import { CacheManager } from "../CacheManager";
 
+const tabs = () =>
+  ["response", "hot", "materialized", "redirect"].filter((k) =>
+    screen.queryByTestId(`cache-tab-${k}`),
+  );
+
 describe("the Cache page's gates", () => {
-  it("shows an org administrator the org's panels and no store connection", async () => {
-    settings.deployment = false;
+  beforeEach(() => {
+    auth.capabilities = [];
+    auth.demonstrated = [];
+  });
+
+  it("shows a holder of org_settings the org's panels and not the views' operations", async () => {
+    auth.capabilities = ["org_settings"];
     render(<CacheManager />);
     expect(await screen.findByTestId("org-ttl-panel")).toBeInTheDocument();
-    expect(screen.queryByTestId("platform-store-panel")).toBeNull();
+    expect(tabs()).toEqual(["response", "hot", "redirect"]);
     fireEvent.click(screen.getByTestId("cache-tab-hot"));
     expect(await screen.findByTestId("org-hot-panel")).toBeInTheDocument();
   });
 
-  it("shows a platform administrator the store connection too", async () => {
-    settings.deployment = true;
+  it("opens a holder of table_registration alone on the views' operations", async () => {
+    auth.capabilities = ["table_registration"];
     render(<CacheManager />);
-    expect(await screen.findByTestId("platform-store-panel")).toBeInTheDocument();
-    expect(screen.getByTestId("org-ttl-panel")).toBeInTheDocument();
+    expect(tabs()).toEqual(["materialized"]);
+    expect(await screen.findByTestId("mv-view-btn")).toBeInTheDocument();
+    expect(screen.queryByTestId("org-ttl-panel")).toBeNull();
+  });
+
+  it("shows a holder of both rights every panel of the page", async () => {
+    auth.capabilities = ["org_settings", "table_registration"];
+    render(<CacheManager />);
+    expect(await screen.findByTestId("org-ttl-panel")).toBeInTheDocument();
+    expect(tabs()).toEqual(["response", "hot", "materialized", "redirect"]);
+  });
+
+  it("keeps a panel a role is shown rather than given on the page", async () => {
+    auth.capabilities = ["table_registration"];
+    auth.demonstrated = ["org_settings"];
+    render(<CacheManager />);
+    expect(tabs()).toEqual(["response", "hot", "materialized", "redirect"]);
+  });
+
+  it("holds no store connection, whichever rights the caller has", async () => {
+    auth.capabilities = ["org_settings", "table_registration", "platform_settings", "cross_org"];
+    render(<CacheManager />);
+    await screen.findByTestId("org-ttl-panel");
+    expect(screen.queryByTestId("platform-store-panel")).toBeNull();
+    fireEvent.click(screen.getByTestId("cache-tab-materialized"));
+    await screen.findByTestId("mv-view-btn");
+    expect(screen.queryByTestId("platform-materialize-panel")).toBeNull();
   });
 });

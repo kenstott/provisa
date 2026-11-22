@@ -70,7 +70,7 @@
     "spentStatus": "Fully redeemed",
     "memberPanel": "Member details",
     "resizeMemberPanel": "Resize the member panel",
-    "expandMemberPanel": "Expand the member panel",
+    "expandMemberPanel": "Enlarge the member panel",
     "restoreMemberPanel": "Restore the member panel",
     "closeMemberPanel": "Close the member panel",
     "backToMembers": "Back to members",
@@ -91,6 +91,8 @@
       "cancelEdit": "Cancel the edit",
       "remove": "Remove {{name}}"
     },
-    "localUsersHeading": "Local users"
+    "localUsersHeading": "Local users",
+    "attributesTab": "Attributes",
+    "accessTab": "Access"
   }
 }

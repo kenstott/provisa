@@ -36,13 +36,19 @@ DataProducts publishes nothing here, which is correct, not a fallback masking a 
 
 ``MetadataSnapshot.model_tags`` publish independently of DataProducts, as native Snowflake TAG
 objects (``CREATE TAG`` + ``ALTER TABLE/COLUMN ... SET TAG``) applied to the tagged table/column's
-physical address — see :func:`tag_statements`. A ``ModelTag`` is a steward-assigned classification,
-which is what Snowflake's TAG primitive is for.
+physical address by the landing reconcile (REQ-1655), never through this publish. A
+``ModelTag`` is a steward-assigned classification, which is what Snowflake's TAG primitive is for.
 
 ``MetadataSnapshot.governance_tags`` (REQ-1071) are a different kind of fact: which enforcement
 rule fired on an asset, and the roles it restricts/exempts. That is metadata about the asset, not
 a classification value, so it publishes as appended COMMENT text instead (:func:`comment_statements`,
 alongside REQ-1647's description text) — never as a TAG.
+
+REQ-2261: the environment the snapshot was read in and that environment's stage publish as the
+native TAGs ``PROVISA_GOVERNANCE.PROVISA_ENVIRONMENT`` and ``PROVISA_GOVERNANCE.PROVISA_STAGE`` on
+each table's published address (:func:`environment_tag_statements`), so Horizon can tell
+production assets from others. A stage is a value a catalog filters on, which is what a TAG is
+for. Neither is written when the snapshot names no environment.
 """
 
 # Requirements: REQ-1068, REQ-1635, REQ-1656, REQ-1659
@@ -60,7 +66,7 @@ from urllib.parse import urlsplit
 import yaml
 
 from provisa.compiler.sql_literals import sql_literal
-from provisa.api.metadata_export.model import AssetKind, listed
+from provisa.api.metadata_export.model import AssetKind, column_terms, listed, term_note
 from provisa.api.metadata_export.provider import (
     AssetError,
     AssetRefStub,
@@ -70,12 +76,15 @@ from provisa.api.metadata_export.provider import (
 from provisa.api.metadata_export.registry import register_provider
 from provisa.federation.engine import configured_engine_url
 from provisa.federation.snowflake_runtime import SnowflakeFederationRuntime
+from provisa.federation.snowflake_store import TAGS_SCHEMA
 from snowflake.connector.errors import ProgrammingError
 
 if TYPE_CHECKING:
     from provisa.api.metadata_export.model import (
         AssetRef,
+        EnvironmentStage,
         GovernanceTag,
+        GroundedTerm,
         MetadataSnapshot,
         TableAsset,
     )
@@ -167,12 +176,8 @@ def _governance_note(tags: list["GovernanceTag"]) -> str:
     return "\n".join(lines)
 
 
-def _comment_text(description: str, governance_note: str) -> str:
-    if not governance_note:
-        return description
-    if not description:
-        return governance_note
-    return f"{description}\n\n{governance_note}"
+def _comment_text(description: str, *notes: str) -> str:
+    return "\n\n".join(part for part in (description, *notes) if part)
 
 
 def comment_statements(
@@ -180,8 +185,10 @@ def comment_statements(
     kinds: dict[tuple[str, str, str], str],
     governance_tags: list["GovernanceTag"],
     addresses: PublishedAddresses,
+    terms_by_column: Mapping[str, "GroundedTerm"],
 ) -> list[str]:
-    """DDL applying table/column descriptions — appended with any governance facts on that same
+    """DDL applying table/column descriptions — appended with a column's grounded term and its
+    definition (REQ-2238, ``terms_by_column`` by column fqn) and any governance facts on that same
     asset (REQ-1071) — as native Snowflake COMMENTs on each table's published address
     (REQ-1647, ``addresses``) — so a replica-served table's export VIEW (REQ-1637, REQ-1912)
     carries its description alongside its tags, not just an attachable source's real TABLE. Pure — no I/O — ``kinds`` (one ``_object_kind`` I/O lookup per
@@ -189,9 +196,8 @@ def comment_statements(
     table/column missing from ``kinds`` (not yet landed) is skipped, not an error here — the
     caller already reports missing landing terminals from that lookup.
 
-    Governance facts publish here rather than as a Snowflake TAG (see :func:`tag_statements`'s
-    docstring): a rule id and its restricted/exempt roles are metadata about the asset, not a
-    classification value, and COMMENT is the channel this adapter already uses for that kind of
+    Governance facts publish here rather than as a Snowflake TAG: a rule id and its
+    restricted/exempt roles are metadata about the asset, not a classification value, and COMMENT is the channel this adapter already uses for that kind of
     fact."""
     governance_by_fqn: dict[str, list["GovernanceTag"]] = {}
     for tag in governance_tags:
@@ -210,10 +216,64 @@ def comment_statements(
         for column in table.columns:
             column_text = _comment_text(
                 column.description,
+                term_note(terms_by_column.get(column.ref.fqn())),
                 _governance_note(governance_by_fqn.get(column.ref.fqn(), [])),
             )
             if column_text:
                 stmts.append(_set_comment(kind, parts, column.name, column_text))
+    return stmts
+
+
+# REQ-2261: the TAGs a table's environment and stage are written under.
+ENVIRONMENT_TAG = "PROVISA_ENVIRONMENT"
+STAGE_TAG = "PROVISA_STAGE"
+# REQ-2122: the TAG holding a table's Provisa address (semantic URI).
+URI_TAG = "PROVISA_URI"
+
+
+def address_tag_statements(tables: list["TableAsset"], addresses: PublishedAddresses) -> list[str]:
+    """DDL tagging each table's published address with its Provisa address (REQ-2122). Snowflake
+    has no URL property, and a TAG is its free-form key/value metadata. Pure."""
+    if not tables:
+        return []
+    schema = f'"{addresses.landing_database}"."{TAGS_SCHEMA}"'
+    uri_tag = f'{schema}."{URI_TAG}"'
+    stmts = [f"CREATE SCHEMA IF NOT EXISTS {schema};", f"CREATE TAG IF NOT EXISTS {uri_tag};"]
+    for table in tables:
+        database, schema_name, name = addresses.table_and_column(table.ref)[0]
+        stmts.append(
+            f'ALTER TABLE "{database}"."{schema_name}"."{name}" SET TAG '
+            f"{uri_tag} = {_literal(table.semantic_uri)};"
+        )
+    return stmts
+
+
+def environment_tag_statements(
+    tables: list["TableAsset"],
+    addresses: PublishedAddresses,
+    environment: "EnvironmentStage | None",
+) -> list[str]:
+    """DDL tagging each table's published address with the environment and its stage (REQ-2261),
+    the tag objects created first in the landing database's ``PROVISA_GOVERNANCE`` schema. Pure.
+    Nothing without an environment or a table. ``ALTER TABLE ... SET TAG`` is accepted on a view
+    too, so no object kind is needed."""
+    if environment is None or not tables:
+        return []
+    schema = f'"{addresses.landing_database}"."{TAGS_SCHEMA}"'
+    env_tag = f'{schema}."{ENVIRONMENT_TAG}"'
+    stage_tag = f'{schema}."{STAGE_TAG}"'
+    stmts = [
+        f"CREATE SCHEMA IF NOT EXISTS {schema};",
+        f"CREATE TAG IF NOT EXISTS {env_tag};",
+        f"CREATE TAG IF NOT EXISTS {stage_tag};",
+    ]
+    for table in tables:
+        database, schema_name, name = addresses.table_and_column(table.ref)[0]
+        stmts.append(
+            f'ALTER TABLE "{database}"."{schema_name}"."{name}" SET TAG '
+            f"{env_tag} = {_literal(environment.name)}, "
+            f"{stage_tag} = {_literal(environment.stage)};"
+        )
     return stmts
 
 
@@ -568,7 +628,13 @@ class SnowflakeHorizonExport(MetadataExport):  # REQ-1635
             if published:
                 result.published["data_products"] = published
             commented = self._publish_descriptions(
-                runtime, tables, governance_tags, result, addresses
+                runtime,
+                tables,
+                governance_tags,
+                result,
+                addresses,
+                column_terms(getattr(snapshot, "grounded_terms", None) or []),
+                snapshot.environment,
             )
             if commented:
                 result.published["descriptions"] = commented
@@ -583,9 +649,12 @@ class SnowflakeHorizonExport(MetadataExport):  # REQ-1635
         governance_tags: list["GovernanceTag"],
         result: PublishResult,
         addresses: PublishedAddresses,
+        terms_by_column: Mapping[str, "GroundedTerm"],
+        environment: "EnvironmentStage | None",
     ) -> int:
-        """Applies table/column descriptions, appended with any governance facts on that same
-        asset (REQ-1071), as native Snowflake COMMENTs (REQ-1647), gated on the target already
+        """Applies table/column descriptions, appended with each column's grounded term
+        (REQ-2238) and any governance facts on that same asset (REQ-1071), as native Snowflake
+        COMMENTs (REQ-1647), gated on the target already
         existing (:func:`_object_kind`); a missing one is reported, not described."""
         known_fqns = {table.ref.fqn() for table in tables} | {
             column.ref.fqn() for table in tables for column in table.columns
@@ -600,18 +669,10 @@ class SnowflakeHorizonExport(MetadataExport):  # REQ-1635
                 )
         if not tables:
             return 0
-        governed_fqns = {tag.asset.fqn() for tag in governance_tags}
         kinds: dict[tuple[str, str, str], str] = {}
         described: list["TableAsset"] = []
         for table in tables:
-            has_content = (
-                table.description
-                or any(c.description for c in table.columns)
-                or table.ref.fqn() in governed_fqns
-                or any(c.ref.fqn() in governed_fqns for c in table.columns)
-            )
-            if not has_content:
-                continue
+            # REQ-2122: every table carries its Provisa address, so every table is published.
             try:
                 parts = addresses.table_and_column(table.ref)[0]
             except ValueError as exc:
@@ -630,7 +691,12 @@ class SnowflakeHorizonExport(MetadataExport):  # REQ-1635
             described.append(table)
         if not described:
             return 0
-        statements = comment_statements(described, kinds, governance_tags, addresses)
+        statements = comment_statements(
+            described, kinds, governance_tags, addresses, terms_by_column
+        )
+        tag_statements = address_tag_statements(described, addresses) + (
+            environment_tag_statements(described, addresses, environment)
+        )
         cur = runtime.connection.cursor()
         try:
             for stmt in statements:
@@ -638,6 +704,13 @@ class SnowflakeHorizonExport(MetadataExport):  # REQ-1635
         except Exception as exc:  # noqa: BLE001 - runtime.connection is an opaque DBAPI cursor
             result.errors.append(AssetError(AssetRefStub("descriptions"), str(exc)))
             return 0
+        try:
+            for stmt in tag_statements:
+                cur.execute(stmt)
+            if tag_statements:
+                result.published["environment_tags"] = len(described)
+        except Exception as exc:  # noqa: BLE001 - runtime.connection is an opaque DBAPI cursor
+            result.errors.append(AssetError(AssetRefStub("environment_tags"), str(exc)))
         finally:
             cur.close()
         return len(statements)

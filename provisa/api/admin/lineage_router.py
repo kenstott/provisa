@@ -28,6 +28,13 @@ from provisa.lineage.graph import LineageGraph, build_column_graph
 from provisa.lineage.merge import MergedGraph
 from provisa.lineage.native import NativeTable, natives_payload, sql_column_name, with_native_hop
 from provisa.lineage.read_rights import readable_graph
+from provisa.lineage.reported import (
+    RegisteredTable,
+    ReportedJob,
+    add_reported_lineage,
+    reported_jobs,
+    reported_seeds,
+)
 from provisa.core.models import DERIVED_SOURCE_ID
 from provisa.core.repositories import data_product as data_product_repo
 
@@ -244,8 +251,11 @@ async def _fetch_view_rows(state) -> list[dict]:
     speaks the names the user defined (``<domain>.<table>``, e.g. ``pet_store.test``)."""
     if getattr(state, "model_db", None) is None:
         return []
+    from provisa.dbt.store import lineage_views
+
     async with state.model_db.acquire() as conn:
-        return await _view_rows(conn)
+        # REQ-2228: a dbt model's compiled SQL is read as a view's definition is.
+        return [*await _view_rows(conn), *await lineage_views(conn)]
 
 
 async def _view_rows(conn) -> list[dict]:
@@ -264,7 +274,35 @@ async def _view_rows(conn) -> list[dict]:
             registered_tables.c.view_sql.is_not(None),
         )
     )
-    return [dict(r._mapping) for r in res.fetchall()]
+    return [dict(r._mapping) for r in res.fetchall()] + await _source_definition_views(conn)
+
+
+async def _source_definition_views(conn) -> list[dict]:
+    """REQ-2230: each table defined in its source (a Snowflake Dynamic Table), as a view over what
+    its definition reads. Every table of those sources is read, since each may be one it reads."""
+    from sqlalchemy import select
+
+    from provisa.core.schema_org import registered_tables as t
+    from provisa.core.schema_org import sources, table_columns
+    from provisa.lineage.source_definitions import definition_views
+
+    defined = select(t.c.source_id).where(t.c.source_definition.is_not(None))
+    res = await conn.execute_core(
+        select(
+            t.c.source_id,
+            sources.c.database,
+            t.c.domain_id,
+            t.c.schema_name,
+            t.c.table_name,
+            t.c.source_definition,
+            table_columns.c.column_name,
+            table_columns.c.alias,
+        )
+        .join(sources, sources.c.id == t.c.source_id)
+        .join(table_columns, table_columns.c.table_id == t.c.id)
+        .where(t.c.source_id.in_(defined))
+    )
+    return definition_views([dict(r._mapping) for r in res.fetchall()])
 
 
 async def _fetch_registry_columns(state) -> list[dict]:
@@ -304,6 +342,57 @@ async def _registry_columns(conn) -> list[dict]:
     return [dict(r._mapping) for r in res.fetchall()]
 
 
+async def _reported_lineage(
+    state, column_rows: list[dict]
+) -> tuple[list[ReportedJob], list[RegisteredTable]]:
+    """What OpenLineage events reported (REQ-2229), and every registered table a dataset can name,
+    with the source it is read from."""
+    from sqlalchemy import select
+
+    from provisa.core.schema_org import openlineage_run_datasets, registered_tables, sources
+
+    if getattr(state, "model_db", None) is None:
+        return [], []
+    async with state.model_db.acquire() as conn:
+        reported = await conn.execute_core(select(openlineage_run_datasets))
+        rows = [dict(r._mapping) for r in reported.fetchall()]
+        if not rows:
+            return [], []
+        located = await conn.execute_core(
+            select(
+                registered_tables.c.id,
+                registered_tables.c.domain_id,
+                registered_tables.c.schema_name,
+                registered_tables.c.table_name,
+                sources.c.type,
+                sources.c.host,
+                sources.c.port,
+                sources.c.database,
+            ).select_from(
+                registered_tables.join(sources, sources.c.id == registered_tables.c.source_id)
+            )
+        )
+        table_rows = [dict(r._mapping) for r in located.fetchall()]
+    columns: dict[int, dict[str, str]] = {}
+    for row in column_rows:
+        columns.setdefault(row["table_id"], {})[row["column_name"].lower()] = sql_column_name(row)
+    tables = [
+        RegisteredTable(
+            relation=_relation_of(t["domain_id"], t["table_name"]),
+            source_type=t["type"],
+            host=t["host"],
+            port=t["port"],
+            database=t["database"],
+            schema=t["schema_name"],
+            table=t["table_name"],
+            columns=columns[t["id"]],
+        )
+        for t in table_rows
+        if t["id"] in columns
+    ]
+    return reported_jobs(rows), tables
+
+
 async def store_lineage_edges(conn, rows: list[dict]) -> None:
     """Replace the stored lineage edges with ``rows``."""
     from sqlalchemy import delete, insert
@@ -313,8 +402,9 @@ async def store_lineage_edges(conn, rows: list[dict]) -> None:
 
     async with replacing_build_output(conn, lineage_edges):
         await conn.execute_core(delete(lineage_edges))
-        if rows:
-            await conn.execute_core(insert(lineage_edges).values(rows))
+        # executemany, not ``.values(rows)``: one multi-VALUES statement binds every cell and
+        # overflows Postgres's 65,535-parameter limit on a large model.
+        await conn.execute_core_many(insert(lineage_edges), rows)
 
 
 async def write_lineage_edges(conn, state) -> None:
@@ -417,6 +507,8 @@ def _view_relation(row: dict) -> str:
     ``pet_store``), so a statement's reference to the view stitches to this same node id."""
     from provisa.compiler.naming import domain_to_sql_name
 
+    if "relation" in row:  # REQ-2228: a dbt model already knows the relation it is served as
+        return row["relation"]
     return f"{domain_to_sql_name(row['domain_id'])}.{row['table_name']}"
 
 
@@ -513,6 +605,11 @@ async def federation_graph(
         or merged.graph.nodes.get(s) is None
         or merged.graph.nodes[s].relation not in registered
     }
+    # REQ-2229: what OpenLineage reported joins after the seeds too, so a lens narrows it as it
+    # narrows the model; a job's outside output, downstream of its seeds, is seeded by report.
+    jobs, reported_tables = await _reported_lineage(state, column_rows)
+    add_reported_lineage(merged.graph, jobs, reported_tables)
+    seeds |= reported_seeds(merged.graph, seeds, unscoped=not domain_filter and not role_filter)
     # REQ-2116: the native hop joins after the seeds are taken: it is what a seed derives from.
     natives = await _native_tables(state)
     with_native_hop(merged.graph, natives)
@@ -685,18 +782,20 @@ def _consumer(table: dict) -> dict:
 
 
 async def _fetch_checkers(state) -> list[dict]:
-    """Every checker table that is not a draft (REQ-2157): its names, description, owning product,
-    the table its contract scans (checker_targets), the columns its checks name (dq_rules) and its
-    latest run."""
+    """Every checker table that is not withdrawn (REQ-2157, REQ-1921): its names, description, owning product,
+    the table its contract scans as the runtime's published build resolved it
+    (``state.checked_targets``, REQ-2125; the stored checker targets are the meta domain's), the
+    columns its checks name (dq_rules), its latest run and the checks of that run that did not
+    pass (REQ-2180)."""
     if getattr(state, "model_db", None) is None:
         return []
     from sqlalchemy import select
 
     from provisa.core.schema_org import checker_latest_runs as runs
-    from provisa.core.schema_org import checker_targets as targets
+    from provisa.dq.scan import failing_checks
     from provisa.core.schema_org import registered_tables as rt
 
-    checked = rt.alias("checked")
+    targets: dict[int, int] = state.checked_targets
 
     async with state.model_db.acquire() as conn:
         res = await conn.execute_core(
@@ -707,22 +806,35 @@ async def _fetch_checkers(state) -> list[dict]:
                 rt.c.alias,
                 rt.c.description,
                 rt.c.dq_rules,
-                targets.c.checked_table_id,
-                checked.c.domain_id.label("checked_domain_id"),
-                checked.c.table_name.label("checked_table_name"),
-                checked.c.alias.label("checked_alias"),
                 runs.c.outcome,
                 runs.c.scan_time,
+                runs.c.scan_id,
             )
-            .select_from(
-                rt.join(targets, targets.c.table_id == rt.c.id)
-                .join(checked, checked.c.id == targets.c.checked_table_id)
-                .outerjoin(runs, runs.c.table_id == rt.c.id)
+            .select_from(rt.outerjoin(runs, runs.c.table_id == rt.c.id))
+            .where(
+                rt.c.id.in_(list(targets)),
+                rt.c.dq_contract.is_not(None),
+                rt.c.withdrawn.is_(False),  # REQ-1921
+                rt.c.retired.is_(False),
             )
-            .where(rt.c.dq_contract.is_not(None), rt.c.draft.is_(False))
         )
         rows = res.fetchall()
+        checked = {
+            int(c.id): c
+            for c in (
+                await conn.execute_core(
+                    select(rt.c.id, rt.c.domain_id, rt.c.table_name, rt.c.alias).where(
+                        rt.c.id.in_(sorted({targets[int(r.id)] for r in rows}))
+                    )
+                )
+            ).fetchall()
+        }
         products = await data_product_repo.table_memberships(conn)
+        failing = {
+            r.id: await failing_checks(conn, r.table_name, r.scan_id)
+            for r in rows
+            if r.scan_id is not None
+        }
     return [
         {
             "id": r.id,
@@ -731,12 +843,12 @@ async def _fetch_checkers(state) -> list[dict]:
             "alias": r.alias,
             "description": r.description,
             "product_ids": products.get(r.id, []),
-            "checked_table_id": r.checked_table_id,
+            "checked_table_id": targets[r.id],
             "checked_table": {
-                "id": r.checked_table_id,
-                "domain_id": r.checked_domain_id,
-                "table_name": r.checked_table_name,
-                "alias": r.checked_alias,
+                "id": targets[r.id],
+                "domain_id": checked[targets[r.id]].domain_id,
+                "table_name": checked[targets[r.id]].table_name,
+                "alias": checked[targets[r.id]].alias,
             },
             "rule_columns": [rule.get("column_name") or "" for rule in r.dq_rules or []],
             "rules": [
@@ -749,6 +861,7 @@ async def _fetch_checkers(state) -> list[dict]:
             ],
             "latest_outcome": r.outcome,
             "latest_run_at": r.scan_time.isoformat() if r.scan_time is not None else None,
+            "failing_checks": failing[r.id] if r.scan_id is not None else [],
         }
         for r in rows
     ]
@@ -794,7 +907,7 @@ def _input(relation: str, graph: LineageGraph, by_relation: dict, types: dict) -
 
 
 async def _fetch_tables(state) -> list[dict]:
-    """Every registered table that is not a draft: its id, names, source, products (REQ-1634: any
+    """Every registered table that is not withdrawn (REQ-1921): its id, names, source, products (REQ-1634: any
     number) and contract."""
     if getattr(state, "model_db", None) is None:
         return []
@@ -812,7 +925,7 @@ async def _fetch_tables(state) -> list[dict]:
                 rt.c.source_id,
                 rt.c.dq_contract,
                 rt.c.materialize,
-            ).where(rt.c.draft.is_(False))
+            ).where(rt.c.withdrawn.is_(False), rt.c.retired.is_(False))  # REQ-1921, REQ-2248
         )
         products = await data_product_repo.table_memberships(conn)
         return [{**dict(r._mapping), "product_ids": products.get(r.id, [])} for r in res.fetchall()]

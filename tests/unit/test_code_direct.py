@@ -595,9 +595,9 @@ def currencies() -> list[dict]:
 """
 
 
-async def test_a_table_typed_by_a_preview_is_read_into_its_registered_columns(
-    tmp_path, monkeypatch
-):
+def test_a_table_of_a_loose_row_type_is_refused_when_its_code_is_read(tmp_path):
+    from provisa.codesource.manifest import ManifestRefused
+
     code = tmp_path / "code"
     code.mkdir()
     (code / "fx.py").write_text(LOOSE_CODE)
@@ -605,42 +605,12 @@ async def test_a_table_typed_by_a_preview_is_read_into_its_registered_columns(
         [sys.executable, "-I", str(READER), str(code), "fx"], capture_output=True, text=True
     )
     assert done.returncode == 0, done.stderr
-    manifest = read_manifest(json.loads(done.stdout), PYTHON_RULES)
-    command = w.HostCommand(
-        argv=lambda address: [sys.executable, "-I", str(HOST), address, str(code), "fx"],
-        env=w.private_environment(PYTHONDONTWRITEBYTECODE="1"),
-        cwd=code,
-    )
-    ready = code_source.Prepared("fx-src", "h1", manifest, command, "acme")
-    source = SimpleNamespace(id="fx-src", type=SimpleNamespace(value="python"), mapping={})
-
-    async def _registered(_state):
-        return [source]
-
-    async def _prepare(*_args):
-        return ready
-
-    async def _context(_state):
-        return None
-
-    monkeypatch.setattr("provisa.federation.registry_view.registered_sources", _registered)
-    monkeypatch.setattr(code_source, "prepare", _prepare)
-    monkeypatch.setattr(code_source, "context_for", _context)
-    table = {
-        "table_name": "currencies",
-        "source_id": "fx-src",
-        "columns": [_column("code", "text"), _column("rate", "double")],
-    }
-    from provisa.codesource.table import read
-
-    try:
-        landed = await read(None, table, None)
-    finally:
-        w.pool.stop_source("fx-src")
-    answer = _engine_answer(
-        landed, "SELECT code FROM currencies WHERE rate < 1 ORDER BY code", "currencies"
-    )
-    assert answer.column("code").to_pylist() == ["EUR", "GBP"]
+    with pytest.raises(ManifestRefused) as refused:
+        read_manifest(json.loads(done.stdout), PYTHON_RULES)
+    assert refused.value.problems == [
+        "currencies: its row type is loose (any, unknown, a Record or a dict); declare a typed "
+        "row whose fields are its columns"
+    ]
 
 
 async def test_a_code_statement_is_complete_only_when_it_is_read_direct():

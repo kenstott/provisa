@@ -248,6 +248,13 @@ def _collect_roles(metadata: HasuraMetadata) -> dict[str, Role]:  # REQ-041, REQ
                 if p.role in roles and "write" not in roles[p.role].capabilities:
                     roles[p.role].capabilities.append("write")
 
+    # REQ-870: a role Hasura lets call an action or a tracked function runs a command.
+    runners = {p.get("role") for action in metadata.actions for p in action.permissions}
+    runners |= {r for source in metadata.sources for f in source.functions for r in f.roles}
+    for role_id in sorted(r for r in runners if r in roles):
+        if "command_execution" not in roles[role_id].capabilities:
+            roles[role_id].capabilities.append("command_execution")
+
     # REQ-2155: a role holds what it is given of what its parents hold. An imported role builds on
     # no standard role, so that it reads what Hasura gave it and no standard role's grants; what
     # it is given stands. A role Hasura inherits from must hold what the child was given, so a

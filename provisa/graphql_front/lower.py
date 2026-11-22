@@ -959,13 +959,17 @@ def _lower_root(
     sel: FieldNode, ctx: Any, label_map: Any, variables: dict | None, projection: str
 ) -> LoweredRoot:
     lowering = _Lowering(ctx, label_map, variables, projection)
-    table = ctx.tables.get(sel.name.value)
+    from provisa.compiler import names_table
+
     name = sel.name.value
-    base = table.field_name if table is not None else None
-    grouped = name in (f"{base}GroupBy", f"{base}_group_by")
-    aggregated = name in (f"{base}Aggregate", f"{base}_aggregate")
-    if table is None or (base != name and not grouped and not aggregated):
+    # REQ-467: the root field resolves through the names table (REQ-194); its surface says which
+    # of the table's root fields it is. A connection field is not lowered.
+    resolved = names_table.root_field(ctx, name)
+    if resolved is None or resolved[0] == "graphql_connection":
         raise GraphQLLoweringRefused(f"the root field {name}")
+    surface, table = resolved
+    grouped = surface == "graphql_group_by"
+    aggregated = surface == "graphql_aggregate"
     nm = lowering.node_of(table)
     var = lowering.var()
     args = lowering.arguments(

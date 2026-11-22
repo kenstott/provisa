@@ -15,6 +15,7 @@ import type { TFunction } from "i18next";
 import type { DataProduct, RegisteredTable, Source } from "../../types/admin";
 import { DQ_CHECKERS } from "../../types/admin";
 import type { DetailField } from "../../components/detail/DetailFields";
+import { detailHref } from "../../components/list/useDetailParam";
 
 // What a table's sections say of a field, shared by the read view and the edit form.
 
@@ -41,6 +42,24 @@ export function isCheckerSource(source: Source | undefined): boolean {
 /** Whether a source of this type serves files, where one table may span a glob of them (REQ-788). */
 export function isFilesSourceType(sourceType: string): boolean {
   return ["files", "csv", "parquet"].includes(sourceType);
+}
+
+/** The source types whose table is a query's projection, not a relation of the source. */
+const QUERY_API_TYPES = ["neo4j", "sparql"];
+
+/**
+ * Whether a table's columns can be read from its live source (REQ-252): not a view's (its SQL
+ * gives them), a data-quality checker's (its contract does), a Data Profiler result's (its scan
+ * does), nor a table a query produces (a Cypher or SPARQL projection, a native pipeline or search):
+ * the same tables Register Table offers it for.
+ */
+export function discoversColumns(
+  sourceType: string,
+  table: Pick<RegisteredTable, "viewSql" | "viewMetrics" | "queryTemplate">,
+): boolean {
+  if (table.viewSql != null || table.viewMetrics != null || table.queryTemplate) return false;
+  if ((DQ_CHECKERS as readonly string[]).includes(sourceType)) return false;
+  return sourceType !== "data_profiler" && !QUERY_API_TYPES.includes(sourceType);
 }
 
 /** A value that is not set, said in the dimmed text of a default. */
@@ -75,7 +94,7 @@ export function dataProductField(
           {table.productIds.map((id, i) => (
             <Fragment key={id}>
               {i > 0 && ", "}
-              <Link to={`/data-products?product=${encodeURIComponent(id)}`}>
+              <Link to={detailHref("products", id)}>
                 {dataProducts.find((p) => p.id === id)?.name ?? id}
               </Link>
             </Fragment>

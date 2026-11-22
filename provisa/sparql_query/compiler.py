@@ -62,7 +62,7 @@ from rdflib import BNode, Literal as RdfLiteral, URIRef, Variable as RdfVariable
 from rdflib.paths import AlternativePath, InvPath, MulPath, NegatedPath, Path, SequencePath
 from rdflib.plugins.sparql.algebra import translateQuery
 from rdflib.plugins.sparql import parser as _rdf_parser
-from rdflib.plugins.sparql.parser import parseQuery
+from rdflib.plugins.sparql.parser import parseQuery, parseUpdate
 from rdflib.plugins.sparql.parserutils import Comp, CompValue, Param
 
 from provisa.gql.expr_ast import (
@@ -137,6 +137,10 @@ _AXIOM_OBJECTS = {
     f"{RDFS}range": _EITHER,
     f"{SKOS}prefLabel": _LITERAL,
     f"{SKOS}definition": _LITERAL,
+    # REQ-1385: a term's equivalence to the IRI an import gave it.
+    f"{OWL}equivalentClass": _EITHER,
+    f"{OWL}equivalentProperty": _EITHER,
+    f"{SKOS}exactMatch": _EITHER,
 }
 _OWL_CLASSES = frozenset({f"{OWL}Class", f"{OWL}ObjectProperty", f"{OWL}DatatypeProperty"})
 
@@ -252,6 +256,8 @@ class _Group:
     #: OPTIONALs with a variable predicate that did not match: this group holds where none of
     #: their predicates does.
     absent: list["_Group"] = field(default_factory=list)
+    #: FILTER EXISTS patterns: this group holds where each of them does.
+    present: list["_Group"] = field(default_factory=list)
 
     def joined(self, other: "_Group") -> "_Group":
         return _Group(
@@ -260,22 +266,110 @@ class _Group:
             [*self.binds, *other.binds],
             [*self.optionals, *other.optionals],
             [*self.absent, *other.absent],
+            [*self.present, *other.present],
         )
+
+
+def _conjuncts(e: Any) -> list[Any]:
+    """A FILTER's conditions: rdflib joins a group's FILTERs into one conjunction."""
+    if getattr(e, "name", None) == "ConditionalAndExpression":
+        return [*_conjuncts(e.expr), *(c for other in e.other or [] for c in _conjuncts(other))]
+    return [e]
+
+
+def _one_pattern(p: CompValue, what: str) -> _Group:
+    groups = _alternatives(p)
+    if len(groups) != 1:
+        raise SparqlRefused(f"A {what} holding a UNION is not supported")
+    return groups[0]
+
+
+def _pattern_vars(group: _Group) -> set[str]:
+    return {str(t) for triple in group.triples for t in triple if _is_var(t)}
+
+
+def _opened_objects(group: _Group) -> _Group:
+    """``group`` with the constant object of each variable predicate read as a fresh variable
+    equal to it, so ``?s ?p "x"`` is each predicate in turn, as ``?s ?p ?o`` is."""
+    triples = []
+    for i, (s, p, o) in enumerate(group.triples):
+        if _is_var(p) and not _is_var(o) and not isinstance(o, BNode):
+            fresh = RdfVariable(f"_object{i}")
+            group.filters.append(
+                CompValue("RelationalExpression", expr=fresh, op="=", other=o, _vars={fresh})
+            )
+            o = fresh
+        triples.append((s, p, o))
+    group.triples = triples
+    return group
+
+
+def _values_rows(p: CompValue) -> list[dict[Any, Any]] | None:
+    """The rows of a VALUES block, each without its UNDEFs; None for anything else."""
+    if p.name != "ToMultiSet" or getattr(p.p, "name", None) != "values":
+        return None
+    return [{k: v for k, v in row.items() if v != "UNDEF"} for row in p.p.res]
+
+
+def _substituted(group: _Group, row: dict[Any, Any]) -> _Group:
+    def put(term: Any) -> Any:
+        return row.get(term, term)
+
+    return dataclasses.replace(
+        group,
+        triples=[(put(s), put(p), put(o)) for s, p, o in group.triples],
+        optionals=[_substituted(o, row) for o in group.optionals],
+        absent=[_substituted(a, row) for a in group.absent],
+    )
+
+
+def _with_row(group: _Group, row: dict[Any, Any]) -> _Group | None:
+    """``group`` holding one VALUES row: each variable the row binds is its term in the triples,
+    so the term constrains them as a constant does, and bound to it for the rest of the query.
+    None when the row puts a literal where a subject stands: that row has no solution."""
+    placed = _substituted(group, row)
+    if any(isinstance(s, RdfLiteral) for s, _, _ in placed.triples):
+        return None
+    placed.binds = [*((str(k), v) for k, v in row.items()), *placed.binds]
+    return _opened_objects(placed)
 
 
 def _alternatives(p: CompValue) -> list[_Group]:
     """``p`` as the groups whose solutions together are its own (a UNION's sides apart)."""
     name = p.name
     if name == "BGP":
-        return [_Group(triples=list(p.triples))]
+        return [_opened_objects(_Group(triples=list(p.triples)))]
     if name == "Join":
+        for table, rest in ((p.p2, p.p1), (p.p1, p.p2)):
+            rows = _values_rows(table)
+            if rows is not None:
+                return [
+                    group
+                    for a in _alternatives(rest)
+                    for row in rows
+                    if (group := _with_row(a, row)) is not None
+                ]
         return [a.joined(b) for a in _alternatives(p.p1) for b in _alternatives(p.p2)]
     if name == "Union":
         return [*_alternatives(p.p1), *_alternatives(p.p2)]
     if name == "Filter":
         groups = _alternatives(p.p)
+        for condition in _conjuncts(p.expr):
+            kind = getattr(condition, "name", None)
+            for g in groups:
+                if kind in ("Builtin_EXISTS", "Builtin_NOTEXISTS"):
+                    inner = _one_pattern(condition.graph, kind.removeprefix("Builtin_"))
+                    (g.present if kind == "Builtin_EXISTS" else g.absent).append(inner)
+                else:
+                    g.filters.append(condition)
+        return groups
+    if name == "Minus":
+        # SPARQL 18.5: a solution sharing no variable with the right side is never removed.
+        groups = _alternatives(p.p1)
+        inner = _one_pattern(p.p2, "MINUS")
         for g in groups:
-            g.filters.append(p.expr)
+            if _pattern_vars(g) & _pattern_vars(inner):
+                g.absent.append(inner)
         return groups
     if name == "Extend":
         groups = _alternatives(p.p)
@@ -292,8 +386,11 @@ def _alternatives(p: CompValue) -> list[_Group]:
         for g in groups:
             g.optionals.append(optional[0])
         return groups
+    rows = _values_rows(p)
+    if rows is not None:
+        return [_Group(binds=[(str(k), v) for k, v in row.items()]) for row in rows]
     if name in ("ToMultiSet", "values"):
-        raise SparqlRefused("VALUES and sub-SELECTs are not supported")
+        raise SparqlRefused("Sub-SELECTs are not supported")
     if name in ("Group", "AggregateJoin"):
         raise SparqlRefused("GROUP BY and aggregates are supported only at the top of a query")
     raise SparqlRefused(f"The SPARQL operator {name} is not supported")
@@ -1123,6 +1220,21 @@ class _Lowering:
             raise _NoSolution
         return [Binary("=", value, bound[0])]
 
+    def _exists(
+        self,
+        wanted: _Group,
+        labels: dict[str, str],
+        bindings: dict[str, tuple[CypherExpr, str | None]],
+    ) -> CypherExpr:
+        """That some predicate of the pattern ``wanted`` matches the row."""
+        cases = self._presences(wanted, labels, bindings)
+        if not cases:
+            raise _NoSolution
+        out = cases[0]
+        for c in cases[1:]:
+            out = Binary("OR", out, c)
+        return out
+
     def _absent(
         self,
         opt: _Group,
@@ -1131,6 +1243,19 @@ class _Lowering:
     ) -> list[CypherExpr]:
         """The conditions that no predicate of the OPTIONAL ``opt`` matches the row, each read
         where its own column or edge is. Raises where one always does."""
+        return [
+            Case(None, [(present, Literal(False, "boolean"))], Literal(True, "boolean"))
+            for present in self._presences(opt, labels, bindings)
+        ]
+
+    def _presences(
+        self,
+        opt: _Group,
+        labels: dict[str, str],
+        bindings: dict[str, tuple[CypherExpr, str | None]],
+    ) -> list[CypherExpr]:
+        """That the pattern ``opt`` matches the row, one condition per predicate it may read.
+        Raises where one always holds with nothing to read."""
         opt_labels = {**labels, **self._optional_labels(opt, labels)}
         self._opened |= _opened_vars(opt)
         fixed = {v: b[0].iri for v, b in bindings.items() if isinstance(b[0], IriConst)}
@@ -1152,12 +1277,11 @@ class _Lowering:
                 self._placed = placed
             where = step.where.expression if step.where is not None else None
             if step.matches:
-                present: CypherExpr = SubqueryExpr("EXISTS", _exists_body(step.matches, where))
+                out.append(SubqueryExpr("EXISTS", _exists_body(step.matches, where)))
             elif where is not None:
-                present = where
+                out.append(where)
             else:
                 raise _NoSolution  # holds of every row: the OPTIONAL always matches
-            out.append(Case(None, [(present, Literal(False, "boolean"))], Literal(True, "boolean")))
         return out
 
     # -- the ontology's axioms (REQ-2163) -------------------------------------------------
@@ -1987,6 +2111,8 @@ class _Lowering:
                 _holds_somewhere(conditions[-1])
         for opt in group.absent:
             conditions.extend(self._absent(opt, labels, bindings))
+        for wanted in group.present:
+            conditions.append(self._exists(wanted, labels, bindings))
         first = steps[0]
         if first.where is not None:
             conditions.insert(0, first.where.expression)
@@ -2047,6 +2173,12 @@ class _Lowering:
             return [Literal(2, "number"), FunctionCall("toFloat", [value]), no_text]
         return [Literal(3, "number"), no_number, FunctionCall("toString", [value])]
 
+    def _order_value(self, e: Any, bindings, labels) -> CypherExpr:
+        """What ORDER BY sorts on: a subject by its key, which is what its IRI differs by."""
+        if isinstance(e, RdfVariable) and str(e) in labels and str(e) not in bindings:
+            return FunctionCall("toString", [self._key_of(str(e), labels)])
+        return self.expr(e, bindings, labels)
+
     def statement(
         self,
         group: _Group,
@@ -2100,7 +2232,9 @@ class _Lowering:
                     items.append(ReturnItem(lane, f"{_ORDER_PREFIX}{i}{suffix}", name=""))
                 continue
             items.append(
-                ReturnItem(self.expr(cond.expr, bindings, labels), f"{_ORDER_PREFIX}{i}", name="")
+                ReturnItem(
+                    self._order_value(cond.expr, bindings, labels), f"{_ORDER_PREFIX}{i}", name=""
+                )
             )
         ast.return_clause = ReturnClause(
             items, distinct=bool(mods.get("distinct")), group_by=group_keys, having=having
@@ -2302,6 +2436,35 @@ def _describe_construct(algebra: Any) -> str:
     return f"CONSTRUCT {{ {' . '.join(triples)} }} WHERE {{ {where} }}"
 
 
+#: The update operations whose whole subject is a graph (rdflib's parse names).
+_GRAPH_MANAGEMENT = {"Load", "Clear", "Drop", "Create", "Add", "Move", "Copy"}
+
+
+def update_refusal(text: str) -> tuple[str, str]:
+    """(error code, what is said) refusing the SPARQL Update ``text`` by what it needs."""
+    try:
+        parsed = parseUpdate(text)
+    except Exception as exc:  # rdflib raises pyparsing's and its own errors alike
+        return "sparql.refused", f"The update is not SPARQL this endpoint reads: {exc}"
+    names = [getattr(op, "name", "") for op in parsed.request]
+    managed = sorted({n for n in names if n in _GRAPH_MANAGEMENT})
+    if managed:
+        return (
+            "sparql.update_refused",
+            f"{', '.join(n.upper() for n in managed)} acts on a named graph, and the model has "
+            "tables, not graphs; write to the tables instead",
+        )
+    return (
+        "sparql.update_refused",
+        f"{', '.join(n for n in names)} is not served: this endpoint answers queries, and rows "
+        "are written through the governed table writes",
+    )
+
+
+def _template_of(pattern: CompValue) -> list[tuple[Any, Any, Any]]:
+    return [t for group in _alternatives(pattern) for t in group.triples]
+
+
 def compile_sparql(text: str, vocab: Vocabulary, lm: Any) -> CompiledSparql:
     """``text``, a SPARQL SELECT, ASK, CONSTRUCT or DESCRIBE of a resource, as the graph IR, read
     against ``vocab`` (built from the label map ``lm``)."""
@@ -2325,7 +2488,10 @@ def compile_sparql(text: str, vocab: Vocabulary, lm: Any) -> CompiledSparql:
         raise SparqlRefused(f"GROUP BY and aggregates in a {form} are not supported")
     if form == "SELECT" and "project" not in mods:
         mods["project"] = [str(v) for v in algebra.PV]
-    template = list(algebra.template) if form == "CONSTRUCT" else None
+    template = None
+    if form == "CONSTRUCT":
+        # CONSTRUCT WHERE has no template of its own: its pattern is its template.
+        template = list(algebra.template or _template_of(pattern))
 
     limit, allowed = union_allowance(
         mods.get("limit") is not None

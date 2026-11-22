@@ -21,6 +21,7 @@ import json
 from typing import Any
 
 from graphql import (
+    GraphQLArgument,
     GraphQLBoolean,
     GraphQLEnumType,
     GraphQLFloat,
@@ -30,12 +31,14 @@ from graphql import (
     GraphQLObjectType,
     GraphQLScalarType,
     GraphQLString,
+    Undefined,
 )
 
 from provisa.api._query_helpers import native_arguments
 from provisa.api.rest.generator import _agg_fields_map
 from provisa.api.role_surface import role_surface
-from provisa.security.mutation_authz import command_assigned
+from provisa.api.command_fields import CommandField, command_fields
+from provisa.compiler.type_map import JSONScalar
 
 _WHERE_OPS = ["eq", "neq", "gt", "gte", "lt", "lte", "like"]
 
@@ -92,18 +95,132 @@ def _is_scalar(gql_type: Any) -> bool:
     return isinstance(gql_type, (GraphQLScalarType, GraphQLEnumType))
 
 
-def _arg_type_to_openapi(arg_type: str) -> dict[str, Any]:
-    """Map a command argument's GraphQL scalar name to an OpenAPI schema (REQ-1155)."""
-    t = (arg_type or "").lower()
-    if t == "int":
-        return {"type": "integer"}
-    if t == "float":
-        return {"type": "number", "format": "double"}
-    if t == "boolean":
-        return {"type": "boolean"}
-    if t == "json":
-        return {}  # REQ-1924: any JSON value, passed to the command as written
-    return {"type": "string"}
+_FIELD_PATH_PATTERN = r"^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$"
+
+
+def _fields_items(
+    field_enum_name: str, relationships: list[tuple[str, GraphQLObjectType, bool]]
+) -> dict[str, Any]:
+    """The items of a row read's ``fields`` parameter: a field of the row, or, when the row has
+    relationships, a dot-path through them (REQ-1929)."""
+    field_ref = {"$ref": f"#/components/schemas/{field_enum_name}"}
+    if not relationships:
+        return field_ref
+    examples = []
+    for rel_name, rel_type, _is_list in relationships:
+        scalars = [
+            n for n, f in rel_type.fields.items() if not n.startswith("_") and _is_scalar(f.type)
+        ]
+        examples.append(f"{rel_name}.{scalars[0]}" if scalars else rel_name)
+    path_form = {
+        "type": "string",
+        "pattern": _FIELD_PATH_PATTERN,
+        "description": "A path through the row's relationships, one dot per relationship",
+        "examples": examples,
+    }
+    return {"anyOf": [field_ref, path_form]}
+
+
+def _argument_schema(arg: GraphQLArgument) -> dict[str, Any]:
+    """A command argument's OpenAPI schema, from its GraphQL argument (REQ-1929)."""
+    named = arg.type
+    while isinstance(named, (GraphQLNonNull, GraphQLList)):
+        named = named.of_type
+    # REQ-1924: a JSON argument takes any JSON value, passed to the command as written.
+    out: dict[str, Any] = {} if named is JSONScalar else _gql_to_openapi_schema(arg.type)
+    if arg.default_value is not Undefined:  # REQ-2168: left out, it takes its default
+        out = {**out, "default": arg.default_value}
+    return out
+
+
+def _command_rows_schema(cf: CommandField) -> dict[str, Any]:
+    row_type = cf.row_type
+    items: dict[str, Any] = {"type": "object"}
+    if row_type is not None:
+        items["properties"] = {
+            n: _gql_to_openapi_schema(f.type)
+            for n, f in row_type.fields.items()
+            if not n.startswith("_") and _is_scalar(f.type)
+        }
+    return {"type": "object", "properties": {"data": {"type": "array", "items": items}}}
+
+
+def _command_read_parameters(cf: CommandField) -> list[dict[str, Any]]:
+    """A query-kind command's GET parameters: the ones a table read takes (filter, orderBy,
+    limit, offset) and its declared arguments by name (REQ-1929)."""
+    row_type = cf.row_type
+    column: dict[str, Any] = {"type": "string"}
+    if row_type is not None:
+        column["enum"] = [
+            n for n, f in row_type.fields.items() if not n.startswith("_") and _is_scalar(f.type)
+        ]
+    filter_item = {
+        "type": "object",
+        "required": ["field", "comparator", "value"],
+        "properties": {
+            "field": column,
+            "comparator": {"$ref": "#/components/schemas/Comparator"},
+            "value": {},
+        },
+    }
+    order_item = {
+        "type": "object",
+        "required": ["field"],
+        "properties": {"field": column, "direction": {"$ref": "#/components/schemas/Direction"}},
+    }
+    parameters: list[dict[str, Any]] = [
+        {"name": "limit", "in": "query", "schema": {"type": "integer", "minimum": 1}},
+        {"name": "offset", "in": "query", "schema": {"type": "integer", "minimum": 0}},
+        {
+            "name": "filter",
+            "in": "query",
+            "content": {"application/json": {"schema": {"type": "array", "items": filter_item}}},
+        },
+        {
+            "name": "orderBy",
+            "in": "query",
+            "content": {"application/json": {"schema": {"type": "array", "items": order_item}}},
+        },
+    ]
+    for name, arg in cf.arguments.items():
+        parameters.append(
+            {
+                "name": name,
+                "in": "query",
+                "required": isinstance(arg.type, GraphQLNonNull),
+                "schema": _argument_schema(arg),
+            }
+        )
+    return parameters
+
+
+def _command_path(cf: CommandField, cmd_name: str) -> dict[str, Any]:
+    """The path item of one command: GET for a read, POST for a write (REQ-1929)."""
+    operation: dict[str, Any] = {
+        "summary": f"{'Read' if cf.is_read else 'Run'} command {cf.domain_id}.{cmd_name}",
+        "operationId": f"call_{cmd_name}",
+        "tags": [cf.domain_id],
+        **({"description": cf.field.description} if cf.field.description else {}),
+    }
+    if cf.is_read:
+        operation["parameters"] = _command_read_parameters(cf)
+    else:
+        props = {name: _argument_schema(arg) for name, arg in cf.arguments.items()}
+        operation["requestBody"] = {
+            "required": bool(props),
+            "content": {"application/json": {"schema": {"type": "object", "properties": props}}},
+        }
+    error = {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}
+    operation["responses"] = {
+        "200": {
+            "description": "Success",
+            "content": {"application/json": {"schema": _command_rows_schema(cf)}},
+        },
+        "400": {"description": "Bad request / invalid parameter", "content": error},
+        "403": {"description": "Governance policy violation", "content": error},
+        "404": {"description": "Command not found", "content": error},
+    }
+    return {"get" if cf.is_read else "post": operation}
 
 
 def generate_rest_openapi_spec(
@@ -185,15 +302,40 @@ def generate_rest_openapi_spec(
                     col_schema = {**col_schema, "description": col_field.description}
                 columns.append((col_name, col_schema))
 
+        # REQ-1929: each relationship of the row, read nested when ?fields= names a path through
+        # it: a many-to-one as an object, a one-to-many as a list.
+        relationships: list[tuple[str, GraphQLObjectType, bool]] = []
+        for rel_name, rel_field in inner.fields.items():
+            if rel_name.startswith("_") or _is_scalar(rel_field.type):
+                continue
+            rel_type, is_list = rel_field.type, False
+            while isinstance(rel_type, (GraphQLNonNull, GraphQLList)):
+                is_list = is_list or isinstance(rel_type, GraphQLList)
+                rel_type = rel_type.of_type
+            if isinstance(rel_type, GraphQLObjectType):
+                relationships.append((rel_name, rel_type, is_list))
+
         field_enum_name = f"{type_name}Field"
         filter_type_name = f"{type_name}Filter"
         col_names = [col for col, _ in columns]
 
         # Register named schemas in components
-        row_schema: dict[str, Any] = {
-            "type": "object",
-            "properties": {col: schema_obj for col, schema_obj in columns},
-        }
+        row_properties: dict[str, Any] = {col: schema_obj for col, schema_obj in columns}
+        for rel_name, rel_type, is_list in relationships:
+            nested = f"Present when fields names a path through {rel_name} ({rel_name}.<field>)"
+            row_properties[rel_name] = (
+                {
+                    "type": "array",
+                    "items": {"type": "object"},
+                    "description": f"The related {rel_type.name} rows. {nested}",
+                }
+                if is_list
+                else {
+                    "type": "object",
+                    "description": f"The related {rel_type.name} row. {nested}",
+                }
+            )
+        row_schema: dict[str, Any] = {"type": "object", "properties": row_properties}
         if table_description:
             row_schema["description"] = table_description
         components[type_name] = row_schema
@@ -268,11 +410,13 @@ def generate_rest_openapi_spec(
                 "in": "query",
                 "style": "form",
                 "explode": False,
-                "schema": {
-                    "type": "array",
-                    "items": {"$ref": f"#/components/schemas/{field_enum_name}"},
-                },
-                "description": "Fields to return",
+                "schema": {"type": "array", "items": _fields_items(field_enum_name, relationships)},
+                "description": (
+                    "Fields to return. A bare name is a field of the row; a dot-path goes "
+                    "through relationships (`<relationship>.<field>`, one dot per relationship) and "
+                    "returns the related row nested: a many-to-one as an object, a one-to-many "
+                    "as a list. A relationship named alone returns its fields."
+                ),
             },
             {
                 "name": "filter",
@@ -430,85 +574,20 @@ def generate_rest_openapi_spec(
             }
         }
 
-    # REQ-1155: registered commands are POST paths so they appear in the OpenAPI/Swagger surface
-    # alongside tables. Invocation routes through the same governed executor as every other surface.
-    from provisa.core.command_bindings import binding_name
-
-    _seen_cmd: set[str] = set()
-    # Functions AND webhooks are governed commands (REQ-872 / REQ-1155): both appear as POST paths.
-    commands = [
-        *(getattr(state, "tracked_functions", {}) or {}).values(),
-        *(getattr(state, "tracked_webhooks", {}) or {}).values(),
-    ]
-    for fn in [] if table_filter is not None else commands:
-        if not fn.get("name") or fn["name"] in _seen_cmd:
-            continue
-        # REQ-2168: the path is the command's REST command binding; none when excluded.
-        cmd_name = binding_name(fn, "rest")
-        if cmd_name is None:
-            continue
-        cmd_domain = fn.get("domain_id", "")
-        if domain_filter is not None and cmd_domain not in domain_filter:
-            continue
-        if not command_assigned(fn, role_id):  # REQ-2153: an empty list names no role
-            continue
-        _seen_cmd.add(fn["name"])
-
-        arg_props: dict[str, Any] = {}
-        for a in fn.get("arguments") or []:
-            a_name = a.get("name")
-            if not a_name:
+    # REQ-1929: the commands are the role's GraphQL command fields, under their REST command
+    # bindings (REQ-2168): a Query field a GET read, a Mutation field a POST write. A description
+    # narrowed to tables holds no commands (REQ-2158).
+    if table_filter is None:
+        for cf in command_fields(schema):
+            if domain_filter is not None and cf.domain_id not in domain_filter:
                 continue
-            arg_props[a_name] = _arg_type_to_openapi(a.get("type", "String"))
-            if "default" in a:  # REQ-2168: left out, it takes its default
-                arg_props[a_name] = {**arg_props[a_name], "default": a["default"]}
-
-        cmd_path = f"/{cmd_domain}/commands/{cmd_name}"
-        domain_tag_descriptions.setdefault(cmd_domain, fn.get("domain_description"))
-        paths[cmd_path] = {
-            "post": {
-                "summary": f"Run command {cmd_domain}.{cmd_name}",
-                "operationId": f"call_{cmd_name}",
-                "tags": [cmd_domain],
-                **({"description": fn["description"]} if fn.get("description") else {}),
-                "requestBody": {
-                    "required": bool(arg_props),
-                    "content": {
-                        "application/json": {"schema": {"type": "object", "properties": arg_props}}
-                    },
-                },
-                "responses": {
-                    "200": {
-                        "description": "Success",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "type": "object",
-                                    "properties": {
-                                        "data": {
-                                            "type": "array",
-                                            "items": {"type": "object"},
-                                        }
-                                    },
-                                }
-                            }
-                        },
-                    },
-                    "403": {
-                        "description": "Governance policy violation",
-                        "content": {
-                            "application/json": {"schema": {"$ref": "#/components/schemas/Error"}}
-                        },
-                    },
-                    "404": {
-                        "description": "Command not found",
-                        "content": {
-                            "application/json": {"schema": {"$ref": "#/components/schemas/Error"}}
-                        },
-                    },
-                },
-            }
-        }
+            cmd_name = cf.name_in("rest")
+            if cmd_name is None:
+                continue
+            domain_tag_descriptions.setdefault(
+                cf.domain_id, cf.definition.get("domain_description")
+            )
+            paths[f"/{cf.domain_id}/commands/{cmd_name}"] = _command_path(cf, cmd_name)
 
     return {
         "openapi": "3.1.0",

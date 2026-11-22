@@ -45,7 +45,7 @@ import psycopg
 import yaml
 
 sys.path.insert(0, str(Path(__file__).parent / "conformance"))
-from pgwire_catalog_types import registered_typing  # noqa: E402
+from pgwire_catalog_types import job_assignments, registered_typing  # noqa: E402
 
 _TABLES = 1000
 _TEXT_COLUMNS = 18
@@ -186,9 +186,8 @@ def _model(work: Path) -> None:
                 "domain_access": ["sales"],
             }
         ],
-        "role_mapping": [
-            {"claim": "username", "type": "exact", "value": "analyst", "role": "sales_reader"}
-        ],
+        # Held, so analyst acts as sales_reader alone (the control plane holds the assignments).
+        "assignments": {"analyst": [{"role_id": "sales_reader", "domain_id": "*"}]},
     }
     work.mkdir(parents=True, exist_ok=True)
     (work / "tables.yaml").write_text(yaml.safe_dump(tables))
@@ -214,7 +213,8 @@ def _wait(url: str, attempts: int, *, pause: float = 2.0) -> None:
     raise TimeoutError(url)
 
 
-def _admin(method: str, path: str, body: bytes, content_type: str) -> None:
+def _admin(method: str, path: str, body: bytes, content_type: str) -> bytes:
+    """The break-glass account's request; answers the response body."""
     credentials = base64.b64encode(":".join(_SUPERUSER).encode()).decode()
     request = urllib.request.Request(
         f"http://127.0.0.1:{_API_PORT}{path}",
@@ -224,14 +224,15 @@ def _admin(method: str, path: str, body: bytes, content_type: str) -> None:
     )
     for attempt in range(6):
         try:
-            with urllib.request.urlopen(request, timeout=1800):
-                return
+            with urllib.request.urlopen(request, timeout=1800) as answer:
+                return answer.read()
         except urllib.error.HTTPError:
             raise
         except urllib.error.URLError:
             if attempt == 5:
                 raise
             time.sleep(3)
+    raise AssertionError("unreachable: the last attempt returns or raises")
 
 
 def _control_plane(home: Path) -> dict[str, str]:
@@ -347,9 +348,13 @@ def _start(work: Path) -> None:
         "application/yaml",
     )
     _wait(f"http://127.0.0.1:{_API_PORT}/ready", 600)
+    assignments = job_assignments(work / "access.yaml", [username for username, _ in _USERS])
     for username, password in _USERS:
         body = json.dumps({"username": username, "password": password}).encode()
-        _admin("POST", "/admin/users/", body, "application/json")
+        user_id = json.loads(_admin("POST", "/admin/users/", body, "application/json"))["id"]
+        for assignment in assignments.get(username, []):
+            grant = json.dumps(assignment).encode()
+            _admin("POST", f"/admin/users/{user_id}/assignments", grant, "application/json")
     print("ready")
 
 

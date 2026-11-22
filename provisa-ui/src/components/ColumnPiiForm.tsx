@@ -21,6 +21,7 @@ import { fetchGlossaryTermByRef, termRole, type GlossaryTermDetail } from "../ap
 import { entityHref } from "../lib/entityHref";
 import { serverMessage } from "../i18n/serverMessage";
 import type { MutationResult, TagAssignment } from "../types/admin";
+import { CancelButton } from "./form/CancelButton";
 
 export function ColumnPiiForm({
   tableId,
@@ -176,9 +177,7 @@ export function ColumnPiiForm({
         >
           {t("tagControl.apply")}
         </Button>
-        <Button size="compact-xs" variant="default" onClick={onDone} data-testid="pii-cancel">
-          {t("tagControl.cancel")}
-        </Button>
+        <CancelButton onClick={onDone} testId="pii-cancel" />
       </Group>
       {said}
     </Stack>

@@ -34,7 +34,6 @@ import httpx
 import pytest
 import yaml
 
-from tests.helpers import registered_id, release_field
 
 pytestmark = [pytest.mark.integration]
 
@@ -72,9 +71,14 @@ def rates(inputs: RateInputs) -> list[Rate]:
     ]
 
 
-def currencies() -> list[dict]:
+@dataclass
+class Currency:
+    code: str
+
+
+def currencies() -> list[Currency]:
     """@table"""
-    return [{"code": code} for code in sorted(_TABLE)]
+    return [Currency(code) for code in sorted(_TABLE)]
 ''',
 }
 
@@ -262,13 +266,12 @@ def code_source(server):
         ),
         ("currencies", [_column("code", "text")]),
     ):
-        registered = _admin(
+        _admin(
             server,
             f'registerTable(input: {{sourceId: "{source_id}", domainId: "fx", '
             f'schemaName: "default", tableName: "{table}", cacheTtl: 300, '
             f"columns: [{', '.join(columns)}]}})",
         )
-        _admin(server, release_field(registered_id(registered["message"])))
     return language
 
 

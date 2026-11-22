@@ -16,17 +16,18 @@ before query compilation. Extracted from sql_gen.py; leaf module.
 
 from __future__ import annotations
 
+import functools
 from collections.abc import Callable, Mapping, Sequence  # noqa: F401
 
 from provisa.compiler.naming import (
     bare_field_name,
-    junction_field_name,
-    rel_field_name as _rel_field_name,
+    relationship_field_name,
     unprefixed_field_name,
-    source_to_catalog,
+    lowered_catalog,
 )
 from provisa.compiler.native_nested import NestedColumn, NestedColumns
 from provisa.compiler.native_subtype import SubtypeColumns
+from provisa.compiler.schema_types import physical_table_name
 from provisa.compiler.sql_rewrite import _sql_str_literal, semantic_table_name
 from provisa.compiler.sql_where import META_QUERY_NAME
 from provisa.core.ir_types import Subtype
@@ -98,7 +99,7 @@ def _register_table_in_ctx(
     t: _TableInfoProto,
     ctx: CompilationContext,
     si: object,  # object-ok: circular import boundary — SchemaInput imported inside function body
-    physical_map: dict[str, str],
+    physical_map: dict[tuple[str, str], str],
     declared_unique: dict[int, list[dict]],
 ) -> None:
     """Register one visible table and its column metadata into ctx."""
@@ -106,7 +107,7 @@ def _register_table_in_ctx(
     from provisa.compiler.schema_gen import SchemaInput
 
     assert isinstance(si, SchemaInput)
-    physical_name = physical_map.get(t.table_name, t.table_name)
+    physical_name = physical_table_name(physical_map, t.source_id, t.table_name)
     src_type = (si.source_types or {}).get(t.source_id, "")
     meta = TableMeta(
         table_id=t.table_id,
@@ -120,6 +121,7 @@ def _register_table_in_ctx(
         source_type=src_type,
         original_table_name=t.table_name if physical_name != t.table_name else "",
         display_name=t.alias or "",
+        gql_convention=t.gql_convention_override,
     )
     ctx.tables[t.field_name] = meta
     _display = semantic_table_name(meta)
@@ -197,6 +199,26 @@ def _register_table_in_ctx(
     ctx.native_filter_columns[t.table_id] = {
         nfc["column_name"]: _nfc_type(nfc) for nfc in t.native_filter_columns
     }
+    from provisa.core.parameters import parameter_facts, parameter_names
+
+    ctx.parameters[t.table_id] = tuple(
+        parameter_facts({**nfc, "data_type": _nfc_type(nfc)} for nfc in t.native_filter_columns)
+    )
+    # A name a result column is read by stays that column's.
+    taken = [
+        name
+        for col in t.visible_columns
+        for name in (
+            col["column_name"],
+            col.get("alias") or "",
+            apply_sql_name(col["column_name"]),
+            apply_gql_name(col["column_name"], getattr(t, "gql_convention_override", None)),
+        )
+        if name
+    ]
+    names = parameter_names(t.native_filter_columns, taken)
+    if names:
+        ctx.parameter_names[t.table_id] = names
 
     for col in t.visible_columns:
         phys = col["column_name"]
@@ -208,6 +230,8 @@ def _register_table_in_ctx(
             ctx.exposed_to_physical[(t.table_id, sql_name)] = phys
         ctx.physical_to_sql[(t.table_id, phys)] = sql_name
         ctx.physical_to_gql[(t.table_id, phys)] = gql
+        if col.get("alias"):
+            ctx.column_aliases[(t.table_id, phys)] = col["alias"]
         object_fields = col.get("object_fields")
         if object_fields and isinstance(object_fields, list):
             ctx.gql_json_columns.add((t.table_id, gql))
@@ -228,17 +252,17 @@ def _join_field_name(  # REQ-194, REQ-1586
     leaves ``ctx.joins`` holding whichever one registered last. Its nominated label names it
     instead — the same nomination the Cypher type takes.
     """
-    if rel.get("via_table_id"):
-        via_info = table_lookup[rel["via_table_id"]]
-        return junction_field_name(
-            rel["via_label_source"],
-            rel["cardinality"],
-            type_value=rel.get("via_type_value"),
-            via_table_name=via_info.table_name,
-            cypher_alias=rel.get("alias"),
-        )
-    return _rel_field_name(
-        unprefixed_field_name(tgt_info.field_name, tgt_info.domain_id), rel["cardinality"]
+    via_table_name = (
+        table_lookup[rel["via_table_id"]].table_name if rel.get("via_table_id") else None
+    )
+    return relationship_field_name(
+        rel["cardinality"],
+        target_field_name=unprefixed_field_name(tgt_info.field_name, tgt_info.domain_id),
+        graphql_alias=rel.get("graphql_alias"),
+        via_label_source=rel.get("via_label_source"),
+        via_type_value=rel.get("via_type_value"),
+        via_table_name=via_table_name,
+        cypher_alias=rel.get("alias"),
     )
 
 
@@ -246,7 +270,7 @@ def _build_junction_meta(  # REQ-1586
     si: object,  # object-ok: circular import boundary — SchemaInput imported inside function body
     rel: Mapping,
     table_lookup: Mapping[int, _TableInfoProto],
-    physical_map: dict[str, str],
+    physical_map: dict[tuple[str, str], str],
 ) -> JunctionMeta | None:
     """Resolve a relationship row's junction declaration into a JunctionMeta.
 
@@ -261,7 +285,7 @@ def _build_junction_meta(  # REQ-1586
     if not via_id or via_id not in table_lookup:
         return None
     via_info = table_lookup[via_id]
-    via_physical = physical_map.get(via_info.table_name, via_info.table_name)
+    via_physical = physical_table_name(physical_map, via_info.source_id, via_info.table_name)
     via_meta = TableMeta(
         table_id=via_info.table_id,
         field_name=via_info.field_name,
@@ -337,11 +361,28 @@ class RelationshipFieldTaken(ModelNotServable):
         )
 
 
+class RelationshipHidesColumn(ModelNotServable):  # REQ-1929
+    """A relationship of one GraphQL type named for a field one of its columns already is:
+    refused, naming both, rather than the relationship silently hiding the column."""
+
+    code = "model.relationship_hides_column"
+
+    def __init__(self, type_name: str, field: str, refused: str) -> None:
+        self.type_name = type_name
+        self.field = field
+        self.refused = refused
+        self.params = {"type": type_name, "field": field, "refused": refused}
+        super().__init__(
+            f"relationship {refused!r} would be field {field!r} of {type_name}, which a column "
+            f"already is: give the relationship its own GraphQL alias"
+        )
+
+
 def _register_relationship_joins(
     si: object,  # object-ok: circular import boundary — SchemaInput imported inside function body
     ctx: CompilationContext,
     table_lookup: Mapping[int, _TableInfoProto],
-    physical_map: dict[str, str],
+    physical_map: dict[tuple[str, str], str],
 ) -> None:
     """Register JoinMeta entries for all explicit relationships."""
     from provisa.compiler.schema_gen import SchemaInput
@@ -349,6 +390,8 @@ def _register_relationship_joins(
     assert isinstance(si, SchemaInput)
     # (type, field) -> the relationship holding it: two relationships never share a field.
     joined_by: dict[tuple[str, str], str] = {}
+    # (table id, GraphQL field) of every column a role reads, as _register_table_in_ctx named it.
+    column_fields = {(tid, gql) for (tid, _phys), gql in ctx.physical_to_gql.items()}
     for rel in si.relationships:
         src_id = rel["source_table_id"]
         tgt_id = rel["target_table_id"]
@@ -364,7 +407,9 @@ def _register_relationship_joins(
         src_info = table_lookup[src_id]
         tgt_info = table_lookup[tgt_id]
 
-        _tgt_physical_name = physical_map.get(tgt_info.table_name, tgt_info.table_name)
+        _tgt_physical_name = physical_table_name(
+            physical_map, tgt_info.source_id, tgt_info.table_name
+        )
         tgt_meta = TableMeta(
             table_id=tgt_info.table_id,
             field_name=tgt_info.field_name,
@@ -383,8 +428,7 @@ def _register_relationship_joins(
             si,
             src_id,
             rel["source_column"],
-            catalog=(si.source_catalogs or {}).get(src_info.source_id)
-            or source_to_catalog(src_info.source_id),
+            catalog=lowered_catalog(si.source_catalogs, src_info.source_id),
             schema=src_info.schema_name,
             table=src_info.table_name,
         )
@@ -392,13 +436,17 @@ def _register_relationship_joins(
             si,
             tgt_id,
             rel["target_column"],
-            catalog=(si.source_catalogs or {}).get(tgt_info.source_id)
-            or source_to_catalog(tgt_info.source_id),
+            catalog=lowered_catalog(si.source_catalogs, tgt_info.source_id),
             schema=tgt_info.schema_name,
             table=tgt_info.table_name,
         )
 
-        join_field_name = rel.get("graphql_alias") or _join_field_name(rel, tgt_info, table_lookup)
+        join_field_name = _join_field_name(rel, tgt_info, table_lookup)
+        # REQ-1929: a relationship never hides a column; one named for a column's field is refused.
+        if (src_id, join_field_name) in column_fields:
+            raise RelationshipHidesColumn(
+                src_info.type_name, join_field_name, rel.get("id") or "(unnamed)"
+            )
         held = joined_by.get((src_info.type_name, join_field_name))
         if held is not None:
             # Two relationships of one type under one field: the later replaced the earlier and
@@ -418,6 +466,7 @@ def _register_relationship_joins(
             disable_cypher=rel.get("disable_cypher", False),
             source_json_key=rel.get("source_json_key") or None,
             via=_build_junction_meta(si, rel, table_lookup, physical_map),
+            registered=True,
         )
 
 
@@ -425,7 +474,7 @@ def _register_meta_synthetic_joins(
     si: object,  # object-ok: circular import boundary — SchemaInput imported inside function body
     ctx: CompilationContext,
     tables: Sequence[_TableInfoProto],
-    physical_map: dict[str, str],
+    physical_map: dict[tuple[str, str], str],
 ) -> _TableInfoProto | None:
     """Inject synthetic _meta join for every non-meta table → meta:registered_tables."""
     from provisa.compiler.schema_gen import SchemaInput
@@ -443,10 +492,12 @@ def _register_meta_synthetic_joins(
         type_name=meta_rt.type_name,
         source_id=meta_rt.source_id,
         catalog_name=_catalog_of(
-            si, meta_rt.source_id, physical_map.get(meta_rt.table_name, meta_rt.table_name)
+            si,
+            meta_rt.source_id,
+            physical_table_name(physical_map, meta_rt.source_id, meta_rt.table_name),
         ),
         schema_name=meta_rt.schema_name,
-        table_name=physical_map.get(meta_rt.table_name, meta_rt.table_name),
+        table_name=physical_table_name(physical_map, meta_rt.source_id, meta_rt.table_name),
         domain_id=meta_rt.domain_id,
     )
     # Each registration answers the name its table is queried by (table_query_name), from the
@@ -487,7 +538,7 @@ def _catalog_of(si: object, source_id: str, physical_name: str) -> str:  # objec
     own = (si.table_catalogs or {}).get((source_id, physical_name))
     if own is not None:
         return own
-    return (si.source_catalogs or {}).get(source_id) or source_to_catalog(source_id)
+    return lowered_catalog(si.source_catalogs, source_id)
 
 
 _QUERY_NAME = META_QUERY_NAME
@@ -505,7 +556,7 @@ def _register_ops_synthetic_joins(
     si: object,  # object-ok: circular import boundary — SchemaInput imported inside function body
     ctx: CompilationContext,
     tables: Sequence[_TableInfoProto],
-    physical_map: dict[str, str],
+    physical_map: dict[tuple[str, str], str],
     meta_rt: _TableInfoProto | None,
 ) -> None:
     """Inject synthetic traversal joins: registered_tables → ops tables with table_name FK."""
@@ -526,10 +577,12 @@ def _register_ops_synthetic_joins(
             type_name=ops_t.type_name,
             source_id=ops_t.source_id,
             catalog_name=_catalog_of(
-                si, ops_t.source_id, physical_map.get(ops_t.table_name, ops_t.table_name)
+                si,
+                ops_t.source_id,
+                physical_table_name(physical_map, ops_t.source_id, ops_t.table_name),
             ),
             schema_name=ops_t.schema_name,
-            table_name=physical_map.get(ops_t.table_name, ops_t.table_name),
+            table_name=physical_table_name(physical_map, ops_t.source_id, ops_t.table_name),
             domain_id=ops_t.domain_id,
         )
         _base = bare_field_name(ops_t.field_name, ops_t.domain_id)
@@ -551,7 +604,7 @@ def _register_ops_synthetic_joins(
 
 def _epoch_columns(
     si: object,  # object-ok: circular-import boundary — SchemaInput imported inside function body
-    physical_map: dict[str, str],
+    physical_map: dict[tuple[str, str], str],
 ) -> dict[tuple[str, str], dict[str, tuple[str, str]]]:
     """REQ-1908: every registered temporal column its source stores as an epoch number, keyed by
     physical (schema, table) and the names emitted SQL uses for it (physical and SQL-exposed). All
@@ -569,7 +622,7 @@ def _epoch_columns(
                 continue
             key = (
                 td["schema_name"].lower(),
-                (physical_map.get(td["table_name"]) or td["table_name"]).lower(),
+                physical_table_name(physical_map, td["source_id"], td["table_name"]).lower(),
             )
             spec = (unit, col["data_type"])
             phys = col["column_name"]
@@ -581,7 +634,7 @@ def _epoch_columns(
 
 def _nested_columns(
     si: object,  # object-ok: circular-import boundary — SchemaInput imported inside function body
-    physical_map: dict[str, str],
+    physical_map: dict[tuple[str, str], str],
 ) -> NestedColumns:
     """REQ-1965: every registered column that is natively an array, a struct or a map at its
     source (its native type is recorded), keyed like ``_epoch_columns``. All registered tables,
@@ -599,7 +652,7 @@ def _nested_columns(
                 continue  # none recorded, or a character column's (REQ-1961)
             key = (
                 td["schema_name"].lower(),
-                (physical_map.get(td["table_name"]) or td["table_name"]).lower(),
+                physical_table_name(physical_map, td["source_id"], td["table_name"]).lower(),
             )
             nested = NestedColumn(native, col.get("array_depth") or 0, col.get("element_type"))
             phys = col["column_name"]
@@ -611,7 +664,7 @@ def _nested_columns(
 
 def _columns_of_subtypes(
     si: object,  # object-ok: circular-import boundary — SchemaInput imported inside function body
-    physical_map: dict[str, str],
+    physical_map: dict[tuple[str, str], str],
     kept: Callable[[Subtype], bool],
 ) -> SubtypeColumns:
     """REQ-2171: every registered column whose subtype is ``kept``, keyed like
@@ -629,7 +682,7 @@ def _columns_of_subtypes(
                 continue
             key = (
                 td["schema_name"].lower(),
-                (physical_map.get(td["table_name"]) or td["table_name"]).lower(),
+                physical_table_name(physical_map, td["source_id"], td["table_name"]).lower(),
             )
             phys = col["column_name"]
             names = out.setdefault(key, {})
@@ -638,15 +691,29 @@ def _columns_of_subtypes(
     return out
 
 
-def _instant_columns(
-    si: object,  # object-ok: circular-import boundary — SchemaInput imported inside function body
-    physical_map: dict[str, str],
-) -> SubtypeColumns:
-    """REQ-2171: every registered column whose type is timestamptz, keyed like
-    ``_columns_of_subtypes``, for to_json to be told what it reads (compiler.json_instants)."""
+@functools.lru_cache(maxsize=4096)
+def _is_instant_type(data_type: str) -> bool:
+    """Whether the stored column type ``data_type`` reads as a timestamptz. Kept per type string:
+    every role's context is built from the same model's types, one role after another in the
+    background after each rebuild (app_loaders.warm_role_surfaces) while requests are served, and
+    a type the model has already shown is not tokenized again (REQ-1877). A type sqlglot cannot
+    read is not an instant -- as it was before it was kept."""
     import sqlglot.expressions as exp
     from sqlglot.errors import SqlglotError
 
+    try:
+        kind = exp.DataType.build(data_type, dialect="postgres")
+    except (SqlglotError, ValueError):
+        return False
+    return kind.is_type(exp.DataType.Type.TIMESTAMPTZ)
+
+
+def _instant_columns(
+    si: object,  # object-ok: circular-import boundary — SchemaInput imported inside function body
+    physical_map: dict[tuple[str, str], str],
+) -> SubtypeColumns:
+    """REQ-2171: every registered column whose type is timestamptz, keyed like
+    ``_columns_of_subtypes``, for to_json to be told what it reads (compiler.json_instants)."""
     from provisa.compiler.json_instants import INSTANT
     from provisa.compiler.naming import apply_sql_name
     from provisa.compiler.schema_gen import SchemaInput
@@ -657,15 +724,11 @@ def _instant_columns(
         typed = {m.column_name.lower(): m.data_type for m in si.column_types.get(td["id"]) or []}
         for col in td.get("columns") or []:
             phys = col["column_name"]
-            try:
-                kind = exp.DataType.build(typed.get(phys.lower()) or "", dialect="postgres")
-            except (SqlglotError, ValueError):
-                continue
-            if not kind.is_type(exp.DataType.Type.TIMESTAMPTZ):
+            if not _is_instant_type(typed.get(phys.lower()) or ""):
                 continue
             key = (
                 td["schema_name"].lower(),
-                (physical_map.get(td["table_name"]) or td["table_name"]).lower(),
+                physical_table_name(physical_map, td["source_id"], td["table_name"]).lower(),
             )
             names = out.setdefault(key, {})
             names[phys.lower()] = INSTANT
@@ -693,7 +756,6 @@ def build_context(  # REQ-008, REQ-009, REQ-151, REQ-393
     domain_alias_map = _domain_alias_map(si.domains)
     tables = _build_visible_tables(si, for_sql=True)
     if not tables:
-        _register_draft_names(si, ctx, domain_alias_map)  # REQ-1921: drafts are named still
         _register_missing_capabilities(si, ctx, domain_alias_map)  # REQ-1132
         return ctx
     _assign_names(
@@ -725,34 +787,10 @@ def build_context(  # REQ-008, REQ-009, REQ-151, REQ-393
 
     ctx.gql_governed_object_cols = si.gql_governed_object_cols or set()
     ctx.columns_outside_relation = si.columns_outside_relation
-    _register_draft_names(si, ctx, domain_alias_map)
     _register_missing_capabilities(si, ctx, domain_alias_map)
     _register_listed_only(si, ctx, domain_alias_map)
 
     return ctx
-
-
-def _register_draft_names(  # REQ-1921
-    si: object,  # object-ok: SchemaInput, imported inside build_context (circular boundary)
-    ctx: CompilationContext,
-    domain_alias_map: dict[str, str],
-) -> None:
-    """Every name a statement could give a draft table this role would otherwise read, so a
-    statement naming one is refused as draft, not as unknown. A draft
-    table in a domain the role does not reach, or with no column it sees, is not named: to that
-    role it does not exist, draft or not."""
-    from provisa.compiler.schema_gen import SchemaInput
-    from provisa.security.visibility import visible_tables
-
-    assert isinstance(si, SchemaInput)
-    role = si.role
-    for row in si.draft_tables:
-        # REQ-2152: a draft is listed to a role served one of its columns, by the one rule
-        # (its domain reach included).
-        if not visible_tables([row], role):
-            continue
-        for said in _names_of_table(si, row, domain_alias_map):
-            ctx.draft_names[said] = row["table_name"]
 
 
 def _register_missing_capabilities(  # REQ-1132

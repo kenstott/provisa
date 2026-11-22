@@ -103,7 +103,7 @@ class _Runtime:
             "model_write_rules": model_write_rules(
                 resolved, tables, [r["id"] for r in folded if r.get("owner_held")]
             ),
-            "physical_table_map": {"data_products": "data_products_meta"},
+            "physical_table_map": {("provisa-admin", "data_products"): "data_products_meta"},
         }
 
 
@@ -558,7 +558,7 @@ def test_a_terms_rule_is_read_through_its_definition_view():
     state = types.SimpleNamespace(
         role_build_inputs={
             "model_write_rules": {("a", "glossary_terms", "U"): "status = 'draft'"},
-            "physical_table_map": {"_terms": "_terms_ontology"},
+            "physical_table_map": {("provisa-admin", "_terms"): "_terms_ontology"},
         },
         meta_roles={},
         roles={"a": {"id": "a", "capabilities": ["glossary_rw"], "session_vars": {}}},

@@ -1,0 +1,8 @@
+{
+  "environmentStage": {
+    "production": "本番",
+    "preprod": "プリプロダクション",
+    "test": "テスト",
+    "development": "開発"
+  }
+}

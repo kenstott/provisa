@@ -77,6 +77,7 @@ async def test_create_glossary_term_calls_repo_and_notifies():
         patch("provisa.api.admin.glossary_router._require_glossary_rw"),
         patch("provisa.api.admin.glossary_router._declared_domains", return_value=set()),
         patch("provisa.api.admin.glossary_router._notify", new=AsyncMock()) as notify,
+        patch("provisa.api.admin.reference_library_router.embed_terms", new=AsyncMock()) as embed,
         patch(
             "provisa.core.repositories.glossary.create_abstract_term",
             new=AsyncMock(return_value=42),
@@ -86,6 +87,7 @@ async def test_create_glossary_term_calls_repo_and_notifies():
 
     assert result == {"id": 42}
     notify.assert_awaited_once()
+    embed.assert_awaited_once()  # REQ-2185: TERMS ARE EMBEDDED AS THEY CHANGE
 
 
 async def test_update_glossary_term_requires_a_found_field():
@@ -104,12 +106,14 @@ async def test_delete_glossary_term_is_irreversible_and_checked():
         patch("provisa.api.admin.glossary_router._require_glossary_rw"),
         patch("provisa.api.admin.glossary_router._require_term_curatable", new=AsyncMock()),
         patch("provisa.api.admin.glossary_router._notify", new=AsyncMock()) as notify,
+        patch("provisa.api.admin.reference_library_router.embed_terms", new=AsyncMock()) as embed,
         patch("provisa.core.repositories.glossary.delete_term", new=AsyncMock(return_value=True)),
     ):
         result = await tools.delete_glossary_term(_state(), "analyst", _request(), 1)
 
     assert result == {"ok": True}
     notify.assert_awaited_once()
+    embed.assert_awaited_once()  # REQ-2185: TERMS ARE EMBEDDED AS THEY CHANGE
 
 
 async def test_add_glossary_term_edge_grounds_a_proposed_term():

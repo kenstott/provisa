@@ -29,8 +29,6 @@ reasons:
     defect: 'psycopg.errors.InsufficientPrivilege: [V006] Table function ''…'' is not a governed relation'
   psycopg-errors-internalerror:
     defect: 'psycopg.errors.InternalError_: ''…'''
-  assert-n-n:
-    defect: assert N <= N
   assertionerror-assert-2:
     defect: 'AssertionError: assert (''…'',) == (''…'',)'
   assertionerror-b-error-portal-does-not-exist:
@@ -385,6 +383,8 @@ reasons:
       -> UUID)'
   valueerror-bytes-is-not-a-n-char-string:
     defect: 'ValueError: bytes is not a N-char string'
+  exceptiongroup-multiple-unraisable-exception-warnings:
+    defect: 'ExceptionGroup: multiple unraisable exception warnings (N sub-exceptions)'
 expected:
   tests.crdb.test_no_crdb::test_tpc_on_pg_connection: failed-on-setup-with
   tests.pool.test_pool::test_configure: assertionerror-assert
@@ -415,14 +415,10 @@ expected:
   tests.pool.test_pool_common::test_check_connection[ConnectionPool-True]: psycopg-errors-internalerror-invalid-input-error
   tests.pool.test_pool_common::test_check_connection[NullConnectionPool-False]: psycopg-errors-internalerror-invalid-input-error
   tests.pool.test_pool_common::test_check_connection[NullConnectionPool-True]: psycopg-errors-internalerror-invalid-input-error
-  tests.pool.test_pool_common::test_stats_usage[ConnectionPool]: assert-n-n
-  tests.pool.test_pool_common::test_stats_usage[NullConnectionPool]: assert-n-n
   tests.pool.test_pool_common_async::test_check_connection[asyncio-AsyncConnectionPool-False]: psycopg-errors-internalerror-invalid-input-error
   tests.pool.test_pool_common_async::test_check_connection[asyncio-AsyncConnectionPool-True]: psycopg-errors-internalerror-invalid-input-error
   tests.pool.test_pool_common_async::test_check_connection[asyncio-AsyncNullConnectionPool-False]: psycopg-errors-internalerror-invalid-input-error
   tests.pool.test_pool_common_async::test_check_connection[asyncio-AsyncNullConnectionPool-True]: psycopg-errors-internalerror-invalid-input-error
-  tests.pool.test_pool_common_async::test_stats_usage[asyncio-AsyncConnectionPool]: assert-n-n
-  tests.pool.test_pool_common_async::test_stats_usage[asyncio-AsyncNullConnectionPool]: assert-n-n
   tests.pool.test_pool_null::test_configure: assertionerror-assert-2
   tests.pool.test_pool_null::test_intrans_rollback: psycopg-errors-featurenotsupported-create-table
   tests.pool.test_pool_null_async::test_configure[asyncio]: assertionerror-assert-2
@@ -461,6 +457,7 @@ expected:
   tests.pq.test_pgconn::test_reset: assertionerror-assert-n-connstatus-bad-n
   tests.pq.test_pgconn::test_reset_async: assertionerror-assert-n-connstatus-bad-n
   tests.pq.test_pgconn::test_trace: assert-query-i-f-n
+  tests.pq.test_pgconn::test_weakref: exceptiongroup-multiple-unraisable-exception-warnings
   tests.pq.test_pgresult::test_fsize: assert-n-n-2
   tests.pq.test_pgresult::test_ftable_and_col: assertionerror-b-error-drop-table-is-not-availab
   tests.pq.test_pipeline::test_pipeline_abort: assertionerror-assert-n-execstatus-command-ok-n
@@ -2030,26 +2027,11 @@ expected:
   tests.types.test_composite::test_type_dumper_registered[s]: failed-on-setup-with
   tests.types.test_composite::test_type_dumper_registered[t]: failed-on-setup-with
   tests.types.test_datetime.TestDate::test_infinity_date_example: psycopg-errors-internalerror-invalid-isoformat-s
-  tests.types.test_datetime.TestDate::test_load_date_overflow[German-max]: psycopg-errors-internalerror-year-is-out-of-rang
-  tests.types.test_datetime.TestDate::test_load_date_overflow[German-min]: psycopg-errors-internalerror-year-is-out-of-rang
-  tests.types.test_datetime.TestDate::test_load_date_overflow[ISO-max]: psycopg-errors-internalerror-year-is-out-of-rang
-  tests.types.test_datetime.TestDate::test_load_date_overflow[ISO-min]: psycopg-errors-internalerror-year-is-out-of-rang
-  tests.types.test_datetime.TestDate::test_load_date_overflow[Postgres-max]: psycopg-errors-internalerror-year-is-out-of-rang
-  tests.types.test_datetime.TestDate::test_load_date_overflow[Postgres-min]: psycopg-errors-internalerror-year-is-out-of-rang
-  tests.types.test_datetime.TestDate::test_load_date_overflow[SQL-max]: psycopg-errors-internalerror-year-is-out-of-rang
-  tests.types.test_datetime.TestDate::test_load_date_overflow[SQL-min]: psycopg-errors-internalerror-year-is-out-of-rang
-  tests.types.test_datetime.TestDate::test_load_date_overflow_binary[max]: psycopg-errors-internalerror-year-is-out-of-rang
-  tests.types.test_datetime.TestDate::test_load_date_overflow_binary[min]: psycopg-errors-internalerror-year-is-out-of-rang
   tests.types.test_datetime.TestDate::test_load_overflow_message[1000-01-01 BC-date too small-German]: failed-did-not-raise-dataerror
   tests.types.test_datetime.TestDate::test_load_overflow_message[1000-01-01 BC-date too small-ISO]: failed-did-not-raise-dataerror
   tests.types.test_datetime.TestDate::test_load_overflow_message[1000-01-01 BC-date too small-Postgres]: failed-did-not-raise-dataerror
   tests.types.test_datetime.TestDate::test_load_overflow_message[1000-01-01 BC-date too small-SQL]: failed-did-not-raise-dataerror
-  tests.types.test_datetime.TestDate::test_load_overflow_message[10000-01-01-date too large-German]: psycopg-errors-internalerror-year-is-out-of-rang
-  tests.types.test_datetime.TestDate::test_load_overflow_message[10000-01-01-date too large-ISO]: psycopg-errors-internalerror-year-is-out-of-rang
-  tests.types.test_datetime.TestDate::test_load_overflow_message[10000-01-01-date too large-Postgres]: psycopg-errors-internalerror-year-is-out-of-rang
-  tests.types.test_datetime.TestDate::test_load_overflow_message[10000-01-01-date too large-SQL]: psycopg-errors-internalerror-year-is-out-of-rang
   tests.types.test_datetime.TestDate::test_load_overflow_message_binary[1000-01-01 BC-date too small]: failed-did-not-raise-dataerror
-  tests.types.test_datetime.TestDate::test_load_overflow_message_binary[10000-01-01-date too large]: psycopg-errors-internalerror-year-is-out-of-rang
   tests.types.test_datetime.TestDateTimeTz::test_dump_datetime_tz_or_not_tz[b-2000,1,2,3,4,5,6-timestamp]: assertionerror-timestamp
   tests.types.test_datetime.TestDateTimeTz::test_dump_datetime_tz_or_not_tz[b-2000,1,2,3,4,5,6~0-timestamptz]: assertionerror-timestamptz
   tests.types.test_datetime.TestDateTimeTz::test_dump_datetime_tz_or_not_tz[b-2000,1,2,3,4,5,6~2-timestamptz]: assertionerror-timestamptz
@@ -2060,44 +2042,26 @@ expected:
   tests.types.test_datetime.TestDateTimeTz::test_dump_datetime_tz_or_not_tz[t-2000,1,2,3,4,5,6~0-timestamptz]: assertionerror-timestamptz
   tests.types.test_datetime.TestDateTimeTz::test_dump_datetime_tz_or_not_tz[t-2000,1,2,3,4,5,6~2-timestamptz]: assertionerror-timestamptz
   tests.types.test_datetime.TestDateTimeTz::test_dump_datetimetz[b-1000,1,1,0,0~2-1000-01-01 00:00+2]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDateTimeTz::test_dump_datetimetz[b-2000,1,1,0,0~-01:02:03-2000-01-01 00:00-01:02:03]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDateTimeTz::test_dump_datetimetz[b-2000,1,1,0,0~-12-2000-01-01 00:00-12]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDateTimeTz::test_dump_datetimetz[b-2000,1,1,0,0~01:02:03-2000-01-01 00:00+01:02:03]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDateTimeTz::test_dump_datetimetz[b-2000,1,1,0,0~12-2000-01-01 00:00+12]: psycopg-errors-invalidparametervalue-invalid-val
   tests.types.test_datetime.TestDateTimeTz::test_dump_datetimetz[b-2000,1,1,0,0~2-2000-01-01 00:00+2]: psycopg-errors-invalidparametervalue-invalid-val
   ? tests.types.test_datetime.TestDateTimeTz::test_dump_datetimetz[b-2000,12,31,23,59,59,999999~2-2000-12-31
     23:59:59.999999+2]
   : psycopg-errors-invalidparametervalue-invalid-val
   tests.types.test_datetime.TestDateTimeTz::test_dump_datetimetz[b-2300,1,1,0,0,0,1~1-2300-01-01 00:00:00.000001+1]: psycopg-errors-invalidparametervalue-invalid-val
   tests.types.test_datetime.TestDateTimeTz::test_dump_datetimetz[b-3000,1,1,0,0~2-3000-01-01 00:00+2]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDateTimeTz::test_dump_datetimetz[b-min~-12-0001-01-01 00:00-12:00]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDateTimeTz::test_dump_datetimetz[b-min~-2-0001-01-01 00:00-02:00]: psycopg-errors-invalidparametervalue-invalid-val
   tests.types.test_datetime.TestDateTimeTz::test_dump_datetimetz[s-1000,1,1,0,0~2-1000-01-01 00:00+2]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDateTimeTz::test_dump_datetimetz[s-2000,1,1,0,0~-01:02:03-2000-01-01 00:00-01:02:03]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDateTimeTz::test_dump_datetimetz[s-2000,1,1,0,0~-12-2000-01-01 00:00-12]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDateTimeTz::test_dump_datetimetz[s-2000,1,1,0,0~01:02:03-2000-01-01 00:00+01:02:03]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDateTimeTz::test_dump_datetimetz[s-2000,1,1,0,0~12-2000-01-01 00:00+12]: psycopg-errors-invalidparametervalue-invalid-val
   tests.types.test_datetime.TestDateTimeTz::test_dump_datetimetz[s-2000,1,1,0,0~2-2000-01-01 00:00+2]: psycopg-errors-invalidparametervalue-invalid-val
   ? tests.types.test_datetime.TestDateTimeTz::test_dump_datetimetz[s-2000,12,31,23,59,59,999999~2-2000-12-31
     23:59:59.999999+2]
   : psycopg-errors-invalidparametervalue-invalid-val
   tests.types.test_datetime.TestDateTimeTz::test_dump_datetimetz[s-2300,1,1,0,0,0,1~1-2300-01-01 00:00:00.000001+1]: psycopg-errors-invalidparametervalue-invalid-val
   tests.types.test_datetime.TestDateTimeTz::test_dump_datetimetz[s-3000,1,1,0,0~2-3000-01-01 00:00+2]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDateTimeTz::test_dump_datetimetz[s-min~-12-0001-01-01 00:00-12:00]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDateTimeTz::test_dump_datetimetz[s-min~-2-0001-01-01 00:00-02:00]: psycopg-errors-invalidparametervalue-invalid-val
   tests.types.test_datetime.TestDateTimeTz::test_dump_datetimetz[t-1000,1,1,0,0~2-1000-01-01 00:00+2]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDateTimeTz::test_dump_datetimetz[t-2000,1,1,0,0~-01:02:03-2000-01-01 00:00-01:02:03]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDateTimeTz::test_dump_datetimetz[t-2000,1,1,0,0~-12-2000-01-01 00:00-12]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDateTimeTz::test_dump_datetimetz[t-2000,1,1,0,0~01:02:03-2000-01-01 00:00+01:02:03]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDateTimeTz::test_dump_datetimetz[t-2000,1,1,0,0~12-2000-01-01 00:00+12]: psycopg-errors-invalidparametervalue-invalid-val
   tests.types.test_datetime.TestDateTimeTz::test_dump_datetimetz[t-2000,1,1,0,0~2-2000-01-01 00:00+2]: psycopg-errors-invalidparametervalue-invalid-val
   ? tests.types.test_datetime.TestDateTimeTz::test_dump_datetimetz[t-2000,12,31,23,59,59,999999~2-2000-12-31
     23:59:59.999999+2]
   : psycopg-errors-invalidparametervalue-invalid-val
   tests.types.test_datetime.TestDateTimeTz::test_dump_datetimetz[t-2300,1,1,0,0,0,1~1-2300-01-01 00:00:00.000001+1]: psycopg-errors-invalidparametervalue-invalid-val
   tests.types.test_datetime.TestDateTimeTz::test_dump_datetimetz[t-3000,1,1,0,0~2-3000-01-01 00:00+2]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDateTimeTz::test_dump_datetimetz[t-min~-12-0001-01-01 00:00-12:00]: psycopg-errors-invalidparametervalue-invalid-val
-  tests.types.test_datetime.TestDateTimeTz::test_dump_datetimetz[t-min~-2-0001-01-01 00:00-02:00]: psycopg-errors-invalidparametervalue-invalid-val
   tests.types.test_datetime.TestDateTimeTz::test_max_with_timezone[0-max--06-America/Chicago]: psycopg-errors-internalerror-year-is-out-of-rang
   tests.types.test_datetime.TestDateTimeTz::test_max_with_timezone[0-min-+09:18:59-Asia/Tokyo]: psycopg-errors-internalerror-year-is-out-of-rang
   tests.types.test_datetime.TestDateTimeTz::test_max_with_timezone[1-max--06-America/Chicago]: psycopg-errors-internalerror-year-is-out-of-rang

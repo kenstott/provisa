@@ -31,8 +31,10 @@ import {
   FormLayout,
 } from "../../components/form/FormLayout";
 import { ListRow } from "../../components/list/ListTable";
+import { useCapability } from "../../hooks/useCapability";
 import { PanelActions } from "../../components/list/SplitPane";
 import { PanelDelete } from "../../components/list/PanelDelete";
+import { PanelDuplicate } from "../../components/list/PanelDuplicate";
 import { Tip } from "../../components/Tip";
 import { SEPARATOR, type DerivedPick } from "../../hooks/useDerivedRoles";
 import { matchesQuery } from "../../lib/searchItems";
@@ -123,14 +125,17 @@ function DerivedRowGroup({
 export function DerivedRoleNewForm({
   onSaved,
   onCancel,
+  seed,
 }: {
   onSaved: (attribute: string) => Promise<void>;
   onCancel: () => void;
+  /** A duplicate's starting values; absent, the form opens empty. */
+  seed?: { attribute: string; description: string };
 }) {
   const { t } = useTranslation();
   const { rebind } = useAuth();
-  const [attribute, setAttribute] = useState("");
-  const [description, setDescription] = useState("");
+  const [attribute, setAttribute] = useState(seed?.attribute ?? "");
+  const [description, setDescription] = useState(seed?.description ?? "");
   const [problem, setProblem] = useState<string | null>(null);
   const save = async () => {
     setProblem(null);
@@ -191,12 +196,17 @@ export function DerivedRoleDetail({
   value,
   onChanged,
   onDeleted,
+  onDuplicate,
 }: {
   role: DerivedRole;
   value: string | null;
   onChanged: () => Promise<void>;
   onDeleted: () => Promise<void>;
+  /** Opens the declare form filled from this role (its description; not its values or uses). */
+  onDuplicate: () => void;
 }) {
+  // REQ-1327: defining a role asks user_management.
+  const mayDefine = useCapability("user_management");
   const { t } = useTranslation();
   const { rebind } = useAuth();
   const [editing, setEditing] = useState(false);
@@ -268,29 +278,36 @@ export function DerivedRoleDetail({
 
   return (
     <>
-      <PanelActions>
-        <fieldset className="panel-action-set">
-          <Group gap="xs">
-            <Tip text={t("securityPage.edit")} named>
-              <ActionIcon
-                aria-label={t("securityPage.edit")}
-                data-testid={`edit-derived-role-${role.attribute}`}
-                onClick={() => setEditing(true)}
-              >
-                <Pencil size={14} />
-              </ActionIcon>
-            </Tip>
-            <PanelDelete
-              itemKey={derivedRowKey(role.attribute)}
-              title={t("securityPage.deleteDerivedTitle", { id: role.attribute })}
-              consequence={t("securityPage.deleteDerivedConsequence")}
-              ariaLabel={t("securityPage.delete")}
-              testId={`delete-derived-role-${role.attribute}`}
-              onDelete={remove}
-            />
-          </Group>
-        </fieldset>
-      </PanelActions>
+      {mayDefine && (
+        <PanelActions>
+          <fieldset className="panel-action-set">
+            <Group gap="xs">
+              <Tip text={t("securityPage.edit")} named>
+                <ActionIcon
+                  aria-label={t("securityPage.edit")}
+                  data-testid={`edit-derived-role-${role.attribute}`}
+                  onClick={() => setEditing(true)}
+                >
+                  <Pencil size={14} />
+                </ActionIcon>
+              </Tip>
+              <PanelDuplicate
+                name={role.attribute}
+                onDuplicate={onDuplicate}
+                testId={`duplicate-derived-role-${role.attribute}`}
+              />
+              <PanelDelete
+                itemKey={derivedRowKey(role.attribute)}
+                title={t("securityPage.deleteDerivedTitle", { id: role.attribute })}
+                consequence={t("securityPage.deleteDerivedConsequence")}
+                ariaLabel={t("securityPage.delete")}
+                testId={`delete-derived-role-${role.attribute}`}
+                onDelete={remove}
+              />
+            </Group>
+          </fieldset>
+        </PanelActions>
+      )}
       {problem && (
         <Text c="red" size="sm" role="alert">
           {problem}

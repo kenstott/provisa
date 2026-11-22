@@ -22,6 +22,11 @@ const upsertRlsRuleSpy = vi.fn(async (_input: Record<string, unknown>) => ({
 }));
 const deleteRlsRuleSpy = vi.fn(async (..._args: unknown[]) => ({ success: true, message: "" }));
 
+vi.mock("../../hooks/useCapability", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../hooks/useCapability")>()),
+  // REQ-1327: the roles page acts for a holder of the rights its actions ask.
+  useCapability: () => true,
+}));
 vi.mock("../../context/DomainFilterContext", () => ({
   useDomainFilter: () => ({
     setDomains: vi.fn(),
@@ -180,7 +185,7 @@ describe("SecurityPage — RLS rules on tags (REQ-1384)", () => {
     await userEvent.click(screen.getByTestId("rule-scope-12"));
     await userEvent.click(await screen.findByTestId("delete-rule-12"));
     const dialog = await screen.findByRole("dialog");
-    await userEvent.click(within(dialog).getByRole("button", { name: "Confirm" }));
+    await userEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
     await waitFor(() => expect(deleteRlsRuleSpy).toHaveBeenCalled());
     expect(deleteRlsRuleSpy.mock.calls[0]).toEqual(["analyst", null, null, null, "regional", 12]);
   });

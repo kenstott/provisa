@@ -928,6 +928,9 @@ class Connection:
     def _run(
         self, sql: str, args: tuple, *, bind_as_given: bool = False, prepared: bool = True
     ) -> Any:
+        from provisa.core.env_reference_guard import check_raw
+
+        check_raw(sql, args)  # REQ-1557: a raw write is a write like any other
         stmt, params = _translate(sql, args, self.capabilities.dialect, bind_as_given=bind_as_given)
         if prepared or self.capabilities.dialect != "postgresql":
             return self._exec(text(stmt), params)
@@ -953,6 +956,10 @@ class Connection:
 
     # Async only to keep the awaitable call-site contract; runs synchronously on the request thread.
     async def executemany(self, sql: str, args_seq: list) -> None:
+        from provisa.core.env_reference_guard import check_raw
+
+        for row in args_seq:
+            check_raw(sql, tuple(row))  # REQ-1557
         dialect = self.capabilities.dialect
         stmt, _ = _translate(sql, tuple(args_seq[0]) if args_seq else (), dialect)
         param_list = [_translate(sql, tuple(row), dialect)[1] for row in args_seq]
@@ -1147,12 +1154,22 @@ class Connection:
         from provisa.core.model_row_rules import narrowing_of
 
         guarded = apply_meta_tenant_guard(guard_statement(stmt))
+        self._refuse_edit_of_operator_row(guarded)  # REQ-1557
         narrowing = narrowing_of(guarded, self.capabilities.dialect)  # REQ-2188
         result = (
             self._exec(guarded) if narrowing is None else self._exec_narrowed(guarded, narrowing)
         )
         self._commit_if_autocommit()
         return result
+
+    def _refuse_edit_of_operator_row(self, stmt: Any) -> None:
+        """REQ-1557: refuse a held organization's member's UPDATE of a row that carries a
+        reference to the server's environment (the operator's object), having written nothing."""
+        from provisa.core.env_reference_guard import check_edited, edit_to_check
+
+        query = edit_to_check(stmt)
+        if query is not None:
+            check_edited(stmt.table, self._exec(query).fetchall())
 
     def _count_rows(self, table: Any, *where: Any) -> int:
         from sqlalchemy import func, select as _select

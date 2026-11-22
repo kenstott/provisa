@@ -1,0 +1,32 @@
+{
+  "combineFiles": {
+    "globLabel": "或匹配的文件",
+    "globPlaceholder": "complaints_2026_*.csv",
+    "globHint": "针对数据源文件的 glob，可合为一张表或每个文件一张表。",
+    "modeLabel": "文件的注册方式",
+    "perFile": "每个文件一张表",
+    "combine": "合并为一张表",
+    "checking": "正在检查文件…",
+    "noMatch": "没有文件匹配此 glob。",
+    "unmatched": "未找到 {{tables}} 对应的文件。",
+    "matched_one": "{{glob}} 匹配 {{count}} 个文件",
+    "matched_other": "{{glob}} 匹配 {{count}} 个文件",
+    "sharedColumns": "共有的列：{{columns}}",
+    "noSharedColumns": "它们没有共有的列。",
+    "differHeading": "这些文件的列不同，因此不能合为一张表。请排除它们，或输入不匹配它们的 glob：",
+    "differ": "{{file}} {{how}}",
+    "lacks": "缺少 {{columns}}",
+    "adds": "多出 {{columns}}",
+    "differUnreadable": "无法读取 {{file}}：{{error}}",
+    "extra": "glob {{glob}} 还匹配 {{files}}，这些不是您选择的。",
+    "includeExtra": "也包含这些文件",
+    "extraUnconfirmed": "请包含 glob 额外匹配的文件，或输入只匹配所需文件的 glob。",
+    "nameLabel": "新表名称",
+    "namePlaceholder": "complaints",
+    "nameRequired": "请为新表命名。",
+    "notRegistrable": "这些文件不能注册为一张表。",
+    "sourceFileColumnLabel": "源文件列",
+    "sourceFileColumnPlaceholder": "source_file",
+    "sourceFileColumnHint": "可选：记录每行来自哪个文件的列。"
+  }
+}

@@ -10,7 +10,8 @@
     "metaRowsElapsed_other": "{{count}} linhas · {{elapsed}}ms",
     "error": "Erro",
     "expand": "Expandir",
-    "exitFullScreen": "Sair da tela cheia",
+    "enlarge": "Ampliar",
+    "exitFullScreen": "Restaurar tamanho",
     "collapse": "Recolher",
     "unpinHint": "Desafixar (desafixe para permitir ordenação)",
     "pinToTop": "Fixar no topo",
@@ -18,7 +19,7 @@
     "run": "Executar",
     "removeFromFavorites": "Remover dos favoritos",
     "addToFavorites": "Adicionar aos favoritos",
-    "autoImputeOn": "Imputação automática de relacionamentos ATIVADA — clique para desabilitar",
+    "autoImputeOn": "A inferência automática de relacionamentos está ativada. Clique para desativar.",
     "autoImputeOff": "Imputar automaticamente relacionamentos entre nós visíveis",
     "groupTooltip": "Agrupar nós por atributo (clique duas vezes em uma envoltória para recolher; clique duas vezes no nó recolhido para expandir)",
     "groupPlaceholder": "⬡ agrupar",
@@ -38,7 +39,7 @@
     "viewCode": "Código",
     "showPropertiesPanel": "Mostrar painel de propriedades",
     "copyErrorTitle": "Copiar erro",
-    "expandedDialogLabel": "Visualização expandida do grafo",
+    "expandedDialogLabel": "Visualização ampliada do grafo",
     "firstNodesShown": "Mostrando os primeiros {{count}} nós; há mais. Aumente o limite no menu lateral.",
     "deleteFrame": "Excluir este resultado",
     "sparqlNothingMore": "Nada mais é dito sobre {{resource}}.",
@@ -49,7 +50,7 @@
     "sparqlDropSubquery": "Não é possível soltar uma etiqueta numa consulta com um sub-SELECT. Nada foi adicionado.",
     "sparqlDropNoClass": "Este resultado não nomeia nenhuma classe para unir: dê uma classe a uma variável e solte de novo. Nada foi adicionado.",
     "sparqlDropNode": "Esse nó não é uma variável desta consulta, portanto não há a que o unir. Nada foi adicionado.",
-    "sparqlDropNoPath": "{{name}} não tem nenhuma relação com {{classes}}. Nada foi adicionado.",
+    "sparqlDropNoPath": "{{name}} não tem nenhuma relação com {{classes}} dentro dos domínios selecionados. Nada foi adicionado.",
     "sparqlDropTooFar": "{{name}} está a {{hops}} relações de {{classes}}, além das {{most}} que uma largada percorre: sem caminho curto. Nada foi adicionado.",
     "sparqlDropNoEnd": "Nenhuma extremidade de {{name}} está neste resultado. Nada foi adicionado.",
     "sparqlDropParameterized": "Um caminho não pode passar por {{name}}: a leitura exige argumentos. Nada foi adicionado.",
@@ -57,6 +58,9 @@
     "sparqlDropNoProperty": "Nenhuma classe deste resultado tem {{name}}. Nada foi adicionado.",
     "sparqlDropLeftOut": "Adicionados {{shown}} de {{total}} caminhos igualmente curtos; os outros foram omitidos.",
     "sparqlDropCut": "O resultado atingiu o seu LIMIT de {{limit}}: as linhas seguintes são omitidas.",
-    "cypherPathNoKey": "Os caminhos entre {{from}} e {{to}} precisam da chave de cada nó, e um deles não tem."
+    "cypherPathNoKey": "Os caminhos entre {{from}} e {{to}} precisam da chave de cada nó, e um deles não tem.",
+    "cypherDropNoLabel": "Os nós deste resultado não têm rótulo, e a consulta não tem nenhuma relação que lhes dê um: dê um rótulo a um nó e solte de novo. Nada foi adicionado.",
+    "cypherDropNoPair": "Nenhuma relação na consulta deste resultado une rótulos dentro dos domínios selecionados, então seus nós não podem receber rótulos. Nada foi adicionado.",
+    "cypherDropLabelled": "Os nós sem rótulo deste resultado receberam seus rótulos do esquema, um MATCH por par de rótulos."
   }
 }

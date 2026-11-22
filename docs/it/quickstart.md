@@ -10,7 +10,7 @@ Questa guida spiega come eseguire Provisa **dal repository**, quando sviluppate,
 
 - **Docker Desktop** (in esecuzione)
 - **Python 3.12+**
-- **Node.js 20+**
+- **Node.js 24.12+**
 - **Git**
 
 ---

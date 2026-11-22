@@ -27,7 +27,7 @@ from pathlib import Path
 
 import yaml
 
-from tests.integration.mcp_pin import pinned_roles_of
+from tests.integration.mcp_pin import pinned_roles_of, principal_env, seat_principal
 from tests.pg_control_plane import ControlPlane
 
 _REPO_ROOT = Path(__file__).parents[2]
@@ -185,7 +185,7 @@ class IsolatedServer:
         enable_bolt: bool = False,
         enable_pgwire: bool = False,
         config: str = "config/provisa.yaml",
-        control_plane: str = "postgres",
+        control_plane: str | ControlPlane = "postgres",
         materialize_store_url: str | None = None,
         app: str = "main:app",
         loop: str = "auto",
@@ -209,11 +209,20 @@ class IsolatedServer:
         self._enable_bolt = enable_bolt
         self._enable_pgwire = enable_pgwire
         self._config = config
-        if control_plane not in ("postgres", "own"):
-            raise ValueError(f"control_plane is 'postgres' or 'own', not {control_plane!r}")
+        # A ControlPlane is another server's own plane, shared: another instance of that
+        # deployment. This server runs on it and leaves it to its owner to drop.
+        if isinstance(control_plane, ControlPlane):
+            self.plane: ControlPlane | None = control_plane
+            self._drops_plane = False
+        elif control_plane in ("postgres", "own"):
+            self.plane = None
+            self._drops_plane = control_plane == "own"
+        else:
+            raise ValueError(
+                f"control_plane is 'postgres', 'own' or a ControlPlane, not {control_plane!r}"
+            )
         self._control_plane = control_plane
         self._owns_plane = control_plane != "postgres"
-        self.plane: ControlPlane | None = None
         self._materialize_store_url = materialize_store_url
         self.http_port = free_port()
         self.flight_port = free_port()
@@ -271,7 +280,8 @@ class IsolatedServer:
     def _control_plane_env(self) -> dict:
         """Env overriding the control-plane store. ``own`` (REQ-2014) gives the server a PostgreSQL
         database of its own cloned from the test template (tests/pg_control_plane.py), dropped by
-        ``stop_process``, and uses embedded redis. ``postgres`` uses the session's shared one."""
+        ``stop_process``, and uses embedded redis; a ControlPlane given is another server's own, used
+        the same way and left to its owner to drop. ``postgres`` uses the session's shared one."""
         if not self._owns_plane:
             return {}
         from tests.pg_control_plane import fresh_control_plane
@@ -318,6 +328,8 @@ class IsolatedServer:
             "PROVISA_TELEMETRY_DIR": tempfile.mkdtemp(prefix="isolated-server-telemetry-"),
             # REQ-2075: the roles this server's MCP agent may act as (tests/integration/mcp_pin).
             "PROVISA_MCP_ROLE": pinned_roles_of(self._cfg_path),
+            # REQ-1105: and the principal it acts for, seated below once the server is up.
+            **principal_env(),
             **self._extra_env,
         }
         if self._materialize_store_url is not None:
@@ -375,6 +387,9 @@ class IsolatedServer:
                         f"isolated server did not become healthy in time:\n{_err[-3000:]}"
                     )
                 time.sleep(1)
+        # REQ-1105: the principal a loopback MCP call acts for is an account in the org, in the
+        # control plane the server created at its start (tests/integration/mcp_pin).
+        seat_principal(env["PLATFORM_DATABASE_URL"])
         if self._await_flight:
             self._await_port(self.flight_port, deadline, "Arrow Flight")
         if self._enable_bolt:
@@ -433,7 +448,7 @@ class IsolatedServer:
         if self._cfg_path is not None:
             shutil.rmtree(Path(self._cfg_path).parent)
             self._cfg_path = None
-        if self.plane is not None:
+        if self._drops_plane and self.plane is not None:
             self.plane.close()
             self.plane = None
         _sf = getattr(self, "_stderr_file", None)

@@ -42,6 +42,20 @@ if TYPE_CHECKING:
     from provisa.core.database import Database
 
 
+#: REQ-2261: the stages an environment may declare. A label for reporting and display only: no
+#: authorization path reads it -- what a person may do in an environment comes only from the roles
+#: assigned there (REQ-1539).
+STAGES = ("production", "preprod", "test", "development")
+#: The org's original environment (prod) starts as production; every environment created after it
+#: starts as development (REQ-2261).
+ORIGINAL_STAGE = "production"
+NEW_ENV_STAGE = "development"
+
+
+class EnvironmentStageError(ValueError):
+    """A stage outside :data:`STAGES`."""
+
+
 class EnvironmentLimitError(Exception):
     """The org's plan admits no further environment. Carries the numbers the refusal names."""
 
@@ -102,7 +116,7 @@ async def ensure_prod(db: "Database", org_id: str, created_by: str | None = None
     async with db.acquire() as conn:
         await conn.upsert(
             environments,
-            {"org_id": org_id, "name": PROD, "created_by": created_by},
+            {"org_id": org_id, "name": PROD, "created_by": created_by, "stage": ORIGINAL_STAGE},
             index_elements=["org_id", "name"],
             update_columns=[],
         )
@@ -163,6 +177,7 @@ async def reserve_env(
                 parent=parent,
                 data_mode=data_mode,
                 mutation_handling=mutation_handling,
+                stage=NEW_ENV_STAGE,
             )
         )
 
@@ -219,6 +234,20 @@ def _aware(moment: datetime) -> datetime:
     """The stored instant as UTC. SQLite hands back a naive datetime for a timezone-aware column,
     and comparing that to an aware ``now`` raises rather than answering."""
     return moment if moment.tzinfo is not None else moment.replace(tzinfo=timezone.utc)
+
+
+async def set_stage(db: "Database", org_id: str, name: str, stage: str) -> str:
+    """Declare ``name``'s stage (REQ-2261) and return the one it replaced, for the audit entry.
+
+    Any environment may take any stage, prod included, and any number may share one. The stage
+    changes no right: nothing that decides what a person may do reads it."""
+    if stage not in STAGES:
+        raise EnvironmentStageError(f"unknown stage {stage!r}; one of {STAGES}")
+    row = await get_env(db, org_id, name)
+    if row is None:
+        raise EnvironmentNameError(f"organization {org_id!r} has no environment {name!r}")
+    await _set(db, org_id, name, stage=stage)
+    return row["stage"]
 
 
 async def set_protected(db: "Database", org_id: str, name: str, protected: bool) -> None:

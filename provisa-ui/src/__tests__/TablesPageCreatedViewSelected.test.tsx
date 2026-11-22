@@ -66,6 +66,7 @@ function view(
     tableName,
     alias: null,
     description: null,
+    registeredAt: "2026-11-01T00:00:00+00:00",
     cacheTtl: 60,
     roleTtl: [],
     pagingKind: null,
@@ -73,7 +74,8 @@ function view(
     pagingCeilingRows: null,
     replicate: null,
     region: null,
-    draft: false,
+    withdrawn: false,
+    sourceWithdrawn: false,
     rowMaterialize: false,
     loadProtected: null,
     offPeakWindow: null,
@@ -110,6 +112,8 @@ function view(
     mvPersist: "replace",
     mvPrimaryKey: [],
     mvIncremental: false,
+    mvRebuildEvery: null,
+    incrementalOption: { available: true, code: null, reason: null },
     mvCalendar: null,
     mvGrain: null,
     mvAllowedLateness: 0,
@@ -167,7 +171,6 @@ const DOMAINS = {
 vi.mock("../hooks/useRegionQueries", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../hooks/useRegionQueries")>()),
   useRegionChoices: () => ({ regions: [], connected: null }),
-  useSetTableDraft: () => vi.fn(),
   useSetTableRegion: () => vi.fn(),
 }));
 vi.mock("../hooks/useAdminOpsQueries", async (importOriginal) => ({
@@ -217,7 +220,7 @@ const REGISTRATION: Registration = {
 };
 
 describe("the Tables list's search", () => {
-  it("lists the tables matching any word of the search", async () => {
+  it("lists the tables matching every word of the search, or either side of or", async () => {
     const before = TABLES.tables;
     TABLES.tables = ["orders", "customers", "invoices"].map((name, i) =>
       view(20 + i, name, {
@@ -233,13 +236,22 @@ describe("the Tables list's search", () => {
         expect(document.querySelector('[data-table-row="sales-pg.customers"]')).not.toBeNull(),
       );
       fireEvent.change(screen.getByTestId("filter-input"), {
-        target: { value: "orders invoices" },
+        target: { value: "orders or invoices" },
       });
       await waitFor(() =>
         expect(document.querySelector('[data-table-row="sales-pg.customers"]')).toBeNull(),
       );
       expect(document.querySelector('[data-table-row="sales-pg.orders"]')).not.toBeNull();
       expect(document.querySelector('[data-table-row="sales-pg.invoices"]')).not.toBeNull();
+      // Every word is required, and a word with a leading - must not be found.
+      fireEvent.change(screen.getByTestId("filter-input"), {
+        target: { value: "sales -invoices" },
+      });
+      await waitFor(() =>
+        expect(document.querySelector('[data-table-row="sales-pg.invoices"]')).toBeNull(),
+      );
+      expect(document.querySelector('[data-table-row="sales-pg.orders"]')).not.toBeNull();
+      expect(document.querySelector('[data-table-row="sales-pg.customers"]')).not.toBeNull();
     } finally {
       TABLES.tables = before;
     }

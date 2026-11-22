@@ -67,6 +67,10 @@ def _model() -> tuple[CompilationContext, GovernanceContext]:
     gov = GovernanceContext()
     gov.table_map = {"orders": 1, "customers": 2, "visits": 3}
     gov.all_columns = {tid: [(c, "integer") for c in cols] for tid, cols in _COLUMNS.items()}
+    # As the build states every table it serves (stage2): each served whole (None means "all
+    # columns visible"). A table with no entry is refused by the column check (fail closed,
+    # REQ-039): V003 for every column reference.
+    gov.visible_columns = {tid: None for tid in _COLUMNS}
     return ctx, gov
 
 
@@ -879,9 +883,10 @@ def test_the_profilers_statement_is_the_products_and_runs_outside_the_guard():
         assert validate_sql(sql, ctx, gov, _ROLE, _KEYS, bypass_relationship_guard=True) == []
 
 
-def test_only_the_profiler_states_a_product_statement():
-    """A role's own SQL cannot reach the product's path: no surface passes the flag, and the
-    one call that does is the profiler's, with the statement it built itself."""
+def test_only_the_profiler_and_the_discovery_measure_state_a_product_statement():
+    """A role's own SQL cannot reach the product's path: no surface passes the flag. The calls
+    that do are the profiler's and discovery's key value overlap join count (REQ-413, amended
+    2026-11-18), each with the statement it built itself."""
     import pathlib
     import re
 
@@ -893,14 +898,14 @@ def test_only_the_profiler_states_a_product_statement():
         for path in root.rglob("*.py")
         if re.search(r"product_statement\s*=\s*True", path.read_text())
     )
-    assert stating == ["profiler/run.py"], stating
+    assert stating == ["discovery/gather.py", "profiler/run.py"], stating
     passing = sorted(
         str(path.relative_to(root))
         for path in root.rglob("*.py")
         if "product_statement=" in path.read_text()
     )
     # The pipeline hands it down; nothing else names it.
-    assert passing == ["pgwire/_pipeline.py", "profiler/run.py"], passing
+    assert passing == ["discovery/gather.py", "pgwire/_pipeline.py", "profiler/run.py"], passing
 
 
 def test_a_recursive_statement_relates_its_rows_along_relationships_only():
@@ -1303,3 +1308,33 @@ def test_the_connection_check_agrees_with_listing_every_set(seed):
         exact = _Pieces(members, edges, set(), shared).whole(choice)
         assert all(len(parts) < 2 for parts in exact) is expected
     assert disconnected > 100  # the draw exercised refusals as well as passes
+
+
+#: A shared dimension (REQ-413): the view ``dim`` of each value a, b and c hold, which each of them
+#: joins many-to-one on k; ``records`` stands for a fourth table with no relationship to it.
+_DIMENSION = _marked("records", "SELECT k FROM a UNION SELECT k FROM b UNION SELECT k FROM c")
+_TO_DIMENSION = {
+    pair for side in (1, 2, 3) for pair in ((side, 10, "k", "k"), (10, side, "k", "k"))
+}
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        f"SELECT m.k FROM {_DIMENSION} AS m WHERE EXISTS (SELECT 1 FROM b WHERE b.k = m.k)",
+        f"SELECT a.k FROM a LEFT JOIN {_DIMENSION} AS m ON a.k = m.k "
+        "AND EXISTS (SELECT 1 FROM b WHERE b.k = m.k)",
+        f"SELECT m.k FROM {_DIMENSION} AS m WHERE m.k IN (SELECT b.k FROM b)",
+    ],
+    ids=["exists", "exists_in_on", "in"],
+)
+def test_a_subquery_related_to_a_view_along_its_relationship_is_no_product(sql):
+    """A subquery's table compared with a view's column is related to the view along the
+    relationship between them, as a join on it is: never a product of the view's branches."""
+    assert _marked_check(sql, _TO_DIMENSION) == []
+
+
+def test_a_subquery_related_to_a_view_with_no_relationship_is_refused():
+    """The same subquery of d, which no relationship joins to the view, is refused."""
+    sql = f"SELECT m.k FROM {_DIMENSION} AS m WHERE EXISTS (SELECT 1 FROM d WHERE d.k = m.k)"
+    assert _marked_check(sql, _TO_DIMENSION)

@@ -31,7 +31,11 @@ import pytest
 
 from provisa.core.pg_error import PostgresError
 from provisa.core.session_time_zone import bind_zone, reset_zone
-from provisa.executor.trino import execute_trino
+from provisa.executor.trino_flight import (
+    TrinoContext,
+    create_flight_connection,
+    execute_trino_flight,
+)
 from provisa.federation.clickhouse_runtime import _ServerBackend
 from provisa.pgwire.session_zone import SessionZone
 from provisa.transpiler.transpile import transpile, transpile_to_trino
@@ -126,56 +130,58 @@ _TRINO_ROWS = ", ".join(
 )
 
 
-def _trino_kwargs() -> dict[str, Any]:
-    return {
-        "host": os.environ.get("TRINO_HOST", "localhost"),
-        "port": int(os.environ.get("TRINO_PORT", "8080")),
-        "user": "test",
-        "catalog": "sales_pg",
-        "schema": "public",
-    }
+#: The statement's Trino session, as the engine read names it through the proxy (REQ-2194).
+_CONTEXT = TrinoContext(source="provisa/itest", catalog="sales_pg", schema="public")
 
 
-def _on_trino(trino_conn: Any, name: str) -> Any:
-    return _run_on_trino(trino_conn, statement(name))
+@pytest.fixture(scope="module")
+def zaychik() -> Iterator[Any]:
+    """The Flight connection to the proxy every Trino read goes through (REQ-2194)."""
+    conn = create_flight_connection(host="localhost", port=int(os.environ["ZAYCHIK_PORT"]))
+    yield conn
+    conn.close()
 
 
-def _run_on_trino(trino_conn: Any, pg_sql: str) -> Any:
+def _on_trino(zaychik: Any, name: str) -> Any:
+    return _run_on_trino(zaychik, statement(name))
+
+
+def _run_on_trino(zaychik: Any, pg_sql: str) -> Any:
     sql = transpile_to_trino(pg_sql).replace(
         "FROM t ORDER", f"FROM (VALUES {_TRINO_ROWS}) AS t(i, c) ORDER"
     )
-    # A statement bound to no zone would run on trino_conn; a zone takes conn_kwargs' connection.
-    return execute_trino(trino_conn, sql, conn_kwargs=_trino_kwargs())
+    # The zone travels with the statement, in its own Trino session.
+    return execute_trino_flight(zaychik, sql, context=_CONTEXT)
 
 
 @pytest.mark.requires_trino
 @pytest.mark.parametrize(
     "set_zone, name, want", [case for case in CASES if case[1] != "json"]
 )  # to_json of a value not said to be an instant: refused by name, below
-def test_trino_answers_as_postgresql_17_answered(trino_conn, set_zone, name, want):
-    result = _in_zone(set_zone, lambda: _on_trino(trino_conn, name))
+def test_trino_answers_as_postgresql_17_answered(zaychik, set_zone, name, want):
+    result = _in_zone(set_zone, lambda: _on_trino(zaychik, name))
     assert tuple(_sent(set_zone, row[0]) for row in result.rows) == want
 
 
 @pytest.mark.requires_trino
 @pytest.mark.parametrize("set_zone", list(_SESSIONS))
-def test_trino_answers_to_json_of_a_stated_instant_as_postgresql_17(trino_conn, set_zone):
-    result = _in_zone(set_zone, lambda: _run_on_trino(trino_conn, _STATED_JSON))
+def test_trino_answers_to_json_of_a_stated_instant_as_postgresql_17(zaychik, set_zone):
+    result = _in_zone(set_zone, lambda: _run_on_trino(zaychik, _STATED_JSON))
     assert tuple(str(row[0]) for row in result.rows) == ANSWERS[set_zone]["json"]
 
 
 @pytest.mark.requires_trino
 @pytest.mark.parametrize("set_zone", list(_SESSIONS))
-def test_trino_refuses_to_json_of_an_instant_by_name(trino_conn, set_zone):
+def test_trino_refuses_to_json_of_an_instant_by_name(zaychik, set_zone):
     with pytest.raises(PostgresError, match="to_json of a timestamptz") as refused:
-        _in_zone(set_zone, lambda: _on_trino(trino_conn, "json"))
+        _in_zone(set_zone, lambda: _on_trino(zaychik, "json"))
     assert refused.value.sqlstate == "0A000"
 
 
 @pytest.mark.requires_trino
-def test_a_trino_client_after_another_is_on_its_own_zone(trino_conn):
+def test_a_trino_client_after_another_is_on_its_own_zone(zaychik, trino_conn):
     def current() -> str:
-        result = execute_trino(trino_conn, "SELECT current_timezone()", conn_kwargs=_trino_kwargs())
+        result = execute_trino_flight(zaychik, "SELECT current_timezone()", context=_CONTEXT)
         return result.rows[0][0]
 
     assert _in_zone("SET TimeZone = 'Asia/Kolkata'", current) == "Asia/Kolkata"

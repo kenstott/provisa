@@ -57,12 +57,12 @@ HEADROOM_BYTES = 2 * 1000 * 1000
 #: The extensions of each version part, part 1 first (provisa.federation.duckdb_extensions.
 #: EXT_PACKAGE_PARTS is their count; tests/unit/test_duckdb_ext_collect.py holds the two equal, and
 #: tests/unit/test_mirror_duckdb_extensions.py that every community extension the connectors declare
-#: is here). Measured for DuckDB 2.0 (compressed, largest platform linux_amd64): part 1 is 77.1 MB and
-#: part 2 68.6 MB. A part that passes its budget stops the build, by name, as does a mirrored extension
-#: no part names.
+#: is here). gsheets has no DuckDB 2.0 build (REQ-1998), so no part names it. Measured for DuckDB 2.0
+#: (compressed, largest platform linux_amd64) with gsheets: part 1 is 77.1 MB and part 2 68.6 MB. A
+#: part that passes its budget stops the build, by name, as does a mirrored extension no part names.
 PARTS: tuple[tuple[str, ...], ...] = (
     ("crypto", "mssql", "snowflake", "bigquery"),
-    ("mongo", "gsheets", "airport", "firebird"),
+    ("mongo", "airport", "firebird"),
 )
 PRIORITY = tuple(name for part in PARTS for name in part)
 

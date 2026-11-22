@@ -19,18 +19,19 @@ from __future__ import annotations
 import re
 from collections.abc import Iterator
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pyarrow as pa
 import pytest
-import trino
 
 from provisa.core.pg_error import PostgresError
 from provisa.core.session_time_zone import StatementZone, bind_zone, reset_zone, trino_spelling
-from provisa.executor import trino as trino_exec
+from provisa.executor.errors import FederationError
+from provisa.executor.trino_flight import execute_trino_flight
 from provisa.pgwire._pipeline import _kept_engine_form
 from provisa.pgwire.session_zone import SessionZone
 from provisa.transpiler.transpile import transpile, transpile_to_duckdb, transpile_to_trino
+from tests.zaychik_double import ProxyConnection
 from tests.unit.pgwire.session_zone_answers import ANSWERS, CASES, INSTANTS, sent, statement
 
 _SESSIONS = {
@@ -61,19 +62,26 @@ def _in_session(set_zone: str, run: Any) -> Any:
 def chdb_session() -> Iterator[Any]:
     from chdb import session
 
+    # chdb's in-memory engine is one per process and lasts while any session on it is open, so
+    # the table is dropped here: closing this session alone does not remove it.
     held = session.Session()
-    held.query(
-        "CREATE TABLE default.t (i Int32, c DateTime64(6, 'UTC'), plain DateTime64(3), s String) "
-        "ENGINE = MergeTree ORDER BY i"
-    )
-    for i, instant in enumerate(INSTANTS):
-        wall = instant.replace("+00", "")
+    try:
         held.query(
-            f"INSERT INTO default.t SELECT {i}, toDateTime64('{wall}', 6, 'UTC'), "
-            f"toDateTime64('{wall}', 3, 'UTC'), 'text'"
+            "CREATE TABLE default.t (i Int32, c DateTime64(6, 'UTC'), plain DateTime64(3), "
+            "s String) ENGINE = MergeTree ORDER BY i"
         )
-    yield held
-    held.close()
+        try:
+            for i, instant in enumerate(INSTANTS):
+                wall = instant.replace("+00", "")
+                held.query(
+                    f"INSERT INTO default.t SELECT {i}, toDateTime64('{wall}', 6, 'UTC'), "
+                    f"toDateTime64('{wall}', 3, 'UTC'), 'text'"
+                )
+            yield held
+        finally:
+            held.query("DROP TABLE default.t")
+    finally:
+        held.close()
 
 
 def _rows(held: Any, sql: str) -> list[Any]:
@@ -283,21 +291,15 @@ def test_trino_json_text_of_an_instant_is_postgresqls():
 
 
 def test_to_json_of_an_instant_on_trino_is_refused_by_name():
-    cursor = MagicMock()
-    cursor.execute.side_effect = trino.exceptions.TrinoUserError(
-        {
-            "errorType": "USER_ERROR",
-            "errorName": "TYPE_MISMATCH",
-            "message": "line 1:8: Cannot cast timestamp(1) with time zone to json",
-        }
-    )
-    conn = MagicMock()
-    conn.cursor.return_value = cursor
-    with (
-        patch.object(trino_exec, "_alive", return_value=True),
-        pytest.raises(PostgresError, match="to_json of a timestamptz") as refused,
-    ):
-        trino_exec.execute_trino(conn, "SELECT CAST(c AS JSON) FROM t")
+    def refuse(sql: str, session: dict | None) -> None:
+        raise FederationError(
+            "USER_ERROR",
+            "TYPE_MISMATCH",
+            "line 1:8: Cannot cast timestamp(1) with time zone to json",
+        )
+
+    with pytest.raises(PostgresError, match="to_json of a timestamptz") as refused:
+        execute_trino_flight(ProxyConnection(on_execute=refuse), "SELECT CAST(c AS JSON) FROM t")
     assert refused.value.sqlstate == "0A000"
 
 

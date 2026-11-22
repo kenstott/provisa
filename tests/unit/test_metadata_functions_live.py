@@ -23,7 +23,7 @@ from provisa.core import schema_org
 from provisa.core.modeling_tags import append_modeling_tag, column_comment
 from provisa.transpiler.metadata_facts import catalog_facts
 from provisa.transpiler.metadata_functions import VALUE_FORMS, expand
-from provisa.transpiler.metadata_server_forms import RAISE_FUNCTION_SQL
+from provisa.transpiler.metadata_server_forms import RAISE_FUNCTIONS_SQL
 from provisa.transpiler.metadata_oids import KEY_OID_BASE, table_oid
 from provisa.transpiler.metadata_settings import set_statement, statement_settings
 from provisa.transpiler.metadata_views import CATALOG_VIEW_NAMES, NEUTRAL_VIEW_NAMES
@@ -116,8 +116,8 @@ def _register(conn) -> None:
         source_id="src",
         domain_id="sales",
         schema_name="sales",
-        table_name="drafted",
-        draft=True,
+        table_name="withdrawn_one",
+        withdrawn=True,
     )
     descriptions = {"region": "Where it shipped", "number": "Its number"}
     for table_id, column, primary, alias in _COLUMNS:
@@ -184,7 +184,8 @@ def live(embedded_postgres, control_plane_template):
                 conn.exec_driver_sql(statement)
         conn.exec_driver_sql("CREATE SCHEMA meta")
         # As startup_seed gives the control plane: how a form answers PostgreSQL's own error.
-        conn.exec_driver_sql(RAISE_FUNCTION_SQL)
+        for statement in RAISE_FUNCTIONS_SQL:
+            conn.exec_driver_sql(statement)
         _register(conn)
         for ddl in _META_TABLE_VIEWS.values():
             conn.exec_driver_sql(ddl.replace("%", "%%"))
@@ -205,7 +206,7 @@ def _facts(held: dict[int, set[str]] | None = None, role: str = "analyst", unser
 
 def _told(conn) -> None:
     """What the admin terminal tells a statement's views, in this transaction."""
-    sql, values = set_statement(statement_settings("analyst", True, "provisa", False))
+    sql, values = set_statement(statement_settings("analyst", True, "provisa", False, masked=()))
     for n, value in enumerate(values, 1):
         sql = sql.replace(f"${n}", f"'{value}'", 1)
     conn.exec_driver_sql(sql)
@@ -307,7 +308,7 @@ def test_the_views_list_only_what_a_catalog_lists_as_keys(live):
             "FROM meta.table_keys WHERE kind = 'f' AND column_name NOT IN ('_domain_', '_name_') "
             "ORDER BY key_id, position"
         ).fetchall()
-        # A composite key in the target's order; no semantic join; nothing on a draft.
+        # A composite key in the target's order; no semantic join; nothing on a withdrawn table.
         assert [tuple(r) for r in rows] == [
             ("f", 3, 1, 1, "customerId", "id"),
             ("f", 3, 2, 1, "rb", "b"),
@@ -379,6 +380,34 @@ def test_a_table_privilege_is_the_real_one(live, relation, table_id, privilege):
             conn, f"has_table_privilege('analyst', {table_oid(table_id)}, '{privilege}')"
         )
         assert by_name == by_oid == for_user == expected
+
+
+@pytest.mark.parametrize("who", ("analyst", "pg_monitor", "pg_read_all_data"))
+@pytest.mark.parametrize("column", ("id", "region"))
+def test_a_column_privilege_of_a_user_is_the_real_one(live, who, column):
+    with live.begin() as conn:
+        call = f"has_column_privilege('{who}', 'sales.orders', '{column}', 'SELECT')"
+        assert _form(conn, call) == _real(conn, call)
+
+
+def test_a_computed_argument_answers_as_the_value_it_computes(live):
+    with live.begin() as conn:
+        for plain, computed in (
+            (
+                "has_table_privilege('sales.orders', 'SELECT')",
+                "has_table_privilege(LOWER('Sales.Orders'), UPPER('select'))",
+            ),
+            (
+                "has_table_privilege('analyst', 'sales.orders', 'SELECT')",
+                "has_table_privilege(LOWER('Analyst'), LOWER('Sales.Orders'), 'select')",
+            ),
+            (
+                "has_column_privilege('analyst', 'sales.orders', 'id', 'SELECT')",
+                "has_column_privilege(LOWER('Analyst'), LOWER('Sales.Orders'), LOWER('ID'), 'select')",
+            ),
+            ("pg_get_viewdef('pg_class')", "pg_get_viewdef(LOWER('PG_CLASS'))"),
+        ):
+            assert _form(conn, computed) == _form(conn, plain)
 
 
 def test_a_table_it_cannot_read_is_false_and_one_it_cannot_list_is_unknown(live):

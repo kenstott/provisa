@@ -16,12 +16,15 @@ import { useTranslation } from "react-i18next";
 import { fetchFakeCatalog, proposeFakes, type FakeCatalog } from "../../../api/fakes";
 import type { RegisteredTable } from "../../../types/admin";
 import { ColumnFakeDialog } from "./ColumnFakeDialog";
+import { Tip } from "../../../components/Tip";
+import { stableBlock, stableReasonKey } from "./declaration";
 
 type Update = (i: number, key: string, value: string | string[] | boolean | MaskEntry[]) => void;
 
 // REQ-1494: per column its fake (blank shows the real value), its synthetic rule, whether the fake
 // is stable, and a marker on a pii column with no fake. A simple fake is typed in its cell; the
-// column dialog picks kinds and methods by name with their arguments.
+// column dialog picks kinds and methods by name with their arguments. Stable is offered only for a
+// fake that can be stable, with the reason as its tip; typing one that cannot turns it off.
 export function TestDataColumns({
   table,
   updateEditCol,
@@ -57,11 +60,14 @@ export function TestDataColumns({
       })
       .catch((e: Error) => setError(e.message));
   };
+  // The catalog is asked with the table's column types, so the server names each one's family.
+  const dataTypes = [...new Set(table.columns.map((c) => c.dataType ?? ""))];
+  const typesKey = JSON.stringify(dataTypes);
   useEffect(() => {
-    fetchFakeCatalog()
+    fetchFakeCatalog(JSON.parse(typesKey) as string[])
       .then(setCatalog)
       .catch((e: Error) => setError(e.message));
-  }, []);
+  }, [typesKey]);
   const dialogButton = (i: number, label: string) => (
     <ActionIcon
       variant="subtle"
@@ -126,7 +132,11 @@ export function TestDataColumns({
                   aria-label={t("testData.fake")}
                   placeholder={t("testData.realValue")}
                   value={c.fake || ""}
-                  onChange={(e) => updateEditCol(i, "fake", e.target.value)}
+                  onChange={(e) => {
+                    updateEditCol(i, "fake", e.target.value);
+                    if (c.fakeStable && catalog && stableBlock(catalog, e.target.value))
+                      updateEditCol(i, "fakeStable", false);
+                  }}
                   rightSection={dialogButton(i, t("testData.openDialog"))}
                   data-testid={`testdata-fake-${c.columnName}`}
                 />
@@ -142,12 +152,23 @@ export function TestDataColumns({
                 />
               </Table.Td>
               <Table.Td>
-                <Checkbox
-                  aria-label={t("testData.stable")}
-                  checked={!!c.fakeStable}
-                  onChange={(e) => updateEditCol(i, "fakeStable", e.currentTarget.checked)}
-                  data-testid={`testdata-stable-${c.columnName}`}
-                />
+                {(() => {
+                  // Unknown until the catalog is read: held until then.
+                  const blocked = catalog ? stableBlock(catalog, c.fake) : null;
+                  return (
+                    <Tip text={blocked && t(...stableReasonKey(blocked))}>
+                      <span data-testid={`testdata-stable-tip-${c.columnName}`}>
+                        <Checkbox
+                          aria-label={t("testData.stable")}
+                          checked={!!c.fakeStable && catalog !== null && blocked === null}
+                          disabled={catalog === null || blocked !== null}
+                          onChange={(e) => updateEditCol(i, "fakeStable", e.currentTarget.checked)}
+                          data-testid={`testdata-stable-${c.columnName}`}
+                        />
+                      </span>
+                    </Tip>
+                  );
+                })()}
               </Table.Td>
             </Table.Tr>
           ))}

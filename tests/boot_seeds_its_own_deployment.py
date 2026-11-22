@@ -38,14 +38,15 @@ import pytest
 _SEEDED_FROM: dict[str, tuple[str, str]] = {}
 
 
-async def prepare_first_start(config_path: str, owner: str) -> None:
+async def prepare_first_start(config_path: str, owner: str, org_id: str | None = None) -> None:
     """Make a boot with ``config_path`` its deployment's first start, unless the org's store was
     seeded from that same configuration for the same ``owner`` (the test module, or the session's
-    live server) in this session."""
+    live server) in this session. ``org_id`` is the org the boot serves when its process is
+    launched with its own ``ORG_ID`` (the live server); otherwise the configuration's own."""
     from provisa.core.config_loader import load_control_plane
 
     path = str(Path(config_path).resolve())
-    org_id = load_control_plane(path).resolved_org_id()
+    org_id = org_id or load_control_plane(path).resolved_org_id()
     if _SEEDED_FROM.get(org_id) == (path, owner):
         return
     _SEEDED_FROM[org_id] = (path, owner)

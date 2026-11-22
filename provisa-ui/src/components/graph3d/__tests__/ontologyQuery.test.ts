@@ -20,14 +20,18 @@ import {
   type MetaReader,
 } from "../../../api/metaGraph";
 import {
-  flatTerms,
   ontologyCountQuery,
   ontologyGraph,
+  ontologyHopQuery,
   ontologyQuery,
   termEdges,
+  termLevels,
+  type OntologyRows,
   type TermRow,
 } from "../ontologyData";
+import { readOntology } from "../ontologyRead";
 import type { LayerId, QueryScope } from "../graphModel";
+import { searchItems } from "../../../lib/searchItems";
 
 const scalar: GraphqlType = { kind: "SCALAR", name: "String" };
 const list = (name: string): GraphqlType => ({
@@ -149,9 +153,7 @@ describe("the Ontology View's query", () => {
     const q = squash(ontologyQuery(reader(), scope(["ontology", "domains", "columns"])));
     expect(q.startsWith("query Ontology {")).toBe(true);
     expect(q).toContain("_terms: on_terms {");
-    expect(q).toContain(
-      "edgesOut { id fromTermId toTermId relType targetTerm { id } }",
-    );
+    expect(q).toContain("edgesOut { id fromTermId toTermId relType targetTerm { id } }");
     // One root: the edges are the terms', not a root of their own.
     expect(q).not.toContain("on_termEdges");
     expect(q.match(/\b(?:m__|on_)\w+/g)).toEqual(["on_terms"]);
@@ -185,9 +187,7 @@ describe("the Ontology View's query", () => {
   it("leaves the hidden statuses out in its where", () => {
     const q = squash(ontologyQuery(reader(), scope(["ontology"], { hiddenStatuses: ["retired"] })));
     // REQ-1387: by the status a person set.
-    expect(q).toContain(
-      'on_terms(where: { status: { in: ["approved","draft","deprecated"] } })',
-    );
+    expect(q).toContain('on_terms(where: { status: { in: ["approved","draft","deprecated"] } })');
     const two = squash(
       ontologyQuery(reader(), scope(["ontology"], { hiddenStatuses: ["retired", "draft"] })),
     );
@@ -209,7 +209,10 @@ describe("the Ontology View's query", () => {
 
   it("keeps the chosen edge types in its where, of the term edges", () => {
     const q = squash(
-      ontologyQuery(reader(), scope(["ontology", "columns"], { edgeTypes: ["KIND_OF", "PART_OF"] })),
+      ontologyQuery(
+        reader(),
+        scope(["ontology", "columns"], { edgeTypes: ["KIND_OF", "PART_OF"] }),
+      ),
     );
     expect(q).toContain('edgesOut(where: { relType: { in: ["KIND_OF","PART_OF"] } })');
     expect(q).not.toContain("sourceRelationships");
@@ -250,9 +253,7 @@ describe("the Ontology View's query", () => {
 
   it("reads the tables a class term grounds with the ontology, in the domains kept", () => {
     const q = squash(ontologyQuery(reader(), scope(["ontology"], { domains: ["sales"] })));
-    expect(q).toContain(
-      'tables(where: { domainId: { in: ["sales"] } }) { id tableName domainId }',
-    );
+    expect(q).toContain('tables(where: { domainId: { in: ["sales"] } }) { id tableName domainId }');
     expect(squash(ontologyQuery(reader(), scope(["domains"])))).not.toContain("tables:");
     // A class term is no orphan: its table is a relationship drawn.
     const orphans = squash(ontologyQuery(reader(), scope(["ontology"], { orphans: false })));
@@ -267,35 +268,56 @@ describe("the Ontology View's query", () => {
 });
 
 describe("REQ-2143: the Ontology View's query under a search", () => {
-  const searched = (items: string[], over: Partial<QueryScope> = {}) =>
+  const searched = (query: string, over: Partial<QueryScope> = {}) =>
     squash(
       ontologyQuery(
         reader(),
-        scope(["ontology", "domains", "columns"], { search: items, ...over }),
+        scope(["ontology", "domains", "columns"], { search: searchItems(query), ...over }),
       ),
     );
 
-  it("reads at its root the terms the search matches, by name or definition, any case", () => {
-    const q = searched(["cust", "lost order"]);
-    expect(q).toContain(
+  it("reads at its root the terms holding every item, by name or definition, any case", () => {
+    expect(searched('cust "lost order"')).toContain(
+      "on_terms(where: { _and: [" +
+        '{ _or: [{ name: { ilike: "%cust%" } }, { definition: { ilike: "%cust%" } }] }, ' +
+        '{ _or: [{ name: { ilike: "%lost order%" } }, { definition: { ilike: "%lost order%" } }] }' +
+        "] })",
+    );
+    // or joins the items either side of it: a term holding either.
+    expect(searched('cust OR "lost order"')).toContain(
       "on_terms(where: { _or: [" +
         '{ name: { ilike: "%cust%" } }, { definition: { ilike: "%cust%" } }, ' +
         '{ name: { ilike: "%lost order%" } }, { definition: { ilike: "%lost order%" } }] })',
     );
+    // An item with a leading - is in neither: a term with no definition is not found in it.
+    expect(searched("-cust")).toContain(
+      "{ _not: { _or: [" +
+        '{ name: { ilike: "%cust%" } }, ' +
+        '{ _and: [{ definition: { is_null: false } }, { definition: { ilike: "%cust%" } }] }' +
+        "] } }",
+    );
     // A pattern's own wildcards are the text's: 50% matches "50%", not "50" and anything.
-    expect(searched(["50%_x"])).toContain('{ name: { ilike: "%50\\\\%\\\\_x%" } }');
+    expect(searched("50%_x")).toContain('{ name: { ilike: "%50\\\\%\\\\_x%" } }');
   });
 
-  it("reads each match's neighbourhood both ways, two hops deep and no further", () => {
-    const q = searched(["cust"]);
-    // A match and the terms a hop from it (by an edge leaving it or one reaching it) are read with
-    // what they touch; the terms two hops off with their edges' ends alone.
-    expect(q.match(/refs \{/g)).toHaveLength(3);
-    expect(q.match(/domains \{/g)).toHaveLength(3);
+  it("reads each match's neighbourhood both ways, each hop's terms with their grounding", () => {
+    const q = searched("cust");
+    // A match is read with what it touches, and its edges both ways, each end by its id: the
+    // next hop reads the ends.
+    expect(q.match(/refs \{/g)).toHaveLength(1);
+    expect(q.match(/domains \{/g)).toHaveLength(1);
     expect(q).toContain("edgesIn");
-    expect(q).toContain("sourceTerm");
-    // The deepest level: an edge's end by its id.
+    expect(q).toContain("sourceTerm { id }");
     expect(q).toContain("targetTerm { id }");
+    // Every hop's terms are read with what they touch, the last hop's too (REQ-2174, amended
+    // 2026-11-12: a term drawn brings its grounding).
+    const s = scope(["ontology", "domains", "columns"], { search: searchItems("cust") });
+    const hop = (n: number) => squash(ontologyHopQuery(reader(), s, n, [3, 4]));
+    expect(hop(1)).toContain("on_terms(where: { id: { in: [3,4] } })");
+    expect(hop(1).match(/refs \{/g)).toHaveLength(1);
+    expect(hop(2).match(/refs \{/g)).toHaveLength(1);
+    expect(hop(2).match(/domains \{/g)).toHaveLength(1);
+    expect(hop(2)).toContain("edgesIn");
     // Without a search: one level, the edges' ends by id, and no edges read the other way.
     const flat = squash(ontologyQuery(reader(), scope(["ontology", "domains", "columns"])));
     expect(flat.match(/refs \{/g)).toHaveLength(1);
@@ -303,10 +325,72 @@ describe("REQ-2143: the Ontology View's query under a search", () => {
   });
 
   it("counts what its root would read, by id with each term's domains", () => {
-    const q = squash(ontologyCountQuery(reader(), scope(["ontology"], { search: ["cust"] })));
+    const q = squash(
+      ontologyCountQuery(reader(), scope(["ontology"], { search: searchItems("cust") })),
+    );
     expect(q).toContain("query OntologyCount");
     expect(q).toContain('{ name: { ilike: "%cust%" } }');
     expect(q).toContain("{ id domains { domainId } }");
+  });
+});
+
+describe("REQ-2174: a focus's hops, read as steps across the term links", () => {
+  const focused = (focus: string, depth: number) =>
+    squash(
+      ontologyQuery(
+        reader(),
+        scope(["ontology", "columns", "data"], {
+          focus,
+          depth,
+          ...(focus.startsWith("p:") ? { products: true } : {}),
+        }),
+      ),
+    );
+  // Each term read in full (with what it touches) is one refs selection; each level nests both ways.
+  const fullTerms = (q: string) => q.match(/refs \{/g)?.length ?? 0;
+
+  it("counts a term's hops from the term: each hop a step", () => {
+    for (const depth of [1, 2, 3, 4, Infinity])
+      expect(termLevels({ search: [], focus: "term:7", depth })).toBe(depth);
+    expect(termLevels({ search: searchItems("cust"), focus: null, depth: 2 })).toBe(2);
+    expect(termLevels({ search: [], focus: null, depth: 2 })).toBe(0);
+  });
+
+  it("counts a product's hops from its own terms: each hop a step across the links", () => {
+    // REQ-2174 (amended 2026-11-12): its tables, their columns and the terms grounded on them come
+    // with the product at no hop.
+    expect(
+      [1, 2, 3, 4, Infinity].map((depth) => termLevels({ search: [], focus: "p:c360", depth })),
+    ).toEqual([1, 2, 3, 4, Infinity]);
+  });
+
+  it("reads a product's graph at its root as its own terms, each read once", () => {
+    // J509a: read three levels deep, nested both ways, the query was 20 KB and got no answer in a
+    // minute; its tables, columns and terms are all the product's own terms read once.
+    const q = focused("p:c360", 3);
+    expect(fullTerms(q)).toBe(1);
+    expect(q).toContain("targetTerm { id }");
+    expect(q).toBe(focused("p:c360", 1));
+    expect(q.length).toBeLessThan(focused("term:7", 1).length * 2);
+  });
+
+  it("reads a product's first hop as one step across the links, both ways", () => {
+    // The product's terms, the terms a link reaches by their ids.
+    const q = focused("p:c360", 1);
+    expect(fullTerms(q)).toBe(1);
+    expect(q).toContain("edgesIn");
+    expect(q).toContain("sourceTerm { id }");
+  });
+
+  it("reads a term's graph a hop at a time, each hop's terms once with their grounding", () => {
+    // Nested, a level to each hop both ways, depth 3 read 7 terms' refs per path (R509-C2).
+    for (const depth of [1, 2, 3]) expect(fullTerms(focused("term:7", depth))).toBe(1);
+    expect(focused("term:7", 3)).toBe(focused("term:7", 1));
+    const s = scope(["ontology", "columns", "data"], { focus: "term:7", depth: 3 });
+    const hop = (n: number) => squash(ontologyHopQuery(reader(), s, n, [1, 2]));
+    expect([1, 2, 3].map((n) => fullTerms(hop(n)))).toEqual([1, 1, 1]);
+    expect(hop(1)).toBe(hop(2).replace("OntologyHop2", "OntologyHop1"));
+    expect(hop(3)).toBe(hop(2).replace("OntologyHop2", "OntologyHop3"));
   });
 });
 
@@ -335,7 +419,9 @@ describe("REQ-416: the query's answer keeps GraphQL's names", () => {
       _terms: [
         answer(1, {
           domains: [{ domainId: "sales" }],
-          edgesOut: [{ id: 5, fromTermId: 1, toTermId: 2, relType: "KIND_OF", targetTerm: { id: 2 } }],
+          edgesOut: [
+            { id: 5, fromTermId: 1, toTermId: 2, relType: "KIND_OF", targetTerm: { id: 2 } },
+          ],
         }),
         answer(2, {}),
       ],
@@ -345,7 +431,7 @@ describe("REQ-416: the query's answer keeps GraphQL's names", () => {
   });
 });
 
-describe("REQ-2143: a nested read, flattened", () => {
+describe("REQ-2143: a neighbourhood read a hop at a time", () => {
   const term = (id: number, over: Partial<TermRow> = {}): TermRow => ({
     id,
     name: `t${id}`,
@@ -357,35 +443,64 @@ describe("REQ-2143: a nested read, flattened", () => {
     grounding: "grounded",
     ...over,
   });
+  const link = (id: number, from: number, to: number) => ({
+    id,
+    fromTermId: from,
+    toTermId: to,
+    relType: "PART_OF",
+  });
 
-  it("holds each term once, at its fullest, and each edge once", () => {
-    // 1 matched; 2 a hop off (read in full); 3 two hops off (its edge's end alone at 2's level).
-    const two = term(2, {
-      refs: [],
-      edgesOut: [
-        { id: 9, fromTermId: 2, toTermId: 3, relType: "KIND_OF", targetTerm: term(3) },
-      ],
-    });
-    const rows = [
-      term(1, {
-        refs: [],
-        edgesOut: [
-          { id: 8, fromTermId: 1, toTermId: 2, relType: "PART_OF", targetTerm: two },
+  it("holds each term once, reads no term twice, and each edge once", async () => {
+    // 1 matched; 2 a hop off (and linked back to 1); 3 two hops off; 9 an end the role cannot read.
+    const answers: Record<string, OntologyRows> = {
+      Ontology: {
+        _terms: [
+          term(1, {
+            refs: [],
+            edgesOut: [{ ...link(8, 1, 2), targetTerm: { id: 2 } }],
+            edgesIn: [
+              { ...link(7, 2, 1), sourceTerm: { id: 2 } },
+              { ...link(6, 9, 1), sourceTerm: null },
+            ],
+          }),
         ],
-        edgesIn: [
-          { id: 8, fromTermId: 1, toTermId: 2, relType: "PART_OF", sourceTerm: { id: 1 } },
+      },
+      OntologyHop1: {
+        _terms: [
+          term(2, {
+            refs: [],
+            edgesOut: [
+              { ...link(7, 2, 1), targetTerm: { id: 1 } },
+              { ...link(9, 2, 3), targetTerm: { id: 3 } },
+            ],
+            edgesIn: [{ ...link(8, 1, 2), sourceTerm: { id: 1 } }],
+          }),
         ],
-      }),
-      // 2 read again at the root (a match too), with less.
-      term(2),
-    ];
-    const terms = flatTerms(rows);
-    expect(terms.map((t) => t.id).sort()).toEqual([1, 2, 3]);
-    expect(terms.find((t) => t.id === 2)?.refs).toEqual([]);
+      },
+      OntologyHop2: {
+        _terms: [term(3, { edgesIn: [{ ...link(9, 2, 3), sourceTerm: { id: 2 } }] })],
+      },
+    };
+    const sent: string[] = [];
+    const got = await readOntology(
+      reader(),
+      scope(["ontology", "columns"], { search: searchItems("t1") }),
+      async (q) => {
+        sent.push(q);
+        return answers[/^query (\w+)/.exec(q)![1]];
+      },
+    );
+    expect(sent).toHaveLength(3);
+    expect(squash(sent[1])).toContain("{ id: { in: [2] } }");
+    // 1 is read, so 2's link back to it reaches nothing new.
+    expect(squash(sent[2])).toContain("{ id: { in: [3] } }");
+    expect(got.queries).toEqual(sent);
+    const terms = got.rows._terms!;
+    expect(terms.map((t) => t.id)).toEqual([1, 2, 3]);
     expect(
       termEdges(terms)
         .map((e) => e.id)
         .sort(),
-    ).toEqual([8, 9]);
+    ).toEqual([6, 7, 8, 9]);
   });
 });

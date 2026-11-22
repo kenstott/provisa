@@ -72,6 +72,8 @@ from typing import TYPE_CHECKING, Any
 
 import httpx
 
+from provisa.api.catalog_import.reader import CatalogReader, CatalogTerm
+from provisa.core.http_failure import describe_http_failure
 from provisa.api.metadata_export.provider import (
     AssetError,
     AssetRefStub,
@@ -80,6 +82,8 @@ from provisa.api.metadata_export.provider import (
 )
 from provisa.api.metadata_export.model import AssetKind, GlossaryTermAsset, junction_payload
 from provisa.api.metadata_export.registry import register_provider
+from provisa.api.metadata_export import sync_values as sv
+from provisa.security import sandbox_egress  # REQ-2006: held to public destinations
 from provisa.core.glossary import NOT_GROUNDED
 
 if TYPE_CHECKING:
@@ -112,6 +116,20 @@ _STEWARD_EMAIL_DOMAIN = "provisa.invalid"
 # table at three columns — an approved relationship carries eight fields, so a table-cp form
 # would have to drop five of them.
 RELATIONSHIP_PROPERTY = "provisaRelationships"
+
+# REQ-2261: the custom properties a table carries the environment it was published from and that
+# environment's stage under, so a catalog can tell production assets from others. Neither is
+# written when the snapshot names no environment.
+ENVIRONMENT_PROPERTY = "provisaEnvironment"
+STAGE_PROPERTY = "provisaStage"
+
+# Every table custom property Provisa authors, each with the description it is declared with. Each
+# tracks the snapshot, its removal included; a steward's own properties stand.
+TABLE_PROPERTIES = {
+    RELATIONSHIP_PROPERTY: "Relationships a Provisa steward approved on this table, as a JSON array.",
+    ENVIRONMENT_PROPERTY: "The Provisa environment this table was published from.",
+    STAGE_PROPERTY: "The stage of the Provisa environment this table was published from.",
+}
 
 # REQ-2141: the custom property every Provisa glossary term carries its ontology role under, and
 # the group terms the roles' top-level terms sit beneath (OpenMetadata's glossary has no node
@@ -305,6 +323,54 @@ class GlossaryOutcome:  # REQ-1387, REQ-1389
         )
 
 
+def _live_description(live: dict[str, Any]) -> str:
+    """A live entity's description. OpenMetadata leaves ``description`` out of an entity that has
+    none; that absence is the empty description Provisa publishes for one (REQ-2247)."""
+    return str(live["description"]) if live.get("description") is not None else ""
+
+
+def _live_labels(
+    labels: list[dict[str, Any]] | None, term_names: dict[str, str]
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """A live entity's tags and glossary links, in Syncing's neutral form (REQ-2247)."""
+    tags, links = [], []
+    for label in labels or []:
+        fqn = str(label.get("tagFQN", ""))
+        if label.get("source") == "Glossary":
+            links.append(term_names.get(fqn, fqn))
+        elif not fqn.startswith(f"{CLASSIFICATION}."):
+            tags.append(fqn)
+    return sv.names(tags), sv.names(links)
+
+
+def _live_table_values(
+    table: TableAsset, live: dict[str, Any], term_names: dict[str, str]
+) -> list[sv.SyncValue]:
+    """One live table's values, addressed by the snapshot table's Provisa names (REQ-2247)."""
+    group = table.ref.fqn()
+    tags, links = _live_labels(live.get("tags"), term_names)
+    owners = sv.names(o["name"] for o in live.get("owners") or [] if o.get("name"))
+    values = [
+        sv.SyncValue(sv.DESCRIPTION, group, group, _live_description(live)),
+        sv.SyncValue(sv.OWNER, group, group, owners),
+        sv.SyncValue(sv.TAG, group, group, tags),
+        sv.SyncValue(sv.GLOSSARY_LINK, group, group, links),
+    ]
+    live_columns = {c.get("name"): c for c in live.get("columns") or []}
+    for column in table.columns:
+        live_column = live_columns.get(column.name)
+        if live_column is None:
+            continue
+        obj = column.ref.fqn()
+        tags, links = _live_labels(live_column.get("tags"), term_names)
+        values += [
+            sv.SyncValue(sv.COLUMN_DESCRIPTION, group, obj, _live_description(live_column)),
+            sv.SyncValue(sv.TAG, group, obj, tags),
+            sv.SyncValue(sv.GLOSSARY_LINK, group, obj, links),
+        ]
+    return values
+
+
 def _assign_terms(snapshot: MetadataSnapshot, entities: list[Entity], outcome: GlossaryOutcome):
     """Label each table and column with the terms assigned to it (REQ-1389): a Class term on
     the tables it grounds, a Property term on its columns."""
@@ -443,27 +509,44 @@ def _table_entity(snapshot: MetadataSnapshot, table: TableAsset) -> Entity:
                 ]
             )
         }
+    if snapshot.environment is not None:  # REQ-2261
+        body.setdefault("extension", {}).update(
+            {
+                ENVIRONMENT_PROPERTY: snapshot.environment.name,
+                STAGE_PROPERTY: snapshot.environment.stage,
+            }
+        )
     return Entity(asset=table.ref, path="/api/v1/tables", kind="table", body=body)
 
 
 def _data_contract_entities(snapshot: MetadataSnapshot) -> list[Entity]:
     """Each data product member's ODCS 3.1 contract, through OpenMetadata's ODCS import
-    (REQ-2118): the same document Provisa serves at /data-products/{id}/contracts/."""
-    from provisa.api.metadata_export.odps import odcs_contract
+    (REQ-2118): the contract the product's default offer gives on it (REQ-2180), the same document
+    Provisa serves at /data-products/{id}/offers/default/contracts/. OpenMetadata holds one
+    contract per entity, so a member is published under the offer every product starts with; a
+    member that offer gives no contract on (a checker table, or a product whose owner removed it)
+    has none published."""
+    from provisa.api.metadata_export.odps import offer_contract
+    from provisa.core.models import DEFAULT_OFFER
 
     by_fqn = {table.ref.fqn(): table for table in snapshot.tables}
     entities = []
     for product in snapshot.data_products:
+        default = next(
+            (o for o in snapshot.offers.get(product.id, ()) if o.name == DEFAULT_OFFER.name), None
+        )
+        if default is None:
+            continue
         for member in product.members:
             table = by_fqn[member.fqn()]
-            if table.contract is None:
-                continue  # REQ-2158: a checker the product owns is no output port of it
+            if member.fqn() not in default.contracts:
+                continue
             entities.append(
                 Entity(
                     asset=table.ref,
                     path="/api/v1/dataContracts/odcs",
                     kind="data_contract",
-                    body=_for_openmetadata(odcs_contract(snapshot, product, table)),
+                    body=_for_openmetadata(offer_contract(snapshot, product, table, default)),
                     for_table=_table_fqn(table),
                 )
             )
@@ -477,6 +560,11 @@ def _for_openmetadata(contract: dict[str, Any]) -> dict[str, Any]:
     unwraps a 3.1 Team object only to its ``members``, so the members go as that array, each by its
     address with its role; a team whose roles have no holders has no member to send. ``latency``: OpenMetadata's units are minute, hour and day, so a latency
     in seconds is stated in whole minutes, rounded up: still an upper bound on how far a read trails.
+    ``customProperties``: OpenMetadata's model reads them as an object of name to value on a schema
+    element, a quality rule, a role and a server, where ODCS 3.1 writes a list of
+    ``{property, value}`` at every level, so each of those goes as that object
+    (:func:`_custom_properties_object`); the contract's own stays a list, each value typed a
+    string there, so a list or object value goes as its JSON (:func:`_custom_property_as_text`).
     """
     out = dict(contract)
     if "team" in out:
@@ -485,6 +573,53 @@ def _for_openmetadata(contract: dict[str, Any]) -> dict[str, Any]:
             out["team"] = team["members"]
     if "slaProperties" in out:
         out["slaProperties"] = [_latency_in_minutes(p) for p in out["slaProperties"]]
+    if "customProperties" in out:
+        out["customProperties"] = [_custom_property_as_text(p) for p in out["customProperties"]]
+    if "schema" in out:
+        out["schema"] = [_schema_element(e) for e in out["schema"]]
+    for key in ("quality", "roles", "servers"):
+        if key in out:
+            out[key] = [_with_custom_object(e) for e in out[key]]
+    return out
+
+
+def _custom_property_as_text(prop: dict[str, Any]) -> dict[str, Any]:
+    """A contract-level custom property as OpenMetadata types it: its value a string. A list or
+    object goes as its JSON; a scalar as it is, which OpenMetadata's import reads as text."""
+    value = prop["value"]
+    if isinstance(value, list | dict):
+        return {**prop, "value": json.dumps(value)}
+    return prop
+
+
+def _custom_properties_object(props: list[dict[str, Any]]) -> dict[str, Any]:
+    """ODCS's ``[{property, value}]`` as OpenMetadata's ``{property: value}``. Each name is one
+    property of its element, so a name given twice is a contract no object can carry."""
+    out: dict[str, Any] = {}
+    for prop in props:
+        name = prop["property"]
+        if name in out:
+            raise ValueError(f"custom property {name!r} is given twice")
+        out[name] = prop["value"]
+    return out
+
+
+def _with_custom_object(element: dict[str, Any]) -> dict[str, Any]:
+    if "customProperties" not in element:
+        return element
+    return {**element, "customProperties": _custom_properties_object(element["customProperties"])}
+
+
+def _schema_element(element: dict[str, Any]) -> dict[str, Any]:
+    """A schema object or property, and those nested in it, with their own and their quality
+    rules' custom properties as OpenMetadata reads them."""
+    out = _with_custom_object(element)
+    if "properties" in out:
+        out = {**out, "properties": [_schema_element(p) for p in out["properties"]]}
+    if "items" in out:
+        out = {**out, "items": _schema_element(out["items"])}
+    if "quality" in out:
+        out = {**out, "quality": [_with_custom_object(q) for q in out["quality"]]}
     return out
 
 
@@ -979,7 +1114,7 @@ def to_term_plans(snapshot: MetadataSnapshot) -> tuple[list[TermPlan], list[Asse
 
 
 @register_provider
-class OpenMetadataExport(MetadataExport):  # REQ-1069
+class OpenMetadataExport(MetadataExport, CatalogReader):  # REQ-1069
     """Publish a snapshot to an OpenMetadata server's ingestion API."""
 
     binds_products = False  # REQ-1634 STATUS: see MetadataExport.binds_products
@@ -1046,14 +1181,10 @@ class OpenMetadataExport(MetadataExport):  # REQ-1069
                 return f"assets/{action}: HTTP {response.status_code}: {response.text[:300]}"
         return None
 
-    async def _register_relationship_property(self, client: httpx.AsyncClient) -> None:
-        """Declare the custom property the relationship extension is stored under."""
-        await self._register_property(
-            client,
-            "table",
-            RELATIONSHIP_PROPERTY,
-            "Relationships a Provisa steward approved on this table, as a JSON array.",
-        )
+    async def _register_table_properties(self, client: httpx.AsyncClient, names: set[str]) -> None:
+        """Declare the table custom properties the extensions being sent are stored under."""
+        for name in sorted(names):
+            await self._register_property(client, "table", name, TABLE_PROPERTIES[name])
 
     async def _register_property(
         self, client: httpx.AsyncClient, entity: str, name: str, description: str
@@ -1138,7 +1269,7 @@ class OpenMetadataExport(MetadataExport):  # REQ-1069
                     asset=entity.asset,
                     message=(
                         f"table {entity.asset.fqn()}: not written: the live read its "
-                        f"steward state is kept from failed ({exc})"
+                        f"steward state is kept from failed ({describe_http_failure(exc)})"
                     ),
                 )
             )
@@ -1173,10 +1304,10 @@ class OpenMetadataExport(MetadataExport):  # REQ-1069
             column["tags"] = self._merged_tags(
                 live_column.get("tags"), column.get("tags"), glossary
             )
-        # Extension keys Provisa does not own are somebody's custom properties; only the
-        # relationship property tracks the snapshot (including its removal).
+        # Extension keys Provisa does not own are somebody's custom properties; Provisa's own
+        # (TABLE_PROPERTIES) track the snapshot, including their removal.
         live_extension = {
-            k: v for k, v in (live.get("extension") or {}).items() if k != RELATIONSHIP_PROPERTY
+            k: v for k, v in (live.get("extension") or {}).items() if k not in TABLE_PROPERTIES
         }
         if live_extension:
             entity.body["extension"] = {**live_extension, **entity.body.get("extension", {})}
@@ -1221,7 +1352,7 @@ class OpenMetadataExport(MetadataExport):  # REQ-1069
                     message=(
                         f"table {entity.asset.fqn()}: not written: the read of its "
                         f"predecessor {old_fqn!r} (id {old_id}), whose steward enrichment it "
-                        f"carries, failed ({exc})"
+                        f"carries, failed ({describe_http_failure(exc)})"
                     ),
                 )
             )
@@ -1266,7 +1397,7 @@ class OpenMetadataExport(MetadataExport):  # REQ-1069
                     asset=entity.asset,
                     message=(
                         f"table {entity.asset.fqn()}: superseded note on predecessor "
-                        f"{old_fqn!r} failed ({exc})"
+                        f"{old_fqn!r} failed ({describe_http_failure(exc)})"
                     ),
                 )
             )
@@ -1306,7 +1437,7 @@ class OpenMetadataExport(MetadataExport):  # REQ-1069
                     asset=AssetRefStub(fqn),
                     message=(
                         f"glossary_term {fqn}: not written: the live read its steward "
-                        f"curation is kept from failed ({exc})"
+                        f"curation is kept from failed ({describe_http_failure(exc)})"
                     ),
                 )
             )
@@ -1497,7 +1628,7 @@ class OpenMetadataExport(MetadataExport):  # REQ-1069
                     asset=AssetRefStub(ROLE_PROPERTY),
                     message=(
                         f"the term role was not exported: declaring the custom property "
-                        f"{ROLE_PROPERTY} on the glossaryTerm type failed ({exc}). The terms "
+                        f"{ROLE_PROPERTY} on the glossaryTerm type failed ({describe_http_failure(exc)}). The terms "
                         "were published without it."
                     ),
                 )
@@ -1608,26 +1739,36 @@ class OpenMetadataExport(MetadataExport):  # REQ-1069
         # steward id -> server-assigned UUID, harvested from the user upserts and consumed by
         # the domains they steward.
         user_ids: dict[str, str] = {}
-        async with httpx.AsyncClient(timeout=self._config.timeout_seconds) as client:
+        async with httpx.AsyncClient(
+            timeout=self._config.timeout_seconds, event_hooks=sandbox_egress.endpoint_event_hooks()
+        ) as client:
             # REQ-1387: business-glossary terms, scoped to the Provisa-owned glossary -- first,
             # so the tables can carry Provisa's term assignments (REQ-1389).
             glossary = await self._publish_glossary(client, snapshot, result)
             _assign_terms(snapshot, requests, glossary)
-            if any("extension" in entity.body for entity in requests):
+            table_properties = {
+                name
+                for entity in requests
+                if entity.kind == "table"
+                for name in entity.body.get("extension", {})
+            }
+            if table_properties:
                 try:
-                    await self._register_relationship_property(client)
+                    await self._register_table_properties(client, table_properties)
                 except httpx.HTTPError as exc:
-                    # The relationships cannot be published without the property, but the tables
-                    # they hang off can. Sending the extension anyway would fail every one of
-                    # those tables over an obstacle that only affects the relationship payload,
+                    # The extension cannot be published without its properties, but the tables
+                    # it hangs off can. Sending the extension anyway would fail every one of
+                    # those tables over an obstacle that only affects the extension payload,
                     # so the extension is dropped and the loss is reported here — once, naming
-                    # the property and the reason, rather than once per table.
+                    # the properties and the reason, rather than once per table.
+                    names = ", ".join(sorted(table_properties))
                     result.errors.append(
                         AssetError(
                             asset=AssetRefStub(RELATIONSHIP_PROPERTY),
                             message=(
-                                f"custom property {RELATIONSHIP_PROPERTY}: {exc}. Approved "
-                                "relationships were not published; every other asset was."
+                                f"custom property {names}: {describe_http_failure(exc)}. Approved "
+                                "relationships, environment and stage were not published; every "
+                                "other asset was."
                             ),
                         )
                     )
@@ -1769,9 +1910,86 @@ class OpenMetadataExport(MetadataExport):  # REQ-1069
                 result.published[entity.kind] = result.published.get(entity.kind, 0) + 1
         return result
 
+    async def _read_live(
+        self, client: httpx.AsyncClient, path: str, fields: str
+    ) -> dict[str, Any] | None:
+        """One live entity by its name, None when the catalog does not hold it. Any other
+        refusal raises, naming the request and the answer (REQ-2247: never an empty read)."""
+        response = await client.get(
+            self._url(path), params={"fields": fields} if fields else None, headers=self._headers()
+        )
+        if response.status_code == 404:
+            return None
+        response.raise_for_status()
+        return response.json()
+
+    async def read(self, snapshot: MetadataSnapshot) -> dict[sv.Key, sv.SyncValue]:
+        """The catalog's description, column descriptions, owners, tags and glossary links of
+        each snapshot table, and the definition of each Provisa term (REQ-2247).
+
+        A glossary label on a term Provisa published reads as that term's name, which is how
+        Provisa names it; any other label keeps its OpenMetadata FQN. Tags under the ``Provisa``
+        classification are governance Provisa enforces and are not read.
+        """
+        plans, _ = to_term_plans(snapshot)
+        terms = [plan for plan in plans if plan.term.term_id > 0]  # not a role's group term
+        term_names = {plan.fqn: plan.term.name for plan in terms}
+        values: list[sv.SyncValue] = []
+        async with httpx.AsyncClient(
+            timeout=self._config.timeout_seconds, event_hooks=sandbox_egress.endpoint_event_hooks()
+        ) as client:
+            for table in snapshot.tables:
+                live = await self._read_live(
+                    client, f"/api/v1/tables/name/{_table_fqn(table)}", "tags,columns,owners"
+                )
+                if live is not None:
+                    values += _live_table_values(table, live, term_names)
+            for plan in terms:
+                live = await self._read_live(client, f"/api/v1/glossaryTerms/name/{plan.fqn}", "")
+                if live is not None:
+                    name = plan.term.name
+                    values.append(
+                        sv.SyncValue(sv.TERM_DEFINITION, name, name, _live_description(live))
+                    )
+        return {v.key: v for v in values}
+
     async def health(self) -> None:
-        async with httpx.AsyncClient(timeout=self._config.timeout_seconds) as client:
+        async with httpx.AsyncClient(
+            timeout=self._config.timeout_seconds, event_hooks=sandbox_egress.endpoint_event_hooks()
+        ) as client:
             response = await client.get(
                 self._url("/api/v1/system/version"), headers=self._headers()
             )
         response.raise_for_status()
+
+    #: Terms read per page of the glossary listing (REQ-2247).
+    glossary_page_size = 100
+
+    async def list_glossary(self) -> list[CatalogTerm]:  # REQ-2247
+        """Every glossary term of every glossary on the server, following the ``paging.after``
+        cursor to the last page. A term's broader term is its parent term."""
+        terms: list[CatalogTerm] = []
+        params: dict[str, str | int] = {"limit": self.glossary_page_size, "fields": "parent"}
+        async with httpx.AsyncClient(
+            timeout=self._config.timeout_seconds, event_hooks=sandbox_egress.endpoint_event_hooks()
+        ) as client:
+            while True:
+                response = await client.get(
+                    self._url("/api/v1/glossaryTerms"), params=params, headers=self._headers()
+                )
+                response.raise_for_status()
+                page = response.json()
+                for row in page["data"]:
+                    parent = row.get("parent")
+                    terms.append(
+                        CatalogTerm(
+                            name=row["name"],
+                            definition=(row.get("description") or "").strip() or None,
+                            broader=(parent["name"],) if parent else (),
+                            ref=row["id"],
+                        )
+                    )
+                after = (page.get("paging") or {}).get("after")
+                if not after:
+                    return terms
+                params = {"limit": self.glossary_page_size, "fields": "parent", "after": after}

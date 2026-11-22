@@ -4,8 +4,6 @@
 
 """Unit tests for Stage 2 SQL governance transformer."""
 
-from types import SimpleNamespace
-
 import pytest
 
 from provisa.compiler.stage2 import (
@@ -14,6 +12,7 @@ from provisa.compiler.stage2 import (
     build_governance_context,
 )
 from provisa.security.masking import MaskingRule, MaskType
+from provisa.compiler.sql_types import CompilationContext
 from tests.governed_pg import governed_database
 from tests.helpers import unscoped_role
 
@@ -209,14 +208,7 @@ class TestStarExpansion:
         """A native filter column (``_nf_status``) is an input the payload never carries: no
         relation an API table is read from (hot CTE, engine-cache table) holds it, and ``SELECT *``
         naming it answered "Table pet_by_status does not have a column named _nf_status"."""
-        ctx = SimpleNamespace(
-            tables={},
-            joins={},
-            physical_to_sql={},
-            refusal=None,
-            kept={},
-            columns_outside_relation=set(),
-        )
+        ctx = CompilationContext()
         columns = [
             {"column_name": "id", "visible_to": []},
             {"column_name": "status", "visible_to": []},
@@ -248,14 +240,7 @@ class TestCeilingWiring:
     """REQ-005 / REQ-263(4): per-role and per-table row ceilings populated from config."""
 
     def test_role_max_rows_populates_limit_ceiling(self):
-        ctx = SimpleNamespace(
-            tables={},
-            joins={},
-            physical_to_sql={},
-            refusal=None,
-            kept={},
-            columns_outside_relation=set(),
-        )
+        ctx = CompilationContext()
         gov = build_governance_context(
             "analyst", None, {}, ctx, [], role={"max_rows": 500, "domain_access": ["*"]}
         )
@@ -263,28 +248,14 @@ class TestCeilingWiring:
 
     def test_role_without_full_results_gets_default_row_limit(self, monkeypatch):
         monkeypatch.setenv("PROVISA_DEFAULT_ROW_LIMIT", "10000")
-        ctx = SimpleNamespace(
-            tables={},
-            joins={},
-            physical_to_sql={},
-            refusal=None,
-            kept={},
-            columns_outside_relation=set(),
-        )
+        ctx = CompilationContext()
         gov = build_governance_context(
             "analyst", None, {}, ctx, [], role={"capabilities": [], "domain_access": ["*"]}
         )
         assert gov.limit_ceiling == 10000
 
     def test_full_results_role_is_uncapped(self):
-        ctx = SimpleNamespace(
-            tables={},
-            joins={},
-            physical_to_sql={},
-            refusal=None,
-            kept={},
-            columns_outside_relation=set(),
-        )
+        ctx = CompilationContext()
         gov = build_governance_context(
             "admin",
             None,
@@ -297,26 +268,12 @@ class TestCeilingWiring:
 
     def test_missing_role_arg_gets_default_row_limit(self, monkeypatch):
         monkeypatch.setenv("PROVISA_DEFAULT_ROW_LIMIT", "10000")
-        ctx = SimpleNamespace(
-            tables={},
-            joins={},
-            physical_to_sql={},
-            refusal=None,
-            kept={},
-            columns_outside_relation=set(),
-        )
+        ctx = CompilationContext()
         gov = build_governance_context("analyst", None, {}, ctx, [], role=unscoped_role("analyst"))
         assert gov.limit_ceiling == 10000
 
     def test_table_max_rows_populates_table_ceilings(self):
-        ctx = SimpleNamespace(
-            tables={},
-            joins={},
-            physical_to_sql={},
-            refusal=None,
-            kept={},
-            columns_outside_relation=set(),
-        )
+        ctx = CompilationContext()
         tables = [{"id": 1, "columns": [], "max_rows": 10}]
         gov = build_governance_context(
             "analyst", None, {}, ctx, tables, role=unscoped_role("analyst")

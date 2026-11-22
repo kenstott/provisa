@@ -39,7 +39,6 @@ from pathlib import Path, PurePosixPath
 import duckdb
 
 from provisa.core import engine_memory
-from provisa.core.engine_memory import motherduck_extension_limit
 
 from provisa.federation.connector import Connector
 from provisa.federation.engine import build_duckdb_engine
@@ -78,6 +77,18 @@ _SHORT_NAMES = {"postgres_scanner": "postgres", "sqlite_scanner": "sqlite"}
 #: their connector attaches with (events/source_loader.make_firebird_loader, make_airport_loader):
 #: where it is not staged they cannot land either.
 LANDS_THROUGH_ITS_EXTENSION = frozenset({"firebird", "airport"})
+
+
+#: The first DuckDB version with no build of an extension, by extension name: DuckDB 2.0 has no
+#: gsheets (its download answers HTTP 404), so on 2.0 a Google Sheets source lands through the
+#: Sheets API (REQ-1998). Known from the version alone, whatever is staged or installed.
+NO_BUILD_FROM: dict[str, tuple[int, int, int]] = {"gsheets": (2, 0, 0)}
+
+
+def unbuilt_extensions() -> frozenset[str]:
+    """The extensions with no build for the running DuckDB version (NO_BUILD_FROM)."""
+    running = tuple(int(p) for p in duckdb.__version__.split(".")[:3])
+    return frozenset(name for name, first in NO_BUILD_FROM.items() if running >= first)
 
 
 @functools.cache
@@ -322,18 +333,21 @@ def _needs(connector: Connector) -> tuple[str, ...]:
     return tuple(needs)
 
 
-def unstaged_needs(connector: Connector, staged: frozenset[str]) -> tuple[str, ...]:
-    """The extensions ``connector`` needs that are not in ``staged``."""
-    return tuple(n for n in _needs(connector) if n not in staged)
+def unstaged_needs(connector: Connector, staged: frozenset[str] | None) -> tuple[str, ...]:
+    """The extensions ``connector`` needs that have no build for the running DuckDB or are not in
+    ``staged`` (``staged`` None: nothing is known to be staged, only the unbuilt count)."""
+    unbuilt = unbuilt_extensions()
+    return tuple(
+        n for n in _needs(connector) if n in unbuilt or (staged is not None and n not in staged)
+    )
 
 
 #: The reader that lands a source type's replicas where the engine cannot attach it, decided and
-#: not yet built (REQ-1998, MOTHERDUCK LANDS THROUGH ITS POSTGRES ENDPOINT, maintainer 2026-11-06:
-#: per-type readers; J866). A source of the type names it while the deployment lacks it.
-PENDING_READERS: dict[str, str] = {
-    "motherduck": "MotherDuck's Postgres-endpoint reader",
-    "google_sheets": "the Google Sheets API reader",
-}
+#: not yet built: a source of the type names it while the deployment lacks it. Empty: MotherDuck
+#: and Google Sheets have theirs (REQ-1998, MOTHERDUCK LANDS THROUGH ITS POSTGRES ENDPOINT;
+#: events/motherduck_reader.py, events/sheets_reader.py). An extension that lags a future DuckDB
+#: release gets its own reader decision, named here until its reader exists.
+PENDING_READERS: dict[str, str] = {}
 
 
 def unstaged_reason(source_type: str, missing: tuple[str, ...]) -> str:
@@ -354,20 +368,6 @@ def unstaged_reason(source_type: str, missing: tuple[str, ...]) -> str:
     return (
         f"no reader of {source_type!r} sources in this deployment: {unavailable}, and Provisa "
         "has no other reader to land it"
-    )
-
-
-def motherduck_reader_missing() -> str | None:
-    """What is missing to read a MotherDuck source in this deployment, or None where the engine's
-    DuckDB loads MotherDuck's extension (REQ-1998). Elsewhere a MotherDuck source is a replica
-    landed through MotherDuck's Postgres endpoint (REQ-1998, MOTHERDUCK LANDS THROUGH ITS POSTGRES
-    ENDPOINT), whose reader this deployment does not have yet: the source names it."""
-    limit = motherduck_extension_limit()
-    if limit is None:
-        return None
-    return (
-        f"needs {PENDING_READERS['motherduck']} to land it, which this deployment does not have "
-        f"yet: {limit}"
     )
 
 

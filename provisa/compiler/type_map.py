@@ -21,6 +21,7 @@ from collections.abc import Mapping
 from typing import cast
 
 from provisa.compiler.naming import to_pascal_case
+from provisa.core.ir_arrays import ArrayType, column_array_type
 from provisa.core.ir_types import SUBTYPES, element_subtype
 
 from graphql import (
@@ -296,20 +297,26 @@ def nested_column_graphql_type(column: Mapping) -> GraphQLScalarType | GraphQLLi
 
     if not natively_nested(column.get("native_type")):
         return None
-    depth = column.get("array_depth") or 0
-    element = column.get("element_type")
-    if depth == 0 or not element:
+    typed = column_array_type(column.get("array_depth"), column.get("element_type"))
+    if typed is None:
         return JSONScalar
-    # A decimal element with a declared precision travels as a JSON string, exact on every
-    # engine, and is declared as what is served.
-    sized_decimal = element.startswith("numeric(")
     # REQ-2171: an array of a subtype is a list of its scalar; its element type is the base.
     subtype = element_subtype(column["native_type"], column.get("native_platform"))
+    return typed_array_graphql_type(typed, subtype)
+
+
+def typed_array_graphql_type(typed: ArrayType, subtype: str | None = None) -> GraphQLList:
+    """The GraphQL type of a typed array (REQ-1965, amended 2026-11-11): a list, nested to its
+    depth, of the GraphQL type of its element (``subtype``'s where the element is one). An
+    element may be null. A decimal element with a declared precision travels as a JSON string,
+    exact on every engine, and is declared as what is served."""
+    sized_decimal = typed.element.startswith("numeric(")
     declared: GraphQLScalarType | GraphQLList = (
-        GraphQLString if sized_decimal else column_type_to_graphql(subtype or element)
+        GraphQLString if sized_decimal else column_type_to_graphql(subtype or typed.element)
     )
-    for _ in range(depth):
+    for _ in range(typed.depth):
         declared = GraphQLList(declared)
+    assert isinstance(declared, GraphQLList)  # depth >= 1
     return declared
 
 

@@ -136,13 +136,30 @@ class HeldList:
 
 @dataclass(frozen=True)
 class ExpiryRule:
-    """One rule on a person's grant: at ``ends_at``, what ``ends`` names ends. ``ends`` maps a
-    capability, or ``*``, to identifiers; empty, it ends the whole grant. It only removes."""
+    """One dated entry on a person's grant: at ``ends_at``, what ``ends`` names ends, and the
+    grant and the rest of its list carry on. ``ends`` maps a capability, or ``*``, to identifiers,
+    and is never empty: what ends a whole grant is the grant's own expiry
+    (``provisa.auth.role_grants``). It only removes."""
 
     role_id: str
     ends_at: datetime
     ends: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
     reason: str | None = None
+    # What the API reads it by, and the list it was set with. Neither is the rule, so neither is
+    # in held_version.
+    rule_key: str | None = None
+    list_kind: str | None = None
+
+
+def rule_ends(rule: ExpiryRule, capability: str, kind: str) -> tuple[str, ...]:
+    """What a passed ``rule`` ends of ``capability``, a capability scoped by the list ``kind``
+    outside the mask: the identifiers named under the capability, and those under ``*`` when the
+    rule was set with the ``kind`` list itself. Otherwise ``*`` names the mask's objects, which are
+    no list-scoped capability's."""
+    named = tuple(rule.ends.get(capability, ()))
+    if rule.list_kind == kind:
+        named = (*named, *rule.ends.get("*", ()))
+    return named
 
 
 @dataclass(frozen=True)

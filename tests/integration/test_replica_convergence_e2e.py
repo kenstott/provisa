@@ -32,7 +32,6 @@ import psycopg
 import pytest
 import yaml
 
-from tests.helpers import registered_id, release_field
 
 from tests.integration.test_pg_engine_landing_never_writes_source_e2e import (
     _ROLE,
@@ -129,7 +128,7 @@ def _register(srv, pg: _SourceAndEngine) -> None:
         'createSource(input: {id: "src", type: "postgresql", host: "127.0.0.1", '
         f'port: {pg.source_port}, database: "shop", username: "provisa", password: "provisa"}})',
     )
-    registered = _mutate(
+    _mutate(
         srv,
         'registerTable(input: {sourceId: "src", domainId: "shop", schemaName: "public", '
         'tableName: "orders", columns: ['
@@ -137,7 +136,6 @@ def _register(srv, pg: _SourceAndEngine) -> None:
         '{name: "amount", visibleTo: ["org_admin"], dataType: "double"}]})',
     )
     # REQ-1921: registered through the admin, it starts as draft; released, it is served.
-    _mutate(srv, release_field(registered_id(registered["message"])))
     # REQ-1907: a replicated table on the ttl change signal needs its refresh clock.
     _mutate(srv, 'updateSourceCache(sourceId: "src", cacheEnabled: true, cacheTtl: 3600)')
 

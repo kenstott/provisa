@@ -186,7 +186,18 @@ JSON = "application/json"
 
 
 #: Every service under ``$PROVISA_SERVICES`` (provisa/codesource/service_ops.py for REQ-2106's).
-SERVICES = ("secrets", "llm", "settings", "cache", "vectors", "http", "log", "metric", "dq")
+SERVICES = (
+    "secrets",
+    "llm",
+    "settings",
+    "cache",
+    "vectors",
+    "http",
+    "log",
+    "metric",
+    "audit",
+    "dq",
+)
 
 #: The header a worker's services request names its call by (the call's id), so the services'
 #: stages report to the request that call serves (REQ-2106).
@@ -206,7 +217,7 @@ def answer(
     sub = sub.split("?", 1)[0]
     kind = TEXT if service == "secrets" else JSON
     try:
-        grant = _grant(token)
+        grant = _for_preflight(_grant(token), token, headers or {})
         if service not in SERVICES:
             raise ServiceRefused(404, f"Provisa offers no service {service!r} to code")
         with (
@@ -232,6 +243,21 @@ def _call_scope(token: str, headers: Mapping[str, str]) -> Any:
     named = headers.get(CALL_HEADER, "")
     scope = call_scope(token, int(named)) if named.isdigit() else None
     return nullcontext() if scope is None else in_carried_scope(scope)
+
+
+def _for_preflight(grant: ServiceGrant, token: str, headers: Mapping[str, str]) -> ServiceGrant:
+    """REQ-2133: ``grant`` as the call the request names holds it. A preflight call is answered for
+    the view it checks and that view's products, under its worker's one grant; any other call
+    holds the grant as issued."""
+    from dataclasses import replace
+
+    from provisa.codesource.worker import call_preflight
+
+    named = headers.get(CALL_HEADER, "")
+    checked = call_preflight(token, int(named)) if named.isdigit() else None
+    if checked is None:
+        return grant
+    return replace(grant, source_id=checked[0], product_ids=checked[1])
 
 
 def _call_role(token: str, headers: Mapping[str, str]) -> str | None:
@@ -273,6 +299,8 @@ def _dispatch(
             return cl.run(service_ops.cache(grant, method, sub, body, span))
         if service == "vectors":
             return cl.run(service_ops.vectors(grant, method, sub, body, span))
+        if service == "audit":
+            return cl.run(service_ops.audit(grant, method, body, span))
         if service == "dq":
             from provisa.dq import service as dq_service
 
@@ -298,6 +326,8 @@ def read_secret(grant: ServiceGrant, name: str) -> str:
 
 
 async def _read(grant: ServiceGrant, name: str) -> str:
+    from provisa.security.redaction import note_secret_value
+
     if name not in grant.secrets:
         await _audit(grant, name, "undeclared")
         raise ServiceRefused(
@@ -323,6 +353,9 @@ async def _read(grant: ServiceGrant, name: str) -> str:
     if not value:
         await _audit(grant, name, "unresolved")
         raise ServiceRefused(404, f"the secret {name!r} ({named}) resolves to nothing")
+    # What the code now holds is matched wherever Provisa writes from here on, an ${env:...}
+    # reference included, which the resolver itself does not note.
+    note_secret_value(name, value)
     await _audit(grant, name, "read")
     return value
 
@@ -345,6 +378,7 @@ async def _audit(grant: ServiceGrant, name: str, outcome: str) -> None:
 
     await record_admin_action(
         await _org_model_db(grant.org_id),
+        org_id=grant.org_id,
         action=SECRET_READ,
         actor_id=f"source:{grant.source_id}",
         subject_id=name,

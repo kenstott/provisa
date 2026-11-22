@@ -80,7 +80,8 @@ COLUMN_FIELDS = (
 TABLE_FIELDS = (
     "id sourceId domainId schemaName tableName alias description watermarkColumn changeSignal "
     "probeQuery probeType viewSql dqContract profilerSourceId queryTemplate fileGlob "
-    "sourceFileColumn importSet arguments landingFilter loadProtected offPeakWindow offPeakTz "
+    "sourceFileColumn importSet arguments landingFilter readWait loadProtected offPeakWindow "
+    "offPeakTz "
     "materialize mvRefreshInterval mvDebounceQuiet mvDebounceMaxDelay pushDebounceQuiet "
     "pushDebounceMaxDelay mvConsistency mvPreprocess mvHoldOnFailingChecks businessKey "
     "validTime recordedTime mvPersist mvIncremental mvCalendar mvGrain mvAllowedLateness "
@@ -117,6 +118,7 @@ _TABLE_AS_IS = (
     "domainId",
     "schemaName",
     "tableName",
+    "readWait",
     "loadProtected",
     "offPeakWindow",
     "offPeakTz",

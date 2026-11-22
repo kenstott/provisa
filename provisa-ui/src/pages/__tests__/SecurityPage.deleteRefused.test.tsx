@@ -13,7 +13,7 @@
 // refers to the role, and shows the server's message for any other refusal.
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, waitFor } from "../../test-utils/render";
+import { render, screen, fireEvent, waitFor, within } from "../../test-utils/render";
 
 const deleteRoleSpy = vi.fn();
 
@@ -29,6 +29,11 @@ const ROLES = [
   },
 ];
 
+vi.mock("../../hooks/useCapability", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../hooks/useCapability")>()),
+  // REQ-1327: the roles page acts for a holder of the rights its actions ask.
+  useCapability: () => true,
+}));
 vi.mock("../../context/DomainFilterContext", () => ({
   useDomainFilter: () => ({
     setDomains: vi.fn(),
@@ -48,6 +53,7 @@ vi.mock("../../hooks/useSecurityQueries", () => ({
   useRLSRules: () => ({ rlsRules: [], loading: false, refetch: vi.fn() }),
   useUpsertRole: () => ({ upsertRole: vi.fn(), loading: false }),
   useDeleteRole: () => ({ deleteRole: deleteRoleSpy, loading: false }),
+  useDeleteRoles: () => vi.fn(),
   useUpsertRlsRule: () => ({ upsertRlsRule: vi.fn(), loading: false }),
   useDeleteRlsRule: () => ({ deleteRlsRule: vi.fn(), loading: false }),
   useRevokeRoleGrants: () => ({ revokeFromTable: vi.fn(), revokeFromObject: vi.fn() }),
@@ -73,7 +79,7 @@ async function confirmDelete() {
   const dialog = await screen.findByRole("dialog");
   expect(dialog.textContent).toContain('Delete role "seller"?');
   expect(deleteRoleSpy).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
+  fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Delete" }));
 }
 
 describe("deleting a role on the Security page", () => {
@@ -99,9 +105,17 @@ describe("deleting a role on the Security page", () => {
             kind: "role_assignment",
             id: 7,
             name: "alice holds seller",
+            label: "alice holds seller",
             via: ["user_role_assignments.role_id"],
           },
-          { kind: "column", id: 41, name: "orders.amount", via: ["table_columns.visible_to"] },
+          {
+            kind: "column",
+            id: 41,
+            name: "orders.amount",
+            label: "orders.amount",
+            via: ["table_columns.visible_to"],
+            table_id: 3,
+          },
         ],
       },
     });

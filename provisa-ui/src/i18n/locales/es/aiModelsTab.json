@@ -1,11 +1,13 @@
 {
   "aiModelsTab": {
     "apiKeysHeading": "Claves de API de proveedores de IA",
-    "apiKeysIntro": "La clave de API propia de su organización para cada proveedor, usada en las operaciones asistidas por IA asignadas a ese proveedor. Si no se define para un proveedor, se usa la clave predeterminada de la instalación. Las claves no vuelven a mostrarse una vez guardadas. En lugar de la clave puede pegar una referencia al almacén: ${secret:NAME} se resuelve contra los secretos de su organización cada vez que se usa.",
+    "apiKeysIntro": "La clave de API propia de su organización para cada proveedor, usada en las operaciones asistidas por IA asignadas a ese proveedor. Si no se define para un proveedor, se usa la clave predeterminada del despliegue. Las claves nunca se muestran una vez guardadas. Puede pegar una referencia de bóveda como ${secret:NAME} en lugar de la clave; se resuelve contra los secretos de su organización cada vez que se usa.",
+    "apiKeysIntroOrgOnly": "La clave de API propia de su organización para cada proveedor, usada en las operaciones asistidas por IA asignadas a ese proveedor. Un proveedor sin clave definida no se usa. Las claves no vuelven a mostrarse una vez guardadas. En lugar de la clave puede pegar una referencia al almacén: ${secret:NAME} se resuelve contra los secretos de su organización cada vez que se usa.",
     "apiKeyLabel": "Clave de API de {{vendor}}",
     "apiKeyPlaceholder": "Clave de API",
     "apiKeySet": "La clave está definida",
-    "apiKeyNotSet": "Sin clave definida: se usa la predeterminada de la instalación",
+    "apiKeyNotSet": "No hay clave definida. Se usa la predeterminada del despliegue.",
+    "apiKeyNotSetOrgOnly": "Sin clave definida",
     "apiKeyClear": "Borrar clave",
     "apiKeyWillClear": "La clave se borrará al guardar.",
     "modelsHeading": "Asignaciones de modelos de IA",
@@ -43,10 +45,18 @@
     "addEndpoint": "Agregar endpoint",
     "removeEndpoint": "Quitar",
     "jevHeading": "Jev (TypeSafe AI)",
-    "jevIntro": "Opcional. Cuando está definida, Provisa usa la API de decisiones con confianza calibrada de Jev para puntuar las propuestas de tipo de relación de la ontología y las relaciones de clave foránea detectadas, en lugar de basarse solo en la confianza autodeclarada por el modelo generador. Si no está definida, esas funciones mantienen su comportamiento actual basado únicamente en el modelo. Si no se define aquí, se usa la variable de entorno TYPESAFEAI_API_KEY de la instalación cuando esté presente.",
+    "jevIntro": "Opcional. Si se define, Provisa puntúa las propuestas de tipos de relación de la ontología y las relaciones de clave foránea descubiertas con la API de decisión de confianza calibrada de Jev, además de la confianza que declara el propio modelo generador. Si no se define aquí, se usa la variable de entorno TYPESAFEAI_API_KEY del despliegue cuando existe. Sin ninguna de las dos, esas funciones usan solo la confianza del modelo.",
+    "jevIntroOrgOnly": "Opcional. Cuando está definida, Provisa usa la API de decisiones con confianza calibrada de Jev para puntuar las propuestas de tipo de relación de la ontología y las relaciones de clave foránea detectadas, en lugar de basarse solo en la confianza autodeclarada por el modelo generador. Si no está definida, esas funciones mantienen su comportamiento actual basado únicamente en el modelo.",
     "saveButtonLabel": "Guardar configuración de modelos de IA",
     "loading": "Cargando…",
     "saved": "Guardado.",
-    "savedRestartRequired": "Guardado. Reinicie el servicio para aplicar los cambios."
+    "savedRestartRequired": "Guardado. Reinicie el servicio para aplicar los cambios.",
+    "limitsIntro": "Cada modelo tiene dos límites, en tokens: lo máximo que puede leer en una solicitud (entrada) y la respuesta más larga que puede escribir (salida). Un modelo con cifras publicadas empieza con ellas; cámbielas si las suyas son distintas.",
+    "inputLimitLabel": "Límite de entrada (tokens)",
+    "outputLimitLabel": "Límite de salida (tokens)",
+    "limitsDefaultNote": "Predeterminado: no se conoce ninguna cifra publicada para este modelo.",
+    "limitsResetKnown": "Usar límites publicados",
+    "limitsResetDefault": "Usar límites predeterminados",
+    "limitsIncomplete": "Introduzca ambos límites de {{model}} como números enteros mayores que cero."
   }
 }

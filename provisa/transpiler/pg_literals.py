@@ -38,6 +38,12 @@ import sqlglot.expressions as exp
 _MAX_PRECISION = 38
 #: The digits a literal's decimal has beside its own.
 _ROOM = 18
+#: The room every target but Trino's gets.
+ROOM = _ROOM
+#: None beside its own, on Trino: Trino holds a sum or product whose exact type passes 38 digits
+#: at a smaller scale (DECIMAL(38, 21) + DECIMAL(20, 1) at scale 19), where its own decimal
+#: arithmetic widens a literal's type of its digits alone to the type its answer needs.
+TIGHT = 0
 
 
 class _NotAnArrayLiteral(ValueError):
@@ -128,7 +134,7 @@ def _as_array(elements: list) -> exp.Expression:  # pyright: ignore[reportPrivat
     )
 
 
-def _exact_numeric(literal: exp.Literal) -> exp.DataType | None:
+def _exact_numeric(literal: exp.Literal, room: int = _ROOM) -> exp.DataType | None:
     try:
         value = decimal.Decimal(literal.this)
     except decimal.InvalidOperation:
@@ -142,7 +148,7 @@ def _exact_numeric(literal: exp.Literal) -> exp.DataType | None:
         return None  # wider than any engine decimal: left to the engine's own cast
     # Room to compute in, and not the widest: an engine cannot widen a list of DECIMAL(38,1) and
     # DECIMAL(38,3), and DuckDB refuses a product of a width that is too narrow.
-    width = min(_MAX_PRECISION, precision + _ROOM)
+    width = min(_MAX_PRECISION, precision + room)
     return exp.DataType.build(f"DECIMAL({width}, {scale})", dialect="postgres")
 
 
@@ -161,7 +167,7 @@ def _fixed_length(to: exp.DataType) -> int | None:
     return int(to.expressions[0].this.this) if to.expressions else 1
 
 
-def _exact_input(node: exp.Expr) -> exp.Expr:
+def _exact_input(node: exp.Expr, room: int = _ROOM) -> exp.Expr:
     """A literal cast as PostgreSQL's input function reads it, where a target's cast would change
     it: a numeric of no precision keeps every digit (DECIMAL is DECIMAL(38,0) on Trino, (18,3) on
     DuckDB and (10,0) on ClickHouse), and a character(n) keeps n characters."""
@@ -170,7 +176,7 @@ def _exact_input(node: exp.Expr) -> exp.Expr:
     to = node.to
     number = _number_of(node.this)
     if number is not None and to.is_type(exp.DataType.Type.DECIMAL) and not to.expressions:
-        exact = _exact_numeric(number)
+        exact = _exact_numeric(number, room)
         return node if exact is None else exp.Cast(this=node.this, to=exact)
     length = _fixed_length(to)
     if length is not None and isinstance(node.this, exp.Literal) and node.this.is_string:
@@ -183,13 +189,14 @@ def _exact_input(node: exp.Expr) -> exp.Expr:
 _SIZED_CAST = re.compile(r"(::|\bas)\s*\"?(numeric|decimal|char|character)\b", re.IGNORECASE)
 
 
-def exact_inputs(pg_sql: str) -> str:
+def exact_inputs(pg_sql: str, room: int = _ROOM) -> str:
     """``pg_sql`` with each literal cast as PostgreSQL's input function reads it (REQ-2171, AN
-    ANSWER THAT DIFFERS IS REFUSED). The text of a statement with none is returned as it is."""
+    ANSWER THAT DIFFERS IS REFUSED). The text of a statement with none is returned as it is.
+    ``room``: the digits a literal's decimal has beside its own (``TIGHT`` on Trino)."""
     if _SIZED_CAST.search(pg_sql) is None:
         return pg_sql
     tree = sqlglot.parse_one(pg_sql, read="postgres")
-    written = tree.transform(_exact_input)
+    written = tree.transform(lambda node: _exact_input(node, room))
     return pg_sql if written == tree else written.sql(dialect="postgres")
 
 
@@ -211,16 +218,55 @@ def values_cast(column: exp.Column) -> exp.Cast | None:
     return value if isinstance(value, exp.Cast) else None
 
 
+def _depth(elements: list) -> int:
+    """An array's dimensions, as its text form nests them: '{{a,b}}' has two."""
+    inner = [_depth(e) for e in elements if isinstance(e, list)]
+    return 1 + (max(inner) if inner else 0)
+
+
+def _of_depth(to: exp.DataType, depth: int) -> exp.DataType:
+    """``to``, an array type, of ``depth`` dimensions: PostgreSQL's text[] holds any number of
+    them, an engine's list type one per nesting (a cast of a nested list to TEXT[] writes each
+    sublist as a text). The dimensions ``to`` declares are dropped, as PostgreSQL ignores them:
+    '{{1,2}}'::int[] and '{{1,2}}'::int[][] are both of two."""
+    element = to
+    while element.is_type(exp.DataType.Type.ARRAY) and element.expressions:
+        element = element.expressions[0]
+    typed = element.copy()
+    for _ in range(depth):
+        typed = exp.DataType(this=exp.DataType.Type.ARRAY, expressions=[typed], nested=True)
+    return typed
+
+
+def array_input(node: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
+    """An array's text form cast to an array type, ``'{1,2}'::int4[]``, as the array of its
+    elements' strings cast to that type: no engine's cast reads array_in's text. Any other node
+    is returned as it is."""
+    if not isinstance(node, exp.Cast) or not isinstance(node.this, exp.Literal):
+        return node
+    literal, to = node.this, node.to
+    if not literal.is_string or not to.is_type(exp.DataType.Type.ARRAY):
+        return node
+    try:
+        elements = array_elements(literal.this)
+    except _NotAnArrayLiteral:
+        return node  # not an array's text form: the engine's cast reports it
+    return exp.Cast(this=_as_array(elements), to=_of_depth(to, _depth(elements)))
+
+
+def array_inputs(tree: exp.Expr) -> exp.Expr:
+    """``tree`` with each array's text form cast to an array type written as its elements
+    (``array_input``), in place."""
+    return tree.transform(array_input, copy=False)
+
+
 def literal_input(node: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
     if not isinstance(node, exp.Cast) or not isinstance(node.this, exp.Literal):
         return node
     literal, to = node.this, node.to
-    if literal.is_string and to.is_type(exp.DataType.Type.ARRAY):
-        try:
-            elements = array_elements(literal.this)
-        except _NotAnArrayLiteral:
-            return node  # not an array's text form: the engine's cast reports it
-        return exp.Cast(this=_as_array(elements), to=to)
+    written = array_input(node)
+    if written is not node:
+        return written
     if (
         literal.is_string
         and to.is_type(exp.DataType.Type.VARBINARY)
@@ -244,10 +290,36 @@ def postgres_literals(pg_sql: str) -> str:
     if "::" not in pg_sql and "cast" not in lowered and "null" not in lowered:
         return pg_sql
     tree = sqlglot.parse_one(pg_sql, read="postgres")
-    tree = tree.transform(literal_input)
+    tree = tree.transform(literal_input, copy=False)
     if isinstance(tree, exp.Select):
         for select in tree.selects:
             target = select.this if isinstance(select, exp.Alias) else select
             if isinstance(target, exp.Null):
                 target.replace(exp.cast(exp.null(), exp.DataType.Type.TEXT))
-    return tree.sql(dialect="postgres")
+    return tree.sql(dialect="postgres", copy=False)
+
+
+#: An edit of a statement's text: the characters ``start`` to ``end`` (exclusive) and their
+#: replacement.
+TextEdit = tuple[int, int, str]
+
+
+def literal_span(literal: exp.Literal) -> tuple[int, int]:
+    """Where a parsed string literal is in the statement's text: its first character and the one
+    after its last."""
+    return literal.meta["start"], literal.meta["end"] + 1
+
+
+def pg_string(text: str) -> str:
+    """``text`` as a PostgreSQL string literal (standard_conforming_strings: a backslash is
+    itself)."""
+    return "'" + text.replace("'", "''") + "'"
+
+
+def spliced(sql: str, edits: list[TextEdit]) -> str:
+    """``sql`` with each edit made. A step that changes a few literals edits the statement's text
+    rather than write the parsed statement again, which would lose what a parse keeps in a node's
+    meta (to_char's template, pg_syntax)."""
+    for start, end, text in sorted(edits, reverse=True):
+        sql = sql[:start] + text + sql[end:]
+    return sql

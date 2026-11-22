@@ -20,14 +20,17 @@ from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import httpx
 
 from provisa.api_source.models import ApiEndpoint
 from provisa.core.paging import PaginationConfig, PaginationType
 
-# Requirements: REQ-295, REQ-297, REQ-298, REQ-316, REQ-320, REQ-322, REQ-325
+if TYPE_CHECKING:
+    from provisa.core.auth_models import ApiAuthOAuth2ClientCredentials
+
+# Requirements: REQ-295, REQ-297, REQ-298, REQ-316, REQ-320, REQ-322, REQ-325, REQ-2265
 
 
 class ApiCallError(Exception):
@@ -220,6 +223,18 @@ def _last_row_value(endpoint: ApiEndpoint, page: Any, row_field: str) -> Any:
     return last[row_field]
 
 
+def _answered_cursor(page: Any, cursor_field: str) -> Any:
+    """Where the next page starts, as ``page`` answers it at ``cursor_field`` -- a property of
+    the answer, or a dotted path into one (``paging.after``, REQ-2265). None where the answer
+    does not hold it: a cursor API marks its last page by leaving the cursor out, whether the
+    cursor itself or the object that would hold it."""
+    for part in cursor_field.split("."):
+        if not isinstance(page, dict):
+            return None
+        page = page.get(part)
+    return page
+
+
 async def _pages(
     client: httpx.AsyncClient,
     endpoint: ApiEndpoint,
@@ -304,7 +319,7 @@ async def _pages(
                 timeout=timeout,
             )
             data = await loop.run_in_executor(None, _decoded, resp)
-            cursor = data.get(cursor_field) if isinstance(data, dict) else None
+            cursor = _answered_cursor(data, cursor_field)
             if paging is not None:
                 paging.more = bool(cursor)
             yield data
@@ -427,7 +442,7 @@ def _apply_auth(auth, headers: dict, query_params: dict) -> None:  # REQ-320
         if "bearer" in auth:
             headers["Authorization"] = f"Bearer {resolve_secrets(auth['bearer'])}"
         if "api_key_header" in auth and "api_key" in auth:
-            headers[auth["api_key_header"]] = resolve_secrets(auth["api_key"])
+            headers[auth["api_key_header"]] = resolve_secrets(auth["api_key"], credential=True)
         if "headers" in auth:
             for k, v in auth["headers"].items():
                 headers[k] = resolve_secrets(v)
@@ -435,14 +450,14 @@ def _apply_auth(auth, headers: dict, query_params: dict) -> None:  # REQ-320
 
     match auth:
         case ApiAuthBearer(token=token):
-            headers["Authorization"] = f"Bearer {resolve_secrets(token)}"
+            headers["Authorization"] = f"Bearer {resolve_secrets(token, credential=True)}"
         case ApiAuthBasic(username=u, password=p):
             import base64
 
             cred = base64.b64encode(f"{resolve_secrets(u)}:{resolve_secrets(p)}".encode()).decode()
             headers["Authorization"] = f"Basic {cred}"
         case ApiAuthApiKey(key=key, name=name, location=loc):
-            resolved_key = resolve_secrets(key)
+            resolved_key = resolve_secrets(key, credential=True)
             if loc == ApiKeyLocation.header:
                 headers[name] = resolved_key
             else:
@@ -459,27 +474,25 @@ def _apply_auth(auth, headers: dict, query_params: dict) -> None:  # REQ-320
                 headers[k] = resolve_secrets(v)
 
 
-# Simple token cache for OAuth2 client credentials
-_oauth2_cache: dict[str, tuple[str, float]] = {}
-
-
-def _fetch_oauth2_token(oauth) -> str:  # REQ-320
-    """Fetch and cache an OAuth2 client credentials token."""
-    import time
+def _fetch_oauth2_token(oauth: ApiAuthOAuth2ClientCredentials) -> str:  # REQ-320
+    """An OAuth2 client credentials token, held as the delegated grants' are
+    (``oauth_grants.held_key``): per organization and per credential as it resolves now."""
     import httpx as _httpx
+
+    from provisa.api_source.oauth_grants import held_key, held_token, hold_token
     from provisa.core.secrets import resolve_secrets
 
-    cache_key = f"{oauth.client_id}:{oauth.token_url}"
-    cached = _oauth2_cache.get(cache_key)
-    if cached:
-        token, expires_at = cached
-        if time.time() < expires_at - 30:  # 30s buffer
-            return token
+    client_id = resolve_secrets(oauth.client_id)
+    client_secret = resolve_secrets(oauth.client_secret, credential=True)
+    key = held_key(oauth.type, oauth.token_url, client_id, client_secret, oauth.scope or "")
+    held = held_token(key)
+    if held is not None:
+        return held
 
     data = {
         "grant_type": "client_credentials",
-        "client_id": resolve_secrets(oauth.client_id),
-        "client_secret": resolve_secrets(oauth.client_secret),
+        "client_id": client_id,
+        "client_secret": client_secret,
     }
     if oauth.scope:
         data["scope"] = oauth.scope
@@ -490,8 +503,9 @@ def _fetch_oauth2_token(oauth) -> str:  # REQ-320
     resp.raise_for_status()
     body = resp.json()
     token = body["access_token"]
-    expires_in = body.get("expires_in", 3600)
-    _oauth2_cache[cache_key] = (token, time.time() + expires_in)
+    # An issuer that states no life gives nothing to hold the token by: it is used for this call
+    # and asked for again at the next (as ``oauth_grants.hold_token``).
+    hold_token(key, token, float(body["expires_in"]) if "expires_in" in body else None)
     return token
 
 

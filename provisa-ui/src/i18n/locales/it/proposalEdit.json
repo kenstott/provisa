@@ -1,0 +1,7 @@
+{
+  "proposalEdit": {
+    "title": "Modifica candidato",
+    "name": "Nome della relazione",
+    "cardinality": "Cardinalità"
+  }
+}

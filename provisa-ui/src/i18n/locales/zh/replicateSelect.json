@@ -8,7 +8,7 @@
     "never": "尽可能实时",
     "always": "始终",
     "hot": "Hot-{{threshold}}",
-    "neverWithLoadProtection": "“尽可能实时”不能与负载保护同时使用：受负载保护的表从不被实时读取。",
+    "neverWithLoadProtection": "“尽可能实时”不能与负载保护同时使用，因为受负载保护的表从不实时读取。",
     "scheduled": "始终，来源仅按计划读取",
     "helpScheduled": "始终，来源仅按计划读取：读取始终来自副本，查询绝不会导致读取来源；调度器按非高峰窗口、缓存 TTL 或变更探测刷新副本，三者至少需要其一。"
   }

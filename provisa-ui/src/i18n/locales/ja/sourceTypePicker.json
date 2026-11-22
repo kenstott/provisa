@@ -11,6 +11,7 @@
     "reachLiveOn": "{{engines}} でのみライブ",
     "reachNone": "このエンジンからは到達できません",
     "categories": {
+      "Connectors": "組織のコネクタ",
       "Subscriptions": "サブスクリプション",
       "RDBMS": "RDBMS",
       "Cloud DW": "クラウドデータウェアハウス",

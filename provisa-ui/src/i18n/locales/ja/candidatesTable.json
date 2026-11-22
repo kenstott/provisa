@@ -1,6 +1,6 @@
 {
   "candidatesTable": {
-    "heading": "AIが提案したリレーションシップ",
+    "heading": "提案されたリレーションシップ",
     "colName": "名前",
     "colSource": "ソース",
     "colTarget": "ターゲット",
@@ -10,6 +10,25 @@
     "accept": "承認",
     "reject": "却下",
     "acceptAria": "提案されたリレーションシップ {{name}} を承認",
-    "rejectAria": "提案されたリレーションシップ {{name}} を却下"
+    "rejectAria": "提案されたリレーションシップ {{name}} を却下",
+    "acceptAll": "すべて承認",
+    "rejectAll": "すべて却下",
+    "acceptAllTitle": "すべての提案を承認",
+    "rejectAllTitle": "すべての提案を却下",
+    "acceptAllConsequence": "一覧の {{count}} 件の提案を承認しますか？登録済みリレーションシップになります。",
+    "acceptAllConsequence_other": "一覧の {{count}} 件の提案をすべて承認しますか？それぞれが登録済みリレーションシップになります。",
+    "rejectAllConsequence": "一覧の {{count}} 件の提案を却下しますか？却下をクリアするまで再び提案されません。",
+    "rejectAllConsequence_other": "一覧の {{count}} 件の提案をすべて却下しますか？却下をクリアするまで再び提案されません。",
+    "acceptedAll": "{{count}} 件の提案を承認しました。",
+    "acceptedAll_other": "{{count}} 件の提案を承認しました。",
+    "rejectedAll": "{{count}} 件の提案を却下しました。",
+    "rejectedAll_other": "{{count}} 件の提案を却下しました。",
+    "acceptFailed": "{{count}} 件の提案を承認できませんでした:",
+    "acceptFailed_other": "{{count}} 件の提案を承認できませんでした:",
+    "rejectFailed": "{{count}} 件の提案を却下できませんでした:",
+    "rejectFailed_other": "{{count}} 件の提案を却下できませんでした:",
+    "failedOne": "{{name}}: {{error}}",
+    "reducedInformation": "限定情報: 値は比較されていません",
+    "reducedInformationHelp": "これらのテーブルの 1 つはパラメーターを必要とするため、読み取られることはありません。この提案は、名前、説明、型、必須パラメーターのみに基づいています。"
   }
 }

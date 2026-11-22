@@ -1,0 +1,18 @@
+{
+  "yourData": {
+    "title": "您的資料",
+    "loading": "正在讀取剛註冊的表格…",
+    "openQuery": "在查詢瀏覽器中開啟",
+    "otherWays": "存取此表格的其他方式",
+    "graphql": "GraphQL 查詢",
+    "pgwire": "SQL 用戶端的連線字串 (pgwire)",
+    "sql": "SQL",
+    "rest": "REST",
+    "mcp": "MCP 工具呼叫",
+    "copy": "複製{{what}}",
+    "close": "關閉",
+    "createRelationships": "建立關係",
+    "relationshipsCreated_one": "已建立 {{count}} 個關係。",
+    "relationshipsCreated_other": "已建立 {{count}} 個關係。"
+  }
+}

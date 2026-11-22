@@ -34,7 +34,9 @@ table twice (a self-join) scans its rows twice, so that table's rows are held fo
 BOUNDED (REQ-2100). Every statement runs on one DuckDB instance per process (:func:`configure`):
 its memory, its threads and its spill to disk are the operator's settings. A statement that
 spills past the cap -- DuckDB's own limit, or the end of the spill volume a built image is given
-at the cap's size -- is refused naming ``codesource.duckdb_spill_cap_mb`` (:class:`SpillCapped`). Without an ORDER BY a statement's rows come in no particular order, as
+at the cap's size -- is refused naming ``codesource.duckdb_spill_cap_mb`` (:class:`SpillCapped`).
+A statement past what DuckDB can spill from at all is refused naming
+``codesource.duckdb_memory_mb`` and ``codesource.duckdb_threads`` (:class:`MemoryCapped`). Without an ORDER BY a statement's rows come in no particular order, as
 SQL has it, which leaves DuckDB free to answer without holding them in order.
 
 This module is carried, as it is, by the front end of every built image and used by Provisa for a
@@ -93,10 +95,17 @@ NUMERIC = pa.decimal128(38, 9)
 ANSWER_ROWS = 65_536
 #: The operator setting that caps a statement's spill to disk, named when a statement reaches it.
 SPILL_CAP_SETTING = "codesource.duckdb_spill_cap_mb"
+#: The operator settings a statement's memory is, named when a statement runs out of it.
+MEMORY_SETTING = "codesource.duckdb_memory_mb"
+THREADS_SETTING = "codesource.duckdb_threads"
 
 
 class SpillCapped(ValueError):
     """A statement needed more disk to spill to than the operator's cap allows."""
+
+
+class MemoryCapped(ValueError):
+    """A statement needed more memory than DuckDB could answer it in, even spilling to disk."""
 
 
 class Unbounded(RuntimeError):
@@ -166,17 +175,26 @@ _NO_SPACE = "No space left on device"
 
 
 def _named(exc: duckdb.Error) -> Exception:
-    """DuckDB's error, or the refusal naming the spill cap when that is what it hit: its own
-    temporary-directory limit, or the end of the volume it spills to."""
+    """DuckDB's error, or the refusal naming the bound it hit: the spill cap (its own
+    temporary-directory limit, or the end of the volume it spills to), or the memory and threads
+    (past what it can spill from, each thread holding blocks it cannot give up). More threads
+    take more of the memory, so the way out is more memory or fewer threads."""
     said = str(exc)
-    if _NO_SPACE in said or (
-        isinstance(exc, duckdb.OutOfMemoryException) and "max_temp_directory_size" in said
-    ):
+    out_of_memory = isinstance(exc, duckdb.OutOfMemoryException)
+    if _NO_SPACE in said or (out_of_memory and "max_temp_directory_size" in said):
         assert _bounds is not None  # the statement ran on the configured instance
         cap = _bounds[2]
         return SpillCapped(
             f"the statement needs more disk to spill to than {SPILL_CAP_SETTING} allows "
             f"({cap} MiB): raise it, or narrow the statement"
+        )
+    if out_of_memory:
+        assert _bounds is not None  # the statement ran on the configured instance
+        memory_mb, threads = _bounds[0], _bounds[1]
+        return MemoryCapped(
+            "the statement needs more memory than DuckDB can answer it in, even spilling to "
+            f"disk: {MEMORY_SETTING} is {memory_mb} MiB and {THREADS_SETTING} is {threads}. "
+            f"Raise {MEMORY_SETTING}, lower {THREADS_SETTING}, or narrow the statement"
         )
     return exc
 

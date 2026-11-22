@@ -167,31 +167,39 @@ def test_bind_terminal_stores_kwargs_without_connecting(iso_org, monkeypatch):
 
 
 def test_kwargs_only_terminal_passes_the_execute_guard(iso_org, monkeypatch):
-    """TrinoBackend.execute must NOT reject a bound-but-unconnected terminal: execute_trino
-    lazily connects from state.engine_conn_kwargs (the wake)."""
+    """A bound-but-unconnected terminal (kwargs only) passes the read's guard: the read is never
+    a dial of its own (the wake is the pipeline's). REQ-2194: the read goes through the Zaychik
+    proxy, and the statement names the org's own coordinator for the proxy to run it on."""
     from provisa.federation.engine import build_trino_engine
 
     org_id, rt = iso_org
     monkeypatch.setenv("PROVISA_ISOLATED_ENGINE_HOST_TEMPLATE", "trino-{org_id}.internal")
+    monkeypatch.setattr("provisa.federation.k8s_provisioner.provisioning_available", lambda: False)
     rt.federation_engine = EngineRuntime(build_trino_engine(), state)
-    woke = {}
+    proxy = object()
+    monkeypatch.setattr(state, "flight_client", proxy, raising=False)
+    read = {}
 
-    def _fake_execute_trino(conn, sql, **kw):
-        woke["conn"] = conn
-        woke["sql"] = sql
+    def _fake_execute_trino_flight_sync(transport, sql, params=None, **kw):
+        read.update(transport=transport, sql=sql, context=kw["context"])
         return "ok"
 
-    import provisa.executor.trino as trino_exec
+    import provisa.executor.trino_flight as trino_flight
 
-    monkeypatch.setattr(trino_exec, "execute_trino", _fake_execute_trino)
+    monkeypatch.setattr(trino_flight, "execute_trino_flight_sync", _fake_execute_trino_flight_sync)
     token = set_current_org(org_id)
     try:
         rt.federation_engine.bind_terminal()
         result = rt.federation_engine.execute_engine_sync("SELECT 1")
+        port = rt.engine_conn_kwargs["port"]
     finally:
         reset_current_org(token)
     assert result == "ok"
-    assert woke["conn"] is None  # handed the unconnected terminal; execute_trino wakes it
+    assert read["transport"] is proxy
+    # The statement runs on the org's own coordinator, through the proxy.
+    assert read["context"].server == f"http://trino-{org_id}.internal:{port}"
+    assert read["context"].schema == f"org_{org_id}"
+    assert rt.engine_conn is None  # never connected — the cluster stays asleep
 
 
 # ---- admin-plane persistence (REQ-1043) --------------------------------------

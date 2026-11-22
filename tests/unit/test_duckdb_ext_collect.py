@@ -151,7 +151,7 @@ def test_each_part_holds_only_its_own_extensions(tmp_path, monkeypatch, capsys):
         "firebird.duckdb_extension",
         "mongo.duckdb_extension",
     ]
-    assert "not mirrored: gsheets, airport" in capsys.readouterr().out
+    assert "not mirrored: airport" in capsys.readouterr().out
 
 
 def test_a_part_past_its_budget_stops_the_build_by_name(tmp_path, monkeypatch, capsys):
@@ -205,7 +205,6 @@ def test_the_parts_hold_every_extension_once_and_each_platform_fits():
         "snowflake",
         "bigquery",
         "mongo",
-        "gsheets",
         "airport",
         "firebird",
     )

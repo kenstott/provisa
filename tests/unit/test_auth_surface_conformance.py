@@ -114,6 +114,8 @@ def _state(pool) -> SimpleNamespace:
     return SimpleNamespace(
         auth_config=_auth_config(),
         auth_middleware_active=True,
+        # meta-role id -> its derived qualifiers, as the app state holds them (OrgRuntime).
+        meta_qualifiers={},
         multitenancy=False,
         org_id="default",
         admin_db=pool,

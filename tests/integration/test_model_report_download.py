@@ -218,7 +218,21 @@ async def served(
     from provisa.core.repositories import domain as domain_repo
     from provisa.core.repositories import glossary as glossary_repo
 
+    from provisa.core.env_store import ensure_prod
+
     raw = _config()
+    # Org provisioning gives acme its prod environment (REQ-1487, orgs_router); the report states
+    # the stage of the environment it is served from (REQ-2261), so the registry row must exist.
+    from provisa.core.schema_admin import orgs
+
+    async with platform_admin_db.acquire() as conn:
+        await conn.upsert(
+            orgs,
+            {"id": ORG_ID, "name": ORG_ID},
+            index_elements=["id"],
+            update_columns=[],
+        )
+    await ensure_prod(platform_admin_db, ORG_ID)
     async with tenant_db.acquire() as conn:
         # The DataProduct FK/domain check in table_repo.upsert requires the domain to already
         # exist, but apply_config only creates domains as part of the same run — so the domains
@@ -258,7 +272,7 @@ async def served(
         r["id"]: r for r in with_own_domains({"id": rid, **spec} for rid, spec in _ROLES.items())
     }
     # No schema build runs here: no draft table is compiled aside (catalog_scope reads the list).
-    acme.role_build_inputs = {"draft_tables": []}
+    acme.role_build_inputs = {"withdrawn_tables": []}
     registry = OrgRegistry()
     for key in app_module.state.org_registry.all_org_ids():
         rt = app_module.state.org_registry.get(key)

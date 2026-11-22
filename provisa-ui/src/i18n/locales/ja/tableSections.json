@@ -17,6 +17,10 @@
     "noTerms": "このテーブルの列を名付ける用語はありません",
     "relationships": "リレーションシップ",
     "noRelationships": "このテーブルはどのリレーションシップにも含まれていません",
+    "metrics": "メトリクス",
+    "noMetrics": "このテーブルを使うメトリクスはありません",
+    "metricTerm": "{{term}}:",
+    "metricMethod": "計算方法: {{method}}",
     "fromSource": "{{value}}（ソースから）",
     "fromSourceAsIs": "ソースの設定どおり",
     "notScheduledLikeSource": "ソースはスケジュールでのみ読み取られますが、このテーブルはそうではありません: クエリがソースを読み取ることがあります。",
@@ -34,6 +38,9 @@
     "classTerm": "行のインスタンス元",
     "noClassTerm": "用語なし",
     "classTermUnreadable": "用語を読み取れませんでした: {{error}}",
+    "classTermNoModel": "用語を読み取れませんでした: あなたのロールはモデルのテーブルを読み取れません。",
+    "classTermNoEntry": "用語を読み取れませんでした: あなたのロールはモデル内のこのテーブル自身のエントリを読み取れません。",
+    "classTermNoField": "用語を読み取れませんでした: あなたのロールは、テーブルの行がどの用語のインスタンスであるかを読み取れません。",
     "access": "アクセス"
   }
 }

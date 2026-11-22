@@ -157,7 +157,7 @@ Licensed:     no (no license installed)
 
 ## provisa metadata export
 
-Avvia la pubblicazione su richiesta dei metadati del server in esecuzione. Il comando invia a `POST /admin/metadata-export/publish`, l'endpoint che chiama il pulsante **Publish now** della scheda Admin, quindi entrambi i percorsi inviano lo stesso snapshot completo.
+Avvia la pubblicazione su richiesta dei metadati del server in esecuzione. Il comando invia a `POST /admin/syncing/publish`, l'endpoint che chiama il pulsante **Publish now** della scheda Admin, quindi entrambi i percorsi inviano lo stesso snapshot completo.
 
 ```
 provisa metadata export [--api URL] [--token TOKEN] [--timeout SECONDS]

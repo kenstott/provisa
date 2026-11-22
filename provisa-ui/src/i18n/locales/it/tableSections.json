@@ -17,6 +17,10 @@
     "noTerms": "Nessun termine dà il nome a una colonna di questa tabella",
     "relationships": "Relazioni",
     "noRelationships": "Questa tabella non partecipa ad alcuna relazione",
+    "metrics": "Metriche",
+    "noMetrics": "Nessuna metrica usa questa tabella",
+    "metricTerm": "{{term}}:",
+    "metricMethod": "Calcolato come: {{method}}",
     "fromSource": "{{value}} (dall'origine)",
     "fromSourceAsIs": "Come nell'origine",
     "notScheduledLikeSource": "Non letta solo secondo la pianificazione, anche se la sua origine lo è: una query può leggere l'origine.",
@@ -34,6 +38,9 @@
     "classTerm": "Le righe sono istanze di",
     "noClassTerm": "Nessun termine",
     "classTermUnreadable": "Impossibile leggere il suo termine: {{error}}",
+    "classTermNoModel": "Non è stato possibile leggere il suo termine: i tuoi ruoli non possono leggere le tabelle del modello.",
+    "classTermNoEntry": "Non è stato possibile leggere il suo termine: i tuoi ruoli non possono leggere la voce di questa tabella nel modello.",
+    "classTermNoField": "Non è stato possibile leggere il suo termine: i tuoi ruoli non possono leggere di quale termine le righe di una tabella sono istanze.",
     "access": "Accesso"
   }
 }

@@ -52,11 +52,11 @@ def _state(**over):
         "arguments": [{"name": "qty", "type": "Int"}],
     }
     return SimpleNamespace(
-        # Assigned the command, reaching its domain, holding WRITE: what a mutation call needs.
+        # Holding command_execution, assigned the command, reaching its domain (REQ-870).
         roles={
             "ops": {
                 "id": "ops",
-                "capabilities": [Capability.WRITE.value],
+                "capabilities": [Capability.COMMAND_EXECUTION.value],
                 "domain_access": ["sales"],
             }
         },
@@ -158,3 +158,18 @@ async def test_maybe_invoke_routes_registered_call():
 @pytest.mark.asyncio
 async def test_maybe_invoke_passes_through_normal_query():
     assert await maybe_invoke_registered_function("SELECT 1", "ops", _state()) is None
+
+
+# ---- REQ-2226: composed statements with WHERE/projection are NOT the standalone path -----------
+
+
+def test_a_where_clause_is_not_standalone():
+    # A SELECT from the function with a WHERE is composition: localization, not the standalone path.
+    sql = "SELECT r.status FROM createOrder('fx.orders') AS r WHERE r.status = 'ok'"
+    assert detect_sql_function_call(sql, _state(), "ops") is None
+
+
+def test_a_projected_column_is_not_standalone():
+    # Projecting a specific column, not *, is composition: the caller is composing the result.
+    sql = "SELECT r.id FROM createOrder('fx.orders') AS r"
+    assert detect_sql_function_call(sql, _state(), "ops") is None

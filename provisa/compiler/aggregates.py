@@ -21,6 +21,7 @@ from __future__ import annotations
 
 from graphql import FieldNode  # noqa: F401
 
+from provisa.compiler import names_table
 from provisa.compiler import sql_where as _sw
 from provisa.compiler import sql_selection as _ssel
 from provisa.compiler.params import ParamCollector  # noqa: F401
@@ -282,14 +283,20 @@ def _nodes_column(
                 if join_meta.child_src_val is not None
                 else (src_expr if join_meta.source_column_type != "integer" else None)
             )
+            _from = f"{_table_ref(join_meta.target, use_catalog)} {_q(join_alias)}"
+            _where = f"{tgt_expr} = {src_expr}"
+            # REQ-1586: a junction-backed relationship reaches its rows through its junction.
+            hop = _sw.junction_hop(join_meta, root_alias, join_alias, use_catalog, sources)
+            if hop is not None:
+                _from, _where = hop.from_clause(_from), hop.to_source
             json_expr, alias_counter = _ssel._build_rel_json_expr(
                 node_sel.selection_set.selections,
                 ctx,
                 join_meta.target.type_name,
                 join_meta.target,
                 join_alias,
-                f"{_table_ref(join_meta.target, use_catalog)} {_q(join_alias)}",
-                f"{tgt_expr} = {src_expr}",
+                _from,
+                _where,
                 join_meta.cardinality,
                 _agg_limit,
                 use_catalog,
@@ -421,7 +428,7 @@ def _compile_group_by_field(  # REQ-196, REQ-197, REQ-213
 ) -> CompiledQuery:
     """Compile a _group_by root query field to SQL (REQ-654, REQ-655)."""
     root_name = field_node.alias.value if field_node.alias else field_node.name.value
-    table = ctx.tables[field_node.name.value]
+    table = names_table.root_table(ctx, field_node.name.value)  # REQ-467
     collector = ParamCollector()
     sources = StatementSources(table)
 
@@ -566,9 +573,7 @@ def _compile_group_by_field(  # REQ-196, REQ-197, REQ-213
 
     _vvals = ctx.virtual_columns.get(table.table_id)
     # REQ-1986, REQ-1991: the table's parameters, as on its base field.
-    api_args = _sw.native_args(
-        args, _GROUP_BY_ARGS, ctx.native_filter_columns.get(table.table_id, {})
-    )
+    api_args = _sw.native_args(args, _GROUP_BY_ARGS, ctx.parameter_names.get(table.table_id, {}))
     nf_conditions = _sw.native_arg_conditions(api_args)
     if "where" in args:
         # After the aggregate filter's: its values are bound first, as its FILTER is written first.
@@ -634,7 +639,7 @@ def _compile_aggregate_field(  # REQ-196, REQ-197, REQ-198, REQ-199
 ) -> CompiledQuery:
     """Compile an _aggregate root query field to SQL."""
     root_name = field_node.alias.value if field_node.alias else field_node.name.value
-    table = ctx.tables[field_node.name.value]
+    table = names_table.root_table(ctx, field_node.name.value)  # REQ-467
     collector = ParamCollector()
     sources = StatementSources(table)
 
@@ -726,9 +731,7 @@ def _compile_aggregate_field(  # REQ-196, REQ-197, REQ-198, REQ-199
             )
         )
     # REQ-1986, REQ-1991: the table's parameters, as on its base field.
-    api_args = _sw.native_args(
-        args, _AGGREGATE_ARGS, ctx.native_filter_columns.get(table.table_id, {})
-    )
+    api_args = _sw.native_args(args, _AGGREGATE_ARGS, ctx.parameter_names.get(table.table_id, {}))
     where_parts += _sw.native_arg_conditions(api_args)
     if where_parts:
         sql += f" WHERE {' AND '.join(where_parts)}"

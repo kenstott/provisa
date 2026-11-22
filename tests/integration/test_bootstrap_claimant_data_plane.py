@@ -30,6 +30,7 @@ import os
 
 import pytest
 
+from tests.helpers import create_pgvector
 from tests.served_config import served_config
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
@@ -42,8 +43,7 @@ from provisa.core.schema_admin import REGISTRY_TABLES
 from provisa.core.schema_admin import metadata as admin_metadata
 from provisa.core.schema_admin import orgs, user_org_memberships
 from provisa.core.schema_org import metadata as org_metadata
-from provisa.core.schema_org import user_idp_attributes
-from provisa.core.schema_org import roles, user_directory, user_role_assignments
+from provisa.core.schema_org import roles, user_role_assignments
 from provisa.security.rights import ORG_ADMIN_ROLE, PLATFORM_ADMIN_ROLE
 from tests.integration.test_auth_integration import _FirebaseLikeProvider
 
@@ -81,9 +81,12 @@ def _prepare_sync():
 
         # The bootstrap slot starts UNCLAIMED — claiming is the explicit POST under test (REQ-1290).
         conn.execute(text(f"SET search_path TO {_TENANT_SCHEMA}"))
-        org_metadata.create_all(
-            conn, tables=[roles, user_role_assignments, user_directory, user_idp_attributes]
-        )
+        # The whole org plane, as a provisioned org holds it: the claim seats the claimant and
+        # records their effective rows in the org's prod runtime, and resolving that runtime loads
+        # the org's redaction rules (REQ-2087), which read its org_settings and scan every model
+        # table for the secrets it names -- well past the sign-in tables.
+        create_pgvector(conn)  # a fresh database: the org metadata has vector columns
+        org_metadata.create_all(conn)
         for role_id, caps in _ROLE_CAPS.items():
             conn.execute(insert(roles).values(id=role_id, capabilities=caps))
     return engine
@@ -91,10 +94,7 @@ def _prepare_sync():
 
 @pytest.fixture
 def planes(monkeypatch):
-    try:
-        sync_engine = _prepare_sync()
-    except Exception as exc:  # noqa: BLE001 — the suite provisions this PG; a miss is a config fault
-        pytest.skip(f"live Postgres not reachable at {_SYNC_URL}: {exc}")
+    sync_engine = _prepare_sync()
 
     admin_db = Database(create_engine_from_url(_ASYNC_URL), name="admin", search_path=_ADMIN_SCHEMA)
     tenant_db = Database(

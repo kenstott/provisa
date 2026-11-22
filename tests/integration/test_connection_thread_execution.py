@@ -447,13 +447,14 @@ async def test_graphql_governance_runs_on_the_request_thread_in_parallel():
     from provisa.core.request_thread import RequestThreadMiddleware
 
     from provisa.api.app import AppState
+    from provisa.compiler.sql_types import CompilationContext
 
     schema = build_schema("type Query { orders: Int }")
-    # A real AppState, so every attribute the GraphQL path reads exists with its own default; only
-    # what this request needs is set.
+    # A real AppState and a real (empty) context, so every attribute the GraphQL path reads exists
+    # with its own default; only what this request needs is set.
     state = AppState()
     state.schemas = {"analyst": schema}
-    state.contexts = {"analyst": object()}  # type: ignore[dict-item]
+    state.contexts = {"analyst": CompilationContext(role_id="analyst")}
     state.rls_contexts = {}
     state.roles = {
         "analyst": {
@@ -528,6 +529,7 @@ async def test_mcp_run_sql_governs_on_the_request_thread_in_parallel(monkeypatch
     from provisa.api.mcp import tools
     from provisa.core import request_thread
     from provisa.core.connection_loop import current_connection_loop
+    from tests.unit.mcp_local_principal import act_for
 
     monkeypatch.setenv("PROVISA_MCP_ROLE", "analyst")
     request_idents: set[int] = set()
@@ -551,10 +553,15 @@ async def test_mcp_run_sql_governs_on_the_request_thread_in_parallel(monkeypatch
         return {"rows": [{"role": role}]}
 
     # The state a first start has: no org setting and no config file, so no derived role is
-    # declared (the loopback reads them to name the role it acts as).
-    mcp = mcp_server.build_mcp_server(
-        SimpleNamespace(org_id="default", settings_overrides={}, config=None)
+    # declared (the loopback reads them to name the role it acts as), and no attribute recorded
+    # for any user (REQ-1105: the principal's own, which the loopback binds).
+    mcp_state = SimpleNamespace(
+        org_id="default", settings_overrides={}, config=None, user_attributes={}
     )
+    # REQ-1105: a loopback call acts for the principal the operator names, found in the org; the
+    # subject here is the request thread, not the principal (tests/unit/mcp_local_principal).
+    act_for(monkeypatch, mcp_state)
+    mcp = mcp_server.build_mcp_server(mcp_state)
     front_ident = threading.get_ident()
     with (
         patch.object(tools, "run_sql", _blocking_run_sql),

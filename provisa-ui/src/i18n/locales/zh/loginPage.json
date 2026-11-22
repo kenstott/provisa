@@ -6,7 +6,7 @@
     "signInTitle": "登录",
     "firstLoginHeading": "设置此部署",
     "firstLoginTitle": "这是首次登录",
-    "firstLoginBody": "此部署尚无管理员。首位登录者将成为平台管理员 — 拥有对组织、用户和数据源的完全控制权。请在下方选择登录方式以认领。",
+    "firstLoginBody": "此部署尚无管理员。第一个登录的人将成为平台管理员，完全掌控组织、用户和数据源。请在下方选择登录方式以获取此身份。",
     "signInWithGoogle": "使用 Google 登录",
     "signInWithGithub": "使用 GitHub 登录",
     "signInWithMicrosoft": "使用 Microsoft 登录",
@@ -36,9 +36,9 @@
     "signInWithSso": "使用单点登录",
     "samlSignInFailed": "单点登录未完成。请重试，或联系管理员。",
     "sandboxBuildingTitle": "正在构建您的沙盒…",
-    "sandboxBuildingBody": "正在为您单独准备一份示例数据的私有副本——这可能需要几分钟。",
+    "sandboxBuildingBody": "正在为您准备示例数据的私有副本，可能需要几分钟。",
     "sandboxTryTitle": "免费试用 Provisa",
-    "sandboxTryBody": "使用示例数据探索整个平台——无需信用卡。您的沙盒是临时的：退出登录后即消失。",
+    "sandboxTryBody": "使用示例数据探索完整平台。无需信用卡。您的沙盒是临时的，退出登录后即消失。",
     "sandboxHeading": "试用 Provisa"
   }
 }

@@ -45,6 +45,20 @@ Copy the two directories it fills (`duckdb-ext` and `runtime-deps`) to the match
 
 **Helm / Kubernetes path.** Push the individual images to a registry the cluster can reach. This path works best with registry-based scanning (Prisma Cloud, Aqua, Trivy, AWS Inspector), because the images are objects scanners already understand. For an air-gapped cluster, mirror the images to an internal registry and override the references in `values.yaml`.
 
+### Embedding library in every install
+
+Every install ships the library the default embedding model runs on: sentence-transformers over a CPU-only PyTorch. That covers the macOS and Windows installers, the Linux AppImage, the container image and `pip install 'provisa[embedded]'`. Glossary term embeddings, catalog search and the reference library need nothing more installed.
+
+Budget about 700 MB of extra disk for it, most of it PyTorch. No install carries a CUDA build. The Linux installers and the container image take PyTorch from PyTorch's CPU index (`https://download.pytorch.org/whl/cpu`), and a pip install on Linux needs that index too, beside the Provisa index that serves the `provisa` wheels (see [CLI Reference](cli.md)):
+
+```bash
+pip install 'provisa[embedded]' \
+  --extra-index-url https://kenstott.github.io/provisa/simple/ \
+  --extra-index-url https://download.pytorch.org/whl/cpu
+```
+
+The model's weights (about 180 MB) are not bundled. Provisa downloads them from the Hugging Face hub the first time the model is used. In an air-gapped network, set `embedding.hub_endpoint` to an internal mirror; see [Runtime Settings](admin.md#runtime-settings).
+
 ---
 
 ## Development (from source)
@@ -587,9 +601,10 @@ Note: the Provisa AppImage can't run inside a Kubernetes pod. It needs FUSE and 
    in `values.yaml`.
 
    The Trino coordinator runs each org's statements in that org's own resource group,
-   `global.tenant-<org>`, from the resource-group file the chart ships. Statements through the
-   Arrow Flight proxy share one group, `global.flight`, because the proxy opens its own Trino connection
-   and cannot carry the org.
+   `global.tenant-<org>`, from the resource-group file the chart ships. Provisa's statements reach
+   Trino through the Arrow Flight proxy carrying their org, so they run in that group too. A
+   statement sent to the proxy without that context (a client other than Provisa) runs in
+   `global.flight`.
 
    If using an internal registry, add image overrides:
 
@@ -666,6 +681,14 @@ kubectl create configmap provisa-config \
   --namespace provisa --dry-run=client -o yaml | kubectl apply -f -
 kubectl rollout restart deployment/provisa --namespace provisa
 ```
+
+---
+
+## Process modes and scaling
+
+A single Provisa process runs in `every` mode by default, serving queries and doing background work together. To scale query throughput, run additional processes in `query` mode behind a load balancer, and run one or more processes in `coordinator` mode for background work.
+
+See [How to Scale](how-to-scale.md) for the full topology, launch commands, Helm configuration, and region assignment.
 
 ---
 
@@ -868,6 +891,7 @@ The Databricks connector inherits this from `requests`, so it needs no Databrick
 | `AZURE_CLIENT_ID` | | Azure AD application client ID |
 | `AZURE_CLIENT_SECRET` | | Azure AD application client secret |
 | `REQUESTS_CA_BUNDLE` | | Custom CA bundle path (Databricks connector, dev TLS-proxy) |
+| `HF_ENDPOINT` | `https://huggingface.co` | Hugging Face hub a local embedding model is downloaded from; sets `embedding.hub_endpoint` when no value is stored |
 
 ---
 
@@ -900,4 +924,4 @@ git pull
 provisa import config.yaml
 ```
 
-See also: [Environments](environments.md) explains how to manage named, schema-isolated copies of your governed model.
+See also: [Environments](environments.md) explains how to manage named, schema-isolated copies of your governed model. [How to Scale](how-to-scale.md) covers process modes, query nodes and coordinators.

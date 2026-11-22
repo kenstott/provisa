@@ -19,7 +19,7 @@
     "colActions": "操作",
     "empty": "組織がありません",
     "membersButton": "メンバー",
-    "hideButton": "非表示",
+    "hideButton": "折りたたむ",
     "expandOrg": "{{name}} のメンバー表示を切り替え",
     "deleteOrg": "{{name}} を削除",
     "membersHeading": "メンバー",

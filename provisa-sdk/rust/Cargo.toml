@@ -1,0 +1,17 @@
+# Provisa's optional SDK for Rust code sources (REQ-1984): macro_rules! registrations, marker
+# traits that hold each registered function to its tag's shape, and type aliases. No dependencies
+# and no proc-macro crate.
+[package]
+name = "provisa-sdk"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.70"
+description = "Optional types-only SDK for Provisa Rust code sources: registrations for the doc-comment tags, checked by the compiler"
+license-file = "../../LICENSE"
+readme = "README.md"
+
+[lib]
+name = "provisa_sdk"
+path = "src/lib.rs"
+
+[dependencies]

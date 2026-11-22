@@ -37,10 +37,15 @@ import type { Page } from "@playwright/test";
 import { test, expect } from "./coverage";
 import {
   discoveredColumnCount,
+  listedTableNames,
   openRegisterForm,
   openSourcesForm,
+  pickSchemaAndTable,
+  pickTable,
   runSqlOnPage,
   submitRegisterAndExpectListed,
+  tableOption,
+  tablesField,
 } from "./source-to-query-helpers";
 
 const KAGGLE_TOKEN = process.env.KAGGLE_API_TOKEN;
@@ -153,18 +158,7 @@ test.describe("Kaggle source through the real UI, live Kaggle API (REQ-1780/1781
     // "IRIS.csv" staged under an "IRIS" subdirectory becomes "iris__iris", not a bare "IRIS".
     const schemaName = sourceId.replace(/-/g, "_");
     await openRegisterForm(page, sourceId);
-    const schemaSelect = page.getByTestId("register-table-schema-select");
-    await expect(schemaSelect.locator(`option[value='${schemaName}']`)).toHaveCount(1, {
-      timeout: 120000,
-    });
-    if ((await schemaSelect.inputValue()) !== schemaName) {
-      await schemaSelect.selectOption(schemaName);
-    }
-    const tableSelect = page.getByTestId("register-table-table-select");
-    await expect(tableSelect.locator(`option[value='iris__iris']`)).toHaveCount(1, {
-      timeout: 60000,
-    });
-    await tableSelect.selectOption("iris__iris");
+    await pickSchemaAndTable(page, schemaName, "iris__iris");
     expect(await discoveredColumnCount(page)).toBeGreaterThan(0);
     const sqlTableName = await submitRegisterAndExpectListed(page, sourceId);
 
@@ -220,12 +214,15 @@ test.describe("Kaggle source through the real UI, live Kaggle API (REQ-1780/1781
     // Register Table lists all 3 files as separate tables, discovered live off the one directory.
     const schemaName = sourceId.replace(/-/g, "_");
     await openRegisterForm(page, sourceId);
+    // The source's one schema is taken without a field (REQ-2234); were there more, it is picked.
     const schemaSelect = page.getByTestId("register-table-schema-select");
-    await expect(schemaSelect.locator(`option[value='${schemaName}']`)).toHaveCount(1, {
-      timeout: 120000,
-    });
-    if ((await schemaSelect.inputValue()) !== schemaName) {
-      await schemaSelect.selectOption(schemaName);
+    if ((await schemaSelect.count()) > 0) {
+      await expect(schemaSelect.locator(`option[value='${schemaName}']`)).toHaveCount(1, {
+        timeout: 120000,
+      });
+      if ((await schemaSelect.inputValue()) !== schemaName) {
+        await schemaSelect.selectOption(schemaName);
+      }
     }
     // downloader.py stages each file into its own "<file-stem>/<file-name>" subdirectory, and the
     // pgwire-file connector's recursive discovery flattens that into "<subdir>__<stem>" — since
@@ -235,13 +232,12 @@ test.describe("Kaggle source through the real UI, live Kaggle API (REQ-1780/1781
     // (verified live) — "covid_19_india"/"covid_vaccine_statewise" are already snake_case so
     // SMART_CASING leaves them unchanged.
     const covidTable = "covid_19_india__covid_19_india";
-    const tableSelect = page.getByTestId("register-table-table-select");
-    await expect(tableSelect.locator(`option[value='${covidTable}']`)).toHaveCount(1, {
-      timeout: 60000,
-    });
-    const discovered = await tableSelect
-      .locator("option")
-      .evaluateAll((opts) => opts.map((o) => (o as HTMLOptionElement).value).filter(Boolean));
+    const field = tablesField(page);
+    await expect(field).toBeEnabled({ timeout: 120000 });
+    await field.click();
+    await expect(tableOption(page, covidTable)).toBeVisible({ timeout: 60000 });
+    const discovered = await listedTableNames(page);
+    await page.keyboard.press("Escape");
     expect(new Set(discovered)).toEqual(
       new Set([
         "statewise_testing_details__statewise_testing_details",
@@ -251,7 +247,7 @@ test.describe("Kaggle source through the real UI, live Kaggle API (REQ-1780/1781
     );
 
     // Register only the one table this test actually queries.
-    await tableSelect.selectOption(covidTable);
+    await pickTable(page, covidTable);
     expect(await discoveredColumnCount(page)).toBeGreaterThan(0);
     const sqlTableName = await submitRegisterAndExpectListed(page, sourceId);
 
@@ -296,7 +292,12 @@ test.describe("Kaggle source through the real UI, live Kaggle API (REQ-1780/1781
     test.setTimeout(60000);
     // The link Polly gives for a Kaggle dataset she found (she never takes the token).
     await page.goto("/sources?new=kaggle&kaggle=arshid/iris-flower-dataset");
-    await expect(page.getByTestId("sources-type-select")).toHaveValue("kaggle");
+    // A fresh page's first render of Sources (the dev server's modules, then the page's reads)
+    // outlasted the 5 s default (run 43521446753): it is given the page's first-load budget, as
+    // openSourcesForm gives it.
+    await expect(page.getByTestId("sources-type-select")).toHaveValue("kaggle", {
+      timeout: 60000,
+    });
     await page.getByTestId("kaggle-token-input").fill(KAGGLE_TOKEN!);
     await page.getByTestId("kaggle-validate-token-button").click();
     await expect(page.getByTestId("kaggle-token-valid")).toBeVisible({ timeout: 30000 });

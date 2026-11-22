@@ -1,0 +1,51 @@
+{
+  "accessReview": {
+    "heading": "Revue des accès",
+    "help": "Chaque revue liste l'attribution de rôle de chaque membre avec ses droits et sa dernière utilisation, regroupées par domaine. Le propriétaire de chaque domaine confirme ou révoque chaque ligne et en indique le motif. Une révocation supprime l'attribution immédiatement.",
+    "scheduleLabel": "Planification de la revue",
+    "scheduleHint": "Cron en UTC : minute heure jour mois jour de la semaine. Vide : aucune revue planifiée.",
+    "scheduleSaved": "Planification de la revue enregistrée",
+    "reviewLabel": "Revue",
+    "reviewOption": "{{when}} · {{by}} · {{decided}} sur {{rows}} tranchées",
+    "bySchedule": "selon la planification",
+    "noReviews": "Aucune revue n'a encore été réalisée.",
+    "noRows": "Aucune ligne dans cette revue pour les domaines dont vous êtes propriétaire.",
+    "start": "Lancer une revue",
+    "started_one": "Revue lancée : {{count}} attribution à examiner",
+    "started_other": "Revue lancée : {{count}} attributions à examiner",
+    "export": "Exporter en CSV",
+    "colDomain": "Domaine",
+    "colMember": "Membre",
+    "colRole": "Rôle",
+    "colEntitlements": "Droits",
+    "colLastUsed": "Dernière utilisation",
+    "colDecision": "Décision",
+    "colActions": "Actions",
+    "everyDomain": "Tous les domaines",
+    "wholeRole": "Le rôle entier",
+    "neverUsed": "Jamais",
+    "undecided": "Non tranché",
+    "decision": {
+      "confirmed": "Confirmé",
+      "revoked": "Révoqué"
+    },
+    "decidedBy": "{{who}}, {{when}}",
+    "confirm": "Confirmer",
+    "revoke": "Révoquer",
+    "prompt": {
+      "confirmed": "Confirmer l'attribution du rôle {{role}} de {{member}} dans {{domain}}.",
+      "revoked": "Révoquer l'attribution du rôle {{role}} de {{member}} dans {{domain}}. Elle est supprimée immédiatement."
+    },
+    "reasonLabel": "Motif",
+    "reasonHint": "Pourquoi vous confirmez ou révoquez cet accès. Il est enregistré avec votre décision.",
+    "webhookUrlLabel": "URL du webhook",
+    "webhookUrlHint": "Chaque revue planifiée est envoyée ici, signée avec le secret. Vide : aucun webhook.",
+    "webhookSecretLabel": "Secret du webhook",
+    "webhookSecretHint": "Écriture seule : il signe chaque envoi et n'est plus jamais affiché. Laissez vide pour conserver celui en place.",
+    "webhookSecretHeld": "Un secret est enregistré",
+    "webhookFailed": "La revue planifiée n'a pas été envoyée au webhook : {{error}}",
+    "webhookDelivered": "Cette revue planifiée a été envoyée au webhook.",
+    "sourceIdp": "Attribué via le fournisseur d'identité",
+    "readOnly": "Lecture seule : Provisa ne détient aucune attribution à révoquer"
+  }
+}

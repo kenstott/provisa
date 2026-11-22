@@ -92,7 +92,10 @@ def test_the_wheel_fill_order_names_crypto_and_every_mirrored_community_extensio
 
     # Every extension the mirror carries is in exactly one part.
     assert sorted(collect.PRIORITY) == sorted(_mirror()._sources())
-    assert {"gsheets", "airport"} <= set(collect.PRIORITY)
+    assert "airport" in collect.PRIORITY
+    # gsheets has no DuckDB 2.0 build (REQ-1998: the engine no longer attaches it, a sheet lands
+    # through the Sheets API), and the wheel pins DuckDB 2.0, so there is nothing to mirror.
+    assert "gsheets" not in collect.PRIORITY
 
 
 class _FakeResult:

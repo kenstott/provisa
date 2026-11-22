@@ -37,6 +37,10 @@ pytestmark = [pytest.mark.unit, pytest.mark.slow]
 
 ROWS = 10_000_000
 MEMORY_MB = 64
+#: One thread: at 64 MiB it sorts 25 million rows of this shape where two threads stop at about 11
+#: million, so :data:`ROWS` stands well inside what DuckDB can sort, and the smaller read still
+#: spills (some 49 MiB, measured).
+THREADS = 1
 #: The smaller read's rows: past the memory limit too, a fifth of the larger.
 SMALL_ROWS = 2_000_000
 #: How far the larger read's peak may stand above the smaller's: the allocator's noise between
@@ -141,7 +145,9 @@ def test_a_bounded_duckdbs_memory_does_not_grow_with_the_rows_it_sorts(worker):
     it did for the smaller read, give or take :data:`SLACK_MB`: what the rows take is on disk."""
     spill = Path(os.environ["PROVISA_DATA_DIR"]) / "code-spill"
     spill.mkdir(parents=True, exist_ok=True)
-    residual.configure(memory_mb=MEMORY_MB, threads=2, spill_cap_mb=8192, spill_dir=str(spill))
+    residual.configure(
+        memory_mb=MEMORY_MB, threads=THREADS, spill_cap_mb=8192, spill_dir=str(spill)
+    )
     _read(worker, SMALL_ROWS, [0])  # a warm-up: the allocator's arenas and the pool taken once
     small, small_spilled = _peak(worker, SMALL_ROWS, spill)
     large, large_spilled = _peak(worker, ROWS, spill)

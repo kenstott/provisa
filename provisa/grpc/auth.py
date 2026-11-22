@@ -71,13 +71,13 @@ async def principal_org(state, identity: AuthIdentity, requested: str | None) ->
     """The org a validated principal's RPC binds: its membership decides, not the metadata
     (REQ-1337), by the rule MCP, pgwire and Flight use. ``x-provisa-org`` is a REQUEST."""
     from provisa.api.org_resolve import resolve_session_org
-    from provisa.security.rights import can_act_cross_org, capabilities_for_claims
+    from provisa.auth.held_assignments import may_act_cross_org
 
-    caps = capabilities_for_claims(identity.roles or [], state.platform_roles)
+    # REQ-802: the cross_org right of the roles the principal holds, not its credential's claims.
     return await resolve_session_org(
         state,
         user_id=identity.user_id,
-        can_act_any_org=can_act_cross_org(caps),
+        can_act_any_org=await may_act_cross_org(state, identity),
         requested_org=requested or None,
         credential_org=identity.active_org_id,  # REQ-1235
         named_by="send the x-provisa-org metadata",

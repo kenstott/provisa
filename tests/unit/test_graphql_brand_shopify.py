@@ -417,6 +417,7 @@ async def test_the_registration_names_shopify_and_its_numbers_and_registers_noth
         graphql_remote_sources={"my-shop": _reg()},
         config=SimpleNamespace(graphql_remote=SimpleNamespace(max_list_items=100)),
         multitenancy=False,
+        org_registry={},
     )
     monkeypatch.setattr(app, "state", state)
     respx.post(STORE_URL).mock(return_value=httpx.Response(200, json={"errors": [COST_REFUSAL]}))
@@ -539,6 +540,7 @@ async def test_a_table_lands_at_the_page_size_its_registration_priced(monkeypatc
     """Shopify prices a page by its size: a table accepted at registration at
     graphql_remote.max_list_items is landed at that size, never a larger one it was not priced at."""
     import provisa.api.app as app
+    from provisa.api.admin._graphql_table_registration import stage_registration
     from provisa.api.admin._table_ops import _graphql_columns_for_input
     from provisa.events.app_wiring import build_adapter_loaders
 
@@ -563,6 +565,11 @@ async def test_a_table_lands_at_the_page_size_its_registration_priced(monkeypatc
     )
     answered = await _graphql_columns_for_input(request, [])
     assert answered is not None and answered[1] is None  # registered
+    # REQ-1929: this process holds the table once registerTable's transaction commits. A branded
+    # source with one table stores nothing on the connection: no spec, no relationship.
+    staged = await stage_registration(None, state, "my-shop", "shopify__products")
+    assert staged is not None
+    staged.apply()
 
     land = build_adapter_loaders(state, SimpleNamespace(engine=SimpleNamespace(connectors={})))
     rows = await land["graphql_remote"](

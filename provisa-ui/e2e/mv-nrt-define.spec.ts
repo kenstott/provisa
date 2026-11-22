@@ -6,6 +6,7 @@
 // found in the LICENSE file in the root directory of this source tree.
 
 import { test, expect } from "./coverage";
+import { openListRowDetail } from "./source-to-query-helpers";
 
 // REQ-963/966: an operator can define a materialized view and its NRT debounce
 // (quiet / max_delay) from the Tables admin surface. The debounce inputs are visible
@@ -26,8 +27,7 @@ test("define a materialized view with NRT debounce config", async ({ page }) => 
 
   // Expand the dim_pet view row and open its edit form.
   const row = page.locator("tr").filter({ hasText: "dim_pet" }).first();
-  await row.waitFor({ timeout: 15000 });
-  await row.click();
+  await openListRowDetail(row);
   const editBtn = page.getByTestId("table-read-view-edit").first();
   await editBtn.waitFor({ timeout: 15000 });
   await editBtn.click();
@@ -69,8 +69,8 @@ test("define a materialized view with NRT debounce config", async ({ page }) => 
   await page.waitForSelector(".page-header", { timeout: 30000 });
   await page.waitForFunction(() => document.querySelectorAll("tr").length > 2, { timeout: 30000 });
   const rowAgain = page.locator("tr").filter({ hasText: "dim_pet" }).first();
-  await rowAgain.waitFor({ timeout: 15000 });
-  await rowAgain.click();
+  // REQ-2260: the reload reopens the detail left open, so its row is not clicked again.
+  await openListRowDetail(rowAgain);
   const editAgain = page.getByTestId("table-read-view-edit").first();
   await editAgain.waitFor({ timeout: 15000 });
   await editAgain.click();

@@ -8,6 +8,13 @@
     "argumentsNotJson": "有効な JSON ではありません",
     "argumentsNotObject": "引数名と値の JSON オブジェクトを指定してください",
     "readFilter": "ランディングフィルター",
-    "readArguments": "固定引数"
+    "readArguments": "固定引数",
+    "readWaitLabel": "最初のランディング前の読み取り",
+    "readWaitHelp": "このテーブルがまだ何もランディングしていないときの読み取りの動作です。既定ではリクエストが許す限り待機します。代わりに独自の時間だけ待機するか、テーブルの列で 0 行を返してランディングを開始できます。",
+    "readWaitRequest": "リクエストのタイムアウトまで待機",
+    "readWaitTimed": "指定した時間まで待機",
+    "readWaitNoRows": "0 行を返してランディングを開始",
+    "readWaitSeconds": "待機 (秒)",
+    "readWaitUpTo": "最大 {{seconds}} 秒待機"
   }
 }

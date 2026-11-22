@@ -8,6 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
+import { DestructiveConfirmButton } from "../components/form/DestructiveConfirmButton";
 import { Users } from "lucide-react";
 import { PageTitle } from "../components/PageTitle";
 import { useCallback, useEffect, useState } from "react";
@@ -22,6 +23,7 @@ import {
   Stack,
   Switch,
   Table,
+  Tabs,
   Text,
   TextInput,
 } from "@mantine/core";
@@ -54,7 +56,12 @@ import { Tip } from "../components/Tip";
 import { SplitPane } from "../components/list/SplitPane";
 import { MemberAttributes } from "../components/admin/MemberAttributes";
 import { SuspendedAccess } from "../components/admin/SuspendedAccess";
+import { AccessReviews } from "../components/admin/AccessReviews";
 import { TeamLocalUsers } from "../components/admin/TeamLocalUsers";
+import { PersonEntitlements } from "../components/entitlements/PersonEntitlements";
+import { EntitlementGrants } from "../components/entitlements/EntitlementGrants";
+import { useCapability } from "../hooks/useCapability";
+import { administersOrg, conferrableRoles } from "../lib/capabilities";
 
 // REQ-1266: org_admin self-service team management. The org_admin invites people into their
 // active org and picks the role each invitee is granted on redemption (the invite carries
@@ -63,8 +70,18 @@ import { TeamLocalUsers } from "../components/admin/TeamLocalUsers";
 // only ever surfaces the current org's invites. Roles are shaped at Security → Roles.
 export function TeamPage() {
   const { t } = useTranslation();
-  const { activeOrgId, userId, multitenancy } = useAuth();
+  const { activeOrgId, userId, multitenancy, capabilities } = useAuth();
   const { roles } = useRoles();
+  // REQ-1327 (amended 2026-11-14, 2026-11-16): deleting the org and granting or revoking org_admin
+  // are an org_admin's acts (or the platform's); user_management alone allows none, so their
+  // controls are shown only where the server would accept them.
+  const isOrgAdmin = administersOrg(roles, capabilities);
+  // REQ-2219: granting and ending a person's entitlement lists is assign_entitlements.
+  const canAssign = useCapability("assign_entitlements");
+  // REQ-2266: access reviews are taken by user_management and decided by each domain's owner.
+  const canManageUsers = useCapability("user_management");
+  const ownsDomains = useCapability("domain_steward");
+  const canReview = canManageUsers || ownsDomains;
   const [invites, setInvites] = useState<OrgInvite[]>([]);
   const [members, setMembers] = useState<OrgMember[]>([]);
   // The member whose attributes the panel beside the list shows.
@@ -173,7 +190,11 @@ export function TeamPage() {
     }
   };
 
-  const roleOptions = roles.map((r) => ({ value: r.id, label: r.id }));
+  // REQ-1327 (amended 2026-11-16): an invitation offers only the roles the caller may confer.
+  const roleOptions = conferrableRoles(roles, capabilities).map((r) => ({
+    value: r.id,
+    label: r.id,
+  }));
 
   // REQ-1594: an invitation is spent when it has no redemptions left, which "used_at is set" stopped
   // describing once a link could admit more than one person. A null ceiling never arrives there.
@@ -309,7 +330,9 @@ export function TeamPage() {
   return (
     <Stack gap="lg" p="md" data-testid="team-page">
       <div>
-        <PageTitle icon={Users} mb={4}>{t("teamPage.title")}</PageTitle>
+        <PageTitle icon={Users} mb={4}>
+          {t("teamPage.title")}
+        </PageTitle>
         <Text c="dimmed" size="sm">
           {t("teamPage.subtitle")}
         </Text>
@@ -386,37 +409,41 @@ export function TeamPage() {
                           </Table.Td>
                           <Table.Td onClick={(e) => e.stopPropagation()}>
                             <Group gap="xs">
-                              <Tip text={lastAdmin ? t("teamPage.lastAdminHint") : undefined}>
-                                <Button
-                                  size="compact-xs"
-                                  variant="default"
-                                  disabled={lastAdmin}
-                                  onClick={() => handleToggleAdmin(m)}
-                                  data-testid={`team-toggle-admin-${m.user_id}`}
+                              {isOrgAdmin && (
+                                <Tip text={lastAdmin ? t("teamPage.lastAdminHint") : undefined}>
+                                  <Button
+                                    size="compact-xs"
+                                    variant="default"
+                                    disabled={lastAdmin}
+                                    onClick={() => handleToggleAdmin(m)}
+                                    data-testid={`team-toggle-admin-${m.user_id}`}
+                                  >
+                                    {m.is_org_admin ? t("teamPage.demote") : t("teamPage.promote")}
+                                  </Button>
+                                </Tip>
+                              )}
+                              {(isOrgAdmin || !m.is_org_admin) && (
+                                <Tip
+                                  text={
+                                    m.user_id === userId
+                                      ? t("teamPage.selfRemoveHint")
+                                      : lastAdmin
+                                        ? t("teamPage.lastAdminHint")
+                                        : undefined
+                                  }
                                 >
-                                  {m.is_org_admin ? t("teamPage.demote") : t("teamPage.promote")}
-                                </Button>
-                              </Tip>
-                              <Tip
-                                text={
-                                  m.user_id === userId
-                                    ? t("teamPage.selfRemoveHint")
-                                    : lastAdmin
-                                      ? t("teamPage.lastAdminHint")
-                                      : undefined
-                                }
-                              >
-                                <Button
-                                  size="compact-xs"
-                                  color="red"
-                                  variant="light"
-                                  disabled={lastAdmin || m.user_id === userId}
-                                  onClick={() => handleRemoveMember(m)}
-                                  data-testid={`team-remove-${m.user_id}`}
-                                >
-                                  {t("teamPage.removeButton")}
-                                </Button>
-                              </Tip>
+                                  <Button
+                                    size="compact-xs"
+                                    color="red"
+                                    variant="light"
+                                    disabled={lastAdmin || m.user_id === userId}
+                                    onClick={() => handleRemoveMember(m)}
+                                    data-testid={`team-remove-${m.user_id}`}
+                                  >
+                                    {t("teamPage.removeButton")}
+                                  </Button>
+                                </Tip>
+                              )}
                             </Group>
                           </Table.Td>
                         </ListRow>
@@ -427,11 +454,59 @@ export function TeamPage() {
               </ListTable>
             }
           >
-            {selectedMemberId === null ? null : (
+            {selectedMemberId === null ? null : canAssign ? (
+              <Tabs defaultValue="attributes" keepMounted={false} data-testid="team-member-tabs">
+                <Tabs.List>
+                  <Tabs.Tab value="attributes" data-testid="team-member-tab-attributes">
+                    {t("teamPage.attributesTab")}
+                  </Tabs.Tab>
+                  <Tabs.Tab value="access" data-testid="team-member-tab-access">
+                    {t("teamPage.accessTab")}
+                  </Tabs.Tab>
+                </Tabs.List>
+                <Tabs.Panel value="attributes" pt="sm">
+                  <MemberAttributes key={selectedMemberId} userId={selectedMemberId} />
+                </Tabs.Panel>
+                <Tabs.Panel value="access" pt="sm">
+                  <PersonEntitlements
+                    key={selectedMemberId}
+                    principal={selectedMemberId}
+                    roleIds={roles.map((r) => r.id)}
+                  />
+                </Tabs.Panel>
+              </Tabs>
+            ) : (
               <MemberAttributes key={selectedMemberId} userId={selectedMemberId} />
             )}
           </SplitPane>
         </CollapsibleItem>
+
+        {/* REQ-2219: grant access to anyone the people search finds, or to a typed email that
+            waits for its person's first sign-in, and the grants still waiting. */}
+        {canAssign && (
+          <CollapsibleItem
+            value="entitlements"
+            mountWhenOpen
+            controlTestId="team-section-entitlements"
+            title={t("entitlements.grants.heading")}
+          >
+            <EntitlementGrants roleIds={roles.map((r) => r.id)} />
+          </CollapsibleItem>
+        )}
+
+        {/* REQ-2266: each member's grants, reviewed by the owner of each domain. Mounted only when
+            open, so a closed section reads nothing. */}
+        {canReview && (
+          <CollapsibleItem
+            value="access-review"
+            defaultOpen={false}
+            mountWhenOpen
+            controlTestId="team-section-access-review"
+            title={t("accessReview.heading")}
+          >
+            <AccessReviews />
+          </CollapsibleItem>
+        )}
 
         <CollapsibleItem
           value="invites"
@@ -658,7 +733,7 @@ export function TeamPage() {
           </CollapsibleItem>
         )}
 
-        {multitenancy && (
+        {multitenancy && isOrgAdmin && (
           <CollapsibleItem
             value="danger"
             controlTestId="team-section-danger"
@@ -687,7 +762,7 @@ export function TeamPage() {
         )}
       </Collapsibles>
 
-      {multitenancy && (
+      {multitenancy && isOrgAdmin && (
         <Modal
           opened={deleteOpen}
           onClose={() => setDeleteOpen(false)}
@@ -709,14 +784,13 @@ export function TeamPage() {
             <FormFooter
               onCancel={() => setDeleteOpen(false)}
               action={
-                <Button
-                  color="red"
+                <DestructiveConfirmButton
                   disabled={confirmText !== activeOrgId}
                   onClick={handleDeleteOrg}
-                  data-testid="team-delete-submit"
+                  testId="team-delete-submit"
                 >
                   {t("teamPage.deleteConfirmButton")}
-                </Button>
+                </DestructiveConfirmButton>
               }
             >
               <Button variant="default" onClick={handleExport} data-testid="team-export-config">

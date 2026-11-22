@@ -1,0 +1,6 @@
+# Pinned WSL base rootfs for the Windows Container-tier installer.
+# SHA256 taken from the dated build's SHA256SUMS, whose signature was verified
+# against Ubuntu's cloud image signing key D2EB44626FDDC30B513D5BB71A5D6C4C7DB87C81
+# (UEC Image Automatic Signing Key <cdimage@ubuntu.com>).
+url=https://cloud-images.ubuntu.com/wsl/jammy/20250318/ubuntu-jammy-wsl-amd64-ubuntu22.04lts.rootfs.tar.gz
+sha256=1483cc5c1dce13064f774834cbffdff226559fd522a67a381a8ea77d63fb4109

@@ -1,6 +1,7 @@
 {
   "filterInput": {
     "filter": "Filtrer",
-    "clear": "Effacer"
+    "clear": "Effacer",
+    "syntaxHint": "Utilise la syntaxe de recherche Google : chaque mot doit correspondre ; tapez or (le mot anglais, tel quel) entre des alternatives ; -mot exclut ; les \"guillemets\" gardent une expression entière."
   }
 }

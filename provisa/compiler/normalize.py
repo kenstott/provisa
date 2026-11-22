@@ -40,6 +40,7 @@ from graphql import (
     SelectionSetNode,
 )
 
+from provisa.compiler import names_table
 from provisa.compiler.sql_gen import CompilationContext, CompiledQuery, compile_query
 
 
@@ -101,7 +102,9 @@ def discover_entity_paths(
     ) -> None:
         table_meta = None
         if not path:
-            table_meta = ctx.tables.get(field_node.name.value)
+            # REQ-467: a root field resolves through the names table (REQ-194).
+            resolved = names_table.root_field(ctx, field_node.name.value)
+            table_meta = resolved[1] if resolved is not None else None
         else:
             jm = ctx.joins.get((owning_type, field_node.name.value))
             table_meta = jm.target if jm else None
@@ -134,9 +137,10 @@ def discover_entity_paths(
         if not isinstance(defn, OperationDefinitionNode):
             continue
         for sel in defn.selection_set.selections:
-            if isinstance(sel, FieldNode) and sel.name.value in ctx.tables:
-                root_type = ctx.tables[sel.name.value].type_name
-                _walk(sel, root_type, (), [sel], [])
+            if isinstance(sel, FieldNode) and (
+                resolved := names_table.root_field(ctx, sel.name.value)
+            ):
+                _walk(sel, resolved[1].type_name, (), [sel], [])
     return paths
 
 
@@ -149,6 +153,12 @@ def check_normalizable(document: DocumentNode, ctx: CompilationContext) -> None:
             jm = ctx.joins.get((parent_type, rel_field))
             if jm is None:
                 continue
+            if jm.via is not None:  # REQ-1586
+                raise NormalizeError(
+                    f"cannot normalize: relationship {rel_field!r} joins through the junction "
+                    f"{jm.via.table.table_name!r}, not on a key column of its own — every "
+                    f"relationship must be a real FK/PK column join to produce normalized tables."
+                )
             if (
                 jm.source_expr is not None
                 or jm.source_constant is not None

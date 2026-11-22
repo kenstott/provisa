@@ -47,6 +47,38 @@ function open(onPick = vi.fn(), onClose = vi.fn()) {
 describe("SourceTypePicker", () => {
   beforeEach(() => window.localStorage.clear());
 
+  it("shows a connector's own icon and description, and finds it by the description", async () => {
+    const icon = "data:image/png;base64,AAAA";
+    render(
+      <SourceTypePicker
+        opened
+        onClose={vi.fn()}
+        groups={[
+          {
+            group: "Connectors",
+            items: [
+              { value: "connector:crm", label: "crm", icon, description: "Accounts and contacts" },
+              { value: "connector:hr", label: "hr" },
+            ],
+          },
+        ]}
+        value=""
+        onPick={vi.fn()}
+      />,
+    );
+    const image = await screen.findByTestId("source-icon-connector:crm");
+    expect(image).toHaveAttribute("src", icon);
+    expect(screen.getByTestId("source-description-connector:crm")).toHaveTextContent(
+      "Accounts and contacts",
+    );
+    expect(screen.queryByTestId("source-icon-connector:hr")).toBeNull();
+    fireEvent.change(screen.getByTestId("source-type-picker-search"), {
+      target: { value: "contacts" },
+    });
+    expect(screen.getByTestId("source-type-option-connector:crm")).toBeInTheDocument();
+    expect(screen.queryByTestId("source-type-option-connector:hr")).toBeNull();
+  });
+
   it("lists every type under its category, with a logo or a lettered tile", async () => {
     open();
     expect(await screen.findByTestId("source-type-picker-section-RDBMS")).toBeInTheDocument();

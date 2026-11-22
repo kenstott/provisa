@@ -31,7 +31,7 @@ from provisa.security.inheritance import (
     role_chain,
 )
 from provisa.security.meta_role import META_PREFIX, is_meta_role_id
-from provisa.security.rights import Capability
+from provisa.security.rights import Capability, reads_data
 
 DATA_RESIDENCY = Capability.DATA_RESIDENCY.value
 
@@ -194,8 +194,8 @@ def data_view_from_state(
     from provisa.security.meta_role import ensure_meta_role, reader_chain
 
     parents = dict(parents)
-    if not is_meta_role_id(role_id) and not state.roles[role_id].get("capabilities"):
-        return []  # REQ-2155: a role with no capabilities reads nothing
+    if not is_meta_role_id(role_id) and not reads_data(state.roles[role_id].get("capabilities")):
+        return []  # REQ-2155, REQ-870: no capabilities, or only command_execution, reads nothing
     if is_meta_role_id(role_id):
         members = role_id[len(META_PREFIX) :].split("+")
         role_id = ensure_meta_role(state, members)
@@ -235,12 +235,14 @@ def table_access(
     readable: Callable[[int, str], bool],
     governance: bool,
     standard: Collection[str],
+    withdrawn: dict | None = None,
 ) -> dict | None:
     """Who can read or write each column of table ``table_id`` (REQ-2162): the inverse of the
     role panel's data access, resolved by the same view per role of ``roles``. Only the columns
     ``readable`` admits -- the viewer's own read rights -- are listed; None when the build has no
-    such table."""
-    table = next((t for t in state.tables if t["id"] == table_id), None)
+    such table. ``withdrawn``: the table, withdrawn, when the viewer may preview it (REQ-1921:
+    table registration in its domain); it is answered marked ``withdrawn``."""
+    table = next((t for t in state.tables if t["id"] == table_id), None) or withdrawn
     if table is None:
         return None
     columns = {
@@ -276,6 +278,7 @@ def table_access(
         "name": f"{table['domain_id']}.{table.get('alias') or table['table_name']}",
         "table_name": table["table_name"],
         "columns": list(columns.values()),
+        "withdrawn": table is withdrawn,
     }
 
 

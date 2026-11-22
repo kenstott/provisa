@@ -685,10 +685,11 @@ def _attachable(connectors: list[Connector]) -> tuple[list[Connector], dict[str,
     the DuckDB engine's ``connectors``, those whose every needed extension is staged for the
     running DuckDB version and platform (the staged directory's manifest), and, by source type,
     what is missing for each type left with no connector that no reader lands either. A type
-    Provisa lands is a replica (complete_reach gives it its land reach), never unreachable. A
-    server with no staged directory counts what it installed when it started (THE SERVER TIER
-    STAGES AT START); where neither is known DuckDB installs on first use and every connector
-    stays."""
+    Provisa lands is a replica (complete_reach gives it its land reach), never unreachable. With no
+    staged directory (a source checkout on DuckDB's per-user directory) what is there is learned
+    when an extension loads, and one that is not is refused by name (REQ-294: nothing is installed
+    at runtime); every connector stays, less any whose extension has no build for the running
+    DuckDB (REQ-1998: a sheet lands through the Sheets API on DuckDB 2.0, whatever is staged)."""
     from provisa.federation.duckdb_extensions import (
         staged_extensions,
         unstaged_needs,
@@ -696,8 +697,6 @@ def _attachable(connectors: list[Connector]) -> tuple[list[Connector], dict[str,
     )
 
     staged = staged_extensions()
-    if staged is None:
-        return connectors, {}
     kept: list[Connector] = []
     missing: dict[str, tuple[str, ...]] = {}
     for connector in connectors:
@@ -792,17 +791,15 @@ def build_duckdb_engine(
     from provisa.federation.connector_duckdb import DuckDBMotherDuckConnector
     from provisa.federation.duckdb_backend import DuckDBBackend
     from provisa.federation.runtime import EngineCapability
-    from provisa.federation.duckdb_extensions import motherduck_reader_missing
+    from provisa.core.engine_memory import motherduck_extension_limit
 
     connectors, unreachable = _attachable(duckdb_engine_connectors())
-    # REQ-1998 (Amended 2026-11-06, MOTHERDUCK IS A REPLICA WHERE IT CANNOT ATTACH): attached where
-    # MotherDuck's extension loads on this DuckDB; where it does not, no reader in this deployment
-    # lands it either, so it is unreachable, naming what is missing.
-    missing_reader = motherduck_reader_missing()
-    if missing_reader is None:
+    # REQ-1998 (Amended 2026-11-06, MOTHERDUCK IS A REPLICA WHERE IT CANNOT ATTACH; MOTHERDUCK
+    # LANDS THROUGH ITS POSTGRES ENDPOINT): attached where MotherDuck's extension loads on this
+    # DuckDB; where it does not, its replicas land through MotherDuck's Postgres endpoint
+    # (complete_reach gives it its land reach).
+    if motherduck_extension_limit() is None:
         connectors.append(DuckDBMotherDuckConnector())
-    else:
-        unreachable["motherduck"] = missing_reader
     return FederationEngine(
         name,
         connectors,
@@ -1137,7 +1134,11 @@ def build_sqlalchemy_engine(  # REQ-905: any SQLAlchemy-reachable store, zero co
         # cockroachdb, …) are UNVERIFIED for this trait, tracked rather than guessed at, same
         # discipline as the sqlglot-dialect-name gap `EngineBackend._SQLGLOT_DIALECT_ALIASES`'s own
         # comment already documents for this family.
-        catalog_qualified=backend != "oracle",
+        # Db2 LUW reads a three-part name only for a federated object (a nickname's server); a
+        # local table is schema.table. From Db2's SQL reference, not yet verified live.
+        # SAP HANA likewise: a three-part name reaches another tenant database only where
+        # cross-database access is enabled; a local table is schema.table (HANA's SQL reference).
+        catalog_qualified=backend not in ("oracle", "db2", "ibm_db_sa", "hana"),
         backend_factory=SqlAlchemyBackend,  # in-process terminal driving SqlAlchemyFederationRuntime
         # REQ-1730: was `_platform_db_materialize_default` — the shared PLATFORM Postgres, not this
         # engine's own store. A SELF_ONLY engine's whole point is "every source lands into me" (see
@@ -2067,6 +2068,7 @@ def build_engine(name: str | None = None) -> FederationEngine:  # REQ-840/893/90
     # live-attach plus the Provisa-direct/adapter land connectors. connector_for/federate/reconcile then
     # resolve landable sources from the registry directly rather than synthesizing per call.
     engine = _ENGINE_BUILDERS[key]().complete_reach()
+    engine.dialect  # noqa: B018 — refuses an engine with no sqlglot dialect, by name, at build
     # Record WHICH key won the precedence above, so the admin API can report the engine the process is
     # actually running instead of the persisted config field (which the env pin overrides).
     engine.selected_key = key

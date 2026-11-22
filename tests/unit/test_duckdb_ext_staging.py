@@ -421,5 +421,60 @@ def test_a_staged_directory_gates_attach_on_its_manifest(tmp_path, monkeypatch):
     monkeypatch.setenv("PROVISA_DUCKDB_EXT_DIR", str(target))
     engine = build_duckdb_engine()
     assert "postgresql" in engine.connectors  # a core wheel's extension was staged
-    assert "google_sheets" not in engine.connectors
-    assert "gsheets" in (engine.unreachable_reason("google_sheets") or "")
+    assert "google_sheets" not in engine.connectors  # not attached ...
+    # ... a replica, landed through the Sheets API (REQ-1998)
+    assert engine.unreachable_reason("google_sheets") is None
+    assert not engine.complete_reach().connectors["google_sheets"].reads_in_place
+
+
+def test_with_no_staged_directory_only_an_unbuilt_extension_is_gated(monkeypatch):
+    # gsheets has no build from DuckDB 2.0.0 (REQ-1998), known from the version alone, so a sheet
+    # is a replica with nothing staged and nothing installed.
+    from provisa.federation.engine import build_duckdb_engine
+
+    monkeypatch.delenv("PROVISA_DUCKDB_EXT_DIR", raising=False)
+    connectors = build_duckdb_engine().connectors
+    assert "postgresql" in connectors and "google_sheets" not in connectors
+
+
+def _declare(monkeypatch, tmp_path, source_type: str, extension: str) -> None:
+    """config/custom_connectors.yaml declares a duckdb_attach connector (REQ-1177)."""
+    cfg = tmp_path / "custom_connectors.yaml"
+    cfg.write_text(
+        "connectors:\n"
+        "  - engine: duckdb\n"
+        f"    source_type: {source_type}\n"
+        "    kind: duckdb_attach\n"
+        f"    extension: {extension}\n"
+        "    install_from_community: false\n"
+        f"    probe_symbol: {extension}_snapshots\n"
+        '    attach_template: "ATTACH {path} AS {alias:ident}"\n'
+    )
+    monkeypatch.setenv("PROVISA_CUSTOM_CONNECTORS", str(cfg))
+
+
+def test_a_connector_declared_after_start_is_judged_by_the_staged_manifest(monkeypatch, tmp_path):
+    # REQ-1177: a custom connector is read again on every engine build. REQ-294: nothing installs
+    # it; the staged directory's manifest decides, and one it lacks is named.
+    from provisa.federation.engine import build_duckdb_engine
+
+    ver, plat = _version_platform()
+    target = tmp_path / "staged"
+    stage_wheels(
+        _full(
+            tmp_path,
+            ver,
+            plat,
+            **{"ducklake.duckdb_extension": "D", "ducklake.duckdb_extension.info": "I"},
+        ),
+        target,
+    )
+    monkeypatch.setenv("PROVISA_DUCKDB_EXT_DIR", str(target))
+    _declare(monkeypatch, tmp_path, "ducklake", "ducklake")
+    engine = build_duckdb_engine()
+    assert "ducklake" in engine.connectors
+    assert engine.unreachable_reason("ducklake") is None
+    _declare(monkeypatch, tmp_path, "nolake", "nolake")
+    engine = build_duckdb_engine()
+    assert "nolake" not in engine.connectors
+    assert "nolake extension is not available" in (engine.unreachable_reason("nolake") or "")

@@ -18,7 +18,7 @@ from types import SimpleNamespace
 import pytest
 
 from provisa.compiler.names_table import NameRow, build_names_table
-from provisa.entitlements.index import build_index, check_lists
+from provisa.entitlements.index import build_index, check_lists, owned_objects
 from provisa.entitlements.lists import (
     EntitlementClaimError,
     ExpiryRule,
@@ -271,7 +271,9 @@ def test_held_version_tracks_content():
     one = HeldEntitlements(lists=(HeldList("viewer", "tables", ("a.b",)),))
     same = HeldEntitlements(lists=(HeldList("viewer", "tables", ("a.b",)),))
     other = HeldEntitlements(lists=(HeldList("viewer", "tables", ("a.c",)),))
-    rule = HeldEntitlements(lists=one.lists, expiries=(ExpiryRule("viewer", NOW, {}),))
+    rule = HeldEntitlements(
+        lists=one.lists, expiries=(ExpiryRule("viewer", NOW, {"read": ("a.b",)}),)
+    )
     assert held_version(one) == held_version(same)
     assert held_version(one) != held_version(other)
     assert held_version(one) != held_version(rule)
@@ -431,9 +433,14 @@ def _held_sales():
     return _effective(held=HeldEntitlements(lists=(HeldList("viewer", "tables", ("sales.*",)),)))
 
 
-def test_a_passed_expiry_with_no_scope_ends_the_grant():
+_SALES_ORDERS = {"read": ("sales.orders",)}
+
+
+def test_a_rule_naming_nothing_is_no_second_end_of_the_grant():
+    # REQ-2219, EXPIRY IS ON THE GRANT AND ON ITS ENTRIES: what ends a whole grant is its own
+    # expiry, after which the role is not held; the mask ends only what an entry names.
     mask = _mask(_held_sales(), expiries=[ExpiryRule("viewer", NOW - timedelta(hours=1), {})])
-    assert not mask.has_table(2)
+    assert mask.has_table(2) and mask.has_table(3)
 
 
 def test_expiry_of_a_scoped_capability_removes_only_its_bits():
@@ -444,14 +451,14 @@ def test_expiry_of_a_scoped_capability_removes_only_its_bits():
 
 def test_a_future_expiry_is_carried_as_the_next_expiry():
     later = NOW + timedelta(days=1)
-    mask = _mask(_held_sales(), expiries=[ExpiryRule("viewer", later, {})])
+    mask = _mask(_held_sales(), expiries=[ExpiryRule("viewer", later, _SALES_ORDERS)])
     assert mask.has_table(2)
     assert mask.next_expiry == later
 
 
 def test_expiry_never_touches_an_idp_list():
     lists = _effective({"viewer": {"tables": ("sales.*",)}})
-    mask = _mask(lists, expiries=[ExpiryRule("viewer", NOW - timedelta(hours=1), {})])
+    mask = _mask(lists, expiries=[ExpiryRule("viewer", NOW - timedelta(hours=1), _SALES_ORDERS)])
     assert mask.has_table(2)
 
 
@@ -485,7 +492,7 @@ def test_a_cached_mask_past_its_expiry_is_recomputed():
 
     def build():
         built.append(1)
-        return _mask(_held_sales(), expiries=[ExpiryRule("viewer", later, {})])
+        return _mask(_held_sales(), expiries=[ExpiryRule("viewer", later, _SALES_ORDERS)])
 
     key = ("viewer", "i", "h", ("b", 1))
     cache.get_or_build(key, build, now=NOW)
@@ -513,13 +520,16 @@ def test_the_mask_hash_changes_with_the_model_version():
 # ── checks ──────────────────────────────────────────────────────────────────────────────────────
 
 
+_NO_OWNED = owned_objects((), ())
+
+
 def _role(capabilities=(), domain_access=("*",)):
     return {"capabilities": list(capabilities), "domain_access": list(domain_access)}
 
 
 def test_an_unknown_identifier_is_flagged_by_name():
     lists = _effective({"viewer": {"tables": ("finance.revenue", "finance.nope")}})
-    findings = check_lists("viewer", _role(), lists, _model_index())
+    findings = check_lists("viewer", _role(), lists, _model_index(), _NO_OWNED)
     assert [(f.code, f.kind, f.identifier) for f in findings] == [
         ("unknown_identifier", "tables", "finance.nope")
     ]
@@ -528,31 +538,31 @@ def test_an_unknown_identifier_is_flagged_by_name():
 
 def test_an_identifier_outside_the_role_is_not_unknown():
     lists = _effective({"viewer": {"tables": ("hr.secret",)}})
-    assert check_lists("viewer", _role(), lists, _model_index()) == []
+    assert check_lists("viewer", _role(), lists, _model_index(), _NO_OWNED) == []
 
 
 def test_a_wildcard_matching_nothing_is_flagged():
     lists = _effective({"viewer": {"tables": ("nowhere.*",)}})
-    assert [f.code for f in check_lists("viewer", _role(), lists, _model_index())] == [
+    assert [f.code for f in check_lists("viewer", _role(), lists, _model_index(), _NO_OWNED)] == [
         "unknown_identifier"
     ]
 
 
 def test_a_list_for_a_kind_the_role_uses_nothing_of_is_flagged():
     lists = _effective({"viewer": {"environments": ("feature-*",)}})
-    findings = check_lists("viewer", _role(), lists, _model_index())
+    findings = check_lists("viewer", _role(), lists, _model_index(), _NO_OWNED)
     assert [(f.code, f.kind) for f in findings] == [("unused_kind", "environments")]
 
 
 def test_a_kind_the_role_uses_is_not_flagged():
     lists = _effective({"viewer": {"environments": ("feature-*",)}})
     role = _role(capabilities=("environment_switch",))
-    assert check_lists("viewer", role, lists, _model_index()) == []
+    assert check_lists("viewer", role, lists, _model_index(), _NO_OWNED) == []
 
 
 def test_an_unrecognised_kind_is_flagged_as_unused():
     lists = _effective({"viewer": {"bananas": ("x",)}})
-    assert [f.code for f in check_lists("viewer", _role(), lists, _model_index())] == [
+    assert [f.code for f in check_lists("viewer", _role(), lists, _model_index(), _NO_OWNED)] == [
         "unused_kind"
     ]
 
@@ -560,4 +570,6 @@ def test_an_unrecognised_kind_is_flagged_as_unused():
 def test_a_data_kind_on_a_role_with_no_data_plane_is_unused():
     lists = _effective({"viewer": {"tables": ("sales.*",)}})
     role = _role(capabilities=("platform_settings",), domain_access=())
-    assert [f.code for f in check_lists("viewer", role, lists, _model_index())] == ["unused_kind"]
+    assert [f.code for f in check_lists("viewer", role, lists, _model_index(), _NO_OWNED)] == [
+        "unused_kind"
+    ]

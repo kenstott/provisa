@@ -11,6 +11,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 from graphql import (
+    GraphQLArgument,
     GraphQLField,
     GraphQLFloat,
     GraphQLInt,
@@ -54,6 +55,9 @@ def _make_state(role_id: str = "admin") -> SimpleNamespace:
         schemas={role_id: schema},
         table_path_maps={role_id: path_map},
     )
+    state.roles = {  # REQ-870: a command's path is offered by the one command rule
+        role_id: {"id": role_id, "capabilities": ["command_execution"], "domain_access": ["*"]}
+    }
     return state
 
 
@@ -136,14 +140,27 @@ class TestParameters:
         assert params["offset"]["schema"]["minimum"] == 0
 
 
+def _command_field(definition: dict, args: dict | None = None) -> GraphQLField:
+    """A command's GraphQL field as actions_schema builds it: the command named in its
+    extensions, with its definition."""
+    return GraphQLField(
+        GraphQLString,  # type: ignore[arg-type]
+        args=args or {},
+        description=definition.get("description"),
+        extensions={"provisa_command": definition["name"], "provisa_command_def": definition},
+    )
+
+
 class TestCommandPaths:
-    """REQ-1155: registered commands appear as POST paths in the OpenAPI surface."""
+    """REQ-1929: the commands are the role's GraphQL command fields; a Query field is a GET, a
+    Mutation field a POST (REQ-1155)."""
 
     def _state_with_commands(self):
         state = _make_state()
         grpc_fn = {
             "name": "random_grpc_set",
             "domain_id": "default",
+            "kind": "mutation",
             "visible_to": ["admin"],
             "description": "demo grpc command",
             "arguments": [],
@@ -151,34 +168,52 @@ class TestCommandPaths:
         py_fn = {
             "name": "random_python_set",
             "domain_id": "default",
+            "kind": "mutation",
             "visible_to": ["admin"],
             "arguments": [{"name": "rows", "type": "Int"}, {"name": "seed", "type": "Int"}],
         }
         hidden = {
             "name": "secret_cmd",
             "domain_id": "default",
+            "kind": "mutation",
             "visible_to": ["ops"],
             "arguments": [],
         }
+        # The registered commands, the GraphQL alias key included; the role's schema offers two.
         state.tracked_functions = {
             "random_grpc_set": grpc_fn,
-            "ps__random_grpc_set": grpc_fn,  # prefixed alias must not double-emit
+            "ps__random_grpc_set": grpc_fn,
             "random_python_set": py_fn,
             "secret_cmd": hidden,
         }
+        schema = state.schemas["admin"]
+        mutation = GraphQLObjectType(
+            "Mutation",
+            {
+                "randomGrpcSet": _command_field(grpc_fn),
+                "randomPythonSet": _command_field(
+                    py_fn,
+                    {
+                        "rows": GraphQLArgument(GraphQLInt),  # type: ignore[arg-type]
+                        "seed": GraphQLArgument(GraphQLInt),  # type: ignore[arg-type]
+                    },
+                ),
+            },
+        )
+        state.schemas["admin"] = GraphQLSchema(query=schema.query_type, mutation=mutation)
         return state
 
     def test_command_post_path_present(self):
         spec = generate_rest_openapi_spec(self._state_with_commands(), "admin")
         assert "post" in spec["paths"]["/default/commands/random_grpc_set"]
 
-    def test_command_not_deduped_alias(self):
+    def test_one_path_per_command_field(self):
         spec = generate_rest_openapi_spec(self._state_with_commands(), "admin")
-        # exactly one path for the command despite the prefixed alias key
+        # exactly one path for the command despite its alias key among the registered commands
         cmd_paths = [p for p in spec["paths"] if p.endswith("/commands/random_grpc_set")]
         assert len(cmd_paths) == 1
 
-    def test_command_hidden_from_unauthorized_role(self):
+    def test_a_registered_command_the_schema_does_not_offer_has_no_path(self):
         spec = generate_rest_openapi_spec(self._state_with_commands(), "admin")
         assert "/default/commands/secret_cmd" not in spec["paths"]
 
@@ -192,6 +227,29 @@ class TestCommandPaths:
     def test_command_domain_filter_excludes(self):
         spec = generate_rest_openapi_spec(self._state_with_commands(), "admin", domains=["other"])
         assert not any("/commands/" in p for p in spec["paths"])
+
+    def test_a_description_narrowed_to_tables_has_no_commands(self):
+        spec = generate_rest_openapi_spec(self._state_with_commands(), "admin", tables=["orders"])
+        assert not any("/commands/" in p for p in spec["paths"])
+
+    def test_a_query_field_is_a_get_with_the_table_read_parameters(self):
+        state = _make_state()
+        find = {"name": "find_orders", "domain_id": "default", "kind": "query", "arguments": []}
+        query = state.schemas["admin"].query_type
+        fields = dict(query.fields)
+        fields["findOrders"] = _command_field(
+            find,
+            {
+                "region": GraphQLArgument(GraphQLString),  # type: ignore[arg-type]
+                "limit": GraphQLArgument(GraphQLInt),  # type: ignore[arg-type]
+                "offset": GraphQLArgument(GraphQLInt),  # type: ignore[arg-type]
+            },
+        )
+        state.schemas["admin"] = GraphQLSchema(query=GraphQLObjectType("Query", fields))
+        item = generate_rest_openapi_spec(state, "admin")["paths"]["/default/commands/find_orders"]
+        assert set(item) == {"get"}
+        names = [p["name"] for p in item["get"]["parameters"]]
+        assert names == ["limit", "offset", "filter", "orderBy", "region"]
 
 
 class TestComponentSchemas:
@@ -421,6 +479,14 @@ def _two_table_state() -> RoleState:
             "admin": {"orders": meta("orders"), "customers": meta("customers")},
             "analyst": {"orders": meta("orders")},
         },
+        roles={  # As the real state: each role served a surface is a loaded role (REQ-042).
+            "admin": {
+                "id": "admin",
+                "capabilities": ["usage", "command_execution"],
+                "domain_access": ["*"],
+            },
+            "analyst": {"id": "analyst", "capabilities": ["usage"], "domain_access": ["sales"]},
+        },
     )
 
 
@@ -457,9 +523,13 @@ class TestTableFilter:
 
     def test_a_named_table_leaves_the_commands_out(self):
         state = _two_table_state()
-        state.tracked_functions = {
-            "add": {"name": "add", "domain_id": "sales", "visible_to": ["admin"], "arguments": []}
-        }
+        add = {"name": "add", "domain_id": "sales", "kind": "mutation", "arguments": []}
+        state.tracked_functions = {"add": add}
+        admin = state.schemas["admin"]
+        state.schemas["admin"] = GraphQLSchema(
+            query=admin.query_type,
+            mutation=GraphQLObjectType("Mutation", {"add": _command_field(add)}),
+        )
         assert "/sales/commands/add" in generate_rest_openapi_spec(state, "admin")["paths"]
         narrowed = generate_rest_openapi_spec(state, "admin", tables=["orders"])
         assert list(narrowed["paths"]) == ["/sales/orders"]

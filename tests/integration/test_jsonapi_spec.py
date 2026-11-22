@@ -8,6 +8,8 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 from graphql import (
     GraphQLField,
@@ -19,6 +21,17 @@ from graphql import (
 )
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
+
+
+def _context(tables: list[str]) -> SimpleNamespace:
+    """The role's compilation context, as every built surface has: no table declares a primary
+    key and no relationship points at one, so a column named id is the id (REQ-1929)."""
+    return SimpleNamespace(
+        tables={t: SimpleNamespace(table_id=i) for i, t in enumerate(tables, 1)},
+        pk_columns={},
+        joins={},
+        exposed_to_physical={},
+    )
 
 
 def _make_app_and_state(role_id: str = "admin"):
@@ -44,7 +57,7 @@ def _make_app_and_state(role_id: str = "admin"):
 
     state = AppState()
     state.schemas = {role_id: schema}
-    state.contexts = {}
+    state.contexts = {role_id: _context(["pets"])}
     state.rls_contexts = {role_id: RLSContext.empty()}
     state.masking_rules = {}
     state.table_path_maps = {
@@ -147,7 +160,7 @@ class TestSpecEndpoint:
 
         state = AppState()
         state.schemas = {"admin": schema}
-        state.contexts = {}
+        state.contexts = {"admin": _context(["cats", "dogs"])}
         state.rls_contexts = {"admin": RLSContext.empty()}
         state.masking_rules = {}
         state.table_path_maps = {

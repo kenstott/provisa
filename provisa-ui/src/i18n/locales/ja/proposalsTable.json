@@ -1,0 +1,70 @@
+{
+  "proposalsTable": {
+    "intro": "チェックした行は適用時に承認されます。しきい値以上のスコアの行は最初からチェックされています。どちらのボックスもチェックしていない行は未決定のままです。",
+    "colScore": "スコア",
+    "colConfidence": "信頼度",
+    "colJev": "Jev",
+    "colKind": "種類",
+    "colMeasure": "測定結果",
+    "colReasoning": "理由",
+    "colNote": "備考",
+    "colNotAgain": "今後は推奨しない",
+    "notAgainAria": "{{name}} を今後は推奨しない",
+    "kind": {
+      "foreign_keys": "制約",
+      "semantics": "セマンティック",
+      "key_names": "名前の一致"
+    },
+    "asWritten": "モデルの記述のまま: {{answer}}",
+    "apply": "適用",
+    "applyAccept": "{{count}} 件を承認",
+    "applyNotAgain": "{{count}} 件を今後は推奨しない",
+    "applyBoth": "{{accept}} 件を承認、{{notAgain}} 件を今後は推奨しない",
+    "applied": "{{accepted}} 件を承認し、{{notAgain}} 件を今後は推奨しないようにしました。",
+    "failed": "{{count}} 件を適用できませんでした:",
+    "failed_other": "{{count}} 件を適用できませんでした:",
+    "none": "この実行には、決定する候補が残っていません。",
+    "reason": {
+      "invalid_shape": "求めた形式のリレーションシップではありません: フィールドが欠けているか形式が誤っています",
+      "unknown_column": "リクエストが比較しなかったテーブルまたは列を指定しています",
+      "not_comparable": "2 つの列のクラスが異なるため比較されません",
+      "below_threshold": "提案を保持するしきい値 {{threshold}}% を下回るスコアでした。",
+      "same_column": "列からその列自身へ",
+      "existing": "登録済み",
+      "rejected": "以前に却下",
+      "out_of_scope": "選んだソーステーブルとターゲットテーブルの範囲外"
+    },
+    "threshold": "チェックの基準",
+    "thresholdHint": "あなた自身のしきい値。次回以降の実行のために保存されます。",
+    "measure": {
+      "inTarget": "ソースの値 {{values}} 件中 {{found}} 件がターゲットにあります。",
+      "inTargetFirst": "ソースの最初の値 {{values}} 件中 {{found}} 件がターゲットにあります。",
+      "inSource": "ターゲットの値 {{values}} 件中 {{found}} 件がソースにあります。",
+      "inSourceFirst": "ターゲットの最初の値 {{values}} 件中 {{found}} 件がソースにあります。",
+      "both": "両方の列がキーです。",
+      "target": "ターゲットはキーです。",
+      "source": "ソースはキーです。",
+      "neither": "どちらの列もキーではありません。",
+      "notRead": {
+        "source": "ソースは読み取られていません: そのテーブルにはパラメーターが必要です。",
+        "target": "ターゲットは読み取られていません: そのテーブルにはパラメーターが必要です。"
+      },
+      "notReadable": {
+        "source": "ソース列を読み取る権限がありません。",
+        "target": "ターゲット列を読み取る権限がありません。"
+      },
+      "noValues": "ソースに値がありません。",
+      "modelScore": "モデルによるスコア: 値は比較されていません。",
+      "ruleForeignKeys": "宣言された外部キーから生成: 値は比較されていません。",
+      "ruleKeyNames": "キー名と型の一致から生成: 値は比較されていません。"
+    },
+    "dimensionMade": "承認すると共有ディメンション {{name}} が作成され、両方の列がそれに結合します。",
+    "dimensionJoined": "承認すると、両方の列が共有ディメンション {{name}} に結合します。",
+    "through": "{{table}} を経由。",
+    "twoDimensions": "列がすでに異なる 2 つの共有ディメンションに結合しているため、承認できません。",
+    "admittedOnKeyValues": "データでキー値が一致したため採用されました。測定値はモデルの信頼度の横に表示されます。",
+    "hiddenByFilter_one": "{{count}} 行がフィルターで非表示になっています。",
+    "hiddenByFilter_other": "{{count}} 行がフィルターで非表示になっています。",
+    "editAria": "{{name}} を編集"
+  }
+}

@@ -12,7 +12,7 @@
 checked against the recorded SHA-256 before anything is extracted, cached, and never fetched
 again once cached. No network: the archives are built here and the fetcher is a stand-in."""
 
-# Requirements: REQ-1984
+# Requirements: REQ-1984, REQ-2227
 from __future__ import annotations
 
 import hashlib
@@ -32,6 +32,7 @@ from provisa.runtime_deps.code_runtimes import (
     RuntimePin,
     RuntimeUnavailable,
 )
+from provisa.rustlang.toolchain import HOSTS as RUST_HOSTS
 
 
 def _zip(entries: dict[str, bytes]) -> bytes:
@@ -73,6 +74,15 @@ class _Fetcher:
         return self.data
 
 
+RUST = {
+    "rustc",
+    "cargo",
+    "rust-std",
+    "rust-std-x86_64-unknown-linux-musl",
+    "rust-std-aarch64-unknown-linux-musl",
+}
+
+
 def test_every_pinned_runtime_names_an_archive_for_each_platform_provisa_runs_on():
     assert set(code_runtimes.RUNTIMES) == {
         "node",
@@ -84,17 +94,25 @@ def test_every_pinned_runtime_names_an_archive_for_each_platform_provisa_runs_on
         "apache-arrow",
         "temurin",
         "go",  # REQ-2200
+        # REQ-2227: the Rust toolchain, and the musl standard library of each Linux machine.
+        *RUST,
     }
     for name, pin in code_runtimes.RUNTIMES.items():
-        # REQ-2098: what goes into an image is pinned for 64-bit ARM Linux too; uv installs on
-        # the server, for any image's platform, and runs nowhere else.
-        image = set() if name == "uv" else {code_runtimes.LINUX_ARM64}
-        assert set(pin.assets) == {
-            code_runtimes.DARWIN_ARM64,
-            code_runtimes.LINUX_X64,
-            code_runtimes.WINDOWS_X64,
-            *image,
-        }
+        if name in RUST:
+            # REQ-2227: a Rust toolchain is pinned for exactly the platforms a Rust build runs
+            # on; Windows has none and is refused by name (test_rust_install).
+            assert set(pin.assets) == set(RUST_HOSTS)
+            assert code_runtimes.WINDOWS_X64 not in pin.assets
+        else:
+            # REQ-2098: what goes into an image is pinned for 64-bit ARM Linux too; uv installs
+            # on the server, for any image's platform, and runs nowhere else.
+            image = set() if name == "uv" else {code_runtimes.LINUX_ARM64}
+            assert set(pin.assets) == {
+                code_runtimes.DARWIN_ARM64,
+                code_runtimes.LINUX_X64,
+                code_runtimes.WINDOWS_X64,
+                *image,
+            }
         for asset in pin.assets.values():
             assert len(asset.sha256) == 64 and int(asset.sha256, 16) >= 0
             assert pin.url(asset).startswith("https://")

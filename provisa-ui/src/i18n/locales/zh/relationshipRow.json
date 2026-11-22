@@ -1,7 +1,7 @@
 {
   "relationshipRow": {
-    "autoTrackedTitle": "由外键约束自动跟踪",
-    "fkBadge": "FK",
+    "fkBadge": "来自外键",
+    "fkBadgeTitle": "根据源中的外键创建",
     "yes": "是",
     "no": "否",
     "none": "—",
@@ -32,7 +32,6 @@
     "materializeCheckbox": "物化",
     "excludeFromCypher": "从 Cypher 中排除",
     "sqlName": "SQL 名称",
-    "autoTracked": "自动跟踪",
     "cardinalityWarning": "警告：如果此联接为每个父行返回多于一行，则只会使用第一个值。",
     "toggleDetails": "切换关系详情",
     "junctionBadge": "属性",
@@ -44,6 +43,32 @@
     "parameterNotFed": "不传入",
     "sameEntity": "同一实体",
     "sameEntityHint": "它连接的行是同一事物：一个术语关联两张表，按键一对一连接",
-    "cardinalityOneToOne": "一对一"
+    "cardinalityOneToOne": "一对一",
+    "resolverNote": "属于代码解析器 {{resolver}}。其匹配视图和三个关系一起更改和停用。",
+    "changeResolver": "更改代码解析器",
+    "retireResolver": "停用代码解析器",
+    "retireResolverTitle": "停用代码解析器 {{resolver}}？",
+    "retireResolverConsequence": "其匹配视图和三个关系会一起停用。它们的名称仍被占用。",
+    "queryLinks": {
+      "heading": "查询",
+      "tableMissing": "查询链接不可用：此关系所指的表 {{ids}} 不在已注册的表中。",
+      "tablesUnread": "查询链接不可用：无法读取已注册的表（{{error}}）。",
+      "cypher": "用 Cypher 读取 {{name}}",
+      "sql": "用 SQL 读取 {{name}}",
+      "sparql": "用 SPARQL 读取 {{name}}",
+      "graphql": "用 GraphQL 读取 {{name}}",
+      "rest": "用 REST 读取 {{name}}",
+      "grpc": "用 gRPC 读取 {{name}}",
+      "jsonapi": "用 JSON:API 读取 {{name}}",
+      "surfaces": {
+        "cypher": "Cypher",
+        "sql": "SQL",
+        "sparql": "SPARQL",
+        "graphql": "GraphQL",
+        "rest": "REST",
+        "grpc": "gRPC",
+        "jsonapi": "JSON:API"
+      }
+    }
   }
 }

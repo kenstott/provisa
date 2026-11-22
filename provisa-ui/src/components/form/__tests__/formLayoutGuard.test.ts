@@ -31,12 +31,22 @@ const NOT_A_FORM: Readonly<Record<string, string>> = {
   "components/admin/relTypeGuide.tsx": "the related-to filter tick above the glossary term list",
   "components/admin/TermReviewQueue.tsx":
     "the select tick of each draft card, the select-all tick above the list, and the synonym ticks of a card, each saved on its click; the edit and merge forms are held to the shared layout",
+  "components/admin/ontologyImport/AlignmentRow.tsx":
+    "the select tick of each proposal and its use-the-definition tick, each acted on by its own Approve",
+  "components/admin/ontologyImport/ImportReviewPanel.tsx":
+    "the undecided-only filter tick above an import's items; its edit and align forms are held to the shared layout",
   "components/admin/RegionSelect.tsx": "one reusable control, placed by the form that uses it",
   "components/admin/RepoBrowser.tsx": "the pickers of what the repository browser shows",
   "components/admin/ReplicateSelect.tsx": "one reusable control, placed by the form that uses it",
   "components/RegionSelector.tsx": "the region switch in the page header",
+  "components/TagCitations.tsx":
+    "one reusable control: the document and section pickers of a citation, in a tag's editor and in the form of a tag's assignment (TagAssignmentForm)",
   "components/DataAddressSwitcher.tsx":
     "the data address switch in the page header, with a typed address in its menu",
+  "components/entitlements/EntitlementPicker.tsx":
+    "one reusable control (the entries of an entitlement list), placed by the form that uses it",
+  "components/entitlements/PeoplePicker.tsx":
+    "one reusable control, placed by the form that uses it",
   "components/GrantPicker.tsx":
     "one reusable control (a grant list and its combine popover), placed by the form that uses it",
   "components/MaskListEditor.tsx":
@@ -57,7 +67,7 @@ const NOT_A_FORM: Readonly<Record<string, string>> = {
     "the property search box above the SPARQL vocabulary pills",
   "components/graph/GraphSidebar.tsx": "renaming a favourite in place in the sidebar list",
   "components/EditorTabStrip.tsx": "renaming an editor tab in place in the tab strip",
-  "components/erd/ErdPanel.tsx": "the diagram toolbar",
+  "components/provisa-graph/GraphOptionsBar.tsx": "a graph's options row above its canvas",
   "components/sql-modeling/JoinCanvas.tsx": "a join picker on the modeling canvas",
   "components/SqlModelingModal.tsx": "the toolbar of the modeling workbench",
   "pages/sql/ColumnFilterMenu.tsx": "the filter popover of a result column",
@@ -66,7 +76,6 @@ const NOT_A_FORM: Readonly<Record<string, string>> = {
   "pages/sql/SqlEditorPanel.tsx": "the SQL editor toolbar",
   "pages/SqlPage.tsx": "the SQL page toolbar",
   "pages/QueryPage.tsx": "the query explorer toolbar",
-  "pages/tables/TableReadView.tsx": "the Draft tick among a table detail's actions",
   "pages/NlPage.tsx": "the question box of the natural-language page",
   "pages/GrpcPage.tsx": "the request builder of the gRPC explorer",
   "pages/JsonApiPage.tsx": "the request builder of the JSON:API explorer",
@@ -92,6 +101,8 @@ const NOT_A_FORM: Readonly<Record<string, string>> = {
  * Everything else is still held: a full-size Save or Cancel, a stretched button, an action row.
  */
 const IN_PLACE_EDIT: Readonly<Record<string, string>> = {
+  "components/admin/syncing/EntrySync.tsx":
+    "a kind's standing choice set in place in its row of a list, or in its heading",
   "pages/sources/ServiceNowApiList.tsx":
     "an API of a ServiceNow instance switched on or off in place in its row",
   "components/ChatPanel.tsx":
@@ -100,8 +111,10 @@ const IN_PLACE_EDIT: Readonly<Record<string, string>> = {
     "a term's relationship picked in the row that adds it, in the term's detail",
   "components/admin/GlossaryTab.tsx":
     "a term's name, definition and export tick each saved in place in its detail; the list's filter ticks",
-  "components/TagControl.tsx": "a tag assigned and edited in its popover, beside what it tags",
-  "components/ColumnPiiForm.tsx": "pii on a column, in TagControl's popover: on its term or on the column alone",
+  "components/TagControl.tsx":
+    "the tag picker's ticks beside what it tags; each tag's assignment is TagAssignmentForm, a form",
+  "components/ColumnPiiForm.tsx":
+    "pii on a column, in TagControl's popover: on its term or on the column alone",
   "components/admin/GlossaryGroundedTables.tsx":
     "a term's tables grounded and let go each as it is picked, in the term's detail",
   "pages/tables/ProfileConstraintsModal.tsx":
@@ -163,11 +176,16 @@ const STRETCHED_BUTTONS: Readonly<Record<string, { marker: string; reason: strin
 };
 
 /**
- * Permanent: the file that IS the shared layout. Its footer is where the form's one Save and one
- * Cancel are defined, which is the very thing the rules send every other file to use, so the
- * rules are not read against it. Its own behaviour is held by FormLayout.test.tsx.
+ * Permanent: the file that IS the one Save (SaveButton), which the footer draws in a form's foot,
+ * a panel's head and a dialog alike. Its own rule is held by saveGuard.test.ts.
  */
-const THE_SHARED_LAYOUT = "components/form/FormLayout.tsx";
+const THE_SAVE = "components/form/SaveButton.tsx";
+
+/**
+ * Permanent: the file that IS the one Cancel (CancelButton), which the footer and every other
+ * Cancel draw. Its own rule is held by cancelGuard.test.ts.
+ */
+const THE_CANCEL = "components/form/CancelButton.tsx";
 
 /**
  * Shrinking: files that do not follow the rules yet. A file leaves this list in the commit that
@@ -502,15 +520,18 @@ describe("the shared layout's CSS", () => {
 });
 
 describe("a surface that edits in place", () => {
-  const compact = `<Group><Button size="compact-xs">Apply</Button><Button size="compact-xs" variant="default">Cancel</Button></Group>`;
-  it("may keep its compact Apply and Cancel, and its controls outside a form", () => {
+  const compact = `<Group><Button size="compact-xs">Apply</Button><Button size="compact-xs">Save</Button><CancelButton onClick={close} /></Group>`;
+  it("may keep its compact Apply and Save beside the one Cancel, and its controls outside a form", () => {
     expect(rules(compact, { inPlaceEdit: true })).toEqual([]);
     expect(rules(`<TextInput size="xs" label="Reason" />`, { inPlaceEdit: true })).toEqual([]);
   });
-  it("is held to the shared footer for a full-size Cancel, and anywhere else for a compact one", () => {
-    expect(rules(`<Button variant="default">Cancel</Button>`, { inPlaceEdit: true })).toContain(
-      "save-cancel-not-shared",
-    );
+  it("is held to the one Cancel even there, compact or full size, and to the footer's Save elsewhere", () => {
+    for (const own of [
+      `<Button variant="default">Cancel</Button>`,
+      `<Button size="compact-xs" variant="default">Cancel</Button>`,
+    ]) {
+      expect(rules(own, { inPlaceEdit: true })).toContain("save-cancel-not-shared");
+    }
     expect(rules(compact)).toContain("save-cancel-not-shared");
   });
 });
@@ -536,19 +557,22 @@ describe("every component follows the form rules", () => {
     expect(pending.size).toBe(NOT_YET_CONVERTED.length);
   });
 
-  it("still has the shared layout where the rules expect it", () => {
-    expect(files).toContain(THE_SHARED_LAYOUT);
-    // Were it to stop defining the footer, it would be an ordinary file and must be read again.
-    expect(violationsOf(THE_SHARED_LAYOUT).map((v) => v.rule)).toContain("save-cancel-not-shared");
+  it("still has the one Cancel where the rules expect it", () => {
+    expect(files).toContain(THE_CANCEL);
+    expect(violationsOf(THE_CANCEL).map((v) => v.rule)).toContain("save-cancel-not-shared");
   });
 
-  it.each(files.filter((f) => !pending.has(f) && !(f in EXPLORERS) && f !== THE_SHARED_LAYOUT))(
-    "%s",
-    (file) => {
-      const violations = violationsOf(file);
-      expect(violations, describeViolations(file, violations)).toEqual([]);
-    },
-  );
+  it("still has the one Save where the rules expect it", () => {
+    expect(files).toContain(THE_SAVE);
+    expect(violationsOf(THE_SAVE).map((v) => v.rule)).toContain("save-cancel-not-shared");
+  });
+
+  it.each(
+    files.filter((f) => !pending.has(f) && !(f in EXPLORERS) && f !== THE_SAVE && f !== THE_CANCEL),
+  )("%s", (file) => {
+    const violations = violationsOf(file);
+    expect(violations, describeViolations(file, violations)).toEqual([]);
+  });
 
   it.each([...NOT_YET_CONVERTED])(
     "%s is still to convert: once it passes it leaves the list",

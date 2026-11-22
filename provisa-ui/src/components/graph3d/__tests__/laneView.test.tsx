@@ -18,6 +18,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor, within } from "../../../test-utils/render";
 import { nodeHref } from "../nodeHref";
 import { DATA, FACTS } from "./fixture";
+import { ASSOCIATION_CHAIN, KIN, TEST2, TEST3 } from "./associationChain";
+import { reach } from "../graphModel";
+import { NEIGHBOURHOOD } from "../neighbourhood";
 
 type Handler = { event: string; selector: string; fn: (evt: unknown) => void };
 type Element = { group: string; data: Record<string, unknown> };
@@ -26,7 +29,7 @@ const made = vi.hoisted(() => ({
 }));
 vi.mock("cytoscape", () => {
   const cytoscape = (options: unknown) => {
-    // cytoscape("layout", "elk"): the ELK layout is registered.
+    // cytoscape("layout", name): an extension is registered.
     if (typeof options === "string") return true;
     const record = {
       elements: (options as { elements: Element[] }).elements,
@@ -52,6 +55,8 @@ vi.mock("cytoscape", () => {
       return self;
     };
     return {
+      // The element it draws in, as cytoscape's own container() gives it (a fit reads it).
+      container: () => (options as { container: HTMLElement }).container,
       on: (event: string, selector: string, fn: (evt: unknown) => void) =>
         record.handlers.push({ event, selector, fn }),
       layout: () => {
@@ -64,12 +69,14 @@ vi.mock("cytoscape", () => {
         };
       },
       nodes: () => none,
+      // The lanes preset reads the lines to place the term lane: none drawn here.
+      edges: () => none,
       elements: () => ({
         ...none,
         filter: () => none,
         forEach: (f: (e: unknown) => void) => record.elements.forEach((e) => f(drawnElement(e))),
       }),
-      // Every node at the origin: the second pass's order is ELK's to keep, not the test's.
+      // Every node at the origin: where the lanes preset places them is lanes.test's to check.
       getElementById: () => ({ ...none, position: () => 0 }),
       add: vi.fn(),
       fit: vi.fn(),
@@ -82,7 +89,6 @@ vi.mock("cytoscape", () => {
   };
   return { default: Object.assign(cytoscape, { use: vi.fn() }) };
 });
-vi.mock("cytoscape-elk", () => ({ default: vi.fn() }));
 vi.mock("../graphScene", () => ({
   GraphScene: class {
     constructor() {
@@ -131,7 +137,11 @@ vi.mock("../ontologyData", async (importOriginal) => ({
   ontologyQuery: (_m: unknown, s: { layers: Set<string> }) =>
     JSON.stringify({ ...s, layers: [...s.layers] }),
   ontologyCountQuery: () => "count",
-  ontologyGraph: () => LANES_DATA.data,
+  // The graph read; a test's own reader answers by the scope asked (its depth).
+  ontologyGraph: (_rows: unknown, s: { depth: number }) =>
+    typeof LANES_DATA.data === "function"
+      ? (LANES_DATA.data as (s: { depth: number }) => unknown)(s)
+      : LANES_DATA.data,
 }));
 vi.mock("../../../api/metaGraph", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../../api/metaGraph")>()),
@@ -143,7 +153,7 @@ vi.mock("../../../api/metaGraph", async (importOriginal) => ({
 }));
 
 import { OntologySnippet } from "../OntologyGraph";
-import { productPreset } from "../ontologyPresets";
+import { productPreset, termPreset } from "../ontologyPresets";
 
 const DATA_READ = {
   nodes: [
@@ -208,12 +218,9 @@ describe("the product panel in 2D", () => {
       within(await screen.findByTestId("graph-panel-dimension")).getByRole("radio", { name: "2D" }),
     );
     await screen.findByTestId("graph-panel-lanes");
-    // REQ-2174 (amended 2026-11-07): it opens at 1 hop, the product's tables alone.
-    expect(ids("node")).toEqual(["p:c360", "t:customers", "t:orders"]);
-    // At 4 hops: their columns, the terms tied to them, and Party a step across a term link.
-    fireEvent.click(
-      within(screen.getByTestId("graph-panel-depth")).getByRole("radio", { name: "4" }),
-    );
+    // REQ-2174 (amended 2026-11-12, A HOP IS A STEP BETWEEN TERMS): it opens at 1 hop -- the
+    // product's tables, their columns tied to terms, those terms, and Party a step across a term
+    // link.
     await waitFor(() => expect(ids("node")).toContain("term:party"));
     expect(ids("node")).toEqual([
       "c:customers.email",
@@ -256,7 +263,9 @@ describe("the product panel in 2D", () => {
 describe("the full graph in 2D", () => {
   it("draws the whole ontology in lanes, with no 3D controls", async () => {
     const full = await explorer();
-    expect(laneOf("term:party")).toBe("term");
+    // A product's graph opens on the product: the whole ontology is the rest of the model.
+    fireEvent.click(within(full).getByTestId("graph3d-rest"));
+    await waitFor(() => expect(laneOf("term:party")).toBe("term"));
     expect(laneOf("p:c360")).toBe("product");
     expect(ids("node")).not.toContain("d:sales");
     for (const id of ["graph3d-layout", "graph3d-rotate", "graph3d-grid", "graph3d-attraction"])
@@ -290,7 +299,10 @@ describe("the full graph in 2D", () => {
   it("copies the diagram as Mermaid flowchart text", async () => {
     const writeText = vi.fn(() => Promise.resolve());
     Object.assign(navigator, { clipboard: { writeText } });
-    await explorer();
+    const full = await explorer();
+    // The term link it names is past the product's own: Party is in the rest of the model.
+    fireEvent.click(within(full).getByTestId("graph3d-rest"));
+    await waitFor(() => expect(laneOf("term:party")).toBe("term"));
     fireEvent.click(screen.getByTestId("graph3d-lanes-mermaid"));
     await screen.findByText("Copied");
     const text = (writeText.mock.calls[0] as unknown as [string])[0];
@@ -309,7 +321,12 @@ const hover = (id: string) => {
     (x) => x.event === "mouseover" && x.selector.includes('node[kind = "more"]'),
   ) as Handler;
   const box = () => ({ x1: 10, y1: 10, x2: 40, y2: 36 });
-  act(() => h.fn({ target: { id: () => id, renderedBoundingBox: box }, renderedPosition: { x: 10, y: 10 } }));
+  act(() =>
+    h.fn({
+      target: { id: () => id, renderedBoundingBox: box },
+      renderedPosition: { x: 10, y: 10 },
+    }),
+  );
 };
 
 describe("the 2D view's controls (2D SHOWS ONLY 2D CONTROLS)", () => {
@@ -457,5 +474,84 @@ describe("focusing a term (the rest of its graph with it)", () => {
     hover("term:amount");
     await waitFor(() => expect(faded("t:customers")).toBe(true));
     expect(faded("t:orders")).toBe(false);
+  });
+});
+
+describe("a term's graph in 2D, its hops raised", () => {
+  // J1206: Pet's graph drew the same lanes at 1 and 3 hops -- nothing is read past 1 hop of Pet.
+  // The depth control does redraw the lane diagram: Medication's graph is a chain, Visit at 1 hop,
+  // Visit's other part at 2.
+  const CHAIN = {
+    nodes: [
+      { id: "term:1", type: "term" as const, label: "Medication" },
+      { id: "term:2", type: "term" as const, label: "Visit" },
+      { id: "term:3", type: "term" as const, label: "Diagnosis" },
+    ],
+    edges: [
+      { id: "r1", a: "term:1", b: "term:2", kind: "term_edge" as const, label: "PART_OF" },
+      { id: "r2", a: "term:3", b: "term:2", kind: "term_edge" as const, label: "PART_OF" },
+    ],
+  };
+  // The server reads a term's neighbourhood to the depth asked: each hop a step along the chain.
+  const readTo = (s: { depth: number }) => {
+    const keep = new Set(CHAIN.nodes.slice(0, Math.min(3, s.depth + 1)).map((n) => n.id));
+    return {
+      nodes: CHAIN.nodes.filter((n) => keep.has(n.id)),
+      edges: CHAIN.edges.filter((e) => keep.has(e.a) && keep.has(e.b)),
+    };
+  };
+
+  it("redraws the lanes with what the hops reach", async () => {
+    LANES_DATA.data = readTo;
+    try {
+      render(<OntologySnippet preset={termPreset(1)} name="Medication" testId="term-graph" />);
+      act(() => observed.fire.forEach((f) => f()));
+      await screen.findByTestId("term-graph-lanes");
+      await waitFor(() => expect(ids("node")).toEqual(["term:1", "term:2"]));
+      fireEvent.click(
+        within(screen.getByTestId("term-graph-depth")).getByRole("radio", { name: "2" }),
+      );
+      await waitFor(() => expect(ids("node")).toEqual(["term:1", "term:2", "term:3"]));
+      expect(laneOf("term:3")).toBe("term");
+    } finally {
+      LANES_DATA.data = DATA_READ;
+    }
+  });
+});
+
+describe("a term's graph in 2D, its focus selected (associations lit)", () => {
+  // J1230: test3's graph lit only its ranking path; a term reached by RELATED_TO, and that term's
+  // column, table and product, were drawn faded.
+  const readTo = (s: { depth: number }) => {
+    const byId = new Map(ASSOCIATION_CHAIN.nodes.map((n) => [n.id, n]));
+    const keep = reach([TEST3], ASSOCIATION_CHAIN.edges, byId, {
+      ...NEIGHBOURHOOD,
+      depth: s.depth,
+    });
+    return {
+      nodes: ASSOCIATION_CHAIN.nodes.filter((n) => keep.has(n.id)),
+      edges: ASSOCIATION_CHAIN.edges.filter((e) => keep.has(e.a) && keep.has(e.b)),
+    };
+  };
+  const faded = (id: string) => last().classes.get(id)?.has("faded") ?? false;
+
+  it("lights the associated term, its column, table and product when the focus is picked", async () => {
+    LANES_DATA.data = readTo;
+    try {
+      render(<OntologySnippet preset={termPreset(11)} name="test3" testId="term-graph" />);
+      act(() => observed.fire.forEach((f) => f()));
+      await screen.findByTestId("term-graph-lanes");
+      await waitFor(() => expect(ids("node")).toContain(KIN));
+      tap(TEST3);
+      await waitFor(() => expect(faded(TEST3)).toBe(false));
+      // Something is faded once the pick is painted: the lines not followed.
+      await waitFor(() =>
+        expect([...last().classes].some(([, c]) => c.has("faded") || c.has("lit"))).toBe(true),
+      );
+      for (const id of [KIN, "c:203:kin", "t:203", "p:kin", TEST2])
+        expect(faded(id), `${id} faded`).toBe(false);
+    } finally {
+      LANES_DATA.data = DATA_READ;
+    }
   });
 });

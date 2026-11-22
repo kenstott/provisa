@@ -105,7 +105,7 @@ def test_pg_splunk_details_builds_postgres_fdw_pointed_at_the_bundle(monkeypatch
     )
     assert any("CREATE USER MAPPING" in stmt and "user 'provisa'" in stmt for stmt in ddl)
     assert any(
-        "IMPORT FOREIGN SCHEMA pg_splunk_prod" in stmt
+        'IMPORT FOREIGN SCHEMA "pg_splunk_prod"' in stmt
         and 'INTO "fdw_pgwire_pg_splunk_prod"' in stmt
         for stmt in ddl
     )
@@ -121,7 +121,7 @@ def test_pg_files_and_sharepoint_details_use_their_own_source_ids(monkeypatch):
 
     sp_details = PgSharepointConnector().details(attaching(_sharepoint_source(), "pg_sp_team"))
     assert sp_details["local_schema"] == "fdw_pgwire_pg_sp_team"
-    assert any("IMPORT FOREIGN SCHEMA pg_sp_team" in stmt for stmt in sp_details["attach_ddl"])
+    assert any('IMPORT FOREIGN SCHEMA "pg_sp_team"' in stmt for stmt in sp_details["attach_ddl"])
 
 
 def test_pg_pgwire_connector_probe_reports_cached_bundle(tmp_path, monkeypatch):

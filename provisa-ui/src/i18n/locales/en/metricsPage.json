@@ -34,6 +34,8 @@
     "fieldAiContext": "AI Context",
     "fieldTags": "Tags",
     "fieldAiContextPlaceholder": "Hints for AI-assisted query generation",
+    "fieldTerm": "Glossary term",
+    "fieldTermHint": "Its definition and calculation method are shown with the metric",
     "saveFailed": "Save failed.",
     "editMetric": "Edit metric {{name}}",
     "deleteMetric": "Delete metric {{name}}",

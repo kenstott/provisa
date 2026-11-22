@@ -158,39 +158,55 @@ def require_residency_change(  # REQ-1921
     what: str,
     before: object,
     after: str | None,
-    *,
-    draft: bool = False,
 ) -> None:
     """Refuse a change of where ``what``'s data lives that the caller's data_residency grant does
     not cover (``security.residency.require_change``; ``before`` is ``residency.CREATED`` for a
     new object). Nothing to check when the platform declares no regions, and — as
     ``require_capability`` — in dev mode (no identity, or the anonymous one)."""
-    _require_residency_of(_identity_from_info(info), what, before, after, draft=draft)
+    checked, covered = _residency_covered(_identity_from_info(info))
+    if checked:
+        from provisa.security.residency import require_change
+
+        require_change(covered, what, before, after)
 
 
 def require_residency_change_request(  # REQ-1921
-    request, what: str, before: object, after: str | None, *, draft: bool = False
+    request, what: str, before: object, after: str | None
 ) -> None:
     """``require_residency_change`` for a REST admin router (a Request rather than an Info)."""
-    _require_residency_of(
-        getattr(request.state, "identity", None), what, before, after, draft=draft
-    )
+    checked, covered = _residency_covered(getattr(request.state, "identity", None))
+    if checked:
+        from provisa.security.residency import require_change
+
+        require_change(covered, what, before, after)
 
 
-def _require_residency_of(
-    identity, what: str, before: object, after: str | None, *, draft: bool
+def require_residency_step(  # REQ-1921
+    info: "strawberry.types.Info", what: str, region: str | None, *, withdrawing: bool
 ) -> None:
+    """Refuse a step of a move between regions the caller's data_residency grant does not cover
+    (``security.residency.require_covers``): withdrawing ``what`` from ``region``, the region it
+    is in, or putting it back into ``region``. Unchecked as :func:`require_residency_change` is."""
+    checked, covered = _residency_covered(_identity_from_info(info))
+    if checked:
+        from provisa.security.residency import require_covers
+
+        require_covers(covered, what, region, withdrawing=withdrawing)
+
+
+def _residency_covered(identity) -> tuple[bool, set[str] | None]:
+    """Whether the caller's residency is checked, and the region values its data_residency
+    grants cover (None: no such right). Not checked when the platform declares no regions, nor
+    in dev mode (no identity, or the anonymous one), as ``require_capability``."""
     from provisa.api.admin.region_defaults import connected_region
     from provisa.api.app import state
-    from provisa.security.residency import require_change
     from provisa.security.rights import residency_values_for_claims
 
     if connected_region() is None:
-        return
+        return False, None
     if identity is None or getattr(identity, "user_id", _ANONYMOUS) == _ANONYMOUS:
-        return
-    covered = residency_values_for_claims(acting_claims(identity), state.roles)
-    require_change(covered, what, before, after, draft=draft)
+        return False, None
+    return True, residency_values_for_claims(acting_claims(identity), state.roles)
 
 
 def require_inspectable_role(info: "strawberry.types.Info", role_id: str) -> None:  # REQ-273
@@ -321,7 +337,7 @@ def require_dq_read_request(request) -> None:  # REQ-2155
     require_capability_request(request, "dq_read")
 
 
-def allowed_domains_request(request) -> frozenset[str] | None:  # REQ-1591
+def allowed_domains_request(request) -> frozenset[str] | None:  # REQ-1591, REQ-2253
     """The domains a REST caller may act in, or ``None`` when domains gate nothing for it.
 
     ``None`` is an answer, not a missing value: it is returned for the same two exemptions the
@@ -333,13 +349,39 @@ def allowed_domains_request(request) -> frozenset[str] | None:  # REQ-1591
     from provisa.core import domain_policy
     from provisa.core.env_authority import domains_within
 
+    from provisa.security.selected_domains import narrowed
+
+    # REQ-2253: an AI-assisted call (an MCP chat tool call) is answered within the domains
+    # selected in the domain filter; any other request binds none and is unchanged.
     identity = getattr(request.state, "identity", None)
     if identity is None or getattr(identity, "user_id", _ANONYMOUS) == _ANONYMOUS:
-        return None
+        return narrowed(None)
     if domain_policy.single_domain():
-        return None
+        return narrowed(None)
     allowed = domains_within(sorted(_domain_access(identity, state)))
-    return None if allowed is None else frozenset(allowed)
+    return narrowed(None if allowed is None else frozenset(allowed))
+
+
+def selected_domains_request(  # REQ-1591, REQ-2253
+    request, selected: "list[str] | None"
+) -> frozenset[str] | None:
+    """The caller's authority (:func:`allowed_domains_request`) INTERSECTED with the domains the
+    navbar filter has selected, ``None`` for no narrowing.
+
+    REQ-1591: the filter is a view preference and never widens authority, so a selection is
+    intersected in, and an unlimited role narrowed by a selection sees only the selection. An
+    absent selection leaves authority alone: the UI sends none when every domain is checked.
+    REQ-2253: an AI-assisted feature reads, sends and changes nothing outside the result.
+
+    Sent as repeated ``domains=`` parameters rather than one comma-joined string, because the
+    no-domain domain's id IS the empty string (``schema.sql`` seeds it): joined, a selection of it
+    and an empty selection are the same text.
+    """
+    allowed = allowed_domains_request(request)
+    if selected is None:
+        return allowed
+    chosen = frozenset(selected)
+    return chosen if allowed is None else chosen & allowed
 
 
 def role_definitions_visible(request, role_id_claims) -> "Callable[[str], bool]":

@@ -121,6 +121,43 @@ def test_an_anchor_duckdb_cannot_read_is_its_own_error_never_an_answer():
         duckdb.connect().execute(transpile(sql, "duckdb")).fetchall()
 
 
+@pytest.mark.parametrize("dialect", ["trino", "clickhouse"])
+def test_caret_anchor_in_5arg_regexp_replace_reaches_the_engine_not_provisa_fail(dialect: str):
+    """REQ-2167: MATRIX commit 1850a660e7 changed regexp_replace('12', '^1', '12', 42, 42) from
+    "refused" to "error" for Trino and ClickHouse.  The transpiled SQL must not embed Provisa's
+    ``fail()``/``throwIf()`` refusal for the '^' anchor — that call is what _refused_by_its_form
+    detects.  The engine must encounter the pattern at runtime and raise its own error."""
+    sql = "SELECT regexp_replace('12', '^1', '12', 42, 42) AS v"
+    written = transpile(sql, dialect)
+    # Provisa's own refusal guard for '^' — _refused_by_its_form catches these strings.
+    # After commit 1850a660e7, neither engine should embed them for the '^' anchor.
+    assert "strpos(" not in written.lower() or "'^'" not in written, (
+        f"{dialect}: found Trino strpos/caret guard in: {written!r}"
+    )
+    assert "position(ifnull(" not in written.lower() or "'^'" not in written, (
+        f"{dialect}: found ClickHouse position/caret guard in: {written!r}"
+    )
+
+
+@pytest.mark.parametrize("dialect", ["trino", "clickhouse"])
+def test_regexp_replace_caret_anchor_absent_from_matrix_as_error(dialect: str):
+    """REQ-2167: after R508h removed the '^' transpiler guard, both Trino and ClickHouse execute
+    5-arg regexp_replace('^1',...) successfully — the MATRIX entry must NOT be 'error'.
+    Commit 1850a660e7 changed it from 'refused' to 'error'; R508h's transpiler change then lets the
+    engine run it without the Provisa fail-guard, and both engines accept the pattern, so the
+    correct outcome is 'ok' (absent from MATRIX)."""
+    from tests.unit.pgwire.pg17_forms_matrix import MATRIX
+
+    sql = (
+        "SELECT pg_catalog.\"regexp_replace\"('12'::text, '^1'::text, '12'::text, "
+        "42::integer, 42::integer) AS v"
+    )
+    assert sql not in MATRIX[dialect], (
+        f"{dialect}: MATRIX still records the '^' anchor entry as {MATRIX[dialect].get(sql)!r}; "
+        "remove it — both engines now execute the form without error"
+    )
+
+
 @pytest.mark.parametrize("dialect", _ENGINES)
 def test_each_row_has_a_form_that_parses_on_each_engine(dialect: str):
     for name, params, _ in ROWS:

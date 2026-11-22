@@ -84,6 +84,8 @@ class OAuthProvider(AuthProvider):  # REQ-120, REQ-123
         return AuthIdentity(
             user_id=decoded["sub"],
             email=decoded.get("email"),
+            # REQ-1261: the issuer's own statement; absent or false, the address matches nothing.
+            email_verified=decoded.get("email_verified") is True,
             display_name=decoded.get("name"),
             roles=roles,
             raw_claims=decoded,

@@ -13,7 +13,7 @@ using SQLGlot. Input: plain SQL string. Output: governed SQL string.
 from __future__ import annotations
 
 import secrets
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -188,6 +188,89 @@ def _readable_term_predicate(column: str, domains: frozenset[str]) -> exp.Expr: 
     return exp.paren(test)
 
 
+def _holds(column: str, value: str) -> exp.Expr:  # pyright: ignore[reportPrivateImportUsage]
+    """``column`` (a set, as |a|b|) holds ``value``."""
+    found = exp.StrPosition(this=exp.column(column), substr=exp.Literal.string(f"|{value}|"))
+    return exp.GT(this=found, expression=exp.Literal.number(0))
+
+
+def tag_row_predicate(role: dict, readable_in: frozenset[str] | None) -> exp.Expr:  # pyright: ignore[reportPrivateImportUsage]  # REQ-2208
+    """Which rows of a tags relation (security.rights.TAG_ROW_VIEWS) ``role`` reads, as the tag
+    admin reads assignments (api.admin.schema_query._readable_assignments), from the relation's
+    read columns (api._meta_views._tag_instances_sql).
+
+    Within ``readable_in`` (None: domains gate nothing): every domain of ``read_all_domains`` (a
+    table's, a relationship's two tables', a command's, a product's, the domains a row rule decides
+    rows in; NULL when the object is not there); one of ``read_any_domains`` when it names any (a
+    source's allowed domains); and ``read_term_domains`` as a glossary term is read (a term's, a
+    library document's). A row rule's tag is read with access_config; a role's with
+    user_management, or by the role itself; a metric's by a role it is granted to. A meta-role
+    reads no role's or metric's tag but by those rights: its members are not in its role."""
+    from provisa.security.rights import Capability, has_capability, is_meta_role_id
+
+    kind = exp.column("object_kind")
+    terms: list[exp.Expr] = []  # pyright: ignore[reportPrivateImportUsage]
+    if readable_in is not None:
+        stripped: exp.Expr = exp.column("read_all_domains")  # pyright: ignore[reportPrivateImportUsage]
+        for d in sorted(readable_in):
+            stripped = exp.Anonymous(
+                this="REPLACE",
+                expressions=[stripped, exp.Literal.string(f"|{d}|"), exp.Literal.string("|")],
+            )
+        terms.append(exp.EQ(this=stripped, expression=exp.Literal.string("|")))
+        any_of: exp.Expr = exp.EQ(  # pyright: ignore[reportPrivateImportUsage]
+            this=exp.column("read_any_domains"), expression=exp.Literal.string("|")
+        )
+        for d in sorted(readable_in):
+            any_of = exp.Or(this=any_of, expression=_holds("read_any_domains", d))
+        terms.append(exp.paren(any_of))
+        terms.append(_readable_term_predicate("read_term_domains", frozenset(readable_in)))
+    if not has_capability(role, Capability.ACCESS_CONFIG):
+        terms.append(exp.NEQ(this=kind.copy(), expression=exp.Literal.string("rls_rule")))
+    own = [] if is_meta_role_id(role["id"]) else [role["id"]]
+    if not has_capability(role, Capability.USER_MANAGEMENT):
+        not_role: exp.Expr = exp.NEQ(  # pyright: ignore[reportPrivateImportUsage]
+            this=kind.copy(), expression=exp.Literal.string("role")
+        )
+        if own:
+            not_role = exp.Or(
+                this=not_role,
+                expression=_in_list(exp.column("object_id"), [exp.Literal.string(own[0])]),
+            )
+        terms.append(exp.paren(not_role))
+    not_metric: exp.Expr = exp.NEQ(  # pyright: ignore[reportPrivateImportUsage]
+        this=kind.copy(), expression=exp.Literal.string("metric")
+    )
+    for r in own:
+        not_metric = exp.Or(this=not_metric, expression=_holds("read_roles", r))
+    terms.append(exp.paren(not_metric))
+    return exp.and_(*terms, copy=False)
+
+
+def library_row_predicate(  # REQ-2208
+    role: dict, readable_in: frozenset[str] | None, relation: str
+) -> exp.Expr:  # pyright: ignore[reportPrivateImportUsage]
+    """Which rows of a library relation (security.rights.LIBRARY_ROW_VIEWS) ``role`` reads: those
+    whose document it reads, as a library document is read (``read_document_domains``, the
+    glossary's rule), and of a relation whose rows may name an object, a row naming one
+    (``object_key`` set) only where it reads the tag on that object (:func:`tag_row_predicate`)."""
+    from provisa.security.rights import LIBRARY_ROW_VIEWS, META_DOMAIN_ID
+
+    terms: list[exp.Expr] = []  # pyright: ignore[reportPrivateImportUsage]
+    if readable_in is not None:
+        terms.append(_readable_term_predicate("read_document_domains", frozenset(readable_in)))
+    if LIBRARY_ROW_VIEWS[(META_DOMAIN_ID, relation)]:
+        no_object = exp.Is(this=exp.column("object_key"), expression=exp.Null())
+        terms.append(
+            exp.paren(
+                exp.Or(this=no_object, expression=exp.paren(tag_row_predicate(role, readable_in)))
+            )
+        )
+    if not terms:
+        return exp.true()
+    return exp.and_(*terms, copy=False)
+
+
 def _in_list(column: Rule, values: Sequence[Rule]) -> exp.In:
     return exp.In(this=column, expressions=list(values))
 
@@ -255,8 +338,13 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
     source_types: dict[str, str] | None = None,
     engine=None,
     source_hints: dict[str, dict[str, str]] | None = None,
+    withdrawn_reach: Callable[[], frozenset[str] | None] | None = None,
 ) -> GovernanceContext:
     """Build GovernanceContext from server state for a given role.
+
+    ``withdrawn_reach``: asked only where the model table is in this compilation, the domains
+    whose withdrawn tables' rows of it the role reads (security.rights.withdrawn_reach): None for
+    every domain, empty for none. Not given: none.
 
     Args:
         role_id: The requesting role.
@@ -274,8 +362,8 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
               role's directly-accessible tables with NO 1-hop neighbour expansion (fail-closed).
         source_types: {source_id: source_type}, e.g. {"sales-pg": "postgresql"}. Together with
               ``engine``, enables the REQ-971 mask pushdown/streaming decision below. When either
-              is None, no capability check runs — the mask expression is inlined unconditionally
-              (matches every connector registered today, all of which declare predicate_pushdown).
+              is None, no capability check runs; the mask expression is inlined either way, and
+              the engine computes whatever part of it the source cannot.
         engine: The bound FederationEngine, used to read each masked table's connector
               ``Capability`` (REQ-897) via ``connector_pushdown``.
         source_hints: {source_id: federation_hints}: each source's settings, which
@@ -333,6 +421,7 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
         Capability,
         acts_in_domain,
         column_served,
+        WITHDRAWN_ROWS_VIEW,
         compute_meta_row_scope,
         has_capability,
         reaches_domain,
@@ -497,6 +586,32 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
     # two described-table meta views (registered_tables_meta.id / table_columns_meta.table_id), so it
     # flows through the SAME apply_governance WHERE-injection as every other RLS rule — one code path.
     meta_scope = compute_meta_row_scope(role, tables, relationships)
+    # REQ-1921: a withdrawn table's row is read by a role holding table registration in its
+    # domain (withdrawn_reach), and by no other; decided only where the model table is in this
+    # compilation, the one table it is about.
+    _withdrawn_rows = [
+        tm
+        for tm in {tm.table_id: tm for tm in ctx.tables.values()}.values()
+        if getattr(tm, "domain_id", None) == META_DOMAIN_ID
+        and getattr(tm, "table_name", "") == WITHDRAWN_ROWS_VIEW
+    ]
+    reach: frozenset[str] | None = (
+        withdrawn_reach() if _withdrawn_rows and withdrawn_reach is not None else frozenset()
+    )
+    # The withdrawn rows it reads, beside the rows of its scope: every one, or those of its
+    # domains.
+    out_of_service = exp.column("withdrawn")
+    withdrawn_read: exp.Expr | None = (  # pyright: ignore[reportPrivateImportUsage]
+        out_of_service.copy()
+        if reach is None
+        else exp.and_(
+            out_of_service.copy(),
+            _in_list(exp.column("domain_id"), [exp.Literal.string(d) for d in sorted(reach)]),
+            copy=False,
+        )
+        if reach
+        else None
+    )
     if meta_scope is not None:
         ids = sorted(meta_scope) or [-1]  # empty → matches no row
         # A setting's value, told to the statement's catalog views: an array, not SQL.
@@ -529,7 +644,21 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
                 ]
             else:
                 continue
-            _and_rule(gov, tm.table_id, exp.and_(*terms, copy=False))
+            scoped = exp.and_(*terms, copy=False)
+            if tm.table_name == WITHDRAWN_ROWS_VIEW and withdrawn_read is not None:
+                # A withdrawn table's row is in no role's reach (it is in no role's tables): the
+                # ones the role may preview are read beside the rows of its scope.
+                scoped = exp.or_(scoped, withdrawn_read.copy(), copy=False)
+            _and_rule(gov, tm.table_id, scoped)
+    # REQ-1921: of the model table's withdrawn rows, only those the role may preview, whatever
+    # its scope (the whole catalog's included).
+    for tm in _withdrawn_rows if reach is not None else ():
+        if withdrawn_read is None:
+            _and_rule(gov, tm.table_id, exp.not_(out_of_service.copy()))
+        elif meta_scope is None:
+            _and_rule(
+                gov, tm.table_id, exp.or_(exp.not_(out_of_service.copy()), withdrawn_read.copy())
+            )
 
     # REQ-2190: a column the relation a statement reads does not hold is no column of the catalog's
     # either; which those are is decided in code, so no view can say.
@@ -602,6 +731,28 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
                 ),
             )
 
+    # REQ-2208 (THE TAGS REPORT): a tag on an object is read where the tag admin reads it.
+    from provisa.security.rights import TAG_ROW_VIEWS
+
+    tag_relations = {
+        tm.table_id: tm
+        for tm in ctx.tables.values()
+        if (getattr(tm, "domain_id", None), getattr(tm, "table_name", "")) in TAG_ROW_VIEWS
+    }
+    if tag_relations:
+        tag_rows = tag_row_predicate(role, readable_in)
+        for tid in tag_relations:
+            _and_rule(gov, tid, tag_rows.copy())
+
+    # REQ-2208 (decision 2026-11-13): a library relation's row is read where its document is, and
+    # where the tag on the object it names is.
+    from provisa.security.rights import LIBRARY_ROW_VIEWS
+
+    for tm in ctx.tables.values():
+        key = (getattr(tm, "domain_id", None), getattr(tm, "table_name", ""))
+        if key in LIBRARY_ROW_VIEWS:
+            _and_rule(gov, tm.table_id, library_row_predicate(role, readable_in, key[1]))
+
     # REQ-2153: a listed name is the reader's only for a domain it does not reach -- what it reaches
     # is in registered_tables_meta / table_columns_meta -- by the same WHERE-injection.
     for tm in ctx.tables.values():
@@ -621,9 +772,11 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
             continue  # the reader reaches no domain: every listed name is outside its reach
         _and_rule(gov, tm.table_id, predicate)
 
-    # REQ-971: mask pushdown/streaming decision. When a masked table's connector cannot push
-    # the predicate down and cannot stream, fail loud here rather than silently inlining an
-    # unsupported expression that a downstream connector cannot evaluate.
+    # REQ-971: mask pushdown/streaming decision, read from each masked table's connector
+    # capability. A mask is a projection expression in this governed statement, and the statement
+    # is executed by the engine: a mask the source cannot evaluate is computed by the engine as it
+    # streams the result (REQ-971's engine-side stage; REQ-1494: every fake is computed by the
+    # serving engine). Nothing in the tier buffers the unmasked relation, so every mask streams.
     if source_types is not None and engine is not None:
         from provisa.federation.promote import plan_mask_evaluation
 
@@ -640,7 +793,7 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
 
             hints = (source_hints or {}).get(source_id, {})
             cap = engine.connector_pushdown(Source.settings_view(source_id, source_type, hints))
-            plan_mask_evaluation(cap, can_stream=False)
+            plan_mask_evaluation(cap, can_stream=True)
 
     return gov
 
@@ -1658,7 +1811,9 @@ def unmark_views(sql: str) -> str:  # REQ-039
     """``sql`` -- a statement whose views were expanded marked (``view_read.semantic_statement``)
     -- without the marks: the text every use other than governance reads, so the mark is never
     logged, audited or keyed on."""
-    return _unmark_views(sqlglot.parse_one(sql, read="postgres")).sql(dialect="postgres")
+    from provisa.compiler.view_expand import parse_marked
+
+    return _unmark_views(parse_marked(sql)).sql(dialect="postgres")
 
 
 def _unmark_views(tree: exp.Expr) -> exp.Expr:  # pyright: ignore[reportPrivateImportUsage]
@@ -2484,6 +2639,8 @@ def _govern_merge(
 ) -> None:
     """A MERGE's source is a read, governed as any is; its WHEN conditions and values may read
     the source and constants, not the target row; its ON may read the target's served columns."""
+    from provisa.compiler.write_admission import ADMITTED
+
     alias = _alias_for(target)
     names = {_folded(target.this), alias.lower(), alias}
     on = write.args.get("on")
@@ -2497,6 +2654,8 @@ def _govern_merge(
                 _refuse_hidden(col, tid, gov_ctx)
     whens = write.args.get("whens")
     for col in whens.find_all(exp.Column) if whens is not None else []:
+        if col.meta.get(ADMITTED):
+            continue  # REQ-2001: the role's delete rule, which admission put there
         if not col.table or _folded(col.args.get("table")) in names:
             if isinstance(col.parent, exp.EQ) and col.parent.this is col:
                 continue  # the column a WHEN sets
@@ -2638,8 +2797,11 @@ def apply_governance(
 
     trace_stage("govern.in", sql)
     # REQ-913: the statement as the client (or a compiler stage) wrote it, read once here.
-    tree = sqlglot.parse_one(sql, read="postgres")
-    governed = govern(tree, gov_ctx, session_vars, params).sql(dialect="postgres")
+    from provisa.compiler.view_expand import marks_withheld, parse_marked
+
+    with marks_withheld():  # REQ-039: an error governing a marked statement names no mark
+        tree = parse_marked(sql)
+        governed = govern(tree, gov_ctx, session_vars, params).sql(dialect="postgres")
     trace_stage("govern.out", governed)
     return governed
 

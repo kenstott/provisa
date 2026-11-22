@@ -303,6 +303,58 @@ services:
       retries: 60
       start_period: 180s
 
+  # Federation engines with no source test of their own, started by Conformance (functions)
+  # (scripts/conformance/engine_service.sh, scripts/conformance/function_legs.yaml), which waits for
+  # each by a statement over its engine URL rather than a healthcheck here. No volumes: a run's
+  # engine is thrown away with its container.
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_ROOT_PASSWORD: provisa
+      MYSQL_DATABASE: provisa
+    ports:
+      - "${MYSQL_PORT:-3307}:3306"
+
+  monetdb:
+    image: monetdb/monetdb:latest
+    environment:
+      MDB_DB_ADMIN_PASS: monetdb
+      MDB_CREATE_DBS: provisa
+    ports:
+      - "${MONETDB_PORT:-50000}:50000"
+
+  # The image creates the remote-login user gaussdb with GS_PASSWORD, which it requires to be
+  # complex: its entrypoint wants a character of #?!@$%^&*- (an underscore is none); it runs
+  # privileged. Pinned: latest (7.0.0-RC3.B025) exits at start, gaussdb: libopenblas.so.0 not found
+  # (run 44939442678).
+  opengauss:
+    image: opengauss/opengauss:7.0.0-RC2.B015
+    privileged: true
+    environment:
+      GS_PASSWORD: Provisa_2026!
+    ports:
+      - "${OPENGAUSS_PORT:-15433}:5432"
+
+  # Community Edition: database VMart, superuser dbadmin with no password.
+  vertica:
+    image: vertica/vertica-ce:24.1.0-0
+    ports:
+      - "${VERTICA_PORT:-5434}:5433"
+
+  # Db2 Community Edition: privileged, and minutes to create its database on first start.
+  db2:
+    image: icr.io/db2_community/db2:11.5.9.0
+    privileged: true
+    environment:
+      LICENSE: accept
+      DB2INSTANCE: db2inst1
+      DB2INST1_PASSWORD: provisa
+      DBNAME: PROVISA
+      PERSISTENT_HOME: "false"
+      ARCHIVE_LOGS: "false"
+    ports:
+      - "${DB2_PORT:-50001}:50000"
+
   # Connector source (federation-engine → Trino splunk catalog, not a direct driver — see
   # TrinoSplunkConnector in provisa/federation/trino_connectors.py). Trino reaches it in-network at
   # splunk:8089 over the Splunk management/REST port (the trino-splunk plugin wraps Calcite's Splunk
@@ -637,6 +689,28 @@ services:
       timeout: 5s
       retries: 24
       start_period: 10s
+
+  # REQ-2219, REQ-122: a real Keycloak for tests that need one (requires_keycloak), on an isolated
+  # port. The realm (test users, roles, groups, the nested and flat entitlement claim mappers) is in
+  # the repo; the management port answers the healthcheck, and the image ships no curl.
+  keycloak:
+    restart: unless-stopped
+    image: quay.io/keycloak/keycloak:26.0.7
+    command: ["start-dev", "--import-realm"]
+    ports:
+      - "${KEYCLOAK_PORT:-8880}:8080"
+    environment:
+      KC_HEALTH_ENABLED: "true"
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin-password
+    volumes:
+      - ./tests/fixtures/keycloak/provisa-test-realm.json:/opt/keycloak/data/import/provisa-test-realm.json:ro
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/localhost/9000 && printf 'GET /health/ready HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n' >&3 && grep -q UP <&3"]
+      interval: 5s
+      timeout: 5s
+      retries: 36
+      start_period: 20s
 
   # An operator's own Postgres, into which `provisa pg-ext install` stages the bundled extensions
   # (REQ-1873). linux/amd64 because the bundle is built for linux-x64; 15 because no bundle is

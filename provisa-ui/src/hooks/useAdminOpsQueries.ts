@@ -45,7 +45,9 @@ import {
   PurgeCacheByTable,
   UpdateTablePaging,
   UpdateTableRoleTtl,
+  DeleteScheduledTasks,
 } from "./admin.graphql";
+import { useBulkDelete } from "./useBulkDelete";
 
 export function useMVList() {
   const { data, loading, error, refetch } = useQuery<{ mvList: MVInfo[] }>(MV_LIST_QUERY, {
@@ -321,4 +323,12 @@ export function useUpdateTableRoleTtl() {
     },
     loading,
   };
+}
+
+/** REQ-2240: several scheduled tasks deleted in one call, each through its single delete; the same lists
+ *  read again. */
+export function useDeleteScheduledTasks() {
+  return useBulkDelete(DeleteScheduledTasks, "deleteScheduledTasks", "taskIds", [
+    { query: SCHEDULED_TASKS_QUERY },
+  ]);
 }

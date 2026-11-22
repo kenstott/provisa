@@ -113,7 +113,6 @@ def parse_query(  # REQ-007, REQ-011, REQ-039
     document = parse(query)
     errors = validate(schema, document)
     if errors:
-        _refuse_draft_fields(document, ctx)
         _refuse_missing_capability(document, ctx)
         _refuse_unoffered_writes(document, schema, ctx)
         raise GraphQLValidationError(errors)
@@ -123,28 +122,6 @@ def parse_query(  # REQ-007, REQ-011, REQ-039
 #: How a root field names its table beyond the table's own field name (query and mutation forms).
 _FIELD_SUFFIXES = ("_aggregate", "_by_pk", "_connection", "_stream")
 _FIELD_PREFIXES = ("insert_", "update_", "delete_", "upsert_")
-
-
-def _refuse_draft_fields(document: DocumentNode, ctx: "CompilationContext") -> None:  # REQ-1921
-    """A root field naming a draft table is refused naming it as draft (``TableIsDraft``); the
-    schema offers no draft table, so validation alone would answer an unnamed "Cannot query
-    field"."""
-    from graphql import OperationDefinitionNode
-
-    from provisa.compiler.definitions import TableIsDraft
-
-    if not ctx.draft_names:
-        return
-    for definition in document.definitions:
-        if not isinstance(definition, OperationDefinitionNode):
-            continue
-        for selection in definition.selection_set.selections:
-            name = getattr(getattr(selection, "name", None), "value", None)
-            if name is None:
-                continue
-            for candidate in _table_field_candidates(name):
-                if candidate in ctx.draft_names:
-                    raise TableIsDraft(ctx.draft_names[candidate])
 
 
 def _refuse_missing_capability(document: DocumentNode, ctx: "CompilationContext") -> None:
@@ -161,7 +138,7 @@ def _refuse_missing_capability(document: DocumentNode, ctx: "CompilationContext"
 
     class _Names(Visitor):
         def enter_field(self, node: FieldNode, *_args: object) -> None:
-            for candidate in _table_field_candidates(node.name.value):
+            for candidate in table_field_candidates(node.name.value):
                 domain = ctx.missing_capability.get(candidate)
                 if domain is not None:
                     raise MissingDomainCapability(ctx.role_id or "", domain)
@@ -174,7 +151,7 @@ def _refuse_missing_capability(document: DocumentNode, ctx: "CompilationContext"
             visit(definition, _Names())
 
 
-def _table_field_candidates(name: str) -> list[str]:
+def table_field_candidates(name: str) -> list[str]:
     """The table field names a root field ``name`` could stand for."""
     out = [name]
     for prefix in _FIELD_PREFIXES:

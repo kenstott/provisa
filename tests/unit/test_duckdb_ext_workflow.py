@@ -4,10 +4,9 @@
 # This source code is licensed under the Business Source License 1.1
 # found in the LICENSE file in the root directory of this source tree.
 """build-duckdb-extensions.yml publishes provisa-duckdb-ext as one platform-tagged wheel per mirrored
-platform, each holding only that platform's extensions and checked under PyPI's 100 MB limit before
-publishing (maintainer decision 2026-11-06; a universal wheel of every platform's DuckDB 2.0
-extensions was refused by PyPI, run 42238598659). The publish step stays in this workflow with
-trusted publishing (id-token: write, no password): PyPI's trusted publisher names this file."""
+platform, each holding only that platform's extensions (maintainer decision 2026-11-06). Nothing
+goes to PyPI (maintainer 2026-11-21): the wheels are attached to the release draft under the
+publish input and listed by the Pages wheel index."""
 
 from __future__ import annotations
 
@@ -106,23 +105,29 @@ def test_the_wheel_job_builds_each_platform_alone_and_retags_it():
     assert "python -m wheel tags --remove" in run
 
 
-def test_each_wheels_size_is_checked_before_publishing():
+def test_each_wheels_size_is_checked_before_attaching():
     steps = _steps("wheel")
     check = "Check each wheel is under PyPI's 100 MB limit"
     assert steps[check]["run"] == "python packaging/duckdb-ext/collect.py check-wheels dist-ext"
     names = _names("wheel")
     assert names.index("Build one wheel per platform") < names.index(check)
-    assert names.index(check) < names.index("Publish provisa-duckdb-ext to PyPI")
+    assert names.index(check) < names.index(
+        "Attach the wheels, SBOM and CVE report to the draft release"
+    )
 
 
-def test_publishing_stays_trusted_in_this_workflow():
+def test_the_wheels_are_attached_to_the_release_not_published_to_pypi():
     job = _jobs()["wheel"]
-    assert job["permissions"]["id-token"] == "write"
-    assert "environment" not in job
-    publish = _steps("wheel")["Publish provisa-duckdb-ext to PyPI"]
-    assert publish["uses"] == "pypa/gh-action-pypi-publish@release/v1"
-    assert publish["with"]["packages-dir"] == "dist-ext/"
-    assert "password" not in publish["with"]
+    assert "id-token" not in job["permissions"]
+    assert all(
+        "pypi-publish" not in line
+        for line in WORKFLOW.read_text().splitlines()
+        if not line.lstrip().startswith("#")
+    )
+    attach = _steps("wheel")["Attach the wheels, SBOM and CVE report to the draft release"]
+    assert attach["uses"] == "./.github/actions/attach-release-assets"
+    assert attach["if"] == "inputs.publish"
+    assert "dist-ext/provisa_duckdb_ext-*.whl" in attach["with"]["files"]
     assert "provisa-duckdb-ext" in (REPO / "packaging/duckdb-ext/pyproject.toml").read_text()
 
 

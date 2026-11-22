@@ -323,6 +323,11 @@ async def native_schemas(  # REQ-012, REQ-250, REQ-252
     if t == "openapi":
         return ["openapi"]
 
+    if t == "dbt":  # REQ-2228: the schemas its models are built in
+        from provisa.api.admin._dbt_table_registration import offered_schemas
+
+        return await offered_schemas(source_id, config_conn)
+
     if t == "sqlite":
         return ["main"]
 
@@ -856,7 +861,9 @@ def _es_connection_for(row: dict, state) -> "ESConnection":  # REQ-1672
         ),
         None,
     )
-    password = resolve_secrets(getattr(cfg_src, "password", "") or "") if cfg_src else ""
+    password = (
+        resolve_secrets(getattr(cfg_src, "password", "") or "", credential=True) if cfg_src else ""
+    )
     return ESConnection.build(
         resolve_secrets(row.get("host") or "localhost"),
         int(row.get("port") or 9200),
@@ -981,7 +988,9 @@ def _redis_connection_for(row: dict, state) -> "RedisConnection":  # REQ-1675
         ),
         None,
     )
-    password = resolve_secrets(getattr(cfg_src, "password", "") or "") if cfg_src else ""
+    password = (
+        resolve_secrets(getattr(cfg_src, "password", "") or "", credential=True) if cfg_src else ""
+    )
     return RedisConnection(
         host=resolve_secrets(row.get("host") or "localhost"),
         port=int(row.get("port") or 6379),
@@ -1027,7 +1036,9 @@ def _cassandra_connection_for(row: dict, state) -> "CassandraConnection":  # REQ
         ),
         None,
     )
-    password = resolve_secrets(getattr(cfg_src, "password", "") or "") if cfg_src else ""
+    password = (
+        resolve_secrets(getattr(cfg_src, "password", "") or "", credential=True) if cfg_src else ""
+    )
     return CassandraConnection.build(
         resolve_secrets(row.get("host") or "localhost"),
         int(row.get("port") or 9042),
@@ -1083,7 +1094,9 @@ def _prometheus_connection_for(row: dict, state) -> "PrometheusConnection":  # R
         ),
         None,
     )
-    token = resolve_secrets(getattr(cfg_src, "password", "") or "") if cfg_src else ""
+    token = (
+        resolve_secrets(getattr(cfg_src, "password", "") or "", credential=True) if cfg_src else ""
+    )
     return PrometheusConnection.build(
         resolve_secrets(endpoint_url(row.get("host"), row.get("port"), mapping)),
         token=token or None,
@@ -1349,6 +1362,23 @@ async def record_table_format(model: Any, source_type: str | None) -> None:
         model.table_format = await athena_table_format(
             model.source_id, model.schema_name, model.table_name
         )
+
+
+async def record_source_definition(model: Any, source_type: str | None) -> None:
+    """REQ-2230: record on ``model`` the statement that defines it, where its source reports one
+    (a Snowflake Dynamic Table's), which contributes its lineage. Read and none reported is "";
+    None is not read, which leaves what is held (``repositories.table``)."""
+    if source_type != "snowflake":
+        return
+    from provisa.api.app import state
+    from provisa.executor.snowflake_objects import dynamic_tables
+
+    if not state.source_pools.has(model.source_id):
+        return
+    found = await dynamic_tables(state.source_pools, model.source_id, model.schema_name)
+    model.source_definition = next(
+        (t.definition or "" for t in found if t.name == model.table_name), ""
+    )
 
 
 async def _native_columns_athena(
@@ -2047,6 +2077,11 @@ async def native_tables(  # REQ-012, REQ-250, REQ-252, REQ-295, REQ-307, REQ-314
     if t == "openapi":
         return await _native_tables_openapi(source_id, schema_name, state)
 
+    if t == "dbt":  # REQ-2228: its models, none registered by being listed
+        from provisa.api.admin._dbt_table_registration import offered_tables
+
+        return await offered_tables(source_id, schema_name, config_conn)
+
     if t in ("graphql", "graphql_remote"):
         return await _native_tables_graphql(source_id, schema_name, config_conn, state)
 
@@ -2183,7 +2218,19 @@ async def native_tables(  # REQ-012, REQ-250, REQ-252, REQ-295, REQ-307, REQ-314
             f"WHERE table_schema = '{schema_name}' AND table_type = 'BASE TABLE' "
             "ORDER BY table_name",
         )
-        return [AvailableTableType(name=row[0], comment=None) for row in result.rows]
+        # REQ-2230: a Dynamic Table is offered as a table, and says what it is.
+        from provisa.executor.snowflake_objects import dynamic_tables
+
+        dynamic = {d.name: d for d in await dynamic_tables(pool, source_id, schema_name)}
+        return [
+            AvailableTableType(
+                name=name,
+                comment=" — ".join(p for p in ("DYNAMIC TABLE", dynamic[name].comment) if p)
+                if name in dynamic
+                else None,
+            )
+            for name in sorted({row[0] for row in result.rows} | dynamic.keys())
+        ]
 
     if t == "databricks":
         from provisa.api.admin.types import AvailableTableType

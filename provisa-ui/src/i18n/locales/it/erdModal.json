@@ -22,7 +22,7 @@
     "fitAll": "Adatta tutto",
     "download": "Scarica",
     "fullscreen": "Schermo intero",
-    "exitFullscreen": "Esci da schermo intero",
+    "exitFullscreen": "Ripristina dimensione",
     "downloadSvg": "Scarica SVG",
     "downloadPng": "Scarica PNG",
     "downloadJpeg": "Scarica JPEG",
@@ -34,6 +34,7 @@
     "focusDomains": "Domini: {{names}}",
     "focusTables": "Tabelle: {{names}}",
     "focusMissing": "Non trovato: {{names}}",
-    "showAll": "Mostra tutto"
+    "showAll": "Mostra tutto",
+    "showWithdrawn": "Mostra ritirati"
   }
 }

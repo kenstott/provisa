@@ -1,0 +1,48 @@
+{
+  "python": {
+    "doc": {
+      "problems": [
+        "rows: unknown tag @tabel"
+      ]
+    },
+    "sdk": {
+      "problems": [
+        "the declarations do not type-check: importing source failed: AttributeError: module 'provisa_sdk' has no attribute 'tabel'"
+      ],
+      "checker": "rejects"
+    }
+  },
+  "typescript": {
+    "doc": {
+      "problems": [
+        "rows: unknown tag @tabel"
+      ]
+    },
+    "sdk": {
+      "checker": "rejects"
+    }
+  },
+  "rust": {
+    "doc": {
+      "problems": [
+        "rows: unknown tag @tabel"
+      ]
+    },
+    "sdk": {
+      "problems": [
+        "the declarations do not type-check: provisa_sdk::tabel! is not a registration this server reads; it reads SDK spelling 1"
+      ],
+      "checker": "rejects"
+    }
+  },
+  "go": {
+    "doc": {
+      "problems": [
+        "Rows: unknown tag @tabel"
+      ]
+    },
+    "sdk": {
+      "checker": "rejects"
+    }
+  }
+}

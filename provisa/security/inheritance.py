@@ -52,6 +52,7 @@ from provisa.security.rights import (
     Capability,
     normalized_reach,
     reaches_domain,
+    reads_data,
 )
 
 GRANT_LISTS = ("visible_to",)
@@ -232,7 +233,8 @@ def flatten_role_dicts(roles: list[dict]) -> list[dict]:
     access), and data_residency's regions, narrowed as they are; and each property (rate_limit,
     max_rows) set by the nearest role in the chain that declares it, the role itself first, so a
     child may raise or lower its parent's (REQ-2057). Session values (REQ-1682) merge by name, the
-    nearest role's value for each. A role with no capabilities holds no domain: it reads nothing.
+    nearest role's value for each. A role with no capabilities holds no domain: it reads nothing. A role
+    holding only command_execution keeps its domains for its commands and reads nothing (REQ-870).
     A domain tree is folded in first (domain_tree.flatten_role_domains), as a parent listing a
     business unit holds the domains under it. Input dicts are not modified."""
     by_id = {r["id"]: r for r in roles}
@@ -404,7 +406,7 @@ def expand_meta_grants(tables: Iterable[dict], roles: Iterable[dict]) -> None:
     every role reads with no meta grant (rights.DEFAULT_TIER_META_TABLES) every role that holds a
     capability is given each core column, served as a public column is, outside its reach. A column
     whose grant to Viewer was taken away stays as it was. On the build's own copies."""
-    held = [r for r in roles if r.get("capabilities")]
+    held = [r for r in roles if reads_data(r.get("capabilities"))]  # REQ-870
     catalog = [r["id"] for r in held if Capability.CATALOG_READ.value in r["capabilities"]]
     every = [r["id"] for r in held]
     for t in tables:

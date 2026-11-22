@@ -31,9 +31,11 @@ const drawn = vi.hoisted(() => ({
 // The real cytoscape, with the instance each ERD draws kept for the test to click on.
 vi.mock("cytoscape", async (importOriginal) => {
   const real = (await importOriginal<{ default: (o: unknown) => unknown }>()).default;
-  const keeping = Object.assign((o: unknown) => {
-    drawn.cy = real(o) as typeof drawn.cy;
-    return drawn.cy;
+  // A call naming an extension (cytoscape("layout", "elk")) asks whether it is registered.
+  const keeping = Object.assign((...args: unknown[]) => {
+    const made = (real as (...a: unknown[]) => unknown)(...args);
+    if (typeof args[0] !== "string") drawn.cy = made as typeof drawn.cy;
+    return made;
   }, real);
   return { default: keeping };
 });
@@ -80,6 +82,7 @@ function table(id: number, tableName: string, domainId: string): RegisteredTable
     tableName,
     alias: null,
     description: null,
+    registeredAt: "2026-11-01T00:00:00+00:00",
     cacheTtl: 60,
     roleTtl: [],
     pagingKind: null,
@@ -87,7 +90,8 @@ function table(id: number, tableName: string, domainId: string): RegisteredTable
     pagingCeilingRows: null,
     replicate: null,
     region: null,
-    draft: false,
+    withdrawn: false,
+    sourceWithdrawn: false,
     rowMaterialize: false,
     loadProtected: null,
     offPeakWindow: null,
@@ -124,6 +128,8 @@ function table(id: number, tableName: string, domainId: string): RegisteredTable
     mvPersist: "replace",
     mvPrimaryKey: [],
     mvIncremental: false,
+    mvRebuildEvery: null,
+    incrementalOption: { available: true, code: null, reason: null },
     mvCalendar: null,
     mvGrain: null,
     mvAllowedLateness: 0,
@@ -160,6 +166,7 @@ const relationship = (id: string, source: number, target: number) => ({
   cypherType: null,
   disableCypher: false,
   sameEntity: false,
+  withdrawn: false,
   viaTableId: null,
   viaTableName: null,
   viaSourceColumn: null,
@@ -192,6 +199,22 @@ const RELS = {
 // What the ERD draws: the system's own relationships too (allRelationships), which the page's list
 // (relationships) leaves out.
 const ALL_RELS = { ...RELS };
+// REQ-1921: what Show withdrawn reads besides: a withdrawn table and its relationship, marked.
+const WITHDRAWN_TABLE = { ...table(7, "staging", "sales"), withdrawn: true };
+const WITHDRAWN_REL = { ...relationship("orders-staging", 1, 7), withdrawn: true };
+const asked = vi.hoisted(() => ({ tables: [] as unknown[], relationships: [] as unknown[] }));
+const tablesRead = (opts?: { includeWithdrawn?: boolean }) => {
+  asked.tables.push(opts);
+  return opts?.includeWithdrawn
+    ? { ...TABLES, tables: [...TABLES.tables, WITHDRAWN_TABLE] }
+    : TABLES;
+};
+const relationshipsRead = (opts?: { includeWithdrawn?: boolean }) => {
+  asked.relationships.push(opts);
+  return opts?.includeWithdrawn
+    ? { ...ALL_RELS, relationships: [...ALL_RELS.relationships, WITHDRAWN_REL] }
+    : ALL_RELS;
+};
 const DOMAINS = {
   domains: [
     { id: "sales", description: "" },
@@ -230,7 +253,6 @@ vi.mock("../api/admin", async (importOriginal) => ({
     cache: { default_ttl: 300 },
     naming: { domain_prefix: false, convention: "none" },
   }),
-  fetchCandidates: vi.fn().mockResolvedValue([]),
   fetchRejectedCount: vi.fn().mockResolvedValue(0),
 }));
 vi.mock("../api/actions", () => ({
@@ -240,7 +262,6 @@ vi.mock("../components/TagControl", () => ({ TagControl: () => null }));
 vi.mock("../hooks/useRegionQueries", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../hooks/useRegionQueries")>()),
   useRegionChoices: () => ({ regions: [], connected: null }),
-  useSetTableDraft: () => vi.fn(),
   useSetTableRegion: () => vi.fn(),
 }));
 vi.mock("../hooks/useAdminOpsQueries", async (importOriginal) => ({
@@ -250,14 +271,14 @@ vi.mock("../hooks/useAdminOpsQueries", async (importOriginal) => ({
 }));
 vi.mock("../hooks/useAdminQueries", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../hooks/useAdminQueries")>()),
-  useTables: () => TABLES,
+  useTables: (opts?: { includeWithdrawn?: boolean }) => tablesRead(opts),
   useTableDetails: () => TABLES,
   useSources: () => ({ sources: NONE, loading: false, refetch: REFETCH }),
   useDomains: () => DOMAINS,
   useRoles: () => ({ roles: NONE, loading: false, refetch: REFETCH }),
   useDataProducts: () => ({ dataProducts: NONE, loading: false, refetch: REFETCH }),
   useRelationships: () => RELS,
-  useAllRelationships: () => ALL_RELS,
+  useAllRelationships: (opts?: { includeWithdrawn?: boolean }) => relationshipsRead(opts),
   useUpsertRelationship: () => ({ upsertRelationship: vi.fn() }),
   useDeleteRelationship: () => ({ deleteRelationship: vi.fn() }),
   useAvailableColumnsMetadataLazy: () => ({
@@ -299,7 +320,7 @@ const param = (key: string) => new URL(where(), "http://x").searchParams.get(key
 const drawnHas = (id: string) => (drawn.cy?.getElementById(id).length ?? 0) > 0;
 const diagramHolds = async (id: string) => waitFor(() => expect(drawnHas(id)).toBe(true));
 const tap = (id: string) => act(() => drawn.cy?.getElementById(id).emit("tap"));
-const highlighted = (id: string) => drawn.cy?.getElementById(id).hasClass("erd-focused");
+const highlighted = (id: string) => drawn.cy?.getElementById(id).hasClass("focused");
 const settled = (ids: string) =>
   waitFor(() => expect(screen.getByTestId("erd-panel")).toHaveAttribute("data-highlighted", ids));
 const toggle = (page: "tables" | "relationships") =>
@@ -675,7 +696,7 @@ describe("the page's filter box on the ERD", () => {
   const dimmed = (id: string) =>
     (drawn.cy as unknown as { getElementById(id: string): { hasClass(c: string): boolean } })
       .getElementById(id)
-      .hasClass("erd-dim");
+      .hasClass("dim");
   const type = (value: string) =>
     fireEvent.change(screen.getByTestId("filter-input"), { target: { value } });
 
@@ -728,7 +749,7 @@ describe("the page's filter box on the ERD", () => {
 });
 
 describe("the item whose detail panel is open", () => {
-  const lineHighlighted = (id: string) => drawn.cy?.getElementById(id).hasClass("erd-focused");
+  const lineHighlighted = (id: string) => drawn.cy?.getElementById(id).hasClass("focused");
 
   it("on Tables is highlighted when the ERD opens from the list", async () => {
     open("/tables");
@@ -776,7 +797,7 @@ describe("the diagram's image controls", () => {
     open("/tables?view=erd");
     await diagramHolds("t:1");
     expect(bar()).toHaveAttribute("aria-orientation", "vertical");
-    expect(bar().closest(".erd-stage")).not.toBeNull();
+    expect(bar().closest(".pg-stage")).not.toBeNull();
     for (const id of [
       "erd-zoom-in",
       "erd-zoom-out",
@@ -816,7 +837,9 @@ describe("the diagram's image controls", () => {
       fit(eles?: unknown, padding?: number): void;
       getElementById(id: string): { style(k: string): string };
     };
-    // Laid out: the layout has shown the orphans, and fits nothing more of its own.
+    // Laid out: the layout has ended (the controls act on a placed drawing only) and shown the
+    // orphans, and fits nothing more of its own.
+    await waitFor(() => expect(screen.queryByTestId("erd-laying-out")).not.toBeInTheDocument());
     await waitFor(() => expect(cy.getElementById("t:5").style("display")).toBe("element"));
     // jsdom's canvas has no size, so a fit leaves no zoom to compare against: start from 1.
     cy.zoom(1);
@@ -835,7 +858,7 @@ describe("the diagram's image controls", () => {
     await diagramHolds("t:1");
     fireEvent.click(screen.getByTestId("erd-fullscreen"));
     expect(fullscreen.asked).toHaveLength(1);
-    expect(fullscreen.asked[0]).toHaveClass("erd-stage");
+    expect(fullscreen.asked[0]).toHaveClass("pg-stage");
     expect(fullscreen.asked[0]).toContainElement(bar());
   });
 });
@@ -845,14 +868,14 @@ describe("the diagram's hint", () => {
     open("/tables?view=erd");
     await diagramHolds("t:1");
     const hint = screen.getByTestId("erd-hint");
-    expect(hint.closest(".erd-stage")).toBeNull();
+    expect(hint.closest(".pg-stage")).toBeNull();
     const toolbar = screen.getByTestId("erd-column-detail").closest(".mantine-Group-root");
     expect(toolbar).toContainElement(hint);
     expect(
       screen.getByTestId("erd-toggle-all").compareDocumentPosition(hint) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
-    const stage = document.querySelector(".erd-stage") as HTMLElement;
+    const stage = document.querySelector(".pg-stage") as HTMLElement;
     expect(stage).not.toHaveTextContent("Click a domain group");
     fireEvent.mouseEnter(hint);
     expect(await screen.findByTestId("erd-hint-card")).toHaveTextContent(
@@ -919,5 +942,63 @@ describe("Polly on the ERD and + Model", () => {
     expect(out.steps).toEqual(['Pressed the element with test id "wizard-next".']);
     expect(confirm).not.toHaveBeenCalled();
     expect((await inputs("/tables"))?.modeling).toBe("vault");
+  });
+});
+
+// REQ-1921: Show withdrawn, for a person who may preview withdrawn objects: the withdrawn tables
+// and their relationships are read and drawn dashed.
+describe("Show withdrawn", () => {
+  const style = (id: string, key: string) =>
+    (drawn.cy as unknown as { getElementById(id: string): { style(k: string): string } })
+      .getElementById(id)
+      .style(key);
+
+  beforeEach(() => {
+    asked.tables = [];
+    asked.relationships = [];
+  });
+
+  it.each(["tables", "relationships"] as const)(
+    "on the %s ERD is offered to a holder of table registration, off, reading nothing withdrawn",
+    async (page) => {
+      open(`/${page}?view=erd`);
+      const control = await screen.findByTestId("erd-show-withdrawn");
+      expect(control).not.toBeChecked();
+      await diagramHolds("t:1");
+      expect(drawnHas("t:7")).toBe(false);
+      expect(asked.tables.at(-1)).toEqual({ includeWithdrawn: false });
+      expect(asked.relationships.at(-1)).toEqual({ includeWithdrawn: false });
+    },
+  );
+
+  it("on reads the withdrawn tables and relationships and draws them dashed", async () => {
+    open("/tables?view=erd");
+    await diagramHolds("t:1");
+    fireEvent.click(await screen.findByTestId("erd-show-withdrawn"));
+    await diagramHolds("t:7");
+    expect(asked.tables.at(-1)).toEqual({ includeWithdrawn: true });
+    expect(asked.relationships.at(-1)).toEqual({ includeWithdrawn: true });
+    expect(style("t:7", "border-style")).toBe("dashed");
+    expect(style("t:1", "border-style")).toBe("solid");
+    await diagramHolds("r:orders-staging");
+    expect(style("r:orders-staging", "line-style")).toBe("dashed");
+    expect(style("r:orders-customers", "line-style")).toBe("solid");
+  });
+
+  it("is not offered to a person without table registration", async () => {
+    const held = AUTH.capabilities;
+    AUTH.capabilities = ["admin", "create_relationship"];
+    try {
+      open("/relationships?view=erd");
+      await diagramHolds("t:1");
+      expect(screen.queryByTestId("erd-show-withdrawn")).not.toBeInTheDocument();
+      expect(
+        asked.tables.some(
+          (o) => (o as { includeWithdrawn?: boolean } | undefined)?.includeWithdrawn,
+        ),
+      ).toBe(false);
+    } finally {
+      AUTH.capabilities = held;
+    }
   });
 });

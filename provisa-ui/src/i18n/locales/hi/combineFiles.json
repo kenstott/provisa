@@ -1,0 +1,32 @@
+{
+  "combineFiles": {
+    "globLabel": "या इनसे मेल खाने वाली फ़ाइलें",
+    "globPlaceholder": "complaints_2026_*.csv",
+    "globHint": "स्रोत की फ़ाइलों पर एक glob, एक तालिका के रूप में या प्रति फ़ाइल एक।",
+    "modeLabel": "फ़ाइलें कैसे पंजीकृत हों",
+    "perFile": "प्रति फ़ाइल एक तालिका",
+    "combine": "एक तालिका में मिलाएँ",
+    "checking": "फ़ाइलें जाँची जा रही हैं…",
+    "noMatch": "इस glob से कोई फ़ाइल मेल नहीं खाती।",
+    "unmatched": "{{tables}} के लिए कोई फ़ाइल नहीं मिली।",
+    "matched_one": "{{glob}} से {{count}} फ़ाइल मेल खाती है",
+    "matched_other": "{{glob}} से {{count}} फ़ाइलें मेल खाती हैं",
+    "sharedColumns": "साझा कॉलम: {{columns}}",
+    "noSharedColumns": "इनमें कोई कॉलम साझा नहीं है।",
+    "differHeading": "इन फ़ाइलों के कॉलम अलग हैं, इसलिए ये एक तालिका नहीं बन सकतीं। इन्हें छोड़ दें, या ऐसा glob लिखें जो इनसे मेल न खाए:",
+    "differ": "{{file}} {{how}}",
+    "lacks": "{{columns}} नहीं है",
+    "adds": "{{columns}} जोड़ती है",
+    "differUnreadable": "{{file}} पढ़ी नहीं जा सकी: {{error}}",
+    "extra": "glob {{glob}} उन {{files}} से भी मेल खाता है, जिन्हें आपने नहीं चुना।",
+    "includeExtra": "इन्हें भी शामिल करें",
+    "extraUnconfirmed": "glob जिन अतिरिक्त फ़ाइलों से मेल खाता है उन्हें शामिल करें, या ऐसा glob लिखें जो केवल आपकी चाही फ़ाइलों से मेल खाए।",
+    "nameLabel": "नई तालिका का नाम",
+    "namePlaceholder": "complaints",
+    "nameRequired": "नई तालिका को नाम दें।",
+    "notRegistrable": "इन फ़ाइलों को एक तालिका के रूप में पंजीकृत नहीं किया जा सकता।",
+    "sourceFileColumnLabel": "स्रोत-फ़ाइल कॉलम",
+    "sourceFileColumnPlaceholder": "source_file",
+    "sourceFileColumnHint": "वैकल्पिक: एक कॉलम जिसमें हर पंक्ति की फ़ाइल हो।"
+  }
+}

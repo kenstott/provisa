@@ -5,8 +5,8 @@
 # <checkout>/.venv in a container whose environment was elsewhere failed here), and every directory
 # the script needs is the product's to make (the embedded control plane's pgdata parent).
 #
-# It runs on every change to the container, the script or what the script starts (on main, on a
-# release branch and on a ci/** proving branch), and on request.
+# It runs on every change to the container, the script or what the script starts (on main and on a
+# ci/** proving branch), and on request (a release branch: on dispatch).
 name: devcontainer-smoke
 
 on:
@@ -21,7 +21,7 @@ on:
       - 'uv.lock'
       - '.github/workflows/devcontainer-smoke.yml'
   push:
-    branches: [main, 'release/**', 'ci/**']
+    branches: [main, 'ci/**']
     paths:
       - '.devcontainer/**'
       - 'start-ui-install.sh'

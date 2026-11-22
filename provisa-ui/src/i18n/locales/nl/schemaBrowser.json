@@ -1,7 +1,7 @@
 {
   "schemaBrowser": {
-    "collapsePanel": "Schemapaneel samenvouwen",
-    "expandPanel": "Schemapaneel uitvouwen",
+    "collapsePanel": "Schemapaneel verbergen",
+    "expandPanel": "Schemapaneel tonen",
     "heading": "Schema",
     "groupMetrics": "Metrics",
     "groupFacts": "Feiten",

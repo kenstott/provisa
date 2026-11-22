@@ -22,6 +22,7 @@ Five-stage pipeline:
 
 from __future__ import annotations
 
+from provisa.api.engine_error_names import client_text, client_value
 from provisa.api.role_surface import role_surface
 
 
@@ -49,7 +50,7 @@ import re as _re
 from sqlalchemy import select
 
 from provisa.core import request_deadline
-from provisa.core.parameters import ParameterRequired
+from provisa.core.parameter_binding import ParameterBindingRefused, ParameterRequired
 from provisa.api.errors import ApiError
 from provisa.core.read_refusal import ReadRefused
 from provisa.executor.result import QueryResult
@@ -338,11 +339,10 @@ async def _governed_plan(semantic_sql: str, role_id: str, **route: Any) -> Any:
         raise  # REQ-1174 (413), REQ-1350, REQ-1915: answered by the app's handlers
     except PermissionError as exc:
         return cypher_error(403, "cypher.permission_denied", str(exc), reason=str(exc))
-    except ParameterRequired as exc:
-        # REQ-1986: a read leaving a required parameter without a value -- the caller's to give.
-        return cypher_error(
-            400, "cypher.parameter_required", str(exc), table=exc.table, reason=str(exc)
-        )
+    except ParameterBindingRefused as exc:
+        # REQ-1986: a condition that binds a parameter no value, or a read leaving a required one
+        # without a value, under the refusal's own code.
+        return cypher_error(400, exc.code, str(exc), **exc.params)
     except Exception as exc:
         log.exception("Cypher governance/routing failed")
         return cypher_error(
@@ -368,8 +368,9 @@ async def _run_plan(plan: Any, state: AppState) -> QueryResult | Response:
     try:
         # REQ-1882: the deadline watchdog cancels an in-flight blocking statement at _timeout;
         # wait_for alone cannot fire while inline driver work holds the request thread.
-        with request_deadline.within(_timeout):
-            return await _asyncio.wait_for(_execute_plan(plan, state), timeout=_timeout)
+        with request_deadline.within(_timeout) as deadline:
+            async with request_deadline.timing_out(deadline):
+                return await _execute_plan(plan, state)
     except _asyncio.TimeoutError:
         # REQ-1905: names the transport and the setting its timeout came from.
         setting = request_timeout_setting("cypher_http")
@@ -458,7 +459,7 @@ def access_violations(
     )
     if not violations:
         return None
-    listed = [{"code": v.code, "message": v.message} for v in violations]
+    listed = [{"code": v.code, "message": client_value(v.message)} for v in violations]
     return cypher_error(
         403,
         "cypher.access_violations",
@@ -827,6 +828,9 @@ async def _answer(
             # admission's new-row check and the source see the values, never their names.
             with counting() as counted:
                 await written(_write_ast, _WT(_label_map), body.params, _read, _write)
+        except ParameterBindingRefused as exc:
+            # REQ-1986: a relationship joined on a parameter is not written, under its own code.
+            return cypher_error(400, exc.code, str(exc), **exc.params)
         except (_CWPE, CypherParamError) as exc:
             return cypher_error(400, "cypher.refused", str(exc), reason=str(exc))
         except _ReadRefused:
@@ -1133,12 +1137,63 @@ async def _answered_read(
     return JSONResponse(content=content, headers=build_cache_headers(_executed.cache_entry))
 
 
+def _with_withdrawn(state: Any, role_id: str, surface: Any) -> tuple[Any, frozenset[int], set]:
+    """REQ-1921: the role's label map with the withdrawn tables it may preview (table
+    registration reaching their domains) and their withdrawn relationships, built for this one
+    answer and kept nowhere; with the ids of those tables and the names of the junctions among
+    them. No context a statement is compiled in holds them."""
+    from provisa.api.app_loaders import schema_input_with_withdrawn
+    from provisa.compiler.context import build_context
+    from provisa.gql.label_map import CypherLabelMap
+    from provisa.security.rights import effective_domain_access_role, registers_tables_in
+
+    inputs = state.role_build_inputs
+    role = state.roles[role_id]
+    shown = [
+        t
+        for t in inputs["withdrawn_tables"]
+        if registers_tables_in(role, state.roles, t["domain_id"])
+    ]
+    shown_ids = frozenset(t["id"] for t in shown)
+    served_ids = {t["id"] for t in inputs["tables"]}
+    edges = [
+        r
+        for r in inputs["withdrawn_relationships"]
+        if all(
+            t in shown_ids or t in served_ids
+            for t in (r["source_table_id"], r["target_table_id"], r["via_table_id"])
+            if t is not None
+        )
+    ]
+    if not shown:
+        return _build_label_map(surface.context, role_id, state), shown_ids, set()
+    from dataclasses import replace
+
+    si = schema_input_with_withdrawn(state, role, shown)
+    si = replace(si, relationships=[*si.relationships, *edges])
+    cache = state.schema_build_cache
+    label_map = CypherLabelMap.from_schema(
+        build_context(si),
+        domain_access=effective_domain_access_role(role_id, state.roles)["domain_access"],
+        all_tables=[*cache.get("tables", []), *shown],
+        all_relationships=[*cache.get("relationships", []), *edges],
+        all_column_types=si.column_types,
+        source_catalogs=state.source_catalogs,
+    )
+    return label_map, shown_ids, {t["table_name"] for t in shown}
+
+
 @router.get("/data/graph-schema")
-async def graph_schema(request: Request) -> JSONResponse:  # REQ-392, REQ-398
-    """Return node labels and relationship types for the current role."""
+async def graph_schema(
+    request: Request, include_withdrawn: bool = False
+) -> JSONResponse:  # REQ-392, REQ-398
+    """Return node labels and relationship types for the current role. REQ-1921: a withdrawn
+    table and its relationships are left out; ``include_withdrawn`` returns them, marked
+    withdrawn, to a role that may preview them (table registration reaching their domains)."""
     from provisa.api.app import state
 
     from provisa.api.role_surface import role_surface
+    from provisa.security.rights import SYSTEM_DOMAINS
 
     role_id = _resolve_role_id(request, state)
     # One surface, taken once: its context and its root fields come from the same build.
@@ -1149,7 +1204,12 @@ async def graph_schema(request: Request) -> JSONResponse:  # REQ-392, REQ-398
         )
     ctx = surface.context
 
-    label_map = _build_label_map(ctx, role_id, state)
+    withdrawn_ids: frozenset[int] = frozenset()
+    withdrawn_junctions: set[str] = set()
+    if include_withdrawn:
+        label_map, withdrawn_ids, withdrawn_junctions = _with_withdrawn(state, role_id, surface)
+    else:
+        label_map = _build_label_map(ctx, role_id, state)
     all_tables: list[dict] = getattr(state, "schema_build_cache", {}).get("tables", [])
     col_types: dict = getattr(state, "schema_build_cache", {}).get("column_types", {})
     from provisa.gql.label_map import _table_label_from_table_name
@@ -1179,6 +1239,10 @@ async def graph_schema(request: Request) -> JSONResponse:  # REQ-392, REQ-398
                     "label": n.label,
                     "domain_label": n.domain_label,
                     "domain_id": n.domain_id,
+                    # REQ-2135: whether the label's domain is a system domain (meta, ontology,
+                    # ops: rights.SYSTEM_DOMAINS), which a drop's path never passes through
+                    # unless an end of it is of that domain.
+                    "system_domain": n.domain_id in SYSTEM_DOMAINS,
                     "table_label": n.table_label,
                     # The registered table the label reads, so a client can link a node to it.
                     "table_id": n.table_id,
@@ -1197,8 +1261,17 @@ async def graph_schema(request: Request) -> JSONResponse:  # REQ-392, REQ-398
                         ),
                         key=lambda x: x["name"],
                     ),
+                    # REQ-1986: the table's limits as its metadata states them -- each
+                    # parameter's name, type, kind, whether it is opaque (an input to the source's
+                    # call) or a real column, and whether it is required; with a required one the
+                    # label gives no count, profile or sample.
+                    "requires_parameters": bool(n.required_parameters),
+                    "parameters": [
+                        {**f.as_dict(), "name": _cql_prop(f.name)} for f in n.parameters
+                    ],
                     "property_types": _property_types(n),
                     "traversal_only": n.traversal_only,
+                    "withdrawn": n.table_id in withdrawn_ids,  # REQ-1921
                     **cluster_by_name.get(
                         n.table_label, {"scl1": None, "scl2": None, "scl3": None}
                     ),
@@ -1229,6 +1302,14 @@ async def graph_schema(request: Request) -> JSONResponse:  # REQ-392, REQ-398
                     "properties": sorted(r.properties.keys()),
                     # REQ-2135: what it joins, the same for a join declared from both ends.
                     "join": r.join,
+                    # REQ-2135: a link from a constant (HAS_TABLE: every row of a table to its one
+                    # registration) is read only as a hop of its own; a variable-length walk leaves
+                    # it out unless named, and named it does not read the constant.
+                    "constant_source": r.constant_source,
+                    # REQ-1921: an end, or the junction, is withdrawn.
+                    "withdrawn": label_map.nodes[r.source_label].table_id in withdrawn_ids
+                    or label_map.nodes[r.target_label].table_id in withdrawn_ids
+                    or (r.via is not None and r.via.table_name in withdrawn_junctions),
                 }
                 for r in label_map.relationships.values()
             ],
@@ -1246,16 +1327,18 @@ def _countable_labels(
     domain, for a role not granted it — REQ-1132) is not counted: its count statement is refused
     (V001) on every surface, as a direct FROM of it is.
 
-    A PARAMETERIZED node (native-filter columns) is a function f(args) -> rows with no snapshot:
-    ``MATCH (n:Label) RETURN count(n)`` has no arg to satisfy, so it cannot be counted — exclude it
-    and any relationship that touches it. Including one would binder-error and, because ``_run_count``
-    re-raises, zero the WHOLE panel. Domain filtering (when a domain set is supplied) is also applied.
+    A node whose table's metadata states a REQUIRED parameter (REQ-1986) gives no count without
+    it: ``MATCH (n:Label) RETURN count(n)`` has no value to give, so it is left out with any
+    relationship that touches it -- asked of the metadata, never found out by counting (one refused
+    count would, because ``_run_count`` re-raises, zero the WHOLE panel). A node whose parameters
+    are all optional is counted as any other. Domain filtering (when a domain set is supplied) is
+    also applied.
     """
     node_labels = [
         nm.label
         for nm in label_map.nodes.values()
         if (not filtered_domains or nm.domain_id in filtered_domains)
-        and not nm.native_filter_columns
+        and not nm.required_parameters
         and reads_domain(nm.domain_id)
     ]
     seen: set[str] = set()
@@ -1267,8 +1350,8 @@ def _countable_labels(
             src_nm.domain_id not in filtered_domains or tgt_nm.domain_id not in filtered_domains
         ):
             continue
-        if src_nm.native_filter_columns or tgt_nm.native_filter_columns:
-            continue  # a rel to/from a parameterized node is uncountable without its arg
+        if src_nm.required_parameters or tgt_nm.required_parameters:
+            continue  # a rel to/from a node that requires a parameter is uncountable without it
         if not (reads_domain(src_nm.domain_id) and reads_domain(tgt_nm.domain_id)):
             continue  # its count reads both ends' tables directly
         if rel.rel_type not in seen:
@@ -1321,7 +1404,7 @@ async def graph_counts(request: Request) -> JSONResponse:  # REQ-392
             # A parameterized table: a count gives no parameter, so the read is refused -- said,
             # with that refusal's reason.
             log.warning("graph-counts: %s not counted: %s", cypher, exc)
-            return {"count": None, "error": str(exc)}
+            return {"count": None, "error": client_text(str(exc))}
         executed = await _run_plan(plan, state)
         if isinstance(executed, Response):
             # A label the engine cannot count (its catalog is not attached on this engine): said,
@@ -1370,7 +1453,7 @@ def _uncounted(cypher: str, refused: Response) -> dict[str, Any]:
 
     why = _json.loads(bytes(refused.body))["detail"]
     log.warning("graph-counts: %s not counted (%s): %s", cypher, refused.status_code, why)
-    return {"count": None, "error": why}
+    return {"count": None, "error": client_value(why)}
 
 
 def _total(counts: dict[str, dict[str, Any]]) -> int | None:

@@ -30,6 +30,7 @@ import pyarrow as pa
 import pytest
 
 from provisa.compiler.compiled_query_cache import CompiledQueryCache
+from provisa.compiler.sql_types import CompilationContext, TableMeta
 from provisa.gql.label_map import CypherLabelMap
 from provisa.executor.result import QueryResult
 from provisa.pgwire import _pipeline, governed_plan
@@ -53,8 +54,8 @@ def _no_rebuild(monkeypatch):
     monkeypatch.setattr(governed_plan, "_rebuild_in_progress", lambda: False)
 
 
-def _ctx(table_id: int = 1) -> SimpleNamespace:
-    table = SimpleNamespace(
+def _ctx(table_id: int = 1) -> CompilationContext:
+    table = TableMeta(
         type_name="Sales_Orders",
         table_id=table_id,
         source_id="pg",
@@ -66,17 +67,22 @@ def _ctx(table_id: int = 1) -> SimpleNamespace:
         # A TableMeta carries the names it is queried by (label_map reads its _name_ from them).
         field_name="orders",
         display_name="",
+        original_table_name="",
     )
-    return SimpleNamespace(
+    return CompilationContext(
         tables={"sales__orders": table},
         joins={},
         aggregate_columns={table_id: [("id", "integer"), ("amount", "float")]},
         pk_columns={},
         native_filter_columns={},
+        # The per-table parameter facts of a compiled context (label_map reads them).
+        parameters={},
+        parameter_names={},
         physical_to_sql={},
         gql_governed_object_cols=set(),
         gql_json_columns=set(),
         exposed_to_physical={},
+        column_aliases={},
     )
 
 

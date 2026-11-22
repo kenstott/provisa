@@ -15,7 +15,7 @@
     },
     "welcome": {
       "title": "De rondleiding volgen?",
-      "body": "Een rondleiding van vijf minuten: verbind een bron en bevraag die in de taal of met de tool die je al gebruikt. Stop wanneer u wilt — het kompas in de werkbalk opent de rondleiding altijd opnieuw.",
+      "body": "In vijf minuten verbind je een bron en bevraag je die in de taal of tool die je al gebruikt. Stop wanneer je wilt. Het kompas in de werkbalk opent de rondleiding opnieuw.",
       "never": "Niet meer tonen",
       "later": "Later",
       "start": "Rondleiding starten",
@@ -24,7 +24,7 @@
     },
     "menu": {
       "title": "Verdiepen",
-      "intro": "Eén model voor je data, metadata en verwerking, gesynchroniseerd en overal hergebruikt. Kies een onderwerp: elk is een korte tour op zich, en met Klaar kom je hier terug. Het kompas in de werkbalk opent dit menu altijd opnieuw.",
+      "intro": "Eén model voor je data, metadata en verwerking, synchroon gehouden en overal hergebruikt. Elk onderwerp is een eigen korte rondleiding, en Klaar brengt je hier terug. Het kompas in de werkbalk opent dit menu op elk moment opnieuw.",
       "completed": "Voltooid",
       "steps": "Stappen: {{count}}",
       "coreTour": "Begin bij het begin",
@@ -45,7 +45,7 @@
       },
       "quality": {
         "title": "Datakwaliteit",
-        "summary": "Zijn mijn echte data goed? Kwaliteitscontroleurs, contracten, profilerruns, drift en de resultaten die met een dataproduct meereizen."
+        "summary": "Controleer je echte data met kwaliteitscheckers, contracten, profilerruns en drift, en geef de resultaten mee met een dataproduct."
       },
       "query": {
         "title": "Overal bevragen",
@@ -53,7 +53,7 @@
       },
       "testdata": {
         "title": "Testdata en omgevingen",
-        "summary": "Hoe u veilige, realistische data krijgt om op te bouwen en te testen: omgevingen, de profiler, nepwaarden en synthetische data."
+        "summary": "Omgevingen, de profiler, nepwaarden en synthetische data geven je veilige, realistische data om mee te bouwen en te testen."
       },
       "publish": {
         "title": "Publiceer het",
@@ -67,7 +67,7 @@
     "steps": {
       "step0": {
         "title": "Welkom, laten we de rondleiding starten",
-        "description": "🧭 Dit kompas opent de rondleiding op elk moment opnieuw. Om te vertrekken klik je op de app of druk je op <kbd>Esc</kbd>.<p><strong>Provisa</strong> is één model dat je data, de metadata ervan en de verwerking ertussen bevat. Hetzelfde model definieert je datalandschap en bedient het, en het blijft buiten het datapad.</p><p>Daarom <strong>blijft alles gesynchroniseerd</strong> en is <strong>hergebruik ingebouwd</strong>: een relatie, metric, masker of regel die je één keer definieert, dient elk oppervlak, elke omgeving en elke rol. Dubbele tabellen en metrics, dubbele commando's en regels, zelfs twee systemen die dezelfde data leveren staan naast elkaar in het model, dus duplicatie is makkelijk te zien en simpel weg te halen.</p><p>Het is compact, uitbreidbaar en samenstelbaar. Het past naast wat je al hebt en brengt orde in de wildgroei.</p><p>🎯 <strong>De kern is één korte oefening:</strong> verbind een database en bevraag die in de taal of met de tool die je al gebruikt, of stel gewoon een vraag in gewone taal. Ongeveer vijf minuten, <strong>rechtstreeks vanaf je bureaublad</strong>, zonder infrastructuur op te zetten.</p><div class='tour-tags'><span>Natuurlijke taal</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span><span>Postgres · pgwire</span><span>Neo4j · Bolt</span><span>JDBC · Java/JVM</span><span>Arrow Flight SQL · ADBC</span><span>DuckDB · airport</span></div><p>Alles daarna is een <strong>verdieping</strong> die je uit een menu kiest wanneer je eraan toe bent.</p><p>Klaar? Laten we een bron verbinden. →</p>"
+        "description": "🧭 Dit kompas opent de rondleiding op elk moment opnieuw. Klik in de app of druk op <kbd>Esc</kbd> om te stoppen.<p><strong>Provisa</strong> is één model dat je data, de metadata ervan en de verwerking daartussen bevat. Hetzelfde model definieert je datalandschap en beheert het, en blijft buiten het datapad.</p><p>Zo <strong>blijft alles synchroon</strong> en <strong>zit hergebruik ingebouwd</strong>: een relatie, metric, masker of regel die één keer is gedefinieerd, bedient elke interface, omgeving en rol. Dubbele tabellen en metrics, dubbele opdrachten en regels, zelfs twee systemen die dezelfde data leveren, staan naast elkaar in het model, dus duplicatie is makkelijk te zien en eenvoudig te verwijderen.</p><p>Het is compact, uitbreidbaar en samenstelbaar, en staat naast wat je al hebt.</p><p>🎯 <strong>De kern is één korte oefening:</strong> verbind een database en bevraag die dan in de taal of tool die je al gebruikt, of vraag het in gewone taal. Ongeveer vijf minuten, <strong>gewoon vanaf je desktop</strong>, zonder infrastructuur op te zetten.</p><div class='tour-tags'><span>Gewone taal</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span><span>Postgres · pgwire</span><span>Neo4j · Bolt</span><span>JDBC · Java/JVM</span><span>Arrow Flight SQL · ADBC</span><span>DuckDB · airport</span></div><p>Alles daarna is een <strong>verdieping</strong> die je uit een menu kiest wanneer je er klaar voor bent.</p><p>Verbind nu een bron. →</p>"
       },
       "stepPolly": {
         "title": "Maak kennis met Polly, je installatiehulp",
@@ -79,10 +79,10 @@
       },
       "step2": {
         "title": "Registreer een bron",
-        "description": "➕ Nieuwe verbindingen beginnen met deze knop: PostgreSQL, Snowflake, MongoDB, een REST-API, een CSV en de rest van de 77 connectoren."
+        "description": "➕ Nieuwe verbindingen beginnen met deze knop: PostgreSQL, Snowflake, MongoDB, een REST-API, een CSV en de rest van de 82 connectoren."
       },
       "step3": {
-        "title": "77 brontypen, 14 categorieën",
+        "title": "82 brontypen, 14 categorieën",
         "description": "Eén kiezer toont elk type, gegroepeerd per categorie: <strong>Abonnementen, RDBMS, Cloud-datawarehouse, Analytics, Data lake, NoSQL, Code-resolvers, Grafen, Bestanden, API, Streaming, Enterprise, Datakwaliteit, Overig</strong>. Zoek op naam of alias, of beperk met de categoriechips. Elk type toont zijn logo en een bereikpictogram: ⚡ ter plekke live gelezen, of een kopiepictogram waar Provisa een ververst replica leest.<p>Kies er een, vul de verbinding in en sla op.</p>"
       },
       "stepBuildSource": {
@@ -96,7 +96,7 @@
       },
       "step5": {
         "title": "Kies kolommen & beleid",
-        "description": "Kies een bron, schema en tabel, en selecteer vervolgens kolommen, elk met eigen beleid:<ul><li>🎭 <strong>Maskering</strong>: waarden per rol verbergen</li><li>👁️ <strong>Zichtbaarheid</strong>: kolom tonen of verbergen</li><li>🏷️ <strong>Aliassen</strong>: hernoemen voor het model</li></ul><p>Dat is de hele setup: een bron en een paar tabellen. 🚀 Nu gaan we hem bevragen. →</p>"
+        "description": "Kies een bron, schema en tabel en daarna kolommen, elk met een eigen beleid:<ul><li>🎭 <strong>Maskering</strong>: waarden per rol weglakken</li><li>👁️ <strong>Zichtbaarheid</strong>: de kolom tonen of verbergen</li><li>🏷️ <strong>Aliassen</strong>: hernoemen voor het model</li></ul><p>Een bron en een paar tabellen zijn de hele inrichting. 🚀 Bevraag hem nu. →</p>"
       },
       "stepQuery": {
         "title": "Bevraag het op jouw manier",
@@ -108,7 +108,7 @@
       },
       "step7": {
         "title": "GraphQL (2 van 9 oppervlakken)",
-        "description": "◈ Dezelfde query, getypeerd als GraphQL:<p><code>{ inquiries { groupBy { user }, count } }</code></p><p>Groepering en aggregaties over je relaties: 🎯 één endpoint, 📖 een zelfdocumenterend schema.</p><p>🔌 Roep het aan vanuit <strong>elke GraphQL-client</strong>, zoals Apollo, Relay of urql. Met federatie ingeschakeld sluit Provisa aan op een <strong>Apollo supergraph als subgraph</strong>, zodat je gefedereerde model naast je bestaande grafen samenstelt.</p>"
+        "description": "◈ Dezelfde query, geschreven als GraphQL:<p><code>{ inquiries { groupBy { user }, count } }</code></p><p>Hij groepeert en aggregeert over je relaties, met 🎯 één endpoint en 📖 een zelfdocumenterend schema.</p><p>🔌 Roep hem aan vanuit <strong>elke GraphQL-client</strong>, zoals Apollo, Relay of urql. Met federatie ingeschakeld sluit Provisa zich aan bij een <strong>Apollo-supergraph als subgraph</strong>, zodat je gefedereerde model naast je bestaande graphs wordt samengesteld.</p>"
       },
       "step8": {
         "title": "Cypher (3 van 9 oppervlakken)",
@@ -116,7 +116,7 @@
       },
       "step9": {
         "title": "gRPC (4 van 9 oppervlakken)",
-        "description": "⚙️ Elke geregistreerde entiteit is ook een gRPC-service:<p><code>rpc QueryInquiries(...) returns (...)</code></p><p>Roep het aan vanuit elke gRPC-client: 📐 sterk getypeerd, 🚀 hoge doorvoer.</p>"
+        "description": "⚙️ Elke geregistreerde entiteit is ook een gRPC-service:<p><code>rpc QueryInquiries(...) returns (...)</code></p><p>Elke gRPC-client kan hem aanroepen, 📐 sterk getypeerd en 🚀 met hoge doorvoer.</p>"
       },
       "step10": {
         "title": "JSON:API (5 van 9 oppervlakken)",
@@ -136,19 +136,19 @@
       },
       "stepNotebook": {
         "title": "Notebook (9 van 9 oppervlakken)",
-        "description": "📓 Het tabblad Notebook is JupyterLite: een Jupyter-notebook dat in je browser draait. De eerste cel meldt je aan, de volgende leest dezelfde query als een DataFrame om in een grafiek te zetten of met andere data te combineren.<p>⬇️ Download het notebook en het opent in elke desktop-Jupyter, waar dezelfde cellen net als hier uit Provisa lezen.</p><p>Nog één oppervlak te gaan: degene die je query's voor je schrijft. →</p>"
+        "description": "📓 Het tabblad Notebook is JupyterLite, een Jupyter-notebook dat in je browser draait. De eerste cel meldt zich aan, en de volgende leest hetzelfde statement als DataFrame om in een grafiek te zetten of met andere data te combineren.<p>⬇️ Download het notebook en het opent in elke desktop-Jupyter, waar dezelfde cellen net als hier uit Provisa lezen.</p><p>De laatste interface schrijft je query's voor je. →</p>"
       },
       "step13": {
-        "title": "Vraag het gewoon: het oppervlak dat je query's schrijft",
-        "description": "💬 <em>\"hoeveel huisdieren per diersoort\"</em><p><strong>Je hoeft geen van die querytalen te leren.</strong> Vraag het in gewone taal en Provisa zet je vraag in één keer om naar alle zeven: elk paneel hieronder is diezelfde zin als SQL, GraphQL, Cypher, gRPC, JSON:API en REST.</p><p>Het kan Python of het Notebook niet direct openen, maar je kunt Polly altijd vragen een query naar een van beide over te zetten.</p><p>🔑 Live query's in natuurlijke taal gebruiken je eigen LLM-sleutel; dit is een voorbereid voorbeeld.</p><p>✅ Eén model achter alle <strong>negen oppervlakken</strong>, en gewone taal schrijft de query's voor je.</p><div class='tour-tags'><span>Natural Language</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span><span>Python</span><span>Notebook</span></div>"
+        "title": "De interface die je query's schrijft",
+        "description": "💬 <em>‘hoeveel huisdieren per soort’</em><p><strong>Vraag het in gewone taal</strong> en Provisa vertaalt je vraag in alle zeven tegelijk. Elk paneel hieronder is die ene zin als SQL, GraphQL, Cypher, gRPC, JSON:API en REST.</p><p>Python of het Notebook kan het niet direct openen, maar je kunt Polly altijd vragen een query naar een van beide te verplaatsen.</p><p>🔑 Live query's in gewone taal gebruiken je eigen LLM-sleutel; dit is een vooraf gemaakt voorbeeld.</p><p>✅ Eén model achter alle <strong>negen interfaces</strong>, en gewone taal schrijft de query's voor je.</p><div class='tour-tags'><span>Gewone taal</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span><span>Python</span><span>Notebook</span></div>"
       },
       "step14": {
         "title": "Dat was de kern van vijf minuten",
-        "description": "✅ Je hebt het net van begin tot eind gezien: <strong>één bron, bevraagd in de taal of met de tool die je al gebruikt, of gewoon in gewoon Nederlands gevraagd.</strong> Je zou hier kunnen stoppen.<p>Al het andere is een <strong>Deep Dive</strong>: gegevens verbinden, relaties, modelleren, governance, bevragen, testgegevens, publiceren en beheren. Met Klaar open je de Deep Dives-catalogus.</p>"
+        "description": "✅ Je hebt het van begin tot eind gezien: <strong>één bron, bevraagd in de taal of tool die je al gebruikt, of gevraagd in gewone taal.</strong> Je zou hier kunnen stoppen.<p>Al het andere is een <strong>verdieping</strong>: data verbinden, relaties, modelleren, governance, bevragen, testdata, publiceren en beheren. Klaar opent de catalogus met verdiepingen.</p>"
       },
       "step15": {
         "title": "Verbind de graaf",
-        "description": "<svg class='tour-graph' viewBox='0 0 260 96' role='img' aria-label='Tables in two different sources linked into one graph'><line x1='42' y1='30' x2='118' y2='24' /><line x1='42' y1='30' x2='58' y2='72' /><line x1='58' y1='72' x2='142' y2='74' /><line class='xsrc' x1='118' y1='24' x2='210' y2='30' /><line class='xsrc' x1='142' y1='74' x2='210' y2='30' /><line x1='210' y1='30' x2='222' y2='70' /><circle cx='42' cy='30' r='9' /><circle cx='58' cy='72' r='9' /><circle cx='118' cy='24' r='9' /><circle class='n2' cx='142' cy='74' r='9' /><circle class='n2' cx='210' cy='30' r='9' /><circle class='n2' cx='222' cy='70' r='9' /></svg><p>Een relatie heeft twee taken. Ze vormt uw <strong>datamodel</strong>: hoe tabellen over bronnen en domeinen heen met elkaar verbonden zijn, en dat volgt elk querykanaal, of het nu gaat om GraphQL-nesting, Cypher-paden of SQL-joins.</p><p>Ze is ook een <strong>regel</strong>. Joins worden bestuurd: een rol zonder het recht <code>ignore_relationships</code> mag alleen joinen langs geregistreerde relaties, dus welke relaties bestaan bepaalt welke query's geldig zijn. Geef dat recht bewust aan een rol die u vertrouwt en die rol joint vrij (nooit in de modus voor hoge beveiliging).</p><p>Relaties koppelen tabellen over bronnen heen, zelfs over verschillende databases, en veranderen platte tabellen in een doorloopbare <strong>graaf</strong>.</p>"
+        "description": "<svg class='tour-graph' viewBox='0 0 260 96' role='img' aria-label='Tabellen uit twee verschillende bronnen gekoppeld tot één graaf'><line x1='42' y1='30' x2='118' y2='24' /><line x1='42' y1='30' x2='58' y2='72' /><line x1='58' y1='72' x2='142' y2='74' /><line class='xsrc' x1='118' y1='24' x2='210' y2='30' /><line class='xsrc' x1='142' y1='74' x2='210' y2='30' /><line x1='210' y1='30' x2='222' y2='70' /><circle cx='42' cy='30' r='9' /><circle cx='58' cy='72' r='9' /><circle cx='118' cy='24' r='9' /><circle class='n2' cx='142' cy='74' r='9' /><circle class='n2' cx='210' cy='30' r='9' /><circle class='n2' cx='222' cy='70' r='9' /></svg><p>Een relatie doet twee dingen. Hij vormt je <strong>datamodel</strong>: hoe tabellen over bronnen en domeinen heen samenhangen, wat elke query-interface volgt, of het nu GraphQL-nesting, Cypher-paden of SQL-joins zijn.</p><p>Hij is ook een <strong>regel</strong>. Joins worden beheerd. Een rol zonder het recht <code>ignore_relationships</code> kan alleen langs geregistreerde relaties joinen, dus welke er bestaan, bepaalt welke query's zijn toegestaan. Ken dat recht bewust toe aan een rol die je vertrouwt en hij joint vrij (nooit in hoge-beveiligingsmodus).</p><p>Relaties koppelen tabellen over bronnen heen, zelfs over verschillende databases, en maken van platte tabellen een doorloopbare <strong>graaf</strong>.</p>"
       },
       "step16": {
         "title": "Definieer een relatie",
@@ -156,7 +156,7 @@
       },
       "stepRelsSuggest": {
         "title": "Relaties voorstellen",
-        "description": "✨ De glinsterknop zoekt waarschijnlijke joins: hij leest de foreign keys die je bronnen declareren en laat, als een sleutel voor een AI-model is ingesteld, het model er meer afleiden. Er wordt niets gedeclareerd totdat je een kandidaat accepteert, en een afgewezen kandidaat blijft weg tot je de afwijzingen wist."
+        "description": "✨ De sparkle-knop zoekt naar waarschijnlijke joins. Hij leest de refererende sleutels die je bronnen declareren en vraagt, als er een AI-modelsleutel is geconfigureerd, het model er meer af te leiden. Er wordt niets gedeclareerd tot je een kandidaat accepteert, en een afgewezen kandidaat blijft weg tot je de afwijzingen wist."
       },
       "stepRelsList": {
         "title": "Alle relaties in één lijst",
@@ -164,7 +164,7 @@
       },
       "step17": {
         "title": "Bekijk het ERD",
-        "description": "Het entity-relationship diagram brengt je hele gefedereerde model in beeld: elke geregistreerde tabel en de relaties ertussen."
+        "description": "Het entity-relationship-diagram toont elke geregistreerde tabel in je gefedereerde model en de relaties daartussen."
       },
       "step18": {
         "title": "Toegangscontrole (RBAC)",
@@ -172,7 +172,7 @@
       },
       "stepRoleInherit": {
         "title": "Rollen erven",
-        "description": "👪 Een rol kan erven van een bovenliggende rol: hij krijgt de rechten, kolomzichtbaarheid en rijregels van de ouder, en zijn eigen rijregel voor een tabel vervangt die van de ouder. De rol draagt ook zijn bevoegdheden en zijn snelheids- en complexiteitslimieten."
+        "description": "👪 Een rol kan erven van een bovenliggende rol. Hij krijgt de toekenningen, kolomzichtbaarheid en rijregels van die rol, en zijn eigen rijregel voor een tabel vervangt die van de bovenliggende rol. De rol draagt ook zijn capabilities en zijn snelheids- en complexiteitsgrenzen."
       },
       "step19": {
         "title": "Beveiliging op rijniveau",
@@ -184,19 +184,19 @@
       },
       "stepTags": {
         "title": "Tags dragen betekenis",
-        "description": "🏷️ Een tag is één organisatiebreed label met een vaste betekenis, toegepast op bronnen, tabellen, kolommen, relaties of commando's. Tags dragen gedrag, niet alleen documentatie, en een tag kan bij het toepassen een reden, een vervaldatum of een parameter vereisen."
+        "description": "🏷️ Een tag is één organisatiebreed label met een vaste betekenis, toegepast op bronnen, tabellen, kolommen, relaties of opdrachten. Tags veranderen gedrag, en een tag kan bij toepassen een reden, een vervaldatum of een parameter vereisen."
       },
       "stepRequests": {
         "title": "Relatieverzoeken",
-        "description": "✋ Iemand die zelf geen relaties mag maken, vraagt om zijn tabellen aan de uwe te koppelen. Vaak komt diegene uit een ander domein, en meestal is dit de eerste stap om om uw data te vragen. Omdat relaties worden beheerd, verandert een goedkeuring welke queries zijn toegestaan: een rol die alleen langs goedgekeurde relaties mag koppelen, kan nu ook via deze koppelen. Een relatieverzoek heeft twee goedkeuringen nodig voordat het kan worden uitgevoerd, en een verzoek dat twee domeinen raakt, heeft van elke kant een ja nodig. Keur het goed, voer het uit of wijs het af met een reden uit een vaste lijst. Afgehandelde verzoeken gaan naar het tabblad Afgehandeld."
+        "description": "✋ Iemand die geen relaties mag maken, vraagt om zijn tabellen aan de jouwe te relateren. Vaak komt die persoon uit een ander domein, en dit is meestal de eerste stap om je data op te vragen. Omdat relaties worden beheerd, verandert goedkeuring welke query's zijn toegestaan. Een rol die alleen langs goedgekeurde relaties mag joinen, kan nu via deze joinen. Een relatieverzoek heeft twee goedkeuringen nodig voordat het kan worden uitgevoerd, en een verzoek over twee domeinen heeft een ja van beide kanten nodig. Keur het goed, voer het uit of wijs het af met een reden uit een vaste lijst. Afgehandelde verzoeken gaan naar het tabblad Afgehandeld."
       },
       "stepQualityTable": {
         "title": "Een kwaliteitschecker is gewoon een bron",
-        "description": "🧪 Een datakwaliteitschecker, Soda of Great Expectations, wordt geregistreerd als <strong>bron</strong>. Hij scant terug via het eigen postgres-eindpunt van Provisa, waardoor één contractdialect zowel een Snowflake-tabel als een Iceberg-tabel en een Mongo-collectie dekt. De resultaten belanden als een gewone tabel: klap de rij uit en open die zoals elke andere."
+        "description": "🧪 Een datakwaliteitschecker, Soda of Great Expectations, wordt als <strong>bron</strong> geregistreerd. Hij scant terug via het eigen postgres-endpoint van Provisa, zodat één contractdialect evengoed een Snowflake-tabel, een Iceberg-tabel en een Mongo-collectie dekt. De resultaten komen binnen als gewone tabel, dus klap de rij uit en open hem zoals elke andere."
       },
       "stepQualityPanel": {
         "title": "Een kwaliteitscontract opstellen",
-        "description": "✅ Schrijf het contract met de hand of bouw controles kolom voor kolom op (null-percentages, rijaantallen, bereiken, actualiteit) en doe vóór het opslaan een <strong>proefrun</strong>. Elke scan wordt toegevoegd, dus deze tabel <em>is</em> de kwaliteitshistorie: zet die in een grafiek, stel er waarschuwingen op in, koppel die aan wat u wilt."
+        "description": "✅ Schrijf het contract met de hand of bouw controles kolom voor kolom op (null-percentages, rijaantallen, bereiken, actualiteit) en doe een <strong>proefrun</strong> voordat je opslaat. Elke scan wordt toegevoegd, dus deze tabel <em>is</em> de kwaliteitsgeschiedenis, en je kunt er een grafiek van maken, erop alarmeren of hem met alles combineren."
       },
       "stepQualityProfile": {
         "title": "Een tabel profileren",
@@ -240,11 +240,11 @@
       },
       "step20": {
         "title": "Bouw je opleveringspipeline",
-        "description": "🔧 Stel je hele opleveringspipeline hier samen, zonder apart ETL-tool:<ul><li>👁️ <strong>Views</strong>: over elke tabel, efemeer of gematerialiseerd, en views over views.</li><li>⚡ <strong>Opdrachten</strong>: governed, getypeerde operaties (een HTTP-service, een Python-model, een stored procedure) die een dubbele rol vervullen: een stap in je pipeline, <em>en</em> een volwaardige API die downstream apps en agents aanroepen om op je data te acteren, aanroepbaar vanuit elk oppervlak, governed en getraceerd.</li><li>⭐ <strong>Entiteiten &amp; feiten</strong>: declareer een dimensie of feit eenmalig en Provisa genereert het warehouse, methodologie-neutraal: 3NF (Inmon), sterschema (Kimball), of Data Vault.</li><li>📏 <strong>Metrics</strong>: governed geaggregeerde definities (&ldquo;netto-omzet&rdquo;) met granulariteit gebonden op querymoment. Eenmalig definiëren, en elk oppervlak (SQL, GraphQL, AI-agents) berekent hetzelfde getal; views gebouwd op een metric worden opnieuw gegenereerd wanneer de definitie verandert.</li></ul>"
+        "description": "🔧 Stel hier je hele leveringspipeline samen, zonder apart ETL-tool:<ul><li>👁️ <strong>Views</strong>: over elke tabel, tijdelijk of gematerialiseerd, en views over views.</li><li>⚡ <strong>Opdrachten</strong>: beheerde, getypeerde bewerkingen (een HTTP-service, een Python-model, een stored procedure) die dienen als stap in je pipeline <em>en</em> als API die downstream-apps en agents aanroepen om op je data te handelen, vanuit elke interface, beheerd en getraceerd.</li><li>⭐ <strong>Entiteiten &amp; feiten</strong>: declareer een dimensie of feit één keer en Provisa genereert het datawarehouse, methodologieneutraal: 3NF (Inmon), sterschema (Kimball) of Data Vault.</li><li>📏 <strong>Metrics</strong>: beheerde aggregaatdefinities (&lsquo;netto-omzet&rsquo;) waarvan de granulariteit bij het bevragen wordt vastgelegd. Eén keer definiëren, en elke interface (SQL, GraphQL, AI-agents) berekent hetzelfde getal, en views op een metric worden opnieuw gegenereerd als de definitie verandert.</li></ul>"
       },
       "step21": {
         "title": "Materialiseer naar een live warehouse",
-        "description": "🏗️ Materialiseer een view en je krijgt een volledige ETL-engine, gedeclareerd, niet gescript:<ul><li>📅 <strong>Geplande snapshots</strong> op echte <strong>bedrijfskalenders</strong>: herhalingsregels, feestdagen, gating op werkdagen, en een afsluitmarge, zodat het draait op <em>jouw</em> rapportagekalender.</li><li>🗄️ <strong>Opslaan als…</strong>: <strong>vervangen</strong>, <strong>upserten</strong>, of geschiedenis bijhouden met <strong>snapshot</strong> / <strong>delta</strong>, plus incrementele berekening.</li><li>🕰️ <strong>Time travel</strong>: bitemporele geschiedenis; bevraag het model zoals het was op elk gewenst moment.</li><li>⚡ <strong>Bijna-realtime</strong> verversing met debounce, of freshness-gestuurde herpublicatie naarmate invoer verandert.</li></ul>"
+        "description": "🏗️ Materialiseer een view en je krijgt een volledige declaratieve ETL-engine:<ul><li>📅 <strong>Geplande snapshots</strong> op echte <strong>bedrijfskalenders</strong>: herhalingsregels, feestdagen, werkdagsturing en een afsluitende respijtperiode, zodat ze volgens <em>jouw</em> rapportagekalender afgaan.</li><li>🗄️ <strong>Opslaan als…</strong>: <strong>vervangen</strong>, <strong>upsert</strong>, of geschiedenis bewaren met <strong>snapshot</strong> / <strong>delta</strong>, plus incrementele berekening.</li><li>🕰️ <strong>Time Travel</strong>: bitemporele geschiedenis; bevraag het model zoals het op elk moment was.</li><li>⚡ <strong>Bijna-realtime</strong> verversing met debounce, of actualiteitgestuurde herpublicatie als invoer verandert.</li></ul>"
       },
       "stepMetrics": {
         "title": "Metrics, één keer gedefinieerd",
@@ -256,7 +256,7 @@
       },
       "step22": {
         "title": "Lineage, van begin tot eind",
-        "description": "🧬 <strong>Lineage is het afhankelijkheidsspoor dat je afgeleiden achterlaten:</strong> waaruit elke view, berekende kolom of metric is opgebouwd en wat ervan afhangt. Dit is een echte query, geanalyseerd: volg <code>name_upper</code> via zijn transformaties terug naar de exacte <strong>bronkolommen</strong> die hem voeden.<p>Er wordt niets uitgevoerd; de query wordt alleen geanalyseerd.</p>"
+        "description": "🧬 <strong>Lineage is het afhankelijkheidsspoor dat je afleidingen achterlaten:</strong> waaruit elke view, berekende kolom of metric is opgebouwd, en wat ervan afhangt. Dit is een echte, geanalyseerde query. Volg <code>name_upper</code> terug via de transformaties tot de exacte <strong>bronkolommen</strong> die hem voeden.<p>Er wordt niets uitgevoerd; de query wordt alleen geanalyseerd.</p>"
       },
       "stepObservability": {
         "title": "Traces en debug-tracing",
@@ -272,7 +272,7 @@
       },
       "step23": {
         "title": "Beheer het",
-        "description": "De beheerpagina's draaien het platform:<ul><li>⚙️ Kies en configureer je <strong>federatie-engine</strong>: DuckDB (embedded, zero-config), Trino, PostgreSQL, ClickHouse, of een cloud warehouse als volwaardige engine (Snowflake, BigQuery, Databricks, Microsoft Fabric, Azure Synapse). Wissel op elk moment; het model, de oppervlakken en de governance erboven veranderen nooit.</li><li>🔗 Welke engine je ook kiest, hij brengt zijn eigen bereik voor <strong>live externe data</strong> mee: Parquet, Iceberg en Delta ter plekke gelezen, zero-copy, credentials voor je geprovisioneerd. Alles wat hij niet live kan koppelen, komt terecht als governed replica.</li><li>🔑 Beheer <strong>versleutelingssleutels</strong> en koppel <strong>auth providers</strong></li><li>📊 Volledige <strong>observability</strong>: doorverwijzen naar elke OpenTelemetry-collector voor enterprise-klasse tracebeheer</li><li>📤 <strong>Exporteer de configuratie van het model</strong>, het hele model of gekozen secties, als bestand om te beoordelen, te vergelijken en via CI/CD uit te rollen</li></ul><p>Hetzelfde model reist van lokale ontwikkeling naar productie, gevalideerd bij elke stap, zonder herschrijving:</p><ul><li><strong>Ontwikkelen</strong>: embedded DuckDB, geen Docker. Lokaal bouwen &amp; valideren.</li><li><strong>Op schaal valideren</strong>: Docker, start een engine + observability. Bewijs gedrag tegen productie-engines.</li><li><strong>Promoveren</strong>: wijs naar je eigen infrastructuur, bouw via CI/CD, ga naar productie.</li></ul>"
+        "description": "De beheerpagina's runnen het platform:<ul><li>⚙️ Kies en configureer je <strong>federatie-engine</strong>: DuckDB (ingebed, zonder configuratie), Trino, PostgreSQL, ClickHouse, of een clouddatawarehouse als volwaardige engine (Snowflake, BigQuery, Databricks, Microsoft Fabric, Azure Synapse). Wissel wanneer je wilt; het model, de interfaces en de governance erboven veranderen nooit.</li><li>🔗 Welke engine je ook kiest, hij brengt zijn eigen bereik voor <strong>live externe data</strong> mee: Parquet, Iceberg en Delta ter plekke gelezen, zonder kopie, met referenties voor je ingericht. Wat hij niet live kan koppelen, wordt als beheerde replica geladen.</li><li>🔑 Beheer <strong>versleutelingssleutels</strong> en koppel <strong>authenticatieproviders</strong></li><li>📊 <strong>Observability</strong>: stuur traces naar elke OpenTelemetry-collector</li><li>📤 <strong>Exporteer de configuratie van het model</strong>, het hele model of gekozen secties, als bestand om te beoordelen, te vergelijken en via CI/CD uit te rollen</li></ul><p>Hetzelfde model reist van lokale ontwikkeling naar productie, bij elke stap gevalideerd, zonder herschrijven:</p><ul><li><strong>Ontwikkelen</strong>: ingebedde DuckDB, geen Docker. Lokaal bouwen &amp; valideren.</li><li><strong>Op schaal valideren</strong>: Docker, start een engine + observability. Bewijs het gedrag tegen productie-engines.</li><li><strong>Promoten</strong>: richt op je eigen infrastructuur, bouw via CI/CD, rol uit naar productie.</li></ul>"
       },
       "stepPreview": {
         "title": "Voorbeeld van elke tabel",
@@ -292,7 +292,7 @@
       },
       "stepDataProducts": {
         "title": "Dataproducten, gepubliceerd waar afnemers al kijken",
-        "description": "📦 Elk product hier spreekt <strong>ODPS</strong> (de Open Data Product Standard): eigenaar, team, doel, beperkingen, gebruik, SLA, ondersteuning en aangepaste eigenschappen. Provisa publiceert het rechtstreeks in <strong>Snowflake Horizon</strong> en <strong>BigQuery Dataplex</strong>, zodat het verschijnt als native product in de catalogus die je afnemers al gebruiken.<p>🔁 Er is geen aparte exportstap die je kunt vergeten: de specificatie wordt telkens <strong>afgeleid uit het live model</strong> (tabellen, lineage, tags, ontologietermen), dus wat is gepubliceerd kan niet verouderen zoals een met de hand onderhouden ODPS-bestand.</p><p>✅ Publiceren verstuurt ook een <strong>ontologie-uittreksel</strong>: het deel van uw ontologie dat van belang is voor wat wordt gepubliceerd, namelijk de termen die de kolommen definiëren, de bredere en gerelateerde termen waarmee ze zijn verbonden, en de getypeerde relaties daartussen. De datakwaliteitsresultaten van de controleurs die het scannen gaan mee. Het paneel <strong>Gerelateerde termen</strong> van een product somt zijn termen op.</p>"
+        "description": "📦 Elk product hier spreekt <strong>ODPS</strong> (de Open Data Product Standard): eigenaar, team, doel, beperkingen, gebruik, SLA, support en aangepaste eigenschappen. Provisa publiceert het rechtstreeks in <strong>Snowflake Horizon</strong> en <strong>BigQuery Dataplex</strong>, zodat het als native product verschijnt in de catalogus die je afnemers al gebruiken.<p>🔁 Er is geen aparte exportstap. De specificatie wordt elke keer <strong>afgeleid uit het live model</strong> (tabellen, lineage, tags, ontologietermen), dus wat gepubliceerd is, kan niet verouderen.</p><p>✅ Publiceren stuurt ook een <strong>ontologie-uittreksel</strong> mee, het deel van je ontologie dat betrekking heeft op wat gepubliceerd wordt: de termen die de kolommen definiëren, de bredere en verwante termen waarmee ze verbonden zijn, en de getypeerde relaties daartussen. De datakwaliteitsresultaten van de checkers die het scannen, gaan mee. Het paneel <strong>Verwante termen</strong> van een product toont de termen.</p>"
       },
       "stepGlossaryTerm": {
         "title": "Een term toevoegen",
@@ -300,11 +300,11 @@
       },
       "stepPublish": {
         "title": "Publiceren naar de tools van je organisatie",
-        "description": "📤 <strong>Publiceer het waar je organisatie al kijkt.</strong> Catalogusitems (tabellen, kolommen, domeinen, stewards, goedgekeurde relaties), dataproducten en lineage op kolomniveau gaan naar buiten, en elk doel ontvangt wat het ondersteunt: <strong>DataHub, OpenMetadata, Collibra, {{atlan}} en Apache Atlas</strong> als catalogi, <strong>Snowflake Horizon</strong> en <strong>BigQuery Dataplex</strong> als dataproductlistings, en lineage via <strong>OpenLineage</strong>.<p>Publicatie gaat alleen naar buiten: Provisa leest een doel nooit terug als bron van waarheid.</p>"
+        "description": "📤 <strong>Publiceer het waar je organisatie al kijkt.</strong> Catalogusitems (tabellen, kolommen, domeinen, stewards, goedgekeurde relaties), dataproducten en lineage op kolomniveau gaan naar buiten, en elk doel ontvangt wat het ondersteunt: <strong>DataHub, OpenMetadata, Collibra, {{atlan}} en Apache Atlas</strong> als catalogi, <strong>Snowflake Horizon</strong> en <strong>BigQuery Dataplex</strong> als dataproductlistings, en lineage via <strong>OpenLineage</strong>.<p>Elke vermelding op de pagina Synchronisatie geeft haar richting aan: <strong>Exporteren</strong> stuurt naar de tool, <strong>Importeren</strong> haalt de wijzigingen uit de tool naar Provisa, of beide.</p>"
       },
       "stepRelsAgents": {
         "title": "Relaties en AI-agents",
-        "description": "🤖 Het model en zijn relaties zijn beschikbaar voor AI-agents (Polly en agents die via MCP verbinden) en bepalen de query's die deze agents schrijven.<p>Een agent draait onder een rol, dus voor hem geldt dezelfde regel als voor een persoon: een query die buiten de geregistreerde relaties joint, <strong>mislukt</strong>. Dit wordt afgedwongen, niet alleen aanbevolen.</p><p>Het is ook uw keuze. Om een agent relaties te laten ontdekken, geeft u zijn rol het recht <code>ignore_relationships</code>; om hem binnen vangrails te houden, laat u de rol het recht niet hebben. Het is dezelfde bewuste toekenning als voor een vertrouwde identiteit (in de modus voor hoge beveiliging nooit van kracht).</p>"
+        "description": "🤖 Het model en de relaties zijn beschikbaar voor AI-agents (Polly, en agents die via MCP verbinden), en ze bepalen de query's die die agents schrijven.<p>Een agent draait onder een rol, dus voor hem geldt dezelfde regel als voor een persoon. Een query die buiten de geregistreerde relaties joint, <strong>mislukt</strong>.</p><p>Om een agent relaties te laten ontdekken, ken je zijn rol het recht <code>ignore_relationships</code> toe; om hem binnen de vangrails te houden, laat je de rol zonder. Het is dezelfde bewuste toekenning als voor een vertrouwde identiteit (nooit gehonoreerd in hoge-beveiligingsmodus).</p>"
       },
       "weblogsSources": {
         "title": "Waar deze demo over gaat",
@@ -324,7 +324,7 @@
       },
       "weblogsRest": {
         "title": "Dezelfde vraag via REST",
-        "description": "Nog eens de traagste pagina's, als REST-aanroep: elk pad met zijn aantal aanvragen en zijn gemiddelde en langste tijd. Elk oppervlak dat Provisa bedient leest hetzelfde beheerde model, dus REST geeft het antwoord dat SQL of GraphQL zou geven, met dezelfde rechten."
+        "description": "Deze REST-aanroep geeft opnieuw de traagste pagina's terug, elk pad met het aantal verzoeken en de gemiddelde en langste tijd. Elke interface die Provisa bedient, leest hetzelfde beheerde model, dus REST geeft hetzelfde antwoord als SQL of GraphQL, met dezelfde rechten."
       },
       "weblogsDone": {
         "title": "Wat u net zag",
@@ -332,7 +332,7 @@
       },
       "sonnetsIntro": {
         "title": "De sonnetten van Shakespeare, op betekenis",
-        "description": "De 154 sonnetten van Shakespeare staan in Postgres, worden ingebed in Qdrant, op betekenis doorzocht en uitgebouwd tot een graaf. De vraag: welke thema's lopen door de sonnetten, en waar echoot Shakespeare zichzelf? <strong>sonnets</strong> is de Postgres-bron. Die heeft een rij voor elk sonnet en voor elk van de 2.155 versregels."
+        "description": "De 154 sonnetten van Shakespeare zijn opgeslagen in Postgres, ingebed in Qdrant, op betekenis doorzocht en uitgebouwd tot een graaf. De rondleiding vraagt welke thema's door de sonnetten lopen en waar Shakespeare zichzelf echoot. <strong>sonnets</strong> is de Postgres-bron. Hij heeft een rij voor elk sonnet en voor elk van de 2.155 regels."
       },
       "sonnetsVectors": {
         "title": "De vectoropslag",
@@ -344,7 +344,7 @@
       },
       "sonnetsSearch": {
         "title": "Zoeken op betekenis",
-        "description": "<strong>lines_like</strong> is een zoektabel. Provisa voert de zoekopdracht live uit in Qdrant met de argumenten die uw instructie meegeeft: hier een zin en hoeveel regels er terug moeten komen. Elke regel komt terug met een score die zegt hoe dicht hij bij de zin ligt."
+        "description": "<strong>lines_like</strong> is een zoektabel. Provisa voert de zoekopdracht live uit in Qdrant, met de argumenten die je statement meegeeft, hier een zinsdeel en hoeveel regels er terug moeten komen. Elke regel komt terug met een score die aangeeft hoe dicht hij bij het zinsdeel ligt."
       },
       "sonnetsThemeView": {
         "title": "Een thema, bewaard",
@@ -356,11 +356,11 @@
       },
       "sonnetsGraph": {
         "title": "Een graaf van de sonnetten",
-        "description": "Drie relaties maken van de tabellen een graaf: een regel is IN zijn sonnet, EVOKES een thema en ECHOES een regel van een ander sonnet, met zijn score. Cypher doorloopt ze als elke graaf."
+        "description": "Drie relaties maken van de tabellen een graaf. Een regel is IN zijn sonnet, EVOKES een thema en ECHOES een regel van een ander sonnet, met zijn score. Cypher doorloopt ze zoals elke graaf."
       },
       "sonnetsEchoNetwork": {
         "title": "Het netwerk van echo's",
-        "description": "Het netwerk van echo's, getekend door Cypher: de regels die een regel van een ander sonnet sterk echoën, en de sonnetten waarin ze staan. Zoek de sonnetten die door meer dan één echo verbonden zijn."
+        "description": "Cypher tekent de regels die een regel van een ander sonnet sterk echoën, en de sonnetten waarin ze staan. Let op de sonnetten die door meer dan één echo verbonden zijn."
       },
       "sonnetsThemesBySequence": {
         "title": "Thema's in de twee reeksen",
@@ -376,7 +376,7 @@
       },
       "filesIntro": {
         "title": "Een direct data lake",
-        "description": "Een stad publiceert haar open data als bestanden: meldingen van bewoners in een CSV-bestand per maand, bouwvergunningen in Parquet, de begroting in Excel en inspecties in JSON. <strong>drop</strong> is één bestandsbron over die map: elk bestand is een tabel, gelezen waar het staat, zonder laadstap. De vraag: welke wijken hebben de meeste klachten bij actieve bouwplaatsen?"
+        "description": "Een stad publiceert haar open data als bestanden: 311-klachten in één CSV-bestand per maand, bouwvergunningen in Parquet, de begroting in Excel en inspecties in JSON. <strong>drop</strong> is één bestandsbron over die map. Elk bestand is een tabel, gelezen waar het staat, zonder laadstap. De stad wil weten welke wijken de meeste klachten hebben in de buurt van actieve bouwplaatsen."
       },
       "filesComplaints": {
         "title": "Eén tabel over veel bestanden",
@@ -384,7 +384,7 @@
       },
       "filesMonths": {
         "title": "Rijen uit elk bestand",
-        "description": "De klachten geteld per maand: elke maand komt uit een eigen bestand, gelezen als één tabel. Zoek één rij voor elk maandbestand."
+        "description": "De klachten geteld per maand. Elke maand komt uit een eigen bestand, gelezen als één tabel. Let op één rij per maandbestand."
       },
       "filesFormats": {
         "title": "Een bestand van elk formaat",
@@ -396,7 +396,7 @@
       },
       "filesTerm": {
         "title": "Wat een open klacht is",
-        "description": "De ontologie zegt wat een open klacht is: een klacht die de stad nog niet heeft gesloten. Termen als deze zeggen wat de gegevens van de catalogus betekenen."
+        "description": "De ontologie definieert een open klacht als een klacht die de stad nog niet heeft afgesloten. Termen als deze zeggen wat de data in de catalogus betekent."
       },
       "filesAnswer": {
         "title": "Het antwoord",
@@ -408,7 +408,7 @@
       },
       "filesDone": {
         "title": "Een map werd een catalogus",
-        "description": "Een map met bestanden werd een beheerde catalogus: tabellen, relaties, een ontologieterm en een opgeslagen view, zonder dat er iets geladen is. Een nieuw maandbestand met klachten heeft geen nieuwe tabel nodig: het patroon omvat het al."
+        "description": "Een map met bestanden werd een beheerde catalogus: tabellen, relaties, een ontologieterm en een opgeslagen view, zonder dat er iets is geladen. Het klachtenbestand van een nieuwe maand heeft geen nieuwe tabel nodig, omdat het glob-patroon het al omvat."
       },
       "reviewsCatalog": {
         "title": "Wat deze demo is",
@@ -416,23 +416,23 @@
       },
       "reviewsSearchStore": {
         "title": "De reviews, in Elasticsearch",
-        "description": "<strong>reviews</strong> is Elasticsearch: de 5.000 reviews die klanten schreven, elk met zijn product, zijn sterren en zijn tekst."
+        "description": "<strong>reviews</strong> is Elasticsearch, met de 5.000 reviews die klanten schreven, elk met het product, de sterren en de tekst."
       },
       "reviewsGraphStore": {
         "title": "Wie wat kocht, in Neo4j",
-        "description": "<strong>purchases</strong> is Neo4j: 2.000 klanten, elk via een BOUGHT-relatie gekoppeld aan de producten die ze kochten. Alle drie de opslagen noemen een product met dezelfde id."
+        "description": "<strong>purchases</strong> is Neo4j, met 2.000 klanten, elk via een BOUGHT-relatie gekoppeld aan de producten die ze kochten. Alle drie de opslagen noemen een product met dezelfde ID."
       },
       "reviewsPipeline": {
         "title": "Een MongoDB-pipeline als tabel",
-        "description": "<strong>ratings_by_product</strong> is een MongoDB-aggregatiepipeline, geregistreerd als tabel: ze groepeert de sterrenbeoordelingen per product en geeft van elk product het aantal, het gemiddelde en de beoordelingen met één ster. Een query leest haar als elke andere tabel."
+        "description": "<strong>ratings_by_product</strong> is een MongoDB-aggregatiepipeline, geregistreerd als tabel. Hij groepeert de sterrenbeoordelingen per product en geeft per product het aantal, het gemiddelde en de beoordelingen met één ster. Een query leest hem zoals elke andere tabel."
       },
       "reviewsSearchTable": {
         "title": "Een Elasticsearch-zoekopdracht als tabel",
-        "description": "<strong>reviews_matching</strong> is een Elasticsearch-zoekopdracht, geregistreerd als tabel. De zinsnede is een parameter: een query stelt die in, en elke rij is een review waarvan de tekst de zinsnede bevat, met de zinsnede gemarkeerd."
+        "description": "<strong>reviews_matching</strong> is een Elasticsearch-zoekopdracht, geregistreerd als tabel. Een query stelt de zinsdeelparameter in, en elke rij is een review waarvan de tekst het zinsdeel bevat, met het zinsdeel gemarkeerd."
       },
       "reviewsCypherTable": {
         "title": "Een Cypher-query als tabel",
-        "description": "<strong>bought_together</strong> is een Cypher-query op Neo4j, geregistreerd als tabel: per product elk ander product dat zijn kopers kochten, en hoeveel van hen dat deden."
+        "description": "<strong>bought_together</strong> is een Cypher-query op Neo4j, geregistreerd als tabel. Voor elk product toont hij elk ander product dat de kopers kochten, en hoeveel van hen dat deden."
       },
       "reviewsJoin": {
         "title": "Gekoppeld op het product",
@@ -444,10 +444,10 @@
       },
       "reviewsBoughtWith": {
         "title": "Wat hun kopers kochten",
-        "description": "De tweede vraag, in Cypher: de producten met minder dan drie sterren en wat hun kopers daarnaast kochten. De graaf loopt over de MongoDB-beoordelingen en de Neo4j-aankopen, en powerbanks duiken steeds op."
+        "description": "De tweede vraag vraagt in Cypher naar de producten met minder dan drie sterren en wat hun kopers nog meer kochten. De graaf loopt over de MongoDB-beoordelingen en de Neo4j-aankopen, en powerbanks duiken steeds weer op."
       },
       "reviewsBoughtWithByDegree": {
-        "title": "We kunnen het in een graaf zetten. Maar wat betekent het?",
+        "title": "Gegroepeerd op graad",
         "description": "Hetzelfde resultaat, gegroepeerd op graad om de vraag te beantwoorden waarvoor het is getekend. De groepen laten de producten zien die het vaakst samen met de laag beoordeelde worden gekocht, en een groter getal betekent dat er meer combinaties door dat product lopen. De graad wordt alleen binnen dit resultaat geteld: de producten met minder dan drie sterren en wat vijf of meer van hun klanten er ook bij kochten. De rode knopen zijn de producten. De beoordelingen en de paarknopen zijn ook gegroepeerd."
       },
       "reviewsRest": {
@@ -456,7 +456,7 @@
       },
       "reviewsExample": {
         "title": "De zoekopdracht in GraphQL",
-        "description": "Een voorbeeldquery: de batterijklachten in GraphQL, met de gemarkeerde tekst van elke review en het bijbehorende product daaronder genest via de relatie."
+        "description": "Deze voorbeeldquery leest de batterijklachten in GraphQL, met de gemarkeerde tekst van elke review en het product daaronder genest via de relatie."
       },
       "reviewsDone": {
         "title": "Wat zojuist te zien was",
@@ -484,7 +484,7 @@
       },
       "insuranceBook": {
         "title": "De portefeuille van de verzekeraar",
-        "description": "Elke lopende polis: de county, de branche, de totale verzekerde waarde, de premie en het eigen risico."
+        "description": "Elke lopende polis, met county, branche, totale verzekerde waarde, premie en eigen risico."
       },
       "insuranceRisk": {
         "title": "De National Risk Index van FEMA",
@@ -496,7 +496,7 @@
       },
       "insuranceByRating": {
         "title": "Per risicoklasse, in GraphQL",
-        "description": "Dezelfde view gegroepeerd per risicoklasse van FEMA: hoeveel van de verzekerde waarde van de portefeuille in county's ligt met de klasse 'Relatively High' of 'Very High'."
+        "description": "Gegroepeerd op de risicoclassificatie van FEMA toont dezelfde view hoeveel van de verzekerde waarde van de portefeuille in county's ligt met de classificatie Relatively High of Very High."
       },
       "insuranceRest": {
         "title": "Hetzelfde antwoord via REST",
@@ -504,7 +504,7 @@
       },
       "qualityIntro": {
         "title": "Data die u kunt vertrouwen",
-        "description": "Een keten van vijf winkels stuurt haar verkopen als dagelijkse feed. Elke batch landt als bronslaag in <strong>sales</strong>, de database van de keten. Alles na brons is een materialized view (de controles, zilver en goud), en het landen van een batch is genoeg om ze allemaal te verversen. De vraag: kan ik deze data vertrouwen voordat ze goud bereikt?"
+        "description": "Een keten van vijf winkels stuurt de verkopen als dagelijkse feed. Elke batch komt binnen als de bronze-laag in <strong>sales</strong>, de database van de keten. Alles na bronze is een gematerialiseerde view (de controles, silver en gold), en het laden van een batch is genoeg om ze allemaal te verversen. Je moet weten of je deze data kunt vertrouwen voordat die gold bereikt."
       },
       "qualityBronze": {
         "title": "Brons: getypeerd waar het schoon is",
@@ -512,11 +512,11 @@
       },
       "qualityRaw": {
         "title": "Ruw, zoals de feed het schreef",
-        "description": "De producten van de eerste batch zoals ze geland zijn: één product in meerdere spellingen, zoals COFFEE, Coffee en cofee. Zilver maakt er één van."
+        "description": "De producten van de eerste batch zoals ze binnenkwamen, met één product in meerdere spellingen, zoals COFFEE, Coffee en cofee. Silver maakt er één van."
       },
       "qualityChecks": {
         "title": "De controles, op elke batch",
-        "description": "<strong>dq_results</strong> is een gematerialiseerde view die de controles in SQL op elke gelande batch berekent: hoeveel rijen elke controle niet doorstaan, en geslaagd of niet. Batch 1 doorstaat ze allemaal; batch 2 faalt op drie."
+        "description": "<strong>dq_results</strong> is een gematerialiseerde view die de controles bij elke geladen batch in SQL berekent, de rijen telt die per controle falen en die als geslaagd of mislukt markeert. Batch 1 slaagt voor alle; batch 2 faalt voor drie."
       },
       "qualityAdmitted": {
         "title": "Van een rij naar de controles die haar toelieten",
@@ -524,7 +524,7 @@
       },
       "qualityWhichChecks": {
         "title": "Welke controles zilver toelieten",
-        "description": "Een zilveren verkoop en, via ADMITTED_BY, elke controle van de run die haar toeliet: elke controle slaagde, zonder mislukte rijen."
+        "description": "Een silver-verkoop en, langs ADMITTED_BY, elke controle van de run die hem toeliet. Elke controle slaagde, zonder falende rijen."
       },
       "qualityRefused": {
         "title": "Waarop de slechte batch faalde",
@@ -536,7 +536,7 @@
       },
       "qualityGold": {
         "title": "Goud: de totalen",
-        "description": "Goud is één GROUP BY over zilver: verkopen, artikelen, omzet en prijsbereik per dag en product, alleen uit gecontroleerde data."
+        "description": "Gold is één GROUP BY over silver die verkopen, artikelen, omzet en de prijsrange per dag en product geeft, alleen uit gecontroleerde data."
       },
       "qualityProduct": {
         "title": "Een dataproduct om over te dragen",
@@ -548,19 +548,27 @@
       },
       "insiderIntro": {
         "title": "Insidercontrole bij een bank",
-        "description": "Northgate Partners, een verzonnen bank, houdt een watchlist bij van de deals waaraan ze werkt. De vraag: stuurt iemand dealgevoelige of klantgegevens de bank uit? <strong>bank</strong> is haar database: de watchlist, de medewerkers en hun mail, en de klanten en wie hun gegevens las. Elke naam en elk record hier is gegenereerd."
+        "description": "Northgate Partners, een verzonnen bank, houdt een watchlist bij van de deals waaraan ze werkt. Ze wil weten of iemand dealgevoelige of klantdata de bank uit stuurt. Het antwoord leest drie systemen tegelijk. <strong>bank</strong> is haar Postgres-database: de medewerkers en hun desks, en de klanten en wie hun gegevens las. Elke naam en elk record hier is gegenereerd."
+      },
+      "insiderWorkbook": {
+        "title": "De werkmap van de control room",
+        "description": "<strong>control_room</strong> is een Excel-werkmap die de control room zelf bijhoudt. Elk blad is een tabel: de deals in bespreking, wie voor elke deal over de muur is gehaald, de tegenpartijen van de deals en tegen welke deals elk bericht wordt getoetst. Provisa leest het bestand waar het staat."
+      },
+      "insiderMailSource": {
+        "title": "De mail van de bank",
+        "description": "<strong>mail</strong> is de Microsoft 365-mail van de bank, de mailbox van elke medewerker, in dezelfde bericht- en ontvangerstabellen die een Google Workspace-bron geeft. Deze demo bereikt geen echte tenant: de mailbox wordt met de demo meegeleverd als de opgeslagen kopie van de bron, die nooit ververst."
       },
       "insiderWatchList": {
         "title": "De watchlist",
-        "description": "<strong>deal</strong> is de watchlist van de control room: per deal het bedrijf, de namen waaronder het bekend is, de ticker, de projectcodenaam en of de deal al openbaar is. Het is de strengst afgeschermde tabel: de control room leest hem, een dealteam alleen de eigen deal, een eerstelijnsbeoordelaar nooit."
+        "description": "<strong>deal</strong> is de watchlist, het blad met deals in de werkmap, met per deal het bedrijf, de namen waaronder het bekendstaat, de ticker, de projectcodenaam en of de deal al openbaar is. Het is de meest beperkte tabel hier. De control room leest hem, een dealteam alleen de eigen deal, en een reviewer op het eerste niveau nooit."
       },
       "insiderMail": {
         "title": "De mail",
-        "description": "<strong>message</strong> bevat de uitgaande mail van de medewerkers: wie hem stuurde, wanneer, en hoeveel ontvangers buiten de bank of op een privéadres zaten."
+        "description": "<strong>messages</strong> bevat de verzonden mail van de medewerkers uit Microsoft 365, elk bericht in de mailbox van de afzender, met wie het stuurde, wanneer en de tekst. De ontvangers staan in <strong>message_recipients</strong>; de personeelslijst van de bank en de persoonlijke mailproviders in Postgres onderscheiden interne, externe en persoonlijke adressen."
       },
       "insiderMatch": {
         "title": "Elk bericht tegen elke deal",
-        "description": "<strong>deal_match</strong> is wat het commando match_deals vond: per bericht en deal of het het bedrijf, een alias, de ticker of de codenaam noemt, en hoe dicht het via een lokaal embeddingmodel bij de beschrijving van de deal ligt. Een parafrase die elke naam vermijdt, scoort toch."
+        "description": "<strong>deal_match</strong> is wat de opdracht match_deals vond. Per bericht en deal legt hij vast of het het bedrijf, een alias, de ticker of de codenaam noemt, en hoe dicht het via een lokaal embeddingmodel bij de beschrijving van de deal komt. Een parafrase die elke naam vermijdt, scoort toch."
       },
       "insiderQueue": {
         "title": "De beoordelingswachtrij",
@@ -572,11 +580,11 @@
       },
       "insiderCustomerData": {
         "title": "Klantgegevens",
-        "description": "Dezelfde mail wordt met SQL-patronen op klantgegevens gecontroleerd: burgerservice- en rekeningnummers. De kolommen van de klantentabel zijn als pii gemarkeerd, dus ook dit lezen wordt vastgelegd."
+        "description": "SQL-patronen controleren dezelfde mail op klantdata, namelijk burgerservice- en rekeningnummers. De kolommen van de klantentabel hebben de tag pii, dus deze leesactie wordt zelf vastgelegd."
       },
       "insiderPiiAccess": {
         "title": "Wie klantgegevens las",
-        "description": "<strong>ops.pii_access</strong> toont elke lezing van een als pii gemarkeerde tabel: hier de lezing die u net deed. De wachtrij doet hetzelfde voor het personeel van de bank uit het eigen toegangslogboek van de bank: de medewerker van operations die die week klantgegevens las en daarna klantgegevens naar buiten mailde, staat bovenaan."
+        "description": "<strong>ops.pii_access</strong> toont elke leesactie van een tabel met de tag pii, hier die je net deed. De wachtrij doet hetzelfde voor het personeel van de bank op basis van het eigen toegangslogboek van de bank. De medewerker van operations die die week klantgegevens las en daarna klantdata wegmailde, staat bovenaan."
       },
       "insiderAsReviewer": {
         "title": "Als eerstelijnsbeoordelaar",
@@ -584,7 +592,7 @@
       },
       "insiderReviewerQueue": {
         "title": "Alleen de eigen zaken",
-        "description": "Dezelfde wachtrij, gelezen als de beoordelaar: alleen de zaken van de desks die hij beoordeelt, met de gemarkeerde entiteit zichtbaar en de deal achtergehouden. Rijregels op de mail en de matches ervan doen dit; er wordt niets gekopieerd. De watchlist zelf wordt hem geweigerd."
+        "description": "Gelezen als de reviewer bevat dezelfde wachtrij alleen de zaken van de desks die hij beoordeelt, met de gemarkeerde entiteit getoond en de deal achtergehouden. Dat doen rijregels op de mail en de matches; er wordt niets gekopieerd. De watchlist zelf wordt hem geweigerd."
       },
       "insiderAsControlRoom": {
         "title": "Terug naar de control room",
@@ -592,7 +600,7 @@
       },
       "insiderAudit": {
         "title": "Elke lezing wordt vastgelegd",
-        "description": "<strong>ops.queries</strong> legt elke opdracht vast: wie hem uitvoerde, in welke rol, over welke tabel. De lezingen van de beoordelaar van de wachtrij en de watchlist staan hier, net als de uwe."
+        "description": "<strong>ops.queries</strong> legt vast wie elk statement uitvoerde, onder welke rol en over welke tabel. De leesacties van de reviewer op de wachtrij en de watchlist staan hier, net als die van jou."
       },
       "insiderWhyFlagged": {
         "title": "Waarom werd het gemarkeerd?",
@@ -604,11 +612,11 @@
       },
       "insiderDone": {
         "title": "Wat dit is, en wat niet",
-        "description": "Deals van de watchlist werden op naam en op betekenis vergeleken met uitgaande mail, gerangschikt voor beoordeling, en de lijst zelf werd nooit aan de beoordelaar getoond. Dit is analyse voor beoordeling achteraf, achter realtime controles, geen vervanging voor preventie van gegevensverlies. Bijlagen, afbeeldingen, gecodeerde tekst en privékanalen vallen erbuiten. Toezicht op medewerkers vraagt om openheid en, in sommige landen, om instemming van de ondernemingsraad."
+        "description": "Deals van de watchlist werden op naam en betekenis vergeleken met uitgaande mail, gerangschikt voor beoordeling, en de lijst zelf werd nooit aan de reviewer getoond. Dit is analyse achteraf achter realtime controles en vervangt geen data-loss-prevention. Bijlagen, afbeeldingen, gecodeerde tekst en persoonlijke kanalen vallen erbuiten. Medewerkers monitoren vereist openheid en op sommige plaatsen instemming van de ondernemingsraad."
       },
       "vulnerabilitiesScenario": {
         "title": "Wat deze demo is",
-        "description": "Een softwarebedrijf wil weten welke kwetsbaarheden in zijn code aanvallers echt misbruiken, en hoe lang elk al openstaat. Zijn repositories, hun pakketten en de Dependabot-meldingen daarover staan in zijn eigen database; de CVE-records en CISA's catalogus van Known Exploited Vulnerabilities zijn openbaar. De rondleiding toont hoe Provisa beide via de CVE koppelt en de vraag beantwoordt in SQL, GraphQL, Cypher en REST."
+        "description": "Een softwarebedrijf wil weten welke kwetsbaarheden in zijn code aanvallers misbruiken, en hoe lang elke kwetsbaarheid al ongepatcht is. De repositories, de pakketten daarin en de Dependabot-meldingen erover staan in de eigen database; de CVE-records en de CISA-catalogus van Known Exploited Vulnerabilities zijn openbaar. De rondleiding laat zien hoe Provisa die twee op CVE koppelt en de vraag beantwoordt in SQL, GraphQL, Cypher en REST."
       },
       "vulnerabilitiesGovdata": {
         "title": "De openbare kwetsbaarheidsgegevens",
@@ -616,11 +624,11 @@
       },
       "vulnerabilitiesAlerts": {
         "title": "De Dependabot-meldingen",
-        "description": "Eén melding per vastgezette pakketversie met een gepubliceerd advies: de repository, het pakket, de CVE, de versie die het oplost en of de melding open, opgelost of afgewezen is."
+        "description": "Eén melding per vastgepinde pakketversie met een gepubliceerd advisory, met de repository, het pakket, de CVE, de versie die het oplost, en of de melding open, opgelost of afgewezen is."
       },
       "vulnerabilitiesNvd": {
         "title": "De CVE-records, via een filter geladen",
-        "description": "De NVD bevat een kwart miljoen CVE's, en de meldingen van het bedrijf noemen er negentien. Het laadfilter van de tabel, een voorwaarde op haar eigen kolommen, houdt bij het laden alleen die over, zodat de kopie precies de records bevat die de meldingen nodig hebben."
+        "description": "De NVD bevat een kwart miljoen CVE's, en de meldingen van het bedrijf noemen er negentien. Het laadfilter van de tabel, een voorwaarde op de eigen kolommen, houdt bij het laden alleen die over, zodat de replica alleen de records bevat die de meldingen nodig hebben."
       },
       "vulnerabilitiesKev": {
         "title": "CISA's bekend misbruikte kwetsbaarheden",
@@ -636,15 +644,15 @@
       },
       "vulnerabilitiesAnswer": {
         "title": "Het antwoord in SQL",
-        "description": "De view exploited_in_our_code wordt opgeslagen. Ze bewaart elke open melding waarvan de CVE in de catalogus van CISA staat, met het aantal dagen sinds de deadline van CISA verstreek. Repositories die aan internet hangen komen eerst, daarna de repositories die het langst achterlopen. Daar begint u."
+        "description": "De view exploited_in_our_code is opgeslagen. Hij houdt elke open melding waarvan de CVE in de CISA-catalogus staat, met het aantal dagen sinds de CISA-deadline is verstreken. Repositories die aan internet blootstaan komen eerst, daarna die het langst over tijd zijn."
       },
       "vulnerabilitiesByTeam": {
         "title": "Het antwoord in GraphQL",
-        "description": "Dezelfde view, op de server gegroepeerd per team: hoeveel misbruikte kwetsbaarheden elk team openstaan heeft en hoe lang de oudste over tijd is."
+        "description": "Op de server gegroepeerd per team toont dezelfde view hoeveel misbruikte kwetsbaarheden elk team open heeft, en hoe lang de oudste over tijd is."
       },
       "vulnerabilitiesGraph": {
         "title": "Het antwoord als graaf",
-        "description": "Dezelfde koppelingen als graaf in Cypher: repositories, de open meldingen daarin, hun CVE's en de catalogusvermeldingen die ze als misbruikt markeren."
+        "description": "Cypher toont dezelfde joins als een graaf van repositories, de open meldingen daarin, hun CVE's en de catalogusvermeldingen die ze als misbruikt markeren."
       },
       "vulnerabilitiesRest": {
         "title": "Hetzelfde antwoord via REST",
@@ -656,7 +664,7 @@
       },
       "streamingScenario": {
         "title": "Bestellingen, live",
-        "description": "De bestellingen van een koffiezaak komen binnen op een Kafka-topic, een paar per seconde, en de catalogus staat in de eigen Postgres. De vraag: welke regio's plaatsten de afgelopen vijf minuten de meeste bestellingen? <strong>orders</strong> is de broker waarop de bestellingen binnenkomen."
+        "description": "De bestellingen van een koffiezaak komen binnen op een Kafka-topic, een paar per seconde, en de catalogus staat in de eigen Postgres. De zaak wil weten welke regio's in de laatste vijf minuten de meeste bestellingen plaatsten. <strong>orders</strong> is de broker waarop de bestellingen binnenkomen."
       },
       "streamingJoin": {
         "title": "Bestellingen geprijsd uit de catalogus",
@@ -672,7 +680,7 @@
       },
       "streamingCatalog": {
         "title": "De catalogus",
-        "description": "<strong>catalog</strong> is de Postgres van de koffiezaak: wat elk product is en kost, en de regio's waarin de zaak verkoopt."
+        "description": "<strong>catalog</strong> is de Postgres van de koffiezaak, met wat elk product is en kost en de regio's waarin de zaak verkoopt."
       },
       "streamingOrders": {
         "title": "Een topic wordt een tabel",
@@ -684,11 +692,11 @@
       },
       "streamingCached": {
         "title": "Het antwoord in GraphQL, uit de cache",
-        "description": "Dezelfde view in GraphQL. <strong>@cached(ttl: 10)</strong> vraagt om de responscache: dezelfde vraag binnen tien seconden wordt uit de cache beantwoord, en de header X-Provisa-Cache meldt HIT."
+        "description": "Dezelfde view in GraphQL. <strong>@cached(ttl: 10)</strong> vraagt om de responscache. Dezelfde vraag binnen tien seconden wordt uit de cache beantwoord, en de header X-Provisa-Cache meldt HIT."
       },
       "streamingLive": {
         "title": "Zie de bestellingen binnenkomen",
-        "description": "Een GraphQL-abonnement op de bestellingen: elke geladen batch stuurt de nieuwste bestellingen opnieuw zodra hij binnenkomt. Laat het lopen en zie de lijst bewegen."
+        "description": "Een GraphQL-subscription op de bestellingen. Elke batch die binnenkomt, stuurt de nieuwste bestellingen opnieuw. Laat hem lopen en zie de lijst bewegen."
       },
       "streamingRest": {
         "title": "Het antwoord via REST",
@@ -696,15 +704,15 @@
       },
       "profilingScenario": {
         "title": "Wat deze demo is",
-        "description": "Een outdoorwinkelketen heeft een kleiner bedrijf, Harbor Outfitters, overgenomen en de klanten en bestellingen uit diens CRM ontvangen. Voordat iemand erop voortbouwt, is de vraag: wat zit er eigenlijk in deze data? De ingebouwde Data Profiler van Provisa beantwoordt die, en zijn resultaten zijn beheerde tabellen zoals alle andere, gelezen in SQL, GraphQL en REST."
+        "description": "Een outdoorwinkel heeft een kleinere, Harbor Outfitters, overgenomen en de klanten en bestellingen uit diens CRM ontvangen. Voordat iemand erop voortbouwt, moet het bedrijf weten wat er in deze data zit. De ingebouwde Data Profiler van Provisa beantwoordt dat, en de resultaten zijn beheerde tabellen zoals elke andere, gelezen in SQL, GraphQL en REST."
       },
       "profilingProfiler": {
         "title": "De Data Profiler",
-        "description": "Een profiler bevat een schema en zijn uitvoeringsinstellingen, verder niets: deze draait elke nacht om 02:00. Zijn eerste run is gemaakt toen de demo werd gebouwd, dus de resultaten zijn er al."
+        "description": "Een profiler bevat alleen een planning en de run-instellingen. Deze draait elke nacht om 02:00. De eerste run gebeurde bij het bouwen van de demo, dus de resultaten zijn er al."
       },
       "profilingMember": {
         "title": "Een tabel sluit zich aan bij de profiler",
-        "description": "De tabellen customers en orders zijn leden van de profiler. Vanuit de editor van een lid kunt u direct een profiel maken of de runs bekijken: elke run, de rijen en hoe lang hij duurde."
+        "description": "De tabellen customers en orders zijn leden van de profiler. Vanuit de editor van een lid kun je direct een profiel draaien of de runs bekijken, elk met de rijen en hoe lang het duurde."
       },
       "profilingRuns": {
         "title": "Elke run blijft bewaard",
@@ -713,7 +721,7 @@
       "profilingTerrain": {
         "title": "De run als terrein",
         "acting": "De profielruns van de tabel customers worden geopend op het terrein",
-        "description": "De laatste run van customers, getekend als terrein: één rug per kolom, de hoogte het aantal rijen in elk waardebereik, en vóór elke kolom haar null-waarden."
+        "description": "De laatste run van customers getekend als terrein, met één rug per kolom, de hoogte het aantal rijen in elk waardebereik, en de nulls van elke kolom ervoor."
       },
       "profilingTerms": {
         "title": "De woordenschat",
@@ -729,7 +737,7 @@
       },
       "profilingPhones": {
         "title": "Eén kolom, vier formaten",
-        "description": "Elk telefoonnummer teruggebracht tot zijn vorm: een cijfer wordt 9. Het CRM controleerde het formaat nooit, dus één kolom bevat er vier, die een join of een kiesprogramma eerst zou moeten verzoenen."
+        "description": "Elk telefoonnummer teruggebracht tot zijn vorm, waarbij een cijfer een 9 wordt. Het CRM controleerde het formaat nooit, dus één kolom bevat er vier, die een join of een dialer eerst zou moeten gelijktrekken."
       },
       "profilingCountries": {
         "title": "Eén land, meerdere spellingen",
@@ -737,16 +745,16 @@
       },
       "profilingDuplicates": {
         "title": "De rijen die twee keer zijn geschreven",
-        "description": "Het model verklaart customer_id tot sleutel, maar de export had geen beperking: 150 klanten staan er twee keer in, elk veld gelijk. Het profiel telt de herhaalde rijen en de sleutelwaarden die meer dan één rij hebben."
+        "description": "Het model declareert customer_id als sleutel, maar de export had geen constraint, en 150 klanten staan er twee keer in, met elk veld gelijk. Het profiel telt de herhaalde rijen en de sleutelwaarden die in meer dan één rij voorkomen."
       },
       "profilingDrift": {
         "title": "Wat er sinds de vorige run veranderde",
-        "description": "De setup draaide de profiler twee keer, en tussen de runs schreef de volgende synchronisatie van het CRM elke Amerikaanse postcode als ZIP+4. De drifttabel vergelijkt elke maat met die van de vorige run: de maten die de wijziging van postal_code verschoof, zijn als driftend gemarkeerd, en de kolommen die de synchronisatie niet aanraakte niet."
+        "description": "De inrichting draaide de profiler twee keer, en tussen de runs schreef de volgende synchronisatie van het CRM elke Amerikaanse postcode als ZIP+4. De drifttabel vergelijkt elke maat met die van de vorige run. De maten die door de wijziging van postal_code verschoven, worden als driftend gemarkeerd, en de kolommen die de synchronisatie ongemoeid liet, niet."
       },
       "profilingStrata": {
         "title": "postal_code, run na run",
         "acting": "De driftlagen worden geopend",
-        "description": "postal_code in elke run, de oudste achteraan: het aandeel rijen dat elke waarde heeft. De nieuwste run is als driftend gemarkeerd, zoals de drifttabel liet zien, en de run ervoor niet."
+        "description": "Het aandeel rijen van elke postal_code-waarde in elke run, de oudste achteraan. De nieuwste run is als driftend gemarkeerd, zoals de drifttabel liet zien, en de run daarvoor niet."
       },
       "profilingOriginal": {
         "title": "De echte klanten",
@@ -758,7 +766,7 @@
       },
       "profilingSynthetic": {
         "title": "Gegenereerd uit het profiel",
-        "description": "Dezelfde instructie in synthetic: elke rij is gegenereerd uit het profiel van de klanten, met dezelfde kolommen, waardevormen en spreiding, en geen enkele echte klant. Het profiel is genoeg om testdata uit te genereren."
+        "description": "In synthetic is elke rij die hetzelfde statement teruggeeft gegenereerd uit het profiel van de klanten, met dezelfde kolommen, waardevormen en spreiding, en geen van de echte klanten. Het profiel is genoeg om testdata uit te genereren."
       },
       "profilingToProd": {
         "title": "Terug naar productie",
@@ -770,7 +778,7 @@
       },
       "profilingRecap": {
         "title": "Wat u zag",
-        "description": "U zag de tabellen van het overgenomen bedrijf en een profiel ervan dat de ingebouwde profiler maakte en als beheerde tabellen bewaart. Nulls, bereiken, formaten, plausibele types en duplicaten beantwoorden elk wat er echt in deze data zit, in SQL, GraphQL en REST, en elke rol ziet alleen wat ze mag zien."
+        "description": "Je zag de tabellen van het overgenomen bedrijf en een profiel ervan, gemaakt door de ingebouwde profiler en bewaard als beheerde tabellen. Nulls, bereiken, formaten, plausibele typen en duplicaten beantwoorden elk wat er in deze data zit, in SQL, GraphQL en REST, en elke rol ziet alleen wat hij mag zien."
       },
       "opioidsScenario": {
         "title": "Waar deze demo over gaat",
@@ -794,7 +802,7 @@
       },
       "opioidsAllocations": {
         "title": "De toewijzingen van het fonds",
-        "description": "Elke toewijzing van het fonds: de county, het boekjaar, het programmagebied, de betaalde aanbieder, wat is toegekend en wat ervan is uitgegeven. Medewerkers zien elke rij; de rol public ziet er geen."
+        "description": "Elke toewijzing die het fonds deed, met de county, het boekjaar, het programmagebied, de betaalde aanbieder, wat werd toegekend en wat is uitgegeven. Medewerkers zien elke rij; de publieke rol ziet er geen."
       },
       "opioidsDeaths": {
         "title": "De overdosissterftecijfers van de CDC",
@@ -810,11 +818,11 @@
       },
       "opioidsPublic": {
         "title": "Zo ziet het publiek het",
-        "description": "Het dashboard van de raad, uitgevoerd als de rol public: de view overdose_burden_by_county. Die toont per county de inwoners, sterfgevallen, het sterftecijfer en federaal geld per inwoner, en leest geen enkele toewijzing van het fonds of betaalde aanbieder."
+        "description": "Het dashboard van de raad is de view overdose_burden_by_county, hier uitgevoerd onder de publieke rol. Hij toont per county de inwoners, sterfgevallen, het sterftecijfer en het federale geld per inwoner, en leest geen van de toewijzingen van het fonds of de betaalde aanbieders."
       },
       "opioidsByRegion": {
         "title": "Per regio, in GraphQL",
-        "description": "Het dashboard gegroepeerd per de vijf regio's van het fonds: hoeveel inwoners elk heeft en hoeveel er aan behandeling en herstel is uitgegeven."
+        "description": "Gegroepeerd op de vijf regio's van het fonds toont het dashboard hoeveel inwoners elke regio heeft en hoeveel er aan behandeling en herstel is uitgegeven."
       },
       "opioidsRest": {
         "title": "Hetzelfde antwoord via REST",
@@ -822,7 +830,7 @@
       },
       "datavaultScenario": {
         "title": "Twee systemen, één vraag",
-        "description": "Een bestelsysteem en een CRM, allebei van Northwind, houden elk hun eigen kopie van elke klant bij. De vraag: wat wisten we over deze klant, uit welke bron en wanneer? Een data vault beantwoordt dat door elke versie uit elke bron te bewaren. Hier is de vault gedeclareerd als views, en de engine bouwt en ververst hem. Er is geen ETL-platform, jobserver of pipelinecode om te draaien. Het werk draait op de engine, waar het schaalt, en één gedeclareerde vault voedt de marts, de beheerde API's en de lineage."
+        "description": "Een ordersysteem en een CRM, allebei van Northwind, houden elk een eigen kopie van elke klant bij. Je wilt weten wat er over een klant bekend was, uit welke bron en wanneer. Een data vault beantwoordt dat door elke versie uit elke bron te bewaren. Hier is de vault als views gedeclareerd, en de engine bouwt en ververst hem. Er is geen ETL-platform, jobserver of pipelinecode om te draaien. Het werk draait op de engine, waar het schaalt, en één gedeclareerde vault voedt de marts, de beheerde API's en de lineage."
       },
       "datavaultCrm": {
         "title": "De eigen kopie van het CRM",
@@ -830,7 +838,7 @@
       },
       "datavaultInsertOnly": {
         "title": "Elke rij bewaard",
-        "description": "De klantentabel is insert-only, zoals de staging van een vault haar ontvangt: een wijziging komt binnen als een nieuwe rij met haar laaddatum en niets wordt overschreven."
+        "description": "De klantentabel is alleen-invoegen, zoals de staging van een vault hem ontvangt. Een wijziging komt binnen als nieuwe rij met de laaddatum, en er wordt niets overschreven."
       },
       "datavaultArrived": {
         "title": "Wat er binnenkwam",
@@ -862,15 +870,15 @@
       },
       "datavaultWalk": {
         "title": "De vault doorlopen in GraphQL",
-        "description": "Van hub naar link naar hub: de klant, zijn orders, de producten daarin en elke versie van de naam en prijs van elk product."
+        "description": "De wandeling gaat van hub naar link naar hub, via de klant, de bestellingen, de producten daarin en elke versie van de naam en prijs van elk product."
       },
       "datavaultRest": {
         "title": "De mart via REST",
-        "description": "De klantdimensie met de huidige stand, gebouwd op de vault, is een REST-endpoint: een downstream-applicatie leest haar zonder te weten dat de vault erachter zit."
+        "description": "De klantdimensie met de huidige toestand, gebouwd op de vault, is een REST-endpoint, dus een downstream-applicatie leest hem zonder te weten dat de vault bestaat."
       },
       "datavaultLineage": {
         "title": "Waar een martkolom vandaan komt",
-        "description": "De lineage van de kolommen van de mart: elke kolom teruggevolgd via de point-in-time-view en de satellites naar het bronveld waar hij vandaan komt."
+        "description": "De lineage van de kolommen van de mart herleidt elke kolom via de point-in-time-view en de satellites tot het bronveld waar hij vandaan komt."
       },
       "datavaultMasked": {
         "title": "Gemaskeerd waar de persoonsgegevens zijn",
@@ -878,7 +886,7 @@
       },
       "datavaultRecap": {
         "title": "Wat u zag",
-        "description": "Twee live systemen en een data vault erover, gedeclareerd als views: hubs, links en satellieten met elke versie bewaard, door de engine ververst zodra er rijen binnenkomen, beheerd in de satellieten en point-in-time bevraagd in SQL, GraphQL en REST, met lineage terug naar de bronvelden. Geen apart ETL-platform, geen jobserver en geen pipelinecode."
+        "description": "Twee live systemen en een data vault erover, gedeclareerd als views: hubs, links en satellites met elke versie bewaard, door de engine ververst als rijen binnenkomen, beheerd in de satellites en point-in-time bevraagd in SQL, GraphQL en REST, met lineage terug naar de bronvelden."
       },
       "agricultureScenario": {
         "title": "Wat deze demo is",
@@ -890,7 +898,7 @@
       },
       "agricultureClaims": {
         "title": "De claims van de verzekeraar",
-        "description": "Elke uitkering die de verzekeraar heeft betaald: de boerderij, het gewasjaar, de schadeoorzaak, de maand en het bedrag."
+        "description": "Elke schadevergoeding die de verzekeraar uitkeerde, met het bedrijf, het oogstjaar, de schadeoorzaak, de maand en het bedrag."
       },
       "agricultureMarket": {
         "title": "De verliezen van de hele markt",
@@ -898,7 +906,7 @@
       },
       "agricultureWeather": {
         "title": "Dagelijks weer per county",
-        "description": "De dagelijkse maximumtemperatuur en neerslag van NOAA voor elk county, het gemiddelde van de meetstations, over het groeiseizoen, mei tot en met augustus: wanneer regen en hitte de opbrengst bepalen."
+        "description": "De dagelijkse maximumtemperatuur en neerslag van NOAA per county, het gemiddelde van de rapporterende stations, over het groeiseizoen van mei tot augustus, wanneer regen en hitte de opbrengst bepalen."
       },
       "agricultureJoin": {
         "title": "Gekoppeld op county",
@@ -910,7 +918,7 @@
       },
       "agricultureAnswer": {
         "title": "Het antwoord in SQL",
-        "description": "De weergave losses_and_weather zet het seizoen van elk county naast de resultaten van de portefeuille en wordt opgeslagen bijgehouden. Per gewasjaar: 2012, het droogste en heetste seizoen, is het jaar waarin de portefeuille verlies leed, vooral door droogte en hitte, net als de hele markt; de natte jaren 2010 en 2013 kostten minder."
+        "description": "De view losses_and_weather zet het seizoen van elke county naast de resultaten van de portefeuille, en wordt opgeslagen gehouden. Gelezen per oogstjaar is 2012, het droogste en heetste seizoen, het jaar waarin de portefeuille geld verloor, vooral door droogte en hitte, net als de hele markt; de natte jaren 2010 en 2013 kostten minder."
       },
       "agricultureWorstSeasons": {
         "title": "De slechtste seizoenen",
@@ -918,11 +926,11 @@
       },
       "agricultureDrySeasons": {
         "title": "De droogste seizoenen, in GraphQL",
-        "description": "Dezelfde weergave in GraphQL, de seizoenen met de minste regen eerst: het zijn de seizoenen met de hoogste schadequotes en de laagste opbrengsten."
+        "description": "Dezelfde view in GraphQL, de seizoenen met de minste regen eerst. Het zijn die met de hoogste schadequotes en de laagste opbrengsten."
       },
       "agricultureNotebook": {
         "title": "Hoeveel verklaart het weer?",
-        "description": "Het notebook van de demo, uitgevoerd in je browser: elk countyseizoen als analyst in pandas gelezen, de schadequote gecorreleerd met de regen van het seizoen, de dagen boven 32 °C en het aandeel van de marktschade door droogte en hitte, een regressie daarop gefit en de grafiek."
+        "description": "Het notebook van de demo draait in je browser. Het leest elk countyseizoen als de analist in pandas in, correleert de schadequote met de regen van het seizoen, de dagen boven 32 °C en het aandeel van de marktschade door droogte en hitte, past daar een regressie op toe en zet die in een grafiek."
       },
       "agricultureRest": {
         "title": "Per jaar via REST",
@@ -930,11 +938,11 @@
       },
       "agricultureRecap": {
         "title": "Wat u zag",
-        "description": "U zag de eigen data van de verzekeraar, per county en oogstjaar afgestemd op openbare schade-, weer- en opbrengstdata, allemaal in één beheerd model. Eén view beantwoordt of het weer de schade verklaart, in SQL, GraphQL en REST. Het notebook meet het: het weer verklaart 54% van de variatie in de schadequote, en over de huidige portefeuille heeft een seizoen als 2012 een verwachte schadequote van 1,75."
+        "description": "Je zag de eigen data van de verzekeraar per county en oogstjaar gekoppeld aan openbare schade, weer en opbrengsten, allemaal in één beheerd model. Eén view beantwoordt of het weer de schade verklaart, in SQL, GraphQL en REST. Het notebook meet het. Het weer verklaart 54% van de variatie in de schadequote, en over de huidige portefeuille heeft een seizoen zoals 2012 een verwachte schadequote van 1,75."
       },
       "retailScenario": {
         "title": "Een verhaal van twee regio's",
-        "description": "Een retailconcern runt een EU- en een US-dochteronderneming als één bedrijf. Kan dat zonder de GDPR te schenden? Elke dochteronderneming houdt een eigen database: dit is die van de EU, met haar klanten van het loyaliteitsprogramma, hun toestemming voor marketing, bestellingen, personeel en de mail die het personeel buiten het concern stuurt."
+        "description": "Een retailgroep runt een Europese en een Amerikaanse dochter als één bedrijf. De rondleiding vraagt of dat kan zonder de AVG te schenden. Elke dochter heeft een eigen database. Dit is die van de EU, met de loyaliteitsklanten, hun marketingtoestemming, bestellingen, personeel en de mail die het personeel buiten de groep stuurt."
       },
       "retailPlatformRegions": {
         "title": "Regio's beginnen in één configuratie",
@@ -953,16 +961,16 @@
         "description": "Federatie heeft een tabblad voor elke regio, en elke regio draait haar eigen engine. Eén configuratie geeft dus twee omgevingen voor gegevensverwerking. U bent op de US-node. Die leest EU-gegevens alleen via de opslag van de EU, nooit uit een eigen kopie."
       },
       "retailRegions": {
-        "title": "Homing: elke bron noemt haar thuisregio",
-        "description": "De database van de US-dochteronderneming is gevestigd in de US, die van de EU-dochteronderneming in de EU. Homing is de regel van de engine over waar gegevens staan. De replica's en cache van een gevestigde tabel blijven in haar thuisregio, en andere regio's bereiken haar alleen via die regio."
+        "title": "Homing: elke bron noemt zijn thuisregio",
+        "description": "De database van de Amerikaanse dochter heeft de VS als thuis, en die van de Europese dochter de EU. Homing is de regel van de engine over waar data staat. De replica's en cache van een tabel met een thuisregio blijven in die regio, en andere regio's bereiken hem alleen via die regio."
       },
       "retailEuCustomers": {
         "title": "Een EU-tabel, gevestigd in de EU",
-        "description": "De EU-klanten. De regio van de tabel is de EU, dus haar replica's en cache staan alleen in de opslag van de EU. Homing beslist waar de rijen staan. Het beslist niet wie ze mag lezen. Dat is de volgende laag."
+        "description": "De EU-klanten. De regio van de tabel is de EU, dus de replica's en de cache staan alleen in de opslag van de EU. Homing bepaalt waar de rijen staan. Het bepaalt niet wie ze mag lezen. Dat is de volgende laag."
       },
       "retailRequests": {
         "title": "Verzoeken van betrokkenen",
-        "description": "Het verzoekenregister van het concern: wie zijn gegevens wilde inzien, wie ze wilde laten wissen, en wanneer. Het bevat zelf geen klantgegevens."
+        "description": "Het register van de groep legt vast wie zijn data wilde inzien, wie verzocht om verwijdering, en wanneer. Het bevat zelf geen klantdata."
       },
       "retailJoin": {
         "title": "Hoe een verzoek een persoon vindt",
@@ -970,15 +978,15 @@
       },
       "retailAsAnalyst": {
         "title": "De regels van de data steward, als groepsanalist",
-        "description": "De tweede laag is beveiliging: de regels van de data steward beslissen wat elke lezer krijgt, naar rol en naar de regio van de lezer. Ze worden toegepast in de thuisregio, voordat er iets uit vertrekt. Vervolgens schakelt de rolkiezer over naar <strong>group_analyst</strong>, die in de US aan groepsrapportage werkt, zodat de SQL en GraphQL hierna als group_analyst draaien."
+        "description": "De tweede laag is beveiliging: de regels van de data steward bepalen wat elke lezer krijgt, op basis van rol en regio van de lezer. Ze worden in de thuisregio toegepast, voordat er iets uit vertrekt. Vervolgens schakelt de rolkiezer naar <strong>group_analyst</strong>, die in de VS aan groepsrapportage werkt, dus de SQL en GraphQL hierna draaien als group_analyst."
       },
       "retailGroupView": {
         "title": "Concernrapportage, EU-klanten gepseudonimiseerd",
-        "description": "Elke loyaliteitsklant van de groep. US-klanten verschijnen zoals ze zijn. EU-klanten verschijnen onder een pseudoniem, omdat de regel van de steward zegt dat een lezer buiten de EU geen naam of adres krijgt. De EU paste die regel toe voordat haar rijen vertrokken, en het logboek van deze query noemt de EU als de regio die antwoordde."
+        "description": "Elke loyaliteitsklant van de groep. Amerikaanse klanten verschijnen zoals ze zijn. EU-klanten verschijnen onder een pseudoniem, omdat de regel van de steward zegt dat een lezer buiten de EU geen naam of adres krijgt. De EU paste die regel toe voordat haar rijen vertrokken, en de vastlegging van deze query noemt de EU als de regio die antwoordde."
       },
       "retailGroupGraphql": {
         "title": "Hetzelfde, in GraphQL",
-        "description": "Dezelfde concernview via GraphQL: één model, elk transport, dezelfde regels."
+        "description": "Dezelfde groepsview via GraphQL, onder dezelfde regels."
       },
       "retailEveryRole": {
         "title": "Terug naar alle rollen",
@@ -998,7 +1006,7 @@
       },
       "retailErasure": {
         "title": "Een wissing, gepland",
-        "description": "Voor elk verzoek tot wissing elke rij die het concern verwijdert: de dochteronderneming, de tabel en de sleutel. Elke dochteronderneming verwijdert haar eigen rijen, in haar eigen regio."
+        "description": "Voor elk verwijderverzoek elke rij die de groep verwijdert, met de dochter, de tabel en de sleutel. Elke dochter verwijdert de eigen rijen, in de eigen regio."
       },
       "retailAsReviewer": {
         "title": "Als insiderbeoordelaar",
@@ -1010,11 +1018,11 @@
       },
       "retailAsEuReviewer": {
         "title": "Als beoordelaar in de EU",
-        "description": "Hierna draait de SQL-verkenner als reviewer met region__eu: een beoordelaar wiens regio de EU is."
+        "description": "Vervolgens draait de SQL-verkenner als reviewer met region__eu, een reviewer wiens regio de EU is."
       },
       "retailReveal": {
         "title": "De afzender, onthuld in de EU",
-        "description": "Dezelfde wachtrij. Het masker van de steward op de afzenderkolom toont de afzender alleen aan een beoordelaar wiens toegewezen regio de EU is (region__eu). Alle anderen lezen hem achtergehouden. Wat een lezer krijgt, hangt af van zijn regio en van zijn rol, en er is geen rol voor de combinatie gemaakt."
+        "description": "Dezelfde wachtrij. Het masker van de steward op de afzenderkolom toont de afzender alleen aan een reviewer wiens toegewezen regio de EU is (region__eu). Iedereen anders leest hem als achtergehouden. Wat een lezer krijgt, hangt af van zowel regio als rol, en er is geen rol voor de combinatie gemaakt."
       },
       "retailAsAdmin": {
         "title": "Terug naar elke rol",
@@ -1022,7 +1030,7 @@
       },
       "retailAudit": {
         "title": "Eén registratie, beide regio's",
-        "description": "Elke instructie die de rondleiding uitvoerde: wie hem uitvoerde, waarop, en welke regio hem beantwoordde. Eén audittrail over beide regio's."
+        "description": "Elk statement dat de rondleiding uitvoerde, in één audittrail over beide regio's: wie het uitvoerde, waarop, en welke regio antwoordde."
       },
       "retailLimits": {
         "title": "Wat dit is, en wat niet",
@@ -1030,19 +1038,19 @@
       },
       "retailRecap": {
         "title": "Wat u zag",
-        "description": "Eén configuratie kende twee regio's toe, elk met een eigen engine en eigen opslag: twee omgevingen voor gegevensverwerking. Homing hield de EU-tabellen, hun replica's en hun cache in de EU. De regels van de data steward bepaalden wat elke lezer kreeg, naar rol en naar de regio van de lezer, en de EU paste ze toe voordat er iets vertrok. Groepsrapportage las EU-klanten gepseudonimiseerd, EU-marketing las alleen klanten die instemden, inzage en wissing waren elk één query, de afzender werd alleen aan een beoordelaar in de EU getoond, en elke leesactie staat in één logboek."
+        "description": "Eén configuratie kende twee regio's toe, elk met een eigen engine en opslag: twee gegevensverwerkingsomgevingen. Homing hield de EU-tabellen, hun replica's en hun cache in de EU. De regels van de data steward bepaalden wat elke lezer kreeg, op basis van rol en regio van de lezer, en de EU paste ze toe voordat er iets vertrok. Groepsrapportage las EU-klanten gepseudonimiseerd, EU-marketing las alleen klanten die toestemming gaven, inzage en verwijdering waren elk één query, de afzender werd alleen aan een reviewer in de EU getoond, en elke leesactie staat in één vastlegging."
       },
       "provisioningScenario": {
         "title": "Waar deze demo over gaat",
-        "description": "Het datawarehouse van een koffiebranderij ontvangt drie feeds (bestellingen, prijzen en voorraadtellingen) en bouwt er datasets van zodra ze binnenkomen. Twee teams hebben de grote nodig, elke bestelling met haar marge: finance voor de rapportage, data science voor de feature store. De vraag: hoe krijgen ze die zodra hij klaar is, zonder hem te kopiëren of extractiejobs te schrijven?"
+        "description": "Het datawarehouse van een koffiebranderij ontvangt drie feeds (bestellingen, prijzen en voorraadtellingen) en bouwt er datasets uit zodra ze binnenkomen. Twee downstream-teams hebben de grote nodig, elke bestelling met de marge: finance voor de rapportage, data science voor de feature store. Ze willen hem zodra hij klaar is, zonder kopieën en zonder extractiejobs."
       },
       "provisioningJoin": {
         "title": "Hoe de feeds samenkomen",
-        "description": "Een bestelling noemt haar product, en het product kent zijn kosten en categorie. De dataset koppelt elke bestelling aan haar product. De afsluiting is gebouwd op de dataset en de voorraad- en prijsfeeds: een view boven een view, op volgorde ververst."
+        "description": "Een bestelling noemt het product, en het product kent de kostprijs en categorie. De dataset koppelt elke bestelling aan het product. De afsluiting is een view op die view, gebouwd op de dataset plus de voorraad- en prijsfeeds en op zijn beurt ververst."
       },
       "provisioningRecap": {
         "title": "Wat u zag",
-        "description": "Feeds landden bij aankomst, en datasets werden daaruit gebouwd en ververst. Elk team hoorde via Kafka wanneer een dataset klaar was en haalde hem via Arrow Flight op zoals hij op dat moment was, en zag alleen wat de eigen rol toestaat en alleen binnen het venster van de dataset. Geen kopieën en geen extractiejobs."
+        "description": "Feeds werden geladen zodra ze binnenkwamen, en daaruit werden datasets gebouwd en ververst. Elk team kreeg via Kafka bericht wanneer een dataset klaar was, en haalde die via Arrow Flight op zoals hij op dat moment was, met alleen wat de rol toestaat en alleen binnen het venster van de dataset, zonder kopieën en zonder extractiejobs."
       },
       "provisioningWarehouse": {
         "title": "De eigen database van het warehouse",
@@ -1062,7 +1070,7 @@
       },
       "provisioningPulls": {
         "title": "De downloads",
-        "description": "De consumer van elk team leest de melding en haalt de hele dataset via Arrow Flight op zoals die op zijn versietijd was vastgelegd: de bestellingen die tot dan waren binnengekomen, zodat noch een verversing die halverwege binnenkomt noch een later binnengekomen bestelling kan veranderen wat hij leest. Hij legt de rijen, de seconden en de rijen per seconde vast."
+        "description": "De consumer van elk team leest het bericht en haalt de hele dataset via Arrow Flight op zoals vastgelegd op het versietijdstip, dus de bestellingen die tot dan waren binnengekomen, zodat noch een verversing halverwege het ophalen noch een later binnengekomen bestelling kan veranderen wat hij leest. Hij legt de rijen, de seconden en de rijen per seconde vast."
       },
       "provisioningAsFinance": {
         "title": "Uitvoeren als finance",
@@ -1070,7 +1078,7 @@
       },
       "provisioningFinanceView": {
         "title": "Wat finance downloadt",
-        "description": "De nieuwste bestellingen zoals finance ze leest: omzet, kosten en marge, alle categorieën."
+        "description": "De nieuwste bestellingen zoals finance ze leest, met omzet, kosten en marge in elke categorie."
       },
       "provisioningAsDataScience": {
         "title": "Uitvoeren als data science",
@@ -1078,7 +1086,7 @@
       },
       "provisioningDataScienceView": {
         "title": "Wat data science downloadt",
-        "description": "Dezelfde dataset, dezelfde query: kosten en marge tonen 0 en bestellingen van diensten verdwijnen (een rijregel). Eén dataset, twee beheerde views, geen kopieën."
+        "description": "Op dezelfde dataset en met dezelfde query lezen kosten en marge 0, en servicebestellingen zijn weg (een rijregel)."
       },
       "provisioningAsFinanceAgain": {
         "title": "Terug naar finance",
@@ -1090,7 +1098,7 @@
       },
       "provisioningRest": {
         "title": "De downloads via REST",
-        "description": "Hoe de downloads van elk team verliepen, gegroepeerd op de server: hoeveel en hoe snel gemiddeld."
+        "description": "Hoeveel ophaalacties elk team deed en hoe snel die gemiddeld liepen, gegroepeerd op de server."
       },
       "pharmaScenario": {
         "title": "Wat deze demo is",
@@ -1102,11 +1110,11 @@
       },
       "pharmaFormulary": {
         "title": "Het formularium van de apotheek",
-        "description": "Elk product dat de apotheek voert: de NDC, de generieke naam, de fabrikant, de therapeutische klasse en of het kritiek is. De voorraad op elke locatie staat ernaast."
+        "description": "Elk product dat de apotheek op voorraad heeft, met NDC, generieke naam, fabrikant, therapeutische klasse en of het kritiek is. De voorraad per locatie staat ernaast."
       },
       "pharmaShortages": {
         "title": "De tekorten van de FDA",
-        "description": "Elk tekort dat de FDA heeft gepubliceerd, één rij per verpakking: de status, de beschikbaarheid van het product en de NDC-productcode. De terugroepingen en de Medicaid-voorschriften staan ernaast."
+        "description": "Elk tekort dat de FDA heeft gemeld, één rij per verpakking, met de status, de beschikbaarheid van het product en de NDC-productcode. De terugroepacties en de Medicaid-voorschriften staan ernaast."
       },
       "pharmaJoin": {
         "title": "Gekoppeld op NDC en op firma",
@@ -1122,7 +1130,7 @@
       },
       "pharmaByRisk": {
         "title": "Per risico, in GraphQL",
-        "description": "Dezelfde view gegroepeerd per risico: hoeveel producten een tekort, een terugroeping of beide hebben, de voorraad die ze vertegenwoordigen en hoe vaak Medicaid ze voorschrijft."
+        "description": "Gegroepeerd op risico toont dezelfde view hoeveel producten met een tekort, een terugroepactie of beide te maken hebben, de voorraad die ze hebben en hoe vaak Medicaid ze voorschrijft."
       },
       "pharmaRest": {
         "title": "Hetzelfde antwoord via REST",
@@ -1142,7 +1150,7 @@
       },
       "storefrontShipping": {
         "title": "Verzending, via REST",
-        "description": "De zending van elke bestelling komt van de interne verzendservice via <strong>REST</strong>, gelezen via het OpenAPI-document: de vervoerder, het trackingnummer, en wanneer ze beloofd en bezorgd is."
+        "description": "De zending van elke bestelling komt van de interne verzendservice via <strong>REST</strong>, gelezen via het OpenAPI-document, met de vervoerder, het trackingnummer en wanneer hij beloofd en geleverd werd."
       },
       "storefrontRelations": {
         "title": "Relaties, één keer gedeclareerd",
@@ -1174,11 +1182,11 @@
       },
       "storefrontPoint": {
         "title": "Eén model, twee afnemers",
-        "description": "<strong>SHIPPED_AS</strong> verbindt een bestelling met haar zending. De app en de BI-tool lezen allebei via deze en elke andere relatie, onder dezelfde regels: de klant ziet zijn eigen bestellingen, de analist ziet geen e-mailadressen. Wijzig hier een relatie of regel, en beide afnemers hebben die. Er valt niets synchroon te houden."
+        "description": "<strong>SHIPPED_AS</strong> koppelt een bestelling aan de zending. De app en het BI-tool lezen allebei via deze en elke andere relatie, onder dezelfde regels, dus de klant ziet de eigen bestellingen en de analist ziet geen e-mailadressen. Wijzig hier een relatie of regel, en beide afnemers hebben hem."
       },
       "hasuramigrationScenario": {
         "title": "Een app die Hasura verlaat",
-        "description": "De webwinkel en de helpdesk van een outdoorwinkel draaiden op Hasura v2 boven deze PostgreSQL-database: klanten, de catalogus, bestellingen en hun regels, met rollen voor klanten, supportmedewerkers en analisten. Het team verhuist de app naar Provisa en krijgt wat Hasura niet kon geven: de Salesforce-accounts van het verkoopteam naast de bestellingen, onder dezelfde regels."
+        "description": "De webwinkel en helpdesk van een outdoorzaak draaiden op Hasura v2 boven deze PostgreSQL-database: klanten, de catalogus, bestellingen en hun regels, met rollen voor klanten, supportmedewerkers en analisten. Het team verhuist de app naar Provisa en krijgt de Salesforce-accounts van het salesteam naast de bestellingen, onder dezelfde regels."
       },
       "hasuramigrationImport": {
         "title": "Eén import, en het werkt",
@@ -1194,10 +1202,10 @@
       },
       "hasuramigrationProfile": {
         "title": "Een lezing op sleutel",
-        "description": "Hasura's <strong>customers_by_pk</strong> wordt een filter op de tabel. Het berekende veld <strong>full_name</strong> zijn gewoon de twee namen die het scherm samenvoegt, en de import zette het op de lijst om met de hand opnieuw te maken. De rijregel bepaalt nog steeds wat Ana ziet: alleen haar eigen rij."
+        "description": "Hasura's <strong>customers_by_pk</strong> wordt een filter op de tabel. Het berekende veld <strong>full_name</strong> is de twee namen die het scherm samenvoegt, en de import noemde het als iets om met de hand opnieuw te doen. De rijregel beperkt Ana nog steeds tot de eigen rij."
       },
       "hasuramigrationSalesforce": {
-        "title": "Wat Hasura niet kon: Salesforce",
+        "title": "Salesforce koppelen",
         "description": "Het verkoopteam bewaart zijn accounts in Salesforce. Provisa registreert de organisatie als bron en het object <strong>Account</strong> als tabel. Elke zakelijke klant in de winkel noemt het account waarvoor hij koopt."
       },
       "hasuramigrationAccount": {
@@ -1214,27 +1222,27 @@
       },
       "hasuramigrationRecap": {
         "title": "Wat je zag",
-        "description": "Een Hasura-app in één stap geïmporteerd en meteen werkend: tabellen, namen, relaties, rollen, rijregels, schrijfrechten, de action en de triggers. De query's veranderden één keer van vorm; de regels veranderden helemaal niet. En één relatie later leest de app zijn Salesforce-accounts naast zijn bestellingen, zonder iets om synchroon te houden."
+        "description": "De Hasura-app werd in één stap geïmporteerd en werkte meteen, met de tabellen, namen, relaties, rollen, rijregels, schrijfrechten, de actie en de triggers. De query's veranderden één keer van vorm en de regels helemaal niet. Eén relatie later leest de app de Salesforce-accounts naast de bestellingen, zonder iets synchroon te hoeven houden."
       },
       "reproduceScenario": {
         "title": "Waar deze demo over gaat",
-        "description": "Een bank dient bij haar toezichthouder een exposure-rapport in per 30 september. De toezichthouder vraagt waar het cijfer van de rentedesk vandaan komt, en wil het rapport precies zoals het is ingediend: er is sindsdien een koers gecorrigeerd. Het handelsboek van de bank wordt live uit haar eigen database gelezen."
+        "description": "Een bank dient bij de toezichthouder een blootstellingsrapport per 30 september in. De toezichthouder vraagt waar het cijfer van de rentedesk vandaan kwam, en wil het rapport precies zoals het werd ingediend, omdat er sindsdien een koers is gecorrigeerd. Het handelsboek van de bank wordt live uit de eigen database gelezen."
       },
       "reproduceBook": {
         "title": "Het handelsboek",
-        "description": "Elke positie: haar desk, haar notional in haar eigen valuta en de koers waartegen ze naar USD wordt omgerekend, geldig vanaf 30 september. Een van deze koersen wordt gecorrigeerd nadat het rapport voor het eerst is ingediend."
+        "description": "Elke positie, met de desk, de nominale waarde in de eigen valuta en de koers waartegen die naar USD wordt omgerekend, geldig vanaf 30 september. Een van deze koersen wordt gecorrigeerd nadat het rapport voor het eerst is ingediend."
       },
       "reproduceLineage": {
         "title": "Waar het cijfer vandaan komt",
-        "description": "De exposure-kolom van het rapport, teruggevolgd: de exposure van elke desk is de som van notional maal fx_rate over haar posities. Elke kolom van het rapport leidt naar de bronkolommen waaruit ze wordt berekend."
+        "description": "De blootstellingskolom van het rapport, teruggevolgd. De blootstelling van elke desk is de som van nominale waarde maal fx_rate over de posities. Elke kolom van het rapport leidt naar de bronkolommen waaruit hij is berekend."
       },
       "reproduceRefreshes": {
         "title": "De verversingen die het bouwden",
-        "description": "Elke build van het rapport legt vast waaruit hij is gebouwd: de versie van de rapportdefinitie, de versie van de invoer en hoe die is vastgesteld. Twee builds: één zoals eerst ingediend, één na de correctie."
+        "description": "Elke build van het rapport legt vast waaruit hij is gebouwd: de versie van de rapportdefinitie en de versie van de invoer, met hoe die werd vastgesteld. Er zijn twee builds, één zoals eerst ingediend en één na de correctie."
       },
       "reproduceImpact": {
         "title": "Wat een hernoeming zou breken",
-        "description": "Hernoem fx_rate hier, en Provisa toont wat ervan leest voordat u opslaat: het rapport ertussen. Niets wat van een kolom afhangt verandert zonder eerst genoemd te worden."
+        "description": "Hernoem fx_rate hier, en Provisa toont vóór het opslaan wat hem leest, inclusief het rapport."
       },
       "reproduceNow": {
         "title": "Het rapport nu",
@@ -1242,11 +1250,11 @@
       },
       "reproduceAsOf": {
         "title": "Per 30 september",
-        "description": "Het rapport per zijn businessdatum: wat de cijfers voor 30 september waren."
+        "description": "Het rapport per zijn bedrijfsdatum toont wat de cijfers voor 30 september waren."
       },
       "reproduceAsOfNow": {
         "title": "Per 30 september, vastgelegd op nu",
-        "description": "Gelezen zoals Provisa het vandaag heeft vastgelegd, toont 30 september het gecorrigeerde cijfer: 1.550.000 voor de rentedesk. Dat zeggen de boeken nu, niet wat er is ingediend."
+        "description": "Gelezen zoals Provisa het vandaag heeft vastgelegd, toont 30 september het gecorrigeerde cijfer, 1.550.000 voor de rentedesk. Dat is het cijfer dat nu in de boeken staat, en het wijkt af van wat werd ingediend."
       },
       "reproduceAsFiled": {
         "title": "Vastgelegd op het moment van indienen",
@@ -1254,11 +1262,11 @@
       },
       "reproduceFiled": {
         "title": "Het rapport zoals ingediend",
-        "description": "Per 30 september en vastgelegd op het moment van indienen: de rentedesk toont 1.540.000, het cijfer dat de toezichthouder ontving. De sindsdien vastgelegde correctie verandert niets aan wat er is ingediend."
+        "description": "Per 30 september en zoals vastgelegd bij indiening toont de rentedesk 1.540.000, het cijfer dat de toezichthouder ontving. De sindsdien vastgelegde correctie verandert niet wat werd ingediend."
       },
       "reproduceAudit": {
         "title": "Wie het las, en per wanneer",
-        "description": "Het auditlog legt elke leesactie vast: wie die uitvoerde, als welke rol, en de tijden voor ‘Per’ en ‘Vastgelegd op’ waarmee het rapport werd gelezen. De reproductie van de toezichthouder staat zelf ook vastgelegd."
+        "description": "Het auditlogboek legt vast wie elke leesactie uitvoerde, onder welke rol, en het tijdstip waarop het rapport werd gelezen en zoals vastgelegd op welk moment. De reproductie voor de toezichthouder is zelf vastgelegd."
       },
       "reproduceRecap": {
         "title": "Wat u hebt gezien",
@@ -1270,7 +1278,7 @@
       },
       "churnCustomers": {
         "title": "De klanten",
-        "description": "Het abonnement, de regio en de klantduur van elke klant, en de dag waarop die heeft opgezegd, als dat zo is. Het e-mailadres is gemaskeerd voor de rol analyst: het komt binnen als *** met het domein."
+        "description": "Het abonnement, de regio, de klantduur en de opzegdatum van elke klant, als die heeft opgezegd. Het e-mailadres is gemaskeerd voor de analistenrol en verschijnt als *** plus het domein."
       },
       "churnUsage": {
         "title": "Hun gebruik",
@@ -1282,15 +1290,15 @@
       },
       "churnFeatures": {
         "title": "De kenmerken waarvan het model leert",
-        "description": "Eén rij per klant: abonnement, klantduur, aanmeldingen per maand, tickets in het jaar en of de klant heeft opgezegd. Een gematerialiseerde view, gebouwd via de gegovernede pipeline. De e-mailadressen zijn gemaskeerd, zoals analyst ze krijgt."
+        "description": "Eén rij per klant, met abonnement, klantduur, aanmeldingen per maand, tickets in het jaar en of de klant heeft opgezegd. Een gematerialiseerde view, gebouwd via de beheerde pipeline. De e-mailadressen zijn gemaskeerd, zoals ze aan de analist worden geleverd."
       },
       "churnGraphql": {
         "title": "Dezelfde kenmerken via GraphQL",
-        "description": "De voorbeeldquery van de demo leest dezelfde view als analyst, met dezelfde maskering: elke interface levert één gegoverned antwoord."
+        "description": "De voorbeeldquery van de demo leest dezelfde view als de analist, met hetzelfde masker."
       },
       "churnNotebook": {
         "title": "Een model, getraind in je browser",
-        "description": "Het notebook van de demo, uitgevoerd op het tabblad Notebook: de kenmerken als analyst in pandas gelezen, een scikit-learn-model erop getraind en de klanten met het hoogste risico op een rij. Python draait in je browser, en de e-mailadressen blijven gemaskeerd."
+        "description": "Het notebook van de demo, uitgevoerd op het tabblad Notebook, leest de features als de analist in pandas in, traint er een scikit-learn-model op en toont de klanten met het hoogste risico. Python draait in je browser, en de e-mailadressen zijn nog steeds gemaskeerd."
       },
       "churnEveryRole": {
         "title": "Terug naar alle rollen",
@@ -1298,15 +1306,15 @@
       },
       "churnRecap": {
         "title": "Wat je hebt gezien",
-        "description": "Gegovernede data rechtstreeks in het notebook van een data scientist: de maskering van analyst toegepast bij het lezen, en een model getraind zonder dat de data de browser verlaat. In een desktop-Jupyter leest dezelfde code grote hoeveelheden via Arrow Flight. De demo churnprod brengt dit model in productie."
+        "description": "Beheerde data ging rechtstreeks het notebook van een data scientist in, met het masker van de analist onderweg toegepast en een model getraind zonder dat de data de browser verliet. In een desktop-Jupyter leest dezelfde code grote hoeveelheden via Arrow Flight. De demo churnprod zet dit model in productie."
       },
       "dataroomIntro": {
         "title": "Een datakamer zonder exports",
-        "description": "Northfield Supply wordt verkocht, en het clean team van elke gegadigde koper moet het bedrijf leren kennen voordat het biedt. In plaats van extracten naar een datakamer te exporteren, koppelt de verkoper Provisa aan zijn eigen systemen en geeft elke bieder beheerde toegang die eindigt op de transactiedatum. Er wordt niets naar buiten gekopieerd, en geen enkele klantidentiteit verlaat de kamer. Dit is het order- en financiële systeem, een Postgres-database die ter plekke wordt gelezen: 2.400 klanten, hun orders sinds 2023 en de factuur van elk."
+        "description": "Northfield Supply verkoopt zichzelf, en het clean team van elke potentiële koper moet het bedrijf zien voordat het biedt. In plaats van extracten naar een dataroom te exporteren, verbindt de verkoper Provisa met de eigen systemen en geeft elke bieder beheerde toegang die op de dealdatum eindigt. Er wordt niets gekopieerd, en geen klantidentiteit verlaat de room. Dit is het order- en financieel systeem, een ter plekke gelezen Postgres-database met 2.400 klanten, hun bestellingen sinds 2023 en de factuur van elke bestelling."
       },
       "dataroomCrm": {
         "title": "Het CRM",
-        "description": "De Salesforce van het verkoopteam: het account van elke zakelijke klant en de bijbehorende deals. De rijen worden eenmaal in de kamer geladen en vandaar gelezen, zodat de vragen van de bieders Salesforce nooit bereiken."
+        "description": "De Salesforce van het salesteam bevat het account van elke zakelijke klant en de deals. De rijen worden één keer in de room geladen en daar gelezen, zodat de vragen van de bieders Salesforce nooit bereiken."
       },
       "dataroomInvite": {
         "title": "De kamer inrichten: de analisten uitnodigen",
@@ -1314,7 +1322,7 @@
       },
       "dataroomGrant": {
         "title": "Een toekenning die eindigt op de transactiedatum",
-        "description": "De toekenning van bidder_a aan elke analist heeft een einddatum: de transactiedatum. Vanaf dat moment is de rol niet meer van hen, bij elk verzoek, hoe het ook binnenkomt. Een account heeft geen eigen einddatum; het einde van de toekenning beëindigt de toegang."
+        "description": "De toekenning van bidder_a aan elke analist eindigt op de dealdatum. Vanaf dat moment is de rol niet meer van hen, bij elk verzoek, hoe het ook binnenkomt. Een account heeft geen eigen einddatum; het einde van de toekenning beëindigt de toegang."
       },
       "dataroomSignedIn": {
         "title": "Wat een analist ziet",
@@ -1326,7 +1334,7 @@
       },
       "dataroomCounts": {
         "title": "Klantaantallen",
-        "description": "Hoeveel klanten elk segment en elke regio heeft, en hoeveel er in de laatste twaalf maanden hebben besteld. Een aantal, nooit een klant."
+        "description": "Hoeveel klanten elk segment en elke regio heeft, en hoeveel er in de afgelopen twaalf maanden bestelden."
       },
       "dataroomAnswer": {
         "title": "Omzet per segment",
@@ -1338,15 +1346,15 @@
       },
       "dataroomQuality": {
         "title": "Datakwaliteitsscores",
-        "description": "Elke controle op de gegevens van de verkoper en hoeveel rijen die niet halen: klanten zonder e-mail, telefoonnummers die geen tien cijfers hebben, nooit betaalde facturen. De gebreken waar een koper naar zoekt, geteld."
+        "description": "Elke controle van de gegevens van de verkoper en hoeveel rijen erop falen: klanten zonder e-mail, telefoonnummers die geen tien cijfers hebben, nooit betaalde facturen."
       },
       "dataroomSample": {
         "title": "Een gemaskeerde steekproef",
-        "description": "Eén klant op vijftig, zoals een bieder hem leest: geen naam, het naamdeel van het e-mailadres en de cijfers van het telefoonnummer gemaskeerd. De vorm van de data, nooit de persoon."
+        "description": "Eén op de vijftig klanten, zoals een bieder ze leest, zonder naam en met het naamdeel van het e-mailadres en de cijfers van het telefoonnummer gemaskeerd."
       },
       "dataroomRefused": {
         "title": "Klantnamen worden geweigerd",
-        "description": "Bieder A vraagt de namen van de klanten op. Provisa weigert dit: geen enkele klantnaam is aan bidder_a toegekend, en de bedrijfs- en dealnamen van het CRM evenmin. Had de analist de rol van bieder B genoemd, die hij niet heeft, dan was het verzoek ook geweigerd en vastgelegd in het beveiligingsspoor van de organisatie als roltesten."
+        "description": "Bieder A vraagt om de namen van de klanten. Provisa weigert, omdat aan bidder_a geen klantnaam is toegekend, en ook de bedrijfs- en dealnamen uit het CRM niet. Had de analist de rol van bieder B genoemd, die hij niet heeft, dan zou het verzoek ook zijn geweigerd en in het beveiligingsspoor van de organisatie zijn vastgelegd als rolverkenning."
       },
       "dataroomBidderB": {
         "title": "Nu als bieder B",
@@ -1354,7 +1362,7 @@
       },
       "dataroomBidderBCohorts": {
         "title": "Cohorten, als bieder B",
-        "description": "Klanten die voor het eerst bestelden in het eerste kwartaal van 2023, en hoeveel er in elk volgend kwartaal nog bestelden, met wat ze uitgaven. Retentie, zonder één klant."
+        "description": "Klanten die voor het eerst bestelden in het eerste kwartaal van 2023, en hoeveel er in elk kwartaal daarna nog bestelden, met wat ze uitgaven."
       },
       "dataroomSeller": {
         "title": "Terug naar de verkoper",
@@ -1362,7 +1370,7 @@
       },
       "dataroomAudit": {
         "title": "Wat elke bieder heeft bekeken",
-        "description": "Elk statement wordt geaudit: wie het uitvoerde, met welke rol, de gelezen tabellen, of het werd beantwoord en hoeveel rijen het teruggaf. Hier staan de statements die u zojuist als bieder A en bieder B hebt uitgevoerd. De verkoper weet precies wat de kamer heeft verlaten."
+        "description": "Elk statement wordt geaudit: wie het uitvoerde, onder welke rol, de tabellen die het las, of het werd beantwoord en hoeveel rijen het teruggaf. Hier zijn de statements die je net als bieder A en bieder B uitvoerde."
       },
       "dataroomExpiry": {
         "title": "Toegang eindigt op de transactiedatum",
@@ -1370,11 +1378,11 @@
       },
       "dataroomRevoke": {
         "title": "De toegang van een bieder direct beëindigen",
-        "description": "Een bieder die afhaakt verliest de toegang met één actie: verwijder zijn toekenning, of de rol zelf. Het volgende verzoek wordt geweigerd. De audit van alles wat hij las blijft bestaan."
+        "description": "Een bieder die afhaakt, verliest de toegang met één actie, door de toekenning of de rol zelf te verwijderen. Het volgende verzoek wordt geweigerd. De audit van alles wat hij las, blijft."
       },
       "dataroomRecap": {
         "title": "Wat u zag",
-        "description": "Een datakamer zonder exports: de eigen systemen van de verkoper, ter plekke gelezen en aan elke bieder getoond als aggregaten, profielen, kwaliteitsscores, gemaskeerde steekproeven en records zonder identiteiten. Geen enkele klantidentiteit verlaat de kamer. Elke bieder heeft een eigen rol, toegekend tot de transactiedatum, en elk statement wordt geaudit."
+        "description": "Een dataroom zonder exports. De eigen systemen van de verkoper worden ter plekke gelezen en aan elke bieder getoond als aggregaten, profielen, kwaliteitsscores, gemaskeerde steekproeven en records zonder identiteiten. Geen klantidentiteit verlaat de room. Elke bieder heeft een eigen rol, toegekend tot de dealdatum, en elk statement wordt geaudit."
       },
       "testdataScenario": {
         "title": "Drie omgevingen op één productiedatabase",
@@ -1390,7 +1398,7 @@
       },
       "testdataCoverageNow": {
         "title": "Elke gevoelige kolom is gedekt",
-        "description": "Gevoelige dekking is een standaardrapport op de pagina Rapporten: elke gevoelige kolom, haar tags en of een nepwaarde die dekt, nu uit het model gelezen. Alle zijn gedekt, dus pre-productie opent en antwoordt."
+        "description": "Dekking van gevoelige data is een standaardrapport op de pagina Rapporten: elke gevoelige kolom, de tags en of een nepwaarde hem dekt, nu uit het model gelezen. Elke kolom is gedekt, dus pre-prod opent en antwoordt."
       },
       "testdataPollyProposes": {
         "title": "Een nepwaarde, voorgesteld uit het profiel",
@@ -1398,7 +1406,7 @@
       },
       "testdataProd": {
         "title": "Productie: de echte rijen",
-        "description": "In prod zie je de klanten zoals ze echt zijn."
+        "description": "In prod zie je de echte klanten."
       },
       "testdataProdAnswer": {
         "title": "Het antwoord van productie",
@@ -1430,7 +1438,7 @@
       },
       "testdataDev": {
         "title": "Dev: gegenereerd, niets echts",
-        "description": "Elke rij in dev is gegenereerd uit het profiel van productie: dezelfde kolommen, waardevormen en spreiding, en geen van de echte rijen. Dit is ook het antwoord als zelfs de echte rijen van pre-productie de grens van productie niet mogen verlaten: geef testers een synthetische kopie."
+        "description": "Elke rij in dev is gegenereerd uit het profiel van productie, met dezelfde kolommen, waardevormen en spreiding, en geen van de echte rijen. Als zelfs de echte rijen van pre-prod de grens van productie niet mogen verlaten, geef testers dan deze synthetische kopie."
       },
       "testdataDevAnswer": {
         "title": "Zelfde vorm, andere getallen",
@@ -1510,7 +1518,7 @@
       },
       "worldcupKaggle": {
         "title": "Kaggle-datasets komen binnen als tabellen",
-        "description": "Dit is een Kaggle-bron: de FIFA World Cup-dataset, met elk toernooi, elke wedstrijd en elke spelersopstelling van 1930 tot 2014. Elk van zijn bestanden komt binnen als een tabel. Een tweede Kaggle-bron bevat elk interlanddoelpunt sinds 1916. Net als de Wikipedia-tabellen zijn het openbare data, in minuten geregistreerd en beheerd als elke interne database."
+        "description": "Dit is een Kaggle-bron, de FIFA World Cup-dataset, met elk toernooi, elke wedstrijd en elk spelersoptreden van 1930 tot 2014. Elk bestand komt binnen als tabel. Een tweede Kaggle-bron bevat elk interlanddoelpunt sinds 1916. Net als de Wikipedia-tabellen is het openbare data, in minuten geregistreerd en beheerd zoals elke interne database."
       },
       "worldcupMatches": {
         "title": "Wedstrijden onder de namen van hun tijd",
@@ -1526,7 +1534,7 @@
       },
       "worldcupAlias": {
         "title": "Elke naam, gekoppeld en gecontroleerd",
-        "description": "Dit zijn de namen die afwijken van de naam van hun lid. Germany FR en West Germany zijn Germany, Zaire is DR Congo en de Soviet Union is Russia. Elke koppeling is gecontroleerd voordat deze demo haar bevroor, en 27 van de 237 zijn gecorrigeerd. Een team waarvan de resultaten op geen enkel lid zijn overgegaan, houdt zijn eigen naam: East Germany blijft East Germany, dus zijn wedstrijd van 1974 tegen West Germany is niet Germany tegen Germany."
+        "description": "Dit zijn de namen die afwijken van de naam van hun lid. Germany FR en West-Duitsland zijn Duitsland, Zaïre is DR Congo en de Sovjet-Unie is Rusland. Elke wedstrijd werd gecontroleerd voordat deze demo hem bevroor, en 27 van de 237 werden gecorrigeerd. Een team waarvan de resultaten naar geen enkel lid overgingen, houdt de eigen naam. Oost-Duitsland blijft Oost-Duitsland, dus de wedstrijd van 1974 tegen West-Duitsland is niet Duitsland tegen Duitsland."
       },
       "worldcupJunction": {
         "title": "Een relatie via de functie",
@@ -1638,7 +1646,7 @@
       },
       "bankingScenario": {
         "title": "Dagafsluitingsrapportage, grootboek blijft waar het is",
-        "description": "Een bank rapporteert haar totalen bij elke afsluiting van de werkdag om 18:00 en corrigeert een eerdere dag als er later een correctie binnenkomt. Meestal wordt daarvoor eerst het grootboek naar het warehouse gekopieerd. Deze demo doet dat niet. Let onderweg op vier dingen. Wat de rapportage aan rekenkracht kost. Hoeveel data het warehouse bewaart, en dus hoeveel het moet beheren. Of dashboard, BI en een agent hetzelfde antwoord geven. En wat het kost om de beslissing later te herzien."
+        "description": "Een bank rapporteert de totalen bij de afsluiting van 18:00 op elke werkdag, en herziet een eerdere dag als er later een correctie binnenkomt. De gebruikelijke aanpak kopieert eerst het grootboek naar het datawarehouse, en deze demo doet dat niet. Let onderweg op wat de rapportage kost om te berekenen, hoeveel data het datawarehouse bevat en moet beheren, of het dashboard, BI en een agent hetzelfde antwoord geven, en wat het kost om de beslissing later te veranderen."
       },
       "bankingJoin": {
         "title": "Van een totaal naar zijn boekingen",
@@ -1646,11 +1654,11 @@
       },
       "bankingRecap": {
         "title": "Wat u zag",
-        "description": "De dagafsluitingstotalen werden in het grootboek berekend, en het warehouse betaalde alleen voor wat het bewaart. Het warehouse bewaart totalen en nooit boekingen, dus er is geen tweede kopie van het grootboek om te beheren. Dashboard, BI en de agent lazen één gedeclareerde relatie en gaven dezelfde cijfers. En blijkt het grootboek thuis houden verkeerd, dan verplaatst een plaatsingswijziging van twee regels het, terwijl niets wat het leest verandert. Kies nu voor licht: een vergissing kost twee regels, geen project."
+        "description": "De dagafsluitingstotalen werden bij het grootboek berekend, en het datawarehouse betaalde alleen voor wat het bewaart. Het datawarehouse bevat totalen en nooit boekingen, dus er is geen tweede kopie van het grootboek om te beheren. Het dashboard, BI en de agent lazen één gedeclareerde relatie en gaven dezelfde cijfers. Blijkt het verkeerd om het grootboek thuis te houden, dan verplaatst een plaatsingswijziging van twee regels het, terwijl niets wat het leest verandert."
       },
       "bankingLedger": {
         "title": "Het grootboek blijft thuis",
-        "description": "De transactietabel is ondergebracht in de regio ledger en wordt nooit gerepliceerd. Geen kopie van een boeking komt ooit in het warehouse terecht, en elke query op de tabel draait in het grootboek. De dagafsluitingstotalen en de drill-downs gaan van de rekening van het warehouse af, tegen bescheiden rekenkracht in het grootboek. Alleen de totalen bereiken het warehouse, plus terloops de boekingen die een drill-down toont. De kosten zijn lager en de voetafdruk kleiner."
+        "description": "De transactietabel heeft de grootboekregio als thuis en wordt nooit gerepliceerd. Er komt nooit een kopie van een boeking in het datawarehouse terecht, en elke query over de tabel draait in het grootboek. De dagafsluitingstotalen en de drill-downs gaan van de rekening van het datawarehouse af, voor bescheiden rekenkracht in het grootboek. Alleen de totalen bereiken het datawarehouse, plus in het voorbijgaan de boekingen die een drill-down toont."
       },
       "bankingVersions": {
         "title": "Een correctie is een nieuwe rij",
@@ -1674,7 +1682,7 @@
       },
       "bankingReported": {
         "title": "Wat er gerapporteerd werd",
-        "description": "De zakelijke totalen voor 1 en 2 oktober, zoals gerapporteerd bij de afsluiting van 1 oktober: het argument as_recorded van de view leest ze zoals ze toen waren vastgelegd, en een BI-tool via pgwire doet hetzelfde met SET provisa.as_recorded. Het GBP-totaal van Londen bevat nog de betaling die later werd teruggedraaid. 2 oktober was nog niet afgesloten en heeft dus geen cijfers."
+        "description": "De concerntotalen voor 1 en 2 oktober, zoals gerapporteerd bij de afsluiting van 1 oktober. Het argument as_recorded van de view leest ze zoals ze toen waren vastgelegd, en een BI-tool via pgwire doet hetzelfde met SET provisa.as_recorded. Het GBP-totaal van Londen bevat nog de betaling die later werd teruggedraaid. 2 oktober was nog niet afgesloten, dus heeft geen cijfers."
       },
       "bankingRestated": {
         "title": "Wat het nu zegt",
@@ -1694,7 +1702,7 @@
       },
       "bankingChange": {
         "title": "Van gedachten veranderen kost twee regels",
-        "description": "Stel dat de volumes de rekenkracht van het grootboek ontgroeien. Zet de regio van deze tabel op warehouse en de replicatie op Altijd, en het grootboek wordt naar het warehouse gerepliceerd. Dat is een plaatsingswijziging van twee regels, en elke query, elk dashboard, elke BI-weergave en elke agent antwoordt als voorheen. Met de hand gebouwd betekent dezelfde stap nieuwe pipelines, een backfill, herschreven aggregatie en versiebeheer, omgezette rapporten en een tweede set toegangsregels. Daarna volgen afstemmingstests, audit- en lineagecontroles, een architectuur- en beveiligingsreview en een change board. Hier is de wijziging een beoordeelde diff van twee regels, dus testen, audit en architectuurreview beoordelen een diff, geen migratie."
+        "description": "Stel dat de volumes de rekenkracht van het grootboek ontgroeien. Zet de regio van deze tabel op warehouse en de replicatie-instelling op Altijd, en het grootboek wordt naar het datawarehouse gerepliceerd. Dat is een plaatsingswijziging van twee regels, en elke query, elk dashboard, elke BI-view en elke agent antwoordt als voorheen. Met de hand gebouwd betekent dezelfde stap nieuwe pipelines, een backfill, herschreven aggregatie en versiebeheer, omgezette rapporten en een tweede set toegangsregels. Dan volgen aansluitingstests, audit- en lineagecontroles, architectuur- en beveiligingsreview en een change board. Hier is de wijziging een beoordeelde diff van twee regels, en die diff is wat testen, audit en architectuur beoordelen."
       },
       "bankingAsAdmin": {
         "title": "Weer als beheerder",
@@ -1702,7 +1710,7 @@
       },
       "groupexposureScenario": {
         "title": "Waar deze demo over gaat",
-        "description": "Een Praagse bank leent aan bedrijven en legt van elk bedrijf de eigenaar vast met diens Legal Entity Identifier (LEI). EU-regels beperken wat zij mag lenen aan één klant, of aan een groep bedrijven die één eigenaar beheerst, tot 25% van haar tier 1-kapitaal. De vraag: bij welke groepen zit de bank boven die grens? Haar boeken noemen de eigenaar van elke kredietnemer, niet van wie die eigenaar is. De bank, haar kredietnemers en haar leningen zijn verzonnen; de concerns die hen bezitten zijn echt."
+        "description": "Een Praagse bank leent aan bedrijven en legt per bedrijf de eigenaar vast via zijn Legal Entity Identifier (LEI). EU-regels beperken wat ze aan één klant, of aan een groep bedrijven die door één eigenaar wordt beheerst, mag lenen tot 25% van het Tier 1-kapitaal. Ze moet weten bij welke groepen ze boven die grens zit. De boeken noemen de eigenaar van elke kredietnemer, niet wie de eigenaar bezit. De bank, haar kredietnemers en haar leningen zijn fictief; de groepen die ze bezitten zijn echt."
       },
       "groupexposureWikidata": {
         "title": "Van wie de eigenaren zijn, uit Wikidata",
@@ -1750,19 +1758,19 @@
       },
       "agentdataCustomers": {
         "title": "Wie welke klanten mag zien",
-        "description": "De klantentabel draagt de regels: een supportmedewerker West leest alleen de klanten in het westen en hun orders, met gemaskeerde e-mailadressen en zonder prijzen. De BI-analist leest elke regio en wat de orders opbrachten, maar geen enkel e-mailadres."
+        "description": "De klantentabel draagt de regels. Een supportagent voor West leest alleen de klanten uit West en hun bestellingen, met gemaskeerde e-mailadressen en zonder prijzen. De BI-analist leest elke regio en waar de bestellingen op uitkwamen, maar helemaal geen e-mailadres."
       },
       "agentdataSupportAsks": {
         "title": "De vraag van de supportmedewerker",
         "description": "De agent handelt als de rol in de kopregel, nu de supportmedewerker West, zodat elke toolaanroep die hij doet als die rol draait. De agent vindt de tabellen, schrijft SQL en voert het uit met MCP-tools, die tijdens het draaien worden getoond. Alleen de klanten in het westen komen terug, en hun e-mailadressen komen gemaskeerd binnen: meer krijgt de rol niet."
       },
       "agentdataExplain": {
-        "title": "Wat er echt draaide",
-        "description": "De run_sql-aanroep van de agent, geopend: de opdracht die hij stuurde, en dan de opdracht die voor zijn rol draaide. Provisa voegde het rijfilter West en de e-mailmaskering toe. De agent schreef geen van beide en hoort er nooit over."
+        "title": "Wat er draaide",
+        "description": "Het openen van de run_sql-aanroep van de agent toont het statement dat hij stuurde, en daarna het statement dat voor zijn rol werd uitgevoerd. Provisa voegde het rijfilter voor West en het e-mailmasker toe. De agent schreef geen van beide, en krijgt er nooit iets over te horen."
       },
       "agentdataOutOfReach": {
         "title": "Een vraag buiten bereik",
-        "description": "Gevraagd wat de orders van elke klant opbrachten, vindt de agent geen prijzen in de tabellen die zijn rol mag lezen, en zegt dat. Hij kan niet om de rol heen: bij elke toolaanroep gelden dezelfde regels."
+        "description": "Gevraagd waar de bestellingen van elke klant op uitkwamen, vindt de agent geen prijzen in de tabellen die zijn rol kan lezen, en zegt dat. Hij kan niet om de rol heen, omdat bij elke toolaanroep dezelfde regels gelden."
       },
       "agentdataAnalystRole": {
         "title": "Nu als BI-analist",
@@ -1770,7 +1778,7 @@
       },
       "agentdataAnalystAsks": {
         "title": "Dezelfde vraag, een andere rol",
-        "description": "Dezelfde vraag als analist: elke regio komt terug, er is helemaal geen e-mailkolom en de omzetweergave staat tussen zijn tabellen. Andere tabellen, rijen en kolommen, van dezelfde agent en dezelfde server."
+        "description": "Gevraagd als de analist komt elke regio terug, is er helemaal geen e-mailkolom, en staat de omzetview tussen de tabellen. Andere tabellen, rijen en kolommen, van dezelfde agent en dezelfde server."
       },
       "agentdataConnect": {
         "title": "Je eigen agent, dezelfde server",
@@ -1806,7 +1814,7 @@
       },
       "auditFiled": {
         "title": "Dezelfde aansluiting, op openbare indieningen",
-        "description": "Elke subsidieregel die de gecontroleerde organisaties in de drie staten over 2023 indienden, naast wat USAspending dat jaar onder hetzelfde programma aan hen als verplicht vastlegde. Een niet-aansluitende regel is op zich geen tekort. Een doorgegeven regel kwam via een staatsinstantie bij de organisatie, dus geen federale subsidie noemt haar en er wordt geen aansluiting verwacht; en een subsidie die in een eerder jaar is verplicht toont geen verplichting in het controlejaar. De niet-aansluitende regels blijven zichtbaar, niet verborgen."
+        "description": "Elke subsidieregel die de geauditeerde instellingen van de drie staten voor 2023 indienden, naast wat USAspending dat jaar onder hetzelfde programma als aan hen verplicht vastlegde. Een regel zonder match is op zichzelf geen gat. Een doorgegeven regel bereikte de geauditeerde instelling via een staatsinstantie, dus geen federale subsidie noemt hem en er wordt geen match verwacht; en een subsidie die in een eerder jaar werd verplicht, toont in het auditjaar geen verplichting. De regels zonder match worden bewaard, niet verborgen."
       },
       "auditCounty": {
         "title": "Federaal geld per county",
@@ -1895,7 +1903,7 @@
       },
       "banksecrecyLibrary": {
         "title": "Bewaard in de referentiebibliotheek",
-        "description": "De build van de demo heeft elk gescand document in de referentiebibliotheek bewaard, dus de regelgeving blijft bij het model als beheerde referentie: Polly en de agents van de organisatie citeren de passages in hun antwoorden."
+        "description": "Bij het bouwen van de demo werd elk gescand document in de referentiebibliotheek bewaard, zodat de regelgeving als beheerde referentie bij het model blijft: Polly en de agents van de organisatie citeren de passages als ze antwoorden."
       },
       "banksecrecyGrounded": {
         "title": "De woorden van de wet, verankerd",
@@ -2000,6 +2008,58 @@
       "customer360Recap": {
         "title": "Wat u zag",
         "description": "Vier SaaS-systemen zonder gedeelde id, verbonden via een klantmaster; de vraag beantwoord in SQL, GraphQL en Cypher; daarna gecontroleerd: regels leidden elke koppeling opnieuw af uit bewijs en vonden de foute samenvoeging en het account dat die verborg. Kijk zelf rond vanaf de SQL-pagina."
+      },
+      "affirmationScenario": {
+        "title": "Eén transactie, vier systemen",
+        "description": "Larkspur Asset Management handelde vandaag tien orders. Elke transactie leeft in vier systemen die elkaar nooit zien: dit ordermanagementsysteem met de allocaties aan de fondsen, de fills van het executiesysteem, de bevestiging van de broker en de afwikkelinstructie van de bewaarder. Welke transacties worden niet vóór de cutoff geaffirmeerd, waarom, en wat zou een mislukte afwikkeling kosten?"
+      },
+      "affirmationBroker": {
+        "title": "De kant van de broker",
+        "description": "De bevestigingen van de brokers, zoals het matchingplatform ze aflevert: elk draagt de referentie van de allocatie, de prijs, commissie en het nettobedrag van de broker, en de rekening waaraan de broker zal leveren."
+      },
+      "affirmationCustody": {
+        "title": "De kant van de bewaarder",
+        "description": "De afwikkelinstructies die Larkspur naar zijn bewaarder stuurde: wat elk fonds ontvangt of levert, tegen welk bedrag, op welke dag. Een transactie waarvan de bewaarder nooit hoorde, mislukt net zo zeker als een verkeerde."
+      },
+      "affirmationMatcher": {
+        "title": "De matching-engine, in Python",
+        "description": "Een Python-pakket, geregistreerd als bron. De functie trade_match neemt de vier records van een allocatie en geeft voor elke gevonden break een rij terug met de naam van de break en wat afwijkt, of één afgestemde rij."
+      },
+      "affirmationMatchTable": {
+        "title": "Een functie als tabel",
+        "description": "trade_match is een tabel als elke andere: de kolommen zijn wat de functie teruggeeft, en de parameters zijn de velden van de vier systemen. Een onderdeel dat nog niet binnen is, wordt als afwezig doorgegeven, en de functie noemt dat een eigen break."
+      },
+      "affirmationFeed": {
+        "title": "Wat de matcher voedt",
+        "description": "Deze relatie koppelt de records van elke allocatie uit de vier systemen aan trade_match en geeft ze door als parameters: één aanroep per allocatie. Een query over de join voert de matching uit."
+      },
+      "affirmationQueue": {
+        "title": "De break-wachtrij",
+        "description": "Elke break, met de minuten tot de affirmatie-cutoff van zijn markt en wat een mislukte afwikkeling daar per dag zou kosten. De Europese breaks hebben minder dan een uur; de Amerikaanse hebben tot 21.00 uur New Yorkse tijd."
+      },
+      "affirmationAffirmed": {
+        "title": "De affirmaties, gelogd",
+        "description": "Een opdracht affirmeerde elke allocatie die in alle vier systemen overeenkwam en logde elk op de tijd van de desk. Hij draaide één keer, toen de demo werd gebouwd."
+      },
+      "affirmationPollyCutoff": {
+        "title": "Vraag Polly: wat is het dringendst?",
+        "description": "Polly leest de break-wachtrij en noemt de break met de minste tijd tot zijn cutoff. Het antwoord is gemaakt toen de demo werd gebouwd en wordt opgeslagen getoond."
+      },
+      "affirmationPollyPenalty": {
+        "title": "Vraag Polly: wat kost het meest?",
+        "description": "Polly noemt de break waarvan een mislukte afwikkeling per dag het meest zou kosten. Het antwoord is gemaakt toen de demo werd gebouwd en wordt opgeslagen getoond."
+      },
+      "affirmationExplore": {
+        "title": "Dezelfde vraag, in Explore",
+        "description": "De agent van de explorer antwoordt live via de MCP-server van Provisa, als de rol uit de kopregel, en je ziet elke query die hij uitvoert."
+      },
+      "affirmationExplain": {
+        "title": "De query die hij uitvoerde",
+        "description": "De opdracht die de agent stuurde, naast die welke Provisa voor de rol uitvoerde. De agent las dezelfde beheerde views en tabellen als jij zojuist."
+      },
+      "affirmationRecap": {
+        "title": "Wat je hebt gezien",
+        "description": "Vier systemen live gelezen, afgestemd door een Python-functie die als tabel is geregistreerd, elke break benoemd met zijn tijd tot de cutoff en zijn kosten, en de afgestemde transacties geaffirmeerd door een opdracht. Stel daarna de eigen vragen van de desk in Explore."
       }
     },
     "status": {
@@ -2136,6 +2196,10 @@
       "customer360": {
         "title": "Customer 360",
         "summary": "Salesforce, ServiceNow, Jira en Stripe verbonden via een klantmaster om verlengingen met risico te vinden; daarna wordt de master gecontroleerd tegen het bewijs van elk systeem, dat het gemiste account vindt."
+      },
+      "affirmation": {
+        "title": "Transactiebevestiging",
+        "summary": "Een vermogensbeheerder stemt elke transactie van vandaag af tussen zijn ordersysteem, zijn executiesysteem, de broker en de bewaarder. Elke break toont de resterende tijd tot de cutoff en wat een mislukte afwikkeling zou kosten, en de afgestemde transacties worden geaffirmeerd."
       }
     }
   }

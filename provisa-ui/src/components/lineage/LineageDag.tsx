@@ -14,17 +14,21 @@
 
 import { useEffect, useRef, useState } from "react";
 import cytoscape, { type NodeSingular } from "cytoscape";
-import elkRaw from "cytoscape-elk";
+import { useTranslation } from "react-i18next";
 import { ActionIcon, Text } from "@mantine/core";
 import { Download, Expand, ChevronsDownUp, ChevronsUpDown } from "lucide-react";
 import { FitScreenIcon } from "../graph/GraphIcons";
 import type { LineageGraphData } from "../../api/lineage";
 import type { CyLayoutOptions } from "../graph/cytoscape-types";
-import { cyCanvas } from "../graph/cyCanvas";
+import { cyCanvas } from "../provisa-graph/cyCanvas";
+// Registers Provisa's ELK layout (elkLayout), once, as the graph component does.
+import "../provisa-graph/core";
+import { PROVISA_ELK } from "../provisa-graph/elkLayout";
 import { LineageLegend } from "./LineageLegend";
 import type { DescribeColumn } from "./column-descriptions";
 import {
   FOOTER_H,
+  REPORTED_EDGE_COLOR,
   ROLE_STYLE,
   ROW_H,
   buildLineageModel,
@@ -35,14 +39,6 @@ import {
 import type { LineageLinks } from "./lineage-links";
 import type { Role } from "./lineage-layout";
 import { Tip, TipSurface } from "../Tip";
-
-// ELK lays the relation boxes out in layers (REQ-1665); the ERD registers it the same way.
-type CyExt = Parameters<typeof cytoscape.use>[0];
-try {
-  cytoscape.use((elkRaw as { default?: CyExt }).default ?? (elkRaw as CyExt));
-} catch {
-  /* already registered */
-}
 
 // The named `Core` export resolves to the package's own bundler-broken type (no fit/png);
 // the factory return carries the ambient shim's full instance API, so derive it from there.
@@ -126,6 +122,7 @@ export function LineageDag({
   links,
   onOpenLink,
 }: LineageDagProps): React.ReactElement {
+  const { t } = useTranslation();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const cyRef = useRef<CyCore | null>(null);
   const [hovered, setHovered] = useState(false);
@@ -140,6 +137,9 @@ export function LineageDag({
 
   // `readable`: the canvas's height once the graph is laid out, so it is no taller than the graph.
   const [canvasHeight, setCanvasHeight] = useState<number | string>(height);
+  /** A layout that failed after it started (ELK's rejected answer): thrown while rendering, to
+   * the page's error boundary, as the graph component does -- never a graph left unplaced. */
+  const [failed, setFailed] = useState<Error | null>(null);
   const fitToScreen = () => cyRef.current?.fit(undefined, FIT_PAD);
   const downloadPng = () => {
     const cy = cyRef.current;
@@ -172,6 +172,11 @@ export function LineageDag({
       allColumns,
       lanesAround: lanes,
       relationLabel,
+      reportedWords: {
+        job: t("lineageDag.job"),
+        outside: t("lineageDag.outsideModel"),
+        reported: t("lineageDag.reportedEdge"),
+      },
     });
 
     // A relation is a compound node whose children are its rows (and the "+N unused" footer).
@@ -244,7 +249,8 @@ export function LineageDag({
           id: e.id,
           source: e.source,
           target: e.target,
-          label: edgeText(e),
+          label: edgeText(e, t("lineageDag.reportedEdge")),
+          reported: e.reported ? "yes" : "no",
           command: e.command ? "yes" : "no",
           commandName: e.commandName ?? "",
         },
@@ -474,6 +480,15 @@ export function LineageDag({
             "line-color": "#9c36b5",
             "target-arrow-color": "#9c36b5",
             width: 2,
+            "line-style": "dashed",
+          },
+        },
+        {
+          // REQ-2229: an OpenLineage event reported this edge; the model did not derive it.
+          selector: 'edge[reported = "yes"]',
+          style: {
+            "line-color": REPORTED_EDGE_COLOR,
+            "target-arrow-color": REPORTED_EDGE_COLOR,
             "line-style": "dashed",
           },
         },
@@ -768,8 +783,9 @@ export function LineageDag({
       firstView();
     };
     if (connected.nonempty()) {
+      // ELK lays the relation boxes out in layers (REQ-1665), through Provisa's own adapter.
       const layout = cy.layout({
-        name: "elk",
+        name: PROVISA_ELK,
         eles: connected.union(connected.descendants()).union(cy.edges()),
         fit: false,
         nodeLayoutOptions: (n: NodeSingular) => {
@@ -802,7 +818,7 @@ export function LineageDag({
           "elk.layered.considerModelOrder.strategy": "NODES_AND_EDGES",
         },
       } as CyLayoutOptions);
-      canvas.run(layout, finish);
+      canvas.run(layout, finish, setFailed);
     } else {
       finish();
     }
@@ -830,7 +846,9 @@ export function LineageDag({
       cyRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- onToggleRelation is read through toggleRef; only its presence decides whether hints are wired
-  }, [graph, collapsedRelations, resultLabel, allColumns, lanes, describeColumn, relationLabel]);
+  }, [graph, collapsedRelations, resultLabel, allColumns, lanes, describeColumn, relationLabel, t]);
+
+  if (failed) throw failed;
 
   return (
     <div
@@ -847,7 +865,10 @@ export function LineageDag({
         <div
           style={{ position: "absolute", insetInlineStart: 8, bottom: 8, pointerEvents: "none" }}
         >
-          <LineageLegend native={graph.nodes.some((n) => n.kind === "native")} />
+          <LineageLegend
+            native={graph.nodes.some((n) => n.kind === "native")}
+            reported={graph.edges.some((e) => e.origin === "openlineage")}
+          />
         </div>
       )}
       {stats && (
@@ -925,11 +946,11 @@ export function LineageDag({
           </Tip>
         )}
         {onOpenModal && (
-          <Tip text="Open full view" named>
+          <Tip text="Enlarge" named>
             <ActionIcon
               variant="subtle"
               onClick={onOpenModal}
-              aria-label="Open full view"
+              aria-label="Enlarge"
               data-testid="lineage-open-modal"
             >
               <Expand size={16} />

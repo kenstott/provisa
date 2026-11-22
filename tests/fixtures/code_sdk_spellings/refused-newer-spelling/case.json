@@ -1,0 +1,15 @@
+{
+  "typescript": {
+    "sdk": {
+      "problems": [
+        "the declarations do not type-check: rows: it is branded with @provisa/sdk spelling 2; this server reads up to spelling 1"
+      ]
+    }
+  },
+  "unspelled": {
+    "python": "A Python SDK decorator writes its docstring tag; it carries no spelling brand to be newer.",
+    "typescript/doc": "A JSDoc tag has no spelling; only an SDK brand can be newer than the server.",
+    "rust": "A Rust registration invokes an SDK macro, and code invoking one the SDK does not have does not build; the reader's refusal of a macro it does not read is the refused-unknown-tag case's and tests/integration/test_rust_sdk_reader.py's.",
+    "go": "A Go registration names its SDK function, and code naming one the SDK does not have does not build; the reader's refusal of a newer SDK's function is tests/integration/test_go_sdk_reader.py's."
+  }
+}

@@ -11,6 +11,7 @@
 """Control-plane org/tenant bootstrap: role hardening and schema seeding."""
 
 import re
+import threading
 import zlib
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
@@ -18,6 +19,7 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy.schema import CreateSchema
 
 from provisa.core.environments import org_schema
+from provisa.core.schema_create import create_schema
 from provisa.core.models import BUILT_IN_SOURCE_IDS
 
 if TYPE_CHECKING:
@@ -200,17 +202,58 @@ def _create_table_postgres(sync_conn, table) -> None:
     """CREATE ``table`` in the connection's current schema with every JSON column as JSONB — what
     ``schema.sql`` and the tables' own PostgreSQL DDL declare. Built from a copy, so the shared
     metadata (which the portable backends create from as it is) is not changed."""
+    _jsonb_copies(table.metadata)[table.name].create(sync_conn, checkfirst=True)
+
+
+#: Each metadata's JSONB copy (:func:`_jsonb_copies`), by the metadata and the tables it held.
+_JSONB_COPIES: dict[tuple[Any, tuple[str, ...]], dict[str, Any]] = {}
+_JSONB_COPIES_LOCK = threading.Lock()
+
+
+def _jsonb_copies(metadata) -> dict[str, Any]:
+    """A copy of every table of ``metadata``, each JSON column typed JSONB, made once per process.
+    The whole metadata is copied so a table's foreign keys resolve in the copy. REQ-2006: made
+    again for each table a layout created, it was ~0.1 s of Python per table, four per new org
+    schema, and the environments a sandbox's open lays out side by side waited on each other's."""
     from sqlalchemy import MetaData
+    from sqlalchemy.dialects import postgresql
     from sqlalchemy.dialects.postgresql import JSONB
 
-    scratch = MetaData()
-    # The whole metadata is copied so the table's foreign keys resolve in the copy.
-    copies = {t.name: t.to_metadata(scratch) for t in table.metadata.tables.values()}
-    copy = copies[table.name]
-    for column in copy.columns:
-        if column.type.compile(sync_conn.dialect).upper() == "JSON":
-            column.type = JSONB()
-    copy.create(sync_conn, checkfirst=True)
+    key = (metadata, tuple(metadata.tables))
+    with _JSONB_COPIES_LOCK:
+        copies = _JSONB_COPIES.get(key)
+        if copies is None:
+            scratch = MetaData()
+            copies = {t.name: t.to_metadata(scratch) for t in metadata.tables.values()}
+            dialect = postgresql.dialect()
+            for copy in copies.values():
+                for column in copy.columns:
+                    if column.type.compile(dialect).upper() == "JSON":
+                        column.type = JSONB()
+            _JSONB_COPIES[key] = copies
+    return copies
+
+
+def _live_columns_postgres(sync_conn, schema: str | None) -> dict[str, set[str]]:
+    """Each table's live columns in ``schema`` (the connection's current schema when None), by
+    table name: the columns the inspector reflects for it (attnum > 0, not dropped)."""
+    from sqlalchemy import text
+
+    rows = sync_conn.execute(
+        text(
+            "SELECT c.relname, a.attname FROM pg_catalog.pg_attribute a "
+            "JOIN pg_catalog.pg_class c ON c.oid = a.attrelid "
+            "JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace "
+            "WHERE n.nspname = COALESCE(:schema, current_schema()) "
+            "AND c.relkind IN ('r', 'p', 'v', 'm', 'f') "
+            "AND a.attnum > 0 AND NOT a.attisdropped"
+        ),
+        {"schema": schema},
+    )
+    live: dict[str, set[str]] = {}
+    for table, column in rows:
+        live.setdefault(table, set()).add(column)
+    return live
 
 
 def add_missing_columns(sync_conn, tables, schema: str | None = None) -> None:
@@ -258,6 +301,9 @@ def add_missing_columns(sync_conn, tables, schema: str | None = None) -> None:
         sync_conn.exec_driver_sql(f'SET LOCAL search_path TO "{schema}"')
     inspector = _inspect(sync_conn)
     existing_tables = set(inspector.get_table_names(schema=schema))
+    # REQ-2006: on PostgreSQL every table's live columns in one statement; reflected a table at a
+    # time they were a statement per table, and an org environment's layout reads ~150 of them.
+    held = _live_columns_postgres(sync_conn, schema) if postgres else None
     qualify = (lambda name: f'"{schema}"."{name}"') if schema else (lambda name: f'"{name}"')
     for table in tables:
         if table.name not in existing_tables:
@@ -266,7 +312,11 @@ def add_missing_columns(sync_conn, tables, schema: str | None = None) -> None:
             else:
                 table.create(sync_conn, checkfirst=True)
             continue
-        live = {c["name"] for c in inspector.get_columns(table.name, schema=schema)}
+        live = (
+            held.get(table.name, set())
+            if held is not None
+            else {c["name"] for c in inspector.get_columns(table.name, schema=schema)}
+        )
         for column in table.columns:
             if column.name in live:
                 continue
@@ -340,38 +390,43 @@ async def init_schema(
 
     The control plane is PostgreSQL (REQ-2014): the raw ``schema.sql`` script runs inside an
     ``org_<id>`` schema."""
+    from provisa.core import step_clock
+
     _validate_org_id(org_id)
     schema_name = org_schema(org_id, env, region=region)
-    async with pool.acquire() as conn:
-        # REQ-2185: the reference library's passages are a pgvector column under a vector index,
-        # and schema.sql declares them so; a control plane without pgvector is refused here.
-        from provisa.core import pgvector
+    stepped = f"layout of {schema_name}"
+    with step_clock.step(f"{stepped}: its script"):
+        async with pool.acquire() as conn:
+            # REQ-2185: the reference library's passages are a pgvector column under a vector index,
+            # and schema.sql declares them so; a control plane without pgvector is refused here.
+            from provisa.core import pgvector
 
-        await pgvector.require(conn)
-        # This branch is PostgreSQL-only (non-PG returned above); the advisory lock is taken through
-        # the abstraction so no PG-specific lock SQL appears here.
-        async with conn.advisory_lock(schema_lock_key(schema_name)):
-            await conn.execute_core(CreateSchema(schema_name, if_not_exists=True))
-            await conn.execute_core(
-                CreateSchema(
-                    org_schema(org_id, env, "_mv_cache", region=region), if_not_exists=True
-                )
-            )
-            await conn.execute(f'SET search_path TO "{schema_name}"')
-            # schema_sql is a multi-statement script (DO $$ blocks). Raw asyncpg
-            # runs it natively; the control-plane Database shim auto-detects the
-            # multi-statement case and routes to the raw driver.
-            from provisa.core import model_change
+            await pgvector.require(conn)
+            # This branch is PostgreSQL-only (non-PG returned above); the advisory lock is taken through
+            # the abstraction so no PG-specific lock SQL appears here.
+            async with conn.advisory_lock(schema_lock_key(schema_name)):
+                await conn.execute_core(CreateSchema(schema_name, if_not_exists=True))
+                # The org's view store has creators of its own (an engine landing a view's rows, the
+                # store writer reconciling a view's table) that do not hold this org's lock.
+                await create_schema(conn, org_schema(org_id, env, "_mv_cache", region=region))
+                await conn.execute(f'SET search_path TO "{schema_name}"')
+                # schema_sql is a multi-statement script (DO $$ blocks). Raw asyncpg
+                # runs it natively; the control-plane Database shim auto-detects the
+                # multi-statement case and routes to the raw driver.
+                from provisa.core import model_change
 
-            async with model_change.layout():  # REQ-1524: the layout is not a model change
-                await conn.execute(schema_sql)
+                async with model_change.layout():  # REQ-1524: the layout is not a model change
+                    await conn.execute(schema_sql)
     # Whatever schema.sql's hand-written ADD COLUMN blocks missed, the metadata supplies: a
     # column added to schema_org reaches an org schema created before it (see add_missing_columns).
     engine = getattr(pool, "engine", None)
     if engine is not None:
         from provisa.core import schema_org
 
-        with engine.begin() as sa_conn:
+        with (
+            step_clock.step(f"{stepped}: its columns, roles and stamps"),
+            engine.begin() as sa_conn,
+        ):
             add_missing_columns(sa_conn, schema_org.metadata.sorted_tables, schema_name)
             assert_standard_roles(sa_conn, schema_name)  # REQ-2155
             # REQ-1914: the stamp rows and the triggers that advance them, once every table exists.

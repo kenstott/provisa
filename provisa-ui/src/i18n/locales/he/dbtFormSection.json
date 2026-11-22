@@ -1,0 +1,27 @@
+{
+  "dbtFormSection": {
+    "specLegend": "מקור קובץ ה-manifest",
+    "specLocation": "כתובת URL או מיקום ארטיפקט",
+    "specUpload": "העלאה",
+    "specCloud": "dbt Cloud",
+    "locationLabel": "כתובת URL של ה-manifest או מיקום ארטיפקט",
+    "locationPlaceholder": "https://example.com/manifest.json או s3://bucket/target/manifest.json",
+    "uploadLabel": "קובץ manifest.json",
+    "cloudHostLabel": "כתובת URL של dbt Cloud",
+    "accountLabel": "מזהה חשבון",
+    "jobLabel": "מזהה משימה",
+    "tokenLabel": "אסימון API",
+    "tokenHint": "נשמר עם המקור הזה ומשמש לקריאת ה-manifest ולהרצת משימות.",
+    "commandLineLabel": "הפקודה שמריצה את dbt",
+    "commandLineHint": "מורצת במקום שבו dbt מותקן, לדוגמה dbt --project-dir /srv/project.",
+    "previewButton": "תצוגה מקדימה של ה-manifest",
+    "summary": "{{project}} ({{adapter}}): זמינים {{models}} מודלים ו-{{commands}} פקודות.",
+    "warehouseFound": "{{database}} נקרא דרך המקור {{source}}.",
+    "warehouseMissing": "אף מקור רשום לא קורא את מסד הנתונים {{database}} מסוג {{adapter}}. יש ליצור אחד:",
+    "warehouseId": "מזהה מקור חדש",
+    "warehouseHost": "חשבון או מארח",
+    "warehouseUser": "שם משתמש",
+    "warehouseCredential": "פרטי גישה",
+    "adapterUnknown": "למתאם {{adapter}} אין סוג מקור תואם. יש לרשום תחילה את מחסן הנתונים שלו, ולאחר מכן להוסיף את המקור הזה."
+  }
+}

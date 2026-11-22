@@ -46,6 +46,8 @@ interface Props {
   canPreview: boolean;
   onPreview: () => void;
   previewRows: Record<string, unknown>[];
+  /** Why the last preview shows no rows: it failed, naming why, or the query answered none. */
+  previewProblem?: string | null;
   columns: { name: string }[];
 }
 
@@ -218,6 +220,13 @@ export function QueryTableFields(props: Props) {
             : t("registerTableForm.neo4jPreviewButton")}
         </Button>
       </FormField>
+      {props.previewProblem && (
+        <FormField size="full">
+          <Text size="sm" c="red" data-testid={`register-table-${sourceType}-preview-problem`}>
+            {props.previewProblem}
+          </Text>
+        </FormField>
+      )}
       {props.previewRows.length > 0 && (
         <FormField size="full">
           <QueryPreviewRows

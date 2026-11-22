@@ -403,37 +403,15 @@ def _reset_app_state():
 # a live ProvisaServer with a REAL catalog AND a REAL Postgres source — nothing stubbed.
 # The scan runs the DIRECT pipeline (execute_direct → asyncpg) against a real table.
 
-_PGW_SOURCE_ID = "sales-pg"
-_PGW_SCHEMA = "public"
-_PGW_TABLE = "duckattach_orders_e2e"
-# Rows the client must read back (covers int4/float8/text + a NULL).
-_PGW_ROWS = [
-    (1, 19.98, "us-east"),
-    (2, 49.99, "us-west"),
-    (3, 199.99, "eu-west"),
-    (4, 5.0, None),
-]
-
-_PGW_TABLES = [
-    {
-        "id": 1,
-        "source_id": _PGW_SOURCE_ID,
-        # domain_id drives the catalog SQL schema clients see (pgwire exposes tables under
-        # domain_to_sql_name(domain_id)); it must equal the physical Postgres schema so the
-        # DIRECT-routed, transpiled SQL resolves against the real table.
-        "domain_id": _PGW_SCHEMA,
-        "schema_name": _PGW_SCHEMA,
-        "table_name": _PGW_TABLE,
-        "columns": [
-            {"column_name": "id", "visible_to": ["admin"]},
-            {"column_name": "amount", "visible_to": ["admin"]},
-            {"column_name": "region", "visible_to": ["admin"]},
-        ],
-        "write_ops": ["delete", "insert", "update"],
-        "write_returns_rows": True,
-        "write_refused_forms": [],
-    }
-]
+from tests.pgwire_pg_model import (  # noqa: E402  the model the server below serves
+    ROWS as _PGW_ROWS,
+    SCHEMA as _PGW_SCHEMA,
+    SOURCE_ID as _PGW_SOURCE_ID,
+    TABLE as _PGW_TABLE,
+    build_state as _pgw_build_state,
+    meta_catalog as _pgw_meta_catalog,
+    no_replica_routes as no_replica_routes,  # re-exported: integration tests import it here
+)
 
 
 def _pgw_params() -> dict:
@@ -486,110 +464,6 @@ async def _pgw_drop(asyncpg, p: dict) -> None:
         await conn.close()
 
 
-def no_replica_routes(state):
-    """Give a stand-in app state the replica routes a schema build publishes for a registry with
-    no table on a replica (``ReplicaRoutes()``). The governed pipeline reads them for the
-    operator's floor (``registry_view.operator_floor``), which refuses anything else by name — a
-    bare ``MagicMock`` attribute there would otherwise stand in for real routes."""
-    from provisa.federation.replica_address import ReplicaRoutes
-
-    state.replica_routes = ReplicaRoutes()
-    return state
-
-
-def _pgw_build_state(pool):
-    from unittest.mock import MagicMock
-
-    from provisa.compiler import naming as _naming
-    from tests.helpers import serve_surfaces
-    from provisa.compiler.context import build_context
-    from provisa.compiler.introspect import ColumnMetadata
-    from provisa.compiler.schema_gen import SchemaInput
-    from provisa.federation.engine import build_engine
-    from provisa.federation.runtime import EngineRuntime
-
-    col_types = {
-        1: [
-            ColumnMetadata(column_name="id", data_type="integer", is_nullable=False),
-            ColumnMetadata(column_name="amount", data_type="double", is_nullable=True),
-            ColumnMetadata(column_name="region", data_type="varchar", is_nullable=True),
-        ]
-    }
-    _naming.configure(gql="snake")
-    si = SchemaInput(
-        tables=_PGW_TABLES,
-        relationships=[],
-        column_types=col_types,
-        naming_rules=[],
-        role={
-            "description": "Test role.",
-            "id": "admin",
-            "domain_access": ["*"],
-            "capabilities": ["usage"],
-        },
-        domains=[{"id": _PGW_SCHEMA, "graphql_alias": None}],
-    )
-    ctx = build_context(si)
-
-    state = no_replica_routes(MagicMock())
-    state.security_high = False  # REQ-693: MagicMock auto-creates attrs as truthy; explicit False
-    # REQ-1235: a single-tenant deployment serves one database, "provisa", which the pgwire catalog
-    # names; a bare MagicMock here reads as multi-tenant and the catalog demands a bound org.
-    state.multitenancy = False
-    # A request reads its role's whole surface from `surfaces` (role_surface); `contexts` and
-    # `rls_contexts` are views of it, as in the runtime, and a test assigning one writes it there.
-    state.contexts = {"admin": ctx}
-    state.rls_contexts = {}
-    serve_surfaces(state)
-    state.roles = {
-        "admin": {
-            "description": "Test role.",
-            "id": "admin",
-            "capabilities": ["usage"],
-            "domain_access": ["*"],
-        }
-    }
-    state.schema_build_cache = {
-        "column_types": col_types,
-        "tables": _PGW_TABLES,
-        "domains": [{"id": _PGW_SCHEMA, "graphql_alias": None}],
-    }
-    # Governance serves a role the columns of the registry a server loads (visible_to).
-    state.tables = _PGW_TABLES
-    state.auth_config = {"provider": "none"}  # trust mode: username -> role_id
-    state.auth_middleware_active = False
-    state.masking_rules = {}
-    state.source_types = {_PGW_SOURCE_ID: "postgresql"}
-    state.source_dialects = {_PGW_SOURCE_ID: "postgres"}
-    state.source_pools = pool
-    state.server_limits = {}
-    state.engine_conn = None
-    # The governed pipeline keys its compile/routing caches on the schema identity and reads the
-    # response cache; bare MagicMocks there read as a non-string cache key and as cache HITs.
-    from provisa.compiler.compiled_query_cache import CompiledQueryCache
-
-    state.schema_boot_id = "pgw-itest"
-    state.schema_version = 1
-    state.compiled_query_cache = CompiledQueryCache()
-    state.routing_cache = CompiledQueryCache()
-    from provisa.cache.store import NoopCacheStore
-
-    state.response_cache_store = NoopCacheStore()  # AppState's caching-off store (REQ-1897)
-    # AppState's cache-policy inputs (no per-source/per-table overrides, the deployment default
-    # TTL, no org settings overrides) — a bare MagicMock there reads as a truthy non-int.
-    state.source_cache = {}
-    state.table_cache = {}
-    state.response_cache_default_ttl = 300
-    state.settings_overrides = {}
-    from tests.helpers import stub_materialization_noop
-
-    stub_materialization_noop(state)
-    # Real federation engine — present for catalog probes; DIRECT execution goes through
-    # execute_native → execute_direct on the real source pool, not the engine.
-    state.federation_engine = EngineRuntime(build_engine("duckdb"), state)
-    return state
-
-
 @pytest.fixture()
 def pgwire_pg_backend(docker_postgres):
     """Live ProvisaServer with a REAL catalog AND a REAL Postgres source — nothing stubbed.
@@ -632,7 +506,31 @@ def pgwire_pg_backend(docker_postgres):
         loop,
     ).result(timeout=30)
 
-    state = _pgw_build_state(pool)
+    # REQ-883, REQ-2190: DuckDB's postgres extension opens its catalog scan with catalog queries
+    # (pg_namespace, pg_class, pg_attribute, pg_type, pg_index, pg_constraint). Each is addressed to
+    # the meta domain's catalog views, governed as a read of them, and read off state.model_db on
+    # the provisa-admin terminal. The model registers those views as meta tables, as the product's
+    # seed does; the audit-only tenant_db has no meta.* views, so a real control plane serves them.
+    from provisa.core.database import Database
+    from tests.pg_control_plane import fresh_control_plane
+    from tests.unit.pgwire.catalog_plane import (
+        grant_catalog_client,
+        plane_engine,
+        write_model as _write_catalog_model,
+    )
+
+    _cp = fresh_control_plane()
+    _cp_engine = plane_engine(_cp)
+    # The admin terminal runs the client's catalog SQL as the client role (SET LOCAL ROLE), which
+    # reads only what the seed grants it; ungranted, every catalog read is "permission denied for
+    # schema org_default".
+    grant_catalog_client(_cp_engine)
+    model_db = Database(_cp_engine, name="model")
+    meta_tables, meta_col_types = _pgw_meta_catalog(model_db, loop)
+
+    state = _pgw_build_state(pool, meta_tables, meta_col_types)
+    _write_catalog_model(_cp_engine, "admin", state)
+    state.model_db = model_db
 
     # REQ-074/REQ-1386: the executed statement writes an audit row, and that row lands in the org's
     # tenant schema — so the state serving a real query carries a real tenant database. A throwaway
@@ -640,7 +538,7 @@ def pgwire_pg_backend(docker_postgres):
     import uuid as _uuid
 
     from provisa.audit.query_log import init_audit_schema
-    from provisa.core.database import Database, create_engine_from_url
+    from provisa.core.database import create_engine_from_url
 
     audit_org = f"pgw{_uuid.uuid4().hex[:8]}"
     audit_engine = create_engine_from_url(
@@ -654,7 +552,6 @@ def pgwire_pg_backend(docker_postgres):
     )
     state.tenant_db = tenant_db
     state.record_db = state.tenant_db
-    state.model_db = state.tenant_db
     # The audit row's tenant_id is `current_org.get() or state.org_id`, and nothing binds the
     # ContextVar on this transport — so the org id has to be a real string here, or asyncpg is
     # handed a MagicMock for a VARCHAR parameter. It is the org whose schema the row lands in.
@@ -691,6 +588,7 @@ def pgwire_pg_backend(docker_postgres):
             }
         finally:
             server.shutdown()
+            _cp.close()
 
             async def _drop_audit() -> None:
                 async with tenant_db.acquire() as conn:

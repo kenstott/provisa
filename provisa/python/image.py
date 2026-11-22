@@ -86,7 +86,8 @@ def layers(
     layers = [
         runtime_layer(target, "python", f"{ROOT}/runtime"),
         runtime_layer(target, "pyarrow", f"{ROOT}/hostlib"),
-        files(HOST.parent, f"{ROOT}/host", ["host.py"]),
+        # REQ-2225: reader.py beside the host, for a script connector's tags read at join.
+        files(HOST.parent, f"{ROOT}/host", ["host.py", "reader.py"]),
         # REQ-2106: Provisa's services module, beside the host as it is on the server.
         oci.tree(HOST.parent / "services", f"{ROOT}/host/services"),
         venv,

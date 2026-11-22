@@ -103,7 +103,7 @@ function Native-Env([string]$ControlPlaneUrl) {
   # user, so the governed MCP role is admin. Override any by exporting the env before launch.
   if (-not $env:PROVISA_MCP_PORT) { $e['PROVISA_MCP_PORT'] = '8009' }
   if (-not $env:PROVISA_MCP_HOST) { $e['PROVISA_MCP_HOST'] = '127.0.0.1' }
-  if (-not $env:PROVISA_MCP_ROLE) { $e['PROVISA_MCP_ROLE'] = 'admin' }
+  if (-not $env:PROVISA_MCP_ROLE) { $e['PROVISA_MCP_ROLE'] = 'org_admin' }
   # REQ-294: what the stage command filled at first launch (provisa.runtime_deps.stage_assets).
   $e['PROVISA_DUCKDB_EXT_DIR']     = Join-Path $ProvisaHome 'duckdb-ext'
   $e['PROVISA_RUNTIME_DEPS_CACHE'] = Join-Path $ProvisaHome 'runtime-deps'

@@ -1,0 +1,23 @@
+{
+  "dbtPublicProducts": {
+    "modeLabel": "注册内容",
+    "modeTables": "选择表",
+    "modeProducts": "将公开模型作为数据产品",
+    "intro_one": "每个强制执行契约的公开模型都注册为表，并创建 {{count}} 个数据产品草稿，供数据管家审核。",
+    "intro_other": "每个强制执行契约的公开模型都注册为表，并创建 {{count}} 个数据产品草稿，供数据管家审核。",
+    "none": "此清单中没有强制执行契约的公开模型。",
+    "groupProduct": "数据产品 {{id}}（dbt 组）",
+    "projectProduct": "数据产品 {{id}}（整个项目）",
+    "exists": "名为 {{id}} 的数据产品已存在。请重命名或删除它，以注册这些模型。",
+    "owner": "所有者：{{owner}}",
+    "ownerRole": "所有者角色 {{role}}",
+    "tests": "测试：{{tests}}",
+    "version": "版本 {{version}}",
+    "columns": "承诺的列：{{columns}}",
+    "required": "必填",
+    "alreadyRegistered": "已注册",
+    "ungrouped": "不属于任何组，因此不在此注册：{{models}}。请改为将其作为表选择。",
+    "confirm_one": "注册并创建 {{count}} 个产品草稿",
+    "confirm_other": "注册并创建 {{count}} 个产品草稿"
+  }
+}

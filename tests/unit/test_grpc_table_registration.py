@@ -172,6 +172,7 @@ def _state(conn: _Conn, monkeypatch) -> None:
             "g": {"namespace": "ns", "queries": [_query("ListOrders"), _query("GetOrder")]}
         },
         graphql_remote_sources={},
+        org_registry={},
     )
     monkeypatch.setattr("provisa.api.app.state", state)
 

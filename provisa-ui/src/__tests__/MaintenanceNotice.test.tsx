@@ -18,6 +18,7 @@ import { render, screen, waitFor, fireEvent } from "../test-utils/render";
 import { MaintenanceBanner } from "../components/MaintenanceBanner";
 import { MaintenanceTab } from "../components/admin/MaintenanceTab";
 import type { MaintenanceNotice } from "../api/maintenance";
+import { shutdownAllServices } from "../api/lifecycle";
 
 vi.mock("../api/maintenance", () => ({
   fetchMaintenanceNotice: vi.fn(),
@@ -36,6 +37,8 @@ vi.mock("../api/admin", async (importOriginal) => ({
     naming: { use_domains: true, default_domain: "" },
   }),
 }));
+
+vi.mock("../api/lifecycle", () => ({ shutdownAllServices: vi.fn() }));
 
 import { fetchMaintenanceNotice, setMaintenanceNotice } from "../api/maintenance";
 const mockFetch = vi.mocked(fetchMaintenanceNotice);
@@ -149,5 +152,31 @@ describe("MaintenanceTab", () => {
     fireEvent.click(await screen.findByTestId("maintenance-on"));
     const error = await screen.findByTestId("maintenance-error");
     expect(error.textContent).toContain("platform_settings capability required");
+  });
+
+  it("asks before stopping all services, and stops only on the dialog's Stop", async () => {
+    vi.mocked(shutdownAllServices).mockReset();
+    vi.mocked(shutdownAllServices).mockResolvedValue(undefined as never);
+    mockFetch.mockResolvedValue(notice({ active: false, message: null, started_at: null }));
+    render(<MaintenanceTab />);
+    fireEvent.click(await screen.findByTestId("stop-all-services"));
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog.textContent).toContain("backend and the UI dev server");
+    expect(shutdownAllServices).not.toHaveBeenCalled();
+    const confirm = await screen.findByTestId("stop-all-services-dialog-confirm");
+    expect(confirm.textContent).toBe("Stop");
+    fireEvent.click(confirm);
+    await waitFor(() => expect(shutdownAllServices).toHaveBeenCalledTimes(1));
+  });
+
+  it("sends nothing when the stop dialog is cancelled", async () => {
+    vi.mocked(shutdownAllServices).mockReset();
+    mockFetch.mockResolvedValue(notice({ active: false, message: null, started_at: null }));
+    render(<MaintenanceTab />);
+    fireEvent.click(await screen.findByTestId("stop-all-services"));
+    await screen.findByRole("dialog");
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(shutdownAllServices).not.toHaveBeenCalled();
   });
 });

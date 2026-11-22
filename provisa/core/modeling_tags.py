@@ -28,6 +28,19 @@ from collections.abc import Iterable, Sequence
 
 #: What a user tag id and a tag parameter value may be made of (REQ-1415).
 TAG_SLUG_CHARSET = "a-z, 0-9, _ and -"
+
+# REQ-2238: the tag name the landing reconcile sets on a column to its grounded term
+# (``PROVISA_GOVERNANCE.TERM``). A steward tag of this name would be overwritten by the term value,
+# so the name is reserved. The reconcile and the tag definition validation both read it here.
+RESERVED_TERM_TAG = "term"
+
+
+def is_reserved_tag_name(name: str) -> bool:
+    """Whether ``name`` is the reserved term tag; compared case-insensitively, as Snowflake
+    compares tag names."""
+    return name.casefold() == RESERVED_TERM_TAG
+
+
 _TAG_SLUG = re.compile(r"^[a-z0-9_-]+$")
 
 TagsByTable = dict[int, list[str]]

@@ -22,6 +22,11 @@ const upsertRlsRuleSpy = vi.fn(async (_input: Record<string, unknown>) => ({
 }));
 const deleteRlsRuleSpy = vi.fn(async () => ({ success: true, message: "" }));
 
+vi.mock("../../hooks/useCapability", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../hooks/useCapability")>()),
+  // REQ-1327: the roles page acts for a holder of the rights its actions ask.
+  useCapability: () => true,
+}));
 vi.mock("../../context/DomainFilterContext", () => ({
   useDomainFilter: () => ({
     setDomains: vi.fn(),
@@ -157,7 +162,7 @@ describe("SecurityPage — RLS rules on actions (REQ-1679)", () => {
     expect(dialog.textContent).toContain('Role "analyst" is no longer limited by this rule.');
     expect(deleteRlsRuleSpy).not.toHaveBeenCalled();
 
-    fireEvent.click(within(dialog).getByRole("button", { name: "Confirm" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
     await waitFor(() =>
       expect(deleteRlsRuleSpy).toHaveBeenCalledWith("analyst", null, null, "customer_lookup", null, 9),
     );

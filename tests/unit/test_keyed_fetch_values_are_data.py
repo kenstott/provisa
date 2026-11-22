@@ -54,14 +54,24 @@ class _ChdbDriver:
 def orders(monkeypatch):
     from chdb import session
 
+    # chdb's in-memory engine is one per process and lasts while any session on it is open, so
+    # the table is dropped here: closing this session alone does not remove it.
     s = session.Session()
-    s.query("CREATE TABLE orders (id String, v String) ENGINE = Memory")
-    for key, value in ROWS:
-        s.query("INSERT INTO orders VALUES ({k:String}, {v:String})", params={"k": key, "v": value})
-    _ChdbDriver.session = s
-    monkeypatch.setattr("provisa.executor.drivers.clickhouse.ClickHouseDriver", _ChdbDriver)
-    yield
-    s.close()
+    try:
+        s.query("CREATE TABLE orders (id String, v String) ENGINE = Memory")
+        try:
+            for key, value in ROWS:
+                s.query(
+                    "INSERT INTO orders VALUES ({k:String}, {v:String})",
+                    params={"k": key, "v": value},
+                )
+            monkeypatch.setattr(_ChdbDriver, "session", s)
+            monkeypatch.setattr("provisa.executor.drivers.clickhouse.ClickHouseDriver", _ChdbDriver)
+            yield
+        finally:
+            s.query("DROP TABLE orders")
+    finally:
+        s.close()
 
 
 def _fetch(keys):

@@ -35,6 +35,8 @@ from pathlib import Path
 import pytest
 import yaml
 
+from tests.pyodide_downloads import build_context_args
+
 pytestmark = [pytest.mark.integration]
 
 _REPO = Path(__file__).resolve().parents[2]
@@ -51,7 +53,18 @@ def _docker(*args: str, timeout: int = 900) -> subprocess.CompletedProcess:
 def image() -> str:
     """The API image, built from the repository (Dockerfile.dev: the same application, with no
     pre-built wheel set needed)."""
-    built = _docker("build", "-q", "-f", "Dockerfile.dev", "-t", _IMAGE, str(_REPO), timeout=3600)
+    built = _docker(
+        "build",
+        "-q",
+        "-f",
+        "Dockerfile.dev",
+        # Pyodide from the directory already downloaded into, not from its CDN mid-build.
+        *build_context_args(),
+        "-t",
+        _IMAGE,
+        str(_REPO),
+        timeout=3600,
+    )
     assert built.returncode == 0, built.stderr[-3000:]
     return _IMAGE
 

@@ -6,7 +6,7 @@
     "fitToScreen": "画面に合わせる",
     "switchToHierarchy": "階層レイアウトに切り替え",
     "switchToForce": "フォースレイアウトに切り替え",
-    "nudgeLayout": "レイアウトを微調整 — 選択したノード（未選択の場合はすべて）を微調整します。長押しで繰り返し実行",
+    "nudgeLayout": "選択したノードを、何も選択していなければすべてのノードを少し動かします。押し続けると繰り返し実行します。",
     "edgeLength": "エッジの長さ",
     "edgeLengthValue": "{{value}}px"
   }

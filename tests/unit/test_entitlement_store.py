@@ -112,12 +112,34 @@ async def test_changing_the_domains_rewrites_the_defaults(conn):
 
 
 async def test_a_plain_default_is_the_role_itself():
-    from provisa.entitlements.runtime import _role_defaults
+    from provisa.entitlements.runtime import role_defaults
 
-    role = {"domain_access": ["sales"], "default_entitlements": {"domains": ["sales"]}}
-    assert _role_defaults(role) == {}
-    deny = {"domain_access": ["sales"], "default_entitlements": {"domains": []}}
-    assert _role_defaults(deny) == {"domains": []}
+    role = {
+        "domain_access": ["sales"],
+        "own_domain_access": ["sales"],
+        "default_entitlements": {"domains": ["sales"]},
+    }
+    assert role_defaults(role) == {}
+    deny = {
+        "domain_access": ["sales"],
+        "own_domain_access": ["sales"],
+        "default_entitlements": {"domains": []},
+    }
+    assert role_defaults(deny) == {"domains": []}
+
+
+async def test_a_plain_default_is_the_role_itself_after_the_domain_tree_is_folded_in():
+    """The build's domain_access is the flattened one (the domain tree's subtree, the system
+    domains its capabilities reach); a default naming the role's own stored domains is still the
+    role itself, and narrows none of them away."""
+    from provisa.entitlements.runtime import role_defaults
+
+    role = {
+        "domain_access": ["meta", "sales", "sales.east"],
+        "own_domain_access": ["sales"],
+        "default_entitlements": {"domains": ["sales"]},
+    }
+    assert role_defaults(role) == {}
 
 
 async def test_created_by_is_set_on_insert_only(conn):

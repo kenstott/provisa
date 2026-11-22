@@ -25,7 +25,13 @@ import {
 import { SubnavExtraProvider } from "./context/SubnavExtraContext";
 import { NavBar } from "./components/NavBar";
 import { AdminRail } from "./components/AdminRail";
-import { NAV_GROUPS, entryItem, sandboxReadable } from "./components/navGroups";
+import {
+  EVERY_MEMBER,
+  NAV_GROUPS,
+  entryItem,
+  landingPath,
+  sandboxReadable,
+} from "./components/navGroups";
 import { CapabilityGate } from "./components/CapabilityGate";
 import { RegionReadableGate } from "./components/admin/RegionReadableGate";
 import { SandboxReadableGate } from "./components/admin/SandboxReadableGate";
@@ -82,6 +88,29 @@ const ViewsPage = lazyPage(() =>
 );
 const MetricsPage = lazyPage(() =>
   import("./pages/MetricsPage").then((m) => ({ default: m.MetricsPage })),
+);
+const LibraryPage = lazyPage(() =>
+  import("./pages/library/LibraryPage").then((m) => ({ default: m.LibraryPage })),
+);
+const GlossaryPage = lazyPage(() =>
+  import("./pages/context/GlossaryPage").then((m) => ({ default: m.GlossaryPage })),
+);
+const OntologyPage = lazyPage(() =>
+  import("./pages/context/OntologyPage").then((m) => ({ default: m.OntologyPage })),
+);
+const ContextSyncPage = lazyPage(() =>
+  import("./pages/context/ContextSyncPage").then((m) => ({ default: m.ContextSyncPage })),
+);
+const ContextMetricsPage = lazyPage(() =>
+  import("./pages/context/ContextMetricsPage").then((m) => ({ default: m.ContextMetricsPage })),
+);
+const ContextTagsPage = lazyPage(() =>
+  import("./pages/context/ContextTagsPage").then((m) => ({ default: m.ContextTagsPage })),
+);
+const ContextClassificationPage = lazyPage(() =>
+  import("./pages/context/ContextClassificationPage").then((m) => ({
+    default: m.ContextClassificationPage,
+  })),
 );
 const DataProductsPage = lazyPage(() =>
   import("./pages/DataProductsPage").then((m) => ({ default: m.DataProductsPage })),
@@ -150,6 +179,18 @@ function AdminEntry() {
   const target = group ? entryItem(group, capabilities, billing) : undefined;
   if (!target) return <NotAuthorized />;
   return <Navigate to={target.to} replace />;
+}
+
+/**
+ * REQ-1327: `/` opens the first navigation page the acting role holds the right for, in the order
+ * the bar draws them and chosen as AdminEntry chooses (entryItem). A fixed redirect to /query
+ * needed `query_development` and landed every role without it on NotAuthorized.
+ */
+export function HomeEntry() {
+  const { capabilities, loading, billing } = useAuth();
+  // REQ-1430: rights still arriving are not a denial; resolving now would pick the wrong page.
+  if (loading) return <CredentialCheck />;
+  return <Navigate to={landingPath(capabilities, billing)} replace />;
 }
 
 /** Redirects to /login when auth is enabled and no token is present. */
@@ -313,9 +354,6 @@ function App() {
                     engine cluster (REQ-1465) fails queries everywhere, so the notice cannot be
                     the property of any one page. */}
                                 <MaintenanceBanner />
-                                {/* Persistent "Unregistered" indicator, distinct from REQ-1137's post-trial
-                    nag: visible from day one whenever unlicensed, never gates anything. */}
-                                <LicenseBadge />
                                 <NavBar />
                                 {/* REQ-1559: the admin rail stands beside the page rather than above it, so
                     the row is the shell for both. It renders nothing off an admin route.
@@ -327,10 +365,7 @@ function App() {
                                     <PageErrorBoundary>
                                       <Suspense fallback={<PageLoading />}>
                                         <Routes>
-                                          <Route
-                                            path="/"
-                                            element={<Navigate to="/query" replace />}
-                                          />
+                                          <Route path="/" element={<HomeEntry />} />
                                           <Route
                                             path="/setup"
                                             element={<Navigate to="/" replace />}
@@ -390,6 +425,7 @@ function App() {
                                             element={
                                               <CapabilityGate
                                                 capability="access_config"
+                                                orCapability="user_management"
                                                 fallback={<NotAuthorized />}
                                               >
                                                 <SecurityRolesPage />
@@ -557,10 +593,92 @@ function App() {
                                             path="/views"
                                             element={
                                               <CapabilityGate
-                                                capability="table_registration"
+                                                capability="create_view"
                                                 fallback={<NotAuthorized />}
                                               >
                                                 <ViewsPage />
+                                              </CapabilityGate>
+                                            }
+                                          />
+                                          {/* REQ-2259: the read-only Glossary, approved terms only. */}
+                                          <Route
+                                            path="/context/glossary"
+                                            element={
+                                              <CapabilityGate
+                                                capability="glossary_read"
+                                                fallback={<NotAuthorized />}
+                                              >
+                                                <GlossaryPage />
+                                              </CapabilityGate>
+                                            }
+                                          />
+                                          {/* REQ-2259, REQ-1590: the glossary has its own read right; curation inside asks glossary_rw. */}
+                                          <Route
+                                            path="/context/ontology"
+                                            element={
+                                              <CapabilityGate
+                                                capability="glossary_read"
+                                                fallback={<NotAuthorized />}
+                                              >
+                                                <OntologyPage />
+                                              </CapabilityGate>
+                                            }
+                                          />
+                                          {/* REQ-2259: Metrics, Tags and Classification, read-only; editing stays where it is. */}
+                                          <Route
+                                            path="/context/metrics"
+                                            element={
+                                              <CapabilityGate
+                                                capability="glossary_read"
+                                                fallback={<NotAuthorized />}
+                                              >
+                                                <ContextMetricsPage />
+                                              </CapabilityGate>
+                                            }
+                                          />
+                                          <Route
+                                            path="/context/tags"
+                                            element={
+                                              <CapabilityGate
+                                                capability="glossary_read"
+                                                fallback={<NotAuthorized />}
+                                              >
+                                                <ContextTagsPage />
+                                              </CapabilityGate>
+                                            }
+                                          />
+                                          <Route
+                                            path="/context/classification"
+                                            element={
+                                              <CapabilityGate
+                                                capability="glossary_read"
+                                                fallback={<NotAuthorized />}
+                                              >
+                                                <ContextClassificationPage />
+                                              </CapabilityGate>
+                                            }
+                                          />
+                                          {/* REQ-2259, REQ-2185: Documents is the reference library. */}
+                                          <Route
+                                            path="/context/documents"
+                                            element={
+                                              <CapabilityGate
+                                                capability="glossary_read"
+                                                fallback={<NotAuthorized />}
+                                              >
+                                                <LibraryPage />
+                                              </CapabilityGate>
+                                            }
+                                          />
+                                          {/* REQ-2259, REQ-2247: moved out of Admin, rights unchanged. */}
+                                          <Route
+                                            path="/context/sync"
+                                            element={
+                                              <CapabilityGate
+                                                capability="org_settings"
+                                                fallback={<NotAuthorized />}
+                                              >
+                                                <ContextSyncPage />
                                               </CapabilityGate>
                                             }
                                           />
@@ -568,7 +686,7 @@ function App() {
                                             path="/metrics"
                                             element={
                                               <CapabilityGate
-                                                capability="table_registration"
+                                                capability="create_view"
                                                 fallback={<NotAuthorized />}
                                               >
                                                 <MetricsPage />
@@ -596,6 +714,7 @@ function App() {
                                               // carries (rights.py PLATFORM_BYPASS_CAPABILITIES).
                                               <CapabilityGate
                                                 capability="table_registration"
+                                                orCapability="command_execution"
                                                 fallback={<NotAuthorized />}
                                               >
                                                 <CommandsPage />
@@ -621,12 +740,12 @@ function App() {
                                           />
 
                                           {/* REQ-1327: every member sees the requests it made and decides those whose
-                                    own right it holds, so the page asks `usage`, which every role carries. */}
+                                    own right it holds; the server's list asks no capability, so neither does the page. */}
                                           <Route
                                             path="/admin/requests"
                                             element={
                                               <CapabilityGate
-                                                capability="usage"
+                                                capability={EVERY_MEMBER}
                                                 fallback={<NotAuthorized />}
                                               >
                                                 <RequestsPage />
@@ -652,10 +771,9 @@ function App() {
                                               ["/admin/overview", "observability"],
                                               ["/admin/domains", "org_settings"],
                                               ["/admin/secrets", "org_settings"], // REQ-1560: the org vault
-                                              // REQ-1560: a person's own vault is not a grant — `usage` is the
-                                              // right every seeded role carries, so every member reaches it.
-                                              ["/admin/my-secrets", "usage"],
-                                              ["/admin/cache", "org_settings"],
+                                              // REQ-1560: a person's own vault is not a grant; the server's
+                                              // personal vault asks no capability, so every member reaches it.
+                                              ["/admin/my-secrets", EVERY_MEMBER],
                                               ["/admin/scheduled-tasks", "org_settings"],
                                               ["/admin/org-engine", "org_settings"], // REQ-1412
                                               ["/admin/encryption", "platform_settings"],
@@ -673,15 +791,8 @@ function App() {
                                               ["/admin/ai-models", "org_settings"],
                                               ["/admin/package-registries", "org_settings"], // REQ-1984
                                               ["/admin/container-registries", "org_settings"], // REQ-2098
-                                              ["/admin/catalogs", "org_settings"], // REQ-2122
-                                              ["/admin/reference-library", "glossary_rw"], // REQ-2185, REQ-1327
-                                              ["/admin/metadata-export", "org_settings"],
                                               ["/admin/classification-kinds", "sensitive_data"], // REQ-2147, REQ-1327
                                               ["/admin/reports", "observability"], // REQ-1386
-                                              // REQ-1590: the glossary has its own read right. Reading a term
-                                              // is not administering the org, so an analyst opens it; the
-                                              // curation controls inside are gated on `glossary_rw`.
-                                              ["/admin/ontology", "glossary_read"], // REQ-1387
                                               ["/admin/security", "platform_settings"],
                                               ["/admin/maintenance", "platform_settings"], // REQ-1466
                                               ["/admin/deployment-settings", "platform_settings"], // REQ-1913
@@ -694,10 +805,13 @@ function App() {
                                               key={path}
                                               path={path}
                                               element={
-                                                sandboxReadable(path) ? (
+                                                sandboxReadable(path) && capability !== null ? (
                                                   // REQ-1922: a demo sandbox reads it.
                                                   <SandboxReadableGate
-                                                    {...routeRequirement(capability)}
+                                                    capability={capability}
+                                                    andCapability={
+                                                      routeRequirement(capability).andCapability
+                                                    }
                                                     fallback={<NotAuthorized />}
                                                   >
                                                     <AdminPage />
@@ -776,16 +890,32 @@ function App() {
                                               </CapabilityGate>
                                             }
                                           />
+                                          {/* REQ-1327: the org's cache settings are org_settings, the
+                                    operations on its materialized views table_registration. Each
+                                    tab shows only to a holder of its own right. */}
+                                          <Route
+                                            path="/admin/cache"
+                                            element={
+                                              <CapabilityGate
+                                                capability="org_settings"
+                                                orCapability="table_registration"
+                                                fallback={<NotAuthorized />}
+                                              >
+                                                <AdminPage />
+                                              </CapabilityGate>
+                                            }
+                                          />
                                           {/* REQ-1576, REQ-1923: the mail Provisa sends is the platform's
-                                    (platform_settings); the mail platforms sources sign in to are
-                                    the organisation's (org_settings). Either opens the page; each
-                                    half shows only to a holder of its own right. */}
+                                    (the deployment check, platform_settings and cross_org); the
+                                    mail platforms sources sign in to are the organisation's
+                                    (org_settings). Either opens the page; each half shows only to a
+                                    holder of its own right. */}
                                           <Route
                                             path="/admin/email"
                                             element={
                                               <CapabilityGate
-                                                capability="platform_settings"
-                                                orCapability="org_settings"
+                                                capability="org_settings"
+                                                orAllOf={["platform_settings", "cross_org"]}
                                                 fallback={<NotAuthorized />}
                                               >
                                                 <AdminPage />
@@ -801,6 +931,10 @@ function App() {
                                   </main>
                                   <ChatPanel />
                                 </div>
+                                {/* Persistent "Unregistered" indicator, distinct from REQ-1137's post-trial
+                    nag: visible from day one whenever unlicensed, never gates anything. A row of
+                    the shell below the page, so no page's content can sit under it. */}
+                                <LicenseBadge />
                               </SubnavExtraProvider>
                             </TourProvider>
                           </PollyProvider>

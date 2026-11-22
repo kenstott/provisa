@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
@@ -27,7 +27,7 @@ import {
 } from "@mantine/core";
 import { usePurgeCache, useTables } from "../../hooks/useAdminQueries";
 import { useAuth } from "../../context/AuthContext";
-import { hasCapability } from "../../lib/capabilities";
+import { cacheTabsFor, type CacheTabKey } from "./cacheTabs";
 import { VersionLogSettings } from "./VersionLogSettings";
 import {
   useCacheStats,
@@ -39,14 +39,8 @@ import {
   useRefreshMV,
   useToggleMV,
 } from "../../hooks/useAdminOpsQueries";
-import {
-  HotCacheStoreSettingsPanel,
-  HotTablesSettingsPanel,
-  MaterializedSettingsPanel,
-  ResponseCacheSettingsPanel,
-} from "./CacheStorageTab";
+import { HotTablesSettingsPanel, ResponseCacheSettingsPanel } from "./CacheStorageTab";
 import { RedirectSettingsCard } from "./settingsCards";
-import { fetchSettings } from "../../api/admin";
 import { FilterInput } from "./FilterInput";
 import { useRegionChoices } from "../../hooks/useRegionQueries";
 import { useRegionSelection } from "../../hooks/useRegionSelection";
@@ -76,11 +70,8 @@ function fmtBytes(n: number | null, unknown: string): string {
 
 // REQ-1349: "redirect" sits here because a redirected result IS a cached result handed back as a
 // URL — the org setting that governs it belongs beside the response cache it is cut from, not on
-// the Admin overview. The deployment-wide store settings that used to be one "Setup" tab are now a
-// Settings panel on the tab of the cache type each one configures.
-type TabKey = "response" | "hot" | "materialized" | "redirect";
-
-const TAB_KEYS: TabKey[] = ["response", "hot", "materialized", "redirect"];
+// the Admin overview. REQ-1327: the deployment's store settings are on the Platform page; which
+// tabs a caller is offered is cacheTabsFor's.
 
 const MV_STATUS_COLOR: Record<string, string> = {
   fresh: "green",
@@ -104,31 +95,31 @@ function StatCard({ value, label }: { value: string | number; label: string }) {
 
 export function CacheManager() {
   const { t } = useTranslation();
-  const [tab, setTab] = useState<TabKey>("response");
-  const [platform, setPlatform] = useState(false);
-  useEffect(() => {
-    fetchSettings().then((s) => setPlatform(Boolean(s.features?.deployment_settings)));
-  }, []);
+  const { capabilities, demonstrated } = useAuth();
+  const tabs = cacheTabsFor(capabilities, demonstrated);
+  const [chosen, setChosen] = useState<CacheTabKey | null>(null);
+  // A role switch can take the chosen tab away.
+  const tab = chosen !== null && tabs.includes(chosen) ? chosen : tabs[0];
   return (
     <div>
-      <Tabs value={tab} onChange={(v) => setTab((v as TabKey) ?? "response")} mb="md">
+      <Tabs value={tab} onChange={(v) => setChosen(v as CacheTabKey)} mb="md">
         <Tabs.List>
-          {TAB_KEYS.map((k) => (
+          {tabs.map((k) => (
             <Tabs.Tab key={k} value={k} data-testid={`cache-tab-${k}`}>
               {t(`cacheManager.tabs.${k}`)}
             </Tabs.Tab>
           ))}
         </Tabs.List>
       </Tabs>
-      {tab === "response" && <ResponseCacheTab platform={platform} />}
+      {tab === "response" && <ResponseCacheTab />}
       {tab === "hot" && <HotTablesTab />}
-      {tab === "materialized" && <MaterializedStoreTab platform={platform} />}
+      {tab === "materialized" && <MaterializedStoreTab />}
       {tab === "redirect" && <RedirectSettingsCard />}
     </div>
   );
 }
 
-function ResponseCacheTab({ platform }: { platform: boolean }) {
+function ResponseCacheTab() {
   const { t } = useTranslation();
   const unknown = t("cacheManager.response.unknown");
   const { cacheStats: stats, refetch: refetchStats } = useCacheStats();
@@ -235,7 +226,6 @@ function ResponseCacheTab({ platform }: { platform: boolean }) {
       </SimpleGrid>
 
       <ResponseCacheSettingsPanel />
-      {platform && <HotCacheStoreSettingsPanel />}
 
       {tables.length > 0 && (
         <Stack gap="sm">
@@ -436,7 +426,7 @@ export function HotTablesTab() {
   );
 }
 
-export function MaterializedStoreTab({ platform }: { platform: boolean }) {
+export function MaterializedStoreTab() {
   const { t } = useTranslation();
   const unknown = t("cacheManager.materialized.unknown");
   const navigate = useNavigate();
@@ -444,10 +434,6 @@ export function MaterializedStoreTab({ platform }: { platform: boolean }) {
   const { mvList } = useMVList();
   const { refreshMV } = useRefreshMV();
   const { toggleMV } = useToggleMV();
-  // The refresh and enable mutations ask table_registration, not the right this page opens on
-  // (org_settings): without it the buttons are not shown rather than answering a refusal.
-  const { capabilities } = useAuth();
-  const canOperate = hasCapability(capabilities, "table_registration");
   const [refreshing, setRefreshing] = useState<string | null>(null);
   const [mvPage, setMvPage] = useState(0);
 
@@ -592,52 +578,48 @@ export function MaterializedStoreTab({ platform }: { platform: boolean }) {
                 </Table.Td>
                 <ListActions>
                   <Group gap={4} wrap="nowrap">
-                    {canOperate && (
-                      <>
-                        <Tip
-                          text={
-                            refreshing === mv.id
-                              ? t("cacheManager.materialized.refreshing")
-                              : t("cacheManager.materialized.refresh")
-                          }
-                          named
+                    <Tip
+                      text={
+                        refreshing === mv.id
+                          ? t("cacheManager.materialized.refreshing")
+                          : t("cacheManager.materialized.refresh")
+                      }
+                      named
+                    >
+                      <ActionIcon
+                        variant="subtle"
+                        onClick={() => handleRefresh(mv.id)}
+                        disabled={refreshing === mv.id}
+                        data-testid={`mv-refresh-btn-${mv.id}`}
+                      >
+                        <RefreshCw size={16} />
+                      </ActionIcon>
+                    </Tip>
+                    {mv.versionLogOf ? (
+                      // A version log is kept as its table declares: here only its capture
+                      // settings, and a full capture, which records what the table deleted.
+                      <VersionLogSettings
+                        log={mv}
+                        capturing={refreshing === mv.id}
+                        onFullCapture={() => handleRefresh(mv.id, true)}
+                      />
+                    ) : (
+                      <Tip
+                        text={
+                          mv.enabled
+                            ? t("cacheManager.materialized.disable")
+                            : t("cacheManager.materialized.enable")
+                        }
+                        named
+                      >
+                        <ActionIcon
+                          variant="subtle"
+                          onClick={() => toggleMV(mv.id, !mv.enabled)}
+                          data-testid={`mv-toggle-btn-${mv.id}`}
                         >
-                          <ActionIcon
-                            variant="subtle"
-                            onClick={() => handleRefresh(mv.id)}
-                            disabled={refreshing === mv.id}
-                            data-testid={`mv-refresh-btn-${mv.id}`}
-                          >
-                            <RefreshCw size={16} />
-                          </ActionIcon>
-                        </Tip>
-                        {mv.versionLogOf ? (
-                          // A version log is kept as its table declares: here only its capture
-                          // settings, and a full capture, which records what the table deleted.
-                          <VersionLogSettings
-                            log={mv}
-                            capturing={refreshing === mv.id}
-                            onFullCapture={() => handleRefresh(mv.id, true)}
-                          />
-                        ) : (
-                          <Tip
-                            text={
-                              mv.enabled
-                                ? t("cacheManager.materialized.disable")
-                                : t("cacheManager.materialized.enable")
-                            }
-                            named
-                          >
-                            <ActionIcon
-                              variant="subtle"
-                              onClick={() => toggleMV(mv.id, !mv.enabled)}
-                              data-testid={`mv-toggle-btn-${mv.id}`}
-                            >
-                              {mv.enabled ? <PowerOff size={16} /> : <Power size={16} />}
-                            </ActionIcon>
-                          </Tip>
-                        )}
-                      </>
+                          {mv.enabled ? <PowerOff size={16} /> : <Power size={16} />}
+                        </ActionIcon>
+                      </Tip>
                     )}
                   </Group>
                 </ListActions>
@@ -656,7 +638,6 @@ export function MaterializedStoreTab({ platform }: { platform: boolean }) {
           )}
         </>
       )}
-      {platform && <MaterializedSettingsPanel />}
     </Stack>
   );
 }

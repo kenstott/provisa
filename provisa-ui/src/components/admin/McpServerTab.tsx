@@ -75,6 +75,22 @@ export function McpServerTab() {
               )}
             </Group>
             <Group gap="xs">
+              <Text span>{t("mcpServerTab.principalLabel")}:</Text>
+              {status.principal ? (
+                <Text span data-testid="mcp-principal" ff="monospace">
+                  {status.principal}
+                </Text>
+              ) : (
+                <Text span c="dimmed" data-testid="mcp-principal-none">
+                  <Trans
+                    i18nKey="mcpServerTab.principalNone"
+                    values={{ envVar: status.principal_env_var }}
+                    components={{ code: <Text span ff="monospace" /> }}
+                  />
+                </Text>
+              )}
+            </Group>
+            <Group gap="xs">
               <Text span>{t("mcpServerTab.maxRowsLabel")}:</Text>
               <Text span ff="monospace">
                 {status.max_rows}
@@ -85,7 +101,11 @@ export function McpServerTab() {
           <Alert data-testid="mcp-enable-hint" color="yellow">
             <Trans
               i18nKey="mcpServerTab.enableHint"
-              values={{ enableEnvVar: status.enable_env_var, roleEnvVar: status.role_env_var }}
+              values={{
+                enableEnvVar: status.enable_env_var,
+                roleEnvVar: status.role_env_var,
+                principalEnvVar: status.principal_env_var,
+              }}
               components={{ code: <Text span ff="monospace" /> }}
             />
           </Alert>

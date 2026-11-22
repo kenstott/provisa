@@ -68,6 +68,7 @@ def _tbl(name, sid="s", cache_ttl=60, role_ttl=None, **kw):
         replicate=None,
         load_protected=None,
         region=None,  # REQ-1921
+        read_wait=None,  # REQ-2224
     )
     base.update(kw)
     return SimpleNamespace(**base)
@@ -350,6 +351,7 @@ def wiring(monkeypatch):
             completed_at=built,
             current_at=built,  # never verified by a probe since its build
             last_error=None,
+            partial=False,
             exists_in=lambda store: at is not None,
         )
 
@@ -688,3 +690,162 @@ async def test_a_pushed_change_row_is_kept_current_by_cdc_not_refetched_on_the_c
         ("pg1", "orders", 0)
     ]
     assert row_env.loader.calls == [[(1,)]]
+
+
+# --- REQ-2224: what a read does while nothing has landed -----------------------------------
+
+
+def _landing_after(monkeypatch, seconds):
+    """A build that lands ``seconds`` after the read asks: longer than the request allows."""
+    import time as _time
+
+    def kick(org_id):
+        del org_id
+
+        async def land(db):
+            await asyncio.sleep(seconds)
+            for node in sorted(db.requested):
+                db.states[node] = {"last_refresh_at": _time.time(), "last_refresh_ok": True}
+            db.requested.clear()
+
+        asyncio.get_running_loop().create_task(land(state_db[0]))
+
+    state_db: list = []
+    monkeypatch.setattr("provisa.federation.replica_builds.kick", kick)
+    return SimpleNamespace(get=lambda: state_db[0], bind=state_db.append)
+
+
+@pytest.mark.asyncio
+async def test_a_table_read_wait_longer_than_the_request_timeout_waits_for_the_rows(
+    wiring, monkeypatch
+):
+    from provisa.core import request_deadline
+
+    landing = _landing_after(monkeypatch, 0.4)
+    state = _state([_tbl("orders", read_wait=5)], _Backend(), {})
+    landing.bind(state.tenant_db)
+    with request_deadline.within(0.2):
+        done = await ensure_resident(state, {"s"}, reader_role="analyst", table_ids=_read(state))
+        request_deadline.check()  # the wait was not charged to the request
+    assert done.built == [("s", "orders")]
+    assert list(done.replicas_read) == [("s", "sch", "orders")]
+
+
+@pytest.mark.asyncio
+async def test_a_table_read_wait_ends_the_wait_at_its_own_time_not_the_requests(
+    wiring, monkeypatch
+):
+    from provisa.core import request_deadline
+    from provisa.federation.replica_state import ReplicaBuilding
+
+    monkeypatch.setattr("provisa.federation.replica_builds.kick", lambda org_id: None)
+    state = _state([_tbl("orders", read_wait=1)], _Backend(), {})
+    started = asyncio.get_running_loop().time()
+    with request_deadline.within(3.0):
+        with pytest.raises(ReplicaBuilding):
+            await ensure_resident(state, {"s"}, reader_role="analyst", table_ids=_read(state))
+    assert asyncio.get_running_loop().time() - started < 2.0
+
+
+@pytest.mark.asyncio
+async def test_a_stale_replica_is_still_bounded_by_the_request_not_the_read_wait(
+    wiring, monkeypatch
+):
+    from provisa.core import request_deadline
+    from provisa.federation.replica_state import ReplicaBuilding
+
+    monkeypatch.setattr("provisa.federation.replica_builds.kick", lambda org_id: None)
+    gated = _src(freshness_gate=True, change_signal="ttl", cache_ttl=100)  # it waits on a refresh
+    state = _state(
+        [_tbl("orders", read_wait=30)], _Backend(), {"s/sch.orders": _st(200)}, source=gated
+    )
+    with request_deadline.within(0.2):
+        with pytest.raises(ReplicaBuilding):
+            await ensure_resident(state, {"s"}, reader_role="trader", table_ids=_read(state))
+
+
+def _no_rows_table(name="orders"):
+    from provisa.core.models import Column
+
+    cols = [
+        Column(name=c, data_type=t, visible_to=[], is_primary_key=c == "id")
+        for c, t in (("id", "integer"), ("note", "varchar"))
+    ]
+    return _tbl(
+        name, read_wait=0, columns=cols, live=None, watermark_column=None, landing_filter=None
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_no_rows_read_requests_the_build_and_reads_the_table_as_empty(wiring, monkeypatch):
+    from provisa.federation.query_residency import put_on_plan
+
+    kicked: list = []
+    monkeypatch.setattr("provisa.federation.replica_builds.kick", kicked.append)
+    backend = _Backend()
+    state = _state([_no_rows_table()], backend, {})
+    state.federation_engine.dialect = "duckdb"
+    done = await ensure_resident(state, {"s"}, reader_role="analyst", table_ids=_read(state))
+    assert done.built == [] and done.replicas_read == {}
+    assert backend.plans == 1 and kicked  # the build was asked for, and the runner told
+    address = backend.replica_address(state, source_id="s", schema_name="sch", table_name="orders")
+    plan = SimpleNamespace(
+        physical_sql=f'SELECT a.id FROM "{address.schema}"."{address.table}" AS a',
+        replicas_read=None,
+        answered_in=None,
+        no_rows_yet=False,
+    )
+    put_on_plan(plan, done)
+    assert plan.no_rows_yet
+    assert address.table not in plan.physical_sql
+
+
+@pytest.mark.asyncio
+async def test_a_no_rows_table_that_has_landed_is_read_normally(wiring):
+    state = _state([_no_rows_table()], _Backend(), {"s/sch.orders": _st(30)})
+    done = await ensure_resident(state, {"s"}, reader_role="analyst", table_ids=_read(state))
+    assert done.no_rows is None
+    assert list(done.replicas_read) == [("s", "sch", "orders")]
+
+
+def test_read_as_empty_keeps_the_statement_and_answers_its_columns():
+    import duckdb
+
+    from provisa.federation.query_residency import NoRows, read_as_empty
+
+    no_rows = NoRows("duckdb", {"s__orders": [("id", "integer"), ("note", "varchar")]})
+    sql = read_as_empty(
+        'SELECT o.id, o.note, x.y FROM "r"."s__orders" AS o '
+        "RIGHT JOIN (SELECT 1 AS y) AS x ON x.y = o.id",
+        no_rows,
+    )
+    assert duckdb.sql(sql).columns == ["id", "note", "y"]
+    assert duckdb.sql(sql).fetchall() == [(None, None, 1)]  # the join answers over an empty table
+    bare = read_as_empty('SELECT * FROM "r"."s__orders"', no_rows)
+    assert duckdb.sql(bare).columns == ["id", "note"]
+    assert duckdb.sql(bare).fetchall() == []
+    assert duckdb.sql(read_as_empty('SELECT COUNT(*) FROM "s__orders"', no_rows)).fetchall() == [
+        (0,)
+    ]
+
+
+def test_an_answer_read_as_empty_is_not_kept_in_the_response_cache():
+    from provisa.pgwire._pipeline import _cache_tee
+
+    plan = SimpleNamespace(warnings=[], no_rows_yet=True)
+    assert _cache_tee(plan, object(), None, None) is None
+
+
+def test_read_wait_is_part_of_the_table_model():
+    from pydantic import ValidationError
+
+    from provisa.core.models import Table
+    from provisa.core.schema_org import registered_tables
+
+    assert "read_wait" in registered_tables.c
+    base = dict(source_id="s", domain_id="d", schema="sch", table="t", columns=[])
+    assert Table(**base).read_wait is None
+    assert Table(**base, read_wait=0).read_wait == 0
+    assert Table(**base, read_wait=120).model_dump(mode="json")["read_wait"] == 120
+    with pytest.raises(ValidationError):
+        Table(**base, read_wait=-1)

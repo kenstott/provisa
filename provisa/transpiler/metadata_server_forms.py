@@ -170,18 +170,44 @@ def _held_by_predefined(name: str) -> str:
 _ITS_TYPE = "@TYPE@"
 
 SERVER_FORM_RAISE = "provisa_raise"
-#: The function a form raises with, on a PostgreSQL that runs forms: the control plane, and a
-#: PostgreSQL engine, which reads a statement with no table.
-RAISE_FUNCTION_SQL = (
-    f"CREATE OR REPLACE FUNCTION {SERVER_FORM_RAISE}(sqlstate TEXT, message TEXT) RETURNS TEXT "
+#: The functions a form raises with, on a PostgreSQL that runs forms: the control plane, and a
+#: PostgreSQL engine, which reads a statement with no table. One statement each, for a driver that
+#: prepares what it sends. The second takes the refusal an engine that cannot write the message
+#: from a value raises instead (``raising_or_refused``); PostgreSQL writes the message.
+RAISE_FUNCTIONS_SQL = tuple(
+    f"CREATE OR REPLACE FUNCTION {SERVER_FORM_RAISE}({params}) RETURNS TEXT "
     "LANGUAGE plpgsql AS $$ BEGIN "
     "RAISE EXCEPTION USING ERRCODE = sqlstate, MESSAGE = message; END $$"
+    for params in ("sqlstate TEXT, message TEXT", "sqlstate TEXT, message TEXT, refused TEXT")
 )
 
 
 def raising(sqlstate: str, message_sql: str) -> str:
     """SQL raising PostgreSQL's error ``sqlstate`` with the text of ``message_sql``."""
     return f"CAST({SERVER_FORM_RAISE}('{sqlstate}', {message_sql}) AS {_ITS_TYPE})"
+
+
+def raising_or_refused(sqlstate: str, message_sql: str, refusal: str) -> str:
+    """``raising``, where ``message_sql`` is written from a value: an engine whose error takes only
+    a constant message (ClickHouse 24.3's throwIf) raises 0A000 ``refusal`` there instead, by name
+    (REQ-2236, a stated limitation; provisa.transpiler.rows.system's provisa_raise)."""
+    return f"CAST({SERVER_FORM_RAISE}('{sqlstate}', {message_sql}, '{refusal}') AS {_ITS_TYPE})"
+
+
+#: The greatest attnum whose bitmapset member, attnum - FirstLowInvalidHeapAttributeNumber (-7),
+#: fits an AttrNumber (int16): past it the member wraps negative.
+_GREATEST_MEMBER_ATTNUM = 32760
+
+
+def _column_is_updatable(is_table: str) -> str:
+    """pg_column_is_updatable: a system column (attnum of zero or less) is never updatable; past
+    the greatest member attnum bms_make_singleton raises XX000 before the relation is read; a
+    table's column is updatable."""
+    negative = raising("XX000", "'negative bitmapset member not allowed'")
+    return (
+        f"CASE WHEN att <= 0 THEN false WHEN att > {_GREATEST_MEMBER_ATTNUM} THEN {negative} "
+        f"ELSE coalesce({is_table}, false) END"
+    )
 
 
 def strict(params: str, sql_type: str, answer: str) -> str:
@@ -324,6 +350,29 @@ _LO_WRITES = (
     ("lo_creat", "mode", "BIGINT"),
     ("lo_create", "lobj", "BIGINT"),
     ("lo_from_bytea", "lobj, data:bytea", "BIGINT"),
+)
+
+
+#: The refusal of postgresql_fdw_validator of an option the catalog does not list, where the
+#: engine cannot write PostgreSQL's message naming it.
+FDW_OPTION_REFUSAL = (
+    "postgresql_fdw_validator of an option the catalog does not list has no form here"
+)
+
+#: The server options postgresql_fdw_validator accepts (foreign.c valid_options).
+FDW_SERVER_OPTIONS = (
+    "authtype",
+    "service",
+    "connect_timeout",
+    "dbname",
+    "host",
+    "hostaddr",
+    "port",
+    "tty",
+    "options",
+    "requiressl",
+    "sslmode",
+    "gsslib",
 )
 
 
@@ -1506,12 +1555,11 @@ def _catalog_objects(a: _Answers) -> None:
         "INTEGER",
         f"CASE WHEN coalesce({is_table}, false) THEN 28 ELSE 0 END",
     )
-    # A system column (a negative attnum) is never updatable.
     a.strict(
         "pg_column_is_updatable",
         "rel:bigint, att:bigint, cascaded",
         "BOOLEAN",
-        f"att > 0 AND coalesce({is_table}, false)",
+        _column_is_updatable(is_table),
     )
     a.strict("pg_filenode_relation", "tablespace, filenode", "OID", "CAST(NULL AS OID)")
     a.strict("pg_relation_filenode", "rel", "BIGINT", "CAST(NULL AS BIGINT)")
@@ -1622,7 +1670,32 @@ def _catalog_objects(a: _Answers) -> None:
         + raising("XX000", "'cache lookup failed for operator class ' || c")
         + " END",
     )
-    a.strict("postgresql_fdw_validator", "options, catalog", "BOOLEAN", "true")
+    # postgresql_fdw_validator (src/backend/foreign/foreign.c): an option name outside the catalog's
+    # list is 42601 invalid option, whatever its value. A server (1417) takes the libpq names, a
+    # user mapping (1418) user and password; any other catalog takes none. The message names the
+    # option, a value: ClickHouse refuses that call by name (raising_or_refused).
+    _server_options = ", ".join(f"'{n}'" for n in FDW_SERVER_OPTIONS)
+    _option = "SPLIT_PART(COALESCE(_o, ''), '=', 1)"
+    _invalid = (
+        f"NOT (({_option} IN ({_server_options}) AND catalog = 1417) "
+        f"OR ({_option} IN ('user', 'password') AND catalog = 1418))"
+    )
+    _refused = f"ARRAY_FILTER(options, _o -> {_invalid})"
+    a.strict(
+        "postgresql_fdw_validator",
+        "options:array, catalog:bigint",
+        "BOOLEAN",
+        # A NULL element has no PostgreSQL answer (untransformRelOptions reads it as a text).
+        "CASE WHEN ARRAY_SIZE(ARRAY_FILTER(options, _o -> _o IS NULL)) > 0 THEN "
+        + raising("0A000", "'postgresql_fdw_validator of a NULL option has no form here'")
+        + f" WHEN ARRAY_SIZE({_refused}) > 0 THEN "
+        + raising_or_refused(
+            "42601",
+            f"'invalid option \"' || SPLIT_PART(({_refused})[1], '=', 1) || '\"'",
+            FDW_OPTION_REFUSAL,
+        )
+        + " ELSE true END",
+    )
     a.strict(
         "aclinsert",
         "acl, item",

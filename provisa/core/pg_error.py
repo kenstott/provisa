@@ -39,9 +39,19 @@ def raising(sqlstate: str, message_sql: str) -> str:
     return f"error('{MARK} {sqlstate}: ' || {message_sql})"
 
 
+#: Where ClickHouse's message of an error starts writing the statement it ran: a mark past it is
+#: the statement's text, not what was raised (run 43410717058 read one as a refusal).
+_STATEMENT_ECHOED = re.compile(r":? In scope ")
+#: What ClickHouse writes after the message it raised, and what Trino writes after its quoted one
+#: (message="...", query_id=...): a mark with no end runs to it.
+_RAISED_BY = re.compile(r": while executing '|\"?, query_id=")
+
+
 def from_engine(error: Exception) -> PostgresError | None:
-    """The PostgreSQL error a ``raising`` call raised; None for any other engine error."""
-    marked = _MARKED.search(str(error))
+    """The PostgreSQL error a ``raising`` call raised; None for any other engine error, and for
+    one whose only mark is in the statement the engine's message repeats."""
+    said = _STATEMENT_ECHOED.split(str(error), maxsplit=1)[0]
+    marked = _MARKED.search(_RAISED_BY.split(said, maxsplit=1)[0])
     return None if marked is None else PostgresError(marked["sqlstate"], marked["message"].strip())
 
 
@@ -49,9 +59,11 @@ def postgres_error(error: Exception) -> PostgresError | None:
     """PostgreSQL's own error, as a statement it ran raised it; None for anything else."""
     cause: BaseException | None = error
     while cause is not None:
-        sqlstate = getattr(cause, "sqlstate", None)
+        detail = getattr(cause, "diag", None)
+        # asyncpg's and psycopg 3's error carry the SQLSTATE themselves; psycopg2's (the pg
+        # engine's driver, provisa.federation.pg_runtime) carries it on its diagnostics alone.
+        sqlstate = getattr(cause, "sqlstate", None) or getattr(detail, "sqlstate", None)
         if isinstance(sqlstate, str) and len(sqlstate) == 5:
-            detail = getattr(cause, "diag", None)
             message = getattr(detail, "message_primary", None) or str(cause)
             return PostgresError(sqlstate, message)
         cause = cause.__cause__ or cause.__context__

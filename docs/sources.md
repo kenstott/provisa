@@ -26,7 +26,7 @@ Every query ends up running through the federation engine, which is what lets an
 
 ## All Sources
 
-Provisa registers **77** source types, the ones the Sources form offers. The tables below cover all 77; the index is the count.
+Provisa registers **82** source types, the ones the Sources form offers. The tables below cover all 82; the index is the count.
 
 | # | Group | Source types |
 | --- | --- | --- |
@@ -35,19 +35,19 @@ Provisa registers **77** source types, the ones the Sources form offers. The tab
 | 26–30 | [Analytics / OLAP](#analytics-olap) | `clickhouse`, `druid`, `exasol`, `elasticsearch`, `pinot` |
 | 31–34 | [Data lake / open table formats](#data-lake-open-table-formats) | `iceberg`, `delta_lake`, `hive`, `hive_s3` |
 | 35–39 | [NoSQL](#nosql) | `mongodb`, `cosmosdb`, `qdrant`, `cassandra`, `redis` |
-| 40–42 | [Code sources](code-sources.md) | `node`, `python`, `go` |
-| 43–45 | [Streaming](#streaming) | `kafka`, `websocket`, `rss` |
-| 46 | [Push receiver](#push-receiver) | `ingest` |
-| 47–48 | [Graph & semantic](#graph-semantic) | `neo4j`, `sparql` |
-| 49–53 | [File-based](#file-based) | `sqlite`, `csv`, `parquet`, `files`, `logs` |
-| 54–55 | [Observability & other](#observability-other) | `google_sheets`, `prometheus` |
-| 56–64 | [Enterprise SaaS](#enterprise-saas-connectors) | `sharepoint`, `salesforce`, `servicenow`, `jira`, `cloudops`, `splunk`, `google_workspace`, `microsoft_365`, [`quickbooks`](#quickbooks) |
-| 65–71 | [API sources](#api-sources) | `openapi`, `graphql_remote`, `grpc_remote`, GitHub, GitLab, Shopify, Stripe |
-| 72 | [GovData](#govdata) | `govdata` |
-| 73–74 | [Data quality checkers](#data-quality-checkers) | `soda`, `great_expectations` |
-| 75 | [Data profiler](#data-profiler) | `data_profiler` |
-| 76 | [Kaggle datasets](#kaggle-datasets) | Kaggle (staged via Sources form; registers as a `files` source; see [Kaggle datasets](#kaggle-datasets)) |
-| 77 | [Wikipedia](#wikipedia) | Wikipedia (registers as a `files` source that crawls the named pages; see [Wikipedia](#wikipedia)) |
+| 40–43 | [Code sources](code-sources.md) | `node`, `python`, `go`, `rust` |
+| 44–46 | [Streaming](#streaming) | `kafka`, `websocket`, `rss` |
+| 47 | [Push receiver](#push-receiver) | `ingest` |
+| 48–50 | [Graph & semantic](#graph-semantic) | `neo4j`, `sparql`, Wikidata |
+| 51–55 | [File-based](#file-based) | `sqlite`, `csv`, `parquet`, `files`, `logs` |
+| 56–57 | [Observability & other](#observability-other) | `google_sheets`, `prometheus` |
+| 58–66 | [Enterprise SaaS](#enterprise-saas-connectors) | `sharepoint`, `salesforce`, `servicenow`, `jira`, `cloudops`, `splunk`, `google_workspace`, `microsoft_365`, [`quickbooks`](#quickbooks) |
+| 67–76 | [API sources](#api-sources) | `openapi`, [`dbt`](#dbt), `graphql_remote`, `grpc_remote`, GitHub, GitLab, Shopify, Stripe, OpenMetadata, DataHub |
+| 77 | [GovData](#govdata) | `govdata` |
+| 78–79 | [Data quality checkers](#data-quality-checkers) | `soda`, `great_expectations` |
+| 80 | [Data profiler](#data-profiler) | `data_profiler` |
+| 81 | [Kaggle datasets](#kaggle-datasets) | Kaggle (staged via Sources form; registers as a `files` source; see [Kaggle datasets](#kaggle-datasets)) |
+| 82 | [Wikipedia](#wikipedia) | Wikipedia (registers as a `files` source that crawls the named pages; see [Wikipedia](#wikipedia)) |
 
 Reference for every source type Provisa supports. "Direct driver" means single-source queries execute against the source natively (sub-100ms). "Connector Name" is the federated connector used when the source participates in multi-source JOINs.
 
@@ -563,7 +563,7 @@ Provisa knows the "See also" heading of these editions: `en`, `de`, `es`, `it`, 
 
 Only tables that editors mark as data tables (`table.wikitable`) become tables, and a table with fewer than 2 rows is not offered.
 
-**Advanced crawl settings.** The form keeps these folded under "Crawl settings" and shows each with its default; leave a field empty to keep it. In a `files` mapping the same names go under `crawl:`, and a name outside this list is refused.
+**Advanced crawl settings.** The form keeps these collapsed under "Crawl settings" and shows each with its default; leave a field empty to keep it. In a `files` mapping the same names go under `crawl:`, and a name outside this list is refused.
 
 | Setting | Wikipedia default | Meaning |
 | --- | --- | --- |
@@ -918,7 +918,7 @@ A QuickBooks Online source reads the Accounting API of one company: its customer
 
 | Form field | Source field | Notes |
 | --- | --- | --- |
-| Company ID (realm ID) | `database` | The company's number. Intuit shows it when the app is connected, and in the company's account settings. |
+| Company ID (`realmId`) | `database` | The company's number. Intuit shows it when the app is connected, and in the company's account settings. |
 | Sandbox or production | `mapping.environment` | `sandbox` (default) reads `sandbox-quickbooks.api.intuit.com`; `production` reads `quickbooks.api.intuit.com`. |
 | Client ID | `username` | From the app's Keys and credentials page. |
 | Client secret | `password` | From the same page. |
@@ -926,7 +926,7 @@ A QuickBooks Online source reads the Accounting API of one company: its customer
 
 Any of them may be a `${secret:…}` or `${env:…}` reference. The source's Cache TTL is required, as for every source whose tables are landed.
 
-**The refresh token.** Intuit answers every refresh with the refresh token to send next time, and the one it replaces stops working. The token entered on the form is used once, at the first read. From then on the newest one is kept in the organisation's state store, under the company's realm ID, where a Microsoft 365 source's approval is kept. One refresh of a source runs at a time, across every process, and the replacement is stored before the access token is used. An entered token is never read again once one is kept, so a token entered after the first read does not replace the kept one. A token Intuit refuses (`invalid_grant`) fails the read and names Intuit's reason, never the token. QuickBooks refusing an access token drops it, and the read asks once more with a new one.
+**The refresh token.** Intuit answers every refresh with the refresh token to send next time, and the one it replaces stops working. The token entered on the form is used once, at the first read. From then on the newest one is kept in the organisation's state store, under the company's `realmId`, where a Microsoft 365 source's approval is kept. One refresh of a source runs at a time, across every process, and the replacement is stored before the access token is used. An entered token is never read again once one is kept, so a token entered after the first read does not replace the kept one. A token Intuit refuses (`invalid_grant`) fails the read and names Intuit's reason, never the token. QuickBooks refusing an access token drops it, and the read asks once more with a new one.
 
 **Columns.** Each field of an entity is a column, named in snake case (`TotalAmt` is `total_amt`). A reference is two columns, its id and its name: `CustomerRef` is `customer_ref_value` and `customer_ref_name`. `MetaData` is `meta_create_time` and `meta_last_updated_time`. Any other object or list is one JSON column: an address (`bill_addr`), and the line items of a transaction (`line`), as the generic API source keeps a nested value. `id` is the primary key.
 
@@ -983,6 +983,48 @@ As with any OpenAPI source, each `GET` operation is a table on offer and each ot
 
 `stripe` also appears in `SourceType` among the stubbed Supabase `wrappers` types. A Stripe source added through the form is an `openapi` source, not that stub.
 
+#### Governance catalogs: OpenMetadata and DataHub {: #governance-catalogs }
+
+OpenMetadata and DataHub are branded sources carried by `openapi`. Each appears in the Sources form under its own name, under Enterprise. You read the catalog live, so its tables, tags, owners, domains and glossary terms can be joined with any other data in Provisa. Nothing syncs in either direction. When the catalog and your Provisa model disagree, you find out with a query.
+
+Each customer runs these catalogs at their own address. The form asks for that address as the **Base URL** (an `http` or `https` address with no trailing slash) and for a token. Provisa reads the OpenAPI specification from your running instance when you add the source and again at every refresh, because it changes between releases. None ships with Provisa.
+
+| | OpenMetadata | DataHub |
+|---|---|---|
+| Base URL | The address you open OpenMetadata at, such as `https://openmetadata.example.com`, without `/api` | The address of the metadata service (GMS), such as `https://datahub.example.com/gms` |
+| API called at | `<base URL>/api` | The server its specification names, on the GMS host. Each entity list is at `<base URL>/openapi/v3/entity/<entity>` |
+| Specification read from | `<base URL>/swagger.json` | `<base URL>/openapi/v3/api-docs/10-openapi-v3` |
+| Token | A bot's JWT token, from **Settings > Bots** | A personal access token or a service account's token, from **Settings > Access Tokens** |
+| Token checked with | `GET /v1/users/loggedInUser` | `GET /openapi/v3/entity/corpuser?count=1` |
+
+The token is sent as a bearer token and checked once before the source is added. A rejected token fails registration with `openapi.credential_rejected`. A missing token or base URL fails before any call, naming the field.
+
+**What you register.** Adding the source registers no tables. Every list the specification offers is a table you can register:
+
+- OpenMetadata: `/v1/tables` (each table with its columns and their tags, owners, domains and certification), `/v1/glossaryTerms`, `/v1/domains`, `/v1/dataProducts`, `/v1/classifications`, `/v1/tags`, `/v1/users`, `/v1/teams`, `/v1/dataQuality/testCases` and the test case results.
+- DataHub: one list per entity, among them `dataset`, `glossaryterm`, `domain`, `dataproduct`, `tag`, `corpuser` and `corpgroup`. Each row carries the aspects you ask for in the table's `aspects` argument, for example `schemaMetadata`, `globalTags`, `ownership`, `glossaryTerms` and `domains`.
+
+OpenMetadata returns only the fields you ask for in its `fields` parameter. Set it as a fixed argument of the table, for example `columns,tags,owners,domains,certification`.
+
+**Paging.** Both catalogs answer a list one page at a time with a cursor for the next page. OpenMetadata answers `{data, paging: {after}, errors, warnings}`, and DataHub answers `{scrollId, entities}`. The paging Provisa proposes when you register a table reads the rows from `data` or `entities` and follows `paging.after` or `scrollId` until a page comes back without one. A cursor may be a dotted path into the answer, so a plain OpenAPI source with the same shape pages the same way.
+
+**Finding disagreements.** The catalog's tables join with the `meta` tables that hold your Provisa model. With an OpenMetadata table registered as `catalog.list_tables`, this query lists the columns the catalog classifies as personal data that Provisa does not mask:
+
+```sql
+SELECT r.table_name, c.column_name
+FROM meta.registered_tables r
+JOIN meta.table_columns c ON c.table_id = r.id
+JOIN catalog.list_tables t ON t.name = r.table_name
+WHERE t.columns @> jsonb_build_array(
+    jsonb_build_object('name', c.column_name, 'tags', '[{"tagFQN": "PII.Sensitive"}]'::jsonb)
+  )
+  AND NOT c.masks @> '[{"mask": {}}]'::jsonb;
+```
+
+The same pattern finds owners that differ between the catalog and your domains, and tables certified in one and missing from the other.
+
+Until a brand exists for another catalog, you can add it as a plain OpenAPI source with its own base URL and specification URL.
+
 #### Exclusions on a specification-built source
 
 A published OpenAPI specification describes everything the remote API accepts, including what its vendor has deprecated and what a deployment must never send. An OpenAPI source can carry exclusions: things in the specification the source does not offer.
@@ -1013,6 +1055,30 @@ They are applied to the specification when it is loaded, so the registration lis
 An exclusion that names an operation or argument the specification does not have fails the load of that source's specification and names each stale entry, so a list that no longer matches a newer specification is noticed.
 
 A branded source ships its own exclusions as part of its curation, and an operator's are added to them. The Stripe source excludes Stripe's deprecated token and source payment integration: creating a charge, the Tokens and Sources APIs, adding a card or bank account to a customer from a token, and the `source`, `card`, `bank_account` and `default_card` arguments of customer and invoice-payment writes. Payments are taken through Payment Intents, Payment Methods and Setup Intents, which the source offers. Reading and deleting payment sources an account already has stays on offer.
+
+### dbt
+
+A dbt source keeps your dbt project where it is and goes on letting dbt build it. Provisa reads the project's `manifest.json` for definitions and never copies a row or the project.
+
+| The manifest comes from | Set on the source |
+| --- | --- |
+| A URL or artifact location | `location` |
+| An upload | `content` |
+| dbt Cloud's API | `host`, `account_id`, `job_id` and an API token, held as any source's credential is |
+
+Each model is offered as a table, and adding the source registers nothing. When a steward registers a model, it is read through the warehouse source that matches the manifest's adapter and the model's database. The manifest holds no credential and dbt's profiles file is not read, so if no registered source matches, the setup form offers to create one. A model's lineage comes from its compiled SQL.
+
+**Commands.** Each model, test, snapshot and seed is offered as a mutation command, as are `build`, `source freshness`, and each macro of the project and its installed packages through `run-operation`. A command runs only when a call, a trigger or a schedule runs it. It runs wherever dbt already runs:
+
+| Target | How it runs | Set on the source |
+| --- | --- | --- |
+| dbt Cloud | Runs the job through the jobs API with the command as its one step | `spec: cloud` |
+| A script | Runs `dbt` on a command line Provisa can reach | `command_line` |
+| An operator-run connector | Calls a `@command` of a [code source](code-sources.md), with the dbt invocation as a fixed argument a caller cannot change | `connector_source`, `connector_command`, `connector_invocation_argument` (default `invocation`) |
+
+**Freshness.** dbt's `run_results.json` says when each model was last built. Give it as `run_results`, point `run_results_location` at where it is published, or let a dbt Cloud source read it from the job's latest successful run. Refreshing the source reads it again, and an upload can bring run results without a new manifest. To use it, set the model's table to a `probe` or `ttl_probe` change signal with `probe_type: hash`. The table is stale once dbt has built the model again. A model whose latest run failed or was skipped has unknown freshness, and is never read as fresh.
+
+**A new manifest** updates the commands on offer, the lineage and the descriptions of registered models. A description a steward has changed stays as the steward left it, field by field.
 
 ### GovData
 
@@ -1223,9 +1289,15 @@ A declared extension that is not installable fails loud, with no silent skip or 
 
 ### Template variables
 
-Every `server_options` value, `user_mapping` value, `attach_template`, and `scan_template` may use `{field}` placeholders. Available fields:
+Every `server_options`, `user_mapping` and `table_options` value, `remote_schema`, `attach_template`, `scan_template` and `engine_template` may use `{field}` placeholders. Available fields:
 
 `{id}`, `{host}`, `{port}`, `{database}`, `{username}`, `{password}`, `{path}`, `{schema_name}`, `{table_name}`, plus any key from `federation_hints`. DuckDB attach templates also receive `{alias}`, the internal catalog alias Provisa gives the attached database.
+
+A template takes raw values and never quotes a placeholder. Provisa writes each value with the engine's quoting rules, so a value holding a quote, a semicolon, a backslash or a newline stays inside its literal or name:
+
+- A `pg_fdw` option value is text. The filled value is written as one string literal: `address: "{host}"` becomes `address 'db.example'`. `remote_schema` is written as one identifier.
+- `attach_template`, `scan_template` and `engine_template` are SQL. `{field}` is written as a string literal, `{field:ident}` as an identifier, and `{field:int}` as an integer (a value that is not an integer fails). To join a value with other text, join it in SQL: `'ducklake:' || {path}` in DuckDB, `concat({host}, ':', {port})` in ClickHouse.
+- A placeholder inside quotes in a SQL template (`read_xlsx('{path}')`) fails when the descriptor is read.
 
 A template referencing an unknown field fails loud at attach time, surfacing a descriptor/source mismatch before broken DDL reaches the engine.
 
@@ -1262,7 +1334,7 @@ connectors:
     extension: excel
     install_from_community: false
     probe_symbol: read_xlsx
-    scan_template: "read_xlsx('{path}')"
+    scan_template: "read_xlsx({path})"
 ```
 
 With either descriptor in place, registering a source with the declared `source_type` routes through the custom connector, subject to a successful probe. No other configuration change is needed.
@@ -1861,6 +1933,35 @@ When an inferred table is read, the reasoner:
 All of a source's inferred tables share one classification, and it is reused for the table's cache TTL. The source's freshness declaration is therefore how often it reasons: `cache_ttl` for a live table, the replica's refresh for a replica, and once for a TTL of `-1`. What an inferred table serves is governed for every reader like any other table.
 
 HermiT runs as a separate program, never inside the server. It runs on a pinned Eclipse Temurin JDK 21 with HermiT, the OWL API and their libraries on its class path. Each piece is fetched on first use, checked against the SHA-256 Provisa pins, and cached under the runtime-deps cache root (`$PROVISA_RUNTIME_DEPS_CACHE`, default `~/.cache/provisa/runtime_deps`). A download that fails, or a file whose sum differs from the pin, fails the read by name.
+
+### Wikidata
+
+Wikidata is a branded SPARQL source: its endpoint is preset to the Wikidata Query Service and needs no credential. Everything else is the generic SPARQL source—the same User-Agent header, result-format handling and pushdown rules apply. Tables are defined with SPARQL SELECT queries, as on any SPARQL source.
+
+**Starter tables.** The Wikidata source ships a set of reference tables your organization is likely to join to its own data:
+
+- Countries with their ISO codes, capital and population
+- Currencies
+- Languages
+- Administrative regions
+- Organizations with identifiers such as LEI, ticker and ISIN
+
+Each is a bounded query exposed as a typed table. Register the ones you need; none are registered automatically.
+
+**Tables from any class.** Beyond the starter tables, the Wikidata source lets you build a table from the instances of any class. Search for a class by name, or browse from a broad class down through its narrower ones (subclass of). Once you pick a class, the source offers its most-used properties as columns and shows the class's instance count. For large classes a filter is asked before the table is registered, so the query stays within the Wikidata endpoint's time limit.
+
+**Replication.** Wikidata tables replicate on a schedule by default rather than being read live, since the public endpoint has rate limits and the data changes slowly.
+
+**Glossary grounding.** Glossary terms can be grounded to Wikidata items, so a term binds to both a column in your data and to the concept that item represents.
+
+```yaml
+sources:
+- id: wikidata
+  type: wikidata
+```
+
+No `host` is required. The endpoint is preset.
+
 
 ## Connection Examples
 

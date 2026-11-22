@@ -1,6 +1,6 @@
 {
   "candidatesTable": {
-    "heading": "AI 建议的关系",
+    "heading": "建议的关系",
     "colName": "名称",
     "colSource": "源",
     "colTarget": "目标",
@@ -10,6 +10,25 @@
     "accept": "接受",
     "reject": "拒绝",
     "acceptAria": "接受建议的关系 {{name}}",
-    "rejectAria": "拒绝建议的关系 {{name}}"
+    "rejectAria": "拒绝建议的关系 {{name}}",
+    "acceptAll": "全部接受",
+    "rejectAll": "全部拒绝",
+    "acceptAllTitle": "接受所有建议",
+    "rejectAllTitle": "拒绝所有建议",
+    "acceptAllConsequence": "接受列出的 {{count}} 条建议？它将成为已注册的关系。",
+    "acceptAllConsequence_other": "接受列出的全部 {{count}} 条建议？每条都将成为已注册的关系。",
+    "rejectAllConsequence": "拒绝列出的 {{count}} 条建议？在清除拒绝记录之前不会再次建议。",
+    "rejectAllConsequence_other": "拒绝列出的全部 {{count}} 条建议？在清除拒绝记录之前不会再次建议。",
+    "acceptedAll": "已接受 {{count}} 条建议。",
+    "acceptedAll_other": "已接受 {{count}} 条建议。",
+    "rejectedAll": "已拒绝 {{count}} 条建议。",
+    "rejectedAll_other": "已拒绝 {{count}} 条建议。",
+    "acceptFailed": "{{count}} 条建议无法接受：",
+    "acceptFailed_other": "{{count}} 条建议无法接受：",
+    "rejectFailed": "{{count}} 条建议无法拒绝：",
+    "rejectFailed_other": "{{count}} 条建议无法拒绝：",
+    "failedOne": "{{name}}：{{error}}",
+    "reducedInformation": "信息有限：未比较任何值",
+    "reducedInformationHelp": "其中一个表需要参数，因此从不读取。此建议仅依据名称、描述、类型和必需参数得出。"
   }
 }

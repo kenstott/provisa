@@ -1,0 +1,25 @@
+{
+  "glossaryPage": {
+    "title": "术语表",
+    "intro": "贵组织已批准的术语及其含义。",
+    "search": "搜索术语",
+    "searchPlaceholder": "搜索名称和定义",
+    "domainFilter": "域",
+    "domainFilterPlaceholder": "所有域",
+    "sort": "排序",
+    "sortName": "A–Z",
+    "sortRecent": "最近更改",
+    "letterBar": "跳转到字母",
+    "otherLetter": "#",
+    "alsoCalled": "又称",
+    "kindOf": "属于",
+    "kinds": "子类",
+    "seeAlso": "另见",
+    "allDomains": "所有域",
+    "loadFailed": "无法加载术语表：{{message}}",
+    "empty": "尚无已批准的术语。",
+    "noMatch": "没有匹配的术语。",
+    "count_one": "{{count}} 个术语",
+    "count_other": "{{count}} 个术语"
+  }
+}

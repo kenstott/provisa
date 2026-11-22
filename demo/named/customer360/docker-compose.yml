@@ -11,9 +11,10 @@
 # start point: `docker compose up -d` brings up Halyard Software's customer master hub, loaded from
 # db/init.sql (written by generate.py), with the role Provisa reads it as.
 #
-#   postgres  the customer master hub (schema mdm): master customers, the crosswalk to each
-#             system's id, and when it last synced. Salesforce, ServiceNow, Jira and Stripe need no
-#             service: the demo declares their rows (replica_rows/).
+#   postgres  the customer master hub (schema mdm): master customers and people, the crosswalks to
+#             each system's id, and when it last synced; and the narrow entity bridges (schema er,
+#             db/er.sql, rewritten by each rerun of entity resolution). Salesforce, ServiceNow, Jira and
+#             Stripe need no service: the demo declares their rows (replica_rows/).
 #
 # Port: 30532 the database; it can be moved by its variable.
 x-demo-labels: &demo-labels
@@ -35,6 +36,7 @@ services:
     volumes:
       - customer360_pg:/var/lib/postgresql/data
       - ./db/init.sql:/docker-entrypoint-initdb.d/10-init.sql:ro
+      - ./db/er.sql:/docker-entrypoint-initdb.d/15-er.sql:ro
       - ./db/reader.sql:/docker-entrypoint-initdb.d/20-reader.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d customer360"]

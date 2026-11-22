@@ -31,6 +31,7 @@ from provisa.transpiler.function_macros import (
     inline,
     outcome,
 )
+from provisa.transpiler.polyfill import GRID
 from provisa.transpiler.transpile import transpile, transpile_to_duckdb, transpile_to_trino
 
 _DIALECTS = (
@@ -109,7 +110,14 @@ def test_every_form_is_sql_its_dialect_reads_back(dialect):
         # ClickHouse reads the Nth match's pattern as a constant, and refuses a column's by name.
         constant = dialect == "clickhouse" and name == "regexp_replace"
         said = [args[0], "'x'", *args[2:]] if constant else said
-        out = transpile(f"SELECT {name}({', '.join(said)}) AS v", dialect)
+        try:
+            out = transpile(f"SELECT {name}({', '.join(said)}) AS v", dialect)
+        except FunctionRefused:
+            # A row of the polyfill grid refuses it on this dialect (REQ-2236), or this dialect is
+            # no column of the grid, which refuses a call a row matches by name: no form is written.
+            # (a row is named by its call, or by its signature: interval_eq(interval, interval))
+            assert name in {f.name.split("(")[0] for f in GRID.features}
+            continue
         tree = sqlglot.parse_one(out, read=dialect)
         # A ClickHouse statement's SETTINGS name a setting, not a column (REQ-2171: its old analyzer).
         tree.set("settings", None)
@@ -150,6 +158,34 @@ def test_every_form_is_sql_its_dialect_reads_back(dialect):
         ("SELECT dcbrt(x) AS v FROM t", "trino", "SELECT CBRT(x) AS v FROM t"),
         ("SELECT dtrunc(x) AS v FROM t", "trino", "SELECT TRUNCATE(CAST(x AS DOUBLE)) AS v FROM t"),
         ("SELECT unicode_version() AS v", "mysql", "SELECT '15.1' AS v"),
+        # array_cat (its grid row, provisa.transpiler.polyfill.arrays): PostgreSQL's NULL with an
+        # array is the array, NULL with NULL is NULL.
+        (
+            "SELECT array_cat(a, b) AS v FROM t",
+            "duckdb",
+            "SELECT CASE WHEN NOT a IS NULL OR NOT b IS NULL THEN LIST_CONCAT(a, b) END AS v FROM t",
+        ),
+        (
+            "SELECT array_cat(a, b) AS v FROM t",
+            "trino",
+            "SELECT CASE WHEN a IS NULL THEN b WHEN b IS NULL THEN a ELSE CONCAT(a, b) END AS v "
+            "FROM t",
+        ),
+        (
+            "SELECT array_cat(NULL, b) AS v FROM t",
+            "trino",
+            "SELECT b AS v FROM t",
+        ),
+        (
+            "SELECT array_cat(a, NULL) AS v FROM t",
+            "trino",
+            "SELECT a AS v FROM t",
+        ),
+        (
+            "SELECT array_cat(NULL, NULL) AS v FROM t",
+            "trino",
+            "SELECT NULL AS v FROM t",
+        ),
     ],
 )
 def test_a_form_is_written_for_its_dialect(sql, dialect, expected):
@@ -158,6 +194,44 @@ def test_a_form_is_written_for_its_dialect(sql, dialect, expected):
 
 def test_a_form_survives_the_engines_own_rewrites():
     assert "BOOL_AND(a)" in transpile_to_trino("SELECT every(a) AS v FROM t")
+
+
+#: arraycontains on Trino, as PostgreSQL answers it: NULL of a NULL array, false where the second
+#: holds a NULL (equal to nothing), and otherwise whether the first holds each of its elements.
+_ARRAYCONTAINS_ON_TRINO = (
+    "CASE WHEN {a} IS NULL OR {b} IS NULL THEN NULL ELSE ALL_MATCH({b}, _x -> NOT _x IS NULL "
+    "AND COALESCE(CONTAINS({a}, _x), FALSE)) END"
+)
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "SELECT arraycontains(a, b) AS v FROM t",
+        "SELECT a @> b AS v FROM t",
+    ],
+)
+def test_an_arrays_containment_has_postgresqls_answers_on_trino(sql):
+    assert transpile(sql, "trino") == (
+        f"SELECT {_ARRAYCONTAINS_ON_TRINO.format(a='a', b='b')} AS v FROM t"
+    )
+
+
+def test_an_arrays_containment_reaches_trino_as_trinos_own_sql():
+    """REQ-2176: a session hop's label filter (``__labels @> ARRAY[...]``) is PostgreSQL's operator
+    in the semantic statement; the statement Trino is sent carries no ``@>``, and Trino's own
+    rewrites, which read it back as Trino's SQL, read it."""
+    written = transpile_to_trino("SELECT k FROM t AS _hs WHERE _hs.\"__labels\" @> ARRAY['Big']")
+    assert "@>" not in written
+    tree = sqlglot.parse_one(written, read="trino")
+    assert tree.find(sqlglot.exp.ArrayContainsAll) is None
+    assert written == "SELECT k FROM t AS _hs WHERE " + _ARRAYCONTAINS_ON_TRINO.format(
+        a='_hs."__labels"', b="ARRAY['Big']"
+    )
+
+
+def test_an_arrays_containment_stays_postgresqls_operator_on_postgresql():
+    assert transpile("SELECT a @> b AS v FROM t", "postgres") == "SELECT a @> b AS v FROM t"
 
 
 @pytest.mark.parametrize(
@@ -318,9 +392,12 @@ def test_a_qualified_call_inside_a_qualified_call_is_read_too():
     assert "pg_catalog" not in written.lower()
 
 
-@pytest.mark.parametrize("dialect", ["trino", "clickhouse"])
-def test_a_numeric_literal_keeps_its_digits(dialect: str):
-    assert "DECIMAL(21, 2)" in transpile("SELECT (-2.25)::numeric AS v", dialect).upper()
+@pytest.mark.parametrize(
+    ("dialect", "decimal"), [("trino", "DECIMAL(3, 2)"), ("clickhouse", "DECIMAL(21, 2)")]
+)
+def test_a_numeric_literal_keeps_its_digits(dialect: str, decimal: str):
+    """On Trino a literal's decimal is of its digits alone (pg_literals.TIGHT)."""
+    assert decimal in transpile("SELECT (-2.25)::numeric AS v", dialect).upper()
 
 
 def test_a_numeric_of_a_column_stays_as_said():
@@ -355,17 +432,6 @@ def test_clickhouses_like_has_no_escape_clause():
         ("SELECT substr(c, 1) AS v FROM (VALUES ('\\xbeef'::bytea)) AS t(c)", "trino", "substring"),
         ("SELECT date_add('2000-01-01'::date, '1 day'::interval) AS v", "clickhouse", "date_add"),
         ('SELECT pg_catalog."gcd"(1, 2) AS v', "trino", "gcd"),
-        ("SELECT timestamp('2024-06-15'::date, '12:30:45'::time) AS v", "clickhouse", "timestamp"),
-        (
-            "SELECT pg_catalog.\"datetime_pl\"('2024-06-15'::date, '12:30:45'::time) AS v",
-            "clickhouse",
-            "datetime_pl",
-        ),
-        (
-            'SELECT pg_catalog."overlaps"(NULL::time, NULL::time, NULL::time, NULL::time) AS v',
-            "clickhouse",
-            "overlaps",
-        ),
     ],
 )
 def test_what_a_replay_refused_is_refused_by_name(sql: str, dialect: str, function: str):
@@ -399,7 +465,8 @@ def test_regexp_replace_with_the_g_flag_is_every_match():
     [
         ("SELECT '\\xdead'::bytea AS v", "FROM_HEX('dead')"),
         ("SELECT 'abc'::character AS v", "CAST('a' AS CHAR)"),
-        ("SELECT (-2.25)::numeric AS v", "DECIMAL(21, 2)"),
+        # of its digits alone on Trino (pg_literals.TIGHT)
+        ("SELECT (-2.25)::numeric AS v", "DECIMAL(3, 2)"),
     ],
 )
 def test_a_literal_keeps_what_its_cast_says(sql: str, want: str):
@@ -410,7 +477,9 @@ def test_a_literal_keeps_what_its_cast_says(sql: str, want: str):
     "sql",
     [
         "SELECT date_part('century'::text, x::timestamp) AS v FROM t",
-        "SELECT ln(x) AS v FROM t",
+        # ln of a numeric: its exact digits, which ClickHouse's double does not hold (ln of a
+        # double is polyfill.floats' row)
+        "SELECT ln(x::numeric) AS v FROM t",
         'SELECT pg_catalog."in_range"(a::time, b::time, c::interval, true, false) AS v FROM t',
     ],
 )

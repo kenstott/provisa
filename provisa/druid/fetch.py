@@ -26,6 +26,7 @@ from typing import Any
 import httpx
 
 from provisa.compiler.sql_literals import sql_literal
+from provisa.security import sandbox_egress  # REQ-2006
 
 _TIMEOUT = 30.0
 
@@ -44,7 +45,8 @@ class DruidConnection:
 
 
 def _sql(conn: DruidConnection, query: str) -> list[dict]:
-    with httpx.Client(timeout=_TIMEOUT) as c:
+    # REQ-2006: a held org's source is checked at each connection, each request.
+    with httpx.Client(timeout=_TIMEOUT, event_hooks=sandbox_egress.http_sync_event_hooks()) as c:
         resp = c.post(f"{conn.base_url}/druid/v2/sql", json={"query": query})
         resp.raise_for_status()
         return resp.json()
@@ -89,7 +91,8 @@ def iter_rows_spooled(
     safe_table = table.replace('"', '""')
     select = ", ".join(f'"{c}"' for c in columns) if columns else "*"
     query = f'SELECT {select} FROM "druid"."{safe_table}"'
-    with httpx.Client(timeout=_TIMEOUT) as c:
+    # REQ-2006: a held org's source is checked at each connection, each request.
+    with httpx.Client(timeout=_TIMEOUT, event_hooks=sandbox_egress.http_sync_event_hooks()) as c:
         with spooled(
             lambda: c.stream("POST", f"{conn.base_url}/druid/v2/sql", json={"query": query})
         ) as body:

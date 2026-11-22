@@ -8,51 +8,35 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""A contract's saved versions and the differences between them (REQ-2158).
+"""The differences between two versions of a contract's fields and checks (REQ-2158, REQ-2180).
 
-WHERE THEY ARE KEPT. On the contract itself, in ``registered_tables.contract``: the model store
-holds them, every save of a contract passes through :func:`recorded`, and they travel, merge and
-undo with the model as the rest of the contract does. The environment's branch (REQ-1524) records
-every save too, but it cannot be asked: it is a projection, never an authority, it may be squashed
-and a drifted one is rebuilt whole, and a contract's row needs its versions without walking it.
+A product's contracts are derived from its offers (provisa.core.offer_contracts), and each keeps
+its versions on itself; this module reads what changed between two of them in the fields a
+contract states and the checks the product promises.
 
 WHAT IS BREAKING. A difference that can break a consumer: a field removed or renamed, a type
-changed so it no longer holds what it did, a field made required, a promised service level or
-check weakened. A change that cannot be read as harmless is marked breaking: a service level of a
-property or unit that does not say which way it runs, a check changed other than by a stricter
-bound.
+changed so it no longer holds what it did, a field made required, a promised check weakened. A
+change that cannot be read as harmless is marked breaking: a check changed other than by a
+stricter bound.
 """
 
-# Requirements: REQ-2158
+# Requirements: REQ-2158, REQ-2180
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from typing import Any
 
 import yaml
 
 from provisa.compiler.supertype import holds
-from provisa.core import model_change
 from provisa.core.models import (
     ContractChange,
     ContractCheck,
-    ContractSlaProperty,
-    ContractVersion,
-    DataContract,
     VersionColumn,
 )
 
-#: Which way a service level runs: +1 stronger as it rises, -1 stronger as it falls.
-_SLA_DIRECTION = {
-    "availability": 1,
-    "retention": 1,
-    "throughput": 1,
-    "latency": -1,
-    "errorRate": -1,
-    "frequency": -1,
-}
-#: The same of a check's bounds, as Soda's thresholds and Great Expectations' kwargs name them.
+#: Which way a check's bound runs (+1 stronger as it rises, -1 stronger as it falls), as Soda's
+#: thresholds and Great Expectations' kwargs name them.
 _BOUND_DIRECTION = {
     "must_be_greater_than": 1,
     "must_be_greater_than_or_equal": 1,
@@ -80,18 +64,6 @@ def _weaker(direction: int | None, before: Any, after: Any) -> bool:
     if direction is None or old is None or new is None:
         return True
     return (new - old) * direction < 0
-
-
-def _sla_text(sla: ContractSlaProperty) -> str:
-    return f"{sla.value}{sla.unit or ''}"
-
-
-def _sla_weakened(before: ContractSlaProperty, after: ContractSlaProperty) -> bool:
-    if (before.value, before.unit) == (after.value, after.unit):
-        return False
-    if before.unit != after.unit:
-        return True
-    return _weaker(_SLA_DIRECTION.get(before.property), before.value, after.value)
 
 
 def _bounds(definition: str) -> dict[str, Any]:
@@ -192,34 +164,6 @@ def _field_changes(before: list[VersionColumn], after: list[VersionColumn]) -> l
     return changes
 
 
-def _sla_changes(before: DataContract, after: DataContract) -> list[ContractChange]:
-    old = {s.property: s for s in before.sla}
-    new = {s.property: s for s in after.sla}
-    changes = [
-        ContractChange(kind="sla_removed", subject=name, before=_sla_text(s), breaking=True)
-        for name, s in old.items()
-        if name not in new
-    ]
-    changes += [
-        ContractChange(kind="sla_added", subject=name, after=_sla_text(s))
-        for name, s in new.items()
-        if name not in old
-    ]
-    for name, sla in new.items():
-        was = old.get(name)
-        if was is not None and was != sla:
-            changes.append(
-                ContractChange(
-                    kind="sla_changed",
-                    subject=name,
-                    before=_sla_text(was),
-                    after=_sla_text(sla),
-                    breaking=_sla_weakened(was, sla),
-                )
-            )
-    return changes
-
-
 def _check_subject(check: ContractCheck) -> str:
     return f"{check.column}: {check.name}" if check.column else check.name
 
@@ -254,83 +198,14 @@ def _check_changes(before: list[ContractCheck], after: list[ContractCheck]) -> l
     return changes
 
 
-def _prose_changes(before: DataContract, after: DataContract) -> list[ContractChange]:
-    changes = []
-    if before.description != after.description:
-        changes.append(
-            ContractChange(
-                kind="description_changed",
-                subject="description",
-                before=before.description,
-                after=after.description,
-            )
-        )
-    old, new = before.terms.model_dump(), after.terms.model_dump()
-    changes += [
-        ContractChange(kind="terms_changed", subject=term, before=old[term], after=new[term])
-        for term in new
-        if old[term] != new[term]
-    ]
-    return changes
-
-
-def differences(before: ContractVersion, after: ContractVersion) -> list[ContractChange]:
-    """How ``after`` differs from ``before``, each difference marked breaking or not. Fields are
-    compared by the member's columns each version snapshotted. A version number or a status is no
-    difference: it says which contract this is, not what it promises."""
+def differences(
+    before_columns: list[VersionColumn],
+    after_columns: list[VersionColumn],
+    before_checks: list[ContractCheck],
+    after_checks: list[ContractCheck],
+) -> list[ContractChange]:
+    """How a contract's fields and checks changed, each difference marked breaking or not."""
     return [
-        *_field_changes(before.columns, after.columns),
-        *_sla_changes(before.contract, after.contract),
-        *_check_changes(before.checks, after.checks),
-        *_prose_changes(before.contract, after.contract),
+        *_field_changes(before_columns, after_columns),
+        *_check_changes(before_checks, after_checks),
     ]
-
-
-def _unchanged(a: DataContract, b: DataContract) -> bool:
-    omitted = {"created_at", "versions"}
-    return a.model_dump(exclude=omitted) == b.model_dump(exclude=omitted)
-
-
-def snapshot(columns: list[dict[str, Any]]) -> list[VersionColumn]:
-    """The member's columns as a version keeps them. ``columns``: each one's ``column_name``,
-    ``data_type``, ``description`` and ``not_null`` as the model store holds them."""
-    return [
-        VersionColumn(
-            name=c["column_name"],
-            type=c["data_type"],
-            description=c.get("description"),
-            required=bool(c.get("not_null")),
-        )
-        for c in columns
-    ]
-
-
-def recorded(
-    previous: DataContract | None,
-    contract: DataContract,
-    checks: list[ContractCheck],
-    columns: list[VersionColumn],
-) -> DataContract:
-    """``contract`` replacing ``previous`` with the version this save made recorded on it: a new
-    number adds one, the same number replaces it, and saving what is stored records nothing.
-    ``checks``: what the product promises of the member now; ``columns``: the member's columns
-    now, which the version snapshots. The history is the stored one whatever ``contract`` carries.
-    A contract stored before versions were kept starts from this save, with no differences to
-    record."""
-    kept = previous.versions if previous is not None else []
-    if previous is not None and kept and _unchanged(previous, contract):
-        # The member's columns alone make no version: a snapshot is taken by a version's save, and
-        # the next version's differences show what the member's columns became since.
-        return contract.model_copy(update={"versions": kept})
-    earlier = [v for v in kept if v.contract.version != contract.version]
-    base = earlier[-1] if earlier else None
-    version = ContractVersion(
-        contract=contract.model_copy(update={"versions": []}),
-        columns=columns,
-        checks=checks,
-        saved_at=datetime.now(timezone.utc),
-        saved_by=model_change.actor(),
-    )
-    if base is not None:
-        version = version.model_copy(update={"changes": differences(base, version)})
-    return contract.model_copy(update={"versions": [*earlier, version]})

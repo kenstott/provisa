@@ -37,12 +37,13 @@ export function CapabilityGate({
   orCapability,
   anyOf,
   andCapability,
+  orAllOf,
   children,
   fallback,
   navigable,
 }: Props) {
   const { loading, capabilities, demonstrated } = useAuth();
-  const req = { capability, orCapability, anyOf, andCapability };
+  const req = { capability, orCapability, anyOf, andCapability, orAllOf };
   const allowed = meetsRequirement(capabilities, req);
   // A gate with a fallback owns a whole region — a route body — and has to show something there.
   // A gate without one contributes a nav link or a button to a larger layout: it renders nothing
@@ -52,7 +53,7 @@ export function CapabilityGate({
   // REQ-1602: a right the role is shown rather than given keeps its surface on the page, inert and
   // badged. The `fallback` distinction carries over -- a gate that owns a region demonstrates a
   // region, an inline gate demonstrates a control.
-  if (!allowed && isDemonstrated(demonstrated, req)) {
+  if (!allowed && capability !== null && isDemonstrated(demonstrated, req)) {
     return (
       <DemonstratedFeature
         block={fallback !== undefined}

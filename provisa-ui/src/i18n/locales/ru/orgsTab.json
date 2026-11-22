@@ -19,7 +19,7 @@
     "colActions": "Действия",
     "empty": "Нет организаций",
     "membersButton": "Участники",
-    "hideButton": "Скрыть",
+    "hideButton": "Свернуть",
     "expandOrg": "Показать или скрыть участников {{name}}",
     "deleteOrg": "Удалить {{name}}",
     "membersHeading": "Участники",

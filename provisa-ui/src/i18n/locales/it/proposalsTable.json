@@ -1,0 +1,70 @@
+{
+  "proposalsTable": {
+    "intro": "Una riga selezionata viene accettata quando si applica. Le righe con punteggio almeno pari alla soglia partono selezionate. Una riga senza caselle selezionate resta indecisa.",
+    "colScore": "Punteggio",
+    "colConfidence": "Attendibilità",
+    "colJev": "Jev",
+    "colKind": "Tipo",
+    "colMeasure": "Misurato",
+    "colReasoning": "Motivazione",
+    "colNote": "Nota",
+    "colNotAgain": "Non consigliare più",
+    "notAgainAria": "Non consigliare più {{name}}",
+    "kind": {
+      "foreign_keys": "Vincolo",
+      "semantics": "Semantica",
+      "key_names": "Corrispondenza del nome"
+    },
+    "asWritten": "Come l'ha scritto il modello: {{answer}}",
+    "apply": "Applica",
+    "applyAccept": "Accetta {{count}}",
+    "applyNotAgain": "Non consigliare più {{count}}",
+    "applyBoth": "Accetta {{accept}}, non consigliare più {{notAgain}}",
+    "applied": "{{accepted}} accettate, {{notAgain}} da non consigliare più.",
+    "failed": "{{count}} non è stata applicata:",
+    "failed_other": "{{count}} non sono state applicate:",
+    "none": "A questa esecuzione non resta alcuna proposta da decidere.",
+    "reason": {
+      "invalid_shape": "Non è una relazione nella forma richiesta: un campo manca o ha una forma errata",
+      "unknown_column": "Nomina una tabella o una colonna che la richiesta non ha confrontato",
+      "not_comparable": "Le due colonne hanno classi diverse, quindi non vengono confrontate",
+      "below_threshold": "Punteggio inferiore alla soglia del {{threshold}}% oltre la quale un suggerimento viene mantenuto.",
+      "same_column": "Da una colonna a se stessa",
+      "existing": "Già registrata",
+      "rejected": "Rifiutata in precedenza",
+      "out_of_scope": "Fuori dalle tabelle di origine e di destinazione scelte"
+    },
+    "threshold": "Spunta da",
+    "thresholdHint": "La tua soglia, conservata per le prossime esecuzioni.",
+    "measure": {
+      "inTarget": "{{found}} di {{values}} valori dell'origine sono nella destinazione.",
+      "inTargetFirst": "{{found}} dei primi {{values}} valori dell'origine sono nella destinazione.",
+      "inSource": "{{found}} di {{values}} valori della destinazione sono nell'origine.",
+      "inSourceFirst": "{{found}} dei primi {{values}} valori della destinazione sono nell'origine.",
+      "both": "Entrambe le colonne sono chiavi.",
+      "target": "La destinazione è una chiave.",
+      "source": "L'origine è una chiave.",
+      "neither": "Nessuna delle due colonne è una chiave.",
+      "notRead": {
+        "source": "L'origine non è stata letta: la sua tabella richiede un parametro.",
+        "target": "La destinazione non è stata letta: la sua tabella richiede un parametro."
+      },
+      "notReadable": {
+        "source": "Non puoi leggere la colonna di origine.",
+        "target": "Non puoi leggere la colonna di destinazione."
+      },
+      "noValues": "L'origine non contiene valori.",
+      "modelScore": "Punteggio del modello: nessun valore è stato confrontato.",
+      "ruleForeignKeys": "Prodotta da una chiave esterna dichiarata: nessun valore è stato confrontato.",
+      "ruleKeyNames": "Prodotta da un nome e un tipo di chiave corrispondenti: nessun valore è stato confrontato."
+    },
+    "dimensionMade": "Accettandola si crea la dimensione condivisa {{name}}, a cui si uniscono entrambe le colonne.",
+    "dimensionJoined": "Accettandola, entrambe le colonne si uniscono alla dimensione condivisa {{name}}.",
+    "through": "Tramite {{table}}.",
+    "twoDimensions": "Le sue colonne si uniscono già a due dimensioni condivise diverse, quindi non può essere accettata.",
+    "admittedOnKeyValues": "Ammessa perché i valori chiave corrispondono nei dati; la misura è mostrata accanto alla confidenza del modello.",
+    "hiddenByFilter_one": "{{count}} riga è nascosta dal filtro.",
+    "hiddenByFilter_other": "{{count}} righe sono nascoste dal filtro.",
+    "editAria": "Modifica {{name}}"
+  }
+}

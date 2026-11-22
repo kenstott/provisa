@@ -1,9 +1,9 @@
 {
   "lineagePage": {
     "title": "Lineage dei dati",
-    "intro": "Traccia da dove provengono i dati. Incolla una query qui sotto e Provisa riconduce ogni colonna del risultato, attraverso le sue trasformazioni e chiamate ai comandi, alle colonne di origine — così puoi rispondere a «cosa alimenta questa colonna?» prima di pubblicare una vista o un comando. Oppure scegli <b>Lineage completo</b> per vedere la provenienza di tutte le viste e i dataset registrati in una volta.",
+    "intro": "Incolla una query qui sotto e Provisa riconduce ogni colonna del risultato, attraverso le sue trasformazioni e chiamate di comando, alle colonne di origine, così si vede cosa alimenta una colonna prima di pubblicare una vista o un comando. Oppure scegli <b>Derivazione completa</b> per vedere la provenienza in tutte le viste e i set di dati registrati.",
     "queryLabel": "Query da analizzare",
-    "queryHelp": "Qualsiasi SELECT che legge le tue tabelle, viste o comandi registrati. Questa query viene solo analizzata, mai eseguita: nulla viene eseguito e nessun dato viene letto.",
+    "queryHelp": "Qualsiasi SELECT che legge le tabelle, viste o comandi registrati. Viene analizzata e mai eseguita, quindi nessun dato viene letto.",
     "copy": "Copia query",
     "copied": "Copiato",
     "roleLabel": "Lineage per ruolo",
@@ -12,9 +12,9 @@
     "complete": "Lineage completo",
     "error": "Errore di lineage",
     "cyclesTitle": "Cicli rilevati",
-    "cycleFeedback": "(valido — attraversa un confine materializzato)",
-    "cycleError": "(nessun confine di materializzazione — probabilmente un errore di progettazione)",
+    "cycleFeedback": "(consentito: attraversa un confine materializzato)",
+    "cycleError": "(nessun confine di materializzazione: probabilmente un errore di progettazione)",
     "emptyTitle": "Niente da mostrare",
-    "emptyBody": "Nessun lineage trovato. Il lineage completo copre le tue viste registrate — non ne è ancora definita nessuna, quindi non c'è nulla da tracciare. Registra una vista (Modello → Viste) oppure analizza una query qui sopra per vederne direttamente il lineage."
+    "emptyBody": "Nessuna derivazione trovata. La derivazione completa copre le viste registrate, e non ne è ancora definita nessuna. Registra una vista (Derivati → Viste) oppure analizza una query qui sopra per vederne la derivazione."
   }
 }

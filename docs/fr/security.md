@@ -158,7 +158,7 @@ Les droits et les données ne suivent que les rôles sous lesquels agit la requ�
 
 Les rôles dérivés nommés entrent comme qualificatifs. Un qualificatif n'a ni droits, ni accès aux domaines, ni masques, ni filtres de lignes propres, il n'est donc pas membre des droits du méta-rôle : comme membre sans masques, il démasquerait chaque colonne, et comme membre qui ne lit aucune table, il mettrait fin à tout OR de filtres de lignes. Il n'entre que dans les autorisations : une autorisation ou une entrée de masque qui nomme `region__eu` atteint une requête qui nomme ce qualificatif à côté d'un rôle accordé.
 
-Un agent MCP n'agit jamais au-delà des rôles qui lui ont été donnés. Un agent distant ne nomme que des rôles que détient le principal de son jeton. Un agent local en stdio ne nomme que des rôles de l'ensemble fixé dans `mcp.role` (`PROVISA_MCP_ROLE`), et agit comme cet ensemble lorsqu'il n'en nomme aucun ; tout autre rôle est refusé par son nom.
+Un agent MCP n'agit jamais au-delà des rôles qui lui ont été donnés. Un agent distant ne nomme que des rôles que détient le principal de son jeton. Un agent local en stdio ne nomme que des rôles de l'ensemble fixé dans `mcp.role` (`PROVISA_MCP_ROLE`), et agit comme cet ensemble lorsqu'il n'en nomme aucun ; tout autre rôle est refusé par son nom. Un agent local agit pour le principal nommé dans `mcp.principal` (`PROVISA_MCP_PRINCIPAL`), l'identifiant utilisateur que porte le jeton de connexion de cette personne : ses droits restreignent le rôle fixé exactement comme ils restreignent les requêtes de la même personne sur tout autre client. Un serveur MCP local dont la configuration ne nomme aucun principal refuse chaque appel en nommant le réglage ; un serveur qui nomme un principal absent de l'organisation refuse lui aussi chaque appel.
 
 Un agent demande sous quel rôle il agit avec l'outil MCP `describe_role`. La réponse est ce rôle et ce à quoi il sert (un méta-rôle avec chacun de ses membres), ainsi que les rôles vers lesquels l'agent peut basculer, chacun avec sa description. Elle ne contient jamais de règle de lignes, de masque, d'autorisation ni de condition. Provisa ne dit jamais à un agent pourquoi un résultat a été restreint, et un résultat ne porte aucun indicateur « filtré » : les données d'un rôle sont toute sa vue, et une raison pour ce qui manque inviterait à le sonder.
 
@@ -392,7 +392,7 @@ Les lignes sont conservées pour toujours. Provisa n'a aucun réglage de rétent
 
 ## Expurgation {: #redaction }
 
-Ce que Provisa enregistre de son propre travail passe par une liste de règles d'expurgation avant d'être écrit où que ce soit. Le texte qu'une règle reconnaît est remplacé par `[REDACTED:<rule>]`, qui nomme la règle concernée.
+Ce que Provisa enregistre de son propre travail, ainsi que chaque texte d'erreur qu'il envoie à un client, passe par une liste de règles d'expurgation avant d'être écrit où que ce soit. Dans les journaux, les spans et la piste d'audit de Provisa, le texte qu'une règle reconnaît est remplacé par `[REDACTED:<rule>]`, qui nomme la règle concernée. Un client reçoit le marqueur nu `[REDACTED]`. Il ne nomme ni règle ni variable, vous ne pouvez donc pas savoir à quel secret correspond un mot que vous avez envoyé.
 
 La liste a quatre parties :
 
@@ -412,7 +412,8 @@ La liste s'applique à chaque sortie qu'écrit Provisa :
 - chaque span, sous forme d'une copie expurgée remise à chaque exportateur, et la vue des spans récents ;
 - chaque enregistrement de journal du pipeline de journaux OpenTelemetry de Provisa, et chaque ligne qu'écrit un gestionnaire de journalisation, sortie standard et journaux des conteneurs compris ;
 - le texte de requête du journal d'audit, avant d'être haché et chiffré, de sorte que ni le texte ni son hachage ne révèlent une valeur reconnue ; et le détail de la piste administrative ;
-- les messages d'erreur qu'un client reçoit par HTTP, pgwire, gRPC, Arrow Flight et MCP.
+- les messages d'erreur qu'un client reçoit par HTTP, pgwire, gRPC, Arrow Flight, MCP et Bolt. Une erreur dans une réponse réussie, comme une liste `errors` GraphQL dans une réponse 200 ou la dernière trame d'un abonnement, est expurgée de la même façon qu'une erreur dans une réponse 400 ;
+- le texte que Provisa envoie à un modèle, comme un prompt ou une entrée d'embedding, qui porte le marqueur nu.
 
 La télémétrie et les erreurs client ne sont rattachées à aucune organisation au moment où elles sont écrites ; elles sont donc expurgées par les règles de toutes les organisations ensemble. Deux erreurs passent sans expurgation : un corps d'erreur HTTP de plus de 1 Mio, et l'erreur d'un flux Arrow Flight qui échoue après avoir commencé à envoyer.
 

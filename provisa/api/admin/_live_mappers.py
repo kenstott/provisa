@@ -66,6 +66,7 @@ def table_model_from_input(inp, columns, alias):  # REQ-929, REQ-982
         import_set=getattr(inp, "import_set", None) or None,  # REQ-1954
         arguments=dict(inp.arguments or {}),  # REQ-2061
         landing_filter=inp.landing_filter or None,  # REQ-2062
+        read_wait=inp.read_wait,  # REQ-2224
         view_metrics=view_metrics,  # REQ-1318
         materialize=inp.materialize,
         mv_refresh_interval=inp.mv_refresh_interval,
@@ -82,6 +83,7 @@ def table_model_from_input(inp, columns, alias):  # REQ-929, REQ-982
         mv_persist=inp.mv_persist,  # REQ-965
         mv_primary_key=list(inp.mv_primary_key),  # REQ-970
         mv_incremental=inp.mv_incremental,  # REQ-969
+        mv_rebuild_every=inp.mv_rebuild_every,  # REQ-2249
         mv_calendar=inp.mv_calendar,  # REQ-962
         mv_grain=inp.mv_grain,  # REQ-962/1168
         mv_allowed_lateness=inp.mv_allowed_lateness,  # REQ-961

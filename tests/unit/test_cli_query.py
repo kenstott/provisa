@@ -19,8 +19,11 @@ import io
 import json
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
+import yaml
 
 from provisa import cli
 from provisa.cli_query import EXPECTATION_FAILED, FAILED, OK, REFUSED, USAGE
@@ -367,3 +370,336 @@ class TestExplain:
         instance.answers.append(REFUSAL)
         flags = ["--expect-refused", "data.governance_refused"]
         assert _run(instance, "explain", "sql", "SELECT 1", *flags) == OK
+
+
+_ORDERS = "pg/public/orders"
+_CUSTOMERS = "pg/public/customers"
+_BIG_ORDERS = "__derived__/views/big_orders"
+_TOP_ORDERS = "__derived__/views/top_orders"
+
+
+def _table(name: str, **extra) -> dict:
+    return {
+        "source_id": "pg",
+        "domain_id": "sales",
+        "schema": "public",
+        "table": name,
+        "columns": [{"name": "id", "visible_to": ["analyst"]}],
+        **extra,
+    }
+
+
+def _view(name: str, sql: str) -> dict:
+    return _table(name, source_id="__derived__", schema="views", view_sql=sql)
+
+
+def _model(*tables: dict) -> dict:
+    return {
+        "sources": [
+            {
+                "id": "pg",
+                "type": "postgresql",
+                "host": "db",
+                "port": 5432,
+                "database": "d",
+                "username": "u",
+                "password": "${env:J1147_UNSET}",
+            }
+        ],
+        "domains": [{"id": "sales"}],
+        "tables": list(tables),
+        "roles": [
+            {"id": "analyst", "description": "r", "capabilities": [], "domain_access": ["sales"]}
+        ],
+    }
+
+
+_BASE = (
+    _table("orders"),
+    _table("customers"),
+    _view("big_orders", "SELECT * FROM sales.orders"),
+    _view("top_orders", "WITH t AS (SELECT * FROM big_orders) SELECT * FROM t"),
+)
+_ORDERS_CHANGED = (_table("orders", description="changed"), *_BASE[1:])
+
+
+def _explained(*addresses: str) -> tuple:
+    tables = [{"address": a, "domain": "sales", "table": a.rsplit("/")[-1]} for a in addresses]
+    return (200, {"language": "sql", "statements": [{"route": "DIRECT", "tables": tables}]})
+
+
+class TestChanged:
+    @pytest.fixture
+    def tree(self, tmp_path):
+        statements = tmp_path / "statements"
+        statements.mkdir()
+        state = tmp_path / "state.yaml"
+        state.write_text(yaml.safe_dump(_model(*_BASE)))
+
+        def run(instance, *flags) -> int:
+            argv = ["query", "--changed", "--state", str(state), "--dir", str(statements)]
+            argv += ["--role", "analyst", "--org", "acme", "--api", instance.url, *flags]
+            return cli.main(argv)
+
+        return SimpleNamespace(statements=statements, state=state, run=run)
+
+    @staticmethod
+    def _now(instance, *tables: dict) -> None:
+        instance.answers.append((200, yaml.safe_dump(_model(*tables)).encode()))
+
+    @staticmethod
+    def _document(capsys) -> dict:
+        return json.loads(capsys.readouterr().out)
+
+    def test_only_statements_reading_a_changed_table_or_a_dependent_run(
+        self, instance, tree, capsys
+    ):
+        (tree.statements / "a_orders.sql").write_text("SELECT id FROM sales.orders")
+        (tree.statements / "b_big.sql").write_text("SELECT id FROM sales.big_orders")
+        (tree.statements / "c_top.sql").write_text("SELECT id FROM sales.top_orders")
+        (tree.statements / "d_customers.sql").write_text("SELECT id FROM sales.customers")
+        self._now(instance, *_ORDERS_CHANGED)
+        instance.answers += [
+            _explained(_ORDERS),
+            (200, {"rows": ["a"]}),
+            _explained(_BIG_ORDERS),
+            (200, {"rows": ["b"]}),
+            _explained(_TOP_ORDERS),
+            (200, {"rows": ["c"]}),
+            _explained(_CUSTOMERS),
+        ]
+
+        assert tree.run(instance) == OK
+
+        document = self._document(capsys)
+        assert document["status"] == "ok"
+        assert document["changed"] == [_ORDERS]
+        assert document["affected"] == [_BIG_ORDERS, _TOP_ORDERS, _ORDERS]
+        outcomes = {s["file"]: s["outcome"] for s in document["statements"]}
+        assert outcomes == {
+            "a_orders.sql": "ok",
+            "b_big.sql": "ok",
+            "c_top.sql": "ok",
+            "d_customers.sql": "skipped",
+        }
+        assert document["statements"][0]["result"] == {"rows": ["a"]}
+        ran = [json.loads(s["raw"])["sql"] for s in instance.seen if s["path"] == "/data/sql"]
+        assert ran == [
+            "SELECT id FROM sales.orders",
+            "SELECT id FROM sales.big_orders",
+            "SELECT id FROM sales.top_orders",
+        ]
+
+    def test_the_export_is_read_for_the_org_and_not_as_the_statements_role(self, instance, tree):
+        self._now(instance, *_BASE)
+        assert tree.run(instance) == OK
+        export = instance.seen[0]
+        assert export["path"] == "/admin/orgs/acme/config-export"
+        assert export["headers"]["x-org-provisa"] == "acme"
+        assert "x-provisa-role" not in export["headers"]
+
+    def test_explain_is_asked_as_the_statements_role(self, instance, tree):
+        (tree.statements / "a.sql").write_text("SELECT 1")
+        self._now(instance, *_BASE)
+        instance.answers.append(_explained(_CUSTOMERS))
+        assert tree.run(instance) == OK
+        asked = instance.seen[1]
+        assert asked["path"] == "/data/explain"
+        assert asked["headers"]["x-provisa-role"] == "analyst"
+        assert _body(asked) == {
+            "language": "sql",
+            "statement": "SELECT 1",
+            "arguments": {},
+            "analyze": False,
+        }
+
+    def test_nothing_changed_runs_nothing(self, instance, tree, capsys):
+        (tree.statements / "a.sql").write_text("SELECT id FROM sales.orders")
+        self._now(instance, *_BASE)
+        instance.answers.append(_explained(_ORDERS))
+        assert tree.run(instance) == OK
+        document = self._document(capsys)
+        assert document["changed"] == []
+        assert document["statements"][0]["outcome"] == "skipped"
+        assert [s["path"] for s in instance.seen].count("/data/sql") == 0
+
+    def test_an_edited_view_selects_itself_and_what_reads_it_not_what_it_reads(
+        self, instance, tree, capsys
+    ):
+        (tree.statements / "a_orders.sql").write_text("SELECT id FROM sales.orders")
+        (tree.statements / "b_top.sql").write_text("SELECT id FROM sales.top_orders")
+        edited = _view("big_orders", "SELECT id FROM sales.orders WHERE id > 1")
+        self._now(instance, _BASE[0], _BASE[1], edited, _BASE[3])
+        instance.answers += [_explained(_ORDERS), _explained(_TOP_ORDERS), (200, {"rows": []})]
+        assert tree.run(instance) == OK
+        document = self._document(capsys)
+        assert document["changed"] == [_BIG_ORDERS]
+        assert document["affected"] == [_BIG_ORDERS, _TOP_ORDERS]
+        assert [s["outcome"] for s in document["statements"]] == ["skipped", "ok"]
+
+    def test_a_new_table_counts_as_changed(self, instance, tree, capsys):
+        (tree.statements / "a.sql").write_text("SELECT id FROM sales.returns")
+        self._now(instance, *_BASE, _table("returns"))
+        instance.answers += [_explained("pg/public/returns"), (200, {"rows": []})]
+        assert tree.run(instance) == OK
+        assert self._document(capsys)["changed"] == ["pg/public/returns"]
+
+    def test_a_removed_table_changes_what_read_it_and_explain_refuses_those(
+        self, instance, tree, capsys
+    ):
+        (tree.statements / "a.sql").write_text("SELECT id FROM sales.customers")
+        self._now(instance, _BASE[0], _BASE[2], _BASE[3])
+        instance.answers.append(REFUSAL)
+        assert tree.run(instance) == REFUSED
+        document = self._document(capsys)
+        assert document["changed"] == [_CUSTOMERS]
+        assert document["status"] == "refused"
+        statement = document["statements"][0]
+        assert statement["outcome"] == "refused"
+        assert statement["code"] == "data.governance_refused"
+        assert [s["path"] for s in instance.seen].count("/data/sql") == 0
+
+    def test_a_metric_composed_view_depends_on_the_tables_its_metrics_read(
+        self, instance, tree, capsys
+    ):
+        metric_view = _view("order_totals", "SELECT value FROM metrics.total_orders")
+        metrics = [{"name": "total_orders", "expression": "SUM(orders.id)"}]
+        then, now = _model(*_BASE, metric_view), _model(*_ORDERS_CHANGED, metric_view)
+        tree.state.write_text(yaml.safe_dump({**then, "metrics": metrics}))
+        instance.answers.append((200, yaml.safe_dump({**now, "metrics": metrics}).encode()))
+        assert tree.run(instance) == OK
+        assert "__derived__/views/order_totals" in self._document(capsys)["affected"]
+
+    def test_a_refused_run_and_a_failed_run_set_the_exit(self, instance, tree, capsys):
+        (tree.statements / "a.sql").write_text("SELECT id FROM sales.orders")
+        (tree.statements / "b.sql").write_text("SELECT id FROM sales.big_orders")
+        self._now(instance, *_ORDERS_CHANGED)
+        instance.answers += [
+            _explained(_ORDERS),
+            REFUSAL,
+            _explained(_BIG_ORDERS),
+            (500, {"detail": "boom"}),
+        ]
+        assert tree.run(instance) == FAILED
+        document = self._document(capsys)
+        assert document["status"] == "failed"
+        assert [s["outcome"] for s in document["statements"]] == ["refused", "failed"]
+
+    @pytest.mark.parametrize(
+        "name, text, language, statement, arguments",
+        [
+            ("a.graphql", "{ a }", "graphql", "{ a }", {}),
+            ("a.gql", "{ a }", "graphql", "{ a }", {}),
+            ("a.cypher", "MATCH (n) RETURN n", "cypher", "MATCH (n) RETURN n", {}),
+            ("a.cql", "MATCH (n) RETURN n", "cypher", "MATCH (n) RETURN n", {}),
+            ("a.sparql", "ASK {}", "sparql", "ASK {}", {}),
+            ("a.rq", "ASK {}", "sparql", "ASK {}", {}),
+            ("a.rest", "sales/orders?limit=1\n", "rest", "sales/orders?limit=1", {}),
+            (
+                "a.grpc",
+                '{"statement": "Sales_Orders", "arguments": {"limit": 1}}',
+                "grpc",
+                "Sales_Orders",
+                {"limit": 1},
+            ),
+            (
+                "a.mcp",
+                '{"statement": "run_sql", "arguments": {"sql": "SELECT 1"}}',
+                "mcp",
+                "run_sql",
+                {"sql": "SELECT 1"},
+            ),
+        ],
+    )
+    def test_a_files_extension_names_its_language(
+        self, instance, tree, name, text, language, statement, arguments
+    ):
+        (tree.statements / name).write_text(text)
+        self._now(instance, *_BASE)
+        instance.answers.append(_explained(_CUSTOMERS))
+        assert tree.run(instance) == OK
+        assert _body(instance.seen[1]) == {
+            "language": language,
+            "statement": statement,
+            "arguments": arguments,
+            "analyze": False,
+        }
+
+    def test_files_are_found_below_the_directory_and_others_are_left(self, instance, tree, capsys):
+        nested = tree.statements / "reports"
+        nested.mkdir()
+        (nested / "a.sql").write_text("SELECT 1")
+        (tree.statements / "README.md").write_text("not a statement")
+        self._now(instance, *_BASE)
+        instance.answers.append(_explained(_CUSTOMERS))
+        assert tree.run(instance) == OK
+        files = [s["file"] for s in self._document(capsys)["statements"]]
+        assert files == [str(Path("reports") / "a.sql")]
+
+    def test_a_view_that_will_not_parse_is_refused(self, instance, tree, capsys):
+        self._now(instance, *_BASE, _view("broken", "SELECT FROM WHERE ((("))
+        assert tree.run(instance) == REFUSED
+        document = self._document(capsys)
+        assert document["code"] == "config.instance_invalid"
+        assert [s["path"] for s in instance.seen].count("/data/explain") == 0
+
+    def test_a_state_file_that_cannot_be_read_is_refused(self, instance, tree, capsys):
+        tree.state.unlink()
+        assert tree.run(instance) == REFUSED
+        assert self._document(capsys)["code"] == "config.unreadable"
+        assert instance.seen == []
+
+    def test_a_refused_export_is_reported(self, instance, tree, capsys):
+        instance.answers.append(REFUSAL)
+        assert tree.run(instance) == REFUSED
+        assert self._document(capsys)["code"] == "data.governance_refused"
+
+    def test_a_malformed_statement_file_is_a_usage_error_before_anything_runs(
+        self, instance, tree, capsys
+    ):
+        (tree.statements / "a.grpc").write_text("not json")
+        self._now(instance, *_BASE)
+        assert tree.run(instance) == USAGE
+        assert "a.grpc" in capsys.readouterr().err
+        assert [s["path"] for s in instance.seen].count("/data/explain") == 0
+
+    @pytest.mark.parametrize(
+        "flags",
+        [
+            ["query", "--changed", "--dir", "d", "--org", "a"],
+            ["query", "--changed", "--state", "s", "--org", "a"],
+            ["query", "--changed", "--state", "s", "--dir", "d"],
+            ["query", "sql", "SELECT 1", "--changed", "--state", "s", "--dir", "d", "--org", "a"],
+            ["query", "--changed", "--state", "s", "--dir", "d", "--org", "a", "--file", "f"],
+            [
+                "query",
+                "--changed",
+                "--state",
+                "s",
+                "--dir",
+                "d",
+                "--org",
+                "a",
+                "--expect-refused",
+                "c",
+            ],
+            ["query", "sql", "SELECT 1", "--state", "s"],
+            ["query", "sql", "SELECT 1", "--dir", "d"],
+        ],
+    )
+    def test_a_wrong_command_line_exits_2(self, instance, capsys, flags):
+        assert cli.main([*flags, "--role", "analyst", "--api", instance.url]) == USAGE
+        assert instance.seen == []
+
+    def test_a_directory_that_is_not_one_exits_2(self, instance, tree, capsys):
+        missing = str(tree.statements / "missing")
+        argv = ["query", "--changed", "--state", str(tree.state), "--dir", missing]
+        argv += ["--role", "analyst", "--org", "acme", "--api", instance.url]
+        assert cli.main(argv) == USAGE
+        assert instance.seen == []
+
+    def test_an_unreachable_instance_exits_4(self, tree, capsys):
+        argv = ["query", "--changed", "--state", str(tree.state), "--dir", str(tree.statements)]
+        argv += ["--role", "analyst", "--org", "acme", "--api", "http://127.0.0.1:9", "--timeout"]
+        assert cli.main([*argv, "2"]) == FAILED
+        assert self._document(capsys)["code"] == "client.unreachable"

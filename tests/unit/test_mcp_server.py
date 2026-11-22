@@ -29,6 +29,8 @@ from provisa.compiler.sql_types import JoinMeta, TableMeta
 from provisa.executor.result import QueryResult
 from provisa.transpiler.router import Route
 from tests.role_state import RoleState
+from tests.unit.mcp_described import serve_whole
+from tests.unit.mcp_local_principal import act_for
 
 pytestmark = pytest.mark.asyncio
 
@@ -58,6 +60,17 @@ _CATALOG = [
         columns=[CatalogColumn("id", "integer", False, "")],
     ),
 ]
+
+
+@pytest.fixture(autouse=True)
+def _no_stored_ai_keys(monkeypatch):
+    """Listing the tools asks whether the organization has a Jev key (REQ-1395); the states
+    here hold no model store to ask, so the organization is said to have stored none."""
+
+    async def stored(_db):
+        return {}
+
+    monkeypatch.setattr("provisa.core.org_secrets.read_org_api_keys", stored)
 
 
 def _make_state():
@@ -125,6 +138,13 @@ def _patch_catalog(monkeypatch):
     monkeypatch.setattr(tools, "_build_catalog_tables_async", _fake)
 
 
+@pytest.fixture(autouse=True)
+def _no_masks(monkeypatch):
+    """The fake state's role is served every column of each table its context holds, and holds
+    no mask: its governance context (what describe_table reads each column's state from)."""
+    serve_whole(monkeypatch)
+
+
 # --- drill-down -------------------------------------------------------------
 
 
@@ -154,8 +174,13 @@ async def test_describe_table(state):
     assert result["schema"] == "sales"
     assert result["table"] == "orders"
     assert result["columns"] == [
-        {"name": "id", "type": "integer", "description": "Primary key"},
-        {"name": "customer_id", "type": "integer", "description": "FK to customers"},
+        {"name": "id", "type": "integer", "description": "Primary key", "state": "plain"},
+        {
+            "name": "customer_id",
+            "type": "integer",
+            "description": "FK to customers",
+            "state": "plain",
+        },
     ]
     assert result["foreign_keys"] == [
         {
@@ -545,6 +570,7 @@ async def test_stdio_capability_tool_succeeds_when_the_pinned_role_holds_the_cap
     # require_capability_request reads the provisa.api.app module-level `state` singleton, not
     # whatever object build_mcp_server was given — same as production, where they're one object.
     monkeypatch.setattr("provisa.api.app.state", fake_state)
+    act_for(monkeypatch, fake_state)
     mcp = build_mcp_server(fake_state)
 
     with patch("provisa.core.repositories.data_product.list_all", AsyncMock(return_value=[])):
@@ -566,6 +592,7 @@ async def test_stdio_capability_tool_refuses_when_the_pinned_role_lacks_the_capa
     fake_state.tenant_db = _FakePool()
     fake_state.model_db = fake_state.tenant_db
     monkeypatch.setattr("provisa.api.app.state", fake_state)
+    act_for(monkeypatch, fake_state)
     mcp = build_mcp_server(fake_state)
 
     with pytest.raises(Exception, match="data_product_read"):
@@ -592,6 +619,7 @@ async def test_a_decision_through_mcp_applies_with_no_idempotency_key(monkeypatc
         return await idempotency.once(_FakePool(), request, run)  # type: ignore[arg-type]
 
     monkeypatch.setattr(mt, "decide_profile_constraint", decide)
+    act_for(monkeypatch, fake_state)
     mcp = build_mcp_server(fake_state)
     await mcp.call_tool(
         "decide_profile_constraint",
@@ -620,7 +648,7 @@ async def test_jev_tool_present_with_api_key(monkeypatch):
 
 async def test_jev_evaluate_calls_client_with_configured_key(state, monkeypatch):
     monkeypatch.setenv("TYPESAFEAI_API_KEY", "ts_test_key")
-    # resolve_jev_api_key treats tenant_db=None as "no org override, env var only" — the sentinel
+    # org_secrets.org_ai_key treats model_db=None as "no org override, env var only" — the sentinel
     # `object()` this fixture otherwise carries (for _catalog()'s truthiness check) isn't a real
     # Database and would blow up read_org_secret's `.acquire()` call.
     state.tenant_db = None
@@ -644,8 +672,11 @@ async def test_jev_evaluate_fails_loud_without_api_key(state, monkeypatch):
     monkeypatch.delenv("TYPESAFEAI_API_KEY", raising=False)
     state.tenant_db = None  # see note in test_jev_evaluate_calls_client_with_configured_key
     state.model_db = state.tenant_db
-    with pytest.raises(ValueError):
+    from provisa.core.org_secrets import AiKeyRequired
+
+    with pytest.raises(AiKeyRequired) as refused:
         await tools.jev_evaluate(state, "analyst", None, [{"id": "q1", "type": "noul"}])
+    assert refused.value.code == "ai.key_required"
 
 
 # --- REQ-1847: GraphQL field-name authority --------------------------------
@@ -791,7 +822,7 @@ async def test_generate_explore_queries_returns_per_target_queries_and_errors(st
     fake_store = _FakeJobStore()
 
     async def fake_run_nl_job(
-        job_id, question, role, app_state, job_store, llm, strict=False, *, deliver
+        job_id, question, role, app_state, job_store, llm, strict=False, *, deliver, scope
     ):
         job = await job_store.get(job_id)
         job.branches["sql"] = BranchResult(query="SELECT 1", error=None)
@@ -877,6 +908,7 @@ async def test_a_local_call_naming_a_role_beyond_its_pin_is_recorded_and_ends_it
     fake_state = _make_state()
     fake_state.org_id = "root"  # the deployment's org, which a local call is served in
     monkeypatch.setattr("provisa.api.app.state", fake_state)
+    act_for(monkeypatch, fake_state)
     mcp = build_mcp_server(fake_state)
     token = mcp_server._request_session.set("session-1")
     try:
@@ -966,6 +998,7 @@ async def test_a_model_tool_acts_as_the_role_the_call_resolved_to(monkeypatch):
         return {"columns": []}
 
     monkeypatch.setattr(model_tools, "get_table_fakes", _fakes)
+    act_for(monkeypatch, fake_state)
     mcp = build_mcp_server(fake_state)
     await mcp.call_tool("get_table_fakes", {"table_id": 1})
     assert [r.state.role for r in seen] == ["curator"]

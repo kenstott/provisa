@@ -57,6 +57,9 @@ function tourRoutes(): string[] {
   return [...routes];
 }
 
+/** The gate of a route every member opens (`capability={EVERY_MEMBER}`). */
+const EVERY_MEMBER_GATE = "EVERY_MEMBER";
+
 /** path → the capability its <Route> gate names, for the JSX route table in App.tsx. */
 function routeCapabilities(): Record<string, string> {
   const source = readFileSync(resolve(SRC, "App.tsx"), "utf-8");
@@ -66,8 +69,8 @@ function routeCapabilities(): Record<string, string> {
   for (const block of blocks) {
     const path = /^"([^"]+)"/.exec(block);
     if (!path) continue;
-    const cap = /capability=\{?"([a-z_]+)"/.exec(block);
-    if (cap) out[path[1]] = cap[1];
+    const cap = /capability=\{?(?:"([a-z_]+)"|(EVERY_MEMBER)\})/.exec(block);
+    if (cap) out[path[1]] = cap[1] ?? cap[2];
   }
   // Paths sharing one gate are a list mapped onto a single <Route path={path}> (the Python and
   // Notebook tabs).
@@ -76,8 +79,11 @@ function routeCapabilities(): Record<string, string> {
   )) {
     for (const path of m[1].matchAll(/"([^"]+)"/g)) out[path[1]] = m[2];
   }
-  // The Admin surfaces are a `[path, capability]` table rather than JSX routes.
-  for (const m of source.matchAll(/\["(\/admin\/[^"]+)",\s*"([a-z_]+)"\]/g)) out[m[1]] = m[2];
+  // The Admin surfaces are a `[path, capability]` table rather than JSX routes; a row every member
+  // opens names EVERY_MEMBER.
+  for (const m of source.matchAll(/\["(\/admin\/[^"]+)",\s*(?:"([a-z_]+)"|(EVERY_MEMBER))\]/g)) {
+    out[m[1]] = m[2] ?? m[3];
+  }
   return out;
 }
 
@@ -93,8 +99,8 @@ describe("guided tour route gates", () => {
 
   it.each(tourRoutes())("an org_admin may reach %s", (route) => {
     const capability = gates[route];
-    // A route with no gate is reachable by anyone signed in; nothing to assert.
-    if (capability === undefined) return;
+    // A route with no gate, or one every member opens, is reachable by anyone signed in.
+    if (capability === undefined || capability === EVERY_MEMBER_GATE) return;
     expect(caps.has(capability)).toBe(true);
   });
 
@@ -102,7 +108,7 @@ describe("guided tour route gates", () => {
   // route table above — is what decides whether a viewer is shown a page. If it disagrees with the
   // gate, the tour either walks into NotAuthorized and hangs, or hides a page the viewer could see.
   // REQ-1590: a step may name a STRICTER right than its route's gate when what it points at is not
-  // on the page for everyone the route admits. /admin/ontology opens to a reader, but the glossary
+  // on the page for everyone the route admits. /context/ontology opens to a reader, but the glossary
   // step highlights the AI-generation buttons, which only a curator is shown. The right named must
   // still carry the viewer through the gate, which is what this map records — and the seeds grant
   // glossary_rw only alongside glossary_read.
@@ -114,8 +120,15 @@ describe("guided tour route gates", () => {
   it.each(TOUR_STEPS.filter((s) => s.route).map((s) => [s.key, s.route!, s.capability] as const))(
     "step %s declares the gate its route carries",
     (_key, route, capability) => {
+      // REQ-1327: a route every member opens admits any step; the right a step names there is
+      // stricter than the gate, and must be one the seeds grant.
+      const gate = gates[route.split("?")[0]];
+      if (gate === EVERY_MEMBER_GATE) {
+        expect(caps.has(capability!)).toBe(true);
+        return;
+      }
       const opens = IMPLIED_GATE[capability!] ?? capability;
-      expect(opens).toBe(gates[route.split("?")[0]]);
+      expect(opens).toBe(gate);
     },
   );
 
@@ -141,20 +154,20 @@ describe("tour itinerary", () => {
   it("drops a routeless step along with the route it continues on", () => {
     // The Views chapter: /views is the route owner, and the steps after it that omit `route` are
     // continuations of that page — several via a clickBefore the owner's step opened. Withholding
-    // table_registration must take the whole chapter, not just the step that names the route.
-    const kept = tourItinerary((c) => c !== "table_registration");
+    // create_view must take the whole chapter, not just the step that names the route.
+    const kept = tourItinerary((c) => c !== "create_view");
     for (const i of kept) {
       const route = stepRoute(i);
       if (route === undefined) continue;
       const owner = TOUR_STEPS.slice(0, i + 1).findLast((s) => s.route);
-      expect(owner?.capability).not.toBe("table_registration");
+      expect(owner?.capability).not.toBe("create_view");
     }
     // And it really did remove some — a filter that dropped nothing would pass the loop above.
     expect(kept.length).toBeLessThan(TOUR_STEPS.length);
   });
 
   it("keeps the steps of the chapters that survive", () => {
-    const kept = tourItinerary((c) => c !== "table_registration");
+    const kept = tourItinerary((c) => c !== "create_view");
     const keys = kept.map((i) => TOUR_STEPS[i].key);
     expect(keys).toContain("step0"); // /sources — source_registration, untouched
     expect(keys).not.toContain("step20"); // /views

@@ -18,12 +18,13 @@ from __future__ import annotations
 
 import functools
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 if TYPE_CHECKING:
     from provisa.compiler.native_nested import NestedColumns
     from provisa.compiler.native_subtype import SubtypeColumns
     from provisa.compiler.introspect import ColumnMetadata
+    from provisa.core.parameters import ParameterFact
 
 
 # Protocol mirroring schema_gen._TableInfo — avoids a circular import while
@@ -42,6 +43,7 @@ class _TableInfoProto(Protocol):
     alias: str | None
     metrics: list[dict]  # REQ-1319: role-visible single-table metrics for this table
     write_ops: frozenset[str]  # REQ-209: the operations the table's source takes
+    gql_convention_override: str | None  # the table's own GraphQL convention; None: the active one
 
 
 # --- Compilation context (built from SchemaInput alongside schema) ---
@@ -62,6 +64,9 @@ class TableMeta:
     source_type: str = ""  # source type string (e.g. "iceberg", "postgresql") for time-travel
     original_table_name: str = ""  # pre-alias name (e.g. "registered_tables"); empty if no alias
     display_name: str = ""  # user-visible name (DB alias); empty → derived from field_name
+    # REQ-194, REQ-467: the table's own GraphQL convention (its root-field variants' spelling);
+    # None: the active convention (naming.active_gql_convention).
+    gql_convention: str | None = None
 
 
 def extracts_paths(source_type: str, table: str) -> bool:  # REQ-151, REQ-152
@@ -158,6 +163,9 @@ class JoinMeta:
         None  # when set, propagate as parent_src_val to child joins instead of sub_src
     )
     via: "JunctionMeta | None" = None  # REQ-1586: set on a junction-backed edge, None on FK/PK
+    #: REQ-1586: True where a registered relationship row declares this join; False on a
+    #: synthetic one (HAS_TABLE, an ops link), which no relationship of a table's own declares.
+    registered: bool = False
 
 
 @dataclass
@@ -178,9 +186,6 @@ class CompilationContext:
 
     # Root query field_name → TableMeta
     tables: dict[str, TableMeta] = field(default_factory=dict)
-    # REQ-1921: every name a statement could give a draft table this role would see (field name,
-    # table name, alias, schema.table) → the table's name. In no schema; refused as draft.
-    draft_names: dict[str, str] = field(default_factory=dict)
     # REQ-1132: each name of a system domain's table the role holds no capability for -> the domain.
     missing_capability: dict[str, str] = field(default_factory=dict)
     # REQ-1132: each name of a table the role can only list -> the table.
@@ -216,8 +221,19 @@ class CompilationContext:
     # (table_id, physical_column_name) → the GraphQL field name the row type gives it (alias, or
     # the naming convention applied): the name an aggregate's result fields use too.
     physical_to_gql: dict[tuple[int, str], str] = field(default_factory=dict)
+    # REQ-1385: (table_id, physical_column_name) → the column's alias, for a column that has one:
+    # its model name, which a physical rename under the alias leaves as it was.
+    column_aliases: dict[tuple[int, str], str] = field(default_factory=dict)
     # table_id → set of column names that require native API params (_nf_ prefix)
     native_filter_columns: dict[int, dict[str, str]] = field(default_factory=dict)
+    # table_id → the table's parameters as its metadata states them (REQ-1986:
+    # core.parameters.parameter_facts): name, type, kind, opaque or a real column, required. What
+    # a reader that counts, profiles, samples or scans a table asks before reading it.
+    parameters: dict[int, tuple[ParameterFact, ...]] = field(default_factory=dict)
+    # table_id -> every name its parameters are bound under, lowercased, to the parameter column
+    # (REQ-1986, core.parameters.parameter_names): its column, its own name, its alias. The one
+    # map every front resolves a parameter name by.
+    parameter_names: dict[int, dict[str, str]] = field(default_factory=dict)
     # table_id → {virtual_col_name → literal_value}
     virtual_columns: dict[int, dict[str, str]] = field(default_factory=dict)
     # table_id → {virtual_col_name → (key column, {key value → literal})}: a virtual column whose
@@ -246,6 +262,14 @@ class CompilationContext:
     # aggregate compiler selects a metric exactly like a sum/avg column (same expansion the
     # raw-SQL pipeline applies via metric_expand).
     metric_exprs: dict[tuple[int, str], str] = field(default_factory=dict)
+    # The lookups sql_rewrite derives from this context to lower a statement (its table names,
+    # replacements, published columns), each kept with the stamp of the inputs it was derived
+    # from and the SQL naming convention in force (sql_rewrite._derived). A context is built once
+    # and read by every statement of its role; derived per statement, they were most of the
+    # server time of a simple query.
+    lowering_memo: dict[Any, tuple[Any, Any]] = field(
+        default_factory=dict, repr=False, compare=False
+    )
 
 
 # --- Compiled query result ---

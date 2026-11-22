@@ -13,27 +13,33 @@ import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import type { Dependent } from "../lib/dependents";
+import { commandId, detailHref } from "./list/useDetailParam";
 
-/** The admin page where an object of each kind is removed or changed. */
-const PAGE_OF_KIND: Record<string, string> = {
-  table: "/tables",
-  column: "/tables",
-  tag_assignment: "/tables",
-  relationship: "/relationships",
-  role: "/security/roles",
-  role_assignment: "/team",
-  row_filter: "/security/rls",
-  metric: "/metrics",
-  materialized_view: "/views",
-  command: "/commands",
-  webhook: "/commands",
-  data_product: "/data-products",
-  source: "/sources",
-  remote_registration: "/sources",
-  domain: "/admin",
-  glossary_term: "/admin/ontology",
-  // What refers to an environment (REQ-1918): the people pinned to it are on the team page.
-  membership: "/team",
+/** The link into each kind's detail panel on its page (REQ-2240). A kind whose page has no panel
+ *  to open (a role assignment, a member, an environment) has none. */
+/** What the server reports beside a dependent's id for the kinds linked through another object. */
+function owner(d: Dependent, key: "table_id" | "source_id"): string | number {
+  const value = d[key];
+  if (value === undefined) throw new Error(`a ${d.kind} dependent without its ${key}`);
+  return value;
+}
+
+const LINK_OF_KIND: Record<string, (d: Dependent) => string> = {
+  table: (d) => detailHref("tables", d.id),
+  // A column grant is changed on its table's Columns tab.
+  column: (d) => detailHref("tables", owner(d, "table_id"), "columns"),
+  relationship: (d) => detailHref("relationships", d.id),
+  role: (d) => detailHref("roles", d.id),
+  row_filter: (d) => detailHref("rls", d.id),
+  metric: (d) => detailHref("metrics", d.id),
+  // A function and a webhook may share a name: each opens its own panel.
+  command: (d) => detailHref("commands", commandId("function", String(d.id))),
+  webhook: (d) => detailHref("commands", commandId("webhook", String(d.id))),
+  data_product: (d) => detailHref("products", d.id),
+  source: (d) => detailHref("sources", d.id),
+  remote_registration: (d) => detailHref("sources", owner(d, "source_id")),
+  domain: (d) => detailHref("domains", d.id),
+  glossary_term: (d) => detailHref("ontology", d.id),
 };
 
 interface DialogProps {
@@ -45,9 +51,9 @@ interface DialogProps {
   itemAction?: (dependent: Dependent) => ReactNode;
 }
 
-/** "Cannot delete X yet": every object that still refers to it, grouped by kind, each linked to
- *  the page where it is removed or changed. There is nothing to confirm — the delete did not
- *  happen — so the only action is to close. */
+/** "Cannot delete X yet": every object that still refers to it, grouped by kind, each named as
+ *  its own page names it and linked to its detail panel there. There is nothing to confirm -- the
+ *  delete did not happen -- so the only action is to close. */
 export function DependentsDialog({ subject, dependents, onClose, itemAction }: DialogProps) {
   const { t } = useTranslation();
   const kinds = Array.from(new Set(dependents.map((d) => d.kind)));
@@ -62,23 +68,24 @@ export function DependentsDialog({ subject, dependents, onClose, itemAction }: D
       <Text mb="md">{t("dependentsDialog.intro")}</Text>
       <Stack gap="md">
         {kinds.map((kind) => {
-          const page = PAGE_OF_KIND[kind];
+          const linkOf = LINK_OF_KIND[kind];
           const ofKind = dependents.filter((d) => d.kind === kind);
           return (
             <div key={kind} data-testid={`dependents-${kind}`}>
-              <Group justify="space-between" mb={4}>
-                <Text fw={600}>{t(`dependentsDialog.kind.${kind}`)}</Text>
-                {page && (
-                  <Anchor component={Link} to={page} onClick={onClose} size="sm">
-                    {t("dependentsDialog.open")}
-                  </Anchor>
-                )}
-              </Group>
+              <Text fw={600} mb={4}>
+                {t(`dependentsDialog.kind.${kind}`)}
+              </Text>
               <List size="sm">
                 {ofKind.map((d) => (
-                  <List.Item key={`${d.kind}:${d.id}`}>
+                  <List.Item key={`${d.kind}:${d.id}:${d.label}`}>
                     <Group gap="xs" wrap="nowrap">
-                      <span>{d.name || String(d.id)}</span>
+                      {linkOf ? (
+                        <Anchor component={Link} to={linkOf(d)} onClick={onClose} inherit>
+                          {d.label}
+                        </Anchor>
+                      ) : (
+                        <span>{d.label}</span>
+                      )}
                       {itemAction?.(d)}
                     </Group>
                   </List.Item>

@@ -17,7 +17,7 @@
 //
 // The return page runs on the one host of the deployment that an issuer can be told about
 // (lib/authHost.ts, REQ-1348), which is not always the host the form is on, and the server reads
-// the organisation from the host it is called on. So the return page calls nothing. It takes the
+// the organisation from the host it is called on. So the return page calls no API. It takes the
 // code out of its address and hands it to its opener, which is on the organisation's host and
 // holds the operator's session, and the opener completes the sign-in.
 //

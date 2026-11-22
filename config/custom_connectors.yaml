@@ -11,6 +11,15 @@
 # template may reference {id} {host} {port} {database} {username} {password} {path} {schema_name}
 # {table_name} and any federation_hints key; DuckDB attach templates also get {alias}.
 #
+# A template takes raw values and never quotes a placeholder; Provisa quotes each one for the engine.
+#   * pg_fdw server_options / user_mapping / table_options values are text: the filled value is
+#     written as one string literal ("{host}" -> 'db.example'). remote_schema is written as one
+#     identifier.
+#   * attach_template, scan_template and engine_template are SQL: {field} is written as a string
+#     literal, {field:ident} as an identifier, {field:int} as an integer. Compose a value with other
+#     text in SQL ('ducklake:' || {path}; concat({host}, ':', {port})). A placeholder inside quotes
+#     is refused when the descriptor is read.
+#
 # ── Descriptor kinds ─────────────────────────────────────────────────────────
 # kind: pg_fdw  (Postgres, generic SQL/MED)
 #   extension       — the FDW name (CREATE EXTENSION / FOREIGN DATA WRAPPER)
@@ -21,14 +30,14 @@
 # kind: duckdb_attach  (DuckDB, ATTACH-type)
 #   extension, probe_symbol, install_from_community, attach_template (may use {alias}), remote_schema
 # kind: duckdb_scan  (DuckDB, SCAN table-function)
-#   extension, probe_symbol, install_from_community, scan_template  (e.g. read_xlsx('{path}'))
+#   extension, probe_symbol, install_from_community, scan_template  (e.g. read_xlsx({path}))
 # kind: clickhouse_database  (ClickHouse, CREATE DATABASE ENGINE=… — auto-exposes every remote table)
 #   ch_engine        — the ClickHouse engine name, probed in system.table_engines (e.g. Redis, MySQL)
-#   engine_template  — the ENGINE = <...> body (e.g. "Redis('{host}:{port}', {db_index}, '{password}')")
+#   engine_template  — the ENGINE = <...> body (e.g. "Redis(concat({host}, ':', {port}), {db_index:int}, {password})")
 # kind: clickhouse_table  (ClickHouse, CREATE TABLE ENGINE=… — per-table; columns come from the registry)
-#   ch_engine, engine_template (may carry a {table} placeholder — e.g. "JDBC('{jdbc_url}','{db}','{table}')")
+#   ch_engine, engine_template (may carry a {table} placeholder — e.g. "JDBC({jdbc_url}, {db}, {table})")
 # kind: clickhouse_scan  (ClickHouse, CREATE TABLE ENGINE=… — ClickHouse infers the schema; read in place)
-#   ch_engine, engine_template (e.g. "HDFS('{path}', '{format}')")
+#   ch_engine, engine_template (e.g. "HDFS({path}, {format})")
 #
 # ── REQ-1177 conformance targets (each is a non-OOTB extension; used by the test suite) ──
 # connectors:
@@ -47,7 +56,7 @@
 #     extension: ducklake
 #     install_from_community: false
 #     probe_symbol: ducklake_snapshots
-#     attach_template: "ATTACH 'ducklake:{path}' AS \"{alias}\" (DATA_PATH '{data_path}')"
+#     attach_template: "ATTACH 'ducklake:' || {path} AS {alias:ident} (DATA_PATH {data_path})"
 #     remote_schema: main
 #   - engine: duckdb            # DuckDB SCAN → excel/read_xlsx (local .xlsx)
 #     source_type: xlsx
@@ -55,21 +64,21 @@
 #     extension: excel
 #     install_from_community: false
 #     probe_symbol: read_xlsx
-#     scan_template: "read_xlsx('{path}')"
+#     scan_template: "read_xlsx({path})"
 #   - engine: clickhouse        # ClickHouse DATABASE → Redis (auto-exposes keys as a table)
 #     source_type: redis
 #     kind: clickhouse_database
 #     ch_engine: Redis
-#     engine_template: "Redis('{host}:{port}', {db_index}, '{password}')"
+#     engine_template: "Redis(concat({host}, ':', {port}), {db_index:int}, {password})"
 #   - engine: clickhouse        # ClickHouse TABLE → JDBC bridge (any JDBC source; needs clickhouse-jdbc-bridge)
 #     source_type: jdbc
 #     kind: clickhouse_table
 #     ch_engine: JDBC
-#     engine_template: "JDBC('{jdbc_url}', '{database}', '{table}')"
+#     engine_template: "JDBC({jdbc_url}, {database}, {table})"
 #   - engine: clickhouse        # ClickHouse SCAN → HDFS (schema inferred; read in place)
 #     source_type: hdfs
 #     kind: clickhouse_scan
 #     ch_engine: HDFS
-#     engine_template: "HDFS('{path}', '{format}')"
+#     engine_template: "HDFS({path}, {format})"
 
 connectors: []

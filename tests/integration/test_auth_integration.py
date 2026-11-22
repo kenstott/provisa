@@ -602,12 +602,16 @@ class TestRoleMapping:
 
 
 class _FirebaseLikeProvider(AuthProvider):
-    """Provider that maps opaque tokens → user_ids, standing in for Firebase."""
+    """Provider that maps opaque tokens → user_ids, standing in for Firebase.
+
+    ``email_verified``: what the token says of the address (REQ-1261). A Firebase account's is
+    verified unless a test says otherwise."""
 
     provider_name = "firebase"
 
-    def __init__(self, token_to_user: dict[str, str]) -> None:
+    def __init__(self, token_to_user: dict[str, str], *, email_verified: bool = True) -> None:
         self._map = token_to_user
+        self._email_verified = email_verified
 
     async def validate_token(self, token: str) -> AuthIdentity:
         user_id = self._map.get(token)
@@ -616,6 +620,7 @@ class _FirebaseLikeProvider(AuthProvider):
         return AuthIdentity(
             user_id=user_id,
             email=f"{user_id}@example.com",
+            email_verified=self._email_verified,
             display_name=user_id,
             roles=[],
             raw_claims={"sub": user_id},
@@ -639,7 +644,12 @@ def _make_tenant_db(control_plane):
 
 
 def _make_bootstrap_app(provider: AuthProvider, admin_db, tenant_db) -> Starlette:
-    routes = [Route("/echo", _echo_identity)]
+    # The claim endpoint's path, standing in for it: a platform-plane path the middleware serves
+    # to a caller who holds no role yet (_PLATFORM_PLANE_PATHS).
+    routes = [
+        Route("/echo", _echo_identity),
+        Route("/auth/claim-bootstrap", _echo_identity, methods=["POST"]),
+    ]
     app = Starlette(routes=routes)
     app.add_middleware(
         AuthMiddleware,
@@ -733,7 +743,7 @@ class TestSingleAdminBootstrap:
             _make_bootstrap_app(provider, admin_db, tenant_db), raise_server_exceptions=True
         )
 
-        resp = client.get("/echo", headers={"Authorization": "Bearer tok-alice"})
+        resp = client.post("/auth/claim-bootstrap", headers={"Authorization": "Bearer tok-alice"})
         assert resp.status_code == 200, (
             "an unclaimed slot is not 'registration closed' — POST /auth/claim-bootstrap has to be "
             "reachable by an authenticated caller or the slot could never be claimed"

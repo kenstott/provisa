@@ -75,3 +75,37 @@ def test_lines_like_leaves_the_given_sonnet_out_and_is_a_valid_search():
 def test_a_theme_still_searches_for_a_phrase_of_its_own():
     [theme] = [v for v in _CONFIG["views"] if v["id"] == "theme_time"]
     assert "s._nf_query = 'the ravages of time'" in theme["sql"]
+
+
+def test_link_echoes_is_fed_by_the_relationship_in_one_statement_run_once():
+    """REQ-2099 over REQ-1986: the statement's join on lines_like's query is the line-searches
+    relationship's, so the feed gives each search a line's words and sonnet together, and the
+    join is no join key binding the words alone under the cap on calls per statement. Every line
+    is fed whatever the statement's conditions, so one statement links them all, run once."""
+    from types import SimpleNamespace
+
+    from provisa.api.data.materialization import fed_join_parameters
+
+    relationship = _RELATIONSHIPS["line-searches"]
+    line, search = 1, 2
+    state = SimpleNamespace(
+        source_types={"sonnets": "postgresql", "vectors": "qdrant"},
+        tables=[
+            {"id": line, "source_id": "sonnets", "table_name": "line", "columns": []},
+            {
+                "id": search,
+                "source_id": "vectors",
+                "table_name": "lines_like",
+                "query_template": _SEARCH["query_template"],
+                "columns": [{**c, "column_name": c["name"]} for c in _SEARCH["columns"]],
+            },
+        ],
+        relationships=[
+            {**relationship, "source_table_id": line, "target_table_id": search},
+        ],
+    )
+    sql = _FUNCTIONS["link_echoes"]["binding"]["sql"]
+    assert fed_join_parameters(state, [line, search], sql) == {"_nf_query"}
+    steps = yaml.safe_load((_DEMO / "setup.yaml").read_text())["steps"]
+    assert [s["command"] for s in steps if "command" in s].count("link_echoes") == 1
+    assert not [name for name in _FUNCTIONS if name.startswith("link_echoes_")]

@@ -1,0 +1,143 @@
+{
+  "entitlements": {
+    "kind": {
+      "domains": "網域",
+      "tables": "資料表",
+      "columns": "欄位",
+      "metrics": "指標",
+      "relationships": "關係",
+      "commands": "指令",
+      "data_products": "數據產品",
+      "sources": "資料來源",
+      "environments": "環境",
+      "roles": "角色",
+      "regions": "區域"
+    },
+    "origin": {
+      "idp": "身分識別提供者",
+      "provisa": "在 Provisa 中設定",
+      "role": "角色預設值"
+    },
+    "finding": {
+      "unknown_identifier": "{{kind}} 中的 {{identifier}} 在模型中沒有對應任何物件。",
+      "unused_kind": "此角色不使用 {{kind}}，因此該清單不會選取任何內容。"
+    },
+    "picker": {
+      "everything": "全部，包括日後新增的內容",
+      "typedLabel": "項目",
+      "typedPlaceholder": "輸入項目後按 Enter",
+      "noObjects": "模型中尚未有此類內容。",
+      "otherValues": "其他已列項目",
+      "removeValue": "移除 {{value}}",
+      "domains": {
+        "label": "網域",
+        "search": "搜尋網域"
+      },
+      "tables": {
+        "label": "資料表",
+        "search": "搜尋所選網域的資料表",
+        "searchAll": "搜尋所有資料表",
+        "chooseAbove": "所選網域沒有資料表"
+      },
+      "columns": {
+        "label": "欄",
+        "search": "搜尋所選資料表的欄",
+        "chooseAbove": "選擇資料表以列出其欄"
+      },
+      "noMatch": "沒有相符項目",
+      "more": "顯示 {{total}} 項中的 {{shown}} 項。輸入以縮小範圍。",
+      "unknownValue": "模型中沒有此項。在你移除之前會一直保留。"
+    },
+    "people": {
+      "placeholder": "按姓名或電郵搜尋",
+      "typedEmail": "{{email}}（等待首次登入）",
+      "typeMore": "請至少輸入兩個字元",
+      "noneFound": "沒有相符結果。輸入完整電郵地址即可授予。"
+    },
+    "form": {
+      "personLabel": "人員",
+      "personHint": "尚未登入的人員可透過電郵授予存取權。",
+      "roleLabel": "角色",
+      "rolePlaceholder": "選擇角色",
+      "kindLabel": "類型",
+      "kindPlaceholder": "選擇類型",
+      "entriesLabel": "項目",
+      "entriesHelp": "此人在角色所允許的範圍內可存取的內容。選取某個網域或資料表而未選取其下任何項目時，會包含其全部內容。空白清單代表此類內容一律不可存取。",
+      "endsOnLabel": "結束日期",
+      "endsOnHint": "留空則保留該清單，直至將其結束。",
+      "reasonLabel": "原因",
+      "reasonHint": "隨變更一併記錄，供存取審查使用。",
+      "noRoles": "此人沒有您管理的角色。"
+    },
+    "person": {
+      "help": "此人員透過每項角色指派可存取的內容，按類型逐一列出。來自身分識別提供者的清單優先，並在該處更改。",
+      "roleLabel": "角色指派",
+      "rolePlaceholder": "選擇角色",
+      "roleHint": "在 Provisa 中設定了清單的角色排在前面。",
+      "roleWithLists": "{{role}}（已設定清單）",
+      "readOnly": "此指派的所有清單均來自身分識別提供者，因此須在該處更改，此處為唯讀。",
+      "grantEnded": "整項指派的結束日期已過：以下內容均無法存取。",
+      "colKind": "類型",
+      "colEntries": "項目",
+      "colOrigin": "來源",
+      "colEnds": "結束",
+      "noLists": "沒有清單：此指派可存取角色允許的全部內容。",
+      "nothing": "無",
+      "everything": "全部",
+      "more": "另有 {{count}} 項",
+      "endedHint": "因結束日期已過而結束",
+      "superseded": "已被取代：{{entries}}",
+      "supersededHint": "此清單所取代的清單",
+      "setBy": "由 {{who}} 設定：{{reason}}",
+      "editList": "編輯 {{kind}} 清單",
+      "endList": "結束 {{kind}} 清單",
+      "addList": "新增清單",
+      "endPrompt": "結束 {{kind}} 清單。角色預設值將重新適用。",
+      "endButton": "結束清單",
+      "noRoles": "此人沒有您管理的角色。",
+      "roleNotHeld": "{{role}}（已不再持有；已設定清單）"
+    },
+    "grants": {
+      "heading": "存取授予",
+      "help": "在角色內按類型向人員授予存取權。尚未登入的人員透過電郵授予，授予於其首次登入時生效。",
+      "grantButton": "授予存取權",
+      "saved": "已儲存角色 {{role}} 的存取權。",
+      "savedPending": "已儲存。該授予正等待 {{email}} 登入。",
+      "pendingHeading": "等待登入",
+      "colEmail": "電郵",
+      "colRole": "角色",
+      "colKind": "類型",
+      "colEntries": "項目",
+      "colEnds": "結束",
+      "colReason": "原因",
+      "colActions": "操作",
+      "noPending": "沒有等待中的授予。",
+      "endPrompt": "結束角色 {{role}} 中 {{email}} 的 {{kind}} 授予。",
+      "endButton": "結束"
+    },
+    "roleHeld": "{{role}} · {{origins}}",
+    "roleOrigin": {
+      "provisa": "在 Provisa 中指派",
+      "default_assignment": "預設指派",
+      "idp": "身分識別提供者"
+    },
+    "expiry": {
+      "heading": "結束日期",
+      "none": "無結束日期：此指派將持續至被結束為止。",
+      "colEndsOn": "結束日期",
+      "colEnds": "結束的內容",
+      "colReason": "原因",
+      "wholeGrant": "整個指派",
+      "everyCapability": "所有能力",
+      "capability": "{{capability}}",
+      "everywhere": "{{what}}（全部範圍）",
+      "on": "{{what}}（{{entries}}）",
+      "passed": "已過期",
+      "noReason": "—",
+      "extend": "延期",
+      "extendPrompt": "調整{{kind}}清單的結束日期，目前為{{date}}。",
+      "newDateLabel": "新的結束日期",
+      "newDateHint": "清單中的項目保持不變。"
+    }
+  }
+}

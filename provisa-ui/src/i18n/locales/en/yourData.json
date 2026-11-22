@@ -1,0 +1,18 @@
+{
+  "yourData": {
+    "title": "Your data",
+    "loading": "Reading the tables just registered…",
+    "openQuery": "Open in the query explorer",
+    "otherWays": "Other ways to reach this table",
+    "graphql": "GraphQL query",
+    "pgwire": "Connection string for a SQL client (pgwire)",
+    "sql": "SQL",
+    "rest": "REST",
+    "mcp": "MCP tool call",
+    "copy": "Copy the {{what}}",
+    "close": "Close",
+    "createRelationships": "Create relationships",
+    "relationshipsCreated_one": "{{count}} relationship created.",
+    "relationshipsCreated_other": "{{count}} relationships created."
+  }
+}

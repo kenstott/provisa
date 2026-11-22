@@ -90,12 +90,12 @@
     "loadManagementTitle": "負荷管理と鮮度",
     "loadManagementHelp": "各読み手にとってデータがどれだけ新しくなければならないかを、プラットフォームと上流ソースへの負荷と比較して調整します。",
     "loadManagementInfoLabel": "負荷管理と鮮度について",
-    "loadManagementInfo": "各読み手のデータの新しさと、プラットフォームおよび上流ソースへの負荷とのバランスをとります。本来は上流が自らの負荷を管理します。オペレーターはプラットフォームを保護し、上流が自らを保護できない場合は上流も保護します。これらの設定はオペレーターの下限です。どのクエリやリクエストのヒントも、これらが許すより新しいデータを得たり、ソースにより多くの負荷をかけたりすることはできません。読み手が選べるのは、速度のために古いデータを受け入れることだけです。エンジンがライブで読むテーブルは TTL 設定を無視します。TTL 設定は、テーブルがレプリカから提供されるようになると適用されます（「レプリケート」または「負荷保護」）。",
+    "loadManagementInfo": "各読み取り側のデータの鮮度と、プラットフォームおよび上流ソースへの負荷とのバランスを取ります。理想的には上流が自身の負荷を管理し、オペレーターはプラットフォームを、そして上流が自衛できない場合は上流を保護します。これらの設定はオペレーターの下限です。クエリやリクエストのヒントで、これらが許す以上に新しいデータを得たり、ソースに負荷をかけたりすることはできません。読み取り側が選べるのは、速度のために古いデータを受け入れることだけです。エンジンがライブで読み取るテーブルは TTL 設定を無視し、レプリカから提供されるようになると TTL が適用されます(レプリケートまたは負荷保護)。",
     "sentinelPath": "センチネルパス",
     "sentinelPathTooltip": "データが変わったときにプロデューサーが更新するマーカーファイルのURL（file:、ftp:、sftp:、http:、https:）。プローブ型の変更シグナルでは、Provisaはこのマーカーだけを確認してデータが新しいかを判断します。センチネルがない場合は空欄にします。",
     "sentinelPathInvalid": "file:、ftp:、sftp:、http:、https: のURLを使用するか、空欄にしてください。",
     "freshnessGate": "クエリの鮮度保証",
-    "freshnessGateTooltip": "オンの場合、このソースのテーブルを読むクエリは、まずコピーがまだ新しいかどうかを（変更シグナルとキャッシュTTLから）確認し、古い場合は応答の前に更新します。そのため、読み手がキャッシュTTLより古いコピーを受け取ることはなく、クエリはその更新を待つことがあります。オフの場合、コピーはバックグラウンドで更新され、クエリが待つことはありません。変更シグナルがスケジュールで再読み込みする場合はキャッシュTTLが必要です。プッシュ型の変更シグナルには効果がありません。",
+    "freshnessGateTooltip": "オンの場合、このソースのテーブルを読み取るクエリは、まずレプリカがまだ新しいか(変更シグナルとキャッシュ TTL で)を確認し、古ければ応答前に更新します。読み取り側がキャッシュ TTL より古いレプリカを受け取ることはなく、クエリはその更新を待つことがあります。オフの場合、レプリカはバックグラウンドで更新され、クエリが待つことはありません。変更シグナルがスケジュールで読み直す場合はキャッシュ TTL が必要です。プッシュ型の変更シグナルには効果がありません。",
     "maxLiveConcurrency": "ライブクエリの最大同時実行数",
     "maxLiveConcurrencyHelp": "このRedisを共有するすべてのProvisaインスタンスで、このソースを同時にライブで読むクエリの上限です。上限を超えたクエリは自身の期限まで待機し、その後失敗します。空欄＝上限なし。ソースがレプリカから読まれる場合（レプリケート／負荷保護）は効果がありません。",
     "maxLiveConcurrencyPlaceholder": "上限なし",
@@ -105,6 +105,12 @@
     "accessToken": "アクセストークン",
     "accessTokenHint": "シークレットボールトに保存されます。${secret:NAME} または ${env:NAME} の参照も指定できます。",
     "brandNamespaceHint": "このソースのテーブル名の接頭辞。既定値を使う場合は空欄のままにします。",
+    "brandBaseUrl": "ベース URL",
+    "brandBaseUrlHint": "インスタンスのアドレスです（例: https://catalog.example.com）。API はここで呼び出され、OpenAPI 定義もここから読み込まれます。",
+    "openmetadataBaseUrlHint": "OpenMetadata を開くアドレスです（例: https://openmetadata.example.com、/api は付けません）。API は /api 以下で呼び出され、OpenAPI 定義は /swagger.json から読み込まれます。",
+    "openmetadataTokenHint": "OpenMetadata のボットの JWT トークンです（Settings > Bots）。シークレットボールトに保存されます。${secret:NAME} または ${env:NAME} の参照も指定できます。",
+    "datahubBaseUrlHint": "DataHub のメタデータサービス（GMS）のアドレスです（例: https://datahub.example.com/gms）。OpenAPI 定義は /openapi/v3/api-docs/10-openapi-v3 から読み込まれます。",
+    "datahubTokenHint": "DataHub の個人アクセストークンまたはサービスアカウントのトークンです（Settings > Access Tokens）。シークレットボールトに保存されます。${secret:NAME} または ${env:NAME} の参照も指定できます。",
     "shopifyStore": "ストア名",
     "shopifyStoreHint": "ストアの管理画面アドレスのうち .myshopify.com より前の部分です（例: my-store）。",
     "shopifyApiVersion": "API バージョン",
@@ -228,6 +234,7 @@
     "qbRefreshTokenHint": "Provisa が会社を読み取れるようにします。QuickBooks でサインインして取得するか、Intuit の OAuth 2.0 Playground で Accounting スコープを指定して取得したものを貼り付けます。QuickBooks は使用のたびにトークンを置き換え、Provisa は最新のものを保持します。ここに新しく入力したものは、保存時に保持中のものを置き換えます。",
     "qbSignIn": "QuickBooks でサインイン",
     "qbSignedIn": "会社 {{realm}} にサインインしました。保持するにはソースを保存してください。",
-    "qbSignInFailed": "ログインを完了できませんでした。"
+    "qbSignInFailed": "ログインを完了できませんでした。",
+    "wikidataEndpointHint": "Wikidata クエリサービス。認証情報は不要で、テーブルは毎日更新されます。"
   }
 }

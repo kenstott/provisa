@@ -18,6 +18,11 @@ import { openNewRole } from "../../test-utils/securityRoles";
 
 const upsertRoleSpy = vi.fn(async () => ({ success: true, message: "" }));
 
+vi.mock("../../hooks/useCapability", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../hooks/useCapability")>()),
+  // REQ-1327: the roles page acts for a holder of the rights its actions ask.
+  useCapability: () => true,
+}));
 vi.mock("../../context/DomainFilterContext", () => ({
   useDomainFilter: () => ({
     setDomains: vi.fn(),
@@ -54,6 +59,7 @@ vi.mock("../../hooks/useSecurityQueries", () => ({
   useRLSRules: () => ({ rlsRules: [], loading: false, refetch: vi.fn() }),
   useUpsertRole: () => ({ upsertRole: upsertRoleSpy, loading: false }),
   useDeleteRole: () => ({ deleteRole: vi.fn(), loading: false }),
+  useDeleteRoles: () => vi.fn(),
   useUpsertRlsRule: () => ({ upsertRlsRule: vi.fn(), loading: false }),
   useDeleteRlsRule: () => ({ deleteRlsRule: vi.fn(), loading: false }),
   useRevokeRoleGrants: () => ({ revokeFromTable: vi.fn(), revokeFromObject: vi.fn() }),

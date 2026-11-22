@@ -571,6 +571,7 @@ def test_the_table_save_is_the_editor_s(tmp_path: Path) -> None:
             "alias": "Orders",
             "description": "every order",
             "arguments": {"since": "2026-01-01"},
+            "readWait": 30,
             "materialize": True,
             "businessKey": ["order_id"],
             "enableAggregates": True,

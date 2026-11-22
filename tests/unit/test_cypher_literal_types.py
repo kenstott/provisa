@@ -19,10 +19,9 @@ different types -- read as text -- is compared in string space."""
 
 from __future__ import annotations
 
-from types import SimpleNamespace
-
 import pytest
 
+from provisa.compiler.sql_types import CompilationContext, TableMeta
 from provisa.gql.label_map import CypherLabelMap
 from provisa.cypher.parser import parse_cypher
 from provisa.gql.translator import cypher_to_sql
@@ -36,8 +35,8 @@ _COLUMNS = [
 ]
 
 
-def _table(table_id: int, name: str) -> SimpleNamespace:
-    return SimpleNamespace(
+def _table(table_id: int, name: str) -> TableMeta:
+    return TableMeta(
         type_name=f"Sales_{name.title()}",
         table_id=table_id,
         source_id="pg",
@@ -49,6 +48,7 @@ def _table(table_id: int, name: str) -> SimpleNamespace:
         # A TableMeta carries the names it is queried by (label_map reads its _name_ from them).
         field_name=name,
         display_name="",
+        original_table_name="",
     )
 
 
@@ -60,16 +60,20 @@ def _label_map(text_keyed: bool = False) -> CypherLabelMap:
     if text_keyed:
         tables["sales__codes"] = _table(2, "codes")
         columns[2] = [("id", "varchar"), ("name", "varchar")]
-    ctx = SimpleNamespace(
+    ctx = CompilationContext(
         tables=tables,
         joins={},
         aggregate_columns=columns,
         pk_columns={},
         native_filter_columns={},
+        # The per-table parameter facts of a compiled context (label_map reads them).
+        parameters={},
+        parameter_names={},
         physical_to_sql={},
         gql_governed_object_cols=set(),
         gql_json_columns=set(),
         exposed_to_physical={},
+        column_aliases={},
     )
     return CypherLabelMap.from_schema(ctx, domain_access=["*"])
 
