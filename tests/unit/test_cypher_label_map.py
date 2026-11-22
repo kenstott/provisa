@@ -11,6 +11,8 @@
 
 """Unit tests for provisa/gql/label_map.py — focus on _resolve_id_column and cross-domain traversal."""
 
+from dataclasses import replace
+
 import pytest
 
 from provisa.gql.label_map import CypherLabelMap, NodeMapping, _resolve_id_column
@@ -142,7 +144,7 @@ def _make_ctx(owned_table_id: int = 1):
         table_name="sa_orders",
         domain_id="sales",
         # A TableMeta carries the names it is queried by (label_map reads its _name_ from them).
-        field_name="sa_orders",
+        field_name="sales__orders",
         display_name="",
         original_table_name="",
     )
@@ -338,7 +340,7 @@ def test_from_schema_no_cross_domain_rel_when_target_already_owned():
         schema_name="public",
         table_name="sa_products",
         domain_id="sales",
-        field_name="sa_products",
+        field_name="sales__products",
         display_name="",
         original_table_name="",
     )
@@ -530,7 +532,7 @@ def test_an_embedded_object_is_a_property_and_a_registered_reference_is_not():
         }
     }
     ctx = _make_ctx()
-    ctx.tables["sales__orders"].source_id = "remote"
+    ctx.tables["sales__orders"] = replace(ctx.tables["sales__orders"], source_id="remote")
     ctx.aggregate_columns = {
         1: [("id", "integer"), ("address", "jsonb"), ("customer", "jsonb"), ("lines", "jsonb")]
     }
