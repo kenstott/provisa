@@ -12,7 +12,8 @@
 // read it. Every entry has its name, type, direction and domains. A data catalog also has its
 // provider, how Provisa reaches it and signs in (REQ-2122), and, when its direction includes
 // Export, its export settings: the role it is published as (REQ-2152), the DataZone project and
-// the Delta Share option.
+// the Delta Share option. A data catalog whose direction includes Import has its import schedule;
+// the server's refusal of it is shown on the field (`importCronProblem`).
 //
 // Credentials are entered here and never read back: the server reports each as set/not-set, so an
 // empty field means "leave the stored one alone" rather than "no secret".
@@ -28,6 +29,7 @@ import {
 } from "@mantine/core";
 import {
   exportsTo,
+  importsFrom,
   SYNC_DIRECTIONS,
   startingDirection,
   SYNC_ENTRY_TYPES,
@@ -64,6 +66,8 @@ export interface EntryFieldsProps {
   entitled: boolean;
   onChange: (patch: Partial<SyncEntry>) => void;
   onSecret: (field: SyncSecretField, value: string) => void;
+  /** The server's refusal of the import schedule, shown on its field. */
+  importCronProblem?: string;
 }
 
 export function EntryFields({
@@ -77,6 +81,7 @@ export function EntryFields({
   entitled,
   onChange,
   onSecret,
+  importCronProblem,
 }: EntryFieldsProps) {
   const { t } = useTranslation();
   const read = useFormRead();
@@ -313,6 +318,7 @@ export function EntryFields({
                     role: null,
                     datazone_project_id: "",
                     delta_share: false,
+                    import_cron: "",
                   },
             );
           }}
@@ -325,7 +331,13 @@ export function EntryFields({
           data={directions.map((v) => ({ value: v, label: t(`syncingTab.direction_${v}`) }))}
           value={entry.direction}
           allowDeselect={false}
-          onChange={(v) => v && onChange({ direction: v as SyncEntry["direction"] })}
+          onChange={(v) => {
+            if (!v) return;
+            const direction = v as SyncEntry["direction"];
+            // A direction that is off never runs, so an entry that stops importing drops its
+            // import schedule.
+            onChange(importsFrom(direction) ? { direction } : { direction, import_cron: "" });
+          }}
         />
       </FormField>
       {isCatalog && (
@@ -363,6 +375,18 @@ export function EntryFields({
             />
           </FormField>
         </>
+      )}
+      {isCatalog && importsFrom(entry.direction) && (
+        <FormField help={t("syncingTab.importCronHelp")} size="medium">
+          <TextInput
+            label={t("syncingTab.importCron")}
+            data-testid="syncing-import-cron"
+            placeholder={t("syncingTab.importCronPlaceholder")}
+            value={entry.import_cron}
+            error={importCronProblem}
+            onChange={(e) => onChange({ import_cron: e.currentTarget.value })}
+          />
+        </FormField>
       )}
       {exportSettings()}
     </>

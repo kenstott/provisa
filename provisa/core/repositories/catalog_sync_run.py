@@ -8,9 +8,9 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""The runs of a Syncing entry's direction that nobody watched (REQ-2247).
+"""The runs of a Syncing entry's direction: scheduled ones nobody watched, and Run now (REQ-2247).
 
-One row per run: the entry, the direction, how it was started (``schedule``), its outcome (``ok``
+One row per run: the entry, the direction, how it was started (``schedule`` or ``manual``), its outcome (``ok``
 or ``failed``), what it applied and what it held, each a list of ``{kind, object, reason}``, and
 the error of a run that failed. The entry's page shows its last run with what it applied and held.
 """
@@ -35,8 +35,10 @@ OK = "ok"
 FAILED = "failed"
 OUTCOMES = (OK, FAILED)
 
-#: How a run was started: by the direction's schedule.
+#: How a run was started: by the direction's schedule, or by an administrator's Run now.
 SCHEDULE = "schedule"
+MANUAL = "manual"
+TRIGGERS = (SCHEDULE, MANUAL)
 
 
 @dataclass(frozen=True)
@@ -71,6 +73,8 @@ async def record(
         raise ValueError(f"unknown sync direction {direction!r}")
     if outcome not in OUTCOMES:
         raise ValueError(f"unknown run outcome {outcome!r}")
+    if trigger not in TRIGGERS:
+        raise ValueError(f"unknown run trigger {trigger!r}")
     await conn.execute_core(
         insert(catalog_sync_runs).values(
             entry=entry,

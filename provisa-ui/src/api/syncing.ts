@@ -25,6 +25,28 @@ export const SYNC_DIRECTIONS: SyncDirection[] = ["export", "import", "both"];
 export const exportsTo = (direction: SyncDirection) =>
   direction === "export" || direction === "both";
 
+export const importsFrom = (direction: SyncDirection) =>
+  direction === "import" || direction === "both";
+
+/** One difference an Import run applied, or held with why. */
+export interface ImportRunItem {
+  kind: string;
+  object: string;
+  reason?: string;
+}
+
+/** One recorded Import run: started by its schedule or by Run import now (REQ-2247). */
+export interface ImportRun {
+  trigger: "schedule" | "manual";
+  outcome: "ok" | "failed";
+  applied: ImportRunItem[];
+  held: ImportRunItem[];
+  /** Why a failed run failed. */
+  error: string | null;
+  started_at: string;
+  finished_at: string;
+}
+
 /** What one publish did to one entry. */
 export interface PublishOutcome {
   id: string;
@@ -64,6 +86,9 @@ export interface SyncEntry {
   datazone_project_id: string;
   /** Whether a Unity Catalog catalog also gets each product as a Delta Share. */
   delta_share: boolean;
+  /** REQ-2247: the crontab of the entry's Import; empty is no schedule. Only an entry that
+   *  imports has one. */
+  import_cron: string;
   api_key_set: boolean;
   token_set: boolean;
   entra_client_secret_set: boolean;
@@ -72,6 +97,8 @@ export interface SyncEntry {
   aws_secret_access_key_set: boolean;
   /** The last publish this server ran to it, or null when it has not published to it. */
   last_run: PublishOutcome | null;
+  /** The entry's last recorded Import run, or null when none was run. */
+  last_import: ImportRun | null;
 }
 
 export interface SyncingState {
@@ -107,13 +134,17 @@ export const SYNC_SECRET_FIELDS: SyncSecretField[] = [
 
 /** An entry as saved: its settings, and only the credentials the administrator typed. A
  *  credential omitted keeps the one stored for that entry; sent empty, it is cleared. */
-export type SyncEntryUpdate = Omit<SyncEntry, `${SyncSecretField}_set` | "last_run"> &
+export type SyncEntryUpdate = Omit<
+  SyncEntry,
+  `${SyncSecretField}_set` | "last_run" | "last_import"
+> &
   Partial<Record<SyncSecretField, string>>;
 
 /** An entry as the server holds it, ready to send back unchanged. */
 export function entryUpdate(entry: SyncEntry): SyncEntryUpdate {
   const kept: Record<string, unknown> = { ...entry };
   delete kept.last_run;
+  delete kept.last_import;
   for (const field of SYNC_SECRET_FIELDS) delete kept[`${field}_set`];
   return kept as SyncEntryUpdate;
 }
@@ -143,6 +174,7 @@ export const blankEntry = (type: SyncEntry["type"]): SyncEntry => ({
   role: null,
   datazone_project_id: "",
   delta_share: false,
+  import_cron: "",
   api_key_set: false,
   token_set: false,
   entra_client_secret_set: false,
@@ -150,6 +182,7 @@ export const blankEntry = (type: SyncEntry["type"]): SyncEntry => ({
   aws_access_key_id_set: false,
   aws_secret_access_key_set: false,
   last_run: null,
+  last_import: null,
 });
 
 /** The name a duplicate is offered under: editable, and refused on save if it exists. */
@@ -165,6 +198,7 @@ export function duplicateEntry(entry: SyncEntry): SyncEntry {
     id: duplicateName(entry.id),
     domains: [...entry.domains],
     last_run: null,
+    last_import: null,
   };
   for (const field of SYNC_SECRET_FIELDS) copy[`${field}_set`] = false;
   return copy;
@@ -190,6 +224,18 @@ async function ok<T>(res: Response, op: string): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+/** A save the server refused: its reason, and the entry and field it names (`import_cron`). */
+export class SyncingRefused extends Error {
+  readonly entry: string | null;
+  readonly field: string | null;
+
+  constructor(message: string, entry: string | null, field: string | null) {
+    super(message);
+    this.entry = entry;
+    this.field = field;
+  }
+}
+
 export async function fetchSyncing(): Promise<SyncingState> {
   return ok(await fetch(`${API_BASE}/admin/syncing`), "Syncing fetch");
 }
@@ -199,14 +245,21 @@ export async function setSyncing(body: {
   entries: SyncEntryUpdate[];
   reconcile_cron?: string;
 }): Promise<{ success: boolean; entries: string[] }> {
-  return ok(
-    await fetch(`${API_BASE}/admin/syncing`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    }),
-    "Syncing update",
-  );
+  const res = await fetch(`${API_BASE}/admin/syncing`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ detail: res.statusText }));
+    const params = (data?.params ?? {}) as Record<string, unknown>;
+    throw new SyncingRefused(
+      serverMessage(data, requestFailed("Syncing update", res.status)),
+      typeof params.entry === "string" ? params.entry : null,
+      typeof params.field === "string" ? params.field : null,
+    );
+  }
+  return res.json() as Promise<{ success: boolean; entries: string[] }>;
 }
 
 export async function checkEntry(id: string): Promise<EntryHealth> {
@@ -226,6 +279,24 @@ export async function publishEntry(
       method: "POST",
     }),
     "Publish",
+  );
+}
+
+/** What Run import now did: what it applied, held and left to Export, and the run recorded. */
+export interface ImportResult {
+  id: string;
+  applied: ImportRunItem[];
+  held: ImportRunItem[];
+  left: ImportRunItem[];
+  last_import: ImportRun;
+}
+
+export async function runImport(id: string): Promise<ImportResult> {
+  return ok(
+    await fetch(`${API_BASE}/admin/syncing/${encodeURIComponent(id)}/import`, {
+      method: "POST",
+    }),
+    "Import",
   );
 }
 

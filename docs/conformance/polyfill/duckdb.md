@@ -10,7 +10,7 @@ When DuckDB is a serving engine reading a source it attaches directly, it may pu
 
 Rules on this page: 396, of which 327 are only the name of a rewrite function. A rule is printed as the translator runs it: the PostgreSQL pattern, its holes written `$name` (typed with `::type`), then the dialect's replacement.
 
-273 of the grid's 625 features are native on DuckDB and left out.
+274 of the grid's 625 features are native on DuckDB and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -476,7 +476,6 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>to_char(timestamp, text)</strong><br>A timestamp&#x27;s or an instant&#x27;s text in a template.</td><td><pre><code>to_char($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
-<tr><td><strong>postgresql_fdw_validator</strong><br>Whether the options of a foreign-data wrapper are valid: 42601 invalid option naming the first option the catalog does not list.</td><td></td><td><ul><li>An option array holding a NULL element is refused with 0A000 by name. <code>0A000</code> postgresql_fdw_validator of a NULL option has no form here</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>mxid_age</strong><br>The age of a multixact id: INT_MAX for 0, and 1 less it, as Provisa makes no multixact.</td><td><pre><code>mxid_age($x)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>

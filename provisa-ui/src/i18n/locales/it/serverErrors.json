@@ -951,7 +951,9 @@
       "object_gone": "{{object}} non è più registrato in Provisa.",
       "unknown_direction": "{{direction}} non è una direzione: usa Esporta o Importa.",
       "unknown_kind": "{{kind}} non è un tipo di differenza.",
-      "unknown_choice": "{{choice}} non è una scelta fissa."
+      "unknown_choice": "{{choice}} non è una scelta fissa.",
+      "import_cron_not_importing": "{{entry}} non importa, quindi non ha una pianificazione dell'importazione.",
+      "import_cron_invalid": "{{cron}} non è un'espressione cron, come 0 3 * * *."
     },
     "wikidata": {
       "no_credential": "Il servizio di query di Wikidata non richiede credenziali",

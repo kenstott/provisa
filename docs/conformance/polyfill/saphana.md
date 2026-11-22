@@ -499,7 +499,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>to_char(timestamp, text)</strong><br>A timestamp&#x27;s or an instant&#x27;s text in a template.</td><td><pre><code>to_char($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
-<tr><td><strong>postgresql_fdw_validator</strong><br>Whether the options of a foreign-data wrapper are valid: 42601 invalid option naming the first option the catalog does not list.</td><td></td><td><ul><li>Refused with 0A000 by name: the engine has no form of the array filter the validator&#x27;s form is written with. <code>0A000</code> array_length() has no form on saphana</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>postgresql_fdw_validator</strong><br>Whether the options of a foreign-data wrapper are valid: 22004 for an option array holding a NULL element, else 42601 invalid option naming the first option the catalog does not list.</td><td></td><td><ul><li>Refused with 0A000 by name: the engine has no form of the array filter the validator&#x27;s form is written with. <code>0A000</code> array_length() has no form on saphana</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>mxid_age</strong><br>The age of a multixact id: INT_MAX for 0, and 1 less it, as Provisa makes no multixact.</td><td><pre><code>mxid_age($x)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>

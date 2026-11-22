@@ -120,6 +120,21 @@
     "standingChoicesHelp": "每次运行按方向对每种差异的处理方式。保留待定或无固定选择时，差异留在此处由数据管理员处理。",
     "standingKind": "差异类型",
     "compare": "与目录比较",
-    "title": "上下文同步"
+    "title": "上下文同步",
+    "importCron": "导入计划",
+    "importCronHelp": "无人值守导入的 Cron 表达式。每次运行仅在固定选择如此规定且只有目录更改了该值时才采用目录的值；其他差异一律保留待定，由数据管理员处理。留空则仅按需导入。",
+    "importCronPlaceholder": "0 3 * * *",
+    "runImportNow": "立即导入",
+    "lastImport": "上次导入",
+    "neverImported": "尚未导入。",
+    "importOk": "已应用 {{applied}}，保留待定 {{held}}",
+    "importFailed": "失败",
+    "importTrigger_schedule": "计划运行，{{when}}",
+    "importTrigger_manual": "手动运行，{{when}}",
+    "importApplied": "已应用",
+    "importHeld": "保留待定",
+    "importKind": "类型",
+    "importObject": "对象",
+    "importReason": "保留原因"
   }
 }

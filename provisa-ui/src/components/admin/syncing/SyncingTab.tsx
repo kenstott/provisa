@@ -37,6 +37,7 @@ import {
   fetchSyncing,
   holdsCredential,
   publishEntry,
+  runImport,
   setSyncing,
   SYNC_ENTRY_TYPES,
   type SyncEntry,
@@ -280,6 +281,7 @@ export function SyncingTab() {
             onDelete={async () => undefined}
             onTest={() => checkEntry("")}
             onPublish={async () => undefined}
+            onRunImport={async () => undefined}
             onDuplicate={() => undefined}
           />
         ) : selected ? (
@@ -301,6 +303,14 @@ export function SyncingTab() {
               const result = await publishEntry(selected.id);
               await load();
               return result.entries[0];
+            }}
+            onRunImport={async () => {
+              // A failed run is recorded too, so the list is read again either way.
+              try {
+                await runImport(selected.id);
+              } finally {
+                await load();
+              }
             }}
             onDuplicate={() => setPicked({ kind: "new", from: selected })}
           />
