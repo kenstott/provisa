@@ -60,10 +60,10 @@ from provisa.transpiler.polyfill.notation import Form, Refused  # noqa: E402
 
 #: The dialect Provisa transpiles each engine's SQL to, by the name its leg has
 #: (function_legs.yaml): what the engine's backend names (provisa/federation/backend.py
-#: EngineBackend.dialect). A generic SQLAlchemy engine's is the scheme of its URL, mssql read as
-#: tsql; where that is no grid column (column_of), the grid states nothing of the engine and the
-#: translator sends it no rewrite. A unit test holds every leg to an entry, and each URL-driven
-#: one to its leg's URL.
+#: EngineBackend.dialect). A generic SQLAlchemy engine's is source_registry.engine_dialect of the
+#: scheme of its URL; a scheme with no sqlglot dialect (firebird, monetdb) is named as written, no
+#: grid column (column_of): the grid states nothing of the engine and the translator sends it no
+#: rewrite. A unit test holds every leg to an entry, and each URL-driven one to its leg's URL.
 ENGINE_DIALECTS = {
     # Engines whose backend names its own dialect.
     "duckdb": "duckdb",
@@ -76,26 +76,26 @@ ENGINE_DIALECTS = {
     "bigquery": "bigquery",
     "fabric": "tsql",
     "synapse": "tsql",
-    # URL-driven engines: the scheme of the leg's engine URL (redshift's and singlestore's are
-    # written by warehouse_leg.py, in the scheme of the engine kind's DSN).
-    "sqlalchemy": "postgresql",
+    # URL-driven engines: the dialect of the scheme of the leg's engine URL (redshift's and
+    # singlestore's are written by warehouse_leg.py, in the scheme of the engine kind's DSN).
+    "sqlalchemy": "postgres",
     "clickhouse-server": "clickhouse",
     "mysql": "mysql",
-    "mariadb": "mariadb",
+    "mariadb": "mysql",
     "tidb": "mysql",
     "mssql": "tsql",
     "oracle": "oracle",
     "firebird": "firebird",
-    "cockroachdb": "cockroachdb",
-    "yugabytedb": "postgresql",
-    "greenplum": "postgresql",
-    "exasol": "exa",
+    "cockroachdb": "postgres",
+    "yugabytedb": "postgres",
+    "greenplum": "postgres",
+    "exasol": "exasol",
     "monetdb": "monetdb",
-    "opengauss": "opengauss",
+    "opengauss": "postgres",
     "db2": "db2",
-    "saphana": "hana",
+    "saphana": "saphana",
     "redshift": "redshift",
-    "singlestore": "singlestoredb",
+    "singlestore": "singlestore",
 }
 
 HOLDS = "holds"

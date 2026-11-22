@@ -8,9 +8,9 @@ This page lists every feature that has a polyfill or a limitation on SAP HANA. A
 
 When SAP HANA is a serving engine reading a source it attaches directly, it may push work into that source, with the source's semantics, so a result can depend on the pair; the cases known are fixed by hints, listed under each source.
 
-Rules on this page: 398, of which 324 are only the name of a rewrite function. A rule is printed as the translator runs it: the PostgreSQL pattern, its holes written `$name` (typed with `::type`), then the dialect's replacement.
+Rules on this page: 405, of which 323 are only the name of a rewrite function. A rule is printed as the translator runs it: the PostgreSQL pattern, its holes written `$name` (typed with `::type`), then the dialect's replacement.
 
-229 of the grid's 625 features are native on SAP HANA and left out.
+226 of the grid's 625 features are native on SAP HANA and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -25,6 +25,11 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 <tr><td><strong>array_upper</strong><br>The upper bound of a dimension: its length.</td><td><pre><code>array_upper($a::anyarray, $d::integer)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_upper($a::anyarray, $d::integer). <code>0A000</code> array_upper() has no form on saphana</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>array_length</strong><br>The length of a dimension; NULL for a dimension the array does not have.</td><td><pre><code>array_length($a::anyarray, 1)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>array_length($a::anyarray, $d::integer)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_length($a::anyarray, 1). <code>0A000</code> array_length() has no form on saphana</li><li>Refused: array_length($a::anyarray, $d::integer). <code>0A000</code> array_length() has no form on saphana</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>array_fill</strong><br>An array of a value repeated to the dimensions given.</td><td><pre><code>array_fill($v::anyelement, $dims::integer[])
 =&gt;
 refused (its error is under the limitations)</code></pre><pre><code>array_fill($v::anyelement, $dims::integer[], $lower_bounds::integer[])
@@ -32,13 +37,15 @@ refused (its error is under the limitations)</code></pre><pre><code>array_fill($
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_fill($v::anyelement, $dims::integer[]). <code>0A000</code> array_fill() has no form on saphana</li><li>Refused: array_fill($v::anyelement, $dims::integer[], $lower_bounds::integer[]). <code>0A000</code> array_fill() has no form on saphana</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>array_eq</strong><br>Two arrays equal, a NULL element equal to a NULL element.</td><td><pre><code>array_eq($a::anyarray, $b::anyarray)
 =&gt;
-$a = $b</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_eq($a::anyarray, $b::anyarray). <code>0A000</code> array_eq() has no form on saphana</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>array_ne</strong><br>Two arrays not equal, a NULL element equal to a NULL element.</td><td><pre><code>array_ne($a::anyarray, $b::anyarray)
 =&gt;
-$a &lt;&gt; $b</code></pre></td><td></td><td></td><td></td></tr>
-<tr><td><strong>array_position</strong><br>The position of the first element equal to a value, a NULL equal to a NULL; NULL for none.</td><td><pre><code>array_position($a::anycompatiblearray, $v::anycompatible, $s::integer)
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_ne($a::anyarray, $b::anyarray). <code>0A000</code> array_ne() has no form on saphana</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>array_position</strong><br>The position of the first element equal to a value, a NULL equal to a NULL; NULL for none.</td><td><pre><code>array_position($a::anycompatiblearray, $v::anycompatible)
 =&gt;
-refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_position($a::anycompatiblearray, $v::anycompatible, $s::integer). <code>0A000</code> array_position() has no form on saphana</li></ul></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre><pre><code>array_position($a::anycompatiblearray, $v::anycompatible, $s::integer)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_position($a::anycompatiblearray, $v::anycompatible). <code>0A000</code> array_position() has no form on saphana</li><li>Refused: array_position($a::anycompatiblearray, $v::anycompatible, $s::integer). <code>0A000</code> array_position() has no form on saphana</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>array_positions</strong><br>The positions of every element equal to a value, a NULL equal to a NULL.</td><td><pre><code>array_positions($a::anycompatiblearray, $v::anycompatible)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_positions($a::anycompatiblearray, $v::anycompatible). <code>0A000</code> array_positions() has no form on saphana</li></ul></td><td></td><td></td></tr>
@@ -58,7 +65,17 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 =&gt;
 refused (its error is under the limitations)</code></pre><pre><code>generate_subscripts($a::anyarray, $d::integer)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused: generate_subscripts($a::anyarray, $d::integer, $reverse::boolean). <code>0A000</code> generate_subscripts() has no form on saphana</li></ul></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: generate_subscripts($a::anyarray, $d::integer, $reverse::boolean). <code>0A000</code> generate_subscripts() has no form on saphana</li><li>Refused: generate_subscripts($a::anyarray, $d::integer). <code>0A000</code> generate_subscripts() has no form on saphana</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>array_append</strong><br>An array with an element added at its end; a NULL array is read as an empty one.</td><td><pre><code>array_append(NULL::anycompatiblearray, $v::anycompatible)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>array_append($a::anycompatiblearray, $v::anycompatible)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_append(NULL::anycompatiblearray, $v::anycompatible). <code>0A000</code> array_append() has no form on saphana</li><li>Refused: array_append($a::anycompatiblearray, $v::anycompatible). <code>0A000</code> array_append() has no form on saphana</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>array_prepend</strong><br>An array with an element added at its start; a NULL array is read as an empty one.</td><td><pre><code>array_prepend($v::anycompatible, NULL::anycompatiblearray)
+=&gt;
+refused (its error is under the limitations)</code></pre><pre><code>array_prepend($v::anycompatible, $a::anycompatiblearray)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_prepend($v::anycompatible, NULL::anycompatiblearray). <code>0A000</code> array_prepend() has no form on saphana</li><li>Refused: array_prepend($v::anycompatible, $a::anycompatiblearray). <code>0A000</code> array_prepend() has no form on saphana</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>array_cat</strong><br>Two arrays concatenated; a NULL array is the other one, and two NULL arrays are NULL.</td><td><pre><code>array_cat(NULL::anycompatiblearray, $b::anycompatiblearray)
 =&gt;
 refused (its error is under the limitations)</code></pre><pre><code>array_cat($a::anycompatiblearray, NULL::anycompatiblearray)
@@ -68,22 +85,22 @@ refused (its error is under the limitations)</code></pre><pre><code>array_cat($a
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_cat(NULL::anycompatiblearray, $b::anycompatiblearray). <code>0A000</code> array_cat() has no form on saphana</li><li>Refused: array_cat($a::anycompatiblearray, NULL::anycompatiblearray). <code>0A000</code> array_cat() has no form on saphana</li><li>Refused: array_cat($a::anycompatiblearray, $b::anycompatiblearray). <code>0A000</code> array_cat() has no form on saphana</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>array_lt</strong><br>One array before another, a NULL element after any value.</td><td><pre><code>array_lt($a::anyarray, $b::anyarray)
 =&gt;
-$a &lt; $b</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_lt($a::anyarray, $b::anyarray). <code>0A000</code> array_lt() has no form on saphana</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>array_le</strong><br>One array before or equal to another, a NULL element after any value.</td><td><pre><code>array_le($a::anyarray, $b::anyarray)
 =&gt;
-$a &lt;= $b</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_le($a::anyarray, $b::anyarray). <code>0A000</code> array_le() has no form on saphana</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>array_gt</strong><br>One array after another, a NULL element after any value.</td><td><pre><code>array_gt($a::anyarray, $b::anyarray)
 =&gt;
-$a &gt; $b</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_gt($a::anyarray, $b::anyarray). <code>0A000</code> array_gt() has no form on saphana</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>array_ge</strong><br>One array after or equal to another, a NULL element after any value.</td><td><pre><code>array_ge($a::anyarray, $b::anyarray)
 =&gt;
-$a &gt;= $b</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_ge($a::anyarray, $b::anyarray). <code>0A000</code> array_ge() has no form on saphana</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>array_larger</strong><br>The larger of two arrays, a NULL element after any value.</td><td><pre><code>array_larger($a::anyarray, $b::anyarray)
 =&gt;
-CASE WHEN $a &gt; $b THEN $a WHEN $a &lt;= $b THEN $b END</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_larger($a::anyarray, $b::anyarray). <code>0A000</code> array_larger() has no form on saphana</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>array_smaller</strong><br>The smaller of two arrays, a NULL element after any value.</td><td><pre><code>array_smaller($a::anyarray, $b::anyarray)
 =&gt;
-CASE WHEN $a &lt; $b THEN $a WHEN $a &gt;= $b THEN $b END</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_smaller($a::anyarray, $b::anyarray). <code>0A000</code> array_smaller() has no form on saphana</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>btarraycmp</strong><br>btree&#x27;s comparison of two arrays: -1, 0 or 1, a NULL element after any value.</td><td><pre><code>btarraycmp($a::anyarray, $b::anyarray)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
