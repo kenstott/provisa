@@ -199,8 +199,9 @@ def test_a_byte_comparison_s_null_branch_is_typed():
 def _stated(function: str, overload: str) -> list[str]:
     applied = GRID.read(polyfill_check.call_of(function, overload), "clickhouse")
     assert applied is not None
-    texts = tuple(lim.text for lim in applied.feature.read.limitations.get("clickhouse", ()))
-    return function_edges.stated_raises(texts)
+    return function_edges.stated_raises(
+        tuple(applied.feature.read.limitations.get("clickhouse", ()))
+    )
 
 
 @pytest.mark.parametrize(
