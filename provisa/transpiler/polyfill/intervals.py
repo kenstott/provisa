@@ -58,6 +58,7 @@ from provisa.transpiler.interval_input import (
     canonical,
     duckdb_reads_alike,
     interval_read,
+    past_the_type,
     rejected,
 )
 from provisa.transpiler.polyfill import clocks, instants, trino
@@ -2051,6 +2052,9 @@ def _duckdb_rewrite(node: exp.Expr, dialect: str) -> exp.Expr | None:
     if not isinstance(fields, tuple):
         if _BARE_SECONDS.fullmatch(fields) and not rejected(fields):
             return None  # a whole number of seconds: DuckDB's own reading is PostgreSQL's
+        if past_the_type(fields):
+            # REQ-2236 (amended 2026-11-23): interval_in's own error for months past int32.
+            raise Refused(Refusal("22008", "interval out of range"), ruling=True)
         raise _refused_literal(f"interval input '{fields}'", dialect)
     return exp.Cast(this=exp.Literal.string(canonical(*fields)), to=node.to.copy())
 
@@ -2063,8 +2067,10 @@ _DUCKDB_LITERAL_STATED = (
     "postgres). Whole amounts of year, month, week, day, hour, minute and second and one clock "
     "are sent as written, which DuckDB reads alike; any other text is sent as the text of its "
     "three fields, which DuckDB reads exactly. A bare whole number of seconds is DuckDB's own "
-    "reading, which is PostgreSQL's; any other text not read here (ISO 8601, the SQL standard's, "
-    "infinity, a unit given twice) is refused by name: DuckDB fails on it or answers otherwise."
+    "reading, which is PostgreSQL's. A text whose months, its years' and its own together, pass "
+    "int32 ('178956971 years') raises PostgreSQL's 22008 'interval out of range'; any other text "
+    "not read here (ISO 8601, the SQL standard's, infinity, a unit given twice) is refused by "
+    "name: DuckDB fails on it or answers otherwise."
 )
 
 
