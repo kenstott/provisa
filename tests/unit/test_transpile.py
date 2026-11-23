@@ -16,6 +16,7 @@ from sqlglot.errors import ParseError
 from provisa.transpiler.function_macros import FunctionRefused
 from provisa.transpiler.transpile import (
     transpile,
+    transpile_to_duckdb,
     transpile_to_trino,
     rewrite_correlated_subqueries_for_trino,
     direct_physical,
@@ -691,3 +692,35 @@ class TestDirectPostgresJson:
     def test_another_dialect_is_unchanged(self):
         mysql = transpile('SELECT "id" FROM "orders"', "mysql")
         assert direct_physical(mysql, "mysql") == mysql
+
+
+_JSON_ITEMS_UNWIND = "SELECT t FROM s CROSS JOIN UNNEST(json_items(s.tag)) AS _uw0(t)"
+
+
+def test_a_json_values_items_are_read_by_each_engine():
+    # json_items(x), an UNWIND of a property held as JSON (translator, REQ-2176): a list's items,
+    # any other value a list of itself, null an empty list.
+    assert transpile_to_trino(_JSON_ITEMS_UNWIND) == (
+        "SELECT t FROM s CROSS JOIN UNNEST(CASE WHEN (s.tag) IS NULL"
+        " THEN CAST(ARRAY[] AS ARRAY(JSON)) WHEN NOT JSON_ARRAY_LENGTH((s.tag)) IS NULL"
+        " THEN CAST((s.tag) AS ARRAY(JSON)) ELSE ARRAY[(s.tag)] END) AS _uw0(t)"
+    )
+    assert transpile(_JSON_ITEMS_UNWIND, "postgres") == (
+        "SELECT t FROM s CROSS JOIN UNNEST(ARRAY(SELECT JSON_ARRAY_ELEMENTS(CASE"
+        " WHEN JSON_TYPEOF((CAST(CAST(s.tag AS TEXT) AS JSON))) = 'array'"
+        " THEN (CAST(CAST(s.tag AS TEXT) AS JSON))"
+        " ELSE JSON_BUILD_ARRAY((CAST(CAST(s.tag AS TEXT) AS JSON))) END)"
+        " WHERE NOT (CAST(CAST(s.tag AS TEXT) AS JSON)) IS NULL)) AS _uw0(t)"
+    )
+
+
+def test_a_json_values_items_are_unwound_by_duckdb():
+    import duckdb
+
+    con = duckdb.connect()
+    con.execute("CREATE TABLE s (id INTEGER, tag JSON)")
+    con.execute("""INSERT INTO s VALUES (1, '["x", "y"]'), (2, '"z"'), (3, NULL)""")
+    sql = transpile_to_duckdb(
+        "SELECT id, t FROM s CROSS JOIN UNNEST(json_items(s.tag)) AS _uw0(t) ORDER BY id, t"
+    )
+    assert con.execute(sql).fetchall() == [(1, '"x"'), (1, '"y"'), (2, '"z"')]

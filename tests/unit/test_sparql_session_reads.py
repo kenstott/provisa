@@ -283,3 +283,19 @@ def test_a_variable_in_a_graph_pattern_and_the_default_graph_joins_across_both(m
     )
     rows = select(s, "SELECT ?n ?l WHERE { ?s ex:name ?n GRAPH ex:g { ?s ex:label ?l } }")
     assert rows == [{"n": _s("D"), "l": _s("G")}]
+
+
+def test_cypher_unwinds_a_property_of_many_values_to_its_items(monkeypatch):
+    """REQ-2176: Cypher sees SPARQL's session objects; UNWIND of a property held as JSON (a list
+    on one node, one value on another) is its items, a value that is no list itself."""
+    from provisa.cypher.parser import parse_cypher
+    from provisa.ephemeral.then import UNLABELED
+
+    s = _session(monkeypatch)
+    update(s, 'INSERT DATA { ex:a ex:tag "x", "y" . ex:b ex:tag "z" }')
+    read = _read(s)
+    ast = parse_cypher(f"MATCH (n:{UNLABELED}) UNWIND n.tag AS t RETURN t")
+    sql, _, graph_vars = cypher_to_sql(ast, read.graph, {})
+    sql = read.expand(apply_graph_rewrites(sql, graph_vars, read.graph))
+    rows = s.duck.execute(transpile_to_duckdb(sql.sql(dialect="postgres"))).fetchall()
+    assert sorted(r[0] for r in rows) == ['"x"', '"y"', '"z"']
