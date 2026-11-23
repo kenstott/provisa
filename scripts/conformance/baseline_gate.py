@@ -48,7 +48,8 @@ its base calls.
                 "refused_by_name": 625},  # may not rise
        "edge": {"served": 1296,           # base calls and every edge call right, or within bound
                 "wrong_answer": 203,      # as many as the list holds at "edge"
-                "engine_error": 269}}},
+                "engine_error": 269,
+                "documented_limit": 0}}},  # base calls right, an edge as a stated limitation says
      "expected": [
        {"case": "trino::abs(bigint)",     # <engine>::<function>(<overload>)
         "at": "edge",                     # or "base": a base call fails
@@ -111,7 +112,7 @@ FUNCTION_ENTRY_FIELDS = {
     "since",
 }
 BASE_COUNTS = ("passed", "wrong_answer", "engine_error", "refused_by_name")
-EDGE_COUNTS = ("served", "wrong_answer", "engine_error")
+EDGE_COUNTS = ("served", "wrong_answer", "engine_error", "documented_limit")
 
 
 class Refused(ValueError):
@@ -230,6 +231,7 @@ def function_counts(doc: dict, engine: str) -> dict:
             "served": got["passed"],
             "wrong_answer": wrong_at_edge,
             "engine_error": error_at_edge,
+            "documented_limit": got["documented_at_edge"],
         },
     }
 
@@ -327,7 +329,8 @@ def baseline_lines(engines: dict[str, dict]) -> list[str]:
         f"functions on {engine}: {c['total']} overloads; base calls: {c['base']['passed']} right, "
         f"{c['base']['wrong_answer']} wrong, {c['base']['engine_error']} engine errors, "
         f"{c['base']['refused_by_name']} refused by name; edge calls: {c['edge']['served']} "
-        f"served, {c['edge']['wrong_answer']} wrong, {c['edge']['engine_error']} engine errors"
+        f"served, {c['edge']['wrong_answer']} wrong, {c['edge']['engine_error']} engine errors, "
+        f"{c['edge']['documented_limit']} documented limits"
         for engine, c in sorted(engines.items())
     ]
 

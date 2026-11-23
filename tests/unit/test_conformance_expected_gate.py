@@ -379,7 +379,14 @@ def test_functions_a_documented_limit_is_judged_as_skipped_by_design(tmp_path, m
         "engine_error": 0,
         "refused_by_name": 0,
     }
-    assert counts["edge"] == {"served": 8, "wrong_answer": 0, "engine_error": 0}
+    # The edge side counts the documented edge apart, so base passed is still the edge sides' sum.
+    assert counts["edge"] == {
+        "served": 8,
+        "wrong_answer": 0,
+        "engine_error": 0,
+        "documented_limit": 1,
+    }
+    assert counts["base"]["passed"] == sum(counts["edge"].values())
     expected = _baseline(doc)
     assert expected["expected"] == []
     assert _run_functions(tmp_path, monkeypatch, doc, expected) == 0, capsys.readouterr().err
@@ -609,7 +616,7 @@ def test_the_committed_functions_file_is_well_formed():
     for counts in engines.values():
         edge = counts["edge"]
         assert counts["base"]["passed"] == (
-            edge["served"] + edge["wrong_answer"] + edge["engine_error"]
+            edge["served"] + edge["wrong_answer"] + edge["engine_error"] + edge["documented_limit"]
         )
     assert len(listed) == sum(
         c[at][kind] for c in engines.values() for at in gate.AT for kind in gate.KINDS.values()

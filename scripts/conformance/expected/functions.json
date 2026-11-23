@@ -15,7 +15,8 @@
    "edge": {
     "served": 1883,
     "wrong_answer": 0,
-    "engine_error": 211
+    "engine_error": 211,
+    "documented_limit": 0
    }
   },
   "clickhouse-server": {
@@ -29,7 +30,8 @@
    "edge": {
     "served": 1699,
     "wrong_answer": 0,
-    "engine_error": 179
+    "engine_error": 179,
+    "documented_limit": 1
    }
   },
   "cockroachdb": {
@@ -43,7 +45,8 @@
    "edge": {
     "served": 299,
     "wrong_answer": 71,
-    "engine_error": 68
+    "engine_error": 68,
+    "documented_limit": 0
    }
   },
   "db2": {
@@ -57,7 +60,8 @@
    "edge": {
     "served": 292,
     "wrong_answer": 5,
-    "engine_error": 162
+    "engine_error": 162,
+    "documented_limit": 0
    }
   },
   "duckdb": {
@@ -71,7 +75,8 @@
    "edge": {
     "served": 1960,
     "wrong_answer": 104,
-    "engine_error": 199
+    "engine_error": 199,
+    "documented_limit": 52
    }
   },
   "exasol": {
@@ -85,7 +90,8 @@
    "edge": {
     "served": 478,
     "wrong_answer": 156,
-    "engine_error": 135
+    "engine_error": 135,
+    "documented_limit": 0
    }
   },
   "greenplum": {
@@ -99,7 +105,8 @@
    "edge": {
     "served": 1456,
     "wrong_answer": 124,
-    "engine_error": 55
+    "engine_error": 55,
+    "documented_limit": 0
    }
   },
   "mariadb": {
@@ -113,7 +120,8 @@
    "edge": {
     "served": 632,
     "wrong_answer": 234,
-    "engine_error": 31
+    "engine_error": 31,
+    "documented_limit": 0
    }
   },
   "mssql": {
@@ -127,7 +135,8 @@
    "edge": {
     "served": 413,
     "wrong_answer": 49,
-    "engine_error": 182
+    "engine_error": 182,
+    "documented_limit": 0
    }
   },
   "mysql": {
@@ -141,7 +150,8 @@
    "edge": {
     "served": 621,
     "wrong_answer": 257,
-    "engine_error": 35
+    "engine_error": 35,
+    "documented_limit": 0
    }
   },
   "opengauss": {
@@ -155,7 +165,8 @@
    "edge": {
     "served": 1092,
     "wrong_answer": 299,
-    "engine_error": 47
+    "engine_error": 47,
+    "documented_limit": 0
    }
   },
   "oracle": {
@@ -169,7 +180,8 @@
    "edge": {
     "served": 430,
     "wrong_answer": 66,
-    "engine_error": 109
+    "engine_error": 109,
+    "documented_limit": 0
    }
   },
   "pg": {
@@ -183,7 +195,8 @@
    "edge": {
     "served": 2473,
     "wrong_answer": 0,
-    "engine_error": 1
+    "engine_error": 1,
+    "documented_limit": 0
    }
   },
   "saphana": {
@@ -197,7 +210,8 @@
    "edge": {
     "served": 312,
     "wrong_answer": 5,
-    "engine_error": 114
+    "engine_error": 114,
+    "documented_limit": 0
    }
   },
   "sqlalchemy": {
@@ -211,7 +225,8 @@
    "edge": {
     "served": 1965,
     "wrong_answer": 66,
-    "engine_error": 5
+    "engine_error": 5,
+    "documented_limit": 0
    }
   },
   "tidb": {
@@ -225,7 +240,8 @@
    "edge": {
     "served": 624,
     "wrong_answer": 257,
-    "engine_error": 35
+    "engine_error": 35,
+    "documented_limit": 0
    }
   },
   "trino": {
@@ -239,7 +255,8 @@
    "edge": {
     "served": 1596,
     "wrong_answer": 0,
-    "engine_error": 170
+    "engine_error": 170,
+    "documented_limit": 0
    }
   },
   "yugabytedb": {
@@ -253,7 +270,8 @@
    "edge": {
     "served": 1932,
     "wrong_answer": 60,
-    "engine_error": 9
+    "engine_error": 9,
+    "documented_limit": 0
    }
   }
  },
