@@ -697,16 +697,12 @@ Sometimes equal column values don't tell you which rows of two tables belong tog
 Register the function as a command. Then, on the Relationships page, add a relationship whose target type is **Code resolver**. Pick the source table and its key, the target table and its key, the resolver, and the columns of its rows that hold each key. Provisa keeps the choice as objects of kinds it already has:
 
 - a materialized view over the resolver's call, `SELECT * FROM stores_in_regions('retail.stores', 'geo.regions') AS m`, named by the id you give;
-- `<id>`, a junction relationship from the source table to the target table through that view. Cypher serves it as one edge named by the id in upper case, with the match's other columns as its properties: `MATCH (s)-[m:STORE_REGIONS]->(r) RETURN s.id, m.score, r.name`;
-- `<id>_matches`, from the source table to that view (one-to-many), served in GraphQL under the id;
-- `<id>_target`, from the view to the target table (many-to-one), served in GraphQL under the target table's name.
-
-GraphQL follows the two plain relationships as two nested levels: `stores { store_regions { score regions { name } } }`. Cypher leaves them out, since a junction's view is not a node.
+- `<id>`, a junction relationship from the source table to the target table through that view. Cypher serves it as one edge named by the id in upper case, with the match's other columns as its properties: `MATCH (s)-[m:STORE_REGIONS]->(r) RETURN s.id, m.score, r.name`. GraphQL serves it as a field named by the id that reaches the matched target rows: `stores { store_regions { name } }`. The score is not a GraphQL field; read it in Cypher. The view is not a Cypher node.
 
 - **Landed.** The matches are kept as a table. Provisa works them out again when either table changes, and at the latest after the refresh interval. A view over a command call counts the tables the call is given as its inputs. The matches can't be computed each time they are read: Provisa runs a command call before it expands the views a statement reads, so a view held only as SQL would never call its resolver.
-- **Governed.** The build reads both tables as the organisation's administrator, as any materialized view's build does. A column of the view is visible to the roles that see both keys. Following `<id>_target` reads the target table under the reader's own row rules and column visibility.
+- **Governed.** The build reads both tables as the organisation's administrator, as any materialized view's build does. A column of the view is visible to the roles that see both keys. Following `<id>` reads the view and the target table under the reader's own row rules and column visibility.
 - **Refused.** A command that isn't a code `@query`, doesn't take exactly two tables, takes any other argument, or whose rows lack either key is refused when you save the relationship, with the reason.
-- **One thing.** The view and the three relationships carry the set's id, and you change or retire them only as a set. The Relationships page offers **Change code resolver** and **Retire code resolver** on each of the relationships. Editing or deleting one of them on its own page is refused, naming the set. Retiring the set retires all four, and their names stay taken.
+- **One thing.** The view and the relationship carry the set's id, and you change or retire them only as a set. The Relationships page offers **Change code resolver** and **Retire code resolver** on the relationship. Editing or deleting either on its own page is refused, naming the set. Retiring the set retires both, and their names stay taken.
 
 #### Keeping the matches incrementally: `@change` {: #code-resolver-change }
 
