@@ -22,8 +22,8 @@ case "$ARCH" in
     ;;
 esac
 
-# Release version baked into the bundle (Resources/VERSION), used to pin the online
-# native pip install to the matching release.
+# Release version baked into the bundle (Resources/VERSION): the staged runtime's version
+# (restaged when it differs) and the release assets fetched for this build.
 PROVISA_VERSION="${PROVISA_VERSION:-$(cat "${RESOURCES}/VERSION" 2>/dev/null || true)}"
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; CYAN='\033[0;36m'; BOLD='\033[1m'; DIM='\033[2m'; NC='\033[0m'
