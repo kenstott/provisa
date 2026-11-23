@@ -1040,7 +1040,7 @@ There is only one view type, always intradomain (the output belongs to a domain)
 
 **Status:** ✅ complete · **Priority:** SHOULD · **Type:** structural
 
-Schema endpoint returns node_labels with a `pk: string | null` field (first PK column) and a `pk_columns: string[]` field per label, designating the primary key column name(s) (absorbs [REQ-398](#REQ-398)). Allows graph UI to construct reliable `WHERE NOT n.<pk> IN [<value>]` exclusion clauses (instead of heuristic-based `id(n)` fallback), enabling "Exclude from query", deep-linking to nodes, "show related to this entity", and inspector PK highlighting.
+Schema endpoint returns node_labels with a `pk: string | null` field (first PK column) and a `pk_columns: string[]` field per label, designating the primary key column name(s) (absorbs [REQ-398](#REQ-398)). Allows graph UI to construct reliable `WHERE NOT n.<pk> IN [<value>]` exclusion clauses (instead of heuristic-based `id(n)` fallback), enabling "Exclude from query", deep-linking to nodes, "show related to this entity", and inspector PK highlighting. (Amended 2026-11-23, maintainer:) The per-item rule also covers the data-quality outcomes a catalog publish reads: a checker table the publishing role cannot read is published as its own outcome with status unreadable and the refusal's reason, and the rest of the publish proceeds; every catalog exporter publishes that status.
 
 **Use case:** Explicit PK designation in schema enables semantic graph operations and node-centric navigation without node ID heuristics.
 
