@@ -26,6 +26,7 @@ from provisa.cache.middleware import (
     decode_cached_result,
     store_result,
 )
+from provisa.cache.raw_sql import encode_rows_entry, entry_as_result
 from provisa.cache.store import CacheStore, CachedResult
 
 pytestmark = [pytest.mark.e2e, pytest.mark.asyncio(loop_scope="session")]
@@ -96,6 +97,15 @@ class TestCacheHeaders:
         assert int(headers["X-Provisa-Cache-Age"]) >= 5
 
 
+def _entry(values: list[int]) -> bytes:
+    """A response-cache entry of a one-column result (REQ-1867: one Arrow IPC stream)."""
+    return encode_rows_entry([(v,) for v in values], ["n"], ["BIGINT"])
+
+
+def _rows(entry) -> list[tuple]:
+    return entry_as_result(entry).rows
+
+
 class TestRolePartitionedCache:
     async def test_same_query_different_roles_different_keys(self):
         store = FakeStore()
@@ -105,8 +115,8 @@ class TestRolePartitionedCache:
         key_admin = raw_sql_cache_key(sql, [], "admin", wire_formats=None)
         assert key_analyst != key_admin
 
-        await store_result(store, key_analyst, {"rows": [1]}, ttl=60)
-        await store_result(store, key_admin, {"rows": [1, 2, 3]}, ttl=60)
+        await store_result(store, key_analyst, _entry([1]), ttl=60)
+        await store_result(store, key_admin, _entry([1, 2, 3]), ttl=60)
 
         analyst_hit = await check_cache(store, key_analyst)
         admin_hit = await check_cache(store, key_admin)
@@ -114,8 +124,8 @@ class TestRolePartitionedCache:
         assert admin_hit is not None
         # Each role reads back its own entry: the stored payload is the cache's own encoding
         # (REQ-1896), read the way a serving surface reads it.
-        assert decode_cached_result(analyst_hit)[0] == {"rows": [1]}
-        assert decode_cached_result(admin_hit)[0] == {"rows": [1, 2, 3]}
+        assert _rows(decode_cached_result(analyst_hit)) == [(1,)]
+        assert _rows(decode_cached_result(admin_hit)) == [(1,), (2,), (3,)]
 
     async def test_same_role_same_key_hits(self):
         store = FakeStore()
@@ -125,11 +135,11 @@ class TestRolePartitionedCache:
         miss = await check_cache(store, key)
         assert miss is None
 
-        await store_result(store, key, {"rows": [1]}, ttl=60)
+        await store_result(store, key, _entry([1]), ttl=60)
 
         hit = await check_cache(store, key)
         assert hit is not None
-        assert decode_cached_result(hit) == ({"rows": [1]}, None)
+        assert _rows(decode_cached_result(hit)) == [(1,)]
 
 
 class TestMutationInvalidatesCache:
@@ -137,7 +147,7 @@ class TestMutationInvalidatesCache:
         store = FakeStore()
         key = raw_sql_cache_key("SELECT * FROM orders", [], "analyst", wire_formats=None)
 
-        await store_result(store, key, {"rows": [1]}, ttl=60, table_ids={42})
+        await store_result(store, key, _entry([1]), ttl=60, table_ids={42})
 
         hit = await check_cache(store, key)
         assert hit is not None
@@ -152,7 +162,7 @@ class TestMutationInvalidatesCache:
         store = FakeStore()
         key = raw_sql_cache_key("SELECT * FROM orders", [], "analyst", wire_formats=None)
 
-        await store_result(store, key, {"rows": [1]}, ttl=60, table_ids={42})
+        await store_result(store, key, _entry([1]), ttl=60, table_ids={42})
 
         count = await store.invalidate_by_table(99)
         assert count == 0

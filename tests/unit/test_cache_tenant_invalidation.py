@@ -93,8 +93,6 @@ async def test_an_answer_stored_under_one_model_is_not_served_under_the_next():
     precision was changed is therefore never replayed with the type it was stored as, whether
     the entry holds rows or a serialized Arrow table."""
     from provisa.cache import raw_sql
-    from provisa.cache.codec import decode_cache_payload as decode
-    from provisa.cache.codec import encode_cache_payload as encode
     from provisa.cache.tenancy import cache_tenant
     from provisa.core.request_context import reset_current_org, set_current_org
 
@@ -105,18 +103,18 @@ async def test_an_answer_stored_under_one_model_is_not_served_under_the_next():
     after = SimpleNamespace(response_cache_store=store, org_id="default", model_stamp=8)
     stored_as = pa.table({"amount": pa.array([1.5], type=pa.float64())})  # the old declaration
     entries = {
-        "rows": raw_sql.rows_entry([(1.5,)], ["amount"]),
-        "arrow": raw_sql.arrow_entry(stored_as.schema, stored_as.to_batches()),
+        "rows": raw_sql.encode_rows_entry([(1.5,)], ["amount"], None),
+        "arrow": raw_sql.encode_arrow_entry(stored_as.schema, stored_as.to_batches(), None),
     }
     token = set_current_org("org-a")
     try:
         assert cache_tenant(before) != cache_tenant(after)
         assert cache_tenant(before).endswith(":m7") and cache_tenant(after).endswith(":m8")
         for key, entry in entries.items():
-            await store.set(key, encode(entry), 60, tenant_id=cache_tenant(before), table_ids={7})
+            await store.set(key, entry, 60, tenant_id=cache_tenant(before), table_ids={7})
         for key, entry in entries.items():
             held = await store.get(key, tenant_id=cache_tenant(before))
-            assert held is not None and decode(held.data)["kind"] == entry["kind"]
+            assert held is not None and held.data == entry
             assert await store.get(key, tenant_id=cache_tenant(after)) is None, key
     finally:
         reset_current_org(token)
