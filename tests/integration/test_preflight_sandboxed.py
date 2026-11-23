@@ -202,6 +202,7 @@ async def test_code_in_the_confined_process_opens_no_file_and_no_connection(held
         "PROVISA_HOST_LIB",
         "PROVISA_HOST_CONNECTIONS",
         "PROVISA_CODE_HASH",
+        "PROVISA_DISCOVERED",  # REQ-2267: its own generated items' handlers, from its manifest
         "PROVISA_SERVICES",  # the worker's own grant: its organization's, the builds' role
         "UV_THREADPOOL_SIZE",
         "HTTP_PROXY",

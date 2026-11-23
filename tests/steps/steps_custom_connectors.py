@@ -228,9 +228,10 @@ def _pg_fdw_ddl(cc_ctx):
     assert engine.reachable("pgfdw_custom")
     details = engine.resolve(src).details
     ddl = "\n".join(details["attach_ddl"])
-    assert "CREATE SERVER" in ddl and "FOREIGN DATA WRAPPER postgres_fdw" in ddl
+    # Extension, server and schema names are written as quoted identifiers (SEC-C6b).
+    assert "CREATE SERVER" in ddl and 'FOREIGN DATA WRAPPER "postgres_fdw"' in ddl
     assert "CREATE USER MAPPING" in ddl
-    assert "IMPORT FOREIGN SCHEMA demo_remote" in ddl
+    assert 'IMPORT FOREIGN SCHEMA "demo_remote"' in ddl
 
 
 @then(
