@@ -58,6 +58,7 @@ from provisa.transpiler.interval_input import (
     canonical,
     duckdb_reads_alike,
     interval_read,
+    past_the_type,
     rejected,
 )
 from provisa.transpiler.polyfill import clocks, instants, trino
@@ -1625,7 +1626,10 @@ _TEXT_STATED = (
     " An interval answer in the select list is interval_out's text (IntervalStyle postgres); one "
     "anywhere else but another interval call is refused by name."
 )
-_RANGE_STATED = " A field that overflows raises 22008 (interval out of range), as PostgreSQL does."
+_RANGE_STATED = (
+    " A field that overflows is PostgreSQL's error 22008 (interval out of range), where PostgreSQL"
+    " raises it."
+)
 
 
 @dataclass(frozen=True)
@@ -1715,7 +1719,8 @@ _DOCS: dict[str, _Doc] = {
     "sum": _Doc(
         "sum(interval)",
         "The sum of a group's intervals.",
-        _TEXT_STATED + " A total past a field raises 22008 (interval out of range). PostgreSQL "
+        _TEXT_STATED
+        + " A total past a field is PostgreSQL's error 22008 (interval out of range). PostgreSQL "
         "raises it where a running total overflows, which depends on its scan's order: where the "
         "rows of one sign alone reach a field's end and the total does not, 0A000 is raised. A "
         "window, DISTINCT or FILTER is refused by name.",
@@ -1727,9 +1732,10 @@ _SCALED_STATED = (
     "days scaled and truncated, their fractions cascaded down (a month at 30 days, a day at 86400 "
     "seconds, each rounded to a microsecond), then the time rounded half to even. The factor is "
     "read as the statement writes it: a number, a NULL, or one cast to a number; one a row "
-    "computes is refused by name. A field that overflows, or a NaN factor, raises 22008, and a "
-    "division by zero 22012, as PostgreSQL's do; an infinite factor's infinite answer is refused "
-    "(0A000), and a division by an infinite one answers a zero interval, as PostgreSQL 17's does."
+    "computes is refused by name. A field that overflows, or a NaN factor, is PostgreSQL's error "
+    "22008, and a division by zero its 22012, where PostgreSQL raises them; an infinite factor's "
+    "infinite answer is refused (0A000), and a division by an infinite one answers a zero "
+    "interval, as PostgreSQL 17's does."
 )
 _DOCS["interval_mul"] = _Doc(
     "interval_mul(interval, double precision)", "An interval times a number (*).", _SCALED_STATED
@@ -2046,6 +2052,9 @@ def _duckdb_rewrite(node: exp.Expr, dialect: str) -> exp.Expr | None:
     if not isinstance(fields, tuple):
         if _BARE_SECONDS.fullmatch(fields) and not rejected(fields):
             return None  # a whole number of seconds: DuckDB's own reading is PostgreSQL's
+        if past_the_type(fields):
+            # REQ-2236 (amended 2026-11-23): interval_in's own error for months past int32.
+            raise Refused(Refusal("22008", "interval out of range"), ruling=True)
         raise _refused_literal(f"interval input '{fields}'", dialect)
     return exp.Cast(this=exp.Literal.string(canonical(*fields)), to=node.to.copy())
 
@@ -2058,8 +2067,10 @@ _DUCKDB_LITERAL_STATED = (
     "postgres). Whole amounts of year, month, week, day, hour, minute and second and one clock "
     "are sent as written, which DuckDB reads alike; any other text is sent as the text of its "
     "three fields, which DuckDB reads exactly. A bare whole number of seconds is DuckDB's own "
-    "reading, which is PostgreSQL's; any other text not read here (ISO 8601, the SQL standard's, "
-    "infinity, a unit given twice) is refused by name: DuckDB fails on it or answers otherwise."
+    "reading, which is PostgreSQL's. A text whose months, its years' and its own together, pass "
+    "int32 ('178956971 years') raises PostgreSQL's 22008 'interval out of range'; any other text "
+    "not read here (ISO 8601, the SQL standard's, infinity, a unit given twice) is refused by "
+    "name: DuckDB fails on it or answers otherwise."
 )
 
 

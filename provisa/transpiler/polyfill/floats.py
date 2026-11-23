@@ -383,6 +383,14 @@ _T_EXP = _t_checked(
 )
 _T_LN = _t_checked(_T_LOG_RAISES, "ln($x)")
 
+#: ClickHouse server 24.3's exp and log are its own vectorized approximations, not libm's: exp(0.5)
+#: answers 1.6487212707014907 where PostgreSQL's (glibc's) is 1.6487212707001282. chDB's build
+#: answers libm's digits.
+_APPROXIMATED = (
+    "On a ClickHouse server of 24.3, its {} is its own approximation, not libm's, and can differ "
+    "from PostgreSQL's answer from the 12th significant digit; chDB answers PostgreSQL's digits."
+)
+
 #: tanh as sinh / cosh, each of which ClickHouse answers as libm does; past 22 both overflow toward
 #: infinity where tanh is 1 to a double's precision.
 _TANH = "if(abs($x) > 22, if($x > 0, 1.0, -1.0), sinh($x) / cosh($x))"
@@ -392,13 +400,19 @@ EXPONENTIALS: tuple[Feature, ...] = (
         "exp",
         FAMILY,
         "e raised to a power; 22003 where a finite power overflows or underflows.",
-        read=Side(rules=(Rule("exp($x)", _of_no_numeric("exp($x)", _EXP, _T_EXP)),)),
+        read=Side(
+            rules=(Rule("exp($x)", _of_no_numeric("exp($x)", _EXP, _T_EXP)),),
+            limitations={"clickhouse": (Limitation(_APPROXIMATED.format("exp")),)},
+        ),
     ),
     Feature(
         "ln",
         FAMILY,
         "The natural logarithm of a value above zero.",
-        read=Side(rules=(Rule("ln($x)", _of_no_numeric("ln($x)", _LN, _T_LN)),)),
+        read=Side(
+            rules=(Rule("ln($x)", _of_no_numeric("ln($x)", _LN, _T_LN)),),
+            limitations={"clickhouse": (Limitation(_APPROXIMATED.format("log")),)},
+        ),
     ),
     Feature(
         "tanh",
