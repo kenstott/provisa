@@ -302,7 +302,7 @@ Per-role rate limits configurable in `provisa.yaml`: max requests per second, ma
 
 **Code:** `provisa/api/`
 
-**Tests:** `tests/unit/test_rate_limiting.py`, `tests/integration/test_rate_limiting_integration.py`
+**Tests:** `tests/unit/test_rate_limiting.py`, `tests/integration/test_rate_limiting_integration.py`, `tests/integration/test_role_rate_limits_e2e.py`
 
 **Docs:** [security.md](../security.md)
 
@@ -316,7 +316,7 @@ The NL query service (`POST /query/nl`) has an independent rate limit configurab
 
 **Code:** `provisa/nl/`
 
-**Tests:** `tests/unit/test_rate_limiting.py`, `tests/integration/test_rate_limiting_integration.py`
+**Tests:** `tests/unit/test_rate_limiting.py`, `tests/integration/test_rate_limiting_integration.py`, `tests/integration/test_role_rate_limits_e2e.py`
 
 **Docs:** [api-reference.md](../api-reference.md), [architecture.md](../architecture.md), [security.md](../security.md)
 
@@ -386,7 +386,7 @@ The gRPC approval hook maintains a single persistent channel per Provisa instanc
 
 **Code:** `provisa/auth/approval_hook.py`
 
-**Tests:** `tests/integration/test_audit_auth_integration.py`, `tests/unit/test_abac_hook_extended.py`, `tests/unit/test_approval_hook.py`
+**Tests:** `tests/integration/test_audit_auth_integration.py`, `tests/unit/test_abac_hook_extended.py`, `tests/unit/test_approval_hook.py`, `tests/integration/test_approval_hook_grpc_e2e.py`
 
 **Docs:** [remote-schemas.md](../remote-schemas.md), [security.md](../security.md)
 
@@ -610,7 +610,7 @@ Source registration is privileged; validates connection, calls Trino dynamic cat
 
 **Code:** `provisa/core/`
 
-**Tests:** `tests/integration/test_introspect.py`, `tests/integration/test_schema_gen.py`, `tests/unit/test_core_registration.py`, `tests/unit/test_source_registration_validation.py`, `tests/steps/steps_registration_governance.py`
+**Tests:** `tests/integration/test_introspect.py`, `tests/integration/test_schema_gen.py`, `tests/unit/test_core_registration.py`, `tests/unit/test_source_registration_validation.py`, `tests/steps/steps_registration_governance.py`, `tests/integration/test_source_registration_e2e.py`
 
 **Docs:** [admin-graphql.md](../admin-graphql.md), [admin.md](../admin.md), [api-reference.md](../api-reference.md)
 
@@ -624,7 +624,7 @@ Source registration does not expose data: no table is queryable until explicitly
 
 **Code:** `provisa/core/`
 
-**Tests:** `tests/integration/test_schema_gen.py`, `tests/integration/test_introspect.py`, `tests/unit/test_core_registration.py`, `tests/integration/test_config_reload_schema_rename.py`
+**Tests:** `tests/integration/test_schema_gen.py`, `tests/integration/test_introspect.py`, `tests/unit/test_core_registration.py`, `tests/integration/test_config_reload_schema_rename.py`, `tests/integration/test_source_registration_e2e.py`
 
 **Docs:** [admin-graphql.md](../admin-graphql.md)
 
@@ -1006,7 +1006,7 @@ The SQLAlchemy dialect introspects table and column metadata via `POST /data/gra
 
 **Code:** `provisa/compiler/`, `provisa/security/`
 
-**Tests:** `tests/unit/test_visibility.py`, `tests/unit/test_enforcement_metadata.py`, `tests/integration/test_registration_governance_integration.py`
+**Tests:** `tests/unit/test_visibility.py`, `tests/unit/test_enforcement_metadata.py`, `tests/integration/test_registration_governance_integration.py`, `tests/integration/test_sqlalchemy_dialect_scope_e2e.py`
 
 **Docs:** [python-client.md](../python-client.md), [security.md](../security.md)
 
@@ -1184,7 +1184,7 @@ A datasource may be associated with multiple domains. Any domain owner may regis
 
 **Code:** `provisa/api/admin/schema_helpers.py`, `provisa/api/admin/schema_mutation.py`, `provisa/api/admin/schema_mutation_ops.py`, `provisa/core/schema_org.py`, `provisa-ui/src/pages/tables/RegisterTableForm.tsx`, `provisa-ui/src/pages/TablesPage.tsx`
 
-**Tests:** `tests/unit/test_dataset_uniqueness.py`
+**Tests:** `tests/unit/test_dataset_uniqueness.py`, `tests/integration/test_source_registration_e2e.py`
 
 ### REQ-434 · Registration & Governance {#REQ-434}
 
@@ -1350,7 +1350,7 @@ The UI calls one availableSchemas endpoint and one availableTables endpoint. Bac
 
 **Code:** `provisa/api/admin/schema.py`, `provisa/api/admin/introspect.py`
 
-**Tests:** `tests/integration/test_introspect.py`, `tests/unit/test_available_tables.py`, `tests/unit/test_core_registration.py`
+**Tests:** `tests/integration/test_introspect.py`, `tests/unit/test_available_tables.py`, `tests/unit/test_core_registration.py`, `tests/integration/test_source_registration_e2e.py`
 
 ### REQ-639 · Registration & Governance {#REQ-639}
 
@@ -1486,7 +1486,7 @@ Neo4j table registration includes a query preview step. On submission, Provisa e
 
 **Code:** `provisa/neo4j/`, `provisa/sparql/`, `provisa/api_source/`
 
-**Tests:** `tests/integration/test_direct_exec.py`, `tests/integration/test_neo4j_exec.py`, `tests/unit/test_cypher_graph_fns.py`, `tests/unit/test_neo4j_normalizers.py`, `tests/unit/test_neo4j_preview.py`, `tests/steps/steps_query_api_sources_neo4j_sparql.py`
+**Tests:** `tests/integration/test_direct_exec.py`, `tests/integration/test_neo4j_exec.py`, `tests/unit/test_cypher_graph_fns.py`, `tests/unit/test_neo4j_normalizers.py`, `tests/unit/test_neo4j_preview.py`, `tests/steps/steps_query_api_sources_neo4j_sparql.py`, `tests/integration/test_neo4j_query_preview_e2e.py`
 
 **Docs:** [sources.md](../sources.md)
 
@@ -1596,7 +1596,7 @@ Remote schema introspection is re-run on demand via an "Refresh Schema" admin mu
 
 **Code:** `provisa/graphql_remote/`
 
-**Tests:** `tests/integration/test_graphql_execution.py`, `tests/integration/test_graphql_remote_integration.py`, `tests/integration/test_graphql_remote_source.py`, `tests/unit/test_graphql_remote_introspect.py`, `tests/unit/test_graphql_remote_mapper.py`, `tests/unit/test_remote_adapter_contract.py`, `tests/unit/test_schema_service.py`
+**Tests:** `tests/integration/test_graphql_execution.py`, `tests/integration/test_graphql_remote_integration.py`, `tests/integration/test_graphql_remote_source.py`, `tests/unit/test_graphql_remote_introspect.py`, `tests/unit/test_graphql_remote_mapper.py`, `tests/unit/test_remote_adapter_contract.py`, `tests/unit/test_schema_service.py`, `tests/integration/test_remote_schema_refresh_e2e.py`
 
 **Docs:** [remote-schemas.md](../remote-schemas.md)
 
@@ -1732,7 +1732,7 @@ Spec refresh is triggered on demand via an admin mutation. On refresh, existing 
 
 **Code:** `provisa/openapi/`
 
-**Tests:** `tests/unit/test_openapi_loader.py`, `tests/integration/test_openapi_source.py`, `tests/steps/steps_openapi_auto_registration_connector.py`
+**Tests:** `tests/unit/test_openapi_loader.py`, `tests/integration/test_openapi_source.py`, `tests/steps/steps_openapi_auto_registration_connector.py`, `tests/integration/test_remote_schema_refresh_e2e.py`
 
 **Docs:** [remote-schemas.md](../remote-schemas.md)
 
@@ -1844,7 +1844,7 @@ Proto schema refresh is triggered on demand via an admin mutation. On refresh, P
 
 **Code:** `provisa/grpc_remote/`
 
-**Tests:** `tests/integration/test_grpc_execution.py`, `tests/unit/test_grpc_remote_loader.py`, `tests/unit/test_remote_adapter_contract.py`, `tests/unit/test_schema_service.py`, `tests/steps/steps_grpc_remote_schema_connector_req_322_329.py`
+**Tests:** `tests/integration/test_grpc_execution.py`, `tests/unit/test_grpc_remote_loader.py`, `tests/unit/test_remote_adapter_contract.py`, `tests/unit/test_schema_service.py`, `tests/steps/steps_grpc_remote_schema_connector_req_322_329.py`, `tests/integration/test_remote_schema_refresh_e2e.py`
 
 **Docs:** [remote-schemas.md](../remote-schemas.md)
 
@@ -1924,7 +1924,7 @@ Ingest tables are subscribable via the standard SSE endpoint (`GET /data/subscri
 
 **Code:** `provisa/ingest/`
 
-**Tests:** `tests/unit/test_ingest_ddl.py`, `tests/unit/test_ingest_router.py`, `tests/integration/test_ingest_push_integration.py`
+**Tests:** `tests/unit/test_ingest_ddl.py`, `tests/unit/test_ingest_router.py`, `tests/integration/test_ingest_push_integration.py`, `tests/integration/test_ingest_subscription_governance_e2e.py`
 
 ### REQ-337 · Ingest Sources — Governed HTTP Push Receiver (REQ-331–337) {#REQ-337}
 
@@ -2864,7 +2864,7 @@ Provisa exposes a `POST /query/cypher` endpoint that accepts a Cypher SELECT que
 
 **Code:** `provisa/cypher/`
 
-**Tests:** `tests/integration/test_cypher_router_api.py`, `tests/integration/test_cypher_endpoint.py`, `tests/unit/test_cypher_graph_fns.py`, `tests/unit/test_cypher_parser.py`, `tests/unit/test_cypher_translator.py`, `tests/unit/test_cypher_tck_comparison.py`, `tests/unit/test_cypher_tck_equality.py`, `tests/unit/test_cypher_tck_lists.py`, `tests/unit/test_cypher_tck_maps.py`, `tests/unit/test_cypher_tck_precedence.py`, `tests/unit/test_cypher_tck_quantifiers.py`, `tests/unit/test_cypher_tck_temporal.py`, `tests/unit/test_sql_to_cypher.py`
+**Tests:** `tests/integration/test_cypher_router_api.py`, `tests/integration/test_cypher_endpoint.py`, `tests/unit/test_cypher_graph_fns.py`, `tests/unit/test_cypher_parser.py`, `tests/unit/test_cypher_translator.py`, `tests/unit/test_cypher_tck_comparison.py`, `tests/unit/test_cypher_tck_equality.py`, `tests/unit/test_cypher_tck_lists.py`, `tests/unit/test_cypher_tck_maps.py`, `tests/unit/test_cypher_tck_precedence.py`, `tests/unit/test_cypher_tck_quantifiers.py`, `tests/unit/test_cypher_tck_temporal.py`, `tests/unit/test_sql_to_cypher.py`, `tests/integration/test_demo_http_surfaces_e2e.py`, `tests/integration/test_cypher_http_masking_e2e.py`
 
 **Docs:** [api-reference.md](../api-reference.md), [cypher.md](../cypher.md), [remote-schemas.md](../remote-schemas.md)
 
@@ -2980,7 +2980,7 @@ Provisa exposes a `POST /query/nl` endpoint accepting a natural language questio
 
 **Code:** `provisa/nl/`
 
-**Tests:** `tests/unit/test_nl_loop.py`, `tests/unit/test_nl_runner.py`, `tests/integration/test_nl_endpoint.py`
+**Tests:** `tests/unit/test_nl_loop.py`, `tests/unit/test_nl_runner.py`, `tests/integration/test_nl_endpoint.py`, `tests/integration/test_role_rate_limits_e2e.py`
 
 **Docs:** [api-reference.md](../api-reference.md)
 
@@ -4180,7 +4180,7 @@ Arrow Flight server (port 8815) streams record batches via gRPC. Full security p
 
 **Code:** `provisa/api/flight/`
 
-**Tests:** `tests/integration/test_arrow_flight_integration.py`, `tests/unit/test_flight_server_helpers.py`, `tests/unit/test_zaychik_flight_unit.py`
+**Tests:** `tests/integration/test_arrow_flight_integration.py`, `tests/unit/test_flight_server_helpers.py`, `tests/unit/test_zaychik_flight_unit.py`, `tests/integration/test_public_columns_every_surface_e2e.py`, `tests/integration/test_flight_catalog_credential_e2e.py`
 
 **Docs:** [api-reference.md](../api-reference.md), [architecture.md](../architecture.md), [deployment.md](../deployment.md), [python-client.md](../python-client.md)
 
@@ -12412,7 +12412,7 @@ Per-role query limits complement per-role request-rate limits ([REQ-369](#REQ-36
 
 **Code:** `provisa/compiler/complexity.py`, `provisa/compiler/limits.py`, `provisa/pgwire/_pipeline.py`, `provisa/api/data/endpoint.py`, `provisa/core/settings_catalog.py`, `provisa/core/models.py`
 
-**Tests:** `tests/unit/test_query_limits.py`, `tests/unit/test_hasura_api_limits.py`, `tests/integration/test_complexity_guard_every_surface.py`, `provisa-ui/src/pages/__tests__/SecurityPage.roleLimits.test.tsx`
+**Tests:** `tests/unit/test_query_limits.py`, `tests/unit/test_hasura_api_limits.py`, `tests/integration/test_complexity_guard_every_surface.py`, `provisa-ui/src/pages/__tests__/SecurityPage.roleLimits.test.tsx`, `tests/integration/test_role_rate_limits_e2e.py`
 
 **Docs:** [security.md](../security.md)
 
@@ -14550,7 +14550,7 @@ UI language is selected solely from the browser's navigator.language setting (re
 
 **Code:** `provisa-ui/src/i18n/index.ts`
 
-**Tests:** `provisa-ui/src/__tests__/i18nLanguageSelection.test.ts`
+**Tests:** `provisa-ui/src/__tests__/i18nLanguageSelection.test.ts`, `provisa-ui/e2e/i18n-browser-language.spec.ts`
 
 ## 13. Multi-Tenancy & Organizations
 
@@ -26052,7 +26052,7 @@ Bulk RDF export of the governed graph, the counterpart of the Neo4j export ([REQ
 
 **Code:** —
 
-**Tests:** —
+**Tests:** `tests/unit/test_rdf_export.py`, `tests/integration/test_rdf_export_graph_store.py`
 
 ### REQ-2166 · Business Glossary & Ontology {#REQ-2166}
 

@@ -991,6 +991,7 @@
   tests:
   - tests/unit/test_rate_limiting.py
   - tests/integration/test_rate_limiting_integration.py
+  - tests/integration/test_role_rate_limits_e2e.py
   since: 2026-01
   scenario: 'Given a role with configured rate limits
 
@@ -1031,6 +1032,7 @@
   tests:
   - tests/unit/test_rate_limiting.py
   - tests/integration/test_rate_limiting_integration.py
+  - tests/integration/test_role_rate_limits_e2e.py
   since: 2026-01
   scenario: 'Given a role with a configured nl.rate_limit
 
@@ -1232,6 +1234,7 @@
   - tests/integration/test_audit_auth_integration.py
   - tests/unit/test_abac_hook_extended.py
   - tests/unit/test_approval_hook.py
+  - tests/integration/test_approval_hook_grpc_e2e.py
   since: 2026-01
   scenario: 'Given a Provisa instance configured with gRPC approval hook
 
@@ -2006,6 +2009,7 @@
   - tests/unit/test_core_registration.py
   - tests/unit/test_source_registration_validation.py
   - tests/steps/steps_registration_governance.py
+  - tests/integration/test_source_registration_e2e.py
   since: 2026-01
   scenario: 'Given a privileged steward with registration rights
 
@@ -2052,6 +2056,7 @@
   - tests/integration/test_introspect.py
   - tests/unit/test_core_registration.py
   - tests/integration/test_config_reload_schema_rename.py
+  - tests/integration/test_source_registration_e2e.py
   since: 2026-01
   scenario: 'Given a source that has been registered but no tables have been explicitly registered
 
@@ -3305,6 +3310,7 @@
   - tests/unit/test_visibility.py
   - tests/unit/test_enforcement_metadata.py
   - tests/integration/test_registration_governance_integration.py
+  - tests/integration/test_sqlalchemy_dialect_scope_e2e.py
   since: 2026-01
   scenario: 'Given a SQLAlchemy client using the Provisa dialect with a specific role
 
@@ -4146,6 +4152,7 @@
   - provisa-ui/src/pages/TablesPage.tsx
   tests:
   - tests/unit/test_dataset_uniqueness.py
+  - tests/integration/test_source_registration_e2e.py
   since: 2026-01
   scenario: 'Given tables registered in domains A and B
 
@@ -4676,6 +4683,7 @@
   - tests/integration/test_introspect.py
   - tests/unit/test_available_tables.py
   - tests/unit/test_core_registration.py
+  - tests/integration/test_source_registration_e2e.py
   since: 2026-01
   scenario: 'Given a UI requesting schema and table lists for any source type
 
@@ -5062,6 +5070,7 @@
   - tests/unit/test_neo4j_normalizers.py
   - tests/unit/test_neo4j_preview.py
   - tests/steps/steps_query_api_sources_neo4j_sparql.py
+  - tests/integration/test_neo4j_query_preview_e2e.py
   since: 2026-01
   scenario: 'Given a steward submitting a Cypher query for Neo4j table registration
 
@@ -5456,6 +5465,7 @@
   - tests/unit/test_graphql_remote_mapper.py
   - tests/unit/test_remote_adapter_contract.py
   - tests/unit/test_schema_service.py
+  - tests/integration/test_remote_schema_refresh_e2e.py
   since: 2026-01
   scenario: 'Given a remote GraphQL schema that has changed upstream
 
@@ -5933,6 +5943,7 @@
   - tests/unit/test_openapi_loader.py
   - tests/integration/test_openapi_source.py
   - tests/steps/steps_openapi_auto_registration_connector.py
+  - tests/integration/test_remote_schema_refresh_e2e.py
   since: 2026-01
   scenario: 'Given an OpenAPI spec that has been updated upstream
 
@@ -6318,6 +6329,7 @@
   - tests/unit/test_remote_adapter_contract.py
   - tests/unit/test_schema_service.py
   - tests/steps/steps_grpc_remote_schema_connector_req_322_329.py
+  - tests/integration/test_remote_schema_refresh_e2e.py
   since: 2026-01
   scenario: 'Given a gRPC source whose proto has changed
 
@@ -6577,6 +6589,7 @@
   - tests/unit/test_ingest_ddl.py
   - tests/unit/test_ingest_router.py
   - tests/integration/test_ingest_push_integration.py
+  - tests/integration/test_ingest_subscription_governance_e2e.py
   since: 2026-01
   scenario: 'Given an ingest table with SSE subscription active
 
@@ -9398,6 +9411,8 @@
   - tests/unit/test_cypher_tck_quantifiers.py
   - tests/unit/test_cypher_tck_temporal.py
   - tests/unit/test_sql_to_cypher.py
+  - tests/integration/test_demo_http_surfaces_e2e.py
+  - tests/integration/test_cypher_http_masking_e2e.py
   since: 2026-01
   scenario: 'Given a graph user submitting a Cypher SELECT query to POST /query/cypher
 
@@ -9825,6 +9840,7 @@
   - tests/unit/test_nl_loop.py
   - tests/unit/test_nl_runner.py
   - tests/integration/test_nl_endpoint.py
+  - tests/integration/test_role_rate_limits_e2e.py
   since: 2026-01
   scenario: 'Given a non-technical user submitting a natural language question to POST /query/nl
 
@@ -13656,6 +13672,8 @@
   - tests/integration/test_arrow_flight_integration.py
   - tests/unit/test_flight_server_helpers.py
   - tests/unit/test_zaychik_flight_unit.py
+  - tests/integration/test_public_columns_every_surface_e2e.py
+  - tests/integration/test_flight_catalog_credential_e2e.py
   since: 2026-01
   scenario: 'Given a client connects to the Arrow Flight server on port 8815
 
@@ -38249,6 +38267,7 @@
   - tests/unit/test_hasura_api_limits.py
   - tests/integration/test_complexity_guard_every_surface.py
   - provisa-ui/src/pages/__tests__/SecurityPage.roleLimits.test.tsx
+  - tests/integration/test_role_rate_limits_e2e.py
   since: 2026-07
   scenario: 'Given a role with max_query_complexity=4
 
@@ -46027,6 +46046,7 @@
   - provisa-ui/src/i18n/index.ts
   tests:
   - provisa-ui/src/__tests__/i18nLanguageSelection.test.ts
+  - provisa-ui/e2e/i18n-browser-language.spec.ts
   scenario: 'Given a browser with navigator.language set to es-MX
 
     When the Provisa UI loads
@@ -91824,6 +91844,9 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     And each email in the file is masked
 
     And an export with the same as_recorded later yields the same triples'
+  tests:
+  - tests/unit/test_rdf_export.py
+  - tests/integration/test_rdf_export_graph_store.py
 - id: REQ-2166
   value: 'Join your Jena, GraphDB or Stardog triples with Provisa''s governed data live, with no copy needed.'
   status: proposed
