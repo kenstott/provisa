@@ -814,11 +814,11 @@
       },
       "opioidsAsPublic": {
         "title": "Exécuter en tant que public",
-        "description": "L'explorateur SQL s'exécute désormais avec le rôle public, celui du tableau de bord du conseil et des habitants. Les requêtes qui suivent ne voient que ce qu'il autorise."
+        "description": "L'explorateur SQL s'exécute désormais avec le rôle resident, celui du tableau de bord du conseil et des habitants. Les requêtes qui suivent ne voient que ce qu'il autorise."
       },
       "opioidsPublic": {
         "title": "Ce que voit le public",
-        "description": "Le tableau de bord du conseil est la vue overdose_burden_by_county, exécutée ici sous le rôle public. Elle montre les habitants, les décès, le taux de mortalité et l'argent fédéral par habitant de chaque comté, et ne lit aucune des allocations du fonds ni les prestataires payés."
+        "description": "Le tableau de bord du conseil est la vue overdose_burden_by_county, exécutée ici sous le rôle resident. Elle montre les habitants, les décès, le taux de mortalité et l'argent fédéral par habitant de chaque comté, et ne lit aucune des allocations du fonds ni les prestataires payés."
       },
       "opioidsByRegion": {
         "title": "Par région, en GraphQL",

@@ -313,6 +313,18 @@
     "tagFacetPlaceholder": "Filtrar por tag",
     "noMatch": "Nenhum produto de dados corresponde aos filtros",
     "domainFacetLabel": "Domínios",
-    "domainFacetPlaceholder": "Filtrar por domínio"
+    "domainFacetPlaceholder": "Filtrar por domínio",
+    "colSync": "Sincronização",
+    "syncNone": "Não sincronizado",
+    "syncSynced_one": "Sincronizado",
+    "syncSynced_other": "Sincronizado com {{count}}",
+    "syncFailed_one": "{{count}} com falha",
+    "syncFailed_other": "{{count}} com falha",
+    "syncEntryPublished": "{{entry}}: publicado {{when}}",
+    "syncEntryFailed": "{{entry}}: com falha {{when}}",
+    "syncGroup_synced": "Sincronizado",
+    "syncGroup_failed": "Com falha",
+    "syncGroup_none": "Não sincronizado",
+    "syncUnread": "Não foi possível ler o status de sincronização: {{error}}"
   }
 }

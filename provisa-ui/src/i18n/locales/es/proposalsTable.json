@@ -1,6 +1,6 @@
 {
   "proposalsTable": {
-    "intro": "Una fila marcada se acepta al aplicar. Las filas que puntúan al menos el umbral empiezan marcadas. Una fila sin ninguna casilla marcada queda sin decidir.",
+    "intro": "Marque la primera casilla de una fila para aceptarla al aplicar, o «No sugerir nunca» para que no se vuelva a sugerir. Las filas que puntúan al menos el umbral empiezan marcadas para aceptar. Una fila sin ninguna casilla marcada queda sin decidir.",
     "colScore": "Puntuación",
     "colConfidence": "Confianza",
     "colJev": "Jev",
@@ -8,8 +8,8 @@
     "colMeasure": "Medido",
     "colReasoning": "Razonamiento",
     "colNote": "Nota",
-    "colNotAgain": "No volver a recomendar",
-    "notAgainAria": "No volver a recomendar {{name}}",
+    "colNotAgain": "No sugerir nunca",
+    "notAgainAria": "No volver a sugerir {{name}} nunca",
     "kind": {
       "foreign_keys": "Restricción",
       "semantics": "Semántica",
@@ -18,8 +18,8 @@
     "asWritten": "Tal como lo escribió el modelo: {{answer}}",
     "apply": "Aplicar",
     "applyAccept": "Aceptar {{count}}",
-    "applyNotAgain": "No volver a recomendar {{count}}",
-    "applyBoth": "Aceptar {{accept}}, no volver a recomendar {{notAgain}}",
+    "applyNotAgain": "No sugerir nunca {{count}}",
+    "applyBoth": "Aceptar {{accept}}, no sugerir nunca {{notAgain}}",
     "applied": "{{accepted}} aceptadas, {{notAgain}} que no se volverán a recomendar.",
     "failed": "{{count}} no se pudo aplicar:",
     "failed_other": "{{count}} no se pudieron aplicar:",

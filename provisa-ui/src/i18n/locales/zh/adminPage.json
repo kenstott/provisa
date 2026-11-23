@@ -24,6 +24,7 @@
     "namingConventionHint": "应用于 GraphQL 字段名的大小写规则，Cypher 属性键也遵循此规则。Cypher 标签始终为 PascalCase。gRPC、JSON:API 和 OpenAPI 保留每列在数据库中的原始拼写。",
     "namingConventionSnake": "snake_case",
     "namingConventionHasura": "Hasura (snake_case)",
+    "namingConventionHasuraGraphqlDefault": "Hasura graphql-default (camelCase)",
     "namingConventionApollo": "Apollo (camelCase)",
     "sqlNamingConvention": "SQL 命名约定",
     "sqlNamingConventionHint": "应用于 SQL 平面名称的大小写规则，pgwire、Bolt 和语义 SQL 接口查询的就是这一平面。它与 GraphQL 规则分开设置，因此重命名一个平面不会影响另一个。",

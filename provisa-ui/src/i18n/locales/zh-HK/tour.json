@@ -814,11 +814,11 @@
       },
       "opioidsAsPublic": {
         "title": "以公眾身份執行",
-        "description": "SQL 瀏覽器現在以 public 角色執行，即議會儀表板和居民使用的角色。接下來的查詢只能看到該角色容許的內容。"
+        "description": "SQL 瀏覽器現在以 resident 角色執行，即議會儀表板和居民使用的角色。接下來的查詢只能看到該角色容許的內容。"
       },
       "opioidsPublic": {
         "title": "公眾看到的樣子",
-        "description": "議會的儀表板是檢視 overdose_burden_by_county，這裡以公眾角色執行。它顯示每個郡的居民人數、死亡人數、死亡率和人均聯邦資金，不會讀取基金的任何撥款或獲付款的服務提供者。"
+        "description": "議會的儀表板是檢視 overdose_burden_by_county，這裡以 resident 角色執行。它顯示每個郡的居民人數、死亡人數、死亡率和人均聯邦資金，不會讀取基金的任何撥款或獲付款的服務提供者。"
       },
       "opioidsByRegion": {
         "title": "按地區，用 GraphQL",

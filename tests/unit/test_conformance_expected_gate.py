@@ -96,6 +96,13 @@ def test_a_listed_failure_passes(tmp_path, monkeypatch, capsys):
     assert code == 0, capsys.readouterr().err
 
 
+def test_a_failure_listed_under_a_named_queue_job_passes(tmp_path, monkeypatch, capsys):
+    """The queue names its jobs (SPARQL-G1, POLYFILL-G3B2) as well as numbering them."""
+    report = _report([_failure("F", "s1")])
+    code = _run(tmp_path, monkeypatch, report, _expected([_entry("F::s1", job="SPARQL-G1")]))
+    assert code == 0, capsys.readouterr().err
+
+
 def test_no_failures_and_an_empty_list_passes(tmp_path, monkeypatch, capsys):
     code = _run(tmp_path, monkeypatch, _report([]), _expected([]))
     assert code == 0, capsys.readouterr().err
@@ -143,6 +150,7 @@ def test_an_entry_without_a_job_is_refused(tmp_path, monkeypatch, capsys):
     [
         ({"case": "F::s1", "job": "J1275"}, "no since"),
         ({"case": "F::s1", "job": "someone", "since": SINCE}, "job"),
+        ({"case": "F::s1", "job": "SPARQL", "since": SINCE}, "job"),
         ({"case": "F::s1", "job": "J1275", "since": "yesterday"}, "since"),
         ({"job": "J1275", "since": SINCE}, "no case"),
         ({"case": "F::s1", "job": "J1275", "since": SINCE, "owner": "x"}, "owner"),
@@ -219,7 +227,8 @@ def test_a_surface_at_its_baseline_is_judged_by_its_list(tmp_path, monkeypatch, 
 
 # --- functions -----------------------------------------------------------------------------------
 
-import function_report  # noqa: E402  (beside the gate, on the path above)
+import function_legs  # noqa: E402  (beside the gate, on the path above)
+import function_report  # noqa: E402
 import functions_baseline  # noqa: E402
 
 RIGHT = {"outcome": "pass"}
@@ -537,7 +546,7 @@ def test_the_written_file_reads_back_and_lists_one_entry_a_line():
 
 # --- the committed files --------------------------------------------------------------------------
 
-CASE_SURFACES = ("cypher", "bolt", "flight-sql", "pgwire", "graphql")
+CASE_SURFACES = ("cypher", "bolt", "flight-sql", "pgwire", "graphql", "sparql")
 
 
 @pytest.mark.parametrize("surface", CASE_SURFACES)
@@ -546,10 +555,13 @@ def test_each_committed_expected_file_is_well_formed(surface):
 
 
 def test_the_committed_functions_file_is_well_formed():
-    """Its counts are its list's own, base calls and edge calls apart, and every entry names its
-    engine, overload, failing call and what was said."""
+    """Its counts are its list's own, base calls and edge calls apart, every entry names its
+    engine, overload, failing call and what was said, and it judges every engine the run that
+    writes it measures: the free lane's legs that build_engine builds (function_legs.py plan, the
+    workflow's matrix), so an engine the run measures is never left unjudged."""
     path, engines, listed = gate.load_functions_expected()
-    assert set(engines) == {"clickhouse", "duckdb", "pg", "trino"}
+    planned = function_legs.plan("free", function_legs.load())["engines"].split(",")
+    assert sorted(engines) == sorted(planned)
     assert json.loads(path.read_text())["measured"]["run"]
     for counts in engines.values():
         edge = counts["edge"]
@@ -577,6 +589,7 @@ GATED = {
     "conformance-flight-sql.yml": ("flight-sql", "baseline_gate.py cases flight-sql"),
     "conformance-pgwire.yml": ("pgwire", "baseline_gate.py cases pgwire"),
     "conformance-graphql.yml": ("graphql", "baseline_gate.py cases graphql"),
+    "conformance-sparql.yml": ("sparql", "baseline_gate.py cases sparql"),
     "conformance-functions.yml": ("merge", "baseline_gate.py functions"),
 }
 

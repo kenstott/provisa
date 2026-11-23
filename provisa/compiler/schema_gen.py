@@ -42,8 +42,13 @@ from provisa.compiler.aggregate_gen import (
     build_group_by_order_by_type,
     build_having_exp_type,
 )
+from provisa.compiler import hasura_schema
 from provisa.compiler.naming import (
     active_gql_convention,
+    hasura_argument_name,
+    hasura_convention_of,
+    hasura_pk_constraint,
+    hasura_served_names,
     root_field_variant,
     apply_gql_name,
     bare_field_name,
@@ -338,12 +343,18 @@ def _assign_names(  # REQ-154, REQ-155, REQ-194, REQ-195, REQ-411, REQ-412, REQ-
         )
         for t in group:
             base_table_name = _strip(t.table_name) if not t.alias else t.table_name
+            convention = t.gql_convention_override or active_gql_convention()
             t.field_name = generate_name(
-                base_table_name,
-                naming_rules,
-                alias=t.alias,
-                convention=t.gql_convention_override or active_gql_convention(),
+                base_table_name, naming_rules, alias=t.alias, convention=convention
             )
+            hasura_type = None
+            if domain_id not in SYSTEM_SCHEMA_GQL_PREFIX:
+                t.hasura = hasura_convention_of(convention)
+            if t.hasura is not None:
+                # REQ-194: a Hasura-preset table is named as Hasura names it.
+                served = hasura_served_names(convention, base_table_name, naming_rules, t.alias)
+                t.field_name, hasura_type = served.select, served.type
+                t.hasura_constraint = served.constraint
             if domain_id in SYSTEM_SCHEMA_GQL_PREFIX:
                 # REQ-2163: a system schema's names carry its own prefix, domains prefixed or not.
                 t.field_name, t.type_name = system_schema_names(domain_id, t.field_name)
@@ -357,8 +368,13 @@ def _assign_names(  # REQ-154, REQ-155, REQ-194, REQ-195, REQ-411, REQ-412, REQ-
                     t.type_name = to_type_name(t.field_name)
                 else:
                     t.type_name = to_type_name(t.field_name)
+                if hasura_type is not None and "__" in t.type_name:
+                    t.type_name = f"{t.type_name.split('__', 1)[0]}__{hasura_type}"
+                    t.hasura_constraint = f"{t.field_name.split('__', 1)[0]}__{t.hasura_constraint}"
+                elif hasura_type is not None:
+                    t.type_name = hasura_type
             else:
-                t.type_name = to_type_name(t.field_name)
+                t.type_name = hasura_type or to_type_name(t.field_name)
     _refuse_system_schema_names(tables)
 
 
@@ -483,6 +499,7 @@ def _build_subscription_fields(  # REQ-219, REQ-258, REQ-260
     tables: list[_TableInfo],
     gql_types: dict[int, GraphQLObjectType],
     args_of: Callable[[_TableInfo], dict[str, GraphQLArgument]],
+    where_types: dict[int, GraphQLInputObjectType | None],
 ) -> dict[str, GraphQLField]:
     """Build Subscription root fields.
 
@@ -506,6 +523,14 @@ def _build_subscription_fields(  # REQ-219, REQ-258, REQ-260
         # REQ-2163: a table SQL alone serves has no GraphQL field (security.rights).
         if (t.domain_id, t.table_name) in SQL_ONLY_TABLES:
             continue
+        where_type = where_types.get(t.table_id)
+        if t.hasura and where_type is not None:
+            # REQ-194: a Hasura-preset table streams its rows past a cursor, as Hasura serves
+            # every table: each batch is a read of the table, so it needs no change feed. A
+            # table with no comparable column has no where type and nothing a cursor can pass.
+            fields[hasura_schema.root_field(t, suffix="stream")] = hasura_schema.stream_field(
+                t, gql_types[t.table_id], where_type, _column_input_fields(t, pk_only=False)
+            )
         raw = raw_by_id.get(t.table_id, {})
         source_type = (si.source_types or {}).get(t.source_id, "")
         if source_type not in _CDC_SOURCES and not raw.get("watermark_column"):
@@ -531,6 +556,7 @@ def _table_field_args(
         where_types.get(t.table_id),
         order_by_types.get(t.table_id),
         distinct_enums.get(t.table_id),
+        t.hasura,
     )
     _build_native_filter_args(t, args)
     _build_similar_arg(t, args)
@@ -758,6 +784,7 @@ def _add_standard_relationship_field(
             where_types.get(target.table_id),
             order_by_types.get(target.table_id),
             distinct_enums.get(target.table_id),
+            target.hasura,
         )
         _add_time_travel_args(target, many_args)
         fields[field_name] = GraphQLField(
@@ -889,6 +916,7 @@ def _build_aggregate_query_field(
     gql_type: GraphQLObjectType,
     enum_types: dict,
     agg_fields_type: GraphQLObjectType | None = None,
+    where_type: GraphQLInputObjectType | None = None,
 ) -> tuple[str, GraphQLField] | None:
     agg_type = build_aggregate_types(
         t.type_name,
@@ -897,11 +925,17 @@ def _build_aggregate_query_field(
         gql_type,
         _agg_field_names(t),
         agg_fields_type,
+        hasura=t.hasura,
     )
     if not agg_type:
         return None
     agg_args: dict[str, GraphQLArgument] = {}
-    agg_where = _build_where_input(t, f"{t.type_name}Agg", enum_types=enum_types)
+    # REQ-194: a Hasura-preset table's aggregate takes its one bool_exp.
+    agg_where = (
+        where_type
+        if t.hasura
+        else _build_where_input(t, f"{t.type_name}Agg", enum_types=enum_types)
+    )
     if agg_where:
         agg_args["where"] = GraphQLArgument(agg_where)
     # REQ-1986, REQ-1991: an aggregate over a parameterized table takes its parameters.
@@ -1016,35 +1050,209 @@ def _build_connection_query_field(
     ), GraphQLField(conn_type, args=conn_args)
 
 
+def _pk_input_fields(t: _TableInfo) -> dict[str, GraphQLScalarType | GraphQLEnumType]:
+    """Table ``t``'s visible primary-key columns, by field name, with their input types."""
+    return _column_input_fields(t, pk_only=True)
+
+
+def _column_input_fields(
+    t: _TableInfo, *, pk_only: bool
+) -> dict[str, GraphQLScalarType | GraphQLEnumType]:
+    """Table ``t``'s visible columns (only its primary key's when ``pk_only``) holding a scalar or
+    an enum, by field name, with their input types."""
+    out: dict[str, GraphQLScalarType | GraphQLEnumType] = {}
+    for col in t.visible_columns:
+        if pk_only and not col.get("is_primary_key"):
+            continue
+        meta = t.column_metadata.get(col["column_name"].lower())
+        if meta is None:
+            continue
+        gql = registered_graphql_type(meta.data_type, meta.subtype)
+        if isinstance(gql, (GraphQLScalarType, GraphQLEnumType)):
+            out[_gql_col_name(col, t)] = gql
+    return out
+
+
 def _build_mutation_fields_for_table(  # REQ-032, REQ-033, REQ-034, REQ-036, REQ-037, REQ-212
     t: _TableInfo,
     enum_types: dict,
+    row_type: GraphQLObjectType,
+    where_type: GraphQLInputObjectType | None,
+    unique_constraints: list[dict],
 ) -> dict[str, GraphQLField]:
     """Build insert/upsert/update/delete mutation fields for one table, for exactly the
     operations the table's source takes and the role holds a write grant for (REQ-2074), each
-    input holding its grant's columns. Returns {} if none."""
+    input holding its grant's columns. Returns {} if none. A Hasura-preset table's are Hasura's
+    (REQ-194)."""
     granted = t.write_ops & t.write_grants.keys()
     if not granted:
         return {}
+    insert_fields = _write_inputs(t, "insert")
+    update_fields = _write_inputs(t, "update")
+    if t.hasura:
+        return _build_hasura_mutation_fields(
+            t, granted, insert_fields, update_fields, row_type, where_type, unique_constraints
+        )
+    return _build_provisa_mutation_fields(t, granted, insert_fields, update_fields, enum_types)
 
-    def _inputs(operation: str) -> dict[str, GraphQLInputField]:
-        allowed = set((t.write_grants.get(operation) or {}).get("columns") or [])
-        fields: dict[str, GraphQLInputField] = {}
-        for col in t.visible_columns:
-            col_name = col["column_name"]
-            meta = t.column_metadata.get(col_name.lower())
-            if meta is None or col_name not in allowed:
-                continue
-            col_gql_type = registered_graphql_type(meta.data_type, meta.subtype)
-            if isinstance(col_gql_type, GraphQLList):
-                col_gql_type = GraphQLString  # fallback for arrays in input
-            # Named as reads name it (its published name); mutation_gen maps it back.
-            fields[_gql_col_name(col, t)] = GraphQLInputField(col_gql_type)
-        return fields
 
-    insert_fields = _inputs("insert")
-    update_fields = _inputs("update")
+def _write_inputs(t: _TableInfo, operation: str) -> dict[str, GraphQLInputField]:
+    """The input fields of ``operation``'s grant: each granted column under its published name."""
+    allowed = set((t.write_grants.get(operation) or {}).get("columns") or [])
+    fields: dict[str, GraphQLInputField] = {}
+    for col in t.visible_columns:
+        col_name = col["column_name"]
+        meta = t.column_metadata.get(col_name.lower())
+        if meta is None or col_name not in allowed:
+            continue
+        col_gql_type = registered_graphql_type(meta.data_type, meta.subtype)
+        if isinstance(col_gql_type, GraphQLList):
+            col_gql_type = GraphQLString  # fallback for arrays in input
+        # Named as reads name it (its published name); mutation_gen maps it back.
+        fields[_gql_col_name(col, t)] = GraphQLInputField(col_gql_type)
+    return fields
 
+
+def _build_hasura_mutation_fields(  # REQ-194
+    t: _TableInfo,
+    granted: set[str] | frozenset[str],
+    insert_fields: dict[str, GraphQLInputField],
+    update_fields: dict[str, GraphQLInputField],
+    row_type: GraphQLObjectType,
+    where_type: GraphQLInputObjectType | None,
+    unique_constraints: list[dict],
+) -> dict[str, GraphQLField]:
+    """Hasura's mutations of a Hasura-preset table: ``insert_<t>`` (``objects``) and
+    ``insert_<t>_one`` (``object``), each with ``on_conflict``; ``update_<t>`` (``_set``,
+    ``where``) and ``update_<t>_by_pk`` (``_set``, ``pk_columns``); ``delete_<t>`` (``where``)
+    and ``delete_<t>_by_pk`` (the key). Each for exactly the writes the role holds a grant for."""
+    assert t.hasura is not None
+    conv = t.hasura
+
+    def arg(name: str) -> str:
+        return hasura_argument_name(conv, name)
+
+    response = hasura_schema.mutation_response(t, row_type)
+    pk = _pk_input_fields(t)
+    result: dict[str, GraphQLField] = {}
+    if "insert" in granted and insert_fields:
+        insert_input = cast(
+            GraphQLInputObjectType,
+            GraphQLInputObjectType(
+                hasura_schema.type_name(t, "insert_input"), lambda f=insert_fields: f
+            ),
+        )
+        insert_args = {arg("objects"): GraphQLArgument(_non_null_list(insert_input))}
+        one_args = {arg("object"): GraphQLArgument(GraphQLNonNull(insert_input))}
+        constraints = _hasura_constraints(t, pk, unique_constraints)
+        if (
+            "update" in granted
+            and constraints
+            and update_fields
+            and "on_conflict" not in t.write_refused_forms
+        ):
+            on_conflict = _hasura_on_conflict(t, constraints, list(update_fields))
+            insert_args[arg("on_conflict")] = GraphQLArgument(on_conflict)
+            one_args[arg("on_conflict")] = GraphQLArgument(on_conflict)
+        result[hasura_schema.root_field(t, prefix="insert")] = GraphQLField(
+            response, args=insert_args
+        )
+        result[hasura_schema.root_field(t, prefix="insert", suffix="one")] = GraphQLField(
+            row_type, args=one_args
+        )
+    if "update" in granted and update_fields:
+        set_input = cast(
+            GraphQLInputObjectType,
+            GraphQLInputObjectType(
+                hasura_schema.type_name(t, "set_input"), lambda f=update_fields: f
+            ),
+        )
+        if where_type is not None:
+            result[hasura_schema.root_field(t, prefix="update")] = GraphQLField(
+                response,
+                args={
+                    arg("_set"): GraphQLArgument(set_input),
+                    arg("where"): GraphQLArgument(GraphQLNonNull(where_type)),
+                },
+            )
+        if pk:
+            pk_input = cast(
+                GraphQLInputObjectType,
+                GraphQLInputObjectType(
+                    hasura_schema.type_name(t, "pk_columns_input"),
+                    lambda: {n: GraphQLInputField(GraphQLNonNull(g)) for n, g in pk.items()},
+                ),
+            )
+            result[hasura_schema.root_field(t, prefix="update", suffix="by_pk")] = GraphQLField(
+                row_type,
+                args={
+                    arg("_set"): GraphQLArgument(set_input),
+                    arg("pk_columns"): GraphQLArgument(GraphQLNonNull(pk_input)),
+                },
+            )
+    if "delete" in granted:
+        if where_type is not None:
+            result[hasura_schema.root_field(t, prefix="delete")] = GraphQLField(
+                response, args={arg("where"): GraphQLArgument(GraphQLNonNull(where_type))}
+            )
+        if pk:
+            result[hasura_schema.root_field(t, prefix="delete", suffix="by_pk")] = GraphQLField(
+                row_type, args=hasura_schema.pk_arguments(pk)
+            )
+    return result
+
+
+def _non_null_list(of: GraphQLInputObjectType) -> GraphQLNonNull:
+    return GraphQLNonNull(GraphQLList(GraphQLNonNull(of)))
+
+
+def _hasura_constraints(
+    t: _TableInfo, pk: dict[str, GraphQLScalarType | GraphQLEnumType], unique: list[dict]
+) -> list[str]:
+    """The constraints an on_conflict may name: the primary key's, then each declared UNIQUE
+    constraint whose columns the role sees."""
+    visible = {c["column_name"] for c in t.visible_columns}
+    names = [hasura_pk_constraint(t.table_name)] if pk else []
+    names += [uc["name"] for uc in unique if all(c in visible for c in uc["columns"])]
+    return names
+
+
+def _hasura_on_conflict(
+    t: _TableInfo, constraints: list[str], update_columns: list[str]
+) -> GraphQLInputObjectType:
+    """``<t>_on_conflict``: the constraint whose conflict it handles and the columns it updates
+    then (none: the row is left as it is)."""
+    conv = t.hasura
+    assert conv is not None
+    constraint = cast(
+        GraphQLEnumType,
+        GraphQLEnumType(t.hasura_constraint, {c: GraphQLEnumValue(c) for c in constraints}),
+    )
+    update_column = hasura_schema.column_enum(t, "update_column", update_columns)
+    return cast(
+        GraphQLInputObjectType,
+        GraphQLInputObjectType(
+            hasura_schema.type_name(t, "on_conflict"),
+            lambda: {
+                "constraint": GraphQLInputField(GraphQLNonNull(constraint)),
+                hasura_argument_name(conv, "update_columns"): GraphQLInputField(
+                    GraphQLNonNull(GraphQLList(GraphQLNonNull(update_column))),
+                    default_value=[],
+                ),
+            },
+        ),
+    )
+
+
+def _build_provisa_mutation_fields(
+    t: _TableInfo,
+    granted: set[str] | frozenset[str],
+    insert_fields: dict[str, GraphQLInputField],
+    update_fields: dict[str, GraphQLInputField],
+    enum_types: dict,
+) -> dict[str, GraphQLField]:
+    """Provisa's mutations of a table: insert, upsert, update and delete, each by ``input``,
+    ``set`` and ``where``."""
     insert_input = cast(
         GraphQLInputObjectType,
         GraphQLInputObjectType(f"{t.type_name}InsertInput", lambda fields=insert_fields: fields),
@@ -1245,6 +1453,13 @@ def generate_schema(
             # GraphQL construct @deprecated is valid on (objects themselves cannot carry it).
             deprecation_reason=t.deprecation_reason,
         )
+        if t.hasura:
+            # REQ-194: Hasura's read of one row by its primary key.
+            pk = _pk_input_fields(t)
+            if pk:
+                query_fields[hasura_schema.root_field(t, suffix="by_pk")] = (
+                    hasura_schema.by_pk_field(gql_type, pk)
+                )
 
         # Build agg_fields_type once to avoid duplicate GraphQL type names when both flags on.
         shared_agg_fields_type = None
@@ -1255,6 +1470,7 @@ def generate_schema(
                 t.column_metadata,
                 _agg_field_names(t),
                 metrics=t.metrics,  # REQ-1319: metrics block inside the aggregate result
+                hasura=t.hasura,
             )
 
         # REQ-653: table-level enable_aggregates gates the _aggregate root field.
@@ -1267,7 +1483,7 @@ def generate_schema(
         )
         if t.enable_aggregates and not _role_blocks_agg:
             agg_result = _build_aggregate_query_field(
-                t, gql_type, si.enum_types, shared_agg_fields_type
+                t, gql_type, si.enum_types, shared_agg_fields_type, where_types.get(t.table_id)
             )
             if agg_result:
                 query_fields[agg_result[0]] = agg_result[1]
@@ -1295,6 +1511,8 @@ def generate_schema(
 
     # Build mutation types for the tables whose sources take writes (REQ-031–REQ-037)
     mutation_fields: dict[str, GraphQLField] = {}
+    # REQ-194: each table's declared UNIQUE constraints, which a Hasura on_conflict may name.
+    declared_unique = {raw["id"]: raw.get("unique_constraints") or [] for raw in si.tables}
 
     for t in tables:
         # Mirror the query-root visibility gate: only seed/root tables get mutation fields.
@@ -1312,7 +1530,15 @@ def generate_schema(
         # them (executor/write_capability.py) is written through SQL and COPY, and offers none.
         if not t.write_returns_rows:
             continue
-        mutation_fields.update(_build_mutation_fields_for_table(t, si.enum_types))
+        mutation_fields.update(
+            _build_mutation_fields_for_table(
+                t,
+                si.enum_types,
+                gql_types[t.table_id],
+                where_types.get(t.table_id),
+                declared_unique.get(t.table_id, []),
+            )
+        )
 
     extra_query, extra_mutation = _build_action_fields(si, gql_types, tables, domain_alias_map)
     for root, fields, extra in (
@@ -1340,6 +1566,7 @@ def generate_schema(
         tables,
         gql_types,
         args_of,
+        where_types,
     )
     subscription_type: GraphQLObjectType | None = (
         cast(GraphQLObjectType, GraphQLObjectType("Subscription", lambda: subscription_fields))

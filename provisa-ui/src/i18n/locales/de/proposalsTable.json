@@ -1,6 +1,6 @@
 {
   "proposalsTable": {
-    "intro": "Eine markierte Zeile wird beim Anwenden akzeptiert. Zeilen mit einer Bewertung ab dem Schwellenwert sind anfangs markiert. Eine Zeile ohne markiertes Kästchen bleibt unentschieden.",
+    "intro": "Markieren Sie das erste Kästchen einer Zeile, um sie beim Anwenden zu akzeptieren, oder „Nie vorschlagen“, damit sie nie wieder vorgeschlagen wird. Zeilen mit einer Bewertung ab dem Schwellenwert sind anfangs zum Akzeptieren markiert. Eine Zeile ohne markiertes Kästchen bleibt unentschieden.",
     "colScore": "Bewertung",
     "colConfidence": "Konfidenz",
     "colJev": "Jev",
@@ -8,8 +8,8 @@
     "colMeasure": "Gemessen",
     "colReasoning": "Begründung",
     "colNote": "Hinweis",
-    "colNotAgain": "Nicht erneut empfehlen",
-    "notAgainAria": "{{name}} nicht erneut empfehlen",
+    "colNotAgain": "Nie vorschlagen",
+    "notAgainAria": "{{name}} nie wieder vorschlagen",
     "kind": {
       "foreign_keys": "Constraint",
       "semantics": "Semantisch",
@@ -18,8 +18,8 @@
     "asWritten": "Wie das Modell es schrieb: {{answer}}",
     "apply": "Anwenden",
     "applyAccept": "{{count}} akzeptieren",
-    "applyNotAgain": "{{count}} nicht erneut empfehlen",
-    "applyBoth": "{{accept}} akzeptieren, {{notAgain}} nicht erneut empfehlen",
+    "applyNotAgain": "{{count}} nie vorschlagen",
+    "applyBoth": "{{accept}} akzeptieren, {{notAgain}} nie vorschlagen",
     "applied": "{{accepted}} akzeptiert, {{notAgain}} nicht erneut zu empfehlen.",
     "failed": "{{count}} konnte nicht angewendet werden:",
     "failed_other": "{{count}} konnten nicht angewendet werden:",

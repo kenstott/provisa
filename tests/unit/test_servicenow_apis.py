@@ -146,7 +146,10 @@ def test_the_companion_document_holds_each_added_api_and_each_import_set(instanc
     from provisa.openapi.exclusions import load_source_spec
 
     spec = load_source_spec(
-        sn.companion_spec_path("helpdesk"), _mapping(), source_id=sn.companion_id("helpdesk")
+        sn.companion_spec_path("helpdesk"),
+        _mapping(),
+        source_id=sn.companion_id("helpdesk"),
+        auth=None,
     )
     _queries, mutations = parse_spec(spec)
     by_path = {m.path: m for m in mutations}

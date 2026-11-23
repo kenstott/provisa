@@ -48,7 +48,7 @@ def test_the_admin_lists_the_presets_the_server_takes():
     from provisa.compiler.naming import validation_error_for_convention
 
     listed = Query().naming_conventions()
-    assert listed == ["snake", "hasura_graphql", "apollo_graphql"]
+    assert listed == ["snake", "hasura_graphql", "hasura_graphql_default", "apollo_graphql"]
     assert all(validation_error_for_convention(c) is None for c in listed)
 
 
@@ -80,7 +80,8 @@ def test_a_config_names_a_convention_by_a_hasura_spelling_and_holds_its_preset()
             "gql_naming_convention": "graphql-default",
         }
     )
-    assert table.gql_naming_convention == "apollo_graphql"
+    # REQ-194 (2026-11-22): graphql-default is its own Hasura preset, which keeps custom names.
+    assert table.gql_naming_convention == "hasura_graphql_default"
     assert NamingConfig(convention="graphql").convention == "apollo_graphql"
     for bad in ("camelCase", "PascalCase", "none"):
         with pytest.raises(ValidationError):

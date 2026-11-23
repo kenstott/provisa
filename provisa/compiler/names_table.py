@@ -79,6 +79,8 @@ SURFACE_NAMES: dict[str, str] = {
     "graphql_aggregate": "graphql",
     "graphql_group_by": "graphql",
     "graphql_connection": "graphql",
+    "graphql_by_pk": "graphql",
+    "graphql_stream": "graphql",
     "graphql_insert": "graphql",
     "graphql_update": "graphql",
     "graphql_delete": "graphql",
@@ -98,7 +100,14 @@ _CASE_INSENSITIVE = frozenset({"sql", "catalog", "pg_constraint"})
 
 #: The surfaces of a table's GraphQL query root fields (REQ-467: a root field resolves by them).
 _ROOT_FIELD_SURFACES = frozenset(
-    {"graphql_field", "graphql_aggregate", "graphql_group_by", "graphql_connection"}
+    {
+        "graphql_field",
+        "graphql_aggregate",
+        "graphql_group_by",
+        "graphql_connection",
+        "graphql_by_pk",
+        "graphql_stream",
+    }
 )
 
 
@@ -472,6 +481,26 @@ def _table_rows(
                 ("graphql_query",),
             )
         )
+    hasura = naming.hasura_convention_of(convention)
+    if hasura is not None and ctx.pk_columns.get(tm.table_id):
+        # REQ-194: a Hasura-preset table's read of one row by its primary key.
+        out.append(
+            row(
+                "graphql_by_pk",
+                naming.hasura_root_field(hasura, tm.field_name, suffix="by_pk"),
+                ("graphql_query",),
+            )
+        )
+    if hasura is not None:
+        # REQ-194: a Hasura-preset table's streaming subscription, beside its read on the
+        # subscription root, so a name it takes is checked against the root fields.
+        out.append(
+            row(
+                "graphql_stream",
+                naming.hasura_root_field(hasura, tm.field_name, suffix="stream"),
+                ("graphql_query",),
+            )
+        )
     for op in sorted(ctx.write_ops.get(tm.table_id, frozenset())):
         if f"graphql_{op}" in SURFACE_NAMES:
             out.append(
@@ -705,7 +734,7 @@ def context_names(ctx: CompilationContext) -> NamesTable:  # REQ-467, REQ-194
 def root_field(ctx: CompilationContext, field_name: str) -> tuple[str, TableMeta] | None:  # REQ-467
     """What GraphQL query root field ``field_name`` reads in ``ctx``, resolved through the names
     table: its surface (``graphql_field``, ``graphql_aggregate``, ``graphql_group_by``,
-    ``graphql_connection``) and its table. None when no table of ``ctx`` has a root field so
+    ``graphql_connection``, ``graphql_by_pk``, ``graphql_stream``) and its table. None when no table of ``ctx`` has a root field so
     named."""
     from provisa.compiler.sql_rewrite import context_derived
 

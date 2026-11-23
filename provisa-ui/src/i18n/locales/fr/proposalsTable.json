@@ -1,6 +1,6 @@
 {
   "proposalsTable": {
-    "intro": "Une ligne cochée est acceptée lorsque vous appliquez. Les lignes dont le score atteint au moins le seuil sont cochées au départ. Une ligne sans case cochée reste indécise.",
+    "intro": "Cochez la première case d’une ligne pour l’accepter lorsque vous appliquez, ou « Ne jamais suggérer » pour qu’elle ne soit plus jamais suggérée. Les lignes dont le score atteint au moins le seuil sont cochées pour acceptation au départ. Une ligne sans case cochée reste indécise.",
     "colScore": "Score",
     "colConfidence": "Confiance",
     "colJev": "Jev",
@@ -8,8 +8,8 @@
     "colMeasure": "Mesuré",
     "colReasoning": "Raisonnement",
     "colNote": "Remarque",
-    "colNotAgain": "Ne plus recommander",
-    "notAgainAria": "Ne plus recommander {{name}}",
+    "colNotAgain": "Ne jamais suggérer",
+    "notAgainAria": "Ne plus jamais suggérer {{name}}",
     "kind": {
       "foreign_keys": "Contrainte",
       "semantics": "Sémantique",
@@ -18,8 +18,8 @@
     "asWritten": "Tel que le modèle l'a écrit : {{answer}}",
     "apply": "Appliquer",
     "applyAccept": "Accepter {{count}}",
-    "applyNotAgain": "Ne plus recommander {{count}}",
-    "applyBoth": "Accepter {{accept}}, ne plus recommander {{notAgain}}",
+    "applyNotAgain": "Ne jamais suggérer {{count}}",
+    "applyBoth": "Accepter {{accept}}, ne jamais suggérer {{notAgain}}",
     "applied": "{{accepted}} acceptées, {{notAgain}} à ne plus recommander.",
     "failed": "{{count}} n'a pas pu être appliquée :",
     "failed_other": "{{count}} n'ont pas pu être appliquées :",

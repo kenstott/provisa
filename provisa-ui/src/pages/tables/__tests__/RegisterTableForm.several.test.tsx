@@ -205,15 +205,48 @@ describe("Register Table's fields", () => {
   });
 });
 
-describe("a registration with no domain (REQ-1531)", () => {
-  it("cannot be submitted until a domain is chosen", async () => {
+// REQ-1531 / REQ-1968 (amended 2026-11-22): a missing domain never disables Register; clicking it
+// marks the domain inline and moves focus there.
+describe("a registration with no domain", () => {
+  const domain = () => screen.getByTestId("register-table-domain-select");
+  const domainField = () => domain().closest("label") as HTMLElement;
+
+  it("shows Domain's required marker before any attempt, and nothing red", async () => {
+    renderForm({ domains: ["sales", "finance"] });
+    await opened();
+    expect(domainField().querySelector(".form-required")).not.toBeNull();
+    expect(domain()).toHaveAttribute("required");
+    expect(domain()).toHaveAttribute("aria-invalid", "false");
+    expect(screen.queryByText("Required")).toBeNull();
+  });
+
+  it("is submitted, marks Domain and moves focus to it, registering nothing", async () => {
     renderForm({ domains: ["sales", "finance"] });
     const user = await opened();
     await user.click(option("refunds"));
     expect(submit()).toHaveTextContent("Register 1 table");
-    expect(submit()).toBeDisabled();
-    await user.selectOptions(screen.getByTestId("register-table-domain-select"), "finance");
-    await waitFor(() => expect(submit()).not.toBeDisabled());
+    expect(submit()).toBeEnabled();
+    await user.click(submit());
+    await waitFor(() => expect(domain()).toHaveAttribute("aria-invalid", "true"));
+    expect(domainField()).toHaveTextContent("Required");
+    expect(domain()).toHaveFocus();
+    expect(registerTables).not.toHaveBeenCalled();
+    // From then on the mark follows the value: filled clears it, emptied brings it back.
+    await user.selectOptions(domain(), "finance");
+    await waitFor(() => expect(domain()).toHaveAttribute("aria-invalid", "false"));
+    expect(domainField()).not.toHaveTextContent("Required");
+    await user.selectOptions(domain(), "");
+    await waitFor(() => expect(domain()).toHaveAttribute("aria-invalid", "true"));
+  });
+
+  it("turns Domain red once it is left empty", async () => {
+    renderForm({ domains: ["sales", "finance"] });
+    const user = await opened();
+    await user.click(domain());
+    expect(domain()).toHaveAttribute("aria-invalid", "false");
+    await user.tab();
+    await waitFor(() => expect(domain()).toHaveAttribute("aria-invalid", "true"));
+    expect(domainField()).toHaveTextContent("Required");
   });
 });
 

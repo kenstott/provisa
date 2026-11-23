@@ -290,6 +290,7 @@ async def test_a_changed_registration_restarts_the_server_and_provisions_the_sou
     table = SimpleNamespace(source_id="snow-ops", table_name="incident", import_set=None)
     state = SimpleNamespace(
         config=SimpleNamespace(sources=[_source()], tables=[table]),
+        tables=[],  # the build's registered-table rows (AppState.tables): none from the admin API
         federation_engine=engine,
         source_catalogs={"snow-ops": "snow_ops"},
     )

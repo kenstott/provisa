@@ -1,0 +1,11 @@
+{
+  "relShape": {
+    "label": "संबंध प्रकार",
+    "directTip": "सीधी फ़ॉरेन की",
+    "junctionTip": "जंक्शन तालिका {{table}} के माध्यम से",
+    "dimensionTip": "साझा डाइमेंशन {{table}} के माध्यम से",
+    "dimensionTipUnnamed": "एक साझा डाइमेंशन के माध्यम से",
+    "prop": "गुण",
+    "propTip": "गुण: {{properties}}"
+  }
+}

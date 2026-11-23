@@ -141,6 +141,9 @@
     "holdReason_edited_in_provisa": "Изменено в Provisa после последнего обмена",
     "holdReason_never_exchanged": "Обмена не было, поэтому неизвестно, какая сторона изменилась",
     "holdReason_not_importable": "Provisa пока не может брать этот вид из каталога",
-    "holdReason_left_to_export": "Постоянный выбор — значение Provisa, которое отправляет экспорт"
+    "holdReason_left_to_export": "Постоянный выбор — значение Provisa, которое отправляет экспорт",
+    "productFilterLabel": "Продукты данных",
+    "productFilterPlaceholder": "Фильтр по продукту данных",
+    "noneForProducts": "Ни одна запись не публикует выбранные продукты данных."
   }
 }

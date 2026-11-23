@@ -704,7 +704,12 @@ async def _execute_one_field(  # REQ-027, REQ-028, REQ-029, REQ-137, REQ-140, RE
     Rust encoder's (a FieldAnswer, its JSON written from the result's Arrow batches, REQ-2194), or
     a Response for a file format.
     """
-    from provisa.executor.json_encoders import FieldAnswer, graphql_aggregate, result_batches
+    from provisa.executor.json_encoders import (
+        FieldAnswer,
+        graphql_aggregate,
+        result_batches,
+        single_row_body,
+    )
 
     from provisa.pgwire._pipeline import _govern_and_route_compiled
 
@@ -748,6 +753,11 @@ async def _execute_one_field(  # REQ-027, REQ-028, REQ-029, REQ-137, REQ-140, RE
             output_format,
             result_limit=compiled.result_limit,
         )
+        if compiled.single_row and isinstance(answer, FieldAnswer):
+            # REQ-194: a Hasura _by_pk read answers its row, or null.
+            answer = FieldAnswer(
+                single_row_body(answer.body), answer.rows, answer.joined, answer.truncated
+            )
     if isinstance(answer, FieldAnswer):
         # What the encoder found about the answer (a to-one that matched several rows) goes to
         # the request's warnings, which reach the client's extensions.warnings (REQ-1350).

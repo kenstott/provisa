@@ -223,7 +223,7 @@ async def test_an_api_source_whose_document_cannot_be_read_lists_its_tables_sayi
 
     import provisa.openapi.exclusions as exclusions
 
-    def _unreachable(path, mapping, source_id=None):
+    def _unreachable(path, mapping, *, source_id, auth):
         raise httpx.ConnectError(
             "[Errno -3] Temporary failure in name resolution",
             request=httpx.Request("GET", "https://api.example.test/openapi.json"),

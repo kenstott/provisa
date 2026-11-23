@@ -1,6 +1,6 @@
 {
   "proposalsTable": {
-    "intro": "勾选的行在应用时会被接受。得分不低于阈值的行默认勾选。两个框都未勾选的行保持待定。",
+    "intro": "勾选一行的第一个框即在应用时接受该行，勾选“不再建议”则以后不会再建议该行。得分不低于阈值的行默认勾选为接受。两个框都未勾选的行保持待定。",
     "colScore": "评分",
     "colConfidence": "置信度",
     "colJev": "Jev",
@@ -8,8 +8,8 @@
     "colMeasure": "测量结果",
     "colReasoning": "理由",
     "colNote": "备注",
-    "colNotAgain": "不再推荐",
-    "notAgainAria": "不再推荐 {{name}}",
+    "colNotAgain": "不再建议",
+    "notAgainAria": "不再建议 {{name}}",
     "kind": {
       "foreign_keys": "约束",
       "semantics": "语义",
@@ -18,8 +18,8 @@
     "asWritten": "模型的原文：{{answer}}",
     "apply": "应用",
     "applyAccept": "接受 {{count}} 条",
-    "applyNotAgain": "不再推荐 {{count}} 条",
-    "applyBoth": "接受 {{accept}} 条，不再推荐 {{notAgain}} 条",
+    "applyNotAgain": "不再建议 {{count}} 条",
+    "applyBoth": "接受 {{accept}} 条，不再建议 {{notAgain}} 条",
     "applied": "已接受 {{accepted}} 条，{{notAgain}} 条不再推荐。",
     "failed": "{{count}} 条无法应用：",
     "failed_other": "{{count}} 条无法应用：",

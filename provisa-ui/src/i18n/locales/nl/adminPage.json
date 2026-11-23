@@ -24,6 +24,7 @@
     "namingConventionHint": "Hoofdlettergebruik voor GraphQL-veldnamen, dat ook de Cypher-eigenschapssleutels volgen. Cypher-labels zijn altijd PascalCase. gRPC, JSON:API en OpenAPI behouden de databasespelling van elke kolom.",
     "namingConventionSnake": "snake_case",
     "namingConventionHasura": "Hasura (snake_case)",
+    "namingConventionHasuraGraphqlDefault": "Hasura graphql-default (camelCase)",
     "namingConventionApollo": "Apollo (camelCase)",
     "sqlNamingConvention": "SQL-naamgevingsconventie",
     "sqlNamingConventionHint": "Hoofdlettergebruik voor namen op het SQL-vlak, dat de pgwire-, Bolt- en semantische-SQL-interfaces bevragen. Dit wordt los van de GraphQL-conventie ingesteld, zodat hernoemen op het ene vlak het andere ongemoeid laat.",

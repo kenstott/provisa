@@ -1,0 +1,8 @@
+{
+  "unspelled": {
+    "python/sdk": "@discover is not in the Python SDK: REQ-2267 v0 reads it from the docstring spelling only.",
+    "typescript": "@discover is read from a Python code source only in v0 (REQ-2267); other languages follow as their own requirements.",
+    "go": "@discover is read from a Python code source only in v0 (REQ-2267); other languages follow as their own requirements.",
+    "rust": "@discover is read from a Python code source only in v0 (REQ-2267); Rust follows as its own requirement."
+  }
+}

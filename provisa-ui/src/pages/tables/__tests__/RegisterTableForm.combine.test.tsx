@@ -187,13 +187,18 @@ describe("Combine into one table", () => {
   });
 
   it("requires the new table's name and registers ONE table over the derived glob", async () => {
-    const { onRegisteredMany, setError } = renderForm();
+    const { onRegisteredMany } = renderForm();
     const user = await pick("complaints_2026_01", "complaints_2026_02");
     await user.click(screen.getByText("Combine into one table"));
     // No existing table stands for it: the name is its own, asked for.
     expect(submit()).toHaveTextContent("Register 1 table");
+    // REQ-1968 (amended 2026-11-22): the name is required: pressed without it, Register marks it
+    // inline and moves focus to it.
+    const name = screen.getByTestId("register-combined-name");
+    expect(name).toBeRequired();
     await user.click(submit());
-    expect(setError).toHaveBeenLastCalledWith("Name the new table.");
+    await waitFor(() => expect(name).toHaveAttribute("aria-invalid", "true"));
+    expect(name).toHaveFocus();
     expect(registerTables).not.toHaveBeenCalled();
     await user.type(screen.getByTestId("register-combined-name"), "complaints");
     await user.type(screen.getByTestId("register-combined-source-file-column"), "source_file");
@@ -250,6 +255,23 @@ describe("Combine into one table", () => {
     expect(screen.getAllByText("No file matches this glob.")).toHaveLength(1);
     expect(submit()).toBeDisabled();
     expect(registerTables).not.toHaveBeenCalled();
+  });
+
+  it("shows the field loader while a typed glob is checked, and drops it once it answers", async () => {
+    // The server has not answered the typed glob yet.
+    previewOf.mockImplementation((glob: string | null) => (glob ? null : { ...PICKED }));
+    const user = userEvent.setup();
+    renderForm();
+    const glob = await screen.findByTestId("register-tables-file-glob");
+    expect(screen.queryByTestId("register-tables-file-glob-checking")).not.toBeInTheDocument();
+    await user.type(glob, "complaints_*.cs");
+    expect(screen.getByTestId("register-tables-file-glob-checking")).toBeInTheDocument();
+    expect(screen.getByText("Checking the files…")).toBeInTheDocument();
+
+    // The server answers: the next render reads the matches and the loader goes.
+    previewOf.mockImplementation((g: string | null) => ({ ...PICKED, glob: g ?? "" }));
+    await user.type(glob, "v");
+    expect(screen.queryByTestId("register-tables-file-glob-checking")).not.toBeInTheDocument();
   });
 
   it("keeps a typed glob as typed", async () => {

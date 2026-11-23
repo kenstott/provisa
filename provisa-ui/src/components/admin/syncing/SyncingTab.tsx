@@ -13,9 +13,12 @@
 // panel on the right, where it is read, edited, tested and, for a data catalog that exports,
 // published now. The organisation-wide schedule of the full publish is shown once, above the list
 // (REQ-1072). This page replaces the Catalogs panel and the Metadata Export screen (REQ-2122).
+// REQ-2259: the list can be narrowed to the entries that publish chosen data products, from the
+// record of every publish; the Data Products list links here with ?product=<id>.
 
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useSearchParams } from "react-router-dom";
 import {
   Alert,
   Badge,
@@ -52,6 +55,7 @@ import { ListRow } from "../../list/ListTable";
 import { SortGroupTable } from "../../list/SortGroupTable";
 import { SplitPane } from "../../list/SplitPane";
 import { EntryPanel } from "./EntryPanel";
+import { SyncProductFilter } from "./SyncProductFilter";
 import type { Secrets } from "./EntryFields";
 
 /** What the panel shows: a kept entry by its name, or a new one being made (empty from Add, or
@@ -66,6 +70,19 @@ export function SyncingTab() {
   const [picked, setPicked] = useState<Picked>(null);
   const [cron, setCron] = useState("");
   const [cronProblem, setCronProblem] = useState<string | null>(null);
+  // REQ-2259: the data products the list is narrowed to, kept in the address so a link opens it.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const productFilter = searchParams.getAll("product");
+  const setProductFilter = (ids: string[]) =>
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete("product");
+        for (const id of ids) next.append("product", id);
+        return next;
+      },
+      { replace: true },
+    );
 
   const load = useCallback(async () => {
     const state = await fetchSyncing();
@@ -131,8 +148,20 @@ export function SyncingTab() {
     domains: domains.map((d) => d.id),
   };
 
+  // REQ-2259: every data product a recorded publish carried, and those the address names (a product
+  // no publish carried yet is still shown chosen, with no entry under it); and whether an entry
+  // publishes one of those the list is narrowed to.
+  const productOptions = [
+    ...new Set([
+      ...s.entries.flatMap((e) => e.products.map((p) => p.product_id)),
+      ...productFilter,
+    ]),
+  ].sort();
+  const publishesChosen = (e: SyncEntry) =>
+    productFilter.length === 0 || e.products.some((p) => productFilter.includes(p.product_id));
+
   const section = (type: SyncEntryType) => {
-    const rows = s.entries.filter((e) => e.type === type);
+    const rows = s.entries.filter((e) => e.type === type && publishesChosen(e));
     return (
       <Stack gap="xs" key={type} data-testid={`syncing-section-${type}`}>
         <Title order={5}>{t(`syncingTab.heading_${type}`)}</Title>
@@ -166,7 +195,11 @@ export function SyncingTab() {
             { col: "lastRun" },
           ]}
           colSpan={5}
-          empty={t(`syncingTab.none_${type}`)}
+          empty={
+            productFilter.length === 0
+              ? t(`syncingTab.none_${type}`)
+              : t("syncingTab.noneForProducts")
+          }
           emptyTestId={`syncing-none-${type}`}
           rowKey={(e) => e.id}
           render={(e) => (
@@ -247,6 +280,11 @@ export function SyncingTab() {
         >
           {t("syncingTab.addEntry")}
         </Button>
+        <SyncProductFilter
+          products={productOptions}
+          value={productFilter}
+          onChange={setProductFilter}
+        />
       </Group>
       <SplitPane
         testId="syncing-split"
