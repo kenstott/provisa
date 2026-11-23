@@ -857,12 +857,15 @@ def validation_rejects_incompatible(shared_data: dict) -> None:
 def various_constant_mask_values(shared_data: dict) -> None:
     shared_data["constant_cases"] = [
         (MaskingRule(mask_type=MaskType.constant, value=None), "varchar", "NULL"),
-        (MaskingRule(mask_type=MaskType.constant, value=42), "integer", "42"),
-        (MaskingRule(mask_type=MaskType.constant, value=3.14), "double", "3.14"),
         (MaskingRule(mask_type=MaskType.constant, value="O'Brien"), "varchar", "'O''Brien'"),
         (MaskingRule(mask_type=MaskType.constant, value="REDACTED"), "varchar", "'REDACTED'"),
-        (MaskingRule(mask_type=MaskType.constant, value="MAX"), "smallint", "32767"),
-        (MaskingRule(mask_type=MaskType.constant, value="MIN"), "integer", "-2147483648"),
+        (MaskingRule(mask_type=MaskType.constant, value=42), "varchar", "'42'"),
+        # REQ-2131 (amended 2026-11-20): a masked value keeps its column's type, so a constant on
+        # a non-text column (numeric, boolean, MAX/MIN on an integer) reads as NULL.
+        (MaskingRule(mask_type=MaskType.constant, value=42), "integer", "NULL"),
+        (MaskingRule(mask_type=MaskType.constant, value=3.14), "double", "NULL"),
+        (MaskingRule(mask_type=MaskType.constant, value="MAX"), "smallint", "NULL"),
+        (MaskingRule(mask_type=MaskType.constant, value="MIN"), "integer", "NULL"),
     ]
 
 
@@ -883,9 +886,8 @@ def constant_output_valid(shared_data: dict) -> None:
 
     outputs = {a for a, _ in shared_data["constant_outputs"]}
     assert "NULL" in outputs and "'NULL'" not in outputs
-    assert "42" in outputs and "3.14" in outputs
-    assert "'O''Brien'" in outputs
-    assert "32767" in outputs and "-2147483648" in outputs
+    assert "'O''Brien'" in outputs and "'42'" in outputs
+    assert not outputs & {"42", "3.14", "32767", "-2147483648"}
 
 
 # ---------------------------------------------------------------------------
@@ -927,7 +929,8 @@ def same_column_different_role_masks(shared_data: dict) -> None:
     shared_data["compiled_745"] = _r745_compiled()
 
     regex_rule = MaskingRule(mask_type=MaskType.regex, pattern="^.*$", replace="hidden")
-    constant_rule = MaskingRule(mask_type=MaskType.constant, value=0)
+    # REQ-2131 (amended 2026-11-20): only NULL is a constant mask on a non-text column.
+    constant_rule = MaskingRule(mask_type=MaskType.constant, value=None)
 
     shared_data["masking_rules_745"] = {
         (_R745_TABLE_ID, "analyst"): {"salary": (regex_rule, "varchar")},
@@ -973,7 +976,7 @@ def role_specific_masks_applied(shared_data: dict) -> None:
     assert 'AS "salary"' in sql_analyst
 
     assert "PROVISA_REGEX_REPLACE" not in sql_viewer
-    assert '0 AS "salary"' in sql_viewer
+    assert 'NULL AS "salary"' in sql_viewer
 
     assert len({sql_admin, sql_analyst, sql_viewer}) == 3
 
