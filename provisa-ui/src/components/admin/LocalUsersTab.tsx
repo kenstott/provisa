@@ -42,6 +42,7 @@ import { LIST_COLUMN_CAP_PX } from "../list/listCellLimits";
 import { Tip } from "../Tip";
 import { SortGroupTable } from "../list/SortGroupTable";
 import { FormField, FormFooter, FormIdentifiers, FormLayout } from "../form/FormLayout";
+import { useRequiredFields } from "../form/useRequiredFields";
 import { MemberAccessForm } from "./MemberAccessForm";
 
 const PAGE_SIZE = 50;
@@ -107,6 +108,8 @@ export function LocalUsersTab({ allRoles, allDomains }: LocalUsersTabProps) {
   const [newPassword, setNewPassword] = useState("");
   const [newEmail, setNewEmail] = useState("");
   const [newDisplayName, setNewDisplayName] = useState("");
+  // REQ-1968 (amended 2026-11-22): Save marks these when empty; it is never disabled by them.
+  const required = useRequiredFields({ username: newUsername, password: newPassword });
   const [expandedUserId, setExpandedUserId] = useState<string | null>(null);
   const [userAssignments, setUserAssignments] = useState<Record<string, UserAssignment[]>>({});
   const day = (value: string | null) =>
@@ -128,7 +131,7 @@ export function LocalUsersTab({ allRoles, allDomains }: LocalUsersTabProps) {
   };
 
   const handleAddUser = async () => {
-    if (!newUsername.trim() || !newPassword.trim()) return;
+    if (!required.validate()) return;
     try {
       await createLocalUser({
         username: newUsername.trim(),
@@ -237,7 +240,7 @@ export function LocalUsersTab({ allRoles, allDomains }: LocalUsersTabProps) {
                 <TextInput
                   label={t("localUsers.username")}
                   placeholder={t("localUsers.usernameRequired")}
-                  required
+                  {...required.field("username")}
                   value={newUsername}
                   onChange={(e) => setNewUsername(e.currentTarget.value)}
                 />
@@ -247,7 +250,7 @@ export function LocalUsersTab({ allRoles, allDomains }: LocalUsersTabProps) {
               <PasswordInput
                 label={t("localUsers.password")}
                 placeholder={t("localUsers.passwordRequired")}
-                required
+                {...required.field("password")}
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.currentTarget.value)}
               />
@@ -271,10 +274,7 @@ export function LocalUsersTab({ allRoles, allDomains }: LocalUsersTabProps) {
             <FormFooter
               onSave={handleAddUser}
               onCancel={closeCreate}
-              saveProps={{
-                "data-testid": "local-user-save",
-                disabled: !newUsername.trim() || !newPassword.trim(),
-              }}
+              saveProps={{ "data-testid": "local-user-save" }}
             />
           </FormLayout>
         </>

@@ -27,7 +27,12 @@ import {
   clusterIds,
   type ClusterLevel,
 } from "./graph-clusters";
-import { buildGraphStylesheet, nodeCaption } from "./graph-stylesheet";
+import {
+  buildGraphStylesheet,
+  nodeCaption,
+  restyleCaptions,
+  trackEdgeLabelRoom,
+} from "./graph-stylesheet";
 import { graphTokens } from "../provisa-graph/tokens";
 import { NodeContextMenu, type NodeCtxMenuState } from "./NodeContextMenu";
 import type {
@@ -479,6 +484,7 @@ export function GraphCanvas({
       /* eslint-disable-next-line @typescript-eslint/no-explicit-any --
          cytoscape() returns the library's own Core type; we cast through any to our local CyInstance shim which models only the subset of the API this component uses */
     }) as any as CyInstance;
+    trackEdgeLabelRoom(cy);
 
     cy.on("tap", "node[?_collapsed]", (evt) => {
       const cid = evt.target.data("_clusterId") as string;
@@ -847,6 +853,8 @@ export function GraphCanvas({
           labelSizeRange,
         );
       });
+      // A caption fits or goes beneath its node by the node's new width.
+      restyleCaptions(cy);
     });
   }, [sizeOverrides, sizeByProperty, sizeMultiplier]);
 
@@ -854,12 +862,7 @@ export function GraphCanvas({
   useEffect(() => {
     const cy = cyRef.current;
     if (!cy) return;
-    cy.batch(() => {
-      cy.nodes().forEach((node) => {
-        // Back to the stylesheet's caption, which reads the label property and places the text.
-        node.removeStyle("label");
-      });
-    });
+    restyleCaptions(cy);
   }, [labelProperty]);
 
   // Update edge width/style when relLineOverrides changes

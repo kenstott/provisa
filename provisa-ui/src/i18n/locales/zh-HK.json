@@ -14,7 +14,8 @@
     "discardBody": "對 {{what}} 的變更尚未儲存。",
     "discard": "放棄",
     "deleting": "正在刪除…",
-    "deleteFailed": "未刪除：{{reason}}"
+    "deleteFailed": "未刪除：{{reason}}",
+    "required": "必填"
   },
   "app": {
     "apiUnreachable": "無法連接 Provisa API。",

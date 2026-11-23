@@ -194,17 +194,26 @@ def test_an_answers_terms_read_back_and_scaffolding_leaves():
     assert rows == [{"s": BNode("b"), "p": URIRef(f"{EX}p")}]
 
 
-def test_a_graph_managed_update_is_by_design_only_with_its_refusal_and_its_group():
+def test_a_graph_managed_update_is_by_design_by_its_refusal_in_every_directory():
+    # REQ-2135 (amended 2026-11-22, 04536b79c3): graph management is refused by name, by design,
+    # wherever the suite puts it; any other failure in the same directories stays failed.
     declared = by_design.groups("sparql")
-    refused = "400: ADD acts on a named graph, and the model has tables, not graphs"
+    tail = (
+        " acts on a named graph, and the model has tables, not graphs; write to the tables instead"
+    )
     outcomes = [
-        runner.Outcome("add", "add01", "failed", refused),
+        runner.Outcome("add", "add01", "failed", f"400: ADD{tail}"),
         runner.Outcome("add", "add02", "failed", "500: boom"),
-        runner.Outcome("basic-update", "i1", "failed", refused),
+        runner.Outcome("basic-update", "i1", "failed", f"400: DROP{tail}"),
+        runner.Outcome("basic-update", "i2", "failed", "400: INSERT wrote no row"),
+        runner.Outcome("syntax-update-1", "test_37", "failed", f"400: CREATE, LOAD{tail}"),
+        runner.Outcome("update-silent", "load-silent", "failed", f"400: LOAD{tail}"),
+        runner.Outcome("update-silent", "x", "failed", f"500: LOAD{tail}"),
         runner.Outcome("bind", "bind01", "passed"),
     ]
     doc = runner.report(outcomes, "abc", "")
-    assert (doc["passed"], doc["by_design"], doc["failed"]) == (1, 1, 2)
+    assert (doc["passed"], doc["by_design"], doc["failed"]) == (1, 4, 3)
+    assert {f["scenario"] for f in doc["failures"]} == {"add02", "i2", "x"}
     assert declared  # the page's by-design table comes from the file
     assert {g["group"]: g for g in doc["groups"]}["add"] == {
         "group": "add",

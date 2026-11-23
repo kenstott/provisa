@@ -62,12 +62,13 @@ beforeEach(() => {
   preview.mockResolvedValue({ rows: [{ id: "Q1", name: "Paris" }], columns: [], error: null });
 });
 
-function renderForm(domainId = "sales", setError = vi.fn()) {
+function renderForm(domainId = "sales", validateIdentifiers = vi.fn(() => domainId !== "")) {
   render(
     <WikidataRegisterForm
       identifiers={null}
       sourceId="wd"
       domainId={domainId}
+      validateIdentifiers={validateIdentifiers}
       regionInput={{}}
       roleIds={["admin"]}
       registeredNames={[]}
@@ -75,7 +76,7 @@ function renderForm(domainId = "sales", setError = vi.fn()) {
       language="en"
       onRegisteredMany={vi.fn()}
       onCancel={vi.fn()}
-      setError={setError}
+      setError={vi.fn()}
     />,
   );
 }
@@ -157,21 +158,35 @@ describe("WikidataRegisterForm: the table of a class", () => {
   });
 });
 
-// REQ-1531 (amended): a table is registered into a domain; Continue waits until one is chosen.
+// REQ-1531 / REQ-1968 (amended 2026-11-22): a table is registered into a domain, but a missing
+// domain never disables Continue: pressed, it has the fields above marked and registers nothing.
 describe("WikidataRegisterForm: the domain", () => {
-  // REQ-1531 (amended 2026-11-22): a missing field never disables the primary action; pressing
-  // Continue with no domain says a domain is needed and registers nothing.
-  it("keeps Continue enabled with no domain, and pressing it asks for one", async () => {
-    const setError = vi.fn();
-    renderForm("", setError);
+  it("keeps Continue enabled with no domain, and pressed, asks the fields above", async () => {
+    const validateIdentifiers = vi.fn(() => false);
+    renderForm("", validateIdentifiers);
     const submit = screen.getByTestId("register-table-submit");
-    expect(submit).not.toBeDisabled();
+    expect(submit).toBeEnabled();
     fireEvent.click(submit);
-    await waitFor(() => expect(setError).toHaveBeenLastCalledWith(expect.stringMatching(/domain/i)));
+    await waitFor(() => expect(validateIdentifiers).toHaveBeenCalledTimes(1));
+    expect(api.fetchSparqlColumns).not.toHaveBeenCalled();
   });
+});
 
-  it("enables Continue once a domain is chosen", () => {
-    renderForm("sales");
-    expect(screen.getByTestId("register-table-submit")).not.toBeDisabled();
+// REQ-1968 (amended 2026-11-22): the custom table's name is required: marked from the start, red
+// once Continue is pressed without it, and live from then on.
+describe("WikidataRegisterForm: the custom table's name", () => {
+  it("is marked, then red and focused on Continue, and clears when filled", async () => {
+    renderForm();
+    fireEvent.click(within(screen.getByTestId("wikidata-custom-mode")).getByText("SPARQL query"));
+    const name = await screen.findByTestId("register-table-sparql-table-name");
+    expect(name).toBeRequired();
+    expect(name).not.toHaveAttribute("aria-invalid", "true");
+    fireEvent.click(screen.getByTestId("register-table-submit"));
+    await waitFor(() => expect(name).toHaveAttribute("aria-invalid", "true"));
+    expect(screen.getByText("Required")).toBeInTheDocument();
+    expect(name).toHaveFocus();
+    fireEvent.change(name, { target: { value: "mountains" } });
+    await waitFor(() => expect(name).not.toHaveAttribute("aria-invalid", "true"));
+    expect(screen.queryByText("Required")).toBeNull();
   });
 });

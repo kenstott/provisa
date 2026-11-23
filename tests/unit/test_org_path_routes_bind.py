@@ -20,7 +20,7 @@ route added without its guard fails. Each is one of three kinds:
 * a platform act (``/admin/platform/...``, an org's lifecycle): guarded by the deployment check,
   which needs ``cross_org`` -- a right of the deployment, not of any one organization;
 * a person's own standing: the org's creator polling or retrying its provisioning, a member
-  leaving. No right is read in the organization.
+  leaving, a signed-in person asking to join (REQ-1250). No right is read in the organization.
 """
 
 # Requirements: REQ-1327
@@ -54,12 +54,14 @@ PLATFORM = {
     ("PUT", "/admin/platform/orgs/{org_id}/storage"),
 }
 
-#: A person's own standing: the creator of an org (or the platform) for its provisioning, and the
-#: member leaving. Neither reads a right in the organization.
+#: A person's own standing: the creator of an org (or the platform) for its provisioning, the
+#: member leaving, and a signed-in person asking to join (REQ-1250, gated by
+#: ``_require_join_requester``). None reads a right in the organization.
 OWN_STANDING = {
     ("GET", "/admin/orgs/{org_id}/status"),
     ("POST", "/admin/orgs/{org_id}/retry"),
     ("POST", "/admin/orgs/{org_id}/leave"),
+    ("POST", "/admin/orgs/{org_id}/join-requests"),
 }
 
 

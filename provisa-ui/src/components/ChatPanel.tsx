@@ -83,6 +83,14 @@ const GLOSSARY_TOOL_NAMES = new Set([
   // REQ-2130: a term grounded in a table, or let go of it.
   "ground_glossary_term_to_table",
   "unground_glossary_term_from_table",
+  // REQ-2144: a term's status, which the Ontology page's Status filter reads.
+  "approve_glossary_term",
+  "deprecate_glossary_term",
+  "retire_glossary_term",
+  "restore_glossary_term",
+  // REQ-2145: a term's tags.
+  "tag_glossary_term",
+  "untag_glossary_term",
 ]);
 
 // REQ-1806: a brief, enumerated demo prompt list shown only before the first message — picked to

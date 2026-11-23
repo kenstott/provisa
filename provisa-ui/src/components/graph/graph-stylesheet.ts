@@ -10,10 +10,11 @@
 
 import { labelColor, darkenColor, propertyValue } from "./graph-model";
 import type { GNode, RelLineOverride } from "./graph-model";
-import type { CyElement } from "./cytoscape-types";
+import type { CyElement, CyInstance } from "./cytoscape-types";
 import { resolveNodeLabel } from "./canvas/canvas-helpers";
 import type { GraphTokens } from "../provisa-graph/tokens";
 import { META_LABEL_PAD, META_LABEL_SIZE } from "./canvas/edge-length";
+import { textWidth } from "../provisa-graph/model";
 
 export const PIN_SVG =
   "data:image/svg+xml;utf8," +
@@ -52,6 +53,8 @@ const GLYPH_EM = 0.58;
 /** How far past its node's width a caption beneath it may run, in pixels. */
 const OUTSIDE_MARGIN = 24;
 const LABEL_FONT = 10;
+/** A relationship type's font size, in graph units like every label (it scales with the zoom). */
+export const EDGE_LABEL_FONT = 8;
 const CLUSTER_FONT = 7;
 
 /** Whether ``caption`` fits inside a node ``width`` pixels wide at ``font`` size. */
@@ -80,12 +83,64 @@ function insideCaption(ele: CyElement, labelProperty: Record<string, string>): b
   return captionFits(cap, ele.width(), fontOf(ele));
 }
 
-export function buildGraphStylesheet({
-  colorOverridesRef,
-  sizeOverridesRef,
-  labelPropertyRef,
-  relLineOverridesRef,
-}: StylesheetRefs, t: GraphTokens): unknown[] {
+/** Restyle every node from the stylesheet: its caption, and where and how it is set (inside the
+ * circle or beneath it), read the label property and the node's width. Cytoscape caches a mapped
+ * style until the element is marked dirty, and removing a bypass a node never had marks nothing,
+ * so a caption-field or size change restyles every node here, the same way. */
+export function restyleCaptions(cy: CyInstance): void {
+  cy.nodes().updateStyle();
+}
+
+/** Space left clear at each end of an edge's label, between it and its node's rim. */
+const EDGE_LABEL_GAP = 4;
+
+/** How far ``node`` reaches from its centre toward ``to``: to the edge of its box with its caption,
+ * which hangs beneath a node it does not fit. */
+function reachToward(node: CyElement, to: { x: number; y: number }): number {
+  const c = node.position();
+  const dx = to.x - c.x;
+  const dy = to.y - c.y;
+  const len = Math.hypot(dx, dy);
+  if (len === 0) return 0;
+  const b = node.boundingBox({ includeLabels: true, includeOverlays: false });
+  const ux = dx / len;
+  const uy = dy / len;
+  const tx = ux === 0 ? Infinity : (ux > 0 ? b.x2 - c.x : c.x - b.x1) / Math.abs(ux);
+  const ty = uy === 0 ? Infinity : (uy > 0 ? b.y2 - c.y : c.y - b.y1) / Math.abs(uy);
+  return Math.min(tx, ty);
+}
+
+/** The room an edge's label has: its line between its two nodes and their captions, less a gap at
+ * each end. A loop's label sits beyond its node, clear of it, and keeps its own width. */
+export function edgeLabelRoom(ele: CyElement): number {
+  const s = ele.source();
+  const t = ele.target();
+  if (s.id() === t.id()) return Math.ceil(textWidth(String(ele.data("label")), EDGE_LABEL_FONT));
+  const a = s.position();
+  const b = t.position();
+  const length = Math.hypot(b.x - a.x, b.y - a.y) - reachToward(s, b) - reachToward(t, a);
+  return Math.max(0, Math.floor(length - 2 * EDGE_LABEL_GAP));
+}
+
+/** Keep each edge label's room (edgeLabelRoom) current as nodes move: a layout, a drag, a restored
+ * drawing. The moves of one frame restyle the edges once, at the next frame. */
+export function trackEdgeLabelRoom(cy: CyInstance): void {
+  let pending = false;
+  const restyle = () => {
+    pending = false;
+    if (!cy.destroyed()) cy.edges().updateStyle();
+  };
+  cy.on("position", "node", () => {
+    if (pending) return;
+    pending = true;
+    requestAnimationFrame(restyle);
+  });
+}
+
+export function buildGraphStylesheet(
+  { colorOverridesRef, sizeOverridesRef, labelPropertyRef, relLineOverridesRef }: StylesheetRefs,
+  t: GraphTokens,
+): unknown[] {
   return [
     {
       selector: "node",
@@ -107,8 +162,7 @@ export function buildGraphStylesheet({
             ? cap
             : captionLines(cap, ele.width() + OUTSIDE_MARGIN, font);
         },
-        color: (ele: CyElement) =>
-          insideCaption(ele, labelPropertyRef.current) ? "#fff" : t.text,
+        color: (ele: CyElement) => (insideCaption(ele, labelPropertyRef.current) ? "#fff" : t.text),
         "font-size": fontOf,
         "text-valign": (ele: CyElement) =>
           insideCaption(ele, labelPropertyRef.current) ? "center" : "bottom",
@@ -175,9 +229,20 @@ export function buildGraphStylesheet({
         "target-arrow-shape": "triangle",
         "curve-style": "bezier",
         label: "data(label)",
-        "font-size": 8,
+        "font-size": EDGE_LABEL_FONT,
         color: t.textMuted,
-        "text-background-opacity": 0,
+        // A relationship's type is written along its line, centred on it and turned with it, on a
+        // strip of the canvas so the line does not run through the text. Like every label it is
+        // drawn at the graph's scale and follows the zoom with the nodes, as in the schema graph.
+        "text-rotation": "autorotate",
+        "text-margin-y": 0,
+        // A type longer than the line between its nodes' rims ends in an ellipsis there, so it never
+        // runs under a node or over its caption (the full type is in the inspector).
+        "text-wrap": "ellipsis",
+        "text-max-width": (ele: CyElement) => `${edgeLabelRoom(ele)}px`,
+        "text-background-color": t.canvas,
+        "text-background-opacity": 1,
+        "text-background-padding": "1px",
         /* eslint-disable @typescript-eslint/no-explicit-any -- cytoscape style mappers receive untyped elements; the stylesheet function signature is not modeled by our local CyInstance shim */
         width: ((ele: any) =>
           relLineOverridesRef.current[ele.data("label") as string]?.width ?? 1.5) as any,
@@ -215,6 +280,10 @@ export function buildGraphStylesheet({
         "text-background-opacity": 0.7,
         "text-background-color": t.canvas,
         "text-background-padding": `${META_LABEL_PAD}px`,
+        // A cluster edge's label is level and whole: the layout gives its line room for it
+        // (edge-length.ts).
+        "text-rotation": "none",
+        "text-wrap": "none",
         /* eslint-disable @typescript-eslint/no-explicit-any -- cytoscape style mapper receives an untyped element; the stylesheet function signature is not modeled by our local CyInstance shim */
         width: ((ele: any) =>
           Math.min(0.75 + Math.log1p(ele.data("_metaCount") as number) * 0.5, 3)) as any,

@@ -280,8 +280,13 @@ describe("a Wikidata source, created", () => {
   it("asks for a domain before Continue registers anything", async () => {
     await createWikidataSource();
     await pickStarters(/Countries/);
-    await userEvent.click(screen.getByTestId("register-table-submit"));
-    expect(await screen.findByTestId("form-problem")).toHaveTextContent(/domain/i);
+    // REQ-1968 (amended 2026-11-22): Continue is not disabled; pressed, it marks Domain inline.
+    const submit = screen.getByTestId("register-table-submit");
+    expect(submit).toBeEnabled();
+    await userEvent.click(submit);
+    const domain = panel().getByTestId("register-table-domain-select");
+    await waitFor(() => expect(domain).toHaveAttribute("aria-invalid", "true"));
+    expect(domain).toHaveFocus();
     expect(registerTables).not.toHaveBeenCalled();
   });
 

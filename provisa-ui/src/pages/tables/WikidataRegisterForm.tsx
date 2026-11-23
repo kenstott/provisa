@@ -25,6 +25,7 @@ import {
   FormIdentifiers,
   FormLayout,
 } from "../../components/form/FormLayout";
+import { useRequiredFields } from "../../components/form/useRequiredFields";
 import { MultiSelect } from "../../components/MultiSelect";
 import { fetchWikidataStarters, type WikidataStarter } from "../../api/wikidata";
 import { useRegisterTables, type TableRegistrationOutcome } from "../../hooks/useTableQueries";
@@ -58,6 +59,8 @@ interface Props {
   identifiers: ReactNode;
   sourceId: string;
   domainId: string;
+  /** Marks the required source and domain fields above left empty; true when none is. */
+  validateIdentifiers: () => boolean;
   /** Only where regions exist: `{ region }`. */
   regionInput: Record<string, unknown>;
   roleIds: string[];
@@ -112,6 +115,8 @@ export function WikidataRegisterForm(props: Props) {
   const [registering, setRegistering] = useState(false);
   const preview = usePreview(sourceId);
   const hasQuery = mode === "sparql" || (mode === "class" && classTable !== null);
+  // REQ-1968 (amended 2026-11-22): the custom table's name, when there is one, is required.
+  const required = useRequiredFields<"tableName">(hasQuery ? { tableName } : {});
   // A hand-written query's columns are its SELECT variables; a class table's come with it.
   const parsed = useSparqlColumns(
     hasQuery && (classTable === null || query !== classTable.query) ? query : "",
@@ -166,7 +171,6 @@ export function WikidataRegisterForm(props: Props) {
   const custom = async (): Promise<Chosen | string | null> => {
     if (mode === "none") return null;
     if (mode === "class" && classTable === null) return t("wikidataRegister.classNotUsed");
-    if (!tableName.trim()) return t("registerTableForm.errorRequiredFields");
     if (!query.trim()) return t("registerTableForm.errorSparqlQuery");
     try {
       const columns =
@@ -220,10 +224,11 @@ export function WikidataRegisterForm(props: Props) {
 
   const register = async () => {
     setError(null);
-    if (!domainId) {
-      setError(t("registerManyTables.domainRequired"));
-      return;
-    }
+    // Each required field left empty is marked where it is. The fields above are checked last, so
+    // focus lands on the first missing one on screen: theirs when one is, else this form's.
+    const ownFilled = required.validate();
+    const identified = props.validateIdentifiers();
+    if (!ownFilled || !identified) return;
     const own = await custom();
     if (typeof own === "string") {
       setError(own);
@@ -308,7 +313,7 @@ export function WikidataRegisterForm(props: Props) {
         <>
           <FormField size="medium">
             <TextInput
-              required
+              {...required.field("tableName")}
               label={t("registerTableForm.neo4jTableNameLabel")}
               value={tableName}
               onChange={(e) => setTableName(e.currentTarget.value)}
