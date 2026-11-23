@@ -19,7 +19,8 @@ its type), on the dialect of each engine, and its outcome is held to what the ro
 
   holds       the row's native or polyfilled form answered as PostgreSQL does; a refusal the row
               (or one of its limitations) states, raised with the row's message and SQLSTATE; a
-              difference a limitation of the row states; or a form served within its bound, raising
+              difference a limitation of the row states (one naming edge values states only a
+              wrong answer at those values); or a form served within its bound, raising
               at an edge value as a limitation of the row states (REQ-2236, amended 2026-11-15)
   fails       a feature the grid marks native or polyfilled that answers otherwise than PostgreSQL
               (a wrong answer, an error, or a refusal the grid does not state), a refusal row
@@ -42,6 +43,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from collections import Counter
 from collections.abc import Iterable
@@ -57,11 +59,12 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 from provisa.transpiler.polyfill import GRID, Applied, Feature, Grid, Refusal  # noqa: E402
-from provisa.transpiler.polyfill.grid import column_of  # noqa: E402
+from provisa.transpiler.polyfill.grid import Limitation, column_of  # noqa: E402
 from provisa.transpiler.polyfill.notation import Form, Refused  # noqa: E402
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+import function_edges  # noqa: E402
 import function_legs  # noqa: E402
 import pgwire_function_probe as function_probe  # noqa: E402
 
@@ -195,8 +198,44 @@ def _stated_refusals(feature: Feature, dialect: str) -> list[Refusal]:
     ]
 
 
-def _stated_differences(feature: Feature, dialect: str) -> bool:
-    return any(lim.refusal is None for lim in feature.read.limitations.get(dialect, ()))
+#: A limitation that names the edge values its form answers otherwise at (gen_measured.bounds).
+_ANSWERS_AT = re.compile(r"Answers otherwise than PostgreSQL at an edge value: (?P<values>.*)\.\Z")
+
+
+def _differences(feature: Feature, dialect: str) -> list[Limitation]:
+    """The limitations of the row on ``dialect`` that state a difference: neither a refusal nor an
+    error its form raises. A limitation stating an error excuses that error only, never a wrong
+    answer (REQ-2236; REQ-2167, amended 2026-11-23: a limitation excuses only the failure it
+    states)."""
+    return [
+        lim
+        for lim in feature.read.limitations.get(dialect, ())
+        if lim.refusal is None and not function_edges.stated_raises((lim.text,))
+    ]
+
+
+def _names(values: str, value: str) -> bool:
+    return f", {value}, " in f", {values}, "
+
+
+def _difference_stated(feature: Feature, dialect: str, outcome: dict[str, Any]) -> bool:
+    """Whether a limitation of the row on ``dialect`` states the wrong answer of ``outcome``. One
+    that states a difference of no particular value states any; one that names edge values states
+    only a wrong answer at an edge each of whose wrong calls (``edge_wrong``) is at one of them: a
+    limitation excuses only its own values."""
+    differences = _differences(feature, dialect)
+    if any(_ANSWERS_AT.fullmatch(lim.text) is None for lim in differences):
+        return True
+    if not differences or not outcome.get("wrong_at_edge"):
+        return False
+    stated = [match["values"] for lim in differences if (match := _ANSWERS_AT.fullmatch(lim.text))]
+    return all(
+        any(
+            _names(values, function_edges.edge_value(w["edge"], w["statement"]))
+            for values in stated
+        )
+        for w in outcome["edge_wrong"]
+    )
 
 
 def judged(applied: Applied, dialect: str, outcome: dict[str, Any]) -> tuple[str, str]:
@@ -233,7 +272,7 @@ def judged(applied: Applied, dialect: str, outcome: dict[str, Any]) -> tuple[str
             FAILS,
             f"a refusal the grid does not state: {sqlstate or '(no SQLSTATE)'} {message!r}",
         )
-    if kind == "wrong_answer" and _stated_differences(feature, dialect):
+    if kind == "wrong_answer" and _difference_stated(feature, dialect, outcome):
         return HOLDS, "a difference a limitation of its row states"
     if kind == "wrong_answer":
         return FAILS, f"marked {_said(form)}, it answers otherwise than PostgreSQL"
@@ -284,6 +323,24 @@ def checked(run: dict[str, Any], grid: Grid = GRID) -> list[Finding]:
                 )
             )
     return findings
+
+
+#: The outcomes of function_support.py that fail (function_report.verdict): a failure the grid
+#: states is a documented limit.
+_FAILING = frozenset({"refused", "wrong_answer", "error"})
+
+
+def documented_limits(run: dict[str, Any], grid: Grid = GRID) -> dict[tuple[str, str, str], str]:
+    """The documented limits of ``run`` (REQ-2167, amended 2026-11-23): each failing outcome that
+    fails exactly as a stated limitation of its feature on its engine says it will (REQ-2236), the
+    check holding it (``judged``): a refusal the row or one of its limitations states with its
+    message and SQLSTATE, a refusal a rewrite function states for those values, or a wrong answer a
+    limitation stating a difference covers. By (function, overload, engine), with why."""
+    return {
+        (f.function, f.overload, f.engine): f.why
+        for f in checked(run, grid)
+        if f.verdict == HOLDS and f.outcome in _FAILING
+    }
 
 
 #: The feature a finding names when a rewrite function refused the call before naming its row.

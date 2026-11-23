@@ -113,7 +113,10 @@ def test_pgspec_results_are_counted_per_leaf_and_failures_grouped_by_section():
         "TestSimpleQuery/Insert",
     ]
     md = m.markdown(s)
-    assert "5 tests: 2 passed, 0 skipped by design, 3 failed. Pass rate 40.0%" in md
+    assert (
+        "5 tests: 2 passed, 0 skipped by design, 0 documented limit, 3 failed. Pass rate 40.0%"
+        in md
+    )
     assert "`TestSimpleQuery/Cancel`: not reached" in md
     assert "`TestSimpleQuery/Insert`: skipped by pgspec" in md
 
@@ -1094,7 +1097,7 @@ def test_the_pgwire_page_counts_leave_functions_to_the_results_by_engine():
     surface, _, rate, cases = fill_docs.read(m.combined(pgspec, catalog))
     assert surface == "pgwire"
     assert rate == (
-        "100.0%: 57 passed, 1 skipped by design, 0 failed, of 58 cases. "
+        "100.0%: 57 passed, 1 skipped by design, 0 documented limit, 0 failed, of 58 cases. "
         "Catalog functions are reported by engine"
     )
     assert "box(point)" not in cases

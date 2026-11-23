@@ -53,12 +53,13 @@ COMPARED = ("catalog_relations", "type_conversions")
 
 
 def _rate(doc: dict) -> str:
-    """The pass rate (passed over passed plus failed) and the three counts (REQ-2167, amended
-    2026-10-28): a case skipped by design is never counted as failed."""
+    """The pass rate (passed over passed plus failed) and the four counts (REQ-2167, amended
+    2026-11-23): a case skipped by design or a documented limit is never counted as failed."""
     head = "no case passed or failed" if doc["pass_rate"] is None else f"{doc['pass_rate']:.1%}"
     return (
         f"{head}: {doc['passed']} passed, {doc['by_design']} skipped by design, "
-        f"{doc['failed']} failed, of {doc['total']} cases"
+        f"{doc['documented_limit']} documented limit, {doc['failed']} failed, "
+        f"of {doc['total']} cases"
     )
 
 

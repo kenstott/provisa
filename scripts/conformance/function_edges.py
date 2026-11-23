@@ -296,6 +296,19 @@ def grid_bounds(statement: str, engine: str) -> tuple[str, ...]:
     return tuple(lim.text for lim in applied.feature.read.limitations.get(dialect, ()))
 
 
+def edge_value(label: str, statement: str) -> str:
+    """The value an edge call of ``label`` (``<type> <kind>``) passed, as the statement wrote it
+    and as a grid limitation states it (``<type> <literal>``); the label itself where no edge of
+    its type and kind is in the statement."""
+    for kind in sorted({e.kind for edges in EDGES.values() for e in edges}, key=len, reverse=True):
+        if label.endswith(f" {kind}"):
+            argtype = label[: -len(kind) - 1]
+            for edge in EDGES.get(argtype, ()):
+                if edge.kind == kind and edge.literal in statement:
+                    return f"{argtype} {edge.literal}"
+    return label
+
+
 def stated_raises(limitations: tuple[str, ...]) -> list[str]:
     """The SQLSTATEs the limitations say the form raises: what makes a row bounded."""
     return sorted({m for text in limitations for m in _RAISES.findall(text)})

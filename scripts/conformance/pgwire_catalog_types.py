@@ -929,11 +929,11 @@ def markdown(report: dict[str, Any]) -> str:
     out = [
         f"## pgwire catalog and types (PostgreSQL {report['postgres_version']})",
         "",
-        "| part | cases | passed | skipped by design | failed | pass rate |",
-        "|---|---:|---:|---:|---:|---:|",
+        "| part | cases | passed | skipped by design | documented limit | failed | pass rate |",
+        "|---|---:|---:|---:|---:|---:|---:|",
         *(
             f"| {label} | {part['total']} | {part['passed']} | {part['by_design']} "
-            f"| {part['failed']} | "
+            f"| {part['documented_limit']} | {part['failed']} | "
             + ("n/a" if part["pass_rate"] is None else f"{part['pass_rate']:.1%}")
             + " |"
             for label, part in (

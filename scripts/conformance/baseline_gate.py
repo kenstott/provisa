@@ -26,6 +26,10 @@ list fails; neither is ever read as empty.
         "since": "2026-11-13",            # the day it was listed
         "reason": "..."}]}                # optional: what the run said
 
+A documented limit (REQ-2167, amended 2026-11-23: a case that fails exactly as a stated limitation
+of that feature on that engine says it will) is judged as a case skipped by design is: it is no
+failure, so it is never listed, and a listed case that becomes one is fixed but still listed.
+
 A surface at its baseline (by_design.AT_BASELINE) is judged by its list like any other: its
 summary script already fails on the part it gates, and the list holds the rest.
 
@@ -212,10 +216,12 @@ def function_counts(doc: dict, engine: str) -> dict:
     when the base calls are right, so what fails at an edge passes its base calls."""
     got = doc["by_engine"][engine]
     wrong_at_edge, error_at_edge = got["differs_wrong_at_edge"], got["differs_error_at_edge"]
+    # A documented limit is counted in no refused or differs key (function_report.result_counts):
+    # one found at an edge passed its base calls.
     return {
         "total": got["total"],
         "base": {
-            "passed": got["passed"] + wrong_at_edge + error_at_edge,
+            "passed": got["passed"] + wrong_at_edge + error_at_edge + got["documented_at_edge"],
             "wrong_answer": got["differs_wrong_answer"] - wrong_at_edge,
             "engine_error": got["differs_engine_error"] - error_at_edge,
             "refused_by_name": got["refused_by_name"],
@@ -229,13 +235,17 @@ def function_counts(doc: dict, engine: str) -> dict:
 
 
 def function_failures(doc: dict, engines: Iterable[str]) -> dict[str, dict]:
-    """Every wrong answer and engine error of a merged run on ``engines``, by case: where it fails
-    (``at``), how (``kind``), and its first failing call as the run said it."""
+    """Every wrong answer and engine error of a merged run on ``engines`` that is not a documented
+    limit, by case: where it fails (``at``), how (``kind``), and its first failing call as the run
+    said it."""
     held = set(engines)
     out: dict[str, dict] = {}
     for fn in doc["functions"]:
         for engine, outcome in fn["outcomes"].items():
             if engine not in held or outcome["outcome"] not in KINDS:
+                continue
+            if outcome.get("documented_limit"):
+                # A documented limit is no failure, as skipped by design is (REQ-2167, 2026-11-23).
                 continue
             kind = KINDS[outcome["outcome"]]
             at_edge = bool(outcome.get("wrong_at_edge") or outcome.get("error_at_edge"))

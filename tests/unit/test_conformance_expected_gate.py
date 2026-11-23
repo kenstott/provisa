@@ -351,6 +351,49 @@ def test_functions_a_base_call_wrong_answer_fails(tmp_path, monkeypatch, capsys)
     assert "base passed 9, below the committed 10" in err
 
 
+def _documented(outcome: dict) -> dict:
+    return {**outcome, "documented_limit": "a limitation of its row states it"}
+
+
+def test_functions_a_documented_limit_is_judged_as_skipped_by_design(tmp_path, monkeypatch, capsys):
+    """REQ-2167, amended 2026-11-23: a documented limit is no failure. It is never listed, a new
+    one does not fail the run, and a refusal that is one is not counted against the refusals."""
+    doc = _functions_doc(_documented(_edge_wrong()), _documented(_base_wrong()), refused=0, right=8)
+    doc["functions"].append(
+        {
+            "function": "r",
+            "overload": "integer",
+            "family": "Numeric",
+            "outcomes": {"trino": _documented(REFUSED)},
+        }
+    )
+    doc["by_engine"]["trino"] = function_report.result_counts(
+        f["outcomes"]["trino"] for f in doc["functions"]
+    )
+    assert gate.function_failures(doc, ["trino"]) == {}
+    counts = gate.function_counts(doc, "trino")
+    # The documented wrong answer at an edge passed its base calls; the one on a base call did not.
+    assert counts["base"] == {
+        "passed": 9,
+        "wrong_answer": 0,
+        "engine_error": 0,
+        "refused_by_name": 0,
+    }
+    assert counts["edge"] == {"served": 8, "wrong_answer": 0, "engine_error": 0}
+    expected = _baseline(doc)
+    assert expected["expected"] == []
+    assert _run_functions(tmp_path, monkeypatch, doc, expected) == 0, capsys.readouterr().err
+
+
+def test_functions_a_listed_failure_now_a_documented_limit_is_fixed_but_listed(
+    tmp_path, monkeypatch, capsys
+):
+    expected = _baseline(_functions_doc(_edge_wrong()))
+    doc = _functions_doc(_documented(_edge_wrong()))
+    assert _run_functions(tmp_path, monkeypatch, doc, expected) == 1
+    assert "trino::f0(integer) fixed but still listed" in capsys.readouterr().err
+
+
 def test_functions_a_new_edge_engine_error_fails(tmp_path, monkeypatch, capsys):
     expected = _baseline(_functions_doc(RIGHT))
     doc = _functions_doc(_edge_error())

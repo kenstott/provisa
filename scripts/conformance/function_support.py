@@ -54,8 +54,11 @@ Each overload gets one outcome per engine:
 
 A wrong answer outranks an error, which outranks a refusal, which outranks a pass or a not checked:
 the overload is as bad as its worst call. function_report.py says what each outcome is on the
-report (exact, equivalent, not checked, skipped by design, refused by name or differs); there is no
-overall count, only one per engine.
+report (exact, equivalent, not checked, skipped by design, documented limit, refused by name or
+differs); there is no overall count, only one per engine. A refusal or wrong answer that is exactly
+what a stated limitation of its polyfill grid row on the engine says it will be carries
+``documented_limit`` (polyfill_check.documented_limits): it is a documented limit, counted and
+listed apart from failures (REQ-2167, amended 2026-11-23).
 
 The calls of an overload are the NULL call of pgwire_function_probe.py and, where ``value_calls``
 can write them, up to three calls with real values. How far values go, exactly:
@@ -171,6 +174,7 @@ from psycopg import sql as psql
 
 import function_edges
 import function_report
+import polyfill_check
 import pgwire_catalog_types as catalog
 import pgwire_function_probe as function_probe
 from function_report import (
@@ -3743,6 +3747,9 @@ def _judge_edges(entry: dict[str, Any], edges: EdgeResults) -> None:
         entry["detail"] = edges.wrong[0]
         entry["wrong_calls"] = len(edges.wrong)
         entry["wrong_at_edge"] = True
+        # Every wrong edge call: a limitation naming edge values states only a wrong answer at
+        # them (polyfill_check._difference_stated).
+        entry["edge_wrong"] = edges.wrong
     elif edges.errors:
         entry["outcome"] = "error"
         entry["detail"] = edges.errors[0]
@@ -3956,6 +3963,10 @@ def measure(
                 f"{i}/{len(fns)} after {time.monotonic() - started:.0f}s at {fn.signature}",
                 flush=True,
             )
+    marked = with_documented_limits(
+        {engine: {(o["function"], o["overload"]): o for o in overloads}}
+    )
+    overloads = list(marked[engine].values())
     report = {
         "engine": engine,
         "postgres_version": pg.rows("SHOW server_version")[0][0],
@@ -3995,7 +4006,7 @@ def counts(overloads: list[dict[str, Any]]) -> dict[str, int]:
     verdicts = Counter(function_report.verdict(o) for o in overloads)
     out = {
         name: verdicts.get(name, 0)
-        for name in ("passed", "skipped_by_design", "failed", "not_tested")
+        for name in ("passed", "skipped_by_design", "documented_limit", "failed", "not_tested")
     }
     out |= {name: tally.get(name, 0) for name in OUTCOMES}
     out["total"] = len(overloads)
@@ -4038,7 +4049,7 @@ def not_checked_reasons(overloads: Iterable[dict[str, Any]]) -> dict[str, int]:
 def _row(label: str, c: dict[str, int]) -> str:
     return (
         f"| {label} | {c['total']} | {c['passed']} | {c['within_bound']} "
-        f"| {c['skipped_by_design']} | {c['failed']} "
+        f"| {c['skipped_by_design']} | {c['documented_limit']} | {c['failed']} "
         f"| {c['not_tested']} | {c['pass_answers_checked']} "
         f"| {c['pass_type_and_form_checked']} | {c['pass_side_effect_checked']} "
         f"| {c['not_checked']} | {c['by_design']} | {c['refused']} "
@@ -4048,12 +4059,13 @@ def _row(label: str, c: dict[str, int]) -> str:
 
 
 _HEADER = (
-    "| | overloads | served | of which within bound | skipped by design | failed | not tested "
+    "| | overloads | served | of which within bound | skipped by design | documented limit "
+    "| failed | not tested "
     "| pass, answers compared | pass, type and form compared "
     "| pass, side effect compared | not checked | skipped by design | refused by name "
     "| wrong answer | of which at an edge | engine error | of which at an edge | not callable "
     "| not reached |",
-    "|---|" + "---:|" * 18,
+    "|---|" + "---:|" * 19,
 )
 
 
@@ -4110,7 +4122,7 @@ def _outcome(entry: dict[str, Any] | None) -> dict[str, Any]:
         }
     kept: dict[str, Any] = {
         "outcome": entry["outcome"],
-        "result": function_report.result_of(entry["outcome"], entry.get("rules", ())),
+        "result": function_report.result(entry),
     }
     for key in (
         "detail",
@@ -4122,9 +4134,11 @@ def _outcome(entry: dict[str, Any] | None) -> dict[str, Any]:
         "wrong_at_edge",
         "error_at_edge",
         "edge_raised",
+        "edge_wrong",
         "bound_stated",
         "bound_sqlstates",
         "bound_raised",
+        "documented_limit",
     ):
         if entry.get(key) is not None:
             kept[key] = entry[key]
@@ -4157,12 +4171,15 @@ def merged(reports: dict[str, dict[str, Any] | None]) -> dict[str, Any]:
     side effect was compared on any, else ``type_and_form_checked`` (REQ-2167, WHAT GUARANTEED
     MEANS). One not checked or skipped by design on any engine is not on it: a pass is never a
     call alone. A function is guaranteed when each of its overloads PostgreSQL can call is."""
-    by_engine = {
-        engine: {
-            (o["function"], o["overload"]): o for o in (report or {"overloads": []})["overloads"]
+    by_engine = with_documented_limits(
+        {
+            engine: {
+                (o["function"], o["overload"]): o
+                for o in (report or {"overloads": []})["overloads"]
+            }
+            for engine, report in reports.items()
         }
-        for engine, report in reports.items()
-    }
+    )
     keys = sorted({key for overloads in by_engine.values() for key in overloads})
     functions: list[dict[str, Any]] = []
     for name, overload in keys:
@@ -4257,6 +4274,35 @@ def merged(reports: dict[str, dict[str, Any] | None]) -> dict[str, Any]:
     }
 
 
+def with_documented_limits(
+    by_engine: dict[str, dict[tuple[str, str], dict[str, Any]]],
+) -> dict[str, dict[tuple[str, str], dict[str, Any]]]:
+    """Each engine's overloads, by (function, overload), each failure that is a documented limit
+    carrying the limitation it is (``documented_limit``, polyfill_check.documented_limits):
+    REQ-2167, amended 2026-11-23, a case that fails exactly as a stated limitation of that feature
+    on that engine says it will is counted apart from failures."""
+    run = {
+        "engines": sorted(by_engine),
+        "functions": [
+            {"function": name, "overload": overload, "outcomes": {engine: entry}}
+            for engine, overloads in by_engine.items()
+            for (name, overload), entry in overloads.items()
+        ],
+    }
+    limits = polyfill_check.documented_limits(run)
+    return {
+        engine: {
+            key: (
+                {**entry, "documented_limit": limits[(key[0], key[1], engine)]}
+                if (key[0], key[1], engine) in limits
+                else entry
+            )
+            for key, entry in overloads.items()
+        }
+        for engine, overloads in by_engine.items()
+    }
+
+
 def _proof(entries: dict[str, dict[str, Any] | None]) -> str:
     """What every engine checked of an overload."""
     present = [e or {} for e in entries.values()]
@@ -4313,6 +4359,7 @@ def merged_markdown(doc: dict[str, Any]) -> str:
             ),
             "",
         ]
+    lines += ["#### Documented limits", "", *function_report.documented_limit_lines(doc), ""]
     for engine in engines:
         lines += [
             f"#### Not checked on {engine}",

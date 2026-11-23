@@ -199,7 +199,10 @@ def test_a_page_is_filled_from_the_artifact_and_refilled_in_place():
     filled = fill_docs.fill(page, suite, rate, cases)
     assert surface == "cypher"
     assert "**Suite:** openCypher TCK 2024.3." in filled
-    assert "**Pass rate:** 75.0%: 3 passed, 1 skipped by design, 1 failed, of 5 cases." in filled
+    assert (
+        "**Pass rate:** 75.0%: 3 passed, 1 skipped by design, 0 documented limit, 1 failed, of 5 cases."
+        in filled
+    )
     assert "| G | 1 | d |" in filled
     assert "| F::x | why |" in filled  # each case skipped by design keeps its reason
     assert "| [2] #2 | rows differ |" in filled
@@ -242,7 +245,7 @@ def test_a_driver_s_junit_results_are_a_conformance_report(tmp_path):
     ]
     _, suite, rate, _ = fill_docs.read(doc)
     assert suite == "neo4j-python-driver integration tests 6.2.0 (tests/integration)"
-    assert rate == "33.3%: 1 passed, 0 skipped by design, 2 failed, of 3 cases"
+    assert rate == "33.3%: 1 passed, 0 skipped by design, 0 documented limit, 2 failed, of 3 cases"
 
 
 def test_a_failure_a_design_decision_excludes_is_skipped_by_design(tmp_path):
@@ -288,13 +291,13 @@ def test_a_failure_a_design_decision_excludes_is_skipped_by_design(tmp_path):
     ]
     assert [f["scenario"] for f in doc["failures"]] == ["test_local_time", "test_bookmark"]
     _, _, rate, cases = fill_docs.read(doc)
-    assert rate == "33.3%: 1 passed, 1 skipped by design, 2 failed, of 4 cases"
+    assert rate == "33.3%: 1 passed, 1 skipped by design, 0 documented limit, 2 failed, of 4 cases"
     assert "| Digits below the microsecond | 1 |" in cases
     assert "REQ-" not in cases  # the requirement is the artifact's; a published page names none
     # The job's own summary says the group skipped by design and the requirement it cites, and
     # never counts it as failed.
     md = junit.markdown(doc)
-    assert "4 cases: 1 passed, 1 skipped by design, 2 failed." in md
+    assert "4 cases: 1 passed, 1 skipped by design, 0 documented limit, 2 failed." in md
     assert "| Digits below the microsecond | 1 | REQ-2173 |" in md
 
 
@@ -318,7 +321,7 @@ def test_a_scenario_not_run_with_no_decision_behind_it_is_failed():
     assert (doc["passed"], doc["failed"], doc["by_design"], doc["total"]) == (1, 2, 1, 4)
     assert [g["requirement"] for g in doc["by_design_groups"]] == ["REQ-778"]
     md = tck.markdown(doc)
-    assert "4 scenarios: 1 passed, 1 skipped by design, 2 failed." in md
+    assert "4 scenarios: 1 passed, 1 skipped by design, 0 documented limit, 2 failed." in md
     assert "| REQ-778 |" in md
     assert [f["scenario"] for f in doc["failures"]] == ["built", "control"]
 
@@ -388,9 +391,9 @@ def test_an_adapted_scenario_s_outcome_is_the_one_it_counts_as():
     (group,) = doc["adapted"]
     assert [c["outcome"] for c in group["cases"]] == ["passed", "by_design", "failed"]
     md = tck.markdown(doc)
-    assert "3 scenarios: 1 passed, 1 skipped by design, 1 failed." in md
+    assert "3 scenarios: 1 passed, 1 skipped by design, 0 documented limit, 1 failed." in md
     assert (
-        "<summary>Setups that build their graph (3: 1 passed, 1 skipped by design, 1 failed)"
+        "<summary>Setups that build their graph (3: 1 passed, 1 skipped by design, 0 documented limit, 1 failed)"
         "</summary>"
     ) in md
     assert "| F::[2] by design | skipped by design |" in md
@@ -1211,7 +1214,7 @@ _LOG_DOC = {
 
 def test_the_log_lines_have_the_counts_groups_and_failures_in_a_fixed_form():
     assert by_design.log_lines(_LOG_DOC) == [
-        "CONFORMANCE-COUNTS surface=cypher passed=7 by_design=3 failed=2 total=12",
+        "CONFORMANCE-COUNTS surface=cypher passed=7 by_design=3 documented_limit=0 failed=2 total=12",
         "CONFORMANCE-GROUP Unbounded paths",
         "CONFORMANCE-GROUP Tabs\\nand\\: colons",
         "CONFORMANCE-FAILURE Match1 :: Plain",

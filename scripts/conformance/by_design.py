@@ -8,7 +8,10 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Every conformance case is passed, skipped by design, or failed (REQ-2167, amended 2026-10-27
+"""Every conformance case is passed, skipped by design, documented limit, or failed (REQ-2167,
+amended 2026-11-23: a documented limit is a case that fails exactly as a stated limitation of that
+feature on that engine says it will, REQ-2236; the suites this module serves state no limitation, so
+each counts 0 of them; amended 2026-10-27
 and 2026-10-28).
 
 A suite's case that cannot pass because of a designed limitation of Provisa is skipped by design,
@@ -234,15 +237,27 @@ def function_groups(surface: str) -> list[Group]:
     return [g for name in FUNCTION_GROUPS for g in declared if g.group == name]
 
 
-#: REQ-2167 (amended 2026-10-28, EVERY CASE IS PASSED, BY DESIGN OR FAILED): the three outcomes a
+#: REQ-2167 (amended 2026-11-23, superseding the three outcomes of 2026-10-28): the four outcomes a
 #: case has, each with the label a summary or page gives it. Nothing else.
-OUTCOMES = {"passed": "passed", "by_design": "skipped by design", "failed": "failed"}
+OUTCOMES = {
+    "passed": "passed",
+    "by_design": "skipped by design",
+    "documented_limit": "documented limit",
+    "failed": "failed",
+}
+
+#: The documented limits of a suite these helpers count: none. A documented limit is a failure a
+#: stated limitation of the polyfill grid (REQ-2236) states, and the grid states limitations of
+#: catalog functions on an engine alone (function_report.py); no suite here has such a statement
+#: to fail as, so each reports 0 (REQ-2167, amended 2026-11-23).
+NO_DOCUMENTED_LIMITS = 0
 
 
 def outcomes(passed: int, groups: list[dict], failures: list[dict]) -> dict:
-    """A suite's (or a suite part's) three counts, the same in every report (REQ-2167, amended
-    2026-10-28): ``passed``; ``by_design``, the cases skipped by design, each in one of
-    ``by_design_groups`` citing its requirement and decision; and ``failed``, the ``failures``.
+    """A suite's (or a suite part's) four counts, the same in every report (REQ-2167, amended
+    2026-11-23): ``passed``; ``by_design``, the cases skipped by design, each in one of
+    ``by_design_groups`` citing its requirement and decision; ``documented_limit``, none here
+    (``NO_DOCUMENTED_LIMITS``); and ``failed``, the ``failures``.
     ``total`` is their sum; the pass rate is passed over passed plus failed, and ``ran`` is that
     denominator."""
     skipped = sum(g["count"] for g in groups)
@@ -251,6 +266,7 @@ def outcomes(passed: int, groups: list[dict], failures: list[dict]) -> dict:
         "total": ran + skipped,
         "passed": passed,
         "by_design": skipped,
+        "documented_limit": NO_DOCUMENTED_LIMITS,
         "failed": len(failures),
         "ran": ran,
         "pass_rate": round(passed / ran, 4) if ran else None,
@@ -260,13 +276,11 @@ def outcomes(passed: int, groups: list[dict], failures: list[dict]) -> dict:
 
 
 def counts_line(doc: dict, noun: str = "cases") -> str:
-    """The three counts as a summary says them: never a by-design case as failed."""
+    """The four counts as a summary says them: never a by-design case or a documented limit as
+    failed."""
     rate = "n/a" if doc["pass_rate"] is None else f"{doc['pass_rate']:.1%}"
-    return (
-        f"{doc['total']} {noun}: {doc['passed']} {OUTCOMES['passed']}, {doc['by_design']} "
-        f"{OUTCOMES['by_design']}, {doc['failed']} {OUTCOMES['failed']}. Pass rate {rate} "
-        "(passed over passed and failed)."
-    )
+    counted = ", ".join(f"{doc[key]} {label}" for key, label in OUTCOMES.items())
+    return f"{doc['total']} {noun}: {counted}. Pass rate {rate} (passed over passed and failed)."
 
 
 def _escaped(text: str) -> str:
@@ -284,7 +298,8 @@ def _escaped(text: str) -> str:
 def log_lines(doc: dict) -> list[str]:
     """The result as lines a job log carries (REQ-2167), parseable without the artifact:
 
-    ``CONFORMANCE-COUNTS surface=<s> passed=<n> by_design=<n> failed=<n> total=<n>``
+    ``CONFORMANCE-COUNTS surface=<s> passed=<n> by_design=<n> documented_limit=<n> failed=<n>
+    total=<n>``
     ``CONFORMANCE-GROUP <group name>``                   one per skipped-by-design group
     ``CONFORMANCE-FAILURE <feature> :: <scenario>``     one per failed case
 
@@ -292,7 +307,8 @@ def log_lines(doc: dict) -> list[str]:
     is only ever the separator."""
     return [
         f"CONFORMANCE-COUNTS surface={doc['surface']} passed={doc['passed']} "
-        f"by_design={doc['by_design']} failed={doc['failed']} total={doc['total']}",
+        f"by_design={doc['by_design']} documented_limit={doc['documented_limit']} "
+        f"failed={doc['failed']} total={doc['total']}",
         *(f"CONFORMANCE-GROUP {_escaped(g['group'])}" for g in doc["by_design_groups"]),
         *(
             f"CONFORMANCE-FAILURE {_escaped(f['feature'])} :: {_escaped(f['scenario'])}"
@@ -404,14 +420,18 @@ def table(excluded: list[dict], requirement: bool = False) -> list[str]:
 
 
 def group_table(groups: list[dict]) -> list[str]:
-    """The three counts per test group, as a Markdown table with their sum (a suite that reports
+    """The four counts per test group, as a Markdown table with their sum (a suite that reports
     by group: ``groups`` of the result document)."""
-    total = {k: sum(g[k] for g in groups) for k in ("passed", "by_design", "failed")}
+    total = {k: sum(g[k] for g in groups) for k in OUTCOMES}
     rows = [*groups, {"group": "**Total**", **total}]
     return [
-        "| Test group | Passed | Skipped by design | Failed |",
-        "| --- | ---: | ---: | ---: |",
-        *(f"| {r['group']} | {r['passed']} | {r['by_design']} | {r['failed']} |" for r in rows),
+        "| Test group | Passed | Skipped by design | Documented limit | Failed |",
+        "| --- | ---: | ---: | ---: | ---: |",
+        *(
+            f"| {r['group']} | {r['passed']} | {r['by_design']} | {r['documented_limit']} "
+            f"| {r['failed']} |"
+            for r in rows
+        ),
     ]
 
 

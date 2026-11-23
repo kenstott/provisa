@@ -235,7 +235,7 @@ def test_the_page_shows_the_groups_counts_and_version(tmp_path):
     json.dumps(doc)
     surface, suite, rate, cases = fill_docs.read(doc)
     assert surface == "sparql" and "d01b141" in suite
-    assert "1 passed, 0 skipped by design, 1 failed" in rate
+    assert "1 passed, 0 skipped by design, 0 documented limit, 1 failed" in rate
     assert "| bind | 1 | 0 | 1 |" in cases and "| **Total** | 1 | 0 | 1 |" in cases
     page = fill_docs.fill("**Suite:** x\n\n**Pass rate:** y\n", suite, rate, cases)
     assert "## Results by test group" in page and "| b2 | refused |" in page

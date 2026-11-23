@@ -312,3 +312,118 @@ def test_the_probe_is_the_runs_null_call(function, overload, call):
     """pgwire_function_probe's NULL call: its given arguments, else a NULL of each argument type
     (a pseudo-type its concrete type), the last passed VARIADIC where it is an array."""
     assert check.call_of(function, overload).sql("postgres") == call
+
+
+# --- documented limits (REQ-2167, amended 2026-11-23) -----------------------------------------
+
+_EDGY = Feature(
+    "edgy",
+    "toy",
+    "An integer, doubled.",
+    read=Side(
+        rules=(Rule("edgy($a::integer)", {"duckdb": "2 * $a", "trino": "2 * $a"}),),
+        limitations={
+            "duckdb": (
+                Limitation(
+                    "Answers otherwise than PostgreSQL at an edge value: integer '-2147483648'."
+                ),
+                Limitation("Raises 22003 at an edge value it does not hold as PostgreSQL does:"),
+            ),
+            "trino": (Limitation("Raises 22003 at an edge value it does not hold as PostgreSQL"),),
+        },
+    ),
+)
+
+
+def _wrong_at(*literals: str) -> dict[str, Any]:
+    wrong = [
+        {
+            "statement": f"SELECT edgy(CAST({literal} AS integer))",
+            "edge": f"integer {kind}",
+            "difference": "1, 2",
+        }
+        for kind, literal in literals
+    ]
+    return {
+        "outcome": "wrong_answer",
+        "detail": wrong[0],
+        "wrong_at_edge": True,
+        "edge_wrong": wrong,
+    }
+
+
+_LEAST = ("least", "'-2147483648'")
+_GREATEST = ("greatest", "'2147483647'")
+
+
+def test_a_refusal_a_limitation_states_is_a_documented_limit():
+    run = _run(
+        "trim_array",
+        "anyarray, integer",
+        clickhouse=_refused("trim_array does not read this value"),
+    )
+    [(key, why)] = check.documented_limits(run).items()
+    assert key == ("trim_array", "anyarray, integer", "clickhouse")
+    assert "limitation" in why
+
+
+def test_a_refusal_as_its_refusal_row_says_is_a_documented_limit():
+    run = _run(
+        "generate_subscripts",
+        "anyarray, integer, boolean",
+        trino=_refused("generate_subscripts() has no form on trino"),
+    )
+    assert set(check.documented_limits(run)) == {
+        ("generate_subscripts", "anyarray, integer, boolean", "trino")
+    }
+
+
+@pytest.mark.parametrize(
+    "outcome",
+    [
+        _refused("array_shuffle() has no form on clickhouse"),
+        _refused("trim_array does not read this value", sqlstate="22003"),
+    ],
+    ids=["unstated message", "stated message, another sqlstate"],
+)
+def test_a_refusal_no_limitation_states_stays_failed(outcome):
+    function, overload = (
+        ("array_shuffle", "anyarray")
+        if "shuffle" in outcome["detail"]["error"]
+        else ("trim_array", "anyarray, integer")
+    )
+    assert check.documented_limits(_run(function, overload, clickhouse=outcome)) == {}
+
+
+def test_a_wrong_answer_at_a_stated_edge_value_is_a_documented_limit():
+    run = _run("edgy", "integer", duckdb=_wrong_at(_LEAST))
+    assert set(check.documented_limits(run, Grid((_EDGY,)))) == {("edgy", "integer", "duckdb")}
+
+
+def test_a_limitation_excuses_only_its_own_values():
+    """A limitation naming '-2147483648' does not excuse a wrong answer at '2147483647', nor one
+    wrong call of several at an unstated value, nor a wrong answer on a base call."""
+    grid = Grid((_EDGY,))
+    other = _run("edgy", "integer", duckdb=_wrong_at(_GREATEST))
+    both = _run("edgy", "integer", duckdb=_wrong_at(_LEAST, _GREATEST))
+    base = _run("edgy", "integer", duckdb=_WRONG)
+    assert check.documented_limits(other, grid) == {}
+    assert check.documented_limits(both, grid) == {}
+    assert check.documented_limits(base, grid) == {}
+    assert _verdicts(other, grid) == {"duckdb": check.FAILS}
+
+
+def test_a_limitation_stating_an_error_excuses_no_wrong_answer():
+    run = _run("edgy", "integer", trino=_wrong_at(_LEAST))
+    assert check.documented_limits(run, Grid((_EDGY,))) == {}
+    assert _verdicts(run, Grid((_EDGY,))) == {"trino": check.FAILS}
+
+
+def test_a_difference_of_no_particular_value_is_a_documented_limit():
+    run = _run("shout", "text", duckdb=_WRONG, trino=_WRONG)
+    assert set(check.documented_limits(run, Grid((_DIFFERS,)))) == {("shout", "text", "duckdb")}
+
+
+def test_a_pass_and_an_error_are_no_documented_limit():
+    run = _run("array_ndims", "anyarray", duckdb=_PASS, trino=_error("boom"))
+    assert check.documented_limits(run) == {}
