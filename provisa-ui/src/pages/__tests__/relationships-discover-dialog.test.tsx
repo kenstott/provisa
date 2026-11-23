@@ -590,7 +590,7 @@ describe("Discovery dialog: the run's proposals, in one table", () => {
     fireEvent.click(notAgainBox(501));
     expect(notAgainBox(501).checked).toBe(true);
     expect(acceptBox(501).checked).toBe(false);
-    expect(applyButton()).toHaveTextContent("Accept 3, don't recommend 1 again");
+    expect(applyButton()).toHaveTextContent("Accept 3, never suggest 1");
     fireEvent.click(acceptBox(501));
     expect(acceptBox(501).checked).toBe(true);
     expect(notAgainBox(501).checked).toBe(false);
@@ -650,7 +650,7 @@ describe("Discovery dialog: the run's proposals, in one table", () => {
     fireEvent.click(notAgainBox(503));
     fireEvent.click(notAgainBox(504));
     expect(applyButton()).toBeEnabled();
-    expect(applyButton()).toHaveTextContent("Don't recommend 2 again");
+    expect(applyButton()).toHaveTextContent("Never suggest 2");
   });
 
   it("Apply sends what is ticked, each way, and leaves the rest undecided", async () => {
@@ -673,7 +673,7 @@ describe("Discovery dialog: the run's proposals, in one table", () => {
       kept_at: 0.7,
       score_filter: null,
     });
-    expect(applyButton()).toHaveTextContent("Accept 2, don't recommend 1 again");
+    expect(applyButton()).toHaveTextContent("Accept 2, never suggest 1");
     fireEvent.click(applyButton());
     await waitFor(() =>
       expect(applyMock).toHaveBeenCalledWith(7, {

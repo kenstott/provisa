@@ -1007,6 +1007,11 @@ class RelationshipType:  # REQ-019, REQ-020, REQ-158, REQ-413
     via_type_column: str | None = None
     via_type_value: str | None = None
     via_label_source: str | None = None
+    # REQ-1586 (amended 2026-11-22): the model type -- direct (a foreign key), junction (through a
+    # junction table) or shared_dimension (both ends join the dimension's key) -- and the edge's
+    # properties, the middle table's columns that are no key of the join (what Cypher serves).
+    shape: str = "direct"
+    properties: list[str] = strawberry.field(default_factory=list)
     # REQ-2099: the target's parameters this edge feeds, each from a source column.
     parameters: list["RelationshipParameterType"] = strawberry.field(default_factory=list)
     # REQ-2249: the code resolver set this edge belongs to; changed and retired only through it.

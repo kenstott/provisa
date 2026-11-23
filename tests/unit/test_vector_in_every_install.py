@@ -138,19 +138,16 @@ def test_the_appimage_wheelhouse_takes_cpu_torch_and_refuses_a_cuda_build():
     assert 'version = "\\(.*+cpu\\)"' in script  # the pinned version is uv.lock's +cpu torch
 
 
-def test_the_linux_first_launch_installs_cpu_torch_before_provisa_and_checks_it():
+def test_the_linux_first_launch_installs_from_its_wheelhouse_and_checks_cpu_torch():
+    """The wheelhouse carries the +cpu torch (build-appimage.sh), so first launch takes torch and
+    provisa[embedded] from it alone, then checks the embedding library is on CPU-only torch."""
     script = _text("packaging/linux/first-launch.sh")
     body = script[script.index("setup_native_venv() {") :]
     body = body[: body.index("\n}\n")]
-    torch = body.index(f"--index-url {_CPU_INDEX} torch")
-    provisa = body.index('"provisa[${extras}]${pin}"')
+    assert _CPU_INDEX not in body
+    provisa = body.index('--no-index --find-links "$wheels" "provisa[embedded]" uvicorn mcp-proxy')
     check = body.index("import sentence_transformers, torch; assert torch.version.cuda is None")
-    assert torch < provisa < check
-    extras = script[script.index("_native_extras() {") :]
-    extras = extras[: extras.index("\n}\n")]
-    assert all(
-        printed.startswith("embedded") for printed in re.findall(r"printf '([^']+)'", extras)
-    )
+    assert provisa < check
 
 
 def test_the_windows_installer_installs_the_vector_extra_and_checks_it():

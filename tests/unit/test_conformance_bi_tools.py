@@ -492,3 +492,14 @@ def test_docs_command_writes_the_results_into_the_page(monkeypatch, tmp_path):
     text = page.read_text()
     assert "old" not in text and text.startswith("intro\n") and text.endswith("rest\n")
     assert "| psql | 17.11 | 2026-11-04 | Automated | 2 | 1 | 0 | 1 | 0 |" in text
+
+
+def test_the_pgwire_page_publishes_each_tools_results_from_a_run():
+    """REQ-2204: "The results are published per tool beside the other conformance results." The
+    page's bi-tools-results block holds a run's counts table (replay.py docs), one row per tool."""
+    page = replay.DOCS.read_text()
+    block = page[page.index(replay.BEGIN) : page.index(replay.END)]
+    assert "No run has filled this section yet." not in block
+    assert "## BI tools' catalog statements (PostgreSQL " in block
+    for title in replay.TITLES.values():
+        assert block.count(f"\n| {title} | ") == 1, title

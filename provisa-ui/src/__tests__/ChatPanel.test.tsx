@@ -909,6 +909,39 @@ describe("ChatPanel — glossary tool result notifies the Glossary page (REQ-184
     window.removeEventListener("provisa:glossary-changed", listener);
   });
 
+  // A term Polly approves must leave the Ontology page's Status filter ("approved") showing it:
+  // the list's statuses are read again only on this event.
+  it.each([
+    "approve_glossary_term",
+    "deprecate_glossary_term",
+    "retire_glossary_term",
+    "restore_glossary_term",
+    "tag_glossary_term",
+    "untag_glossary_term",
+  ])("dispatches provisa:glossary-changed after %s completes", async (tool) => {
+    fetchMcpChatStatus.mockResolvedValue({ configured: true, reason: "" });
+    const listener = vi.fn();
+    window.addEventListener("provisa:glossary-changed", listener);
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      sseResponse([
+        { type: "tool_use", name: tool, input: { term_id: 1 } },
+        { type: "tool_result", name: tool, is_error: false },
+        { type: "text", text: "Done it." },
+        { type: "done" },
+      ]),
+    );
+
+    render(<ChatPanel />);
+    fireEvent.click(screen.getByTestId("chat-panel-toggle"));
+    const textarea = await screen.findByPlaceholderText(/Ask me a question/);
+    fireEvent.change(textarea, { target: { value: "do it" } });
+    fireEvent.keyDown(textarea, { key: "Enter" });
+
+    await waitFor(() => screen.getByText("Done it."));
+    expect(listener).toHaveBeenCalledTimes(1);
+    window.removeEventListener("provisa:glossary-changed", listener);
+  });
+
   it("does not dispatch provisa:glossary-changed for a non-glossary tool", async () => {
     fetchMcpChatStatus.mockResolvedValue({ configured: true, reason: "" });
     const listener = vi.fn();

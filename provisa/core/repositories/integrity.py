@@ -365,6 +365,9 @@ REFERENCES: tuple[Reference, ...] = (
     # REQ-2243: a metric names a term only for its meaning, so it outlives the term: deleting the
     # term leaves the metric unnamed (ON DELETE SET NULL) and nothing blocks.
     _link("metrics", "term_id", "glossary_term"),
+    # REQ-2259: a confirmed tag loss is history that keeps the term's name, so it outlives the
+    # term (ON DELETE SET NULL) and nothing blocks.
+    _link("glossary_tag_losses", "term_id", "glossary_term"),
     # REQ-2145: a term's tags go with it; a term holding columns is blocked above, so no column
     # loses a tag it carried through the term.
     _part("tag_assignments", "term_id", "glossary_term"),

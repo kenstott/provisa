@@ -34,6 +34,8 @@ const rel = {
   alias: "PLACED_BY",
   graphqlAlias: null,
   cypherType: "PLACED_BY",
+  shape: "direct",
+  properties: [],
 } as unknown as Relationship;
 
 function open(onSaveEdgeAlias: (id: number, cql: string, gql: string) => Promise<string | null>) {

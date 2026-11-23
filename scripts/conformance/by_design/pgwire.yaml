@@ -78,6 +78,15 @@
   case: "^type conversion::SELECT c_numeric FROM conformance\\.types_fixture$"
   reason: "^typmod 2490376, PostgreSQL -1$"
 
+- group: A BI tool's read of the unsized source numeric is the numeric(38,s) registration samples
+  requirement: REQ-1961
+  decision: >-
+    The same registered numeric(38,s) as above, read by a BI tool's own statement over the
+    fixture (DBeaver's and Metabase's table preview): described with its typmod, where
+    PostgreSQL describes an unsized numeric.
+  case: "^(?:dbeaver|metabase) catalog replay::#\\d+ "
+  reason: "^c_numeric: typmod 2490376, PostgreSQL -1$"
+
 - group: The catalog's bootstrap owner is provisa
   requirement: REQ-2167
   decision: >-

@@ -55,12 +55,9 @@ notarize_dmg() {
     ditto -c -k --keepParent "$app" "$submit_path"
   fi
   info "Submitting $(basename "$submit_path") for notarization..."
-  local err_file submit_out submit_err submit_rc
-  err_file="$(mktemp)"
-  submit_out=$(xcrun notarytool submit "$submit_path" "${notary_args[@]}" --output-format json 2>"$err_file") \
-    && submit_rc=0 || submit_rc=$?
-  submit_err=$(cat "$err_file" 2>/dev/null || true)
-  rm -f "$err_file"
+  local submit_out submit_err submit_rc
+  notary_submit "$submit_path" "${notary_args[@]}"
+  submit_out=$NOTARY_SUBMIT_OUT submit_err=$NOTARY_SUBMIT_ERR submit_rc=$NOTARY_SUBMIT_RC
   if [ -n "$zip_dir" ]; then rm -rf "$zip_dir"; fi
   if [ $submit_rc -ne 0 ]; then
     if printf '%s\n%s' "$submit_out" "$submit_err" | grep -qi "required agreement\|403"; then

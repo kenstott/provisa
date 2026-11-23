@@ -108,6 +108,12 @@ jobs:
       - name: Pyodide downloads
         uses: ./.github/actions/pyodide-downloads
 
+      # build-dmg.sh exports uv.lock's pins as the native runtime's pip constraints.
+      - name: Install uv
+        uses: ./.github/actions/setup-python
+        with:
+          sync: "false"
+
       # The runtime's DuckDB extensions leave it here for their own release asset (codesign cannot
       # sign them, and Apple rejects the DMG that holds them unsigned); the .app pins its sha256.
       - name: Build and sign the app

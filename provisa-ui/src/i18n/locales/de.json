@@ -14,7 +14,8 @@
     "discardBody": "Ihre Änderungen an {{what}} sind nicht gespeichert.",
     "discard": "Verwerfen",
     "deleting": "Wird gelöscht…",
-    "deleteFailed": "Nicht gelöscht: {{reason}}"
+    "deleteFailed": "Nicht gelöscht: {{reason}}",
+    "required": "Erforderlich"
   },
   "app": {
     "apiUnreachable": "Die Provisa-API ist nicht erreichbar.",

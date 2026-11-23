@@ -34,8 +34,6 @@
     "sqlName": "Nome SQL",
     "cardinalityWarning": "Attenzione: se questo join restituisce più di una riga per elemento padre, verrà usato solo il primo valore.",
     "toggleDetails": "Mostra/nascondi dettagli della relazione",
-    "junctionBadge": "prop.",
-    "junctionBadgeTitle": "Relazione con proprietà da {{table}}",
     "deleteTitle": "Eliminare la relazione \"{{id}}\"?",
     "deleteConsequence": "La relazione viene rimossa dal modello. Le query non possono più eseguire join attraverso di essa.",
     "parametersFed": "Parametri alimentati",
@@ -68,6 +66,15 @@
         "rest": "REST",
         "grpc": "gRPC",
         "jsonapi": "JSON:API"
+      },
+      "aggregate": {
+        "cypher": "Conta {{name}} in Cypher",
+        "sql": "Conta {{name}} in SQL",
+        "sparql": "Conta {{name}} in SPARQL",
+        "graphql": "Conta {{name}} in GraphQL",
+        "rest": "Conta {{name}} in REST",
+        "grpc": "Conta {{name}} in gRPC",
+        "jsonapi": "Conta {{name}} in JSON:API"
       }
     }
   }

@@ -212,6 +212,25 @@ describe("LocalUsersTab", () => {
     expect(screen.getByText("alice")).toBeInTheDocument();
   });
 
+  // REQ-1968 (amended 2026-11-22): Save is never disabled by an empty field; pressed, it marks
+  // each one inline and moves focus to the first.
+  it("marks the empty required fields on Save instead of disabling it", async () => {
+    render(<LocalUsersTab allRoles={["admin"]} allDomains={["sales"]} />);
+    fireEvent.click(screen.getByTestId("local-user-add"));
+    const username = screen.getByRole("textbox", { name: t("localUsers.username") });
+    expect(username).not.toHaveAttribute("aria-invalid", "true");
+    const save = screen.getByTestId("local-user-save");
+    expect(save).toBeEnabled();
+    fireEvent.click(save);
+    await waitFor(() => expect(username).toHaveAttribute("aria-invalid", "true"));
+    // A PasswordInput draws its error on its wrapper: both fields say so.
+    expect(screen.getAllByText("Required")).toHaveLength(2);
+    expect(username).toHaveFocus();
+    expect(createSpy).not.toHaveBeenCalled();
+    fireEvent.change(username, { target: { value: "bob" } });
+    await waitFor(() => expect(username).not.toHaveAttribute("aria-invalid", "true"));
+  });
+
   it("creates a user via the required fields and clears the form", async () => {
     render(<LocalUsersTab allRoles={["admin"]} allDomains={["sales"]} />);
     // The form opens from the button above the list, which is hidden while the form is open.

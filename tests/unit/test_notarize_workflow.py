@@ -363,7 +363,10 @@ def test_the_notarize_script_waits_less_than_its_job_limit_and_staples_through_t
     source = (_REPO / "packaging/macos/notarize-dmg.sh").read_text()
     wait = int(source.split("NOTARY_TIMEOUT_MINUTES:-")[1].split("}")[0])
     assert wait < job["timeout-minutes"]
-    assert "xcrun notarytool submit" in source
+    # The submit goes through notary-lib.sh's bounded notary_submit (R511-S6C upload cap), never a
+    # bare notarytool call; test_dmg_notary_lib.py checks notary_submit itself.
+    assert "notary_submit " in source
+    assert "xcrun notarytool submit" not in source
     assert "staple_retry " in source
     assert "xcrun stapler staple" not in source
 

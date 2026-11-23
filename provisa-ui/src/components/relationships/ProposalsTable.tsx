@@ -44,13 +44,7 @@ import { Pencil, X } from "lucide-react";
 import type { DiscoveryKind, RunProposal } from "../../api/admin";
 import { FormField, FormLayout } from "../form/FormLayout";
 import { BreakableName } from "../list/BreakableName";
-import {
-  ListActions,
-  ListActionsHead,
-  ListHead,
-  ListRow,
-  ListTable,
-} from "../list/ListTable";
+import { ListActions, ListActionsHead, ListHead, ListRow, ListTable } from "../list/ListTable";
 import type { ListSelection } from "../list/listSelection";
 import { useListSortGroup, type ListColumn } from "../list/useListSortGroup";
 import { ColumnFilterMenu } from "../../pages/sql/ColumnFilterMenu";
@@ -64,7 +58,9 @@ import {
 } from "../../pages/sql/columnFilter";
 import { measureLines } from "./pairMeasure";
 import { ProposalEditDialog } from "./ProposalEditDialog";
-import { candidateName } from "./relationship-types";
+import { candidateName, SHAPE_CODE } from "./relationship-types";
+import { RelShapeBadge } from "./RelShape";
+import type { RelationshipShape } from "../../types/admin";
 import { scorePercent, type RunProposalsState } from "./useRunProposals";
 
 interface ProposalsTableProps {
@@ -97,6 +93,13 @@ function valuesOf(rows: RunProposal[], col: FilterCol) {
   return col.kind === "number"
     ? entries.sort((a, b) => Number(b.value) - Number(a.value))
     : entries.sort((a, b) => a.value.localeCompare(b.value));
+}
+
+/** REQ-1586: the relationship accepting a proposal makes: through the junction it names, through
+ * a shared dimension where it is a many-to-many pair (neither column a key), else direct. */
+function shapeOf(p: RunProposal): RelationshipShape {
+  if (p.via) return "junction";
+  return p.cardinality === "many-to-many" ? "shared_dimension" : "direct";
 }
 
 /** What produced a candidate no values were compared for: the rule that proposed it, else the model. */
@@ -217,6 +220,13 @@ export function ProposalsTable({
       label: t("candidatesTable.colCardinality"),
       kind: "text",
       cell: (p) => p.cardinality,
+    },
+    // REQ-1586 (amended 2026-11-22): the relationship accepting the row makes.
+    {
+      key: "rel_type",
+      label: t("relShape.label"),
+      kind: "text",
+      cell: (p) => SHAPE_CODE[shapeOf(p)],
     },
     { key: "measure", label: t("proposalsTable.colMeasure"), kind: "text", cell: measured },
     {
@@ -469,6 +479,12 @@ export function ProposalsTable({
                     </Table.Td>
                     <Table.Td data-testid={`proposal-cardinality-${p.id}`}>
                       {state.edits.get(p.id)?.cardinality ?? p.cardinality ?? ""}
+                    </Table.Td>
+                    <Table.Td data-testid={`proposal-rel-type-${p.id}`}>
+                      <RelShapeBadge
+                        shape={shapeOf(p)}
+                        table={p.via ? tableNameById[p.via.table_id] : (p.dimension?.name ?? null)}
+                      />
                     </Table.Td>
                     <Table.Td data-testid={`proposal-measure-${p.id}`}>{measured(p)}</Table.Td>
                     <Table.Td>{t(`proposalsTable.kind.${p.kind}`)}</Table.Td>

@@ -216,7 +216,10 @@ def _name_of(node: exp.Expr) -> str:
 
 
 def _positive_integer(node: exp.Expr | None, minimum: int) -> bool:
-    """Whether ``node`` is an integer literal of at least ``minimum``."""
+    """Whether ``node`` is an integer literal of at least ``minimum``, written bare or cast to
+    integer (``2::integer`` names its value as plainly; a value past integer raises before)."""
+    if isinstance(node, exp.Cast) and node.to.this == exp.DataType.Type.INT:
+        node = node.this
     return (
         isinstance(node, exp.Literal)
         and not node.is_string

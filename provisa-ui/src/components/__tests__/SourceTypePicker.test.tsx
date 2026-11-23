@@ -213,6 +213,37 @@ describe("SourceTypePicker", () => {
     );
   });
 
+  describe("layout", () => {
+    // The groups flow in CSS columns: the count follows the dialog's width and the heights
+    // balance, a group never splits across columns, and the order runs down, then across.
+    it("flows the groups in columns about 210px wide, each group whole, in order", async () => {
+      open();
+      const columns = await screen.findByTestId("source-type-picker-columns");
+      expect(columns.style.columnWidth).toBe("210px");
+      expect(columns.style.gridTemplateColumns).toBe("");
+      const sections = Array.from(
+        columns.querySelectorAll<HTMLElement>('[data-testid^="source-type-picker-section-"]'),
+      );
+      expect(sections.map((s) => s.dataset.testid)).toEqual([
+        "source-type-picker-section-RDBMS",
+        "source-type-picker-section-Streaming",
+      ]);
+      for (const s of sections) {
+        expect(s.parentElement).toBe(columns);
+        expect(s.style.breakInside).toBe("avoid");
+      }
+    });
+
+    it("wraps a long name to two lines instead of truncating it", async () => {
+      open();
+      const name = await screen.findByTestId("source-name-postgresql");
+      expect(name).toHaveTextContent("PostgreSQL");
+      expect(name).not.toHaveAttribute("data-truncate");
+      expect(name).toHaveAttribute("data-line-clamp");
+      expect(name.style.getPropertyValue("--text-line-clamp")).toBe("2");
+    });
+  });
+
   it("a category chip shows only that category", async () => {
     open();
     fireEvent.click(await screen.findByTestId("source-type-picker-cat-Streaming"));

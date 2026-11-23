@@ -1,0 +1,11 @@
+{
+  "relShape": {
+    "label": "Rel type",
+    "directTip": "Direct foreign key",
+    "junctionTip": "Through junction {{table}}",
+    "dimensionTip": "Through shared dimension {{table}}",
+    "dimensionTipUnnamed": "Through a shared dimension",
+    "prop": "prop",
+    "propTip": "Properties: {{properties}}"
+  }
+}

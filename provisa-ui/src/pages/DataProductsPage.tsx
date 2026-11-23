@@ -27,6 +27,8 @@ import {
   useDataProductStatus,
 } from "../hooks/useDataProductMutations";
 import { ProductStatusBadge } from "./data-products/ProductStatusBadge";
+import { ProductSyncCell } from "./data-products/ProductSyncStatus";
+import { SYNC_ORDER, syncState, useProductSyncStatus } from "./data-products/productSync";
 import type { DataProduct } from "../types/admin";
 import { fetchActions, type TrackedFunction } from "../api/actions";
 import { HelpBubble } from "../components/HelpBubble";
@@ -435,6 +437,7 @@ export function DataProductsPage() {
       domainFilter,
     ],
   );
+  const syncStatus = useProductSyncStatus();
   const productColumns = useMemo<ListColumn<DataProduct>[]>(
     () => [
       { key: "id", label: t("dataProductsTab.colId"), sortValue: (p) => p.id },
@@ -457,9 +460,17 @@ export function DataProductsPage() {
         sortValue: (p) => p.status,
         groupValue: (p) => t(`dataProductsTab.status_${p.status}`),
       },
+      {
+        // REQ-2259: the product's sync status, from the record of every publish.
+        key: "sync",
+        label: t("dataProductsTab.colSync"),
+        sortValue: (p) => SYNC_ORDER[syncState(syncStatus.statuses[p.id] ?? [])],
+        groupValue: (p) =>
+          t(`dataProductsTab.syncGroup_${syncState(syncStatus.statuses[p.id] ?? [])}`),
+      },
       { key: "purpose", label: t("dataProductsTab.colPurpose"), sortValue: (p) => p.purpose },
     ],
-    [t],
+    [t, syncStatus.statuses],
   );
   const sortGroup = useListSortGroup(filteredProducts, productColumns, "data-products");
   // REQ-2240: data products selected and deleted together.
@@ -609,6 +620,11 @@ export function DataProductsPage() {
           {error}
         </Alert>
       )}
+      {syncStatus.error && (
+        <Alert color="red" mb="sm" data-testid="data-products-sync-error">
+          {t("dataProductsTab.syncUnread", { error: syncStatus.error })}
+        </Alert>
+      )}
       {products.unreadable && (
         <Alert color="yellow" mb="sm" data-testid="data-products-unreadable">
           {t("dataProductCore.unreadable")}
@@ -660,6 +676,7 @@ export function DataProductsPage() {
                       { col: "name" },
                       { col: "owner" },
                       { col: "status" },
+                      { col: "sync" },
                       { col: "purpose" },
                     ]}
                   />
@@ -667,7 +684,7 @@ export function DataProductsPage() {
                     {/* Unreadable, the banner above says why the list is empty; it is not that
                         none exist. With products read, an empty list is the filters'. */}
                     {filteredProducts.length === 0 && !products.unreadable && (
-                      <ListEmpty colSpan={6} testId="data-products-empty">
+                      <ListEmpty colSpan={7} testId="data-products-empty">
                         {dataProducts.length === 0
                           ? t("dataProductsTab.empty")
                           : t("dataProductsTab.noMatch")}
@@ -675,7 +692,7 @@ export function DataProductsPage() {
                     )}
                     <ListItems
                       state={sortGroup}
-                      colSpan={6}
+                      colSpan={7}
                       rowKey={(p) => p.id}
                       render={(p) => {
                         const isExpanded = expanded === p.id;
@@ -722,6 +739,12 @@ export function DataProductsPage() {
                               <ProductStatusBadge
                                 status={p.status}
                                 testId={`data-products-status-${p.id}`}
+                              />
+                            </Table.Td>
+                            <Table.Td>
+                              <ProductSyncCell
+                                productId={p.id}
+                                statuses={syncStatus.statuses[p.id] ?? []}
                               />
                             </Table.Td>
                             <Table.Td>

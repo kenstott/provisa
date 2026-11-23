@@ -33,8 +33,9 @@ def _clickhouse(sql: str) -> str:
 
 
 def test_each_row_is_in_the_grid():
-    in_the_grid = {id(f) for f in GRID.features}
-    assert {id(ARRAY_AGG), id(CURRENT_SCHEMAS)} <= in_the_grid
+    # By name: the grid holds each row with what polyfill.measured states of it.
+    in_the_grid = {f.name for f in GRID.features}
+    assert {ARRAY_AGG.name, CURRENT_SCHEMAS.name} <= in_the_grid
 
 
 @pytest.mark.parametrize(

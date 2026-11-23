@@ -130,6 +130,7 @@ nav:
       - Subscriptions: subscriptions.md
       - Integrations (JDBC, BI, Flight): integrations.md
       - pgwire: pgwire.md
+      - VS Code: vscode.md
   - Data Sources:
       - Sources: sources.md
       - Code Resolvers: code-sources.md

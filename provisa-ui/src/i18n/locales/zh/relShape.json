@@ -1,0 +1,11 @@
+{
+  "relShape": {
+    "label": "关系类型",
+    "directTip": "直接外键",
+    "junctionTip": "通过关联表 {{table}}",
+    "dimensionTip": "通过共享维度 {{table}}",
+    "dimensionTipUnnamed": "通过共享维度",
+    "prop": "属性",
+    "propTip": "属性：{{properties}}"
+  }
+}
