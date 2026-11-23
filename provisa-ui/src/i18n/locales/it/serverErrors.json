@@ -573,7 +573,8 @@
       "table_domain_required": "La tabella '{{table}}' non indica alcun dominio: ogni tabella è registrata in un dominio",
       "table_state_from_function": "La tabella '{{table}}' è derivata dalla funzione '{{name}}' e ne ha lo stato di rilascio: non viene ritirata né ripristinata da sola",
       "table_region_from_function": "La tabella '{{table}}' deriva dalla funzione '{{name}}' e ha la sua regione: non viene spostata da sola in un'altra regione",
-      "table_name_reserved": "Il nome di tabella '{{table}}' è riservato: i comandi di un dominio sono serviti sotto 'commands'. Registra la tabella con un altro nome o alias."
+      "table_name_reserved": "Il nome di tabella '{{table}}' è riservato: i comandi di un dominio sono serviti sotto 'commands'. Registra la tabella con un altro nome o alias.",
+      "file_types_differ": "Il modello {{glob}} corrisponde a file di più tipi ({{types}}); i file di una tabella devono essere tutti dello stesso tipo."
     },
     "secrets": {
       "env_reference_object_locked": "Questo oggetto è dell'operatore: legge l'ambiente proprio del server e non può essere modificato qui. Aggiungine invece uno tuo.",

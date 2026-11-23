@@ -573,7 +573,8 @@
       "table_domain_required": "表 '{{table}}' 未指定域：每个表都注册在一个域中",
       "table_state_from_function": "表 '{{table}}' 派生自函数 '{{name}}'，并具有其发布状态：不能单独撤回或恢复",
       "table_region_from_function": "表 '{{table}}' 派生自函数 '{{name}}'，并沿用其区域：不能单独将其移动到其他区域",
-      "table_name_reserved": "表名 '{{table}}' 为保留名称：域的命令在 'commands' 下提供。请使用其他名称或别名注册该表。"
+      "table_name_reserved": "表名 '{{table}}' 为保留名称：域的命令在 'commands' 下提供。请使用其他名称或别名注册该表。",
+      "file_types_differ": "模式 {{glob}} 匹配了多种类型的文件（{{types}}）；同一张表的文件必须为同一种类型。"
     },
     "secrets": {
       "env_reference_object_locked": "此对象属于运营方：它读取服务器自身的环境，无法在此更改。请改为添加您自己的对象。",

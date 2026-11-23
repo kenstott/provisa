@@ -573,7 +573,8 @@
       "table_domain_required": "Tabelle '{{table}}' nennt keine Domäne: Jede Tabelle wird in einer Domäne registriert",
       "table_state_from_function": "Die Tabelle '{{table}}' ist von der Funktion '{{name}}' abgeleitet und hat deren Freigabestatus: Sie wird nicht für sich allein zurückgezogen oder wieder eingesetzt",
       "table_region_from_function": "Die Tabelle '{{table}}' ist von der Funktion '{{name}}' abgeleitet und hat deren Region: Sie wird nicht für sich allein in eine andere Region verschoben",
-      "table_name_reserved": "Der Tabellenname '{{table}}' ist reserviert: Die Commands einer Domäne werden unter 'commands' bereitgestellt. Registrieren Sie die Tabelle unter einem anderen Namen oder Alias."
+      "table_name_reserved": "Der Tabellenname '{{table}}' ist reserviert: Die Commands einer Domäne werden unter 'commands' bereitgestellt. Registrieren Sie die Tabelle unter einem anderen Namen oder Alias.",
+      "file_types_differ": "Das Muster {{glob}} trifft Dateien mehrerer Typen ({{types}}); die Dateien einer Tabelle müssen alle denselben Typ haben."
     },
     "secrets": {
       "env_reference_object_locked": "Dieses Objekt gehört dem Betreiber: Es liest die eigene Umgebung des Servers und kann hier nicht geändert werden. Legen Sie stattdessen ein eigenes an.",

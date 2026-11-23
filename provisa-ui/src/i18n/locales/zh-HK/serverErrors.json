@@ -573,7 +573,8 @@
       "table_domain_required": "表 '{{table}}' 未指定域：每個表都註冊在一個域中",
       "table_state_from_function": "表 '{{table}}' 衍生自函數 '{{name}}'，並具有其發佈狀態：不能單獨撤回或恢復",
       "table_region_from_function": "表 '{{table}}' 衍生自函數 '{{name}}'，並沿用其區域：不能單獨將其移動到其他區域",
-      "table_name_reserved": "表名 '{{table}}' 為保留名稱：域的指令在 'commands' 下提供。請使用其他名稱或別名註冊該表。"
+      "table_name_reserved": "表名 '{{table}}' 為保留名稱：域的指令在 'commands' 下提供。請使用其他名稱或別名註冊該表。",
+      "file_types_differ": "模式 {{glob}} 符合多於一種類型的檔案（{{types}}）；同一個表的檔案必須全部屬於同一種類型。"
     },
     "secrets": {
       "env_reference_object_locked": "此物件屬於營運方：它讀取伺服器自身的環境，無法在此更改。請改為新增您自己的物件。",
