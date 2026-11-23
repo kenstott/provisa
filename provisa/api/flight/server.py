@@ -797,12 +797,13 @@ class ProvisaFlightServer(
         found (:meth:`_catalog_role`).
         """
 
-        middleware = context.get_middleware(_HEADERS)
-        if middleware is not None and _minted(middleware.headers):
-            return _run_rpc(lambda: self._minted_flight_info(context, descriptor))
-        return _run_rpc(
-            lambda: self._as_catalog_role(context, lambda role: self._flight_info(descriptor, role))
-        )
+        def answer() -> flight.FlightInfo:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+            middleware = context.get_middleware(_HEADERS)
+            if middleware is not None and _minted(middleware.headers):
+                return self._minted_flight_info(context, descriptor)
+            return self._as_catalog_role(context, lambda role: self._flight_info(descriptor, role))
+
+        return _run_rpc(answer)
 
     def _minted_flight_info(
         self,
@@ -1499,7 +1500,10 @@ class ProvisaFlightServer(
         from provisa.core.request_context import reset_current_org, set_current_org
         from provisa.pgwire.minted import CallTokenRefused
 
-        scope = self._minted_scope(str(request["token"]), request.get("call"))
+        call_id = request.get("call")
+        scope = self._minted_scope(
+            str(request["token"]), call_id if isinstance(call_id, str) else None
+        )
         call = scope.call
         query = request.get("query")
         if not query:
@@ -1531,16 +1535,14 @@ class ProvisaFlightServer(
                 _shield.quiesce()
             reset_current_org(org_token)
 
-    def _minted_scope(self, token: str, call_id: object) -> Any:  # a pgwire.minted.CallScope
+    def _minted_scope(self, token: str, call_id: str | None) -> Any:  # a pgwire.minted.CallScope
         """The call ``token`` was minted for, named by ``call_id`` (the ``x-provisa-call``
         header). One answer for a wrong, an expired and another call's token."""
         from provisa.pgwire.minted import CallScope, MintedTokenStore, hash_token
 
         store = MintedTokenStore(self._state.admin_db)
         call = (
-            run_on_connection_loop(store.resolve(token, str(call_id)), timeout=60)
-            if isinstance(call_id, str) and call_id
-            else None
+            run_on_connection_loop(store.resolve(token, call_id), timeout=60) if call_id else None
         )
         if call is None:
             raise flight.FlightUnauthenticatedError(  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
