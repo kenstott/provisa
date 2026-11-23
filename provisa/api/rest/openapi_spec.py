@@ -627,7 +627,7 @@ SWAGGER_UI_HTML = """\
   <meta charset="UTF-8" />
   <title>Provisa REST API</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css" />
+  <link rel="stylesheet" href="/swagger-ui/swagger-ui.css" />
   <style>
     /* Provisa design tokens — light defaults, dark overrides below */
     :root {
@@ -801,7 +801,7 @@ SWAGGER_UI_HTML = """\
 <body>
   <div id="download-bar"></div>
   <div id="swagger-ui"></div>
-  <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+  <script src="/swagger-ui/swagger-ui-bundle.js"></script>
   <script>
     window.onload = () => {
       // The role and domains this page describes, stamped by the server (see swagger_ui_html).

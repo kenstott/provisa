@@ -732,17 +732,11 @@ export function SourceFormFieldsExtended({
                   data-testid="files-transport-select"
                 />
               </FormField>
-              <FormField size="medium">
+              {/* A path takes the long size (FormFieldSize), the Type field's width. */}
+              <FormField size="long" help={t("sourceFormFieldsExtended.pathGlobHint")}>
                 <TextInput
                   required
-                  label={
-                    <>
-                      {t("sourceFormFieldsExtended.pathGlob")}{" "}
-                      <Text component="span" c="dimmed" size="xs">
-                        {t("sourceFormFieldsExtended.pathGlobHint")}
-                      </Text>
-                    </>
-                  }
+                  label={t("sourceFormFieldsExtended.pathGlob")}
                   value={form.path}
                   onChange={(e) => setForm({ ...form, path: e.target.value })}
                   placeholder={filesTransport === "file://" ? "/data/files/**" : "bucket/prefix/**"}
