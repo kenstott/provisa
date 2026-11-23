@@ -17,7 +17,8 @@ environment's store under the principal's own schema (a session id fixed by the 
 :func:`session_id`); what the session knows of them -- each table's shape and serials, its
 generation and its ephemeral graph's index -- is one control-plane row per principal
 (``graph_sessions``). :func:`session_for` reads the row for each statement under a lock -- shared
-for a statement with no write clause (``parser.writes_in``), exclusive for one with -- and a
+for a statement with no write clause (``parser.writes_in``), exclusive for one with; a statement
+with no write clause in a session holding nothing reads it alone, with no lock -- and a
 statement that changed the session writes it back with the generation advanced. Whichever worker
 or connection a statement reaches therefore sees what every earlier statement made, and nothing is
 lost when a connection, a tab or a worker goes.
@@ -34,6 +35,7 @@ own session (REQ-615); only the graph session is the principal's.
 from __future__ import annotations
 
 import contextvars
+import functools
 import hashlib
 import json
 import logging
@@ -263,6 +265,57 @@ async def _end(state: Any, user_id: str, stored: bool) -> None:
         await temp_exec.end(TempSession(id=session_id(user_id), stored=True, kept=True), state)
 
 
+@functools.cache
+def _nothing_held() -> dict[str, Any]:
+    """What the row of a session holding nothing keeps, as the control plane gives it back."""
+    return json.loads(json.dumps(_held(TempSession(kept=True))))
+
+
+async def _empty_session(
+    state: Any, user_id: str, fingerprint: str
+) -> tuple[GraphSession, datetime] | None:
+    """The principal's session, and when its row was last marked used, for a statement with no
+    write clause when its row, under the rights it holds now, holds nothing: the row read alone,
+    with no lock and no transaction, its connection given back before the statement runs. None
+    for any other -- a first session, one whose rights changed, or one holding objects -- which
+    the locked read takes.
+
+    A statement with no write clause in a session holding nothing reads the model alone: a write
+    another client makes meanwhile changes nothing it reads, so it holds no lock against one."""
+    async with state.tenant_db.acquire() as conn:
+        row = (await conn.read_alone(select(rows).where(rows.c.user_id == user_id))).first()
+    if row is None or row.rights != fingerprint:
+        return None
+    held = _nothing_held()
+    if (row.tables, row.graph, row.stored) != (held["tables"], held["graph"], held["stored"]):
+        return None
+    session = TempSession(id=session_id(user_id), generation=row.generation, kept=True)
+    return GraphSession(user_id, session, exclusive=False), row.used_at
+
+
+@asynccontextmanager
+async def _read_in(state: Any, held: GraphSession, used_at: datetime) -> AsyncGenerator[None]:
+    """``held``, a session holding nothing (:func:`_empty_session`), bound for one statement with
+    no write clause; its last-use mark renewed after, as the locked read renews it."""
+    before = _held(held.session)
+    token = _bound.set(held)
+    temp = temp_tables.bind(held.session)
+    try:
+        yield
+    finally:
+        temp_tables.unbind(temp)
+        _bound.reset(token)
+    assert not held.wrote and _held(held.session) == before, (
+        "a statement with no write clause changed the graph session"
+    )
+    now = datetime.now(UTC)
+    if used_at < now - _USE_MARKED_EVERY:
+        async with state.tenant_db.acquire() as conn:
+            await conn.execute_core(
+                update(rows).where(rows.c.user_id == held.user_id).values(used_at=now)
+            )
+
+
 @asynccontextmanager
 async def session_for(
     state: Any, user_id: str, claims: list[str], *, writes: bool
@@ -276,6 +329,13 @@ async def session_for(
         yield outer
         return
     fingerprint = rights(state, claims)
+    if not writes:
+        empty = await _empty_session(state, user_id, fingerprint)
+        if empty is not None:
+            held, used_at = empty
+            async with _read_in(state, held, used_at):
+                yield held
+            return
     async with state.tenant_db.acquire() as conn:
         failure: BaseException | None = None
         async with conn.transaction():
