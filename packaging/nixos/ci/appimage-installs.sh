@@ -7,11 +7,9 @@ set -euo pipefail
 . packaging/nixos/ci/appimage-runtime.sh
 
 rm -rf ~/.provisa
-# PROVISA_INSTALL_SOURCE=bundled: install the wheels this AppImage carries -- this build's --
-# not a release from PyPI.
 answers="$(mktemp)"
 printf '\n%.0s' $(seq 1 20) > "$answers"
-if ! PROVISA_INSTALL_SOURCE=bundled "$APPIMAGE" start < "$answers"; then
+if ! "$APPIMAGE" start < "$answers"; then
   echo "::error::first launch, or the start after it, failed"
   exit 1
 fi

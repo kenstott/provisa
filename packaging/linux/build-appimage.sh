@@ -232,8 +232,8 @@ build_appdir() {
   cp "${REPO_ROOT}/packaging/nixos/preinstall-check.sh" "${APPDIR}/nixos/preinstall-check.sh"
   cp "${REPO_ROOT}/packaging/nixos/preinstall.nix"      "${APPDIR}/nixos/preinstall.nix"
 
-  # Bake the release version so first-launch.sh can pin the online native pip
-  # install to the matching release (parity with macOS Resources/VERSION).
+  # Bake the release version: first-launch.sh names this build's release assets by it and
+  # stamps the install sentinel (parity with macOS Resources/VERSION).
   printf '%s' "${VERSION:-dev}" > "${APPDIR}/VERSION"
 
   # Brand icon (graphite/emerald P mark).
