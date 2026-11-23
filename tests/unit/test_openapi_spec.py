@@ -649,3 +649,16 @@ class TestSwaggerUiScope:
         html = swagger_ui_html("light", "</script><b>", None)
         assert "</script><b>" not in html
         assert self._scope(html)["role"] == "</script><b>"
+
+
+class TestSwaggerUiAssetsFromTheUiBuild:
+    """Swagger UI comes from the UI build (the swagger-ui-dist npm package), never a CDN: a
+    pip-installed Provisa fetches only from PyPI, Maven Central and npm (docs/arch/fetch-sources.md)."""
+
+    def test_the_page_loads_swagger_ui_from_the_ui_build(self):
+        from provisa.api.rest.openapi_spec import swagger_ui_html
+
+        html = swagger_ui_html("light")
+        assert '<link rel="stylesheet" href="/swagger-ui/swagger-ui.css" />' in html
+        assert '<script src="/swagger-ui/swagger-ui-bundle.js"></script>' in html
+        assert "unpkg.com" not in html

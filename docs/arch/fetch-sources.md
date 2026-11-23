@@ -13,6 +13,11 @@ github.io or githubusercontent.com host outside its explicit list. Each listed e
 registry move it waits for. Outside Python only URLs count: a bare `github.com/...` there is a Go
 module path or protobuf `go_package`, resolved through the GOPROXY.
 
+The same test covers every other host. Each http(s) URL host on the pip path is a PyPI, Maven Central
+or npm host, or is listed in its `HOSTS` table with its move or the reason it is no dependency fetch
+(a service the user connects, a namespace, a placeholder, a local service). Its `IMPLICIT` table lists
+the hosts a dependency reaches by its own default, which no URL in Provisa's code names.
+
 ## Install time: `pip install 'provisa[embedded]'`
 
 | What | From | Pip path | Registry home |
@@ -37,7 +42,10 @@ No declared dependency is a direct GitHub URL (the test checks `pyproject.toml`)
 | UI | `provisa/_ui` in the wheel | served locally | yes, offline | none needed |
 | Pyodide and its packages | `provisa-notebook` wheel | served locally | yes, offline | none needed |
 | Default embedding model all-MiniLM-L6-v2 | `huggingface.co`, or `embedding.hub_endpoint` / `HF_ENDPOINT` | first embedding | yes | a Hugging Face mirror through the setting; not one of the three registries |
-| Swagger UI on the REST docs page | browser loads `unpkg.com/swagger-ui-dist@5` | page view | yes, in the browser | bundle `swagger-ui-dist` from npm into the build |
+| Swagger UI on the REST docs page | `provisa/_ui/swagger-ui/`, copied from the `swagger-ui-dist` npm package by the UI build | served locally | yes, offline | npm already |
+| Swagger UI and ReDoc on FastAPI's own `/data/openapi/docs` and `/data/openapi/redoc` | browser loads `cdn.jsdelivr.net` and the `fastapi.tiangolo.com` favicon (FastAPI's defaults) | page view | yes, in the browser | serve both from npm packages in the UI build |
+| Tour sample Parquet file | `provisa.dev/demo-data/supplies.parquet` | the tour adds its sample source | yes | ship the file in the wheel |
+| Published demo bundles | `ghcr.io/kenstott` (OCI), or `PROVISA_DEMO_REGISTRY` | a demo is pulled | yes | open question: none of the three registries hosts OCI artifacts |
 
 ## On demand: normal operation
 
@@ -47,8 +55,9 @@ No declared dependency is a direct GitHub URL (the test checks `pyproject.toml`)
 | Node | `nodejs.org/dist` | first JavaScript code source on Node | npm per-platform Node packages |
 | Bun | GitHub release | first code source on Bun | npm `@oven/bun-<platform>` |
 | Deno | GitHub release | first code source on Deno | npm `@deno/<platform>` |
-| CPython (python-build-standalone) | GitHub release | first Python code source | open question |
-| uv | GitHub release | first Python code source | PyPI `uv` wheels |
+| CPython for a Python code source | none: the interpreter Provisa runs on (the one pip installed it into, or the installer's bundled one) | never fetched | none needed |
+| uv | the `uv` wheel, a declared dependency, from PyPI at install time | never fetched | PyPI already |
+| CPython (python-build-standalone) for a remote host's image | GitHub release | first image built for a Python code source | open question |
 | Go toolchain | `go.dev/dl` | first Go code source | open question |
 | Rust toolchain | `static.rust-lang.org` | first Rust code source | open question |
 | pyarrow wheel for the Python host | `files.pythonhosted.org` | first Python code source | PyPI already, but the URL is fixed |
@@ -56,6 +65,9 @@ No declared dependency is a direct GitHub URL (the test checks `pyproject.toml`)
 | Temurin JDK | GitHub release | first sparql source with reasoning | open question |
 | HermiT and OWL API jars | `repo1.maven.org/maven2` | first sparql source with reasoning | Maven Central already, but the URL is fixed |
 | code-source dependencies (npm, PyPI, Go modules, crates, git) | the organisation's package registries | each code-source install | configurable mirror already |
+
+A Python code source runs on the interpreter Provisa runs on, in a virtual environment uv makes for it;
+only an image built for a remote host's platform takes the pinned python-build-standalone.
 
 The code runtimes and reasoner jars use fixed public URLs. They do not go through the organisation's
 configured package registries, so a site that reaches only its Artifactory fails even for the ones

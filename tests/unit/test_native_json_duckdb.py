@@ -23,6 +23,7 @@ from provisa.transpiler.native_json import (
     NestedColumn,
     native_json_marker,
     resolve_native_json,
+    to_json_sql,
 )
 from provisa.transpiler.transpile import transpile
 
@@ -73,9 +74,9 @@ def _registered(con: duckdb.DuckDBPyConnection, table: str) -> NestedColumn:
 
 
 def _read_sql(nested: NestedColumn, table: str) -> str:
-    marker = native_json_marker(exp.column("v", "t", quoted=True), nested)
-    semantic = f'SELECT {marker.sql(dialect="postgres")} AS "v" FROM "{table}" AS "t"'
-    return transpile(semantic, "duckdb")
+    """The JSON form a landing and a predicate read (REQ-1965): a result column of a typed array
+    DuckDB holds natively is read as the array (test_native_typed_array_reads.py)."""
+    return f'SELECT {to_json_sql('"v"', nested, "duckdb", "v")} AS "v" FROM "{table}"'
 
 
 @pytest.mark.parametrize(("column_type", "literal", "expected"), _CASES)

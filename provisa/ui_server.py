@@ -266,6 +266,10 @@ _STATIC_PREFIXES = (
     # these vendored bundles as script/style subresources — not navigations. Without the prefix
     # they fall through to the API proxy and come back 401, and the iframe renders blank.
     "/voyager/",
+    # The REST docs page (provisa/api/rest/openapi_spec.py) is a srcDoc iframe that loads Swagger UI
+    # as script/style subresources. The UI build copies them from the swagger-ui-dist npm package,
+    # so a pip-installed Provisa never reaches a CDN for them (docs/arch/fetch-sources.md).
+    "/swagger-ui/",
 )
 
 #: REQ-1923: the page an issuer sends the operator's browser back to after a source sign-in. Its

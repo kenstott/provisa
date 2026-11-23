@@ -95,13 +95,12 @@ def _cache(root: Path, platform_key: tuple[str, str]) -> None:
             else _tgz({asset.executable: b"exe"})
         )
         (archives / asset.sha256).write_bytes(data)
-    # The server's own uv and node, as resolved on this machine.
+    # The server's own node, as resolved on this machine (its uv is the PyPI wheel's).
     here = (platform.system(), platform.machine())
-    for name in ("uv", "node"):
-        pin = RUNTIMES[name]
-        exe = root / "code" / name / pin.version / pin.asset(here).executable
-        exe.parent.mkdir(parents=True, exist_ok=True)
-        exe.write_text("")
+    pin = RUNTIMES["node"]
+    exe = root / "code" / "node" / pin.version / pin.asset(here).executable
+    exe.parent.mkdir(parents=True, exist_ok=True)
+    exe.write_text("")
     npm = (
         root / "code" / "node" / RUNTIMES["node"].version
         / Path(RUNTIMES["node"].asset(here).executable).parent.parent

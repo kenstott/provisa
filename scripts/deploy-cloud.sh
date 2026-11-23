@@ -243,7 +243,9 @@ build_ui() {
   # voyager/ is the vendored GraphQL Voyager bundle the Schema Explorer's SDL iframe loads;
   # it is part of the UI build output, so a patch that left it behind could serve a node whose
   # image predates it and the SDL view would render blank.
-  tar czf "$STAGE/ui.tgz" -C "$REPO/provisa-ui/dist" assets index.html auth-relay.html voyager
+  # swagger-ui/ is Swagger UI, copied from the swagger-ui-dist npm package by the build, which the
+  # REST docs page loads; left behind, that page renders blank.
+  tar czf "$STAGE/ui.tgz" -C "$REPO/provisa-ui/dist" assets index.html auth-relay.html voyager swagger-ui
 }
 
 push_ui() {

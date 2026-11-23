@@ -22,6 +22,7 @@ from __future__ import annotations
 import importlib.util
 import os
 import re
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -2124,3 +2125,175 @@ def test_no_job_uploads_a_second_artifact_under_a_name_its_priming_action_upload
                     assert name not in taken, (
                         f"{path.name}:{job} uploads {name!r}, which its priming action uploads"
                     )
+
+
+# --- the nightly on main and the release-ready summary (REQ-1989, amended 2026-11-22) ------------
+
+_NIGHTLY_MAIN = REPO / ".github" / "workflows" / "nightly-main.yml"
+_RELEASE_READY = REPO / ".github" / "workflows" / "release-ready.yml"
+_NIGHTLY_LANE_NAMES = {"unit", "lint", "requirements", "integration", "e2e", "packaging"}
+
+
+def _script(name: str):
+    spec = importlib.util.spec_from_file_location(name, REPO / "scripts" / f"{name}.py")
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _code(path: Path) -> str:
+    return "\n".join(
+        line for line in path.read_text().splitlines() if not line.lstrip().startswith("#")
+    )
+
+
+def test_the_nightly_on_main_runs_every_night_on_main_only():
+    workflow = yaml.safe_load(_NIGHTLY_MAIN.read_text())
+    assert [entry["cron"] for entry in workflow[True]["schedule"]] == ["0 5 * * *"]
+    assert "workflow_dispatch" in workflow[True] and "push" not in workflow[True]
+    assert workflow["permissions"] == {"contents": "write", "actions": "write"}
+    assert workflow["concurrency"] == {"group": "nightly-main", "cancel-in-progress": False}
+    (job,) = workflow["jobs"].values()
+    assert job["if"] == "github.ref == 'refs/heads/main'"
+
+
+def test_the_nightly_pins_main_numbers_the_dry_run_and_starts_the_lanes_in_that_order():
+    workflow = yaml.safe_load(_NIGHTLY_MAIN.read_text())
+    steps = workflow["jobs"]["start"]["steps"]
+    assert steps[0]["uses"].startswith("actions/checkout@")
+    assert steps[0]["with"] == {"fetch-depth": 0}
+    runs = [str(s.get("run", "")) for s in steps]
+    version = next(i for i, r in enumerate(runs) if "release_nightly.py --next" in r)
+    pin = next(i for i, r in enumerate(runs) if 'HEAD:refs/heads/nightly/main"' in r)
+    start = next(i for i, r in enumerate(runs) if "release_gate.py --nightly-dispatch" in r)
+    assert version < pin < start
+    assert steps[version]["id"] == "version"
+    assert steps[start]["env"]["VERSION"] == "${{ steps.version.outputs.version }}"
+    assert '--version "$VERSION"' in runs[start]
+    gate = _script("release_gate")
+    assert gate.NIGHTLY_BRANCH == "nightly/main"
+
+
+def test_the_nightly_includes_every_lane_and_each_packaging_leg_with_publish_false():
+    gate = _script("release_gate")
+    assert set(gate.NIGHTLY_LANES) == _NIGHTLY_LANE_NAMES
+    assert gate.NIGHTLY_LANES["packaging"] == ("build-dmg.yml", "build-duckdb-extensions.yml")
+    dispatches = {argv[3]: argv for argv in gate.nightly_dispatches("v0.1.0-alpha.9")}
+    every = [w for workflows in gate.NIGHTLY_LANES.values() for w in workflows]
+    assert list(dispatches) == every
+    for workflow, argv in dispatches.items():
+        assert argv[:3] == ["gh", "workflow", "run"]
+        assert argv[4:6] == ["--ref", "nightly/main"], workflow
+        assert "publish=true" not in argv, workflow
+    assert dispatches["build-dmg.yml"][6:] == [
+        "-f",
+        "version=v0.1.0-alpha.9",
+        "-f",
+        "publish=false",
+    ]
+    assert dispatches["build-duckdb-extensions.yml"][6:] == ["-f", "publish=false"]
+    # build-dmg.yml is the whole release build: its macOS, Windows and Linux AppImage legs.
+    legs = {body.get("uses") for body in yaml.safe_load(_RELEASE.read_text())["jobs"].values()}
+    for leg in ("release-macos.yml", "release-windows.yml", "release-linux.yml"):
+        assert f"./.github/workflows/{leg}" in legs, leg
+    # Every workflow the nightly starts exists and can be dispatched.
+    for workflow in every:
+        triggers = yaml.safe_load((REPO / ".github" / "workflows" / workflow).read_text())[True]
+        assert "workflow_dispatch" in triggers, workflow
+
+
+def test_the_dry_run_is_numbered_as_the_next_release(tmp_path):
+    def git(*args: str, cwd: Path = tmp_path) -> None:
+        subprocess.run(["git", *args], cwd=cwd, check=True, capture_output=True)
+
+    origin = tmp_path / "origin.git"
+    git("init", "-q", "--bare", "-b", "main", str(origin))
+    work = tmp_path / "work"
+    git("clone", "-q", str(origin), str(work))
+    git("-c", "user.email=t@example.test", "-c", "user.name=t", "commit", "-q", "--allow-empty",
+        "-m", "one", cwd=work)  # fmt: skip
+    git("tag", "v0.1.0-alpha.5", cwd=work)
+    git("push", "-q", "origin", "main", "--tags", cwd=work)
+    nightly = _script("release_nightly")
+    assert nightly.upcoming(work) == "v0.1.0-alpha.6"
+    # An open alpha (its branch, untagged) is the release before the next one.
+    git("push", "-q", "origin", "main:refs/heads/release/v0.1.0-alpha.6", cwd=work)
+    assert nightly.upcoming(work) == "v0.1.0-alpha.7"
+
+
+def test_release_ready_reads_every_lane_on_one_commit_of_the_pin(monkeypatch, capsys):
+    gate = _script("release_gate")
+    asked = []
+
+    def state(workflow, branch, sha):
+        asked.append((workflow, branch, sha))
+        return "completed success https://example.test/run"
+
+    monkeypatch.setattr(gate, "run_state", state)
+    assert gate.main(["--ready", "--sha", "c0ffee"]) == 0
+    every = [w for workflows in gate.NIGHTLY_LANES.values() for w in workflows]
+    assert asked == [(w, "nightly/main", "c0ffee") for w in every]
+    out = capsys.readouterr().out
+    assert "Release-ready: c0ffee" in out
+    for lane in _NIGHTLY_LANE_NAMES:
+        assert f"| {lane} |" in out, lane
+
+
+@pytest.mark.parametrize(
+    "workflow",
+    [
+        "unit-tests.yml",
+        "lint.yml",
+        "requirements-ci.yml",
+        "integration-suite.yml",
+        "ui-e2e-core.yml",
+        "build-dmg.yml",
+        "build-duckdb-extensions.yml",
+    ],
+)
+@pytest.mark.parametrize(
+    "bad", ["completed failure u", "completed cancelled u", "in_progress  u", "never run  "]
+)
+def test_release_ready_is_red_when_any_lane_is_not_green(workflow, bad, monkeypatch, capsys):
+    gate = _script("release_gate")
+    monkeypatch.setattr(
+        gate,
+        "run_state",
+        lambda w, branch, sha: bad if w == workflow else "completed success u",
+    )
+    assert gate.main(["--ready", "--sha", "c0ffee"]) == 1
+    out = capsys.readouterr().out
+    assert "Not release-ready: c0ffee" in out and f"`{workflow}` | {bad}" in out
+
+
+def test_release_ready_stops_when_a_lookup_cannot_answer(monkeypatch, capsys):
+    gate = _script("release_gate")
+
+    def broken(workflow, branch, sha):
+        raise gate.LookupFailed("gh run list: HTTP 502")
+
+    monkeypatch.setattr(gate, "run_state", broken)
+    assert gate.main(["--ready", "--sha", "c0ffee"]) == 1
+    assert "HTTP 502" in capsys.readouterr().out
+
+
+def test_release_ready_runs_daily_reads_the_pin_and_can_change_nothing():
+    workflow = yaml.safe_load(_RELEASE_READY.read_text())
+    assert [entry["cron"] for entry in workflow[True]["schedule"]] == ["30 20 * * *"]
+    assert "workflow_dispatch" in workflow[True]
+    assert workflow["permissions"] == {"contents": "read", "actions": "read"}
+    job = workflow["jobs"]["ready"]
+    assert job["outputs"]["sha"] == "${{ steps.night.outputs.sha }}"
+    runs = [str(s.get("run", "")) for s in job["steps"]]
+    assert any("git ls-remote origin refs/heads/nightly/main" in r for r in runs)
+    check = next(s for s in job["steps"] if "release_gate.py --ready" in str(s.get("run", "")))
+    assert check["env"]["SHA"] == "${{ steps.night.outputs.sha }}"
+    assert '--sha "$SHA"' in check["run"] and "set -euo pipefail" in check["run"]
+
+
+@pytest.mark.parametrize("path", [_NIGHTLY_MAIN, _RELEASE_READY])
+def test_the_nightly_and_the_summary_publish_nothing(path):
+    code = _code(path)
+    assert not _LEAVES_THE_RUN.search(code), path.name
+    assert "publish=true" not in code and "gh release" not in code and "git tag" not in code

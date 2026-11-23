@@ -26,6 +26,9 @@ Run by .github/workflows/alpha-nightly.yml, from a clone that can push. In order
 5. release/<version> is pushed at origin/main's commit, everything on main to that point. It is
    a cut: no commit is made and nothing is ever forced.
 
+With ``--next`` it only prints ``version=<tag>``, the number step 4 would take, and pushes nothing:
+the nightly on main (.github/workflows/nightly-main.yml) names its packaging dry run with it.
+
 Prints ``version=<tag>`` or ``skip=true`` for the step's outputs, which is why the open branch is
 named on stderr: stdout is appended to $GITHUB_OUTPUT. Exits 2, pushing nothing, on a refused
 push, on a release above the last alpha (alpha numbering ends at the first beta release), or when
@@ -132,11 +135,22 @@ def _cut(repo: Path, version: str) -> None:
     )
 
 
-def start(repo: Path) -> str | None:
-    """The version started tonight, or None when an alpha is open or main has not moved."""
+def _fetch(repo: Path) -> None:
     _required(
         repo, "fetch", "-q", "--prune", "--tags", "origin", "+refs/heads/*:refs/remotes/origin/*"
     )
+
+
+def upcoming(repo: Path) -> str:
+    """The next release's number, as start() would cut it: above the last alpha, tagged or open.
+    The nightly on main builds its packaging dry run under it (REQ-1989, amended 2026-11-22)."""
+    _fetch(repo)
+    return _next(_last_alpha(_tags(repo) + _branches(repo)))
+
+
+def start(repo: Path) -> str | None:
+    """The version started tonight, or None when an alpha is open or main has not moved."""
+    _fetch(repo)
     tags = _tags(repo)
     branches = _branches(repo)
     last = _last_alpha(tags + branches)
@@ -156,7 +170,17 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Start the nightly alpha.")
     parser.add_argument("--repo", type=Path, default=Path("."), help="the repository (default: .)")
     parser.add_argument("--schedule", default="", help="the cron that fired; empty on a dispatch")
+    parser.add_argument(
+        "--next", action="store_true", help="print the next release's number; cut nothing"
+    )
     args = parser.parse_args(argv)
+    if args.next:
+        try:
+            print(f"version={upcoming(args.repo)}")
+        except NightRefused as refused:
+            print(f"ERROR: {refused}", file=sys.stderr)
+            return 2
+        return 0
     if args.schedule and not due(args.schedule, datetime.now(_NEW_YORK)):
         print("skip=true")
         return 0

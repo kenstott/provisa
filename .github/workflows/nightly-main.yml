@@ -1,0 +1,66 @@
+# The nightly on main (REQ-1989, amended 2026-11-22)
+#
+# Every night, one main commit gets every lane a release is cut on: unit, lint, the requirements
+# check, integration, e2e and the packaging dry run (build-dmg.yml's macOS, Windows and Linux
+# AppImage legs, and the DuckDB extensions). A packaging defect then shows up as a fix job on main,
+# not as a blocker found at the cut. "Release: ready" (release-ready.yml) reads the night's runs
+# and is green only when every lane is green on that one commit, which it names: the cut point.
+#
+# A dispatch runs on a ref, not a commit, and main moves while the lanes start. So this workflow
+# pins the night's commit as the branch nightly/main and starts every lane there, each its own run
+# (as the alpha nightly does on its release branch): every lane tests the same commit, no landing
+# on main cancels one, and no two lanes share a run's artifact names. A push by this workflow's
+# token starts no workflow; each lane is started explicitly (scripts/release_gate.py, which holds
+# the lane list). The packaging dry run is built under the next release's number, computed as the
+# alpha nightly computes it (scripts/release_nightly.py --next), with publish=false: nothing is
+# published, tagged or attached to a release.
+#
+# 05:00 UTC is midnight in New York in standard time and 01:00 in daylight time, well before
+# "Release: ready" (20:30 UTC) and the alpha nightly (17:00 New York).
+name: "Nightly: main"
+
+on:
+  schedule:
+    - cron: "0 5 * * *"
+  workflow_dispatch:
+
+# One night at a time, and never cancelled half-way: the pin and its dispatches go together.
+concurrency:
+  group: nightly-main
+  cancel-in-progress: false
+
+permissions:
+  contents: write # the nightly/main pin
+  actions: write # starting the lanes on it
+
+jobs:
+  start:
+    name: Start the night's lanes on main
+    # Only main is pinned: a dispatch from another branch would test a commit that is not main's.
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The release tags and branches the next release's number is counted from.
+          fetch-depth: 0
+
+      - name: The next release's number
+        id: version
+        run: |
+          set -euo pipefail
+          python3 scripts/release_nightly.py --next >> "$GITHUB_OUTPUT"
+
+      - name: Pin the night's commit
+        run: |
+          set -euo pipefail
+          git push --force origin "HEAD:refs/heads/nightly/main"
+          echo "nightly/main is $(git rev-parse HEAD)" | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Start every lane on the pinned commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          python3 scripts/release_gate.py --nightly-dispatch --version "$VERSION"

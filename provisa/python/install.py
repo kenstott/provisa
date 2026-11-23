@@ -24,8 +24,9 @@ The source names its code in one of three ways:
 
 A code that declares dependencies carries a lockfile (decision P4): ``uv.lock`` (with its
 ``pyproject.toml``), ``pylock.toml``, or a ``requirements.txt`` with a ``--hash`` on every
-requirement. They are installed into a virtual environment inside the install
-(``<install>/.venv``), from the pinned Python, with no build of any package. The index addresses
+requirement. Every install has a virtual environment of its own (``<install>/.venv``), made by uv
+from the interpreter Provisa runs on, so the code sees none of that interpreter's packages; a
+lockfile is installed into it with no build of any package. The index addresses
 and credentials reach uv in the install's own environment only, never in a file; the install runs
 with a HOME of its own and none of the process's environment but its PATH. An index's certificate
 authority (REQ-2088) is trusted by the fetches through it and, through SSL_CERT_FILE naming a file
@@ -313,11 +314,18 @@ def lockfile(root: Path) -> Path | None:
     return found
 
 
+def venv_command(uv: Path, python: Path, root: Path) -> list[str]:
+    """uv's command making the source's own virtual environment from ``python`` (the interpreter
+    Provisa runs on), never downloading one: every source has one, so its code sees no package of
+    the interpreter's own."""
+    return [str(uv), "venv", "--python", str(python), "--no-python-downloads", str(root / VENV)]
+
+
 def install_commands(uv: Path, python: Path, root: Path, lock: Path) -> list[list[str]]:
-    """The pinned uv's commands: a virtual environment from the pinned Python, then the lockfile
-    installed into it exactly, binary wheels only."""
+    """uv's commands: the source's virtual environment, then the lockfile installed into it
+    exactly, binary wheels only."""
     venv = root / VENV
-    make = [str(uv), "venv", "--python", str(python), "--no-python-downloads", str(venv)]
+    make = venv_command(uv, python, root)
     if lock.name == "uv.lock":
         sync = [
             str(uv),
@@ -339,8 +347,6 @@ def _install(
     root: Path, uv: Path, python: Path, registries: Sequence[Resolved], run: Runner
 ) -> None:
     lock = lockfile(root)
-    if lock is None:
-        return
     with tempfile.TemporaryDirectory(prefix="provisa-python-install-") as scratch:
         home = Path(scratch)
         git = home / ".gitconfig"
@@ -363,7 +369,12 @@ def _install(
             **({"SSL_CERT_FILE": str(ca_file)} if ca_file is not None else {}),
             **shared.trust_environment(ca_file),
         }
-        for argv in install_commands(uv, python, root, lock):
+        commands = (
+            [venv_command(uv, python, root)]
+            if lock is None
+            else install_commands(uv, python, root, lock)
+        )
+        for argv in commands:
             run(argv, root, env)
 
 
@@ -395,8 +406,12 @@ def ensure_installed(
     )
 
 
-def environment_python(installed: Path, python: Path) -> Path:
-    """The interpreter a worker runs: the install's virtual environment's, when it has one (its
-    dependencies are there), else the pinned Python."""
+def environment_python(installed: Path) -> Path:
+    """The interpreter a worker runs: the install's own virtual environment's, which every install
+    has (its dependencies are there, and none of the base interpreter's)."""
     venv_python = installed / VENV / "bin" / "python"
-    return venv_python if venv_python.exists() else python
+    if not venv_python.exists():
+        raise shared.InstallFailed(
+            "no_environment", f"the install at {installed} has no virtual environment"
+        )
+    return venv_python

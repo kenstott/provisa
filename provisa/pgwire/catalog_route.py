@@ -31,13 +31,13 @@ from dataclasses import dataclass, field
 import sqlglot
 import sqlglot.expressions as exp
 
-from provisa.compiler.result_shape import _pg_column_name
+from provisa.compiler.result_shape import _pg_column_name, name_as_postgres
 from provisa.core.pg_enum import SourceEnum
 from provisa.pgwire.cast_types import record_text
 from provisa.pgwire.catalog_pg17 import RELATION_CLASS, RELATIONS, TYPES
 from provisa.pgwire.catalog_pin import asked_relations, narrow_kinds
 from provisa.pgwire.catalog_server_answers import as_written, input_check, input_failure
-from provisa.pgwire.catalog_types import one_column_function
+from provisa.pgwire.catalog_types import one_column_function, scalar_function_row
 from provisa.pgwire.ext_surfaces import extension_rows, surface_pg_type_rows
 from provisa.transpiler.metadata_arguments import read_oid_literals, strict_null
 from provisa.transpiler.metadata_facts import CatalogFacts
@@ -1043,12 +1043,19 @@ def address(sql: str, request: CatalogRequest) -> tuple[str, frozenset[str] | No
     token = _ENUMS.set(request.enums)
     try:
         tree = _read(sql)
+        if isinstance(tree, exp.Query):
+            # REQ-2204: a result column is named from the statement the client wrote, before any
+            # rewrite or the engine's own spelling of a call renames it.
+            name_as_postgres(tree)
         read_oid_literals(tree)  # REQ-2236: oidin's error, before any function is given the oid
         _coerce_reg_comparisons(tree)
         _result_regs(tree)
         routed = tree.transform(_rewriter(request, _cte_names(tree)))
-        # REQ-2204: a one-column set-returning function's alias names its column on every engine.
-        routed = routed.transform(lambda node: one_column_function(node) or node)
+        # REQ-2204: a one-column set-returning function's alias names its column on every engine;
+        # a scalar function in FROM is its one row.
+        routed = routed.transform(
+            lambda node: one_column_function(node) or scalar_function_row(node) or node
+        )
         asked = asked_relations(routed)
         narrow_kinds(routed)
         return (
