@@ -286,7 +286,7 @@ def test_a_window_function_on_another_engine_is_unchanged(dialect):
 def test_a_cached_arrow_replay_names_float_and_nested_lists_as_arrays():
     """arrow_type_name names a list of floats, and a list of lists, as its array type (not JSON),
     for a cached Arrow entry replayed with no column types as for a live one."""
-    from provisa.cache.raw_sql import arrow_entry, entry_as_result
+    from provisa.cache.raw_sql import decode_entry, encode_arrow_entry, entry_as_result
 
     table = pa.table(
         {
@@ -295,8 +295,8 @@ def test_a_cached_arrow_replay_names_float_and_nested_lists_as_arrays():
             "r": pa.array([[1.5]], pa.list_(pa.float32())),
         }
     )
-    entry = arrow_entry(table.schema, table.to_batches())
-    assert entry_as_result(entry, None).column_types == ["DOUBLE[]", "INTEGER[]", "REAL[]"]
+    entry = decode_entry(encode_arrow_entry(table.schema, table.to_batches(), None))
+    assert entry_as_result(entry).column_types == ["DOUBLE[]", "INTEGER[]", "REAL[]"]
 
 
 @pytest.mark.parametrize(

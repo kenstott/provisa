@@ -24,10 +24,10 @@ import time
 from dataclasses import dataclass
 from typing import Any
 
+import pyarrow as pa
 import pytest
 
 from provisa.audit.pipeline import PendingAudit
-from provisa.cache.codec import encode_cache_payload
 from provisa.cache.store import CachedResult, CacheStore
 from provisa.pgwire._pipeline import _Plan, check_response_cache
 from provisa.transpiler.router import Route
@@ -113,15 +113,15 @@ def _make_plan(sql: str = "SELECT id FROM t", role_id: str = "role-1") -> _Plan:
 async def _seed_hit(
     store: FakeCacheStore, plan: _Plan, *, rows, column_names, column_types=None
 ) -> None:
-    """Write a raw-SQL ``rows`` entry keyed and encoded exactly the way the pipeline's tee does
-    (REQ-1897: the raw-SQL namespace, a kind-tagged entry through ``store_result``'s envelope)."""
+    """Write a raw-SQL entry of a row stream's rows keyed and encoded exactly the way the
+    pipeline's tee does (REQ-1897: the raw-SQL namespace; REQ-1867: one Arrow IPC entry)."""
     from provisa.cache.key import raw_sql_cache_key
-    from provisa.cache.raw_sql import rows_entry
+    from provisa.cache.raw_sql import encode_rows_entry
 
     assert plan.audit is not None
     ck = raw_sql_cache_key(plan.sql, plan.exec_params or [], plan.audit.role_id, wire_formats=None)
-    payload = {"data": rows_entry(rows, column_names), "column_types": column_types}
-    await store.set(ck, encode_cache_payload(payload), ttl=60, tenant_id=SCOPE)
+    data = encode_rows_entry(rows, column_names, column_types)
+    await store.set(ck, data, ttl=60, tenant_id=SCOPE)
 
 
 async def _fake_write_audit_noop(pending, status_code, state=None, **outcome) -> None:
@@ -269,6 +269,19 @@ async def test_different_roles_get_different_cache_entries(monkeypatch):
     assert miss_for_b is None
 
 
+def _entry_of_kind(kind: str) -> bytes:
+    """An Arrow IPC entry tagged ``kind``, as the encoder tags the kinds it writes."""
+    import json
+
+    schema = pa.schema(
+        [pa.field("d", pa.string())], metadata={b"provisa.cache.kind": json.dumps(kind)}
+    )
+    sink = pa.BufferOutputStream()
+    with pa.ipc.new_stream(sink, schema) as writer:
+        writer.write_batch(pa.RecordBatch.from_pylist([{"d": "{}"}], schema=schema))
+    return sink.getvalue().to_pybytes()
+
+
 @pytest.mark.asyncio
 async def test_raw_sql_entry_of_unknown_kind_raises(monkeypatch):
     """A raw-SQL entry must name a kind the readers handle; anything else is an error, never a
@@ -280,7 +293,7 @@ async def test_raw_sql_entry_of_unknown_kind_raises(monkeypatch):
     store = FakeCacheStore()
     assert plan.audit is not None
     ck = raw_sql_cache_key(plan.sql, [], plan.audit.role_id, wire_formats=None)
-    await store_result(store, ck, {"kind": "graphql_response", "data": {}}, ttl=60, org_id=SCOPE)
+    await store_result(store, ck, _entry_of_kind("graphql_response"), ttl=60, org_id=SCOPE)
     monkeypatch.setattr("provisa.audit.pipeline.write_audit", _fake_write_audit_noop)
 
     with pytest.raises(ValueError, match="unknown kind 'graphql_response'"):

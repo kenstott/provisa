@@ -428,10 +428,9 @@ async def serve_registered_tables(state) -> None:
     # matching") is a model-store row in state.tables (set by the build before this runs), never
     # in the configuration file's tables.
     glob_specs = file_glob_specs([*config.tables, *state.tables])
+    for source in _files_sources(state):
+        await _serve_glob_tables(state, source, glob_specs.get(source.id, []))
     for source in config.sources:
-        if source.type.value == "files":
-            await _serve_glob_tables(state, source, glob_specs.get(source.id, []))
-            continue
         if source.type.value not in SERVES_REGISTERED_TABLES:
             continue
         own = [t for t in config.tables if t.source_id == source.id]
@@ -446,6 +445,21 @@ async def serve_registered_tables(state) -> None:
             resolve_secrets(source.password, credential=True) if source.password else "",
             catalog_name=state.source_catalogs[source.id],
         )
+
+
+def _files_sources(state) -> list:
+    """REQ-788: every files source of the build -- the configuration file's, and each created in
+    the admin (Sources > New source), which is a ``sources`` row in ``state.runtime_sources``
+    (set by the build before this runs) and never one of the configuration's sources."""
+    from provisa.core.repositories.source import source_from_row
+
+    configured = {s.id: s for s in state.config.sources if s.type.value == "files"}
+    created = [
+        source_from_row(row)
+        for sid, row in state.runtime_sources.items()
+        if sid not in configured and row["type"] == "files"
+    ]
+    return [*configured.values(), *created]
 
 
 async def _serve_glob_tables(state, source, specs: list[dict]) -> None:
