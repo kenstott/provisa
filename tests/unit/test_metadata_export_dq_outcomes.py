@@ -237,12 +237,12 @@ def test_a_refused_checker_table_is_its_own_unreadable_outcome_and_the_rest_are_
     monkeypatch, refusal
 ):
     # REQ-392: one table the publishing role cannot read does not fail the publish.
-    from provisa.compiler.sql_validator import GovernanceRefused
+    from provisa.compiler.sql_validator import GovernanceRefused, ValidationViolation
     from provisa.core.operator_floor import OperatorFloorError
     from provisa.pgwire._pipeline import ApprovalDenied
 
     errors = {
-        "governance": GovernanceRefused,
+        "governance": lambda text: GovernanceRefused([ValidationViolation("V001", text)]),
         "operator_floor": OperatorFloorError,
         "approval": ApprovalDenied,
     }
