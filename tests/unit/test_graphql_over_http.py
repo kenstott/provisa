@@ -76,6 +76,9 @@ def client(monkeypatch):
         def cached(self):
             return None
 
+        def document(self, schema, query, ctx, parse):
+            return parse(schema, query, ctx=ctx)  # no plan store: every request parses
+
     monkeypatch.setattr("provisa.api.data.graphql_plan.PlanRequest", _NoPlan)
     app = FastAPI()
     app.include_router(endpoint.router)
