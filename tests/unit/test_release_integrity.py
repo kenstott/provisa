@@ -582,3 +582,18 @@ def test_the_macos_native_runtime_installs_uv_lock_versions():
     assert names.index("Install uv") < names.index("Build and sign the app")
     uv_step = core[names.index("Install uv")]
     assert uv_step["uses"] == "./.github/actions/setup-python"
+
+
+def test_the_macos_native_runtime_prunes_test_payload_before_signing():
+    # Dry run 45212409648: notarization rejected joblib/test/data/*.gz (zlib pickles, not gzip),
+    # which Apple could not unpack. Package test directories are pruned from the runtime and any
+    # archive left that cannot be read fails the build, all before the runtime is signed.
+    script = (_ROOT / "packaging" / "macos" / "build-dmg.sh").read_text()
+    body = script.split("bundle_native_payload() {", 1)[1].split("\n}\n", 1)[0]
+    prune = body.index('"$py" -I "${SCRIPT_DIR}/prune_runtime.py" "$site" || {')
+    install = body.index('"${built_wheel}[embedded]"')
+    import_check = body.index("import provisa, sqlite3, mcp_proxy")
+    assert install < prune < import_check
+    assert (_ROOT / "packaging" / "macos" / "prune_runtime.py").is_file()
+    main_body = script.split("\nmain() {", 1)[1]
+    assert main_body.index("bundle_native_payload") < main_body.index("sign_native_payload")

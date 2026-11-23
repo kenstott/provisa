@@ -1811,10 +1811,30 @@ def server_key(source: Any) -> tuple[str, str]:
     return template, f"{source.id}@{hashlib.sha256(reads.encode()).hexdigest()[:12]}"
 
 
+def _with_served_globs(source: Any) -> Any:
+    """``source`` as its server is started: a files source carries the glob tables the schema
+    build recorded as registered from it (REQ-788, ``served_tables.served_glob_tables``), not
+    whatever the caller's copy of the source holds. The callers that start a server are many (a
+    discovery call, a replica build, the engine's attach), each with its own copy of the source;
+    one built from the ``sources`` row alone carries none, and the server it started -- kept for
+    the life of the process -- never served a registered glob table."""
+    if _source_type(source) != "files":
+        return source
+    from types import SimpleNamespace
+
+    from provisa.federation.served_tables import served_glob_tables
+
+    globs = served_glob_tables(source.id)
+    if hasattr(source, "model_copy"):
+        return source.model_copy(update={"file_glob_tables": globs})
+    return SimpleNamespace(**{**vars(source), "file_glob_tables": globs})
+
+
 def _endpoint_replica(source: Any) -> ConnectorReplica:
     """The one replica for ``source``."""
     from provisa.core.org_scope import source_key
 
+    source = _with_served_globs(source)
     key = server_key(source)
     org_id = source_key(source.id)[0]
     with _ENDPOINTS_LOCK:
@@ -2135,7 +2155,7 @@ def make_pgwire_loader(
         replica = _replicas.get(key)
         if replica is None:
             replica = ConnectorReplica(
-                source,
+                _with_served_globs(source),
                 resolver=resolver,
                 allocator=alloc,
                 spawn=spawn,
@@ -2177,7 +2197,7 @@ def make_pgwire_keyed_loader(
         replica = _replicas.get(key)
         if replica is None:
             replica = ConnectorReplica(
-                source,
+                _with_served_globs(source),
                 resolver=resolver,
                 allocator=alloc,
                 spawn=spawn,

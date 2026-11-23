@@ -8,11 +8,13 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Unit tests for the typed binary response-cache codec (REQ-1896).
+"""Response-cache entries are Arrow IPC and lossless (REQ-1896, REQ-1867 amended 2026-11-23).
 
-Covers the lossy-JSON gap the maintainer flagged in GraphQL's own ``store_result``:
-``Decimal`` -> string, ``bytes`` -> repr(), integer width lost. Every type below must round-trip
-byte-for-byte through :func:`encode_cache_payload`/:func:`decode_cache_payload`.
+Every value type the retired msgpack codec carried must come back from a hit as the value its miss
+answered, of the same Python type: Decimal with its own scale, timestamps naive and aware
+(including PostgreSQL's infinities), dates (including the infinities), times, intervals with and
+without months, bytea, arrays, wide integers and NULL. An engine-Arrow entry comes back as the
+very batches the miss produced: schema, types and the miss's own schema metadata.
 """
 
 from __future__ import annotations
@@ -20,93 +22,142 @@ from __future__ import annotations
 import datetime as dt
 import decimal
 
+import pyarrow as pa
 import pytest
+from dateutil.relativedelta import relativedelta
 
-from provisa.cache.codec import decode_cache_payload, encode_cache_payload
+from provisa.cache.raw_sql import (
+    KIND_ARROW,
+    decode_entry,
+    encode_arrow_entry,
+    encode_rows_entry,
+    entry_as_result,
+)
+from provisa.core.ir_arrow import _same
+from provisa.core.ir_types import infinite_date, infinite_timestamp
 
-
-def test_decimal_round_trips_exactly():
-    payload = {"rows": [[decimal.Decimal("19.99")]]}
-    out = decode_cache_payload(encode_cache_payload(payload))
-    value = out["rows"][0][0]
-    assert value == decimal.Decimal("19.99")
-    assert isinstance(value, decimal.Decimal)
-
-
-def test_decimal_precision_not_collapsed_by_float_rounding():
-    # A value JSON's default=str would have preserved as a *string* (fine) but a naive
-    # float-based codec would mangle. Assert real Decimal precision survives.
-    payload = {"rows": [[decimal.Decimal("0.1"), decimal.Decimal("100000000000000000.123456789")]]}
-    out = decode_cache_payload(encode_cache_payload(payload))
-    assert out["rows"][0][0] == decimal.Decimal("0.1")
-    assert out["rows"][0][1] == decimal.Decimal("100000000000000000.123456789")
+UTC = dt.timezone.utc
+EAST = dt.timezone(dt.timedelta(hours=5, minutes=30))
 
 
-def test_bytes_round_trip_not_repr_string():
-    payload = {"rows": [[b"\x00\x01\xff binary"]]}
-    out = decode_cache_payload(encode_cache_payload(payload))
-    value = out["rows"][0][0]
-    assert value == b"\x00\x01\xff binary"
-    assert isinstance(value, bytes)
+def _round_trip(column: list, declared: str | None = None) -> list:
+    rows = [(v,) for v in column]
+    entry = decode_entry(encode_rows_entry(rows, ["c"], [declared] if declared else None))
+    assert entry.kind == KIND_ARROW
+    return [r[0] for r in entry_as_result(entry).rows]
 
 
-def test_datetime_round_trips():
-    ts = dt.datetime(2026, 9, 28, 13, 45, 0, 123456)
-    payload = {"rows": [[ts]]}
-    out = decode_cache_payload(encode_cache_payload(payload))
-    assert out["rows"][0][0] == ts
+def _assert_same(back: list, values: list) -> None:
+    assert len(back) == len(values)
+    for b, v in zip(back, values, strict=True):
+        assert _same(b, v), f"{b!r} came back for {v!r}"
+        if v is not None:
+            assert type(b) is type(v), f"{type(b)} came back for {type(v)}"
 
 
-def test_date_round_trips():
-    d = dt.date(2026, 9, 28)
-    payload = {"rows": [[d]]}
-    out = decode_cache_payload(encode_cache_payload(payload))
-    assert out["rows"][0][0] == d
+@pytest.mark.parametrize(
+    ("values", "declared"),
+    [
+        ([decimal.Decimal("19.99"), decimal.Decimal("-0.01"), None], "DECIMAL(10,2)"),
+        ([decimal.Decimal("100000000000000000.123456789")], "NUMERIC"),
+        ([decimal.Decimal("1.5"), decimal.Decimal("2.25")], "NUMERIC"),  # mixed scales
+        ([dt.datetime(2026, 9, 28, 13, 45, 0, 123456), None], "TIMESTAMP"),
+        ([dt.datetime(2026, 9, 28, 13, 45, tzinfo=UTC)], "TIMESTAMPTZ"),
+        ([dt.datetime(2026, 9, 28, 13, 45, tzinfo=EAST)], "TIMESTAMPTZ"),
+        (
+            [
+                dt.datetime(2026, 1, 1),
+                infinite_timestamp(1, aware=False),
+                infinite_timestamp(-1, aware=False),
+            ],
+            "TIMESTAMP",
+        ),
+        (
+            [dt.datetime(2026, 1, 1, tzinfo=UTC), infinite_timestamp(1, aware=True)],
+            "TIMESTAMPTZ",
+        ),
+        ([dt.date(2026, 9, 28), None], "DATE"),
+        ([dt.date(2026, 1, 1), infinite_date(1), infinite_date(-1)], "DATE"),
+        ([dt.time(23, 59, 59, 5)], "TIME"),
+        ([dt.timedelta(days=3, seconds=7, microseconds=9)], "INTERVAL"),
+        ([relativedelta(months=14, days=2, microseconds=5)], "INTERVAL"),
+        ([b"\x00\x01\xff binary", None], "BYTEA"),
+        ([[1, 2, 3], None, []], "INTEGER[]"),
+        ([["a", None, "c"]], "VARCHAR[]"),
+        ([2**53 + 1, -1, None], "BIGINT"),
+        ([None, None], None),
+        (["x", None], "VARCHAR"),
+        ([True, False, None], "BOOLEAN"),
+    ],
+)
+def test_rows_entry_round_trips_every_type(values, declared):
+    _assert_same(_round_trip(values, declared), values)
 
 
 def test_date_and_datetime_do_not_collide():
-    # datetime is a subclass of date -- confirm the encoder distinguishes them rather than
-    # collapsing datetime down to date on decode.
-    payload = {"rows": [[dt.date(2026, 1, 1), dt.datetime(2026, 1, 1, 0, 0, 0)]]}
-    out = decode_cache_payload(encode_cache_payload(payload))
-    assert type(out["rows"][0][0]) is dt.date
-    assert type(out["rows"][0][1]) is dt.datetime
+    rows = [(dt.date(2026, 1, 1), dt.datetime(2026, 1, 1, 0, 0, 0))]
+    back = entry_as_result(decode_entry(encode_rows_entry(rows, ["d", "t"], None))).rows
+    assert type(back[0][0]) is dt.date
+    assert type(back[0][1]) is dt.datetime
 
 
-def test_time_round_trips():
-    t = dt.time(23, 59, 59)
-    payload = {"rows": [[t]]}
-    out = decode_cache_payload(encode_cache_payload(payload))
-    assert out["rows"][0][0] == t
+def test_column_types_travel_in_the_entry():
+    rows = [(decimal.Decimal("1"), b"x")]
+    entry = decode_entry(encode_rows_entry(rows, ["price", "blob"], ["numeric", "bytea"]))
+    result = entry_as_result(entry)
+    assert result.column_names == ["price", "blob"]
+    assert result.column_types == ["numeric", "bytea"]
 
 
-def test_int_width_preserved_as_int_not_string():
-    payload = {"rows": [[2**53 + 1, -1]]}
-    out = decode_cache_payload(encode_cache_payload(payload))
-    assert out["rows"][0][0] == 2**53 + 1
-    assert isinstance(out["rows"][0][0], int)
+def test_engine_arrow_entry_is_the_miss_batches_verbatim():
+    schema = pa.schema(
+        [
+            pa.field("amount", pa.decimal128(18, 2)),
+            pa.field("at", pa.timestamp("us", tz="UTC")),
+            pa.field("gap", pa.month_day_nano_interval()),
+            pa.field("blob", pa.binary()),
+            pa.field("tags", pa.list_(pa.string())),
+        ],
+        metadata={b"engine": b"duckdb"},
+    )
+    batches = [
+        pa.RecordBatch.from_pylist(
+            [
+                {
+                    "amount": decimal.Decimal("12.34"),
+                    "at": dt.datetime(2026, 1, 1, tzinfo=UTC),
+                    "gap": pa.scalar((1, 2, 3000), pa.month_day_nano_interval()).as_py(),
+                    "blob": b"\x00",
+                    "tags": ["a"],
+                }
+            ]
+            * 3,
+            schema=schema,
+        )
+        for _ in range(2)
+    ]
+    entry = decode_entry(encode_arrow_entry(schema, batches, ["DECIMAL(18,2)"] * 5))
+    assert entry.table.schema.equals(schema, check_metadata=True)
+    assert entry.table.equals(pa.Table.from_batches(batches))
+    result = entry_as_result(entry)
+    assert result.column_types == ["DECIMAL(18,2)"] * 5
+    assert pa.Table.from_batches(list(result.arrow_batches())).equals(entry.table)
 
 
-def test_none_round_trips():
-    payload = {"rows": [[None, "x"]]}
-    out = decode_cache_payload(encode_cache_payload(payload))
-    assert out["rows"][0][0] is None
+def test_entry_is_zstd_compressed_arrow_ipc():
+    rows = [(i, "same text in every row") for i in range(10_000)]
+    data = encode_rows_entry(rows, ["n", "t"], ["BIGINT", "VARCHAR"])
+    assert pa.ipc.open_stream(data).read_all().num_rows == 10_000
+    uncompressed = pa.BufferOutputStream()
+    table = pa.ipc.open_stream(data).read_all()
+    with pa.ipc.new_stream(uncompressed, table.schema) as w:
+        w.write_table(table)
+    assert len(data) < uncompressed.getvalue().size / 2
 
 
-def test_column_types_travel_alongside_rows():
-    payload = {
-        "rows": [[decimal.Decimal("1"), b"x"]],
-        "column_names": ["price", "blob"],
-        "column_types": ["numeric", "bytea"],
-    }
-    out = decode_cache_payload(encode_cache_payload(payload))
-    assert out["column_names"] == ["price", "blob"]
-    assert out["column_types"] == ["numeric", "bytea"]
-
-
-def test_unsupported_type_raises_instead_of_silently_stringifying():
-    class Unsupported:
-        pass
-
-    with pytest.raises(TypeError):
-        encode_cache_payload({"rows": [[Unsupported()]]})
+def test_an_entry_without_a_kind_is_refused():
+    sink = pa.BufferOutputStream()
+    with pa.ipc.new_stream(sink, pa.schema([pa.field("n", pa.int64())])) as w:
+        w.write_batch(pa.RecordBatch.from_pylist([{"n": 1}]))
+    with pytest.raises(ValueError, match="no kind"):
+        decode_entry(sink.getvalue().to_pybytes())

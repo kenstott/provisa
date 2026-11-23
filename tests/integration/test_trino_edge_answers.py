@@ -23,9 +23,12 @@ from decimal import Decimal
 from typing import Any
 
 import pytest
+import sqlglot
 
 from provisa.core.pg_error import PostgresError, from_engine
 from provisa.transpiler.function_macros import FunctionRefused, RowRefused
+from provisa.transpiler.metadata_facts import CatalogFacts
+from provisa.transpiler.metadata_functions import MetadataFunctionRefused, expand
 from provisa.transpiler.transpile import transpile
 
 pytestmark = [pytest.mark.integration, pytest.mark.requires_trino]
@@ -625,7 +628,7 @@ def _text(value: Any) -> str | None:
             return "NaN"
         if math.isinf(value):
             return "Infinity" if value > 0 else "-Infinity"
-        return str(int(value)) if value.is_integer() else repr(value)
+        return _float8_text(value)
     if isinstance(value, Decimal):
         return format(value, "f")
     if isinstance(value, datetime.datetime):
@@ -633,6 +636,19 @@ def _text(value: Any) -> str | None:
     if isinstance(value, datetime.time):
         return value.isoformat()
     return str(value)
+
+
+def _float8_text(value: float) -> str:
+    """float8out: the shortest digits that read back as ``value``, in exponent form where the
+    decimal exponent is below -4 or at least 15 (DBL_DIG), as PostgreSQL writes them."""
+    shortest = Decimal(repr(value))
+    exponent = shortest.adjusted()
+    if exponent < -4 or exponent >= 15:
+        sign, digits, _ = shortest.as_tuple()
+        figures = "".join(map(str, digits)).rstrip("0") or "0"
+        mantissa = figures[0] + ("." + figures[1:] if len(figures) > 1 else "")
+        return f"{'-' if sign else ''}{mantissa}e{exponent:+03d}"
+    return format(shortest.normalize(), "f")
 
 
 def _money(text: str) -> Decimal:
@@ -646,6 +662,18 @@ def _agrees(got: str | None, want: str | None) -> bool:
     return got == want
 
 
+def _written(sql: str) -> str:
+    """``sql`` as Provisa writes it for Trino: a statement on PostgreSQL's catalog is expanded by
+    its catalog forms first (provisa.pgwire.catalog_route.address), then transpiled."""
+    tree = sqlglot.parse_one(sql, read="postgres")
+    try:
+        expanded = expand(tree, CatalogFacts("analyst"))
+    except MetadataFunctionRefused as refused:
+        # provisa.pgwire.catalog._read_meta answers a refused catalog form with 0A000.
+        raise PostgresError("0A000", str(refused)) from refused
+    return transpile(expanded.sql(dialect="postgres"), "trino")
+
+
 def _refused_by_name(error: Exception) -> bool:
     return isinstance(error, RowRefused) and error.sqlstate == "0A000"
 
@@ -657,7 +685,7 @@ def _refused_by_name(error: Exception) -> bool:
 )
 def test_trino_answers_an_edge_as_postgresql_does(trino_conn, sql, kind, want):
     try:
-        written = transpile(sql, "trino")
+        written = _written(sql)
     except FunctionRefused as refused:
         state = getattr(refused, "sqlstate", None)
         assert (kind == "err" and state == want) or _refused_by_name(refused), (

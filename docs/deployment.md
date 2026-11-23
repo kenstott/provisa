@@ -2,7 +2,7 @@
 
 ## Choosing a Deployment Path
 
-Provisa supports six deployment paths. Choose based on your audience and operational context:
+Provisa supports seven deployment paths. Choose based on your audience and operational context:
 
 | Path | Artifact / Script | Best for |
 | ------ | ------------------- | ---------- |
@@ -10,6 +10,7 @@ Provisa supports six deployment paths. Choose based on your audience and operati
 | **macOS installer** | `Provisa-<version>-macOS.dmg` | Developer workstations, evaluation |
 | **Windows installer** | `Provisa-<version>-windows-x64.exe` | Developer workstations, evaluation |
 | **Linux AppImage** | `Provisa.AppImage` | On-prem servers, cloud VMs, air-gapped environments |
+| **Linux host with Trino** | [`scripts/install-host.sh`](install-host.md) | A VM or bare-metal server you already run, with Trino as the engine |
 | **Cloud VMs (AWS)** | `terraform/deploy.sh` | Multi-node cloud deployment with load balancers |
 | **Kubernetes** | `helm/provisa/` | Teams already operating K8s |
 
