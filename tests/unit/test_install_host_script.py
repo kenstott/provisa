@@ -411,7 +411,7 @@ def test_trino_runs_on_the_host_network_with_every_plugin_mounted():
 def test_trino_side_dirs_are_the_ones_the_stack_mounts():
     compose = yaml.safe_load((_ROOT / "docker-compose.core.yml").read_text())
     mounted = {
-        m.split(":")[1].removeprefix("/etc/trino/")
+        m.rsplit(":", 2)[1].removeprefix("/etc/trino/")
         for m in compose["services"]["trino"]["volumes"]
         if re.match(r"\$\{PROVISA_TRINO_ETC_HOST:-\./trino\}/[a-z-]+:/etc/trino/[a-z-]+:ro$", m)
     }
