@@ -9,8 +9,9 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field
+from collections.abc import Callable, Sequence
 from typing import Any, Generic, TypeVar
-__all__ = ['Filter', 'Order', 'ReadContext', 'TableConnection', 'TableRef', 'ServiceError', 'audit', 'cache', 'dq', 'http', 'llm', 'log', 'metric', 'secrets', 'settings', 'vectors']
+__all__ = ['Discovered', 'DiscoveredCommand', 'DiscoveredQuery', 'DiscoveredTable', 'Filter', 'Order', 'ReadContext', 'TableConnection', 'TableFlight', 'TableRef', 'ServiceError', 'audit', 'cache', 'dq', 'http', 'llm', 'log', 'metric', 'secrets', 'settings', 'vectors']
 
 class ServiceError(Exception):
     """A service refused or failed: ``service`` names it, ``status`` is its HTTP status (0 when
@@ -187,15 +188,33 @@ class TableConnection:
     sslmode: str
 
 @dataclass(frozen=True)
+class TableFlight:
+    """REQ-2270: how a function on a remote host reaches its table over Arrow Flight SQL: the
+    server's ``uri``, and the bearer ``token`` good for this call only, presented with the call's
+    id (``call``) in the ``x-provisa-call`` header. :meth:`TableRef.read` reads with it."""
+    uri: str
+    token: str
+    call: str
+
+@dataclass(frozen=True)
 class TableRef(Generic[_Row]):
     """REQ-2226: a governed Provisa table given to a ``@command`` or ``@query``, ``TableRef[Row]``
     with ``Row`` the input columns it declares. The function reads the table as the calling role,
-    so what the role cannot see it cannot read: run ``sql`` on a PostgreSQL connection made with
-    ``connection``."""
+    so what the role cannot see it cannot read. A local worker, or a remote host in a language
+    without a Flight client, runs ``sql`` on a PostgreSQL connection made with ``connection``; a
+    Python remote host, such as the Spark connector's, is given ``flight`` instead (REQ-2270) and
+    reads with :meth:`read`. Exactly one of the two is set."""
     ref: str
     columns: tuple[str, ...]
-    connection: TableConnection
+    connection: TableConnection | None
     sql: str
+    flight: TableFlight | None = ...
+
+    def read(self) -> Any:
+        """REQ-2270: the table's rows as a pyarrow Table, read over Arrow Flight SQL as the
+        calling role: ``sql`` through the server's governed pipeline, the call's token its bearer
+        credential. Refused by name for a table given over PostgreSQL."""
+        ...
 
 @dataclass(frozen=True)
 class ReadContext:
@@ -209,3 +228,46 @@ class ReadContext:
     limit: int | None = ...
     columns: tuple[str, ...] = ...
     keys: dict[str, dict[str, Any]] | None = ...
+
+@dataclass(frozen=True)
+class DiscoveredTable:
+    """A generated table: its ``row`` type, whose fields are its columns, and its ``inputs``
+    type, whose fields are its inputs (None: it takes none). ``loader`` (REQ-2100): its handler
+    is given a join's keys in its read context and answers each key's rows; ``loader_batch`` the
+    largest batch it takes (it implies ``loader``)."""
+    name: str
+    row: type
+    inputs: type | None = ...
+    description: str = ...
+    loader: bool = ...
+    loader_batch: int | None = ...
+
+@dataclass(frozen=True)
+class DiscoveredQuery:
+    """A generated query: the ``table`` whose rows it returns (generated or hand-written), and
+    its ``parameters`` type, whose fields are its parameters (None: it takes none)."""
+    name: str
+    table: str
+    parameters: type | None = ...
+    description: str = ...
+
+@dataclass(frozen=True)
+class DiscoveredCommand:
+    """A generated command: its ``parameters`` type, and what it returns -- the rows of a
+    ``table``, one value of the type ``returns``, or nothing when it names neither."""
+    name: str
+    parameters: type | None = ...
+    returns: Any = ...
+    table: str | None = ...
+    description: str = ...
+
+@dataclass(frozen=True)
+class Discovered:
+    """What ``@discover`` returns: its generated items, and the handler of each kind it
+    generates."""
+    tables: Sequence[DiscoveredTable] = ...
+    queries: Sequence[DiscoveredQuery] = ...
+    commands: Sequence[DiscoveredCommand] = ...
+    table_handler: Callable[..., Any] | None = ...
+    query_handler: Callable[..., Any] | None = ...
+    command_handler: Callable[..., Any] | None = ...

@@ -498,6 +498,14 @@ def _session_cookie(headers: dict[str, list[str]]) -> str | None:
     return None
 
 
+def _minted(headers: dict[str, list[str]]) -> bool:
+    """REQ-2270: whether the call's bearer credential is a token minted for one code call."""
+    from provisa.pgwire.minted import TOKEN_PREFIX
+
+    token = _bearer(headers)
+    return token is not None and token.startswith(TOKEN_PREFIX)
+
+
 def _bearer(headers: dict[str, list[str]]) -> str | None:
     """The bearer credential in the call's ``authorization`` header, if it carries one."""
     raw = _header(headers, "authorization")
@@ -523,6 +531,9 @@ class ProvisaFlightServer(
         # get_schema): their credential and requested role arrive there (_catalog_role).
         super().__init__(location, middleware={_HEADERS: _CallHeadersFactory()}, **kwargs)  # type: ignore[arg-type]
         self._state = state
+        #: REQ-2270: whether clients reach it over TLS -- a remote host is given a minted token for
+        #: it only then (provisa/codesource/table_reads.py).
+        self.tls = bool(kwargs.get("tls_certificates"))
         # REQ-2175: Flight SQL sessions, this worker's; a session's temporary tables end with it.
         self._sessions = sessions.SessionStore(ended=self._session_ended)
 
@@ -786,8 +797,32 @@ class ProvisaFlightServer(
         found (:meth:`_catalog_role`).
         """
 
+        middleware = context.get_middleware(_HEADERS)
+        if middleware is not None and _minted(middleware.headers):
+            return _run_rpc(lambda: self._minted_flight_info(context, descriptor))
         return _run_rpc(
             lambda: self._as_catalog_role(context, lambda role: self._flight_info(descriptor, role))
+        )
+
+    def _minted_flight_info(
+        self,
+        context: flight.ServerCallContext,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        descriptor: flight.FlightDescriptor,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    ) -> flight.FlightInfo:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        """REQ-2270: a statement's FlightInfo for a minted token's call. Its statement is checked
+        as its ticket's is (:meth:`_as_minted_caller`); nothing but a statement is answered."""
+        command = (
+            flightsql.unpack(descriptor.command)
+            if descriptor.descriptor_type == flight.DescriptorType.CMD  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+            else None
+        )
+        if not isinstance(command, flightsql.pb.CommandStatementQuery):
+            raise flight.FlightUnauthorizedError(  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+                "a minted session only runs statements that read its tables"
+            )
+        request = self._caller_request(context, command.query)
+        return self._as_minted_caller(
+            request, lambda: flightsql.statement_info(descriptor, command.query)
         )
 
     def _flight_info(
@@ -923,6 +958,10 @@ class ProvisaFlightServer(
         role = _header(headers, "x-provisa-role")
         if role is not None:
             request["role"] = role
+        call = _header(headers, "x-provisa-call")
+        if call is not None:
+            # REQ-2270: the code call a minted token was given for (_as_minted_caller).
+            request["call"] = call
         if middleware is not None and middleware.presented:
             # REQ-2175: the Flight session the call presents, which the caller's statements run
             # in (_in_flight_session) -- its temporary tables among them.
@@ -1391,6 +1430,10 @@ class ProvisaFlightServer(
         # request, never the identity — so it is substituted into the request here and every
         # downstream reader sees the authorized value.
         credential = request.get("token")
+        from provisa.pgwire.minted import TOKEN_PREFIX
+
+        if isinstance(credential, str) and credential.startswith(TOKEN_PREFIX):
+            return self._as_minted_caller(request, body)  # REQ-2270
         identity = self._authenticate(credential if isinstance(credential, str) else None)
 
         # REQ-1266: bind the ticket's org on this worker thread so every self._state.X read (here and
@@ -1444,6 +1487,75 @@ class ProvisaFlightServer(
                 from provisa.core.request_context import reset_current_org
 
                 reset_current_org(_org_token)
+
+    def _as_minted_caller(self, request: dict[str, object], body: Callable[[], T]) -> T:
+        """Run ``body`` as the code call ``request``'s minted token was given for (REQ-2226,
+        REQ-2270): the call's role and no other, whatever the deployment's authentication is, in
+        the call's org, with its caller's session variables and entitlements, audited as its caller
+        under the call's correlation id -- as the minted-token pgwire listener admits it
+        (provisa/pgwire/minted_server.py). Only a statement that reads the call's tables runs, and
+        only while the call is live. On return ``request["role"]`` is the role ``body`` ran as."""
+        from provisa.audit.context import audit_identity_scope
+        from provisa.core.request_context import reset_current_org, set_current_org
+        from provisa.pgwire.minted import CallTokenRefused
+
+        scope = self._minted_scope(str(request["token"]), request.get("call"))
+        call = scope.call
+        query = request.get("query")
+        if not query:
+            raise flight.FlightUnauthorizedError(  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+                "a minted session only runs statements that read its tables"
+            )
+        org_id = call.org_id
+        if org_id is None:  # a call is minted in its org (table_reads); a token without one is void
+            raise flight.FlightUnauthenticatedError(  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+                f'minted token refused for call "{call.call_id}"'
+            )
+        if getattr(self._state, "multitenancy", False):
+            from provisa.api.app import ensure_serving_runtime
+
+            run_on_connection_loop(ensure_serving_runtime(org_id))
+        org_token = set_current_org(org_id)
+        _shield = request_deadline.shielded()
+        try:
+            request["role"] = self._minted_role(call)
+            try:
+                scope.check(str(query))
+            except CallTokenRefused as exc:
+                raise flight.FlightUnauthorizedError(str(exc)) from exc  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+            with scope.bound(), audit_identity_scope(call.user_id, "flight"):
+                return body()
+        finally:
+            with _shield.lock:
+                _shield.settle()
+                _shield.quiesce()
+            reset_current_org(org_token)
+
+    def _minted_scope(self, token: str, call_id: object) -> Any:  # a pgwire.minted.CallScope
+        """The call ``token`` was minted for, named by ``call_id`` (the ``x-provisa-call``
+        header). One answer for a wrong, an expired and another call's token."""
+        from provisa.pgwire.minted import CallScope, MintedTokenStore, hash_token
+
+        store = MintedTokenStore(self._state.admin_db)
+        call = (
+            run_on_connection_loop(store.resolve(token, str(call_id)), timeout=60)
+            if isinstance(call_id, str) and call_id
+            else None
+        )
+        if call is None:
+            raise flight.FlightUnauthenticatedError(  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+                f'minted token refused for call "{call_id or ""}"'
+            )
+        return CallScope(call, hash_token(token), store, self._state)
+
+    def _minted_role(self, call: Any) -> str:  # a pgwire.minted.MintedCall
+        """The role a minted call reads as: its own, or the meta-role of the held roles it acts as
+        (REQ-2057), made in the call's org as a pgwire session makes it."""
+        if len(call.members) <= 1 and not call.qualifiers:
+            return call.role_id
+        from provisa.security.meta_role import ensure_meta_role
+
+        return ensure_meta_role(self._state, list(call.members), tuple(call.qualifiers))
 
     def _do_get_inner(
         self,
