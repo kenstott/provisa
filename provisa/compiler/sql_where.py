@@ -21,6 +21,7 @@ import fnmatch as _fnmatch
 import re as _re
 from collections.abc import Mapping
 from dataclasses import dataclass
+from typing import Any
 
 from graphql import (
     BooleanValueNode,
@@ -192,6 +193,29 @@ def text_cast(data_type: str | None) -> str | None:
     return _TEXT_BOUND_CASTS.get(_TYPE_PRECISION_RE.sub("", data_type.lower()).strip())
 
 
+def exact_decimal_value(
+    val: object,  # object-ok: truly-any payload — caller may pass str, int, float, bool, None
+    data_type: str | None,
+) -> Any:  # noqa: ANN401 -- the value as given (any filter value), or the Decimal its digits are
+    """``val`` as a column of registered ``data_type`` takes it: a sized numeric is served and
+    declared as the string of its exact digits (REQ-1961, amended 2026-11-23), and a string sent
+    for one is the decimal those digits are, so it compares and writes as a number. Raises
+    ValueError for a string that is not a finite decimal."""
+    from decimal import Decimal, InvalidOperation
+
+    from provisa.core.numeric_type import numeric_size
+
+    if not isinstance(val, str) or data_type is None or numeric_size(data_type) is None:
+        return val
+    try:
+        exact = Decimal(val.strip())
+    except InvalidOperation:
+        raise ValueError(f"{val!r} is not a number for a {data_type} column") from None
+    if not exact.is_finite():
+        raise ValueError(f"{val!r} is not a finite number for a {data_type} column")
+    return exact
+
+
 def _comparison_value(
     val: object,  # object-ok: truly-any payload — caller may pass str, int, float, bool, None
     collector,
@@ -253,6 +277,10 @@ def _compile_column_filter(
     parts: list[str] = []
     for name, val in filter_obj.items():
         op = compiled_operator(name)  # REQ-194: Hasura's _eq is eq
+        if op in ("eq", "neq", "gt", "gte", "lt", "lte"):
+            val = exact_decimal_value(val, data_type)
+        elif op == "in":
+            val = [exact_decimal_value(v, data_type) for v in val]
         if op == "eq":
             rhs = _comparison_value(val, collector, cast_type)
             parts.append(f"{col} = {rhs}")

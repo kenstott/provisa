@@ -44,6 +44,7 @@ from provisa.compiler.type_map import (
     FILTER_TYPE_MAP,
     array_graphql_type,
     nested_column_graphql_type,
+    registered_filter_type,
     registered_graphql_type,
 )
 from provisa.compiler.schema_types import _TableInfo
@@ -230,9 +231,7 @@ def _build_where_input(  # REQ-008, REQ-221, REQ-2136
         if enum_filter:
             input_fields[gql_name] = GraphQLInputField(_comparison(table, enum_filter))
         else:
-            gql_type = registered_graphql_type(meta.data_type, meta.subtype)
-            scalar = gql_type.of_type if isinstance(gql_type, GraphQLList) else gql_type
-            filter_type = FILTER_TYPE_MAP.get(scalar)
+            filter_type = registered_filter_type(meta.data_type, meta.subtype)
             if filter_type:
                 input_fields[gql_name] = GraphQLInputField(_comparison(table, filter_type))
 

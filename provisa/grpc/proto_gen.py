@@ -82,6 +82,13 @@ _PROTO_TYPE_MAP: dict[str, str] = {
 
 
 def _physical_to_proto(column_type: str) -> str:
+    from provisa.core.numeric_type import numeric_size
+
+    if numeric_size(column_type) is not None:
+        # REQ-1961 (amended 2026-11-23): proto has no exact decimal; a numeric whose size the
+        # model records is the string of its exact digits, as GraphQL declares it. An unsized
+        # numeric stays double.
+        return "string"
     normalized = column_type.lower().strip()
     if normalized in _PROTO_TYPE_MAP:
         return _PROTO_TYPE_MAP[normalized]
@@ -109,8 +116,6 @@ def _physical_to_proto(column_type: str) -> str:
 def _array_element_proto(typed: ArrayType) -> str:
     """The proto type of a typed array's element: a decimal with a declared precision is a
     string, exact on every engine, as GraphQL declares it."""
-    if typed.element.startswith("numeric("):
-        return "string"
     return _physical_to_proto(typed.element)
 
 
