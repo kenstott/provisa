@@ -53,11 +53,33 @@ _CH = "clickhouse"
 _SET = "replaceRegexpAll($c, '([\\\\\\\\\\\\]\\\\[^-])', '\\\\\\\\\\\\1')"
 
 
+#: A regular expression that matches nothing (a character before the start): the pattern of an
+#: empty or a NULL set, for ClickHouse reads every branch of a condition, an empty bracket
+#: expression is its error, and the server (24.3) refuses a NULL pattern as an empty one.
+_NOTHING = "'a^'"
+
+
 def _trimmed(pattern: str) -> str:
     """The text with what ``pattern`` (of ``{s}``, the escaped set) matches removed. An empty set
-    trims nothing: its pattern is one that matches nothing (a character before the start), as
-    ClickHouse reads every branch of a condition and an empty bracket expression is its error."""
-    return f"replaceRegexpAll($t, if($c = '', 'a^', {pattern.format(s=_SET)}), '')"
+    trims nothing; a NULL set answers NULL, as the function is strict."""
+    matched = f"if(ifNull($c, '') = '', {_NOTHING}, {pattern.format(s=_SET)})"
+    return f"if($c IS NULL, NULL, replaceRegexpAll($t, {matched}, ''))"
+
+
+#: replace (varlena.c's replace_text): each occurrence of the second text replaced by the third;
+#: an empty second text replaces nothing, and a NULL argument answers NULL. ClickHouse's server
+#: (24.3) refuses an empty or NULL pattern of replaceAll, so neither reaches it.
+_REPLACED = (
+    "if($t IS NULL OR $f IS NULL OR $r IS NULL, NULL, if($f = '', $t, "
+    "replaceAll($t, if(ifNull($f, '') = '', ' ', $f), $r)))"
+)
+
+REPLACE = Feature(
+    "replace",
+    FAMILY,
+    "Text with each occurrence of a text replaced by another.",
+    read=Side(rules=(Rule("replace($t::text, $f::text, $r::text)", _ch(_REPLACED)),)),
+)
 
 
 _TRIMS = {
@@ -356,7 +378,20 @@ REVERSE = Feature(
     "reverse",
     FAMILY,
     "A text's characters in reverse order.",
-    read=Side(rules=(Rule("reverse($t::text)", _ch("reverseUTF8($t)")),)),
+    # By its characters (ClickHouse's regular expressions read UTF-8): the server's (24.3)
+    # reverseUTF8 reverses a four-byte character's bytes.
+    read=Side(
+        rules=(
+            Rule(
+                "reverse($t::text)",
+                _ch(
+                    "if($t IS NULL, NULL, arrayStringConcat(arrayReverse("
+                    + _CHARACTERS.format("$t")
+                    + ")))"
+                ),
+            ),
+        )
+    ),
 )
 
 #: substr and substring of a text by characters (text_substring): from max($s, 1) to $s + $l, none
@@ -582,6 +617,7 @@ ORDER = 330
 FEATURES: tuple[Feature, ...] = (
     *TRIMS,
     TRANSLATE,
+    REPLACE,
     OVERLAY,
     STRING_TO_ARRAY,
     *LENGTH_CASTS,

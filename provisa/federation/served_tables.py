@@ -96,16 +96,36 @@ def file_glob_specs(tables: list[Any]) -> dict[str, list[dict]]:  # REQ-788
 
 # REQ-788: a files source's glob tables -- each merged by its server's file adapter from every file
 # its glob matches -- are in that server's model, built when it starts. A glob table registered or
-# changed after the server started is not in it until it is started again.
-_GLOB_TABLES: dict[str, tuple[tuple[str, str, str | None], ...]] = {}
+# changed after the server started is not in it until it is started again. Keyed by the source's
+# org and id (``source_key``): two orgs may each hold a source of the same id.
+_GLOB_TABLES: dict[tuple[str, str], tuple[tuple[str, str, str | None], ...]] = {}
 
 
 def serve_glob_tables(source_id: str, specs: Iterable[Mapping[str, Any]]) -> bool:
-    """Record the glob tables registered from the files source ``source_id`` (each a
+    """Record the glob tables registered from the bound org's files source ``source_id`` (each a
     ``{"name", "file_glob", "source_file_column"}`` spec); True when they differ from what its
     server was last given (nothing, before the first record), so a server already running must be
     started again to serve them."""
+    from provisa.core.org_scope import source_key
+
+    key = source_key(source_id)
     wanted = tuple(sorted((s["name"], s["file_glob"], s.get("source_file_column")) for s in specs))
-    before = _GLOB_TABLES.get(source_id, ())
-    _GLOB_TABLES[source_id] = wanted
+    before = _GLOB_TABLES.get(key, ())
+    _GLOB_TABLES[key] = wanted
     return before != wanted
+
+
+def served_glob_tables(source_id: str) -> list[dict]:
+    """The glob tables the bound org's files source ``source_id``'s server is started with: those
+    the last schema build recorded as registered from it (``serve_glob_tables``). Every server
+    start reads them here, whoever asks for the server -- a discovery call, a replica build, the
+    engine's attach -- so the model a server is built with never depends on which caller started
+    it. None recorded is none registered: a source's glob tables are registered through the
+    model, and each registration is a schema build, which records them and starts a server
+    already running again (``api/app_rebuild._serve_glob_tables``)."""
+    from provisa.core.org_scope import source_key
+
+    return [
+        {"name": name, "file_glob": glob, "source_file_column": column}
+        for name, glob, column in _GLOB_TABLES.get(source_key(source_id), ())
+    ]

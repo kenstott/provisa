@@ -72,16 +72,16 @@ def _new_key(org: str, before: set[bytes]) -> bytes:
     return new.pop()
 
 
-def _trim_to_second_row(key: bytes) -> dict:
-    from provisa.cache.codec import decode_cache_payload, encode_cache_payload
+def _trim_to_second_row(key: bytes):
+    """Keep only the entry's second row; returns the entry as it was stored
+    (``raw_sql.CacheEntry``)."""
+    from provisa.cache.raw_sql import decode_entry
+    from tests.integration.cache_entry_edit import rewrite, second_row_only
 
     r = _redis()
-    payload = decode_cache_payload(r.get(key))
-    entry = payload["data"]
-    field = {"rows": "rows", "pg_datarows": "datarows"}[entry["kind"]]
-    entry[field] = entry[field][1:2]
-    r.set(key, encode_cache_payload(payload), keepttl=True)
-    return entry
+    data = r.get(key)
+    r.set(key, rewrite(data, second_row_only), keepttl=True)
+    return decode_entry(data)
 
 
 async def _asyncpg(port: int, sql: str) -> list[tuple]:
@@ -131,8 +131,8 @@ def test_binary_passthrough_miss_then_byte_exact_replay(backend):
     miss = asyncio.run(_asyncpg(port, sql))
     assert miss == backend["rows"][:2]
     entry = _trim_to_second_row(_new_key(backend["state"].org_id, before))
-    assert entry["kind"] == "pg_datarows"
-    assert all(f == 1 for f in entry["wire_formats"])  # asyncpg reads binary
+    assert entry.kind == "pg_datarows"
+    assert all(f == 1 for f in entry.wire_formats)  # asyncpg reads binary
     assert asyncio.run(_asyncpg(port, sql)) == backend["rows"][1:2]
 
 
@@ -147,7 +147,7 @@ def test_binary_bytes_are_never_replayed_to_a_client_that_asked_for_other_format
     before = _entry_keys(backend["state"].org_id)
     text = _psycopg3(port, sql)
     assert text == binary
-    assert _trim_to_second_row(_new_key(backend["state"].org_id, before))["kind"] == "rows"
+    assert _trim_to_second_row(_new_key(backend["state"].org_id, before)).origin == "rows"
     assert _psycopg3(port, sql) == text[1:2]
     assert asyncio.run(_asyncpg(port, sql)) == binary  # its own entry, untouched
 
@@ -156,7 +156,7 @@ def test_simple_protocol_read_caches_decoded_rows(backend):
     port, sql = backend["port"], _sql(backend, "amount")
     before = _entry_keys(backend["state"].org_id)
     miss = _psycopg2(port, sql)
-    assert _trim_to_second_row(_new_key(backend["state"].org_id, before))["kind"] == "rows"
+    assert _trim_to_second_row(_new_key(backend["state"].org_id, before)).origin == "rows"
     assert _psycopg2(port, sql) == miss[1:2]
 
 

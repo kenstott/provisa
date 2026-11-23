@@ -504,17 +504,17 @@ def test_a_list_put_in_place_of_another_keeps_its_own_elements():
 # --- Defect 7: a response-cache hit answers as its miss ------------------------------------------
 
 
-def _arrow_ipc_entry(table: pa.Table) -> dict:
-    from provisa.cache.raw_sql import arrow_entry
+def _arrow_ipc_entry(table: pa.Table):
+    from provisa.cache.raw_sql import decode_entry, encode_arrow_entry
 
-    return arrow_entry(table.schema, table.to_batches())
+    return decode_entry(encode_arrow_entry(table.schema, table.to_batches(), None))
 
 
 def test_an_arrow_cache_hit_reads_an_interval_as_the_miss_does():
     from provisa.cache.raw_sql import entry_as_result
 
     mdn = pa.array([pa.MonthDayNano([14, 3, 5_000_000_000])], type=pa.month_day_nano_interval())
-    hit = entry_as_result(_arrow_ipc_entry(pa.table({"wait": mdn})), None)
+    hit = entry_as_result(_arrow_ipc_entry(pa.table({"wait": mdn})))
     assert _body(hit.rows, [_col("wait")]) == [{"wait": "P1Y2M3DT5S"}]
 
 
@@ -522,7 +522,7 @@ def test_an_arrow_cache_hit_reads_an_infinite_date_as_the_miss_does():
     from provisa.cache.raw_sql import entry_as_result
 
     days = pa.array([2**31 - 1, -(2**31 - 1), 0], type=pa.int32()).cast(pa.date32())
-    hit = entry_as_result(_arrow_ipc_entry(pa.table({"d": days})), None)
+    hit = entry_as_result(_arrow_ipc_entry(pa.table({"d": days})))
     assert _body(hit.rows, [_col("d")]) == [
         {"d": "infinity"},
         {"d": "-infinity"},
@@ -531,8 +531,7 @@ def test_an_arrow_cache_hit_reads_an_infinite_date_as_the_miss_does():
 
 
 def test_a_rows_cache_hit_keeps_infinities_and_intervals():
-    from provisa.cache.codec import decode_cache_payload, encode_cache_payload
-    from provisa.cache.raw_sql import entry_as_result, rows_entry
+    from provisa.cache.raw_sql import decode_entry, encode_rows_entry, entry_as_result
 
     row = (
         infinite_date(1),
@@ -544,10 +543,8 @@ def test_a_rows_cache_hit_keeps_infinities_and_intervals():
     )
     cols = [_col(c) for c in ("d", "tz", "ts", "i", "td", "n")]
     miss = _body([row], cols)
-    entry = decode_cache_payload(
-        encode_cache_payload(rows_entry([row], [c.field_name for c in cols]))
-    )
-    hit = entry_as_result(entry, None)
+    entry = decode_entry(encode_rows_entry([row], [c.field_name for c in cols], None))
+    hit = entry_as_result(entry)
     assert _body(hit.rows, cols) == miss
     assert miss == [
         {

@@ -965,8 +965,13 @@ def _build_group_by_query_field(
             t.type_name, t.visible_columns, t.column_metadata, _agg_field_names(t)
         )
 
-    # REQ-655: aggregates field accepts where: arg for FILTER (WHERE ...) per function
-    agg_where = _build_where_input(t, f"{t.type_name}GroupByAgg", enum_types=enum_types)
+    # REQ-655: aggregates field accepts where: arg for FILTER (WHERE ...) per function. REQ-194: a
+    # Hasura-preset table's takes its one bool_exp.
+    agg_where = (
+        where_type
+        if t.hasura
+        else _build_where_input(t, f"{t.type_name}GroupByAgg", enum_types=enum_types)
+    )
     agg_field_args: dict[str, GraphQLArgument] = {}
     if agg_where:
         agg_field_args["where"] = GraphQLArgument(agg_where)
@@ -1031,6 +1036,7 @@ def _build_connection_query_field(
     gql_type: GraphQLObjectType,
     order_by_types: dict[int, GraphQLInputObjectType],
     enum_types: dict,
+    where_type: GraphQLInputObjectType | None,
 ) -> tuple[str, GraphQLField]:
     _edge_type, conn_type = _build_connection_types(t.type_name, gql_type)
     conn_args: dict[str, GraphQLArgument] = {
@@ -1039,7 +1045,12 @@ def _build_connection_query_field(
         "last": GraphQLArgument(GraphQLInt),
         "before": GraphQLArgument(GraphQLString),
     }
-    conn_where = _build_where_input(t, f"{t.type_name}Conn", enum_types=enum_types)
+    # REQ-194: a Hasura-preset table's connection takes its one bool_exp.
+    conn_where = (
+        where_type
+        if t.hasura
+        else _build_where_input(t, f"{t.type_name}Conn", enum_types=enum_types)
+    )
     if conn_where:
         conn_args["where"] = GraphQLArgument(conn_where)
     conn_ob = order_by_types.get(t.table_id)
@@ -1503,7 +1514,7 @@ def generate_schema(
 
         if t.relay_pagination:
             conn_name, conn_field = _build_connection_query_field(
-                t, gql_type, order_by_types, si.enum_types
+                t, gql_type, order_by_types, si.enum_types, where_types.get(t.table_id)
             )
             query_fields[conn_name] = conn_field
 

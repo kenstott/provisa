@@ -252,6 +252,14 @@ class SqlAlchemyFederationRuntime:  # REQ-825, REQ-840, REQ-905
             cur = open_cursor(self._con)
             try:
                 return _read(cur)
+            except BaseException:
+                # run() reuses the one held connection: a PostgreSQL-family store (psycopg2:
+                # cockroachdb, greenplum, opengauss, yugabytedb) aborts the open transaction on a
+                # statement error and refuses every later statement until rollback, so one bad
+                # statement would fail every read after it (REQ-1912, REQ-2236). The original error
+                # still propagates; a failed rollback raises with it chained.
+                self._con.rollback()
+                raise
             finally:
                 close_cursor(cur)
 

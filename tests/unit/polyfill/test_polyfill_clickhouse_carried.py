@@ -35,11 +35,6 @@ from provisa.transpiler.polyfill import ported
 from provisa.transpiler.transpile import transpile
 
 ANSWERED = [
-    ("SELECT pg_catalog.replace('abcabc'::text, ''::text, 'x'::text) AS v", "abcabc"),
-    ("SELECT pg_catalog.replace('abcabc'::text, 'b'::text, ''::text) AS v", "acac"),
-    ("SELECT pg_catalog.replace('aaa'::text, 'aa'::text, 'b'::text) AS v", "ba"),
-    ("SELECT pg_catalog.replace('a.b.c'::text, '.'::text, '\\'::text) AS v", "a\\b\\c"),
-    ("SELECT pg_catalog.replace('ABC'::text, 'b'::text, 'x'::text) AS v", "ABC"),
     ("SELECT pg_catalog.dexp(709.0::double precision) AS v", 8.218407461554972e307),
     ("SELECT pg_catalog.dexp(1.0::double precision) AS v", 2.718281828459045),
     ("SELECT pg_catalog.dexp(0.123456789::double precision) AS v", 1.1314011145122336),
@@ -80,12 +75,6 @@ ANSWERED = [
     ("SELECT pg_catalog.tidsmaller('(2,1)'::tid, '(10,0)'::tid) AS v", "(2,1)"),
     ("SELECT pg_catalog.tidsmaller('(2,10)'::tid, '(2,9)'::tid) AS v", "(2,9)"),
     ("SELECT pg_catalog.tidsmaller('(3,3)'::tid, '(3,3)'::tid) AS v", "(3,3)"),
-    ("SELECT pg_catalog.replace('日本日'::text, '日'::text, 'x'::text) AS v", "x本x"),
-    ("SELECT pg_catalog.replace('a^b$c'::text, '^'::text, '$'::text) AS v", "a$b$c"),
-    ("SELECT pg_catalog.replace('a.*b'::text, '.*'::text, 'Z'::text) AS v", "aZb"),
-    ("SELECT pg_catalog.replace(NULL::text, 'a'::text, 'b'::text) AS v", None),
-    ("SELECT pg_catalog.replace('abc'::text, 'b'::text, NULL::text) AS v", None),
-    ("SELECT pg_catalog.replace('aaaa'::text, 'a'::text, 'aa'::text) AS v", "aaaaaaaa"),
     ("SELECT pg_catalog.dexp(708.9::double precision) AS v", 7.436322587880697e307),
     ("SELECT pg_catalog.dexp(-708.5::double precision) AS v", 2.006132305331306e-308),
     ("SELECT pg_catalog.dexp(1e-20::double precision) AS v", 1.0),
@@ -181,6 +170,23 @@ RAISED = [
 ]
 
 
+#: replace of texts, carried from DuckDB on the base and now polyfill.texts' own ClickHouse row
+#: (REPLACE): the same edge values, answered by that row.
+REPLACED = [
+    ("SELECT pg_catalog.replace('abcabc'::text, ''::text, 'x'::text) AS v", "abcabc"),
+    ("SELECT pg_catalog.replace('abcabc'::text, 'b'::text, ''::text) AS v", "acac"),
+    ("SELECT pg_catalog.replace('aaa'::text, 'aa'::text, 'b'::text) AS v", "ba"),
+    ("SELECT pg_catalog.replace('a.b.c'::text, '.'::text, '\\'::text) AS v", "a\\b\\c"),
+    ("SELECT pg_catalog.replace('ABC'::text, 'b'::text, 'x'::text) AS v", "ABC"),
+    ("SELECT pg_catalog.replace('日本日'::text, '日'::text, 'x'::text) AS v", "x本x"),
+    ("SELECT pg_catalog.replace('a^b$c'::text, '^'::text, '$'::text) AS v", "a$b$c"),
+    ("SELECT pg_catalog.replace('a.*b'::text, '.*'::text, 'Z'::text) AS v", "aZb"),
+    ("SELECT pg_catalog.replace(NULL::text, 'a'::text, 'b'::text) AS v", None),
+    ("SELECT pg_catalog.replace('abc'::text, 'b'::text, NULL::text) AS v", None),
+    ("SELECT pg_catalog.replace('aaaa'::text, 'a'::text, 'aa'::text) AS v", "aaaaaaaa"),
+]
+
+
 def _answer(runtime: ClickHouseFederationRuntime, sql: str) -> object:
     ((value,),) = list(runtime.run_sync(transpile(sql, "clickhouse")).iter_rows())
     return value
@@ -201,7 +207,7 @@ def _same(want: object, got: object) -> bool:
     return want == got
 
 
-@pytest.mark.parametrize(("sql", "want"), ANSWERED)
+@pytest.mark.parametrize(("sql", "want"), ANSWERED + REPLACED)
 def test_clickhouse_answers_postgresql_s(runtime, sql, want):
     got = _answer(runtime, sql)
     assert _same(want, got), (want, got)
@@ -222,16 +228,16 @@ def test_every_carried_overload_is_compared():
 
 def test_a_column_s_value_is_carried(runtime):
     sql = (
-        "SELECT pg_catalog.replace(c, 'b', 'xy') AS v "
-        "FROM (VALUES ('abcb'::text), ('日本b'::text)) AS t(c) ORDER BY c"
+        "SELECT pg_catalog.text(c) AS v "
+        "FROM (VALUES ('<a>x</a>'::xml), ('<b>日本</b>'::xml)) AS t(c) ORDER BY 1"
     )
     rows = [row[0] for row in runtime.run_sync(transpile(sql, "clickhouse")).iter_rows()]
-    assert rows == ["axycxy", "日本xy"]
+    assert rows == ["<a>x</a>", "<b>日本</b>"]
 
 
 def test_a_call_inside_another_is_carried(runtime):
-    sql = "SELECT upper(pg_catalog.replace('abc'::text, 'b'::text, ''::text)) AS v"
-    assert _answer(runtime, sql) == "AC"
+    sql = "SELECT upper(pg_catalog.text('<a>x</a>'::xml)) AS v"
+    assert _answer(runtime, sql) == "<A>X</A>"
 
 
 @pytest.mark.parametrize(

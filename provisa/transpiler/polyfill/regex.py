@@ -331,8 +331,13 @@ def _ch_regexp(node: exp.Expr, dialect: str) -> exp.Expr | None:
         # The rows of its pieces (a server form's, oidvectortypes'): ClickHouse runs no UNNEST
         # WITH ORDINALITY of them, so the call is refused by name, as it was.
         raise Refused(_ch_refusal(function, "of pieces read as a set of rows"), ruling=True)
-    if function in ("regexp_count", "regexp_like") and len(args) == 2:
-        return None  # ClickHouse's own countMatches and match, sqlglot's forms of them
+    if function == "regexp_like" and len(args) == 2:
+        return None  # ClickHouse's own match, sqlglot's form of it
+    if function == "regexp_count" and len(args) == 2 and not _is_literal_text(args[1]):
+        return None  # ClickHouse's own countMatches, sqlglot's form of it
+    # regexp_count of a literal pattern takes the form of its start of 1: countMatches skips an
+    # empty match (regexp_count('abc', '') is 4 on PostgreSQL, 0 on ClickHouse), so such a
+    # pattern raises 0A000, and a newline is an ordinary character, as PostgreSQL reads it.
     if any(_is_null(a) for a in args[:2]) or any(_is_null(a) for a in said.values()):
         typed = {
             "regexp_like": "Nullable(Bool)",
@@ -355,6 +360,11 @@ def _ch_regexp(node: exp.Expr, dialect: str) -> exp.Expr | None:
     form = _ch_form(function, len(args), re2)
     pattern = "f(" + ", ".join("$" + h for h in holes) + ")"
     return graft(replacement(form, dialect, pattern), bindings)
+
+
+def _is_literal_text(value: exp.Expr) -> bool:
+    written = said_text(value)
+    return isinstance(written, exp.Literal) and written.is_string
 
 
 def _constant_integer(value: exp.Expr) -> int | None:

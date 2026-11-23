@@ -44,6 +44,10 @@ class _Cursor:
 class _Conn:
     def __init__(self) -> None:
         self.cursors: list[_Cursor] = []
+        self.rollbacks = 0
+
+    def rollback(self) -> None:  # PEP 249: every DBAPI connection has rollback()
+        self.rollbacks += 1
 
     def cursor(self, *args: Any, **kwargs: Any) -> _Cursor:
         cur = _Cursor(self)
@@ -159,3 +163,4 @@ async def test_a_sqlalchemy_materialized_read_that_fails_closes_its_cursor():
     with pytest.raises(DeadlinePassed):
         await rt.run("SELECT 1")
     assert [c.closed for c in conn.cursors] == [True]
+    assert conn.rollbacks == 1  # the held connection is left clean for the next read

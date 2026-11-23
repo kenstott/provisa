@@ -31,6 +31,7 @@ here."""
 from __future__ import annotations
 
 import copy
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
@@ -66,6 +67,8 @@ class PlanRequest:
         variables: dict | None,
         eligible: bool,
     ) -> None:
+        self._state = state
+        self._role_id = role_id
         self._slot: PlanSlot | None = None
         if eligible:
             self._slot = PlanSlot(
@@ -77,6 +80,23 @@ class PlanRequest:
                 sorted(session_vars_for(role).items()),
                 extra_anchors=(schema,),
             )
+
+    def document(self, schema: Any, query: str, ctx: Any, parse: Callable[..., Any]) -> Any:
+        """``query`` parsed and validated against ``schema``: the text-only kept form of a
+        GraphQL request (REQ-1897, amended 2026-11-23). Parsing and validating read only the text
+        and the schema, never the variables, so the same text with new variables is not parsed or
+        validated again -- only compiled with its values (the compiled SQL depends on them). Kept
+        for any document under the rules every kept plan follows, anchored to the schema object
+        it was validated against. A document that fails is never kept: each request is refused
+        anew. ``parse``: ``compiler.parser.parse_query``, as the caller holds it."""
+        slot = PlanSlot(
+            self._state, "graphql_document", self._role_id, query, extra_anchors=(schema,)
+        )
+        document = slot.cached()
+        if document is None:
+            document = parse(schema, query, ctx=ctx)
+            slot.keep(document)
+        return document
 
     def cached(self) -> GraphQLPlan | None:
         return self._slot.cached() if self._slot is not None else None
