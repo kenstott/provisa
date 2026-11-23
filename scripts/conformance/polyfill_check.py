@@ -198,6 +198,10 @@ def _stated_refusals(feature: Feature, dialect: str) -> list[Refusal]:
     ]
 
 
+#: A limitation that states an error its form raises, as gen_measured.bounds writes one ("Raises
+#: 22003 at an edge value ...") or a row does ("raises PostgreSQL's 22003"), in either case.
+_STATES_A_RAISE = re.compile(r"\braises?\s+(?:PostgreSQL's\s+)?[0-9A-Z]{5}\b", re.IGNORECASE)
+
 #: A limitation that names the edge values its form answers otherwise at (gen_measured.bounds).
 _ANSWERS_AT = re.compile(r"Answers otherwise than PostgreSQL at an edge value: (?P<values>.*)\.\Z")
 
@@ -210,7 +214,7 @@ def _differences(feature: Feature, dialect: str) -> list[Limitation]:
     return [
         lim
         for lim in feature.read.limitations.get(dialect, ())
-        if lim.refusal is None and not function_edges.stated_raises((lim.text,))
+        if lim.refusal is None and _STATES_A_RAISE.search(lim.text) is None
     ]
 
 

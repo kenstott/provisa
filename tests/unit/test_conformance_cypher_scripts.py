@@ -181,6 +181,7 @@ def test_a_page_is_filled_from_the_artifact_and_refilled_in_place():
         "total": 5,
         "passed": 3,
         "by_design": 1,
+        "documented_limit": 0,
         "failed": 1,
         "pass_rate": 0.75,
         "by_design_groups": [
@@ -1202,6 +1203,7 @@ _LOG_DOC = {
     "surface": "cypher",
     "passed": 7,
     "by_design": 3,
+    "documented_limit": 0,
     "failed": 2,
     "total": 12,
     "by_design_groups": [{"group": "Unbounded paths"}, {"group": "Tabs\nand: colons"}],
