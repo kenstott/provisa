@@ -35,7 +35,7 @@ from provisa.core.schema_org import discovery_run_proposals as rows_t
 from provisa.core.schema_org import relationship_candidates as candidates_t
 from provisa.discovery import candidates as candidates_repo
 from provisa.discovery.analyzer import RelationshipCandidate
-from provisa.discovery.direction import Kind, Proposal
+from provisa.discovery.direction import ColumnRef, Kind, Proposal
 
 if TYPE_CHECKING:
     from provisa.core.database import Connection
@@ -161,21 +161,111 @@ def _hop(p: Proposal) -> Hop:
 #: they are suggested by an earlier run or registered already. The junction is found either way.
 _LEGS: frozenset[str | None] = frozenset({None, "pending", "existing"})
 
+#: A column pair to the hop registered between its two columns.
+Registered = dict[frozenset[ColumnRef], Hop]
 
-def junctions(read: list[Recorded]) -> list[Recorded]:
-    """Each relationship two of the run's suggestions make through a junction both refer from
-    (REQ-1586): J.a -> A and J.b -> B make A -> J -> B, proposed as one suggestion beside its two
-    legs. A shared dimension is proposed as a many-to-many pair instead (REQ-413)."""
-    legs = [r for r in read if r.left_out in _LEGS and r.proposal is not None]
-    out: list[Recorded] = []
-    for i, first in enumerate(legs):
-        for second in legs[i + 1 :]:
-            assert first.proposal is not None and second.proposal is not None
-            through = qualify(_hop(first.proposal), _hop(second.proposal))
-            if through is not None and through.shape == "junction":
-                confidence = min(first.proposal.rank, second.proposal.rank)
-                out.append(Recorded(first.kind, None, through=through, confidence=confidence))
+#: The confidence a registered hop is a leg at: it is a relationship already, not a guess.
+_REGISTERED = 1.0
+
+
+async def registered_hops(conn: "Connection") -> Registered:
+    """Every single column pair a registered relationship joins directly, as it was registered:
+    a relationship between two tables, and each leg of a junction relationship (the junction's
+    key referring to the end's key). A junction relationship's own two ends are joined through
+    their junction, not by a hop between them, so that pair is no hop (REQ-1586)."""
+    from provisa.compiler.sql_types import key_list
+    from provisa.core.schema_org import relationships as r
+
+    rows = (
+        await conn.execute_core(
+            select(
+                r.c.id,
+                r.c.source_table_id,
+                r.c.source_column,
+                r.c.target_table_id,
+                r.c.target_column,
+                r.c.cardinality,
+                r.c.via_table_id,
+                r.c.via_source_column,
+                r.c.via_target_column,
+            ).where(r.c.retired.is_(False))
+        )
+    ).fetchall()
+    out: Registered = {}
+    for row in rows:
+        if row.target_table_id is None or not row.target_column:
+            continue
+        if row.via_table_id is None:
+            hops = [
+                (int(row.source_table_id), a, int(row.target_table_id), b, row.cardinality)
+                for a, b in zip(
+                    key_list(row.source_column), key_list(row.target_column), strict=True
+                )
+            ]
+        else:
+            hops = [
+                (int(row.via_table_id), via_col, int(end_id), end_col, "many-to-one")
+                for via_cols, end_id, end_cols in (
+                    (row.via_source_column, row.source_table_id, row.source_column),
+                    (row.via_target_column, row.target_table_id, row.target_column),
+                )
+                for via_col, end_col in zip(key_list(via_cols), key_list(end_cols), strict=True)
+            ]
+        for start_t, start_c, end_t, end_c, cardinality in hops:
+            out[frozenset({(start_t, start_c), (end_t, end_c)})] = Hop(
+                rel_id=str(row.id),
+                source_table_id=start_t,
+                source_column=start_c,
+                target_table_id=end_t,
+                target_column=end_c,
+                cardinality=cardinality or "",
+            )
     return out
+
+
+def _leg(r: Recorded, registered: Registered) -> tuple[Hop, float, Kind] | None:
+    """The hop a proposal is as a junction's leg, and how confident: a suggestion (of this run or
+    an earlier one) as proposed, at its score; one left out as registered, as the relationship
+    registered between its columns, which is certain. A pair registered only as a junction
+    relationship's two ends is no leg: they are joined through their junction (REQ-1586)."""
+    p = r.proposal
+    if p is None or r.left_out not in _LEGS:
+        return None
+    if r.left_out != "existing":
+        return _hop(p), p.rank, r.kind
+    hop = registered.get(p.pair)
+    return None if hop is None else (hop, _REGISTERED, r.kind)
+
+
+def junctions(read: list[Recorded], registered: Registered) -> list[Recorded]:
+    """Each relationship two of the run's legs (:func:`_leg`) make through a junction both refer
+    from (REQ-1586): J.a -> A and J.b -> B make A -> J -> B, proposed once for its two ends, as
+    confident as its less confident leg, beside its two legs. A shared dimension is proposed as a many-to-many
+    pair instead (REQ-413)."""
+    legs = [leg for leg in (_leg(r, registered) for r in read) if leg is not None]
+    # One per pair of ends: a pair is decided once, whichever junction it is joined through
+    # (REQ-413, amended 2026-11-16), so the most confident junction is proposed, and of those
+    # alike, the first junction table registered.
+    best: dict[frozenset[ColumnRef], tuple[float, int, Through, Kind]] = {}
+    for i, (first, first_rank, kind) in enumerate(legs):
+        for second, second_rank, _ in legs[i + 1 :]:
+            through = qualify(first, second)
+            if through is None or through.shape != "junction":
+                continue
+            confidence = min(first_rank, second_rank)
+            ends = frozenset(
+                {
+                    (through.source_table_id, through.source_column),
+                    (through.target_table_id, through.target_column),
+                }
+            )
+            held = best.get(ends)
+            if held is None or (-confidence, through.via_table_id) < (-held[0], held[1]):
+                best[ends] = (confidence, through.via_table_id, through, kind)
+    return [
+        Recorded(kind, None, through=through, confidence=confidence)
+        for confidence, _, through, kind in best.values()
+    ]
 
 
 async def _junction_left_out(conn: "Connection", through: Through) -> str | None:
@@ -201,9 +291,10 @@ async def record(conn: "Connection", run_id: int, read: list[Recorded]) -> None:
     """The run's rows made equal to ``read``: every proposal it has read so far. A row a reviewer
     decided is kept as it is. A junction both of whose legs are among its suggestions is proposed
     as one suggestion besides (:func:`junctions`)."""
+    registered = await registered_hops(conn)
     joined = [
         replace(j, left_out=await _junction_left_out(conn, j.through))
-        for j in junctions(read)
+        for j in junctions(read, registered)
         if j.through is not None
     ]
     async with conn.transaction():
