@@ -661,6 +661,7 @@
     "cypher": {
       "command_call_refused": "{{reason}}",
       "count_unknown": "件数を数えられなかったため、合計は不明です: {{statement}}: {{reason}}",
+      "relationship_unread": "リレーションシップを読み取れなかったため、そのエッジは表示されません: {{statement}}: {{reason}}",
       "access_violations": "このロールはこのクエリを実行できません:",
       "invalid_regex": "{{expression}} のパターン \"{{pattern}}\" は有効な正規表現ではありません: {{reason}}。=~ には正規表現を指定します (例: \".*{{word}}.*\")。または CONTAINS \"{{word}}\" を使用してください。",
       "unknown_label": "ラベル :{{label}} はありません。登録済みのラベル: {{suggestions}}。",

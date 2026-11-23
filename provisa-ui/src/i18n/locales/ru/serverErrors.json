@@ -661,6 +661,7 @@
     "cypher": {
       "command_call_refused": "{{reason}}",
       "count_unknown": "Не удалось выполнить подсчёт, поэтому итог неизвестен: {{statement}}: {{reason}}",
+      "relationship_unread": "Не удалось прочитать связь, поэтому её рёбра не показаны: {{statement}}: {{reason}}",
       "access_violations": "Этой роли запрещено выполнять этот запрос:",
       "invalid_regex": "Шаблон \"{{pattern}}\" в {{expression}} не является допустимым регулярным выражением: {{reason}}. =~ принимает регулярное выражение, например \".*{{word}}.*\", или используйте CONTAINS \"{{word}}\".",
       "unknown_label": "Метки :{{label}} нет. Зарегистрированные метки: {{suggestions}}.",

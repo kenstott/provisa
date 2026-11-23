@@ -661,6 +661,7 @@
     "cypher": {
       "command_call_refused": "{{reason}}",
       "count_unknown": "Non è stato possibile effettuare un conteggio, quindi il totale è sconosciuto: {{statement}}: {{reason}}",
+      "relationship_unread": "Non è stato possibile leggere una relazione, quindi i suoi archi non sono mostrati: {{statement}}: {{reason}}",
       "access_violations": "Questo ruolo non può eseguire questa query:",
       "invalid_regex": "Il pattern \"{{pattern}}\" in {{expression}} non è un'espressione regolare valida: {{reason}}. =~ accetta un'espressione regolare, ad es. \".*{{word}}.*\", oppure usa CONTAINS \"{{word}}\".",
       "unknown_label": "Non esiste l'etichetta :{{label}}. Etichette registrate: {{suggestions}}.",

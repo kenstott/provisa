@@ -661,6 +661,7 @@
     "cypher": {
       "command_call_refused": "{{reason}}",
       "count_unknown": "Não foi possível fazer uma contagem, então o total é desconhecido: {{statement}}: {{reason}}",
+      "relationship_unread": "Não foi possível ler um relacionamento, então suas arestas não são exibidas: {{statement}}: {{reason}}",
       "access_violations": "Este papel não pode executar esta consulta:",
       "invalid_regex": "O padrão \"{{pattern}}\" em {{expression}} não é uma expressão regular válida: {{reason}}. =~ espera uma expressão regular, p. ex. \".*{{word}}.*\", ou use CONTAINS \"{{word}}\".",
       "unknown_label": "Não existe o rótulo :{{label}}. Rótulos registrados: {{suggestions}}.",

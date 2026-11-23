@@ -661,6 +661,7 @@
     "cypher": {
       "command_call_refused": "{{reason}}",
       "count_unknown": "A count could not be made, so the total is unknown: {{statement}}: {{reason}}",
+      "relationship_unread": "A relationship could not be read, so its edges are not shown: {{statement}}: {{reason}}",
       "access_violations": "This role may not run this query:",
       "invalid_regex": "The pattern \"{{pattern}}\" in {{expression}} is not a valid regular expression: {{reason}}. =~ takes a regular expression, e.g. \".*{{word}}.*\", or use CONTAINS \"{{word}}\".",
       "unknown_label": "There is no label :{{label}}. Registered labels: {{suggestions}}.",

@@ -661,6 +661,7 @@
     "cypher": {
       "command_call_refused": "{{reason}}",
       "count_unknown": "एक गिनती नहीं हो सकी, इसलिए कुल अज्ञात है: {{statement}}: {{reason}}",
+      "relationship_unread": "एक संबंध पढ़ा नहीं जा सका, इसलिए उसके किनारे नहीं दिखाए गए: {{statement}}: {{reason}}",
       "access_violations": "यह भूमिका यह क्वेरी नहीं चला सकती:",
       "invalid_regex": "{{expression}} में पैटर्न \"{{pattern}}\" मान्य रेगुलर एक्सप्रेशन नहीं है: {{reason}}। =~ एक रेगुलर एक्सप्रेशन लेता है, जैसे \".*{{word}}.*\", या CONTAINS \"{{word}}\" का उपयोग करें।",
       "unknown_label": ":{{label}} नाम का कोई लेबल नहीं है। पंजीकृत लेबल: {{suggestions}}।",

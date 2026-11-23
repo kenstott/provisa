@@ -661,6 +661,7 @@
     "cypher": {
       "command_call_refused": "{{reason}}",
       "count_unknown": "Eine Zählung war nicht möglich, daher ist die Summe unbekannt: {{statement}}: {{reason}}",
+      "relationship_unread": "Eine Beziehung konnte nicht gelesen werden, daher werden ihre Kanten nicht angezeigt: {{statement}}: {{reason}}",
       "access_violations": "Diese Rolle darf diese Abfrage nicht ausführen:",
       "invalid_regex": "Das Muster \"{{pattern}}\" in {{expression}} ist kein gültiger regulärer Ausdruck: {{reason}}. =~ erwartet einen regulären Ausdruck, z. B. \".*{{word}}.*\", oder verwenden Sie CONTAINS \"{{word}}\".",
       "unknown_label": "Es gibt kein Label :{{label}}. Registrierte Labels: {{suggestions}}.",

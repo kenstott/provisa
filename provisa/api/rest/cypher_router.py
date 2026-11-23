@@ -77,7 +77,6 @@ from provisa.api.rest.cypher_exec import (
     _resolve_role_id,
 )
 from provisa.compiler.complexity import ComplexityLimitExceeded
-from provisa.compiler.sql_validator import GovernanceRefused
 
 log = logging.getLogger(__name__)
 
@@ -1361,10 +1360,11 @@ async def graph_counts(request: Request) -> JSONResponse:  # REQ-392
             # with that refusal's reason.
             log.warning("graph-counts: %s not counted: %s", cypher, exc)
             return {"count": None, "error": client_text(str(exc))}
-        except GovernanceRefused as exc:
+        except PermissionError as exc:
             # REQ-392 (d97fa5321d): a label is counted or said uncounted with its reason. One
-            # whose read governance refuses (a derived table whose view reads a table since
-            # deleted: V006) is that label's entry, not a 403 for every label of the page.
+            # whose read is refused -- by governance (GovernanceRefused: a derived table whose
+            # view reads a table since deleted, V006), the operator's floor, or any other refusal
+            # of that one read -- is that label's entry, not a 403 for every label of the page.
             log.warning("graph-counts: %s not counted: %s", cypher, exc)
             return {"count": None, "error": client_text(str(exc))}
         executed = await _run_plan(plan, state)

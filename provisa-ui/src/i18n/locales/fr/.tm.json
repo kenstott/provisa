@@ -11401,5 +11401,6 @@
   "glossaryTab.json::glossaryTab.tablesWithoutSamples": "No sample values were read from: {{tables}}.",
   "syncingTab.json::syncingTab.noneForProducts": "No entry publishes the chosen data products.",
   "syncingTab.json::syncingTab.productFilterLabel": "Data products",
-  "syncingTab.json::syncingTab.productFilterPlaceholder": "Filter by data product"
+  "syncingTab.json::syncingTab.productFilterPlaceholder": "Filter by data product",
+  "fr/serverErrors.json::serverErrors.cypher.relationship_unread": "A relationship could not be read, so its edges are not shown: {{statement}}: {{reason}}"
 }

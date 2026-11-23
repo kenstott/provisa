@@ -661,6 +661,7 @@
     "cypher": {
       "command_call_refused": "{{reason}}",
       "count_unknown": "Un comptage n’a pas pu être effectué, le total est donc inconnu : {{statement}} : {{reason}}",
+      "relationship_unread": "Une relation n’a pas pu être lue, ses arêtes ne sont donc pas affichées : {{statement}} : {{reason}}",
       "access_violations": "Ce rôle ne peut pas exécuter cette requête :",
       "invalid_regex": "Le motif \"{{pattern}}\" dans {{expression}} n'est pas une expression régulière valide : {{reason}}. =~ attend une expression régulière, par ex. \".*{{word}}.*\", ou utilisez CONTAINS \"{{word}}\".",
       "unknown_label": "Il n'existe pas de libellé :{{label}}. Libellés enregistrés : {{suggestions}}.",
