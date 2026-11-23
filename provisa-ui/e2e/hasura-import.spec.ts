@@ -9,7 +9,7 @@
 // permission from the copyright holder.
 
 /**
- * REQ-1483 / REQ-1687: a Hasura v2 import driven through the browser, end to end.
+ * REQ-1483 / REQ-1687 / REQ-194: a Hasura v2 import driven through the browser, end to end.
  *
  * Hasura's own metadatautil sample (tests/fixtures/hasura_v2_t1_metadata.json) is uploaded on
  * Admin → Import; the administrator supplies the connection to the chinook demo source, picks the
@@ -110,15 +110,16 @@ test("import Hasura's sample through the tab, then query it as the sample's user
   await page.getByRole("button", { name: "Apply to this organization" }).click();
   await expect(page.getByText(/^Applied: /)).toBeVisible({ timeout: 120_000 });
 
-  // REQ-1682/REQ-1686: the select permission's session-variable filter, row by row.
+  // REQ-1682/REQ-1686: the select permission's session-variable filter, row by row. The sample
+  // names no naming_convention, so it is served hasura-default: columns as defined (REQ-194).
   const albums = await fieldFor(request, "albums");
   const filtered = await request.post(DATA_GQL, {
     headers: USER,
-    data: { query: `{ ${albums} { title artistId } }` },
+    data: { query: `{ ${albums} { title artist_id } }` },
   });
   expect(filtered.status()).toBe(200);
   expect((await filtered.json()).data[albums]).toEqual([
-    { title: "Balls to the Wall", artistId: 2 },
+    { title: "Balls to the Wall", artist_id: 2 },
   ]);
 
   // REQ-1680: the FK-declared relationship resolved through the inverse and joins.
