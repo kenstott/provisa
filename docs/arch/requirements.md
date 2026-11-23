@@ -7280,7 +7280,7 @@ Masking respects column type constraints. NULL masks are allowed only on nullabl
 
 **Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
 
-Masking constant expressions must emit syntactically valid SQL for their type: numeric literals without quotes, string literals with single quotes (escaped apostrophes doubled), NULL keyword (not quoted), boolean TRUE/FALSE keywords (not Python string literals). Special constants MAX/MIN resolve to integer subtype bounds (tinyint=127, smallint=32767, integer=2147483647, bigint=9223372036854775807).
+Masking constant expressions must emit syntactically valid SQL for their type: numeric literals without quotes, string literals with single quotes (escaped apostrophes doubled), NULL keyword (not quoted), boolean TRUE/FALSE keywords (not Python string literals). Special constants MAX/MIN resolve to integer subtype bounds (tinyint=127, smallint=32767, integer=2147483647, bigint=9223372036854775807). (Amended 2026-11-23, SUPERSEDED IN PART BY [REQ-2131](#REQ-2131)'s amendment of 2026-11-20:) A constant mask is a text column's: its value is emitted as a single-quoted string literal with apostrophes doubled, and NULL as the unquoted keyword. On a non-text column a constant mask reads as NULL; the numeric, boolean and MAX/MIN literal forms above are superseded.
 
 **Use case:** Correct literal syntax ensures masked values are valid SQL across all dialects without requiring downstream escaping.
 
