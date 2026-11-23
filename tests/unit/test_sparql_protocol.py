@@ -211,10 +211,19 @@ def _refused(body: bytes, content_type: str) -> dict:
     return json.loads(answer.body)
 
 
-def test_an_update_on_a_named_graph_is_refused_naming_what_the_model_lacks():
-    doc = _refused(b"CLEAR GRAPH <http://example.org/g>", "application/sparql-update")
-    assert "acts on a named graph" in json.dumps(doc)
-    assert "CLEAR" in json.dumps(doc)
+def test_a_load_is_refused_naming_where_it_reads_from():
+    # REQ-2135 (amended 2026-11-23): LOAD reads a document from outside the session.
+    doc = _refused(b"LOAD <http://example.org/doc>", "application/sparql-update")
+    assert doc["code"] == "sparql.update_refused"
+    assert "LOAD reads a document from outside the session" in json.dumps(doc)
+
+
+def test_graph_management_on_a_session_graph_is_an_update_the_endpoint_serves():
+    """REQ-2135 (amended 2026-11-23): CLEAR, DROP, CREATE, COPY, MOVE and ADD act on the
+    session's graphs (tests/unit/test_sparql_session_objects.py)."""
+    body = b"CLEAR GRAPH <http://example.org/g>"
+    carried = _text(_request("POST", body=body, content_type="application/sparql-update"))
+    assert carried == SparqlUpdate(body.decode())
 
 
 def test_an_insert_is_an_update_the_endpoint_serves():
@@ -226,8 +235,8 @@ def test_an_insert_is_an_update_the_endpoint_serves():
 
 
 def test_an_update_form_field_is_an_update():
-    doc = _refused(b"update=DROP+ALL", "application/x-www-form-urlencoded")
-    assert "acts on a named graph" in json.dumps(doc)
+    doc = _refused(b"update=LOAD+%3Chttp%3A%2F%2Fx%3E", "application/x-www-form-urlencoded")
+    assert "LOAD reads a document from outside the session" in json.dumps(doc)
     form = _request(
         "POST",
         body=b"update=DELETE+WHERE+%7B+%3Fs+%3Fp+%3Fo+%7D",

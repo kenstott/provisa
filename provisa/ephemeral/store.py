@@ -13,8 +13,9 @@
 - ``nodes(node_id, table)``: each ephemeral node and the anchor table holding its properties;
 - ``node_labels(node_id, label)``: every label an ephemeral node carries, and every session tag
   on a model node (its node_id the model node's graph identity, ``Label|key``);
-- ``rels(rel_id, type, from_id, to_id, table)``: each ephemeral relationship, either end
-  ephemeral or model, and the table holding its properties;
+- ``rels(rel_id, type, from_id, to_id, table, graph)``: each ephemeral relationship, either end
+  ephemeral or model, the table holding its properties, and the SPARQL named graph it is in
+  (null for none: every Cypher relationship, and a SPARQL one of the default graph; REQ-2135);
 - anchor tables: one per free label that anchors nodes (``node_id`` and a typed column per
   property), the default one for a node with no free label, and one per relationship type for
   its properties (``rel_id`` and its columns).
@@ -56,6 +57,9 @@ _FIXED: dict[str, list[tuple[str, str]]] = {
         ("from_id", _TEXT),
         ("to_id", _TEXT),
         ("table", _TEXT),
+        # REQ-2135 (amended 2026-11-23): a SPARQL named graph is a graph tag, this column on a
+        # relationship (provisa.sparql_query.session_graph).
+        ("graph", _TEXT),
     ],
 }
 #: The anchor table of a node that has no free label.
@@ -374,6 +378,8 @@ class NewRel:
     # type name.
     from_labels: tuple[str, ...] = ()
     to_labels: tuple[str, ...] = ()
+    # The SPARQL named graph it is in (REQ-2135); None for none.
+    graph: str | None = None
 
 
 @dataclass
@@ -398,12 +404,17 @@ def _engine(state: Any) -> str:
     return state.federation_engine.engine.name
 
 
+#: The session table naming each IRI a SPARQL session object uses (REQ-2135, amended 2026-11-23;
+#: provisa.sparql_query.session_graph): (iri, graph, kind, name).
+SPARQL_IRIS = "sparql__iris"
+
 #: Each fixed table's key: no two of its rows share it (an anchor's and a property table's key
 #: is its first column, ``node_id`` or ``rel_id``).
 _KEYS: dict[str, tuple[str, ...]] = {
     NODES: (NODE_ID,),
     NODE_LABELS: (NODE_ID, "label"),
     RELS: (REL_ID,),
+    SPARQL_IRIS: ("iri", "graph", "kind"),
 }
 
 
@@ -497,6 +508,22 @@ async def _add(
     await temp_exec.append(state, session, table, converted, writer)
     if changes:
         await build_indexes(session, table, writer)
+
+
+async def add_rows(
+    state: Any, session: TempSession, table: str, keys: Sequence[tuple[str, str]], rows: list
+) -> None:
+    """Add ``rows`` (column -> value) to the session's ``table`` keyed on ``keys`` (name, session
+    type), its columns grown and widened as every session table's are: a session table of a
+    surface's own beside the graph's (REQ-2135's IRI names)."""
+    await _add(state, session, table, tuple(keys), rows)
+
+
+async def remove_rows(
+    state: Any, session: TempSession, table: str, key_columns: tuple[str, ...], keys: list[tuple]
+) -> None:
+    """Remove the rows of the session's ``table`` whose ``key_columns`` hold one of ``keys``."""
+    await _remove(state, session, table, key_columns, keys)
 
 
 async def _remove(
@@ -607,6 +634,7 @@ async def write(state: Any, session: TempSession, writes: Writes) -> None:
                     "from_id": r.from_id,
                     "to_id": r.to_id,
                     "table": rel_table(r.rel_type),
+                    "graph": r.graph,
                 }
                 for r in writes.rels
             ],

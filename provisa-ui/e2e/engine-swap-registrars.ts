@@ -494,7 +494,11 @@ function registerDqChecker(
     // Give the poll job a real cadence — RegisterTableForm has no Cache TTL field, only
     // TableEditForm's (registerRss's own established step for the identical poll-landed shape).
     await page.goto("/tables");
-    await page.waitForSelector(".page-header", { timeout: 15000 });
+    // The header renders once the first TablesQuery answers (TablesPage's initial-load gate). Right
+    // after a registration it runs beside every worker's after-answer pass (names table, role warm-up):
+    // 6.4-7.0s server wait and ~15s from goto to the query on the swap lane (run 45170347899, saphana).
+    // The same 60s openTablesAddForm gives it.
+    await page.waitForSelector(".page-header", { timeout: 60000 });
     const row = page.locator(".data-table tbody tr").filter({ hasText: sourceId }).first();
     await row.waitFor({ timeout: 15000 });
     await openListRow(row);

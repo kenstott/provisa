@@ -72,6 +72,9 @@ def _make_session(roles: list[str], bolt_version: tuple[int, int] = (5, 4)):
     session = BoltSession(writer, bolt_version)  # type: ignore[arg-type]
     session.roles = list(roles)
     session.role_id = roles[0] if roles else None
+    # The home database a sign-in holding ``roles`` resolves (REQ-2155): their union, written as
+    # the set of roles held; one role, that role (held_assignments.default_request).
+    session.default_role = ",".join(roles) if roles else None
     # REQ-2176: each RUN is bound to the principal's graph session, whose row this in-process
     # session has no control plane to hold: it is held in memory.
     session._graph_session = _held_in_memory()  # type: ignore[method-assign]
@@ -205,7 +208,7 @@ class TestKnownDbProceedsToExecution:
         assert kwargs.get("include_ops") is True
 
     async def test_run_with_default_db_uses_business_view(self):
-        """REQ-808: empty/system db resolves to first role, business view."""
+        """REQ-808: empty/system db resolves to the home role, business view."""
         session, _ = _make_session(["analyst"])
         with patch(
             "provisa.bolt.session._execute_cypher",

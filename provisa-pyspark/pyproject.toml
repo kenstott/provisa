@@ -1,0 +1,20 @@
+[project]
+name = "provisa-pyspark"
+version = "0.1.0"
+description = "Spark data source for Provisa: read governed Provisa tables as DataFrames over Arrow Flight SQL"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "pyarrow>=16",
+]
+
+[project.optional-dependencies]
+# A Spark cluster brings its own pyspark; this extra installs one where none is (local mode, CI).
+spark = ["pyspark>=4.0,<5"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["provisa_pyspark*"]

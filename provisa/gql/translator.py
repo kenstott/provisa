@@ -1897,7 +1897,13 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
             alias = f"_uw{self._unwind_count}"
             self._unwind_count += 1
             array_expr = self._build_unwind_expr(uw.expression)
-            if _json_valued(array_expr) == "list" or (
+            if self._temporal_context().is_json_property(uw.expression):
+                # REQ-2176: a property held as JSON (a session label's, written with values of
+                # several kinds or a list of them) unwinds to its items, a value that is no list
+                # to itself, null to no rows; each item is one JSON value.
+                array_expr = exp.Anonymous(this="json_items", expressions=[array_expr])
+                self._json_value_vars.add(uw.variable)
+            elif _json_valued(array_expr) == "list" or (
                 isinstance(uw.expression, Variable) and uw.expression.name in self._json_list_vars
             ):
                 self._json_value_vars.add(uw.variable)

@@ -50,6 +50,8 @@ const ENTRY = {
   aws_secret_access_key_set: false,
   last_run: null,
   last_import: null,
+  // REQ-2259: each data product's latest outcome on this entry; none recorded yet.
+  products: [],
 };
 
 const PREMIUM_STATE = {

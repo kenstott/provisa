@@ -91,6 +91,8 @@ def _authenticate(shared_data, control_plane, *, user: str = "alice") -> None:
     state = SimpleNamespace(
         auth_config=shared_data["auth_config"],
         auth_middleware_active=True,
+        # meta-role id -> its derived qualifiers, as the app state holds them (OrgRuntime).
+        meta_qualifiers={},
         multitenancy=False,
         org_id="default",  # the one org a single-org deployment binds (REQ-1266)
         # The simple provider keeps its users' ids on the platform plane.

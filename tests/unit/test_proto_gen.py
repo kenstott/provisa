@@ -94,7 +94,9 @@ class TestTypeMapping:
         assert _physical_to_proto("boolean") == "bool"
 
     def test_decimal(self):
-        assert _physical_to_proto("decimal(10,2)") == "double"
+        # REQ-1961 (amended 2026-11-23): a sized numeric is the string of its exact digits.
+        assert _physical_to_proto("decimal(10,2)") == "string"
+        assert _physical_to_proto("decimal") == "double"
 
     def test_real(self):
         assert _physical_to_proto("real") == "double"
@@ -137,7 +139,7 @@ class TestGenerateProto:
         assert "package provisa.v1;" in proto
         assert "message Orders {" in proto
         # Sorted columns: amount, created_at, id
-        assert "double amount = 1;" in proto
+        assert "string amount = 1;" in proto  # decimal(10,2): its exact digits (REQ-1961)
         assert "google.protobuf.Timestamp created_at = 2;" in proto
         assert "int32 id = 3;" in proto
 
@@ -431,8 +433,8 @@ def test_a_null_result_value_arrives_unset_not_as_its_type_s_zero():
     zero: a masked amount read as 0.0 is a wrong answer, not a hidden one."""
     orders = _compiled(generate_proto(_make_si())).Orders
     assert not orders().HasField("amount")
-    assert orders(amount=0.0).HasField("amount")
-    assert orders.FromString(orders(amount=0.0).SerializeToString()).HasField("amount")
+    assert orders(amount="0.00").HasField("amount")
+    assert orders.FromString(orders(amount="0.00").SerializeToString()).HasField("amount")
     assert not orders.FromString(orders(id=1).SerializeToString()).HasField("amount")
 
 
