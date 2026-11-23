@@ -157,9 +157,36 @@ def _out_columns() -> dict[str, tuple[str, ...]]:
     return {name: next(iter(outs)) for name, outs in named.items() if len(outs) == 1}
 
 
+#: sqlglot's readings of PostgreSQL's one-column set-returning functions: unnest of one array, and
+#: generate_series.
+_ONE_COLUMN_FUNCTIONS = (exp.Explode, exp.GenerateSeries)
+
+
+def one_column_function(table: exp.Expr) -> exp.Table | None:  # REQ-2204
+    """``table`` as PostgreSQL reads it where it is one of PostgreSQL's one-column set-returning
+    functions in FROM, unqualified or in pg_catalog, aliased without column names: the alias names
+    its one column (psql's ``pg_catalog.unnest(tc.reloptions) x`` reads column x), written
+    ``unnest(...) AS x(x)`` with no schema, which every engine reads. None for any other FROM
+    item."""
+    if not isinstance(table, exp.Table) or type(table.this) not in _ONE_COLUMN_FUNCTIONS:
+        return None
+    alias = table.args.get("alias")
+    if table.catalog or table.db.lower() not in ("", "pg_catalog"):
+        return None
+    if alias is None or alias.columns:
+        return None
+    named = exp.TableAlias(this=alias.this.copy(), columns=[exp.to_identifier(alias.name)])
+    return exp.Table(this=table.this, alias=named)
+
+
 def _with_out_columns(tree: exp.Expr) -> exp.Expr:
     """``tree`` with each pg_catalog table function in FROM given its OUT parameters as the
-    alias's columns, as PostgreSQL names them; the alias defaults to the function's name."""
+    alias's columns, as PostgreSQL names them; the alias defaults to the function's name. A
+    one-column function's alias names its column (:func:`one_column_function`)."""
+    for table in list(tree.find_all(exp.Table)):
+        named = one_column_function(table)
+        if named is not None:
+            table.replace(named)
     for table in tree.find_all(exp.Table):
         call = table.this
         if not isinstance(call, exp.Anonymous) or table.alias_column_names:

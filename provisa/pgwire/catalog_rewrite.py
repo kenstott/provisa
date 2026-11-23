@@ -35,6 +35,7 @@ from provisa.pgwire.catalog_data import (
 )
 from provisa.pgwire.catalog_pg17 import FUNCTION_RETURNS, RELATIONS
 from provisa.pgwire.catalog_server_answers import ANSWERED as SERVER_ANSWERED
+from provisa.pgwire.catalog_types import one_column_function
 from provisa.core.pg_error import from_engine
 from provisa.transpiler import function_macros
 from provisa.transpiler.metadata_oids import SYSTEM_SCHEMA_OIDS
@@ -613,15 +614,8 @@ def _rewrite_for_duckdb(sql: str, role_id: str, database: str) -> str:
             # A pg_catalog set-returning function in FROM (psql: FROM pg_catalog.unnest(a) s(n)) is
             # DuckDB's own function of that name. Aliased without column names, a one-column
             # function's alias names its column, as in PostgreSQL (DuckDB's names the row).
-            alias = node.args.get("alias")
-            if (
-                alias is not None
-                and not alias.columns
-                and isinstance(node.this, (exp.GenerateSeries, exp.Explode))
-            ):
-                alias = exp.TableAlias(
-                    this=alias.this.copy(), columns=[exp.to_identifier(alias.name)]
-                )
+            named = one_column_function(node)
+            alias = (named or node).args.get("alias")
             return exp.Table(this=node.this.transform(_transform), alias=alias)
         if isinstance(node, exp.Table):
             # Schema-qualified scalar function used as a TVF (e.g. pg_catalog.pg_indexam_has_property(...) amcanorder).
