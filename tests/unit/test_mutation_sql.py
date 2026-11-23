@@ -10,6 +10,8 @@
 
 """Unit tests for mutation SQL generation."""
 
+from decimal import Decimal
+
 import pytest
 from graphql import parse, validate
 
@@ -64,7 +66,7 @@ class TestInsertMutation:
     def test_basic_insert(self):
         schema, ctx = _build()
         doc = parse("""
-            mutation { insertOrders(input: { amount: 42.0, region: "us-east" }) { affected_rows } }
+            mutation { insertOrders(input: { amount: "42.0", region: "us-east" }) { affected_rows } }
         """)
         assert not validate(schema, doc)
         results = compile_mutation(doc, ctx, {"sales-pg": "postgresql"})
@@ -75,7 +77,8 @@ class TestInsertMutation:
         assert '"amount"' in m.sql
         assert '"region"' in m.sql
         assert "$1" in m.sql
-        assert m.params == [42.0, "us-east"]
+        # REQ-1961: a sized numeric's input is its exact digits, written as the decimal they are.
+        assert m.params == [Decimal("42.0"), "us-east"]
 
     def test_insert_source_id(self):
         schema, ctx = _build()
@@ -88,7 +91,7 @@ class TestUpdateMutation:
     def test_basic_update(self):
         schema, ctx = _build()
         doc = parse("""
-            mutation { updateOrders(set: { amount: 99.0 }, where: { id: { eq: 1 } }) { affected_rows } }
+            mutation { updateOrders(set: { amount: "99.0" }, where: { id: { eq: 1 } }) { affected_rows } }
         """)
         assert not validate(schema, doc)
         results = compile_mutation(doc, ctx, {"sales-pg": "postgresql"})
@@ -97,7 +100,7 @@ class TestUpdateMutation:
         assert "UPDATE" in m.sql
         assert "SET" in m.sql
         assert "WHERE" in m.sql
-        assert m.params == [99.0, 1]
+        assert m.params == [Decimal("99.0"), 1]
 
 
 class TestDeleteMutation:

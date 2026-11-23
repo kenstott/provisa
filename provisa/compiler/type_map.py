@@ -322,8 +322,26 @@ def typed_array_graphql_type(typed: ArrayType, subtype: str | None = None) -> Gr
 
 def registered_graphql_type(data_type: str, subtype: str | None) -> GraphQLScalarType | GraphQLList:
     """The GraphQL type of a registered column of ``data_type``, a subtype's where it has one
-    (REQ-2171)."""
+    (REQ-2171). A numeric whose size the model records is a String: the exact digits it is
+    served as (REQ-1961, amended 2026-11-23), as a sized numeric array element is."""
+    from provisa.core.numeric_type import numeric_size
+
+    if subtype is None and numeric_size(data_type) is not None:
+        return GraphQLString
     return column_type_to_graphql(subtype or data_type)
+
+
+def registered_filter_type(data_type: str, subtype: str | None) -> GraphQLInputObjectType | None:
+    """The filter a registered column of ``data_type`` is compared by, or None when it has none.
+    A sized numeric is declared a String but compared as the ordered number it is (REQ-1961,
+    amended 2026-11-23): ``DecimalFilter``, whose values are its exact digits."""
+    from provisa.core.numeric_type import numeric_size
+
+    if subtype is None and numeric_size(data_type) is not None:
+        return DecimalFilter
+    gql_type = column_type_to_graphql(subtype or data_type)
+    scalar = gql_type.of_type if isinstance(gql_type, GraphQLList) else gql_type
+    return FILTER_TYPE_MAP.get(scalar)  # type: ignore[arg-type]
 
 
 def array_graphql_type(data_type: str) -> GraphQLScalarType | GraphQLList:  # REQ-1986, REQ-424
@@ -424,6 +442,13 @@ IntFilter = GraphQLInputObjectType("IntFilter", lambda: _ordered_filter_fields(G
 BigIntFilter = GraphQLInputObjectType("BigIntFilter", lambda: _ordered_filter_fields(BigInt))
 
 FloatFilter = GraphQLInputObjectType("FloatFilter", lambda: _ordered_filter_fields(GraphQLFloat))
+
+#: A sized numeric's comparisons (REQ-1961, amended 2026-11-23): ordered, each value the string of
+#: its exact digits, compared as a number (compiler.sql_where binds it as a decimal).
+DecimalFilter = cast(
+    GraphQLInputObjectType,
+    GraphQLInputObjectType("DecimalFilter", lambda: _ordered_filter_fields(GraphQLString)),
+)
 
 BooleanFilter = GraphQLInputObjectType(
     "BooleanFilter",
