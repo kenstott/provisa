@@ -227,8 +227,9 @@ def test_the_bootstrap_claimant_holds_platform_admin_in_the_deployments_org(monk
 
     monkeypatch.setattr(held_assignments, "read_assignments", _read)
     monkeypatch.setattr(held_assignments, "is_bootstrap_claimant", _claimant)
-    monkeypatch.setattr(held_assignments, "_roles_now", lambda: {})
-    held = asyncio.run(held_assignments.held_assignments(_tenant_state(), _USER, None))
+    state = _tenant_state()
+    state.roles = {}  # the deployment org's roles registry: no control-plane role held
+    held = asyncio.run(held_assignments.held_assignments(state, _USER, None))
     assert held == [RoleAssignment("org_admin", "*"), RoleAssignment("platform_admin", "*")]
 
 

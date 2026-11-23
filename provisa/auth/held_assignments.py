@@ -256,6 +256,9 @@ async def held_assignments(
         org_id=org_id,
         # A single-tenant deployment has no tenant org (as the HTTP middleware reads it).
         root_org_id=_root_org_id(state) if getattr(state, "multitenancy", False) else None,
+        # The roles are judged by the state the sign-in is served by, the one every other read
+        # here takes.
+        roles_now=lambda: state.roles,
     )
 
 

@@ -13,27 +13,34 @@
 
 import { useTranslation } from "react-i18next";
 import type { ProfilerCatalogEntry } from "../../api/profiler";
-import { FormField } from "../../components/form/FormLayout";
+import { FormField, RequiredMark } from "../../components/form/FormLayout";
+import { Input } from "@mantine/core";
+import type { RequiredFields } from "../../components/form/useRequiredFields";
 
 export function ProfilerResultSelect({
   catalog,
   value,
   onChange,
+  required,
 }: {
   /** null while the catalog loads. */
   catalog: ProfilerCatalogEntry[] | null;
   value: string;
   onChange: (tableName: string) => void;
+  /** The form's required fields: the result picked is its table name, required (REQ-1968). */
+  required: RequiredFields<"tableName">;
 }) {
   const { t } = useTranslation();
   return (
     <FormField size="medium">
       <label>
         {t("registerTableForm.profilerResultLabel")}
+        <RequiredMark />
         <select
           className="form-select"
           value={value}
           onChange={(e) => onChange(e.target.value)}
+          {...required.native("tableName")}
           disabled={catalog == null}
           data-testid="register-table-profiler-select"
         >
@@ -55,6 +62,7 @@ export function ProfilerResultSelect({
             )),
           )}
         </select>
+        <Input.Error>{required.errorOf("tableName")}</Input.Error>
       </label>
     </FormField>
   );

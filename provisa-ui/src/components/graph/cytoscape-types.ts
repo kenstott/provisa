@@ -67,6 +67,8 @@ export interface CyElement {
   empty(): boolean;
 }
 export interface CyCollection {
+  /** Mark every element for a full restyle: its mapped styles are recomputed. */
+  updateStyle(): this;
   length: number;
   [index: number]: CyElement;
   forEach(fn: (ele: CyElement, i: number) => void): this;
@@ -146,6 +148,7 @@ export interface CyInstance {
   jpg(options?: Record<string, unknown>): string;
   svg(options?: Record<string, unknown>): string;
   destroy(): void;
+  destroyed(): boolean;
   unmount(): void;
   style(sheet?: unknown): void;
   container(): HTMLElement;
