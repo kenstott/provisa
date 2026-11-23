@@ -38,7 +38,6 @@ const NOT_YET_CONVERTED: Readonly<Record<string, string>> = {
   "components/admin/GlossaryTab.tsx": "the primary <Button> disabled by addName",
   "components/admin/GrantEditor.tsx":
     "<FormFooter>'s Save disabled by blank; <FormFooter>'s Save disabled by draft.url",
-  "components/admin/LocalUsersTab.tsx": "<FormFooter>'s Save disabled by newUsername, newPassword",
   "components/admin/MailPlatformsSection.tsx": "<FormFooter>'s Save disabled by platformMissing",
   "components/admin/MailTab.tsx":
     "<FormFooter>'s Save disabled by incomplete, choice; the primary <Button> disabled by testTo",
