@@ -1446,6 +1446,34 @@ def _pg_binary(text: exp.Expression) -> exp.Expression:  # pyright: ignore[repor
     return exp.Collate(this=text, expression=exp.to_identifier("C", quoted=True))
 
 
+#: PostgreSQL's collations an engine without collations compares as it does already: the default
+#: collation is the engine's own comparison, and "C" and "POSIX" compare by character codes, as
+#: Trino, DuckDB and ClickHouse compare text (REQ-2204).
+_ENGINE_COLLATIONS = frozenset({"default", "c", "posix"})
+
+
+def _engine_collation(name: exp.Expr) -> bool:
+    """Whether ``name``, a collation's name bare or pg_catalog's, is one of _ENGINE_COLLATIONS."""
+    if isinstance(name, exp.Dot):
+        if name.this.name.lower() != "pg_catalog":
+            return False
+        name = name.expression
+    return isinstance(name, (exp.Identifier, exp.Var)) and name.name.lower() in _ENGINE_COLLATIONS
+
+
+def collations_as_compared(tree: exp.Expr) -> exp.Expr:  # REQ-2204
+    """``tree`` with each COLLATE of a collation the engine already compares by dropped, for an
+    engine with no collations: psql's ``... ~ '^(x)$' COLLATE pg_catalog.default``. Any other
+    collation is left as written, for the engine to read or refuse."""
+
+    def compared(node: exp.Expr) -> exp.Expr:
+        if isinstance(node, exp.Collate) and _engine_collation(node.expression):
+            return node.this
+        return node
+
+    return tree.transform(compared)
+
+
 def _pg_sign(a: exp.Expression, b: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
     """-1, 0 or 1 as ``a`` is below, equal to or above ``b``."""
     return exp.Case(
@@ -2109,6 +2137,11 @@ def transpile(
         # REQ-2171: a value of a type only PostgreSQL has, as what the target holds it as. After
         # the functions: the type a statement casts to chooses the overload a call reads.
         lowered = pg_held_types.held(
+            lowered if lowered is not None else sqlglot.parse_one(pg_sql, read="postgres")
+        )
+    if target_dialect != "postgres" and "COLLATE" in pg_sql.upper():
+        # REQ-2204: a PostgreSQL collation the engine compares by already means no change there.
+        lowered = collations_as_compared(
             lowered if lowered is not None else sqlglot.parse_one(pg_sql, read="postgres")
         )
     if target_dialect == "clickhouse":
