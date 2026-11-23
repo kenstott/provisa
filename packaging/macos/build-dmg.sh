@@ -262,6 +262,19 @@ bundle_native_payload() {
   "$py" -m pip install --quiet -c "$constraints" \
     --find-links "$notebook_dir" "${built_wheel}[embedded]" uvicorn mcp-proxy
   rm -f "$constraints"
+  # Third-party test suites are not runtime, and their fixtures break notarization: Apple
+  # rejected joblib/test/data/*.gz (zlib pickles, not gzip) in dry run 45212409648. Prune every
+  # package test directory, then fail on any archive left that Apple could not unpack. Runs
+  # before the import checks below, so they prove the pruned runtime still imports.
+  local site; site="$("$py" -c 'import sysconfig;print(sysconfig.get_paths()["purelib"])')"
+  "$py" -I "${SCRIPT_DIR}/prune_runtime.py" "$site" || {
+    err "native runtime still holds archives notarization cannot unpack (listed above)."
+    exit 1
+  }
+  "$py" -I -c "import joblib, numpy, scipy, pandas, statsmodels.api, sklearn, mpmath, jinja2, openpyxl" || {
+    err "native runtime lost a runtime import after the test-directory prune."
+    exit 1
+  }
   # Fail the build loudly if a critical native-tier dep did not land (mirrors build-sfx.ps1).
   # REQ-2194: provisa's wheel carries its compiled encoders (provisa._encoders) and their notices.
   # -I: from the repository root, `-c` would import the checkout's provisa (no compiled module).
@@ -284,7 +297,6 @@ assert (pathlib.Path(provisa.__file__).parent / '_encoders.THIRD_PARTY_NOTICES')
     err "provisa-ui/dist not found — embed_compose must build the UI before bundle_native_payload."
     exit 1
   fi
-  local site; site="$("$py" -c 'import sysconfig;print(sysconfig.get_paths()["purelib"])')"
   mkdir -p "${site}/static"
   cp -R "${REPO_ROOT}/provisa-ui/dist/." "${site}/static/"
 
