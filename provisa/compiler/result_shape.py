@@ -28,6 +28,7 @@ it.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from typing import Any, cast
 
@@ -214,8 +215,23 @@ def _figured(node: exp.Expr) -> tuple[str, int]:
         name, strength = _figured(default) if default is not None else ("?column?", 0)
         return (name, strength) if strength > 1 else ("case", 1)
     if isinstance(node, exp.Func):
-        return node.sql_name().lower(), 2
+        return _pg_function_name(node)
     return "?column?", 0
+
+
+#: A call as PostgreSQL writes it: its name, then its arguments, an ARRAY[...]'s elements, or
+#: nothing (CURRENT_DATE).
+_PG_CALL_HEAD = re.compile(r"([A-Za-z_][A-Za-z0-9_]*)\s*(?:[([]|$)")
+
+
+def _pg_function_name(node: exp.Func) -> tuple[str, int]:
+    """A parsed call named as PostgreSQL spells it, not by sqlglot's node for it (REQ-2204):
+    string_agg parses as GroupConcat, bool_and as LogicalAnd, date_trunc as TimestampTrunc. A call
+    PostgreSQL writes as an operator is named as PostgreSQL names an operator, ?column?."""
+    head = _PG_CALL_HEAD.match(node.sql(dialect="postgres"))
+    if head is None:
+        return "?column?", 0
+    return head.group(1).lower(), 2
 
 
 def pg_named(sql: str) -> str:
@@ -225,11 +241,19 @@ def pg_named(sql: str) -> str:
     tree = sqlglot.parse_one(sql, read="postgres")
     if not isinstance(tree, exp.Query):
         return sql
+    name_as_postgres(tree)
+    return tree.sql(dialect="postgres")
+
+
+def name_as_postgres(tree: exp.Query) -> None:
+    """Alias, in place, each unaliased result column of a computed value of ``tree`` by the name
+    PostgreSQL gives it, so whatever the statement is rewritten or transpiled to, its columns keep
+    the names of the statement as written (REQ-2204: string_agg stays string_agg where an engine
+    calls it listagg or group_concat)."""
     for select in list(tree.selects):
         if isinstance(select, (exp.Alias, exp.Column, exp.Star)):
             continue
         select.replace(exp.alias_(select.copy(), _pg_column_name(select), quoted=True))
-    return tree.sql(dialect="postgres")
 
 
 def _untyped_is_text(node: exp.Expr) -> bool:
