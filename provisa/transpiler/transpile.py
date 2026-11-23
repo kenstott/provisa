@@ -45,8 +45,8 @@ from provisa.transpiler.pg_literals import (
     array_inputs,
     exact_inputs,
     postgres_literals,
-    refuse_past_inputs,
 )
+from provisa.transpiler.pg_input_refusals import refuse_past_inputs
 from provisa.transpiler.to_char import to_char_for_duckdb
 from provisa.transpiler.typed_columns import TYPED_DIALECTS, ColumnTypes, typed
 from provisa.transpiler.transpile_correlated import (
