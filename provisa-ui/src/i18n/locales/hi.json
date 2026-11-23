@@ -14,7 +14,8 @@
     "discardBody": "{{what}} में किए गए बदलाव सहेजे नहीं गए हैं।",
     "discard": "छोड़ें",
     "deleting": "हटाया जा रहा है…",
-    "deleteFailed": "नहीं हटाया गया: {{reason}}"
+    "deleteFailed": "नहीं हटाया गया: {{reason}}",
+    "required": "आवश्यक"
   },
   "app": {
     "apiUnreachable": "Provisa API तक नहीं पहुँच सके।",

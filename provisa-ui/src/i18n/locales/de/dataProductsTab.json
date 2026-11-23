@@ -313,6 +313,18 @@
     "tagFacetPlaceholder": "Nach Tag filtern",
     "noMatch": "Keine Datenprodukte entsprechen den Filtern",
     "domainFacetLabel": "Domänen",
-    "domainFacetPlaceholder": "Nach Domäne filtern"
+    "domainFacetPlaceholder": "Nach Domäne filtern",
+    "colSync": "Synchronisierung",
+    "syncNone": "Nicht synchronisiert",
+    "syncSynced_one": "Synchronisiert",
+    "syncSynced_other": "Mit {{count}} synchronisiert",
+    "syncFailed_one": "{{count}} fehlgeschlagen",
+    "syncFailed_other": "{{count}} fehlgeschlagen",
+    "syncEntryPublished": "{{entry}}: veröffentlicht {{when}}",
+    "syncEntryFailed": "{{entry}}: fehlgeschlagen {{when}}",
+    "syncGroup_synced": "Synchronisiert",
+    "syncGroup_failed": "Fehlgeschlagen",
+    "syncGroup_none": "Nicht synchronisiert",
+    "syncUnread": "Der Synchronisierungsstatus konnte nicht gelesen werden: {{error}}"
   }
 }

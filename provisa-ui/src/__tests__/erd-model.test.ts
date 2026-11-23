@@ -151,6 +151,8 @@ function makeRel(overrides: Partial<Relationship> = {}): Relationship {
     viaTypeColumn: null,
     viaTypeValue: null,
     viaLabelSource: null,
+    shape: "direct",
+    properties: [],
     parameters: [],
     // The Cypher type the server serves the edge as (REQ-1586); set where a test reads it.
     cypherType: null,
@@ -419,6 +421,8 @@ describe("buildErdElements — junction relationships", () => {
       viaTypeColumn: "relation_type",
       viaTypeValue: "bonded_pair",
       viaLabelSource: "column",
+      shape: "junction",
+      properties: [],
       cypherType: "BONDED_PAIR",
       cardinality: "many-to-many",
       ...overrides,
@@ -658,6 +662,8 @@ describe("buildErdElements — complementary rows", () => {
       viaTableName: "pet_companions",
       viaTypeValue: "bonded_pair",
       viaLabelSource: "column",
+      shape: "junction",
+      properties: [],
       cypherType: "BONDED_PAIR",
       cardinality: "one-to-many",
     });

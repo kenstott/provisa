@@ -1,0 +1,11 @@
+{
+  "relShape": {
+    "label": "Beziehungstyp",
+    "directTip": "Direkter Fremdschlüssel",
+    "junctionTip": "Über Verknüpfungstabelle {{table}}",
+    "dimensionTip": "Über gemeinsame Dimension {{table}}",
+    "dimensionTipUnnamed": "Über eine gemeinsame Dimension",
+    "prop": "Eig.",
+    "propTip": "Eigenschaften: {{properties}}"
+  }
+}

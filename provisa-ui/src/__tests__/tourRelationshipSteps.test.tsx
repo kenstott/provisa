@@ -56,6 +56,8 @@ const rel = (id: string, source: string, target: string, alias: string) => ({
   autoSuggested: false,
   disableCypher: false,
   viaTableName: null,
+  shape: "direct",
+  properties: [],
 });
 
 // One value per hook across renders: a fresh array each render reruns the page's effects forever.

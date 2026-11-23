@@ -1109,6 +1109,33 @@ CREATE TABLE IF NOT EXISTS catalog_sync_runs (
     tenant_id   UUID
 );
 
+-- REQ-2259: each publish of a Syncing entry: when it ran, its outcome (ok or failed) and the error
+-- that stopped the whole entry (no role to publish as, a refused request), if any. Mirrors
+-- schema_org.catalog_publishes.
+CREATE TABLE IF NOT EXISTS catalog_publishes (
+    id            SERIAL PRIMARY KEY,
+    entry         TEXT NOT NULL,
+    outcome       TEXT NOT NULL CONSTRAINT catalog_publishes_outcome_check
+                      CHECK (outcome IN ('ok', 'failed')),
+    error         TEXT,
+    published_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    tenant_id     UUID
+);
+
+-- REQ-2259: each data product a publish sent and its outcome there (published or failed, with the
+-- catalog's refusal). The Data Products list's sync status is each product's latest row per entry.
+-- The product is kept by id, so the record outlives it. Mirrors schema_org.catalog_publish_products.
+CREATE TABLE IF NOT EXISTS catalog_publish_products (
+    id            SERIAL PRIMARY KEY,
+    publish_id    INTEGER NOT NULL REFERENCES catalog_publishes(id) ON DELETE CASCADE,
+    entry         TEXT NOT NULL,
+    product_id    TEXT NOT NULL,
+    outcome       TEXT NOT NULL CONSTRAINT catalog_publish_products_outcome_check
+                      CHECK (outcome IN ('published', 'failed')),
+    error         TEXT,
+    tenant_id     UUID
+);
+
 -- REQ-1387: business glossary. Terms are the normalized vocabulary derived from physical
 -- field names (the term unit is the phrase — the full normalized field name). Rooted terms
 -- hold physical refs; abstract terms hold none and connect to the rooted graph through the
