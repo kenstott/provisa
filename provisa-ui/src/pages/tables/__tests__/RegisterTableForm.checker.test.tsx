@@ -150,9 +150,19 @@ describe("RegisterTableForm on a checker source (REQ-1663)", () => {
     await user.selectOptions(screen.getByTestId("register-table-source-select"), "dq-checker");
     await screen.findByTestId("register-table-dq");
 
+    // REQ-1968 (amended 2026-11-22): the results table is required, marked from the start; pressed
+    // without it, Continue marks each missing field inline and moves focus to the first on screen,
+    // the domain above it.
+    const results = screen.getByTestId("register-table-dq-results-table");
+    expect(results).toBeRequired();
     await user.click(screen.getByTestId("register-table-submit"));
     expect(onContinue).not.toHaveBeenCalled();
-    expect(setError).toHaveBeenLastCalledWith(expect.stringContaining("required"));
+    await waitFor(() => expect(results).toHaveAttribute("aria-invalid", "true"));
+    expect(screen.getByTestId("register-table-domain-select")).toHaveFocus();
+    await user.selectOptions(screen.getByTestId("register-table-domain-select"), "pet-store");
+    await user.click(screen.getByTestId("register-table-submit"));
+    expect(results).toHaveFocus();
+    expect(setError).not.toHaveBeenCalledWith(expect.stringContaining("required"));
   });
 
   it("refuses to register a checker table without a scan interval", async () => {

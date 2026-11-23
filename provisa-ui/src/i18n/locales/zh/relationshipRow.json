@@ -34,8 +34,6 @@
     "sqlName": "SQL 名称",
     "cardinalityWarning": "警告：如果此联接为每个父行返回多于一行，则只会使用第一个值。",
     "toggleDetails": "切换关系详情",
-    "junctionBadge": "属性",
-    "junctionBadgeTitle": "带有来自 {{table}} 的属性的关系",
     "deleteTitle": "删除关系“{{id}}”？",
     "deleteConsequence": "该关系将从模型中移除。查询将无法再通过它进行联接。",
     "parametersFed": "传入的参数",
@@ -68,6 +66,15 @@
         "rest": "REST",
         "grpc": "gRPC",
         "jsonapi": "JSON:API"
+      },
+      "aggregate": {
+        "cypher": "用 Cypher 统计 {{name}}",
+        "sql": "用 SQL 统计 {{name}}",
+        "sparql": "用 SPARQL 统计 {{name}}",
+        "graphql": "用 GraphQL 统计 {{name}}",
+        "rest": "用 REST 统计 {{name}}",
+        "grpc": "用 gRPC 统计 {{name}}",
+        "jsonapi": "用 JSON:API 统计 {{name}}"
       }
     }
   }

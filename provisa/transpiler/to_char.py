@@ -38,7 +38,7 @@ import sqlglot
 import sqlglot.expressions as exp
 from sqlglot.dialects.postgres import Postgres
 
-from provisa.transpiler.pg_literals import values_cast
+from provisa.transpiler.pg_literals import text_literal, values_cast
 
 
 class _CallsKept(Postgres):
@@ -746,6 +746,18 @@ def _numeric(value: exp.Expr, fmt: str) -> exp.Expr:
     )
 
 
+#: The types a statement casts a value to that to_char reads as an instant (date is read as a
+#: timestamp).
+_INSTANT_TYPES = frozenset(
+    {
+        exp.DataType.Type.DATE,
+        exp.DataType.Type.TIMESTAMP,
+        exp.DataType.Type.TIMESTAMPTZ,
+        exp.DataType.Type.TIMESTAMPLTZ,
+    }
+)
+
+
 def _zoned(value: exp.Expr) -> bool | None:
     """False for a value the statement casts to timestamp (a literal, or a column of a VALUES list),
     which has no zone; None for any other, whose type is not read here."""
@@ -761,13 +773,21 @@ def _translated(call: exp.Anonymous) -> exp.Expr:
     value, fmt = call.expressions
     if isinstance(fmt, exp.Null) or (isinstance(fmt, exp.Cast) and isinstance(fmt.this, exp.Null)):
         return exp.cast(exp.null(), "TEXT")  # to_char is strict: a NULL format answers NULL
-    if not (isinstance(fmt, exp.Literal) and fmt.is_string):
+    cast = values_cast(value) if isinstance(value, exp.Column) else value
+    if isinstance(cast, exp.Cast) and cast.to.this == exp.DataType.Type.INTERVAL:
+        # formatting.c reads an interval's fields, which the forms here (a timestamp's) do not.
+        raise NotImplementedError("to_char() of an interval has no form on duckdb")
+    literal = text_literal(fmt)
+    if literal is None:
         raise NotImplementedError(
             "to_char: a format that is not a literal is not supported; each of its elements is "
             "translated where the statement is read"
         )
-    pattern = fmt.this
-    if _is_numeric(pattern) and _zoned(value) is None:  # a timestamp's template is a date's
+    pattern = literal.this
+    # A timestamp's template is a date's, whatever digits it writes: to_char(timestamptz, 'FM999')
+    # writes them as they are.
+    instant = isinstance(cast, exp.Cast) and cast.to.this in _INSTANT_TYPES
+    if _is_numeric(pattern) and not instant:
         return exp.Paren(this=_numeric(value, pattern))
     return written(pattern, value, "duckdb", _zoned(value))
 

@@ -34,8 +34,6 @@
     "sqlName": "SQL 名",
     "cardinalityWarning": "警告: このJOINが親ごとに複数行を返す場合、最初の値のみが使用されます。",
     "toggleDetails": "リレーションシップ詳細の表示切替",
-    "junctionBadge": "プロパティ",
-    "junctionBadgeTitle": "{{table}} のプロパティを持つリレーションシップ",
     "deleteTitle": "リレーションシップ「{{id}}」を削除しますか？",
     "deleteConsequence": "リレーションシップはモデルから削除されます。クエリはこれを介して結合できなくなります。",
     "parametersFed": "渡すパラメーター",
@@ -68,6 +66,15 @@
         "rest": "REST",
         "grpc": "gRPC",
         "jsonapi": "JSON:API"
+      },
+      "aggregate": {
+        "cypher": "{{name}} を Cypher で数える",
+        "sql": "{{name}} を SQL で数える",
+        "sparql": "{{name}} を SPARQL で数える",
+        "graphql": "{{name}} を GraphQL で数える",
+        "rest": "{{name}} を REST で数える",
+        "grpc": "{{name}} を gRPC で数える",
+        "jsonapi": "{{name}} を JSON:API で数える"
       }
     }
   }

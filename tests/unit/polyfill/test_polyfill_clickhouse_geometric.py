@@ -26,7 +26,7 @@ import sqlglot
 from provisa.core.pg_error import from_engine
 from provisa.federation.clickhouse_runtime import ClickHouseFederationRuntime
 from provisa.transpiler.function_macros import FunctionRefused
-from provisa.transpiler.polyfill import GRID, geometric, trino
+from provisa.transpiler.polyfill import Refusal, GRID, geometric, trino
 from provisa.transpiler.transpile import transpile
 
 
@@ -183,7 +183,9 @@ def test_the_33_measures_are_rows_and_every_other_dialect_keeps_what_it_had():
     node = call.selects[0].this.expression  # past pg_catalog
     for dialect in ("duckdb", "trino", "snowflake"):
         applied = GRID.read(node, dialect)
-        assert applied is not None and applied.form is trino.KEPT
+        # The old table's form, or, where it has none, its refusal stated (polyfill.measured).
+        refused = Refusal("0A000", f"area() has no form on {dialect}")
+        assert applied is not None and applied.form in (trino.KEPT, refused)
     for feature in geometric.FEATURES:
         (stated,) = feature.read.limitations["clickhouse"]
         assert "exact" in stated.text and "0A000" in stated.text

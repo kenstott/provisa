@@ -41,6 +41,8 @@ const rel = {
   sameEntity: false,
   parameters: [],
   viaTableName: null,
+  shape: "direct",
+  properties: [],
 };
 const col = (columnName: string) => ({ columnName });
 const tbl = (id: number, tableName: string, columns: string[]) => ({

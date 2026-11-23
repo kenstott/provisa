@@ -2025,7 +2025,7 @@ async def _execute_write_cypher(
         parse_cypher_write,
         written,
     )
-    from provisa.pgwire._pipeline import _govern_and_route_compiled, _execute_plan
+    from provisa.api.rest.graph_write import governed_statement
 
     try:
         write_ast = parse_cypher_write(cypher)
@@ -2040,10 +2040,8 @@ async def _execute_write_cypher(
         return columns, rows
 
     async def _write(sql: str, bound: list) -> tuple[list[str], list[list[Any]], int | None]:
-        plan = await _govern_and_route_compiled(
-            sql, role_id, exec_params=bound or None, cache_hint=NO_CACHE_HINT, sdl_joins=False
-        )
-        result = await _execute_plan(plan)
+        # The one governed write statement every graph front door makes (REQ-2074).
+        result = await governed_statement(sql, bound, role_id, app_state)
         return result.column_names, [list(row) for row in result.rows], result.rowcount
 
     try:

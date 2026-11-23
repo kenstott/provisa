@@ -34,8 +34,6 @@
     "sqlName": "SQL नाम",
     "cardinalityWarning": "चेतावनी: यदि यह जॉइन प्रति पैरेंट एक से अधिक पंक्ति लौटाता है, तो केवल पहला मान उपयोग होगा।",
     "toggleDetails": "संबंध विवरण टॉगल करें",
-    "junctionBadge": "गुण",
-    "junctionBadgeTitle": "{{table}} से गुणों वाला संबंध",
     "deleteTitle": "संबंध \"{{id}}\" हटाएँ?",
     "deleteConsequence": "संबंध मॉडल से हटा दिया जाएगा। क्वेरी अब इसके माध्यम से जॉइन नहीं कर सकेंगी।",
     "parametersFed": "दिए गए पैरामीटर",
@@ -68,6 +66,15 @@
         "rest": "REST",
         "grpc": "gRPC",
         "jsonapi": "JSON:API"
+      },
+      "aggregate": {
+        "cypher": "{{name}} को Cypher में गिनें",
+        "sql": "{{name}} को SQL में गिनें",
+        "sparql": "{{name}} को SPARQL में गिनें",
+        "graphql": "{{name}} को GraphQL में गिनें",
+        "rest": "{{name}} को REST में गिनें",
+        "grpc": "{{name}} को gRPC में गिनें",
+        "jsonapi": "{{name}} को JSON:API में गिनें"
       }
     }
   }

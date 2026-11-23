@@ -18,6 +18,7 @@ import { LAYOUT_OPTIONS, type LayoutMode } from "./canvas-types";
 import { idealEdgeLength } from "./edge-length";
 import { anchoredPositions, computeLabelSizeRanges, applyNodeSize } from "./canvas-helpers";
 import { getStored } from "../../../lib/browserStorage";
+import { restyleCaptions } from "../graph-stylesheet";
 
 interface GraphLayoutRefs {
   cyRef: MutableRefObject<CyInstance | null>;
@@ -151,10 +152,11 @@ export function useGraphLayout({
                 sizeMultiplierRef.current,
                 labelSizeRange,
               );
-              node.removeStyle("label");
               if (anchoredRef.current.has(node.id() as string)) node.addClass("pinned");
               else node.removeClass("pinned");
             });
+            // A caption fits or goes beneath its node by the node's new width.
+            restyleCaptions(cy);
           });
         } catch {
           /* cy may have been destroyed */
@@ -287,10 +289,10 @@ export function useGraphLayout({
                   sizeMultiplierRef.current,
                   labelSizeRange,
                 );
-                node.removeStyle("label");
                 if (anchoredRef.current.has(node.id() as string)) node.addClass("pinned");
                 else node.removeClass("pinned");
               });
+              restyleCaptions(cy);
             });
           } catch {
             /* cy may have been destroyed */

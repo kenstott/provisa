@@ -991,6 +991,7 @@
   tests:
   - tests/unit/test_rate_limiting.py
   - tests/integration/test_rate_limiting_integration.py
+  - tests/integration/test_role_rate_limits_e2e.py
   since: 2026-01
   scenario: 'Given a role with configured rate limits
 
@@ -1031,6 +1032,7 @@
   tests:
   - tests/unit/test_rate_limiting.py
   - tests/integration/test_rate_limiting_integration.py
+  - tests/integration/test_role_rate_limits_e2e.py
   since: 2026-01
   scenario: 'Given a role with a configured nl.rate_limit
 
@@ -1232,6 +1234,7 @@
   - tests/integration/test_audit_auth_integration.py
   - tests/unit/test_abac_hook_extended.py
   - tests/unit/test_approval_hook.py
+  - tests/integration/test_approval_hook_grpc_e2e.py
   since: 2026-01
   scenario: 'Given a Provisa instance configured with gRPC approval hook
 
@@ -2006,6 +2009,7 @@
   - tests/unit/test_core_registration.py
   - tests/unit/test_source_registration_validation.py
   - tests/steps/steps_registration_governance.py
+  - tests/integration/test_source_registration_e2e.py
   since: 2026-01
   scenario: 'Given a privileged steward with registration rights
 
@@ -2052,6 +2056,7 @@
   - tests/integration/test_introspect.py
   - tests/unit/test_core_registration.py
   - tests/integration/test_config_reload_schema_rename.py
+  - tests/integration/test_source_registration_e2e.py
   since: 2026-01
   scenario: 'Given a source that has been registered but no tables have been explicitly registered
 
@@ -3305,6 +3310,7 @@
   - tests/unit/test_visibility.py
   - tests/unit/test_enforcement_metadata.py
   - tests/integration/test_registration_governance_integration.py
+  - tests/integration/test_sqlalchemy_dialect_scope_e2e.py
   since: 2026-01
   scenario: 'Given a SQLAlchemy client using the Provisa dialect with a specific role
 
@@ -4146,6 +4152,7 @@
   - provisa-ui/src/pages/TablesPage.tsx
   tests:
   - tests/unit/test_dataset_uniqueness.py
+  - tests/integration/test_source_registration_e2e.py
   since: 2026-01
   scenario: 'Given tables registered in domains A and B
 
@@ -4676,6 +4683,7 @@
   - tests/integration/test_introspect.py
   - tests/unit/test_available_tables.py
   - tests/unit/test_core_registration.py
+  - tests/integration/test_source_registration_e2e.py
   since: 2026-01
   scenario: 'Given a UI requesting schema and table lists for any source type
 
@@ -5062,6 +5070,7 @@
   - tests/unit/test_neo4j_normalizers.py
   - tests/unit/test_neo4j_preview.py
   - tests/steps/steps_query_api_sources_neo4j_sparql.py
+  - tests/integration/test_neo4j_query_preview_e2e.py
   since: 2026-01
   scenario: 'Given a steward submitting a Cypher query for Neo4j table registration
 
@@ -5456,6 +5465,7 @@
   - tests/unit/test_graphql_remote_mapper.py
   - tests/unit/test_remote_adapter_contract.py
   - tests/unit/test_schema_service.py
+  - tests/integration/test_remote_schema_refresh_e2e.py
   since: 2026-01
   scenario: 'Given a remote GraphQL schema that has changed upstream
 
@@ -5933,6 +5943,7 @@
   - tests/unit/test_openapi_loader.py
   - tests/integration/test_openapi_source.py
   - tests/steps/steps_openapi_auto_registration_connector.py
+  - tests/integration/test_remote_schema_refresh_e2e.py
   since: 2026-01
   scenario: 'Given an OpenAPI spec that has been updated upstream
 
@@ -6318,6 +6329,7 @@
   - tests/unit/test_remote_adapter_contract.py
   - tests/unit/test_schema_service.py
   - tests/steps/steps_grpc_remote_schema_connector_req_322_329.py
+  - tests/integration/test_remote_schema_refresh_e2e.py
   since: 2026-01
   scenario: 'Given a gRPC source whose proto has changed
 
@@ -6577,6 +6589,7 @@
   - tests/unit/test_ingest_ddl.py
   - tests/unit/test_ingest_router.py
   - tests/integration/test_ingest_push_integration.py
+  - tests/integration/test_ingest_subscription_governance_e2e.py
   since: 2026-01
   scenario: 'Given an ingest table with SSE subscription active
 
@@ -9398,6 +9411,8 @@
   - tests/unit/test_cypher_tck_quantifiers.py
   - tests/unit/test_cypher_tck_temporal.py
   - tests/unit/test_sql_to_cypher.py
+  - tests/integration/test_demo_http_surfaces_e2e.py
+  - tests/integration/test_cypher_http_masking_e2e.py
   since: 2026-01
   scenario: 'Given a graph user submitting a Cypher SELECT query to POST /query/cypher
 
@@ -9825,6 +9840,7 @@
   - tests/unit/test_nl_loop.py
   - tests/unit/test_nl_runner.py
   - tests/integration/test_nl_endpoint.py
+  - tests/integration/test_role_rate_limits_e2e.py
   since: 2026-01
   scenario: 'Given a non-technical user submitting a natural language question to POST /query/nl
 
@@ -13656,6 +13672,8 @@
   - tests/integration/test_arrow_flight_integration.py
   - tests/unit/test_flight_server_helpers.py
   - tests/unit/test_zaychik_flight_unit.py
+  - tests/integration/test_public_columns_every_surface_e2e.py
+  - tests/integration/test_flight_catalog_credential_e2e.py
   since: 2026-01
   scenario: 'Given a client connects to the Arrow Flight server on port 8815
 
@@ -32406,7 +32424,7 @@
   description: The native tier builds a Python VENV at first launch from PyPI (pinned to release). The
     DMG/EXE bundles a bare python-build-standalone interpreter + a wheelhouse. First-launch creates ~/.provisa/venv
     and installs provisa[embedded] online from PyPI, or offline via pip --no-index --find-links from the
-    bundled wheelhouse. The native tier runs with no Docker or container dependencies.
+    bundled wheelhouse. The native tier runs with no Docker or container dependencies. (Amended 2026-11-22 by the maintainer. Every installer takes Provisa from its own bundled wheels or prebuilt runtime, online or offline; none installs the provisa package from a public registry. Only third-party packages, such as an optional data-quality checker, may come from a package index. This supersedes the online install of provisa[embedded] from PyPI.)
   use_case: Ensures the entire native-tier stack is self-contained and runs on any OS (macOS, Windows,
     Linux) without requiring external Python environments or container runtimes.
   target: 2026-Q3
@@ -38249,6 +38267,7 @@
   - tests/unit/test_hasura_api_limits.py
   - tests/integration/test_complexity_guard_every_surface.py
   - provisa-ui/src/pages/__tests__/SecurityPage.roleLimits.test.tsx
+  - tests/integration/test_role_rate_limits_e2e.py
   since: 2026-07
   scenario: 'Given a role with max_query_complexity=4
 
@@ -46027,6 +46046,7 @@
   - provisa-ui/src/i18n/index.ts
   tests:
   - provisa-ui/src/__tests__/i18nLanguageSelection.test.ts
+  - provisa-ui/e2e/i18n-browser-language.spec.ts
   scenario: 'Given a browser with navigator.language set to es-MX
 
     When the Provisa UI loads
@@ -82730,7 +82750,7 @@
     failure is a fix on main. A release candidate is cut from a green nightly and runs the full suites once;
     each fix reruns only its failing tests; failures are triaged into blockers, fixed on the branch, and
     known issues, which ship listed in the release notes. A full set is never rerun in answer to a fix.
-    Earlier text here requiring repeated full sets per release, or full suites per branch, is superseded.'
+    Earlier text here requiring repeated full sets per release, or full suites per branch, is superseded. (Amended 2026-11-22 by the maintainer. A release converges in under one day from cut to publish. The packaging dry run runs every night on main beside integration and e2e, so a packaging defect becomes a fix job on main, not a release blocker. A release is cut only from a nightly where unit, lint, the requirements check, integration, e2e and the packaging dry run are all green. At the cut the release full set and the packaging dry run run in parallel. A red unit, lint or requirements check on main stops the line: the next landing batch takes only the fixes for it.) (Amended 2026-11-22 again by the maintainer: the stop-the-line clause above is superseded by a ratchet. A red unit, lint or requirements check on main does not freeze landing. A branch lands only if it adds no failing test or check compared with main''s current failure set, so main''s failures can only fall. The red run is triaged at once, its failures grouped by root cause, and each group becomes one fix job at the front of the queue.)'
   notes: 'Maintainer 2026-10-12, through the lead: release notes generated between two tags and committed with the release, the release body set from them, and a generation failure blocks the tag; he chose a hand-run cut workflow that commits the notes before it tags (option A of ci-fix''s two), and that releases are made only through it. "A hand-written release page is never overwritten" is the lead''s instruction. The rest -- the workflow starting every workflow a v* tag starts, since a tag it pushes starts none -- is ci-fix''s implementation. Group, category, priority and type are ci-fix''s choices. Roadmap audit 2026-10-13: delivered; verified against the code'
   code:
   - .github/workflows/release-cut.yml
@@ -88307,7 +88327,7 @@ And its prod source reads the shop's database with it, while the stored source k
     script can record its application id, a link to its UI, its input paths and its row counts, so the trail
     shows what Provisa called and points to what Spark ran. (Amended 2026-11-09, GO HAS THE SERVICES TOO:)
     Maintainer 2026-11-09: Go code sources (REQ-2200) get the provisa_services module with the same calls
-    as Python and Node, including audit.'
+    as Python and Node, including audit. (Amended 2026-11-22 by the maintainer, per REQ-2112. Outside Provisa a signed-in developer reaches the services through a server route keyed to their personal access token, scoped to their dev-mode source and their role and audited like a worker''s reads; a module run with neither a worker token nor a developer''s token still finds the services absent and is tested by mocking them.)'
   use_case: "A Python scoring table caches the rates it fetches from a partner API through http.get, reads its threshold from a setting a steward tunes, logs what it scored, and its calls show on the request's trace beside the query that triggered them."
   scenario: "Given a python source scorer with settings {threshold: 0.8} whose code calls ps.settings.get('threshold') and ps.cache.set('rates', r, ttl=3600)
 
@@ -88596,7 +88616,7 @@ Then the auditor sees the 30 attached disks without a customer-managed key, each
   feature: connector-catalog-streams-logs-and-public-data
   priority: SHOULD
   type: behavioral
-  description: "A Visual Studio Code extension for Node and Python code sources, published on the VS Code Marketplace. In the open workspace it lists the functions Provisa would serve as @table or command, with the columns and parameters Provisa infers for each, before anything is registered. It points a code source at the workspace folder in dev mode against a chosen Provisa instance, so an edit is read by the next query. It marks the pushdown conventions inline (raw column names, {op}_{column} parameters, the tag and Annotated forms) and flags a filter parameter that names no column. From the command palette it runs Build image and copies the compose snippet through the API the Provisa UI uses (REQ-2098), with no backend of its own. It reaches the code-source services shim ($PROVISA_SERVICES: secrets, the LLM endpoint and the rest) locally with the developer's own credentials. It edits no model and offers no query editor: GraphQL, SQL and Cypher authoring use the existing VS Code extensions pointed at Provisa (the role-scoped SDL, pgwire), and a docs page says how. (Amended 2026-11-21 by the maintainer. The extension marks the tag and Annotated forms and the SDK forms inline. The pushdown-conventions clause, raw column names and filter parameters, is superseded, since the SDK types ReadContext only.)"
+  description: "A Visual Studio Code extension for Node and Python code sources, published on the VS Code Marketplace. In the open workspace it lists the functions Provisa would serve as @table or command, with the columns and parameters Provisa infers for each, before anything is registered. It points a code source at the workspace folder in dev mode against a chosen Provisa instance, so an edit is read by the next query. It marks the pushdown conventions inline (raw column names, {op}_{column} parameters, the tag and Annotated forms) and flags a filter parameter that names no column. From the command palette it runs Build image and copies the compose snippet through the API the Provisa UI uses (REQ-2098), with no backend of its own. It reaches the code-source services shim ($PROVISA_SERVICES: secrets, the LLM endpoint and the rest) locally with the developer's own credentials. It edits no model and offers no query editor: GraphQL, SQL and Cypher authoring use the existing VS Code extensions pointed at Provisa (the role-scoped SDL, pgwire), and a docs page says how. (Amended 2026-11-21 by the maintainer. The extension marks the tag and Annotated forms and the SDK forms inline. The pushdown-conventions clause, raw column names and filter parameters, is superseded, since the SDK types ReadContext only.) (Amended 2026-11-22 by the maintainer. The services shim is reached locally through the developer's personal access token route of REQ-2106, forwarded by the extension into VS Code terminals and debug sessions. The extension ships as a .vsix release asset on GitHub; no public registry, the Marketplace included, until the maintainer changes channels.)"
   use_case: A developer writes a Python function in VS Code, sees the table Provisa would make of it, queries it against a Provisa instance in dev mode as they edit, and builds its image without leaving the editor.
   scenario: "Given a Python workspace with a function decorated @table and a Provisa instance the extension is signed in to
 
@@ -90074,7 +90094,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     class of an unselected domain (the meta domain''s registered tables included). It joins the dropped
     class along one path from the result''s nodes, so the query never combines branches with no condition
     relating them; when no path exists within the selected domains, the drop is refused by name and nothing
-    is added.'
+    is added. (Amended 2026-11-22 by the maintainer. SPARQL writes work as Cypher writes do and share their machinery: INSERT DATA, DELETE DATA, DELETE WHERE and Modify (DELETE/INSERT ... WHERE) are translated onto the same governed table writes the Cypher write translator produces, under the same rights, row rules, masks and audit. Graph management (DROP, CLEAR, LOAD, CREATE, COPY, MOVE, ADD) acts on named graphs, which Provisa does not have, and is refused by name; its W3C cases are listed as by design.) (Amended 2026-11-22 again by the maintainer. SPARQL Update reaches the ephemeral graph session as Cypher does (REQ-2176): a blank node in INSERT DATA or a Modify template creates a session object in the principal''s graph session, and a GRAPH, WITH or USING naming a session-local graph writes and reads session objects there; graph management (DROP, CLEAR, CREATE, COPY, MOVE, ADD) works on session graphs. A blank node on a model class, a graph naming anything but a session graph, and predicates the role does not read stay refused by name. Session objects belong to the principal alone and last as the graph session does: until the principal clears it, until it goes unused for its retention, or until the principal''s rights change; signing out does not end it.)'
   use_case: >-
     A knowledge-graph team queries the governed model with the language and RDF clients it already
     uses, and gets the same rows, rules and routing as a SQL or Cypher query, with nothing copied
@@ -91824,6 +91844,9 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     And each email in the file is masked
 
     And an export with the same as_recorded later yields the same triples'
+  tests:
+  - tests/unit/test_rdf_export.py
+  - tests/integration/test_rdf_export_graph_store.py
 - id: REQ-2166
   value: 'Join your Jena, GraphDB or Stardog triples with Provisa''s governed data live, with no copy needed.'
   status: proposed
@@ -96458,6 +96481,9 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   - data-engineer
   tests:
   - tests/integration/test_code_table_read_e2e.py
+  - tests/unit/test_code_command_table_arg.py
+  - tests/unit/test_minted_call_token.py
+  - tests/unit/test_minted_pipeline_column_visibility.py
 - id: REQ-2227
   value: A code source can be written in Rust, with the same tables, commands and streams as a Node, Python
     or Go code source.
@@ -96495,6 +96521,11 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     Then the function runs in the sandbox and its rows are returned'
   stakeholders:
   - data-engineer
+  tests:
+  - tests/unit/test_rust_source.py
+  - tests/unit/test_rust_install.py
+  - tests/unit/test_rust_image_linker.py
+  - tests/integration/test_rust_worker.py
 - id: REQ-2228
   value: 'A dbt project is a source type: its manifest offers its models as governed tables and commands,
     while dbt keeps building them.'
@@ -96792,6 +96823,9 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     table_registration in a domain picks all three on Register Table and registers them; then all three are
     registered in that domain with the defaults one registration would give each, and a table one of them
     refuses is named while the others are registered.'
+  tests:
+  - tests/unit/test_register_tables_batch.py
+  - provisa-ui/src/pages/tables/__tests__/RegisterTableForm.several.test.tsx
 
 - id: REQ-2235
   status: in-progress
@@ -97800,7 +97834,7 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     as the data product Access section draws its per-table links (the same icons, tips and component), in
     its Identity section. Each opens that surface''s Explore editor with a query that reads the table, run
     at once, using the names the role sees and a row limit. A surface the table is not exposed on shows
-    no link.'
+    no link. (Amended 2026-11-22 by the maintainer. A table''s query links are drawn as a relationship''s are, an icon with its surface name beside it, from one shared rendering, and appear as soon as a table is registered. A table whose aggregates are enabled shows, on its API section, a query link per surface that serves its aggregates to the acting role, opening Explore with an aggregate query, and a group-by query when group-by is enabled, run at once.)'
   tests:
   - provisa-ui/src/components/relationships/__tests__/RelationshipQueryLinks.placements.test.tsx
   - provisa-ui/src/components/relationships/__tests__/relationshipQueries.test.ts
@@ -98198,3 +98232,57 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     federation engine through a Provisa-launched pure-Python pgwire sidecar on the pgwire-calcite backend seam,
     launched like the other pgwire replicas. New pushdown capabilities are backlogged as their own requirements. (Amended 2026-11-21 by the maintainer. A generated table may declare a loader with a batch size, under the code-source @loader contract (REQ-2100), and its handler then answers a batch of join keys: a GraphQL remote that fetches by a key list (where _in, or nodes by ids) and an OpenAPI operation that looks up a list of ids give their row type table its loader. The first version supports @discover in Python code sources only; other code-source languages follow as their own requirements, Rust first for speed.) (Amended 2026-11-22. In v0, a generated query or command whose parameter is a TableRef is refused by name at discovery; TableRef parameters stay on hand-written commands.) (Amended 2026-11-22 by the maintainer. The code-source contract carries relationships, so a discover result, built-in or user-written, declares the relationships between its generated tables. It carries warnings, so a read cut at its page limit returns its rows with the same answer-was-cut warning the built-in sources give. Credentials of a code source are stored as secret references and resolved through the secrets service at call time, never written to the code directory)'
 
+- id: REQ-2268
+  status: proposed
+  target: 2027-Q1
+  group: 5. Query Languages, Compilation & Operations
+  category: Cypher Query Frontend (Phase AU)
+  feature: glossary-tags-ontology-queryable-metadata
+  priority: SHOULD
+  type: behavioral
+  description: 'Maintainer 2026-11-22. Tags are served in the Cypher graph like data. Each tag is a Tag node
+    carrying its name, description, owner and the policy it triggers, a shared dimension of the metadata.
+    Each tagged table or column node has a TAGGED edge to the tag, a junction of the metadata, whose
+    properties are who applied it, when, its origin (a person or the model), whether it is confirmed and the
+    glossary term it came from. Only the tables, columns and tags the caller''s role can read appear, with
+    the same masking and visibility as any read. These nodes and edges are generated from the tag
+    assignments: they are not registered relationships, never appear on the Relationships page, and cannot be
+    edited there or in Cypher; they change only when the tags change.'
+  scenario: 'Given a column tagged PII by a steward and confirmed, and a role that reads the column
+
+    When the role runs MATCH (c)-[t:TAGGED]->(g:Tag {name: ''PII''}) RETURN c, t, g
+
+    Then it gets the column, the edge with who applied the tag, when, its origin and confirmed, and the PII tag
+
+    When the role lists the Relationships page
+
+    Then no TAGGED relationship appears, and none can be created or edited there or by a Cypher write'
+
+- id: REQ-2269
+  status: proposed
+  target: 2026-Q4
+  group: 11. Platform, Infrastructure & Delivery
+  category: Installer & Packaging
+  feature: installation-linux
+  priority: SHOULD
+  type: behavioral
+  description: 'Maintainer 2026-11-22 (idea raised 2026-11-20). One script installs Provisa with a Trino federation
+    engine on an existing Linux host, a virtual machine or bare metal, run on the host or from a workstation
+    over SSH. It installs Provisa from the release''s own assets on GitHub, never the provisa package from a
+    public registry; starts Trino in Docker with Provisa''s plugins; writes a configuration whose federation
+    engine is Trino; runs Provisa as a system service; and ends with a health check that names what failed.
+    Running it again upgrades the install in place. The nightly packaging lane runs the same script on a clean
+    machine and then the smoke checks against the result, so the path a user installs by is tested every night.'
+  scenario: 'Given a clean Linux machine with Docker and the release''s assets
+
+    When the install script runs for that release
+
+    Then Provisa runs as a service with Trino as its federation engine and the health check passes
+
+    When the smoke checks run against it
+
+    Then one known query answers through each front door, each default source reads, and a restricted role gets less
+
+    When the script runs again for a newer release
+
+    Then the install is upgraded in place and the health check passes'

@@ -229,6 +229,9 @@ NEVER_RUNTIME: frozenset[str] = frozenset(
         "catalog_standing_choices",
         # REQ-2247: the runs of this environment's own Syncing entries.
         "catalog_sync_runs",
+        # REQ-2259: the publishes of this environment's own Syncing entries, per data product.
+        "catalog_publishes",
+        "catalog_publish_products",
         "email_send_authority_audit",
         # REQ-1742: grpc_remote_router.py's own per-table registration log for this process's
         # grpc_remote sources — nothing else reads it, and it belongs to the environment that

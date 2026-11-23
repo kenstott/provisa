@@ -1,0 +1,2045 @@
+{
+  "total": 521,
+  "expected": [
+    {
+      "case": "aggregates::agg-avg-01",
+      "job": "SPARQL-G3",
+      "since": "2026-11-22",
+      "reason": "The dataset gives <http://www.example.org/decimals> several values of <http://www.example.org/dec>"
+    },
+    {
+      "case": "aggregates::agg-avg-02",
+      "job": "SPARQL-G3",
+      "since": "2026-11-22",
+      "reason": "The dataset gives <http://www.example.org/decimals> several values of <http://www.example.org/dec>"
+    },
+    {
+      "case": "aggregates::agg-avg-03",
+      "job": "SPARQL-G12",
+      "since": "2026-11-22",
+      "reason": "400: AVG reads values of several kinds across the predicates of a variable predicate; FILTER them to one, or name the predicate"
+    },
+    {
+      "case": "aggregates::agg-avg-distinct",
+      "job": "SPARQL-G3",
+      "since": "2026-11-22",
+      "reason": "The dataset gives <http://www.example.org/decimals> several values of <http://www.example.org/dec>"
+    },
+    {
+      "case": "aggregates::agg-count-distinct",
+      "job": "SPARQL-G3",
+      "since": "2026-11-22",
+      "reason": "The dataset gives <http://www.example.org/decimals> several values of <http://www.example.org/dec>"
+    },
+    {
+      "case": "aggregates::agg-count-rows-distinct",
+      "job": "SPARQL-G3",
+      "since": "2026-11-22",
+      "reason": "The dataset gives <http://www.example.org/decimals> several values of <http://www.example.org/dec>"
+    },
+    {
+      "case": "aggregates::agg-empty-group-count-graph",
+      "job": "SPARQL-G9",
+      "since": "2026-11-22",
+      "reason": "400: The SPARQL operator Graph is not supported"
+    },
+    {
+      "case": "aggregates::agg-err-01",
+      "job": "SPARQL-G3",
+      "since": "2026-11-22",
+      "reason": "The dataset gives <http://example.com/data/#x> several values of <http://example.com/data/#p>"
+    },
+    {
+      "case": "aggregates::agg-err-02",
+      "job": "SPARQL-G3",
+      "since": "2026-11-22",
+      "reason": "The dataset gives <http://example.com/data/#x> several values of <http://example.com/data/#p>"
+    },
+    {
+      "case": "aggregates::agg-group-builtin",
+      "job": "SPARQL-G3",
+      "since": "2026-11-22",
+      "reason": "The dataset gives <http://www.example.org/decimals> several values of <http://www.example.org/dec>"
+    },
+    {
+      "case": "aggregates::agg-group-fn",
+      "job": "SPARQL-G3",
+      "since": "2026-11-22",
+      "reason": "The dataset gives <http://www.example.org/decimals> several values of <http://www.example.org/dec>"
+    },
+    {
+      "case": "aggregates::agg-groupconcat-01",
+      "job": "SPARQL-G3",
+      "since": "2026-11-22",
+      "reason": "The dataset gives <http://www.example.org/s> several values of <http://www.example.org/p1>"
+    },
+    {
+      "case": "aggregates::agg-groupconcat-02",
+      "job": "SPARQL-G3",
+      "since": "2026-11-22",
+      "reason": "The dataset gives <http://www.example.org/s> several values of <http://www.example.org/p1>"
+    },
+    {
+      "case": "aggregates::agg-groupconcat-03",
+      "job": "SPARQL-G3",
+      "since": "2026-11-22",
+      "reason": "The dataset gives <http://www.example.org/s> several values of <http://www.example.org/p1>"
+    },
+    {
+      "case": "aggregates::agg-groupconcat-04",
+      "job": "SPARQL-G7",
+      "since": "2026-11-22",
+      "reason": "400: Sub-SELECTs are not supported"
+    },
+    {
+      "case": "aggregates::agg-groupconcat-05",
+      "job": "SPARQL-G7",
+      "since": "2026-11-22",
+      "reason": "400: Sub-SELECTs are not supported"
+    },
+    {
+      "case": "aggregates::agg-groupconcat-06",
+      "job": "SPARQL-G7",
+      "since": "2026-11-22",
+      "reason": "400: Sub-SELECTs are not supported"
+    },
+    {
+      "case": "aggregates::agg-groupconcat-distinct",
+      "job": "SPARQL-G7",
+      "since": "2026-11-22",
+      "reason": "400: Sub-SELECTs are not supported"
+    },
+    {
+      "case": "aggregates::agg-max-01",
+      "job": "SPARQL-G3",
+      "since": "2026-11-22",
+      "reason": "The dataset gives <http://www.example.org/decimals> several values of <http://www.example.org/dec>"
+    },
+    {
+      "case": "aggregates::agg-max-02",
+      "job": "SPARQL-G3",
+      "since": "2026-11-22",
+      "reason": "The dataset gives <http://www.example.org/decimals> several values of <http://www.example.org/dec>"
+    },
+    {
+      "case": "aggregates::agg-max-distinct",
+      "job": "SPARQL-G3",
+      "since": "2026-11-22",
+      "reason": "The dataset gives <http://www.example.org/decimals> several values of <http://www.example.org/dec>"
+    },
+    {
+      "case": "aggregates::agg-min-01",
+      "job": "SPARQL-G3",
+      "since": "2026-11-22",
+      "reason": "The dataset gives <http://www.example.org/decimals> several values of <http://www.example.org/dec>"
+    },
+    {
+      "case": "aggregates::agg-min-02",
+      "job": "SPARQL-G3",
+      "since": "2026-11-22",
+      "reason": "The dataset gives <http://www.example.org/decimals> several values of <http://www.example.org/dec>"
+    },
+    {
+      "case": "aggregates::agg-min-distinct",
+      "job": "SPARQL-G3",
+      "since": "2026-11-22",
+      "reason": "The dataset gives <http://www.example.org/decimals> several values of <http://www.example.org/dec>"
+    },
+    {
+      "case": "aggregates::agg-multiple-having",
+      "job": "SPARQL-G3",
+      "since": "2026-11-22",
+      "reason": "The dataset gives <http://www.example.org/decimals> several values of <http://www.example.org/dec>"
+    },
+    {
+      "case": "aggregates::agg-sample-01",
+      "job": "SPARQL-G3",
+      "since": "2026-11-22",
+      "reason": "The dataset gives <http://www.example.org/decimals> several values of <http://www.example.org/dec>"
+    },
+    {
+      "case": "aggregates::agg-sample-distinct",
+      "job": "SPARQL-G3",
+      "since": "2026-11-22",
+      "reason": "The dataset gives <http://www.example.org/decimals> several values of <http://www.example.org/dec>"
+    },
+    {
+      "case": "aggregates::agg-sum-01",
+      "job": "SPARQL-G3",
+      "since": "2026-11-22",
+      "reason": "The dataset gives <http://www.example.org/decimals> several values of <http://www.example.org/dec>"
+    },
+    {
+      "case": "aggregates::agg-sum-02",
+      "job": "SPARQL-G3",
+      "since": "2026-11-22",
+      "reason": "The dataset gives <http://www.example.org/decimals> several values of <http://www.example.org/dec>"
+    },
+    {
+      "case": "aggregates::agg-sum-distinct",
+      "job": "SPARQL-G3",
+      "since": "2026-11-22",
+      "reason": "The dataset gives <http://www.example.org/decimals> several values of <http://www.example.org/dec>"
+    },
+    {
+      "case": "aggregates::agg01",
+      "job": "SPARQL-G6",
+      "since": "2026-11-22",
+      "reason": "403: Table 'ontology.d007_t0' belongs to domain 'ontology' which is not in role's domain_access; Table 'ontology.d007_e1' belongs to domain 'ontology' which is not in role's domain_access; Table 'ontology.d007_e0' belongs to domain 'ontology' which is not in role's domain_access"
+    },
+    {
+      "case": "aggregates::agg02",
+      "job": "SPARQL-G6",
+      "since": "2026-11-22",
+      "reason": "403: Table 'ontology.d007_t0' belongs to domain 'ontology' which is not in role's domain_access; Table 'ontology.d007_e1' belongs to domain 'ontology' which is not in role's domain_access; Table 'ontology.d007_e0' belongs to domain 'ontology' which is not in role's domain_access"
+    },
+    {
+      "case": "aggregates::agg03",
+      "job": "SPARQL-G6",
+      "since": "2026-11-22",
+      "reason": "403: Table 'ontology.d007_t0' belongs to domain 'ontology' which is not in role's domain_access; Table 'ontology.d007_e1' belongs to domain 'ontology' which is not in role's domain_access; Table 'ontology.d007_e0' belongs to domain 'ontology' which is not in role's domain_access"
+    },
+    {
+      "case": "aggregates::agg04",
+      "job": "SPARQL-G6",
+      "since": "2026-11-22",
+      "reason": "403: Table 'ontology.d007_t0' belongs to domain 'ontology' which is not in role's domain_access; Table 'ontology.d007_e1' belongs to domain 'ontology' which is not in role's domain_access; Table 'ontology.d007_e0' belongs to domain 'ontology' which is not in role's domain_access"
+    },
+    {
+      "case": "aggregates::agg05",
+      "job": "SPARQL-G6",
+      "since": "2026-11-22",
+      "reason": "403: Table 'ontology.d007_t0' belongs to domain 'ontology' which is not in role's domain_access; Table 'ontology.d007_e1' belongs to domain 'ontology' which is not in role's domain_access; Table 'ontology.d007_e0' belongs to domain 'ontology' which is not in role's domain_access"
+    },
+    {
+      "case": "aggregates::agg06",
+      "job": "SPARQL-G6",
+      "since": "2026-11-22",
+      "reason": "403: Table 'ontology.d007_t0' belongs to domain 'ontology' which is not in role's domain_access; Table 'ontology.d007_e1' belongs to domain 'ontology' which is not in role's domain_access; Table 'ontology.d007_e0' belongs to domain 'ontology' which is not in role's domain_access"
+    },
+    {
+      "case": "aggregates::agg07",
+      "job": "SPARQL-G6",
+      "since": "2026-11-22",
+      "reason": "403: Table 'ontology.d007_t0' belongs to domain 'ontology' which is not in role's domain_access; Table 'ontology.d007_e1' belongs to domain 'ontology' which is not in role's domain_access; Table 'ontology.d007_e0' belongs to domain 'ontology' which is not in role's domain_access"
+    },
+    {
+      "case": "aggregates::agg08",
+      "job": "SPARQL-G8",
+      "since": "2026-11-22",
+      "reason": "a statement that is not SPARQL answered 200: {'results': {'bindings': []}, 'head': {'vars': ['O12', 'C']}}"
+    },
+    {
+      "case": "aggregates::agg08b",
+      "job": "SPARQL-G3",
+      "since": "2026-11-22",
+      "reason": "The dataset gives <http://www.example.org/s> several values of <http://www.example.org/p>"
+    },
+    {
+      "case": "aggregates::agg09",
+      "job": "SPARQL-G8",
+      "since": "2026-11-22",
+      "reason": "a statement that is not SPARQL answered 403: Table 'ontology.d000_t0' belongs to domain 'ontology' which is not in role's domain_access"
+    },
+    {
+      "case": "aggregates::agg10",
+      "job": "SPARQL-G8",
+      "since": "2026-11-22",
+      "reason": "a statement that is not SPARQL answered 403: Table 'ontology.d000_t0' belongs to domain 'ontology' which is not in role's domain_access"
+    },
+    {
+      "case": "aggregates::agg11",
+      "job": "SPARQL-G8",
+      "since": "2026-11-22",
+      "reason": "a statement that is not SPARQL answered 200: {'results': {'bindings': []}, 'head': {'vars': ['O12', 'C']}}"
+    },
+    {
+      "case": "aggregates::agg12",
+      "job": "SPARQL-G8",
+      "since": "2026-11-22",
+      "reason": "a statement that is not SPARQL answered 200: {'results': {'bindings': []}, 'head': {'vars': ['O1', 'C']}}"
+    },
+    {
+      "case": "basic-update::insert-data-spo-named1",
+      "job": "SPARQL-G2",
+      "since": "2026-11-22",
+      "reason": "400: InsertData is not served: this endpoint answers queries, and rows are written through the governed table writes"
+    },
+    {
+      "case": "basic-update::insert-data-spo-named2",
+      "job": "SPARQL-G2",
+      "since": "2026-11-22",
+      "reason": "400: InsertData is not served: this endpoint answers queries, and rows are written through the governed table writes"
+    },
+    {
+      "case": "basic-update::insert-data-spo-named3",
+      "job": "SPARQL-G2",
+      "since": "2026-11-22",
+      "reason": "400: InsertData is not served: this endpoint answers queries, and rows are written through the governed table writes"
+    },
+    {
+      "case": "basic-update::insert-data-spo1",
+      "job": "SPARQL-G2",
+      "since": "2026-11-22",
+      "reason": "400: InsertData is not served: this endpoint answers queries, and rows are written through the governed table writes"
+    },
+    {
+      "case": "basic-update::insert-using-01",
+      "job": "SPARQL-G2",
+      "since": "2026-11-22",
+      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+    },
+    {
+      "case": "basic-update::insert-where-01",
+      "job": "SPARQL-G2",
+      "since": "2026-11-22",
+      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+    },
+    {
+      "case": "basic-update::insert-where-02",
+      "job": "SPARQL-G2",
+      "since": "2026-11-22",
+      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+    },
+    {
+      "case": "basic-update::insert-where-03",
+      "job": "SPARQL-G2",
+      "since": "2026-11-22",
+      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+    },
+    {
+      "case": "basic-update::insert-where-04",
+      "job": "SPARQL-G2",
+      "since": "2026-11-22",
+      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+    },
+    {
+      "case": "bind::bind01",
+      "job": "SPARQL-G6",
+      "since": "2026-11-22",
+      "reason": "403: Table 'ontology.d010_t0' belongs to domain 'ontology' which is not in role's domain_access"
+    },
+    {
+      "case": "bind::bind02",
+      "job": "SPARQL-G6",
+      "since": "2026-11-22",
+      "reason": "403: Table 'ontology.d010_t0' belongs to domain 'ontology' which is not in role's domain_access"
+    },
+    {
+      "case": "bind::bind03",
+      "job": "SPARQL-G6",
+      "since": "2026-11-22",
+      "reason": "403: Table 'ontology.d010_t0' belongs to domain 'ontology' which is not in role's domain_access; Invalid JOIN: d010_t0 and d010_t0 are matched by something other than an equality of their columns — tables are related only along an approved relationship, on its columns"
+    },
+    {
+      "case": "bind::bind04",
+      "job": "SPARQL-G6",
+      "since": "2026-11-22",
+      "reason": "403: Table 'ontology.d010_t0' belongs to domain 'ontology' which is not in role's domain_access"
+    },
+    {
+      "case": "bind::bind05",
+      "job": "SPARQL-G6",
+      "since": "2026-11-22",
+      "reason": "403: Table 'ontology.d010_t0' belongs to domain 'ontology' which is not in role's domain_access"
+    },
+    {
+      "case": "bind::bind06",
+      "job": "SPARQL-G6",
+      "since": "2026-11-22",
+      "reason": "403: Table 'ontology.d010_t0' belongs to domain 'ontology' which is not in role's domain_access"
+    },
+    {
+      "case": "bind::bind07",
+      "job": "SPARQL-G6",
+      "since": "2026-11-22",
+      "reason": "403: Table 'ontology.d010_t0' belongs to domain 'ontology' which is not in role's domain_access"
+    },
+    {
+      "case": "bind::bind08",
+      "job": "SPARQL-G6",
+      "since": "2026-11-22",
+      "reason": "403: Table 'ontology.d010_t0' belongs to domain 'ontology' which is not in role's domain_access"
+    },
+    {
+      "case": "bind::bind11",
+      "job": "SPARQL-G5",
+      "since": "2026-11-22",
+      "reason": "answered 0 solutions, expected 1: [] expected [{\"s\": \"<http://example.org/s4>\", \"v\": \"\\\"4\\\"^^<http://www.w3.org/2001/XMLSchema#integer>\", \"z\": \"\\\"4\\\"^^<http://www.w3.org/2001/XMLSchema#integer>\"}]"
+    },
+    {
+      "case": "bindings::graph",
+      "job": "SPARQL-G9",
+      "since": "2026-11-22",
+      "reason": "400: The SPARQL operator Graph is not supported"
+    },
+    {
+      "case": "bindings::graph-from-named-1",
+      "job": "SPARQL-G9",
+      "since": "2026-11-22",
+      "reason": "400: FROM and FROM NAMED are not supported"
+    },
+    {
+      "case": "bindings::graph-from-named-2",
+      "job": "SPARQL-G9",
+      "since": "2026-11-22",
+      "reason": "400: FROM and FROM NAMED are not supported"
+    },
+    {
+      "case": "bindings::graph-from-named-3",
+      "job": "SPARQL-G9",
+      "since": "2026-11-22",
+      "reason": "400: FROM and FROM NAMED are not supported"
+    },
+    {
+      "case": "bindings::graph-no-var",
+      "job": "SPARQL-G9",
+      "since": "2026-11-22",
+      "reason": "400: The SPARQL operator Graph is not supported"
+    },
+    {
+      "case": "bindings::inline1",
+      "job": "SPARQL-G5",
+      "since": "2026-11-22",
+      "reason": "answered 0 solutions, expected 1: [] expected [{\"book\": \"<http://example.org/book/book1>\", \"price\": \"\\\"42\\\"^^<http://www.w3.org/2001/XMLSchema#integer>\", \"title\": \"\\\"SPARQL Tutorial\\\"\"}]"
+    },
+    {
+      "case": "bindings::inline2",
+      "job": "SPARQL-G7",
+      "since": "2026-11-22",
+      "reason": "400: Sub-SELECTs are not supported"
+    },
+    {
+      "case": "bindings::values-construct",
+      "job": "SPARQL-G5",
+      "since": "2026-11-22",
+      "reason": "answered a graph of 0 triples, not the expected 2"
+    },
+    {
+      "case": "bindings::values-construct-group-by",
+      "job": "SPARQL-G7",
+      "since": "2026-11-22",
+      "reason": "400: GROUP BY and aggregates are supported only at the top of a query"
+    },
+    {
+      "case": "bindings::values-construct-limit",
+      "job": "SPARQL-G5",
+      "since": "2026-11-22",
+      "reason": "answered a graph of 0 triples, not the expected 1"
+    },
+    {
+      "case": "bindings::values-distinct",
+      "job": "SPARQL-G5",
+      "since": "2026-11-22",
+      "reason": "answered 0 solutions, expected 3: [] expected [{\"s\": \"<http://example.org/c>\"}, {\"s\": \"<http://example.org/b>\"}, {\"s\": \"<http://example.org/a>\"}]"
+    },
+    {
+      "case": "bindings::values-group-by-join",
+      "job": "SPARQL-G7",
+      "since": "2026-11-22",
+      "reason": "400: GROUP BY and aggregates are supported only at the top of a query"
+    },
+    {
+      "case": "bindings::values-group-by-projection",
+      "job": "SPARQL-G7",
+      "since": "2026-11-22",
+      "reason": "400: GROUP BY and aggregates are supported only at the top of a query"
+    },
+    {
+      "case": "bindings::values-group-by-select-expression",
+      "job": "SPARQL-G7",
+      "since": "2026-11-22",
+      "reason": "400: GROUP BY and aggregates are supported only at the top of a query"
+    },
+    {
+      "case": "bindings::values-group-order-by",
+      "job": "SPARQL-G7",
+      "since": "2026-11-22",
+      "reason": "400: GROUP BY and aggregates are supported only at the top of a query"
+    },
+    {
+      "case": "bindings::values-no-vars-two-rows",
+      "job": "SPARQL-G7",
+      "since": "2026-11-22",
+      "reason": "400: Sub-SELECTs are not supported"
+    },
+    {
+      "case": "bindings::values-offset-limit",
+      "job": "SPARQL-G5",
+      "since": "2026-11-22",
+      "reason": "answered 0 solutions, expected 1: [] expected [{\"s\": \"<http://example.org/c>\"}]"
+    },
+    {
+      "case": "bindings::values-order-by",
+      "job": "SPARQL-G5",
+      "since": "2026-11-22",
+      "reason": "answered 0 solutions, expected 3: [] expected [{\"rank\": \"\\\"1\\\"^^<http://www.w3.org/2001/XMLSchema#integer>\", \"s\": \"<http://example.org/b>\"}, {\"rank\": \"\\\"2\\\"^^<http://www.w3.org/2001/XMLSchema#integer>\", \"s\": \"<http://example.org/c>\"}, {\"rank\": \"\\\"3\\\"^^<http://www.w3.org/2001/XMLSchema#integer>\", \"s\""
+    },
+    {
+      "case": "bindings::values-select-star",
+      "job": "SPARQL-G5",
+      "since": "2026-11-22",
+      "reason": "answered 0 solutions, expected 2: [] expected [{\"o\": \"\\\"1\\\"^^<http://www.w3.org/2001/XMLSchema#integer>\", \"s\": \"<http://example.org/a>\", \"x\": \"\\\"10\\\"^^<http://www.w3.org/2001/XMLSchema#integer>\"}, {\"o\": \"\\\"2\\\"^^<http://www.w3.org/2001/XMLSchema#integer>\", \"s\": \"<http://example.org/b>\", \"x\": \"\\\"20\\\"^"
+    },
+    {
+      "case": "bindings::values-subquery-offset-limit",
+      "job": "SPARQL-G7",
+      "since": "2026-11-22",
+      "reason": "400: Sub-SELECTs are not supported"
+    },
+    {
+      "case": "bindings::values1",
+      "job": "SPARQL-G5",
+      "since": "2026-11-22",
+      "reason": "answered 0 solutions, expected 1: [] expected [{\"book\": \"<http://example.org/book/book1>\", \"price\": \"\\\"42\\\"^^<http://www.w3.org/2001/XMLSchema#integer>\", \"title\": \"\\\"SPARQL Tutorial\\\"\"}]"
+    },
+    {
+      "case": "bindings::values3",
+      "job": "SPARQL-G6",
+      "since": "2026-11-22",
+      "reason": "403: Table 'ontology.d014_t0' belongs to domain 'ontology' which is not in role's domain_access; Table 'ontology.d014_e0' belongs to domain 'ontology' which is not in role's domain_access"
+    },
+    {
+      "case": "bindings::values4",
+      "job": "SPARQL-G6",
+      "since": "2026-11-22",
+      "reason": "403: Table 'ontology.d015_t0' belongs to domain 'ontology' which is not in role's domain_access; Table 'ontology.d015_e0' belongs to domain 'ontology' which is not in role's domain_access"
+    },
+    {
+      "case": "bindings::values5",
+      "job": "SPARQL-G10",
+      "since": "2026-11-22",
+      "reason": "400: <http://provisa.conformance.test/id/sparql_d016/d016_t0/n1> is a value of the answer only: a subject is compared through its key"
+    },
+    {
+      "case": "bindings::values6",
+      "job": "SPARQL-G10",
+      "since": "2026-11-22",
+      "reason": "400: <http://provisa.conformance.test/vocab/rel/D017_P0> is a value of the answer only: a subject is compared through its key"
+    },
+    {
+      "case": "bindings::values7",
+      "job": "SPARQL-G10",
+      "since": "2026-11-22",
+      "reason": "400: An OPTIONAL whose nodes could be of several classes is not supported; give them a class"
+    },
+    {
+      "case": "bindings::values8",
+      "job": "SPARQL-G5",
+      "since": "2026-11-22",
+      "reason": "answered 0 solutions, expected 2: [] expected [{\"book\": \"<http://example.org/book/book1>\", \"price\": \"\\\"42\\\"^^<http://www.w3.org/2001/XMLSchema#integer>\", \"title\": \"\\\"SPARQL Tutorial\\\"\"}, {\"book\": \"<http://example.org/book/book2>\", \"price\": \"\\\"23\\\"^^<http://www.w3.org/2001/XMLSchema#integer>\", \"title"
+    },
+    {
+      "case": "cast::cast-bool",
+      "job": "SPARQL-G1",
+      "since": "2026-11-22",
+      "reason": "The dataset holds the datatype <http://www.w3.org/2001/XMLSchema#float>, which no column holds"
+    },
+    {
+      "case": "cast::cast-decimal",
+      "job": "SPARQL-G1",
+      "since": "2026-11-22",
+      "reason": "The dataset holds the datatype <http://www.w3.org/2001/XMLSchema#float>, which no column holds"
+    },
+    {
+      "case": "cast::cast-double",
+      "job": "SPARQL-G1",
+      "since": "2026-11-22",
+      "reason": "The dataset holds the datatype <http://www.w3.org/2001/XMLSchema#float>, which no column holds"
+    },
+    {
+      "case": "cast::cast-float",
+      "job": "SPARQL-G1",
+      "since": "2026-11-22",
+      "reason": "The dataset holds the datatype <http://www.w3.org/2001/XMLSchema#float>, which no column holds"
+    },
+    {
+      "case": "cast::cast-int",
+      "job": "SPARQL-G1",
+      "since": "2026-11-22",
+      "reason": "The dataset holds the datatype <http://www.w3.org/2001/XMLSchema#float>, which no column holds"
+    },
+    {
+      "case": "cast::cast-string",
+      "job": "SPARQL-G1",
+      "since": "2026-11-22",
+      "reason": "The dataset holds the datatype <http://www.w3.org/2001/XMLSchema#float>, which no column holds"
+    },
+    {
+      "case": "construct::constructlist",
+      "job": "SPARQL-G10",
+      "since": "2026-11-22",
+      "reason": "400: A blank node in a CONSTRUCT template is not supported"
+    },
+    {
+      "case": "construct::constructwhere01",
+      "job": "SPARQL-G6",
+      "since": "2026-11-22",
+      "reason": "403: Table 'ontology.d023_t0' belongs to domain 'ontology' which is not in role's domain_access; Table 'ontology.d023_e0' belongs to domain 'ontology' which is not in role's domain_access"
+    },
+    {
+      "case": "construct::constructwhere04",
+      "job": "SPARQL-G9",
+      "since": "2026-11-22",
+      "reason": "400: FROM and FROM NAMED are not supported"
+    },
+    {
+      "case": "csv-tsv-res::csv01",
+      "job": "SPARQL-G6",
+      "since": "2026-11-22",
+      "reason": "403: Table 'ontology.d024_t0' belongs to domain 'ontology' which is not in role's domain_access; Table 'ontology.d024_e1' belongs to domain 'ontology' which is not in role's domain_access; Table 'ontology.d024_e0' belongs to domain 'ontology' which is not in role's domain_access"
+    },
+    {
+      "case": "csv-tsv-res::csv02",
+      "job": "SPARQL-G10",
+      "since": "2026-11-22",
+      "reason": "400: An OPTIONAL whose nodes could be of several classes is not supported; give them a class"
+    },
+    {
+      "case": "csv-tsv-res::csv03",
+      "job": "SPARQL-G1",
+      "since": "2026-11-22",
+      "reason": "The dataset holds the datatype <http://www.w3.org/2001/XMLSchema#negativeInteger>, which no column holds"
+    },
+    {
+      "case": "csv-tsv-res::csv04",
+      "job": "SPARQL-G1",
+      "since": "2026-11-22",
+      "reason": "The dataset holds the datatype <http://www.w3.org/2001/XMLSchema#negativeInteger>, which no column holds"
+    },
+    {
+      "case": "csv-tsv-res::tsv01",
+      "job": "SPARQL-G6",
+      "since": "2026-11-22",
+      "reason": "403: Table 'ontology.d024_t0' belongs to domain 'ontology' which is not in role's domain_access; Table 'ontology.d024_e1' belongs to domain 'ontology' which is not in role's domain_access; Table 'ontology.d024_e0' belongs to domain 'ontology' which is not in role's domain_access"
+    },
+    {
+      "case": "csv-tsv-res::tsv02",
+      "job": "SPARQL-G10",
+      "since": "2026-11-22",
+      "reason": "400: An OPTIONAL whose nodes could be of several classes is not supported; give them a class"
+    },
+    {
+      "case": "csv-tsv-res::tsv03",
+      "job": "SPARQL-G1",
+      "since": "2026-11-22",
+      "reason": "The dataset holds the datatype <http://www.w3.org/2001/XMLSchema#negativeInteger>, which no column holds"
+    },
+    {
+      "case": "delete-data::dawg-delete-data-01",
+      "job": "SPARQL-G2",
+      "since": "2026-11-22",
+      "reason": "400: DeleteData is not served: this endpoint answers queries, and rows are written through the governed table writes"
+    },
+    {
+      "case": "delete-data::dawg-delete-data-02",
+      "job": "SPARQL-G2",
+      "since": "2026-11-22",
+      "reason": "400: DeleteData is not served: this endpoint answers queries, and rows are written through the governed table writes"
+    },
+    {
+      "case": "delete-data::dawg-delete-data-03",
+      "job": "SPARQL-G2",
+      "since": "2026-11-22",
+      "reason": "400: DeleteData is not served: this endpoint answers queries, and rows are written through the governed table writes"
+    },
+    {
+      "case": "delete-data::dawg-delete-data-04",
+      "job": "SPARQL-G2",
+      "since": "2026-11-22",
+      "reason": "400: DeleteData is not served: this endpoint answers queries, and rows are written through the governed table writes"
+    },
+    {
+      "case": "delete-data::dawg-delete-data-05",
+      "job": "SPARQL-G2",
+      "since": "2026-11-22",
+      "reason": "400: DeleteData is not served: this endpoint answers queries, and rows are written through the governed table writes"
+    },
+    {
+      "case": "delete-data::dawg-delete-data-06",
+      "job": "SPARQL-G2",
+      "since": "2026-11-22",
+      "reason": "400: DeleteData is not served: this endpoint answers queries, and rows are written through the governed table writes"
+    },
+    {
+      "case": "delete-insert::dawg-delete-insert-01",
+      "job": "SPARQL-G2",
+      "since": "2026-11-22",
+      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+    },
+    {
+      "case": "delete-insert::dawg-delete-insert-01b",
+      "job": "SPARQL-G2",
+      "since": "2026-11-22",
+      "reason": "400: Modify, Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+    },
+    {
+      "case": "delete-insert::dawg-delete-insert-01c",
+      "job": "SPARQL-G2",
+      "since": "2026-11-22",
+      "reason": "400: Modify, Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+    },
+    {
+      "case": "delete-insert::dawg-delete-insert-02",
+      "job": "SPARQL-G2",
+      "since": "2026-11-22",
+      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+    },
+    {
+      "case": "delete-insert::dawg-delete-insert-04",
+      "job": "SPARQL-G2",
+      "since": "2026-11-22",
+      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+    },
+    {
+      "case": "delete-insert::dawg-delete-insert-04b",
+      "job": "SPARQL-G2",
+      "since": "2026-11-22",
+      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+    },
+    {
+      "case": "delete-insert::dawg-delete-insert-05b",
+      "job": "SPARQL-G2",
+      "since": "2026-11-22",
+      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+    },
+    {
+      "case": "delete-insert::dawg-delete-insert-06b",
+      "job": "SPARQL-G2",
+      "since": "2026-11-22",
+      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+    },
+    {
+      "case": "delete-insert::delete-insert-halloween-problem",
+      "job": "SPARQL-G2",
+      "since": "2026-11-22",
+      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+    },
+    {
+      "case": "delete-where::dawg-delete-where-01",
+      "job": "SPARQL-G2",
+      "since": "2026-11-22",
+      "reason": "400: DeleteWhere is not served: this endpoint answers queries, and rows are written through the governed table writes"
+    },
+    {
+      "case": "delete-where::dawg-delete-where-02",
+      "job": "SPARQL-G2",
+      "since": "2026-11-22",
+      "reason": "400: DeleteWhere is not served: this endpoint answers queries, and rows are written through the governed table writes"
+    },
+    {
+      "case": "delete-where::dawg-delete-where-03",
+      "job": "SPARQL-G2",
+      "since": "2026-11-22",
+      "reason": "400: DeleteWhere is not served: this endpoint answers queries, and rows are written through the governed table writes"
+    },
+    {
+      "case": "delete-where::dawg-delete-where-04",
+      "job": "SPARQL-G2",
+      "since": "2026-11-22",
+      "reason": "400: DeleteWhere is not served: this endpoint answers queries, and rows are written through the governed table writes"
+    },
+    {
+      "case": "delete-where::dawg-delete-where-05",
+      "job": "SPARQL-G2",
+      "since": "2026-11-22",
+      "reason": "400: DeleteWhere is not served: this endpoint answers queries, and rows are written through the governed table writes"
+    },
+    {
+      "case": "delete-where::dawg-delete-where-06",
+      "job": "SPARQL-G2",
+      "since": "2026-11-22",
+      "reason": "400: DeleteWhere is not served: this endpoint answers queries, and rows are written through the governed table writes"
+    },
+    {
+      "case": "delete::dawg-delete-01",
+      "job": "SPARQL-G2",
+      "since": "2026-11-22",
+      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+    },
+    {
+      "case": "delete::dawg-delete-02",
+      "job": "SPARQL-G2",
+      "since": "2026-11-22",
+      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+    },
+    {
+      "case": "delete::dawg-delete-03",
+      "job": "SPARQL-G2",
+      "since": "2026-11-22",
+      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+    },
+    {
+      "case": "delete::dawg-delete-04",
+      "job": "SPARQL-G2",
+      "since": "2026-11-22",
+      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+    },
+    {
+      "case": "delete::dawg-delete-05",
+      "job": "SPARQL-G2",
+      "since": "2026-11-22",
+      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+    },
+    {
+      "case": "delete::dawg-delete-06",
+      "job": "SPARQL-G2",
+      "since": "2026-11-22",
+      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+    },
+    {
+      "case": "delete::dawg-delete-07",
+      "job": "SPARQL-G2",
+      "since": "2026-11-22",
+      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+    },
+    {
+      "case": "delete::dawg-delete-using-01",
+      "job": "SPARQL-G2",
+      "since": "2026-11-22",
+      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+    },
+    {
+      "case": "delete::dawg-delete-using-02a",
+      "job": "SPARQL-G2",
+      "since": "2026-11-22",
+      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+    },
+    {
+      "case": "delete::dawg-delete-using-03",
+      "job": "SPARQL-G2",
+      "since": "2026-11-22",
+      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+    },
+    {
+      "case": "delete::dawg-delete-using-04",
+      "job": "SPARQL-G2",
+      "since": "2026-11-22",
+      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+    },
+    {
+      "case": "delete::dawg-delete-using-05",
+      "job": "SPARQL-G2",
+      "since": "2026-11-22",
+      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+    },
+    {
+      "case": "delete::dawg-delete-using-06a",
+      "job": "SPARQL-G2",
+      "since": "2026-11-22",
+      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+    },
+    {
+      "case": "delete::dawg-delete-with-01",
+      "job": "SPARQL-G2",
+      "since": "2026-11-22",
+      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+    },
+    {
+      "case": "delete::dawg-delete-with-02",
+      "job": "SPARQL-G2",
+      "since": "2026-11-22",
+      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+    },
+    {
+      "case": "delete::dawg-delete-with-03",
+      "job": "SPARQL-G2",
+      "since": "2026-11-22",
+      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+    },
+    {
+      "case": "delete::dawg-delete-with-04",
+      "job": "SPARQL-G2",
+      "since": "2026-11-22",
+      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+    },
+    {
+      "case": "delete::dawg-delete-with-05",
+      "job": "SPARQL-G2",
+      "since": "2026-11-22",
+      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+    },
+    {
+      "case": "delete::dawg-delete-with-06",
+      "job": "SPARQL-G2",
+      "since": "2026-11-22",
+      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+    },
+    {
+      "case": "exists::exists-graph-variable",
+      "job": "SPARQL-G9",
+      "since": "2026-11-22",
+      "reason": "400: The SPARQL operator Graph is not supported"
+    },
+    {
+      "case": "exists::exists01",
+      "job": "SPARQL-G5",
+      "since": "2026-11-22",
+      "reason": "answered 5 solutions, expected 3: [{\"o\": \"<http://www.example.org/o>\", \"p\": \"<http://www.example.org/p>\", \"s\": \"<http://www.example.org/s>\"}, {\"o\": \"<http://www.example.org/o1>\", \"p\": \"<http://www.example.org/p>\", \"s\": \"<http://www.example.org/s>\"}, {\"o\": \"<http://www.example.org/o2>\", \"p\": \"<http:/"
+    },
+    {
+      "case": "exists::exists03",
+      "job": "SPARQL-G9",
+      "since": "2026-11-22",
+      "reason": "400: The SPARQL operator Graph is not supported"
+    },
+    {
+      "case": "exists::exists05",
+      "job": "SPARQL-G5",
+      "since": "2026-11-22",
+      "reason": "answered 1 solutions, expected 0: [{\"p\": \"<http://www.example.org/p>\", \"s\": \"<http://www.example.org/s>\"}] expected []"
+    },
+    {
+      "case": "functions::abs01",
+      "job": "SPARQL-G1",
+      "since": "2026-11-22",
+      "reason": "The dataset holds the language-tagged literal \"bar\"@en, which no column holds"
+    },
+    {
+      "case": "functions::bnode01",
+      "job": "SPARQL-G1",
+      "since": "2026-11-22",
+      "reason": "The dataset holds the language-tagged literal \"bar\"@en, which no column holds"
+    },
+    {
+      "case": "functions::bnode02",
+      "job": "SPARQL-G1",
+      "since": "2026-11-22",
+      "reason": "The dataset holds the language-tagged literal \"bar\"@en, which no column holds"
+    },
+    {
+      "case": "functions::ceil01",
+      "job": "SPARQL-G1",
+      "since": "2026-11-22",
+      "reason": "The dataset holds the language-tagged literal \"bar\"@en, which no column holds"
+    },
+    {
+      "case": "functions::coalesce-empty",
+      "job": "SPARQL-G11",
+      "since": "2026-11-22",
+      "reason": "500: Internal server error"
+    },
+    {
+      "case": "functions::coalesce01",
+      "job": "SPARQL-G5",
+      "since": "2026-11-22",
+      "reason": "answered 0 solutions, expected 4: [] expected [{\"cx\": \"\\\"-1\\\"^^<http://www.w3.org/2001/XMLSchema#integer>\", \"def\": \"\\\"-3\\\"^^<http://www.w3.org/2001/XMLSchema#integer>\", \"div\": \"\\\"-2\\\"^^<http://www.w3.org/2001/XMLSchema#integer>\"}, {\"cx\": \"\\\"0\\\"^^<http://www.w3.org/2001/XMLSchema#integer>\", \"def\": \"\\"
+    },
+    {
+      "case": "functions::concat-empty",
+      "job": "SPARQL-G1",
+      "since": "2026-11-22",
+      "reason": "The dataset holds the language-tagged literal \"bar\"@en, which no column holds"
+    },
+    {
+      "case": "functions::concat-single",
+      "job": "SPARQL-G1",
+      "since": "2026-11-22",
+      "reason": "The dataset holds the language-tagged literal \"bar\"@en, which no column holds"
+    },
+    {
+      "case": "functions::concat01",
+      "job": "SPARQL-G1",
+      "since": "2026-11-22",
+      "reason": "The dataset holds the language-tagged literal \"bar\"@en, which no column holds"
+    },
+    {
+      "case": "functions::concat02",
+      "job": "SPARQL-G1",
+      "since": "2026-11-22",
+      "reason": "The dataset holds the language-tagged literal \"日本語\"@ja, which no column holds"
+    },
+    {
+      "case": "functions::contains01",
+      "job": "SPARQL-G1",
+      "since": "2026-11-22",
+      "reason": "The dataset holds the language-tagged literal \"bar\"@en, which no column holds"
+    },
+    {
+      "case": "functions::day",
+      "job": "SPARQL-G1",
+      "since": "2026-11-22",
+      "reason": "The dataset holds the language-tagged literal \"bar\"@en, which no column holds"
+    },
+    {
+      "case": "functions::encode01",
+      "job": "SPARQL-G1",
+      "since": "2026-11-22",
+      "reason": "The dataset holds the language-tagged literal \"bar\"@en, which no column holds"
+    },
+    {
+      "case": "functions::encode01-non-bmp",
+      "job": "SPARQL-G5",
+      "since": "2026-11-22",
+      "reason": "answered 0 solutions, expected 2: [] expected [{\"encoded\": \"\\\"%F0%9F%91%AA\\\"\", \"s\": \"<http://example.org/s8>\", \"str\": \"\\\"👪\\\"\"}, {\"encoded\": \"\\\"%F0%9F%91%A8%E2%80%8D%F0%9F%91%A9%E2%80%8D%F0%9F%91%A7%E2%80%8D%F0%9F%91%A6\\\"\", \"s\": \"<http://example.org/s9>\", \"str\": \"\\\"👨‍👩‍👧‍👦\\\"\"}]"
+    },
+    {
+      "case": "functions::ends01",
+      "job": "SPARQL-G1",
+      "since": "2026-11-22",
+      "reason": "The dataset holds the language-tagged literal \"bar\"@en, which no column holds"
+    },
+    {
+      "case": "functions::floor01",
+      "job": "SPARQL-G1",
+      "since": "2026-11-22",
+      "reason": "The dataset holds the language-tagged literal \"bar\"@en, which no column holds"
+    },
+    {
+      "case": "functions::hours",
+      "job": "SPARQL-G1",
+      "since": "2026-11-22",
+      "reason": "The dataset holds the language-tagged literal \"bar\"@en, which no column holds"
+    },
+    {
+      "case": "functions::if01",
+      "job": "SPARQL-G1",
+      "since": "2026-11-22",
+      "reason": "The dataset holds the language-tagged literal \"日本語\"@ja, which no column holds"
+    },
+    {
+      "case": "functions::if02",
+      "job": "SPARQL-G1",
+      "since": "2026-11-22",
+      "reason": "The dataset holds the language-tagged literal \"日本語\"@ja, which no column holds"
+    },
+    {
+      "case": "functions::in01",
+      "job": "SPARQL-G1",
+      "since": "2026-11-22",
+      "reason": "The dataset holds the language-tagged literal \"bar\"@en, which no column holds"
+    },
+    {
+      "case": "functions::in02",
+      "job": "SPARQL-G1",
+      "since": "2026-11-22",
+      "reason": "The dataset holds the language-tagged literal \"bar\"@en, which no column holds"
+    },
+    {
+      "case": "functions::iri01",
+      "job": "SPARQL-G1",
+      "since": "2026-11-22",
+      "reason": "The dataset holds the language-tagged literal \"bar\"@en, which no column holds"
+    },
+    {
+      "case": "functions::iri02",
+      "job": "SPARQL-G1",
+      "since": "2026-11-22",
+      "reason": "The dataset holds the language-tagged literal \"bar\"@en, which no column holds"
+    },
+    {
+      "case": "functions::isnumeric01",
+      "job": "SPARQL-G1",
+      "since": "2026-11-22",
+      "reason": "The dataset holds the language-tagged literal \"bar\"@en, which no column holds"
+    },
+    {
+      "case": "functions::lcase01",
+      "job": "SPARQL-G1",
+      "since": "2026-11-22",
+      "reason": "The dataset holds the language-tagged literal \"bar\"@en, which no column holds"
+    },
+    {
+      "case": "functions::lcase01-non-bmp",
+      "job": "SPARQL-G5",
+      "since": "2026-11-22",
+      "reason": "answered 0 solutions, expected 2: [] expected [{\"lstr\": \"\\\"👪\\\"\", \"s\": \"<http://example.org/s8>\"}, {\"lstr\": \"\\\"👨‍👩‍👧‍👦\\\"\", \"s\": \"<http://example.org/s9>\"}]"
+    },
+    {
+      "case": "functions::length01",
+      "job": "SPARQL-G1",
+      "since": "2026-11-22",
+      "reason": "The dataset holds the language-tagged literal \"bar\"@en, which no column holds"
+    },
+    {
+      "case": "functions::length01-non-bmp",
+      "job": "SPARQL-G5",
+      "since": "2026-11-22",
+      "reason": "answered 0 solutions, expected 2: [] expected [{\"len\": \"\\\"1\\\"^^<http://www.w3.org/2001/XMLSchema#integer>\", \"str\": \"\\\"👪\\\"\"}, {\"len\": \"\\\"7\\\"^^<http://www.w3.org/2001/XMLSchema#integer>\", \"str\": \"\\\"👨‍👩‍👧‍👦\\\"\"}]"
+    },
+    {
+      "case": "functions::md5-01",
+      "job": "SPARQL-G1",
+      "since": "2026-11-22",
+      "reason": "The dataset holds the language-tagged literal \"bar\"@en, which no column holds"
+    },
+    {
+      "case": "functions::md5-02",
+      "job": "SPARQL-G1",
+      "since": "2026-11-22",
+      "reason": "The dataset holds the language-tagged literal \"bar\"@en, which no column holds"
+    },
+    {
+      "case": "functions::minutes",
+      "job": "SPARQL-G1",
+      "since": "2026-11-22",
+      "reason": "The dataset holds the language-tagged literal \"bar\"@en, which no column holds"
+    },
+    {
+      "case": "functions::month",
+      "job": "SPARQL-G1",
+      "since": "2026-11-22",
+      "reason": "The dataset holds the language-tagged literal \"bar\"@en, which no column holds"
+    },
+    {
+      "case": "functions::notin01",
+      "job": "SPARQL-G1",
+      "since": "2026-11-22",
+      "reason": "The dataset holds the language-tagged literal \"bar\"@en, which no column holds"
+    },
+    {
+      "case": "functions::notin02",
+      "job": "SPARQL-G1",
+      "since": "2026-11-22",
+      "reason": "The dataset holds the language-tagged literal \"bar\"@en, which no column holds"
+    },
+    {
+      "case": "functions::now01",
+      "job": "SPARQL-G1",
+      "since": "2026-11-22",
+      "reason": "The dataset holds the language-tagged literal \"bar\"@en, which no column holds"
+    },
+    {
+      "case": "functions::plus-1-corrected",
+      "job": "SPARQL-G3",
+      "since": "2026-11-22",
+      "reason": "The dataset gives <http://example/p> both literals and resources"
+    },
+    {
+      "case": "functions::plus-2-corrected",
+      "job": "SPARQL-G3",
+      "since": "2026-11-22",
+      "reason": "The dataset gives <http://example/p> both literals and resources"
+    },
+    {
+      "case": "functions::rand01",
+      "job": "SPARQL-G1",
+      "since": "2026-11-22",
+      "reason": "The dataset holds the language-tagged literal \"bar\"@en, which no column holds"
+    },
+    {
+      "case": "functions::replace-case-insensitive",
+      "job": "SPARQL-G12",
+      "since": "2026-11-22",
+      "reason": "400: REPLACE flags i are not supported; q and x are"
+    },
+    {
+      "case": "functions::replace01",
+      "job": "SPARQL-G1",
+      "since": "2026-11-22",
+      "reason": "The dataset holds the language-tagged literal \"日本語\"@ja, which no column holds"
+    },
+    {
+      "case": "functions::replace02",
+      "job": "SPARQL-G1",
+      "since": "2026-11-22",
+      "reason": "The dataset holds the language-tagged literal \"日本語\"@ja, which no column holds"
+    },
+    {
+      "case": "functions::replace03",
+      "job": "SPARQL-G1",
+      "since": "2026-11-22",
+      "reason": "The dataset holds the language-tagged literal \"日本語\"@ja, which no column holds"
+    },
+    {
+      "case": "functions::round01",
+      "job": "SPARQL-G1",
+      "since": "2026-11-22",
+      "reason": "The dataset holds the language-tagged literal \"bar\"@en, which no column holds"
+    },
+    {
+      "case": "functions::seconds",
+      "job": "SPARQL-G1",
+      "since": "2026-11-22",
+      "reason": "The dataset holds the language-tagged literal \"bar\"@en, which no column holds"
+    },
+    {
+      "case": "functions::sha1-01",
+      "job": "SPARQL-G1",
+      "since": "2026-11-22",
+      "reason": "The dataset holds the language-tagged literal \"bar\"@en, which no column holds"
+    },
+    {
+      "case": "functions::sha1-02",
+      "job": "SPARQL-G5",
+      "since": "2026-11-22",
+      "reason": "answered 0 solutions, expected 1: [] expected [{\"hash\": \"\\\"d46696735b6a09ff407bfc1a9407e008840db9c9\\\"\"}]"
+    },
+    {
+      "case": "functions::sha256-01",
+      "job": "SPARQL-G1",
+      "since": "2026-11-22",
+      "reason": "The dataset holds the language-tagged literal \"bar\"@en, which no column holds"
+    },
+    {
+      "case": "functions::sha256-02",
+      "job": "SPARQL-G5",
+      "since": "2026-11-22",
+      "reason": "answered 0 solutions, expected 1: [] expected [{\"hash\": \"\\\"0fbe868d1df356ca9df7ebff346da3a56280e059a7ea81186ef885b140d254ee\\\"\"}]"
+    },
+    {
+      "case": "functions::sha384-01",
+      "job": "SPARQL-G1",
+      "since": "2026-11-22",
+      "reason": "The dataset holds the language-tagged literal \"bar\"@en, which no column holds"
+    },
+    {
+      "case": "functions::sha384-02",
+      "job": "SPARQL-G5",
+      "since": "2026-11-22",
+      "reason": "answered 0 solutions, expected 1: [] expected [{\"hash\": \"\\\"adfda7e9ad8789b391855038d0d74dce3efe3af1eefcea35d50b91d6c244a0c546375445b518c9fb61e03e6a060bc95d\\\"\"}]"
+    },
+    {
+      "case": "functions::sha512-01",
+      "job": "SPARQL-G1",
+      "since": "2026-11-22",
+      "reason": "The dataset holds the language-tagged literal \"bar\"@en, which no column holds"
+    },
+    {
+      "case": "functions::sha512-02",
+      "job": "SPARQL-G5",
+      "since": "2026-11-22",
+      "reason": "answered 0 solutions, expected 1: [] expected [{\"hash\": \"\\\"b433ed0e60c818bea72d3aa1a43db89b3ed2b624597407b7912bbb7685f2e45ae5500e092da5f938391d282b26bc43e4035b12460c93ab5e2e1a05d582331d85\\\"\"}]"
+    },
+    {
+      "case": "functions::starts01",
+      "job": "SPARQL-G1",
+      "since": "2026-11-22",
+      "reason": "The dataset holds the language-tagged literal \"bar\"@en, which no column holds"
+    },
+    {
+      "case": "functions::strafter01a",
+      "job": "SPARQL-G1",
+      "since": "2026-11-22",
+      "reason": "The dataset holds the language-tagged literal \"日本語\"@ja, which no column holds"
+    },
+    {
+      "case": "functions::strafter02",
+      "job": "SPARQL-G1",
+      "since": "2026-11-22",
+      "reason": "The dataset holds the language-tagged literal \"abc\"@en, which no column holds"
+    },
+    {
+      "case": "functions::strbefore01a",
+      "job": "SPARQL-G1",
+      "since": "2026-11-22",
+      "reason": "The dataset holds the language-tagged literal \"日本語\"@ja, which no column holds"
+    },
+    {
+      "case": "functions::strbefore02",
+      "job": "SPARQL-G1",
+      "since": "2026-11-22",
+      "reason": "The dataset holds the language-tagged literal \"abc\"@en, which no column holds"
+    },
+    {
+      "case": "functions::strdt01",
+      "job": "SPARQL-G1",
+      "since": "2026-11-22",
+      "reason": "The dataset holds the language-tagged literal \"bar\"@en, which no column holds"
+    },
+    {
+      "case": "functions::strdt02",
+      "job": "SPARQL-G1",
+      "since": "2026-11-22",
+      "reason": "The dataset holds the language-tagged literal \"bar\"@en, which no column holds"
+    },
+    {
+      "case": "functions::strdt03-rdf11",
+      "job": "SPARQL-G1",
+      "since": "2026-11-22",
+      "reason": "The dataset holds the language-tagged literal \"bar\"@en, which no column holds"
+    },
+    {
+      "case": "functions::strlang01",
+      "job": "SPARQL-G1",
+      "since": "2026-11-22",
+      "reason": "The dataset holds the language-tagged literal \"bar\"@en, which no column holds"
+    },
+    {
+      "case": "functions::strlang02",
+      "job": "SPARQL-G1",
+      "since": "2026-11-22",
+      "reason": "The dataset holds the language-tagged literal \"bar\"@en, which no column holds"
+    },
+    {
+      "case": "functions::strlang03-rdf11",
+      "job": "SPARQL-G1",
+      "since": "2026-11-22",
+      "reason": "The dataset holds the language-tagged literal \"bar\"@en, which no column holds"
+    },
+    {
+      "case": "functions::strlang04",
+      "job": "SPARQL-G12",
+      "since": "2026-11-22",
+      "reason": "400: The SPARQL function STRLANG is not supported"
+    },
+    {
+      "case": "functions::struuid01",
+      "job": "SPARQL-G12",
+      "since": "2026-11-22",
+      "reason": "400: The SPARQL function STRUUID is not supported"
+    },
+    {
+      "case": "functions::substring01",
+      "job": "SPARQL-G1",
+      "since": "2026-11-22",
+      "reason": "The dataset holds the language-tagged literal \"bar\"@en, which no column holds"
+    },
+    {
+      "case": "functions::substring01-non-bmp",
+      "job": "SPARQL-G5",
+      "since": "2026-11-22",
+      "reason": "answered 0 solutions, expected 2: [] expected [{\"s\": \"<http://example.org/s8>\", \"str\": \"\\\"👪\\\"\", \"substr\": \"\\\"👪\\\"\"}, {\"s\": \"<http://example.org/s9>\", \"str\": \"\\\"👨‍👩‍👧‍👦\\\"\", \"substr\": \"\\\"👨\\\"\"}]"
+    },
+    {
+      "case": "functions::substring02",
+      "job": "SPARQL-G1",
+      "since": "2026-11-22",
+      "reason": "The dataset holds the language-tagged literal \"bar\"@en, which no column holds"
+    },
+    {
+      "case": "functions::substring02-non-bmp",
+      "job": "SPARQL-G5",
+      "since": "2026-11-22",
+      "reason": "answered 0 solutions, expected 2: [] expected [{\"s\": \"<http://example.org/s8>\", \"str\": \"\\\"👪\\\"\", \"substr\": \"\\\"\\\"\"}, {\"s\": \"<http://example.org/s9>\", \"str\": \"\\\"👨‍👩‍👧‍👦\\\"\", \"substr\": \"\\\"‍👩‍👧‍👦\\\"\"}]"
+    },
+    {
+      "case": "functions::timezone",
+      "job": "SPARQL-G1",
+      "since": "2026-11-22",
+      "reason": "The dataset holds the language-tagged literal \"bar\"@en, which no column holds"
+    },
+    {
+      "case": "functions::tz",
+      "job": "SPARQL-G1",
+      "since": "2026-11-22",
+      "reason": "The dataset holds the language-tagged literal \"bar\"@en, which no column holds"
+    },
+    {
+      "case": "functions::ucase01",
+      "job": "SPARQL-G1",
+      "since": "2026-11-22",
+      "reason": "The dataset holds the language-tagged literal \"bar\"@en, which no column holds"
+    },
+    {
+      "case": "functions::ucase01-non-bmp",
+      "job": "SPARQL-G5",
+      "since": "2026-11-22",
+      "reason": "answered 0 solutions, expected 2: [] expected [{\"s\": \"<http://example.org/s8>\", \"ustr\": \"\\\"👪\\\"\"}, {\"s\": \"<http://example.org/s9>\", \"ustr\": \"\\\"👨‍👩‍👧‍👦\\\"\"}]"
+    },
+    {
+      "case": "functions::uuid01",
+      "job": "SPARQL-G12",
+      "since": "2026-11-22",
+      "reason": "400: The SPARQL function UUID is not supported"
+    },
+    {
+      "case": "functions::uuid02",
+      "job": "SPARQL-G12",
+      "since": "2026-11-22",
+      "reason": "400: The SPARQL function UUID is not supported"
+    },
+    {
+      "case": "functions::year",
+      "job": "SPARQL-G1",
+      "since": "2026-11-22",
+      "reason": "The dataset holds the language-tagged literal \"bar\"@en, which no column holds"
+    },
+    {
+      "case": "grouping::group01",
+      "job": "SPARQL-G5",
+      "since": "2026-11-22",
+      "reason": "answered 0 solutions, expected 2: [] expected [{\"s\": \"<http://example/s1>\"}, {\"s\": \"<http://example/s2>\"}]"
+    },
+    {
+      "case": "grouping::group03",
+      "job": "SPARQL-G5",
+      "since": "2026-11-22",
+      "reason": "answered 0 solutions, expected 2: [] expected [{\"S\": \"\\\"1\\\"^^<http://www.w3.org/2001/XMLSchema#integer>\", \"w\": \"\\\"9\\\"^^<http://www.w3.org/2001/XMLSchema#integer>\"}, {\"S\": \"\\\"2\\\"^^<http://www.w3.org/2001/XMLSchema#integer>\"}]"
+    },
+    {
+      "case": "grouping::group04",
+      "job": "SPARQL-G5",
+      "since": "2026-11-22",
+      "reason": "answered 0 solutions, expected 2: [] expected [{\"S\": \"\\\"2\\\"^^<http://www.w3.org/2001/XMLSchema#integer>\", \"X\": \"\\\"1605-11-05\\\"^^<http://www.w3.org/2001/XMLSchema#date>\"}, {\"S\": \"\\\"1\\\"^^<http://www.w3.org/2001/XMLSchema#integer>\", \"X\": \"\\\"9\\\"^^<http://www.w3.org/2001/XMLSchema#integer>\"}]"
+    },
+    {
+      "case": "grouping::group05",
+      "job": "SPARQL-G5",
+      "since": "2026-11-22",
+      "reason": "answered 0 solutions, expected 3: [] expected [{\"s\": \"<http://example/s1>\", \"w\": \"\\\"9\\\"^^<http://www.w3.org/2001/XMLSchema#integer>\"}, {\"s\": \"<http://example/s2>\"}, {\"s\": \"<http://example/s3>\"}]"
+    },
+    {
+      "case": "grouping::group06",
+      "job": "SPARQL-G8",
+      "since": "2026-11-22",
+      "reason": "a statement that is not SPARQL answered 200: {'results': {'bindings': []}, 'head': {'vars': ['s', 'v']}}"
+    },
+    {
+      "case": "grouping::group07",
+      "job": "SPARQL-G8",
+      "since": "2026-11-22",
+      "reason": "a statement that is not SPARQL answered 400: Sub-SELECTs are not supported"
+    },
+    {
+      "case": "json-res::jsonres01",
+      "job": "SPARQL-G6",
+      "since": "2026-11-22",
+      "reason": "403: Table 'ontology.d039_t0' belongs to domain 'ontology' which is not in role's domain_access; Table 'ontology.d039_e1' belongs to domain 'ontology' which is not in role's domain_access; Table 'ontology.d039_e0' belongs to domain 'ontology' which is not in role's domain_access"
+    },
+    {
+      "case": "json-res::jsonres02",
+      "job": "SPARQL-G10",
+      "since": "2026-11-22",
+      "reason": "400: An OPTIONAL whose nodes could be of several classes is not supported; give them a class"
+    },
+    {
+      "case": "negation::exists-01",
+      "job": "SPARQL-G3",
+      "since": "2026-11-22",
+      "reason": "The dataset gives <http://example/a> several values of <http://example/member>"
+    },
+    {
+      "case": "negation::exists-02",
+      "job": "SPARQL-G3",
+      "since": "2026-11-22",
+      "reason": "The dataset gives <http://example/a> several values of <http://example/member>"
+    },
+    {
+      "case": "negation::full-minuend",
+      "job": "SPARQL-G5",
+      "since": "2026-11-22",
+      "reason": "answered 4 solutions, expected 2: [{\"a\": \"<http://example/a0>\", \"b\": \"<http://example/b0>\", \"c\": \"<http://example/c0>\"}, {\"a\": \"<http://example/a1>\", \"b\": \"<http://example/b1>\", \"c\": \"<http://example/c1>\"}, {\"a\": \"<http://example/a2>\", \"b\": \"<http://example/b2>\", \"c\": \"<http://example/c2>\"}] expecte"
+    },
+    {
+      "case": "negation::graph-minus",
+      "job": "SPARQL-G9",
+      "since": "2026-11-22",
+      "reason": "400: The SPARQL operator Graph is not supported"
+    },
+    {
+      "case": "negation::partial-minuend",
+      "job": "SPARQL-G10",
+      "since": "2026-11-22",
+      "reason": "400: An OPTIONAL whose nodes could be of several classes is not supported; give them a class"
+    },
+    {
+      "case": "negation::set-equals-1",
+      "job": "SPARQL-G3",
+      "since": "2026-11-22",
+      "reason": "The dataset gives <http://example/a> several values of <http://example/member>"
+    },
+    {
+      "case": "negation::subset-01",
+      "job": "SPARQL-G3",
+      "since": "2026-11-22",
+      "reason": "The dataset gives <http://example/a> several values of <http://example/member>"
+    },
+    {
+      "case": "negation::subset-02",
+      "job": "SPARQL-G3",
+      "since": "2026-11-22",
+      "reason": "The dataset gives <http://example/a> several values of <http://example/member>"
+    },
+    {
+      "case": "negation::subset-03",
+      "job": "SPARQL-G3",
+      "since": "2026-11-22",
+      "reason": "The dataset gives <http://example/a> several values of <http://example/member>"
+    },
+    {
+      "case": "negation::subset-by-exclusion-minus-1",
+      "job": "SPARQL-G3",
+      "since": "2026-11-22",
+      "reason": "The dataset gives <http://www.w3.org/2009/sparql/docs/tests/data-sparql11/negation#lifeForm1> several classes, and a row has one table"
+    },
+    {
+      "case": "negation::subset-by-exclusion-nex-1",
+      "job": "SPARQL-G3",
+      "since": "2026-11-22",
+      "reason": "The dataset gives <http://www.w3.org/2009/sparql/docs/tests/data-sparql11/negation#lifeForm1> several classes, and a row has one table"
+    },
+    {
+      "case": "negation::temporal-proximity-by-exclusion-nex-1",
+      "job": "SPARQL-G3",
+      "since": "2026-11-22",
+      "reason": "The dataset gives <http://www.w3.org/2009/sparql/docs/tests/data-sparql11/negation#precedes> objects in several tables from the subjects of d044_t1, and a relationship type names one relationship of its table"
+    },
+    {
+      "case": "project-expression::projexp01",
+      "job": "SPARQL-G3",
+      "since": "2026-11-22",
+      "reason": "The dataset gives <http://www.example.org/instance#a> several values of <http://www.example.org/schema#q>"
+    },
+    {
+      "case": "project-expression::projexp02",
+      "job": "SPARQL-G3",
+      "since": "2026-11-22",
+      "reason": "The dataset gives <http://www.example.org/instance#a> several values of <http://www.example.org/schema#q>"
+    },
+    {
+      "case": "project-expression::projexp03",
+      "job": "SPARQL-G5",
+      "since": "2026-11-22",
+      "reason": "answered 0 solutions, expected 1: [] expected [{\"sum\": \"\\\"3\\\"^^<http://www.w3.org/2001/XMLSchema#integer>\", \"twice\": \"\\\"6\\\"^^<http://www.w3.org/2001/XMLSchema#integer>\", \"x\": \"<http://www.example.org/instance#a>\", \"y\": \"\\\"1\\\"^^<http://www.w3.org/2001/XMLSchema#integer>\", \"z\": \"\\\"2\\\"^^<http://www.w3."
+    },
+    {
+      "case": "project-expression::projexp04",
+      "job": "SPARQL-G3",
+      "since": "2026-11-22",
+      "reason": "The dataset gives <http://www.example.org/instance#a> several values of <http://www.example.org/schema#p>"
+    },
+    {
+      "case": "project-expression::projexp05",
+      "job": "SPARQL-G3",
+      "since": "2026-11-22",
+      "reason": "The dataset gives <http://www.example.org/schema#p> both literals and resources"
+    },
+    {
+      "case": "project-expression::projexp06",
+      "job": "SPARQL-G5",
+      "since": "2026-11-22",
+      "reason": "answered 0 solutions, expected 1: [] expected [{\"l\": \"\\\"1\\\"^^<http://www.w3.org/2001/XMLSchema#integer>\", \"x\": \"<http://www.example.org/instance#a>\"}]"
+    },
+    {
+      "case": "project-expression::projexp07",
+      "job": "SPARQL-G5",
+      "since": "2026-11-22",
+      "reason": "answered 0 solutions, expected 2: [] expected [{\"x\": \"<http://www.example.org/instance#b>\"}, {\"dt\": \"<http://www.w3.org/2001/XMLSchema#integer>\", \"x\": \"<http://www.example.org/instance#a>\"}]"
+    },
+    {
+      "case": "property-path::pp06",
+      "job": "SPARQL-G9",
+      "since": "2026-11-22",
+      "reason": "400: The SPARQL operator Graph is not supported"
+    },
+    {
+      "case": "property-path::pp07",
+      "job": "SPARQL-G9",
+      "since": "2026-11-22",
+      "reason": "400: The SPARQL operator Graph is not supported"
+    },
+    {
+      "case": "property-path::pp14",
+      "job": "SPARQL-G11",
+      "since": "2026-11-22",
+      "reason": "500: Execution failed: missing FROM-clause entry for table \"X\""
+    },
+    {
+      "case": "property-path::pp16",
+      "job": "SPARQL-G11",
+      "since": "2026-11-22",
+      "reason": "500: Execution failed: missing FROM-clause entry for table \"X\""
+    },
+    {
+      "case": "property-path::pp34",
+      "job": "SPARQL-G9",
+      "since": "2026-11-22",
+      "reason": "400: The SPARQL operator Graph is not supported"
+    },
+    {
+      "case": "property-path::pp35",
+      "job": "SPARQL-G9",
+      "since": "2026-11-22",
+      "reason": "400: The SPARQL operator Graph is not supported"
+    },
+    {
+      "case": "property-path::pp36",
+      "job": "SPARQL-G11",
+      "since": "2026-11-22",
+      "reason": "504: sparql_http request exceeded its 60s request timeout (limits.request_timeout)"
+    },
+    {
+      "case": "property-path::pp37",
+      "job": "SPARQL-G11",
+      "since": "2026-11-22",
+      "reason": "500: Execution failed: missing FROM-clause entry for table \"X\""
+    },
+    {
+      "case": "property-path::zero_or_more_set_end",
+      "job": "SPARQL-G10",
+      "since": "2026-11-22",
+      "reason": "400: <[internal address]> is no edge predicate, and a property path walks edges"
+    },
+    {
+      "case": "property-path::zero_or_more_set_start",
+      "job": "SPARQL-G10",
+      "since": "2026-11-22",
+      "reason": "400: <[internal address]> is no edge predicate, and a property path walks edges"
+    },
+    {
+      "case": "property-path::zero_or_one_set_end",
+      "job": "SPARQL-G10",
+      "since": "2026-11-22",
+      "reason": "400: <[internal address]> is no edge predicate, and a property path walks edges"
+    },
+    {
+      "case": "property-path::zero_or_one_set_start",
+      "job": "SPARQL-G10",
+      "since": "2026-11-22",
+      "reason": "400: <[internal address]> is no edge predicate, and a property path walks edges"
+    },
+    {
+      "case": "subquery::subquery01",
+      "job": "SPARQL-G9",
+      "since": "2026-11-22",
+      "reason": "400: The SPARQL operator Graph is not supported"
+    },
+    {
+      "case": "subquery::subquery02",
+      "job": "SPARQL-G9",
+      "since": "2026-11-22",
+      "reason": "400: The SPARQL operator Graph is not supported"
+    },
+    {
+      "case": "subquery::subquery03",
+      "job": "SPARQL-G9",
+      "since": "2026-11-22",
+      "reason": "400: The SPARQL operator Graph is not supported"
+    },
+    {
+      "case": "subquery::subquery04",
+      "job": "SPARQL-G9",
+      "since": "2026-11-22",
+      "reason": "400: The SPARQL operator Graph is not supported"
+    },
+    {
+      "case": "subquery::subquery05",
+      "job": "SPARQL-G9",
+      "since": "2026-11-22",
+      "reason": "400: The SPARQL operator Graph is not supported"
+    },
+    {
+      "case": "subquery::subquery06",
+      "job": "SPARQL-G7",
+      "since": "2026-11-22",
+      "reason": "400: Sub-SELECTs are not supported"
+    },
+    {
+      "case": "subquery::subquery07",
+      "job": "SPARQL-G7",
+      "since": "2026-11-22",
+      "reason": "400: Sub-SELECTs are not supported"
+    },
+    {
+      "case": "subquery::subquery08",
+      "job": "SPARQL-G3",
+      "since": "2026-11-22",
+      "reason": "The dataset gives <http://www.example.org/instance#a> several values of <http://www.example.org/schema#p>"
+    },
+    {
+      "case": "subquery::subquery09",
+      "job": "SPARQL-G7",
+      "since": "2026-11-22",
+      "reason": "400: Sub-SELECTs are not supported"
+    },
+    {
+      "case": "subquery::subquery10",
+      "job": "SPARQL-G7",
+      "since": "2026-11-22",
+      "reason": "400: Sub-SELECTs are not supported"
+    },
+    {
+      "case": "subquery::subquery11",
+      "job": "SPARQL-G3",
+      "since": "2026-11-22",
+      "reason": "The dataset gives <http://www.example.orghasItem> objects in several tables from the subjects of d077_t3, and a relationship type names one relationship of its table"
+    },
+    {
+      "case": "subquery::subquery12",
+      "job": "SPARQL-G7",
+      "since": "2026-11-22",
+      "reason": "400: Sub-SELECTs are not supported"
+    },
+    {
+      "case": "subquery::subquery13",
+      "job": "SPARQL-G3",
+      "since": "2026-11-22",
+      "reason": "The dataset gives <http://www.example.orghasItem> objects in several tables from the subjects of d079_t3, and a relationship type names one relationship of its table"
+    },
+    {
+      "case": "subquery::subquery14",
+      "job": "SPARQL-G7",
+      "since": "2026-11-22",
+      "reason": "400: Sub-SELECTs are not supported"
+    },
+    {
+      "case": "subquery::subquery15",
+      "job": "SPARQL-G9",
+      "since": "2026-11-22",
+      "reason": "400: The SPARQL operator Graph is not supported"
+    },
+    {
+      "case": "subquery::subquery16",
+      "job": "SPARQL-G9",
+      "since": "2026-11-22",
+      "reason": "400: The SPARQL operator Graph is not supported"
+    },
+    {
+      "case": "syntax-query::test_19",
+      "job": "SPARQL-G12",
+      "since": "2026-11-22",
+      "reason": "400: GROUP_CONCAT(DISTINCT ...) is not supported"
+    },
+    {
+      "case": "syntax-query::test_21",
+      "job": "SPARQL-G7",
+      "since": "2026-11-22",
+      "reason": "400: Sub-SELECTs are not supported"
+    },
+    {
+      "case": "syntax-query::test_22",
+      "job": "SPARQL-G7",
+      "since": "2026-11-22",
+      "reason": "400: Sub-SELECTs are not supported"
+    },
+    {
+      "case": "syntax-query::test_23",
+      "job": "SPARQL-G7",
+      "since": "2026-11-22",
+      "reason": "400: Sub-SELECTs are not supported"
+    },
+    {
+      "case": "syntax-query::test_24",
+      "job": "SPARQL-G6",
+      "since": "2026-11-22",
+      "reason": "403: Table 'ontology.d000_t0' belongs to domain 'ontology' which is not in role's domain_access"
+    },
+    {
+      "case": "syntax-query::test_25",
+      "job": "SPARQL-G6",
+      "since": "2026-11-22",
+      "reason": "403: Table 'ontology.d000_t0' belongs to domain 'ontology' which is not in role's domain_access"
+    },
+    {
+      "case": "syntax-query::test_26",
+      "job": "SPARQL-G6",
+      "since": "2026-11-22",
+      "reason": "403: Table 'ontology.d000_t0' belongs to domain 'ontology' which is not in role's domain_access"
+    },
+    {
+      "case": "syntax-query::test_27",
+      "job": "SPARQL-G6",
+      "since": "2026-11-22",
+      "reason": "403: Table 'ontology.d000_t0' belongs to domain 'ontology' which is not in role's domain_access"
+    },
+    {
+      "case": "syntax-query::test_28",
+      "job": "SPARQL-G6",
+      "since": "2026-11-22",
+      "reason": "403: Table 'ontology.d000_t0' belongs to domain 'ontology' which is not in role's domain_access"
+    },
+    {
+      "case": "syntax-query::test_29",
+      "job": "SPARQL-G12",
+      "since": "2026-11-22",
+      "reason": "400: The SPARQL function EXISTS is not supported"
+    },
+    {
+      "case": "syntax-query::test_3",
+      "job": "SPARQL-G12",
+      "since": "2026-11-22",
+      "reason": "400: The SPARQL function DATATYPE is not supported"
+    },
+    {
+      "case": "syntax-query::test_31",
+      "job": "SPARQL-G10",
+      "since": "2026-11-22",
+      "reason": "400: ?s is a subject; compare it with an IRI, or read one of its properties"
+    },
+    {
+      "case": "syntax-query::test_32",
+      "job": "SPARQL-G11",
+      "since": "2026-11-22",
+      "reason": "500: Internal server error"
+    },
+    {
+      "case": "syntax-query::test_33",
+      "job": "SPARQL-G6",
+      "since": "2026-11-22",
+      "reason": "403: Table 'ontology.d000_t0' belongs to domain 'ontology' which is not in role's domain_access"
+    },
+    {
+      "case": "syntax-query::test_34",
+      "job": "SPARQL-G6",
+      "since": "2026-11-22",
+      "reason": "403: Table 'ontology.d000_t0' belongs to domain 'ontology' which is not in role's domain_access"
+    },
+    {
+      "case": "syntax-query::test_35a",
+      "job": "SPARQL-G11",
+      "since": "2026-11-22",
+      "reason": "400: The engine refused the query: Parser Error: SELECT clause without selection list"
+    },
+    {
+      "case": "syntax-query::test_36a",
+      "job": "SPARQL-G7",
+      "since": "2026-11-22",
+      "reason": "400: Sub-SELECTs are not supported"
+    },
+    {
+      "case": "syntax-query::test_38a",
+      "job": "SPARQL-G11",
+      "since": "2026-11-22",
+      "reason": "400: The engine refused the query: Parser Error: SELECT clause without selection list"
+    },
+    {
+      "case": "syntax-query::test_4",
+      "job": "SPARQL-G12",
+      "since": "2026-11-22",
+      "reason": "400: The function <[internal address]> is not supported"
+    },
+    {
+      "case": "syntax-query::test_40",
+      "job": "SPARQL-G6",
+      "since": "2026-11-22",
+      "reason": "403: Table 'ontology.d000_t0' belongs to domain 'ontology' which is not in role's domain_access"
+    },
+    {
+      "case": "syntax-query::test_42",
+      "job": "SPARQL-G9",
+      "since": "2026-11-22",
+      "reason": "400: FROM and FROM NAMED are not supported"
+    },
+    {
+      "case": "syntax-query::test_43",
+      "job": "SPARQL-G8",
+      "since": "2026-11-22",
+      "reason": "a statement that is not SPARQL answered 403: Table 'ontology.d000_t0' belongs to domain 'ontology' which is not in role's domain_access"
+    },
+    {
+      "case": "syntax-query::test_44",
+      "job": "SPARQL-G8",
+      "since": "2026-11-22",
+      "reason": "a statement that is not SPARQL answered 400: SAMPLE reads values of several kinds across the predicates of a variable predicate; FILTER them to one, or name the predicate"
+    },
+    {
+      "case": "syntax-query::test_45",
+      "job": "SPARQL-G8",
+      "since": "2026-11-22",
+      "reason": "a statement that is not SPARQL answered 200: {'results': {'bindings': [{'X': {'type': 'literal', 'value': '1', 'datatype': 'http://www.w3.org/2001/XMLSchema#integer'}}]}, 'head': {'vars': ['X', 'X']}}"
+    },
+    {
+      "case": "syntax-query::test_60",
+      "job": "SPARQL-G8",
+      "since": "2026-11-22",
+      "reason": "a statement that is not SPARQL answered 200: {'results': {'bindings': []}, 'head': {'vars': ['o1', 'o']}}"
+    },
+    {
+      "case": "syntax-query::test_61a",
+      "job": "SPARQL-G8",
+      "since": "2026-11-22",
+      "reason": "a statement that is not SPARQL answered 200: {'results': {'bindings': []}, 'head': {'vars': ['o1', 'o']}}"
+    },
+    {
+      "case": "syntax-query::test_62a",
+      "job": "SPARQL-G8",
+      "since": "2026-11-22",
+      "reason": "a statement that is not SPARQL answered 200: {'results': {'bindings': []}, 'head': {'vars': ['Z', 'Y']}}"
+    },
+    {
+      "case": "syntax-query::test_63",
+      "job": "SPARQL-G10",
+      "since": "2026-11-22",
+      "reason": "400: <http://www.example.org/p> is no edge predicate, and a property path walks edges"
+    },
+    {
+      "case": "syntax-query::test_64",
+      "job": "SPARQL-G7",
+      "since": "2026-11-22",
+      "reason": "400: Sub-SELECTs are not supported"
+    },
+    {
+      "case": "syntax-query::test_65",
+      "job": "SPARQL-G8",
+      "since": "2026-11-22",
+      "reason": "a statement that is not SPARQL answered 400: Sub-SELECTs are not supported"
+    },
+    {
+      "case": "syntax-query::test_66",
+      "job": "SPARQL-G7",
+      "since": "2026-11-22",
+      "reason": "400: Sub-SELECTs are not supported"
+    },
+    {
+      "case": "syntax-query::test_bad_values_too_few",
+      "job": "SPARQL-G8",
+      "since": "2026-11-22",
+      "reason": "a statement that is not SPARQL answered 200: {'results': {'bindings': [{'a': {'type': 'literal', 'value': '1', 'datatype': 'http://www.w3.org/2001/XMLSchema#integer'}}]}, 'head': {'vars': ['b', 'a']}}"
+    },
+    {
+      "case": "syntax-query::test_bad_values_too_many",
+      "job": "SPARQL-G8",
+      "since": "2026-11-22",
+      "reason": "a statement that is not SPARQL answered 200: {'results': {'bindings': [{'b': {'type': 'literal', 'value': '2', 'datatype': 'http://www.w3.org/2001/XMLSchema#integer'}, 'a': {'type': 'literal', 'value': '1', 'datatype': 'http://www.w3.org/2001/XMLSchema#integer'}}]}, 'head': {'vars': ['b', 'a']}}"
+    },
+    {
+      "case": "syntax-query::test_codepoint_escape_01",
+      "job": "SPARQL-G6",
+      "since": "2026-11-22",
+      "reason": "403: Table 'ontology.d000_t0' belongs to domain 'ontology' which is not in role's domain_access"
+    },
+    {
+      "case": "syntax-query::test_codepoint_invalid_escaped_bad_06",
+      "job": "SPARQL-G8",
+      "since": "2026-11-22",
+      "reason": "a statement that is not SPARQL answered 200: {'results': {'bindings': []}, 'head': {'vars': ['s']}}"
+    },
+    {
+      "case": "syntax-query::test_group_by_values_scope_01",
+      "job": "SPARQL-G7",
+      "since": "2026-11-22",
+      "reason": "400: GROUP BY and aggregates are supported only at the top of a query"
+    },
+    {
+      "case": "syntax-query::test_group_by_values_scope_02",
+      "job": "SPARQL-G7",
+      "since": "2026-11-22",
+      "reason": "400: GROUP BY and aggregates are supported only at the top of a query"
+    },
+    {
+      "case": "syntax-query::test_group_by_values_scope_03",
+      "job": "SPARQL-G8",
+      "since": "2026-11-22",
+      "reason": "a statement that is not SPARQL answered 400: GROUP BY and aggregates are supported only at the top of a query"
+    },
+    {
+      "case": "syntax-query::test_pp_coll",
+      "job": "SPARQL-G10",
+      "since": "2026-11-22",
+      "reason": "400: <http://example.org/r> is no edge predicate, and a property path walks edges"
+    },
+    {
+      "case": "syntax-update-1::test_23",
+      "job": "SPARQL-G2",
+      "since": "2026-11-22",
+      "reason": "400: InsertData is not served: this endpoint answers queries, and rows are written through the governed table writes"
+    },
+    {
+      "case": "syntax-update-1::test_24",
+      "job": "SPARQL-G2",
+      "since": "2026-11-22",
+      "reason": "400: InsertData is not served: this endpoint answers queries, and rows are written through the governed table writes"
+    },
+    {
+      "case": "syntax-update-1::test_25",
+      "job": "SPARQL-G2",
+      "since": "2026-11-22",
+      "reason": "400: InsertData is not served: this endpoint answers queries, and rows are written through the governed table writes"
+    },
+    {
+      "case": "syntax-update-1::test_26",
+      "job": "SPARQL-G2",
+      "since": "2026-11-22",
+      "reason": "400: InsertData is not served: this endpoint answers queries, and rows are written through the governed table writes"
+    },
+    {
+      "case": "syntax-update-1::test_29",
+      "job": "SPARQL-G2",
+      "since": "2026-11-22",
+      "reason": "400: DeleteData is not served: this endpoint answers queries, and rows are written through the governed table writes"
+    },
+    {
+      "case": "syntax-update-1::test_30",
+      "job": "SPARQL-G2",
+      "since": "2026-11-22",
+      "reason": "400: DeleteData is not served: this endpoint answers queries, and rows are written through the governed table writes"
+    },
+    {
+      "case": "syntax-update-1::test_31",
+      "job": "SPARQL-G2",
+      "since": "2026-11-22",
+      "reason": "400: DeleteData is not served: this endpoint answers queries, and rows are written through the governed table writes"
+    },
+    {
+      "case": "syntax-update-1::test_32",
+      "job": "SPARQL-G2",
+      "since": "2026-11-22",
+      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+    },
+    {
+      "case": "syntax-update-1::test_33",
+      "job": "SPARQL-G2",
+      "since": "2026-11-22",
+      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+    },
+    {
+      "case": "syntax-update-1::test_34",
+      "job": "SPARQL-G2",
+      "since": "2026-11-22",
+      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+    },
+    {
+      "case": "syntax-update-1::test_36",
+      "job": "SPARQL-G2",
+      "since": "2026-11-22",
+      "reason": "400: DeleteWhere is not served: this endpoint answers queries, and rows are written through the governed table writes"
+    },
+    {
+      "case": "syntax-update-1::test_38",
+      "job": "SPARQL-G11",
+      "since": "2026-11-22",
+      "reason": "500: Internal server error"
+    },
+    {
+      "case": "syntax-update-1::test_39",
+      "job": "SPARQL-G11",
+      "since": "2026-11-22",
+      "reason": "500: Internal server error"
+    },
+    {
+      "case": "syntax-update-1::test_40",
+      "job": "SPARQL-G11",
+      "since": "2026-11-22",
+      "reason": "500: Internal server error"
+    },
+    {
+      "case": "syntax-update-1::test_43",
+      "job": "SPARQL-G8",
+      "since": "2026-11-22",
+      "reason": "a statement that is not SPARQL answered 400: DeleteData is not served: this endpoint answers queries, and rows are written through the governed table writes"
+    },
+    {
+      "case": "syntax-update-1::test_44",
+      "job": "SPARQL-G8",
+      "since": "2026-11-22",
+      "reason": "a statement that is not SPARQL answered 400: InsertData is not served: this endpoint answers queries, and rows are written through the governed table writes"
+    },
+    {
+      "case": "syntax-update-1::test_50",
+      "job": "SPARQL-G8",
+      "since": "2026-11-22",
+      "reason": "a statement that is not SPARQL answered 400: DeleteWhere is not served: this endpoint answers queries, and rows are written through the governed table writes"
+    },
+    {
+      "case": "syntax-update-1::test_51",
+      "job": "SPARQL-G8",
+      "since": "2026-11-22",
+      "reason": "a statement that is not SPARQL answered 400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+    },
+    {
+      "case": "syntax-update-1::test_52",
+      "job": "SPARQL-G8",
+      "since": "2026-11-22",
+      "reason": "a statement that is not SPARQL answered 400: DeleteData is not served: this endpoint answers queries, and rows are written through the governed table writes"
+    },
+    {
+      "case": "syntax-update-1::test_53",
+      "job": "SPARQL-G2",
+      "since": "2026-11-22",
+      "reason": "400: InsertData is not served: this endpoint answers queries, and rows are written through the governed table writes"
+    },
+    {
+      "case": "syntax-update-1::test_54",
+      "job": "SPARQL-G8",
+      "since": "2026-11-22",
+      "reason": "a statement that is not SPARQL answered 400: InsertData, InsertData is not served: this endpoint answers queries, and rows are written through the governed table writes"
+    },
+    {
+      "case": "syntax-update-2::syntax-update-other-01",
+      "job": "SPARQL-G2",
+      "since": "2026-11-22",
+      "reason": "400: InsertData is not served: this endpoint answers queries, and rows are written through the governed table writes"
+    }
+  ]
+}

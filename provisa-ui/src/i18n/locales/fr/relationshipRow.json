@@ -34,8 +34,6 @@
     "sqlName": "Nom SQL",
     "cardinalityWarning": "Attention : si cette jointure renvoie plus d'une ligne par parent, seule la première valeur sera utilisée.",
     "toggleDetails": "Afficher/masquer les détails de la relation",
-    "junctionBadge": "propr.",
-    "junctionBadgeTitle": "Relation avec propriétés depuis {{table}}",
     "deleteTitle": "Supprimer la relation « {{id}} » ?",
     "deleteConsequence": "La relation est supprimée du modèle. Les requêtes ne peuvent plus joindre par elle.",
     "parametersFed": "Paramètres alimentés",
@@ -68,6 +66,15 @@
         "rest": "REST",
         "grpc": "gRPC",
         "jsonapi": "JSON:API"
+      },
+      "aggregate": {
+        "cypher": "Compter {{name}} en Cypher",
+        "sql": "Compter {{name}} en SQL",
+        "sparql": "Compter {{name}} en SPARQL",
+        "graphql": "Compter {{name}} en GraphQL",
+        "rest": "Compter {{name}} en REST",
+        "grpc": "Compter {{name}} en gRPC",
+        "jsonapi": "Compter {{name}} en JSON:API"
       }
     }
   }

@@ -34,8 +34,6 @@
     "sqlName": "Nombre SQL",
     "cardinalityWarning": "Advertencia: si esta unión devuelve más de una fila por elemento padre, solo se usará el primer valor.",
     "toggleDetails": "Alternar detalles de la relación",
-    "junctionBadge": "prop.",
-    "junctionBadgeTitle": "Relación con propiedades de {{table}}",
     "deleteTitle": "¿Eliminar la relación \"{{id}}\"?",
     "deleteConsequence": "La relación se elimina del modelo. Las consultas ya no pueden unir a través de ella.",
     "parametersFed": "Parámetros alimentados",
@@ -68,6 +66,15 @@
         "rest": "REST",
         "grpc": "gRPC",
         "jsonapi": "JSON:API"
+      },
+      "aggregate": {
+        "cypher": "Contar {{name}} en Cypher",
+        "sql": "Contar {{name}} en SQL",
+        "sparql": "Contar {{name}} en SPARQL",
+        "graphql": "Contar {{name}} en GraphQL",
+        "rest": "Contar {{name}} en REST",
+        "grpc": "Contar {{name}} en gRPC",
+        "jsonapi": "Contar {{name}} en JSON:API"
       }
     }
   }

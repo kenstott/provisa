@@ -105,6 +105,12 @@ jobs:
       - name: Pyodide downloads
         uses: ./.github/actions/pyodide-downloads
 
+      # build-dmg.sh exports uv.lock's pins as the native runtime's pip constraints.
+      - name: Install uv
+        uses: ./.github/actions/setup-python
+        with:
+          sync: "false"
+
       # The runtime carries no DuckDB extension (REQ-294): first launch stages them from the
       # release's Pages index, as every installer does.
       - name: Build and sign the app

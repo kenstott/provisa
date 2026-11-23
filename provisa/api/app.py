@@ -4106,6 +4106,9 @@ async def _rebuild_schemas_impl(
     # REQ-2125: the checker targets a request reads (a grant, a product's promised checks) are
     # this build's, published with its names table; the stored copy is the after-answer pass's.
     state.checked_targets = _checked
+    # REQ-247: the ABAC approval hook and its scopes, from this build's config and contexts. Built
+    # here, not at app creation, where the config is not loaded yet (issue #344).
+    _setup_approval_hook(state)
 
     _build.phase(rebuild_trace.FIELD_NUMBERS)
     # REQ-1903: stored before the answer, so a wire field's number is the same after a restart.
@@ -5389,9 +5392,6 @@ def create_app() -> FastAPI:
         else:
             log.error("Request timeout on %s %s", _req.method, _req.url.path)
         return _JSONResponse(status_code=504, content={"detail": "Request timed out"})
-
-    # ABAC approval hook (REQ-247): build from auth.approval_hook config and scope flags.
-    _setup_approval_hook(state)
 
     # Rate limiting (REQ-369-371): the per-role request middleware. Added BEFORE wire_auth so
     # the auth middleware (added later) runs first and populates request.state.role before the

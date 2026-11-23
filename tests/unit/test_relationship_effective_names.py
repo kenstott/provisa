@@ -153,7 +153,7 @@ async def test_the_admin_api_the_label_map_and_meta_agree_on_an_unaliased_type(c
     ):
         assert rows[rel_id]["cypher_type"] == expected  # meta reads the row
         assert served[rel_id]["computed_cypher_alias"] == expected  # the label map's input
-        assert _rel_from_row(rows[rel_id]).computed_cypher_alias == expected  # the admin API
+        assert _rel_from_row(rows[rel_id], ()).computed_cypher_alias == expected  # the admin API
 
 
 async def test_a_change_of_naming_convention_respells_the_stored_graphql_field(control_plane):
@@ -257,4 +257,4 @@ async def test_the_admin_api_names_every_edge_by_the_type_cypher_serves(control_
         ("customer-to-orders", "HAS_ORDER"),
         ("order-links", "REPLACES"),
     ):
-        assert _rel_from_row(rows[rel_id]).cypher_type == expected
+        assert _rel_from_row(rows[rel_id], ()).cypher_type == expected

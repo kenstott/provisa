@@ -31,9 +31,13 @@ its last Import run: when, its outcome, and what it applied and held with why.
 Publishing is premium-gated (REQ-1073): Publish now, turning an entry's Export on or changing its
 export settings, and the organisation-wide reconcile schedule are refused below the entitled tier.
 A direction that is off never runs: Publish now refuses an entry that does not export.
+
+Every publish is recorded with each data product's outcome in it (REQ-2259): each entry's read
+carries its products' latest outcomes, and the Data Products list reads every product's through
+``GET /admin/syncing/product-status``, which asks ``data_product_read``.
 """
 
-# Requirements: REQ-1068, REQ-1072, REQ-1073, REQ-1074, REQ-2118, REQ-2122, REQ-2152, REQ-2247
+# Requirements: REQ-1068, REQ-1072, REQ-1073, REQ-1074, REQ-2118, REQ-2122, REQ-2152, REQ-2247, REQ-2259
 
 from __future__ import annotations
 
@@ -44,6 +48,7 @@ from pydantic import ValidationError
 
 from provisa.api.admin._guards import require_active_org_id
 from provisa.api.admin._platform_guard import require_org_settings
+from provisa.api.admin.capabilities import require_capability_request
 from provisa.api.errors import ApiError
 from provisa.api.catalog_import import GlossaryListingUnsupported, catalog_reader
 from provisa.api.metadata_export import metadata_export
@@ -169,14 +174,42 @@ async def _is_entitled(org_id: str) -> bool:
 
 
 def _view(
-    entry: CatalogConnection, last_run: dict[str, Any] | None, last_import: dict[str, Any] | None
+    entry: CatalogConnection,
+    last_run: dict[str, Any] | None,
+    last_import: dict[str, Any] | None,
+    products: list[dict[str, Any]],
 ) -> dict[str, Any]:
     return {
         **{name: getattr(entry, name) for name in PLAIN_FIELDS},
         **{f"{name}_set": bool(getattr(entry, name).get_secret_value()) for name in SECRET_FIELDS},
         "last_run": last_run,
         "last_import": last_import,
+        # REQ-2259: each data product's latest outcome on this entry, from the recorded publishes.
+        "products": products,
     }
+
+
+def _product_status_view(status: Any) -> dict[str, Any]:
+    """One data product's latest outcome on one entry (``catalog_publish.ProductStatus``)."""
+    return {
+        "entry": status.entry,
+        "product_id": status.product_id,
+        "outcome": status.outcome,
+        "error": client_value(status.error),
+        "published_at": status.published_at.isoformat(),
+    }
+
+
+async def _product_statuses(entries: list[CatalogConnection]) -> list[dict[str, Any]]:
+    """REQ-2259: each data product's latest outcome on each data catalog that exports."""
+    from provisa.core.repositories import catalog_publish
+
+    exporting = [e.id for e in entries if e.type == "data_catalog" and e.exports]
+    if not exporting:
+        return []
+    async with _model_db().acquire() as conn:
+        statuses = await catalog_publish.product_statuses(conn, entries=exporting)
+    return [_product_status_view(s) for s in statuses]
 
 
 def _run_view(run: Any) -> dict[str, Any]:
@@ -312,6 +345,9 @@ async def get_syncing(request: Request) -> dict:  # REQ-2247, REQ-2122
     config = catalogs_config(settings)
     runs = _LAST_RUN.get(org_id, {})
     imports = await _last_imports(config.catalogs)
+    products: dict[str, list[dict[str, Any]]] = {}
+    for status in await _product_statuses(config.catalogs):
+        products.setdefault(status["entry"], []).append(status)
     return {
         "entitled": await _is_entitled(org_id),
         "required_tier": min_tier(Feature.METADATA_EXPORT).value,
@@ -321,8 +357,25 @@ async def get_syncing(request: Request) -> dict:  # REQ-2247, REQ-2122
         # holds too.
         "publishable_roles": _publishable_roles(request),
         "reconcile_cron": _schedule(settings).reconcile_cron,
-        "entries": [_view(c, runs.get(c.id), imports.get(c.id)) for c in config.catalogs],
+        "entries": [
+            _view(c, runs.get(c.id), imports.get(c.id), products.get(c.id, []))
+            for c in config.catalogs
+        ],
     }
+
+
+@router.get("/admin/syncing/product-status")
+async def product_status(request: Request) -> dict:  # REQ-2259
+    """Each data product's sync status: its latest outcome on every data catalog that exports, from
+    the recorded publishes, with when that publish ran. Read by the Data Products list, so it asks
+    what reading a data product asks (``data_product_read``), not the Syncing page's right."""
+    require_capability_request(request, "data_product_read")
+    require_active_org_id(request)
+    config = catalogs_config(await stored_settings())
+    products: dict[str, list[dict[str, Any]]] = {}
+    for status in await _product_statuses(config.catalogs):
+        products.setdefault(status["product_id"], []).append(status)
+    return {"products": products}
 
 
 @router.put("/admin/syncing")

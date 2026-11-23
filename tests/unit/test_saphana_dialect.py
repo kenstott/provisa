@@ -158,6 +158,18 @@ def test_substring_of_literal_bounds_is_written() -> None:
     )
 
 
+def test_substr_of_constant_bounds_cast_to_integer_is_written() -> None:
+    """substr with a start of at least 1 and a length of at least 0, each a constant cast to
+    integer, is the engine's own SUBSTRING (REQ-2236); a start below 1 is refused by name."""
+    assert _hana('SELECT pg_catalog."substr"("a", 2::integer, 3::integer) FROM "t"') == (
+        'SELECT SUBSTRING("a", CAST(2 AS INTEGER), CAST(3 AS INTEGER)) AS "substr" FROM "t"'
+    )
+    with pytest.raises(
+        FunctionRefused, match="substring with a start that is not a literal of at least"
+    ):
+        _hana('SELECT pg_catalog."substr"("a", 0::integer) FROM "t"')
+
+
 def test_like_takes_postgres_escape_and_ilike_folds_case() -> None:
     assert _hana('SELECT "a" FROM "t" WHERE "a" LIKE \'a\\_%\' AND "b" ILIKE \'%x%\'') == (
         'SELECT "a" FROM "t" WHERE "a" LIKE \'a\\_%\' ESCAPE \'\\\' '

@@ -769,6 +769,8 @@ query RelationshipsQuery {
     viaTypeColumn
     viaTypeValue
     viaLabelSource
+    shape
+    properties
     parameters {
       parameter
       sourceColumn
@@ -837,6 +839,8 @@ query AllRelationshipsQuery($includeWithdrawn: Boolean! = false) {
     viaTypeColumn
     viaTypeValue
     viaLabelSource
+    shape
+    properties
     withdrawn
     parameters {
       parameter

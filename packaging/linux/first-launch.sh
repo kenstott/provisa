@@ -37,8 +37,8 @@ else
   DOCKER_SOCKET="$BUNDLED_SOCKET"
 fi
 
-# Release version baked into the AppDir (VERSION), used to pin the online native
-# pip install to the matching release (parity with macOS Resources/VERSION).
+# Release version baked into the AppDir (VERSION): names the release assets (airgap images,
+# Trino plugins) fetched for this build and stamps the install sentinel.
 PROVISA_VERSION="${PROVISA_VERSION:-$(cat "${APPDIR}/VERSION" 2>/dev/null || true)}"
 
 # Globals set during setup
@@ -1439,24 +1439,43 @@ resolve_deployment() {
   ok "Deployment: engine=${DEPLOY_ENGINE} obs=${OBS_MODE} demo=${INSTALL_DEMO}/${DEMO_MODE} docker=${NEEDS_DOCKER} dq=${DQ_CHECKER}"
 }
 
-# ── The pyproject extra set for the native venv (REQ-1443) ───────────────────
-# The checker the operator chose is installed alongside the base extras. `none` adds nothing, so a
-# default install acquires no checker at all — soda-core is Elastic License 2.0 and is never vendored.
-_native_extras() {
+# ── REQ-1443: the operator's chosen data-quality checker ─────────────────────
+# Not in the wheelhouse: soda-core is Elastic License 2.0 and is never vendored. `none` (the
+# default) installs nothing, so a default install is fully offline. The extra's own requirements
+# are installed (third-party packages, from the index), never `provisa[soda]`, so pip cannot swap
+# the bundled build for another. Mirrors packaging/macos/first-launch.sh install_dq_checker.
+install_dq_checker() {
+  local py="$1" extra
   case "${DQ_CHECKER:-none}" in
-    soda) printf 'embedded,soda' ;;
-    gx)   printf 'embedded,gx' ;;
-    none) printf 'embedded' ;;
+    none) return 0 ;;
+    soda) extra="soda" ;;
+    gx)   extra="gx" ;;
     *) err "Unknown data-quality checker '${DQ_CHECKER}' (expected none|soda|gx)."; exit 1 ;;
   esac
-}
-
-# ── Network check (online vs airgapped) ──────────────────────────────────────
-# PROVISA_INSTALL_SOURCE=bundled installs the wheels this AppImage carries even where the
-# network is there: the build that was downloaded, not a release fetched from PyPI.
-_online() {
-  [ "${PROVISA_INSTALL_SOURCE:-}" != bundled ] \
-    && curl -fsI --max-time 8 https://pypi.org/simple/ >/dev/null 2>&1
+  # Requires-Dist lines carry the extra in their environment marker:
+  #   soda-core-postgres>=3.3; extra == "soda"
+  local script='
+import re, sys
+from importlib.metadata import requires
+want = sys.argv[1]
+pat = re.compile("extra\\s*==\\s*[\x27\"]%s[\x27\"]" % re.escape(want))
+for spec in requires("provisa") or []:
+    head, _, marker = spec.partition(";")
+    if marker and pat.search(marker):
+        print(head.strip())
+'
+  local reqs
+  reqs="$("$py" -c "$script" "$extra")"
+  if [ -z "$reqs" ]; then
+    err "The '${extra}' extra declares no requirements in the installed provisa metadata."
+    exit 1
+  fi
+  info "Installing the ${extra} data-quality checker..."
+  # shellcheck disable=SC2086 — one requirement per line, none contain spaces.
+  "$py" -m pip install --quiet $reqs || {
+    err "Could not install the ${extra} checker. It is not bundled and needs network access."
+    exit 1
+  }
 }
 
 # ── Locate a native-tier payload dir bundled inside the AppDir ────────────────
@@ -1474,8 +1493,9 @@ _find_payload() {
 }
 
 # ── Native tier: build a Python venv from the bundled interpreter + wheelhouse ─
-# Online → pip install provisa[embedded] from PyPI (pinned to the release). Airgapped →
-# --no-index --find-links against the bundled wheelhouse (always staged in the AppDir).
+# Provisa always installs from the wheelhouse this AppImage carries (--no-index --find-links),
+# online or not: the build that was downloaded. The wheelhouse holds every dependency, the CPU-only
+# torch among them (build-appimage.sh fetches it from PyTorch's CPU index), so no index is used.
 setup_native_venv() {
   local venv="${PROVISA_HOME}/venv"
   if [ -x "${venv}/bin/python3" ] && "${venv}/bin/python3" -c "import provisa" 2>/dev/null; then
@@ -1502,26 +1522,14 @@ setup_native_venv() {
   local pip="${venv}/bin/pip"
   "$pip" install --quiet --upgrade pip 2>/dev/null || true
 
-  local pin=""
-  [ -n "$PROVISA_VERSION" ] && pin="==${PROVISA_VERSION#v}"
-  local wheels; wheels="$(_find_payload wheels '*.whl' || true)"
-  # REQ-1443: the operator's chosen data-quality checker rides in as a pyproject extra.
-  local extras; extras="$(_native_extras)"
-
-  if _online; then
-    info "Installing Provisa from PyPI..."
-    # The embedded extra carries the vector extra (the default config's embedding model). PyPI's
-    # Linux torch is the CUDA build, so torch comes first from PyTorch's CPU-only index; the extra's
-    # torch requirement is then already met.
-    "$pip" install --quiet --index-url https://download.pytorch.org/whl/cpu torch
-    "$pip" install --quiet "provisa[${extras}]${pin}" uvicorn mcp-proxy
-  elif [ -n "$wheels" ]; then
-    info "Installing Provisa from bundled wheels (offline)..."
-    "$pip" install --quiet --no-index --find-links "$wheels" "provisa[${extras}]" uvicorn mcp-proxy
-  else
-    err "No network and no bundled wheels found — reinstall Provisa."
+  local wheels
+  wheels="$(_find_payload wheels '*.whl')" || {
+    err "Bundled wheels not found in the AppImage — reinstall Provisa."
     exit 1
-  fi
+  }
+  info "Installing Provisa from the bundled wheels..."
+  # The embedded extra carries the vector extra (the default config's embedding model).
+  "$pip" install --quiet --no-index --find-links "$wheels" "provisa[embedded]" uvicorn mcp-proxy
   # REQ-2194: provisa's encoders are compiled into it; an install without them is a broken install.
   "${venv}/bin/python3" -c "import provisa._encoders.pgwire" || {
     err "Provisa's compiled encoders (provisa._encoders) did not install — reinstall Provisa."
@@ -1532,6 +1540,7 @@ setup_native_venv() {
     err "The embedding library (sentence-transformers on CPU-only torch) did not install — reinstall Provisa."
     exit 1
   }
+  install_dq_checker "${venv}/bin/python3"
 
   # Place the built UI where ui_server resolves it (<site-packages>/static).
   local ui_src; ui_src="$(_find_payload ui-dist '' || true)"

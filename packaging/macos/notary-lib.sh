@@ -75,3 +75,45 @@ staple_retry() {
   err "stapler staple failed ${STAPLE_ATTEMPTS} times for ${target} (last exit ${rc})."
   exit 1
 }
+
+# `notarytool submit` uploads the file and returns the submission id; it has no network timeout of
+# its own. On v0.1.0-alpha.511 (run 45059453430) the Demo DMG's submit sent at 20:00:19Z never
+# returned and the job's 45-minute limit cancelled it at 20:44Z, leaving an orphan notarytool, while
+# the three sibling jobs' submits answered in 2-4 s. A submit that completes takes 3-22 s
+# (v0.1.0-alpha.509, run 42951512721: Core 3 s, Demo 9 s, Obs 22 s), so one attempt is capped at
+# NOTARY_SUBMIT_TIMEOUT seconds and a stalled attempt is killed and sent again, a bounded number of
+# times, logged per attempt; the build fails at the limit. A submit that exits, with any status, is
+# returned to the caller as is. Results: NOTARY_SUBMIT_OUT, NOTARY_SUBMIT_ERR, NOTARY_SUBMIT_RC.
+# macOS ships no coreutils `timeout`, hence the watchdog.
+NOTARY_SUBMIT_TIMEOUT="${NOTARY_SUBMIT_TIMEOUT:-300}"
+NOTARY_SUBMIT_ATTEMPTS="${NOTARY_SUBMIT_ATTEMPTS:-3}"
+notary_submit() {
+  local target="$1"; shift
+  local attempt pid waited out_file err_file
+  out_file=$(mktemp)
+  err_file=$(mktemp)
+  for ((attempt = 1; attempt <= NOTARY_SUBMIT_ATTEMPTS; attempt++)); do
+    xcrun notarytool submit "$target" "$@" --output-format json >"$out_file" 2>"$err_file" &
+    pid=$!
+    waited=0
+    while kill -0 "$pid" 2>/dev/null && [ "$waited" -lt "$NOTARY_SUBMIT_TIMEOUT" ]; do
+      sleep 2
+      waited=$((waited + 2))
+    done
+    if kill -0 "$pid" 2>/dev/null; then
+      pkill -9 -P "$pid" 2>/dev/null || true
+      kill -9 "$pid" 2>/dev/null || true
+      wait "$pid" 2>/dev/null || true
+      info "notarytool submit attempt ${attempt}/${NOTARY_SUBMIT_ATTEMPTS} gave no answer in ${NOTARY_SUBMIT_TIMEOUT}s (stalled connection to Apple), killed."
+      continue
+    fi
+    wait "$pid" && NOTARY_SUBMIT_RC=0 || NOTARY_SUBMIT_RC=$?
+    NOTARY_SUBMIT_OUT=$(cat "$out_file")
+    NOTARY_SUBMIT_ERR=$(cat "$err_file")
+    rm -f "$out_file" "$err_file"
+    return 0
+  done
+  rm -f "$out_file" "$err_file"
+  err "notarytool submit gave no answer in ${NOTARY_SUBMIT_ATTEMPTS} attempts of ${NOTARY_SUBMIT_TIMEOUT}s for ${target}."
+  exit 1
+}

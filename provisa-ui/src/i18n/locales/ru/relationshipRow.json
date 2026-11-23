@@ -34,8 +34,6 @@
     "sqlName": "Имя SQL",
     "cardinalityWarning": "Внимание: если это соединение возвращает более одной строки на родителя, будет использовано только первое значение.",
     "toggleDetails": "Показать/скрыть детали связи",
-    "junctionBadge": "св-ва",
-    "junctionBadgeTitle": "Связь со свойствами из {{table}}",
     "deleteTitle": "Удалить связь «{{id}}»?",
     "deleteConsequence": "Связь будет удалена из модели. Запросы больше не смогут выполнять соединение через неё.",
     "parametersFed": "Передаваемые параметры",
@@ -68,6 +66,15 @@
         "rest": "REST",
         "grpc": "gRPC",
         "jsonapi": "JSON:API"
+      },
+      "aggregate": {
+        "cypher": "Подсчитать {{name}} в Cypher",
+        "sql": "Подсчитать {{name}} в SQL",
+        "sparql": "Подсчитать {{name}} в SPARQL",
+        "graphql": "Подсчитать {{name}} в GraphQL",
+        "rest": "Подсчитать {{name}} в REST",
+        "grpc": "Подсчитать {{name}} в gRPC",
+        "jsonapi": "Подсчитать {{name}} в JSON:API"
       }
     }
   }

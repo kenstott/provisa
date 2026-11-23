@@ -184,7 +184,11 @@ function PickerBody({ onClose, groups, value, onPick }: PickerProps) {
     <Tip
       key={`${group}:${item.value}`}
       text={`${item.name ?? item.label}${
-        item.reach ? ` — ${reachText(item.reach)}` : item.description ? ` — ${item.description}` : ""
+        item.reach
+          ? ` — ${reachText(item.reach)}`
+          : item.description
+            ? ` — ${item.description}`
+            : ""
       }`}
     >
       <UnstyledButton
@@ -224,7 +228,8 @@ function PickerBody({ onClose, groups, value, onPick }: PickerProps) {
           />
         )}
         <div style={{ flex: 1, minWidth: 0 }}>
-          <Text size="sm" truncate>
+          {/* A long name wraps to a second line rather than being cut off. */}
+          <Text size="sm" lineClamp={2} data-testid={`source-name-${item.value}`}>
             {item.name ?? item.label}
           </Text>
           {item.description && (
@@ -301,7 +306,9 @@ function PickerBody({ onClose, groups, value, onPick }: PickerProps) {
             {t("sourceTypePicker.noMatch")}
           </Text>
         ) : (
-          <div style={{ columnWidth: 220, columnGap: 24 }}>
+          // The groups flow in CSS columns: the count follows the dialog's width, the heights
+          // balance, and a group (break-inside: avoid) never splits; order runs down, then across.
+          <div style={{ columnWidth: 210, columnGap: 24 }} data-testid="source-type-picker-columns">
             {visible.map((g) => (
               <section
                 key={g.group}

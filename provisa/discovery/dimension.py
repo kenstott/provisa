@@ -18,7 +18,8 @@ through it by one junction-backed relationship (REQ-1586). The dimension is an o
 can be renamed or extended.
 
 A second pair on the same values reuses the dimension: a side already joined many-to-one to a
-derived table is joined to that dimension, and only the side not yet joined gains a
+derived table, or to a registered table marked a dimension (a reference table carrying the
+dimension's own details), is joined to that dimension, and only the side not yet joined gains a
 relationship. This module plans what accepting makes; the admin API makes it through the
 mutations that register a view and create a relationship.
 """
@@ -31,7 +32,7 @@ import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from sqlalchemy import select, tuple_
+from sqlalchemy import and_, or_, select, tuple_
 
 from provisa.core.join_through import Through
 from provisa.core.models import DERIVED_SOURCE_ID
@@ -138,7 +139,8 @@ class _Joined:
 
 async def _joined(conn: "Connection", refs: tuple[ColumnRef, ...]) -> dict[ColumnRef, _Joined]:
     """The dimension each column of ``refs`` already joins: the derived table (a registered view)
-    its many-to-one relationship ends at."""
+    or the registered table marked a dimension (REQ-1320) its many-to-one relationship ends at,
+    whose key holds the values (REQ-1586, amended 2026-11-22)."""
     rel, tbl = relationships, registered_tables
     found = (
         await conn.execute_core(
@@ -154,8 +156,10 @@ async def _joined(conn: "Connection", refs: tuple[ColumnRef, ...]) -> dict[Colum
                 tuple_(rel.c.source_table_id, rel.c.source_column).in_(list(refs)),
                 rel.c.cardinality == "many-to-one",
                 rel.c.retired.is_(False),
-                tbl.c.source_id == DERIVED_SOURCE_ID,
-                tbl.c.view_sql.is_not(None),
+                or_(
+                    and_(tbl.c.source_id == DERIVED_SOURCE_ID, tbl.c.view_sql.is_not(None)),
+                    tbl.c.modeling_role == "dimension",
+                ),
                 tbl.c.retired.is_(False),
             )
             .order_by(rel.c.id)

@@ -681,7 +681,8 @@ def test_every_row_states_its_bound_on_clickhouse():
     # make_interval (CONF-CH4)
     assert len(rows) == 39
     for feature in rows:
-        (limitation,) = feature.read.limitations["clickhouse"]
+        # Its bound; any other is a refusal of the translator's it states (polyfill.measured).
+        (limitation,) = [x for x in feature.read.limitations["clickhouse"] if x.refusal is None]
         assert "Tuple(months Int32, days Int32, microseconds Int64)" in limitation.text
 
 

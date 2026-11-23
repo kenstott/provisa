@@ -2415,6 +2415,8 @@ async def test_a_many_to_many_pair_is_accepted_as_a_shared_dimension_both_sides_
     assert [(c.name, c.data_type, c.is_primary_key, c.visible_to) for c in view.columns] == [
         ("neighborhood", "text", True, ["steward"])
     ]
+    # REQ-1586 (amended 2026-11-22): the view is registered as a dimension.
+    assert view.modeling_role == "dimension"
     # A many-to-one relationship from each side to it, through the relationship's creation, and
     # the two sides joined to each other through it, many-to-many (REQ-1586).
     assert await made.relationships(db) == {

@@ -34,8 +34,6 @@
     "sqlName": "SQL-Name",
     "cardinalityWarning": "Warnung: Liefert dieser Join mehr als eine Zeile pro Elternzeile, wird nur der erste Wert verwendet.",
     "toggleDetails": "Beziehungsdetails ein-/ausblenden",
-    "junctionBadge": "Eig.",
-    "junctionBadgeTitle": "Beziehung mit Eigenschaften aus {{table}}",
     "deleteTitle": "Beziehung „{{id}}“ löschen?",
     "deleteConsequence": "Die Beziehung wird aus dem Modell entfernt. Abfragen können nicht mehr über sie verknüpfen.",
     "parametersFed": "Übergebene Parameter",
@@ -68,6 +66,15 @@
         "rest": "REST",
         "grpc": "gRPC",
         "jsonapi": "JSON:API"
+      },
+      "aggregate": {
+        "cypher": "{{name}} in Cypher zählen",
+        "sql": "{{name}} in SQL zählen",
+        "sparql": "{{name}} in SPARQL zählen",
+        "graphql": "{{name}} in GraphQL zählen",
+        "rest": "{{name}} in REST zählen",
+        "grpc": "{{name}} in gRPC zählen",
+        "jsonapi": "{{name}} in JSON:API zählen"
       }
     }
   }

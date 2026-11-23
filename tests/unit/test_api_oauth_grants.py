@@ -423,7 +423,11 @@ class TestHeldPerOrganizationAndCredential:
         other_key = json.dumps({**json.loads(key_file), "private_key_id": secret})
         return [
             ("refresh", lambda: access_token(_refresh(client_secret=secret)), "httpx.Client.post"),
-            ("service account", lambda: access_token(_service_account(other_key)), "httpx.Client.post"),
+            (
+                "service account",
+                lambda: access_token(_service_account(other_key)),
+                "httpx.Client.post",
+            ),
             (
                 "client credentials",
                 lambda: _client_credentials_token(_client_credentials(client_secret=secret)),
@@ -470,7 +474,10 @@ class TestHeldPerOrganizationAndCredential:
     def test_the_hold_is_keyed_by_a_digest_never_the_secret(self, key_file, monkeypatch):
         monkeypatch.setenv("TEST_HELD_SECRET", "made-up-resolved-secret")
         auths = [
-            (lambda: access_token(_refresh(client_secret="${env:TEST_HELD_SECRET}")), "httpx.Client.post"),
+            (
+                lambda: access_token(_refresh(client_secret="${env:TEST_HELD_SECRET}")),
+                "httpx.Client.post",
+            ),
             (
                 lambda: _client_credentials_token(
                     _client_credentials(client_secret="${env:TEST_HELD_SECRET}")

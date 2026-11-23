@@ -25,6 +25,7 @@ import {
   TableRowsQuery as TABLE_ROWS_QUERY,
   TablesQuery as TABLES_QUERY,
 } from "./admin.graphql";
+import { servedSchemasChanged } from "../api/metaGraph";
 import { firstLoad } from "./firstLoad";
 import { useBulkDelete } from "./useBulkDelete";
 
@@ -106,6 +107,9 @@ export function useShownTableQueries(): () => string[] {
     // otherwise serve the old one -- a relationship's tables missing from it hid its query links.
     client.cache.evict({ fieldName: "tables" });
     client.cache.gc();
+    // REQ-2252 (amended 2026-11-22): the server rebuilt the served schemas before it answered the
+    // write, so what each role is served -- a table's query links -- is read again.
+    servedSchemasChanged();
     const shown = new Set([...client.getObservableQueries("active")].map((oq) => oq.queryName));
     return TABLE_QUERY_NAMES.filter((name) => shown.has(name));
   }, [client]);
