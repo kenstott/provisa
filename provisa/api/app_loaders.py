@@ -2372,18 +2372,27 @@ def _build_and_register_schemas(  # REQ-016, REQ-021, REQ-038, REQ-041, REQ-221,
 
 
 def _setup_approval_hook(st: AppState) -> None:
-    """REQ-247: build ABAC approval hook + scope dicts from config (no-op when unconfigured)."""
+    """REQ-247: build the ABAC approval hook + scope dicts from the loaded config.
+
+    Called by every schema build (boot, reload, org build), after the compilation contexts exist:
+    the per-table flags resolve through them. An unconfigured hook leaves the hook disabled and
+    the scopes empty; a hook whose config is unchanged is kept, with its channel and breaker."""
     from provisa.auth.approval_hook import create_hook, load_approval_hook_config
 
-    config = getattr(st, "config", None)
+    config = st.config
     if config is None:
-        return
-    hook_cfg = load_approval_hook_config(getattr(config.auth, "approval_hook", None))
+        raise RuntimeError("approval hook setup needs the loaded config (issue #344)")
+    hook_cfg = load_approval_hook_config(config.auth.approval_hook)
     if hook_cfg is None:
+        st.approval_hook_config = None
+        st.approval_hook = None
+        st.source_approval_hooks = {}
+        st.table_approval_hooks = {}
         return
 
+    if hook_cfg != st.approval_hook_config or st.approval_hook is None:
+        st.approval_hook = create_hook(hook_cfg)
     st.approval_hook_config = hook_cfg
-    st.approval_hook = create_hook(hook_cfg)
     st.source_approval_hooks = {
         s.id: True for s in config.sources if getattr(s, "approval_hook", False)
     }

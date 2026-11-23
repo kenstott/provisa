@@ -191,9 +191,17 @@ def test_a_call_the_policy_service_denies_is_refused_and_not_made(server, policy
     _, received = webhook
     field = _notify_field(server)
     made = len(received)
-    body = _graphql(server, f'mutation {{ {field}(msg: "deny this") {{ ok }} }}')
-    assert body.get("errors"), body
-    assert "denied by the test policy" in json.dumps(body["errors"]), body
+    # A denied command is refused with 403 functions.approval_denied, carrying the policy's reason.
+    resp = httpx.post(
+        f"http://127.0.0.1:{server.ports['http']}/data/graphql",
+        json={"query": f'mutation {{ {field}(msg: "deny this") {{ ok }} }}'},
+        headers={"X-Provisa-Role": _ADMIN},
+        timeout=_TIMEOUT,
+    )
+    assert resp.status_code == 403, resp.text
+    body = resp.json()
+    assert body["code"] == "functions.approval_denied", body
+    assert body["params"] == {"name": "notify", "reason": "denied by the test policy"}, body
     assert len(received) == made
     # The denial came over the same channel as every approval before it.
     assert len(set(policy.peers)) == 1, policy.peers
