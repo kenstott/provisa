@@ -18,7 +18,7 @@ source), the form's discovery (``availableSchemas``, ``availableTables``, ``file
 table's ``fileGlob`` and source-file column. The read failed: "Table with name complaints does not
 exist! Did you mean _src_test.test.complaints_2026_09" -- a source created in the admin is a
 ``sources`` row, never one of the configuration's sources, so its server was never started again
-with the glob table. Read here through SQL and through GraphQL (the Tables page's data tab), and
+with the glob table. Read here through SQL and through the Tables page's data tab statement, and
 again after a restart.
 
 A real server (DuckDB engine, own control plane) over the bundled Calcite file adapter. Everything
@@ -146,19 +146,20 @@ def _sql_rows(srv, sql: str, key: str) -> list[dict] | None:
     return rows
 
 
-def _graphql_rows(srv, key: str) -> list[dict] | None:
-    """The Tables page's data tab: the table's rows through the data GraphQL endpoint."""
+def _data_tab_rows(srv, relation: str, key: str) -> list[dict] | None:
+    """The Tables page's data tab (GovernedTableViewer): its first page, the statement
+    nativeParams.pagedViewerSql writes over naming.tableSqlRef, sent as admin.runSql sends it --
+    the acting role in X-Provisa-Role only, paged."""
     r = httpx.post(
-        f"{srv.base_url}/data/graphql",
-        json={"query": "{ complaints { id amount } }"},
+        f"{srv.base_url}/data/sql",
+        json={"sql": f"SELECT * FROM {relation} LIMIT 101 OFFSET 0", "paged": True},
         headers=_HEADERS,
         timeout=60,
     )
-    body = r.json() if r.status_code == 200 else {}
-    if r.status_code != 200 or body.get("errors") or not (body.get("data") or {}).get("complaints"):
+    if r.status_code != 200 or "errors" in r.json() or not r.json()["data"]["sql"]:
         _last[key] = f"{r.status_code} {r.text[:800]}"
         return None
-    return body["data"]["complaints"]
+    return r.json()["data"]["sql"]
 
 
 def _wait(fn, *, seconds: float, key: str):
@@ -177,7 +178,7 @@ def _assert_union(rows: list[dict]) -> None:
     assert got == {1: 10, 2: 20, 3: 30}, got
 
 
-def _read_both(srv) -> None:
+def _read_both(srv, relation: str) -> None:
     _assert_union(
         _wait(
             lambda: _sql_rows(srv, 'SELECT "id", "amount" FROM "complaints" ORDER BY "id"', "sql"),
@@ -185,7 +186,9 @@ def _read_both(srv) -> None:
             key="sql",
         )
     )
-    _assert_union(_wait(lambda: _graphql_rows(srv, "graphql"), seconds=90, key="graphql"))
+    _assert_union(
+        _wait(lambda: _data_tab_rows(srv, relation, "data_tab"), seconds=90, key="data_tab")
+    )
 
 
 def test_a_combined_glob_table_on_an_admin_created_files_source_reads_every_file(served):
@@ -232,6 +235,14 @@ def test_a_combined_glob_table_on_an_admin_created_files_source_reads_every_file
         "availableColumnsMetadata",
     )
 
+    # The alias the form suggests (useManyTables.registrationOfTable), sent with the table.
+    alias = _gql(
+        srv,
+        "query($t: String!, $d: String!, $s: String!) "
+        "{ suggestTableAlias(tableName: $t, domainId: $d, sourceId: $s) }",
+        {"t": "complaints", "d": "ops", "s": _SOURCE},
+    )["suggestTableAlias"]
+
     # The combined table, as useManyTables.registrationOfTable sends it through registerTables:
     # the reference file's columns, the glob, and the source-file column named in the form.
     outcomes = _gql(
@@ -245,6 +256,7 @@ def test_a_combined_glob_table_on_an_admin_created_files_source_reads_every_file
                     "domainId": "ops",
                     "schemaName": schema,
                     "tableName": "complaints",
+                    **({"alias": alias} if alias else {}),
                     "fileGlob": preview["glob"],
                     "sourceFileColumn": _SRC_COL,
                     "discover": False,
@@ -258,8 +270,10 @@ def test_a_combined_glob_table_on_an_admin_created_files_source_reads_every_file
     )["registerTables"]
     assert all(o["result"]["success"] for o in outcomes), json.dumps(outcomes)
 
-    _read_both(srv)
+    # naming.tableSqlRef: the domain's SQL name, then the alias or the table's name.
+    relation = f'"ops"."{alias or "complaints"}"'
+    _read_both(srv, relation)
 
     # After a restart, the registered glob table is still the union under its name.
     srv.restart()
-    _read_both(srv)
+    _read_both(srv, relation)
