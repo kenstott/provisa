@@ -93217,7 +93217,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     (Amended 2026-11-13, A SESSION''S KEPT PLANS FOLLOW ITS TABLES'' SHAPES:) 2026-11-13 (also REQ-615):
     a statement governed in a session holding temporary tables is kept for that session as its tables are
     shaped (name and columns), not per generation; a write that leaves the columns as they were is served
-    the same plan; cached answers stay keyed by generation.'
+    the same plan; cached answers stay keyed by generation. (Amended 2026-11-23 by the maintainer, SESSIONS CACHED PER WORKER. Each worker keeps the graph sessions of the principals it serves in memory and learns of every session write through the control plane''s notification channel (LISTEN/NOTIFY), so a read on a cached session touches no control-plane row. A write made on another worker is seen once its notification arrives, within milliseconds, rather than strictly on the next statement. A worker that loses the channel drops its cached sessions and reads rows again until it reconnects. Retention, rights changes and clearing behave as before.)'
   code:
   - provisa/api/graph_session.py
   - provisa/api/rest/cypher_session.py
