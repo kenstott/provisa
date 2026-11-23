@@ -21,6 +21,7 @@ import fnmatch as _fnmatch
 import re as _re
 from collections.abc import Mapping
 from dataclasses import dataclass
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from graphql import (
@@ -201,18 +202,25 @@ def exact_decimal_value(
     declared as the string of its exact digits (REQ-1961, amended 2026-11-23), and a string sent
     for one is the decimal those digits are, so it compares and writes as a number. Raises
     ValueError for a string that is not a finite decimal."""
-    from decimal import Decimal, InvalidOperation
-
     from provisa.core.numeric_type import numeric_size
 
     if not isinstance(val, str) or data_type is None or numeric_size(data_type) is None:
         return val
     try:
+        return decimal_digits(val)
+    except ValueError as refused:
+        raise ValueError(f"{refused} for a {data_type} column") from None
+
+
+def decimal_digits(val: str) -> Decimal:
+    """The finite decimal the digits of ``val`` spell, as a sized numeric's filter value is read
+    (REQ-1961). Raises ValueError for a string that is not a finite decimal."""
+    try:
         exact = Decimal(val.strip())
     except InvalidOperation:
-        raise ValueError(f"{val!r} is not a number for a {data_type} column") from None
+        raise ValueError(f"{val!r} is not a number") from None
     if not exact.is_finite():
-        raise ValueError(f"{val!r} is not a finite number for a {data_type} column")
+        raise ValueError(f"{val!r} is not a finite number")
     return exact
 
 
