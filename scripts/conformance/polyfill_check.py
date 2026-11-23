@@ -19,13 +19,19 @@ its type), on the dialect of each engine, and its outcome is held to what the ro
 
   holds       the row's native or polyfilled form answered as PostgreSQL does; a refusal the row
               (or one of its limitations) states, raised with the row's message and SQLSTATE; a
-              difference a limitation of the row states (one naming edge values states only a
-              wrong answer at those values); or a form served within its bound, raising
-              at an edge value as a limitation of the row states (REQ-2236, amended 2026-11-15)
+              difference a limitation of the row states (one stating no error: a limitation that
+              states an error excuses that error only; one naming edge values states only a wrong
+              answer at those values); or a form served within its bound, each of its edge raises
+              an error a limitation of its row states, its SQLSTATE and, where the limitation gives
+              it, its message, or one a limitation of the grid states with its message on the
+              dialect (a literal's own reading) (REQ-2236, amended 2026-11-15 and 2026-11-22)
   fails       a feature the grid marks native or polyfilled that answers otherwise than PostgreSQL
-              (a wrong answer, an error, or a refusal the grid does not state), a refusal row
-              the run did not raise as the row says, or a bounded row (a limitation says what its
-              form raises) whose overload raised that SQLSTATE on no edge call
+              (a wrong answer, an error, an edge raise no limitation states, or a refusal the grid
+              does not state), a refusal row the run did not raise as the row says, or a bounded
+              row (a limitation says what its form raises) whose limitation no edge call of any
+              overload of the feature on that engine raised: a bound is credited per feature and
+              engine, and a limit no edge call can reach stands as a statement of record the check
+              exempts (function_edges.STATEMENTS_OF_RECORD)
   unverified  the run compared nothing of it: not checked, skipped by design, not callable, or
               not reached
 
@@ -242,17 +248,50 @@ def _difference_stated(feature: Feature, dialect: str, outcome: dict[str, Any]) 
     )
 
 
-def judged(applied: Applied, dialect: str, outcome: dict[str, Any]) -> tuple[str, str]:
+@dataclass(frozen=True)
+class Bound:
+    """What the run held of a row's stated bounds on one engine: the errors any limitation of the
+    grid states on its dialect with a message (``function_edges.stated_by_dialect``), and the
+    bounded limitations of the row no edge call of any overload of the feature raised, but for
+    statements of record (``function_edges.STATEMENTS_OF_RECORD``)."""
+
+    elsewhere: dict[tuple[str, str], str]
+    unheld: tuple[Limitation, ...] = ()
+
+
+_NO_BOUND = Bound({})
+
+
+def _unstated_raises(
+    feature: Feature, dialect: str, outcome: dict[str, Any], bound: Bound
+) -> list[dict[str, Any]]:
+    """The edge raises of ``outcome`` no limitation of its row on ``dialect`` states, nor any of
+    the grid's on ``dialect`` with its message (a literal's own reading)."""
+    limitations = feature.read.limitations.get(dialect, ())
+    return [
+        raised
+        for raised in outcome.get("edge_raised", ())
+        if not any(function_edges.excuses(lim, raised) for lim in limitations)
+        and function_edges.raised_error(raised) not in bound.elsewhere
+    ]
+
+
+def judged(
+    applied: Applied, dialect: str, outcome: dict[str, Any], bound: Bound = _NO_BOUND
+) -> tuple[str, str]:
     """The verdict on one outcome of a grid row on ``dialect``, and why."""
     kind = outcome["outcome"]
     form = applied.form
     feature = applied.feature
     if kind in _NOTHING_COMPARED:
         return UNVERIFIED, f"the run compared nothing ({kind})"
-    if outcome.get("bound_raised") is False:
+    if bound.unheld and "edges" in outcome and kind in ("pass", "within_bound"):
+        stated = sorted(
+            {e.sqlstate for lim in bound.unheld for e in function_edges.bound_errors(lim)}
+        )
         return FAILS, (
-            f"its row states it raises {', '.join(outcome['bound_sqlstates'])} outside its bound; "
-            "no edge call raised it"
+            f"its row states it raises {', '.join(stated)} outside its bound; no edge call of "
+            f"any overload of {feature.name} raised it"
         )
     if isinstance(form, Refusal):
         if kind == "refused" and _raised(form, outcome):
@@ -267,6 +306,13 @@ def judged(applied: Applied, dialect: str, outcome: dict[str, Any]) -> tuple[str
     if kind == "pass":
         return HOLDS, "answered as PostgreSQL does"
     if kind == "within_bound":
+        unstated = _unstated_raises(feature, dialect, outcome, bound)
+        if unstated:
+            sqlstate, message = function_edges.raised_error(unstated[0])
+            return FAILS, (
+                f"raises at an edge value an error no limitation of its row states: "
+                f"{sqlstate or '(no SQLSTATE)'} {message!r}"
+            )
         return HOLDS, "raises at an edge value, as a limitation of its row states"
     if kind == "refused":
         if any(_raised(refusal, outcome) for refusal in _stated_refusals(feature, dialect)):
@@ -290,11 +336,12 @@ def _statement(outcome: dict[str, Any]) -> str:
 
 
 def checked(run: dict[str, Any], grid: Grid = GRID) -> list[Finding]:
-    """Every overload of a grid row in ``run`` on each of its engines, judged."""
+    """Every overload of a grid row in ``run`` on each of its engines, judged. A row's stated bound
+    is credited per feature and engine (``_held``)."""
     unknown = sorted(set(run["engines"]) - set(ENGINE_DIALECTS))
     if unknown:
         raise SystemExit(f"engines the check has no dialect of: {unknown}")
-    findings: list[Finding] = []
+    read: list[tuple[dict[str, Any], str, str, dict[str, Any], Applied | Refused]] = []
     for entry in run["functions"]:
         node = call_of(entry["function"], entry["overload"])
         for engine, outcome in sorted(entry["outcomes"].items()):
@@ -307,25 +354,42 @@ def checked(run: dict[str, Any], grid: Grid = GRID) -> list[Finding]:
             except Refused as refused:
                 # A rewrite function refusing the call for its values (notation.Refused): the row
                 # is not named, its refusal is what it states of the call.
-                findings.append(_refused_by_rewrite(entry, engine, dialect, outcome, refused))
+                read.append((entry, engine, dialect, outcome, refused))
                 continue
-            if applied is None:
-                continue
-            verdict, why = judged(applied, dialect, outcome)
-            findings.append(
-                Finding(
-                    feature=applied.feature.name,
-                    function=entry["function"],
-                    overload=entry["overload"],
-                    engine=engine,
-                    dialect=dialect,
-                    grid=_said(applied.form),
-                    outcome=outcome["outcome"],
-                    verdict=verdict,
-                    why=why,
-                    statement=_statement(outcome),
-                )
+            if applied is not None:
+                read.append((entry, engine, dialect, outcome, applied))
+    elsewhere = {
+        dialect: function_edges.stated_by_dialect(grid, dialect) for _, _, dialect, _, _ in read
+    }
+    held = _held(read)
+    findings: list[Finding] = []
+    for entry, engine, dialect, outcome, applied in read:
+        if isinstance(applied, Refused):
+            findings.append(_refused_by_rewrite(entry, engine, dialect, outcome, applied))
+            continue
+        feature = applied.feature
+        unheld = tuple(
+            lim
+            for lim in feature.read.limitations.get(dialect, ())
+            if function_edges.bound_errors(lim)
+            and not function_edges.of_record(feature.name, dialect, lim)
+            and (feature.name, engine, lim) not in held
+        )
+        verdict, why = judged(applied, dialect, outcome, Bound(elsewhere[dialect], unheld))
+        findings.append(
+            Finding(
+                feature=feature.name,
+                function=entry["function"],
+                overload=entry["overload"],
+                engine=engine,
+                dialect=dialect,
+                grid=_said(applied.form),
+                outcome=outcome["outcome"],
+                verdict=verdict,
+                why=why,
+                statement=_statement(outcome),
             )
+        )
     return findings
 
 
@@ -345,6 +409,23 @@ def documented_limits(run: dict[str, Any], grid: Grid = GRID) -> dict[tuple[str,
         for f in checked(run, grid)
         if f.verdict == HOLDS and f.outcome in _FAILING
     }
+
+
+def _held(
+    read: Iterable[tuple[dict[str, Any], str, str, dict[str, Any], Applied | Refused]],
+) -> set[tuple[str, str, Limitation]]:
+    """The bounded limitations each feature held on each engine: (feature, engine, limitation) for
+    each one any overload of the feature raised an error of at an edge (REQ-2236, amended
+    2026-11-22: a stated limit is credited per feature and engine)."""
+    held: set[tuple[str, str, Limitation]] = set()
+    for _, engine, dialect, outcome, applied in read:
+        if isinstance(applied, Refused):
+            continue
+        feature = applied.feature
+        for lim in feature.read.limitations.get(dialect, ()):
+            if any(function_edges.bound_excuses(lim, r) for r in outcome.get("edge_raised", ())):
+                held.add((feature.name, engine, lim))
+    return held
 
 
 #: The feature a finding names when a rewrite function refused the call before naming its row.
