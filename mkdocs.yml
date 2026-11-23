@@ -195,6 +195,7 @@ nav:
           - "SAP HANA": conformance/polyfill/saphana.md
   - Clients:
       - Python Client: python-client.md
+      - Spark Data Source: spark-data-source.md
   - Administration:
       - CLI Reference: cli.md
       - Admin API: admin.md
