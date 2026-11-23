@@ -1161,7 +1161,28 @@ def _constant(node: exp.Expr | None) -> int | None:
         return None if left is None or right is None else left + right
     if isinstance(node, exp.Literal) and node.is_int:
         return int(node.this)
+    if isinstance(node, exp.Cast) and node.to.this in _INTEGER_RANGES:
+        # 42::integer names its value as plainly as 42, where the type holds it.
+        inner = _constant(node.this)
+        low, high = _INTEGER_RANGES[node.to.this]
+        return inner if inner is not None and low <= inner <= high else None
     return None
+
+
+#: The values each integer type holds: a cast of a constant past them raises (22003).
+_INTEGER_RANGES = {
+    exp.DataType.Type.SMALLINT: (-(2**15), 2**15 - 1),
+    exp.DataType.Type.INT: (-(2**31), 2**31 - 1),
+    exp.DataType.Type.BIGINT: (-(2**63), 2**63 - 1),
+}
+
+
+def _within_the_value(args: list[exp.Expr]) -> bool:
+    """Whether substr's start is a constant of at least 1 and its length none or a constant of at
+    least 0."""
+    start = _constant(args[1])
+    length = _constant(args[2]) if len(args) == 3 else 0
+    return start is not None and start >= 1 and length is not None and length >= 0
 
 
 def _past_the_edge(node: exp.Expr, dialect: str) -> exp.Expr | None:
@@ -1427,6 +1448,15 @@ def inline(tree: exp.Expr, dialect: str) -> exp.Expr:
             if answer is not None:
                 in_select = isinstance(node.parent, exp.Select) and node.arg_key == "expressions"
                 return exp.alias_(answer, called) if in_select else answer
+        if name == "substr" and _within_the_value(args):
+            # A start of at least 1 and a length of none or at least 0 every engine reads as
+            # PostgreSQL does: the engine's own, as a substring past no edge is (_past_the_edge).
+            length = args[2].transform(rewrite) if len(args) == 3 else None
+            written = exp.Substring(
+                this=args[0].transform(rewrite), start=args[1].transform(rewrite), length=length
+            )
+            in_select = isinstance(node.parent, exp.Select) and node.arg_key == "expressions"
+            return exp.alias_(written, called) if in_select else written
         digits = _said_scale(args[1], called, dialect) if name in _OF_A_SAID_SCALE else None
         if digits is not None:  # an engine takes a scale only as a constant
             args = [args[0], exp.Literal.number(digits)]

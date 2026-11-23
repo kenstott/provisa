@@ -347,7 +347,9 @@ def test_each_function_of_one_instant_states_its_bound():
         "date_trunc",
     ):
         feature = next(f for f in GRID.features if f.name == name)
-        for stated in feature.read.limitations["clickhouse"]:  # date_trunc: and at a zone
+        bounds = [lim for lim in feature.read.limitations["clickhouse"] if lim.refusal is None]
+        assert bounds  # any other limitation is a refusal of the translator's (polyfill.measured)
+        for stated in bounds:  # date_trunc: and at a zone
             assert instants.BOUND in stated.text and "{" not in stated.text
     isfinite = next(f for f in GRID.features if f.name == "isfinite(timestamptz)")
     (stated,) = isfinite.read.limitations["clickhouse"]

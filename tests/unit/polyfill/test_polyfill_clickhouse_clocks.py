@@ -215,7 +215,8 @@ def test_another_engine_is_unchanged(dialect, sql):
 def test_each_clock_row_states_the_held_representation(name):
     feature = next(f for f in GRID.features if f.name == name)
     assert feature.family == clocks.FAMILY
-    (limitation,) = feature.read.limitations["clickhouse"]
+    # Its bound; any other is a refusal of the translator's it states (polyfill.measured).
+    (limitation,) = [lim for lim in feature.read.limitations["clickhouse"] if lim.refusal is None]
     assert "no Time64" in limitation.text and "microseconds of the day" in limitation.text
     assert set(feature.read.limitations) == {"clickhouse"}
 
