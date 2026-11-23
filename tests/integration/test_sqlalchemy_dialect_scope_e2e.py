@@ -13,8 +13,8 @@ server with auth enforced (REQ-363).
 
 One server, two domains: ``sales.orders`` is granted to ``seller``, ``hr.staff`` to ``hr_reader``,
 and each table's ``secret`` column to ``org_admin`` alone. ``sam`` (seller), ``hana`` (hr_reader)
-and ``both`` connect through ``provisa+http://user:password@host:port`` and reflect the catalog
-with SQLAlchemy's inspector: each is listed the schemas, tables and columns its roles are served
+and ``both`` connect through ``provisa+http://user:password@host:port/?role=<roles>`` and reflect
+the catalog with SQLAlchemy's inspector: each is listed the schemas, tables and columns its roles are served
 and nothing else. (A server that authenticates nobody has no role to narrow by and lists the
 whole catalog -- endpoint_dev.catalog_endpoint -- so the scope is checked with auth on.)
 
@@ -119,15 +119,16 @@ def server():
         boot.cleanup()
 
 
-def _reflect(boot, user: str) -> dict[str, dict[str, list[str]]]:
-    """{schema: {table: [columns]}} as ``user``'s SQLAlchemy inspector reflects it, for the two
-    domains of the model."""
+def _reflect(boot, user: str, role: str) -> dict[str, dict[str, list[str]]]:
+    """{schema: {table: [columns]}} as ``user``'s SQLAlchemy inspector reflects it acting as
+    ``role`` (``?role=``, a comma-separated set for several), for the two domains of the model."""
     url = sa.engine.URL.create(
         "provisa+http",
         username=user,
         password=_PASSWORD,
         host="127.0.0.1",
         port=boot.ports["http"],
+        query={"role": role},
     )
     engine = sa.create_engine(url)
     try:
@@ -144,12 +145,16 @@ def _reflect(boot, user: str) -> dict[str, dict[str, list[str]]]:
 
 
 @pytest.mark.parametrize(
-    ("user", "expected"),
+    ("user", "role", "expected"),
     [
-        ("sam", {"sales": {"orders": ["id", "region"]}}),
-        ("hana", {"hr": {"staff": ["id", "region"]}}),
-        ("both", {"hr": {"staff": ["id", "region"]}, "sales": {"orders": ["id", "region"]}}),
+        ("sam", "seller", {"sales": {"orders": ["id", "region"]}}),
+        ("hana", "hr_reader", {"hr": {"staff": ["id", "region"]}}),
+        (
+            "both",
+            "seller,hr_reader",
+            {"hr": {"staff": ["id", "region"]}, "sales": {"orders": ["id", "region"]}},
+        ),
     ],
 )
-def test_the_dialect_reflects_only_what_the_users_roles_are_served(server, user, expected):
-    assert _reflect(server, user) == expected
+def test_the_dialect_reflects_only_what_the_users_roles_are_served(server, user, role, expected):
+    assert _reflect(server, user, role) == expected

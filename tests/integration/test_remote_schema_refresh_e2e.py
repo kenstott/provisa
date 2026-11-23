@@ -207,6 +207,8 @@ def test_a_grpc_remote_refresh_keeps_its_tables_their_rules_and_its_import_paths
                 "domainId": "shelter",
                 "schemaName": "grpc_remote",
                 "tableName": table,
+                # A remote table lands and is re-read on its cache_ttl (REQ-1907).
+                "cacheTtl": 300,
                 "columns": [
                     {"name": "name", "visibleTo": [ADMIN, RESTRICTED]},
                     {"name": "species", "visibleTo": [ADMIN, RESTRICTED]},
