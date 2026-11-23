@@ -666,14 +666,10 @@ def test_a_visitor_lands_a_source_of_their_own_within_the_caps(tier, alpha):
     assert _names(read) == ["owl", "wren"]
     store = tier.data_dir / "orgs" / alpha["org_id"] / "materialize.duckdb"
     assert store.stat().st_size < _DISK
-    import duckdb
+    # The server opens the store per operation under its sentinel lock (REQ-1901); a reader in
+    # this process takes the same lock, so it waits out a server operation in flight instead of
+    # meeting DuckDB's exclusive file lock.
+    from provisa.federation.materialize_broker import get_broker
 
-    con = duckdb.connect(str(store), read_only=True)
-    try:
-        landed = con.execute(
-            "SELECT table_name FROM duckdb_tables() WHERE schema_name = ?",
-            [f"org_{alpha['org_id']}_replicas"],
-        ).fetchall()
-    finally:
-        con.close()
-    assert any("birds" in name for (name,) in landed), landed
+    landed = get_broker(str(store)).row_counts(f"org_{alpha['org_id']}_replicas")
+    assert any("birds" in name and rows == 2 for name, rows in landed.items()), landed
