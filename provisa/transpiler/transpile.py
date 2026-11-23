@@ -46,6 +46,7 @@ from provisa.transpiler.pg_literals import (
     exact_inputs,
     postgres_literals,
 )
+from provisa.transpiler.pg_input_refusals import refuse_past_inputs
 from provisa.transpiler.to_char import to_char_for_duckdb
 from provisa.transpiler.typed_columns import TYPED_DIALECTS, ColumnTypes, typed
 from provisa.transpiler.transpile_correlated import (
@@ -319,6 +320,35 @@ def _json_list_compare(
     return sqlglot.parse_one(f"NULLIF({result}, 2)", read=dialect)  # pyright: ignore[reportReturnType]
 
 
+#: json_items(v) on each engine (translator, an UNWIND of a property held as JSON): the items of a
+#: JSON list, any other value a list of itself, null an empty list; each item one JSON value.
+_JSON_ITEMS = {
+    "trino": (
+        "CASE WHEN {v} IS NULL THEN CAST(ARRAY[] AS ARRAY(JSON)) "
+        "WHEN json_array_length({v}) IS NOT NULL THEN CAST({v} AS ARRAY(JSON)) "
+        "ELSE ARRAY[{v}] END"
+    ),
+    "duckdb": (
+        "CASE WHEN {v} IS NULL THEN CAST([] AS JSON[]) "
+        "WHEN json_type(CAST({v} AS JSON)) = 'ARRAY' THEN CAST(CAST({v} AS JSON) AS JSON[]) "
+        "ELSE [CAST({v} AS JSON)] END"
+    ),
+    "postgres": (
+        "ARRAY(SELECT json_array_elements(CASE WHEN json_typeof({v}) = 'array' THEN {v} "
+        "ELSE json_build_array({v}) END) WHERE NOT {v} IS NULL)"
+    ),
+}
+
+
+def _json_items(
+    value: exp.Expression,  # pyright: ignore[reportPrivateImportUsage]
+    dialect: str,
+) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
+    """json_items(value) as ``dialect`` computes it (:data:`_JSON_ITEMS`)."""
+    v = f"({value.sql(dialect=dialect)})"
+    return sqlglot.parse_one(_JSON_ITEMS[dialect].format(v=v), read=dialect)  # pyright: ignore[reportReturnType]
+
+
 def _rewrite_json_size_for_trino(sql: str) -> str:
     """json_size(x), a JSON value's size (expr_visitor): a list's items, else a string's
     characters, as Trino reads them."""
@@ -329,6 +359,7 @@ def _rewrite_json_size_for_trino(sql: str) -> str:
             "JSON_ORDER_KEY",
             "JSON_KIND",
             "JSON_LIST_COMPARE",
+            "JSON_ITEMS",
             "RANGE_STEP",
             "TYPE_REFUSED",
             "JSON_KEYS",
@@ -364,6 +395,9 @@ def _rewrite_json_size_for_trino(sql: str) -> str:
         if isinstance(node, exp.Anonymous) and node.name.upper() == "JSON_LIST_COMPARE":
             left, right = node.expressions
             return _json_list_compare(left, right, "trino")
+        if isinstance(node, exp.Anonymous) and node.name.upper() == "JSON_ITEMS":
+            (value,) = node.expressions
+            return _json_items(value, "trino")
         if not (isinstance(node, exp.Anonymous) and node.name.upper() == "JSON_SIZE"):
             return node
         (value,) = node.expressions
@@ -717,6 +751,8 @@ def _duckdb_form(pg_sql: str, generated: bool) -> str:
     """``pg_sql`` in DuckDB's SQL, derived once: every step is a function of the text and its
     origin (``generated``, see :func:`transpile`) alone. A statement a client repeats reaches here
     on each run, its plan kept or not. A refusal raises and is not kept."""
+    # REQ-2236: a literal PostgreSQL's input refuses raises its error before any form reads it.
+    refuse_past_inputs(pg_sql)
     pg_sql = pg_money.lowered(pg_forms_type_io.readable(pg_sql), "duckdb")  # REQ-2171
     pg_sql = pg_forms_enum.lowered(pg_sql, "duckdb")  # REQ-2171
     written = transpile(
@@ -1064,6 +1100,7 @@ _DUCKDB_LIST_FUNCTIONS = frozenset(
         "JSON_ORDER_KEY",
         "JSON_KIND",
         "JSON_LIST_COMPARE",
+        "JSON_ITEMS",
         "RANGE_STEP",
         "TYPE_REFUSED",
     }
@@ -1144,6 +1181,9 @@ def _rewrite_list_functions_for_duckdb(tree: exp.Expr) -> exp.Expr:
         if name == "JSON_LIST_COMPARE":
             left, right = args
             return _json_list_compare(left, right, "duckdb")
+        if name == "JSON_ITEMS":
+            (value,) = args
+            return _json_items(value, "duckdb")
         if name == "JSON_SIZE":
             # A JSON value's size: a list's items, a string's characters (expr_visitor).
             (value,) = args
@@ -1780,6 +1820,9 @@ def postgres_list_functions(tree: exp.Expr) -> exp.Expr:  # REQ-345
             )
             *ranks, ended = key.expressions
             return exp.Anonymous(this=key.name, expressions=[*ranks, _pg_binary(ended)])
+        if name == "JSON_ITEMS":
+            (value,) = args
+            return _json_items(_pg_json(value), "postgres")
         left, right = args  # JSON_LIST_COMPARE
         return exp.Nullif(this=_pg_json_list_compare(left, right), expression=exp.Literal.number(2))
 
@@ -1911,6 +1954,7 @@ _PG_LIST_FUNCTIONS = frozenset(
         "JSON_SIZE",
         "JSON_ORDER_KEY",
         "JSON_LIST_COMPARE",
+        "JSON_ITEMS",
     }
 )
 _PG_LIST_CALLED = re.compile(
@@ -2183,6 +2227,11 @@ def transpile(
         if not results:
             raise ValueError(f"SQLGlot produced no output for: {pg_sql!r}")
         result = results[0]
+    if target_dialect == "clickhouse":
+        # REQ-2236: a NULL column typed, for the server's Arrow output has no type for Nothing.
+        from provisa.transpiler.polyfill.clickhouse import typed_null_columns
+
+        result = typed_null_columns(result)
     if target_dialect == "tsql":
         result = _map_tsql_reserved_schemas(result)
     if target_dialect == "sqlite":

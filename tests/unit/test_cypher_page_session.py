@@ -262,6 +262,123 @@ async def test_reads_of_one_session_do_not_wait_for_each_other(dbs):
     assert order == ["first in", "second in", "first out"]
 
 
+def _held_while(state, *, writer_writes: bool, reader_writes: bool) -> list[str]:
+    """The order of a statement holding ada's session (``writer_writes``) and another statement
+    (``reader_writes``) begun while it holds it."""
+    order: list[str] = []
+    first_in = threading.Event()
+    second_done = threading.Event()
+
+    async def first():
+        async with graph_session.session_for(state, "ada", ["analyst"], writes=writer_writes):
+            order.append("first in")
+            first_in.set()
+            second_done.wait(timeout=1.5)
+            order.append("first out")
+
+    async def second():
+        first_in.wait()
+        async with graph_session.session_for(state, "ada", ["analyst"], writes=reader_writes):
+            order.append("second in")
+        second_done.set()
+
+    threads = [_in_thread(first), _in_thread(second)]
+    for t in threads:
+        t.join(timeout=30)
+    return order
+
+
+async def test_a_read_of_a_session_holding_nothing_takes_no_lock(dbs):
+    state = _state(dbs)
+    async with graph_session.session_for(state, "ada", ["analyst"], writes=True):
+        pass  # the row exists, holding nothing
+    # A statement with no write clause reads the model alone: a write held meanwhile changes
+    # nothing it reads, so it does not wait for one.
+    assert _held_while(state, writer_writes=True, reader_writes=False) == [
+        "first in",
+        "second in",
+        "first out",
+    ]
+
+
+async def test_a_read_of_a_session_holding_objects_waits_for_a_write(dbs, monkeypatch):
+    state, _h = await _filled(dbs, monkeypatch)
+    assert _held_while(state, writer_writes=True, reader_writes=False) == [
+        "first in",
+        "first out",
+        "second in",
+    ]
+
+
+async def test_a_read_of_a_session_holding_nothing_binds_it_and_leaves_its_row(dbs):
+    state = _state(dbs)
+    async with graph_session.session_for(state, "ada", ["analyst"], writes=True):
+        pass
+    row = await _row(dbs)
+    async with graph_session.session_for(state, "ada", ["analyst"], writes=False) as held:
+        assert temp_tables.current() is held.session
+        assert held.session.id == graph_session.session_id("ada") and held.session.kept
+        assert held.session.generation == row.generation and not held.session.tables
+        assert store.graph(held.session).empty and not held.exclusive
+    assert temp_tables.current() is None
+    after = await _row(dbs)
+    assert (after.generation, after.used_at, after.rights) == (
+        row.generation,
+        row.used_at,
+        row.rights,
+    )
+
+
+async def test_a_read_of_a_session_holding_nothing_renews_a_stale_use_mark(dbs):
+    from sqlalchemy import update
+
+    state = _state(dbs)
+    async with graph_session.session_for(state, "ada", ["analyst"], writes=True):
+        pass
+    stale = datetime.now(UTC) - timedelta(hours=2)
+    async with dbs[1].acquire() as conn:
+        await conn.execute_core(
+            update(graph_sessions).where(graph_sessions.c.user_id == "ada").values(used_at=stale)
+        )
+    async with graph_session.session_for(state, "ada", ["analyst"], writes=False):
+        pass
+    assert (await _row(dbs)).used_at > stale + timedelta(hours=1)
+
+
+async def test_a_read_after_a_change_of_rights_begins_the_session_anew(dbs):
+    state = _state(dbs)
+    async with graph_session.session_for(state, "ada", ["analyst"], writes=True):
+        pass
+    before = await _row(dbs)
+    async with graph_session.session_for(state, "ada", ["analyst", "auditor"], writes=False):
+        pass
+    after = await _row(dbs)
+    assert after.rights == graph_session.rights(state, ["analyst", "auditor"]) != before.rights
+    assert after.generation > before.generation
+
+
+async def test_a_first_read_begins_the_principals_row(dbs):
+    state = _state(dbs)
+    async with graph_session.session_for(state, "ada", ["analyst"], writes=False):
+        pass
+    assert (await _row(dbs)).rights == graph_session.rights(state, ["analyst"])
+
+
+async def test_a_read_is_never_parsed_as_a_write(dbs, monkeypatch):
+    from provisa.ephemeral import then
+
+    def parsed(statement):
+        raise AssertionError(f"a read was parsed as a write: {statement}")
+
+    monkeypatch.setattr(then, "split_of", parsed)
+    h = Session(monkeypatch, _MODEL)
+    session = TempSession(kept=True)
+    made = await seam.write(
+        "MATCH (p:Person) RETURN p.name AS name", {}, h.model, session, h.state, h.read, h.write
+    )
+    assert made is None
+
+
 # --- its end ------------------------------------------------------------------------------------
 
 

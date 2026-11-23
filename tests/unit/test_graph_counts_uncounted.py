@@ -129,3 +129,63 @@ async def test_a_parameterized_table_is_uncounted_and_the_other_labels_are_count
     assert "assignments_by_breed" in uncounted["error"]
     assert "breed_name" in uncounted["error"]
     assert body["node_count"] is None
+
+
+async def test_a_label_governance_refuses_is_uncounted_and_the_other_labels_are_counted(
+    monkeypatch,
+):
+    """A derived table whose view reads a table since deleted: governance refuses its count
+    (V006). The domain still answers 200 -- that label uncounted, with governance's reason, the
+    others counted -- never a 403 for the whole graph page."""
+    import json
+    from types import SimpleNamespace
+
+    from provisa.api.app import state
+    from provisa.api.rest import cypher_router
+    from provisa.compiler import sql_rewrite
+    from provisa.compiler.sql_validator import GovernanceRefused, ValidationViolation
+    from provisa.cypher import parser
+    from provisa.executor.result import QueryResult
+    from provisa.pgwire import _pipeline
+
+    monkeypatch.setattr(state, "contexts", {"analyst": object()}, raising=False)
+    monkeypatch.setattr(state, "roles", {"analyst": {"domain_access": ["*"]}}, raising=False)
+    monkeypatch.setattr(cypher_router, "_resolve_role_id", lambda request, st: "analyst")
+    monkeypatch.setattr(cypher_router, "_build_label_map", lambda ctx, role, st: None)
+    monkeypatch.setattr(
+        cypher_router,
+        "_countable_labels",
+        lambda label_map, domains, reads: (["Breed", "Kept"], []),
+    )
+    monkeypatch.setattr(
+        cypher_router, "_build_sql_from_ast", lambda ast, *a: (ast_sql(ast), None, None)
+    )
+    monkeypatch.setattr(sql_rewrite, "make_semantic_sql", lambda sql, ctx: sql)
+    monkeypatch.setattr(parser, "parse_cypher", lambda cypher: cypher)
+
+    def ast_sql(cypher: str) -> str:
+        table = "kept" if ":Kept)" in cypher else "breed"
+        return f"SELECT COUNT(*) AS cnt FROM {table}"
+
+    refusal = "Relation 'pet_store.stores_1' is not a registered table"
+
+    async def _govern(sql, role_id, **kw):
+        if "kept" in sql:
+            raise GovernanceRefused([ValidationViolation("V006", refusal)])
+        return SimpleNamespace(sql=sql)
+
+    async def _run(plan, st):
+        return QueryResult(rows=[(4,)], column_names=["cnt"])
+
+    monkeypatch.setattr(_pipeline, "_govern_and_route_compiled", _govern)
+    monkeypatch.setattr(cypher_router, "_run_plan", _run)
+
+    request = SimpleNamespace(query_params={})
+    response = await cypher_router.graph_counts(request)  # type: ignore[arg-type]
+    assert response.status_code == 200
+    body = json.loads(bytes(response.body))
+    assert body["label_counts"]["Breed"] == {"count": 4}
+    uncounted = body["label_counts"]["Kept"]
+    assert uncounted["count"] is None
+    assert refusal in uncounted["error"]
+    assert body["node_count"] is None

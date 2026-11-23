@@ -1532,8 +1532,34 @@ async def _govern_and_route(
 
     from provisa.core.statement_warnings import collecting
 
+    # REQ-1897 (amended 2026-11-23, REQUEST PRE-KEY): an exact repeat -- same text, same values,
+    # same role, session context and tenant -- is answered from the response cache by its
+    # pre-key, never governed or routed again. Only a read the caller serves from the cache, as
+    # written by its caller, is pre-keyed.
+    pending = None
+    if (
+        serve_cached
+        and explain is None
+        and deliver is None
+        and route_hint is None
+        and building is None
+        and not product_statement
+        and _sql_opts_in(sql)
+    ):
+        pending = _sql_pre_key(state, sql, role_id, session_vars, params, as_of, wire_formats)
+        if pending is not None:
+            # REQ-2066: judged per call on the statement as written.
+            from provisa.mv.load_window import refuse_named_outside_window
+
+            refuse_named_outside_window(state, sql)
+            plan = await _pre_keyed_plan(pending, state, role_id)
+            if plan is not None:
+                return await _attach_live_caps(await _attach_tier_caps(plan, state), state)
+
+    from provisa.pgwire import request_prekey
+
     await _wake_before_governing(state)
-    with collecting() as found:
+    with collecting() as found, request_prekey.recording(pending):
         plan = await _govern_and_route_planned(
             sql,
             role_id,
@@ -1551,6 +1577,49 @@ async def _govern_and_route(
         )
     plan.warnings = list(found)
     return await _attach_live_caps(await _attach_tier_caps(plan, state), state)
+
+
+def _sql_opts_in(sql: str) -> bool:
+    """Whether the statement's own text opts it into the response cache (REQ-544)."""
+    from provisa.compiler.directives import cache_hint_for
+
+    return cache_hint_for("sql", sql).opt_in
+
+
+def _sql_pre_key(
+    state: Any,
+    sql: str,
+    role_id: str,
+    session_vars: dict[str, str] | None,
+    params: list | None,
+    as_of: str | None,
+    wire_formats: list[int] | None,
+) -> Any:
+    """The pre-key of a SQL request (``request_prekey``), or None for a role with no surface
+    (the full path refuses it) or a statement on a session's temporary table."""
+    from provisa.compiler import temp_tables
+    from provisa.core.request_context import session_vars_for
+    from provisa.pgwire import request_prekey
+    from provisa.security.rights import effective_domain_access_role
+
+    if role_surface(state, role_id) is None or temp_tables.action_of(sql) is not None:
+        return None
+    _session_vars = (
+        session_vars
+        if session_vars is not None
+        else session_vars_for(effective_domain_access_role(role_id, state.roles))
+    )
+    return request_prekey.slot(
+        state,
+        "sql",
+        role_id,
+        sql,
+        request_prekey.typed_values(params),
+        sorted(_session_vars.items()),
+        as_of or "",
+        list(wire_formats) if wire_formats is not None else None,
+        current_catalog_request.get() is not None,
+    )
 
 
 async def _govern_and_route_planned(
@@ -3084,6 +3153,11 @@ async def route_governed(
     )
     _cache_missed: tuple[tuple[int, ...] | None, ...] = ()
     if serve_cached and _raw_cacheable and _row_level.unbound is None:
+        from provisa.pgwire import request_prekey
+
+        _result_shape = _kept_result_shape(
+            governed.memo, governed_semantic, gov_ctx.table_map, ctx, state
+        )
         _hit, _cache_missed = await _cached_before_routing(
             state,
             sql=_travel.cache_sql(governed_semantic),
@@ -3092,6 +3166,23 @@ async def route_governed(
             cache_hint=_cache_hint,
             wire_formats=wire_formats,
             as_of=as_of,
+            pre_keyed=_pre_key_recorder(
+                request_prekey.take(),
+                audit_text=sql,
+                parsed=_parsed_input,
+                gov_ctx=gov_ctx,
+                memo=governed.memo,
+                span_sql=governed_semantic,
+                governed_sql=_travel.cache_sql(governed_semantic),
+                params=embedded_params or None,
+                table_ids=_table_ids,
+                cache_hint=_cache_hint,
+                sources=governed.memo.get("sources", frozenset()),
+                semantic_sql=_metric_semantic_sql,
+                as_of=as_of,
+                result_shape=_result_shape,
+                asks_approval=False,
+            ),
         )
         if _hit is not None:
             return _cached_plan(
@@ -3106,9 +3197,7 @@ async def route_governed(
                 sources=governed.memo.get("sources", frozenset()),
                 semantic_sql=_metric_semantic_sql,
                 as_of=as_of,
-                result_shape=_kept_result_shape(
-                    governed.memo, governed_semantic, gov_ctx.table_map, ctx, state
-                ),
+                result_shape=_result_shape,
             )
 
     if explain is not None:
@@ -4576,6 +4665,7 @@ async def _cached_before_routing(
     cache_hint: CacheHint,
     wire_formats: list[int] | None,
     as_of: str | None,
+    pre_keyed: Callable[[tuple], None] | None = None,
 ) -> tuple[tuple[list[int] | None, Any] | None, tuple[tuple[int, ...] | None, ...]]:
     """The response-cache read made BEFORE routing (REQ-1897, amended 2026-10-01): the entry for
     governed ``sql`` + ``params`` + role, and the kinds looked for and not found.
@@ -4591,16 +4681,100 @@ async def _cached_before_routing(
     from provisa.cache.middleware import check_cache
 
     org_id = _response_cache_org_id(state)
-    missed: list[tuple[int, ...] | None] = []
+    keys: list[tuple[list[int] | None, str]] = []
     for formats in [wire_formats, None] if wire_formats is not None else [None]:
         key = _raw_cache_key(sql, params or [], role_id, formats, as_of, zone_cache_key())
         if key is None:
             return None, ()
+        keys.append((formats, key))
+    if pre_keyed is not None:
+        # REQ-1897 (REQUEST PRE-KEY): the request's pre-key now names these keys.
+        pre_keyed(tuple(keys))
+    missed: list[tuple[int, ...] | None] = []
+    for formats, key in keys:
         cached = await check_cache(store, key, org_id)
         if cached is not None:
             return (formats, cached), tuple(missed)
         missed.append(_entry_kind(formats))
     return None, tuple(missed)
+
+
+@dataclass(frozen=True)
+class _PreKeyed:  # REQ-1897 (amended 2026-11-23, REQUEST PRE-KEY)
+    """What a request's pre-key holds (``request_prekey``): the response-cache keys its first
+    compile produced, in the order that compile looked them up, and what a Route.CACHE plan of it
+    carries -- so a repeat reads the entry and is served without being governed or routed. The
+    audit record is opened per request from the statement's parse and governance context, as the
+    full path opens it."""
+
+    keys: tuple[tuple[list[int] | None, str], ...]
+    audit_text: str
+    parsed: Any
+    gov_ctx: Any
+    memo: dict[str, Any]
+    span_sql: str
+    governed_sql: str
+    params: list | None
+    table_ids: tuple[int, ...]
+    cache_hint: CacheHint
+    sources: frozenset[str]
+    semantic_sql: str | None
+    as_of: str | None
+    result_shape: _KeptResultShape
+    # The compiled path asks the approval hook per call (REQ-203): its pre-key is kept, and
+    # answers, only while no hook is set.
+    asks_approval: bool
+
+
+def _pre_key_recorder(pending: Any, **entry: Any) -> Callable[[tuple], None] | None:
+    """What records ``entry`` under the request's pre-key once its cache keys are known, or None
+    when no pre-key is bound for this request."""
+    if pending is None:
+        return None
+
+    def record(keys: tuple) -> None:
+        pending.keep(_PreKeyed(keys=keys, **entry))
+
+    return record
+
+
+async def _pre_keyed_plan(pending: Any, state: Any, role_id: str) -> _Plan | None:
+    """The Route.CACHE plan of a request whose pre-key names a live response-cache entry, or None
+    (no pre-key, its anchors replaced, or the entry gone): the caller then plans it in full."""
+    kept = pending.cached()
+    if not isinstance(kept, _PreKeyed):
+        return None
+    if kept.asks_approval and getattr(state, "approval_hook", None) is not None:
+        return None
+    from provisa.audit.pipeline import begin_audit
+    from provisa.cache.middleware import check_cache
+
+    store = state.response_cache_store
+    if not store.stores_results:
+        return None
+    org_id = _response_cache_org_id(state)
+    for formats, key in kept.keys:
+        cached = await check_cache(store, key, org_id)
+        if cached is None:
+            continue
+        # REQ-1910: resolved per execution, as on the full path.
+        await resolve_trace_scope(state, role_id, hint=kept.cache_hint.debug_trace)
+        audit = begin_audit(kept.audit_text, role_id, kept.parsed, kept.gov_ctx, state.model_stamp)
+        return _cached_plan(
+            governed_sql=kept.governed_sql,
+            params=kept.params,
+            role_id=role_id,
+            table_ids=kept.table_ids,
+            cache_hint=kept.cache_hint,
+            hit=(formats, cached),
+            audit=audit,
+            span_attrs=_kept_span_attrs(kept.memo, kept.span_sql, role_id, kept.audit_text, audit),
+            sources=kept.sources,
+            semantic_sql=kept.semantic_sql,
+            as_of=kept.as_of,
+            result_shape=kept.result_shape,
+        )
+    return None
 
 
 def _cached_plan(
@@ -5534,9 +5708,43 @@ async def _govern_and_route_compiled(  # REQ-262, REQ-263, REQ-265, REQ-266, REQ
     if state is None:
         from provisa.api.app import state  # type: ignore[assignment]
     from provisa.core.statement_warnings import collecting
+    from provisa.pgwire import request_prekey
+
+    # REQ-1897 (amended 2026-11-23, REQUEST PRE-KEY): an exact repeat is answered from the
+    # response cache by its pre-key, never governed or routed again. A request whose API tables
+    # are filled per call (API arguments, graphql_remote selections) is not pre-keyed.
+    pending = None
+    if (
+        serve_cached
+        and cache_hint.opt_in
+        and deliver is None
+        and explain is None
+        and api_args is None
+        and extra_selections is None
+        and (compiled is None or not (compiled.api_args or compiled.gql_remote_extra_selections))
+        and role_id in state.contexts
+    ):
+        pending = _compiled_pre_key(
+            state,
+            sql,
+            role_id,
+            exec_params,
+            cache_hint,
+            as_of,
+            steward_hint,
+            session_props,
+            sdl_joins,
+        )
+        # REQ-2066: judged per call on the statement as written.
+        from provisa.mv.load_window import refuse_named_outside_window
+
+        refuse_named_outside_window(state, sql)
+        plan = await _pre_keyed_plan(pending, state, role_id)
+        if plan is not None:
+            return await _attach_live_caps(await _attach_tier_caps(plan, state), state)
 
     await _wake_before_governing(state)
-    with collecting() as found:
+    with collecting() as found, request_prekey.recording(pending):
         if compiled is not None:
             prepared = _prepare_compiled_stage(compiled, role_id, state)
             sql, compiled = prepared.sql, prepared
@@ -5563,6 +5771,38 @@ async def _govern_and_route_compiled(  # REQ-262, REQ-263, REQ-265, REQ-266, REQ
         )
     plan.warnings = list(found)
     return await _attach_live_caps(await _attach_tier_caps(plan, state), state)
+
+
+def _compiled_pre_key(
+    state: Any,
+    sql: str,
+    role_id: str,
+    exec_params: list | None,
+    cache_hint: CacheHint,
+    as_of: str | None,
+    steward_hint: str | None,
+    session_props: dict[str, str] | None,
+    sdl_joins: bool,
+) -> Any:
+    """The pre-key of a compiled request (``request_prekey``): the compiled statement the surface
+    produced from its request text through its own text-only kept plan (Cypher's kept
+    translation, GraphQL's kept plan), with its bound values and the request's cache opt-in."""
+    from provisa.core.request_context import session_vars_for
+    from provisa.pgwire import request_prekey
+
+    return request_prekey.slot(
+        state,
+        "compiled",
+        role_id,
+        sql,
+        request_prekey.typed_values(exec_params),
+        sorted(session_vars_for(state.roles.get(role_id)).items()),
+        [cache_hint.opt_in, cache_hint.ttl, cache_hint.debug_trace],
+        as_of or "",
+        steward_hint or "",
+        sorted((session_props or {}).items()),
+        sdl_joins,
+    )
 
 
 async def _govern_and_route_compiled_planned(  # REQ-262, REQ-263, REQ-265, REQ-266
@@ -5684,6 +5924,15 @@ async def _govern_and_route_compiled_planned(  # REQ-262, REQ-263, REQ-265, REQ-
     )
     _cache_missed: tuple[tuple[int, ...] | None, ...] = ()
     if serve_cached and deliver is None and _row_level.unbound is None:
+        from provisa.pgwire import request_prekey
+
+        _result_shape = _kept_result_shape(
+            _memo, governed_sql, gov_ctx.table_map, state.contexts[role_id], state
+        )
+        # The approval hook is asked per call (REQ-203): while one is set, no pre-key records.
+        _pending = request_prekey.take()
+        if getattr(state, "approval_hook", None) is not None:
+            _pending = None
         _hit, _cache_missed = await _cached_before_routing(
             state,
             sql=_travel.cache_sql(governed_sql),
@@ -5692,6 +5941,23 @@ async def _govern_and_route_compiled_planned(  # REQ-262, REQ-263, REQ-265, REQ-
             cache_hint=cache_hint,
             wire_formats=None,
             as_of=as_of,
+            pre_keyed=_pre_key_recorder(
+                _pending,
+                audit_text=sql,
+                parsed=_compiled_tree,
+                gov_ctx=gov_ctx,
+                memo=_memo,
+                span_sql=governed_sql,
+                governed_sql=_travel.cache_sql(governed_sql),
+                params=exec_params,
+                table_ids=_table_ids,
+                cache_hint=cache_hint,
+                sources=_memo.get("sources", frozenset()),
+                semantic_sql=None,
+                as_of=as_of,
+                result_shape=_result_shape,
+                asks_approval=True,
+            ),
         )
         if _hit is not None:
             return _cached_plan(
@@ -5706,9 +5972,7 @@ async def _govern_and_route_compiled_planned(  # REQ-262, REQ-263, REQ-265, REQ-
                 sources=_memo.get("sources", frozenset()),
                 semantic_sql=None,
                 as_of=as_of,
-                result_shape=_kept_result_shape(
-                    _memo, governed_sql, gov_ctx.table_map, state.contexts[role_id], state
-                ),
+                result_shape=_result_shape,
             )
 
     from provisa.api.data.materialization import statement_scratch

@@ -15,6 +15,8 @@ each compiled independently and correctly, with RLS and rights applied per
 operation.
 """
 
+from decimal import Decimal
+
 from graphql import parse, validate
 
 from provisa.compiler.introspect import ColumnMetadata
@@ -102,7 +104,7 @@ class TestTwoInsertMutations:
         schema, ctx = _build()
         doc = parse("""
             mutation {
-                insertOrders(input: { amount: 42.0, region: "us-east" }) { affected_rows }
+                insertOrders(input: { amount: "42.0", region: "us-east" }) { affected_rows }
                 insertCustomers(input: { name: "Alice", email: "alice@example.com" }) { affected_rows }
             }
         """)
@@ -114,7 +116,7 @@ class TestTwoInsertMutations:
         schema, ctx = _build()
         doc = parse("""
             mutation {
-                insertOrders(input: { amount: 10.0, region: "eu" }) { affected_rows }
+                insertOrders(input: { amount: "10.0", region: "eu" }) { affected_rows }
                 insertCustomers(input: { name: "Bob", email: "bob@example.com" }) { affected_rows }
             }
         """)
@@ -130,7 +132,7 @@ class TestTwoInsertMutations:
         schema, ctx = _build()
         doc = parse("""
             mutation {
-                insertOrders(input: { amount: 10.0, region: "eu" }) { affected_rows }
+                insertOrders(input: { amount: "10.0", region: "eu" }) { affected_rows }
                 insertCustomers(input: { name: "Bob", email: "bob@example.com" }) { affected_rows }
             }
         """)
@@ -145,7 +147,7 @@ class TestTwoInsertMutations:
         schema, ctx = _build()
         doc = parse("""
             mutation {
-                insertOrders(input: { amount: 99.9, region: "us-west" }) { affected_rows }
+                insertOrders(input: { amount: "99.9", region: "us-west" }) { affected_rows }
                 insertCustomers(input: { name: "Carol", email: "carol@example.com" }) { affected_rows }
             }
         """)
@@ -154,7 +156,8 @@ class TestTwoInsertMutations:
         orders_r = next(r for r in results if r.table_name == "orders")
         customers_r = next(r for r in results if r.table_name == "customers")
         # Each mutation has its own parameter list starting at $1
-        assert orders_r.params == [99.9, "us-west"]
+        # REQ-1961: a sized numeric is written as the decimal its exact digits are.
+        assert orders_r.params == [Decimal("99.9"), "us-west"]
         assert "Carol" in customers_r.params
 
 
@@ -165,7 +168,7 @@ class TestInsertAndUpdate:
         schema, ctx = _build()
         doc = parse("""
             mutation {
-                insertOrders(input: { amount: 5.0, region: "ca" }) { affected_rows }
+                insertOrders(input: { amount: "5.0", region: "ca" }) { affected_rows }
                 updateOrders(set: { status: "shipped" }, where: { id: { eq: 1 } }) { affected_rows }
             }
         """)
@@ -294,8 +297,8 @@ class TestSameTableBatch:
         # Aliases required when using the same mutation field twice
         doc = parse("""
             mutation {
-                first: insertOrders(input: { amount: 1.0, region: "x" }) { affected_rows }
-                second: insertOrders(input: { amount: 2.0, region: "y" }) { affected_rows }
+                first: insertOrders(input: { amount: "1.0", region: "x" }) { affected_rows }
+                second: insertOrders(input: { amount: "2.0", region: "y" }) { affected_rows }
             }
         """)
         assert not validate(schema, doc)

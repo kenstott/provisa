@@ -36,7 +36,7 @@ from provisa.compiler.naming import (
 from provisa.compiler.params import ParamCollector
 from provisa.compiler.sql_gen import CompilationContext, TableMeta, _q
 from provisa.compiler.sql_rewrite import context_derived, translate_epoch_temporal_columns
-from provisa.compiler.sql_where import _compile_where, _extract_value
+from provisa.compiler.sql_where import _compile_where, _extract_value, exact_decimal_value
 
 
 # NoSQL source types — mutations not supported
@@ -142,8 +142,16 @@ def _physical(table: TableMeta, ctx: CompilationContext) -> Callable[[str], str]
     return phys
 
 
-def _physical_keys(data: dict, phys: Callable[[str], str]) -> dict:
-    return {phys(k): v for k, v in data.items()}
+def _physical_keys(data: dict, phys: Callable[[str], str], types: dict[str, str]) -> dict:
+    """``data`` by physical column, each value as its column takes it: a sized numeric's exact
+    digits are the decimal they are (REQ-1961, ``exact_decimal_value``). ``types``: the table's
+    registered type by physical column (``_column_types``)."""
+    return {phys(k): exact_decimal_value(v, types.get(phys(k))) for k, v in data.items()}
+
+
+def _column_types(table: TableMeta, ctx: CompilationContext) -> dict[str, str]:
+    """The table's registered type by physical column."""
+    return dict(ctx.aggregate_columns.get(table.table_id, []))
 
 
 def _mutation_where(
@@ -158,6 +166,7 @@ def _mutation_where(
         ctx.virtual_columns.get(table.table_id),
         table.table_id,
         ctx.exposed_to_physical,
+        column_types=ctx.aggregate_columns,
     )
 
 
@@ -175,7 +184,7 @@ def compile_upsert(  # REQ-212, REQ-036
             args[arg.name.value] = _extract_value(arg.value, variables)
 
     phys = _physical(table, ctx)
-    input_data = _physical_keys(args.get("input", {}), phys)
+    input_data = _physical_keys(args.get("input", {}), phys, _column_types(table, ctx))
     if not input_data:
         raise ValueError("upsert mutation requires 'input' argument")
 
@@ -234,7 +243,9 @@ def compile_insert(  # REQ-032, REQ-033, REQ-034, REQ-036
         for arg in field_node.arguments:
             args[arg.name.value] = _extract_value(arg.value, variables)
 
-    input_data = _physical_keys(args.get("input", {}), _physical(table, ctx))
+    input_data = _physical_keys(
+        args.get("input", {}), _physical(table, ctx), _column_types(table, ctx)
+    )
     if not input_data:
         raise ValueError("insert mutation requires 'input' argument")
 
@@ -275,7 +286,7 @@ def compile_update(  # REQ-032, REQ-033, REQ-034, REQ-035, REQ-036
         for arg in field_node.arguments:
             args[arg.name.value] = _extract_value(arg.value, variables)
 
-    set_data = _physical_keys(args.get("set", {}), _physical(table, ctx))
+    set_data = _physical_keys(args.get("set", {}), _physical(table, ctx), _column_types(table, ctx))
     if not set_data:
         raise ValueError("update mutation requires 'set' argument")
     if not args.get("where"):
@@ -441,7 +452,8 @@ def compile_hasura(  # REQ-194
         rows = [args["object"]] if form == "one" else args["objects"]
         if not rows:
             raise ValueError(f"{field_node.name.value} inserts no object")
-        rows = [_physical_keys(r, phys) for r in rows]
+        types = _column_types(table, ctx)
+        rows = [_physical_keys(r, phys, types) for r in rows]
         columns = list(dict.fromkeys(c for r in rows for c in r))
         values = ", ".join(
             "(" + ", ".join(collector.add(r[c]) if c in r else "DEFAULT" for c in columns) + ")"
@@ -452,7 +464,7 @@ def compile_hasura(  # REQ-194
             sql += _on_conflict_sql(args["on_conflict"], table, ctx, conv, phys)
         returning = returned or columns
     elif op == "update":
-        set_data = _physical_keys(args.get("_set") or {}, phys)
+        set_data = _physical_keys(args.get("_set") or {}, phys, _column_types(table, ctx))
         if not set_data:
             raise ValueError(f"{field_node.name.value} sets no column: give it _set")
         set_sql = ", ".join(f"{_q(c)} = {collector.add(v)}" for c, v in set_data.items())
