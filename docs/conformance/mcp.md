@@ -1,6 +1,10 @@
 # MCP Conformance
 
-No public MCP conformance suite runs in CI today.
+The run uses the MCP conformance suite (@modelcontextprotocol/conformance) against the MCP endpoint, plus scenarios taken from the MCP specification for the model's own tools, which the suite's scenarios do not call.
+
+**Suite:** @modelcontextprotocol/conformance server scenarios and MCP specification scenarios.
+
+**Pass rate:** written from the first run of conformance-mcp.yml.
 
 ## Deliberate differences
 

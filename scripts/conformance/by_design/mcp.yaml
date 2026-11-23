@@ -1,0 +1,19 @@
+# The MCP conformance suite's server scenarios skipped by design (REQ-2167, amended 2026-10-27 and
+# 2026-10-28), never counted as failed. scripts/conformance/by_design.py.
+#
+# These scenarios call the fixtures of the suite's reference server ("everything server"): tools
+# named test_simple_text, test_image_content, test_sampling and the like, resources under test://,
+# prompts named test_simple_prompt. An MCP server's tools, resources and prompts are its own; the
+# suite names no way to map its fixtures onto another server's. Provisa's tools are the model's
+# (REQ-1008), so the model's own tools are checked by the specification scenarios of
+# mcp_conformance.py instead. The group names each scenario, so a scenario added to the suite is
+# never skipped by accident.
+
+- group: Scenarios that call the suite's reference fixtures
+  requirement: REQ-1008, REQ-2167
+  decision: >-
+    "Vocabulary fixed by the model": MCP tools, resources and prompts reflect the model, so a tool,
+    resource or prompt the model does not declare is not offered. These scenarios call the suite's
+    own reference fixtures (test_* tools and prompts, test:// resources). The model's tools are
+    checked by the specification scenarios on this page (tools/list, tools/call, errors).
+  case: "^MCP conformance suite::(tools-call-[a-z-]+|elicitation-sep1034-defaults|elicitation-sep1330-enums|completion-complete|resources-(read-text|read-binary|templates-read|subscribe|unsubscribe)|prompts-get-[a-z-]+)$"

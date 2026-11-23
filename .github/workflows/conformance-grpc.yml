@@ -1,0 +1,126 @@
+name: Conformance (gRPC)
+
+# REQ-2167: Provisa's gRPC surface against the gRPC protocol's server reflection, health checking
+# and status codes. gRPC publishes interop tests for its own test service, not a conformance suite
+# for a server of another service, so scripts/conformance/grpc_conformance.py runs a scenario set
+# derived from grpc/grpc's server-reflection, health-checking and status-code documents. Each case
+# is passed, skipped by design or failed (amended 2026-10-28).
+#
+# The report is written to the job summary and to the artifact conformance-grpc.json (read by
+# scripts/conformance/fill_docs.py into docs/conformance/grpc.md). The job fails when a case fails
+# that scripts/conformance/expected/grpc.json does not list, judged by
+# scripts/conformance/baseline_gate.py at its last step, when the instance did not start, or when
+# no case ran.
+#
+# The instance is the pgwire conformance job's (see conformance-pgwire.yml); its gRPC port is the
+# API port plus one (.github/actions/conformance-instance).
+
+on:
+  # Runs on dispatch for a release (gh workflow run <workflow> --ref <release branch>): it gates the
+  # release (REQ-1989). No push starts it.
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Commit or branch to test (default: the dispatched one)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: conformance-grpc-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  grpc:
+    name: gRPC conformance
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    env:
+      PROVISA_API_PORT: "8901"
+      PROVISA_PGWIRE_PORT: "8906"
+      CONFORMANCE_PG_HOST: 127.0.0.1
+      CONFORMANCE_PG_PORT: "15432"
+      CONFORMANCE_PG_DATABASE: conformance
+      CONFORMANCE_PG_USER: postgres
+      CONFORMANCE_PG_PASSWORD: conformance-pg-password
+      # pgwire's password auth (basic provider, SCRAM-SHA-256): the break-glass account the
+      # instance boots with, the job user it creates, and the session signing key. Ephemeral, on
+      # a throwaway instance: not secrets.
+      PROVISA_SUPERUSER_USERNAME: conformance-su
+      PROVISA_SUPERUSER_PASSWORD: conformance-su-password
+      CONFORMANCE_USER: conformance
+      CONFORMANCE_PASSWORD: conformance-password
+      CONFORMANCE_JWT_SECRET: conformance-jwt-signing-key-not-a-secret-0000
+    services:
+      postgres:
+        image: postgres:16.4
+        env:
+          POSTGRES_PASSWORD: conformance-pg-password
+          POSTGRES_DB: conformance
+        ports:
+          - 15432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+
+      - name: Set up Python
+        uses: ./.github/actions/setup-python
+        with:
+          extras: dev
+
+      # The instance (.github/actions/conformance-instance): fixture, model, server, job user and
+      # its token in CONFORMANCE_AUTHORIZATION.
+      - name: Start the Provisa instance
+        id: start
+        uses: ./.github/actions/conformance-instance
+
+      - name: Run the scenarios
+        timeout-minutes: 20
+        run: |
+          mkdir -p "$RUNNER_TEMP/report"
+          .venv/bin/python scripts/conformance/grpc_conformance.py \
+            "127.0.0.1:$((PROVISA_API_PORT + 1))" org_admin "$CONFORMANCE_AUTHORIZATION" \
+            "$RUNNER_TEMP/report/conformance-grpc.json" "$RUNNER_TEMP/report/conformance-grpc.md" || ran=$?
+          cat "$RUNNER_TEMP/report/conformance-grpc.md" >> "$GITHUB_STEP_SUMMARY"
+          exit "${ran:-0}"
+
+      - name: Upload results
+        if: ${{ !cancelled() }}
+        run: cp "$RUNNER_TEMP/provisa/server.log" "$RUNNER_TEMP/report/" || true
+
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: conformance-grpc
+          path: ${{ runner.temp }}/report/
+          if-no-files-found: warn
+
+      - name: Server log on failure
+        if: ${{ failure() }}
+        run: tail -n 400 "$RUNNER_TEMP/provisa/server.log" || true
+
+      - name: Stop the Provisa instance
+        if: ${{ always() }}
+        run: |
+          if [ -f "$RUNNER_TEMP/provisa/server.pid" ]; then kill "$(cat "$RUNNER_TEMP/provisa/server.pid")" || true; fi
+          if [ -d "$RUNNER_TEMP/provisa/control-pg" ]; then .venv/bin/python -m provisa.core.control_plane_pg stop "$RUNNER_TEMP/provisa/control-pg" || true; fi
+
+      # REQ-2167: the run judged against its committed expected-failures list
+      # (scripts/conformance/expected/grpc.json): a case that fails and is not listed fails the
+      # job, and so does a listed case that now passes (take it off in the change that fixes it),
+      # a partial run, or a missing report. The last step, after the instance stops.
+      - name: Judge against the expected-failures list
+        if: ${{ !cancelled() }}
+        run: .venv/bin/python scripts/conformance/baseline_gate.py cases grpc "$RUNNER_TEMP/report/conformance-grpc.json"
