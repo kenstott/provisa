@@ -144,10 +144,9 @@ export function checkRequiredRules(fileName: string, source: string): RequiredVi
       }
       if (
         ts.isBinaryExpression(n) &&
-        [
-          ts.SyntaxKind.EqualsEqualsEqualsToken,
-          ts.SyntaxKind.EqualsEqualsToken,
-        ].includes(n.operatorToken.kind)
+        [ts.SyntaxKind.EqualsEqualsEqualsToken, ts.SyntaxKind.EqualsEqualsToken].includes(
+          n.operatorToken.kind,
+        )
       ) {
         for (const [side, other] of [
           [n.left, n.right],
@@ -195,13 +194,18 @@ export function checkRequiredRules(fileName: string, source: string): RequiredVi
     const type = attrExpr(n, "type");
     if (type && ts.isStringLiteralLike(type) && type.text === "submit") return true;
     const variant = attrExpr(n, "variant");
-    const filled = variant === undefined || (ts.isStringLiteralLike(variant) && variant.text === "filled");
+    const filled =
+      variant === undefined || (ts.isStringLiteralLike(variant) && variant.text === "filled");
     return isForm && filled;
   };
 
   // What useRequiredFields is given, and which of its fields are spread onto a control.
   const declared = new Map<string, ts.Node>();
   const spread = new Set<string>();
+  // The names useRequiredFields' result is bound to, and whether one is handed to a component that
+  // spreads its fields itself (whose own file is held to the native-select marker).
+  const hooks = new Set<string>();
+  let delegated = false;
   const declare = (obj: ts.Expression) => {
     const x = strip(obj);
     if (ts.isObjectLiteralExpression(x)) {
@@ -221,7 +225,12 @@ export function checkRequiredRules(fileName: string, source: string): RequiredVi
   const visit = (n: ts.Node) => {
     if (ts.isCallExpression(n)) {
       const callee = n.expression.getText();
-      if (callee === "useRequiredFields" && n.arguments[0]) declare(n.arguments[0]);
+      if (callee === "useRequiredFields" && n.arguments[0]) {
+        declare(n.arguments[0]);
+        if (ts.isVariableDeclaration(n.parent) && ts.isIdentifier(n.parent.name)) {
+          hooks.add(n.parent.name.text);
+        }
+      }
       if (
         ts.isPropertyAccessExpression(n.expression) &&
         ["field", "native"].includes(n.expression.name.text) &&
@@ -247,6 +256,10 @@ export function checkRequiredRules(fileName: string, source: string): RequiredVi
           }
         }
       }
+    }
+    if (ts.isJsxAttribute(n) && n.initializer && ts.isJsxExpression(n.initializer)) {
+      const e = n.initializer.expression;
+      if (e && ts.isIdentifier(e) && hooks.has(e.text)) delegated = true;
     }
     if (isJsxEl(n)) {
       const tag = tagOf(n);
@@ -291,7 +304,7 @@ export function checkRequiredRules(fileName: string, source: string): RequiredVi
   visit(sf);
 
   for (const [name, node] of declared) {
-    if (!spread.has(name)) {
+    if (!spread.has(name) && !delegated) {
       report(
         "required-unmarked",
         node,

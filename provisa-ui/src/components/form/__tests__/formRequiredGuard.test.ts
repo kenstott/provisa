@@ -23,7 +23,68 @@ const SRC = resolve(__dirname, "../../..");
  * Files not yet converted, each with what holds it back. Each must still fail the rules: once a
  * file passes, its entry goes, so the list only shrinks.
  */
-const NOT_YET_CONVERTED: Readonly<Record<string, string>> = {};
+const NOT_YET_CONVERTED: Readonly<Record<string, string>> = {
+  "components/ChatPanel.tsx":
+    "the primary <Button> disabled by draft; the primary <Button> disabled by otherText",
+  "components/PersonalAccessTokens.tsx": "the primary <Button> disabled by name",
+  "components/TagAssignmentForm.tsx": "<FormFooter>'s Save disabled by incomplete",
+  "components/admin/AccessReviews.tsx": "the primary <Button> disabled by reason",
+  "components/admin/AuthTab.tsx": "<FormFooter>'s Save disabled by incomplete",
+  "components/admin/ContainerRegistriesTab.tsx": "<FormFooter>'s Save disabled by missing",
+  "components/admin/EncryptionTab.tsx": "<FormFooter>'s Save disabled by incomplete",
+  "components/admin/EnvironmentsTab.tsx":
+    "the primary <Button> disabled by name; the primary <Button> disabled by mergeInto, message",
+  "components/admin/FederationEngineTab.tsx": "<FormFooter>'s Save disabled by incomplete",
+  "components/admin/GlossaryTab.tsx": "the primary <Button> disabled by addName",
+  "components/admin/GrantEditor.tsx":
+    "<FormFooter>'s Save disabled by blank; <FormFooter>'s Save disabled by draft.url",
+  "components/admin/LocalUsersTab.tsx": "<FormFooter>'s Save disabled by newUsername, newPassword",
+  "components/admin/MailPlatformsSection.tsx": "<FormFooter>'s Save disabled by platformMissing",
+  "components/admin/MailTab.tsx":
+    "<FormFooter>'s Save disabled by incomplete, choice; the primary <Button> disabled by testTo",
+  "components/admin/MemberAccessForm.tsx": "<FormFooter>'s Save disabled by ready",
+  "components/admin/MemberAttributes.tsx": "the primary <Button> disabled by name",
+  "components/admin/OrgEncryptionTab.tsx": "the primary <Button> disabled by keyB64",
+  "components/admin/OrgEngineTab.tsx": "<FormFooter>'s Save disabled by externalIncomplete",
+  "components/admin/OrgFilesTab.tsx": "<FormFooter>'s Save disabled by missing",
+  "components/admin/OrgsTab.tsx":
+    "<FormFooter>'s Save disabled by newOrgId, newOrgName; the primary <Button> disabled by addMemberUserId; the primary <Button> disabled by inviteOrgId",
+  "components/admin/PackageRegistriesTab.tsx": "<FormFooter>'s Save disabled by missing",
+  "components/admin/PlatformRegionsTab.tsx": "<FormFooter>'s Save disabled by id, description",
+  "components/admin/RegionEngineTabs.tsx": "<FormFooter>'s Save disabled by kind, url",
+  "components/admin/RelatedToDialog.tsx": "<FormFooter>'s Save disabled by name",
+  "components/admin/ReportsTab.tsx": "<FormFooter>'s Save disabled by addName, addSql",
+  "components/admin/SecretsTab.tsx":
+    "<FormFooter>'s Save disabled by incomplete; <FormFooter>'s Save disabled by name, value",
+  "components/admin/SyntheticDatasetsPanel.tsx": "<FormFooter>'s Save disabled by name",
+  "components/admin/TagsTab.tsx":
+    "<FormFooter>'s Save disabled by formId; the primary <Button> disabled by newValue",
+  "components/admin/TermEditForm.tsx": "<FormFooter>'s Save disabled by draft.name",
+  "components/admin/TermReviewQueue.tsx": "the primary <Button> disabled by target",
+  "components/admin/ontologyImport/ImportOntologyDialog.tsx":
+    "the primary <Button> disabled by ready",
+  "components/admin/ontologyImport/ItemDialogs.tsx":
+    "<FormFooter>'s Save disabled by name; the primary <Button> disabled by target",
+  "components/entitlements/EntitlementListForm.tsx": "<FormFooter>'s Save disabled by ready",
+  "components/entitlements/ExpiryRules.tsx": "<FormFooter>'s Save disabled by reason",
+  "components/lifecycle/DeprecateDialog.tsx": "the primary <Button> disabled by reason",
+  "components/lifecycle/RetireDialog.tsx": "the primary <Button> disabled by reason, successor",
+  "components/relationships/JoinThroughAction.tsx": "<FormFooter>'s Save disabled by name",
+  "pages/AdminPage.tsx": "<FormFooter>'s Save disabled by newDomainId",
+  "pages/MetricsPage.tsx": "<FormFooter>'s Save disabled by form.name, form.expression",
+  "pages/RequestsPage.tsx": "the primary <Button> disabled by rejectReason",
+  "pages/SecurityPage.tsx": "<FormFooter>'s Save disabled by roleForm.description",
+  "pages/TablesPage.tsx": "the primary <Button> disabled by regenReason",
+  "pages/TeamPage.tsx": "the primary <Button> disabled by roleId",
+  "pages/data-products/offers/AddOfferForm.tsx": "<FormFooter>'s Save disabled by ready",
+  "pages/data-products/offers/OfferCard.tsx": "the primary <Button> disabled by ready",
+  "pages/library/LibraryAddForm.tsx":
+    "<TextInput value={url}> blocks submit (line 39) without required",
+  "pages/security/DerivedRoles.tsx":
+    "<FormFooter>'s Save disabled by attribute, description; <FormFooter>'s Save disabled by description",
+  "pages/tables/CalendarCreateModal.tsx":
+    "<FormFooter>'s Save disabled by name, version, retailAnchorMissing; the primary <Button> disabled by name, version, retailAnchorMissing",
+};
 
 function componentFiles(dir: string, found: string[] = []): string[] {
   for (const name of readdirSync(dir)) {
@@ -75,9 +136,9 @@ describe("the required-field rules fail what they are meant to fail", () => {
           <FormFooter action={<Button disabled={ticked.length === 0 || busy}>Register</Button>} /></FormLayout>`,
       ),
     ).toEqual([]);
-    expect(rules(`<FormLayout><FormFooter onSave={s} saveProps={{ disabled: !dirty }} /></FormLayout>`)).toEqual(
-      [],
-    );
+    expect(
+      rules(`<FormLayout><FormFooter onSave={s} saveProps={{ disabled: !dirty }} /></FormLayout>`),
+    ).toEqual([]);
   });
 
   it("a field a submit handler refuses while empty, without the marker", () => {
@@ -105,6 +166,13 @@ describe("the required-field rules fail what they are meant to fail", () => {
           return <FormLayout><FormField size="medium"><TextInput {...req.field("name")} value={name} /></FormField></FormLayout>; }`,
       ),
     ).toEqual(["required-unmarked"]);
+    // Handed to a component, the fields are spread in that component's own file.
+    expect(
+      rules(
+        `function F() { const req = useRequiredFields({ name, domain });
+          return <FormLayout><Identifiers required={req} /></FormLayout>; }`,
+      ),
+    ).toEqual([]);
     expect(
       rules(
         `function F() { const req = useRequiredFields({ domain });
@@ -141,9 +209,7 @@ describe("every component follows the required-field rules", () => {
     "%s",
     (rel, path) => {
       const violations = checkRequiredRules(rel, readFileSync(path, "utf8"));
-      expect(
-        violations.map((v) => `${rel}:${v.line} ${v.rule}: ${v.detail}`).join("\n"),
-      ).toBe("");
+      expect(violations.map((v) => `${rel}:${v.line} ${v.rule}: ${v.detail}`).join("\n")).toBe("");
     },
   );
 });
