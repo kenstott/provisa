@@ -149,7 +149,8 @@ def managed_graph(term: Any, base: str, op: str) -> str | None:
     """The session graph a graph management operation's ``term`` names; None for NAMED (every
     session graph). DEFAULT and ALL hold the model's own graph, as does an IRI under ``base``:
     refused by name."""
-    from provisa.sparql_query.session_graph import model_graph_refusal, session_graph
+    from provisa.sparql_query.compiler import model_graph_refusal
+    from provisa.sparql_query.session_graph import session_graph
 
     if term == "NAMED":
         return None

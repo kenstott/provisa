@@ -40,6 +40,7 @@ from __future__ import annotations
 from collections import defaultdict
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from typing import Any
 from urllib.parse import quote
 
 from provisa.core.parameters import given_names
@@ -87,6 +88,12 @@ def xsd_of_sql(column: str) -> str:
     return f"CASE {whens} ELSE '{XSD}string' END"
 
 
+def under_base(iri: str, base: str) -> bool:
+    """Whether ``iri`` is in the model's namespace: the base IRI or under it (REQ-2135, amended
+    2026-11-23: a graph IRI there is the model's own graph, any other a session graph)."""
+    return iri == base or iri.startswith(f"{base}/")
+
+
 def _seg(value: str) -> str:
     return quote(value, safe="")
 
@@ -120,6 +127,29 @@ class Grounding:
     property_terms: dict[tuple[str, str], tuple[str, ...]] = field(default_factory=dict)
 
 
+@dataclass(frozen=True)
+class SessionPart:
+    """What a query reads of the principal's graph session (REQ-2135, amended 2026-11-23;
+    provisa.sparql_query.session_graph.read_over): its labels a node is read by, its graph tags,
+    and the node each IRI names in each graph."""
+
+    #: The session's own labels (no model table): a class's, a graph tag's, and "" for a node
+    #: with neither. A node of one is told apart by its graph identity (``__graph_id``).
+    labels: frozenset[str]
+    #: Each session graph's IRI -> its tag (a label every node of that graph carries).
+    tags: Mapping[str, str]
+    #: (IRI, graph IRI, "" for the default graph) -> the session node that IRI names there.
+    nodes: Mapping[tuple[str, str], str]
+    #: A model label the overlay reads from the session (a relationship ends on its rows) -> its
+    #: model table's name, which its subjects' IRIs name.
+    model_tables: Mapping[str, str]
+
+    def nodes_of(self, iri: str, graph: str | None) -> list[str]:
+        """The session nodes ``iri`` names in ``graph`` (None: the default graph)."""
+        held = self.nodes.get((iri, graph or ""))
+        return [held] if held is not None else []
+
+
 @dataclass
 class Vocabulary:
     base: str
@@ -135,6 +165,8 @@ class Vocabulary:
     prefixes: dict[str, str]
     #: the labels whose tables are read by arguments, which no path includes (REQ-2135)
     parameterized: frozenset[str]
+    #: The graph session's part, when the principal's session holds objects (REQ-2135).
+    session: SessionPart | None = None
 
     def labels_of_class(self, iri: str) -> list[str]:
         return self.classes.get(iri, [])
@@ -265,9 +297,9 @@ def grounding_from_refs(
     return Grounding(class_terms, property_terms)
 
 
-def column_types_of(lm: CypherLabelMap, ctx: object) -> dict[tuple[str, str], str]:
+def column_types_of(lm: CypherLabelMap, ctx: Any) -> dict[tuple[str, str], str]:
     """Each (label, property)'s SQL type, from the compilation context's columns."""
-    aggregate_columns: dict[int, list[tuple[str, str]]] = getattr(ctx, "aggregate_columns")
+    aggregate_columns: dict[int, list[tuple[str, str]]] = ctx.aggregate_columns
     out: dict[tuple[str, str], str] = {}
     for label, nm in lm.nodes.items():
         by_column = _props_by_column(nm)

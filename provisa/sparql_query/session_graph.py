@@ -48,8 +48,8 @@ from provisa.compiler.temp_tables import TempSession
 from provisa.cypher import counters
 from provisa.ephemeral import store
 from provisa.ephemeral.store import NewLabel, NewNode, NewRel, Writes
-from provisa.sparql_query.compiler import SparqlRefused
-from provisa.sparql_query.vocabulary import RDF_TYPE
+from provisa.sparql_query.compiler import SparqlRefused, model_graph_refusal
+from provisa.sparql_query.vocabulary import RDF_TYPE, under_base
 
 Triple = tuple[Any, Any, Any]
 
@@ -63,18 +63,6 @@ CLASS, PROPERTY, REL, GRAPH, NODE = "class", "property", "rel", "graph", "node"
 _LABEL_KINDS = (CLASS, GRAPH)
 
 DEFAULT = ""
-
-
-def under_base(iri: str, base: str) -> bool:
-    """Whether ``iri`` is in the model's namespace: the base IRI or under it."""
-    return iri == base or iri.startswith(f"{base}/")
-
-
-def model_graph_refusal(what: str, base: str) -> SparqlRefused:
-    return SparqlRefused(
-        f"{what} names the model's own graph, under its base IRI <{base}>: write its rows without "
-        "a graph, and keep session objects in a graph outside the base"
-    )
 
 
 def session_graph(term: Any, base: str, what: str) -> str:
@@ -741,3 +729,215 @@ class SessionWrite:
             await self.insert({target: triples})
         finally:
             self.blank_used = used
+
+
+# --- reading -------------------------------------------------------------------------------------
+
+
+class SessionNode(BNode):
+    """A session node an update's WHERE solution names that has no IRI (a blank node's): its
+    templates name the very node again, by its id, never a new one."""
+
+    node_id: str
+
+    def __new__(cls, node_id: str) -> SessionNode:
+        made = BNode.__new__(cls, _blank_label(node_id))
+        made.node_id = node_id
+        return made
+
+
+def _blank_label(node_id: str) -> str:
+    """A session node's id as a blank node's label (``e:1`` -> ``e1``)."""
+    return _WORD.sub("", node_id)
+
+
+def _model_keys(key: str) -> list[str]:
+    """A model row's key text (provisa.gql.select_builder.node_key_text) as its key values: a
+    compound key's columns split on each ``|`` no backslash escapes, each unescaped."""
+    values, held, escaped = [], [], False
+    for ch in key:
+        if escaped:
+            held.append(ch)
+            escaped = False
+        elif ch == "\\":
+            escaped = True
+        elif ch == "|":
+            values.append("".join(held))
+            held = []
+        else:
+            held.append(ch)
+    values.append("".join(held))
+    return values
+
+
+@dataclass(frozen=True)
+class SessionTerms:
+    """The RDF term each node a read over the session answers with (its graph identity) is:
+    a session node's IRI, or a blank node where it has none; a model row's IRI."""
+
+    #: Each session node an IRI names -> that IRI.
+    iris: dict[str, str]
+    #: Each model label -> (its domain, its table), which its rows' IRIs name.
+    models: dict[str, tuple[str, str]]
+    base: str
+
+    def term(self, graph_id: str, update: bool = False) -> Any:
+        """``graph_id`` as an RDF term; a blank node of an update's WHERE is a
+        :class:`SessionNode`, which its templates name the node by."""
+        from provisa.gql.iri import subject_iri
+
+        if graph_id in self.iris:
+            return URIRef(self.iris[graph_id])
+        label, sep, key = graph_id.partition("|")
+        if sep:
+            domain, table = self.models[label]
+            return URIRef(subject_iri(self.base, domain, table, _model_keys(key)))
+        return SessionNode(graph_id) if update else BNode(_blank_label(graph_id))
+
+
+@dataclass
+class SessionRead:
+    """What a SPARQL read compiles over in the principal's graph session (REQ-2135, amended
+    2026-11-23): the vocabulary with the session's classes, properties and edges; the label map
+    (the session's overlay of the model, :mod:`provisa.ephemeral.seam`); and the terms its
+    session nodes answer as. Outside a session, or in one holding nothing, the model's own."""
+
+    vocab: Any
+    graph: Any
+    model: Any
+    session: TempSession | None
+    terms: SessionTerms | None = None
+
+    def expand(self, sql: Any) -> Any:
+        """``sql`` with the session's relations in place (seam.expand)."""
+        from provisa.ephemeral import seam
+
+        return seam.expand(sql, self.graph, self.model, self.session)
+
+
+def _keyed(overlay: Any) -> Any:
+    """``overlay`` with each session relation's node named by its graph identity: a subject of
+    it is told apart, compared and answered by ``__graph_id``."""
+    import copy
+    import dataclasses
+
+    from provisa.gql.label_map import GRAPH_ID, is_session_node
+
+    out = copy.copy(overlay)
+    out.nodes = {
+        key: (
+            dataclasses.replace(
+                nm,
+                pk_columns=[GRAPH_ID],
+                properties={**nm.properties, GRAPH_ID: GRAPH_ID},
+                physical_properties={**nm.physical_properties, GRAPH_ID: GRAPH_ID},
+                property_types=(*nm.property_types, (GRAPH_ID, "text")),
+            )
+            if is_session_node(nm)
+            else nm
+        )
+        for key, nm in overlay.nodes.items()
+    }
+    if "" in out.nodes:
+        # The session's nodes of no label are read by a name of their own, as a read after a
+        # write reads them (provisa.ephemeral.then.UNLABELED): a node pattern of label "" is
+        # one of no label, which reads every node.
+        from provisa.ephemeral.then import UNLABELED
+
+        out.nodes[UNLABELED] = out.nodes[""]
+    return out
+
+
+def session_vocabulary(vocab: Any, graph: Any, model: Any, names: Names) -> Any:
+    """``vocab`` (the role's) with the session's: each class IRI types the nodes of its label,
+    each property IRI is read from every session label holding it, and each relationship IRI is
+    an edge along every session relationship of its type."""
+    import dataclasses
+
+    from provisa.gql.label_map import is_session_node
+    from provisa.sparql_query.vocabulary import (
+        ColumnPredicate,
+        EdgePredicate,
+        SessionPart,
+        xsd_of,
+    )
+
+    session_nodes = {k: nm for k, nm in graph.nodes.items() if is_session_node(nm)}
+    labels = frozenset(k for k in session_nodes if k and k not in model.nodes)
+    classes = {k: list(v) for k, v in vocab.classes.items()}
+    classes_of = {k: list(v) for k, v in vocab.classes_of.items()}
+    columns = {k: list(v) for k, v in vocab.columns.items()}
+    columns_of = {k: list(v) for k, v in vocab.columns_of.items()}
+    edges = {k: list(v) for k, v in vocab.edges.items()}
+    edges_of = {k: list(v) for k, v in vocab.edges_of.items()}
+    for (iri, _, kind), name in sorted(names.held.items()):
+        if kind == CLASS and name in labels:
+            classes.setdefault(iri, []).append(name)
+            classes_of.setdefault(name, []).append(iri)
+        elif kind == PROPERTY:
+            for label in sorted(labels):
+                nm = session_nodes[label]
+                if name not in nm.properties:
+                    continue
+                cp = ColumnPredicate(label, name, xsd_of(dict(nm.property_types)[name]))
+                columns.setdefault(iri, []).append(cp)
+                columns_of.setdefault(label, []).append((iri, cp))
+        elif kind == REL:
+            for rm in graph.relationships.values():
+                if rm.rel_type != name or not is_session_node_rel(rm):
+                    continue
+                ep = EdgePredicate(name, rm.source_label, rm.target_label, rm.join)
+                if ep not in edges.setdefault(iri, []):
+                    edges[iri].append(ep)
+                    edges_of.setdefault(rm.source_label, []).append((iri, ep))
+    part = SessionPart(
+        labels=labels,
+        tags=names.graphs(),
+        nodes={
+            (iri, graph): name for (iri, graph, kind), name in names.held.items() if kind == NODE
+        },
+        model_tables={k: model.nodes[k].table_name for k in session_nodes if k in model.nodes},
+    )
+    return dataclasses.replace(
+        vocab,
+        classes=classes,
+        classes_of=classes_of,
+        columns=columns,
+        columns_of=columns_of,
+        edges=edges,
+        edges_of=edges_of,
+        session=part,
+    )
+
+
+def is_session_node_rel(rm: Any) -> bool:
+    """Whether ``rm`` is a session relationship (the overlay's, provisa.ephemeral.read)."""
+    from provisa.gql.label_map import SESSION_CATALOG
+
+    return getattr(rm.via, "catalog_name", None) == SESSION_CATALOG
+
+
+async def read_over(
+    state: Any, session: TempSession | None, label_map: Any, vocab: Any
+) -> SessionRead:
+    """What a SPARQL read compiles over for the role whose label map is ``label_map`` and whose
+    vocabulary is ``vocab``, in ``session`` (the principal's graph session, None outside one)."""
+    from provisa.ephemeral import read, seam
+
+    model = label_map.with_sql_only()
+    if session is None or not read.involved(session):
+        return SessionRead(vocab, model, model, session)
+    names = await names_of(state, session, label_map)
+    graph = _keyed(seam.label_map(model, session))
+    terms = SessionTerms(
+        iris={name: iri for (iri, _, kind), name in names.held.items() if kind == NODE},
+        models={
+            nm.label: (nm.domain_id, nm.table_name)
+            for nm in label_map.nodes.values()
+            if nm.domain_id
+        },
+        base=vocab.base,
+    )
+    return SessionRead(
+        session_vocabulary(vocab, graph, label_map, names), graph, model, session, terms
+    )
