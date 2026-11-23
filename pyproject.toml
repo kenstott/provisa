@@ -292,6 +292,11 @@ gx = ["great-expectations[postgresql]"]
 # add `soda` to run the second scan locally.
 demo = ["great-expectations[postgresql]"]
 firebase = ["firebase-admin"]
+# REQ-2138: the Java runtime a sparql source's reasoner (io.simpleishard:provisa-sparql-reasoner,
+# fetched from Maven Central by provisa/sparql/reasoner_bundle.py) runs on, as a separate program.
+# jdk4py is OpenJDK from PyPI, GPLv2 with the Classpath Exception (approved by the maintainer
+# 2026-11-23); no JDK and no GitHub fetch.
+sparql = ["jdk4py>=25,<26"]
 # Local embedding provider for catalog search (REQ-1008, provisa/vector/providers.py
 # HuggingFaceLocalProvider). No network at query time once the model is cached.
 # torch is named so [tool.uv.sources] can take it from PyTorch's CPU-only index on Linux, where
@@ -316,6 +321,8 @@ dev = [
     # REQ-2135: the standard SPARQL 1.1 Protocol client the endpoint's integration test queries
     # it with (W3C Software Notice and License, permissive).
     "sparqlwrapper>=2,<3",
+    # REQ-2138: the reasoner's Java runtime, for the sparql reasoner's tests.
+    "provisa[sparql]",
     # REQ-2168: LangChain's Neo4j integration (MIT), which reads a graph's schema with
     # apoc.meta.data; the command-bindings acceptance test connects it to Provisa over Bolt.
     "langchain-neo4j==0.11.0",
@@ -447,8 +454,6 @@ include = ["provisa", "provisa.*", "buenavista", "buenavista.*"]
 "provisa.node" = ["reader.mjs", "host.mjs"]
 # REQ-2200: the reader a Go source's package is read with, compiled by the pinned Go toolchain.
 "provisa.golang" = ["reader/go.mod", "reader/go.sum", "reader/main.go", "host/go.mod", "host/go.sum", "host/*.go", "services/go.mod", "services/*.go"]
-# REQ-2138: a sparql source's reasoner, run from its source by the pinned JDK.
-"provisa.sparql" = ["reasoner/Reasoner.java"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "tests/steps"]

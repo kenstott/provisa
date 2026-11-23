@@ -173,6 +173,7 @@ KINDS: dict[str, Kind] = {
     "data_product_offer": Kind("data_product_offers", "id"),  # REQ-2180
     "data_product_bid": Kind("data_product_bids", "id"),  # REQ-2180
     "access_review": Kind("access_reviews", "id"),  # REQ-2266
+    "catalog_publish": Kind("catalog_publishes", "id"),  # REQ-2259
 }
 
 _P, _D, _L = Standing.PART, Standing.DEPENDENT, Standing.LINK
@@ -427,6 +428,9 @@ REFERENCES: tuple[Reference, ...] = (
     # --- to an access review ---------------------------------------------------------------------
     # REQ-2266: a review's rows are what it found and what was decided on each; they go with it.
     _part("access_review_rows", "review_id", "access_review"),
+    # --- to a catalog publish -------------------------------------------------------------------
+    # REQ-2259: what a publish sent to each data product is the publish's record; it goes with it.
+    _part("catalog_publish_products", "publish_id", "catalog_publish"),
 )
 
 

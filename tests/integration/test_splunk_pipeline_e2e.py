@@ -61,9 +61,11 @@ import pytest
 from tests.integration.connector_source_harness import (
     assert_registration_and_query,
     connector_client,  # noqa: F401 — imported for pytest fixture discovery
+    host_address_both_reach,
 )
 from tests.integration.test_splunk_source_e2e import (
     _SPLUNK_HEC_PORT,
+    _SPLUNK_MGMT_PORT,
     _SPLUNK_PASSWORD,
     _SPLUNK_USER,
     _mgmt_base,
@@ -182,8 +184,12 @@ def _seed_splunk_cim() -> None:
 async def test_splunk_cim_model_registers_and_serves_semantic_query(connector_client):  # noqa: F811
     """createSource → registerTable (types introspected) → rebuildSchemas → semantic SELECT.
 
-    ``host="splunk"``/``port=8089`` are what *Trino* dials on the isolated stack's private network;
-    the host-published ephemeral ports are used only by this process to seed. The registered
+    The registered host is this machine's primary address at the host-published management port
+    (``host_address_both_reach``): the app starts the source's Calcite pgwire server on this host
+    (REQ-955), and registering reads the source's keys through it, so the registered host must
+    resolve from the app as well as from the engine's containers. The in-network name ``splunk``
+    resolves only inside the stack (run 45170203776: the server exited with
+    ``UnknownHostException: splunk``). The registered
     columns are all CIM calculated fields, so a passing run also proves the adapter's CIM handling
     reaches Provisa's introspection path — ``information_schema.columns`` must report them, or
     ``_ensure_source_column_types`` refuses the registration outright.
@@ -197,8 +203,8 @@ async def test_splunk_cim_model_registers_and_serves_semantic_query(connector_cl
         connector_client,
         source_id=_SOURCE_ID,
         source_type="splunk",
-        host="splunk",
-        port=8089,
+        host=host_address_both_reach(),
+        port=_SPLUNK_MGMT_PORT,
         username=_SPLUNK_USER,
         password=_SPLUNK_PASSWORD,
         mapping={"use_token": False, "disable_ssl_validation": True},

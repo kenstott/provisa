@@ -96,6 +96,8 @@ _TEARDOWN_S = (
     + MINIKUBE_DELETE_S
 )
 CLUSTER_TEST_BOUND_S = _SETUP_S + _LONGEST_TEST_S + _TEARDOWN_S
+# REQ-056: the API container's peak memory may use at most this share of the chart's default limit.
+BOOT_MEMORY_HEADROOM = 0.75
 
 pytestmark = [pytest.mark.e2e, pytest.mark.cluster, pytest.mark.timeout(CLUSTER_TEST_BOUND_S)]
 # This run's own minikube profile, and so its own kube context. Never the default profile, and
@@ -318,6 +320,16 @@ def _why_not_ready() -> str:
             name = pod["metadata"]["name"]
             described = kubectl("describe", "pod", name)
             lines.append(f"=== describe {name}\n{described.stdout[-4000:]}")
+            # The describe tail above cuts off each container's State and Last State; the
+            # termination reason and exit code (OOMKilled 137, a clean 0, a probe kill) are what
+            # tell a crash-looping container's cause apart, so print them from the pod JSON.
+            for status in pod["status"].get("containerStatuses", []):
+                lines.append(
+                    f"=== container state {name}/{status['name']} "
+                    f"restarts={status.get('restartCount')}\n"
+                    f"state={json.dumps(status.get('state'))}\n"
+                    f"lastState={json.dumps(status.get('lastState'))}"
+                )
             # Per container: `--all-containers --previous` returns nothing at all when any
             # container (an init container) has no previous run, which hid a crash-looping
             # container's last log.
@@ -605,6 +617,51 @@ class TestPodsRunning:
                     f"Pod {pod['metadata']['name']!r} container "
                     f"{container['name']!r} is in CrashLoopBackOff"
                 )
+
+    def test_no_container_was_oom_killed(self):
+        """No container's last run ended OOMKilled. A pod the kernel killed once and that came
+        back is Running again by the time the tests look, so its phase hides the kill."""
+        for pod in _get_pods():
+            for container in pod["status"].get("containerStatuses", []):
+                last = container.get("lastState", {}).get("terminated", {})
+                assert last.get("reason") != "OOMKilled", (
+                    f"Pod {pod['metadata']['name']!r} container {container['name']!r} was "
+                    f"OOMKilled (exit {last.get('exitCode')}) at its memory limit"
+                )
+
+    def test_provisa_boot_memory_leaves_headroom(self):
+        """The API container's peak memory since start (its boot included) stays within
+        BOOT_MEMORY_HEADROOM of the chart's default limit. Release 512 grew the boot past the old
+        512Mi limit and the kernel killed it at 26s, before /health ever answered; a peak that
+        creeps toward the limit fails here first, by its number, rather than as a pod that never
+        turns Ready."""
+        pods = [
+            p
+            for p in _get_pods()
+            if p["metadata"].get("labels", {}).get("app") == "provisa"
+            and p["status"].get("phase") == "Running"
+        ]
+        assert pods, "No running provisa pod"
+        name = pods[0]["metadata"]["name"]
+        read = _kubectl(
+            "exec",
+            name,
+            "-c",
+            "provisa",
+            "--",
+            "cat",
+            "/sys/fs/cgroup/memory.peak",
+            "/sys/fs/cgroup/memory.max",
+        )
+        assert read.returncode == 0, f"reading the provisa cgroup failed: {read.stderr}"
+        peak_s, limit_s = read.stdout.split()
+        peak, limit = int(peak_s), int(limit_s)
+        mib = 1024 * 1024
+        print(f"provisa memory peak {peak / mib:.0f}Mi of limit {limit / mib:.0f}Mi")
+        assert peak <= limit * BOOT_MEMORY_HEADROOM, (
+            f"provisa peak memory {peak / mib:.0f}Mi exceeds {BOOT_MEMORY_HEADROOM:.0%} of its "
+            f"{limit / mib:.0f}Mi limit"
+        )
 
 
 class TestServices:

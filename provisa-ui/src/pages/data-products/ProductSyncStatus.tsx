@@ -13,9 +13,10 @@
 // to the product, drawn as a link only for a viewer holding that page's right.
 
 import { useTranslation } from "react-i18next";
-import { Badge, Stack, Text, Tooltip } from "@mantine/core";
+import { Badge, Stack, Text } from "@mantine/core";
 import type { ProductSyncStatus } from "../../api/syncing";
 import { EntityPageLink } from "../../components/EntityLink";
+import { TipSurface } from "../../components/Tip";
 import { syncHref, syncState } from "./productSync";
 
 export function ProductSyncCell({
@@ -39,10 +40,8 @@ export function ProductSyncCell({
   const when = (iso: string) =>
     new Date(iso).toLocaleString(i18n.language, { dateStyle: "medium", timeStyle: "short" });
   return (
-    <Tooltip
-      multiline
-      withinPortal
-      label={
+    <TipSurface
+      content={
         <Stack gap={2}>
           {statuses.map((s) => (
             <Text key={s.entry} size="xs">
@@ -67,6 +66,6 @@ export function ProductSyncCell({
           </Badge>
         </EntityPageLink>
       </span>
-    </Tooltip>
+    </TipSurface>
   );
 }

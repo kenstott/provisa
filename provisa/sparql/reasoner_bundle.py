@@ -10,15 +10,18 @@
 
 """The reasoner a sparql source runs (REQ-2138): a separate program, never linked into Provisa.
 
-It is ``reasoner/Reasoner.java``, run by java's source launcher on the pinned Temurin JDK
-(``code_runtimes.RUNTIMES["temurin"]``) with HermiT and the OWL API on its class path. Each jar is
-fetched on first use from Maven Central at the version pinned here, checked against the SHA-256
-recorded here before it is kept, and cached under the runtime-deps cache root, version-namespaced;
-a cache hit never downloads. HermiT and the OWL API are LGPL, trove4j LGPL-2.1: they run in the
+It is ``reasoner/Reasoner.java``, precompiled into the jar ``io.simpleishard:provisa-sparql-reasoner``
+(built, signed and laid out for Maven Central by scripts/ci/reasoner_maven_bundle.py and
+.github/workflows/reasoner-maven-bundle.yml, promoted by hand), run on the Java runtime of the
+``jdk4py`` package from PyPI (the ``sparql`` extra) with HermiT and the OWL API on its class path.
+Each jar, the reasoner's among them, is fetched on first use from Maven Central at the version
+pinned here, checked against the SHA-256 recorded here before it is kept, and cached under the
+runtime-deps cache root, version-namespaced; a cache hit never downloads. HermiT and the OWL API are
+LGPL, trove4j LGPL-2.1, jdk4py's OpenJDK GPLv2 with the Classpath Exception: they run in the
 reasoner's own process, as a program Provisa starts, under the dependency rules.
 
-Resolution fails loud: a download that fails or a jar whose sum is not the pinned one raises
-``RuntimeUnavailable``; there is no unpinned or unchecked fallback.
+Resolution fails loud: jdk4py not installed, a download that fails or a jar whose sum is not the
+pinned one raises ``RuntimeUnavailable``; there is no unpinned or unchecked fallback.
 """
 
 # Requirements: REQ-2138
@@ -31,18 +34,15 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
-from provisa.runtime_deps.code_runtimes import (
-    CodeRuntimeResolver,
-    Fetcher,
-    RuntimeUnavailable,
-    fetch_https,
-)
+from provisa.runtime_deps.code_runtimes import Fetcher, RuntimeUnavailable, fetch_https
 from provisa.runtime_deps.pgwire_bundles import default_cache_root
 
 MAVEN_CENTRAL = "https://repo1.maven.org/maven2"
 
-#: The reasoner program, run from its source.
+#: The reasoner program's source, compiled into REASONER by scripts/ci/reasoner_maven_bundle.py.
 PROGRAM = Path(__file__).parent / "reasoner" / "Reasoner.java"
+#: The class REASONER runs.
+MAIN_CLASS = "Reasoner"
 
 
 @dataclass(frozen=True)
@@ -107,27 +107,50 @@ JARS: tuple[Jar, ...] = (
         "3c8616203d61a12a7e3487e8b34f3c198c2b5ba9e90da0c7ea32d99cd4958012"),
 )  # fmt: skip
 
+#: The reasoner program, compiled from PROGRAM by the pinned Temurin JDK's javac into a jar whose
+#: bytes depend only on its source and that compiler, so the sum is known before it is published.
+REASONER = Jar(
+    "io.simpleishard",
+    "provisa-sparql-reasoner",
+    "0.1.0",
+    "ec491618af35f602241132f43c7c322a152ef2cdf06895def880d8c7ef17455a",
+)
+
+
+def java_executable() -> Path:
+    """The java of the jdk4py package (the ``sparql`` extra), which the reasoner runs on."""
+    try:
+        import jdk4py
+    except ModuleNotFoundError as exc:
+        raise RuntimeUnavailable(
+            "the sparql reasoner runs on the Java runtime of the jdk4py package, which is not "
+            "installed: install provisa[sparql]"
+        ) from exc
+    return Path(jdk4py.JAVA)
+
 
 class ReasonerBundle:
-    """The pinned JDK and jars, resolved into the runtime-deps cache on first use."""
+    """The pinned jars, resolved into the runtime-deps cache on first use."""
 
     def __init__(
         self,
         *,
         cache_root: str | Path | None = None,
         fetcher: Fetcher | None = None,
-        host: tuple[str, str] | None = None,
     ) -> None:
         self._root = Path(cache_root) if cache_root is not None else default_cache_root()
         self._fetch = fetcher if fetcher is not None else fetch_https
-        self._java = CodeRuntimeResolver(cache_root=self._root, fetcher=fetcher, host=host)
 
-    def lib(self) -> Path:
-        """The directory of the pinned jars, each fetched and checked on a miss."""
+    def kept(self, jar: Jar) -> Path:
+        """Where ``jar`` is kept once fetched and checked."""
+        return self._root / "reasoner" / "lib" / f"{jar.sha256[:16]}-{jar.filename}"
+
+    def keep(self, jars: tuple[Jar, ...]) -> Path:
+        """The directory of ``jars``, each fetched and checked on a miss."""
         lib = self._root / "reasoner" / "lib"
         lib.mkdir(parents=True, exist_ok=True)
-        for jar in JARS:
-            kept = lib / f"{jar.sha256[:16]}-{jar.filename}"
+        for jar in jars:
+            kept = self.kept(jar)
             if kept.is_file():
                 continue
             data = self._fetch(jar.url)
@@ -144,11 +167,17 @@ class ReasonerBundle:
             os.replace(staged, kept)
         return lib
 
+    def lib(self) -> Path:
+        """The directory of the reasoner's jar and its dependencies, each fetched on a miss."""
+        return self.keep((REASONER, *JARS))
+
+    def classpath(self, jars: tuple[Jar, ...]) -> str:
+        """``jars`` by name, so a jar left in the directory by another pin is never read."""
+        return os.pathsep.join(str(self.kept(jar)) for jar in jars)
+
     def command(self, *args: str) -> list[str]:
-        """The reasoner's command line: its JDK's java, the pinned jars only on its class path
-        (each by name, so a jar left in the directory by another pin is never read), its
-        program, ``args``."""
-        java = self._java.resolve("temurin")
-        lib = self.lib()
-        classpath = os.pathsep.join(str(lib / f"{jar.sha256[:16]}-{jar.filename}") for jar in JARS)
-        return [str(java), "-cp", classpath, str(PROGRAM), *args]
+        """The reasoner's command line: jdk4py's java, the pinned jars only on its class path,
+        its main class, ``args``."""
+        java = java_executable()
+        self.lib()
+        return [str(java), "-cp", self.classpath((REASONER, *JARS)), MAIN_CLASS, *args]

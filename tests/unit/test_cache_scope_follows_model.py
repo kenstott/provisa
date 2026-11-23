@@ -33,6 +33,7 @@ import pytest
 
 from provisa.cache.key import raw_sql_cache_key
 from provisa.cache.middleware import check_cache, store_result
+from provisa.cache.raw_sql import encode_rows_entry
 from provisa.cache.tenancy import cache_tenant, invalidate_tables
 from provisa.core.request_context import current_env, current_org
 from tests.unit.test_response_cache_shared import FakeCacheStore
@@ -73,7 +74,7 @@ async def _write(worker: _Worker, key: str, rows: list[dict]) -> None:
     await store_result(
         worker.response_cache_store,
         key,
-        {"rows": rows},
+        encode_rows_entry([tuple(r.values()) for r in rows], list(rows[0]), None),
         ttl=60,
         table_ids={7},
         org_id=cache_tenant(worker),

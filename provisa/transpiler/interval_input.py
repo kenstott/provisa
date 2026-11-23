@@ -73,6 +73,8 @@ class _Fields:
     months: int = 0
     days: int = 0
     micros: int = 0
+    #: The years given (tm_year), apart from the months until the interval is built of them.
+    years: int = 0
 
 
 def _fract_micros(frac: float, scale: int) -> int:
@@ -117,7 +119,7 @@ def _amount(fields: _Fields, unit: str, val: int, frac: float) -> None:
         _fract_days(fields, frac, 30)
     else:
         scale = _YEAR_SCALES[unit]
-        fields.months += val * scale * 12
+        fields.years += val * scale
         # AdjustFractYears: rint, in doubles, of the fraction's months.
         fields.months += int(round(frac * scale * 12))
 
@@ -161,6 +163,33 @@ def interval_read(text: str) -> tuple[int, int, int] | None:
     """An interval literal's (months, days, microseconds), as PostgreSQL's interval_in reads it
     under IntervalStyle postgres; None for a form not read here (refused by name), or one
     PostgreSQL raises for (an overflow, a unit given twice)."""
+    fields = _read(text)
+    if fields is None:
+        return None
+    months, days, micros = fields.years * 12 + fields.months, fields.days, fields.micros
+    if not (I32_MIN <= months <= I32_MAX and I32_MIN <= days <= I32_MAX):
+        return None
+    if not I64_MIN <= micros <= I64_MAX or _not_finite(months, days, micros):
+        return None
+    return months, days, micros
+
+
+def past_the_type(text: str) -> bool:
+    """Whether interval_in reads ``text`` into fields each in its own range (pg_itm_in: years,
+    months and days int32, microseconds int64) whose months, its years' and its own together,
+    pass int32: itmin2interval's 22008 'interval out of range' ('178956971 years')."""
+    fields = _read(text)
+    if fields is None:
+        return False
+    each = (fields.years, fields.months, fields.days)
+    if not all(I32_MIN <= v <= I32_MAX for v in each) or not I64_MIN <= fields.micros <= I64_MAX:
+        return False  # a field past its own range: DecodeInterval's field overflow, not read here
+    return not I32_MIN <= fields.years * 12 + fields.months <= I32_MAX
+
+
+def _read(text: str) -> _Fields | None:
+    """An interval literal's fields as DecodeInterval builds them, 'ago' applied; None for a form
+    not read here or a unit given twice."""
     tokens = _tokens(text)
     if not tokens:
         return None
@@ -201,14 +230,9 @@ def interval_read(text: str) -> tuple[int, int, int] | None:
         given |= units
         _amount(fields, unit, val, frac)
         at += 2
-    months, days, micros = fields.months, fields.days, fields.micros
     if before:
-        months, days, micros = -months, -days, -micros
-    if not (I32_MIN <= months <= I32_MAX and I32_MIN <= days <= I32_MAX):
-        return None
-    if not I64_MIN <= micros <= I64_MAX or _not_finite(months, days, micros):
-        return None
-    return months, days, micros
+        fields = _Fields(-fields.months, -fields.days, -fields.micros, -fields.years)
+    return fields
 
 
 def _not_finite(months: int, days: int, micros: int) -> bool:
@@ -331,5 +355,6 @@ __all__ = [
     "duckdb_reads_alike",
     "interval_read",
     "one_amount",
+    "past_the_type",
     "rejected",
 ]

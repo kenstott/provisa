@@ -46,6 +46,7 @@ from provisa.transpiler.pg_literals import (
     exact_inputs,
     postgres_literals,
 )
+from provisa.transpiler.pg_input_refusals import refuse_past_inputs
 from provisa.transpiler.to_char import to_char_for_duckdb
 from provisa.transpiler.typed_columns import TYPED_DIALECTS, ColumnTypes, typed
 from provisa.transpiler.transpile_correlated import (
@@ -715,6 +716,8 @@ def _duckdb_form(pg_sql: str) -> str:
     """``pg_sql`` in DuckDB's SQL, derived once: every step is a function of the text alone. A
     statement a client repeats reaches here on each run, its
     plan kept or not. A refusal raises and is not kept."""
+    # REQ-2236: a literal PostgreSQL's input refuses raises its error before any form reads it.
+    refuse_past_inputs(pg_sql)
     pg_sql = pg_money.lowered(pg_forms_type_io.readable(pg_sql), "duckdb")  # REQ-2171
     pg_sql = pg_forms_enum.lowered(pg_sql, "duckdb")  # REQ-2171
     written = transpile(
@@ -2174,6 +2177,11 @@ def transpile(
         if not results:
             raise ValueError(f"SQLGlot produced no output for: {pg_sql!r}")
         result = results[0]
+    if target_dialect == "clickhouse":
+        # REQ-2236: a NULL column typed, for the server's Arrow output has no type for Nothing.
+        from provisa.transpiler.polyfill.clickhouse import typed_null_columns
+
+        result = typed_null_columns(result)
     if target_dialect == "tsql":
         result = _map_tsql_reserved_schemas(result)
     if target_dialect == "sqlite":

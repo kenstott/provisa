@@ -178,27 +178,14 @@ def _entry_keys(org: str) -> set[bytes]:
 
 
 def _plant_marker(key: bytes) -> str:
-    """Replace the entry's rows with _MARKER (same kind and schema); returns the entry kind."""
-    import pyarrow as pa
-
-    from provisa.cache.codec import decode_cache_payload, encode_cache_payload
+    """Replace the entry's rows with _MARKER (same kind and schema); returns the entry's label
+    (``cache_entry_edit.label``: the origin of an ``arrow`` entry)."""
+    from tests.integration.cache_entry_edit import label, rewrite, with_rows
 
     r = _redis()
-    payload = decode_cache_payload(r.get(key))
-    entry = payload["data"]
-    if entry["kind"] == "rows":
-        entry["rows"] = [list(row) for row in _MARKER]
-    else:
-        schema = pa.ipc.open_stream(entry["ipc"]).schema
-        batch = pa.RecordBatch.from_pylist(
-            [dict(zip(schema.names, row, strict=True)) for row in _MARKER], schema=schema
-        )
-        sink = pa.BufferOutputStream()
-        with pa.ipc.new_stream(sink, schema) as writer:
-            writer.write_batch(batch)
-        entry["ipc"] = sink.getvalue().to_pybytes()
-    r.set(key, encode_cache_payload(payload), keepttl=True)
-    return entry["kind"]
+    data = r.get(key)
+    r.set(key, rewrite(data, with_rows(_MARKER)), keepttl=True)
+    return label(data)
 
 
 def _new_key(org: str, before: set[bytes]) -> bytes:
@@ -226,7 +213,7 @@ def test_pgwire_miss_then_pgwire_hit_returns_the_same_columns_and_types(server):
     miss_rows, miss_desc = _pgwire(server, sql)
     assert miss_rows == _ORIGINAL
     assert isinstance(miss_rows[1][1], decimal.Decimal)
-    assert _plant_marker(_new_key(server.org_id, before)) == "rows"
+    assert _plant_marker(_new_key(server.org_id, before)) == "arrow"
     hit_rows, hit_desc = _pgwire(server, sql)
     assert hit_rows == _MARKER  # only a cache HIT returns the planted rows
     assert hit_desc == miss_desc
@@ -237,7 +224,7 @@ def test_flight_miss_then_pgwire_hit_is_exact(server):
     before = _entry_keys(server.org_id)
     miss = _flight(server, sql)
     assert _flight_rows(miss) == list(reversed(_ORIGINAL))
-    assert _plant_marker(_new_key(server.org_id, before)) == "arrow_ipc"
+    assert _plant_marker(_new_key(server.org_id, before)) == "arrow"
     hit_rows, _ = _pgwire(server, sql)
     assert hit_rows == _MARKER
     assert isinstance(hit_rows[0][1], decimal.Decimal)
@@ -251,7 +238,7 @@ def test_pgwire_miss_then_flight_hit_is_exact(server):
     before = _entry_keys(server.org_id)
     miss_rows, _ = _pgwire(server, sql)
     assert miss_rows == list(reversed(_ORIGINAL))
-    assert _plant_marker(_new_key(server.org_id, before)) == "rows"
+    assert _plant_marker(_new_key(server.org_id, before)) == "arrow"
     hit = _flight(server, sql)
     assert hit.schema.field("amount").type == pa.decimal128(18, 2)
     assert _flight_rows(hit) == _MARKER  # Decimal and datetime, exact
@@ -262,7 +249,7 @@ def test_flight_miss_then_flight_hit_is_type_identical(server):
     before = _entry_keys(server.org_id)
     miss = _flight(server, sql)
     assert _flight_rows(miss) == list(reversed(_ORIGINAL))
-    assert _plant_marker(_new_key(server.org_id, before)) == "arrow_ipc"
+    assert _plant_marker(_new_key(server.org_id, before)) == "arrow"
     hit = _flight(server, sql)
     assert hit.schema == miss.schema
     assert _flight_rows(hit) == _MARKER
