@@ -2,7 +2,7 @@
 
 **Suite:** W3C SPARQL 1.1 test suite (query, update, result formats).
 
-**Pass rate:** The W3C SPARQL 1.1 test suite does not run in CI. An in-process run is the current measure.
+**Pass rate:** Not yet measured. The Conformance (SPARQL) workflow runs the full suite in CI when it is dispatched for a release. A test that fails and is not on `scripts/conformance/expected/sparql.json` fails the run, and so does a listed test that passes.
 
 ## How the suite runs
 
@@ -12,7 +12,9 @@ Provisa has no triple store, so each test's data file is declared as fixture tab
 
 ### Writes
 
-This endpoint answers queries. Rows are written through governed table writes, so SPARQL Update is refused by name. An update acting on a named graph (`ADD`, `COPY`, `MOVE`, `CLEAR`, `DROP`, `CREATE`) needs structure the model lacks: the model holds tables, not graphs. Move the rows with a governed write instead.
+Graph management is refused by name, by design. `DROP`, `CLEAR`, `LOAD`, `CREATE`, `COPY`, `MOVE` and `ADD` act on named graphs, and Provisa has none: the model holds tables, not graphs. An update containing one of these operations is refused whole, and its tests count as skipped by design. To move rows, write to the tables.
+
+SPARQL Update's data operations (`INSERT DATA`, `DELETE DATA`, `DELETE`/`INSERT ... WHERE`) are planned on the write path Cypher uses, so a SPARQL write is governed the same way a Cypher write is. Until then they are refused by name, and their tests count as failed.
 
 ### Vocabulary fixed by the model
 

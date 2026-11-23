@@ -111,7 +111,7 @@ def main(argv: list[str]) -> int:
     out = baseline_gate.EXPECTED / "functions.json"
     try:
         if not baseline_gate.JOB.fullmatch(args.job):
-            raise baseline_gate.Refused(f"job {args.job!r} is not a queue job (J<n>)")
+            raise baseline_gate.Refused(f"job {args.job!r} is not a queue job (J<n> or NAME-N)")
         if not baseline_gate.SINCE.fullmatch(args.since):
             raise baseline_gate.Refused(f"since {args.since!r} is not a date (YYYY-MM-DD)")
         if not args.report.is_file():
