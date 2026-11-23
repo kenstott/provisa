@@ -50,6 +50,42 @@ function serveOfflineDocsSite(): Plugin {
   };
 }
 
+// The REST docs page (provisa/api/rest/openapi_spec.py) loads Swagger UI from /swagger-ui/. Its
+// files come from the swagger-ui-dist npm package: the build copies them into the output (so the
+// wheel's provisa/_ui carries them) and the dev server serves them from node_modules. A
+// pip-installed Provisa fetches only from PyPI, Maven Central and npm, never a CDN
+// (docs/arch/fetch-sources.md).
+const SWAGGER_UI_DIST = path.resolve(__dirname, "node_modules/swagger-ui-dist");
+const SWAGGER_UI_FILES: Record<string, string> = {
+  "swagger-ui-bundle.js": "text/javascript",
+  "swagger-ui.css": "text/css",
+};
+function bundleSwaggerUi(): Plugin {
+  return {
+    name: "bundle-swagger-ui",
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        const name = req.url?.split("?")[0].replace(/^\/swagger-ui\//, "");
+        if (!req.url?.startsWith("/swagger-ui/") || !name || !(name in SWAGGER_UI_FILES)) {
+          next();
+          return;
+        }
+        res.setHeader("Content-Type", SWAGGER_UI_FILES[name]);
+        res.end(fs.readFileSync(path.join(SWAGGER_UI_DIST, name)));
+      });
+    },
+    generateBundle() {
+      for (const name of Object.keys(SWAGGER_UI_FILES)) {
+        this.emitFile({
+          type: "asset",
+          fileName: `swagger-ui/${name}`,
+          source: fs.readFileSync(path.join(SWAGGER_UI_DIST, name)),
+        });
+      }
+    },
+  };
+}
+
 // REQ-2071: in development /pyodide is the provisa-notebook package's built assets in this
 // repository, as ui_server.py serves them from the installed package. Unbuilt, nothing is served
 // and the Data Science area says Python is not installed.
@@ -235,6 +271,7 @@ export default defineConfig((config) => ({
     react(),
     serveOfflineDocsSite(),
     servePyodideAssets(),
+    bundleSwaggerUi(),
     graphqlLoader(),
     monacoEditorPlugin({
       languageWorkers: ["editorWorkerService", "json"],
