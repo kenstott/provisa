@@ -232,3 +232,34 @@ def test_a_star_over_a_governed_relation_describes_its_masked_column():
         ("amount", "numeric(18,2)"),
         ("region", "TEXT"),
     ]
+
+
+def test_a_star_over_a_governed_relation_describes_a_masked_column_by_its_declared_type():
+    """A mask keeps its column's declared type (REQ-2131), so ``SELECT *`` over the governed
+    relation describes each masked column -- a regex, a constant, a complete (NULL) and a truncate
+    mask -- by the type the registry declares for it (REQ-2270). The Spark data source's e2e had
+    Flight SQL GetSchema refuse "cannot all be typed before it runs" over a regex-masked column
+    (run 45209467199)."""
+    sql = (
+        "SELECT * FROM (SELECT orders.order_id AS order_id, NULL AS amount, "
+        "provisa_regex_replace(orders.region, '^[^@]+', '***', NULL) AS region, "
+        "DATE_TRUNC('day', orders.placed) AS placed, '***' AS blob "
+        "FROM sales.orders AS orders WHERE orders.order_id > 0) AS orders"
+    )
+    assert _shape(sql) == [
+        ("order_id", "integer"),
+        ("amount", "numeric(18,2)"),
+        ("region", "varchar"),
+        ("placed", "timestamp with time zone"),
+        ("blob", "LowCardinality(Nonsense)"),
+    ]
+
+
+def test_a_computed_column_of_a_governed_relation_keeps_its_own_typing():
+    """Only a mask takes its column's declared type: a value the relation computes otherwise is
+    typed by annotation."""
+    sql = (
+        "SELECT * FROM (SELECT orders.order_id AS order_id, orders.order_id + 1 AS amount "
+        "FROM sales.orders AS orders) AS orders"
+    )
+    assert _shape(sql) == [("order_id", "integer"), ("amount", "INT")]

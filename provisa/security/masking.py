@@ -235,6 +235,23 @@ def mask_expression(  # REQ-040, REQ-263, REQ-913
     raise MaskingValidationError(f"Unknown mask type: {rule.mask_type!r}")
 
 
+def is_mask(value: exp.Expr) -> bool:  # pyright: ignore[reportPrivateImportUsage]
+    """Whether ``value`` is a mask :func:`mask_expression` builds: a constant or complete mask, or
+    a regex or truncate mask of one column (the only column it reads). A mask keeps its column's
+    declared type (REQ-2131)."""
+    if isinstance(value, (exp.Null, exp.Literal)):
+        return True
+    if isinstance(value, exp.Anonymous) and value.name.lower() == UNIVERSAL_REGEX_REPLACE:
+        read = value.expressions[0] if value.expressions else None
+    elif isinstance(value, (exp.TimestampTrunc, exp.DateTrunc)):
+        read = value.this
+    else:
+        return False
+    if not isinstance(read, exp.Column) or isinstance(read.this, exp.Star):
+        return False
+    return all(c is read for c in value.find_all(exp.Column))
+
+
 def build_mask_expression(  # REQ-040, REQ-263
     rule: MaskingRule,
     column_ref: str,

@@ -387,14 +387,19 @@ def _single_table_shape(
 
 def _served_columns(relation: Any, columns: dict[str, str]) -> dict[str, str] | None:
     """The registered type of each column a governed relation serves, by the name it exposes it
-    under; None when it serves one the registry does not type (masked or computed), which only
-    annotation types -- every column it serves is in the result (REQ-2270: a ``*`` over it
-    includes its masked columns)."""
+    under -- a masked column by its declared type, as a mask keeps it (REQ-2131); None when it
+    serves a computed one, which only annotation types -- every column it serves is in the result
+    (REQ-2270: a ``*`` over it includes its masked columns)."""
+    from provisa.security.masking import is_mask
+
     served: dict[str, str] = {}
-    for name in relation.columns:
+    for name, value in relation.columns.items():
         physical = relation.column(name)
         if physical is None:
-            return None
+            if not is_mask(value):
+                return None  # computed: typed by annotation
+            read = value.find(exp.Column)  # a constant or complete mask reads no column
+            physical = read.name if read is not None else name
         col_type = _lookup(columns, physical) or _lookup(columns, name)
         if col_type is None:
             return None
