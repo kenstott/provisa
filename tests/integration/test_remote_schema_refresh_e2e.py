@@ -218,10 +218,15 @@ def test_a_grpc_remote_refresh_keeps_its_tables_their_rules_and_its_import_paths
     )["registerTable"]
     assert added["success"], added["message"]
 
+    # The table's virtual name (its alias when the registration gave it one) is what a rule
+    # names and what SQL reads.
+    tables = _admin_gql(instance, "{ tables { sourceId tableName alias } }")["tables"]
+    (row,) = [t for t in tables if t["sourceId"] == source_id]
+    virtual = row["alias"] or row["tableName"]
     _rule_outlives_refresh(
         instance,
-        table,
-        f"SELECT name, species FROM grpc_remote.{namespace}__animal_catalog__list_breeds",
+        virtual,
+        f"SELECT name, species FROM grpc_remote.{virtual}",
         "species",
         f"/admin/grpc-remote/refresh/{source_id}",
     )
