@@ -127,7 +127,7 @@ def _physical_to_pg_oid(column_type: str) -> int:
     t = column_type.lower().split("(")[0].strip()
     return {
         "varchar": 1043,
-        "char": 18,
+        "char": 1042,  # REQ-1961: char(n) is bpchar; only the quoted "char" is oid 18
         "character varying": 1043,  # REQ-1961
         "character": 1042,
         "bpchar": 1042,

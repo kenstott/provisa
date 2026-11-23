@@ -1230,6 +1230,17 @@ class Connection:
         eff_schema = schema if self.capabilities.schemas else None
         return bool(_sa_inspect(self._sc).has_table(table, schema=eff_schema))
 
+    # Async only to keep the awaitable call-site contract; runs synchronously on the request thread.
+    async def read_alone(self, stmt: Any) -> Any:
+        """:meth:`execute_core` for a read outside any transaction: sent alone, in autocommit
+        (``_alone``), one round trip -- for a read made on every request (REQ-2176's graph session
+        row). Its rows are buffered, as every result here is."""
+        assert self._tx_depth == 0, "read_alone reads outside a transaction"
+        if not _alone(self._sc):
+            return self._execute_core(stmt)
+        with _autocommit(self._sc):
+            return self._execute_core(stmt)
+
     async def execute_core(self, stmt: Any) -> Any:
         """Execute a SQLAlchemy Core statement (select/insert/update/delete)
         and return the CursorResult. Autocommits outside a transaction.
@@ -1558,6 +1569,39 @@ def _unprepared(sc: sa.Connection) -> Iterator[None]:
         driver.prepare_threshold = threshold
 
 
+def _alone(sc: sa.Connection) -> bool:
+    """Whether a statement on ``sc`` can be sent alone, in autocommit: psycopg, with no
+    transaction open. One round trip, where BEGIN, the statement and COMMIT are three."""
+    return sc.dialect.driver == "psycopg" and not sc.in_transaction()
+
+
+@contextmanager
+def _autocommit(sc: sa.Connection) -> Iterator[None]:
+    """Statements run on ``sc`` within this block each commit as they run, with no BEGIN sent
+    (``_alone`` must hold). psycopg's autocommit is a client-side switch: no round trip."""
+    driver = sc.connection.driver_connection
+    assert driver is not None, "a checked-out connection holds its driver connection"
+    driver.autocommit = True
+    try:
+        yield
+    finally:
+        driver.autocommit = False
+
+
+def _session_statement(sc: sa.Connection, sql: str) -> None:
+    """Run ``sql``, a statement setting the connection's session state (its org search path, or
+    its reset), and keep it: sent alone (``_alone``), since it is paid on every acquire of every
+    handle, so on every control-plane read a request makes. A transaction a caller left open is
+    committed with it, as it always was."""
+    if _alone(sc):
+        with _autocommit(sc):
+            sc.exec_driver_sql(sql)
+            sc.commit()  # ends the transaction SQLAlchemy began for it; sends nothing
+        return
+    sc.execute(text(sql))
+    sc.commit()
+
+
 def _prepared_for_scope(sc: sa.Connection, search_path: str | None) -> None:
     """Drop the pooled connection's prepared statements when it last ran for another scope.
 
@@ -1641,8 +1685,7 @@ class Database:
                 if self.dialect == "postgresql":
                     _prepared_for_scope(sc, self.search_path)
                 if self.search_path and (sql := self.capabilities.enter_org_sql(self.search_path)):
-                    sc.execute(text(sql))
-                    sc.commit()
+                    _session_statement(sc, sql)
                 yield Connection(sc, self.capabilities, self)
             except BaseException:
                 # A statement that failed inside the block (a duplicate-key INSERT a caller
@@ -1667,8 +1710,7 @@ class Database:
                 with shield.lock:
                     shield.settle()
                     if self.dialect == "postgresql" and not sc.invalidated:
-                        sc.execute(text("RESET search_path"))
-                        sc.commit()
+                        _session_statement(sc, "RESET search_path")
 
     # -- PG-only LISTEN/NOTIFY: served by the listener thread's own connection, so a listener
     #    (an SSE stream, the event-trigger manager) never holds a pooled connection. --

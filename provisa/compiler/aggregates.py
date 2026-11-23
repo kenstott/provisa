@@ -335,8 +335,11 @@ def _compile_having(
     collector: ParamCollector,
     table_id: int | None,
     exposed_to_physical: dict,
+    column_types: dict[str, str] | None = None,
 ) -> str:
-    """Compile a HavingExp input object to a SQL HAVING clause fragment.
+    """Compile a HavingExp input object to a SQL HAVING clause fragment. ``column_types`` is the
+    table's registered type by physical column: a min or max of a sized numeric is compared as
+    the number it is (REQ-1961).
 
     Maps aggregate function expressions:
       count: {gt: 3}         → COUNT(*) > $N
@@ -363,7 +366,9 @@ def _compile_having(
                     else col_name
                 )
                 expr = f"{sql_func}({_q(phys)})"
-                parts.extend(_sw._compile_column_filter(expr, col_filter, collector))
+                # MIN/MAX are the column's type; SUM/AVG/STDDEV/VARIANCE compare as a Float.
+                kept = (column_types or {}).get(phys) if key in ("min", "max") else None
+                parts.extend(_sw._compile_column_filter(expr, col_filter, collector, kept))
     return " AND ".join(parts) if parts else "TRUE"
 
 
@@ -596,7 +601,11 @@ def _compile_group_by_field(  # REQ-196, REQ-197, REQ-213
     # REQ-655: HAVING clause
     if "having" in args:
         having_sql = _compile_having(
-            args["having"], collector, table.table_id, ctx.exposed_to_physical
+            args["having"],
+            collector,
+            table.table_id,
+            ctx.exposed_to_physical,
+            dict(ctx.aggregate_columns.get(table.table_id, [])),
         )
         if having_sql and having_sql != "TRUE":
             sql += f" HAVING {having_sql}"

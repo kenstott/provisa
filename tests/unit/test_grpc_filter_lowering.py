@@ -95,9 +95,9 @@ class TestFilterValuesAreBound:
         assert params == [3, "east"]
 
     def test_values_keep_their_type(self):
-        _sql, params = _lower({"shipped": False, "amount": 10.5, "order_id": 7})
-        assert params == [7, 10.5, False]  # in the table's column order
-        assert [type(p) for p in params] == [int, float, bool]
+        _sql, params = _lower({"shipped": False, "amount": "10.5", "order_id": 7})
+        assert params == [7, decimal.Decimal("10.5"), False]  # in the table's column order
+        assert [type(p) for p in params] == [int, decimal.Decimal, bool]
 
     def test_a_quote_in_a_value_never_reaches_the_statement(self):
         sql, params = _lower({"region": "o'hare' OR '1'='1"})
@@ -127,7 +127,9 @@ class TestTypedFilterValues:
             ("seen_at", "2026-01-01 08:30:00+00", '"seen_at" = CAST($1 AS TIMESTAMPTZ)', None),
             ("ship_date", "2026-01-05", '"ship_date" = CAST($1 AS DATE)', None),
             ("ref", "6f1c2a34-0000-4000-8000-000000000001", '"ref" = CAST($1 AS UUID)', None),
-            ("amount", 10.5, '"amount" = $1', None),
+            # REQ-1961: a sized numeric's filter field is the string of its exact digits, bound
+            # as the decimal they are, so it compares as a number.
+            ("amount", "10.5", '"amount" = $1', decimal.Decimal("10.5")),
             ("shipped", True, '"shipped" = $1', None),
             ("order_id", 3, '"order_id" = $1', None),
             ("region", "east", '"region" = $1', None),
@@ -148,7 +150,7 @@ class TestTypedFilterValues:
             {
                 "placed_at": "2026-01-01T08:30:00",
                 "ship_date": "2026-01-05",
-                "amount": 10.5,
+                "amount": "10.50",
                 "shipped": True,
                 "order_id": 1,
             }
@@ -195,7 +197,7 @@ class TestTypedFilterValues:
                 "placed_at": "2026-01-01T08:30:00",
                 "seen_at": "2026-01-01 08:30:00+00",
                 "ship_date": "2026-01-05",
-                "amount": 10.5,
+                "amount": "10.5",
                 "shipped": True,
             }
         )
@@ -208,7 +210,13 @@ class TestTypedFilterValues:
             'AND "placed_at" = CAST(? AS TIMESTAMP) '
             'AND "seen_at" = CAST(? AS TIMESTAMP WITH TIME ZONE) AND "ship_date" = CAST(? AS DATE)'
         )
-        assert bound == [10.5, True, "2026-01-01 08:30:00", "2026-01-01 08:30:00+00", "2026-01-05"]
+        assert bound == [
+            decimal.Decimal("10.5"),
+            True,
+            "2026-01-01 08:30:00",
+            "2026-01-01 08:30:00+00",
+            "2026-01-05",
+        ]
 
 
 class TestLimitIsBound:
@@ -267,7 +275,7 @@ class TestBodyFilterValueMatchesTheColumnType:
             ("order_id", "3"),  # integer column: a string
             ("order_id", 3.5),  # integer column: a fraction
             ("order_id", True),  # integer column: a boolean is not a number
-            ("amount", "10.5"),  # numeric column: a string
+            ("amount", 10.5),  # sized numeric column: its filter value is its digits (REQ-1961)
             ("amount", False),
             ("shipped", 1),  # boolean column: a number
             ("shipped", "true"),
@@ -287,8 +295,6 @@ class TestBodyFilterValueMatchesTheColumnType:
         ("field", "value"),
         [
             ("order_id", 3),
-            ("amount", 10.5),
-            ("amount", 10),  # a whole number is a number
             ("shipped", False),
             ("region", "east"),
             ("placed_at", "2026-01-01 08:30:00"),
@@ -298,6 +304,11 @@ class TestBodyFilterValueMatchesTheColumnType:
     def test_matching_value_binds(self, field, value):
         _sql, params = _lower({field: value})
         assert params == [value]
+
+    @pytest.mark.parametrize("digits", ["10.5", "10"])
+    def test_a_sized_numerics_digits_bind_as_the_decimal_they_are(self, digits):
+        _sql, params = _lower({"amount": digits})
+        assert params == [decimal.Decimal(digits)]
 
     def test_group_by_body_filter_mismatch_raises_naming_the_field(self):
         from provisa.grpc.query_ir import FilterError, grpc_table_to_group_by_graphql_text

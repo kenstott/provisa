@@ -16,10 +16,11 @@ what counts as a value, that a bound plan is exactly what compiling the request'
 and that a shape whose compilation depends on a value is kept per text instead.
 """
 
-# Requirements: REQ-1877
+# Requirements: REQ-1877, REQ-1961
 
 from __future__ import annotations
 
+from decimal import Decimal
 from types import SimpleNamespace
 
 import pytest
@@ -155,7 +156,8 @@ _TEMPLATES = [
     "{{ orders(where: {{id: {{eq: {0}}}}}) {fields} }}",
     "{{ orders(limit: {0}, offset: {1}) {fields} }}",
     "{{ orders(limit: {0}, where: {{id: {{gte: {1}, lt: {2}}}}}, order_by: {{id: desc}}) {fields} }}",
-    '{{ orders(where: {{region: {{eq: "r{0}"}}, amount: {{gt: {1}.5}}}}) {fields} }}',
+    # amount is decimal(10,2): a sized numeric is compared by the string of its digits (REQ-1961)
+    '{{ orders(where: {{region: {{eq: "r{0}"}}, amount: {{gt: "{1}.5"}}}}) {fields} }}',
     '{{ orders(where: {{region: {{in: ["a{0}", "b{1}", "c{2}"]}}}}) {fields} }}',
     '{{ orders(where: {{_or: [{{id: {{eq: {0}}}}}, {{region: {{like: "%{1}%"}}}}]}}) {fields} }}',
     "{{ orders(limit: {0}) {{ id customer {{ id name }} }} }}",
@@ -173,6 +175,22 @@ def test_a_bound_plan_equals_a_fresh_compile_of_the_same_text(env, template):
         assert env.run(text) == env.fresh(text), text
     assert len(env.parses) == parses, "a kept shape was parsed again"
     assert env.run(texts[0]) == env.fresh(texts[0])
+
+
+def test_a_kept_sized_numeric_shape_binds_each_request_s_exact_digits(env):
+    """amount is decimal(10,2): its filter value is the string of its digits, bound as the decimal
+    it spells (REQ-1961). The shape is kept, and a later request's digits are bound exactly."""
+    template = '{{ orders(where: {{amount: {{gt: "{0}"}}}}) {{ id }} }}'
+    env.run(template.format("10.5"))
+    parses = len(env.parses)
+    bound = env.run(template.format("12345678.91"))
+    assert len(env.parses) == parses
+    assert bound == env.fresh(template.format("12345678.91"))
+    assert bound[0].params == [Decimal("12345678.91")]
+    with pytest.raises(ValueError, match="is not a number"):
+        env.run(template.format("abc"))
+    with pytest.raises(ValueError, match="is not a number"):
+        env.fresh(template.format("abc"))
 
 
 def test_each_caller_gets_its_own_parameter_lists(env):
