@@ -10280,7 +10280,7 @@ Installing the demo is optional and OFF by default. When installed, the launcher
 
 **Status:** ✅ complete · **Priority:** MUST · **Type:** infrastructure
 
-The native tier builds a Python VENV at first launch from PyPI (pinned to release). The DMG/EXE bundles a bare python-build-standalone interpreter + a wheelhouse. First-launch creates ~/.provisa/venv and installs provisa[embedded] online from PyPI, or offline via pip --no-index --find-links from the bundled wheelhouse. The native tier runs with no Docker or container dependencies.
+The native tier builds a Python VENV at first launch from PyPI (pinned to release). The DMG/EXE bundles a bare python-build-standalone interpreter + a wheelhouse. First-launch creates ~/.provisa/venv and installs provisa[embedded] online from PyPI, or offline via pip --no-index --find-links from the bundled wheelhouse. The native tier runs with no Docker or container dependencies. (Amended 2026-11-22 by the maintainer. Every installer takes Provisa from its own bundled wheels or prebuilt runtime, online or offline; none installs the provisa package from a public registry. Only third-party packages, such as an optional data-quality checker, may come from a package index. This supersedes the online install of provisa[embedded] from PyPI.)
 
 **Use case:** Ensures the entire native-tier stack is self-contained and runs on any OS (macOS, Windows, Linux) without requiring external Python environments or container runtimes.
 
