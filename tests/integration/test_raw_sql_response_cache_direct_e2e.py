@@ -96,16 +96,14 @@ def _new_key(org: str, before: set[bytes]) -> bytes:
 
 
 def _trim_to_second_row(key: bytes) -> str:
-    """Keep only the entry's second row (same kind, same bytes); returns the entry kind."""
-    from provisa.cache.codec import decode_cache_payload, encode_cache_payload
+    """Keep only the entry's second row (same kind, same bytes); returns the entry's label
+    (``cache_entry_edit.label``: ``pg_datarows``, or the origin of an ``arrow`` entry)."""
+    from tests.integration.cache_entry_edit import label, rewrite, second_row_only
 
     r = _redis()
-    payload = decode_cache_payload(r.get(key))
-    entry = payload["data"]
-    field = {"rows": "rows", "pg_datarows": "datarows"}[entry["kind"]]
-    entry[field] = entry[field][1:2]
-    r.set(key, encode_cache_payload(payload), keepttl=True)
-    return entry["kind"]
+    data = r.get(key)
+    r.set(key, rewrite(data, second_row_only), keepttl=True)
+    return label(data)
 
 
 async def _asyncpg_rows(srv, sql: str) -> list[tuple]:

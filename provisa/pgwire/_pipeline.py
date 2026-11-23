@@ -42,7 +42,7 @@ from provisa.federation.execution_auth import plan_authorization
 
 from provisa.audit.pipeline import PendingAudit
 from provisa.core.session_time_zone import zone_cache_key
-from provisa.executor.result import QueryResult
+from provisa.executor.result import ArrowResult, QueryResult
 from provisa.otel_compat import get_tracer as _get_tracer
 from provisa.otel_compat import stage as _stage
 from provisa.pgwire.catalog_route import CLIENT_TABLE_FUNCTIONS
@@ -4699,8 +4699,9 @@ def _response_cache_bound() -> int:
 
 async def _read_response_cache(
     plan: _Plan, state: Any, *, wire_formats: list[int] | None
-) -> tuple[dict, list[str] | None, Any] | None:
-    """The raw-SQL entry for this plan — ``(entry, column_types, stored)`` — or None on a MISS.
+) -> tuple[Any, Any] | None:
+    """The raw-SQL entry for this plan — ``(entry, stored)``, the entry a ``raw_sql.CacheEntry``
+    — or None on a MISS.
     ``stored`` is the store's own record of the entry (``cache.store.CachedResult``): its age is
     what a surface reports beside a HIT (REQ-536)."""
     from provisa.cache.middleware import check_cache, decode_cached_result
@@ -4710,7 +4711,7 @@ async def _read_response_cache(
         held_formats, cached = plan.cache_hit
         if held_formats != wire_formats:
             return None
-        return (*decode_cached_result(cached), cached)
+        return decode_cached_result(cached), cached
     if _entry_kind(wire_formats) in plan.cache_missed:
         return None  # the planner looked for this kind before routing: a MISS, not read again
     ck = _response_cache_key(plan, wire_formats=wire_formats)
@@ -4721,7 +4722,7 @@ async def _read_response_cache(
     cached = await check_cache(state.response_cache_store, ck, _response_cache_org_id(state))
     if cached is None:
         return None
-    return (*decode_cached_result(cached), cached)
+    return decode_cached_result(cached), cached
 
 
 async def _account_cache_hit(
@@ -4736,11 +4737,13 @@ async def _account_cache_hit(
         await finalize_audit(plan, 402, state, cache_hit=True, cache_entry=stored)
         raise
     result.cache_entry = stored
-    plan.row_count = len(result.rows)
+    # An Arrow hit is counted from its table: its rows are built only for a consumer of rows.
+    held = result.table if isinstance(result, ArrowResult) else None
+    plan.row_count = held.num_rows if held is not None else len(result.rows)
     await finalize_audit(plan, 200, state, cache_hit=True, cache_entry=stored)
     from provisa.otel_compat import annotate_request
 
-    annotate_request(db__row_count=len(result.rows))  # REQ-1910: as the live chokepoint does
+    annotate_request(db__row_count=plan.row_count)  # REQ-1910: as the live chokepoint does
     return result
 
 
@@ -4749,14 +4752,15 @@ async def check_response_cache(plan: _Plan, state: Any) -> QueryResult | None:  
     and the streaming terminals in ``provisa/api/flight/server.py`` (Cypher), ``provisa/grpc/
     server.py`` and ``provisa/pgwire/server.py`` that bypass it. Returns ``None`` on a MISS or when
     the plan is not cacheable (REQ-866 fail-closed) -- the caller then runs the plan as usual.
-    Either decoded kind is served as rows (``raw_sql.entry_as_result``); another kind raises."""
+    An ``arrow`` entry is served as the Arrow result it holds (``raw_sql.entry_as_result``);
+    another kind raises."""
     hit = await _read_response_cache(plan, state, wire_formats=None)
     if hit is None:
         return None
     from provisa.cache.raw_sql import entry_as_result
 
-    entry, column_types, stored = hit
-    return await _account_cache_hit(plan, state, entry_as_result(entry, column_types), stored)
+    entry, stored = hit
+    return await _account_cache_hit(plan, state, entry_as_result(entry), stored)
 
 
 async def cached_result(plan: _Plan, state: Any) -> QueryResult:  # REQ-1897
@@ -4776,19 +4780,19 @@ async def cached_result(plan: _Plan, state: Any) -> QueryResult:  # REQ-1897
 
 
 async def check_response_cache_arrow(plan: _Plan, state: Any) -> Any | None:  # REQ-1897
-    """Flight SQL's Arrow-native HIT: the entry as the ``pyarrow.Table`` Flight serves (an
-    ``arrow_ipc`` entry verbatim; a ``rows`` entry converted losslessly), accounted exactly like
-    :func:`check_response_cache`. None on a MISS."""
+    """Flight SQL's Arrow-native HIT: the entry as the ``pyarrow.Table`` Flight serves, its
+    stored batches typed as Flight's miss types them (``raw_sql.entry_as_arrow``), accounted
+    exactly like :func:`check_response_cache`. None on a MISS."""
     hit = await _read_response_cache(plan, state, wire_formats=None)
     if hit is None:
         return None
     from provisa.cache.raw_sql import entry_as_arrow, entry_as_result
 
-    entry, column_types, stored = hit
-    await _account_cache_hit(plan, state, entry_as_result(entry, column_types), stored)
-    # REQ-1961: typed by the statement's result shape, as the miss's row stream is.
+    entry, stored = hit
+    await _account_cache_hit(plan, state, entry_as_result(entry), stored)
+    # REQ-1961: typed by the statement's result shape, as the miss's stream is.
     shape = None if plan.result_shape is None else await plan.result_shape()
-    return entry_as_arrow(entry, column_types, shape)
+    return entry_as_arrow(entry, shape)
 
 
 async def check_response_cache_datarows(  # REQ-1897
@@ -4802,7 +4806,7 @@ async def check_response_cache_datarows(  # REQ-1897
         return None
     from provisa.cache.raw_sql import entry_as_datarows
 
-    entry, _, stored = hit
+    entry, stored = hit
     return await _account_cache_hit(plan, state, entry_as_datarows(entry, wire_formats), stored)
 
 
@@ -4939,8 +4943,7 @@ async def store_executed_result(plan: _Plan, state: Any, result: QueryResult) ->
     tee = response_cache_tee(plan, state, run=None)
     if tee is None:
         return
-    for _ in tee.rows(result).batches():
-        pass
+    tee.result(result)
     await tee.commit()
 
 
