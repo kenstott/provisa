@@ -37,6 +37,7 @@ from provisa.core.schema_org import (
     glossary_term_edges,
     glossary_term_refs,
     glossary_terms,
+    object_owners,
     registered_tables,
     sources,
 )
@@ -59,14 +60,20 @@ async def _create_views(conn) -> None:
 
 
 async def _base(conn) -> None:
-    """Domains (sales stewarded, sales_eu under it, hr not) and one table in each of two."""
-    await conn.execute_core(
-        insert(domains).values(id="sales", description="", steward="sales_steward")
-    )
+    """Domains (sales stewarded, sales_eu under it, hr not) and one table in each of two. The
+    stewards are what the build derives from domain_steward rows (object_owners, REQ-2219)."""
+    await conn.execute_core(insert(domains).values(id="sales", description=""))
     await conn.execute_core(
         insert(domains).values(id="sales_eu", description="", parent_domain_id="sales")
     )
     await conn.execute_core(insert(domains).values(id="hr", description=""))
+    # sales_steward's domain_steward row names sales, which covers sales_eu under it.
+    for domain_id in ("sales", "sales_eu"):
+        await conn.execute_core(
+            insert(object_owners).values(
+                object_kind="domain", object_id=domain_id, principal="sales_steward"
+            )
+        )
     await conn.execute_core(insert(sources).values(id="s1", type="postgres"))
     for tid, domain, name in ((_SALES_TABLE, "sales_eu", "orders"), (_HR_TABLE, "hr", "staff")):
         await conn.execute_core(

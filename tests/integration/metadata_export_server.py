@@ -57,8 +57,9 @@ PRODUCT_FIELDS = {
     "support_contact": "data-team@example.com",
     "custom_properties": {"cost_center": "CC-42"},
 }
-#: REQ-2219 (amended 2026-11-23): the product's owner is a person, holding OWNER_ROLE (which carries
-#: data_product_owner) and named in its Owner field once the server is up (:func:`name_owner`).
+#: REQ-2219 (amended 2026-11-23): the product's owner and the domain's steward are a person,
+#: holding OWNER_ROLE (which carries data_product_owner and domain_steward) and named in the
+#: product's Owner field and the domain's Steward field once the server is up (:func:`name_owner`).
 OWNER_ROLE = "data_owner"
 PRODUCT_OWNER = "provisa-e2e-owner"
 MASK_PATTERN = r"(\d{3})-(\d{2})-(\d{4})"
@@ -156,7 +157,7 @@ def model_config(
         "naming": {"domain_prefix": False, "rules": []},
         "cache": {"enabled": False},
         "domains": [
-            {"id": domain, "description": "Sales domain", "steward": "data_owner"},
+            {"id": domain, "description": "Sales domain"},
             # Unstewarded on purpose: a catalog must show the governance gap.
             {"id": "lab", "description": "Lab domain"},
         ],
@@ -179,7 +180,11 @@ def model_config(
             {
                 "id": r,
                 "description": f"{r} role.",
-                "capabilities": ["usage", "data_product_owner"] if r == OWNER_ROLE else ["usage"],
+                "capabilities": (
+                    ["usage", "data_product_owner", "domain_steward"]
+                    if r == OWNER_ROLE
+                    else ["usage"]
+                ),
                 "domain_access": ["*"],
             }
             for r in roles
@@ -327,12 +332,19 @@ mutation ($input: DataProductInput!) {
 }
 """
 
+_SET_STEWARDS = """
+mutation ($domainId: String!, $stewards: [String!]!) {
+  setDomainStewards(domainId: $domainId, stewards: $stewards) { success message }
+}
+"""
+
 
 async def name_owner(
     client: httpx.AsyncClient, *, product: str, domain: str, product_name: str
 ) -> None:
     """PRODUCT_OWNER granted OWNER_ROLE and named the product's owner, as an admin does in the
-    product's form: the save restates every field (REQ-2219: saving writes their owner row)."""
+    product's form: the save restates every field (REQ-2219: saving writes their owner row); and
+    named the domain's steward (their domain_steward row)."""
     granted = await client.post(
         f"/admin/users/{PRODUCT_OWNER}/assignments",
         json={"role_id": OWNER_ROLE, "domain_id": "*"},
@@ -363,6 +375,15 @@ async def name_owner(
     )
     assert saved.status_code == 200, saved.text
     assert saved.json()["data"]["updateDataProduct"]["success"], saved.text
+    stewarded = await client.post(
+        "/admin/graphql",
+        json={
+            "query": _SET_STEWARDS,
+            "variables": {"domainId": domain, "stewards": [PRODUCT_OWNER]},
+        },
+    )
+    assert stewarded.status_code == 200, stewarded.text
+    assert stewarded.json()["data"]["setDomainStewards"]["success"], stewarded.text
 
 
 async def approve_terms(

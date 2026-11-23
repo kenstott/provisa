@@ -122,7 +122,7 @@ async def _governance_arrives_as_tags_without_any_rule_body(published: dict) -> 
 
 async def _the_steward_owns_each_member(published: dict) -> None:
     ownership = await _aspect(_dataset("orders"), "ownership")
-    assert [o["owner"] for o in ownership["owners"]] == ["urn:li:corpuser:data_owner"]
+    assert [o["owner"] for o in ownership["owners"]] == [f"urn:li:corpuser:{PRODUCT_OWNER}"]
 
 
 async def _the_data_product_holds_its_members_and_fields(published: dict) -> None:

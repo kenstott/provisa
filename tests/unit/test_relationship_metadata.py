@@ -51,22 +51,23 @@ async def test_model_defaults():
         target_column="y",
         cardinality=Cardinality.many_to_one,
     )
-    assert rel.owner is None
     assert rel.version == 1
     assert rel.needs_review is False
 
 
-async def test_model_accepts_owner():
-    rel = Relationship(
-        id="r",
-        source_table_id="a",
-        target_table_id="b",
-        source_column="x",
-        target_column="y",
-        cardinality=Cardinality.many_to_one,
-        owner="alice",
-    )
-    assert rel.owner == "alice"
+async def test_model_refuses_owner():
+    # REQ-2219 (amended 2026-11-23): a relationship's owners are relationship_owner entitlement
+    # rows; a definition still naming one is refused, not read past.
+    with pytest.raises(ValueError, match="owner is no longer a setting"):
+        Relationship(
+            id="r",
+            source_table_id="a",
+            target_table_id="b",
+            source_column="x",
+            target_column="y",
+            cardinality=Cardinality.many_to_one,
+            owner="alice",
+        )
 
 
 class TestMarkForReview:
