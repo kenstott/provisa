@@ -297,3 +297,15 @@ def test_a_call_of_a_column_has_no_overload_to_read():
     avg, count = tree.selects
     assert call_result_type(avg) is None  # numeric or double precision, by x's type
     assert call_result_type(count) == "bigint"
+
+
+def test_dbeaver_keywords_aggregate_is_named_string_agg(conn: Any):
+    # REQ-2204, DBeaver #11: an unaliased call is named as PostgreSQL names it, from the statement
+    # the client sent, not the engine function it is transpiled to (DuckDB's group_concat).
+    res = _exec(
+        conn,
+        "select string_agg(word, ',') from pg_catalog.pg_get_keywords() "
+        "where word <> ALL ('{a,abs}'::text[])",
+    )
+    assert res.fname(0) == b"string_agg"
+    assert res.ntuples == 1
