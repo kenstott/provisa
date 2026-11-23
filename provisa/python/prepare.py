@@ -32,10 +32,17 @@ def prepare(
 ) -> Prepared:
     from provisa.python.install import ensure_installed, environment_python
     from provisa.python.source import code_path, entry_module, host_command, read_code
-    from provisa.runtime_deps.code_runtimes import CodeRuntimeResolver
+    from provisa.runtime_deps.code_runtimes import (
+        CodeRuntimeResolver,
+        running_interpreter,
+        uv_executable,
+    )
 
     resolver = CodeRuntimeResolver(cache_root=ctx.cache_root)
-    python, uv = resolver.resolve("python"), resolver.resolve("uv")
+    # The interpreter Provisa runs on and uv from its PyPI wheel; nothing fetched from GitHub on
+    # the pip path (maintainer 2026-11-22, docs/arch/fetch-sources.md).
+    runtime = running_interpreter()
+    python, uv = runtime.executable, uv_executable()
     installed = ensure_installed(
         source_id=source_id,
         code=code,
@@ -48,8 +55,8 @@ def prepare(
     )
     root = code_path(installed.path)
     entry = entry_module(root, config.entry)
-    interpreter = environment_python(installed.path, python)
-    home = python.parent.parent
+    interpreter = environment_python(installed.path)
+    home = runtime.home
     manifest = read_code(
         python=interpreter, python_home=home, code=root, entry=entry, egress=ctx.egress
     )

@@ -126,6 +126,12 @@ ANSWERS: dict[str, tuple[int, list[str | None]]] = {
     "SELECT substring('abc' FROM 2) AS v": (TEXT, ["bc"]),
     "SELECT decode('41', 'hex') AS v": (BYTEA, ["\\x41"]),
     "SELECT decode('QQ==', 'base64') AS v": (BYTEA, ["\\x41"]),
+    # byteain's escape format: an octal byte, a doubled backslash, the rest its UTF-8 bytes.
+    "SELECT pg_catalog.\"decode\"('abc'::text, 'escape'::text) AS v": (BYTEA, ["\\x616263"]),
+    "SELECT decode('a\\\\b\\000\\377é', 'ESCAPE') AS v": (BYTEA, ["\\x615c6200ffc3a9"]),
+    # to_char of an instant reads a template of digits as a date's: its digits written as they are.
+    "SELECT pg_catalog.\"to_char\"('2000-02-29 00:00:00-05'::timestamp with time zone, "
+    "'FM999.00'::text) AS v": (TEXT, ["999.00"]),
     "SELECT encode('\\x41'::bytea, 'hex') AS v": (TEXT, ["41"]),
     "SELECT encode('\\x41'::bytea, 'base64') AS v": (TEXT, ["QQ=="]),
     "SELECT encode('\\x41005c80'::bytea, 'escape') AS v": (TEXT, ["A\\000\\\\\\200"]),
@@ -268,6 +274,16 @@ def test_a_pattern_or_format_only_known_at_run_time_is_refused_by_name(conn: Any
 
 
 @pytest.mark.parametrize(
+    "sql", ["SELECT decode('a\\9', 'escape') AS v", "SELECT decode('\\', 'escape') AS v"]
+)
+def test_an_invalid_escape_is_refused_as_byteain_refuses_it(conn: Any, sql: str):
+    res = conn.conn.pgconn.exec_params(sql.encode(), [], result_format=0)
+    assert res.status == pq.ExecStatus.FATAL_ERROR
+    assert res.error_field(pq.DiagnosticField.SQLSTATE) == b"22P02"
+    assert b"invalid input syntax for type bytea" in res.error_message
+
+
+@pytest.mark.parametrize(
     ("size", "pretty"),
     [
         (0, "0 bytes"),
@@ -297,3 +313,15 @@ def test_a_call_of_a_column_has_no_overload_to_read():
     avg, count = tree.selects
     assert call_result_type(avg) is None  # numeric or double precision, by x's type
     assert call_result_type(count) == "bigint"
+
+
+def test_dbeaver_keywords_aggregate_is_named_string_agg(conn: Any):
+    # REQ-2204, DBeaver #11: an unaliased call is named as PostgreSQL names it, from the statement
+    # the client sent, not the engine function it is transpiled to (DuckDB's group_concat).
+    res = _exec(
+        conn,
+        "select string_agg(word, ',') from pg_catalog.pg_get_keywords() "
+        "where word <> ALL ('{a,abs}'::text[])",
+    )
+    assert res.fname(0) == b"string_agg"
+    assert res.ntuples == 1

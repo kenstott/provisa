@@ -300,8 +300,28 @@ export function rootQuery(
   return field === null ? null : operation(name, [field]);
 }
 
-// One read of each role's schema for the page's life: it changes only with the model.
+// One read of each role's schema until the model changes: a write to the model (a table
+// registered, edited or deleted) forgets every read, so the next is of the schema it rebuilt.
 const readers = new Map<string, Promise<MetaReader>>();
+const changeListeners = new Set<() => void>();
+let servedVersion = 0;
+
+/** How many times the served schemas have changed this page's life. */
+export const servedSchemasVersion = () => servedVersion;
+
+/** Call ``listener`` each time the served schemas change; returns its unsubscribe. */
+export function onServedSchemasChanged(listener: () => void): () => void {
+  changeListeners.add(listener);
+  return () => changeListeners.delete(listener);
+}
+
+/** A write changed the model: the server rebuilt every role's schemas before answering it, so
+ * every schema read is stale. Forget them, and tell whoever shows what they serve. */
+export function servedSchemasChanged(): void {
+  readers.clear();
+  servedVersion += 1;
+  for (const listener of changeListeners) listener();
+}
 
 /** ``role``'s meta reader: its GraphQL schema and its root fields, read once. */
 export function metaReader(role: string): Promise<MetaReader> {

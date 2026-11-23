@@ -66,6 +66,15 @@
         "rest": "REST",
         "grpc": "gRPC",
         "jsonapi": "JSON:API"
+      },
+      "aggregate": {
+        "cypher": "{{name}} को Cypher में गिनें",
+        "sql": "{{name}} को SQL में गिनें",
+        "sparql": "{{name}} को SPARQL में गिनें",
+        "graphql": "{{name}} को GraphQL में गिनें",
+        "rest": "{{name}} को REST में गिनें",
+        "grpc": "{{name}} को gRPC में गिनें",
+        "jsonapi": "{{name}} को JSON:API में गिनें"
       }
     }
   }

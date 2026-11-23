@@ -136,11 +136,21 @@ export function joinOf(
 
 export const GRAPH: GraphSchemaDoc = {
   node_labels: [
-    { label: "Orders", table_id: 1, pk_columns: ["id"] },
-    { label: "Clients", table_id: 2, pk_columns: ["id"] },
-    { label: "Tags", table_id: 4, pk_columns: ["id"] },
-    { label: "Shelter:BuildingPermits", table_id: 5, pk_columns: ["id"] },
-    { label: "Shelter:PermitNeighborhood", table_id: 6, pk_columns: ["permitNeighborhood"] },
+    { label: "Orders", table_id: 1, pk_columns: ["id"], properties: ["id", "customerId"] },
+    { label: "Clients", table_id: 2, pk_columns: ["id"], properties: ["id", "name"] },
+    { label: "Tags", table_id: 4, pk_columns: ["id"], properties: ["id"] },
+    {
+      label: "Shelter:BuildingPermits",
+      table_id: 5,
+      pk_columns: ["id"],
+      properties: ["id", "neighborhood"],
+    },
+    {
+      label: "Shelter:PermitNeighborhood",
+      table_id: 6,
+      pk_columns: ["permitNeighborhood"],
+      properties: ["permitNeighborhood"],
+    },
   ],
   relationship_types: [
     {

@@ -67,8 +67,10 @@ export function restExample(reader: MetaReader | null, tb: TableRef): ExampleLin
 }
 
 // Mirrors provisa.compiler.naming.to_type_name + provisa.grpc.proto_gen._to_proto_type_name — both
-// pure functions of the field name alone. sa__userByName -> Sa__UserByName -> SaUserByName.
-function grpcMethod(fieldName: string): string {
+// pure functions of the field name alone. sa__userByName -> Sa__UserByName -> SaUserByName. A
+// table's aggregate and group-by RPCs are its Query method with ``Aggregate`` / ``GroupBy`` after
+// its type (provisa/grpc/proto_gen.py, REQ-1359).
+export function grpcMethod(fieldName: string, variant: "" | "Aggregate" | "GroupBy"): string {
   let typeName: string;
   if (fieldName.includes("__")) {
     const [prefix, rest] = fieldName.split("__", 2);
@@ -78,10 +80,12 @@ function grpcMethod(fieldName: string): string {
   } else {
     typeName = fieldName[0].toUpperCase() + fieldName.slice(1);
   }
-  return `Query${typeName}()`;
+  return `Query${typeName}${variant}()`;
 }
 
 export function grpcExample(reader: MetaReader | null, tb: TableRef): ExampleLink | null {
   const field = rootOf(reader, tb);
-  return field ? { to: "/grpc", state: { grpcMethod: grpcMethod(field), autoRun: true } } : null;
+  return field
+    ? { to: "/grpc", state: { grpcMethod: grpcMethod(field, ""), autoRun: true } }
+    : null;
 }

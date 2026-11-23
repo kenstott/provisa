@@ -280,9 +280,27 @@ def to_json_sql(col: str, nested: NestedColumn, dialect: str, column_name: str) 
     return backend.to_json.format(col=backend.each(col, nested.array_depth, element))
 
 
+def _projected(node: exp.Expr) -> bool:
+    """Whether the marker ``node`` is a result column of its select list or RETURNING, as
+    ``mark_native_nested_reads`` emits one (aliased to the column's name)."""
+    held = node.parent if isinstance(node.parent, exp.Alias) else node
+    return held.arg_key == "expressions" and isinstance(held.parent, (exp.Select, exp.Returning))
+
+
+def _read_natively(nested: NestedColumn, dialect: str) -> bool:
+    """REQ-1965 (amended 2026-11-11, TYPED ARRAYS ARE AN IR TYPE): a typed array the engine holds
+    in its own array type is read as that array, not its JSON form."""
+    from provisa.core.ir_arrays import column_array_type, read_natively
+
+    typed = column_array_type(nested.array_depth, nested.element_type)
+    return typed is not None and read_natively(typed, dialect)
+
+
 def resolve_native_json(sql: str, dialect: str) -> str:
     """``sql`` (already in ``dialect``) with every marker replaced by that backend's to-JSON
-    expression. A statement with no marker is returned as given, unparsed."""
+    expression -- except a result column that is a typed array the backend holds natively
+    (``ir_arrays.read_natively``), which is read as the bare column. A statement with no marker
+    is returned as given, unparsed."""
     if MARKER not in sql.lower():
         return sql
     tree = sqlglot.parse_one(sql, read=dialect)
@@ -291,6 +309,9 @@ def resolve_native_json(sql: str, dialect: str) -> str:
         if marked is None:
             continue
         column, nested = marked
+        if _projected(node) and _read_natively(nested, dialect):
+            node.replace(column)
+            continue
         rendered = to_json_sql(column.sql(dialect=dialect), nested, dialect, column.name)
         node.replace(sqlglot.parse_one(rendered, read=dialect))
     return tree.sql(dialect=dialect)

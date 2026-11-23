@@ -221,6 +221,11 @@ class Session:
     async def write(self, statement: str, params: dict[str, Any]) -> None:
         """The governed write path, as a surface runs it (written): its reads through the read
         path, each translated write sent to the source."""
+        await self.written(parse_cypher_write(statement), params)
+
+    async def written(self, ast: Any, params: dict[str, Any]) -> None:
+        """The write planner run on ``ast`` (a Cypher write's, or a SPARQL update's): its reads
+        through the read path, each translated write sent to the source."""
 
         async def read(query: str, values: dict[str, Any]) -> tuple[list[str], list[list[Any]]]:
             rows = await self.read(query, values)
@@ -237,9 +242,7 @@ class Session:
                 return [], [], int(rows[0][0])
             return columns, rows, None
 
-        await written(
-            parse_cypher_write(statement), WriteTranslator(self.model), params, read, send
-        )
+        await written(ast, WriteTranslator(self.model), params, read, send)
 
     def run(self, statement: str, **params: Any) -> Any:
         made = asyncio.run(

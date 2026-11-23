@@ -34,6 +34,7 @@ import json
 import logging
 import time
 from collections.abc import AsyncIterator
+from dataclasses import dataclass
 from typing import Any, Literal
 
 from fastapi import APIRouter, Request
@@ -53,8 +54,15 @@ _SPARQL_QUERY = "application/sparql-query"
 _SPARQL_UPDATE = "application/sparql-update"
 
 
-async def _query_text(request: Request) -> str | Response:
-    """The query the request carries, as the SPARQL 1.1 Protocol has it sent."""
+@dataclass(frozen=True)
+class SparqlUpdate:
+    """An update the request carries (SPARQL 1.1 Protocol, 2.2): its text."""
+
+    text: str
+
+
+async def _query_text(request: Request) -> str | SparqlUpdate | Response:
+    """The query or update the request carries, as the SPARQL 1.1 Protocol has it sent."""
     params = request.query_params
     if "default-graph-uri" in params or "named-graph-uri" in params:
         return cypher_error(
@@ -69,12 +77,18 @@ async def _query_text(request: Request) -> str | Response:
         if content_type == _SPARQL_QUERY:
             query = (await request.body()).decode("utf-8")
         elif content_type == _SPARQL_UPDATE:
-            return refuse_update((await request.body()).decode("utf-8"))
+            return update_of((await request.body()).decode("utf-8"))
         elif content_type == "application/x-www-form-urlencoded":
             form = await request.form()
             update = form.get("update")
+            if "using-graph-uri" in form or "using-named-graph-uri" in form:
+                return cypher_error(
+                    400,
+                    "sparql.dataset_not_supported",
+                    "using-graph-uri and using-named-graph-uri are not supported",
+                )
             if isinstance(update, str):
-                return refuse_update(update)
+                return update_of(update)
             if "default-graph-uri" in form or "named-graph-uri" in form:
                 return cypher_error(
                     400,
@@ -88,20 +102,24 @@ async def _query_text(request: Request) -> str | Response:
                 415,
                 "sparql.unsupported_content_type",
                 "A SPARQL query is POSTed as application/sparql-query or as the query field of "
-                "an application/x-www-form-urlencoded form",
+                "an application/x-www-form-urlencoded form, an update as "
+                "application/sparql-update or as its update field",
             )
     if not query:
         return cypher_error(400, "sparql.no_query", "The request carries no query")
     return query
 
 
-def refuse_update(text: str) -> Response:
-    """The refusal of an update (REQ-2167): by name, with what the update needs. No form of SPARQL
-    Update is served; a text that is not one is refused as any statement that is not SPARQL."""
-    from provisa.sparql_query.compiler import update_refusal
+def update_of(text: str) -> SparqlUpdate | Response:
+    """The update ``text`` (REQ-2135, amended 2026-11-22), or its refusal by name: text that is no
+    SPARQL Update, and graph management, which acts on named graphs the model does not have."""
+    from provisa.sparql_query.update import graph_management_refusal
 
-    code, said = update_refusal(text)
-    return cypher_error(400, code, said, reason=said)
+    refused = graph_management_refusal(text)
+    if refused is not None:
+        code, said = refused
+        return cypher_error(400, code, said, reason=said)
+    return SparqlUpdate(text)
 
 
 async def vocabulary_for(state: Any, role_id: str, ctx: Any, label_map: Any) -> Any:
@@ -245,6 +263,8 @@ async def sparql_query(request: Request) -> Response:  # REQ-2135
         return cypher_error(
             503, "data.no_schema_for_role", f"No schema for role '{role_id}'", role_id=role_id
         )
+    if isinstance(query, SparqlUpdate):
+        return await answer_update(query.text, request, surface, role_id, state)
     made = await compiled_query(query, surface, role_id, state)
     if isinstance(made, Response):
         return made
@@ -295,6 +315,88 @@ async def sparql_query(request: Request) -> Response:  # REQ-2135
             body, stats_headers = with_stats(body, media, stats)
             headers = {**headers, **stats_headers}
     return Response(content=body, media_type=media, headers=headers)
+
+
+async def solutions_of(  # REQ-2135
+    op: Any, vocab: Any, graph: Any, surface: Any, role_id: str, state: Any
+) -> list[dict[str, Any]] | Response:
+    """The solutions of an update operation's WHERE (REQ-2135, amended 2026-11-22): its SELECT
+    of the variables its templates use, read through the one governed read as any SELECT is, each
+    solution a variable's name -> its RDF term."""
+    from provisa.compiler.directives import NO_CACHE_HINT
+    from provisa.gql.translator_types import CypherTranslateError
+    from provisa.sparql_query.compiler import compile_where
+    from provisa.sparql_query.results import rdf_term
+    from provisa.sparql_query.update import where_variables
+
+    variables = where_variables(op)
+    try:
+        compiled = compile_where(op.where, variables, vocab, graph)
+    except CypherTranslateError as exc:
+        return cypher_error(400, "sparql.refused", str(exc), reason=str(exc))
+    if compiled.empty:
+        return []
+    lowered = semantic_statement(compiled, graph, surface, role_id, state)
+    if isinstance(lowered, Response):
+        return lowered
+    answered = await answer_rows(
+        "", lowered, role_id, state, cache_hint=NO_CACHE_HINT, serve_cached=False, as_of=None
+    )
+    if isinstance(answered, Response):
+        return answered
+    rows = answered[0]
+    return [
+        {v: t for v in variables if (t := rdf_term(row.get(v), vocab.base)) is not None}
+        for row in rows
+    ]
+
+
+async def answer_update(  # REQ-2135
+    text: str, request: Request, surface: Any, role_id: str, state: Any
+) -> Response:
+    """Answer a SPARQL Update (REQ-2135, amended 2026-11-22): each operation in turn, its WHERE
+    read first, then its deletes and its inserts as the governed table writes Cypher's writes
+    make, through the one write planner (provisa.api.rest.graph_write). The answer says the rows
+    written and the counters, as a Cypher write's does."""
+    from fastapi.responses import JSONResponse
+
+    from provisa.api.rest.cypher_router import _counters
+    from provisa.api.rest.graph_write import CypherReads, run_graph_writes, write_refusal
+    from provisa.cypher.counters import counting
+    from provisa.gql.translator_types import CypherTranslateError
+    from provisa.sparql_query.update import delete_writes, ground, insert_write, parse_update
+
+    ctx = surface.context
+    label_map = _build_label_map(ctx, role_id, state)
+    graph = label_map.with_sql_only()
+    try:
+        vocab = await vocabulary_for(state, role_id, ctx, label_map)
+        operations = parse_update(text)
+    except CypherTranslateError as exc:
+        return cypher_error(400, "sparql.refused", str(exc), reason=str(exc))
+    reads = CypherReads(request, None)
+    affected = 0
+    # One update, one count: each operation's writes add to the same counters.
+    with counting() as counted:
+        for op in operations:
+            deletes, inserts = op.delete, op.insert
+            if op.where is not None:
+                solutions = await solutions_of(op, vocab, graph, surface, role_id, state)
+                if isinstance(solutions, Response):
+                    return solutions
+                deletes, inserts = ground(op.delete, solutions), ground(op.insert, solutions)
+            try:
+                asts, params = delete_writes(deletes, vocab, label_map)
+                inserted = insert_write(inserts, vocab, label_map)
+                if inserted is not None:
+                    asts.append(inserted)
+                done = await run_graph_writes(asts, label_map, role_id, state, params, reads)
+            except Exception as exc:  # allow-ble: request boundary — a refusal, or a source or driver error of any type, is this update's outcome, answered by write_refusal
+                return write_refusal(exc, "sparql")
+            affected += done.affected
+    return JSONResponse(
+        content={"type": "sparql", "affected_rows": affected, **_counters(counted, text)}
+    )
 
 
 def with_stats(body: bytes, media: str, stats: dict) -> tuple[bytes, dict[str, str]]:

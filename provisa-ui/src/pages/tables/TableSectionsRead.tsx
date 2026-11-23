@@ -9,8 +9,7 @@
 // permission from the copyright holder.
 
 import { ttlText } from "../../components/form/cacheTtl";
-import { Alert, Group, Text } from "@mantine/core";
-import { useNavigate } from "react-router-dom";
+import { Alert, Text } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import type { RefreshPolicySummary, RegisteredTable, Source } from "../../types/admin";
@@ -38,10 +37,9 @@ import {
   snapshotFields,
 } from "./loadReadFields";
 import { viewMetricsFields } from "./queryReadFields";
-import { QueryLinkIcon } from "../../components/relationships/RelationshipQueryLinks";
-import { GLYPH } from "../../components/relationships/queryGlyphs";
+import { QueryLinkRow } from "../../components/relationships/RelationshipQueryLinks";
 import { useRelationshipSurfaces } from "../../components/relationships/useRelationshipSurfaces";
-import { tableQueryLinks } from "../../components/relationships/tableQueries";
+import { tableAggregateLinks, tableQueryLinks } from "../../components/relationships/tableQueries";
 import { checkersField, uniquesField, useContractFields } from "./qualityReadFields";
 
 // A table's sections read-only: the read view shows them, and so does the edit form to a caller
@@ -108,11 +106,10 @@ export function IdentityRead({
   actingRole?: string | null;
 }) {
   const { t } = useTranslation();
-  const navigate = useNavigate();
   const regions = useRegionChoices().regions;
   // REQ-2252: one link per surface the table is exposed on to the acting role, each opening that
-  // surface's Explore editor with a query that reads it, run at once; drawn as a data product's
-  // Access section draws a table's.
+  // surface's Explore editor with a query that reads it, run at once; drawn as a relationship's
+  // detail panel draws its links (amended 2026-11-22).
   const surfaces = useRelationshipSurfaces(actingRole ?? null);
   const queryLinks = actingRole ? tableQueryLinks(table, surfaces) : [];
   const naming = table.gqlNamingConvention
@@ -128,27 +125,6 @@ export function IdentityRead({
       value: table.alias ?? null,
     },
     { label: t("tableEditForm.namingConventionLabel"), value: naming },
-    ...(queryLinks.length > 0
-      ? [
-          {
-            label: t("relationshipRow.queryLinks.heading"),
-            value: (
-              <Group gap={4} wrap="wrap" data-testid="table-identity-query-links">
-                {queryLinks.map(({ surface, link }) => (
-                  <QueryLinkIcon
-                    key={surface}
-                    label={t(`relationshipRow.queryLinks.${surface}`, { name: table.tableName })}
-                    testId={`table-identity-query-${surface}`}
-                    onClick={() => navigate(link.to, { state: link.state })}
-                  >
-                    {GLYPH[surface]}
-                  </QueryLinkIcon>
-                ))}
-              </Group>
-            ),
-          },
-        ]
-      : []),
     {
       label: t("tableEditForm.descriptionLabel"),
       value: table.description || null,
@@ -219,7 +195,17 @@ export function IdentityRead({
         ]
       : []),
   ];
-  return <DetailFields fields={fields} testId="table-identity" />;
+  return (
+    <>
+      <QueryLinkRow
+        links={queryLinks}
+        labelOf={(surface) => t(`relationshipRow.queryLinks.${surface}`, { name: table.tableName })}
+        heading={t("relationshipRow.queryLinks.heading")}
+        testIdPrefix="table-identity"
+      />
+      <DetailFields fields={fields} testId="table-identity" />
+    </>
+  );
 }
 
 export function LoadRead({ table, source }: { table: RegisteredTable; source?: Source }) {
@@ -354,8 +340,23 @@ export function LoadRead({ table, source }: { table: RegisteredTable; source?: S
   );
 }
 
-export function QueryRead({ table }: { table: RegisteredTable }) {
+export function QueryRead({
+  table,
+  actingRole,
+}: {
+  table: RegisteredTable;
+  /** The acting roles, whose names the table's aggregate links use; absent where none are shown. */
+  actingRole?: string | null;
+}) {
   const { t } = useTranslation();
+  // REQ-2252 (amended 2026-11-22): with aggregates enabled, a link per surface that serves the
+  // table's aggregates to the acting role, each opening that surface's Explore editor with an
+  // aggregate query (a group-by with group-by enabled), run at once.
+  const surfaces = useRelationshipSurfaces(
+    actingRole && table.enableAggregates ? actingRole : null,
+  );
+  const aggregateLinks =
+    actingRole && table.enableAggregates ? tableAggregateLinks(table, surfaces) : [];
   const fields: DetailField[] = [
     { label: t("tableEditForm.enableAggregatesLabel"), value: yesNo(t, table.enableAggregates) },
     { label: t("tableEditForm.enableGroupByLabel"), value: yesNo(t, table.enableGroupBy) },
@@ -385,7 +386,19 @@ export function QueryRead({ table }: { table: RegisteredTable }) {
       : []),
     ...viewMetricsFields(t, table),
   ];
-  return <DetailFields fields={fields} testId="table-query" />;
+  return (
+    <>
+      <QueryLinkRow
+        links={aggregateLinks}
+        labelOf={(surface) =>
+          t(`relationshipRow.queryLinks.aggregate.${surface}`, { name: table.tableName })
+        }
+        heading={t("relationshipRow.queryLinks.heading")}
+        testIdPrefix="table-query-aggregate"
+      />
+      <DetailFields fields={fields} testId="table-query" />
+    </>
+  );
 }
 
 export function QualityRead({ table, source }: { table: RegisteredTable; source?: Source }) {

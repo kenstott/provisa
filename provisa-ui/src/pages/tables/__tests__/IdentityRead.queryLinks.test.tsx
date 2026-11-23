@@ -8,10 +8,11 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-2252 (Amended 2026-11-18): a table's Identity section has one link per query surface the
-// table is exposed on, drawn as a data product's Access section draws a table's; each opens that
-// surface's Explore editor with a query that reads the table, run at once, by the names the role
-// sees and with a row limit. A surface the table is not exposed on shows no link.
+// REQ-2252 (Amended 2026-11-18, 2026-11-22): a table's Identity section has one link per query
+// surface the table is exposed on, drawn as a relationship's detail panel draws its links ("Query
+// it", then each surface's glyph with its name beside it); each opens that surface's Explore editor
+// with a query that reads the table, run at once, by the names the role sees and with a row limit.
+// A surface the table is not exposed on shows no link.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ReactElement } from "react";
@@ -134,14 +135,16 @@ const EXPECTED: Record<string, { to: string; state: Record<string, unknown> }> =
 };
 
 describe("a table's Identity section query links", () => {
-  it("links the table on every surface it is exposed on, each tipped by its surface", async () => {
+  it("links the table on every surface it is exposed on, each named and tipped by its surface", async () => {
     serve(GRAPH);
     routed(<IdentityRead table={CUSTOMERS} source={PG} actingRole={role} />);
     for (const [surface, text] of SURFACES) {
       const link = await screen.findByTestId(`table-identity-query-${surface}`);
       expect(link).toHaveAccessibleName(`Read customers in ${text}`);
+      // Drawn as a relationship's: the surface's name beside its glyph, not an icon alone.
+      expect(link).toHaveTextContent(text);
     }
-    expect(screen.getByTestId("table-identity")).toHaveTextContent("Query it");
+    expect(screen.getByTestId("table-identity-query-links")).toHaveTextContent(/^Query it/);
   });
 
   for (const [surface] of SURFACES) {
@@ -178,7 +181,7 @@ describe("a table's Identity section query links", () => {
     await waitFor(() => expect(vi.mocked(metaReader)).toHaveBeenCalled());
     await waitFor(() => expect(vi.mocked(fetch)).toHaveBeenCalledTimes(2));
     expect(screen.queryByTestId("table-identity-query-links")).toBeNull();
-    expect(screen.getByTestId("table-identity")).not.toHaveTextContent("Query it");
+    expect(screen.queryByText("Query it")).toBeNull();
   });
 
   it("has no links where no acting role is given (the edit form)", () => {

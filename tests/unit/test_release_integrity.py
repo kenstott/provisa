@@ -565,3 +565,20 @@ def test_the_wheel_index_is_regenerated_on_pages_after_the_release_is_published(
         "actions/deploy-pages@v4",
     ]
     assert (_ROOT / "scripts" / "release_wheel_index.py").is_file()
+
+
+def test_the_macos_native_runtime_installs_uv_lock_versions():
+    # Dry run 45076921053: an unconstrained pip install took deltalake 1.7.0 minutes after its
+    # sdist went up, before its macOS wheel existed, and the source build failed to link.
+    script = (_ROOT / "packaging" / "macos" / "build-dmg.sh").read_text()
+    body = script.split("bundle_native_payload() {", 1)[1].split("\n}\n", 1)[0]
+    assert "uv export --frozen" in body
+    commands = body.replace("\\\n", " ").splitlines()
+    installs = [c for c in commands if '"$py" -m pip install' in c and "[embedded]" in c]
+    assert installs, "the native runtime's provisa[embedded] install is gone"
+    assert all('-c "$constraints"' in line for line in installs)
+    core = _load("release-macos.yml")["jobs"]["build-macos-core"]["steps"]
+    names = [step.get("name") for step in core]
+    assert names.index("Install uv") < names.index("Build and sign the app")
+    uv_step = core[names.index("Install uv")]
+    assert uv_step["uses"] == "./.github/actions/setup-python"

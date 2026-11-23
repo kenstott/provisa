@@ -49,8 +49,9 @@ def _refused(sql: str, dialect: str = "trino") -> RowRefused:
 
 def test_each_row_is_in_the_grid_and_not_in_an_old_table():
     rows = (ARRAY_EQ, ARRAY_NE, ARRAY_POSITION, REGEXP_REPLACE, PG_COLLATION_FOR, TS_DELETE)
-    in_the_grid = {id(f) for f in GRID.features}
-    assert all(id(row) in in_the_grid for row in (*rows, INTERVAL_IN))
+    # By name: the grid holds each row with what polyfill.measured states of it.
+    in_the_grid = {f.name for f in GRID.features}
+    assert all(row.name in in_the_grid for row in (*rows, INTERVAL_IN))
     # The rules moved: no old table holds them.
     assert not {"array_eq", "array_ne"} & set(FORMS_BY_NAME)
     assert not {name for name, _ in MACROS} & {"array_eq", "array_ne", "ts_delete_array"}

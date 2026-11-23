@@ -29,7 +29,7 @@ import sqlglot.expressions as exp
 from provisa.core.pg_error import PostgresError, from_engine
 from provisa.federation.clickhouse_runtime import ClickHouseFederationRuntime
 from provisa.transpiler.function_macros import FunctionRefused
-from provisa.transpiler.polyfill import GRID, bytea, trino
+from provisa.transpiler.polyfill import Refusal, GRID, bytea, trino
 from provisa.transpiler.transpile import transpile
 
 
@@ -257,7 +257,9 @@ def test_every_other_dialect_keeps_what_it_had(dialect):
     dot = sqlglot.parse_one(_call("byteacat", _b("01"), _b("02")), read="postgres").find(exp.Dot)
     assert dot is not None
     applied = GRID.read(dot.expression, dialect)
-    assert applied is None or applied.form in (None, trino.KEPT)
+    # Where the old table has no form either, the grid states its refusal (polyfill.measured).
+    refused = Refusal("0A000", f"byteacat() has no form on {dialect}")
+    assert applied is None or applied.form in (None, trino.KEPT, refused)
 
 
 def test_each_row_states_its_limitation():

@@ -200,6 +200,14 @@ def exact_inputs(pg_sql: str, room: int = _ROOM) -> str:
     return pg_sql if written == tree else written.sql(dialect="postgres")
 
 
+def text_literal(node: exp.Expr) -> exp.Literal | None:
+    """The text a statement writes as a literal: a string literal, or a literal cast to text
+    (``'hex'::text``, ``1::text``), which names its text as plainly; None for any other value."""
+    if isinstance(node, exp.Cast) and node.to.this == exp.DataType.Type.TEXT:
+        return exp.Literal.string(node.this.this) if isinstance(node.this, exp.Literal) else None
+    return node if isinstance(node, exp.Literal) and node.is_string else None
+
+
 def values_cast(column: exp.Column) -> exp.Cast | None:
     """The cast the statement says of a column of a VALUES list it reads, by the list's first row:
     the row PostgreSQL resolves its type from, every other row fitting it."""

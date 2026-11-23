@@ -66,7 +66,8 @@ export interface RelationshipQueryRef {
 
 /** The role's graph schema as /data/graph-schema serves it: the parts a query is named by. */
 export interface GraphSchemaDoc {
-  node_labels: { label: string; table_id: number; pk_columns: string[] }[];
+  /** Each label's table, its key properties and every property it is read by. */
+  node_labels: { label: string; table_id: number; pk_columns: string[]; properties: string[] }[];
   relationship_types: {
     type: string;
     source: string;

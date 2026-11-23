@@ -31,7 +31,7 @@ from dataclasses import dataclass, field
 import sqlglot
 import sqlglot.expressions as exp
 
-from provisa.compiler.result_shape import _pg_column_name
+from provisa.compiler.result_shape import _pg_column_name, name_as_postgres
 from provisa.core.pg_enum import SourceEnum
 from provisa.pgwire.cast_types import record_text
 from provisa.pgwire.catalog_pg17 import RELATION_CLASS, RELATIONS, TYPES
@@ -1043,6 +1043,10 @@ def address(sql: str, request: CatalogRequest) -> tuple[str, frozenset[str] | No
     token = _ENUMS.set(request.enums)
     try:
         tree = _read(sql)
+        if isinstance(tree, exp.Query):
+            # REQ-2204: a result column is named from the statement the client wrote, before any
+            # rewrite or the engine's own spelling of a call renames it.
+            name_as_postgres(tree)
         read_oid_literals(tree)  # REQ-2236: oidin's error, before any function is given the oid
         _coerce_reg_comparisons(tree)
         _result_regs(tree)

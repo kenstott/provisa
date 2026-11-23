@@ -8,9 +8,9 @@ This page lists every feature that has a polyfill or a limitation on Presto. A f
 
 When Presto is a serving engine reading a source it attaches directly, it may push work into that source, with the source's semantics, so a result can depend on the pair; the cases known are fixed by hints, listed under each source.
 
-Rules on this page: 498, of which 365 are only the name of a rewrite function. A rule is printed as the translator runs it: the PostgreSQL pattern, its holes written `$name` (typed with `::type`), then the dialect's replacement.
+Rules on this page: 500, of which 310 are only the name of a rewrite function. A rule is printed as the translator runs it: the PostgreSQL pattern, its holes written `$name` (typed with `::type`), then the dialect's replacement.
 
-174 of the grid's 626 features are native on Presto and left out.
+172 of the grid's 626 features are native on Presto and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>an array of dimensions</strong><br>cardinality, unnest and array_to_string of an array of more than one dimension: of every element, in storage order.</td><td><pre><code>function provisa.transpiler.polyfill.array_dimensions.of_dimensions: cardinality, unnest or array_to_string of an array of more than one dimension: of every</code></pre></td><td></td><td></td><td></td></tr>
@@ -25,7 +25,7 @@ Rules on this page: 498, of which 365 are only the name of a rewrite function. A
 <tr><td><strong>numeric_mod on trino</strong><br>The remainder of two numerics.</td><td><pre><code>function provisa.transpiler.polyfill.trino_literals.numeric_mod_read: numeric_mod of a numeric the statement says is of a scale past 18, refused by name: the</code></pre></td><td><ul><li>Computed at scale 18: of a numeric the statement says is of a scale past it it raises 0A000 (numeric_mod() of a numeric of scale past 18 has no exact form on trino).</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>a year BC on trino</strong><br>A text of a year before Christ cast to a date, a timestamp or a timestamptz.</td><td><pre><code>function provisa.transpiler.polyfill.trino_literals.bc_read: A text of a year BC cast to a date, a timestamp or a timestamptz: Trino&#x27;s cast reads no BC,</code></pre></td><td><ul><li>Trino&#x27;s cast reads no BC: the value is written as its days from 1970-01-01 (and the milliseconds of its day), which Trino&#x27;s DATE and TIMESTAMP hold, a timestamptz&#x27;s instant in UTC. Before 4714-11-24 BC it raises 22008 as PostgreSQL&#x27;s input does; a fraction of less than a millisecond raises 0A000.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>a time literal on trino</strong><br>A text cast to a time of day.</td><td><pre><code>function provisa.transpiler.polyfill.trino_literals.clock_read: A text cast to a time of day of a fraction of more than milliseconds, cast to TIME(6).</code></pre></td><td><ul><li>A fraction of more than milliseconds is read to the microsecond, where Trino&#x27;s TIME of no precision rounds it to the millisecond.</li></ul></td><td></td><td></td></tr>
-<tr><td><strong>comparisons of times on trino</strong><br>Two times of day compared, the larger or the smaller of two.</td><td><pre><code>function provisa.transpiler.polyfill.trino_clocks.compared: A comparison of two times the statement says, as TIME(6).</code></pre></td><td><ul><li>Of times the statement says (a cast, a literal), compared or added as Trino&#x27;s TIME(6) and TIMESTAMP(6), to the microsecond as PostgreSQL&#x27;s; any other keeps Trino&#x27;s own, of milliseconds. Trino&#x27;s TIME holds no 24:00:00.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>comparisons of times on trino</strong><br>Two times of day compared, the larger or the smaller of two.</td><td><pre><code>function provisa.transpiler.polyfill.trino_clocks.compared: A comparison of two times the statement says, as TIME(6).</code></pre></td><td><ul><li>Of times the statement says (a cast, a literal), compared or added as Trino&#x27;s TIME(6) and TIMESTAMP(6), to the microsecond as PostgreSQL&#x27;s; any other keeps Trino&#x27;s own, of milliseconds. Trino&#x27;s TIME holds no 24:00:00.</li><li>Refused for a call of (time without time zone, time without time zone) at some of its values. <code>0A000</code> time_larger() of 24:00:00 has no form on presto</li><li>Refused for a call of (time without time zone, time without time zone) at some of its values. <code>0A000</code> time_smaller() of 24:00:00 has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>a date&#x27;s part on trino</strong><br>A part of a date, extract(part, date) or date_part(part, date).</td><td><pre><code>function provisa.transpiler.polyfill.trino_clocks.part_of_date: extract(part, date) of a part a date has, as Trino&#x27;s EXTRACT of the date; date_part(part,</code></pre></td><td><ul><li>Of times the statement says (a cast, a literal), compared or added as Trino&#x27;s TIME(6) and TIMESTAMP(6), to the microsecond as PostgreSQL&#x27;s; any other keeps Trino&#x27;s own, of milliseconds. Trino&#x27;s TIME holds no 24:00:00.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>a date plus a time on trino</strong><br>A date plus a time of day, a timestamp.</td><td><pre><code>function provisa.transpiler.polyfill.trino_clocks.summed: A date plus a time the statement says, as the TIMESTAMP(6) of their texts.</code></pre></td><td><ul><li>Of times the statement says (a cast, a literal), compared or added as Trino&#x27;s TIME(6) and TIMESTAMP(6), to the microsecond as PostgreSQL&#x27;s; any other keeps Trino&#x27;s own, of milliseconds. Trino&#x27;s TIME holds no 24:00:00.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>position(text, text) on trino</strong><br>The place of a substring in a string, called by its name.</td><td><pre><code>function provisa.transpiler.polyfill.trino_texts.position_called: position(string, substring) called by its name: Trino&#x27;s strpos of the two in that order.</code></pre></td><td><ul><li>Called by its name, position(string, substring) is Trino&#x27;s strpos of the two in that order, as PostgreSQL&#x27;s textpos reads them.</li></ul></td><td></td><td></td></tr>
@@ -62,10 +62,10 @@ CASE WHEN $a IS NULL OR $b IS NULL THEN CAST(NULL AS BOOLEAN) ELSE $a IS DISTINC
 =&gt;
 CAST(CASE WHEN cardinality($a) &gt; 0 THEN element_at(filter(sequence(1, cardinality($a)), _i -&gt; $a[_i] IS NOT DISTINCT FROM $v), 1) END AS INTEGER)</code></pre><pre><code>array_position($a::anycompatiblearray, $v::anycompatible, $s::integer)
 =&gt;
-refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_position($a::anycompatiblearray, $v::anycompatible, $s::integer). <code>0A000</code> array_position() has no form on presto</li></ul></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_position($a::anycompatiblearray, $v::anycompatible, $s::integer). <code>0A000</code> array_position() has no form on presto</li><li>Refused for a call of (anycompatiblearray, anycompatible) at some of its values. <code>0A000</code> searching for elements in multidimensional arrays is not supported</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>array_positions</strong><br>The positions of every element equal to a value, a NULL equal to a NULL.</td><td><pre><code>array_positions($a::anycompatiblearray, $v::anycompatible)
 =&gt;
-CASE WHEN cardinality($a) = 0 THEN CAST(ARRAY[] AS ARRAY(INTEGER)) ELSE CAST(filter(sequence(1, cardinality($a)), _i -&gt; $a[_i] IS NOT DISTINCT FROM $v) AS ARRAY(INTEGER)) END</code></pre></td><td></td><td></td><td></td></tr>
+CASE WHEN cardinality($a) = 0 THEN CAST(ARRAY[] AS ARRAY(INTEGER)) ELSE CAST(filter(sequence(1, cardinality($a)), _i -&gt; $a[_i] IS NOT DISTINCT FROM $v) AS ARRAY(INTEGER)) END</code></pre></td><td><ul><li>Refused for a call of (anycompatiblearray, anycompatible) at some of its values. <code>0A000</code> searching for elements in multidimensional arrays is not supported</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>array_replace</strong><br>Each element equal to a value replaced by another, a NULL equal to a NULL.</td><td><pre><code>array_replace($a::anycompatiblearray, $v::anycompatible, $w::anycompatible)
 =&gt;
 transform($a, _x -&gt; CASE WHEN _x IS NOT DISTINCT FROM $v THEN $w ELSE _x END)</code></pre></td><td></td><td></td><td></td></tr>
@@ -87,55 +87,58 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 =&gt;
 ARRAY[$v]</code></pre><pre><code>array_append($a::anycompatiblearray, $v::anycompatible)
 =&gt;
-CASE WHEN $a IS NULL THEN ARRAY[$v] ELSE $a || ARRAY[$v] END</code></pre></td><td></td><td></td><td></td></tr>
+CASE WHEN $a IS NULL THEN ARRAY[$v] ELSE $a || ARRAY[$v] END</code></pre></td><td><ul><li>Refused for a call of (anycompatiblearray, anycompatible) at some of its values. <code>22000</code> argument must be empty or one-dimensional array</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>array_prepend</strong><br>An array with an element added at its start; a NULL array is read as an empty one.</td><td><pre><code>array_prepend($v::anycompatible, NULL::anycompatiblearray)
 =&gt;
 ARRAY[$v]</code></pre><pre><code>array_prepend($v::anycompatible, $a::anycompatiblearray)
 =&gt;
-CASE WHEN $a IS NULL THEN ARRAY[$v] ELSE ARRAY[$v] || $a END</code></pre></td><td></td><td></td><td></td></tr>
+CASE WHEN $a IS NULL THEN ARRAY[$v] ELSE ARRAY[$v] || $a END</code></pre></td><td><ul><li>Refused for a call of (anycompatible, anycompatiblearray) at some of its values. <code>22000</code> argument must be empty or one-dimensional array</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>array_cat</strong><br>Two arrays concatenated; a NULL array is the other one, and two NULL arrays are NULL.</td><td><pre><code>array_cat(NULL::anycompatiblearray, $b::anycompatiblearray)
 =&gt;
 $b</code></pre><pre><code>array_cat($a::anycompatiblearray, NULL::anycompatiblearray)
 =&gt;
 $a</code></pre><pre><code>array_cat($a::anycompatiblearray, $b::anycompatiblearray)
 =&gt;
-CASE WHEN $a IS NULL THEN $b WHEN $b IS NULL THEN $a ELSE concat($a, $b) END</code></pre></td><td></td><td></td><td></td></tr>
+CASE WHEN $a IS NULL THEN $b WHEN $b IS NULL THEN $a ELSE concat($a, $b) END</code></pre></td><td><ul><li>Refused for a call of (anycompatiblearray, anycompatiblearray) at some of its values. <code>2202E</code> cannot concatenate incompatible arrays</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>array_lt</strong><br>One array before another, a NULL element after any value.</td><td><pre><code>array_lt($a::anyarray, $b::anyarray)
 =&gt;
-function provisa.transpiler.polyfill.arrays.ordered_arrays: Two arrays ordered as btree&#x27;s array_cmp orders them, on Trino, where both are said to hold</code></pre></td><td><ul><li>Only arrays of one dimension said to be of smallint, integer, bigint, boolean or date: any other (text, which orders by the database&#x27;s collation, or a column of no said type) is refused by name, as Trino&#x27;s own comparison refuses a NULL element.</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.arrays.ordered_arrays: Two arrays ordered as btree&#x27;s array_cmp orders them, on Trino, where both are said to hold</code></pre></td><td><ul><li>Only arrays of one dimension said to be of smallint, integer, bigint, boolean or date: any other (text, which orders by the database&#x27;s collation, or a column of no said type) is refused by name, as Trino&#x27;s own comparison refuses a NULL element.</li><li>Refused for a call of (anyarray, anyarray) at some of its values. <code>0A000</code> array_lt() has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>array_le</strong><br>One array before or equal to another, a NULL element after any value.</td><td><pre><code>array_le($a::anyarray, $b::anyarray)
 =&gt;
-function provisa.transpiler.polyfill.arrays.ordered_arrays: Two arrays ordered as btree&#x27;s array_cmp orders them, on Trino, where both are said to hold</code></pre></td><td><ul><li>Only arrays of one dimension said to be of smallint, integer, bigint, boolean or date: any other (text, which orders by the database&#x27;s collation, or a column of no said type) is refused by name, as Trino&#x27;s own comparison refuses a NULL element.</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.arrays.ordered_arrays: Two arrays ordered as btree&#x27;s array_cmp orders them, on Trino, where both are said to hold</code></pre></td><td><ul><li>Only arrays of one dimension said to be of smallint, integer, bigint, boolean or date: any other (text, which orders by the database&#x27;s collation, or a column of no said type) is refused by name, as Trino&#x27;s own comparison refuses a NULL element.</li><li>Refused for a call of (anyarray, anyarray) at some of its values. <code>0A000</code> array_le() has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>array_gt</strong><br>One array after another, a NULL element after any value.</td><td><pre><code>array_gt($a::anyarray, $b::anyarray)
 =&gt;
-function provisa.transpiler.polyfill.arrays.ordered_arrays: Two arrays ordered as btree&#x27;s array_cmp orders them, on Trino, where both are said to hold</code></pre></td><td><ul><li>Only arrays of one dimension said to be of smallint, integer, bigint, boolean or date: any other (text, which orders by the database&#x27;s collation, or a column of no said type) is refused by name, as Trino&#x27;s own comparison refuses a NULL element.</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.arrays.ordered_arrays: Two arrays ordered as btree&#x27;s array_cmp orders them, on Trino, where both are said to hold</code></pre></td><td><ul><li>Only arrays of one dimension said to be of smallint, integer, bigint, boolean or date: any other (text, which orders by the database&#x27;s collation, or a column of no said type) is refused by name, as Trino&#x27;s own comparison refuses a NULL element.</li><li>Refused for a call of (anyarray, anyarray) at some of its values. <code>0A000</code> array_gt() has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>array_ge</strong><br>One array after or equal to another, a NULL element after any value.</td><td><pre><code>array_ge($a::anyarray, $b::anyarray)
 =&gt;
-function provisa.transpiler.polyfill.arrays.ordered_arrays: Two arrays ordered as btree&#x27;s array_cmp orders them, on Trino, where both are said to hold</code></pre></td><td><ul><li>Only arrays of one dimension said to be of smallint, integer, bigint, boolean or date: any other (text, which orders by the database&#x27;s collation, or a column of no said type) is refused by name, as Trino&#x27;s own comparison refuses a NULL element.</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.arrays.ordered_arrays: Two arrays ordered as btree&#x27;s array_cmp orders them, on Trino, where both are said to hold</code></pre></td><td><ul><li>Only arrays of one dimension said to be of smallint, integer, bigint, boolean or date: any other (text, which orders by the database&#x27;s collation, or a column of no said type) is refused by name, as Trino&#x27;s own comparison refuses a NULL element.</li><li>Refused for a call of (anyarray, anyarray) at some of its values. <code>0A000</code> array_ge() has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>array_larger</strong><br>The larger of two arrays, a NULL element after any value.</td><td><pre><code>array_larger($a::anyarray, $b::anyarray)
 =&gt;
-function provisa.transpiler.polyfill.arrays.ordered_arrays: Two arrays ordered as btree&#x27;s array_cmp orders them, on Trino, where both are said to hold</code></pre></td><td><ul><li>Only arrays of one dimension said to be of smallint, integer, bigint, boolean or date: any other (text, which orders by the database&#x27;s collation, or a column of no said type) is refused by name, as Trino&#x27;s own comparison refuses a NULL element.</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.arrays.ordered_arrays: Two arrays ordered as btree&#x27;s array_cmp orders them, on Trino, where both are said to hold</code></pre></td><td><ul><li>Only arrays of one dimension said to be of smallint, integer, bigint, boolean or date: any other (text, which orders by the database&#x27;s collation, or a column of no said type) is refused by name, as Trino&#x27;s own comparison refuses a NULL element.</li><li>Refused for a call of (anyarray, anyarray) at some of its values. <code>0A000</code> array_larger() has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>array_smaller</strong><br>The smaller of two arrays, a NULL element after any value.</td><td><pre><code>array_smaller($a::anyarray, $b::anyarray)
 =&gt;
-function provisa.transpiler.polyfill.arrays.ordered_arrays: Two arrays ordered as btree&#x27;s array_cmp orders them, on Trino, where both are said to hold</code></pre></td><td><ul><li>Only arrays of one dimension said to be of smallint, integer, bigint, boolean or date: any other (text, which orders by the database&#x27;s collation, or a column of no said type) is refused by name, as Trino&#x27;s own comparison refuses a NULL element.</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.arrays.ordered_arrays: Two arrays ordered as btree&#x27;s array_cmp orders them, on Trino, where both are said to hold</code></pre></td><td><ul><li>Only arrays of one dimension said to be of smallint, integer, bigint, boolean or date: any other (text, which orders by the database&#x27;s collation, or a column of no said type) is refused by name, as Trino&#x27;s own comparison refuses a NULL element.</li><li>Refused for a call of (anyarray, anyarray) at some of its values. <code>0A000</code> array_smaller() has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>btarraycmp</strong><br>btree&#x27;s comparison of two arrays: -1, 0 or 1, a NULL element after any value.</td><td><pre><code>btarraycmp($a::anyarray, $b::anyarray)
 =&gt;
-function provisa.transpiler.polyfill.arrays.ordered_arrays: Two arrays ordered as btree&#x27;s array_cmp orders them, on Trino, where both are said to hold</code></pre></td><td><ul><li>Only arrays of one dimension said to be of smallint, integer, bigint, boolean or date: any other (text, which orders by the database&#x27;s collation, or a column of no said type) is refused by name, as Trino&#x27;s own comparison refuses a NULL element.</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.arrays.ordered_arrays: Two arrays ordered as btree&#x27;s array_cmp orders them, on Trino, where both are said to hold</code></pre></td><td><ul><li>Only arrays of one dimension said to be of smallint, integer, bigint, boolean or date: any other (text, which orders by the database&#x27;s collation, or a column of no said type) is refused by name, as Trino&#x27;s own comparison refuses a NULL element.</li><li>Refused for a call of (anyarray, anyarray) at some of its values. <code>0A000</code> btarraycmp() has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>arraycontains</strong><br>Whether an array holds every element of another; a NULL element of the other is held by none.</td><td><pre><code>arraycontains($a::anyarray, $b::anyarray)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>arraycontained</strong><br>Whether every element of an array is held by another; a NULL element is held by none.</td><td><pre><code>arraycontained($a::anyarray, $b::anyarray)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: arraycontained($a::anyarray, $b::anyarray). <code>0A000</code> arraycontained() has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>arrayoverlap</strong><br>Whether two arrays hold an element in common; a NULL element is in common with none.</td><td><pre><code>arrayoverlap($a::anyarray, $b::anyarray)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: arrayoverlap($a::anyarray, $b::anyarray). <code>0A000</code> arrayoverlap() has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>array_remove</strong><br>An array without each element equal to a value, a NULL equal to a NULL.</td><td><pre><code>array_remove($a::anycompatiblearray, $v::anycompatible)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_remove($a::anycompatiblearray, $v::anycompatible). <code>0A000</code> array_remove() has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>pg_timezone_names</strong><br>The zones of the tz database, each with its abbreviation, offset and daylight flag now.</td><td><pre><code>pg_timezone_names()
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_timezone_names(). <code>0A000</code> pg_timezone_names() has no form on presto</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>timezone</strong><br>A value at a zone; a zone written as a POSIX offset (&#x27;+05:30&#x27;) is that many hours west of UTC.</td><td><pre><code>timezone($z::text, $v)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: timezone($z::text, $v). <code>0A000</code> timezone() has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>record_eq</strong><br>Two records equal, a NULL field equal to a NULL field.</td><td><pre><code>record_eq($a, $b)
 =&gt;
 CASE WHEN $a IS NULL OR $b IS NULL THEN CAST(NULL AS BOOLEAN) ELSE $a IS NOT DISTINCT FROM $b END</code></pre></td><td></td><td></td><td></td></tr>
@@ -303,7 +306,7 @@ regexp_replace(lpad(to_base(bitwise_and(bitwise_not(from_base(lower(regexp_repla
 <tr><td><strong>macaddr8_set7bit</strong><br>An EUI-64 MAC address with its 7th bit set.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_macaddr8_set7bit: macaddr8_set7bit: Refused by name: a macaddr8&#x27;s 64 bits are past what a Trino bigint holds unsigned.</code></pre></td><td><ul><li>Refused by name: a macaddr8&#x27;s 64 bits are past what a Trino bigint holds unsigned.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>trunc</strong><br>A MAC address with its last three (macaddr) or five (macaddr8) bytes set to zero.</td><td><pre><code>trunc($m)
 =&gt;
-function provisa.transpiler.polyfill.network.truncated_address: trunc of a MAC address: its first three bytes, the rest zero; any other trunc is kept.</code></pre></td><td><ul><li>A MAC address whose type no statement says is read as a number, and is Trino&#x27;s own truncate.</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.network.truncated_address: trunc of a MAC address: its first three bytes, the rest zero; any other trunc is kept.</code></pre></td><td><ul><li>A MAC address whose type no statement says is read as a number, and is Trino&#x27;s own truncate.</li><li>Refused for a call of (numeric) at some of its values. <code>0A000</code> numeric_in() of NaN or infinity has no form on presto</li><li>Refused for a call of (numeric) at some of its values. <code>0A000</code> numeric_in() of a value of more than 38 digits has no exact form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>xid8</strong><br>A value of type xid8.</td><td><pre><code>function provisa.transpiler.polyfill.unheld.xid8_value: A value cast to xid8: refused by name, as Trino has no unsigned 64-bit type (sqlglot writes</code></pre></td><td><ul><li>Refused by name: an xid8 is a 64-bit unsigned number, of a type Trino does not have.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>xid</strong><br>The 32-bit transaction ID of an xid8.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_xid: xid: Refused by name: an xid8 is a 64-bit unsigned number, of a type Trino does not have.</code></pre></td><td><ul><li>Refused by name: an xid8 is a 64-bit unsigned number, of a type Trino does not have.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>xid8cmp</strong><br>btree&#x27;s comparison of two xid8 values.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_xid8cmp: xid8cmp: Refused by name: an xid8 is a 64-bit unsigned number, of a type Trino does not have.</code></pre></td><td><ul><li>Refused by name: an xid8 is a 64-bit unsigned number, of a type Trino does not have.</li></ul></td><td></td><td></td></tr>
@@ -322,7 +325,7 @@ function provisa.transpiler.polyfill.network.truncated_address: trunc of a MAC a
 <tr><td><strong>min</strong><br>The smallest value of an aggregate.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_min: min of an inet, a cidr or an xid8: refused by name, as Trino has no such type.</code></pre></td><td><ul><li>Of an inet, a cidr or an xid8 the statement says: refused by name, as Trino has no such type. Of anything else, Trino&#x27;s own.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>int2int4_sum</strong><br>The sum of avg(smallint) and avg(integer)&#x27;s {count, sum} state.</td><td><pre><code>int2int4_sum($a)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: int2int4_sum($a). <code>0A000</code> int2int4_sum() has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>int2_sum</strong><br>A step of an integer sum, in a bigint that wraps past its range.</td><td><pre><code>int2_sum($a, $b)
 =&gt;
 CASE WHEN $a IS NULL THEN CAST($b AS BIGINT) WHEN $b IS NULL THEN CAST($a AS BIGINT) ELSE CAST((((CAST($a AS DECIMAL(38, 0)) + CAST($b AS DECIMAL(38, 0))) + CAST(&#x27;9223372036854775808&#x27; AS DECIMAL(38, 0))) % CAST(&#x27;18446744073709551616&#x27; AS DECIMAL(38, 0)) + CAST(&#x27;18446744073709551616&#x27; AS DECIMAL(38, 0))) % CAST(&#x27;18446744073709551616&#x27; AS DECIMAL(38, 0)) - CAST(&#x27;9223372036854775808&#x27; AS DECIMAL(38, 0)) AS BIGINT) END</code></pre></td><td></td><td></td><td></td></tr>
@@ -346,31 +349,31 @@ CAST(bitwise_right_shift_arithmetic(CAST($a AS BIGINT), CAST(bitwise_and($b, 63)
 CASE WHEN $n IS NULL THEN CAST(NULL AS DECIMAL(38, 0)) WHEN $n &lt; 0 THEN fail(&#x27;postgresql-error 22003: factorial of a negative number is undefined&lt;end of postgresql-error&gt;&#x27;) WHEN $n &gt; 33 THEN fail(&#x27;postgresql-error 0A000: factorial does not read this value&lt;end of postgresql-error&gt;&#x27;) ELSE reduce(sequence(1, greatest($n, 1)), CAST(1 AS DECIMAL(38, 0)), (_s, _x) -&gt; _s * _x, _s -&gt; _s) END</code></pre></td><td><ul><li>Past 33, whose factorial a decimal of 38 digits does not hold, refused with 0A000, where PostgreSQL answers its exact digits.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>numeric</strong><br>An integer as a numeric.</td><td><pre><code>numeric($v)
 =&gt;
-function provisa.transpiler.polyfill.numbers.numeric_of_an_integer: numeric of an integer: its cast to DECIMAL(38, 0); of a json value, refused.</code></pre></td><td><ul><li>Of a json or jsonb value, refused by name.</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.numbers.numeric_of_an_integer: numeric of an integer: its cast to DECIMAL(38, 0); of a json value, refused.</code></pre></td><td><ul><li>Of a json or jsonb value, refused by name.</li><li>Refused for a call of (double precision), (jsonb), (real). <code>0A000</code> numeric() has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>bool</strong><br>An integer as a truth value: false for 0.</td><td><pre><code>bool($v)
 =&gt;
-function provisa.transpiler.polyfill.numbers.bool_of_an_integer: bool of an integer: its cast to BOOLEAN; of a json value, refused.</code></pre></td><td><ul><li>Of a json or jsonb value, refused by name.</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.numbers.bool_of_an_integer: bool of an integer: its cast to BOOLEAN; of a json value, refused.</code></pre></td><td><ul><li>Of a json or jsonb value, refused by name.</li><li>Refused for a call of (jsonb). <code>0A000</code> bool() has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>oid</strong><br>A bigint as an oid.</td><td><pre><code>oid($v)
 =&gt;
 CASE WHEN $v &lt; 0 OR $v &gt; 4294967295 THEN fail(&#x27;postgresql-error 22003: OID out of range&lt;end of postgresql-error&gt;&#x27;) ELSE CAST($v AS BIGINT) END</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>random</strong><br>A uniform random integer between two bounds, both included.</td><td><pre><code>random($lo, $hi)
 =&gt;
-function provisa.transpiler.polyfill.numbers.random_between: random of two integers: a uniform integer from the one to the other, both included.</code></pre></td><td><ul><li>Bounds 2^53 or more apart, and bounds of no said integer type, refused by name: a double draws no wider range exactly.</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.numbers.random_between: random of two integers: a uniform integer from the one to the other, both included.</code></pre></td><td><ul><li>Bounds 2^53 or more apart, and bounds of no said integer type, refused by name: a double draws no wider range exactly.</li><li>Refused for a call of (min numeric, max numeric). <code>0A000</code> random() has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>int2</strong><br>A jsonb number as smallint.</td><td><pre><code>int2($v)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (jsonb). <code>0A000</code> int2() has no form on presto</li><li>Refused for a call of (numeric) at some of its values. <code>0A000</code> numeric_in() of a value of more than 38 digits has no exact form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>int4</strong><br>A jsonb number as integer.</td><td><pre><code>int4($v)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (&quot;char&quot;), (bit), (jsonb). <code>0A000</code> int4() has no form on presto</li><li>Refused for a call of (numeric) at some of its values. <code>0A000</code> numeric_in() of a value of more than 38 digits has no exact form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>int8</strong><br>A jsonb number as bigint, and an oid as a bigint.</td><td><pre><code>int8($v)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (bit), (jsonb), (oid). <code>0A000</code> int8() has no form on presto</li><li>Refused for a call of (numeric) at some of its values. <code>0A000</code> numeric_in() of a value of more than 38 digits has no exact form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>float8</strong><br>A jsonb number as double precision.</td><td><pre><code>float8($v)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (jsonb). <code>0A000</code> float8() has no form on presto</li><li>Refused for a call of (numeric) at some of its values. <code>0A000</code> numeric_in() of NaN or infinity has no form on presto</li><li>Refused for a call of (numeric) at some of its values. <code>0A000</code> numeric_in() of a value of more than 38 digits has no exact form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>float4</strong><br>A jsonb number as real.</td><td><pre><code>float4($v)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (jsonb). <code>0A000</code> float4() has no form on presto</li><li>Refused for a call of (numeric) at some of its values. <code>0A000</code> numeric_in() of NaN or infinity has no form on presto</li><li>Refused for a call of (numeric) at some of its values. <code>0A000</code> numeric_in() of a value of more than 38 digits has no exact form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>float4eq</strong><br>Whether a real is equal to a real, NaN after every other value.</td><td><pre><code>float4eq($a, $b)
 =&gt;
 IF($a IS NULL OR $b IS NULL, NULL, CASE WHEN is_nan($a) OR is_nan($b) THEN IF(is_nan($a), 1, 0) = IF(is_nan($b), 1, 0) ELSE $a = $b END)</code></pre></td><td></td><td></td><td></td></tr>
@@ -481,25 +484,25 @@ CASE WHEN is_infinite($x) THEN fail(&#x27;postgresql-error 22003: input is out o
 CASE WHEN is_infinite($x) THEN fail(&#x27;postgresql-error 22003: input is out of range&lt;end of postgresql-error&gt;&#x27;) ELSE 1.0 / tan($x) END</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>sqrt</strong><br>The square root of a value of zero or more.</td><td><pre><code>sqrt($x)
 =&gt;
-function provisa.transpiler.polyfill.floats.of_no_numeric_sqrt: sqrt($x) of no numeric: a double&#x27;s answer, its edges as PostgreSQL&#x27;s.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.floats.of_no_numeric_sqrt: sqrt($x) of no numeric: a double&#x27;s answer, its edges as PostgreSQL&#x27;s.</code></pre></td><td><ul><li>Refused for a call of (numeric). <code>0A000</code> sqrt() has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>log</strong><br>The base 10 logarithm of a value above zero.</td><td><pre><code>log($x)
 =&gt;
-function provisa.transpiler.polyfill.floats.of_no_numeric_log: log($x) of no numeric: a double&#x27;s answer, its edges as PostgreSQL&#x27;s.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.floats.of_no_numeric_log: log($x) of no numeric: a double&#x27;s answer, its edges as PostgreSQL&#x27;s.</code></pre></td><td><ul><li>Refused for a call of (numeric). <code>0A000</code> log() has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>log10</strong><br>The base 10 logarithm of a value above zero.</td><td><pre><code>log10($x)
 =&gt;
-function provisa.transpiler.polyfill.floats.of_no_numeric_log10: log10($x) of no numeric: a double&#x27;s answer, its edges as PostgreSQL&#x27;s.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.floats.of_no_numeric_log10: log10($x) of no numeric: a double&#x27;s answer, its edges as PostgreSQL&#x27;s.</code></pre></td><td><ul><li>Refused for a call of (numeric). <code>0A000</code> log() has no form on presto</li><li>Refused for a call of (numeric). <code>0A000</code> log10() has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>exp</strong><br>e raised to a power; 22003 where a finite power overflows or underflows.</td><td><pre><code>exp($x)
 =&gt;
-function provisa.transpiler.polyfill.floats.of_no_numeric_exp: exp($x) of no numeric: a double&#x27;s answer, its edges as PostgreSQL&#x27;s.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.floats.of_no_numeric_exp: exp($x) of no numeric: a double&#x27;s answer, its edges as PostgreSQL&#x27;s.</code></pre></td><td><ul><li>Refused for a call of (numeric). <code>0A000</code> exp() has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>ln</strong><br>The natural logarithm of a value above zero.</td><td><pre><code>ln($x)
 =&gt;
-function provisa.transpiler.polyfill.floats.of_no_numeric_ln: ln($x) of no numeric: a double&#x27;s answer, its edges as PostgreSQL&#x27;s.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.floats.of_no_numeric_ln: ln($x) of no numeric: a double&#x27;s answer, its edges as PostgreSQL&#x27;s.</code></pre></td><td><ul><li>Refused for a call of (numeric). <code>0A000</code> ln() has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>tanh</strong><br>The hyperbolic tangent.</td><td><pre><code>tanh($x)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>power</strong><br>A value raised to a power.</td><td><pre><code>power($x, $y)
 =&gt;
-function provisa.transpiler.polyfill.floats.of_no_numeric_power: power($x, $y) of no numeric: a double&#x27;s answer, its edges as PostgreSQL&#x27;s.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.floats.of_no_numeric_power: power($x, $y) of no numeric: a double&#x27;s answer, its edges as PostgreSQL&#x27;s.</code></pre></td><td><ul><li>Refused for a call of (numeric, numeric), (numeric, numeric). <code>0A000</code> power() has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>pow</strong><br>A value raised to a power.</td><td><pre><code>pow($x, $y)
 =&gt;
 function provisa.transpiler.polyfill.floats.of_no_numeric_pow: pow($x, $y) of no numeric: a double&#x27;s answer, its edges as PostgreSQL&#x27;s.</code></pre></td><td></td><td></td><td></td></tr>
@@ -520,21 +523,21 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>sign</strong><br>The sign of a value: -1, 0 or 1; 0 of NaN.</td><td><pre><code>sign($x)
 =&gt;
-function provisa.transpiler.polyfill.floats.of_no_numeric_sign: sign($x) of no numeric: a double&#x27;s answer, its edges as PostgreSQL&#x27;s.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.floats.of_no_numeric_sign: sign($x) of no numeric: a double&#x27;s answer, its edges as PostgreSQL&#x27;s.</code></pre></td><td><ul><li>Refused for a call of (numeric) at some of its values. <code>0A000</code> numeric_in() of NaN or infinity has no form on presto</li><li>Refused for a call of (numeric) at some of its values. <code>0A000</code> numeric_in() of a value of more than 38 digits has no exact form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>abs</strong><br>The absolute value; of an integer type&#x27;s least value, out of range.</td><td><pre><code>abs($a)
 =&gt;
-function provisa.transpiler.polyfill.floats._t_abs: abs of an integer the statement says on Trino: PostgreSQL&#x27;s 22003 of its type&#x27;s least</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.floats._t_abs: abs of an integer the statement says on Trino: PostgreSQL&#x27;s 22003 of its type&#x27;s least</code></pre></td><td><ul><li>Refused for a call of (numeric) at some of its values. <code>0A000</code> numeric_in() of NaN or infinity has no form on presto</li><li>Refused for a call of (numeric) at some of its values. <code>0A000</code> numeric_in() of a value of more than 38 digits has no exact form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>mod of integers on trino</strong><br>The remainder of two integers; of a zero divisor, division by zero.</td><td><pre><code>function provisa.transpiler.polyfill.floats._t_mod: mod of two integers the statement says on Trino: PostgreSQL&#x27;s 22012 of a zero divisor,</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>integers of floats on trino</strong><br>int2, int4 or int8 of a real or a double: rounded half to even, out of range of NaN.</td><td><pre><code>function provisa.transpiler.polyfill.floats._t_integer_of_float: int2, int4 or int8 of a value the statement says is a real or a double, on Trino.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>lcm</strong><br>The least common multiple of two integers; out of range past the type.</td><td><pre><code>lcm($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: lcm($a, $b). <code>0A000</code> lcm() has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>chr</strong><br>The character of a code point, as its UTF-8 bytes.</td><td><pre><code>chr($x)
 =&gt;
-function provisa.transpiler.polyfill.floats._chr: chr of a code point. sqlglot reads &quot;char&quot; (the one-byte type&#x27;s cast) as its chr too: a call</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.floats._chr: chr of a code point. sqlglot reads &quot;char&quot; (the one-byte type&#x27;s cast) as its chr too: a call</code></pre></td><td><ul><li>Refused for a call of (integer), (text) with an argument the statement says is of that type, not a NULL. <code>0A000</code> char() has no form on presto</li><li>Refused for a call of (integer) at some of its values. <code>22003</code> value &quot;2147483648&quot; is out of range for type integer</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>in_range</strong><br>Whether a value is within an offset of a base: a window frame&#x27;s bound.</td><td><pre><code>in_range($v, $b, $o, $s, $l)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (date, date, interval, boolean, boolean), (interval, interval, interval, boolean, boolean), (time with time zone, time with time zone, interval, boolean, boolean), (time without time zone, time without time zone, interval, boolean, boolean), (timestamp with time zone, timestamp with time zone, interval, boolean, boolean), (timestamp without time zone, timestamp without time zone, interval, boolean, boolean). <code>0A000</code> in_range() has no form on presto</li><li>Refused for a call of (bigint, bigint, bigint, boolean, boolean), (integer, integer, bigint, boolean, boolean), (integer, integer, integer, boolean, boolean), (integer, integer, smallint, boolean, boolean), (numeric, numeric, numeric, boolean, boolean), (smallint, smallint, bigint, boolean, boolean), (smallint, smallint, integer, boolean, boolean), (smallint, smallint, smallint, boolean, boolean). <code>22P02</code> invalid input syntax for type integer: &quot;postgresql-error 22013: invalid preceding or following size in window function&quot;</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>regr_sxx</strong><br>The sum of squares of the independent variable.</td><td><pre><code>regr_sxx($y, $x)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -565,7 +568,7 @@ CASE WHEN (date_diff(&#x27;day&#x27;, DATE &#x27;2000-01-01&#x27;, CAST($a AS DA
 CASE WHEN (date_diff(&#x27;day&#x27;, DATE &#x27;2000-01-01&#x27;, CAST($a AS DATE)) - CAST($b AS BIGINT)) &lt; -2451545 OR (date_diff(&#x27;day&#x27;, DATE &#x27;2000-01-01&#x27;, CAST($a AS DATE)) - CAST($b AS BIGINT)) &gt;= 2145031948 THEN fail(&#x27;postgresql-error 22008: date out of range&lt;end of postgresql-error&gt;&#x27;) ELSE date_add(&#x27;day&#x27;, -CAST($b AS BIGINT), CAST($a AS DATE)) END</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>integer_pl_date</strong><br>A number of days plus a date (+).</td><td><pre><code>integer_pl_date($n, $d)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: integer_pl_date($n, $d). <code>0A000</code> integer_pl_date() has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>time_mi_time</strong><br>The interval from one time of day to another.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_time_mi_time: time_mi_time: Refused by name: the old table&#x27;s form adds a time to a date, which Trino does not.</code></pre></td><td><ul><li>Refused by name: the old table&#x27;s form adds a time to a date, which Trino does not.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>make_date</strong><br>A date of a year, a month and a day.</td><td><pre><code>make_date($y, $m, $d)
 =&gt;
@@ -575,10 +578,10 @@ CASE WHEN $y IS NULL OR $m IS NULL OR $d IS NULL THEN CAST(NULL AS DATE) WHEN $y
 current_timestamp</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>clock_timestamp</strong><br>The time now, read as the statement runs.</td><td><pre><code>clock_timestamp()
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: clock_timestamp(). <code>0A000</code> clock_timestamp() has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>to_char(timestamp, text)</strong><br>A timestamp&#x27;s or an instant&#x27;s text in a template.</td><td><pre><code>to_char($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (timestamp without time zone, text) at some of its values. <code>0A000</code> timestamp_in() of a value past 294247-01-10 04:00:54.775807 has no exact form on presto</li><li>Refused for a call of (bigint, text), (double precision, text), (integer, text), (interval, text), (numeric, text), (real, text); a call of (timestamp with time zone, text), (timestamp without time zone, text) with an argument the statement says is of that type, not a NULL. <code>0A000</code> to_char() has no form on presto</li><li>Refused for a call of (timestamp without time zone, text) at some of its values. <code>22008</code> timestamp out of range: &quot;294277-01-01 00:00:00&quot;</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>generate_series</strong><br>A series of integers, as rows.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_generate_series: generate_series in a select list: refused by name, as Trino unnests only in FROM.</code></pre></td><td><ul><li>In a select list, refused by name: Trino reads a set of rows only in a FROM clause.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>lag</strong><br>The value of the previous row of a window.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_lag: lag over a window of no order: refused by name, as Trino requires one.</code></pre></td><td><ul><li>Over a window of no order, refused by name: Trino requires one.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>lead</strong><br>The value of the next row of a window.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_lead: lead over a window of no order: refused by name, as Trino requires one.</code></pre></td><td><ul><li>Over a window of no order, refused by name: Trino requires one.</li></ul></td><td></td><td></td></tr>
@@ -598,10 +601,10 @@ CASE WHEN $x IS NULL THEN CAST(NULL AS INTEGER) WHEN $x &lt; -2147483648 OR $x &
 CASE WHEN $n IS NULL THEN CAST(NULL AS INTEGER) WHEN length(to_utf8($n)) &gt; 63 THEN fail(&#x27;postgresql-error 0A000: pg_char_to_encoding does not read this value&lt;end of postgresql-error&gt;&#x27;) ELSE CAST(CASE lower(regexp_replace($n, &#x27;[^A-Za-z0-9]&#x27;, &#x27;&#x27;)) WHEN &#x27;abc&#x27; THEN 19 WHEN &#x27;alt&#x27; THEN 20 WHEN &#x27;big5&#x27; THEN 36 WHEN &#x27;euccn&#x27; THEN 2 WHEN &#x27;eucjis2004&#x27; THEN 5 WHEN &#x27;eucjp&#x27; THEN 1 WHEN &#x27;euckr&#x27; THEN 3 WHEN &#x27;euctw&#x27; THEN 4 WHEN &#x27;gb18030&#x27; THEN 39 WHEN &#x27;gbk&#x27; THEN 37 WHEN &#x27;iso88591&#x27; THEN 8 WHEN &#x27;iso885910&#x27; THEN 13 WHEN &#x27;iso885913&#x27; THEN 14 WHEN &#x27;iso885914&#x27; THEN 15 WHEN &#x27;iso885915&#x27; THEN 16 WHEN &#x27;iso885916&#x27; THEN 17 WHEN &#x27;iso88592&#x27; THEN 9 WHEN &#x27;iso88593&#x27; THEN 10 WHEN &#x27;iso88594&#x27; THEN 11 WHEN &#x27;iso88595&#x27; THEN 25 WHEN &#x27;iso88596&#x27; THEN 26 WHEN &#x27;iso88597&#x27; THEN 27 WHEN &#x27;iso88598&#x27; THEN 28 WHEN &#x27;iso88599&#x27; THEN 12 WHEN &#x27;johab&#x27; THEN 40 WHEN &#x27;koi8&#x27; THEN 22 WHEN &#x27;koi8r&#x27; THEN 22 WHEN &#x27;koi8u&#x27; THEN 34 WHEN &#x27;latin1&#x27; THEN 8 WHEN &#x27;latin10&#x27; THEN 17 WHEN &#x27;latin2&#x27; THEN 9 WHEN &#x27;latin3&#x27; THEN 10 WHEN &#x27;latin4&#x27; THEN 11 WHEN &#x27;latin5&#x27; THEN 12 WHEN &#x27;latin6&#x27; THEN 13 WHEN &#x27;latin7&#x27; THEN 14 WHEN &#x27;latin8&#x27; THEN 15 WHEN &#x27;latin9&#x27; THEN 16 WHEN &#x27;mskanji&#x27; THEN 35 WHEN &#x27;muleinternal&#x27; THEN 7 WHEN &#x27;shiftjis&#x27; THEN 35 WHEN &#x27;shiftjis2004&#x27; THEN 41 WHEN &#x27;sjis&#x27; THEN 35 WHEN &#x27;sqlascii&#x27; THEN 0 WHEN &#x27;tcvn&#x27; THEN 19 WHEN &#x27;tcvn5712&#x27; THEN 19 WHEN &#x27;uhc&#x27; THEN 38 WHEN &#x27;unicode&#x27; THEN 6 WHEN &#x27;utf8&#x27; THEN 6 WHEN &#x27;vscii&#x27; THEN 19 WHEN &#x27;win&#x27; THEN 23 WHEN &#x27;win1250&#x27; THEN 29 WHEN &#x27;win1251&#x27; THEN 23 WHEN &#x27;win1252&#x27; THEN 24 WHEN &#x27;win1253&#x27; THEN 30 WHEN &#x27;win1254&#x27; THEN 31 WHEN &#x27;win1255&#x27; THEN 32 WHEN &#x27;win1256&#x27; THEN 18 WHEN &#x27;win1257&#x27; THEN 33 WHEN &#x27;win1258&#x27; THEN 19 WHEN &#x27;win866&#x27; THEN 20 WHEN &#x27;win874&#x27; THEN 21 WHEN &#x27;win932&#x27; THEN 35 WHEN &#x27;win936&#x27; THEN 37 WHEN &#x27;win949&#x27; THEN 38 WHEN &#x27;win950&#x27; THEN 36 WHEN &#x27;windows1250&#x27; THEN 29 WHEN &#x27;windows1251&#x27; THEN 23 WHEN &#x27;windows1252&#x27; THEN 24 WHEN &#x27;windows1253&#x27; THEN 30 WHEN &#x27;windows1254&#x27; THEN 31 WHEN &#x27;windows1255&#x27; THEN 32 WHEN &#x27;windows1256&#x27; THEN 18 WHEN &#x27;windows1257&#x27; THEN 33 WHEN &#x27;windows1258&#x27; THEN 19 WHEN &#x27;windows866&#x27; THEN 20 WHEN &#x27;windows874&#x27; THEN 21 WHEN &#x27;windows932&#x27; THEN 35 WHEN &#x27;windows936&#x27; THEN 37 WHEN &#x27;windows949&#x27; THEN 38 WHEN &#x27;windows950&#x27; THEN 36 ELSE -1 END AS INTEGER) END</code></pre></td><td><ul><li>A name of more than 63 bytes is refused by name where it runs: PostgreSQL cuts it to them as it reads it. <code>0A000</code> pg_char_to_encoding does not read this value</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>pg_size_pretty</strong><br>A bigint count of bytes in the largest unit below its limit, as dbsize.c writes it.</td><td><pre><code>pg_size_pretty($v)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_size_pretty($v). <code>0A000</code> pg_size_pretty() has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>pg_encoding_max_length</strong><br>The most bytes of a character of an encoding, by its number.</td><td><pre><code>pg_encoding_max_length($v)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_encoding_max_length($v). <code>0A000</code> pg_encoding_max_length() has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>int4multirange</strong><br>A multirange of integers, of ranges or of a VARIADIC array of them.</td><td></td><td><ul><li>Of a VARIADIC cast to an array of ranges, of anything but the text of an array of one dimension: refused by name, as no array of a range type is held. <code>0A000</code> int4multirange() has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>int8multirange</strong><br>A multirange of bigints, of ranges or of a VARIADIC array of them.</td><td></td><td><ul><li>Of a VARIADIC cast to an array of ranges, of anything but the text of an array of one dimension: refused by name, as no array of a range type is held. <code>0A000</code> int8multirange() has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>nummultirange</strong><br>A multirange of numerics, of ranges or of a VARIADIC array of them.</td><td></td><td><ul><li>Of a VARIADIC cast to an array of ranges, of anything but the text of an array of one dimension: refused by name, as no array of a range type is held. <code>0A000</code> nummultirange() has no form on presto</li></ul></td><td></td><td></td></tr>
@@ -610,15 +613,15 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>tstzmultirange</strong><br>A multirange of timestamps with time zone, of ranges or of a VARIADIC array of them.</td><td></td><td><ul><li>Of a VARIADIC cast to an array of ranges, of anything but the text of an array of one dimension: refused by name, as no array of a range type is held. <code>0A000</code> tstzmultirange() has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>jsonb_exists</strong><br>Whether a text is a top-level key, a string element, or the scalar string of a jsonb.</td><td><pre><code>jsonb_exists($v, $k)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: jsonb_exists($v, $k). <code>0A000</code> jsonb_exists() has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>jsonb_exists_any</strong><br>Whether any text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>jsonb_exists_all</strong><br>Whether every text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>jsonb_object_keys</strong><br>An object&#x27;s distinct keys, in jsonb&#x27;s order: the shorter first, then by bytes.</td><td><pre><code>jsonb_object_keys($v)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: jsonb_object_keys($v). <code>0A000</code> jsonb_object_keys() has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>json_object_keys</strong><br>An object&#x27;s keys as written, a repeated key each time.</td><td><pre><code>json_object_keys($v)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: json_object_keys($v). <code>0A000</code> json_object_keys() has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>to_json</strong><br>A value as its JSON.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>to_jsonb</strong><br>A value as its JSON.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>json_build_array</strong><br>A JSON array of the values given.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -681,95 +684,98 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>jsonb_set</strong><br>A json or jsonb function computed of literal arguments.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>jsonb_set_lax</strong><br>A json or jsonb function computed of literal arguments.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>jsonb_strip_nulls</strong><br>A json or jsonb function computed of literal arguments.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
-<tr><td><strong>json_agg</strong><br>A JSON array of an aggregate&#x27;s values.</td><td><pre><code>function provisa.transpiler.polyfill.json_values.json_agg_of_integers: json_agg of integers the statement says: Trino&#x27;s array of them cast to JSON.</code></pre></td><td><ul><li>Where a rule writes the call, of a literal, a column or a cast of one only: any other value is refused by name.</li><li>Of integers under a FILTER: refused by name.</li><li>Of a value the statement says is text: refused by name, as Trino&#x27;s form parses each value as JSON text.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>json_agg</strong><br>A JSON array of an aggregate&#x27;s values.</td><td><pre><code>function provisa.transpiler.polyfill.json_values.json_agg_of_integers: json_agg of integers the statement says: Trino&#x27;s array of them cast to JSON.</code></pre></td><td><ul><li>Where a rule writes the call, of a literal, a column or a cast of one only: any other value is refused by name.</li><li>Of integers under a FILTER: refused by name.</li><li>Of a value the statement says is text: refused by name, as Trino&#x27;s form parses each value as JSON text.</li><li>Refused for a call of (anyelement) with an argument the statement says is of that type, not a NULL. <code>0A000</code> json_agg() has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>json_build_object</strong><br>A JSON object of keys and values; each key is cast to its text.</td><td><pre><code>function provisa.transpiler.polyfill.json_values.object_keys_as_text: json_build_object&#x27;s keys as PostgreSQL&#x27;s text of them, where one is no text.</code></pre></td><td><ul><li>Where a rule writes the call, of a literal, a column or a cast of one only: any other value is refused by name.</li><li>A key of a type the statement says other than text, an integer or a boolean, or a NULL key: refused by name, as Trino&#x27;s text of it may differ.</li><li>An odd count of arguments is refused as the statement is read, not where it runs. <code>22023</code> argument list must have even number of elements</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>jsonb_build_object</strong><br>A JSON object of keys and values; each key is cast to its text.</td><td><pre><code>function provisa.transpiler.polyfill.json_values.object_keys_as_text: json_build_object&#x27;s keys as PostgreSQL&#x27;s text of them, where one is no text.</code></pre></td><td><ul><li>Where a rule writes the call, of a literal, a column or a cast of one only: any other value is refused by name.</li><li>A key of a type the statement says other than text, an integer or a boolean, or a NULL key: refused by name, as Trino&#x27;s text of it may differ.</li><li>An odd count of arguments is refused as the statement is read, not where it runs. <code>22023</code> argument list must have even number of elements</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>date_trunc</strong><br>The start of a unit of a timestamp.</td><td><pre><code>date_trunc($u, $t, $z)
+=&gt;
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: date_trunc($u, $t, $z). <code>0A000</code> date_trunc() has no form on presto</li><li>Refused for a call of (text, interval). <code>0A000</code> date_trunc() has no form on presto</li><li>Refused for a call of (text, timestamp without time zone) at some of its values. <code>0A000</code> timestamp_in() of a value past 294247-01-10 04:00:54.775807 has no exact form on presto</li><li>Refused for a call of (text, timestamp without time zone) at some of its values. <code>22008</code> timestamp out of range: &quot;294277-01-01 00:00:00&quot;</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>ntile</strong><br>The bucket of a row in a window, as an integer.</td><td><pre><code>function provisa.transpiler.polyfill.clickhouse.bucketed: ntile over a window, as PostgreSQL&#x27;s integer: every engine&#x27;s is a bigint. On ClickHouse a</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>numeric_mod</strong><br>The remainder of one numeric divided by another, at the larger scale of the two.</td><td><pre><code>numeric_mod($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (numeric, numeric) at some of its values. <code>0A000</code> numeric_in() of a value of more than 38 digits has no exact form on presto</li><li>Refused for a call of (numeric, numeric) at some of its values. <code>0A000</code> numeric_mod() of a numeric of scale past 18 has no exact form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>current_schemas</strong><br>The schemas of the search path.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_current_schemas: current_schemas: refused by name, as no form names the search path.</code></pre></td><td><ul><li>Refused by name: Trino has no form of it.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>spg_poly_quad_compress</strong><br>A polygon&#x27;s bounding box, as the SP-GiST quad tree&#x27;s compress function answers it.</td><td><pre><code>spg_poly_quad_compress($v)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: spg_poly_quad_compress($v). <code>0A000</code> spg_poly_quad_compress() has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>avg</strong><br>The mean of a group&#x27;s values.</td><td><pre><code>avg($v)
 =&gt;
-function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino: Trino&#x27;s own, the</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino: Trino&#x27;s own, the</code></pre></td><td><ul><li>Refused for a call of (interval), (numeric); a call of (bigint), (integer), (smallint) with an argument the statement says is of that type, not a NULL. <code>0A000</code> avg() has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>variance</strong><br>The sample variance of a group&#x27;s values.</td><td><pre><code>variance($v)
 =&gt;
-function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino: Trino&#x27;s own, the</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino: Trino&#x27;s own, the</code></pre></td><td><ul><li>Refused for a call of (numeric), (numeric); a call of (bigint), (integer), (smallint), (bigint), (integer), (smallint) with an argument the statement says is of that type, not a NULL. <code>0A000</code> variance() has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>var_samp</strong><br>The sample variance of a group&#x27;s values.</td><td><pre><code>var_samp($v)
 =&gt;
 function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino: Trino&#x27;s own, the</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>var_pop</strong><br>The population variance of a group&#x27;s values.</td><td><pre><code>var_pop($v)
 =&gt;
-function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino: Trino&#x27;s own, the</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino: Trino&#x27;s own, the</code></pre></td><td><ul><li>Refused for a call of (numeric); a call of (bigint), (integer), (smallint) with an argument the statement says is of that type, not a NULL. <code>0A000</code> var_pop() has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>stddev</strong><br>The sample standard deviation of a group&#x27;s values.</td><td><pre><code>stddev($v)
 =&gt;
-function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino: Trino&#x27;s own, the</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino: Trino&#x27;s own, the</code></pre></td><td><ul><li>Refused for a call of (numeric); a call of (bigint), (integer), (smallint) with an argument the statement says is of that type, not a NULL. <code>0A000</code> stddev() has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>stddev_samp</strong><br>The sample standard deviation of a group&#x27;s values.</td><td><pre><code>stddev_samp($v)
 =&gt;
-function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino: Trino&#x27;s own, the</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino: Trino&#x27;s own, the</code></pre></td><td><ul><li>Refused for a call of (numeric); a call of (bigint), (integer), (smallint) with an argument the statement says is of that type, not a NULL. <code>0A000</code> stddev_samp() has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>stddev_pop</strong><br>The population standard deviation of a group&#x27;s values.</td><td><pre><code>stddev_pop($v)
 =&gt;
-function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino: Trino&#x27;s own, the</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino: Trino&#x27;s own, the</code></pre></td><td><ul><li>Refused for a call of (numeric); a call of (bigint), (integer), (smallint) with an argument the statement says is of that type, not a NULL. <code>0A000</code> stddev_pop() has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>xid8eq</strong><br>Two xid8 values equal.</td><td><pre><code>xid8eq($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: xid8eq($a, $b). <code>0A000</code> xid8eq() has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>xid8ne</strong><br>Two xid8 values not equal.</td><td><pre><code>xid8ne($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: xid8ne($a, $b). <code>0A000</code> xid8ne() has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>xid8lt</strong><br>One xid8 before another.</td><td><pre><code>xid8lt($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: xid8lt($a, $b). <code>0A000</code> xid8lt() has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>xid8le</strong><br>One xid8 before or equal to another.</td><td><pre><code>xid8le($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: xid8le($a, $b). <code>0A000</code> xid8le() has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>xid8gt</strong><br>One xid8 after another.</td><td><pre><code>xid8gt($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: xid8gt($a, $b). <code>0A000</code> xid8gt() has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>xid8ge</strong><br>One xid8 after or equal to another.</td><td><pre><code>xid8ge($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: xid8ge($a, $b). <code>0A000</code> xid8ge() has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>xid8send</strong><br>An xid8&#x27;s binary form.</td><td><pre><code>xid8send($v)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: xid8send($v). <code>0A000</code> xid8send() has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>pg_snapshot_xmin</strong><br>A snapshot&#x27;s earliest active id.</td><td><pre><code>pg_snapshot_xmin($s)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_snapshot_xmin($s). <code>0A000</code> pg_snapshot_xmin() has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>pg_snapshot_xmax</strong><br>A snapshot&#x27;s first unassigned id.</td><td><pre><code>pg_snapshot_xmax($s)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_snapshot_xmax($s). <code>0A000</code> pg_snapshot_xmax() has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>pg_snapshot_xip</strong><br>A snapshot&#x27;s in-progress ids, as rows.</td><td><pre><code>pg_snapshot_xip($s)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_snapshot_xip($s). <code>0A000</code> pg_snapshot_xip() has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>pg_snapshot_send</strong><br>A snapshot&#x27;s binary form.</td><td><pre><code>pg_snapshot_send($s)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_snapshot_send($s). <code>0A000</code> pg_snapshot_send() has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>txid_snapshot_xmin</strong><br>A snapshot&#x27;s earliest active id.</td><td><pre><code>txid_snapshot_xmin($s)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: txid_snapshot_xmin($s). <code>0A000</code> txid_snapshot_xmin() has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>txid_snapshot_xmax</strong><br>A snapshot&#x27;s first unassigned id.</td><td><pre><code>txid_snapshot_xmax($s)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: txid_snapshot_xmax($s). <code>0A000</code> txid_snapshot_xmax() has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>txid_snapshot_xip</strong><br>A snapshot&#x27;s in-progress ids, as rows.</td><td><pre><code>txid_snapshot_xip($s)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: txid_snapshot_xip($s). <code>0A000</code> txid_snapshot_xip() has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>txid_snapshot_send</strong><br>A snapshot&#x27;s binary form.</td><td><pre><code>txid_snapshot_send($s)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: txid_snapshot_send($s). <code>0A000</code> txid_snapshot_send() has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>pg_visible_in_snapshot</strong><br>Whether a transaction id is visible in a snapshot.</td><td><pre><code>pg_visible_in_snapshot($x, $s)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_visible_in_snapshot($x, $s). <code>0A000</code> pg_visible_in_snapshot() has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>txid_visible_in_snapshot</strong><br>Whether a transaction id is visible in a snapshot.</td><td><pre><code>txid_visible_in_snapshot($x, $s)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: txid_visible_in_snapshot($x, $s). <code>0A000</code> txid_visible_in_snapshot() has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>to_hex</strong><br>An integer&#x27;s hexadecimal digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>to_oct</strong><br>An integer&#x27;s octal digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>to_bin</strong><br>An integer&#x27;s binary digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>isfinite(interval)</strong><br>Whether an interval is finite.</td><td><pre><code>isfinite($a)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (interval). <code>0A000</code> isfinite() has no form on presto</li><li>Refused for a call of (timestamp without time zone) at some of its values. <code>0A000</code> timestamp_in() of a value past 294247-01-10 04:00:54.775807 has no exact form on presto</li><li>Refused for a call of (date) at some of its values. <code>22008</code> date out of range: &quot;5874898-01-01&quot;</li><li>Refused for a call of (timestamp without time zone) at some of its values. <code>22008</code> timestamp out of range: &quot;294277-01-01 00:00:00&quot;</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>overlaps(timestamp, interval, timestamp, interval)</strong><br>Whether two periods overlap, an end of either given as an interval from its start: overlaps(timestamp, interval, timestamp, interval), (timestamp, interval, timestamp, timestamp), (timestamp, timestamp, timestamp, interval), the same of times of day, and overlaps of four times of day (overlaps_time).</td><td><pre><code>overlaps($a, $b, $c, $d)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -845,67 +851,67 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>timestamptz_eq_timestamp</strong><br>Whether an instant equals a timestamp.</td><td><pre><code>timestamptz_eq_timestamp($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (timestamp with time zone, timestamp without time zone) at some of its values. <code>0A000</code> timestamp_in() of a value past 294247-01-10 04:00:54.775807 has no exact form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>timestamptz_ne_timestamp</strong><br>Whether an instant differs from a timestamp.</td><td><pre><code>timestamptz_ne_timestamp($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (timestamp with time zone, timestamp without time zone) at some of its values. <code>0A000</code> timestamp_in() of a value past 294247-01-10 04:00:54.775807 has no exact form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>timestamptz_lt_timestamp</strong><br>Whether an instant is before a timestamp.</td><td><pre><code>timestamptz_lt_timestamp($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (timestamp with time zone, timestamp without time zone) at some of its values. <code>0A000</code> timestamp_in() of a value past 294247-01-10 04:00:54.775807 has no exact form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>timestamptz_le_timestamp</strong><br>Whether an instant is not after a timestamp.</td><td><pre><code>timestamptz_le_timestamp($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (timestamp with time zone, timestamp without time zone) at some of its values. <code>0A000</code> timestamp_in() of a value past 294247-01-10 04:00:54.775807 has no exact form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>timestamptz_gt_timestamp</strong><br>Whether an instant is after a timestamp.</td><td><pre><code>timestamptz_gt_timestamp($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (timestamp with time zone, timestamp without time zone) at some of its values. <code>0A000</code> timestamp_in() of a value past 294247-01-10 04:00:54.775807 has no exact form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>timestamptz_ge_timestamp</strong><br>Whether an instant is not before a timestamp.</td><td><pre><code>timestamptz_ge_timestamp($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (timestamp with time zone, timestamp without time zone) at some of its values. <code>0A000</code> timestamp_in() of a value past 294247-01-10 04:00:54.775807 has no exact form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>timestamptz_cmp_timestamp</strong><br>btree&#x27;s comparison of an instant and a timestamp: -1, 0 or 1.</td><td><pre><code>timestamptz_cmp_timestamp($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (timestamp with time zone, timestamp without time zone) at some of its values. <code>0A000</code> timestamp_in() of a value past 294247-01-10 04:00:54.775807 has no exact form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>timestamp_eq_timestamptz</strong><br>Whether a timestamp equals an instant.</td><td><pre><code>timestamp_eq_timestamptz($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (timestamp without time zone, timestamp with time zone) at some of its values. <code>0A000</code> timestamp_in() of a value past 294247-01-10 04:00:54.775807 has no exact form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>timestamp_ne_timestamptz</strong><br>Whether a timestamp differs from an instant.</td><td><pre><code>timestamp_ne_timestamptz($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (timestamp without time zone, timestamp with time zone) at some of its values. <code>0A000</code> timestamp_in() of a value past 294247-01-10 04:00:54.775807 has no exact form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>timestamp_lt_timestamptz</strong><br>Whether a timestamp is before an instant.</td><td><pre><code>timestamp_lt_timestamptz($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (timestamp without time zone, timestamp with time zone) at some of its values. <code>0A000</code> timestamp_in() of a value past 294247-01-10 04:00:54.775807 has no exact form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>timestamp_le_timestamptz</strong><br>Whether a timestamp is not after an instant.</td><td><pre><code>timestamp_le_timestamptz($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (timestamp without time zone, timestamp with time zone) at some of its values. <code>0A000</code> timestamp_in() of a value past 294247-01-10 04:00:54.775807 has no exact form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>timestamp_gt_timestamptz</strong><br>Whether a timestamp is after an instant.</td><td><pre><code>timestamp_gt_timestamptz($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (timestamp without time zone, timestamp with time zone) at some of its values. <code>0A000</code> timestamp_in() of a value past 294247-01-10 04:00:54.775807 has no exact form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>timestamp_ge_timestamptz</strong><br>Whether a timestamp is not before an instant.</td><td><pre><code>timestamp_ge_timestamptz($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (timestamp without time zone, timestamp with time zone) at some of its values. <code>0A000</code> timestamp_in() of a value past 294247-01-10 04:00:54.775807 has no exact form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>timestamp_cmp_timestamptz</strong><br>btree&#x27;s comparison of a timestamp and an instant: -1, 0 or 1.</td><td><pre><code>timestamp_cmp_timestamptz($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (timestamp without time zone, timestamp with time zone) at some of its values. <code>0A000</code> timestamp_in() of a value past 294247-01-10 04:00:54.775807 has no exact form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>isfinite(timestamptz)</strong><br>Whether an instant is finite.</td><td><pre><code>isfinite($a)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>timestamp(timestamptz)</strong><br>An instant&#x27;s wall time in the session&#x27;s zone.</td><td><pre><code>timestamp($a)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (date) at some of its values. <code>22008</code> date out of range: &quot;5874898-01-01&quot;</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>overlaps(timestamptz)</strong><br>Whether two periods of instants overlap.</td><td><pre><code>overlaps($a, $b, $c, $d)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>timezone(timestamptz)</strong><br>An instant&#x27;s wall time in the session&#x27;s zone.</td><td><pre><code>timezone($a)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: timezone($a). <code>0A000</code> timezone() has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>timestamptz(timestamptz, integer)</strong><br>An instant rounded to a number of digits of a second.</td><td><pre><code>timestamptz($a, $n)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: timestamptz($a, $n). <code>0A000</code> timestamptz() has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>area(shape)</strong><br>PostgreSQL&#x27;s box_area, circle_area, path_area.</td><td><pre><code>area($a)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>center(shape)</strong><br>PostgreSQL&#x27;s circle_center.</td><td><pre><code>center($a)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (box). <code>0A000</code> point() has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>circle_center(shape)</strong><br>PostgreSQL&#x27;s circle_center.</td><td><pre><code>circle_center($a)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -998,25 +1004,25 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>overlay</strong><br>Text with a replacement put in place of a count of its characters from a start.</td><td><pre><code>overlay($t::text, $r::text, $p::integer, $n::integer)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>overlay($t::text, $r::text, $p::integer)
+refused (its error is under the limitations)</code></pre><pre><code>overlay($t::text, $r::text, $p::integer)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: overlay($t::text, $r::text, $p::integer, $n::integer). <code>0A000</code> overlay() has no form on presto</li><li>Refused: overlay($t::text, $r::text, $p::integer). <code>0A000</code> overlay() has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>string_to_array</strong><br>Text split at each delimiter into an array; a piece equal to a third argument is NULL.</td><td><pre><code>string_to_array($s::text, $d::text)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>string_to_array($s::text, $d::text, $n::text)
+refused (its error is under the limitations)</code></pre><pre><code>string_to_array($s::text, $d::text, $n::text)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: string_to_array($s::text, $d::text). <code>0A000</code> string_to_array() has no form on presto</li><li>Refused: string_to_array($s::text, $d::text, $n::text). <code>0A000</code> string_to_array() has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>varchar</strong><br>Text cast to character varying of a declared length (its typmod).</td><td><pre><code>varchar($s, $m, $e)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>varchar($s::name)
+refused (its error is under the limitations)</code></pre><pre><code>varchar($s::name)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: varchar($s, $m, $e). <code>0A000</code> varchar() has no form on presto</li><li>Refused: varchar($s::name). <code>0A000</code> varchar() has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>bpchar</strong><br>Text cast to character of a declared length (its typmod), padded with spaces.</td><td><pre><code>bpchar($s, $m, $e)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: bpchar($s, $m, $e). <code>0A000</code> bpchar() has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>nameconcatoid</strong><br>A name and an oid joined by an underscore, the name cut to fit a name&#x27;s 63 bytes.</td><td><pre><code>nameconcatoid($n, $o)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: nameconcatoid($n, $o). <code>0A000</code> nameconcatoid() has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>left</strong><br>The first characters of a text; a negative count all but the last.</td><td><pre><code>left($t::text, $n::integer)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -1070,64 +1076,64 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>octet_length(bytea)</strong><br>A bytea&#x27;s number of bytes.</td><td><pre><code>octet_length($a)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (bit), (bytea). <code>0A000</code> octet_length() has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>length(bytea)</strong><br>A bytea&#x27;s number of bytes.</td><td><pre><code>length($a)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (bit). <code>0A000</code> length() has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>bit_length(bytea)</strong><br>A bytea&#x27;s number of bits.</td><td><pre><code>bit_length($a)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (bit), (bytea). <code>0A000</code> bit_length() has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>bit_count(bytea)</strong><br>The number of a bytea&#x27;s bits that are set.</td><td><pre><code>bit_count($a)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: bit_count($a). <code>0A000</code> bit_count() has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>byteacat(bytea, bytea)</strong><br>Two byteas, one after the other.</td><td><pre><code>byteacat($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: byteacat($a, $b). <code>0A000</code> byteacat() has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>btrim(bytea, bytea)</strong><br>A bytea less the bytes of a set at its start and its end.</td><td><pre><code>btrim($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>trim(both $b from $a)
+refused (its error is under the limitations)</code></pre><pre><code>trim(both $b from $a)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused: btrim($a, $b). <code>0A000</code> trim() has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>ltrim(bytea, bytea)</strong><br>A bytea less the bytes of a set at its start.</td><td><pre><code>ltrim($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: ltrim($a, $b). <code>0A000</code> trim() has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>rtrim(bytea, bytea)</strong><br>A bytea less the bytes of a set at its end.</td><td><pre><code>rtrim($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: rtrim($a, $b). <code>0A000</code> trim() has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>get_bit(bytea, bigint)</strong><br>A bit of a bytea, the first the low bit of its first byte.</td><td><pre><code>get_bit($a, $n)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: get_bit($a, $n). <code>0A000</code> getbit() has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>set_bit(bytea, bigint, integer)</strong><br>A bytea with one of its bits set to 0 or 1.</td><td><pre><code>set_bit($a, $n, $v)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: set_bit($a, $n, $v). <code>0A000</code> set_bit() has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>get_byte(bytea, integer)</strong><br>A byte of a bytea.</td><td><pre><code>get_byte($a, $n)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: get_byte($a, $n). <code>0A000</code> get_byte() has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>set_byte(bytea, integer, integer)</strong><br>A bytea with one of its bytes replaced.</td><td><pre><code>set_byte($a, $n, $v)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: set_byte($a, $n, $v). <code>0A000</code> set_byte() has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>like(bytea, bytea)</strong><br>Whether a bytea matches a LIKE pattern.</td><td><pre><code>$a LIKE $b
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>bytealike(bytea, bytea)</strong><br>Whether a bytea matches a LIKE pattern.</td><td><pre><code>bytealike($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: bytealike($a, $b). <code>0A000</code> bytealike() has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>notlike(bytea, bytea)</strong><br>Whether a bytea does not match a LIKE pattern.</td><td><pre><code>notlike($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>$a NOT LIKE $b
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (bytea, bytea). <code>0A000</code> notlike() has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>byteanlike(bytea, bytea)</strong><br>Whether a bytea does not match a LIKE pattern.</td><td><pre><code>byteanlike($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: byteanlike($a, $b). <code>0A000</code> byteanlike() has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>like_escape(bytea, bytea)</strong><br>A LIKE pattern with its escape byte written as a backslash.</td><td><pre><code>like_escape($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: like_escape($a, $b). <code>0A000</code> like_escape() has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>overlay(bytea, bytea, integer)</strong><br>A bytea with a part of it replaced by another.</td><td><pre><code>overlay($a, $b, $s)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>overlay($a, $b, $s, $l)
+refused (its error is under the limitations)</code></pre><pre><code>overlay($a, $b, $s, $l)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: overlay($a, $b, $s). <code>0A000</code> overlay() has no form on presto</li><li>Refused: overlay($a, $b, $s, $l). <code>0A000</code> overlay() has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>position(bytea, bytea)</strong><br>Where a bytea first holds another, from 1; 0 where it does not.</td><td><pre><code>position($b in $a)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -1135,8 +1141,8 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>substr($a, $s, $l)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (bytea, integer). <code>0A000</code> substr() has no form on presto</li><li>Refused for a call of (bytea, integer), (bit, integer), (bytea, integer), (text, text). <code>0A000</code> substring() has no form on presto</li><li>Refused for a call of (bytea, integer, integer). <code>0A000</code> substr() has no form on presto</li><li>Refused for a call of (bytea, integer, integer), (bit, integer, integer), (bytea, integer, integer), (text, text, text). <code>0A000</code> substring() has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>encode(bytea, text)</strong><br>A bytea&#x27;s text in hex, base64 or escape form.</td><td><pre><code>encode($a, $f)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: encode($a, $f). <code>0A000</code> encode() has no form on presto</li></ul></td><td></td><td></td></tr>
 </tbody></table>

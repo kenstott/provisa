@@ -563,6 +563,7 @@
   "tests/integration/test_sparql_endpoint.py": 0.0,
   "tests/integration/test_sparql_exec.py": 0.0,
   "tests/integration/test_sparql_reasoner.py": 0.0,
+  "tests/integration/test_sparql_update_e2e.py": 30.0,
   "tests/integration/test_splunk_duckdb_attach.py": 115.2,
   "tests/integration/test_splunk_pipeline_e2e.py": 0.0,
   "tests/integration/test_splunk_source_e2e.py": 140.0,
@@ -761,6 +762,12 @@
   "tests/integration/test_code_sdk_spellings_rust.py": 90.0,
   "tests/integration/test_code_sdk_spellings_go.py": 60.0,
   "tests/integration/test_go_sdk_reader.py": 45.0,
-  "tests/integration/test_neo4j_query_preview_e2e.py": 45.0
+  "tests/integration/test_role_rate_limits_e2e.py": 90.0,
+  "tests/integration/test_ingest_subscription_governance_e2e.py": 60.0,
+  "tests/integration/test_source_registration_e2e.py": 60.0,
+  "tests/integration/test_remote_schema_refresh_e2e.py": 240.0,
+  "tests/integration/test_approval_hook_grpc_e2e.py": 45.0,
+  "tests/integration/test_neo4j_query_preview_e2e.py": 45.0,
+  "tests/integration/test_sqlalchemy_dialect_scope_e2e.py": 40.0
  }
 }

@@ -54,6 +54,10 @@ dependencies = [
     "adbc-driver-manager",
     "adbc-driver-postgresql",  # REQ-1220: Arrow-native zero-copy ADBC transport for the pg engine
     "httpx",
+    # REQ-1993: uv makes a Python code source's virtual environment from the interpreter Provisa
+    # runs on and installs its lockfile; its PyPI wheel carries the binary, so a pip-installed
+    # Provisa fetches no uv release from GitHub (docs/arch/fetch-sources.md).
+    "uv>=0.11",
     "redis[hiredis]",
     "fakeredis",
     "anthropic",

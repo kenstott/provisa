@@ -10,8 +10,12 @@
 
 """On-demand, pinned, hash-checked runtimes for code sources (REQ-1984, REQ-1993).
 
-A code source names its runtime: Node, Bun or Deno for JavaScript; Python (with uv, which installs its
-dependencies) for Python. None of them ships with Provisa. Each is
+A code source names its runtime: Node, Bun or Deno for JavaScript; Python for Python. A Python
+source runs on the CPython Provisa itself runs on (:func:`running_interpreter`) -- the one pip
+installed Provisa into, or the installer's bundled one -- in a virtual environment of its own made
+by uv, which comes from PyPI as a dependency of Provisa (:func:`uv_executable`): a pip-installed
+Provisa fetches nothing for Python from GitHub (maintainer 2026-11-22, docs/arch/fetch-sources.md).
+The other runtimes do not ship with Provisa. Each is
 fetched on first use from its project's own release, at the version pinned here, checked against
 the SHA-256 recorded here (the project's published sum) BEFORE anything is extracted, and cached
 under the runtime-deps cache root beside the pgwire bundles, version-namespaced. A cache hit never
@@ -31,6 +35,7 @@ import os
 import platform
 import shutil
 import stat
+import sys
 import tarfile
 import tempfile
 import zipfile
@@ -172,9 +177,10 @@ RUNTIMES: dict[str, RuntimePin] = {
             ),
         },
     ),
-    # REQ-1993: the Python a Python source runs under (python-build-standalone's install_only
-    # build; SHA256SUMS in the release) and uv, which installs its dependencies (the asset's
-    # .sha256). One CPython version per release of Provisa (decision P3).
+    # REQ-2098: the Python an image's Python source runs under, for the image's platform
+    # (python-build-standalone's install_only build; SHA256SUMS in the release). Only an image
+    # built for a remote host takes it: on the server a Python source runs on the interpreter
+    # Provisa runs on (running_interpreter).
     "python": RuntimePin(
         "python",
         "3.12.14+20260924",
@@ -200,28 +206,6 @@ RUNTIMES: dict[str, RuntimePin] = {
                 "cpython-3.12.14%2B20260924-x86_64-pc-windows-msvc-install_only.tar.gz",
                 "c5303174bc29f5205decf6721ac549d4eb41c448f9b8c46cbc562d00348865bb",
                 "python/python.exe",
-            ),
-        },
-    ),
-    "uv": RuntimePin(
-        "uv",
-        "0.12.18",
-        "https://github.com/astral-sh/uv/releases/download/{version}/{filename}",
-        {
-            DARWIN_ARM64: Asset(
-                "uv-aarch64-apple-darwin.tar.gz",
-                "cf40e0c6a202190ccd9e0406dcfdd5b2d6668a9a5c779b17948963df32aafe5b",
-                "uv-aarch64-apple-darwin/uv",
-            ),
-            LINUX_X64: Asset(
-                "uv-x86_64-unknown-linux-gnu.tar.gz",
-                "89eadd7c76fc063887959510d5ba0ab1264dfd5f1143b925ddb73021a40acf16",
-                "uv-x86_64-unknown-linux-gnu/uv",
-            ),
-            WINDOWS_X64: Asset(
-                "uv-x86_64-pc-windows-msvc.zip",
-                "cae6a3bc25239f83dffb467a4b180508d9da23986c04639ebfa44e43e6a84bff",
-                "uv.exe",
             ),
         },
     ),
@@ -469,6 +453,42 @@ RUNTIMES: dict[str, RuntimePin] = {
         },
     ),
 }
+
+
+@dataclass(frozen=True)
+class Interpreter:
+    """A CPython a Python source's virtual environment is made from."""
+
+    executable: Path
+    #: Its prefix: its ``bin`` and its standard library, which the sandbox lets a worker read.
+    home: Path
+
+
+def running_interpreter() -> Interpreter:  # REQ-1993
+    """The base CPython of the interpreter Provisa runs on: the one pip installed Provisa into (on
+    the pip path), or the installer's bundled python-build-standalone (DMG, AppImage, Windows).
+    The base, not a virtual environment Provisa may be installed in, so a source's own
+    environment sees none of Provisa's packages. Never downloads; fails loud when the base
+    interpreter's executable is not where its prefix puts it."""
+    home = Path(sys.base_prefix).resolve()
+    version = f"{sys.version_info.major}.{sys.version_info.minor}"
+    executable = home / "python.exe" if os.name == "nt" else home / "bin" / f"python{version}"
+    if not executable.is_file():
+        raise RuntimeUnavailable(
+            f"the interpreter Provisa runs on has no {executable} under its prefix {home}"
+        )
+    return Interpreter(executable, home)
+
+
+def uv_executable() -> Path:  # REQ-1993
+    """uv, from the ``uv`` wheel installed from PyPI with Provisa (a declared dependency)."""
+    from uv import find_uv_bin
+
+    try:
+        return Path(find_uv_bin())
+    except FileNotFoundError as exc:
+        raise RuntimeUnavailable(f"the installed uv package holds no uv executable: {exc}") from exc
+
 
 #: Fetch an archive's bytes. Injected so tests never touch the network.
 Fetcher = Callable[[str], bytes]
