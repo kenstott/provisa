@@ -279,12 +279,36 @@ def one_column_function(table: exp.Expr) -> exp.Table | None:  # REQ-2204
     return exp.Table(this=table.this, alias=named)
 
 
+#: sqlglot's readings of the PostgreSQL scalar functions a client's catalog SQL calls in FROM
+#: (Grafana's ``string_to_array(current_setting('search_path'), ',') s``).
+_SCALAR_FROM_FUNCTIONS = (exp.StringToArray,)
+
+
+def scalar_function_row(table: exp.Expr) -> exp.Subquery | None:  # REQ-2204
+    """``table`` as PostgreSQL reads it where it is one of :data:`_SCALAR_FROM_FUNCTIONS` in FROM,
+    unqualified or in pg_catalog: a function that returns no set is one row of one column, the
+    column named by the alias's column, else by the alias, else by the function. Written as a
+    one-row subquery, which every engine reads and which reads no relation. None for any other
+    FROM item."""
+    if not isinstance(table, exp.Table) or type(table.this) not in _SCALAR_FROM_FUNCTIONS:
+        return None
+    if table.catalog or table.db.lower() not in ("", "pg_catalog"):
+        return None
+    alias = table.args.get("alias")
+    relation = alias.name if alias is not None else type(table.this).sql_names()[0].lower()
+    column = alias.columns[0].name if alias is not None and alias.columns else relation
+    return exp.Subquery(
+        this=exp.select(exp.alias_(table.this.copy(), column, quoted=True)),
+        alias=exp.TableAlias(this=exp.to_identifier(relation, quoted=True)),
+    )
+
+
 def _with_out_columns(tree: exp.Expr) -> exp.Expr:
     """``tree`` with each pg_catalog table function in FROM given its OUT parameters as the
     alias's columns, as PostgreSQL names them; the alias defaults to the function's name. A
     one-column function's alias names its column (:func:`one_column_function`)."""
     for table in list(tree.find_all(exp.Table)):
-        named = one_column_function(table)
+        named = one_column_function(table) or scalar_function_row(table)
         if named is not None:
             table.replace(named)
     for table in tree.find_all(exp.Table):

@@ -27,7 +27,7 @@ from provisa.python.source import READER
 
 pytestmark = pytest.mark.unit
 
-SDK = Path(__file__).resolve().parents[1]
+SDK = Path(__file__).resolve().parents[3] / "provisa-sdk" / "python"
 SPELLINGS = Path(__file__).parent / "spellings"
 #: Every function of the twin modules: one per decorator form.
 NAMES = [
