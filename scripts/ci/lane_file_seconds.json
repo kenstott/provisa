@@ -561,6 +561,7 @@
   "tests/integration/test_sparql_endpoint.py": 0.0,
   "tests/integration/test_sparql_exec.py": 0.0,
   "tests/integration/test_sparql_reasoner.py": 0.0,
+  "tests/integration/test_sparql_update_e2e.py": 30.0,
   "tests/integration/test_splunk_duckdb_attach.py": 115.2,
   "tests/integration/test_splunk_pipeline_e2e.py": 0.0,
   "tests/integration/test_splunk_source_e2e.py": 140.0,
