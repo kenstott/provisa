@@ -96411,7 +96411,7 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     IMAGE HOLDS:) Maintainer 2026-11-09: the connector is offered to every organization through a platform
     block file in the package, written by the release build and read beside the org''s own connectors; Sources
     shows nothing until a release fills it. The image holds a thin Spark Connect client, not Spark: the
-    cluster value is a Spark Connect address, and the customer''s cluster does the work.'
+    cluster value is a Spark Connect address, and the customer''s cluster does the work. (Amended 2026-11-23 by the maintainer, pre-freeze. A view''s table transform can run on Spark: a materialized view over a call to a Spark command that takes governed tables as arguments, landed as any view is, refreshed on schedule or on source change rather than run live. A code resolver (REQ-2249) can be a Spark @query with two table parameters, for matching at a scale one process cannot hold. Table arguments are read over Arrow Flight (REQ-2270). These are tested against a one-node Spark in CI and locally.)'
   scenario: 'Given the offered Spark connector joined with an annotated script that tags two tables and
     a command
 
