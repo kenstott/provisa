@@ -175,8 +175,17 @@ async def test_a_code_resolver_set_retires_together_and_then_its_tables_go(plane
                     source_column="id",
                     target_column="id",
                     cardinality="many-to-one",
-                    via_table_id=via,
                     code_resolver=SET_ID,
+                    **(
+                        {}
+                        if via is None
+                        else {
+                            "via_table_id": via,
+                            "via_source_column": "store_id",
+                            "via_target_column": "region_id",
+                            "via_label_source": "table",
+                        }
+                    ),
                 )
             )
     # The set's bridge cannot be deleted apart from it, and its tables are held under it.
