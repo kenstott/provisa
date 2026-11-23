@@ -230,3 +230,56 @@ def test_a_graph_pattern_inside_where_reads_its_graph(monkeypatch):
     update(s, 'INSERT DATA { GRAPH ex:g { ex:a ex:name "G" } }')
     update(s, "INSERT { ?s ex:seen ?n } WHERE { GRAPH ex:g { ?s ex:name ?n } }")
     assert select(s, "SELECT ?n WHERE { ?s ex:seen ?n }") == [{"n": _s("G")}]
+
+
+# --- many values; one variable in several graphs ---------------------------------------------------
+
+
+def test_a_property_of_many_values_answers_one_solution_per_value(monkeypatch):
+    """REQ-2135 (amended 2026-11-23): many values of one predicate widen to a list in the
+    session; a read answers each value as a solution of its own, as a triple of each."""
+    s = _session(monkeypatch)
+    update(s, 'INSERT DATA { ex:a ex:tag "x", "y" . ex:b ex:tag "z" }')
+    rows = select(s, "SELECT ?s ?t WHERE { ?s ex:tag ?t }")
+    assert sorted((str(r["s"]), str(r["t"])) for r in rows) == [
+        (f"{EX}a", "x"),
+        (f"{EX}a", "y"),
+        (f"{EX}b", "z"),
+    ]
+    assert select(s, 'SELECT ?s WHERE { ?s ex:tag "y" }') == [{"s": URIRef(f"{EX}a")}]
+    assert _values(select(s, "SELECT ?t WHERE { ex:a ex:tag ?t }"), "t") == ["x", "y"]
+
+
+def test_a_variable_in_two_graph_patterns_joins_across_both(monkeypatch):
+    """SPARQL 18.6: a variable shared by two GRAPH patterns is one term in each graph; an IRI
+    subject is a session node of its own in each graph, so the two are joined by their IRI."""
+    s = _session(monkeypatch)
+    update(
+        s,
+        'INSERT DATA { GRAPH ex:g1 { ex:a ex:name "A1" . ex:b ex:name "B1" } '
+        'GRAPH ex:g2 { ex:a ex:label "A2" } }',
+    )
+    rows = select(
+        s,
+        "SELECT ?s ?n ?l WHERE { GRAPH ex:g1 { ?s ex:name ?n } GRAPH ex:g2 { ?s ex:label ?l } }",
+    )
+    assert rows == [{"s": URIRef(f"{EX}a"), "n": _s("A1"), "l": _s("A2")}]
+    nested = select(
+        s,
+        "SELECT ?n ?l WHERE { GRAPH ex:g1 { ?s ex:name ?n GRAPH ex:g2 { ?s ex:label ?l } } }",
+    )
+    assert nested == [{"n": _s("A1"), "l": _s("A2")}]
+    constant = select(
+        s, "SELECT ?n ?l WHERE { GRAPH ex:g1 { ex:a ex:name ?n } GRAPH ex:g2 { ex:a ex:label ?l } }"
+    )
+    assert constant == [{"n": _s("A1"), "l": _s("A2")}]
+
+
+def test_a_variable_in_a_graph_pattern_and_the_default_graph_joins_across_both(monkeypatch):
+    s = _session(monkeypatch)
+    update(
+        s,
+        'INSERT DATA { ex:a ex:name "D" . ex:c ex:name "C" GRAPH ex:g { ex:a ex:label "G" } }',
+    )
+    rows = select(s, "SELECT ?n ?l WHERE { ?s ex:name ?n GRAPH ex:g { ?s ex:label ?l } }")
+    assert rows == [{"n": _s("D"), "l": _s("G")}]

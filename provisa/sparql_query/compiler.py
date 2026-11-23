@@ -103,6 +103,7 @@ from provisa.gql.ir import (
     ReturnItem,
     SeqPath,
     TripleTemplate,
+    UnwindClause,
     WhereClause,
 )
 from provisa.gql.iri import parse_subject_iri
@@ -781,6 +782,7 @@ class _Lowering:
         self._axioms = 0  # REQ-2163: the ontology._axioms nodes placed so far
         self._rows = 0  # the subject-row joins placed in this statement
         self._opened: set[str] = set()  # this part's variable predicates and their objects
+        self._items = 0  # the UNWINDs of a property of many values placed so far
 
     # -- node labels ----------------------------------------------------------------------
 
@@ -951,12 +953,15 @@ class _Lowering:
         deferred: "_Deferred | None" = None,
         reads: dict[int, Predicate] | None = None,
         through_rows: bool = False,
+        unwinds: list[UnwindClause] | None = None,
     ) -> MatchStep:
         """The MATCH of ``group`` with its nodes labelled ``labels``. ``bindings`` gains each
         variable the group binds to a value: (its expression, its datatype). ``reads`` is the
         predicate each variable predicate stands for in this part, by its triple's place in the
         group (:meth:`predicate_reads`); ``through_rows`` reads them through the subject's rows
-        where its table has no key (:meth:`_row_of`)."""
+        where its table has no key (:meth:`_row_of`). ``unwinds`` gains the UNWIND of each
+        property of many values the group reads (:meth:`_value_of`); None where an UNWIND has no
+        place (an OPTIONAL's, MINUS's or EXISTS's group)."""
         named: dict[str, str] = {}
         keys: dict[str, tuple] = {}
         conditions: list[CypherExpr] = []
@@ -1025,7 +1030,7 @@ class _Lowering:
                 edges.append((sv, RelPattern(None, [rel_type], None, None, "right"), node(o)))
                 continue
             cp = self._column(iri, labels[sv])
-            value: CypherExpr = Property(Variable(sv), cp.prop)
+            value = self._value_of(sv, labels[sv], cp.prop, iri, unwinds)
             if _is_var(o):
                 if str(o) in labels:
                     conditions.append(Literal(False, "boolean"))  # a node is no value
@@ -1689,6 +1694,27 @@ class _Lowering:
             )
         return out
 
+    def _value_of(
+        self, var: str, label: str, prop: str, iri: str, unwinds: list[UnwindClause] | None
+    ) -> CypherExpr:
+        """The value ``var`` holds of ``prop``: the property, or, where a session label holds it
+        as JSON (many values of one predicate widen to a list, REQ-2135 amended 2026-11-23), one
+        of its values, an UNWIND of the property placed in ``unwinds``: a triple of each value,
+        one solution each."""
+        value: CypherExpr = Property(Variable(var), prop)
+        nm = self._node(label)
+        if not is_session_node(nm) or dict(nm.property_types).get(prop) != "json":
+            return value
+        if unwinds is None:
+            raise SparqlRefused(
+                f"<{iri}> holds several values of a session object, and an OPTIONAL, MINUS or "
+                "EXISTS pattern reading such a predicate is not supported"
+            )
+        item = f"__item{self._items}"
+        self._items += 1
+        unwinds.append(UnwindClause(value, item))
+        return Variable(item)
+
     def _column(self, iri: str, label: str) -> ColumnPredicate:
         for cp in self.vocab.columns.get(iri, []):
             if cp.label == label:
@@ -2245,7 +2271,9 @@ class _Lowering:
         labels: dict[str, str],
         reads: dict[int, Predicate],
         through_rows: bool,
-    ) -> tuple[list[MatchStep], dict[str, tuple[CypherExpr, str | None]], dict[str, str]]:
+    ) -> tuple[
+        list[MatchStep | UnwindClause], dict[str, tuple[CypherExpr, str | None]], dict[str, str]
+    ]:
         """The steps of ``group`` under one interpretation, what each variable is bound to, and
         the labels with its OPTIONALs' nodes."""
         self._placed = set()
@@ -2256,7 +2284,8 @@ class _Lowering:
         # A group's FILTER holds over its OPTIONALs' answers too, and a BIND may read what they
         # bind: both are read once the OPTIONALs are lowered, on the group's own MATCH.
         deferred = _Deferred() if group.optionals else None
-        steps = [
+        unwinds: list[UnwindClause] = []
+        steps: list[MatchStep | UnwindClause] = [
             self.lower_group(
                 group,
                 labels,
@@ -2265,9 +2294,11 @@ class _Lowering:
                 deferred=deferred,
                 reads=reads,
                 through_rows=through_rows,
+                unwinds=unwinds,
             )
         ]
         labels = self._lower_optionals(group, labels, bindings, steps)
+        steps.extend(unwinds)
         conditions: list[CypherExpr] = []
         if deferred is not None:
             for var, expr in deferred.binds:
@@ -2280,6 +2311,7 @@ class _Lowering:
         for wanted in group.present:
             conditions.append(self._exists(wanted, labels, bindings))
         first = steps[0]
+        assert isinstance(first, MatchStep)
         if first.where is not None:
             conditions.insert(0, first.where.expression)
         if conditions:
@@ -2373,9 +2405,9 @@ class _Lowering:
             # A subject that is not a key is no value of the group.
             labels = {v: lab for v, lab in labels.items() if v in aggregation.keys}
 
-        ast = CypherAST(
-            pipeline=list(steps), return_clause=None, order_by=[], skip=None, limit=None
-        )
+        # A pipeline holds UNWINDs too, as the Cypher parser's does (an untyped list there).
+        pipeline: list = list(steps)
+        ast = CypherAST(pipeline=pipeline, return_clause=None, order_by=[], skip=None, limit=None)
         if form == "CONSTRUCT":
             ast.construct = [
                 TripleTemplate(
@@ -2455,8 +2487,9 @@ class _Lowering:
             items.append(ReturnItem(value, f"{_INPUT_PREFIX}{j}", name=f"{_INPUT_PREFIX}{j}"))
         if not items:
             items.append(ReturnItem(Literal(1, "number"), "one", name="one"))
+        pipeline: list = list(steps)  # UNWINDs too, as in statement()
         return CypherAST(
-            pipeline=list(steps),
+            pipeline=pipeline,
             return_clause=ReturnClause(items),
             order_by=[],
             skip=None,
@@ -2543,7 +2576,7 @@ class _Lowering:
         group: _Group,
         labels: dict[str, str],
         bindings: dict[str, tuple[CypherExpr, str | None]],
-        steps: list[MatchStep],
+        steps: list[MatchStep | UnwindClause],
     ) -> dict[str, str]:
         """``group``'s OPTIONALs, each an OPTIONAL MATCH after the steps it extends, and the
         OPTIONALs nested in each after it: an inner OPTIONAL extends its outer one's solutions
