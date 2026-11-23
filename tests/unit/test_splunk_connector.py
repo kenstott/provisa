@@ -12,6 +12,7 @@
 
 from __future__ import annotations
 
+import json
 
 from provisa.core.catalog import _build_catalog_properties
 from provisa.core.models import Source, SourceType
@@ -282,3 +283,64 @@ class TestEndToEnd:
         assert "user" not in props
         assert "password" not in props
         assert "url" in props
+
+
+# --------------------------------------------------------------------------- #
+# TestServerEnvironment (REQ-955)                                              #
+# --------------------------------------------------------------------------- #
+
+
+class TestServerEnvironment:
+    """A splunk source's Calcite pgwire server runs on the app's host with the app's whole
+    environment: only a cloudops source's server is denied the deployment's cloud credential
+    variables (``pgwire_replica.inherited_environment``). The source's host and port reach it in
+    its model, as registered, so the registered host must resolve from the app."""
+
+    def _launch(self, tmp_path, monkeypatch) -> tuple[dict[str, str], dict]:
+        from pathlib import Path
+        from types import SimpleNamespace
+
+        from provisa.federation import pgwire_replica as pr
+        from tests.helpers import ready_org_folder
+
+        monkeypatch.setenv("AWS_REGION", "us-east-1")
+        monkeypatch.setenv("AZURE_TENANT_ID", "tenant")
+        monkeypatch.setenv("GOOGLE_CLOUD_PROJECT", "project")
+        monkeypatch.setenv("PROVISA_TEST_UNRELATED", "kept")
+        monkeypatch.setenv("PROVISA_DATA_DIR", str(tmp_path / "data"))
+        ready_org_folder()  # REQ-1992: the org's folder, as its runtime makes it ready
+        bundle = tmp_path / "bundle"
+        (bundle / "bin").mkdir(parents=True)
+        spawned: list[tuple[dict[str, str], dict]] = []
+
+        def spawn(command, cwd, env=None):
+            model = json.loads((Path(cwd) / "model" / "model.json").read_text())
+            spawned.append((env, model))
+            return SimpleNamespace(exit_code=lambda: None)
+
+        replica = pr.ConnectorReplica(
+            _source(host="10.1.2.3", port=18089, username="admin", password="pw"),
+            resolver=SimpleNamespace(resolve=lambda spec: bundle),  # type: ignore[arg-type]
+            allocator=pr.PortAllocator(is_free=lambda port: True),
+            spawn=spawn,
+            health_check=lambda host, port: True,
+            port_is_free=lambda port: True,
+            prepare_catalog=lambda ports, password: None,
+        )
+        replica.start()
+        assert len(spawned) == 1
+        return spawned[0]
+
+    def test_its_server_inherits_the_whole_environment(self, tmp_path, monkeypatch):
+        env, _ = self._launch(tmp_path, monkeypatch)
+        # Compared by name only: a failure must not print the environment.
+        for name in ("AWS_REGION", "AZURE_TENANT_ID", "GOOGLE_CLOUD_PROJECT", "PATH"):
+            assert name in env, name
+        assert env["PROVISA_TEST_UNRELATED"] == "kept"
+
+    def test_its_server_dials_the_registered_host_and_port(self, tmp_path, monkeypatch):
+        _, model = self._launch(tmp_path, monkeypatch)
+        (schema,) = model["schemas"]
+        operand = json.dumps(schema["operand"])
+        assert "10.1.2.3" in operand
+        assert "18089" in operand
