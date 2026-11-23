@@ -13,7 +13,7 @@ code under the sandbox and its tables, commands and streams are the shared manif
 serves rows sandboxed; the code reads nothing outside it and reaches the network only through the
 egress proxy, to the hosts on the allow-list.
 
-The interpreter is the pinned Python, fetched as a source's is; its dependencies the pinned uv's."""
+The interpreter is the one Provisa runs on, as a source's is; its dependencies uv's, from its PyPI wheel."""
 
 # Requirements: REQ-1993
 from __future__ import annotations
@@ -37,13 +37,18 @@ FIXTURE = Path(__file__).parent.parent / "fixtures" / "python_source"
 
 @pytest.fixture(scope="module")
 def runtimes(tmp_path_factory):
-    """The pinned Python (its interpreter and its prefix) and the pinned uv."""
-    from provisa.runtime_deps.code_runtimes import CodeRuntimeResolver
+    """The interpreter Provisa runs on (its executable and its prefix) and uv from its PyPI wheel,
+    as a Python source gets them on the server."""
+    from provisa.runtime_deps.code_runtimes import (
+        CodeRuntimeResolver,
+        running_interpreter,
+        uv_executable,
+    )
 
     resolver = CodeRuntimeResolver(cache_root=tmp_path_factory.mktemp("runtime-deps"))
-    python = resolver.resolve("python")
+    runtime = running_interpreter()
     host_lib = resolver.resolve("pyarrow").parent.parent  # the host's own pyarrow (REQ-2098)
-    return python, python.parent.parent, resolver.resolve("uv"), host_lib
+    return runtime.executable, runtime.home, uv_executable(), host_lib
 
 
 @pytest.fixture
@@ -158,7 +163,7 @@ def test_a_host_on_the_allow_list_is_reached_through_the_proxy_and_no_other(
         started.stop()
 
 
-# -- the pinned Python and uv (part P2) ----------------------------------------------------------
+# -- the running Python and uv (part P2) ---------------------------------------------------------
 
 SIX_WHEEL_SHA256 = "8abb2f1d86890a2dfb989f9a77cfcfd3e47c2a354b01111771326f8aa26e0254"
 
@@ -166,8 +171,8 @@ SIX_WHEEL_SHA256 = "8abb2f1d86890a2dfb989f9a77cfcfd3e47c2a354b01111771326f8aa26e
 def test_dependencies_are_installed_from_the_lockfile_and_imported_in_the_sandbox(
     tmp_path, runtimes
 ):
-    """The pinned uv installs a hashed requirements.txt from the public PyPI into the install's
-    own environment, from the pinned Python, binary wheels only; the sandboxed worker runs that
+    """uv installs a hashed requirements.txt from the public PyPI into the install's
+    own environment, from the running Python, binary wheels only; the sandboxed worker runs that
     environment's interpreter and imports the dependency."""
     import io
     import zipfile
@@ -203,7 +208,7 @@ def test_dependencies_are_installed_from_the_lockfile_and_imported_in_the_sandbo
     )
     code = code_path(installed.path)
     entry = entry_module(code)
-    interpreter = environment_python(installed.path, python)
+    interpreter = environment_python(installed.path)
     assert interpreter != python  # the install's own environment
     manifest = read_code(python=interpreter, python_home=python_home, code=code, entry=entry)
     assert [e.name for e in manifest.exports] == ["versions"]

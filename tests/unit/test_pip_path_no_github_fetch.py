@@ -82,14 +82,11 @@ ALLOWED: dict[tuple[str, str], str] = {
     (
         "provisa/runtime_deps/code_runtimes.py",
         "https://github.com/astral-sh/python-build-standalone/releases/download/20260924/{filename}",
-    ): "CPython for Python code sources. Move: open question (no upstream registry home): "
-    "republish the pinned build as a Provisa PyPI project once PyPI access returns, or run code "
-    "sources on the interpreter pip installed Provisa into.",
-    (
-        "provisa/runtime_deps/code_runtimes.py",
-        "https://github.com/astral-sh/uv/releases/download/{version}/{filename}",
-    ): "uv, which installs a Python code source's dependencies. Move: PyPI, the uv project's own "
-    "per-platform wheels (the binary is in the wheel).",
+    ): "CPython for the image of a Python code source built for a remote host's platform only; "
+    "on the server a Python source runs on the interpreter Provisa runs on, with uv from PyPI "
+    "(running_interpreter, uv_executable), and fetches nothing. Move: open question (no upstream "
+    "registry home): republish the pinned build as a Provisa PyPI project once PyPI access "
+    "returns.",
     (
         "provisa/runtime_deps/code_runtimes.py",
         "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.12.1%2B1/{filename}",
