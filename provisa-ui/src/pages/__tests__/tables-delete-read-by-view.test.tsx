@@ -216,7 +216,7 @@ describe("TablesPage — a table a derived table reads is not deleted under it",
     const row = (await screen.findByText("stores_1")).closest("tr") as HTMLElement;
     await userEvent.click(row.querySelector("td:not(.list-select)") as HTMLElement);
     await userEvent.click(await screen.findByTestId("table-read-view-delete"));
-    const confirm = await screen.findByTestId("table-read-view-delete-confirm-dialog");
+    const confirm = await screen.findByRole("dialog");
     await userEvent.click(within(confirm).getByRole("button", { name: "Delete" }));
 
     expect(deleteTable).toHaveBeenCalledWith(7);
