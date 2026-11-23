@@ -352,6 +352,81 @@ async def test_a_read_runs_the_function_on_the_configured_cluster(host, wired):
     assert rows == [{"id": 1, "name": "sc://spark.example:15002"}]
 
 
+def _read_customers(mapping: dict, wired: dict) -> list[dict]:
+    worker = _worker(mapping, wired)
+    worker.start()
+    worker.ready()
+    try:
+        names = mapping["remote"]["names"]
+        return [
+            row
+            for batch in worker.rows(
+                "customers", "table", [], [], schema=names["customers"]["schema"]
+            )
+            for row in batch
+        ]
+    finally:
+        worker.stop()
+
+
+def _org_default_row(code_hash: str) -> dict:
+    return _row(
+        code_hash,
+        requires=[
+            {"name": "script", "multiline": True, "script": True},
+            {"name": "cluster", "org_default": "spark_cluster"},
+        ],
+    )
+
+
+async def test_a_source_naming_no_cluster_runs_on_the_organisations_default(
+    host, wired, monkeypatch
+):
+    """REQ-2225: the cluster left unset, the join is not refused and the script runs on the
+    organisation's default Spark cluster."""
+    from provisa.core import spark_cluster
+
+    asked: list = []
+
+    async def default(admin_db, org_id):
+        asked.append(org_id)
+        return spark_cluster.Resolved("sc://default.acme.test:15002", spark_cluster.ORIGIN_ORG)
+
+    monkeypatch.setattr(spark_cluster, "_resolved_default", default)
+    wired["row"] = _org_default_row(host.hashed)
+    wired["labels"] = _labels(host.hashed)
+    mapping = _mapping(host)
+    del mapping["settings"]["cluster"]
+    await _join(mapping)
+    assert mapping["org_defaults"] == {"cluster": "spark_cluster"}
+    assert _read_customers(mapping, wired) == [{"id": 1, "name": "sc://default.acme.test:15002"}]
+    assert asked and set(asked) == {"acme"}
+
+
+async def test_a_sources_own_cluster_is_used_over_the_organisations_default(
+    host, wired, monkeypatch
+):
+    from provisa.core import spark_cluster
+
+    async def default(admin_db, org_id):
+        raise AssertionError("the default is not read when the source names its own cluster")
+
+    monkeypatch.setattr(spark_cluster, "_resolved_default", default)
+    wired["row"] = _org_default_row(host.hashed)
+    wired["labels"] = _labels(host.hashed)
+    mapping = await _join(_mapping(host))
+    assert _read_customers(mapping, wired) == [{"id": 1, "name": "sc://spark.example:15002"}]
+
+
+async def test_a_cluster_with_no_org_default_is_still_required(host, wired):
+    _joined(wired, host)
+    mapping = _mapping(host)
+    del mapping["settings"]["cluster"]
+    with pytest.raises(remote_sources.RemoteRefused) as refused:
+        await _join(mapping)
+    assert refused.value.code == "codesource.connector_requires_missing"
+
+
 async def test_a_script_hash_in_the_config_that_differs_is_refused_by_name(host, wired):
     _joined(wired, host)
     mapping = _mapping(host, script_hash=_script_hash("something else"))
@@ -534,6 +609,22 @@ def test_the_standard_file_marks_the_script_and_replication_on():
     assert standard.icon.startswith("data:image/svg+xml;base64,")
     assert base64.b64decode(standard.icon.split(",", 1)[1]).startswith(b"<svg")
     assert standard.description
+
+
+def test_the_standard_file_lets_the_organisations_default_cluster_stand_in():
+    """REQ-2225: the Spark connector's cluster is met by the organisation's default when unset."""
+    from provisa.cli_connector import _read_standard_file
+
+    standard = _read_standard_file(_PROJECT)
+    assert standard is not None
+    assert standard.requires["cluster"].org_default == "spark_cluster"
+
+
+def test_an_org_default_is_not_a_secret_and_has_no_value_of_its_own():
+    assert ConnectorRequirement(name="cluster", org_default="spark_cluster").org_default
+    for given in ({"secret": True}, {"default_value": "sc://x"}, {"fixed_value": "sc://x"}):
+        with pytest.raises(ValueError, match="organisation's spark_cluster"):
+            ConnectorRequirement(name="cluster", org_default="spark_cluster", **given)
 
 
 def test_a_standard_file_with_two_scripts_is_refused(tmp_path):

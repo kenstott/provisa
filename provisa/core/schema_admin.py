@@ -1110,6 +1110,7 @@ REGISTRY_TABLES = [
     org_mail_platforms,
     org_package_registries,
     org_container_registries,
+    org_spark_clusters,
     org_code_bundles,
     deployment_encryption_key,
     personal_access_tokens,
