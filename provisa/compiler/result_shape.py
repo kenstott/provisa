@@ -356,21 +356,27 @@ def _single_table_shape(
         return None
     columns = table_columns(table_id, ctx, column_types)
     if relation is not None:
-        columns = _served_columns(relation, columns)
+        served = _served_columns(relation, columns)
+        if served is None:
+            return None
+        columns = served
     return _plain_projection_shape(tree.expressions, columns)
 
 
-def _served_columns(relation: Any, columns: dict[str, str]) -> dict[str, str]:
-    """The registered type of each column a governed relation serves as it is, by the name it
-    exposes it under. A masked or computed column is not typed by the registry."""
+def _served_columns(relation: Any, columns: dict[str, str]) -> dict[str, str] | None:
+    """The registered type of each column a governed relation serves, by the name it exposes it
+    under; None when it serves one the registry does not type (masked or computed), which only
+    annotation types -- every column it serves is in the result (REQ-2270: a ``*`` over it
+    includes its masked columns)."""
     served: dict[str, str] = {}
     for name in relation.columns:
         physical = relation.column(name)
-        col_type = None if physical is None else _lookup(columns, physical)
-        if col_type is None and physical is not None:
-            col_type = _lookup(columns, name)
-        if col_type is not None:
-            served[name] = col_type
+        if physical is None:
+            return None
+        col_type = _lookup(columns, physical) or _lookup(columns, name)
+        if col_type is None:
+            return None
+        served[name] = col_type
     return served
 
 

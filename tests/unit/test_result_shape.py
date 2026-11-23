@@ -214,3 +214,21 @@ def test_a_registered_table_whose_columns_are_not_known_leaves_its_columns_under
     assert shape[1][0] == "qty" and isinstance(shape[1][1], Underived)
     with pytest.raises(UnderivableColumn):
         derive_result_shape(sql, tables, _CTX, _COLUMNS)
+
+
+def test_a_star_over_a_governed_relation_describes_its_masked_column():
+    """A masked column is part of the result (REQ-2270): ``SELECT *`` over the governed relation
+    that serves it masked describes it beside the columns served as they are, in the relation's
+    order. The Spark data source's e2e failed every read with "rows arrived with columns
+    ['id','region','amount','email'], the table declares ['id','region','amount']" -- Flight SQL
+    GetSchema dropped the masked column that DoGet returned (run 45192100927)."""
+    sql = (
+        "SELECT * FROM (SELECT orders.order_id AS order_id, orders.amount AS amount, "
+        "REGEXP_REPLACE(orders.region, '^.', '*') AS region FROM sales.orders AS orders "
+        "WHERE orders.order_id > 0) AS orders"
+    )
+    assert _shape(sql) == [
+        ("order_id", "integer"),
+        ("amount", "numeric(18,2)"),
+        ("region", "TEXT"),
+    ]
