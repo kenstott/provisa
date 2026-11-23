@@ -198,7 +198,7 @@ def _source_rows() -> list[tuple]:
     return [
         (1, Decimal("12.340"), dt.datetime(2026, 1, 2, 3, 4, 5, tzinfo=UTC), dt.date(2026, 1, 2),
          relativedelta(months=14, days=3, seconds=5), b"\x00\xff", [1, None, 3], "a", True),
-        (2, Decimal("-0.001"), infinite_timestamp(1, aware=True), infinite_date(-1),
+        (2, Decimal("-0.5"), infinite_timestamp(1, aware=True), infinite_date(-1),
          dt.timedelta(days=2), None, [], None, False),
         (3, None, None, None, None, b"", None, "z", None),
     ]  # fmt: skip
@@ -244,8 +244,10 @@ def _large_scan_batches() -> list[pa.RecordBatch]:
             "product_name": pa.array([f"Product {i % 5000}" for i in range(n)]),
             "category": pa.array([("Home", "Toys", "Books")[i % 3] for i in range(n)]),
             "quantity": pa.array([i % 20 for i in range(n)], pa.int32()),
-            "unit_price": pa.array(range(n), pa.int64()).cast(pa.decimal128(10, 2)),
-            "line_total": pa.array(range(n), pa.int64()).cast(pa.decimal128(12, 2)),
+            "unit_price": pa.array([Decimal(i).scaleb(-2) for i in range(n)], pa.decimal128(10, 2)),
+            "line_total": pa.array(
+                [Decimal(i * 7).scaleb(-2) for i in range(n)], pa.decimal128(12, 2)
+            ),
             "backorder_flag": pa.array([i % 10 == 0 for i in range(n)]),
             "lead_time_days": pa.array([i % 60 for i in range(n)], pa.int32()),
         }

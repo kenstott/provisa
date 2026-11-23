@@ -44,6 +44,7 @@ drained to its end within the bound is stored.
 
 from __future__ import annotations
 
+import functools
 import json
 from collections.abc import Callable, Coroutine, Iterable, Iterator
 from dataclasses import dataclass
@@ -229,12 +230,15 @@ def entry_as_result(entry: CacheEntry) -> ArrowResult:
     from provisa.federation.runtime_support import arrow_type_name
 
     table = entry.table
+    held_text = [i for i in entry.decimal_columns if pa.types.is_string(table.schema.field(i).type)]
     return ArrowResult(
         table,
         entry.column_types
         if entry.column_types is not None
         else [arrow_type_name(f.type) for f in table.schema],
-        to_rows=_table_rows,
+        to_rows=functools.partial(_table_rows, decimal_text=held_text)
+        if held_text
+        else _table_rows,
     )
 
 
@@ -306,14 +310,17 @@ def _flight_column(
     return column
 
 
-def _table_rows(table: Any) -> list[tuple]:
+def _table_rows(table: Any, decimal_text: Iterable[int] = ()) -> list[tuple]:
     """An Arrow entry's rows, each column's values as a live Arrow read gives them
     (ir_arrow.column_values, as stream_rows_from_arrow reads them): an interval as the IR
     interval, an infinite date or timestamp as the IR infinity -- so a hit answers as the miss
-    did."""
+    did. ``decimal_text`` names the columns of a rows entry whose Decimals ``row_batch`` kept as
+    numeric_out's text (mixed scales, NaN, the infinities): each is the Decimal it was."""
     from provisa.core.ir_arrow import column_values
 
     cols = [column_values(col) for col in table.columns]
+    for i in decimal_text:
+        cols[i] = [None if v is None else Decimal(v) for v in cols[i]]
     return list(zip(*cols, strict=True)) if cols else []
 
 
