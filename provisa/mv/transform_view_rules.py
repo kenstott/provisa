@@ -45,6 +45,7 @@ from typing import TYPE_CHECKING, Any
 import sqlglot
 from sqlglot import exp
 
+from provisa.compiler.sql_types import key_list
 from provisa.compiler.view_expand import view_of, view_table
 from provisa.core.read_refusal import ReadRefused
 
@@ -448,11 +449,23 @@ def view_keys(
     view_table_id: int, given: Mapping[int, str], relationships: Iterable[dict]
 ) -> dict[int, tuple[str, str, str]]:
     """(name, its key column, the view's column) of each table in ``given`` that a registered
-    relationship joins to the view on one column each, in either direction (a junction edge
-    through the view is none of these)."""
+    relationship joins to the view on one column each, in either direction, or that is an end of
+    a junction through the view on one column each (a code resolver set's one relationship,
+    REQ-2249: each end joins the view on its key and the junction's column for it)."""
     found: dict[int, tuple[str, str, str]] = {}
     for rel in relationships:
-        if rel.get("via_table_id") is not None or rel.get("target_function_name"):
+        if rel.get("target_function_name"):
+            continue
+        if rel.get("via_table_id") is not None:
+            if rel["via_table_id"] != view_table_id or rel.get("via_type_column"):
+                continue
+            for table_id, key, column in (
+                (rel["source_table_id"], rel["source_column"], rel["via_source_column"]),
+                (rel["target_table_id"], rel["target_column"], rel["via_target_column"]),
+            ):
+                keys, columns = key_list(key), key_list(column)
+                if table_id in given and len(keys) == 1 and len(columns) == 1:
+                    found.setdefault(table_id, (given[table_id], keys[0], columns[0]))
             continue
         ends = (rel["source_table_id"], rel["target_table_id"])
         if ends[1] == view_table_id and ends[0] in given:

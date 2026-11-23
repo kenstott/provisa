@@ -574,9 +574,40 @@ def test_a_key_output_is_masked_only_by_a_mask_on_its_key_column():
     assert items == {"id": "NULL", "score": "NULL"}
 
 
-def test_a_junction_edge_through_the_view_is_no_relationship_to_filter_by():
+#: suppliers to suppliers through the view, keyed on the view's id at each end: a code resolver
+#: set's one relationship (REQ-2249, its two plain relationships not saved, REQ-1586).
+SUPPLIERS_THROUGH_VIEW = {
+    **SUPPLIER_TO_VIEW,
+    "target_table_id": 1,
+    "via_table_id": 2,
+    "via_source_column": "id",
+    "via_target_column": "id",
+}
+
+
+def test_a_code_command_views_rows_are_filtered_through_a_junction_through_it():
+    """A junction through the view joins each of its ends to the view on that end's key and the
+    junction's column for it: the reader's rule on suppliers holds through it."""
     state = _state(MVStatus.FRESH, {1: _east()}, definition=CALLED_ONLY)
-    state.relationships = [{**SUPPLIER_TO_VIEW, "target_table_id": 1, "via_table_id": 2}]
+    state.relationships = [SUPPLIERS_THROUGH_VIEW]
+    answered = _answered(RANKED_STATEMENT, state, _ranked_reader(row_rule=True))
+    assert (
+        'WHERE EXISTS(SELECT 1 FROM fx.suppliers AS __rule_1 WHERE "__rule_1"."id" = '
+        '"clean_suppliers"."id" AND "__rule_1"."region" = \'east\')'
+    ) in answered
+
+
+def test_a_junction_through_another_table_is_no_relationship_to_filter_by():
+    state = _state(MVStatus.FRESH, {1: _east()}, definition=CALLED_ONLY)
+    state.relationships = [{**SUPPLIERS_THROUGH_VIEW, "via_table_id": 99}]
+    with pytest.raises(PermissionError, match="fx.suppliers"):
+        _answered(RANKED_STATEMENT, state, _ranked_reader(row_rule=True))
+
+
+def test_a_junction_through_the_view_on_a_composite_key_is_no_relationship_to_filter_by():
+    state = _state(MVStatus.FRESH, {1: _east()}, definition=CALLED_ONLY)
+    composite = {"source_column": "id,region", "via_source_column": "id,score"}
+    state.relationships = [{**SUPPLIERS_THROUGH_VIEW, **composite, "target_table_id": 3}]
     with pytest.raises(PermissionError, match="fx.suppliers"):
         _answered(RANKED_STATEMENT, state, _ranked_reader(row_rule=True))
 
