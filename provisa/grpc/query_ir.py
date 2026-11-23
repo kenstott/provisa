@@ -197,7 +197,12 @@ def _json_value_matches(value: Any, data_type: str) -> str | None:
     """None when a JSON body's filter ``value`` is the JSON type the native ``{Type}Filter``
     field carries for a column of ``data_type`` (the proto type proto_gen declares for it), else
     the JSON type expected. A boolean is not a number."""
-    proto_type = _physical_to_proto(data_type)
+    return _json_matches_proto(value, _physical_to_proto(data_type))
+
+
+def _json_matches_proto(value: Any, proto_type: str) -> str | None:
+    """None when a JSON ``value`` is the JSON type a proto field of ``proto_type`` carries, else
+    the JSON type expected. A boolean is not a number."""
     if proto_type == "bool":
         return None if isinstance(value, bool) else "a boolean"
     if proto_type in ("double", "float"):
@@ -286,15 +291,15 @@ _REPEATED = 3
 
 def _json_param_matches(value: Any, data_type: str) -> str | None:  # REQ-1986
     """As :func:`_json_value_matches`, an array parameter's value being a list of its items."""
-    from provisa.grpc.proto_gen import _is_array_type
+    from provisa.grpc.proto_gen import _is_array_type, parameter_proto
 
     if not _is_array_type(data_type):
-        return _json_value_matches(value, data_type)
+        return _json_matches_proto(value, parameter_proto(data_type))
     item_type = data_type.strip()[len("array(") : -1]
     if not isinstance(value, list):
         return "a list"
     for item in value:
-        expected = _json_value_matches(item, item_type)
+        expected = _json_matches_proto(item, parameter_proto(item_type))
         if expected is not None:
             return f"a list of which each item is {expected}"
     return None

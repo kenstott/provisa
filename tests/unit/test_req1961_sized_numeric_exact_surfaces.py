@@ -227,3 +227,13 @@ def test_a_having_on_the_max_of_a_sized_numeric_binds_a_decimal():
     )
     assert sql == 'MAX("amount") > $1 AND SUM("amount") > $2'
     assert collector.params == [Decimal("9.75"), 20.5]
+
+
+def test_a_sized_numeric_parameter_stays_a_double_as_its_graphql_argument_is_a_float():
+    """A parameter is an argument, typed as its GraphQL argument (a Float); the exact digits are
+    a sized numeric COLUMN's."""
+    from tests.grpc_model import compiled_read, grpc_model
+
+    model = grpc_model([("id", "integer")], parameters=[("floor", "numeric(10,2)")])
+    sql, _ = compiled_read(model, "Orders", 0, None, None, {"floor": 10.5})  # type: ignore[misc]
+    assert '"_nf_floor" = 10.5' in sql
