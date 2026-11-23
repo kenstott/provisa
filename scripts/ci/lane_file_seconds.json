@@ -224,6 +224,8 @@
   "tests/integration/test_file_glob_merge_e2e.py": 40.3,
   "tests/integration/test_file_glob_new_adapter_e2e.py": 82.8,
   "tests/integration/test_file_glob_registered_later_e2e.py": 90.0,
+  "tests/integration/test_file_glob_ui_source_demo_e2e.py": 240.0,
+  "tests/integration/test_file_glob_ui_source_e2e.py": 120.0,
   "tests/integration/test_files_demo.py": 55.3,
   "tests/integration/test_files_pgwire_replica.py": 20.4,
   "tests/integration/test_files_source_glob_listing.py": 56.8,

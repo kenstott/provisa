@@ -48,6 +48,16 @@ def _first_column(sql: str, dialect: str) -> exp.Expr:
     return tree.selects[0]
 
 
+def _is_typed_null(value: exp.Expr) -> bool:
+    """Whether ``value`` is the NULL clickhouse.typed_null_columns sends an untyped NULL column as
+    (24.3's Arrow output has no type for Nullable(Nothing))."""
+    return (
+        isinstance(value, exp.Cast)
+        and isinstance(value.this, exp.Null)
+        and value.to.sql(dialect="clickhouse") == "Nullable(String)"
+    )
+
+
 def _null_array_casts(sql: str, dialect: str) -> list[exp.Cast]:
     tree = sqlglot.parse_one(sql, read=dialect)
     return [
@@ -107,7 +117,7 @@ def test_a_call_of_a_null_array_is_null_on_clickhouse(pg_sql):
     written = transpile(pg_sql, "clickhouse")
     assert _null_array_casts(written, "clickhouse") == []
     column = _first_column(written, "clickhouse")
-    assert isinstance(column.unalias(), exp.Null)
+    assert _is_typed_null(column.unalias())
     assert column.alias == "v"
 
 
@@ -132,10 +142,15 @@ def test_a_null_array_appended_to_is_not_answered_null_on_clickhouse():
         ("SELECT array_cat(ARRAY[1, 2], NULL::integer[]) AS v", "SELECT [1, 2] AS v"),
         ('SELECT pg_catalog."array_cat"(NULL::integer[], ARRAY[1]) AS v', "SELECT [1] AS v"),
         ('SELECT pg_catalog."array_cat"(ARRAY[1], NULL::integer[]) AS v', "SELECT [1] AS v"),
-        ("SELECT array_cat(NULL::integer[], NULL::integer[]) AS v", "SELECT NULL AS v"),
+        # A NULL column is typed as clickhouse.typed_null_columns sends it (24.3's Arrow output
+        # has no type for Nullable(Nothing)).
+        (
+            "SELECT array_cat(NULL::integer[], NULL::integer[]) AS v",
+            "SELECT CAST(NULL AS Nullable(String)) AS v",
+        ),
         (
             'SELECT pg_catalog."array_cat"(NULL::integer[], NULL::integer[]) AS v',
-            "SELECT NULL AS v",
+            "SELECT CAST(NULL AS Nullable(String)) AS v",
         ),
     ],
 )
