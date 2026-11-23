@@ -372,7 +372,7 @@
   "tests/integration/test_node_reader.py": 6.9,
   "tests/integration/test_node_worker.py": 8.7,
   "tests/integration/test_nosql_catalogs.py": 0.0,
-  "tests/integration/test_numeric_precision_every_surface.py": 42.1,
+  "tests/integration/test_numeric_precision_every_surface.py": 45.5,
   "tests/integration/test_oauth_store_pg.py": 2.2,
   "tests/integration/test_odata_e2e.py": 30.0,
   "tests/integration/test_off_peak_window_refresh_e2e.py": 109.7,
