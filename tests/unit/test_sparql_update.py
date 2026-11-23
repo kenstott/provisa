@@ -28,6 +28,7 @@ import dataclasses
 import json
 
 import pytest
+from rdflib.plugins.sparql.parserutils import CompValue
 from rdflib import URIRef
 
 from provisa.compiler.stage2 import GovernanceContext, apply_governance
@@ -364,8 +365,40 @@ def test_a_graph_block_names_a_session_graph():
         ("DELETE WHERE { GRAPH <http://g> { ?s <http://p> ?o } }", "DELETE WHERE"),
     ],
 )
-def test_a_where_reading_a_session_graph_is_refused_by_name(text, what):
-    with pytest.raises(SparqlRefused, match=f"{what} reads a session graph"):
+def test_a_where_reading_a_session_graph_reads_it_in_a_graph_pattern(text, what):
+    """REQ-2135 (amended 2026-11-23): WITH, USING and DELETE WHERE on a session graph read its
+    objects; the WHERE is a GRAPH pattern of that graph."""
+    [op] = parse_update(text, BASE)
+    assert op.where is not None
+    graphs = [n.term for n in _patterns(op.where) if n.name == "Graph"]
+    assert graphs == [URIRef("http://g")], what
+
+
+def _patterns(node):
+    if isinstance(node, CompValue):
+        yield node
+        for value in node.values():
+            yield from _patterns(value)
+    elif isinstance(node, (list, tuple)):
+        for item in node:
+            yield from _patterns(item)
+
+
+@pytest.mark.parametrize(
+    "text, said",
+    [
+        (
+            f"WITH <{BASE}/g> DELETE {{ ?s <http://p> ?o }} WHERE {{ ?s <http://p> ?o }}",
+            "model's own",
+        ),
+        (
+            "DELETE { ?s <http://p> ?o } USING <http://g> USING <http://h> WHERE { ?s <http://p> ?o }",
+            "USING names several graphs",
+        ),
+    ],
+)
+def test_a_where_of_the_models_graph_or_of_several_graphs_is_refused_by_name(text, said):
+    with pytest.raises(SparqlRefused, match=said):
         parse_update(text, BASE)
 
 

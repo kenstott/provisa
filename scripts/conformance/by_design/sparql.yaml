@@ -25,6 +25,16 @@
     Insert its triples with INSERT DATA instead.
   reason: "^400: LOAD reads a document from outside the session"
 
+- group: DROP of a session graph the session does not hold
+  requirement: REQ-2135, REQ-2167
+  decision: >-
+    "DROP or CLEAR of a session graph that does not exist, without SILENT, fails as SPARQL 1.1
+    Update says" (amended 2026-11-23 in 7ec7813136). A syntax case that drops a graph nothing
+    created is answered with that failure: the statement is read as SPARQL, and then fails as the
+    standard has it.
+  case: "^syntax-update-1::test_8$"
+  reason: "^400: DROP GRAPH <[^>]*>: the session holds no such graph$"
+
 - kind: adapted
   group: Datasets declared as fixture tables
   became: >-

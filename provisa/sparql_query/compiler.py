@@ -288,11 +288,17 @@ class _Group:
 
 def _in_graph(group: _Group, graph: str) -> None:
     """Put the node terms of ``group`` (its subjects, and each object no literal and no class) in
-    the named ``graph``, its OPTIONALs and EXISTS patterns too."""
+    the named ``graph``, its OPTIONALs and EXISTS patterns too. A term a GRAPH pattern inside it
+    put in its own graph stays there."""
+    held = {term for term, _ in group.graph_nodes}
     for s, p, o in group.triples:
-        group.graph_nodes.append((s, graph))
+        terms = [s]
         if not isinstance(o, RdfLiteral) and not (isinstance(p, URIRef) and str(p) == RDF_TYPE):
-            group.graph_nodes.append((o, graph))
+            terms.append(o)
+        for term in terms:
+            if term not in held:
+                held.add(term)
+                group.graph_nodes.append((term, graph))
     for inner in (*group.optionals, *group.absent, *group.present):
         _in_graph(inner, graph)
 

@@ -254,6 +254,12 @@ def _values(held: Any) -> list[Any]:
     return list(held) if isinstance(held, (list, tuple)) else [held]
 
 
+def _blank(term: Any) -> bool:
+    """Whether ``term`` is a blank node an update writes: a new node, never one a WHERE read
+    (:class:`SessionNode`)."""
+    return isinstance(term, BNode) and not isinstance(term, SessionNode)
+
+
 def _value_of(values: list[Any], listed: bool = False) -> Any:
     """Values as one property: one alone, several a list, none None (the property cleared). A
     column widened to a list (``listed``) holds a list from then on, one value or several: a
@@ -332,6 +338,8 @@ class SessionWrite:
     ) -> str | None:
         """The node ``term`` names in ``graph``: one the session holds, or one this operation is
         making (``pending``)."""
+        if isinstance(term, SessionNode):
+            return term.node_id if term.node_id in self.g.node_keys else None
         if isinstance(term, BNode):
             return blanks.get((graph, str(term)))
         node_id = self.names.get(NODE, str(term), graph)
@@ -344,8 +352,10 @@ class SessionWrite:
         node_id = self._held_node(term, graph, blanks, nodes)
         if node_id is None:
             node_id = self.g.new_id()
-            if isinstance(term, BNode):
+            if _blank(term):
                 blanks[(graph, str(term))] = node_id
+            elif isinstance(term, SessionNode):
+                raise SparqlRefused(f"{term.n3()} is a session node the update deleted")
             else:
                 self.names.drop(NODE, str(term), graph)
                 self.names.name(NODE, str(term), graph, given=node_id)
@@ -357,7 +367,7 @@ class SessionWrite:
     def _subject(self, term: Any) -> None:
         if not isinstance(term, (BNode, URIRef)):
             raise SparqlRefused(f"{term.n3()} is no subject")
-        if isinstance(term, BNode) and str(term) in self.blank_used:
+        if _blank(term) and str(term) in self.blank_used:
             raise SparqlRefused(
                 f"The update is not SPARQL this endpoint reads: the blank node _:{term} is "
                 "named by two operations of one request"
@@ -382,7 +392,7 @@ class SessionWrite:
             tag = self._tag(graph)
             for s, p, o in triples:
                 self._subject(s)
-                if isinstance(s, BNode):
+                if _blank(s):
                     used.add(str(s))
                 node = self._node(s, graph, blanks, nodes)
                 if tag is not None and tag not in node.labels:
@@ -407,7 +417,7 @@ class SessionWrite:
                         values.append(value)
                 else:
                     rel_type = self.names.name(REL, pred)
-                    if isinstance(o, BNode):
+                    if _blank(o):
                         used.add(str(o))
                     end = self._end(o, graph, blanks, nodes, tag)
                     edges.append((node.node_id, rel_type, end, graph))
@@ -538,7 +548,7 @@ class SessionWrite:
             held_props = await _props_of(self.state, self.session, ids) if ids else {}
             held_rels = await _rels_of(self.state, self.session, ids)
             for s, p, o in triples:
-                if isinstance(s, BNode):
+                if _blank(s):
                     raise SparqlRefused("A blank node in DELETE DATA names nothing to delete")
                 node_id = subjects.get(s)
                 if node_id is None:
@@ -845,6 +855,24 @@ def _keyed(overlay: Any) -> Any:
         from provisa.ephemeral.then import UNLABELED
 
         out.nodes[UNLABELED] = out.nodes[""]
+
+        def named(label: str) -> str:
+            return UNLABELED if label == "" else label
+
+        relationships = dict(out.relationships)
+        aliases = {k: list(v) for k, v in out.aliases.items()}
+        for rm in overlay.relationships.values():
+            if is_session_node_rel(rm) and "" in (rm.source_label, rm.target_label):
+                end = dataclasses.replace(
+                    rm,
+                    source_label=named(rm.source_label),
+                    target_label=named(rm.target_label),
+                    field_name=f"{rm.field_name}:{UNLABELED}",
+                )
+                relationships[end.field_name] = end
+                aliases.setdefault(end.rel_type, []).append(end)
+        out.relationships = relationships
+        out.aliases = aliases
     return out
 
 
@@ -886,6 +914,8 @@ def session_vocabulary(vocab: Any, graph: Any, model: Any, names: Names) -> Any:
             for rm in graph.relationships.values():
                 if rm.rel_type != name or not is_session_node_rel(rm):
                     continue
+                if "" in (rm.source_label, rm.target_label):
+                    continue  # read by its ends' own name (_keyed)
                 ep = EdgePredicate(name, rm.source_label, rm.target_label, rm.join)
                 if ep not in edges.setdefault(iri, []):
                     edges[iri].append(ep)

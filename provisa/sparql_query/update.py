@@ -129,20 +129,39 @@ def _by_graph(clause: Any, base: str, what: str, into: str = "") -> ByGraph:
     return out
 
 
-def _where_graph(where: Any) -> bool:
-    """Whether a WHERE pattern reads a named graph (a GRAPH pattern)."""
-    if isinstance(where, CompValue):
-        return where.name == "Graph" or any(_where_graph(v) for v in where.values())
-    if isinstance(where, (list, tuple)):
-        return any(_where_graph(v) for v in where)
-    return False
+def _in_graph(graph: str, pattern: CompValue) -> CompValue:
+    """``pattern`` read in the session graph ``graph``: a GRAPH pattern of it."""
+    return CompValue("Graph", term=URIRef(graph), p=pattern)
 
 
-def _reads_session_graph(what: str) -> SparqlRefused:
-    return SparqlRefused(
-        f"{what} reads a session graph's objects in a WHERE, which this endpoint does not serve "
-        "yet; read the default graph"
-    )
+def _joined(patterns: list[CompValue]) -> CompValue:
+    """The join of ``patterns`` (none: the empty pattern, one solution)."""
+    if not patterns:
+        return CompValue("BGP", triples=[])
+    out = patterns[0]
+    for other in patterns[1:]:
+        out = CompValue("Join", p1=out, p2=other)
+    return out
+
+
+def _using_graph(op: CompValue, base: str) -> str | None:
+    """The session graph a Modify's USING makes the WHERE's default graph; None for none. A
+    WHERE reads one graph as its default: USING NAMED alone names graphs its GRAPH patterns read
+    by IRI anyway, and two USING graphs are refused by name."""
+    from provisa.sparql_query.session_graph import session_graph
+
+    defaults = []
+    for using in op.using or []:
+        if "named" in using:
+            session_graph(using["named"], base, "USING NAMED")
+        else:
+            defaults.append(session_graph(using["default"], base, "USING"))
+    if len(defaults) > 1:
+        raise SparqlRefused(
+            "USING names several graphs, whose merge is the WHERE's default graph: read each "
+            "by a GRAPH pattern"
+        )
+    return defaults[0] if defaults else None
 
 
 def managed_graph(term: Any, base: str, op: str) -> str | None:
@@ -185,32 +204,31 @@ def parse_update(text: str, base: str) -> list[UpdateOperation]:
         elif op.name == "DeleteData":
             out.append(UpdateOperation(op.name, delete_graphs=_by_graph(op, base, "DELETE DATA")))
         elif op.name == "DeleteWhere":
+            # Its pattern is its template: each graph's triples read in that graph.
             graphs = _by_graph(op, base, "DELETE WHERE")
-            if set(graphs) - {""}:
-                raise _reads_session_graph("DELETE WHERE")
-            triples = graphs.get("", [])
-            out.append(
-                UpdateOperation(
-                    op.name, delete_graphs=graphs, where=CompValue("BGP", triples=triples)
-                )
+            where = _joined(
+                [
+                    CompValue("BGP", triples=triples)
+                    if graph == ""
+                    else _in_graph(graph, CompValue("BGP", triples=triples))
+                    for graph, triples in graphs.items()
+                ]
             )
+            out.append(UpdateOperation(op.name, delete_graphs=graphs, where=where))
         elif op.name == "Modify":
+            # WITH names the graph its templates write and, without USING, its WHERE reads; USING
+            # names the graph its WHERE reads as its default (SPARQL 1.1 Update, 3.1.3).
             into = ""
             if op.withClause is not None:
                 into = session_graph(op.withClause, base, "WITH")
-                raise _reads_session_graph("WITH")
-            if op.using:
-                for using in op.using:
-                    session_graph(using.get("default") or using.get("named"), base, "USING")
-                raise _reads_session_graph("USING")
-            if _where_graph(op.where):
-                raise _reads_session_graph("A GRAPH pattern")
+            reads = _using_graph(op, base) if op.using else (into or None)
+            where = op.where if reads is None else _in_graph(reads, op.where)
             out.append(
                 UpdateOperation(
                     op.name,
                     delete_graphs=_by_graph(op.delete, base, "DELETE", into),
                     insert_graphs=_by_graph(op.insert, base, "INSERT", into),
-                    where=op.where,
+                    where=where,
                 )
             )
         else:

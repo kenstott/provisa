@@ -146,25 +146,36 @@ async def vocabulary_for(state: Any, role_id: str, ctx: Any, label_map: Any) -> 
     )
 
 
-async def compiled_query(query: str, surface: Any, role_id: str, state: Any) -> Any:
-    """``(compiled, vocabulary, graph)`` for a SPARQL query under the role, or the refusal."""
-    from provisa.gql.translator_types import CypherTranslateError
-    from provisa.sparql_query.compiler import compile_sparql
+async def read_of(surface: Any, role_id: str, state: Any) -> Any:
+    """What a SPARQL read compiles over for the role (session_graph.SessionRead): its vocabulary
+    and label map, with the objects of the graph session bound now (REQ-2135, amended
+    2026-11-23; REQ-2176), when one is."""
+    from provisa.compiler import temp_tables
+    from provisa.sparql_query.session_graph import read_over
 
     ctx = surface.context
     label_map = _build_label_map(ctx, role_id, state)
+    vocab = await vocabulary_for(state, role_id, ctx, label_map)
     # REQ-2163: SPARQL lowers its RDFS/OWL/SKOS patterns to ontology._axioms, a table SQL alone
     # serves and no Cypher label, so it reads through the map that holds the SQL-only tables.
-    graph = label_map.with_sql_only()
+    return await read_over(state, temp_tables.current(), label_map, vocab)
+
+
+async def compiled_query(query: str, surface: Any, role_id: str, state: Any) -> Any:
+    """``(compiled, read)`` for a SPARQL query under the role (:func:`read_of`), or the
+    refusal."""
+    from provisa.gql.translator_types import CypherTranslateError
+    from provisa.sparql_query.compiler import compile_sparql
+
     try:
-        vocab = await vocabulary_for(state, role_id, ctx, label_map)
-        return compile_sparql(query, vocab, graph), vocab, graph
+        read = await read_of(surface, role_id, state)
+        return compile_sparql(query, read.vocab, read.graph), read
     except CypherTranslateError as exc:
         return cypher_error(400, "sparql.refused", str(exc), reason=str(exc))
 
 
 def semantic_statement(  # REQ-2135, REQ-2222
-    compiled: Any, graph: Any, surface: Any, role_id: str, state: Any
+    compiled: Any, read: Any, surface: Any, role_id: str, state: Any
 ) -> tuple[str, Any] | Response:
     """The semantic SQL a compiled query hands the one pipeline and its graph variables, or the
     refusal. Its one lowering: the route runs it, and an EXPLAIN stops here (REQ-2222)."""
@@ -176,10 +187,12 @@ def semantic_statement(  # REQ-2135, REQ-2222
 
     assert compiled.ast is not None
     try:
-        sql_ast, ordered_params, graph_vars = cypher_to_sql(compiled.ast, graph, {})
+        sql_ast, ordered_params, graph_vars = cypher_to_sql(compiled.ast, read.graph, {})
     except CypherTranslateError as exc:
         return cypher_error(400, "sparql.refused", str(exc), reason=str(exc))
-    sql_ast = apply_graph_rewrites(sql_ast, graph_vars, graph)
+    sql_ast = apply_graph_rewrites(sql_ast, graph_vars, read.graph)
+    # REQ-2176: the graph session's relations in place, as a Cypher read's (seam.expand).
+    sql_ast = read.expand(sql_ast)
     semantic_sql = make_semantic_sql(sql_ast.sql(dialect="postgres"), surface.context)
     assert not ordered_params, "a SPARQL statement binds no parameters"
     refusal = access_violations(semantic_sql, surface, role_id, state)
@@ -240,18 +253,7 @@ async def sparql_query(request: Request) -> Response:  # REQ-2135
     """Answer a SPARQL SELECT, ASK, CONSTRUCT or DESCRIBE over the semantic model, for the
     caller's role."""
     from provisa.api.app import state
-    from provisa.api.rest.cypher_router import statement_stats
     from provisa.api.role_surface import role_surface
-    from provisa.cache.middleware import build_cache_headers
-    from provisa.compiler.directives import cache_hint_for, request_cache_hint
-    from provisa.executor import stats as query_stats
-    from provisa.sparql_query.results import (
-        NotAcceptable,
-        negotiate,
-        write_ask,
-        write_construct,
-        write_select,
-    )
 
     query = await _query_text(request)
     if isinstance(query, Response):
@@ -265,10 +267,35 @@ async def sparql_query(request: Request) -> Response:  # REQ-2135
         )
     if isinstance(query, SparqlUpdate):
         return await answer_update(query.text, request, surface, role_id, state)
+    from provisa.api import graph_session
+
+    # REQ-2135 (amended 2026-11-23), REQ-2176: a query reads the principal's graph session too.
+    user_id, claims = graph_session.principal(state, request.state.identity)
+    async with graph_session.session_for(state, user_id, claims, writes=False):
+        return await _answered_query(query, request, surface, role_id, state)
+
+
+async def _answered_query(  # REQ-2135
+    query: str, request: Request, surface: Any, role_id: str, state: Any
+) -> Response:
+    """Answer the SPARQL query ``query`` in the graph session bound now."""
+    from provisa.api.rest.cypher_router import statement_stats
+    from provisa.cache.middleware import build_cache_headers
+    from provisa.compiler.directives import cache_hint_for, request_cache_hint
+    from provisa.executor import stats as query_stats
+    from provisa.sparql_query.results import (
+        NotAcceptable,
+        negotiate,
+        write_ask,
+        write_construct,
+        write_select,
+    )
+
     made = await compiled_query(query, surface, role_id, state)
     if isinstance(made, Response):
         return made
-    compiled, vocab, graph = made
+    compiled, read = made
+    vocab = read.vocab
     try:
         media, fmt = negotiate(request.headers.get("accept"), compiled.form)
     except NotAcceptable as exc:
@@ -289,11 +316,17 @@ async def sparql_query(request: Request) -> Response:  # REQ-2135
     cache_entry = None
     rows: list[dict] = [compiled.empty_row] if compiled.empty_row is not None else []
     if not compiled.empty:
-        lowered = semantic_statement(compiled, graph, surface, role_id, state)
+        lowered = semantic_statement(compiled, read, surface, role_id, state)
         if isinstance(lowered, Response):
             return lowered
         answered = await answer_rows(
-            query, lowered, role_id, state, cache_hint=cache_hint, serve_cached=True, as_of=None
+            query,
+            lowered,
+            role_id,
+            state,
+            cache_hint=cache_hint,
+            serve_cached=True,
+            as_of=None,
         )
         if isinstance(answered, Response):
             return answered
@@ -304,9 +337,9 @@ async def sparql_query(request: Request) -> Response:  # REQ-2135
     if compiled.form == "ASK":
         body = write_ask(bool(rows), fmt)
     elif compiled.form == "CONSTRUCT":
-        body = write_construct(rows, vocab.base, vocab.prefixes, fmt)
+        body = write_construct(rows, vocab.base, vocab.prefixes, fmt, read.terms)
     else:
-        body = write_select(compiled.variables, rows, vocab.base, fmt)
+        body = write_select(compiled.variables, rows, vocab.base, fmt, read.terms)
     # REQ-536: HIT (with the entry's age) when the rows came from the response cache, else MISS.
     headers = build_cache_headers(cache_entry)
     if stats_enabled:
@@ -318,11 +351,13 @@ async def sparql_query(request: Request) -> Response:  # REQ-2135
 
 
 async def solutions_of(  # REQ-2135
-    op: Any, vocab: Any, graph: Any, surface: Any, role_id: str, state: Any
+    op: Any, read: Any, surface: Any, role_id: str, state: Any
 ) -> list[dict[str, Any]] | Response:
-    """The solutions of an update operation's WHERE (REQ-2135, amended 2026-11-22): its SELECT
-    of the variables its templates use, read through the one governed read as any SELECT is, each
-    solution a variable's name -> its RDF term."""
+    """The solutions of an update operation's WHERE (REQ-2135, amended 2026-11-22 and
+    2026-11-23): its SELECT of the variables its templates use, read through the one governed
+    read as any SELECT is, over the graph session as it stands (``read``, read_of), each solution
+    a variable's name -> its RDF term; a session node of no IRI the node itself
+    (session_graph.SessionNode)."""
     from provisa.compiler.directives import NO_CACHE_HINT
     from provisa.gql.translator_types import CypherTranslateError
     from provisa.sparql_query.compiler import compile_where
@@ -331,12 +366,12 @@ async def solutions_of(  # REQ-2135
 
     variables = where_variables(op)
     try:
-        compiled = compile_where(op.where, variables, vocab, graph)
+        compiled = compile_where(op.where, variables, read.vocab, read.graph)
     except CypherTranslateError as exc:
         return cypher_error(400, "sparql.refused", str(exc), reason=str(exc))
     if compiled.empty:
         return []
-    lowered = semantic_statement(compiled, graph, surface, role_id, state)
+    lowered = semantic_statement(compiled, read, surface, role_id, state)
     if isinstance(lowered, Response):
         return lowered
     answered = await answer_rows(
@@ -346,7 +381,11 @@ async def solutions_of(  # REQ-2135
         return answered
     rows = answered[0]
     return [
-        {v: t for v in variables if (t := rdf_term(row.get(v), vocab.base)) is not None}
+        {
+            v: t
+            for v in variables
+            if (t := rdf_term(row.get(v), read.vocab.base, read.terms, update=True)) is not None
+        }
         for row in rows
     ]
 
@@ -380,7 +419,7 @@ async def _updated(  # REQ-2135, REQ-2176
     from provisa.cypher.counters import counting
     from provisa.gql.translator_types import CypherTranslateError
     from provisa.pgwire.temp_exec import TempTableLimit
-    from provisa.sparql_query.session_graph import SessionWrite, names_of
+    from provisa.sparql_query.session_graph import SessionWrite, names_of, read_over
     from provisa.sparql_query.update import (
         delete_writes,
         ground_graphs,
@@ -392,7 +431,6 @@ async def _updated(  # REQ-2135, REQ-2176
 
     ctx = surface.context
     label_map = _build_label_map(ctx, role_id, state)
-    graph = label_map.with_sql_only()
     try:
         vocab = await vocabulary_for(state, role_id, ctx, label_map)
         operations = parse_update(text, vocab.base)
@@ -414,7 +452,9 @@ async def _updated(  # REQ-2135, REQ-2176
                     continue
                 deletes, inserts = op.delete_graphs, op.insert_graphs
                 if op.where is not None:
-                    solutions = await solutions_of(op, vocab, graph, surface, role_id, state)
+                    # Each WHERE reads the session as the operations before it left it.
+                    read = await read_over(state, session, label_map, vocab)
+                    solutions = await solutions_of(op, read, surface, role_id, state)
                     if isinstance(solutions, Response):
                         return solutions
                     deletes = ground_graphs(deletes, solutions)
@@ -562,11 +602,11 @@ async def _export_of(request: Request, body: RdfExportRequest) -> Any:
         made = await compiled_query(query, surface, role_id, state)
         if isinstance(made, Response):
             return made
-        compiled, _vocab, graph = made
+        compiled, read = made
         if compiled.empty:
             lowered[query] = None  # the role reads nothing it asks for
             continue
-        statement = semantic_statement(compiled, graph, surface, role_id, state)
+        statement = semantic_statement(compiled, read, surface, role_id, state)
         if isinstance(statement, Response):
             return statement
         lowered[query] = statement

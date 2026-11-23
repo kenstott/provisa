@@ -2,6 +2,36 @@
   "total": 521,
   "expected": [
     {
+      "case": "add::add03",
+      "job": "SPARQL-SESSION3",
+      "since": "2026-11-23",
+      "reason": "400: ADD <http://example.org/g1>: the session holds no such graph"
+    },
+    {
+      "case": "add::add04",
+      "job": "SPARQL-SESSION3",
+      "since": "2026-11-23",
+      "reason": "400: ADD <http://example.org/g1>: the session holds no such graph"
+    },
+    {
+      "case": "add::add05",
+      "job": "SPARQL-SESSION3",
+      "since": "2026-11-23",
+      "reason": "400: ADD <http://example.org/g1>: the session holds no such graph"
+    },
+    {
+      "case": "add::add06",
+      "job": "SPARQL-SESSION3",
+      "since": "2026-11-23",
+      "reason": "the update was accepted, and this runner has no graph to compare it on"
+    },
+    {
+      "case": "add::add08",
+      "job": "SPARQL-SESSION3",
+      "since": "2026-11-23",
+      "reason": "400: ADD <http://example.org/g1>: the session holds no such graph"
+    },
+    {
       "case": "aggregates::agg-avg-01",
       "job": "SPARQL-G3",
       "since": "2026-11-22",
@@ -260,58 +290,82 @@
       "reason": "a statement that is not SPARQL answered 200: {'results': {'bindings': []}, 'head': {'vars': ['O1', 'C']}}"
     },
     {
+      "case": "basic-update::insert-05a",
+      "job": "SPARQL-SESSION3",
+      "since": "2026-11-23",
+      "reason": "400: A GRAPH pattern reads a session graph's objects in a WHERE, which this endpoint does not serve yet; read the default graph"
+    },
+    {
+      "case": "basic-update::insert-data-same-bnode",
+      "job": "SPARQL-SESSION3",
+      "since": "2026-11-23",
+      "reason": "400: A GRAPH pattern reads a session graph's objects in a WHERE, which this endpoint does not serve yet; read the default graph"
+    },
+    {
       "case": "basic-update::insert-data-spo-named1",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: InsertData is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "the update was accepted, and this runner has no graph to compare it on"
     },
     {
       "case": "basic-update::insert-data-spo-named2",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: InsertData is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "the update was accepted, and this runner has no graph to compare it on"
     },
     {
       "case": "basic-update::insert-data-spo-named3",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: InsertData is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "the update was accepted, and this runner has no graph to compare it on"
     },
     {
       "case": "basic-update::insert-data-spo1",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: InsertData is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "the update was accepted, and this runner has no graph to compare it on"
     },
     {
       "case": "basic-update::insert-using-01",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "400: USING reads a session graph's objects in a WHERE, which this endpoint does not serve yet; read the default graph"
     },
     {
       "case": "basic-update::insert-where-01",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "403: Table 'ontology.d000_t0' belongs to domain 'ontology' which is not in role's domain_access"
     },
     {
       "case": "basic-update::insert-where-02",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "403: Table 'ontology.d000_t0' belongs to domain 'ontology' which is not in role's domain_access"
     },
     {
       "case": "basic-update::insert-where-03",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "400: WITH reads a session graph's objects in a WHERE, which this endpoint does not serve yet; read the default graph"
     },
     {
       "case": "basic-update::insert-where-04",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "400: USING reads a session graph's objects in a WHERE, which this endpoint does not serve yet; read the default graph"
+    },
+    {
+      "case": "basic-update::insert-where-same-bnode",
+      "job": "SPARQL-SESSION3",
+      "since": "2026-11-23",
+      "reason": "400: A GRAPH pattern reads a session graph's objects in a WHERE, which this endpoint does not serve yet; read the default graph"
+    },
+    {
+      "case": "basic-update::insert-where-same-bnode2",
+      "job": "SPARQL-SESSION3",
+      "since": "2026-11-23",
+      "reason": "400: A GRAPH pattern reads a session graph's objects in a WHERE, which this endpoint does not serve yet; read the default graph"
     },
     {
       "case": "bind::bind01",
@@ -566,6 +620,18 @@
       "reason": "The dataset holds the datatype <http://www.w3.org/2001/XMLSchema#float>, which no column holds"
     },
     {
+      "case": "clear::dawg-clear-graph-01",
+      "job": "SPARQL-SESSION3",
+      "since": "2026-11-23",
+      "reason": "the update was accepted, and this runner has no graph to compare it on"
+    },
+    {
+      "case": "clear::dawg-clear-named-01",
+      "job": "SPARQL-SESSION3",
+      "since": "2026-11-23",
+      "reason": "the update was accepted, and this runner has no graph to compare it on"
+    },
+    {
       "case": "construct::constructlist",
       "job": "SPARQL-G10",
       "since": "2026-11-22",
@@ -582,6 +648,24 @@
       "job": "SPARQL-G9",
       "since": "2026-11-22",
       "reason": "400: FROM and FROM NAMED are not supported"
+    },
+    {
+      "case": "copy::copy03",
+      "job": "SPARQL-SESSION3",
+      "since": "2026-11-23",
+      "reason": "the update was accepted, and this runner has no graph to compare it on"
+    },
+    {
+      "case": "copy::copy04",
+      "job": "SPARQL-SESSION3",
+      "since": "2026-11-23",
+      "reason": "the update was accepted, and this runner has no graph to compare it on"
+    },
+    {
+      "case": "copy::copy07",
+      "job": "SPARQL-SESSION3",
+      "since": "2026-11-23",
+      "reason": "the update was accepted, and this runner has no graph to compare it on"
     },
     {
       "case": "csv-tsv-res::csv01",
@@ -629,241 +713,253 @@
       "case": "delete-data::dawg-delete-data-01",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: DeleteData is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "the update was accepted, and this runner has no graph to compare it on"
     },
     {
       "case": "delete-data::dawg-delete-data-02",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: DeleteData is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "the update was accepted, and this runner has no graph to compare it on"
     },
     {
       "case": "delete-data::dawg-delete-data-03",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: DeleteData is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "the update was accepted, and this runner has no graph to compare it on"
     },
     {
       "case": "delete-data::dawg-delete-data-04",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: DeleteData is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "the update was accepted, and this runner has no graph to compare it on"
     },
     {
       "case": "delete-data::dawg-delete-data-05",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: DeleteData is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "the update was accepted, and this runner has no graph to compare it on"
     },
     {
       "case": "delete-data::dawg-delete-data-06",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: DeleteData is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "the update was accepted, and this runner has no graph to compare it on"
     },
     {
       "case": "delete-insert::dawg-delete-insert-01",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "the update was accepted, and this runner has no graph to compare it on"
     },
     {
       "case": "delete-insert::dawg-delete-insert-01b",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: Modify, Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "the update was accepted, and this runner has no graph to compare it on"
     },
     {
       "case": "delete-insert::dawg-delete-insert-01c",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: Modify, Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "the update was accepted, and this runner has no graph to compare it on"
     },
     {
       "case": "delete-insert::dawg-delete-insert-02",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "the update was accepted, and this runner has no graph to compare it on"
     },
     {
       "case": "delete-insert::dawg-delete-insert-04",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "400: A GRAPH pattern reads a session graph's objects in a WHERE, which this endpoint does not serve yet; read the default graph"
     },
     {
       "case": "delete-insert::dawg-delete-insert-04b",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "the update was accepted, and this runner has no graph to compare it on"
     },
     {
       "case": "delete-insert::dawg-delete-insert-05b",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "the update was accepted, and this runner has no graph to compare it on"
     },
     {
       "case": "delete-insert::dawg-delete-insert-06b",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "the update was accepted, and this runner has no graph to compare it on"
     },
     {
       "case": "delete-insert::delete-insert-halloween-problem",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "the update was accepted, and this runner has no graph to compare it on"
     },
     {
       "case": "delete-where::dawg-delete-where-01",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: DeleteWhere is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "the update was accepted, and this runner has no graph to compare it on"
     },
     {
       "case": "delete-where::dawg-delete-where-02",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: DeleteWhere is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "400: DELETE WHERE reads a session graph's objects in a WHERE, which this endpoint does not serve yet; read the default graph"
     },
     {
       "case": "delete-where::dawg-delete-where-03",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: DeleteWhere is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "the update was accepted, and this runner has no graph to compare it on"
     },
     {
       "case": "delete-where::dawg-delete-where-04",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: DeleteWhere is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "400: DELETE WHERE reads a session graph's objects in a WHERE, which this endpoint does not serve yet; read the default graph"
     },
     {
       "case": "delete-where::dawg-delete-where-05",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: DeleteWhere is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "the update was accepted, and this runner has no graph to compare it on"
     },
     {
       "case": "delete-where::dawg-delete-where-06",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: DeleteWhere is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "400: DELETE WHERE reads a session graph's objects in a WHERE, which this endpoint does not serve yet; read the default graph"
     },
     {
       "case": "delete::dawg-delete-01",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "the update was accepted, and this runner has no graph to compare it on"
     },
     {
       "case": "delete::dawg-delete-02",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "400: A GRAPH pattern reads a session graph's objects in a WHERE, which this endpoint does not serve yet; read the default graph"
     },
     {
       "case": "delete::dawg-delete-03",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "the update was accepted, and this runner has no graph to compare it on"
     },
     {
       "case": "delete::dawg-delete-04",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "400: A GRAPH pattern reads a session graph's objects in a WHERE, which this endpoint does not serve yet; read the default graph"
     },
     {
       "case": "delete::dawg-delete-05",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "the update was accepted, and this runner has no graph to compare it on"
     },
     {
       "case": "delete::dawg-delete-06",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "400: A GRAPH pattern reads a session graph's objects in a WHERE, which this endpoint does not serve yet; read the default graph"
     },
     {
       "case": "delete::dawg-delete-07",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "the update was accepted, and this runner has no graph to compare it on"
     },
     {
       "case": "delete::dawg-delete-using-01",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "400: USING reads a session graph's objects in a WHERE, which this endpoint does not serve yet; read the default graph"
     },
     {
       "case": "delete::dawg-delete-using-02a",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "400: USING reads a session graph's objects in a WHERE, which this endpoint does not serve yet; read the default graph"
     },
     {
       "case": "delete::dawg-delete-using-03",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "400: USING reads a session graph's objects in a WHERE, which this endpoint does not serve yet; read the default graph"
     },
     {
       "case": "delete::dawg-delete-using-04",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "400: USING reads a session graph's objects in a WHERE, which this endpoint does not serve yet; read the default graph"
     },
     {
       "case": "delete::dawg-delete-using-05",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "400: USING reads a session graph's objects in a WHERE, which this endpoint does not serve yet; read the default graph"
     },
     {
       "case": "delete::dawg-delete-using-06a",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "400: USING reads a session graph's objects in a WHERE, which this endpoint does not serve yet; read the default graph"
     },
     {
       "case": "delete::dawg-delete-with-01",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "400: WITH reads a session graph's objects in a WHERE, which this endpoint does not serve yet; read the default graph"
     },
     {
       "case": "delete::dawg-delete-with-02",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "400: WITH reads a session graph's objects in a WHERE, which this endpoint does not serve yet; read the default graph"
     },
     {
       "case": "delete::dawg-delete-with-03",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "400: WITH reads a session graph's objects in a WHERE, which this endpoint does not serve yet; read the default graph"
     },
     {
       "case": "delete::dawg-delete-with-04",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "400: WITH reads a session graph's objects in a WHERE, which this endpoint does not serve yet; read the default graph"
     },
     {
       "case": "delete::dawg-delete-with-05",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "400: WITH reads a session graph's objects in a WHERE, which this endpoint does not serve yet; read the default graph"
     },
     {
       "case": "delete::dawg-delete-with-06",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "400: WITH reads a session graph's objects in a WHERE, which this endpoint does not serve yet; read the default graph"
+    },
+    {
+      "case": "drop::dawg-drop-graph-01",
+      "job": "SPARQL-SESSION3",
+      "since": "2026-11-23",
+      "reason": "the update was accepted, and this runner has no graph to compare it on"
+    },
+    {
+      "case": "drop::dawg-drop-named-01",
+      "job": "SPARQL-SESSION3",
+      "since": "2026-11-23",
+      "reason": "the update was accepted, and this runner has no graph to compare it on"
     },
     {
       "case": "exists::exists-graph-variable",
@@ -1394,6 +1490,24 @@
       "reason": "400: An OPTIONAL whose nodes could be of several classes is not supported; give them a class"
     },
     {
+      "case": "move::move03",
+      "job": "SPARQL-SESSION3",
+      "since": "2026-11-23",
+      "reason": "400: MOVE <http://example.org/g1>: the session holds no such graph"
+    },
+    {
+      "case": "move::move04",
+      "job": "SPARQL-SESSION3",
+      "since": "2026-11-23",
+      "reason": "400: MOVE <http://example.org/g1>: the session holds no such graph"
+    },
+    {
+      "case": "move::move07",
+      "job": "SPARQL-SESSION3",
+      "since": "2026-11-23",
+      "reason": "400: MOVE <http://example.org/g1>: the session holds no such graph"
+    },
+    {
       "case": "negation::exists-01",
       "job": "SPARQL-G3",
       "since": "2026-11-22",
@@ -1910,70 +2024,34 @@
       "reason": "400: <http://example.org/r> is no edge predicate, and a property path walks edges"
     },
     {
-      "case": "syntax-update-1::test_23",
-      "job": "SPARQL-G2",
-      "since": "2026-11-22",
-      "reason": "400: InsertData is not served: this endpoint answers queries, and rows are written through the governed table writes"
-    },
-    {
-      "case": "syntax-update-1::test_24",
-      "job": "SPARQL-G2",
-      "since": "2026-11-22",
-      "reason": "400: InsertData is not served: this endpoint answers queries, and rows are written through the governed table writes"
-    },
-    {
-      "case": "syntax-update-1::test_25",
-      "job": "SPARQL-G2",
-      "since": "2026-11-22",
-      "reason": "400: InsertData is not served: this endpoint answers queries, and rows are written through the governed table writes"
-    },
-    {
-      "case": "syntax-update-1::test_26",
-      "job": "SPARQL-G2",
-      "since": "2026-11-22",
-      "reason": "400: InsertData is not served: this endpoint answers queries, and rows are written through the governed table writes"
-    },
-    {
-      "case": "syntax-update-1::test_29",
-      "job": "SPARQL-G2",
-      "since": "2026-11-22",
-      "reason": "400: DeleteData is not served: this endpoint answers queries, and rows are written through the governed table writes"
-    },
-    {
-      "case": "syntax-update-1::test_30",
-      "job": "SPARQL-G2",
-      "since": "2026-11-22",
-      "reason": "400: DeleteData is not served: this endpoint answers queries, and rows are written through the governed table writes"
-    },
-    {
-      "case": "syntax-update-1::test_31",
-      "job": "SPARQL-G2",
-      "since": "2026-11-22",
-      "reason": "400: DeleteData is not served: this endpoint answers queries, and rows are written through the governed table writes"
-    },
-    {
       "case": "syntax-update-1::test_32",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "400: WITH reads a session graph's objects in a WHERE, which this endpoint does not serve yet; read the default graph"
     },
     {
       "case": "syntax-update-1::test_33",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "400: WITH reads a session graph's objects in a WHERE, which this endpoint does not serve yet; read the default graph"
     },
     {
       "case": "syntax-update-1::test_34",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "400: WITH reads a session graph's objects in a WHERE, which this endpoint does not serve yet; read the default graph"
+    },
+    {
+      "case": "syntax-update-1::test_35",
+      "job": "SPARQL-SESSION3",
+      "since": "2026-11-23",
+      "reason": "403: Table 'ontology.d000_t0' belongs to domain 'ontology' which is not in role's domain_access"
     },
     {
       "case": "syntax-update-1::test_36",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: DeleteWhere is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "400: DELETE WHERE reads a session graph's objects in a WHERE, which this endpoint does not serve yet; read the default graph"
     },
     {
       "case": "syntax-update-1::test_38",
@@ -1997,49 +2075,67 @@
       "case": "syntax-update-1::test_43",
       "job": "SPARQL-G8",
       "since": "2026-11-22",
-      "reason": "a statement that is not SPARQL answered 400: DeleteData is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "a statement that is not SPARQL answered 400: ?s is no subject: a subject is a row's IRI"
     },
     {
       "case": "syntax-update-1::test_44",
       "job": "SPARQL-G8",
       "since": "2026-11-22",
-      "reason": "a statement that is not SPARQL answered 400: InsertData is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "a statement that is not SPARQL answered 400: A GRAPH block in INSERT DATA names its graph by a variable; name it by its IRI"
     },
     {
       "case": "syntax-update-1::test_50",
       "job": "SPARQL-G8",
       "since": "2026-11-22",
-      "reason": "a statement that is not SPARQL answered 400: DeleteWhere is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "a statement that is not SPARQL answered 200: {'type': 'sparql', 'affected_rows': 0, 'counters': {}}"
     },
     {
       "case": "syntax-update-1::test_51",
       "job": "SPARQL-G8",
       "since": "2026-11-22",
-      "reason": "a statement that is not SPARQL answered 400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "a statement that is not SPARQL answered 200: {'type': 'sparql', 'affected_rows': 0, 'counters': {}}"
     },
     {
       "case": "syntax-update-1::test_52",
       "job": "SPARQL-G8",
       "since": "2026-11-22",
-      "reason": "a statement that is not SPARQL answered 400: DeleteData is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "a statement that is not SPARQL answered 400: A blank node in DELETE DATA names nothing to delete"
     },
     {
-      "case": "syntax-update-1::test_53",
-      "job": "SPARQL-G2",
-      "since": "2026-11-22",
-      "reason": "400: InsertData is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "case": "update-silent::add-silent",
+      "job": "SPARQL-SESSION3",
+      "since": "2026-11-23",
+      "reason": "the update was accepted, and this runner has no graph to compare it on"
     },
     {
-      "case": "syntax-update-1::test_54",
-      "job": "SPARQL-G8",
-      "since": "2026-11-22",
-      "reason": "a statement that is not SPARQL answered 400: InsertData, InsertData is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "case": "update-silent::clear-silent",
+      "job": "SPARQL-SESSION3",
+      "since": "2026-11-23",
+      "reason": "the update was accepted, and this runner has no graph to compare it on"
     },
     {
-      "case": "syntax-update-2::syntax-update-other-01",
-      "job": "SPARQL-G2",
-      "since": "2026-11-22",
-      "reason": "400: InsertData is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "case": "update-silent::copy-silent",
+      "job": "SPARQL-SESSION3",
+      "since": "2026-11-23",
+      "reason": "the update was accepted, and this runner has no graph to compare it on"
+    },
+    {
+      "case": "update-silent::create-silent",
+      "job": "SPARQL-SESSION3",
+      "since": "2026-11-23",
+      "reason": "the update was accepted, and this runner has no graph to compare it on"
+    },
+    {
+      "case": "update-silent::drop-silent",
+      "job": "SPARQL-SESSION3",
+      "since": "2026-11-23",
+      "reason": "the update was accepted, and this runner has no graph to compare it on"
+    },
+    {
+      "case": "update-silent::move-silent",
+      "job": "SPARQL-SESSION3",
+      "since": "2026-11-23",
+      "reason": "the update was accepted, and this runner has no graph to compare it on"
     }
   ]
 }
