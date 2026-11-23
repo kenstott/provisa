@@ -870,7 +870,15 @@ async def _upsert_tables(  # REQ-013, REQ-016, REQ-251
     engine: Any,
     config: ProvisaConfig,
     openapi_specs: dict[str, dict],
+    *,
+    replace: bool,
 ) -> None:
+    """``replace``: a demo rebuild (REQ-1919, DEMO ORGANISATIONS ARE THEIR CONFIG): a declared
+    table takes its columns as declared. Otherwise an apply removes nothing, a column included."""
+
+    async def declared(tbl: Table) -> Table:
+        return tbl if replace else await _keep_unlisted_columns(conn, tbl)
+
     _expand_view_metrics(config)
     # REQ-2052: a profile result named by its member takes the member's stored id where the member
     # is stored already; one whose member this apply registers first is resolved after it is.
@@ -885,15 +893,11 @@ async def _upsert_tables(  # REQ-013, REQ-016, REQ-251
     pending = [t for t in config.tables if _profile_result_pending(t)]
     for tbl in [t for t in config.tables if not _profile_result_pending(t)]:
         src = written_by_id.get(tbl.source_id)
-        await _upsert_single_table(
-            conn, engine, await _keep_unlisted_columns(conn, tbl), src, openapi_specs
-        )
+        await _upsert_single_table(conn, engine, await declared(tbl), src, openapi_specs)
     await _resolve_profile_results(conn, config, required=True)
     for tbl in pending:
         src = written_by_id.get(tbl.source_id)
-        await _upsert_single_table(
-            conn, engine, await _keep_unlisted_columns(conn, tbl), src, openapi_specs
-        )
+        await _upsert_single_table(conn, engine, await declared(tbl), src, openapi_specs)
 
 
 def _profile_result_pending(tbl: Table) -> bool:  # REQ-2052
@@ -1471,10 +1475,16 @@ async def _declare_class_terms(conn: "Connection", config: ProvisaConfig) -> Non
 
 
 async def _apply_in_txn(  # REQ-012, REQ-013, REQ-016, REQ-041, REQ-250, REQ-1266, REQ-1919
-    config: ProvisaConfig, conn: "Connection", engine: Any = None, *, defer_unregistered: bool
+    config: ProvisaConfig,
+    conn: "Connection",
+    engine: Any = None,
+    *,
+    defer_unregistered: bool,
+    replace: bool = False,
 ) -> list[str]:
     """Add and update, through the model store, everything the config declares, within the
-    caller's transaction. Nothing is removed. ``engine`` decides only the names tables are
+    caller's transaction. Nothing the config does not declare is removed; ``replace`` (a demo
+    rebuild) takes each declared table's columns as declared (:func:`_upsert_tables`). ``engine`` decides only the names tables are
     registered under (REQ-471); no catalog is issued here (:func:`register_sources`).
 
     Returns the source ids whose change feed could not be reached (REQ-1861).
@@ -1571,7 +1581,7 @@ async def _apply_in_txn(  # REQ-012, REQ-013, REQ-016, REQ-041, REQ-250, REQ-126
     _validate_replicate(config)
     _validate_landing_ttl(config)
     failed_feeds = await _check_change_feeds(config)
-    await _upsert_tables(conn, engine, config, openapi_specs)
+    await _upsert_tables(conn, engine, config, openapi_specs, replace=replace)
     await _load_after_tables(
         conn, config, refs_before=refs_before, defer_unregistered=defer_unregistered
     )
@@ -2169,10 +2179,9 @@ async def reset_model(conn: "Connection") -> None:  # REQ-1919
     """Remove the org's model — everything a configuration can declare, and everything an admin
     made — leaving what the deployment seeds into every store (the built-in sources and their
     tables, the system domains, the seeded roles and the people holding them). Within the
-    caller's transaction. A demo organisation is rebuilt from its configuration by this followed
-    by an apply (:func:`rebuild_from_config`), which drops the profile result relations of the
-    tables it removes once it has committed (profiler.schema.drop_superseded_results): each is
-    named by its table's id, and the apply registers the table again under another."""
+    caller's transaction. Nothing in a running deployment calls it: a demo rebuild replaces only
+    what its configuration declares (:func:`rebuild_from_config`). The test harness empties a
+    store with it so a boot is its deployment's first start."""
     from sqlalchemy import delete
 
     from provisa.core.db import SEEDED_DOMAIN_IDS, SEEDED_ROLE_IDS, SEEDED_SOURCE_IDS
@@ -2291,9 +2300,8 @@ async def reset_model(conn: "Connection") -> None:  # REQ-1919
         # A calendar is removed by name, every version at once (integrity.discard).
         ("calendar", await _ids(select(calendars.c.name).distinct())),
     ]
-    # REQ-2248 (ruling 2026-11-15): a demo organisation's rebuild from its configuration is a
-    # built-in seed, so it DELETES its model rather than retiring it; the apply that follows
-    # declares the same objects again. Nothing else deletes a person's model objects.
+    # REQ-2248 (ruling 2026-11-15): emptying a store for a first start is a built-in seed, so it
+    # DELETES the model rather than retiring it.
     for kind, idents in order:
         for ident in idents:
             if kind == "table":
@@ -2333,26 +2341,6 @@ async def reset_model(conn: "Connection") -> None:  # REQ-1919
     await glossary_repo.sweep_refless_terms(conn, before=refs_before)
 
 
-async def _unstamp_revived_terms(conn: "Connection", config: ProvisaConfig) -> None:  # REQ-2222
-    """A rebuild drops every table, so a term derived from columns and named by another term's edge
-    is kept meanwhile with its domains stamped on it (REQ-1591). The rebuilt tables give it its refs
-    again, and its domains are derived from them: a stamp left behind would declare a term the
-    configuration does not."""
-    from sqlalchemy import delete
-
-    from provisa.core.schema_org import glossary_term_domains, glossary_term_refs
-
-    # REQ-1591: the declared terms by name within their domains; a same-named term elsewhere
-    # is another term, and its stamp goes.
-    declared = {await _declared_term_id(conn, term) for term in config.glossary_terms}
-    await conn.execute_core(
-        delete(glossary_term_domains).where(
-            glossary_term_domains.c.term_id.in_(select(glossary_term_refs.c.term_id)),
-            glossary_term_domains.c.term_id.not_in(sorted(declared)),
-        )
-    )
-
-
 async def rebuild_from_config(  # REQ-1919: DEMO ORGANISATIONS ARE THEIR CONFIG
     config: ProvisaConfig,
     conn: "Connection",
@@ -2361,19 +2349,18 @@ async def rebuild_from_config(  # REQ-1919: DEMO ORGANISATIONS ARE THEIR CONFIG
     carried_runs: Path | None = None,
     carried_scans: Path | None = None,
 ) -> list[str]:
-    """Rebuild a demo organisation's model from its configuration: remove its model
-    (:func:`reset_model`) and apply the configuration, in one transaction, so the organisation
-    starts exactly as its configuration says. Returns the source ids whose change feed could not
-    be reached.
+    """Rebuild a demo organisation's model from its configuration, in one transaction: replace
+    what the configuration declares with the declaration, and keep what the model store holds
+    that the configuration does not declare -- the objects an admin made (maintainer ruling
+    2026-11-23). A declared object an admin edited is as the configuration says again, a declared
+    table's columns included. Returns the source ids whose change feed could not be reached.
 
     ``carried_runs``: the profile runs its bundle carries (REQ-2052, provisa.profiler.carry),
-    loaded in the same transaction. The apply registers every table afresh, under a new id, and a
-    profile result relation is named by its table's id: the runs loaded before were left under
-    the old ids, and the result tables named relations that held none.
+    loaded in the same transaction under the ids the org gives their tables.
 
     ``carried_scans``: the scans for terms its bundle carries (REQ-2201,
-    provisa.term_finding.carry), loaded in the same transaction, after the apply: a draft names
-    the glossary term it matched by its id, and the apply makes every term afresh."""
+    provisa.term_finding.carry), loaded in the same transaction, after the apply, each draft
+    naming its glossary term by the id the org gives it."""
     # Its remote sources' tables are registered after the apply, which retries their
     # relationships (graphql_remote_router._upsert_relationships_to_semantic_layer).
     return await _apply(
@@ -2382,7 +2369,7 @@ async def rebuild_from_config(  # REQ-1919: DEMO ORGANISATIONS ARE THEIR CONFIG
         engine,
         label="demo rebuilt from its configuration",
         defer_unregistered=True,
-        reset=True,
+        replace=True,
         carried_runs=carried_runs,
         carried_scans=carried_scans,
     )
@@ -2395,7 +2382,7 @@ async def _apply(
     *,
     label: str,
     defer_unregistered: bool,
-    reset: bool = False,
+    replace: bool = False,
     carried_runs: Path | None = None,
     carried_scans: Path | None = None,
 ) -> list[str]:
@@ -2415,10 +2402,8 @@ async def _apply(
                 # Serialize concurrent applies (parallel workers, test app lifespans) so they do
                 # not deadlock on the same rows. A no-op on single-writer backends (SQLite).
                 await conn.advisory_xact_lock(7261748190)
-                if reset:
-                    await reset_model(conn)
                 failed = await _apply_in_txn(
-                    config, conn, engine, defer_unregistered=defer_unregistered
+                    config, conn, engine, defer_unregistered=defer_unregistered, replace=replace
                 )
                 if carried_runs is not None:
                     from provisa.profiler.carry import load_runs  # noqa: PLC0415
@@ -2428,15 +2413,7 @@ async def _apply(
                     from provisa.term_finding.carry import load_scans  # noqa: PLC0415
 
                     await load_scans(conn, carried_scans)
-                if reset:
-                    await _unstamp_revived_terms(conn, config)
                 await _mark_seeded(conn)
-    if reset:
-        # After the commit, in transactions of their own: the backlog of a template's rebuilds,
-        # held in the rebuild's one transaction, ran out the lock table.
-        from provisa.profiler.schema import drop_superseded_results
-
-        await drop_superseded_results(conn)
     return failed
 
 
