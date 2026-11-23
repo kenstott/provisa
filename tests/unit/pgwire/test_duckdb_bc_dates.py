@@ -156,6 +156,50 @@ ANSWERED: dict[str, str] = {
 }
 
 
+#: The calls whose limitation on DuckDB (polyfill/measured.py BOUNDED) listed a value BC, which
+#: they now answer, as PostgreSQL 17 does.
+ANSWERED.update(
+    {
+        _call("date_mii", _D, "3::integer"): "4714-12-29 BC",
+        _call("date_pli", _D, "3::integer"): "4713-01-04 BC",
+        _call("integer_pl_date", "3::integer", _D): "4713-01-04 BC",
+        _call("date_trunc", "'day'::text", _TZ): "4713-01-01 00:00:00+00 BC",
+        _call("in_range", _TZ, _ATZ, _IVL, "true::boolean", "true::boolean"): "t",
+        _call("timestamp", _TZ): "4713-01-01 00:00:00 BC",
+        _call("timestamptz", _TZ, "3::integer"): "4713-01-01 00:00:00+00 BC",
+        _call("timestamptz_cmp", _TZ, _ATZ): "-1",
+        _call("timestamptz_eq", _TZ, _ATZ): "f",
+        _call("timestamptz_ge", _TZ, _ATZ): "f",
+        _call("timestamptz_gt", _TZ, _ATZ): "f",
+        _call("timestamptz_le", _TZ, _ATZ): "t",
+        _call("timestamptz_lt", _TZ, _ATZ): "t",
+        _call("timestamptz_ne", _TZ, _ATZ): "t",
+        _call("timestamptz_larger", _TZ, _ATZ): "2024-06-15 12:30:45+00",
+        _call("timestamptz_smaller", _TZ, _ATZ): "4713-01-01 00:00:00+00 BC",
+        _call("timestamptz_cmp_date", _TZ, _DAY): "-1",
+        _call("timestamptz_eq_date", _TZ, _DAY): "f",
+        _call("timestamptz_ge_date", _TZ, _DAY): "f",
+        _call("timestamptz_gt_date", _TZ, _DAY): "f",
+        _call("timestamptz_le_date", _TZ, _DAY): "t",
+        _call("timestamptz_lt_date", _TZ, _DAY): "t",
+        _call("timestamptz_ne_date", _TZ, _DAY): "t",
+        _call("date_cmp_timestamptz", _D, _ATZ): "-1",
+        _call("date_eq_timestamptz", _D, _ATZ): "f",
+        _call("date_ge_timestamptz", _D, _ATZ): "f",
+        _call("date_gt_timestamptz", _D, _ATZ): "f",
+        _call("date_le_timestamptz", _D, _ATZ): "t",
+        _call("date_lt_timestamptz", _D, _ATZ): "t",
+        _call("date_ne_timestamptz", _D, _ATZ): "t",
+        _call("timestamptz_eq_timestamp", _TZ, _AT): "f",
+        _call("timestamptz_ne_timestamp", _TZ, _AT): "t",
+        _call("timestamp_eq_timestamptz", _TS, _ATZ): "f",
+        _call("timestamp_ne_timestamptz", _TS, _ATZ): "t",
+        _call("timezone", "'UTC'::text", _TZ): "4713-01-01 00:00:00 BC",
+        _call("timezone", _TZ): "4713-01-01 00:00:00 BC",
+    }
+)
+
+
 def _answer(conn: Any, sql: str) -> str:
     res = conn.conn.pgconn.exec_params(f"{sql} LIMIT 1001".encode(), [], result_format=0)
     error = (res.error_field(pq.DiagnosticField.MESSAGE_PRIMARY) or b"").decode()
