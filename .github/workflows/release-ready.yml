@@ -1,0 +1,49 @@
+# Release: ready (REQ-1989, amended 2026-11-22)
+#
+# A release is cut only from a nightly where unit, lint, the requirements check, integration, e2e
+# and the packaging dry run are all green on one main commit. This reads the runs the nightly on
+# main (nightly-main.yml) started on its pin, nightly/main, and is green only when every lane's
+# latest run on that one commit is green; its summary names the commit, the cut point. A lane
+# failed, cancelled, still running or never run is not green.
+#
+# 20:30 UTC (15:30 or 16:30 in New York) leaves the night's lanes the day to finish, and comes
+# before the alpha nightly's 17:00 cut. It reads and reports only: nothing is pushed, tagged or
+# published.
+name: "Release: ready"
+
+on:
+  schedule:
+    - cron: "30 20 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read # the lanes' runs
+
+jobs:
+  ready:
+    name: Every nightly lane green on one main commit
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.night.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: The night's commit
+        id: night
+        run: |
+          set -euo pipefail
+          sha=$(git ls-remote origin refs/heads/nightly/main | cut -f1)
+          if [ -z "$sha" ]; then
+            echo "::error::no nightly/main: the nightly on main has not run"
+            exit 1
+          fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Every lane green on it
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ steps.night.outputs.sha }}
+        run: |
+          set -euo pipefail
+          python3 scripts/release_gate.py --ready --sha "$SHA" | tee -a "$GITHUB_STEP_SUMMARY"
