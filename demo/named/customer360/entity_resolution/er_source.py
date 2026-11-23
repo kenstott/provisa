@@ -153,12 +153,25 @@ class PersonBridgeRow:
 # --------------------------------------------------------------------------------------------- #
 
 
+class TableReadFailed(RuntimeError):
+    """A table this code could not read, said naming the table and Provisa's answer."""
+
+    def __init__(self, table: str, reason: str) -> None:
+        super().__init__(f"reading {table}: {reason}")
+
+
 def read_table(table: TableRef) -> list[dict[str, str | None]]:
     """Every row ``table``'s statement answers, each value as text or None, read as the calling
     role over Arrow Flight with the token minted for this call (REQ-2226)."""
+    import pyarrow as pa  # the host's own (REQ-2098)
+
+    try:
+        answered = table.read()
+    except (ValueError, pa.ArrowException) as exc:  # Provisa's refusal, or no Flight to read over
+        raise TableReadFailed(table.ref, str(exc)) from exc
     return [
         {name: None if value is None else str(value) for name, value in row.items()}
-        for row in table.read().to_pylist()
+        for row in answered.to_pylist()
     ]
 
 
