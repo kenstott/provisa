@@ -128,7 +128,9 @@ def test_a_rebuild_loads_the_carried_scans_after_its_apply(tmp_path, monkeypatch
     _demo(tmp_path, [{"scan": _RULE}])
     _carried(tmp_path)
     asyncio.run(demo_templates.rebuild_template(tmp_path, None, None, None))
-    assert asked == [{"carried_runs": None, "carried_scans": carry.scans_path(tmp_path)}]
+    assert asked == [
+        {"reset": True, "carried_runs": None, "carried_scans": carry.scans_path(tmp_path)}
+    ]
 
 
 def test_a_rebuild_of_a_bundle_carrying_no_scans_is_refused_by_name(tmp_path):

@@ -220,6 +220,7 @@
   "tests/integration/test_fake_reads_trino_e2e.py": 2.7,
   "tests/integration/test_federation_integration.py": 45.4,
   "tests/integration/test_fetch_tables_lock_order.py": 1.0,
+  "tests/integration/test_demo_restart_keeps_admin_tables.py": 240.0,
   "tests/integration/test_file_glob_merge_e2e.py": 40.3,
   "tests/integration/test_file_glob_new_adapter_e2e.py": 82.8,
   "tests/integration/test_file_glob_registered_later_e2e.py": 90.0,

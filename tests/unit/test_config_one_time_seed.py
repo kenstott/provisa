@@ -851,43 +851,111 @@ def test_the_schema_seeds_its_rows_without_an_origin():
 # --- a demo organisation is its config ------------------------------------------------------------
 
 
-async def test_a_demo_rebuild_starts_exactly_as_its_config_says(db, new_plane):
-    """DEMO ORGANISATIONS ARE THEIR CONFIG: every build rebuilds a demo's model from its
-    configuration — an admin's additions and edits last until then, and the seed stays."""
+async def test_a_demo_rebuild_replaces_only_what_its_config_declares(db):
+    """DEMO ORGANISATIONS ARE THEIR CONFIG, as the maintainer ruled on 2026-11-23: every build
+    replaces what a demo's configuration declares with the declaration, and keeps what the model
+    store holds that the configuration does not declare -- an admin's own sources, domains, roles
+    and tables, in its own domain or in one the configuration declares."""
     from provisa.core.config_loader import rebuild_from_config
 
-    demo = _everything()
-    fresh = await new_plane()
-    async with fresh.acquire() as conn:
-        await rebuild_from_config(parse_config_dict(_everything()), conn)
-    expected = await _model(fresh)
-
     async with db.acquire() as conn:
-        await rebuild_from_config(parse_config_dict(demo), conn)
+        await rebuild_from_config(parse_config_dict(_everything()), conn)
     await _admin_makes_its_own(db)
     async with db.acquire() as conn:
+        # An admin's table in a domain the configuration declares.
+        await table_repo.upsert(
+            conn,
+            Table(
+                source_id="cfg",
+                domain_id="sales",
+                schema_name="public",
+                table_name="admin_in_config_domain",
+                columns=[Column(name="id", data_type="integer", visible_to=["seller"])],
+            ),
+        )
+        # An admin's edits to what the configuration declares: a column added to its table and
+        # its role's description changed.
+        await table_repo.upsert(
+            conn,
+            Table(
+                source_id="cfg",
+                domain_id="sales",
+                schema_name="public",
+                table_name="customers",
+                alias="clients",
+                columns=[
+                    Column(name="id", data_type="integer", visible_to=["seller"]),
+                    Column(name="added", data_type="integer", visible_to=["seller"]),
+                ],
+            ),
+        )
         await role_repo.upsert(
             conn,
-            Role(
-                id="seller", description="Test role.", capabilities=["usage"], domain_access=["*"]
-            ),
+            Role(id="seller", description="Edited.", capabilities=[], domain_access=["sales"]),
             org_id="o",
         )
-        await conn.execute_core(
-            insert(metadata.tables["user_role_assignments"]).values(
-                user_id="ada", role_id="analyst", domain_id="*"
-            )
-        )
-    assert await _model(db) != expected
 
     async with db.acquire() as conn:
         await rebuild_from_config(parse_config_dict(_everything()), conn)
 
-    assert _given(await _model(db)) == _given(expected)
-    # What the deployment seeds, and who holds a seeded role, stays.
+    # What the admin made and the configuration does not declare stays.
+    assert "mine" in await _ids(db, "sources")
+    assert "lab" in await _ids(db, "domains")
+    assert "tester" in await _ids(db, "roles")
+    assert {"scratch", "extra", "admin_in_config_domain"} <= await _ids(
+        db, "registered_tables", "table_name"
+    )
+    # What the configuration declares is as it says.
+    assert ("seller", "Test role.") in await _rows(db, "roles", "id", "description")
+    async with db.acquire() as conn:
+        (customers,) = [
+            t["id"] for t in await table_repo.list_all(conn) if t["table_name"] == "customers"
+        ]
+        assert [c["column_name"] for c in await table_repo.load_columns(conn, customers)] == ["id"]
+    # What the deployment seeds stays.
     assert {"analyst", "org_admin"} <= await _ids(db, "roles")
-    assert ("ada", "analyst") in await _rows(db, "user_role_assignments", "user_id", "role_id")
     assert "__derived__" in await _ids(db, "sources")
+
+
+async def test_a_template_rebuild_drops_what_an_admin_made_and_a_demo_rebuild_keeps_it(
+    db, tmp_path
+):
+    """REQ-1919 (amended 2026-11-23, A DEMO RESTART KEEPS ADMIN WORK): a sandbox template
+    organisation (REQ-2006) keeps the full rebuild, so every sandbox starts exactly from its demo's
+    bundle; a demo organisation's boot keeps what an admin made."""
+    from provisa.api.demo_templates import rebuild_template
+    from provisa.core.config_loader import rebuild_from_config
+
+    async with db.acquire() as conn:
+        await rebuild_from_config(parse_config_dict(_everything()), conn)
+    await _admin_makes_its_own(db)
+
+    async with db.acquire() as conn:
+        await rebuild_from_config(parse_config_dict(_everything()), conn)
+    assert "mine" in await _ids(db, "sources")
+    assert {"scratch", "extra"} <= await _ids(db, "registered_tables", "table_name")
+
+    # The bundle's directory profiles nothing and scans nothing: no setup.yaml.
+    async with db.acquire() as conn:
+        await rebuild_template(tmp_path, parse_config_dict(_everything()), conn, None)
+    assert "mine" not in await _ids(db, "sources")
+    assert "lab" not in await _ids(db, "domains")
+    assert "tester" not in await _ids(db, "roles")
+    tables = await _ids(db, "registered_tables", "table_name")
+    assert not {"scratch", "extra"} & tables
+    assert "customers" in tables
+
+
+async def test_a_demo_rebuild_of_an_unchanged_config_changes_nothing(db):
+    """A rebuild of what the store already holds from the same configuration is the same model."""
+    from provisa.core.config_loader import rebuild_from_config
+
+    async with db.acquire() as conn:
+        await rebuild_from_config(parse_config_dict(_everything()), conn)
+    first = await _model(db)
+    async with db.acquire() as conn:
+        await rebuild_from_config(parse_config_dict(_everything()), conn)
+    assert _given(await _model(db)) == _given(first)
 
 
 # --- Kafka sources are model ----------------------------------------------------------------------
