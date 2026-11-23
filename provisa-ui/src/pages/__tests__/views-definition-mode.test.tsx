@@ -181,6 +181,8 @@ function makeRel(overrides: Partial<Relationship> = {}): Relationship {
     viaTypeColumn: null,
     viaTypeValue: null,
     viaLabelSource: null,
+    shape: "direct",
+    properties: [],
     cypherType: null,
     parameters: [],
     ...overrides,

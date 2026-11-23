@@ -47,6 +47,8 @@ const base: Relationship = {
   viaTypeColumn: "relation_type",
   viaTypeValue: "bonded pair",
   viaLabelSource: "column",
+  shape: "junction",
+  properties: [],
   // The type the server serves the junction edge as (its nomination, upper-snaked).
   cypherType: "BONDED_PAIR",
 };
@@ -131,6 +133,8 @@ describe("a relationship's read view", () => {
       viaTypeColumn: null,
       viaTypeValue: null,
       viaLabelSource: null,
+      shape: "direct",
+      properties: [],
     });
     const names = Object.fromEntries(fields("relationship-read-names"));
     // A plain edge: no alias of its own, so the one the server derives, marked as derived.

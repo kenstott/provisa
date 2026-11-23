@@ -1,127 +1,23 @@
 [
  {
-  "columns": [
-   "message_id",
-   "flagged",
-   "sender",
-   "signals",
-   "outside_team",
-   "outside_bank",
-   "personal",
-   "before_announcement",
-   "to_counterparty",
-   "score"
-  ],
-  "engine": "duckdb",
+  "answered": false,
   "ordered": true,
   "origin": "demo:insider/1-review-queue.graphql",
-  "root_field": "b__viewReviewQueue",
-  "rows": [
-   [
-    "M0117",
-    "customer data",
-    "Tomas Lindqvist",
-    "ssn, account number, read customer records that week",
-    0,
-    1,
-    1,
-    0,
-    0,
-    "2.600"
-   ],
-   [
-    "M0118",
-    "customer data",
-    "Tomas Lindqvist",
-    "account number, read customer records that week",
-    0,
-    0,
-    0,
-    0,
-    0,
-    "0.500"
-   ]
-  ]
+  "reads": [
+   "bank",
+   "mail"
+  ],
+  "root_field": "b__viewReviewQueue"
  },
  {
-  "columns": [
-   "message_id",
-   "flagged",
-   "sender",
-   "signals",
-   "outside_team",
-   "outside_bank",
-   "personal",
-   "before_announcement",
-   "to_counterparty",
-   "score"
-  ],
-  "engine": "postgres",
-  "ordered": true,
-  "origin": "demo:insider/1-review-queue.graphql",
-  "root_field": "b__viewReviewQueue",
-  "rows": [
-   [
-    "M0117",
-    "customer data",
-    "Tomas Lindqvist",
-    "ssn, account number, read customer records that week",
-    0,
-    1,
-    1,
-    0,
-    0,
-    "2.600"
-   ],
-   [
-    "M0118",
-    "customer data",
-    "Tomas Lindqvist",
-    "account number, read customer records that week",
-    0,
-    0,
-    0,
-    0,
-    0,
-    "0.500"
-   ]
-  ]
- },
- {
-  "columns": [
-   "reviewer",
-   "count_star()",
-   "max(score)"
-  ],
-  "engine": "duckdb",
+  "answered": false,
   "ordered": true,
   "origin": "demo:insider/2-cases-by-reviewer.graphql",
-  "root_field": "b__viewReviewQueueGroupBy",
-  "rows": [
-   [
-    "reviewer_ben",
-    2,
-    "2.600"
-   ]
-  ]
- },
- {
-  "columns": [
-   "reviewer",
-   "count",
-   "max"
+  "reads": [
+   "bank",
+   "mail"
   ],
-  "engine": "postgres",
-  "ordered": true,
-  "origin": "demo:insider/2-cases-by-reviewer.graphql",
-  "root_field": "b__viewReviewQueueGroupBy",
-  "rows": [
-   [
-    "reviewer_ben",
-    2,
-    "2.600"
-   ]
-  ]
+  "root_field": "b__viewReviewQueueGroupBy"
  },
  {
   "columns": [

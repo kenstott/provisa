@@ -109,8 +109,9 @@ INSIDER = (
         "How many customer records did the sender of the highest-scoring customer-data message "
         "read in the week before sending it?",
         'SELECT SUM(a.records_read) AS a FROM "bank"."customer_access" AS a '
-        'JOIN "bank"."message" AS m ON m.sender_id = a.employee_id '
-        'WHERE m.message_id = (SELECT message_id FROM "bank"."view_review_queue" '
+        'JOIN "bank"."employee" AS e ON e.employee_id = a.employee_id '
+        'JOIN "bank"."messages" AS m ON m.from_address = e.email '
+        'WHERE m.id = (SELECT message_id FROM "bank"."view_review_queue" '
         "WHERE deal_id IS NULL ORDER BY score DESC LIMIT 1) "
         "AND a.accessed_at BETWEEN m.sent_at - INTERVAL '7 days' AND m.sent_at",
     ),

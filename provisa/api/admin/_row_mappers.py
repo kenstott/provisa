@@ -14,6 +14,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 from provisa.api.admin.types import (
     DomainType,
     RelationshipParameterType,
@@ -217,7 +219,34 @@ def _role_from_row(row, *, detail: bool, effective: dict[str, list[str]]) -> Rol
     )
 
 
-def _rel_from_row(row) -> RelationshipType:
+def _shape(row) -> str:
+    """REQ-1586 (amended 2026-11-22): the relationship's model type. A junction's two keys are two
+    of its columns (each refers to one end); a shared dimension's are its one key, which both ends
+    refer to (provisa.core.join_through.qualify, provisa.discovery.dimension.through)."""
+    if row.get("via_table_id") is None:
+        return "direct"
+    if row["via_source_column"] == row["via_target_column"]:
+        return "shared_dimension"
+    return "junction"
+
+
+def _properties(row, via_columns: Sequence[str]) -> list[str]:
+    """REQ-1586: the edge's properties, as the label map serves them on a junction-backed edge
+    (provisa.gql.label_map JunctionMapping.attributes): every column of the middle table that is
+    no key of the join and no discriminator. A direct relationship has none."""
+    if row.get("via_table_id") is None:
+        return []
+    from provisa.compiler.sql_types import key_list
+
+    keys = {*key_list(row["via_source_column"]), *key_list(row["via_target_column"])}
+    if row.get("via_type_column"):
+        keys.add(row["via_type_column"])
+    return [c for c in via_columns if c not in keys]
+
+
+def _rel_from_row(row, via_columns: Sequence[str]) -> RelationshipType:
+    """``via_columns``: the registered columns of the table the relationship goes through, in
+    order (none for a direct relationship)."""
     cardinality = row["cardinality"]
     target_table_name = row.get("target_table_name") or ""
     source_column = row.get("source_column") or ""
@@ -255,6 +284,8 @@ def _rel_from_row(row) -> RelationshipType:
         via_type_column=row.get("via_type_column"),
         via_type_value=row.get("via_type_value"),
         via_label_source=row.get("via_label_source"),
+        shape=_shape(row),
+        properties=_properties(row, via_columns),
         parameters=[
             RelationshipParameterType(parameter=k, source_column=v)
             for k, v in row["parameters"].items()

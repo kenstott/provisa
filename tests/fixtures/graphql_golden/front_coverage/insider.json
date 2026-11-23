@@ -1,11 +1,11 @@
 [
  {
-  "lowered": true,
+  "lowered": "reads other sources",
   "origin": "demo:insider/1-review-queue.graphql",
   "root_field": "b__viewReviewQueue"
  },
  {
-  "lowered": true,
+  "lowered": "reads other sources",
   "origin": "demo:insider/2-cases-by-reviewer.graphql",
   "root_field": "b__viewReviewQueueGroupBy"
  },

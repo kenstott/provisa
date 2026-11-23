@@ -89,6 +89,8 @@ def _view_input(planned: dimension.Plan, visible_to: list[str]) -> Any:
             )
         ],
         view_sql=planned.view_sql,
+        # REQ-1586 (amended 2026-11-22): the shared dimension is marked a dimension (REQ-1320).
+        modeling_role="dimension",
     )
 
 

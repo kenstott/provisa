@@ -1,0 +1,11 @@
+{
+  "relShape": {
+    "label": "סוג קשר",
+    "directTip": "מפתח זר ישיר",
+    "junctionTip": "דרך טבלת הצומת {{table}}",
+    "dimensionTip": "דרך המימד המשותף {{table}}",
+    "dimensionTipUnnamed": "דרך מימד משותף",
+    "prop": "מאפ׳",
+    "propTip": "מאפיינים: {{properties}}"
+  }
+}

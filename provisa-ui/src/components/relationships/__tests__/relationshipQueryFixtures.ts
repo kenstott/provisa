@@ -271,6 +271,8 @@ export function placedBy(more: Partial<Relationship> = {}): Relationship {
     viaTypeColumn: null,
     viaTypeValue: null,
     viaLabelSource: null,
+    shape: "direct",
+    properties: [],
     parameters: [],
     withdrawn: false,
     ...more,
@@ -297,6 +299,8 @@ export const tagged = (): Relationship =>
     viaTypeColumn: "kind",
     viaTypeValue: "label",
     viaLabelSource: "fixed",
+    shape: "junction",
+    properties: [],
   });
 
 /** building_permits -> its shared neighborhood dimension, as a discovery accept made it and the

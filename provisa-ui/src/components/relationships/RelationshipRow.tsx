@@ -10,12 +10,13 @@
 
 import React from "react";
 import { useTranslation } from "react-i18next";
-import { Badge, Group, Text } from "@mantine/core";
+import { Group, Text } from "@mantine/core";
 import type { Relationship } from "../../types/admin";
 import { relationshipTargetLabel } from "./relationship-types";
 import { TagControl } from "../TagControl";
 import { ListRow } from "../list/ListTable";
 import { FkBadge } from "./FkBadge";
+import { PropBadge, RelShapeBadge } from "./RelShape";
 
 interface RelationshipRowProps {
   rel: Relationship;
@@ -61,22 +62,16 @@ export function RelationshipRow({
         <td>
           <Group gap="0.4rem" wrap="wrap">
             {r.autoSuggested && <FkBadge />}
-            {r.viaTableName && (
-              <Badge
-                title={t("relationshipRow.junctionBadgeTitle", { table: r.viaTableName })}
-                size="xs"
-                color="grape"
-                variant="filled"
-                style={{ flexShrink: 0 }}
-              >
-                {t("relationshipRow.junctionBadge")}
-              </Badge>
-            )}
+            {/* REQ-1586 (amended 2026-11-22): only where it has properties. */}
+            <PropBadge properties={r.properties} />
             <span>{`${r.sourceTableName}.${r.sourceColumn}`}</span>
             <TagControl objectType="relationship" relationshipId={String(r.id)} />
           </Group>
         </td>
         <td style={{ whiteSpace: "nowrap" }}>{targetLabel}</td>
+        <td data-testid={`relationship-rel-type-${r.id}`}>
+          <RelShapeBadge shape={r.shape} table={r.viaTableName} />
+        </td>
         <td>
           <div style={{ fontSize: "0.8rem", lineHeight: 1.4 }}>
             <div>

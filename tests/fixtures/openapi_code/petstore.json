@@ -1,0 +1,110 @@
+{
+  "openapi": "3.0.3",
+  "info": {"title": "Pet store (code source parity)", "version": "1"},
+  "paths": {
+    "/pets": {
+      "get": {
+        "operationId": "listPets",
+        "summary": "Every pet",
+        "parameters": [
+          {"name": "status", "in": "query", "required": false, "schema": {"type": "string"}}
+        ],
+        "responses": {"200": {"description": "ok", "content": {"application/json": {
+          "schema": {"type": "array", "items": {"$ref": "#/components/schemas/Pet"}}}}}}
+      },
+      "post": {
+        "operationId": "createPet",
+        "summary": "Add a pet",
+        "requestBody": {"required": true, "content": {"application/json": {
+          "schema": {"$ref": "#/components/schemas/Pet"}}}},
+        "responses": {"201": {"description": "made", "content": {"application/json": {
+          "schema": {"$ref": "#/components/schemas/Pet"}}}}}
+      }
+    },
+    "/pets/lookup": {
+      "get": {
+        "operationId": "findPetsByIds",
+        "summary": "Pets by their ids",
+        "parameters": [
+          {"name": "ids", "in": "query", "required": true,
+           "schema": {"type": "array", "maxItems": 2, "items": {"type": "integer"}}}
+        ],
+        "responses": {"200": {"description": "ok", "content": {"application/json": {
+          "schema": {"type": "array", "items": {"$ref": "#/components/schemas/Pet"}}}}}}
+      }
+    },
+    "/pets/{petId}": {
+      "get": {
+        "operationId": "getPetById",
+        "summary": "One pet",
+        "parameters": [
+          {"name": "petId", "in": "path", "required": true, "schema": {"type": "integer"}}
+        ],
+        "responses": {"200": {"description": "ok", "content": {"application/json": {
+          "schema": {"$ref": "#/components/schemas/Pet"}}}}}
+      },
+      "delete": {
+        "operationId": "deletePet",
+        "parameters": [
+          {"name": "petId", "in": "path", "required": true, "schema": {"type": "integer"}}
+        ],
+        "responses": {"200": {"description": "gone", "content": {"application/json": {
+          "schema": {"type": "object", "properties": {"deleted": {"type": "integer"}}}}}}}
+      }
+    },
+    "/owners": {
+      "get": {
+        "operationId": "listOwners",
+        "summary": "Every owner",
+        "responses": {"200": {"description": "ok", "content": {"application/json": {
+          "schema": {"type": "array", "items": {"$ref": "#/components/schemas/Owner"}}}}}}
+      }
+    },
+    "/owners/{ownerId}/visits": {
+      "get": {
+        "operationId": "listOwnerVisits",
+        "summary": "An owner's visits",
+        "parameters": [
+          {"name": "ownerId", "in": "path", "required": true, "schema": {"type": "integer"}},
+          {"name": "since", "in": "query", "required": false, "schema": {"type": "string"}}
+        ],
+        "responses": {"200": {"description": "ok", "content": {"application/json": {
+          "schema": {"type": "array", "items": {"$ref": "#/components/schemas/Visit"}}}}}}
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Pet": {
+        "type": "object",
+        "properties": {
+          "id": {"type": "integer", "description": "The pet's id"},
+          "name": {"type": "string"},
+          "status": {"type": "string"},
+          "weight": {"type": "number"},
+          "vaccinated": {"type": "boolean"},
+          "owner_id": {"type": "integer"},
+          "tags": {"type": "array", "items": {"type": "string"}}
+        }
+      },
+      "Owner": {
+        "type": "object",
+        "properties": {
+          "id": {"type": "integer"},
+          "first-name": {"type": "string", "description": "As the API spells it"},
+          "class": {"type": "string"},
+          "address": {"type": "object", "properties": {
+            "city": {"type": "string"}, "zip": {"type": "string"}}}
+        }
+      },
+      "Visit": {
+        "type": "object",
+        "properties": {
+          "visit_id": {"type": "integer"},
+          "pet_id": {"type": "integer"},
+          "on": {"type": "string"}
+        }
+      }
+    }
+  }
+}

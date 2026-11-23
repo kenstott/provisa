@@ -888,6 +888,41 @@ catalog_sync_runs = Table(
     CheckConstraint("outcome IN ('ok', 'failed')", name="catalog_sync_runs_outcome_check"),
 )
 
+# REQ-2259: each publish of a Syncing entry, its outcome and the error that stopped the whole entry.
+# Mirrors schema.sql.
+catalog_publishes = Table(
+    "catalog_publishes",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("entry", Text, nullable=False),
+    Column("outcome", Text, nullable=False),
+    Column("error", Text),
+    Column("published_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("tenant_id", Uuid),
+    CheckConstraint("outcome IN ('ok', 'failed')", name="catalog_publishes_outcome_check"),
+)
+
+# REQ-2259: each data product a publish sent and its outcome there. Mirrors schema.sql.
+catalog_publish_products = Table(
+    "catalog_publish_products",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column(
+        "publish_id",
+        Integer,
+        ForeignKey("catalog_publishes.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    Column("entry", Text, nullable=False),
+    Column("product_id", Text, nullable=False),
+    Column("outcome", Text, nullable=False),
+    Column("error", Text),
+    Column("tenant_id", Uuid),
+    CheckConstraint(
+        "outcome IN ('published', 'failed')", name="catalog_publish_products_outcome_check"
+    ),
+)
+
 # REQ-1387: business glossary. Terms are the normalized vocabulary derived from physical
 # field names; rooted terms hold refs, abstract terms hold none. A term losing its last
 # physical ref is removed unless an abstract term is connected to the rooted graph through
