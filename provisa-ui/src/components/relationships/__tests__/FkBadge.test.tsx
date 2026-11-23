@@ -49,6 +49,8 @@ const rel: Relationship = {
   viaTypeColumn: null,
   viaTypeValue: null,
   viaLabelSource: null,
+  shape: "direct",
+  properties: [],
   cypherType: null,
 };
 

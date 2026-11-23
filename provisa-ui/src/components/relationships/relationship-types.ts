@@ -9,7 +9,12 @@
 // permission from the copyright holder.
 
 import { domainToSqlName } from "../../naming";
-import type { RegisteredTable, Relationship, RelationshipParameter } from "../../types/admin";
+import type {
+  RegisteredTable,
+  Relationship,
+  RelationshipParameter,
+  RelationshipShape,
+} from "../../types/admin";
 
 /** The name a relationship gives a table, and the one its save resolves: the table's alias when
  *  it has one, its table name otherwise (the virtual name, REQ-014). */
@@ -114,3 +119,11 @@ export function isCodeResolver(f: {
     (f.outputColumns?.length ?? 0) > 0
   );
 }
+
+/** REQ-1586 (amended 2026-11-22): the short code a relationship's model type is shown as, which
+ * the Rel type columns sort and filter on. */
+export const SHAPE_CODE: Record<RelationshipShape, "fk" | "jct" | "dim"> = {
+  direct: "fk",
+  junction: "jct",
+  shared_dimension: "dim",
+};

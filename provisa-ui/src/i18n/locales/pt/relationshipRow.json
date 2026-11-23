@@ -34,8 +34,6 @@
     "sqlName": "Nome SQL",
     "cardinalityWarning": "Aviso: se este join retornar mais de uma linha por pai, apenas o primeiro valor será usado.",
     "toggleDetails": "Alternar detalhes do relacionamento",
-    "junctionBadge": "prop.",
-    "junctionBadgeTitle": "Relacionamento com propriedades de {{table}}",
     "deleteTitle": "Excluir o relacionamento \"{{id}}\"?",
     "deleteConsequence": "O relacionamento é removido do modelo. As consultas não podem mais fazer junções por ele.",
     "parametersFed": "Parâmetros alimentados",
