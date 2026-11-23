@@ -15,6 +15,10 @@ import { describe, it, expect, vi } from "vitest";
 import { screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { render } from "../../../test-utils/render";
 import { RelationshipDetail } from "../RelationshipDetail";
+// The panel links the tables it names (REQ-2259), gated on the viewer's rights.
+vi.mock("../../../context/AuthContext", () => ({
+  useAuth: () => ({ capabilities: ["table_registration"] }),
+}));
 import type { ComponentProps } from "react";
 
 type Props = ComponentProps<typeof RelationshipDetail>;

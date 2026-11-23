@@ -15,6 +15,8 @@ An RDF term of the answer is one JSON value:
 - a subject, ``{"node": {"domain": d, "table": t, "key": [k1, ...]}}`` -- its table's identity and
   its key values, as typed as the table holds them; the answer's writer builds the IRI from them
   (:mod:`provisa.gql.iri`), so no IRI is built, or encoded, in SQL;
+- a graph session's node, ``{"session": graph_id}`` -- the writer names it by its IRI, or as a
+  blank node where it has none (REQ-2135, amended 2026-11-23);
 - an IRI, ``{"iri": "http://..."}``;
 - a glossary term, ``{"term": name}`` -- the writer builds its vocabulary IRI (REQ-2163);
 - a literal, ``{"literal": v}``, with ``"datatype"`` or ``"lang"`` when known.
@@ -49,7 +51,7 @@ from provisa.gql.expr_ast import (
 from provisa.gql.group_by import _has_aggregate
 from provisa.gql.iri import iri_base
 from provisa.gql.ir import CypherAST, MatchClause, Predicate, TriplePattern, TripleTemplate
-from provisa.gql.label_map import CypherLabelMap, NodeMapping
+from provisa.gql.label_map import GRAPH_ID, CypherLabelMap, NodeMapping, is_session_node
 from provisa.gql.path_functions import _apply_hop
 from provisa.gql.translator_types import CypherTranslateError, GraphVarKind
 
@@ -144,6 +146,15 @@ def node_term(alias: str, nm: NodeMapping) -> exp.Expression:  # pyright: ignore
     Its IRI needs server.public_url, so a statement that answers with one is refused while that is
     unset."""
     iri_base()  # refuses here, at compile time, naming the setting
+    if is_session_node(nm):
+        # REQ-2135 (amended 2026-11-23): a graph session's node, a SPARQL session object's or a
+        # model row a session relationship ends on, by its graph identity, which the answer
+        # names as its IRI or a blank node (provisa.sparql_query.session_graph.SessionTerms).
+        graph_id = _col(GRAPH_ID, alias, quoted=True)
+        return exp.Case(
+            ifs=[exp.If(this=exp.Is(this=graph_id.copy(), expression=exp.null()), true=exp.null())],
+            default=_json(session=graph_id),
+        )
     if not nm.domain_id:
         raise CypherTranslateError(
             f"{nm.table_name} belongs to no domain, and a subject's IRI names its domain"

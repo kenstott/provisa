@@ -33,6 +33,8 @@ import struct
 from decimal import Decimal
 from typing import Any
 
+from provisa.executor.serialize import decimal_text
+
 
 # ── Struct tag constants ───────────────────────────────────────────────────────
 
@@ -229,7 +231,9 @@ def _pack_value(value: Any) -> bytes:
     if isinstance(value, float):
         return struct.pack("!Bd", 0xC1, value)
     if isinstance(value, Decimal):
-        return struct.pack("!Bd", 0xC1, float(value))
+        # REQ-1961 (amended 2026-11-23): Bolt has no exact decimal; a decimal (a sized numeric)
+        # is the string of its exact digits, never rounded through a float.
+        return _pack_string(decimal_text(value))
     if isinstance(value, str):
         return _pack_string(value)
     if isinstance(value, bytes):

@@ -560,6 +560,7 @@
       "incremental_no_change": "コードソースに {{table}} 用の @change 関数がありません。@change table={{table}} で宣言してください。",
       "incremental_needs_rebuild_every": "{{table}} は増分で維持されるため、時刻に従って全体が再ビルドされます。「全体の再ビルド間隔」に間隔を秒単位で設定してください。",
       "table_derived_from_function": "テーブル '{{name}}' は関数から派生しています。関数のテーブルをオフにすると削除され、列とパラメーターは関数で編集します",
+      "table_has_dependents": "テーブル '{{name}}' はまだ他のオブジェクトから読み取られているか参照されています。先にそれらを廃止するか変更してください",
       "table_withdrawn": "テーブル {{table}} を取り下げました",
       "table_put_back": "テーブル {{table}} を元に戻しました",
       "source_withdrawn": "ソース {{source}} を取り下げました",

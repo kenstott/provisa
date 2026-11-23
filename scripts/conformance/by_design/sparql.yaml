@@ -1,21 +1,39 @@
 # The W3C SPARQL 1.1 suite's cases skipped by design (REQ-2167, amended 2026-10-27 and 2026-10-28),
 # never counted as failed: each group quotes the rule that excludes it. scripts/conformance/by_design.py.
 #
-# Only an update refused because it acts on a named graph is here (REQ-2135, amended 2026-11-22 in
-# 04536b79c3): graph management -- DROP, CLEAR, LOAD, CREATE, COPY, MOVE, ADD -- in whatever
-# directory the suite puts it (add, copy, move, clear, drop, update-silent, syntax-update-1, and the
-# basic-update tests whose request drops a graph first). An INSERT or DELETE that maps onto a
-# governed table write is SPARQL Update data, not here: it stays failed until it passes. The group
-# matches the refusal naming the operation, so a test that stops being refused this way is never
-# skipped by accident.
+# Only an update refused because it acts on the model's own graph, or LOADs from outside, is here.
+# REQ-2135, amended 2026-11-23 (282097af2d): any graph IRI outside the model's base IRI is a
+# session graph, and DROP, CLEAR, CREATE, COPY, MOVE and ADD work on session graphs, so a case on
+# such a graph is no longer here -- it passes or stays failed. A graph IRI under the base, DEFAULT
+# and ALL name the model's own graph and are refused by name. LOAD reads a document from outside
+# the session and stays refused by name (REQ-2135, amended 2026-11-22 in 04536b79c3). Each group
+# matches its refusal, so a test that stops being refused this way is never skipped by accident.
 
-- group: Graph management updates
+- group: Graph management of the model's own graph
   requirement: REQ-2135, REQ-2167
   decision: >-
-    "a write needing structure the model lacks is refused by name": DROP, CLEAR, LOAD, CREATE,
-    COPY, MOVE and ADD act on named graphs, and the model has tables, not graphs. Move rows with a
-    governed write to the tables instead.
-  reason: "^400: [A-Z]+(?:, [A-Z]+)* acts on a named graph, and the model has tables, not graphs"
+    "a graph IRI under the base is refused by name": a graph IRI under the model's base IRI,
+    DEFAULT and ALL name the model's own graph, whose rows are written as rows, without a graph.
+    Session objects are kept in a graph outside the base.
+  reason: "^400: .* names the model's own graph, under its base IRI"
+
+- group: LOAD
+  requirement: REQ-2135, REQ-2167
+  decision: >-
+    "Graph management (DROP, CLEAR, LOAD, ...) is refused by name; its W3C cases are listed as by
+    design", amended to leave LOAD alone refused: LOAD reads a document from outside the session.
+    Insert its triples with INSERT DATA instead.
+  reason: "^400: LOAD reads a document from outside the session"
+
+- group: DROP of a session graph the session does not hold
+  requirement: REQ-2135, REQ-2167
+  decision: >-
+    "DROP or CLEAR of a session graph that does not exist, without SILENT, fails as SPARQL 1.1
+    Update says" (amended 2026-11-23 in 7ec7813136). A syntax case that drops a graph nothing
+    created is answered with that failure: the statement is read as SPARQL, and then fails as the
+    standard has it.
+  case: "^syntax-update-1::test_8$"
+  reason: "^400: DROP GRAPH <[^>]*>: the session holds no such graph$"
 
 - kind: adapted
   group: Datasets declared as fixture tables

@@ -414,7 +414,11 @@ async def rebuild_template(directory: Path, seed: Any, conn: Any, engine: Any) -
         scans = scans_path(directory)
         if not scans.is_file():
             raise ValueError(f"the bundle carries no scans ({scans.name}): rebuild it")
-    return await rebuild_from_config(seed, conn, engine, carried_runs=carried, carried_scans=scans)
+    # REQ-1919 (amended 2026-11-23): a template keeps the full rebuild, so every sandbox starts
+    # exactly from its demo's bundle; a demo organisation's boot keeps its admin's work.
+    return await rebuild_from_config(
+        seed, conn, engine, reset=True, carried_runs=carried, carried_scans=scans
+    )
 
 
 async def write_declared_settings(model_db: Any, seed: Any) -> None:  # REQ-2006, REQ-2057

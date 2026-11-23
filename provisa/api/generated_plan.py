@@ -40,7 +40,10 @@ What makes a value safe to take out of the shape:
   statement, with every value found in the parameter list exactly where the other compile has
   its own. A shape that fails the proof (a filter on a virtual column, which the compiler decides
   at compile time; a value an API source takes as a native argument) is kept per text instead —
-  each distinct request text compiled for itself.
+  each distinct request text compiled for itself;
+- a string of decimal digits is probed with other decimal digits, and where the compiler binds the
+  decimal it spells (a sized numeric's filter value, REQ-1961) the plan binds a request's own
+  value as that decimal.
 """
 
 # Requirements: REQ-1877
@@ -51,6 +54,7 @@ import dataclasses
 import json
 import re
 from dataclasses import dataclass
+from decimal import Decimal
 from typing import Any
 
 from graphql import GraphQLError, GraphQLSchema
@@ -58,7 +62,7 @@ from graphql import GraphQLError, GraphQLSchema
 from provisa.compiler.parser import GraphQLValidationError, parse_query
 from provisa.compiler.sql_gen import compile_query
 from provisa.compiler.sql_types import CompilationContext, CompiledQuery
-from provisa.compiler.sql_where import _ISO_DATE_RE
+from provisa.compiler.sql_where import _ISO_DATE_RE, decimal_digits
 from provisa.pgwire.governed_plan import PlanSlot
 
 _STAGE = "generated-graphql"
@@ -179,8 +183,11 @@ def _other_values(values: list[Value], taken: list[Any]) -> list[Value]:
 
     def _unused(candidates: Any) -> Value:
         for candidate in candidates:
-            if not any(type(u) is type(candidate) and u == candidate for u in used):
-                used.append(candidate)
+            bound_as = [candidate]
+            if isinstance(candidate, str) and _digits(candidate) is not None:
+                bound_as.append(_digits(candidate))
+            if not any(_same(u, b) for u in used for b in bound_as):
+                used.extend(bound_as)
                 return candidate
         raise AssertionError("unreachable: the candidate sequence is unbounded")
 
@@ -203,9 +210,17 @@ def _other_values(values: list[Value], taken: list[Any]) -> list[Value]:
             yield f"zq{k}"
             k += 1
 
+    def _decimal_strings() -> Any:
+        k = 1
+        while True:
+            yield f"{k}.25"
+            k += 1
+
     others: list[Value] = []
     for value in values:
-        if isinstance(value, str):
+        if isinstance(value, str) and _digits(value) is not None:
+            others.append(_unused(_decimal_strings()))
+        elif isinstance(value, str):
             others.append(_unused(_strings()))
         elif isinstance(value, int):
             others.append(_unused(_ints(value)))
@@ -218,7 +233,22 @@ def _same(a: Any, b: Any) -> bool:
     return type(a) is type(b) and a == b
 
 
-Slots = tuple[tuple[int, int], ...]  # (index in the parameter list, index in the values)
+def _digits(value: str) -> Decimal | None:
+    """The decimal a string's digits spell, or None for a string that spells none."""
+    try:
+        return decimal_digits(value)
+    except ValueError:
+        return None
+
+
+def _as_bound(value: Value, as_decimal: bool) -> Any:  # noqa: ANN401 -- a value, or its Decimal
+    """A request's value as its slot binds it: as the decimal its digits spell where the compiler
+    bound one (REQ-1961). Raises ValueError, as the compiler does, for a string that spells none."""
+    return decimal_digits(value) if as_decimal and isinstance(value, str) else value
+
+
+#: (index in the parameter list, index in the values, whether the value is bound as its decimal)
+Slots = tuple[tuple[int, int, bool], ...]
 
 
 def _slots(
@@ -228,16 +258,26 @@ def _slots(
     the two lists do not differ exactly by the values."""
     if len(own) != len(other):
         return None
-    slots: list[tuple[int, int]] = []
+    slots: list[tuple[int, int, bool]] = []
     for j, (a, b) in enumerate(zip(own, other)):
-        i = next((i for i, probe in enumerate(others) if _same(b, probe)), None)
-        if i is None:
+        found = next(
+            (
+                (i, as_decimal)
+                for i, probe in enumerate(others)
+                for as_decimal in (False, True)
+                if (not as_decimal or (isinstance(probe, str) and _digits(probe) is not None))
+                and _same(b, _as_bound(probe, as_decimal))
+            ),
+            None,
+        )
+        if found is None:
             if not _same(a, b):
                 return None
             continue
-        if not _same(a, values[i]):
+        i, as_decimal = found
+        if not _same(a, _as_bound(values[i], as_decimal)):
             return None
-        slots.append((j, i))
+        slots.append((j, i, as_decimal))
         seen.add(i)
     return tuple(slots)
 
@@ -253,8 +293,8 @@ class _ShapePlan:
         out = []
         for cq, slots in zip(self.compiled, self.slots):
             params = list(cq.params)
-            for j, i in slots:
-                params[j] = values[i]
+            for j, i, as_decimal in slots:
+                params[j] = _as_bound(values[i], as_decimal)
             out.append(dataclasses.replace(cq, params=params))
         return out
 

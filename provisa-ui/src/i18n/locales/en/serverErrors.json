@@ -560,6 +560,7 @@
       "incremental_no_change": "The code source has no @change function for {{table}}. Declare one with @change table={{table}}.",
       "incremental_needs_rebuild_every": "{{table}} is kept incrementally, so it is rebuilt whole on a clock. Set how often, in seconds, in \"Whole rebuild every\".",
       "table_derived_from_function": "Table '{{name}}' is derived from a function: it is removed by turning off the function's table, and its columns and parameters are edited on the function",
+      "table_has_dependents": "Table '{{name}}' is still read or referred to by other objects: retire or change them first",
       "table_withdrawn": "Table {{table}} withdrawn",
       "table_put_back": "Table {{table}} put back",
       "source_withdrawn": "Source {{source}} withdrawn",
