@@ -89685,7 +89685,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     value other than NULL on a non-text column is refused by name, since it can only read as NULL. A column
     that a reader sees under a mask is reported nullable to that reader in every catalog the surfaces expose
     (for example pgwire''s attnotnull, GraphQL and Flight schemas), even when the column is declared NOT
-    NULL.'
+    NULL. (Amended 2026-11-23:) "The input''s registered relationship to the view" includes each end of a single-column junction through the view (a code resolver''s saved junction): the stored view rows are filtered by the reader''s row rule on that end''s table through the junction''s column. A junction through another table, or on a composite key, is no such relationship and the read is refused (V003).'
   use_case: >-
     A data team cleanses free-text supplier addresses with one @columns function that sends each batch
     of rows to the org's LLM and returns street, city and country; the cleansed columns sit in a
