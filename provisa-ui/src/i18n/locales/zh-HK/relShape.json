@@ -1,0 +1,11 @@
+{
+  "relShape": {
+    "label": "關係類型",
+    "directTip": "直接外鍵",
+    "junctionTip": "經由關聯表 {{table}}",
+    "dimensionTip": "經由共用維度 {{table}}",
+    "dimensionTipUnnamed": "經由共用維度",
+    "prop": "屬性",
+    "propTip": "屬性：{{properties}}"
+  }
+}

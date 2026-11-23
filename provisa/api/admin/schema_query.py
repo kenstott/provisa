@@ -282,15 +282,34 @@ async def _with_withdrawn(
     withdrawn = await withdrawn_table_domains(conn)
     retired = await retired_table_ids(conn)
     reach = preview_reach(info) if include_withdrawn else frozenset()
+    via = await _via_columns(conn, rows)
     listed: list[RelationshipType] = []
     for row in rows:
         ends = edge_ends(row)
         out = [t for t in ends if t in withdrawn or t in retired]
+        columns = () if row["via_table_id"] is None else via[row["via_table_id"]]
         if not out:
-            listed.append(_rel_from_row(row))
+            listed.append(_rel_from_row(row, columns))
         elif not any(t in retired for t in out) and all(previews(reach, withdrawn[t]) for t in out):
-            listed.append(replace(_rel_from_row(row), withdrawn=True))
+            listed.append(replace(_rel_from_row(row, columns), withdrawn=True))
     return listed
+
+
+async def _via_columns(conn: Any, rows: list[dict]) -> dict[int, list[str]]:
+    """REQ-1586: the registered columns of each table ``rows`` go through, in order, read once
+    for the listing (an edge's properties are those that are no key of its join)."""
+    ids = {int(r["via_table_id"]) for r in rows if r["via_table_id"] is not None}
+    found: dict[int, list[str]] = {i: [] for i in ids}
+    if not ids:
+        return found
+    res = await conn.execute_core(
+        select(table_columns.c.table_id, table_columns.c.column_name)
+        .where(table_columns.c.table_id.in_(sorted(ids)), table_columns.c.retired.is_(False))
+        .order_by(table_columns.c.table_id, table_columns.c.id)
+    )
+    for r in res.fetchall():
+        found[int(r.table_id)].append(str(r.column_name))
+    return found
 
 
 async def _listed_relationships(
@@ -415,6 +434,8 @@ async def _has_table_synthetic_relationships(conn: Any) -> list[RelationshipType
             via_type_column=None,
             via_type_value=None,
             via_label_source=None,
+            shape="direct",
+            properties=[],
         )
         for r in src_res.fetchall()
     ]

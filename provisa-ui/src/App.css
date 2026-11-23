@@ -3110,6 +3110,16 @@ main {
 [data-mantine-color-scheme="dark"] .form-layout select.form-select:disabled {
   background-color: var(--mantine-color-dark-6);
 }
+/* REQ-1968 (amended 2026-11-22): a required native select left empty is red as a Mantine input is,
+ * its border and its message (Mantine's Input.Error) beneath it. */
+.form-layout select.form-select[aria-invalid="true"],
+[data-mantine-color-scheme="dark"] .form-layout select.form-select[aria-invalid="true"] {
+  border-color: var(--mantine-color-error);
+}
+.form-layout .form-field > label:has(> select.form-select) > .mantine-InputWrapper-error {
+  margin-top: 5px;
+  font-weight: 400;
+}
 
 /* The one tooltip surface (components/Tip.tsx): every hint and every help card is drawn with it.
  * It is the card the ERD button of the Tables page has always shown -- the popover's own surface,

@@ -1,0 +1,11 @@
+{
+  "relShape": {
+    "label": "Тип связи",
+    "directTip": "Прямой внешний ключ",
+    "junctionTip": "Через связующую таблицу {{table}}",
+    "dimensionTip": "Через общее измерение {{table}}",
+    "dimensionTipUnnamed": "Через общее измерение",
+    "prop": "св-ва",
+    "propTip": "Свойства: {{properties}}"
+  }
+}

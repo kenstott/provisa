@@ -313,6 +313,18 @@
     "tagFacetPlaceholder": "タグで絞り込む",
     "noMatch": "フィルターに一致するデータプロダクトはありません",
     "domainFacetLabel": "ドメイン",
-    "domainFacetPlaceholder": "ドメインで絞り込む"
+    "domainFacetPlaceholder": "ドメインで絞り込む",
+    "colSync": "同期",
+    "syncNone": "未同期",
+    "syncSynced_one": "同期済み",
+    "syncSynced_other": "{{count}} 件と同期済み",
+    "syncFailed_one": "{{count}} 件失敗",
+    "syncFailed_other": "{{count}} 件失敗",
+    "syncEntryPublished": "{{entry}}: {{when}} にパブリッシュ",
+    "syncEntryFailed": "{{entry}}: {{when}} に失敗",
+    "syncGroup_synced": "同期済み",
+    "syncGroup_failed": "失敗",
+    "syncGroup_none": "未同期",
+    "syncUnread": "同期ステータスを読み取れませんでした: {{error}}"
   }
 }

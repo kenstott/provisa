@@ -99,15 +99,25 @@ def test_a_refusal_in_an_independent_call_is_answered_by_its_own_handler(monkeyp
         )
 
 
-def test_a_write_lets_a_refusal_past_its_catch_all():
+@pytest.mark.parametrize("refusal", _REFUSALS, ids=lambda e: type(e).__name__)
+def test_a_write_lets_a_refusal_past_its_catch_all(refusal):
     """The write path answers a source's error of any type as "Write failed" (500); a refusal by
-    name is not one of those."""
-    from pathlib import Path
+    name is not one of those -- it is raised on to the app's handler for it."""
+    from provisa.api.rest.graph_write import write_refusal
 
-    source = Path(cypher_router.__file__).read_text(encoding="utf-8")
-    write = source[source.index("await written(") :]
-    write = write[: write.index('"cypher.write_failed"')]
-    assert "except (ApiError, ReadRefused):" in write
+    with pytest.raises(type(refusal)) as raised:
+        write_refusal(refusal, "cypher")
+    assert raised.value is refusal
+
+
+def test_a_write_answers_an_unexpected_source_error_as_write_failed():
+    import json
+
+    from provisa.api.rest.graph_write import write_refusal
+
+    response = write_refusal(RuntimeError("connection reset"), "cypher")
+    assert response.status_code == 500
+    assert json.loads(bytes(response.body))["code"] == "cypher.write_failed"
 
 
 def test_the_neo4j_endpoint_answers_a_coded_refusal_with_its_own_status_and_message():

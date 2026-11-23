@@ -403,6 +403,8 @@ _CREATE_ONLY = {
         "week_start holidays weekend created_at"
     ),
     "catalog_bindings": "id semantic_uri vendor_ref physical_key updated_at",
+    "catalog_publish_products": "id publish_id entry product_id outcome error tenant_id",
+    "catalog_publishes": "id entry outcome error published_at tenant_id",
     "catalog_exchanges": "id entry direction kind object value decided_by updated_at tenant_id",
     "catalog_standing_choices": "id entry direction kind choice decided_by updated_at tenant_id",
     "catalog_sync_runs": (

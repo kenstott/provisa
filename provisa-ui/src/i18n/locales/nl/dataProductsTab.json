@@ -313,6 +313,18 @@
     "tagFacetPlaceholder": "Filteren op tag",
     "noMatch": "Geen dataproducten voldoen aan de filters",
     "domainFacetLabel": "Domeinen",
-    "domainFacetPlaceholder": "Filteren op domein"
+    "domainFacetPlaceholder": "Filteren op domein",
+    "colSync": "Synchronisatie",
+    "syncNone": "Niet gesynchroniseerd",
+    "syncSynced_one": "Gesynchroniseerd",
+    "syncSynced_other": "Gesynchroniseerd met {{count}}",
+    "syncFailed_one": "{{count}} mislukt",
+    "syncFailed_other": "{{count}} mislukt",
+    "syncEntryPublished": "{{entry}}: gepubliceerd {{when}}",
+    "syncEntryFailed": "{{entry}}: mislukt {{when}}",
+    "syncGroup_synced": "Gesynchroniseerd",
+    "syncGroup_failed": "Mislukt",
+    "syncGroup_none": "Niet gesynchroniseerd",
+    "syncUnread": "De synchronisatiestatus kon niet worden gelezen: {{error}}"
   }
 }

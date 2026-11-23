@@ -14,7 +14,8 @@
     "discardBody": "Le modifiche a {{what}} non sono salvate.",
     "discard": "Annulla modifiche",
     "deleting": "Eliminazione…",
-    "deleteFailed": "Non eliminato: {{reason}}"
+    "deleteFailed": "Non eliminato: {{reason}}",
+    "required": "Obbligatorio"
   },
   "app": {
     "apiUnreachable": "Impossibile raggiungere l'API Provisa.",

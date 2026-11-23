@@ -14,7 +14,8 @@
     "discardBody": "Изменения в {{what}} не сохранены.",
     "discard": "Отменить изменения",
     "deleting": "Удаление…",
-    "deleteFailed": "Не удалено: {{reason}}"
+    "deleteFailed": "Не удалено: {{reason}}",
+    "required": "Обязательное поле"
   },
   "app": {
     "apiUnreachable": "Не удалось подключиться к API Provisa.",

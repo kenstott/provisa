@@ -14,7 +14,8 @@
     "discardBody": "Vos modifications de {{what}} ne sont pas enregistrées.",
     "discard": "Abandonner",
     "deleting": "Suppression…",
-    "deleteFailed": "Non supprimé : {{reason}}"
+    "deleteFailed": "Non supprimé : {{reason}}",
+    "required": "Obligatoire"
   },
   "app": {
     "apiUnreachable": "Impossible de joindre l'API Provisa.",
