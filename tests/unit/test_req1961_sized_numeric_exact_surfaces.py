@@ -237,3 +237,15 @@ def test_a_sized_numeric_parameter_stays_a_double_as_its_graphql_argument_is_a_f
     model = grpc_model([("id", "integer")], parameters=[("floor", "numeric(10,2)")])
     sql, _ = compiled_read(model, "Orders", 0, None, None, {"floor": 10.5})  # type: ignore[misc]
     assert '"_nf_floor" = 10.5' in sql
+
+
+def test_a_bolt_row_keeps_a_decimal_for_its_exact_digits_where_cypher_http_writes_a_float():
+    """Bolt's rows pass ``keep_values``: the decimal reaches packstream, which sends its digits."""
+    from provisa.bolt.packstream import pack, unpack
+    from provisa.gql.assembler import to_serializable
+
+    row = {"amount": Decimal("12.50"), "ratio": 0.5}
+    kept = to_serializable(row, keep_values=True)
+    assert kept == {"amount": Decimal("12.50"), "ratio": 0.5}
+    assert unpack(pack(kept["amount"])) == "12.50"
+    assert to_serializable(row) == {"amount": 12.5, "ratio": 0.5}
