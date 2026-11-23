@@ -2179,9 +2179,13 @@ async def reset_model(conn: "Connection") -> None:  # REQ-1919
     """Remove the org's model — everything a configuration can declare, and everything an admin
     made — leaving what the deployment seeds into every store (the built-in sources and their
     tables, the system domains, the seeded roles and the people holding them). Within the
-    caller's transaction. Nothing in a running deployment calls it: a demo rebuild replaces only
-    what its configuration declares (:func:`rebuild_from_config`). The test harness empties a
-    store with it so a boot is its deployment's first start."""
+    caller's transaction. A sandbox template organisation (REQ-2006) is rebuilt from its demo's
+    configuration by this followed by an apply (:func:`rebuild_from_config` with ``reset``), which
+    drops the profile result relations of the tables it removes once it has committed
+    (profiler.schema.drop_superseded_results): each is named by its table's id, and the apply
+    registers the table again under another. A demo organisation's rebuild replaces only what its
+    configuration declares. The test harness empties a store with it so a boot is its
+    deployment's first start."""
     from sqlalchemy import delete
 
     from provisa.core.db import SEEDED_DOMAIN_IDS, SEEDED_ROLE_IDS, SEEDED_SOURCE_IDS
@@ -2300,8 +2304,9 @@ async def reset_model(conn: "Connection") -> None:  # REQ-1919
         # A calendar is removed by name, every version at once (integrity.discard).
         ("calendar", await _ids(select(calendars.c.name).distinct())),
     ]
-    # REQ-2248 (ruling 2026-11-15): emptying a store for a first start is a built-in seed, so it
-    # DELETES the model rather than retiring it.
+    # REQ-2248 (ruling 2026-11-15): a template organisation's rebuild from its demo's
+    # configuration, like emptying a store for a first start, is a built-in seed, so it DELETES
+    # the model rather than retiring it; the apply that follows declares the same objects again.
     for kind, idents in order:
         for ident in idents:
             if kind == "table":
@@ -2341,11 +2346,32 @@ async def reset_model(conn: "Connection") -> None:  # REQ-1919
     await glossary_repo.sweep_refless_terms(conn, before=refs_before)
 
 
+async def _unstamp_revived_terms(conn: "Connection", config: ProvisaConfig) -> None:  # REQ-2222
+    """A reset drops every table, so a term derived from columns and named by another term's edge
+    is kept meanwhile with its domains stamped on it (REQ-1591). The rebuilt tables give it its refs
+    again, and its domains are derived from them: a stamp left behind would declare a term the
+    configuration does not."""
+    from sqlalchemy import delete
+
+    from provisa.core.schema_org import glossary_term_domains, glossary_term_refs
+
+    # REQ-1591: the declared terms by name within their domains; a same-named term elsewhere
+    # is another term, and its stamp goes.
+    declared = {await _declared_term_id(conn, term) for term in config.glossary_terms}
+    await conn.execute_core(
+        delete(glossary_term_domains).where(
+            glossary_term_domains.c.term_id.in_(select(glossary_term_refs.c.term_id)),
+            glossary_term_domains.c.term_id.not_in(sorted(declared)),
+        )
+    )
+
+
 async def rebuild_from_config(  # REQ-1919: DEMO ORGANISATIONS ARE THEIR CONFIG
     config: ProvisaConfig,
     conn: "Connection",
     engine: Any = None,
     *,
+    reset: bool = False,
     carried_runs: Path | None = None,
     carried_scans: Path | None = None,
 ) -> list[str]:
@@ -2354,6 +2380,10 @@ async def rebuild_from_config(  # REQ-1919: DEMO ORGANISATIONS ARE THEIR CONFIG
     that the configuration does not declare -- the objects an admin made (maintainer ruling
     2026-11-23). A declared object an admin edited is as the configuration says again, a declared
     table's columns included. Returns the source ids whose change feed could not be reached.
+
+    ``reset``: a sandbox template organisation's rebuild (REQ-2006, api.demo_templates.
+    rebuild_template) removes the whole model first (:func:`reset_model`), so every sandbox
+    cloned from it starts exactly from its demo's bundle; an admin's objects go with it.
 
     ``carried_runs``: the profile runs its bundle carries (REQ-2052, provisa.profiler.carry),
     loaded in the same transaction under the ids the org gives their tables.
@@ -2370,6 +2400,7 @@ async def rebuild_from_config(  # REQ-1919: DEMO ORGANISATIONS ARE THEIR CONFIG
         label="demo rebuilt from its configuration",
         defer_unregistered=True,
         replace=True,
+        reset=reset,
         carried_runs=carried_runs,
         carried_scans=carried_scans,
     )
@@ -2383,6 +2414,7 @@ async def _apply(
     label: str,
     defer_unregistered: bool,
     replace: bool = False,
+    reset: bool = False,
     carried_runs: Path | None = None,
     carried_scans: Path | None = None,
 ) -> list[str]:
@@ -2402,6 +2434,8 @@ async def _apply(
                 # Serialize concurrent applies (parallel workers, test app lifespans) so they do
                 # not deadlock on the same rows. A no-op on single-writer backends (SQLite).
                 await conn.advisory_xact_lock(7261748190)
+                if reset:
+                    await reset_model(conn)
                 failed = await _apply_in_txn(
                     config, conn, engine, defer_unregistered=defer_unregistered, replace=replace
                 )
@@ -2413,7 +2447,15 @@ async def _apply(
                     from provisa.term_finding.carry import load_scans  # noqa: PLC0415
 
                     await load_scans(conn, carried_scans)
+                if reset:
+                    await _unstamp_revived_terms(conn, config)
                 await _mark_seeded(conn)
+    if reset:
+        # After the commit, in transactions of their own: the backlog of a template's rebuilds,
+        # held in the rebuild's one transaction, ran out the lock table.
+        from provisa.profiler.schema import drop_superseded_results
+
+        await drop_superseded_results(conn)
     return failed
 
 

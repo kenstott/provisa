@@ -917,6 +917,35 @@ async def test_a_demo_rebuild_replaces_only_what_its_config_declares(db):
     assert "__derived__" in await _ids(db, "sources")
 
 
+async def test_a_template_rebuild_drops_what_an_admin_made_and_a_demo_rebuild_keeps_it(
+    db, tmp_path
+):
+    """REQ-1919 (amended 2026-11-23, A DEMO RESTART KEEPS ADMIN WORK): a sandbox template
+    organisation (REQ-2006) keeps the full rebuild, so every sandbox starts exactly from its demo's
+    bundle; a demo organisation's boot keeps what an admin made."""
+    from provisa.api.demo_templates import rebuild_template
+    from provisa.core.config_loader import rebuild_from_config
+
+    async with db.acquire() as conn:
+        await rebuild_from_config(parse_config_dict(_everything()), conn)
+    await _admin_makes_its_own(db)
+
+    async with db.acquire() as conn:
+        await rebuild_from_config(parse_config_dict(_everything()), conn)
+    assert "mine" in await _ids(db, "sources")
+    assert {"scratch", "extra"} <= await _ids(db, "registered_tables", "table_name")
+
+    # The bundle's directory profiles nothing and scans nothing: no setup.yaml.
+    async with db.acquire() as conn:
+        await rebuild_template(tmp_path, parse_config_dict(_everything()), conn, None)
+    assert "mine" not in await _ids(db, "sources")
+    assert "lab" not in await _ids(db, "domains")
+    assert "tester" not in await _ids(db, "roles")
+    tables = await _ids(db, "registered_tables", "table_name")
+    assert not {"scratch", "extra"} & tables
+    assert "customers" in tables
+
+
 async def test_a_demo_rebuild_of_an_unchanged_config_changes_nothing(db):
     """A rebuild of what the store already holds from the same configuration is the same model."""
     from provisa.core.config_loader import rebuild_from_config
