@@ -42,7 +42,7 @@ function RequiredValue({
   const { t } = useTranslation();
   const fixed = required.fixed_value !== undefined;
   const common = {
-    required: !fixed,
+    required: !fixed && !required.org_default,
     readOnly: fixed,
     label: required.name,
     value: required.fixed_value ?? value,
@@ -52,7 +52,13 @@ function RequiredValue({
   return (
     <FormField
       size={required.multiline ? "full" : "medium"}
-      hint={fixed ? t("connectorSetup.fixedHint") : undefined}
+      hint={
+        fixed
+          ? t("connectorSetup.fixedHint")
+          : required.org_default === "spark_cluster"
+            ? t("connectorSetup.sparkClusterDefaultHint")
+            : undefined
+      }
     >
       {required.multiline ? (
         <Textarea

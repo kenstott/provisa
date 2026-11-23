@@ -60,6 +60,7 @@ import { OrgsTab } from "../components/admin/OrgsTab";
 import { AiModelsTab } from "../components/admin/AiModelsTab";
 import { PackageRegistriesTab } from "../components/admin/PackageRegistriesTab";
 import { ContainerRegistriesTab } from "../components/admin/ContainerRegistriesTab";
+import { SparkClusterTab } from "../components/admin/SparkClusterTab";
 import { ImportTab } from "../components/admin/ImportTab";
 import { TagsTab } from "../components/admin/TagsTab";
 import { ClassificationKindsTab } from "../components/admin/ClassificationKindsTab";
@@ -112,6 +113,7 @@ const ROUTE_TO_SECTION: Record<string, string> = {
   "/admin/ai-models": "AI Models",
   "/admin/package-registries": "Package Registries", // REQ-1984: what Node installs go through
   "/admin/container-registries": "Container Registries", // REQ-2098: where built images go
+  "/admin/spark-cluster": "Spark Cluster", // REQ-2225: where a Spark script runs by default
   "/admin/import": "Import", // REQ-1483: Hasura v2 / DDN import
   "/admin/tags": "Tags",
   "/admin/classification-kinds": "Classification", // REQ-2147: the profiler's classification kinds
@@ -570,6 +572,7 @@ export function AdminPage() {
         {activeTab === "AI Models" && <AiModelsTab />}
         {activeTab === "Package Registries" && <PackageRegistriesTab />}
         {activeTab === "Container Registries" && <ContainerRegistriesTab />}
+        {activeTab === "Spark Cluster" && <SparkClusterTab />}
         {activeTab === "Import" && <ImportTab />}
         {activeTab === "Tags" && <TagsTab />}
         {activeTab === "Classification" && <ClassificationKindsTab />}

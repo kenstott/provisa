@@ -115,7 +115,8 @@ export function missingConnectorFields(
     (k) => !fields[k],
   );
   for (const r of connector.requires) {
-    if (!fields[requiredField(r.name)]) missing.push(requiredField(r.name));
+    // REQ-2225: left empty, the organisation setting stands in for it.
+    if (!fields[requiredField(r.name)] && !r.org_default) missing.push(requiredField(r.name));
   }
   return missing;
 }
@@ -133,6 +134,8 @@ export function connectorMappingJson(
   for (const r of connector.requires) {
     const given = fields[requiredField(r.name)] ?? "";
     if (r.secret) secrets[r.name] = given === r.name ? null : `\${secret:${given}}`;
+    else if (r.org_default && !given.trim())
+      continue; // REQ-2225: the organisation's default
     else settings[r.name] = r.fixed_value ?? given;
   }
   return JSON.stringify({
