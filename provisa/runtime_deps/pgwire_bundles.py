@@ -311,13 +311,16 @@ def _expected_sha256(spec: BundleSpec) -> str:
                 f"HTTP {resp.status_code}); refusing to install it unverified"
             )
         text = b"".join(resp.iter_bytes()).decode("ascii", errors="replace")
+    return sha256_digest(text, f"checksum asset {spec.checksum_filename} in release {spec.version}")
+
+
+def sha256_digest(text: str, where: str) -> str:
+    """The hex digest a ``.sha256`` file holds (the digest, optionally followed by the filename).
+    Anything else -- an empty body, an HTML error page -- is refused, naming ``where``."""
     fields = text.split()
     digest = fields[0].lower() if fields else ""
     if len(digest) != _SHA256_HEX_LEN or any(c not in "0123456789abcdef" for c in digest):
-        raise BundleUnavailable(
-            f"checksum asset {spec.checksum_filename} in release {spec.version} does not hold a "
-            f"SHA-256 digest: {text[:100]!r}"
-        )
+        raise BundleUnavailable(f"{where} does not hold a SHA-256 digest: {text[:100]!r}")
     return digest
 
 

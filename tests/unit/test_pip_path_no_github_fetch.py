@@ -71,10 +71,18 @@ ALLOWED: dict[tuple[str, str], str] = {
     (
         "provisa/runtime_deps/pgwire_bundles.py",
         "https://github.com/",
-    ): "pgwire connector bundles (kenstott/calcite engine release, tarball + .sha256), fetched when "
-    "a source of a pgwire connector type is first used. Move: the calcite engine release publishes "
-    "each bundle to Maven Central as a per-platform classifier artifact; Provisa fetches it from "
-    "Central (or the configured Maven mirror).",
+    ): "pgwire connector bundles (kenstott/calcite engine release, tarball + .sha256), fetched only "
+    "by `python -m provisa.runtime_deps.stage_pgwire_bundles --github-release`; a running Provisa "
+    "fetches no bundle (REQ-294), and the default staging step reads them from the machine's Maven "
+    "repository (maven_bundles.py). Move: drop --github-release once every bundle is on Maven "
+    "Central.",
+    (
+        "provisa/federation/stage_duckdb_extensions.py",
+        "https://kenstott.github.io/provisa/simple/",
+    ): "the release's package index on GitHub Pages, added as pip's extra index by the staging "
+    "step (python -m provisa.runtime_deps.stage_assets) for provisa-duckdb-ext; a running Provisa "
+    "only LOADs staged extensions. Move: provisa-duckdb-ext on PyPI once access returns; then the "
+    "extra index goes.",
     (
         "provisa/runtime_deps/code_runtimes.py",
         "https://github.com/oven-sh/bun/releases/download/bun-v{version}/{filename}",
@@ -229,10 +237,11 @@ HOSTS: dict[str, str] = {
     "(embedding.hub_endpoint, HF_ENDPOINT). Move (follow-up): the setting already points at an "
     "organization's Hugging Face mirror; the registry move is to publish the pinned model as a "
     "Provisa package on PyPI once PyPI access returns.",
-    "duckdb-extensions.query.farm": "Query.Farm repository for the crypto and airport DuckDB "
-    "extensions, reached only without the embedded extra (provisa/federation/duckdb_extensions.py)."
-    " Move: install provisa[embedded]; provisa-duckdb-ext carries them, and goes to PyPI once "
-    "access returns.",
+    "duckdb-extensions.query.farm": "Query.Farm repository of the crypto and airport DuckDB "
+    "extensions, named in EXTENSION_REPOSITORIES (provisa/federation/duckdb_extensions.py) for "
+    "the provisa-duckdb-ext mirror build alone; a running Provisa only LOADs staged extensions "
+    "and never reaches it. No move.",
+    "kenstott.github.io": "the release's package index on GitHub Pages; see ALLOWED above.",
     "ghcr.io": "published demo bundles (provisa/core/demo_bundles.py PUBLISHED_AT), an OCI "
     "registry; PROVISA_DEMO_REGISTRY or --registry points at a mirror. Move (follow-up): open "
     "question, none of the three registries hosts OCI artifacts; publish the demo bundles as a "
@@ -310,6 +319,7 @@ HOSTS: dict[str, str] = {
     "www2.census.gov": _DATASET,
     # --- Namespaces, schemas and scopes. ---
     "docs.oasis-open.org": _NAMESPACE,
+    "maven.apache.org": _NAMESPACE,
     "openlineage.io": _NAMESPACE,
     "purview.azure.net": _NAMESPACE,
     "schemas.microsoft.com": _NAMESPACE,
@@ -385,19 +395,6 @@ HOSTS: dict[str, str] = {
 #: host -> (file, text that still leads there, its move): hosts a dependency reaches by its own
 #: default, named by no URL in our code.
 IMPLICIT: dict[str, tuple[str, str, str]] = {
-    "extensions.duckdb.org": (
-        "provisa/federation/duckdb_extensions.py",
-        'return [f"INSTALL {extension} FROM community" if from_community else f"INSTALL {extension}"]',
-        "DuckDB's core extension repository, which a bare INSTALL reaches when the embedded extra "
-        "is absent. Move: install provisa[embedded]; its duckdb-extension-* wheels are on PyPI.",
-    ),
-    "community-extensions.duckdb.org": (
-        "provisa/federation/duckdb_extensions.py",
-        'return [f"INSTALL {extension} FROM community" if from_community else f"INSTALL {extension}"]',
-        "DuckDB's community extension repository, which INSTALL ... FROM community reaches when "
-        "the embedded extra is absent. Move: install provisa[embedded]; provisa-duckdb-ext carries "
-        "them, and goes to PyPI once access returns.",
-    ),
     "cdn.jsdelivr.net": (
         "provisa/api/app.py",
         'docs_url="/data/openapi/docs",',

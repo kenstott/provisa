@@ -32,7 +32,12 @@ from pathlib import Path, PurePosixPath
 from defusedxml.ElementTree import parse as parse_xml
 
 from provisa.core.host_lock import FileLock
-from provisa.runtime_deps.pgwire_bundles import BundleSpec, BundleUnavailable, bundle_variant
+from provisa.runtime_deps.pgwire_bundles import (
+    BundleSpec,
+    BundleUnavailable,
+    bundle_variant,
+    sha256_digest,
+)
 
 GROUP_PATH = "io/simpleishard"
 CENTRAL = "https://repo1.maven.org/maven2"
@@ -77,7 +82,7 @@ def _download(url: str, out: Path) -> None:
         digest = httpx.get(f"{url}.sha256", follow_redirects=True, timeout=120.0)
         if digest.status_code != HTTPStatus.OK:
             raise BundleUnavailable(f"{url}.sha256: HTTP {digest.status_code}")
-        expected = digest.text.split()[0].strip()
+        expected = sha256_digest(digest.text, f"{url}.sha256")
         sha = hashlib.sha256()
         with httpx.stream("GET", url, follow_redirects=True, timeout=120.0) as resp:
             if resp.status_code != HTTPStatus.OK:
@@ -89,7 +94,9 @@ def _download(url: str, out: Path) -> None:
     except httpx.HTTPError as exc:
         raise BundleUnavailable(f"could not fetch {url}: {exc}") from exc
     if sha.hexdigest() != expected:
-        raise BundleUnavailable(f"{url} does not match its published sha256")
+        raise BundleUnavailable(
+            f"{url} has SHA-256 {sha.hexdigest()}, not the {expected} published in {url}.sha256"
+        )
 
 
 def _extract(archive: Path, into: Path) -> None:
@@ -155,6 +162,11 @@ def download_maven_bundle(spec: BundleSpec, dest: Path) -> None:
         if not root.is_dir():
             raise BundleUnavailable(f"{archive.name} does not contain {spec.asset_stem}/")
         _link_shared(root, store)
+        if not (root / "bin" / spec.artifact_name).is_file():
+            # Checked before the move: a tree without its launcher never reaches ``dest``.
+            raise BundleUnavailable(
+                f"{archive.name} does not contain launcher {spec.asset_stem}/bin/{spec.artifact_name}"
+            )
         if dest.exists():
             shutil.rmtree(dest)  # left by a fetch that did not finish; the resolver holds its lock
         os.rename(root, dest)

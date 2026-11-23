@@ -343,12 +343,74 @@ def test_a_download_is_refused_when_it_does_not_match_its_sha256(tmp_path, monke
         def iter_bytes(self):
             yield b"not what was published"
 
+    published = hashlib.sha256(b"what was published").hexdigest()
+    arrived = hashlib.sha256(b"not what was published").hexdigest()
     monkeypatch.setattr(
-        httpx, "get", lambda *_a, **_k: types.SimpleNamespace(status_code=200, text="abc  f")
+        httpx,
+        "get",
+        lambda *_a, **_k: types.SimpleNamespace(status_code=200, text=f"{published}  x.tar.gz"),
     )
     monkeypatch.setattr(httpx, "stream", lambda *_a, **_k: _Stream())
-    with pytest.raises(BundleUnavailable, match="sha256"):
+    with pytest.raises(BundleUnavailable, match="has SHA-256") as err:
         maven_bundles._download("https://m/x.tar.gz", tmp_path / "x")
+    assert published in str(err.value) and arrived in str(err.value)
+
+
+def test_a_malformed_sha256_is_refused_before_the_download(tmp_path, monkeypatch):
+    import httpx
+
+    def stream(*_a, **_k):
+        raise AssertionError("nothing is downloaded that cannot be verified")
+
+    monkeypatch.setattr(
+        httpx,
+        "get",
+        lambda *_a, **_k: types.SimpleNamespace(status_code=200, text="<html>rate limited</html>"),
+    )
+    monkeypatch.setattr(httpx, "stream", stream)
+    with pytest.raises(BundleUnavailable, match="does not hold a SHA-256 digest"):
+        maven_bundles._download("https://m/x.tar.gz", tmp_path / "x")
+
+
+def test_a_missing_sha256_is_refused_before_the_download(tmp_path, monkeypatch):
+    import httpx
+
+    def stream(*_a, **_k):
+        raise AssertionError("nothing is downloaded that cannot be verified")
+
+    monkeypatch.setattr(
+        httpx, "get", lambda *_a, **_k: types.SimpleNamespace(status_code=404, text="Not Found")
+    )
+    monkeypatch.setattr(httpx, "stream", stream)
+    with pytest.raises(BundleUnavailable, match=r"x\.tar\.gz\.sha256: HTTP 404"):
+        maven_bundles._download("https://m/x.tar.gz", tmp_path / "x")
+
+
+def test_a_bundle_without_its_launcher_is_refused_and_not_moved_into_place(tmp_path, monkeypatch):
+    version = "0.1.0"
+    repo = _published(tmp_path, version)
+    variant = pgwire_bundles.bundle_variant()
+    stem = f"pgwire-file-{version}-{variant}"
+    tarball = (
+        repo
+        / "io"
+        / "simpleishard"
+        / f"pgwire-file-{variant}"
+        / version
+        / f"pgwire-file-{variant}-{version}.tar.gz"
+    )
+    with tarfile.open(tarball, "r:gz") as tar:
+        kept = [(m, tar.extractfile(m).read() if m.isfile() else None) for m in tar.getmembers()]
+    with tarfile.open(tarball, "w:gz") as tar:
+        for member, body in kept:
+            if member.name != f"{stem}/bin/pgwire-file":
+                tar.addfile(member, io.BytesIO(body) if body is not None else None)
+    _serve(monkeypatch, repo)
+    out = tmp_path / "out" / "pgwire-file"
+    with pytest.raises(BundleUnavailable, match="does not contain launcher"):
+        maven_bundles.download_maven_bundle(BundleSpec("file", f"engine-v{version}"), out)
+    assert not out.exists()
+    assert list(out.parent.glob(".pgwire-file.*")) == []
 
 
 def test_the_repository_is_the_machines(tmp_path, monkeypatch):
