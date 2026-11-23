@@ -42,7 +42,10 @@ pytestmark = [pytest.mark.integration, pytest.mark.isolated, pytest.mark.local_p
 _ROLE = "org_admin"
 _HEADERS = {"X-Provisa-Role": _ROLE}
 _SOURCE = "test"
-_DOMAIN = "complaints-ops"
+# A domain of the demo's own configuration: a domain created in the admin is not one the boot
+# keeps (the instance is started with the configuration replacing the model's), so a table
+# registered in one would not be there after the restart to read.
+_DOMAIN = "pet-store"
 
 
 @pytest.fixture(scope="module")
@@ -139,11 +142,6 @@ def test_a_combined_glob_table_on_the_demo_reads_every_file_before_and_after_res
     (data / "complaints_2026_09.csv").write_text("id,amount\n1,10\n2,20\n")
     (data / "complaints_2026_10.csv").write_text("id,amount\n3,30\n")
     (data / "other.csv").write_text("id,amount\n99,990\n")
-    _gql(
-        instance,
-        f'mutation {{ createDomain(input: {{id: "{_DOMAIN}", description: "Complaints"}}) '
-        "{ success message } }",
-    )
     created = _gql(
         instance,
         "mutation($input: SourceInput!) { createSource(input: $input) { success message } }",
@@ -214,7 +212,7 @@ def test_a_combined_glob_table_on_the_demo_reads_every_file_before_and_after_res
     assert all(o["result"]["success"] for o in outcomes), json.dumps(outcomes)
 
     # naming.tableSqlRef: the domain's SQL name, then the alias or the table's name.
-    relation = f'"complaints_ops"."{alias or "complaints"}"'
+    relation = f'"pet_store"."{alias or "complaints"}"'
     _assert_union(instance, relation)
 
     instance.restart_backend()
