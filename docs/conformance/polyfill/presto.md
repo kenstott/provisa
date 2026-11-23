@@ -556,7 +556,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>corr</strong><br>The correlation coefficient.</td><td><pre><code>corr($y, $x)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
-<tr><td><strong>sum</strong><br>The sum of a group&#x27;s bigints, exact; of its reals or doubles, the overflow raised.</td><td><pre><code>function provisa.transpiler.polyfill.float_aggregates._trino_sum: sum of a real or a double on Trino, as the statement says its argument&#x27;s type: the overflow</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>sum</strong><br>The sum of a group&#x27;s bigints, exact; of its reals or doubles, the overflow raised.</td><td><pre><code>function provisa.transpiler.polyfill.float_aggregates._trino_sum: sum of a real or a double on Trino and DuckDB, as the statement says its argument&#x27;s type:</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>date_mi</strong><br>The days from one date to another.</td><td><pre><code>date_mi($a, $b)
 =&gt;
 CAST(date_diff(&#x27;day&#x27;, CAST($b AS DATE), CAST($a AS DATE)) AS INTEGER)</code></pre></td><td></td><td></td><td></td></tr>
@@ -700,25 +700,25 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: spg_poly_quad_compress($v). <code>0A000</code> spg_poly_quad_compress() has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>avg</strong><br>The mean of a group&#x27;s values.</td><td><pre><code>avg($v)
 =&gt;
-function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino: Trino&#x27;s own, the</code></pre></td><td><ul><li>Refused for a call of (interval), (numeric); a call of (bigint), (integer), (smallint) with an argument the statement says is of that type, not a NULL. <code>0A000</code> avg() has no form on presto</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino and DuckDB: its own,</code></pre></td><td><ul><li>Refused for a call of (interval), (numeric); a call of (bigint), (integer), (smallint) with an argument the statement says is of that type, not a NULL. <code>0A000</code> avg() has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>variance</strong><br>The sample variance of a group&#x27;s values.</td><td><pre><code>variance($v)
 =&gt;
-function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino: Trino&#x27;s own, the</code></pre></td><td><ul><li>Refused for a call of (numeric), (numeric); a call of (bigint), (integer), (smallint), (bigint), (integer), (smallint) with an argument the statement says is of that type, not a NULL. <code>0A000</code> variance() has no form on presto</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino and DuckDB: its own,</code></pre></td><td><ul><li>Refused for a call of (numeric), (numeric); a call of (bigint), (integer), (smallint), (bigint), (integer), (smallint) with an argument the statement says is of that type, not a NULL. <code>0A000</code> variance() has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>var_samp</strong><br>The sample variance of a group&#x27;s values.</td><td><pre><code>var_samp($v)
 =&gt;
-function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino: Trino&#x27;s own, the</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino and DuckDB: its own,</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>var_pop</strong><br>The population variance of a group&#x27;s values.</td><td><pre><code>var_pop($v)
 =&gt;
-function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino: Trino&#x27;s own, the</code></pre></td><td><ul><li>Refused for a call of (numeric); a call of (bigint), (integer), (smallint) with an argument the statement says is of that type, not a NULL. <code>0A000</code> var_pop() has no form on presto</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino and DuckDB: its own,</code></pre></td><td><ul><li>Refused for a call of (numeric); a call of (bigint), (integer), (smallint) with an argument the statement says is of that type, not a NULL. <code>0A000</code> var_pop() has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>stddev</strong><br>The sample standard deviation of a group&#x27;s values.</td><td><pre><code>stddev($v)
 =&gt;
-function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino: Trino&#x27;s own, the</code></pre></td><td><ul><li>Refused for a call of (numeric); a call of (bigint), (integer), (smallint) with an argument the statement says is of that type, not a NULL. <code>0A000</code> stddev() has no form on presto</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino and DuckDB: its own,</code></pre></td><td><ul><li>Refused for a call of (numeric); a call of (bigint), (integer), (smallint) with an argument the statement says is of that type, not a NULL. <code>0A000</code> stddev() has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>stddev_samp</strong><br>The sample standard deviation of a group&#x27;s values.</td><td><pre><code>stddev_samp($v)
 =&gt;
-function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino: Trino&#x27;s own, the</code></pre></td><td><ul><li>Refused for a call of (numeric); a call of (bigint), (integer), (smallint) with an argument the statement says is of that type, not a NULL. <code>0A000</code> stddev_samp() has no form on presto</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino and DuckDB: its own,</code></pre></td><td><ul><li>Refused for a call of (numeric); a call of (bigint), (integer), (smallint) with an argument the statement says is of that type, not a NULL. <code>0A000</code> stddev_samp() has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>stddev_pop</strong><br>The population standard deviation of a group&#x27;s values.</td><td><pre><code>stddev_pop($v)
 =&gt;
-function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino: Trino&#x27;s own, the</code></pre></td><td><ul><li>Refused for a call of (numeric); a call of (bigint), (integer), (smallint) with an argument the statement says is of that type, not a NULL. <code>0A000</code> stddev_pop() has no form on presto</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino and DuckDB: its own,</code></pre></td><td><ul><li>Refused for a call of (numeric); a call of (bigint), (integer), (smallint) with an argument the statement says is of that type, not a NULL. <code>0A000</code> stddev_pop() has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>xid8eq</strong><br>Two xid8 values equal.</td><td><pre><code>xid8eq($a, $b)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: xid8eq($a, $b). <code>0A000</code> xid8eq() has no form on presto</li></ul></td><td></td><td></td></tr>
