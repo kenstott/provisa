@@ -112,6 +112,18 @@ export interface SyncEntry {
   last_run: PublishOutcome | null;
   /** The entry's last recorded Import run, or null when none was run. */
   last_import: ImportRun | null;
+  /** REQ-2259: each data product's latest outcome on this entry, from the recorded publishes. */
+  products: ProductSyncStatus[];
+}
+
+/** REQ-2259: a data product's latest outcome on one entry, and when that publish ran. A failed
+ *  one carries the catalog's refusal, or the error that stopped the whole entry. */
+export interface ProductSyncStatus {
+  entry: string;
+  product_id: string;
+  outcome: "published" | "failed";
+  error: string | null;
+  published_at: string;
 }
 
 export interface SyncingState {
@@ -149,7 +161,7 @@ export const SYNC_SECRET_FIELDS: SyncSecretField[] = [
  *  credential omitted keeps the one stored for that entry; sent empty, it is cleared. */
 export type SyncEntryUpdate = Omit<
   SyncEntry,
-  `${SyncSecretField}_set` | "last_run" | "last_import"
+  `${SyncSecretField}_set` | "last_run" | "last_import" | "products"
 > &
   Partial<Record<SyncSecretField, string>>;
 
@@ -158,6 +170,7 @@ export function entryUpdate(entry: SyncEntry): SyncEntryUpdate {
   const kept: Record<string, unknown> = { ...entry };
   delete kept.last_run;
   delete kept.last_import;
+  delete kept.products;
   for (const field of SYNC_SECRET_FIELDS) delete kept[`${field}_set`];
   return kept as SyncEntryUpdate;
 }
@@ -196,6 +209,7 @@ export const blankEntry = (type: SyncEntry["type"]): SyncEntry => ({
   aws_secret_access_key_set: false,
   last_run: null,
   last_import: null,
+  products: [],
 });
 
 /** The name a duplicate is offered under: editable, and refused on save if it exists. */
@@ -212,6 +226,7 @@ export function duplicateEntry(entry: SyncEntry): SyncEntry {
     domains: [...entry.domains],
     last_run: null,
     last_import: null,
+    products: [],
   };
   for (const field of SYNC_SECRET_FIELDS) copy[`${field}_set`] = false;
   return copy;
@@ -251,6 +266,16 @@ export class SyncingRefused extends Error {
 
 export async function fetchSyncing(): Promise<SyncingState> {
   return ok(await fetch(`${API_BASE}/admin/syncing`), "Syncing fetch");
+}
+
+/** REQ-2259: every data product's sync status, by product id: its latest outcome on each data
+ *  catalog that exports. Asks data_product_read, not the Syncing page's right. */
+export async function fetchProductSyncStatus(): Promise<Record<string, ProductSyncStatus[]>> {
+  const body = await ok<{ products: Record<string, ProductSyncStatus[]> }>(
+    await fetch(`${API_BASE}/admin/syncing/product-status`),
+    "Sync status fetch",
+  );
+  return body.products;
 }
 
 /** The whole list is sent: an entry left out of it is removed. The schedule is kept when sent. */

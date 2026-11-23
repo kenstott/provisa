@@ -44,7 +44,12 @@ import { tagLossInput, tagLossOf } from "../components/relationships/tagLoss";
 import { fetchActions } from "../api/actions";
 import type { TrackedFunction } from "../api/actions";
 import type { MutationResult, Relationship } from "../types/admin";
-import { EMPTY_FORM, tableRef, type RelForm } from "../components/relationships/relationship-types";
+import {
+  EMPTY_FORM,
+  SHAPE_CODE,
+  tableRef,
+  type RelForm,
+} from "../components/relationships/relationship-types";
 import { AddRelationshipForm } from "../components/relationships/AddRelationshipForm";
 import { RelationshipRow } from "../components/relationships/RelationshipRow";
 import { RelationshipDetail } from "../components/relationships/RelationshipDetail";
@@ -66,6 +71,8 @@ import { matchesQuery } from "../lib/searchItems";
 import { useListSelection } from "../components/list/listSelection";
 import { ListBulkBar } from "../components/list/ListBulkBar";
 import { JoinThroughAction } from "../components/relationships/JoinThroughAction";
+import { ColumnFilterMenu } from "./sql/ColumnFilterMenu";
+import { matchesFilter as matchesColumnFilter, type FilterSpec } from "./sql/columnFilter";
 export function RelationshipsPage() {
   // REQ-1918: a delete is refused while anything depends on the object; this lists them.
   const refusal = useDependentsDialog();
@@ -83,6 +90,8 @@ export function RelationshipsPage() {
   const [saving, setSaving] = useState<string | null>(null);
   // What the open form has to say of a save that did not go through.
   const [saveProblem, setSaveProblem] = useState("");
+  // REQ-1586: the Rel type column's filter (fk / jct / dim), as the list's column filters are.
+  const [relTypeFilter, setRelTypeFilter] = useState<FilterSpec | null>(null);
   const [discoverError, setDiscoverError] = useState("");
   const [discoverMsg, setDiscoverMsg] = useState("");
   const [discoverAsk, setDiscoverAsk] = useState(false);
@@ -540,9 +549,20 @@ export function RelationshipsPage() {
   };
 
   // REQ-1940: sort and group are the shared list mechanism.
-  const filteredRels = rels.filter(
+  const listedRels = rels.filter(
     (r) => tableSourceById[r.sourceTableId] !== "provisa-admin" && matchesFilter(r),
   );
+  // REQ-1586 (amended 2026-11-22): the Rel type column carries the list's column filter.
+  const filteredRels =
+    relTypeFilter === null
+      ? listedRels
+      : listedRels.filter((r) => matchesColumnFilter("text", relTypeFilter, SHAPE_CODE[r.shape]));
+  const relTypeValues = (["fk", "jct", "dim"] as const)
+    .map((value) => ({
+      value,
+      count: listedRels.filter((r) => SHAPE_CODE[r.shape] === value).length,
+    }))
+    .filter((v) => v.count > 0);
   const relDomain = (r: Relationship) =>
     r.sourceDomainId ? domainToSqlName(r.sourceDomainId) : t("relationshipsPage.none");
   const relColumns: ListColumn<Relationship>[] = [
@@ -557,6 +577,12 @@ export function RelationshipsPage() {
       key: "target",
       label: t("relationshipsPage.target"),
       sortValue: (r) => r.targetTableName ?? "",
+    },
+    {
+      key: "rel_type",
+      label: t("relShape.label"),
+      sortValue: (r) => SHAPE_CODE[r.shape],
+      groupValue: (r) => SHAPE_CODE[r.shape],
     },
     {
       key: "cardinality",
@@ -871,6 +897,21 @@ export function RelationshipsPage() {
                     ...(domainsEnabled ? [{ col: "domain" }] : []),
                     { col: "source" },
                     { col: "target" },
+                    {
+                      col: "rel_type",
+                      width: "1%",
+                      filter: (
+                        <ColumnFilterMenu
+                          col={t("relShape.label")}
+                          kind="text"
+                          current={relTypeFilter}
+                          values={relTypeValues}
+                          valuesFromPage={false}
+                          rowsHeld={listedRels.length}
+                          onApply={setRelTypeFilter}
+                        />
+                      ),
+                    },
                     { label: t("relationshipsPage.gqlCqlAlias") },
                     { col: "cardinality" },
                     { col: "materialize" },
@@ -883,14 +924,14 @@ export function RelationshipsPage() {
 
                     if (filtered.length > 75 && !relSearch.trim() && groupBy.length === 0) {
                       return (
-                        <ListEmpty colSpan={domainsEnabled ? 7 : 6}>
+                        <ListEmpty colSpan={domainsEnabled ? 8 : 7}>
                           {t("relationshipsPage.tooManyRelationships", { count: filtered.length })}
                         </ListEmpty>
                       );
                     }
                     if (filtered.length === 0) {
                       return (
-                        <ListEmpty colSpan={domainsEnabled ? 7 : 6} testId="relationships-empty">
+                        <ListEmpty colSpan={domainsEnabled ? 8 : 7} testId="relationships-empty">
                           {t("relationshipsPage.empty")}
                         </ListEmpty>
                       );
@@ -900,7 +941,7 @@ export function RelationshipsPage() {
                       <ListItems
                         state={sortGroup}
                         items={pageItems(sortGroup, relPage, PAGE_SIZE)}
-                        colSpan={domainsEnabled ? 7 : 6}
+                        colSpan={domainsEnabled ? 8 : 7}
                         rowKey={(r) => r.id}
                         render={(r) => {
                           const id = String(r.id);

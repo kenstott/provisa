@@ -82730,7 +82730,7 @@
     failure is a fix on main. A release candidate is cut from a green nightly and runs the full suites once;
     each fix reruns only its failing tests; failures are triaged into blockers, fixed on the branch, and
     known issues, which ship listed in the release notes. A full set is never rerun in answer to a fix.
-    Earlier text here requiring repeated full sets per release, or full suites per branch, is superseded.'
+    Earlier text here requiring repeated full sets per release, or full suites per branch, is superseded. (Amended 2026-11-22 by the maintainer. A release converges in under one day from cut to publish. The packaging dry run runs every night on main beside integration and e2e, so a packaging defect becomes a fix job on main, not a release blocker. A release is cut only from a nightly where unit, lint, the requirements check, integration, e2e and the packaging dry run are all green. At the cut the release full set and the packaging dry run run in parallel. A red unit, lint or requirements check on main stops the line: the next landing batch takes only the fixes for it.) (Amended 2026-11-22 again by the maintainer: the stop-the-line clause above is superseded by a ratchet. A red unit, lint or requirements check on main does not freeze landing. A branch lands only if it adds no failing test or check compared with main''s current failure set, so main''s failures can only fall. The red run is triaged at once, its failures grouped by root cause, and each group becomes one fix job at the front of the queue.)'
   notes: 'Maintainer 2026-10-12, through the lead: release notes generated between two tags and committed with the release, the release body set from them, and a generation failure blocks the tag; he chose a hand-run cut workflow that commits the notes before it tags (option A of ci-fix''s two), and that releases are made only through it. "A hand-written release page is never overwritten" is the lead''s instruction. The rest -- the workflow starting every workflow a v* tag starts, since a tag it pushes starts none -- is ci-fix''s implementation. Group, category, priority and type are ci-fix''s choices. Roadmap audit 2026-10-13: delivered; verified against the code'
   code:
   - .github/workflows/release-cut.yml
@@ -90074,7 +90074,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     class of an unselected domain (the meta domain''s registered tables included). It joins the dropped
     class along one path from the result''s nodes, so the query never combines branches with no condition
     relating them; when no path exists within the selected domains, the drop is refused by name and nothing
-    is added.'
+    is added. (Amended 2026-11-22 by the maintainer. SPARQL writes work as Cypher writes do and share their machinery: INSERT DATA, DELETE DATA, DELETE WHERE and Modify (DELETE/INSERT ... WHERE) are translated onto the same governed table writes the Cypher write translator produces, under the same rights, row rules, masks and audit. Graph management (DROP, CLEAR, LOAD, CREATE, COPY, MOVE, ADD) acts on named graphs, which Provisa does not have, and is refused by name; its W3C cases are listed as by design.)'
   use_case: >-
     A knowledge-graph team queries the governed model with the language and RDF clients it already
     uses, and gets the same rows, rules and routing as a SQL or Cypher query, with nothing copied
@@ -98209,3 +98209,57 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     federation engine through a Provisa-launched pure-Python pgwire sidecar on the pgwire-calcite backend seam,
     launched like the other pgwire replicas. New pushdown capabilities are backlogged as their own requirements. (Amended 2026-11-21 by the maintainer. A generated table may declare a loader with a batch size, under the code-source @loader contract (REQ-2100), and its handler then answers a batch of join keys: a GraphQL remote that fetches by a key list (where _in, or nodes by ids) and an OpenAPI operation that looks up a list of ids give their row type table its loader. The first version supports @discover in Python code sources only; other code-source languages follow as their own requirements, Rust first for speed.) (Amended 2026-11-22. In v0, a generated query or command whose parameter is a TableRef is refused by name at discovery; TableRef parameters stay on hand-written commands.) (Amended 2026-11-22 by the maintainer. The code-source contract carries relationships, so a discover result, built-in or user-written, declares the relationships between its generated tables. It carries warnings, so a read cut at its page limit returns its rows with the same answer-was-cut warning the built-in sources give. Credentials of a code source are stored as secret references and resolved through the secrets service at call time, never written to the code directory)'
 
+- id: REQ-2268
+  status: proposed
+  target: 2027-Q1
+  group: 5. Query Languages, Compilation & Operations
+  category: Cypher Query Frontend (Phase AU)
+  feature: glossary-tags-ontology-queryable-metadata
+  priority: SHOULD
+  type: behavioral
+  description: 'Maintainer 2026-11-22. Tags are served in the Cypher graph like data. Each tag is a Tag node
+    carrying its name, description, owner and the policy it triggers, a shared dimension of the metadata.
+    Each tagged table or column node has a TAGGED edge to the tag, a junction of the metadata, whose
+    properties are who applied it, when, its origin (a person or the model), whether it is confirmed and the
+    glossary term it came from. Only the tables, columns and tags the caller''s role can read appear, with
+    the same masking and visibility as any read. These nodes and edges are generated from the tag
+    assignments: they are not registered relationships, never appear on the Relationships page, and cannot be
+    edited there or in Cypher; they change only when the tags change.'
+  scenario: 'Given a column tagged PII by a steward and confirmed, and a role that reads the column
+
+    When the role runs MATCH (c)-[t:TAGGED]->(g:Tag {name: ''PII''}) RETURN c, t, g
+
+    Then it gets the column, the edge with who applied the tag, when, its origin and confirmed, and the PII tag
+
+    When the role lists the Relationships page
+
+    Then no TAGGED relationship appears, and none can be created or edited there or by a Cypher write'
+
+- id: REQ-2269
+  status: proposed
+  target: 2026-Q4
+  group: 11. Platform, Infrastructure & Delivery
+  category: Installer & Packaging
+  feature: installation-linux
+  priority: SHOULD
+  type: behavioral
+  description: 'Maintainer 2026-11-22 (idea raised 2026-11-20). One script installs Provisa with a Trino federation
+    engine on an existing Linux host, a virtual machine or bare metal, run on the host or from a workstation
+    over SSH. It installs Provisa from the release''s own assets on GitHub, never the provisa package from a
+    public registry; starts Trino in Docker with Provisa''s plugins; writes a configuration whose federation
+    engine is Trino; runs Provisa as a system service; and ends with a health check that names what failed.
+    Running it again upgrades the install in place. The nightly packaging lane runs the same script on a clean
+    machine and then the smoke checks against the result, so the path a user installs by is tested every night.'
+  scenario: 'Given a clean Linux machine with Docker and the release''s assets
+
+    When the install script runs for that release
+
+    Then Provisa runs as a service with Trino as its federation engine and the health check passes
+
+    When the smoke checks run against it
+
+    Then one known query answers through each front door, each default source reads, and a restricted role gets less
+
+    When the script runs again for a newer release
+
+    Then the install is upgraded in place and the health check passes'

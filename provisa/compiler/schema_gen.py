@@ -499,6 +499,7 @@ def _build_subscription_fields(  # REQ-219, REQ-258, REQ-260
     tables: list[_TableInfo],
     gql_types: dict[int, GraphQLObjectType],
     args_of: Callable[[_TableInfo], dict[str, GraphQLArgument]],
+    where_types: dict[int, GraphQLInputObjectType | None],
 ) -> dict[str, GraphQLField]:
     """Build Subscription root fields.
 
@@ -522,6 +523,14 @@ def _build_subscription_fields(  # REQ-219, REQ-258, REQ-260
         # REQ-2163: a table SQL alone serves has no GraphQL field (security.rights).
         if (t.domain_id, t.table_name) in SQL_ONLY_TABLES:
             continue
+        where_type = where_types.get(t.table_id)
+        if t.hasura and where_type is not None:
+            # REQ-194: a Hasura-preset table streams its rows past a cursor, as Hasura serves
+            # every table: each batch is a read of the table, so it needs no change feed. A
+            # table with no comparable column has no where type and nothing a cursor can pass.
+            fields[hasura_schema.root_field(t, suffix="stream")] = hasura_schema.stream_field(
+                t, gql_types[t.table_id], where_type, _column_input_fields(t, pk_only=False)
+            )
         raw = raw_by_id.get(t.table_id, {})
         source_type = (si.source_types or {}).get(t.source_id, "")
         if source_type not in _CDC_SOURCES and not raw.get("watermark_column"):
@@ -1043,9 +1052,17 @@ def _build_connection_query_field(
 
 def _pk_input_fields(t: _TableInfo) -> dict[str, GraphQLScalarType | GraphQLEnumType]:
     """Table ``t``'s visible primary-key columns, by field name, with their input types."""
+    return _column_input_fields(t, pk_only=True)
+
+
+def _column_input_fields(
+    t: _TableInfo, *, pk_only: bool
+) -> dict[str, GraphQLScalarType | GraphQLEnumType]:
+    """Table ``t``'s visible columns (only its primary key's when ``pk_only``) holding a scalar or
+    an enum, by field name, with their input types."""
     out: dict[str, GraphQLScalarType | GraphQLEnumType] = {}
     for col in t.visible_columns:
-        if not col.get("is_primary_key"):
+        if pk_only and not col.get("is_primary_key"):
             continue
         meta = t.column_metadata.get(col["column_name"].lower())
         if meta is None:
@@ -1549,6 +1566,7 @@ def generate_schema(
         tables,
         gql_types,
         args_of,
+        where_types,
     )
     subscription_type: GraphQLObjectType | None = (
         cast(GraphQLObjectType, GraphQLObjectType("Subscription", lambda: subscription_fields))

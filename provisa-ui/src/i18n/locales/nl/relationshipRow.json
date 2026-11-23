@@ -34,8 +34,6 @@
     "sqlName": "SQL-naam",
     "cardinalityWarning": "Waarschuwing: als deze join meer dan één rij per bovenliggende rij retourneert, wordt alleen de eerste waarde gebruikt.",
     "toggleDetails": "Relatiedetails in-/uitklappen",
-    "junctionBadge": "eig.",
-    "junctionBadgeTitle": "Relatie met eigenschappen uit {{table}}",
     "deleteTitle": "Relatie \"{{id}}\" verwijderen?",
     "deleteConsequence": "De relatie wordt uit het model verwijderd. Query's kunnen er niet meer via joinen.",
     "parametersFed": "Gevoede parameters",

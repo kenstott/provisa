@@ -1,0 +1,11 @@
+{
+  "relShape": {
+    "label": "Rel.type",
+    "directTip": "Directe foreign key",
+    "junctionTip": "Via koppeltabel {{table}}",
+    "dimensionTip": "Via gedeelde dimensie {{table}}",
+    "dimensionTipUnnamed": "Via een gedeelde dimensie",
+    "prop": "eig.",
+    "propTip": "Eigenschappen: {{properties}}"
+  }
+}

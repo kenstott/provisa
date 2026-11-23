@@ -40,6 +40,8 @@ const FORWARD = {
   parameters: [],
   viaTableId: null,
   viaTableName: null,
+  shape: "direct",
+  properties: [],
 };
 
 const RELS = { relationships: [FORWARD], loading: false, refetch: vi.fn() };

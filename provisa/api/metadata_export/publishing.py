@@ -31,7 +31,7 @@ config and the credential resolve from that org's settings, and the org id is bo
 publish — so a reconcile for one org cannot read another's target, let alone publish to it.
 """
 
-# Requirements: REQ-1072, REQ-1073, REQ-2247, REQ-2122
+# Requirements: REQ-1072, REQ-1073, REQ-2247, REQ-2122, REQ-2259
 
 from __future__ import annotations
 
@@ -55,17 +55,24 @@ from provisa.control_plane.entitlements import (
     UnknownTierError,
     require_feature,
 )
+from provisa.api.metadata_export.model import AssetKind
 from provisa.core.models import CatalogsConfig, MetadataExportConfig, MetadataExportTarget
+from provisa.core.repositories import catalog_publish
+from provisa.core.repositories.catalog_publish import ProductOutcome
 from provisa.dq.contract import model_contexts
 from provisa.events import queue
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Iterable
 
     from provisa.api.metadata_export.model import OfferExport, ServingEndpoints, TableAsset
     from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
-    from provisa.api.metadata_export.model import EnvironmentStage, MetadataSnapshot
+    from provisa.api.metadata_export.model import (
+        DataProductAsset,
+        EnvironmentStage,
+        MetadataSnapshot,
+    )
 
     from provisa.core.models import ProvisaConfig
 
@@ -481,6 +488,8 @@ async def publish_snapshot(org_id: str, *, only: str | None = None) -> dict[str,
                         )
                     ],
                 )
+                # REQ-2259: nothing was sent, so no product has an outcome; the entry's failure is kept.
+                await _record_publish(model_db, target.id, results[target.id], ())
                 continue
             exporter = metadata_export(target)
             published = await for_entry(state, snapshot, target.domains, target.role)
@@ -536,10 +545,62 @@ async def publish_snapshot(org_id: str, *, only: str | None = None) -> dict[str,
                         ((v.kind, v.object, v.value) for v in provisa_values(sent).values()),
                         decided_by=catalog_exchange.PUBLISH,
                     )
+            await _record_publish(model_db, target.id, result, sent.data_products)
             results[target.id] = result
         return results
     finally:
         reset_current_org(token)
+
+
+def _refused(error: AssetError, product: "DataProductAsset") -> bool:
+    """Whether ``error`` is the catalog's refusal of ``product``: its own ref, or a target-side
+    stub named after it (Snowflake Horizon reports a product by its name)."""
+    if isinstance(error.asset, AssetRefStub):
+        return error.asset.name == product.name
+    return error.asset.kind == AssetKind.DATA_PRODUCT and error.asset.parts == (product.id,)
+
+
+def product_outcomes(
+    entry_id: str, result: PublishResult, products: "Iterable[DataProductAsset]"
+) -> tuple[str | None, list[ProductOutcome]]:  # REQ-2259
+    """The error that stopped the whole entry ``entry_id`` (reported against the entry itself),
+    and each sent product's outcome: failed with the entry's error, or with the catalog's refusal
+    of it, else published."""
+    entry_errors = [
+        e.message
+        for e in result.errors
+        if isinstance(e.asset, AssetRefStub) and e.asset.name == entry_id
+    ]
+    entry_error = "; ".join(entry_errors) if entry_errors else None
+    outcomes: list[ProductOutcome] = []
+    for product in products:
+        refusals = [e.message for e in result.errors if _refused(e, product)]
+        error = entry_error if entry_error is not None else ("; ".join(refusals) or None)
+        outcomes.append(
+            ProductOutcome(
+                product_id=product.id,
+                outcome=catalog_publish.PUBLISHED
+                if error is None
+                else catalog_publish.PRODUCT_FAILED,
+                error=error,
+            )
+        )
+    return entry_error, outcomes
+
+
+async def _record_publish(
+    model_db: Any, entry_id: str, result: PublishResult, products: "Iterable[DataProductAsset]"
+) -> None:
+    """REQ-2259: keep this publish of ``entry_id`` and each sent product's outcome in it."""
+    entry_error, outcomes = product_outcomes(entry_id, result, products)
+    async with model_db.acquire() as conn:
+        await catalog_publish.record(
+            conn,
+            entry_id,
+            outcome=catalog_publish.OK if result.ok else catalog_publish.FAILED,
+            products=outcomes,
+            error=entry_error,
+        )
 
 
 async def for_entry(

@@ -258,3 +258,38 @@ async def test_the_dimension_a_pair_would_join_is_named_before_it_is_accepted():
         assert await dimension.named(
             conn, (3, "neighborhood"), (1, "neighborhood"), "complaint-neighborhood"
         ) == ("neighborhood", True)
+
+
+async def test_a_side_joining_a_registered_dimension_table_reuses_it():
+    """REQ-1586 (amended 2026-11-22): a registered table marked a dimension (a reference table
+    with its own details) is reused as a derived dimension is, whose key holds the values."""
+    db = await _store()
+    async with db.acquire() as conn:
+        await conn.execute_core(
+            insert(so.registered_tables).values(
+                id=20,
+                source_id="drop",
+                domain_id="city-files",
+                schema_name="main",
+                table_name="neighborhoods",
+                modeling_role="dimension",
+            )
+        )
+        await conn.execute_core(
+            insert(so.relationships).values(
+                id="to-neighborhoods",
+                source_table_id=1,
+                source_column="neighborhood",
+                target_table_id=20,
+                target_column="name",
+                cardinality="many-to-one",
+            )
+        )
+        planned = await dimension.plan(
+            conn, (3, "neighborhood"), (1, "neighborhood"), suggested_name="hood", name=None
+        )
+    assert (planned.table_id, planned.name, planned.column) == (20, "neighborhoods", "name")
+    assert planned.view_sql is None
+    assert [(s.table_name, s.column) for s in planned.joining] == [
+        ("complaints_2026_08", "neighborhood")
+    ]

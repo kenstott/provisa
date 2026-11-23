@@ -804,6 +804,9 @@ export interface DatasetMetric {
   termCalculationMethod: string | null;
 }
 
+/** REQ-1586: direct (a foreign key), through a junction table, or through a shared dimension. */
+export type RelationshipShape = "direct" | "junction" | "shared_dimension";
+
 export interface Relationship {
   id: number;
   sourceTableId: number;
@@ -841,6 +844,10 @@ export interface Relationship {
   viaTypeColumn: string | null;
   viaTypeValue: string | null;
   viaLabelSource: string | null;
+  /** REQ-1586 (amended 2026-11-22): the model type, read from the server, never derived here. */
+  shape: RelationshipShape;
+  /** REQ-1586: the edge's properties, as Cypher serves them (a junction's other columns). */
+  properties: string[];
   // REQ-2099: the target's parameters this edge feeds, each from a source column.
   parameters: RelationshipParameter[];
   /** REQ-2249: the code resolver set this edge is part of; changed and retired only through it. */

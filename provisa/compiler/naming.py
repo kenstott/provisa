@@ -1607,3 +1607,15 @@ def hasura_pk_constraint(table_name: str) -> str:  # REQ-194
     """The on_conflict constraint value naming a table's primary key: PostgreSQL's default name
     for it, ``<table>_pkey``, as Hasura lists the database's constraint."""
     return f"{table_name}_pkey"
+
+
+# ── REQ-194 (2026-11-22, x_stream SERVED): a Hasura-preset table's streaming subscription ─────
+
+
+def hasura_cursor_ordering_type(convention: str) -> str:  # REQ-194
+    """The stream cursor's ordering enum: ``cursor_ordering`` / ``CursorOrdering``."""
+    return "cursor_ordering" if _checked(convention) == HASURA_DEFAULT else "CursorOrdering"
+
+
+#: Hasura's cursor_ordering values, upper-case under both conventions.
+HASURA_CURSOR_ORDERINGS: tuple[str, ...] = ("ASC", "DESC")

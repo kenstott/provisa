@@ -18,6 +18,7 @@ import {
   ActionIcon,
   Badge,
   Button,
+  Group,
   Menu,
   Table,
   Text,
@@ -35,6 +36,7 @@ import CodeMirror from "@uiw/react-codemirror";
 import { json as jsonLang } from "@codemirror/lang-json";
 import { oneDark } from "@codemirror/theme-one-dark";
 import { Tip } from "../Tip";
+import { PropBadge, RelShapeBadge } from "../relationships/RelShape";
 
 interface OverviewData {
   nodesByLabel: [string, number][];
@@ -448,6 +450,17 @@ export function Inspector({
                 table: (selected.data as GEdge).junctionTable,
               })}
             </div>
+          )}
+          {matchedRel && (
+            /* REQ-1586 (amended 2026-11-22): the relationship's model type, and its properties
+               where it has any. */
+            <Group gap={6} className="gf-insp-edge-endpoints" data-testid="inspector-rel-type">
+              <Text span size="xs" c="dimmed">
+                {t("relShape.label")}
+              </Text>
+              <RelShapeBadge shape={matchedRel.shape} table={matchedRel.viaTableName} />
+              <PropBadge properties={matchedRel.properties} />
+            </Group>
           )}
           {matchedRel && onSaveEdgeAlias && (
             <div className="gf-insp-alias-form">

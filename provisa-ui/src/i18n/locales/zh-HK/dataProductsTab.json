@@ -313,6 +313,18 @@
     "tagFacetPlaceholder": "按標籤篩選",
     "noMatch": "沒有符合篩選條件的數據產品",
     "domainFacetLabel": "域",
-    "domainFacetPlaceholder": "按域篩選"
+    "domainFacetPlaceholder": "按域篩選",
+    "colSync": "同步",
+    "syncNone": "未同步",
+    "syncSynced_one": "已同步",
+    "syncSynced_other": "已同步到 {{count}} 個",
+    "syncFailed_one": "{{count}} 個失敗",
+    "syncFailed_other": "{{count}} 個失敗",
+    "syncEntryPublished": "{{entry}}：{{when}} 已發佈",
+    "syncEntryFailed": "{{entry}}：{{when}} 失敗",
+    "syncGroup_synced": "已同步",
+    "syncGroup_failed": "失敗",
+    "syncGroup_none": "未同步",
+    "syncUnread": "無法讀取同步狀態：{{error}}"
   }
 }
