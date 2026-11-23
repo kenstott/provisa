@@ -16,10 +16,12 @@ stack, applied with no edit, and the app's reshaped queries and mutations are th
 a customer reads and writes their own rows alone (the session value the token's x-hasura-user-id
 claim carries; here the unsecured session header), support reads every order and updates the
 statuses its permission allows, an analyst never sees a cancelled order or a customer's name.
+The metadata names no naming_convention, so the import serves hasura-default (REQ-194): the
+app's snake_case names and Hasura's argument shapes (_set, objects, _eq).
 The Salesforce half of the demo reads a live org and is the bundle build's, not this test's.
 """
 
-# Requirements: REQ-417, REQ-1682, REQ-2074
+# Requirements: REQ-194, REQ-417, REQ-1682, REQ-2074
 
 from __future__ import annotations
 
@@ -141,7 +143,7 @@ class TestTheImportedAppWorks:
         orders = await _root(client, ANA, "query", "orders")
         data = await _data(
             client,
-            f"{{ {orders}(order_by: [{{ placedAt: desc }}]) {{ id status totalCents "
+            f"{{ {orders}(order_by: [{{ placed_at: desc }}]) {{ id status total_cents "
             "items { quantity product { name } } } }",
             ANA,
         )
@@ -162,38 +164,38 @@ class TestTheImportedAppWorks:
         ]
 
     async def test_the_customer_renames_herself_and_nobody_else(self, client):
-        update = await _root(client, ANA, "mutation", "updateCustomers")
+        update = await _root(client, ANA, "mutation", "update_customers")
         mine = await _data(
             client,
-            f'mutation {{ {update}(set: {{givenName: "Anita"}}, where: {{id: {{eq: 1}}}}) '
+            f'mutation {{ {update}(_set: {{givenName: "Anita"}}, where: {{id: {{_eq: 1}}}}) '
             "{ affected_rows } }",
             ANA,
         )
         assert mine[update]["affected_rows"] == 1
         theirs = await _data(
             client,
-            f'mutation {{ {update}(set: {{givenName: "X"}}, where: {{id: {{eq: 2}}}}) '
+            f'mutation {{ {update}(_set: {{givenName: "X"}}, where: {{id: {{_eq: 2}}}}) '
             "{ affected_rows } }",
             ANA,
         )
         assert theirs[update]["affected_rows"] == 0
 
     async def test_the_customer_places_an_order_that_is_hers(self, client):
-        insert = await _root(client, ANA, "mutation", "insertOrders")
+        insert = await _root(client, ANA, "mutation", "insert_orders")
         placed = await _data(
             client,
-            f'mutation {{ {insert}(input: {{shipTo: "12 Elm St"}}) {{ affected_rows }} }}',
+            f'mutation {{ {insert}(objects: [{{ship_to: "12 Elm St"}}]) {{ affected_rows }} }}',
             ANA,
         )
         assert placed[insert]["affected_rows"] == 1
         orders = await _root(client, SUPPORT, "query", "orders")
         data = await _data(
             client,
-            f'{{ {orders}(where: {{shipTo: {{eq: "12 Elm St"}}}}) {{ customerId status }} }}',
+            f'{{ {orders}(where: {{ship_to: {{_eq: "12 Elm St"}}}}) {{ customer_id status }} }}',
             SUPPORT,
         )
         # The grant's presets: her own customer id from the session value, and status placed.
-        assert {"customerId": 1, "status": "placed"} in data[orders]
+        assert {"customer_id": 1, "status": "placed"} in data[orders]
 
     async def test_support_reads_every_order(self, client):
         orders = await _root(client, SUPPORT, "query", "orders")
@@ -201,11 +203,11 @@ class TestTheImportedAppWorks:
         assert len(data[orders]) >= 40
 
     async def test_support_updates_only_the_statuses_its_permission_allows(self, client):
-        update = await _root(client, SUPPORT, "mutation", "updateOrders")
+        update = await _root(client, SUPPORT, "mutation", "update_orders")
         # Order 2 is placed: support may move it to packed.
         moved = await _data(
             client,
-            f'mutation {{ {update}(set: {{status: "packed"}}, where: {{id: {{eq: 2}}}}) '
+            f'mutation {{ {update}(_set: {{status: "packed"}}, where: {{id: {{_eq: 2}}}}) '
             "{ affected_rows } }",
             SUPPORT,
         )
@@ -213,7 +215,7 @@ class TestTheImportedAppWorks:
         # Order 1 is shipped: outside the rows support may update.
         shipped = await _data(
             client,
-            f'mutation {{ {update}(set: {{status: "placed"}}, where: {{id: {{eq: 1}}}}) '
+            f'mutation {{ {update}(_set: {{status: "placed"}}, where: {{id: {{_eq: 1}}}}) '
             "{ affected_rows } }",
             SUPPORT,
         )
