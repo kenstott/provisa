@@ -14,7 +14,8 @@
     "discardBody": "Uw wijzigingen in {{what}} zijn niet opgeslagen.",
     "discard": "Verwerpen",
     "deleting": "Verwijderen…",
-    "deleteFailed": "Niet verwijderd: {{reason}}"
+    "deleteFailed": "Niet verwijderd: {{reason}}",
+    "required": "Verplicht"
   },
   "app": {
     "apiUnreachable": "Kan de Provisa API niet bereiken.",

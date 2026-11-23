@@ -1,0 +1,148 @@
+// Copyright (c) 2026 Kenneth Stott
+//
+// This source code is licensed under the Business Source License 1.1
+// found in the LICENSE file in the root directory of this source tree.
+//
+// NOTICE: Use of this software for training artificial intelligence or
+// machine learning models is strictly prohibited without explicit written
+// permission from the copyright holder.
+
+// REQ-1968 (amended 2026-11-22): a missing or invalid field never disables a form's primary
+// action, and a field that blocks submit carries the required marker. This guard reads every
+// component's TSX and fails on either (requiredRules.ts).
+
+import { describe, it, expect } from "vitest";
+import { readFileSync, readdirSync, statSync, existsSync } from "node:fs";
+import { join, relative, resolve } from "node:path";
+import { checkRequiredRules, type RequiredRule } from "./requiredRules";
+
+const SRC = resolve(__dirname, "../../..");
+
+/**
+ * Files not yet converted, each with what holds it back. Each must still fail the rules: once a
+ * file passes, its entry goes, so the list only shrinks.
+ */
+const NOT_YET_CONVERTED: Readonly<Record<string, string>> = {};
+
+function componentFiles(dir: string, found: string[] = []): string[] {
+  for (const name of readdirSync(dir)) {
+    const path = join(dir, name);
+    if (name === "__tests__" || name === "node_modules") continue;
+    if (statSync(path).isDirectory()) componentFiles(path, found);
+    else if (path.endsWith(".tsx")) found.push(path);
+  }
+  return found;
+}
+
+const rules = (source: string): RequiredRule[] =>
+  checkRequiredRules("probe.tsx", source).map((v) => v.rule);
+
+describe("the required-field rules fail what they are meant to fail", () => {
+  it("a primary action disabled by an empty field", () => {
+    const form = (disabled: string) =>
+      `function F() { const [name, setName] = useState("");
+        return <FormLayout><FormField size="medium"><TextInput required value={name} /></FormField>
+          <FormFooter onSave={save} saveProps={{ disabled: ${disabled} }} /></FormLayout>; }`;
+    expect(rules(form("!name.trim()"))).toEqual(["primary-disabled-by-field"]);
+    expect(rules(form(`name.trim() === ""`))).toEqual(["primary-disabled-by-field"]);
+    expect(rules(form("!name"))).toEqual(["primary-disabled-by-field"]);
+    expect(rules(form("incomplete"))).toEqual(["primary-disabled-by-field"]);
+    expect(rules(form("missing(draft).length > 0"))).toEqual(["primary-disabled-by-field"]);
+    expect(rules(form("!ready"))).toEqual(["primary-disabled-by-field"]);
+  });
+
+  it("a footer action or a submit button disabled by a missing field", () => {
+    expect(
+      rules(
+        `<FormLayout><FormField size="medium"><select className="form-select" value={domainId} /></FormField>
+          <FormFooter action={<Button variant="light" disabled={!domainId}>Go</Button>} /></FormLayout>`,
+      ),
+    ).toEqual(["primary-disabled-by-field"]);
+    expect(rules(`<Button type="submit" disabled={domainMissing}>Go</Button>`)).toEqual([
+      "primary-disabled-by-field",
+    ]);
+    expect(
+      rules(`<FormLayout><FormField size="medium"><TextInput required value={form.name} /></FormField>
+        <SaveButton disabled={!form.name.trim()} /></FormLayout>`),
+    ).toEqual(["primary-disabled-by-field"]);
+  });
+
+  it("allows a primary action disabled when there is nothing to act on, or while it works", () => {
+    expect(
+      rules(
+        `<FormLayout><FormField size="long"><MultiSelect value={ticked} /></FormField>
+          <FormFooter action={<Button disabled={ticked.length === 0 || busy}>Register</Button>} /></FormLayout>`,
+      ),
+    ).toEqual([]);
+    expect(rules(`<FormLayout><FormFooter onSave={s} saveProps={{ disabled: !dirty }} /></FormLayout>`)).toEqual(
+      [],
+    );
+  });
+
+  it("a field a submit handler refuses while empty, without the marker", () => {
+    const form = (marked: string) =>
+      `function F() { const submit = () => { if (!name.trim()) { setError("Name it"); return; } };
+        return <FormLayout><FormField size="medium"><TextInput ${marked} value={name} /></FormField></FormLayout>; }`;
+    expect(rules(form(""))).toEqual(["required-unmarked"]);
+    expect(rules(form("required"))).toEqual([]);
+    expect(rules(form(`{...req.field("name")}`))).toEqual([]);
+  });
+
+  it("an effect that waits for its inputs does not make them required", () => {
+    expect(
+      rules(
+        `function F() { useEffect(() => { if (!name) return; suggest(name); }, [name]);
+          return <FormLayout><FormField size="medium"><TextInput value={name} /></FormField></FormLayout>; }`,
+      ),
+    ).toEqual([]);
+  });
+
+  it("a required field never spread onto its control, and a native select without its marker", () => {
+    expect(
+      rules(
+        `function F() { const req = useRequiredFields({ name, ...(asked ? { domain } : {}) });
+          return <FormLayout><FormField size="medium"><TextInput {...req.field("name")} value={name} /></FormField></FormLayout>; }`,
+      ),
+    ).toEqual(["required-unmarked"]);
+    expect(
+      rules(
+        `function F() { const req = useRequiredFields({ domain });
+          return <FormLayout><FormField size="medium"><label>Domain
+            <select className="form-select" {...req.native("domain")} value={domain} /></label></FormField></FormLayout>; }`,
+      ),
+    ).toEqual(["required-unmarked"]);
+    expect(
+      rules(
+        `function F() { const req = useRequiredFields({ domain });
+          return <FormLayout><FormField size="medium"><label>Domain<RequiredMark />
+            <select className="form-select" {...req.native("domain")} value={domain} /></label></FormField></FormLayout>; }`,
+      ),
+    ).toEqual([]);
+  });
+});
+
+describe("every component follows the required-field rules", () => {
+  const files = componentFiles(SRC).map((path) => ({ path, rel: relative(SRC, path) }));
+
+  it("finds the components", () => {
+    expect(files.length).toBeGreaterThan(100);
+  });
+
+  it.each(Object.keys(NOT_YET_CONVERTED))("%s still exists", (rel) => {
+    expect(existsSync(join(SRC, rel))).toBe(true);
+  });
+
+  it.each(Object.keys(NOT_YET_CONVERTED))("%s still needs its not-yet-converted entry", (rel) => {
+    expect(checkRequiredRules(rel, readFileSync(join(SRC, rel), "utf8"))).not.toEqual([]);
+  });
+
+  it.each(files.filter((f) => !(f.rel in NOT_YET_CONVERTED)).map((f) => [f.rel, f.path]))(
+    "%s",
+    (rel, path) => {
+      const violations = checkRequiredRules(rel, readFileSync(path, "utf8"));
+      expect(
+        violations.map((v) => `${rel}:${v.line} ${v.rule}: ${v.detail}`).join("\n"),
+      ).toBe("");
+    },
+  );
+});

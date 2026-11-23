@@ -14,7 +14,8 @@
     "discardBody": "As alterações em {{what}} não foram salvas.",
     "discard": "Descartar",
     "deleting": "Excluindo…",
-    "deleteFailed": "Não excluído: {{reason}}"
+    "deleteFailed": "Não excluído: {{reason}}",
+    "required": "Obrigatório"
   },
   "app": {
     "apiUnreachable": "Não foi possível conectar à API do Provisa.",
