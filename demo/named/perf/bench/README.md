@@ -50,6 +50,10 @@ For each engine, `orchestrate.sh` starts Provisa with `start-ui-install.sh --dem
 
 The publishable run's design, what makes a result valid and its cost are in `METHODOLOGY.md` in this directory. `bench_units.py` holds its unit of work (one transport, one repetition), the order units run in, the check after each one and the run's ledger. A run names its VM and CPU platform in its report, and timings from two VMs are never compared.
 
+## Mini benchmark on a Spot VM
+
+`mini.sh` runs `harness_trial.py` on DuckDB, PostgreSQL and Trino on one small Spot VM, for two or more rounds at one commit, and deletes the VM afterwards (`mini-job.sh` is the VM's side). The committed baseline is `results/<engine>/baseline-<date>-<sha10>.json`, one file per engine. Compare a later report with it as `bench_sanity.py --report <new>.json --baseline results/<engine>/baseline-<date>-<sha10>.json`, or pass `--baseline` to `harness_trial.py`. The baseline's host facts name its VM: `bench_sanity.py` compares 2x moves only against a report from the same instance and CPU platform, and against any other it reports the within-run flags alone.
+
 ## Sanity and chaos
 
 `bench_sanity.py` flags cells that moved 2x or more against the last run on the same VM, and relationships that went the wrong way within a run. `harness_trial.py` writes its report as `<engine>-sanity.json`. A flag needs an explanation and fails nothing by itself.
