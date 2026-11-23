@@ -1,3 +1,13 @@
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 0739834b-06b7-4c97-91fa-a8c3f9af9557
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+
 """A failing statement on the SQLAlchemy runtime does not poison the statements after it.
 
 PostgreSQL-family stores (psycopg2: cockroachdb, greenplum, opengauss, yugabytedb) abort the open
