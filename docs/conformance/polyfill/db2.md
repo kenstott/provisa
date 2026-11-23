@@ -8,7 +8,7 @@ This page lists every feature that has a polyfill or a limitation on Db2. A feat
 
 When Db2 is a serving engine reading a source it attaches directly, it may push work into that source, with the source's semantics, so a result can depend on the pair; the cases known are fixed by hints, listed under each source.
 
-Rules on this page: 410, of which 138 are only the name of a rewrite function. A rule is printed as the translator runs it: the PostgreSQL pattern, its holes written `$name` (typed with `::type`), then the dialect's replacement.
+Rules on this page: 410, of which 142 are only the name of a rewrite function. A rule is printed as the translator runs it: the PostgreSQL pattern, its holes written `$name` (typed with `::type`), then the dialect's replacement.
 
 234 of the grid's 625 features are native on Db2 and left out.
 
@@ -938,9 +938,9 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: reverse($t::text). <code>0A000</code> reverse has no form on Db2 that gives PostgreSQL&#x27;s answer</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>substr</strong><br>A text&#x27;s characters from a position, for a count.</td><td><pre><code>substr($t::text, $s::integer)
 =&gt;
-refused (its error is under the limitations)</code></pre><pre><code>substr($t::text, $s::integer, $l::integer)
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>substr($t::text, $s::integer, $l::integer)
 =&gt;
-refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: substr($t::text, $s::integer). <code>0A000</code> substring with a start that is not a literal of at least 1 has no form on Db2 that gives PostgreSQL&#x27;s answer</li><li>Refused: substr($t::text, $s::integer, $l::integer). <code>0A000</code> substring with a start that is not a literal of at least 1 has no form on Db2 that gives PostgreSQL&#x27;s answer</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (text, integer), (text, integer) with an argument the statement says is of that type, not a NULL. <code>0A000</code> substring with a start that is not a literal of at least 1 has no form on Db2 that gives PostgreSQL&#x27;s answer</li><li>Refused for a call of (text, integer, integer), (text, integer, integer) with an argument the statement says is of that type, not a NULL. <code>0A000</code> substring with a start that is not a literal of at least 1 has no form on Db2 that gives PostgreSQL&#x27;s answer</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>lpad</strong><br>A text filled on the left to a count of characters.</td><td><pre><code>lpad($t::text, $n::integer)
 =&gt;
 refused (its error is under the limitations)</code></pre><pre><code>lpad($t::text, $n::integer, $f::text)
@@ -1043,9 +1043,9 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>substr(bytea, integer)</strong><br>A part of a bytea, from a byte and for a number of bytes.</td><td><pre><code>substr($a, $s)
 =&gt;
-refused (its error is under the limitations)</code></pre><pre><code>substr($a, $s, $l)
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>substr($a, $s, $l)
 =&gt;
-refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: substr($a, $s). <code>0A000</code> substring with a start that is not a literal of at least 1 has no form on Db2 that gives PostgreSQL&#x27;s answer</li><li>Refused: substr($a, $s, $l). <code>0A000</code> substring with a start that is not a literal of at least 1 has no form on Db2 that gives PostgreSQL&#x27;s answer</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (bytea, integer), (bit, integer), (bytea, integer), (text, text). <code>0A000</code> substring with a start that is not a literal of at least 1 has no form on Db2 that gives PostgreSQL&#x27;s answer</li><li>Refused for a call of (bit, integer). <code>0A000</code> the type bit has no form on Db2 that gives PostgreSQL&#x27;s answer</li><li>Refused for a call of (bytea, integer, integer), (bit, integer, integer), (bytea, integer, integer), (text, text, text). <code>0A000</code> substring with a start that is not a literal of at least 1 has no form on Db2 that gives PostgreSQL&#x27;s answer</li><li>Refused for a call of (bit, integer, integer). <code>0A000</code> the type bit has no form on Db2 that gives PostgreSQL&#x27;s answer</li><li>Refused for a call of (bytea, integer, integer), (bytea, integer, integer). <code>0A000</code> unhex has no form on Db2 that gives PostgreSQL&#x27;s answer</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>encode(bytea, text)</strong><br>A bytea&#x27;s text in hex, base64 or escape form.</td><td><pre><code>encode($a, $f)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (bytea, text). <code>0A000</code> encode has no form on Db2 that gives PostgreSQL&#x27;s answer</li><li>Refused for a call of (bytea, text). <code>0A000</code> encode() has no form on db2</li></ul></td><td></td><td></td></tr>

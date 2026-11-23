@@ -38,6 +38,7 @@ from provisa.transpiler.pg_literals import postgres_literals, text_literal
 
 _REGEXP_MATCHES = "provisa_regexp_matches"
 _ENCODE_ESCAPE = "provisa_encode_escape"
+_DECODE_ESCAPE = "provisa_decode_escape"
 _REGEXP_GROUP = "provisa_regexp_group"
 _DATE_PART = "provisa_date_part"
 
@@ -337,6 +338,7 @@ def _decoded(value: str, fmt: exp.Expr, name: str) -> str:
         ("encode", "escape"): f"{_ENCODE_ESCAPE}({value})",
         ("decode", "hex"): f"UNHEX({value})",
         ("decode", "base64"): f"FROM_BASE64({value})",
+        ("decode", "escape"): f"{_DECODE_ESCAPE}({value})",
     }
     if (name, written) not in calls:
         raise NotImplementedError(f"{name}: format {written} is not supported")
@@ -1188,6 +1190,20 @@ def _encode_escape(value: str) -> str:
     )
 
 
+def _decode_escape(value: str) -> str:
+    """decode(text, 'escape'), byteain's escape format: \\ooo (a first digit 0-3) is that byte,
+    \\\\ a backslash, any other backslash invalid input (22P02), and any other text its UTF-8
+    bytes."""
+    invalid = raising("22P02", "'invalid input syntax for type bytea'")
+    octal = " + ".join(f"(ASCII(SUBSTR(_t, {i + 2}, 1)) - 48) * {8 ** (2 - i)}" for i in range(3))
+    return (
+        f"UNHEX(ARRAY_TO_STRING(LIST_TRANSFORM(REGEXP_EXTRACT_ALL({value}, "
+        "'\\\\[0-3][0-7][0-7]|\\\\\\\\|\\\\|[^\\\\]+'), LAMBDA _t : "
+        f"CASE WHEN _t = '\\' THEN {invalid} WHEN _t = '\\\\' THEN '5C' "
+        f"WHEN LEFT(_t, 1) = '\\' THEN PRINTF('%02X', {octal}) ELSE HEX(_t) END), ''))"
+    )
+
+
 _TO_JSON = "to_json"
 
 
@@ -1262,7 +1278,14 @@ def _list_to_json(value: str) -> str:
 def after(sql: str) -> str:
     """The DuckDB statement with each placeholder ``before`` left written out."""
     lowered = sql.lower()
-    placeholders = (_REGEXP_MATCHES, _ENCODE_ESCAPE, _REGEXP_GROUP, _DATE_PART, _TO_JSON)
+    placeholders = (
+        _REGEXP_MATCHES,
+        _ENCODE_ESCAPE,
+        _DECODE_ESCAPE,
+        _REGEXP_GROUP,
+        _DATE_PART,
+        _TO_JSON,
+    )
     if not any(name in lowered for name in placeholders):
         return sql
     return after_in(sqlglot.parse_one(sql, read="duckdb")).sql(dialect="duckdb")
@@ -1284,6 +1307,9 @@ def after_in(tree: exp.Expr) -> exp.Expr:
             if name == _ENCODE_ESCAPE:
                 value = node.expressions[0].transform(_written).sql(dialect="duckdb")
                 return sqlglot.parse_one(_encode_escape(value), read="duckdb")
+            if name == _DECODE_ESCAPE:
+                value = node.expressions[0].transform(_written).sql(dialect="duckdb")
+                return sqlglot.parse_one(_decode_escape(value), read="duckdb")
             if name == _TO_JSON and len(node.expressions) == 1:
                 value = node.expressions[0]
                 listed = _is_list(value)

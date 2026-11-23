@@ -746,6 +746,18 @@ def _numeric(value: exp.Expr, fmt: str) -> exp.Expr:
     )
 
 
+#: The types a statement casts a value to that to_char reads as an instant (date is read as a
+#: timestamp).
+_INSTANT_TYPES = frozenset(
+    {
+        exp.DataType.Type.DATE,
+        exp.DataType.Type.TIMESTAMP,
+        exp.DataType.Type.TIMESTAMPTZ,
+        exp.DataType.Type.TIMESTAMPLTZ,
+    }
+)
+
+
 def _zoned(value: exp.Expr) -> bool | None:
     """False for a value the statement casts to timestamp (a literal, or a column of a VALUES list),
     which has no zone; None for any other, whose type is not read here."""
@@ -772,7 +784,10 @@ def _translated(call: exp.Anonymous) -> exp.Expr:
             "translated where the statement is read"
         )
     pattern = literal.this
-    if _is_numeric(pattern) and _zoned(value) is None:  # a timestamp's template is a date's
+    # A timestamp's template is a date's, whatever digits it writes: to_char(timestamptz, 'FM999')
+    # writes them as they are.
+    instant = isinstance(cast, exp.Cast) and cast.to.this in _INSTANT_TYPES
+    if _is_numeric(pattern) and not instant:
         return exp.Paren(this=_numeric(value, pattern))
     return written(pattern, value, "duckdb", _zoned(value))
 
