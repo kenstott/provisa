@@ -28,6 +28,7 @@ import sqlglot
 import sqlglot.expressions as exp
 
 from provisa.transpiler import pg_forms_geometric as geometric
+from provisa.transpiler.function_macros import RowRefused
 from provisa.transpiler.transpile import transpile
 from tests.unit.pgwire.geometric_corpus import statements
 from tests.unit.pgwire.geometric_replay import (
@@ -278,7 +279,6 @@ def test_width_bucket(sql: str, want: Any):
         ("SELECT width_bucket(1::float8, 0::float8, 1::float8, 2147483647)", "22003: integer"),
         ("SELECT width_bucket(1::numeric, 0::numeric, 1::numeric, 2147483647)", "22003: integer"),
         ("SELECT width_bucket(5, ARRAY[3, 4, NULL])", "22004: thresholds array"),
-        ("SELECT width_bucket(5, ARRAY[ARRAY[1, 2], ARRAY[3, 4]])", "2202E: thresholds must"),
         ("SELECT line_eq('{0,0,1}'::line, '{1,-1,0}'::line)", "22P02: invalid line"),
         ("SELECT line_eq('[(1,1),(1,1)]'::line, '{1,-1,0}'::line)", "22P02: invalid line"),
     ],
@@ -286,6 +286,17 @@ def test_width_bucket(sql: str, want: Any):
 def test_postgresql_refuses_width_bucket_and_line_as_it_does(sql: str, raised: str):
     with pytest.raises(duckdb.Error, match=raised):
         duckdb.connect().execute(transpile(sql, "duckdb"))
+
+
+def test_width_bucket_of_thresholds_of_two_dimensions_is_refused_as_postgresql_does():
+    # The statement writes the array's dimensions: the translator raises PostgreSQL's error
+    # (polyfill.array_dimensions, REQ-2236) before DuckDB runs anything.
+    with pytest.raises(RowRefused) as raised:
+        transpile("SELECT width_bucket(5, ARRAY[ARRAY[1, 2], ARRAY[3, 4]])", "duckdb")
+    assert (raised.value.sqlstate, str(raised.value)) == (
+        "2202E",
+        "thresholds must be one-dimensional array",
+    )
 
 
 @pytest.mark.parametrize(
