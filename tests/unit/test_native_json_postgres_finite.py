@@ -20,17 +20,20 @@ import psycopg
 import pytest
 import sqlglot.expressions as exp
 
-from provisa.transpiler.native_json import NON_FINITE, NestedColumn, native_json_marker
+from provisa.transpiler.native_json import (
+    NON_FINITE,
+    NestedColumn,
+    native_json_marker,
+    to_json_sql,
+)
 from provisa.transpiler.transpile import transpile
 
 
 def _read(dsn: str, array: str) -> object:
-    marker = native_json_marker(
-        exp.column("v", "r", quoted=True), NestedColumn("double precision[]", 1, "double")
-    )
-    sql = transpile(
-        f"SELECT {marker.sql(dialect='postgres')} FROM (SELECT {array} AS v) AS r", "postgres"
-    )
+    """The JSON form a landing and a predicate read: a result column of a float8[] PostgreSQL
+    holds natively is read as the array (test_native_typed_array_reads.py)."""
+    nested = NestedColumn("double precision[]", 1, "double")
+    sql = f"SELECT {to_json_sql('r.v', nested, 'postgres', 'v')} FROM (SELECT {array} AS v) AS r"
     with psycopg.connect(dsn) as con:
         (value,) = con.execute(sql).fetchone()  # type: ignore[misc]
     return value if not isinstance(value, str) else json.loads(value)

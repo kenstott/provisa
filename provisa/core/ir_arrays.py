@@ -51,6 +51,15 @@ _SIZED_NUMERIC = re.compile(r"\Anumeric\((\d+),(\d+)\)\Z")
 # elements: the array is held natively there, as JSON everywhere else.
 NATIVE_ARRAY_DIALECTS = frozenset({"postgresql", "duckdb"})
 
+# The element types a read keeps in the engine's own array type and every wire sends as an array
+# of that element (pgwire's _int2, _int4, _int8, _bool, _text, _float4, _float8, _numeric). An
+# array of any other primitive is read as its JSON form until the wire sends it as an array.
+SENT_AS_ARRAY = frozenset(
+    {"smallint", "integer", "bigint", "boolean", "text", "float", "double", "numeric"}
+)
+# A read is held in the engine's own array type on these, as sqlglot names their dialects.
+_READ_NATIVELY_ON = frozenset({"postgres", "postgresql", "duckdb"})
+
 
 class ArrayValueRefused(JsonRefused):
     """A value given for a typed array that is not an array of its element type at its depth."""
@@ -262,6 +271,17 @@ def to_json_form(value: Any, array: ArrayType) -> list[Any]:  # object-ok: an ar
     type holds it in: each element as JSON carries it exactly -- a decimal as its digits, a date
     or time as ISO 8601, bytes as ``\\x`` hex. NaN and the infinities are refused by name."""
     return _walk(value, array, _ENCODERS[_codec_key(array.element)])
+
+
+def sent_as_array(array: ArrayType) -> bool:
+    """Whether the wire sends ``array`` as an array of its element (``SENT_AS_ARRAY``)."""
+    return _codec_key(array.element) in SENT_AS_ARRAY
+
+
+def read_natively(array: ArrayType, dialect: str) -> bool:
+    """Whether a read of ``array`` on ``dialect`` (sqlglot's name) is the engine's own array
+    value rather than its JSON form (REQ-1965, amended 2026-11-11)."""
+    return dialect in _READ_NATIVELY_ON and sent_as_array(array)
 
 
 def from_json_form(value: Any, array: ArrayType) -> list[Any]:  # object-ok: an array's JSON

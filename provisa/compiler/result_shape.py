@@ -151,11 +151,15 @@ def table_columns(table_id: int, ctx: Any, column_types: dict) -> dict[str, str]
 
 def _described_type(data_type: str, nested: Any) -> str:
     """A column's described type: its registered type, except that a column natively an array of
-    one primitive type, one level deep (REQ-1965), is that array (``integer[]``) -- the list
-    GraphQL types it as, and the array PostgreSQL itself describes."""
-    if nested is not None and nested.array_depth == 1 and nested.element_type:
-        return f"{nested.element_type}[]"
-    return data_type
+    one primitive type at any depth (REQ-1965, amended 2026-11-11, TYPED ARRAYS ARE AN IR TYPE)
+    is that array (``integer[]``, ``integer[][]``) -- the list GraphQL types it as, and the array
+    PostgreSQL itself describes."""
+    from provisa.core.ir_arrays import column_array_type
+
+    typed = (
+        column_array_type(nested.array_depth, nested.element_type) if nested is not None else None
+    )
+    return typed.name if typed is not None else data_type
 
 
 def _resolve_table(tbl: exp.Table, table_map: dict[str, int]) -> int | None:

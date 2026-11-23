@@ -8,9 +8,8 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""A registered column that is natively a one-level array of one primitive type (REQ-1965) is
-described over pgwire as that array, as PostgreSQL describes it; any other nested column stays
-JSON."""
+"""A registered column that is natively an array of one primitive type (REQ-1965) is described
+over pgwire as that array, as PostgreSQL describes it; any other nested column stays JSON."""
 
 from __future__ import annotations
 
@@ -23,8 +22,12 @@ def test_a_typed_array_is_described_as_its_array():
     assert _described_type("json", NestedColumn("integer[]", 1, "integer")) == "integer[]"
 
 
-def test_a_deeper_or_untyped_nested_column_stays_json():
-    assert _described_type("json", NestedColumn("integer[][]", 2, "integer")) == "json"
+def test_a_deeper_typed_array_is_described_as_its_array():
+    # REQ-1965, amended 2026-11-11: a typed array at any depth is an IR type.
+    assert _described_type("json", NestedColumn("integer[][]", 2, "integer")) == "integer[][]"
+
+
+def test_an_untyped_nested_column_stays_json():
     assert _described_type("json", NestedColumn("record", 0, None)) == "json"
     assert _described_type("json", None) == "json"
 
