@@ -28,7 +28,10 @@ taught to its parser here:
 - ``interval '1 day 02:03'`` is the whole interval its text is (``'1 day 02:03'::interval``):
   sqlglot keeps its first amount and unit and drops the rest.
 - to_date's and to_timestamp's template is read whole (``TEMPLATE``): sqlglot's own reading leaves
-  a month's or a day's name (``Mon``, ``Month``, ``Dy``), ``HH`` and the meridiem as literal text."""
+  a month's or a day's name (``Mon``, ``Month``, ``Dy``), ``HH`` and the meridiem as literal text.
+- the collation after ``COLLATE`` is a collation's name (``COLLATE pg_catalog.default``,
+  ``COLLATE pg_catalog."C"``): sqlglot reads a schema-qualified one as a column, which governance
+  then refuses as naming no relation (REQ-2204, psql's ``\\dt`` pattern)."""
 
 # Requirements: REQ-2167, REQ-423
 
@@ -91,6 +94,24 @@ def _reads_types(parser: type) -> None:
         return this
 
     parser._parse_types = _parse_types
+
+
+def collation_name(name: exp.Expr) -> exp.Expr:
+    """A collation's name as the tree holds it: a quoted name its identifier, a bare one a
+    variable, a schema-qualified one the dotted pair of them, never a column."""
+    if isinstance(name, exp.Column):
+        parts = [
+            p if isinstance(p, exp.Identifier) and p.quoted else exp.var(p.name) for p in name.parts
+        ]
+        return exp.Dot.build(parts) if len(parts) > 1 else parts[0]
+    return name
+
+
+def _reads_collation_names(parser: type) -> None:  # REQ-2204
+    def _normalize_collate(self: Any, collate: exp.Collate) -> None:
+        collate.set("expression", collation_name(collate.expression))
+
+    parser._normalize_collate = _normalize_collate
 
 
 def _reads_interval_literals(parser: type) -> None:
@@ -301,6 +322,7 @@ _reads_qualified_calls(Postgres.Parser)
 _reads_negative_inner_product(Postgres.Parser)
 _reads_keyword_labels(Postgres.Parser)
 _reads_interval_literals(Postgres.Parser)
+_reads_collation_names(Postgres.Parser)
 Postgres.Parser.FUNC_TOKENS = Postgres.Parser.FUNC_TOKENS | {TokenType.OVERLAPS}
 Postgres.Parser.FUNCTIONS["OVERLAPS"] = _overlaps
 Postgres.Parser.FUNCTIONS["TO_DATE"] = _formatted(exp.StrToDate)
