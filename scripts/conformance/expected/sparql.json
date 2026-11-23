@@ -260,18 +260,6 @@
       "reason": "a statement that is not SPARQL answered 200: {'results': {'bindings': []}, 'head': {'vars': ['O1', 'C']}}"
     },
     {
-      "case": "basic-update::insert-05a",
-      "job": "SPARQL-G4",
-      "since": "2026-11-22",
-      "reason": "400: DROP acts on a named graph, and the model has tables, not graphs; write to the tables instead"
-    },
-    {
-      "case": "basic-update::insert-data-same-bnode",
-      "job": "SPARQL-G4",
-      "since": "2026-11-22",
-      "reason": "400: DROP acts on a named graph, and the model has tables, not graphs; write to the tables instead"
-    },
-    {
       "case": "basic-update::insert-data-spo-named1",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
@@ -324,18 +312,6 @@
       "job": "SPARQL-G2",
       "since": "2026-11-22",
       "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
-    },
-    {
-      "case": "basic-update::insert-where-same-bnode",
-      "job": "SPARQL-G4",
-      "since": "2026-11-22",
-      "reason": "400: DROP acts on a named graph, and the model has tables, not graphs; write to the tables instead"
-    },
-    {
-      "case": "basic-update::insert-where-same-bnode2",
-      "job": "SPARQL-G4",
-      "since": "2026-11-22",
-      "reason": "400: DROP acts on a named graph, and the model has tables, not graphs; write to the tables instead"
     },
     {
       "case": "bind::bind01",
@@ -1934,96 +1910,6 @@
       "reason": "400: <http://example.org/r> is no edge predicate, and a property path walks edges"
     },
     {
-      "case": "syntax-update-1::test_1",
-      "job": "SPARQL-G4",
-      "since": "2026-11-22",
-      "reason": "400: LOAD acts on a named graph, and the model has tables, not graphs; write to the tables instead"
-    },
-    {
-      "case": "syntax-update-1::test_10",
-      "job": "SPARQL-G4",
-      "since": "2026-11-22",
-      "reason": "400: DROP acts on a named graph, and the model has tables, not graphs; write to the tables instead"
-    },
-    {
-      "case": "syntax-update-1::test_11",
-      "job": "SPARQL-G4",
-      "since": "2026-11-22",
-      "reason": "400: DROP acts on a named graph, and the model has tables, not graphs; write to the tables instead"
-    },
-    {
-      "case": "syntax-update-1::test_12",
-      "job": "SPARQL-G4",
-      "since": "2026-11-22",
-      "reason": "400: DROP acts on a named graph, and the model has tables, not graphs; write to the tables instead"
-    },
-    {
-      "case": "syntax-update-1::test_13",
-      "job": "SPARQL-G4",
-      "since": "2026-11-22",
-      "reason": "400: CREATE acts on a named graph, and the model has tables, not graphs; write to the tables instead"
-    },
-    {
-      "case": "syntax-update-1::test_14",
-      "job": "SPARQL-G4",
-      "since": "2026-11-22",
-      "reason": "400: CREATE acts on a named graph, and the model has tables, not graphs; write to the tables instead"
-    },
-    {
-      "case": "syntax-update-1::test_15",
-      "job": "SPARQL-G4",
-      "since": "2026-11-22",
-      "reason": "400: CLEAR acts on a named graph, and the model has tables, not graphs; write to the tables instead"
-    },
-    {
-      "case": "syntax-update-1::test_16",
-      "job": "SPARQL-G4",
-      "since": "2026-11-22",
-      "reason": "400: CLEAR acts on a named graph, and the model has tables, not graphs; write to the tables instead"
-    },
-    {
-      "case": "syntax-update-1::test_17",
-      "job": "SPARQL-G4",
-      "since": "2026-11-22",
-      "reason": "400: CLEAR acts on a named graph, and the model has tables, not graphs; write to the tables instead"
-    },
-    {
-      "case": "syntax-update-1::test_18",
-      "job": "SPARQL-G4",
-      "since": "2026-11-22",
-      "reason": "400: CLEAR acts on a named graph, and the model has tables, not graphs; write to the tables instead"
-    },
-    {
-      "case": "syntax-update-1::test_19",
-      "job": "SPARQL-G4",
-      "since": "2026-11-22",
-      "reason": "400: CLEAR acts on a named graph, and the model has tables, not graphs; write to the tables instead"
-    },
-    {
-      "case": "syntax-update-1::test_2",
-      "job": "SPARQL-G4",
-      "since": "2026-11-22",
-      "reason": "400: LOAD acts on a named graph, and the model has tables, not graphs; write to the tables instead"
-    },
-    {
-      "case": "syntax-update-1::test_20",
-      "job": "SPARQL-G4",
-      "since": "2026-11-22",
-      "reason": "400: CLEAR acts on a named graph, and the model has tables, not graphs; write to the tables instead"
-    },
-    {
-      "case": "syntax-update-1::test_21",
-      "job": "SPARQL-G4",
-      "since": "2026-11-22",
-      "reason": "400: CLEAR acts on a named graph, and the model has tables, not graphs; write to the tables instead"
-    },
-    {
-      "case": "syntax-update-1::test_22",
-      "job": "SPARQL-G4",
-      "since": "2026-11-22",
-      "reason": "400: CLEAR acts on a named graph, and the model has tables, not graphs; write to the tables instead"
-    },
-    {
       "case": "syntax-update-1::test_23",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
@@ -2064,12 +1950,6 @@
       "job": "SPARQL-G2",
       "since": "2026-11-22",
       "reason": "400: DeleteData is not served: this endpoint answers queries, and rows are written through the governed table writes"
-    },
-    {
-      "case": "syntax-update-1::test_3",
-      "job": "SPARQL-G4",
-      "since": "2026-11-22",
-      "reason": "400: LOAD acts on a named graph, and the model has tables, not graphs; write to the tables instead"
     },
     {
       "case": "syntax-update-1::test_30",
@@ -2114,12 +1994,6 @@
       "reason": "400: DeleteWhere is not served: this endpoint answers queries, and rows are written through the governed table writes"
     },
     {
-      "case": "syntax-update-1::test_37",
-      "job": "SPARQL-G4",
-      "since": "2026-11-22",
-      "reason": "400: CREATE, LOAD acts on a named graph, and the model has tables, not graphs; write to the tables instead"
-    },
-    {
       "case": "syntax-update-1::test_38",
       "job": "SPARQL-G11",
       "since": "2026-11-22",
@@ -2130,12 +2004,6 @@
       "job": "SPARQL-G11",
       "since": "2026-11-22",
       "reason": "500: Internal server error"
-    },
-    {
-      "case": "syntax-update-1::test_4",
-      "job": "SPARQL-G4",
-      "since": "2026-11-22",
-      "reason": "400: LOAD acts on a named graph, and the model has tables, not graphs; write to the tables instead"
     },
     {
       "case": "syntax-update-1::test_40",
@@ -2154,12 +2022,6 @@
       "job": "SPARQL-G8",
       "since": "2026-11-22",
       "reason": "a statement that is not SPARQL answered 400: InsertData is not served: this endpoint answers queries, and rows are written through the governed table writes"
-    },
-    {
-      "case": "syntax-update-1::test_5",
-      "job": "SPARQL-G4",
-      "since": "2026-11-22",
-      "reason": "400: DROP acts on a named graph, and the model has tables, not graphs; write to the tables instead"
     },
     {
       "case": "syntax-update-1::test_50",
@@ -2192,112 +2054,10 @@
       "reason": "a statement that is not SPARQL answered 400: InsertData, InsertData is not served: this endpoint answers queries, and rows are written through the governed table writes"
     },
     {
-      "case": "syntax-update-1::test_6",
-      "job": "SPARQL-G4",
-      "since": "2026-11-22",
-      "reason": "400: DROP acts on a named graph, and the model has tables, not graphs; write to the tables instead"
-    },
-    {
-      "case": "syntax-update-1::test_7",
-      "job": "SPARQL-G4",
-      "since": "2026-11-22",
-      "reason": "400: DROP acts on a named graph, and the model has tables, not graphs; write to the tables instead"
-    },
-    {
-      "case": "syntax-update-1::test_8",
-      "job": "SPARQL-G4",
-      "since": "2026-11-22",
-      "reason": "400: DROP acts on a named graph, and the model has tables, not graphs; write to the tables instead"
-    },
-    {
-      "case": "syntax-update-1::test_9",
-      "job": "SPARQL-G4",
-      "since": "2026-11-22",
-      "reason": "400: DROP acts on a named graph, and the model has tables, not graphs; write to the tables instead"
-    },
-    {
       "case": "syntax-update-2::syntax-update-other-01",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
       "reason": "400: InsertData is not served: this endpoint answers queries, and rows are written through the governed table writes"
-    },
-    {
-      "case": "update-silent::add-silent",
-      "job": "SPARQL-G4",
-      "since": "2026-11-22",
-      "reason": "400: ADD acts on a named graph, and the model has tables, not graphs; write to the tables instead"
-    },
-    {
-      "case": "update-silent::add-to-default-silent",
-      "job": "SPARQL-G4",
-      "since": "2026-11-22",
-      "reason": "400: ADD acts on a named graph, and the model has tables, not graphs; write to the tables instead"
-    },
-    {
-      "case": "update-silent::clear-default-silent",
-      "job": "SPARQL-G4",
-      "since": "2026-11-22",
-      "reason": "400: CLEAR acts on a named graph, and the model has tables, not graphs; write to the tables instead"
-    },
-    {
-      "case": "update-silent::clear-silent",
-      "job": "SPARQL-G4",
-      "since": "2026-11-22",
-      "reason": "400: CLEAR acts on a named graph, and the model has tables, not graphs; write to the tables instead"
-    },
-    {
-      "case": "update-silent::copy-silent",
-      "job": "SPARQL-G4",
-      "since": "2026-11-22",
-      "reason": "400: COPY acts on a named graph, and the model has tables, not graphs; write to the tables instead"
-    },
-    {
-      "case": "update-silent::copy-to-default-silent",
-      "job": "SPARQL-G4",
-      "since": "2026-11-22",
-      "reason": "400: COPY acts on a named graph, and the model has tables, not graphs; write to the tables instead"
-    },
-    {
-      "case": "update-silent::create-silent",
-      "job": "SPARQL-G4",
-      "since": "2026-11-22",
-      "reason": "400: CREATE acts on a named graph, and the model has tables, not graphs; write to the tables instead"
-    },
-    {
-      "case": "update-silent::drop-default-silent",
-      "job": "SPARQL-G4",
-      "since": "2026-11-22",
-      "reason": "400: DROP acts on a named graph, and the model has tables, not graphs; write to the tables instead"
-    },
-    {
-      "case": "update-silent::drop-silent",
-      "job": "SPARQL-G4",
-      "since": "2026-11-22",
-      "reason": "400: DROP acts on a named graph, and the model has tables, not graphs; write to the tables instead"
-    },
-    {
-      "case": "update-silent::load-into-silent",
-      "job": "SPARQL-G4",
-      "since": "2026-11-22",
-      "reason": "400: LOAD acts on a named graph, and the model has tables, not graphs; write to the tables instead"
-    },
-    {
-      "case": "update-silent::load-silent",
-      "job": "SPARQL-G4",
-      "since": "2026-11-22",
-      "reason": "400: LOAD acts on a named graph, and the model has tables, not graphs; write to the tables instead"
-    },
-    {
-      "case": "update-silent::move-silent",
-      "job": "SPARQL-G4",
-      "since": "2026-11-22",
-      "reason": "400: MOVE acts on a named graph, and the model has tables, not graphs; write to the tables instead"
-    },
-    {
-      "case": "update-silent::move-to-default-silent",
-      "job": "SPARQL-G4",
-      "since": "2026-11-22",
-      "reason": "400: MOVE acts on a named graph, and the model has tables, not graphs; write to the tables instead"
     }
   ]
 }

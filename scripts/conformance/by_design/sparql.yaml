@@ -1,19 +1,21 @@
 # The W3C SPARQL 1.1 suite's cases skipped by design (REQ-2167, amended 2026-10-27 and 2026-10-28),
 # never counted as failed: each group quotes the rule that excludes it. scripts/conformance/by_design.py.
 #
-# Only an update whose whole subject is a named graph is here: an INSERT or DELETE that could map
-# onto a governed table write stays failed until it does. The groups match the suite's directory
-# of graph-management tests and the refusal naming them, so a test that stops being refused this
-# way, or a directory the suite repurposes, is never skipped by accident.
+# Only an update refused because it acts on a named graph is here (REQ-2135, amended 2026-11-22 in
+# 04536b79c3): graph management -- DROP, CLEAR, LOAD, CREATE, COPY, MOVE, ADD -- in whatever
+# directory the suite puts it (add, copy, move, clear, drop, update-silent, syntax-update-1, and the
+# basic-update tests whose request drops a graph first). An INSERT or DELETE that maps onto a
+# governed table write is SPARQL Update data, not here: it stays failed until it passes. The group
+# matches the refusal naming the operation, so a test that stops being refused this way is never
+# skipped by accident.
 
 - group: Graph management updates
-  requirement: REQ-2167
+  requirement: REQ-2135, REQ-2167
   decision: >-
-    "a write needing structure the model lacks is refused by name": ADD, COPY, MOVE, CLEAR, DROP
-    and CREATE act on named graphs, and the model has tables, not graphs. Move rows with a
+    "a write needing structure the model lacks is refused by name": DROP, CLEAR, LOAD, CREATE,
+    COPY, MOVE and ADD act on named graphs, and the model has tables, not graphs. Move rows with a
     governed write to the tables instead.
-  case: "^(add|copy|move|clear|drop)::"
-  reason: "acts on a named graph"
+  reason: "^400: [A-Z]+(?:, [A-Z]+)* acts on a named graph, and the model has tables, not graphs"
 
 - kind: adapted
   group: Datasets declared as fixture tables
