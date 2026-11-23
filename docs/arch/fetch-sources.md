@@ -47,8 +47,9 @@ No declared dependency is a direct GitHub URL (the test checks `pyproject.toml`)
 | Node | `nodejs.org/dist` | first JavaScript code source on Node | npm per-platform Node packages |
 | Bun | GitHub release | first code source on Bun | npm `@oven/bun-<platform>` |
 | Deno | GitHub release | first code source on Deno | npm `@deno/<platform>` |
-| CPython (python-build-standalone) | GitHub release | first Python code source | open question |
-| uv | GitHub release | first Python code source | PyPI `uv` wheels |
+| CPython for a Python code source | none: the interpreter Provisa runs on (the one pip installed it into, or the installer's bundled one) | never fetched | none needed |
+| uv | the `uv` wheel, a declared dependency, from PyPI at install time | never fetched | PyPI already |
+| CPython (python-build-standalone) for a remote host's image | GitHub release | first image built for a Python code source | open question |
 | Go toolchain | `go.dev/dl` | first Go code source | open question |
 | Rust toolchain | `static.rust-lang.org` | first Rust code source | open question |
 | pyarrow wheel for the Python host | `files.pythonhosted.org` | first Python code source | PyPI already, but the URL is fixed |
@@ -56,6 +57,9 @@ No declared dependency is a direct GitHub URL (the test checks `pyproject.toml`)
 | Temurin JDK | GitHub release | first sparql source with reasoning | open question |
 | HermiT and OWL API jars | `repo1.maven.org/maven2` | first sparql source with reasoning | Maven Central already, but the URL is fixed |
 | code-source dependencies (npm, PyPI, Go modules, crates, git) | the organisation's package registries | each code-source install | configurable mirror already |
+
+A Python code source runs on the interpreter Provisa runs on, in a virtual environment uv makes for it;
+only an image built for a remote host's platform takes the pinned python-build-standalone.
 
 The code runtimes and reasoner jars use fixed public URLs. They do not go through the organisation's
 configured package registries, so a site that reaches only its Artifactory fails even for the ones

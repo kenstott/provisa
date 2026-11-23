@@ -250,7 +250,7 @@ def _ensure(tmp_path, code, runner, registries=(INDEX, EXTRA)):
         ),
     ],
 )
-def test_dependencies_install_from_the_lockfile_into_a_venv_from_the_pinned_python(
+def test_dependencies_install_from_the_lockfile_into_a_venv_from_the_given_python(
     tmp_path, lock, files, sync
 ):
     runner = _Runner()
@@ -270,11 +270,29 @@ def test_dependencies_install_from_the_lockfile_into_a_venv_from_the_pinned_pyth
     )
 
 
-def test_code_with_no_dependencies_installs_nothing_and_runs_on_the_pinned_python(tmp_path):
+def test_code_with_no_dependencies_gets_an_empty_venv_from_the_given_python(tmp_path):
+    """Every install has its own environment, so the code sees none of the interpreter's own
+    packages (on an installer, Provisa's) -- even with nothing to install into it."""
     runner = _Runner()
-    got = _ensure(tmp_path, _project({"rates.py": ""}), runner)
-    assert runner.ran == []
-    assert install.environment_python(got.path, Path("/rt/python")) == Path("/rt/python")
+    _ensure(tmp_path, _project({"rates.py": ""}), runner)
+    ((make, root, env),) = runner.ran
+    assert make == [
+        "/rt/uv/uv", "venv", "--python", "/rt/python/bin/python3.12", "--no-python-downloads",
+        str(root / ".venv"),
+    ]  # fmt: skip
+    assert env["UV_PYTHON_DOWNLOADS"] == "never"
+
+
+def test_the_worker_runs_the_installs_own_environment(tmp_path):
+    venv_python = tmp_path / ".venv" / "bin" / "python"
+    venv_python.parent.mkdir(parents=True)
+    venv_python.write_text("")
+    assert install.environment_python(tmp_path) == venv_python
+
+
+def test_an_install_without_an_environment_is_refused_by_name(tmp_path):
+    with pytest.raises(install.shared.InstallFailed, match="no virtual environment"):
+        install.environment_python(tmp_path)
 
 
 def test_a_failed_install_caches_nothing(tmp_path):

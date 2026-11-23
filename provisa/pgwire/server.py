@@ -1316,6 +1316,29 @@ def _describe_registered(
             coerce.append((i, wire.coerce))
 
 
+def _describe_typed_array(
+    i: int,
+    declared: str,
+    types: list[BVType],
+    oids: list[int | None],
+    coerce: list[Tuple[int, Callable[[Any], Any]]],
+) -> None:  # REQ-1965
+    """A result column that is a registered typed array the wire sends as an array
+    (``ir_arrays.sent_as_array``) is described as that PostgreSQL array type (TYPED ARRAYS ARE AN
+    IR TYPE). An engine that holds it natively returned the array; one that holds it as JSON
+    returned its JSON form, which is read as the array's values."""
+    from provisa.compiler.result_shape import RegisteredType
+    from provisa.core.ir_arrays import array_of, sent_as_array
+
+    typed = array_of(declared) if isinstance(declared, RegisteredType) else None
+    if typed is None or not sent_as_array(typed):
+        return
+    described = _sql_type_to_bvtype(declared)
+    if types[i] != described:
+        coerce.append((i, _to_list))
+    types[i], oids[i] = described, None
+
+
 def _duckdb_inet(value: Any) -> Any:  # REQ-2167
     """DuckDB's INET value (its ip_type, address and mask) as the address it is; an IPv6 address
     is held with its top bit flipped, so it orders as a signed integer."""
@@ -1552,6 +1575,7 @@ class ProvisaQueryResult(BVQueryResult):  # REQ-529, REQ-028
             for i, (_name, declared) in enumerate(read_shape):
                 if declared in SUBTYPES:
                     self._types[i] = _sql_type_to_bvtype(declared)
+                _describe_typed_array(i, declared, self._types, self._type_oids, self._coerce)
                 if declared == "xml":  # REQ-2171: held as its text, sent as xml_out writes it
                     self._coerce.append((i, xml_out))
             _describe_registered(
