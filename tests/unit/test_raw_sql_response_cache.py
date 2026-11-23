@@ -13,8 +13,8 @@
 Covers the write-through tee (forwards each batch at once, buffers only within the bound, writes
 only a stream drained to its end), the key (disjoint from GraphQL's; partitioned by role and bound
 params), the cache policy (TTL/source-disable/table index), the kind-tagged entries across
-surfaces (rows <-> Arrow, exact DECIMAL(18,2) and timezone-aware timestamps), and write
-invalidation.
+surfaces (one Arrow IPC entry: an engine's batches kept as they are, a row stream's rows built
+into Arrow; exact DECIMAL(18,2) and timezone-aware timestamps), and write invalidation.
 """
 
 from __future__ import annotations
@@ -29,8 +29,12 @@ import pytest
 
 from provisa.audit.pipeline import PendingAudit
 from provisa.cache.raw_sql import (
-    KIND_ARROW_IPC,
-    KIND_ROWS,
+    KIND_ARROW,
+    ORIGIN_ARROW,
+    ORIGIN_ROWS,
+    CacheEntry,
+    decode_entry,
+    encode_rows_entry,
     entry_as_arrow,
     entry_as_result,
 )
@@ -309,7 +313,7 @@ def _arrow_batches() -> tuple[pa.Schema, list[pa.RecordBatch]]:
 
 @pytest.mark.asyncio
 async def test_flight_miss_then_pgwire_hit_is_exact(bound):
-    """Flight's Arrow terminal writes arrow_ipc; a row surface's hit decodes exact values."""
+    """Flight's Arrow terminal writes an Arrow entry; a row surface's hit reads exact values."""
     store = FakeCacheStore()
     state = _state(store)
     tee = response_cache_tee(_plan(), state, run=None)
@@ -317,7 +321,7 @@ async def test_flight_miss_then_pgwire_hit_is_exact(bound):
     schema, batches = _arrow_batches()
     assert [b.num_rows for b in tee.arrow(schema, batches)] == [2]
     await tee.commit()
-    assert tee.stored_entry is not None and tee.stored_entry["kind"] == KIND_ARROW_IPC
+    assert tee.stored_entry is not None and tee.stored_entry.kind == KIND_ARROW
 
     hit = await check_response_cache(_plan(), state)
     assert hit is not None
@@ -329,7 +333,7 @@ async def test_flight_miss_then_pgwire_hit_is_exact(bound):
 
 @pytest.mark.asyncio
 async def test_pgwire_miss_then_flight_hit_is_exact(bound):
-    """A row terminal writes rows; Flight's hit builds Arrow losslessly (decimal128(18, 2))."""
+    """A row terminal's rows are kept as Arrow; Flight's hit is lossless (decimal128(18, 2))."""
     store = FakeCacheStore()
     state = _state(store)
     tee = response_cache_tee(_plan(), state, run=None)
@@ -337,7 +341,8 @@ async def test_pgwire_miss_then_flight_hit_is_exact(bound):
     for _ in tee.rows(_stream([_ROWS])).batches():
         pass
     await tee.commit()
-    assert tee.stored_entry is not None and tee.stored_entry["kind"] == KIND_ROWS
+    assert tee.stored_entry is not None and tee.stored_entry.kind == KIND_ARROW
+    assert tee.stored_entry.origin == ORIGIN_ROWS
 
     table = await check_response_cache_arrow(_plan(), state)
     assert table.schema.field("amount").type == pa.decimal128(18, 2)
@@ -350,10 +355,11 @@ async def test_pgwire_miss_then_flight_hit_is_exact(bound):
 
 
 @pytest.mark.asyncio
-async def test_pgwire_rows_called_with_arrow_stream_caches_as_rows(bound):
-    """REQ-1897: when tee.rows() is called with an ArrowStreamResult (e.g. DuckDB engine returning
-    Arrow), the cache entry must be of kind 'rows', not 'arrow_ipc'.  pgwire cannot serve an
-    arrow_ipc cache entry, so the entry kind is the fix's key invariant (commit r508-wire)."""
+async def test_pgwire_rows_called_with_arrow_stream_keeps_the_batches(bound):
+    """REQ-1867 (amended 2026-11-23): when tee.rows() is called with an ArrowStreamResult (e.g.
+    DuckDB engine returning Arrow), the stream stays Arrow for the encoder and the entry is the
+    engine's record batches as they are -- never turned into rows to be kept; a hit hands the
+    same batches to pgwire's Arrow encoder."""
     store = FakeCacheStore()
     state = _state(store)
     tee = response_cache_tee(_plan(), state, run=None)
@@ -364,20 +370,29 @@ async def test_pgwire_rows_called_with_arrow_stream_caches_as_rows(bound):
         return [tuple(row.values()) for row in batch.to_pylist()]
 
     arrow_stream = ArrowStreamResult(schema, iter(batches), _TYPES, to_rows=_to_rows)
-    served = [r for b in tee.rows(arrow_stream).batches() for r in b]
+    teed = tee.rows(arrow_stream)
+    assert isinstance(teed, ArrowStreamResult), "the teed stream must stay Arrow for the encoder"
+    served = list(teed.arrow_batches())
     await tee.commit()
-    assert served == _ROWS, f"rows forwarded incorrectly: {served!r}"
-    assert tee.stored_entry is not None, "nothing was stored"
-    assert tee.stored_entry["kind"] == KIND_ROWS, (
-        f"expected 'rows' entry, got {tee.stored_entry['kind']!r}"
-    )
+    assert served == batches, f"batches forwarded incorrectly: {served!r}"
+    stored = tee.stored_entry
+    assert stored is not None, "nothing was stored"
+    assert stored.kind == KIND_ARROW and stored.origin == ORIGIN_ARROW
+    assert stored.table.equals(pa.Table.from_batches(batches))
+    assert stored.column_types == _TYPES
+
+    hit = await check_response_cache(_plan(), state)
+    assert hit is not None
+    assert pa.Table.from_batches(list(hit.arrow_batches())).equals(stored.table)
+    assert hit.column_types == _TYPES
 
 
 def test_unknown_kind_raises_for_both_readers():
+    unknown = CacheEntry(kind="x", table=pa.table({"n": [1]}), column_types=None)
     with pytest.raises(ValueError, match="unknown kind"):
-        entry_as_result({"kind": "x"}, None)
+        entry_as_result(unknown)
     with pytest.raises(ValueError, match="unknown kind"):
-        entry_as_arrow({"kind": "x"}, None, None)
+        entry_as_arrow(unknown, None)
 
 
 # -- chokepoint + invalidation --------------------------------------------------------------------
@@ -496,17 +511,18 @@ async def test_passthrough_miss_store_then_replay_is_byte_exact_and_undecoded(bo
 
 
 def test_decoded_readers_refuse_a_pg_datarows_entry():
-    from provisa.cache.raw_sql import datarows_entry, entry_as_datarows
+    from provisa.cache.raw_sql import encode_datarows_entry, entry_as_datarows
 
-    entry = datarows_entry(_DATAROWS, ["n"], ["int4"], [1])
+    entry = decode_entry(encode_datarows_entry(_DATAROWS, ["n"], ["int4"], [1]))
     with pytest.raises(ValueError, match="passthrough"):
-        entry_as_result(entry, None)
+        entry_as_result(entry)
     with pytest.raises(ValueError, match="passthrough"):
-        entry_as_arrow(entry, None, None)
+        entry_as_arrow(entry, None)
     with pytest.raises(ValueError, match="format codes"):
         entry_as_datarows(entry, [0])
+    rows_entry = decode_entry(encode_rows_entry([(1,)], ["n"], None))
     with pytest.raises(ValueError, match="needs a pg_datarows"):
-        entry_as_datarows({"kind": KIND_ROWS}, [1])
+        entry_as_datarows(rows_entry, [1])
 
 
 @pytest.mark.asyncio
@@ -623,8 +639,8 @@ def test_flight_direct_miss_and_its_hit_build_one_arrow_shape(declared):
         StreamingQueryResult(iter([rows]), column_names=names, column_types=types)
     )
     miss = pa.Table.from_batches(list(batches), schema=miss_schema)
-    entry = {"kind": KIND_ROWS, "rows": [list(rows[1])], "column_names": names}
-    hit = entry_as_arrow(entry, types, None)
+    entry = decode_entry(encode_rows_entry([rows[1]], names, types))
+    hit = entry_as_arrow(entry, None)
     assert miss.schema.field("amount").type == pa.float64()
     assert hit.schema == miss.schema
     assert hit.to_pylist() == miss.to_pylist()[1:2]
@@ -649,8 +665,8 @@ def test_flight_direct_hit_types_each_registered_column_as_its_miss_does():
         StreamingQueryResult(iter([rows]), column_names=names, column_types=types), shape=shape
     )
     miss = pa.Table.from_batches(list(batches), schema=miss_schema)
-    entry = {"kind": KIND_ROWS, "rows": [list(rows[1])], "column_names": names}
-    hit = entry_as_arrow(entry, types, shape)
+    entry = decode_entry(encode_rows_entry([rows[1]], names, types))
+    hit = entry_as_arrow(entry, shape)
     assert miss.schema.field("id").type == pa.int32()
     assert hit.schema == miss.schema
     assert hit.to_pylist() == miss.to_pylist()[1:2]

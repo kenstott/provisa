@@ -421,9 +421,11 @@ RUNTIMES: dict[str, RuntimePin] = {
             ),
         },
     ),
-    # REQ-2138: the Java a sparql source's reasoner (provisa/sparql/reasoner) runs on, as a
-    # separate program: a JDK, since the reasoner is run from its source by java's source
-    # launcher, which needs the compiler. Eclipse Temurin; each sum is Adoptium's published one.
+    # REQ-2138: the JDK whose javac compiles the sparql reasoner (provisa/sparql/reasoner) into
+    # its jar, io.simpleishard:provisa-sparql-reasoner (scripts/ci/reasoner_maven_bundle.py): one
+    # pinned compiler, so the jar's bytes and the sum reasoner_bundle pins are reproducible.
+    # Nothing on the pip path runs it; the reasoner itself runs on jdk4py's Java from PyPI.
+    # Eclipse Temurin; each sum is Adoptium's published one.
     "temurin": RuntimePin(
         "temurin",
         "21.0.12.1+1",
