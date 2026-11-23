@@ -82,6 +82,7 @@ from provisa.transpiler.rows.base import (
 from provisa.transpiler.rows.hashes import _BYTEA_INPUT, _TEXT_TYPES
 from provisa.transpiler.rows.numbers import _EXACT_OVERLOADS, _EXACT_ROWS, _REGRESSIONS
 from provisa.transpiler.rows.system import VALUE_FUNCTIONS_OF_THE_SERVER
+from provisa.transpiler.polyfill import array_dimensions as polyfill_array_dimensions
 from provisa.transpiler.polyfill import notation as polyfill_notation
 from provisa.transpiler.polyfill import texts as polyfill_texts
 from provisa.transpiler.polyfill import trino as polyfill_trino
@@ -1331,6 +1332,15 @@ def _answered_first(node: exp.Expr, dialect: str) -> bool:
     return first is not None and first.rewritten is not None
 
 
+def _of_dimensions_on_duckdb(tree: exp.Expr, dialect: str) -> exp.Expr:
+    """``tree`` with each call of an array of more than one dimension in its DuckDB form
+    (polyfill.array_dimensions.on_duckdb); its row's refusal raises with PostgreSQL's SQLSTATE."""
+    try:
+        return polyfill_array_dimensions.on_duckdb(tree)
+    except polyfill_array_dimensions.CallRefused as refused:
+        raise RowRefused(refused.called, dialect, refused.refusal) from refused
+
+
 def inline(tree: exp.Expr, dialect: str) -> exp.Expr:
     """``tree`` with each call of a function of the table written in its form for ``dialect``.
     Raises :class:`FunctionRefused` for a call of one it has no form of. A call with no overload
@@ -1345,6 +1355,10 @@ def inline(tree: exp.Expr, dialect: str) -> exp.Expr:
             refused_call = engine_refusals.refused_call(node, dialect, said_type)
             if refused_call is not None and not _answered_first(node, dialect):
                 raise FunctionRefused(refused_call, dialect)
+    else:
+        # REQ-2236: an array of more than one dimension as PostgreSQL reads it, before any form
+        # (a text search's or JSON's among them) reads the arrays.
+        tree = _of_dimensions_on_duckdb(tree, dialect)
     try:
         tree = pg_forms_textsearch.lowered(tree, dialect)
         tree = pg_forms_json.lowered(tree, dialect, lambda n: _answered_by_a_row(n, dialect))
