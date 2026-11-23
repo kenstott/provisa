@@ -19,6 +19,10 @@ import type { IncrementalOption, ListedTable, Relationship } from "../../../type
 import { CodeResolverIncrementalQuery } from "../../../hooks/admin.graphql";
 import { AddRelationshipForm } from "../AddRelationshipForm";
 import { RelationshipDetail } from "../RelationshipDetail";
+// The panel links the tables it names (REQ-2259), gated on the viewer's rights.
+vi.mock("../../../context/AuthContext", () => ({
+  useAuth: () => ({ capabilities: ["table_registration"] }),
+}));
 import { EMPTY_FORM, isCodeResolver, type RelForm } from "../relationship-types";
 
 function command(name: string, more: Partial<TrackedFunction>): TrackedFunction {

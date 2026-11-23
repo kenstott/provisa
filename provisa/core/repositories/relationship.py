@@ -79,6 +79,33 @@ def reserved_prefix_of(rel_id: str) -> str | None:
     return next((p for p in BUILTIN_RELATIONSHIP_ID_PREFIXES if rel_id.startswith(p)), None)
 
 
+#: The columns a save writes over a stored relationship (REQ-020).
+_SAVED_COLUMNS = (
+    "source_table_id",
+    "target_table_id",
+    "source_column",
+    "target_column",
+    "cardinality",
+    "materialize",
+    "refresh_interval",
+    "target_function_name",
+    "function_arg",
+    "alias",
+    "graphql_alias",
+    "disable_cypher",
+    "hide_target_meta",
+    "same_entity",
+    "via_table_id",
+    "via_source_column",
+    "via_target_column",
+    "via_type_column",
+    "via_type_value",
+    "via_label_source",
+    "source_json_key",
+    "parameters",
+)
+
+
 async def upsert(
     conn: "Connection", rel: Relationship, *, derive_target_key: bool = True
 ) -> None:  # REQ-019, REQ-020, REQ-399, REQ-400, REQ-413, REQ-1919
@@ -168,38 +195,25 @@ async def upsert(
         "version": rel.version,
         "needs_review": rel.needs_review,
     }
+    # REQ-020: the version counts changes. A save of what is stored, unflagged, is none: a demo's
+    # rebuild saves every relationship its configuration declares at every start (REQ-1919).
+    unchanged = (
+        held is not None
+        and not held["needs_review"]
+        and all(held[c] == vals[c] for c in _SAVED_COLUMNS)
+    )
     try:
-        # REQ-020: on conflict bump version, clear the re-review flag (a save is an explicit
+        # REQ-020: on a change bump version, clear the re-review flag (a save is an explicit
         # re-review), and preserve the original owner (owner is not in the update set).
         await conn.upsert(
             relationships,
             vals,
             index_elements=["id"],
-            update_columns=[
-                "source_table_id",
-                "target_table_id",
-                "source_column",
-                "target_column",
-                "cardinality",
-                "materialize",
-                "refresh_interval",
-                "target_function_name",
-                "function_arg",
-                "alias",
-                "graphql_alias",
-                "disable_cypher",
-                "hide_target_meta",
-                "same_entity",
-                "via_table_id",
-                "via_source_column",
-                "via_target_column",
-                "via_type_column",
-                "via_type_value",
-                "via_label_source",
-                "source_json_key",
-                "parameters",
-            ],
-            set_extra={"version": relationships.c.version + 1, "needs_review": False},
+            update_columns=list(_SAVED_COLUMNS),
+            set_extra={
+                "version": relationships.c.version if unchanged else relationships.c.version + 1,
+                "needs_review": False,
+            },
         )
     except Exception as e:
         if "relationships_source_alias_unique" in str(e):

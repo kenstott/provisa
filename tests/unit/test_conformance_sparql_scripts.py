@@ -191,26 +191,33 @@ def test_an_answers_terms_read_back_and_scaffolding_leaves():
     assert rows == [{"s": BNode("b"), "p": URIRef(f"{EX}p")}]
 
 
-def test_a_graph_managed_update_is_by_design_by_its_refusal_in_every_directory():
-    # REQ-2135 (amended 2026-11-22, 04536b79c3): graph management is refused by name, by design,
-    # wherever the suite puts it; any other failure in the same directories stays failed.
+def test_an_update_on_the_models_own_graph_or_a_load_is_by_design_by_its_refusal():
+    # REQ-2135 (amended 2026-11-23, 282097af2d): a graph IRI under the base, DEFAULT and ALL name
+    # the model's own graph, and LOAD reads from outside, each refused by name, by design,
+    # wherever the suite puts it. A session graph's case is no longer by design: an update on
+    # one that fails stays failed.
     declared = by_design.groups("sparql")
-    tail = (
-        " acts on a named graph, and the model has tables, not graphs; write to the tables instead"
-    )
+    own = " names the model's own graph, under its base IRI <http://b>: write its rows"
+    load = "LOAD reads a document from outside the session; insert its triples with INSERT DATA"
     outcomes = [
-        runner.Outcome("add", "add01", "failed", f"400: ADD{tail}"),
+        runner.Outcome("add", "add01", "failed", f"400: ADD DEFAULT{own}"),
         runner.Outcome("add", "add02", "failed", "500: boom"),
-        runner.Outcome("basic-update", "i1", "failed", f"400: DROP{tail}"),
+        runner.Outcome("basic-update", "i1", "failed", f"400: DROP DEFAULT{own}"),
         runner.Outcome("basic-update", "i2", "failed", "400: INSERT wrote no row"),
-        runner.Outcome("syntax-update-1", "test_37", "failed", f"400: CREATE, LOAD{tail}"),
-        runner.Outcome("update-silent", "load-silent", "failed", f"400: LOAD{tail}"),
-        runner.Outcome("update-silent", "x", "failed", f"500: LOAD{tail}"),
+        runner.Outcome("syntax-update-1", "test_37", "failed", f"400: {load}"),
+        runner.Outcome("update-silent", "load-silent", "failed", f"400: {load}"),
+        runner.Outcome("update-silent", "x", "failed", f"500: {load}"),
+        runner.Outcome(
+            "clear",
+            "clear01",
+            "failed",
+            "the update was accepted, and this runner has no graph to compare it on",
+        ),
         runner.Outcome("bind", "bind01", "passed"),
     ]
     doc = runner.report(outcomes, "abc", "")
-    assert (doc["passed"], doc["by_design"], doc["failed"]) == (1, 4, 3)
-    assert {f["scenario"] for f in doc["failures"]} == {"add02", "i2", "x"}
+    assert (doc["passed"], doc["by_design"], doc["failed"]) == (1, 4, 4)
+    assert {f["scenario"] for f in doc["failures"]} == {"add02", "i2", "x", "clear01"}
     assert declared  # the page's by-design table comes from the file
     assert {g["group"]: g for g in doc["groups"]}["add"] == {
         "group": "add",

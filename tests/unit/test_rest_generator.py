@@ -190,7 +190,9 @@ class TestBuildGraphQLQuery:
         variables = request_variables(
             schema, "orders", {"amount": {"gt": "100"}, "id": {"in": ["1", "2"]}}
         )
-        assert variables.values == {"where": {"amount": {"gt": 100.0}, "id": {"in": [1, 2]}}}
+        # REQ-1961: a sized numeric's filter value is its exact digits (compared as a number by
+        # the compiler); an integer's is the integer.
+        assert variables.values == {"where": {"amount": {"gt": "100"}, "id": {"in": [1, 2]}}}
 
     def test_a_filter_value_with_a_quote_is_never_written_into_the_text(self):
         schema, _ = _build_test_schema()

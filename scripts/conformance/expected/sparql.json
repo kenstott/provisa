@@ -2,6 +2,36 @@
   "total": 521,
   "expected": [
     {
+      "case": "add::add03",
+      "job": "SPARQL-SESSION3",
+      "since": "2026-11-23",
+      "reason": "400: ADD <http://example.org/g1>: the session holds no such graph"
+    },
+    {
+      "case": "add::add04",
+      "job": "SPARQL-SESSION3",
+      "since": "2026-11-23",
+      "reason": "400: ADD <http://example.org/g1>: the session holds no such graph"
+    },
+    {
+      "case": "add::add05",
+      "job": "SPARQL-SESSION3",
+      "since": "2026-11-23",
+      "reason": "400: ADD <http://example.org/g1>: the session holds no such graph"
+    },
+    {
+      "case": "add::add06",
+      "job": "SPARQL-SESSION3",
+      "since": "2026-11-23",
+      "reason": "the update was accepted, and this runner has no graph to compare it on"
+    },
+    {
+      "case": "add::add08",
+      "job": "SPARQL-SESSION3",
+      "since": "2026-11-23",
+      "reason": "400: ADD <http://example.org/g1>: the session holds no such graph"
+    },
+    {
       "case": "aggregates::agg-avg-01",
       "job": "SPARQL-G3",
       "since": "2026-11-22",
@@ -41,7 +71,7 @@
       "case": "aggregates::agg-empty-group-count-graph",
       "job": "SPARQL-G9",
       "since": "2026-11-22",
-      "reason": "400: The SPARQL operator Graph is not supported"
+      "reason": "400: A GRAPH pattern names its graph by a variable; name it by its IRI"
     },
     {
       "case": "aggregates::agg-err-01",
@@ -260,58 +290,82 @@
       "reason": "a statement that is not SPARQL answered 200: {'results': {'bindings': []}, 'head': {'vars': ['O1', 'C']}}"
     },
     {
+      "case": "basic-update::insert-05a",
+      "job": "SPARQL-SESSION3",
+      "since": "2026-11-23",
+      "reason": "500: Write failed: '__session_unlabeled'"
+    },
+    {
+      "case": "basic-update::insert-data-same-bnode",
+      "job": "SPARQL-SESSION3",
+      "since": "2026-11-23",
+      "reason": "500: Write failed: '__session_unlabeled'"
+    },
+    {
       "case": "basic-update::insert-data-spo-named1",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: InsertData is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "the update was accepted, and this runner has no graph to compare it on"
     },
     {
       "case": "basic-update::insert-data-spo-named2",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: InsertData is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "the update was accepted, and this runner has no graph to compare it on"
     },
     {
       "case": "basic-update::insert-data-spo-named3",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: InsertData is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "the update was accepted, and this runner has no graph to compare it on"
     },
     {
       "case": "basic-update::insert-data-spo1",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: InsertData is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "the update was accepted, and this runner has no graph to compare it on"
     },
     {
       "case": "basic-update::insert-using-01",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "400: USING names several graphs, whose merge is the WHERE's default graph: read each by a GRAPH pattern"
     },
     {
       "case": "basic-update::insert-where-01",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "500: Write failed: '__session_unlabeled'"
     },
     {
       "case": "basic-update::insert-where-02",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "500: Write failed: '__session_unlabeled'"
     },
     {
       "case": "basic-update::insert-where-03",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "500: Write failed: '__session_unlabeled'"
     },
     {
       "case": "basic-update::insert-where-04",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "500: Write failed: '__session_unlabeled'"
+    },
+    {
+      "case": "basic-update::insert-where-same-bnode",
+      "job": "SPARQL-SESSION3",
+      "since": "2026-11-23",
+      "reason": "500: Write failed: '__session_unlabeled'"
+    },
+    {
+      "case": "basic-update::insert-where-same-bnode2",
+      "job": "SPARQL-SESSION3",
+      "since": "2026-11-23",
+      "reason": "400: The engine refused the query: Parser Error: SELECT clause without selection list"
     },
     {
       "case": "bind::bind01",
@@ -371,7 +425,7 @@
       "case": "bindings::graph",
       "job": "SPARQL-G9",
       "since": "2026-11-22",
-      "reason": "400: The SPARQL operator Graph is not supported"
+      "reason": "400: A GRAPH pattern names its graph by a variable; name it by its IRI"
     },
     {
       "case": "bindings::graph-from-named-1",
@@ -395,7 +449,7 @@
       "case": "bindings::graph-no-var",
       "job": "SPARQL-G9",
       "since": "2026-11-22",
-      "reason": "400: The SPARQL operator Graph is not supported"
+      "reason": "400: A GRAPH pattern names its graph by a variable; name it by its IRI"
     },
     {
       "case": "bindings::inline1",
@@ -473,13 +527,13 @@
       "case": "bindings::values-order-by",
       "job": "SPARQL-G5",
       "since": "2026-11-22",
-      "reason": "answered 0 solutions, expected 3: [] expected [{\"rank\": \"\\\"1\\\"^^<http://www.w3.org/2001/XMLSchema#integer>\", \"s\": \"<http://example.org/b>\"}, {\"rank\": \"\\\"2\\\"^^<http://www.w3.org/2001/XMLSchema#integer>\", \"s\": \"<http://example.org/c>\"}, {\"rank\": \"\\\"3\\\"^^<http://www.w3.org/2001/XMLSchema#integer>\", \"s\""
+      "reason": "answered 0 solutions, expected 3: [] expected [{\"rank\": \"\\\"1\\\"^^<http://www.w3.org/2001/XMLSchema#integer>\", \"s\": \"<http://example.org/b>\"}, {\"rank\": \"\\\"2\\\"^^<http://www.w3.org/2001/XMLSchema#integer>\", \"s\": \"<http://example.org/c>\"}, {\"rank\": \"\\\"3\\\"^^<http://www.w3.org/2001/XMLSchema#integer>\", \"s\": \"<http://example.org/a>\"}]"
     },
     {
       "case": "bindings::values-select-star",
       "job": "SPARQL-G5",
       "since": "2026-11-22",
-      "reason": "answered 0 solutions, expected 2: [] expected [{\"o\": \"\\\"1\\\"^^<http://www.w3.org/2001/XMLSchema#integer>\", \"s\": \"<http://example.org/a>\", \"x\": \"\\\"10\\\"^^<http://www.w3.org/2001/XMLSchema#integer>\"}, {\"o\": \"\\\"2\\\"^^<http://www.w3.org/2001/XMLSchema#integer>\", \"s\": \"<http://example.org/b>\", \"x\": \"\\\"20\\\"^"
+      "reason": "answered 0 solutions, expected 2: [] expected [{\"o\": \"\\\"1\\\"^^<http://www.w3.org/2001/XMLSchema#integer>\", \"s\": \"<http://example.org/a>\", \"x\": \"\\\"10\\\"^^<http://www.w3.org/2001/XMLSchema#integer>\"}, {\"o\": \"\\\"2\\\"^^<http://www.w3.org/2001/XMLSchema#integer>\", \"s\": \"<http://example.org/b>\", \"x\": \"\\\"20\\\"^^<http://www.w3.org/2001/XMLSchema#integer>\"}]"
     },
     {
       "case": "bindings::values-subquery-offset-limit",
@@ -527,7 +581,7 @@
       "case": "bindings::values8",
       "job": "SPARQL-G5",
       "since": "2026-11-22",
-      "reason": "answered 0 solutions, expected 2: [] expected [{\"book\": \"<http://example.org/book/book1>\", \"price\": \"\\\"42\\\"^^<http://www.w3.org/2001/XMLSchema#integer>\", \"title\": \"\\\"SPARQL Tutorial\\\"\"}, {\"book\": \"<http://example.org/book/book2>\", \"price\": \"\\\"23\\\"^^<http://www.w3.org/2001/XMLSchema#integer>\", \"title"
+      "reason": "answered 0 solutions, expected 2: [] expected [{\"book\": \"<http://example.org/book/book1>\", \"price\": \"\\\"42\\\"^^<http://www.w3.org/2001/XMLSchema#integer>\", \"title\": \"\\\"SPARQL Tutorial\\\"\"}, {\"book\": \"<http://example.org/book/book2>\", \"price\": \"\\\"23\\\"^^<http://www.w3.org/2001/XMLSchema#integer>\", \"title\": \"\\\"The Semantic Web\\\"\"}]"
     },
     {
       "case": "cast::cast-bool",
@@ -566,6 +620,18 @@
       "reason": "The dataset holds the datatype <http://www.w3.org/2001/XMLSchema#float>, which no column holds"
     },
     {
+      "case": "clear::dawg-clear-graph-01",
+      "job": "SPARQL-SESSION3",
+      "since": "2026-11-23",
+      "reason": "the update was accepted, and this runner has no graph to compare it on"
+    },
+    {
+      "case": "clear::dawg-clear-named-01",
+      "job": "SPARQL-SESSION3",
+      "since": "2026-11-23",
+      "reason": "the update was accepted, and this runner has no graph to compare it on"
+    },
+    {
       "case": "construct::constructlist",
       "job": "SPARQL-G10",
       "since": "2026-11-22",
@@ -582,6 +648,24 @@
       "job": "SPARQL-G9",
       "since": "2026-11-22",
       "reason": "400: FROM and FROM NAMED are not supported"
+    },
+    {
+      "case": "copy::copy03",
+      "job": "SPARQL-SESSION3",
+      "since": "2026-11-23",
+      "reason": "the update was accepted, and this runner has no graph to compare it on"
+    },
+    {
+      "case": "copy::copy04",
+      "job": "SPARQL-SESSION3",
+      "since": "2026-11-23",
+      "reason": "the update was accepted, and this runner has no graph to compare it on"
+    },
+    {
+      "case": "copy::copy07",
+      "job": "SPARQL-SESSION3",
+      "since": "2026-11-23",
+      "reason": "the update was accepted, and this runner has no graph to compare it on"
     },
     {
       "case": "csv-tsv-res::csv01",
@@ -629,259 +713,271 @@
       "case": "delete-data::dawg-delete-data-01",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: DeleteData is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "the update was accepted, and this runner has no graph to compare it on"
     },
     {
       "case": "delete-data::dawg-delete-data-02",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: DeleteData is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "the update was accepted, and this runner has no graph to compare it on"
     },
     {
       "case": "delete-data::dawg-delete-data-03",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: DeleteData is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "the update was accepted, and this runner has no graph to compare it on"
     },
     {
       "case": "delete-data::dawg-delete-data-04",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: DeleteData is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "the update was accepted, and this runner has no graph to compare it on"
     },
     {
       "case": "delete-data::dawg-delete-data-05",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: DeleteData is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "the update was accepted, and this runner has no graph to compare it on"
     },
     {
       "case": "delete-data::dawg-delete-data-06",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: DeleteData is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "the update was accepted, and this runner has no graph to compare it on"
     },
     {
       "case": "delete-insert::dawg-delete-insert-01",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "the update was accepted, and this runner has no graph to compare it on"
     },
     {
       "case": "delete-insert::dawg-delete-insert-01b",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: Modify, Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "the update was accepted, and this runner has no graph to compare it on"
     },
     {
       "case": "delete-insert::dawg-delete-insert-01c",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: Modify, Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "the update was accepted, and this runner has no graph to compare it on"
     },
     {
       "case": "delete-insert::dawg-delete-insert-02",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "the update was accepted, and this runner has no graph to compare it on"
     },
     {
       "case": "delete-insert::dawg-delete-insert-04",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "400: Sub-SELECTs are not supported"
     },
     {
       "case": "delete-insert::dawg-delete-insert-04b",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "the update was accepted, and this runner has no graph to compare it on"
     },
     {
       "case": "delete-insert::dawg-delete-insert-05b",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "the update was accepted, and this runner has no graph to compare it on"
     },
     {
       "case": "delete-insert::dawg-delete-insert-06b",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "the update was accepted, and this runner has no graph to compare it on"
     },
     {
       "case": "delete-insert::delete-insert-halloween-problem",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "the update was accepted, and this runner has no graph to compare it on"
     },
     {
       "case": "delete-where::dawg-delete-where-01",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: DeleteWhere is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "the update was accepted, and this runner has no graph to compare it on"
     },
     {
       "case": "delete-where::dawg-delete-where-02",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: DeleteWhere is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "the update was accepted, and this runner has no graph to compare it on"
     },
     {
       "case": "delete-where::dawg-delete-where-03",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: DeleteWhere is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "the update was accepted, and this runner has no graph to compare it on"
     },
     {
       "case": "delete-where::dawg-delete-where-04",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: DeleteWhere is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "the update was accepted, and this runner has no graph to compare it on"
     },
     {
       "case": "delete-where::dawg-delete-where-05",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: DeleteWhere is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "the update was accepted, and this runner has no graph to compare it on"
     },
     {
       "case": "delete-where::dawg-delete-where-06",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: DeleteWhere is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "the update was accepted, and this runner has no graph to compare it on"
     },
     {
       "case": "delete::dawg-delete-01",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "the update was accepted, and this runner has no graph to compare it on"
     },
     {
       "case": "delete::dawg-delete-02",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "the update was accepted, and this runner has no graph to compare it on"
     },
     {
       "case": "delete::dawg-delete-03",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "the update was accepted, and this runner has no graph to compare it on"
     },
     {
       "case": "delete::dawg-delete-04",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "the update was accepted, and this runner has no graph to compare it on"
     },
     {
       "case": "delete::dawg-delete-05",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "the update was accepted, and this runner has no graph to compare it on"
     },
     {
       "case": "delete::dawg-delete-06",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "the update was accepted, and this runner has no graph to compare it on"
     },
     {
       "case": "delete::dawg-delete-07",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "the update was accepted, and this runner has no graph to compare it on"
     },
     {
       "case": "delete::dawg-delete-using-01",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "the update was accepted, and this runner has no graph to compare it on"
     },
     {
       "case": "delete::dawg-delete-using-02a",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "the update was accepted, and this runner has no graph to compare it on"
     },
     {
       "case": "delete::dawg-delete-using-03",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "the update was accepted, and this runner has no graph to compare it on"
     },
     {
       "case": "delete::dawg-delete-using-04",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "the update was accepted, and this runner has no graph to compare it on"
     },
     {
       "case": "delete::dawg-delete-using-05",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "the update was accepted, and this runner has no graph to compare it on"
     },
     {
       "case": "delete::dawg-delete-using-06a",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "the update was accepted, and this runner has no graph to compare it on"
     },
     {
       "case": "delete::dawg-delete-with-01",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "the update was accepted, and this runner has no graph to compare it on"
     },
     {
       "case": "delete::dawg-delete-with-02",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "the update was accepted, and this runner has no graph to compare it on"
     },
     {
       "case": "delete::dawg-delete-with-03",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "the update was accepted, and this runner has no graph to compare it on"
     },
     {
       "case": "delete::dawg-delete-with-04",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "the update was accepted, and this runner has no graph to compare it on"
     },
     {
       "case": "delete::dawg-delete-with-05",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "the update was accepted, and this runner has no graph to compare it on"
     },
     {
       "case": "delete::dawg-delete-with-06",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "the update was accepted, and this runner has no graph to compare it on"
+    },
+    {
+      "case": "drop::dawg-drop-graph-01",
+      "job": "SPARQL-SESSION3",
+      "since": "2026-11-23",
+      "reason": "the update was accepted, and this runner has no graph to compare it on"
+    },
+    {
+      "case": "drop::dawg-drop-named-01",
+      "job": "SPARQL-SESSION3",
+      "since": "2026-11-23",
+      "reason": "the update was accepted, and this runner has no graph to compare it on"
     },
     {
       "case": "exists::exists-graph-variable",
       "job": "SPARQL-G9",
       "since": "2026-11-22",
-      "reason": "400: The SPARQL operator Graph is not supported"
+      "reason": "400: A GRAPH pattern names its graph by a variable; name it by its IRI"
     },
     {
       "case": "exists::exists01",
       "job": "SPARQL-G5",
       "since": "2026-11-22",
-      "reason": "answered 5 solutions, expected 3: [{\"o\": \"<http://www.example.org/o>\", \"p\": \"<http://www.example.org/p>\", \"s\": \"<http://www.example.org/s>\"}, {\"o\": \"<http://www.example.org/o1>\", \"p\": \"<http://www.example.org/p>\", \"s\": \"<http://www.example.org/s>\"}, {\"o\": \"<http://www.example.org/o2>\", \"p\": \"<http:/"
+      "reason": "answered 5 solutions, expected 3: [{\"o\": \"<http://www.example.org/o>\", \"p\": \"<http://www.example.org/p>\", \"s\": \"<http://www.example.org/s>\"}, {\"o\": \"<http://www.example.org/o1>\", \"p\": \"<http://www.example.org/p>\", \"s\": \"<http://www.example.org/s>\"}, {\"o\": \"<http://www.example.org/o2>\", \"p\": \"<http://www.example.org/p>\", \"s\": \"<http: expected [{\"o\": \"<http://www.example.org/o>\", \"p\": \"<http://www.example.org/p>\", \"s\": \"<http://www.example.org/s>\"}, {\"o\": \"<http://www.example.org/o1>\", \"p\": \"<http://www.example.org/p>\", \"s\": \"<http://www.example.org/s>\"}, {\"o\": \"<http://www.example.org/o2>\", \"p\": \"<http://www.example.org/p>\", \"s\": \"<http:"
     },
     {
       "case": "exists::exists03",
       "job": "SPARQL-G9",
       "since": "2026-11-22",
-      "reason": "400: The SPARQL operator Graph is not supported"
+      "reason": "answered 0 solutions, expected 1: [] expected [{\"p\": \"<http://www.example.org/p>\", \"s\": \"<http://www.example.org/b>\"}]"
     },
     {
       "case": "exists::exists05",
@@ -923,7 +1019,7 @@
       "case": "functions::coalesce01",
       "job": "SPARQL-G5",
       "since": "2026-11-22",
-      "reason": "answered 0 solutions, expected 4: [] expected [{\"cx\": \"\\\"-1\\\"^^<http://www.w3.org/2001/XMLSchema#integer>\", \"def\": \"\\\"-3\\\"^^<http://www.w3.org/2001/XMLSchema#integer>\", \"div\": \"\\\"-2\\\"^^<http://www.w3.org/2001/XMLSchema#integer>\"}, {\"cx\": \"\\\"0\\\"^^<http://www.w3.org/2001/XMLSchema#integer>\", \"def\": \"\\"
+      "reason": "answered 0 solutions, expected 4: [] expected [{\"cx\": \"\\\"-1\\\"^^<http://www.w3.org/2001/XMLSchema#integer>\", \"def\": \"\\\"-3\\\"^^<http://www.w3.org/2001/XMLSchema#integer>\", \"div\": \"\\\"-2\\\"^^<http://www.w3.org/2001/XMLSchema#integer>\"}, {\"cx\": \"\\\"0\\\"^^<http://www.w3.org/2001/XMLSchema#integer>\", \"def\": \"\\\"-3\\\"^^<http://www.w3.org/2001/XMLSchema#integ"
     },
     {
       "case": "functions::concat-empty",
@@ -1394,6 +1490,24 @@
       "reason": "400: An OPTIONAL whose nodes could be of several classes is not supported; give them a class"
     },
     {
+      "case": "move::move03",
+      "job": "SPARQL-SESSION3",
+      "since": "2026-11-23",
+      "reason": "400: MOVE <http://example.org/g1>: the session holds no such graph"
+    },
+    {
+      "case": "move::move04",
+      "job": "SPARQL-SESSION3",
+      "since": "2026-11-23",
+      "reason": "400: MOVE <http://example.org/g1>: the session holds no such graph"
+    },
+    {
+      "case": "move::move07",
+      "job": "SPARQL-SESSION3",
+      "since": "2026-11-23",
+      "reason": "400: MOVE <http://example.org/g1>: the session holds no such graph"
+    },
+    {
       "case": "negation::exists-01",
       "job": "SPARQL-G3",
       "since": "2026-11-22",
@@ -1409,13 +1523,13 @@
       "case": "negation::full-minuend",
       "job": "SPARQL-G5",
       "since": "2026-11-22",
-      "reason": "answered 4 solutions, expected 2: [{\"a\": \"<http://example/a0>\", \"b\": \"<http://example/b0>\", \"c\": \"<http://example/c0>\"}, {\"a\": \"<http://example/a1>\", \"b\": \"<http://example/b1>\", \"c\": \"<http://example/c1>\"}, {\"a\": \"<http://example/a2>\", \"b\": \"<http://example/b2>\", \"c\": \"<http://example/c2>\"}] expecte"
+      "reason": "answered 4 solutions, expected 2: [{\"a\": \"<http://example/a0>\", \"b\": \"<http://example/b0>\", \"c\": \"<http://example/c0>\"}, {\"a\": \"<http://example/a1>\", \"b\": \"<http://example/b1>\", \"c\": \"<http://example/c1>\"}, {\"a\": \"<http://example/a2>\", \"b\": \"<http://example/b2>\", \"c\": \"<http://example/c2>\"}] expected [{\"a\": \"<http://example/a0>\", \"b\": \"<http://example/b0>\", \"c\": \"<http://example/c0>\"}, {\"a\": \"<http://example/a3>\", \"b\": \"<http://example/b3>\", \"c\": \"<http://example/c3>\"}]"
     },
     {
       "case": "negation::graph-minus",
       "job": "SPARQL-G9",
       "since": "2026-11-22",
-      "reason": "400: The SPARQL operator Graph is not supported"
+      "reason": "400: A GRAPH pattern names its graph by a variable; name it by its IRI"
     },
     {
       "case": "negation::partial-minuend",
@@ -1481,7 +1595,7 @@
       "case": "project-expression::projexp03",
       "job": "SPARQL-G5",
       "since": "2026-11-22",
-      "reason": "answered 0 solutions, expected 1: [] expected [{\"sum\": \"\\\"3\\\"^^<http://www.w3.org/2001/XMLSchema#integer>\", \"twice\": \"\\\"6\\\"^^<http://www.w3.org/2001/XMLSchema#integer>\", \"x\": \"<http://www.example.org/instance#a>\", \"y\": \"\\\"1\\\"^^<http://www.w3.org/2001/XMLSchema#integer>\", \"z\": \"\\\"2\\\"^^<http://www.w3."
+      "reason": "answered 0 solutions, expected 1: [] expected [{\"sum\": \"\\\"3\\\"^^<http://www.w3.org/2001/XMLSchema#integer>\", \"twice\": \"\\\"6\\\"^^<http://www.w3.org/2001/XMLSchema#integer>\", \"x\": \"<http://www.example.org/instance#a>\", \"y\": \"\\\"1\\\"^^<http://www.w3.org/2001/XMLSchema#integer>\", \"z\": \"\\\"2\\\"^^<http://www.w3.org/2001/XMLSchema#integer>\"}]"
     },
     {
       "case": "project-expression::projexp04",
@@ -1511,13 +1625,13 @@
       "case": "property-path::pp06",
       "job": "SPARQL-G9",
       "since": "2026-11-22",
-      "reason": "400: The SPARQL operator Graph is not supported"
+      "reason": "400: A GRAPH pattern names its graph by a variable; name it by its IRI"
     },
     {
       "case": "property-path::pp07",
       "job": "SPARQL-G9",
       "since": "2026-11-22",
-      "reason": "400: The SPARQL operator Graph is not supported"
+      "reason": "400: A GRAPH pattern names its graph by a variable; name it by its IRI"
     },
     {
       "case": "property-path::pp14",
@@ -1535,13 +1649,13 @@
       "case": "property-path::pp34",
       "job": "SPARQL-G9",
       "since": "2026-11-22",
-      "reason": "400: The SPARQL operator Graph is not supported"
+      "reason": "400: <http://www.example.org/p1> is no edge predicate, and a property path walks edges"
     },
     {
       "case": "property-path::pp35",
       "job": "SPARQL-G9",
       "since": "2026-11-22",
-      "reason": "400: The SPARQL operator Graph is not supported"
+      "reason": "400: A GRAPH pattern names its graph by a variable; name it by its IRI"
     },
     {
       "case": "property-path::pp36",
@@ -1583,31 +1697,31 @@
       "case": "subquery::subquery01",
       "job": "SPARQL-G9",
       "since": "2026-11-22",
-      "reason": "400: The SPARQL operator Graph is not supported"
+      "reason": "400: A GRAPH pattern names its graph by a variable; name it by its IRI"
     },
     {
       "case": "subquery::subquery02",
       "job": "SPARQL-G9",
       "since": "2026-11-22",
-      "reason": "400: The SPARQL operator Graph is not supported"
+      "reason": "400: A GRAPH pattern names its graph by a variable; name it by its IRI"
     },
     {
       "case": "subquery::subquery03",
       "job": "SPARQL-G9",
       "since": "2026-11-22",
-      "reason": "400: The SPARQL operator Graph is not supported"
+      "reason": "400: A GRAPH pattern names its graph by a variable; name it by its IRI"
     },
     {
       "case": "subquery::subquery04",
       "job": "SPARQL-G9",
       "since": "2026-11-22",
-      "reason": "400: The SPARQL operator Graph is not supported"
+      "reason": "400: A GRAPH pattern names its graph by a variable; name it by its IRI"
     },
     {
       "case": "subquery::subquery05",
       "job": "SPARQL-G9",
       "since": "2026-11-22",
-      "reason": "400: The SPARQL operator Graph is not supported"
+      "reason": "400: A GRAPH pattern names its graph by a variable; name it by its IRI"
     },
     {
       "case": "subquery::subquery06",
@@ -1667,13 +1781,13 @@
       "case": "subquery::subquery15",
       "job": "SPARQL-G9",
       "since": "2026-11-22",
-      "reason": "400: The SPARQL operator Graph is not supported"
+      "reason": "400: A GRAPH pattern names its graph by a variable; name it by its IRI"
     },
     {
       "case": "subquery::subquery16",
       "job": "SPARQL-G9",
       "since": "2026-11-22",
-      "reason": "400: The SPARQL operator Graph is not supported"
+      "reason": "400: A GRAPH pattern names its graph by a variable; name it by its IRI"
     },
     {
       "case": "syntax-query::test_19",
@@ -1835,7 +1949,7 @@
       "case": "syntax-query::test_62a",
       "job": "SPARQL-G8",
       "since": "2026-11-22",
-      "reason": "a statement that is not SPARQL answered 200: {'results': {'bindings': []}, 'head': {'vars': ['Z', 'Y']}}"
+      "reason": "a statement that is not SPARQL answered 200: {'results': {'bindings': []}, 'head': {'vars': ['Y', 'Z']}}"
     },
     {
       "case": "syntax-query::test_63",
@@ -1907,73 +2021,19 @@
       "case": "syntax-query::test_pp_coll",
       "job": "SPARQL-G10",
       "since": "2026-11-22",
-      "reason": "400: <http://example.org/r> is no edge predicate, and a property path walks edges"
-    },
-    {
-      "case": "syntax-update-1::test_23",
-      "job": "SPARQL-G2",
-      "since": "2026-11-22",
-      "reason": "400: InsertData is not served: this endpoint answers queries, and rows are written through the governed table writes"
-    },
-    {
-      "case": "syntax-update-1::test_24",
-      "job": "SPARQL-G2",
-      "since": "2026-11-22",
-      "reason": "400: InsertData is not served: this endpoint answers queries, and rows are written through the governed table writes"
-    },
-    {
-      "case": "syntax-update-1::test_25",
-      "job": "SPARQL-G2",
-      "since": "2026-11-22",
-      "reason": "400: InsertData is not served: this endpoint answers queries, and rows are written through the governed table writes"
-    },
-    {
-      "case": "syntax-update-1::test_26",
-      "job": "SPARQL-G2",
-      "since": "2026-11-22",
-      "reason": "400: InsertData is not served: this endpoint answers queries, and rows are written through the governed table writes"
-    },
-    {
-      "case": "syntax-update-1::test_29",
-      "job": "SPARQL-G2",
-      "since": "2026-11-22",
-      "reason": "400: DeleteData is not served: this endpoint answers queries, and rows are written through the governed table writes"
-    },
-    {
-      "case": "syntax-update-1::test_30",
-      "job": "SPARQL-G2",
-      "since": "2026-11-22",
-      "reason": "400: DeleteData is not served: this endpoint answers queries, and rows are written through the governed table writes"
-    },
-    {
-      "case": "syntax-update-1::test_31",
-      "job": "SPARQL-G2",
-      "since": "2026-11-22",
-      "reason": "400: DeleteData is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "400: <http://example.org/p> is no edge predicate, and a property path walks edges"
     },
     {
       "case": "syntax-update-1::test_32",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
-      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "400: USING names several graphs, whose merge is the WHERE's default graph: read each by a GRAPH pattern"
     },
     {
-      "case": "syntax-update-1::test_33",
-      "job": "SPARQL-G2",
-      "since": "2026-11-22",
-      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
-    },
-    {
-      "case": "syntax-update-1::test_34",
-      "job": "SPARQL-G2",
-      "since": "2026-11-22",
-      "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
-    },
-    {
-      "case": "syntax-update-1::test_36",
-      "job": "SPARQL-G2",
-      "since": "2026-11-22",
-      "reason": "400: DeleteWhere is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "case": "syntax-update-1::test_35",
+      "job": "SPARQL-SESSION3",
+      "since": "2026-11-23",
+      "reason": "403: Table 'ontology.d000_t0' belongs to domain 'ontology' which is not in role's domain_access"
     },
     {
       "case": "syntax-update-1::test_38",
@@ -1997,49 +2057,67 @@
       "case": "syntax-update-1::test_43",
       "job": "SPARQL-G8",
       "since": "2026-11-22",
-      "reason": "a statement that is not SPARQL answered 400: DeleteData is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "a statement that is not SPARQL answered 400: ?s is no subject: a subject is a row's IRI"
     },
     {
       "case": "syntax-update-1::test_44",
       "job": "SPARQL-G8",
       "since": "2026-11-22",
-      "reason": "a statement that is not SPARQL answered 400: InsertData is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "a statement that is not SPARQL answered 400: A GRAPH block in INSERT DATA names its graph by a variable; name it by its IRI"
     },
     {
       "case": "syntax-update-1::test_50",
       "job": "SPARQL-G8",
       "since": "2026-11-22",
-      "reason": "a statement that is not SPARQL answered 400: DeleteWhere is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "a statement that is not SPARQL answered 500: Write failed: 'URIRef' object has no attribute 'language'"
     },
     {
       "case": "syntax-update-1::test_51",
       "job": "SPARQL-G8",
       "since": "2026-11-22",
-      "reason": "a statement that is not SPARQL answered 400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "a statement that is not SPARQL answered 500: Write failed: 'URIRef' object has no attribute 'language'"
     },
     {
       "case": "syntax-update-1::test_52",
       "job": "SPARQL-G8",
       "since": "2026-11-22",
-      "reason": "a statement that is not SPARQL answered 400: DeleteData is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "reason": "a statement that is not SPARQL answered 400: A blank node in DELETE DATA names nothing to delete"
     },
     {
-      "case": "syntax-update-1::test_53",
-      "job": "SPARQL-G2",
-      "since": "2026-11-22",
-      "reason": "400: InsertData is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "case": "update-silent::add-silent",
+      "job": "SPARQL-SESSION3",
+      "since": "2026-11-23",
+      "reason": "the update was accepted, and this runner has no graph to compare it on"
     },
     {
-      "case": "syntax-update-1::test_54",
-      "job": "SPARQL-G8",
-      "since": "2026-11-22",
-      "reason": "a statement that is not SPARQL answered 400: InsertData, InsertData is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "case": "update-silent::clear-silent",
+      "job": "SPARQL-SESSION3",
+      "since": "2026-11-23",
+      "reason": "the update was accepted, and this runner has no graph to compare it on"
     },
     {
-      "case": "syntax-update-2::syntax-update-other-01",
-      "job": "SPARQL-G2",
-      "since": "2026-11-22",
-      "reason": "400: InsertData is not served: this endpoint answers queries, and rows are written through the governed table writes"
+      "case": "update-silent::copy-silent",
+      "job": "SPARQL-SESSION3",
+      "since": "2026-11-23",
+      "reason": "the update was accepted, and this runner has no graph to compare it on"
+    },
+    {
+      "case": "update-silent::create-silent",
+      "job": "SPARQL-SESSION3",
+      "since": "2026-11-23",
+      "reason": "the update was accepted, and this runner has no graph to compare it on"
+    },
+    {
+      "case": "update-silent::drop-silent",
+      "job": "SPARQL-SESSION3",
+      "since": "2026-11-23",
+      "reason": "the update was accepted, and this runner has no graph to compare it on"
+    },
+    {
+      "case": "update-silent::move-silent",
+      "job": "SPARQL-SESSION3",
+      "since": "2026-11-23",
+      "reason": "the update was accepted, and this runner has no graph to compare it on"
     }
   ]
 }

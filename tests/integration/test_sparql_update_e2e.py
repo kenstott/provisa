@@ -176,9 +176,35 @@ def test_a_role_without_the_write_right_writes_nothing(server, source):
     assert source() == _SEED
 
 
-def test_graph_management_is_refused_by_name(server, source):
+def test_graph_management_of_the_models_own_graph_is_refused_by_name(server, source):
+    # REQ-2135 (amended 2026-11-23): DEFAULT and ALL hold the model's own graph.
     status, doc = _update(server, "org_admin", "DROP ALL")
     assert status == 400, doc
-    assert doc["code"] == "sparql.update_refused"
-    assert "acts on a named graph" in doc["detail"]
+    assert doc["code"] == "sparql.refused"
+    assert "names the model's own graph" in doc["detail"]
     assert source() == _SEED
+
+
+def test_a_session_object_is_written_to_the_graph_session_and_read_by_cypher(server, source):
+    """REQ-2135 (amended 2026-11-23): a blank node is a session node in the principal's graph
+    session, in the tables Cypher's session objects use; the source is untouched."""
+    status, doc = _update(
+        server,
+        "org_admin",
+        'INSERT DATA { _:b a <http://ex.org/Ticket> ; <http://ex.org/title> "One" }',
+    )
+    assert status == 200, doc
+    assert doc.get("session_changed") is True, doc
+    assert doc["counters"]["nodes_created"] == 1, doc
+    assert source() == _SEED
+    request = urllib.request.Request(
+        f"http://127.0.0.1:{server.ports['http']}/data/cypher",
+        data=json.dumps({"query": "MATCH (n:Ticket) RETURN n.title AS t"}).encode(),
+        headers={"Content-Type": "application/json", "x-provisa-role": "org_admin"},
+        method="POST",
+    )
+    with urllib.request.urlopen(request, timeout=120) as answered:
+        rows = json.loads(answered.read())["rows"]
+    assert rows in ([{"t": "One"}], [["One"]]), rows
+    status, doc = _update(server, "org_admin", "DROP SILENT GRAPH <http://ex.org/g>")
+    assert status == 200, doc

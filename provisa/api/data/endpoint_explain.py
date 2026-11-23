@@ -133,10 +133,10 @@ async def _sparql_plan(door: _Door) -> list[Any] | Response:
     made = await compiled_query(door.statement, door.surface, door.role_id, door.state)
     if isinstance(made, Response):
         return made
-    compiled, _vocab, graph = made
+    compiled, read = made
     if compiled.empty:
         return []  # answered without a statement: there is nothing the pipeline would run
-    lowered = semantic_statement(compiled, graph, door.surface, door.role_id, door.state)
+    lowered = semantic_statement(compiled, read, door.surface, door.role_id, door.state)
     if isinstance(lowered, Response):
         return lowered
     plan = await _govern_and_route_compiled(

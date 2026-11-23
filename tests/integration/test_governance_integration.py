@@ -463,19 +463,21 @@ class TestTwoIndependentEnforcementLayers:
         ctx = _make_ctx()
         compiled = _aliased_orders_compiled()
 
-        rule = MaskingRule(mask_type=MaskType.constant, value=0)
+        # REQ-2131 (amended 2026-11-20): a constant mask keeps its column's type, so a non-NULL
+        # constant is a text column's; ``region`` is VARCHAR.
+        rule = MaskingRule(mask_type=MaskType.constant, value="REDACTED")
         masking_rules: MaskingRules = {
-            (ORDERS_TABLE_ID, ROLE_ANALYST): {"amount": (rule, "integer")},
+            (ORDERS_TABLE_ID, ROLE_ANALYST): {"region": (rule, "varchar")},
         }
         masked = governed_for_role(compiled.sql, ctx, ROLE_ANALYST, masking_rules=masking_rules)
 
         result = await execute_direct(source_pool, "test-pg", masked, compiled.params)
 
         assert result.rows, "REQ-038: expected rows for masking verification"
-        amount_idx = _col_index(result, "amount")
+        region_idx = _col_index(result, "region")
         for row in result.rows:
-            assert row[amount_idx] == 0, (
-                f"REQ-038: masking layer failed — amount={row[amount_idx]!r}"
+            assert row[region_idx] == "REDACTED", (
+                f"REQ-038: masking layer failed — region={row[region_idx]!r}"
             )
 
 
