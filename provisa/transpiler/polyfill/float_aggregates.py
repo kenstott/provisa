@@ -34,7 +34,13 @@ from provisa.transpiler.polyfill import trino
 from provisa.transpiler.polyfill.grid import Feature, Rule, Side, written_in
 from provisa.transpiler.polyfill.matching import graft
 from provisa.transpiler.polyfill.notation import Rewrite, replacement
-from provisa.transpiler.polyfill.numbers import FAMILY, ch_checked, ch_fail, ch_only
+from provisa.transpiler.polyfill.numbers import (
+    FAMILY,
+    ch_checked,
+    ch_fail,
+    ch_only,
+    duckdb_of_trino,
+)
 from provisa.transpiler.polyfill.numbers import fail as numbers_fail
 
 _NAN = "toFloat64('nan')"
@@ -101,6 +107,13 @@ def trino_of_doubles(function: str) -> str:
         f"CASE WHEN {_T_FINITE} AND (is_infinite(sum($v)){squares}) THEN {_T_OVERFLOW} "
         f"ELSE {function}($v) END"
     )
+
+
+def of_doubles(function: str, dialect: str) -> str:
+    """trino_of_doubles on a Trino dialect, ported on DuckDB (whose sum, avg and variances answer
+    infinity or 0 where a finite group's sums overflow)."""
+    form = trino_of_doubles(function)
+    return duckdb_of_trino(form) if dialect == "duckdb" else form
 
 
 def is_spread(function: str) -> bool:
@@ -229,9 +242,9 @@ def _sum(node: exp.Expr, dialect: str) -> exp.Expr | None:
 
 
 def _trino_sum(node: exp.Expr, dialect: str) -> exp.Expr | None:
-    """sum of a real or a double on Trino, as the statement says its argument's type: the overflow
-    of the sum from finite values raised (float4pl, float8pl). Any other keeps what it had, as
-    does one over a window or under a FILTER."""
+    """sum of a real or a double on Trino and DuckDB, as the statement says its argument's type:
+    the overflow of the sum from finite values raised (float4pl, float8pl). Any other keeps what
+    it had, as does one over a window or under a FILTER."""
     from provisa.transpiler.function_macros import said_type
 
     call = trino.called(node)
@@ -243,7 +256,7 @@ def _trino_sum(node: exp.Expr, dialect: str) -> exp.Expr | None:
     if (said_type(argument) or trino.said(argument)) not in ("real", "double precision"):
         return None
     return graft(
-        replacement(trino_of_doubles("sum"), written_in(dialect), "sum($v)"), {"v": argument}
+        replacement(of_doubles("sum", dialect), written_in(dialect), "sum($v)"), {"v": argument}
     )
 
 
@@ -263,6 +276,7 @@ SUM = Feature(
                 {
                     "clickhouse": Rewrite(_sum, mentions=r"\bsum\s*\("),
                     **trino.on_trino(Rewrite(_trino_sum, mentions=r"\bsum\s*\(")),
+                    "duckdb": Rewrite(_trino_sum, mentions=r"\bsum\s*\("),
                 },
             ),
         )

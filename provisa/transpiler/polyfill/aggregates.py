@@ -283,9 +283,9 @@ def exact_of_integers(node: exp.Expr, dialect: str) -> exp.Expr | None:
 
 
 def trino_of_doubles(node: exp.Expr, dialect: str) -> exp.Expr | None:
-    """avg, a variance or a standard deviation of a real or a double on Trino: Trino's own, the
-    overflow of its sums from finite values raised (float_aggregates.trino_of_doubles). Any other
-    call keeps what it had, as does one over a window or under a FILTER."""
+    """avg, a variance or a standard deviation of a real or a double on Trino and DuckDB: its own,
+    the overflow of its sums from finite values raised (float_aggregates.trino_of_doubles). Any
+    other call keeps what it had, as does one over a window or under a FILTER."""
     function = _function(node)
     if function is None or _over_or_filtered(node):
         return None
@@ -298,17 +298,18 @@ def trino_of_doubles(node: exp.Expr, dialect: str) -> exp.Expr | None:
         # float4_accum reads a real as a double, summed and squared as doubles (Trino's own of a
         # real sums reals, which overflow where PostgreSQL's do not).
         double = exp.Cast(this=double.copy(), to=exp.DataType.build("DOUBLE"))
-    form = float_aggregates.trino_of_doubles(function)
+    form = float_aggregates.of_doubles(function, dialect)
     return graft(replacement(form, written_in(dialect), _PATTERN.format(function)), {"v": double})
 
 
 _EXACT = Rewrite(exact_of_integers)
-#: Every dialect but ClickHouse and Trino keeps what it had (provisa.transpiler.function_macros'
-#: forms).
+#: Every dialect but ClickHouse, Trino and DuckDB keeps what it had
+#: (provisa.transpiler.function_macros' forms).
 _FORMS = {
     **{d: trino.KEPT for d in DIALECTS if d not in NATIVE},
     _CLICKHOUSE: _EXACT,
     **trino.on_trino(Rewrite(trino_of_doubles)),
+    "duckdb": Rewrite(trino_of_doubles),
 }
 
 _BOUND = (

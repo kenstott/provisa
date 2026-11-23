@@ -883,8 +883,11 @@ def _interval_scaled(function: str, op: str, factor: str = "CAST(b AS DOUBLE PRE
         "CAST(a AS INTERVAL)",
         _bound(
             factor,
-            f"CASE WHEN ABS(_x) = CAST('Infinity' AS DOUBLE PRECISION) "
-            f"OR _x = CAST('NaN' AS DOUBLE PRECISION) "
+            # REQ-2236 (amended 31776071a3): timestamp.c's interval_mul and interval_div raise
+            # 22008 of a NaN factor.
+            f"CASE WHEN _x = CAST('NaN' AS DOUBLE PRECISION) "
+            f"THEN {_fails('22008', 'interval out of range', 'INTERVAL')} "
+            f"WHEN ABS(_x) = CAST('Infinity' AS DOUBLE PRECISION) "
             f"THEN {_not_served(function, 'INTERVAL')} "
             f"WHEN ABS({month}) > 2147483647 OR ABS({days}) > 2147483647 "
             f"OR ABS({micros}) > 9.2e18 THEN {_fails('22008', 'interval out of range', 'INTERVAL')} "

@@ -1371,6 +1371,9 @@ _DIGITS_HELD = 27  # 38 digits of the widest integer less a difference's one and
 _ROUNDED_AWAY = ("1e-15", "1e-7")
 _NO_COUNT = "2201G: count must be greater than zero"
 _SAME_BOUNDS = "2201G: lower bound cannot equal upper bound"
+_BUCKET_NAN = "2201G: operand, lower bound, and upper bound cannot be NaN"
+#: NaN's text on each engine (nan, NaN): no number's text holds an n.
+_NAN = "[nN][aA][nN]"
 _OUT_OF_RANGE = "22003: integer out of range"
 
 
@@ -1480,7 +1483,8 @@ def _bucket(e: Engine, kind: str) -> str:
     """Each width_bucket of four arguments, by which of float8's and numeric's it is."""
     texts = [e.text.format(p) for p in ("x", "lo", "hi")]
     numeric = {"numeric": "1 = 1", "float8": "1 = 0"}.get(kind, _bucket_kind(e))
-    finite = " OR ".join(e.matches.format(t, _NOT_FINITE) for t in texts)
+    nan = " OR ".join(e.matches.format(t, _NAN) for t in texts)
+    finite = " OR ".join(f"({e.matches.format(t, _NOT_FINITE)})" for t in texts)
     # An exponent's e is not a digit either, where the digits are what a numeric is read from.
     spelled = " OR ".join(e.matches.format(t, "[a-zA-Z]") for t in texts)
     answers = {
@@ -1491,9 +1495,18 @@ def _bucket(e: Engine, kind: str) -> str:
         f"CASE WHEN {numeric} THEN {_bucket_numeric(e, numeric)} "
         f"ELSE {_bucket_float(e, f'NOT {numeric}')} END"
     )
-    counted = _let(e, "_n", e.bigint.format("n"), e.raises.format("_n <= 0", _NO_COUNT, answer))
-    refused = f"({finite}) OR (({numeric}) AND ({spelled}))"
-    return e.raises.format(refused, f"0A000: width_bucket {REFUSED}", counted)
+    refused = e.raises.format(
+        f"({finite}) OR (({numeric}) AND ({spelled}))",
+        f"0A000: width_bucket {REFUSED}",
+        _let(e, "_n", e.bigint.format("n"), answer),
+    )
+    # REQ-2236 (amended 31776071a3): float.c's and numeric.c's width_bucket check the count first,
+    # then a NaN among the three values (2201G), before any other.
+    return e.raises.format(
+        f"{e.bigint.format('n')} <= 0",
+        _NO_COUNT,
+        e.raises.format(nan, _BUCKET_NAN, refused),
+    )
 
 
 def _bucket_of_list(e: Engine) -> str:

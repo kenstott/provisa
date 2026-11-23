@@ -278,6 +278,14 @@ def test_width_bucket(sql: str, want: Any):
         ("SELECT width_bucket(1::numeric, 1::numeric, 1::numeric, 4)", "2201G: lower bound"),
         ("SELECT width_bucket(1::float8, 0::float8, 1::float8, 2147483647)", "22003: integer"),
         ("SELECT width_bucket(1::numeric, 0::numeric, 1::numeric, 2147483647)", "22003: integer"),
+        (
+            "SELECT width_bucket('NaN'::float8, 0::float8, 1::float8, 4)",
+            "2201G: operand, lower bound, and upper bound cannot be NaN",
+        ),
+        (
+            "SELECT width_bucket('NaN'::numeric, 0::numeric, 1::numeric, 4)",
+            "2201G: operand, lower bound, and upper bound cannot be NaN",
+        ),
         ("SELECT width_bucket(5, ARRAY[3, 4, NULL])", "22004: thresholds array"),
         ("SELECT line_eq('{0,0,1}'::line, '{1,-1,0}'::line)", "22P02: invalid line"),
         ("SELECT line_eq('[(1,1),(1,1)]'::line, '{1,-1,0}'::line)", "22P02: invalid line"),
@@ -302,9 +310,7 @@ def test_width_bucket_of_thresholds_of_two_dimensions_is_refused_as_postgresql_d
 @pytest.mark.parametrize(
     "name, sql",
     [
-        ("width_bucket", "width_bucket('NaN'::float8, 0::float8, 1::float8, 4)"),
         ("width_bucket", "width_bucket(0::float8, 'Infinity'::float8, 1::float8, 4)"),
-        ("width_bucket", "width_bucket('NaN'::numeric, 0::numeric, 1::numeric, 4)"),
         ("width_bucket", "width_bucket('NaN'::float8, ARRAY[1.5]::float8[])"),
         ("width_bucket", "width_bucket(1.5::float8, ARRAY['NaN'::float8])"),
         (
