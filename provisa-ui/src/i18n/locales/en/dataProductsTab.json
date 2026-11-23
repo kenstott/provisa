@@ -10,7 +10,6 @@
     "nameLabel": "Name",
     "namePlaceholder": "Display name",
     "ownerLabel": "Owner",
-    "ownerPlaceholder": "Role accountable for this product",
     "teamLabel": "Team",
     "teamPlaceholder": "Role that maintains this product day-to-day",
     "purposeLabel": "Purpose",

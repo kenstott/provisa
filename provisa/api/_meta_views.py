@@ -1418,7 +1418,10 @@ _META_TABLE_VIEWS: dict[str, str] = {
                d.tenant_id,
                -- REQ-609, REQ-2219: its stewards, people whose domain_steward rows name it or a
                -- domain above it. Last, so the view is replaced in place.
-               (SELECT STRING_AGG(oo.principal, ', ' ORDER BY oo.principal) FROM object_owners oo WHERE oo.object_kind = 'domain' AND oo.object_id = d.id) AS stewards
+               COALESCE(
+                   (SELECT JSONB_AGG(oo.principal ORDER BY oo.principal) FROM object_owners oo
+                    WHERE oo.object_kind = 'domain' AND oo.object_id = d.id),
+                   CAST('[]' AS JSONB)) AS stewards
         FROM domains d
         WHERE NOT d.retired
     """,
@@ -1435,7 +1438,10 @@ _META_TABLE_VIEWS: dict[str, str] = {
                r.tenant_id,
                -- REQ-2219: its owners, people whose relationship_owner rows name it. Last, so
                -- the view is replaced in place.
-               (SELECT STRING_AGG(oo.principal, ', ' ORDER BY oo.principal) FROM object_owners oo WHERE oo.object_kind = 'relationship' AND oo.object_id = r.id) AS owners
+               COALESCE(
+                   (SELECT JSONB_AGG(oo.principal ORDER BY oo.principal) FROM object_owners oo
+                    WHERE oo.object_kind = 'relationship' AND oo.object_id = r.id),
+                   CAST('[]' AS JSONB)) AS owners
         FROM relationships r
         WHERE NOT r.retired
     """,
@@ -1468,7 +1474,10 @@ _META_TABLE_VIEWS: dict[str, str] = {
                created_at,
                -- REQ-2219: its owners, people whose data_product_owner rows name it. Last, so
                -- the view is replaced in place.
-               (SELECT STRING_AGG(oo.principal, ', ' ORDER BY oo.principal) FROM object_owners oo WHERE oo.object_kind = 'data_product' AND oo.object_id = data_products.id) AS owners
+               COALESCE(
+                   (SELECT JSONB_AGG(oo.principal ORDER BY oo.principal) FROM object_owners oo
+                    WHERE oo.object_kind = 'data_product' AND oo.object_id = data_products.id),
+                   CAST('[]' AS JSONB)) AS owners
         FROM data_products
     """,
     # REQ-1986: the parameter_* columns state a parameter's limits.

@@ -100,6 +100,7 @@ const PRODUCT = {
   limitations: "",
   usage: "",
   customProperties: {},
+  owners: [],
 } as unknown as DataProduct;
 
 function core(): ProductCore {

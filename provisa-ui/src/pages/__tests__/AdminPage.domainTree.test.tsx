@@ -23,6 +23,7 @@ const createDomain =
       description: string,
       alias: string | null,
       parent: string | null,
+      stewards: string[],
     ) => Promise<Record<string, unknown>>
   >();
 const refetch = vi.fn(async () => undefined);
@@ -35,15 +36,15 @@ const hooks = vi.hoisted(() => ({
       {
         id: "retail",
         description: "Business unit",
-        steward: "bu_steward",
-        effectiveSteward: "bu_steward",
+        stewards: ["bu_steward"],
+        effectiveStewards: ["bu_steward"],
       },
       {
         id: "sales",
         description: "Sales",
         parentDomainId: "retail",
-        steward: null,
-        effectiveSteward: "bu_steward",
+        stewards: [],
+        effectiveStewards: ["bu_steward"],
       },
     ],
     refetch: undefined as unknown,
@@ -87,6 +88,14 @@ vi.mock("../../api/admin", async (orig) => ({
   })),
 }));
 
+// REQ-2219: the Steward field's one search for people.
+vi.mock("../../api/entitlements", async (orig) => ({
+  ...(await orig<typeof import("../../api/entitlements")>()),
+  searchPeople: vi.fn(async () => [
+    { principal: "okta|31", name: "Kenji Sato", email: "kenji@acme.example" },
+  ]),
+}));
+
 import { AdminPage } from "../AdminPage";
 
 describe("Admin > Domains: the domain tree", () => {
@@ -123,6 +132,23 @@ describe("Admin > Domains: the domain tree", () => {
     fireEvent.click(screen.getByTestId("new-domain-parent"));
     fireEvent.click(await screen.findByRole("option", { name: "retail" }));
     fireEvent.click(screen.getByTestId("new-domain-save"));
-    await waitFor(() => expect(createDomain).toHaveBeenCalledWith("outlets", "", null, "retail"));
+    await waitFor(() =>
+      expect(createDomain).toHaveBeenCalledWith("outlets", "", null, "retail", []),
+    );
+  });
+
+  it("adds a domain with the stewards named, people by their principals (REQ-2219)", async () => {
+    createDomain.mockResolvedValueOnce({ success: true, message: "created" });
+    render(<AdminPage />, { initialEntries: ["/admin/domains"] });
+    fireEvent.click(await screen.findByTestId("new-domain-open"));
+    fireEvent.change(screen.getByTestId("new-domain-id"), { target: { value: "outlets" } });
+    fireEvent.change(screen.getByTestId("new-domain-stewards"), { target: { value: "kenji" } });
+    fireEvent.click(
+      await screen.findByRole("option", { name: "Kenji Sato · kenji@acme.example", hidden: true }),
+    );
+    fireEvent.click(screen.getByTestId("new-domain-save"));
+    await waitFor(() =>
+      expect(createDomain).toHaveBeenCalledWith("outlets", "", null, null, ["okta|31"]),
+    );
   });
 });

@@ -11402,5 +11402,10 @@
   "it/yourData.json::yourData.title": "Your data",
   "syncingTab.json::syncingTab.noneForProducts": "No entry publishes the chosen data products.",
   "syncingTab.json::syncingTab.productFilterLabel": "Data products",
-  "syncingTab.json::syncingTab.productFilterPlaceholder": "Filter by data product"
+  "syncingTab.json::syncingTab.productFilterPlaceholder": "Filter by data product",
+  "serverErrors.json::serverErrors.data_product.owner_not_eligible": "{{owner}} holds no role with the data_product_owner capability, so cannot be named an owner of data product {{data_product}}. Grant them such a role first.",
+  "serverErrors.json::serverErrors.domain.steward_not_eligible": "{{steward}} holds no role with the domain_steward capability, so cannot be named a steward of domain {{domain}}. Grant them such a role first.",
+  "serverErrors.json::serverErrors.relationship.owner_not_eligible": "{{owner}} holds no role with the relationship_owner capability, so cannot be named an owner of relationship {{relationship}}. Grant them such a role first.",
+  "serverErrors.json::serverErrors.schema.domain_stewards_saved": "Domain '{{domain}}' stewards saved",
+  "adminPage.json::adminPage.stewardsHint": "People who answer for the domain; each must hold a role with domain_steward."
 }

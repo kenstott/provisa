@@ -10,7 +10,6 @@
     "projectProduct": "Prodotto dati {{id}} (l'intero progetto)",
     "exists": "Esiste già un prodotto dati chiamato {{id}}. Rinominalo o rimuovilo per registrare questi modelli.",
     "owner": "Proprietario: {{owner}}",
-    "ownerRole": "ruolo proprietario {{role}}",
     "tests": "Test: {{tests}}",
     "version": "Versione {{version}}",
     "columns": "Colonne promesse: {{columns}}",

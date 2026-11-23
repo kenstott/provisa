@@ -14,7 +14,8 @@ export interface DataProductForm {
   id: string;
   domainId: string;
   name: string;
-  ownerRole: string;
+  /** REQ-2219 (amended 2026-11-23): its owners, people by user id. */
+  owners: string[];
   teamRole: string;
   purpose: string;
   limitations: string;
@@ -29,7 +30,7 @@ export const EMPTY_FORM: DataProductForm = {
   id: "",
   domainId: "",
   name: "",
-  ownerRole: "",
+  owners: [],
   teamRole: "",
   purpose: "",
   limitations: "",

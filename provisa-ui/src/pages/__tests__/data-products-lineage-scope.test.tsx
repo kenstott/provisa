@@ -15,11 +15,7 @@
 
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, waitFor, within } from "../../test-utils/render";
-import type {
-  LineageNode,
-  ProductInput,
-  ProductLineage,
-} from "../../api/lineage";
+import type { LineageNode, ProductInput, ProductLineage } from "../../api/lineage";
 import type { DataProduct } from "../../types/admin";
 import type { ProductCore } from "../data-products/productCore";
 import { lifecycleProps } from "../data-products/__tests__/lifecycleProps";
@@ -105,6 +101,7 @@ const product = {
   id: "pet_health",
   domainId: "pet-store",
   name: "Pet Health",
+  owners: [] as string[],
   purpose: "",
   limitations: "",
   usage: "",
@@ -275,7 +272,10 @@ describe("the product's Input Ports, its nearest physical inputs (REQ-2126)", ()
 
   it("lists the inputs the endpoint found, a registered one by its model name", async () => {
     expect(
-      await listed([input("pet_store.breeds"), input("pet_store.dim_pet", { alias: "pets_dimension" })]),
+      await listed([
+        input("pet_store.breeds"),
+        input("pet_store.dim_pet", { alias: "pets_dimension" }),
+      ]),
     ).toEqual(["pet-store.breeds", "pet-store.pets_dimension"]);
   });
 

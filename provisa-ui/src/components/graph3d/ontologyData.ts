@@ -69,8 +69,8 @@ export const TABLE_FACTS: Selection = {
   },
 };
 
-/** A product's facts: its status and owner (its members are counted from the graph). */
-export const PRODUCT_FACTS = ["status", "owner_role"];
+/** A product's facts: its status and owners (its members are counted from the graph). */
+export const PRODUCT_FACTS = ["status", "owners"];
 
 /** A table's columns by their keys alone: how many the role reads, so a term's graph offers to
  * expand a table only when it has columns beyond those its terms reach (a product's graph reads
@@ -620,7 +620,8 @@ type ProductRef = {
   name?: string;
   domainId?: string;
   status?: string | null;
-  ownerRole?: string | null;
+  // REQ-2219: its owners, people, as the meta domain serves a JSON column: its text.
+  owners?: string | null;
 } | null;
 
 /** A table's rows of the membership junction, each reaching one of its data products. */
@@ -668,8 +669,7 @@ export interface TermRow {
   edgesIn?: (TermEdgeRow & { sourceTerm?: { id: number } | null })[] | null;
   // REQ-2130 (class grounding): the tables whose rows the term names.
   tables?:
-    | { id: number; tableName: string; domainId: string; dataProductTables?: Memberships }[]
-    | null;
+    { id: number; tableName: string; domainId: string; dataProductTables?: Memberships }[] | null;
   refs?:
     | {
         columnKey: string;
@@ -698,7 +698,8 @@ export interface ProductRow {
   name: string;
   domainId: string;
   status?: string | null;
-  ownerRole?: string | null;
+  // REQ-2219: its owners, people, as the meta domain serves a JSON column: its text.
+  owners?: string | null;
   // Under Commands.
   dataProductCommands?: { trackedFunction?: { name: string; domainId: string } | null }[] | null;
   // Under Product links: its relationship rows to other products.
@@ -839,19 +840,30 @@ function termEdgesDrawn(b: Builder, edges: TermEdgeRow[]) {
   }
 }
 
+/** A product's owners as its owner fact: the meta domain's JSON text of their principals. */
+function ownersFact(owners: string | null | undefined): string | undefined {
+  if (owners == null) return undefined;
+  const people = JSON.parse(owners) as string[];
+  return people.length > 0 ? people.join(", ") : undefined;
+}
+
 /** A product's node, its facts as read. */
 function productNodeOf(
   id: string,
   name: string,
   domain: string,
-  row: { status?: string | null; ownerRole?: string | null },
+  row: { status?: string | null; owners?: string | null },
 ): GraphNode {
   return {
     id: productNode(id),
     type: "product",
     label: name,
     domains: [domain],
-    ...facts({ status: row.status ?? undefined, owner: row.ownerRole ?? undefined }),
+    ...facts({
+      status: row.status ?? undefined,
+      // REQ-2219: its owners are people; none read, or none named, is no owner fact.
+      owner: ownersFact(row.owners),
+    }),
   };
 }
 
@@ -989,7 +1001,7 @@ export function productMapGraph(
     id: string,
     name: string,
     domain: string,
-    row: { status?: string | null; ownerRole?: string | null },
+    row: { status?: string | null; owners?: string | null },
   ) => {
     node(productNodeOf(id, name, domain, row));
     if (nodes.has(`d:${domain}`)) edge(productNode(id), `d:${domain}`, "in_domain");

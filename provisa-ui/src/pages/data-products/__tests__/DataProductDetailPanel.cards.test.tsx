@@ -215,7 +215,7 @@ const PRODUCT = {
   id: "pet_health",
   domainId: "pet-store",
   name: "Pet Health",
-  ownerRole: "pet_owner",
+  owners: ["pam"],
   supportContact: "pets@example.com",
   customProperties: {},
   createdAt: TWO_HOURS_AGO,
@@ -309,7 +309,9 @@ describe("a data product's page is summary rows", () => {
 
   it("summarises each row from its content", async () => {
     panel();
-    await waitFor(() => expect(summaryOf("offers")).toHaveTextContent("3 offers · 1 open · 1 in review"));
+    await waitFor(() =>
+      expect(summaryOf("offers")).toHaveTextContent("3 offers · 1 open · 1 in review"),
+    );
     expect(summaryOf("quality")).toHaveTextContent(
       "5 checks, 1 failing: customer_id unique · checked 2 hours ago",
     );
@@ -340,7 +342,9 @@ describe("a data product's page is summary rows", () => {
       const title = sectionToggle(s as never, ID);
       const name = within(title).getByTestId(`data-product-row-${s}-${ID}-name`).textContent ?? "";
       const summary = within(title).getByTestId(`data-product-row-${s}-${ID}-summary`);
-      const rest = (title.textContent ?? "").replace(name, "").replace(summary.textContent ?? "", "");
+      const rest = (title.textContent ?? "")
+        .replace(name, "")
+        .replace(summary.textContent ?? "", "");
       // Beside them, only Quality's worst outcome.
       expect(rest.trim()).toMatch(s === "quality" ? /^(Failing|Not yet run|Passing)$/ : /^$/);
     }

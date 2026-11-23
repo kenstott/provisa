@@ -573,7 +573,8 @@
       "table_domain_required": "A tabela '{{table}}' não indica nenhum domínio: toda tabela é registrada em um domínio",
       "table_state_from_function": "A tabela '{{table}}' é derivada da função '{{name}}' e tem o seu estado de publicação: não é retirada nem reposta por si só",
       "table_region_from_function": "A tabela '{{table}}' é derivada da função '{{name}}' e tem a sua região: não é movida sozinha para outra região",
-      "table_name_reserved": "O nome de tabela '{{table}}' é reservado: os comandos de um domínio são servidos sob 'commands'. Registre a tabela com outro nome ou alias."
+      "table_name_reserved": "O nome de tabela '{{table}}' é reservado: os comandos de um domínio são servidos sob 'commands'. Registre a tabela com outro nome ou alias.",
+      "domain_stewards_saved": "Responsáveis pelo domínio '{{domain}}' salvos"
     },
     "secrets": {
       "env_reference_object_locked": "Este objeto é do operador: ele lê o ambiente próprio do servidor e não pode ser alterado aqui. Adicione um seu em vez disso.",
@@ -884,7 +885,8 @@
         "domain_steward_unset": "O domínio {{domain}} não tem steward.",
         "no_description": "Este produto de dados não informa nem seu propósito nem seu uso.",
         "successor_retired": "O produto de dados que recebeu os membros deste, '{{successor}}', também foi retirado."
-      }
+      },
+      "owner_not_eligible": "{{owner}} não tem nenhuma função com a capacidade data_product_owner, por isso não pode ser nomeado proprietário do produto de dados {{data_product}}. Atribua-lhe primeiro uma função assim."
     },
     "erd": {
       "database_unavailable": "Não é possível ler os layouts do ERD: o banco de dados está indisponível",
@@ -936,7 +938,8 @@
     },
     "relationship": {
       "name_taken": "O nome '{{name}}' já é usado pelo relacionamento '{{held_by}}'. Dê outro nome a este.",
-      "join_through_none": "Os relacionamentos '{{first}}' e '{{second}}' não compartilham uma tabela intermediária, ou suas outras extremidades já estão unidas através dela."
+      "join_through_none": "Os relacionamentos '{{first}}' e '{{second}}' não compartilham uma tabela intermediária, ou suas outras extremidades já estão unidas através dela.",
+      "owner_not_eligible": "{{owner}} não tem nenhuma função com a capacidade relationship_owner, por isso não pode ser nomeado proprietário da relação {{relationship}}. Atribua-lhe primeiro uma função assim."
     },
     "syncing": {
       "not_found": "Não existe nenhuma entrada {{entry}}.",
@@ -976,6 +979,9 @@
       "read_only": "Esta função é atribuída pelo provedor de identidade; o Provisa não mantém nenhuma atribuição para confirmar ou revogar",
       "webhook_invalid": "A URL do webhook não é utilizável: {{url}}",
       "webhook_secret_required": "Um webhook precisa do segredo com o qual as revisões agendadas são assinadas"
+    },
+    "domain": {
+      "steward_not_eligible": "{{steward}} não tem nenhuma função com a capacidade domain_steward, por isso não pode ser nomeado responsável pelo domínio {{domain}}. Atribua-lhe primeiro uma função assim."
     }
   }
 }

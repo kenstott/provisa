@@ -10,7 +10,6 @@
     "projectProduct": "Datenprodukt {{id}} (das ganze Projekt)",
     "exists": "Ein Datenprodukt namens {{id}} existiert bereits. Benennen Sie es um oder entfernen Sie es, um diese Modelle zu registrieren.",
     "owner": "Eigentümer: {{owner}}",
-    "ownerRole": "Eigentümerrolle {{role}}",
     "tests": "Tests: {{tests}}",
     "version": "Version {{version}}",
     "columns": "Zugesagte Spalten: {{columns}}",

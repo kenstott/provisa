@@ -10,7 +10,6 @@
     "nameLabel": "Nom",
     "namePlaceholder": "Nom d'affichage",
     "ownerLabel": "Propriétaire",
-    "ownerPlaceholder": "Rôle responsable de ce produit",
     "teamLabel": "Équipe",
     "teamPlaceholder": "Rôle qui maintient ce produit au quotidien",
     "purposeLabel": "Objectif",

@@ -89,9 +89,9 @@ export function ProductHeader({
             {t("dataProductsTab.ownerLabel")}
           </Text>
           <Text size="sm" ff="monospace" data-testid={`data-product-header-owner-${product.id}`}>
-            {product.ownerRole ?? "—"}
+            {product.owners.length > 0 ? product.owners.join(", ") : "—"}
           </Text>
-          {product.ownerRole && <OwnerResolutionInline refs={[product.ownerRole]} />}
+          {product.owners.length > 0 && <OwnerResolutionInline refs={product.owners} />}
         </Group>
         <Group gap={6} wrap="nowrap">
           <Text size="xs" c="dimmed">

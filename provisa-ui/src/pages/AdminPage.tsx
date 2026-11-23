@@ -9,7 +9,8 @@
 // permission from the copyright holder.
 
 import { PageTitle } from "../components/PageTitle";
-import { useState, useEffect, useMemo } from "react";
+import { useCallback, useState, useEffect, useMemo } from "react";
+import { PeopleMultiPicker } from "../components/entitlements/PeoplePicker";
 import { useLocation } from "react-router-dom";
 import { useDetailParam } from "../components/list/useDetailParam";
 import { useTranslation } from "react-i18next";
@@ -150,8 +151,14 @@ export function AdminPage() {
   const [newDomainAlias, setNewDomainAlias] = useState("");
   // REQ-1363: the domain the new one sits under; "" = none.
   const [newDomainParent, setNewDomainParent] = useState("");
+  // REQ-609, REQ-2219 (amended 2026-11-23): the new domain's Steward field names people.
+  const [newDomainStewards, setNewDomainStewards] = useState<string[]>([]);
   // The last domain change's outcome: done (green), or the server's refusal or error (red).
   const [domainMsg, setDomainMsg] = useState<{ text: string; ok: boolean } | null>(null);
+  const onStewardSearchError = useCallback(
+    (e: unknown) => setDomainMsg({ text: e instanceof Error ? e.message : String(e), ok: false }),
+    [setDomainMsg],
+  );
   const [loading, setLoading] = useState(true);
   // REQ-1349: the settings this page still reads. The cards that EDIT them moved to the tabs whose
   // subject they are (settingsCards.tsx); what is left is the domain mode, which decides whether
@@ -237,8 +244,8 @@ export function AdminPage() {
     {
       key: "steward",
       label: t("adminPage.colSteward"),
-      sortValue: (d) => d.steward ?? "",
-      groupValue: (d) => d.steward ?? "",
+      sortValue: (d) => d.effectiveStewards.join(", "),
+      groupValue: (d) => d.effectiveStewards.join(", "),
     },
   ];
   const domainSortGroup = useListSortGroup(userDomains, domainColumns, "domains");
@@ -271,6 +278,7 @@ export function AdminPage() {
     setNewDomainDesc("");
     setNewDomainAlias("");
     setNewDomainParent("");
+    setNewDomainStewards([]);
   };
 
   const handleAddDomain = async () => {
@@ -283,6 +291,7 @@ export function AdminPage() {
         newDomainDesc.trim(),
         newDomainAlias.trim() || null,
         newDomainParent || null,
+        newDomainStewards,
       );
     } catch (e) {
       setDomainMsg({ text: e instanceof Error ? e.message : String(e), ok: false });
@@ -419,6 +428,15 @@ export function AdminPage() {
                       searchable
                     />
                   </FormField>
+                  <FormField size="long" hint={t("adminPage.stewardsHint")}>
+                    <PeopleMultiPicker
+                      label={t("adminPage.colSteward")}
+                      value={newDomainStewards}
+                      onChange={setNewDomainStewards}
+                      onError={onStewardSearchError}
+                      testId="new-domain-stewards"
+                    />
+                  </FormField>
                   <FormField size="medium">
                     <TextInput
                       label={t("adminPage.colGqlAlias")}
@@ -495,16 +513,20 @@ export function AdminPage() {
                               <Table.Td>{d.parentDomainId || "—"}</Table.Td>
                               <Table.Td>
                                 <Group gap={4} wrap="nowrap">
-                                  <Text fz="sm">{d.effectiveSteward || "—"}</Text>
+                                  <Text fz="sm">
+                                    {d.effectiveStewards.length > 0
+                                      ? d.effectiveStewards.join(", ")
+                                      : "—"}
+                                  </Text>
                                   {/* REQ-1363: no steward of its own -- it answers to an ancestor's. */}
-                                  {!d.steward && d.effectiveSteward && (
+                                  {d.stewards.length === 0 && d.effectiveStewards.length > 0 && (
                                     <Text fz="xs" c="dimmed" data-testid="steward-inherited">
                                       {t("adminPage.stewardInherited")}
                                     </Text>
                                   )}
-                                  {d.effectiveSteward && (
+                                  {d.effectiveStewards.length > 0 && (
                                     <OwnerResolutionIcon
-                                      refs={[d.effectiveSteward]}
+                                      refs={d.effectiveStewards}
                                       ariaLabel={t("adminPage.resolveSteward", { id: d.id })}
                                     />
                                   )}

@@ -6716,6 +6716,10 @@ tables:
     data_type: text
     visible_to:
     - viewer
+  - name: owners
+    data_type: text
+    visible_to:
+    - viewer
   - name: purpose
     data_type: text
     visible_to:
@@ -6819,7 +6823,7 @@ tables:
     data_type: text
     visible_to:
     - viewer
-  - name: steward
+  - name: stewards
     data_type: text
     visible_to:
     - viewer
@@ -10498,7 +10502,7 @@ tables:
     data_type: boolean
     visible_to:
     - viewer
-  - name: owner
+  - name: owners
     data_type: text
     visible_to:
     - viewer

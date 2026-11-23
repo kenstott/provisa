@@ -573,7 +573,8 @@
       "table_domain_required": "Tabel '{{table}}' noemt geen domein: elke tabel wordt in een domein geregistreerd",
       "table_state_from_function": "Tabel '{{table}}' is afgeleid van de functie '{{name}}' en heeft haar releasestatus: ze wordt niet op zichzelf teruggetrokken of teruggezet",
       "table_region_from_function": "De tabel '{{table}}' is afgeleid van de functie '{{name}}' en heeft haar regio: ze wordt niet op zichzelf naar een andere regio verplaatst",
-      "table_name_reserved": "De tabelnaam '{{table}}' is gereserveerd: de commando's van een domein worden onder 'commands' aangeboden. Registreer de tabel onder een andere naam of alias."
+      "table_name_reserved": "De tabelnaam '{{table}}' is gereserveerd: de commando's van een domein worden onder 'commands' aangeboden. Registreer de tabel onder een andere naam of alias.",
+      "domain_stewards_saved": "Stewards van domein '{{domain}}' opgeslagen"
     },
     "secrets": {
       "env_reference_object_locked": "Dit object is van de beheerder: het leest de eigen omgeving van de server en kan hier niet worden gewijzigd. Voeg in plaats daarvan een eigen object toe.",
@@ -884,7 +885,8 @@
         "domain_steward_unset": "Domein {{domain}} heeft geen steward.",
         "no_description": "Dit dataproduct vermeldt doel noch gebruik.",
         "successor_retired": "Het dataproduct dat de leden van dit product overnam, '{{successor}}', is ook buiten gebruik gesteld."
-      }
+      },
+      "owner_not_eligible": "{{owner}} heeft geen rol met de bevoegdheid data_product_owner en kan dus niet worden aangewezen als eigenaar van dataproduct {{data_product}}. Geef eerst zo'n rol."
     },
     "erd": {
       "database_unavailable": "De ERD-indelingen kunnen niet worden gelezen: de database is niet beschikbaar",
@@ -936,7 +938,8 @@
     },
     "relationship": {
       "name_taken": "De naam '{{name}}' is al in gebruik door relatie '{{held_by}}'. Geef deze een andere naam.",
-      "join_through_none": "De relaties '{{first}}' en '{{second}}' delen geen tussentabel, of hun andere uiteinden zijn er al via gekoppeld."
+      "join_through_none": "De relaties '{{first}}' en '{{second}}' delen geen tussentabel, of hun andere uiteinden zijn er al via gekoppeld.",
+      "owner_not_eligible": "{{owner}} heeft geen rol met de bevoegdheid relationship_owner en kan dus niet worden aangewezen als eigenaar van relatie {{relationship}}. Geef eerst zo'n rol."
     },
     "syncing": {
       "not_found": "Er is geen vermelding {{entry}}.",
@@ -976,6 +979,9 @@
       "read_only": "Deze rol wordt toegewezen via de identiteitsprovider; Provisa bewaart geen toewijzing om te bevestigen of in te trekken",
       "webhook_invalid": "De webhook-URL is niet bruikbaar: {{url}}",
       "webhook_secret_required": "Een webhook heeft het geheim nodig waarmee geplande reviews worden ondertekend"
+    },
+    "domain": {
+      "steward_not_eligible": "{{steward}} heeft geen rol met de bevoegdheid domain_steward en kan dus niet worden aangewezen als steward van domein {{domain}}. Geef eerst zo'n rol."
     }
   }
 }

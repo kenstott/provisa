@@ -573,7 +573,8 @@
       "table_domain_required": "テーブル '{{table}}' にドメインが指定されていません。すべてのテーブルはドメインに登録されます",
       "table_state_from_function": "テーブル '{{table}}' は関数 '{{name}}' から派生しており、そのリリース状態を持ちます。テーブル単独で取り下げたり戻したりはできません",
       "table_region_from_function": "テーブル '{{table}}' は関数 '{{name}}' から派生しており、その関数のリージョンを持ちます。単独で別のリージョンへ移動することはできません",
-      "table_name_reserved": "テーブル名 '{{table}}' は予約されています。ドメインのコマンドは 'commands' の下で提供されます。別の名前またはエイリアスでテーブルを登録してください。"
+      "table_name_reserved": "テーブル名 '{{table}}' は予約されています。ドメインのコマンドは 'commands' の下で提供されます。別の名前またはエイリアスでテーブルを登録してください。",
+      "domain_stewards_saved": "ドメイン '{{domain}}' のスチュワードを保存しました"
     },
     "secrets": {
       "env_reference_object_locked": "このオブジェクトは運用者のものです。サーバー自身の環境を読み取るため、ここでは変更できません。代わりに独自のものを追加してください。",
@@ -884,7 +885,8 @@
         "domain_steward_unset": "ドメイン {{domain}} にはスチュワードがいません。",
         "no_description": "このデータプロダクトは目的も使い方も記載していません。",
         "successor_retired": "このプロダクトのメンバーを引き継いだデータプロダクト '{{successor}}' も廃止されています。"
-      }
+      },
+      "owner_not_eligible": "{{owner}} は data_product_owner 権限を持つロールを保持していないため、データプロダクト {{data_product}} のオーナーに指定できません。先にそのようなロールを付与してください。"
     },
     "erd": {
       "database_unavailable": "ERD レイアウトを読み取れません: データベースが利用できません",
@@ -936,7 +938,8 @@
     },
     "relationship": {
       "name_taken": "名前「{{name}}」はリレーションシップ「{{held_by}}」が使用しています。別の名前を付けてください。",
-      "join_through_none": "リレーションシップ '{{first}}' と '{{second}}' には共通の中間テーブルがないか、もう一方の端がすでにそのテーブルを介して結合されています。"
+      "join_through_none": "リレーションシップ '{{first}}' と '{{second}}' には共通の中間テーブルがないか、もう一方の端がすでにそのテーブルを介して結合されています。",
+      "owner_not_eligible": "{{owner}} は relationship_owner 権限を持つロールを保持していないため、リレーションシップ {{relationship}} のオーナーに指定できません。先にそのようなロールを付与してください。"
     },
     "syncing": {
       "not_found": "エントリ {{entry}} はありません。",
@@ -976,6 +979,9 @@
       "read_only": "このロールは ID プロバイダー経由で付与されています。Provisa には承認または取り消せる付与がありません",
       "webhook_invalid": "Webhook URL は使用できません：{{url}}",
       "webhook_secret_required": "Webhook には、定期レビューの署名に使うシークレットが必要です"
+    },
+    "domain": {
+      "steward_not_eligible": "{{steward}} は domain_steward 権限を持つロールを保持していないため、ドメイン {{domain}} のスチュワードに指定できません。先にそのようなロールを付与してください。"
     }
   }
 }

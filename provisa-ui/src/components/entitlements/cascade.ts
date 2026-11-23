@@ -73,7 +73,7 @@ export function selectionOf(value: readonly string[], index: NamesIndex, depth: 
   }
   const ancestors = (n: IndexedNode): IndexedNode[] => {
     const out: IndexedNode[] = [];
-    for (let p = n.parent; p !== null; ) {
+    for (let p = n.parent; p !== null;) {
       const up = index.get(p.toLowerCase());
       if (up === undefined) break;
       out.push(up);

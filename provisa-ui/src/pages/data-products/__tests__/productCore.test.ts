@@ -87,7 +87,6 @@ const PRODUCT_ROW = {
   id: "c360",
   domain_id: "sales",
   name: "Customer 360",
-  owner_role: "steward",
   team_role: null,
   purpose: "One customer",
   limitations: "",
@@ -100,6 +99,8 @@ const PRODUCT_ROW = {
   support: null,
   support_contact: null,
   custom_properties: '{"tier":"gold"}',
+  // REQ-2219: its owners, people, as JSON a SQL client answers as text.
+  owners: '["sam"]',
 };
 
 const CUSTOMER = { id: 7, name: "Customer", definition: "A buyer", isAbstract: false, live: true };
@@ -125,7 +126,7 @@ describe("the panel's meta reads", () => {
     expect(q?.graphql).not.toContain("tags");
     expect(q?.graphql).not.toContain("edges");
     expect(q?.sql).toBe(
-      'SELECT "id", "domain_id", "name", "owner_role", "team_role", "purpose", "limitations", "usage", "version", "status", "status_reason", "retire_on", "successor_id", "support", "support_contact", "custom_properties", "created_at" FROM "meta"."data_products" WHERE "id" = \'c360\'',
+      'SELECT "id", "domain_id", "name", "team_role", "purpose", "limitations", "usage", "version", "status", "status_reason", "retire_on", "successor_id", "support", "support_contact", "custom_properties", "created_at", "owners" FROM "meta"."data_products" WHERE "id" = \'c360\'',
     );
     expect(q?.jsonapi).toBe("/data/jsonapi/meta/data_products?filter[id]=c360");
   });
@@ -194,7 +195,7 @@ describe("the panel's meta reads", () => {
     expect(seen.every((r) => r.role === "analyst")).toBe(true);
     expect(core?.product).toMatchObject({
       name: "Customer 360",
-      ownerRole: "steward",
+      owners: ["sam"],
       customProperties: { tier: "gold" },
     });
     expect(core?.tables?.map((t) => t.tableName)).toEqual(["customers"]);

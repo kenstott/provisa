@@ -573,7 +573,8 @@
       "table_domain_required": "表 '{{table}}' 未指定域：每個表都註冊在一個域中",
       "table_state_from_function": "表 '{{table}}' 衍生自函數 '{{name}}'，並具有其發佈狀態：不能單獨撤回或恢復",
       "table_region_from_function": "表 '{{table}}' 衍生自函數 '{{name}}'，並沿用其區域：不能單獨將其移動到其他區域",
-      "table_name_reserved": "表名 '{{table}}' 為保留名稱：域的指令在 'commands' 下提供。請使用其他名稱或別名註冊該表。"
+      "table_name_reserved": "表名 '{{table}}' 為保留名稱：域的指令在 'commands' 下提供。請使用其他名稱或別名註冊該表。",
+      "domain_stewards_saved": "已儲存域 '{{domain}}' 的管理員"
     },
     "secrets": {
       "env_reference_object_locked": "此物件屬於營運方：它讀取伺服器自身的環境，無法在此更改。請改為新增您自己的物件。",
@@ -884,7 +885,8 @@
         "domain_steward_unset": "網域 {{domain}} 沒有數據管家。",
         "no_description": "此數據產品既未說明用途，也未說明使用方式。",
         "successor_retired": "接收此產品成員的數據產品「{{successor}}」亦已停用。"
-      }
+      },
+      "owner_not_eligible": "{{owner}} 沒有具備 data_product_owner 能力的角色，因此不能被指定為數據產品 {{data_product}} 的擁有者。請先授予其此類角色。"
     },
     "erd": {
       "database_unavailable": "無法讀取 ERD 版面:資料庫無法使用",
@@ -936,7 +938,8 @@
     },
     "relationship": {
       "name_taken": "名稱「{{name}}」已被關係「{{held_by}}」使用。請為此關係另取名稱。",
-      "join_through_none": "關係 '{{first}}' 和 '{{second}}' 沒有共同的中間表，或者它們的另一端已經透過該表連接。"
+      "join_through_none": "關係 '{{first}}' 和 '{{second}}' 沒有共同的中間表，或者它們的另一端已經透過該表連接。",
+      "owner_not_eligible": "{{owner}} 沒有具備 relationship_owner 能力的角色，因此不能被指定為關係 {{relationship}} 的擁有者。請先授予其此類角色。"
     },
     "syncing": {
       "not_found": "不存在項目 {{entry}}。",
@@ -976,6 +979,9 @@
       "read_only": "此角色透過身分識別提供者授予；Provisa 沒有可確認或撤銷的授予",
       "webhook_invalid": "Webhook URL 無法使用：{{url}}",
       "webhook_secret_required": "Webhook 需要用於為定期審查簽署的密鑰"
+    },
+    "domain": {
+      "steward_not_eligible": "{{steward}} 沒有具備 domain_steward 能力的角色，因此不能被指定為域 {{domain}} 的管理員。請先授予其此類角色。"
     }
   }
 }

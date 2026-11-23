@@ -573,7 +573,8 @@
       "table_domain_required": "Table '{{table}}' names no domain: every table is registered in a domain",
       "table_state_from_function": "Table '{{table}}' is derived from the function '{{name}}' and has its release state: it is not withdrawn or put back on its own",
       "table_region_from_function": "Table '{{table}}' is derived from the function '{{name}}' and has its region: it is not moved to another region on its own",
-      "table_name_reserved": "Table name '{{table}}' is reserved: a domain's commands are served under 'commands'. Register the table under another name or alias."
+      "table_name_reserved": "Table name '{{table}}' is reserved: a domain's commands are served under 'commands'. Register the table under another name or alias.",
+      "domain_stewards_saved": "Domain '{{domain}}' stewards saved"
     },
     "secrets": {
       "env_reference_object_locked": "This object is the operator's: it reads the server's own environment and cannot be changed here. Add one of your own instead.",
@@ -884,7 +885,8 @@
         "domain_steward_unset": "Domain {{domain}} has no steward.",
         "no_description": "This data product states neither its purpose nor its usage.",
         "successor_retired": "The data product that took this one's members, '{{successor}}', has been retired too."
-      }
+      },
+      "owner_not_eligible": "{{owner}} holds no role with the data_product_owner capability, so cannot be named an owner of data product {{data_product}}. Grant them such a role first."
     },
     "erd": {
       "database_unavailable": "The ERD layouts cannot be read: the database is unavailable",
@@ -936,7 +938,8 @@
     },
     "relationship": {
       "name_taken": "The name '{{name}}' is taken by relationship '{{held_by}}'. Name this one otherwise.",
-      "join_through_none": "Relationships '{{first}}' and '{{second}}' share no middle table, or their other ends are already joined through it."
+      "join_through_none": "Relationships '{{first}}' and '{{second}}' share no middle table, or their other ends are already joined through it.",
+      "owner_not_eligible": "{{owner}} holds no role with the relationship_owner capability, so cannot be named an owner of relationship {{relationship}}. Grant them such a role first."
     },
     "syncing": {
       "not_found": "There is no entry {{entry}}.",
@@ -976,6 +979,9 @@
       "read_only": "This role is held through the identity provider; Provisa holds no grant of it to confirm or revoke",
       "webhook_invalid": "The webhook URL is not usable: {{url}}",
       "webhook_secret_required": "A webhook needs the secret scheduled reviews are signed with"
+    },
+    "domain": {
+      "steward_not_eligible": "{{steward}} holds no role with the domain_steward capability, so cannot be named a steward of domain {{domain}}. Grant them such a role first."
     }
   }
 }

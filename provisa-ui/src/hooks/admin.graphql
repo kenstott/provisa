@@ -176,9 +176,9 @@ query DomainsQuery {
     id
     description
     graphqlAlias
-    steward
+    stewards
     parentDomainId
-    effectiveSteward
+    effectiveStewards
     isSystem
   }
 }
@@ -205,7 +205,7 @@ query DataProductsQuery {
     id
     domainId
     name
-    ownerRole
+    owners
     teamRole
     purpose
     limitations
@@ -1166,6 +1166,7 @@ mutation CreateDomain(
   $description: String!
   $graphqlAlias: String
   $parentDomainId: String
+  $stewards: [String!]
 ) {
   createDomain(
     input: {
@@ -1173,8 +1174,16 @@ mutation CreateDomain(
       description: $description
       graphqlAlias: $graphqlAlias
       parentDomainId: $parentDomainId
+      stewards: $stewards
     }
   ) {
+    ...MutationResult
+  }
+}
+
+# REQ-609, REQ-2219: a domain's Steward field names people; saving writes their domain_steward rows.
+mutation SetDomainStewards($domainId: String!, $stewards: [String!]!) {
+  setDomainStewards(domainId: $domainId, stewards: $stewards) {
     ...MutationResult
   }
 }

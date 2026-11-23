@@ -53,6 +53,7 @@ const PRODUCT = {
   domainId: "pet-store",
   name: "Pet Health",
   customProperties: {},
+  owners: [],
 } as unknown as DataProduct;
 
 const REMOVED = {

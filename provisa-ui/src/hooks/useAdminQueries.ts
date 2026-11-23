@@ -494,9 +494,10 @@ export function useCreateDomain() {
       description: string,
       graphqlAlias: string | null,
       parentDomainId: string | null,
+      stewards: string[],
     ) => {
       const result = await createDomain({
-        variables: { id, description, graphqlAlias, parentDomainId },
+        variables: { id, description, graphqlAlias, parentDomainId, stewards },
       });
       return (result.data?.createDomain ?? { success: false, message: "" }) as MutationResult;
     },
@@ -980,7 +981,7 @@ export function useColumnDependents() {
   );
 }
 
-// REQ-609/REQ-1634: resolves an owner_role/steward/visible_to ref list to the individuals it grants to.
+// REQ-609/REQ-1634: resolves an owners/stewards/team role/visible_to ref list to the individuals it names.
 export function useResolveOwners() {
   const [run] = useLazyQuery<{ resolveOwners: UserSummary[] }>(ResolveOwners, {
     fetchPolicy: "cache-first",

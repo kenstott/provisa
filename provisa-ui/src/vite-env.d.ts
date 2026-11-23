@@ -71,6 +71,7 @@ declare module "*.graphql" {
   export const SystemHealth: DocumentNode;
   export const ScheduledTasks: DocumentNode;
   export const CreateDomain: DocumentNode;
+  export const SetDomainStewards: DocumentNode;
   export const DeleteDomain: DocumentNode;
   export const CreateDataProduct: DocumentNode;
   export const UpdateDataProduct: DocumentNode;
@@ -168,7 +169,7 @@ declare module "*.graphql" {
   export const DryRunDqContract: DocumentNode;
   // REQ-1443: run a checker table's poll job now instead of waiting for its cadence.
   export const RunDqCheckNow: DocumentNode;
-  // REQ-609/REQ-1634: resolves an owner_role/steward/visible_to ref list to individuals.
+  // REQ-609/REQ-1634: resolves a team role/visible_to ref list to individuals.
   export const ResolveOwners: DocumentNode;
   export const AvailableImportSets: DocumentNode;
   export const ServicenowApis: DocumentNode;
@@ -235,6 +236,7 @@ declare module "*.gql" {
   export const SystemHealth: DocumentNode;
   export const ScheduledTasks: DocumentNode;
   export const CreateDomain: DocumentNode;
+  export const SetDomainStewards: DocumentNode;
   export const DeleteDomain: DocumentNode;
   export const CreateDataProduct: DocumentNode;
   export const UpdateDataProduct: DocumentNode;

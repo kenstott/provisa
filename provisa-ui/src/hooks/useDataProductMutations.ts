@@ -35,7 +35,8 @@ export interface DataProductInput {
   id: string;
   domainId: string;
   name: string;
-  ownerRole: string | null;
+  // REQ-2219 (amended 2026-11-23): the Owner field, people by user id.
+  owners: string[];
   teamRole: string | null;
   purpose: string;
   limitations: string;

@@ -222,12 +222,14 @@ export function DataProductDetailPanel({
     ...lifecycle.fields,
     {
       label: t("dataProductsTab.ownerLabel"),
-      value: product.ownerRole ? (
-        <Stack gap={0}>
-          <Text size="sm">{product.ownerRole}</Text>
-          <OwnerResolutionInline refs={[product.ownerRole]} />
-        </Stack>
-      ) : null,
+      // REQ-2219 (amended 2026-11-23): its owners are people.
+      value:
+        product.owners.length > 0 ? (
+          <Stack gap={0}>
+            <Text size="sm">{product.owners.join(", ")}</Text>
+            <OwnerResolutionInline refs={product.owners} />
+          </Stack>
+        ) : null,
     },
     {
       label: t("dataProductsTab.teamLabel"),

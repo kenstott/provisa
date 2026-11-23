@@ -160,8 +160,20 @@ function makeRel(overrides: Partial<Relationship> = {}): Relationship {
   };
 }
 
-const DOMAIN_SALES: Domain = { id: "sales", description: "Sales domain", isSystem: false };
-const DOMAIN_HR: Domain = { id: "hr", description: "HR domain", isSystem: false };
+const DOMAIN_SALES: Domain = {
+  id: "sales",
+  description: "Sales domain",
+  isSystem: false,
+  stewards: [],
+  effectiveStewards: [],
+};
+const DOMAIN_HR: Domain = {
+  id: "hr",
+  description: "HR domain",
+  isSystem: false,
+  stewards: [],
+  effectiveStewards: [],
+};
 const NO_HIDDEN = new Set<string>();
 
 // ── buildTableLabel ───────────────────────────────────────────────────────────

@@ -41,6 +41,7 @@ vi.mock("../../components/graph3d/OntologyGraph", () => ({
 }));
 vi.mock("../../context/AuthContext", () => ({
   useAuth: () => ({
+    userId: "ada",
     role: { id: "admin", capabilities: [] },
     selectedRoles: [{ id: "admin", effectiveCapabilities: [], domain_access: [] }],
     availableRoles: [{ id: "admin", capabilities: ["data_product_rw"] }],
@@ -100,7 +101,7 @@ const products = [
     id: "pet_health",
     domainId: "care",
     name: "Pet Health",
-    ownerRole: "vet_lead",
+    owners: ["vera"],
     purpose: "Pet health records",
     limitations: "No billing data",
     usage: "Weekly review",
@@ -217,7 +218,7 @@ describe("Duplicate, in a data product's panel head", () => {
       purpose: "Pet health records",
       limitations: "No billing data",
       usage: "Weekly review",
-      ownerRole: "vet_lead",
+      owners: ["vera"],
       customProperties: { tier: "gold" },
     });
     await waitFor(() => expect(saves.members).toHaveBeenCalledWith("pet_health-copy", [1], []));
