@@ -219,9 +219,16 @@ class TestWhatEachHolds:
             "term_owner",
             "judgment_basis_owner",
         }
-        assert owners <= set(STANDARD_ROLES["org_admin"].capabilities)
-        holders = {r for r in STANDARD_ROLES if owners & _rights(r)}
-        assert holders == {"org_admin"}
+        assert owners <= _rights("org_admin")
+        others = owners - {"data_product_owner"}
+        assert {r for r in STANDARD_ROLES if others & _rights(r)} == {"org_admin"}
+
+    def test_the_data_product_owner_role_and_its_children_hold_data_product_owner(self):
+        """REQ-2219 (amended 2026-11-23): an Owner field names people, each holding a role that
+        carries data_product_owner; the standard data_product_owner role carries it, and the roles
+        composed from it inherit it."""
+        holders = {r for r in STANDARD_ROLES if "data_product_owner" in _rights(r)}
+        assert holders == {"data_product_owner", "org_admin", "sandbox"}
 
     def test_platform_admin_holds_the_platform_rights_alone(self):
         assert _rights("platform_admin") == {"platform_settings", "cross_org"}

@@ -62,9 +62,11 @@ def _owner_state():
 
 
 def _is_owner(user: str, acting: str, product: str = "dp", idp: dict | None = None) -> bool:
+    # A set of roles acting together is bound as its members, as the auth middleware binds it.
+    members = acting.removeprefix("meta:").split("+") if acting.startswith("meta:") else [acting]
     identity = SimpleNamespace(
         user_id=user,
-        acting_roles=[acting],
+        acting_roles=members,
         raw_claims={"entitlements": idp or {}},
         entitlements_claim="entitlements",
     )

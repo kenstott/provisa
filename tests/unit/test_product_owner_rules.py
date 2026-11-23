@@ -707,7 +707,9 @@ async def test_a_set_of_roles_edits_what_its_person_owns(plane):
         "capabilities": ["data_product_rw"],
         "acting_chain": ["owners", "reader"],
     }
-    with entitlements_scope(_identity(PAM, "meta:owners+reader")):
+    identity = _identity(PAM, "owners")
+    identity.acting_roles = ["owners", "reader"]  # a set is bound as its members
+    with entitlements_scope(identity):
         rule = acting_model_rule(plane, "meta:owners+reader", "data_products", "U")
     assert rule is not None and holds(rule.predicate, "current_setting('provisa.owned_products')")
     assert rule.session_vars["owned_products"] == "pets_p"
@@ -720,6 +722,7 @@ async def test_a_set_with_a_member_holding_rw_of_its_own_is_not_narrowed(plane):
 
 async def test_a_retired_products_owner_still_owns_it(plane):
     async with plane.db.acquire() as conn:
+        await data_product_repo.publish(conn, "pets_p", by=OLGA)
         await data_product_repo.retire(conn, "pets_p", reason="done", successor=None, by=OLGA)
     assert (await _owners(plane))["pets_p"] == (PAM,)
 

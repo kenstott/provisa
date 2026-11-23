@@ -371,8 +371,11 @@ def owned_products(state: Any) -> tuple[str, ...]:
     members = [m for role_id in request.acting_roles for m in _members(role_id)]
 
     def holds_owner(role_id: str) -> bool:
-        role = state.roles.get(role_id)
-        return role is not None and DATA_PRODUCT_OWNER in (role.get("capabilities") or ())
+        # Held by the role or an ancestor: a role holds what its parents hold (REQ-2155).
+        return any(
+            DATA_PRODUCT_OWNER in ((state.roles.get(anc) or {}).get("capabilities") or ())
+            for anc in state.role_chains.get(role_id, [role_id])
+        )
 
     return owned_by(
         held.lists,
