@@ -16,12 +16,14 @@ principal reaches runs it in the principal's one graph session. Its tables live 
 environment's store under the principal's own schema (a session id fixed by the principal,
 :func:`session_id`); what the session knows of them -- each table's shape and serials, its
 generation and its ephemeral graph's index -- is one control-plane row per principal
-(``graph_sessions``). :func:`session_for` reads the row for each statement under a lock -- shared
-for a statement with no write clause (``parser.writes_in``), exclusive for one with; a statement
-with no write clause in a session holding nothing reads it alone, with no lock -- and a
-statement that changed the session writes it back with the generation advanced. Whichever worker
-or connection a statement reaches therefore sees what every earlier statement made, and nothing is
-lost when a connection, a tab or a worker goes.
+(``graph_sessions``). :func:`session_for` reads it for each statement. A statement with no write
+clause reads this worker's copy of the row (:mod:`provisa.api.graph_session_cache`), touching no
+row, or reads the row alone and copies it; a statement with a write clause reads it under its
+exclusive lock and writes it back, its generation advanced, telling every worker so (NOTIFY); a
+worker hearing no such channel reads a session holding objects under the shared lock. Whichever
+worker or connection a statement reaches therefore sees what every earlier statement made --
+another worker's write once its notification arrives -- and nothing is lost when a connection, a
+tab or a worker goes.
 
 It ends when the principal clears it (:func:`clear`), when it has gone unused for the retention
 (``temp_tables.graph_session_retention_days``), or when the principal's rights change: the role
@@ -42,7 +44,7 @@ import logging
 import time
 from collections import Counter
 from collections.abc import AsyncGenerator
-from contextlib import asynccontextmanager
+from contextlib import AbstractContextManager, ExitStack, asynccontextmanager, nullcontext
 from dataclasses import dataclass, fields
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -50,6 +52,7 @@ from typing import Any
 from sqlalchemy import delete, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
+from provisa.api import graph_session_cache as cache
 from provisa.compiler import temp_tables
 from provisa.compiler.temp_tables import TempSession, TempTable
 from provisa.core.schema_org import graph_sessions as rows
@@ -271,49 +274,84 @@ def _nothing_held() -> dict[str, Any]:
     return json.loads(json.dumps(_held(TempSession(kept=True))))
 
 
-async def _empty_session(
-    state: Any, user_id: str, fingerprint: str
-) -> tuple[GraphSession, datetime] | None:
-    """The principal's session, and when its row was last marked used, for a statement with no
-    write clause when its row, under the rights it holds now, holds nothing: the row read alone,
-    with no lock and no transaction, its connection given back before the statement runs. None
-    for any other -- a first session, one whose rights changed, or one holding objects -- which
-    the locked read takes.
+def _key(state: Any, user_id: str) -> cache.Key:
+    return state.tenant_db.search_path, user_id
 
-    A statement with no write clause in a session holding nothing reads the model alone: a write
-    another client makes meanwhile changes nothing it reads, so it holds no lock against one."""
+
+def _written(state: Any, user_id: str, generation: int | None) -> Any:
+    """The NOTIFY of a write of ``user_id``'s row, sent in the transaction that writes it."""
+    return cache.notify(state.tenant_db.search_path, user_id, generation)
+
+
+async def _read_alone(state: Any, user_id: str) -> Any:
     async with state.tenant_db.acquire() as conn:
-        row = (await conn.read_alone(select(rows).where(rows.c.user_id == user_id))).first()
-    if row is None or row.rights != fingerprint:
-        return None
-    held = _nothing_held()
-    if (row.tables, row.graph, row.stored) != (held["tables"], held["graph"], held["stored"]):
-        return None
-    session = TempSession(id=session_id(user_id), generation=row.generation, kept=True)
-    return GraphSession(user_id, session, exclusive=False), row.used_at
+        return (await conn.read_alone(select(rows).where(rows.c.user_id == user_id))).first()
+
+
+async def _unlocked(
+    state: Any, user_id: str, fingerprint: str
+) -> tuple[cache.Held, AbstractContextManager[Any]] | None:
+    """For a statement with no write clause: what the principal's row holds under the rights it
+    holds now, and the order it is read in, with no row lock -- this worker's copy of the row
+    (:mod:`graph_session_cache`), or the row read alone and copied. A session holding nothing is
+    read in no order: a write another client makes meanwhile changes nothing it reads. One holding
+    objects is read after a write of it this worker is making. None for any other -- a first
+    session, one whose rights changed, or, while this worker hears no channel, one holding
+    objects -- which the locked read takes."""
+    sessions = cache.of(state.tenant_db)
+    key = _key(state, user_id)
+    while True:
+        held = sessions.get(key)
+        if held is None:
+            ticket = sessions.ticket(key)
+            row = await _read_alone(state, user_id)
+            if row is None or row.rights != fingerprint:
+                return None
+            nothing = _nothing_held()
+            empty = (row.tables, row.graph, row.stored) == (
+                nothing["tables"],
+                nothing["graph"],
+                nothing["stored"],
+            )
+            held = cache.Held.of(row, empty)
+            if not empty and ticket is None:
+                return None
+            sessions.put(key, ticket, held)
+        elif held.rights != fingerprint:
+            return None
+        if held.empty:
+            return held, nullcontext()
+        order = ExitStack()
+        order.enter_context(sessions.reading(key))
+        if sessions.get(key) is held:
+            return held, order
+        # Written while this read waited: read again.
+        order.close()
 
 
 @asynccontextmanager
-async def _read_in(state: Any, held: GraphSession, used_at: datetime) -> AsyncGenerator[None]:
-    """``held``, a session holding nothing (:func:`_empty_session`), bound for one statement with
-    no write clause; its last-use mark renewed after, as the locked read renews it."""
-    before = _held(held.session)
-    token = _bound.set(held)
-    temp = temp_tables.bind(held.session)
+async def _read_in(state: Any, user_id: str, held: cache.Held) -> AsyncGenerator[GraphSession]:
+    """The session ``held`` holds (:func:`_unlocked`), bound for one statement with no write
+    clause; its last-use mark renewed first when stale, as the locked read renews it."""
+    now = datetime.now(UTC)
+    if held.used_at < now - _USE_MARKED_EVERY:
+        async with state.tenant_db.acquire() as conn:
+            await conn.execute_core(
+                update(rows).where(rows.c.user_id == user_id).values(used_at=now)
+            )
+        cache.of(state.tenant_db).renewed(_key(state, user_id), held, now)
+    session = GraphSession(user_id, _session_of(user_id, held), exclusive=False)
+    before = _held(session.session)
+    token = _bound.set(session)
+    temp = temp_tables.bind(session.session)
     try:
-        yield
+        yield session
     finally:
         temp_tables.unbind(temp)
         _bound.reset(token)
-    assert not held.wrote and _held(held.session) == before, (
+    assert not session.wrote and _held(session.session) == before, (
         "a statement with no write clause changed the graph session"
     )
-    now = datetime.now(UTC)
-    if used_at < now - _USE_MARKED_EVERY:
-        async with state.tenant_db.acquire() as conn:
-            await conn.execute_core(
-                update(rows).where(rows.c.user_id == held.user_id).values(used_at=now)
-            )
 
 
 @asynccontextmanager
@@ -330,12 +368,26 @@ async def session_for(
         return
     fingerprint = rights(state, claims)
     if not writes:
-        empty = await _empty_session(state, user_id, fingerprint)
-        if empty is not None:
-            held, used_at = empty
-            async with _read_in(state, held, used_at):
-                yield held
+        unlocked = await _unlocked(state, user_id, fingerprint)
+        if unlocked is not None:
+            held, order = unlocked
+            with order:
+                async with _read_in(state, user_id, held) as session:
+                    yield session
             return
+    sessions = cache.of(state.tenant_db)
+    with sessions.writing(_key(state, user_id)) if writes else nullcontext():
+        async with _locked(state, user_id, claims, fingerprint, writes) as session:
+            yield session
+
+
+@asynccontextmanager
+async def _locked(
+    state: Any, user_id: str, claims: list[str], fingerprint: str, writes: bool
+) -> AsyncGenerator[GraphSession]:
+    """:func:`session_for` under the row's lock -- shared for a statement with no write clause,
+    exclusive for one with -- each write of the row told to every worker."""
+    wrote_row = False
     async with state.tenant_db.acquire() as conn:
         failure: BaseException | None = None
         async with conn.transaction():
@@ -365,6 +417,8 @@ async def session_for(
                         )
                     )
                     row = (await conn.execute_core(locking)).one()
+                await conn.execute_core(_written(state, user_id, row.generation))
+                wrote_row = True
             held = GraphSession(user_id, _session_of(user_id, row), exclusive=writes)
             before = _held(held.session)
             token = _bound.set(held)
@@ -388,7 +442,12 @@ async def session_for(
                     .where(rows.c.user_id == user_id)
                     .values(**after, generation=generation, used_at=datetime.now(UTC))
                 )
+                await conn.execute_core(_written(state, user_id, generation))
+                wrote_row = True
                 held.changed = True
+        if wrote_row:
+            # This worker's copy is dropped at once: its next statement reads what this wrote.
+            cache.of(state.tenant_db).invalidate(_key(state, user_id))
         if failure is not None:
             raise failure
         now = datetime.now(UTC)
@@ -446,17 +505,19 @@ async def clear(state: Any, user_id: str) -> None:
 
         await temp_exec.end(held.session, state)
         return
-    async with state.tenant_db.acquire() as conn:
-        async with conn.transaction():
-            row = (
-                await conn.execute_core(
-                    select(rows.c.stored).where(rows.c.user_id == user_id).with_for_update()
-                )
-            ).first()
-            if row is None:
-                return
-            await _end(state, user_id, row.stored)
-            await conn.execute_core(delete(rows).where(rows.c.user_id == user_id))
+    with cache.of(state.tenant_db).writing(_key(state, user_id)):
+        async with state.tenant_db.acquire() as conn:
+            async with conn.transaction():
+                row = (
+                    await conn.execute_core(
+                        select(rows.c.stored).where(rows.c.user_id == user_id).with_for_update()
+                    )
+                ).first()
+                if row is None:
+                    return
+                await _end(state, user_id, row.stored)
+                await conn.execute_core(delete(rows).where(rows.c.user_id == user_id))
+                await conn.execute_core(_written(state, user_id, None))
 
 
 def _retained_since(now: datetime) -> datetime:
@@ -488,20 +549,25 @@ async def sweep(state: Any, now: datetime) -> list[str]:
         or r.rights != rights(state, r.roles)
     ]
     ended: list[str] = []
+    sessions = cache.of(state.tenant_db)
     for user_id in lapsed:
-        async with state.tenant_db.acquire() as conn:
-            async with conn.transaction():
-                row = (
-                    await conn.execute_core(
-                        select(rows.c.stored)
-                        .where(rows.c.user_id == user_id)
-                        .with_for_update(skip_locked=True)
-                    )
-                ).first()
-                if row is None:
-                    continue
-                await _end(state, user_id, row.stored)
-                await conn.execute_core(delete(rows).where(rows.c.user_id == user_id))
+        with sessions.writing_if_free(_key(state, user_id)) as free:
+            if not free:
+                continue
+            async with state.tenant_db.acquire() as conn:
+                async with conn.transaction():
+                    row = (
+                        await conn.execute_core(
+                            select(rows.c.stored)
+                            .where(rows.c.user_id == user_id)
+                            .with_for_update(skip_locked=True)
+                        )
+                    ).first()
+                    if row is None:
+                        continue
+                    await _end(state, user_id, row.stored)
+                    await conn.execute_core(delete(rows).where(rows.c.user_id == user_id))
+                    await conn.execute_core(_written(state, user_id, None))
         ended.append(user_id)
     if ended:
         log.info("ended %d graph session(s): %s", len(ended), ", ".join(ended))
