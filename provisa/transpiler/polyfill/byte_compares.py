@@ -65,7 +65,10 @@ def _strncmp(a: str, b: str) -> str:
 
 
 def _compared(answer: str) -> str:
-    return ch_once(f"CAST(if($a IS NULL OR $b IS NULL, NULL, {answer}) AS Nullable(Int32))")
+    """``answer``, NULL of a NULL argument: a NULL of Int32, for the server (24.3) refuses an if of
+    a Nullable(Nothing) branch inside a lambda ("Unexpected type of filter column")."""
+    nothing = "CAST(NULL AS Nullable(Int32))"
+    return ch_once(f"CAST(if($a IS NULL OR $b IS NULL, {nothing}, {answer}) AS Nullable(Int32))")
 
 
 #: bcTruelen: a character value's trailing spaces are padding.

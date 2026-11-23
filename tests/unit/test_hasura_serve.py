@@ -392,3 +392,23 @@ def test_graphql_default_mutations_take_its_spellings():
     from provisa.compiler.mutation_gen import mutation_answer
 
     assert mutation_answer(m, [(1,)], 1) == {"affectedRows": 1}
+
+
+@pytest.mark.parametrize(("preset", "conv"), _PRESETS)
+def test_group_by_and_connection_take_the_tables_one_bool_exp(preset, conv):
+    """A Hasura-preset table has one bool_exp: its group-by aggregates and its connection filter
+    by it too, so a table offering both builds (two types of one name made the schema unbuildable,
+    "Schema must contain uniquely named types")."""
+    naming.configure(gql="apollo_graphql", sql="snake")
+    si = _schema_input(preset)
+    si.tables[0]["enable_group_by"] = True
+    si.tables[0]["relay_pagination"] = True
+    schema = generate_schema(si)
+    bool_exp = naming.hasura_table_names(conv, "order_lines").bool_exp
+    assert schema.query_type is not None
+    filtered = {
+        name: get_named_type(field.args["where"].type).name
+        for name, field in schema.query_type.fields.items()
+        if "where" in field.args
+    }
+    assert len(filtered) >= 3 and set(filtered.values()) == {bool_exp}, filtered

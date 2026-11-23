@@ -1,0 +1,69 @@
+name: Reasoner Maven Bundle
+
+# REQ-2138: the sparql reasoner reaches pip installs through Maven Central, as the jar
+# io.simpleishard:provisa-sparql-reasoner (the group pgwire-maven-bundles.yml publishes under). This
+# builds it from provisa/sparql/reasoner/Reasoner.java with the pinned Temurin javac, checks its
+# SHA-256 is the one provisa/sparql/reasoner_bundle.py pins, then lays out, signs and attaches as a
+# workflow artifact its Central bundle. It uploads nothing to Maven Central: the promote is a
+# separate step the maintainer confirms, given the size this prints, as for the pgwire bundles.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  bundle:
+    name: Reasoner jar bundle
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-python
+        with:
+          extras: ""
+
+      - name: Build the reasoner jar, check its pinned sum and lay out the Central bundle
+        run: uv run --no-sync python scripts/ci/reasoner_maven_bundle.py bundles
+
+      # pipefail: a key that fails to decode stops here, not as an empty import gpg reports as fine.
+      - name: Import GPG key
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$GPG_PRIVATE_KEY" | base64 -d | gpg --batch --import
+
+      - name: Sign, checksum and zip the bundle
+        env:
+          GPG_KEY_ID: ${{ secrets.GPG_KEY_ID }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          for dir in bundles/*/; do
+            artifact="$(basename "$dir")"
+            version="$(basename "$(find "$dir" -name '*.pom' -printf '%h\n' | head -n1)")"
+            find "$dir" -type f ! -name '*.sha256' -print0 | while IFS= read -r -d '' f; do
+              gpg --batch --yes --pinentry-mode loopback --passphrase "$GPG_PASSPHRASE" \
+                --local-user "$GPG_KEY_ID" --armor --detach-sign "$f"
+              md5sum "$f" | cut -d' ' -f1 > "$f.md5"
+              sha1sum "$f" | cut -d' ' -f1 > "$f.sha1"
+            done
+            ( cd "$dir" && zip -qr0 "../${artifact}-${version}-central-bundle.zip" io )
+          done
+          ls -l bundles/*.zip
+
+      - name: Report the bundle size for the promote
+        run: |
+          cat bundles/sizes.json
+          { echo '### Central bundle size (bytes)'; echo '```json'; cat bundles/sizes.json; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Keep the bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: reasoner-maven-bundle
+          path: |
+            bundles/*.zip
+            bundles/sizes.json
+          retention-days: 7

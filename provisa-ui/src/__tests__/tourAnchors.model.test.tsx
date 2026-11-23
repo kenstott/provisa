@@ -25,8 +25,15 @@ const hooks = vi.hoisted(() => {
     list: (key: string) => ({ loading: false, [key]: none, refetch }),
     auth: {
       role: "admin",
-      selectedRoles: [{ id: "admin" }],
-      capabilities: ["admin", "table_registration", "view_governance"],
+      // REQ-1327: the Views page asks create_view; REQ-1944 reads each selected role's rights.
+      selectedRoles: [
+        {
+          id: "admin",
+          effectiveCapabilities: ["table_registration", "create_view", "view_governance"],
+          domain_access: ["*"],
+        },
+      ],
+      capabilities: ["admin", "table_registration", "create_view", "view_governance"],
       domainAccess: ["*"],
       demonstrated: [],
       activeOrgId: "acme",

@@ -334,11 +334,14 @@ def test_a_repeated_query_compiles_once(monkeypatch):
 
 
 def test_different_variables_compile_separately(monkeypatch):
+    """REQ-1897 (amended 2026-11-23): the text is parsed and validated once, whatever its
+    variables (the text-only kept document); each new set of values is compiled, since the
+    compiled SQL carries them."""
     h = _endpoint_harness(monkeypatch)
     h.call(variables={"id": 1})
     h.call(variables={"id": 2})
     h.call(variables={"id": 1})
-    assert h.calls["parse"] == 2 and h.calls["compile"] == 2 and h.calls["execute"] == 3
+    assert h.calls["parse"] == 1 and h.calls["compile"] == 2 and h.calls["execute"] == 3
 
 
 def test_a_schema_rebuild_recompiles(monkeypatch):
@@ -365,12 +368,18 @@ def test_a_normalized_request_does_not_take_the_plan_path(monkeypatch):
     h = _endpoint_harness(monkeypatch)
     h.call()
 
-    async def _normalized(*args, **kwargs):
+    documents = []
+
+    async def _normalized(document, *args, **kwargs):
+        documents.append(document)
         return JSONResponse({"data": {}})
 
     monkeypatch.setattr(endpoint, "_handle_normalized", _normalized)
     h.call(x_provisa_normalized="true")
-    assert h.calls["parse"] == 2, "X-Provisa-Normalized needs the document; it must parse"
+    # X-Provisa-Normalized needs the document: it is handed the validated one (kept by its text,
+    # REQ-1897 amended 2026-11-23), not the compiled plan.
+    assert len(documents) == 1 and documents[0] is not None
+    assert h.calls["compile"] == 1, "a normalized read took the plan path"
 
 
 # --------------------------------------------------------------------------------------------- #

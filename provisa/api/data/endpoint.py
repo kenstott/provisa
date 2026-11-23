@@ -382,7 +382,7 @@ async def graphql_endpoint(  # REQ-001, REQ-002, REQ-043, REQ-047, REQ-049, REQ-
         # REQ-2167: a document that does not parse or validate is a GraphQL error, answered as the
         # media type asks (graphql_http.negotiated).
         try:
-            document = parse_query(schema, request.query, request.variables, ctx=ctx)
+            document = plan_request.document(schema, request.query, ctx, parse_query)
         except GraphQLValidationError as e:
             raise GraphQLDocumentError([err.message for err in e.errors]) from e
         except GraphQLSyntaxError as e:

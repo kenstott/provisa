@@ -2297,3 +2297,65 @@ def test_the_nightly_and_the_summary_publish_nothing(path):
     code = _code(path)
     assert not _LEAVES_THE_RUN.search(code), path.name
     assert "publish=true" not in code and "gh release" not in code and "git tag" not in code
+
+
+def test_the_reasoner_bundle_is_built_checked_signed_and_kept_never_published():
+    # REQ-2138: the reasoner jar's Central bundle is built from source by the pinned javac, its
+    # sum checked against reasoner_bundle's pin by the build script, signed and kept as a workflow
+    # artifact; the Maven Central promote is a separate step the maintainer confirms.
+    path = REPO / ".github" / "workflows" / "reasoner-maven-bundle.yml"
+    workflow = yaml.safe_load(path.read_text())
+    assert set(workflow[True]) == {"workflow_dispatch"}
+    assert workflow["permissions"] == {"contents": "read"}
+    steps = workflow["jobs"]["bundle"]["steps"]
+    runs = [str(s.get("run") or "") for s in steps]
+    build = [i for i, r in enumerate(runs) if "scripts/ci/reasoner_maven_bundle.py bundles" in r]
+    sign = [i for i, r in enumerate(runs) if "--detach-sign" in r and "central-bundle.zip" in r]
+    keep = [
+        i
+        for i, s in enumerate(steps)
+        if str(s.get("uses", "")).startswith("actions/upload-artifact@")
+    ]
+    assert len(build) == len(sign) == len(keep) == 1 and build[0] < sign[0] < keep[0]
+    assert (REPO / "scripts" / "ci" / "reasoner_maven_bundle.py").is_file()
+    text = path.read_text()
+    for publish in ("central.sonatype", "oss.sonatype", "curl", "mvn deploy", "gh release"):
+        assert publish not in text, publish
+
+
+def test_the_reasoner_build_refuses_a_jar_whose_sum_is_not_the_pinned_one(tmp_path, monkeypatch):
+    spec = importlib.util.spec_from_file_location(
+        "reasoner_maven_bundle", REPO / "scripts" / "ci" / "reasoner_maven_bundle.py"
+    )
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    def build(out, **_):
+        out.write_bytes(b"not the pinned jar")
+        return "0" * 64
+
+    monkeypatch.setattr(module, "build_jar", build)
+    assert module.main(["reasoner_maven_bundle.py", str(tmp_path)]) == 1
+    assert not (tmp_path / "sizes.json").exists()
+
+    pinned = module.REASONER.sha256
+    monkeypatch.setattr(module, "build_jar", lambda out, **_: (out.write_bytes(b"j"), pinned)[1])
+    assert module.main(["reasoner_maven_bundle.py", str(tmp_path / "ok")]) == 0
+    version = tmp_path / "ok" / module.REASONER.artifact / "io" / "simpleishard"
+    version = version / module.REASONER.artifact / module.REASONER.version
+    stem = f"{module.REASONER.artifact}-{module.REASONER.version}"
+    for name in (f"{stem}.jar", f"{stem}.pom", f"{stem}-sources.jar", f"{stem}-javadoc.jar"):
+        assert (version / name).is_file() and (version / f"{name}.sha256").is_file(), name
+
+
+def test_the_reasoner_jar_is_reproducible_from_its_entries(tmp_path):
+    spec = importlib.util.spec_from_file_location(
+        "reasoner_maven_bundle", REPO / "scripts" / "ci" / "reasoner_maven_bundle.py"
+    )
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    module.write_jar({"b.class": b"b", "a/A.class": b"a"}, tmp_path / "one.jar")
+    module.write_jar({"a/A.class": b"a", "b.class": b"b"}, tmp_path / "two.jar")
+    assert (tmp_path / "one.jar").read_bytes() == (tmp_path / "two.jar").read_bytes()
