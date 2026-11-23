@@ -183,18 +183,20 @@ async def create(
         conn, {through.source_table_id, through.target_table_id, through.via_table_id}
     )
     named = await _named(conn, through, tables, rel_id)
+    # The save resolves each table by its virtual name, its alias when set (REQ-014).
+    virtual = {tid: t.alias or t.name for tid, t in tables.items()}
     result = await _save_relationship_as_caller(
         info,
         RelationshipInput(
             id=named.rel_id,
-            source_table_id=tables[through.source_table_id].name,
-            target_table_id=tables[through.target_table_id].name,
+            source_table_id=virtual[through.source_table_id],
+            target_table_id=virtual[through.target_table_id],
             source_column=through.source_column,
             target_column=through.target_column,
             cardinality=VIA_CARDINALITY,
             alias=named.alias,
             graphql_alias=named.graphql_alias,
-            via_table=tables[through.via_table_id].name,
+            via_table=virtual[through.via_table_id],
             via_source_column=through.via_source_column,
             via_target_column=through.via_target_column,
             via_label_source=LABEL_SOURCE,
