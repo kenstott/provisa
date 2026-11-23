@@ -12,7 +12,9 @@
 2026-11-22): INSERT DATA, DELETE DATA, DELETE WHERE and DELETE/INSERT ... WHERE become the write
 ASTs of the one write planner (written), so each statement they send is the one a Cypher write
 sends and is admitted as any write (the write right, write grants and their columns, row rules).
-Graph management and named graphs are refused by name.
+A triple of a session object (a blank node, an IRI outside the base, a session graph) is
+tests/unit/test_sparql_session_objects.py's; graph IRIs under the base and LOAD are refused by
+name.
 
 The model sits in one DuckDB (tests/unit/ephemeral_harness.py); a WHERE is read as the SPARQL
 SELECT of its template's variables, compiled by the SPARQL front end."""
@@ -26,6 +28,7 @@ import dataclasses
 import json
 
 import pytest
+from rdflib import URIRef
 
 from provisa.compiler.stage2 import GovernanceContext, apply_governance
 from provisa.compiler.write_admission import WriteNotAdmitted
@@ -38,10 +41,11 @@ from provisa.sparql_query.compiler import SparqlRefused, compile_where
 from provisa.sparql_query.results import rdf_term
 from provisa.sparql_query.update import (
     delete_writes,
-    graph_management_refusal,
     ground,
     insert_write,
     parse_update,
+    split_session,
+    update_refusal,
     where_variables,
 )
 from provisa.sparql_query.vocabulary import Grounding, build_vocabulary
@@ -152,7 +156,7 @@ def _update(s: Session, text: str) -> None:
     """The update as /data/sparql runs it: each operation's WHERE read, then its deletes and its
     inserts through the write planner."""
     vocab = _vocab(s)
-    for op in parse_update(PREFIXES + text):
+    for op in parse_update(PREFIXES + text, BASE):
         deletes, inserts = op.delete, op.insert
         if op.where is not None:
             solutions = _solutions(s, op, vocab)
@@ -224,12 +228,26 @@ def test_a_predicate_the_role_does_not_read_is_refused_by_name(monkeypatch):
     assert s.sent == []
 
 
-def test_a_subject_that_names_no_row_is_refused(monkeypatch):
+def test_a_subject_under_the_base_that_names_no_row_is_refused(monkeypatch):
     s = _session(monkeypatch)
     with pytest.raises(SparqlRefused, match="names no row"):
-        _update(s, "INSERT DATA { <urn:a> <urn:b> <urn:c> }")
-    with pytest.raises(SparqlRefused, match="A blank node names no row"):
-        _update(s, 'INSERT DATA { _:b p:name "x" }')
+        _update(s, f"INSERT DATA {{ <{BASE}/id/hr> <urn:b> <urn:c> }}")
+    assert s.sent == []
+
+
+def test_a_blank_node_or_an_iri_outside_the_base_is_a_session_objects_triple():
+    """REQ-2135 (amended 2026-11-23): such a subject is a session object, never a model row's
+    write (tests/unit/test_sparql_session_objects.py)."""
+    from rdflib import BNode, Literal, URIRef
+
+    triples = [
+        (URIRef("urn:a"), URIRef("urn:b"), URIRef("urn:c")),
+        (BNode("b"), URIRef(f"{V}/person#name"), Literal("x")),
+        (URIRef(f"{P}/1"), URIRef(f"{V}/person#name"), Literal("A")),
+    ]
+    model, session = split_session(triples, BASE)
+    assert model == triples[2:]
+    assert session == triples[:2]
 
 
 def test_a_class_that_does_not_type_the_row_is_refused(monkeypatch):
@@ -305,36 +323,56 @@ def test_a_template_triple_with_an_unbound_variable_is_no_triple(monkeypatch):
 # --- named graphs --------------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize(
-    "text", ["DROP ALL", "CLEAR DEFAULT", "LOAD <http://x/y>", "CREATE GRAPH <http://g>"]
-)
-def test_graph_management_is_refused_by_name(text):
-    refused = graph_management_refusal(text)
+def test_load_alone_of_graph_management_is_refused_before_the_update_is_read():
+    refused = update_refusal("LOAD <http://x/y>")
     assert refused is not None
     code, said = refused
     assert code == "sparql.update_refused"
-    assert "acts on a named graph" in said
-    with pytest.raises(SparqlRefused, match="acts on a named graph"):
-        parse_update(text)
+    assert "LOAD reads a document from outside the session" in said
+    for text in ("DROP NAMED", "CLEAR GRAPH <http://g>", "CREATE GRAPH <http://g>"):
+        assert update_refusal(text) is None
+        [op] = parse_update(text, BASE)
+        assert op.manage is not None
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "DROP ALL",
+        "CLEAR DEFAULT",
+        f"CREATE GRAPH <{BASE}/g>",
+        f"INSERT DATA {{ GRAPH <{BASE}/g> {{ <http://a> <http://p> 1 }} }}",
+        f"WITH <{BASE}/g> DELETE {{ ?s <http://p> ?o }} WHERE {{ ?s <http://p> ?o }}",
+    ],
+)
+def test_the_models_own_graph_is_refused_by_name(monkeypatch, text):
+    s = _session(monkeypatch)
+    with pytest.raises(SparqlRefused, match="names the model's own graph"):
+        _update(s, text)
+
+
+def test_a_graph_block_names_a_session_graph():
+    [op] = parse_update("INSERT DATA { GRAPH <http://g> { <http://a> <http://p> 1 } }", BASE)
+    assert list(op.insert_graphs) == ["http://g"]
 
 
 @pytest.mark.parametrize(
     "text, what",
     [
-        ("INSERT DATA { GRAPH <http://g> { <http://a> <http://p> 1 } }", "A GRAPH block"),
         ("WITH <http://g> DELETE { ?s <http://p> ?o } WHERE { ?s <http://p> ?o }", "WITH"),
         ("DELETE { ?s <http://p> ?o } USING <http://g> WHERE { ?s <http://p> ?o }", "USING"),
+        ("DELETE WHERE { GRAPH <http://g> { ?s <http://p> ?o } }", "DELETE WHERE"),
     ],
 )
-def test_a_named_graph_in_a_triple_update_is_refused_by_name(text, what):
-    with pytest.raises(SparqlRefused, match=f"{what}.* names a graph"):
-        parse_update(text)
+def test_a_where_reading_a_session_graph_is_refused_by_name(text, what):
+    with pytest.raises(SparqlRefused, match=f"{what} reads a session graph"):
+        parse_update(text, BASE)
 
 
-def test_an_insert_template_blank_node_is_refused():
-    [op] = parse_update('INSERT { ?s <http://p> _:b } WHERE { ?s <http://q> "x" }')
-    with pytest.raises(SparqlRefused, match="blank node"):
-        ground(op.insert, [{"s": object()}])
+def test_an_insert_template_blank_node_is_a_new_node_for_each_solution():
+    [op] = parse_update('INSERT { ?s <http://p> _:b } WHERE { ?s <http://q> "x" }', BASE)
+    made = ground(op.insert, [{"s": URIRef("http://a")}, {"s": URIRef("http://c")}])
+    assert len({o for _, _, o in made}) == 2
 
 
 # --- governance ----------------------------------------------------------------------------------

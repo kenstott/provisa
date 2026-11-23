@@ -111,11 +111,11 @@ async def _query_text(request: Request) -> str | SparqlUpdate | Response:
 
 
 def update_of(text: str) -> SparqlUpdate | Response:
-    """The update ``text`` (REQ-2135, amended 2026-11-22), or its refusal by name: text that is no
-    SPARQL Update, and graph management, which acts on named graphs the model does not have."""
-    from provisa.sparql_query.update import graph_management_refusal
+    """The update ``text`` (REQ-2135, amended 2026-11-22 and 2026-11-23), or its refusal by name:
+    text that is no SPARQL Update, and LOAD, which reads from outside the session."""
+    from provisa.sparql_query.update import update_refusal
 
-    refused = graph_management_refusal(text)
+    refused = update_refusal(text)
     if refused is not None:
         code, said = refused
         return cypher_error(400, code, said, reason=said)
@@ -351,49 +351,92 @@ async def solutions_of(  # REQ-2135
     ]
 
 
-async def answer_update(  # REQ-2135
+async def answer_update(  # REQ-2135, REQ-2176
     text: str, request: Request, surface: Any, role_id: str, state: Any
 ) -> Response:
-    """Answer a SPARQL Update (REQ-2135, amended 2026-11-22): each operation in turn, its WHERE
-    read first, then its deletes and its inserts as the governed table writes Cypher's writes
-    make, through the one write planner (provisa.api.rest.graph_write). The answer says the rows
-    written and the counters, as a Cypher write's does."""
+    """Answer a SPARQL Update (REQ-2135, amended 2026-11-22 and 2026-11-23) in the principal's
+    graph session (REQ-2176), as a Cypher write runs: the answer says when it wrote to it."""
+    from provisa.api import graph_session
+    from provisa.api.rest import cypher_session
+
+    user_id, claims = graph_session.principal(state, request.state.identity)
+    async with graph_session.session_for(state, user_id, claims, writes=True) as held:
+        response = await _updated(text, request, surface, role_id, state, held)
+    return cypher_session.answered(response, held)
+
+
+async def _updated(  # REQ-2135, REQ-2176
+    text: str, request: Request, surface: Any, role_id: str, state: Any, held: Any
+) -> Response:
+    """Each operation in turn: its WHERE read first, then its deletes and its inserts -- a model
+    row's as the governed table writes Cypher's writes make, through the one write planner
+    (provisa.api.rest.graph_write); a session object's in the graph session
+    (provisa.sparql_query.session_graph) -- or a graph management operation on the session's
+    graphs. The answer says the rows written and the counters, as a Cypher write's does."""
     from fastapi.responses import JSONResponse
 
     from provisa.api.rest.cypher_router import _counters
     from provisa.api.rest.graph_write import CypherReads, run_graph_writes, write_refusal
     from provisa.cypher.counters import counting
     from provisa.gql.translator_types import CypherTranslateError
-    from provisa.sparql_query.update import delete_writes, ground, insert_write, parse_update
+    from provisa.pgwire.temp_exec import TempTableLimit
+    from provisa.sparql_query.session_graph import SessionWrite, names_of
+    from provisa.sparql_query.update import (
+        delete_writes,
+        ground_graphs,
+        insert_write,
+        model_identity,
+        parse_update,
+        split_session,
+    )
 
     ctx = surface.context
     label_map = _build_label_map(ctx, role_id, state)
     graph = label_map.with_sql_only()
     try:
         vocab = await vocabulary_for(state, role_id, ctx, label_map)
-        operations = parse_update(text)
+        operations = parse_update(text, vocab.base)
     except CypherTranslateError as exc:
         return cypher_error(400, "sparql.refused", str(exc), reason=str(exc))
+    session = held.session
+    names = await names_of(state, session, label_map)
+    objects = SessionWrite(
+        state, session, label_map, vocab, names, lambda t: model_identity(t, vocab, label_map)
+    )
     reads = CypherReads(request, None)
     affected = 0
     # One update, one count: each operation's writes add to the same counters.
     with counting() as counted:
-        for op in operations:
-            deletes, inserts = op.delete, op.insert
-            if op.where is not None:
-                solutions = await solutions_of(op, vocab, graph, surface, role_id, state)
-                if isinstance(solutions, Response):
-                    return solutions
-                deletes, inserts = ground(op.delete, solutions), ground(op.insert, solutions)
-            try:
-                asts, params = delete_writes(deletes, vocab, label_map)
-                inserted = insert_write(inserts, vocab, label_map)
+        try:
+            for op in operations:
+                if op.manage is not None:
+                    await objects.manage(op.manage)
+                    continue
+                deletes, inserts = op.delete_graphs, op.insert_graphs
+                if op.where is not None:
+                    solutions = await solutions_of(op, vocab, graph, surface, role_id, state)
+                    if isinstance(solutions, Response):
+                        return solutions
+                    deletes = ground_graphs(deletes, solutions)
+                    inserts = ground_graphs(inserts, solutions)
+                model_deletes, deletes[""] = split_session(deletes.get("", []), vocab.base)
+                model_inserts, inserts[""] = split_session(inserts.get("", []), vocab.base)
+                await objects.delete(deletes)
+                asts, params = delete_writes(model_deletes, vocab, label_map)
+                inserted = insert_write(model_inserts, vocab, label_map)
                 if inserted is not None:
                     asts.append(inserted)
-                done = await run_graph_writes(asts, label_map, role_id, state, params, reads)
-            except Exception as exc:  # allow-ble: request boundary — a refusal, or a source or driver error of any type, is this update's outcome, answered by write_refusal
-                return write_refusal(exc, "sparql")
-            affected += done.affected
+                if asts:
+                    done = await run_graph_writes(asts, label_map, role_id, state, params, reads)
+                    affected += done.affected
+                await objects.insert(inserts)
+        except TempTableLimit as exc:  # REQ-1926: past the session's bounds, by name
+            return cypher_error(400, "sparql.refused", str(exc), reason=str(exc))
+        except Exception as exc:  # allow-ble: request boundary — a refusal, or a source or driver error of any type, is this update's outcome, answered by write_refusal
+            return write_refusal(exc, "sparql")
+        finally:
+            if objects.wrote:
+                held.wrote = True
     return JSONResponse(
         content={"type": "sparql", "affected_rows": affected, **_counters(counted, text)}
     )

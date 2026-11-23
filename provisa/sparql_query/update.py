@@ -36,9 +36,12 @@ The operations:
   one governed read, then delete, then insert, the triples their templates make of each solution;
   a template triple with an unbound variable is no triple.
 
-Graph management (DROP, CLEAR, LOAD, CREATE, COPY, MOVE, ADD), a GRAPH block, WITH and USING act on
-named graphs, which the model does not have: each is refused by name. A blank node names no row and
-is refused by name.
+Session objects (REQ-2135, amended 2026-11-23; REQ-2176): a triple of a blank node, of an IRI
+outside the model's base IRI, or in a session graph (a GRAPH block naming an IRI outside the base) is
+a session object's, written to the principal's graph session by
+:mod:`provisa.sparql_query.session_graph`; graph management (DROP, CLEAR, CREATE, COPY, MOVE, ADD)
+acts on session graphs. A graph IRI under the base, and DEFAULT, are the model's own graph and are
+refused by name; LOAD reads from outside and is refused by name.
 """
 
 # Requirements: REQ-2135, REQ-670, REQ-2176
@@ -68,78 +71,144 @@ GRAPH_MANAGEMENT = {"Load", "Clear", "Drop", "Create", "Add", "Move", "Copy"}
 #: The parameters an update's own reads bind (an edge's two ends' keys).
 _PARAM = "provisa_sparql_"
 
+#: An operation's triples by graph: "" the default graph, else a session graph's IRI.
+ByGraph = dict[str, list[Triple]]
+
 
 @dataclass
 class UpdateOperation:
-    """One operation of an update request: the triples it deletes and inserts -- ground for
-    INSERT DATA and DELETE DATA, templates for DELETE WHERE and Modify -- and the pattern a
-    template is instantiated from (None for the DATA forms)."""
+    """One operation of an update request: the triples it deletes and inserts by graph -- ground
+    for INSERT DATA and DELETE DATA, templates for DELETE WHERE and Modify -- and the pattern a
+    template is instantiated from (None for the DATA forms); or, for graph management, the
+    operation itself (``manage``)."""
 
     name: str
-    delete: list[Triple] = field(default_factory=list)
-    insert: list[Triple] = field(default_factory=list)
+    delete_graphs: ByGraph = field(default_factory=dict)
+    insert_graphs: ByGraph = field(default_factory=dict)
     where: CompValue | None = None
+    manage: CompValue | None = None
+
+    @property
+    def delete(self) -> list[Triple]:
+        """The default graph's triples it deletes."""
+        return self.delete_graphs.get("", [])
+
+    @property
+    def insert(self) -> list[Triple]:
+        """The default graph's triples it inserts."""
+        return self.insert_graphs.get("", [])
 
 
-def graph_management_refusal(text: str) -> tuple[str, str] | None:
+def update_refusal(text: str) -> tuple[str, str] | None:
     """(error code, what is said) when ``text`` is no SPARQL Update, or one of its operations
-    manages a graph; None for an update whose operations each write triples."""
+    LOADs from outside the session; None for any other update."""
     try:
         parsed = parseUpdate(text)
     except Exception as exc:  # allow-ble: rdflib raises pyparsing's and its own errors alike
         return "sparql.refused", f"The update is not SPARQL this endpoint reads: {exc}"
-    names = [getattr(op, "name", "") for op in parsed.request]
-    managed = sorted({n for n in names if n in GRAPH_MANAGEMENT})
-    if managed:
+    if any(getattr(op, "name", "") == "Load" for op in parsed.request):
         return (
             "sparql.update_refused",
-            f"{', '.join(n.upper() for n in managed)} acts on a named graph, and the model has "
-            "tables, not graphs; write to the tables instead",
+            "LOAD reads a document from outside the session; insert its triples with INSERT DATA",
         )
     return None
 
 
-def _named_graph(what: str) -> SparqlRefused:
+def _by_graph(clause: Any, base: str, what: str, into: str = "") -> ByGraph:
+    """A clause's triples by graph: its plain triples in ``into`` (the default graph, or WITH's),
+    each GRAPH block's in the session graph it names."""
+    from provisa.sparql_query.session_graph import session_graph
+
+    out: ByGraph = {}
+    if clause is None:
+        return out
+    if clause.triples:
+        out[into] = list(clause.triples)
+    for graph, triples in clause.quads.items():
+        out.setdefault(session_graph(graph, base, f"A GRAPH block in {what}"), []).extend(triples)
+    return out
+
+
+def _where_graph(where: Any) -> bool:
+    """Whether a WHERE pattern reads a named graph (a GRAPH pattern)."""
+    if isinstance(where, CompValue):
+        return where.name == "Graph" or any(_where_graph(v) for v in where.values())
+    if isinstance(where, (list, tuple)):
+        return any(_where_graph(v) for v in where)
+    return False
+
+
+def _reads_session_graph(what: str) -> SparqlRefused:
     return SparqlRefused(
-        f"{what} names a graph, and the model has tables, not graphs; write the triples without it"
+        f"{what} reads a session graph's objects in a WHERE, which this endpoint does not serve "
+        "yet; read the default graph"
     )
 
 
-def _triples(clause: Any, what: str) -> list[Triple]:
-    if clause is None:
-        return []
-    if any(clause.quads.values()):
-        raise _named_graph(f"A GRAPH block in {what}")
-    return list(clause.triples)
+def managed_graph(term: Any, base: str, op: str) -> str | None:
+    """The session graph a graph management operation's ``term`` names; None for NAMED (every
+    session graph). DEFAULT and ALL hold the model's own graph, as does an IRI under ``base``:
+    refused by name."""
+    from provisa.sparql_query.session_graph import model_graph_refusal, session_graph
+
+    if term == "NAMED":
+        return None
+    if term in ("DEFAULT", "ALL"):
+        raise model_graph_refusal(f"{op} {term}", base)
+    return session_graph(term, base, op)
 
 
-def parse_update(text: str) -> list[UpdateOperation]:
-    """The operations of the update ``text``, in order; what names a graph is refused by name."""
-    refusal = graph_management_refusal(text)
+def _managed_graphs(op: CompValue, base: str) -> None:
+    """Refuse by name a graph management operation naming the model's own graph."""
+    terms = op.graph if op.name in ("Add", "Copy", "Move") else [op.graphiri]
+    for term in terms:
+        managed_graph(term, base, op.name.upper())
+
+
+def parse_update(text: str, base: str) -> list[UpdateOperation]:
+    """The operations of the update ``text``, in order; a graph under ``base`` (the model's own)
+    and LOAD are refused by name."""
+    from provisa.sparql_query.session_graph import session_graph
+
+    refusal = update_refusal(text)
     if refusal is not None:
         raise SparqlRefused(refusal[1])
     parsed = translateUpdate(parseUpdate(text))
     out = []
     for op in parsed.algebra:
-        if op.name == "InsertData":
-            out.append(UpdateOperation(op.name, insert=_triples(op, "INSERT DATA")))
+        if op.name in GRAPH_MANAGEMENT:
+            _managed_graphs(op, base)
+            out.append(UpdateOperation(op.name, manage=op))
+        elif op.name == "InsertData":
+            out.append(UpdateOperation(op.name, insert_graphs=_by_graph(op, base, "INSERT DATA")))
         elif op.name == "DeleteData":
-            out.append(UpdateOperation(op.name, delete=_triples(op, "DELETE DATA")))
+            out.append(UpdateOperation(op.name, delete_graphs=_by_graph(op, base, "DELETE DATA")))
         elif op.name == "DeleteWhere":
-            triples = _triples(op, "DELETE WHERE")
+            graphs = _by_graph(op, base, "DELETE WHERE")
+            if set(graphs) - {""}:
+                raise _reads_session_graph("DELETE WHERE")
+            triples = graphs.get("", [])
             out.append(
-                UpdateOperation(op.name, delete=triples, where=CompValue("BGP", triples=triples))
+                UpdateOperation(
+                    op.name, delete_graphs=graphs, where=CompValue("BGP", triples=triples)
+                )
             )
         elif op.name == "Modify":
+            into = ""
             if op.withClause is not None:
-                raise _named_graph("WITH")
+                into = session_graph(op.withClause, base, "WITH")
+                raise _reads_session_graph("WITH")
             if op.using:
-                raise _named_graph("USING")
+                for using in op.using:
+                    session_graph(using.get("default") or using.get("named"), base, "USING")
+                raise _reads_session_graph("USING")
+            if _where_graph(op.where):
+                raise _reads_session_graph("A GRAPH pattern")
             out.append(
                 UpdateOperation(
                     op.name,
-                    delete=_triples(op.delete, "DELETE"),
-                    insert=_triples(op.insert, "INSERT"),
+                    delete_graphs=_by_graph(op.delete, base, "DELETE", into),
+                    insert_graphs=_by_graph(op.insert, base, "INSERT", into),
                     where=op.where,
                 )
             )
@@ -167,7 +236,8 @@ def where_variables(op: UpdateOperation) -> list[str]:
 
     visit(op.where)
     out: list[str] = []
-    for triple in [*op.delete, *op.insert]:
+    templates = [*op.delete_graphs.values(), *op.insert_graphs.values()]
+    for triple in (t for triples in templates for t in triples):
         for term in triple:
             if isinstance(term, RdfVariable) and str(term) in bound and str(term) not in out:
                 out.append(str(term))
@@ -176,9 +246,11 @@ def where_variables(op: UpdateOperation) -> list[str]:
 
 def ground(template: list[Triple], solutions: list[dict[str, Any]]) -> list[Triple]:
     """The triples ``template`` makes of each solution (variable name -> RDF term), each once: a
-    triple naming a variable the solution leaves unbound is none (SPARQL 1.1 Update, 3.1.3)."""
+    triple naming a variable the solution leaves unbound is none (SPARQL 1.1 Update, 3.1.3). A
+    blank node is a new one for each solution: a session object (REQ-2135, amended
+    2026-11-23)."""
     out: list[Triple] = []
-    for solution in solutions:
+    for i, solution in enumerate(solutions):
         for triple in template:
             made = []
             for term in triple:
@@ -187,15 +259,38 @@ def ground(template: list[Triple], solutions: list[dict[str, Any]]) -> list[Trip
                     if term is None:
                         break
                 elif isinstance(term, BNode):
-                    raise SparqlRefused(
-                        "A blank node in an INSERT template names no row: name each subject by "
-                        "its IRI"
-                    )
+                    term = BNode(f"{term}_{i}")
                 made.append(term)
             else:
                 if tuple(made) not in out:
                     out.append((made[0], made[1], made[2]))
     return out
+
+
+def ground_graphs(templates: ByGraph, solutions: list[dict[str, Any]]) -> ByGraph:
+    """:func:`ground` of each graph's template."""
+    return {graph: ground(template, solutions) for graph, template in templates.items()}
+
+
+def split_session(triples: list[Triple], base: str) -> tuple[list[Triple], list[Triple]]:
+    """The default graph's ``triples`` as (the model's, the session objects'): a triple whose
+    subject is a blank node or an IRI outside ``base`` is a session object's."""
+    from provisa.sparql_query.session_graph import is_session_subject
+
+    model: list[Triple] = []
+    session: list[Triple] = []
+    for triple in triples:
+        (session if is_session_subject(triple[0], "", base) else model).append(triple)
+    return model, session
+
+
+def model_identity(term: Any, vocab: Vocabulary, lm: CypherLabelMap) -> str:
+    """The graph identity (``Label|key``) of the model row the IRI ``term`` names: a session
+    relationship's end on it."""
+    from provisa.ephemeral.write import _model_identity
+
+    row = _Rows(vocab, lm).row(term)
+    return _model_identity(row.node, row.key)
 
 
 @dataclass
