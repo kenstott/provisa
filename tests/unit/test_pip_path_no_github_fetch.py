@@ -24,6 +24,12 @@ host with or without a scheme. Other files are scanned whole, for GitHub URLs.
 Each entry of ALLOWED is one (file, matched text) pair present today, with the registry move it
 waits for or why it is not a fetch. A new GitHub reference fails the test; an entry that no longer
 matches fails it too, so the list only shrinks.
+
+The same scan covers every other host. Each http(s) URL host on the pip path is one of
+REGISTRY_HOSTS (PyPI, Maven Central, npm) or a key of HOSTS, which names its move or why it is no
+dependency fetch. IMPLICIT lists the hosts a dependency reaches by its own default, which no URL in
+our code names, each with the code that still leads there. A new host fails the test; a listed host
+the code no longer names fails it too.
 """
 
 # Requirements: REQ-294, REQ-1142, REQ-956
@@ -166,6 +172,250 @@ ALLOWED: dict[tuple[str, str], str] = {
 }
 
 
+#: An http(s) URL's host, ASCII only (a URL inside translated text runs on into the sentence).
+_URL_HOST = re.compile(r"https?://([A-Za-z0-9{\[][A-Za-z0-9{}\[\]._-]*)")
+
+#: The three registries a pip-installed Provisa may fetch from.
+REGISTRY_HOSTS = frozenset(
+    {
+        "pypi.org",  # PyPI simple index: the Python code sources' default package registry
+        "files.pythonhosted.org",  # PyPI files: pyarrow for the Python code-source host
+        "registry.npmjs.org",  # npm: the JavaScript code sources' default registry, apache-arrow
+        "repo1.maven.org",  # Maven Central: HermiT and OWL API for the sparql reasoner
+    }
+)
+
+_PLACEHOLDER = "placeholder or example address in a form hint or docstring; never fetched. No move."
+_LOCAL = (
+    "loopback or in-cluster service name (this machine, a compose or Kubernetes service); "
+    "never leaves the deployment. No move."
+)
+_IN_PROCESS = "base URL of an in-process ASGI client; no network. No move."
+_NAMESPACE = "namespace, schema or scope identifier; never fetched. No move."
+_VENDORED_LINK = (
+    "link or provenance comment inside a vendored UI bundle or stylesheet; the browser fetches "
+    "nothing from it. No move."
+)
+_UI_LINK = "link the UI shows the user to follow; not a dependency fetch. No move."
+_USER_SERVICE = (
+    "API of a service the user chooses to connect (a source, sign-in, mail, model, catalog or "
+    "cloud the organization configures); the data or service itself, not a dependency. No move."
+)
+_DATASET = (
+    "provenance of a government dataset in the govdata catalog, read when the user adds that "
+    "source; data, not a dependency. No move."
+)
+_MIRRORABLE_REGISTRY = (
+    "public default of a code-source package registry; the organization replaces it with its own "
+    "mirror in the Package Registries setting. No move."
+)
+
+#: host -> its move, or why it is no dependency fetch. Hosts outside REGISTRY_HOSTS only.
+HOSTS: dict[str, str] = {
+    # --- Dependency fetches outside the three registries: each names its move. ---
+    "github.com": "GitHub release assets and links; each reference is listed with its move in "
+    "ALLOWED above.",
+    "raw.githubusercontent.com": "Stripe spec read only at build time; see ALLOWED above. No move.",
+    "nodejs.org": "Node for JavaScript code sources (provisa/runtime_deps/code_runtimes.py). Move "
+    "(follow-up): resolve the runtime through the organization's configured npm registry from "
+    "per-platform Node packages on npm.",
+    "go.dev": "Go toolchain for Go code sources (code_runtimes.py). Move (follow-up): open "
+    "question, no upstream Go toolchain on PyPI, Maven Central or npm; republish the pinned "
+    "toolchain as a Provisa package resolved through the configured registries.",
+    "static.rust-lang.org": "Rust toolchain components for Rust code sources (code_runtimes.py). "
+    "Move (follow-up): open question, no upstream Rust toolchain on PyPI, Maven Central or npm; "
+    "republish the pinned components as Provisa packages resolved through the configured "
+    "registries.",
+    "huggingface.co": "default embedding model all-MiniLM-L6-v2, fetched at first embedding "
+    "(embedding.hub_endpoint, HF_ENDPOINT). Move (follow-up): the setting already points at an "
+    "organization's Hugging Face mirror; the registry move is to publish the pinned model as a "
+    "Provisa package on PyPI once PyPI access returns.",
+    "duckdb-extensions.query.farm": "Query.Farm repository for the crypto and airport DuckDB "
+    "extensions, reached only without the embedded extra (provisa/federation/duckdb_extensions.py)."
+    " Move: install provisa[embedded]; provisa-duckdb-ext carries them, and goes to PyPI once "
+    "access returns.",
+    "ghcr.io": "published demo bundles (provisa/core/demo_bundles.py PUBLISHED_AT), an OCI "
+    "registry; PROVISA_DEMO_REGISTRY or --registry points at a mirror. Move (follow-up): open "
+    "question, none of the three registries hosts OCI artifacts; publish the demo bundles as a "
+    "Provisa package on PyPI or npm.",
+    "provisa.dev": "the project site: User-Agent and ontology namespace strings, the registration "
+    "and online-docs links (offline docs ship in the wheel), and the tour's sample Parquet file "
+    "(provisa-ui/src/tour/tourSteps.ts). Move (follow-up): ship the tour's sample file in the "
+    "wheel.",
+    "proxy.golang.org": _MIRRORABLE_REGISTRY,
+    "index.crates.io": _MIRRORABLE_REGISTRY,
+    # --- Services the user chooses to connect. ---
+    "accounts.google.com": _USER_SERVICE,
+    "acme.atlassian.net": _PLACEHOLDER,
+    "acme.my.salesforce.com": _PLACEHOLDER,
+    "acme.service-now.com": _PLACEHOLDER,
+    "admin.googleapis.com": _USER_SERVICE,
+    "api.anthropic.com": _USER_SERVICE,
+    "api.askamerica.ai": _USER_SERVICE,
+    "api.cohere.com": _USER_SERVICE,
+    "api.deepseek.com": _USER_SERVICE,
+    "api.fabric.microsoft.com": _USER_SERVICE,
+    "api.fireworks.ai": _USER_SERVICE,
+    "api.github.com": _USER_SERVICE,
+    "api.groq.com": _USER_SERVICE,
+    "api.inceptionlabs.ai": _USER_SERVICE,
+    "api.mailgun.net": _USER_SERVICE,
+    "api.mistral.ai": _USER_SERVICE,
+    "api.openai.com": _USER_SERVICE,
+    "api.postmarkapp.com": _USER_SERVICE,
+    "api.resend.com": _USER_SERVICE,
+    "api.sambanova.ai": _USER_SERVICE,
+    "api.sendgrid.com": _USER_SERVICE,
+    "api.studio.nebius.com": _USER_SERVICE,
+    "api.together.xyz": _USER_SERVICE,
+    "api.typesafe.ai": _USER_SERVICE,
+    "biglake.googleapis.com": _USER_SERVICE,
+    "api.x.ai": _USER_SERVICE,
+    "appcenter.intuit.com": _USER_SERVICE,
+    "cloudresourcemanager.googleapis.com": _USER_SERVICE,
+    "compute.googleapis.com": _USER_SERVICE,
+    "container.googleapis.com": _USER_SERVICE,
+    "database.windows.net": _USER_SERVICE,
+    "gitlab.com": _USER_SERVICE,
+    "gmail.googleapis.com": _USER_SERVICE,
+    "graph.microsoft.com": _USER_SERVICE,
+    "login.microsoftonline.com": _USER_SERVICE,
+    "management.azure.com": _USER_SERVICE,
+    "oauth.platform.intuit.com": _USER_SERVICE,
+    "oauth2.googleapis.com": _USER_SERVICE,
+    "onelake.dfs.fabric.microsoft.com": _USER_SERVICE,
+    "openidconnect.googleapis.com": _USER_SERVICE,
+    "query.wikidata.org": _USER_SERVICE,
+    "quickbooks.api.intuit.com": _USER_SERVICE,
+    "sandbox-quickbooks.api.intuit.com": _USER_SERVICE,
+    "sheets.googleapis.com": _USER_SERVICE,
+    "storage.googleapis.com": _USER_SERVICE,
+    "tasks.googleapis.com": _USER_SERVICE,
+    "www.googleapis.com": _USER_SERVICE,
+    "www.kaggle.com": _USER_SERVICE,
+    "{store}.myshopify.com": _USER_SERVICE,
+    "metadata.google.internal": "GCP instance metadata server, reached only on a GCP host; "
+    "never leaves the cloud. No move.",
+    "cloud.provisa.dev": "link to the hosted listing in outgoing mail; not fetched. No move.",
+    # --- Government datasets (provisa/govdata/catalog_metadata.json). ---
+    "coralreefwatch.noaa.gov": _DATASET,
+    "doi.org": _DATASET,
+    "download.bls.gov": _DATASET,
+    "fd.house.gov": _DATASET,
+    "mesonet.agron.iastate.edu": _DATASET,
+    "satepsanone.nesdis.noaa.gov": _DATASET,
+    "www.federalregister.gov": _DATASET,
+    "www.ncei.noaa.gov": _DATASET,
+    "www.sec.gov": _DATASET,
+    "www.uscis.gov": _DATASET,
+    "www2.census.gov": _DATASET,
+    # --- Namespaces, schemas and scopes. ---
+    "docs.oasis-open.org": _NAMESPACE,
+    "openlineage.io": _NAMESPACE,
+    "purview.azure.net": _NAMESPACE,
+    "schemas.microsoft.com": _NAMESPACE,
+    "shopify.dev": _NAMESPACE,
+    "specs.apollo.dev": _NAMESPACE,
+    "wikiba.se": _NAMESPACE,
+    "www.apache.org": _NAMESPACE,
+    "www.w3.org": _NAMESPACE,
+    "www.wikidata.org": _NAMESPACE,
+    # --- Links the UI shows, and vendored-bundle provenance. ---
+    "askamerica.ai": _UI_LINK,
+    "cloud.getdbt.com": _UI_LINK,
+    "dbpedia.org": _UI_LINK,
+    "en.wikipedia.org": _UI_LINK,
+    "js.cytoscape.org": _UI_LINK,
+    "vscode.dev": _UI_LINK,
+    "js.stripe.com": "Stripe.js for the hosted billing page; Stripe requires it be loaded from "
+    "js.stripe.com, never bundled (provisa-ui/src/api/billing.ts). A hosted-billing service the "
+    "deployment opts into, not a dependency of a pip install. No move.",
+    "commonmark.org": _VENDORED_LINK,
+    "drafts.csswg.org": _VENDORED_LINK,
+    "mui.com": _VENDORED_LINK,
+    "reactjs.org": _VENDORED_LINK,
+    "www.onegraph.com": _VENDORED_LINK,
+    # --- Placeholders and examples. ---
+    "amzn-s3-demo-bucket.s3.us-west-2.amazonaws.com": _PLACEHOLDER,
+    "api.example.com": _PLACEHOLDER,
+    "cargo.example.com": _PLACEHOLDER,
+    "catalog.example.com": _PLACEHOLDER,
+    "ci.example.com": _PLACEHOLDER,
+    "contoso.sharepoint.com": _PLACEHOLDER,
+    "data.example.com": _PLACEHOLDER,
+    "datahub.example.com": _PLACEHOLDER,
+    "dbc-xxxxx.cloud.databricks.com": _PLACEHOLDER,
+    "example.com": _PLACEHOLDER,
+    "example.org": _PLACEHOLDER,
+    "goproxy.example.com": _PLACEHOLDER,
+    "host": _PLACEHOLDER,
+    "idp.example.com": _PLACEHOLDER,
+    "issuer": _PLACEHOLDER,
+    "keycloak.example.com": _PLACEHOLDER,
+    "my-vault.vault.azure.net": _PLACEHOLDER,
+    "myvault.vault.azure.net": _PLACEHOLDER,
+    "npm.example.com": _PLACEHOLDER,
+    "openmetadata.example.com": _PLACEHOLDER,
+    "openrouter.ai": _PLACEHOLDER,
+    "otel.provisa.io": _PLACEHOLDER,
+    "provisa.example.com": _PLACEHOLDER,
+    "pypi.example.com": _PLACEHOLDER,
+    "s3": _PLACEHOLDER,
+    "svc.internal": _PLACEHOLDER,
+    "vault.internal": _PLACEHOLDER,
+    "x.example": _PLACEHOLDER,
+    "your-site.atlassian.net": _PLACEHOLDER,
+    # --- This machine and in-cluster services. ---
+    "0.0.0.0": _LOCAL,
+    "127.0.0.1": _LOCAL,
+    "docker": _LOCAL,
+    "fuseki": _LOCAL,
+    "graphql-demo": _LOCAL,
+    "localhost": _LOCAL,
+    "minio": _LOCAL,
+    "otel-collector": _LOCAL,
+    "petstore-mock": _LOCAL,
+    "prometheus": _LOCAL,
+    "provisa": _LOCAL,
+    "schema-registry": _LOCAL,
+    "trino": _LOCAL,
+    "nl": _IN_PROCESS,
+    "warmup": _IN_PROCESS,
+}
+
+#: host -> (file, text that still leads there, its move): hosts a dependency reaches by its own
+#: default, named by no URL in our code.
+IMPLICIT: dict[str, tuple[str, str, str]] = {
+    "extensions.duckdb.org": (
+        "provisa/federation/duckdb_extensions.py",
+        'return [f"INSTALL {extension} FROM community" if from_community else f"INSTALL {extension}"]',
+        "DuckDB's core extension repository, which a bare INSTALL reaches when the embedded extra "
+        "is absent. Move: install provisa[embedded]; its duckdb-extension-* wheels are on PyPI.",
+    ),
+    "community-extensions.duckdb.org": (
+        "provisa/federation/duckdb_extensions.py",
+        'return [f"INSTALL {extension} FROM community" if from_community else f"INSTALL {extension}"]',
+        "DuckDB's community extension repository, which INSTALL ... FROM community reaches when "
+        "the embedded extra is absent. Move: install provisa[embedded]; provisa-duckdb-ext carries "
+        "them, and goes to PyPI once access returns.",
+    ),
+    "cdn.jsdelivr.net": (
+        "provisa/api/app.py",
+        'docs_url="/data/openapi/docs",',
+        "FastAPI's own Swagger UI (/data/openapi/docs) and ReDoc (/data/openapi/redoc) pages load "
+        "their scripts from jsDelivr by default. Move (follow-up): serve both from npm packages in "
+        "the UI build, Swagger UI from the swagger-ui-dist copy the REST docs page already uses and "
+        "ReDoc from the redoc package.",
+    ),
+    "fastapi.tiangolo.com": (
+        "provisa/api/app.py",
+        'redoc_url="/data/openapi/redoc",',
+        "the favicon FastAPI's Swagger UI and ReDoc pages load by default. Move (follow-up): with "
+        "cdn.jsdelivr.net, point the pages at the UI's own favicon.",
+    ),
+}
+
+
 def _prose_nodes(tree: ast.AST) -> set[int]:
     """ids of the string constants that are docstrings or other bare string statements."""
     return {
@@ -220,6 +470,26 @@ def _found() -> set[tuple[str, str]]:
     return found
 
 
+def _found_hosts() -> dict[str, set[str]]:
+    """Each http(s) URL host on the pip path -> the files naming it, scanned as ``_found`` scans."""
+    found: dict[str, set[str]] = {}
+
+    def add(text: str, rel: str) -> None:
+        for match in _URL_HOST.finditer(text):
+            found.setdefault(match.group(1).lower().rstrip("."), set()).add(rel)
+
+    for root in _PY_ROOTS:
+        for path in sorted((REPO / root).rglob("*.py")):
+            if "http" not in path.read_text(encoding="utf-8"):
+                continue
+            rel = path.relative_to(REPO).as_posix()
+            for literal in _python_literals(path):
+                add(literal, rel)
+    for path in _text_files():
+        add(path.read_text(encoding="utf-8", errors="replace"), path.relative_to(REPO).as_posix())
+    return found
+
+
 def _declared_dependencies() -> list[str]:
     project = tomllib.loads((REPO / "pyproject.toml").read_text(encoding="utf-8"))["project"]
     deps = list(project["dependencies"])
@@ -262,3 +532,52 @@ def test_pattern_matches_each_github_host_form() -> None:
     assert _GITHUB.search("notgithub.company.com") is None
     assert _GITHUB_URL.search("require github.com/apache/arrow-go/v18 v18.8.0") is None
     assert _GITHUB_URL.search("https://api.github.com/x").group(0) == "https://api.github.com/x"
+
+
+def test_every_host_on_the_pip_path_is_a_registry_or_listed() -> None:
+    known = REGISTRY_HOSTS | HOSTS.keys()
+    new = {h: sorted(files) for h, files in _found_hosts().items() if h not in known}
+    assert not new, (
+        "code on the pip path names a host outside PyPI, Maven Central and npm "
+        "(docs/arch/fetch-sources.md). Give it a registry home, or add it to HOSTS with its move: "
+        f"{new}"
+    )
+
+
+def test_every_listed_host_is_still_named() -> None:
+    stale = sorted((REGISTRY_HOSTS | HOSTS.keys()) - _found_hosts().keys())
+    assert not stale, (
+        f"remove these hosts from REGISTRY_HOSTS or HOSTS, no code names them: {stale}"
+    )
+
+
+def test_registry_listed_and_implicit_hosts_are_disjoint() -> None:
+    assert not REGISTRY_HOSTS & HOSTS.keys()
+    assert not IMPLICIT.keys() & (REGISTRY_HOSTS | HOSTS.keys())
+
+
+def test_every_implicit_host_still_has_the_code_that_reaches_it() -> None:
+    stale = sorted(
+        host
+        for host, (file, text, _move) in IMPLICIT.items()
+        if text not in (REPO / file).read_text(encoding="utf-8")
+    )
+    assert not stale, f"the code leading to these IMPLICIT hosts is gone; remove them: {stale}"
+
+
+def test_every_listed_host_names_its_move() -> None:
+    reasons = {**HOSTS, **{h: move for h, (_f, _t, move) in IMPLICIT.items()}}
+    missing = sorted(h for h, reason in reasons.items() if "move" not in reason.lower())
+    assert not missing, f"these hosts name no move (or 'No move.' with the reason): {missing}"
+
+
+def test_url_host_pattern_reads_ascii_hosts() -> None:
+    for text, want in (
+        ("https://api.example.com（任意の上書き）", "api.example.com"),
+        ("sparse+https://index.crates.io/", "index.crates.io"),
+        ("https://{store}.myshopify.com/admin", "{store}.myshopify.com"),
+        ("http://localhost:8001/x", "localhost"),
+    ):
+        match = _URL_HOST.search(text)
+        assert match is not None and match.group(1) == want, (text, match)
+    assert _URL_HOST.search("ein https://-Adresse") is None
