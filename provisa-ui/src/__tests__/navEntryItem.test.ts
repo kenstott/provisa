@@ -34,6 +34,11 @@ describe("entryItem", () => {
     expect(entryItem(admin, ["org_settings", "observability"])?.to).toBe("/admin/overview");
   });
 
+  it("enters on Scheduled Tasks for a caller whose only admin right is query_development", () => {
+    // REQ-1327 (amended 2026-11-05): scheduled triggers ask query_development.
+    expect(entryItem(admin, ["query_development"])?.to).toBe("/admin/scheduled-tasks");
+  });
+
   it("never returns the first-listed item when its right is absent", () => {
     // /admin/orgs is items[0] and needs cross_org.
     expect(admin.items[0].to).toBe("/admin/orgs");
@@ -53,7 +58,9 @@ describe("entryItem", () => {
 
   it("enters on My Secrets when the caller holds no admin right", () => {
     // REQ-1560, REQ-1327: every member has a vault of their own, so Admin always has a page.
-    expect(entryItem(admin, ["query_development"])?.to).toBe("/admin/my-secrets");
+    // glossary_read opens no Admin page; query_development does (Scheduled Tasks, REQ-1327
+    // amended 2026-11-05), so it is not a "no admin right" caller.
+    expect(entryItem(admin, ["glossary_read"])?.to).toBe("/admin/my-secrets");
     expect(entryItem(admin, [])?.to).toBe("/admin/my-secrets");
   });
 
