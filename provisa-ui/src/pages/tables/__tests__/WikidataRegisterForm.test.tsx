@@ -62,7 +62,7 @@ beforeEach(() => {
   preview.mockResolvedValue({ rows: [{ id: "Q1", name: "Paris" }], columns: [], error: null });
 });
 
-function renderForm(domainId = "sales") {
+function renderForm(domainId = "sales", setError = vi.fn()) {
   render(
     <WikidataRegisterForm
       identifiers={null}
@@ -75,7 +75,7 @@ function renderForm(domainId = "sales") {
       language="en"
       onRegisteredMany={vi.fn()}
       onCancel={vi.fn()}
-      setError={vi.fn()}
+      setError={setError}
     />,
   );
 }
@@ -159,9 +159,15 @@ describe("WikidataRegisterForm: the table of a class", () => {
 
 // REQ-1531 (amended): a table is registered into a domain; Continue waits until one is chosen.
 describe("WikidataRegisterForm: the domain", () => {
-  it("keeps Continue disabled until a domain is chosen", () => {
-    renderForm("");
-    expect(screen.getByTestId("register-table-submit")).toBeDisabled();
+  // REQ-1531 (amended 2026-11-22): a missing field never disables the primary action; pressing
+  // Continue with no domain says a domain is needed and registers nothing.
+  it("keeps Continue enabled with no domain, and pressing it asks for one", async () => {
+    const setError = vi.fn();
+    renderForm("", setError);
+    const submit = screen.getByTestId("register-table-submit");
+    expect(submit).not.toBeDisabled();
+    fireEvent.click(submit);
+    await waitFor(() => expect(setError).toHaveBeenLastCalledWith(expect.stringMatching(/domain/i)));
   });
 
   it("enables Continue once a domain is chosen", () => {

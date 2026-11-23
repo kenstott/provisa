@@ -365,8 +365,6 @@ export function WikidataRegisterForm(props: Props) {
           <Button
             onClick={() => void register()}
             loading={registering}
-            // REQ-1531: a table is registered into a domain; none chosen, there is nothing to register.
-            disabled={!domainId}
             data-testid="register-table-submit"
           >
             {t("registerTableForm.continue")}
