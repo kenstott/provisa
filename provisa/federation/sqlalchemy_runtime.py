@@ -133,6 +133,11 @@ class SqlAlchemyFederationRuntime:  # REQ-825, REQ-840, REQ-905
         """Nothing was attached live, so there is nothing to remove."""
         del source
 
+    def refresh_live_relations(self, sql: str) -> None:
+        """REQ-1867: nothing to re-point. Every source is read from its replica in the store
+        (REQ-1912), so no statement names an in-place read."""
+        del sql
+
     # -- materialization store -------------------------------------------------
 
     def ensure_materialize_attached(self) -> str:
