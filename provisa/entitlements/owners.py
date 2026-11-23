@@ -124,7 +124,7 @@ async def _relationship_spellings(conn: "Connection") -> dict[str, str]:
                 & (mn.c.surface == "sql"),
             )
         )
-        .where(r.c.graphql_field.is_not(None))
+        .where(r.c.graphql_field.is_not(None), r.c.retired.is_(False))
     )
     return {
         row.id: relationship_identifier(row.domain_id, row.name, row.graphql_field)
@@ -133,7 +133,7 @@ async def _relationship_spellings(conn: "Connection") -> dict[str, str]:
 
 
 async def owned_objects(conn: "Connection", kind: OwnedKind) -> Owned:
-    """The objects of ``kind`` the org holds now, spelled for matching."""
+    """The objects of ``kind`` the org holds now (a retired one is not), spelled for matching."""
     if kind is PRODUCTS:
         from provisa.core.repositories import data_product as data_product_repo
 
@@ -142,8 +142,13 @@ async def owned_objects(conn: "Connection", kind: OwnedKind) -> Owned:
     if kind is DOMAINS:
         from provisa.entitlements.access_review import domain_spellings
 
+        from provisa.core.schema_org import domains
+
         spellings = await domain_spellings(conn)
         spellings.pop("*")
+        # A retired domain has no stewards (its row is kept under a key of its own, REQ-2248).
+        for r in await conn.execute_core(select(domains.c.id).where(domains.c.retired.is_(True))):
+            spellings.pop(r.id)
         return Owned(
             {d: tuple((s.lower(),) for s in names) for d, names in spellings.items()},
             {d: ((d.lower(),), (domain_identifier(d).lower(),)) for d in spellings},
@@ -564,5 +569,5 @@ async def reload_owner_rows(conn: "Connection", state: Any, people: Iterable[str
     state.held_entitlements = await store.load_held(conn)
     state.data_product_refs = await data_product_repo.refs(conn)
     for principal in sorted(set(people)):
+        # Each rewrites object_owners from the store as well (effective_store.write_person).
         await effective_store.write_person(conn, state, principal)
-    await write_object_owners(conn)

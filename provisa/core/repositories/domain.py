@@ -145,6 +145,10 @@ async def delete(  # REQ-021, REQ-1917, REQ-1918, REQ-2248
             .where(domains.c.id == key)
             .values(**retirement.values(reason), retired_id=domain_id)
         )
+        # REQ-2219: an object gone has no owners or stewards in object_owners.
+        from provisa.entitlements.owners import write_object_owners
+
+        await write_object_owners(conn)
     return True
 
 
@@ -173,6 +177,10 @@ async def restore(conn: "Connection", key: str) -> bool:  # REQ-2248
             .where(registered_tables.c.domain_id == live_id, registered_tables.c.retired.is_(True))
             .values(**retirement.cleared())
         )
+        # REQ-2219: a restored object's owners and stewards are back in object_owners.
+        from provisa.entitlements.owners import write_object_owners
+
+        await write_object_owners(conn)
     return True
 
 

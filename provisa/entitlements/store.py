@@ -222,15 +222,22 @@ async def write_list(
         )
 
 
+async def held_lists(
+    conn: "Connection", principal: str, role_id: str, kind: str
+) -> dict[str | None, tuple[str, ...]]:
+    """``principal``'s Provisa-held lists for ``role_id`` and ``kind`` now, by the capability each
+    is scoped to (None: the role's list itself; an owner capability's row, REQ-2219, else)."""
+    periods = await history.entitlement_periods(
+        conn, source=PROVISA, principal=principal, role_id=role_id, kind=kind
+    )
+    return {p.row.capability: tuple(p.row.identifiers) for p in history.current(periods)}
+
+
 async def held_list(
     conn: "Connection", principal: str, role_id: str, kind: str
 ) -> tuple[str, ...] | None:
     """``principal``'s Provisa-held list for ``role_id`` and ``kind`` now; None when none is held."""
-    periods = await history.entitlement_periods(
-        conn, source=PROVISA, principal=principal, role_id=role_id, kind=kind
-    )
-    held = [p.row for p in history.current(periods) if p.row.capability is None]
-    return tuple(held[0].identifiers) if held else None
+    return (await held_lists(conn, principal, role_id, kind)).get(None)
 
 
 async def add_to_list(

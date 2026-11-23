@@ -163,6 +163,10 @@ async def delete(conn: "Connection", product_id: str) -> bool:  # REQ-1634, REQ-
             raise DataProductDeleteRefused(product_id, blocking)
         await remove_parts(conn, ref)
         await conn.execute_core(_delete(data_products).where(data_products.c.id == product_id))
+        # REQ-2219: an object gone has no owners or stewards in object_owners.
+        from provisa.entitlements.owners import write_object_owners
+
+        await write_object_owners(conn)
     return True
 
 
