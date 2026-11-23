@@ -18,6 +18,13 @@ import { describe, it, expect, vi } from "vitest";
 import { render, fireEvent, waitFor } from "../test-utils/render";
 import { stepPageReady, tourStep, walkTourStep } from "../test-utils/tourAnchor";
 
+vi.mock("../hooks/useCapability", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../hooks/useCapability")>()),
+  // REQ-1327: the tour walks the role form and row rules as a holder of the rights they ask
+  // (user_management for "+ Role", masking_config for row rules).
+  useCapability: () => true,
+}));
+vi.mock("../context/AuthContext", () => ({ useAuth: () => ({ rebind: vi.fn() }) }));
 vi.mock("../context/DomainFilterContext", () => ({
   useDomainFilter: () => ({
     setDomains: vi.fn(),

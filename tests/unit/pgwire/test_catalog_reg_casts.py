@@ -19,6 +19,7 @@ keyword with no alias has PostgreSQL's column name. The statements are the tools
 
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
@@ -398,3 +399,71 @@ async def test_metabase_select_1_reaches_the_engine_named_question_column():
     )
     assert not sources
     assert exec_sql == 'SELECT 1 AS "?column?"'
+
+
+@pytest.mark.parametrize(
+    ("sql", "name"),
+    [
+        # REQ-2204: PostgreSQL names a scalar subquery by its single output column (FigureColname,
+        # EXPR_SUBLINK), at full strength, so a cast around it keeps that name.
+        ("SELECT (SELECT x FROM t)", "x"),
+        ('SELECT (SELECT count(*) AS "Active" FROM t)', "Active"),
+        ("SELECT (SELECT pg_catalog.pg_get_expr(d.adbin, d.adrelid, true) FROM d)", "pg_get_expr"),
+        ("SELECT (SELECT 1)", "?column?"),
+        ("SELECT (SELECT 1)::text", "?column?"),
+        ("SELECT (SELECT x FROM t)::text", "x"),
+        ("SELECT ((SELECT x FROM t))", "x"),
+        ("SELECT (SELECT x FROM t UNION SELECT y FROM u)", "x"),
+        ("SELECT EXISTS (SELECT 1)", "exists"),
+        ("SELECT ARRAY(SELECT x FROM t)", "array"),
+    ],
+)
+def test_an_unaliased_subquery_is_named_by_postgresqls_rule(sql, name):
+    import sqlglot
+
+    from provisa.compiler.result_shape import _pg_column_name
+
+    (select,) = sqlglot.parse_one(sql, read="postgres").selects
+    assert _pg_column_name(select) == name
+
+
+_BI_TOOLS = Path(__file__).resolve().parents[3] / "scripts" / "conformance" / "bi_tools"
+_PSQL_COLUMNS = [
+    "attname",
+    "format_type",
+    "pg_get_expr",
+    "attnotnull",
+    "attcollation",
+    "attidentity",
+    "attgenerated",
+    "attstorage",
+    "attcompression",
+    "attstattarget",
+    "col_description",
+]
+
+
+@pytest.mark.parametrize(
+    ("tool", "statement_id", "columns"),
+    [
+        ("psql", 11, _PSQL_COLUMNS),
+        ("psql", 19, _PSQL_COLUMNS),
+        ("psql", 31, _PSQL_COLUMNS),
+        ("dbeaver", 73, ["Active", "Idle", "Total"]),
+        ("dbeaver", 74, ["Total", "Commit", "Rollback"]),
+        ("dbeaver", 75, ["Read", "Hits"]),
+    ],
+)
+def test_bi_scalar_subqueries_keep_postgresqls_column_names(tool, statement_id, columns):
+    """psql \\d and DBeaver's dashboard select scalar subqueries unaliased; the catalog route names
+    each as PostgreSQL does, by the subquery's output column, never ?column? (REQ-2204)."""
+    import sqlglot
+    import yaml
+
+    from provisa.compiler.result_shape import name_as_postgres
+
+    statements = yaml.safe_load((_BI_TOOLS / f"{tool}.yaml").read_text())["statements"]
+    (sql,) = [s["sql"] for s in statements if s["id"] == statement_id]
+    tree = sqlglot.parse_one(sql, read="postgres")
+    name_as_postgres(tree)
+    assert [s.alias_or_name for s in tree.selects] == columns
