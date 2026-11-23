@@ -105,6 +105,12 @@ jobs:
         shell: bash
         run: rustup toolchain install 1.95.0 --profile minimal
 
+      # build-dmg.sh exports uv.lock's pins as the native runtime's pip constraints.
+      - name: Install uv
+        uses: ./.github/actions/setup-python
+        with:
+          sync: "false"
+
       - name: Build DMG
         env:
           VERSION: ${{ inputs.version }}

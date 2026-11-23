@@ -92,6 +92,11 @@ check_prereqs() {
       exit 1
     fi
   done
+  # The native payload installs uv.lock's versions (bundle_native_payload), exported by uv.
+  if [ "$EDITION" != "container" ] && ! command -v uv &>/dev/null; then
+    err "Required tool not found: uv"
+    exit 1
+  fi
   # create-dmg — install via brew if absent
   if ! command -v create-dmg &>/dev/null; then
     info "Installing create-dmg..."
@@ -249,7 +254,16 @@ bundle_native_payload() {
   local notebook_dir="${REPO_ROOT}/dist/notebook"
   rm -rf "$notebook_dir"
   "${REPO_ROOT}/scripts/build-notebook-wheel.sh" "$py" "$notebook_dir"
-  "$py" -m pip install --quiet --find-links "$notebook_dir" "${built_wheel}[embedded]" uvicorn mcp-proxy
+  # The runtime takes uv.lock's versions, never whatever PyPI has newest at build time: an
+  # unconstrained install picked deltalake 1.7.0 eleven minutes after its sdist went up, before
+  # its macOS wheel existed, and the source build failed to link (dry run 45076921053).
+  local constraints="${NATIVE_PAYLOAD_DIR}/uv-lock-constraints.txt"
+  ( cd "$REPO_ROOT" && uv export --frozen --no-hashes --no-header --no-annotate \
+      --no-emit-project --no-emit-package provisa-notebook --extra embedded \
+      --format requirements-txt -o "$constraints" ) >/dev/null
+  "$py" -m pip install --quiet -c "$constraints" \
+    --find-links "$notebook_dir" "${built_wheel}[embedded]" uvicorn mcp-proxy
+  rm -f "$constraints"
   # Fail the build loudly if a critical native-tier dep did not land (mirrors build-sfx.ps1).
   # REQ-2194: provisa's wheel carries its compiled encoders (provisa._encoders) and their notices.
   # -I: from the repository root, `-c` would import the checkout's provisa (no compiled module).
@@ -391,10 +405,9 @@ notarize_app() {
 
   info "Submitting app bundle for notarization..."
   local submit_out submit_err submit_rc
-  submit_out=$(xcrun notarytool submit "$zip_path" "${notary_args[@]}" --output-format json 2>/tmp/notary-submit-err) \
-    && submit_rc=0 || submit_rc=$?
-  submit_err=$(cat /tmp/notary-submit-err 2>/dev/null || true)
-  rm -f "$zip_path" /tmp/notary-submit-err
+  notary_submit "$zip_path" "${notary_args[@]}"
+  submit_out=$NOTARY_SUBMIT_OUT submit_err=$NOTARY_SUBMIT_ERR submit_rc=$NOTARY_SUBMIT_RC
+  rm -f "$zip_path"
   if [ $submit_rc -ne 0 ]; then
     if printf '%s\n%s' "$submit_out" "$submit_err" | grep -qi "required agreement\|403"; then
       info "WARNING: Notarization skipped — Apple Developer agreement missing or expired (HTTP 403). DMG will be unsigned."

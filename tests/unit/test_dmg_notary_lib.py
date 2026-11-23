@@ -13,7 +13,9 @@
 `stapler staple` fetches the ticket from Apple's CloudKit ticket-delivery service, and that
 connection drops on GitHub's macOS runners (NSURLErrorDomain -1005, then "Error 68"): the Core
 DMG on v0.1.0-alpha.505 and the Container DMG on v0.1.0-alpha.506. Apple's notarization log is
-printed for every submission and any issue it lists fails the build.
+printed for every submission and any issue it lists fails the build. `notarytool submit` has no
+network timeout: on v0.1.0-alpha.511 (run 45059453430) the Demo DMG's submit stalled until the job's
+45-minute limit, so each submit attempt is bounded and a stalled one is sent again.
 """
 
 from __future__ import annotations
@@ -33,18 +35,24 @@ _SCRIPTS = (
 
 
 def _run(
-    tmp_path: Path, call: str, staple_answers: list[int], log_json: str = ""
+    tmp_path: Path,
+    call: str,
+    staple_answers: list[int],
+    log_json: str = "",
+    submit_answers: tuple[str, ...] = (),
 ) -> subprocess.CompletedProcess:
     """Run ``call`` with notary-lib.sh sourced, against a fake xcrun.
 
     ``staple_answers`` are the exit codes `xcrun stapler staple` returns in turn; `xcrun notarytool
-    log` prints ``log_json``.
+    log` prints ``log_json``. ``submit_answers`` are what `xcrun notarytool submit` does in turn:
+    ``hang`` never answers, ``403`` fails with Apple's agreement error, ``0`` prints a submission.
     """
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     (tmp_path / "answers").write_text("".join(f"{a}\n" for a in staple_answers))
     (tmp_path / "calls").write_text("")
     (tmp_path / "log.json").write_text(log_json)
+    (tmp_path / "submits").write_text("".join(f"{a}\n" for a in submit_answers))
     fake = bin_dir / "xcrun"
     fake.write_text(
         "#!/bin/bash\n"
@@ -52,12 +60,20 @@ def _run(
         'if [ "$1 $2" = "notarytool log" ]; then\n'
         f"  cat {tmp_path}/log.json; exit 0\n"
         "fi\n"
+        'if [ "$1 $2" = "notarytool submit" ]; then\n'
+        f"  s=$(head -n1 {tmp_path}/submits); sed -i.bak 1d {tmp_path}/submits\n"
+        '  [ "$s" = hang ] && exec /bin/sleep 600\n'
+        '  [ "$s" = 0 ] && { echo \'{"id": "sub-1"}\'; exit 0; }\n'
+        '  echo "HTTP status code: 403. A required agreement is missing or has expired." >&2; exit 69\n'
+        "fi\n"
         f"answer=$(head -n1 {tmp_path}/answers); sed -i.bak 1d {tmp_path}/answers\n"
         '[ "$answer" = 0 ] && { echo "The staple and validate action worked!"; exit 0; }\n'
         'echo "The staple and validate action failed! Error $answer." >&2; exit "$answer"\n'
     )
     fake.chmod(0o755)
-    (bin_dir / "sleep").write_text("#!/bin/sh\nexit 0\n")
+    # Each sleep is a real 0.2 s tick: retry pauses stay short, and the submit watchdog's 2 s
+    # poll becomes 0.2 s, so a 10 s budget lasts 1 s, far longer than the fake submit takes.
+    (bin_dir / "sleep").write_text("#!/bin/sh\nexec /bin/sleep 0.2\n")
     (bin_dir / "sleep").chmod(0o755)
     program = (
         "set -euo pipefail\n"
@@ -68,8 +84,12 @@ def _run(
         ["bash", "-c", program],
         capture_output=True,
         text=True,
-        env={"PATH": f"{bin_dir}:/usr/bin:/bin"},
+        env={"PATH": f"{bin_dir}:/usr/bin:/bin", "NOTARY_SUBMIT_TIMEOUT": "10"},
     )
+
+
+def _calls(tmp_path: Path, prefix: str) -> list[str]:
+    return [c for c in (tmp_path / "calls").read_text().splitlines() if c.startswith(prefix)]
 
 
 def _staple_calls(tmp_path: Path) -> list[str]:
@@ -87,6 +107,9 @@ def test_every_notarizing_script_staples_through_the_retry_and_reads_the_log(scr
     # Read on acceptance and on rejection alike.
     assert source.count('notary_log_check "$submission_id"') == 2
     assert "notarytool log" not in source
+    # Submitted through the bounded watchdog, never by a bare call that can stall the job.
+    assert "xcrun notarytool submit" not in source
+    assert source.count("notary_submit ") == 1
 
 
 def test_a_dropped_staple_connection_is_retried_until_it_staples(tmp_path):
@@ -155,3 +178,33 @@ def test_an_error_inside_a_container_image_is_never_allowed(tmp_path):
     result = _run(tmp_path, "notary_log_check sub-1 --team-id T", [], log)
     assert result.returncode == 1
     assert "lists 1 blocking issue(s)" in result.stderr
+
+
+_SUBMIT = 'notary_submit /out/Provisa-Demo.dmg --team-id T; echo "rc=$NOTARY_SUBMIT_RC out=$NOTARY_SUBMIT_OUT"'
+
+
+def test_a_stalled_submit_is_killed_and_sent_again(tmp_path):
+    result = _run(tmp_path, _SUBMIT, [], submit_answers=("hang", "0"))
+    assert result.returncode == 0, result.stderr
+    assert 'rc=0 out={"id": "sub-1"}' in result.stdout
+    assert "returned" in result.stdout
+    assert len(_calls(tmp_path, "notarytool submit")) == 2
+    assert "submit attempt 1/3 gave no answer in 10s" in result.stdout
+
+
+def test_a_submit_that_never_answers_fails_after_a_bounded_number_of_attempts(tmp_path):
+    result = _run(tmp_path, _SUBMIT, [], submit_answers=("hang",) * 4)
+    assert result.returncode == 1
+    assert "returned" not in result.stdout
+    assert len(_calls(tmp_path, "notarytool submit")) == 3
+    assert "gave no answer in 3 attempts of 10s for /out/Provisa-Demo.dmg" in result.stderr
+
+
+def test_a_submit_that_answers_with_an_error_is_returned_once_unchanged(tmp_path):
+    result = _run(
+        tmp_path, _SUBMIT + '; echo "err=$NOTARY_SUBMIT_ERR"', [], submit_answers=("403",)
+    )
+    assert result.returncode == 0, result.stderr
+    assert "rc=69 out=" in result.stdout
+    assert "err=HTTP status code: 403. A required agreement is missing" in result.stdout
+    assert len(_calls(tmp_path, "notarytool submit")) == 1
