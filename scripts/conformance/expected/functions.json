@@ -69,9 +69,9 @@
     "refused_by_name": 88
    },
    "edge": {
-    "served": 1960,
-    "wrong_answer": 156,
-    "engine_error": 199
+    "served": 1988,
+    "wrong_answer": 130,
+    "engine_error": 197
    }
   },
   "exasol": {
