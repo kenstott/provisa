@@ -264,7 +264,6 @@ async def _save_relationship_as_caller(
         if not creating:
             require_capability(info, "create_relationship")
         return await _queue_creation_request(info, "relationship", input)
-    from provisa.api.admin.capabilities import _identity_from_info
 
     _invalid = _cardinality_problem(input)
     if _invalid is not None:
@@ -306,11 +305,8 @@ async def _save_relationship_as_caller(
         # REQ-434/1531: out of domain queues a request, the same answer a missing right gets.
         return await _queue_creation_request(info, "relationship", input)
     _cross_domain = _tgt_row is not None and _tgt_row["domain_id"] != _src_row["domain_id"]
-    # REQ-020: record the defining steward as owner.
-    _identity = _identity_from_info(info)
-    _owner = getattr(_identity, "user_id", None) if _identity is not None else None
     return await save_relationship(
-        input, owner=_owner, needs_review=_cross_domain, creating=creating
+        input, set_by=_writer_id(info), needs_review=_cross_domain, creating=creating
     )
 
 
@@ -1297,15 +1293,17 @@ def _cardinality_problem(input: RelationshipInput) -> "MutationResult | None":
 
 
 async def save_relationship(
-    input: RelationshipInput, *, owner: str | None, needs_review: bool, creating: bool
+    input: RelationshipInput, *, set_by: str | None, needs_review: bool, creating: bool
 ) -> MutationResult:  # REQ-019, REQ-020, REQ-1948
     """Store a relationship whose author has already been authorized: by holding the right in
     the source table's domain (the mutation above), or by the approvals of the domains the
     relationship touches (REQ-1948). ``needs_review`` flags an edge the target's domain has not
     seen (REQ-1531). ``creating``: a new relationship, whose id must be free; else one that
-    exists, changed."""
+    exists, changed. ``set_by``: who the owner rows its Owner field writes are recorded as set
+    by (REQ-2219)."""
     from provisa.core.models import Relationship as RelModel, Cardinality
     from provisa.core.repositories import relationship as rel_repo
+    from provisa.entitlements.owners import OwnerRefused, set_relationship_owners
     from provisa.core.term_tags import (
         TagLossRefused,
         TermTagRefused,
@@ -1360,7 +1358,6 @@ async def save_relationship(
         via_label_source=input.via_label_source,
         # REQ-2099: the parameters the edge feeds travel with it on save.
         parameters={p.parameter: p.source_column for p in input.parameters},
-        owner=owner,
     )
     async with pool.acquire() as conn:
         _conn = cast("Connection", conn)
@@ -1391,6 +1388,15 @@ async def save_relationship(
                     confirm_tag_loss=input.confirm_tag_loss,
                     carry_tags=input.carry_tags,
                 )
+                # REQ-2219 (amended 2026-11-23): the Owner field names people; saving writes or
+                # ends their relationship_owner rows naming it (its names were just stored).
+                owners_changed = (
+                    set()
+                    if input.owners is None
+                    else await set_relationship_owners(_conn, input.id, input.owners, set_by=set_by)
+                )
+        except OwnerRefused as refused:
+            return _owner_refusal(refused, "relationship", input.id)
         except _FakeRefusedSave as refused:
             return refused.result
         except RetiredNameTaken as taken:  # REQ-2248
@@ -1411,6 +1417,8 @@ async def save_relationship(
             )
         except (TagLossRefused, TermTagRefused) as refused:
             return _tag_move_refusal(refused)
+        if owners_changed:
+            await _reload_owner_rows(_conn, owners_changed)
         if needs_review:
             # REQ-1531: re-assert AFTER the upsert. rel_repo.upsert clears needs_review on conflict
             # (REQ-020 treats a save as an explicit re-review), and a cross-domain edge is not the
@@ -1567,14 +1575,12 @@ async def perform_request_creation(info: StrawberryInfo, req: dict) -> MutationR
     request is marked executed (REQ-209). The caller marks the request executed when this
     succeeds.
     """
-    from provisa.api.admin.capabilities import _identity_from_info
 
     kind = req["request_type"]
     if kind == "relationship":
-        caller = _identity_from_info(info)
         return await save_relationship(
             _rebuild_relationship_input(req["payload"]),
-            owner=getattr(caller, "user_id", None),
+            set_by=_writer_id(info),
             needs_review=False,
             creating=True,  # a request is for a new relationship
         )

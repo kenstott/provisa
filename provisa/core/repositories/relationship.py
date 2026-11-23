@@ -164,7 +164,6 @@ async def upsert(
         "via_label_source": rel.via_label_source or None,
         "source_json_key": rel.source_json_key or None,
         "parameters": rel.parameters,
-        "owner": rel.owner or None,
         "version": rel.version,
         "needs_review": rel.needs_review,
     }

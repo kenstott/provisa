@@ -4284,6 +4284,10 @@ def _after_answer_steps(
                 from provisa.entitlements.effective_store import write_every_holder
 
                 await write_every_holder(cast("Connection", conn), state)
+                # REQ-2219: who owns and stewards each object, for the meta views.
+                from provisa.entitlements.owners import write_object_owners
+
+                await write_object_owners(cast("Connection", conn))
 
     async def names_table() -> None:
         # REQ-194: the prod build's names table. An env build (a sandbox environment's runtime,

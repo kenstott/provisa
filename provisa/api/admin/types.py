@@ -1585,6 +1585,9 @@ class RelationshipInput:  # REQ-019, REQ-020, REQ-158, REQ-413
     # REQ-2099: the target's parameters this edge feeds, each from a source column.
     parameters: list[RelationshipParameterInput] = strawberry.field(default_factory=list)
     record_candidate: bool = False  # when True, also insert accepted relationship_candidates record
+    # REQ-2219 (amended 2026-11-23): the Owner field names people (user ids); saving writes
+    # their relationship_owner rows. None leaves them as they are.
+    owners: list[str] | None = None
     # REQ-2145: a save that re-homes key refs off a tagged term takes the tags off those columns:
     # each lost tag confirmed, or carried to the term the column moves to.
     confirm_tag_loss: list[str] = strawberry.field(default_factory=list)

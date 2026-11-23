@@ -324,6 +324,31 @@ async def unstewarded_domains(conn: "Connection") -> list[str]:
     return sorted(r.id for r in rows.fetchall() if r.id not in system and r.id not in stewarded)
 
 
+#: How object_owners names each kind (REQ-2219).
+_OBJECT_KIND = {PRODUCTS: "data_product", DOMAINS: "domain", RELATIONSHIPS: "relationship"}
+
+
+async def write_object_owners(conn: "Connection") -> None:
+    """Replace object_owners with every object's holders now (:func:`holders`): what the meta
+    views read of owners and stewards. Derived state: a model build and a saved Owner or Steward
+    field are its writers."""
+    from sqlalchemy import delete, insert
+
+    from provisa.core.repositories.build_output import replacing_build_output
+    from provisa.core.schema_org import object_owners
+
+    rows = [
+        {"object_kind": name, "object_id": oid, "principal": principal}
+        for kind, name in _OBJECT_KIND.items()
+        for oid, people in sorted((await holders(conn, kind)).items())
+        for principal in people
+    ]
+    async with replacing_build_output(conn, object_owners):
+        await conn.execute_core(delete(object_owners))
+        if rows:
+            await conn.execute_core(insert(object_owners).values(rows))
+
+
 class OwnerRefused(ValueError):
     """A person named in an Owner or Steward field who holds no role grant carrying the kind's
     capability: a row on any other role would make them no holder."""
@@ -540,3 +565,4 @@ async def reload_owner_rows(conn: "Connection", state: Any, people: Iterable[str
     state.data_product_refs = await data_product_repo.refs(conn)
     for principal in sorted(set(people)):
         await effective_store.write_person(conn, state, principal)
+    await write_object_owners(conn)

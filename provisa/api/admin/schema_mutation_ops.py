@@ -120,7 +120,6 @@ async def _apply_mv_relationship_gate(
                         source_column=d.left_column,
                         target_column=d.right_column,
                         cardinality=Cardinality.many_to_one,
-                        owner=getattr(_identity_user(info), "user_id", None),
                     ),
                 )
             return None

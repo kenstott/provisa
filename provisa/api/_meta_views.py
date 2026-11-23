@@ -247,7 +247,8 @@ def _tag_instances_sql() -> str:
             FROM table_columns tc JOIN registered_tables rt ON rt.id = tc.table_id
             WHERE NOT rt.retired AND NOT tc.retired
             UNION ALL
-            SELECT 'relationship', FALSE, 'relationship:' || r.id, r.id, CAST(NULL AS INTEGER), rt.domain_id, r.owner,
+            SELECT 'relationship', FALSE, 'relationship:' || r.id, r.id, CAST(NULL AS INTEGER), rt.domain_id,
+                   (SELECT STRING_AGG(oo.principal, ', ' ORDER BY oo.principal) FROM object_owners oo WHERE oo.object_kind = 'relationship' AND oo.object_id = r.id),
                    '|', CAST(NULL AS TEXT), CAST(NULL AS TEXT)
             FROM relationships r JOIN registered_tables rt ON rt.id = r.source_table_id
             WHERE NOT r.retired AND NOT rt.retired
@@ -261,7 +262,8 @@ def _tag_instances_sql() -> str:
             FROM tracked_webhooks w
             UNION ALL
             SELECT 'product', FALSE, 'product:' || dp.id, dp.id, CAST(NULL AS INTEGER), dp.domain_id,
-                   CAST(NULL AS TEXT), '|', CAST(NULL AS TEXT), CAST(NULL AS TEXT)
+                   (SELECT STRING_AGG(oo.principal, ', ' ORDER BY oo.principal) FROM object_owners oo WHERE oo.object_kind = 'data_product' AND oo.object_id = dp.id),
+                   '|', CAST(NULL AS TEXT), CAST(NULL AS TEXT)
             FROM data_products dp
             UNION ALL
             SELECT 'term', FALSE, 'term:' || CAST(gt.id AS TEXT), CAST(gt.id AS TEXT), CAST(NULL AS INTEGER),
@@ -1217,6 +1219,16 @@ def _table_keys_sql() -> str:
     """
 
 
+def _system_domains_sql() -> str:
+    """The system domains as a SQL list: exempt from the REQ-609 steward gate (REQ-2219, amended
+    2026-11-23)."""
+    from provisa.core.db import SEEDED_DOMAIN_IDS
+    from provisa.core.domain_policy import INTERNAL_DOMAIN_IDS
+
+    ids = sorted(SEEDED_DOMAIN_IDS | {""} | frozenset(INTERNAL_DOMAIN_IDS))
+    return ", ".join("'" + i.replace("'", "''") + "'" for i in ids)
+
+
 _META_TABLE_VIEWS: dict[str, str] = {
     # REQ-1373/1377: the tag registry and its assignments as queryable metadata, so
     # governance reporting (e.g. expiring deprecations) runs through the governed pipeline.
@@ -1402,8 +1414,11 @@ _META_TABLE_VIEWS: dict[str, str] = {
     # REQ-2248: a retired domain is not listed; its retirement columns are not exposed.
     "domains": """
         CREATE OR REPLACE VIEW domains_meta AS
-        SELECT d.id, d.description, d.steward, d.graphql_alias, d.parent_domain_id, d.org_id,
-               d.tenant_id
+        SELECT d.id, d.description, d.graphql_alias, d.parent_domain_id, d.org_id,
+               d.tenant_id,
+               -- REQ-609, REQ-2219: its stewards, people whose domain_steward rows name it or a
+               -- domain above it. Last, so the view is replaced in place.
+               (SELECT STRING_AGG(oo.principal, ', ' ORDER BY oo.principal) FROM object_owners oo WHERE oo.object_kind = 'domain' AND oo.object_id = d.id) AS stewards
         FROM domains d
         WHERE NOT d.retired
     """,
@@ -1415,9 +1430,12 @@ _META_TABLE_VIEWS: dict[str, str] = {
                r.same_entity,
                r.via_table_id, r.via_source_column, r.via_target_column, r.via_type_column,
                r.via_type_value, r.via_label_source,
-               r.source_json_key, r.parameters, r.owner, r.version, r.needs_review,
+               r.source_json_key, r.parameters, r.version, r.needs_review,
                r.cypher_type, r.graphql_field,
-               r.tenant_id
+               r.tenant_id,
+               -- REQ-2219: its owners, people whose relationship_owner rows name it. Last, so
+               -- the view is replaced in place.
+               (SELECT STRING_AGG(oo.principal, ', ' ORDER BY oo.principal) FROM object_owners oo WHERE oo.object_kind = 'relationship' AND oo.object_id = r.id) AS owners
         FROM relationships r
         WHERE NOT r.retired
     """,
@@ -1447,7 +1465,10 @@ _META_TABLE_VIEWS: dict[str, str] = {
                version, status, status_reason, retire_on, successor_id, support,
                support_contact, custom_properties,
                -- when the product was created; last, so the view is replaced in place.
-               created_at
+               created_at,
+               -- REQ-2219: its owners, people whose data_product_owner rows name it. Last, so
+               -- the view is replaced in place.
+               (SELECT STRING_AGG(oo.principal, ', ' ORDER BY oo.principal) FROM object_owners oo WHERE oo.object_kind = 'data_product' AND oo.object_id = data_products.id) AS owners
         FROM data_products
     """,
     # REQ-1986: the parameter_* columns state a parameter's limits.
@@ -1893,16 +1914,12 @@ _OPS_REPORT_VIEWS: dict[str, str] = {
         SELECT 'domain:' || d.id, 'domain', d.id, d.id,
                'missing_steward'
         FROM domains d
-        WHERE d.id <> '' AND NOT d.retired AND d.id NOT IN (
-            -- a domain under a stewarded one answers to that steward
-            WITH RECURSIVE stewarded(id) AS (
-                SELECT id FROM domains WHERE steward IS NOT NULL
-                UNION
-                SELECT c.id FROM domains c JOIN stewarded s ON c.parent_domain_id = s.id
-            )
-            SELECT id FROM stewarded
+        -- REQ-2219: a system domain needs no steward; a domain is stewarded when a person's
+        -- domain_steward row names it or a domain above it (object_owners).
+        WHERE d.id NOT IN ({system_domains}) AND NOT d.retired AND d.id NOT IN (
+            SELECT object_id FROM object_owners WHERE object_kind = 'domain'
         )
-    """,
+    """.replace("{system_domains}", _system_domains_sql()),
     # Table pairs most often read in the same query — materialization/caching
     # candidates. Pairs ordered table_id_a < table_id_b to count each pair once.
     "join_hotspots": """

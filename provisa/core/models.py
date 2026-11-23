@@ -2494,10 +2494,24 @@ class Relationship(BaseModel):  # REQ-019, REQ-020, REQ-158, REQ-159, REQ-399, R
     # statement joining the target over this edge calls it once per distinct set of the source's
     # values, read as the statement's role reads them.
     parameters: dict[str, str] = Field(default_factory=dict)
-    # REQ-020: defining-steward ownership, version, and re-review flag.
-    owner: str | None = None  # role/user id of the defining steward
+    # REQ-020: version, and re-review flag. Its owners are people holding relationship_owner
+    # entitlement rows naming it (REQ-2219); the configuration carries no owner.
     version: int = 1  # bumped on every upsert and on re-review flagging
     needs_review: bool = False  # set when a join-field schema change may have stale-d the join
+
+    @model_validator(mode="before")
+    @classmethod
+    def _no_owner(cls, data: Any) -> Any:
+        # REQ-2219 (amended 2026-11-23): a relationship's owners are people, each holding a
+        # relationship_owner entitlement row naming it; a config that still names one is refused
+        # rather than read past.
+        if isinstance(data, dict) and "owner" in data:
+            raise ValueError(
+                f"relationship {data.get('id')!r}: owner is no longer a setting -- a "
+                "relationship's owners are people, named in its Owner field, each holding a "
+                "relationship_owner entitlement row naming it. Remove the key."
+            )
+        return data
 
     @property
     def kind(self) -> str:

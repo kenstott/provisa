@@ -500,7 +500,6 @@ relationships = Table(
     Column("source_json_key", Text),
     # REQ-2099: the target's parameters this edge feeds, {parameter: source column}.
     Column("parameters", JSON, nullable=False, default=dict, server_default="{}"),
-    Column("owner", Text),
     Column("version", Integer, nullable=False, server_default="1"),
     Column("needs_review", Boolean, nullable=False, server_default=false()),
     # REQ-351: the effective names, derived and stored once (core.relationship_names).
@@ -1286,6 +1285,16 @@ checker_targets = Table(
 
 # REQ-194: the names table of the last model version built
 # (provisa.core.repositories.model_names.write_names_table). Derived state: each build replaces every row.
+# REQ-2219: the people owning each product and relationship, stewarding each domain. Derived
+# state; see the matching block in schema.sql.
+object_owners = Table(
+    "object_owners",
+    metadata,
+    Column("object_kind", Text, primary_key=True),
+    Column("object_id", Text, primary_key=True),
+    Column("principal", Text, primary_key=True),
+)
+
 model_names = Table(
     "model_names",
     metadata,

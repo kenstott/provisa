@@ -558,8 +558,8 @@ DO $$ BEGIN
     ALTER TABLE relationships ADD COLUMN IF NOT EXISTS graphql_alias TEXT;
     ALTER TABLE relationships ADD COLUMN IF NOT EXISTS disable_cypher BOOLEAN NOT NULL DEFAULT FALSE;
     ALTER TABLE relationships ADD COLUMN IF NOT EXISTS source_json_key TEXT;
-    -- REQ-020: ownership, versioning, and re-review flag for join-field schema changes.
-    ALTER TABLE relationships ADD COLUMN IF NOT EXISTS owner TEXT;
+    -- REQ-020: versioning, and re-review flag for join-field schema changes. Its owners are
+    -- people holding relationship_owner entitlement rows naming it (REQ-2219).
     ALTER TABLE relationships ADD COLUMN IF NOT EXISTS version INTEGER NOT NULL DEFAULT 1;
     ALTER TABLE relationships ADD COLUMN IF NOT EXISTS needs_review BOOLEAN NOT NULL DEFAULT FALSE;
     -- REQ-1586: the junction declaration reaches a relationships table that predates it.
@@ -1539,6 +1539,17 @@ CREATE TABLE IF NOT EXISTS openlineage_dataset_facets (
 CREATE TABLE IF NOT EXISTS checker_targets (
     table_id         INTEGER PRIMARY KEY,
     checked_table_id INTEGER NOT NULL
+);
+
+-- REQ-2219: who owns each data product and relationship, and who stewards each domain: the people
+-- whose entitlement rows of the owner capability name it (a domain's, or a domain above it), as
+-- provisa.entitlements.owners.holders reads them. Derived state for the meta views: each build
+-- replaces every row, as does a save of an Owner or Steward field.
+CREATE TABLE IF NOT EXISTS object_owners (
+    object_kind TEXT NOT NULL CHECK (object_kind IN ('data_product', 'domain', 'relationship')),
+    object_id   TEXT NOT NULL,
+    principal   TEXT NOT NULL,
+    PRIMARY KEY (object_kind, object_id, principal)
 );
 
 -- REQ-194: the names table of the last model version built -- every model object's name on every

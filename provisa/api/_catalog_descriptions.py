@@ -226,7 +226,8 @@ _TAG_INSTANCE_COLUMNS: dict[str, str] = {
     "object_name": "How the names table of the last model build names the object; empty for a kind "
     "it does not name",
     "domain_id": "Domain the object is governed under",
-    "owner": "The object's owner, for a relationship or a data product",
+    "owner": "The object's owners, for a relationship or a data product: the people holding its "
+    "owner entitlement",
     "table_id": "Table the object is, or belongs to",
     "tag_id": "Tag, with its parameter when it has one",
     "base_tag_id": "Tag, parameter stripped: the registry id",
@@ -488,6 +489,8 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "support_contact": "Who to contact for support",
         "custom_properties": "The product's own named properties",
         "created_at": "When the product was created",
+        "owners": "The people who own the product: each holds a data_product_owner entitlement "
+        "naming it",
     },
     # REQ-2188
     "metric_definitions": {
@@ -539,7 +542,8 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
     "domains": {
         "id": "Domain name — the identifier roles are granted access to",
         "description": "What the domain covers",
-        "steward": "Role or principal accountable for the domain's metadata quality",
+        "stewards": "The people who steward the domain: each holds a domain_steward entitlement "
+        "naming it or a domain above it; empty for a domain still pending a steward",
         "parent_domain_id": "Domain this one sits under; a role granted the parent reaches it too",
         "graphql_alias": "Name the domain is exposed under in GraphQL, when it differs",
         "org_id": "Org the domain was defined in",
@@ -571,7 +575,8 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "via_type_column": "Junction column that discriminates several relationship types",
         "via_type_value": "Discriminator value this edge is pinned to",
         "via_label_source": "Where the exposed type name comes from: column, table, or fixed",
-        "owner": "Principal accountable for the edge definition",
+        "owners": "The people who own the edge definition: each holds a relationship_owner "
+        "entitlement naming it",
         "version": "Revision counter, incremented on every edit",
         "needs_review": "Whether the edge was inferred and awaits confirmation",
         "tenant_id": _TENANT,
@@ -1308,8 +1313,7 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
     "ontology_quality": {
         "id": "The scope and its domain or steward",
         "scope": "domain, or steward: what the row counts terms by",
-        "scope_id": "The domain id or the steward role; empty for terms with no domain or no "
-        "steward",
+        "scope_id": "The domain id or its stewards; empty for terms with no domain or no steward",
         "in_service_terms": "Draft and approved terms in scope",
         "grounded_terms": "Of them, grounded: a path to data with no draft term strictly between",
         "grounded_pct": "Grounded terms as a percent of the in-service terms",
@@ -1337,7 +1341,8 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "term_name": "The term's name",
         "domain_id": "A domain the term is scoped to; empty for an unscoped term, * for the "
         "enterprise",
-        "steward": "The domain's steward: its own, else its nearest stewarded parent's",
+        "steward": "The domain's stewards: the people whose domain_steward entitlement names it "
+        "or a domain above it",
         "status": "draft or approved, set by people",
         "grounding": "grounded, grounded_pending or not_grounded, computed from the model",
         "defined": "True when the term has a definition",
@@ -1363,7 +1368,8 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "other_term_id": "The edge's other term; opens it in the Ontology page",
         "other_term_name": "The other term's name",
         "domain_id": "A domain of either term",
-        "steward": "The domain's steward: its own, else its nearest stewarded parent's",
+        "steward": "The domain's stewards: the people whose domain_steward entitlement names it "
+        "or a domain above it",
         "related_to_review": "The term to review; opens the Ontology page filtered to RELATED_TO "
         "terms",
     },

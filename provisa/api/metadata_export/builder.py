@@ -328,10 +328,14 @@ def _data_product_assets(
 
 
 def _relationship_edges(
-    config: ProvisaConfig, index: TableIndex, org_id: str | None
+    config: ProvisaConfig,
+    index: TableIndex,
+    org_id: str | None,
+    relationship_owners: Mapping[str, tuple[str, ...]],
 ) -> list[RelationshipEdge]:
     edges: list[RelationshipEdge] = []
     for rel in config.relationships:
+        owners = relationship_owners.get(rel.id, ())
         context = f"relationship {rel.id!r}"
         source = index.resolve_published(rel.source_table_id, context)
         # A computed (function-target) relationship has no target table by design (REQ-019).
@@ -355,8 +359,10 @@ def _relationship_edges(
                 target_column=rel.target_column,
                 cardinality=rel.cardinality.value,
                 alias=rel.alias,
-                # REQ-020: the defining steward owns the approved join.
-                owner=OwnerRef(id=rel.owner, kind="relationship_owner") if rel.owner else None,
+                # REQ-2219: its owners are people holding relationship_owner rows naming it.
+                owner=(
+                    OwnerRef(id=", ".join(owners), kind="relationship_owner") if owners else None
+                ),
                 version=rel.version,
                 needs_review=rel.needs_review,
                 semantic_uri=relationship_uri(org_id, source, rel.alias, rel.id),
@@ -861,6 +867,7 @@ def build_snapshot(
     product_created: Mapping[str, datetime] | None = None,
     product_owners: Mapping[str, tuple[str, ...]] | None = None,
     domain_stewards: Mapping[str, tuple[str, ...]] | None = None,
+    relationship_owners: Mapping[str, tuple[str, ...]] | None = None,
     person_emails: Mapping[str, str] | None = None,
     endpoints: ServingEndpoints | None = None,
     offers: Mapping[str, tuple[OfferExport, ...]] | None = None,
@@ -882,7 +889,8 @@ def build_snapshot(
     caller: a data product's team is its team role's holders. ``product_owners`` (REQ-2219) is
     each product's owners, people by user id (``entitlements.owners.product_owners``), and
     ``person_emails`` their addresses, both read by the caller. ``domain_stewards`` is each
-    domain's stewards, people by user id (``entitlements.owners.holders`` of DOMAINS).
+    domain's stewards, people by user id (``entitlements.owners.holders`` of DOMAINS), and
+    ``relationship_owners`` each relationship's owners (of RELATIONSHIPS).
     ``product_created`` is when each product was created, by product id, read by the caller.
     ``endpoints`` is where a consumer reads the products, which a contract names as its servers.
     ``offers`` (REQ-2180) is each product's offers with the contracts derived from them, by product
@@ -944,7 +952,7 @@ def build_snapshot(
     )
     relationships = [
         edge
-        for edge in _relationship_edges(config, index, uri_org_id)
+        for edge in _relationship_edges(config, index, uri_org_id, relationship_owners or {})
         if edge.source.parts in keep and (edge.target is None or edge.target.parts in keep)
     ]
     published_columns = {column.ref.parts for table in tables for column in table.columns}
