@@ -1223,10 +1223,32 @@ def input_failure(value: exp.Expr, type_name: exp.Expr) -> tuple[str, str]:
         return f'value "{text}" is out of range for type {display}', "22003"
     if display == "date" and _day_past_its_month(text):
         return f'date/time field value out of range: "{text}"', "22008"
+    if _past_pg_range(display, text):
+        kind = "date" if display == "date" else "timestamp"
+        return f'{kind} out of range: "{text}"', "22008"
     return f'invalid input syntax for type {display}: "{text}"', "22P02"
 
 
-_ISO_DATE = re.compile(r"\s*(\d{4})-(\d{1,2})-(\d{1,2})\s*")
+_ISO_DATE = re.compile(r"\s*(\d{4,})-(\d{1,2})-(\d{1,2})\s*")
+#: An ISO date, AD, opening a timestamp's text: its year.
+_ISO_YEAR = re.compile(r"\s*(\d{4,})-\d{1,2}-\d{1,2}(?:[ T].*)?", re.DOTALL)
+#: The first year past PostgreSQL's range for each type: date_in refuses a date from
+#: 5874898-01-01 on (END_DATE), timestamp_in and timestamptz_in a timestamp from 294277-01-01
+#: on (END_TIMESTAMP), each as out of range (22008).
+_FIRST_YEAR_PAST = {
+    "date": 5874898,
+    "timestamp without time zone": 294277,
+    "timestamp with time zone": 294277,
+}
+
+
+def _past_pg_range(display: str, text: str) -> bool:
+    """An AD date or timestamp whose year is past what PostgreSQL's type holds."""
+    first_past = _FIRST_YEAR_PAST.get(display)
+    found = _ISO_YEAR.fullmatch(text)
+    if first_past is None or found is None or text.rstrip().upper().endswith("BC"):
+        return False
+    return int(found.group(1)) >= first_past
 
 
 def _day_past_its_month(text: str) -> bool:
@@ -1255,6 +1277,13 @@ def input_check(value: exp.Expr, type_name: exp.Expr) -> exp.Expr:
         raise missing from exc
     if to.this == exp.DataType.Type.USERDEFINED and not known_type(type_name.this):
         raise missing
+    if (
+        isinstance(value, exp.Literal)
+        and value.is_string
+        and _past_pg_range(_type_display(type_name.this), value.this)
+    ):
+        # The engine's own range is wider than PostgreSQL's (DuckDB reads 5874898-01-01).
+        return exp.false()
     if to.is_type(exp.DataType.Type.ARRAY) and isinstance(value, exp.Literal):
         value = exp.Literal.string(value.this.replace("{", "[").replace("}", "]"))
     return exp.Not(this=exp.Is(this=exp.TryCast(this=value.copy(), to=to), expression=exp.null()))
