@@ -96462,7 +96462,7 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     host, such as a Spark cluster, is given its address. Nothing else of Provisa is reachable from a sandbox.
     (Amended 2026-11-09, A BUILD RUNS AS THE ORG ADMIN:) Lead 2026-11-09, on REQ-1921 and REQ-1922: a materialized
     view''s build runs as the org''s admin role, so that is the calling role when a build reads a table
-    through a command.'
+    through a command. (Amended 2026-11-23 by the maintainer, pre-freeze, FLIGHT FOR EVERY TABLE ARGUMENT. A code call''s governed table arguments, and so a code resolver''s two tables, are read over Arrow Flight SQL in Python, Go and Rust, on a local sandboxed worker and on a remote host alike. A sandboxed worker reads through a Flight listener minted for that call, bound to the call''s role and tables and closed when the call ends, and its sandbox may open only that port, never the main Flight server. The Go and Rust SDKs read table arguments with a Flight SQL client. TypeScript keeps the scoped pgwire read until a Flight client exists for it.)'
   scenario: 'Given a code source command that takes a table and declares its input and output columns
 
 
