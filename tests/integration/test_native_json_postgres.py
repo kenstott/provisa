@@ -25,6 +25,7 @@ from provisa.transpiler.native_json import (
     NestedColumn,
     native_json_marker,
     source_projection,
+    to_json_sql,
 )
 from provisa.transpiler.transpile import transpile
 
@@ -187,13 +188,12 @@ def test_postgres_refuses_a_float_element_that_is_not_a_finite_number(pg, value)
     cur.execute(f'CREATE TABLE "{schema}".readings (v double precision[])')
     try:
         cur.execute(f'INSERT INTO "{schema}".readings VALUES (ARRAY[1.5, {value}::float8])')
-        marker = native_json_marker(
-            exp.column("v", "r", quoted=True),
-            NestedColumn("double precision[]", 1, "double"),
-        )
-        sql = transpile(
-            f'SELECT {marker.sql(dialect="postgres")} FROM "{schema}"."readings" AS "r"',
-            "postgres",
+        # The JSON form a landing and a predicate read: a result column of a float8[] PostgreSQL
+        # holds natively is read as the array itself (REQ-1965, test_native_typed_array_reads.py).
+        nested = NestedColumn("double precision[]", 1, "double")
+        sql = (
+            f"SELECT {to_json_sql('r.v', nested, 'postgres', 'v')} "
+            f'FROM "{schema}"."readings" AS "r"'
         )
         with pytest.raises(psycopg2.Error, match=NON_FINITE):
             cur.execute(sql)
