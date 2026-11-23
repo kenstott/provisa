@@ -222,8 +222,9 @@ def server(hub, proxy, tmp_path_factory):
     from tests.port_lease import lease_ports
 
     home = tmp_path_factory.mktemp("customer360_demo")
-    # The entity-resolution code source reads its tables through the minted-token listener.
-    (minted_port,) = lease_ports(1)
+    # The entity-resolution code source reads its tables over a Flight listener minted for each
+    # call (REQ-2226), on a block of one port: its calls read one at a time.
+    (minted_port, flight_port) = lease_ports(2)
     srv = IsolatedServer(
         "customer360_demo",
         engine="duckdb",
@@ -235,6 +236,8 @@ def server(hub, proxy, tmp_path_factory):
             **proxy.env,
             "PROVISA_DATA_DIR": str(home / "provisa"),
             "PROVISA_MINTED_PGWIRE_PORT": str(minted_port),
+            "PROVISA_MINTED_FLIGHT_PORT": str(flight_port),
+            "PROVISA_MINTED_FLIGHT_PORTS": "1",
             "PROVISA_RUNTIME_DEPS_CACHE": str(home / "runtime-deps"),
         },
     )

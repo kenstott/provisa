@@ -29,14 +29,21 @@ from pathlib import Path
 from provisa.codesource import macos_sandbox
 from provisa.codesource.egress import EgressProxy
 from provisa.codesource.linux_sandbox import SandboxUnavailable, launcher_argv
-from provisa.codesource.worker import HostCommand
+from provisa.codesource.worker import HostCommand, TableReads
 
 _proxies: dict[frozenset[str], EgressProxy] = {}
 
 
-def _minted_ports() -> tuple[int, ...]:
-    """REQ-2226: the minted-token listener, the one port of Provisa's a worker may reach. A worker
-    only: a reader imports the code to read its types and has no call to read a table for."""
+def _minted_ports(table_reads: TableReads) -> tuple[int, ...]:
+    """REQ-2226: the ports of Provisa's a worker may reach, and no other: the minted-token pgwire
+    listener's, or for a host that reads its tables over Arrow Flight the block its calls' minted
+    Flight listeners open on (provisa/api/flight/call_listener.py) -- never the main Flight
+    server's. A worker only: a reader imports the code to read its types and has no call to read a
+    table for."""
+    if table_reads == "flight":
+        from provisa.api.flight.call_listener import ports
+
+        return ports()
     from provisa.core import settings_registry
 
     port = settings_registry.value("server.minted_pgwire_port")
@@ -64,13 +71,14 @@ def sandboxed(
     env: dict[str, str],
     cwd: Path,
     egress: Iterable[str],
+    table_reads: TableReads,
 ) -> HostCommand:
     """The host command ``argv`` (given the socket's address), confined to reading ``read`` and
     the runtime ``executable``'s own directory, with the network only through the egress proxy
-    and, for a call given a table (REQ-2226), to the minted-token listener's one port."""
+    and, for a call given a table (REQ-2226), to the ports its ``table_reads`` reads them over."""
     proxy = egress_proxy(egress)
     env = {**env, **proxy.environment()}
-    minted = _minted_ports()
+    minted = _minted_ports(table_reads)
     system = platform.system()
     if system == "Darwin":
 
@@ -85,7 +93,7 @@ def sandboxed(
                 connect_ports=minted,
             )
 
-        return HostCommand(argv=_macos, env=env, cwd=cwd)
+        return HostCommand(argv=_macos, env=env, cwd=cwd, table_reads=table_reads)
     if system == "Linux":
         readable = [str(p) for p in (*read, executable.parent)]
 
@@ -98,7 +106,9 @@ def sandboxed(
                 connect_ports=minted,
             )
 
-        return HostCommand(argv=_linux, env=env, cwd=cwd, inherit_socket=True)
+        return HostCommand(
+            argv=_linux, env=env, cwd=cwd, inherit_socket=True, table_reads=table_reads
+        )
     raise SandboxUnavailable(f"a code source cannot run on {system}: it has no code-source sandbox")
 
 

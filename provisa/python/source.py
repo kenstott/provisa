@@ -150,5 +150,7 @@ def host_command(
         env=private_environment(**_PYTHON_ENV, PROVISA_HOST_LIB=str(host_lib)),
         cwd=code,
         egress=egress,
+        # REQ-2226: its host reads a call's tables over the call's minted Flight listener.
+        table_reads="flight",
     )
     return replace(command, discovered=discovered)

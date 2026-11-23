@@ -16,9 +16,13 @@ token ends with the call.
 
 Where the table is read (REQ-2270):
 
-- A local worker reads it over the minted-token pgwire listener, on loopback: its sandbox allows
-  that one port of Provisa's and no other, so it never reaches the Arrow Flight server, which on a
-  deployment that authenticates nobody would serve it as any role.
+- A local Python worker reads it over Arrow Flight SQL through a listener minted for the call
+  (provisa/api/flight/call_listener.py): on loopback, answering only the call's token, closed when
+  the call ends. Its sandbox opens only the block of ports those listeners open on, so it never
+  reaches the main Arrow Flight server, which on a deployment that authenticates nobody would
+  serve it as any role.
+- A local worker in another language (Go, Rust, TypeScript) reads it over the minted-token pgwire
+  listener, on loopback, the one port of Provisa's its sandbox opens, until its SDK's Flight job.
 - A remote host running Python, such as the Spark connector's, reads it over Arrow Flight SQL at
   the deployment's host name: the token is its bearer credential and the call's id its
   ``x-provisa-call`` header, and the Flight server admits it as the calling role and no other,
@@ -30,10 +34,12 @@ Where the table is read (REQ-2270):
 # Requirements: REQ-2226, REQ-2270
 from __future__ import annotations
 
+import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any
 
+from provisa.codesource.worker import TableReads
 from provisa.otel_compat import MintedSession
 
 _LOOPBACK = frozenset({"localhost", "127.0.0.1", "::1"})
@@ -115,12 +121,20 @@ def _caller(correlation_id: str) -> str:
 
 @asynccontextmanager
 async def readable(
-    state: Any, session: MintedSession, payload: dict, *, remote: dict | None
+    state: Any,
+    session: MintedSession,
+    payload: dict,
+    *,
+    remote: dict | None,
+    local: TableReads | None,
 ) -> AsyncIterator[None]:
     """For the block, ``payload``'s table references carry what their code reads them with: over
-    Arrow Flight SQL for a remote host (``remote``, its ``language`` among them; None: a local
-    worker) of a :data:`FLIGHT_LANGUAGES` language, else over the minted-token pgwire listener
-    (see the module's docstring)."""
+    Arrow Flight SQL for a remote host (``remote``, its ``language`` among them) of a
+    :data:`FLIGHT_LANGUAGES` language, or through a Flight listener minted for the call for a local
+    worker whose host reads over Flight (``local``, its host command's ``table_reads``), else over
+    the minted-token pgwire listener (see the module's docstring). Exactly one of ``remote`` and
+    ``local`` is given."""
+    from provisa.api.flight.call_listener import CallListener, ListenerUnavailable
     from provisa.core.request_context import current_org, current_session_vars
     from provisa.entitlements.runtime import captured_entitlements
     from provisa.pgwire.minted import MintedCall, MintedTokenStore, read_statement, table_key
@@ -132,11 +146,17 @@ async def readable(
     if not references:
         yield
         return
+    if (remote is None) == (local is None):
+        raise ValueError("a call's tables are read by a remote host or a local worker, not both")
     role = session.role_id
     if role is None:
         raise TableNotReadable("the call has no role to read as")
     over_flight = remote is not None and remote["language"] in FLIGHT_LANGUAGES
-    connect = _flight_address(state) if over_flight else _address(state, remote=remote is not None)
+    minted_flight = local == "flight"
+    # Where the references read over Flight (the main server's address for a remote host; a local
+    # worker's own listener is opened once its token is minted), else over pgwire.
+    flight_uri = _flight_address(state) if over_flight else None
+    pgwire = None if over_flight or minted_flight else _address(state, remote=remote is not None)
     tables = tuple(str(r["ref"]) for r in references)
     for table in tables:
         table_key(table)  # a reference that is not a table name is refused here, by name
@@ -153,12 +173,19 @@ async def readable(
     )
     store = MintedTokenStore(state.admin_db)
     token = await store.mint(call)
+    listener: CallListener | None = None
     try:
+        if minted_flight:
+            try:
+                listener = await asyncio.to_thread(CallListener, state, call.call_id, token)
+            except ListenerUnavailable as exc:
+                raise TableNotReadable(str(exc)) from exc
+            flight_uri = listener.uri
         for reference in references:
-            if isinstance(connect, str):
-                reference["flight"] = {"uri": connect, "token": token, "call": call.call_id}
+            if pgwire is None:
+                reference["flight"] = {"uri": flight_uri, "token": token, "call": call.call_id}
             else:
-                host, port, sslmode = connect
+                host, port, sslmode = pgwire
                 reference["connection"] = {
                     "host": host,
                     "port": port,
@@ -170,4 +197,8 @@ async def readable(
             reference["sql"] = read_statement(str(reference["ref"]), reference.get("columns", []))
         yield
     finally:
-        await store.retire(token)
+        try:
+            if listener is not None:
+                await asyncio.to_thread(listener.close)
+        finally:
+            await store.retire(token)

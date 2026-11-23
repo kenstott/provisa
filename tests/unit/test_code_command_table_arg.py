@@ -188,7 +188,13 @@ def _registered(monkeypatch, tag: str, answer) -> tuple[_Worker, dict]:
         )
     )
     worker = _Worker(answer)
-    prepared = SimpleNamespace(manifest=manifest, worker=lambda: worker, remote=None)
+    # A local worker whose host reads its tables over the minted-token pgwire listener (REQ-2226).
+    prepared = SimpleNamespace(
+        manifest=manifest,
+        worker=lambda: worker,
+        remote=None,
+        command=SimpleNamespace(table_reads="pgwire"),
+    )
 
     async def _prepare(_state, _source_id, _function):
         return prepared

@@ -107,7 +107,7 @@ def started(monkeypatch):
     host is started as asked, outside a sandbox (the kernel's part is the integration test's)."""
     asked: list[SimpleNamespace] = []
 
-    def sandboxed(argv, *, executable, read, env, cwd, egress):
+    def sandboxed(argv, *, executable, read, env, cwd, egress, table_reads):
         env = {**env, **code_sandbox.egress_proxy(egress).environment()}
         asked.append(
             SimpleNamespace(
@@ -117,9 +117,10 @@ def started(monkeypatch):
                 env=env,
                 cwd=cwd,
                 egress=egress,
+                table_reads=table_reads,
             )
         )
-        return HostCommand(argv=argv, env=env, cwd=cwd)
+        return HostCommand(argv=argv, env=env, cwd=cwd, table_reads=table_reads)
 
     monkeypatch.setattr(code_sandbox, "sandboxed", sandboxed)
     monkeypatch.setattr("provisa.api.app.state", SimpleNamespace(admin_db=object()), raising=False)
