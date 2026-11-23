@@ -351,6 +351,65 @@ def _edge(ids: dict[str, int], row: dict) -> tuple:
 _PERMIT = ("inspections", "permit_id", "building_permits", "permit_id")
 _ADDRESS = ("complaints_2026_08", "address", "building_permits", "address")
 
+#: The same-name column pairs of the five tables the model named none of: each is measured
+#: whatever the model answered (REQ-413, amended 2026-11-20), scored by its measure, the model's
+#: confidence zero, and listed under the threshold, in the order the run lists them.
+_SAME_NAME_UNNAMED = [
+    (
+        ("building_permits", "neighborhood", "complaints_2026_08", "neighborhood"),
+        SHARED_CEILING,
+        "many-to-many",
+    ),
+    (
+        ("building_permits", "neighborhood", "complaints_2026_09", "neighborhood"),
+        SHARED_CEILING,
+        "many-to-many",
+    ),
+    (
+        ("complaints_2026_08", "status", "complaints_2026_09", "status"),
+        SHARED_CEILING,
+        "many-to-many",
+    ),
+    (
+        ("complaints_2026_08", "category", "complaints_2026_09", "category"),
+        SHARED_CEILING,
+        "many-to-many",
+    ),
+    (
+        ("complaints_2026_08", "neighborhood", "complaints_2026_09", "neighborhood"),
+        SHARED_CEILING,
+        "many-to-many",
+    ),
+    (("complaints_2026_09", "address", "building_permits", "address"), None, "many-to-one"),
+]
+
+#: Measured after the address pair the model named: under it.
+_SAME_NAME_UNNAMED_LOW = [
+    (("complaints_2026_08", "address", "complaints_2026_09", "address"), None, "many-to-many"),
+    (("building_permits", "status", "complaints_2026_08", "status"), 0.0, "many-to-many"),
+    (("building_permits", "status", "complaints_2026_09", "status"), 0.0, "many-to-many"),
+    (
+        ("complaints_2026_08", "complaint_id", "complaints_2026_09", "complaint_id"),
+        0.0,
+        "one-to-one",
+    ),
+]
+
+#: The neighborhood pairs the model named, under the threshold.
+_NAMED_NEIGHBORHOODS = [
+    (table, "neighborhood", "budget_2026__budget", "neighborhood")
+    for table in ("building_permits", "complaints_2026_08", "complaints_2026_09")
+]
+
+#: The one neighborhood pair the first run's reviewer marks not to be recommended again.
+_NOT_WANTED = _NAMED_NEIGHBORHOODS[0]
+
+#: Every pair of the five tables the first run's reviewer leaves undecided.
+_LEFT_ALONE = {
+    *_NAMED_NEIGHBORHOODS[1:],
+    *(edge for edge, _, _ in (*_SAME_NAME_UNNAMED, *_SAME_NAME_UNNAMED_LOW)),
+}
+
 
 def test_the_files_register_with_the_types_their_source_reports(files):
     assert sorted(files) == [
@@ -418,12 +477,17 @@ def test_a_run_over_the_files_suggests_their_key_and_lists_all_it_read(
 
     # Nothing read is dropped: one table of the run's proposals, the highest score (the
     # measure's) first, each with the model's confidence beside it and why it is not suggested.
+    # Every same-name pair the model did not name is measured too (REQ-413, amended 2026-11-20).
     listed = _proposals(instance, run["id"])
     address_score = measured_score(75 / 215, 75 / 128, True, Scoring(CONTAINED_AT, SHARED_CEILING))
-    assert [
+    rows = [
         (_edge(files, r), r["confidence"], r["score"], r["cardinality"], r["reason"])
         for r in listed
-    ] == [
+    ]
+    unnamed = {edge for edge, _, _ in (*_SAME_NAME_UNNAMED, *_SAME_NAME_UNNAMED_LOW)}
+    # The measured scores the expectation does not state (the address pairs) are read back.
+    measured = {row[0]: row[2] for row in rows}
+    assert rows == [
         # 60 inspections, each of a different permit, all 60 among the 128 permits.
         (_PERMIT, 0.55, KEY_SCORE, "one-to-one", None),
         # Six neighborhoods on every side, repeated in each file: a key of none. Scored alike,
@@ -438,12 +502,22 @@ def test_a_run_over_the_files_suggests_their_key_and_lists_all_it_read(
             )
             for table in ("building_permits", "complaints_2026_08", "complaints_2026_09")
         ),
+        # The same-name pairs the model did not name, at the shared ceiling or under it.
+        *(
+            (edge, 0.0, measured[edge] if score is None else score, cardinality, "below_threshold")
+            for edge, score, cardinality in _SAME_NAME_UNNAMED
+        ),
         # 75 of the complaints' 215 addresses are among the permits' 128, each permit's own.
         (_ADDRESS, 0.4, address_score, "many-to-one", "below_threshold"),
+        *(
+            (edge, 0.0, measured[edge] if score is None else score, cardinality, "below_threshold")
+            for edge, score, cardinality in _SAME_NAME_UNNAMED_LOW
+        ),
     ]
+    assert all(0.0 <= measured[edge] < 0.7 for edge in unnamed)
     by_edge = {_edge(files, r): r for r in listed}
     assert [_edge(files, r) for r in listed if r["admitted_on_key_values"]] == [_PERMIT]
-    assert (semantics["measured"], semantics["admitted"]) == (5, 1)
+    assert (semantics["measured"], semantics["admitted"]) == (5 + len(unnamed), 1)
     assert report["key_values"] == {
         "cutoff": 0.2,
         "sample_size": 10_000,
@@ -456,14 +530,14 @@ def test_a_run_over_the_files_suggests_their_key_and_lists_all_it_read(
     address = by_edge[_ADDRESS]["measure"]
     assert (address["source_in_target"], address["source"]["values"]) == (75, 215)
     # A many-to-many pair is accepted as a shared dimension (REQ-413): every row can be.
-    assert [r["acceptable"] for r in listed] == [True, True, True, True, True]
+    assert all(r["acceptable"] for r in listed)
     assert by_edge[_ADDRESS]["reasoning"] == (
         "complaints_2026_08.address names building_permits.address"
     )
 
     # A reviewer accepts the key and the one under the threshold, marks one neighborhood pair
     # not to be recommended again, and leaves the other two alone.
-    not_wanted = ("building_permits", "neighborhood", "budget_2026__budget", "neighborhood")
+    not_wanted = _NOT_WANTED
     applied = _ok(
         httpx.post(
             f"{instance.url}/admin/discover/runs/{run['id']}/apply",
@@ -494,10 +568,7 @@ def test_a_run_over_the_files_suggests_their_key_and_lists_all_it_read(
     # What was decided leaves the run's table; the two left alone are undecided. Scored under
     # the threshold, they were never suggestions, so none is waiting.
     remaining = _proposals(instance, run["id"])
-    assert sorted(_edge(files, r)[0] for r in remaining) == [
-        "complaints_2026_08",
-        "complaints_2026_09",
-    ]
+    assert {_edge(files, r) for r in remaining} == _LEFT_ALONE
     waiting = {_edge(files, c) for c in _candidates(instance) if c["scope"] == f"run:{run['id']}"}
     assert waiting == set()
 
@@ -517,9 +588,15 @@ def test_a_run_over_other_domains_says_which_and_compares_none_of_the_files(
     report = run["report"]
     assert report["source_domains"] == ["pet-store", "shelter"]
     assert report["source_tables"] > 5
-    assert report["semantics"]["proposed"] == 0
-    assert report["semantics"]["empty_reason"] == "none_proposed"
-    assert [r for r in _proposals(instance, run["id"]) if r["kind"] == "semantics"] == []
+    # The model named no pair. What semantics lists is only what is found whatever the model
+    # answers: same-name pairs, measured (REQ-413, amended 2026-11-20), and junctions whose legs
+    # are found (REQ-1586). With one of them suggested, semantics did not come back empty.
+    semantics = report["semantics"]
+    assert semantics["proposed"] == 0
+    assert semantics["empty_reason"] == (None if semantics["suggested"] else "none_proposed")
+    for r in _proposals(instance, run["id"]):
+        if r["kind"] == "semantics":
+            assert r["via"] is not None or r["source_column"] == r["target_column"], r
 
 
 def test_a_run_over_every_domain_reads_the_files_key_among_the_other_tables(
@@ -544,17 +621,10 @@ def test_a_run_over_every_domain_reads_the_files_key_among_the_other_tables(
         _edge(files, r): (r["reason"], r["decidable"])
         for r in _proposals(instance, run["id"])
         if r["kind"] == "semantics"
+        and {r["source_table_id"], r["target_table_id"]} <= set(files.values())
     }
     # REQ-413 (amended 2026-11-18): a pair registered since (the key and the address) and one
-    # marked not to be recommended again keep that decision and are not listed; the other
-    # neighborhood pairs are scored under the threshold again.
-    assert read == {
-        ("complaints_2026_08", "neighborhood", "budget_2026__budget", "neighborhood"): (
-            "below_threshold",
-            True,
-        ),
-        ("complaints_2026_09", "neighborhood", "budget_2026__budget", "neighborhood"): (
-            "below_threshold",
-            True,
-        ),
-    }
+    # marked not to be recommended again keep that decision and are not listed; the pairs left
+    # alone, the same-name ones among them (amended 2026-11-20), are scored under the threshold
+    # again.
+    assert read == {edge: ("below_threshold", True) for edge in _LEFT_ALONE}

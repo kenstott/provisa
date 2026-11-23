@@ -2618,6 +2618,87 @@ async def test_a_junction_suggestion_marked_not_again_is_left_out_of_later_runs(
     assert joined["left_out"] == "rejected"
 
 
+async def _register(db: Database, *rows: dict) -> None:
+    async with db.acquire() as conn:
+        for row in rows:
+            await conn.execute_core(insert(so.relationships).values(**row))
+
+
+def _direct(rel_id: str, source: tuple[int, str], target: tuple[int, str]) -> dict:
+    return {
+        "id": rel_id,
+        "source_table_id": source[0],
+        "source_column": source[1],
+        "target_table_id": target[0],
+        "target_column": target[1],
+        "cardinality": "many-to-one",
+    }
+
+
+async def test_a_junction_whose_legs_are_registered_is_proposed_as_certain(monkeypatch, tmp_path):
+    """REQ-1586: both legs registered already, the model naming neither, the run still finds the
+    junction: its legs are the relationships registered, which are certain, so the combined
+    relationship is a suggestion a reviewer can tick, not one scored zero and never decided."""
+    db = await _store(f"sqlite+pysqlite:///{tmp_path / 'store.db'}")
+    await _orders_between(db)
+    await _register(
+        db,
+        _direct("orders-to-customers", (1, "customer_id"), (2, "id")),
+        _direct("orders-to-stores", (1, "store_id"), (3, "id")),
+    )
+    world = _World(monkeypatch, db, config=_ASSIGNED, api_keys={"openai": "k"})
+    _, listed = await _answered(world, [])
+    (combined,) = [r for r in listed if r["via"] is not None]
+    assert (combined["source_table_id"], combined["target_table_id"]) == (2, 3)
+    assert combined["via"] == {
+        "table_id": 1,
+        "source_column": "customer_id",
+        "target_column": "store_id",
+    }
+    assert combined["reason"] is None and combined["confidence"] == 1.0
+
+
+async def test_a_junction_relationships_own_two_ends_are_no_leg_of_another(monkeypatch, tmp_path):
+    """REQ-1586: pets and playgroups are joined through members, not by a hop between them, so
+    pets is no junction between playgroups and the breed it refers to."""
+    db = await _store(f"sqlite+pysqlite:///{tmp_path / 'store.db'}")
+    await _table(db, 1, "sales", "pets", [("id", "integer", True), ("breed", "text", False)])
+    await _table(db, 2, "sales", "playgroups", [("gid", "integer", True)])
+    await _table(
+        db, 3, "sales", "members", [("pet_id", "integer", False), ("group_id", "integer", False)]
+    )
+    await _table(db, 4, "sales", "breeds", [("bname", "text", True)])
+    await _register(
+        db,
+        {
+            "id": "pets-in-playgroups",
+            "source_table_id": 1,
+            "source_column": "id",
+            "target_table_id": 2,
+            "target_column": "gid",
+            "cardinality": "one-to-many",
+            "via_table_id": 3,
+            "via_source_column": "pet_id",
+            "via_target_column": "group_id",
+        },
+        _direct("pets-to-breeds", (1, "breed"), (4, "bname")),
+    )
+    world = _World(monkeypatch, db, config=_ASSIGNED, api_keys={"openai": "k"})
+    run, _ = await _answered(
+        world,
+        [_suggestion((1, "id"), (2, "gid"), 0.9), _suggestion((1, "breed"), (4, "bname"), 0.9)],
+    )
+    rows = await _proposals(db, run["id"])
+    assert {r["left_out"] for r in rows if r["via_table_id"] is None} >= {"existing"}
+    through = {
+        (r["source_table_id"], r["target_table_id"], r["via_table_id"], r["left_out"])
+        for r in rows
+        if r["via_table_id"] is not None
+    }
+    # Only the junction registered already, found again through members and left out as existing.
+    assert through <= {(1, 2, 3, "existing"), (2, 1, 3, "existing")}, through
+
+
 async def test_a_pair_with_a_table_that_requires_a_parameter_keeps_the_models_score_and_says_so(
     monkeypatch, tmp_path
 ):
