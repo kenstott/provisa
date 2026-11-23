@@ -516,17 +516,27 @@ def test_a_position_before_the_value_reads_as_postgresql_reads_it(call: str, wan
     assert duckdb.connect().execute(written).fetchone()[0] == want
 
 
-def test_a_replacement_of_nothing_is_clickhouses_own():
-    """ClickHouse refuses a pattern of nothing; a replacement of nothing is a deletion it writes."""
-    assert "REPLACE(a, '\"', '')" in transpile(
-        "SELECT pg_catalog.replace(a, '\"', '') AS v FROM t", "clickhouse"
-    )
+def _on_chdb(sql: str) -> object:
+    import chdb
+
+    ((value,),) = [
+        tuple(line.split("\t")) for line in chdb.query(sql, "TSV").bytes().decode().splitlines()
+    ]
+    return value
 
 
-@pytest.mark.parametrize("pattern", ["''", "NULL::text"])
-def test_a_pattern_of_nothing_is_refused_on_clickhouse(pattern: str):
-    with pytest.raises(FunctionRefused):
-        transpile(f"SELECT pg_catalog.replace(a, {pattern}, 'x') AS v FROM t", "clickhouse")
+def test_a_replacement_of_nothing_is_a_deletion_on_clickhouse():
+    """A replacement of nothing deletes each occurrence (polyfill.texts' replace row)."""
+    written = transpile("SELECT pg_catalog.replace('a\"b\"', '\"', '') AS v", "clickhouse")
+    assert _on_chdb(written) == "ab"
+
+
+@pytest.mark.parametrize(("pattern", "want"), [("''", "abc"), ("NULL::text", "\\N")])
+def test_a_pattern_of_nothing_is_postgresql_s_answer_on_clickhouse(pattern: str, want: str):
+    """An empty pattern replaces nothing and a NULL one answers NULL, as PostgreSQL's replace:
+    neither reaches the server's replaceAll, which refuses both."""
+    written = transpile(f"SELECT pg_catalog.replace('abc', {pattern}, 'x') AS v", "clickhouse")
+    assert _on_chdb(written) == want
 
 
 def test_a_timestamp_range_is_compared_on_clickhouse():

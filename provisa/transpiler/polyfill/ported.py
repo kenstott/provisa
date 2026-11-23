@@ -49,7 +49,6 @@ PORTED: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("dexp", ("double precision",)),  # Numeric
     ("dlog1", ("double precision",)),  # Numeric
     ("text", ("xml",)),  # Other
-    ("replace", ("text", "text", "text")),  # String
     ("int8inc_any", ("bigint", '"any"')),  # Aggregate and window
     ("int8dec_any", ("bigint", '"any"')),  # Aggregate and window
     ("max", ("money",)),  # Aggregate and window
