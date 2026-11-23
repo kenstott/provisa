@@ -55,6 +55,12 @@ def test_voyager_assets_are_served_as_files_not_proxied():
     assert "/voyager/" in _STATIC_PREFIXES
 
 
+def test_swagger_ui_assets_are_served_as_files_not_proxied():
+    # The REST docs page's Swagger UI bundles load as script/style subresources of a srcDoc iframe,
+    # from the UI build (swagger-ui-dist from npm), never from a CDN.
+    assert "/swagger-ui/" in _STATIC_PREFIXES
+
+
 def test_non_get_navigation_never_serves_spa():
     # A POST with document dest is a non-navigation edge; header still governs,
     # but the point is a non-GET without the header is never SPA.
