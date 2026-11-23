@@ -250,6 +250,8 @@ def _authenticate529(shared_data: dict, control_plane, *, user: str = "alice") -
     state = SimpleNamespace(
         auth_config=shared_data.get("auth_config"),
         auth_middleware_active=shared_data.get("auth_middleware_active", True),
+        # meta-role id -> its derived qualifiers, as the app state holds them (OrgRuntime).
+        meta_qualifiers={},
         multitenancy=False,
         # REQ-1266: an unsecured deployment's connection serves the deployment's own org.
         org_id="default",
