@@ -28,7 +28,7 @@ from provisa.transpiler.transpile import transpile
 
 
 def _trino(sql: str) -> str:
-    return transpile(f"SELECT pg_catalog.{sql} AS v", "trino")
+    return transpile(f"SELECT pg_catalog.{sql} AS v", "trino", generated=False)
 
 
 def _refused(sql: str) -> RowRefused:
@@ -114,7 +114,7 @@ def test_a_double_aggregate_raises_its_sums_overflow(function):
         "('1.7976931348623157e+308'::double precision), "
         "('1.7976931348623157e+308'::double precision)) AS t(c1)"
     )
-    written = transpile(sql, "trino")
+    written = transpile(sql, "trino", generated=False)
     assert "COUNT_IF(NOT IS_FINITE(c1)) = 0" in written
     assert "22003: value out of range: overflow" in written
 
@@ -125,7 +125,7 @@ def test_a_regression_of_nan_is_nan(function):
         f'SELECT pg_catalog."{function}"(c1, c2) AS v FROM (VALUES '
         "(0.5::double precision, 'NaN'::double precision)) AS t(c1, c2)"
     )
-    assert "NAN()" in transpile(sql, "trino")
+    assert "NAN()" in transpile(sql, "trino", generated=False)
 
 
 # --- literals read as PostgreSQL's input reads them ----------------------------------------------
@@ -264,6 +264,7 @@ def test_avg_of_a_real_sums_doubles_as_float4_accum_does():
         'SELECT pg_catalog."avg"(c1) AS v FROM (VALUES '
         "('3.4028235e+38'::real), ('3.4028235e+38'::real)) AS t(c1)",
         "trino",
+        generated=False,
     )
     assert "AVG(CAST(c1 AS DOUBLE))" in written and "SUM(CAST(c1 AS DOUBLE))" in written
 
@@ -273,6 +274,7 @@ def test_sum_of_a_real_sums_reals_as_float4pl_does():
         'SELECT pg_catalog."sum"(c1) AS v FROM (VALUES '
         "('3.4028235e+38'::real), ('3.4028235e+38'::real)) AS t(c1)",
         "trino",
+        generated=False,
     )
     assert "SUM(c1)" in written and "DOUBLE" not in written
 

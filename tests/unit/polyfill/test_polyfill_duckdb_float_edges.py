@@ -39,7 +39,9 @@ def con() -> duckdb.DuckDBPyConnection:
 
 
 def _run(con: duckdb.DuckDBPyConnection, select: str) -> list[tuple]:
-    return con.execute(transpile(f"SELECT {select} LIMIT 1001", "duckdb")).fetchall()
+    return con.execute(
+        transpile(f"SELECT {select} LIMIT 1001", "duckdb", generated=False)
+    ).fetchall()
 
 
 def _raised(con: duckdb.DuckDBPyConnection, select: str) -> tuple[str, str]:

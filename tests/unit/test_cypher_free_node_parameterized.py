@@ -89,7 +89,7 @@ def _sql(model, cypher: str) -> str:
 
 def _rows(model, cypher: str) -> list[tuple]:
     _, con = model
-    return con.execute(transpile_to_duckdb(_sql(model, cypher))).fetchall()
+    return con.execute(transpile_to_duckdb(_sql(model, cypher), generated=True)).fetchall()
 
 
 def _reads_parameterized(sql: str) -> bool:

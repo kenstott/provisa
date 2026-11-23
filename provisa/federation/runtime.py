@@ -111,7 +111,7 @@ class EngineRuntime:  # REQ-825, REQ-840
         callers, so they never hardcode a specific engine's dialect."""
         return self._backend.dialect
 
-    def transpile_physical(self, pg_sql: str, *, generated: bool = False) -> str:
+    def transpile_physical(self, pg_sql: str, *, generated: bool) -> str:
         """Transpile governed PostgreSQL-dialect SQL to the bound engine's physical dialect —
         the single seam generic callers use instead of hardcoding a specific engine's dialect.
         ``generated``: Provisa compiled ``pg_sql`` from a graph IR (Cypher, SPARQL, GraphQL), so a
@@ -246,7 +246,8 @@ class EngineRuntime:  # REQ-825, REQ-840
             from provisa.compiler.sql_rewrite import fold_catalog_into_schema
 
             pg_sql = fold_catalog_into_schema(pg_sql)
-        return self.transpile_physical(pg_sql)
+        # REQ-2236: a statement built from registered tables, not compiled from a graph IR.
+        return self.transpile_physical(pg_sql, generated=False)
 
     def connector_pushdown(self, source):
         """The bound engine's declared pushdown Capability for ``source`` — the same

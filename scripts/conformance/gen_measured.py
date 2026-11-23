@@ -97,7 +97,11 @@ def _translated(statement: str, dialect: str) -> Refusal | None:
 
 def translated(statement: str, dialect: str) -> str:
     """``statement`` as pgwire translates it for an engine of ``dialect``: DuckDB's own path."""
-    return transpile_to_duckdb(statement) if dialect == "duckdb" else transpile(statement, dialect)
+    return (
+        transpile_to_duckdb(statement, generated=False)
+        if dialect == "duckdb"
+        else transpile(statement, dialect, generated=False)
+    )
 
 
 def _stated(applied: polyfill.Applied, dialect: str) -> frozenset[Refusal]:

@@ -48,12 +48,12 @@ def connection():
 
 @pytest.mark.parametrize("sql", list(RECORDED))
 def test_duckdb_answers_as_postgresql_17_answered(connection: Any, sql: str):
-    got = connection.execute(transpile(sql, "duckdb")).fetchone()[0]
+    got = connection.execute(transpile(sql, "duckdb", generated=False)).fetchone()[0]
     assert _text(got) == RECORDED[sql][1]
 
 
 def test_a_hash_is_read_as_its_column_is_named():
-    written = transpile('SELECT pg_catalog."hashint4"(1::integer)', "duckdb")
+    written = transpile('SELECT pg_catalog."hashint4"(1::integer)', "duckdb", generated=False)
     described = duckdb.connect().execute(written).description
     assert described[0][0] == "hashint4"
 
@@ -61,7 +61,9 @@ def test_a_hash_is_read_as_its_column_is_named():
 def test_a_hash_reads_a_column_row_by_row():
     connection = duckdb.connect()
     connection.execute("CREATE TABLE t AS SELECT * FROM (VALUES ('abc'), ('雪'), (NULL)) v(s)")
-    rows = connection.execute(transpile("SELECT hashtext(s) AS v FROM t", "duckdb")).fetchall()
+    rows = connection.execute(
+        transpile("SELECT hashtext(s) AS v FROM t", "duckdb", generated=False)
+    ).fetchall()
     assert [row[0] for row in rows] == [
         int(RECORDED["SELECT hashtext('abc'::text) AS v"][1]),
         int(RECORDED["SELECT hashtext('雪'::text) AS v"][1]),
@@ -70,9 +72,9 @@ def test_a_hash_reads_a_column_row_by_row():
 
 
 def test_a_hash_of_a_hash_reads_the_inner_call():
-    written = transpile("SELECT hashint4(hashint4(1::integer)) AS v", "duckdb")
+    written = transpile("SELECT hashint4(hashint4(1::integer)) AS v", "duckdb", generated=False)
     inner = int(RECORDED["SELECT hashint4((1)::integer) AS v"][1])
-    alone = transpile(f"SELECT hashint4(({inner})::integer) AS v", "duckdb")
+    alone = transpile(f"SELECT hashint4(({inner})::integer) AS v", "duckdb", generated=False)
     connection = duckdb.connect()
     assert connection.execute(written).fetchone() == connection.execute(alone).fetchone()
 
@@ -91,7 +93,7 @@ def test_a_hash_of_a_hash_reads_the_inner_call():
 )
 def test_a_value_no_form_can_answer_is_refused_by_name(sql: str, function: str):
     with pytest.raises(duckdb.Error, match=rf"{MARK} 0A000: {function} does not read"):
-        duckdb.connect().execute(transpile(sql, "duckdb")).fetchall()
+        duckdb.connect().execute(transpile(sql, "duckdb", generated=False)).fetchall()
 
 
 @pytest.mark.parametrize(
@@ -105,7 +107,7 @@ def test_a_value_no_form_can_answer_is_refused_by_name(sql: str, function: str):
 )
 def test_a_composite_of_no_said_type_is_refused_by_name(sql: str):
     with pytest.raises(FunctionRefused, match=r"has no form on duckdb"):
-        transpile(sql, "duckdb")
+        transpile(sql, "duckdb", generated=False)
 
 
 def _named(plain: str) -> list[tuple[str, int]]:
@@ -150,7 +152,7 @@ _HELD_VALUES = [
 @pytest.mark.parametrize("dialect", ["trino", "clickhouse"])
 @pytest.mark.parametrize("sql", _HELD_VALUES)
 def test_a_form_of_a_held_value_reaches_the_engine(sql: str, dialect: str):
-    assert transpile(sql, dialect)
+    assert transpile(sql, dialect, generated=False)
 
 
 _HELD_REFUSED = [
@@ -172,17 +174,21 @@ _HELD_REFUSED = [
 )
 def test_a_held_value_stays_refused_where_no_form_reads_it(sql: str, called: str, dialect: str):
     with pytest.raises(FunctionRefused, match=called):
-        transpile(sql, dialect)
+        transpile(sql, dialect, generated=False)
 
 
 def test_a_tid_comparison_is_answered_on_clickhouse_in_duckdb_s_form():
     """tideq is carried over from DuckDB on ClickHouse (polyfill.ported); its answers are compared
     with PostgreSQL's in tests/unit/polyfill/test_polyfill_clickhouse_carried.py."""
-    written = transpile("SELECT tideq('(0,1)'::tid, '(0,1)'::tid) AS v", "clickhouse")
+    written = transpile(
+        "SELECT tideq('(0,1)'::tid, '(0,1)'::tid) AS v", "clickhouse", generated=False
+    )
     assert "tideq" not in written.lower()
 
 
 @pytest.mark.parametrize("dialect", ["trino", "clickhouse"])
 def test_an_aclitem_past_a_null_is_refused_by_its_form(dialect: str):
-    written = transpile("SELECT hash_aclitem('=r/postgres'::aclitem) AS v", dialect)
+    written = transpile(
+        "SELECT hash_aclitem('=r/postgres'::aclitem) AS v", dialect, generated=False
+    )
     assert "hash_aclitem does not read this value" in written

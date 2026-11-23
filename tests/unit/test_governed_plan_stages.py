@@ -557,7 +557,7 @@ class _Engine:
     def transpile_physical(self, pg_sql: str, *, generated: bool = False) -> str:
         from provisa.transpiler.transpile import transpile_to_duckdb
 
-        return transpile_to_duckdb(pg_sql)
+        return transpile_to_duckdb(pg_sql, generated=False)
 
 
 @pytest.fixture

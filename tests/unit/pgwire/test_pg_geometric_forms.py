@@ -81,7 +81,9 @@ def test_duckdb_answers_as_postgresql_17_answered():
     for sql in _sample():
         said = outcome(sql, "duckdb", run)
         want = RECORDED[sql][1]
-        if said != "ok" and not _within_libm(sql, run(transpile(sql, "duckdb")), want):
+        if said != "ok" and not _within_libm(
+            sql, run(transpile(sql, "duckdb", generated=False)), want
+        ):
             wrong[sql] = said
     assert not wrong, f"{len(wrong)} of {len(RECORDED)} {list(wrong.items())[:10]}"
 
@@ -111,7 +113,7 @@ def test_duckdb_answers_as_postgresql_17_answered():
     ],
 )
 def test_a_form_writes_postgresqls_text(sql: str, want: Any):
-    assert duckdb.connect().execute(transpile(sql, "duckdb")).fetchone()[0] == want
+    assert duckdb.connect().execute(transpile(sql, "duckdb", generated=False)).fetchone()[0] == want
 
 
 SQUARE = "((0,0),(4,0),(4,4),(0,4))"
@@ -137,8 +139,8 @@ def test_a_polygon_contains_a_polygon(outer: str, inner: str, want: bool):
     connection = duckdb.connect()
     contain = f"SELECT poly_contain('{outer}'::polygon, '{inner}'::polygon)"
     contained = f"SELECT poly_contained('{inner}'::polygon, '{outer}'::polygon)"
-    assert connection.execute(transpile(contain, "duckdb")).fetchone()[0] is want
-    assert connection.execute(transpile(contained, "duckdb")).fetchone()[0] is want
+    assert connection.execute(transpile(contain, "duckdb", generated=False)).fetchone()[0] is want
+    assert connection.execute(transpile(contained, "duckdb", generated=False)).fetchone()[0] is want
 
 
 @pytest.mark.parametrize(
@@ -154,7 +156,7 @@ def test_a_polygon_contains_a_polygon(outer: str, inner: str, want: bool):
 )
 def test_postgresql_refuses_as_postgresql_refuses(sql: str, raised: str):
     with pytest.raises(duckdb.Error, match=raised):
-        duckdb.connect().execute(transpile(sql, "duckdb"))
+        duckdb.connect().execute(transpile(sql, "duckdb", generated=False))
 
 
 @pytest.mark.parametrize(
@@ -171,13 +173,15 @@ def test_postgresql_refuses_as_postgresql_refuses(sql: str, raised: str):
 )
 def test_a_shape_not_finite_is_refused_by_name(name: str, sql: str):
     with pytest.raises(duckdb.Error, match=f"{name} does not read this value"):
-        duckdb.connect().execute(transpile(f"SELECT {sql}", "duckdb"))
+        duckdb.connect().execute(transpile(f"SELECT {sql}", "duckdb", generated=False))
 
 
 def test_a_shape_with_an_infinity_is_refused_by_name():
     with pytest.raises(duckdb.Error, match="point_add does not read this value"):
         duckdb.connect().execute(
-            transpile("SELECT point_add('(inf,1)'::point, '(1,1)'::point)", "duckdb")
+            transpile(
+                "SELECT point_add('(inf,1)'::point, '(1,1)'::point)", "duckdb", generated=False
+            )
         )
 
 
@@ -240,7 +244,7 @@ def test_a_shape_with_an_infinity_is_refused_by_name():
     ],
 )
 def test_the_forms_of_two_shapes(sql: str, want: Any):
-    assert duckdb.connect().execute(transpile(sql, "duckdb")).fetchone()[0] == want
+    assert duckdb.connect().execute(transpile(sql, "duckdb", generated=False)).fetchone()[0] == want
 
 
 @pytest.mark.parametrize(
@@ -266,7 +270,7 @@ def test_the_forms_of_two_shapes(sql: str, want: Any):
     ],
 )
 def test_width_bucket(sql: str, want: Any):
-    assert duckdb.connect().execute(transpile(sql, "duckdb")).fetchone()[0] == want
+    assert duckdb.connect().execute(transpile(sql, "duckdb", generated=False)).fetchone()[0] == want
 
 
 @pytest.mark.parametrize(
@@ -293,14 +297,16 @@ def test_width_bucket(sql: str, want: Any):
 )
 def test_postgresql_refuses_width_bucket_and_line_as_it_does(sql: str, raised: str):
     with pytest.raises(duckdb.Error, match=raised):
-        duckdb.connect().execute(transpile(sql, "duckdb"))
+        duckdb.connect().execute(transpile(sql, "duckdb", generated=False))
 
 
 def test_width_bucket_of_thresholds_of_two_dimensions_is_refused_as_postgresql_does():
     # The statement writes the array's dimensions: the translator raises PostgreSQL's error
     # (polyfill.array_dimensions, REQ-2236) before DuckDB runs anything.
     with pytest.raises(RowRefused) as raised:
-        transpile("SELECT width_bucket(5, ARRAY[ARRAY[1, 2], ARRAY[3, 4]])", "duckdb")
+        transpile(
+            "SELECT width_bucket(5, ARRAY[ARRAY[1, 2], ARRAY[3, 4]])", "duckdb", generated=False
+        )
     assert (raised.value.sqlstate, str(raised.value)) == (
         "2202E",
         "thresholds must be one-dimensional array",
@@ -328,7 +334,7 @@ def test_width_bucket_of_thresholds_of_two_dimensions_is_refused_as_postgresql_d
 )
 def test_what_no_engine_answers_is_refused_by_name(name: str, sql: str):
     with pytest.raises(duckdb.Error, match=f"{name} does not read this value"):
-        duckdb.connect().execute(transpile(f"SELECT {sql}", "duckdb"))
+        duckdb.connect().execute(transpile(f"SELECT {sql}", "duckdb", generated=False))
 
 
 COLUMNS = (
@@ -372,7 +378,10 @@ def test_a_form_reads_a_column_as_it_reads_a_literal(call: str, want: list[Any])
     """Each row its own answer, its NULL a NULL: a form that folded a literal would not."""
     typed = re.sub(r"\b([abspqxc])\b", lambda m: f"{m[1]}::{_TYPES_OF[m[1]]}", call)
     sql = f"SELECT {typed} FROM ({COLUMNS}) t ORDER BY i"
-    got = [row[0] for row in duckdb.connect().execute(transpile(sql, "duckdb")).fetchall()]
+    got = [
+        row[0]
+        for row in duckdb.connect().execute(transpile(sql, "duckdb", generated=False)).fetchall()
+    ]
     assert got == want, sql
 
 
@@ -387,15 +396,20 @@ def test_width_bucket_reads_the_type_of_a_column():
         "CAST(0 AS DECIMAL(10,3)), CAST(0.9 AS DECIMAL(10,3)), 3)) AS t(x, lo, hi, n)"
     )
     connection = duckdb.connect()
-    assert connection.execute(transpile(doubles, "duckdb")).fetchall() == [(3,), (0,)]
-    assert connection.execute(transpile(decimals, "duckdb")).fetchall() == [(2,)]
+    assert connection.execute(transpile(doubles, "duckdb", generated=False)).fetchall() == [
+        (3,),
+        (0,),
+    ]
+    assert connection.execute(transpile(decimals, "duckdb", generated=False)).fetchall() == [(2,)]
 
 
 def test_a_recorded_function_reads_columns_on_each_row():
     statement = column_statement("point_add")
     assert statement is not None
     sql, wants = statement
-    got = [r[0] for r in duckdb.connect().execute(transpile(sql, "duckdb")).fetchall()]
+    got = [
+        r[0] for r in duckdb.connect().execute(transpile(sql, "duckdb", generated=False)).fetchall()
+    ]
     assert list(map(same, got, wants)) == [True, True], (sql, got, wants)
 
 
@@ -405,7 +419,7 @@ _ANALYZER_OFF = " SETTINGS allow_experimental_analyzer = 0, precise_float_parsin
 
 def test_clickhouse_plans_a_shapes_form_with_its_old_analyzer():
     # And reads a shape's numbers as float8in does: the nearest double ('0.3' is not, otherwise).
-    assert transpile(_SHAPE, "clickhouse").endswith(_ANALYZER_OFF)
+    assert transpile(_SHAPE, "clickhouse", generated=False).endswith(_ANALYZER_OFF)
 
 
 @pytest.mark.parametrize(
@@ -413,13 +427,13 @@ def test_clickhouse_plans_a_shapes_form_with_its_old_analyzer():
     [("SELECT 1 AS v", "clickhouse"), (_SHAPE, "trino"), (_SHAPE, "duckdb")],
 )
 def test_no_other_statement_or_engine_is_planned_otherwise(sql: str, dialect: str):
-    assert "SETTINGS" not in transpile(sql, dialect)
+    assert "SETTINGS" not in transpile(sql, dialect, generated=False)
 
 
 def test_trino_writes_a_name_read_once_in_place():
     """Trino's planning grows with how deep a lambda is nested: a box's form keeps only the lambdas
     of the names it reads more than once."""
-    written = transpile("SELECT box_center('(3,4),(0,0)'::box) AS v", "trino")
+    written = transpile("SELECT box_center('(3,4),(0,0)'::box) AS v", "trino", generated=False)
     assert written.count("TRANSFORM(ARRAY[") <= 3, written  # 15 when each name was a lambda
 
 
@@ -445,7 +459,7 @@ def _routines(written: str) -> list[str]:
 def test_trino_defines_each_helper_once_as_a_routine_of_the_statement():
     """Trino's analysis of a lambda grows with how deep it is nested: close_sb took 136s as helpers
     inside helpers. Each is a routine the statement defines once, after the routines it calls."""
-    written = transpile(_CLOSE_SB, "trino")
+    written = transpile(_CLOSE_SB, "trino", generated=False)
     assert written.startswith("WITH FUNCTION pg_geo_"), written[:200]
     defined = _routines(written)
     assert len(defined) == len(set(defined)), defined
@@ -464,14 +478,14 @@ def test_no_routine_holds_a_lambda_more_than_six_deep():
 
 
 def test_trino_defines_only_the_routines_a_statement_calls():
-    written = transpile("SELECT box_center('(3,4),(0,0)'::box) AS v", "trino")
+    written = transpile("SELECT box_center('(3,4),(0,0)'::box) AS v", "trino", generated=False)
     assert _routines(written) == ["pg_geo_float_text"], written[:300]
-    assert transpile("SELECT 1 AS v", "trino") == "SELECT 1 AS v"
+    assert transpile("SELECT 1 AS v", "trino", generated=False) == "SELECT 1 AS v"
 
 
 @pytest.mark.parametrize("dialect", ["duckdb", "clickhouse"])
 def test_no_other_engine_calls_a_routine(dialect: str):
-    written = transpile(_CLOSE_SB, dialect)
+    written = transpile(_CLOSE_SB, dialect, generated=False)
     assert "pg_geo_" not in written.lower() and "FUNCTION" not in written
 
 
@@ -490,7 +504,9 @@ def test_duckdb_writes_a_run_of_names_as_one_pipeline():
     so a body nested n lambdas deep is held 2^n times: point_add's form, ten deep as one name inside
     the next, bound in 884MB, poly_contain's in 3.7GB. A run of names is a pipeline of stages, each
     stage's lambda beside the next, not inside it."""
-    written = transpile("SELECT point_add('(1,2)'::point, '(3,4)'::point) AS v", "duckdb")
+    written = transpile(
+        "SELECT point_add('(1,2)'::point, '(3,4)'::point) AS v", "duckdb", generated=False
+    )
     assert _duckdb_lambda_depth(written) <= 4, written[:300]
 
 
@@ -500,7 +516,7 @@ def test_no_duckdb_form_holds_a_lambda_more_than_ten_deep():
     deep = {
         name: depth
         for name, sqls in BY_FUNCTION.items()
-        if (depth := _duckdb_lambda_depth(transpile(sqls[0], "duckdb"))) > 10
+        if (depth := _duckdb_lambda_depth(transpile(sqls[0], "duckdb", generated=False))) > 10
     }
     assert not deep, deep
 
@@ -509,5 +525,7 @@ def test_a_pipeline_reads_a_column_named_as_a_name_of_the_form():
     """A name of the form is read from its stage; a column of the same name is the column's."""
     connection = duckdb.connect()
     connection.execute("CREATE TABLE t AS SELECT '(1,2)' AS _a, '(3,4)' AS _b")
-    written = transpile("SELECT point_add(t._a::point, t._b::point) AS v FROM t", "duckdb")
+    written = transpile(
+        "SELECT point_add(t._a::point, t._b::point) AS v FROM t", "duckdb", generated=False
+    )
     assert connection.execute(written).fetchall() == [("(4,6)",)]

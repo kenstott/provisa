@@ -50,7 +50,11 @@ JSON_AGG = {
 
 
 def _write(sql: str, dialect: str) -> str:
-    return transpile_to_duckdb(sql) if dialect == "duckdb" else transpile(sql, dialect)
+    return (
+        transpile_to_duckdb(sql, generated=False)
+        if dialect == "duckdb"
+        else transpile(sql, dialect, generated=False)
+    )
 
 
 def _rows(res: Any) -> list[tuple]:

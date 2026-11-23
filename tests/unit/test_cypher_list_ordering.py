@@ -45,7 +45,7 @@ def _rows(model, query: str) -> list[tuple]:
     )
     con = duckdb.connect()
     try:
-        return con.execute(transpile_to_duckdb(physical)).fetchall()
+        return con.execute(transpile_to_duckdb(physical, generated=False)).fetchall()
     finally:
         con.close()
 
@@ -137,6 +137,6 @@ def test_trino_expansion_has_no_engine_function_left():
 
     from provisa.transpiler.transpile import transpile_to_trino
 
-    sql = transpile_to_trino("SELECT json_list_compare(a, b) < 0 FROM t")
+    sql = transpile_to_trino("SELECT json_list_compare(a, b) < 0 FROM t", generated=False)
     assert "json_list_compare" not in sql.lower()
     sqlglot.parse_one(sql, read="trino")  # the expansion is Trino SQL

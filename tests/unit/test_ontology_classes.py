@@ -490,7 +490,7 @@ class _DuckRows:
         from provisa.executor.result import QueryResult
         from provisa.transpiler.transpile import transpile_to_duckdb
 
-        cur = self.con.execute(transpile_to_duckdb(plan.sql))
+        cur = self.con.execute(transpile_to_duckdb(plan.sql, generated=True))
         return QueryResult(
             rows=[tuple(r) for r in cur.fetchall()],
             column_names=[d[0] for d in cur.description],

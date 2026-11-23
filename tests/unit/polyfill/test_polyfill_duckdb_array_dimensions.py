@@ -41,7 +41,9 @@ def con() -> duckdb.DuckDBPyConnection:
 
 
 def _rows(con: duckdb.DuckDBPyConnection, call: str) -> list[tuple]:
-    return con.execute(transpile_to_duckdb(f"SELECT {call} AS v LIMIT 1001")).fetchall()
+    return con.execute(
+        transpile_to_duckdb(f"SELECT {call} AS v LIMIT 1001", generated=False)
+    ).fetchall()
 
 
 def _one(con: duckdb.DuckDBPyConnection, call: str) -> object:
@@ -79,7 +81,9 @@ def test_an_array_of_dimensions_is_read_element_by_element(con, call, want):
 
 
 def test_unnest_answers_each_element_of_the_elements_type(con):
-    sql = transpile_to_duckdb(f'SELECT pg_catalog."unnest"({_SQUARE}) AS v LIMIT 1001')
+    sql = transpile_to_duckdb(
+        f'SELECT pg_catalog."unnest"({_SQUARE}) AS v LIMIT 1001', generated=False
+    )
     result = con.execute(sql)
     assert result.fetchall() == [(1,), (2,), (3,), (4,)]
     assert str(result.description[0][1]) == "INTEGER"  # int4, as PostgreSQL's unnest of int4[]
@@ -182,7 +186,7 @@ def test_arrays_of_dimensions_are_ordered_as_array_cmp(con, call, want):
 )
 def test_a_call_postgresql_refuses_raises_its_error(call, sqlstate, message):
     with pytest.raises(RowRefused) as raised:
-        transpile_to_duckdb(f"SELECT {call} AS v LIMIT 1001")
+        transpile_to_duckdb(f"SELECT {call} AS v LIMIT 1001", generated=False)
     assert (raised.value.sqlstate, str(raised.value)) == (sqlstate, message)
 
 

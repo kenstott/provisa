@@ -3471,7 +3471,8 @@ async def route_governed(
         from provisa.compiler.sql_rewrite import unalias_write_target
 
         _qualified = unalias_write_target(_qualified)
-        return state.federation_engine.transpile_physical(_qualified)
+        # REQ-2236: SQL a client wrote.
+        return state.federation_engine.transpile_physical(_qualified, generated=False)
 
     await _await_source_servers(decision, _sources, state)
     if decision.route == Route.ENGINE:
@@ -3623,6 +3624,7 @@ async def route_governed(
                     quote_identifiers=_quoted,
                     # REQ-2236: Db2 and SAP HANA write by their operands' registered types.
                     column_types=direct_column_types(state, _direct_sid, dialect),
+                    generated=False,  # REQ-2236: SQL a client wrote
                 ),
                 dialect,
             )

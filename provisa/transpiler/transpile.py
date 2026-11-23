@@ -95,7 +95,7 @@ def _within_group_unqualified(pg_sql: str) -> str:
     return tree.sql(dialect="postgres") if misread else pg_sql
 
 
-def transpile_to_trino(pg_sql: str, *, generated: bool = False) -> str:  # REQ-066, REQ-068
+def transpile_to_trino(pg_sql: str, *, generated: bool) -> str:  # REQ-066, REQ-068
     """Transpile PostgreSQL-dialect SQL to Trino SQL. ``generated``: see :func:`transpile`."""
     pg_sql = rewrite_correlated_subqueries_for_trino(pg_sql)
     # REQ-2171: the rewrites read the statement; a geometric form's routines are kept as written.
@@ -737,7 +737,7 @@ def _rewrite_json_arrayagg_for_trino(sql: str) -> str:
     return tree.transform(_transform, copy=False).sql(dialect="trino", copy=False)
 
 
-def transpile_to_duckdb(pg_sql: str, *, generated: bool = False) -> str:  # REQ-066, REQ-068
+def transpile_to_duckdb(pg_sql: str, *, generated: bool) -> str:  # REQ-066, REQ-068
     """Transpile PostgreSQL-dialect SQL to DuckDB SQL. ``generated``: see :func:`transpile`."""
     from provisa.observability.stage_trace import trace_stage
 
@@ -2048,7 +2048,7 @@ def transpile(
     pgvector: bool = False,
     quote_identifiers: bool = False,
     column_types: ColumnTypes | None = None,
-    generated: bool = False,
+    generated: bool,
 ) -> str:  # REQ-066, REQ-068, REQ-229, REQ-423, REQ-2236
     """Transpile PostgreSQL-dialect SQL to a target dialect.
 
@@ -2072,7 +2072,7 @@ def transpile(
         SQL string in target dialect.
     """
     # REQ-2167: a call ClickHouse answers in DuckDB's form, held out of what follows.
-    pg_sql, ported = polyfill_ported.held_out(pg_sql, target_dialect)
+    pg_sql, ported = polyfill_ported.held_out(pg_sql, target_dialect, generated=generated)
     pg_sql = pg_forms_type_io.readable(pg_sql, target_dialect)  # REQ-2171
     pg_sql = _within_group_unqualified(pg_sql)
     if target_dialect != "duckdb":  # DuckDB's form is pg_functions.typed_calls'

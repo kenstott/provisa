@@ -518,13 +518,13 @@ def compile_for_native_source(shared_data):
     from provisa.transpiler.transpile import transpile
 
     governed = shared_data["governed"]
-    shared_data["pgvector_sql"] = transpile(governed, "postgres", pgvector=True)
-    shared_data["snowflake_sql"] = transpile(governed, "snowflake")
+    shared_data["pgvector_sql"] = transpile(governed, "postgres", pgvector=True, generated=False)
+    shared_data["snowflake_sql"] = transpile(governed, "snowflake", generated=False)
     # REQ-863 dialect_supports: a source whose dialect lacks the call fails the gate, and the
     # statement routes to the engine.
     shared_data["mysql_to_engine"] = unsupported(governed, "mysql") == SIMILARITY
     shared_data["pg_to_engine"] = unsupported(governed, "postgres") is not None
-    shared_data["engine_sql"] = transpile(governed, "duckdb")
+    shared_data["engine_sql"] = transpile(governed, "duckdb", generated=False)
 
 
 @then(

@@ -51,7 +51,9 @@ _ANSWERS = {
 
 def _value(query: str):
     sql_ast, _, _ = cypher_to_sql(parse_cypher(query), _EMPTY, {})
-    ((value,),) = duckdb.sql(transpile_to_duckdb(sql_ast.sql(dialect="postgres"))).fetchall()
+    ((value,),) = duckdb.sql(
+        transpile_to_duckdb(sql_ast.sql(dialect="postgres"), generated=True)
+    ).fetchall()
     return value
 
 

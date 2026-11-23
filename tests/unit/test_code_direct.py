@@ -560,7 +560,7 @@ async def test_a_direct_read_answers_the_governed_statement_alone(prepared):
             }
         },
     )
-    answer = await read(_state(), "scores-src", transpile(governed, "duckdb"))
+    answer = await read(_state(), "scores-src", transpile(governed, "duckdb", generated=False))
     assert answer.to_pylist() == [{"id": 1, "region": "**"}, {"id": 3, "region": "**"}]
 
 

@@ -117,7 +117,7 @@ def _semantic_sql(statement: str) -> str:
 
 def _postgres(statement: str) -> exp.Expr:
     """The statement as the pg engine runs it, parsed: PostgreSQL SQL with no IR function left."""
-    sql = transpile(_semantic_sql(statement), "postgres")
+    sql = transpile(_semantic_sql(statement), "postgres", generated=False)
     tree = sqlglot.parse_one(sql, read="postgres")
     left = {n.name.upper() for n in tree.find_all(exp.Anonymous) if n.name.upper() in _IR_NAMES}
     assert not left, sql
@@ -215,6 +215,7 @@ def test_lists_of_several_types_compared_on_postgres_read_their_items():
             "WITH [[[[[1]]]], [[[[1]]]], 'x'] AS t WITH t[0] AS a, t[1] AS b RETURN a < b"
         ),
         "postgres",
+        generated=False,
     )
     assert LIST_COMPARE_TOO_DEEP in deep, sql
 
@@ -238,14 +239,14 @@ def test_a_size_of_an_item_of_several_types_on_postgres_reads_its_json():
 @pytest.mark.parametrize(("statement", "rows", "trino_function"), _ANSWERS)
 def test_duckdb_answers_as_it_did(statement, rows, trino_function):
     del trino_function
-    sql = transpile_to_duckdb(_semantic_sql(statement))
+    sql = transpile_to_duckdb(_semantic_sql(statement), generated=False)
     assert duckdb.connect().execute(sql).fetchall() == rows
 
 
 @pytest.mark.parametrize(("statement", "rows", "trino_function"), _ANSWERS)
 def test_trino_keeps_its_own_list_functions(statement, rows, trino_function):
     del rows
-    sql = transpile_to_trino(_semantic_sql(statement))
+    sql = transpile_to_trino(_semantic_sql(statement), generated=False)
     tree = sqlglot.parse_one(sql, read="trino")
     assert trino_function.upper() in sql.upper(), sql
     # None of PostgreSQL's forms: no list of a subquery's rows, no collation, no recursion.

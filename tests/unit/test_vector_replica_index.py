@@ -354,14 +354,14 @@ _LIVE_SEARCH = _SEARCH.replace('"org_acme_replicas"."src__public__docs"', '"src"
 
 def test_an_engine_reading_its_own_store_searches_the_index_and_says_it_is_approximate():
     with collecting() as found:
-        physical = _runtime(True).transpile_physical(_LIVE_SEARCH)
+        physical = _runtime(True).transpile_physical(_LIVE_SEARCH, generated=False)
     assert "PROVISA_COSINE_DISTANCE" in physical
     assert [w.code for w in found] == ["statement.approximate_index"]
 
 
 def test_an_engine_reading_its_store_through_a_connector_computes_the_search_exactly():
     with collecting() as found:
-        physical = _runtime(False).transpile_physical(_LIVE_SEARCH)
+        physical = _runtime(False).transpile_physical(_LIVE_SEARCH, generated=False)
     assert "PROVISA_COSINE_DISTANCE" not in physical
     assert '"org_acme_replicas"."src__public__docs"' in physical
     assert found == []

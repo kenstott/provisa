@@ -83,7 +83,7 @@ async def test_a_role_without_meta_reading_a_source_with_no_connection_never_rea
     # The engine the read is routed to: it plans the statement (nothing here executes it).
     state.federation_engine = SimpleNamespace(
         engine=SimpleNamespace(catalog_qualified=True),
-        transpile_physical=lambda sql, generated=False: sql,
+        transpile_physical=lambda sql, *, generated: sql,
         dialect="trino",
     )
     monkeypatch.setattr(app_mod, "state", state, raising=False)

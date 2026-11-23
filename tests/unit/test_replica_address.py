@@ -279,7 +279,9 @@ def _runtime(routes: ReplicaRoutes | None, engine_name: str = "trino"):
 
 def test_the_transpile_seam_addresses_replicas_before_the_dialect_transpile():
     runtime = _runtime(_routes("trino", "provisa_admin", ("src", "public", "orders")))
-    assert runtime.transpile_physical('SELECT * FROM "src"."public"."orders" AS "o"') == (
+    assert runtime.transpile_physical(
+        'SELECT * FROM "src"."public"."orders" AS "o"', generated=False
+    ) == (
         '<engine dialect> SELECT * FROM "provisa_admin"."org_acme_replicas"."src__public__orders" '
         'AS "o"'
     )
@@ -292,13 +294,13 @@ def test_the_transpile_seam_addresses_replicas_before_the_dialect_transpile():
 def test_routes_published_for_another_engine_are_not_applied():
     runtime = _runtime(_routes("duckdb", "mat_store", ("src", "public", "orders")), "trino")
     with pytest.raises(RuntimeError, match="published for engine 'duckdb'"):
-        runtime.transpile_physical('SELECT * FROM "src"."public"."orders" AS "o"')
+        runtime.transpile_physical('SELECT * FROM "src"."public"."orders" AS "o"', generated=False)
 
 
 def test_before_any_registry_is_published_nothing_is_served_from_a_replica():
     runtime = _runtime(ReplicaRoutes())
     sql = 'SELECT * FROM "src"."public"."orders" AS "o"'
-    assert runtime.transpile_physical(sql) == f"<engine dialect> {sql}"
+    assert runtime.transpile_physical(sql, generated=False) == f"<engine dialect> {sql}"
 
 
 # -- the store a floored source lands into, as the plan validates it -------------------------------

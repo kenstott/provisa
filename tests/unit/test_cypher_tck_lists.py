@@ -100,7 +100,7 @@ def _answer(query: str) -> list[dict]:
     """The rows as the endpoint answers them: graph rewrites, then each value decoded."""
     sql_ast, _, graph_vars = cypher_to_sql(parse_cypher(query), _EMPTY, {})
     sql = apply_graph_rewrites(sql_ast, graph_vars, _EMPTY)
-    cur = duckdb.sql(transpile_to_duckdb(sql.sql(dialect="postgres")))
+    cur = duckdb.sql(transpile_to_duckdb(sql.sql(dialect="postgres"), generated=True))
     names = [d[0] for d in cur.description]
     return assemble_rows(take_cut([dict(zip(names, r)) for r in cur.fetchall()], []), graph_vars)
 
@@ -288,6 +288,6 @@ def test_a_collect_after_a_with_order_by_collects_in_that_order():
     assert "ORDER BY" in sql_ast.sql(dialect="postgres").split("ARRAY_AGG(", 1)[1].split(")", 1)[0]
     con = duckdb.connect()
     con.execute("SET threads = 8")
-    assert con.execute(transpile_to_duckdb(sql_ast.sql(dialect="postgres"))).fetchall() == [
-        ([3, 2, 1],)
-    ]
+    assert con.execute(
+        transpile_to_duckdb(sql_ast.sql(dialect="postgres"), generated=True)
+    ).fetchall() == [([3, 2, 1],)]

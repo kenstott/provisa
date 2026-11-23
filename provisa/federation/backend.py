@@ -106,7 +106,7 @@ class EngineBackend:
             )
         return dialect
 
-    def transpile_physical(self, pg_sql: str, *, generated: bool = False) -> str:
+    def transpile_physical(self, pg_sql: str, *, generated: bool) -> str:
         """Transpile governed PostgreSQL-dialect SQL to the engine's physical dialect. Native
         engines use the plain SQLGlot transpile to their dialect; the Trino backend overrides with
         its dialect-specific rewrite pipeline. Callers reach this through the seam so they never
@@ -115,7 +115,7 @@ class EngineBackend:
 
         return transpile(pg_sql, self.dialect, generated=generated)
 
-    def transpile_typed(self, pg_sql: str, column_types: Any, *, generated: bool = False) -> str:
+    def transpile_typed(self, pg_sql: str, column_types: Any, *, generated: bool) -> str:
         """``transpile_physical`` for an engine whose dialect writes a construct by its operands'
         types (``typed_columns.TYPED_DIALECTS``: Db2, SAP HANA), handed the registered
         ``column_types`` of the tables ``pg_sql`` reads (REQ-2236)."""
@@ -1049,7 +1049,7 @@ class TrinoBackend(EngineBackend):
 
         return frozenset(OPS_TABLES)
 
-    def transpile_physical(self, pg_sql: str, *, generated: bool = False) -> str:
+    def transpile_physical(self, pg_sql: str, *, generated: bool) -> str:
         from provisa.federation.trino_connectors import trino_utc_wall_columns
         from provisa.transpiler.transpile import (
             rewrite_instants_for_trino,

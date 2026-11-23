@@ -240,7 +240,9 @@ def test_the_ctas_statement_is_sent_with_its_bound_values():
     from provisa.executor.trino_write import execute_ctas_redirect
     from provisa.transpiler.transpile import transpile
 
-    select = transpile("SELECT a FROM c.s.t WHERE id = $1 OR parent = $1 LIMIT $2", "trino")
+    select = transpile(
+        "SELECT a FROM c.s.t WHERE id = $1 OR parent = $1 LIMIT $2", "trino", generated=False
+    )
     conn = _RecordingConn()
     out = execute_ctas_redirect(conn, select, "parquet", [7, 500])
     ((sql, params),) = conn.cur.executed

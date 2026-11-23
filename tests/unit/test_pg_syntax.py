@@ -46,7 +46,7 @@ DIALECTS = ("postgres", "duckdb", "trino", "clickhouse")
     ],
 )
 def test_bit_varying_is_a_type_not_a_bit_and_an_alias(dialect: str, written: str) -> None:
-    assert transpile("SELECT CAST(x AS bit varying(5)) FROM t", dialect) == written
+    assert transpile("SELECT CAST(x AS bit varying(5)) FROM t", dialect, generated=False) == written
 
 
 def test_bit_varying_cast_reads_with_and_without_a_length() -> None:
@@ -70,7 +70,7 @@ def test_bit_varying_cast_reads_with_and_without_a_length() -> None:
     ],
 )
 def test_cstring_array_is_its_array_type_not_a_subscript(dialect: str, written: str) -> None:
-    assert transpile("SELECT NULL::cstring[] FROM t", dialect) == written
+    assert transpile("SELECT NULL::cstring[] FROM t", dialect, generated=False) == written
 
 
 @pytest.mark.parametrize(
@@ -107,20 +107,26 @@ def test_object_identifier_arrays_are_named_as_postgresql_names_them() -> None:
     ],
 )
 def test_a_call_of_overlaps_is_postgresql_s_on_postgres(spelled: str) -> None:
-    assert transpile(spelled, "postgres") == 'SELECT pg_catalog."overlaps"(a, b, c, d) FROM t'
+    assert (
+        transpile(spelled, "postgres", generated=False)
+        == 'SELECT pg_catalog."overlaps"(a, b, c, d) FROM t'
+    )
 
 
 @pytest.mark.parametrize("dialect", ["duckdb", "trino", "clickhouse"])
 def test_a_call_of_overlaps_is_its_form_elsewhere_however_spelled(dialect: str) -> None:
-    bare = transpile("SELECT overlaps(a, b, c, d) FROM t", dialect)
+    bare = transpile("SELECT overlaps(a, b, c, d) FROM t", dialect, generated=False)
     assert bare.startswith("SELECT CASE WHEN (CASE WHEN a IS NULL THEN b WHEN b IS NOT NULL")
     assert bare.endswith(" END AS overlaps_timestamp FROM t")
-    assert transpile('SELECT pg_catalog."overlaps"(a, b, c, d) FROM t', dialect) == bare
+    assert (
+        transpile('SELECT pg_catalog."overlaps"(a, b, c, d) FROM t', dialect, generated=False)
+        == bare
+    )
 
 
 def test_the_overlaps_operator_is_left_as_the_operator() -> None:
     for dialect in DIALECTS:
-        assert transpile("SELECT (a, b) OVERLAPS (c, d) FROM t", dialect) == (
+        assert transpile("SELECT (a, b) OVERLAPS (c, d) FROM t", dialect, generated=False) == (
             "SELECT (a, b) OVERLAPS (c, d) FROM t"
         )
 
@@ -133,7 +139,9 @@ def test_the_overlaps_operator_is_left_as_the_operator() -> None:
     ],
 )
 def test_convert_is_postgresql_s_call(dialect: str, written: str) -> None:
-    assert transpile("SELECT convert(b, 'UTF8', 'LATIN1') FROM t", dialect) == written
+    assert (
+        transpile("SELECT convert(b, 'UTF8', 'LATIN1') FROM t", dialect, generated=False) == written
+    )
 
 
 @pytest.mark.parametrize("dialect", ["trino", "clickhouse"])
@@ -141,7 +149,7 @@ def test_convert_is_refused_by_name_where_it_has_no_form(dialect: str) -> None:
     from provisa.transpiler.function_macros import FunctionRefused
 
     with pytest.raises(FunctionRefused, match="convert"):
-        transpile("SELECT convert(b, 'UTF8', 'LATIN1') FROM t", dialect)
+        transpile("SELECT convert(b, 'UTF8', 'LATIN1') FROM t", dialect, generated=False)
 
 
 @pytest.mark.parametrize(
@@ -155,7 +163,7 @@ def test_convert_is_refused_by_name_where_it_has_no_form(dialect: str) -> None:
     ],
 )
 def test_json_object_of_an_array_is_postgresql_s_call(dialect: str, written: str) -> None:
-    assert transpile("SELECT json_object('{a,1}') FROM t", dialect) == written
+    assert transpile("SELECT json_object('{a,1}') FROM t", dialect, generated=False) == written
 
 
 def test_json_object_of_pairs_is_read_as_sql_s() -> None:
@@ -185,9 +193,9 @@ def test_negative_inner_product_reads_and_writes_back() -> None:
     ],
 )
 def test_pg_catalog_regexp_replace_is_the_bare_call(dialect: str, written: str) -> None:
-    assert transpile("SELECT pg_catalog.regexp_replace(s, 'a(b)', '\\1', 'g') FROM t", dialect) == (
-        written
-    )
+    assert transpile(
+        "SELECT pg_catalog.regexp_replace(s, 'a(b)', '\\1', 'g') FROM t", dialect, generated=False
+    ) == (written)
 
 
 def test_duckdb_reads_the_engine_s_form_of_each_syntax_call() -> None:
@@ -301,7 +309,10 @@ def test_unbound_parameters_are_null_outside_strings() -> None:
 def test_a_null_input_is_postgresqls_null_of_its_type_on_postgres(call: str, written: str) -> None:
     """REQ-2167: PostgreSQL holds interval, jsonb and xid8, so a strict input's NULL is of that
     type there, as PostgreSQL describes it; only an engine without the type answers text."""
-    assert transpile(f"SELECT {call} AS v", "postgres") == f"SELECT CAST(NULL AS {written}) AS v"
+    assert (
+        transpile(f"SELECT {call} AS v", "postgres", generated=False)
+        == f"SELECT CAST(NULL AS {written}) AS v"
+    )
 
 
 # --- a keyword as a column label after AS ------------------------------------------------------

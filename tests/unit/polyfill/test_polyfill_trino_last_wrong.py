@@ -38,12 +38,14 @@ _TRINO = ("trino", "presto", "athena")
 
 
 def _trino(sql: str) -> exp.Expr:
-    return sqlglot.parse_one(transpile_to_trino(sql), read="trino")
+    return sqlglot.parse_one(transpile_to_trino(sql, generated=False), read="trino")
 
 
 def _refused(sql: str, dialect: str = "trino") -> RowRefused:
     with pytest.raises(RowRefused) as refused:
-        transpile_to_trino(sql) if dialect == "trino" else transpile(sql, dialect)
+        transpile_to_trino(sql, generated=False) if dialect == "trino" else transpile(
+            sql, dialect, generated=False
+        )
     return refused.value
 
 
@@ -81,13 +83,15 @@ def test_trino_compares_arrays_element_by_element_null_equal_to_null(function, t
 
 @pytest.mark.parametrize("dialect", _TRINO)
 def test_presto_and_athena_take_trinos_array_comparison(dialect):
-    tree = sqlglot.parse_one(transpile(f"SELECT array_eq({_ARRAYS}) AS v", dialect), read="trino")
+    tree = sqlglot.parse_one(
+        transpile(f"SELECT array_eq({_ARRAYS}) AS v", dialect, generated=False), read="trino"
+    )
     assert tree.find(exp.NullSafeEQ) is not None
 
 
 @pytest.mark.parametrize(("function", "answer"), [("array_eq", True), ("array_ne", False)])
 def test_duckdb_answers_array_comparison_as_before(function, answer):
-    sql = transpile_to_duckdb(f'SELECT pg_catalog."{function}"({_ARRAYS}) AS v')
+    sql = transpile_to_duckdb(f'SELECT pg_catalog."{function}"({_ARRAYS}) AS v', generated=False)
     assert duckdb.connect().execute(sql).fetchall() == [(answer,)]
 
 
@@ -120,7 +124,9 @@ def test_duckdb_keeps_its_own_array_position():
     """DuckDB's list_position answers NULL where it finds nothing: the row gives it no form. Its
     forms are Trino's and the refusals of Db2 and SAP HANA, which hold no array type."""
     assert ARRAY_POSITION.read.rules[0].forms.keys() == {*_TRINO, "db2", "saphana"}
-    sql = transpile_to_duckdb("SELECT pg_catalog.\"array_position\"('{}'::integer[], 5) AS v")
+    sql = transpile_to_duckdb(
+        "SELECT pg_catalog.\"array_position\"('{}'::integer[], 5) AS v", generated=False
+    )
     assert duckdb.connect().execute(sql).fetchall() == [(None,)]
 
 
@@ -135,7 +141,7 @@ _HELLO = (
 def test_the_i_flag_replaces_the_first_match_case_insensitively_on_trino():
     """PostgreSQL: 'Hello World World'. Trino was sent the flag, and its reading of the statement
     dropped it: every match, case-sensitively ('HHello World WHello World')."""
-    assert transpile_to_trino(_HELLO.format(flags="'i'::text")) == (
+    assert transpile_to_trino(_HELLO.format(flags="'i'::text"), generated=False) == (
         "SELECT REGEXP_REPLACE(CAST('Hello World' AS VARCHAR), "
         "'(?s)^(?<before>.*?)(?:(?i:[a-z]+))(?<after>.*)$', '${before}Hello World${after}') AS v"
     )
@@ -146,19 +152,21 @@ def test_the_i_flag_replaces_the_first_match_case_insensitively_on_trino():
     [("'gi'", "'(?i:b)'"), ("'ig'", "'(?i:b)'"), ("'g'", "'b'"), ("'gic'", "'b'")],
 )
 def test_the_g_flag_replaces_every_match_and_c_wins_over_an_earlier_i(flags, pattern):
-    written = transpile_to_trino(f"SELECT regexp_replace('aBb', 'b', 'c', {flags}) AS v")
+    written = transpile_to_trino(
+        f"SELECT regexp_replace('aBb', 'b', 'c', {flags}) AS v", generated=False
+    )
     assert written == f"SELECT REGEXP_REPLACE('aBb', {pattern}, 'c') AS v"
 
 
 def test_no_flags_is_the_first_match_as_before():
-    assert transpile_to_trino("SELECT regexp_replace('abcb', 'b', 'X') AS v") == (
+    assert transpile_to_trino("SELECT regexp_replace('abcb', 'b', 'X') AS v", generated=False) == (
         "SELECT REGEXP_REPLACE('abcb', '(?s)^(?<before>.*?)(?:b)(?<after>.*)$', "
         "'${before}X${after}') AS v"
     )
 
 
 def test_clickhouse_reads_the_flags_by_the_same_row():
-    assert transpile(_HELLO.format(flags="'i'::text"), "clickhouse") == (
+    assert transpile(_HELLO.format(flags="'i'::text"), "clickhouse", generated=False) == (
         "SELECT replaceRegexpOne(CAST('Hello World' AS Nullable(String)), '(?i:[a-z]+)', "
         "'Hello World') AS v"
     )
@@ -211,7 +219,11 @@ def test_a_regex_mask_still_replaces_every_match():
 @pytest.mark.parametrize("dialect", ["trino", "duckdb", "clickhouse"])
 def test_a_built_in_collation_is_its_name_as_quote_ident_writes_it(collate, answer, dialect):
     sql = f"SELECT pg_catalog.\"pg_collation_for\"('abc'::text COLLATE {collate}) AS v"
-    written = transpile_to_trino(sql) if dialect == "trino" else transpile(sql, dialect)
+    written = (
+        transpile_to_trino(sql, generated=False)
+        if dialect == "trino"
+        else transpile(sql, dialect, generated=False)
+    )
     tree = sqlglot.parse_one(written)
     assert isinstance(tree, exp.Select)
     assert tree.selects[0].unalias() == exp.Literal.string(answer)
@@ -251,7 +263,9 @@ def test_trino_keeps_a_lexeme_the_list_does_not_hold_beside_a_null():
 
 
 def test_duckdb_answers_ts_delete_of_a_list_holding_a_null():
-    assert duckdb.connect().execute(transpile_to_duckdb(_TS_DELETE)).fetchall() == [("'rat':3A",)]
+    assert duckdb.connect().execute(
+        transpile_to_duckdb(_TS_DELETE, generated=False)
+    ).fetchall() == [("'rat':3A",)]
 
 
 # --- 4: interval_in of infinity, which pgwire has no interval value of -----------------------------
@@ -269,4 +283,4 @@ def test_interval_in_of_a_finite_constant_is_its_text_on_trino():
         "SELECT pg_catalog.\"interval_in\"('1 day 02:03:04'::cstring, "
         "'interval'::regtype::oid, (-1)::integer) AS v"
     )
-    assert transpile_to_trino(sql) == "SELECT '1 day 02:03:04' AS v"
+    assert transpile_to_trino(sql, generated=False) == "SELECT '1 day 02:03:04' AS v"

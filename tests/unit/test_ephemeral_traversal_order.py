@@ -90,7 +90,7 @@ def test_an_optional_paths_label_filters_reach_trino_as_trinos_sql(session):
     query = "MATCH (x:Small) OPTIONAL MATCH (a:Big)-[:R]->(b:Small) RETURN a.k AS a"
     semantic = session.sql(query)
     assert sqlglot.parse_one(semantic, read="postgres").find(sqlglot.exp.ArrayContainsAll)
-    written = transpile_to_trino(semantic)
+    written = transpile_to_trino(semantic, generated=False)
     assert sqlglot.parse_one(written, read="trino").find(sqlglot.exp.ArrayContainsAll) is None
 
 
@@ -99,7 +99,7 @@ def test_a_session_nodes_labels_reach_trino_as_a_json_value(session):
     value, and a JSON value only as its text marked FORMAT JSON, so each object it is sent holds
     the labels so."""
     query = "MATCH (x:Small) OPTIONAL MATCH (a:Big)-[:R]->(b:Small) RETURN a.k AS a"
-    written = transpile_to_trino(session.sql(query))
+    written = transpile_to_trino(session.sql(query), generated=True)
     # Each object's labels, as written and as Trino's own rewrites write it again after reading it.
     labels = "'labels': JSON_FORMAT(CAST(\"__labels\" AS JSON)) FORMAT JSON"
     again = sqlglot.parse_one(written, read="trino").sql("trino")

@@ -83,18 +83,22 @@ def _null_array_casts(sql: str, dialect: str) -> list[exp.Cast]:
 )
 @pytest.mark.parametrize("dialect", ["trino", "clickhouse"])
 def test_an_array_text_form_is_written_as_its_elements(pg_sql, dialect):
-    written = transpile_to_trino(pg_sql) if dialect == "trino" else transpile(pg_sql, dialect)
+    written = (
+        transpile_to_trino(pg_sql, generated=False)
+        if dialect == "trino"
+        else transpile(pg_sql, dialect, generated=False)
+    )
     assert _array_text_casts(written, dialect) == []
     assert sqlglot.parse_one(written, read=dialect).find(exp.Array) is not None
 
 
 def test_trino_reads_the_elements_cast_to_the_array_type():
-    written = transpile_to_trino("SELECT '{1,NULL,3}'::integer[] AS v")
+    written = transpile_to_trino("SELECT '{1,NULL,3}'::integer[] AS v", generated=False)
     assert written == "SELECT CAST(ARRAY['1', NULL, '3'] AS ARRAY(INTEGER)) AS v"
 
 
 def test_a_nested_text_form_is_an_array_of_its_dimensions_on_trino():
-    written = transpile_to_trino("SELECT '{{1,2},{3,4}}'::integer[] AS v")
+    written = transpile_to_trino("SELECT '{{1,2},{3,4}}'::integer[] AS v", generated=False)
     cast = sqlglot.parse_one(written, read="trino").find(exp.Cast)
     assert cast is not None
     assert cast.to.sql(dialect="trino") == "ARRAY(ARRAY(INTEGER))"
@@ -114,7 +118,7 @@ def test_a_nested_text_form_is_an_array_of_its_dimensions_on_trino():
     ],
 )
 def test_a_call_of_a_null_array_is_null_on_clickhouse(pg_sql):
-    written = transpile(pg_sql, "clickhouse")
+    written = transpile(pg_sql, "clickhouse", generated=False)
     assert _null_array_casts(written, "clickhouse") == []
     column = _first_column(written, "clickhouse")
     assert _is_typed_null(column.unalias())
@@ -123,7 +127,9 @@ def test_a_call_of_a_null_array_is_null_on_clickhouse(pg_sql):
 
 def test_a_null_array_appended_to_is_not_answered_null_on_clickhouse():
     # array_append(NULL, x) is {x} in PostgreSQL: not STRICT, and it does not answer NULL.
-    written = transpile('SELECT pg_catalog."array_append"(NULL::integer[], 1) AS v', "clickhouse")
+    written = transpile(
+        'SELECT pg_catalog."array_append"(NULL::integer[], 1) AS v', "clickhouse", generated=False
+    )
     column = _first_column(written, "clickhouse")
     assert not isinstance(column.unalias(), exp.Null)
 
@@ -155,11 +161,13 @@ def test_a_null_array_appended_to_is_not_answered_null_on_clickhouse():
     ],
 )
 def test_a_null_array_is_written_as_postgresqls_answer_on_clickhouse(pg_sql, written):
-    assert transpile(pg_sql, "clickhouse") == written
+    assert transpile(pg_sql, "clickhouse", generated=False) == written
 
 
 def _on_clickhouse(sql: str) -> list[str | None]:
-    held = chdb.query(transpile(sql, "clickhouse"), "TabSeparated").bytes().decode()
+    held = (
+        chdb.query(transpile(sql, "clickhouse", generated=False), "TabSeparated").bytes().decode()
+    )
     return [None if line == "\\N" else line for line in held.splitlines()]
 
 
@@ -191,7 +199,7 @@ def test_clickhouse_answers_a_null_array_as_postgresql_does(pg_sql, answer):
 )
 def test_an_array_that_is_not_a_null_is_written_as_before_on_clickhouse(pg_sql, written):
     """No NULL array's form: the call, in ClickHouse's spelling of it."""
-    assert transpile(pg_sql, "clickhouse") == written
+    assert transpile(pg_sql, "clickhouse", generated=False) == written
 
 
 @pytest.mark.parametrize(
@@ -207,7 +215,7 @@ def test_an_array_that_is_not_a_null_is_answered_on_clickhouse(pg_sql, answer):
 
 def test_array_cat_of_two_arrays_is_still_refused_on_clickhouse():
     with pytest.raises(FunctionRefused, match=r"array_cat\(\) has no form on clickhouse"):
-        transpile("SELECT array_cat(a, b) AS v FROM t", "clickhouse")
+        transpile("SELECT array_cat(a, b) AS v FROM t", "clickhouse", generated=False)
 
 
 @pytest.mark.parametrize("dialect", ["trino", "clickhouse"])
@@ -224,9 +232,12 @@ def test_every_statement_is_read_for_an_array_text_form_on_its_tree(monkeypatch,
 
     monkeypatch.setattr(module, "array_inputs", spied)
     sql = "SELECT a + 1 AS v FROM t WHERE b = 'x'"
-    assert transpile(sql, dialect) == sql
+    assert transpile(sql, dialect, generated=False) == sql
     assert len(read) == 1
-    assert transpile("SELECT '{1,2}'::integer[] AS v", dialect) != "SELECT '{1,2}'::integer[] AS v"
+    assert (
+        transpile("SELECT '{1,2}'::integer[] AS v", dialect, generated=False)
+        != "SELECT '{1,2}'::integer[] AS v"
+    )
     assert len(read) == 2
 
 
