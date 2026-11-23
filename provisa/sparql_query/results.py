@@ -22,13 +22,16 @@ N-Triples or JSON-LD. A CONSTRUCT's triples are a graph, so each is kept once.
 from __future__ import annotations
 
 import io
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from rdflib import XSD, Graph, Literal, URIRef, Variable
 from rdflib.query import Result
 
 from provisa.gql.iri import subject_iri
 from provisa.sparql_query.vocabulary import term_iri
+
+if TYPE_CHECKING:
+    from provisa.sparql_query.session_graph import SessionTerms
 
 XSD_STRING = XSD.string
 #: (media type, rdflib format), the first the form's default.
@@ -81,10 +84,17 @@ def negotiate(accept: str | None, form: str) -> tuple[str, str]:
     )
 
 
-def rdf_term(value: dict | None, base: str) -> Any:
-    """One RDF term of the answer as rdflib's."""
+def rdf_term(
+    value: dict | None, base: str, session: SessionTerms | None = None, update: bool = False
+) -> Any:
+    """One RDF term of the answer as rdflib's. A graph session's node is named by ``session``,
+    the terms of the read's session (REQ-2135, amended 2026-11-23); ``update``: a WHERE's
+    solution, whose blank nodes its templates name the node by."""
     if value is None:
         return None
+    if "session" in value:
+        assert session is not None, "a session node is answered only by a read over a session"
+        return session.term(value["session"], update)
     if "node" in value:
         n = value["node"]
         return URIRef(subject_iri(base, n["domain"], n["table"], n["key"]))
@@ -110,20 +120,34 @@ def _tsv_cell(term: Any) -> str:
     return term.n3().replace("\t", "\\t").replace("\n", "\\n").replace("\r", "\\r")
 
 
-def _write_tsv(variables: list[str], rows: list[dict], base: str) -> bytes:
+def _write_tsv(
+    variables: list[str], rows: list[dict], base: str, session: SessionTerms | None
+) -> bytes:
     """rdflib parses this format and has no serializer for it."""
     lines = ["\t".join(f"?{v}" for v in variables)]
-    lines += ["\t".join(_tsv_cell(rdf_term(row.get(v), base)) for v in variables) for row in rows]
+    lines += [
+        "\t".join(_tsv_cell(rdf_term(row.get(v), base, session)) for v in variables) for row in rows
+    ]
     return ("\n".join(lines) + "\n").encode("utf-8")
 
 
-def write_select(variables: list[str], rows: list[dict], base: str, fmt: str) -> bytes:
+def write_select(
+    variables: list[str],
+    rows: list[dict],
+    base: str,
+    fmt: str,
+    session: SessionTerms | None = None,
+) -> bytes:
     if fmt == "tsv":
-        return _write_tsv(variables, rows, base)
+        return _write_tsv(variables, rows, base, session)
     result = Result("SELECT")
     result.vars = [Variable(v) for v in variables]
     result.bindings = [
-        {Variable(v): t for v in variables if (t := rdf_term(row.get(v), base)) is not None}
+        {
+            Variable(v): t
+            for v in variables
+            if (t := rdf_term(row.get(v), base, session)) is not None
+        }
         for row in rows
     ]
     return _serialize(result, fmt)
@@ -141,12 +165,18 @@ def _serialize(result: Result, fmt: str) -> bytes:
     return buf.getvalue()
 
 
-def write_construct(rows: list[dict], base: str, prefixes: dict[str, str], fmt: str) -> bytes:
+def write_construct(
+    rows: list[dict],
+    base: str,
+    prefixes: dict[str, str],
+    fmt: str,
+    session: SessionTerms | None = None,
+) -> bytes:
     graph = Graph(bind_namespaces="none")
     for prefix, iri in prefixes.items():
         graph.bind(prefix, iri)
     for row in rows:
-        s, p, o = (rdf_term(row.get(k), base) for k in ("s", "p", "o"))
+        s, p, o = (rdf_term(row.get(k), base, session) for k in ("s", "p", "o"))
         if s is not None and p is not None and o is not None:
             graph.add((s, p, o))
     return graph.serialize(format=fmt, encoding="utf-8")
