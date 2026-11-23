@@ -138,21 +138,30 @@ def test_a_null_call_has_no_column_of_type_nothing(sql):
         ), written.sql("clickhouse")
 
 
-def test_a_null_column_is_a_null_of_string():
+def test_a_null_column_postgresql_types_by_no_call_is_a_null_of_string():
     assert (
-        typed_null_columns("SELECT 1 AS a, NULL AS b")
+        typed_null_columns("SELECT 1 AS a, NULL AS b", "SELECT 1 AS a, NULL AS b")
         == "SELECT 1 AS a, CAST(NULL AS Nullable(String)) AS b"
+    )
+
+
+def test_a_null_column_postgresql_types_is_a_null_the_call_s_type_describes():
+    assert (
+        typed_null_columns(
+            "SELECT 1 AS a, NULL AS b", "SELECT 1 AS a, cardinality(NULL::int[]) AS b"
+        )
+        == "SELECT 1 AS a, CAST(NULL AS Nullable(FixedString(1))) AS b"
     )
 
 
 def test_a_set_operation_s_null_takes_its_type_from_the_other_branch():
     written = "SELECT NULL AS v UNION ALL SELECT 1"
-    assert typed_null_columns(written) == written
+    assert typed_null_columns(written, written) == written
 
 
 def test_a_statement_of_no_null_column_is_unchanged():
     written = "SELECT x FROM t WHERE y IS NULL"
-    assert typed_null_columns(written) == written
+    assert typed_null_columns(written, written) == written
 
 
 @pytest.mark.parametrize(("sql", "want"), ANSWERED)
@@ -222,3 +231,57 @@ def test_the_server_s_approximation_is_a_stated_difference(function):
     limitations = applied.feature.read.limitations["clickhouse"]
     (stated,) = [lim for lim in limitations if lim.refusal is None]
     assert "24.3" in stated.text
+
+
+#: NULL calls whose ClickHouse form is an untyped NULL column, with the result type oid PostgreSQL
+#: 17 describes each by (the conformance functions measure's base calls, REQ-2236).
+DESCRIBED_NULL_CALLS = [
+    ('SELECT pg_catalog."array_length"(NULL::integer[], NULL::integer) AS v', 23),
+    ('SELECT pg_catalog."any_value_transfn"(NULL::integer, NULL::integer) AS v', 23),
+    ('SELECT pg_catalog."arraycontains"(NULL::integer[], NULL::integer[]) AS v', 16),
+    ('SELECT pg_catalog."booland_statefunc"(NULL::boolean, NULL::boolean) AS v', 16),
+    ('SELECT pg_catalog."array_cat"(NULL::integer[], NULL::integer[]) AS v', 1007),
+    (
+        'SELECT pg_catalog."float8_accum"(NULL::double precision[], NULL::double precision) AS v',
+        1022,
+    ),
+    ('SELECT pg_catalog."string_to_array"(NULL::text, NULL::text) AS v', 1009),
+    ('SELECT pg_catalog."xid8_larger"(NULL::xid8, NULL::xid8) AS v', 5069),
+    (
+        'SELECT pg_catalog."timestamptz_larger"(NULL::timestamp with time zone, '
+        "NULL::timestamp with time zone) AS v",
+        1184,
+    ),
+]
+
+
+def _described_oids(runtime: ClickHouseFederationRuntime, sql: str) -> list[int | None]:
+    """The result type oids pgwire describes ``sql``'s result by, served by embedded ClickHouse."""
+    from provisa.pgwire.server import BVTYPE_TO_OID, _describe_casts, _sql_type_to_bvtype, _type_oid
+
+    served = runtime.run_sync(transpile(sql, "clickhouse")).column_types
+    types = [_sql_type_to_bvtype(t) for t in served]
+    oids: list[int | None] = [_type_oid(t) for t in served]
+    _describe_casts(sql, types, oids, [-1] * len(served), [], served, [False] * len(served))
+    # A column no oid describes is sent as its wire type's (pgwire's RowDescription).
+    return [BVTYPE_TO_OID[t] if o is None else o for t, o in zip(types, oids)]
+
+
+@pytest.mark.parametrize(("sql", "oid"), DESCRIBED_NULL_CALLS)
+def test_a_null_call_is_described_as_postgresql_types_it(runtime, sql, oid):
+    assert _described_oids(runtime, sql) == [oid]
+
+
+@pytest.mark.parametrize(("sql", "oid"), DESCRIBED_NULL_CALLS)
+def test_a_null_call_s_column_is_one_the_server_s_arrow_output_types(sql, oid):
+    # The stand-in reaches Arrow as a binary (FixedString), as a Nothing reaches embedded
+    # ClickHouse's: 24.3's Arrow output has no type for Nothing, and pgwire reads a binary NULL
+    # column as untyped, described by PostgreSQL's type of the call.
+    (column,) = sqlglot.parse_one(transpile(sql, "clickhouse"), read="clickhouse").selects
+    value = column.unalias()
+    assert isinstance(value, exp.Cast) and isinstance(value.this, exp.Null)
+    assert value.to.sql(dialect="clickhouse") == "Nullable(FixedString(1))"
+
+
+def test_a_null_column_postgresql_types_by_no_call_is_text(runtime):
+    assert _described_oids(runtime, "SELECT NULL AS v") == [25]
