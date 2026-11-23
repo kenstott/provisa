@@ -35,6 +35,7 @@ from provisa.pgwire.catalog_route import (
 )
 from provisa.pgwire.catalog_types import result_types
 from provisa.transpiler.metadata_facts import catalog_facts
+from provisa.transpiler.transpile import transpile_to_duckdb
 from tests.unit.test_governed_sql_engine_internals import _govern, _Routed
 
 pytestmark = pytest.mark.unit
@@ -63,12 +64,13 @@ def _statement(statement_id: int) -> str:
 
 
 def _v006(sql: str) -> list[str]:
-    """The V006 refusals of ``sql`` on a catalog statement."""
+    """The table functions ``sql`` is refused as on a catalog statement (V006): its catalog
+    relations are the meta domain's, which this context does not register."""
     tree = sqlglot.parse_one(sql, read="postgres")
     found = _check_registered_relations(
         tree, GovernanceContext(), CompilationContext(), table_functions=CLIENT_TABLE_FUNCTIONS
     )
-    return [v.message for v in found if v.code == "V006"]
+    return [v.message for v in found if v.code == "V006" and "governed relation" in v.message]
 
 
 async def _govern_catalog(monkeypatch, sql: str) -> None:
@@ -106,7 +108,7 @@ def test_the_search_path_is_read_as_postgresql_reads_it():
         "string_to_array(current_setting('search_path'),',') s ORDER BY i",
         _REQUEST,
     )
-    written = sqlglot.transpile(addressed, read="postgres", write="duckdb")[0]
+    written = transpile_to_duckdb(addressed)
     assert duckdb.connect().execute(written).fetchall() == [("analyst",), ("public",)]
 
 
@@ -121,7 +123,7 @@ def test_the_search_path_is_read_as_postgresql_reads_it():
 )
 def test_a_scalar_function_in_from_is_one_row_named_as_postgresql_names_it(from_item, column):
     addressed = addressed_statement(f"SELECT * FROM {from_item}", _REQUEST)
-    written = sqlglot.transpile(addressed, read="postgres", write="duckdb")[0]
+    written = transpile_to_duckdb(addressed)
     answered = duckdb.connect().execute(written)
     assert [d[0] for d in answered.description] == [column]
     assert answered.fetchall() == [(["a", "b"],)]
