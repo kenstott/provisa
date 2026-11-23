@@ -1913,7 +1913,7 @@ def test_the_nightly_includes_every_lane_and_each_packaging_leg_with_publish_fal
     ]
     assert dispatches["build-duckdb-extensions.yml"][6:] == ["-f", "publish=false"]
     # build-dmg.yml is the whole release build: its macOS, Windows and Linux AppImage legs.
-    legs = {body["uses"] for body in yaml.safe_load(_RELEASE.read_text())["jobs"].values()} - {None}
+    legs = {body.get("uses") for body in yaml.safe_load(_RELEASE.read_text())["jobs"].values()}
     for leg in ("release-macos.yml", "release-windows.yml", "release-linux.yml"):
         assert f"./.github/workflows/{leg}" in legs, leg
     # Every workflow the nightly starts exists and can be dispatched.
