@@ -313,6 +313,18 @@
     "tagFacetPlaceholder": "टैग से फ़िल्टर करें",
     "noMatch": "फ़िल्टर से कोई डेटा प्रोडक्ट मेल नहीं खाता",
     "domainFacetLabel": "डोमेन",
-    "domainFacetPlaceholder": "डोमेन से फ़िल्टर करें"
+    "domainFacetPlaceholder": "डोमेन से फ़िल्टर करें",
+    "colSync": "सिंक",
+    "syncNone": "सिंक नहीं हुआ",
+    "syncSynced_one": "सिंक हुआ",
+    "syncSynced_other": "{{count}} से सिंक हुआ",
+    "syncFailed_one": "{{count}} विफल",
+    "syncFailed_other": "{{count}} विफल",
+    "syncEntryPublished": "{{entry}}: {{when}} को प्रकाशित",
+    "syncEntryFailed": "{{entry}}: {{when}} को विफल",
+    "syncGroup_synced": "सिंक हुआ",
+    "syncGroup_failed": "विफल",
+    "syncGroup_none": "सिंक नहीं हुआ",
+    "syncUnread": "सिंक स्थिति पढ़ी नहीं जा सकी: {{error}}"
   }
 }

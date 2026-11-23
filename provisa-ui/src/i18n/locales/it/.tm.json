@@ -1,4 +1,16 @@
 {
+  "dataProductsTab.json::dataProductsTab.colSync": "Sync",
+  "dataProductsTab.json::dataProductsTab.syncEntryFailed": "{{entry}}: failed {{when}}",
+  "dataProductsTab.json::dataProductsTab.syncEntryPublished": "{{entry}}: published {{when}}",
+  "dataProductsTab.json::dataProductsTab.syncFailed_one": "{{count}} failed",
+  "dataProductsTab.json::dataProductsTab.syncFailed_other": "{{count}} failed",
+  "dataProductsTab.json::dataProductsTab.syncGroup_failed": "Failed",
+  "dataProductsTab.json::dataProductsTab.syncGroup_none": "Not synced",
+  "dataProductsTab.json::dataProductsTab.syncGroup_synced": "Synced",
+  "dataProductsTab.json::dataProductsTab.syncNone": "Not synced",
+  "dataProductsTab.json::dataProductsTab.syncSynced_one": "Synced",
+  "dataProductsTab.json::dataProductsTab.syncSynced_other": "Synced to {{count}}",
+  "dataProductsTab.json::dataProductsTab.syncUnread": "The sync status could not be read: {{error}}",
   "glossaryTab.json::glossaryTab.tablesWithoutSamples": "No sample values were read from: {{tables}}.",
   "it.json::app.apiUnreachable": "Could not reach the Provisa API.",
   "it.json::app.notAuthorized": "You do not have permission to view this page.",
@@ -11375,5 +11387,8 @@
   "it/yourData.json::yourData.relationshipsCreated_other": "{{count}} relationships created.",
   "it/yourData.json::yourData.rest": "REST",
   "it/yourData.json::yourData.sql": "SQL",
-  "it/yourData.json::yourData.title": "Your data"
+  "it/yourData.json::yourData.title": "Your data",
+  "syncingTab.json::syncingTab.noneForProducts": "No entry publishes the chosen data products.",
+  "syncingTab.json::syncingTab.productFilterLabel": "Data products",
+  "syncingTab.json::syncingTab.productFilterPlaceholder": "Filter by data product"
 }

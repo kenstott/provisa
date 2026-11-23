@@ -313,6 +313,18 @@
     "tagFacetPlaceholder": "Фильтр по тегу",
     "noMatch": "Нет продуктов данных, соответствующих фильтрам",
     "domainFacetLabel": "Домены",
-    "domainFacetPlaceholder": "Фильтр по домену"
+    "domainFacetPlaceholder": "Фильтр по домену",
+    "colSync": "Синхронизация",
+    "syncNone": "Не синхронизирован",
+    "syncSynced_one": "Синхронизирован",
+    "syncSynced_other": "Синхронизирован с: {{count}}",
+    "syncFailed_one": "Ошибок: {{count}}",
+    "syncFailed_other": "Ошибок: {{count}}",
+    "syncEntryPublished": "{{entry}}: опубликован {{when}}",
+    "syncEntryFailed": "{{entry}}: ошибка {{when}}",
+    "syncGroup_synced": "Синхронизирован",
+    "syncGroup_failed": "Ошибка",
+    "syncGroup_none": "Не синхронизирован",
+    "syncUnread": "Не удалось прочитать статус синхронизации: {{error}}"
   }
 }

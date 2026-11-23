@@ -141,6 +141,9 @@
     "holdReason_edited_in_provisa": "自上次交換以來已在 Provisa 中編輯",
     "holdReason_never_exchanged": "從未交換過，無法確定哪一方發生了變化",
     "holdReason_not_importable": "Provisa 尚不能從目錄採用此類型",
-    "holdReason_left_to_export": "固定選擇為 Provisa 的值，由匯出傳送"
+    "holdReason_left_to_export": "固定選擇為 Provisa 的值，由匯出傳送",
+    "productFilterLabel": "數據產品",
+    "productFilterPlaceholder": "按數據產品篩選",
+    "noneForProducts": "沒有條目發佈所選的數據產品。"
   }
 }
