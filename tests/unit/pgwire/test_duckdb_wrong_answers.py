@@ -90,6 +90,19 @@ ANSWERS: list[tuple[str, int, list[Any]]] = [
         RECORD,
         ['("invalid input syntax for type date: ""2024-02-xx""",,,22P02)'],
     ),
+    # DuckDB reads dates past PostgreSQL's last (5874897-12-31); date_in refuses them (END_DATE).
+    ("SELECT pg_input_is_valid('5874898-01-01', 'date') AS v", BOOL, ["f"]),
+    ("SELECT pg_input_is_valid('5874897-12-31', 'date') AS v", BOOL, ["t"]),
+    (
+        "SELECT pg_catalog.\"pg_input_error_info\"('5874898-01-01'::text, 'date'::text) AS v",
+        RECORD,
+        ['("date out of range: ""5874898-01-01""",,,22008)'],
+    ),
+    (
+        "SELECT pg_catalog.\"pg_input_error_info\"('294277-01-01'::text, 'timestamp'::text) AS v",
+        RECORD,
+        ['("timestamp out of range: ""294277-01-01""",,,22008)'],
+    ),
 ]
 
 
