@@ -584,6 +584,34 @@ def test_the_served_grant_of_a_named_column_is_the_named_list(server, ledger):
         assert "viewer" not in readers, secret
 
 
+# -- REQ-2226: the listener minted for the call, and nothing else of Provisa's -----------------
+
+
+def test_the_worker_reads_over_its_calls_own_listener_on_the_block(server, ledger, flight_block):
+    row = _call(server, _ANALYST, "SELECT * FROM own_listener('fx.orders')")
+    assert row["status"] == "reached", row
+    port = int(row["body"].rsplit(":", 1)[1])
+    assert row["body"].startswith("grpc://127.0.0.1:")
+    assert flight_block <= port < flight_block + 4
+
+
+def test_the_listener_closes_when_the_call_ends(server, ledger):
+    row = _call(server, _ANALYST, "SELECT * FROM own_listener('fx.orders')")
+    port = int(row["body"].rsplit(":", 1)[1])
+    with pytest.raises(ConnectionRefusedError):
+        socket.create_connection(("127.0.0.1", port), timeout=10).close()
+
+
+def test_the_worker_cannot_reach_the_main_flight_server(server, ledger):
+    row = _call(server, _ANALYST, f"SELECT * FROM reach('fx.orders', {server.flight_port})")
+    assert row["status"] == "refused", row
+
+
+def test_the_worker_cannot_reach_the_minted_pgwire_listener(server, ledger, minted_port):
+    row = _call(server, _ANALYST, f"SELECT * FROM reach('fx.orders', {minted_port})")
+    assert row["status"] == "refused", row
+
+
 # REQ-2249: a code resolver set -- one resolver picked, kept as a bridge view over its call and two
 # ordinary relationships through it. Landed, the matches are built as the organisation's
 # administrator and served from the view; following the relationships applies the reader's row
@@ -720,31 +748,3 @@ def test_retiring_the_set_retires_all_four_and_keeps_the_name(server, order_clip
     assert listed["codeResolvers"] == []
     again = _try(server, f"createCodeResolver(input: {{{_RESOLVER_SET}}})")
     assert not again["success"], again
-
-
-# -- REQ-2226: the listener minted for the call, and nothing else of Provisa's -----------------
-
-
-def test_the_worker_reads_over_its_calls_own_listener_on_the_block(server, ledger, flight_block):
-    row = _call(server, _ANALYST, "SELECT * FROM own_listener('fx.orders')")
-    assert row["status"] == "reached", row
-    port = int(row["body"].rsplit(":", 1)[1])
-    assert row["body"].startswith("grpc://127.0.0.1:")
-    assert flight_block <= port < flight_block + 4
-
-
-def test_the_listener_closes_when_the_call_ends(server, ledger):
-    row = _call(server, _ANALYST, "SELECT * FROM own_listener('fx.orders')")
-    port = int(row["body"].rsplit(":", 1)[1])
-    with pytest.raises(ConnectionRefusedError):
-        socket.create_connection(("127.0.0.1", port), timeout=10).close()
-
-
-def test_the_worker_cannot_reach_the_main_flight_server(server, ledger):
-    row = _call(server, _ANALYST, f"SELECT * FROM reach('fx.orders', {server.flight_port})")
-    assert row["status"] == "refused", row
-
-
-def test_the_worker_cannot_reach_the_minted_pgwire_listener(server, ledger, minted_port):
-    row = _call(server, _ANALYST, f"SELECT * FROM reach('fx.orders', {minted_port})")
-    assert row["status"] == "refused", row
