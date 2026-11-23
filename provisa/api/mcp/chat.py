@@ -631,7 +631,8 @@ _TOOLS: list[Any] = [
                 "id": {"type": "string"},
                 "domain_id": {"type": "string"},
                 "name": {"type": "string"},
-                "owner_role": {"type": "string"},
+                # REQ-2219: the people who own it, by user id; omitted, its owners are kept.
+                "owners": {"type": "array", "items": {"type": "string"}},
                 "team_role": {"type": "string"},
                 "purpose": {"type": "string"},
                 "limitations": {"type": "string"},
@@ -1794,7 +1795,7 @@ async def _dispatch_tool(
                 args["id"],
                 args["domain_id"],
                 args["name"],
-                owner_role=args.get("owner_role"),
+                owners=args.get("owners"),
                 team_role=args.get("team_role"),
                 purpose=args.get("purpose", ""),
                 limitations=args.get("limitations", ""),

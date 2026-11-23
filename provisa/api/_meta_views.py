@@ -261,7 +261,7 @@ def _tag_instances_sql() -> str:
             FROM tracked_webhooks w
             UNION ALL
             SELECT 'product', FALSE, 'product:' || dp.id, dp.id, CAST(NULL AS INTEGER), dp.domain_id,
-                   dp.owner_role, '|', CAST(NULL AS TEXT), CAST(NULL AS TEXT)
+                   CAST(NULL AS TEXT), '|', CAST(NULL AS TEXT), CAST(NULL AS TEXT)
             FROM data_products dp
             UNION ALL
             SELECT 'term', FALSE, 'term:' || CAST(gt.id AS TEXT), CAST(gt.id AS TEXT), CAST(NULL AS INTEGER),
@@ -1443,7 +1443,7 @@ _META_TABLE_VIEWS: dict[str, str] = {
     # relationships (provisa.api._meta_seed), never flattened or counted here.
     "data_products": """
         CREATE OR REPLACE VIEW data_products_meta AS
-        SELECT id, domain_id, name, owner_role, team_role, purpose, limitations, usage,
+        SELECT id, domain_id, name, team_role, purpose, limitations, usage,
                version, status, status_reason, retire_on, successor_id, support,
                support_contact, custom_properties,
                -- when the product was created; last, so the view is replaced in place.

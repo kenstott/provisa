@@ -1055,13 +1055,16 @@ class Query:  # REQ-021, REQ-042
             found = await product_findings.findings(
                 conn, await product_findings.context(datetime.date.today())
             )
+            from provisa.entitlements.owners import product_owners
+
+            owners = await product_owners(conn)  # REQ-2219
         names = {r["id"]: r["name"] for r in rows}
         return [
             DataProductType(
                 id=r["id"],
                 domain_id=r["domain_id"],
                 name=r["name"],
-                owner_role=r["owner_role"],
+                owners=list(owners.get(r["id"], ())),
                 team_role=r["team_role"],
                 purpose=r["purpose"],
                 limitations=r["limitations"],
@@ -1114,7 +1117,7 @@ class Query:  # REQ-021, REQ-042
 
     @strawberry.field
     async def resolve_owners(self, info: StrawberryInfo, refs: list[str]) -> list[UserSummaryType]:
-        """Resolve owner-ish refs (DataProduct.owner_role, Domain.steward, Column.visible_to) to
+        """Resolve owner-ish refs (DataProduct.owners, Domain.steward, Column.visible_to) to
         the individuals they grant to. Each ref is a role id (most callers) or, for Domain.steward
         (REQ-609), possibly a raw user id — role lookup is tried first, and a ref matching neither
         is echoed back bare so the UI still shows the raw id rather than nothing."""
@@ -1501,8 +1504,6 @@ class Query:  # REQ-021, REQ-042
     async def roles(
         self, info: StrawberryInfo
     ) -> list[RoleType]:  # REQ-042, REQ-059, REQ-060, REQ-215
-        from provisa.core.repositories import data_product as data_product_repo
-
         active_org_id = _resolve_admin_context(info)
         pool = await _get_pool()
         async with pool.acquire() as conn:
@@ -1517,8 +1518,9 @@ class Query:  # REQ-021, REQ-042
             identity = getattr(request.state, "identity", None)
             full = role_definitions_visible(request, getattr(identity, "roles", []))
             rows = [dict(r._mapping) for r in _res.fetchall()]
-            # REQ-2188: what it holds includes what an Owner field gives it, which it does not store.
-            owned = with_owner_grant(rows, await data_product_repo.owner_roles(conn))
+            # REQ-2188: what it holds includes the RW data_product_owner gives it, which it does
+            # not store.
+            owned = with_owner_grant(rows)
             held = held_by_role(
                 owned, domain_tree.parent_map(await domain_repo.list_all(cast("Connection", conn)))
             )

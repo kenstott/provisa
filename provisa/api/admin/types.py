@@ -200,7 +200,9 @@ class DataProductType:  # REQ-1634, REQ-1660
     id: str
     domain_id: str
     name: str
-    owner_role: str | None = None
+    # REQ-2219 (amended 2026-11-23): the people who own it, by user id: those whose
+    # data_product_owner entitlement row names it (provisa.entitlements.owners).
+    owners: list[str] = strawberry.field(default_factory=list)
     team_role: str | None = None
     purpose: str = ""
     limitations: str = ""
@@ -1104,7 +1106,7 @@ class RoleType:  # REQ-042
 
 
 @strawberry.type
-class UserSummaryType:  # REQ-609/REQ-1634: resolves an owner_role/steward to the individuals it grants to
+class UserSummaryType:  # REQ-609/REQ-1634: resolves an owner/steward ref to the individuals it names
     user_id: str | None  # user_id and email: user_management only, null otherwise
     display_name: str | None = None
     email: str | None = None
@@ -1226,7 +1228,10 @@ class DataProductInput:  # REQ-1634
     id: str
     domain_id: str
     name: str
-    owner_role: str | None = None
+    # REQ-2219 (amended 2026-11-23): the people the Owner field names, by user id; saving writes or
+    # ends their data_product_owner rows. Null leaves the owners as held: a client that does not
+    # show the field (the dbt registration) does not unname anyone.
+    owners: list[str] | None = None
     team_role: str | None = None
     purpose: str = ""
     limitations: str = ""

@@ -483,10 +483,10 @@ def test_a_status_change_moves_the_model_stamp_and_not_the_build_stamp(tenant_db
 @pytest.mark.parametrize(
     "values",
     [
-        {"owner_role": "org_admin"},  # what the build reads (REQ-2188)
         {"domain_id": "finance"},  # what the build reads (REQ-2219)
         {"name": "renamed"},  # a column not listed as one the build ignores
-        {"status": "live", "owner_role": "org_admin"},  # a status beside what the build reads
+        {"team_role": "org_admin"},  # another
+        {"status": "live", "domain_id": "finance"},  # a status beside what the build reads
     ],
     ids=lambda v: "+".join(v),
 )

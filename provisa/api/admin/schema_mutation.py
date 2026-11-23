@@ -612,7 +612,6 @@ async def _save_data_product(
             id=input.id,
             domain_id=input.domain_id,
             name=input.name,
-            owner_role=input.owner_role or None,
             team_role=input.team_role or None,
             purpose=input.purpose,
             limitations=input.limitations,
@@ -636,17 +635,42 @@ async def _save_data_product(
             freshness=input.freshness,  # REQ-2180
             created_by=creator if stored is None else None,  # REQ-2219: set on insert only
         )
-        await data_product_repo.upsert(conn, model)
-        if stored is None and creator is not None:
-            # REQ-2219: creating a product grants its creator read-write on it, as an entitlement.
-            from provisa.api.admin.capabilities import acting_role_of
-            from provisa.entitlements.store import record_product_creator
+        from provisa.entitlements.owners import OwnerRefused, reload_owner_rows, save_owner_field
 
-            await record_product_creator(
-                conn, creator, acting_role_of(info), input.domain_id, input.id
+        try:
+            async with conn.transaction():
+                await data_product_repo.upsert(conn, model)
+                if stored is None and creator is not None:
+                    # REQ-2219: creating a product grants its creator read-write on it, as an
+                    # entitlement.
+                    from provisa.api.admin.capabilities import acting_role_of
+                    from provisa.entitlements.store import record_product_creator
+
+                    await record_product_creator(
+                        conn, creator, acting_role_of(info), input.domain_id, input.id
+                    )
+                # REQ-2219 (amended 2026-11-23): the Owner field names people; saving writes or
+                # ends their data_product_owner rows. A product moved to another domain is
+                # named again under it.
+                changed = await save_owner_field(
+                    conn,
+                    input.id,
+                    input.domain_id,
+                    input.owners,
+                    stored_domain_id=None if stored is None else stored["domain_id"],
+                    set_by=creator,
+                )
+        except OwnerRefused as refused:
+            return MutationResult(
+                success=False,
+                message=str(refused),
+                code=refused.code,
+                params={"data_product": input.id, "owner": refused.principal},
             )
-    if (None if stored is None else stored["owner_role"]) != model.owner_role:
-        await _rebuild_schemas()  # REQ-2188: the Owner field decides who holds RW
+        if changed:
+            from provisa.api.app import state
+
+            await reload_owner_rows(conn, state, changed)
     if creating:
         return MutationResult(
             success=True,
@@ -4130,7 +4154,16 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             if stored is not None:  # REQ-1944: an absent product is the not-found below
                 require_right_in_domains(info, "data_product_rw", {stored["domain_id"]})
             try:
-                deleted = await data_product_repo.delete(cast("Connection", conn), id)
+                from provisa.entitlements.owners import end_product_owners
+
+                ended: set[str] = set()
+                async with cast("Connection", conn).transaction():
+                    if stored is not None:
+                        # REQ-2219: no row is left naming a product that is gone.
+                        ended = await end_product_owners(
+                            cast("Connection", conn), id, stored["domain_id"], set_by=None
+                        )
+                    deleted = await data_product_repo.delete(cast("Connection", conn), id)
             except data_product_repo.DataProductDeleteRefused as refused:
                 from provisa.api.admin.read_rights import reader_for, refusal
 
@@ -4146,9 +4179,12 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                         "dependents": _named,
                     },
                 )
+            if deleted and ended:
+                from provisa.api.app import state
+                from provisa.entitlements.owners import reload_owner_rows
+
+                await reload_owner_rows(cast("Connection", conn), state, ended)
         if deleted:
-            if stored is not None and stored["owner_role"]:
-                await _rebuild_schemas()  # REQ-2188: the Owner field decides who holds RW
             return MutationResult(
                 success=True,
                 message=f"Data product {id!r} deleted",

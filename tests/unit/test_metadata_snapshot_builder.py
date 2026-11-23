@@ -150,13 +150,18 @@ def test_tables_sharing_a_product_publish_as_one_data_product():
                 id="customer_360",
                 domain_id="sales",
                 name="Customer 360",
-                owner_role="alice",
                 purpose="Unified customer view",
             )
         ],
     )
 
-    snapshot = build_snapshot(config, org_id="acme", dialect="postgres", contexts={})
+    snapshot = build_snapshot(
+        config,
+        org_id="acme",
+        dialect="postgres",
+        contexts={},
+        product_owners={"customer_360": ("alice",)},  # REQ-2219: owners are people
+    )
 
     assert len(snapshot.data_products) == 1
     product = snapshot.data_products[0]
@@ -177,11 +182,7 @@ def test_data_product_with_no_exported_members_does_not_publish():
     config = _config(
         tables=[_table(table_name="orders")],
         members={},
-        data_products=[
-            DataProduct(
-                id="customer_360", domain_id="sales", name="Customer 360", owner_role="alice"
-            )
-        ],
+        data_products=[DataProduct(id="customer_360", domain_id="sales", name="Customer 360")],
     )
 
     snapshot = build_snapshot(config, org_id="acme", dialect="postgres", contexts={})
@@ -193,9 +194,7 @@ def test_data_product_without_owner_publishes_with_no_owner_ref():
     config = _config(
         tables=[_table(table_name="orders")],
         members={"customer_360": ["orders"]},
-        data_products=[
-            DataProduct(id="customer_360", domain_id="sales", name="Customer 360", owner_role=None)
-        ],
+        data_products=[DataProduct(id="customer_360", domain_id="sales", name="Customer 360")],
     )
 
     snapshot = build_snapshot(config, org_id="acme", dialect="postgres", contexts={})

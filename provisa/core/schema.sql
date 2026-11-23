@@ -173,8 +173,9 @@ ON CONFLICT (id) DO NOTHING;
 
 -- REQ-1634: a data product groups tables within a single domain for governed publication.
 -- REQ-1634: fields aligned to the ODPS (Open Data Product Standard) metamodel where Provisa
--- already has the underlying source of truth -- team_role/owner_role resolve to individuals
--- via the existing role machinery (OwnerResolutionInline), tags/authoritativeDefinitions/
+-- already has the underlying source of truth -- team_role resolves to individuals via the
+-- existing role machinery (OwnerResolutionInline); its owners are people, each holding a
+-- data_product_owner entitlement row naming it (REQ-2219); tags/authoritativeDefinitions/
 -- inputPorts are derived from existing tag assignments/glossary/lineage rather than stored here,
 -- and support stays prose. REQ-2180: its contracts are derived from its offers
 -- (data_product_offer_contracts); what they share (freshness, support) is written once here.
@@ -182,7 +183,6 @@ CREATE TABLE IF NOT EXISTS data_products (
     id            TEXT PRIMARY KEY,
     domain_id     TEXT NOT NULL REFERENCES domains(id) ON DELETE CASCADE,
     name          TEXT NOT NULL,
-    owner_role    TEXT,
     team_role     TEXT,
     purpose       TEXT NOT NULL DEFAULT '',
     limitations   TEXT NOT NULL DEFAULT '',
@@ -206,7 +206,6 @@ CREATE TABLE IF NOT EXISTS data_products (
     -- product: a read trails its source by at most this many seconds; NULL: each dataset's own.
     freshness     INTEGER
 );
-ALTER TABLE data_products ADD COLUMN IF NOT EXISTS owner_role TEXT;
 ALTER TABLE data_products ADD COLUMN IF NOT EXISTS freshness INTEGER;
 ALTER TABLE data_products ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT now();
 

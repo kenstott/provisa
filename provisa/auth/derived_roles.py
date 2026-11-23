@@ -146,7 +146,7 @@ def principal_session_vars(
 ) -> dict[str, str]:
     """The session variables a principal binds (REQ-1682): its resolved attributes, then
     ``user_id``, ``role`` and ``acting_roles`` from the acting identity."""
-    from provisa.core.request_context import ACTING_ROLES_VAR
+    from provisa.core.request_context import ACTING_ROLES_VAR, OWNED_PRODUCTS_VAR
     from provisa.security.meta_role import members_of
 
     out = dict(attributes)
@@ -155,6 +155,8 @@ def principal_session_vars(
     # REQ-2188: bound here and nowhere else, over any attribute of the name: a client never says
     # which roles a rule reads it acting as.
     out.pop(ACTING_ROLES_VAR, None)
+    # REQ-2219: the products a person owns are read from their rows by the model store alone.
+    out.pop(OWNED_PRODUCTS_VAR, None)
     if role_id:
         out["role"] = str(role_id)
         out[ACTING_ROLES_VAR] = ",".join(members_of(str(role_id)))

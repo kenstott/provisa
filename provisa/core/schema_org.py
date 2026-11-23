@@ -231,7 +231,6 @@ data_products = Table(  # REQ-1634
     Column("id", Text, primary_key=True),
     Column("domain_id", Text, ForeignKey("domains.id", ondelete="CASCADE"), nullable=False),
     Column("name", Text, nullable=False),
-    Column("owner_role", Text),
     Column("team_role", Text),
     Column("purpose", Text, nullable=False, server_default=""),
     Column("limitations", Text, nullable=False, server_default=""),

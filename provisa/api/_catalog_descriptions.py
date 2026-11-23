@@ -475,7 +475,6 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "id": "Data product identifier",
         "domain_id": "Domain the product is published in",
         "name": "Name the product is listed under",
-        "owner_role": "Role that owns the product",
         "team_role": "Role of the team that maintains the product",
         "purpose": "What the product is for",
         "limitations": "What the product should not be used for, and its known gaps",

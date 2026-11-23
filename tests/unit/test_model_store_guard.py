@@ -359,7 +359,7 @@ async def test_a_role_is_blocked_by_its_holders_its_heirs_and_every_grant_naming
         id="dp",
         domain_id="sales",
         name="Sales",
-        owner_role="seller",
+        team_role="seller",
     )
     async with plane.db.acquire() as conn:
         dom = metadata.tables["domains"]
@@ -372,7 +372,7 @@ async def test_a_role_is_blocked_by_its_holders_its_heirs_and_every_grant_naming
         ObjectRef("column", column): ("table_columns.visible_to",),
         ObjectRef("metric", "revenue"): ("metrics.visible_to",),
         ObjectRef("command", "refund"): ("tracked_functions.visible_to",),
-        ObjectRef("data_product", "dp"): ("data_products.owner_role",),
+        ObjectRef("data_product", "dp"): ("data_products.team_role",),
         ObjectRef("domain", "finance"): ("domains.steward",),
     }
     # Its row filters go with it.

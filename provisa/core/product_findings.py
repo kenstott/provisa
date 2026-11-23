@@ -114,11 +114,15 @@ async def member_deprecated(conn: "Connection", _ctx: Context) -> dict[str, list
 
 
 async def no_owner(conn: "Connection", _ctx: Context) -> dict[str, list[Finding]]:
-    """A product no role is accountable for."""
+    """A product no person owns (REQ-2219, amended 2026-11-23: an owner is a person whose
+    data_product_owner row names it)."""
+    from provisa.entitlements.owners import product_owners
+
+    owners = await product_owners(conn)
     return {
-        p.id: [_finding("no_owner", "no owner role is accountable for it")]
+        p.id: [_finding("no_owner", "no person owns it")]
         for p in await _in_service(conn)
-        if not p.owner_role
+        if not owners.get(p.id)
     }
 
 

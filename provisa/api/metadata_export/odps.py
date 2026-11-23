@@ -139,10 +139,10 @@ def _support(product: "DataProductAsset") -> list[dict[str, Any]]:
 
 
 def _team(product: "DataProductAsset") -> dict[str, Any] | None:
-    """The product's team in ODPS's own fields: named for its team role (else its owner role),
-    each member a holder of one of the two roles by address, with that role as its role."""
-    owner_role = product.owner.id if product.owner is not None else None
-    if not (owner_role or product.team_role):
+    """The product's team in ODPS's own fields: named for its team role (else its owners), each
+    member an owner or a holder of the team role by address, with that as its role."""
+    owners = product.owner.id if product.owner is not None else None
+    if not (owners or product.team_role):
         return None
     members = [
         {"username": email, "role": role}
@@ -150,12 +150,15 @@ def _team(product: "DataProductAsset") -> dict[str, Any] | None:
         for email in emails
     ]
     named = "; ".join(
-        f"{purpose} role {role}"
-        for purpose, role in (("owner", owner_role), ("team", product.team_role))
-        if role
+        text
+        for text in (
+            f"owners {owners}" if owners else None,
+            f"team role {product.team_role}" if product.team_role else None,
+        )
+        if text
     )
     return {
-        "name": product.team_role or owner_role,
+        "name": product.team_role or owners,
         "description": named[0].upper() + named[1:],
         **({"members": members} if members else {}),
     }

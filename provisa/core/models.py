@@ -613,7 +613,6 @@ class DataProduct(BaseModel):  # REQ-1634
     id: str
     domain_id: str  # required FK — a data product has exactly one owning domain
     name: str
-    owner_role: str | None = None  # role accountable for this product; distinct from Domain.steward
     team_role: str | None = (
         None  # role whose holders form the working team; resolves to individuals
     )
@@ -634,7 +633,7 @@ class DataProduct(BaseModel):  # REQ-1634
     support: str | None = None
     # REQ-1635: Horizon Catalog's CREATE ORGANIZATION LISTING mandates a support contact
     # (email or URL) on the manifest — there is no other email/URL-shaped field on a data
-    # product this can be derived from (owner_role is a role name, not a contact address).
+    # product this can be derived from (its owners are people, held as entitlement rows).
     support_contact: str | None = None
     custom_properties: dict[str, str] = Field(default_factory=dict)
     # REQ-2180: the freshness every contract of the product promises: a read trails its source
@@ -651,6 +650,20 @@ class DataProduct(BaseModel):  # REQ-1634
     # loads; an offer the file does not declare is kept (an apply removes nothing). A product
     # declaring none keeps the default offer it starts with.
     offers: list["DeclaredOffer"] = Field(default_factory=list)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _no_owner_role(cls, data: Any) -> Any:
+        # REQ-2219 (amended 2026-11-23): a product's owners are people, each holding a
+        # data_product_owner entitlement row naming it; the configuration carries no owner_role,
+        # and one that still does is refused rather than read past.
+        if isinstance(data, dict) and "owner_role" in data:
+            raise ValueError(
+                f"data product {data.get('id')!r}: owner_role is no longer a setting -- a "
+                "product's owners are people, named in its Owner field, each holding a "
+                "data_product_owner entitlement row naming it. Remove the key."
+            )
+        return data
 
     @model_validator(mode="after")
     def _status_fields_fit(self) -> "DataProduct":

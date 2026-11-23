@@ -55,6 +55,7 @@ from provisa.security.inheritance import materialize_rls
 from tests.governed_pg import governed_database
 from tests.rules import holds, rule_of, rules_of
 from provisa.security.row_filters import (
+    OWNER_RULE,
     acting_model_rule,
     model_write_rules,
     resolve_rules_by_right,
@@ -481,7 +482,7 @@ async def plane(control_plane):
         for product, owner in (("pets_p", "pets_team"), ("sales_p", "sales_team")):
             await conn.execute_core(
                 insert(data_products).values(
-                    id=product, domain_id="pets", name=product, owner_role=owner
+                    id=product, domain_id="pets", name=product, team_role=owner
                 )
             )
     return db
@@ -489,18 +490,19 @@ async def plane(control_plane):
 
 @pytest.fixture
 def rights(monkeypatch):
-    """pets_team holds RW on data_products with U and D rules naming the product's owner role;
-    org_admin holds RW with none."""
+    """pets_team holds RW on data_products with the generated U and D rules, its person owning
+    pets_p (REQ-2219: the products their data_product_owner rows name); org_admin holds RW with
+    none."""
     held = {
-        ("pets_team", "data_products", "U"): OWNS,
-        ("pets_team", "data_products", "D"): OWNS,
+        ("pets_team", "data_products", "U"): OWNER_RULE,
+        ("pets_team", "data_products", "D"): OWNER_RULE,
     }
 
     def provider(role, table, right):
         predicate = held.get((role, table, right))
         if predicate is None:
             return None
-        return ModelRule(predicate=predicate, session_vars={"acting_roles": role})
+        return ModelRule(predicate=predicate, session_vars={"owned_products": "pets_p"})
 
     monkeypatch.setattr(model_row_rules, "_provider", provider)
 
@@ -511,7 +513,7 @@ def _acting(role):
 
 def _product(product, name):
     owner = "pets_team" if product == "pets_p" else "sales_team"
-    return DataProduct(id=product, domain_id="pets", name=name, owner_role=owner)
+    return DataProduct(id=product, domain_id="pets", name=name, team_role=owner)
 
 
 async def _name(db, product):
@@ -596,7 +598,7 @@ async def test_a_refused_retirement_moves_no_member(plane, rights):
                 id="sales_next",
                 domain_id="pets",
                 name="n",
-                owner_role="sales_team",
+                team_role="sales_team",
                 status="live",
             )
         )
@@ -692,12 +694,12 @@ async def test_a_rule_column_only_the_view_holds_resolves_through_the_view(plane
     async with plane.acquire() as conn:
         await conn.execute(
             "CREATE VIEW data_products_meta AS "
-            "SELECT id, owner_role, 'x' AS derived FROM data_products"
+            "SELECT id, team_role, 'x' AS derived FROM data_products"
         )
 
     def provider(role, table, right):
         return ModelRule(
-            predicate="derived = 'x' AND owner_role = 'pets_team'",
+            predicate="derived = 'x' AND team_role = 'pets_team'",
             session_vars={},
             view="data_products_meta",
         )
@@ -735,7 +737,8 @@ async def test_a_rule_with_a_literal_holding_a_colon_runs(plane, monkeypatch):
         model_row_rules,
         "_provider",
         lambda role, table, right: ModelRule(
-            predicate=OWNS, session_vars={"acting_roles": "meta:x+y,pets_team"}
+            predicate="team_role IN (current_setting('provisa.acting_roles'))",
+            session_vars={"acting_roles": "meta:x+y,pets_team"},
         ),
     )
     token = _acting("pets_team")

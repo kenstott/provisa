@@ -139,9 +139,11 @@ class TestWhatEachHolds:
     def test_data_quality_needs_no_table_registration(self):
         assert _rights("dq_steward") == _rights("viewer") | {"dq_read", "dq_rw"}
 
-    def test_a_data_product_owner_holds_nothing_until_an_owner_field_names_it(self):
-        """REQ-2188: the Owner field gives RW, with the generated rules, to any role it names."""
-        assert _rights("data_product_owner") == _rights("viewer")
+    def test_a_data_product_owner_holds_the_owner_capability_and_no_rw_of_its_own(self):
+        """REQ-2188, REQ-2219 (amended 2026-11-23): the role carries data_product_owner, so a
+        person holding it can be named in an Owner field; RW comes with the generated rules, held
+        to the products the person's own rows name, and is not stored on the role."""
+        assert _rights("data_product_owner") == _rights("viewer") | {"data_product_owner"}
 
     def test_org_admin_holds_data_product_rw_directly(self):
         assert "data_product_rw" in STANDARD_ROLES["org_admin"].capabilities

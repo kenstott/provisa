@@ -67,12 +67,14 @@ modeler:
   capabilities: [ignore_relationships]
 
 data_product_owner:
-  description: "A role to name in a data product's Owner field: edits the data products that name it."
-  # REQ-2188: it holds nothing of its own. Naming a role in an Owner field gives that role RW on data
-  # products with the generated U and D rules (security/row_filters.with_owner_grant), this one or any other.
+  description: "Owns the data products a person holding it is named owner of: edits those products and no other."
+  # REQ-2188, REQ-2219 (amended 2026-11-23): a person named in a product's Owner field holds a
+  # data_product_owner row naming it on a role carrying the capability. Such a role holds RW on data
+  # products with the generated U and D rules (security/row_filters.with_owner_grant), held to the
+  # products the person's own rows name.
   parents: [viewer]
   domain_access: ["*"]
-  capabilities: []
+  capabilities: [data_product_owner]
 
 security_admin:
   description: "Configures access: row rules, column grants, masks and sensitive columns."

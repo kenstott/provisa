@@ -224,13 +224,16 @@ def test_openlineage_dataset_facet_names_its_data_products():  # REQ-1634
                 id="prod",
                 domain_id="sales",
                 name="Sales 360",
-                owner_role="alice",
                 purpose="Unified",
             )
         ],
     )
     snap = build_snapshot(
-        all_members_of(config, "prod"), org_id="acme", dialect="postgres", contexts={}
+        all_members_of(config, "prod"),
+        org_id="acme",
+        dialect="postgres",
+        contexts={},
+        product_owners={"prod": ("alice",)},
     )
     events = to_events(snap, event_time=EVENT_TIME)
     orders = next(

@@ -62,7 +62,6 @@ async def upsert(  # REQ-1634, REQ-1919
             "id": product.id,
             "domain_id": product.domain_id,
             "name": product.name,
-            "owner_role": product.owner_role,
             "team_role": product.team_role,
             "purpose": product.purpose,
             "limitations": product.limitations,
@@ -82,7 +81,6 @@ async def upsert(  # REQ-1634, REQ-1919
         update_columns=[
             "domain_id",
             "name",
-            "owner_role",
             "team_role",
             "purpose",
             "limitations",
@@ -131,14 +129,6 @@ async def list_by_domain(conn: "Connection", domain_id: str) -> list[dict]:  # R
         .order_by(data_products.c.id)
     )
     return [dict(r._mapping) for r in result.fetchall()]
-
-
-async def owner_roles(conn: "Connection") -> set[str]:  # REQ-2188
-    """The roles named in an Owner field: what the runtime build gives RW on data products."""
-    result = await conn.execute_core(
-        select(data_products.c.owner_role).where(data_products.c.owner_role.is_not(None)).distinct()
-    )
-    return {r[0] for r in result.fetchall()}
 
 
 class DataProductDeleteRefused(Exception):

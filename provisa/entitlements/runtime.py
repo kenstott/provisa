@@ -356,6 +356,35 @@ def _reaches(
     return False
 
 
+def owned_products(state: Any) -> tuple[str, ...]:
+    """The ids of the products the bound person owns (REQ-2219, amended 2026-11-23): those a
+    data_product_owner row of theirs names, Provisa-held or their identity provider's, on a role
+    they act as that holds the capability. A role holding it with no list owns nothing by it.
+    Ownership is a person's: with no person bound there is no one to own anything, so a write no
+    person makes is held to no product (``entitlements.owners``)."""
+    from provisa.entitlements.owners import DATA_PRODUCT_OWNER, owned_by  # noqa: PLC0415
+
+    request = _current.get()
+    if request is None:
+        return ()
+    held = state.held_entitlements.get(request.user_id, _NOTHING_HELD)
+    members = [m for role_id in request.acting_roles for m in _members(role_id)]
+
+    def holds_owner(role_id: str) -> bool:
+        role = state.roles.get(role_id)
+        return role is not None and DATA_PRODUCT_OWNER in (role.get("capabilities") or ())
+
+    return owned_by(
+        held.lists,
+        request.idp,
+        held.expiries,
+        members,
+        holds_owner,
+        state.data_product_refs,
+        datetime.now(UTC),
+    )
+
+
 def reaches_role(state: Any, target_role: str, capabilities: Collection[str]) -> bool:
     """Whether the bound person's ``roles`` lists reach ``target_role``, through a role they act as
     that holds one of ``capabilities`` (REQ-2219). A list naming a role covers it and every role

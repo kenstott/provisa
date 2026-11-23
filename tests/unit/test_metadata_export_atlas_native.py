@@ -106,13 +106,18 @@ def test_data_product_entity_aggregates_its_member_table():  # REQ-1634
                 id="prod",
                 domain_id="pet-store",
                 name="Pets 360",
-                owner_role="alice",
                 purpose="Unified pet view",
             )
         ]
     )
     entities = to_native_entities(
-        build_snapshot(config, org_id="acme", dialect="postgres", contexts={})
+        build_snapshot(
+            config,
+            org_id="acme",
+            dialect="postgres",
+            contexts={},
+            product_owners={"prod": ("alice",)},
+        )
     )
     by_type = {e.type_name: e for e in entities}
     table = by_type[PROVISA_TABLE_TYPE]

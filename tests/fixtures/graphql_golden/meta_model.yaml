@@ -6716,10 +6716,6 @@ tables:
     data_type: text
     visible_to:
     - viewer
-  - name: owner_role
-    data_type: text
-    visible_to:
-    - viewer
   - name: purpose
     data_type: text
     visible_to:

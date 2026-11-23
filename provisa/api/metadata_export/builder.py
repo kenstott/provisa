@@ -257,6 +257,8 @@ def _data_product_assets(
     page_org_id: str = "",
     owner_emails: Mapping[str, tuple[str, ...]] | None = None,
     product_created: Mapping[str, datetime] | None = None,
+    product_owners: Mapping[str, tuple[str, ...]] | None = None,
+    person_emails: Mapping[str, str] | None = None,
 ) -> list[DataProductAsset]:
     from provisa.core.mail import admin_graphql_url, data_product_lineage_url, data_product_page_url
 
@@ -274,15 +276,15 @@ def _data_product_assets(
         members = members_by_product.get(product.id, [])
         if not members and product.status != "retired":
             continue
+        # REQ-2219 (amended 2026-11-23): a product's owners are people, by user id.
+        owners = (product_owners or {}).get(product.id, ())
         assets.append(
             DataProductAsset(
                 ref=data_product_ref(product.id),
                 id=product.id,
                 name=product.name,
                 domain_id=product.domain_id,
-                owner=OwnerRef(id=product.owner_role, kind="data_product_owner")
-                if product.owner_role
-                else None,
+                owner=OwnerRef(id=", ".join(owners), kind="data_product_owner") if owners else None,
                 description=product.purpose,
                 members=tuple(table_ref(t) for t in members),
                 semantic_uri=data_product_uri(org_id, product.domain_id, product.id),
@@ -294,7 +296,10 @@ def _data_product_assets(
                 status=product.status,
                 support=product.support,
                 custom_properties=dict(product.custom_properties),
-                owner_emails=(owner_emails or {}).get(product.owner_role or "", ()),
+                # An owner with no address in the directory is named by no address.
+                owner_emails=tuple(
+                    (person_emails or {})[u] for u in owners if u in (person_emails or {})
+                ),
                 team_emails=(owner_emails or {}).get(product.team_role or "", ()),
                 created_at=_utc_iso((product_created or {}).get(product.id)),
                 documentation_url=(
@@ -849,6 +854,8 @@ def build_snapshot(
     documentation_base_url: str | None = None,
     owner_emails: Mapping[str, tuple[str, ...]] | None = None,
     product_created: Mapping[str, datetime] | None = None,
+    product_owners: Mapping[str, tuple[str, ...]] | None = None,
+    person_emails: Mapping[str, str] | None = None,
     endpoints: ServingEndpoints | None = None,
     offers: Mapping[str, tuple[OfferExport, ...]] | None = None,
 ) -> MetadataSnapshot:  # REQ-1070
@@ -866,7 +873,9 @@ def build_snapshot(
     names a contract's dataset addresses (REQ-1443).
 
     ``owner_emails`` (REQ-2118) is each role's holders' email addresses, by role id, read by the
-    caller: a data product's owners are its owner role's holders, its team its team role's.
+    caller: a data product's team is its team role's holders. ``product_owners`` (REQ-2219) is
+    each product's owners, people by user id (``entitlements.owners.product_owners``), and
+    ``person_emails`` their addresses, both read by the caller.
     ``product_created`` is when each product was created, by product id, read by the caller.
     ``endpoints`` is where a consumer reads the products, which a contract names as its servers.
     ``offers`` (REQ-2180) is each product's offers with the contracts derived from them, by product
@@ -956,6 +965,8 @@ def build_snapshot(
             page_org_id=org_id,
             owner_emails=owner_emails or {},
             product_created=product_created or {},
+            product_owners=product_owners or {},
+            person_emails=person_emails or {},
         ),
         relationships=relationships,
         lineage=[

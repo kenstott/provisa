@@ -52,7 +52,13 @@ from provisa.core.models import ConsumerKind, DataProductOffer
 from provisa.core.repositories import data_product as data_product_repo
 from provisa.core.repositories import data_product_offer as offers
 from provisa.core.repositories.data_product_offer import OfferRefused
-from provisa.entitlements.runtime import entitlements_scope, reaches_role, role_defaults
+from provisa.entitlements.owners import owners_of
+from provisa.entitlements.runtime import (
+    entitlements_scope,
+    owned_products,
+    reaches_role,
+    role_defaults,
+)
 from provisa.security.rights import Capability
 
 router = APIRouter(prefix="/admin/data-products", tags=["admin"])
@@ -159,16 +165,11 @@ async def principal_refusal(conn: Any, state: Any, principal: str, role_id: str)
 
 
 def _is_owner(request: Request, state: Any, product: dict) -> bool:
-    """Whether the caller acts as the product's owner role, or a role beneath it. In dev/no-auth
-    mode every gate is open."""
+    """Whether the caller owns the product (REQ-2219, amended 2026-11-23): a data_product_owner row
+    of theirs names it, on a role they act as. In dev/no-auth mode every gate is open."""
     if _caller(request) is None:
         return True
-    owner = product.get("owner_role")
-    if not owner:
-        return False
-    acting = str(getattr(request.state, "role", "") or "")
-    members = state.meta_roles.get(acting) or [acting]
-    return any(owner in state.role_chains.get(m, [m]) for m in members)
+    return product["id"] in owned_products(state)
 
 
 async def _product(conn: Any, product_id: str) -> dict:
@@ -379,14 +380,17 @@ async def _destination(state: Any) -> tuple[str, offer_hooks.HookTarget | None]:
     return offer_hooks.destination(target, state.auth_config or {}), target
 
 
-def approver_of(product: dict, target: offer_hooks.HookTarget | None) -> dict[str, str | None]:
-    """Who approves a request for ``product`` (amended 2026-11-11, A BID NAMES ITS CONSUMER AND
+def approver_of(
+    owners: tuple[str, ...], target: offer_hooks.HookTarget | None
+) -> dict[str, str | None]:
+    """Who approves a request for a product (amended 2026-11-11, A BID NAMES ITS CONSUMER AND
     AGREES TO THE TERMS): the authority the org's request hook reaches, named by its host alone --
-    a requester never reads the hook's credentials, path or query -- else the product's owner
-    role, whose queue holds the request (None: the product names no owner role)."""
+    a requester never reads the hook's credentials, path or query -- else the product's owners
+    (REQ-2219: people, by user id, comma-joined), whose queue holds the request (None: no one
+    owns the product)."""
     if target is not None:
         return {"via": "hook", "name": urlsplit(target.url).hostname}
-    return {"via": "owner", "name": product.get("owner_role")}
+    return {"via": "owner", "name": ", ".join(owners) or None}
 
 
 @router.get("/{product_id}/approver")
@@ -396,12 +400,13 @@ async def approver(product_id: str, request: Request) -> dict[str, str | None]:
     require_capability_request(request, "data_product_read")
     state = _state()
     async with state.model_db.acquire() as conn:
-        product = await _product(conn, product_id)
+        await _product(conn, product_id)
+        owners = await owners_of(conn, product_id)
     try:
         _, target = await _destination(state)
     except OfferRefused as refused:
         raise _refused(refused) from refused
-    return approver_of(product, target)
+    return approver_of(owners, target)
 
 
 async def _fire(target: offer_hooks.HookTarget | None, body: dict) -> None:
@@ -433,7 +438,7 @@ async def bid(product_id: str, offer_id: int, body: BidBody, request: Request) -
     requester = _requester(request)
     state = _state()
     async with state.model_db.acquire() as conn:
-        product = await _product(conn, product_id)
+        await _product(conn, product_id)
         try:
             offer_row = await offers.require_offer(conn, product_id, offer_id)
             if offer_row["open"]:
@@ -465,7 +470,7 @@ async def bid(product_id: str, offer_id: int, body: BidBody, request: Request) -
                     reason=body.reason,
                     consumer_kind=body.consumer_kind,
                     agreed=body.agreed,
-                    approver=approver_of(product, target)["name"],
+                    approver=approver_of(await owners_of(conn, product_id), target)["name"],
                     request_id=request_id,
                     hook=hook,
                     payload=payload,
@@ -508,7 +513,7 @@ async def _cancel(product_id: str, bid_id: int, reason: str, request: Request, s
 
 @router.get("/{product_id}/bids")
 async def list_bids(product_id: str, request: Request) -> list[dict]:
-    """The product's bids and cancels, newest first: all of them for its owner role, else the
+    """The product's bids and cancels, newest first: all of them for its owners, else the
     caller's own."""
     require_capability_request(request, "data_product_read")
     state = _state()
@@ -522,10 +527,9 @@ def _require_owner(request: Request, state: Any, product: dict) -> None:
     if not _is_owner(request, state, product):
         raise ApiError(
             403,
-            "data_product.bid.owner_role_required",
-            f"a bid for data product {product['id']!r} is decided by its owner role "
-            f"{product.get('owner_role')!r}",
-            owner_role=product.get("owner_role"),
+            "data_product.bid.owner_required",
+            f"a bid for data product {product['id']!r} is decided by its owners",
+            data_product=product["id"],
         )
 
 
@@ -579,7 +583,7 @@ async def _decide_locally(
     reason: str | None,
     request: Request,
 ) -> dict:
-    """The local request queue's client of the decision hook: the product's owner role decides
+    """The local request queue's client of the decision hook: the product's owners decide
     a pending bid, as the signed-in caller, now."""
     state = _state()
     async with state.model_db.acquire() as conn:

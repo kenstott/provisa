@@ -22,6 +22,8 @@ import pytest
 
 from provisa.api import offer_derivation
 from provisa.api.admin import data_product_offers_router as router
+from provisa.entitlements.lists import HeldEntitlements, HeldList
+from provisa.entitlements.runtime import entitlements_scope
 
 
 def _request(user_id: str = "anonymous", role: str = "") -> Any:
@@ -39,27 +41,62 @@ def _state(**more):
     )
 
 
+#: REQ-2219 (amended 2026-11-23): pam's data_product_owner row on ``owner`` names the product; sam's
+#: role holds the capability with no row; ``steward`` holds it too, and pam holds no row on it.
+_OWNED = HeldEntitlements(
+    lists=(HeldList("owner", "data_products", ("pets.dp",), capability="data_product_owner"),)
+)
+
+
+def _owner_state():
+    state = _state(
+        held_entitlements={"pam": _OWNED},
+        data_product_refs=(("dp", "pets"), ("other", "pets")),
+    )
+    state.roles = {
+        "viewer": {"capabilities": []},
+        "owner": {"capabilities": ["data_product_owner"]},
+        "steward": {"capabilities": ["data_product_owner"]},
+    }
+    return state
+
+
+def _is_owner(user: str, acting: str, product: str = "dp", idp: dict | None = None) -> bool:
+    identity = SimpleNamespace(
+        user_id=user,
+        acting_roles=[acting],
+        raw_claims={"entitlements": idp or {}},
+        entitlements_claim="entitlements",
+    )
+    with entitlements_scope(identity):
+        return router._is_owner(_request(user, acting), _owner_state(), {"id": product})
+
+
 @pytest.mark.parametrize(
-    ("acting", "owner"),
+    ("user", "acting", "owner"),
     [
-        ("owner", True),
-        ("steward", True),  # beneath the owner role
-        ("meta:viewer+steward", True),  # a set acting together, one beneath it
-        ("viewer", False),
+        ("pam", "owner", True),  # her row names it
+        ("pam", "meta:viewer+owner", True),  # a set acting together, one holding her row
+        ("pam", "steward", False),  # the capability, and no row of hers on that role
+        ("pam", "viewer", False),  # a role without the capability
+        ("sam", "owner", False),  # the capability with no row naming it
     ],
 )
-def test_a_bid_is_decided_by_the_products_owner_role(acting, owner):
-    request = _request("u1", acting)
-    assert router._is_owner(request, _state(), {"owner_role": "owner"}) is owner
+def test_a_bid_is_decided_by_the_products_owners(user, acting, owner):
+    assert _is_owner(user, acting) is owner
 
 
-def test_a_product_with_no_owner_role_has_no_one_to_decide_its_bids():
-    assert router._is_owner(_request("u1", "owner"), _state(), {"owner_role": None}) is False
+def test_an_owner_of_one_product_decides_no_other_products_bids():
+    assert _is_owner("pam", "owner", "other") is False
+
+
+def test_an_identity_providers_list_names_an_owner():
+    assert _is_owner("sam", "owner", idp={"owner": {"data_products": ["pets.dp"]}}) is True
 
 
 def test_dev_mode_opens_every_gate_but_an_undefined_role():
     state = _state()
-    assert router._is_owner(_request(), state, {"owner_role": None}) is True
+    assert router._is_owner(_request(), state, {"id": "dp"}) is True
     assert router.may_grant(_request(), state, "viewer") is None
     assert "not defined" in (router.may_grant(_request(), state, "ghost") or "")
 
@@ -207,14 +244,12 @@ def test_a_decision_refused_for_another_reason_does_not_list_the_offer(monkeypat
     assert listed == []
 
 
-def test_a_bid_names_the_products_owner_role_as_its_approver_with_no_hook():
+def test_a_bid_names_the_products_owners_as_its_approver_with_no_hook():
     """REQ-2180 (amended 2026-11-11, A BID NAMES ITS CONSUMER AND AGREES TO THE TERMS): the
-    request form names who approves it -- the product's owner role, where requests stay local."""
-    assert router.approver_of({"owner_role": "data_owner"}, None) == {
-        "via": "owner",
-        "name": "data_owner",
-    }
-    assert router.approver_of({"owner_role": None}, None) == {"via": "owner", "name": None}
+    request form names who approves it -- the product's owners (REQ-2219: people), where requests
+    stay local."""
+    assert router.approver_of(("pam", "sam"), None) == {"via": "owner", "name": "pam, sam"}
+    assert router.approver_of((), None) == {"via": "owner", "name": None}
 
 
 def test_a_bid_names_the_authority_its_hook_reaches_as_its_approver():
@@ -224,7 +259,7 @@ def test_a_bid_names_the_authority_its_hook_reaches_as_its_approver():
         url="https://user:pw@access.example.com:8443/requests?token=x", secret="${HOOK_SECRET}"
     )
     # The host alone: the URL's credentials, path and query are never shown to a requester.
-    assert router.approver_of({"owner_role": "data_owner"}, target) == {
+    assert router.approver_of(("pam",), target) == {
         "via": "hook",
         "name": "access.example.com",
     }
