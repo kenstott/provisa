@@ -66,6 +66,15 @@
         "rest": "REST",
         "grpc": "gRPC",
         "jsonapi": "JSON:API"
+      },
+      "aggregate": {
+        "cypher": "Подсчитать {{name}} в Cypher",
+        "sql": "Подсчитать {{name}} в SQL",
+        "sparql": "Подсчитать {{name}} в SPARQL",
+        "graphql": "Подсчитать {{name}} в GraphQL",
+        "rest": "Подсчитать {{name}} в REST",
+        "grpc": "Подсчитать {{name}} в gRPC",
+        "jsonapi": "Подсчитать {{name}} в JSON:API"
       }
     }
   }

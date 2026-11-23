@@ -8,12 +8,14 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-2252: what the acting role is served, read once per role for the page's life (it changes only
-// with the model): its GraphQL schema and root fields, its graph schema, and its SPARQL vocabulary.
-// Each is read on its own; a refusal leaves that one unread, and the surfaces it names no link.
+// REQ-2252: what the acting role is served, read once per role until the model changes: its GraphQL
+// schema and root fields, its graph schema, and its SPARQL vocabulary. Each is read on its own; a
+// refusal leaves that one unread, and the surfaces it names no link. A table registered, edited or
+// deleted (REQ-2252, amended 2026-11-22) changes them: every read is forgotten and read again, so
+// a table's links appear as soon as it is registered, without a reload.
 
-import { useEffect, useState } from "react";
-import { metaReader } from "../../api/metaGraph";
+import { useEffect, useState, useSyncExternalStore } from "react";
+import { metaReader, onServedSchemasChanged, servedSchemasVersion } from "../../api/metaGraph";
 import type { SparqlVocabulary } from "../graph/sparql";
 import type { GraphSchemaDoc, RelationshipSurfaces } from "./relationshipQueries";
 
@@ -25,6 +27,11 @@ async function read<T>(url: string, role: string): Promise<T> {
 
 const graphs = new Map<string, Promise<GraphSchemaDoc>>();
 const vocabularies = new Map<string, Promise<SparqlVocabulary>>();
+// Registered at load, so it runs before any reader is told the schemas changed.
+onServedSchemasChanged(() => {
+  graphs.clear();
+  vocabularies.clear();
+});
 
 function once<T>(cache: Map<string, Promise<T>>, role: string, load: () => Promise<T>): Promise<T> {
   let p = cache.get(role);
@@ -43,6 +50,7 @@ export function useRelationshipSurfaces(role: string | null): RelationshipSurfac
   const [surfaces, setSurfaces] = useState<{ role: string; value: RelationshipSurfaces } | null>(
     null,
   );
+  const version = useSyncExternalStore(onServedSchemasChanged, servedSchemasVersion);
   useEffect(() => {
     if (!role) return;
     let cancelled = false;
@@ -65,6 +73,6 @@ export function useRelationshipSurfaces(role: string | null): RelationshipSurfac
     return () => {
       cancelled = true;
     };
-  }, [role]);
+  }, [role, version]);
   return role && surfaces?.role === role ? surfaces.value : NONE;
 }

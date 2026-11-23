@@ -66,6 +66,15 @@
         "rest": "REST",
         "grpc": "gRPC",
         "jsonapi": "JSON:API"
+      },
+      "aggregate": {
+        "cypher": "{{name}} tellen in Cypher",
+        "sql": "{{name}} tellen in SQL",
+        "sparql": "{{name}} tellen in SPARQL",
+        "graphql": "{{name}} tellen in GraphQL",
+        "rest": "{{name}} tellen in REST",
+        "grpc": "{{name}} tellen in gRPC",
+        "jsonapi": "{{name}} tellen in JSON:API"
       }
     }
   }
