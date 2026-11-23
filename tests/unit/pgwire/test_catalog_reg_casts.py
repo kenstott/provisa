@@ -343,6 +343,15 @@ def test_metabase_select_1_is_named_question_column():
         ("SELECT c.oid::regclass::text", "oid"),  # a column names it through every cast
         ("SELECT CASE WHEN true THEN 1 END::text", "text"),  # CASE is weaker than a cast
         ("SELECT 1", "?column?"),
+        # REQ-2204: a call is named as PostgreSQL spells it, not by the node sqlglot parses it to.
+        ("SELECT string_agg(word, ',')", "string_agg"),  # GroupConcat (DBeaver #11)
+        ("SELECT pg_catalog.string_agg(word, ',')::text", "string_agg"),
+        ("SELECT bool_and(x)", "bool_and"),  # LogicalAnd
+        ("SELECT date_trunc('day', x)", "date_trunc"),  # TimestampTrunc
+        ("SELECT array_length(x, 1)", "array_length"),  # ArraySize
+        ("SELECT json_agg(x)", "json_agg"),  # JSONArrayAgg
+        ("SELECT ARRAY[1, 2]", "array"),
+        ("SELECT current_date", "current_date"),
     ],
 )
 def test_an_unaliased_cast_is_named_by_postgresqls_rule(sql, name):
