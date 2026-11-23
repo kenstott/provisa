@@ -167,7 +167,9 @@ async def _masked(table_id: int) -> Any:
 
     edited = table_input(await read_table(table_id))
     column = next(c for c in edited.columns if c.name == "amount")
-    column.masks = [MaskEntryInput(mask=MaskSpecInput(type="constant", value=0))]
+    # REQ-2131 (amended 2026-11-20): only NULL can be saved as a constant mask on a non-text
+    # column; ``amount`` is an integer.
+    column.masks = [MaskEntryInput(mask=MaskSpecInput(type="constant", value=None))]
     return edited
 
 
@@ -199,7 +201,7 @@ async def test_a_sales_steward_governs_sales_and_is_refused_finance(plane):
                 "type": "constant",
                 "pattern": None,
                 "replace": None,
-                "value": 0,
+                "value": None,
                 "precision": None,
             },
         }

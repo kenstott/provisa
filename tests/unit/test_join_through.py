@@ -25,7 +25,7 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
-from sqlalchemy import insert, select
+from sqlalchemy import insert, select, update
 
 from provisa.api.admin import join_through
 from provisa.core import schema_org as so
@@ -196,12 +196,12 @@ class _Saved:
             assert creating
             self.inputs.append(input)
             async with db.acquire() as conn:
+                # By virtual name, as the save resolves a table: its alias when set (REQ-014).
+                t = so.registered_tables
                 ids = {
-                    r.table_name: r.id
+                    r.alias or r.table_name: r.id
                     for r in (
-                        await conn.execute_core(
-                            select(so.registered_tables.c.id, so.registered_tables.c.table_name)
-                        )
+                        await conn.execute_core(select(t.c.id, t.c.table_name, t.c.alias))
                     ).fetchall()
                 }
                 await conn.execute_core(
@@ -293,6 +293,31 @@ async def test_joining_creates_one_via_table_relationship_and_keeps_both_hops(
     async with db.acquire() as conn:
         assert await join_through.plan(conn, "pt-product", "pt-tag") is None
         assert await join_through.plan(conn, "pt-tag", "pt-product") is None
+
+
+async def test_joining_names_each_table_by_its_virtual_name(tmp_path, monkeypatch):
+    """REQ-1586: a table registered under an alias is saved under the alias, as the save
+    resolves a table (REQ-014), never under its source name, which resolves to no table."""
+    db = await _store(tmp_path)
+    async with db.acquire() as conn:
+        for tid, alias in ((_PRODUCTS, "catalog_products"), (_PRODUCT_TAGS, "tagging")):
+            await conn.execute_core(
+                update(so.registered_tables)
+                .where(so.registered_tables.c.id == tid)
+                .values(alias=alias)
+            )
+    saved = _Saved(monkeypatch, db)
+    async with db.acquire() as conn:
+        planned = await join_through.plan(conn, "pt-product", "pt-tag")
+        assert planned is not None
+        result, _ = await join_through.create(_INFO, conn, planned.through, None)
+    assert result.success
+    (given,) = saved.inputs
+    assert (given.source_table_id, given.target_table_id, given.via_table) == (
+        "catalog_products",
+        "tags",
+        "tagging",
+    )
 
 
 async def test_a_generated_name_that_is_taken_is_told_apart(tmp_path):

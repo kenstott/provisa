@@ -142,10 +142,11 @@ class TestLiveImport:
 
     async def test_session_variable_filter_holds_row_by_row(self, client):
         field = await _field(client, "albums", USER)
-        body = await _data(client, f"{{ {field} {{ title artistId }} }}", USER)
+        # The sample names no naming_convention: hasura-default, its columns as defined (REQ-194).
+        body = await _data(client, f"{{ {field} {{ title artist_id }} }}", USER)
         assert not body.get("errors"), body
         rows = body["data"][field]
-        assert rows == [{"title": "Balls to the Wall", "artistId": 2}]
+        assert rows == [{"title": "Balls to the Wall", "artist_id": 2}]
 
     async def test_hidden_column_is_absent_from_the_role_schema(self, client):
         field = await _field(client, "albums", USER)

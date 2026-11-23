@@ -582,7 +582,11 @@ export async function registerRss(page: Page): Promise<Registration> {
   // _rebuild_schemas on an already-running runtime, which is exactly the path that needs to start
   // (or, on Trino's side after the swap, RE-start) this table's poll job.
   await page.goto("/tables");
-  await page.waitForSelector(".page-header", { timeout: 15000 });
+  // The header renders once the first TablesQuery answers (TablesPage's initial-load gate). Right
+  // after a registration it runs beside every worker's after-answer pass (names table, role warm-up):
+  // 6.4-7.0s server wait and ~15s from goto to the query on the swap lane (run 45170347899, saphana).
+  // The same 60s openTablesAddForm gives it.
+  await page.waitForSelector(".page-header", { timeout: 60000 });
   const row = page.locator(".data-table tbody tr").filter({ hasText: sourceId }).first();
   await row.waitFor({ timeout: 15000 });
   // Click the FIRST cell, not the row's own (default-center) point: TablesPage.tsx renders an

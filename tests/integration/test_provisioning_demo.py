@@ -326,7 +326,8 @@ def test_each_team_reads_its_own_governed_view_of_the_dataset(landed):
     finance = query(landed, sql, "finance")
     science = query(landed, sql, "data_science")
     assert any(r["margin"] for r in finance)
-    assert all(float(r["margin"]) == 0 for r in science)  # masked
+    # REQ-2131 (amended 2026-11-20): a masked decimal reads as NULL, keeping its type.
+    assert all(r["margin"] is None for r in science)  # masked
     assert all(r["category"] != "services" for r in science)  # its row rule
 
 
