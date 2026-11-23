@@ -494,4 +494,4 @@ async def test_a_joined_searchs_carried_words_are_inlined_as_text_not_as_its_vec
     assert inline["movie_hits"].column_types == {"score": "double", "_nf_query": "varchar"}
     sql = build_values_ctes_sql('SELECT "score", "_nf_query" FROM movie_hits', inline)
     assert "JSON" not in sql.upper()
-    assert "CAST('In the old age black was not counted fair' AS VARCHAR)" in sql
+    assert "CAST('In the old age black was not counted fair' AS TEXT)" in sql
