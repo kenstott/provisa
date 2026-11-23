@@ -202,6 +202,17 @@ def _registered_types(table: dict) -> dict[str, str]:
     return types
 
 
+def _registered_value_types(table: dict) -> dict[str, str]:
+    """:func:`_registered_types` of ``table``'s value columns only. A parameter column
+    (``native_filter_type`` set, ``_nf_<name>``) of a live read holds the argument given for it,
+    typed as the read types it: a joined search carries the words it was fed under the type of the
+    source column they came from (REQ-2099), while its registered type is the vector the words are
+    embedded into, so cast to that type the words are refused (a text read as JSON)."""
+    from provisa.core.parameters import is_parameter
+
+    return _registered_types({"columns": [c for c in table["columns"] if not is_parameter(c)]})
+
+
 def is_native_read(table: dict, types: dict[str, str], state: Any) -> bool:
     """Whether Provisa reads ``table`` itself, per statement, under the statement's arguments: a
     MongoDB pipeline table (REQ-1980), a Cosmos DB table with a query or parameters (REQ-1982),
@@ -743,7 +754,7 @@ async def _land_per_statement(
             cache_rewrites,
             values_cte_entries,
             answer,
-            _registered_types(table),
+            _registered_value_types(table),
         )
         return
     cache_tbl = cache_table_name(source_id, f"pipeline:{tn}", key)
@@ -781,8 +792,8 @@ async def _answer_live(
 ) -> None:
     """A TTL-0 read (REQ-1986): inlined when its rows are within the large-result threshold
     (``redirect.threshold``), else landed in a scratch table of this statement alone. Inlined,
-    a column keeps its ``registered`` type (:func:`_registered_types`) where the table registers
-    it: the landing type of an API column is a projection of it (a jsonb column lands as text)."""
+    a column keeps its ``registered`` type (:func:`_registered_value_types`) where the table
+    registers it: the landing type of an API column is a projection of it (a jsonb column lands as text)."""
     from provisa.api_source.engine_cache import ensure_cache_schema
     from provisa.executor.redirect import RedirectConfig
 
