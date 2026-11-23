@@ -1934,18 +1934,6 @@
       "reason": "400: InsertData is not served: this endpoint answers queries, and rows are written through the governed table writes"
     },
     {
-      "case": "syntax-update-1::test_27",
-      "job": "SPARQL-G2",
-      "since": "2026-11-22",
-      "reason": "400: InsertData is not served: this endpoint answers queries, and rows are written through the governed table writes"
-    },
-    {
-      "case": "syntax-update-1::test_28",
-      "job": "SPARQL-G2",
-      "since": "2026-11-22",
-      "reason": "400: InsertData is not served: this endpoint answers queries, and rows are written through the governed table writes"
-    },
-    {
       "case": "syntax-update-1::test_29",
       "job": "SPARQL-G2",
       "since": "2026-11-22",
@@ -1980,12 +1968,6 @@
       "job": "SPARQL-G2",
       "since": "2026-11-22",
       "reason": "400: Modify is not served: this endpoint answers queries, and rows are written through the governed table writes"
-    },
-    {
-      "case": "syntax-update-1::test_35",
-      "job": "SPARQL-G2",
-      "since": "2026-11-22",
-      "reason": "400: DeleteWhere is not served: this endpoint answers queries, and rows are written through the governed table writes"
     },
     {
       "case": "syntax-update-1::test_36",

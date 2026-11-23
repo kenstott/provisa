@@ -23,7 +23,7 @@ import pytest
 from rdflib import Graph, URIRef
 from starlette.requests import Request
 
-from provisa.api.rest.sparql_router import _query_text
+from provisa.api.rest.sparql_router import SparqlUpdate, _query_text
 from provisa.sparql_query.results import (
     NotAcceptable,
     negotiate,
@@ -217,15 +217,31 @@ def test_an_update_on_a_named_graph_is_refused_naming_what_the_model_lacks():
     assert "CLEAR" in json.dumps(doc)
 
 
-def test_an_insert_is_refused_by_name_and_not_as_a_named_graph():
-    doc = _refused(b"INSERT DATA { <urn:a> <urn:b> <urn:c> }", "application/sparql-update")
-    assert "acts on a named graph" not in json.dumps(doc)
-    assert "not served" in json.dumps(doc)
+def test_an_insert_is_an_update_the_endpoint_serves():
+    """REQ-2135 (amended 2026-11-22): a SPARQL Update that writes triples is served, through the
+    governed table writes (tests/unit/test_sparql_update.py), not refused."""
+    body = b"INSERT DATA { <urn:a> <urn:b> <urn:c> }"
+    carried = _text(_request("POST", body=body, content_type="application/sparql-update"))
+    assert carried == SparqlUpdate(body.decode())
 
 
 def test_an_update_form_field_is_an_update():
     doc = _refused(b"update=DROP+ALL", "application/x-www-form-urlencoded")
     assert "acts on a named graph" in json.dumps(doc)
+    form = _request(
+        "POST",
+        body=b"update=DELETE+WHERE+%7B+%3Fs+%3Fp+%3Fo+%7D",
+        content_type="application/x-www-form-urlencoded",
+    )
+    assert _text(form) == SparqlUpdate("DELETE WHERE { ?s ?p ?o }")
+
+
+def test_an_update_with_a_using_graph_is_refused():
+    doc = _refused(
+        b"update=DELETE+WHERE+%7B+%3Fs+%3Fp+%3Fo+%7D&using-graph-uri=http%3A%2F%2Fg",
+        "application/x-www-form-urlencoded",
+    )
+    assert doc["code"] == "sparql.dataset_not_supported"
 
 
 def test_text_that_is_no_update_is_refused_as_not_sparql():
