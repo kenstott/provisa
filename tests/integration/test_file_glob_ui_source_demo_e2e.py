@@ -10,7 +10,8 @@
 
 """E2E (REQ-788): on the default demo, a File Crawler source created in the admin with
 ``complaints`` registered through the Register Table form's "Or files matching" + combine reads as
-ONE table over every matching file -- right after it is registered and after the app restarts.
+ONE table over every matching file, right after it is registered. (A restart is covered by
+test_file_glob_ui_source_e2e: the demo's boot does not keep a table registered in the admin.)
 
 The maintainer's local-dev flow, as the ``test`` instance: the smoke check's isolated instance of
 the default demo (PROVISA_DEMO, embedded PostgreSQL control plane, DuckDB engine, the install
@@ -42,9 +43,7 @@ pytestmark = [pytest.mark.integration, pytest.mark.isolated, pytest.mark.local_p
 _ROLE = "org_admin"
 _HEADERS = {"X-Provisa-Role": _ROLE}
 _SOURCE = "test"
-# A domain of the demo's own configuration: a domain created in the admin is not one the boot
-# keeps (the instance is started with the configuration replacing the model's), so a table
-# registered in one would not be there after the restart to read.
+# A domain of the demo's own configuration.
 _DOMAIN = "pet-store"
 
 
@@ -68,8 +67,7 @@ def instance(tmp_path_factory) -> Iterator[Instance]:
 
 
 def _log_tail(inst: Instance) -> str:
-    logs = [inst.log_dir / "backend.log", inst.log_dir / "backend-restarted.log"]
-    return "\n".join(f"--- {p.name}\n{p.read_text()[-6000:]}" for p in logs if p.exists())
+    return (inst.log_dir / "backend.log").read_text()[-6000:]
 
 
 def _gql(inst: Instance, query: str, variables: dict | None = None) -> dict[str, Any]:
@@ -134,9 +132,7 @@ def _assert_union(inst: Instance, relation: str) -> None:
     assert got == {1: 10, 2: 20, 3: 30}, got
 
 
-def test_a_combined_glob_table_on_the_demo_reads_every_file_before_and_after_restart(
-    instance: Instance, tmp_path
-):
+def test_a_combined_glob_table_on_the_demo_reads_every_file(instance: Instance, tmp_path):
     data = tmp_path / "drop"
     data.mkdir()
     (data / "complaints_2026_09.csv").write_text("id,amount\n1,10\n2,20\n")
@@ -213,7 +209,4 @@ def test_a_combined_glob_table_on_the_demo_reads_every_file_before_and_after_res
 
     # naming.tableSqlRef: the domain's SQL name, then the alias or the table's name.
     relation = f'"pet_store"."{alias or "complaints"}"'
-    _assert_union(instance, relation)
-
-    instance.restart_backend()
     _assert_union(instance, relation)

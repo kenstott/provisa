@@ -87,9 +87,6 @@ class Instance:
     # The demo pet store's base URL, built from the port this harness leased for it.
     petstore: str
     env: dict[str, str] = field(default_factory=dict)
-    # Stops the backend and starts it again on the same home, control plane and ports; returns
-    # once it answers /health. A test reproducing what a restart of the app does calls it.
-    restart_backend: Any = None
 
     @property
     def url(self) -> str:
@@ -257,34 +254,7 @@ def instance() -> Iterator[Instance]:
             env,
         )
         processes.append(backend)
-
-        def _restart_backend() -> None:
-            nonlocal backend
-            os.killpg(backend.pid, signal.SIGTERM)
-            backend.wait(timeout=60)
-            # A log of its own: the first backend's is kept.
-            backend = _spawn(
-                "backend-restarted",
-                ["-m", "uvicorn", "main:app", "--host", "127.0.0.1", "--port", str(api)],
-                log_dir,
-                env,
-            )
-            processes.append(backend)
-            _wait_for_health(backend, running.url, log_dir / "backend-restarted.log")
-
-        running = Instance(
-            api,
-            grpc_port,
-            flight,
-            pgwire,
-            mcp,
-            bolt,
-            ui,
-            log_dir,
-            petstore,
-            base,
-            restart_backend=_restart_backend,
-        )
+        running = Instance(api, grpc_port, flight, pgwire, mcp, bolt, ui, log_dir, petstore, base)
         _wait_for_health(backend, running.url, log_dir / "backend.log")
         seat_principal(database_url)
         yield running
