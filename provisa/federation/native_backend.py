@@ -137,26 +137,6 @@ class _OrgWalk:
     refused_in: tuple[Any, Any, Any, Any] | None = None
 
 
-def _file_glob_tables(tables: list[Any]) -> dict[str, list[dict]]:  # REQ-788
-    """{source_id: [the file adapter's glob-table spec, ...]} for every registered table that
-    declares a ``file_glob`` -- a config Table or a registered-table row, one spec per table."""
-    by_source: dict[str, list[dict]] = {}
-    for table in tables:
-        row = table if isinstance(table, dict) else vars(table)
-        if not row.get("file_glob"):
-            continue
-        specs = by_source.setdefault(row["source_id"], [])
-        if all(spec["name"] != row["table_name"] for spec in specs):
-            specs.append(
-                {
-                    "name": row["table_name"],
-                    "file_glob": row["file_glob"],
-                    "source_file_column": row.get("source_file_column"),
-                }
-            )
-    return by_source
-
-
 def _mongo_column_fields(tables: list[Any]) -> dict[tuple[str, str, str], list[tuple[str, str]]]:
     """{(source_id, schema, table): [(field, column), ...]} for every registered table's column
     whose ``path`` names a document field other than its name -- a config Table or a
@@ -546,7 +526,9 @@ class NativeEngineBackend(EngineBackend):
 
         # REQ-788: each files source's file_glob tables, read off the registered tables (the model
         # the store holds, REQ-1919): the attach builds the adapter's merged glob table from them.
-        glob_tables = _file_glob_tables([*config.tables, *(getattr(state, "tables", None) or [])])
+        from provisa.federation.served_tables import file_glob_specs
+
+        glob_tables = file_glob_specs([*config.tables, *(getattr(state, "tables", None) or [])])
         # #266: a MongoDB table's columns named apart from their document fields.
         mongo_fields = _mongo_column_fields(
             [*config.tables, *(getattr(state, "tables", None) or [])]
