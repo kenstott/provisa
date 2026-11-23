@@ -34,7 +34,7 @@ from provisa.codesource.install import Http, Runner
 from provisa.codesource.worker import DISCOVERED_ENV
 from provisa.python import install
 from provisa.python.install import LOCKFILES
-from provisa.runtime_deps.code_runtimes import CodeRuntimeResolver
+from provisa.runtime_deps.code_runtimes import CodeRuntimeResolver, uv_executable
 
 __all__ = ["LOCKFILES", "fetch", "layers"]
 
@@ -50,8 +50,7 @@ def layers(
     from provisa.python import install as python_install
     from provisa.python.source import HOST, code_path, entry_module
 
-    server = CodeRuntimeResolver(cache_root=plan.cache_root)
-    uv = server.resolve("uv")
+    uv = uv_executable()
     site = workdir / "site-packages"
     site.mkdir(parents=True)
     with tempfile.TemporaryDirectory(prefix="provisa-image-python-") as scratch:

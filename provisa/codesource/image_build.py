@@ -50,7 +50,12 @@ from provisa.codesource.install import Lockfile, Runner, gitconfig, place_lockfi
 from provisa.codesource.manifest import manifest_hash
 from provisa.codesource.remote import HOST_PORT
 from provisa.codesource.worker import PROTOCOL
-from provisa.runtime_deps.code_runtimes import LINUX_ARM64, LINUX_X64, CodeRuntimeResolver
+from provisa.runtime_deps.code_runtimes import (
+    LINUX_ARM64,
+    LINUX_X64,
+    CodeRuntimeResolver,
+    uv_executable,
+)
 
 #: The base every image is built on: glibc and libstdc++, nothing else (no shell, no package
 #: manager), pinned per platform by its manifest's digest.
@@ -413,8 +418,7 @@ def _front(
 
     here = Path(front_program.__file__).parent
     protocol = Path(buenavista.__file__).parent
-    server = CodeRuntimeResolver(cache_root=plan.cache_root)
-    uv = server.resolve("uv")
+    uv = uv_executable()
     lib = workdir / "frontlib"
     lib.mkdir(parents=True)
     with tempfile.TemporaryDirectory(prefix="provisa-image-front-") as scratch:

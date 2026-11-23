@@ -15,7 +15,7 @@ Every statement below that goes beyond REQ-1984 or REQ-1993 is marked *(proposed
 | The type reader | its output format and rules (section 2) | the program that reads: `reader.mjs` (TypeScript compiler) / `reader.py` (section 6.2) |
 | Content hash, uploads, Git fetch, the cache layout | `provisa/codesource/bundle.py`, `uploads.py`, `git.py` (today in `provisa/node/`, moved) | — |
 | Package fetch and dependency install | the cache-by-hash and isolated-configuration rules | npm + lockfile (built) / PyPI + lockfile (section 6.3) |
-| Runtimes, fetched pinned and hashed | the resolver (`runtime_deps/js_runtimes.py`, renamed `code_runtimes.py`) | the pins: Node, Bun, Deno / CPython (python-build-standalone) and uv |
+| Runtimes, fetched pinned and hashed | the resolver (`runtime_deps/js_runtimes.py`, renamed `code_runtimes.py`) | the pins: Node, Bun, Deno / CPython (python-build-standalone) for remote images; on the server a Python source runs on the interpreter Provisa runs on, with uv from its PyPI wheel |
 | Organisation package settings | the admin page and its resolution (built for npm and Git) | a PyPI index kind (section 6.4) |
 | The worker: process, socket, frames, messages, cancel, crash, pool | `provisa/codesource/worker.py` (section 3) | the host program: `host.mjs` / `host.py` |
 | The sandbox | its rules and the OS mechanism (section 4) | Deno's own flags; everything else uses the OS sandbox |
@@ -158,17 +158,17 @@ A package is fetched as its **wheel** for the pinned Python (`py3`/`cp312` tags,
 
 **The lockfile** (P4).
 - A code with dependencies (a wheel's `Requires-Dist` without an extra, or a project's `[project].dependencies`) carries `uv.lock` (with its `pyproject.toml`), `pylock.toml` (PEP 751) or a `requirements.txt` with `--hash` on every requirement; one that does not is refused by name;
-- one without dependencies needs none, and runs on the pinned Python itself.
+- one without dependencies needs none, and still gets an empty virtual environment of its own, so it sees none of the base interpreter's packages.
 - **A lockfile beside the code** (lead, 2026-10-12; widened from packages to Git and uploads 2026-10-20): a wheel carries no lockfile, most npm packages publish none, and Git or uploaded code may carry none, so the source's form may give one beside any code that carries none; it is kept with the source, put into the code before the content hash is taken, and hashed like the code (`codesource.install.Lockfile`). Without one, code that declares dependencies is refused, and the refusal says to add one. One beside code that carries its own (of the same name, or one the installer reads first) is refused by name. Every install stays frozen.
 
 **The install.**
-- `uv venv --python <pinned python> <install>/.venv`, then the lockfile into it: `uv sync --frozen --no-build --no-install-project` for `uv.lock`; `uv pip sync --no-build [--require-hashes] <file>` for `pylock.toml` and `requirements.txt`;
+- `uv venv --python <the interpreter Provisa runs on> --no-python-downloads <install>/.venv`, then the lockfile into it: `uv sync --frozen --no-build --no-install-project` for `uv.lock`; `uv pip sync --no-build [--require-hashes] <file>` for `pylock.toml` and `requirements.txt`;
 - the indexes reach uv in the install's environment only (`UV_DEFAULT_INDEX` for the default index, `UV_INDEX` for the others, each with its credential in its URL), never in a file; `UV_NO_CONFIG=1`, `UV_PYTHON_DOWNLOADS=never`, a HOME and a cache of the install's own, and Git dependencies through the same Git configuration as Node's;
 - the result is cached by content hash (`<cache>/code-bundles/python/<hash>`), and a worker runs the venv's interpreter (`environment_python`); a project laid out with `src/` is entered there (`code_path`).
 
 **The credential** of a PyPI index is a token, sent as PyPI's `__token__` user, or `user:password` as entered.
 
-**The runtime** (P3): CPython 3.12.14 from python-build-standalone release 20260924 (`install_only`), and uv 0.12.18, pinned and hashed for the three platforms in `provisa/runtime_deps/code_runtimes.py`.
+**The runtime** (P3, amended 2026-11-22): on the server a Python source runs on the base CPython of the interpreter Provisa runs on (`running_interpreter` in `provisa/runtime_deps/code_runtimes.py`): the one pip installed Provisa into, or the installer's bundled python-build-standalone. uv is the `uv` wheel, a declared dependency of Provisa from PyPI (`uv_executable`). Neither is fetched, so a pip-installed Provisa gets nothing for Python from GitHub (`docs/arch/fetch-sources.md`). An image built for a remote host takes CPython 3.12.14 from python-build-standalone release 20260924 (`install_only`), pinned and hashed per platform.
 
 ### 6.4 Package indexes
 
