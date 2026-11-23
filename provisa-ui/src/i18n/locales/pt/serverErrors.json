@@ -560,6 +560,7 @@
       "incremental_no_change": "A fonte de código não tem nenhuma função @change para {{table}}. Declare uma com @change table={{table}}.",
       "incremental_needs_rebuild_every": "{{table}} é mantida de forma incremental, portanto é recompilada por inteiro por relógio. Defina a frequência, em segundos, em \"Recompilação completa a cada\".",
       "table_derived_from_function": "A tabela '{{name}}' é derivada de uma função: é removida desativando a tabela da função, e as suas colunas e parâmetros são editados na função",
+      "table_has_dependents": "A tabela '{{name}}' ainda é lida ou referenciada por outros objetos: retire-os ou altere-os primeiro",
       "table_withdrawn": "Tabela {{table}} retirada",
       "table_put_back": "Tabela {{table}} reposta",
       "source_withdrawn": "Fonte {{source}} retirada",

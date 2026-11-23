@@ -7674,6 +7674,7 @@
   "he/serverErrors.json::serverErrors.schema.table_derived_from_function": "Table '{{name}}' is derived from a function: it is removed by turning off the function's table, and its columns and parameters are edited on the function",
   "he/serverErrors.json::serverErrors.schema.table_domain_required": "Table '{{table}}' names no domain: every table is registered in a domain",
   "he/serverErrors.json::serverErrors.schema.table_draft_set": "Table {{table}} set as draft",
+  "he/serverErrors.json::serverErrors.schema.table_has_dependents": "Table '{{name}}' is still read or referred to by other objects: retire or change them first",
   "he/serverErrors.json::serverErrors.schema.table_id_not_found": "Table {{id}} not found",
   "he/serverErrors.json::serverErrors.schema.table_load_protection_set": "load protection set for table {{table}}",
   "he/serverErrors.json::serverErrors.schema.table_name_reserved": "Table name '{{table}}' is reserved: a domain's commands are served under 'commands'. Register the table under another name or alias.",

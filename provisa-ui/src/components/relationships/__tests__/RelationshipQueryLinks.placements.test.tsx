@@ -21,6 +21,10 @@ import type { DataProduct } from "../../../types/admin";
 import type { ProductCore } from "../../../pages/data-products/productCore";
 import { AccessSection } from "../../../pages/data-products/AccessSection";
 import { RelationshipDetail } from "../RelationshipDetail";
+// The panel links the tables it names (REQ-2259), gated on the viewer's rights.
+vi.mock("../../../context/AuthContext", () => ({
+  useAuth: () => ({ capabilities: ["table_registration"] }),
+}));
 import { metaReader } from "../../../api/metaGraph";
 import {
   GRAPH,
@@ -132,16 +136,16 @@ describe("the relationship detail panel", () => {
 
   it("says why when the table is still missing after the read", async () => {
     routed(detail(placedBy(), [], () => Promise.resolve()));
-    expect(await screen.findByTestId("relationship-detail-query-links-unavailable")).toHaveTextContent(
-      "not among the registered tables",
-    );
+    expect(
+      await screen.findByTestId("relationship-detail-query-links-unavailable"),
+    ).toHaveTextContent("not among the registered tables");
   });
 
   it("says why when the tables cannot be read", async () => {
     routed(detail(placedBy(), [], () => Promise.reject(new Error("boom"))));
-    expect(await screen.findByTestId("relationship-detail-query-links-unavailable")).toHaveTextContent(
-      "boom",
-    );
+    expect(
+      await screen.findByTestId("relationship-detail-query-links-unavailable"),
+    ).toHaveTextContent("boom");
   });
 
   it("links the relationship on every surface, each named by its surface", async () => {
