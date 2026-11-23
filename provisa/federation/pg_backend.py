@@ -188,13 +188,15 @@ class PgBackend(NativeEngineBackend):
         runtime = getattr(self, "_runtime", None)
         return runtime is not None and runtime.computes_fakes
 
-    def transpile_physical(self, pg_sql: str) -> str:  # REQ-902
+    def transpile_physical(self, pg_sql: str, *, generated: bool = False) -> str:  # REQ-902
         """Postgres physical SQL, then collapse JSON_OBJECT colon syntax into flat json_build_object so
         nested-relationship queries survive pg_duckdb's transparent DuckDB execution path (REQ-902).
         json_build_object is valid in plain Postgres too, so this is unconditional for the pg engine."""
         from provisa.transpiler.transpile import rewrite_json_object_to_build_object, transpile
 
-        return rewrite_json_object_to_build_object(transpile(pg_sql, self.dialect))
+        return rewrite_json_object_to_build_object(
+            transpile(pg_sql, self.dialect, generated=generated)
+        )
 
     def _new_runtime(self) -> Any:
         dsn = self.engine.default_materialize_store()

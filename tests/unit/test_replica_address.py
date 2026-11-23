@@ -261,7 +261,7 @@ class _Backend(EngineBackend):
 
     computes_fakes = True  # REQ-1494: the seam also checks the engine computes a statement's fakes
 
-    def transpile_physical(self, pg_sql: str) -> str:
+    def transpile_physical(self, pg_sql: str, *, generated: bool = False) -> str:
         return f"<engine dialect> {pg_sql}"
 
     def exact_reads(self, state: Any, physical_sql: str) -> str:

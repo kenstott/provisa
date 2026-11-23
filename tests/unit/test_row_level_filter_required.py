@@ -101,7 +101,7 @@ def planning(monkeypatch):
         dialect="duckdb",
         connectors={},  # no connector for neo4j: the engine cannot attach it
         engine=SimpleNamespace(name="duckdb", catalog_qualified=True, connectors={}),
-        transpile_physical=lambda sql: sql,
+        transpile_physical=lambda sql, generated=False: sql,
     )
     monkeypatch.setattr(app_mod, "state", state, raising=False)
     with (

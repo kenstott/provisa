@@ -1318,12 +1318,13 @@ def _answered_by_a_row(node: exp.Expr, dialect: str) -> bool:
         return False
 
 
-def _answered_first(node: exp.Expr, dialect: str) -> bool:
+def _answered_first(node: exp.Expr, dialect: str, skipped: tuple[polyfill.Feature, ...]) -> bool:
     """Whether a grid rule over every call (Rewrite.first, read before any pattern by the walk)
     answers ``node``, a call the old table refuses: a bit string's row, whose name bytea's
-    patterns share. Read only for such a call: the rules are many, and the walk reads them again."""
+    patterns share. Read only for such a call: the rules are many, and the walk reads them again.
+    A rule of a feature in ``skipped`` is not read (:func:`inline`'s ``generated``)."""
     try:
-        first = polyfill.GRID.read_first(node, dialect)
+        first = polyfill.GRID.read_first(node, dialect, skipped)
     except polyfill_notation.Refused as refused:
         if refused.ruling:
             called = node.name.lower() if isinstance(node, exp.Anonymous) else _feature_of(node)
@@ -1341,21 +1342,27 @@ def _of_dimensions_on_duckdb(tree: exp.Expr, dialect: str) -> exp.Expr:
         raise RowRefused(refused.called, dialect, refused.refusal) from refused
 
 
-def inline(tree: exp.Expr, dialect: str) -> exp.Expr:
+def inline(tree: exp.Expr, dialect: str, *, generated: bool) -> exp.Expr:
     """``tree`` with each call of a function of the table written in its form for ``dialect``.
     Raises :class:`FunctionRefused` for a call of one it has no form of. A call with no overload
-    of its argument count is left, for the engine to say so."""
+    of its argument count is left, for the engine to say so.
+
+    ``generated``: Provisa wrote ``tree`` from a graph IR (Cypher, SPARQL, GraphQL), where a list
+    of lists is a nested list; PostgreSQL's reading of an array of more than one dimension is
+    for SQL a client wrote alone (REQ-2236)."""
     if dialect in NATIVE:
         return tree
+    # REQ-2236: SQL Provisa generated reads a list of lists as nested lists, never by dimensions.
+    skipped = (polyfill_array_dimensions.FEATURE,) if generated else ()
     if dialect not in _DUCKDB:
         tree = _unqualified(tree)
         for node in tree.walk():
             if _answered_by_a_row(node, dialect):
                 continue  # REQ-2167: an answer within a stated bound comes before a refusal
             refused_call = engine_refusals.refused_call(node, dialect, said_type)
-            if refused_call is not None and not _answered_first(node, dialect):
+            if refused_call is not None and not _answered_first(node, dialect, skipped):
                 raise FunctionRefused(refused_call, dialect)
-    else:
+    elif not generated:
         # REQ-2236: an array of more than one dimension as PostgreSQL reads it, before any form
         # (a text search's or JSON's among them) reads the arrays.
         tree = _of_dimensions_on_duckdb(tree, dialect)
@@ -1402,7 +1409,7 @@ def inline(tree: exp.Expr, dialect: str) -> exp.Expr:
         # A grid rule over every call, before the forms of a substring past its edge: a substring
         # of a bit string is its row's.
         try:
-            first = polyfill.GRID.read_first(target, dialect)
+            first = polyfill.GRID.read_first(target, dialect, skipped)
         except polyfill_notation.Refused as refused:
             if not refused.ruling:
                 raise

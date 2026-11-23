@@ -161,13 +161,14 @@ class DuckDBBackend(NativeEngineBackend):
             secret_sql=None,
         )
 
-    def transpile_physical(self, pg_sql: str) -> str:
+    def transpile_physical(self, pg_sql: str, *, generated: bool = False) -> str:
         """DuckDB physical SQL, then rewrite the JSON array aggregate the compiler emits for
         one-to-many relationships: SQLGlot writes Postgres json_agg as JSON_ARRAYAGG, which DuckDB
-        does not register — its spelling is json_group_array."""
+        does not register — its spelling is json_group_array. ``generated``: see
+        ``transpiler.transpile``."""
         from provisa.transpiler.transpile import transpile_to_duckdb
 
-        return transpile_to_duckdb(pg_sql)
+        return transpile_to_duckdb(pg_sql, generated=generated)
 
     def exact_reads(self, state: Any, physical_sql: str) -> str:
         """REQ-2167: a PostgreSQL numeric registered from an unsized one is read exactly, cast at

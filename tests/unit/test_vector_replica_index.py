@@ -331,7 +331,7 @@ class _Backend(EngineBackend):
         del state
         return self._indexes
 
-    def transpile_physical(self, pg_sql: str) -> str:
+    def transpile_physical(self, pg_sql: str, *, generated: bool = False) -> str:
         return pg_sql
 
     def exact_reads(self, state, physical_sql: str) -> str:

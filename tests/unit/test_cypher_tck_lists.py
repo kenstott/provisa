@@ -35,7 +35,10 @@ _EMPTY = CypherLabelMap(nodes={}, relationships={})
 
 def _rows(query: str) -> list[tuple]:
     sql_ast, _, _ = cypher_to_sql(parse_cypher(query), _EMPTY, {})
-    return duckdb.sql(transpile_to_duckdb(sql_ast.sql(dialect="postgres"))).fetchall()
+    # REQ-2236: Cypher's SQL is Provisa's own, from the graph IR: a list of lists is nested.
+    return duckdb.sql(
+        transpile_to_duckdb(sql_ast.sql(dialect="postgres"), generated=True)
+    ).fetchall()
 
 
 @pytest.mark.parametrize(

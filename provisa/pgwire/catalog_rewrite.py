@@ -960,7 +960,7 @@ def _rewrite_for_duckdb(sql: str, role_id: str, database: str) -> str:
     coerce_reg_comparisons(tree)  # REQ-2167: 'pg_class'::regclass = 'pg_class'
     project_reg_values(tree)  # REQ-2167: a result column that is a reg* value
     try:
-        rewritten = function_macros.inline(tree.transform(_transform), "duckdb")
+        rewritten = function_macros.inline(tree.transform(_transform), "duckdb", generated=False)
         # Move INNER JOINs before LEFT/RIGHT/FULL JOINs so DuckDB does not reject
         # forward alias references (e.g. `LEFT JOIN dsc ON c.oid=...` before
         # `INNER JOIN pg_class c` — c is not yet in scope).

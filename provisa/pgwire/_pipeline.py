@@ -6434,7 +6434,8 @@ async def _route_compiled(
             from provisa.compiler.sql_rewrite import fold_catalog_into_schema
 
             _exec_sql = fold_catalog_into_schema(_exec_sql)
-        return _exec_sql, state.federation_engine.transpile_physical(_exec_sql)
+        # REQ-2236: the compiled path's statement is Provisa's own, from a graph IR.
+        return _exec_sql, state.federation_engine.transpile_physical(_exec_sql, generated=True)
 
     async def _engine_forms(_routed_sql: str) -> tuple[str, str]:
         _engine_sql, _physical = await _kept_engine_form(
@@ -6559,6 +6560,8 @@ async def _route_compiled(
                         quote_identifiers=_quoted,
                         # REQ-2236: Db2 and SAP HANA write by their operands' registered types.
                         column_types=direct_column_types(state, _direct_sid, dialect),
+                        # REQ-2236: the compiled path's statement is Provisa's own, from a graph IR.
+                        generated=True,
                     ),
                     dialect,
                 ),
