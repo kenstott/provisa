@@ -61,22 +61,14 @@ def _plant(key: bytes) -> None:
     """Replace the first column of every stored row with _MARK (same kind and schema)."""
     import pyarrow as pa
 
-    from provisa.cache.codec import decode_cache_payload, encode_cache_payload
+    from tests.integration.cache_entry_edit import rewrite
+
+    def mark(table: pa.Table) -> pa.Table:
+        first = pa.array([_MARK] * table.num_rows, type=table.schema.field(0).type)
+        return table.set_column(0, table.schema.field(0), first)
 
     r = _redis()
-    payload = decode_cache_payload(r.get(key))
-    entry = payload["data"]
-    if entry["kind"] == "rows":
-        entry["rows"] = [[_MARK, *row[1:]] for row in entry["rows"]]
-    else:
-        table = pa.ipc.open_stream(entry["ipc"]).read_all()
-        first = pa.array([_MARK] * table.num_rows, type=table.schema.field(0).type)
-        table = table.set_column(0, table.schema.field(0), first)
-        sink = pa.BufferOutputStream()
-        with pa.ipc.new_stream(sink, table.schema) as writer:
-            writer.write_table(table)
-        entry["ipc"] = sink.getvalue().to_pybytes()
-    r.set(key, encode_cache_payload(payload), keepttl=True)
+    r.set(key, rewrite(r.get(key), mark), keepttl=True)
 
 
 def _assert_opt_in(srv, read, hinted: str, plain: str) -> None:

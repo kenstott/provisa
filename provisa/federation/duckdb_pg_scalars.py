@@ -247,19 +247,30 @@ _ENCODING_NAMES = {
 }
 
 
-def _codec(name: str, role: str) -> str:
+def _encoding(name: str, role: str) -> str:
+    """PostgreSQL's name of the encoding ``name`` names (pg_char_to_encoding: 'abc' is WIN1258)."""
     encoding = _ENCODING_NAMES.get("".join(c for c in name.lower() if c.isalnum()))
     if encoding is None:
         raise _error("22023", f'invalid {role} encoding name "{name}"')
-    return _ENCODINGS[encoding]
+    return encoding
+
+
+def _codec(name: str, role: str) -> str:
+    return _ENCODINGS[_encoding(name, role)]
 
 
 def _decoded(value: bytes, encoding: str, codec: str) -> str:
+    """``value`` read in ``encoding`` as pg_verify_mbstr reads it: a zero byte is no character of
+    any encoding, so the first byte that is invalid, a zero byte or not, is refused (22021)."""
+    zero = value.find(b"\x00")
     try:
-        return value.decode(codec)
+        text = value[: len(value) if zero < 0 else zero].decode(codec)
     except UnicodeDecodeError as exc:
         byte = value[exc.start : exc.start + 1].hex()
         raise _error("22021", f'invalid byte sequence for encoding "{encoding}": 0x{byte}') from exc
+    if zero >= 0:
+        raise _error("22021", f'invalid byte sequence for encoding "{encoding}": 0x00')
+    return text
 
 
 def _byte_sequence(char: str) -> str:
@@ -268,7 +279,7 @@ def _byte_sequence(char: str) -> str:
 
 def convert(value: bytes, source: str, destination: str) -> bytes:
     """convert(bytea, source, destination)."""
-    text = _decoded(value, source.upper(), _codec(source, "source"))
+    text = _decoded(value, _encoding(source, "source"), _codec(source, "source"))
     try:
         return text.encode(_codec(destination, "destination"))
     except UnicodeEncodeError as exc:
@@ -285,7 +296,7 @@ def bytea_position(value: bytes, sought: bytes) -> int:
 
 
 def encoded_length(value: bytes, encoding: str) -> int:
-    return len(_decoded(value, encoding.upper(), _codec(encoding, "source")))
+    return len(_decoded(value, _encoding(encoding, "source"), _codec(encoding, "source")))
 
 
 # --- regular expressions --------------------------------------------------------------------------

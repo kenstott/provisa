@@ -454,3 +454,44 @@ async def test_a_grpc_remote_tables_failed_landing_fails_the_read(monkeypatch, e
     assert isinstance(raised.value.__cause__, OSError)
     assert rewrites == {} and inline == {}
     assert engine_cache["drops"] == []
+
+
+@pytest.mark.asyncio
+async def test_a_joined_searchs_carried_words_are_inlined_as_text_not_as_its_vector_type(
+    monkeypatch, engine_cache
+):
+    """REQ-2099: a search fed over a relationship carries, in its query parameter's column, the
+    words each row was found for, typed as the source column they came from. The column is
+    registered as the vector those words are embedded into (``array(double)``), which PostgreSQL
+    spells JSONB; cast to it, the words are refused ("invalid input syntax for type json") -- the
+    sonnets demo's link_echoes. The carried column keeps the read's type; a value column keeps its
+    registered one."""
+    from provisa.cache.values_cte import build_values_ctes_sql
+
+    _threshold(monkeypatch, 10)
+    table = {
+        **_TABLE,
+        "cache_ttl": 0,
+        "columns": [
+            {"column_name": "score", "data_type": "double", "native_filter_type": None},
+            {
+                "column_name": "_nf_query",
+                "data_type": "array(double)",
+                "native_filter_type": "query_arg",
+            },
+        ],
+    }
+    read = SimpleNamespace(
+        rows=[{"score": 0.5, "_nf_query": "In the old age black was not counted fair"}],
+        columns=[("score", "text"), ("_nf_query", "varchar")],
+    )
+
+    async def answer():
+        return read
+
+    inline: dict = {}
+    await _land(table, _state(), answer, {}, inline)
+    assert inline["movie_hits"].column_types == {"score": "double", "_nf_query": "varchar"}
+    sql = build_values_ctes_sql('SELECT "score", "_nf_query" FROM movie_hits', inline)
+    assert "JSON" not in sql.upper()
+    assert "CAST('In the old age black was not counted fair' AS TEXT)" in sql

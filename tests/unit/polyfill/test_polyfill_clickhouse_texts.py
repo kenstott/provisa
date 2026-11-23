@@ -688,6 +688,9 @@ ANSWERED = [  # (statement, PostgreSQL's text of its one row)
     ("SELECT '-1'::oid AS v", "4294967295"),
     ("SELECT pg_catalog.regexp_count('abcabcABC'::text, 'b'::text, 1, 'i') AS v", "3"),
     ("SELECT pg_catalog.regexp_count(E'a\\nb'::text, 'a.b'::text, 1) AS v", "1"),
+    # A two-argument call of a literal pattern: a newline an ordinary character, as PostgreSQL's
+    ("SELECT pg_catalog.regexp_count(E'a\\nb'::text, 'a.b'::text) AS v", "1"),
+    ("SELECT pg_catalog.regexp_count('abcb'::text, 'b'::text) AS v", "2"),
     ("SELECT pg_catalog.regexp_instr('日本語日本語'::text, '本'::text, 1, 2) AS v", "5"),
     ("SELECT pg_catalog.regexp_instr('日本語日本語'::text, '本'::text, 3, 1, 1) AS v", "6"),
     ("SELECT pg_catalog.regexp_instr('abcabc'::text, 'b'::text, 1, 3) AS v", "0"),
@@ -795,6 +798,10 @@ RAISED = [
     ("SELECT pg_catalog.bpchar('abcdef'::character(6), 7, false) AS v", "22001"),
     ("SELECT '4294967296'::oid AS v", "22003"),
     ("SELECT 'x'::oid AS v", "22P02"),
+    # PostgreSQL 17 counts each empty match (regexp_count('abc', '') is 4); ClickHouse's
+    # countMatches skips them, so a pattern that matches the empty text is its stated 0A000.
+    ("SELECT pg_catalog.regexp_count('abc'::text, ''::text) AS v", "0A000"),
+    ("SELECT pg_catalog.regexp_count('abc'::text, 'x*'::text) AS v", "0A000"),
     ("SELECT pg_catalog.regexp_instr('abc'::text, 'b'::text, 1, 1, 2) AS v", "22023"),
     ("SELECT pg_catalog.regexp_instr('abc'::text, 'b'::text, 1, 0) AS v", "22023"),
     ("SELECT pg_catalog.regexp_substr('foo'::text, 'o'::text, 1, 1, 'g') AS v", "22023"),
@@ -879,6 +886,11 @@ def test_a_call_past_the_row_s_bound_is_refused_by_name(sql):
 def test_a_native_two_argument_regexp_like_keeps_clickhouse_s_match():
     sql = "SELECT regexp_like(a, b) AS v FROM (VALUES ('x', 'y')) AS t(a, b)"
     assert "match(a, b)" in transpile(sql, "clickhouse")
+
+
+def test_a_two_argument_regexp_count_of_a_column_pattern_keeps_clickhouse_s_count():
+    sql = "SELECT regexp_count(a, b) AS v FROM (VALUES ('x', 'y')) AS t(a, b)"
+    assert "countMatches(a, b)" in transpile(sql, "clickhouse")
 
 
 @pytest.mark.parametrize(

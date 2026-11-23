@@ -206,6 +206,16 @@ def _figured(node: exp.Expr) -> tuple[str, int]:
         return _cast_type_name(node.to), 1
     if isinstance(node, exp.Paren):
         return _figured(node.this)
+    if isinstance(node, exp.Subquery):
+        return _sublink_name(node.this), 2
+    if isinstance(node, exp.Exists):
+        return "exists", 2
+    if (
+        isinstance(node, exp.Array)
+        and node.expressions
+        and isinstance(node.expressions[0], exp.Query)
+    ):
+        return "array", 2  # ARRAY(SELECT ...)
     if isinstance(node, exp.Dot) and isinstance(node.expression, exp.Func):
         return _figured(node.expression)  # pg_catalog.f(): the function's own name
     if isinstance(node, exp.Anonymous):
@@ -217,6 +227,18 @@ def _figured(node: exp.Expr) -> tuple[str, int]:
     if isinstance(node, exp.Func):
         return _pg_function_name(node)
     return "?column?", 0
+
+
+def _sublink_name(query: exp.Expr) -> str:
+    """A scalar subquery's name, as FigureColname names an EXPR sublink: its single output column's
+    name, the inner alias or the name PostgreSQL figures for the unaliased item (REQ-2204). A set
+    operation's output names are its leftmost select's."""
+    if isinstance(query, exp.Subquery):
+        return _sublink_name(query.this)
+    (item,) = cast(exp.Query, query).selects
+    if isinstance(item, exp.Alias):
+        return item.alias
+    return _figured(item)[0]
 
 
 #: A call as PostgreSQL writes it: its name, then its arguments, an ARRAY[...]'s elements, or

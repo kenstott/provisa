@@ -107,7 +107,8 @@ import { HomeEntry } from "../App";
 const SOURCES = "Sources";
 const TABLES = "Tables";
 const RELATIONSHIPS = "Relationships";
-// REQ-2259: the Context group stands where the Ontology and Library links stood.
+// REQ-2259: the Context group stands where the Ontology and Library links stood; the bar follows
+// build order (amended 2026-11-22), Derived before Context.
 const CONTEXT = "Context";
 const MODEL = "Derived";
 const PRODUCTS = "Products";
@@ -118,17 +119,17 @@ const EVERY_ENTRY = [
   SOURCES,
   TABLES,
   RELATIONSHIPS,
-  CONTEXT,
   MODEL,
+  CONTEXT,
   PRODUCTS,
   SECURITY,
   EXPLORE,
 ];
 const READER = [CONTEXT, PRODUCTS];
 // REQ-1327 (amended 2026-11-14): a holder of command_execution or create_view is shown Derived.
-const COMMAND_READER = [CONTEXT, MODEL, PRODUCTS, EXPLORE];
-const BUILDER = [RELATIONSHIPS, CONTEXT, MODEL, PRODUCTS, EXPLORE];
-const GOVERNOR = [TABLES, CONTEXT, MODEL, PRODUCTS, SECURITY];
+const COMMAND_READER = [MODEL, CONTEXT, PRODUCTS, EXPLORE];
+const BUILDER = [RELATIONSHIPS, MODEL, CONTEXT, PRODUCTS, EXPLORE];
+const GOVERNOR = [TABLES, MODEL, CONTEXT, PRODUCTS, SECURITY];
 
 // role → [the bar's entries in order, whether the user menu offers Admin, the landing page]
 const EXPECTED: Record<string, [string[], boolean, string]> = {
@@ -140,12 +141,12 @@ const EXPECTED: Record<string, [string[], boolean, string]> = {
   data_product_owner: [READER, true, "/context/health"],
   security_admin: [GOVERNOR, true, "/tables"],
   data_steward: [
-    [TABLES, RELATIONSHIPS, CONTEXT, MODEL, PRODUCTS, SECURITY, EXPLORE],
+    [TABLES, RELATIONSHIPS, MODEL, CONTEXT, PRODUCTS, SECURITY, EXPLORE],
     true,
     "/schema",
   ],
   dq_steward: [READER, true, "/context/health"],
-  source_admin: [[SOURCES, TABLES, CONTEXT, MODEL, PRODUCTS], true, "/sources"],
+  source_admin: [[SOURCES, TABLES, MODEL, CONTEXT, PRODUCTS], true, "/sources"],
   member_admin: [[CONTEXT, PRODUCTS, SECURITY], true, "/context/health"],
   org_operator: [READER, true, "/context/health"],
   org_admin: [EVERY_ENTRY, true, "/schema"],

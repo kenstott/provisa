@@ -430,10 +430,11 @@ _FLOAT_NUMERIC = (
 
 
 #: What differs from PostgreSQL on ClickHouse, where a jsonb value is held as its unchecked text.
+#: No bound: PostgreSQL holds no such value to answer, so no call of PostgreSQL's reaches it.
 _UNCHECKED = (
     "Text a jsonb column holds that is not valid JSON, which PostgreSQL refuses when it is "
-    "stored, raises 22P02 (invalid input syntax for type json) when the call reads it, without "
-    "PostgreSQL's detail line."
+    "stored and so never holds, is PostgreSQL's error 22P02 (invalid input syntax for type json) "
+    "when the call reads it, without PostgreSQL's detail line."
 )
 _CLICKHOUSE_JSONB = {
     "bool": "Of a jsonb value: a JSON true or false answers its value, NULL answers NULL, and any "
@@ -541,6 +542,30 @@ def _ch_jsonb_number(function: str) -> str:
     return f"CASE WHEN $v IS NULL THEN {nothing} ELSE if({checked} = 0, {answer}, {nothing}) END"
 
 
+#: The float types an integer is cast from (float.c's dtoi2, dtoi4, dtoi8, ftoi2, ftoi4, ftoi8).
+_FLOATS = frozenset({"real", "double precision"})
+
+
+def _ch_integer_of_float(function: str) -> str:
+    """An integer of a real or a double as float.c casts it: the value rounded half to even (rint,
+    ClickHouse's roundBankers, exact in a Float64 for a real's value too), PostgreSQL's 22003 where
+    it is NaN, infinite or past the type (FLOAT8_FITS_IN_INT*: at or above -2^(n-1), below
+    2^(n-1)); ClickHouse's own cast raises its code 70 of NaN and infinity, and wraps past it."""
+    name, ch_type, bits = _JSONB_INTEGERS[function]
+    value = "toFloat64($v)"
+    rounded = f"roundBankers({value})"
+    edge = float(1 << (bits - 1))
+    past = (
+        f"(isNaN({value}) OR isInfinite({value}) OR {rounded} < -{edge!r} OR {rounded} >= {edge!r})"
+    )
+    checked = ch_fail("22003", f"{name} out of range").format(condition=past)
+    typed = f"Nullable({ch_type})"
+    return (
+        f"CASE WHEN $v IS NULL THEN CAST(NULL AS {typed}) "
+        f"ELSE CAST(if({past}, 0, {rounded}) + {checked} AS {typed}) END"
+    )
+
+
 def _int4_of_char(node: exp.Expr, dialect: str) -> exp.Expr:
     """int4 of a "char" the statement writes (char.c's chartoi4): its byte as a signed char, 0 of
     the empty one, computed as the statement is read: ClickHouse holds no "char"."""
@@ -568,7 +593,9 @@ def _number_of(function: str):
         type_said = trino.said(call[1][0])
         if type_said == '"char"' and function == "int4" and dialect == "clickhouse":
             return _int4_of_char(call[1][0], dialect)
-        if type_said == "jsonb":
+        if type_said in _FLOATS and function in _JSONB_INTEGERS and dialect == "clickhouse":
+            form = ch_once(_ch_integer_of_float(function))
+        elif type_said == "jsonb":
             form = _ch_jsonb_number(function)
         elif type_said == "oid" and function == "int8":
             form = "CAST($v AS Nullable(Int64))"

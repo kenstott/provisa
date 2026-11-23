@@ -516,15 +516,15 @@ _STATED = (
     "statement says, are refused by name."
 )
 _INDEX_STATED = (
-    " An index outside the value raises PostgreSQL's 2202E (index out of valid range); its "
+    " An index outside the value is PostgreSQL's error 2202E (index out of valid range); its "
     "message does not name the index and the range, as PostgreSQL's does."
 )
 _OPERATOR_STATED = (
     " Its operator (LIKE, NOT LIKE, ~~, !~~) beside a bytea: an untyped string is a bytea's "
     "input, a value any expression computes is read as its bytes, and a value of another type the "
-    "statement says raises 42883 (operator does not exist). Its ESCAPE is read where the "
-    "statement is transpiled (provisa.transpiler.like_patterns): the pattern is like_escape's "
-    "bytes. bytea has no ILIKE: one raises 42883."
+    "statement says is PostgreSQL's error 42883 (operator does not exist). Its ESCAPE is read "
+    "where the statement is transpiled (provisa.transpiler.like_patterns): the pattern is like_escape's "
+    "bytes. bytea has no ILIKE: one is PostgreSQL's error 42883."
 )
 _LITERAL_STATED = " Its {} is read as the statement writes it, a literal or a NULL; one a row computes is refused by name."
 
@@ -713,7 +713,8 @@ FEATURES: tuple[Feature, ...] = (
         "set_bit(bytea, bigint, integer)", "A bytea with one of its bits set to 0 or 1.",
         ("set_bit($a, $n, $v)",),
         _Call(_named("set_bit", count=(3,)), "bii", _fixed(_SET_BIT, "anv"), True),
-        _INDEX_STATED + " A new bit other than 0 or 1 raises 22023 (new bit must be 0 or 1).",
+        _INDEX_STATED
+        + " A new bit other than 0 or 1 is PostgreSQL's error 22023 (new bit must be 0 or 1).",
     ),
     _feature(
         "get_byte(bytea, integer)", "A byte of a bytea.", ("get_byte($a, $n)",),
@@ -758,7 +759,7 @@ FEATURES: tuple[Feature, ...] = (
         ("like_escape($a, $b)",),
         _Call(_named("like_escape", count=(2,)), "BB", _like_escape, True),
         _LITERAL_STATED.format("pattern and escape")
-        + " An escape of more than one byte raises 22025 (invalid escape string).",
+        + " An escape of more than one byte is PostgreSQL's error 22025 (invalid escape string).",
     ),
     _feature(
         "overlay(bytea, bytea, integer)", "A bytea with a part of it replaced by another.",
@@ -767,8 +768,8 @@ FEATURES: tuple[Feature, ...] = (
                      also=_named("overlay", count=(3, 4))), "bbii",
               lambda args, reads: _renamed(_overlay("length($b)" if len(args) == 3 else "$l"), "absl"),
               True),
-        " A start below 1 raises 22011 (negative substring length not allowed), and a start and "
-        "length past an integer 22003 (integer out of range).",
+        " A start below 1 is PostgreSQL's error 22011 (negative substring length not allowed), and a "
+        "start and length past an integer its 22003 (integer out of range).",
     ),
     _feature(
         "position(bytea, bytea)", "Where a bytea first holds another, from 1; 0 where it does not.",
@@ -782,8 +783,8 @@ FEATURES: tuple[Feature, ...] = (
         _Call(_typed(exp.Substring, "this", "start", "length",
                      also=_named("substr", "substring", count=(2, 3))), "bii", _edged_substring,
               True),
-        " A negative length raises 22011 (negative substring length not allowed). A length a row "
-        "computes is read only beside a start of at least 1 the statement writes; otherwise the "
+        " A negative length is PostgreSQL's error 22011 (negative substring length not allowed). A "
+        "length a row computes is read only beside a start of at least 1 the statement writes; otherwise the "
         "call is refused by name.",
     ),
     _feature(

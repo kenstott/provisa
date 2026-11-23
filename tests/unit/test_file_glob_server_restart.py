@@ -116,6 +116,7 @@ async def test_a_glob_table_registered_later_restarts_the_server_and_reattaches_
             tables=[SimpleNamespace(**{**_glob_row(), "table_name": "other", "file_glob": None})],
         ),
         tables=[],
+        runtime_sources={},
         federation_engine=engine,
         source_catalogs={"test": "_src_test"},
     )
@@ -129,3 +130,73 @@ async def test_a_glob_table_registered_later_restarts_the_server_and_reattaches_
     # Unchanged: left running.
     await app_rebuild.serve_registered_tables(state)
     assert len(calls) == 3
+
+
+@pytest.mark.asyncio
+async def test_a_glob_table_on_a_files_source_created_in_the_admin_restarts_its_server(
+    monkeypatch, tmp_path: Path
+):
+    """Sources > New source makes a ``sources`` row (AppState.runtime_sources), never one of the
+    configuration file's sources: its server, started by the Register Table form's discovery, is
+    started again with the glob table registered from it."""
+    from provisa.api import app_rebuild
+    from provisa.api.admin import schema_common
+
+    calls: list[tuple[str, str]] = []
+
+    async def restart(model):
+        calls.append(("restart", model.id))
+        assert model.path == str(tmp_path)
+
+    monkeypatch.setattr(schema_common, "restart_source_server", restart)
+    engine = SimpleNamespace(
+        drop_source=lambda source_id, catalog_name: calls.append(("drop", catalog_name)),
+        register_source=lambda source, password, catalog_name: calls.append(
+            ("register", catalog_name)
+        ),
+    )
+    row = {
+        "id": "test",
+        "type": "files",
+        "path": str(tmp_path),
+        "password_ref": "",  # sources.password_ref is NOT NULL DEFAULT ''
+        "region": None,
+    }
+    state = SimpleNamespace(
+        config=SimpleNamespace(sources=[], tables=[]),
+        tables=[],
+        runtime_sources={"test": row},
+        federation_engine=engine,
+        source_catalogs={"test": "_src_test"},
+    )
+    await app_rebuild.serve_registered_tables(state)
+    assert calls == []
+    state.tables = [_glob_row()]
+    await app_rebuild.serve_registered_tables(state)
+    assert calls == [("restart", "test"), ("drop", "_src_test"), ("register", "_src_test")]
+    await app_rebuild.serve_registered_tables(state)
+    assert len(calls) == 3
+
+
+def test_a_server_started_by_any_caller_serves_the_recorded_glob_tables(monkeypatch, tmp_path):
+    """After a restart the files server is started by whichever caller asks first -- a discovery
+    call or a replica build holding the source built from its ``sources`` row, which carries no
+    glob tables. The server is kept for the life of the process, so one started from that copy
+    never served the registered glob table. Every start reads the glob tables the build
+    recorded."""
+    from provisa.core.repositories.source import source_from_row
+    from provisa.federation import pgwire_replica
+
+    monkeypatch.setattr(pgwire_replica, "_ENDPOINTS", {})
+    spec = {"name": "complaints", "file_glob": "complaints_2026_*.csv", "source_file_column": None}
+    served_tables.serve_glob_tables("test", [spec])
+    row = {"id": "test", "type": "files", "path": str(tmp_path), "password_ref": ""}
+    for caller_copy in (source_from_row(row), _files_source(str(tmp_path))):
+        assert not getattr(caller_copy, "file_glob_tables", None)
+        monkeypatch.setattr(pgwire_replica, "_ENDPOINTS", {})
+        replica = pgwire_replica._endpoint_replica(caller_copy)
+        assert replica._source.file_glob_tables == [spec]
+        (tmp_path / "complaints_2026_09.csv").write_text("id\n1\n")
+        assert pgwire_replica._files_operand(replica._source)["tables"] == [
+            {"name": "complaints", "url": str(tmp_path.resolve() / "complaints_2026_*.csv")}
+        ]
