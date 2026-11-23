@@ -10,8 +10,11 @@
 
 """A sparql source's reasoner, end to end (REQ-2138): a config with HermiT and OWL axioms is
 loaded, its inferred tables are read through the openapi fetch chain, and the rows are what
-HermiT infers from the slice a live Fuseki answers. The reasoner runs as its own program on the
-pinned JDK and jars (provisa/sparql/reasoner_bundle.py), fetched on first use.
+HermiT infers from the slice a live Fuseki answers. The reasoner runs as its own program, its jar
+on jdk4py's Java with the pinned jars (provisa/sparql/reasoner_bundle.py), fetched on first use.
+Until io.simpleishard:provisa-sparql-reasoner is promoted to Maven Central its jar cannot be
+fetched: this test builds it with the release build (scripts/ci/reasoner_maven_bundle.py), which
+gives the pinned bytes, and keeps it where the bundle looks first.
 
 Also: a statement's conditions pushed into a SPARQL table's query are a query Fuseki answers.
 """
@@ -20,6 +23,7 @@ Also: a statement's conditions pushed into a SPARQL table's query are a query Fu
 
 from __future__ import annotations
 
+import importlib.util
 import os
 from pathlib import Path
 from types import SimpleNamespace
@@ -96,6 +100,26 @@ def _config() -> dict:
             ),
         ],
     }
+
+
+_BUILD = Path(__file__).parent.parent.parent / "scripts" / "ci" / "reasoner_maven_bundle.py"
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _reasoner_jar():
+    """The reasoner's jar where the bundle keeps it, built as the release builds it."""
+    from provisa.sparql.reasoner_bundle import REASONER, ReasonerBundle
+
+    kept = ReasonerBundle().kept(REASONER)
+    if not kept.is_file():
+        spec = importlib.util.spec_from_file_location("reasoner_maven_bundle", _BUILD)
+        assert spec is not None and spec.loader is not None
+        build = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(build)
+        kept.parent.mkdir(parents=True, exist_ok=True)
+        staged = kept.with_name(f".{kept.name}.build")
+        assert build.build_jar(staged) == REASONER.sha256, "the build is not the pinned jar"
+        staged.replace(kept)
 
 
 @pytest.fixture(autouse=True)

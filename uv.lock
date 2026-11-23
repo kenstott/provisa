@@ -2160,6 +2160,18 @@ wheels = [
 ]
 
 [[package]]
+name = "jdk4py"
+version = "25.0.5.1"
+source = { registry = "https://pypi.org/simple" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/e1/d4/d997fc7a5d82878016d6fedae66e4cd9a7013f195ff92625ad719656c73d/jdk4py-25.0.5.1-py3-none-macosx_11_0_arm64.whl", hash = "sha256:13a20f55a743fc5cc211980915549f63c68830d188a16e79eb1e68eee107bca2", size = 30002896, upload-time = "2026-11-20T19:39:19.649Z" },
+    { url = "https://files.pythonhosted.org/packages/b5/c1/0188ec35a603662272274da2644b3601c1c9aa5c266e18c5bccbdd25bf4f/jdk4py-25.0.5.1-py3-none-macosx_11_0_x86_64.whl", hash = "sha256:b128a1d959a8d0a5b24502d672655af0e80ebf57565c1c7786c5be2a675e5d72", size = 31359441, upload-time = "2026-11-20T19:39:22.981Z" },
+    { url = "https://files.pythonhosted.org/packages/21/63/b62fcdbc1a186330c45beb60ba0db4ec827a387eb850b0c42b90503938f9/jdk4py-25.0.5.1-py3-none-manylinux_2_17_aarch64.whl", hash = "sha256:c301be7519ab32b10b40fe8b541167dce2e3ea19d575af236d86932cdabf0d94", size = 34746808, upload-time = "2026-11-20T19:39:26.215Z" },
+    { url = "https://files.pythonhosted.org/packages/6b/7f/6647eb46d22167085af910f11776630f3027f67447104b857054bfb769b4/jdk4py-25.0.5.1-py3-none-manylinux_2_17_x86_64.whl", hash = "sha256:b989b35d24f704cb40b402a82003d131056bf2b9794c33acb84bf42b5ebffd34", size = 35695265, upload-time = "2026-11-20T19:39:29.363Z" },
+    { url = "https://files.pythonhosted.org/packages/ca/14/4baef08289d39b90bf31229b194b517c46e4b50dc5037ce54fa23db5fbb6/jdk4py-25.0.5.1-py3-none-win_amd64.whl", hash = "sha256:faeb2e188e003a67c0b91a17a00f95ae0cf0e2f0803892d1e44c410eca0a08db", size = 31117266, upload-time = "2026-11-20T19:39:32.084Z" },
+]
+
+[[package]]
 name = "jeepney"
 version = "0.9.0"
 source = { registry = "https://pypi.org/simple" }
@@ -3876,6 +3888,7 @@ dev = [
     { name = "firebase-admin" },
     { name = "hypothesis" },
     { name = "import-linter" },
+    { name = "jdk4py" },
     { name = "jsonschema" },
     { name = "langchain-neo4j" },
     { name = "matplotlib" },
@@ -3962,6 +3975,9 @@ saphana = [
 ]
 soda = [
     { name = "soda-postgres" },
+]
+sparql = [
+    { name = "jdk4py" },
 ]
 sqlserver = [
     { name = "aioodbc" },
@@ -4060,6 +4076,7 @@ requires-dist = [
     { name = "ijson" },
     { name = "import-linter", marker = "extra == 'dev'" },
     { name = "impyla" },
+    { name = "jdk4py", marker = "extra == 'sparql'", specifier = ">=25,<26" },
     { name = "jpype1" },
     { name = "jsonpath-ng" },
     { name = "jsonschema", marker = "extra == 'dev'" },
@@ -4103,6 +4120,7 @@ requires-dist = [
     { name = "pre-commit", marker = "extra == 'dev'" },
     { name = "protobuf", specifier = ">=6.33.5,<7" },
     { name = "provisa", extras = ["cockroachdb", "db2", "exasol", "firebird", "monetdb", "opengauss", "vertica"], marker = "extra == 'all-drivers'" },
+    { name = "provisa", extras = ["sparql"], marker = "extra == 'dev'" },
     { name = "provisa", extras = ["vector"], marker = "extra == 'dev'" },
     { name = "provisa", extras = ["vector"], marker = "extra == 'embedded'" },
     { name = "provisa-duckdb-ext", marker = "extra == 'embedded'", specifier = ">=0.2.2" },
@@ -4174,7 +4192,7 @@ requires-dist = [
     { name = "vertica-python", marker = "extra == 'vertica'", specifier = ">=1.4,<2" },
     { name = "websockets", specifier = ">=11.0" },
 ]
-provides-extras = ["embedded", "desktop", "docs", "mysql", "sqlserver", "oracle", "saphana", "cockroachdb", "db2", "exasol", "firebird", "monetdb", "opengauss", "vertica", "cassandra", "all-drivers", "soda", "gx", "demo", "firebase", "vector", "vault", "azure", "gcp", "kms-all", "dev"]
+provides-extras = ["embedded", "desktop", "docs", "mysql", "sqlserver", "oracle", "saphana", "cockroachdb", "db2", "exasol", "firebird", "monetdb", "opengauss", "vertica", "cassandra", "all-drivers", "soda", "gx", "demo", "firebase", "sparql", "vector", "vault", "azure", "gcp", "kms-all", "dev"]
 
 [[package]]
 name = "provisa-duckdb-ext"
