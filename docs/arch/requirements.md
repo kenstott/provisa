@@ -27283,3 +27283,15 @@ Maintainer 2026-11-22 (idea raised 2026-11-20). One script installs Provisa with
 **Code:** —
 
 **Tests:** —
+
+## 4. Source Connectors
+
+### REQ-2270 · Source Connectors {#REQ-2270}
+
+**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+
+Maintainer 2026-11-23 (Spark is the default expectation for data engineers; this work is done before the feature freeze). A Spark job reads a governed Provisa table as a DataFrame, for example spark.read.format("provisa").load("orders"), through a Provisa data source for Spark that reads over Arrow Flight SQL as the principal whose credential it holds. Provisa decides which rows and columns leave, so row rules, masks and redaction hold inside any Spark cluster, and the read is audited as that principal's. Column types follow the table's declared types. The same Flight read path serves the governed table arguments of Spark commands ([REQ-2226](#REQ-2226), [REQ-2225](#REQ-2225)), replacing the row-at-a-time pgwire read there. The data source ships as a Python package on PyPI and a jar on Maven Central (the registries rule of [REQ-294](#REQ-294)). Its tests run against a one-node Spark in CI and locally; no paid cluster is needed.
+
+**Code:** —
+
+**Tests:** —
