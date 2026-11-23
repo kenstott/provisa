@@ -41,7 +41,16 @@ import { tableChoices } from "./tableChoices";
 import type { TableRegistrationOutcome } from "../../hooks/useTableQueries";
 import { DQ_PLACEHOLDER_COLUMN, registeredColumns } from "./registrationColumns";
 import { useTranslation } from "react-i18next";
-import { Button, Loader, NumberInput, SegmentedControl, Select, Text, TextInput } from "@mantine/core";
+import {
+  Button,
+  Input,
+  Loader,
+  NumberInput,
+  SegmentedControl,
+  Select,
+  Text,
+  TextInput,
+} from "@mantine/core";
 import { domainToSqlName, toSnakeCase } from "../../naming";
 import { useAvailableSchemas, useAvailableTables } from "../../hooks/useAdminQueries";
 import {
@@ -60,7 +69,6 @@ import {
 } from "../../api/profiler";
 import { DQ_CHECKERS } from "../../types/admin";
 import type { Registration } from "./draftTable";
-import { DERIVED_SOURCE_ID } from "../../types/admin";
 import type { RegisteredTable, Source } from "../../types/admin";
 import type { Role } from "../../types/auth";
 import type { ColumnForm } from "./types";
@@ -75,11 +83,14 @@ import {
   FormFooter,
   FormIdentifiers,
   FormLayout,
+  RequiredMark,
 } from "../../components/form/FormLayout";
+import { useRequiredFields } from "../../components/form/useRequiredFields";
 import { useSourceKind } from "../sources/sourceKind";
 import { ttlSignalMissingCacheTtl } from "../sources/loadManagement";
 import { usePanelDirty } from "../../components/list/panelLeave";
 import { ProfilerResultSelect } from "./ProfilerResultSelect";
+import { SourceAndDomainFields } from "./SourceAndDomainFields";
 import { requiredParametersOf } from "./lookups";
 import { DiscoverColumnsField } from "./DiscoverColumnsField";
 import { assignableDomainIds } from "../../lib/internalDomains";
@@ -258,9 +269,8 @@ export function RegisterTableForm({
   const domainId =
     chosenDomain ||
     (domainsEnabled && !authored && offeredDomains.length === 1 ? offeredDomains[0] : "");
-  // REQ-1531: a registration names its domain; with domains in use, none chosen registers nothing.
-  // In single-domain mode the server places it in the one domain.
-  const domainMissing = domainsEnabled && !domainId;
+  // REQ-1531: a registration names its domain; with domains in use, the Domain field asked is
+  // required (useRequiredFields below). In single-domain mode the server places it in the one domain.
   // Leaving the panel once something is chosen asks first (the panel's one mechanism).
   usePanelDirty(Boolean(sourceId || schemaName || tableName), tableName || schemaName || sourceId);
 
@@ -484,11 +494,14 @@ export function RegisterTableForm({
   // settings in the table editor.
   const handleSubmit = async () => {
     setError(null);
+    // REQ-1968 (amended 2026-11-22): each required field left empty is marked where it is.
+    if (!required.validate()) return;
     if (isChecker) {
       submitChecker();
       return;
     }
-    if (!sourceId || !schemaName || !tableName || domainMissing) {
+    // The schema of an authored table is set by the form, not asked (REQ-1663, REQ-1670).
+    if (!schemaName) {
       setError(t("registerTableForm.errorRequiredFields"));
       return;
     }
@@ -540,10 +553,6 @@ export function RegisterTableForm({
       setError(t("registerTableForm.errorUntypedColumns", { columns: untyped.join(", ") }));
       return;
     }
-    if (needsCacheTtl && cacheTtl.trim() === "") {
-      setError(t("registerTableForm.errorCacheTtlRequired"));
-      return;
-    }
     onContinue({
       ...registrationOf({
         sourceId,
@@ -572,10 +581,6 @@ export function RegisterTableForm({
   // REQ-1663: a checker registration is the contract plus a governance intent (visible_to); every
   // other input the server derives from the checker's fixed envelope (provisa.dq.registration).
   const submitChecker = () => {
-    if (!sourceId || !tableName) {
-      setError(t("registerTableForm.errorRequiredFields"));
-      return;
-    }
     if (dqScanned === null || dqContract.trim() === "") {
       setError(t("registerTableForm.errorDqContract"));
       return;
@@ -667,12 +672,30 @@ export function RegisterTableForm({
     if (globTables !== null) setTicked(globTables ? globTables.split("\n") : []);
   }, [globTables, setTicked]);
   const registerCombined = () => {
+    if (!required.validate()) return;
     const outcome = combine.combined(t);
     if ("problem" in outcome) {
       setError(outcome.problem);
       return;
     }
     void manyTables.registerAll(domainId, onRegisteredMany, setError, outcome.combined);
+  };
+  // REQ-1968 (amended 2026-11-22): the fields the action needs, those on screen only, in screen
+  // order. Each carries its marker from the start; none ever disables the action.
+  const required = useRequiredFields<
+    "source" | "domain" | "schema" | "tableName" | "combinedName" | "cacheTtl"
+  >({
+    source: sourceId,
+    ...(domainAsked ? { domain: domainId } : {}),
+    ...(listsTables && !oneSchema ? { schema: schemaName } : {}),
+    // A Wikidata source's own form (WikidataRegisterForm) holds the fields beneath these.
+    ...(!isWikidata && (isChecker || isQueryApi || isProfiler) ? { tableName } : {}),
+    ...(combine.combining ? { combinedName: combine.name } : {}),
+    ...(!isWikidata && authored && needsCacheTtl ? { cacheTtl } : {}),
+  });
+  const registerTicked = () => {
+    if (!required.validate()) return;
+    void manyTables.registerAll(domainId, onRegisteredMany, setError);
   };
   // A glob typed and its matches not yet answered: the field shows the loader while it checks.
   const globChecking =
@@ -706,6 +729,7 @@ export function RegisterTableForm({
   const isCdcSource = CDC_TYPES.has(sourceType);
 
   const registerProducts = async () => {
+    if (!required.validate()) return;
     setRegisteringProducts(true);
     setError(null);
     try {
@@ -719,55 +743,17 @@ export function RegisterTableForm({
 
   // What names the table: its source and, where asked, its domain.
   const sourceAndDomain = (
-    <>
-      <FormField size="medium">
-        <label>
-          {t("registerTableForm.sourceLabel")}
-          <select
-            className="form-select"
-            value={sourceId}
-            onChange={(e) => setSourceId(e.target.value)}
-            data-testid="register-table-source-select"
-          >
-            <option value="">{t("registerTableForm.sourcePlaceholder")}</option>
-            {sources
-              .filter(
-                (s) =>
-                  // Views come from + View, and a system source is Provisa's own.
-                  s.id !== DERIVED_SOURCE_ID &&
-                  !s.isSystem &&
-                  (s.allowedDomains.length === 0 ||
-                    s.allowedDomains.some((d) => checkedDomains.has(d))),
-              )
-              .map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.id}
-                </option>
-              ))}
-          </select>
-        </label>
-      </FormField>
-      {domainAsked && (
-        <FormField size="medium">
-          <label>
-            {t("registerTableForm.domainLabel")}
-            <select
-              className="form-select"
-              value={domainId}
-              onChange={(e) => setDomainId(e.target.value)}
-              data-testid="register-table-domain-select"
-            >
-              <option value="">{t("registerTableForm.domainPlaceholder")}</option>
-              {offeredDomains.map((d) => (
-                <option key={d} value={d}>
-                  {d}
-                </option>
-              ))}
-            </select>
-          </label>
-        </FormField>
-      )}
-    </>
+    <SourceAndDomainFields
+      sources={sources}
+      checkedDomains={checkedDomains}
+      sourceId={sourceId}
+      onSourceChange={setSourceId}
+      domainAsked={domainAsked}
+      domainId={domainId}
+      onDomainChange={setDomainId}
+      offeredDomains={offeredDomains}
+      required={required}
+    />
   );
 
   if (isWikidata) {
@@ -776,6 +762,7 @@ export function RegisterTableForm({
         identifiers={sourceAndDomain}
         sourceId={sourceId}
         domainId={domainId}
+        validateIdentifiers={required.validate}
         regionInput={regionInput}
         roleIds={roles.map((r) => r.id)}
         registeredNames={tables.filter((rt) => rt.sourceId === sourceId).map((rt) => rt.tableName)}
@@ -808,6 +795,7 @@ export function RegisterTableForm({
               }
               value={tableName}
               onChange={(e) => setTableName(e.currentTarget.value)}
+              {...required.field("tableName")}
               placeholder={t("registerTableForm.dqResultsTablePlaceholder")}
               data-testid="register-table-dq-results-table"
             />
@@ -829,7 +817,7 @@ export function RegisterTableForm({
         {isQueryApi && (
           <FormField size="medium">
             <TextInput
-              required
+              {...required.field("tableName")}
               label={t("registerTableForm.neo4jTableNameLabel")}
               value={tableName}
               onChange={(e) => setTableName(e.currentTarget.value)}
@@ -843,6 +831,7 @@ export function RegisterTableForm({
             catalog={profilerCatalog}
             value={tableName}
             onChange={setTableName}
+            required={required}
           />
         )}
         {sourceType === "dbt" && (
@@ -863,10 +852,12 @@ export function RegisterTableForm({
           <FormField size="medium">
             <label>
               {t("registerTableForm.schemaLabel")}
+              <RequiredMark />
               <select
                 className="form-select"
                 value={schemaName}
                 onChange={(e) => setSchemaName(e.target.value)}
+                {...required.native("schema")}
                 disabled={loadingSchemas}
                 data-testid="register-table-schema-select"
               >
@@ -881,6 +872,7 @@ export function RegisterTableForm({
                   </option>
                 ))}
               </select>
+              <Input.Error>{required.errorOf("schema")}</Input.Error>
             </label>
           </FormField>
         )}
@@ -949,6 +941,7 @@ export function RegisterTableForm({
           error={combine.error}
           name={combine.name}
           setName={combine.setName}
+          nameField={required.field("combinedName")}
           sourceFileColumn={combine.sourceFileColumn}
           setSourceFileColumn={combine.setSourceFileColumn}
           includeExtra={combine.includeExtra}
@@ -970,7 +963,7 @@ export function RegisterTableForm({
                 min={NEVER_EXPIRES}
                 data-testid="register-table-cache-ttl"
                 label={t("registerTableForm.cacheTtlLabel")}
-                required
+                {...required.field("cacheTtl")}
                 value={cacheTtl === "" ? "" : Number(cacheTtl)}
                 onChange={(v) => setCacheTtl(v === "" ? "" : String(v))}
               />
@@ -1101,7 +1094,7 @@ export function RegisterTableForm({
             <Button
               onClick={() => void registerProducts()}
               loading={registeringProducts}
-              disabled={!confirmable(productsPreview) || !domainId}
+              disabled={!confirmable(productsPreview)}
               data-testid="register-table-dbt-products-submit"
             >
               {t("dbtPublicProducts.confirm", { count: productsPreview?.products.length ?? 0 })}
@@ -1114,16 +1107,17 @@ export function RegisterTableForm({
             <Button
               onClick={registerCombined}
               loading={manyTables.registering}
-              disabled={!combine.registrable || domainMissing}
+              disabled={!combine.registrable}
               data-testid="register-many-tables-submit"
             >
               {t("registerManyTables.register", { count: 1 })}
             </Button>
           ) : (
             <Button
-              onClick={() => void manyTables.registerAll(domainId, onRegisteredMany, setError)}
+              onClick={registerTicked}
               loading={manyTables.registering}
-              disabled={manyTables.ticked.length === 0 || domainMissing}
+              // Nothing ticked is nothing to register, and the label says so ("Register 0 tables").
+              disabled={manyTables.ticked.length === 0}
               data-testid="register-many-tables-submit"
             >
               {t("registerManyTables.register", { count: manyTables.ticked.length })}

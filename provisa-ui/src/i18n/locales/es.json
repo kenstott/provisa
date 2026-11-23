@@ -14,7 +14,8 @@
     "discardBody": "Los cambios en {{what}} no están guardados.",
     "discard": "Descartar",
     "deleting": "Eliminando…",
-    "deleteFailed": "No eliminado: {{reason}}"
+    "deleteFailed": "No eliminado: {{reason}}",
+    "required": "Obligatorio"
   },
   "app": {
     "apiUnreachable": "No se pudo conectar con la API de Provisa.",

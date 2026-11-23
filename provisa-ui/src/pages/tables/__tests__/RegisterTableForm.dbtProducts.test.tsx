@@ -171,9 +171,14 @@ describe("registering a dbt source's public models as data products", () => {
     await productsMode(user);
     await waitFor(() => expect(screen.getAllByTestId("dbt-product")).toHaveLength(2));
     const confirm = screen.getByTestId("register-table-dbt-products-submit");
-    expect(confirm).toBeDisabled(); // no domain yet
-    await user.selectOptions(screen.getByTestId("register-table-domain-select"), "sales");
+    // REQ-1968 (amended 2026-11-22): no domain yet does not disable it; pressed, it marks Domain.
     expect(confirm).toBeEnabled();
+    await user.click(confirm);
+    const domain = screen.getByTestId("register-table-domain-select");
+    await waitFor(() => expect(domain).toHaveAttribute("aria-invalid", "true"));
+    expect(domain).toHaveFocus();
+    expect(calls).toHaveLength(1);
+    await user.selectOptions(domain, "sales");
     await user.click(confirm);
     await waitFor(() => expect(onProductsRegistered).toHaveBeenCalledWith(["finance", "ops"]));
     expect(calls).toHaveLength(2);

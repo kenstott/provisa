@@ -14,7 +14,8 @@
     "discardBody": "השינויים ב-{{what}} לא נשמרו.",
     "discard": "ביטול השינויים",
     "deleting": "מוחק…",
-    "deleteFailed": "לא נמחק: {{reason}}"
+    "deleteFailed": "לא נמחק: {{reason}}",
+    "required": "שדה חובה"
   },
   "app": {
     "apiUnreachable": "לא ניתן להגיע ל-API של Provisa.",

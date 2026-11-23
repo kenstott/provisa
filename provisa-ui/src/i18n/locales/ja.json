@@ -14,7 +14,8 @@
     "discardBody": "{{what}} への変更は保存されていません。",
     "discard": "破棄",
     "deleting": "削除中…",
-    "deleteFailed": "削除されませんでした: {{reason}}"
+    "deleteFailed": "削除されませんでした: {{reason}}",
+    "required": "必須"
   },
   "app": {
     "apiUnreachable": "Provisa APIに接続できませんでした。",

@@ -18,6 +18,7 @@ import { Checkbox, Text, TextInput } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import { FieldGroup, FormChecks, FormField } from "../../components/form/FormLayout";
 import type { FileGlobPreview, FilesDiffer } from "./useFileGlobPreview";
+import type { RequiredFieldProps } from "../../components/form/useRequiredFields";
 
 interface CombineFilesSectionProps {
   preview: FileGlobPreview | null;
@@ -25,6 +26,8 @@ interface CombineFilesSectionProps {
   error: string | null;
   name: string;
   setName: (v: string) => void;
+  /** The name is required: its marker, message and focus, from the form's required fields. */
+  nameField: RequiredFieldProps;
   sourceFileColumn: string;
   setSourceFileColumn: (v: string) => void;
   includeExtra: boolean;
@@ -37,6 +40,7 @@ export function CombineFilesSection({
   error,
   name,
   setName,
+  nameField,
   sourceFileColumn,
   setSourceFileColumn,
   includeExtra,
@@ -76,7 +80,7 @@ export function CombineFilesSection({
       <FieldGroup row>
         <FormField size="medium">
           <TextInput
-            required
+            {...nameField}
             label={t("combineFiles.nameLabel")}
             placeholder={t("combineFiles.namePlaceholder")}
             value={name}

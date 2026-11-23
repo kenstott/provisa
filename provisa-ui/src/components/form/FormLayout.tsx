@@ -227,6 +227,16 @@ export type FormFieldSize = "short" | "medium" | "long" | "full";
  * `aria-labelledby` at `textId` and gives the help as its description, so the (?) inside the
  * label is not read as part of the name.
  */
+/** The red mark of a required field, after its label text: what a Mantine input draws itself, for a
+ *  label that is not Mantine's (a native select's, a label with help). */
+export function RequiredMark() {
+  return (
+    <span className="form-required" aria-hidden>
+      {" *"}
+    </span>
+  );
+}
+
 export function LabelWithHelp({
   label,
   help,
@@ -242,11 +252,7 @@ export function LabelWithHelp({
     <span className="form-label">
       <span>
         <span id={textId}>{label}</span>
-        {required && (
-          <span className="form-required" aria-hidden>
-            {" *"}
-          </span>
-        )}
+        {required && <RequiredMark />}
       </span>
       {/* The one tooltip of the application. It opens at once: the (?) exists only to be asked,
           so nothing is gained by waiting. Its name already is the help, so it is not also its
