@@ -46,6 +46,9 @@ _SAME_WIRE_FORM = frozenset(
         "information_schema.yes_or_no",
         "information_schema.cardinal_number",
         "information_schema.time_stamp",
+        # REQ-2204: character_data's base type, which a UNION of it with another input resolves
+        # to (Metabase's column listing), its value the domain's text.
+        "character varying",
         # Held as text in the always-empty statistics relations (catalog_pg17_tables): described
         # as PostgreSQL's, though no value of one is ever sent.
         "anyarray",
@@ -134,13 +137,110 @@ def result_types(sql: str) -> tuple[tuple[str, str], ...]:
         validate_qualify_columns=False,
         quote_identifiers=False,
     )
-    annotated = annotate_types(qualified, schema=_schema(), dialect="postgres")
+    annotated = annotate_types(
+        _search_path_types(qualified),
+        schema=_schema(),
+        expression_metadata=_expression_metadata(),
+        dialect="postgres",
+    )
     if not isinstance(annotated, exp.Query):
         return ()
-    return tuple(
-        (select.alias_or_name, _function_type(select.unalias()) or _format_type(select.type))
-        for select in annotated.selects
-    )
+    return tuple(zip((s.alias_or_name for s in annotated.selects), _query_types(annotated)))
+
+
+def _select_types(select: exp.Query) -> list[str]:
+    return [_function_type(s.unalias()) or _format_type(s.type) for s in select.selects]
+
+
+def _query_types(query: exp.Expr) -> list[str]:
+    """Each output column's type: a set operation's is its branches' common type."""
+    if isinstance(query, exp.Subquery):
+        return _query_types(query.this)
+    if not isinstance(query, exp.SetOperation):
+        return _select_types(query) if isinstance(query, exp.Query) else []
+    left, right = _query_types(query.left), _query_types(query.right)
+    if len(left) != len(right):
+        return left
+    return [_common_type((a, b)) for a, b in zip(left, right)]
+
+
+def _base_type(pg_type: str) -> str:
+    """A domain's base type (information_schema.sql_identifier is name); any other type itself."""
+    entry = _TYPES_BY_NAME.get(pg_type)
+    if entry is None or entry[3] != "d":
+        return pg_type
+    return TYPES[entry[6]][-1]
+
+
+def _common_type(types: tuple[str, ...]) -> str:
+    """The type PostgreSQL resolves a UNION's (or CASE's) inputs to (parse_coerce.c
+    select_common_type): one type if all are it; otherwise each domain is its base type and an
+    untyped NULL counts for nothing, and the type they then share. Where they share none, the
+    first input's type, as before."""
+    if len(set(types)) == 1:
+        return types[0]
+    known = {_base_type(t) for t in types if t not in _UNTYPED}
+    if not known:
+        return "text"
+    if len(known) == 1:
+        return known.pop()
+    return types[0]
+
+
+#: An untyped NULL literal, as _format_type names its type.
+_UNTYPED = frozenset({"", "null"})
+
+_TYPES_BY_NAME = {entry[-1]: entry for entry in TYPES.values()}
+
+#: A keyword PostgreSQL reads as a function of the session, by the function it is.
+_SESSION_KEYWORDS = {"current_catalog": "current_database"}
+
+
+def _search_path_types(tree: exp.Expr) -> exp.Expr:
+    """``tree`` with each type named in pg_catalog (``pg_catalog.regclass``) by its bare name, as
+    PostgreSQL's search path resolves it: sqlglot keeps a qualified user-defined type through a
+    cast but not through a CASE."""
+    for data_type in list(tree.find_all(exp.DataType)):
+        kind = data_type.args.get("kind")
+        if (
+            data_type.this == exp.DataType.Type.USERDEFINED
+            and isinstance(kind, exp.Dot)
+            and kind.this.name.lower() == "pg_catalog"
+        ):
+            bare = exp.DataType.build(kind.expression.name, dialect="postgres", udt=True)
+            data_type.replace(bare)
+    return tree
+
+
+_INTEGER_WIDTHS = (
+    exp.DataType.Type.SMALLINT,
+    exp.DataType.Type.INT,
+    exp.DataType.Type.BIGINT,
+)
+
+
+def _integer_division(annotator, expression: exp.Div) -> exp.Div:
+    """PostgreSQL's integer division (int2/int4/int8 operators): of two integers, the wider
+    operand's type, an integer literal being int4; sqlglot's own annotation is bigint."""
+    left, right = _integer_width(expression.left), _integer_width(expression.right)
+    if expression.args.get("typed") and left is not None and right is not None:
+        annotator._set_type(expression, _INTEGER_WIDTHS[max(left, right)])
+        return expression
+    return annotator._annotate_div(expression)
+
+
+def _integer_width(side: exp.Expr) -> int | None:
+    kind = side.type.this if side.type else None
+    if kind in _INTEGER_WIDTHS:
+        return _INTEGER_WIDTHS.index(kind)
+    return None
+
+
+@functools.cache
+def _expression_metadata() -> dict:
+    from sqlglot.dialects.postgres import Postgres
+
+    return {**Postgres.EXPRESSION_METADATA, exp.Div: {"annotator": _integer_division}}
 
 
 @functools.cache
@@ -189,7 +289,7 @@ def _function_type(expression: exp.Expr) -> str:
         name = type(expression).sql_names()[0].lower()
     else:
         return ""
-    return _FUNCTION_TYPES.get(name, "")
+    return _FUNCTION_TYPES.get(_SESSION_KEYWORDS.get(name, name), "")
 
 
 def _format_type(data_type) -> str:
