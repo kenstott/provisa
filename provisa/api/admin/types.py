@@ -172,14 +172,16 @@ class GovDataSubjectsType:  # REQ-540, REQ-541
 class DomainType:  # REQ-533, REQ-609
     id: str
     description: str
-    steward: str | None = None  # REQ-609: None = pending, no designated steward
     graphql_alias: str | None = None
     # REQ-1363: the domain this one sits under; None = no parent. A role that lists the parent
     # reaches this domain too.
     parent_domain_id: str | None = None
-    # REQ-1363: the steward the domain answers to -- its own, else its nearest ancestor's; None
-    # when no domain up the tree has one.
-    effective_steward: str | None = None
+    # REQ-609, REQ-2219 (amended 2026-11-23): its stewards, people by user id, each holding a
+    # domain_steward row naming the domain itself. Empty: none of its own.
+    stewards: list[str] = strawberry.field(default_factory=list)
+    # REQ-1363: the people it answers to -- a row naming it or a domain above it covers it.
+    # Empty: the domain is pending (REQ-609), unless it is a system domain.
+    effective_stewards: list[str] = strawberry.field(default_factory=list)
     # domain_policy.system_domain_ids() (meta/ops/"") -- auto-generated, preserved across
     # config replace-mode reloads, never a target an end user picks for their own tables. Was
     # entirely absent from this type, so every domain picker in the UI (KaggleFormSection's
@@ -1218,7 +1220,9 @@ class SourceInput:  # REQ-012
 class DomainInput:  # REQ-533, REQ-609
     id: str
     description: str = ""
-    steward: str | None = None  # REQ-609
+    # REQ-2219 (amended 2026-11-23): the Steward field names people (user ids); saving writes
+    # their domain_steward rows. None leaves them as they are.
+    stewards: list[str] | None = None
     graphql_alias: str | None = None
     parent_domain_id: str | None = None  # REQ-1363
 

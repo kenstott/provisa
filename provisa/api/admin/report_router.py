@@ -162,6 +162,11 @@ async def _hydrate(org_id: str) -> tuple["MetadataSnapshot", "ProvisaConfig"]:
             glossary["axioms"] = await glossary_repo.axioms(conn)
             # REQ-2180: the Data Contracts sheet lists each offer's contracts.
             offers = await offer_exports(conn)
+            # REQ-609, REQ-2219: owners and stewards are people holding entitlement rows.
+            from provisa.entitlements.owners import DOMAINS, holders, product_owners
+
+            domain_stewards = await holders(conn, DOMAINS)
+            owners = await product_owners(conn)
         dq_outcomes = await read_latest_outcomes(model)
         snapshot = build_snapshot(
             model,
@@ -176,6 +181,8 @@ async def _hydrate(org_id: str) -> tuple["MetadataSnapshot", "ProvisaConfig"]:
             # flag rides along as a column on the Tables sheet instead of deciding what appears.
             data_products_only=False,
             offers=offers,
+            product_owners=owners,
+            domain_stewards=domain_stewards,
         )
         # REQ-2261: the workbook states the environment's stage beside its name.
         snapshot = dataclasses.replace(snapshot, environment=await environment_stage(org_id))

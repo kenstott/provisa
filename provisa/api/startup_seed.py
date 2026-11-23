@@ -67,7 +67,6 @@ from provisa.core.environments import org_schema
 from provisa.core.repositories import source as _source_repo
 from provisa.core.repositories import table as _table_repo
 from provisa.core.schema_org import (
-    domains as _domains_t,
     registered_tables as _registered_tables_t,
     relationships as _relationships_t,
     sources as _sources_t,
@@ -527,8 +526,8 @@ async def _seed_ops_domain(
 
     REQ-1386: also creates and registers the management report views
     (``_OPS_REPORT_VIEWS``) on the same path — always seeded on install, not demo
-    data — and designates ``org_admin`` as the ops-domain steward so the domain
-    never surfaces as a REQ-609 PENDING stewardship gap.
+    data. The ops domain is a system domain, exempt from the REQ-609 steward gate
+    (REQ-2219, amended 2026-11-23), so no steward is seeded for it.
 
     ``views_made``: the views are there already (:func:`_make_built_in_views`)."""
     schema_name = org_schema(org_id, env)  # REQ-1488: the environment's schema, not the org's
@@ -641,13 +640,6 @@ async def _seed_ops_domain(
                     ),
                     update_columns=[],
                 )
-
-    # REQ-1386: org_admin stewards the ops domain (REQ-609 — never PENDING).
-    await conn.execute_core(
-        update(_domains_t)
-        .where(_domains_t.c.id == "ops", _domains_t.c.steward.is_(None))
-        .values(steward="org_admin")
-    )
 
 
 async def _ensure_ops_steward_grant(conn: "Connection") -> None:  # REQ-1386, REQ-1608

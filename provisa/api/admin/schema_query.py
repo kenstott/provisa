@@ -973,14 +973,15 @@ class Query:  # REQ-021, REQ-042
             # answered (a table reached through its own grant names its domain).
             scope = catalog_scope(info)
             holding = {d for _id, d in await _listed_tables(conn, scope)}
-            # REQ-1363: a domain with no steward answers to its nearest ancestor's, read off the
-            # whole tree -- an ancestor the caller is not listed may still steward its domain.
-            from provisa.security.domain_tree import effective_steward, parent_map
+            # REQ-1363, REQ-2219: a domain's stewards are people whose domain_steward rows name
+            # it; a row naming a domain above it covers it too -- an ancestor the caller is not
+            # listed may still be stewarded.
+            from provisa.entitlements.owners import DOMAINS, holders
 
-            parents = parent_map(rows)
-            stewards = {r["id"]: r["steward"] for r in rows}
+            own = await holders(conn, DOMAINS, exact=True)
+            covering = await holders(conn, DOMAINS)
             return [
-                _domain_from_row(r, effective_steward(r["id"], stewards, parents))
+                _domain_from_row(r, own.get(r["id"], ()), covering.get(r["id"], ()))
                 for r in rows
                 if scope.lists_domain(r["id"], r["id"] in holding)
             ]

@@ -134,7 +134,6 @@ ALTER TABLE sources ADD COLUMN IF NOT EXISTS withdrawn BOOLEAN NOT NULL DEFAULT 
 CREATE TABLE IF NOT EXISTS domains (
     id            TEXT PRIMARY KEY,
     description   TEXT NOT NULL DEFAULT '',
-    steward       TEXT,
     graphql_alias TEXT,
     -- REQ-1363: the domain this one sits under; NULL = no parent. No foreign key (see
     -- schema_org.domains): the model store holds the tree.
@@ -142,8 +141,6 @@ CREATE TABLE IF NOT EXISTS domains (
 );
 ALTER TABLE domains ADD COLUMN IF NOT EXISTS parent_domain_id TEXT;
 ALTER TABLE domains ADD COLUMN IF NOT EXISTS graphql_alias TEXT;
--- REQ-609: designated steward; NULL = pending (the domain may not serve governed data).
-ALTER TABLE domains ADD COLUMN IF NOT EXISTS steward TEXT;
 -- REQ-2248: deleting a domain that holds no live table retires it, as a table is retired: why
 -- (status_reason), who (status_by) and when (status_at). Its row is kept under a key of its own
 -- and retired_id holds the id it had while live, so that id is free for reuse.
@@ -161,8 +158,9 @@ ON CONFLICT (id) DO NOTHING;
 INSERT INTO domains (id, description) VALUES ('meta', 'System metadata')
 ON CONFLICT (id) DO NOTHING;
 
--- Seed built-in operational telemetry domain (REQ-1386: org_admin is its steward)
-INSERT INTO domains (id, description, steward) VALUES ('ops', 'Operational telemetry', 'org_admin')
+-- Seed built-in operational telemetry domain. A system domain needs no steward (REQ-2219,
+-- amended 2026-11-23: system domains are exempt from the REQ-609 steward gate).
+INSERT INTO domains (id, description) VALUES ('ops', 'Operational telemetry')
 ON CONFLICT (id) DO NOTHING;
 
 -- REQ-2163: the ontology system schema (the glossary's definitions). Its GraphQL alias is stored:

@@ -210,7 +210,6 @@ domains = Table(
     metadata,
     Column("id", Text, primary_key=True),
     Column("description", Text, nullable=False, server_default=""),
-    Column("steward", Text),  # REQ-609: designated steward; NULL = pending
     Column("graphql_alias", Text),
     # REQ-1363: the domain this one sits under (a business unit and its organizations); NULL =
     # no parent. No foreign key: a load or a deploy writes the whole tree at once, in no order

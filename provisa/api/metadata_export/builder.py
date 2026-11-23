@@ -101,24 +101,29 @@ def _source_assets(
     ]
 
 
-def _domain_assets(config: ProvisaConfig, org_id: str | None) -> list[DomainAsset]:  # REQ-609
-    from provisa.security.domain_tree import effective_steward, parent_map
+def _domain_assets(
+    config: ProvisaConfig,
+    org_id: str | None,
+    domain_stewards: Mapping[str, tuple[str, ...]],
+) -> list[DomainAsset]:  # REQ-609
+    from provisa.core.store_config import seeded_domains
 
-    parents = parent_map(d.model_dump() for d in config.domains)
-    stewards = {d.id: d.steward for d in config.domains}
+    system = seeded_domains()
     assets: list[DomainAsset] = []
     for domain in config.domains:
-        # REQ-1363: a domain with no steward answers to its nearest ancestor's.
-        owner = effective_steward(domain.id, stewards, parents)
-        steward = OwnerRef(id=owner, kind="steward") if owner is not None else None
+        # REQ-1363, REQ-2219: its stewards are people whose domain_steward rows name it or a
+        # domain above it.
+        people = domain_stewards.get(domain.id, ())
+        steward = OwnerRef(id=", ".join(people), kind="steward") if people else None
         # REQ-609: a domain with no steward is published as pending rather than omitted — the
-        # catalog must show the governance gap, not a shorter list of domains.
+        # catalog must show the governance gap, not a shorter list of domains. A system domain
+        # needs none (REQ-2219, amended 2026-11-23).
         assets.append(
             DomainAsset(
                 id=domain.id,
                 description=domain.description,
                 steward=steward,
-                pending=steward is None,
+                pending=steward is None and domain.id not in system,
                 semantic_uri=domain_uri(org_id, domain.id),
             )
         )
@@ -855,6 +860,7 @@ def build_snapshot(
     owner_emails: Mapping[str, tuple[str, ...]] | None = None,
     product_created: Mapping[str, datetime] | None = None,
     product_owners: Mapping[str, tuple[str, ...]] | None = None,
+    domain_stewards: Mapping[str, tuple[str, ...]] | None = None,
     person_emails: Mapping[str, str] | None = None,
     endpoints: ServingEndpoints | None = None,
     offers: Mapping[str, tuple[OfferExport, ...]] | None = None,
@@ -875,7 +881,8 @@ def build_snapshot(
     ``owner_emails`` (REQ-2118) is each role's holders' email addresses, by role id, read by the
     caller: a data product's team is its team role's holders. ``product_owners`` (REQ-2219) is
     each product's owners, people by user id (``entitlements.owners.product_owners``), and
-    ``person_emails`` their addresses, both read by the caller.
+    ``person_emails`` their addresses, both read by the caller. ``domain_stewards`` is each
+    domain's stewards, people by user id (``entitlements.owners.holders`` of DOMAINS).
     ``product_created`` is when each product was created, by product id, read by the caller.
     ``endpoints`` is where a consumer reads the products, which a contract names as its servers.
     ``offers`` (REQ-2180) is each product's offers with the contracts derived from them, by product
@@ -954,7 +961,7 @@ def build_snapshot(
     return MetadataSnapshot(
         org_id=org_id,
         sources=_source_assets(config, uri_org_id, published_source_ids),
-        domains=_domain_assets(config, uri_org_id),
+        domains=_domain_assets(config, uri_org_id, domain_stewards or {}),
         tables=tables,
         data_products=_data_product_assets(
             config,

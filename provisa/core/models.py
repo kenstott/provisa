@@ -577,15 +577,25 @@ class Source(BaseModel):  # REQ-012, REQ-052, REQ-053, REQ-204, REQ-229, REQ-250
 class Domain(BaseModel):  # REQ-471, REQ-609
     id: str
     description: str = ""
-    # REQ-609: the designated steward (role or user id). None means the domain is PENDING —
-    # it exists but may not serve governed data. The distinction is published to external
-    # catalogs (REQ-1070), so an unstewarded domain shows as a gap rather than disappearing.
-    steward: str | None = None
     graphql_alias: str | None = None
     # REQ-1363: the domain this one sits under — a business unit and the organizations within
     # it. Governance structure only: a role that lists the parent reaches every domain under
     # it, and addressing stays flat (a table is still ``domain.table`` of its one domain).
     parent_domain_id: str | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _no_steward(cls, data: Any) -> Any:
+        # REQ-2219 (amended 2026-11-23): a domain's stewards are people, each holding a
+        # domain_steward entitlement row naming it; the configuration carries no steward, and
+        # one that still does is refused rather than read past.
+        if isinstance(data, dict) and "steward" in data:
+            raise ValueError(
+                f"domain {data.get('id')!r}: steward is no longer a setting -- a domain's "
+                "stewards are people, named in its Steward field, each holding a domain_steward "
+                "entitlement row naming it. Remove the key."
+            )
+        return data
 
     @model_validator(mode="before")
     @classmethod

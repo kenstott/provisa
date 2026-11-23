@@ -40,13 +40,12 @@ async def upsert(  # REQ-021, REQ-367, REQ-1919
         {
             "id": domain.id,
             "description": domain.description,
-            "steward": domain.steward,  # REQ-609
             "graphql_alias": domain.graphql_alias,
             "parent_domain_id": domain.parent_domain_id,  # REQ-1363
             "org_id": "root",
         },
         index_elements=["id"],
-        update_columns=["description", "steward", "graphql_alias", "parent_domain_id"],
+        update_columns=["description", "graphql_alias", "parent_domain_id"],
     )
 
 

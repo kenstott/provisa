@@ -295,6 +295,7 @@ async def org_snapshot(org_id: str, *, product_id: str | None = None) -> "Metada
     from provisa.core.repositories import glossary as glossary_repo
 
     from provisa.auth.role_grants import emails_of, holder_emails
+    from provisa.entitlements.owners import DOMAINS, holders
     from provisa.entitlements.owners import product_owners as read_product_owners
 
     async with model_db.acquire() as conn:
@@ -303,6 +304,8 @@ async def org_snapshot(org_id: str, *, product_id: str | None = None) -> "Metada
         owner_emails = await holder_emails(conn)
         # REQ-2219: a product's owners are people, by their addresses.
         product_owners = await read_product_owners(conn)
+        # REQ-609, REQ-2219: a domain's stewards are people.
+        domain_stewards = await holders(conn, DOMAINS)
         person_emails = await emails_of(
             conn, {u for owners in product_owners.values() for u in owners}
         )
@@ -336,6 +339,7 @@ async def org_snapshot(org_id: str, *, product_id: str | None = None) -> "Metada
         owner_emails=owner_emails,
         product_created=product_created,
         product_owners=product_owners,
+        domain_stewards=domain_stewards,
         person_emails=person_emails,
         endpoints=serving_endpoints(state, org_id, base_url),
         offers=offers,
