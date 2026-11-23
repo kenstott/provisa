@@ -239,22 +239,32 @@ def _leg(r: Recorded, registered: Registered) -> tuple[Hop, float, Kind] | None:
 
 def junctions(read: list[Recorded], registered: Registered) -> list[Recorded]:
     """Each relationship two of the run's legs (:func:`_leg`) make through a junction both refer
-    from (REQ-1586): J.a -> A and J.b -> B make A -> J -> B, proposed once, as confident as its
-    less confident leg, beside its two legs. A shared dimension is proposed as a many-to-many
+    from (REQ-1586): J.a -> A and J.b -> B make A -> J -> B, proposed once for its two ends, as
+    confident as its less confident leg, beside its two legs. A shared dimension is proposed as a many-to-many
     pair instead (REQ-413)."""
     legs = [leg for leg in (_leg(r, registered) for r in read) if leg is not None]
-    best: dict[Through, tuple[float, Kind]] = {}
+    # One per pair of ends: a pair is decided once, whichever junction it is joined through
+    # (REQ-413, amended 2026-11-16), so the most confident junction is proposed, and of those
+    # alike, the first junction table registered.
+    best: dict[frozenset[ColumnRef], tuple[float, int, Through, Kind]] = {}
     for i, (first, first_rank, kind) in enumerate(legs):
         for second, second_rank, _ in legs[i + 1 :]:
             through = qualify(first, second)
             if through is None or through.shape != "junction":
                 continue
             confidence = min(first_rank, second_rank)
-            if through not in best or best[through][0] < confidence:
-                best[through] = (confidence, kind)
+            ends = frozenset(
+                {
+                    (through.source_table_id, through.source_column),
+                    (through.target_table_id, through.target_column),
+                }
+            )
+            held = best.get(ends)
+            if held is None or (-confidence, through.via_table_id) < (-held[0], held[1]):
+                best[ends] = (confidence, through.via_table_id, through, kind)
     return [
         Recorded(kind, None, through=through, confidence=confidence)
-        for through, (confidence, kind) in best.items()
+        for confidence, _, through, kind in best.values()
     ]
 
 

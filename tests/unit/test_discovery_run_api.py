@@ -2658,6 +2658,35 @@ async def test_a_junction_whose_legs_are_registered_is_proposed_as_certain(monke
     assert combined["reason"] is None and combined["confidence"] == 1.0
 
 
+async def test_two_junctions_between_the_same_ends_are_proposed_once(monkeypatch, tmp_path):
+    """REQ-1586: orders and returns each refer to a customer and a store. The pair of ends is
+    decided once (REQ-413), so one junction is proposed for it, the first junction table's."""
+    db = await _store(f"sqlite+pysqlite:///{tmp_path / 'store.db'}")
+    await _orders_between(db)
+    await _table(
+        db,
+        4,
+        "sales",
+        "returns",
+        [
+            ("id", "integer", True),
+            ("customer_id", "integer", False),
+            ("store_id", "integer", False),
+        ],
+    )
+    world = _World(monkeypatch, db, config=_ASSIGNED, api_keys={"openai": "k"})
+    _, listed = await _answered(
+        world,
+        [
+            *_JUNCTION_LEGS,
+            _suggestion((4, "customer_id"), (2, "id"), 0.9),
+            _suggestion((4, "store_id"), (3, "id"), 0.9),
+        ],
+    )
+    (combined,) = [r for r in listed if r["via"] is not None]
+    assert combined["via"]["table_id"] == 1 and combined["confidence"] == 0.9
+
+
 async def test_a_junction_relationships_own_two_ends_are_no_leg_of_another(monkeypatch, tmp_path):
     """REQ-1586: pets and playgroups are joined through members, not by a hop between them, so
     pets is no junction between playgroups and the breed it refers to."""
