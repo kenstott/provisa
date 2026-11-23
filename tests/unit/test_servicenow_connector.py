@@ -291,6 +291,7 @@ async def test_a_changed_registration_restarts_the_server_and_provisions_the_sou
     state = SimpleNamespace(
         config=SimpleNamespace(sources=[_source()], tables=[table]),
         tables=[],  # the build's registered-table rows (AppState.tables): none from the admin API
+        runtime_sources={},  # the build's sources rows (AppState.runtime_sources): no files source
         federation_engine=engine,
         source_catalogs={"snow-ops": "snow_ops"},
     )

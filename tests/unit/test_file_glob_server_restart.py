@@ -116,6 +116,7 @@ async def test_a_glob_table_registered_later_restarts_the_server_and_reattaches_
             tables=[SimpleNamespace(**{**_glob_row(), "table_name": "other", "file_glob": None})],
         ),
         tables=[],
+        runtime_sources={},
         federation_engine=engine,
         source_catalogs={"test": "_src_test"},
     )
@@ -127,5 +128,51 @@ async def test_a_glob_table_registered_later_restarts_the_server_and_reattaches_
     await app_rebuild.serve_registered_tables(state)
     assert calls == [("restart", "test"), ("drop", "_src_test"), ("register", "_src_test")]
     # Unchanged: left running.
+    await app_rebuild.serve_registered_tables(state)
+    assert len(calls) == 3
+
+
+@pytest.mark.asyncio
+async def test_a_glob_table_on_a_files_source_created_in_the_admin_restarts_its_server(
+    monkeypatch, tmp_path: Path
+):
+    """Sources > New source makes a ``sources`` row (AppState.runtime_sources), never one of the
+    configuration file's sources: its server, started by the Register Table form's discovery, is
+    started again with the glob table registered from it."""
+    from provisa.api import app_rebuild
+    from provisa.api.admin import schema_common
+
+    calls: list[tuple[str, str]] = []
+
+    async def restart(model):
+        calls.append(("restart", model.id))
+        assert model.path == str(tmp_path)
+
+    monkeypatch.setattr(schema_common, "restart_source_server", restart)
+    engine = SimpleNamespace(
+        drop_source=lambda source_id, catalog_name: calls.append(("drop", catalog_name)),
+        register_source=lambda source, password, catalog_name: calls.append(
+            ("register", catalog_name)
+        ),
+    )
+    row = {
+        "id": "test",
+        "type": "files",
+        "path": str(tmp_path),
+        "password_ref": "",  # sources.password_ref is NOT NULL DEFAULT ''
+        "region": None,
+    }
+    state = SimpleNamespace(
+        config=SimpleNamespace(sources=[], tables=[]),
+        tables=[],
+        runtime_sources={"test": row},
+        federation_engine=engine,
+        source_catalogs={"test": "_src_test"},
+    )
+    await app_rebuild.serve_registered_tables(state)
+    assert calls == []
+    state.tables = [_glob_row()]
+    await app_rebuild.serve_registered_tables(state)
+    assert calls == [("restart", "test"), ("drop", "_src_test"), ("register", "_src_test")]
     await app_rebuild.serve_registered_tables(state)
     assert len(calls) == 3
