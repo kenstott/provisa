@@ -90,9 +90,11 @@ ALLOWED: dict[tuple[str, str], str] = {
     (
         "provisa/runtime_deps/code_runtimes.py",
         "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.12.1%2B1/{filename}",
-    ): "Temurin JDK for the sparql reasoner. Move: open question (no upstream JDK on PyPI, Maven "
-    "Central or npm): precompile the reasoner to a jar on Maven Central and run it on a JRE from "
-    "a registry, or republish the JDK as a Provisa package once PyPI access returns.",
+    ): "Temurin JDK whose javac builds the sparql reasoner's jar (scripts/ci/reasoner_maven_bundle.py, "
+    ".github/workflows/reasoner-maven-bundle.yml); the reasoner runs on jdk4py's Java from PyPI and "
+    "its jar comes from Maven Central, so nothing on the pip path fetches it. Kept until "
+    "io.simpleishard:provisa-sparql-reasoner is promoted: until then the jar cannot be fetched and "
+    "the reasoner's tests build it. Move: the pin goes to the build script.",
     # --- Named, never fetched by Provisa. ---
     (
         "provisa/pg_extensions/catalog.py",

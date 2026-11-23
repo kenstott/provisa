@@ -19,6 +19,8 @@ a live endpoint by tests/integration/test_sparql_reasoner.py.
 from __future__ import annotations
 
 import hashlib
+import os
+import sys
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
@@ -28,7 +30,7 @@ from provisa.api_source.models import ApiColumn, ApiColumnType
 from provisa.core.config_loader import _validate_neo4j_sources, parse_config_dict
 from provisa.runtime_deps.code_runtimes import RuntimeUnavailable
 from provisa.sparql import reasoning
-from provisa.sparql.reasoner_bundle import JARS, ReasonerBundle
+from provisa.sparql.reasoner_bundle import JARS, MAIN_CLASS, REASONER, ReasonerBundle
 from provisa.sparql.source import SparqlSourceConfig, build_endpoint
 
 KYC = "http://example.org/kyc#"
@@ -225,7 +227,7 @@ def test_config_checks_the_reasoner_and_the_tables_that_read_it():
 
 def test_the_bundle_keeps_only_jars_whose_sums_are_the_pinned_ones(tmp_path):
     jar = JARS[0]
-    served = {j.url: b"jar" for j in JARS}
+    served = {j.url: b"jar" for j in (REASONER, *JARS)}
 
     def fetch(url: str) -> bytes:
         return served[url]
@@ -234,18 +236,92 @@ def test_the_bundle_keeps_only_jars_whose_sums_are_the_pinned_ones(tmp_path):
         ReasonerBundle(cache_root=tmp_path, fetcher=fetch).lib()
     assert not list((tmp_path / "reasoner" / "lib").glob("*.jar"))
 
-    with patch(
-        "provisa.sparql.reasoner_bundle.JARS",
-        tuple(
-            type(j)(j.group, j.artifact, j.version, hashlib.sha256(b"jar").hexdigest())
-            for j in JARS
-        ),
+    def pinned(j):
+        return type(j)(j.group, j.artifact, j.version, hashlib.sha256(b"jar").hexdigest())
+
+    with (
+        patch("provisa.sparql.reasoner_bundle.JARS", tuple(pinned(j) for j in JARS)),
+        patch("provisa.sparql.reasoner_bundle.REASONER", pinned(REASONER)),
     ):
         lib = ReasonerBundle(cache_root=tmp_path, fetcher=fetch).lib()
-        assert len(list(lib.glob("*.jar"))) == len(JARS)
+        assert len(list(lib.glob("*.jar"))) == len(JARS) + 1
         again = ReasonerBundle(cache_root=tmp_path, fetcher=lambda url: pytest.fail(url)).lib()
         assert again == lib  # a cache hit never downloads
     assert jar.url == (
         "https://repo1.maven.org/maven2/net/sourceforge/owlapi/org.semanticweb.hermit/"
         "1.4.5.519/org.semanticweb.hermit-1.4.5.519.jar"
     )
+
+
+def test_the_reasoner_jar_is_fetched_from_maven_central_and_checked(tmp_path):
+    """REQ-2138 (amended 2026-11-23): the reasoner is the precompiled jar
+    io.simpleishard:provisa-sparql-reasoner on Maven Central, kept only when its sum is pinned."""
+    assert REASONER.url == (
+        "https://repo1.maven.org/maven2/io/simpleishard/provisa-sparql-reasoner/"
+        f"{REASONER.version}/provisa-sparql-reasoner-{REASONER.version}.jar"
+    )
+    good = {j.url: b"jar" for j in JARS} | {REASONER.url: b"tampered"}
+    pinned = tuple(
+        type(j)(j.group, j.artifact, j.version, hashlib.sha256(b"jar").hexdigest()) for j in JARS
+    )
+    with patch("provisa.sparql.reasoner_bundle.JARS", pinned):
+        with pytest.raises(RuntimeUnavailable, match="provisa-sparql-reasoner.*not the pinned"):
+            ReasonerBundle(cache_root=tmp_path, fetcher=good.__getitem__).lib()
+        assert not ReasonerBundle(cache_root=tmp_path).kept(REASONER).exists()
+        served = good | {REASONER.url: b"reasoner"}
+        reasoner = type(REASONER)(
+            REASONER.group,
+            REASONER.artifact,
+            REASONER.version,
+            hashlib.sha256(b"reasoner").hexdigest(),
+        )
+        with patch("provisa.sparql.reasoner_bundle.REASONER", reasoner):
+            bundle = ReasonerBundle(cache_root=tmp_path, fetcher=served.__getitem__)
+            bundle.lib()
+            assert bundle.kept(reasoner).read_bytes() == b"reasoner"
+
+
+def test_no_url_the_reasoner_fetches_is_on_github():
+    for jar in (REASONER, *JARS):
+        assert jar.url.startswith("https://repo1.maven.org/maven2/"), jar.url
+
+
+def test_the_reasoner_runs_on_jdk4pys_java_with_only_the_pinned_jars(tmp_path):
+    import jdk4py
+
+    bundle = ReasonerBundle(cache_root=tmp_path, fetcher=lambda url: pytest.fail(url))
+    for jar in (REASONER, *JARS):
+        bundle.kept(jar).parent.mkdir(parents=True, exist_ok=True)
+        bundle.kept(jar).write_bytes(b"")
+    command = bundle.command("signature", "axioms.ttl")
+    assert command[0] == str(jdk4py.JAVA)
+    assert command[1] == "-cp"
+    assert command[2].split(os.pathsep) == [str(bundle.kept(j)) for j in (REASONER, *JARS)]
+    assert command[3:] == [MAIN_CLASS, "signature", "axioms.ttl"]
+
+
+def test_without_jdk4py_the_reasoner_is_unavailable_naming_the_extra(tmp_path):
+    with patch.dict(sys.modules, {"jdk4py": None}):
+        with pytest.raises(RuntimeUnavailable, match=r"provisa\[sparql\]"):
+            ReasonerBundle(cache_root=tmp_path, fetcher=lambda url: pytest.fail(url)).command()
+
+
+@pytest.mark.asyncio
+async def test_the_program_is_run_as_jdk4pys_java_in_its_own_process(tmp_path):
+    import jdk4py
+
+    process = AsyncMock()
+    process.returncode = 0
+    process.communicate = AsyncMock(return_value=(b"class x\n", b""))
+    bundle = ReasonerBundle(cache_root=tmp_path, fetcher=lambda url: pytest.fail(url))
+    for jar in (REASONER, *JARS):
+        bundle.kept(jar).parent.mkdir(parents=True, exist_ok=True)
+        bundle.kept(jar).write_bytes(b"")
+    spawn = AsyncMock(return_value=process)
+    with (
+        patch("provisa.sparql.reasoner_bundle.default_cache_root", return_value=tmp_path),
+        patch("asyncio.create_subprocess_exec", new=spawn),
+    ):
+        assert await reasoning.run_program("signature", "a.ttl") == "class x\n"
+    args = spawn.await_args.args
+    assert args[0] == str(jdk4py.JAVA) and args[-3:] == (MAIN_CLASS, "signature", "a.ttl")

@@ -54,12 +54,19 @@ No declared dependency is a direct GitHub URL (the test checks `pyproject.toml`)
 | Rust toolchain | `static.rust-lang.org` | first Rust code source | open question |
 | pyarrow wheel for the Python host | `files.pythonhosted.org` | first Python code source | PyPI already, but the URL is fixed |
 | apache-arrow for the Node host | `registry.npmjs.org` | first JavaScript code source | npm already, but the URL is fixed |
-| Temurin JDK | GitHub release | first sparql source with reasoning | open question |
+| Java runtime for the sparql reasoner | the `jdk4py` wheel (`sparql` extra) from PyPI at install time | never fetched | PyPI already |
+| sparql reasoner jar `io.simpleishard:provisa-sparql-reasoner` | `repo1.maven.org/maven2` | first sparql source with reasoning | Maven Central once promoted; until then it cannot be fetched |
 | HermiT and OWL API jars | `repo1.maven.org/maven2` | first sparql source with reasoning | Maven Central already, but the URL is fixed |
 | code-source dependencies (npm, PyPI, Go modules, crates, git) | the organisation's package registries | each code-source install | configurable mirror already |
 
 A Python code source runs on the interpreter Provisa runs on, in a virtual environment uv makes for it;
 only an image built for a remote host's platform takes the pinned python-build-standalone.
+
+The reasoner jar is built from `provisa/sparql/reasoner/Reasoner.java` by
+`.github/workflows/reasoner-maven-bundle.yml` with the pinned Temurin JDK's javac, which is fetched
+from a GitHub release by that build and by the reasoner's tests, never by an install. The Temurin pin
+stays in `provisa/runtime_deps/code_runtimes.py`, on the test's list, until
+`io.simpleishard:provisa-sparql-reasoner` is promoted.
 
 The code runtimes and reasoner jars use fixed public URLs. They do not go through the organisation's
 configured package registries, so a site that reaches only its Artifactory fails even for the ones
