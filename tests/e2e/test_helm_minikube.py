@@ -318,6 +318,16 @@ def _why_not_ready() -> str:
             name = pod["metadata"]["name"]
             described = kubectl("describe", "pod", name)
             lines.append(f"=== describe {name}\n{described.stdout[-4000:]}")
+            # The describe tail above cuts off each container's State and Last State; the
+            # termination reason and exit code (OOMKilled 137, a clean 0, a probe kill) are what
+            # tell a crash-looping container's cause apart, so print them from the pod JSON.
+            for status in pod["status"].get("containerStatuses", []):
+                lines.append(
+                    f"=== container state {name}/{status['name']} "
+                    f"restarts={status.get('restartCount')}\n"
+                    f"state={json.dumps(status.get('state'))}\n"
+                    f"lastState={json.dumps(status.get('lastState'))}"
+                )
             # Per container: `--all-containers --previous` returns nothing at all when any
             # container (an init container) has no previous run, which hid a crash-looping
             # container's last log.
