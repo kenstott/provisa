@@ -759,6 +759,7 @@
   "tests/integration/test_rust_sdk_reader.py": 60.0,
   "tests/integration/test_code_sdk_spellings_rust.py": 90.0,
   "tests/integration/test_code_sdk_spellings_go.py": 60.0,
-  "tests/integration/test_go_sdk_reader.py": 45.0
+  "tests/integration/test_go_sdk_reader.py": 45.0,
+  "tests/integration/test_neo4j_query_preview_e2e.py": 45.0
  }
 }

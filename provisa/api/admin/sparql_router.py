@@ -55,7 +55,11 @@ class SparqlSourceRequest(BaseModel):
 async def register_sparql_source(body: SparqlSourceRequest, request: Request):  # REQ-297, REQ-298
     """Register a SPARQL source."""
     require_capability_request(request, "source_registration")
-    state = request.app.state
+    # Issue #345: this read `request.app.state` (Starlette's per-request State, which has none of
+    # provisa's attributes, so `model_db` was always missing and every call answered 503). Provisa's
+    # app-state singleton is imported directly, as grpc_remote_router does since REQ-1742.
+    from provisa.api.app import state
+
     cfg = SparqlSourceConfig(
         source_id=body.source_id,
         endpoint_url=body.endpoint_url,
@@ -65,11 +69,6 @@ async def register_sparql_source(body: SparqlSourceRequest, request: Request):  
     # REQ-1683: the source is a control-plane row, not a process-lifetime dict entry.
     async with _control_plane(state).acquire() as conn:
         await persist_api_source(conn, api_source)
-    if not hasattr(state, "api_sources"):
-        state.api_sources = {}
     state.api_sources[api_source.id] = api_source
-    if not hasattr(state, "sparql_endpoints"):
-        state.sparql_endpoints = {}
-    state.sparql_endpoints[api_source.id] = body.endpoint_url
     log.info("Registered SPARQL source %s at %s", body.source_id, body.endpoint_url)
     return {"source_id": api_source.id, "base_url": api_source.base_url}
