@@ -20,6 +20,9 @@ PostgreSQL reads with that type's input function. DuckDB reads some of those str
 - an exact number cast to a numeric of no precision, ``'12345.6789'::numeric``, which DuckDB
   rounds to its default DECIMAL(18,3): the literal is cast to a decimal holding all its digits
   (``exact_inputs``, as on every other target);
+- a date, timestamp or timestamptz BC, ``'4713-01-01 00:00:00 BC'::timestamp``, which DuckDB
+  refuses (or, a timestamp, reads as the year AD): the literal is written in DuckDB's own spelling
+  of the era, ``'4713-01-01 (BC) 00:00:00'`` (``duckdb_eras``), which DuckDB holds to 290309 BC;
 
 and an untyped NULL a statement's own result column gives is text, as PostgreSQL resolves an
 unknown-typed output column (DuckDB types it INTEGER)."""
@@ -266,6 +269,59 @@ def array_inputs(tree: exp.Expr) -> exp.Expr:
     """``tree`` with each array's text form cast to an array type written as its elements
     (``array_input``), in place."""
     return tree.transform(array_input, copy=False)
+
+
+#: PostgreSQL's text of a date or timestamp BC, as the functions measure writes it: the date, then
+#: anything (a clock, an offset), then the era.
+_BC = re.compile(r"(?P<day>[0-9]{4,}-[0-9]{2}-[0-9]{2})(?P<rest>.*) BC")
+#: The types whose input reads an era.
+_DATED = (
+    exp.DataType.Type.DATE,
+    exp.DataType.Type.TIMESTAMP,
+    exp.DataType.Type.TIMESTAMPNTZ,  # DuckDB's TIMESTAMP, as its tree reads it
+    exp.DataType.Type.TIMESTAMPTZ,
+)
+
+
+def duckdb_era(text: str) -> str:
+    """PostgreSQL's text of a date or timestamp BC in DuckDB's spelling, the era after the date:
+    ``4713-01-01 (BC) 00:00:00+00``; any other text as it is."""
+    bc = _BC.fullmatch(text)
+    return text if bc is None else f"{bc['day']} (BC){bc['rest']}"
+
+
+def duckdb_eras(node: exp.Expr) -> exp.Expr:
+    """A date, timestamp or timestamptz literal BC in DuckDB's spelling (``duckdb_era``), for
+    ``tree.transform`` of DuckDB's tree: after the forms that read a literal's text as
+    PostgreSQL writes it (a range's bound) have read it. And ``DATE_PART('year', v)``, which
+    counts 1 BC as year 0 on DuckDB, as PostgreSQL counts it (-1), as EXTRACT is
+    (semantic_dialect)."""
+    if isinstance(node, exp.Anonymous) and node.name.upper() == "DATE_PART":
+        return _year_of_era(node)
+    if not isinstance(node, exp.Cast) or not isinstance(node.this, exp.Literal):
+        return node
+    literal, to = node.this, node.to
+    if not literal.is_string or not to.is_type(*_DATED):
+        return node
+    era = duckdb_era(literal.this)
+    if era != literal.this:
+        node.set("this", exp.Literal.string(era))  # a TRY_CAST stays one
+    return node
+
+
+def _year_of_era(node: exp.Anonymous) -> exp.Expr:
+    part = node.expressions[0] if node.expressions else None
+    while isinstance(part, exp.Cast):
+        part = part.this
+    if not isinstance(part, exp.Literal) or part.name.lower() != "year":
+        return node
+    # Its value's literal in DuckDB's spelling first: the CASE that replaces the call is not
+    # visited again.
+    value = node.expressions[1].transform(duckdb_eras).sql(dialect="duckdb")
+    return sqlglot.parse_one(
+        f"CASE WHEN YEAR({value}) <= 0 THEN YEAR({value}) - 1 ELSE YEAR({value}) END",
+        read="duckdb",
+    )
 
 
 def literal_input(node: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]

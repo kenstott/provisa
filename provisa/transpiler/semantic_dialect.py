@@ -365,6 +365,20 @@ def _keyword_lambda_sql(
 
 DuckDB.Generator.lambda_sql = _keyword_lambda_sql  # type: ignore[method-assign]
 
+_duckdb_extract = DuckDB.Generator.extract_sql
+
+
+def _duckdb_extract_year(self: DuckDB.Generator, expression: exp.Extract) -> str:
+    """EXTRACT(YEAR ...) on DuckDB counts year 0 as 1 BC, as Trino does (``_trino_extract_year``,
+    REQ-2236): PostgreSQL's 4713 BC is -4713 where DuckDB says -4712."""
+    if expression.name.upper() != "YEAR":
+        return _duckdb_extract(self, expression)
+    year = self.func("YEAR", expression.expression)
+    return f"CASE WHEN {year} <= 0 THEN {year} - 1 ELSE {year} END"
+
+
+DuckDB.Generator.TRANSFORMS[exp.Extract] = _duckdb_extract_year
+
 
 _duckdb_json_arrow = DuckDB.Generator.TRANSFORMS[exp.JSONExtract]
 

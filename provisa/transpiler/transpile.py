@@ -43,6 +43,7 @@ from provisa.transpiler.pg_literals import (
     ROOM,
     TIGHT,
     array_inputs,
+    duckdb_eras,
     exact_inputs,
     postgres_literals,
 )
@@ -768,6 +769,7 @@ def _duckdb_form(pg_sql: str) -> str:
     tree = _row_delimited_string_agg(tree)
     tree = pg_functions.after_in(_postgres_semantics_for_duckdb(_lengths_for_duckdb(tree)))
     _posix_zones_for_duckdb(tree)
+    tree = tree.transform(duckdb_eras, copy=False)  # REQ-2236: a literal BC
     # In place, the tree being this function's; a root a step lifted out of its parent keeps its copy.
     return tree.sql(dialect="duckdb", copy=tree.parent is not None)
 
