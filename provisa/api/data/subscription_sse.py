@@ -124,6 +124,16 @@ async def handle_subscription_sse(  # REQ-219, REQ-258, REQ-260, REQ-282
     if not sub_fields or not sub_selection:
         return _error_stream(["No subscription fields"])
 
+    # REQ-194: a Hasura-preset table's stream (``<table>_stream``) reads batches past a cursor.
+    if sub_fields[0] not in ctx.tables:
+        from provisa.compiler.names_table import root_field
+
+        resolved = root_field(ctx, sub_fields[0])
+        if resolved is not None and resolved[0] == "graphql_stream":
+            return _hasura_stream_sse(
+                document, resolved[1], state, variables, role, role_id, raw_request, directives
+            )
+
     # Find table metadata for the first subscription field
     table_meta = ctx.tables.get(sub_fields[0])
     if table_meta is None:
@@ -224,29 +234,7 @@ async def handle_subscription_sse(  # REQ-219, REQ-258, REQ-260, REQ-282
             await asyncio.sleep(1)
 
     async def _run_query() -> dict:
-        from provisa.compiler.parser import parse_query as _parse
-        from provisa.api.data.endpoint import _handle_query
-
-        q_doc = _parse(schema, query_text, variables, ctx=ctx)
-        result = await _handle_query(
-            q_doc,
-            ctx,
-            state,
-            variables,
-            role,
-            "json",
-            role_id,
-            cache_ttl=None,
-            cache_opt_in=False,  # REQ-544: a subscription poll never reads or writes the cache
-            debug_trace=False,  # a poll carries no trace hint of its own
-        )
-        # JSONResponse stores serialized bytes in .body
-        if isinstance(result, JSONResponse):
-            body = result.body
-            if isinstance(body, memoryview):
-                return json.loads(bytes(body))
-            return json.loads(body)
-        return result  # type: ignore[return-value]
+        return await _answer(query_text, schema, ctx, state, variables, role, role_id)
 
     subscription_id = new_subscription_id()
 
@@ -371,6 +359,97 @@ async def handle_subscription_sse(  # REQ-219, REQ-258, REQ-260, REQ-282
                 await task
             except asyncio.CancelledError:
                 pass
+
+    from provisa.api.request_timeout import outlive_deadline
+
+    outlive_deadline()
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+async def _answer(query_text: str, schema, ctx, state, variables, role, role_id: str) -> dict:
+    """``query_text``'s answer through the one query pipeline, governed for the role as any
+    query is."""
+    from provisa.compiler.parser import parse_query as _parse
+    from provisa.api.data.endpoint import _handle_query
+
+    q_doc = _parse(schema, query_text, variables, ctx=ctx)
+    result = await _handle_query(
+        q_doc,
+        ctx,
+        state,
+        variables,
+        role,
+        "json",
+        role_id,
+        cache_ttl=None,
+        cache_opt_in=False,  # REQ-544: a subscription poll never reads or writes the cache
+        debug_trace=False,  # a poll carries no trace hint of its own
+    )
+    # JSONResponse stores serialized bytes in .body
+    if isinstance(result, JSONResponse):
+        body = result.body
+        if isinstance(body, memoryview):
+            return json.loads(bytes(body))
+        return json.loads(body)
+    return result  # type: ignore[return-value]
+
+
+#: Seconds between a stream's reads after a batch that was not full: Hasura's streaming refetch
+#: interval default (1 s), as REQ-194 serves Hasura's streaming subscription.
+STREAM_REFETCH_SECONDS = 1.0
+
+
+def _hasura_stream_sse(  # REQ-194
+    document, table_meta, state, variables, role, role_id: str, raw_request: Request, directives
+) -> StreamingResponse:
+    """A Hasura-preset table's ``<table>_stream``: each batch past the cursor, as an SSE frame,
+    read through the query pipeline (``_answer``) so it is governed as a query is."""
+    from provisa.api.role_surface import built_surface
+    from provisa.compiler.hasura_stream import (
+        StreamRefused,
+        masked_fields,
+        stream_batches,
+        stream_request,
+    )
+    from provisa.subscriptions.owner import bounded_by_owner, ensure_held, owner_of
+
+    if (directives and directives.sink_topic) or raw_request.headers.get("x-provisa-sink"):
+        return _error_stream(["A Hasura stream subscription is answered to its client, not a sink"])
+    surface = built_surface(state.surfaces[role_id])
+    schema, ctx = surface.schema, surface.context
+    operation = next(d for d in document.definitions if isinstance(d, OperationDefinitionNode))
+    field = next(s for s in operation.selection_set.selections if isinstance(s, FieldNode))
+    try:
+        masked = masked_fields(state.masking_rules, ctx, table_meta, role_id)
+        req = stream_request(schema, operation, field, table_meta, variables, masked)
+    except StreamRefused as exc:
+        return _error_stream([str(exc)])
+    owner = owner_of(raw_request, state, role_id)
+    subscription_id = new_subscription_id()
+
+    async def run(query_text: str) -> dict:
+        return await _answer(query_text, schema, ctx, state, None, role, role_id)
+
+    async def idle() -> bool:
+        await asyncio.sleep(STREAM_REFETCH_SECONDS)
+        return not await raw_request.is_disconnected()
+
+    async def generate() -> AsyncGenerator[str, None]:
+        try:
+            # REQ-812: the owner losing its role ends the stream with a last frame saying so.
+            batches = stream_batches(req, run, idle)
+            async for frame in bounded_by_owner(batches, lambda: ensure_held(state, owner)):
+                yield f"data: {json.dumps(frame)}\n\n"
+        except Exception as exc:
+            yield graphql_stream_error(exc, subscription_id, f"stream of {table_meta.table_name}")
 
     from provisa.api.request_timeout import outlive_deadline
 

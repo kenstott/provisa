@@ -42,6 +42,8 @@ const REGISTERED = {
   functionArg: null,
   alias: null,
   graphqlAlias: null,
+  shape: "direct",
+  properties: [],
 };
 const RELS = { relationships: [REGISTERED], loading: false, refetch: vi.fn() };
 const TABLES = {

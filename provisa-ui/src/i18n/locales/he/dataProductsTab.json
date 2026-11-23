@@ -313,6 +313,18 @@
     "tagFacetPlaceholder": "סינון לפי תגית",
     "noMatch": "אין מוצרי נתונים התואמים למסננים",
     "domainFacetLabel": "דומיינים",
-    "domainFacetPlaceholder": "סינון לפי דומיין"
+    "domainFacetPlaceholder": "סינון לפי דומיין",
+    "colSync": "סנכרון",
+    "syncNone": "לא מסונכרן",
+    "syncSynced_one": "מסונכרן",
+    "syncSynced_other": "מסונכרן עם {{count}}",
+    "syncFailed_one": "{{count}} נכשלו",
+    "syncFailed_other": "{{count}} נכשלו",
+    "syncEntryPublished": "{{entry}}: פורסם {{when}}",
+    "syncEntryFailed": "{{entry}}: נכשל {{when}}",
+    "syncGroup_synced": "מסונכרן",
+    "syncGroup_failed": "נכשל",
+    "syncGroup_none": "לא מסונכרן",
+    "syncUnread": "לא ניתן היה לקרוא את מצב הסנכרון: {{error}}"
   }
 }

@@ -38,10 +38,12 @@ from graphql import (
 )
 
 from provisa.compiler.naming import (
+    HASURA_CURSOR_ORDERINGS,
     HASURA_DEFAULT,
     HASURA_ORDER_DIRECTIONS,
     hasura_argument_name,
     hasura_comparison_type,
+    hasura_cursor_ordering_type,
     hasura_enum_value,
     hasura_operator,
     hasura_order_by_type,
@@ -155,3 +157,60 @@ def mutation_response(t: _TableInfo, row_type: GraphQLObjectType) -> GraphQLObje
             },
         ),
     )
+
+
+_CURSOR_ORDERING: dict[str, GraphQLEnumType] = {}
+
+
+def cursor_ordering_enum(convention: str) -> GraphQLEnumType:
+    """Hasura's ``cursor_ordering`` enum under ``convention``: ``ASC`` and ``DESC``, one
+    instance per convention, as a schema holds the name once."""
+    if convention not in _CURSOR_ORDERING:
+        _CURSOR_ORDERING[convention] = cast(
+            GraphQLEnumType,
+            GraphQLEnumType(
+                hasura_cursor_ordering_type(convention),
+                {v: GraphQLEnumValue(v) for v in HASURA_CURSOR_ORDERINGS},
+            ),
+        )
+    return _CURSOR_ORDERING[convention]
+
+
+def stream_field(
+    t: _TableInfo,
+    row_type: GraphQLObjectType,
+    where_type: GraphQLInputObjectType,
+    columns: dict[str, GraphQLScalarType | GraphQLEnumType],
+) -> GraphQLField:
+    """``<table>_stream(batch_size: Int!, cursor: [<table>_stream_cursor_input]!, where:
+    <table>_bool_exp): [<table>!]!``: the table's rows past a cursor, in batches. ``columns`` are
+    the table's served columns, each a cursor the stream may run on."""
+    conv = t.hasura
+    assert conv is not None
+
+    def arg(name: str) -> str:
+        return hasura_argument_name(conv, name)
+
+    value_input = cast(
+        GraphQLInputObjectType,
+        GraphQLInputObjectType(
+            type_name(t, "stream_cursor_value_input"),
+            lambda: {name: GraphQLInputField(gql) for name, gql in columns.items()},
+        ),
+    )
+    cursor_input = cast(
+        GraphQLInputObjectType,
+        GraphQLInputObjectType(
+            type_name(t, "stream_cursor_input"),
+            lambda: {
+                arg("initial_value"): GraphQLInputField(GraphQLNonNull(value_input)),
+                arg("ordering"): GraphQLInputField(cursor_ordering_enum(conv)),
+            },
+        ),
+    )
+    args = {
+        arg("batch_size"): GraphQLArgument(GraphQLNonNull(GraphQLInt)),
+        arg("cursor"): GraphQLArgument(GraphQLNonNull(GraphQLList(cursor_input))),
+        arg("where"): GraphQLArgument(where_type),
+    }
+    return GraphQLField(GraphQLNonNull(GraphQLList(GraphQLNonNull(row_type))), args=args)

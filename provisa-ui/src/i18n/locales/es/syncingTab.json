@@ -141,6 +141,9 @@
     "holdReason_edited_in_provisa": "Editado en Provisa desde el último intercambio",
     "holdReason_never_exchanged": "Nunca intercambiado, así que no se sabe qué lado cambió",
     "holdReason_not_importable": "Provisa aún no puede tomar este tipo de un catálogo",
-    "holdReason_left_to_export": "La elección fija es el valor de Provisa, que envía Exportar"
+    "holdReason_left_to_export": "La elección fija es el valor de Provisa, que envía Exportar",
+    "productFilterLabel": "Productos de datos",
+    "productFilterPlaceholder": "Filtrar por producto de datos",
+    "noneForProducts": "Ninguna entrada publica los productos de datos elegidos."
   }
 }

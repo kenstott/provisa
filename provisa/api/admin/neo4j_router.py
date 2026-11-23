@@ -64,7 +64,11 @@ class Neo4jPreviewRequest(BaseModel):
 async def register_neo4j_source(body: Neo4jSourceRequest, request: Request):  # REQ-295
     """Register a Neo4j source."""
     require_capability_request(request, "source_registration")
-    state = request.app.state
+    # Issue #345: this read `request.app.state` (Starlette's per-request State, which has none of
+    # provisa's attributes, so `model_db` was always missing and every call answered 503). Provisa's
+    # app-state singleton is imported directly, as grpc_remote_router does since REQ-1742.
+    from provisa.api.app import state
+
     cfg = Neo4jSourceConfig(
         source_id=body.source_id,
         host=body.host,
@@ -76,12 +80,7 @@ async def register_neo4j_source(body: Neo4jSourceRequest, request: Request):  # 
     # REQ-1668: the source is a control-plane row, not a process-lifetime dict entry.
     async with _control_plane(state).acquire() as conn:
         await persist_api_source(conn, api_source)
-    if not hasattr(state, "api_sources"):
-        state.api_sources = {}
     state.api_sources[api_source.id] = api_source
-    if not hasattr(state, "neo4j_configs"):
-        state.neo4j_configs = {}
-    state.neo4j_configs[api_source.id] = cfg
     log.info("Registered Neo4j source %s at %s:%d", body.source_id, body.host, body.port)
     return {"source_id": api_source.id, "base_url": api_source.base_url}
 
@@ -101,7 +100,11 @@ async def preview_neo4j_query(  # REQ-296, REQ-298, REQ-299
     # createSource resolves here too, not only one registered through this router).
     from provisa.api.admin._neo4j_registration import preview_neo4j
 
-    state = request.app.state
+    # Issue #345: this read `request.app.state` (Starlette's per-request State, which has none of
+    # provisa's attributes, so `model_db` was always missing and every call answered 503). Provisa's
+    # app-state singleton is imported directly, as grpc_remote_router does since REQ-1742.
+    from provisa.api.app import state
+
     async with _control_plane(state).acquire() as conn:
         result = await preview_neo4j(conn, source_id, body.cypher)
     if result.error is not None:

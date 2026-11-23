@@ -1,0 +1,128 @@
+{
+  "name": "provisa",
+  "displayName": "Provisa",
+  "description": "See the tables and commands Provisa would serve from your Node or Python code source, run it in dev mode on a Provisa instance, and build its image.",
+  "version": "0.0.0",
+  "publisher": "provisa",
+  "license": "SEE LICENSE IN LICENSE",
+  "icon": "icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kenstott/provisa"
+  },
+  "homepage": "https://provisa.dev",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "provisa",
+    "code source",
+    "graphql",
+    "sql"
+  ],
+  "main": "./src/extension.js",
+  "activationEvents": [
+    "onLanguage:python",
+    "onLanguage:typescript",
+    "onLanguage:javascript"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "provisa.refresh",
+        "title": "Refresh Served Functions",
+        "category": "Provisa",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "provisa.chooseInstance",
+        "title": "Choose Instance",
+        "category": "Provisa"
+      },
+      {
+        "command": "provisa.signIn",
+        "title": "Sign In",
+        "category": "Provisa"
+      },
+      {
+        "command": "provisa.devMode",
+        "title": "Run in Dev Mode",
+        "category": "Provisa"
+      },
+      {
+        "command": "provisa.buildImage",
+        "title": "Build Image",
+        "category": "Provisa"
+      }
+    ],
+    "views": {
+      "explorer": [
+        {
+          "id": "provisa.functions",
+          "name": "Provisa"
+        }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "provisa.refresh",
+          "when": "view == provisa.functions",
+          "group": "navigation"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Provisa",
+      "properties": {
+        "provisa.cli": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "provisa"
+          ],
+          "description": "The Provisa command that reads the workspace, run as <command> code check <folder> --json."
+        },
+        "provisa.python": {
+          "type": "string",
+          "default": "",
+          "description": "The interpreter a Python workspace is read under. Empty: the workspace's .venv/bin/python."
+        },
+        "provisa.instances": {
+          "type": "array",
+          "default": [],
+          "description": "The Provisa instances a code source can run on in dev mode.",
+          "items": {
+            "type": "object",
+            "required": [
+              "url",
+              "org"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "The name the instance is picked by."
+              },
+              "url": {
+                "type": "string",
+                "description": "The instance's address, for example http://localhost:8000."
+              },
+              "org": {
+                "type": "string",
+                "description": "The organization the code source is registered in."
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "scripts": {
+    "package": "cp ../LICENSE LICENSE && cp ../brand/provisa-favicon-512.png icon.png && npx --yes @vscode/vsce@3.2.1 package --no-dependencies"
+  }
+}

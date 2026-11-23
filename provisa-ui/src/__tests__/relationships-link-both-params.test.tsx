@@ -49,6 +49,8 @@ const rel = (id: number, source: string, target: string) => ({
   sameEntity: false,
   viaTableId: null,
   viaTableName: null,
+  shape: "direct",
+  properties: [],
   viaSourceColumn: null,
   viaTargetColumn: null,
   viaTypeColumn: null,

@@ -34,8 +34,6 @@
     "sqlName": "שם SQL",
     "cardinalityWarning": "אזהרה: אם ה-JOIN הזה מחזיר יותר משורה אחת לכל הורה, רק הערך הראשון ישמש.",
     "toggleDetails": "הצגה/הסתרה של פרטי הקשר",
-    "junctionBadge": "מאפ'",
-    "junctionBadgeTitle": "קשר עם מאפיינים מתוך {{table}}",
     "deleteTitle": "למחוק את הקשר \"{{id}}\"?",
     "deleteConsequence": "הקשר יוסר מהמודל. שאילתות לא יוכלו עוד לבצע צירוף דרכו.",
     "parametersFed": "פרמטרים מוזנים",

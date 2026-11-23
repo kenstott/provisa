@@ -72,3 +72,40 @@ def serve_tables(
     _IMPORT_SETS[source_id] = bound
     _FORMS[source_id] = shaped
     return before != (wanted, bound, shaped)
+
+
+def file_glob_specs(tables: list[Any]) -> dict[str, list[dict]]:  # REQ-788
+    """{source_id: [the file adapter's glob-table spec, ...]} for every registered table that
+    declares a ``file_glob`` -- a config Table or a registered-table row, one spec per table."""
+    by_source: dict[str, list[dict]] = {}
+    for table in tables:
+        row = table if isinstance(table, dict) else vars(table)
+        if not row.get("file_glob"):
+            continue
+        specs = by_source.setdefault(row["source_id"], [])
+        if all(spec["name"] != row["table_name"] for spec in specs):
+            specs.append(
+                {
+                    "name": row["table_name"],
+                    "file_glob": row["file_glob"],
+                    "source_file_column": row.get("source_file_column"),
+                }
+            )
+    return by_source
+
+
+# REQ-788: a files source's glob tables -- each merged by its server's file adapter from every file
+# its glob matches -- are in that server's model, built when it starts. A glob table registered or
+# changed after the server started is not in it until it is started again.
+_GLOB_TABLES: dict[str, tuple[tuple[str, str, str | None], ...]] = {}
+
+
+def serve_glob_tables(source_id: str, specs: Iterable[Mapping[str, Any]]) -> bool:
+    """Record the glob tables registered from the files source ``source_id`` (each a
+    ``{"name", "file_glob", "source_file_column"}`` spec); True when they differ from what its
+    server was last given (nothing, before the first record), so a server already running must be
+    started again to serve them."""
+    wanted = tuple(sorted((s["name"], s["file_glob"], s.get("source_file_column")) for s in specs))
+    before = _GLOB_TABLES.get(source_id, ())
+    _GLOB_TABLES[source_id] = wanted
+    return before != wanted

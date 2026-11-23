@@ -141,6 +141,9 @@
     "holdReason_edited_in_provisa": "Bewerkt in Provisa sinds de laatste uitwisseling",
     "holdReason_never_exchanged": "Nooit uitgewisseld, dus onbekend welke kant veranderde",
     "holdReason_not_importable": "Provisa kan dit soort nog niet uit een catalogus overnemen",
-    "holdReason_left_to_export": "De vaste keuze is de waarde van Provisa, die Exporteren verstuurt"
+    "holdReason_left_to_export": "De vaste keuze is de waarde van Provisa, die Exporteren verstuurt",
+    "productFilterLabel": "Dataproducten",
+    "productFilterPlaceholder": "Filteren op dataproduct",
+    "noneForProducts": "Geen item publiceert de gekozen dataproducten."
   }
 }

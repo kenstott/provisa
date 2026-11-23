@@ -24,6 +24,8 @@ const { cy, cytoscape } = vi.hoisted(() => {
     length: 0,
     // An Overview pill's highlight is applied on mount (canvas/highlight.ts).
     removeClass: () => collection,
+    // A caption-field or size change restyles every node (graph-stylesheet restyleCaptions).
+    updateStyle: () => collection,
     addClass: () => collection,
     filter: () => collection,
     map: () => [],

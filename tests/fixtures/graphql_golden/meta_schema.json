@@ -4349,7 +4349,7 @@
        }
       },
       {
-       "name": "antonymOfs",
+       "name": "antonymOf",
        "type": {
         "kind": "LIST",
         "name": null,
@@ -4379,7 +4379,7 @@
        }
       },
       {
-       "name": "derivedFroms",
+       "name": "derivedFrom",
        "type": {
         "kind": "LIST",
         "name": null,
@@ -4454,7 +4454,7 @@
        }
       },
       {
-       "name": "kindOfs",
+       "name": "kindOf",
        "type": {
         "kind": "LIST",
         "name": null,
@@ -4469,7 +4469,7 @@
        }
       },
       {
-       "name": "partOfs",
+       "name": "partOf",
        "type": {
         "kind": "LIST",
         "name": null,
@@ -4484,7 +4484,7 @@
        }
       },
       {
-       "name": "preferredTermFors",
+       "name": "preferredTermFor",
        "type": {
         "kind": "LIST",
         "name": null,
@@ -4514,7 +4514,7 @@
        }
       },
       {
-       "name": "relatedTos",
+       "name": "relatedTo",
        "type": {
         "kind": "LIST",
         "name": null,
@@ -4544,7 +4544,7 @@
        }
       },
       {
-       "name": "synonymOfs",
+       "name": "synonymOf",
        "type": {
         "kind": "LIST",
         "name": null,
@@ -4604,7 +4604,7 @@
        }
       },
       {
-       "name": "translationOfs",
+       "name": "translationOf",
        "type": {
         "kind": "LIST",
         "name": null,
@@ -4619,7 +4619,7 @@
        }
       },
       {
-       "name": "validValueOfs",
+       "name": "validValueOf",
        "type": {
         "kind": "LIST",
         "name": null,
