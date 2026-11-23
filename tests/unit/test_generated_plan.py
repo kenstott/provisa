@@ -155,7 +155,8 @@ _TEMPLATES = [
     "{{ orders(where: {{id: {{eq: {0}}}}}) {fields} }}",
     "{{ orders(limit: {0}, offset: {1}) {fields} }}",
     "{{ orders(limit: {0}, where: {{id: {{gte: {1}, lt: {2}}}}}, order_by: {{id: desc}}) {fields} }}",
-    '{{ orders(where: {{region: {{eq: "r{0}"}}, amount: {{gt: {1}.5}}}}) {fields} }}',
+    # amount is decimal(10,2): a sized numeric is compared by the string of its digits (REQ-1961)
+    '{{ orders(where: {{region: {{eq: "r{0}"}}, amount: {{gt: "{1}.5"}}}}) {fields} }}',
     '{{ orders(where: {{region: {{in: ["a{0}", "b{1}", "c{2}"]}}}}) {fields} }}',
     '{{ orders(where: {{_or: [{{id: {{eq: {0}}}}}, {{region: {{like: "%{1}%"}}}}]}}) {fields} }}',
     "{{ orders(limit: {0}) {{ id customer {{ id name }} }} }}",
