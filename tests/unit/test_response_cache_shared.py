@@ -44,9 +44,22 @@ class FakeCacheStore(CacheStore):
 
     def __init__(self) -> None:
         self._data: dict[str, CachedResult] = {}
+        self._encoded: dict[str, dict[str, bytes]] = {}  # REQ-1867: beside each entry
 
     async def get(self, key: str, tenant_id: str | None = None) -> CachedResult | None:
         return self._data.get(self._k(key, tenant_id))
+
+    async def get_encoded(self, key: str, field: str, tenant_id: str | None = None) -> bytes | None:
+        return self._encoded.get(self._k(key, tenant_id), {}).get(field)
+
+    async def set_encoded(self, entry: CachedResult, field: str, data: bytes) -> bool:
+        assert entry.key is not None
+        k = self._k(entry.key, entry.tenant_id)
+        held = self._data.get(k)
+        if held is None or held.cached_at != entry.cached_at:
+            return False
+        self._encoded.setdefault(k, {})[field] = data
+        return True
 
     async def set(
         self,
@@ -59,6 +72,7 @@ class FakeCacheStore(CacheStore):
         self._data[self._k(key, tenant_id)] = CachedResult(
             data=data, cached_at=time.time(), ttl=ttl
         )
+        self._encoded.pop(self._k(key, tenant_id), None)
 
     async def invalidate_by_pattern(self, pattern: str, tenant_id: str | None = None) -> int:
         return 0
