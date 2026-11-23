@@ -221,7 +221,7 @@ VALUE_FORMS: tuple[tuple[str, tuple[str, ...], str], ...] = (
 #: A registered type's PostgreSQL name and oid (the catalog lists every other as text).
 _LISTED_TYPES: dict[str, tuple[str, int]] = {
     "varchar": ("character varying", 1043),
-    "char": ("character", 18),
+    "char": ("character", 1042),  # REQ-1961: char(n) is bpchar, as catalog_populate lists it
     "character varying": ("character varying", 1043),  # REQ-1961
     "character": ("character", 1042),
     "bpchar": ("character", 1042),

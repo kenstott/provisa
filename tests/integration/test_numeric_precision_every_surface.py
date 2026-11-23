@@ -13,8 +13,10 @@ returns, a numeric is exact where the model records its size, and a changed size
 next read returns.
 
 One table on a real PostgreSQL source, registered with a sized numeric, a bare numeric, an
-integer and a smallint, read over Flight (catalog, rows, no rows, a computed column), pgwire
-and HTTP. Then the model's size for the column is changed through the admin API: to a wider
+integer and a smallint, read over Flight (catalog, rows, no rows, a computed column), pgwire,
+SQL over HTTP, GraphQL, REST and JSON:API. A second table, registered through the admin API, has
+a varchar(20) and a char(3) column: each is text in the model and is described on pgwire, and
+listed in pg_attribute, with its native type's OID and length typmod. Then the model's size for the column is changed through the admin API: to a wider
 scale, which the next read returns; and to a scale the stored values do not fit, which the
 next read refuses naming the column rather than rounding.
 """
@@ -95,6 +97,23 @@ def _declare_amount(port: int, amount_type: str) -> None:
     assert result["data"]["updateTable"]["success"], result
 
 
+def _get(port: int, path: str) -> dict:
+    request = urllib.request.Request(
+        f"http://127.0.0.1:{port}{path}", headers={"X-Provisa-Role": "org_admin"}
+    )
+    with urllib.request.urlopen(request, timeout=60) as response:
+        return json.loads(response.read())
+
+
+def _graphql_field(port: int, table: str) -> str:
+    """The role's GraphQL root field reading ``table``."""
+    answer = _get(port, "/data/introspection")
+    schema = answer.get("data", answer)["__schema"]
+    (root,) = [t for t in schema["types"] if t["name"] == schema["queryType"]["name"]]
+    (field,) = [f["name"] for f in root["fields"] if f["name"].lower().endswith(table)]
+    return field
+
+
 def _until(read, wanted, timeout: float = 120.0):
     """``read()`` once it answers ``wanted`` — a model change is served once the runtime has
     reloaded it, which is not the instant the change is saved."""
@@ -122,6 +141,13 @@ def test_a_numeric_is_listed_and_read_as_the_model_declares_it_on_every_surface(
                     "ratio numeric, small smallint)"
                 )
             )
+            conn.execute(
+                sa.text(
+                    "CREATE TABLE public.codes (id integer PRIMARY KEY, code varchar(20), "
+                    "flag char(3))"
+                )
+            )
+            conn.execute(sa.text("INSERT INTO public.codes VALUES (1, 'A-1', 'yes')"))
             conn.execute(
                 sa.text("INSERT INTO public.ledger VALUES (1, 12.50, 0.5, 3), (2, 0.25, 0.25, 4)")
             )
@@ -216,6 +242,77 @@ def test_a_numeric_is_listed_and_read_as_the_model_declares_it_on_every_surface(
         # digits (REQ-1867, amended 2026-11-02).
         answered = _post(http_port, "/data/sql", {"sql": _QUERY, "role": "org_admin"})
         assert [row["amount"] for row in answered["data"]["sql"]] == ["12.50", "0.25"]
+
+        # GraphQL, REST and JSON:API answer JSON too: the same exact digits on each, and the
+        # unsized numeric as the floating point its source cast it to.
+        ledger = _graphql_field(http_port, "ledger")
+        graphql = _post(
+            http_port,
+            "/data/graphql",
+            {"query": f"{{ {ledger} {{ id amount ratio }} }}"},
+            {"X-Provisa-Role": "org_admin"},
+        )
+        assert "errors" not in graphql, graphql
+        assert sorted((r["id"], r["amount"], r["ratio"]) for r in graphql["data"][ledger]) == [
+            (1, "12.50", 0.5),
+            (2, "0.25", 0.25),
+        ]
+        rest = _get(http_port, "/data/rest/sales/ledger")
+        rest_rows = rest["data"] if isinstance(rest, dict) else rest
+        assert sorted((r["id"], r["amount"], r["ratio"]) for r in rest_rows) == [
+            (1, "12.50", 0.5),
+            (2, "0.25", 0.25),
+        ]
+        jsonapi = _get(http_port, "/data/jsonapi/sales/ledger")
+        assert sorted(
+            (r["attributes"]["amount"], r["attributes"]["ratio"]) for r in jsonapi["data"]
+        ) == [("0.25", 0.25), ("12.50", 0.5)]
+
+        # A varchar(n) or char(n) column is text in the model and keeps its native type: pgwire
+        # describes it with that type's OID and length typmod, and pg_attribute agrees
+        # (amended 2026-10-28, VARCHAR AND CHAR KEEP THEIR TYPE).
+        registered = _post(
+            http_port,
+            "/admin/graphql",
+            {
+                "query": 'mutation { registerTable(input: {sourceId: "sales-pg", '
+                'domainId: "sales", schemaName: "public", tableName: "codes", columns: ['
+                '{name: "id", visibleTo: ["org_admin"], dataType: "integer"}, '
+                '{name: "code", visibleTo: ["org_admin"], dataType: "text"}, '
+                '{name: "flag", visibleTo: ["org_admin"], dataType: "text"}]}) '
+                "{ success message } }"
+            },
+        )
+        assert registered["data"]["registerTable"]["success"], registered
+
+        def _codes_described():
+            try:
+                with psycopg.connect(
+                    host="127.0.0.1",
+                    port=boot.ports["pgwire"],
+                    user="org_admin",
+                    password="x",
+                    dbname="provisa",
+                    connect_timeout=10,
+                    autocommit=True,
+                ) as conn:
+                    cursor = conn.execute("SELECT code, flag FROM sales.codes")
+                    wire = [(d.name, d.type_code, d.display_size) for d in cursor.description or []]
+                    cursor.fetchall()
+                    listed = conn.execute(
+                        "SELECT a.attname, a.atttypid::int, a.atttypmod FROM pg_attribute a "
+                        "JOIN pg_class c ON c.oid = a.attrelid WHERE c.relname = 'codes' "
+                        "AND a.attname IN ('code', 'flag') ORDER BY a.attname"
+                    ).fetchall()
+                    return wire, listed
+            except psycopg.Error as not_yet:
+                return not_yet
+
+        wanted = (
+            [("code", 1043, 20), ("flag", 1042, 3)],
+            [("code", 1043, 24), ("flag", 1042, 7)],
+        )
+        assert _until(_codes_described, lambda got: got == wanted) == wanted
 
         # The model's size for the column changes: the next read is typed by the new declaration.
         _declare_amount(http_port, "numeric(18,3)")
