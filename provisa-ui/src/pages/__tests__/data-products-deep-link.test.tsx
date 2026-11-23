@@ -46,7 +46,8 @@ vi.mock("../../context/AuthContext", () => ({
   }),
 }));
 vi.mock("../../hooks/useCapability", () => ({
-  useCapability: () => false,
+  // REQ-1327: the bulk bar and the row checkboxes are for a holder of data_product_rw.
+  useCapability: (cap: string) => cap === "data_product_rw",
 }));
 vi.mock("../../api/actions", () => ({
   fetchActions: () => Promise.resolve({ functions: [] }),

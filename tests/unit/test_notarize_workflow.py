@@ -592,3 +592,40 @@ def test_the_notarize_job_attaches_each_notarized_dmg_to_the_draft_on_a_release_
     caller = _load("release-macos.yml")["jobs"]["notarize"]
     assert caller["permissions"]["contents"] == "write"
     assert caller["with"]["publish"] == "${{ inputs.publish }}"
+
+
+def _installs_uv(step: dict) -> bool:
+    uses = str(step.get("uses", ""))
+    return uses == "./.github/actions/setup-python" or uses.startswith("astral-sh/setup-uv")
+
+
+def _runs_build_dmg_needing_uv(step: dict) -> bool:
+    # The container edition carries no native payload, so build-dmg.sh does not check for uv.
+    edition = str((step.get("env") or {}).get("PROVISA_EDITION", ""))
+    return "build-dmg.sh" in str(step.get("run", "")) and edition != "container"
+
+
+def _jobs_running_build_dmg() -> list[tuple[str, str, list[dict]]]:
+    found = []
+    for path in sorted(_WORKFLOWS.glob("*.yml")):
+        for job_id, job in (_load(path.name).get("jobs") or {}).items():
+            steps = job.get("steps") or []
+            if any(_runs_build_dmg_needing_uv(step) for step in steps):
+                found.append((path.name, job_id, steps))
+    return found
+
+
+def test_every_job_that_runs_build_dmg_installs_uv_before_it():
+    # build-dmg.sh exits "Required tool not found: uv" for every non-container edition
+    # (REQ-294: uv.lock's pins are the native runtime's pip constraints). release 512's notarize
+    # job ran it without uv.
+    jobs = _jobs_running_build_dmg()
+    assert {(wf, job_id) for wf, job_id, _ in jobs} >= {
+        ("release-macos.yml", "build-macos-core"),
+        ("notarize-macos.yml", "notarize"),
+    }
+    for workflow, job_id, steps in jobs:
+        first_build = next(i for i, s in enumerate(steps) if _runs_build_dmg_needing_uv(s))
+        assert any(_installs_uv(s) for s in steps[:first_build]), (
+            f"{workflow}:{job_id} runs build-dmg.sh without installing uv first"
+        )
