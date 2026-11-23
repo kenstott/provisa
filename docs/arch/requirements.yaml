@@ -72818,7 +72818,7 @@
     included, first reads the principal''s graph session row (one primary-key read, shared lock), since
     session tags and ephemeral objects change what a statement answers; that is the only control-plane read
     a Cypher cache hit makes, and a cached Cypher answer is keyed by the session''s generation so a session
-    change never serves a stale answer. Other transports are unchanged.'
+    change never serves a stale answer. Other transports are unchanged. (Amended 2026-11-23 by the maintainer, REQUEST PRE-KEY. An exact repeat of a request skips parsing and compiling: each surface keys the request''s own text (SQL, GraphQL document and operation, Cypher), its variables and parameters, and the caller''s role, session context and tenant to the response-cache key its first compile produced, so a hit costs a hash and a lookup. The pre-key is dropped whenever the model, the caller''s rights, or anything its compile read changes, and it never crosses a role, session context or tenant boundary.)'
   use_case: Maintainer-directed extension of the response cache from a GraphQL-only optimization to a
     cross-transport one, so identical governed queries reaching Provisa through different wire protocols
     share one cache rather than each transport paying full engine cost independently.
