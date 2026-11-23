@@ -758,11 +758,8 @@ async def _answer(
     # --- Write path (REQ-670): CREATE / DELETE / UPDATE ---
     from provisa.cypher.write_translator import (  # noqa: PLC0415
         CypherWriteParseError as _CWPE,
-        WriteTranslator as _WT,
         parse_cypher_write as _pwc,
-        written,
     )
-    from provisa.cypher.params import CypherParamError  # noqa: PLC0415
 
     _write_ast = None
     try:
@@ -771,11 +768,7 @@ async def _answer(
         pass  # not a write query; fall through to read path
 
     if _write_ast is not None:
-        from provisa.compiler.directives import NO_CACHE_HINT as _NO_CACHE
-        from provisa.pgwire._pipeline import (
-            _execute_plan as _execute_write_plan,
-            _govern_and_route_compiled as _govern_write,
-        )
+        from provisa.api.rest.graph_write import CypherReads, run_graph_writes, write_refusal
 
         _role_id = _resolve_role_id(request, state)
         _ctx = state.contexts.get(_role_id)
@@ -783,77 +776,39 @@ async def _answer(
             return cypher_error(
                 503, "data.no_schema_for_role", f"No schema for role '{_role_id}'", role_id=_role_id
             )
-        _label_map = _build_label_map(_ctx, _role_id, state)
-        _answered: list[Response] = []
-
-        class _ReadRefused(Exception):
-            """A read the write made was answered by an error: the write's answer too."""
-
-        async def _read(query: str, params: dict) -> tuple[list[str], list[list[Any]]]:
-            # A relationship's ends and a RETURN are read as this route reads any query.
-            response = await _answer(
-                CypherRequest(query=query, params=params), request, x_provisa_stats
-            )
-            _answered.append(response)
-            if response.status_code != 200:
-                raise _ReadRefused
-            content = json.loads(bytes(response.body))
-            columns = content["columns"]
-            rows = [[r[c] for c in columns] if isinstance(r, dict) else r for r in content["rows"]]
-            return columns, rows
-
-        _wrote: list[QueryResult] = []
-
-        async def _write(sql: str, bound: list) -> tuple[list[str], list[list[Any]], int | None]:
-            # ONE write path: the translated statement goes through the pipeline every other
-            # surface's write goes through (Bolt's Cypher writes included) — its admission (the
-            # write right and the role's write grant, REQ-2074), its lowering to the source's own
-            # addressing and dialect, and its execution.
-            plan = await _govern_write(
-                sql,
-                _role_id,
-                exec_params=bound or None,
-                state=state,
-                cache_hint=_NO_CACHE,
-                sdl_joins=False,
-            )
-            _wrote.append(await _execute_write_plan(plan, state))
-            done = _wrote[-1]
-            return done.column_names, [list(row) for row in done.rows], done.rowcount
-
-        from provisa.cypher.counters import counting
-
+        # A relationship's ends and a RETURN are read as this route reads any query.
+        _reads = CypherReads(request, x_provisa_stats)
         try:
-            # The request's parameters are bound into the statement (``$name`` → ``$k``), so the
-            # admission's new-row check and the source see the values, never their names.
-            with counting() as counted:
-                await written(_write_ast, _WT(_label_map), body.params, _read, _write)
-        except ParameterBindingRefused as exc:
-            # REQ-1986: a relationship joined on a parameter is not written, under its own code.
-            return cypher_error(400, exc.code, str(exc), **exc.params)
-        except (_CWPE, CypherParamError) as exc:
-            return cypher_error(400, "cypher.refused", str(exc), reason=str(exc))
-        except _ReadRefused:
-            return _answered[-1]
-        except PermissionError as exc:
-            return cypher_error(403, "cypher.permission_denied", str(exc), reason=str(exc))
-        except (ApiError, ReadRefused):
-            raise  # REQ-1350: a refusal by name is answered by the app's handler for it
-        except Exception as exc:  # allow-ble: request boundary — a source or driver error of any type is this write's outcome, answered as an error response
-            return cypher_error(500, "cypher.write_failed", f"Write failed: {exc}", error=str(exc))
+            # ONE write path (REQ-2074): the translated statements go through the pipeline every
+            # other surface's write goes through. The request's parameters are bound into the
+            # statement (``$name`` → ``$k``), so the admission's new-row check and the source see
+            # the values, never their names.
+            done = await run_graph_writes(
+                [_write_ast],
+                _build_label_map(_ctx, _role_id, state),
+                _role_id,
+                state,
+                body.params,
+                _reads,
+            )
+        except Exception as exc:  # allow-ble: request boundary — a refusal, or a source or driver error of any type, is this write's outcome, answered by write_refusal
+            return write_refusal(exc, "cypher")
         if _write_ast.returns:
             # The RETURN, read of the node the write created, with what the write did.
-            returned = _answered[-1]
+            returned = _reads.answered[-1]
             content = json.loads(bytes(returned.body))
-            content.update(_counters(counted, body.query))
+            content.update(_counters(done.counted, body.query))
             headers = {k: v for k, v in returned.headers.items() if k.lower() != "content-length"}
             return JSONResponse(content=content, status_code=returned.status_code, headers=headers)
-        affected = sum(r.rowcount if r.rowcount is not None else len(r.rows) for r in _wrote)
 
         # The steps after a write (cache, views, change events, sinks, hot copy) ran at the
         # pipeline's terminal (pgwire._pipeline._after_write), as on every surface.
         return JSONResponse(
-            content={"affected_rows": affected, "type": "cypher", **_counters(counted, body.query)}
+            content={
+                "affected_rows": done.affected,
+                "type": "cypher",
+                **_counters(done.counted, body.query),
+            }
         )
 
     planned = await planned_read(body, request)

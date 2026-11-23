@@ -135,7 +135,7 @@ async def test_bolts_governed_write_counts_the_rows_the_source_reports():
         sent.append(sql)
         return object()
 
-    async def execute(_plan):
+    async def execute(_plan, _state):
         return QueryResult(rows=[], column_names=[], rowcount=2)
 
     with (
