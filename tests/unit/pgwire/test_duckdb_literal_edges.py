@@ -103,3 +103,27 @@ def test_a_literal_past_its_type_is_refused_as_postgresql_refuses_it(
         sqlstate,
         message,
     )
+
+
+#: statement -> the text PostgreSQL 17 answers: an input-checking function reports the error of a
+#: value past its type, it does not raise it.
+CHECKED: dict[str, str] = {
+    "SELECT pg_input_is_valid('99999', 'smallint') AS v": "f",
+    "SELECT pg_input_is_valid('2147483648', 'integer') AS v": "f",
+    "SELECT pg_input_error_info('99999', 'smallint') AS v": (
+        '("value ""99999"" is out of range for type smallint",,,22003)'
+    ),
+    "SELECT pg_input_error_info('2147483648', 'integer') AS v": (
+        '("value ""2147483648"" is out of range for type integer",,,22003)'
+    ),
+}
+
+
+@pytest.mark.parametrize(("sql", "answer"), list(CHECKED.items()), ids=list(CHECKED))
+def test_an_input_check_of_a_literal_past_its_type_answers_as_postgresql_does(
+    conn: Any, sql: str, answer: str
+):
+    res = conn.conn.pgconn.exec_params(f"{sql} LIMIT 1001".encode(), [], result_format=0)
+    error = (res.error_field(pq.DiagnosticField.MESSAGE_PRIMARY) or b"").decode()
+    assert res.status == pq.ExecStatus.TUPLES_OK, f"raised {error}"
+    assert (res.get_value(0, 0) or b"").decode() == answer

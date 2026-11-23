@@ -452,16 +452,20 @@ def refuse_past_inputs(pg_sql: str) -> None:
     money or pg_lsn, date_part of a date past timestamp's range. Each literal is read before the
     call given it, as PostgreSQL reads a literal when it parses the statement. DuckDB's cast
     answers these (its BIGINT holds an oid, its DATE and INTEGER read further) or fails with an
-    error of its own."""
+    error of its own. A TRY_CAST is not refused: it answers NULL where its type refuses."""
     if _PAST_INPUT.search(pg_sql) is None:
         return
     try:
         tree = sqlglot.parse_one(pg_sql, read="postgres")
     except SqlglotError:
         return  # a text sqlglot cannot read: the transpile that follows reports it
-    for cast in tree.find_all(exp.Cast):
+    # A TRY_CAST answers NULL for an input its type refuses: it is the lowered form of
+    # pg_input_is_valid and pg_input_error_info (catalog_server_answers.input_check) and of a
+    # null-on-failure cast, whose job is to report the refusal, not raise it.
+    casts = [c for c in tree.find_all(exp.Cast) if not isinstance(c, exp.TryCast)]
+    for cast in casts:
         _refuse_input(cast)
-    for node in tree.find_all(exp.Cast, exp.Anonymous):
+    for node in [*casts, *tree.find_all(exp.Anonymous)]:
         _refuse_oid_of_int8(node)
     for call in tree.find_all(exp.Anonymous):
         _refuse_call(call)
