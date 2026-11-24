@@ -107,12 +107,18 @@ class _Runtime:
     def data_product_refs(self) -> tuple[tuple[str, str], ...]:
         return appmod.state.data_product_refs
 
+    @property
+    def role_owner_rows(self) -> dict[str, Any]:
+        # REQ-2219 (amended 2026-11-23): the rows an Owner field wrote on a role.
+        return appmod.state.role_owner_rows
+
     async def rebuild(self) -> None:
         self.builds += 1
         async with self.db.acquire() as conn:
             rows = [dict(r._mapping) for r in (await conn.execute_core(select(roles))).fetchall()]
             stored_rules = await rls_repo.list_all(conn)
             appmod.state.held_entitlements = await store.load_held(conn)
+            appmod.state.role_owner_rows = await store.load_role_owner_rows(conn)
             appmod.state.data_product_refs = await data_product_repo.refs(conn)
         tables = [
             {"id": _META_TABLE_ID, "domain_id": "meta", "table_name": "data_products"},
@@ -190,6 +196,7 @@ async def plane(monkeypatch, control_plane):
     monkeypatch.setattr(appmod.state, "roles", runtime.roles, raising=False)
     monkeypatch.setattr(appmod.state, "role_chains", runtime.role_chains, raising=False)
     monkeypatch.setattr(appmod.state, "held_entitlements", {}, raising=False)
+    monkeypatch.setattr(appmod.state, "role_owner_rows", {}, raising=False)
     monkeypatch.setattr(appmod.state, "idp_entitlements", {}, raising=False)
     monkeypatch.setattr(appmod.state, "data_product_refs", (), raising=False)
     monkeypatch.setattr(schema_mutation, "_get_pool", _pool)
