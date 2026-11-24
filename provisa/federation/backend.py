@@ -91,13 +91,19 @@ class EngineBackend:
         return self._unreconciled
 
     @property
+    def engine_kind(self) -> str:
+        """The product the engine runs on: its native store (the engine name when it has none).
+        A product sharing another's dialect is still told apart by it (openGauss, REQ-2236)."""
+        return self.engine.native_store or self.engine.name
+
+    @property
     def dialect(self) -> str:
         """The physical SQL dialect the engine speaks (transpile target), from
         ``source_registry.engine_dialect`` over its native store (the engine name when it has
         none). An engine whose product has no sqlglot dialect is refused by name."""
         from provisa.core.source_registry import engine_dialect
 
-        store = self.engine.native_store or self.engine.name
+        store = self.engine_kind
         dialect = engine_dialect(store)
         if dialect is None:
             raise ValueError(
@@ -113,7 +119,7 @@ class EngineBackend:
         hardcode a specific engine's dialect."""
         from provisa.transpiler.transpile import transpile
 
-        return transpile(pg_sql, self.dialect)
+        return transpile(pg_sql, self.dialect, engine_kind=self.engine_kind)
 
     def transpile_typed(self, pg_sql: str, column_types: Any) -> str:
         """``transpile_physical`` for an engine whose dialect writes a construct by its operands'
@@ -121,7 +127,9 @@ class EngineBackend:
         ``column_types`` of the tables ``pg_sql`` reads (REQ-2236)."""
         from provisa.transpiler.transpile import transpile
 
-        return transpile(pg_sql, self.dialect, column_types=column_types)
+        return transpile(
+            pg_sql, self.dialect, column_types=column_types, engine_kind=self.engine_kind
+        )
 
     def exact_reads(self, state: Any, physical_sql: str) -> str:
         """``physical_sql`` with each read an engine would round at its source made exact there

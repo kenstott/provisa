@@ -144,7 +144,7 @@ def test_a_table_argument_is_read_as_the_calls_role_audited_as_its_caller(served
     rows = _ref(served.uri, token).read().to_pylist()
     assert rows == [
         {
-            "query": 'SELECT "id" FROM sales.orders',
+            "query": 'SELECT "orders"."id" FROM sales.orders',
             "role": "analyst",
             "user": "alice",
             "surface": "flight",

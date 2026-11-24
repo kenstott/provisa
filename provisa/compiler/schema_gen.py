@@ -17,7 +17,7 @@ Domain-scoped, per-role column filtering (REQ-008, REQ-021).
 # Requirements: REQ-007, REQ-008, REQ-010, REQ-021, REQ-032, REQ-033, REQ-034, REQ-036, REQ-037, REQ-039, REQ-133, REQ-134, REQ-154, REQ-155, REQ-156, REQ-157, REQ-194, REQ-196, REQ-197, REQ-200, REQ-201, REQ-202, REQ-205, REQ-206, REQ-207, REQ-209, REQ-210, REQ-212, REQ-213, REQ-218, REQ-219, REQ-221, REQ-253, REQ-258, REQ-259, REQ-260, REQ-363, REQ-1614
 
 from collections.abc import Callable
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from typing import Any, cast
 
 from graphql import (
@@ -94,6 +94,7 @@ from provisa.compiler.schema_directives import (
     RouteEngineEnum,
     _build_connection_types,
 )
+from provisa.compiler.enum_detect import build_enum_filter_types
 from provisa.compiler.schema_inputs import (
     _build_column_fields,
     _build_db_field_args,
@@ -105,11 +106,12 @@ from provisa.compiler.schema_inputs import (
 
 
 def _build_visible_tables(  # REQ-008, REQ-039, REQ-363
-    si: SchemaInput, *, for_sql: bool = False
+    si: SchemaInput, *, for_sql: bool = False, sql_only: set[int] | None = None
 ) -> list[_TableInfo]:
     """Filter tables by role's domain access. Build per-table metadata. ``for_sql`` keeps meta's
     default tier, which a role with no meta grant reads on SQL alone (REQ-1132): the other surfaces
-    describe what it reads of its data, and to it meta is no domain."""
+    describe what it reads of its data, and to it meta is no domain. ``sql_only``, given with
+    ``for_sql``, collects the ids of those tables the role reads on SQL alone (role_tables)."""
     role = si.role
     # A ROLE's domain_access: it reaches the domains it lists, "*" is the only way to say all, an
     # empty list is no domains, and a system domain is reached by its capability
@@ -153,8 +155,11 @@ def _build_visible_tables(  # REQ-008, REQ-039, REQ-363
         # A table outside reach is still served when it publishes a column to the role
         # (REQ-1959) — with its PUBLIC columns only, which column_served decides below.
         reaches = _reaches(table) if class_served is None else bool(class_served)
-        if table["domain_id"] == META_DOMAIN_ID and not reaches and not for_sql:
-            continue
+        if table["domain_id"] == META_DOMAIN_ID and not reaches:
+            if not for_sql:
+                continue
+            if sql_only is not None:
+                sql_only.add(table["id"])
         if not reaches and not served_across_domains(role, table):
             continue
 
@@ -285,6 +290,56 @@ def _build_visible_tables(  # REQ-008, REQ-039, REQ-363
         )
 
     return result
+
+
+@dataclass(frozen=True)
+class RoleTables:  # REQ-1882
+    """One role's tables, found and named once for every part of its surface -- its schema,
+    context, path map and proto -- which each found and named them again from the same input. Built
+    by :func:`role_tables` from one role's schema input and read only by that input's parts. The
+    context and path map read the tables as found; the schema gives its tables fields and proto
+    renames its own, so each of those takes copies (:meth:`served_copies`)."""
+
+    named: tuple[_TableInfo, ...]
+    #: The ids of the tables the role reads on SQL alone (_build_visible_tables).
+    sql_only: frozenset[int]
+
+    def for_sql(self) -> list[_TableInfo]:
+        """The tables as ``_build_visible_tables(si, for_sql=True)`` finds them, named; read, never
+        changed."""
+        return list(self.named)
+
+    def served(self) -> list[_TableInfo]:
+        """The tables as ``_build_visible_tables(si)`` finds them, named; read, never changed."""
+        return [t for t in self.named if t.table_id not in self.sql_only]
+
+    def served_copies(self) -> list[_TableInfo]:
+        """:meth:`served`, each table a copy of its own to change: its fields and names."""
+        return [_copied(t) for t in self.served()]
+
+
+def _copied(table: _TableInfo) -> _TableInfo:
+    """A shallow copy of ``table``: its own attributes, its column lists shared (none is changed
+    in place). ``copy.copy`` rebuilds it through the pickle protocol, several times slower."""
+    out = object.__new__(_TableInfo)
+    out.__dict__.update(table.__dict__)
+    return out
+
+
+def role_tables(si: SchemaInput) -> RoleTables:
+    """``si``'s role's tables, found and named once (:class:`RoleTables`). A table's names do not
+    depend on which other tables are named with it, so naming the SQL tables names the served ones
+    too; a domain holding two tables of one SQL address raises here, as building the role's context
+    does."""
+    sql_only: set[int] = set()
+    tables = _build_visible_tables(si, for_sql=True, sql_only=sql_only)
+    _assign_names(
+        tables,
+        si.naming_rules,
+        domain_prefix=si.domain_prefix,
+        domain_alias_map=_build_domain_alias_map(si.domains),
+    )
+    return RoleTables(named=tuple(tables), sql_only=frozenset(sql_only))
 
 
 def _served_as_text(
@@ -914,7 +969,7 @@ def _agg_field_names(t: _TableInfo) -> dict[str, str]:
 def _build_aggregate_query_field(
     t: _TableInfo,
     gql_type: GraphQLObjectType,
-    enum_types: dict,
+    enum_filters: dict[str, GraphQLInputObjectType],
     agg_fields_type: GraphQLObjectType | None = None,
     where_type: GraphQLInputObjectType | None = None,
 ) -> tuple[str, GraphQLField] | None:
@@ -934,7 +989,7 @@ def _build_aggregate_query_field(
     agg_where = (
         where_type
         if t.hasura
-        else _build_where_input(t, f"{t.type_name}Agg", enum_types=enum_types)
+        else _build_where_input(t, f"{t.type_name}Agg", enum_filters=enum_filters)
     )
     if agg_where:
         agg_args["where"] = GraphQLArgument(agg_where)
@@ -952,7 +1007,7 @@ def _build_group_by_query_field(
     gql_type: GraphQLObjectType,
     where_type: GraphQLInputObjectType | None,
     distinct_enum: GraphQLEnumType | None,
-    enum_types: dict,
+    enum_filters: dict[str, GraphQLInputObjectType],
     agg_fields_type: GraphQLObjectType | None = None,
 ) -> tuple[str, GraphQLField] | None:
     """Build {field_name}_group_by root query field (REQ-654, REQ-655)."""
@@ -970,7 +1025,7 @@ def _build_group_by_query_field(
     agg_where = (
         where_type
         if t.hasura
-        else _build_where_input(t, f"{t.type_name}GroupByAgg", enum_types=enum_types)
+        else _build_where_input(t, f"{t.type_name}GroupByAgg", enum_filters=enum_filters)
     )
     agg_field_args: dict[str, GraphQLArgument] = {}
     if agg_where:
@@ -1035,7 +1090,7 @@ def _build_connection_query_field(
     t: _TableInfo,
     gql_type: GraphQLObjectType,
     order_by_types: dict[int, GraphQLInputObjectType],
-    enum_types: dict,
+    enum_filters: dict[str, GraphQLInputObjectType],
     where_type: GraphQLInputObjectType | None,
 ) -> tuple[str, GraphQLField]:
     _edge_type, conn_type = _build_connection_types(t.type_name, gql_type)
@@ -1049,7 +1104,7 @@ def _build_connection_query_field(
     conn_where = (
         where_type
         if t.hasura
-        else _build_where_input(t, f"{t.type_name}Conn", enum_types=enum_types)
+        else _build_where_input(t, f"{t.type_name}Conn", enum_filters=enum_filters)
     )
     if conn_where:
         conn_args["where"] = GraphQLArgument(conn_where)
@@ -1086,7 +1141,7 @@ def _column_input_fields(
 
 def _build_mutation_fields_for_table(  # REQ-032, REQ-033, REQ-034, REQ-036, REQ-037, REQ-212
     t: _TableInfo,
-    enum_types: dict,
+    enum_filters: dict[str, GraphQLInputObjectType],
     row_type: GraphQLObjectType,
     where_type: GraphQLInputObjectType | None,
     unique_constraints: list[dict],
@@ -1104,7 +1159,7 @@ def _build_mutation_fields_for_table(  # REQ-032, REQ-033, REQ-034, REQ-036, REQ
         return _build_hasura_mutation_fields(
             t, granted, insert_fields, update_fields, row_type, where_type, unique_constraints
         )
-    return _build_provisa_mutation_fields(t, granted, insert_fields, update_fields, enum_types)
+    return _build_provisa_mutation_fields(t, granted, insert_fields, update_fields, enum_filters)
 
 
 def _write_inputs(t: _TableInfo, operation: str) -> dict[str, GraphQLInputField]:
@@ -1260,7 +1315,7 @@ def _build_provisa_mutation_fields(
     granted: set[str] | frozenset[str],
     insert_fields: dict[str, GraphQLInputField],
     update_fields: dict[str, GraphQLInputField],
-    enum_types: dict,
+    enum_filters: dict[str, GraphQLInputObjectType],
 ) -> dict[str, GraphQLField]:
     """Provisa's mutations of a table: insert, upsert, update and delete, each by ``input``,
     ``set`` and ``where``."""
@@ -1272,7 +1327,7 @@ def _build_provisa_mutation_fields(
         GraphQLInputObjectType,
         GraphQLInputObjectType(f"{t.type_name}SetInput", lambda fields=update_fields: fields),
     )
-    where_input = _build_where_input(t, f"{t.type_name}Mutation", enum_types=enum_types)
+    where_input = _build_where_input(t, f"{t.type_name}Mutation", enum_filters=enum_filters)
     response_type = cast(
         GraphQLObjectType,
         GraphQLObjectType(
@@ -1327,16 +1382,22 @@ def _build_provisa_mutation_fields(
     return result
 
 
-def build_table_path_map(si: SchemaInput) -> dict[str, dict]:
+def build_table_path_map(si: SchemaInput, *, found: RoleTables | None = None) -> dict[str, dict]:
     """Return {gql_field_name: {table_id, schema_name, table_name, domain_id, table_description,
-    domain_description}} for REST path routing and the root-field lookup (REQ-2128)."""
-    tables = _build_visible_tables(si)
+    domain_description}} for REST path routing and the root-field lookup (REQ-2128). ``found``:
+    ``si``'s tables already found and named for the role's other parts (:func:`role_tables`)."""
+    if found is not None:
+        tables = found.served()
+    else:
+        tables = _build_visible_tables(si)
+        _assign_names(
+            tables,
+            si.naming_rules,
+            domain_prefix=si.domain_prefix,
+            domain_alias_map=_build_domain_alias_map(si.domains),
+        )
     if not tables:
         return {}
-    domain_alias_map = _build_domain_alias_map(si.domains)
-    _assign_names(
-        tables, si.naming_rules, domain_prefix=si.domain_prefix, domain_alias_map=domain_alias_map
-    )
     domain_descs = {d["id"]: d.get("description") for d in si.domains}
     return {
         t.field_name: {
@@ -1355,6 +1416,8 @@ def build_table_path_map(si: SchemaInput) -> dict[str, dict]:
 
 def generate_schema(
     si: SchemaInput,
+    *,
+    found: RoleTables | None = None,
 ) -> (
     GraphQLSchema
 ):  # REQ-007, REQ-008, REQ-021, REQ-133, REQ-134, REQ-196, REQ-197, REQ-213, REQ-218, REQ-253
@@ -1364,15 +1427,23 @@ def generate_schema(
     - Object types per registered table (filtered by domain access + column visibility)
     - Relationship fields (many-to-one → object, one-to-many → list)
     - Root query fields with where, order_by, limit, offset args
+
+    ``found``: ``si``'s tables already found and named for the role's other parts
+    (:func:`role_tables`).
     """
     # REQ-2154: a role served no table is not refused as such: its schema is empty but for the
     # catalog's resolve field every role's Query has (_add_resolve_field), so it is still valid.
-    tables = _build_visible_tables(si)
-
     domain_alias_map = _build_domain_alias_map(si.domains)
-    _assign_names(
-        tables, si.naming_rules, domain_prefix=si.domain_prefix, domain_alias_map=domain_alias_map
-    )
+    if found is not None:
+        tables = found.served_copies()
+    else:
+        tables = _build_visible_tables(si)
+        _assign_names(
+            tables,
+            si.naming_rules,
+            domain_prefix=si.domain_prefix,
+            domain_alias_map=domain_alias_map,
+        )
     tables = _dedup_tables(tables)
 
     # Build base column fields — share object_type_registry so same-named object types are reused
@@ -1402,12 +1473,15 @@ def generate_schema(
     ]
 
     order_by_types = _build_order_by_inputs(tables, visible_rels, table_lookup)
+    # REQ-221: an enum's filter type is named after the enum, so every where input in the schema
+    # takes the one built here, whichever tables' columns the enum types.
+    enum_filters = build_enum_filter_types(si.enum_types)
     where_types: dict[int, GraphQLInputObjectType | None] = {}
     for t in tables:
         where_types[t.table_id] = _build_where_input(
             t,
             t.type_name,
-            enum_types=si.enum_types,
+            enum_filters=enum_filters,
             relationships=_where_relationships(t, visible_rels, table_lookup, where_types),
         )
     distinct_enums = {t.table_id: _build_distinct_on_enum(t) for t in tables}
@@ -1494,7 +1568,7 @@ def generate_schema(
         )
         if t.enable_aggregates and not _role_blocks_agg:
             agg_result = _build_aggregate_query_field(
-                t, gql_type, si.enum_types, shared_agg_fields_type, where_types.get(t.table_id)
+                t, gql_type, enum_filters, shared_agg_fields_type, where_types.get(t.table_id)
             )
             if agg_result:
                 query_fields[agg_result[0]] = agg_result[1]
@@ -1506,7 +1580,7 @@ def generate_schema(
                 gql_type,
                 where_types.get(t.table_id),
                 distinct_enums.get(t.table_id),
-                si.enum_types,
+                enum_filters,
                 shared_agg_fields_type,
             )
             if gb_result:
@@ -1514,7 +1588,7 @@ def generate_schema(
 
         if t.relay_pagination:
             conn_name, conn_field = _build_connection_query_field(
-                t, gql_type, order_by_types, si.enum_types, where_types.get(t.table_id)
+                t, gql_type, order_by_types, enum_filters, where_types.get(t.table_id)
             )
             query_fields[conn_name] = conn_field
 
@@ -1544,7 +1618,7 @@ def generate_schema(
         mutation_fields.update(
             _build_mutation_fields_for_table(
                 t,
-                si.enum_types,
+                enum_filters,
                 gql_types[t.table_id],
                 where_types.get(t.table_id),
                 declared_unique.get(t.table_id, []),

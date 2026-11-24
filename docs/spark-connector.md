@@ -67,6 +67,39 @@ Where a query's answer comes from decides what it costs and how fresh it is.
 
 **Small jobs: replication off is an option.** When the script answers well within the request timeout and the reader wants the current answer, a steward can turn replication off on the source. Mind the cluster: every query is now a Spark run. If many readers ask the same thing, add a cache TTL or keep replication on.
 
+### Transforms over governed tables
+
+A `@query` that takes a governed table can transform it on the cluster. Read the argument with `dataframe()`. Its rows reach the cluster over Arrow Flight, read as the calling role, so the job sees only what that role may read.
+
+```python
+from provisa_services import TableRef
+from provisa_spark import dataframe
+
+
+def regional_totals(orders: TableRef[Order]) -> list[Total]:
+    """@query"""
+    frame = dataframe(orders).groupBy("region").sum("amount")
+    return [Total(region=r[0], amount=r[1]) for r in frame.collect()]
+```
+
+You can call it live, `SELECT * FROM regional_totals('sales.orders')`, and the query waits for the job. For a transform that takes longer than a reader should wait, define a materialized view over the call:
+
+```sql
+SELECT t.region, t.amount FROM regional_totals('sales.orders') AS t
+```
+
+The view is landed like any other materialized view. A read answers from its stored rows and never starts a Spark job. The job runs when the view refreshes:
+
+- on its refresh interval;
+- when a table it is given changes, as that table's [change signal](replicas.md#freshness) reports it.
+
+| Setup | What a query does | Performance | Timeliness |
+|---|---|---|---|
+| Live call | Runs the job on each query, held to the request timeout. | The query waits for the job. Each query pays for a run. | Current as of the run. |
+| Materialized view over the call | Reads the rows the last refresh landed. | Fast, whatever the job costs. The cluster runs once per refresh. | As of the last refresh: its interval, or the last change to an input table. |
+
+A role reading the view is held to the same rules as a live call. A role that cannot read a table the call is given is refused the view, naming that table, as it is refused the call. The job computes the rows once, from the whole table. A view that reads only the call's rows therefore refuses a role whose row rules narrow that table. A view that joins the call's rows back to the table is filtered by those rules instead.
+
 ## Streaming
 
 The recommended pattern runs one Spark streaming job and serves every subscriber from Kafka:
