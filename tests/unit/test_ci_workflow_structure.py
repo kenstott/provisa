@@ -2523,3 +2523,106 @@ def test_the_sweep_deletes_gone_branches_caches_and_image_caches_off_main_and_re
 def test_a_deleted_branch_loses_every_cache_it_saved(tmp_path):
     deleted = _run_with_fake_gh(tmp_path, _prune_script("deleted-branch"), {"BRANCH": "gone"})
     assert deleted == ["repos/o/r/actions/caches/7", "repos/o/r/actions/caches/8"]
+
+
+# REQ-1989 (CI caches): no test image floats. A floating CosmosDB emulator tag broke release 512's
+# integration lane on 2026-11-23, so every image docker-compose.test.yml pulls is pinned by digest.
+_PINNED_IMAGE = re.compile(r"^[a-z0-9][a-z0-9._/-]*(?::[0-9]+/[a-z0-9._/-]+)?@sha256:[0-9a-f]{64}$")
+_TIDB_HEX = "49159e21bdb8671cca48394ab4b6dc4e92527a775d24daf5a4b4c8d6f175a9fe"
+
+
+def test_every_test_compose_image_is_pinned_by_digest_with_its_tag_beside_it():
+    path = REPO / "docker-compose.test.yml"
+    services = yaml.safe_load(path.read_text())["services"]
+    lines = path.read_text().splitlines()
+    pulled = {n: s["image"] for n, s in services.items() if "image" in s and "build" not in s}
+    assert pulled, "docker-compose.test.yml pulls no image"
+    for name, image in pulled.items():
+        assert _PINNED_IMAGE.match(image), f"{name}: {image} is not pinned by digest"
+    # Each pin's line (an alias line repeats the anchor's) carries the tag it was resolved from.
+    for line in lines:
+        if "@sha256:" in line and line.strip().startswith("image:"):
+            ref = line.split("@sha256:")[0].split()[-1]
+            comment = line.partition("#")[2].strip()
+            assert comment.startswith(f"{ref}:"), f"no tag comment beside: {line.strip()}"
+
+
+def _lane_step(name: str) -> dict:
+    lane = yaml.safe_load((REPO / ".github/workflows/lane.yml").read_text())["jobs"]["lane"]
+    return next(s for s in lane["steps"] if s.get("name") == name)
+
+
+def _run_with_fake_docker(tmp_path: Path, script: str, image_ls: str, digests_ls: str) -> list:
+    """Runs a lane step's script with docker and zstd faked; returns each docker call's argv."""
+    log = tmp_path / "docker.log"
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    (tmp_path / "ls.txt").write_text(image_ls)
+    (tmp_path / "digests.txt").write_text(digests_ls)
+    docker = bin_dir / "docker"
+    docker.write_text(
+        "#!/bin/bash\n"
+        'echo "$*" >> "$DOCKER_LOG"\n'
+        'case "$*" in\n'
+        '  "image ls --digests"*) cat "$FAKE_DIR/digests.txt" ;;\n'
+        '  "image ls"*) cat "$FAKE_DIR/ls.txt" ;;\n'
+        '  pull*) echo "Digest: sha256:x"; echo "Status: Downloaded newer image" ;;\n'
+        "  save*|load*) cat >/dev/null 2>&1 || true ;;\n"
+        "esac\n"
+    )
+    zstd = bin_dir / "zstd"
+    zstd.write_text("#!/bin/bash\ncat >/dev/null 2>&1 || true\n")
+    for f in (docker, zstd):
+        f.chmod(0o755)
+    subprocess.run(  # noqa: S603 -- the lane step's own script, against fakes
+        ["bash", "-eo", "pipefail", "-c", script],
+        check=True,
+        cwd=tmp_path,
+        env={
+            **os.environ,
+            "HOME": str(tmp_path),
+            "PATH": f"{bin_dir}:{os.environ['PATH']}",
+            "DOCKER_LOG": str(log),
+            "FAKE_DIR": str(tmp_path),
+        },
+    )
+    return log.read_text().splitlines()
+
+
+def test_the_lane_image_cache_saves_digest_pinned_images_under_a_stable_tag(tmp_path):
+    """A digest-pulled image has no tag, and docker save restores only tags: without one it
+    dropped out of the cache and was pulled again on every run."""
+    calls = _run_with_fake_docker(
+        tmp_path,
+        _lane_step("Save images")["run"],
+        image_ls="trinodb/trino:481\n<none>:<none>\npingcap/tidb:<none>\n",
+        digests_ls=(
+            "481 trinodb/trino@sha256:" + "a" * 64 + "\n"
+            f"<none> pingcap/tidb@sha256:{_TIDB_HEX}\n"
+            "<none> <none>@<none>\n"
+        ),
+    )
+    pin = f"pingcap/tidb:pin-{_TIDB_HEX}"
+    assert f"tag pingcap/tidb@sha256:{_TIDB_HEX} {pin}" in calls
+    [save] = [c for c in calls if c.startswith("save ")]
+    assert save.split()[1:] == ["trinodb/trino:481", pin]
+
+
+def test_the_lane_image_cache_restores_each_pinned_images_digest_reference(tmp_path):
+    calls = _run_with_fake_docker(
+        tmp_path,
+        _lane_step("Load images")["run"],
+        image_ls=f"trinodb/trino:481\npingcap/tidb:pin-{_TIDB_HEX}\n",
+        digests_ls="",
+    )
+    assert "load" in calls
+    assert [c for c in calls if c.startswith("pull")] == [f"pull pingcap/tidb@sha256:{_TIDB_HEX}"]
+
+
+def test_the_lane_image_cache_key_changes_with_every_pin():
+    key = _lane_step("Lane cache key")["run"]
+    assert "hashFiles('docker-compose.core.yml', 'docker-compose.test.yml'" in key
+    for name in ("Restore images", "Cache images"):
+        assert _lane_step(name)["with"]["key"] == (
+            "images-${{ steps.key.outputs.lane }}-${{ steps.key.outputs.compose }}"
+        ), name

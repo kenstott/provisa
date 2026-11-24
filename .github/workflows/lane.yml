@@ -323,7 +323,7 @@ jobs:
           phase: restore
 
       # Images this lane pulled last time, so a run is not dominated by pulls. Keyed on the compose
-      # files: a changed image tag is a new key. REQ-1989: the key names no branch, and only main
+      # files: a changed image tag or digest pin is a new key. REQ-1989: the key names no branch, and only main
       # and release/* save one (Cache images below), so a feature, fix or merge/* run restores
       # main's entry under the same key: GitHub's cache scope serves the default branch's entry to
       # every branch that has none of its own.
@@ -337,7 +337,22 @@ jobs:
 
       - name: Load images
         if: inputs.image-cache && steps.images.outputs.cache-hit == 'true'
-        run: zstd -dc ~/images.tar.zst | docker load
+        # Each digest-pinned image comes back as <repo>:pin-<hex> (Save images). Its
+        # <repo>@sha256:<hex> reference is a pull, but the daemon finds the image's config already
+        # loaded and fetches only the manifest, no layer.
+        run: |
+          set -o pipefail
+          zstd -dc ~/images.tar.zst | docker load
+          for pin in $(docker image ls --format '{{.Repository}}:{{.Tag}}' | grep ':pin-'); do
+            ref="${pin%:pin-*}@sha256:${pin##*:pin-}"
+            out=$(docker pull "$ref")
+            if grep -q 'Pull complete' <<<"$out"; then
+              echo "::error::$ref pulled layers the image cache holds"
+              echo "$out"
+              exit 1
+            fi
+            echo "restored from the image cache: $ref"
+          done
 
       # After the lane's own image cache, so a zaychik:latest kept there from an older zaychik/ is
       # replaced by the one built from this commit's.
@@ -488,9 +503,21 @@ jobs:
           && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/'))
         # pipefail: without it the step's status is zstd's, and a save that failed left a
         # truncated archive for the next step to cache and later runs to load.
+        # A digest-pinned image (docker-compose.test.yml) is pulled with no tag, and docker save
+        # restores only tags: each gets the stable local tag <repo>:pin-<digest hex> first, which
+        # Load images turns back into its <repo>@sha256:<hex> reference.
         run: |
           set -o pipefail
-          docker save $(docker image ls --format '{{.Repository}}:{{.Tag}}' | grep -v '<none>') | zstd -T0 -3 -o ~/images.tar.zst
+          refs=$(docker image ls --format '{{.Repository}}:{{.Tag}}' | grep -v '<none>' | grep -v ':pin-')
+          pinned=$(docker image ls --digests --format '{{.Tag}} {{.Repository}}@{{.Digest}}' \
+            | awk '$1 == "<none>" && $2 ~ /@sha256:/ {print $2}' | sort -u)
+          for ref in $pinned; do
+            pin="${ref%@sha256:*}:pin-${ref##*@sha256:}"
+            docker tag "$ref" "$pin"
+            refs="$refs $pin"
+          done
+          echo "saving $(wc -w <<<"$refs") images, $(wc -w <<<"$pinned") of them digest-pinned"
+          docker save $refs | zstd -T0 -3 -o ~/images.tar.zst
 
       - name: Cache images
         if: >-
