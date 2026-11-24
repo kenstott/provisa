@@ -88,6 +88,7 @@ class _Recorder:
         self._events: list[dict[str, Any]] = []
         self._allocs: list[dict[str, Any]] = []
         self._hooks: list[str] = []
+        self._modules: dict[str, list[str]] = {}
         self._frames = tracemalloc_frames
         self._last_snapshot: Any = None
         self._interval = interval_s
@@ -126,6 +127,13 @@ class _Recorder:
             "rss_end": rss,
             "rss_peak": peak,
         }
+        if mark:
+            # The modules loaded by the end of each lifespan stage: what a stage imported is
+            # the difference from the stage before.
+            entry["modules"] = len(sys.modules)
+            self._modules[closes] = sorted(
+                sys.modules.copy()
+            )  # copy(): atomic under other threads' imports
         if self._frames:
             import tracemalloc
 
@@ -178,7 +186,13 @@ class _Recorder:
         tmp = self._out.with_suffix(".tmp")
         tmp.write_text(
             json.dumps(
-                {"hooks": self._hooks, "events": self._events, "allocs": self._allocs}, indent=1
+                {
+                    "hooks": self._hooks,
+                    "events": self._events,
+                    "allocs": self._allocs,
+                    "modules": self._modules,
+                },
+                indent=1,
             )
         )
         tmp.replace(self._out)
