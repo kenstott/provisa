@@ -102,12 +102,20 @@ def setup_values(
         admin_db=admin_db,
     )
     requires = manifest.requires
+    stood_in: dict[str, str] = mapping.get("org_defaults") or {}
 
     def values() -> dict[str, Any]:
         out: dict[str, Any] = {}
         for requirement in requires:
             if requirement.secret:
                 out[requirement.name] = services.read_secret(grant, requirement.name)
+            elif requirement.name in stood_in:
+                out[requirement.name] = _stood_in(
+                    org_id,
+                    admin_db,
+                    stood_in[requirement.name],
+                    grant.settings.get(requirement.name),
+                )
             elif requirement.name in grant.settings:
                 out[requirement.name] = grant.settings[requirement.name]
             else:
@@ -117,6 +125,21 @@ def setup_values(
         return out
 
     return values
+
+
+def _stood_in(org_id: str, admin_db: Any, setting: str, own: Any) -> str:
+    """REQ-2225: the value of a requirement an organisation setting stands in for: the source's
+    own when it is set, else the setting's. ``spark_cluster`` is the only such setting."""
+    from provisa.core import spark_cluster
+    from provisa.core.connection_loop import connection_loop
+
+    if setting != "spark_cluster":
+        raise ValueError(f"no organisation setting {setting!r} stands in for a connector value")
+    mine = spark_cluster.own_cluster(own)
+    if mine:
+        return mine
+    with connection_loop() as cl:
+        return cl.run(spark_cluster.resolved(admin_db, org_id, own)).address
 
 
 # -- kept -------------------------------------------------------------------------------------------

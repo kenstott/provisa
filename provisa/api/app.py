@@ -5913,6 +5913,9 @@ def create_app() -> FastAPI:
     )
 
     app.include_router(container_registries_router)  # REQ-2098
+    from provisa.api.admin.spark_cluster_router import router as spark_cluster_router
+
+    app.include_router(spark_cluster_router)  # REQ-2225
     from provisa.api.admin.regions_router import router as regions_router
 
     app.include_router(regions_router)  # REQ-1922
