@@ -31,7 +31,7 @@ import pytest
 import yaml
 
 from tests.integration.test_code_sources_e2e import _ROLE, _admin, _archive, _config
-from tests.port_lease import lease_ports
+from tests.port_lease import lease_ports, lease_run
 
 pytestmark = [pytest.mark.integration]
 
@@ -130,6 +130,9 @@ def server(tmp_path_factory):
             "PROVISA_RUNTIME_DEPS_CACHE": str(tmp_path_factory.mktemp("runtime-deps")),
             # The resolver's tables are given to its code over the minted listener (REQ-2226).
             "PROVISA_MINTED_PGWIRE_PORT": str(lease_ports(1)[0]),
+            # A Python worker reads them over a Flight listener minted per call, on this block.
+            "PROVISA_MINTED_FLIGHT_PORT": str(lease_run(4)),
+            "PROVISA_MINTED_FLIGHT_PORTS": "4",
         },
     )
     srv.start(timeout=240)

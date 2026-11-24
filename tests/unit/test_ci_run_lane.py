@@ -263,6 +263,34 @@ def test_the_lanes_workflow_primes_the_plugin_cache_in_one_job():
     assert step["with"] == {"phase": "prime"}
 
 
+def test_no_job_that_primes_the_plugin_cache_uploads_the_artifact_the_action_uploads():
+    """The prime phase uploads the run's plugin artifact itself; a job that uploads that name
+    again is refused with HTTP 409 (release-prebuilt.yml download-plugins, run 45024448489)."""
+    import yaml
+
+    (upload,) = [
+        s for s in _plugin_cache_action() if s.get("name") == "Upload the run's Trino plugins"
+    ]
+    name = upload["with"]["name"].replace("${{ inputs.key-prefix }}", "")
+    primers = []
+    for path in sorted((REPO / ".github" / "workflows").glob("*.yml")):
+        for job, body in (yaml.safe_load(path.read_text())["jobs"] or {}).items():
+            steps = body.get("steps") or []
+            if not any(
+                s.get("uses") == "./.github/actions/trino-plugins"
+                and (s.get("with") or {}).get("phase") == "prime"
+                for s in steps
+            ):
+                continue
+            primers.append(f"{path.name}:{job}")
+            for s in steps:
+                if (s.get("uses") or "").startswith("actions/upload-artifact"):
+                    assert (s.get("with") or {}).get("name") != name, (
+                        f"{path.name}:{job} uploads '{name}' after the action already did"
+                    )
+    assert "release-prebuilt.yml:download-plugins" in primers
+
+
 def test_the_plugin_cache_action_primes_once_and_every_lane_restores_and_verifies():
     by_name = {step["name"]: step for step in _plugin_cache_action()}
     assert list(by_name) == [
@@ -291,8 +319,9 @@ def test_the_plugin_cache_action_primes_once_and_every_lane_restores_and_verifie
         "path": restored["path"],
         "key": restored["key"],
     }
-    # Only the priming phase downloads, once, and saves at once. A miss is answered by the run's
-    # artifact, never by a failure or a download (runs 44942101401, 44940962731).
+    # Only the priming phase downloads, once, and saves at once. A lane's restore that misses
+    # (the cache is branch-scoped and evictable: runs 44942101401, 44940962731) takes the jars
+    # from the run's artifact, which priming uploads after it verified them.
     assert restored["fail-on-cache-miss"] is False
     for step in ("Download Trino plugins", "Cache Trino plugins"):
         assert by_name[step]["if"] == (
@@ -310,7 +339,7 @@ def test_the_plugin_cache_action_builds_provisa_functions_once_and_every_lane_re
     (conftest's first-use build) and each asked Maven Central for its plugins at the same moment;
     core 13/18 got HTTP 429 for maven-compiler-plugin, bench a failed resolution of
     maven-resources-plugin. The priming phase builds it once, keyed by every input of the build,
-    and a lane's restore must hit, so no lane runs Maven."""
+    and a lane's restore that misses takes it from the run's artifact, so no lane runs Maven."""
     by_name = {step["name"]: step for step in _plugin_cache_action()}
     restored = by_name["Restore the provisa-functions plugin"]
     assert restored["id"] == "provisa-functions"
@@ -331,8 +360,7 @@ def test_the_plugin_cache_action_builds_provisa_functions_once_and_every_lane_re
     )
     assert key["run"] == 'echo "key=$KEY" >> "$GITHUB_OUTPUT"'
     assert restored["with"]["key"] == "${{ steps.provisa-functions-key.outputs.key }}"
-    # A miss is answered by the run's artifact (runs 44942101401, 44940962731).
-    assert restored["with"]["fail-on-cache-miss"] is False
+    assert restored["with"]["fail-on-cache-miss"] is False  # the run's artifact answers a miss
     miss = "inputs.phase == 'prime' && steps.provisa-functions.outputs.cache-hit != 'true'"
     built = by_name["Build the provisa-functions plugin"]
     assert built["if"] == miss and built["run"] == "scripts/build_trino_functions.sh"
@@ -647,15 +675,17 @@ def test_the_servicenow_lane_runs_only_when_a_dispatch_asks_for_it_with_its_secr
 
 
 def test_the_servicenow_lane_reads_the_pinned_release_bundle():
-    """REQ-1954: the e2e reads through the pinned release's pgwire-servicenow, fetched by the app
-    as every other connector's bundle is; the lane builds no server of its own and takes no
-    calcite ref, so a dispatch needs nothing beyond the instance's credentials."""
+    """REQ-1954: the e2e reads through the pinned release's pgwire-servicenow, staged by the lane
+    as every other connector's bundle is (REQ-294: the app never fetches one); the lane builds no
+    server of its own and takes no calcite ref, so a dispatch needs nothing beyond the instance's
+    credentials."""
     steps = _job_steps("servicenow")
     assert not [s for s in steps if s.get("with", {}).get("repository") == "kenstott/calcite"]
     assert not [s for s in steps if "build-bundle.sh" in s.get("run", "")]
     job = _lanes_workflow()["jobs"]["servicenow"]
     assert job["env"]["PROVISA_RUNTIME_DEPS_CACHE"] == "${{ github.workspace }}/.runtime-deps"
     assert "PROVISA_PGWIRE_BUNDLE_SERVICENOW" not in str(job)
+    assert [s for s in steps if "stage_pgwire_bundles --only servicenow" in s.get("run", "")]
     assert "CALCITE_REF" not in _credentials_step("servicenow")["run"]
     import yaml
 

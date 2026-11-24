@@ -575,7 +575,8 @@
       "table_region_from_function": "テーブル '{{table}}' は関数 '{{name}}' から派生しており、その関数のリージョンを持ちます。単独で別のリージョンへ移動することはできません",
       "table_name_reserved": "テーブル名 '{{table}}' は予約されています。ドメインのコマンドは 'commands' の下で提供されます。別の名前またはエイリアスでテーブルを登録してください。",
       "domain_stewards_saved": "ドメイン '{{domain}}' のスチュワードを保存しました",
-      "table_has_dependents": "テーブル '{{name}}' はまだ他のオブジェクトから読み取られているか参照されています。先にそれらを廃止するか変更してください"
+      "table_has_dependents": "テーブル '{{name}}' はまだ他のオブジェクトから読み取られているか参照されています。先にそれらを廃止するか変更してください",
+      "file_types_differ": "パターン {{glob}} は複数の種類のファイルに一致します（{{types}}）。1 つのテーブルのファイルはすべて同じ種類でなければなりません。"
     },
     "secrets": {
       "env_reference_object_locked": "このオブジェクトは運用者のものです。サーバー自身の環境を読み取るため、ここでは変更できません。代わりに独自のものを追加してください。",
@@ -626,7 +627,9 @@
       "columns_not_inferred": "列を推測できませんでした：プローブが行を返さず、SELECT 変数も見つかりませんでした。",
       "probe_failed": "SPARQL エンドポイントのプローブに失敗しました：{{error}}",
       "source_not_found": "SPARQL ソース「{{source_id}}」が見つかりません",
-      "no_select_variables": "クエリに SELECT 変数がありません (SELECT * または SELECT クエリではありません): クエリからカラムを読み取れません"
+      "no_select_variables": "クエリに SELECT 変数がありません (SELECT * または SELECT クエリではありません): クエリからカラムを読み取れません",
+      "credential_invalid": "ソース '{{source}}' は不完全な {{kind}} 資格情報を宣言しています。bearer 資格情報にはトークン、basic 資格情報にはユーザー名とパスワードが必要です（種類は bearer と basic）",
+      "own_endpoint_needs_credential": "ソース '{{source}}' は Provisa 自身の SPARQL エンドポイントを読み取りますが、資格情報を宣言していません。サービス用に保持する Provisa アカウントの bearer トークン、またはユーザー名とパスワードを宣言してください。そのロールが読み取れる範囲を決めます"
     },
     "subscribe": {
       "avro_topic_without_registry": "トピック '{{topic}}' は Avro メッセージを含みますが、そのソースには読み取り用のスキーマレジストリが指定されていません。ソースのスキーマレジストリ URL を設定してください",
@@ -692,7 +695,8 @@
       "undefined_variable_property": "{{clause}} が読む {{variable}} は文中のどこでもバインドされていません: 変数は MATCH パターン、WITH、UNWIND、CALL でバインドされます。ここでバインドされている変数: {{bound}}。 {{suggestion}} のことですか? {{owner}} は :{{label}} にバインドされており、プロパティ {{variable}} があります。",
       "undefined_variable_properties": "{{clause}} が読む {{variable}} は文中のどこでもバインドされていません: 変数は MATCH パターン、WITH、UNWIND、CALL でバインドされます。ここでバインドされている変数: {{bound}}。 {{suggestions}} のことですか? いずれもプロパティ {{variable}} を持つラベルにバインドされています。",
       "non_finite_number": "回答に JSON で表せない数値が含まれています: {{column}} は {{value}} です。",
-      "try_cast_needs_postgres_16": "変換できない可能性のある値の toInteger、toFloat、toBoolean には、このエンジンで PostgreSQL 16 以降が必要です。"
+      "try_cast_needs_postgres_16": "変換できない可能性のある値の toInteger、toFloat、toBoolean には、このエンジンで PostgreSQL 16 以降が必要です。",
+      "relationship_unread": "リレーションシップを読み取れなかったため、そのエッジは表示されません: {{statement}}: {{reason}}"
     },
     "requests": {
       "approver_outside_domains": "リレーションシップを承認するあなたの権限は、このリクエストが関わるドメイン ({{domains}}) のいずれにも及びません",

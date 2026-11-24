@@ -22,6 +22,7 @@ import {
 } from "../../api/admin";
 import { useReadColumns } from "../../hooks/useAvailableColumnsMetadataLazy";
 import { useRegisterTables, type TableRegistrationOutcome } from "../../hooks/useTableQueries";
+import { serverMessage } from "../../i18n/serverMessage";
 import { draftFromRegistration, type Registration } from "./draftTable";
 import { registrationInput } from "./useCreateTable";
 import {
@@ -215,7 +216,10 @@ export function useManyTables(choice: ManyTablesChoice) {
       setError(
         outcomes
           .map((o) =>
-            t("registerManyTables.refused", { table: o.tableName, message: o.result.message }),
+            t("registerManyTables.refused", {
+              table: o.tableName,
+              message: serverMessage(o.result, o.result.message),
+            }),
           )
           .join("\n"),
       );

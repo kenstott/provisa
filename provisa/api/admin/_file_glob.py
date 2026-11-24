@@ -14,7 +14,7 @@ The config load applies the same rule (config_loader._validate_file_globs); this
 admin-mutation counterpart, so registering or updating a glob table through the API is refused by
 name exactly as a config load is."""
 
-# Requirements: REQ-788
+# Requirements: REQ-788, REQ-2234
 
 from __future__ import annotations
 
@@ -29,8 +29,9 @@ log = logging.getLogger(__name__)
 
 async def table_file_glob_refusal(conn: Any, model: Any) -> MutationResult | None:
     """A failing MutationResult when ``model`` declares ``file_glob`` and its source's matched
-    files do not share a column set (schema.file_columns_differ), the glob matches nothing, or the
-    source is not a files source; None otherwise."""
+    files do not share a column set (schema.file_columns_differ) or a file type
+    (schema.file_types_differ, REQ-2234), the glob matches nothing, or the source is not a files
+    source; None otherwise."""
     glob = getattr(model, "file_glob", None)
     if not glob:
         return None
@@ -39,6 +40,7 @@ async def table_file_glob_refusal(conn: Any, model: Any) -> MutationResult | Non
     from provisa.file_source.files_glob import (
         FileColumnsDiffer,
         FileOutsideSourceGlob,
+        FileTypesDiffer,
         columns_of_file,
         matched_files,
         validate_glob_table,
@@ -56,7 +58,7 @@ async def table_file_glob_refusal(conn: Any, model: Any) -> MutationResult | Non
     try:
         files = matched_files(resolve_secrets(source["path"] or ""), glob)
         validate_glob_table(glob, files, columns_of_file)
-    except (FileColumnsDiffer, FileOutsideSourceGlob) as exc:
+    except (FileColumnsDiffer, FileOutsideSourceGlob, FileTypesDiffer) as exc:
         return MutationResult(
             success=False, message=str(exc), code=exc.code, params=dict(exc.params)
         )

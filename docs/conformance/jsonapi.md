@@ -1,6 +1,10 @@
 # JSON:API Conformance
 
-No public JSON:API conformance suite runs in CI today.
+JSON:API publishes no server conformance suite, so the run checks scenarios taken from the JSON:API 1.1 specification: content negotiation, document structure, fetching data, query parameters and errors.
+
+**Suite:** JSON:API 1.1 specification scenarios.
+
+**Pass rate:** written from the first run of conformance-jsonapi.yml.
 
 ## Deliberate differences
 

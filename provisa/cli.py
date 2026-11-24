@@ -80,6 +80,25 @@ def _apply_demo_config() -> Path:
     return cfg
 
 
+def _config_names_engine() -> bool:
+    """Whether the config file this process loads names a federation engine (REQ-2269).
+
+    No ``PROVISA_CONFIG``, or a path with no file yet (the fileless first run the setup wizard
+    writes, REQ-164), is a config that names nothing: both are designed launch states, not errors.
+    A file that exists is parsed strictly, so a broken config fails here rather than being read as
+    silent.
+    """
+    import yaml
+
+    value = os.environ.get("PROVISA_CONFIG")
+    if not value:
+        return False
+    path = Path(value).expanduser()
+    if not path.exists():
+        return False
+    return bool((yaml.safe_load(path.read_text()) or {}).get("federation_engine"))
+
+
 def _apply_embedded_env(data_dir: Path) -> list[str]:
     """Resolve and apply the embedded ("native") launch environment (REQ-1126, REQ-1129).
 
@@ -88,31 +107,31 @@ def _apply_embedded_env(data_dir: Path) -> list[str]:
     DuckDB engine, embedded PostgreSQL control plane (REQ-1535), fakeredis cache. Existing process env wins
     (setdefault) so a customer-provided external engine (TRINO_HOST/PORT, PROVISA_ENGINE_URL)
     layered on before launch is preserved.
+
+    The profile's engine is a default (REQ-2269): it is applied only when neither the environment
+    nor the config file names an engine, so a config's ``federation_engine`` wins over it.
     """
     from provisa.core.desktop_profile import load_profile
 
     profile = load_profile("native", data_dir=data_dir)
+    config_engine = _config_names_engine()
     for key, value in profile.env.items():
+        if key == "PROVISA_ENGINE" and config_engine:
+            continue
         os.environ.setdefault(key, value)
     notes = list(profile.notes)
 
-    # Stage the DuckDB extensions OFFLINE from the provisa-duckdb-ext PyPI package (installed by
-    # provisa[embedded]) so DEPLOY never reaches extensions.duckdb.org — required behind an enterprise
-    # firewall where only PyPI/Maven/npm/NuGet are proxied. Absent package = a dev checkout without the
-    # extra: leave PROVISA_DUCKDB_EXT_DIR unset so DuckDB's network INSTALL still works for local dev.
+    # REQ-294: a pip install stages its extensions and connector bundles here, on first launch, from
+    # the machine's configured package index; a directory already filled is used without fetching.
+    # An install whose environment names its directories staged them already, or its launch did.
     if not os.environ.get("PROVISA_DUCKDB_EXT_DIR"):
-        from provisa.federation.duckdb_extensions import stage_bundled_extensions
+        from provisa.runtime_deps.stage_assets import BUNDLES_DIR, DUCKDB_DIR, main as stage_assets
 
-        try:
-            ext_dir = stage_bundled_extensions(data_dir / "duckdb-ext")
-        except ModuleNotFoundError:
-            notes.append(
-                "duckdb extensions: provisa-duckdb-ext not installed — DuckDB will INSTALL from the "
-                "network on first use (install provisa[embedded] for an offline/air-gapped setup)"
-            )
-        else:
-            os.environ["PROVISA_DUCKDB_EXT_DIR"] = str(ext_dir)
-            notes.append(f"duckdb extensions: staged offline (no network) -> {ext_dir}")
+        if stage_assets([str(data_dir)]) != 0:
+            raise SystemExit("Provisa's DuckDB extensions and connector bundles did not stage")
+        os.environ["PROVISA_DUCKDB_EXT_DIR"] = str(data_dir / DUCKDB_DIR)
+        os.environ.setdefault("PROVISA_RUNTIME_DEPS_CACHE", str(data_dir / BUNDLES_DIR))
+        notes.append(f"duckdb extensions and connector bundles: staged under {data_dir}")
     return notes
 
 

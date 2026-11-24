@@ -1416,8 +1416,8 @@ _META_TABLE_VIEWS: dict[str, str] = {
         CREATE OR REPLACE VIEW domains_meta AS
         SELECT d.id, d.description, d.graphql_alias, d.parent_domain_id, d.org_id,
                d.tenant_id,
-               -- REQ-609, REQ-2219: its stewards, people whose domain_steward rows name it or a
-               -- domain above it. Last, so the view is replaced in place.
+               -- its stewards, people whose domain_steward rows name it or a domain above it.
+               -- Last, so the view is replaced in place.
                COALESCE(
                    (SELECT JSONB_AGG(oo.principal ORDER BY oo.principal) FROM object_owners oo
                     WHERE oo.object_kind = 'domain' AND oo.object_id = d.id),
@@ -1436,8 +1436,8 @@ _META_TABLE_VIEWS: dict[str, str] = {
                r.source_json_key, r.parameters, r.version, r.needs_review,
                r.cypher_type, r.graphql_field,
                r.tenant_id,
-               -- REQ-2219: its owners, people whose relationship_owner rows name it. Last, so
-               -- the view is replaced in place.
+               -- its owners, people whose relationship_owner rows name it. Last, so the view is
+               -- replaced in place.
                COALESCE(
                    (SELECT JSONB_AGG(oo.principal ORDER BY oo.principal) FROM object_owners oo
                     WHERE oo.object_kind = 'relationship' AND oo.object_id = r.id),
@@ -1472,8 +1472,8 @@ _META_TABLE_VIEWS: dict[str, str] = {
                support_contact, custom_properties,
                -- when the product was created; last, so the view is replaced in place.
                created_at,
-               -- REQ-2219: its owners, people whose data_product_owner rows name it. Last, so
-               -- the view is replaced in place.
+               -- its owners, people whose data_product_owner rows name it. Last, so the view is
+               -- replaced in place.
                COALESCE(
                    (SELECT JSONB_AGG(oo.principal ORDER BY oo.principal) FROM object_owners oo
                     WHERE oo.object_kind = 'data_product' AND oo.object_id = data_products.id),
@@ -1923,7 +1923,7 @@ _OPS_REPORT_VIEWS: dict[str, str] = {
         SELECT 'domain:' || d.id, 'domain', d.id, d.id,
                'missing_steward'
         FROM domains d
-        -- REQ-2219: a system domain needs no steward; a domain is stewarded when a person's
+        -- a system domain needs no steward; a domain is stewarded when a person's
         -- domain_steward row names it or a domain above it (object_owners).
         WHERE d.id NOT IN ({system_domains}) AND NOT d.retired AND d.id NOT IN (
             SELECT object_id FROM object_owners WHERE object_kind = 'domain'

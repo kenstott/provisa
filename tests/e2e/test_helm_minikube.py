@@ -28,6 +28,7 @@ from pathlib import Path
 
 import pytest
 
+from tests import duckdb_ext_wheels
 from tests.pyodide_downloads import build_context_args
 
 # `cluster`: this test deploys the Helm chart to a minikube profile of its own, created for this
@@ -96,7 +97,7 @@ _TEARDOWN_S = (
     + MINIKUBE_DELETE_S
 )
 CLUSTER_TEST_BOUND_S = _SETUP_S + _LONGEST_TEST_S + _TEARDOWN_S
-# REQ-056: the API container's peak memory may use at most this share of the chart's default limit.
+# REQ-056: the API container's peak memory may use at most this share of its limit in ci-values.yaml.
 BOOT_MEMORY_HEADROOM = 0.75
 
 pytestmark = [pytest.mark.e2e, pytest.mark.cluster, pytest.mark.timeout(CLUSTER_TEST_BOUND_S)]
@@ -117,75 +118,23 @@ _AUTH_SETS = [
     "auth.breakGlass.existingSecret=provisa-break-glass",
 ]
 
+# REQ-056: values.yaml carries production sizing; this lane deploys the lean test sizing in
+# ci-values.yaml, just enough to boot and pass on the 6 GiB, 4-CPU minikube.
+CI_VALUES = CHART_DIR / "ci-values.yaml"
+
 # What this test deploys, stated once and passed whole to the install AND every upgrade. A
 # `helm upgrade` re-renders from the chart defaults plus exactly the values it is given, so an
 # upgrade that repeated only some of the install's values redeployed the rest at production sizes
 # (2Gi Trino requests, 2GB per node, mongodb on, no exchange store) on this 6 GiB minikube, and
-# the release never turned Ready.
-# Minimal values: single replicas, no autoscaling, no ingress. flightService.type=ClusterIP avoids
-# the LoadBalancer pending-IP stall in minikube. Trino probe timeouts are generous because minikube
-# JVM startup is slow.
+# the release never turned Ready. The sizing and topology live in ci-values.yaml; the secrets this
+# test creates are named here.
 _CHART_SETS = [
+    f"--values={CI_VALUES}",
     "--set",
     "encryption.existingSecret=provisa-master-key",
     "--set",
     "credentials.existingSecret=provisa-credentials",
     *_AUTH_SETS,
-    "--set",
-    "provisa.replicaCount=1",
-    "--set",
-    "provisa.hpa.enabled=false",
-    "--set",
-    "trino.worker.autoscaling.enabled=false",
-    "--set",
-    "ingress.enabled=false",
-    "--set",
-    "provisa.flightService.type=ClusterIP",
-    # CPU requests sized to the 4-CPU minikube: at the chart's production default (1 CPU per Trino
-    # pod) the scaling test's second worker never schedules ("0/1 nodes are available: Insufficient
-    # cpu", run 37318305658) beside the coordinator, the first worker and the rest of the release.
-    "--set",
-    "trino.coordinator.resources.requests.cpu=250m",
-    "--set",
-    "trino.worker.resources.requests.cpu=250m",
-    "--set",
-    "trino.coordinator.resources.requests.memory=512Mi",
-    "--set",
-    "trino.coordinator.resources.limits.memory=1Gi",
-    "--set",
-    "trino.worker.resources.requests.memory=512Mi",
-    "--set",
-    "trino.worker.resources.limits.memory=1Gi",
-    # Trino query/FTE memory must fit inside the 1Gi container limit
-    # above (query.max-memory-per-node must not exceed the JVM heap);
-    # the chart defaults (2GB per node, 5GB FTE task) are sized for
-    # production nodes and fail config validation on these minikube pods.
-    "--set",
-    "trino.memory.maxMemory=1GB",
-    "--set",
-    "trino.memory.maxMemoryPerNode=512MB",
-    "--set",
-    "trino.memory.maxTotalMemory=1GB",
-    "--set",
-    "trino.fte.taskMemory=512MB",
-    "--set",
-    "trino.coordinator.livenessProbe.initialDelaySeconds=180",
-    "--set",
-    "trino.coordinator.livenessProbe.periodSeconds=30",
-    "--set",
-    "trino.coordinator.livenessProbe.failureThreshold=10",
-    "--set",
-    "trino.coordinator.readinessProbe.initialDelaySeconds=60",
-    "--set",
-    "trino.coordinator.readinessProbe.failureThreshold=20",
-    "--set",
-    "mongodb.enabled=false",
-    # Trino fault-tolerant execution (REQ-817) requires a shared exchange
-    # store; the chart fails render if neither minio.enabled nor an
-    # external trino.exchange.s3.endpoint is provided (no silent
-    # fallback). Deploy in-cluster MinIO as that exchange store.
-    "--set",
-    "minio.enabled=true",
 ]
 
 _LOCAL_BIN = Path.home() / ".local" / "bin"
@@ -400,6 +349,8 @@ def helm_install(request):
             str(repo_root / "Dockerfile.dev"),
             # Pyodide from the directory already downloaded into, not from its CDN mid-build.
             *build_context_args(),
+            # This commit's provisa-duckdb-ext wheels, which the Pages index does not hold.
+            *duckdb_ext_wheels.build_context_args(),
             "-t",
             "provisa:latest",
             str(repo_root),
@@ -631,7 +582,7 @@ class TestPodsRunning:
 
     def test_provisa_boot_memory_leaves_headroom(self):
         """The API container's peak memory since start (its boot included) stays within
-        BOOT_MEMORY_HEADROOM of the chart's default limit. Release 512 grew the boot past the old
+        BOOT_MEMORY_HEADROOM of its limit in ci-values.yaml. Release 512 grew the boot past the old
         512Mi limit and the kernel killed it at 26s, before /health ever answered; a peak that
         creeps toward the limit fails here first, by its number, rather than as a pod that never
         turns Ready."""
@@ -776,7 +727,7 @@ class TestTrinoInternalTls:
 
     def test_workers_join_over_internal_tls(self):
         # The coordinator's JVM takes 80% of its container for heap; serving its HTTPS endpoint
-        # and the worker's HTTPS announcements on top took it past _CHART_SETS' 1Gi (exit 137,
+        # and the worker's HTTPS announcements on top took it past ci-values.yaml's 1Gi (exit 137,
         # run 40364893477). 1.5Gi fits in the 6Gi minikube beside the rest of the release.
         result = _helm_deploy(
             worker_replicas=1,

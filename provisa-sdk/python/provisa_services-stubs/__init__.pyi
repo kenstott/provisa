@@ -11,7 +11,7 @@ import urllib.request
 from dataclasses import dataclass, field
 from collections.abc import Callable, Sequence
 from typing import Any, Generic, TypeVar
-__all__ = ['Discovered', 'DiscoveredCommand', 'DiscoveredQuery', 'DiscoveredTable', 'Filter', 'Order', 'ReadContext', 'TableConnection', 'TableRef', 'ServiceError', 'audit', 'cache', 'dq', 'http', 'llm', 'log', 'metric', 'secrets', 'settings', 'vectors']
+__all__ = ['Discovered', 'DiscoveredCommand', 'DiscoveredQuery', 'DiscoveredTable', 'Filter', 'Order', 'ReadContext', 'TableConnection', 'TableFlight', 'TableRef', 'ServiceError', 'audit', 'cache', 'dq', 'http', 'llm', 'log', 'metric', 'secrets', 'settings', 'vectors']
 
 class ServiceError(Exception):
     """A service refused or failed: ``service`` names it, ``status`` is its HTTP status (0 when
@@ -188,15 +188,34 @@ class TableConnection:
     sslmode: str
 
 @dataclass(frozen=True)
+class TableFlight:
+    """REQ-2270: how a function reaches its table over Arrow Flight SQL: the server's ``uri`` (on
+    a remote host, the deployment's Flight server; in a local worker, the loopback listener minted
+    for the call, REQ-2226), and the bearer ``token`` good for this call only, presented with the
+    call's id (``call``) in the ``x-provisa-call`` header. :meth:`TableRef.read` reads with it."""
+    uri: str
+    token: str
+    call: str
+
+@dataclass(frozen=True)
 class TableRef(Generic[_Row]):
     """REQ-2226: a governed Provisa table given to a ``@command`` or ``@query``, ``TableRef[Row]``
     with ``Row`` the input columns it declares. The function reads the table as the calling role,
-    so what the role cannot see it cannot read: run ``sql`` on a PostgreSQL connection made with
-    ``connection``."""
+    so what the role cannot see it cannot read. Python code, in a local worker (REQ-2226) or on a
+    remote host such as the Spark connector's (REQ-2270), is given ``flight`` and reads with
+    :meth:`read`; code in a language without a Flight client runs ``sql`` on a PostgreSQL
+    connection made with ``connection``. Exactly one of the two is set."""
     ref: str
     columns: tuple[str, ...]
-    connection: TableConnection
+    connection: TableConnection | None
     sql: str
+    flight: TableFlight | None = ...
+
+    def read(self) -> Any:
+        """REQ-2270: the table's rows as a pyarrow Table, read over Arrow Flight SQL as the
+        calling role: ``sql`` through the server's governed pipeline, the call's token its bearer
+        credential. Refused by name for a table given over PostgreSQL."""
+        ...
 
 @dataclass(frozen=True)
 class ReadContext:

@@ -186,6 +186,7 @@ def test_on_linux_the_host_inherits_its_socket_and_starts_through_the_launcher(
         env={"PATH": "/usr/bin"},
         cwd=tmp_path,
         egress=["api.example.test"],
+        table_reads="pgwire",
     )
     assert command.inherit_socket
     argv = command.argv_for("fd:5")
@@ -198,7 +199,13 @@ def test_on_macos_the_host_starts_under_sandbox_exec(monkeypatch, tmp_path):
     monkeypatch.setattr(sandbox.platform, "system", lambda: "Darwin")
     monkeypatch.setattr(macos_sandbox, "SANDBOX_EXEC", Path(sys.executable))  # present
     command = sandbox.sandboxed(
-        _host, executable=Path("/rt/bin/node"), read=[tmp_path], env={}, cwd=tmp_path, egress=[]
+        _host,
+        executable=Path("/rt/bin/node"),
+        read=[tmp_path],
+        env={},
+        cwd=tmp_path,
+        egress=[],
+        table_reads="pgwire",
     )
     assert not command.inherit_socket
     argv = command.argv_for(str(tmp_path / "s" / "worker.sock"))
@@ -210,7 +217,13 @@ def test_a_platform_with_no_sandbox_refuses_a_code_source_by_name(monkeypatch, t
     monkeypatch.setattr(sandbox.platform, "system", lambda: "Windows")
     with pytest.raises(SandboxUnavailable, match="a code source cannot run on Windows"):
         sandbox.sandboxed(
-            _host, executable=Path("/rt/node"), read=[], env={}, cwd=tmp_path, egress=[]
+            _host,
+            executable=Path("/rt/node"),
+            read=[],
+            env={},
+            cwd=tmp_path,
+            egress=[],
+            table_reads="pgwire",
         )
 
 

@@ -575,7 +575,8 @@
       "table_region_from_function": "A tabela '{{table}}' é derivada da função '{{name}}' e tem a sua região: não é movida sozinha para outra região",
       "table_name_reserved": "O nome de tabela '{{table}}' é reservado: os comandos de um domínio são servidos sob 'commands'. Registre a tabela com outro nome ou alias.",
       "domain_stewards_saved": "Responsáveis pelo domínio '{{domain}}' salvos",
-      "table_has_dependents": "A tabela '{{name}}' ainda é lida ou referenciada por outros objetos: retire-os ou altere-os primeiro"
+      "table_has_dependents": "A tabela '{{name}}' ainda é lida ou referenciada por outros objetos: retire-os ou altere-os primeiro",
+      "file_types_differ": "O padrão {{glob}} corresponde a arquivos de mais de um tipo ({{types}}); os arquivos de uma tabela devem ser todos do mesmo tipo."
     },
     "secrets": {
       "env_reference_object_locked": "Este objeto é do operador: ele lê o ambiente próprio do servidor e não pode ser alterado aqui. Adicione um seu em vez disso.",
@@ -626,7 +627,9 @@
       "columns_not_inferred": "Não foi possível inferir colunas: a sondagem não retornou linhas e nenhuma variável SELECT foi encontrada.",
       "probe_failed": "Falha na sondagem do endpoint SPARQL: {{error}}",
       "source_not_found": "Fonte SPARQL '{{source_id}}' não encontrada",
-      "no_select_variables": "A consulta não nomeia variáveis SELECT (SELECT * ou não é uma consulta SELECT): suas colunas não podem ser lidas dela"
+      "no_select_variables": "A consulta não nomeia variáveis SELECT (SELECT * ou não é uma consulta SELECT): suas colunas não podem ser lidas dela",
+      "credential_invalid": "A fonte '{{source}}' declara uma credencial {{kind}} incompleta: uma credencial bearer precisa do seu token, e uma basic do usuário e da senha (os tipos são bearer e basic)",
+      "own_endpoint_needs_credential": "A fonte '{{source}}' lê o endpoint SPARQL do próprio Provisa e não declara nenhuma credencial: declare o token bearer ou o usuário e a senha de uma conta Provisa mantida para o serviço, cujos papéis limitam o que ela lê"
     },
     "subscribe": {
       "avro_topic_without_registry": "O tópico '{{topic}}' contém mensagens Avro e sua origem não indica nenhum registro de esquemas para lê-las: defina a URL do registro de esquemas da origem",
@@ -692,7 +695,8 @@
       "undefined_variable_property": "{{clause}} lê {{variable}}, que nada na instrução vincula: uma variável é vinculada por um padrão MATCH, WITH, UNWIND ou CALL. Vinculadas aqui: {{bound}}. Você quis dizer {{suggestion}}? {{owner}} está vinculada a :{{label}}, que tem uma propriedade {{variable}}.",
       "undefined_variable_properties": "{{clause}} lê {{variable}}, que nada na instrução vincula: uma variável é vinculada por um padrão MATCH, WITH, UNWIND ou CALL. Vinculadas aqui: {{bound}}. Você quis dizer {{suggestions}}? Cada uma está vinculada a um rótulo com uma propriedade {{variable}}.",
       "non_finite_number": "A resposta contém um número que o JSON não consegue representar: {{column}} é {{value}}.",
-      "try_cast_needs_postgres_16": "toInteger, toFloat e toBoolean de um valor que pode não ser convertido exigem PostgreSQL 16 ou posterior neste motor."
+      "try_cast_needs_postgres_16": "toInteger, toFloat e toBoolean de um valor que pode não ser convertido exigem PostgreSQL 16 ou posterior neste motor.",
+      "relationship_unread": "Não foi possível ler um relacionamento, então suas arestas não são exibidas: {{statement}}: {{reason}}"
     },
     "requests": {
       "approver_outside_domains": "Seu direito de aprovar relacionamentos não alcança nenhum domínio tocado por esta solicitação ({{domains}})",

@@ -575,7 +575,8 @@
       "table_region_from_function": "Die Tabelle '{{table}}' ist von der Funktion '{{name}}' abgeleitet und hat deren Region: Sie wird nicht für sich allein in eine andere Region verschoben",
       "table_name_reserved": "Der Tabellenname '{{table}}' ist reserviert: Die Commands einer Domäne werden unter 'commands' bereitgestellt. Registrieren Sie die Tabelle unter einem anderen Namen oder Alias.",
       "domain_stewards_saved": "Stewards der Domäne '{{domain}}' gespeichert",
-      "table_has_dependents": "Die Tabelle '{{name}}' wird noch von anderen Objekten gelesen oder referenziert: Ziehen Sie diese zuerst zurück oder ändern Sie sie"
+      "table_has_dependents": "Die Tabelle '{{name}}' wird noch von anderen Objekten gelesen oder referenziert: Ziehen Sie diese zuerst zurück oder ändern Sie sie",
+      "file_types_differ": "Das Muster {{glob}} trifft Dateien mehrerer Typen ({{types}}); die Dateien einer Tabelle müssen alle denselben Typ haben."
     },
     "secrets": {
       "env_reference_object_locked": "Dieses Objekt gehört dem Betreiber: Es liest die eigene Umgebung des Servers und kann hier nicht geändert werden. Legen Sie stattdessen ein eigenes an.",
@@ -626,7 +627,9 @@
       "columns_not_inferred": "Spalten konnten nicht abgeleitet werden: Der Probe-Aufruf lieferte keine Zeilen und keine SELECT-Variablen.",
       "probe_failed": "Prüfung des SPARQL-Endpunkts fehlgeschlagen: {{error}}",
       "source_not_found": "SPARQL-Quelle '{{source_id}}' nicht gefunden",
-      "no_select_variables": "Die Abfrage nennt keine SELECT-Variablen (SELECT * oder keine SELECT-Abfrage): Ihre Spalten lassen sich nicht daraus lesen"
+      "no_select_variables": "Die Abfrage nennt keine SELECT-Variablen (SELECT * oder keine SELECT-Abfrage): Ihre Spalten lassen sich nicht daraus lesen",
+      "credential_invalid": "Die Quelle '{{source}}' gibt unvollständige {{kind}}-Anmeldedaten an: Bearer-Anmeldedaten brauchen ihr Token, Basic-Anmeldedaten Benutzername und Passwort (die Arten sind bearer und basic)",
+      "own_endpoint_needs_credential": "Die Quelle '{{source}}' liest den eigenen SPARQL-Endpunkt von Provisa und gibt keine Anmeldedaten an: Geben Sie das Bearer-Token oder Benutzername und Passwort eines für den Dienst geführten Provisa-Kontos an, dessen Rollen begrenzen, was sie liest"
     },
     "subscribe": {
       "avro_topic_without_registry": "Topic '{{topic}}' enthält Avro-Nachrichten, und seine Quelle nennt keine Schema-Registry zum Lesen: Setzen Sie die Schema-Registry-URL der Quelle",
@@ -692,7 +695,8 @@
       "undefined_variable_property": "{{clause}} liest {{variable}}, aber nichts in der Anweisung bindet diese Variable: Eine Variable wird durch ein MATCH-Muster, WITH, UNWIND oder CALL gebunden. Hier gebunden: {{bound}}. Meinten Sie {{suggestion}}? {{owner}} ist an :{{label}} gebunden, das eine Eigenschaft {{variable}} hat.",
       "undefined_variable_properties": "{{clause}} liest {{variable}}, aber nichts in der Anweisung bindet diese Variable: Eine Variable wird durch ein MATCH-Muster, WITH, UNWIND oder CALL gebunden. Hier gebunden: {{bound}}. Meinten Sie {{suggestions}}? Jede ist an ein Label mit einer Eigenschaft {{variable}} gebunden.",
       "non_finite_number": "Die Antwort enthält eine Zahl, die JSON nicht darstellen kann: {{column}} ist {{value}}.",
-      "try_cast_needs_postgres_16": "toInteger, toFloat und toBoolean für einen Wert, der sich möglicherweise nicht umwandeln lässt, erfordern auf dieser Engine PostgreSQL 16 oder neuer."
+      "try_cast_needs_postgres_16": "toInteger, toFloat und toBoolean für einen Wert, der sich möglicherweise nicht umwandeln lässt, erfordern auf dieser Engine PostgreSQL 16 oder neuer.",
+      "relationship_unread": "Eine Beziehung konnte nicht gelesen werden, daher werden ihre Kanten nicht angezeigt: {{statement}}: {{reason}}"
     },
     "requests": {
       "approver_outside_domains": "Ihr Recht, Beziehungen zu genehmigen, reicht in keine Domäne, die dieser Antrag berührt ({{domains}})",

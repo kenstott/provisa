@@ -80,7 +80,12 @@ from provisa.api.metadata_export.provider import (
     MetadataExport,
     PublishResult,
 )
-from provisa.api.metadata_export.model import AssetKind, GlossaryTermAsset, junction_payload
+from provisa.api.metadata_export.model import (
+    AssetKind,
+    DataQualityOutcome,
+    GlossaryTermAsset,
+    junction_payload,
+)
 from provisa.api.metadata_export.registry import register_provider
 from provisa.api.metadata_export import sync_values as sv
 from provisa.security import sandbox_egress  # REQ-2006: held to public destinations
@@ -767,11 +772,7 @@ def _data_quality_entities(snapshot: MetadataSnapshot) -> list[Entity]:
                     "name": _test_case_name(assertion, table),
                     "entityLink": _entity_link(assertion, table),
                     "testDefinition": definition_name,
-                    "description": (
-                        f"{assertion.definition}\n\n"
-                        f"Severity: {assertion.severity}. "
-                        f"Outcomes land in {assertion.results_table.fqn()}."
-                    ),
+                    "description": _test_case_description(assertion),
                     "parameterValues": [],
                 },
             )
@@ -805,6 +806,25 @@ def _test_case_fqn(assertion: DataQualityAssertion, table: TableAsset) -> str:
     if _entity_type_of(assertion, table) == "COLUMN":
         return f"{_column_fqn(table, assertion.asset.parts[-1])}.{name}"
     return f"{_table_fqn(table)}.{name}"
+
+
+def _test_case_description(assertion: DataQualityAssertion) -> str:
+    """The test case's description: the check's text, severity and where its outcomes land.
+
+    REQ-392: an unreadable results table is stated here with the refusal. OpenMetadata's result
+    statuses (Success, Failed, Aborted, Queued) each describe a run, and a result needs the run's
+    timestamp; an unreadable table names no run, so the test case's own text is the closest place
+    OpenMetadata has for it.
+    """
+    text = (
+        f"{assertion.definition}\n\n"
+        f"Severity: {assertion.severity}. "
+        f"Outcomes land in {assertion.results_table.fqn()}."
+    )
+    outcome = assertion.outcome
+    if outcome.status == DataQualityOutcome.UNREADABLE:
+        text += f"\n\nLast outcome: {outcome.status} ({outcome.reason})."
+    return text
 
 
 def _test_case_result(assertion: DataQualityAssertion) -> dict[str, Any] | None:

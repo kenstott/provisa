@@ -56,16 +56,59 @@ def test_a_wheel_per_mirrored_platform_each_tagged_for_it():
     }
 
 
+def test_the_published_platforms_are_exactly_the_four_supported():
+    # REQ-294 (amended 2026-11-10, LINUX ARM64 IS FULLY SUPPORTED): macOS arm64, Linux x86_64, Linux
+    # arm64 and Windows x86_64; the release builds, publishes and probes every one of them.
+    legs = _jobs()["mirror"]["strategy"]["matrix"]["include"]
+    assert {(leg["label"], leg["runner"]) for leg in legs} == {
+        ("osx-arm64", "macos-15"),
+        ("linux-x64", "ubuntu-22.04"),
+        ("linux-arm64", "ubuntu-22.04-arm"),
+        ("windows-x64", "windows-latest"),
+    }
+    assert {plat for plat, _tag in _collect().PLATFORMS.values()} == {
+        "osx_arm64",
+        "linux_amd64",
+        "linux_arm64",
+        "windows_amd64",
+    }
+
+
+def test_the_duckdb_platforms_are_the_ones_pgwire_bundles_are_published_for():
+    # Both halves of the release cover the same four platforms (REQ-294): no platform gets the
+    # DuckDB extensions without the pgwire connectors, or the reverse. The bundles themselves are
+    # published by the calcite engine release; BUNDLE_VARIANTS is the set Provisa reads.
+    from provisa.runtime_deps.pgwire_bundles import BUNDLE_VARIANTS
+
+    as_bundle_variant = {
+        "osx_arm64": "macos-arm64",
+        "linux_amd64": "linux-x86_64",
+        "linux_arm64": "linux-aarch64",
+        "windows_amd64": "windows-x86_64",
+    }
+    duckdb = {as_bundle_variant[plat] for plat, _tag in _collect().PLATFORMS.values()}
+    assert duckdb == set(BUNDLE_VARIANTS.values())
+
+
 def test_the_wheel_job_builds_each_platform_alone_and_retags_it():
     run = _steps("wheel")["Build one wheel per platform"]["run"]
-    assert "for label in $(python packaging/duckdb-ext/collect.py labels)" in run
-    assert 'collect.py collect mirror-extracted "$label"' in run
+    # Every platform: the script builds every label collect.py knows when it is named none.
+    assert "bash scripts/ci/build_duckdb_ext_wheels.sh mirror-extracted dist-ext\n" in run
+    script = (REPO / "scripts/ci/build_duckdb_ext_wheels.sh").read_text()
+    assert 'set -- $(python "$collect" labels)' in script
+    assert 'for label in "$@"; do' in script
+    assert 'python "$collect" collect "$mirror" "$label" "$part"' in script
+    # One project, split across version parts: each part builds a wheel per platform (REQ-294).
+    assert 'for part in $(python "$collect" parts); do' in script
+    assert 'python "$collect" set-version "$part"' in script
     # A previous platform's blobs in setuptools' build dir would ride along in the next wheel.
-    assert "rm -rf packaging/duckdb-ext/build packaging/duckdb-ext/*.egg-info" in run
-    assert "python -m build --wheel --outdir" in run
-    assert "--sdist" not in run  # an sdist would carry every platform's blobs again
-    assert 'collect.py wheel-tag "$label"' in run
-    assert "python -m wheel tags --remove" in run
+    assert "rm -rf packaging/duckdb-ext/build packaging/duckdb-ext/*.egg-info" in script
+    assert "python -m build --wheel --outdir" in script
+    assert "--sdist" not in script  # an sdist would carry every platform's blobs again
+    assert 'python "$collect" wheel-tag "$label"' in script
+    assert "python -m wheel tags --remove" in script
+    # The per-part version is the build's, not the checkout's.
+    assert 'trap \'cp "$saved" "$pyproject"' in script
 
 
 def test_each_wheels_size_is_checked_before_attaching():
@@ -104,15 +147,16 @@ def test_the_mirror_carries_crypto_and_community_only():
     assert _collect().PRIORITY[0] == "crypto" and _collect().PRIORITY[-1] == "firebird"
 
 
-def test_provisa_duckdb_ext_0_2_2_carries_airport_and_is_the_floor():
-    # 0.2.2 is the first build with Query.Farm's airport (maintainer decision 2026-11-07): the
-    # package, its locator and the embedded extra's floor name the same release.
+def test_the_release_and_its_locator_name_the_same_version_and_nothing_pins_a_part():
+    # REQ-294: the stage command fetches every part with pip download; no install depends on one.
     import re
     import tomllib
 
+    from provisa.federation.duckdb_extensions import EXT_PACKAGE_RELEASE
+
     package = tomllib.loads((REPO / "packaging/duckdb-ext/pyproject.toml").read_text())
-    assert package["project"]["version"] == "0.2.2"
+    assert package["project"]["version"] == EXT_PACKAGE_RELEASE
     init = (REPO / "packaging/duckdb-ext/provisa_duckdb_ext/__init__.py").read_text()
-    assert re.search(r'^__version__ = "0\.2\.2"$', init, re.MULTILINE)
+    assert re.search(rf'^__version__ = "{re.escape(EXT_PACKAGE_RELEASE)}"$', init, re.MULTILINE)
     root = (REPO / "pyproject.toml").read_text()
-    assert '"provisa-duckdb-ext>=0.2.2",' in root
+    assert '"provisa-duckdb-ext' not in root

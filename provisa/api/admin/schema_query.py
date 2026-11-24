@@ -1122,8 +1122,9 @@ class Query:  # REQ-021, REQ-042
         self, info: StrawberryInfo, kind: str, object_id: str
     ) -> OwnerFieldType:  # REQ-2219
         """What an object's Owner (or a domain's Steward) field names, for the form that edits
-        it: the people and the roles with Provisa-held rows naming it (amended 2026-11-23). An
-        object's owners are shown to every org member (the meta views' owners), so this is too.
+        it: the people and the roles with Provisa-held rows naming it (amended 2026-11-23). It is
+        read with the right that reads the object's owners elsewhere: a product's on its page
+        (data_product_read), a domain's or relationship's in the meta views (catalog_read).
         ``kind``: data_product, domain or relationship."""
         from provisa.entitlements.owners import KINDS_BY_NAME, field_of
 
@@ -1131,6 +1132,7 @@ class Query:  # REQ-021, REQ-042
         owned = KINDS_BY_NAME.get(kind)
         if owned is None:
             raise ValueError(f"no Owner field on {kind!r}: one of {sorted(KINDS_BY_NAME)}")
+        require_capability(info, "data_product_read" if kind == "data_product" else "catalog_read")
         pool = await _get_pool()
         async with pool.acquire() as conn:
             got = await field_of(cast("Connection", conn), owned, object_id)

@@ -14,7 +14,7 @@ An assertion publishes on the asset the checker OBSERVES, never on the table the
 in — that table publishes as an ordinary table carrying the derived ``data_quality`` tag.
 """
 
-# Requirements: REQ-1443, REQ-2157
+# Requirements: REQ-392, REQ-1443, REQ-2157
 
 from __future__ import annotations
 
@@ -28,7 +28,8 @@ from provisa.api.metadata_export.atlas import GOVERNANCE_ATTRIBUTE, to_entities 
 from provisa.api.metadata_export.builder import build_snapshot
 from provisa.api.metadata_export.collibra import DATA_QUALITY_ATTRIBUTE, to_rows
 from provisa.api.metadata_export.datahub import to_proposals
-from provisa.api.metadata_export.model import DataQualityOutcome
+from provisa.api.metadata_export.model import DataQualityOutcome, LatestOutcomes
+from provisa.api.metadata_export.odps import _expectations
 from provisa.api.metadata_export.openlineage import to_events
 from provisa.api.metadata_export.openmetadata import to_entities as om_entities
 from tests.unit.product_members import assigned, assigned_members, with_members
@@ -145,22 +146,46 @@ def scanned():
         org_id="acme",
         dialect="postgres",
         contexts=CONTEXTS,
-        dq_outcomes={
-            ("sales.orders", "", "row_count"): DataQualityOutcome(
-                status="pass",
-                scan_id="scan-9",
-                scan_time=SCAN_TIME,
-                metric_value=1200.0,
-                failed_rows=0,
-            ),
-            ("sales.orders", "customer", "missing"): DataQualityOutcome(
-                status="fail",
-                scan_id="scan-9",
-                scan_time=SCAN_TIME,
-                metric_value=0.07,
-                failed_rows=7,
-            ),
-        },
+        dq_outcomes=LatestOutcomes(
+            by_check={
+                ("sales.orders", "", "row_count"): DataQualityOutcome(
+                    status="pass",
+                    scan_id="scan-9",
+                    scan_time=SCAN_TIME,
+                    metric_value=1200.0,
+                    failed_rows=0,
+                ),
+                ("sales.orders", "customer", "missing"): DataQualityOutcome(
+                    status="fail",
+                    scan_id="scan-9",
+                    scan_time=SCAN_TIME,
+                    metric_value=0.07,
+                    failed_rows=7,
+                ),
+            }
+        ),
+    )
+
+
+# REQ-392: governance refused the publishing role the results table; the refusal's text.
+REFUSAL = "role org_admin cannot read quality.orders_scans"
+
+
+@pytest.fixture
+def unreadable():
+    """The same contract when the publishing role cannot read its results table."""
+    return build_snapshot(
+        _config(),
+        org_id="acme",
+        dialect="postgres",
+        contexts=CONTEXTS,
+        dq_outcomes=LatestOutcomes(
+            unreadable={
+                ("dq", "quality", "orders_scans"): DataQualityOutcome(
+                    status=DataQualityOutcome.UNREADABLE, reason=REFUSAL
+                )
+            }
+        ),
     )
 
 
@@ -341,11 +366,13 @@ def test_a_warn_is_published_as_a_failure_not_a_pass():
         org_id="acme",
         dialect="postgres",
         contexts=CONTEXTS,
-        dq_outcomes={
-            ("sales.orders", "customer", "missing"): DataQualityOutcome(
-                status="warn", scan_id="scan-9", scan_time=SCAN_TIME, failed_rows=2
-            )
-        },
+        dq_outcomes=LatestOutcomes(
+            by_check={
+                ("sales.orders", "customer", "missing"): DataQualityOutcome(
+                    status="warn", scan_id="scan-9", scan_time=SCAN_TIME, failed_rows=2
+                )
+            }
+        ),
     )
     orders = _orders_dataset(to_events(snapshot, event_time=datetime(2026, 8, 13, tzinfo=UTC)))
     facet = orders.payload["dataset"]["facets"]["dataQualityAssertions"]
@@ -458,3 +485,81 @@ def test_openmetadata_test_case_names_survive_a_check_being_removed(snapshot):
     )
     remaining = {e.body["name"] for e in om_entities(trimmed) if e.kind == "test_case"}
     assert remaining and remaining < full
+
+
+def test_every_check_of_an_unreadable_results_table_publishes_unreadable(unreadable):
+    # REQ-392: the checks still publish, each with the refused table's outcome and reason.
+    assert {(a.check_type, a.outcome.status, a.outcome.reason) for a in unreadable.assertions} == {
+        ("row_count", "unreadable", REFUSAL),
+        ("missing", "unreadable", REFUSAL),
+    }
+
+
+def test_atlas_collibra_and_openlineage_carry_unreadable_with_its_reason(unreadable):
+    # REQ-392: the Provisa-authored carriers embed the outcome document, reason included.
+    orders = next(
+        e for e in atlas_entities(unreadable) if e.asset is not None and e.asset.fqn() == ORDERS_FQN
+    )
+    checks = json.loads(orders.attributes[GOVERNANCE_ATTRIBUTE])["dataQuality"]
+    assert {(c["outcome"]["status"], c["outcome"]["reason"]) for c in checks} == {
+        ("unreadable", REFUSAL)
+    }
+
+    by_name = {
+        row["name"]: row for row in to_rows(unreadable, "Provisa", "Provisa Governed Assets")
+    }
+    column_checks = json.loads(
+        by_name[f"{ORDERS_FQN}.customer"]["attributes"][DATA_QUALITY_ATTRIBUTE][0]["value"]
+    )
+    assert column_checks[0]["outcome"] == {
+        "status": "unreadable",
+        "scanId": "",
+        "scanTime": None,
+        "metricValue": None,
+        "failedRows": None,
+        "reason": REFUSAL,
+    }
+
+    facets = _orders_dataset(
+        to_events(unreadable, event_time=datetime(2026, 8, 13, tzinfo=UTC))
+    ).payload["dataset"]["facets"]
+    # No verdict, so no success flag: the spec facet is absent and the Provisa facet carries it.
+    assert "dataQualityAssertions" not in facets
+    provisa = next(f for name, f in facets.items() if "assertions" in f and name != "schema")
+    assert {a["outcome"]["status"] for a in provisa["assertions"]} == {"unreadable"}
+
+
+def test_datahub_carries_unreadable_and_its_reason_with_no_run_event(unreadable):
+    proposals = to_proposals(unreadable)
+    infos = [p for p in proposals if p.aspect_name == "assertionInfo"]
+    assert {
+        (
+            p.aspect["customProperties"]["provisaOutcome"],
+            p.aspect["customProperties"]["provisaOutcomeReason"],
+        )
+        for p in infos
+    } == {("unreadable", REFUSAL)}
+    assert [p for p in proposals if p.aspect_name == "assertionRunEvent"] == []
+
+
+def test_datahub_states_no_reason_for_an_outcome_that_has_none(scanned):
+    infos = [p for p in to_proposals(scanned) if p.aspect_name == "assertionInfo"]
+    assert all("provisaOutcomeReason" not in p.aspect["customProperties"] for p in infos)
+
+
+def test_openmetadata_states_unreadable_on_the_test_case_and_posts_no_result(unreadable):
+    entities = om_entities(unreadable)
+    cases = [e for e in entities if e.kind == "test_case"]
+    assert len(cases) == 2
+    assert all(
+        e.body["description"].endswith(f"Last outcome: unreadable ({REFUSAL}).") for e in cases
+    )
+    assert [e for e in entities if e.kind == "test_case_result"] == []
+
+
+def test_odps_expectations_carry_unreadable_and_its_reason(unreadable):
+    product = next(p for p in unreadable.data_products if p.id == "orders-product")
+    table = next(t for t in unreadable.tables if t.ref.fqn() == ORDERS_FQN)
+    assert {
+        (e["outcome"], e["outcomeReason"]) for e in _expectations(unreadable, product, table)
+    } == {("unreadable", REFUSAL)}

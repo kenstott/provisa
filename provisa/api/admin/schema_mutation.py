@@ -127,6 +127,10 @@ from provisa.api.admin._landing_ttl import (  # REQ-1907, REQ-826
     row_materialize_save_refusal,
 )
 from provisa.api.admin._table_ops import _build_columns_for_input, column_field_refusal
+from provisa.api.admin._query_api_registration import (  # REQ-2138
+    refresh_sparql_api_source,
+    sparql_source_refusal,
+)
 from provisa.security.masking import MaskConstantNotText, MaskUnreachable
 from provisa.api.admin._fake_guard import FakeRefusedSave as _FakeRefusedSave
 from provisa.api.admin import schema_mutation_ops as _ops
@@ -3426,6 +3430,11 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         _profiler_refusal = _refuse_invalid_profiler(input.id, input.type, _mapping)  # REQ-1934
         if _profiler_refusal is not None:
             return _profiler_refusal
+        _sparql_refusal = sparql_source_refusal(  # REQ-2138
+            input.id, input.type, _mapping, input.host, input.username, password_ref
+        )
+        if _sparql_refusal is not None:
+            return _sparql_refusal
         from provisa.api.admin._code_source_registration import join_connector, record_code
 
         _join_refusal = await join_connector(input.id, input.type, _mapping)  # REQ-2221
@@ -3822,6 +3831,11 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             )
             if _profiler_refusal is not None:
                 return _profiler_refusal
+            _sparql_refusal = sparql_source_refusal(  # REQ-2138
+                input.id, input.type, _stored_mapping, input.host, input.username, password_ref
+            )
+            if _sparql_refusal is not None:
+                return _sparql_refusal
             from provisa.api.admin._code_source_registration import record_code
             from provisa.api.admin._connector_values import fixed_refusal, input_settings
 
@@ -3896,6 +3910,10 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             )
 
         await restart_source_server(model)
+        if input.type == "sparql":  # REQ-2138: its live reads use the credential just saved
+            refresh_sparql_api_source(
+                input.id, _stored_mapping, input.host, input.username, password_ref
+            )
 
         from provisa.api.app import state
         from provisa.executor.drivers.registry import has_driver

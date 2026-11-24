@@ -276,6 +276,14 @@
         "label": "PostgreSQL-wire-poort voor uitgegeven tokens",
         "help": "De poort die de sandbox van een codebron mag bereiken om de meegegeven tabel te lezen, en het adres dat een externe host krijgt. Accepteert alleen tokens die voor één aanroep zijn uitgegeven; 0 laat hem uit, en een opdracht die een tabel krijgt wordt dan geweigerd. Herstart vereist; beveiligd omdat hij een listener opent of sluit."
       },
+      "minted_flight_port": {
+        "label": "Eerste poort van uitgegeven Flight-listeners",
+        "help": "De eerste poort van het loopback-blok waarop de worker van een Python-codebron de tabellen die hij kreeg via Arrow Flight leest: per aanroep wordt een listener geopend die alleen het token van die aanroep accepteert en sluit wanneer de aanroep eindigt. De sandbox van een worker mag deze poorten openen en geen andere van Provisa. 0 laat hem uit, en een Python-opdracht die een tabel krijgt, wordt dan geweigerd. Herstart vereist; beveiligd omdat hij listeners opent of sluit."
+      },
+      "minted_flight_ports": {
+        "label": "Poorten van uitgegeven Flight-listeners",
+        "help": "Hoeveel poorten het blok heeft, en dus hoeveel aanroepen van lokale codebronnen tegelijk hun tabellen mogen lezen; nog één wordt geweigerd. Herstart vereist."
+      },
       "bolt_port": {
         "label": "Bolt-poort",
         "help": "De poort waarop de Bolt-server (Neo4j) luistert; 0 laat hem uit. Opnieuw opstarten vereist; met bevestiging omdat een listener wordt geopend of gesloten."

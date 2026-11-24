@@ -1293,6 +1293,10 @@ object_owners = Table(
     Column("object_kind", Text, primary_key=True),
     Column("object_id", Text, primary_key=True),
     Column("principal", Text, primary_key=True),
+    CheckConstraint(
+        "object_kind IN ('data_product', 'domain', 'relationship')",
+        name="object_owners_object_kind_check",
+    ),
 )
 
 model_names = Table(

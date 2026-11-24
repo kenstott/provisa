@@ -50,4 +50,6 @@ def host_command(*, binary: Path, egress: Sequence[str]) -> HostCommand:
         env=env,
         cwd=binary.parent,
         egress=egress,
+        # REQ-2226: its SDK reads table arguments over pgwire until its Flight SQL client lands.
+        table_reads="pgwire",
     )

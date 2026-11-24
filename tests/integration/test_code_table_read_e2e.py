@@ -8,9 +8,11 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""REQ-2226's scenario on a real server: a real, sandboxed worker reads the table it was given over
-the minted-token listener, as the calling role, through the one governed pipeline. A column the
-role cannot see is not available to the code; a role that can see it reads it."""
+"""REQ-2226's scenario on a real server: a real, sandboxed Python worker reads the table it was given
+over the Arrow Flight listener minted for the call, as the calling role, through the one governed
+pipeline. A column the role cannot see is not available to the code; a role that can see it reads
+it. The worker's sandbox opens that listener's block and neither the main Flight server nor the
+minted-token pgwire listener, and the listener closes when the call ends."""
 
 # Requirements: REQ-2226
 
@@ -27,7 +29,7 @@ import yaml
 
 from tests.helpers import registered_id
 from tests.integration.test_code_sources_e2e import _ROLE, _admin, _archive, _config
-from tests.port_lease import lease_ports
+from tests.port_lease import lease_ports, lease_run
 
 pytestmark = [pytest.mark.integration]
 
@@ -37,9 +39,9 @@ _ANALYST = "ledger_analyst"
 
 _CODE = {
     "ledger/ledger.py": r'''
+import dataclasses
 import json
 import socket
-import struct
 from dataclasses import dataclass
 
 from provisa_services import TableRef
@@ -103,109 +105,49 @@ def clips() -> list[Clip]:
     return [Clip(1, "emea"), Clip(2, "amer")]
 
 
-def _messages(sock):
-    def read(n):
-        out = b""
-        while len(out) < n:
-            out += sock.recv(n - len(out))
-        return out
-
-    while True:
-        kind = read(1)
-        length = struct.unpack("!i", read(4))[0]
-        yield kind, read(length - 4)
-
-
-def _error_of(body: bytes) -> str:
-    return dict((f[:1], f[1:].decode()) for f in body.split(b"\0") if f).get(b"M", "")
+def _rows(table: TableRef) -> Outcome:
+    """The rows of the one statement the reference names, read over the Flight listener minted
+    for the call (REQ-2226), each value as text."""
+    try:
+        read = table.read().to_pylist()
+    except Exception as exc:  # the server's refusal, as the code is told it
+        return Outcome("refused", str(exc))
+    return Outcome("ok", json.dumps([{k: str(v) for k, v in row.items()} for row in read]))
 
 
 def _read(table: TableRef) -> Outcome:
-    """A PostgreSQL client just far enough to run the one statement the reference names."""
-    target = table.connection
-    sock = socket.create_connection((target.host, target.port), timeout=30)
-    start = b"user\0" + target.user.encode() + b"\0database\0" + target.database.encode() + b"\0\0"
-    sock.sendall(struct.pack("!ii", 8 + len(start), 196608) + start)
-    frames = _messages(sock)
-    kind, body = next(frames)
-    if kind != b"R":
-        return Outcome("refused", _error_of(body))
-    secret = target.password.encode() + b"\0"
-    sock.sendall(b"p" + struct.pack("!i", 4 + len(secret)) + secret)
-    for kind, body in frames:
-        if kind == b"E":
-            return Outcome("refused", _error_of(body))
-        if kind == b"Z":
-            break
-    query = table.sql.encode() + b"\0"
-    sock.sendall(b"Q" + struct.pack("!i", 4 + len(query)) + query)
-    names: list[str] = []
-    rows: list[dict] = []
-    for kind, body in frames:
-        if kind == b"E":
-            return Outcome("refused", _error_of(body))
-        if kind == b"T":
-            count, at = struct.unpack("!h", body[:2])[0], 2
-            for _ in range(count):
-                end = body.index(b"\0", at)
-                names.append(body[at:end].decode())
-                at = end + 19
-        elif kind == b"D":
-            count, at = struct.unpack("!h", body[:2])[0], 2
-            row = {}
-            for name in names[:count]:
-                size = struct.unpack("!i", body[at:at + 4])[0]
-                at += 4
-                row[name] = body[at:at + size].decode()
-                at += size
-            rows.append(row)
-        elif kind == b"Z":
-            return Outcome("ok", json.dumps(rows))
-    return Outcome("refused", "the connection ended")
+    return _rows(table)
 
 
 def _read_sql(table: TableRef, sql: str) -> Outcome:
-    """Like _read but runs a caller-supplied SQL statement over the same minted connection."""
-    target = table.connection
-    sock = socket.create_connection((target.host, target.port), timeout=30)
-    start = b"user\0" + target.user.encode() + b"\0database\0" + target.database.encode() + b"\0\0"
-    sock.sendall(struct.pack("!ii", 8 + len(start), 196608) + start)
-    frames = _messages(sock)
-    kind, body = next(frames)
-    if kind != b"R":
-        return Outcome("refused", _error_of(body))
-    cred = target.password.encode() + b"\0"
-    sock.sendall(b"p" + struct.pack("!i", 4 + len(cred)) + cred)
-    for kind, body in frames:
-        if kind == b"E":
-            return Outcome("refused", _error_of(body))
-        if kind == b"Z":
-            break
-    query = sql.encode() + b"\0"
-    sock.sendall(b"Q" + struct.pack("!i", 4 + len(query)) + query)
-    names: list[str] = []
-    rows: list[dict] = []
-    for kind, body in frames:
-        if kind == b"E":
-            return Outcome("refused", _error_of(body))
-        if kind == b"T":
-            count, at = struct.unpack("!h", body[:2])[0], 2
-            for _ in range(count):
-                end = body.index(b"\0", at)
-                names.append(body[at:end].decode())
-                at = end + 19
-        elif kind == b"D":
-            count, at = struct.unpack("!h", body[:2])[0], 2
-            row = {}
-            for name in names[:count]:
-                size = struct.unpack("!i", body[at:at + 4])[0]
-                at += 4
-                row[name] = body[at:at + size].decode()
-                at += size
-            rows.append(row)
-        elif kind == b"Z":
-            return Outcome("ok", json.dumps(rows))
-    return Outcome("refused", "the connection ended")
+    """Like _read but runs a caller-supplied SQL statement as the same call."""
+    return _rows(dataclasses.replace(table, sql=sql))
+
+
+def _reach(port: int) -> Outcome:
+    try:
+        socket.create_connection(("127.0.0.1", port), timeout=5).close()
+    except OSError as exc:
+        return Outcome("refused", f"{type(exc).__name__}: {exc}")
+    return Outcome("reached", str(port))
+
+
+def reach(orders: TableRef[Lean], port: int) -> list[Outcome]:
+    """Whether this worker can open ``port`` on loopback while its call's listener is open.
+
+    @query
+    """
+    return [_reach(port)]
+
+
+def own_listener(orders: TableRef[Lean]) -> list[Outcome]:
+    """The call's own listener: its address, and whether this worker reached it.
+
+    @query
+    """
+    port = int(orders.flight.uri.rsplit(":", 1)[1])
+    reached = _reach(port)
+    return [Outcome(reached.status, orders.flight.uri)]
 
 
 def read_lean(orders: TableRef[Lean]) -> list[Outcome]:
@@ -291,7 +233,13 @@ def minted_port():
 
 
 @pytest.fixture(scope="module")
-def server(tmp_path_factory, minted_port):
+def flight_block():
+    """The block the calls' Flight listeners open on (REQ-2226)."""
+    return lease_run(4)
+
+
+@pytest.fixture(scope="module")
+def server(tmp_path_factory, minted_port, flight_block):
     from tests.integration.isolated_server import IsolatedServer
 
     work = tmp_path_factory.mktemp("code_table_read")
@@ -319,6 +267,8 @@ def server(tmp_path_factory, minted_port):
         env={
             "PROVISA_RUNTIME_DEPS_CACHE": str(tmp_path_factory.mktemp("runtime-deps")),
             "PROVISA_MINTED_PGWIRE_PORT": str(minted_port),
+            "PROVISA_MINTED_FLIGHT_PORT": str(flight_block),
+            "PROVISA_MINTED_FLIGHT_PORTS": "4",
         },
     )
     srv.start(timeout=240)
@@ -413,6 +363,8 @@ def ledger(server):
         "read_star",
         "read_qualified_secret",
         "match_region",
+        "reach",
+        "own_listener",
     ):
         _command(server, function)
     return ids
@@ -630,6 +582,34 @@ def test_the_served_grant_of_a_named_column_is_the_named_list(server, ledger):
         assert reader in readers, secret
         assert other not in readers, secret
         assert "viewer" not in readers, secret
+
+
+# -- REQ-2226: the listener minted for the call, and nothing else of Provisa's -----------------
+
+
+def test_the_worker_reads_over_its_calls_own_listener_on_the_block(server, ledger, flight_block):
+    row = _call(server, _ANALYST, "SELECT * FROM own_listener('fx.orders')")
+    assert row["status"] == "reached", row
+    port = int(row["body"].rsplit(":", 1)[1])
+    assert row["body"].startswith("grpc://127.0.0.1:")
+    assert flight_block <= port < flight_block + 4
+
+
+def test_the_listener_closes_when_the_call_ends(server, ledger):
+    row = _call(server, _ANALYST, "SELECT * FROM own_listener('fx.orders')")
+    port = int(row["body"].rsplit(":", 1)[1])
+    with pytest.raises(ConnectionRefusedError):
+        socket.create_connection(("127.0.0.1", port), timeout=10).close()
+
+
+def test_the_worker_cannot_reach_the_main_flight_server(server, ledger):
+    row = _call(server, _ANALYST, f"SELECT * FROM reach('fx.orders', {server.flight_port})")
+    assert row["status"] == "refused", row
+
+
+def test_the_worker_cannot_reach_the_minted_pgwire_listener(server, ledger, minted_port):
+    row = _call(server, _ANALYST, f"SELECT * FROM reach('fx.orders', {minted_port})")
+    assert row["status"] == "refused", row
 
 
 # REQ-2249: a code resolver set -- one resolver picked, kept as a bridge view over its call and one

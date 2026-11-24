@@ -138,8 +138,9 @@ def test_pg_pgwire_connector_probe_reports_cached_bundle(tmp_path, monkeypatch):
 def test_pg_pgwire_connector_probe_unavailable_on_an_unbuilt_platform(monkeypatch):
     from provisa.federation.connector_duckdb import PgSharepointConnector
 
-    monkeypatch.setattr(rd.platform, "system", lambda: "Linux")
-    monkeypatch.setattr(rd.platform, "machine", lambda: "aarch64")
+    # An Intel Mac is not a supported platform (REQ-294): no bundle is published for it.
+    monkeypatch.setattr(rd.platform, "system", lambda: "Darwin")
+    monkeypatch.setattr(rd.platform, "machine", lambda: "x86_64")
     result = asyncio.run(PgSharepointConnector().probe(_fetch_ok))
     assert result.available is False
     assert result.remediation is not None

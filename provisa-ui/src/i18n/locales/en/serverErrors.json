@@ -575,7 +575,8 @@
       "table_region_from_function": "Table '{{table}}' is derived from the function '{{name}}' and has its region: it is not moved to another region on its own",
       "table_name_reserved": "Table name '{{table}}' is reserved: a domain's commands are served under 'commands'. Register the table under another name or alias.",
       "domain_stewards_saved": "Domain '{{domain}}' stewards saved",
-      "table_has_dependents": "Table '{{name}}' is still read or referred to by other objects: retire or change them first"
+      "table_has_dependents": "Table '{{name}}' is still read or referred to by other objects: retire or change them first",
+      "file_types_differ": "The pattern {{glob}} matches files of more than one type ({{types}}); the files of one table must all be one type."
     },
     "secrets": {
       "env_reference_object_locked": "This object is the operator's: it reads the server's own environment and cannot be changed here. Add one of your own instead.",
@@ -626,7 +627,9 @@
       "columns_not_inferred": "Could not infer columns: probe returned no rows and no SELECT variables found.",
       "probe_failed": "SPARQL endpoint probe failed: {{error}}",
       "source_not_found": "SPARQL source '{{source_id}}' not found",
-      "no_select_variables": "The query names no SELECT variables (SELECT * or not a SELECT query): its columns cannot be read from it"
+      "no_select_variables": "The query names no SELECT variables (SELECT * or not a SELECT query): its columns cannot be read from it",
+      "credential_invalid": "Source '{{source}}' declares an incomplete {{kind}} credential: a bearer credential needs its token, a basic one its username and password (the kinds are bearer and basic)",
+      "own_endpoint_needs_credential": "Source '{{source}}' reads Provisa's own SPARQL endpoint and declares no credential: declare the bearer token or username and password of a Provisa account kept for the service, whose roles bound what it reads"
     },
     "subscribe": {
       "avro_topic_without_registry": "Topic '{{topic}}' carries Avro messages, and its source names no schema registry to read them with: set the source's schema registry URL",
@@ -692,7 +695,8 @@
       "undefined_variable_property": "{{clause}} reads {{variable}}, which nothing in the statement binds: a variable is bound by a MATCH pattern, WITH, UNWIND or CALL. Bound here: {{bound}}. Did you mean {{suggestion}}? {{owner}} is bound to :{{label}}, which has a property {{variable}}.",
       "undefined_variable_properties": "{{clause}} reads {{variable}}, which nothing in the statement binds: a variable is bound by a MATCH pattern, WITH, UNWIND or CALL. Bound here: {{bound}}. Did you mean {{suggestions}}? Each is bound to a label with a property {{variable}}.",
       "non_finite_number": "The answer holds a number JSON cannot carry: {{column}} is {{value}}.",
-      "try_cast_needs_postgres_16": "toInteger, toFloat and toBoolean of a value that may not convert need PostgreSQL 16 or later on this engine."
+      "try_cast_needs_postgres_16": "toInteger, toFloat and toBoolean of a value that may not convert need PostgreSQL 16 or later on this engine.",
+      "relationship_unread": "A relationship could not be read, so its edges are not shown: {{statement}}: {{reason}}"
     },
     "requests": {
       "approver_outside_domains": "Your right to approve relationships does not reach a domain this request touches ({{domains}})",

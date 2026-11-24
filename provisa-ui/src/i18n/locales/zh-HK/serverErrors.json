@@ -575,7 +575,8 @@
       "table_region_from_function": "表 '{{table}}' 衍生自函數 '{{name}}'，並沿用其區域：不能單獨將其移動到其他區域",
       "table_name_reserved": "表名 '{{table}}' 為保留名稱：域的指令在 'commands' 下提供。請使用其他名稱或別名註冊該表。",
       "domain_stewards_saved": "已儲存域 '{{domain}}' 的管理員",
-      "table_has_dependents": "表 '{{name}}' 仍被其他物件讀取或引用：請先停用或修改這些物件"
+      "table_has_dependents": "表 '{{name}}' 仍被其他物件讀取或引用：請先停用或修改這些物件",
+      "file_types_differ": "模式 {{glob}} 符合多於一種類型的檔案（{{types}}）；同一個表的檔案必須全部屬於同一種類型。"
     },
     "secrets": {
       "env_reference_object_locked": "此物件屬於營運方：它讀取伺服器自身的環境，無法在此更改。請改為新增您自己的物件。",
@@ -626,7 +627,9 @@
       "columns_not_inferred": "無法推斷欄位：探測未傳回任何資料列，亦找不到 SELECT 變數。",
       "probe_failed": "SPARQL 端點探測失敗：{{error}}",
       "source_not_found": "找不到 SPARQL 數據來源「{{source_id}}」",
-      "no_select_variables": "查詢沒有指定 SELECT 變數（SELECT * 或不是 SELECT 查詢）：無法從中讀取其欄位"
+      "no_select_variables": "查詢沒有指定 SELECT 變數（SELECT * 或不是 SELECT 查詢）：無法從中讀取其欄位",
+      "credential_invalid": "資料來源 '{{source}}' 聲明的 {{kind}} 憑證不完整：bearer 憑證需要權杖，basic 憑證需要用戶名稱和密碼（類型為 bearer 和 basic）",
+      "own_endpoint_needs_credential": "資料來源 '{{source}}' 讀取 Provisa 本身的 SPARQL 端點，但未聲明憑證：請聲明為該服務保留的 Provisa 帳戶的 bearer 權杖或用戶名稱和密碼，其角色限定它能讀取的內容"
     },
     "subscribe": {
       "avro_topic_without_registry": "主題「{{topic}}」包含 Avro 訊息，但其資料來源未指定用於讀取的綱要註冊表：請設定資料來源的綱要註冊表 URL",
@@ -692,7 +695,8 @@
       "undefined_variable_property": "{{clause}} 讀取了 {{variable}}，但語句中沒有任何部分綁定它：變數由 MATCH 模式、WITH、UNWIND 或 CALL 綁定。此處已綁定：{{bound}}。 您是指 {{suggestion}} 嗎？{{owner}} 綁定到 :{{label}}，它有屬性 {{variable}}。",
       "undefined_variable_properties": "{{clause}} 讀取了 {{variable}}，但語句中沒有任何部分綁定它：變數由 MATCH 模式、WITH、UNWIND 或 CALL 綁定。此處已綁定：{{bound}}。 您是指 {{suggestions}} 嗎？它們各自綁定到具有屬性 {{variable}} 的標籤。",
       "non_finite_number": "答案包含 JSON 無法表示的數字：{{column}} 為 {{value}}。",
-      "try_cast_needs_postgres_16": "對可能無法轉換的值使用 toInteger、toFloat 及 toBoolean，需要此引擎上的 PostgreSQL 16 或更新版本。"
+      "try_cast_needs_postgres_16": "對可能無法轉換的值使用 toInteger、toFloat 及 toBoolean，需要此引擎上的 PostgreSQL 16 或更新版本。",
+      "relationship_unread": "有一項關係無法讀取，因此不顯示其邊：{{statement}}：{{reason}}"
     },
     "requests": {
       "approver_outside_domains": "你核准關係的權限未涵蓋此請求涉及的任何網域（{{domains}}）",

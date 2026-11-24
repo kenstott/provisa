@@ -15,19 +15,24 @@ import { fireEvent } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { renderInForm, screen } from "../../../test-utils/render";
 import { SparqlFormSection } from "../SparqlFormSection";
-import { sparqlFieldsFromMapping, sparqlMappingJson } from "../sparqlReasoner";
+import {
+  sparqlCredentialFromSource,
+  sparqlCredentials,
+  sparqlFieldsFromMapping,
+  sparqlMappingJson,
+} from "../sparqlReasoner";
 import type { SourceFormState } from "../SourceFormFields";
 
 const AXIOMS = "@prefix : <http://example.org/kyc#> .";
 
 describe("the reasoner mapping", () => {
   it("saves the reasoner with its axioms, and nothing without a reasoner", () => {
-    expect(JSON.parse(sparqlMappingJson({ reasoner: "hermit", axioms: AXIOMS }))).toEqual({
+    expect(JSON.parse(sparqlMappingJson({ reasoner: "hermit", axioms: AXIOMS }, "none"))).toEqual({
       reasoner: "hermit",
       axioms: AXIOMS,
     });
-    expect(sparqlMappingJson({ axioms: AXIOMS })).toBe("{}");
-    expect(sparqlMappingJson({ reasoner: "", default_graph_uri: "g" })).toBe("{}");
+    expect(sparqlMappingJson({ axioms: AXIOMS }, "none")).toBe("{}");
+    expect(sparqlMappingJson({ reasoner: "", default_graph_uri: "g" }, "none")).toBe("{}");
   });
 
   it("reads the reasoner back, and nothing from a mapping without one", () => {
@@ -35,6 +40,45 @@ describe("the reasoner mapping", () => {
       { reasoner: "hermit", axioms: AXIOMS },
     );
     expect(sparqlFieldsFromMapping("{}")).toEqual({});
+  });
+});
+
+describe("the credential (REQ-2138)", () => {
+  it("names its kind in the mapping beside the reasoner", () => {
+    expect(JSON.parse(sparqlMappingJson({ reasoner: "hermit", axioms: AXIOMS }, "basic"))).toEqual({
+      reasoner: "hermit",
+      axioms: AXIOMS,
+      auth: "basic",
+    });
+    expect(JSON.parse(sparqlMappingJson({}, "bearer"))).toEqual({ auth: "bearer" });
+  });
+
+  it("rides in the source's username and password as entered", () => {
+    expect(sparqlCredentials("bearer", { token: "${secret:t}" })).toEqual({
+      username: "",
+      password: "${secret:t}",
+    });
+    expect(sparqlCredentials("basic", { username: "svc", password: "${secret:p}" })).toEqual({
+      username: "svc",
+      password: "${secret:p}",
+    });
+    expect(sparqlCredentials("none", { token: "left over" })).toEqual({
+      username: "",
+      password: "",
+    });
+  });
+
+  it("opens again as the source holds it", () => {
+    expect(sparqlCredentialFromSource('{"auth":"bearer"}', "", "${secret:t}")).toEqual({
+      authType: "bearer",
+      fields: { token: "${secret:t}" },
+    });
+    expect(sparqlCredentialFromSource('{"auth":"basic"}', "svc", "${secret:p}")).toEqual({
+      authType: "basic",
+      fields: { username: "svc", password: "${secret:p}" },
+    });
+    expect(sparqlCredentialFromSource("{}", "", "")).toEqual({ authType: "none", fields: {} });
+    expect(sparqlCredentialFromSource(null, "", "")).toEqual({ authType: "none", fields: {} });
   });
 });
 

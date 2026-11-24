@@ -575,7 +575,8 @@
       "table_region_from_function": "La table '{{table}}' est dérivée de la fonction '{{name}}' et a sa région : elle n'est pas déplacée seule vers une autre région",
       "table_name_reserved": "Le nom de table '{{table}}' est réservé : les commandes d'un domaine sont servies sous 'commands'. Enregistrez la table sous un autre nom ou alias.",
       "domain_stewards_saved": "Responsables du domaine '{{domain}}' enregistrés",
-      "table_has_dependents": "La table '{{name}}' est encore lue ou référencée par d'autres objets : retirez-les ou modifiez-les d'abord"
+      "table_has_dependents": "La table '{{name}}' est encore lue ou référencée par d'autres objets : retirez-les ou modifiez-les d'abord",
+      "file_types_differ": "Le motif {{glob}} correspond à des fichiers de plusieurs types ({{types}}) ; les fichiers d'une table doivent tous être d'un même type."
     },
     "secrets": {
       "env_reference_object_locked": "Cet objet appartient à l'opérateur : il lit l'environnement propre du serveur et ne peut pas être modifié ici. Ajoutez plutôt le vôtre.",
@@ -626,7 +627,9 @@
       "columns_not_inferred": "Impossible d'inférer les colonnes : le sondage n'a renvoyé aucune ligne et aucune variable SELECT n'a été trouvée.",
       "probe_failed": "Échec du sondage de l'endpoint SPARQL : {{error}}",
       "source_not_found": "Source SPARQL « {{source_id}} » introuvable",
-      "no_select_variables": "La requête ne nomme aucune variable SELECT (SELECT * ou pas une requête SELECT) : ses colonnes ne peuvent pas en être lues"
+      "no_select_variables": "La requête ne nomme aucune variable SELECT (SELECT * ou pas une requête SELECT) : ses colonnes ne peuvent pas en être lues",
+      "credential_invalid": "La source '{{source}}' déclare un identifiant {{kind}} incomplet : un identifiant bearer exige son jeton, un identifiant basic son nom d'utilisateur et son mot de passe (les types sont bearer et basic)",
+      "own_endpoint_needs_credential": "La source '{{source}}' lit le point de terminaison SPARQL propre à Provisa et ne déclare aucun identifiant : déclarez le jeton bearer ou le nom d'utilisateur et le mot de passe d'un compte Provisa réservé au service, dont les rôles bornent ce qu'elle lit"
     },
     "subscribe": {
       "avro_topic_without_registry": "Le topic '{{topic}}' transporte des messages Avro et sa source ne désigne aucun registre de schémas pour les lire : renseignez l'URL du registre de schémas de la source",
@@ -692,7 +695,8 @@
       "undefined_variable_property": "{{clause}} lit {{variable}}, que rien dans l'instruction ne lie : une variable est liée par un motif MATCH, WITH, UNWIND ou CALL. Liées ici : {{bound}}. Vouliez-vous dire {{suggestion}} ? {{owner}} est liée à :{{label}}, qui a une propriété {{variable}}.",
       "undefined_variable_properties": "{{clause}} lit {{variable}}, que rien dans l'instruction ne lie : une variable est liée par un motif MATCH, WITH, UNWIND ou CALL. Liées ici : {{bound}}. Vouliez-vous dire {{suggestions}} ? Chacune est liée à un libellé ayant une propriété {{variable}}.",
       "non_finite_number": "La réponse contient un nombre que JSON ne peut pas représenter : {{column}} vaut {{value}}.",
-      "try_cast_needs_postgres_16": "toInteger, toFloat et toBoolean d'une valeur qui peut ne pas se convertir nécessitent PostgreSQL 16 ou ultérieur sur ce moteur."
+      "try_cast_needs_postgres_16": "toInteger, toFloat et toBoolean d'une valeur qui peut ne pas se convertir nécessitent PostgreSQL 16 ou ultérieur sur ce moteur.",
+      "relationship_unread": "Une relation n’a pas pu être lue, ses arêtes ne sont donc pas affichées : {{statement}} : {{reason}}"
     },
     "requests": {
       "approver_outside_domains": "Votre droit d'approuver des relations n'atteint aucun domaine concerné par cette demande ({{domains}})",

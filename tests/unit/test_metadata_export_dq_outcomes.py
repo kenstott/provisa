@@ -14,7 +14,7 @@ The results table is scan history — ``scan_time`` is the watermark, so scans a
 the rows at the maximum ``scan_time`` the most recent execution.
 """
 
-# Requirements: REQ-982, REQ-1443
+# Requirements: REQ-392, REQ-982, REQ-1443
 
 from __future__ import annotations
 
@@ -23,6 +23,7 @@ from datetime import UTC, datetime
 import pytest
 
 from provisa.api.metadata_export.dq_outcomes import index_outcomes, latest_scan_sql
+from provisa.api.metadata_export.model import DataQualityOutcome
 
 SCAN_TIME = datetime(2026, 8, 12, 3, 0, tzinfo=UTC)
 
@@ -204,3 +205,61 @@ def test_reading_one_products_contracts_survives_a_broken_peer_product(monkeypat
     # "orders" product's checker tables are read; workforce_ops's broken member is ignored
     queried = _read_config_with(monkeypatch, config, product_id="orders")
     assert queried == ["quality.orders_scans"]
+
+
+def _read_refusing(monkeypatch, refused: str, error: Exception):
+    """``read_latest_outcomes`` over the checker config, with ``refused``'s read raising ``error``
+    and every other table returning one passing row."""
+    import asyncio
+    from types import SimpleNamespace
+
+    from provisa.api.metadata_export.dq_outcomes import read_latest_outcomes
+
+    async def govern(sql, role):
+        table = sql.split(" FROM ")[1].split(" ")[0]
+        if table == refused:
+            raise error
+        return table
+
+    async def execute(plan):
+        return SimpleNamespace(
+            column_names=list(_row()),
+            rows=[tuple(_row(target_table=plan).values())],
+        )
+
+    monkeypatch.setattr("provisa.pgwire._pipeline._govern_and_route", govern)
+    monkeypatch.setattr("provisa.pgwire._pipeline._execute_plan", execute)
+    return asyncio.run(read_latest_outcomes(_checker_config()))
+
+
+@pytest.mark.parametrize("refusal", ["governance", "operator_floor", "approval"])
+def test_a_refused_checker_table_is_its_own_unreadable_outcome_and_the_rest_are_read(
+    monkeypatch, refusal
+):
+    # REQ-392: one table the publishing role cannot read does not fail the publish.
+    from provisa.compiler.sql_validator import GovernanceRefused, ValidationViolation
+    from provisa.core.operator_floor import OperatorFloorError
+    from provisa.pgwire._pipeline import ApprovalDenied
+
+    errors = {
+        "governance": lambda text: GovernanceRefused([ValidationViolation("V001", text)]),
+        "operator_floor": OperatorFloorError,
+        "approval": ApprovalDenied,
+    }
+    message = "table quality.billing_scans is not readable by this role"
+    error = errors[refusal](message)
+    outcomes = _read_refusing(monkeypatch, "quality.billing_scans", error)
+
+    assert set(outcomes.unreadable) == {("dq", "quality", "billing_scans")}
+    refused = outcomes.unreadable[("dq", "quality", "billing_scans")]
+    assert refused.status == DataQualityOutcome.UNREADABLE
+    # The refusal's own text, as a client is told it.
+    assert refused.reason == str(error)
+    assert message in refused.reason
+    assert refused.scan_time is None
+    assert {key[0] for key in outcomes.by_check} == {"quality.orders_scans", "quality.loose_scans"}
+
+
+def test_a_non_governance_error_still_fails_the_read(monkeypatch):
+    with pytest.raises(RuntimeError, match="engine down"):
+        _read_refusing(monkeypatch, "quality.billing_scans", RuntimeError("engine down"))

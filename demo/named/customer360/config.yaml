@@ -59,7 +59,6 @@ data_products:
 - id: account_health
   domain_id: customer360
   name: Account Health
-  owner_role: org_admin
   purpose: Which accounts renewing this quarter are at risk, read across the CRM, the service desk,
     engineering and billing through the customer master, checked against the evidence in each system
   usage: Read renewal_risk_checked for the at-risk renewals, master for the golden customer record, and
@@ -361,7 +360,7 @@ sources:
   description: 'The entity-resolution matching: each mention of an organization or a person in the four systems matched to its Salesforce record'
   mapping:
     runtime: python
-    code: {kind: upload, upload: 9506e0bfaadb140e2c2343220aef747fa0c302aab1b78fadf8082d42a099950a, filename: entity_resolution.tar.gz}
+    code: {kind: upload, upload: fa810481d2fc3ee1b84a1562cf1f559dc1f307b9ce7df18a8e115e0a47fed6cd, filename: entity_resolution.tar.gz}
     entry: er_source
 tables:
 - source_id: salesforce

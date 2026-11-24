@@ -575,7 +575,8 @@
       "table_region_from_function": "La tabella '{{table}}' deriva dalla funzione '{{name}}' e ha la sua regione: non viene spostata da sola in un'altra regione",
       "table_name_reserved": "Il nome di tabella '{{table}}' è riservato: i comandi di un dominio sono serviti sotto 'commands'. Registra la tabella con un altro nome o alias.",
       "domain_stewards_saved": "Responsabili del dominio '{{domain}}' salvati",
-      "table_has_dependents": "La tabella '{{name}}' è ancora letta o referenziata da altri oggetti: ritirali o modificali prima"
+      "table_has_dependents": "La tabella '{{name}}' è ancora letta o referenziata da altri oggetti: ritirali o modificali prima",
+      "file_types_differ": "Il modello {{glob}} corrisponde a file di più tipi ({{types}}); i file di una tabella devono essere tutti dello stesso tipo."
     },
     "secrets": {
       "env_reference_object_locked": "Questo oggetto è dell'operatore: legge l'ambiente proprio del server e non può essere modificato qui. Aggiungine invece uno tuo.",
@@ -626,7 +627,9 @@
       "columns_not_inferred": "Impossibile dedurre le colonne: il sondaggio non ha restituito righe e non sono state trovate variabili SELECT.",
       "probe_failed": "Sondaggio dell'endpoint SPARQL non riuscito: {{error}}",
       "source_not_found": "Origine SPARQL '{{source_id}}' non trovata",
-      "no_select_variables": "La query non nomina variabili SELECT (SELECT * o non è una query SELECT): le sue colonne non si possono leggere da essa"
+      "no_select_variables": "La query non nomina variabili SELECT (SELECT * o non è una query SELECT): le sue colonne non si possono leggere da essa",
+      "credential_invalid": "La sorgente '{{source}}' dichiara una credenziale {{kind}} incompleta: una credenziale bearer richiede il suo token, una basic nome utente e password (i tipi sono bearer e basic)",
+      "own_endpoint_needs_credential": "La sorgente '{{source}}' legge l'endpoint SPARQL di Provisa stesso e non dichiara alcuna credenziale: dichiara il token bearer oppure nome utente e password di un account Provisa riservato al servizio, i cui ruoli delimitano ciò che legge"
     },
     "subscribe": {
       "avro_topic_without_registry": "Il topic '{{topic}}' contiene messaggi Avro e la sua origine non indica alcun registro degli schemi per leggerli: imposta l'URL del registro degli schemi dell'origine",
@@ -692,7 +695,8 @@
       "undefined_variable_property": "{{clause}} legge {{variable}}, che nulla nell'istruzione vincola: una variabile è vincolata da un pattern MATCH, WITH, UNWIND o CALL. Vincolate qui: {{bound}}. Intendevi {{suggestion}}? {{owner}} è vincolata a :{{label}}, che ha una proprietà {{variable}}.",
       "undefined_variable_properties": "{{clause}} legge {{variable}}, che nulla nell'istruzione vincola: una variabile è vincolata da un pattern MATCH, WITH, UNWIND o CALL. Vincolate qui: {{bound}}. Intendevi {{suggestions}}? Ciascuna è vincolata a un'etichetta con una proprietà {{variable}}.",
       "non_finite_number": "La risposta contiene un numero che JSON non può rappresentare: {{column}} vale {{value}}.",
-      "try_cast_needs_postgres_16": "toInteger, toFloat e toBoolean di un valore che potrebbe non convertirsi richiedono PostgreSQL 16 o successivo su questo motore."
+      "try_cast_needs_postgres_16": "toInteger, toFloat e toBoolean di un valore che potrebbe non convertirsi richiedono PostgreSQL 16 o successivo su questo motore.",
+      "relationship_unread": "Non è stato possibile leggere una relazione, quindi i suoi archi non sono mostrati: {{statement}}: {{reason}}"
     },
     "requests": {
       "approver_outside_domains": "Il tuo diritto di approvare relazioni non raggiunge alcun dominio toccato da questa richiesta ({{domains}})",

@@ -575,7 +575,8 @@
       "table_region_from_function": "הטבלה '{{table}}' נגזרת מהפונקציה '{{name}}' ויש לה את האזור שלה: היא אינה מועברת לאזור אחר בפני עצמה",
       "table_name_reserved": "שם הטבלה '{{table}}' שמור: פקודות של דומיין מוגשות תחת 'commands'. רשמו את הטבלה בשם או בכינוי אחר.",
       "domain_stewards_saved": "האחראים על הדומיין '{{domain}}' נשמרו",
-      "table_has_dependents": "הטבלה '{{name}}' עדיין נקראת או מוזכרת על ידי אובייקטים אחרים: יש להוציא אותם משימוש או לשנות אותם תחילה"
+      "table_has_dependents": "הטבלה '{{name}}' עדיין נקראת או מוזכרת על ידי אובייקטים אחרים: יש להוציא אותם משימוש או לשנות אותם תחילה",
+      "file_types_differ": "התבנית {{glob}} תואמת קבצים מיותר מסוג אחד ({{types}}); כל הקבצים של טבלה אחת חייבים להיות מאותו סוג."
     },
     "secrets": {
       "env_reference_object_locked": "אובייקט זה שייך למפעיל: הוא קורא את סביבת השרת עצמו ואי אפשר לשנותו כאן. יש להוסיף אובייקט משלך במקומו.",
@@ -626,7 +627,9 @@
       "columns_not_inferred": "לא ניתן היה להסיק עמודות: הבדיקה לא החזירה שורות ולא נמצאו משתני SELECT.",
       "probe_failed": "בדיקת נקודת הקצה של SPARQL נכשלה: {{error}}",
       "source_not_found": "מקור SPARQL '{{source_id}}' לא נמצא",
-      "no_select_variables": "השאילתה אינה מציינת משתני SELECT (SELECT * או שאינה שאילתת SELECT): לא ניתן לקרוא ממנה את העמודות"
+      "no_select_variables": "השאילתה אינה מציינת משתני SELECT (SELECT * או שאינה שאילתת SELECT): לא ניתן לקרוא ממנה את העמודות",
+      "credential_invalid": "המקור '{{source}}' מצהיר על אישור גישה {{kind}} חלקי: אישור bearer צריך את האסימון שלו, ואישור basic את שם המשתמש והסיסמה (הסוגים הם bearer ו-basic)",
+      "own_endpoint_needs_credential": "המקור '{{source}}' קורא את נקודת הקצה SPARQL של Provisa עצמה ואינו מצהיר על אישור גישה: הצהירו על אסימון bearer או על שם משתמש וסיסמה של חשבון Provisa המוחזק עבור השירות, שתפקידיו תוחמים את מה שהוא קורא"
     },
     "subscribe": {
       "avro_topic_without_registry": "הנושא '{{topic}}' נושא הודעות Avro, והמקור שלו אינו מציין רישום סכמות לקריאתן: הגדירו את כתובת ה-URL של רישום הסכמות של המקור",
@@ -692,7 +695,8 @@
       "undefined_variable_property": "{{clause}} קורא את {{variable}}, ששום דבר במשפט אינו קושר: משתנה נקשר בתבנית MATCH, ב-WITH, ב-UNWIND או ב-CALL. קשורים כאן: {{bound}}. האם התכוונתם ל-{{suggestion}}? {{owner}} קשור ל-:{{label}}, שיש לו מאפיין {{variable}}.",
       "undefined_variable_properties": "{{clause}} קורא את {{variable}}, ששום דבר במשפט אינו קושר: משתנה נקשר בתבנית MATCH, ב-WITH, ב-UNWIND או ב-CALL. קשורים כאן: {{bound}}. האם התכוונתם ל-{{suggestions}}? כל אחד מהם קשור לתווית שיש לה מאפיין {{variable}}.",
       "non_finite_number": "התשובה מכילה מספר ש-JSON אינו יכול לייצג: {{column}} הוא {{value}}.",
-      "try_cast_needs_postgres_16": "toInteger, toFloat ו-toBoolean של ערך שעשוי לא להיות ניתן להמרה דורשים PostgreSQL 16 ומעלה במנוע זה."
+      "try_cast_needs_postgres_16": "toInteger, toFloat ו-toBoolean של ערך שעשוי לא להיות ניתן להמרה דורשים PostgreSQL 16 ומעלה במנוע זה.",
+      "relationship_unread": "לא ניתן היה לקרוא קשר, ולכן הקשתות שלו אינן מוצגות: {{statement}}: {{reason}}"
     },
     "requests": {
       "approver_outside_domains": "הזכות שלכם לאשר קשרים אינה מגיעה לאף דומיין שהבקשה הזו נוגעת בו ({{domains}})",

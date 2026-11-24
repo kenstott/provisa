@@ -54,7 +54,6 @@ jobs:
       dmg_obs_name: ${{ steps.meta.outputs.dmg_obs_name }}
       dmg_container_name: ${{ steps.meta.outputs.dmg_container_name }}
       dmg_demo_name: ${{ steps.meta.outputs.dmg_demo_name }}
-      duckdb_extensions_name: ${{ steps.meta.outputs.duckdb_extensions_name }}
     steps:
       - uses: actions/checkout@v4
       - id: meta
@@ -67,8 +66,6 @@ jobs:
   build-macos-core:
     name: Build macOS Core DMG (${{ needs.metadata.outputs.channel }})
     runs-on: macos-15
-    permissions:
-      contents: write   # attaches the DuckDB extensions asset to the draft release
     # These finish in 9-30 minutes; a stall would otherwise sit on a macOS runner for the
     # 6-hour default (run 32152155205 hung 4h in Build DMG). Notarization is its own job below.
     timeout-minutes: 45
@@ -114,13 +111,12 @@ jobs:
         with:
           sync: "false"
 
-      # The runtime's DuckDB extensions leave it here for their own release asset (codesign cannot
-      # sign them, and Apple rejects the DMG that holds them unsigned); the .app pins its sha256.
+      # The runtime carries no DuckDB extension (REQ-294): first launch stages them from the
+      # release's Pages index, as every installer does.
       - name: Build and sign the app
         env:
           VERSION: ${{ inputs.version }}
           APPLE_DEVELOPER_ID: ${{ secrets.APPLE_DEVELOPER_ID }}
-          DUCKDB_EXTENSIONS_ASSET: ${{ needs.metadata.outputs.duckdb_extensions_name }}
         run: |
           chmod +x packaging/macos/build-dmg.sh
           packaging/macos/build-dmg.sh stage
@@ -133,30 +129,6 @@ jobs:
           name: macos-core-unnotarized
           path: packaging/macos/dist/stage-core.tar
           retention-days: 7
-
-      # First launch of the Core DMG downloads this from the release (or reads it beside the
-      # installer, air-gapped). A release attaches it to the draft directly; a dry run keeps it in
-      # the run, its only home.
-      - name: Upload the DuckDB extensions asset
-        if: ${{ !inputs.publish }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: macos-duckdb-extensions-dist
-          path: |
-            packaging/macos/dist/${{ needs.metadata.outputs.duckdb_extensions_name }}
-            packaging/macos/dist/${{ needs.metadata.outputs.duckdb_extensions_name }}.sha256
-          if-no-files-found: error
-          retention-days: 1
-          compression-level: 0
-
-      - name: Attach the DuckDB extensions asset to the draft release
-        if: inputs.publish
-        uses: ./.github/actions/attach-release-assets
-        with:
-          tag: ${{ inputs.version }}
-          files: |
-            packaging/macos/dist/${{ needs.metadata.outputs.duckdb_extensions_name }}
-            packaging/macos/dist/${{ needs.metadata.outputs.duckdb_extensions_name }}.sha256
 
   build-macos-container:
     name: Build macOS Container DMG (${{ needs.metadata.outputs.channel }})

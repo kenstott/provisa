@@ -23,12 +23,9 @@ from __future__ import annotations
 
 import importlib
 import json
-import socket
-import struct
 import subprocess
 import sys
 import tarfile
-import threading
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -169,134 +166,52 @@ def test_what_the_queries_answer_is_the_jobs_run_over_the_declared_rows(monkeypa
 
 
 # --------------------------------------------------------------------------------------------- #
-# Reading a table over PostgreSQL's wire protocol.                                              #
+# Reading a table over Arrow Flight (REQ-2226).                                                 #
 # --------------------------------------------------------------------------------------------- #
 
 
-def _frame(kind: bytes, body: bytes) -> bytes:
-    return kind + struct.pack("!i", 4 + len(body)) + body
+class _Reference(SimpleNamespace):
+    """A table reference whose ``read`` answers as ``TableRef.read`` would: ``answer`` or the
+    refusal it raises."""
+
+    def read(self):
+        if isinstance(self.answer, BaseException):
+            raise self.answer
+        return self.answer
 
 
-def _row_description(names: list[str]) -> bytes:
-    body = struct.pack("!h", len(names))
-    for name in names:
-        body += name.encode() + b"\0" + struct.pack("!ihihih", 0, 0, 25, -1, -1, 0)
-    return _frame(b"T", body)
+def test_a_table_is_read_over_flight_each_value_text_or_null():
+    import datetime
 
+    import pyarrow as pa
 
-def _data_row(values: list[str | None]) -> bytes:
-    body = struct.pack("!h", len(values))
-    for value in values:
-        if value is None:
-            body += struct.pack("!i", -1)
-        else:
-            body += struct.pack("!i", len(value.encode())) + value.encode()
-    return _frame(b"D", body)
-
-
-class _Listener:
-    """A listener that answers one connection as Provisa's minted-token listener would: asks for
-    the token in clear, then answers the one statement with ``answer``; records each message it
-    was sent, the startup message first."""
-
-    def __init__(self, answer: list[bytes]) -> None:
-        self.sock = socket.create_server(("127.0.0.1", 0))
-        self.port = self.sock.getsockname()[1]
-        self.received: list[bytes] = []
-        self._answer = answer
-        self._thread = threading.Thread(target=self._serve, daemon=True)
-        self._thread.start()
-
-    @staticmethod
-    def _take(conn: socket.socket, n: int) -> bytes:
-        out = b""
-        while len(out) < n:
-            chunk = conn.recv(n - len(out))
-            if not chunk:
-                raise ConnectionError("closed")
-            out += chunk
-        return out
-
-    def _message(self, conn: socket.socket) -> bytes:
-        kind = self._take(conn, 1)
-        (length,) = struct.unpack("!i", self._take(conn, 4))
-        message = _frame(kind, self._take(conn, length - 4))
-        self.received.append(message)
-        return kind
-
-    def _serve(self) -> None:
-        conn, _ = self.sock.accept()
-        with conn:
-            (length,) = struct.unpack("!i", self._take(conn, 4))
-            self.received.append(self._take(conn, length - 4))
-            conn.sendall(_frame(b"R", struct.pack("!i", 3)))
-            assert self._message(conn) == b"p"
-            conn.sendall(_frame(b"R", struct.pack("!i", 0)) + _frame(b"Z", b"I"))
-            assert self._message(conn) == b"Q"
-            conn.sendall(b"".join(self._answer) + _frame(b"Z", b"I"))
-            self._message(conn)  # the client's goodbye
-
-    def close(self) -> None:
-        self._thread.join(timeout=10)
-        self.sock.close()
-
-
-def _reference(port: int, sql: str) -> SimpleNamespace:
-    connection = SimpleNamespace(
-        host="127.0.0.1",
-        port=port,
-        user="call-1",
-        password="tok",
-        database="provisa",
-        sslmode="disable",
+    answer = pa.table(
+        {
+            "customer": ["Redfern Hottles", "Quillon Systems"],
+            "reporter_email": ["a@redfern.com", None],
+            "opened": [datetime.date(2024, 1, 2), None],
+        }
     )
-    return SimpleNamespace(
-        ref="customer360.bugs", columns=("customer",), connection=connection, sql=sql
-    )
-
-
-def test_a_table_is_read_with_the_minted_token_each_value_text_or_null():
-    listener = _Listener(
-        [
-            _row_description(["customer", "reporter_email"]),
-            _data_row(["Redfern Hottles", "a@redfern.com"]),
-            _data_row(["Quillon Systems", None]),
-            _frame(b"C", b"SELECT 2\0"),
-        ]
-    )
-    sql = 'SELECT "customer", "reporter_email" FROM customer360.bugs'
-    try:
-        rows = SOURCE.read_table(_reference(listener.port, sql))
-    finally:
-        listener.close()
+    rows = SOURCE.read_table(_Reference(ref="customer360.bugs", answer=answer))
     assert rows == [
-        {"customer": "Redfern Hottles", "reporter_email": "a@redfern.com"},
-        {"customer": "Quillon Systems", "reporter_email": None},
+        {"customer": "Redfern Hottles", "reporter_email": "a@redfern.com", "opened": "2024-01-02"},
+        {"customer": "Quillon Systems", "reporter_email": None, "opened": None},
     ]
-    startup, token, query, goodbye = listener.received
-    assert startup == struct.pack("!i", 196608) + b"user\0call-1\0database\0provisa\0\0"
-    assert (token, query, goodbye) == (
-        _frame(b"p", b"tok\0"),
-        _frame(b"Q", sql.encode() + b"\0"),
-        _frame(b"X", b""),
-    )
 
 
 def test_a_read_provisa_refuses_is_refused_naming_the_table_and_the_answer():
-    error = b"SERROR\0C42501\0Mcolumn reporter_email is not visible\0\0"
-    listener = _Listener([_frame(b"E", error)])
-    try:
-        with pytest.raises(SOURCE.TableReadFailed, match="customer360.bugs: column reporter_email"):
-            SOURCE.read_table(_reference(listener.port, "SELECT 1"))
-    finally:
-        listener.close()
+    import pyarrow.flight as flight
 
-
-def test_a_listener_that_wants_tls_is_refused_before_connecting():
-    reference = _reference(1, "SELECT 1")
-    reference.connection.sslmode = "require"
-    with pytest.raises(SOURCE.TableReadFailed, match="requires TLS"):
+    refusal = flight.FlightUnauthorizedError("column reporter_email is not visible")
+    reference = _Reference(ref="customer360.bugs", answer=refusal)
+    with pytest.raises(SOURCE.TableReadFailed, match="customer360.bugs: column reporter_email"):
         SOURCE.read_table(reference)
+
+
+def test_a_table_not_given_over_flight_is_refused_naming_it():
+    refusal = ValueError("table 'customer360.bugs' was given over PostgreSQL")
+    with pytest.raises(SOURCE.TableReadFailed, match="customer360.bugs: table"):
+        SOURCE.read_table(_Reference(ref="customer360.bugs", answer=refusal))
 
 
 # --------------------------------------------------------------------------------------------- #

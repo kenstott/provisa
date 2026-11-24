@@ -340,6 +340,11 @@ class DataQualityOutcome:  # REQ-1443
     and dropping it would render an unrun check identical to a passing one. ``scan_id`` and
     ``scan_time`` are empty exactly when ``status`` is ``never_run``, since there is no scan to
     name.
+
+    REQ-392: ``unreadable`` is a checker table the publishing role cannot read: governance refused
+    the read, so the export cannot say what the last scan observed. It publishes with the
+    refusal's client-safe ``reason`` (set exactly when ``status`` is ``unreadable``) and no scan,
+    and the rest of the publish proceeds.
     """
 
     status: str
@@ -347,8 +352,10 @@ class DataQualityOutcome:  # REQ-1443
     scan_time: datetime | None = None
     metric_value: float | None = None
     failed_rows: int | None = None
+    reason: str | None = None
 
     NEVER_RUN = "never_run"
+    UNREADABLE = "unreadable"
 
     @property
     def ran(self) -> bool:
@@ -383,7 +390,24 @@ class DataQualityOutcome:  # REQ-1443
             "scanTime": self.scan_time.isoformat() if self.scan_time is not None else None,
             "metricValue": self.metric_value,
             "failedRows": self.failed_rows,
+            # REQ-392: why an unreadable outcome could not be read; no other status has one.
+            **({"reason": self.reason} if self.reason is not None else {}),
         }
+
+
+@dataclass(frozen=True)
+class LatestOutcomes:  # REQ-1443, REQ-392
+    """What a publish read back out of the checker tables.
+
+    ``by_check`` is the last scan's verdicts, keyed the way a results row names its check:
+    (target table, column name, check type). ``unreadable`` names, by results-table ref parts,
+    each checker table governance refused to the publishing role, with its ``unreadable``
+    outcome: every check that table reports on publishes that outcome, since no row of it could
+    be read to say otherwise.
+    """
+
+    by_check: dict[tuple[str, str, str], DataQualityOutcome] = field(default_factory=dict)
+    unreadable: dict[tuple[str, ...], DataQualityOutcome] = field(default_factory=dict)
 
 
 @dataclass
