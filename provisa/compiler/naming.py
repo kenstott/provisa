@@ -67,8 +67,11 @@ def openapi_operation_alias(operation_id: str) -> str:  # REQ-601, REQ-194
     return _rel_words(operation_id, "many-to-one")
 
 
+@functools.lru_cache(maxsize=65536)
 def _rel_words(target_field_name: str, cardinality: str) -> str:
-    """:func:`rel_field_name`'s words, snake-joined, before any convention is applied."""
+    """:func:`rel_field_name`'s words, snake-joined, before any convention is applied: pure (the
+    inflection dictionaries are fixed), so every role's surface names a relationship from the memo
+    (REQ-1882)."""
     base = target_field_name.split("__", 1)[-1]
     # Normalise camelCase/PascalCase → snake_case before splitting
     snake = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1_\2", base)
