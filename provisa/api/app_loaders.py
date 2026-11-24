@@ -29,7 +29,7 @@ from provisa.api.startup_resilience import tolerate_startup_failure
 from provisa.compiler.introspect import ColumnMetadata
 from provisa.compiler.naming import apply_convention, prefixed_field_name, source_to_catalog
 from provisa.federation.colocation import colocation_key
-from provisa.compiler.schema_gen import SchemaInput, generate_schema
+from provisa.compiler.schema_gen import SchemaInput, generate_schema, role_tables
 from provisa.security.meta_role import is_meta_role_id, rebuild_meta_roles, with_meta_masks
 from provisa.security.mutation_authz import command_reachable
 from provisa.security.rights import (
@@ -1994,6 +1994,8 @@ class _RoleParts:
         self._role = role
         self._rls = rls
         self._read: tuple[Any, Any] | None = None  # (SchemaInput, CompilationContext)
+        # The role's tables found and named once, for its context and every other part.
+        self._found: Any = None  # schema_gen.RoleTables
 
     def _schema_input_and_context(self) -> tuple[Any, Any]:
         if self._read is None:
@@ -2013,10 +2015,11 @@ class _RoleParts:
                     inputs["tables"] if reads else [],
                     inputs["metrics"] if reads else [],
                 )
-                ctx = build_context(si)
+                found = role_tables(si)
+                ctx = build_context(si, found=found)
                 ctx.refusal = runtime.data_refusal  # REQ-1942
                 ctx.kept = dict(runtime.kept)  # REQ-1942
-            self._read = (si, ctx)
+            self._read, self._found = (si, ctx), found
         return self._read
 
     def reading(self) -> Any:
@@ -2039,12 +2042,13 @@ class _RoleParts:
             # every read of it -- rather than serving a permanently cached "no schema available".
             # An unmapped column type is a real gap in the proto type map, not a reason to
             # silently disable gRPC for the role.
+            found = self._found
             return RoleSurface(
-                schema=generate_schema(si),
+                schema=generate_schema(si, found=found),
                 context=ctx,
                 rls=self._rls,
-                table_path_map=build_table_path_map(si),
-                proto=generate_proto(si, field_numbers=self._inputs["field_numbers"]),
+                table_path_map=build_table_path_map(si, found=found),
+                proto=generate_proto(si, field_numbers=self._inputs["field_numbers"], found=found),
             )
 
 

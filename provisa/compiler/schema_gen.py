@@ -16,8 +16,9 @@ Domain-scoped, per-role column filtering (REQ-008, REQ-021).
 
 # Requirements: REQ-007, REQ-008, REQ-010, REQ-021, REQ-032, REQ-033, REQ-034, REQ-036, REQ-037, REQ-039, REQ-133, REQ-134, REQ-154, REQ-155, REQ-156, REQ-157, REQ-194, REQ-196, REQ-197, REQ-200, REQ-201, REQ-202, REQ-205, REQ-206, REQ-207, REQ-209, REQ-210, REQ-212, REQ-213, REQ-218, REQ-219, REQ-221, REQ-253, REQ-258, REQ-259, REQ-260, REQ-363, REQ-1614
 
+import copy
 from collections.abc import Callable
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from typing import Any, cast
 
 from graphql import (
@@ -110,6 +111,48 @@ def _build_visible_tables(  # REQ-008, REQ-039, REQ-363
     """Filter tables by role's domain access. Build per-table metadata. ``for_sql`` keeps meta's
     default tier, which a role with no meta grant reads on SQL alone (REQ-1132): the other surfaces
     describe what it reads of its data, and to it meta is no domain."""
+    tables, sql_only = _visible_tables(si)
+    return tables if for_sql else [t for t in tables if t.table_id not in sql_only]
+
+
+@dataclass(frozen=True)
+class RoleTables:  # REQ-1882
+    """One role's tables, found and named once for every part of its surface -- its schema,
+    context, path map and proto -- which each found and named them again from the same input. Built
+    by :func:`role_tables` from one role's schema input and read only by that input's parts. Each
+    part reads its own copies: proto renames its tables and the schema gives them fields."""
+
+    named: tuple[_TableInfo, ...]
+    #: The ids of the tables the role reads on SQL alone (_visible_tables).
+    sql_only: frozenset[int]
+
+    def for_sql(self) -> list[_TableInfo]:
+        """The tables as ``_build_visible_tables(si, for_sql=True)`` finds them, named."""
+        return [copy.copy(t) for t in self.named]
+
+    def served(self) -> list[_TableInfo]:
+        """The tables as ``_build_visible_tables(si)`` finds them, named."""
+        return [copy.copy(t) for t in self.named if t.table_id not in self.sql_only]
+
+
+def role_tables(si: SchemaInput) -> RoleTables:
+    """``si``'s role's tables, found and named once (:class:`RoleTables`). A table's names do not
+    depend on which other tables are named with it, so naming the SQL tables names the served ones
+    too; a domain holding two tables of one SQL address raises here, as building the role's context
+    does."""
+    tables, sql_only = _visible_tables(si)
+    _assign_names(
+        tables,
+        si.naming_rules,
+        domain_prefix=si.domain_prefix,
+        domain_alias_map=_build_domain_alias_map(si.domains),
+    )
+    return RoleTables(named=tuple(tables), sql_only=sql_only)
+
+
+def _visible_tables(si: SchemaInput) -> tuple[list[_TableInfo], frozenset[int]]:
+    """The role's tables as SQL reads them (``_build_visible_tables(si, for_sql=True)``), and the
+    ids of those it reads on SQL alone: meta's default tier, for a role with no meta grant."""
     role = si.role
     # A ROLE's domain_access: it reaches the domains it lists, "*" is the only way to say all, an
     # empty list is no domains, and a system domain is reached by its capability
@@ -146,6 +189,7 @@ def _build_visible_tables(  # REQ-008, REQ-039, REQ-363
         )
 
     result: list[_TableInfo] = []
+    sql_only: set[int] = set()
     for table in si.tables:
         # REQ-2163: a Class table's column is served where one of the columns it is bound to is,
         # and the Class is reached by a reader served any of them.
@@ -153,8 +197,8 @@ def _build_visible_tables(  # REQ-008, REQ-039, REQ-363
         # A table outside reach is still served when it publishes a column to the role
         # (REQ-1959) — with its PUBLIC columns only, which column_served decides below.
         reaches = _reaches(table) if class_served is None else bool(class_served)
-        if table["domain_id"] == META_DOMAIN_ID and not reaches and not for_sql:
-            continue
+        if table["domain_id"] == META_DOMAIN_ID and not reaches:
+            sql_only.add(table["id"])
         if not reaches and not served_across_domains(role, table):
             continue
 
@@ -284,7 +328,7 @@ def _build_visible_tables(  # REQ-008, REQ-039, REQ-363
             )
         )
 
-    return result
+    return result, frozenset(sql_only)
 
 
 def _served_as_text(
@@ -1327,16 +1371,22 @@ def _build_provisa_mutation_fields(
     return result
 
 
-def build_table_path_map(si: SchemaInput) -> dict[str, dict]:
+def build_table_path_map(si: SchemaInput, *, found: RoleTables | None = None) -> dict[str, dict]:
     """Return {gql_field_name: {table_id, schema_name, table_name, domain_id, table_description,
-    domain_description}} for REST path routing and the root-field lookup (REQ-2128)."""
-    tables = _build_visible_tables(si)
+    domain_description}} for REST path routing and the root-field lookup (REQ-2128). ``found``:
+    ``si``'s tables already found and named for the role's other parts (:func:`role_tables`)."""
+    if found is not None:
+        tables = found.served()
+    else:
+        tables = _build_visible_tables(si)
+        _assign_names(
+            tables,
+            si.naming_rules,
+            domain_prefix=si.domain_prefix,
+            domain_alias_map=_build_domain_alias_map(si.domains),
+        )
     if not tables:
         return {}
-    domain_alias_map = _build_domain_alias_map(si.domains)
-    _assign_names(
-        tables, si.naming_rules, domain_prefix=si.domain_prefix, domain_alias_map=domain_alias_map
-    )
     domain_descs = {d["id"]: d.get("description") for d in si.domains}
     return {
         t.field_name: {
@@ -1355,6 +1405,8 @@ def build_table_path_map(si: SchemaInput) -> dict[str, dict]:
 
 def generate_schema(
     si: SchemaInput,
+    *,
+    found: RoleTables | None = None,
 ) -> (
     GraphQLSchema
 ):  # REQ-007, REQ-008, REQ-021, REQ-133, REQ-134, REQ-196, REQ-197, REQ-213, REQ-218, REQ-253
@@ -1364,15 +1416,23 @@ def generate_schema(
     - Object types per registered table (filtered by domain access + column visibility)
     - Relationship fields (many-to-one → object, one-to-many → list)
     - Root query fields with where, order_by, limit, offset args
+
+    ``found``: ``si``'s tables already found and named for the role's other parts
+    (:func:`role_tables`).
     """
     # REQ-2154: a role served no table is not refused as such: its schema is empty but for the
     # catalog's resolve field every role's Query has (_add_resolve_field), so it is still valid.
-    tables = _build_visible_tables(si)
-
     domain_alias_map = _build_domain_alias_map(si.domains)
-    _assign_names(
-        tables, si.naming_rules, domain_prefix=si.domain_prefix, domain_alias_map=domain_alias_map
-    )
+    if found is not None:
+        tables = found.served()
+    else:
+        tables = _build_visible_tables(si)
+        _assign_names(
+            tables,
+            si.naming_rules,
+            domain_prefix=si.domain_prefix,
+            domain_alias_map=domain_alias_map,
+        )
     tables = _dedup_tables(tables)
 
     # Build base column fields — share object_type_registry so same-named object types are reused
