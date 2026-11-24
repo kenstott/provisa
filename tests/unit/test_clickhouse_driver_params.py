@@ -21,13 +21,21 @@ from __future__ import annotations
 
 import asyncio
 
+import pyarrow as pa
+
 from provisa.executor.drivers.clickhouse import ClickHouseDriver
 
 
-class _FakeResult:
-    def __init__(self, rows, cols):
-        self.result_rows = rows
-        self.column_names = cols
+def _context(query=None, parameters=None, **_kw):
+    """clickhouse-connect's own query context, as the client makes it for a statement."""
+    from clickhouse_connect.driver.query import QueryContext
+
+    return QueryContext(query=query or "", parameters=parameters)
+
+
+def _arrow(rows, cols) -> pa.Table:
+    """A result as ClickHouse's Arrow output holds it (REQ-2194)."""
+    return pa.table({c: [r[i] for r in rows] for i, c in enumerate(cols)})
 
 
 class _FakeClient:
@@ -37,10 +45,12 @@ class _FakeClient:
         self.last_sql: str | None = None
         self.last_parameters = None
 
-    def query(self, sql, parameters=None, settings=None):
+    create_query_context = staticmethod(_context)
+
+    def query_arrow(self, sql, parameters=None, use_strings=None, settings=None):
         self.last_sql = sql
         self.last_parameters = parameters
-        return _FakeResult(self._rows, self._cols)
+        return _arrow(self._rows, self._cols)
 
     def close(self):
         pass
@@ -126,7 +136,9 @@ class TestClickHouseDriverSessions:
                 self.overlapped = False
                 self.closed = False
 
-            def query(self, sql, parameters=None, settings=None):
+            create_query_context = staticmethod(_context)
+
+            def query_arrow(self, sql, parameters=None, use_strings=None, settings=None):
                 import time
 
                 with lock:
@@ -135,7 +147,7 @@ class TestClickHouseDriverSessions:
                 time.sleep(0.05)
                 with lock:
                     self.in_flight -= 1
-                return _FakeResult([(1,)], ["n"])
+                return _arrow([(1,)], ["n"])
 
             def close(self):
                 self.closed = True

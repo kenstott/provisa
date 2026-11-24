@@ -13,7 +13,9 @@
 Makes a ClickHouse server a first-class NAMED SOURCE reachable on ANY engine: Provisa reads it
 directly (HTTP via clickhouse-connect) then lands a replica. The same client family the ClickHouse
 federation engine uses. Port defaults to the HTTP interface (8123); ``secure`` (TLS) is an optional
-``federation_hints`` flag. Reads use ClickHouse's native columnar output (REQ-986).
+``federation_hints`` flag. A whole result is read as ClickHouse's Arrow output and handed to the
+executor as Arrow, holding the values clickhouse-connect's row read gives (REQ-2194,
+``clickhouse_arrow``); a streamed result is read as row blocks (REQ-1190).
 
 One clickhouse-connect client is one ClickHouse SESSION, and a session runs one query at a time:
 a second query on it is refused ("Attempt to execute concurrent queries within the same
@@ -38,6 +40,12 @@ from typing import Any
 from provisa.core import request_deadline
 from provisa.core.sync_pool import BlockingPool
 from provisa.executor.drivers.base import DirectDriver
+from provisa.executor.drivers.clickhouse_arrow import (
+    ARROW_SETTINGS,
+    clickhouse_arrow_result,
+    described_types,
+    needs_types,
+)
 from provisa.executor.result import QueryResult
 
 
@@ -141,10 +149,28 @@ class ClickHouseDriver(DirectDriver):  # REQ-986
 
         query_id = uuid.uuid4().hex
         with self._require_pool().connection(is_broken=_is_broken) as client:
+            context = client.create_query_context(query=exec_sql, parameters=ch_params)
             with request_deadline.cancel_on_deadline(lambda: self._kill_query(query_id)):
-                res = client.query(exec_sql, parameters=ch_params, settings={"query_id": query_id})
-                names = result_names(client, exec_sql, ch_params, res.column_names)
-        return QueryResult(rows=[tuple(r) for r in res.result_rows], column_names=names)
+                if context.is_command or context.is_insert:
+                    # No result set: clickhouse-connect answers the statement with its summary.
+                    res = client.query(
+                        exec_sql, parameters=ch_params, settings={"query_id": query_id}
+                    )
+                    names = result_names(client, exec_sql, ch_params, res.column_names)
+                    return QueryResult(rows=[tuple(r) for r in res.result_rows], column_names=names)
+                # The result as Arrow (REQ-2194), its values those the row read gives.
+                table = client.query_arrow(
+                    exec_sql,
+                    parameters=ch_params,
+                    use_strings=True,
+                    settings={"query_id": query_id, **ARROW_SETTINGS},
+                )
+                types = (
+                    described_types(client, exec_sql, ch_params)
+                    if needs_types(table.schema)
+                    else None
+                )
+        return clickhouse_arrow_result(table, types, context.active_tz)
 
     # Async only for the awaitable call-site contract; executes synchronously in-thread.
     @property
