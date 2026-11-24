@@ -560,6 +560,7 @@
       "incremental_no_change": "A fonte de código não tem nenhuma função @change para {{table}}. Declare uma com @change table={{table}}.",
       "incremental_needs_rebuild_every": "{{table}} é mantida de forma incremental, portanto é recompilada por inteiro por relógio. Defina a frequência, em segundos, em \"Recompilação completa a cada\".",
       "table_derived_from_function": "A tabela '{{name}}' é derivada de uma função: é removida desativando a tabela da função, e as suas colunas e parâmetros são editados na função",
+      "table_has_dependents": "A tabela '{{name}}' ainda é lida ou referenciada por outros objetos: retire-os ou altere-os primeiro",
       "table_withdrawn": "Tabela {{table}} retirada",
       "table_put_back": "Tabela {{table}} reposta",
       "source_withdrawn": "Fonte {{source}} retirada",
@@ -573,7 +574,8 @@
       "table_domain_required": "A tabela '{{table}}' não indica nenhum domínio: toda tabela é registrada em um domínio",
       "table_state_from_function": "A tabela '{{table}}' é derivada da função '{{name}}' e tem o seu estado de publicação: não é retirada nem reposta por si só",
       "table_region_from_function": "A tabela '{{table}}' é derivada da função '{{name}}' e tem a sua região: não é movida sozinha para outra região",
-      "table_name_reserved": "O nome de tabela '{{table}}' é reservado: os comandos de um domínio são servidos sob 'commands'. Registre a tabela com outro nome ou alias."
+      "table_name_reserved": "O nome de tabela '{{table}}' é reservado: os comandos de um domínio são servidos sob 'commands'. Registre a tabela com outro nome ou alias.",
+      "file_types_differ": "O padrão {{glob}} corresponde a arquivos de mais de um tipo ({{types}}); os arquivos de uma tabela devem ser todos do mesmo tipo."
     },
     "secrets": {
       "env_reference_object_locked": "Este objeto é do operador: ele lê o ambiente próprio do servidor e não pode ser alterado aqui. Adicione um seu em vez disso.",
@@ -690,7 +692,8 @@
       "undefined_variable_property": "{{clause}} lê {{variable}}, que nada na instrução vincula: uma variável é vinculada por um padrão MATCH, WITH, UNWIND ou CALL. Vinculadas aqui: {{bound}}. Você quis dizer {{suggestion}}? {{owner}} está vinculada a :{{label}}, que tem uma propriedade {{variable}}.",
       "undefined_variable_properties": "{{clause}} lê {{variable}}, que nada na instrução vincula: uma variável é vinculada por um padrão MATCH, WITH, UNWIND ou CALL. Vinculadas aqui: {{bound}}. Você quis dizer {{suggestions}}? Cada uma está vinculada a um rótulo com uma propriedade {{variable}}.",
       "non_finite_number": "A resposta contém um número que o JSON não consegue representar: {{column}} é {{value}}.",
-      "try_cast_needs_postgres_16": "toInteger, toFloat e toBoolean de um valor que pode não ser convertido exigem PostgreSQL 16 ou posterior neste motor."
+      "try_cast_needs_postgres_16": "toInteger, toFloat e toBoolean de um valor que pode não ser convertido exigem PostgreSQL 16 ou posterior neste motor.",
+      "relationship_unread": "Não foi possível ler um relacionamento, então suas arestas não são exibidas: {{statement}}: {{reason}}"
     },
     "requests": {
       "approver_outside_domains": "Seu direito de aprovar relacionamentos não alcança nenhum domínio tocado por esta solicitação ({{domains}})",

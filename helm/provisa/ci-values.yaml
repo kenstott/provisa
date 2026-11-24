@@ -1,0 +1,83 @@
+# Test sizing for the minikube cluster lane (tests/e2e/test_helm_minikube.py), REQ-056.
+#
+# Not for production. values.yaml carries the production defaults; this file shrinks the release to
+# just enough to boot and pass the lane on a 6 GiB, 4-CPU minikube. The lane passes it with -f on the
+# install and on every upgrade: `helm upgrade` re-renders from the chart defaults plus exactly the
+# values it is given, so an upgrade without this file redeploys at production sizes and never turns
+# Ready on that node.
+
+provisa:
+  # Single replica, no autoscaling, no ingress.
+  replicaCount: 1
+  hpa:
+    enabled: false
+  # ClusterIP avoids the LoadBalancer pending-IP stall in minikube.
+  flightService:
+    type: ClusterIP
+  # The lean size the API boots in. The lane's test_provisa_boot_memory_leaves_headroom requires the
+  # measured boot peak to stay under 75% of this limit, and test_no_container_was_oom_killed that no
+  # container was killed at it.
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: "1"
+      memory: 2Gi
+  ui:
+    replicaCount: 1
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 256Mi
+
+ingress:
+  enabled: false
+
+trino:
+  coordinator:
+    # CPU requests sized to the 4-CPU minikube: at the production request (1 CPU per Trino pod) the
+    # scaling test's second worker never schedules ("0/1 nodes are available: Insufficient cpu",
+    # run 37318305658) beside the coordinator, the first worker and the rest of the release.
+    resources:
+      requests:
+        cpu: 250m
+        memory: 512Mi
+      limits:
+        memory: 1Gi
+    # Minikube JVM startup is slow.
+    livenessProbe:
+      initialDelaySeconds: 180
+      periodSeconds: 30
+      failureThreshold: 10
+    readinessProbe:
+      initialDelaySeconds: 60
+      failureThreshold: 20
+  worker:
+    autoscaling:
+      enabled: false
+    resources:
+      requests:
+        cpu: 250m
+        memory: 512Mi
+      limits:
+        memory: 1Gi
+  # Query and FTE memory must fit inside the 1Gi container limit above (query.max-memory-per-node
+  # must not exceed the JVM heap); the production numbers fail config validation on these pods.
+  memory:
+    maxMemory: 1GB
+    maxMemoryPerNode: 512MB
+    maxTotalMemory: 1GB
+  fte:
+    taskMemory: 512MB
+
+mongodb:
+  enabled: false
+
+# Trino fault-tolerant execution (REQ-817) requires a shared exchange store; the chart fails to
+# render without minio.enabled or an external trino.exchange.s3.endpoint. In-cluster MinIO is it.
+minio:
+  enabled: true

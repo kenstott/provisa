@@ -560,6 +560,7 @@
       "incremental_no_change": "La source de code n'a aucune fonction @change pour {{table}}. Déclarez-en une avec @change table={{table}}.",
       "incremental_needs_rebuild_every": "{{table}} est maintenue de façon incrémentale ; elle est donc reconstruite entièrement selon une horloge. Indiquez la fréquence, en secondes, dans « Reconstruction complète toutes les ».",
       "table_derived_from_function": "La table '{{name}}' est dérivée d'une fonction : elle est supprimée en désactivant la table de la fonction, et ses colonnes et paramètres se modifient sur la fonction",
+      "table_has_dependents": "La table '{{name}}' est encore lue ou référencée par d'autres objets : retirez-les ou modifiez-les d'abord",
       "table_withdrawn": "Table {{table}} retirée",
       "table_put_back": "Table {{table}} remise en service",
       "source_withdrawn": "Source {{source}} retirée",
@@ -573,7 +574,8 @@
       "table_domain_required": "La table '{{table}}' ne nomme aucun domaine : toute table est enregistrée dans un domaine",
       "table_state_from_function": "La table '{{table}}' est dérivée de la fonction '{{name}}' et en a l'état de publication : elle n'est ni retirée ni remise en service seule",
       "table_region_from_function": "La table '{{table}}' est dérivée de la fonction '{{name}}' et a sa région : elle n'est pas déplacée seule vers une autre région",
-      "table_name_reserved": "Le nom de table '{{table}}' est réservé : les commandes d'un domaine sont servies sous 'commands'. Enregistrez la table sous un autre nom ou alias."
+      "table_name_reserved": "Le nom de table '{{table}}' est réservé : les commandes d'un domaine sont servies sous 'commands'. Enregistrez la table sous un autre nom ou alias.",
+      "file_types_differ": "Le motif {{glob}} correspond à des fichiers de plusieurs types ({{types}}) ; les fichiers d'une table doivent tous être d'un même type."
     },
     "secrets": {
       "env_reference_object_locked": "Cet objet appartient à l'opérateur : il lit l'environnement propre du serveur et ne peut pas être modifié ici. Ajoutez plutôt le vôtre.",
@@ -690,7 +692,8 @@
       "undefined_variable_property": "{{clause}} lit {{variable}}, que rien dans l'instruction ne lie : une variable est liée par un motif MATCH, WITH, UNWIND ou CALL. Liées ici : {{bound}}. Vouliez-vous dire {{suggestion}} ? {{owner}} est liée à :{{label}}, qui a une propriété {{variable}}.",
       "undefined_variable_properties": "{{clause}} lit {{variable}}, que rien dans l'instruction ne lie : une variable est liée par un motif MATCH, WITH, UNWIND ou CALL. Liées ici : {{bound}}. Vouliez-vous dire {{suggestions}} ? Chacune est liée à un libellé ayant une propriété {{variable}}.",
       "non_finite_number": "La réponse contient un nombre que JSON ne peut pas représenter : {{column}} vaut {{value}}.",
-      "try_cast_needs_postgres_16": "toInteger, toFloat et toBoolean d'une valeur qui peut ne pas se convertir nécessitent PostgreSQL 16 ou ultérieur sur ce moteur."
+      "try_cast_needs_postgres_16": "toInteger, toFloat et toBoolean d'une valeur qui peut ne pas se convertir nécessitent PostgreSQL 16 ou ultérieur sur ce moteur.",
+      "relationship_unread": "Une relation n’a pas pu être lue, ses arêtes ne sont donc pas affichées : {{statement}} : {{reason}}"
     },
     "requests": {
       "approver_outside_domains": "Votre droit d'approuver des relations n'atteint aucun domaine concerné par cette demande ({{domains}})",

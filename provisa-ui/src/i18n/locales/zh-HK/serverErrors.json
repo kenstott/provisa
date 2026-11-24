@@ -560,6 +560,7 @@
       "incremental_no_change": "代碼來源沒有針對 {{table}} 的 @change 函數。請使用 @change table={{table}} 宣告一個。",
       "incremental_needs_rebuild_every": "{{table}} 採用增量維護，因此會依時鐘完整重建。請在「完整重建間隔」中設定間隔（秒）。",
       "table_derived_from_function": "表 '{{name}}' 衍生自函數：透過關閉該函數的表來刪除它，其欄和參數在函數上編輯",
+      "table_has_dependents": "表 '{{name}}' 仍被其他物件讀取或引用：請先停用或修改這些物件",
       "table_withdrawn": "表 {{table}} 已撤下",
       "table_put_back": "表 {{table}} 已恢復",
       "source_withdrawn": "來源 {{source}} 已撤下",
@@ -573,7 +574,8 @@
       "table_domain_required": "表 '{{table}}' 未指定域：每個表都註冊在一個域中",
       "table_state_from_function": "表 '{{table}}' 衍生自函數 '{{name}}'，並具有其發佈狀態：不能單獨撤回或恢復",
       "table_region_from_function": "表 '{{table}}' 衍生自函數 '{{name}}'，並沿用其區域：不能單獨將其移動到其他區域",
-      "table_name_reserved": "表名 '{{table}}' 為保留名稱：域的指令在 'commands' 下提供。請使用其他名稱或別名註冊該表。"
+      "table_name_reserved": "表名 '{{table}}' 為保留名稱：域的指令在 'commands' 下提供。請使用其他名稱或別名註冊該表。",
+      "file_types_differ": "模式 {{glob}} 符合多於一種類型的檔案（{{types}}）；同一個表的檔案必須全部屬於同一種類型。"
     },
     "secrets": {
       "env_reference_object_locked": "此物件屬於營運方：它讀取伺服器自身的環境，無法在此更改。請改為新增您自己的物件。",
@@ -690,7 +692,8 @@
       "undefined_variable_property": "{{clause}} 讀取了 {{variable}}，但語句中沒有任何部分綁定它：變數由 MATCH 模式、WITH、UNWIND 或 CALL 綁定。此處已綁定：{{bound}}。 您是指 {{suggestion}} 嗎？{{owner}} 綁定到 :{{label}}，它有屬性 {{variable}}。",
       "undefined_variable_properties": "{{clause}} 讀取了 {{variable}}，但語句中沒有任何部分綁定它：變數由 MATCH 模式、WITH、UNWIND 或 CALL 綁定。此處已綁定：{{bound}}。 您是指 {{suggestions}} 嗎？它們各自綁定到具有屬性 {{variable}} 的標籤。",
       "non_finite_number": "答案包含 JSON 無法表示的數字：{{column}} 為 {{value}}。",
-      "try_cast_needs_postgres_16": "對可能無法轉換的值使用 toInteger、toFloat 及 toBoolean，需要此引擎上的 PostgreSQL 16 或更新版本。"
+      "try_cast_needs_postgres_16": "對可能無法轉換的值使用 toInteger、toFloat 及 toBoolean，需要此引擎上的 PostgreSQL 16 或更新版本。",
+      "relationship_unread": "有一項關係無法讀取，因此不顯示其邊：{{statement}}：{{reason}}"
     },
     "requests": {
       "approver_outside_domains": "你核准關係的權限未涵蓋此請求涉及的任何網域（{{domains}}）",

@@ -233,23 +233,32 @@ provisa:
     enabled: true
     replicaCount: 2
     port: 3000
+    # Production sizing (REQ-056). The UI pod serves static files and proxies to the API: little
+    # CPU at rest, but the proxy streams every result the browser reads, so the limit allows bursts
+    # of a full core and a 512Mi working set for large responses in flight.
     resources:
       requests:
         cpu: 100m
         memory: 128Mi
       limits:
-        cpu: 500m
-        memory: 256Mi
-  # Sized to the API's boot (REQ-056): the boot of the demo model peaked past the old 512Mi limit in
-  # release 512 and the kernel killed it before /health answered. The cluster lane's
-  # test_provisa_boot_memory_leaves_headroom reads the container's measured peak against this limit.
+        cpu: "1"
+        memory: 512Mi
+  # Production sizing (REQ-056). The test lane runs on less: helm/provisa/ci-values.yaml.
+  # Memory: release 512's boot passed 512Mi and was killed before /health answered; the lane boots
+  # in a 2Gi limit and fails if the boot peak passes 75% of it (1.5Gi). Serving adds result sets held in Arrow, the response cache and per-request
+  # threads on every protocol, so production requests the 1Gi the process holds at rest and limits
+  # it at 4Gi, twice the lean boot limit, for query working sets.
+  # CPU: each request runs on its own thread and Arrow/DuckDB work runs outside the GIL, so one pod
+  # uses more than one core under load. The request of 1 core is the steady share the HPA's 70%
+  # target is measured against; the limit of 2 cores lets bursts (compilation, result encoding)
+  # finish without throttling.
   resources:
     requests:
-      cpu: 250m
-      memory: 512Mi
-    limits:
       cpu: "1"
-      memory: 2Gi
+      memory: 1Gi
+    limits:
+      cpu: "2"
+      memory: 4Gi
   env:
     # PROVISA_MODE is the launch's process mode (every | query | coordinator, REQ-1916); unset
     # runs every role in one process. It no longer means production vs test.

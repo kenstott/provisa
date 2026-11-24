@@ -324,7 +324,8 @@ async def prepare(source_id: str, source_type: str, mapping: dict, ctx: Context)
             kept,
             None,  # pyright: ignore[reportArgumentType] -- no local host command
             ctx.org_id,
-            remote=config.remote,
+            # REQ-2270: its language says how a call's table arguments reach it (table_reads).
+            remote={**config.remote, "language": config.language},
             identity=await remote_sources.identity(ctx.org_id),
             workers=config.workers,
             setup=setup_values(ctx.org_id, source_id, kept, mapping, ctx.admin_db),

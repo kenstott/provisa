@@ -20,7 +20,7 @@ every other governed read in the product — a results table is an ordinary gove
 RLS, masking and row cap apply here exactly as they would to an analyst reading it.
 """
 
-# Requirements: REQ-982, REQ-1003, REQ-1443
+# Requirements: REQ-392, REQ-982, REQ-1003, REQ-1443
 
 from __future__ import annotations
 
@@ -29,7 +29,7 @@ import logging
 from datetime import datetime
 from typing import Any
 
-from provisa.api.metadata_export.model import DataQualityOutcome
+from provisa.api.metadata_export.model import DataQualityOutcome, LatestOutcomes
 from provisa.core.models import ProvisaConfig
 from provisa.dq.contract import CHECKERS
 
@@ -120,7 +120,7 @@ def index_outcomes(rows: list[dict]) -> dict[OutcomeKey, DataQualityOutcome]:
 
 async def read_latest_outcomes(
     config: ProvisaConfig, *, product_id: str | None = None
-) -> dict[OutcomeKey, DataQualityOutcome]:
+) -> LatestOutcomes:
     """The last scan's verdicts for every registered contract in the config, or, given
     ``product_id``, for the contracts that product owns: its checker tables, the only checks its
     documents carry (REQ-2157). Each results table read is a governed query.
@@ -128,27 +128,41 @@ async def read_latest_outcomes(
     A results table that has never been scanned returns no rows and contributes no keys, so its
     checks publish as never run — the true statement about a contract registered but not yet
     executed, and one a catalog should show rather than omit.
+
+    REQ-392: a results table governance refuses to the publishing role (a ``PermissionError``:
+    GovernanceRefused, OperatorFloorError, ApprovalDenied and the pipeline's own refusals) is
+    returned as its own ``unreadable`` outcome with the refusal's client-safe text, and the other
+    tables are still read. Any other error still fails the publish.
     """
     from provisa.pgwire._pipeline import _execute_plan, _govern_and_route
 
+    from provisa.api.engine_error_names import client_text
     from provisa.api.metadata_export.builder import product_memberships
     from provisa.api.metadata_export.refs import table_ref
 
     checker_ids = {source.id for source in config.sources if source.type.value in CHECKERS}
     owners = product_memberships(config, product_id=product_id) if product_id is not None else {}
     rows: list[dict] = []
+    unreadable: dict[tuple[str, ...], DataQualityOutcome] = {}
     for table in config.tables:
         if table.source_id not in checker_ids or not table.dq_contract:
             continue
         # REQ-1634: a checker table is owned by each product it is a member of.
         if product_id is not None and product_id not in owners.get(table_ref(table).parts, ()):
             continue
-        plan = await _govern_and_route(
-            latest_scan_sql(table.schema_name, table.table_name), _EXPORT_ROLE
-        )
-        result = await _execute_plan(plan)
+        try:
+            plan = await _govern_and_route(
+                latest_scan_sql(table.schema_name, table.table_name), _EXPORT_ROLE
+            )
+            result = await _execute_plan(plan)
+        except PermissionError as exc:
+            # REQ-392: one table the role cannot read is that table's outcome, not the publish's.
+            unreadable[table_ref(table).parts] = DataQualityOutcome(
+                status=DataQualityOutcome.UNREADABLE, reason=client_text(str(exc))
+            )
+            continue
         rows.extend(_as_dicts(result))
-    return index_outcomes(rows)
+    return LatestOutcomes(by_check=index_outcomes(rows), unreadable=unreadable)
 
 
 def _as_dicts(result: Any) -> list[dict]:

@@ -30,6 +30,7 @@ from pydantic import BaseModel
 
 from sqlalchemy import select
 
+from provisa.api.engine_error_names import client_text
 from provisa.core.schema_org import node_ids
 from provisa.api.rest.cypher_router import cypher_error, router
 from provisa.api.rest.cypher_exec import (  # noqa: F401
@@ -111,7 +112,7 @@ async def impute_relationships(
     visible_labels = set(by_label.keys())
 
     # Build queries for every relationship pair where both endpoints are visible
-    queries: list[str] = []
+    queries: list[tuple[str, str]] = []  # (relationship type, its statement)
     for rel in label_map.relationships.values():
         src_label = label_map.nodes[rel.source_label].label
         tgt_label = label_map.nodes[rel.target_label].label
@@ -124,23 +125,30 @@ async def impute_relationships(
         src_ids = ", ".join(_cql_literal(i) for i in by_label[src_label])
         tgt_ids = ", ".join(_cql_literal(i) for i in by_label[tgt_label])
         queries.append(
-            f"MATCH (a:{src_label})-[r:{rel.rel_type}]->(b:{tgt_label})"
-            f" WHERE a.{src_prop} IN [{src_ids}] AND b.{tgt_prop} IN [{tgt_ids}]"
-            f" RETURN a, r, b"
+            (
+                rel.rel_type,
+                f"MATCH (a:{src_label})-[r:{rel.rel_type}]->(b:{tgt_label})"
+                f" WHERE a.{src_prop} IN [{src_ids}] AND b.{tgt_prop} IN [{tgt_ids}]"
+                f" RETURN a, r, b",
+            )
         )
 
     if not queries:
-        return JSONResponse(content={"columns": [], "rows": []})
+        return JSONResponse(content={"columns": [], "rows": [], "unread": []})
 
     all_nodes: dict[str, Any] = {}
     all_edges: dict[str, Any] = {}
-    for cypher_query in queries:
+    # REQ-392: a relationship whose read could not be made is its own entry, with its reason --
+    # never a failure of every relationship, and never left out unsaid.
+    unread: list[dict[str, Any]] = []
+    for rel_type, cypher_query in queries:
         try:
             ast = parse_cypher(cypher_query)
             rows, graph_vars = await _execute_call_body(ast, label_map, {}, state, ctx, role_id)
             assembled = assemble_rows(rows, graph_vars)
-        except Exception:
-            log.exception("Impute query failed: %s", cypher_query)
+        except Exception as exc:  # allow-ble: any failure of one relationship's read is said below
+            log.warning("impute-relationships: %s not read: %s", cypher_query, exc)
+            unread.append({"type": rel_type, "error": client_text(str(exc))})
             continue
         for row in assembled:
             for val in row.values():
@@ -157,7 +165,9 @@ async def impute_relationships(
     serializable_merged = [{"node": r} for r in list(all_nodes.values()) + list(all_edges.values())]
     await register_node_ids(serializable_merged, state.model_db)
     await register_rel_ids(serializable_merged, state.model_db)
-    return JSONResponse(content={"columns": ["node"], "rows": serializable_merged})
+    return JSONResponse(
+        content={"columns": ["node"], "rows": serializable_merged, "unread": unread}
+    )
 
 
 class Neo4jExportRequest(BaseModel):

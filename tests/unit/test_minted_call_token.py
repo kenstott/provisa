@@ -390,11 +390,24 @@ def test_an_open_session_ends_with_its_call(listener, monkeypatch):
 # -- a call's table references -----------------------------------------------------------------
 
 
-def _state(db, *, tls: bool = False, listening: bool = True) -> SimpleNamespace:
+def _state(
+    db, *, tls: bool = False, listening: bool = True, flight: str | None = None
+) -> SimpleNamespace:
+    """``flight``: None (no Flight server), "tls" or "clear"."""
     server = SimpleNamespace(ssl_ctx=object() if tls else None) if listening else None
+    flight_server = None if flight is None else SimpleNamespace(tls=flight == "tls")
     return SimpleNamespace(
-        admin_db=db, _minted_pgwire_server=server, meta_qualifiers={}, org_id="org1"
+        admin_db=db,
+        _minted_pgwire_server=server,
+        _flight_server=flight_server,
+        meta_qualifiers={},
+        org_id="org1",
     )
+
+
+#: A remote host in a language whose SDK reads a table over pgwire (REQ-2270), and one in Python.
+_GO_HOST = {"host": "worker.example", "language": "go"}
+_PYTHON_HOST = {"host": "spark.example", "language": "python"}
 
 
 _SESSION = MintedSession(correlation_id="call-9", identity="invoker", role_id="analyst", token="x")
@@ -409,7 +422,11 @@ def port_set(monkeypatch):
     monkeypatch.setattr(
         settings_registry,
         "value",
-        {"server.minted_pgwire_port": 6543, "server.hostname": "provisa.example"}.__getitem__,
+        {
+            "server.minted_pgwire_port": 6543,
+            "server.hostname": "provisa.example",
+            "server.flight_port": 8815,
+        }.__getitem__,
     )
 
 
@@ -418,7 +435,7 @@ def test_a_call_hands_its_code_what_it_reads_with_and_the_token_ends_with_it(db,
     store = MintedTokenStore(db)
 
     async def go():
-        async with table_reads.readable(_state(db), _SESSION, payload, remote=False):
+        async with table_reads.readable(_state(db), _SESSION, payload, remote=None):
             connection = payload["orders"]["connection"]
             assert await store.resolve(connection["password"], "call-9") is not None
         return connection, await store.resolve(connection["password"], "call-9")
@@ -432,7 +449,7 @@ def test_a_call_hands_its_code_what_it_reads_with_and_the_token_ends_with_it(db,
 
 def test_a_call_with_no_table_mints_nothing(db, port_set):
     async def go():
-        async with table_reads.readable(_state(db), _SESSION, {"floor": 1}, remote=False):
+        async with table_reads.readable(_state(db), _SESSION, {"floor": 1}, remote=None):
             pass
 
     _run(go())
@@ -442,7 +459,7 @@ def test_a_remote_host_is_given_the_deployments_address(db, port_set):
     payload = _payload()
 
     async def go():
-        async with table_reads.readable(_state(db, tls=True), _SESSION, payload, remote=True):
+        async with table_reads.readable(_state(db, tls=True), _SESSION, payload, remote=_GO_HOST):
             return dict(payload["orders"]["connection"])
 
     connection = _run(go())
@@ -452,18 +469,91 @@ def test_a_remote_host_is_given_the_deployments_address(db, port_set):
 
 def test_a_remote_hosts_token_never_crosses_the_network_in_the_clear(db, port_set):
     async def go():
-        async with table_reads.readable(_state(db, tls=False), _SESSION, _payload(), remote=True):
+        async with table_reads.readable(
+            _state(db, tls=False), _SESSION, _payload(), remote=_GO_HOST
+        ):
             pass
 
     with pytest.raises(table_reads.TableNotReadable, match="tls.pgwire_cert"):
         _run(go())
 
 
+# -- REQ-2270: a Python remote host reads over Arrow Flight SQL -------------------------------
+
+
+def test_a_python_remote_host_is_given_the_flight_address_and_a_token_that_ends_with_the_call(
+    db, port_set
+):
+    payload = _payload()
+    store = MintedTokenStore(db)
+
+    async def go():
+        state = _state(db, listening=False, flight="tls")
+        async with table_reads.readable(state, _SESSION, payload, remote=_PYTHON_HOST):
+            given = dict(payload["orders"]["flight"])
+            call = await store.resolve(given["token"], given["call"])
+        return given, call, await store.resolve(given["token"], given["call"])
+
+    given, call, after = _run(go())
+    assert given["uri"] == "grpc+tls://provisa.example:8815"
+    assert given["call"] == "call-9"
+    assert call is not None and call.role_id == "analyst" and call.tables == (ORDERS,)
+    assert "connection" not in payload["orders"]  # no pgwire listener is needed or named
+    assert payload["orders"]["sql"] == 'SELECT "id" FROM sales.orders'
+    assert after is None
+
+
+def test_a_python_remote_hosts_token_never_crosses_the_network_in_the_clear(db, port_set):
+    async def go():
+        state = _state(db, flight="clear")
+        async with table_reads.readable(state, _SESSION, _payload(), remote=_PYTHON_HOST):
+            pass
+
+    with pytest.raises(table_reads.TableNotReadable, match="PROVISA_FLIGHT_CERT"):
+        _run(go())
+
+
+def test_no_flight_server_refuses_a_python_remote_host_by_the_setting(db, port_set):
+    async def go():
+        async with table_reads.readable(_state(db), _SESSION, _payload(), remote=_PYTHON_HOST):
+            pass
+
+    with pytest.raises(table_reads.TableNotReadable, match="server.flight_port"):
+        _run(go())
+
+
+def test_a_loopback_host_name_refuses_a_python_remote_host(db, monkeypatch):
+    monkeypatch.setattr(
+        settings_registry,
+        "value",
+        {"server.hostname": "localhost", "server.flight_port": 8815}.__getitem__,
+    )
+
+    async def go():
+        state = _state(db, flight="tls")
+        async with table_reads.readable(state, _SESSION, _payload(), remote=_PYTHON_HOST):
+            pass
+
+    with pytest.raises(table_reads.TableNotReadable, match="set server.hostname"):
+        _run(go())
+
+
+def test_a_local_python_worker_still_reads_over_its_sandboxes_one_port(db, port_set):
+    payload = _payload()
+
+    async def go():
+        async with table_reads.readable(_state(db, flight="tls"), _SESSION, payload, remote=None):
+            return dict(payload["orders"]["connection"])
+
+    assert _run(go())["port"] == 6543
+    assert "flight" not in payload["orders"]
+
+
 def test_no_listener_refuses_by_the_setting(db, monkeypatch):
     monkeypatch.setattr(settings_registry, "value", {"server.minted_pgwire_port": 0}.__getitem__)
 
     async def go():
-        async with table_reads.readable(_state(db), _SESSION, _payload(), remote=False):
+        async with table_reads.readable(_state(db), _SESSION, _payload(), remote=None):
             pass
 
     with pytest.raises(table_reads.TableNotReadable, match="server.minted_pgwire_port"):
@@ -474,7 +564,7 @@ def test_a_reference_that_is_no_table_name_is_refused(db, port_set):
     payload = {"orders": {"kind": "table_ref", "ref": "not a table;", "columns": []}}
 
     async def go():
-        async with table_reads.readable(_state(db), _SESSION, payload, remote=False):
+        async with table_reads.readable(_state(db), _SESSION, payload, remote=None):
             pass
 
     with pytest.raises(CallTokenRefused):

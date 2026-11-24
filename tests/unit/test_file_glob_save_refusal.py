@@ -62,3 +62,42 @@ def test_a_glob_matching_nothing_is_refused(tmp_path, monkeypatch):
     _patch_source(monkeypatch, {"type": "files", "path": str(tmp_path / "none.csv")})
     r = asyncio.run(table_file_glob_refusal(_Conn(None), _model("*.csv")))
     assert r is not None and r.code == "schema.file_glob_unreadable"
+
+
+# REQ-2234, A PATTERN WITH NO FILE TYPE: a pattern naming no file type reads as the one type its
+# files share; files of more than one type are refused by name, listing the types found.
+
+
+def test_a_pattern_naming_no_type_over_csv_files_passes(tmp_path, monkeypatch):
+    (tmp_path / "complaints_2026_09.csv").write_text("id,amount\n1,10\n")
+    (tmp_path / "complaints_2026_10.csv").write_text("id,amount\n2,20\n")
+    _patch_source(monkeypatch, {"type": "files", "path": str(tmp_path)})
+    assert asyncio.run(table_file_glob_refusal(_Conn(None), _model("complaint*"))) is None
+
+
+def test_a_pattern_naming_no_type_over_csv_and_parquet_is_refused_naming_both(
+    tmp_path, monkeypatch
+):
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    (tmp_path / "complaints_2026_09.csv").write_text("id,amount\n1,10\n")
+    pq.write_table(pa.table({"id": [2], "amount": [20]}), tmp_path / "complaints_2026_10.parquet")
+    _patch_source(monkeypatch, {"type": "files", "path": str(tmp_path)})
+    r = asyncio.run(table_file_glob_refusal(_Conn(None), _model("complaint*")))
+    assert r is not None and r.success is False
+    assert r.code == "schema.file_types_differ"
+    assert r.params == {"glob": "complaint*", "types": "csv, parquet"}
+    assert "csv, parquet" in r.message
+
+
+def test_the_mixed_type_refusal_is_worded_in_every_locale():
+    import json
+    from pathlib import Path
+
+    locales = Path(__file__).resolve().parents[2] / "provisa-ui" / "src" / "i18n" / "locales"
+    catalogs = sorted(locales.glob("*/serverErrors.json"))
+    assert len(catalogs) >= 13, catalogs
+    for catalog in catalogs:
+        said = json.loads(catalog.read_text())["serverErrors"]["schema"]["file_types_differ"]
+        assert "{{glob}}" in said and "{{types}}" in said, catalog

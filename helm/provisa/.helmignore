@@ -1,0 +1,2 @@
+# The minikube lane's test sizing; not part of the packaged chart.
+ci-values.yaml

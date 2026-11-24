@@ -44,8 +44,9 @@ from provisa.api.role_surface import role_surface
 from provisa.core import request_deadline
 from provisa.core.read_refusal import ReadRefused
 from provisa.core.parameter_binding import ParameterBindingRefused
-from provisa.core.statement_warnings import collecting, warn
+from provisa.core.statement_warnings import collecting, raised, warn
 from provisa.api.errors import ApiError
+from provisa.cache import encoded
 from provisa.cache.middleware import build_cache_headers
 from provisa.federation.replica_state import ReplicaBuilding
 from provisa.compiler.hints import extract_graphql_hints
@@ -741,22 +742,49 @@ async def _execute_one_field(  # REQ-027, REQ-028, REQ-029, REQ-137, REQ-140, RE
     if result.redirect is not None:
         return root_field, None, result.redirect, hit
 
-    if compiled.has_nodes and not compiled.is_group_by:
-        # An aggregate's answer is a map ({aggregate, nodes}), not rows.
-        body = graphql_aggregate(result_batches(result), compiled.columns, compiled.agg_alias)
-        answer = FieldAnswer(body, None, {}, [])
-    else:
-        answer = _format_response(
-            result,
-            compiled.columns,
-            root_field,
-            output_format,
-            result_limit=compiled.result_limit,
-        )
-        if compiled.single_row and isinstance(answer, FieldAnswer):
-            # REQ-194: a Hasura _by_pk read answers its row, or null.
-            answer = FieldAnswer(
-                single_row_body(answer.body), answer.rows, answer.joined, answer.truncated
+    # REQ-1867 (ENCODED RESPONSES): a hit answers the field's bytes kept beside its entry for
+    # this field's shape; a shape not yet kept is encoded from the Arrow entry below and kept.
+    entry = result.cache_entry
+    encoded_field = (
+        _graphql_encoded_field(compiled, output_format)
+        if entry is not None and output_format == "json"
+        else None
+    )
+    answer = None
+    if encoded_field is not None and entry is not None:
+        kept = await encoded.served(state, entry, encoded_field)
+        if kept is not None:
+            facts = kept.facts
+            answer = FieldAnswer(kept.parts[0], facts["rows"], facts["joined"], facts["truncated"])
+    if answer is None:
+        raised_before = raised()
+        if compiled.has_nodes and not compiled.is_group_by:
+            # An aggregate's answer is a map ({aggregate, nodes}), not rows.
+            body = graphql_aggregate(result_batches(result), compiled.columns, compiled.agg_alias)
+            answer = FieldAnswer(body, None, {}, [])
+        else:
+            answer = _format_response(
+                result,
+                compiled.columns,
+                root_field,
+                output_format,
+                result_limit=compiled.result_limit,
+            )
+            if compiled.single_row and isinstance(answer, FieldAnswer):
+                # REQ-194: a Hasura _by_pk read answers its row, or null.
+                answer = FieldAnswer(
+                    single_row_body(answer.body), answer.rows, answer.joined, answer.truncated
+                )
+        if encoded_field is not None and entry is not None and isinstance(answer, FieldAnswer):
+            await encoded.keep(
+                state,
+                entry,
+                encoded_field,
+                encoded.Encoded(
+                    (answer.body,),
+                    {"rows": answer.rows, "joined": answer.joined, "truncated": answer.truncated},
+                    encoded.warnings_since(raised_before),
+                ),
             )
     if isinstance(answer, FieldAnswer):
         # What the encoder found about the answer (a to-one that matched several rows) goes to
@@ -786,6 +814,25 @@ async def _execute_one_field(  # REQ-027, REQ-028, REQ-029, REQ-137, REQ-140, RE
     if qs is not None and compiled.sources:
         _append_mermaid(qs, compiled, ctx, root_field, None, _elapsed_ms, _n_rows, None)
     return root_field, answer, None, hit
+
+
+def _graphql_encoded_field(compiled: Any, output_format: str) -> str:  # noqa: ANN401 — CompiledQuery
+    """The field a root field's encoded answer is kept under beside its cached result (REQ-1867,
+    ENCODED RESPONSES): everything that shapes the encoder's bytes -- the selection as the encoder
+    reads it (each column's field name or alias, nesting, cardinality and JSON typing), the
+    aggregate alias, the result limit and whether it answers one row."""
+    from provisa.executor.json_encoders import plan_tuples
+
+    return encoded.shape_field(
+        "graphql",
+        output_format,
+        plan_tuples(compiled.columns),
+        compiled.has_nodes,
+        compiled.is_group_by,
+        compiled.agg_alias,
+        compiled.result_limit,
+        compiled.single_row,
+    )
 
 
 def _note_field_outcome(answer: Any) -> None:  # noqa: ANN401 — a FieldAnswer, a Response or None
