@@ -600,18 +600,31 @@ async def _decide_locally(
             held = await offers.require_pending(conn, product_id, bid_id)
         except OfferRefused as refused:
             raise _refused(refused) from refused
+        return await _decide_as_caller(conn, state, held, outcome, reason, request)
 
-        async def may(role_id: str) -> str | None:
-            return may_grant(request, state, role_id)
 
-        decision = offer_hooks.Decision(
-            request_id=held["request_id"],
-            outcome=outcome,
-            decider=_caller(request) or _ANONYMOUS,
-            decided_at=datetime.now(UTC),
-            reason=reason,
-        )
-        return await _decide(conn, state, decision, may)
+async def _decide_as_caller(
+    conn: Any,
+    state: Any,
+    held: dict,
+    outcome: offer_hooks.Outcome,
+    reason: str | None,
+    request: Request,
+) -> dict:
+    """Decide the request ``held`` (a bid or a cancel) through the decision hook, as the
+    signed-in caller, now."""
+
+    async def may(role_id: str) -> str | None:
+        return may_grant(request, state, role_id)
+
+    decision = offer_hooks.Decision(
+        request_id=held["request_id"],
+        outcome=outcome,
+        decider=_caller(request) or _ANONYMOUS,
+        decided_at=datetime.now(UTC),
+        reason=reason,
+    )
+    return await _decide(conn, state, decision, may)
 
 
 @router.post("/{product_id}/bids/{bid_id}/accept")
@@ -715,12 +728,6 @@ async def decision_hook(body: DecisionBody, request: Request) -> dict:
     caller decides as themselves, now, as the product's owner role -- as the local queue does. A
     signed external caller is not served here."""
     require_capability_request(request, "data_product_read")
-    state = _state()
-    async with state.model_db.acquire() as conn:
-        try:
-            held = await offers.require_request(conn, body.request_id)
-        except OfferRefused as refused:
-            raise _refused(refused) from refused
     caller = _caller(request)
     if body.decider is not None and caller is not None and body.decider != caller:
         raise ApiError(
@@ -728,7 +735,15 @@ async def decision_hook(body: DecisionBody, request: Request) -> dict:
             "data_product.decision.not_the_decider",
             f"a signed-in caller decides as themselves, not as {body.decider!r}",
         )
-    return await _decide_locally(held["product_id"], held["id"], body.outcome, body.reason, request)
+    state = _state()
+    async with state.model_db.acquire() as conn:
+        try:
+            held = await offers.require_request(conn, body.request_id)
+        except OfferRefused as refused:
+            raise _refused(refused) from refused
+        _require_owner(request, state, await _product(conn, held["product_id"]))
+        # A bid or a cancel alike: each is a request whose decision returns through this hook.
+        return await _decide_as_caller(conn, state, held, body.outcome, body.reason, request)
 
 
 # -- profiles --------------------------------------------------------------------------------------
