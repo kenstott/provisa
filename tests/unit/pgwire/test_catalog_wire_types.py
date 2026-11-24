@@ -8,9 +8,10 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""A catalog column reaches the client as the type PostgreSQL 17 declares for it (REQ-2167):
-information_schema's sql_identifier, character_data, yes_or_no and cardinal_number, and
-pg_catalog's oid, name and "char", wherever the statement reads the column as it is."""
+"""A catalog column reaches the client as the type PostgreSQL 17 describes it with (REQ-2167):
+information_schema's domains sql_identifier, character_data, yes_or_no and cardinal_number as their
+base types (printtup.c sends a domain's base type), and pg_catalog's oid, name and "char",
+wherever the statement reads the column as it is."""
 
 from __future__ import annotations
 
@@ -19,11 +20,12 @@ import struct
 from unittest.mock import MagicMock
 
 from provisa.pgwire.catalog import answer
+from provisa.pgwire.catalog_types import described_type_oid
 from provisa.pgwire.server import ProvisaQueryResult
 from tests.unit.pgwire.result_rows import rows_of
 
-SQL_IDENTIFIER, CHARACTER_DATA, YES_OR_NO, CARDINAL_NUMBER = 13302, 13300, 13310, 13297
 OID, NAME, CHAR, TEXT, INT4, INT8, FLOAT8, TIMESTAMPTZ = 26, 19, 18, 25, 23, 20, 701, 1184
+VARCHAR = 1043
 REGPROC, REGTYPE = 24, 2206
 
 
@@ -59,17 +61,17 @@ def _oids(sql: str) -> dict[str, int]:
     return oids
 
 
-def test_information_schema_tables_are_named_by_their_domains():
+def test_information_schema_tables_are_described_by_their_domains_base_types():
     oids = _oids("SELECT * FROM information_schema.tables LIMIT 0")
-    assert oids["table_catalog"] == SQL_IDENTIFIER
-    assert oids["table_name"] == SQL_IDENTIFIER
-    assert oids["table_type"] == CHARACTER_DATA
-    assert oids["is_insertable_into"] == YES_OR_NO
+    assert oids["table_catalog"] == NAME  # sql_identifier
+    assert oids["table_name"] == NAME  # sql_identifier
+    assert oids["table_type"] == VARCHAR  # character_data
+    assert oids["is_insertable_into"] == VARCHAR  # yes_or_no
 
 
-def test_a_cardinal_number_is_its_domain():
+def test_a_cardinal_number_is_described_as_int4():
     oids = _oids("SELECT ordinal_position, column_name FROM information_schema.columns LIMIT 0")
-    assert oids == {"ordinal_position": CARDINAL_NUMBER, "column_name": SQL_IDENTIFIER}
+    assert oids == {"ordinal_position": INT4, "column_name": NAME}
 
 
 def test_pg_catalog_columns_through_aliases_and_a_join():
@@ -161,7 +163,8 @@ def test_every_served_catalog_column_of_a_stored_type_is_postgresqls():
             continue
         served = _oids(f"SELECT * FROM {schema}.{relation} LIMIT 0")
         for column, pg_type, pg_oid in RELATIONS[(schema, relation)]:
-            if pg_type in _STORED_AS_POSTGRESQL_DOES and served.get(column, pg_oid) != pg_oid:
+            want = described_type_oid(pg_oid)  # a domain is described as its base type
+            if pg_type in _STORED_AS_POSTGRESQL_DOES and served.get(column, want) != want:
                 differing.append(f"{schema}.{relation}.{column}: {served[column]}, not {pg_type}")
     assert differing == []
 
@@ -242,7 +245,9 @@ def test_every_client_relation_has_postgresqls_columns_and_types():
 
     for schema, relation in CLIENT_RELATIONS:
         served = _oids(f"SELECT * FROM {schema}.{relation} LIMIT 0")
-        assert served == {col: oid for col, _, oid in RELATIONS[(schema, relation)]}, relation
+        assert served == {
+            col: described_type_oid(oid) for col, _, oid in RELATIONS[(schema, relation)]
+        }, relation
 
 
 def test_pg_authid_lists_the_roles_and_never_a_password():
@@ -302,7 +307,9 @@ def test_every_statistics_relation_has_postgresqls_columns_and_no_rows():
 
     for schema, relation in STATISTICS_RELATIONS:
         served = _oids(f"SELECT * FROM {schema}.{relation} LIMIT 0")
-        assert served == {col: oid for col, _, oid in RELATIONS[(schema, relation)]}, relation
+        assert served == {
+            col: described_type_oid(oid) for col, _, oid in RELATIONS[(schema, relation)]
+        }, relation
         assert answer(f"SELECT * FROM {schema}.{relation}", "testrole", _state()).rows == []
 
 
@@ -334,7 +341,9 @@ def test_every_object_type_relation_has_postgresqls_columns():
 
     for schema, relation in OBJECT_TYPE_RELATIONS:
         served = _oids(f"SELECT * FROM {schema}.{relation} LIMIT 0")
-        assert served == {col: oid for col, _, oid in RELATIONS[(schema, relation)]}, relation
+        assert served == {
+            col: described_type_oid(oid) for col, _, oid in RELATIONS[(schema, relation)]
+        }, relation
 
 
 def test_psqls_text_search_and_large_object_lists_run():
@@ -394,7 +403,9 @@ def test_every_postgresql_17_relation_is_served_with_its_columns():
     assert set(RELATIONS) <= set(_TABLE_MAP)
     for schema, relation in UNQUERIED_RELATIONS:
         served = _oids(f"SELECT * FROM {schema}.{relation} LIMIT 0")
-        assert served == {col: oid for col, _, oid in RELATIONS[(schema, relation)]}, relation
+        assert served == {
+            col: described_type_oid(oid) for col, _, oid in RELATIONS[(schema, relation)]
+        }, relation
 
 
 def test_pg_shadow_never_gives_a_password():

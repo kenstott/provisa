@@ -32,12 +32,14 @@ from provisa.compiler.sql_validator import (
     validate_sql,
 )
 from provisa.compiler.stage2 import GovernanceContext
+from provisa.pgwire.catalog import _declared_types
 from provisa.pgwire.catalog_route import (
     CLIENT_TABLE_FUNCTIONS,
     CatalogRequest,
     addressed_statement,
 )
 from provisa.pgwire.catalog_types import result_types
+from provisa.pgwire.server import _described_oid
 from provisa.transpiler.metadata_facts import catalog_facts
 
 pytestmark = pytest.mark.unit
@@ -128,3 +130,13 @@ def test_grafanas_column_list_is_addressed_and_typed_as_postgresql_types_it(stat
     sql = _statement(statement_id)
     assert addressed_statement(sql, _REQUEST)
     assert [name for name, _ in result_types(sql)] == ["column", "type"]
+
+
+@pytest.mark.parametrize("statement_id", [5, 6, 7, 8])
+def test_grafanas_column_type_is_described_as_varchar_as_postgresql_describes_it(statement_id):
+    """information_schema.columns.data_type is the domain character_data; PostgreSQL describes a
+    domain column with its base type (printtup.c getBaseTypeAndTypmod): varchar, oid 1043."""
+    sql = _statement(statement_id)
+    names = [name for name, _ in result_types(sql)]
+    declared = _declared_types(sql, names, ["text"] * len(names))
+    assert {n: _described_oid(t) for n, t in zip(names, declared)} == {"column": 25, "type": 1043}

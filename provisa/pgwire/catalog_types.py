@@ -78,8 +78,20 @@ _SAME_WIRE_FORM = frozenset(
     }
 )
 
+
+def described_type_oid(oid: int) -> int:
+    """The OID PostgreSQL describes a column of type ``oid`` with: a domain's base type, as
+    printtup.c SendRowDescriptionMessage sends it (getBaseTypeAndTypmod), so information_schema's
+    character_data is described as varchar and sql_identifier as name (Grafana's column listing)."""
+    entry = TYPES[oid]
+    return described_type_oid(entry[6]) if entry[3] == "d" else oid
+
+
+#: Each such type's name and the OID a column of it is described with.
 CATALOG_TYPE_OIDS: dict[str, int] = {
-    entry[-1]: oid for oid, entry in TYPES.items() if entry[-1] in _SAME_WIRE_FORM
+    entry[-1]: described_type_oid(oid)
+    for oid, entry in TYPES.items()
+    if entry[-1] in _SAME_WIRE_FORM
 }
 
 _PSEUDO_TYPES = frozenset(entry[-1] for entry in TYPES.values() if entry[3] == "p")

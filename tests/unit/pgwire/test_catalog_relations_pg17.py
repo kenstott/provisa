@@ -25,6 +25,7 @@ import pytest
 
 from provisa.pgwire.catalog import answer
 from provisa.pgwire.catalog_pg17 import RELATIONS
+from provisa.pgwire.catalog_types import described_type_oid
 from provisa.pgwire.catalog_populate import _build_catalog_db, _populate_pg_description
 from provisa.pgwire.server import ProvisaQueryResult
 
@@ -71,7 +72,9 @@ def _rows(sql: str, state=None) -> list[tuple]:
 @pytest.mark.parametrize("schema,relation", sorted(RELATIONS))
 def test_a_served_relation_has_postgresqls_columns_order_types_and_typmods(schema, relation):
     assert _fields(f"SELECT * FROM {schema}.{relation} LIMIT 0") == [
-        (column, oid, -1) for column, _, oid in RELATIONS[(schema, relation)]
+        # A domain column is described as its base type, as PostgreSQL's RowDescription sends it.
+        (column, described_type_oid(oid), -1)
+        for column, _, oid in RELATIONS[(schema, relation)]
     ]
 
 
