@@ -37,8 +37,16 @@ def test_other_parts_unchanged() -> None:
     )
 
 
-def test_other_engines_unchanged() -> None:
-    assert "CASE" not in transpile("SELECT EXTRACT(YEAR FROM d) AS v FROM t", "duckdb")
+def test_duckdb_corrects_with_its_own_form() -> None:
+    """DuckDB counts year 0 as 1 BC too, and corrects with a form that leaves an interval's years
+    alone (pg_literals.duckdb_year_of_era, REQ-2236), never with Trino's."""
+    out = transpile("SELECT EXTRACT(YEAR FROM d) AS v FROM t", "duckdb")
+    assert _CORRECTED not in out
+    assert "TYPEOF(d) <> 'INTERVAL'" in out
+
+
+def test_engines_counting_as_postgres_unchanged() -> None:
+    assert "CASE" not in transpile("SELECT EXTRACT(YEAR FROM d) AS v FROM t", "postgres")
 
 
 @pytest.mark.parametrize(

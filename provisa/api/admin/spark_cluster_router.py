@@ -137,7 +137,8 @@ async def test_cluster(request: Request, org_id: str, body: ClusterBody | None =
     await _org_guard(request, org_id)
     try:
         address = await _address_to_test(org_id, body)
-        version = await asyncio.to_thread(spark_cluster.probe, address)
+        # REQ-2006: held to this organisation's egress rule, refused by name before any dial.
+        version = await asyncio.to_thread(spark_cluster.probe, address, org_id=org_id)
     except SparkClusterRefused as refused:
         raise _refusal(refused) from None
     shown = spark_cluster.parse(address)

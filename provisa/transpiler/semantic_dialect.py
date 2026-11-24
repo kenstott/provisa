@@ -41,6 +41,7 @@ from sqlglot.dialects.trino import Trino
 from sqlglot.generator import Generator
 
 from provisa.core.pg_error import raising
+from provisa.transpiler.pg_literals import duckdb_year_of_era
 
 
 Postgres.Generator.TRANSFORMS[exp.TryCast] = Generator.trycast_sql
@@ -366,6 +367,18 @@ def _keyword_lambda_sql(
 
 
 DuckDB.Generator.lambda_sql = _keyword_lambda_sql  # type: ignore[method-assign]
+
+_duckdb_extract = DuckDB.Generator.extract_sql
+
+
+def _duckdb_extract_year(self: DuckDB.Generator, expression: exp.Extract) -> str:
+    """EXTRACT(YEAR ...) on DuckDB as PostgreSQL counts the year (``duckdb_year_of_era``)."""
+    if expression.name.upper() != "YEAR":
+        return _duckdb_extract(self, expression)
+    return duckdb_year_of_era(self.sql(expression.expression))
+
+
+DuckDB.Generator.TRANSFORMS[exp.Extract] = _duckdb_extract_year
 
 
 _duckdb_json_arrow = DuckDB.Generator.TRANSFORMS[exp.JSONExtract]

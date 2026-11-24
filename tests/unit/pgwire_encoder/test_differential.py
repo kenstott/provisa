@@ -1974,6 +1974,13 @@ WITNESSES: dict[str, tuple[list[Any], list[Any], list[int], dict[str, Any]]] = {
         [0],
         {},
     ),
+    # 4713-01-01 00:00:00 BC and 1 BC's last instant.
+    "timestamp_range": (
+        [pa.array([-210_863_520_000_000_000, _ts(1, 1, 1) - 1, None], pa.timestamp("us"))],
+        [T.TIMESTAMP],
+        [0],
+        {},
+    ),
 }
 
 

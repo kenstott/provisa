@@ -72,9 +72,11 @@ def test_a_union_of_a_domain_and_null_is_the_base_type():
     assert result_types(sql) == (("d", "character varying"),)
 
 
-def test_a_plain_domain_column_is_still_the_domain():
+def test_a_plain_domain_column_is_described_as_its_base_type():
+    """PostgreSQL describes a domain column with its base type (printtup.c getBaseTypeAndTypmod):
+    sql_identifier as name."""
     sql = "SELECT c.column_name FROM information_schema.columns c"
-    assert _described(sql) == {"column_name": 13302}
+    assert _described(sql) == {"column_name": 19}
 
 
 # G5: a regclass cast in a CASE's subquery, current_catalog, and an integer division.

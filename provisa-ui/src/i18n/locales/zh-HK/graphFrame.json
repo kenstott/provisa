@@ -21,6 +21,7 @@
     "addToFavorites": "加入我的最愛",
     "autoImputeOn": "自動推斷關係已開啟。按一下即可關閉。",
     "autoImputeOff": "自動推算可見節點之間的關係",
+    "relNotImputed": "未推斷 {{type}}：{{error}}",
     "groupTooltip": "按屬性分組節點（連按兩下外框以摺疊；連按兩下已摺疊的節點以展開）",
     "groupPlaceholder": "⬡ 分組",
     "wrapCellText": "儲存格文字換行",

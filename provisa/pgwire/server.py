@@ -1069,6 +1069,18 @@ def _type_oid(type_str: str | None) -> int | None:  # REQ-2167
     return CATALOG_TYPE_OIDS.get(type_str.lower()) if type_str else None
 
 
+def _type_typmod(type_str: str | None) -> int:  # REQ-2204
+    """The typmod a column of a catalog type is described with: an information_schema domain's own
+    (yes_or_no a 7, time_stamp a 2), as PostgreSQL's RowDescription sends it. A type not listed
+    has no typmod of its own, which PostgreSQL sends as -1; a cast's typmod is set later
+    (_describe_casts)."""
+    from provisa.pgwire.catalog_types import CATALOG_TYPE_TYPMODS
+
+    if not type_str:
+        return -1
+    return CATALOG_TYPE_TYPMODS.get(type_str.lower(), -1)
+
+
 def _described_oid(type_str: str) -> int:
     oid = _type_oid(type_str)
     return BVTYPE_TO_OID[_sql_type_to_bvtype(type_str)] if oid is None else oid
@@ -1425,7 +1437,7 @@ class _StatementDescription(BVQueryResult):  # REQ-589
         self.parameter_types = parameters or {}
         self._types = [_sql_type_to_bvtype(t) for _, t in shape]
         self._type_oids = [_type_oid(t) for _, t in shape]
-        self._typmods = [-1] * len(shape)
+        self._typmods = [_type_typmod(t) for _, t in shape]
         # REQ-1961: a registered column is described as its Execute sends it.
         _describe_registered(shape, self._types, self._type_oids, self._typmods, [])
         _describe_casts(sql, self._types, self._type_oids, self._typmods, [])
@@ -1548,7 +1560,7 @@ class ProvisaQueryResult(BVQueryResult):  # REQ-529, REQ-028
                 coercer = _SHAPE_COERCERS.get(described)
                 if coercer is not None:
                     self._coerce.append((i, coercer))
-            self._typmods = [-1] * len(self._cols)
+            self._typmods = [_type_typmod(t) for _, t in shape]
             _describe_registered(shape, self._types, self._type_oids, self._typmods, self._coerce)
             _describe_casts(original_sql, self._types, self._type_oids, self._typmods, self._coerce)
             return
@@ -1563,7 +1575,7 @@ class ProvisaQueryResult(BVQueryResult):  # REQ-529, REQ-028
             ]
         else:
             self._types = inferred
-        self._typmods = [-1] * len(self._cols)
+        self._typmods = [_type_typmod(t) for t in ctypes] if ctypes else [-1] * len(self._cols)
         if read_shape is not None:
             # REQ-2171: a column the read's shape types as a subtype is sent as its PostgreSQL type.
             if len(read_shape) != len(self._cols):

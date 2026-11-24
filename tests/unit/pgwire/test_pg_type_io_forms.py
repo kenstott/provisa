@@ -70,13 +70,25 @@ def _difference(connection: Any, sql: str, recorded: str | None = None) -> str |
         if connection.sql(written).types == ["INTERVAL"]:
             got = _interval_read(connection, written)
         else:
-            got = connection.execute(written).fetchone()[0]
+            got = _as_sent(connection.execute(written).fetchone()[0])
     except duckdb.Error as raised:
         refusal = from_engine(raised)
         if refusal is None:
             return f"not raised as PostgreSQL's: {raised}"
         return verdict(recorded, RECORDED[recorded], None, f"{refusal.sqlstate}: {refusal}")
     return verdict(recorded, RECORDED[recorded], got, None)
+
+
+#: DuckDB's text of a date or timestamp BC, which its Python driver hands over where no Python
+#: value holds it: the date, its era, the rest.
+_DUCKDB_BC = re.compile(r"(?P<day>[0-9]{4,}-[0-9]{2}-[0-9]{2}) \(BC\)(?P<rest>.*)")
+
+
+def _as_sent(value: Any) -> Any:
+    """A value as the wire writes it: a date or timestamp BC as PostgreSQL writes it, its era
+    after the clock and offset (REQ-2236; the pgwire encoder writes it from DuckDB's Arrow)."""
+    bc = _DUCKDB_BC.fullmatch(value) if isinstance(value, str) else None
+    return value if bc is None else f"{bc['day']}{bc['rest']} BC"
 
 
 def _interval_read(connection: Any, written: str) -> str | None:

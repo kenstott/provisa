@@ -14,7 +14,8 @@ RELATIONS: every pg_catalog and information_schema relation, its columns in orde
 (name, format_type, type oid). RELATION_CLASS: each relation's oid and relkind. STATIC_ROWS:
 the rows PostgreSQL itself fixes for the information_schema tables on its SQL conformance.
 TYPES: each type's oid -> (namespace, typname, typlen, typtype, typcategory, typnotnull,
-typbasetype, typbyval, typalign, typstorage, typelem, typdelim, format_type). FUNCTION_RETURNS:
+typbasetype, typbyval, typalign, typstorage, typelem, typdelim, format_type). DOMAIN_TYPMODS:
+each domain's oid -> its typtypmod. FUNCTION_RETURNS:
 a pg_catalog function's return type, where every overload of its name returns the same one.
 PROC_NAMES: a pg_catalog function's oid -> its regproc text form."""
 
@@ -4163,6 +4164,14 @@ TYPES: dict[int, tuple] = {
     13626: ('information_schema', 'user_mapping_options', -1, 'c', 'C', False, 0, False, 'd', 'x', 0, ',', 'information_schema.user_mapping_options'),
     13630: ('information_schema', '_user_mappings', -1, 'b', 'A', False, 0, False, 'd', 'x', 13631, ',', 'information_schema.user_mappings[]'),
     13631: ('information_schema', 'user_mappings', -1, 'c', 'C', False, 0, False, 'd', 'x', 0, ',', 'information_schema.user_mappings'),
+}
+
+DOMAIN_TYPMODS: dict[int, int] = {
+    13297: -1,
+    13300: -1,
+    13302: -1,
+    13308: 2,
+    13310: 7,
 }
 
 FUNCTION_RETURNS: dict[str, str] = {

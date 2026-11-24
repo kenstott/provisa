@@ -94,6 +94,13 @@ class Engine:
     real_text: Callable[[str], str] = lambda v: f"CAST({v} AS VARCHAR)"
     #: A float8's text, of its shortest digits.
     double_text: Callable[[str], str] = lambda v: f"CAST({v} AS VARCHAR)"
+    #: PostgreSQL's text of a date or timestamp BC (``4713-01-01 00:00:00 BC``) as the engine's
+    #: input reads it; None where the engine reads no year BC.
+    era_in: Callable[[str], str] | None = None
+    #: The engine's text of a date or timestamp, its era as PostgreSQL writes it (REQ-2236).
+    era_out: Callable[[str], str] | None = None
+    #: A pattern of the era the engine writes after a date BC in its text.
+    era_mark: str = ""
 
 
 def _trino_raises(state: str, message: str, sql_type: str) -> str:
@@ -174,7 +181,8 @@ DUCKDB = Engine(
     valid_date=lambda v: f"TRY_CAST({v} AS DATE)",
     nan=lambda t: f"CAST('NaN' AS {t})",
     infinity=lambda sign, t: f"CAST('{sign}Infinity' AS {t})",
-    utc_text=lambda v: f"strftime({v} AT TIME ZONE 'UTC', '%Y-%m-%d %H:%M:%S.%f')",
+    # Its text, not strftime's, whose %Y writes a year BC as ISO's (-4712 for 4713 BC).
+    utc_text=lambda v: f"CAST({v} AT TIME ZONE 'UTC' AS VARCHAR)",
     real_text=lambda v: (
         "[_s FOR _s IN ["
         + ", ".join(f"printf('%.{n}e', {v})" for n in range(9))
@@ -184,6 +192,10 @@ DUCKDB = Engine(
         f"array_to_string(list_transform(regexp_extract_all({v}, '{_NUMBER_TEXT}'), "
         "LAMBDA _n : printf('%016x', CAST(CAST(CAST(_n AS DOUBLE) AS BIT) AS BIGINT))), '')"
     ),
+    # DuckDB holds a year BC to 290309 BC, its text the era after the date: 4713-01-01 (BC) 00:00:00.
+    era_in=lambda v: f"regexp_replace({v}, '^([0-9]+-[0-9]+-[0-9]+)(.*) BC$', '\\1 (BC)\\2')",
+    era_out=lambda v: f"regexp_replace({v}, '^([0-9]+-[0-9]+-[0-9]+) [(]BC[)](.*)$', '\\1\\2 BC')",
+    era_mark=" [(]BC[)]",
 )
 TRINO = Engine(
     dialects=frozenset({"trino", "athena", "presto"}),
@@ -703,8 +715,17 @@ _FULL_CLOCK = "([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]([.][0-9]{1,6})?"
 _ZONE = "[+-](0[0-9]|1[0-5])(:[0-5][0-9])?"
 
 
+def _era_out(e: Engine, text: str) -> str:
+    """The engine's text of a date or timestamp, its era as PostgreSQL writes it."""
+    return text if e.era_out is None else e.era_out(text)
+
+
 def _instant_us(e: Engine, text: str) -> str:
     """A timestamp's text as its microseconds since 2000-01-01."""
+    if e.era_mark:
+        day = e.sub(text, f"^([0-9-]+({e.era_mark})?) .*$", "\\1")
+        clock = e.sub(text, f"^[0-9-]+({e.era_mark})? (.*)$", "\\2")
+        return f"({e.days(day)} * {_DAY_US} + {_micros(e, clock)})"
     day = e.sub(text, "^([0-9-]+) .*$", "\\1")
     clock = e.sub(text, "^[0-9-]+ (.*)$", "\\1")
     return f"({e.days(day)} * {_DAY_US} + {_micros(e, clock)})"
@@ -720,13 +741,18 @@ def _spell_in(
     def form(e: Engine) -> str:
         fraction = e.full_match("v", ".*[.][0-9]+.*")
         rounds = f"m >= 0 AND m < 6 AND {fraction}" if "m" in params else "FALSE"
-        day = e.sub("v", "^([0-9]+-[0-9]+-[0-9]+).*$", chr(92) + "1")
+        # A year BC, where the engine holds one, read in its own spelling (REQ-2236).
+        dated = function != "time_in" and e.era_in is not None
+        taken = f"({pattern})( BC)?" if dated else pattern
+        text = e.era_in("v") if dated and e.era_in is not None else "v"
+        era = f"({e.era_mark})?" if dated else ""
+        day = e.sub(text, f"^([0-9]+-[0-9]+-[0-9]+{era}).*$", chr(92) + "1")
         wrong = "FALSE" if function == "time_in" else f"{e.valid_date(day)} IS NULL"
         said = _quoted('date/time field value out of range: "') + " || v || '\"'"
         by_name = _by_name(e, function, result(e))
         return (
-            f"CASE WHEN NOT ({e.full_match('v', pattern)}) THEN {by_name} WHEN {rounds} THEN {by_name} "
-            f"WHEN {wrong} THEN {e.raises('22008', said, result(e))} ELSE {read(e, 'v')} END"
+            f"CASE WHEN NOT ({e.full_match('v', taken)}) THEN {by_name} WHEN {rounds} THEN {by_name} "
+            f"WHEN {wrong} THEN {e.raises('22008', said, result(e))} ELSE {read(e, text)} END"
         )
 
     return form
@@ -760,7 +786,7 @@ def _dates() -> list[Row]:
     stamp_text = f"{_DATE} {_FULL_CLOCK}"
     return [
         _noted(_row("date_in", "v", of_date, _spell_in("date_in", _DATE, of_date, date_in, "v")), "date"),
-        _out("date_out"),
+        _noted(_row("date_out", "v", _text, lambda e: _era_out(e, e.as_text("v"))), "text"),
         _word_send_of("date_send", 4, lambda e: e.days(e.as_text("v"))),
         _noted(
             _row("time_in", "v, o, m", of_time, _spell_in("time_in", _FULL_CLOCK, of_time, time_in, "v, o, m")),
@@ -775,7 +801,10 @@ def _dates() -> list[Row]:
             ),
             "timestamp without time zone",
         ),
-        _noted(_row("timestamp_out", "v", _text, lambda e: _clean_seconds(e, e.as_text("v"))), "text"),
+        _noted(
+            _row("timestamp_out", "v", _text, lambda e: _era_out(e, _clean_seconds(e, e.as_text("v")))),
+            "text",
+        ),
         _word_send_of("timestamp_send", 8, lambda e: _instant_us(e, e.as_text("v"))),
         _noted(
             _row(
@@ -785,7 +814,10 @@ def _dates() -> list[Row]:
             "timestamp with time zone",
         ),
         _noted(
-            _row("timestamptz_out", "v", _text, lambda e: _clean_seconds(e, e.utc_text("v")) + " || '+00'"),
+            _row(
+                "timestamptz_out", "v", _text,
+                lambda e: _era_out(e, _clean_seconds(e, e.utc_text("v")) + " || '+00'"),
+            ),
             "text",
         ),
         _word_send_of("timestamptz_send", 8, lambda e: _instant_us(e, e.utc_text("v"))),

@@ -443,7 +443,7 @@ TYPE_FORMS = {
     1083: _TIME,
     1114: f"{_DATE} {_TIME}",
     1184: f"{_DATE} {_TIME}{_ZONE_OFFSET}",
-    1186: r"(?=.)(-?\d+ (year|mon|day)s? ?)*(-?\d+:\d{2}:\d{2}(\.\d{1,6})?)?",
+    1186: r"(?=.)([+-]?\d+ (year|mon|day)s? ?)*([+-]?\d+:\d{2}:\d{2}(\.\d{1,6})?)?",
     1266: f"{_TIME}{_ZONE_OFFSET}",
     2950: "[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}",
     2970: _SNAPSHOT,
@@ -2459,6 +2459,21 @@ def value_form(name: str, oid: int, sample: str) -> str:
         fields = len(re.findall(rf"{_FIELD}(?:,|\)$)", sample[1:]))
         return rf"\({_FIELD}(?:,{_FIELD}){{{fields - 1}}}\)"
     return _shape(sample)
+
+
+def type_form_difference(want: dict[str, Any], got: dict[str, Any]) -> str | None:
+    """How an answer compared by its types alone differs from PostgreSQL's; None if it does not: a
+    one-row answer's NULLs are PostgreSQL's, and each value of a type with a text form
+    (``TYPE_FORMS``) is in that form, as a timestamptz is a date, a time and a zone offset."""
+    nulls = _null_difference(want, got)
+    if nulls is not None:
+        return nulls
+    for row in got["rows"]:
+        for value, oid in zip(row, got["fields"], strict=True):
+            if value is not None and oid in TYPE_FORMS:
+                if re.fullmatch(TYPE_FORMS[oid], value, re.DOTALL) is None:
+                    return f"{value!r} is not the text form of type {oid}"
+    return None
 
 
 def form_check(name: str, want: dict[str, Any], got: dict[str, Any]) -> tuple[bool, str | None]:

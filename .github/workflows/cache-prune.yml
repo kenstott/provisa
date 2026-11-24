@@ -1,0 +1,90 @@
+# Prunes the GitHub Actions cache (REQ-1989). The repository has a 10 GB cache quota; a Docker
+# image cache (images-*, 4-5 GB) saved on a short-lived branch evicted the pinned Trino plugin jar
+# cache (trino-plugins-*), and the runs after it re-downloaded the jars from Maven Central and were
+# refused with HTTP 429. lane.yml saves image caches only on main and release/*; this workflow
+# removes what is left over:
+# - on a branch's deletion, every cache saved on that branch;
+# - on the schedule, every cache whose branch no longer exists, and every images-* cache saved on
+#   a ref other than main or release/* (one saved before lane.yml stopped saving them).
+name: Cache prune
+
+on:
+  delete:
+  schedule:
+    - cron: '17 */6 * * *'
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: cache-prune
+  cancel-in-progress: false
+
+jobs:
+  deleted-branch:
+    name: caches of the deleted branch
+    if: github.event_name == 'delete' && github.event.ref_type == 'branch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+      BRANCH: ${{ github.event.ref }}
+    steps:
+      - name: Delete the branch's caches
+        run: |
+          set -euo pipefail
+          ids="$(gh api --paginate "repos/$REPO/actions/caches?ref=refs/heads/$BRANCH&per_page=100" \
+            --jq '.actions_caches[] | "\(.id) \(.key)"')"
+          if [ -z "$ids" ]; then
+            echo "no caches on refs/heads/$BRANCH"
+            exit 0
+          fi
+          while read -r id key; do
+            echo "delete $id $key (refs/heads/$BRANCH)"
+            gh api -X DELETE "repos/$REPO/actions/caches/$id"
+          done <<< "$ids"
+
+  sweep:
+    name: sweep caches of gone branches and branch image caches
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+    steps:
+      - name: Delete caches of gone branches and image caches off main and release/*
+        run: |
+          set -euo pipefail
+          branches="$(gh api --paginate "repos/$REPO/branches?per_page=100" --jq '.[].name')"
+          caches="$(gh api --paginate "repos/$REPO/actions/caches?per_page=100" \
+            --jq '.actions_caches[] | "\(.id) \(.ref) \(.key)"')"
+          [ -n "$caches" ] || { echo "no caches"; exit 0; }
+          while read -r id ref key; do
+            reason=""
+            case "$ref" in
+              refs/heads/*)
+                branch="${ref#refs/heads/}"
+                if ! grep -qxF -- "$branch" <<< "$branches"; then
+                  reason="branch gone"
+                fi
+                ;;
+            esac
+            if [ -z "$reason" ]; then
+              case "$key" in
+                images-*)
+                  case "$ref" in
+                    refs/heads/main|refs/heads/release/*) ;;
+                    *) reason="image cache off main and release/*" ;;
+                  esac
+                  ;;
+              esac
+            fi
+            if [ -n "$reason" ]; then
+              echo "delete $id $key ($ref): $reason"
+              gh api -X DELETE "repos/$REPO/actions/caches/$id"
+            fi
+          done <<< "$caches"
