@@ -1372,11 +1372,22 @@ async def _resolve_pk_from_sources() -> None:
         from provisa.federation.replica_routing import kept_sources
 
         _kept = await kept_sources(state)  # REQ-2031: never contacted, its keys never re-read
+
+        def _keyed_at_seed(row: Any) -> bool:
+            # An ontology table is a view under another name (REQ-2163), and a computed meta view
+            # restates no table of its name (META_COMPUTED_VIEWS, REQ-2219): there is no relation
+            # of its name to reflect, and its key was recorded when it was seeded
+            # (_register_admin_view).
+            return row["source_id"] == "provisa-admin" and (
+                row["domain_id"] == ONTOLOGY_DOMAIN_ID
+                or (row["domain_id"] == "meta" and row["table_name"] in META_COMPUTED_VIEWS)
+            )
+
         # The control plane's own tables, each schema's read in one pass (reflect_columns_many):
         # one reflection a table repeated the catalog-wide lookups every reflection makes.
         _admin_schemas: dict[str, list[str]] = {}
         for _pk_t in _pk_rows:
-            if _pk_t["source_id"] == "provisa-admin" and _pk_t["domain_id"] != ONTOLOGY_DOMAIN_ID:
+            if _pk_t["source_id"] == "provisa-admin" and not _keyed_at_seed(_pk_t):
                 _registered_as = str(_pk_t["table_name"])
                 _admin_schemas.setdefault(_pk_t["schema_name"], []).append(
                     _OPS_LOG_BASE_TABLE.get(_registered_as, _registered_as)
@@ -1388,10 +1399,7 @@ async def _resolve_pk_from_sources() -> None:
         for _pk_t in _pk_rows:
             if _pk_t["source_id"] in _kept:
                 continue
-            if _pk_t["source_id"] == "provisa-admin" and _pk_t["domain_id"] == ONTOLOGY_DOMAIN_ID:
-                # REQ-2163: an ontology table is a view under another name (``_terms`` is
-                # ``_terms_ontology``), its key recorded when it is seeded, from the table it
-                # restates (_register_admin_view): there is no relation of its name to reflect.
+            if _keyed_at_seed(_pk_t):
                 continue
             primary: list[str]
             alternate: frozenset[str] = frozenset()

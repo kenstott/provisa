@@ -33,6 +33,8 @@ from provisa.core import offer_grant, offer_hooks
 from provisa.core.repositories import data_product_offer as offers
 from provisa.core.repositories.data_product_offer import OfferRefused
 from provisa.entitlements import store
+from provisa.entitlements.lists import HeldEntitlements, HeldList
+from provisa.entitlements.runtime import entitlements_scope
 from tests.unit.test_data_product_offers import (
     _NOW,
     _anyone,
@@ -549,10 +551,30 @@ async def test_a_signed_in_owner_still_decides_unsigned_as_themselves(
         async with db.acquire() as conn:
             held = await _bid(conn, await _default(conn))
         front_door(db)
+        # REQ-2219 (amended 2026-11-23): o1 owns c360 by a data_product_owner row naming it, on
+        # the owner role o1 acts as, which holds the capability.
+        state = _app_state(db)
+        state.roles["owner"] = {"capabilities": ["data_product_owner"]}
+        state.held_entitlements = {
+            "o1": HeldEntitlements(
+                lists=(
+                    HeldList(
+                        "owner", "data_products", ("sales.c360",), capability="data_product_owner"
+                    ),
+                )
+            )
+        }
+        state.data_product_refs = (("c360", "sales"),)
+        state.role_owner_rows = {}
+        monkeypatch.setattr(router, "_state", lambda: state)
         monkeypatch.setattr(router, "may_grant", lambda *_a: None)
-        answer = await _post(
-            {"request_id": held["request_id"], "outcome": "accepted"}, _request("o1", "owner")
+        identity = SimpleNamespace(
+            user_id="o1", acting_roles=["owner"], raw_claims={}, entitlements_claim="entitlements"
         )
+        with entitlements_scope(identity):
+            answer = await _post(
+                {"request_id": held["request_id"], "outcome": "accepted"}, _request("o1", "owner")
+            )
         assert answer["status"] == "accepted"
         async with db.acquire() as conn:
             stored = await offers.get_bid(conn, held["id"])
