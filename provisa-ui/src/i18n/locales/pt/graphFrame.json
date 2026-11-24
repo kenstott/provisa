@@ -21,6 +21,7 @@
     "addToFavorites": "Adicionar aos favoritos",
     "autoImputeOn": "A inferência automática de relacionamentos está ativada. Clique para desativar.",
     "autoImputeOff": "Imputar automaticamente relacionamentos entre nós visíveis",
+    "relNotImputed": "{{type}} não inferido: {{error}}",
     "groupTooltip": "Agrupar nós por atributo (clique duas vezes em uma envoltória para recolher; clique duas vezes no nó recolhido para expandir)",
     "groupPlaceholder": "⬡ agrupar",
     "wrapCellText": "Quebrar texto da célula",

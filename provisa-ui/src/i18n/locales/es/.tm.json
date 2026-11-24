@@ -3283,6 +3283,7 @@
   "es/graphFrame.json::graphFrame.metaRows_one": "{{count}} row",
   "es/graphFrame.json::graphFrame.metaRows_other": "{{count}} rows",
   "es/graphFrame.json::graphFrame.pinToTop": "Pin to top",
+  "es/graphFrame.json::graphFrame.relNotImputed": "{{type}} not imputed: {{error}}",
   "es/graphFrame.json::graphFrame.removeFromFavorites": "Remove from favorites",
   "es/graphFrame.json::graphFrame.run": "Run",
   "es/graphFrame.json::graphFrame.running": "Running…",
