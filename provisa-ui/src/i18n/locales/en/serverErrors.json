@@ -623,9 +623,11 @@
     },
     "sparql": {
       "columns_not_inferred": "Could not infer columns: probe returned no rows and no SELECT variables found.",
+      "credential_invalid": "Source '{{source}}' declares an incomplete {{kind}} credential: a bearer credential needs its token, a basic one its username and password (the kinds are bearer and basic)",
+      "no_select_variables": "The query names no SELECT variables (SELECT * or not a SELECT query): its columns cannot be read from it",
+      "own_endpoint_needs_credential": "Source '{{source}}' reads Provisa's own SPARQL endpoint and declares no credential: declare the bearer token or username and password of a Provisa account kept for the service, whose roles bound what it reads",
       "probe_failed": "SPARQL endpoint probe failed: {{error}}",
-      "source_not_found": "SPARQL source '{{source_id}}' not found",
-      "no_select_variables": "The query names no SELECT variables (SELECT * or not a SELECT query): its columns cannot be read from it"
+      "source_not_found": "SPARQL source '{{source_id}}' not found"
     },
     "subscribe": {
       "avro_topic_without_registry": "Topic '{{topic}}' carries Avro messages, and its source names no schema registry to read them with: set the source's schema registry URL",

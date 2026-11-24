@@ -623,9 +623,11 @@
     },
     "sparql": {
       "columns_not_inferred": "לא ניתן היה להסיק עמודות: הבדיקה לא החזירה שורות ולא נמצאו משתני SELECT.",
+      "credential_invalid": "המקור '{{source}}' מצהיר על אישור גישה {{kind}} חלקי: אישור bearer צריך את האסימון שלו, ואישור basic את שם המשתמש והסיסמה (הסוגים הם bearer ו-basic)",
+      "no_select_variables": "השאילתה אינה מציינת משתני SELECT (SELECT * או שאינה שאילתת SELECT): לא ניתן לקרוא ממנה את העמודות",
+      "own_endpoint_needs_credential": "המקור '{{source}}' קורא את נקודת הקצה SPARQL של Provisa עצמה ואינו מצהיר על אישור גישה: הצהירו על אסימון bearer או על שם משתמש וסיסמה של חשבון Provisa המוחזק עבור השירות, שתפקידיו תוחמים את מה שהוא קורא",
       "probe_failed": "בדיקת נקודת הקצה של SPARQL נכשלה: {{error}}",
-      "source_not_found": "מקור SPARQL '{{source_id}}' לא נמצא",
-      "no_select_variables": "השאילתה אינה מציינת משתני SELECT (SELECT * או שאינה שאילתת SELECT): לא ניתן לקרוא ממנה את העמודות"
+      "source_not_found": "מקור SPARQL '{{source_id}}' לא נמצא"
     },
     "subscribe": {
       "avro_topic_without_registry": "הנושא '{{topic}}' נושא הודעות Avro, והמקור שלו אינו מציין רישום סכמות לקריאתן: הגדירו את כתובת ה-URL של רישום הסכמות של המקור",

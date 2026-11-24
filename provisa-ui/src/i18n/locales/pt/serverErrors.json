@@ -623,9 +623,11 @@
     },
     "sparql": {
       "columns_not_inferred": "Não foi possível inferir colunas: a sondagem não retornou linhas e nenhuma variável SELECT foi encontrada.",
+      "credential_invalid": "A fonte '{{source}}' declara uma credencial {{kind}} incompleta: uma credencial bearer precisa do seu token, e uma basic do usuário e da senha (os tipos são bearer e basic)",
+      "no_select_variables": "A consulta não nomeia variáveis SELECT (SELECT * ou não é uma consulta SELECT): suas colunas não podem ser lidas dela",
+      "own_endpoint_needs_credential": "A fonte '{{source}}' lê o endpoint SPARQL do próprio Provisa e não declara nenhuma credencial: declare o token bearer ou o usuário e a senha de uma conta Provisa mantida para o serviço, cujos papéis limitam o que ela lê",
       "probe_failed": "Falha na sondagem do endpoint SPARQL: {{error}}",
-      "source_not_found": "Fonte SPARQL '{{source_id}}' não encontrada",
-      "no_select_variables": "A consulta não nomeia variáveis SELECT (SELECT * ou não é uma consulta SELECT): suas colunas não podem ser lidas dela"
+      "source_not_found": "Fonte SPARQL '{{source_id}}' não encontrada"
     },
     "subscribe": {
       "avro_topic_without_registry": "O tópico '{{topic}}' contém mensagens Avro e sua origem não indica nenhum registro de esquemas para lê-las: defina a URL do registro de esquemas da origem",

@@ -623,9 +623,11 @@
     },
     "sparql": {
       "columns_not_inferred": "無法推斷欄位：探測未傳回任何資料列，亦找不到 SELECT 變數。",
+      "credential_invalid": "資料來源 '{{source}}' 聲明的 {{kind}} 憑證不完整：bearer 憑證需要權杖，basic 憑證需要用戶名稱和密碼（類型為 bearer 和 basic）",
+      "no_select_variables": "查詢沒有指定 SELECT 變數（SELECT * 或不是 SELECT 查詢）：無法從中讀取其欄位",
+      "own_endpoint_needs_credential": "資料來源 '{{source}}' 讀取 Provisa 本身的 SPARQL 端點，但未聲明憑證：請聲明為該服務保留的 Provisa 帳戶的 bearer 權杖或用戶名稱和密碼，其角色限定它能讀取的內容",
       "probe_failed": "SPARQL 端點探測失敗：{{error}}",
-      "source_not_found": "找不到 SPARQL 數據來源「{{source_id}}」",
-      "no_select_variables": "查詢沒有指定 SELECT 變數（SELECT * 或不是 SELECT 查詢）：無法從中讀取其欄位"
+      "source_not_found": "找不到 SPARQL 數據來源「{{source_id}}」"
     },
     "subscribe": {
       "avro_topic_without_registry": "主題「{{topic}}」包含 Avro 訊息，但其資料來源未指定用於讀取的綱要註冊表：請設定資料來源的綱要註冊表 URL",

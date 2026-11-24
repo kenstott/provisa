@@ -623,9 +623,11 @@
     },
     "sparql": {
       "columns_not_inferred": "कॉलम का अनुमान नहीं लगाया जा सका: प्रोब ने कोई पंक्ति नहीं लौटाई और कोई SELECT वेरिएबल नहीं मिला।",
+      "credential_invalid": "स्रोत '{{source}}' एक अधूरा {{kind}} क्रेडेंशियल घोषित करता है: bearer क्रेडेंशियल को उसका टोकन चाहिए, basic को उपयोगकर्ता नाम और पासवर्ड (प्रकार bearer और basic हैं)",
+      "no_select_variables": "क्वेरी कोई SELECT वेरिएबल नहीं बताती (SELECT * या SELECT क्वेरी नहीं): इससे इसके कॉलम नहीं पढ़े जा सकते",
+      "own_endpoint_needs_credential": "स्रोत '{{source}}' Provisa का अपना SPARQL एंडपॉइंट पढ़ता है और कोई क्रेडेंशियल घोषित नहीं करता: सेवा के लिए रखे गए Provisa खाते का bearer टोकन या उपयोगकर्ता नाम और पासवर्ड घोषित करें, जिसकी भूमिकाएँ तय करती हैं कि वह क्या पढ़ता है",
       "probe_failed": "SPARQL एंडपॉइंट प्रोब विफल हुआ: {{error}}",
-      "source_not_found": "SPARQL स्रोत '{{source_id}}' नहीं मिला",
-      "no_select_variables": "क्वेरी कोई SELECT वेरिएबल नहीं बताती (SELECT * या SELECT क्वेरी नहीं): इससे इसके कॉलम नहीं पढ़े जा सकते"
+      "source_not_found": "SPARQL स्रोत '{{source_id}}' नहीं मिला"
     },
     "subscribe": {
       "avro_topic_without_registry": "टॉपिक '{{topic}}' में Avro संदेश हैं, और उसका स्रोत उन्हें पढ़ने के लिए कोई स्कीमा रजिस्ट्री नहीं बताता: स्रोत का स्कीमा रजिस्ट्री URL सेट करें",
