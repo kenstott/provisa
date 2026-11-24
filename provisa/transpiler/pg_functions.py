@@ -733,7 +733,8 @@ def _integer_bits(value: exp.Expr, typmod: exp.Expr) -> exp.Expr:
     bits = exp.BitwiseAnd(
         this=exp.Cast(this=value.copy(), to=huge), expression=exp.Paren(this=mask)
     )
-    binary = exp.Anonymous(this="FORMAT", expressions=[exp.Literal.string("{:b}"), bits])
+    # DuckDB's bin, not its format of the name, which this module reads as PostgreSQL's format.
+    binary = exp.Anonymous(this="BIN", expressions=[bits])
     padded = exp.Anonymous(this="LPAD", expressions=[binary, width.copy(), exp.Literal.string("0")])
     return exp.Cast(this=padded, to=exp.DataType.build("BIT"))
 

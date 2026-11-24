@@ -64,6 +64,14 @@ ANSWERED: dict[str, list[str | None]] = {
     _call("char", "'日本語テキスト😀'::text"): ["\\346"],
     # format is not strict: a NULL argument formats as ''
     _call("format", "'abc'::text", "NULL::integer"): ["abc"],
+    _call("format", "'%s-%L'::text", "'x'::text", "NULL::text"): ["x-NULL"],
+    _call("format", "'%3$s %1$s'::text", "'a'::text", "'b'::text", "'c'::text"): ["c a"],
+    _call("format", "'|%-4s|%4s|'::text", "'a'::text", "'b'::text"): ["|a   |   b|"],
+    _call("format", "'%I.%L'::text", "'A b'::text", "'it''s'::text"): ["\"A b\".'it''s'"],
+    _call("format", "'100%%'::text"): ["100%"],
+    _call("string_to_array", "'a,b,,c'::text", "','::text", "''::text"): ["{a,b,NULL,c}"],
+    _call("string_to_array", "''::text", "','::text"): ["{}"],
+    _of_rows("max", "('ab'::character(3)), ('b'::character(3))"): ["b  "],
     # a NULL path element is skipped
     _call("jsonb_delete", f"{_OBJECT}::jsonb", "VARIADIC '{NULL}'::text[]"): [
         '{"a": 1, "b": [1, 2]}'
@@ -72,6 +80,26 @@ ANSWERED: dict[str, list[str | None]] = {
     _call("position", "''::text", "'abc'::text"): ["0"],
     # reverse is by code point
     _call("reverse", "'été'::text"): ["́et́e"],
+}
+
+
+#: statement -> the SQLSTATE and message raised: PostgreSQL 17's, or the refusal of a call no
+#: form here answers as PostgreSQL does.
+RAISED: dict[str, tuple[str, str]] = {
+    _call("format", "'%I'::text", "NULL::text"): (
+        "22004",
+        "null values cannot be formatted as an SQL identifier",
+    ),
+    _call("format", "'%s %s'::text", "'a'::text"): ("22023", "too few arguments for format()"),
+    _call("format", "'%x'::text", "'a'::text"): (
+        "22023",
+        'unrecognized format() type specifier "x"',
+    ),
+    # character(2) and character(3) rows keep each their own padding, which DuckDB does not hold
+    _of_rows("max", "('ab'::character(3)), ('b'::character(2))"): (
+        "0A000",
+        "max() has no form on duckdb",
+    ),
 }
 
 
@@ -91,3 +119,14 @@ def test_an_edge_answers_as_postgresql_answers_it(conn: Any, sql: str, rows: lis
     )
     got = [res.get_value(r, 0) for r in range(res.ntuples)]
     assert [None if v is None else v.decode() for v in got] == rows
+
+
+@pytest.mark.parametrize(("sql", "raised"), list(RAISED.items()), ids=list(RAISED))
+def test_an_edge_raises_as_postgresql_raises_it(conn: Any, sql: str, raised: tuple[str, str]):
+    res = _result(conn, sql)
+    assert res.status == pq.ExecStatus.FATAL_ERROR, "answered where PostgreSQL raises"
+    said = (
+        _field(res, pq.DiagnosticField.SQLSTATE),
+        _field(res, pq.DiagnosticField.MESSAGE_PRIMARY),
+    )
+    assert said == raised
