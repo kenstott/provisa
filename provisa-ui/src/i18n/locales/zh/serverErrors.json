@@ -560,6 +560,7 @@
       "incremental_no_change": "代码源没有针对 {{table}} 的 @change 函数。请使用 @change table={{table}} 声明一个。",
       "incremental_needs_rebuild_every": "{{table}} 采用增量维护，因此会按时钟完整重建。请在“完整重建间隔”中设置间隔（秒）。",
       "table_derived_from_function": "表 '{{name}}' 派生自函数：通过关闭该函数的表来删除它，其列和参数在函数上编辑",
+      "table_has_dependents": "表 '{{name}}' 仍被其他对象读取或引用：请先停用或修改这些对象",
       "table_withdrawn": "表 {{table}} 已撤下",
       "table_put_back": "表 {{table}} 已恢复",
       "source_withdrawn": "源 {{source}} 已撤下",
@@ -573,7 +574,8 @@
       "table_domain_required": "表 '{{table}}' 未指定域：每个表都注册在一个域中",
       "table_state_from_function": "表 '{{table}}' 派生自函数 '{{name}}'，并具有其发布状态：不能单独撤回或恢复",
       "table_region_from_function": "表 '{{table}}' 派生自函数 '{{name}}'，并沿用其区域：不能单独将其移动到其他区域",
-      "table_name_reserved": "表名 '{{table}}' 为保留名称：域的命令在 'commands' 下提供。请使用其他名称或别名注册该表。"
+      "table_name_reserved": "表名 '{{table}}' 为保留名称：域的命令在 'commands' 下提供。请使用其他名称或别名注册该表。",
+      "file_types_differ": "模式 {{glob}} 匹配了多种类型的文件（{{types}}）；同一张表的文件必须为同一种类型。"
     },
     "secrets": {
       "env_reference_object_locked": "此对象属于运营方：它读取服务器自身的环境，无法在此更改。请改为添加您自己的对象。",
@@ -690,7 +692,8 @@
       "undefined_variable_property": "{{clause}} 读取了 {{variable}}，但语句中没有任何部分绑定它：变量由 MATCH 模式、WITH、UNWIND 或 CALL 绑定。此处已绑定：{{bound}}。 您是指 {{suggestion}} 吗？{{owner}} 绑定到 :{{label}}，它有属性 {{variable}}。",
       "undefined_variable_properties": "{{clause}} 读取了 {{variable}}，但语句中没有任何部分绑定它：变量由 MATCH 模式、WITH、UNWIND 或 CALL 绑定。此处已绑定：{{bound}}。 您是指 {{suggestions}} 吗？它们各自绑定到具有属性 {{variable}} 的标签。",
       "non_finite_number": "答案包含 JSON 无法表示的数字：{{column}} 为 {{value}}。",
-      "try_cast_needs_postgres_16": "对可能无法转换的值使用 toInteger、toFloat 和 toBoolean，需要此引擎上的 PostgreSQL 16 或更高版本。"
+      "try_cast_needs_postgres_16": "对可能无法转换的值使用 toInteger、toFloat 和 toBoolean，需要此引擎上的 PostgreSQL 16 或更高版本。",
+      "relationship_unread": "有一项关系无法读取，因此不显示其边：{{statement}}：{{reason}}"
     },
     "requests": {
       "approver_outside_domains": "你批准关系的权限未覆盖此请求涉及的任何域（{{domains}}）",

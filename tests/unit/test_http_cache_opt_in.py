@@ -61,7 +61,8 @@ def _frozen_clock(monkeypatch):
 def _stored(age_seconds: int):
     from provisa.cache.store import CachedResult
 
-    return CachedResult(data=b"", cached_at=_NOW - age_seconds, ttl=300)
+    # As check_cache returns a hit: named by the key and tenant it was read under (REQ-1867).
+    return CachedResult(data=b"", cached_at=_NOW - age_seconds, ttl=300, key="k", tenant_id=None)
 
 
 # -- the standard header ---------------------------------------------------------------------------

@@ -562,6 +562,10 @@ def _route_publish(monkeypatch, snapshot, db, exporters: dict) -> None:
             async with db.acquire() as conn:
                 yield conn
 
+        def advisory_lock(self, key: int):
+            # The org's publish lock (publishing.publish_lock_key), on the same store.
+            return db.advisory_lock(key)
+
     async def _export_config(org_id, *, only=None):
         # REQ-2118: the bindings are kept per target, under the target's id. REQ-2122: each
         # target's catalog serves the snapshot's domains, so its tables are published to it.
@@ -664,6 +668,47 @@ async def test_publish_snapshot_loads_persists_and_prunes_bindings(
         stored = await catalog_binding.load_bindings(conn, "atlas")
     # The capture updated the physical key, and the departed asset's binding is pruned.
     assert stored == {uri: ("guid-1", f"{TABLE_FQN}@provisa")}
+
+
+@pytest.mark.asyncio
+async def test_two_publishes_of_one_org_send_one_after_the_other(
+    snapshot, control_plane, monkeypatch
+):
+    """A **Publish now** and the scheduled reconcile (or the drain) of one org, at once, take
+    turns at the catalog: Atlas answered two concurrent publishes of one snapshot with 409 on its
+    typedefs and 500 on its glossary and entity bulk (release 512, test_metadata_export_atlas_e2e).
+    Both run on one event loop, as two scheduled jobs do, and neither starves the other."""
+    import asyncio
+
+    from provisa.api.metadata_export import publishing
+    from provisa.api.metadata_export.provider import PublishResult
+
+    db = control_plane.org()
+    sending = 0
+    most_at_once = 0
+
+    class _Exporter:
+        stored_bindings: dict = {}
+        needs_export_views = False
+        binds_products = True
+
+        async def publish(self, published_snapshot):
+            nonlocal sending, most_at_once
+            sending += 1
+            most_at_once = max(most_at_once, sending)
+            await asyncio.sleep(0.5)
+            sending -= 1
+            return PublishResult(provider_name="atlas", published={"table": 1})
+
+    _route_publish(monkeypatch, snapshot, db, {"atlas": _Exporter()})
+
+    first, second = await asyncio.wait_for(
+        asyncio.gather(publishing.publish_snapshot("acme"), publishing.publish_snapshot("acme")),
+        timeout=30,
+    )
+
+    assert first["atlas"].ok and second["atlas"].ok
+    assert most_at_once == 1
 
 
 @pytest.mark.asyncio
@@ -850,6 +895,10 @@ async def test_a_retired_product_is_sent_only_where_it_was_published(
         async def acquire(self):
             async with db.acquire() as conn:
                 yield conn
+
+        def advisory_lock(self, key: int):
+            # The org's publish lock (publishing.publish_lock_key), on the same store.
+            return db.advisory_lock(key)
 
     def product(pid: str, status: str) -> DataProductAsset:
         return DataProductAsset(

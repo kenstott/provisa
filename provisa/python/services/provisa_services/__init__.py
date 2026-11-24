@@ -73,6 +73,7 @@ __all__ = [
     "Order",
     "ReadContext",
     "TableConnection",
+    "TableFlight",
     "TableRef",
     "ServiceError",
     "audit",
@@ -425,16 +426,84 @@ class TableConnection:
 
 
 @dataclass(frozen=True)
+class TableFlight:
+    """REQ-2270: how a function on a remote host reaches its table over Arrow Flight SQL: the
+    server's ``uri``, and the bearer ``token`` good for this call only, presented with the call's
+    id (``call``) in the ``x-provisa-call`` header. :meth:`TableRef.read` reads with it."""
+
+    uri: str
+    token: str
+    call: str
+
+
+#: The type of a Flight SQL CommandStatementQuery, as the Any it travels in names it.
+_STATEMENT_QUERY = b"type.googleapis.com/arrow.flight.protocol.sql.CommandStatementQuery"
+
+
+def _varint(value: int) -> bytes:
+    out = bytearray()
+    while True:
+        low, value = value & 0x7F, value >> 7
+        if not value:
+            out.append(low)
+            return bytes(out)
+        out.append(low | 0x80)
+
+
+def _length_delimited(number: int, data: bytes) -> bytes:
+    return _varint(number << 3 | 2) + _varint(len(data)) + data
+
+
+def _statement_command(sql: str) -> bytes:
+    """``sql`` as a Flight SQL CommandStatementQuery packed in its Any: the wire bytes of the two
+    messages, written here so the code needs nothing beyond pyarrow."""
+    statement = _length_delimited(1, sql.encode("utf-8"))  # CommandStatementQuery.query
+    return _length_delimited(1, _STATEMENT_QUERY) + _length_delimited(2, statement)
+
+
+@dataclass(frozen=True)
 class TableRef(Generic[_Row]):
     """REQ-2226: a governed Provisa table given to a ``@command`` or ``@query``, ``TableRef[Row]``
     with ``Row`` the input columns it declares. The function reads the table as the calling role,
-    so what the role cannot see it cannot read: run ``sql`` on a PostgreSQL connection made with
-    ``connection``."""
+    so what the role cannot see it cannot read. A local worker, or a remote host in a language
+    without a Flight client, runs ``sql`` on a PostgreSQL connection made with ``connection``; a
+    Python remote host, such as the Spark connector's, is given ``flight`` instead (REQ-2270) and
+    reads with :meth:`read`. Exactly one of the two is set."""
 
     ref: str
     columns: tuple[str, ...]
-    connection: TableConnection
+    connection: TableConnection | None
     sql: str
+    flight: TableFlight | None = None
+
+    def read(self) -> Any:  # a pyarrow.Table
+        """REQ-2270: the table's rows as a pyarrow Table, read over Arrow Flight SQL as the
+        calling role: ``sql`` through the server's governed pipeline, the call's token its bearer
+        credential. Refused by name for a table given over PostgreSQL."""
+        target = self.flight
+        if target is None:
+            raise ValueError(
+                f"table {self.ref!r} was given over PostgreSQL: run its sql on a connection made "
+                "with its connection"
+            )
+        import pyarrow as pa
+        from pyarrow import flight
+
+        options = flight.FlightCallOptions(
+            headers=[
+                (b"authorization", f"Bearer {target.token}".encode()),
+                (b"x-provisa-call", target.call.encode()),
+            ]
+        )
+        client = flight.FlightClient(target.uri)
+        try:
+            descriptor = flight.FlightDescriptor.for_command(_statement_command(self.sql))
+            info = client.get_flight_info(descriptor, options)
+            return pa.concat_tables(
+                [client.do_get(e.ticket, options).read_all() for e in info.endpoints]
+            )
+        finally:
+            client.close()
 
 
 @dataclass(frozen=True)

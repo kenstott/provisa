@@ -738,6 +738,14 @@ def _assertion_proposals(snapshot: MetadataSnapshot) -> list[AspectProposal]:  #
                 # carry — never_run, error, skipped — so an unexecuted check reads as unexecuted
                 # rather than as an assertion with no results yet.
                 "provisaOutcome": assertion.outcome.status,
+                # REQ-392: DataHub's run result types are all verdicts (SUCCESS, FAILURE, ERROR
+                # for a run that broke), and an unreadable results table is no run at all, so its
+                # closest representation is this property beside the state, carrying the refusal.
+                **(
+                    {"provisaOutcomeReason": assertion.outcome.reason}
+                    if assertion.outcome.reason is not None
+                    else {}
+                ),
             },
         }
         urn = _assertion_urn(assertion)
