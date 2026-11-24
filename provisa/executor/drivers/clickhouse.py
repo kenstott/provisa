@@ -15,7 +15,8 @@ directly (HTTP via clickhouse-connect) then lands a replica. The same client fam
 federation engine uses. Port defaults to the HTTP interface (8123); ``secure`` (TLS) is an optional
 ``federation_hints`` flag. A whole result is read as ClickHouse's Arrow output and handed to the
 executor as Arrow, holding the values clickhouse-connect's row read gives (REQ-2194,
-``clickhouse_arrow``); a streamed result is read as row blocks (REQ-1190).
+``clickhouse_arrow``); a streamed result is read as row blocks (REQ-1190). That read needs
+ClickHouse 26 or later, so an older server is refused at connect by name (REQ-2194).
 
 One clickhouse-connect client is one ClickHouse SESSION, and a session runs one query at a time:
 a second query on it is refused ("Attempt to execute concurrent queries within the same
@@ -47,6 +48,31 @@ from provisa.executor.drivers.clickhouse_arrow import (
     needs_types,
 )
 from provisa.executor.result import QueryResult
+
+
+# DIRECT results are read as Arrow (REQ-2194), and a server before 26 refuses UUID in Arrow output.
+MIN_SERVER_MAJOR = 26
+
+
+class UnsupportedClickHouseVersion(RuntimeError):
+    """The server is older than the ClickHouse release the Arrow read needs (REQ-2194)."""
+
+
+def require_arrow_capable(server_version: str | None) -> None:
+    """Refuse a ClickHouse server older than 26, by name and with its version (REQ-2194)."""
+    major = (server_version or "").split(".", 1)[0]
+    if not major.isdigit():
+        raise UnsupportedClickHouseVersion(
+            f"ClickHouse server reported no readable version ({server_version!r}); "
+            f"Provisa reads ClickHouse results as Arrow, which needs ClickHouse "
+            f"{MIN_SERVER_MAJOR} or later"
+        )
+    if int(major) < MIN_SERVER_MAJOR:
+        raise UnsupportedClickHouseVersion(
+            f"ClickHouse {server_version} is not supported: Provisa reads ClickHouse results as "
+            f"Arrow, which needs ClickHouse {MIN_SERVER_MAJOR} or later (earlier servers refuse "
+            f"UUID in Arrow output)"
+        )
 
 
 def _is_broken(exc: BaseException) -> bool:
@@ -85,7 +111,7 @@ class ClickHouseDriver(DirectDriver):  # REQ-986
         secure = self._extra.get("secure", "").lower() in ("1", "true", "yes")
 
         def _open() -> Any:
-            return clickhouse_connect.get_client(
+            client = clickhouse_connect.get_client(
                 host=host,
                 port=port or (8443 if secure else 8123),
                 username=user or "default",
@@ -96,6 +122,12 @@ class ClickHouseDriver(DirectDriver):  # REQ-986
                 # request the moment the last one returns it.
                 autogenerate_session_id=False,
             )
+            try:
+                require_arrow_capable(client.server_version)
+            except Exception:
+                client.close()
+                raise
+            return client
 
         self._open = _open
         # min_pool clients open now, so an unreachable source fails at registration.

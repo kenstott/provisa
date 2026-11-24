@@ -126,10 +126,13 @@ if __name__ == "__main__":
     pytest.main([__file__, "-q"])
 
 
-# A row of each type whose Arrow form is not the row read's value (REQ-2194). UUID is not here:
-# ClickHouse before 26 refuses UUID in its Arrow output.
+# A row of each type whose Arrow form is not the row read's value (REQ-2194). UUID is read as
+# Arrow from ClickHouse 26 on, the oldest server the driver accepts.
 _PARITY_SQL = """
 SELECT
+    toUUID('61f0c404-5cb3-11e7-907b-a6006ad3dba0') AS id,
+    CAST(NULL AS Nullable(UUID)) AS id_null,
+    [toUUID('00000000-0000-0000-0000-000000000001')] AS ids,
     toIPv4('1.2.3.4') AS ipv4,
     CAST(NULL AS Nullable(IPv4)) AS ipv4_null,
     toIPv6('2001:db8::1') AS ipv6,
