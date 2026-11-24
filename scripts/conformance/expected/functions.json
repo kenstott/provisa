@@ -147,13 +147,13 @@
   "opengauss": {
    "total": 3319,
    "base": {
-    "passed": 1439,
-    "wrong_answer": 187,
+    "passed": 1441,
+    "wrong_answer": 185,
     "engine_error": 858,
     "refused_by_name": 0
    },
    "edge": {
-    "served": 1093,
+    "served": 1095,
     "wrong_answer": 299,
     "engine_error": 47
    }
@@ -9614,8 +9614,6 @@
   {"case": "opengauss::bttext_pattern_cmp(text, text)", "at": "edge", "kind": "wrong_answer", "calls": 2, "statement": "SELECT pg_catalog.\"bttext_pattern_cmp\"(''::text, 'abc'::text) AS v LIMIT 1001", "edge": "text empty", "said": "None, PostgreSQL '-1'", "job": "R512-FUNCTIONS-REBASE", "since": "2026-11-23"},
   {"case": "opengauss::bttextcmp(text, text)", "at": "edge", "kind": "wrong_answer", "calls": 2, "statement": "SELECT pg_catalog.\"bttextcmp\"(''::text, 'abc'::text) AS v LIMIT 1001", "edge": "text empty", "said": "None, PostgreSQL '-1'", "job": "R512-FUNCTIONS-REBASE", "since": "2026-11-23"},
   {"case": "opengauss::bttextnamecmp(text, name)", "at": "base", "kind": "engine_error", "statement": "SELECT pg_catalog.\"bttextnamecmp\"(NULL::text, NULL::name) AS v", "said": "ERROR:  (psycopg2.errors.UndefinedFunction) function pg_catalog.bttextnamecmp(text, name) does not exist\nHINT:  No function matches the given name and argument types. You might need to add explicit type casts.\nCONTEXT:  referenced column: v\n\n[SQL: SELECT pg_catalog.\"bttextnamecmp\"(CAST(NULL AS TEXT…", "sqlstate": "42883", "job": "J1388b", "since": "2026-11-22"},
-  {"case": "opengauss::bytealike(bytea, bytea)", "at": "base", "kind": "wrong_answer", "statement": "SELECT pg_catalog.\"bytealike\"('\\xdeadbeef'::bytea, '\\xdeadbeef'::bytea) AS v", "said": "'f', PostgreSQL 't'", "job": "R512-FUNCTIONS-REBASE", "since": "2026-11-23"},
-  {"case": "opengauss::byteanlike(bytea, bytea)", "at": "base", "kind": "wrong_answer", "statement": "SELECT pg_catalog.\"byteanlike\"('\\xdeadbeef'::bytea, '\\xdeadbeef'::bytea) AS v", "said": "'t', PostgreSQL 'f'", "job": "R512-FUNCTIONS-REBASE", "since": "2026-11-23"},
   {"case": "opengauss::cardinality(anyarray)", "at": "base", "kind": "engine_error", "statement": "SELECT pg_catalog.\"cardinality\"(NULL::integer[]) AS v", "said": "ERROR:  (psycopg2.errors.UndefinedFunction) function pg_catalog.cardinality(integer[]) does not exist\nHINT:  No function matches the given name and argument types. You might need to add explicit type casts.\nCONTEXT:  referenced column: v\n\n[SQL: SELECT pg_catalog.\"cardinality\"(CAST(NULL AS INT[])) A…", "sqlstate": "42883", "job": "J1388b", "since": "2026-11-22"},
   {"case": "opengauss::cash_div_flt4(money, real)", "at": "edge", "kind": "wrong_answer", "calls": 3, "statement": "SELECT pg_catalog.\"cash_div_flt4\"('-92233720368547758.08'::money, 0.5::real) AS v LIMIT 1001", "edge": "money least", "said": "answered [('-$92,233,720,368,547,758.08',)], PostgreSQL raised 22003 ERROR:  money out of range", "job": "R512-FUNCTIONS-REBASE", "since": "2026-11-23"},
   {"case": "opengauss::cash_div_flt8(money, double precision)", "at": "edge", "kind": "wrong_answer", "calls": 3, "statement": "SELECT pg_catalog.\"cash_div_flt8\"('-92233720368547758.08'::money, 0.5::double precision) AS v LIMIT 1001", "edge": "money least", "said": "answered [('-$92,233,720,368,547,758.08',)], PostgreSQL raised 22003 ERROR:  money out of range", "job": "R512-FUNCTIONS-REBASE", "since": "2026-11-23"},
