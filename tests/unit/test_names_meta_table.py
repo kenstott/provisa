@@ -23,7 +23,7 @@ from contextlib import asynccontextmanager
 from typing import Any
 
 import pytest
-from sqlalchemy import Insert, insert, select, text
+from sqlalchemy import Insert, delete, insert, select, text
 
 from provisa.api._meta_views import _META_TABLE_VIEWS, _OPS_REPORT_VIEWS
 from provisa.api.admin.lineage_router import store_lineage_edges
@@ -229,11 +229,22 @@ class _RecordingConn:
     async def transaction(self) -> AsyncGenerator[None]:
         yield
 
-    async def execute_core(self, stmt: Any) -> None:
+    async def execute_core(self, stmt: Any) -> Any:
         self.statements.append(stmt)
+        return _NoRowsStored()
 
     async def execute_core_many(self, stmt: Any, rows: list[dict[str, Any]]) -> None:
         self.statements.append(stmt)
+
+
+class _NoRowsStored:
+    """The result of a read of a table that holds no rows yet."""
+
+    def mappings(self) -> "_NoRowsStored":
+        return self
+
+    def all(self) -> list[Any]:
+        return []
 
 
 @pytest.mark.asyncio
@@ -375,6 +386,132 @@ async def test_two_workers_replacing_the_table_at_once_do_not_collide(
         await second.close()
     # The second worker's replacement, whole: it cleared what the first committed.
     assert stored == 1
+
+
+def _model(tables: dict[int, list[str]], *, renamed: dict[int, str] | None = None) -> list[NameRow]:
+    """A model's names: each table's SQL and GraphQL rows, and each of its columns' SQL rows.
+    ``renamed`` gives a table an operator-set alias."""
+    renamed = renamed or {}
+    rows: list[NameRow] = []
+    for tid, columns in tables.items():
+        name = renamed.get(tid, f"t{tid}")
+        label = f"crm.public.t{tid}"
+        for surface in ("sql", "graphql_field"):
+            rows.append(
+                NameRow(
+                    "table",
+                    str(tid),
+                    surface,
+                    name,
+                    f"t{tid}",
+                    label,
+                    domain_id="sales",
+                    table_id=tid,
+                    alias=tid in renamed,
+                )
+            )
+        for col in columns:
+            rows.append(
+                NameRow(
+                    "column",
+                    f"{tid}:{col}",
+                    "sql",
+                    col,
+                    col,
+                    f"{label}.{col}",
+                    domain_id="sales",
+                    table_id=tid,
+                )
+            )
+    # Checked as a build checks them: a reserved column name carries its warning.
+    return list(build_names_table(rows).rows)
+
+
+async def _stored_names(conn: Any) -> list[tuple]:
+    from provisa.core.schema_org import model_names
+
+    return [
+        tuple(r)
+        for r in (
+            await conn.execute_core(
+                select(*model_names.c).order_by(
+                    model_names.c.object_kind, model_names.c.object_id, model_names.c.surface
+                )
+            )
+        ).fetchall()
+    ]
+
+
+class _CountingConn:
+    """A connection that counts the rows each statement sent beside it carries."""
+
+    def __init__(self, conn: Any) -> None:
+        self._conn = conn
+        self.sent: list[tuple[str, int]] = []
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._conn, name)
+
+    async def execute_core_many(self, stmt: Any, rows: list[dict[str, Any]]) -> None:
+        self.sent.append((type(stmt).__name__, len(rows)))
+        await self._conn.execute_core_many(stmt, rows)
+
+
+@pytest.mark.asyncio
+async def test_a_registration_writes_only_the_changed_tables_names_and_matches_a_full_rebuild(
+    control_plane,
+):
+    """REQ-194, REQ-1914: a build writes the stored names table as a change to what the last
+    build stored, so a registration writes the names of the tables it changed. The table it
+    leaves is the one a build writing every name into an empty table leaves."""
+    from provisa.core.schema_org import model_names
+
+    before = _model({t: ["id", "amount", "status"] for t in range(1, 41)})
+    # One table registered, one dropped, one column renamed, one table given an alias, one
+    # column given a reserved name (a warning that changes).
+    changed = {t: ["id", "amount", "status"] for t in range(1, 41) if t != 7}
+    changed[3] = ["id", "total", "status"]
+    changed[9] = ["id", "amount", "order"]
+    changed[41] = ["id", "label"]
+    after = _model(changed, renamed={12: "accounts"})
+
+    db = control_plane.org()
+    try:
+        async with db.acquire() as conn:
+            # The full rebuild: every name of ``after`` into an empty table.
+            await write_names_table(conn, after)
+            full = await _stored_names(conn)
+            await conn.execute_core(delete(model_names))
+
+            await write_names_table(conn, before)
+            counting = _CountingConn(conn)
+            await write_names_table(counting, after)
+            incremental = await _stored_names(conn)
+    finally:
+        await db.close()
+
+    assert incremental == full
+    assert len(full) == len(after)
+    # Deleted: t7 (2 table rows, 3 columns), t3.amount, t9.status, t12's 2 table rows.
+    # Inserted: t3.total, t9.order, t12's 2 table rows, t41 (2 table rows, 2 columns).
+    assert counting.sent == [("Delete", 9), ("Insert", 8)]
+
+
+@pytest.mark.asyncio
+async def test_a_build_that_changed_no_name_writes_none(control_plane):
+    names = _model({t: ["id", "amount"] for t in range(1, 21)})
+    db = control_plane.org()
+    try:
+        async with db.acquire() as conn:
+            await write_names_table(conn, names)
+            stored = await _stored_names(conn)
+            counting = _CountingConn(conn)
+            await write_names_table(counting, names)
+            again = await _stored_names(conn)
+    finally:
+        await db.close()
+    assert again == stored
+    assert counting.sent == [("Delete", 0), ("Insert", 0)]
 
 
 @pytest.mark.asyncio
