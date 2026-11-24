@@ -82,6 +82,7 @@ class _Recorder:
         self._proc = psutil.Process()
         self._out = out
         self._lock = threading.Lock()
+        self._event_lock = threading.RLock()
         self._t0 = time.perf_counter()
         self._label = "interpreter"
         self._peak = self._rss()
@@ -113,7 +114,13 @@ class _Recorder:
         self._hooks.append(name)
 
     def event(self, closes: str, opens: str, *, mark: bool = False) -> None:
-        """Close the interval in progress, attributing it to ``closes``; open ``opens``."""
+        """Close the interval in progress, attributing it to ``closes``; open ``opens``. Events
+        come from the process loop, the connection loops' threads and a signal handler, so each
+        is recorded and written whole under one (re-entrant) lock."""
+        with self._event_lock:
+            self._event(closes, opens, mark)
+
+    def _event(self, closes: str, opens: str, mark: bool) -> None:
         rss = self._rss()
         with self._lock:
             peak = max(self._peak, rss)
