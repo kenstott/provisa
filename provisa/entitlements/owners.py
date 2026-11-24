@@ -147,7 +147,9 @@ async def owned_objects(conn: "Connection", kind: OwnedKind) -> Owned:
         spellings = await domain_spellings(conn)
         spellings.pop("*")
         # A retired domain has no stewards (its row is kept under a key of its own, REQ-2248).
-        for r in await conn.execute_core(select(domains.c.id).where(domains.c.retired.is_(True))):
+        for r in (
+            await conn.execute_core(select(domains.c.id).where(domains.c.retired.is_(True)))
+        ).fetchall():
             spellings.pop(r.id)
         return Owned(
             {d: tuple((s.lower(),) for s in names) for d, names in spellings.items()},
