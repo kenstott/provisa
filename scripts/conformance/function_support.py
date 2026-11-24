@@ -2461,6 +2461,21 @@ def value_form(name: str, oid: int, sample: str) -> str:
     return _shape(sample)
 
 
+def type_form_difference(want: dict[str, Any], got: dict[str, Any]) -> str | None:
+    """How an answer compared by its types alone differs from PostgreSQL's; None if it does not: a
+    one-row answer's NULLs are PostgreSQL's, and each value of a type with a text form
+    (``TYPE_FORMS``) is in that form, as a timestamptz is a date, a time and a zone offset."""
+    nulls = _null_difference(want, got)
+    if nulls is not None:
+        return nulls
+    for row in got["rows"]:
+        for value, oid in zip(row, got["fields"], strict=True):
+            if value is not None and oid in TYPE_FORMS:
+                if re.fullmatch(TYPE_FORMS[oid], value, re.DOTALL) is None:
+                    return f"{value!r} is not the text form of type {oid}"
+    return None
+
+
 def form_check(name: str, want: dict[str, Any], got: dict[str, Any]) -> tuple[bool, str | None]:
     """Whether a form was checked, and how Provisa's answer differs from PostgreSQL's in it. A set's
     rows are its server's own, so one Provisa leaves empty differs in nothing and checks nothing."""
