@@ -40,6 +40,8 @@ from sqlglot.dialects.spark import Spark
 from sqlglot.dialects.trino import Trino
 from sqlglot.generator import Generator
 
+from provisa.core.pg_error import raising
+
 
 Postgres.Generator.TRANSFORMS[exp.TryCast] = Generator.trycast_sql
 
@@ -529,3 +531,56 @@ def _clickhouse_array_to_string(self: Generator, expression: exp.ArrayToString) 
 
 
 ClickHouse.Generator.TRANSFORMS[exp.ArrayToString] = _clickhouse_array_to_string
+
+
+def _guarded(expression: exp.Expr, test: exp.Expr) -> bool:
+    """Whether ``expression`` is already the ELSE of a CASE of the one ``test``: a statement this
+    writes is read and written again."""
+    case = expression.parent
+    if not isinstance(case, exp.Case) or case.args.get("default") is not expression:
+        return False
+    tests = case.args.get("ifs") or []
+    return len(tests) == 1 and tests[0].this == test
+
+
+def _duckdb_strict_array_to_string(self: DuckDB.Generator, expression: exp.ArrayToString) -> str:
+    """array_to_string is strict in its separator: a NULL one answers NULL (REQ-2236), where
+    DuckDB's joins the elements with nothing. A constant text separator is written as it is."""
+    separator = expression.expression
+    constant = separator.this if isinstance(separator, exp.Cast) else separator
+    # No parent: DuckDB's own form of a text for NULL elements writes the call anew, within this.
+    if (
+        expression.parent is None
+        or _guarded(expression, exp.Is(this=separator.copy(), expression=exp.null()))
+        or (isinstance(constant, exp.Literal) and constant.is_string)
+    ):
+        return self.arraytostring_sql(expression)
+    return (
+        f"CASE WHEN {self.sql(separator)} IS NULL THEN NULL "
+        f"ELSE {self.arraytostring_sql(expression)} END"
+    )
+
+
+DuckDB.Generator.TRANSFORMS[exp.ArrayToString] = _duckdb_strict_array_to_string
+
+
+def _duckdb_regexp_count(self: DuckDB.Generator, expression: exp.RegexpCount) -> str:
+    """regexp_count from a start: below 1 is PostgreSQL's 22023 (regexp.c), where DuckDB's
+    substring reads it as counted from the end (REQ-2236). A constant start of 1 or more is
+    written as it is."""
+    written = self.regexpcount_sql(expression)
+    start = expression.args.get("position")
+    constant = start.this if isinstance(start, exp.Cast) else start
+    if (
+        start is None
+        or expression.parent is None
+        or (isinstance(constant, exp.Literal) and constant.is_int and int(constant.this) >= 1)
+        or _guarded(expression, exp.LT(this=start.copy(), expression=exp.Literal.number(1)))
+    ):
+        return written
+    held = self.sql(start)
+    refused = raising("22023", f"'invalid value for parameter \"start\": ' || {held}")
+    return f"CASE WHEN {held} < 1 THEN {refused} ELSE {written} END"
+
+
+DuckDB.Generator.TRANSFORMS[exp.RegexpCount] = _duckdb_regexp_count

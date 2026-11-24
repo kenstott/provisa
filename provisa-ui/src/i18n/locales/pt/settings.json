@@ -276,6 +276,14 @@
         "label": "Porta wire do PostgreSQL para tokens emitidos",
         "help": "A porta que o sandbox de uma fonte de código pode alcançar para ler a tabela que lhe foi dada, e o endereço informado a um host remoto. Aceita apenas tokens emitidos para uma chamada; 0 a mantém desligada, e um comando que recebe uma tabela é então recusado. Reinicialização necessária; protegida porque abre ou fecha um listener."
       },
+      "minted_flight_port": {
+        "label": "Primeira porta dos listeners Flight emitidos",
+        "help": "A primeira porta do bloco de loopback pela qual o worker de uma fonte de código Python lê, via Arrow Flight, as tabelas que recebeu: um listener é aberto para cada chamada, aceita apenas o token dessa chamada e fecha quando a chamada termina. O sandbox de um worker pode abrir estas portas e nenhuma outra do Provisa. 0 o deixa desligado, e um comando Python que recebe uma tabela é então recusado. Requer reinício; protegido porque abre ou fecha listeners."
+      },
+      "minted_flight_ports": {
+        "label": "Portas dos listeners Flight emitidos",
+        "help": "Quantas portas o bloco tem e, portanto, quantas chamadas de fontes de código locais podem ler suas tabelas ao mesmo tempo; uma a mais é recusada. Requer reinício."
+      },
       "bolt_port": {
         "label": "Porta Bolt",
         "help": "A porta em que o servidor Bolt (Neo4j) escuta; 0 o mantém desativado. Requer reinicialização; pede confirmação antes de salvar porque abre ou fecha um listener."

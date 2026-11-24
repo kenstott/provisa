@@ -52,6 +52,15 @@ COPY --from=provisa-wheel-build /wheels/ /
 # once per pin (.github/actions/pyodide-downloads) and no image build asks the CDN again.
 FROM scratch AS pyodide-downloads
 
+# The provisa-duckdb-ext wheels the build's own run built (REQ-294). Empty here, so a plain
+# `docker build` takes them from the release's Pages index. A build given
+# `--build-context duckdb-ext-wheels=DIR` has DIR in this stage's place, and the stage step below
+# gives pip DIR as a find-links source beside its indexes. Every CI and release build passes one:
+# the Pages index holds only what a release already published, and an image is built before its
+# own release publishes anything (run 45030695628). CI fills DIR with the runner's platform's wheels
+# (.github/actions/duckdb-ext-wheels); a release with every platform's (build-duckdb-extensions).
+FROM scratch AS duckdb-ext-wheels
+
 # Stage 2: install Python deps from pre-built wheels (stays on builder layer only)
 FROM python:3.12-slim AS installer
 WORKDIR /app
@@ -157,6 +166,16 @@ COPY provisa/ ./provisa/
 # REQ-2194: provisa's compiled encoders and their notices, from provisa's wheel (stage 2).
 COPY --from=installer /encoders/ ./provisa/
 RUN python -c "import provisa._encoders.pgwire"
+# REQ-294: the image is built with its assets inside it: every DuckDB extension and connector bundle
+# for this image's DuckDB and architecture, from the build's package index and Maven repository. The
+# runtime only LOADs and refuses by name what is missing; the build stops if anything is. The image
+# is the one source of provisa here (/app, not site-packages), so this runs without -I.
+ENV PROVISA_DUCKDB_EXT_DIR=/opt/provisa/duckdb-ext
+ENV PROVISA_RUNTIME_DEPS_CACHE=/opt/provisa/runtime-deps
+# The third-party duckdb-extension-* wheels come from the index pip is configured for in every build.
+# Neither source holding a wheel stops the build by name (stage_duckdb_extensions.pip_download).
+RUN --mount=type=bind,from=duckdb-ext-wheels,target=/duckdb-ext-wheels \
+    PIP_FIND_LINKS=/duckdb-ext-wheels python -m provisa.runtime_deps.stage_assets
 # REQ-2194: the wheel itself, kept for the code images this server builds: their PostgreSQL
 # front end writes its rows with the encoders the wheel carries (codesource/image_build.py takes
 # them from the wheel for the image's architecture, and refuses a build it has no wheel for).

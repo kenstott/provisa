@@ -167,8 +167,7 @@ _ASSETS: dict[tuple[str, str], tuple[str, ...]] = {
     ("release-prebuilt.yml", "package-core-images"): ("outputs.core_images_name",),
     ("release-prebuilt.yml", "package-core-images-amd64"): ("outputs.core_images_amd64_name",),
     # The DMGs are notarized after the builds: the notarize workflow's job attaches them
-    # (tests/unit/test_notarize_workflow.py), the Core build attaches what Apple never sees.
-    ("release-macos.yml", "build-macos-core"): ("outputs.duckdb_extensions_name",),
+    # (tests/unit/test_notarize_workflow.py).
     ("release-windows.yml", "build-windows-core"): ("outputs.windows_name",),
     ("release-windows.yml", "build-windows-container"): ("outputs.windows_container_name",),
     ("release-linux.yml", "build-linux"): ("outputs.linux_name",),
@@ -306,43 +305,35 @@ def test_the_publish_leg_copies_no_asset_and_verifies_every_one():
     assert "gh release view" in verify["run"] and "exit 1" in verify["run"]
 
 
-def test_the_release_publishes_the_macos_duckdb_extensions_asset_with_its_checksum():
-    """The Core DMG ships no DuckDB extension (codesign cannot sign them, so Apple rejected the
-    DMG): they are a release asset of their own, named by release-metadata, built by the Core
-    build, and attached with the .sha256 beside it (maintainer decision 2026-11-11)."""
+def test_no_installer_carries_the_duckdb_extensions_as_a_release_asset():
+    """REQ-294 (amended 2026-11-22): every install stages the extensions at first launch from the
+    release's Pages index; no installer carries them as a separate release asset. The
+    provisa-duckdb-ext wheels stay required release assets: the Pages index links to them."""
     metadata = (_ROOT / ".github/actions/release-metadata/action.yml").read_text()
-    assert (
-        'echo "duckdb_extensions_name=provisa-duckdb-extensions-${TAG}-macOS-arm64.tar.gz"'
-        in metadata
-    )
-    name = "${{ needs.metadata.outputs.duckdb_extensions_name }}"
+    assert "duckdb_extensions_name" not in metadata
+    assert "provisa-duckdb-extensions-" not in metadata
 
     macos = _load("release-macos.yml")["jobs"]
-    assert "duckdb_extensions_name" in macos["metadata"]["outputs"]
+    assert "duckdb_extensions_name" not in macos["metadata"]["outputs"]
     core = macos["build-macos-core"]["steps"]
     build = next(s for s in core if "build-dmg.sh stage" in s.get("run", ""))
-    assert build["env"]["DUCKDB_EXTENSIONS_ASSET"] == name
-    upload = next(
+    assert "DUCKDB_EXTENSIONS_ASSET" not in build["env"]
+    assert not [s for s in core if s.get("uses") == _ATTACH]
+    assert not [
         s
         for s in core
-        if s.get("uses", "").startswith("actions/upload-artifact")
-        and s["with"]["name"] == "macos-duckdb-extensions-dist"
-    )
-    attach = next(s for s in core if s.get("uses") == _ATTACH)
-    assert core.index(build) < core.index(upload) < core.index(attach)
-    assert upload["with"]["path"].splitlines() == [
-        f"packaging/macos/dist/{name}",
-        f"packaging/macos/dist/{name}.sha256",
+        if s.get("uses", "").startswith("actions/upload-artifact") and "duckdb" in s["with"]["name"]
     ]
-    assert upload["with"]["if-no-files-found"] == "error"
-    assert attach["with"]["files"].splitlines() == upload["with"]["path"].splitlines()
 
-    publish = _publish_job()
-    assert "duckdb_extensions_name" in _load("release-publish.yml")["jobs"]["metadata"]["outputs"]
-    verify = next(s for s in publish["steps"] if s.get("name", "").startswith("Publish release"))
-    required = verify["env"]["REQUIRED"].splitlines()
-    assert name.replace("needs.metadata", "needs.metadata") in required
-    assert f"{name}.sha256" in required
+    assert (
+        "duckdb_extensions_name" not in _load("release-publish.yml")["jobs"]["metadata"]["outputs"]
+    )
+    verify = next(
+        s for s in _publish_job()["steps"] if s.get("name", "").startswith("Publish release")
+    )
+    required = verify["env"]["REQUIRED"]
+    assert "duckdb_extensions_name" not in required
+    assert "provisa_duckdb_ext-*-py3-none-macosx_*_arm64.whl" in required.splitlines()
 
 
 def test_a_cve_scan_gives_the_advisory_lookup_time_to_answer():

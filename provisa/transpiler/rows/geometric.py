@@ -98,7 +98,8 @@ _SHAPES: tuple[Macro, ...] = (
     _macro(
         "pt_contained_poly",
         "p, poly",
-        pg_forms.POINT_IN_POLYGON,
+        # Strict: a NULL point's coordinates are NULL, which the ray count reads as outside.
+        strict("p, poly", "BOOLEAN", pg_forms.POINT_IN_POLYGON),
         own={_TRINO: pg_forms.TRINO_POINT_IN_POLYGON},
     ),
 )

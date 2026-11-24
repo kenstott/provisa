@@ -2,7 +2,7 @@
 
 **Suite:** openCypher TCK 2024.3.
 
-**Pass rate:** 100.0%: 3570 passed, 310 skipped by design, 0 failed, of 3880 cases.
+**Pass rate:** 100.0%: 3570 passed, 310 skipped by design, 0 documented limit, 0 failed, of 3880 cases.
 
 <!-- conformance-results:begin -->
 ## Skipped by design

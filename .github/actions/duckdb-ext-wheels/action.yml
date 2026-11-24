@@ -1,0 +1,138 @@
+name: provisa-duckdb-ext wheels
+description: >-
+  An image built from Dockerfile or Dockerfile.dev stages every DuckDB extension at build time
+  (REQ-294, `python -m provisa.runtime_deps.stage_assets`), and provisa-duckdb-ext's wheels come
+  from the release's Pages index, which holds only what a release published: an image of any other
+  commit found none there and its build stopped. This action builds the wheels of the runner's own
+  Linux platform from this commit's sources, and names the directory in PROVISA_DUCKDB_EXT_WHEELS;
+  the image build is given it as `--build-context duckdb-ext-wheels="$PROVISA_DUCKDB_EXT_WHEELS"`
+  (tests/duckdb_ext_wheels.py), and the stage step gives pip that directory as find-links. A
+  directory with no wheel for a part still stops the build by name.
+
+  `phase: prime` is one job's: it restores the wheels, and on a miss mirrors the extensions
+  (scripts/ci/mirror_duckdb_extensions.py), builds the wheels (scripts/ci/build_duckdb_ext_wheels.sh)
+  and saves them. `phase: restore` is every other job's, in a job that `needs:` the priming one: a
+  cache miss takes the wheels from the run's artifact, uploaded by the priming job (the cache is
+  evictable, an artifact of the run is not). A job that builds an image and needs no other job
+  primes it itself.
+inputs:
+  phase:
+    description: prime | restore
+    required: true
+outputs:
+  dir:
+    description: The directory holding the wheels (also exported as PROVISA_DUCKDB_EXT_WHEELS).
+    value: ${{ steps.dir.outputs.dir }}
+runs:
+  using: composite
+  steps:
+    - name: duckdb-ext wheels phase
+      shell: bash
+      env:
+        PHASE: ${{ inputs.phase }}
+        RUNNER_OS_NAME: ${{ runner.os }}
+      run: |
+        if [ "$PHASE" != prime ] && [ "$PHASE" != restore ]; then
+          echo "::error::phase must be prime or restore, not '$PHASE'"; exit 1
+        fi
+        if [ "$RUNNER_OS_NAME" != Linux ]; then
+          echo "::error::the images are Linux; this runner is $RUNNER_OS_NAME"; exit 1
+        fi
+
+    # The platform label collect.py builds for (packaging/duckdb-ext/collect.py PLATFORMS): the
+    # mirror records the platform DuckDB runs on, which is this runner's.
+    - name: duckdb-ext wheels platform
+      id: label
+      shell: bash
+      env:
+        ARCH: ${{ runner.arch }}
+      run: |
+        case "$ARCH" in
+          X64) echo "label=linux-x64" >> "$GITHUB_OUTPUT" ;;
+          ARM64) echo "label=linux-arm64" >> "$GITHUB_OUTPUT" ;;
+          *) echo "::error::no provisa-duckdb-ext platform for runner arch $ARCH"; exit 1 ;;
+        esac
+
+    # The key is computed once, before the build, from the build's inputs: the packaging and its
+    # pins, the mirror and build scripts, and the modules that name the extensions the mirror
+    # takes (the DuckDB connectors and their named repositories).
+    - name: duckdb-ext wheels key
+      id: key
+      shell: bash
+      env:
+        KEY: >-
+          duckdb-ext-wheels-${{ steps.label.outputs.label }}-${{ hashFiles(
+          'packaging/duckdb-ext/**',
+          'scripts/ci/mirror_duckdb_extensions.py',
+          'scripts/ci/build_duckdb_ext_wheels.sh',
+          'provisa/federation/duckdb_extensions.py',
+          'provisa/federation/connector_base.py',
+          'provisa/federation/connector_duckdb.py',
+          'provisa/federation/custom_connectors.py',
+          'provisa/federation/engine.py',
+          'provisa/events/source_loader.py',
+          '.github/actions/duckdb-ext-wheels/action.yml') }}
+      run: echo "key=$KEY" >> "$GITHUB_OUTPUT"
+
+    - name: duckdb-ext wheels directory
+      id: dir
+      shell: bash
+      run: |
+        echo "dir=$HOME/duckdb-ext-wheels" >> "$GITHUB_OUTPUT"
+        echo "PROVISA_DUCKDB_EXT_WHEELS=$HOME/duckdb-ext-wheels" >> "$GITHUB_ENV"
+
+    - name: Restore the duckdb-ext wheels
+      id: cache
+      uses: actions/cache/restore@v4
+      with:
+        path: ~/duckdb-ext-wheels
+        key: ${{ steps.key.outputs.key }}
+        # A miss is answered below: by a build in the priming job, by the run's artifact elsewhere.
+        fail-on-cache-miss: false
+
+    # The mirror imports provisa (the connectors name the extensions it takes).
+    - name: Set up Python for the mirror
+      if: inputs.phase == 'prime' && steps.cache.outputs.cache-hit != 'true'
+      uses: ./.github/actions/setup-python
+
+    - name: Mirror the DuckDB extensions and build the wheels
+      if: inputs.phase == 'prime' && steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      env:
+        LABEL: ${{ steps.label.outputs.label }}
+        OUT: ${{ steps.dir.outputs.dir }}
+      run: |
+        set -euo pipefail
+        # The DuckDB version provisa-duckdb-ext pins (build-duckdb-extensions.yml says why).
+        PIN=$(uv run --no-sync python -c "import tomllib;d=tomllib.load(open('packaging/duckdb-ext/pyproject.toml','rb'));print([x for x in d['project']['dependencies'] if x.startswith('duckdb==')][0])")
+        uv pip install "$PIN"
+        mirror=$(mktemp -d)
+        uv run --no-sync python scripts/ci/mirror_duckdb_extensions.py "$mirror/$LABEL"
+        uv pip install build wheel
+        rm -rf "$OUT"
+        PATH="$PWD/.venv/bin:$PATH" bash scripts/ci/build_duckdb_ext_wheels.sh "$mirror" "$OUT" "$LABEL"
+        rm -rf "$mirror"
+
+    - name: Cache the duckdb-ext wheels
+      if: inputs.phase == 'prime' && steps.cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v4
+      with:
+        path: ~/duckdb-ext-wheels
+        key: ${{ steps.key.outputs.key }}
+
+    - name: Download the run's duckdb-ext wheels
+      if: inputs.phase == 'restore' && steps.cache.outputs.cache-hit != 'true'
+      uses: actions/download-artifact@v4
+      with:
+        name: duckdb-ext-wheels
+        path: ~/duckdb-ext-wheels
+
+    - name: Upload the run's duckdb-ext wheels
+      if: inputs.phase == 'prime'
+      uses: actions/upload-artifact@v4
+      with:
+        name: duckdb-ext-wheels
+        path: ~/duckdb-ext-wheels/
+        if-no-files-found: error
+        overwrite: true
+        retention-days: 1

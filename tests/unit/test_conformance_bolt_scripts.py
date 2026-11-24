@@ -344,6 +344,6 @@ def test_junit_summary_main_prints_the_counts_line(tmp_path, capsys):
         ]
     )
     assert capsys.readouterr().out.splitlines() == [
-        "CONFORMANCE-COUNTS surface=flight-sql passed=1 by_design=0 failed=1 total=2",
+        "CONFORMANCE-COUNTS surface=flight-sql passed=1 by_design=0 documented_limit=0 failed=1 total=2",
         "CONFORMANCE-FAILURE a.b :: bad",
     ]

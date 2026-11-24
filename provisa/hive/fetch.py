@@ -160,8 +160,7 @@ def _duckdb_s3_conn(conn: HiveS3Connection):
         return sql_literal(s, "duckdb")[1:-1]
 
     c = engine_memory.connect()
-    c.execute("INSTALL httpfs")
-    c.execute("LOAD httpfs")
+    engine_memory.load(c, "httpfs")
     endpoint = conn.endpoint.split("://", 1)[-1]
     use_ssl = conn.endpoint.startswith("https://")
     c.execute(

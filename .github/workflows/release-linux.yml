@@ -87,6 +87,13 @@ jobs:
       - name: Pyodide downloads
         uses: ./.github/actions/pyodide-downloads
 
+      # This commit's provisa-duckdb-ext wheels, which the AppImage's image stages (REQ-294): the
+      # Pages index holds only what a release already published.
+      - name: DuckDB extension wheels
+        uses: ./.github/actions/duckdb-ext-wheels
+        with:
+          phase: prime
+
       - name: Build AppImage
         run: |
           chmod +x packaging/linux/build-appimage.sh

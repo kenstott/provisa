@@ -560,6 +560,16 @@ def _type_call(name: str, args: list[exp.Expr]) -> str | None:  # noqa: PLR0911 
             packed = said - 4
             if packed < 0:  # below the header: no precision, the value as it is (numeric.c)
                 return _sql(exp.Cast(this=args[0].copy(), to=exp.DataType.build("TEXT")))
+            precision = packed >> 16 & 0xFFFF
+            scale = ((packed & 0x7FF) ^ 1024) - 1024  # numeric.c's NUMERIC_TYPMOD_SCALE: signed
+            if scale < 0 and precision - scale > _DECIMAL_DIGITS:
+                # Rounded to a power of ten (half away from zero), more digits allowed than any
+                # value holds: no overflow to check (numeric(2.5, 2147483647) is 0). The halfway
+                # point is a whole number, so the fraction is dropped first without changing which
+                # side of it the value is on.
+                whole = f"CAST(TRUNC({_sql(args[0])}) AS DECIMAL(38, 0))"
+                rounded = f"ROUND({whole}, {scale})"
+                return f"CAST(CAST({rounded} AS DECIMAL(38, 0)) AS TEXT)"
             sized = f"NUMERIC({packed >> 16}, {packed & 0xFFFF})"
             return f"CAST(CAST({_sql(args[0])} AS {sized}) AS TEXT)"
     if name in _SIZED_CALLS and len(args) == 3:  # noqa: PLR2004 -- value, typmod, explicit
@@ -572,6 +582,11 @@ def _type_call(name: str, args: list[exp.Expr]) -> str | None:  # noqa: PLR0911 
         return _sql(_integer_bits(args[0], args[1]))
     return None
 
+
+#: An integer's least and greatest.
+_INT_LEAST, _INT_GREATEST = -(2**31), 2**31 - 1
+#: The digits DuckDB's DECIMAL holds.
+_DECIMAL_DIGITS = 38
 
 #: palloc's greatest request (MaxAllocSize, 1 GB - 1): a character(n) padded past it is XX000.
 MAX_ALLOC_SIZE = 1073741823
@@ -607,6 +622,13 @@ def _int_said(node: exp.Expr) -> int | None:
         return None if said is None else -said
     if isinstance(inner, exp.Literal) and inner.is_int:
         return int(inner.this)
+    if node.unnest() is not inner and isinstance(inner, exp.Literal) and inner.is_string:
+        # A quoted integer cast to its type: '-2147483648'::integer. One past an integer is the
+        # cast's own 22003, which this leaves to it.
+        text = inner.this.strip()
+        if not re.fullmatch(r"[+-]?[0-9]+", text) or not _INT_LEAST <= int(text) <= _INT_GREATEST:
+            return None
+        return int(text)
     return None
 
 
@@ -668,9 +690,13 @@ def _number(value: int) -> exp.Expr:
 
 def _integer_bits(value: exp.Expr, typmod: exp.Expr) -> exp.Expr:
     """bit(integer, typmod), bitfromint4's: the value's low bits, as many as the typmod says; a
-    typmod of 0 or below says no length, which is one bit."""
+    typmod of 0 or below, or past VARBITMAXLEN, says no length, which is one bit."""
+    no_length = exp.or_(
+        exp.LTE(this=typmod.copy(), expression=_number(0)),
+        exp.GT(this=typmod.copy(), expression=_number(VARBITMAXLEN)),
+    )
     width = exp.Case(
-        ifs=[exp.If(this=exp.LTE(this=typmod.copy(), expression=_number(0)), true=_number(1))],
+        ifs=[exp.If(this=no_length, true=_number(1))],
         default=typmod.copy(),
     )
     huge = exp.DataType.build("HUGEINT", dialect="duckdb")
@@ -781,8 +807,19 @@ def _numeric_call(name: str, args: list[exp.Expr]) -> str | None:
         return f"PROVISA_FACTORIAL({_sql(args[0])})"
     if name == "generate_series" and args and any(map(_is_numeric, args)):
         step = _as_text(args[2]) if len(args) > 2 else "NULL"  # noqa: PLR2004
-        return f"UNNEST(PROVISA_NUMERIC_SERIES({_as_text(args[0])}, {_as_text(args[1])}, {step}))"
+        series = f"PROVISA_NUMERIC_SERIES({_as_text(args[0])}, {_as_text(args[1])}, {step})"
+        if len(args) > 2:  # noqa: PLR2004 -- a step given NULL: strict, no rows, not a step of 1
+            series = f"CASE WHEN {step} IS NULL THEN NULL ELSE {series} END"
+        return f"UNNEST({series})"
     return None
+
+
+def _given_null(args: list[exp.Expr], count: int, called: str) -> str:
+    """``called``, an optional-last UDF's call, or NULL where the call gives its ``count``th
+    argument and it is NULL."""
+    if len(args) < count:
+        return called
+    return f"CASE WHEN {_sql(args[count - 1])} IS NULL THEN NULL ELSE {called} END"
 
 
 def _bytea_call(name: str, args: list[exp.Expr]) -> str | None:  # noqa: PLR0911 -- one per function
@@ -793,12 +830,14 @@ def _bytea_call(name: str, args: list[exp.Expr]) -> str | None:  # noqa: PLR0911
         return f"PROVISA_BIT_COUNT({written[0]})"
     if name in ("get_bit", "set_bit"):
         return f"PROVISA_{name.upper()}({', '.join(written)})"
+    # The UDF reads a NULL last argument as none given: a length given NULL is strict's NULL.
     if name in ("substr", "substring"):
         length = written[2] if len(args) > 2 else "NULL"  # noqa: PLR2004
-        return f"PROVISA_BYTEA_SUBSTR({written[0]}, {written[1]}, {length})"
+        return _given_null(args, 3, f"PROVISA_BYTEA_SUBSTR({written[0]}, {written[1]}, {length})")
     if name == "overlay":
         length = written[3] if len(args) > 3 else "NULL"  # noqa: PLR2004
-        return f"PROVISA_BYTEA_OVERLAY({written[0]}, {written[1]}, {written[2]}, {length})"
+        called = f"PROVISA_BYTEA_OVERLAY({written[0]}, {written[1]}, {written[2]}, {length})"
+        return _given_null(args, 4, called)
     if name == "length" and len(args) == 2:  # noqa: PLR2004 -- a bytea and its encoding
         return f"PROVISA_ENCODED_LENGTH({written[0]}, {written[1]})"
     if name == "string_agg" and len(args) == 2:  # noqa: PLR2004

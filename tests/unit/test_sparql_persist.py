@@ -67,7 +67,9 @@ class TestValidation:
 def test_endpoint_posts_the_query_form_encoded_to_the_endpoint_path():
     from provisa.sparql.source import build_endpoint
 
-    cfg, api_source = sparql_config_from_source(source_id="graph", endpoint_url=_EP)
+    cfg, api_source = sparql_config_from_source(
+        source_id="graph", endpoint_url=_EP, options={}, username="", password=""
+    )
     assert api_source.type is ApiSourceType.sparql
     assert api_source.base_url == "http://fuseki.test:3030"
     ep = build_endpoint(cfg, "adopter", "SELECT ?name WHERE { ?a <urn:name> ?name }", [])
@@ -97,7 +99,16 @@ class _Conn:
         self.upserts.append((table.name, values))
 
 
-_SRC = {"id": "graph", "type": "sparql", "host": _EP, "port": 0, "database": "", "mapping": {}}
+_SRC = {
+    "id": "graph",
+    "type": "sparql",
+    "host": _EP,
+    "port": 0,
+    "database": "",
+    "mapping": {},
+    "username": "",
+    "password_ref": "",
+}
 
 
 def _bindings(names: list[str], rows: list[list[str]]) -> dict:
@@ -220,7 +231,9 @@ async def test_every_call_to_the_endpoint_says_it_is_provisa():
     from provisa.core.demo_bundles import running_provisa
 
     agent = f"Provisa/{running_provisa()} (https://provisa.dev)"
-    _cfg, api_source = sparql_config_from_source(source_id="graph", endpoint_url=_EP)
+    _cfg, api_source = sparql_config_from_source(
+        source_id="graph", endpoint_url=_EP, options={}, username="", password=""
+    )
     assert api_source.headers == {"User-Agent": agent, "Accept": _RESULTS}
     with respx.mock:
         route = respx.post(_EP).mock(

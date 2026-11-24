@@ -93611,7 +93611,7 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     the load; its sample view is checked against the published build by the build that follows the load,
     not by the load. A sample that does not hold is listed for review with the reason, as an offer whose
     role is gone is, and does not fail the load. An offer saved through the API is checked against the published
-    build when it is saved, as before.'
+    build when it is saved, as before. (Amended 2026-11-23, maintainer, A PRODUCT PAGE PREVIEWS CONTRACTS AS THE ACTING ROLE:) On the product page, each offer''s contract (its columns, types and keys, read grants) is previewed as the caller''s current acting role, a meta role when the caller acts as a set of roles (for example Role: All), so the preview shows what that role reads; the contract a consumer is offered and accepts is still the one derived for the offer''s own role, and the page says which role the preview is read as.'
   scenario: 'Given a role that sees product P but holds no grant on its member tables
     When it requests P and P''s owner role approves
     Then the role holds read grants on each member table of P and can query them

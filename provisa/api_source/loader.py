@@ -45,6 +45,17 @@ def _resolve_param_type(c: dict) -> str | None:
     return None
 
 
+def _as_dict(mapping: str | dict | None) -> dict:
+    """A Source row's mapping column as read: JSON text or a dict. A sparql api source with no
+    Source row (registered by POST /admin/sources/sparql, REQ-297) has none and so declares no
+    option -- no reasoner and no credential (REQ-2138)."""
+    if mapping is None:
+        return {}
+    if isinstance(mapping, str):
+        return json.loads(mapping)
+    return mapping
+
+
 def _resolve_param_only(c: dict) -> bool:
     """A column carries no response value when the writer marked it param_only, or when it is
     encoded as native-filter machinery (the `_nf_` columns, which never exist in the payload)."""
@@ -66,13 +77,15 @@ async def load_api_sources(  # REQ-119, REQ-314, REQ-316, REQ-322
     # Load API sources
     from provisa.encryption import encryption_service  # REQ-686
     from provisa.openapi.brands import spec_headers
-    from provisa.sparql.source import sparql_headers
+    from provisa.sparql.source import sparql_auth, sparql_headers
 
     _enc = encryption_service()
     # REQ-1942: a source bound to a synthetic store is no API here -- its tables are read from
     # the store, and nothing in the environment calls it.
     src_rows = await conn.fetch(
-        "SELECT a.id, a.type, a.base_url, a.spec_url, a.auth, s.path AS spec_path "
+        "SELECT a.id, a.type, a.base_url, a.spec_url, a.auth, s.path AS spec_path, "
+        "s.mapping AS source_mapping, s.username AS source_username, "
+        "s.password_ref AS source_password "
         "FROM api_sources a LEFT JOIN sources s ON s.id = a.id "
         # REQ-2248: nor is a retired one; its registration is kept with it and serves nothing.
         "WHERE a.id NOT IN (SELECT id FROM sources WHERE binding = 'synthetic' OR retired)"
@@ -83,6 +96,16 @@ async def load_api_sources(  # REQ-119, REQ-314, REQ-316, REQ-322
         auth_data = (
             json.loads(_enc.decrypt(bytes(r["auth"])).decode("utf-8")) if r["auth"] else None
         )
+        if r["type"] == "sparql":
+            # REQ-2138: a sparql source's service identity is the credential its Source row
+            # declares (its mapping's kind over its username and password reference), read from
+            # the row each load so a changed credential is the one sent.
+            auth_data = sparql_auth(
+                r["id"],
+                _as_dict(r["source_mapping"]),
+                r["source_username"],
+                r["source_password"],
+            )
         api_src = ApiSource(
             id=r["id"],
             type=ApiSourceType(r["type"]),

@@ -240,7 +240,7 @@ def test_the_flight_sql_page_marks_adapted_cases_and_skips_unsent_ones_by_design
         "test_current_catalog[provisa:flightsql]",
     ]
     _, _, rate, cases = fill_docs.read(doc)
-    assert rate == "50.0%: 2 passed, 3 skipped by design, 2 failed, of 7 cases"
+    assert rate == "50.0%: 2 passed, 3 skipped by design, 0 documented limit, 2 failed, of 7 cases"
     assert "## Skipped by design" in cases
     # Each client group's decision cites the driver's source, file and line, at its version.
     assert "| Bind before Prepare | 1 | The client drops the bound values. ADBC " in cases
@@ -254,7 +254,7 @@ def test_the_flight_sql_page_marks_adapted_cases_and_skips_unsent_ones_by_design
     assert "## Adapted cases" in cases
     # Each adapted case is marked with the outcome it counts as (REQ-2167, amended 2026-10-28).
     assert (
-        "<summary>Timestamp cases' tables (2: 0 passed, 1 skipped by design, 1 failed)</summary>"
+        "<summary>Timestamp cases' tables (2: 0 passed, 1 skipped by design, 0 documented limit, 1 failed)</summary>"
     ) in cases
     assert f"| {query}timestamp9tz] | skipped by design |" in cases
     assert "Setup became: The ten precisions" in cases

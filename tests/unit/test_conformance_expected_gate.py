@@ -351,6 +351,56 @@ def test_functions_a_base_call_wrong_answer_fails(tmp_path, monkeypatch, capsys)
     assert "base passed 9, below the committed 10" in err
 
 
+def _documented(outcome: dict) -> dict:
+    return {**outcome, "documented_limit": "a limitation of its row states it"}
+
+
+def test_functions_a_documented_limit_is_judged_as_skipped_by_design(tmp_path, monkeypatch, capsys):
+    """REQ-2167, amended 2026-11-23: a documented limit is no failure. It is never listed, a new
+    one does not fail the run, and a refusal that is one is not counted against the refusals."""
+    doc = _functions_doc(_documented(_edge_wrong()), _documented(_base_wrong()), refused=0, right=8)
+    doc["functions"].append(
+        {
+            "function": "r",
+            "overload": "integer",
+            "family": "Numeric",
+            "outcomes": {"trino": _documented(REFUSED)},
+        }
+    )
+    doc["by_engine"]["trino"] = function_report.result_counts(
+        f["outcomes"]["trino"] for f in doc["functions"]
+    )
+    assert gate.function_failures(doc, ["trino"]) == {}
+    counts = gate.function_counts(doc, "trino")
+    # The documented wrong answer at an edge passed its base calls; the one on a base call did not.
+    assert counts["base"] == {
+        "passed": 9,
+        "wrong_answer": 0,
+        "engine_error": 0,
+        "refused_by_name": 0,
+    }
+    # The edge side counts the documented edge apart, so base passed is still the edge sides' sum.
+    assert counts["edge"] == {
+        "served": 8,
+        "wrong_answer": 0,
+        "engine_error": 0,
+        "documented_limit": 1,
+    }
+    assert counts["base"]["passed"] == sum(counts["edge"].values())
+    expected = _baseline(doc)
+    assert expected["expected"] == []
+    assert _run_functions(tmp_path, monkeypatch, doc, expected) == 0, capsys.readouterr().err
+
+
+def test_functions_a_listed_failure_now_a_documented_limit_is_fixed_but_listed(
+    tmp_path, monkeypatch, capsys
+):
+    expected = _baseline(_functions_doc(_edge_wrong()))
+    doc = _functions_doc(_documented(_edge_wrong()))
+    assert _run_functions(tmp_path, monkeypatch, doc, expected) == 1
+    assert "trino::f0(integer) fixed but still listed" in capsys.readouterr().err
+
+
 def test_functions_a_new_edge_engine_error_fails(tmp_path, monkeypatch, capsys):
     expected = _baseline(_functions_doc(RIGHT))
     doc = _functions_doc(_edge_error())
@@ -546,7 +596,18 @@ def test_the_written_file_reads_back_and_lists_one_entry_a_line():
 
 # --- the committed files --------------------------------------------------------------------------
 
-CASE_SURFACES = ("cypher", "bolt", "flight-sql", "pgwire", "graphql", "sparql")
+CASE_SURFACES = (
+    "cypher",
+    "bolt",
+    "flight-sql",
+    "pgwire",
+    "graphql",
+    "sparql",
+    "rest",
+    "jsonapi",
+    "grpc",
+    "mcp",
+)
 
 
 @pytest.mark.parametrize("surface", CASE_SURFACES)
@@ -566,7 +627,7 @@ def test_the_committed_functions_file_is_well_formed():
     for counts in engines.values():
         edge = counts["edge"]
         assert counts["base"]["passed"] == (
-            edge["served"] + edge["wrong_answer"] + edge["engine_error"]
+            edge["served"] + edge["wrong_answer"] + edge["engine_error"] + edge["documented_limit"]
         )
     assert len(listed) == sum(
         c[at][kind] for c in engines.values() for at in gate.AT for kind in gate.KINDS.values()
@@ -590,6 +651,10 @@ GATED = {
     "conformance-pgwire.yml": ("pgwire", "baseline_gate.py cases pgwire"),
     "conformance-graphql.yml": ("graphql", "baseline_gate.py cases graphql"),
     "conformance-sparql.yml": ("sparql", "baseline_gate.py cases sparql"),
+    "conformance-rest.yml": ("rest", "baseline_gate.py cases rest"),
+    "conformance-jsonapi.yml": ("jsonapi", "baseline_gate.py cases jsonapi"),
+    "conformance-grpc.yml": ("grpc", "baseline_gate.py cases grpc"),
+    "conformance-mcp.yml": ("mcp", "baseline_gate.py cases mcp"),
     "conformance-functions.yml": ("merge", "baseline_gate.py functions"),
 }
 

@@ -1422,6 +1422,13 @@ def _literal_number(value: exp.Expr) -> int | None:
     node = value.unnest()
     if isinstance(node, exp.Cast):
         node = node.this.unnest()
+        if isinstance(node, exp.Literal) and node.is_string:
+            # A quoted integer cast to its type ('-2147483648'::integer); one past an integer is
+            # the cast's own 22003, left to it.
+            text = node.this.strip()
+            if re.fullmatch(r"[+-]?[0-9]+", text) and -(2**31) <= int(text) < 2**31:
+                return int(text)
+            return None
     if isinstance(node, exp.Paren):
         node = node.this
     if isinstance(node, exp.Neg) and isinstance(node.this, exp.Literal):

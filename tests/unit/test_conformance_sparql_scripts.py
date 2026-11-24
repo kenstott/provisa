@@ -31,12 +31,9 @@ sys.path.insert(0, str(CONFORMANCE))  # the scripts' sibling imports
 
 
 def _load(name: str):
-    spec = importlib.util.spec_from_file_location(name, CONFORMANCE / f"{name}.py")
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[name] = module  # a dataclass resolves its module by name
-    spec.loader.exec_module(module)
-    return module
+    """A conformance script, imported once: a fresh copy put in ``sys.modules`` would part a module
+    another test file already imported (by_design) from the one its importers hold."""
+    return importlib.import_module(name)
 
 
 by_design = _load("by_design")
@@ -226,6 +223,7 @@ def test_an_update_on_the_models_own_graph_or_a_load_is_by_design_by_its_refusal
         "group": "add",
         "passed": 0,
         "by_design": 1,
+        "documented_limit": 0,
         "failed": 1,
     }
 
@@ -242,8 +240,8 @@ def test_the_page_shows_the_groups_counts_and_version(tmp_path):
     json.dumps(doc)
     surface, suite, rate, cases = fill_docs.read(doc)
     assert surface == "sparql" and "d01b141" in suite
-    assert "1 passed, 0 skipped by design, 1 failed" in rate
-    assert "| bind | 1 | 0 | 1 |" in cases and "| **Total** | 1 | 0 | 1 |" in cases
+    assert "1 passed, 0 skipped by design, 0 documented limit, 1 failed" in rate
+    assert "| bind | 1 | 0 | 0 | 1 |" in cases and "| **Total** | 1 | 0 | 0 | 1 |" in cases
     page = fill_docs.fill("**Suite:** x\n\n**Pass rate:** y\n", suite, rate, cases)
     assert "## Results by test group" in page and "| b2 | refused |" in page
 

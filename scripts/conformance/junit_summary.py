@@ -23,7 +23,7 @@ Log lines (by_design.log_lines), printed to stdout after the files are written, 
 readable from the job log without the artifact; names escape backslash, newline, CR and colon with
 a backslash:
 
-    CONFORMANCE-COUNTS surface=<surface> passed=<n> by_design=<n> failed=<n> total=<n>
+    CONFORMANCE-COUNTS surface=<surface> passed=<n> by_design=<n> documented_limit=<n> failed=<n> total=<n>
     CONFORMANCE-GROUP <group name>                  (one per skipped-by-design group)
     CONFORMANCE-FAILURE <feature> :: <scenario>     (one per failed case)
 

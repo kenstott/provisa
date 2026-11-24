@@ -10,11 +10,12 @@
 
 """Provisa's Rust encoders are compiled into the provisa package itself (REQ-2194): one extension
 module, provisa._encoders, whose submodules are the encoders (pgwire now). provisa is released as
-four platform wheels (macOS arm64, Linux amd64 and arm64, Windows x64), each carrying the module, its licence notices and the UI built once; there
+four platform wheels, one per supported platform (REQ-294: macOS arm64, Linux x86_64, Linux arm64,
+Windows x64), each carrying the module, its licence notices and the UI built once; there
 is no separate PyPI project. Every installer and image builds provisa with the module in it and
 imports it, so an artifact without it is never built."""
 
-# Requirements: REQ-2194
+# Requirements: REQ-2194, REQ-294
 
 from __future__ import annotations
 
@@ -451,6 +452,15 @@ def test_a_macos_wheel_is_tagged_for_the_one_architecture_its_module_is_built_fo
     assert 'MACOSX_DEPLOYMENT_TARGET="${MACOSX_DEPLOYMENT_TARGET:-11.0}"' in build
     assert "import platform; print(platform.machine())" in build
     assert '"-C--build-option=--plat-name=macosx-${MACOSX_DEPLOYMENT_TARGET}-${arch}"' in build
+
+
+def test_a_linux_wheel_is_built_for_x86_64_and_arm64():
+    """REQ-294: Linux arm64 is a supported platform; build-wheel.sh builds the Linux wheel for
+    x86_64 and arm64 and refuses any other machine by name."""
+    build = (REPO / "scripts/build-wheel.sh").read_text()
+    assert "x86_64) platform=linux/amd64 ;;" in build
+    assert "aarch64 | arm64) platform=linux/arm64 ;;" in build
+    assert 'echo "[build-wheel] ERROR: no Linux wheel for $(uname -m)" >&2; exit 1' in build
 
 
 def test_every_image_builds_provisa_in_one_linux_recipe_and_imports_its_encoders():

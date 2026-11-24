@@ -60,7 +60,11 @@ _FULL_SUITES = (
     "conformance-flight-sql.yml",
     "conformance-functions.yml",
     "conformance-graphql.yml",
+    "conformance-grpc.yml",
+    "conformance-jsonapi.yml",
+    "conformance-mcp.yml",
     "conformance-pgwire.yml",
+    "conformance-rest.yml",
     "conformance-sparql.yml",
 )
 _PACKAGING = "build-dmg.yml"

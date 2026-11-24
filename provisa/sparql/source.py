@@ -51,6 +51,103 @@ def sparql_headers() -> dict[str, str]:  # REQ-2138
     }
 
 
+#: The source option (its mapping) naming the kind of credential it declares: ``bearer`` (the
+#: token in the source's password) or ``basic`` (its username and password). Absent: none.
+AUTH_OPTION = "auth"
+AUTH_KINDS = ("bearer", "basic")
+#: Where Provisa serves its own SPARQL endpoint under ``server.public_url`` (REQ-2135).
+OWN_ENDPOINT_PATH = "/data/sparql"
+
+
+class SparqlCredentialInvalid(ValueError):  # REQ-2138
+    """The credential a sparql source declares is not one there is, or is missing its parts."""
+
+    code = "sparql.credential_invalid"
+
+    def __init__(self, source_id: str, kind: str, reason: str) -> None:
+        super().__init__(f"sparql source {source_id!r}: {reason}")
+        self.params = {"source": source_id, "kind": kind}
+
+
+class OwnEndpointNeedsCredential(ValueError):  # REQ-2138
+    """A sparql source that reads Provisa's own endpoint declares no credential: the endpoint
+    is read as a Provisa account kept for the service, never as whoever is calling."""
+
+    code = "sparql.own_endpoint_needs_credential"
+
+    def __init__(self, source_id: str) -> None:
+        super().__init__(
+            f"sparql source {source_id!r} reads Provisa's own SPARQL endpoint and declares no "
+            "credential: declare the bearer token or username and password of a Provisa account "
+            "kept for the service, whose roles bound what it reads"
+        )
+        self.params = {"source": source_id}
+
+
+def sparql_auth(
+    source_id: str, options: dict, username: str | None, password: str | None
+) -> ApiAuth | None:  # REQ-2138
+    """The credential a sparql source declares: its options' ``auth`` kind over the source's
+    username and password, each held as entered (a value or a ``${secret:...}`` reference,
+    resolved at each call). None when it declares none."""
+    from provisa.core.auth_models import ApiAuthBasic, ApiAuthBearer
+
+    kind = options.get(AUTH_OPTION)
+    if kind is None:
+        return None
+    if kind not in AUTH_KINDS:
+        raise SparqlCredentialInvalid(
+            source_id, str(kind), f"credential kind {kind!r} is not one of {list(AUTH_KINDS)}"
+        )
+    if not password:
+        raise SparqlCredentialInvalid(
+            source_id,
+            kind,
+            f"a {kind} credential needs its {'token' if kind == 'bearer' else 'password'}",
+        )
+    if kind == "bearer":
+        return ApiAuthBearer(token=password)
+    if not username:
+        raise SparqlCredentialInvalid(source_id, kind, "a basic credential needs its username")
+    return ApiAuthBasic(username=username, password=password)
+
+
+def is_own_endpoint(endpoint_url: str) -> bool:  # REQ-2138, REQ-2135
+    """Whether ``endpoint_url`` (resolved) is Provisa's own SPARQL endpoint: ``server.public_url``
+    followed by ``/data/sparql``. With no public address set Provisa names no endpoint of its
+    own (its IRIs have no base, REQ-2135), so nothing is."""
+    from urllib.parse import urlparse
+
+    from provisa.core import settings_registry
+
+    base = settings_registry.value("server.public_url")
+    if not base:
+        return False
+    own = urlparse(str(base).rstrip("/") + OWN_ENDPOINT_PATH)
+    given = urlparse(resolve_secrets(endpoint_url))
+    return (
+        given.scheme.lower() == own.scheme.lower()
+        and given.netloc.lower() == own.netloc.lower()
+        and given.path.rstrip("/") == own.path.rstrip("/")
+    )
+
+
+def require_credential(source_id: str, endpoint_url: str, auth: ApiAuth | None) -> None:
+    """Refuse, by name, a source reading Provisa's own endpoint with no credential (REQ-2138)."""
+    if auth is None and is_own_endpoint(endpoint_url):
+        raise OwnEndpointNeedsCredential(source_id)
+
+
+def credential_headers(auth: ApiAuth | None) -> dict[str, str]:  # REQ-2138
+    """The headers that carry ``auth`` (its references resolved now): the source's service
+    identity, sent on every call to its endpoint."""
+    from provisa.api_source.caller import _apply_auth
+
+    headers: dict[str, str] = {}
+    _apply_auth(auth, headers, {})
+    return headers
+
+
 @dataclass
 class SparqlSourceConfig:  # REQ-297
     """User-supplied SPARQL endpoint configuration."""
@@ -274,13 +371,18 @@ async def probe_endpoint(
     Raises:
         httpx.HTTPError: on network or HTTP errors
     """
+    require_credential(cfg.source_id, cfg.endpoint_url, cfg.auth)  # REQ-2138
     probe = _probe_limit(sparql_query, limit=5)
     data: dict[str, str] = {"query": probe}
     if cfg.default_graph_uri:
         data["default-graph-uri"] = cfg.default_graph_uri
     data.update(cfg.extra_params)
 
-    headers = {**sparql_headers(), "Content-Type": "application/x-www-form-urlencoded"}
+    headers = {
+        **sparql_headers(),
+        **credential_headers(cfg.auth),  # REQ-2138: the source's service identity
+        "Content-Type": "application/x-www-form-urlencoded",
+    }
 
     from provisa.security import sandbox_egress
 

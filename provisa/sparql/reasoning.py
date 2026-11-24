@@ -22,6 +22,10 @@ To answer one, the reasoner:
 3. classifies the slice under the axioms (``classify``), in its own process;
 4. serves the inferred facts of the table's class or property as rows.
 
+A source whose axioms read a class or predicate one of its own tables produces, as Provisa's own
+SPARQL endpoint serves it (REQ-2135), is refused by name before its slice is read, as a view that
+reads itself is: its slice would read its own output.
+
 Every inferred table of a source is answered by one classification. It is reused while the
 table's cache TTL allows, so the source's freshness declaration (cache_ttl, replica) is how often
 it reasons. A replica's TTL of -1 classifies once.
@@ -37,7 +41,7 @@ import re
 import tempfile
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -67,6 +71,10 @@ _TIMEOUT = 600.0
 
 class ReasonerFailed(Exception):
     """The reasoner could not answer: its program failed, or the endpoint refused the slice."""
+
+
+class SelfReadRefused(ReasonerFailed):
+    """The source's axioms read a class or predicate one of its own inferred tables produces."""
 
 
 def source_reasoner(source_id: str, options: dict) -> tuple[str, str] | None:
@@ -136,6 +144,106 @@ def slice_query(signature: Signature) -> str:
     if not branches:
         raise ReasonerFailed("the axioms name no class or property to reason about")
     return "CONSTRUCT { ?s ?p ?o } WHERE {\n  " + "\n  UNION\n  ".join(branches) + "\n}"
+
+
+# -- what the source's own tables produce -----------------------------------------------------
+
+
+@dataclass(frozen=True)
+class OwnTable:
+    """One of the source's tables as Provisa's SPARQL endpoint names it: its id, domain, model
+    name and each column's (name, model name) (REQ-1385: an alias when one is set)."""
+
+    table_id: int
+    domain: str
+    model_name: str
+    columns: tuple[tuple[str, str], ...]
+
+
+def produced_iris(
+    base: str,
+    tables: list[OwnTable],
+    table_terms: Mapping[int, str],
+    column_terms: Mapping[tuple[int, str], list[str]],
+) -> dict[str, str]:
+    """Each class and predicate IRI the ``tables`` produce on Provisa's own endpoint, to the
+    table producing it: its table class and its class term, and each column's predicate -- its
+    property terms when terms ground it, else its own (provisa.sparql_query.vocabulary)."""
+    from provisa.sparql_query.vocabulary import column_iri, table_class_iri, term_iri
+
+    produced: dict[str, str] = {}
+    for t in tables:
+        produced[table_class_iri(base, t.domain, t.model_name)] = t.model_name
+        if t.table_id in table_terms:
+            produced[term_iri(base, table_terms[t.table_id])] = t.model_name
+        for column, model_name in t.columns:
+            terms = column_terms.get((t.table_id, column), [])
+            iris = (
+                [term_iri(base, term) for term in terms]
+                if terms
+                else [column_iri(base, t.domain, t.model_name, model_name)]
+            )
+            for iri in iris:
+                produced[iri] = t.model_name
+    return produced
+
+
+async def own_products(source_id: str) -> dict[str, str]:
+    """What the source's own tables produce on Provisa's own SPARQL endpoint (``produced_iris``),
+    read from the model."""
+    from sqlalchemy import select
+
+    from provisa.api.app import state
+    from provisa.core import settings_registry
+    from provisa.core.repositories import glossary as glossary_repo
+    from provisa.core.schema_org import registered_tables, table_columns
+
+    base = settings_registry.value("server.public_url")
+    if not base:
+        # REQ-2135: with no public address Provisa's endpoint names no class or predicate (every
+        # IRI starts with it, IriBaseUnset), so it serves nothing of this source's tables.
+        return {}
+    pool = state.model_db
+    assert pool is not None, "the control plane is opened before any source is read"
+    async with pool.acquire() as conn:
+        found = (
+            await conn.execute_core(
+                select(
+                    registered_tables.c.id,
+                    registered_tables.c.domain_id,
+                    registered_tables.c.table_name,
+                    registered_tables.c.alias,
+                ).where(registered_tables.c.source_id == source_id)
+            )
+        ).fetchall()
+        ids = [r.id for r in found]
+        columns: dict[int, list[tuple[str, str]]] = {i: [] for i in ids}
+        for c in (
+            await conn.execute_core(
+                select(
+                    table_columns.c.table_id, table_columns.c.column_name, table_columns.c.alias
+                ).where(table_columns.c.table_id.in_(ids))
+            )
+        ).fetchall():
+            columns[c.table_id].append((c.column_name, c.alias or c.column_name))
+        table_terms, column_terms = await glossary_repo.vocabulary_refs(conn)
+    tables = [
+        OwnTable(r.id, r.domain_id, r.alias or r.table_name, tuple(columns[r.id])) for r in found
+    ]
+    return produced_iris(str(base).rstrip("/"), tables, table_terms, column_terms)
+
+
+def refuse_self_read(source_id: str, signature: Signature, produced: Mapping[str, str]) -> None:
+    """Refuse, by name, a source whose axioms read a class or predicate its own tables produce:
+    its slice would read its own output, as a view that reads itself would."""
+    read = signature.classes + signature.object_properties + signature.data_properties
+    hits = [(iri, produced[iri]) for iri in read if iri in produced]
+    if hits:
+        named = ", ".join(f"<{iri}> (its table {table!r})" for iri, table in hits)
+        raise SelfReadRefused(
+            f"sparql source {source_id!r} reads what its own inferred tables produce: {named}. "
+            "A source that reads its own output is refused, as a view that reads itself is"
+        )
 
 
 # -- the reasoner's answer ---------------------------------------------------------------------
@@ -284,6 +392,7 @@ async def classification(
             axioms_file = Path(work) / "axioms.owl"
             axioms_file.write_text(axioms)
             signature = parse_signature(await run("signature", str(axioms_file)))
+            refuse_self_read(source_id, signature, await own_products(source_id))
             slice_file = Path(work) / "slice.nt"
             slice_file.write_bytes(await fetch(url, slice_query(signature), headers))
             out_file = Path(work) / "inferred.nt"

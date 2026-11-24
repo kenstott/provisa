@@ -199,7 +199,9 @@ async def run(state: Any, command: dict, payload: dict, session: MintedSession) 
     names = [p.name for p in export.parameters]
     rows_are_objects = export.many and _fields_of(prepared.manifest, export.returns) is not None
     schema = schema_text(row_schema(prepared.manifest, export)) if rows_are_objects else None
-    async with readable(state, session, payload, remote=prepared.remote):
+    remote = prepared.remote
+    local = None if remote is not None else prepared.command.table_reads
+    async with readable(state, session, payload, remote=remote, local=local):
         args = [payload.get(n, ABSENT) for n in names]
         value = await asyncio.to_thread(
             prepared.worker().command, function, args, names, schema=schema

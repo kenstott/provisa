@@ -938,6 +938,17 @@ def _counts_from_the_first(start: exp.Expr | None) -> bool:
     return (_constant(start) or 0) >= 1
 
 
+def _engines_own_substring(node: exp.Substring) -> bool:
+    """Whether a substring is one every engine's own reads as PostgreSQL does: a start of 1 or more
+    and no length a constant says is negative (PostgreSQL's 22011, which the row raises) or ends
+    past an integer (which DuckDB's own overflows on)."""
+    start, length = node.args.get("start"), node.args.get("length")
+    if not _counts_from_the_first(start):
+        return False
+    count = _constant(length)
+    return count is None or (count >= 0 and (_constant(start) or 0) + count <= 2**31 - 1)
+
+
 def _call(node: exp.Expr) -> tuple[str, list[exp.Expr]] | None:
     """The name and arguments of a call the table may hold."""
     if isinstance(node, exp.Anonymous):
@@ -966,7 +977,7 @@ def _call(node: exp.Expr) -> tuple[str, list[exp.Expr]] | None:
         return "repeat", [node.this, node.args["times"]]
     if isinstance(node, exp.ArrayRemove):
         return "array_remove", [node.this, node.expression]
-    if isinstance(node, exp.Substring) and not _counts_from_the_first(node.args.get("start")):
+    if isinstance(node, exp.Substring) and not _engines_own_substring(node):
         length = node.args.get("length")
         return "substr", [node.this, node.args["start"], *([] if length is None else [length])]
     if isinstance(node, exp.RegexpReplace) and node.args.get("position") is not None:
@@ -1162,8 +1173,12 @@ def _constant(node: exp.Expr | None) -> int | None:
     if isinstance(node, exp.Literal) and node.is_int:
         return int(node.this)
     if isinstance(node, exp.Cast) and node.to.this in _INTEGER_RANGES:
-        # 42::integer names its value as plainly as 42, where the type holds it.
-        inner = _constant(node.this)
+        # 42::integer names its value as plainly as 42, where the type holds it; '42'::integer too.
+        quoted = node.this.unnest()
+        if isinstance(quoted, exp.Literal) and quoted.is_string:
+            text = quoted.this.strip()
+            quoted = exp.Literal.number(text) if re.fullmatch(r"[+-]?[0-9]+", text) else None
+        inner = _constant(quoted)
         low, high = _INTEGER_RANGES[node.to.this]
         return inner if inner is not None and low <= inner <= high else None
     return None
@@ -1179,10 +1194,16 @@ _INTEGER_RANGES = {
 
 def _within_the_value(args: list[exp.Expr]) -> bool:
     """Whether substr's start is a constant of at least 1 and its length none or a constant of at
-    least 0."""
+    least 0, ending within an integer."""
     start = _constant(args[1])
     length = _constant(args[2]) if len(args) == 3 else 0
-    return start is not None and start >= 1 and length is not None and length >= 0
+    return (
+        start is not None
+        and start >= 1
+        and length is not None
+        and length >= 0
+        and start + length <= 2**31 - 1  # past an integer DuckDB's own overflows
+    )
 
 
 def _past_the_edge(node: exp.Expr, dialect: str) -> exp.Expr | None:

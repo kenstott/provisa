@@ -10,14 +10,34 @@
 
 // REQ-2138: a sparql source's reasoner and its OWL axioms travel in the source's mapping
 // (provisa/sparql/reasoning.py: "reasoner", "axioms"); the form holds them in its fields.
+// Its credential -- the service identity every call to its endpoint is sent as -- rides in the
+// source's standard username and password fields, as entered (a value or a ${secret:...}
+// reference, resolved at each call), and its kind in the mapping's "auth"
+// (provisa/sparql/source.py: sparql_auth).
 
 /** The reasoners a sparql source may name. */
 export const SPARQL_REASONERS = ["hermit"] as const;
 
-export function sparqlMappingJson(fields: Record<string, string>): string {
+/** The credential kinds a sparql source may declare; "none" declares none. */
+const SPARQL_AUTH_KINDS = new Set(["bearer", "basic"]);
+
+export function sparqlMappingJson(fields: Record<string, string>, authType: string): string {
   const reasoner = fields.reasoner?.trim();
-  if (!reasoner) return "{}";
-  return JSON.stringify({ reasoner, axioms: fields.axioms ?? "" });
+  return JSON.stringify({
+    ...(reasoner ? { reasoner, axioms: fields.axioms ?? "" } : {}),
+    ...(SPARQL_AUTH_KINDS.has(authType) ? { auth: authType } : {}),
+  });
+}
+
+/** The source's username and password for the credential the form declares. */
+export function sparqlCredentials(
+  authType: string,
+  fields: Record<string, string>,
+): { username: string; password: string } {
+  if (authType === "bearer") return { username: "", password: fields.token ?? "" };
+  if (authType === "basic")
+    return { username: fields.username ?? "", password: fields.password ?? "" };
+  return { username: "", password: "" };
 }
 
 export function sparqlFieldsFromMapping(mappingJson: string): Record<string, string> {
@@ -27,4 +47,20 @@ export function sparqlFieldsFromMapping(mappingJson: string): Record<string, str
     reasoner: mapping.reasoner,
     axioms: typeof mapping.axioms === "string" ? mapping.axioms : "",
   };
+}
+
+/** The auth mode and credential fields a saved sparql source opens with, as it holds them. */
+export function sparqlCredentialFromSource(
+  mappingJson: string | null | undefined,
+  username: string | null | undefined,
+  passwordRef: string | null | undefined,
+): { authType: string; fields: Record<string, string> } {
+  const kind = mappingJson ? (JSON.parse(mappingJson) as Record<string, unknown>).auth : undefined;
+  if (kind === "bearer") return { authType: "bearer", fields: { token: passwordRef ?? "" } };
+  if (kind === "basic")
+    return {
+      authType: "basic",
+      fields: { username: username ?? "", password: passwordRef ?? "" },
+    };
+  return { authType: "none", fields: {} };
 }

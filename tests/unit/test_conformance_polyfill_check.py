@@ -312,3 +312,310 @@ def test_the_probe_is_the_runs_null_call(function, overload, call):
     """pgwire_function_probe's NULL call: its given arguments, else a NULL of each argument type
     (a pseudo-type its concrete type), the last passed VARIADIC where it is an array."""
     assert check.call_of(function, overload).sql("postgres") == call
+
+
+# --- documented limits (REQ-2167, amended 2026-11-23) -----------------------------------------
+
+_EDGY = Feature(
+    "edgy",
+    "toy",
+    "An integer, doubled.",
+    read=Side(
+        rules=(Rule("edgy($a::integer)", {"duckdb": "2 * $a", "trino": "2 * $a"}),),
+        limitations={
+            "duckdb": (
+                Limitation(
+                    "Answers otherwise than PostgreSQL at an edge value: integer '-2147483648'."
+                ),
+                Limitation("Raises 22003 at an edge value it does not hold as PostgreSQL does:"),
+            ),
+            "trino": (Limitation("Raises 22003 at an edge value it does not hold as PostgreSQL"),),
+        },
+    ),
+)
+
+
+def _wrong_at(*literals: str) -> dict[str, Any]:
+    wrong = [
+        {
+            "statement": f"SELECT edgy(CAST({literal} AS integer))",
+            "edge": f"integer {kind}",
+            "difference": "1, 2",
+        }
+        for kind, literal in literals
+    ]
+    return {
+        "outcome": "wrong_answer",
+        "detail": wrong[0],
+        "wrong_at_edge": True,
+        "edge_wrong": wrong,
+    }
+
+
+_LEAST = ("least", "'-2147483648'")
+_GREATEST = ("greatest", "'2147483647'")
+
+
+def test_a_refusal_a_limitation_states_is_a_documented_limit():
+    run = _run(
+        "trim_array",
+        "anyarray, integer",
+        clickhouse=_refused("trim_array does not read this value"),
+    )
+    [(key, why)] = check.documented_limits(run).items()
+    assert key == ("trim_array", "anyarray, integer", "clickhouse")
+    assert "limitation" in why
+
+
+def test_a_refusal_as_its_refusal_row_says_is_a_documented_limit():
+    run = _run(
+        "generate_subscripts",
+        "anyarray, integer, boolean",
+        trino=_refused("generate_subscripts() has no form on trino"),
+    )
+    assert set(check.documented_limits(run)) == {
+        ("generate_subscripts", "anyarray, integer, boolean", "trino")
+    }
+
+
+@pytest.mark.parametrize(
+    "outcome",
+    [
+        _refused("array_shuffle() has no form on clickhouse"),
+        _refused("trim_array does not read this value", sqlstate="22003"),
+    ],
+    ids=["unstated message", "stated message, another sqlstate"],
+)
+def test_a_refusal_no_limitation_states_stays_failed(outcome):
+    function, overload = (
+        ("array_shuffle", "anyarray")
+        if "shuffle" in outcome["detail"]["error"]
+        else ("trim_array", "anyarray, integer")
+    )
+    assert check.documented_limits(_run(function, overload, clickhouse=outcome)) == {}
+
+
+def test_a_wrong_answer_at_a_stated_edge_value_is_a_documented_limit():
+    run = _run("edgy", "integer", duckdb=_wrong_at(_LEAST))
+    assert set(check.documented_limits(run, Grid((_EDGY,)))) == {("edgy", "integer", "duckdb")}
+
+
+def test_a_limitation_excuses_only_its_own_values():
+    """A limitation naming '-2147483648' does not excuse a wrong answer at '2147483647', nor one
+    wrong call of several at an unstated value, nor a wrong answer on a base call."""
+    grid = Grid((_EDGY,))
+    other = _run("edgy", "integer", duckdb=_wrong_at(_GREATEST))
+    both = _run("edgy", "integer", duckdb=_wrong_at(_LEAST, _GREATEST))
+    base = _run("edgy", "integer", duckdb=_WRONG)
+    assert check.documented_limits(other, grid) == {}
+    assert check.documented_limits(both, grid) == {}
+    assert check.documented_limits(base, grid) == {}
+    assert _verdicts(other, grid) == {"duckdb": check.FAILS}
+
+
+def test_a_limitation_stating_an_error_excuses_no_wrong_answer():
+    run = _run("edgy", "integer", trino=_wrong_at(_LEAST))
+    assert check.documented_limits(run, Grid((_EDGY,))) == {}
+    assert _verdicts(run, Grid((_EDGY,))) == {"trino": check.FAILS}
+
+
+def test_a_difference_of_no_particular_value_is_a_documented_limit():
+    run = _run("shout", "text", duckdb=_WRONG, trino=_WRONG)
+    assert set(check.documented_limits(run, Grid((_DIFFERS,)))) == {("shout", "text", "duckdb")}
+
+
+def test_a_pass_and_an_error_are_no_documented_limit():
+    run = _run("array_ndims", "anyarray", duckdb=_PASS, trino=_error("boom"))
+    assert check.documented_limits(run) == {}
+
+
+# --- a stated limit credited per feature, and excusing only its own errors (amended 2026-11-22) --
+
+_BOUND_TEXT = "A value past 1000 raises 0A000 (shout() of a value past 1000 has no form)."
+_BOUNDED = Feature(
+    "shout",
+    "toy",
+    "A text in capitals.",
+    read=Side(
+        rules=(
+            Rule("shout($a::text)", {"clickhouse": "upper($a)"}),
+            Rule("shout($a::integer)", {"clickhouse": "upper(toString($a))"}),
+        ),
+        limitations={"clickhouse": (Limitation(_BOUND_TEXT),)},
+    ),
+)
+_EDGES = {"calls": 4, "agreed": 3, "raised": 1}
+
+
+def _raised(message: str, sqlstate: str = "0A000") -> dict[str, Any]:
+    return {
+        "statement": "SELECT shout(1001)",
+        "edge": "integer greatest",
+        "error": _ERROR + message,
+        "sqlstate": sqlstate,
+    }
+
+
+def _within(*raised: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "outcome": "within_bound",
+        "detail": raised[0],
+        "edges": _EDGES,
+        "edge_raised": list(raised),
+        "bound_sqlstates": ["0A000"],
+        "bound_raised": True,
+    }
+
+
+#: An overload whose edge calls all agreed, as the measure wrote it per overload.
+_AGREED = {
+    "outcome": "pass",
+    "edges": {"calls": 4, "agreed": 4},
+    "bound_sqlstates": ["0A000"],
+    "bound_raised": False,
+}
+
+
+def _two(text: dict[str, Any], integer: dict[str, Any], grid: Grid) -> dict[str, str]:
+    run = {
+        "engines": ["clickhouse"],
+        "functions": [
+            {"function": "shout", "overload": "text", "outcomes": {"clickhouse": text}},
+            {"function": "shout", "overload": "integer", "outcomes": {"clickhouse": integer}},
+        ],
+    }
+    return {f.overload: f.verdict for f in check.checked(run, grid)}
+
+
+def test_a_limit_one_overload_raised_is_held_for_every_overload_of_the_feature():
+    held = _within(_raised("shout() of a value past 1000 has no form"))
+    assert _two(_AGREED, held, Grid((_BOUNDED,))) == {"text": check.HOLDS, "integer": check.HOLDS}
+
+
+def test_a_limit_no_overload_of_the_feature_raised_fails_each_overload_with_edges():
+    verdicts = _two(_AGREED, dict(_AGREED), Grid((_BOUNDED,)))
+    assert verdicts == {"text": check.FAILS, "integer": check.FAILS}
+    [finding, _] = check.checked(
+        {
+            "engines": ["clickhouse"],
+            "functions": [
+                {"function": "shout", "overload": "text", "outcomes": {"clickhouse": _AGREED}},
+                {"function": "shout", "overload": "integer", "outcomes": {"clickhouse": _AGREED}},
+            ],
+        },
+        Grid((_BOUNDED,)),
+    )
+    assert "no edge call of any overload of shout raised it" in finding.why
+
+
+def test_an_edge_raise_of_another_sqlstate_than_the_limit_states_fails():
+    other = _within(_raised("shout() of a value past 1000 has no form", "22003"))
+    assert _two(_AGREED, other, Grid((_BOUNDED,)))["integer"] == check.FAILS
+
+
+def test_an_edge_raise_of_another_message_than_the_limit_states_fails():
+    other = _within(_raised("shout() of a value past 1000 has no form"), _raised("boom: Code 386"))
+    [_, finding] = check.checked(
+        {
+            "engines": ["clickhouse"],
+            "functions": [
+                {"function": "shout", "overload": "text", "outcomes": {"clickhouse": _AGREED}},
+                {"function": "shout", "overload": "integer", "outcomes": {"clickhouse": other}},
+            ],
+        },
+        Grid((_BOUNDED,)),
+    )
+    assert finding.verdict == check.FAILS
+    assert "no limitation of its row states: 0A000 'boom: Code 386'" in finding.why
+
+
+def test_a_limit_stating_its_sqlstate_alone_excuses_any_message_of_it():
+    alone = Feature(
+        "shout",
+        "toy",
+        "A text in capitals.",
+        read=Side(
+            rules=_BOUNDED.read.rules,
+            limitations={"clickhouse": (Limitation("A value past 1000 raises 0A000."),)},
+        ),
+    )
+    raised = _within(_raised("anything at all"))
+    assert _two(raised, raised, Grid((alone,))) == {"text": check.HOLDS, "integer": check.HOLDS}
+
+
+def test_an_edge_raise_another_rows_limitation_states_with_its_message_holds():
+    """A literal past the engine's type raises the error its own row states (numeric_in of more
+    than 38 digits), whatever call it is an argument of."""
+    literal = Feature(
+        "a numeric literal",
+        "toy",
+        "A numeric literal.",
+        read=Side(
+            limitations={
+                "clickhouse": (
+                    Limitation(
+                        "Of more than 38 digits raises 0A000 (numeric_in() of more than 38 digits)."
+                    ),
+                )
+            }
+        ),
+    )
+    raised = _within(_raised("numeric_in() of more than 38 digits"))
+    verdicts = _two(raised, raised, Grid((_BOUNDED, literal)))
+    # The literal's raise is stated; shout's own limit is still raised by no overload.
+    assert verdicts == {"text": check.FAILS, "integer": check.FAILS}
+    both = _within(
+        _raised("numeric_in() of more than 38 digits"),
+        _raised("shout() of a value past 1000 has no form"),
+    )
+    assert _two(both, raised, Grid((_BOUNDED, literal))) == {
+        "text": check.HOLDS,
+        "integer": check.HOLDS,
+    }
+
+
+def test_a_wrong_answer_is_not_excused_by_a_limitation_that_states_an_error():
+    assert _two(_WRONG, _WRONG, Grid((_BOUNDED,))) == {"text": check.FAILS, "integer": check.FAILS}
+
+
+# --- statements of record (amended 2026-11-22) ---------------------------------------------------
+
+
+def test_every_statement_of_record_names_a_bounded_limitation_of_the_grid():
+    import function_edges as edges
+
+    for record in edges.STATEMENTS_OF_RECORD:
+        [feature] = [f for f in GRID.features if f.name == record.feature]
+        limitations = feature.read.limitations.get(record.dialect, ())
+        assert any(record.error in edges.bound_errors(lim) for lim in limitations), record
+        assert any(edges.of_record(record.feature, record.dialect, lim) for lim in limitations)
+
+
+def test_the_statements_of_record_are_the_limits_no_edge_call_reaches():
+    import function_edges as edges
+
+    named = {(r.feature, r.dialect) for r in edges.STATEMENTS_OF_RECORD}
+    aggregates = {"avg", "variance", "var_samp", "var_pop", "stddev", "stddev_samp", "stddev_pop"}
+    assert named == {(a, "clickhouse") for a in aggregates} | {
+        ("bpchar", "clickhouse"),
+        ("string_to_array", "clickhouse"),
+    }
+
+
+@pytest.mark.parametrize(
+    ("function", "overload"),
+    [("avg", "bigint"), ("stddev_pop", "integer"), ("string_to_array", "text, text")],
+)
+def test_a_statement_of_record_is_not_held_to_being_raised(function: str, overload: str):
+    run = _run(function, overload, clickhouse=dict(_AGREED))
+    assert _verdicts(run) == {"clickhouse": check.HOLDS}
+
+
+def test_a_statement_of_record_is_marked_by_feature_not_by_its_wording():
+    import function_edges as edges
+
+    [avg] = [f for f in GRID.features if f.name == "avg"]
+    [limitation] = avg.read.limitations["clickhouse"]
+    assert edges.of_record("avg", "clickhouse", limitation)
+    assert not edges.of_record("sum", "clickhouse", limitation)
+    assert not edges.of_record("avg", "trino", limitation)

@@ -8,7 +8,8 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""The memory cap of a DuckDB database this process opens (REQ-2006, engine.duckdb_memory_limit).
+"""The memory cap of a DuckDB database this process opens (REQ-2006, engine.duckdb_memory_limit),
+and the rule that it only ever loads extensions already staged (REQ-294).
 
 DuckDB caps each database on its own: the federation runtime's, the in-memory store's, a DuckDB
 source's, and every short-lived one a step opens. Each is opened with :func:`connect`, which caps
@@ -23,6 +24,7 @@ in 0.2 s without it (REQ-1142)."""
 from __future__ import annotations
 
 import logging
+import os
 from typing import Any
 
 import duckdb
@@ -32,6 +34,9 @@ import duckdb
 _said = logging.getLogger("uvicorn.error")
 
 _MIB = 1024 * 1024
+
+#: The staged extension directory, when an install names one (else DuckDB's per-user directory).
+EXT_DIR_ENV = "PROVISA_DUCKDB_EXT_DIR"
 
 
 #: A DuckDB connection's config, as duckdb.connect takes it.
@@ -81,8 +86,53 @@ def connect(
     not read: a built code host's image carries no settings of Provisa's, REQ-2100)."""
     extra = extra or {}
     capped = {} if "memory_limit" in extra else config()
+    settings = load_only_config(
+        str(extra["extension_directory"]) if "extension_directory" in extra else None
+    )
     # Planned as 1.5.5 planned (PLANNED): 2.0's remote_pushdown is off on every database.
-    return duckdb.connect(database, read_only=read_only, config={**PLANNED, **capped, **extra})
+    return duckdb.connect(
+        database, read_only=read_only, config={**PLANNED, **capped, **extra, **settings}
+    )
+
+
+class ExtensionNotStaged(RuntimeError):
+    """A DuckDB extension is not in the extension directory, and the runtime never fetches one
+    (REQ-294, AIR-GAPPED IS LOCAL FIRST)."""
+
+
+#: How to put an extension in place: the install steps that exist. Named in every refusal.
+STAGE_FIX = (
+    "run `python -m provisa.runtime_deps.stage_assets` once on a machine that reaches your package "
+    "index (it uses the index pip is configured for), or pre-fill the directory "
+    f"{EXT_DIR_ENV} names; on a source checkout run `python scripts/stage_duckdb_extensions.py`"
+)
+
+
+def load_only_config(directory: str | None = None) -> DuckDBConfig:
+    """REQ-294: the settings every DuckDB connection is opened with. DuckDB would otherwise fetch a
+    known extension from extensions.duckdb.org the first time a query names it. Installing happens
+    only at build or packaging time, so a connection only ever loads what is already staged."""
+    settings: DuckDBConfig = {
+        "autoinstall_known_extensions": False,
+        "autoload_known_extensions": False,
+    }
+    directory = directory or os.environ.get(EXT_DIR_ENV)
+    if directory:
+        settings["extension_directory"] = directory
+    return settings
+
+
+def load(con: Any, extension: str, statement: str | None = None) -> None:
+    """LOAD ``extension`` from the extension directory (``statement`` where it is not a plain
+    ``LOAD <extension>``: a named repository's), or refuse naming it and the fix. Never an INSTALL
+    and never a retry: an extension that isn't staged is an install defect."""
+    try:
+        con.execute(statement or f"LOAD {extension}")
+    except (duckdb.IOException, duckdb.InvalidInputException) as e:
+        raise ExtensionNotStaged(
+            f"DuckDB extension '{extension}' could not be loaded from the extension directory, "
+            f"and Provisa never downloads one at runtime. To fix it: {STAGE_FIX}. ({e})"
+        ) from e
 
 
 def log_limit(con: Any, what: str) -> None:

@@ -252,3 +252,20 @@ def test_a_run_with_no_broker_names_none_to_its_servers(monkeypatch):
     assert os.environ["KAFKA_BOOTSTRAP_SERVERS"] == os.environ["KAFKA_BOOTSTRAP"]
     assert os.environ["KAFKA_BOOTSTRAP"] == f"localhost:{os.environ['KAFKA_HOST_PORT']}"
     monkeypatch.delenv("KAFKA_BOOTSTRAP_SERVERS")
+
+
+def test_a_run_is_consecutive_ports_of_a_fresh_block_never_issued_again(tmp_path):
+    """REQ-2226: a server opening listeners on a range as it needs them is given consecutive
+    ports, from a block none of this process's other ports came from."""
+    lease = _lease(tmp_path)
+    single = lease.pinned(1)
+    first = lease.run(3)
+    assert first == _FIRST + _BLOCK  # the next block, not the one ``single`` came from
+    assert not set(single) & set(range(first, first + 3))
+    issued = [lease.transient() for _ in range(2 * _BLOCK)]
+    assert not set(issued) & set(range(first, first + 3))
+
+
+def test_a_run_longer_than_a_block_is_refused(tmp_path):
+    with pytest.raises(ValueError, match="a run is 1 to"):
+        _lease(tmp_path).run(_BLOCK + 1)
