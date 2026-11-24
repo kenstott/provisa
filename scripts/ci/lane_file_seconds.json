@@ -46,6 +46,7 @@
   "tests/integration/test_bootstrap_status.py": 5.0,
   "tests/integration/test_built_in_source_reseed.py": 115.4,
   "tests/integration/test_cache_store.py": 1.5,
+  "tests/integration/test_calcite_1416_probe.py": 0.0,
   "tests/integration/test_cassandra_native_fetch.py": 96.7,
   "tests/integration/test_cassandra_pipeline_e2e.py": 0.0,
   "tests/integration/test_cassandra_source_e2e.py": 78.3,
