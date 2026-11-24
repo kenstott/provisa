@@ -93627,7 +93627,7 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     the load; its sample view is checked against the published build by the build that follows the load,
     not by the load. A sample that does not hold is listed for review with the reason, as an offer whose
     role is gone is, and does not fail the load. An offer saved through the API is checked against the published
-    build when it is saved, as before. (Amended 2026-11-23, maintainer, A PRODUCT PAGE PREVIEWS CONTRACTS AS THE ACTING ROLE:) On the product page, each offer''s contract (its columns, types and keys, read grants) is previewed as the caller''s current acting role, a meta role when the caller acts as a set of roles (for example Role: All), so the preview shows what that role reads; the contract a consumer is offered and accepts is still the one derived for the offer''s own role, and the page says which role the preview is read as.'
+    build when it is saved, as before. (Amended 2026-11-23, maintainer, A PRODUCT PAGE PREVIEWS CONTRACTS AS THE ACTING ROLE:) On the product page, each offer''s contract (its columns, types and keys, read grants) is previewed as the caller''s current acting role, a meta role when the caller acts as a set of roles (for example Role: All), so the preview shows what that role reads; the contract a consumer is offered and accepts is still the one derived for the offer''s own role, and the page says which role the preview is read as. (Amended 2026-11-24 by the maintainer. An external system returns a decision through the decision hook signed with the organization''s hook secret (X-Provisa-Signature), carrying the decider and the decision time; Provisa verifies the signature and the decider''s authority, and refuses an unsigned, mis-signed or unauthorised decision by name. Signed-in callers decide through the same endpoint.)'
   scenario: 'Given a role that sees product P but holds no grant on its member tables
     When it requests P and P''s owner role approves
     Then the role holds read grants on each member table of P and can query them
@@ -94582,7 +94582,7 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     only in their envelope (JSON:API data, attributes, relationships and included; REST rows; OData value,
     @odata.context, @odata.nextLink and annotations). (Amended 2026-11-02, Four platform wheels; no Intel
     Mac:) Maintainer 2026-11-02: Intel (x86_64) macOS is not distributed or supported, so provisa ships
-    four platform wheels: macOS arm64, Linux amd64, Linux arm64 and Windows x64.'
+    four platform wheels: macOS arm64, Linux amd64, Linux arm64 and Windows x64. (Amended 2026-11-24 by the maintainer. Athena results are read as Arrow through its Arrow cursor, which reads the result file from the query output location: an Athena source''s credentials must read that location, and a source without that access is refused at setup by name.)'
   scenario: 'Given a statement whose result holds every type pgwire serves, including timestamptz in a
     named zone
 
