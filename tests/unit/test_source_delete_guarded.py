@@ -265,24 +265,33 @@ async def test_the_deletion_does_not_wait_for_a_catalog_walk_inside_an_adapter_r
 @pytest.fixture
 def hosted(plane, served, tmp_path, monkeypatch):
     """Code sources ``spark_jobs`` (a host this server runs, running) and ``spark_ext`` (a host
-    its operator runs), deleted in org ``acme``."""
+    its operator runs), deleted in the org the deletion runs in."""
     import subprocess
     import sys
 
     from provisa.codesource import native_connector
-    from provisa.core.request_context import reset_current_org, set_current_org
+    from provisa.core.request_context import require_current_org
 
     monkeypatch.setattr(native_connector, "state_dir", lambda o, s: tmp_path / o / s)
     monkeypatch.setattr(native_connector, "_hosts", {})
-    work = tmp_path / "acme" / "spark_jobs"
+    org = require_current_org()
+    work = tmp_path / org / "spark_jobs"
     (work / "state").mkdir(parents=True)
-    process = subprocess.Popen(  # noqa: S603 -- the test's interpreter
-        [sys.executable, "-c", "import time; time.sleep(60)"], start_new_session=True
+    listener = (
+        "import socket, time\n"
+        "s = socket.socket()\n"
+        "s.bind(('127.0.0.1', 0))\n"
+        "s.listen()\n"
+        "print(s.getsockname()[1], flush=True)\n"
+        "time.sleep(60)\n"
     )
-    native_connector._hosts[("acme", "spark_jobs")] = native_connector._Host(process, 40123)  # pyright: ignore[reportPrivateUsage]
-    token = set_current_org("acme")
-    yield {"process": process, "work": work}
-    reset_current_org(token)
+    process = subprocess.Popen(  # noqa: S603 -- the test's interpreter
+        [sys.executable, "-c", listener], stdout=subprocess.PIPE, text=True, start_new_session=True
+    )
+    assert process.stdout is not None
+    port = int(process.stdout.readline())
+    native_connector._hosts[(org, "spark_jobs")] = native_connector._Host(process, port)  # pyright: ignore[reportPrivateUsage]
+    yield {"process": process, "work": work, "port": port, "org": org}
     native_connector.stop_all()
 
 
@@ -295,20 +304,34 @@ async def _insert_code_source(plane: Database, source_id: str, remote: dict) -> 
         )
 
 
-async def test_deleting_a_native_source_stops_its_host_and_removes_its_state(plane, hosted):
+def _listening(port: int) -> bool:
+    import socket
+
+    with socket.socket() as probe:
+        return probe.connect_ex(("127.0.0.1", port)) == 0
+
+
+async def test_deleting_a_native_source_stops_its_host_frees_its_port_and_removes_its_state(
+    plane, hosted
+):
     import os
 
     from provisa.codesource import native_connector
 
-    await _insert_code_source(plane, "spark_jobs", {"host": "127.0.0.1", "native": "script"})
+    port = hosted["port"]
+    await _insert_code_source(
+        plane, "spark_jobs", {"host": "127.0.0.1", "port": port, "native": "script"}
+    )
+    assert _listening(port)
     assert (await _delete_source("spark_jobs")).success
     process = hosted["process"]
     assert process.poll() is not None
     with pytest.raises(ProcessLookupError):
         os.kill(process.pid, 0)
+    assert not _listening(port)
     assert not hosted["work"].exists()
     with pytest.raises(native_connector.NativeHostFailed, match="has no state"):
-        native_connector.ensure_running("acme", "spark_jobs", "d" * 64, "script", 40123)
+        native_connector.ensure_running(hosted["org"], "spark_jobs", "d" * 64, "script", port)
 
 
 async def test_deleting_an_image_source_touches_no_host(plane, hosted, monkeypatch):
@@ -321,4 +344,5 @@ async def test_deleting_an_image_source_touches_no_host(plane, hosted, monkeypat
     await _insert_code_source(plane, "spark_ext", {"host": "10.0.0.9", "port": 7443})
     assert (await _delete_source("spark_ext")).success
     assert hosted["process"].poll() is None
+    assert _listening(hosted["port"])
     assert hosted["work"].exists()

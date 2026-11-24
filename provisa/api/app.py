@@ -4290,12 +4290,37 @@ def _after_answer_steps(
         # REQ-194: the prod build's names table. An env build (a sandbox environment's runtime,
         # REQ-2006) skips it: its model is the prod's, the prod's pass writes it, and the
         # SHARE ROW EXCLUSIVE lock the write takes would hold up every concurrent sandbox open.
-        if env != PROD:
+        # ``announce=False`` (REQ-1914) is a reload of a change another worker made: that worker
+        # built the same model and writes its names table; this one serves from the names table
+        # it built in memory, and its meta reports read the one that worker stored.
+        if env != PROD or not announce:
             return
         assert state.model_db is not None
         assert names is not None, "the build stores the names table it built"
+        from provisa.compiler.names_table import stored_name_rows
+        from provisa.federation.replica_routing import replica_tables
+
+        # REQ-194 (THE NAMES TABLE SPANS THE DATA ESTATE): beside the model's own names, each
+        # object's name where it lives -- the bound engine and the replicas it keeps, the export
+        # targets that carry it, the glossary terms it realises.
+        engine = state.federation_engine.engine
+        replicas = {}
+        for src, reg in await replica_tables(engine, state):
+            address = engine.backend.replica_address(
+                state,
+                source_id=src.id,
+                schema_name=reg["schema_name"],
+                table_name=reg["table_name"],
+            )
+            replicas[(src.id, reg["schema_name"], reg["table_name"])] = (
+                address.schema,
+                address.table,
+            )
         async with state.model_db.acquire() as conn:
-            await _model_names.write_names_table(conn, names.rows)
+            estate = await _model_names.read_estate(
+                conn, org_id=require_current_org(), engine=engine.name, replicas=replicas
+            )
+            await _model_names.write_names_table(conn, stored_name_rows(names, estate))
 
     async def announce_change() -> None:
         # ``announce=False`` (REQ-1914) is a reload: the worker that made the change derives and

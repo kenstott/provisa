@@ -190,3 +190,74 @@ def test_schema_version_increments_before_names_table_write(
         "registered_tables cache is stale-free during the lock; "
         f"expected [{version_before + 1}], got {version_at_write}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Test 4: one worker writes the stored names table; a worker reloading its change does not
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(("announce", "writes"), [(True, 1), (False, 0)])
+def test_only_the_worker_that_made_the_change_writes_the_names_table(
+    monkeypatch: pytest.MonkeyPatch, announce: bool, writes: int
+) -> None:
+    """REQ-194, REQ-1914: every worker rebuilds on a change, and each builds the same names table
+    in memory. The worker that made the change (``announce``) stores it; a worker reloading that
+    change (``announce=False``) serves from its own and stores nothing, so the change costs one
+    write, not one per worker."""
+    from contextlib import asynccontextmanager
+    from types import SimpleNamespace
+
+    import provisa.api.app as app_mod
+    import provisa.core.repositories.model_names as _mn
+    from provisa.api import rebuild_trace
+    from provisa.core.environments import PROD
+
+    written: list[Any] = []
+
+    async def _write_names_table(_conn: Any, rows: Any) -> None:
+        written.append(rows)
+
+    class _Db:
+        @asynccontextmanager
+        async def acquire(self) -> Any:
+            yield object()
+
+    from provisa.compiler.names_table import Estate, NameRow, NamesTable
+    from provisa.core.request_context import current_org
+    from provisa.federation import replica_routing
+
+    async def _read_estate(_conn: Any, *, org_id: Any, engine: str, replicas: Any) -> Estate:
+        return Estate(org_id, engine, replicas, {}, {}, {}, {})
+
+    async def _no_replicas(_engine: Any, _state: Any) -> list[Any]:
+        return []
+
+    monkeypatch.setattr(_mn, "write_names_table", _write_names_table)
+    # REQ-194 (THE NAMES TABLE SPANS THE DATA ESTATE): the step reads the estate beside the
+    # model's names; this model has no replica, export or term.
+    monkeypatch.setattr(_mn, "read_estate", _read_estate)
+    monkeypatch.setattr(replica_routing, "replica_tables", _no_replicas)
+    engine = SimpleNamespace(name="duckdb", backend=None)
+    monkeypatch.setattr(
+        app_mod,
+        "state",
+        SimpleNamespace(model_db=_Db(), federation_engine=SimpleNamespace(engine=engine)),
+    )
+    row = NameRow("command", "top", "graphql_field", "top", "top", "command top")
+
+    steps = app_mod._after_answer_steps(
+        runtime=SimpleNamespace(role_build_inputs={}),  # type: ignore[arg-type]
+        env=PROD,
+        announce=announce,
+        checked={},
+        names=NamesTable(rows=(row,)),
+        build=SimpleNamespace(),  # type: ignore[arg-type]
+    )
+    token = current_org.set("org-a")
+    try:
+        asyncio.run(steps[rebuild_trace.NAMES_TABLE]())
+    finally:
+        current_org.reset(token)
+
+    assert len(written) == writes

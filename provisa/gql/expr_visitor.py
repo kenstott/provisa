@@ -935,6 +935,11 @@ class ExprLowering:
             return exp.true() if node.value else exp.false()
         if node.kind == "string":
             return exp.Literal.string(node.value)
+        if isinstance(node.value, float):
+            # openCypher's float is an IEEE double: an engine types a bare 1.5 an exact DECIMAL,
+            # which a JSON surface writes as its digit string (REQ-1961). A literal one side of a
+            # comparison stays as written (_lower_Binary, issue #130).
+            return exp.Cast(this=exp.Literal.number(node.value), to=exp.DataType.build("DOUBLE"))
         return exp.Literal.number(node.value)
 
     def _lower_Variable(self, node: Variable) -> exp.Expression:
@@ -1144,6 +1149,13 @@ class ExprLowering:
             return _CONVERTED_KIND.get(node.name.lower())
         return None
 
+    def _compared(self, side: CypherExpr) -> exp.Expression:
+        """One side of a comparison: a float literal as written, so what it is compared to keeps
+        its own type (issue #130); a comparison answers a boolean, never the literal's value."""
+        if isinstance(side, Literal) and isinstance(side.value, float):
+            return exp.Literal.number(side.value)
+        return self.lower(side)
+
     def _lower_Binary(self, node: Binary) -> exp.Expression:
         op = node.op
         folded = _folded_equality(node)
@@ -1186,8 +1198,8 @@ class ExprLowering:
                 ordered = self._json_ordered(node, left_kind, right_kind)
                 if ordered is not None:
                     return ordered
-        left = self.lower(node.left)
-        right = self.lower(node.right)
+        left = self._compared(node.left) if op in _BINARY_CMP else self.lower(node.left)
+        right = self._compared(node.right) if op in _BINARY_CMP else self.lower(node.right)
         # SQL binds IS NULL looser than a comparison, Cypher tighter: a = b IS NULL is a = (b IS NULL).
         if isinstance(node.left, IsNull) and op not in ("AND", "OR", "XOR"):
             left = exp.Paren(this=left)

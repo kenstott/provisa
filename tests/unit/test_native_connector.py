@@ -358,31 +358,70 @@ def test_an_image_hosts_front_keeps_listening_on_every_interface(tmp_path):
 # -- a deleted source's host -----------------------------------------------------------------------
 
 
-def _hosted(work: Path, monkeypatch) -> subprocess.Popen:
+#: A stand-in for the code host front end: it listens on a loopback port and says which.
+_LISTENER = (
+    "import socket, sys, time\n"
+    "s = socket.socket()\n"
+    "s.bind(('127.0.0.1', 0))\n"
+    "s.listen()\n"
+    "print(s.getsockname()[1], flush=True)\n"
+    "time.sleep(60)\n"
+)
+
+
+def _hosted(work: Path, monkeypatch) -> tuple[subprocess.Popen, int]:
     """A host process for ``acme/spark_jobs`` as :func:`native_connector._launch` leaves one: its
-    own session, its state under ``work``."""
+    own session, listening on a loopback port, its state under ``work``."""
     (work / "state").mkdir(parents=True)
     monkeypatch.setattr(native_connector, "_hosts", {})
     process = subprocess.Popen(  # noqa: S603 -- the test's interpreter
-        [sys.executable, "-c", "import time; time.sleep(60)"], start_new_session=True
+        [sys.executable, "-c", _LISTENER], stdout=subprocess.PIPE, text=True, start_new_session=True
     )
-    native_connector._hosts[("acme", "spark_jobs")] = native_connector._Host(process, 40123)  # pyright: ignore[reportPrivateUsage]
-    return process
+    assert process.stdout is not None
+    port = int(process.stdout.readline())
+    native_connector._hosts[("acme", "spark_jobs")] = native_connector._Host(process, port)  # pyright: ignore[reportPrivateUsage]
+    return process, port
 
 
-def test_stopping_a_source_ends_its_host_and_removes_its_state(tmp_path, monkeypatch):
+def _listening(port: int) -> bool:
+    with socket.socket() as probe:
+        return probe.connect_ex(("127.0.0.1", port)) == 0
+
+
+def test_stopping_a_source_ends_its_host_frees_its_port_and_removes_its_state(
+    tmp_path, monkeypatch
+):
     monkeypatch.setattr(native_connector, "state_dir", lambda o, s: tmp_path / o / s)
     work = tmp_path / "acme" / "spark_jobs"
-    process = _hosted(work, monkeypatch)
+    process, port = _hosted(work, monkeypatch)
+    assert _listening(port)
     native_connector.stop("acme", "spark_jobs")
     assert process.poll() is not None
     with pytest.raises(ProcessLookupError):
         os.kill(process.pid, 0)
+    assert not _listening(port)
     assert not work.exists()
     assert native_connector.running("acme", "spark_jobs") is None
     # A later restart finds nothing to start again.
     with pytest.raises(NativeHostFailed, match="has no state"):
-        native_connector.ensure_running("acme", "spark_jobs", "d" * 64, "script", 40123)
+        native_connector.ensure_running("acme", "spark_jobs", "d" * 64, "script", port)
+
+
+def test_stopping_one_source_leaves_another_sources_host_running(tmp_path, monkeypatch):
+    """Each source has a host of its own: deleting one never stops another's."""
+    monkeypatch.setattr(native_connector, "state_dir", lambda o, s: tmp_path / o / s)
+    process, port = _hosted(tmp_path / "acme" / "spark_jobs", monkeypatch)
+    try:
+        other = tmp_path / "acme" / "spark_other"
+        (other / "state").mkdir(parents=True)
+        native_connector.stop("acme", "spark_other")
+        assert process.poll() is None
+        assert _listening(port)
+        assert native_connector.running("acme", "spark_jobs") is process
+        assert (tmp_path / "acme" / "spark_jobs").exists()
+        assert not other.exists()
+    finally:
+        native_connector.stop_all()
 
 
 def test_stopping_a_source_whose_host_is_not_running_removes_its_state(tmp_path, monkeypatch):

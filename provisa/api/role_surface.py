@@ -214,6 +214,15 @@ class SurfacePart(MutableMapping):
         self._held = self._holder.surfaces
 
     def __delitem__(self, role_id: str) -> None:
+        held = self._holder.surfaces[role_id]
+        if isinstance(held, LazySurface) and held._surface is None:
+            # Not built (or its build failed): no part of it was ever served, so the role is
+            # dropped whole and nothing is built. Building it here ran it against whatever
+            # inputs the caller had in place -- a test's stand-ins -- and its failure failed
+            # the caller.
+            install_surface(self._holder, role_id, None)
+            self._held = self._holder.surfaces
+            return
         self[role_id]  # KeyError when the role has no such part
         remaining = replace(built_surface(self._holder.surfaces[role_id]), **{self._part: None})
         install_surface(self._holder, role_id, None if remaining == RoleSurface() else remaining)
@@ -229,7 +238,7 @@ class SurfacePart(MutableMapping):
             ]
         )
 
-    def __contains__(self, role_id: object) -> bool:
+    def __contains__(self, role_id: object) -> bool:  # object-ok: Mapping.__contains__'s signature
         # Membership names the role without building it.
         held = self._held.get(role_id) if isinstance(role_id, str) else None
         if held is None:

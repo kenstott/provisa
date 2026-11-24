@@ -382,6 +382,7 @@
   "tests/integration/test_openapi_pet_by_status.py": 1.2,
   "tests/integration/test_openapi_source.py": 90.7,
   "tests/integration/test_openapi_spec.py": 0.2,
+  "tests/integration/test_opengauss_bytea_like.py": 120.0,
   "tests/integration/test_operation_functions_e2e.py": 110.0,
   "tests/integration/test_operator_floor_e2e.py": 150.8,
   "tests/integration/test_opioids_demo.py": 0.0,

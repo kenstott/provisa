@@ -25,6 +25,7 @@ from sqlglot.dialects.postgres import Postgres
 from provisa.core.pg_error import MARK, raising
 from provisa.transpiler import (
     function_macros,
+    opengauss_bytea_like,
     pg_forms_enum,
     pg_forms_geometric,
     pg_forms_type_io,
@@ -43,6 +44,7 @@ from provisa.transpiler.pg_literals import (
     ROOM,
     TIGHT,
     array_inputs,
+    duckdb_eras,
     exact_inputs,
     postgres_literals,
 )
@@ -768,6 +770,7 @@ def _duckdb_form(pg_sql: str) -> str:
     tree = _row_delimited_string_agg(tree)
     tree = pg_functions.after_in(_postgres_semantics_for_duckdb(_lengths_for_duckdb(tree)))
     _posix_zones_for_duckdb(tree)
+    tree = tree.transform(duckdb_eras, copy=False)  # REQ-2236: a literal BC
     # In place, the tree being this function's; a root a step lifted out of its parent keeps its copy.
     return tree.sql(dialect="duckdb", copy=tree.parent is not None)
 
@@ -2045,6 +2048,7 @@ def transpile(
     pgvector: bool = False,
     quote_identifiers: bool = False,
     column_types: ColumnTypes | None = None,
+    engine_kind: str | None = None,
 ) -> str:  # REQ-066, REQ-068, REQ-229, REQ-423, REQ-2236
     """Transpile PostgreSQL-dialect SQL to a target dialect.
 
@@ -2059,6 +2063,9 @@ def transpile(
             names it gives them, for a dialect whose forms read their operands' types
             (``typed_columns.TYPED_DIALECTS``, REQ-2236). Without them such a dialect refuses
             what it cannot write untyped.
+        engine_kind: the federation engine kind the statement runs on, for a product that shares
+            another's dialect but answers some form differently (openGauss: the postgres dialect,
+            bytea LIKE matched byte-wise, REQ-2236). None for a statement no engine runs.
 
     Returns:
         SQL string in target dialect.
@@ -2192,6 +2199,11 @@ def transpile(
     if target_dialect == "clickhouse":
         # REQ-2171: its instants and its refusals as PostgreSQL's, whatever wrote them.
         lowered = clickhouse_semantics(
+            lowered if lowered is not None else sqlglot.parse_one(pg_sql, read="postgres")
+        )
+    if engine_kind == opengauss_bytea_like.KIND and opengauss_bytea_like.mentioned(pg_sql):
+        # REQ-2236: openGauss matches bytea LIKE as multibyte text; its rawlike matches bytes.
+        lowered = opengauss_bytea_like.byte_wise(
             lowered if lowered is not None else sqlglot.parse_one(pg_sql, read="postgres")
         )
     if column_types is not None:
