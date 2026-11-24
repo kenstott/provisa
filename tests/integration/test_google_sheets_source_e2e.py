@@ -37,13 +37,26 @@ pytestmark = [pytest.mark.integration, pytest.mark.requires_warehouse]
 _CREDS_PATH = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", "")
 _PROJECT = os.environ.get("GOOGLE_CLOUD_PROJECT", "")
 
-pytestmark.append(
-    pytest.mark.skipif(
-        not (_CREDS_PATH and os.path.exists(_CREDS_PATH) and _PROJECT),
-        reason="GOOGLE_APPLICATION_CREDENTIALS / GOOGLE_CLOUD_PROJECT not set to an existing "
-        "service-account key (REQ-1097 setup)",
-    )
-)
+
+@pytest.fixture(autouse=True)
+def _credentials_present():
+    # REQ-1742: a skip is a defect. The warehouse lane passes these as secrets (and writes
+    # GOOGLE_APPLICATION_CREDENTIALS from GOOGLE_APPLICATION_CREDENTIALS_JSON); absent, the test
+    # fails naming what is missing.
+    missing = []
+    if not _CREDS_PATH:
+        missing.append(
+            "GOOGLE_APPLICATION_CREDENTIALS (secret GOOGLE_APPLICATION_CREDENTIALS_JSON)"
+        )
+    elif not os.path.exists(_CREDS_PATH):
+        missing.append(f"GOOGLE_APPLICATION_CREDENTIALS file {_CREDS_PATH!r} does not exist")
+    if not _PROJECT:
+        missing.append("GOOGLE_CLOUD_PROJECT")
+    if not os.environ.get("GSHEETS_TEST_SHEET_ID"):
+        missing.append("GSHEETS_TEST_SHEET_ID")
+    if missing:
+        pytest.fail("Google Sheets e2e cannot run; not set: " + "; ".join(missing), pytrace=False)
+
 
 _WIDGETS = [("w1", "Widget A"), ("w2", "Widget B"), ("w3", "Widget C")]
 
