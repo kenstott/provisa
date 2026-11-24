@@ -181,3 +181,96 @@ def test_a_view_calling_it_with_no_table_is_refused_naming_the_command():
     sql = "SELECT c.id FROM clips_on_the_cluster(t.name) AS c, ledger.clips AS t"
     with pytest.raises(ValueError, match="clips_on_the_cluster"):
         read_table_names(sql, _commands())
+
+
+# --- a reader is judged by the read the call makes of its table (REQ-2226) -------------------
+#
+# A view over a code command's call is read from its stored table; its definition is judged for
+# the reader, each table argument as the read the call's code is given (minted.read_statement).
+# A table in a domain the reader does not reach is in none of the reader's compiled contexts, so
+# only that read's column grants can refuse it -- as they refuse the call's own read when it runs.
+# Any code command's call: a Python code source's as a Spark script's.
+
+
+def _outside_the_readers_domains(argument: str, columns: list[str] | None = None):
+    """test_code_resolver_read's reader over the bridge, its call given ``argument`` for the
+    clips table, which is in a domain the reader does not reach -- so, as a real build of its
+    surface leaves it, in none of its compiled context's tables."""
+    from tests.unit.test_code_resolver_read import _MATCH_REGION, _state
+
+    state = _state(
+        definition=f"SELECT * FROM match_region('orders', '{argument}') AS m",
+        clips_domain="media",
+        domain_access=["sales"],
+    )
+    state.contexts["analyst"].tables.pop("clips")
+    command = state.tracked_functions["match_region"]
+    command["arguments"] = [
+        dict(_MATCH_REGION["arguments"][0]),
+        {"name": "clips", "arg_kind": "table_ref", "columns": [{"name": c} for c in columns or []]},
+    ]
+    return state
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("argument", ["clips", "media.clips", "sales.clips"])
+@pytest.mark.parametrize("columns", [["id", "region"], []])
+async def test_a_reader_outside_the_argument_tables_domain_is_refused_the_view(
+    monkeypatch, argument, columns
+):
+    from tests.unit.test_code_resolver_read import _READ_BRIDGE, _refused
+
+    refused = await _refused(
+        monkeypatch, _READ_BRIDGE, _outside_the_readers_domains(argument, columns)
+    )
+    assert "V003" in refused or "V006" in refused or "V000" in refused, refused
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("columns", [["id", "region"], []])
+async def test_the_view_is_refused_in_the_words_the_calls_read_is_refused(monkeypatch, columns):
+    from provisa.pgwire.minted import read_statement
+    from tests.unit.test_code_resolver_read import _READ_BRIDGE, _refused
+
+    stored = await _refused(
+        monkeypatch, _READ_BRIDGE, _outside_the_readers_domains("media.clips", columns)
+    )
+    live = await _refused(
+        monkeypatch,
+        read_statement("media.clips", columns),
+        _outside_the_readers_domains("media.clips", columns),
+    )
+    assert stored == live, (stored, live)
+
+
+@pytest.mark.asyncio
+async def test_a_column_the_command_reads_that_the_reader_cannot_see_refuses_the_view(
+    monkeypatch,
+):
+    """In the reader's domains, but one declared input column hidden from it."""
+    from tests.unit.test_code_resolver_read import _MATCH_REGION, _READ_BRIDGE, _refused, _state
+
+    state = _state(hidden={2: {"secret"}})
+    state.tracked_functions["match_region"]["arguments"] = [
+        dict(_MATCH_REGION["arguments"][0]),
+        {
+            "name": "clips",
+            "arg_kind": "table_ref",
+            "columns": [{"name": "id"}, {"name": "secret"}],
+        },
+    ]
+    refused = await _refused(monkeypatch, _READ_BRIDGE, state)
+    assert "V003" in refused and "secret" in refused, refused
+
+
+@pytest.mark.asyncio
+async def test_a_reader_who_may_read_every_column_the_command_reads_reads_the_view(monkeypatch):
+    from tests.unit.test_code_resolver_read import _MATCH_REGION, _READ_BRIDGE, _govern, _state
+
+    state = _state(hidden={2: {"secret"}})
+    state.tracked_functions["match_region"]["arguments"] = [
+        dict(_MATCH_REGION["arguments"][0]),
+        {"name": "clips", "arg_kind": "table_ref", "columns": [{"name": "id"}, {"name": "region"}]},
+    ]
+    governed = await _govern(monkeypatch, _READ_BRIDGE, state)
+    assert "order_clips" in governed

@@ -260,12 +260,24 @@ def _violations(
     violations += _check_domain_access(
         tree, gov_ctx, table_id_to_meta, domain_access, cte_names_set
     )
-    # REQ-2249: a code command a view's definition calls reads its table arguments; they are the
-    # view's inputs, judged as a relation its FROM names is.
-    for read in view_command_inputs(tree, view_commands):
-        named = exp.select("*").from_(read)
-        violations += _check_registered_relations(named, gov_ctx, ctx)
-        violations += _check_domain_access(named, gov_ctx, table_id_to_meta, domain_access)
+    # REQ-2249, REQ-2226: a code command a view's definition calls reads its table arguments; they
+    # are the view's inputs, each judged as the read the call makes of it -- the statement the
+    # call's code is given (:func:`table_read`), run as the reader -- so a reader the call's read
+    # would be refused is refused the view in the same words. Judged by its columns too: a table
+    # the reader reaches no domain of is in no compiled context of its, so no domain rule can
+    # see it, and only its columns' grants refuse it, as they refuse a direct read.
+    for read in view_command_reads(tree, view_commands):
+        violations += _violations(
+            read,
+            ctx,
+            gov_ctx,
+            role,
+            raw_tables,
+            bypass_relationship_guard=True,  # one table: it relates nothing
+            bypass_uncovered_relationships=True,
+            table_functions=frozenset(),
+            view_commands={},
+        )
     if not bypass_relationship_guard:
         valid_joins = approved_joins(ctx)
 
@@ -414,18 +426,46 @@ def view_command_inputs(tree: exp.Expr, view_commands: Mapping[str, dict]) -> li
 def command_table_arguments(tbl: exp.Table, command: dict) -> list[exp.Table]:
     """The tables the call ``tbl`` of ``command`` is given as its table arguments (REQ-2226), as
     relations, in argument order."""
+    return [named for named, _ in _command_table_reads(tbl, command)]
+
+
+def _command_table_reads(tbl: exp.Table, command: dict) -> list[tuple[exp.Table, list[str]]]:
+    """Each table argument of the call ``tbl`` of ``command``, as a relation, with the columns
+    the command declares it reads of it (none: every column the role sees), in argument order."""
     values = list(tbl.this.expressions)
-    named: list[exp.Table] = []
+    reads: list[tuple[exp.Table, list[str]]] = []
     for i, argument in enumerate(command.get("arguments") or []):
         if argument.get("arg_kind") not in _TABLE_ARGUMENTS or i >= len(values):
             continue
         value = values[i]
-        named.append(
+        named = (
             sqlglot.parse_one(value.this, into=exp.Table, dialect="postgres")
             if isinstance(value, exp.Literal) and value.is_string
             else exp.table_(value.sql(dialect="postgres"))
         )
-    return named
+        reads.append((named, [c["name"] for c in argument.get("columns") or []]))
+    return reads
+
+
+def table_read(table: exp.Table, columns: list[str]) -> exp.Select:
+    """The statement a code call's table argument is read with (REQ-2226): its declared
+    ``columns``, or every column the role sees."""
+    projection = [exp.column(c, quoted=True) for c in columns] if columns else [exp.Star()]
+    return exp.select(*projection).from_(table.copy())
+
+
+def view_command_reads(tree: exp.Expr, view_commands: Mapping[str, dict]) -> list[exp.Select]:
+    """The reads each call :func:`view_command` admits in ``tree`` makes of its table arguments
+    (:func:`table_read`), in first-reference order, each once."""
+    reads: dict[str, exp.Select] = {}
+    for tbl in tree.find_all(exp.Table):
+        command = view_command(tbl, view_commands)
+        if command is None:
+            continue
+        for named, columns in _command_table_reads(tbl, command):
+            read = table_read(named, columns)
+            reads.setdefault(read.sql(dialect="postgres"), read)
+    return list(reads.values())
 
 
 def _check_registered_relations(  # REQ-001, REQ-266
