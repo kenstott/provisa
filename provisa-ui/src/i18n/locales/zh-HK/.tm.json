@@ -3416,6 +3416,7 @@
   "zh-HK/graphFrame.json::graphFrame.metaRows_one": "{{count}} row",
   "zh-HK/graphFrame.json::graphFrame.metaRows_other": "{{count}} rows",
   "zh-HK/graphFrame.json::graphFrame.pinToTop": "Pin to top",
+  "zh-HK/graphFrame.json::graphFrame.relNotImputed": "{{type}} not imputed: {{error}}",
   "zh-HK/graphFrame.json::graphFrame.removeFromFavorites": "Remove from favorites",
   "zh-HK/graphFrame.json::graphFrame.run": "Run",
   "zh-HK/graphFrame.json::graphFrame.running": "Running…",

@@ -3411,6 +3411,7 @@
   "fr/graphFrame.json::graphFrame.metaRows_one": "{{count}} row",
   "fr/graphFrame.json::graphFrame.metaRows_other": "{{count}} rows",
   "fr/graphFrame.json::graphFrame.pinToTop": "Pin to top",
+  "fr/graphFrame.json::graphFrame.relNotImputed": "{{type}} not imputed: {{error}}",
   "fr/graphFrame.json::graphFrame.removeFromFavorites": "Remove from favorites",
   "fr/graphFrame.json::graphFrame.run": "Run",
   "fr/graphFrame.json::graphFrame.running": "Running…",
