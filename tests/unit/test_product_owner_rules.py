@@ -304,6 +304,30 @@ async def test_a_holder_of_the_capability_with_no_row_naming_it_is_no_owner(plan
     assert LEE not in {o for owners in (await _owners(plane)).values() for o in owners}
 
 
+async def test_an_owner_row_on_a_role_without_the_capability_confers_nothing(plane):
+    """REQ-2219 (amended 2026-11-23, WHO MAY BE NAMED): rita's row names pets_p, but her role
+    (reader) no longer carries data_product_owner, so the row gives her no edit."""
+    reader_caps = ["data_product_read", "data_product_owner"]
+    async with plane.db.acquire() as conn:
+        await conn.execute_core(
+            roles.update().where(roles.c.id == "reader").values(capabilities=reader_caps)
+        )
+        await set_product_owners(conn, "pets_p", "pets", [PAM, RITA], set_by=None)
+        await conn.execute_core(
+            roles.update().where(roles.c.id == "reader").values(capabilities=["data_product_read"])
+        )
+    await plane.rebuild()
+    (row,) = [
+        r for r in plane.held_entitlements[RITA].lists if r.capability == "data_product_owner"
+    ]
+    assert row.role_id == "reader" and row.identifiers
+    assert RITA not in (await _owners(plane))["pets_p"]
+    assert not _holds_rw(plane, "reader")
+    with pytest.raises(PermissionError, match="data_product_rw"):
+        await _update(RITA, "pets_p", "by the reader")
+    assert await _name(plane, "pets_p") == "pets_p"
+
+
 async def test_an_org_admin_with_no_rule_edits_either_product(plane):
     assert (await _update(OLGA, "pets_p", "one")).success
     assert (await _update(OLGA, "sales_p", "two")).success
