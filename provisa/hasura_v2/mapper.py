@@ -18,7 +18,7 @@ from typing import Any
 
 from provisa.compiler.naming import HASURA_DEFAULT, preset_of
 from provisa.core import domain_policy
-from provisa.security.rights import ORG_ADMIN_ROLE, Capability
+from provisa.security.rights import ORG_ADMIN_ROLE, PUBLIC_ROLE, Capability
 from provisa.core.models import (
     AuthConfig,
     Cardinality,
@@ -183,6 +183,27 @@ _READ_CAPS = [
 ]
 #: REQ-2155: the standard role a grant names for what Hasura's admin reads.
 _ADMIN_READER = "data_steward"
+
+
+def _refuse_public_writes(metadata: HasuraMetadata) -> None:  # REQ-1058
+    """The public role is read-only: an import whose public role carries an insert, update or
+    delete permission is refused, naming each such permission and its table, not trimmed."""
+    named = [
+        f"{kind} permission on {table.schema_name}.{table.name}"
+        for source in metadata.sources
+        for table in source.tables
+        for kind, perms in (
+            ("insert", table.insert_permissions),
+            ("update", table.update_permissions),
+            ("delete", table.delete_permissions),
+        )
+        if any(p.role == PUBLIC_ROLE for p in perms)
+    ]
+    if named:
+        raise ValueError(
+            f"Role {PUBLIC_ROLE!r} is read-only: the Hasura metadata grants it "
+            f"{'; '.join(named)}. Remove these permissions from the public role and import again."
+        )
 
 
 def _collect_roles(metadata: HasuraMetadata) -> dict[str, Role]:  # REQ-041, REQ-040, REQ-1684
@@ -925,6 +946,7 @@ def convert_metadata(
     """
     if collector is None:
         collector = WarningCollector()
+    _refuse_public_writes(metadata)
 
     domain_map = domain_map or {}
     source_overrides = source_overrides or {}
