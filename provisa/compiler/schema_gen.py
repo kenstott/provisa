@@ -94,6 +94,7 @@ from provisa.compiler.schema_directives import (
     RouteEngineEnum,
     _build_connection_types,
 )
+from provisa.compiler.enum_detect import build_enum_filter_types
 from provisa.compiler.schema_inputs import (
     _build_column_fields,
     _build_db_field_args,
@@ -914,7 +915,7 @@ def _agg_field_names(t: _TableInfo) -> dict[str, str]:
 def _build_aggregate_query_field(
     t: _TableInfo,
     gql_type: GraphQLObjectType,
-    enum_types: dict,
+    enum_filters: dict[str, GraphQLInputObjectType],
     agg_fields_type: GraphQLObjectType | None = None,
     where_type: GraphQLInputObjectType | None = None,
 ) -> tuple[str, GraphQLField] | None:
@@ -934,7 +935,7 @@ def _build_aggregate_query_field(
     agg_where = (
         where_type
         if t.hasura
-        else _build_where_input(t, f"{t.type_name}Agg", enum_types=enum_types)
+        else _build_where_input(t, f"{t.type_name}Agg", enum_filters=enum_filters)
     )
     if agg_where:
         agg_args["where"] = GraphQLArgument(agg_where)
@@ -952,7 +953,7 @@ def _build_group_by_query_field(
     gql_type: GraphQLObjectType,
     where_type: GraphQLInputObjectType | None,
     distinct_enum: GraphQLEnumType | None,
-    enum_types: dict,
+    enum_filters: dict[str, GraphQLInputObjectType],
     agg_fields_type: GraphQLObjectType | None = None,
 ) -> tuple[str, GraphQLField] | None:
     """Build {field_name}_group_by root query field (REQ-654, REQ-655)."""
@@ -970,7 +971,7 @@ def _build_group_by_query_field(
     agg_where = (
         where_type
         if t.hasura
-        else _build_where_input(t, f"{t.type_name}GroupByAgg", enum_types=enum_types)
+        else _build_where_input(t, f"{t.type_name}GroupByAgg", enum_filters=enum_filters)
     )
     agg_field_args: dict[str, GraphQLArgument] = {}
     if agg_where:
@@ -1035,7 +1036,7 @@ def _build_connection_query_field(
     t: _TableInfo,
     gql_type: GraphQLObjectType,
     order_by_types: dict[int, GraphQLInputObjectType],
-    enum_types: dict,
+    enum_filters: dict[str, GraphQLInputObjectType],
     where_type: GraphQLInputObjectType | None,
 ) -> tuple[str, GraphQLField]:
     _edge_type, conn_type = _build_connection_types(t.type_name, gql_type)
@@ -1049,7 +1050,7 @@ def _build_connection_query_field(
     conn_where = (
         where_type
         if t.hasura
-        else _build_where_input(t, f"{t.type_name}Conn", enum_types=enum_types)
+        else _build_where_input(t, f"{t.type_name}Conn", enum_filters=enum_filters)
     )
     if conn_where:
         conn_args["where"] = GraphQLArgument(conn_where)
@@ -1086,7 +1087,7 @@ def _column_input_fields(
 
 def _build_mutation_fields_for_table(  # REQ-032, REQ-033, REQ-034, REQ-036, REQ-037, REQ-212
     t: _TableInfo,
-    enum_types: dict,
+    enum_filters: dict[str, GraphQLInputObjectType],
     row_type: GraphQLObjectType,
     where_type: GraphQLInputObjectType | None,
     unique_constraints: list[dict],
@@ -1104,7 +1105,7 @@ def _build_mutation_fields_for_table(  # REQ-032, REQ-033, REQ-034, REQ-036, REQ
         return _build_hasura_mutation_fields(
             t, granted, insert_fields, update_fields, row_type, where_type, unique_constraints
         )
-    return _build_provisa_mutation_fields(t, granted, insert_fields, update_fields, enum_types)
+    return _build_provisa_mutation_fields(t, granted, insert_fields, update_fields, enum_filters)
 
 
 def _write_inputs(t: _TableInfo, operation: str) -> dict[str, GraphQLInputField]:
@@ -1260,7 +1261,7 @@ def _build_provisa_mutation_fields(
     granted: set[str] | frozenset[str],
     insert_fields: dict[str, GraphQLInputField],
     update_fields: dict[str, GraphQLInputField],
-    enum_types: dict,
+    enum_filters: dict[str, GraphQLInputObjectType],
 ) -> dict[str, GraphQLField]:
     """Provisa's mutations of a table: insert, upsert, update and delete, each by ``input``,
     ``set`` and ``where``."""
@@ -1272,7 +1273,7 @@ def _build_provisa_mutation_fields(
         GraphQLInputObjectType,
         GraphQLInputObjectType(f"{t.type_name}SetInput", lambda fields=update_fields: fields),
     )
-    where_input = _build_where_input(t, f"{t.type_name}Mutation", enum_types=enum_types)
+    where_input = _build_where_input(t, f"{t.type_name}Mutation", enum_filters=enum_filters)
     response_type = cast(
         GraphQLObjectType,
         GraphQLObjectType(
@@ -1402,12 +1403,15 @@ def generate_schema(
     ]
 
     order_by_types = _build_order_by_inputs(tables, visible_rels, table_lookup)
+    # REQ-221: an enum's filter type is named after the enum, so every where input in the schema
+    # takes the one built here, whichever tables' columns the enum types.
+    enum_filters = build_enum_filter_types(si.enum_types)
     where_types: dict[int, GraphQLInputObjectType | None] = {}
     for t in tables:
         where_types[t.table_id] = _build_where_input(
             t,
             t.type_name,
-            enum_types=si.enum_types,
+            enum_filters=enum_filters,
             relationships=_where_relationships(t, visible_rels, table_lookup, where_types),
         )
     distinct_enums = {t.table_id: _build_distinct_on_enum(t) for t in tables}
@@ -1494,7 +1498,7 @@ def generate_schema(
         )
         if t.enable_aggregates and not _role_blocks_agg:
             agg_result = _build_aggregate_query_field(
-                t, gql_type, si.enum_types, shared_agg_fields_type, where_types.get(t.table_id)
+                t, gql_type, enum_filters, shared_agg_fields_type, where_types.get(t.table_id)
             )
             if agg_result:
                 query_fields[agg_result[0]] = agg_result[1]
@@ -1506,7 +1510,7 @@ def generate_schema(
                 gql_type,
                 where_types.get(t.table_id),
                 distinct_enums.get(t.table_id),
-                si.enum_types,
+                enum_filters,
                 shared_agg_fields_type,
             )
             if gb_result:
@@ -1514,7 +1518,7 @@ def generate_schema(
 
         if t.relay_pagination:
             conn_name, conn_field = _build_connection_query_field(
-                t, gql_type, order_by_types, si.enum_types, where_types.get(t.table_id)
+                t, gql_type, order_by_types, enum_filters, where_types.get(t.table_id)
             )
             query_fields[conn_name] = conn_field
 
@@ -1544,7 +1548,7 @@ def generate_schema(
         mutation_fields.update(
             _build_mutation_fields_for_table(
                 t,
-                si.enum_types,
+                enum_filters,
                 gql_types[t.table_id],
                 where_types.get(t.table_id),
                 declared_unique.get(t.table_id, []),
