@@ -29,7 +29,7 @@ import pytest
 from sqlalchemy import insert, select
 
 import provisa.api.app as appmod
-from provisa.api.admin import capabilities, schema_mutation
+from provisa.api.admin import capabilities, schema_mutation, schema_query
 from provisa.core.schema_org import (
     data_products,
     domains,
@@ -141,6 +141,7 @@ async def db(monkeypatch, control_plane):
     monkeypatch.setattr(appmod.state, "role_owner_rows", {}, raising=False)
     monkeypatch.setattr(appmod.state, "data_product_refs", (), raising=False)
     monkeypatch.setattr(schema_mutation, "_get_pool", _pool)
+    monkeypatch.setattr(schema_query, "_get_pool", _pool)
     return org
 
 
@@ -401,9 +402,7 @@ def _info(user: str | None) -> Any:
 
 
 def schema_mutation_query() -> Any:
-    from provisa.api.admin.schema_query import Query
-
-    return Query()
+    return schema_query.Query()
 
 
 async def test_the_steward_mutation_refuses_a_non_holder_by_name(db, monkeypatch):

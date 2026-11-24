@@ -27,6 +27,7 @@ from typing import Any
 import pytest
 from sqlalchemy import insert, select
 
+from provisa.entitlements.owners import Changer
 from provisa.api.admin import schema_mutation
 from provisa.api.admin.types import RelationshipInput
 from provisa.core.database import Database
@@ -116,7 +117,11 @@ def _input(**fields: Any) -> RelationshipInput:
 
 async def _save(input: RelationshipInput, *, creating: bool = True):
     return await schema_mutation.save_relationship(
-        input, owner=None, needs_review=False, creating=creating
+        input,
+        set_by=None,
+        changer=Changer(None, org_admin=True),
+        needs_review=False,
+        creating=creating,
     )
 
 

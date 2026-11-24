@@ -48,6 +48,10 @@ vi.mock("../../context/AuthContext", () => ({
   }),
 }));
 vi.mock("../../hooks/useCapability", () => ({ useCapability: () => true }));
+// REQ-2219 (amended 2026-11-23): the Owner field as it names people and roles, read when the form
+// opens on a product.
+const readOwnerField = vi.fn(() => Promise.resolve({ people: ["vera"], roles: ["care_team"] }));
+vi.mock("../../hooks/useOwnerField", () => ({ useOwnerField: () => readOwnerField }));
 vi.mock("../../api/actions", () => ({
   fetchActions: () => Promise.resolve({ functions: [] }),
   saveFunction: vi.fn(),
@@ -208,6 +212,9 @@ describe("Duplicate, in a data product's panel head", () => {
     saves.members.mockResolvedValueOnce({ success: true, message: "set" });
     open();
     fireEvent.click(await screen.findByTestId("duplicate-pet_health"));
+    // The copy's Owner field is the product's, once read.
+    expect((await screen.findAllByText("Role: care_team")).length).toBeGreaterThan(0);
+    expect(readOwnerField).toHaveBeenCalledWith("data_product", "pet_health");
     fireEvent.click(await screen.findByTestId("data-product-save-button"));
     await waitFor(() => expect(saves.create).toHaveBeenCalledTimes(1));
     expect(saves.update).not.toHaveBeenCalled();
@@ -219,6 +226,7 @@ describe("Duplicate, in a data product's panel head", () => {
       limitations: "No billing data",
       usage: "Weekly review",
       owners: ["vera"],
+      ownerRoles: ["care_team"],
       customProperties: { tier: "gold" },
     });
     await waitFor(() => expect(saves.members).toHaveBeenCalledWith("pet_health-copy", [1], []));
