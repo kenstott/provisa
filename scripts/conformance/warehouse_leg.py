@@ -168,10 +168,11 @@ def _redshift_up(env: dict[str, str], state: Path) -> tuple[str, dict[str, str]]
 def _motherduck_account(token: str):
     import duckdb
 
-    from provisa.federation.duckdb_extensions import install_and_load
-
+    # The harness provisions the run's MotherDuck database before any Provisa runs: a test-time
+    # install, not the runtime's (REQ-294: the runtime only loads).
     con = duckdb.connect()
-    install_and_load(con, "motherduck", from_community=False)
+    con.execute("INSTALL motherduck")
+    con.execute("LOAD motherduck")
     con.execute("SET GLOBAL motherduck_token = ?", [token])
     con.execute("ATTACH 'md:'")
     return con

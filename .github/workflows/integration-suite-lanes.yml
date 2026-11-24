@@ -301,7 +301,8 @@ jobs:
   trino-plugins:
     name: Trino plugins
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # A miss of all three caches builds the plugin, the zaychik image and the duckdb-ext wheels.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
         with:
@@ -310,6 +311,12 @@ jobs:
         with:
           phase: prime
       - uses: ./.github/actions/zaychik-image
+        with:
+          phase: prime
+      # The app image the cluster lane and test_master_key_survives_recreate_compose.py build stages
+      # this commit's provisa-duckdb-ext wheels (REQ-294): built here once per change to their
+      # sources, restored by those lanes.
+      - uses: ./.github/actions/duckdb-ext-wheels
         with:
           phase: prime
 
@@ -338,6 +345,7 @@ jobs:
       zaychik-image: true
       # tests/integration/test_master_key_survives_recreate_compose.py builds the app image.
       pyodide-downloads: true
+      duckdb-ext-wheels: true
       image-cache: true
       splunk-cim-cache: true
       env: |
@@ -399,6 +407,12 @@ jobs:
       # The image the test builds takes Pyodide from this directory (tests/pyodide_downloads.py).
       - name: Pyodide downloads
         uses: ./.github/actions/pyodide-downloads
+
+      # ... and this commit's provisa-duckdb-ext wheels from this one (tests/duckdb_ext_wheels.py).
+      - name: DuckDB extension wheels
+        uses: ./.github/actions/duckdb-ext-wheels
+        with:
+          phase: restore
 
       - name: Install minikube and helm
         run: |
@@ -768,6 +782,10 @@ jobs:
           cache: "true"
           client: "true"
 
+      # REQ-294: a running Provisa never fetches a bundle; this one is staged here, for the lane.
+      - name: Stage the salesforce pgwire bundle
+        run: uv run --no-sync python -m provisa.runtime_deps.stage_pgwire_bundles --only salesforce --github-release
+
       - name: Restore Trino plugins
         id: trino-plugins
         uses: ./.github/actions/trino-plugins
@@ -948,8 +966,11 @@ jobs:
           fi
 
       # The ServiceNow server is the pinned release's pgwire-servicenow bundle
-      # (provisa/runtime_deps/pgwire_bundles.py RELEASE_TAG), fetched by the app as every other
-      # connector's is.
+      # (provisa/runtime_deps/pgwire_bundles.py RELEASE_TAG). REQ-294: a running Provisa never
+      # fetches a bundle; this one is staged here, for the lane.
+      - name: Stage the servicenow pgwire bundle
+        run: uv run --no-sync python -m provisa.runtime_deps.stage_pgwire_bundles --only servicenow --github-release
+
       - name: Stack slots on this runner
         run: bash scripts/ci/lanes/suite-prepare.sh
 

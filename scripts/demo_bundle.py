@@ -155,22 +155,15 @@ def _duckdb_env(work: Path) -> dict[str, str]:
     """Where a build's server finds DuckDB's extensions, named explicitly: its environment is
     otherwise only the build's own, and DuckDB without HOME cannot place its per-user extension
     directory (the icu extension then fails to load and the server does not start). As
-    provisa/cli.py does for a deployment: the extensions staged offline from provisa-duckdb-ext
-    when it is installed (PROVISA_DUCKDB_EXT_DIR), or else this user's own DuckDB cache, under the
-    HOME this process has -- a checkout without the embedded extra installs from the network on
-    first use, as it does everywhere (cli.py). An extension directory this process was given is
-    passed on as it is."""
-    from provisa.federation.duckdb_extensions import extension_directory, stage_bundled_extensions
+    provisa/cli.py does for a deployment: the staged directory this process was given
+    (PROVISA_DUCKDB_EXT_DIR) is passed on as it is, or else this user's own DuckDB directory under
+    the HOME this process has, which a source checkout fills once with
+    scripts/stage_duckdb_extensions.py (REQ-294)."""
+    from provisa.federation.duckdb_extensions import extension_directory
 
     env = {"HOME": str(Path.home())}
     given = extension_directory()
-    if given is not None:
-        return {**env, "PROVISA_DUCKDB_EXT_DIR": given}
-    try:
-        staged = stage_bundled_extensions(work / "duckdb-ext")
-    except ModuleNotFoundError:
-        return env  # no provisa-duckdb-ext: DuckDB's own cache under HOME (cli.py's dev case)
-    return {**env, "PROVISA_DUCKDB_EXT_DIR": str(staged)}
+    return env if given is None else {**env, "PROVISA_DUCKDB_EXT_DIR": given}
 
 
 def _requires_provisa(demo: Path) -> str:
@@ -1215,11 +1208,13 @@ def _prefetch_connector_bundles(demo: Path) -> None:
         BUNDLE_CONNECTOR,
         BundleResolver,
         bundle_spec_for,
+        download_release_asset,
     )
 
     raw = read_config_with_includes(demo / "config.yaml")
     types = {str(source["type"]) for source in raw.get("sources") or []}
-    resolver = BundleResolver()
+    # A build is where a bundle is fetched (REQ-294): the one resolver that is given a downloader.
+    resolver = BundleResolver(downloader=download_release_asset)
     for source_type in sorted(types & set(BUNDLE_CONNECTOR)):
         spec = bundle_spec_for(source_type)
         print(f"connector bundle {spec.artifact_name} {spec.version}: {resolver.resolve(spec)}")

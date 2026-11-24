@@ -107,7 +107,6 @@ async def test_google_sheets_read_through_duckdb_engine(tmp_path, monkeypatch):
     from provisa.federation.duckdb_extensions import (
         MANIFEST,
         _needs,
-        install_statements,
         running_version_platform,
     )
     from provisa.federation.engine import build_engine, duckdb_engine_connectors
@@ -116,14 +115,12 @@ async def test_google_sheets_read_through_duckdb_engine(tmp_path, monkeypatch):
     version, platform = running_version_platform()
     assert version.lstrip("v").startswith("2."), f"the engine's DuckDB is {version}, not 2.x"
 
-    # The fact the route rests on: gsheets does not install on this DuckDB -- the statements the
-    # server runs at start (install_extension_set) are refused, as community-extensions answers
-    # HTTP 404 for a v2.0.0 gsheets build.
+    # The fact the route rests on: gsheets does not install on this DuckDB -- community-extensions
+    # answers HTTP 404 for a v2.0.0 gsheets build, so no stage step can place it (REQ-294).
     probe = duckdb.connect()
     try:
         with pytest.raises(duckdb.Error):
-            for statement in install_statements("gsheets", from_community=True):
-                probe.execute(statement)
+            probe.execute("INSTALL gsheets FROM community")
     finally:
         probe.close()
 
