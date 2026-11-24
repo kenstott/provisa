@@ -441,10 +441,75 @@ node_containers() {
 }
 
 restart() {
+  # A container restart keeps the image it was created from, so a node whose image push_deps just
+  # rebuilt is recreated instead -- the same `systemctl restart provisa` push_app recreates with.
+  if [ "$DEPS_RECREATE" = "$NODE" ]; then
+    DEPS_RECREATE=""
+    echo "== recreating the stack on $NODE's rebuilt image"
+    ssh_node "sudo systemctl restart provisa"
+    return
+  fi
   local containers
   containers="$(node_containers)"
   echo "== restarting"
   ssh_node "sudo docker restart $containers"
+}
+
+# The release's Python dependency set. push_api ships the source tree onto the node's image and
+# never rebuilds it, so a release that added a package reached the node as code importing what the
+# image did not have: 511 (lemminflect, rdflib, pypdf, python-docx, statsmodels,
+# pixeltable-pgserver) crash-looped the coordinator and the sandbox VM on 2026-11-23.
+# scripts/deploy_deps.py exports the set exactly as the Dockerfile installs it and fingerprints
+# pyproject.toml, uv.lock and the Dockerfile's extras; the image records the fingerprint it holds
+# (deploy_deps.RECORD_PATH), so a node is rebuilt only when the set changed since its last install.
+DEPS_RECORD=/etc/provisa-deps.sha256
+DEPS_DIR=/tmp/provisa-deps
+# first-launch.sh (load_images) reloads every image from the tarballs staged here on every boot,
+# and the GCE startup-script runs it on every instance start: a rebuilt image is saved over its
+# tarball, or the node's next wake would bring back the image without the set.
+IMAGE_TARBALL=/root/.provisa/images/provisa-local.tar.gz
+DEPS_RECREATE=""
+
+build_deps() {
+  echo "== staging the release's python dependency set"
+  DEPS_WANT="$(python3 "$REPO/scripts/deploy_deps.py" stage "$REPO" "$STAGE/deps")"
+  tar czf "$STAGE/deps.tgz" -C "$STAGE/deps" .
+}
+
+# Installs the set into the image $API_CONTAINER runs on $NODE when the image's record differs, then
+# proves it (verify_deps). Before the restart, so a node that cannot import the pushed code is
+# refused while its running containers are still up.
+push_deps() {
+  local image have action
+  image="$(ssh_node "sudo docker inspect -f '{{.Config.Image}}' $API_CONTAINER" | tr -d '\r')"
+  [ -n "$image" ] || { echo "dependencies on $NODE: no image for $API_CONTAINER" >&2; exit 1; }
+  scp_node "$STAGE/deps.tgz" /tmp/provisa-deps.tgz
+  ssh_node "sudo rm -rf $DEPS_DIR && sudo mkdir -p $DEPS_DIR && sudo tar xzf /tmp/provisa-deps.tgz -C $DEPS_DIR"
+  # cat exits non-zero when the file is absent: an image no deploy has installed onto records
+  # nothing, which deploy_deps plans as "install".
+  have="$(ssh_node "sudo docker run --rm --entrypoint cat $image $DEPS_RECORD 2>/dev/null" | tr -d '\r')" || have=""
+  action="$(python3 "$REPO/scripts/deploy_deps.py" plan "$DEPS_WANT" "$have")"
+  if [ "$action" = install ]; then
+    echo "== dependencies on $NODE: installing the set into $image"
+    ssh_node "sudo docker build --quiet --build-arg BASE=$image -t $image $DEPS_DIR >/dev/null"
+    ssh_node "sudo test -f $IMAGE_TARBALL" \
+      || { echo "dependencies on $NODE: no $IMAGE_TARBALL to save the rebuilt image over" >&2; exit 1; }
+    ssh_node "sudo sh -c 'docker save $image | gzip > $IMAGE_TARBALL.new && mv $IMAGE_TARBALL.new $IMAGE_TARBALL'"
+    DEPS_RECREATE="$NODE"
+  else
+    echo "== dependencies on $NODE: current"
+  fi
+  verify_deps "$image"
+}
+
+# Every locked requirement at its version, then the app's own import, in throwaway containers on the
+# image the restart will run, with the pushed tree mounted as $API_CONTAINER mounts it.
+verify_deps() {
+  echo "== verifying dependencies on $NODE"
+  ssh_node "sudo docker run --rm --volumes-from $API_CONTAINER -v $DEPS_DIR:/deps:ro --entrypoint python $1 /deps/deploy_deps.py check /deps/requirements.txt" \
+    || { echo "dependencies on $NODE: $1 does not hold the release's set" >&2; exit 1; }
+  ssh_node "sudo docker run --rm --volumes-from $API_CONTAINER -w /app --entrypoint python $1 -c 'import provisa.api.app'" \
+    || { echo "dependencies on $NODE: provisa.api.app does not import on $1" >&2; exit 1; }
 }
 
 # The telemetry tier the ops reports read. `traces`, `queries`, `metrics` and `logs` are views over
@@ -1410,7 +1475,7 @@ deploy_sandbox_vm() {
       - ${RUNTIME_DEPS_DIR}:/root/.cache/provisa/runtime_deps"
   push_demo_stores; push_demo_stores_env; push_compose; push_overlay
   # What this deploy built: the api arm has no configs, the cfg arm no package.
-  [ -f "$STAGE/api.tgz" ] && { push_api; push_plugins; }
+  [ -f "$STAGE/api.tgz" ] && { push_api; push_plugins; push_deps; }
   [ -f "$STAGE/cfg.tgz" ] && push_cfg
   # New code against the tier's old tables fails (no migrations): whenever the package is pushed,
   # or asked for alone (sandbox-reset), the tier starts from no orgs of its own but the templates
@@ -1427,13 +1492,13 @@ case "$TARGET" in
     { sandbox_on_own_vm || preflight_sandbox_ai; }; push_overlay; build_ui; push_ui; verify; verify_org_base ;;
   api)
     # Keeps accounts and orgs: only 'reset' wipes them. verify_demo is a statement about a reset.
-    { sandbox_on_own_vm || preflight_sandbox_ai; }; preflight_engine; push_commerce_env; build_api; push_store_env; push_app; push_cp_compose; preflight_commerce; push_mail_env; push_obs; push_obs_config; push_demo; push_demo_stores; push_overlay; push_api; push_plugins; restart; verify; verify_api; verify_engine; verify_org_base; verify_commerce; deploy_sandbox_vm ;;
+    { sandbox_on_own_vm || preflight_sandbox_ai; }; preflight_engine; push_commerce_env; build_api; build_deps; push_store_env; push_app; push_cp_compose; preflight_commerce; push_mail_env; push_obs; push_obs_config; push_demo; push_demo_stores; push_overlay; push_api; push_plugins; push_deps; restart; verify; verify_api; verify_engine; verify_org_base; verify_commerce; deploy_sandbox_vm ;;
   cfg)
     # Restarts: the config is read once at startup, so a pushed file is inert until then.
     { sandbox_on_own_vm || preflight_sandbox_ai; }; preflight_engine; push_commerce_env; build_cfg; clear_dead_engine_files; push_store_env; push_app; push_cp_compose; preflight_commerce; push_mail_env; push_obs; push_obs_config; push_demo; push_demo_stores; push_overlay; push_cfg; restart; verify; verify_api; verify_engine; verify_org_base; verify_commerce; deploy_sandbox_vm ;;
   all)
     # Keeps accounts and orgs: only 'reset' wipes them. verify_demo is a statement about a reset.
-    { sandbox_on_own_vm || preflight_sandbox_ai; }; preflight_engine; push_commerce_env; build_ui; build_api; build_cfg; clear_dead_engine_files; push_store_env; push_app; push_cp_compose; preflight_commerce; push_mail_env; push_obs; push_obs_config; push_demo; push_demo_stores; push_overlay; push_ui; push_api; push_plugins; push_cfg; restart; verify; verify_api; verify_engine; verify_org_base; verify_commerce; deploy_sandbox_vm ;;
+    { sandbox_on_own_vm || preflight_sandbox_ai; }; preflight_engine; push_commerce_env; build_ui; build_api; build_deps; build_cfg; clear_dead_engine_files; push_store_env; push_app; push_cp_compose; preflight_commerce; push_mail_env; push_obs; push_obs_config; push_demo; push_demo_stores; push_overlay; push_ui; push_api; push_plugins; push_cfg; push_deps; restart; verify; verify_api; verify_engine; verify_org_base; verify_commerce; deploy_sandbox_vm ;;
   sandbox-reset)
     # No build and no push: the sandbox tier's orgs reset and the tier restarted (its VM's
     # overlay, demo stores and settings are synced as on every deploy that reaches it). It needs
@@ -1445,6 +1510,6 @@ case "$TARGET" in
   patch)
     # verify_demo is skipped, not weakened: it asserts zero accounts, which is a statement
     # about the reset, and 'patch' exists precisely to keep the accounts that are there.
-    { sandbox_on_own_vm || preflight_sandbox_ai; }; preflight_engine; push_commerce_env; build_ui; build_api; build_cfg; clear_dead_engine_files; push_store_env; push_app; push_cp_compose; preflight_commerce; push_mail_env; push_obs; push_obs_config; push_demo; push_demo_stores; push_overlay; push_ui; push_api; push_plugins; push_cfg; restart; verify; verify_api; verify_engine; verify_org_base; verify_commerce; deploy_sandbox_vm ;;
+    { sandbox_on_own_vm || preflight_sandbox_ai; }; preflight_engine; push_commerce_env; build_ui; build_api; build_deps; build_cfg; clear_dead_engine_files; push_store_env; push_app; push_cp_compose; preflight_commerce; push_mail_env; push_obs; push_obs_config; push_demo; push_demo_stores; push_overlay; push_ui; push_api; push_plugins; push_cfg; push_deps; restart; verify; verify_api; verify_engine; verify_org_base; verify_commerce; deploy_sandbox_vm ;;
 esac
 echo "== deployed $TARGET"
