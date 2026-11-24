@@ -1285,17 +1285,25 @@ checker_targets = Table(
 
 # REQ-194: the names table of the last model version built
 # (provisa.core.repositories.model_names.write_names_table). Derived state: each build replaces every row.
-# REQ-2219: the people owning each product and relationship, stewarding each domain. Derived
-# state; see the matching block in schema.sql.
+# REQ-2219: the principals each product's and relationship's Owner field and each domain's Steward
+# field names, people and roles as entered (named), beside the people holding the capability on it
+# (holds). Derived state; see the matching block in schema.sql.
 object_owners = Table(
     "object_owners",
     metadata,
     Column("object_kind", Text, primary_key=True),
     Column("object_id", Text, primary_key=True),
+    Column("principal_kind", Text, primary_key=True),
     Column("principal", Text, primary_key=True),
+    Column("named", Boolean, nullable=False),
+    Column("holds", Boolean, nullable=False),
     CheckConstraint(
         "object_kind IN ('data_product', 'domain', 'relationship')",
         name="object_owners_object_kind_check",
+    ),
+    CheckConstraint(
+        "principal_kind IN ('person', 'role')",
+        name="object_owners_principal_kind_check",
     ),
 )
 

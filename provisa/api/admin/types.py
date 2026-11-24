@@ -172,6 +172,9 @@ class GovDataSubjectsType:  # REQ-540, REQ-541
 class DomainType:  # REQ-533, REQ-609
     id: str
     description: str
+    # REQ-2219 (amended 2026-11-24): what its Steward field names, people and roles as entered:
+    # what a page shows of its stewards. Rights come from the people holding the rows (stewards).
+    steward_field: OwnerFieldType
     graphql_alias: str | None = None
     # REQ-1363: the domain this one sits under; None = no parent. A role that lists the parent
     # reaches this domain too.

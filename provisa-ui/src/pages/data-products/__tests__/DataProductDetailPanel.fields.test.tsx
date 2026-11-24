@@ -31,6 +31,7 @@ const PRODUCT = {
   version: "1.2.0",
   status: "live",
   owners: ["vera", "vik"],
+  namedOwners: [{ principal: "vera", kind: "person" as const }, { principal: "vik", kind: "person" as const }],
   teamRole: null,
   support: "#pet-health",
   supportContact: "vets@petstore.example",

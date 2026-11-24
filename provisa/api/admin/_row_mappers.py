@@ -15,9 +15,11 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from typing import TYPE_CHECKING
 
 from provisa.api.admin.types import (
     DomainType,
+    OwnerFieldType,
     RelationshipParameterType,
     RelationshipType,
     RLSRuleType,
@@ -30,6 +32,9 @@ from provisa.api.admin.types import (
     SourceInput,
     SourceType,
 )
+
+if TYPE_CHECKING:
+    from provisa.entitlements.owners import Named
 
 
 def _parse_mapping_json(mapping_json: str | None) -> dict:
@@ -152,16 +157,21 @@ def _source_from_row(row, *, connection: bool) -> SourceType:
 
 
 def _domain_from_row(
-    row, stewards: tuple[str, ...], effective_stewards: tuple[str, ...]
+    row,
+    stewards: tuple[str, ...],
+    effective_stewards: tuple[str, ...],
+    field: Named,
 ) -> DomainType:
     """``stewards``: the people whose domain_steward rows name the domain; ``effective_stewards``
-    those naming it or a domain above it (``entitlements.owners.holders``), which the caller reads
-    for every domain at once."""
+    those naming it or a domain above it (``entitlements.owners.holders``); ``field`` what its
+    Steward field names, people and roles as entered (``entitlements.owners.fields_of``). The
+    caller reads each for every domain at once."""
     from provisa.core.domain_policy import system_domain_ids
 
     return DomainType(
         id=row["id"],
         description=row["description"],
+        steward_field=OwnerFieldType(people=list(field.people), roles=list(field.roles)),
         graphql_alias=row["graphql_alias"],
         parent_domain_id=row["parent_domain_id"],  # REQ-1363
         stewards=list(stewards),  # REQ-609, REQ-2219

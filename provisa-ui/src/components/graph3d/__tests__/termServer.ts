@@ -197,7 +197,7 @@ export function world(spec: WorldSpec): World {
       name: p.name,
       domainId: "sales",
       status: "active",
-      owners: [{ principal: "sam" }],
+      owners: [{ principal: "sam", principalKind: "person", named: true, holds: true }],
     };
   };
   const bound = (table: number, column: string) =>

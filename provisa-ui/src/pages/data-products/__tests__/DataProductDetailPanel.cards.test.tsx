@@ -218,6 +218,7 @@ const PRODUCT = {
   domainId: "pet-store",
   name: "Pet Health",
   owners: ["pam"],
+  namedOwners: [{ principal: "pam", kind: "person" as const }],
   supportContact: "pets@example.com",
   customProperties: {},
   createdAt: TWO_HOURS_AGO,

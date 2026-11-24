@@ -23,7 +23,7 @@ const hooks = vi.hoisted(() => ({
   domains: {
     loading: false,
     domains: [
-      { id: "sales", description: "Sales", alias: null, stewards: [], effectiveStewards: [] },
+      { id: "sales", description: "Sales", alias: null, stewards: [], stewardField: { people: [], roles: [] }, effectiveStewards: [] },
     ],
     refetch: undefined as unknown,
   },

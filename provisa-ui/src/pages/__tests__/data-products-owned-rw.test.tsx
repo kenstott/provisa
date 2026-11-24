@@ -103,6 +103,7 @@ const products = [
     usage: "",
     customProperties: {},
     owners: ["vera"],
+    namedOwners: [{ principal: "vera", kind: "person" as const }],
   },
   {
     id: "workforce_ops",
@@ -113,6 +114,7 @@ const products = [
     usage: "",
     customProperties: {},
     owners: ["sam"],
+    namedOwners: [{ principal: "sam", kind: "person" as const }],
   },
 ];
 

@@ -78,12 +78,15 @@ _META: dict[str, str] = {
     "data_product_commands": "Every data product's member commands — one row per product and "
     "member command",
     # REQ-2219 (amended 2026-11-24)
-    "data_product_owners": "Every data product's owners — one row per product and person whose "
-    "data_product_owner entitlement names it",
-    "domain_stewards": "Every domain's stewards — one row per domain and person whose "
-    "domain_steward entitlement names it or a domain above it",
-    "relationship_owners": "Every relationship's owners — one row per relationship and person "
-    "whose relationship_owner entitlement names it",
+    "data_product_owners": "Every data product's owners — one row per product and principal: "
+    "each person or role its Owner field names, as entered, and each person holding a "
+    "data_product_owner entitlement naming it, a named role's holders among them",
+    "domain_stewards": "Every domain's stewards — one row per domain and principal: each person "
+    "or role its Steward field names, as entered, and each person holding a domain_steward "
+    "entitlement naming it or a domain above it, a named role's holders among them",
+    "relationship_owners": "Every relationship's owners — one row per relationship and principal: "
+    "each person or role its Owner field names, as entered, and each person holding a "
+    "relationship_owner entitlement naming it, a named role's holders among them",
     # REQ-2126
     "data_product_edges": "Each data product's links to the rest of the model — the tables and "
     "products it reaches through relationships — one row per product, target and kind",
@@ -449,22 +452,31 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
     },
     # REQ-2219 (amended 2026-11-24)
     "data_product_owners": {
-        "id": "The product and its owner",
+        "id": "The data product, the principal's kind and the principal",
         "product_id": "The data product",
-        "principal": "A person who owns it: the user id of a data_product_owner entitlement "
-        "naming it",
+        "principal": "A person (user id) or a role (role id)",
+        "principal_kind": "person or role",
+        "named": "Its field names this principal, as entered",
+        "holds": "A person holding a data_product_owner entitlement naming it, a named role's "
+        "holders among them: what rights come from. A role holds nothing of itself",
     },
     "domain_stewards": {
-        "id": "The domain and its steward",
+        "id": "The domain, the principal's kind and the principal",
         "domain_id": "The domain",
-        "principal": "A person who stewards it: the user id of a domain_steward entitlement "
-        "naming it or a domain above it",
+        "principal": "A person (user id) or a role (role id)",
+        "principal_kind": "person or role",
+        "named": "Its field names this principal, as entered",
+        "holds": "A person holding a domain_steward entitlement naming it or a domain above it, a named role's "
+        "holders among them: what rights come from. A role holds nothing of itself",
     },
     "relationship_owners": {
-        "id": "The relationship and its owner",
+        "id": "The relationship, the principal's kind and the principal",
         "relationship_id": "The relationship",
-        "principal": "A person who owns it: the user id of a relationship_owner entitlement "
-        "naming it",
+        "principal": "A person (user id) or a role (role id)",
+        "principal_kind": "person or role",
+        "named": "Its field names this principal, as entered",
+        "holds": "A person holding a relationship_owner entitlement naming it, a named role's "
+        "holders among them: what rights come from. A role holds nothing of itself",
     },
     # REQ-2126
     "data_product_edges": {

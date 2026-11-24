@@ -33,6 +33,7 @@ const PRODUCT = {
   name: "Pet Health",
   customProperties: {},
   owners: [],
+  namedOwners: [],
 } as unknown as DataProduct;
 
 const EMPTY: ProductLineage = {

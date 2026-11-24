@@ -177,6 +177,10 @@ query DomainsQuery {
     description
     graphqlAlias
     stewards
+    stewardField {
+      people
+      roles
+    }
     parentDomainId
     effectiveStewards
     isSystem

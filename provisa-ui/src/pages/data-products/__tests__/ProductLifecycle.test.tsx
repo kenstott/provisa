@@ -26,6 +26,7 @@ const product = (id: string, over: Partial<DataProduct> = {}): DataProduct => ({
   domainId: "sales",
   name: id.toUpperCase(),
   owners: [],
+  namedOwners: [],
   purpose: "",
   limitations: "",
   usage: "",

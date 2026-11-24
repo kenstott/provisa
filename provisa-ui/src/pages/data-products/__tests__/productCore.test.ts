@@ -23,6 +23,7 @@ import {
 import { listQuery, loadProductCore, loadProducts, panelQueries } from "../productCore";
 
 const s: GraphqlType = { kind: "SCALAR", name: "String" };
+const b: GraphqlType = { kind: "SCALAR", name: "Boolean" };
 const list = (name: string): GraphqlType => ({
   kind: "LIST",
   name: null,
@@ -53,7 +54,7 @@ function reader(): MetaReader {
           dataProductCommands: list("DPC"),
           // No tags and no edges: this role reads neither.
         }),
-        type("DPO", { principal: s }),
+        type("DPO", { principal: s, principalKind: s, named: b, holds: b }),
         type("DPT", { registeredTable: one("RT") }),
         type("DPC", { trackedFunction: one("TF") }),
         type("RT", {
@@ -156,7 +157,7 @@ describe("the panel's meta reads", () => {
                 {
                   id: "c360",
                   // REQ-2219 (amended 2026-11-24): its owners, through its owners relationship.
-                  owners: [{ principal: "sam" }],
+                  owners: [{ principal: "sam", principalKind: "person", named: true, holds: true }],
                   // A member the role cannot read reaches no table.
                   dataProductTables: [
                     {
@@ -199,6 +200,7 @@ describe("the panel's meta reads", () => {
     expect(core?.product).toMatchObject({
       name: "Customer 360",
       owners: ["sam"],
+      namedOwners: [{ principal: "sam", kind: "person" as const }],
       customProperties: { tier: "gold" },
     });
     expect(core?.tables?.map((t) => t.tableName)).toEqual(["customers"]);
@@ -220,20 +222,54 @@ describe("a product's owners", () => {
   const answer = (rows: unknown[]) =>
     vi.fn(async () => new Response(JSON.stringify({ data: { data_products: rows } })));
 
-  it("are read through the owners relationship, one row per person", async () => {
-    expect(listQuery(reader())?.replace(/\s+/g, " ")).toContain("owners { principal }");
+  it("are read through the owners relationship, one row per principal", async () => {
+    expect(listQuery(reader())?.replace(/\s+/g, " ")).toContain(
+      "owners { principal principalKind named holds }",
+    );
     vi.stubGlobal(
       "fetch",
-      answer([{ ...PRODUCT_ROW, owners: [{ principal: "sam" }, { principal: "vera" }] }]),
+      answer([
+        {
+          ...PRODUCT_ROW,
+          owners: [
+            { principal: "sam", principalKind: "person", named: true, holds: true },
+            { principal: "vera", principalKind: "person", named: true, holds: true },
+          ],
+        },
+      ]),
     );
     const [p] = (await loadProducts(reader(), "analyst")) ?? [];
     expect(p?.owners).toEqual(["sam", "vera"]);
+  });
+
+  // REQ-2219 (amended 2026-11-24): a role named is shown as entered; its holders hold the rights.
+  it("show a role named as entered, beside the people it expands to", async () => {
+    vi.stubGlobal(
+      "fetch",
+      answer([
+        {
+          ...PRODUCT_ROW,
+          owners: [
+            { principal: "ada", principalKind: "person", named: true, holds: true },
+            { principal: "bo", principalKind: "person", named: false, holds: true },
+            { principal: "data_steward", principalKind: "role", named: true, holds: false },
+          ],
+        },
+      ]),
+    );
+    const [p] = (await loadProducts(reader(), "analyst")) ?? [];
+    expect(p?.namedOwners).toEqual([
+      { principal: "ada", kind: "person" },
+      { principal: "data_steward", kind: "role" },
+    ]);
+    expect(p?.owners).toEqual(["ada", "bo"]);
   });
 
   it("are none when the relationship reaches no row", async () => {
     vi.stubGlobal("fetch", answer([{ ...PRODUCT_ROW, owners: null }]));
     const [p] = (await loadProducts(reader(), "analyst")) ?? [];
     expect(p?.owners).toEqual([]);
+    expect(p?.namedOwners).toEqual([]);
   });
 
   it("refuse a product read without its owners relationship", async () => {

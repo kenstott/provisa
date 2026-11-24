@@ -37,6 +37,7 @@ const hooks = vi.hoisted(() => ({
         id: "retail",
         description: "Business unit",
         stewards: ["bu_steward"],
+        stewardField: { people: ["bu_steward"], roles: [] },
         effectiveStewards: ["bu_steward"],
       },
       {
@@ -44,7 +45,16 @@ const hooks = vi.hoisted(() => ({
         description: "Sales",
         parentDomainId: "retail",
         stewards: [],
+        stewardField: { people: [], roles: [] },
         effectiveStewards: ["bu_steward"],
+      },
+      // REQ-2219 (amended 2026-11-24): a Steward field naming a role and a person, as entered.
+      {
+        id: "care",
+        description: "Care",
+        stewards: ["ada", "bo"],
+        stewardField: { people: ["ada"], roles: ["data_steward"] },
+        effectiveStewards: ["ada", "bo"],
       },
     ],
     refetch: undefined as unknown,
@@ -111,6 +121,14 @@ describe("Admin > Domains: the domain tree", () => {
     expect(within(row).getByTestId("steward-inherited")).toBeInTheDocument();
     const unit = screen.getByText("Business unit").closest("tr") as HTMLElement;
     expect(within(unit).queryByTestId("steward-inherited")).toBeNull();
+  });
+
+  it("shows a domain's stewards as its Steward field names them, a role by its name", async () => {
+    render(<AdminPage />, { initialEntries: ["/admin/domains"] });
+    await screen.findByText("Care");
+    expect(screen.getByTestId("domain-stewards-care")).toHaveTextContent(/^ada, data_steward$/);
+    const row = screen.getByText("Care").closest("tr") as HTMLElement;
+    expect(within(row).queryByTestId("steward-inherited")).toBeNull();
   });
 
   it("opens on a linked domain, its row marked and scrolled to", async () => {

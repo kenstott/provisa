@@ -369,17 +369,36 @@ async def test_owners_are_rows_of_their_own_view_reached_by_relationship(control
                     cardinality="many-to-one",
                 )
             )
+            # Amended 2026-11-24: each principal with its kind, whether its field names it as
+            # entered (named) and whether it holds the capability (holds).
             owned = {
-                "data_product": ("customer_360", ("alice", "bob")),
-                "domain": ("sales", ("carol",)),
-                "relationship": ("customers_regions", ("dave", "erin")),
+                "data_product": (
+                    "customer_360",
+                    (
+                        ("person", "alice", True, True),
+                        ("person", "bob", False, True),
+                        ("role", "data_steward", True, False),
+                    ),
+                ),
+                "domain": ("sales", (("person", "carol", True, True),)),
+                "relationship": (
+                    "customers_regions",
+                    (("person", "dave", True, True), ("person", "erin", True, True)),
+                ),
             }
             await conn.execute_core(
                 insert(object_owners).values(
                     [
-                        {"object_kind": kind, "object_id": oid, "principal": who}
-                        for kind, (oid, people) in owned.items()
-                        for who in people
+                        {
+                            "object_kind": kind,
+                            "object_id": oid,
+                            "principal_kind": pk,
+                            "principal": who,
+                            "named": named,
+                            "holds": holds,
+                        }
+                        for kind, (oid, principals) in owned.items()
+                        for pk, who, named, holds in principals
                     ]
                 )
             )
@@ -395,17 +414,30 @@ async def test_owners_are_rows_of_their_own_view_reached_by_relationship(control
                 row = (await conn.execute_core(text(f"SELECT * FROM {view}"))).fetchone()
                 assert row is not None and gone not in row._mapping, view
 
-            for (view, key, to_owners, to_object), (oid, people) in zip(
+            for (view, key, to_owners, to_object), (oid, principals) in zip(
                 _OWNER_VIEWS, owned.values(), strict=True
             ):
                 rows = (
                     await conn.execute_core(text(f"SELECT * FROM {_relation(view)} ORDER BY id"))
                 ).fetchall()
-                assert [dict(r._mapping) for r in rows] == [
-                    {"id": f"{oid}:{who}", key: oid, "principal": who} for who in people
-                ], view
+                assert [dict(r._mapping) for r in rows] == sorted(
+                    (
+                        {
+                            "id": f"{oid}:{pk}:{who}",
+                            key: oid,
+                            "principal": who,
+                            "principal_kind": pk,
+                            "named": named,
+                            "holds": holds,
+                        }
+                        for pk, who, named, holds in principals
+                    ),
+                    key=lambda r: r["id"],
+                ), view
                 reached = await _follow(conn, to_owners, [oid])
-                assert sorted(r["principal"] for r in reached) == list(people), to_owners
+                assert sorted(r["principal"] for r in reached) == sorted(
+                    who for _pk, who, _n, _h in principals
+                ), to_owners
                 back = await _follow(conn, to_object, [r["id"] for r in reached])
                 assert {r["id"] for r in back} == {oid}, to_object
     finally:

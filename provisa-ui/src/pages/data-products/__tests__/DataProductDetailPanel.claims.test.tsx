@@ -32,6 +32,7 @@ const P = {
   domainId: "sales",
   name: "Customer 360",
   owners: [] as string[],
+  namedOwners: [],
   purpose: "",
   limitations: "",
   usage: "",

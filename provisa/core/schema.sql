@@ -1541,15 +1541,20 @@ CREATE TABLE IF NOT EXISTS checker_targets (
     checked_table_id INTEGER NOT NULL
 );
 
--- REQ-2219: who owns each data product and relationship, and who stewards each domain: the people
--- whose entitlement rows of the owner capability name it (a domain's, or a domain above it), as
--- provisa.entitlements.owners.holders reads them. Derived state for the meta views: each build
--- replaces every row, as does a save of an Owner or Steward field.
+-- REQ-2219: who owns each data product and relationship, and who stewards each domain. named: a
+-- principal its Owner or Steward field names, a person or a role, as entered
+-- (provisa.entitlements.owners.named); holds: a person whose entitlement rows of the owner
+-- capability name it (a domain's, or a domain above it), a named role's holders among them, as
+-- provisa.entitlements.owners.holders reads them. Rights come from holds alone. Derived state for
+-- the meta views: each build replaces every row, as does a save of an Owner or Steward field.
 CREATE TABLE IF NOT EXISTS object_owners (
-    object_kind TEXT NOT NULL CHECK (object_kind IN ('data_product', 'domain', 'relationship')),
-    object_id   TEXT NOT NULL,
-    principal   TEXT NOT NULL,
-    PRIMARY KEY (object_kind, object_id, principal)
+    object_kind    TEXT NOT NULL CHECK (object_kind IN ('data_product', 'domain', 'relationship')),
+    object_id      TEXT NOT NULL,
+    principal_kind TEXT NOT NULL CHECK (principal_kind IN ('person', 'role')),
+    principal      TEXT NOT NULL,
+    named          BOOLEAN NOT NULL,
+    holds          BOOLEAN NOT NULL,
+    PRIMARY KEY (object_kind, object_id, principal_kind, principal)
 );
 
 -- REQ-194: the names table of the last model version built -- every model object's name on every

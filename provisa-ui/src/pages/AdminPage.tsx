@@ -44,7 +44,7 @@ import { useRLSRules } from "../hooks/useSecurityQueries";
 import { fetchSettings } from "../api/admin";
 import type { PlatformSettings } from "../api/admin";
 import { useAuth } from "../context/AuthContext";
-import { domainAliasMap, domainGqlAlias } from "../types/admin";
+import { domainAliasMap, domainGqlAlias, type Domain } from "../types/admin";
 import { OwnerResolutionIcon } from "../components/OwnerResolution";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { EnvironmentsTab } from "../components/admin/EnvironmentsTab";
@@ -136,6 +136,15 @@ const SECURITY_SUBTAB: Record<string, "encryption" | "authentication"> = {
 };
 
 /** Admin overview page — dashboard, config management, platform settings. */
+/** REQ-2219 (amended 2026-11-24): what a domain's Steward field names, people and roles as
+ * entered. */
+const namedStewards = (d: Domain) => [...d.stewardField.people, ...d.stewardField.roles];
+
+/** A domain's stewards as its row shows them: its field as entered, or with none of its own the
+ * people it answers to (REQ-1363). */
+const shownStewards = (d: Domain) =>
+  namedStewards(d).length > 0 ? namedStewards(d) : d.effectiveStewards;
+
 export function AdminPage() {
   // REQ-1918: a delete is refused while anything depends on the object; this lists them.
   const refusal = useDependentsDialog();
@@ -526,20 +535,22 @@ export function AdminPage() {
                               <Table.Td>{d.parentDomainId || "—"}</Table.Td>
                               <Table.Td>
                                 <Group gap={4} wrap="nowrap">
-                                  <Text fz="sm">
-                                    {d.effectiveStewards.length > 0
-                                      ? d.effectiveStewards.join(", ")
+                                  <Text fz="sm" data-testid={`domain-stewards-${d.id}`}>
+                                    {shownStewards(d).length > 0
+                                      ? shownStewards(d).join(", ")
                                       : "—"}
                                   </Text>
                                   {/* REQ-1363: no steward of its own -- it answers to an ancestor's. */}
-                                  {d.stewards.length === 0 && d.effectiveStewards.length > 0 && (
+                                  {namedStewards(d).length === 0 &&
+                                    d.stewards.length === 0 &&
+                                    d.effectiveStewards.length > 0 && (
                                     <Text fz="xs" c="dimmed" data-testid="steward-inherited">
                                       {t("adminPage.stewardInherited")}
                                     </Text>
                                   )}
-                                  {d.effectiveStewards.length > 0 && (
+                                  {shownStewards(d).length > 0 && (
                                     <OwnerResolutionIcon
-                                      refs={d.effectiveStewards}
+                                      refs={shownStewards(d)}
                                       ariaLabel={t("adminPage.resolveSteward", { id: d.id })}
                                     />
                                   )}

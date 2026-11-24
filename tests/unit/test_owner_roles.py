@@ -267,14 +267,53 @@ async def test_object_owners_names_the_members_of_a_role_named(db):
     async with db.acquire() as conn:
         await write_object_owners(conn)
         rows = (await conn.execute_core(select(object_owners))).fetchall()
-    got = sorted((r.object_kind, r.object_id, r.principal) for r in rows)
+    got = sorted(
+        (r.object_kind, r.object_id, r.principal_kind, r.principal, r.named, r.holds) for r in rows
+    )
     assert got == [
-        ("data_product", "c360", CARL),
-        ("data_product", "c360", DANA),
-        ("domain", "sales", ANA),
-        ("domain", "sales", CARL),
-        ("domain", "sales", DANA),
+        ("data_product", "c360", "person", CARL, False, True),
+        ("data_product", "c360", "person", DANA, False, True),
+        ("data_product", "c360", "role", "team", True, False),
+        ("domain", "sales", "person", ANA, True, True),
+        ("domain", "sales", "person", CARL, False, True),
+        ("domain", "sales", "person", DANA, False, True),
+        ("domain", "sales", "role", "team", True, False),
     ]
+
+
+@KINDS
+async def test_the_owners_view_lists_the_field_as_entered_beside_its_expansion(db, kind):
+    """REQ-2219 (amended 2026-11-24): an Owner (or Steward) field naming "team, ana" lists both
+    principals, each with its kind, through the object's owners relationship, beside the people
+    the role expands to; rights still come from the expansion alone."""
+    from sqlalchemy import text
+
+    from provisa.api._meta_views import _META_TABLE_VIEWS
+    from provisa.api.startup_seed import _adapt_view_ddl
+
+    view = {PRODUCTS: "data_product_owners", DOMAINS: "domain_stewards"}.get(
+        kind, "relationship_owners"
+    )
+    key = {PRODUCTS: "product_id", DOMAINS: "domain_id"}.get(kind, "relationship_id")
+    await _set(db, kind, [ANA], ["team"])
+    async with db.acquire() as conn:
+        await write_object_owners(conn)
+        await conn.execute(_adapt_view_ddl(_META_TABLE_VIEWS[view]))
+        rows = (
+            await conn.execute_core(
+                text(
+                    f"SELECT principal_kind, principal, named, holds FROM {view}_meta "
+                    f"WHERE {key} = :oid ORDER BY id"
+                ),
+                {"oid": OBJECT[kind]},
+            )
+        ).fetchall()
+    listed = [tuple(r) for r in rows]
+    assert [(k, p) for k, p, named, _ in listed if named] == [("person", ANA), ("role", "team")]
+    assert sorted(p for k, p, _, holds in listed if holds) == [ANA, CARL, DANA]
+    assert all(k == "person" for k, _, _, holds in listed if holds)
+    # The rights are the expansion's, unchanged.
+    assert await _holders(db, kind) == (ANA, CARL, DANA)
 
 
 async def test_a_person_acting_as_a_role_named_owns_the_product_at_runtime(db):

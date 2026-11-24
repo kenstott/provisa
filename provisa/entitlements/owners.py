@@ -354,21 +354,38 @@ async def named(conn: "Connection", kind: OwnedKind, paths: Paths) -> Named:
     """What the field of the object spelled ``paths`` names now: each person with a Provisa-held
     row of ``kind``'s capability naming it, and each role with such a row of its own (REQ-2219,
     amended 2026-11-23). An identity provider's lists are its own, and not the field's."""
+    return (await _named_each(conn, kind, {"": paths}))[""]
+
+
+async def _named_each(
+    conn: "Connection", kind: OwnedKind, objects: Mapping[str, Paths]
+) -> dict[str, Named]:
+    """object id -> what its field names now (:func:`named`), for ``objects`` spelled as given,
+    reading the rows once."""
     from provisa.entitlements.lists import ROLE
 
-    people: set[str] = set()
-    roles: set[str] = set()
+    people: dict[str, set[str]] = {oid: set() for oid in objects}
+    roles: dict[str, set[str]] = {oid: set() for oid in objects}
     for p in history.current(await history.entitlement_periods(conn, kind=kind.list_kind)):
         row = p.row
         if row.capability != kind.capability:
             continue
-        if not any(matches(i, paths) for i in row.identifiers):
-            continue
         if row.source == PROVISA and row.principal is not None:
-            people.add(row.principal)
+            into, name = people, row.principal
         elif row.source == ROLE and row.principal is None:
-            roles.add(row.role_id)
-    return Named(tuple(sorted(people)), tuple(sorted(roles)))
+            into, name = roles, row.role_id
+        else:
+            continue
+        for oid, paths in objects.items():
+            if any(matches(i, paths) for i in row.identifiers):
+                into[oid].add(name)
+    return {oid: Named(tuple(sorted(people[oid])), tuple(sorted(roles[oid]))) for oid in objects}
+
+
+async def fields_of(conn: "Connection", kind: OwnedKind) -> dict[str, Named]:
+    """object id -> what its Owner (or Steward) field names now (:func:`named`), for every object
+    of ``kind`` the org holds."""
+    return await _named_each(conn, kind, (await owned_objects(conn, kind)).exact)
 
 
 #: The kinds by the name a client gives them (object_owners' names, :data:`_OBJECT_KIND`).
@@ -421,20 +438,46 @@ _OBJECT_KIND = {PRODUCTS: "data_product", DOMAINS: "domain", RELATIONSHIPS: "rel
 
 
 async def write_object_owners(conn: "Connection") -> None:
-    """Replace object_owners with every object's holders now (:func:`holders`): what the meta
-    views read of owners and stewards. Derived state: a model build and a saved Owner or Steward
-    field are its writers."""
+    """Replace object_owners with every object's owners and stewards now: the principals its
+    field names, people and roles as entered (:func:`named`; ``named``), beside the people who
+    hold the capability on it (:func:`holders`; ``holds``), a named role's holders among them.
+    What the meta views read of owners and stewards (REQ-2219, amended 2026-11-24). Derived
+    state: a model build and a saved Owner or Steward field are its writers."""
     from sqlalchemy import delete, insert
 
     from provisa.core.repositories.build_output import replacing_build_output
     from provisa.core.schema_org import object_owners
 
-    rows = [
-        {"object_kind": name, "object_id": oid, "principal": principal}
-        for kind, name in _OBJECT_KIND.items()
-        for oid, people in sorted((await holders(conn, kind)).items())
-        for principal in people
-    ]
+    rows: list[dict[str, Any]] = []
+    for kind, name in _OBJECT_KIND.items():
+        owned = await owned_objects(conn, kind)
+        held = await _holders_of(conn, kind, owned.reach)
+        fields = await _named_each(conn, kind, owned.exact)  # fields_of, over the same read
+        for oid in sorted(owned.reach):
+            field = fields[oid]
+            holding = set(held.get(oid, ()))
+            rows.extend(
+                {
+                    "object_kind": name,
+                    "object_id": oid,
+                    "principal_kind": "person",
+                    "principal": principal,
+                    "named": principal in field.people,
+                    "holds": principal in holding,
+                }
+                for principal in sorted(holding | set(field.people))
+            )
+            rows.extend(
+                {
+                    "object_kind": name,
+                    "object_id": oid,
+                    "principal_kind": "role",
+                    "principal": role,
+                    "named": True,
+                    "holds": False,  # a role holds nothing of itself; its holders do
+                }
+                for role in field.roles
+            )
     async with replacing_build_output(conn, object_owners):
         await conn.execute_core(delete(object_owners))
         if rows:

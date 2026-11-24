@@ -106,6 +106,7 @@ const products = [
     domainId: "care",
     name: "Pet Health",
     owners: ["vera"],
+    namedOwners: [{ principal: "vera", kind: "person" as const }],
     purpose: "Pet health records",
     limitations: "No billing data",
     usage: "Weekly review",

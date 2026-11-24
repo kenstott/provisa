@@ -46,7 +46,7 @@ HUB_MIN_REACHERS = 5
 # it, as the build derived them (object_owners), one text per domain. Read after WITH RECURSIVE.
 _STEWARD_OF_CTE = """steward_of (domain_id, steward) AS (
             SELECT object_id, STRING_AGG(principal, ', ' ORDER BY principal)
-            FROM object_owners WHERE object_kind = 'domain'
+            FROM object_owners WHERE object_kind = 'domain' AND holds
             GROUP BY object_id
         ),
         term_domain AS (

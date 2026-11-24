@@ -68,6 +68,10 @@ const TO_REVIEW_STORAGE_KEY = "provisa.data_products.toReview";
 // REQ-1634: top-level data-products management page (list / create / edit / delete).
 // Follows the MetricsPage detail-then-edit pattern (REQ-1323) — row click expands the
 // detail panel; Edit/Delete live inside it and edit swaps the panel for the inline form.
+/** REQ-2219 (amended 2026-11-24): a product's owners as its Owner field names them, people and
+ * roles as entered: what the list shows, sorts, groups and searches by. */
+const ownerNames = (p: DataProduct) => p.namedOwners.map((o) => o.principal);
+
 export function DataProductsPage() {
   // REQ-1918: a delete is refused while anything depends on the object; this lists them.
   const refusal = useDependentsDialog();
@@ -457,7 +461,7 @@ export function DataProductsPage() {
     () =>
       dataProducts.filter(
         (p) =>
-          matchesQuery([p.id, p.name, p.domainId, ...p.owners, p.purpose], search) &&
+          matchesQuery([p.id, p.name, p.domainId, ...ownerNames(p), p.purpose], search) &&
           (!toReviewOnly || productFindings.findings.has(p.id)) &&
           tagFilter.every((tag) => productTags.get(p.id)?.has(tag) === true) &&
           (domainFilter.length === 0 || domainFilter.includes(p.domainId)),
@@ -486,8 +490,8 @@ export function DataProductsPage() {
       {
         key: "owner",
         label: t("dataProductsTab.colOwner"),
-        sortValue: (p) => p.owners.join(", "),
-        groupValue: (p) => p.owners.join(", "),
+        sortValue: (p) => ownerNames(p).join(", "),
+        groupValue: (p) => ownerNames(p).join(", "),
       },
       {
         key: "status",
@@ -760,11 +764,11 @@ export function DataProductsPage() {
                             <Table.Td>
                               <Group gap={4} wrap="nowrap">
                                 <Text size="xs" truncate="end">
-                                  {p.owners.join(", ")}
+                                  {ownerNames(p).join(", ")}
                                 </Text>
-                                {p.owners.length > 0 && (
+                                {p.namedOwners.length > 0 && (
                                   <OwnerResolutionIcon
-                                    refs={p.owners}
+                                    refs={ownerNames(p)}
                                     ariaLabel={t("dataProductsTab.resolveOwner", { id: p.id })}
                                   />
                                 )}

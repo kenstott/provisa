@@ -222,12 +222,13 @@ export function DataProductDetailPanel({
     ...lifecycle.fields,
     {
       label: t("dataProductsTab.ownerLabel"),
-      // REQ-2219 (amended 2026-11-23): its owners are people.
+      // REQ-2219 (amended 2026-11-24): its owners as its Owner field names them, people and
+      // roles as entered; the resolution lists the people a role expands to.
       value:
-        product.owners.length > 0 ? (
+        product.namedOwners.length > 0 ? (
           <Stack gap={0}>
-            <Text size="sm">{product.owners.join(", ")}</Text>
-            <OwnerResolutionInline refs={product.owners} />
+            <Text size="sm">{product.namedOwners.map((o) => o.principal).join(", ")}</Text>
+            <OwnerResolutionInline refs={product.namedOwners.map((o) => o.principal)} />
           </Stack>
         ) : null,
     },

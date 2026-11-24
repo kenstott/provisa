@@ -102,6 +102,7 @@ const product = {
   domainId: "pet-store",
   name: "Pet Health",
   owners: [] as string[],
+  namedOwners: [],
   purpose: "",
   limitations: "",
   usage: "",

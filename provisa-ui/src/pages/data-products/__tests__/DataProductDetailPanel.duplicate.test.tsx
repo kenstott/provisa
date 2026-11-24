@@ -29,6 +29,7 @@ const PRODUCT = {
   name: "Pet Health",
   customProperties: {},
   owners: [],
+  namedOwners: [],
 } as unknown as DataProduct;
 
 function panel(over: { canEdit: boolean; onDuplicate?: () => void }) {

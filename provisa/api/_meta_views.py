@@ -248,7 +248,7 @@ def _tag_instances_sql() -> str:
             WHERE NOT rt.retired AND NOT tc.retired
             UNION ALL
             SELECT 'relationship', FALSE, 'relationship:' || r.id, r.id, CAST(NULL AS INTEGER), rt.domain_id,
-                   (SELECT STRING_AGG(oo.principal, ', ' ORDER BY oo.principal) FROM object_owners oo WHERE oo.object_kind = 'relationship' AND oo.object_id = r.id),
+                   (SELECT STRING_AGG(oo.principal, ', ' ORDER BY oo.principal) FROM object_owners oo WHERE oo.object_kind = 'relationship' AND oo.holds AND oo.object_id = r.id),
                    '|', CAST(NULL AS TEXT), CAST(NULL AS TEXT)
             FROM relationships r JOIN registered_tables rt ON rt.id = r.source_table_id
             WHERE NOT r.retired AND NOT rt.retired
@@ -262,7 +262,7 @@ def _tag_instances_sql() -> str:
             FROM tracked_webhooks w
             UNION ALL
             SELECT 'product', FALSE, 'product:' || dp.id, dp.id, CAST(NULL AS INTEGER), dp.domain_id,
-                   (SELECT STRING_AGG(oo.principal, ', ' ORDER BY oo.principal) FROM object_owners oo WHERE oo.object_kind = 'data_product' AND oo.object_id = dp.id),
+                   (SELECT STRING_AGG(oo.principal, ', ' ORDER BY oo.principal) FROM object_owners oo WHERE oo.object_kind = 'data_product' AND oo.holds AND oo.object_id = dp.id),
                    '|', CAST(NULL AS TEXT), CAST(NULL AS TEXT)
             FROM data_products dp
             UNION ALL
@@ -1465,19 +1465,24 @@ _META_TABLE_VIEWS: dict[str, str] = {
     # REQ-2219 (amended 2026-11-24, per REQ-2125): who owns or stewards an object is no column of
     # its view. Each kind has its own view, one row per object and principal, computed from
     # object_owners, and its object reaches it by a meta relationship (provisa.api._meta_seed).
+    # Amended 2026-11-24: the principals its field names, people and roles as entered (named),
+    # beside the people a named role expands to; rights come from holds alone.
     "data_product_owners": """
         CREATE OR REPLACE VIEW data_product_owners_meta AS
-        SELECT object_id || ':' || principal AS id, object_id AS product_id, principal
+        SELECT object_id || ':' || principal_kind || ':' || principal AS id, object_id AS product_id,
+               principal, principal_kind, named, holds
         FROM object_owners WHERE object_kind = 'data_product'
     """,
     "domain_stewards": """
         CREATE OR REPLACE VIEW domain_stewards_meta AS
-        SELECT object_id || ':' || principal AS id, object_id AS domain_id, principal
+        SELECT object_id || ':' || principal_kind || ':' || principal AS id, object_id AS domain_id,
+               principal, principal_kind, named, holds
         FROM object_owners WHERE object_kind = 'domain'
     """,
     "relationship_owners": """
         CREATE OR REPLACE VIEW relationship_owners_meta AS
-        SELECT object_id || ':' || principal AS id, object_id AS relationship_id, principal
+        SELECT object_id || ':' || principal_kind || ':' || principal AS id, object_id AS relationship_id,
+               principal, principal_kind, named, holds
         FROM object_owners WHERE object_kind = 'relationship'
     """,
     # REQ-1986: the parameter_* columns state a parameter's limits.
@@ -1926,7 +1931,7 @@ _OPS_REPORT_VIEWS: dict[str, str] = {
         -- a system domain needs no steward; a domain is stewarded when a person's
         -- domain_steward row names it or a domain above it (object_owners).
         WHERE d.id NOT IN ({system_domains}) AND NOT d.retired AND d.id NOT IN (
-            SELECT object_id FROM object_owners WHERE object_kind = 'domain'
+            SELECT object_id FROM object_owners WHERE object_kind = 'domain' AND holds
         )
     """.replace("{system_domains}", _system_domains_sql()),
     # Table pairs most often read in the same query — materialization/caching

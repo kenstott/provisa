@@ -23,6 +23,12 @@ import {
   type Selection,
 } from "../../api/metaGraph";
 import { COLUMN_FACTS, TABLE_FACTS, TERM_FACTS } from "../../components/graph3d/ontologyData";
+import {
+  holdersOf,
+  namedOf,
+  OWNER_ROWS,
+  type OwnerRow,
+} from "../../components/graph3d/productFacts";
 import { catalogTableName, quoteIdent, tableSqlRef } from "../../naming";
 import type { DataProduct } from "../../types/admin";
 import type { LifecycleStatus } from "../../types/lifecycle";
@@ -49,11 +55,12 @@ export const PRODUCT_FIELDS = [
 ] as const;
 
 /** REQ-2219 (amended 2026-11-24, per REQ-2125): a product's owners are rows of
- * data_product_owners_meta, one per person, reached by its owners relationship. */
-const OWNERS: NonNullable<Selection["rels"]> = { owners: { sel: { fields: ["principal"] } } };
+ * data_product_owners_meta, one per principal, reached by its owners relationship: the people and
+ * roles its Owner field names, as entered, beside the people holding it. */
+const OWNERS: NonNullable<Selection["rels"]> = { owners: { sel: OWNER_ROWS } };
 
 /** A product's owners relationship as answered: undefined when the role cannot select it. */
-type OwnerRows = { principal: string }[] | null | undefined;
+type OwnerRows = OwnerRow[] | null | undefined;
 
 /** A view's column name as the GraphQL field it is (REQ-416). */
 type Field<C extends string> = C extends `${infer H}_${infer T}`
@@ -331,26 +338,28 @@ export interface ProductCore {
 
 const text = (v: unknown) => (v == null ? null : String(v));
 
-/** The people a product's owners relationship reaches. A role reads data_product_owners_meta
+/** The rows a product's owners relationship reaches. A role reads data_product_owners_meta
  * exactly when it reads data_products_meta (both outside the default tier, granted by
  * catalog_read: security.inheritance.expand_meta_grants), so a product read without it is a
  * defect, not a product with no owners. */
-function ownersOf(product: unknown, owners: OwnerRows): string[] {
+function ownerRowsOf(product: unknown, owners: OwnerRows): OwnerRow[] {
   const rows = rowsOf(owners);
   if (rows === undefined)
     throw new Error(`data product ${String(product)} was read without its owners relationship`);
-  return rows.map((o) => o.principal);
+  return rows;
 }
 
 /** A data_products_meta row, with the owners its relationship reaches, as the page's
  * DataProduct. */
 export function asProduct(row: ProductRow, owners: OwnerRows): DataProduct {
   const custom = row.customProperties;
+  const rows = ownerRowsOf(row.id, owners);
   return {
     id: String(row.id),
     domainId: String(row.domainId),
     name: String(row.name),
-    owners: ownersOf(row.id, owners),
+    owners: holdersOf(rows),
+    namedOwners: namedOf(rows),
     teamRole: text(row.teamRole),
     purpose: String(row.purpose ?? ""),
     limitations: String(row.limitations ?? ""),

@@ -977,12 +977,19 @@ class Query:  # REQ-021, REQ-042
             # REQ-1363, REQ-2219: a domain's stewards are people whose domain_steward rows name
             # it; a row naming a domain above it covers it too -- an ancestor the caller is not
             # listed may still be stewarded.
-            from provisa.entitlements.owners import DOMAINS, holders
+            from provisa.entitlements.owners import DOMAINS, fields_of, holders
 
             own = await holders(conn, DOMAINS, exact=True)
             covering = await holders(conn, DOMAINS)
+            # REQ-2219 (amended 2026-11-24): its Steward field as entered, people and roles.
+            fields = await fields_of(conn, DOMAINS)
             return [
-                _domain_from_row(r, own.get(r["id"], ()), covering.get(r["id"], ()))
+                _domain_from_row(
+                    r,
+                    own.get(r["id"], ()),
+                    covering.get(r["id"], ()),
+                    fields[r["id"]],
+                )
                 for r in rows
                 if scope.lists_domain(r["id"], r["id"] in holding)
             ]
