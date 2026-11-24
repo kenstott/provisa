@@ -215,10 +215,11 @@ pub fn offset_text(seconds: i32, out: &mut Vec<u8>) {
     }
 }
 
-/// A timestamp to_pylist can hold: its UTC and its local time both within datetime's years. Its
-/// local time and offset when it is.
+/// A timestamp pgwire sends: its UTC and its local time both from PostgreSQL's first instant
+/// (4714-11-24 00:00:00 BC, REQ-2236) to the end of year 9999, datetime's last year. Its local
+/// time and offset when it is.
 fn local_of(micros: i128, tz: &TzSpec) -> R<(i128, Option<i32>)> {
-    let lo = MIN_DAY as i128 * DAY_US;
+    let lo = PG_MIN_DAY as i128 * DAY_US;
     let hi = (MAX_DAY as i128 + 1) * DAY_US;
     let out_of_range = |v: i128| v < lo || v >= hi;
     if out_of_range(micros) {
@@ -237,15 +238,33 @@ pub fn check_timestamp(micros: i128, tz: &TzSpec) -> R<()> {
 }
 
 /// _timestamp_text for a finite value: the local date and clock, and the offset of an aware one.
+/// A year BC is numbered before year 1, its era after the offset, as timestamp_out writes it:
+/// 4713-01-01 00:00:00+00 BC.
 pub fn timestamp_text(micros: i128, tz: &TzSpec, out: &mut Vec<u8>) -> R<()> {
     let (local, offset) = local_of(micros, tz)?;
     let days = local.div_euclid(DAY_US) as i64;
     let tod = local.rem_euclid(DAY_US) as i64;
-    push_ymd(days, out);
+    let bc = civil(days).0 <= 0;
+    if bc {
+        let (y, m, d) = civil(days);
+        let year = (1 - y) as u32;
+        out.push(b'0' + (year / 1000 % 10) as u8);
+        out.push(b'0' + (year / 100 % 10) as u8);
+        push2(out, year % 100);
+        out.push(b'-');
+        push2(out, m);
+        out.push(b'-');
+        push2(out, d);
+    } else {
+        push_ymd(days, out);
+    }
     out.push(b' ');
     clock_text(tod, out);
     if let Some(off) = offset {
         offset_text(off, out);
+    }
+    if bc {
+        out.extend_from_slice(b" BC");
     }
     Ok(())
 }

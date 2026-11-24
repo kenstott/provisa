@@ -692,9 +692,9 @@ async def register_node_ids(  # REQ-394
 
 def to_serializable(obj: Any, *, keep_values: bool = False) -> Any:  # REQ-349, REQ-350
     """Recursively convert Node/Edge/Path to JSON-serializable dicts. A temporal value is
-    written as Cypher writes it, and a decimal as a float, unless ``keep_values`` (Bolt, which
-    sends a temporal value as its own structure, REQ-2173, and a decimal as its exact digits,
-    REQ-1961)."""
+    written as Cypher writes it, and a decimal (a sized numeric) as the string of its exact
+    digits (REQ-1961), unless ``keep_values`` (Bolt, which sends a temporal value as its own
+    structure, REQ-2173, and packs a decimal's digits itself)."""
     import datetime
     from decimal import Decimal
 
@@ -742,5 +742,9 @@ def to_serializable(obj: Any, *, keep_values: bool = False) -> Any:  # REQ-349, 
 
         return cypher_text(obj)
     if isinstance(obj, Decimal):
-        return float(obj)
+        # REQ-1961 (amended 2026-11-24): every JSON surface carries a sized numeric as the string
+        # of its exact digits, as Bolt, GraphQL and gRPC do; never rounded through a float.
+        from provisa.core.numeric_type import decimal_text
+
+        return decimal_text(obj)
     return obj

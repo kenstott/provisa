@@ -1,0 +1,22 @@
+{
+  "sourceSetup": {
+    "label": "Configurazione della sorgente",
+    "connect": "Connetti sorgente",
+    "register": "Registra tabelle",
+    "relate": "Scopri relazioni",
+    "query": "Interroga",
+    "tablesCount_one": "{{count}} tabella",
+    "tablesCount_other": "{{count}} tabelle",
+    "registerHint": "Registra le tabelle di questa sorgente per interrogarle.",
+    "registerAction": "Registra tabelle",
+    "relateHint": "Collega le nuove tabelle tra loro e alle tabelle di ogni sorgente.",
+    "relateAction": "Scopri relazioni",
+    "nothingToRelate": "Niente da collegare",
+    "nothingToRelateHint": "Non c'è ancora nulla a cui collegare queste tabelle. Passa a interrogarle.",
+    "relateNotAllowed": "Non consentito",
+    "relateNotAllowedHint": "Per creare relazioni serve il diritto di creare relazioni. Passa a interrogare le tabelle.",
+    "queryHint": "Apre Query Explorer con una query iniziale su {{table}}.",
+    "queryAction": "Apri una query iniziale",
+    "complete": "Configurazione completata"
+  }
+}

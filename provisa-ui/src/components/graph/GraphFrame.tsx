@@ -370,13 +370,9 @@ export function GraphFrame({
     onEffectiveDataChange(frame.id, allNodes, allEdges);
   }, [frame.id, augmentedNodes, frame.edges, overlayNodes, overlayEdges, onEffectiveDataChange]);
 
-  useAutoImpute(frame, autoImpute && language === "cypher", setOverlayData);
+  const unreadRels = useAutoImpute(frame, autoImpute && language === "cypher", setOverlayData);
 
-  const { inspected, describeError } = useSparqlNodeProperties(
-    frame,
-    selected,
-    onDescribeResource,
-  );
+  const { inspected, describeError } = useSparqlNodeProperties(frame, selected, onDescribeResource);
   useSparqlStyledProperties(
     frame.id,
     frame.sparqlDescribed,
@@ -637,6 +633,15 @@ export function GraphFrame({
               </ActionIcon>
             </Tip>
           )}
+          {/* REQ-392: a relationship type the imputation could not read is shown, with its
+              reason, as a count the engine could not make is: "?" with the reason on its hint. */}
+          {unreadRels.map(({ type, error }) => (
+            <Tip key={type} text={t("graphFrame.relNotImputed", { type, error })}>
+              <span className="graph-rel-badge" tabIndex={0} data-testid="graph-frame-unread-rel">
+                {type}(?)
+              </span>
+            </Tip>
+          ))}
           {hasGraph && frame.status === "done" && groupableAttrs.length > 0 && (
             <Tip text={t("graphFrame.groupTooltip")} named>
               <Select
