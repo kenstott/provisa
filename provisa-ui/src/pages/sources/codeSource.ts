@@ -34,7 +34,9 @@ export const NODE = "node";
 export const PYTHON = "python";
 export const GO = "go";
 export const RUST = "rust";
-export const CODE_SOURCE_TYPES = new Set([NODE, PYTHON, GO, RUST]);
+/** REQ-2225: a built-in source type whose code is the Spark host's, run on Python. */
+export const SPARK = "spark";
+export const CODE_SOURCE_TYPES = new Set([NODE, PYTHON, GO, RUST, SPARK]);
 
 /** The languages whose source names where its code is entered: Python's module, Go's package,
  * Rust's crate. */
@@ -52,6 +54,7 @@ export const PACKAGE_KIND: Record<string, string> = {
   [PYTHON]: "pypi",
   [GO]: "gomod",
   [RUST]: "cargo",
+  [SPARK]: "pypi", // REQ-2225: the Spark host is a Python project
 };
 
 /** The lockfiles each language installs from (provisa/node/install.py, provisa/python/install.py,
@@ -61,6 +64,7 @@ export const LOCKFILES: Record<string, string[]> = {
   [PYTHON]: ["uv.lock", "pylock.toml", "requirements.txt"],
   [GO]: ["go.sum"],
   [RUST]: ["Cargo.lock"],
+  [SPARK]: ["uv.lock", "pylock.toml", "requirements.txt"], // REQ-2225: Python's
 };
 
 const COMMIT = /^[0-9a-f]{40}$/;
@@ -152,8 +156,8 @@ export function codeMappingJson(type: string, fields: Record<string, string>): s
         }
       : {};
   return JSON.stringify({
-    // Node names its runtime; Python, Go and Rust each have one.
-    runtime: type === NODE ? (fields.code_runtime ?? "node") : type,
+    // Node names its runtime; Python, Go and Rust each have one; Spark's host runs on Python.
+    runtime: type === NODE ? (fields.code_runtime ?? "node") : type === SPARK ? PYTHON : type,
     code,
     ...(lockfile ? { lockfile } : {}),
     ...(NAMED_ENTRY.has(type) && entry ? { entry } : {}),

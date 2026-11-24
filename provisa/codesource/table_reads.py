@@ -46,7 +46,7 @@ _LOOPBACK = frozenset({"localhost", "127.0.0.1", "::1"})
 _DATABASE = "provisa"
 #: The languages whose remote hosts read a table over Arrow Flight SQL (REQ-2270): those whose host
 #: carries a Flight client.
-FLIGHT_LANGUAGES = frozenset({"python"})
+FLIGHT_LANGUAGES = frozenset({"python", "spark"})  # REQ-2225: the Spark host is a Python host
 
 
 class TableNotReadable(ValueError):

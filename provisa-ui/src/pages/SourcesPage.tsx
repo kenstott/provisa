@@ -102,8 +102,9 @@ import { JDBC_SOURCE, jdbcSourceHints } from "./sources/jdbcSource";
 import { excelHintsOf, filesMappingJson, repeatedNames } from "./sources/excelHints";
 import { KAFKA, kafkaCredentials, kafkaHints } from "./sources/kafka";
 import { QDRANT, qdrantHints } from "./sources/qdrant";
-import { CODE_SOURCE_TYPES, codeMappingJson } from "./sources/codeSource";
+import { CODE_SOURCE_TYPES, SPARK, codeMappingJson } from "./sources/codeSource";
 import { fetchConnectors, type Connector } from "../api/connectors";
+import { fetchSparkSource } from "../api/sparkCluster";
 import {
   connectorChose,
   connectorFields,
@@ -213,6 +214,10 @@ export function SourcesPage() {
   const [connectors, setConnectors] = useState<Connector[]>([]);
   // The offered connector this source is being made from; null for every other way of adding one.
   const [connector, setConnector] = useState<Connector | null>(null);
+  // REQ-2225: the host a Spark source joins -- Spark is a built-in source type, not an offered
+  // connector -- or why this installation has none.
+  const [sparkHost, setSparkHost] = useState<Connector | null>(null);
+  const [sparkUnavailable, setSparkUnavailable] = useState("");
   // "+ Source" opens the type picker first; the create form opens on a choice, with that type.
   const [addPickerOpen, setAddPickerOpen] = useState(false);
   // Only the type-specific branches below (snowflake/databricks/.../sparql) rebuild
@@ -310,7 +315,9 @@ export function SourcesPage() {
   // now, read-only, so a save never carries an older value.
   const heldBy = connector
     ? null
-    : (connectors.find((c) => c.name === authFields.code_connector) ?? null);
+    : authFields.code_connector && form.type === SPARK
+      ? sparkHost
+      : (connectors.find((c) => c.name === authFields.code_connector) ?? null);
   const heldForm = heldBy ? { ...form, ...fixedFormValues(heldBy) } : form;
   const [settings, setSettings] = useState<PlatformSettings | null>(null);
   const [sourceReach, setSourceReach] = useState<SourceReach | null>(null);
@@ -442,6 +449,9 @@ export function SourcesPage() {
     fetchConnectors(activeOrgId)
       .then(setConnectors)
       .catch((e) => setError(String(e)));
+    fetchSparkSource(activeOrgId)
+      .then((found) => setSparkHost(found.host))
+      .catch((e: unknown) => setSparkUnavailable(e instanceof Error ? e.message : String(e)));
   }, [activeOrgId]);
 
   // The page loader is for the first load only. A refetch (after a save, a registration, a
@@ -501,10 +511,11 @@ export function SourcesPage() {
   // The type picked, over the form's state `base`: the form's own, where its type is changed, or
   // the empty form, where "+ Source" opens it.
   const applyType = (picked: string, base: SourceFormState) => {
-    // A connector the organization offers is made as a source of its own language.
-    const offered = pickedConnector(picked, connectors);
+    // A connector the organization offers is made as a source of its own language; a Spark source
+    // (REQ-2225) is a source of its own type, joining the Spark host.
+    const offered = picked === SPARK ? sparkHost : pickedConnector(picked, connectors);
     setConnector(offered);
-    const type = offered ? offered.language : picked;
+    const type = picked === SPARK ? SPARK : offered ? offered.language : picked;
     // REQ-929: keep change_signal valid for the new type's capabilities.
     const signals = sourceChangeSignals(type);
     const changeSignal = signals.includes(base.changeSignal) ? base.changeSignal : signals[0];
@@ -1399,6 +1410,7 @@ export function SourcesPage() {
     setForm,
     connector,
     heldBy,
+    sparkUnavailable,
     authType,
     setAuthType,
     authFields,

@@ -135,9 +135,6 @@ def _stood_in(org_id: str, admin_db: Any, setting: str, own: Any) -> str:
 
     if setting != "spark_cluster":
         raise ValueError(f"no organisation setting {setting!r} stands in for a connector value")
-    mine = spark_cluster.own_cluster(own)
-    if mine:
-        return mine
     with connection_loop() as cl:
         return cl.run(spark_cluster.resolved(admin_db, org_id, own)).address
 

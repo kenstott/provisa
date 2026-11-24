@@ -389,8 +389,20 @@ def _org() -> str:
 
 async def _connector(name: str) -> dict:
     from provisa.api.admin.schema_mutation import _get_pool
+    from provisa.core.models import BUILTIN_CONNECTORS
     from provisa.core.repositories import connector as connector_repo
 
+    if name in BUILTIN_CONNECTORS:
+        # REQ-2225: a built-in source type joins the platform's row, never an org's connector.
+        found = connector_repo.builtin(name)
+        if found is None:
+            raise RemoteRefused(
+                "builtin_unavailable",
+                f"This installation carries no {name} host: a {name} source runs on the host a "
+                "release package ships, or on the native one a checkout's demo runs",
+                connector=name,
+            )
+        return found
     pool = await _get_pool()
     async with pool.acquire() as conn:
         row = await connector_repo.get(conn, name)
@@ -597,6 +609,25 @@ def org_defaults(row: dict) -> dict[str, str]:
     return {r["name"]: r["org_default"] for r in row["requires"] if r.get("org_default")}
 
 
+def check_stood_in(stood_in: dict[str, str], settings: Any) -> None:
+    """REQ-2225 (amended 2026-11-24): each value an organisation setting stands in for, where the
+    source sets it, is one that setting would hold: a Spark cluster is a Spark Connect address
+    whose token is a secret reference. Refused by name, naming the value, on every save."""
+    from provisa.codesource.services import declared_settings
+    from provisa.core.spark_cluster import SparkClusterRefused, own_cluster
+
+    given = declared_settings(settings)
+    for value, setting in stood_in.items():
+        if setting != "spark_cluster" or value not in given:
+            continue
+        try:
+            own_cluster(str(given[value]))
+        except SparkClusterRefused as refused:
+            raise RemoteRefused(
+                "spark_cluster_address", f"{value}: {refused}", value=value
+            ) from None
+
+
 def _requires_of(row: dict) -> set[tuple[str, bool]]:
     return {(r["name"], bool(r.get("secret"))) for r in row["requires"]}
 
@@ -640,11 +671,22 @@ async def join_connector(state: Any, source_id: str, source_type: str, mapping: 
     name = join.get("connector")
     if not name:
         raise RemoteRefused("address", "a connector is joined by its name")
-    row = await _connector(name)
-    if row["language"] != source_type:
+    from provisa.core.models import BUILTIN_CONNECTORS
+
+    # REQ-2225: a built-in source type (spark) is a source of its own type, never one of its
+    # host's language, and its host is joined by no other type.
+    made_as = name if name in BUILTIN_CONNECTORS else None
+    if source_type in BUILTIN_CONNECTORS and name != source_type:
         raise RemoteRefused(
             "connector_type",
-            f"connector {name} is a {row['language']} source, not a {source_type} one",
+            f"a {source_type} source joins the {source_type} host, not connector {name}",
+            connector=name,
+        )
+    row = await _connector(name)
+    if (made_as or row["language"]) != source_type:
+        raise RemoteRefused(
+            "connector_type",
+            f"connector {name} is a {made_as or row['language']} source, not a {source_type} one",
             connector=name,
         )
     native = native_connector.is_native(row)
@@ -665,6 +707,7 @@ async def join_connector(state: Any, source_id: str, source_type: str, mapping: 
                 "address", "a connector is joined by its name, host, port and pairing code"
             )
     _given_requires(row, mapping, name)
+    check_stood_in(org_defaults(row), mapping.get("settings"))
     script = _script_of(row, mapping, name)
     org_id = require_current_org()
     if native:

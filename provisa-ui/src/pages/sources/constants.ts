@@ -128,6 +128,8 @@ export const SOURCE_TYPES = [
   { value: "python", label: "Python", category: "Code", defaultPort: 0 },
   { value: "go", label: "Go", category: "Code", defaultPort: 0 },
   { value: "rust", label: "Rust", category: "Code", defaultPort: 0 },
+  // REQ-2225: one annotated PySpark script run on a Spark cluster; a built-in type, not a connector.
+  { value: "spark", label: "Spark", category: "Code", defaultPort: 0 },
   // Graph
   { value: "neo4j", label: "Neo4j", category: "Graph", defaultPort: 7474 },
   { value: "sparql", label: "SPARQL", category: "Graph", defaultPort: 443 },
@@ -314,6 +316,7 @@ export const NO_CONNECTION_TYPES = new Set([
   "python", // REQ-1993: the same
   "go", // REQ-2200: the same
   "rust", // REQ-2227: the same
+  "spark", // REQ-2225: its script and cluster (ConnectorSetupFields)
 ]);
 
 // REQ-1923: branded source types → the UI type that carries them. A brand is registered and

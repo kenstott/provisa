@@ -11,7 +11,7 @@
 """The languages a code source can be written in (REQ-1984, REQ-1993, REQ-2200): one table the
 shared layer asks, so nothing in it names a language, and Node and Python behave as they did."""
 
-# Requirements: REQ-1984, REQ-1993, REQ-2200
+# Requirements: REQ-1984, REQ-1993, REQ-2200, REQ-2225
 from __future__ import annotations
 
 import pytest
@@ -31,7 +31,8 @@ def _code(kind: str) -> dict:
 
 
 def test_every_code_source_type_is_a_language_of_the_table_and_a_source_type():
-    assert CODE_SOURCE_TYPES == {"node", "python", "go", "rust"} == CODE_SOURCES
+    # REQ-2225: spark, a built-in source type run by the Spark host on the pinned CPython.
+    assert CODE_SOURCE_TYPES == {"node", "python", "go", "rust", "spark"} == CODE_SOURCES
     for source_type in CODE_SOURCE_TYPES:
         assert SourceType(source_type).value == source_type
         assert contract_for(source_type) is not None
@@ -62,6 +63,7 @@ def test_a_language_with_one_runtime_runs_on_it_and_node_names_its_own():
     assert config_of("go", {"code": _code("gomod")}).runtime == "go"
     assert config_of("rust", {"code": _code("cargo")}).runtime == "rust"
     assert config_of("python", {"code": _code("pypi")}).runtime == "python"
+    assert config_of("spark", {"code": _code("pypi")}).runtime == "python"  # REQ-2225
     with pytest.raises(BundleRefused, match="a node source runs on node, bun, deno, not ''"):
         config_of("node", {"code": _code("npm")})
 

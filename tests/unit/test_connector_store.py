@@ -131,11 +131,11 @@ def _platform_block(tmp_path, monkeypatch, *entries: ConnectorConfig):
     monkeypatch.setattr(connector_repo, "_PLATFORM_FILE", block)
 
 
-def _spark(**overrides) -> ConnectorConfig:
+def _ledger(**overrides) -> ConnectorConfig:
     return _connector().model_copy(
         update={
-            "name": "spark",
-            "description": "Spark",
+            "name": "ledger",
+            "description": "Ledger",
             "requires": [ConnectorRequirement(name="script", multiline=True, script=True)],
             **overrides,
         }
@@ -153,49 +153,79 @@ async def test_sources_shows_nothing_of_the_platform_until_a_release_fills_it(co
     db = control_plane.org()
     async with db.acquire() as conn:
         assert await connector_repo.offered(conn) == []
-        assert await connector_repo.get(conn, "spark") is None
+        assert await connector_repo.get(conn, "ledger") is None
+    assert connector_repo.builtin("spark") is None
 
 
 async def test_a_filled_block_is_offered_beside_the_orgs_own(control_plane, tmp_path, monkeypatch):
-    _platform_block(tmp_path, monkeypatch, _spark())
+    _platform_block(tmp_path, monkeypatch, _ledger())
     db = control_plane.org()
     async with db.acquire() as conn:
         await connector_repo.upsert(conn, _connector())
         offered = await connector_repo.offered(conn)
-    assert [row["name"] for row in offered] == ["crm", "spark"]
-    spark = offered[1]
-    assert spark["description"] == "Spark"
-    assert spark["requires"] == [{"name": "script", "multiline": True, "script": True}]
-    assert "path" not in spark and "build_command" not in spark
+    assert [row["name"] for row in offered] == ["crm", "ledger"]
+    ledger = offered[1]
+    assert ledger["description"] == "Ledger"
+    assert ledger["requires"] == [{"name": "script", "multiline": True, "script": True}]
+    assert "path" not in ledger and "build_command" not in ledger
 
 
 async def test_a_platform_connector_is_found_by_name(control_plane, tmp_path, monkeypatch):
-    _platform_block(tmp_path, monkeypatch, _spark())
+    _platform_block(tmp_path, monkeypatch, _ledger())
     db = control_plane.org()
     async with db.acquire() as conn:
-        found = await connector_repo.get(conn, "spark")
+        found = await connector_repo.get(conn, "ledger")
     assert found is not None
     assert found["image"] == "registry.example/data/crm" and found["code_hash"] == "c" * 64
     assert found["path"] == "connectors/crm"  # whole, as the org's own row reads
 
 
 async def test_an_orgs_own_connector_of_that_name_keeps_it(control_plane, tmp_path, monkeypatch):
-    _platform_block(tmp_path, monkeypatch, _spark(digest="sha256:" + "f" * 64))
+    _platform_block(tmp_path, monkeypatch, _ledger(digest="sha256:" + "f" * 64))
     db = control_plane.org()
     async with db.acquire() as conn:
-        await connector_repo.upsert(conn, _spark(digest="sha256:" + "e" * 64))
+        await connector_repo.upsert(conn, _ledger(digest="sha256:" + "e" * 64))
         offered = await connector_repo.offered(conn)
-        found = await connector_repo.get(conn, "spark")
+        found = await connector_repo.get(conn, "ledger")
     assert [row["digest"] for row in offered] == ["sha256:" + "e" * 64]
     assert found is not None and found["digest"] == "sha256:" + "e" * 64
 
 
 async def test_the_platform_block_is_not_the_orgs_model(control_plane, tmp_path, monkeypatch):
-    _platform_block(tmp_path, monkeypatch, _spark())
+    _platform_block(tmp_path, monkeypatch, _ledger())
     db = control_plane.org()
     async with db.acquire() as conn:
         assert await connector_repo.list_all(conn) == []
-        assert "connectors/spark.yaml" not in await project(conn, SCHEMA)
+        assert "connectors/ledger.yaml" not in await project(conn, SCHEMA)
+
+
+async def test_the_platforms_spark_is_a_builtin_type_never_an_offered_connector(
+    control_plane, tmp_path, monkeypatch
+):
+    # REQ-2225 (amended 2026-11-24): Spark is listed with the source types, not as a connector.
+    _platform_block(tmp_path, monkeypatch, _ledger(name="spark"), _ledger())
+    db = control_plane.org()
+    async with db.acquire() as conn:
+        offered = await connector_repo.offered(conn)
+    assert [row["name"] for row in offered] == ["ledger"]
+    found = connector_repo.builtin("spark")
+    assert found is not None and found["image"] == "registry.example/data/crm"
+
+
+def test_only_a_builtin_type_has_a_builtin_row():
+    with pytest.raises(ValueError, match="'ledger' is not a built-in source type"):
+        connector_repo.builtin("ledger")
+
+
+def test_an_orgs_model_cannot_offer_a_connector_named_spark():
+    from pydantic import ValidationError
+
+    from provisa.core.models import ProvisaConfig
+
+    with pytest.raises(ValidationError, match="spark: a built-in source type, not a connector"):
+        ProvisaConfig.model_validate(
+            {"sources": [], "connectors": [_ledger(name="spark").model_dump()]}
+        )
 
 
 async def test_a_block_that_does_not_read_is_refused(control_plane, tmp_path, monkeypatch):

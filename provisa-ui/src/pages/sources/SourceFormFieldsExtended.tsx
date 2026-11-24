@@ -12,6 +12,7 @@ import { NEVER_EXPIRES, cacheTtlHint } from "../../components/form/cacheTtl";
 import { useRegionChoices } from "../../hooks/useRegionQueries";
 import { useTranslation } from "react-i18next";
 import {
+  Alert,
   Button,
   Checkbox,
   Group,
@@ -42,7 +43,7 @@ import { GoogleSheetsFields } from "./GoogleSheetsFields";
 import { GoogleWorkspaceFields } from "./GoogleWorkspaceFields";
 import { Microsoft365Fields } from "./Microsoft365Fields";
 import { CodeSourceFields } from "./CodeSourceFields";
-import { CODE_SOURCE_TYPES } from "./codeSource";
+import { CODE_SOURCE_TYPES, SPARK } from "./codeSource";
 import { ConnectorSetupFields, ConnectorSourceValues } from "./ConnectorSetupFields";
 import { fixedFormKeys } from "./connector";
 import { CosmosDbFields } from "./CosmosDbFields";
@@ -84,6 +85,7 @@ export function SourceFormFieldsExtended({
   setAuthFields,
   connector,
   heldBy,
+  sparkUnavailable,
   editingSourceId,
   essential,
   cdc,
@@ -650,7 +652,19 @@ export function SourceFormFieldsExtended({
         <Microsoft365Fields sourceId={form.id} fields={authFields} setFields={setAuthFields} />
       )}
       {connector && (
-        <ConnectorSetupFields connector={connector} fields={authFields} setFields={setAuthFields} />
+        <ConnectorSetupFields
+          connector={connector}
+          fields={authFields}
+          setFields={setAuthFields}
+          builtin={form.type === SPARK}
+        />
+      )}
+      {form.type === SPARK && !connector && !heldBy && sparkUnavailable && (
+        <FormField size="long">
+          <Alert color="orange" variant="light" data-testid="spark-unavailable">
+            {sparkUnavailable}
+          </Alert>
+        </FormField>
       )}
       {!connector &&
         CODE_SOURCE_TYPES.has(form.type) && ( // REQ-1984, REQ-1993
