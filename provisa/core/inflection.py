@@ -23,13 +23,11 @@ glossary terms).
 
 import functools
 import gzip
+from collections.abc import Iterator
 from pathlib import Path
 
 from lemminflect import config as _lemminflect_config
 from lemminflect import getAllInflectionsOOV
-from lemminflect.codecs.InflectionLUCodec import InflectionLUCodec
-from lemminflect.codecs.LemmaLUCodec import LemmaLUCodec
-from lemminflect.codecs.OverridesCodec import OverridesCodec
 
 _TABLE = Path(__file__).parent / "data" / "noun_plurals.tsv.gz"
 
@@ -82,6 +80,70 @@ def _dictionary() -> tuple[dict[str, str], dict[str, str], frozenset[str]]:
 _NOUN_TAGS = ("NN", "NNS", "NNP", "NNPS")  # lemminflect's tags of upos NOUN (uposToTags)
 
 
+# The words InflectionLUCodec.updateForAuxMod replaces wholesale with verb-only forms once the
+# inflection table is read, so none of them keeps a noun form from the table.
+_AUX_MODAL_REPLACED = frozenset({"can", "may", "will", "shall", "must", "ought", "dare", "be"})
+
+
+def _overrides(fn: str) -> Iterator[tuple[str, str, str]]:
+    """(word, pos, form) per entry of a lemminflect overrides file, as OverridesCodec reads it."""
+    with open(fn, encoding="utf-8") as f:
+        for raw in f:
+            line = raw.strip()
+            if not line or line[0] == "#":
+                continue
+            word, pos, form = line.split(",")
+            yield word, pos, form
+
+
+def _lemma_map() -> dict[str, str]:
+    """Lower-case word -> the first NOUN lemma ``getAllLemmas(word, upos="NOUN")`` gives.
+
+    Streams lemminflect's lemma table row by row as LemmaLUCodec parses it (word, category,
+    spellings; the category upper-cased is the upos), a later row of a word and upos replacing an
+    earlier one, then applies its overrides, keeping only NOUN rows of lower-case words."""
+    lemma_of: dict[str, str] = {}
+    with gzip.open(_lemminflect_config.lemma_lu_fn, "rt", encoding="utf-8") as f:
+        for raw in f:
+            word, category, forms = raw.strip().split(",")
+            if category.upper() == "NOUN" and word == word.lower():
+                lemma_of[word] = forms.split("/", 1)[0].lower()
+    for word, pos, form in _overrides(_lemminflect_config.lemma_overrides_fn):
+        if pos == "NOUN" and word == word.lower():
+            lemma_of[word] = form.lower()
+    return lemma_of
+
+
+def _plural_map() -> dict[str, str | None]:
+    """Lower-case lemma -> the first NNS form ``getAllInflections(lemma, upos="NOUN")`` gives, or
+    None for a lemma lemminflect lists with a noun tag but no NNS form.
+
+    Streams lemminflect's inflection table row by row as InflectionLUCodec parses it: a ``noun``
+    row gives its word the NN tag and, when its plural field is not empty, NNS spellings that
+    replace an earlier row's; the aux and modal words are then replaced by verb-only forms; then
+    its overrides apply. Only lower-case lemmas with a noun tag are kept."""
+    plural_form: dict[str, str | None] = {}
+    with gzip.open(_lemminflect_config.inflection_lu_fn, "rt", encoding="utf-8") as f:
+        for raw in f:
+            word, category, *forms = raw.strip().split(",")
+            if category != "noun" or word != word.lower():
+                continue
+            if forms and forms[0]:
+                plural_form[word] = forms[0].split("/", 1)[0].lower()
+            else:
+                plural_form.setdefault(word, None)
+    for word in _AUX_MODAL_REPLACED:
+        plural_form.pop(word, None)
+    for word, pos, form in _overrides(_lemminflect_config.infl_overrides_fn):
+        if pos not in _NOUN_TAGS or word != word.lower():
+            continue
+        if pos == "NNS":
+            plural_form[word] = form.lower()
+        else:
+            plural_form.setdefault(word, None)
+    return plural_form
+
+
 @functools.cache
 def _lemminflect_nouns() -> tuple[dict[str, str], dict[str, str | None]]:
     """lemminflect's dictionary answers for nouns, as two compact maps: (lower-case word -> the
@@ -89,29 +151,12 @@ def _lemminflect_nouns() -> tuple[dict[str, str], dict[str, str | None]]:
     form ``getAllInflections(lemma, upos="NOUN")`` gives, or None for a lemma it lists with no NNS
     form). A word absent from a map is one lemminflect answers ``{}`` for.
 
-    Read from lemminflect's own lookup files (its lookup table, then its overrides, as its
-    functions merge them) once, keeping only the noun answers for lower-case words, the only ones
-    the functions below ask. lemminflect's functions would hold every part of speech of every
-    word for the life of the process (about 40 MB at boot); these hold a few MB.
+    Streamed row by row from lemminflect's own lookup files, keeping only the noun answers for
+    lower-case words, the only ones the functions below ask. lemminflect's functions and codecs
+    both build every part of speech of every word in memory (a 42 MB transient at boot whose
+    pages the allocator keeps); these maps hold a few MB.
     tests/unit/test_inflection_lemminflect_maps.py checks every answer against lemminflect's."""
-    lemmas = LemmaLUCodec.load(_lemminflect_config.lemma_lu_fn)
-    for word, forms in OverridesCodec.load(_lemminflect_config.lemma_overrides_fn).items():
-        lemmas.setdefault(word, {}).update(forms)
-    lemma_of = {
-        word: forms["NOUN"][0].lower()
-        for word, forms in lemmas.items()
-        if "NOUN" in forms and word == word.lower()
-    }
-    del lemmas
-    inflections = InflectionLUCodec.load(_lemminflect_config.inflection_lu_fn)
-    for lemma, forms in OverridesCodec.load(_lemminflect_config.infl_overrides_fn).items():
-        inflections.setdefault(lemma, {}).update(forms)
-    plural_form: dict[str, str | None] = {}
-    for lemma, forms in inflections.items():
-        if lemma != lemma.lower() or not any(tag in forms for tag in _NOUN_TAGS):
-            continue
-        plural_form[lemma] = forms["NNS"][0].lower() if "NNS" in forms else None
-    return lemma_of, plural_form
+    return _lemma_map(), _plural_map()
 
 
 def _match_case(form: str, written: str) -> str:
