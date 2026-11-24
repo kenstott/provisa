@@ -2391,3 +2391,135 @@ def test_the_reasoner_jar_is_reproducible_from_its_entries(tmp_path):
     module.write_jar({"b.class": b"b", "a/A.class": b"a"}, tmp_path / "one.jar")
     module.write_jar({"a/A.class": b"a", "b.class": b"b"}, tmp_path / "two.jar")
     assert (tmp_path / "one.jar").read_bytes() == (tmp_path / "two.jar").read_bytes()
+
+
+# REQ-1989: Docker image caches (images-*, 4-5 GB each) are kept only for main and release/*,
+# so the 10 GB repository cache quota never evicts the pinned Trino plugin jar cache.
+_IMAGE_CACHE_REFS = (
+    "(github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/'))"
+)
+
+
+def _image_cache_steps():
+    for path in WORKFLOWS + ACTIONS:
+        doc = yaml.safe_load(path.read_text())
+        jobs = doc.get("jobs") or {}
+        step_lists = [job.get("steps") or [] for job in jobs.values()]
+        if "runs" in doc:
+            step_lists.append(doc["runs"].get("steps") or [])
+        for steps in step_lists:
+            for step in steps:
+                key = str((step.get("with") or {}).get("key", ""))
+                if key.startswith("images-"):
+                    yield path, step
+
+
+def test_image_caches_are_saved_only_on_main_or_release_refs():
+    saves = [(p, s) for p, s in _image_cache_steps() if "cache/save" in s.get("uses", "")]
+    assert saves, "no images-* cache save found"
+    for path, step in saves:
+        cond = " ".join(str(step.get("if", "")).split())
+        assert _IMAGE_CACHE_REFS in cond, f"{path.name}: {step.get('name')} saves on any ref"
+    assert not [
+        (p.name, s.get("name"))
+        for p, s in _image_cache_steps()
+        if re.match(r"actions/cache@", s.get("uses", ""))
+    ], "an images-* cache uses actions/cache, whose post step saves on every ref"
+    # The docker save that feeds the cache is skipped on the same refs: it is minutes of work.
+    lane = yaml.safe_load((REPO / ".github/workflows/lane.yml").read_text())
+    for job in lane["jobs"].values():
+        for step in job.get("steps") or []:
+            if step.get("name") == "Save images":
+                assert _IMAGE_CACHE_REFS in " ".join(str(step["if"]).split())
+
+
+def test_every_image_cache_restore_reads_main_s_key():
+    restores = [(p, s) for p, s in _image_cache_steps() if "cache/restore" in s.get("uses", "")]
+    saves = {
+        (p, str(s["with"]["key"])) for p, s in _image_cache_steps() if "cache/save" in s["uses"]
+    }
+    assert restores, "no images-* cache restore found"
+    for path, step in restores:
+        key = str(step["with"]["key"])
+        # No branch in the key: a branch that saves none restores main's entry under it.
+        assert not re.search(r"github\.(ref|head_ref|ref_name|base_ref)|run_id", key), (
+            f"{path.name}: {key} is branch- or run-specific"
+        )
+        assert (path, key) in saves, f"{path.name}: {key} is not the key main saves"
+
+
+def test_a_cache_prune_workflow_runs_on_branch_delete_and_a_schedule_with_actions_write():
+    path = REPO / ".github/workflows/cache-prune.yml"
+    doc = yaml.safe_load(path.read_text())
+    on = doc[True] if True in doc else doc["on"]
+    assert "delete" in on
+    assert on["schedule"] and on["schedule"][0]["cron"]
+    assert doc["permissions"]["actions"] == "write"
+    jobs = doc["jobs"]
+    deleted = jobs["deleted-branch"]
+    assert "github.event_name == 'delete'" in deleted["if"]
+    assert "github.event.ref_type == 'branch'" in deleted["if"]
+    run = "\n".join(s.get("run", "") for s in deleted["steps"])
+    assert "actions/caches?ref=refs/heads/$BRANCH" in run
+    assert "-X DELETE" in run
+    sweep = jobs["sweep"]
+    assert "github.event_name == 'schedule'" in sweep["if"]
+    run = "\n".join(s.get("run", "") for s in sweep["steps"])
+    assert "repos/$REPO/branches" in run
+    assert "images-*" in run
+    assert "refs/heads/main|refs/heads/release/*" in run
+    assert "-X DELETE" in run
+
+
+def _prune_script(job: str) -> str:
+    doc = yaml.safe_load((REPO / ".github/workflows/cache-prune.yml").read_text())
+    return "\n".join(s["run"] for s in doc["jobs"][job]["steps"] if "run" in s)
+
+
+def _run_with_fake_gh(tmp_path, script: str, env: dict[str, str]) -> list[str]:
+    log = tmp_path / "deletes"
+    fake = tmp_path / "bin" / "gh"
+    fake.parent.mkdir()
+    fake.write_text(
+        "#!/usr/bin/env bash\n"
+        'if [ "$2" = "-X" ]; then echo "$4" >> "$GH_LOG"; exit 0; fi\n'
+        'case "$3" in\n'
+        '  *branches*) printf "main\\nrelease/v1\\nfeat/live\\n" ;;\n'
+        '  *"ref=refs/heads/gone"*) printf "7 trino-plugins-abc\\n8 images-core-1of6-x\\n" ;;\n'
+        '  *actions/caches*) printf "%s\\n" '
+        '"1 refs/heads/main images-core-1of6-x" '
+        '"2 refs/heads/release/v1 images-app-x" '
+        '"3 refs/heads/feat/live images-core-1of6-x" '
+        '"4 refs/heads/feat/live trino-plugins-abc" '
+        '"5 refs/heads/gone trino-plugins-abc" '
+        '"6 refs/heads/main trino-plugins-abc" '
+        '"9 refs/pull/12/merge images-app-x" ;;\n'
+        "esac\n"
+    )
+    fake.chmod(0o755)
+    subprocess.run(
+        ["bash", "-c", script],
+        check=True,
+        env={
+            **os.environ,
+            "PATH": f"{fake.parent}:{os.environ['PATH']}",
+            "GH_LOG": str(log),
+            "REPO": "o/r",
+            **env,
+        },
+    )
+    return log.read_text().split() if log.exists() else []
+
+
+def test_the_sweep_deletes_gone_branches_caches_and_image_caches_off_main_and_release(tmp_path):
+    deleted = _run_with_fake_gh(tmp_path, _prune_script("sweep"), {})
+    assert deleted == [
+        "repos/o/r/actions/caches/3",
+        "repos/o/r/actions/caches/5",
+        "repos/o/r/actions/caches/9",
+    ]
+
+
+def test_a_deleted_branch_loses_every_cache_it_saved(tmp_path):
+    deleted = _run_with_fake_gh(tmp_path, _prune_script("deleted-branch"), {"BRANCH": "gone"})
+    assert deleted == ["repos/o/r/actions/caches/7", "repos/o/r/actions/caches/8"]

@@ -323,7 +323,10 @@ jobs:
           phase: restore
 
       # Images this lane pulled last time, so a run is not dominated by pulls. Keyed on the compose
-      # files: a changed image tag is a new key.
+      # files: a changed image tag is a new key. REQ-1989: the key names no branch, and only main
+      # and release/* save one (Cache images below), so a feature, fix or merge/* run restores
+      # main's entry under the same key: GitHub's cache scope serves the default branch's entry to
+      # every branch that has none of its own.
       - name: Restore images
         id: images
         if: inputs.image-cache
@@ -477,8 +480,12 @@ jobs:
           ON_FAILURE: ${{ inputs.on-failure }}
         run: bash $ON_FAILURE
 
+      # REQ-1989: image caches (4-5 GB each) are kept only for main and release/* branches, so the
+      # 10 GB repository quota never evicts the Trino plugin jar cache to make room for a branch's.
       - name: Save images
-        if: always() && inputs.image-cache && steps.images.outputs.cache-hit != 'true'
+        if: >-
+          always() && inputs.image-cache && steps.images.outputs.cache-hit != 'true'
+          && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/'))
         # pipefail: without it the step's status is zstd's, and a save that failed left a
         # truncated archive for the next step to cache and later runs to load.
         run: |
@@ -486,7 +493,9 @@ jobs:
           docker save $(docker image ls --format '{{.Repository}}:{{.Tag}}' | grep -v '<none>') | zstd -T0 -3 -o ~/images.tar.zst
 
       - name: Cache images
-        if: always() && inputs.image-cache && steps.images.outputs.cache-hit != 'true'
+        if: >-
+          always() && inputs.image-cache && steps.images.outputs.cache-hit != 'true'
+          && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/'))
         uses: actions/cache/save@v4
         with:
           path: ~/images.tar.zst
