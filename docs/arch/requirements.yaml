@@ -70704,7 +70704,7 @@
     direct loader. The captive instance is kept for a system with neither. Each system is investigated
     on its own and given one verdict; the use_case list below is superseded by those verdicts. The `s3`
     SourceType stub named above is removed. S3 objects are already reached by csv and parquet (s3://
-    paths) and by files (mapping.storage_type "s3").'
+    paths) and by files (mapping.storage_type "s3"). (Amended 2026-11-24 by the maintainer. Stripe and Shopify are brands, not wrapper types: the names belong to the brands the add-source picker offers (Stripe over OpenAPI, Shopify over GraphQL), and the stripe and shopify wrapper stubs are removed from the source types.)'
   use_case: Gives access to wrappers' whole catalog (mongodb, Stripe, HubSpot, Airtable, Notion, Auth0,
     AWS Cognito, Cloudflare D1, Logflare, Calendly) without hand-rolling a bespoke Calcite adapter per
     source, and without needing the pg ENGINE itself to carry `wrappers`-specific connector code or link
