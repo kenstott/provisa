@@ -26,8 +26,9 @@ import time
 
 import pytest
 
-from provisa.core import spark_cluster
+from provisa.core import secrets_providers, spark_cluster
 from provisa.core.spark_cluster import SparkClusterRefused
+from provisa.security import sandbox_egress
 
 pytestmark = [pytest.mark.integration]
 
@@ -35,6 +36,17 @@ pytestmark = [pytest.mark.integration]
 _SPARK_IMAGE = "apache/spark:4.3.0"
 _CONNECT_PORT = 15002
 _SERVER_START_S = 240
+#: The deployment's own org: on a one-org deployment it reaches what it names (REQ-2006).
+_ORG = "acme"
+
+
+@pytest.fixture(scope="module", autouse=True)
+def one_org_deployment():
+    """A deployment holding one organisation, its own, as a local install is."""
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(secrets_providers, "_many_organisations", lambda: False)
+        patch.setattr(sandbox_egress, "_deployment_org", lambda: _ORG)
+        yield
 
 
 def _free_port() -> int:
@@ -61,7 +73,7 @@ def cluster():
         deadline = time.monotonic() + _SERVER_START_S
         while True:
             try:
-                spark_cluster.probe(address)
+                spark_cluster.probe(address, org_id=_ORG)
                 break
             except SparkClusterRefused as refused:
                 if time.monotonic() > deadline:
@@ -77,14 +89,14 @@ def cluster():
 
 
 def test_the_connection_test_answers_the_clusters_spark_version(cluster):
-    assert spark_cluster.probe(cluster) == "4.3.0"
+    assert spark_cluster.probe(cluster, org_id=_ORG) == "4.3.0"
 
 
 def test_an_address_with_parameters_reaches_the_same_cluster(cluster):
-    assert spark_cluster.probe(f"{cluster}/;user_id=provisa-admin") == "4.3.0"
+    assert spark_cluster.probe(f"{cluster}/;user_id=provisa-admin", org_id=_ORG) == "4.3.0"
 
 
 def test_a_port_nothing_listens_on_is_named_unreachable():
     with pytest.raises(SparkClusterRefused) as refused:
-        spark_cluster.probe(f"sc://127.0.0.1:{_free_port()}")
+        spark_cluster.probe(f"sc://127.0.0.1:{_free_port()}", org_id=_ORG)
     assert refused.value.code == "spark_cluster.unreachable"

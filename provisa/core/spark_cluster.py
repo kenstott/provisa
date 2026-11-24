@@ -340,10 +340,13 @@ def version_of(response: bytes) -> str:
     raise ValueError("the server's answer carries no Spark version")
 
 
-def probe(address: str) -> str:
-    """Call the cluster at ``address`` (a token in it when it takes one) and return its Spark
-    version. Raises :class:`SparkClusterRefused` ``unreachable`` with the server's own words."""
+def probe(address: str, *, org_id: str) -> str:
+    """Call the cluster at ``address`` (a token in it when it takes one) for ``org_id`` and return
+    its Spark version. Raises :class:`SparkClusterRefused` ``unreachable`` with the server's own
+    words. The address is an administrator's, typed: for a held org it is refused before any dial
+    unless it is public, and dialed at the address checked (REQ-2006), as a gRPC source's is."""
     from provisa.grpc_remote.executor import UnaryCallFailed, call_unary_raw
+    from provisa.security.sandbox_egress import PrivateEndpointRefused
 
     endpoint = parse(address)
     target = f"{endpoint.host}:{endpoint.port}"
@@ -357,6 +360,8 @@ def probe(address: str) -> str:
             method=_SERVICE_METHOD,
             request=version_request(str(uuid.uuid4()), endpoint.params.get("user_id", "provisa")),
             timeout=PROBE_TIMEOUT_S,
+            org_id=org_id,
+            refusal=PrivateEndpointRefused,
             metadata=metadata,
         )
     except UnaryCallFailed as failed:
