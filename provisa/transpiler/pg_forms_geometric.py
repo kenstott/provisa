@@ -1371,6 +1371,8 @@ _DIGITS_HELD = 27  # 38 digits of the widest integer less a difference's one and
 _ROUNDED_AWAY = ("1e-15", "1e-7")
 _NO_COUNT = "2201G: count must be greater than zero"
 _SAME_BOUNDS = "2201G: lower bound cannot equal upper bound"
+_NAN_VALUES = "2201G: operand, lower bound, and upper bound cannot be NaN"
+_INFINITE_BOUNDS = "2201G: lower and upper bounds must be finite"
 _OUT_OF_RANGE = "22003: integer out of range"
 
 
@@ -1491,9 +1493,30 @@ def _bucket(e: Engine, kind: str) -> str:
         f"CASE WHEN {numeric} THEN {_bucket_numeric(e, numeric)} "
         f"ELSE {_bucket_float(e, f'NOT {numeric}')} END"
     )
+    if e.name == "clickhouse":
+        answer = _bucket_float_checked(e, texts, numeric, answer)
     counted = _let(e, "_n", e.bigint.format("n"), e.raises.format("_n <= 0", _NO_COUNT, answer))
-    refused = f"({finite}) OR (({numeric}) AND ({spelled}))"
+    if e.name == "clickhouse":
+        # A float8's infinite operand is answered (below or above every bucket), and a NaN or an
+        # infinite bound raises PostgreSQL's error (_bucket_float_checked); a numeric's is read
+        # from its digits, which an infinity has none of.
+        refused = f"({numeric}) AND (({finite}) OR ({spelled}))"
+    else:
+        refused = f"({finite}) OR (({numeric}) AND ({spelled}))"
     return e.raises.format(refused, f"0A000: width_bucket {REFUSED}", counted)
+
+
+def _bucket_float_checked(e: Engine, texts: list[str], numeric: str, answer: str) -> str:
+    """width_bucket_float8's checks of its values, past its count's (float.c): a NaN of the three
+    raises 2201G, then an infinite bound; an infinite operand is allowed."""
+    held = f"NOT ({numeric}) AND n > 0"
+    nan = " OR ".join(e.matches.format(t, "(?i)nan") for t in texts)
+    infinite = " OR ".join(e.matches.format(t, _NOT_FINITE) for t in texts[1:])
+    return e.raises.format(
+        f"({held}) AND ({nan})",
+        _NAN_VALUES,
+        e.raises.format(f"({held}) AND NOT ({nan}) AND ({infinite})", _INFINITE_BOUNDS, answer),
+    )
 
 
 def _bucket_of_list(e: Engine) -> str:

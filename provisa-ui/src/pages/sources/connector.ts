@@ -111,9 +111,10 @@ export function missingConnectorFields(
   fields: Record<string, string>,
   connector: Connector,
 ): string[] {
-  const missing = ["connector_host", "connector_port", "connector_pairing_code"].filter(
-    (k) => !fields[k],
-  );
+  // REQ-2225: a connector this server runs is joined by its name alone.
+  const missing = connector.native
+    ? []
+    : ["connector_host", "connector_port", "connector_pairing_code"].filter((k) => !fields[k]);
   for (const r of connector.requires) {
     // REQ-2225: left empty, the organisation setting stands in for it.
     if (!fields[requiredField(r.name)] && !r.org_default) missing.push(requiredField(r.name));
@@ -141,9 +142,13 @@ export function connectorMappingJson(
   return JSON.stringify({
     connector_join: {
       connector: connector.name,
-      host: fields.connector_host ?? "",
-      port: Number(fields.connector_port),
-      pairing_code: fields.connector_pairing_code ?? "",
+      ...(connector.native
+        ? {}
+        : {
+            host: fields.connector_host ?? "",
+            port: Number(fields.connector_port),
+            pairing_code: fields.connector_pairing_code ?? "",
+          }),
       ...(chose.length ? { chose } : {}),
     },
     secrets,

@@ -487,8 +487,19 @@ def _feature(function: str, kinds: tuple[str, str], body: str, summary: str) -> 
         summary,
         read=Side(
             rules=(Rule(f"{function}($a, $b)", forms, unlisted_keep=True),),
-            limitations={_CLICKHOUSE: (Limitation(_HELD.format(function) + zoned),)},
+            limitations={
+                _CLICKHOUSE: (Limitation(_HELD.format(function) + zoned), _refused(function))
+            },
         ),
+    )
+
+
+def _refused(function: str) -> Limitation:
+    """A row's refusal by name of a call it does not read (a literal in no ISO form, infinity, a
+    year BC or past 9999; a call off UTC): the old table's 0A000, stated with its message."""
+    return Limitation(
+        "A literal in no ISO form (infinity, a year BC or past 9999 among them) is refused by name.",
+        Refusal("0A000", f"{function}() has no form on {_CLICKHOUSE}"),
     )
 
 
@@ -589,7 +600,9 @@ def _one_feature(
         feature,
         FAMILY,
         summary,
-        read=Side(rules=(rule,), limitations={_CLICKHOUSE: (Limitation(stated),)}),
+        read=Side(
+            rules=(rule,), limitations={_CLICKHOUSE: (Limitation(stated), _refused(function))}
+        ),
     )
 
 

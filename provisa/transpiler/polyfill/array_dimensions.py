@@ -14,6 +14,13 @@ element in storage order; ClickHouse holds '{{1,2},{3,4}}'::integer[] as an arra
 (provisa.transpiler.pg_literals.array_input). cardinality counts every element (4), unnest answers
 each element (1, 2, 3, 4) and array_to_string joins every element: each reads the flattened array.
 
+ClickHouse has no comparison of an array of arrays with an array (run 45453337906): array_eq ..
+array_ge and btarraycmp compare each array's key, its elements then its dimensions, as array.c's
+array_cmp orders two arrays; array_larger and array_smaller choose by it, refused by name of arrays
+of different dimensions (either is the answer, of another type). array_position, array_positions,
+array_append, array_prepend and width_bucket raise PostgreSQL's refusal of such an array, and
+array_cat concatenates as array.c does.
+
 Only an array the statement writes with nested braces has more than one dimension on ClickHouse:
 any other call keeps its own form. Trino holds it as an array of arrays too: the same calls read
 its flattened array there (of two dimensions; a deeper one keeps its own form)."""
@@ -25,7 +32,7 @@ from __future__ import annotations
 import sqlglot.expressions as exp
 
 from provisa.transpiler.polyfill import trino
-from provisa.transpiler.polyfill.grid import Feature, Rule, Side, written_in
+from provisa.transpiler.polyfill.grid import Feature, Limitation, Rule, Side, written_in
 from provisa.transpiler.polyfill.matching import Bindings, graft
 from provisa.transpiler.polyfill.notation import Refusal, Refused, Rewrite, replacement
 
@@ -165,6 +172,117 @@ def _trino_of_dimensions(
     return exp.Anonymous(this="concat", expressions=pair)
 
 
+def _shape(value: exp.Expr) -> list[int] | None:
+    """The dimensions of an array a statement writes, each sublist as long as the first (as
+    pg_literals.array_input writes one); None for any other value."""
+    elements = _elements(value)
+    if elements is None:
+        return None
+    dims: list[int] = []
+    while elements is not None:
+        dims.append(len(elements))
+        if not elements:
+            return dims
+        elements = _elements(elements[0])
+    return dims
+
+
+#: ClickHouse's key of an array that orders as array.c's array_cmp orders arrays: its elements in
+#: storage order (ClickHouse's own comparison of two lists, the shorter before a longer it begins),
+#: then its number of dimensions and their lengths, none of an empty array. ClickHouse compares a
+#: tuple by its items in order, so two keys compare as PostgreSQL compares two arrays of any
+#: dimensions, where ClickHouse has no comparison of an array of arrays with an array.
+_KEY = (
+    "tuple(arrayFlatten({0}), if(length(arrayFlatten({0})) = 0, emptyArrayUInt64(), "
+    "[toUInt64(countSubstrings(toTypeName({0}), 'Array(')), JSONLength(toJSONString({0})), "
+    + ", ".join(
+        f"JSONLength(toJSONString({{0}}), {', '.join(['1'] * depth)})" for depth in range(1, 6)
+    )
+    + "]))"
+)
+_KEY_A, _KEY_B = _KEY.format("$a"), _KEY.format("$b")
+#: Each comparison of two arrays, by its name: its form over the two arrays' keys.
+_COMPARED = {
+    "array_eq": f"{_KEY_A} = {_KEY_B}",
+    "array_ne": f"{_KEY_A} <> {_KEY_B}",
+    "array_lt": f"{_KEY_A} < {_KEY_B}",
+    "array_le": f"{_KEY_A} <= {_KEY_B}",
+    "array_gt": f"{_KEY_A} > {_KEY_B}",
+    "array_ge": f"{_KEY_A} >= {_KEY_B}",
+    "btarraycmp": f"CASE WHEN {_KEY_A} < {_KEY_B} THEN -1 WHEN {_KEY_A} > {_KEY_B} THEN 1 ELSE 0 END",
+}
+#: array_larger and array_smaller: the first where it compares above (below) the second, else the
+#: second, as array_larger and array_smaller choose.
+_CHOSEN = {
+    "array_larger": f"CASE WHEN {_KEY_A} > {_KEY_B} THEN $a ELSE $b END",
+    "array_smaller": f"CASE WHEN {_KEY_A} < {_KEY_B} THEN $a ELSE $b END",
+}
+_INCOMPATIBLE = Refusal("2202E", "cannot concatenate incompatible arrays")
+_CAT_READ = Refusal(
+    "0A000",
+    "array_cat() of an array of more than one dimension read by another call has no form on "
+    "clickhouse",
+)
+
+
+def _of_one_type(name: str) -> Refusal:
+    """ClickHouse's refusal of array_larger or array_smaller of arrays of different dimensions:
+    its answer is either array, and ClickHouse's CASE answers one type."""
+    return Refusal("0A000", f"{name}() of arrays of different dimensions has no form on clickhouse")
+
+
+def _concatenated(args: list[exp.Expr], node: exp.Expr | None) -> exp.Expr | None:
+    """array_cat of an array of more than one dimension, as array.c's array_cat answers it: two
+    arrays of the same dimensions whose sublists agree end to end, one of one dimension fewer
+    whose dimensions are the other's sublists' as one more sublist; PostgreSQL's 2202E of any
+    other. Of arrays the statement writes; None for any other."""
+    if node is not None and not _answered(node):
+        raise Refused(_CAT_READ, ruling=True)
+    first, second = _shape(args[0]), _shape(args[1])
+    if first is None or second is None:
+        return None
+    if first == [0]:
+        return args[1].copy()
+    if second == [0]:
+        return args[0].copy()
+    pair = [a.copy() for a in args]
+    if len(first) == len(second) and first[1:] == second[1:]:
+        return exp.Anonymous(this="arrayConcat", expressions=pair)
+    if len(first) == len(second) + 1 and first[1:] == second:
+        pair[1] = exp.Array(expressions=[pair[1]])
+    elif len(second) == len(first) + 1 and second[1:] == first:
+        pair[0] = exp.Array(expressions=[pair[0]])
+    else:
+        raise Refused(_INCOMPATIBLE, ruling=True)
+    return exp.Anonymous(this="arrayConcat", expressions=pair)
+
+
+def _clickhouse_of_dimensions(
+    name: str, args: list[exp.Expr], node: exp.Expr, dialect: str
+) -> exp.Expr | None:
+    """On ClickHouse, a call of an array of more than one dimension the statement writes, as
+    array.c answers it: PostgreSQL's refusal of a call it refuses of one, a comparison by the
+    arrays' keys (:data:`_KEY`), and array_cat; None for any other call."""
+    if not any(_nested(a) for a in args):
+        return None
+    refusal = _REFUSED_OF_DIMENSIONS.get(name)
+    if refusal is not None:
+        raise Refused(Refusal(refusal[1], refusal[2]), ruling=True)
+    if len(args) != 2:  # noqa: PLR2004 -- each name below takes two arrays
+        return None
+    holes: Bindings = dict(zip(("a", "b"), args))
+    pattern = f"{name}($a, $b)"
+    if name in _COMPARED:
+        return graft(replacement(_COMPARED[name], written_in(dialect), pattern), holes)
+    if name in _CHOSEN:
+        if _depth(args[0]) != _depth(args[1]) or not all(_depth(a) for a in args):
+            raise Refused(_of_one_type(name), ruling=True)
+        return graft(replacement(_CHOSEN[name], written_in(dialect), pattern), holes)
+    if name == "array_cat":
+        return _concatenated(args, node)
+    return None
+
+
 def of_dimensions(node: exp.Expr, dialect: str) -> exp.Expr | None:
     """cardinality, unnest or array_to_string of an array of more than one dimension: of every
     element. Read before any row of the call's name; any other call is left to its rows."""
@@ -178,6 +296,11 @@ def of_dimensions(node: exp.Expr, dialect: str) -> exp.Expr | None:
     if on_trino:
         for name in sorted(names):
             answered = _trino_of_dimensions(name, args, node)
+            if answered is not None:
+                return answered
+    else:
+        for name in sorted(names):
+            answered = _clickhouse_of_dimensions(name, args, node, dialect)
             if answered is not None:
                 return answered
     for name in sorted(names):
@@ -209,7 +332,9 @@ FEATURE = Feature(
                 {
                     "clickhouse": Rewrite(
                         of_dimensions,
-                        mentions=r"\b(?:cardinality|unnest|array_to_string)\b",
+                        mentions=r"\b(?:cardinality|unnest|array_to_string|array_append|"
+                        r"array_prepend|array_positions?|width_bucket|array_(?:eq|ne|lt|le|gt|ge)|"
+                        r"btarraycmp|array_larger|array_smaller|array_cat)\b",
                         first=True,
                     ),
                     **trino.on_trino(
@@ -222,7 +347,28 @@ FEATURE = Feature(
                     ),
                 },
             ),
-        )
+        ),
+        limitations={
+            "clickhouse": (
+                Limitation(
+                    "Of an array the statement writes with nested braces only: a column's array "
+                    "of arrays keeps each call's own form. array_larger and array_smaller of arrays "
+                    "of different dimensions are refused by name: either is the answer, and "
+                    "ClickHouse's CASE answers one type.",
+                    _of_one_type("array_larger"),
+                ),
+                Limitation(
+                    "array_smaller of arrays of different dimensions is refused by name.",
+                    _of_one_type("array_smaller"),
+                ),
+                Limitation(
+                    "array_cat of an array of more than one dimension is refused by name where "
+                    "another call reads its answer: that call would read an array of arrays as "
+                    "an array of one dimension.",
+                    _CAT_READ,
+                ),
+            )
+        },
     ),
 )
 

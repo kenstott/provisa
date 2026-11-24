@@ -618,7 +618,10 @@ ARRAY_CAT = Feature(
             Rule(
                 "array_cat($a::anycompatiblearray, $b::anycompatiblearray)",
                 {
-                    **_no_form_on("array_cat", (*_NO_ARRAY_CAT, "clickhouse")),
+                    **_no_form_on("array_cat", _NO_ARRAY_CAT),
+                    # ClickHouse holds no NULL of an array (a column of one is never NULL), and a
+                    # NULL the statement writes is read by the rules above.
+                    "clickhouse": "arrayConcat($a, $b)",
                     # DuckDB's list_concat reads a NULL list as an empty one.
                     "duckdb": "CASE WHEN $a IS NOT NULL OR $b IS NOT NULL "
                     "THEN list_concat($a, $b) END",
@@ -630,6 +633,15 @@ ARRAY_CAT = Feature(
                 },
             ),
         ),
+        limitations={
+            "clickhouse": (
+                Limitation(
+                    "Of arrays of different dimensions only where the statement writes them "
+                    "(polyfill.array_dimensions); a column's array of arrays and an array of one "
+                    "dimension fail with ClickHouse's own error (no common type)."
+                ),
+            )
+        },
     ),
 )
 

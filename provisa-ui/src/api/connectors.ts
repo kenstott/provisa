@@ -51,6 +51,9 @@ export interface Connector {
   /** A data: URI. */
   icon: string;
   settings: ConnectorSetting[];
+  /** REQ-2225: run by this server (a checkout's demo), joined by its name alone: no host, port
+   * or pairing code, and no image. */
+  native?: boolean;
 }
 
 export async function fetchConnectors(orgId: string): Promise<Connector[]> {

@@ -2,8 +2,10 @@
   "connectorSetup": {
     "identity": "Connecteur {{name}}, suit {{ref}}.",
     "missing": "Renseignez l'hôte, le port, le code d'appairage du connecteur et toutes les valeurs requises.",
+    "missingNative": "Renseignez chaque valeur requise par le connecteur.",
     "image": "Image",
     "imageHint": "L'image exécutée par votre déploiement. Provisa vérifie l'hôte par rapport à celle-ci lors de la connexion.",
+    "native": "S'exécute sur ce serveur, construit depuis {{path}}. Aucun hôte ni code d'appairage n'est nécessaire.",
     "host": "Hôte",
     "hostHint": "L'hôte qui exécute l'image, tel que Provisa l'atteint.",
     "port": "Port",
