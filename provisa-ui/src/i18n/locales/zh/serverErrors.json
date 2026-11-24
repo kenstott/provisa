@@ -626,7 +626,9 @@
       "columns_not_inferred": "无法推断列：探测未返回任何行，也未找到 SELECT 变量。",
       "probe_failed": "SPARQL 终结点探测失败：{{error}}",
       "source_not_found": "未找到 SPARQL 数据源 '{{source_id}}'",
-      "no_select_variables": "查询未指定 SELECT 变量（SELECT * 或不是 SELECT 查询）：无法从中读取其列"
+      "no_select_variables": "查询未指定 SELECT 变量（SELECT * 或不是 SELECT 查询）：无法从中读取其列",
+      "credential_invalid": "数据源 '{{source}}' 声明的 {{kind}} 凭据不完整：bearer 凭据需要令牌，basic 凭据需要用户名和密码（类型为 bearer 和 basic）",
+      "own_endpoint_needs_credential": "数据源 '{{source}}' 读取 Provisa 自身的 SPARQL 端点，但未声明凭据：请声明为该服务保留的 Provisa 账户的 bearer 令牌或用户名和密码，其角色限定它能读取的内容"
     },
     "subscribe": {
       "avro_topic_without_registry": "主题“{{topic}}”包含 Avro 消息，但其数据源未指定用于读取的模式注册表：请设置数据源的模式注册表 URL",

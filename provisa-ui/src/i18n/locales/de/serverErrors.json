@@ -626,7 +626,9 @@
       "columns_not_inferred": "Spalten konnten nicht abgeleitet werden: Der Probe-Aufruf lieferte keine Zeilen und keine SELECT-Variablen.",
       "probe_failed": "Prüfung des SPARQL-Endpunkts fehlgeschlagen: {{error}}",
       "source_not_found": "SPARQL-Quelle '{{source_id}}' nicht gefunden",
-      "no_select_variables": "Die Abfrage nennt keine SELECT-Variablen (SELECT * oder keine SELECT-Abfrage): Ihre Spalten lassen sich nicht daraus lesen"
+      "no_select_variables": "Die Abfrage nennt keine SELECT-Variablen (SELECT * oder keine SELECT-Abfrage): Ihre Spalten lassen sich nicht daraus lesen",
+      "credential_invalid": "Die Quelle '{{source}}' gibt unvollständige {{kind}}-Anmeldedaten an: Bearer-Anmeldedaten brauchen ihr Token, Basic-Anmeldedaten Benutzername und Passwort (die Arten sind bearer und basic)",
+      "own_endpoint_needs_credential": "Die Quelle '{{source}}' liest den eigenen SPARQL-Endpunkt von Provisa und gibt keine Anmeldedaten an: Geben Sie das Bearer-Token oder Benutzername und Passwort eines für den Dienst geführten Provisa-Kontos an, dessen Rollen begrenzen, was sie liest"
     },
     "subscribe": {
       "avro_topic_without_registry": "Topic '{{topic}}' enthält Avro-Nachrichten, und seine Quelle nennt keine Schema-Registry zum Lesen: Setzen Sie die Schema-Registry-URL der Quelle",
