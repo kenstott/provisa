@@ -8,11 +8,12 @@ This page lists every feature that has a polyfill or a limitation on DuckDB. A f
 
 When DuckDB is a serving engine reading a source it attaches directly, it may push work into that source, with the source's semantics, so a result can depend on the pair; the cases known are fixed by hints, listed under each source.
 
-Rules on this page: 398, of which 326 are only the name of a rewrite function. A rule is printed as the translator runs it: the PostgreSQL pattern, its holes written `$name` (typed with `::type`), then the dialect's replacement.
+Rules on this page: 401, of which 317 are only the name of a rewrite function. A rule is printed as the translator runs it: the PostgreSQL pattern, its holes written `$name` (typed with `::type`), then the dialect's replacement.
 
-273 of the grid's 627 features are native on DuckDB and left out.
+270 of the grid's 627 features are native on DuckDB and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
+<tr><td><strong>an array of dimensions</strong><br>cardinality, unnest and array_to_string of an array of more than one dimension: of every element, in storage order. On DuckDB as well each function that reads an array element by element, the orderings by array_cmp (elements, then dimensions) and array_cat as array.c joins arrays; the calls PostgreSQL refuses of one raise its error.</td><td><pre><code>function provisa.transpiler.polyfill.array_dimensions.duckdb_of_dimensions: On DuckDB, a call of an array of more than one dimension the statement writes or casts, as</code></pre></td><td><ul><li>Only an array the statement writes, or casts to an array of arrays, is read by its dimensions: a column of DuckDB&#x27;s list of lists keeps DuckDB&#x27;s own answer.</li><li>array_larger and array_smaller of arrays of different dimensions answer only for integer arrays of constants, as each answers a list of its own nesting: any other pair is refused. <code>0A000</code> array_larger() and array_smaller() of arrays of different dimensions have no form on duckdb unless both are integer arrays of constants</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
 =&gt;
 CAST(CASE WHEN len($a) &gt; 0 THEN length(regexp_extract(typeof($a), &#x27;(\[\])+$&#x27;)) // 2 END AS INTEGER)</code></pre></td><td></td><td></td><td></td></tr>
@@ -358,55 +359,55 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>acos</strong><br>The arc cosine of a value from -1 to 1.</td><td><pre><code>acos($x)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: double precision &#x27;-Infinity&#x27;.</li></ul></td><td></td><td></td></tr>
+CASE WHEN NOT isnan($x) AND (abs($x) &gt; 1) THEN error(&#x27;postgresql-error 22003: input is out of range&lt;end of postgresql-error&gt;&#x27;) ELSE acos($x) END</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: double precision &#x27;-Infinity&#x27;.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>asin</strong><br>The arc sine of a value from -1 to 1.</td><td><pre><code>asin($x)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: double precision &#x27;-Infinity&#x27;.</li></ul></td><td></td><td></td></tr>
+CASE WHEN NOT isnan($x) AND (abs($x) &gt; 1) THEN error(&#x27;postgresql-error 22003: input is out of range&lt;end of postgresql-error&gt;&#x27;) ELSE asin($x) END</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: double precision &#x27;-Infinity&#x27;.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>atanh</strong><br>The inverse hyperbolic tangent of a value from -1 to 1.</td><td><pre><code>atanh($x)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: double precision &#x27;-Infinity&#x27;.</li></ul></td><td></td><td></td></tr>
+CASE WHEN NOT isnan($x) AND (abs($x) &gt; 1) THEN error(&#x27;postgresql-error 22003: input is out of range&lt;end of postgresql-error&gt;&#x27;) ELSE atanh($x) END</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: double precision &#x27;-Infinity&#x27;.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>acosh</strong><br>The inverse hyperbolic cosine of a value of 1 or more.</td><td><pre><code>acosh($x)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: double precision &#x27;-Infinity&#x27;.</li></ul></td><td></td><td></td></tr>
+CASE WHEN NOT isnan($x) AND ($x &lt; 1) THEN error(&#x27;postgresql-error 22003: input is out of range&lt;end of postgresql-error&gt;&#x27;) ELSE acosh($x) END</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: double precision &#x27;-Infinity&#x27;.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>sin</strong><br>The sine of a finite value.</td><td><pre><code>sin($x)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: double precision &#x27;-Infinity&#x27;.</li></ul></td><td></td><td></td></tr>
+CASE WHEN NOT isnan($x) AND (isinf($x)) THEN error(&#x27;postgresql-error 22003: input is out of range&lt;end of postgresql-error&gt;&#x27;) ELSE sin($x) END</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: double precision &#x27;-Infinity&#x27;.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>cos</strong><br>The cosine of a finite value.</td><td><pre><code>cos($x)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: double precision &#x27;-Infinity&#x27;.</li></ul></td><td></td><td></td></tr>
+CASE WHEN NOT isnan($x) AND (isinf($x)) THEN error(&#x27;postgresql-error 22003: input is out of range&lt;end of postgresql-error&gt;&#x27;) ELSE cos($x) END</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: double precision &#x27;-Infinity&#x27;.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>tan</strong><br>The tangent of a finite value.</td><td><pre><code>tan($x)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: double precision &#x27;-Infinity&#x27;.</li></ul></td><td></td><td></td></tr>
+CASE WHEN NOT isnan($x) AND (isinf($x)) THEN error(&#x27;postgresql-error 22003: input is out of range&lt;end of postgresql-error&gt;&#x27;) ELSE tan($x) END</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: double precision &#x27;-Infinity&#x27;.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>cot</strong><br>The cotangent of a finite value.</td><td><pre><code>cot($x)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: double precision &#x27;-Infinity&#x27;.</li></ul></td><td></td><td></td></tr>
+CASE WHEN NOT isnan($x) AND (isinf($x)) THEN error(&#x27;postgresql-error 22003: input is out of range&lt;end of postgresql-error&gt;&#x27;) ELSE 1.0 / tan($x) END</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: double precision &#x27;-Infinity&#x27;.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>sqrt</strong><br>The square root of a value of zero or more.</td><td><pre><code>sqrt($x)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: double precision &#x27;-Infinity&#x27;.</li><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: numeric &#x27;123456789012345678901234567890.123456789012345678901234567890&#x27;, numeric &#x27;NaN&#x27;.</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.floats.of_no_numeric_sqrt: sqrt($x) of no numeric: a double&#x27;s answer, its edges as PostgreSQL&#x27;s.</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: double precision &#x27;-Infinity&#x27;.</li><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: numeric &#x27;123456789012345678901234567890.123456789012345678901234567890&#x27;, numeric &#x27;NaN&#x27;.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>log</strong><br>The base 10 logarithm of a value above zero.</td><td><pre><code>log($x)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: double precision &#x27;-Infinity&#x27;.</li><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: numeric &#x27;123456789012345678901234567890.123456789012345678901234567890&#x27;, numeric &#x27;NaN&#x27;.</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.floats.of_no_numeric_log: log($x) of no numeric: a double&#x27;s answer, its edges as PostgreSQL&#x27;s.</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: double precision &#x27;-Infinity&#x27;.</li><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: numeric &#x27;123456789012345678901234567890.123456789012345678901234567890&#x27;, numeric &#x27;NaN&#x27;.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>log10</strong><br>The base 10 logarithm of a value above zero.</td><td><pre><code>log10($x)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: double precision &#x27;-Infinity&#x27;.</li><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: numeric &#x27;123456789012345678901234567890.123456789012345678901234567890&#x27;, numeric &#x27;NaN&#x27;.</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.floats.of_no_numeric_log10: log10($x) of no numeric: a double&#x27;s answer, its edges as PostgreSQL&#x27;s.</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: double precision &#x27;-Infinity&#x27;.</li><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: numeric &#x27;123456789012345678901234567890.123456789012345678901234567890&#x27;, numeric &#x27;NaN&#x27;.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>exp</strong><br>e raised to a power; 22003 where a finite power overflows or underflows.</td><td><pre><code>exp($x)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: double precision &#x27;1.7976931348623157e+308&#x27;.</li><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: numeric &#x27;NaN&#x27;.</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.floats.of_no_numeric_exp: exp($x) of no numeric: a double&#x27;s answer, its edges as PostgreSQL&#x27;s.</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: double precision &#x27;1.7976931348623157e+308&#x27;.</li><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: numeric &#x27;NaN&#x27;.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>ln</strong><br>The natural logarithm of a value above zero.</td><td><pre><code>ln($x)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: double precision &#x27;-Infinity&#x27;.</li><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: numeric &#x27;123456789012345678901234567890.123456789012345678901234567890&#x27;, numeric &#x27;NaN&#x27;.</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.floats.of_no_numeric_ln: ln($x) of no numeric: a double&#x27;s answer, its edges as PostgreSQL&#x27;s.</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: double precision &#x27;-Infinity&#x27;.</li><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: numeric &#x27;123456789012345678901234567890.123456789012345678901234567890&#x27;, numeric &#x27;NaN&#x27;.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>tanh</strong><br>The hyperbolic tangent.</td><td><pre><code>tanh($x)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>power</strong><br>A value raised to a power.</td><td><pre><code>power($x, $y)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: double precision &#x27;-Infinity&#x27;.</li><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: numeric &#x27;123456789012345678901234567890.123456789012345678901234567890&#x27;.</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.floats.of_no_numeric_power: power($x, $y) of no numeric: a double&#x27;s answer, its edges as PostgreSQL&#x27;s.</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: double precision &#x27;-Infinity&#x27;.</li><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: numeric &#x27;123456789012345678901234567890.123456789012345678901234567890&#x27;.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>pow</strong><br>A value raised to a power.</td><td><pre><code>pow($x, $y)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.floats.of_no_numeric_pow: pow($x, $y) of no numeric: a double&#x27;s answer, its edges as PostgreSQL&#x27;s.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>degrees</strong><br>Radians as degrees.</td><td><pre><code>degrees($x)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: double precision &#x27;1.7976931348623157e+308&#x27;.</li></ul></td><td></td><td></td></tr>
+CASE WHEN isfinite($x) AND isinf(degrees($x)) THEN error(&#x27;postgresql-error 22003: value out of range: overflow&lt;end of postgresql-error&gt;&#x27;) ELSE degrees($x) END</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: double precision &#x27;1.7976931348623157e+308&#x27;.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>sind</strong><br>The sin of an angle in degrees, exact at 0, 30, 45, 60 and 90 as PostgreSQL&#x27;s.</td><td><pre><code>sind($x)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -430,7 +431,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: integer &#x27;-2147483648&#x27;.</li><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: numeric &#x27;123456789012345678901234567890.123456789012345678901234567890&#x27;.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>chr</strong><br>The character of a code point, as its UTF-8 bytes.</td><td><pre><code>chr($x)
 =&gt;
-function provisa.transpiler.polyfill.floats._chr: chr of a code point. sqlglot reads &quot;char&quot; (the one-byte type&#x27;s cast) as its chr too: a call</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: text &#x27;日本語テキスト😀&#x27;.</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.floats._chr: chr of a code point. sqlglot reads &quot;char&quot; (the one-byte type&#x27;s cast) as its chr too: a call</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>in_range</strong><br>Whether a value is within an offset of a base: a window frame&#x27;s bound.</td><td><pre><code>in_range($v, $b, $o, $s, $l)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: double precision &#x27;NaN&#x27;, time without time zone &#x27;00:00:00&#x27;.</li><li>Raises 22003 at an edge value it does not hold as PostgreSQL does: bigint &#x27;-9223372036854775808&#x27;, integer &#x27;-2147483648&#x27;, smallint &#x27;-32768&#x27;.</li></ul></td><td></td><td></td></tr>
@@ -452,6 +453,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>corr</strong><br>The correlation coefficient.</td><td><pre><code>corr($y, $x)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: double precision &#x27;NaN&#x27;.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>sum</strong><br>The sum of a group&#x27;s bigints, exact; of its reals or doubles, the overflow raised.</td><td><pre><code>function provisa.transpiler.polyfill.float_aggregates._trino_sum: sum of a real or a double on Trino and DuckDB, as the statement says its argument&#x27;s type:</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>date_mi</strong><br>The days from one date to another.</td><td><pre><code>date_mi($a, $b)
 =&gt;
 CASE WHEN isinf(CAST($a AS DATE)) OR isinf(CAST($b AS DATE)) THEN error(&#x27;postgresql-error 22008: &#x27; || &#x27;cannot subtract infinite dates&#x27;) ELSE CAST(CAST($a AS DATE) - CAST($b AS DATE) AS INTEGER) END</code></pre></td><td></td><td></td><td></td></tr>
@@ -574,25 +576,25 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>avg</strong><br>The mean of a group&#x27;s values.</td><td><pre><code>avg($v)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Refused for a call of (interval) with an argument the statement says is of that type, not a NULL. <code>0A000</code> avg() has no form on duckdb</li><li>Answers otherwise than PostgreSQL at an edge value: double precision &#x27;1.7976931348623157e+308&#x27;.</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino and DuckDB: its own,</code></pre></td><td><ul><li>Refused for a call of (interval) with an argument the statement says is of that type, not a NULL. <code>0A000</code> avg() has no form on duckdb</li><li>Answers otherwise than PostgreSQL at an edge value: double precision &#x27;1.7976931348623157e+308&#x27;.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>variance</strong><br>The sample variance of a group&#x27;s values.</td><td><pre><code>variance($v)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: double precision &#x27;1.7976931348623157e+308&#x27;.</li><li>Raises 22003 at an edge value it does not hold as PostgreSQL does: bigint &#x27;-9223372036854775808&#x27;, numeric &#x27;-0.000000000000000000001&#x27;.</li><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: numeric &#x27;123456789012345678901234567890.123456789012345678901234567890&#x27;, numeric &#x27;NaN&#x27;.</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino and DuckDB: its own,</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: double precision &#x27;1.7976931348623157e+308&#x27;.</li><li>Raises 22003 at an edge value it does not hold as PostgreSQL does: bigint &#x27;-9223372036854775808&#x27;, numeric &#x27;-0.000000000000000000001&#x27;.</li><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: numeric &#x27;123456789012345678901234567890.123456789012345678901234567890&#x27;, numeric &#x27;NaN&#x27;.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>var_samp</strong><br>The sample variance of a group&#x27;s values.</td><td><pre><code>var_samp($v)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino and DuckDB: its own,</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>var_pop</strong><br>The population variance of a group&#x27;s values.</td><td><pre><code>var_pop($v)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: double precision &#x27;1.7976931348623157e+308&#x27;.</li><li>Raises 22003 at an edge value it does not hold as PostgreSQL does: bigint &#x27;-9223372036854775808&#x27;, numeric &#x27;-0.000000000000000000001&#x27;.</li><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: numeric &#x27;123456789012345678901234567890.123456789012345678901234567890&#x27;, numeric &#x27;NaN&#x27;.</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino and DuckDB: its own,</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: double precision &#x27;1.7976931348623157e+308&#x27;.</li><li>Raises 22003 at an edge value it does not hold as PostgreSQL does: bigint &#x27;-9223372036854775808&#x27;, numeric &#x27;-0.000000000000000000001&#x27;.</li><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: numeric &#x27;123456789012345678901234567890.123456789012345678901234567890&#x27;, numeric &#x27;NaN&#x27;.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>stddev</strong><br>The sample standard deviation of a group&#x27;s values.</td><td><pre><code>stddev($v)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: double precision &#x27;1.7976931348623157e+308&#x27;.</li><li>Raises 22003 at an edge value it does not hold as PostgreSQL does: bigint &#x27;-9223372036854775808&#x27;, numeric &#x27;-0.000000000000000000001&#x27;.</li><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: numeric &#x27;123456789012345678901234567890.123456789012345678901234567890&#x27;, numeric &#x27;NaN&#x27;.</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino and DuckDB: its own,</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: double precision &#x27;1.7976931348623157e+308&#x27;.</li><li>Raises 22003 at an edge value it does not hold as PostgreSQL does: bigint &#x27;-9223372036854775808&#x27;, numeric &#x27;-0.000000000000000000001&#x27;.</li><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: numeric &#x27;123456789012345678901234567890.123456789012345678901234567890&#x27;, numeric &#x27;NaN&#x27;.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>stddev_samp</strong><br>The sample standard deviation of a group&#x27;s values.</td><td><pre><code>stddev_samp($v)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: double precision &#x27;1.7976931348623157e+308&#x27;.</li><li>Raises 22003 at an edge value it does not hold as PostgreSQL does: bigint &#x27;-9223372036854775808&#x27;, numeric &#x27;-0.000000000000000000001&#x27;.</li><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: numeric &#x27;123456789012345678901234567890.123456789012345678901234567890&#x27;, numeric &#x27;NaN&#x27;.</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino and DuckDB: its own,</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: double precision &#x27;1.7976931348623157e+308&#x27;.</li><li>Raises 22003 at an edge value it does not hold as PostgreSQL does: bigint &#x27;-9223372036854775808&#x27;, numeric &#x27;-0.000000000000000000001&#x27;.</li><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: numeric &#x27;123456789012345678901234567890.123456789012345678901234567890&#x27;, numeric &#x27;NaN&#x27;.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>stddev_pop</strong><br>The population standard deviation of a group&#x27;s values.</td><td><pre><code>stddev_pop($v)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: double precision &#x27;1.7976931348623157e+308&#x27;.</li><li>Raises 22003 at an edge value it does not hold as PostgreSQL does: bigint &#x27;-9223372036854775808&#x27;, numeric &#x27;-0.000000000000000000001&#x27;.</li><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: numeric &#x27;123456789012345678901234567890.123456789012345678901234567890&#x27;, numeric &#x27;NaN&#x27;.</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino and DuckDB: its own,</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: double precision &#x27;1.7976931348623157e+308&#x27;.</li><li>Raises 22003 at an edge value it does not hold as PostgreSQL does: bigint &#x27;-9223372036854775808&#x27;, numeric &#x27;-0.000000000000000000001&#x27;.</li><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: numeric &#x27;123456789012345678901234567890.123456789012345678901234567890&#x27;, numeric &#x27;NaN&#x27;.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>xid8eq</strong><br>Two xid8 values equal.</td><td><pre><code>xid8eq($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -883,9 +885,9 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>string_to_array</strong><br>Text split at each delimiter into an array; a piece equal to a third argument is NULL.</td><td><pre><code>string_to_array($s::text, $d::text)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>string_to_array($s::text, $d::text, $n::text)
+CASE WHEN $s IS NULL THEN NULL WHEN $s = &#x27;&#x27; THEN CAST([] AS VARCHAR[]) WHEN $d IS NULL THEN string_split($s, &#x27;&#x27;) WHEN $d = &#x27;&#x27; THEN [$s] ELSE string_split($s, $d) END</code></pre><pre><code>string_to_array($s::text, $d::text, $n::text)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: text null.</li></ul></td><td></td><td></td></tr>
+list_transform(CASE WHEN $s IS NULL THEN NULL WHEN $s = &#x27;&#x27; THEN CAST([] AS VARCHAR[]) WHEN $d IS NULL THEN string_split($s, &#x27;&#x27;) WHEN $d = &#x27;&#x27; THEN [$s] ELSE string_split($s, $d) END, lambda _x: CASE WHEN _x = $n THEN NULL ELSE _x END)</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>varchar</strong><br>Text cast to character varying of a declared length (its typmod).</td><td><pre><code>varchar($s, $m, $e)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>varchar($s::name)
@@ -893,7 +895,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>bpchar</strong><br>Text cast to character of a declared length (its typmod), padded with spaces.</td><td><pre><code>bpchar($s, $m, $e)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: character &#x27;&#x27;.</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>nameconcatoid</strong><br>A name and an oid joined by an underscore, the name cut to fit a name&#x27;s 63 bytes.</td><td><pre><code>nameconcatoid($n, $o)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: oid &#x27;4294967296&#x27;.</li></ul></td><td></td><td></td></tr>
@@ -905,7 +907,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 CASE WHEN $n = -2147483648 THEN $t ELSE right($t, $n) END</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>reverse</strong><br>A text&#x27;s characters in reverse order.</td><td><pre><code>reverse($t::text)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: text &#x27;été&#x27;.</li></ul></td><td></td><td></td></tr>
+array_to_string(list_reverse(string_split($t, &#x27;&#x27;)), &#x27;&#x27;)</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>substr</strong><br>A text&#x27;s characters from a position, for a count.</td><td><pre><code>substr($t::text, $s::integer)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>substr($t::text, $s::integer, $l::integer)
@@ -924,6 +926,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>ascii</strong><br>The code point of a text&#x27;s first character.</td><td><pre><code>ascii($t::text)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>character literal</strong><br>The lengths and text of a character(n) literal, its padding as PostgreSQL holds it.</td><td><pre><code>function provisa.transpiler.polyfill.texts._of_character_literal: char_length, length, octet_length, text and name of a character(n) literal, as PostgreSQL</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>btnamecmp</strong><br>btree&#x27;s comparison of two names: strncmp&#x27;s difference of their first differing bytes.</td><td><pre><code>btnamecmp($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -950,10 +953,10 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>octet_length(bytea)</strong><br>A bytea&#x27;s number of bytes.</td><td><pre><code>octet_length($a)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: character &#x27;&#x27;.</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>length(bytea)</strong><br>A bytea&#x27;s number of bytes.</td><td><pre><code>length($a)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: character &#x27;  padded  &#x27;.</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>bit_length(bytea)</strong><br>A bytea&#x27;s number of bits.</td><td><pre><code>bit_length($a)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
