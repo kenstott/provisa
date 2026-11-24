@@ -305,6 +305,12 @@ export const NAV_GROUPS: NavGroup[] = [
         labelKey: "navBar.itemContainerRegistries",
         capability: "org_settings",
       },
+      // REQ-2225: where a Spark script runs and is validated when its source names no cluster.
+      {
+        to: "/admin/spark-cluster",
+        labelKey: "navBar.itemSparkCluster",
+        capability: "org_settings",
+      },
       // REQ-1483, REQ-1327: an import writes objects of several layers; any one of their rights
       // opens the page, and applying checks each declared object's own right.
       {

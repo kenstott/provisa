@@ -24,6 +24,8 @@ export interface ConnectorRequirement {
   default_value?: string;
   /** Shown read-only; a save that changes it is refused. */
   fixed_value?: string;
+  /** REQ-2225: the organisation setting used when it is left empty. */
+  org_default?: "spark_cluster";
 }
 
 /** A standard source setting the connector's file sets: one of the two values. */

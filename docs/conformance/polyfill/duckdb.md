@@ -8,9 +8,9 @@ This page lists every feature that has a polyfill or a limitation on DuckDB. A f
 
 When DuckDB is a serving engine reading a source it attaches directly, it may push work into that source, with the source's semantics, so a result can depend on the pair; the cases known are fixed by hints, listed under each source.
 
-Rules on this page: 397, of which 327 are only the name of a rewrite function. A rule is printed as the translator runs it: the PostgreSQL pattern, its holes written `$name` (typed with `::type`), then the dialect's replacement.
+Rules on this page: 398, of which 326 are only the name of a rewrite function. A rule is printed as the translator runs it: the PostgreSQL pattern, its holes written `$name` (typed with `::type`), then the dialect's replacement.
 
-273 of the grid's 626 features are native on DuckDB and left out.
+273 of the grid's 627 features are native on DuckDB and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -454,7 +454,10 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: double precision &#x27;NaN&#x27;.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>date_mi</strong><br>The days from one date to another.</td><td><pre><code>date_mi($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: date &#x27;infinity&#x27;.</li></ul></td><td></td><td></td></tr>
+CASE WHEN isinf(CAST($a AS DATE)) OR isinf(CAST($b AS DATE)) THEN error(&#x27;postgresql-error 22008: &#x27; || &#x27;cannot subtract infinite dates&#x27;) ELSE CAST(CAST($a AS DATE) - CAST($b AS DATE) AS INTEGER) END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_bin</strong><br>A timestamp truncated to a stride counted from an origin.</td><td><pre><code>date_bin($s, $t, $o)
+=&gt;
+CASE WHEN isinf($t) THEN $t WHEN isinf($o) THEN error(&#x27;postgresql-error 22008: &#x27; || &#x27;origin out of range&#x27;) ELSE time_bucket($s, $t, $o) END</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>date_pli</strong><br>A date moved forward by a number of days.</td><td><pre><code>date_pli($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: date &#x27;4713-01-01 BC&#x27;.</li></ul></td><td></td><td></td></tr>

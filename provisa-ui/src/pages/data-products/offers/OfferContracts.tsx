@@ -11,12 +11,14 @@
 // REQ-2180 CONTRACTS ARE DERIVED FROM THE OFFERS, THE UI SHOWS CONTRACTS PER OFFER: the contracts an
 // offer gives, one row per dataset, each headed by its dataset, version, SLA headline, last check
 // and a warning where its newest version breaks a reader. A row opens to the offer's terms on the
-// dataset -- its columns as the offer's role sees them in the tables page's columns table (REQ-2239),
+// dataset -- its columns previewed as the caller's acting role sees them, a meta-role when acting as
+// a set (A PRODUCT PAGE PREVIEWS CONTRACTS AS THE ACTING ROLE), in the tables page's columns table (REQ-2239),
 // the offer's terms of use, its row rules in words -- and to its ODCS document, read when that
 // opens (ContractView). Rows start closed and several may be open at once.
 
 import { useEffect, useState, type CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import { Alert, Badge, Button, Group, List, Loader, Stack, Text } from "@mantine/core";
 import { Eye, TriangleAlert } from "lucide-react";
 import {
@@ -46,8 +48,30 @@ export interface ContractContext {
   viewer: ContractViewer;
 }
 
+// A meta-role acts as a set of held roles (security/meta_role.py META_PREFIX).
+const META_PREFIX = "meta:";
+
 // A dataset name is one value: it keeps to one line, cut with an ellipsis and shown whole on hover.
 const PORT_NAME: CSSProperties = { maxWidth: 320, minWidth: 0 };
+
+/** How the acting role a contract is previewed as is named: a meta-role is the role selector's
+ *  "All" -- the set of held roles a request acts as together (security/meta_role.py). */
+const actingLabel = (role: string, t: TFunction) =>
+  role.startsWith(META_PREFIX) ? t("roleSelector.all") : role;
+
+/** Which role the contracts are previewed as, and which they are offered to. */
+function PreviewedAs({ offer }: { offer: Offer }) {
+  const { t } = useTranslation();
+  const meta = offer.preview_role.startsWith(META_PREFIX);
+  return (
+    <Text size="xs" c="dimmed" mb="xs" data-testid={`offer-${offer.id}-previewed-as`}>
+      {t(meta ? "dataProductOffers.previewedAsMeta" : "dataProductOffers.previewedAs", {
+        acting: actingLabel(offer.preview_role, t),
+        role: offer.role_id,
+      })}
+    </Text>
+  );
+}
 
 /** One contract's row heading: its dataset, version, SLA headline, last check and the warning that
  *  applies. */
@@ -225,15 +249,24 @@ function DatasetContract({
           </Button>
         )}
       </Group>
-      <ColumnsTable
-        readOnly
-        columns={contractColumns(terms, offer.role_id)}
-        roles={[]}
-        irTypes={[]}
-        sourceType=""
-        tableId={entry.table_id}
-        testId={`${testId}-columns`}
-      />
+      {entry.preview === null ? (
+        <Text size="sm" c="dimmed" data-testid={`${testId}-preview-not-built`}>
+          {t("dataProductOffers.previewNotBuilt")}
+        </Text>
+      ) : (
+        <ColumnsTable
+          readOnly
+          columns={contractColumns(entry.preview, actingLabel(offer.preview_role, t))}
+          roles={[]}
+          irTypes={[]}
+          sourceType=""
+          tableId={entry.table_id}
+          testId={`${testId}-columns`}
+          empty={t("dataProductOffers.roleReadsNoColumn", {
+            role: actingLabel(offer.preview_role, t),
+          })}
+        />
+      )}
       <Text size="xs" fw={600}>
         {t("dataProductOffers.termsOfUse")}
       </Text>
@@ -300,36 +333,39 @@ export function OfferContracts({
     );
   }
   return (
-    <Collapsibles id={`data-product.offer.${productId}.${offer.id}.datasets`}>
-      {offer.contracts.map((entry) => {
-        const port = ports.find((p) => p.id === entry.table_id);
-        return (
-          <CollapsibleItem
-            key={entry.table_id}
-            value={String(entry.table_id)}
-            defaultOpen={false}
-            mountWhenOpen
-            controlTestId={`offer-${offer.id}-contract-${entry.table_id}-toggle`}
-            title={
-              <RowTitle
+    <>
+      <PreviewedAs offer={offer} />
+      <Collapsibles id={`data-product.offer.${productId}.${offer.id}.datasets`}>
+        {offer.contracts.map((entry) => {
+          const port = ports.find((p) => p.id === entry.table_id);
+          return (
+            <CollapsibleItem
+              key={entry.table_id}
+              value={String(entry.table_id)}
+              defaultOpen={false}
+              mountWhenOpen
+              controlTestId={`offer-${offer.id}-contract-${entry.table_id}-toggle`}
+              title={
+                <RowTitle
+                  offer={offer}
+                  entry={entry}
+                  port={port}
+                  lineage={context?.lineage ?? null}
+                />
+              }
+            >
+              <DatasetContract
+                productId={productId}
                 offer={offer}
                 entry={entry}
                 port={port}
-                lineage={context?.lineage ?? null}
+                context={context}
+                onPreview={onPreview}
               />
-            }
-          >
-            <DatasetContract
-              productId={productId}
-              offer={offer}
-              entry={entry}
-              port={port}
-              context={context}
-              onPreview={onPreview}
-            />
-          </CollapsibleItem>
-        );
-      })}
-    </Collapsibles>
+            </CollapsibleItem>
+          );
+        })}
+      </Collapsibles>
+    </>
   );
 }

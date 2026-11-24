@@ -45,7 +45,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from provisa.core import offer_contracts
-from provisa.core.models import OfferContract
+from provisa.core.models import OfferContract, OfferField
 from provisa.core.repositories import data_product as data_product_repo
 from provisa.core.repositories import data_product_offer as offers
 from provisa.core.repositories.data_product_offer import OfferRefused
@@ -127,6 +127,13 @@ def seen_columns(state: Any, role_id: str, table: dict) -> list[offer_contracts.
         for c in table["columns"]
         if not c.get("native_filter_type")
     ]
+
+
+def preview(state: Any, role_id: str, table: dict) -> list[OfferField]:
+    """REQ-2180 (A PRODUCT PAGE PREVIEWS CONTRACTS AS THE ACTING ROLE): ``table``'s fields as
+    ``role_id`` -- the caller's acting role, a meta-role when acting as a set -- reads them now.
+    What the caller reads, and nothing more; the contract offered stays the offer's role's."""
+    return offer_contracts.fields(seen_columns(state, role_id, table))
 
 
 async def derive(

@@ -64,10 +64,15 @@ const offer = (over: Partial<Offer>): Offer => ({
   updated_at: "2026-11-11T00:00:00Z",
   summary: { extension: null },
   query_now: false,
+  preview_role: "viewer",
   contracts: [
     {
       table_id: 7,
       table: "sales.customers",
+      preview: [
+        { name: "id", type: "integer", description: "The customer", masked: null },
+        { name: "email", type: "varchar", description: null, masked: "regex" },
+      ],
       contract: {
         version: "1.0.0",
         created_at: "2026-11-11T00:00:00Z",

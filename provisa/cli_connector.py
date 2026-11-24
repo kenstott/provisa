@@ -46,7 +46,7 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 import yaml
 
@@ -191,8 +191,16 @@ def _runtime(language: str, root: Path) -> str:
 class _RequireValues:
     """What the standard file says of one ``@requires`` value."""
 
-    def __init__(self, multiline: bool, default: Any, fixed: Any, script: bool = False) -> None:
+    def __init__(
+        self,
+        multiline: bool,
+        default: Any,
+        fixed: Any,
+        script: bool = False,
+        org_default: Literal["spark_cluster"] | None = None,
+    ) -> None:
         self.multiline, self.default, self.fixed, self.script = multiline, default, fixed, script
+        self.org_default: Literal["spark_cluster"] | None = org_default
 
 
 class _StandardFile:
@@ -255,6 +263,8 @@ def _read_standard_file(root: Path) -> _StandardFile | None:
         default: Any = None
         fixed: Any = None
         script: bool = False  # REQ-2225: its tags are the source's tables and commands
+        # REQ-2225: the organisation setting used when a source leaves the value unset.
+        org_default: Literal["spark_cluster"] | None = None
 
     class _Setting(BaseModel):
         model_config = ConfigDict(extra="forbid")
@@ -299,7 +309,7 @@ def _read_standard_file(root: Path) -> _StandardFile | None:
         read.description.strip(),
         _icon_uri(root, read.icon) if read.icon else "",
         {
-            n: _RequireValues(g.multiline, g.default, g.fixed, g.script)
+            n: _RequireValues(g.multiline, g.default, g.fixed, g.script, g.org_default)
             for n, g in read.requires.items()
         },
         settings,
@@ -336,6 +346,7 @@ def _with_file_values(
                     default_value=given.default,
                     fixed_value=given.fixed,
                     script=given.script,
+                    org_default=given.org_default,
                 )
             )
         except ValidationError as exc:

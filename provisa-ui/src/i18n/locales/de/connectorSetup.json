@@ -10,6 +10,7 @@
     "pairing": "Pairing-Code",
     "pairingHint": "Die Zeile, die der Container bei seinem ersten Start nach \"pairing code:\" ausgegeben hat. Sie wird einmal verwendet und nicht gespeichert.",
     "secretHint": "Das zu verwendende Secret der Organisation. Sein Wert wird hier nie eingegeben.",
-    "fixedHint": "Von diesem Connector festgelegt. Kann nicht geändert werden."
+    "fixedHint": "Von diesem Connector festgelegt. Kann nicht geändert werden.",
+    "sparkClusterDefaultHint": "Leer lassen, um den Standard-Spark-Cluster der Organisation zu verwenden (Admin, Spark-Cluster)."
   }
 }

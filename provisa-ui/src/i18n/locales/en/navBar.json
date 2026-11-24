@@ -78,6 +78,7 @@
     "itemPython": "Python",
     "itemNotebook": "Notebook",
     "itemContainerRegistries": "Container registries",
+    "itemSparkCluster": "Spark cluster",
     "itemSparql": "SPARQL",
     "itemPlatformObservability": "Platform Observability",
     "itemOntology": "Ontology",

@@ -1,0 +1,17 @@
+{
+  "sparkCluster": {
+    "help": "L'endroit où un script Spark s'exécute et est validé lorsque sa source ne désigne aucun cluster propre. Le cluster propre d'une source est toujours utilisé lorsqu'elle en a un.",
+    "address": "Adresse Spark Connect",
+    "addressHelp": "L'adresse Spark Connect du cluster, par exemple sc://spark.example.com:15002. N'y mettez pas le jeton : conservez-le comme secret et indiquez-le ci-dessous.",
+    "credential": "Secret du jeton",
+    "credentialHelp": "Une référence de secret vers le jeton utilisé pour appeler le cluster, par exemple ${secret:spark_token}. Laissez vide pour un cluster sans jeton.",
+    "inUseOrg": "Les sources qui ne désignent aucun cluster utilisent ce cluster par défaut ({{target}}).",
+    "inUseLocal": "Les sources qui ne désignent aucun cluster utilisent le cluster de test local ({{target}}). Définissez un cluster par défaut pour utiliser le vôtre.",
+    "inUseNone": "Aucun cluster Spark n'est configuré : une source qui n'en désigne aucun ne peut pas s'exécuter tant qu'un cluster par défaut n'est pas défini.",
+    "test": "Tester la connexion",
+    "tested": "Connecté à {{target}} : Spark {{version}}",
+    "saved": "Enregistré",
+    "removed": "Supprimé",
+    "remove": "Supprimer le cluster par défaut"
+  }
+}

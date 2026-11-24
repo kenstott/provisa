@@ -78,6 +78,7 @@
     "itemPython": "Python",
     "itemNotebook": "ノートブック",
     "itemContainerRegistries": "コンテナレジストリ",
+    "itemSparkCluster": "Spark クラスター",
     "itemSparql": "SPARQL",
     "itemPlatformObservability": "プラットフォームのオブザーバビリティ",
     "itemOntology": "オントロジー",
