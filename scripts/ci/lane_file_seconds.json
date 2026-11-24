@@ -776,6 +776,7 @@
   "tests/integration/test_sqlalchemy_dialect_scope_e2e.py": 40.0,
   "tests/integration/test_spark_default_cluster_e2e.py": 40.0,
   "tests/integration/test_demo_spark_cluster_e2e.py": 240.0,
-  "tests/integration/test_demo_spark_connector_native_e2e.py": 600.0
+  "tests/integration/test_demo_spark_connector_native_e2e.py": 600.0,
+  "tests/integration/test_spark_resolver_e2e.py": 200.0
  }
 }
