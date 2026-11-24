@@ -31,6 +31,8 @@ Integers: abs of the least value of its type has no value of the type (22003), a
 
 from __future__ import annotations
 
+from provisa.core.pg_error import raising
+
 import sqlglot.expressions as exp
 
 from provisa.pgwire import function_types
@@ -804,6 +806,20 @@ _T_CHR = _t_checked(
     "chr($x)",
 )
 
+#: chr on DuckDB: its own chr of a code point, PostgreSQL's errors of the ones it has no character
+#: of (DuckDB's chr answers NUL of 0).
+_D_CHR = (
+    "CASE WHEN $x < 0 THEN "
+    + raising("22023", "'character number must be positive'")
+    + " WHEN $x = 0 THEN "
+    + raising("54000", "'null character not permitted'")
+    + " WHEN $x > 1114111 THEN "
+    + raising("54000", "'requested character too large for encoding: ' || $x")
+    + " WHEN $x >= 55296 AND $x <= 57343 THEN "
+    + raising("54000", "'requested character not valid for encoding: ' || $x")
+    + " ELSE chr($x) END"
+)
+
 
 def _chr(node: exp.Expr, dialect: str) -> exp.Expr | None:
     """chr of a code point. sqlglot reads "char" (the one-byte type's cast) as its chr too: a call
@@ -813,7 +829,7 @@ def _chr(node: exp.Expr, dialect: str) -> exp.Expr | None:
     call = trino.called(node)
     if call is None or len(call[1]) != 1:
         return None
-    form = _T_CHR if dialect in trino.TRINO else _CHR_ONCE
+    form = _T_CHR if dialect in trino.TRINO else _D_CHR if dialect == "duckdb" else _CHR_ONCE
     return graft(replacement(form, written_in(dialect), "chr($x)"), {"x": call[1][0]})
 
 
@@ -822,7 +838,16 @@ CHR = Feature(
     FAMILY,
     "The character of a code point, as its UTF-8 bytes.",
     read=Side(
-        rules=(Rule("chr($x)", {**ch_only(Rewrite(_chr)), **trino.on_trino(Rewrite(_chr))}),)
+        rules=(
+            Rule(
+                "chr($x)",
+                {
+                    **ch_only(Rewrite(_chr)),
+                    **trino.on_trino(Rewrite(_chr)),
+                    "duckdb": Rewrite(_chr),
+                },
+            ),
+        )
     ),
 )
 

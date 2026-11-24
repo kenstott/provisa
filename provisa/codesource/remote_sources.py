@@ -590,6 +590,12 @@ def _script_manifest(
     return merged, name_tables(merged), sorted(e["name"] for e in given["document"]["exports"])
 
 
+def org_defaults(row: dict) -> dict[str, str]:
+    """REQ-2225: each value of the connector an organisation setting stands in for when a source
+    leaves it unset, and which setting."""
+    return {r["name"]: r["org_default"] for r in row["requires"] if r.get("org_default")}
+
+
 def _requires_of(row: dict) -> set[tuple[str, bool]]:
     return {(r["name"], bool(r.get("secret"))) for r in row["requires"]}
 
@@ -601,8 +607,12 @@ def _given_requires(row: dict, mapping: dict, name: str) -> None:
 
     secrets = declared(mapping.get("secrets"))
     settings = declared_settings(mapping.get("settings"))
+    # REQ-2225: a value an organisation setting stands in for may be left unset.
+    stood_in = set(org_defaults(row))
     missing = sorted(
-        n for n, secret in _requires_of(row) if n not in (secrets if secret else settings)
+        n
+        for n, secret in _requires_of(row)
+        if n not in (secrets if secret else settings) and n not in stood_in
     )
     if missing:
         raise RemoteRefused(
@@ -676,6 +686,8 @@ async def join_connector(state: Any, source_id: str, source_type: str, mapping: 
         manifest, names, exports = _script_manifest(paired, manifest, script, name)
         kept_manifest = manifest_json(manifest)
         mapping["script_hash"] = _script_hash(script)
+    if org_defaults(row):
+        mapping["org_defaults"] = org_defaults(row)
     setup = None
     if script is not None or manifest.lifecycle(ON_START) is not None:
         setup = setup_values(org_id, source_id, manifest, mapping, state.admin_db)

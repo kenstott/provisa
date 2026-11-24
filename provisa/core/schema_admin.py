@@ -1058,6 +1058,23 @@ org_container_registries = Table(
 )
 
 
+# REQ-2225: the organisation's default Spark cluster, entered by its administrator: where a Spark
+# script runs and is validated when its source names no cluster of its own. One row per
+# organisation; the credential only ever a ${secret:...} reference, resolved at use
+# (core/spark_cluster.resolved).
+org_spark_clusters = Table(
+    "org_spark_clusters",
+    metadata,
+    Column("org_id", Text, ForeignKey("orgs.id", ondelete="CASCADE"), primary_key=True),
+    # A Spark Connect address: sc://host[:port][/;param=value...].
+    Column("address", Text, nullable=False),
+    # A ${secret:NAME} reference to the token the cluster is called with; NULL: it takes none.
+    Column("credential", Text, nullable=True),
+    Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("updated_by", Text, nullable=True),
+)
+
+
 # REQ-1984, REQ-1993: the archives uploaded to Provisa as code sources' code, kept per organisation
 # by the content hash of the bundle they unpack to (provisa/codesource/bundle.content_hash) -- the hash a
 # source records. Outside every environment: one store per organisation.
@@ -1093,6 +1110,7 @@ REGISTRY_TABLES = [
     org_mail_platforms,
     org_package_registries,
     org_container_registries,
+    org_spark_clusters,
     org_code_bundles,
     deployment_encryption_key,
     personal_access_tokens,

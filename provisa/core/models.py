@@ -3996,11 +3996,21 @@ class ConnectorRequirement(BaseModel):  # REQ-2221
     script: bool = False
     default_value: str | None = None
     fixed_value: str | None = None
+    # REQ-2225: an organisation setting that stands in for this value when a source leaves it
+    # unset. ``spark_cluster``: the organisation's default Spark cluster.
+    org_default: Literal["spark_cluster"] | None = None
 
     @model_validator(mode="after")
     def _one_value_and_no_secret_value(self) -> "ConnectorRequirement":
         if self.default_value is not None and self.fixed_value is not None:
             raise ValueError(f"{self.name} has both a default and a fixed value")
+        if self.org_default is not None and (
+            self.secret or self.default_value is not None or self.fixed_value is not None
+        ):
+            raise ValueError(
+                f"{self.name} takes the organisation's {self.org_default} when left unset: it "
+                "is not a secret and has no default or fixed value of its own"
+            )
         if self.secret and (
             self.multiline
             or self.script

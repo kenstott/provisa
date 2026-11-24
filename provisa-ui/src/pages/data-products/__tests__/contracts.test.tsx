@@ -59,10 +59,12 @@ const OFFER = {
   updated_at: "2026-10-01T00:00:00Z",
   summary: { extension: null },
   query_now: false,
+  preview_role: "viewer",
   contracts: [
     {
       table_id: 7,
       table: "sales.daily_revenue",
+      preview: [{ name: "day", type: "date", description: null, masked: null }],
       contract: {
         version: "2.0.0",
         created_at: "2026-10-01T00:00:00Z",

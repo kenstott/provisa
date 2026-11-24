@@ -78,6 +78,9 @@ export interface OfferDatasetContract {
   table_id: number;
   table: string;
   contract: OfferContract;
+  /** REQ-2180 (A PRODUCT PAGE PREVIEWS CONTRACTS AS THE ACTING ROLE): the dataset's fields as the
+   *  caller's acting role reads them; null where the last build dropped the dataset. */
+  preview: OfferField[] | null;
 }
 
 /** What a product owner sends to add or change an offer. */
@@ -130,6 +133,9 @@ export interface Offer extends OfferInput {
   created_at: string;
   updated_at: string;
   contracts: OfferDatasetContract[];
+  /** The caller's acting role the contracts are previewed as: a meta-role (meta:...) when acting
+   *  as a set of roles. */
+  preview_role: string;
   summary: { extension: string | null };
   query_now: boolean;
 }
@@ -210,8 +216,7 @@ export const fetchApprover = (productId: string) =>
   call<Approver>("fetchApprover", `${base(productId)}/approver`);
 
 /** Every bid for its owner role; else the caller's own. */
-export const fetchBids = (productId: string) =>
-  call<Bid[]>("fetchBids", `${base(productId)}/bids`);
+export const fetchBids = (productId: string) => call<Bid[]>("fetchBids", `${base(productId)}/bids`);
 
 export const acceptBid = (productId: string, bidId: number) =>
   call<Bid>("acceptBid", `${base(productId)}/bids/${bidId}/accept`, "POST");

@@ -1,0 +1,17 @@
+{
+  "sparkCluster": {
+    "help": "Onde um script Spark é executado e validado quando sua fonte não indica um cluster próprio. O cluster próprio de uma fonte é sempre usado quando ela tem um.",
+    "address": "Endereço do Spark Connect",
+    "addressHelp": "O endereço do Spark Connect do cluster, por exemplo sc://spark.example.com:15002. Não inclua o token nele: guarde o token como segredo e indique-o abaixo.",
+    "credential": "Segredo do token",
+    "credentialHelp": "Uma referência de segredo para o token com que o cluster é chamado, por exemplo ${secret:spark_token}. Deixe vazio para um cluster que não usa token.",
+    "inUseOrg": "Fontes que não indicam cluster usam este padrão ({{target}}).",
+    "inUseLocal": "Fontes que não indicam cluster usam o cluster de teste local ({{target}}). Defina um padrão para usar seu próprio cluster.",
+    "inUseNone": "Nenhum cluster Spark configurado: uma fonte que não indica cluster não pode ser executada até que um padrão seja definido.",
+    "test": "Testar conexão",
+    "tested": "Conectado a {{target}}: Spark {{version}}",
+    "saved": "Salvo",
+    "removed": "Removido",
+    "remove": "Remover padrão"
+  }
+}

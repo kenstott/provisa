@@ -21,6 +21,8 @@ takes only a constant message, so there such a refusal is by name, and is a limi
 
 from __future__ import annotations
 
+from provisa.core.pg_error import raising
+
 import sqlglot.expressions as exp
 
 from provisa.transpiler.polyfill import trino
@@ -695,7 +697,12 @@ ARRAY_POSITION = Feature(
                     **_no_form_on(
                         "array_position", tuple(d for d in DIALECTS if d not in {*NATIVE, "duckdb"})
                     ),
-                    "duckdb": "list_position($a[greatest($s, 1):], $v) + greatest($s, 1) - 1",
+                    # array.c's array_position: a NULL array answers NULL before a NULL start
+                    # raises.
+                    "duckdb": "CASE WHEN $a IS NULL THEN CAST(NULL AS INTEGER) "
+                    "WHEN $s IS NULL THEN "
+                    + raising("22004", "'initial position must not be null'")
+                    + " ELSE list_position($a[greatest($s, 1):], $v) + greatest($s, 1) - 1 END",
                     # No cast of the whole: a cast to an integer holding a raise is read as a
                     # refusal's (transpile.clickhouse_semantics). The raise is a condition of its
                     # own: ClickHouse drops a conjunction a constant makes false, raise and all.

@@ -5,6 +5,9 @@ requires:
   script:
     multiline: true
     script: true
+  cluster:
+    # Left unset, a source runs and is validated on the organisation's default Spark cluster.
+    org_default: spark_cluster
 settings:
   replicate:
     # 0 is always replicated (REQ-826): a long job is built and refreshed without a query, and a

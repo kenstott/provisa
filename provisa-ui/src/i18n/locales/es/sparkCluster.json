@@ -1,0 +1,17 @@
+{
+  "sparkCluster": {
+    "help": "Dónde se ejecuta y se valida un script de Spark cuando su origen no indica un clúster propio. Si un origen tiene su propio clúster, siempre se usa ese.",
+    "address": "Dirección de Spark Connect",
+    "addressHelp": "La dirección de Spark Connect del clúster, por ejemplo sc://spark.example.com:15002. No incluya el token en ella: guárdelo como secreto e indíquelo abajo.",
+    "credential": "Secreto del token",
+    "credentialHelp": "Una referencia de secreto al token con el que se llama al clúster, por ejemplo ${secret:spark_token}. Déjelo vacío para un clúster que no usa token.",
+    "inUseOrg": "Los orígenes que no indican clúster usan este valor predeterminado ({{target}}).",
+    "inUseLocal": "Los orígenes que no indican clúster usan el clúster de prueba local ({{target}}). Establezca un valor predeterminado para usar su propio clúster.",
+    "inUseNone": "No hay ningún clúster de Spark configurado: un origen que no indica clúster no puede ejecutarse hasta que se establezca un valor predeterminado.",
+    "test": "Probar conexión",
+    "tested": "Conectado a {{target}}: Spark {{version}}",
+    "saved": "Guardado",
+    "removed": "Eliminado",
+    "remove": "Quitar predeterminado"
+  }
+}

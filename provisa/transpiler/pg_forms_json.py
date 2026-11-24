@@ -591,7 +591,25 @@ def _udf(
     written = [_READ_ARGUMENT[kind](arg, inner) for kind, arg in zip(kinds, args)]
     skipped = len(kinds) - len(args)
     written += [sqlglot.parse_one(sql, read=_D) for sql in defaults[len(defaults) - skipped :]]
-    call = exp.Anonymous(this=name, expressions=written)
+    call: exp.Expr = exp.Anonymous(this=name, expressions=written)
+    # A trailing parameter whose absence the UDF reads as a NULL (json_object's values): given,
+    # and NULL, the strict function answers NULL, not the call without it.
+    first_default = len(kinds) - len(defaults)
+    given_nulls = [
+        written[i].copy()
+        for i in range(first_default, len(args))
+        if defaults[i - first_default].startswith("CAST(NULL")
+    ]
+    if given_nulls:
+        call = exp.Case(
+            ifs=[
+                exp.If(
+                    this=exp.or_(*(exp.Is(this=a, expression=exp.null()) for a in given_nulls)),
+                    true=exp.null(),
+                )
+            ],
+            default=call,
+        )
     return exp.cast(call, "JSON") if is_json else call
 
 
