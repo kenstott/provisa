@@ -137,6 +137,7 @@ nav:
       - Code Resolvers: code-sources.md
       - Spark Connector: spark-connector.md
       - Federation Engines: engines.md
+      - Where Rows Pass Through Python: result-rows.md
       - Replicas: replicas.md
       - Remote Schemas: remote-schemas.md
       - Import (Hasura / DDN): import.md
