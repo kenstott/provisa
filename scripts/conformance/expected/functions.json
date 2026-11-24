@@ -147,13 +147,13 @@
   "opengauss": {
    "total": 3319,
    "base": {
-    "passed": 1437,
-    "wrong_answer": 189,
+    "passed": 1439,
+    "wrong_answer": 187,
     "engine_error": 858,
     "refused_by_name": 0
    },
    "edge": {
-    "served": 1091,
+    "served": 1093,
     "wrong_answer": 299,
     "engine_error": 47
    }
@@ -10057,7 +10057,6 @@
   {"case": "opengauss::length(character)", "at": "edge", "kind": "wrong_answer", "calls": 2, "statement": "SELECT pg_catalog.\"length\"(''::character) AS v LIMIT 1001", "edge": "character empty", "said": "None, PostgreSQL '0'", "job": "R512-FUNCTIONS-REBASE", "since": "2026-11-23"},
   {"case": "opengauss::length(text)", "at": "edge", "kind": "wrong_answer", "calls": 1, "statement": "SELECT pg_catalog.\"length\"(''::text) AS v LIMIT 1001", "edge": "text empty", "said": "None, PostgreSQL '0'", "job": "R512-FUNCTIONS-REBASE", "since": "2026-11-23"},
   {"case": "opengauss::length(tsvector)", "at": "edge", "kind": "wrong_answer", "calls": 1, "statement": "SELECT pg_catalog.\"length\"(''::tsvector) AS v LIMIT 1001", "edge": "tsvector empty", "said": "None, PostgreSQL '0'", "job": "R512-FUNCTIONS-REBASE", "since": "2026-11-23"},
-  {"case": "opengauss::like(bytea, bytea)", "at": "base", "kind": "wrong_answer", "statement": "SELECT pg_catalog.\"like\"('\\xdeadbeef'::bytea, '\\xdeadbeef'::bytea) AS v", "said": "'f', PostgreSQL 't'", "job": "R512-FUNCTIONS-REBASE", "since": "2026-11-23"},
   {"case": "opengauss::like(name, text)", "at": "edge", "kind": "wrong_answer", "calls": 2, "statement": "SELECT pg_catalog.\"like\"(''::name, 'abc'::text) AS v LIMIT 1001", "edge": "name empty", "said": "None, PostgreSQL 'f'", "job": "R512-FUNCTIONS-REBASE", "since": "2026-11-23"},
   {"case": "opengauss::like(text, text)", "at": "edge", "kind": "wrong_answer", "calls": 2, "statement": "SELECT pg_catalog.\"like\"(''::text, 'abc'::text) AS v LIMIT 1001", "edge": "text empty", "said": "None, PostgreSQL 'f'", "job": "R512-FUNCTIONS-REBASE", "since": "2026-11-23"},
   {"case": "opengauss::like_escape(bytea, bytea)", "at": "base", "kind": "wrong_answer", "statement": "SELECT pg_catalog.\"like_escape\"('\\x00ff'::bytea, ''::bytea) AS v", "said": "None, PostgreSQL '\\\\x00ff'", "job": "R512-FUNCTIONS-REBASE", "since": "2026-11-23"},
@@ -10205,7 +10204,6 @@
   {"case": "opengauss::namesend(name)", "at": "edge", "kind": "wrong_answer", "calls": 1, "statement": "SELECT pg_catalog.\"namesend\"(''::name) AS v LIMIT 1001", "edge": "name empty", "said": "None, PostgreSQL '\\\\x'", "job": "R512-FUNCTIONS-REBASE", "since": "2026-11-23"},
   {"case": "opengauss::network_overlap(inet, inet)", "at": "base", "kind": "engine_error", "statement": "SELECT pg_catalog.\"network_overlap\"(NULL::inet, NULL::inet) AS v", "said": "ERROR:  (psycopg2.errors.UndefinedFunction) function pg_catalog.network_overlap(inet, inet) does not exist\nHINT:  No function matches the given name and argument types. You might need to add explicit type casts.\nCONTEXT:  referenced column: v\n\n[SQL: SELECT pg_catalog.\"network_overlap\"(CAST(NULL AS …", "sqlstate": "42883", "job": "J1388b", "since": "2026-11-22"},
   {"case": "opengauss::normalize(text, text)", "at": "base", "kind": "engine_error", "statement": "SELECT pg_catalog.\"normalize\"(NULL::text, NULL::text) AS v", "said": "ERROR:  current transaction is aborted, commands ignored until end of transaction block, firstChar[Q]", "sqlstate": "25P02", "job": "J1388b", "since": "2026-11-22"},
-  {"case": "opengauss::notlike(bytea, bytea)", "at": "base", "kind": "wrong_answer", "statement": "SELECT pg_catalog.\"notlike\"('\\xdeadbeef'::bytea, '\\xdeadbeef'::bytea) AS v", "said": "'t', PostgreSQL 'f'", "job": "R512-FUNCTIONS-REBASE", "since": "2026-11-23"},
   {"case": "opengauss::notlike(name, text)", "at": "edge", "kind": "wrong_answer", "calls": 2, "statement": "SELECT pg_catalog.\"notlike\"(''::name, 'abc'::text) AS v LIMIT 1001", "edge": "name empty", "said": "None, PostgreSQL 't'", "job": "R512-FUNCTIONS-REBASE", "since": "2026-11-23"},
   {"case": "opengauss::notlike(text, text)", "at": "edge", "kind": "wrong_answer", "calls": 2, "statement": "SELECT pg_catalog.\"notlike\"(''::text, 'abc'::text) AS v LIMIT 1001", "edge": "text empty", "said": "None, PostgreSQL 't'", "job": "R512-FUNCTIONS-REBASE", "since": "2026-11-23"},
   {"case": "opengauss::num_nonnulls(VARIADIC \"any\")", "at": "base", "kind": "engine_error", "statement": "SELECT pg_catalog.\"num_nonnulls\"(NULL::integer) AS v", "said": "ERROR:  (psycopg2.errors.UndefinedFunction) function pg_catalog.num_nonnulls(integer) does not exist\nHINT:  No function matches the given name and argument types. You might need to add explicit type casts.\nCONTEXT:  referenced column: v\n\n[SQL: SELECT pg_catalog.\"num_nonnulls\"(CAST(NULL AS INT)) AS …", "sqlstate": "42883", "job": "J1388b", "since": "2026-11-22"},
