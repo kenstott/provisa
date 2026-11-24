@@ -39,6 +39,7 @@ import re
 import sqlglot
 import sqlglot.expressions as exp
 
+from provisa.core.pg_error import raising
 from provisa.transpiler.polyfill import instants, trino
 from provisa.transpiler.polyfill.grid import DIALECTS, NATIVE, Feature, Limitation, Rule, Side
 from provisa.transpiler.polyfill.notation import Refusal, Refused, Rewrite
@@ -69,9 +70,41 @@ DATE_MI = Feature(
         rules=(
             Rule(
                 "date_mi($a, $b)",
-                trino.trino_only(
-                    "CAST(date_diff('day', CAST($b AS DATE), CAST($a AS DATE)) AS INTEGER)"
-                ),
+                {
+                    **trino.trino_only(
+                        "CAST(date_diff('day', CAST($b AS DATE), CAST($a AS DATE)) AS INTEGER)"
+                    ),
+                    # DuckDB subtracts an infinity's sentinel; PostgreSQL refuses it (REQ-2236).
+                    "duckdb": (
+                        "CASE WHEN isinf(CAST($a AS DATE)) OR isinf(CAST($b AS DATE)) THEN "
+                        + raising("22008", "'cannot subtract infinite dates'")
+                        + " ELSE CAST(CAST($a AS DATE) - CAST($b AS DATE) AS INTEGER) END"
+                    ),
+                },
+            ),
+        )
+    ),
+)
+
+#: date_bin on DuckDB: its time_bucket, which answers NULL of an infinite origin. PostgreSQL
+#: (timestamp_bin, timestamptz_bin) answers an infinite source as it is, and then refuses an
+#: infinite origin (REQ-2236).
+DATE_BIN = Feature(
+    "date_bin",
+    FAMILY,
+    "A timestamp truncated to a stride counted from an origin.",
+    read=Side(
+        rules=(
+            Rule(
+                "date_bin($s, $t, $o)",
+                {
+                    "duckdb": (
+                        "CASE WHEN isinf($t) THEN $t WHEN isinf($o) THEN "
+                        + raising("22008", "'origin out of range'")
+                        + " ELSE time_bucket($s, $t, $o) END"
+                    ),
+                },
+                unlisted_keep=True,
             ),
         )
     ),
@@ -547,6 +580,7 @@ TO_CHAR = Feature(
 ORDER = 160
 FEATURES: tuple[Feature, ...] = (
     DATE_MI,
+    DATE_BIN,
     DATE_PLI,
     DATE_MII,
     INTEGER_PL_DATE,
