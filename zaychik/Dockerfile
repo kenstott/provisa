@@ -25,8 +25,11 @@ RUN git apply /tmp/trino-statement-protocol.patch
 
 # Maven's HTTP transport retries a request three times and only on 429 and 503. Maven Central
 # answering one POM with 502 Bad Gateway therefore failed the whole image build on the first try.
-# A gateway error is retried too, five times, with the transport's own backoff.
-ENV MAVEN_ARGS="-Daether.connector.http.retryHandler.count=5 -Daether.connector.http.retryHandler.serviceUnavailable=429,502,503,504"
+# The resolver's own retry settings answer a transient Central failure instead: a connection
+# error or a 429/502/503/504 is retried five times, 10 s apart at first and backing off to at most
+# 120 s (aether.connector.http.* for the default native transport, maven.wagon.http.* for the
+# wagon transport, so either transport retries).
+ENV MAVEN_ARGS="-Daether.connector.http.retryHandler.count=5 -Daether.connector.http.retryHandler.interval=10000 -Daether.connector.http.retryHandler.intervalMax=120000 -Daether.connector.http.retryHandler.serviceUnavailable=429,502,503,504 -Dmaven.wagon.http.retryHandler.count=5"
 
 # The dependency plugin is named by its coordinates and version, not by its prefix: a prefix
 # (`dependency:`) is resolved by reading the plugin groups' maven-metadata.xml from Maven Central,
@@ -35,20 +38,11 @@ ENV MAVEN_ARGS="-Daether.connector.http.retryHandler.count=5 -Daether.connector.
 # directory and every lane loads it (.github/actions/zaychik-image).
 ARG DEPENDENCY_PLUGIN=org.apache.maven.plugins:maven-dependency-plugin:3.11.0
 # Separate dependency download so it's cached independently of source changes.
-# Run 45456550808: Central answered "Could not find artifact maven-dependency-plugin:jar:3.11.0", a
-# 404 for a jar it serves, and `-q` hid what the resolver tried. The transport retry above never
-# retries a 404, so the whole fetch is attempted three times. `-B -e` logs every download and the
-# resolver's stack trace; `-U` makes a later attempt ask Central again instead of reading the
-# not-found the resolver cached in the local repository. After the third failure the build stops
-# naming the plugin.
-ARG GO_OFFLINE_ATTEMPTS=3
-RUN for attempt in $(seq 1 "${GO_OFFLINE_ATTEMPTS}"); do \
-        mvn -B -e -U ${DEPENDENCY_PLUGIN}:go-offline && exit 0; \
-        echo "zaychik: go-offline attempt ${attempt}/${GO_OFFLINE_ATTEMPTS} failed" >&2; \
-        sleep 20; \
-    done; \
-    echo "zaychik: ${DEPENDENCY_PLUGIN}:go-offline failed after ${GO_OFFLINE_ATTEMPTS} attempts" >&2; \
-    exit 1
+# Run 45456550808: the arm64 build failed here on "Could not find artifact
+# maven-dependency-plugin:jar:3.11.0" for a jar Central serves, and `-q` hid what the resolver
+# tried. The fetch now runs without -q: -B logs every download plainly and -e prints the
+# resolver's full exception chain, so a failure shows the URL, the status and the cause.
+RUN mvn -B -e ${DEPENDENCY_PLUGIN}:go-offline
 RUN mvn clean package -DskipTests && mvn ${DEPENDENCY_PLUGIN}:copy-dependencies
 
 FROM eclipse-temurin:17-jre
