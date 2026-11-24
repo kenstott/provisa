@@ -78,6 +78,7 @@
     "itemPython": "Python",
     "itemNotebook": "笔记本",
     "itemContainerRegistries": "容器注册表",
+    "itemSparkCluster": "Spark 集群",
     "itemSparql": "SPARQL",
     "itemPlatformObservability": "平台可观测性",
     "itemOntology": "本体",

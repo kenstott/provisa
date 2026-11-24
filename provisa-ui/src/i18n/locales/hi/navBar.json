@@ -78,6 +78,7 @@
     "itemPython": "Python",
     "itemNotebook": "नोटबुक",
     "itemContainerRegistries": "कंटेनर रजिस्ट्री",
+    "itemSparkCluster": "Spark क्लस्टर",
     "itemSparql": "SPARQL",
     "itemPlatformObservability": "प्लेटफ़ॉर्म ऑब्ज़र्वेबिलिटी",
     "itemOntology": "ऑन्टोलॉजी",
