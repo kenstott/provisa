@@ -13,7 +13,7 @@ A polyfill is how Provisa gives a PostgreSQL client PostgreSQL's behaviour on a 
 
 ## [DuckDB](duckdb.md)
 
-271 of the grid's 626 features are native on DuckDB and left out.
+270 of the grid's 626 features are native on DuckDB and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>an array of dimensions</strong><br>cardinality, unnest and array_to_string of an array of more than one dimension: of every element, in storage order. On DuckDB as well each function that reads an array element by element, the orderings by array_cmp (elements, then dimensions) and array_cat as array.c joins arrays; the calls PostgreSQL refuses of one raise its error.</td><td><pre><code>function provisa.transpiler.polyfill.array_dimensions.duckdb_of_dimensions: On DuckDB, a call of an array of more than one dimension the statement writes or casts, as</code></pre></td><td><ul><li>Only an array the statement writes, or casts to an array of arrays, is read by its dimensions: a column of DuckDB&#x27;s list of lists keeps DuckDB&#x27;s own answer.</li><li>array_larger and array_smaller of arrays of different dimensions answer only for integer arrays of constants, as each answers a list of its own nesting: any other pair is refused. <code>0A000</code> array_larger() and array_smaller() of arrays of different dimensions have no form on duckdb unless both are integer arrays of constants</li></ul></td><td></td><td></td></tr>
@@ -434,7 +434,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: integer &#x27;-2147483648&#x27;.</li><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: numeric &#x27;123456789012345678901234567890.123456789012345678901234567890&#x27;.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>chr</strong><br>The character of a code point, as its UTF-8 bytes.</td><td><pre><code>chr($x)
 =&gt;
-function provisa.transpiler.polyfill.floats._chr: chr of a code point. sqlglot reads &quot;char&quot; (the one-byte type&#x27;s cast) as its chr too: a call</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: text &#x27;日本語テキスト😀&#x27;.</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.floats._chr: chr of a code point. sqlglot reads &quot;char&quot; (the one-byte type&#x27;s cast) as its chr too: a call</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>in_range</strong><br>Whether a value is within an offset of a base: a window frame&#x27;s bound.</td><td><pre><code>in_range($v, $b, $o, $s, $l)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: double precision &#x27;NaN&#x27;, time without time zone &#x27;00:00:00&#x27;, timestamp without time zone &#x27;4713-01-01 00:00:00 BC&#x27;.</li><li>Raises 22003 at an edge value it does not hold as PostgreSQL does: bigint &#x27;-9223372036854775808&#x27;, integer &#x27;-2147483648&#x27;, smallint &#x27;-32768&#x27;.</li><li>Raises 22P02 at an edge value it does not hold as PostgreSQL does: date &#x27;4713-01-01 BC&#x27;, timestamp with time zone &#x27;4713-01-01 00:00:00+00 BC&#x27;.</li></ul></td><td></td><td></td></tr>
@@ -885,9 +885,9 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>string_to_array</strong><br>Text split at each delimiter into an array; a piece equal to a third argument is NULL.</td><td><pre><code>string_to_array($s::text, $d::text)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>string_to_array($s::text, $d::text, $n::text)
+CASE WHEN $s IS NULL THEN NULL WHEN $s = &#x27;&#x27; THEN CAST([] AS VARCHAR[]) WHEN $d IS NULL THEN string_split($s, &#x27;&#x27;) WHEN $d = &#x27;&#x27; THEN [$s] ELSE string_split($s, $d) END</code></pre><pre><code>string_to_array($s::text, $d::text, $n::text)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: text null.</li></ul></td><td></td><td></td></tr>
+list_transform(CASE WHEN $s IS NULL THEN NULL WHEN $s = &#x27;&#x27; THEN CAST([] AS VARCHAR[]) WHEN $d IS NULL THEN string_split($s, &#x27;&#x27;) WHEN $d = &#x27;&#x27; THEN [$s] ELSE string_split($s, $d) END, lambda _x: CASE WHEN _x = $n THEN NULL ELSE _x END)</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>varchar</strong><br>Text cast to character varying of a declared length (its typmod).</td><td><pre><code>varchar($s, $m, $e)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>varchar($s::name)
@@ -895,7 +895,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>bpchar</strong><br>Text cast to character of a declared length (its typmod), padded with spaces.</td><td><pre><code>bpchar($s, $m, $e)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: character &#x27;&#x27;.</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>nameconcatoid</strong><br>A name and an oid joined by an underscore, the name cut to fit a name&#x27;s 63 bytes.</td><td><pre><code>nameconcatoid($n, $o)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: oid &#x27;4294967296&#x27;.</li></ul></td><td></td><td></td></tr>
@@ -907,7 +907,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 CASE WHEN $n = -2147483648 THEN $t ELSE right($t, $n) END</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>reverse</strong><br>A text&#x27;s characters in reverse order.</td><td><pre><code>reverse($t::text)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: text &#x27;été&#x27;.</li></ul></td><td></td><td></td></tr>
+array_to_string(list_reverse(string_split($t, &#x27;&#x27;)), &#x27;&#x27;)</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>substr</strong><br>A text&#x27;s characters from a position, for a count.</td><td><pre><code>substr($t::text, $s::integer)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>substr($t::text, $s::integer, $l::integer)
@@ -926,6 +926,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>ascii</strong><br>The code point of a text&#x27;s first character.</td><td><pre><code>ascii($t::text)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>character literal</strong><br>The lengths and text of a character(n) literal, its padding as PostgreSQL holds it.</td><td><pre><code>function provisa.transpiler.polyfill.texts._of_character_literal: char_length, length, octet_length, text and name of a character(n) literal, as PostgreSQL</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>btnamecmp</strong><br>btree&#x27;s comparison of two names: strncmp&#x27;s difference of their first differing bytes.</td><td><pre><code>btnamecmp($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -952,10 +953,10 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>octet_length(bytea)</strong><br>A bytea&#x27;s number of bytes.</td><td><pre><code>octet_length($a)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: character &#x27;&#x27;.</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>length(bytea)</strong><br>A bytea&#x27;s number of bytes.</td><td><pre><code>length($a)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Answers otherwise than PostgreSQL at an edge value: character &#x27;  padded  &#x27;.</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>bit_length(bytea)</strong><br>A bytea&#x27;s number of bits.</td><td><pre><code>bit_length($a)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
