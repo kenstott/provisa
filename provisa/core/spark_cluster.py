@@ -211,6 +211,12 @@ def local_test_cluster() -> str | None:
     try:
         return demo_spark.ensure()
     except demo_spark.DemoSparkFailed as failed:
+        if failed.code == "demo_spark.unsupported_platform":
+            raise SparkClusterRefused(
+                "local_test_unavailable",
+                f"The local test cluster is unavailable: {failed}",
+                status=503,
+            ) from failed
         raise SparkClusterRefused(
             "local_test_failed",
             f"The local test cluster could not be started: {failed}",

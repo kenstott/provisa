@@ -8,15 +8,16 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""The demo's local test cluster: its download, checked against the pinned SHA-512, its install,
-and its address as the demo's resolution reports it (REQ-2225). No network: the download is an
-injected stream; HOME is a temp directory."""
+"""The demo's local test cluster: its download of the pyspark sdist, checked against the pinned
+SHA-256, its install, its refusal on Windows, and its address as the demo's resolution reports it
+(REQ-2225). No network: the download is an injected stream; HOME is a temp directory."""
 
 # Requirements: REQ-2225
 from __future__ import annotations
 
 import hashlib
 import io
+import sys
 import tarfile
 from pathlib import Path
 
@@ -29,8 +30,8 @@ from provisa.core.spark_cluster import SparkClusterRefused
 _BODY = b"spark distribution bytes " * 1000
 
 
-def _sha512(data: bytes) -> str:
-    return hashlib.sha512(data).hexdigest()
+def _sha256(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
 
 
 def _stream_of(data: bytes, seen: list[str] | None = None):
@@ -53,25 +54,26 @@ def _isolated(tmp_path, monkeypatch):
 
 class TestDownload:
     def test_a_good_checksum_is_accepted_and_the_archive_kept(self, tmp_path):
-        dest = tmp_path / "dl" / "spark.tgz"
+        dest = tmp_path / "dl" / "pyspark.tar.gz"
         kept = demo_spark.download(
-            dest, url="https://archive.example/spark.tgz", sha512=_sha512(_BODY),
+            dest, url="https://files.example/pyspark.tar.gz", sha256=_sha256(_BODY),
             stream=_stream_of(_BODY),
         )  # fmt: skip
         assert kept == dest
         assert dest.read_bytes() == _BODY
-        assert sorted(p.name for p in dest.parent.iterdir()) == ["spark.tgz"]
+        assert sorted(p.name for p in dest.parent.iterdir()) == ["pyspark.tar.gz"]
 
     def test_a_bad_checksum_is_refused_by_name_and_the_partial_file_removed(self, tmp_path):
-        dest = tmp_path / "dl" / "spark.tgz"
+        dest = tmp_path / "dl" / "pyspark.tar.gz"
         with pytest.raises(DemoSparkFailed) as refused:
             demo_spark.download(
-                dest, url="https://archive.example/spark.tgz", sha512="0" * 128,
+                dest, url="https://files.example/pyspark.tar.gz", sha256="0" * 64,
                 stream=_stream_of(_BODY),
             )  # fmt: skip
         assert refused.value.code == "demo_spark.checksum"
-        assert _sha512(_BODY) in str(refused.value)
-        assert "0" * 128 in str(refused.value)
+        assert _sha256(_BODY) in str(refused.value)
+        assert "0" * 64 in str(refused.value)
+        assert "SHA-256" in str(refused.value)
         assert not dest.exists()
         assert list(dest.parent.iterdir()) == []
 
@@ -80,9 +82,9 @@ class TestDownload:
             yield b"first chunk"
             raise DemoSparkFailed("download", "connection reset")
 
-        dest = tmp_path / "dl" / "spark.tgz"
+        dest = tmp_path / "dl" / "pyspark.tar.gz"
         with pytest.raises(DemoSparkFailed, match="connection reset"):
-            demo_spark.download(dest, sha512=_sha512(_BODY), stream=broken)
+            demo_spark.download(dest, sha256=_sha256(_BODY), stream=broken)
         assert list(dest.parent.iterdir()) == []
 
     def test_a_non_https_url_is_refused(self):
@@ -90,25 +92,43 @@ class TestDownload:
             list(demo_spark.stream_https("http://archive.apache.org/dist/spark.tgz"))
         assert refused.value.code == "demo_spark.download"
 
-    def test_the_pin_is_a_spark_release_on_apaches_release_mirror(self):
-        assert demo_spark.URL == (
-            f"https://dlcdn.apache.org/spark/spark-{demo_spark.SPARK_VERSION}/"
-            f"spark-{demo_spark.SPARK_VERSION}-bin-hadoop3.tgz"
+    def test_the_pin_is_the_pyspark_sdist_on_pypi_with_its_sha256(self):
+        assert demo_spark.URL.startswith("https://files.pythonhosted.org/packages/")
+        assert demo_spark.URL.endswith(f"/pyspark-{demo_spark.SPARK_VERSION}.tar.gz")
+        assert demo_spark.SHA256 == (
+            "e8c517948eff7088a7aa07449aa8eafa4a15a8d50319de2525a6fd26622476c6"
         )
-        assert len(demo_spark.SHA512) == 128
-        int(demo_spark.SHA512, 16)
 
 
-def _distribution(executable: bool = True) -> bytes:
-    """A stand-in Spark distribution archive: the pinned top directory with bin/spark-submit."""
+_CONNECT_JAR = f"spark-connect_2.13-{demo_spark.SPARK_VERSION}.jar"
+
+
+def _distribution(with_connect_jar: bool = True) -> bytes:
+    """A stand-in pyspark sdist: its jars under deps/, its Python client, and parts the cluster
+    does not use (setup.py, deps/bin, deps/examples)."""
+    top = demo_spark.DISTRIBUTION
+    names = [
+        f"{top}/setup.py",
+        f"{top}/deps/bin/spark-submit",
+        f"{top}/deps/examples/pi.py",
+        f"{top}/deps/jars/spark-core_2.13-{demo_spark.SPARK_VERSION}.jar",
+        f"{top}/pyspark/__init__.py",
+        f"{top}/lib/py4j-0.10.9.9-src.zip",
+    ]
+    if with_connect_jar:
+        names.append(f"{top}/deps/jars/{_CONNECT_JAR}")
     buffer = io.BytesIO()
     with tarfile.open(fileobj=buffer, mode="w:gz") as tar:
-        names = ["bin/spark-submit"] if executable else ["README.md"]
-        for name in names:
-            data = b"#!/bin/sh\n"
-            info = tarfile.TarInfo(f"{demo_spark.DISTRIBUTION}/{name}")
-            info.size = len(data)
+        for directory in (f"{top}/deps/jars/", f"{top}/pyspark/"):
+            info = tarfile.TarInfo(directory.rstrip("/"))
+            info.type = tarfile.DIRTYPE
             info.mode = 0o755
+            tar.addfile(info)
+        for name in names:
+            data = name.encode()
+            info = tarfile.TarInfo(name)
+            info.size = len(data)
+            info.mode = 0o644
             tar.addfile(info, io.BytesIO(data))
     return buffer.getvalue()
 
@@ -120,14 +140,23 @@ class TestInstall:
         archive = _distribution()
         seen: list[str] = []
         home = demo_spark.install(
-            tmp_path / "spark", stream=_stream_of(archive, seen), sha512=_sha512(archive)
+            tmp_path / "spark", stream=_stream_of(archive, seen), sha256=_sha256(archive)
         )
         assert home == tmp_path / "spark" / demo_spark.SPARK_VERSION / demo_spark.DISTRIBUTION
-        assert (home / "bin" / "spark-submit").stat().st_mode & 0o111
+        top = demo_spark.DISTRIBUTION
+        assert (
+            home / "jars" / _CONNECT_JAR
+        ).read_bytes() == f"{top}/deps/jars/{_CONNECT_JAR}".encode()
+        assert sorted(p.name for p in home.iterdir()) == ["jars", "python"]
+        assert sorted(p.name for p in (home / "jars").iterdir()) == sorted(
+            [_CONNECT_JAR, f"spark-core_2.13-{demo_spark.SPARK_VERSION}.jar"]
+        )
+        assert (home / "python" / "pyspark" / "__init__.py").is_file()
+        assert (home / "python" / "lib" / "py4j-0.10.9.9-src.zip").is_file()
         assert seen == [demo_spark.URL]
         assert list((tmp_path / "spark" / "downloads").iterdir()) == []
         demo_spark.install(
-            tmp_path / "spark", stream=_stream_of(archive, seen), sha512=_sha512(archive)
+            tmp_path / "spark", stream=_stream_of(archive, seen), sha256=_sha256(archive)
         )
         assert seen == [demo_spark.URL]
 
@@ -138,11 +167,11 @@ class TestInstall:
         assert not (tmp_path / "spark" / demo_spark.SPARK_VERSION).exists()
         assert list((tmp_path / "spark" / "downloads").iterdir()) == []
 
-    def test_an_archive_without_the_distribution_is_refused_by_name(self, tmp_path):
-        archive = _distribution(executable=False)
+    def test_an_archive_without_the_connect_server_is_refused_by_name(self, tmp_path):
+        archive = _distribution(with_connect_jar=False)
         with pytest.raises(DemoSparkFailed) as refused:
             demo_spark.install(
-                tmp_path / "spark", stream=_stream_of(archive), sha512=_sha512(archive)
+                tmp_path / "spark", stream=_stream_of(archive), sha256=_sha256(archive)
             )
         assert refused.value.code == "demo_spark.unpack"
         assert not demo_spark.spark_home(tmp_path / "spark").exists()
@@ -150,13 +179,33 @@ class TestInstall:
 
 class TestServer:
     def test_the_server_binds_only_the_loopback_on_the_port_it_is_given(self, tmp_path):
-        args = demo_spark.command(tmp_path / "home", 41234, tmp_path / "work")
-        assert args[0] == str(tmp_path / "home" / "bin" / "spark-submit")
+        args = demo_spark.submit_arguments(41234, tmp_path / "work")
         assert demo_spark.CONNECT_SERVER_CLASS in args
         assert "spark.connect.grpc.binding.port=41234" in args
         assert "spark.connect.grpc.binding.address=127.0.0.1" in args
         assert "spark.driver.bindAddress=127.0.0.1" in args
         assert "local[*]" in args
+
+    def test_sparks_own_launcher_builds_the_command_on_the_shipped_jdk4py_java(self, tmp_path):
+        import jdk4py
+
+        launcher = demo_spark.launcher_command(tmp_path / "home", 41234, tmp_path / "work")
+        assert launcher[0] == str(Path(jdk4py.JAVA_HOME) / "bin" / "java")
+        assert launcher[launcher.index("-cp") + 1] == str(tmp_path / "home" / "jars" / "*")
+        assert launcher[4:6] == [demo_spark.LAUNCHER_CLASS, demo_spark.SUBMIT_CLASS]
+        assert launcher[6:] == demo_spark.submit_arguments(41234, tmp_path / "work")
+
+    def test_the_server_command_drops_only_the_module_jdk4py_does_not_carry(self):
+        launched = (
+            b"\0\n/jdk/bin/java\0-cp\0/spark/jars/*\0-Xmx1g\0"
+            b"--add-modules=jdk.incubator.vector\0--add-opens=java.base/java.lang=ALL-UNNAMED\0"
+            b"org.apache.spark.deploy.SparkSubmit\0--master\0local[*]\0"
+        )
+        assert demo_spark.server_command(launched) == [
+            "/jdk/bin/java", "-cp", "/spark/jars/*", "-Xmx1g",
+            "--add-opens=java.base/java.lang=ALL-UNNAMED",
+            "org.apache.spark.deploy.SparkSubmit", "--master", "local[*]",
+        ]  # fmt: skip
 
     def test_it_runs_on_the_shipped_jdk4py_java(self, tmp_path):
         import jdk4py
@@ -164,6 +213,7 @@ class TestServer:
         env = demo_spark.environment(tmp_path / "home", tmp_path / "work")
         assert env["JAVA_HOME"] == str(Path(jdk4py.JAVA_HOME))
         assert env["SPARK_HOME"] == str(tmp_path / "home")
+        assert env["SPARK_SCALA_VERSION"] == "2.13"
         assert env["SPARK_NO_DAEMONIZE"] == "1"
 
     def test_it_is_kept_under_provisa_home(self, tmp_path, monkeypatch):
@@ -180,6 +230,37 @@ class TestServer:
 
     def test_stop_with_nothing_started_does_nothing(self):
         demo_spark.stop()
+        assert demo_spark.running_address() is None
+
+
+class TestPlatform:
+    @pytest.mark.parametrize("platform", ["darwin", "linux"])
+    def test_macos_and_linux_are_supported(self, platform, monkeypatch):
+        monkeypatch.setattr(sys, "platform", platform)
+        demo_spark.require_supported_platform()
+
+    def test_windows_is_refused_by_name_before_anything_is_downloaded(self, monkeypatch):
+        monkeypatch.setattr(sys, "platform", "win32")
+
+        def no_download(url: str):
+            raise AssertionError(f"downloaded {url}")
+
+        with pytest.raises(DemoSparkFailed) as refused:
+            demo_spark.start(demo_spark.spark_root(), stream=no_download)
+        assert refused.value.code == "demo_spark.unsupported_platform"
+        assert "macOS and Linux only, not on Windows" in str(refused.value)
+        assert "Spark tab" in str(refused.value)
+        assert not demo_spark.spark_root().exists()
+
+    def test_on_windows_the_demo_names_spark_unavailable_with_the_reason(self, monkeypatch):
+        monkeypatch.setenv("PROVISA_DEMO", "true")
+        monkeypatch.setattr(sys, "platform", "win32")
+        with pytest.raises(SparkClusterRefused) as refused:
+            spark_cluster.local_test_cluster()
+        assert refused.value.code == "spark_cluster.local_test_unavailable"
+        assert refused.value.status == 503
+        assert "unavailable" in str(refused.value)
+        assert "winutils" in str(refused.value)
         assert demo_spark.running_address() is None
 
 
@@ -211,7 +292,7 @@ class TestResolution:
         monkeypatch.setenv("PROVISA_DEMO", "true")
 
         def failing() -> str:
-            raise DemoSparkFailed("checksum", "spark.tgz has SHA-512 x, not the pinned y")
+            raise DemoSparkFailed("checksum", "pyspark.tar.gz has SHA-256 x, not the pinned y")
 
         monkeypatch.setattr(demo_spark, "ensure", failing)
         with pytest.raises(SparkClusterRefused) as refused:

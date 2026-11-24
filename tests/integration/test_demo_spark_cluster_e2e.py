@@ -8,9 +8,9 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""The demo's local test cluster, run natively (REQ-2225): first use downloads the pinned Spark
-distribution from Apache's archive, checks its SHA-512, and starts its Spark Connect server on the
-shipped jdk4py Java on a free loopback port; the demo names it in PROVISA_DEMO_SPARK_CONNECT while
+"""The demo's local test cluster, run natively (REQ-2225): first use downloads the pinned pyspark
+sdist from PyPI, checks its SHA-256, unpacks the Spark jars it carries, and starts its Spark
+Connect server on the shipped jdk4py Java on a free loopback port; the demo names it in PROVISA_DEMO_SPARK_CONNECT while
 it runs; one Spark Connect query is answered; stopping it leaves no process behind.
 
 Lands on the TEST instance only: PROVISA_HOME and HOME are a temp directory of this run, so
@@ -31,7 +31,7 @@ from provisa.core import demo_spark, spark_cluster
 
 pytestmark = [pytest.mark.integration]
 
-#: The query: the distribution's own Spark Connect client, on this interpreter's packages.
+#: The query: the sdist's own Spark Connect client, on this interpreter's packages.
 _QUERY = (
     "import sys\n"
     "from pyspark.sql import SparkSession\n"
@@ -77,7 +77,7 @@ def test_the_demo_starts_queries_and_stops_its_local_test_cluster(demo_home):
 
     home = demo_spark.spark_home(demo_spark.spark_root())
     assert home.is_relative_to(demo_home / ".provisa" / "spark")
-    assert (home / "bin" / "spark-submit").is_file()
+    assert (home / demo_spark.CONNECT_JAR).is_file()
     assert list((demo_spark.spark_root() / "downloads").iterdir()) == []
 
     assert spark_cluster.probe(address) == demo_spark.SPARK_VERSION
