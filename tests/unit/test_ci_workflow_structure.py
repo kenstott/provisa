@@ -2668,3 +2668,36 @@ def test_the_lane_image_cache_key_changes_with_every_pin():
         assert _lane_step(name)["with"]["key"] == (
             "images-${{ steps.key.outputs.lane }}-${{ steps.key.outputs.compose }}"
         ), name
+
+
+def _zaychik_dockerfile() -> str:
+    return (REPO / "zaychik" / "Dockerfile").read_text()
+
+
+def test_zaychik_go_offline_logs_its_fetch_and_retries():
+    """Run 45456550808: `mvn ...:go-offline -q` failed the image build on one "Could not find
+    artifact maven-dependency-plugin:jar:3.11.0 in central" for a jar Central serves; `-q` hid the
+    resolver's transfer detail and nothing retried. The fetch now logs (-B -e, no -q), re-asks
+    Central past the cached not-found (-U), retries the whole fetch, and keeps the transport's
+    retry settings; after the last attempt it fails naming the plugin."""
+    text = _zaychik_dockerfile()
+    run = re.search(r"^RUN (for attempt in .*?exit 1)$", text, re.M | re.S)
+    assert run, "go-offline is no longer run inside a retry loop"
+    body = run.group(1)
+    mvn = re.search(r"mvn ([^&;\n]*)\$\{DEPENDENCY_PLUGIN\}:go-offline", body)
+    assert mvn, body
+    flags = mvn.group(1).split()
+    assert "-q" not in flags and "--quiet" not in flags, flags
+    assert {"-B", "-e", "-U"} <= set(flags), flags
+    attempts = re.search(r"^ARG GO_OFFLINE_ATTEMPTS=(\d+)$", text, re.M)
+    assert attempts and int(attempts.group(1)) >= 3, attempts
+    assert "failed after ${GO_OFFLINE_ATTEMPTS} attempts" in body and "${DEPENDENCY_PLUGIN}" in body
+    maven_args = re.search(r'^ENV MAVEN_ARGS="([^"]*)"$', text, re.M)
+    assert maven_args, "the resolver's transport retry settings are gone"
+    props = dict(p.removeprefix("-D").split("=", 1) for p in maven_args.group(1).split())
+    assert int(props["aether.connector.http.retryHandler.count"]) >= 3, props
+    assert {"429", "502", "503", "504"} <= set(
+        props["aether.connector.http.retryHandler.serviceUnavailable"].split(",")
+    ), props
+    # No mirror or alternate repository: artifacts come only from Maven Central.
+    assert "mirror" not in text.lower() and "settings.xml" not in text, text

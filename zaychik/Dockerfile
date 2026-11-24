@@ -34,8 +34,21 @@ ENV MAVEN_ARGS="-Daether.connector.http.retryHandler.count=5 -Daether.connector.
 # 44379779451, kafka lane, after 752 s of retries). CI builds this image once per change to this
 # directory and every lane loads it (.github/actions/zaychik-image).
 ARG DEPENDENCY_PLUGIN=org.apache.maven.plugins:maven-dependency-plugin:3.11.0
-# Separate dependency download so it's cached independently of source changes
-RUN mvn ${DEPENDENCY_PLUGIN}:go-offline -q
+# Separate dependency download so it's cached independently of source changes.
+# Run 45456550808: Central answered "Could not find artifact maven-dependency-plugin:jar:3.11.0", a
+# 404 for a jar it serves, and `-q` hid what the resolver tried. The transport retry above never
+# retries a 404, so the whole fetch is attempted three times. `-B -e` logs every download and the
+# resolver's stack trace; `-U` makes a later attempt ask Central again instead of reading the
+# not-found the resolver cached in the local repository. After the third failure the build stops
+# naming the plugin.
+ARG GO_OFFLINE_ATTEMPTS=3
+RUN for attempt in $(seq 1 "${GO_OFFLINE_ATTEMPTS}"); do \
+        mvn -B -e -U ${DEPENDENCY_PLUGIN}:go-offline && exit 0; \
+        echo "zaychik: go-offline attempt ${attempt}/${GO_OFFLINE_ATTEMPTS} failed" >&2; \
+        sleep 20; \
+    done; \
+    echo "zaychik: ${DEPENDENCY_PLUGIN}:go-offline failed after ${GO_OFFLINE_ATTEMPTS} attempts" >&2; \
+    exit 1
 RUN mvn clean package -DskipTests && mvn ${DEPENDENCY_PLUGIN}:copy-dependencies
 
 FROM eclipse-temurin:17-jre
