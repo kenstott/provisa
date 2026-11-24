@@ -10,6 +10,7 @@
     "pairing": "Code d'appairage",
     "pairingHint": "La ligne affichée par le conteneur lors de son premier démarrage, après \"pairing code:\". Elle est utilisée une seule fois et n'est pas conservée.",
     "secretHint": "Le secret de l'organisation à utiliser. Sa valeur n'est jamais saisie ici.",
-    "fixedHint": "Défini par ce connecteur. Non modifiable."
+    "fixedHint": "Défini par ce connecteur. Non modifiable.",
+    "sparkClusterDefaultHint": "Laissez vide pour utiliser le cluster Spark par défaut de l'organisation (Admin, Cluster Spark)."
   }
 }

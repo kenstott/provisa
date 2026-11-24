@@ -78,6 +78,7 @@
     "itemPython": "Python",
     "itemNotebook": "מחברת",
     "itemContainerRegistries": "מאגרי קונטיינרים",
+    "itemSparkCluster": "אשכול Spark",
     "itemSparql": "SPARQL",
     "itemPlatformObservability": "ניטור הפלטפורמה",
     "itemOntology": "אונטולוגיה",
