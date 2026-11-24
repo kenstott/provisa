@@ -210,7 +210,7 @@ def test_a_quoted_name_is_the_name_it_quotes():
 
 def test_the_read_statement_is_built_from_the_declared_columns():
     assert minted.read_statement(ORDERS, ["id", "we ird"]) == (
-        'SELECT "id", "we ird" FROM sales.orders'
+        'SELECT "orders"."id", "orders"."we ird" FROM sales.orders'
     )
     assert minted.read_statement(ORDERS, []) == "SELECT * FROM sales.orders"
 
@@ -443,7 +443,7 @@ def test_a_call_hands_its_code_what_it_reads_with_and_the_token_ends_with_it(db,
     connection, after = _run(go())
     assert (connection["host"], connection["port"]) == ("127.0.0.1", 6543)
     assert connection["user"] == "call-9"
-    assert payload["orders"]["sql"] == 'SELECT "id" FROM sales.orders'
+    assert payload["orders"]["sql"] == 'SELECT "orders"."id" FROM sales.orders'
     assert after is None
 
 
@@ -503,7 +503,7 @@ def test_a_python_remote_host_is_given_the_flight_address_and_a_token_that_ends_
     assert given["call"] == "call-9"
     assert call is not None and call.role_id == "analyst" and call.tables == (ORDERS,)
     assert "connection" not in payload["orders"]  # no pgwire listener is needed or named
-    assert payload["orders"]["sql"] == 'SELECT "id" FROM sales.orders'
+    assert payload["orders"]["sql"] == 'SELECT "orders"."id" FROM sales.orders'
     assert after is None
 
 

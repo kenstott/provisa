@@ -80,6 +80,9 @@ def builds(monkeypatch):
         return _build
 
     monkeypatch.setattr(app_loaders, "schema_input_for", _schema_input)
+    # The role's tables, found once for every part (schema_gen.role_tables): each part's stand-in
+    # here takes them as ``found``.
+    monkeypatch.setattr(app_loaders, "role_tables", lambda si: f"tables-{si}")
     monkeypatch.setattr(app_loaders, "generate_schema", _part("schema"))
     monkeypatch.setattr(app_loaders, "build_context", _part("context"))
     monkeypatch.setattr(schema_gen, "build_table_path_map", _part("path_map"))

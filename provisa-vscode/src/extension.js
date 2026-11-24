@@ -11,7 +11,8 @@
 // REQ-2112: the Provisa extension for Node and Python code sources. This file wires VS Code to
 // the modules beside it, which hold everything the extension decides: check.js (what Provisa
 // would serve), markers.js (the forms marked inline), api.js and flows.js (dev mode and Build
-// image on a chosen instance). It edits no model and offers no query editor.
+// image on a chosen instance), services.js (the services shim forwarded into terminals and debug
+// sessions). It edits no model and offers no query editor.
 
 "use strict";
 
@@ -22,6 +23,7 @@ const { readWorkspace } = require("./check");
 const { markers, describe } = require("./markers");
 const { ProvisaClient } = require("./api");
 const { pointAtWorkspace, buildImage } = require("./flows");
+const { servicesEnv, forwardToTerminals, withServices } = require("./services");
 
 const INSTANCE_KEY = "provisa.instance";
 const SOURCE_KEY = "provisa.sourceId";
@@ -91,6 +93,9 @@ function activate(context) {
     after: { margin: "0 0 0 1em", color: new vscode.ThemeColor("editorCodeLens.foreground") },
   });
   let served = [];
+  /** The variables forwarded into terminals and debug sessions; null until the developer is
+   * signed in and has a dev-mode source (REQ-2106: with no address the shim's calls raise). */
+  let forwarded = null;
 
   const config = () => vscode.workspace.getConfiguration("provisa");
 
@@ -139,6 +144,23 @@ function activate(context) {
     return new ProvisaClient(instance, token, fetch);
   }
 
+  /** Forwards the services shim of the chosen instance's dev-mode source into new terminals and
+   * debug sessions, or forwards nothing while there is none. */
+  async function forwardServices() {
+    const instances = config().get("instances");
+    const instance = instances.find((i) => i.url === context.workspaceState.get(INSTANCE_KEY));
+    const sourceId = context.workspaceState.get(SOURCE_KEY);
+    const token = instance === undefined ? undefined : await context.secrets.get(tokenKey(instance.url));
+    const collection = context.environmentVariableCollection;
+    if (instance === undefined || !sourceId || !token) {
+      forwarded = null;
+      collection.clear();
+      return;
+    }
+    forwarded = servicesEnv(instance, sourceId, token);
+    forwardToTerminals(collection, forwarded, `Provisa's services for ${sourceId} on ${instance.url}`);
+  }
+
   async function chooseInstance() {
     const instances = config().get("instances");
     if (instances.length === 0) throw new Error("add an instance to the provisa.instances setting first");
@@ -148,6 +170,7 @@ function activate(context) {
     );
     if (picked === undefined) return undefined;
     await context.workspaceState.update(INSTANCE_KEY, picked.instance.url);
+    await forwardServices();
     return picked.instance;
   }
 
@@ -161,6 +184,7 @@ function activate(context) {
     });
     if (!token) return;
     await context.secrets.store(tokenKey(instance.url), token);
+    await forwardServices();
     vscode.window.showInformationMessage(`Signed in to ${instance.url}`);
   }
 
@@ -174,6 +198,7 @@ function activate(context) {
     if (!sourceId) return;
     const done = await pointAtWorkspace(api, sourceId, languageOf(folder), folder);
     await context.workspaceState.update(SOURCE_KEY, sourceId);
+    await forwardServices();
     vscode.window.showInformationMessage(
       done.created
         ? `${sourceId} reads ${folder} in dev mode on ${api.url}; each edit is read by the next query`
@@ -227,8 +252,13 @@ function activate(context) {
       vscode.window.visibleTextEditors.filter((ed) => ed.document === e.document).forEach(mark),
     ),
     vscode.workspace.onDidSaveTextDocument(() => refresh()),
+    vscode.debug.registerDebugConfigurationProvider("*", {
+      resolveDebugConfiguration: (_folder, debugConfig) =>
+        forwarded === null ? debugConfig : withServices(debugConfig, forwarded),
+    }),
   );
   refresh();
+  return forwardServices();
 }
 
 function deactivate() {}
