@@ -33,6 +33,9 @@ from provisa.otel_compat import stage as _stage
 log = logging.getLogger(__name__)
 _tracer = _get_tracer(__name__)
 
+# The suffix of an entry's encoded-response hash (REQ-1867, ENCODED RESPONSES).
+_ENCODED = ":enc"
+
 
 @dataclass(frozen=True)
 class CachedResult:  # REQ-544
@@ -41,6 +44,10 @@ class CachedResult:  # REQ-544
     data: bytes
     cached_at: float  # unix timestamp
     ttl: int  # seconds
+    # The key and tenant it was read under (``cache.middleware.check_cache`` sets them on every
+    # hit): what its encoded responses are kept beside (REQ-1867, ENCODED RESPONSES).
+    key: str | None = None
+    tenant_id: str | None = None
 
     @property
     def age_seconds(self) -> int:
@@ -68,6 +75,18 @@ class CacheStore(ABC):  # REQ-544
         table_ids: set[int] | None = None,
     ) -> None:
         """Store a result with TTL in seconds."""
+
+    @abstractmethod
+    async def get_encoded(self, key: str, field: str, tenant_id: str | None = None) -> bytes | None:
+        """The encoded response kept as ``field`` beside the entry at ``key``, or None
+        (REQ-1867, ENCODED RESPONSES)."""
+
+    @abstractmethod
+    async def set_encoded(self, entry: CachedResult, field: str, data: bytes) -> bool:
+        """Keep ``data`` as the encoded response ``field`` beside ``entry`` (a hit, which names its
+        key and tenant), only while that same entry is still held, and for no longer than it
+        lives. Returns whether it was kept. Writing an entry again, or dropping it, drops every
+        encoded response beside it (REQ-1867, ENCODED RESPONSES)."""
 
     @abstractmethod
     async def invalidate_by_pattern(self, pattern: str, tenant_id: str | None = None) -> int:
@@ -113,6 +132,12 @@ class NoopCacheStore(CacheStore):
     ) -> None:
         pass
 
+    async def get_encoded(self, key: str, field: str, tenant_id: str | None = None) -> bytes | None:  # pyright: ignore[reportUnusedParameter]
+        return None
+
+    async def set_encoded(self, entry: CachedResult, field: str, data: bytes) -> bool:  # pyright: ignore[reportUnusedParameter]
+        return False
+
     async def invalidate_by_pattern(self, pattern: str, tenant_id: str | None = None) -> int:  # pyright: ignore[reportUnusedParameter]
         return 0
 
@@ -130,6 +155,8 @@ class RedisCacheStore(CacheStore):  # REQ-230, REQ-231
     Multi-tenant key format: provisa:cache:<tenant_id>:<sha256_key>
     Table index: provisa:table:<table_id> → set of cache keys
     Each cached entry stores: data (bytes), cached_at (float), ttl (int).
+    Encoded responses (REQ-1867): a hash at <entry key>:enc, one field per surface and shape,
+    expiring with the entry and deleted wherever the entry is written or deleted.
 
     TLS: pass a ``rediss://`` URL — redis.asyncio handles TLS automatically.
     Set ``PROVISA_REQUIRE_REDIS_TLS=true`` to reject non-TLS URLs at startup.
@@ -216,6 +243,9 @@ class RedisCacheStore(CacheStore):  # REQ-230, REQ-231
                 ex = None if ttl == NEVER_EXPIRES else ttl
                 pipe.set(rkey, data, ex=ex)
                 pipe.set(rkey + ":meta", meta, ex=ex)
+                # REQ-1867: encoded responses are of the entry they were kept beside, never of
+                # the one written over it.
+                pipe.delete(rkey + _ENCODED)
                 if table_ids:
                     for tid in table_ids:
                         tkey = self._prefixed_table_key(tid, tenant_id)
@@ -227,6 +257,55 @@ class RedisCacheStore(CacheStore):  # REQ-230, REQ-231
                 await pipe.execute()
             except (RedisError, OSError):
                 log.warning("Redis set failed, query result not cached", exc_info=True)
+
+    async def get_encoded(  # REQ-1867
+        self, key: str, field: str, tenant_id: str | None = None
+    ) -> bytes | None:
+        with _stage(_tracer, "cache.get_encoded", name="cache") as span:
+            try:
+                await self._connect()
+                assert self._redis is not None
+                data = await self._redis.hget(self._prefixed_key(key, tenant_id) + _ENCODED, field)
+            except (RedisError, OSError):
+                log.warning("Redis get_encoded failed, treating as cache miss", exc_info=True)
+                data = None
+            span.set_attribute("cache.hit", data is not None)
+            return data
+
+    async def set_encoded(self, entry: CachedResult, field: str, data: bytes) -> bool:  # REQ-1867
+        if entry.key is None:
+            raise ValueError("set_encoded: the entry names no key (it was not read as a hit)")
+        import json
+
+        from provisa.core.redis_factory import watch_error
+
+        rkey = self._prefixed_key(entry.key, entry.tenant_id)
+        try:
+            await self._connect()
+            assert self._redis is not None
+            # A WATCH/MULTI transaction on the shared sync client, as every Redis command here
+            # runs (redis_factory.SharedRedis).
+            with self._redis.client().pipeline() as pipe:
+                # Kept only beside the entry it was encoded from: an entry dropped or written
+                # again since it was read (its meta gone or changed) keeps nothing.
+                pipe.watch(rkey + ":meta")
+                meta = pipe.get(rkey + ":meta")
+                if meta is None or json.loads(meta)["cached_at"] != entry.cached_at:
+                    pipe.unwatch()
+                    return False
+                pipe.multi()
+                pipe.hset(rkey + _ENCODED, field, data)
+                if entry.ttl == NEVER_EXPIRES:
+                    pipe.persist(rkey + _ENCODED)
+                else:
+                    pipe.pexpireat(rkey + _ENCODED, int((entry.cached_at + entry.ttl) * 1000))
+                pipe.execute()
+                return True
+        except watch_error():
+            return False  # the entry changed while this was written: nothing kept
+        except (RedisError, OSError, ValueError, KeyError):
+            log.warning("Redis set_encoded failed, encoded response not cached", exc_info=True)
+            return False
 
     async def invalidate_by_pattern(
         self, pattern: str, tenant_id: str | None = None
@@ -256,7 +335,7 @@ class RedisCacheStore(CacheStore):  # REQ-230, REQ-231
         index = [k async for k in self._redis.scan_iter(match=self.TABLE_PREFIX + scoped)]
         if entries or index:
             await self._redis.delete(*entries, *index)
-        return sum(1 for k in entries if not k.endswith(b":meta"))
+        return sum(1 for k in entries if not k.endswith((b":meta", _ENCODED.encode())))
 
     async def invalidate_by_table(
         self, table_id: int, tenant_id: str | None = None
@@ -275,6 +354,7 @@ class RedisCacheStore(CacheStore):  # REQ-230, REQ-231
             ck_str = ck.decode() if isinstance(ck, bytes) else ck
             pipe.delete(prefix + ck_str)
             pipe.delete(prefix + ck_str + ":meta")
+            pipe.delete(prefix + ck_str + _ENCODED)  # REQ-1867: dropped with their entry
         pipe.delete(tkey)
         await pipe.execute()
         return len(cache_keys)

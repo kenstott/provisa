@@ -303,6 +303,42 @@ async def _typed_rows(result) -> list[list]:  # REQ-1867, REQ-1961
     ]
 
 
+async def _json_answer(result, state) -> tuple[Any, Any, Any]:  # REQ-1867, REQ-1961
+    """A JSON answer's rows (each a dict of its columns, a registered column written as its
+    registered type), its columns and their types.
+
+    On a response-cache hit they are the bytes kept beside its entry (``orjson.Fragment`` each,
+    written as they are), or encoded once from the Arrow entry and kept (REQ-1867, ENCODED
+    RESPONSES); otherwise the values, encoded with the response."""
+    import orjson
+
+    from provisa.api.json_response import dumps
+    from provisa.cache import encoded
+    from provisa.core.statement_warnings import raised
+
+    entry = result.cache_entry
+    if entry is None:
+        return await _answer_values(result)
+    field = encoded.shape_field("sql_http", "json")
+    kept = await encoded.served(state, entry, field)
+    if kept is None:
+        raised_before = raised()
+        kept = encoded.Encoded(
+            tuple(dumps(v) for v in await _answer_values(result)),
+            {},
+            encoded.warnings_since(raised_before),
+        )
+        await encoded.keep(state, entry, field, kept)
+    rows, columns, types = (orjson.Fragment(p) for p in kept.parts)
+    return rows, columns, types
+
+
+async def _answer_values(result) -> tuple[list[dict], list[str], list[str] | None]:
+    # REQ-1961: a registered column is written as its registered type.
+    rows = [dict(zip(result.column_names, row)) for row in await _typed_rows(result)]
+    return rows, list(result.column_names), await _column_types(result)
+
+
 def _with_warnings(body: dict) -> dict:
     """``body`` with what the request's answer says about itself (REQ-1350) in
     ``extensions.warnings``, as the GraphQL endpoint does; unchanged when there is nothing."""
@@ -465,8 +501,10 @@ async def sql_endpoint(  # REQ-264, REQ-266, REQ-267
                 _with_warnings({"data": {"sql": None}, "redirect": result.redirect}),
                 headers=cache_headers,
             )
-        # REQ-1961: a registered column is written as its registered type.
-        rows_as_dicts = [dict(zip(result.column_names, row)) for row in await _typed_rows(result)]
+        # Read only by the JSON answers below.
+        rows_as_dicts = json_columns = json_types = None
+        if output_format == "json":
+            rows_as_dicts, json_columns, json_types = await _json_answer(result, state)
         if stats_enabled:
             # REQ-1517: the entries and the execution DAG are recorded by the pipeline terminal
             # (provisa.executor.plan_stats), which knows the real route, source and optimizations.
@@ -485,8 +523,8 @@ async def sql_endpoint(  # REQ-264, REQ-266, REQ-267
                     _with_warnings(
                         {
                             "data": {"sql": rows_as_dicts},
-                            "columns": list(result.column_names),
-                            "column_types": await _column_types(result),
+                            "columns": json_columns,
+                            "column_types": json_types,
                             "provisa_stats": qs.to_dict(),
                         }
                     ),
@@ -503,8 +541,8 @@ async def sql_endpoint(  # REQ-264, REQ-266, REQ-267
                 _with_warnings(
                     {
                         "data": {"sql": rows_as_dicts},
-                        "columns": list(result.column_names),
-                        "column_types": await _column_types(result),
+                        "columns": json_columns,
+                        "column_types": json_types,
                     }
                 ),
                 cache_headers,

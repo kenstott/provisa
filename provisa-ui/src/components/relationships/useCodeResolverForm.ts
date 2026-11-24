@@ -80,8 +80,8 @@ export function useCodeResolverForm(page: CodeResolverFormPage) {
       setSaveProblem(serverMessage(result, result.message));
       return;
     }
-    // The set's relationship from the source table opens: the one a reader follows.
-    detail.open(`${form.id}_matches`);
+    // The set's one relationship opens: its junction, named by the set's id (REQ-2249).
+    detail.open(form.id);
     setForm(EMPTY_FORM);
     setShowForm(false);
   }, [form, changing, saveCodeResolver, detail, setForm, setSaveProblem, setShowForm]);

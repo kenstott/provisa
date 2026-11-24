@@ -7098,6 +7098,7 @@
   "nl/serverErrors.json::serverErrors.cypher.nondeterministic_aggregate": "{{aggregate}} aggregates rand(), which changes on every call. Compute it in a WITH first and aggregate the result.",
   "nl/serverErrors.json::serverErrors.cypher.parameter_required": "{{reason}}",
   "nl/serverErrors.json::serverErrors.cypher.path_variable_reused": "{{variable}} names the path and a node or relationship in it: a variable names one thing. Give each its own variable.",
+  "nl/serverErrors.json::serverErrors.cypher.relationship_unread": "A relationship could not be read, so its edges are not shown: {{statement}}: {{reason}}",
   "nl/serverErrors.json::serverErrors.cypher.try_cast_needs_postgres_16": "toInteger, toFloat and toBoolean of a value that may not convert need PostgreSQL 16 or later on this engine.",
   "nl/serverErrors.json::serverErrors.cypher.type_mismatch": "In {{expression}}, {{value}} cannot be compared with {{property}}, which is of type {{property_type}}. {{fix}}",
   "nl/serverErrors.json::serverErrors.cypher.undefined_variable": "{{clause}} reads {{variable}}, which nothing in the statement binds: a variable is bound by a MATCH pattern, WITH, UNWIND or CALL. Bound here: {{bound}}.",
