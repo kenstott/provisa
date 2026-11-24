@@ -220,17 +220,18 @@ def test_each_part_of_a_role_surface_is_the_one_its_builder_makes(
 
 def test_the_roles_differ_so_the_comparison_covers_each_case() -> None:
     """The roles above are not one surface seven times: on the published meta catalog a role with
-    every domain, the governance columns too, meta's default tier alone (its tables on SQL alone)
-    and none are four surfaces, and the default tier is the role's SQL alone."""
+    every domain, the governance columns too (the catalog's GraphQL fields), meta's default tier
+    alone and none are four surfaces, and the default tier is read on SQL alone: in the role's
+    context, not its schema, path map or proto."""
     from provisa.compiler.schema_gen import role_tables
 
     state = _State(_model("meta-published"))
-    schemas = {print_schema(_warm_up_surface(state, _ROLES[i]).schema) for i in (0, 1, 2, 5)}
-    assert len(schemas) == 4
+    surfaces = [_as_the_warm_up_builds_it(state, _ROLES[i]) for i in (0, 1, 2, 5)]
+    assert len({tuple(sorted(s.items())) for s in surfaces}) == 4
+    assert len({s["schema"] for s in surfaces}) == 2  # the catalog's fields need view_governance
     with serving(state.runtime):
-        found = role_tables(
-            schema_input_for(state, _ROLES[2], state.role_build_inputs["tables"], [])
-        )
+        si = schema_input_for(state, _ROLES[2], state.role_build_inputs["tables"], [])
+        found = role_tables(si)
     assert found.sql_only and len(found.served()) < len(found.for_sql())
 
 
