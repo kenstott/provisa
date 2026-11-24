@@ -137,6 +137,16 @@ def count_unknown_warning(statement: str, reason: str) -> ServerWarning:
     )
 
 
+def relationship_unread_warning(statement: str, reason: str) -> ServerWarning:
+    """What an answer says when one relationship's read among several could not be made (the
+    browser's edge imputation): that relationship's edges are not in it, and why (REQ-392)."""
+    return ServerWarning(
+        code="cypher.relationship_unread",
+        params={"statement": statement, "reason": reason},
+        message=f"A relationship could not be read, so its edges are not shown: {statement}: {reason}",
+    )
+
+
 #: The surface's own governed write of one SQL statement: its columns, rows and the source's
 #: row count (None when the source reports none).
 SqlWrite = Callable[[str, list[Any]], Awaitable[tuple[list[str], list[list[Any]], int | None]]]

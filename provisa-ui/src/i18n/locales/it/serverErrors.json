@@ -691,7 +691,8 @@
       "undefined_variable_property": "{{clause}} legge {{variable}}, che nulla nell'istruzione vincola: una variabile è vincolata da un pattern MATCH, WITH, UNWIND o CALL. Vincolate qui: {{bound}}. Intendevi {{suggestion}}? {{owner}} è vincolata a :{{label}}, che ha una proprietà {{variable}}.",
       "undefined_variable_properties": "{{clause}} legge {{variable}}, che nulla nell'istruzione vincola: una variabile è vincolata da un pattern MATCH, WITH, UNWIND o CALL. Vincolate qui: {{bound}}. Intendevi {{suggestions}}? Ciascuna è vincolata a un'etichetta con una proprietà {{variable}}.",
       "non_finite_number": "La risposta contiene un numero che JSON non può rappresentare: {{column}} vale {{value}}.",
-      "try_cast_needs_postgres_16": "toInteger, toFloat e toBoolean di un valore che potrebbe non convertirsi richiedono PostgreSQL 16 o successivo su questo motore."
+      "try_cast_needs_postgres_16": "toInteger, toFloat e toBoolean di un valore che potrebbe non convertirsi richiedono PostgreSQL 16 o successivo su questo motore.",
+      "relationship_unread": "Non è stato possibile leggere una relazione, quindi i suoi archi non sono mostrati: {{statement}}: {{reason}}"
     },
     "requests": {
       "approver_outside_domains": "Il tuo diritto di approvare relazioni non raggiunge alcun dominio toccato da questa richiesta ({{domains}})",

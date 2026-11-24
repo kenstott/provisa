@@ -691,7 +691,8 @@
       "undefined_variable_property": "{{clause}} が読む {{variable}} は文中のどこでもバインドされていません: 変数は MATCH パターン、WITH、UNWIND、CALL でバインドされます。ここでバインドされている変数: {{bound}}。 {{suggestion}} のことですか? {{owner}} は :{{label}} にバインドされており、プロパティ {{variable}} があります。",
       "undefined_variable_properties": "{{clause}} が読む {{variable}} は文中のどこでもバインドされていません: 変数は MATCH パターン、WITH、UNWIND、CALL でバインドされます。ここでバインドされている変数: {{bound}}。 {{suggestions}} のことですか? いずれもプロパティ {{variable}} を持つラベルにバインドされています。",
       "non_finite_number": "回答に JSON で表せない数値が含まれています: {{column}} は {{value}} です。",
-      "try_cast_needs_postgres_16": "変換できない可能性のある値の toInteger、toFloat、toBoolean には、このエンジンで PostgreSQL 16 以降が必要です。"
+      "try_cast_needs_postgres_16": "変換できない可能性のある値の toInteger、toFloat、toBoolean には、このエンジンで PostgreSQL 16 以降が必要です。",
+      "relationship_unread": "リレーションシップを読み取れなかったため、そのエッジは表示されません: {{statement}}: {{reason}}"
     },
     "requests": {
       "approver_outside_domains": "リレーションシップを承認するあなたの権限は、このリクエストが関わるドメイン ({{domains}}) のいずれにも及びません",

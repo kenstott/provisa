@@ -691,7 +691,8 @@
       "undefined_variable_property": "{{clause}} קורא את {{variable}}, ששום דבר במשפט אינו קושר: משתנה נקשר בתבנית MATCH, ב-WITH, ב-UNWIND או ב-CALL. קשורים כאן: {{bound}}. האם התכוונתם ל-{{suggestion}}? {{owner}} קשור ל-:{{label}}, שיש לו מאפיין {{variable}}.",
       "undefined_variable_properties": "{{clause}} קורא את {{variable}}, ששום דבר במשפט אינו קושר: משתנה נקשר בתבנית MATCH, ב-WITH, ב-UNWIND או ב-CALL. קשורים כאן: {{bound}}. האם התכוונתם ל-{{suggestions}}? כל אחד מהם קשור לתווית שיש לה מאפיין {{variable}}.",
       "non_finite_number": "התשובה מכילה מספר ש-JSON אינו יכול לייצג: {{column}} הוא {{value}}.",
-      "try_cast_needs_postgres_16": "toInteger, toFloat ו-toBoolean של ערך שעשוי לא להיות ניתן להמרה דורשים PostgreSQL 16 ומעלה במנוע זה."
+      "try_cast_needs_postgres_16": "toInteger, toFloat ו-toBoolean של ערך שעשוי לא להיות ניתן להמרה דורשים PostgreSQL 16 ומעלה במנוע זה.",
+      "relationship_unread": "לא ניתן היה לקרוא קשר, ולכן הקשתות שלו אינן מוצגות: {{statement}}: {{reason}}"
     },
     "requests": {
       "approver_outside_domains": "הזכות שלכם לאשר קשרים אינה מגיעה לאף דומיין שהבקשה הזו נוגעת בו ({{domains}})",

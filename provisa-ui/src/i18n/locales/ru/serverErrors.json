@@ -691,7 +691,8 @@
       "undefined_variable_property": "{{clause}} читает {{variable}}, но ничто в запросе не связывает эту переменную: переменная связывается шаблоном MATCH, WITH, UNWIND или CALL. Связаны здесь: {{bound}}. Возможно, вы имели в виду {{suggestion}}? {{owner}} связана с :{{label}}, у которой есть свойство {{variable}}.",
       "undefined_variable_properties": "{{clause}} читает {{variable}}, но ничто в запросе не связывает эту переменную: переменная связывается шаблоном MATCH, WITH, UNWIND или CALL. Связаны здесь: {{bound}}. Возможно, вы имели в виду {{suggestions}}? Каждая связана с меткой, у которой есть свойство {{variable}}.",
       "non_finite_number": "Ответ содержит число, которое JSON не может передать: {{column}} равно {{value}}.",
-      "try_cast_needs_postgres_16": "toInteger, toFloat и toBoolean для значения, которое может не преобразоваться, требуют PostgreSQL 16 или новее на этом движке."
+      "try_cast_needs_postgres_16": "toInteger, toFloat и toBoolean для значения, которое может не преобразоваться, требуют PostgreSQL 16 или новее на этом движке.",
+      "relationship_unread": "Не удалось прочитать связь, поэтому её рёбра не показаны: {{statement}}: {{reason}}"
     },
     "requests": {
       "approver_outside_domains": "Ваше право одобрять связи не распространяется ни на один домен, которого касается этот запрос ({{domains}})",

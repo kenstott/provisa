@@ -691,7 +691,8 @@
       "undefined_variable_property": "{{clause}} {{variable}} को पढ़ता है, जिसे कथन में कुछ भी बाँधता नहीं: वेरिएबल MATCH पैटर्न, WITH, UNWIND या CALL से बँधता है। यहाँ बँधे: {{bound}}। क्या आपका मतलब {{suggestion}} था? {{owner}} :{{label}} से बँधा है, जिसकी एक प्रॉपर्टी {{variable}} है।",
       "undefined_variable_properties": "{{clause}} {{variable}} को पढ़ता है, जिसे कथन में कुछ भी बाँधता नहीं: वेरिएबल MATCH पैटर्न, WITH, UNWIND या CALL से बँधता है। यहाँ बँधे: {{bound}}। क्या आपका मतलब {{suggestions}} था? प्रत्येक ऐसे लेबल से बँधा है जिसकी एक प्रॉपर्टी {{variable}} है।",
       "non_finite_number": "उत्तर में ऐसी संख्या है जिसे JSON नहीं रख सकता: {{column}} का मान {{value}} है।",
-      "try_cast_needs_postgres_16": "ऐसे मान का toInteger, toFloat और toBoolean जो शायद रूपांतरित न हो, इस इंजन पर PostgreSQL 16 या बाद का संस्करण माँगता है।"
+      "try_cast_needs_postgres_16": "ऐसे मान का toInteger, toFloat और toBoolean जो शायद रूपांतरित न हो, इस इंजन पर PostgreSQL 16 या बाद का संस्करण माँगता है।",
+      "relationship_unread": "एक संबंध पढ़ा नहीं जा सका, इसलिए उसके किनारे नहीं दिखाए गए: {{statement}}: {{reason}}"
     },
     "requests": {
       "approver_outside_domains": "संबंध स्वीकृत करने का आपका अधिकार इस अनुरोध से जुड़े किसी डोमेन तक नहीं पहुँचता ({{domains}})",
