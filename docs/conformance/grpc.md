@@ -1,6 +1,10 @@
 # gRPC Conformance
 
-No public gRPC conformance suite runs in CI today.
+gRPC publishes interop tests for its own test service, not a conformance suite for another server's service, so the run checks scenarios taken from gRPC's server reflection, health checking and status code documents.
+
+**Suite:** gRPC server reflection, health checking and status code scenarios.
+
+**Pass rate:** written from the first run of conformance-grpc.yml.
 
 ## Deliberate differences
 
