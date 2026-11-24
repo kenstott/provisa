@@ -77,3 +77,28 @@ def test_another_languages_package_or_runtime_is_refused_by_name():
         config_of("zig", {"code": _code("gomod")})
     with pytest.raises(BundleRefused, match="the source's code needs version"):
         config_of("go", {"code": {"kind": "gomod", "package": "example.com/rows"}})
+
+
+def test_spark_has_an_adapter_loader_registered_and_is_adapter_fetch_only():
+    """REQ-2225: a spark source is a code source type; its replica is built by calling its function
+    through the code loader, not by the engine. Without a registered loader the engine path is
+    taken, which constructs an SQL reference DuckDB cannot resolve
+    (``"spark_native"."numbers"`` as a bare catalog identifier)."""
+    from types import SimpleNamespace
+
+    from provisa.events.app_wiring import build_adapter_loaders
+    from provisa.events.source_loader import _ADAPTER_FETCH_ONLY
+    from provisa.federation.engine import build_duckdb_engine
+
+    engine_ns = SimpleNamespace(engine=build_duckdb_engine())
+    loaders = build_adapter_loaders(SimpleNamespace(federation_engine=engine_ns), engine_ns)
+    # The loader must be registered, the same as python and node.
+    assert "spark" in loaders, (
+        "spark is a code source type; build_adapter_loaders must register a code loader for it "
+        "so its replica is never sent down the engine path"
+    )
+    # _ADAPTER_FETCH_ONLY is the safety net: if the loader is somehow absent at call time, the
+    # engine path must still be blocked.
+    assert "spark" in _ADAPTER_FETCH_ONLY, (
+        "spark must be in _ADAPTER_FETCH_ONLY so the engine path is refused even as a fallback"
+    )
