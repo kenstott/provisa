@@ -15,7 +15,8 @@ both servers. Three parts, each written as data -- a difference is a finding, ne
 
 1. Catalog shape. For every pg_catalog and information_schema relation real PostgreSQL has that
    Provisa serves, the columns Provisa's RowDescription gives for ``SELECT * FROM <rel> LIMIT 0``
-   against pg_attribute (name, order, type OID, typmod). For every overload of every pg_catalog
+   against pg_attribute (name, order, type OID, typmod), a domain column as its base type and
+   typmod, as PostgreSQL's own RowDescription describes it (printtup.c getBaseTypeAndTypmod). For every overload of every pg_catalog
    function, the call PostgreSQL requires (pgwire_function_probe.py) through Provisa: whether it
    is served, and its result type against what PostgreSQL returns for the same call. An overload
    PostgreSQL itself cannot call, and an index function not served, are skipped by design.
@@ -535,9 +536,11 @@ def _type_names(pg: Server) -> dict[int, str]:
 def _pg_relations(pg: Server) -> dict[str, list[dict]]:
     rels = pg.rows(
         "SELECT n.nspname::text, c.relname::text, a.attname::text, a.attnum::int, "
-        "a.atttypid::int8, a.atttypmod::int "
+        "information_schema._pg_truetypid(a.*, t.*)::int8, "
+        "information_schema._pg_truetypmod(a.*, t.*)::int "
         "FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace "
         "JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum > 0 AND NOT a.attisdropped "
+        "JOIN pg_type t ON t.oid = a.atttypid "
         f"WHERE n.nspname IN ('pg_catalog', 'information_schema') AND c.relkind IN {_REL_KINDS} "
         "ORDER BY 1, 2, 4"
     )
