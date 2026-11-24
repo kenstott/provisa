@@ -18,6 +18,7 @@ import { createHash } from "crypto";
 import path from "path";
 import { binaryStreams } from "./src/plugins/binaryStreams";
 import { graphqlLoader } from "./src/plugins/graphql-loader";
+import { installedPackageDir } from "./src/plugins/installedPackage";
 import {
   assertPatchedMonaco,
   backportCancelCatch,
@@ -54,16 +55,23 @@ function serveOfflineDocsSite(): Plugin {
 // files come from the swagger-ui-dist npm package: the build copies them into the output (so the
 // wheel's provisa/_ui carries them) and the dev server serves them from node_modules. A
 // pip-installed Provisa fetches only from PyPI, Maven Central and npm, never a CDN
-// (docs/arch/fetch-sources.md).
-const SWAGGER_UI_DIST = path.resolve(__dirname, "node_modules/swagger-ui-dist");
+// (docs/arch/fetch-sources.md). The package is located when the server or the build starts, so a
+// node_modules installed before it was added refuses to start, naming it, instead of answering
+// each /swagger-ui/ request with ENOENT.
 const SWAGGER_UI_FILES: Record<string, string> = {
   "swagger-ui-bundle.js": "text/javascript",
   "swagger-ui.css": "text/css",
 };
 function bundleSwaggerUi(): Plugin {
+  const swaggerUiDist = () =>
+    installedPackageDir(__dirname, "swagger-ui-dist", Object.keys(SWAGGER_UI_FILES));
+  // Set by configureServer (dev) and buildStart (build), each of which runs before any request or
+  // bundle reads it.
+  let dist: string;
   return {
     name: "bundle-swagger-ui",
     configureServer(server) {
+      dist = swaggerUiDist();
       server.middlewares.use((req, res, next) => {
         const name = req.url?.split("?")[0].replace(/^\/swagger-ui\//, "");
         if (!req.url?.startsWith("/swagger-ui/") || !name || !(name in SWAGGER_UI_FILES)) {
@@ -71,15 +79,18 @@ function bundleSwaggerUi(): Plugin {
           return;
         }
         res.setHeader("Content-Type", SWAGGER_UI_FILES[name]);
-        res.end(fs.readFileSync(path.join(SWAGGER_UI_DIST, name)));
+        res.end(fs.readFileSync(path.join(dist, name)));
       });
+    },
+    buildStart() {
+      dist = swaggerUiDist();
     },
     generateBundle() {
       for (const name of Object.keys(SWAGGER_UI_FILES)) {
         this.emitFile({
           type: "asset",
           fileName: `swagger-ui/${name}`,
-          source: fs.readFileSync(path.join(SWAGGER_UI_DIST, name)),
+          source: fs.readFileSync(path.join(dist, name)),
         });
       }
     },
@@ -295,9 +306,11 @@ export default defineConfig((config) => ({
   resolve: {
     alias: {
       "graphiql-explorer": GRAPHIQL_EXPLORER_FORK,
-      "@neo4j-cypher/codemirror/lib/cypher-state-definitions": path.resolve(
-        __dirname,
-        "node_modules/@neo4j-cypher/codemirror/lib/cypher-state-definitions.js",
+      "@neo4j-cypher/codemirror/lib/cypher-state-definitions": path.join(
+        installedPackageDir(__dirname, "@neo4j-cypher/codemirror", [
+          "lib/cypher-state-definitions.js",
+        ]),
+        "lib/cypher-state-definitions.js",
       ),
     },
   },
