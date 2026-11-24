@@ -127,6 +127,25 @@ _OFFSET_MINUTES_ADDED = {
     "snowflake": "REGEXP_REPLACE({a}, '([+-][0-9][0-9])$', '\\\\1:00')",
 }
 #: The seconds from ``{b}`` to ``{a}``, two timestamps, as a double.
+#: A date or timestamp on DuckDB as PostgreSQL stores it: days or microseconds from 2000-01-01, an
+#: infinity its sentinel (DATEVAL_NOEND/NOBEGIN, DT_NOEND/NOBEGIN). ``{v}``: the value.
+_DUCKDB_STORED = {
+    "date": (
+        "(CASE WHEN {v} = CAST('infinity' AS DATE) THEN 2147483647 "
+        "WHEN {v} = CAST('-infinity' AS DATE) THEN -2147483648 "
+        "ELSE date_diff('day', DATE '2000-01-01', {v}) END)"
+    ),
+    "timestamp": (
+        "(CASE WHEN {v} = CAST('infinity' AS TIMESTAMP) THEN 9223372036854775807 "
+        "WHEN {v} = CAST('-infinity' AS TIMESTAMP) THEN -9223372036854775808 "
+        "ELSE epoch_us({v}) - 946684800000000 END)"
+    ),
+    "timestamptz": (
+        "(CASE WHEN {v} = CAST('infinity' AS TIMESTAMPTZ) THEN 9223372036854775807 "
+        "WHEN {v} = CAST('-infinity' AS TIMESTAMPTZ) THEN -9223372036854775808 "
+        "ELSE epoch_us({v}) - 946684800000000 END)"
+    ),
+}
 _SECONDS_BETWEEN = {
     "duckdb": "(EPOCH({a}) - EPOCH({b}))",
     "trino": "(to_unixtime({a}) - to_unixtime({b}))",
@@ -859,16 +878,11 @@ class _Writer:
             return _string(pg_range.range_text(value.literal))
         if _is_true(value.null):
             return _text_cast(_null())
-        quote = _string('"' if value.rtype.element in ("timestamp", "timestamptz") else "")
-
-        def bound(side: _Side) -> exp.Expr:
-            return _case([(side.inf, _string(""))], _concat(quote, side.text, quote))
-
         body = _concat(
             _case([(value.lower.inc, _string("["))], _string("(")),
-            bound(value.lower),
+            self._bound_text(value.lower, value.rtype),
             _string(","),
-            bound(value.upper),
+            self._bound_text(value.upper, value.rtype),
             _case([(value.upper.inc, _string("]"))], _string(")")),
         )
         return _case([(value.null, _null()), (value.empty, _string("empty"))], body)
@@ -1196,8 +1210,17 @@ class _Writer:
         return _call("transform", items, function)
 
     def _bound_text(self, side: _Side, rtype: RangeType) -> exp.Expr:
+        """A bound as range_out writes it: a timestamp's quoted, as its text holds a space."""
         quote = _string('"' if rtype.element in ("timestamp", "timestamptz") else "")
-        return _case([(side.inf, _string(""))], _concat(quote, side.text, quote))
+        written = _concat(quote, side.text, quote)
+        if self.dialect == "duckdb" and rtype.element in ("timestamp", "timestamptz"):
+            # DuckDB holds a timestamp's infinities, whose text has no character range_out
+            # quotes: written bare, as PostgreSQL writes them (REQ-2236).
+            infinite = exp.In(
+                this=side.text.copy(), expressions=[_string("infinity"), _string("-infinity")]
+            )
+            written = _case([(infinite, side.text.copy())], written)
+        return _case([(side.inf, _string(""))], written)
 
     def _last_upper(self, state: exp.Expr, rtype: RangeType) -> tuple[_Side, exp.Expr]:
         """A multirange text's last upper bound, and the text up to it. A sort has put every
@@ -1945,6 +1968,15 @@ class _Rewrite:
             return _minus(exp.Cast(this=a, to=kind), exp.Cast(this=b, to=kind.copy()))
         rtype = RANGE_TYPES[name]
         first, second = w.element_value(a, rtype), w.element_value(b, rtype)
+        if self.dialect == "duckdb":
+            # DuckDB holds the infinities, which PostgreSQL subtracts as the sentinels it stores
+            # them as: its subdiff is (float8) v1 - (float8) v2 of the stored values (REQ-2236).
+            stored = _DUCKDB_STORED[element]
+            difference = "(CAST(" + stored.format(v="{a}") + " AS DOUBLE) - CAST("
+            difference += stored.format(v="{b}") + " AS DOUBLE))"
+            if element != "date":
+                difference += " / 1000000.0"
+            return w.raw(difference, a=first, b=second)
         if element == "date":
             days = exp.DateDiff(this=first, expression=second, unit=exp.Var(this="DAY"))
             return exp.Cast(this=days, to=exp.DataType.build("DOUBLE"))
