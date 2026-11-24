@@ -129,7 +129,7 @@ def test_athena_hands_the_executor_arrow_with_the_values_its_rows_had(result_fil
     cursors: list = []
 
     def cursor(cls, **kwargs):  # noqa: ANN001
-        assert cls is ArrowCursor
+        assert issubclass(cls, ArrowCursor)
         cursors.append(_Cursor(result_file, kwargs["converter"]))
         return cursors[-1]
 
@@ -168,15 +168,13 @@ def test_a_statement_with_no_result_set_reports_its_count():
     assert result.rows == [] and result.rowcount == 3
 
 
-def test_an_empty_listing_keeps_its_columns():
-    cur = SimpleNamespace(
-        execute=lambda s, b=None: None,
-        description=[("tab_name", "string", None, None, 0, 0, "UNKNOWN")],
-        as_arrow=lambda: pa.Table.from_pydict({}),
-        close=lambda: None,
-    )
-    result = asyncio.run(_driver(SimpleNamespace(cursor=lambda cls, **k: cur)).execute("SHOW"))
+def test_an_empty_listing_keeps_its_columns(tmp_path):
+    listing = [("tab_name", "string", None, None, 0, 0, "UNKNOWN")]
+    conn = _file_cursor(tmp_path, "q.txt", "", listing)
+    result = asyncio.run(_driver(conn).execute("SHOW TABLES"))
+    assert is_arrow(result)
     assert result.rows == [] and result.column_names == ["tab_name"]
+    assert result.table.schema.field("tab_name").type == pa.string()
 
 
 # -- the output location, checked when the source connects ------------------------------------
@@ -246,3 +244,103 @@ async def test_a_source_that_reads_its_output_location_connects(monkeypatch):
     probe = _Probe(state="SUCCEEDED", unreadable=False)
     d = await _connect(monkeypatch, _connection(probe))
     assert d.is_connected and probe.closed
+
+
+# -- a statement with no result set, and an empty result --------------------------------------
+
+
+def _file_result_set(root: Path, converter, name: str, text: str, description):  # noqa: ANN001
+    """The driver's Arrow result set reading ``root/results/<name>`` as the output location, with
+    ``description`` as Athena's result metadata and no AWS call."""
+    (root / "results").mkdir(exist_ok=True)
+    (root / "results" / name).write_text(text)
+
+    class _File(driver_mod._ArrowResultSet):
+        def __init__(self) -> None:
+            self._converter = converter
+            self._block_size = self.DEFAULT_BLOCK_SIZE
+            self._fs = fs.SubTreeFileSystem(str(root), fs.LocalFileSystem())
+
+        @property
+        def output_location(self) -> str | None:
+            return f"s3://results/{name}"
+
+        @property
+        def substatement_type(self) -> str | None:
+            return "DROP_TABLE" if not description else "SELECT"
+
+        @property
+        def description(self):  # noqa: ANN202
+            return description
+
+        def _get_content_length(self) -> int:
+            return len(text)
+
+    return _File()
+
+
+def _file_cursor(root: Path, name: str, text: str, description):  # noqa: ANN001
+    """A connection whose Arrow cursor's result is the file, read as the driver's cursor reads it."""
+
+    class _FileCursor(_Cursor):
+        def __init__(self, converter) -> None:  # noqa: ANN001
+            self._file = _file_result_set(root, converter, name, text, description)
+            self.description = description
+            self.rowcount = -1
+            self.query_id = "q"
+
+        def execute(self, statement, bind=None) -> None:  # noqa: ANN001
+            self.table = self._file._read_csv()
+
+        def as_arrow(self) -> pa.Table:
+            return self.table
+
+    def cursor(cls, **kwargs):  # noqa: ANN001
+        assert issubclass(cls, ArrowCursor)
+        return _FileCursor(kwargs["converter"])
+
+    return SimpleNamespace(cursor=cursor)
+
+
+def test_a_statement_with_no_result_set_reads_no_result_file(tmp_path):
+    # Athena writes an Iceberg DROP TABLE's result file as one empty line, with no column in its
+    # result metadata: Arrow's CSV reader cannot read it, and the statement has no result to read.
+    conn = _file_cursor(tmp_path, "q.txt", "\n", [])
+    result = asyncio.run(_driver(conn).execute("DROP TABLE IF EXISTS db.notes"))
+    assert not is_arrow(result)
+    assert result.rows == [] and result.column_names == []
+
+
+_EMPTY_DESCRIPTION = [
+    ("id", "bigint", None, None, 19, 0, "UNKNOWN"),
+    ("name", "varchar", None, None, 0, 0, "UNKNOWN"),
+    ("price", "decimal", None, None, 10, 2, "UNKNOWN"),
+    ("raw", "varbinary", None, None, 0, 0, "UNKNOWN"),
+    ("zoned", "timestamp with time zone", None, None, 3, 0, "UNKNOWN"),
+]
+
+_EMPTY_TYPES = [
+    pa.int64(),
+    pa.string(),
+    pa.decimal128(10, 2),
+    pa.binary(),
+    pa.timestamp("us", tz="UTC"),
+]
+
+
+@pytest.mark.parametrize(
+    "name, text",
+    [
+        ("q.csv", '"id","name","price","raw","zoned"\n'),  # a SELECT of no row: its header
+        ("q.csv", ""),  # an empty result file
+        ("q.txt", ""),  # a listing with no entry
+    ],
+)
+def test_an_empty_result_is_an_empty_arrow_table_of_its_typed_columns(tmp_path, name, text):
+    conn = _file_cursor(tmp_path, name, text, _EMPTY_DESCRIPTION)
+    result = asyncio.run(_driver(conn).execute("SELECT id, name FROM t WHERE false"))
+    assert is_arrow(result)
+    assert result.table.num_rows == 0
+    assert result.table.schema.names == [d[0] for d in _EMPTY_DESCRIPTION]
+    assert result.table.schema.types == _EMPTY_TYPES
+    assert result.rows == []
