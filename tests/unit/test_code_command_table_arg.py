@@ -253,7 +253,7 @@ async def test_a_call_gives_the_function_the_table_reference_and_its_declared_co
         "kind": "table_ref",
         "ref": "main.public.orders",
         "columns": ["id", "region"],
-        "sql": 'SELECT "id", "region" FROM main.public.orders',
+        "sql": 'SELECT "orders"."id", "orders"."region" FROM main.public.orders',
     }
     assert schema is not None
 

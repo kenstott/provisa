@@ -274,3 +274,52 @@ async def test_a_reader_who_may_read_every_column_the_command_reads_reads_the_vi
     ]
     governed = await _govern(monkeypatch, _READ_BRIDGE, state)
     assert "order_clips" in governed
+
+
+# --- the view's lineage over its lowered SQL -------------------------------------------------
+#
+# A registered view's build SQL is its definition lowered to the engine's (app_rebuild,
+# compile_view_sql_to_physical), which prints a function call upper-cased. Its lineage is read
+# from that SQL: the call is still the command's, so a landing of its argument table reaches it.
+
+
+def _lowered_view() -> MVDefinition:
+    from provisa.api.app_rebuild import compile_view_sql_to_physical
+    from provisa.compiler.sql_gen import CompilationContext
+
+    view = _view()
+    view.sql = compile_view_sql_to_physical(_SQL, CompilationContext())
+    assert "CLIPS_ON_THE_CLUSTER" in view.sql, view.sql  # the case the lowering prints
+    return view
+
+
+def test_the_event_graph_reads_the_argument_table_from_the_lowered_sql():
+    registry = MVRegistry()
+    view = _lowered_view()
+    registry.register(view)
+    graph = lineage_graph([view], _state(registry))
+    assert graph == {view_node(view): {source_node("ledger_pg", "public", "clips")}}
+
+
+def test_a_landing_of_the_argument_table_is_told_to_the_view():
+    from provisa.events import supervisor
+
+    registry = MVRegistry()
+    view = _lowered_view()
+    registry.register(view)
+    dependents = supervisor.dependents_of(lineage_graph([view], _state(registry)))
+    assert dependents(source_node("ledger_pg", "public", "clips")) == [view_node(view)]
+
+
+def test_the_views_input_is_read_from_the_lowered_sql():
+    assert read_tables(_lowered_view(), _state()) == [TableIdentity("ledger_pg", "public", "clips")]
+
+
+def test_a_change_function_finds_the_call_in_the_lowered_sql():
+    from provisa.mv.change_refresh import code_call
+
+    found = code_call(_lowered_view().sql, _commands())
+    assert found is not None
+    command, tables = found
+    assert command["name"] == "clips_on_the_cluster"
+    assert tables == ("ledger.clips",)

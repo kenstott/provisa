@@ -449,8 +449,12 @@ def _command_table_reads(tbl: exp.Table, command: dict) -> list[tuple[exp.Table,
 
 def table_read(table: exp.Table, columns: list[str]) -> exp.Select:
     """The statement a code call's table argument is read with (REQ-2226): its declared
-    ``columns``, or every column the role sees."""
-    projection = [exp.column(c, quoted=True) for c in columns] if columns else [exp.Star()]
+    ``columns``, or every column the role sees. Each column is qualified by its table, so a
+    refusal of one names the table it was read from -- to the call's code, and to a reader of a
+    view over the call, who never named the column (:func:`view_command_reads`)."""
+    projection = (
+        [exp.column(c, table=table.name, quoted=True) for c in columns] if columns else [exp.Star()]
+    )
     return exp.select(*projection).from_(table.copy())
 
 
