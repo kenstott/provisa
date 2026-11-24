@@ -247,7 +247,8 @@ def _data_quality_value(snapshot: MetadataSnapshot, asset_fqn: str) -> str | Non
                 "severity": assertion.severity,
                 "resultsTable": assertion.results_table.fqn(),
                 # REQ-1443: the most recent scan's verdict, carried in the same Provisa-authored
-                # attribute rather than written into a steward-curated rulebook.
+                # attribute rather than written into a steward-curated rulebook. REQ-392: an
+                # unreadable results table publishes there too, with the refusal as ``reason``.
                 "outcome": assertion.outcome.as_document(),
             }
             for assertion in assertions

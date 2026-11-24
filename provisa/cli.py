@@ -80,6 +80,25 @@ def _apply_demo_config() -> Path:
     return cfg
 
 
+def _config_names_engine() -> bool:
+    """Whether the config file this process loads names a federation engine (REQ-2269).
+
+    No ``PROVISA_CONFIG``, or a path with no file yet (the fileless first run the setup wizard
+    writes, REQ-164), is a config that names nothing: both are designed launch states, not errors.
+    A file that exists is parsed strictly, so a broken config fails here rather than being read as
+    silent.
+    """
+    import yaml
+
+    value = os.environ.get("PROVISA_CONFIG")
+    if not value:
+        return False
+    path = Path(value).expanduser()
+    if not path.exists():
+        return False
+    return bool((yaml.safe_load(path.read_text()) or {}).get("federation_engine"))
+
+
 def _apply_embedded_env(data_dir: Path) -> list[str]:
     """Resolve and apply the embedded ("native") launch environment (REQ-1126, REQ-1129).
 
@@ -88,11 +107,17 @@ def _apply_embedded_env(data_dir: Path) -> list[str]:
     DuckDB engine, embedded PostgreSQL control plane (REQ-1535), fakeredis cache. Existing process env wins
     (setdefault) so a customer-provided external engine (TRINO_HOST/PORT, PROVISA_ENGINE_URL)
     layered on before launch is preserved.
+
+    The profile's engine is a default (REQ-2269): it is applied only when neither the environment
+    nor the config file names an engine, so a config's ``federation_engine`` wins over it.
     """
     from provisa.core.desktop_profile import load_profile
 
     profile = load_profile("native", data_dir=data_dir)
+    config_engine = _config_names_engine()
     for key, value in profile.env.items():
+        if key == "PROVISA_ENGINE" and config_engine:
+            continue
         os.environ.setdefault(key, value)
     notes = list(profile.notes)
 

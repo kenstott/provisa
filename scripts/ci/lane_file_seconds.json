@@ -225,7 +225,7 @@
   "tests/integration/test_file_glob_new_adapter_e2e.py": 82.8,
   "tests/integration/test_file_glob_registered_later_e2e.py": 90.0,
   "tests/integration/test_file_glob_ui_source_demo_e2e.py": 240.0,
-  "tests/integration/test_file_glob_ui_source_e2e.py": 120.0,
+  "tests/integration/test_file_glob_ui_source_e2e.py": 360.0,
   "tests/integration/test_files_demo.py": 55.3,
   "tests/integration/test_files_pgwire_replica.py": 20.4,
   "tests/integration/test_files_source_glob_listing.py": 56.8,
@@ -561,8 +561,7 @@
   "tests/integration/test_sonnets_demo.py": 0.0,
   "tests/integration/test_source_delete_guarded.py": 46.9,
   "tests/integration/test_source_password_vault.py": 0.0,
-  "tests/integration/test_spark_connector_e2e.py": 34.2,
-  "tests/integration/test_spark_default_cluster_e2e.py": 40.0,
+  "tests/integration/test_spark_connector_e2e.py": 160.0,
   "tests/integration/test_spark_reads_e2e.py": 120.0,
   "tests/integration/test_sparql_config_persist.py": 0.0,
   "tests/integration/test_sparql_endpoint.py": 0.0,
@@ -773,6 +772,7 @@
   "tests/integration/test_remote_schema_refresh_e2e.py": 240.0,
   "tests/integration/test_approval_hook_grpc_e2e.py": 45.0,
   "tests/integration/test_neo4j_query_preview_e2e.py": 45.0,
-  "tests/integration/test_sqlalchemy_dialect_scope_e2e.py": 40.0
+  "tests/integration/test_sqlalchemy_dialect_scope_e2e.py": 40.0,
+  "tests/integration/test_spark_default_cluster_e2e.py": 40.0
  }
 }

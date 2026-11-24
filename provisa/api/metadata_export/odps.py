@@ -308,6 +308,13 @@ def _expectations(
             "severity": assertion.severity,
             **({"column": assertion.asset.parts[3]} if len(assertion.asset.parts) > 3 else {}),
             "outcome": assertion.outcome.status,
+            # REQ-392: ODPS has no run-result field; an unreadable check's refusal rides beside
+            # its outcome, the closest the expectation entry has.
+            **(
+                {"outcomeReason": assertion.outcome.reason}
+                if assertion.outcome.reason is not None
+                else {}
+            ),
         }
         for assertion in snapshot.assertions
         if product.id in assertion.owner_product_ids

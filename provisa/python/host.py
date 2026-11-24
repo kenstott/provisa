@@ -197,11 +197,14 @@ def _with_table_refs(fn: typing.Callable, args: list, keywords: dict) -> tuple[l
     def made(name: str, value: typing.Any) -> typing.Any:
         if name not in tables:
             return value
+        # REQ-2270: given over pgwire or over Arrow Flight SQL, never both (table_reads).
+        connection, over_flight = value.get("connection"), value.get("flight")
         return services.TableRef(
             value["ref"],
             tuple(value["columns"]),
-            services.TableConnection(**value["connection"]),
+            None if connection is None else services.TableConnection(**connection),
             value["sql"],
+            None if over_flight is None else services.TableFlight(**over_flight),
         )
 
     names = list(inspect.signature(fn).parameters)

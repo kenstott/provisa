@@ -13,6 +13,18 @@
 The host runs one annotated Spark script given when the connector is set up: its @table and
 @command functions are the source's. This package is what that script imports. :func:`session`
 is a SparkSession against the cluster named at setup; the script never names the cluster itself.
+
+A command given a governed table (REQ-2226) reads it with :func:`dataframe`: over Arrow Flight SQL
+as the calling role (REQ-2270), so the rows and columns that reach the cluster are the ones Provisa
+lets that role read.
+
+    from provisa_services import TableRef
+    from provisa_spark import dataframe
+
+    def regional_totals(orders: TableRef[Order]) -> list[Total]:
+        '''@query'''
+        frame = dataframe(orders).groupBy("region").sum("amount")
+        return [Total(region=r[0], amount=r[1]) for r in frame.collect()]
 """
 
 from __future__ import annotations
@@ -21,7 +33,7 @@ from typing import Any
 
 import provisa_services
 
-__all__ = ["declared", "session"]
+__all__ = ["dataframe", "declared", "session"]
 
 
 def session() -> Any:  # a pyspark.sql.SparkSession
@@ -29,6 +41,13 @@ def session() -> Any:  # a pyspark.sql.SparkSession
     from pyspark.sql import SparkSession
 
     return SparkSession.builder.remote(provisa_services.setup_value("cluster")).getOrCreate()
+
+
+def dataframe(table: Any) -> Any:  # a provisa_services.TableRef -> a pyspark.sql.DataFrame
+    """REQ-2270: a governed table argument as a DataFrame on the cluster. Its rows are read over
+    Arrow Flight SQL as the calling role, through Provisa's governed pipeline, and handed to the
+    cluster as Arrow."""
+    return session().createDataFrame(table.read())
 
 
 def declared(values: dict) -> None:
