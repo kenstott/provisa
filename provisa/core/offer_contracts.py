@@ -63,6 +63,15 @@ class SeenColumn:
     mask: str | None = None
 
 
+def fields(columns: Iterable[SeenColumn]) -> list[OfferField]:
+    """The fields of ``columns``: the ones read, each with its mask's kind."""
+    return [
+        OfferField(name=c.name, type=c.type, description=c.description, masked=c.mask)
+        for c in columns
+        if c.read
+    ]
+
+
 def terms(
     offer: DataProductOffer,
     columns: Iterable[SeenColumn],
@@ -77,11 +86,7 @@ def terms(
     views over it (a sample offer's); ``checks``: the product's promises on it; ``profiles``: its
     profile tables, given only where the offer includes them."""
     return OfferTerms(
-        fields=[
-            OfferField(name=c.name, type=c.type, description=c.description, masked=c.mask)
-            for c in columns
-            if c.read
-        ],
+        fields=fields(columns),
         row_rules=sorted(set(row_rules)),
         data_level=offer.data_level,
         sample_views=sorted(set(sample_views)) if offer.data_level == "sample" else [],

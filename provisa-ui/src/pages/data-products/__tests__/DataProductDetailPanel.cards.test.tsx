@@ -75,6 +75,7 @@ const offer = (id: number, name: string, tables: number[], over: Partial<Offer> 
     contracts: tables.map((table_id) => ({
       table_id,
       table: `t${table_id}`,
+      preview: [],
       contract: {
         version: "1.0.0",
         created_at: TWO_HOURS_AGO,
@@ -95,6 +96,7 @@ const offer = (id: number, name: string, tables: number[], over: Partial<Offer> 
     })),
     summary: { extension: null },
     query_now: false,
+    preview_role: "viewer",
     ...over,
   }) as Offer;
 
