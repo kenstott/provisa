@@ -22,7 +22,7 @@ from provisa.federation.engine import build_engine
 from provisa.transpiler.transpile import transpile
 
 _LIT = r"'\xdeadbeef'::bytea"
-_RAW = r"CAST(CAST('\xdeadbeef' AS BYTEA) AS raw)"
+_RAW = r"HEXTORAW(ENCODE(CAST('\xdeadbeef' AS BYTEA), 'hex'))"
 
 # Each bytea LIKE form, and the openGauss function it is written as.
 _FORMS = [
@@ -49,6 +49,7 @@ def test_bytea_like_unchanged_off_opengauss(statement: str, kind: str | None) ->
     written = transpile(statement, "postgres", engine_kind=kind)
     assert written == transpile(statement, "postgres")
     assert "raw" not in written.lower()
+    assert "encode" not in written.lower()
 
 
 def test_bytea_like_in_a_predicate_on_opengauss() -> None:
@@ -58,8 +59,8 @@ def test_bytea_like_in_a_predicate_on_opengauss() -> None:
         engine_kind="opengauss",
     )
     assert written == (
-        "SELECT id FROM t WHERE RAWLIKE(CAST(CAST(b AS BYTEA) AS raw), "
-        "CAST(CAST('\\x25' AS BYTEA) AS raw))"
+        "SELECT id FROM t WHERE RAWLIKE(HEXTORAW(ENCODE(CAST(b AS BYTEA), 'hex')), "
+        "HEXTORAW(ENCODE(CAST('\\x25' AS BYTEA), 'hex')))"
     )
 
 
