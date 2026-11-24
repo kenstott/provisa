@@ -51,7 +51,11 @@ _FULL_SUITES = {
     "conformance-flight-sql.yml",
     "conformance-functions.yml",
     "conformance-graphql.yml",
+    "conformance-grpc.yml",
+    "conformance-jsonapi.yml",
+    "conformance-mcp.yml",
     "conformance-pgwire.yml",
+    "conformance-rest.yml",
     "conformance-sparql.yml",
 }
 
@@ -621,6 +625,9 @@ def test_main_runs_the_fast_checks_and_publishes_the_demos_and_the_site():
         "devcontainer-smoke.yml",
         "demo-bundles.yml",
         "docs.yml",
+        # Primes the zaychik image in main's cache scope, only when zaychik/ or its action changes:
+        # a branch's integration run reads main's entry and builds nothing.
+        "zaychik-image.yml",
     }
 
 

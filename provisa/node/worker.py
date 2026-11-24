@@ -97,6 +97,7 @@ def host_command(
             env=env,
             cwd=bundle,
             egress=egress,
+            table_reads="pgwire",  # REQ-2226: TypeScript has no Flight client
         )
     if runtime == "deno":
         from provisa.codesource.sandbox import _minted_ports, egress_proxy
@@ -129,7 +130,7 @@ def host_command(
             ]
             # The socket is a net address to Deno; the proxy, the services host and the
             # allow-list's hosts are the only others.
-            minted = [f"127.0.0.1:{port}" for port in _minted_ports()]  # REQ-2226
+            minted = [f"127.0.0.1:{port}" for port in _minted_ports("pgwire")]  # REQ-2226
             reach = [f"unix:{socket}", f"127.0.0.1:{proxy.port}", SERVICES_HOST, *minted, *egress]
             argv.append(f"--allow-net={','.join(reach)}")
             return [*argv, str(HOST), str(socket), str(entry)]

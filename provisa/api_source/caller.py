@@ -695,6 +695,12 @@ async def call_api(  # REQ-295, REQ-297, REQ-298, REQ-316
                 f"total_timeout={total_timeout}s (source={endpoint.source_id!r})"
             ) from exc
     call = prepare_call(endpoint, resolved_params, base_url, auth, source_headers)
+    if endpoint.response_normalizer in ("sparql_bindings", "owl_inferred"):
+        # REQ-2138: a sparql source reads its endpoint as the credential it declares; one
+        # reading Provisa's own endpoint with none is refused by name, never sent as no one.
+        from provisa.sparql.source import require_credential
+
+        require_credential(endpoint.source_id, call.url, auth)
     if endpoint.response_normalizer == "owl_inferred":
         # REQ-2138: an inferred table of a sparql source's reasoner. Its rows are the source's
         # classification (provisa/sparql/reasoning), reasoned in the reasoner's own process

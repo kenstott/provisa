@@ -407,8 +407,8 @@ def _report() -> dict:
 def test_markdown_gives_each_tool_its_counts_and_failures(monkeypatch):
     monkeypatch.setattr(by_design, "groups", lambda surface: [])
     text = replay.markdown(_report())
-    assert "| psql | 17.11 | 2026-11-04 | Automated | 2 | 1 | 0 | 1 | 0 |" in text
-    assert "| DBeaver | — | — | not captured | 0 | 0 | 0 | 0 | not tested |" in text
+    assert "| psql | 17.11 | 2026-11-04 | Automated | 2 | 1 | 0 | 0 | 1 | 0 |" in text
+    assert "| DBeaver | — | — | not captured | 0 | 0 | 0 | 0 | 0 | not tested |" in text
     assert "<summary>psql: failed (1)</summary>" in text
     assert "| `#2 SELECT a\\|b` | x |" in text
 
@@ -491,7 +491,7 @@ def test_docs_command_writes_the_results_into_the_page(monkeypatch, tmp_path):
     assert replay.main(["docs", str(report), "--page", str(page)]) == 0
     text = page.read_text()
     assert "old" not in text and text.startswith("intro\n") and text.endswith("rest\n")
-    assert "| psql | 17.11 | 2026-11-04 | Automated | 2 | 1 | 0 | 1 | 0 |" in text
+    assert "| psql | 17.11 | 2026-11-04 | Automated | 2 | 1 | 0 | 0 | 1 | 0 |" in text
 
 
 def test_the_pgwire_page_publishes_each_tools_results_from_a_run():

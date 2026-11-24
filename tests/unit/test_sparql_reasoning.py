@@ -81,8 +81,11 @@ def _endpoint(query: str, columns: list[str]):
 
 @pytest.fixture(autouse=True)
 def _no_classifications():
+    """No classification kept between tests, and a source whose tables produce nothing its
+    axioms read (``own_products`` reads the control plane; the self-read tests give their own)."""
     reasoning._classified.clear()
-    yield
+    with patch("provisa.sparql.reasoning.own_products", new=AsyncMock(return_value={})):
+        yield
     reasoning._classified.clear()
 
 
@@ -325,3 +328,55 @@ async def test_the_program_is_run_as_jdk4pys_java_in_its_own_process(tmp_path):
         assert await reasoning.run_program("signature", "a.ttl") == "class x\n"
     args = spawn.await_args.args
     assert args[0] == str(jdk4py.JAVA) and args[-3:] == (MAIN_CLASS, "signature", "a.ttl")
+
+
+# -- REQ-2138: a source that would read what its own inferred tables produce is refused ---------
+
+BASE = "https://provisa.test"
+OWN_CONTROLLER = f"{BASE}/vocab/kyc/controls#controller"
+OWN_CLASS = f"{BASE}/vocab/kyc/controls"
+TERM_CONTROLS = f"{BASE}/vocab/term/controls"
+
+
+def test_what_a_sources_tables_produce_is_their_class_and_predicates_on_provisas_endpoint():
+    """Its tables' classes, their columns' predicates (a column's alias names it), and the term
+    of a grounded table or column in place of the column's own -- as Provisa's endpoint serves
+    them (provisa.sparql_query.vocabulary)."""
+    tables = [
+        reasoning.OwnTable(
+            7, "kyc", "controls", (("controller", "controller"), ("b", "controlled"))
+        ),
+    ]
+    produced = reasoning.produced_iris(BASE, tables, {7: "Control"}, {(7, "b"): ["controls"]})
+    assert produced == {
+        OWN_CLASS: "controls",
+        f"{BASE}/vocab/term/Control": "controls",
+        OWN_CONTROLLER: "controls",
+        TERM_CONTROLS: "controls",
+    }
+
+
+def test_a_slice_that_reads_a_predicate_of_the_sources_own_table_is_refused_by_name():
+    signature = reasoning.parse_signature(f"class {EXPOSED}\nobject {OWN_CONTROLLER}\n")
+    with pytest.raises(reasoning.SelfReadRefused) as refused:
+        reasoning.refuse_self_read("kyc", signature, {OWN_CONTROLLER: "controls"})
+    said = str(refused.value)
+    assert "'kyc'" in said and f"<{OWN_CONTROLLER}>" in said and "'controls'" in said
+    assert "reads itself" in said
+    reasoning.refuse_self_read("kyc", signature, {OWN_CLASS: "controls"})  # not read: no refusal
+
+
+@pytest.mark.asyncio
+async def test_a_source_reading_its_own_tables_output_is_refused_before_its_slice_is_read():
+    signature = f"class {EXPOSED}\nobject {TERM_CONTROLS}\n"
+
+    async def program(command: str, *args: str) -> str:
+        return signature
+
+    fetch = AsyncMock(return_value=b"")
+    own = AsyncMock(return_value={TERM_CONTROLS: "controls"})
+    with patch("provisa.sparql.reasoning.own_products", new=own):
+        with pytest.raises(reasoning.SelfReadRefused, match="controls"):
+            await reasoning.classification("kyc", AXIOMS, "u", {}, 0, run=program, fetch=fetch)
+    own.assert_awaited_once_with("kyc")
+    fetch.assert_not_awaited()

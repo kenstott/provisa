@@ -115,6 +115,11 @@ const pgwirePorts = (worker: number) =>
     { length: PGWIRE_PORTS_PER_WORKER },
     (_, i) => PGWIRE_PORTS_BASE + worker * PGWIRE_PORTS_PER_WORKER + i,
   ).join(",");
+// REQ-2226: each backend's own block for the Flight listeners its local code calls read their tables
+// over (a listener per call), above every worker's pgwire block.
+const MINTED_FLIGHT_BASE = Number(process.env.PROVISA_E2E_MINTED_FLIGHT_BASE ?? 27600);
+const MINTED_FLIGHT_PER_WORKER = 8;
+const mintedFlightPort = (worker: number) => MINTED_FLIGHT_BASE + worker * MINTED_FLIGHT_PER_WORKER;
 // Trino-backed E2E backend — a second isolated backend instance for sharepoint/splunk
 // tests that require Trino catalog creation (TrinoBackend.register_source creates the
 // catalog; NativeBackend.register_source is a no-op so the schema dropdown never
@@ -613,6 +618,9 @@ export default defineConfig({
             // REQ-2226: the minted-token listener a code command's tables are read over, the last
             // port of the backend's own block (code-resolver-incremental.spec.ts builds a set).
             PROVISA_MINTED_PGWIRE_PORT: String(b.port + 9),
+            // REQ-2226: a Python code source reads its tables over a Flight listener minted per call.
+            PROVISA_MINTED_FLIGHT_PORT: String(mintedFlightPort(b.worker)),
+            PROVISA_MINTED_FLIGHT_PORTS: String(MINTED_FLIGHT_PER_WORKER),
             PROVISA_DATA_DIR: b.dataDir,
             // Its own trace folder, not ~/.provisa/telemetry (local-dev's): every backend compacts
             // its folder each minute, and four sharing one compacted each other's files.

@@ -35,6 +35,7 @@ from pathlib import Path
 import pytest
 import yaml
 
+from tests import duckdb_ext_wheels
 from tests.pyodide_downloads import build_context_args
 
 pytestmark = [pytest.mark.integration]
@@ -60,6 +61,8 @@ def image() -> str:
         "Dockerfile.dev",
         # Pyodide from the directory already downloaded into, not from its CDN mid-build.
         *build_context_args(),
+        # This commit's provisa-duckdb-ext wheels, which the Pages index does not hold.
+        *duckdb_ext_wheels.build_context_args(),
         "-t",
         _IMAGE,
         str(_REPO),

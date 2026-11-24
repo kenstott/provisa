@@ -136,7 +136,7 @@ class PortLease:
             return True
         return False
 
-    def _next(self) -> int:
+    def _forked(self) -> None:
         if os.getpid() != self._pid:
             # A forked child shares the parent's lock (same open file description) and would
             # hand out the parent's ports. Closing the inherited descriptors leaves the parent's
@@ -144,6 +144,9 @@ class PortLease:
             for fd in self._fds:
                 os.close(fd)
             self._reset()
+
+    def _next(self) -> int:
+        self._forked()
         # Each port is issued once before any is issued again: a caller often leases several
         # transient ports before it binds the first (a server's HTTP, Flight and Airport ports),
         # and a port issued but not yet bound passes the bind probe — so a cursor that wrapped
@@ -183,6 +186,22 @@ class PortLease:
                 ports.append(port)
             return ports
 
+    def run(self, n: int) -> int:
+        """The first of ``n`` consecutive ports, none issued again by this process: a fresh block
+        of its own, for a server that opens listeners on a range as it needs them (REQ-2226)."""
+        if not 0 < n <= self._block_size:
+            raise ValueError(f"a run is 1 to {self._block_size} ports, not {n}")
+        with self._mutex:
+            self._forked()
+            if not self._lease_block():
+                raise RuntimeError(
+                    f"every test port block in {self._first}-{self._last} is leased by a live "
+                    f"process (see {self._lock_dir})"
+                )
+            first = self._ports[self._cursor]
+            self._pinned.update(range(first, first + n))
+            return first
+
     def transient(self) -> int:
         """One port for a server the caller binds right away; reissued once it is free again."""
         with self._mutex:
@@ -194,6 +213,11 @@ _lease = PortLease(LEASE_FIRST, LEASE_LAST, BLOCK_SIZE, _LOCK_DIR)
 
 def lease_ports(n: int) -> list[int]:
     return _lease.pinned(n)
+
+
+def lease_run(n: int) -> int:
+    """The first of ``n`` consecutive leased ports (:meth:`PortLease.run`)."""
+    return _lease.run(n)
 
 
 def lease_port() -> int:

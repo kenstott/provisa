@@ -8,8 +8,8 @@ name: Build DuckDB Extensions
 # the core extensions (postgres_scanner, httpfs, sqlite_scanner, iceberg, azure, delta, avro) come from the
 # third-party per-extension PyPI wheels the embedded extra pins, so they are not mirrored here.
 #
-# Broader matrix than Family B: DuckDB ships arm64-Linux + Windows wheels, so the standalone engine
-# (and thus its extensions) reach platforms the embedded-PG engine cannot.
+# Every supported platform (REQ-294, amended 2026-11-10): macOS arm64, Linux x86_64, Linux arm64 (the
+# macOS container tier) and Windows x86_64; each is built, published and probed.
 
 on:
   workflow_dispatch:
@@ -18,12 +18,23 @@ on:
         description: Attach the wheels to the tag's draft release. False on a dry run.
         type: boolean
         default: false
+  # A release dry run builds the wheels in its own run (release-prebuilt.yml, duckdb-extensions):
+  # its app image takes them from the run's provisa-duckdb-ext-wheels artifact, since a dry run
+  # publishes nothing to the Pages index (run 45030695628). It never attaches (publish: false).
+  workflow_call:
+    inputs:
+      publish:
+        description: Attach the wheels to the tag's draft release. False on a dry run.
+        type: boolean
+        required: true
 
 permissions:
   contents: write
 
+# Per calling workflow and ref: called from a release, github.ref is the release's tag, the same one
+# "Release: cut" dispatches this workflow on; neither cancels the other.
 concurrency:
-  group: build-duckdb-ext-${{ github.ref }}
+  group: build-duckdb-ext-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -100,14 +111,13 @@ jobs:
             "dist/provisa-duckdb-ext-${{ matrix.label }}.tar.gz.sha256" \
             --clobber
 
-  # One provisa-duckdb-ext wheel per mirrored platform (maintainer decision 2026-11-06), each tagged
-  # for its platform (py3-none-<platform tag>) and holding only that platform's blobs: one universal
-  # wheel of every platform's DuckDB 2.0 extensions (crypto included) passed PyPI's 100 MB per-file
-  # limit. collect.py fills each in priority order (crypto, mssql, snowflake, bigquery, mongo,
-  # airport, firebird) and prints, by name, any it leaves out to stay under the limit.
-  # pip/uv pick the running platform's wheel; the runtime
-  # (provisa.federation.duckdb_extensions.stage_bundled_extensions) copies its blobs out on first run,
-  # so `provisa[embedded]` gets the extensions through the release's wheel index, never extensions.duckdb.org.
+  # provisa-duckdb-ext is one project split across version parts <release>.<part> (REQ-294): one
+  # wheel per mirrored platform of each part, tagged for it and holding only that part of that
+  # platform's blobs, every wheel under PyPI's 100 MB per-file limit. collect.py's PARTS names each
+  # part's extensions and stops the build by name when one passes the limit. The stage command
+  # (python -m provisa.runtime_deps.stage_assets) fetches every part from the machine's package
+  # index, so installs get the extensions through the release's wheel index or an Artifactory proxy
+  # of it, never extensions.duckdb.org.
   # Nothing goes to PyPI (maintainer 2026-11-21): the wheels are release assets.
   # No sdist: it would carry every platform's blobs again. The label -> tag map is
   # packaging/duckdb-ext/collect.py's PLATFORMS, whose labels are this workflow's mirror matrix.
@@ -138,19 +148,7 @@ jobs:
         run: |
           set -euo pipefail
           python -m pip install --upgrade build wheel
-          mkdir -p dist-ext
-          for label in $(python packaging/duckdb-ext/collect.py labels); do
-            python packaging/duckdb-ext/collect.py collect mirror-extracted "$label"
-            # setuptools reuses build/ and *.egg-info between builds: the previous platform's blobs
-            # would ride along in this one's wheel.
-            rm -rf packaging/duckdb-ext/build packaging/duckdb-ext/*.egg-info "wheel-build/$label"
-            python -m build --wheel --outdir "wheel-build/$label" packaging/duckdb-ext
-            python -m wheel tags --remove \
-              --platform-tag "$(python packaging/duckdb-ext/collect.py wheel-tag "$label")" \
-              "wheel-build/$label"/provisa_duckdb_ext-*-py3-none-any.whl
-            mv "wheel-build/$label"/*.whl dist-ext/
-          done
-          ls -l dist-ext
+          bash scripts/ci/build_duckdb_ext_wheels.sh mirror-extracted dist-ext
 
       - name: Check each wheel is under PyPI's 100 MB limit
         run: python packaging/duckdb-ext/collect.py check-wheels dist-ext

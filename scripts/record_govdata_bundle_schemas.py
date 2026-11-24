@@ -24,7 +24,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from provisa.runtime_deps import BundleResolver, bundle_spec_for
+from provisa.runtime_deps import BundleResolver, bundle_spec_for, download_release_asset
 
 #: Written into the record: this script is its only writer.
 GENERATED_BY = (
@@ -36,7 +36,7 @@ OUT_PATH = Path(__file__).resolve().parent.parent / "provisa" / "govdata" / "bun
 
 def main() -> None:
     spec = bundle_spec_for("govdata")
-    bundle_dir = BundleResolver().resolve(spec)
+    bundle_dir = BundleResolver(downloader=download_release_asset).resolve(spec)
     model = json.loads((Path(bundle_dir) / "model" / "model.json").read_text())
     record = {
         "generated_by": GENERATED_BY,

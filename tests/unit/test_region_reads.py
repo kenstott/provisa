@@ -119,7 +119,7 @@ def test_duckdb_attaches_a_postgres_store_by_the_url_libpq_reads(monkeypatch, ds
     from provisa.federation.duckdb_runtime import DuckDBFederationRuntime
 
     executed: list[str] = []
-    monkeypatch.setattr(duckdb_runtime, "install_and_load", lambda *_a, **_k: None)
+    monkeypatch.setattr(duckdb_runtime, "load_extension", lambda *_a, **_k: None)
     runtime = DuckDBFederationRuntime.__new__(DuckDBFederationRuntime)
     runtime._region_stores = set()
     runtime._region_store_lock = threading.Lock()
@@ -142,7 +142,7 @@ def test_duckdb_attaches_another_regions_store_once_when_two_reads_reach_it_at_o
     from provisa.federation import duckdb_runtime
     from provisa.federation.duckdb_runtime import DuckDBFederationRuntime
 
-    monkeypatch.setattr(duckdb_runtime, "install_and_load", lambda *_a, **_k: None)
+    monkeypatch.setattr(duckdb_runtime, "load_extension", lambda *_a, **_k: None)
     real = duckdb.connect()
     attaches: list[str] = []
 

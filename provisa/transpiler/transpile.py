@@ -2071,6 +2071,7 @@ def transpile(
     Returns:
         SQL string in target dialect.
     """
+    given = pg_sql  # the statement as given, whose columns pgwire describes (REQ-2236)
     # REQ-2167: a call ClickHouse answers in DuckDB's form, held out of what follows.
     pg_sql, ported = polyfill_ported.held_out(pg_sql, target_dialect, generated=generated)
     pg_sql = pg_forms_type_io.readable(pg_sql, target_dialect)  # REQ-2171
@@ -2231,7 +2232,7 @@ def transpile(
         # REQ-2236: a NULL column typed, for the server's Arrow output has no type for Nothing.
         from provisa.transpiler.polyfill.clickhouse import typed_null_columns
 
-        result = typed_null_columns(result)
+        result = typed_null_columns(result, given)
     if target_dialect == "tsql":
         result = _map_tsql_reserved_schemas(result)
     if target_dialect == "sqlite":

@@ -21,6 +21,7 @@
 import fs from "fs";
 import path from "path";
 import type { Plugin } from "vite";
+import { installedPackageDir } from "./installedPackage";
 
 /** The one monaco-editor this backport is written against. */
 export const PATCHED_MONACO = "0.52.2";
@@ -59,7 +60,7 @@ export function backportCancelCatch(code: string, id: string): string | null {
 
 /** Refuses a monaco-editor other than the one the backport is for. */
 export function assertPatchedMonaco(root: string): void {
-  const pkg = path.join(root, "node_modules", "monaco-editor", "package.json");
+  const pkg = path.join(installedPackageDir(root, "monaco-editor", []), "package.json");
   const version = (JSON.parse(fs.readFileSync(pkg, "utf8")) as { version: string }).version;
   if (version !== PATCHED_MONACO) {
     throw new Error(

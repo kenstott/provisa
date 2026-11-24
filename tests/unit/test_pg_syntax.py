@@ -64,9 +64,9 @@ def test_bit_varying_cast_reads_with_and_without_a_length() -> None:
         ("trino", "SELECT CAST(NULL AS ARRAY(VARCHAR)) FROM t"),
         # ClickHouse holds no NULL of an array (an Array is never Nullable; CAST(NULL AS
         # Array(...)) is its error): a NULL, which pgwire describes as the cast's type, typed as
-        # clickhouse.typed_null_columns sends an untyped NULL column (24.3's Arrow output has no
-        # type for Nullable(Nothing)).
-        ("clickhouse", "SELECT CAST(NULL AS Nullable(String)) FROM t"),
+        # clickhouse.typed_null_columns sends an untyped NULL column PostgreSQL types (24.3's
+        # Arrow output has no type for Nullable(Nothing)), which the cast's type describes.
+        ("clickhouse", "SELECT CAST(NULL AS Nullable(FixedString(1))) FROM t"),
     ],
 )
 def test_cstring_array_is_its_array_type_not_a_subscript(dialect: str, written: str) -> None:

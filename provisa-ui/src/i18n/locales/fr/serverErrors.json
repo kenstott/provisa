@@ -626,7 +626,9 @@
       "columns_not_inferred": "Impossible d'inférer les colonnes : le sondage n'a renvoyé aucune ligne et aucune variable SELECT n'a été trouvée.",
       "probe_failed": "Échec du sondage de l'endpoint SPARQL : {{error}}",
       "source_not_found": "Source SPARQL « {{source_id}} » introuvable",
-      "no_select_variables": "La requête ne nomme aucune variable SELECT (SELECT * ou pas une requête SELECT) : ses colonnes ne peuvent pas en être lues"
+      "no_select_variables": "La requête ne nomme aucune variable SELECT (SELECT * ou pas une requête SELECT) : ses colonnes ne peuvent pas en être lues",
+      "credential_invalid": "La source '{{source}}' déclare un identifiant {{kind}} incomplet : un identifiant bearer exige son jeton, un identifiant basic son nom d'utilisateur et son mot de passe (les types sont bearer et basic)",
+      "own_endpoint_needs_credential": "La source '{{source}}' lit le point de terminaison SPARQL propre à Provisa et ne déclare aucun identifiant : déclarez le jeton bearer ou le nom d'utilisateur et le mot de passe d'un compte Provisa réservé au service, dont les rôles bornent ce qu'elle lit"
     },
     "subscribe": {
       "avro_topic_without_registry": "Le topic '{{topic}}' transporte des messages Avro et sa source ne désigne aucun registre de schémas pour les lire : renseignez l'URL du registre de schémas de la source",

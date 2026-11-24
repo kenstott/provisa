@@ -93,7 +93,7 @@ import { salesforceMappingJson } from "./sources/salesforce";
 import { quickbooksMappingJson } from "./sources/quickbooks";
 import { useDbtSourceForm, warehousesToCreate } from "./sources/dbt";
 import { cloudopsMappingJson } from "./sources/cloudops";
-import { sparqlMappingJson } from "./sources/sparqlReasoner";
+import { sparqlCredentials, sparqlMappingJson } from "./sources/sparqlReasoner";
 import { GOOGLE_WORKSPACE, gwMapping } from "./sources/googleWorkspace";
 import { MICROSOFT_365, m365Mapping } from "./sources/microsoft365";
 import { LOGS, logsMapping } from "./sources/logs";
@@ -925,7 +925,9 @@ export function SourcesPage() {
             ? { password: authFields.access_token }
             : form.type === KAFKA
               ? kafkaCredentials(authFields) // REQ-147
-              : {};
+              : form.type === "sparql"
+                ? sparqlCredentials(authType, authFields) // REQ-2138: its service identity
+                : {};
       // REQ-2121: a folder the browser keeps for this source's code is zipped and sent again.
       const codeFields =
         CODE_SOURCE_TYPES.has(form.type) && activeOrgId
@@ -945,7 +947,7 @@ export function SourcesPage() {
                 : form.type === "cloudops"
                   ? cloudopsMappingJson(authFields) // REQ-1947
                   : form.type === "sparql"
-                    ? sparqlMappingJson(authFields) // REQ-2138
+                    ? sparqlMappingJson(authFields, authType) // REQ-2138
                     : form.type === GOOGLE_WORKSPACE
                       ? JSON.stringify(gwMapping(authFields)) // REQ-1923
                       : form.type === MICROSOFT_365

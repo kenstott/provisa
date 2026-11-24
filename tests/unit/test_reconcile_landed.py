@@ -57,6 +57,8 @@ def _rtbl(sid, tname, cols):
         "load_protected": None,
         "cache_ttl": None,
         "row_materialize": False,
+        # the region it names (REQ-1921); None: built in every region, this one included
+        "region": None,
     }
 
 

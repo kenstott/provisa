@@ -137,6 +137,7 @@ def command(org: str, *, code: Path = CODE) -> "HostCommand":
         ),
         cwd=code,
         egress=(),
+        table_reads="pgwire",  # REQ-2226: the minted-token pgwire port, as before Flight
     )
     grant = ServiceGrant(
         org_id=org, source_id=WORKER, admin_db=state.admin_db, role=region_admin.ROLE

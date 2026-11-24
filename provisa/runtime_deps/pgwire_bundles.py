@@ -8,32 +8,36 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""On-demand resolution + local caching of the Calcite pgwire connector bundles (REQ-956).
+"""Local resolution of the Calcite pgwire connector bundles (REQ-956, REQ-294).
 
-The pgwire bundles (``pgwire-file``, ``pgwire-sharepoint``, ``pgwire-splunk``) are NOT bundled with
-Provisa. They are fetched on demand from the PINNED github.com/kenstott/calcite release
-(``engine-v0.28.0``) at runtime and cached under the runtime-deps cache root, so Provisa release
-cycles are decoupled from the connector releases and the distribution stays lean.
+The pgwire bundles are NOT bundled with Provisa and a running Provisa never fetches one: AIR-GAPPED
+IS LOCAL FIRST. A bundle is located locally (the folder its connector's setting names, else the
+runtime-deps cache root) and was staged there at build or packaging time, by
+``python -m provisa.runtime_deps.stage_pgwire_bundles``, from the PINNED github.com/kenstott/calcite
+release (``RELEASE_TAG``), so Provisa release cycles stay decoupled from the connector releases.
 
-Resolution FAILS LOUD (project rule): an unknown source type, a failed download, or a download that
-does not produce the expected ``bin/pgwire-<connector>`` launcher raises ``BundleUnavailable`` — never
-a silent fallback to an unpinned version, a partial bundle, or an empty snapshot. A cache HIT (the
-launcher already present under the pinned version) never re-downloads.
+Resolution FAILS LOUD (project rule): an unknown source type, or a bundle that is not staged,
+raises ``BundleUnavailable`` (``BundleNotStaged`` for the latter, naming the bundle and the fix) --
+never a download, a fallback to an unpinned version, a partial bundle, or an empty snapshot.
+``python -m provisa.runtime_deps.pgwire_bundles`` is the install-time check that every bundle is staged;
+``--except <connector>`` names a bundle deliberately left to a later staging step.
 """
 
 from __future__ import annotations
 
+import argparse
 import hashlib
 import os
 import platform
 import shutil
+import sys
 import tarfile
 import tempfile
 import threading
 from dataclasses import dataclass
 from http import HTTPStatus
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Iterable
 
 # The pinned upstream release the whole bundle set is fetched from (REQ-956). One version knob — a
 # bundle path is always namespaced by this tag, so a version bump caches side by side, never in place.
@@ -48,10 +52,13 @@ GITHUB_REPO = "kenstott/calcite"
 
 # The release ships one tarball per OS/arch (REQ-1690): ``pgwire-<connector>-<ver>-<variant>.tar.gz``
 # where ``<ver>`` is the tag without its ``engine-v`` prefix. The variant names are the release
-# workflow's matrix; a platform absent here has no bundle and fails closed.
+# workflow's matrix; a platform absent here has no bundle and fails closed. The supported platforms
+# (REQ-294, amended 2026-11-10): macOS arm64, Linux x86_64, Linux arm64 and Windows x86_64. The
+# calcite engine release builds, signs and publishes every bundle; Provisa only reads them.
 BUNDLE_VARIANTS: dict[tuple[str, str], str] = {
     ("Darwin", "arm64"): "macos-arm64",
     ("Linux", "x86_64"): "linux-x86_64",
+    ("Linux", "aarch64"): "linux-aarch64",
     ("Windows", "AMD64"): "windows-x86_64",
 }
 
@@ -91,6 +98,26 @@ def named_bundle_dir(connector: str) -> str | None:
 class BundleUnavailable(Exception):  # REQ-956
     """A pgwire bundle could not be resolved — unknown source type, download failure, or a download
     that did not produce the launcher. Raised on fail-loud resolution; never a fallback."""
+
+
+#: How to put a bundle in place: the one stage command. Named in every refusal.
+STAGE_FIX = (
+    "run `python -m provisa.runtime_deps.stage_assets` once on a machine that reaches your Maven "
+    "repository (PROVISA_RUNTIME_DEPS_CACHE names the directory, and a directory already filled "
+    "is used without fetching), or name a built bundle with the connector's bundle_dir setting"
+)
+
+
+class BundleNotStaged(BundleUnavailable):
+    """A pgwire bundle is not where the runtime looks, and the runtime never fetches one (REQ-294).
+    An install defect, named with the bundle, where it was looked for, and the fix."""
+
+    def __init__(self, spec: "BundleSpec", where: Path) -> None:
+        super().__init__(
+            f"the {spec.artifact_name} bundle ({spec.version}) is not staged: no launcher under "
+            f"{where}. {STAGE_FIX}"
+        )
+        self.spec = spec
 
 
 class BundleDownloading(BundleUnavailable):
@@ -284,13 +311,16 @@ def _expected_sha256(spec: BundleSpec) -> str:
                 f"HTTP {resp.status_code}); refusing to install it unverified"
             )
         text = b"".join(resp.iter_bytes()).decode("ascii", errors="replace")
+    return sha256_digest(text, f"checksum asset {spec.checksum_filename} in release {spec.version}")
+
+
+def sha256_digest(text: str, where: str) -> str:
+    """The hex digest a ``.sha256`` file holds (the digest, optionally followed by the filename).
+    Anything else -- an empty body, an HTML error page -- is refused, naming ``where``."""
     fields = text.split()
     digest = fields[0].lower() if fields else ""
     if len(digest) != _SHA256_HEX_LEN or any(c not in "0123456789abcdef" for c in digest):
-        raise BundleUnavailable(
-            f"checksum asset {spec.checksum_filename} in release {spec.version} does not hold a "
-            f"SHA-256 digest: {text[:100]!r}"
-        )
+        raise BundleUnavailable(f"{where} does not hold a SHA-256 digest: {text[:100]!r}")
     return digest
 
 
@@ -316,17 +346,18 @@ _SHA256_HEX_LEN = 64
 
 
 class BundleResolver:  # REQ-956
-    """Resolves a ``BundleSpec`` to a local, cached bundle directory, downloading on a cache miss.
+    """Resolves a ``BundleSpec`` to a local, staged bundle directory.
 
-    Caches under ``<cache_root>/<version>/<artifact_name>``; a HIT (the launcher already present)
-    returns immediately with no download. A MISS downloads via the injected ``downloader`` and then
-    verifies the launcher exists — a download that does not produce it fails loud (REQ-956)."""
+    Looks under ``<cache_root>/<version>/<artifact_name>``; a HIT (the launcher present) returns
+    immediately. A MISS raises ``BundleNotStaged`` (REQ-294): nothing is downloaded, unless a
+    ``downloader`` is injected, which only the staging step (and a test) does, then verifies the
+    launcher exists — a download that does not produce it fails loud (REQ-956)."""
 
     def __init__(
         self, *, cache_root: str | Path | None = None, downloader: Downloader | None = None
     ) -> None:
         self._cache_root = Path(cache_root) if cache_root is not None else default_cache_root()
-        self._download = downloader if downloader is not None else download_release_asset
+        self._download = downloader
 
     def cached_path(self, spec: BundleSpec) -> Path:
         """The version-namespaced bundle directory for ``spec`` (whether or not it exists yet), or
@@ -345,12 +376,13 @@ class BundleResolver:  # REQ-956
         return self.launcher_path(spec).exists()
 
     def resolve(self, spec: BundleSpec) -> Path:
-        """Return the local bundle directory for ``spec``, downloading + caching on a miss (REQ-956).
-        A bundle its connector's setting names (:func:`bundle_dir_key`) is returned as it is,
-        or refused when it has no launcher; the pinned release is then never fetched.
+        """Return the local bundle directory for ``spec`` (REQ-956). A bundle its connector's
+        setting names (:func:`bundle_dir_key`) is returned as it is, or refused when it has no
+        launcher; the pinned release is then never fetched.
 
-        A cache hit returns without any download. A miss downloads via the injected downloader; if the
-        launcher is still absent afterwards the bundle is unusable and this fails loud."""
+        A hit returns at once. A miss raises ``BundleNotStaged`` (REQ-294) when no downloader was
+        injected; with one, it downloads, and if the launcher is still absent afterwards the bundle
+        is unusable and this fails loud."""
         dest = self.cached_path(spec)
         if self.is_cached(spec):
             return dest
@@ -360,6 +392,8 @@ class BundleResolver:  # REQ-956
                 f"setting {bundle_dir_key(spec.connector)} names {dest}, which has no launcher "
                 f"{self.launcher_path(spec)}"
             )
+        if self._download is None:
+            raise BundleNotStaged(spec, dest)
         from provisa.core import request_deadline
 
         if request_deadline.remaining() is not None:
@@ -376,7 +410,7 @@ class BundleResolver:  # REQ-956
         lock = FileLock(dest.parent / f".{dest.name}.lock")
         lock.acquire()
         try:
-            if not self.is_cached(spec):
+            if not self.is_cached(spec) and self._download is not None:
                 self._download(spec, dest)
         finally:
             lock.release()
@@ -413,3 +447,68 @@ class BundleResolver:  # REQ-956
                 _downloads[dest] = thread
                 thread.start()
         raise BundleDownloading(spec)
+
+
+def checked_connectors(excepted: Iterable[str] = ()) -> list[str]:
+    """Every connector with a bundle, less ``excepted``, in order. A name that is no connector is
+    refused: a typo must not read as a passing check."""
+    connectors = set(BUNDLE_CONNECTOR.values())
+    unknown = sorted(set(excepted) - connectors)
+    if unknown:
+        raise BundleUnavailable(
+            f"--except names no connector: {', '.join(unknown)} (known: {sorted(connectors)})"
+        )
+    return sorted(connectors - set(excepted))
+
+
+def missing_bundles(
+    cache_root: str | Path | None = None, excepted: Iterable[str] = ()
+) -> list[BundleSpec]:
+    """The bundle of every connector, less ``excepted``, that is not staged (its launcher is
+    absent), once each, in connector order. Honors a connector's ``bundle_dir`` setting as the
+    resolver does."""
+    resolver = BundleResolver(cache_root=cache_root)
+    connectors = checked_connectors(excepted)
+    source_types = {c: t for t, c in BUNDLE_CONNECTOR.items()}
+    specs = [bundle_spec_for(source_types[c]) for c in connectors]
+    return [spec for spec in specs if not resolver.is_cached(spec)]
+
+
+def verify_staged(cache_root: str | Path | None = None, excepted: Iterable[str] = ()) -> None:
+    """REQ-294, the install-time check: every connector's bundle but ``excepted`` is staged. Raises
+    ``BundleNotStaged`` naming each one that is not."""
+    root = Path(cache_root) if cache_root is not None else default_cache_root()
+    absent = missing_bundles(root, excepted)
+    if absent:
+        refused = BundleNotStaged(absent[0], root)
+        names = ", ".join(f"{s.artifact_name} ({s.version})" for s in absent)
+        refused.args = (f"pgwire bundles not staged under {root}: {names}. {STAGE_FIX}",)
+        raise refused
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Check that the pgwire bundles are staged.")
+    parser.add_argument(
+        "--except",
+        dest="excepted",
+        action="append",
+        default=[],
+        metavar="CONNECTOR",
+        help="a connector whose bundle is left to a later staging step; repeat for more",
+    )
+    excepted: list[str] = parser.parse_args(argv).excepted
+    try:
+        verify_staged(excepted=excepted)
+        count = len(checked_connectors(excepted))
+    except BundleUnavailable as refused:
+        print(f"pgwire bundle check failed: {refused}", file=sys.stderr)
+        return 1
+    print(
+        f"{count} pgwire bundles staged"
+        + (f"; excepted: {', '.join(excepted)}" if excepted else "")
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

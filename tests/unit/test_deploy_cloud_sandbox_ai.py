@@ -68,6 +68,7 @@ def test_the_overlay_points_the_sandbox_tier_at_openrouter_by_reference(tmp_path
             f'scp_node() {{ cp "$1" {out}; }}',
             "SITE=https://cloud.provisa.dev",
             _function("org_base_domain"),
+            _function("stage_runtime_deps"),
             _function("push_overlay"),
             "push_overlay",
         ],

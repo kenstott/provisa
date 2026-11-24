@@ -62,6 +62,9 @@ jobs:
       # META-INF/services/io.trino.spi.Plugin, so one jar per directory is a complete plugin. The
       # same action restores (or, on a miss, builds once) Provisa's own function plugin
       # (REQ-1494), provisa-functions, beside them.
+      # The action's prime phase uploads the verified plugin directories as the run's
+      # `trino-plugins` artifact, which package-plugins and the installer legs download. A second
+      # upload of that name here was refused with HTTP 409 (run 45024448489).
       - name: Trino plugins
         uses: ./.github/actions/trino-plugins
         with:
@@ -115,6 +118,21 @@ jobs:
           tag: ${{ inputs.version }}
           files: "${{ needs.metadata.outputs.plugins_name }}"
 
+  # ── DuckDB extension wheels ─────────────────────────────────────────────────
+
+  # REQ-294: the app image stages provisa-duckdb-ext's wheels at build time. The Pages index holds
+  # them only after publish, and the images are built before it: a dry run publishes nothing (run
+  # 45030695628: pip found none) and a release has not published yet. So both image builds take the
+  # wheels this job builds in the same run, its provisa-duckdb-ext-wheels artifact. It never
+  # attaches anything: "Release: cut" dispatches the attaching run on the tag.
+  duckdb-extensions:
+    name: DuckDB extension wheels
+    permissions:
+      contents: write   # the called workflow's declared default; nothing is attached (publish: false)
+    uses: ./.github/workflows/build-duckdb-extensions.yml
+    with:
+      publish: false
+
   # ── Image pull jobs (one per layer) ─────────────────────────────────────────
 
   pull-images-core:
@@ -123,7 +141,7 @@ jobs:
     permissions:
       contents: write   # attaches what it builds to the draft release
     # metadata is needed for the versioned trino_image_name the save step writes.
-    needs: [metadata]
+    needs: [metadata, duckdb-extensions]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -170,7 +188,19 @@ jobs:
       - name: Pyodide downloads
         uses: ./.github/actions/pyodide-downloads
 
+      # The image takes provisa-duckdb-ext from the wheels this run built (duckdb-extensions), a
+      # release's as a dry run's: the image is built before publish writes the Pages index, which
+      # then holds no wheels of this release. Outside the checkout, so the image's main build
+      # context does not carry it.
+      - name: DuckDB extension wheels
+        uses: actions/download-artifact@v4
+        with:
+          name: provisa-duckdb-ext-wheels
+          path: ${{ runner.temp }}/duckdb-ext-wheels
+
       - name: Pull core images and build zaychik
+        env:
+          DUCKDB_EXT_WHEELS: ${{ runner.temp }}/duckdb-ext-wheels
         run: |
           # pipefail: a failed `docker save` piped into gzip otherwise ships a truncated image.
           # save --platform: under the containerd image store (Docker 29+, ubuntu-26.04 runners) a
@@ -209,6 +239,7 @@ jobs:
           # on demand (macOS/arm64) — no in-VM/host build needed.
           docker build --platform linux/arm64 \
             --build-context pyodide-downloads="$PROVISA_NOTEBOOK_DOWNLOADS" \
+            --build-context duckdb-ext-wheels="$DUCKDB_EXT_WHEELS" \
             -t provisa/provisa:local .
           docker save --platform linux/arm64 provisa/provisa:local | gzip -9 > images/provisa-local.tar.gz
 
@@ -277,7 +308,7 @@ jobs:
     permissions:
       contents: write   # attaches what it builds to the draft release
     # metadata is needed for the versioned trino_image_amd64_name the save step writes.
-    needs: [metadata]
+    needs: [metadata, duckdb-extensions]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -319,7 +350,19 @@ jobs:
       - name: Pyodide downloads
         uses: ./.github/actions/pyodide-downloads
 
+      # The image takes provisa-duckdb-ext from the wheels this run built (duckdb-extensions), a
+      # release's as a dry run's: the image is built before publish writes the Pages index, which
+      # then holds no wheels of this release. Outside the checkout, so the image's main build
+      # context does not carry it.
+      - name: DuckDB extension wheels
+        uses: actions/download-artifact@v4
+        with:
+          name: provisa-duckdb-ext-wheels
+          path: ${{ runner.temp }}/duckdb-ext-wheels
+
       - name: Pull core images (amd64), build zaychik and provisa
+        env:
+          DUCKDB_EXT_WHEELS: ${{ runner.temp }}/duckdb-ext-wheels
         run: |
           # pipefail: a failed `docker save` piped into gzip otherwise ships a truncated image.
           # save --platform: under the containerd image store (Docker 29+, ubuntu-26.04 runners) a
@@ -355,6 +398,7 @@ jobs:
           docker save --platform linux/amd64 provisa/zaychik:local | gzip -9 > images/zaychik-local.tar.gz
           docker build --platform linux/amd64 \
             --build-context pyodide-downloads="$PROVISA_NOTEBOOK_DOWNLOADS" \
+            --build-context duckdb-ext-wheels="$DUCKDB_EXT_WHEELS" \
             -t provisa/provisa:local .
           docker save --platform linux/amd64 provisa/provisa:local | gzip -9 > images/provisa-local.tar.gz
 

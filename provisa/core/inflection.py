@@ -25,7 +25,11 @@ import functools
 import gzip
 from pathlib import Path
 
-from lemminflect import getAllInflections, getAllInflectionsOOV, getAllLemmas
+from lemminflect import config as _lemminflect_config
+from lemminflect import getAllInflectionsOOV
+from lemminflect.codecs.InflectionLUCodec import InflectionLUCodec
+from lemminflect.codecs.LemmaLUCodec import LemmaLUCodec
+from lemminflect.codecs.OverridesCodec import OverridesCodec
 
 _TABLE = Path(__file__).parent / "data" / "noun_plurals.tsv.gz"
 
@@ -75,6 +79,41 @@ def _dictionary() -> tuple[dict[str, str], dict[str, str], frozenset[str]]:
     return plural_of, singular_of, frozenset(own)
 
 
+_NOUN_TAGS = ("NN", "NNS", "NNP", "NNPS")  # lemminflect's tags of upos NOUN (uposToTags)
+
+
+@functools.cache
+def _lemminflect_nouns() -> tuple[dict[str, str], dict[str, str | None]]:
+    """lemminflect's dictionary answers for nouns, as two compact maps: (lower-case word -> the
+    first NOUN lemma ``getAllLemmas(word, upos="NOUN")`` gives, lower-case lemma -> the first NNS
+    form ``getAllInflections(lemma, upos="NOUN")`` gives, or None for a lemma it lists with no NNS
+    form). A word absent from a map is one lemminflect answers ``{}`` for.
+
+    Read from lemminflect's own lookup files (its lookup table, then its overrides, as its
+    functions merge them) once, keeping only the noun answers for lower-case words, the only ones
+    the functions below ask. lemminflect's functions would hold every part of speech of every
+    word for the life of the process (about 40 MB at boot); these hold a few MB.
+    tests/unit/test_inflection_lemminflect_maps.py checks every answer against lemminflect's."""
+    lemmas = LemmaLUCodec.load(_lemminflect_config.lemma_lu_fn)
+    for word, forms in OverridesCodec.load(_lemminflect_config.lemma_overrides_fn).items():
+        lemmas.setdefault(word, {}).update(forms)
+    lemma_of = {
+        word: forms["NOUN"][0].lower()
+        for word, forms in lemmas.items()
+        if "NOUN" in forms and word == word.lower()
+    }
+    del lemmas
+    inflections = InflectionLUCodec.load(_lemminflect_config.inflection_lu_fn)
+    for lemma, forms in OverridesCodec.load(_lemminflect_config.infl_overrides_fn).items():
+        inflections.setdefault(lemma, {}).update(forms)
+    plural_form: dict[str, str | None] = {}
+    for lemma, forms in inflections.items():
+        if lemma != lemma.lower() or not any(tag in forms for tag in _NOUN_TAGS):
+            continue
+        plural_form[lemma] = forms["NNS"][0].lower() if "NNS" in forms else None
+    return lemma_of, plural_form
+
+
 def _match_case(form: str, written: str) -> str:
     """``form`` (lower case) in the case ``written`` was given in."""
     if written.isupper() and len(written) > 1:
@@ -94,8 +133,8 @@ def is_plural(word: str) -> bool:
         return True
     if lower in plural_of:
         return False
-    lemmas = getAllLemmas(lower, upos="NOUN")
-    return bool(lemmas) and lemmas["NOUN"][0] != lower
+    lemma = _lemminflect_nouns()[0].get(lower)
+    return lemma is not None and lemma != lower
 
 
 def singular(word: str) -> str:
@@ -108,10 +147,10 @@ def singular(word: str) -> str:
         return _match_case(singular_of[lower], word)
     if lower in plural_of:
         return word
-    lemmas = getAllLemmas(lower, upos="NOUN")
-    if not lemmas:
+    lemma = _lemminflect_nouns()[0].get(lower)
+    if lemma is None:
         return word
-    return _match_case(lemmas["NOUN"][0], word)
+    return _match_case(lemma, word)
 
 
 def regular_plural(word: str) -> str:
@@ -125,10 +164,14 @@ def rule_plural(word: str) -> str:
     """``word``'s plural per lemminflect's dictionary (lower case); as written when lemminflect does
     not list it."""
     lower = word.lower()
-    inflections = getAllInflections(lower, upos="NOUN")
-    if not inflections:
+    plural_forms = _lemminflect_nouns()[1]
+    if lower not in plural_forms:
         return lower
-    return inflections["NNS"][0]
+    form = plural_forms[lower]
+    if form is None:
+        # lemminflect lists the noun with no plural form: getAllInflections(...)["NNS"] raised.
+        raise KeyError("NNS")
+    return form
 
 
 def plural(word: str) -> str:
