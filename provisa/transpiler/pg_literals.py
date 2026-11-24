@@ -37,8 +37,6 @@ import re
 import sqlglot
 import sqlglot.expressions as exp
 
-from provisa.transpiler.semantic_dialect import duckdb_year_of_era
-
 #: DuckDB's widest decimal.
 _MAX_PRECISION = 38
 #: The digits a literal's decimal has beside its own.
@@ -309,6 +307,20 @@ def duckdb_eras(node: exp.Expr) -> exp.Expr:
     if era != literal.this:
         node.set("this", exp.Literal.string(era))  # a TRY_CAST stays one
     return node
+
+
+def duckdb_year_of_era(value: str) -> str:
+    """PostgreSQL's year of the DuckDB value ``value`` (its SQL): DuckDB counts year 0 as 1 BC, as
+    Trino does (``semantic_dialect._trino_extract_year``, REQ-2236), so a date or timestamp's year
+    <= 0 reads one lower (PostgreSQL's 4713 BC is -4713 where DuckDB says -4712). An interval's
+    years have no era:
+    -5 months is 0 years on both, so an interval's YEAR is its own (typeof is the bound type, one
+    value for the statement). The correction reads YEAR(value), which parses back as exp.Year, so
+    SQL generated again is not corrected a second time."""
+    year = f"YEAR({value})"
+    return (
+        f"CASE WHEN {year} <= 0 AND TYPEOF({value}) <> 'INTERVAL' THEN {year} - 1 ELSE {year} END"
+    )
 
 
 def _year_of_era(node: exp.Anonymous) -> exp.Expr:
