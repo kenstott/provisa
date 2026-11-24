@@ -4779,6 +4779,12 @@ async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, rep
 
         await asyncio.to_thread(demo_spark.stop)
 
+    # REQ-2225: the Spark connector hosts a checkout's demo runs stop with it.
+    with tolerate_shutdown_failure("native connector hosts stop"):
+        from provisa.codesource import native_connector
+
+        await asyncio.to_thread(native_connector.stop_all)
+
     # Stop every org's Live Query Engine (Phase AM, REQ-1266)
     for _live in state.org_registry.live_engines():
         with tolerate_shutdown_failure("live query engine stop"):

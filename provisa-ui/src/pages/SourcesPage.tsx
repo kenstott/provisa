@@ -747,7 +747,7 @@ export function SourcesPage() {
       return;
     }
     if (connector && missingConnectorFields(authFields, connector).length > 0) {
-      setError(t("connectorSetup.missing"));
+      setError(t(connector.native ? "connectorSetup.missingNative" : "connectorSetup.missing"));
       return;
     }
     setSubmitting(true);
