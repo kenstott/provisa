@@ -1,0 +1,22 @@
+{
+  "sourceSetup": {
+    "label": "Einrichtung der Quelle",
+    "connect": "Quelle verbinden",
+    "register": "Tabellen registrieren",
+    "relate": "Beziehungen erkennen",
+    "query": "Abfragen",
+    "tablesCount_one": "{{count}} Tabelle",
+    "tablesCount_other": "{{count}} Tabellen",
+    "registerHint": "Registrieren Sie die Tabellen dieser Quelle, um sie abzufragen.",
+    "registerAction": "Tabellen registrieren",
+    "relateHint": "Verknüpfen Sie die neuen Tabellen miteinander und mit Tabellen aus jeder Quelle.",
+    "relateAction": "Beziehungen erkennen",
+    "nothingToRelate": "Nichts zu verknüpfen",
+    "nothingToRelateHint": "Es gibt noch nichts, womit diese Tabellen verknüpft werden können. Fragen Sie sie direkt ab.",
+    "relateNotAllowed": "Nicht berechtigt",
+    "relateNotAllowedHint": "Zum Erstellen von Beziehungen ist das Recht zum Erstellen von Beziehungen nötig. Fragen Sie die Tabellen direkt ab.",
+    "queryHint": "Öffnet den Query Explorer mit einer Startabfrage über {{table}}.",
+    "queryAction": "Startabfrage öffnen",
+    "complete": "Einrichtung abgeschlossen"
+  }
+}

@@ -144,6 +144,7 @@ import {
 import { duplicateRemote, duplicateSeed } from "./sources/sourceDuplicate";
 import { PanelWorking } from "./sources/PanelWorking";
 import { AfterSaveSteps } from "./sources/AfterSaveSteps";
+import { SourceSetupStepper } from "./sources/SourceSetupStepper";
 import { PanelActions, SplitPane } from "../components/list/SplitPane";
 import { useRememberedDetail } from "../components/list/useDetailParam";
 import { PageLoading } from "../components/PageLoading";
@@ -1806,6 +1807,14 @@ export function SourcesPage() {
                 {t("yourData.relationshipsCreated", { count: related.count })}
               </Alert>
             )}
+            {editingSourceId !== s.id && (
+              <SourceSetupStepper
+                sourceId={s.id}
+                // eslint-disable-next-line react-hooks/refs -- called on a press, as Edit is: the seed's generation ref is read then, never while rendering
+                onConnect={() => handleEdit(s)}
+                onRegister={() => setAfterSave(s.id)}
+              />
+            )}
             <SourceSectionTabs value={inView} shown={shown} onChange={setSection} />
             {inView === "tables" && <SourceTablesList sourceId={s.id} tables={registeredTables} />}
             {inView === "operations" && <SourceOperations sourceId={s.id} type={s.type} />}
@@ -1833,9 +1842,7 @@ export function SourcesPage() {
                     </FormRead>
                   ) : null
                 }
-                // eslint-disable-next-line react-hooks/refs -- called on a press: the seed's generation ref is read then, and in the seed's promise, never while rendering
                 onEdit={() => handleEdit(s)}
-                // eslint-disable-next-line react-hooks/refs -- called on a press, as Edit is: the seed's generation ref is read then, never while rendering
                 onDuplicate={() => handleDuplicate(s)}
                 onNavigate={() => navigate(`/tables?source=${encodeURIComponent(s.id)}`)}
                 // REQ-2198: resolves once the list is read again without the source; the

@@ -21,6 +21,7 @@ declaration lives in the column's stored type, in one spelling — ``numeric(p,s
 from __future__ import annotations
 
 import re
+from decimal import Decimal
 
 import pyarrow as pa
 
@@ -148,3 +149,10 @@ def stored_type_of(reported_type: str) -> str:
     decimal in the one canonical spelling, anything else as reported."""
     size = numeric_size_of(reported_type)
     return reported_type if size is None else numeric_type(*size)
+
+
+def decimal_text(value: Decimal) -> str:
+    """A DECIMAL as the JSON string of its exact digits (REQ-1867, REQ-1961): never a float,
+    which loses digits past about 17 and cannot hold a value past 2^64. Positional, never an
+    exponent: ``Decimal("1E+3")`` is ``"1000"``, ``Decimal("0E-7")`` is ``"0.0000000"``."""
+    return format(value, "f")

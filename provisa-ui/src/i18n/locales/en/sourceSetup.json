@@ -1,0 +1,22 @@
+{
+  "sourceSetup": {
+    "label": "Source setup",
+    "connect": "Connect source",
+    "register": "Register tables",
+    "relate": "Discover relationships",
+    "query": "Query",
+    "tablesCount_one": "{{count}} table",
+    "tablesCount_other": "{{count}} tables",
+    "registerHint": "Register this source's tables to query them.",
+    "registerAction": "Register tables",
+    "relateHint": "Relate the new tables to each other and to tables in every source.",
+    "relateAction": "Discover relationships",
+    "nothingToRelate": "Nothing to relate",
+    "nothingToRelateHint": "There is nothing to relate these tables to yet. Go on to query them.",
+    "relateNotAllowed": "Not permitted",
+    "relateNotAllowedHint": "Creating relationships needs the create relationship right. Go on to query the tables.",
+    "queryHint": "Open the query explorer on a starter query over {{table}}.",
+    "queryAction": "Open a starter query",
+    "complete": "Setup complete"
+  }
+}

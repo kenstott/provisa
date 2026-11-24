@@ -323,7 +323,7 @@ def _await_answer(running: Running, timeout: float) -> None:
                 f"answered:\n{_tail(running.log)}",
             )
         try:
-            spark_cluster.probe(running.address)
+            spark_cluster.answers_locally(running.address)
             return
         except spark_cluster.SparkClusterRefused as refused:
             if time.monotonic() > deadline:

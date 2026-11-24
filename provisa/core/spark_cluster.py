@@ -397,12 +397,43 @@ def probe(address: str, *, org_id: str) -> str:
             metadata=metadata,
         )
     except UnaryCallFailed as failed:
-        raise SparkClusterRefused(
-            "unreachable",
-            f"The Spark cluster at {target} did not answer: {failed}",
-            status=502,
-            target=target,
-        ) from None
+        raise _unreachable(target, failed) from None
+    return _version_answered(answer, target)
+
+
+def answers_locally(address: str) -> str:
+    """The Spark version the Spark Connect server Provisa started itself at ``address`` answers,
+    such as the demo's (REQ-2225). Its address is Provisa's own, not an administrator's, so no
+    organisation's egress rule applies (REQ-2006); it is dialed on loopback only, and any other
+    host is refused by name as :class:`~provisa.grpc_remote.executor.NotLoopback` before any dial.
+    Raises :class:`SparkClusterRefused` ``unreachable`` while the server does not answer yet."""
+    from provisa.grpc_remote.executor import UnaryCallFailed, call_unary_loopback
+
+    endpoint = parse(address)
+    target = f"{endpoint.host}:{endpoint.port}"
+    try:
+        answer = call_unary_loopback(
+            endpoint.host,
+            endpoint.port,
+            method=_SERVICE_METHOD,
+            request=version_request(str(uuid.uuid4()), "provisa"),
+            timeout=PROBE_TIMEOUT_S,
+        )
+    except UnaryCallFailed as failed:
+        raise _unreachable(target, failed) from None
+    return _version_answered(answer, target)
+
+
+def _unreachable(target: str, failed: Exception) -> SparkClusterRefused:
+    return SparkClusterRefused(
+        "unreachable",
+        f"The Spark cluster at {target} did not answer: {failed}",
+        status=502,
+        target=target,
+    )
+
+
+def _version_answered(answer: bytes, target: str) -> str:
     try:
         return version_of(answer)
     except (ValueError, IndexError) as unread:

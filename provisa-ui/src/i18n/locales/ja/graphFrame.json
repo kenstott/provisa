@@ -21,6 +21,7 @@
     "addToFavorites": "お気に入りに追加",
     "autoImputeOn": "リレーションシップの自動推定がオンです。クリックで無効にします。",
     "autoImputeOff": "表示中のノード間のリレーションを自動補完",
+    "relNotImputed": "{{type}} は推定されませんでした: {{error}}",
     "groupTooltip": "属性でノードをグループ化（ハルをダブルクリックで折りたたみ、折りたたまれたノードをダブルクリックで展開）",
     "groupPlaceholder": "⬡ グループ",
     "wrapCellText": "セルのテキストを折り返す",
