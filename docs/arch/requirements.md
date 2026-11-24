@@ -13314,7 +13314,7 @@ Control-plane persistence is required for multi-instance fleet deployments. The 
 
 ### REQ-1246 · Authentication {#REQ-1246}
 
-**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+**Status:** ⚙ in-progress · **Priority:** MUST · **Type:** behavioral
 
 First verified Firebase login provisions a user_profile record, decoupled from the local_users/bcrypt-password path. No password is created for Firebase identities. Firebase ID token serves as the credential. Provisioning occurs in the initial POST /auth/register on a Firebase identity ([REQ-121](#REQ-121) validates Firebase auth; [REQ-124](#REQ-124) is hard-gated to provider=="basic" and cannot onboard Firebase identities). (Amended 2026-11-22 by the maintainer, to the built behaviour. The user_profile is upserted on every sign-in by the auth middleware, not provisioned only in POST /auth/register.)
 
@@ -24642,7 +24642,7 @@ Per-reader masks: a column's masking is one ordered list of entries, each {to: a
 
 **Code:** —
 
-**Tests:** —
+**Tests:** `tests/unit/test_column_governance_requirements.py`, `tests/unit/test_mask_keeps_column_type.py`, `tests/unit/test_composite_grants.py`
 
 **Docs:** [security.md](../security.md)
 
@@ -26526,7 +26526,7 @@ Maintainer 2026-11-04: the catalog queries that DBeaver, Metabase, Grafana and p
 
 **Code:** —
 
-**Tests:** —
+**Tests:** `tests/unit/pgwire/test_bi_described_types.py`, `tests/unit/pgwire/test_catalog_function_results.py`, `tests/unit/pgwire/test_catalog_reg_casts.py`, `tests/unit/pgwire/test_catalog_srf_alias.py`, `tests/unit/pgwire/test_grafana_catalog_statements.py`
 
 ## 11. Platform, Infrastructure & Delivery
 

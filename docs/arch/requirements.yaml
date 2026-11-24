@@ -41137,7 +41137,7 @@
     '
   notes: 'Roadmap audit 2026-10-13: superseded by REQ-1293. Org state is rows in the org schema on the control-plane database, reloaded on a config stamp (REQ-1293, complete).'
 - id: REQ-1246
-  status: complete
+  status: in-progress
   since: 2026-11
   group: 2. Authentication & Identity
   category: Authentication
@@ -86352,6 +86352,10 @@ And a reviewer without it sees the pseudonym, and anyone else the mask'
   notes: 'Maintainer 2026-10-15: "just list the masks in an enumerated list and the enumeration is the precedence". Built as part of REQ-2035 (ui).'
   docs:
   - security.md
+  tests:
+  - tests/unit/test_column_governance_requirements.py
+  - tests/unit/test_mask_keeps_column_type.py
+  - tests/unit/test_composite_grants.py
 - id: REQ-2061
   status: complete
   tests:
@@ -95000,6 +95004,12 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     When an answer differs and no skipped-by-design decision covers it
 
     Then the replay reports the statement, the tool and the difference as a failure'
+  tests:
+  - tests/unit/pgwire/test_bi_described_types.py
+  - tests/unit/pgwire/test_catalog_function_results.py
+  - tests/unit/pgwire/test_catalog_reg_casts.py
+  - tests/unit/pgwire/test_catalog_srf_alias.py
+  - tests/unit/pgwire/test_grafana_catalog_statements.py
 - id: REQ-2205
   value: A contributor opens the repository in a dev container and has a working toolchain and test setup
     without reading setup docs.
