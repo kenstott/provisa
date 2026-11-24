@@ -54,7 +54,7 @@ a batch at a time, so memory holds one batch.
 | SQL Server | Rows | Rows |
 | Oracle | Rows | Rows |
 | Microsoft Fabric, Azure Synapse | Rows | Rows |
-| Amazon Athena | Rows | Rows |
+| Amazon Athena | Arrow, read from the result file in the query output location | Arrow, read whole: Athena has no streamed read |
 | Exasol | Rows | Rows |
 | Hive | Rows | Rows |
 | JDBC sources | Rows | Rows |
@@ -63,6 +63,11 @@ a batch at a time, so memory holds one batch.
 Snowflake sends some results as JSON instead of Arrow. Those are the status line of a DDL
 statement and the listing from `SHOW` and `DESCRIBE`. Its client has no Arrow reader for those, so
 they arrive as rows. They are a few rows each.
+
+Athena writes each result to a file in the query output location, and Provisa reads that file as
+Arrow. The source's credentials must be able to read that location. When you add an Athena source,
+Provisa runs one statement and reads its result. If the credentials cannot read the location, the
+source is refused, and the message names the location.
 
 ## Choosing for large results
 
