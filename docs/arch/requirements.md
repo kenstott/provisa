@@ -13322,7 +13322,7 @@ First verified Firebase login provisions a user_profile record, decoupled from t
 
 **Code:** `provisa/api/auth_router.py`, `provisa/auth/`, `provisa/core/schema_admin.py`, `provisa/auth/middleware.py`
 
-**Tests:** —
+**Tests:** `tests/integration/test_auth_integration.py`
 
 ## 10. UI & Admin Surfaces
 

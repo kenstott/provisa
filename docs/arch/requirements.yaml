@@ -41156,6 +41156,7 @@
   - provisa/core/schema_admin.py
   - provisa/auth/middleware.py
   tests:
+  - tests/integration/test_auth_integration.py
   scenario: 'Given a user with a Firebase identity authenticating via /auth/register for the first time
 
     When they submit a valid Firebase ID token
