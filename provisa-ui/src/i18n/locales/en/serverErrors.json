@@ -574,7 +574,8 @@
       "table_domain_required": "Table '{{table}}' names no domain: every table is registered in a domain",
       "table_state_from_function": "Table '{{table}}' is derived from the function '{{name}}' and has its release state: it is not withdrawn or put back on its own",
       "table_region_from_function": "Table '{{table}}' is derived from the function '{{name}}' and has its region: it is not moved to another region on its own",
-      "table_name_reserved": "Table name '{{table}}' is reserved: a domain's commands are served under 'commands'. Register the table under another name or alias."
+      "table_name_reserved": "Table name '{{table}}' is reserved: a domain's commands are served under 'commands'. Register the table under another name or alias.",
+      "file_types_differ": "The pattern {{glob}} matches files of more than one type ({{types}}); the files of one table must all be one type."
     },
     "secrets": {
       "env_reference_object_locked": "This object is the operator's: it reads the server's own environment and cannot be changed here. Add one of your own instead.",

@@ -574,7 +574,8 @@
       "table_domain_required": "A tabela '{{table}}' não indica nenhum domínio: toda tabela é registrada em um domínio",
       "table_state_from_function": "A tabela '{{table}}' é derivada da função '{{name}}' e tem o seu estado de publicação: não é retirada nem reposta por si só",
       "table_region_from_function": "A tabela '{{table}}' é derivada da função '{{name}}' e tem a sua região: não é movida sozinha para outra região",
-      "table_name_reserved": "O nome de tabela '{{table}}' é reservado: os comandos de um domínio são servidos sob 'commands'. Registre a tabela com outro nome ou alias."
+      "table_name_reserved": "O nome de tabela '{{table}}' é reservado: os comandos de um domínio são servidos sob 'commands'. Registre a tabela com outro nome ou alias.",
+      "file_types_differ": "O padrão {{glob}} corresponde a arquivos de mais de um tipo ({{types}}); os arquivos de uma tabela devem ser todos do mesmo tipo."
     },
     "secrets": {
       "env_reference_object_locked": "Este objeto é do operador: ele lê o ambiente próprio do servidor e não pode ser alterado aqui. Adicione um seu em vez disso.",
