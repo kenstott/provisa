@@ -290,6 +290,41 @@ describe("Combine into one table", () => {
     expect(registerTables.mock.calls[0][0][0].fileGlob).toBe("complaints_*.csv");
   });
 
+  it("shows the refusal of a pattern naming no file type whose files are of two types", async () => {
+    // REQ-2234, A PATTERN WITH NO FILE TYPE: the server refuses by name, listing the types.
+    previewOf.mockImplementation((glob: string | null) => ({
+      ...PICKED,
+      glob: glob ?? "",
+      differing: [],
+    }));
+    registerTables.mockReset().mockResolvedValue([
+      {
+        tableName: "complaints",
+        result: {
+          success: false,
+          message: "server text",
+          code: "schema.file_types_differ",
+          params: { glob: "complaints*", types: "csv, parquet" },
+        },
+      },
+    ]);
+    const user = userEvent.setup();
+    const { setError } = renderForm();
+    await user.type(await screen.findByTestId("register-tables-file-glob"), "complaints*");
+    await user.click(screen.getByText("Combine into one table"));
+    await user.type(screen.getByTestId("register-combined-name"), "complaints");
+    await user.click(submit());
+    await waitFor(() => expect(registerTables).toHaveBeenCalledTimes(1));
+    expect(registerTables.mock.calls[0][0][0].fileGlob).toBe("complaints*");
+    await waitFor(() =>
+      expect(setError).toHaveBeenLastCalledWith(
+        expect.stringContaining(
+          "The pattern complaints* matches files of more than one type (csv, parquet)",
+        ),
+      ),
+    );
+  });
+
   it("aligns the choice with the glob input, not its label (shared after-label field)", async () => {
     renderForm();
     const user = userEvent.setup();

@@ -307,12 +307,15 @@ def test_the_config_selects_trino_and_provisa_accepts_it():
     assert "auth" not in raw
 
 
-def test_the_env_file_pins_the_engine_and_names_the_config():
-    lines = _ok("render_env_file /srv/etc /srv/data 9080").splitlines()
+def test_the_env_file_names_the_config_and_leaves_the_engine_to_it():
+    # REQ-2269: the config's federation_engine wins over the launch profile's default, so the env
+    # file sets no PROVISA_ENGINE.
+    text = _ok("render_env_file /srv/etc /srv/data 9080")
+    assert "PROVISA_ENGINE=" not in text
+    lines = text.splitlines()
     env = dict(line.split("=", 1) for line in lines if line and not line.startswith("#"))
     assert env == {
         "PROVISA_CONFIG": "/srv/etc/provisa.yaml",
-        "PROVISA_ENGINE": "trino",
         "TRINO_HOST": "127.0.0.1",
         "TRINO_PORT": "9080",
         "PROVISA_TRINO_ETC_DIR": "/srv/data/trino",

@@ -270,9 +270,6 @@ render_env_file() {
   cat <<EOF
 # Written by install-host.sh on every run; edit the script's flags, not this file.
 PROVISA_CONFIG=$1/provisa.yaml
-# The native launch profile names DuckDB unless PROVISA_ENGINE says otherwise, and the
-# environment outranks the config's federation_engine.
-PROVISA_ENGINE=trino
 TRINO_HOST=127.0.0.1
 TRINO_PORT=$3
 PROVISA_TRINO_ETC_DIR=$2/trino
