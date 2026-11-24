@@ -132,7 +132,35 @@ COLLATED_ORDERS: tuple[Feature, ...] = tuple(
     _collated_order(name, summary) for name, summary in _COLLATED_ORDERS.items()
 )
 
+#: The character(n) max/min aggregates: they compare without trailing spaces (bpcharcmp) in the
+#: session's collation and pad the result to the column's declared length. On every non-postgres
+#: dialect the padding length is read from the column's character(n) cast in a VALUES clause;
+#: any other form is refused.
+_CHARACTER_AGG_LIMITATION = (
+    Limitation(
+        "Requires every row of the input column to be cast to the same character(n) width "
+        "in a VALUES clause; refused otherwise.",
+    ),
+)
+
+_CHARACTER_AGGS = {
+    "max_character": "The maximum character(n) value in the database's collation, "
+    "without trailing-space padding in the comparison.",
+    "min_character": "The minimum character(n) value in the database's collation, "
+    "without trailing-space padding in the comparison.",
+}
+
+CHARACTER_AGG_FEATURES: tuple[Feature, ...] = tuple(
+    Feature(
+        name,
+        FAMILY,
+        summary,
+        read=Side(limitations=dict.fromkeys(_EVERY, _CHARACTER_AGG_LIMITATION)),
+    )
+    for name, summary in _CHARACTER_AGGS.items()
+)
+
 #: The family's place in the grid (polyfill.GRID), which tries the rules of one function in
 #: the order of their families.
 ORDER = 90
-FEATURES: tuple[Feature, ...] = (PG_COLLATION_FOR, *COLLATED_ORDERS)
+FEATURES: tuple[Feature, ...] = (PG_COLLATION_FOR, *COLLATED_ORDERS, *CHARACTER_AGG_FEATURES)

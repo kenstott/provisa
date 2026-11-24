@@ -264,7 +264,7 @@ def _described_oids(runtime: ClickHouseFederationRuntime, sql: str) -> list[int 
     """The result type oids pgwire describes ``sql``'s result by, served by embedded ClickHouse."""
     from provisa.pgwire.server import BVTYPE_TO_OID, _describe_casts, _sql_type_to_bvtype, _type_oid
 
-    served = runtime.run_sync(transpile(sql, "clickhouse")).column_types
+    served = runtime.run_sync(transpile(sql, "clickhouse", generated=False)).column_types
     types = [_sql_type_to_bvtype(t) for t in served]
     oids: list[int | None] = [_type_oid(t) for t in served]
     _describe_casts(sql, types, oids, [-1] * len(served), [], served, [False] * len(served))
@@ -282,7 +282,9 @@ def test_a_null_call_s_column_is_one_the_server_s_arrow_output_types(sql, oid):
     # The stand-in reaches Arrow as a binary (FixedString), as a Nothing reaches embedded
     # ClickHouse's: 24.3's Arrow output has no type for Nothing, and pgwire reads a binary NULL
     # column as untyped, described by PostgreSQL's type of the call.
-    (column,) = sqlglot.parse_one(transpile(sql, "clickhouse"), read="clickhouse").selects
+    (column,) = sqlglot.parse_one(
+        transpile(sql, "clickhouse", generated=False), read="clickhouse"
+    ).selects
     value = column.unalias()
     assert isinstance(value, exp.Cast) and isinstance(value.this, exp.Null)
     assert value.to.sql(dialect="clickhouse") == "Nullable(FixedString(1))"
