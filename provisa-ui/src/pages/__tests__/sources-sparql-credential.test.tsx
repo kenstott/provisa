@@ -168,6 +168,8 @@ describe("a sparql source's credential", () => {
     render(<SourcesPage />);
     await userEvent.click(await screen.findByTestId("sources-row-kyc-graph"));
     await userEvent.click(await screen.findByTestId("source-detail-edit"));
+    await userEvent.click(await screen.findByTestId("source-section-authentication"));
+    expect(screen.getByTestId("sparql-auth-type-select")).toHaveValue("Bearer Token");
     expect(await screen.findByTestId("sparql-token-input")).toHaveValue("${secret:kyc_token}");
   });
 });

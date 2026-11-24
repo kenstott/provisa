@@ -70,6 +70,12 @@ def server():
                 "provider": "simple",
                 "allow_simple_auth": True,
                 "jwt_secret": "sparql-source-credential-test-signing-key",
+                # Each account acts as its own role (claims mode answers the deployment's
+                # default role, analyst, for an account no rule maps).
+                "role_mapping": [
+                    {"claim": "username", "value": "svc-reasoner", "role": "east_reader"},
+                    {"claim": "username", "value": "admin", "role": "org_admin"},
+                ],
                 "simple": {
                     "users": [
                         _user("svc-reasoner", _PASSWORD, ["east_reader"]),
