@@ -10280,6 +10280,14 @@ tables:
     data_type: text
     visible_to:
     - viewer
+  - name: prime_term
+    data_type: text
+    visible_to:
+    - viewer
+  - name: prime_term_ontology_name
+    data_type: text
+    visible_to:
+    - viewer
   - name: surface
     data_type: text
     visible_to:

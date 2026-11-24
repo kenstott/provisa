@@ -1441,7 +1441,7 @@ _META_TABLE_VIEWS: dict[str, str] = {
         CREATE OR REPLACE VIEW model_names_meta AS
         SELECT object_kind || ':' || object_id || ':' || surface AS id,
                object_kind, object_id, surface, name, physical_name, label, domain_id,
-               table_id, is_alias, warnings
+               table_id, is_alias, warnings, prime_term, prime_term_ontology_name
         FROM model_names
     """,
     # REQ-1443 clause 10: a source's identity and type only -- the checker dialect a data-quality

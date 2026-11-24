@@ -757,7 +757,10 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "object_id": "The object's identity within its kind (a table's id, table_id:column, "
         "Type.field for a relationship, a command's or enum's name)",
         "surface": "Surface the name is served on (sql, graphql_field, graphql_type, "
-        "cypher_label, cypher_rel_type, proto_message, proto_rpc, pg_constraint, ...)",
+        "cypher_label, cypher_rel_type, proto_message, proto_rpc, pg_constraint, ...), or where "
+        "it lives: source (its name at its source), engine:<engine> and replica:<engine> (its "
+        "address in an engine), export:<target> (an export target that carries it), "
+        "term:<id> (a glossary term it realises)",
         "name": "The object's name on that surface",
         "physical_name": "The object's name at its source",
         "label": "How a message names the object (source.schema.table[.column])",
@@ -765,6 +768,9 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "table_id": "Table the object is, or belongs to; who may read it may read this row",
         "is_alias": "Whether the name is an alias an operator set (or the clash policy froze)",
         "warnings": "Each naming problem found in the name, with its code and message",
+        "prime_term": "A column's prime grounded term: the glossary Property term whose column "
+        "refs name it (empty on other rows and on a column no term owns)",
+        "prime_term_ontology_name": "The prime grounded term's name in the ontology schema",
     },
     "tag_expiry": {
         "id": "Assignment identifier",

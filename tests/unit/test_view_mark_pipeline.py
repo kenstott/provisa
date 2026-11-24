@@ -85,7 +85,8 @@ async def test_an_error_validating_a_marked_statement_names_no_mark(monkeypatch)
     def _unreadable(tree, _commands):
         raise ValueError(f"cannot read {tree.sql(dialect='postgres')}")
 
-    with patch.object(sql_validator, "view_command_inputs", side_effect=_unreadable):
+    # validate_sql's own reading of the marked statement: the reads its view commands make.
+    with patch.object(sql_validator, "view_command_reads", side_effect=_unreadable):
         with audit_identity_scope("ada", "http"):
             with pytest.raises(ValueError) as refused:
                 await _pipeline.govern_statement(
