@@ -46,6 +46,14 @@ from pg_type t join pg_namespace n on n.oid = t.typnamespace
 where n.nspname in ('pg_catalog', 'information_schema')
 """
 
+# Each domain's typmod: the typmod PostgreSQL describes a column of the domain with (printtup.c
+# getBaseTypeAndTypmod), yes_or_no's varchar(3) a 7.
+_DOMAIN_TYPMODS_SQL = """
+select json_object_agg(t.oid::int, t.typtypmod order by t.oid)
+from pg_type t join pg_namespace n on n.oid = t.typnamespace
+where n.nspname in ('pg_catalog', 'information_schema') and t.typtype = 'd'
+"""
+
 # A function's return type, where every overload of the name returns the same type.
 _FUNCTION_RETURNS_SQL = """
 select json_object_agg(proname, rettype order by proname) from (
@@ -84,6 +92,7 @@ def main() -> None:
         raise SystemExit(f"needs PostgreSQL 17, reached {version}")
     shapes = json.loads(_psql(prefix, _SHAPES_SQL))
     types = json.loads(_psql(prefix, _TYPES_SQL))
+    domain_typmods = json.loads(_psql(prefix, _DOMAIN_TYPMODS_SQL))
     function_returns = json.loads(_psql(prefix, _FUNCTION_RETURNS_SQL))
     proc_names = json.loads(_psql(prefix, _PROC_NAMES_SQL))
     static = {}
@@ -123,7 +132,8 @@ def main() -> None:
         "(name, format_type, type oid). RELATION_CLASS: each relation's oid and relkind. STATIC_ROWS:",
         "the rows PostgreSQL itself fixes for the information_schema tables on its SQL conformance.",
         "TYPES: each type's oid -> (namespace, typname, typlen, typtype, typcategory, typnotnull,",
-        "typbasetype, typbyval, typalign, typstorage, typelem, typdelim, format_type). FUNCTION_RETURNS:",
+        "typbasetype, typbyval, typalign, typstorage, typelem, typdelim, format_type). DOMAIN_TYPMODS:",
+        "each domain's oid -> its typtypmod. FUNCTION_RETURNS:",
         "a pg_catalog function's return type, where every overload of its name returns the same one.",
         'PROC_NAMES: a pg_catalog function\'s oid -> its regproc text form."""',
         "",
@@ -151,6 +161,10 @@ def main() -> None:
     lines.append("")
     lines.append("TYPES: dict[int, tuple] = {")
     lines.extend(f"    {t[0]}: {tuple(t[1:])!r}," for t in types)
+    lines.append("}")
+    lines.append("")
+    lines.append("DOMAIN_TYPMODS: dict[int, int] = {")
+    lines.extend(f"    {int(oid)}: {typmod}," for oid, typmod in domain_typmods.items())
     lines.append("}")
     lines.append("")
     lines.append("FUNCTION_RETURNS: dict[str, str] = {")

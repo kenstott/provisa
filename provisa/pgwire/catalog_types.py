@@ -27,7 +27,7 @@ from sqlglot.optimizer.annotate_types import annotate_types
 from sqlglot.optimizer.qualify import qualify
 from sqlglot.schema import MappingSchema
 
-from provisa.pgwire.catalog_pg17 import FUNCTION_RETURNS, RELATIONS, TYPES
+from provisa.pgwire.catalog_pg17 import DOMAIN_TYPMODS, FUNCTION_RETURNS, RELATIONS, TYPES
 from provisa.pgwire.catalog_pg17_procs import PROCS
 from provisa.pgwire.function_types import call_result_type
 
@@ -78,8 +78,35 @@ _SAME_WIRE_FORM = frozenset(
     }
 )
 
+
+def described_type_oid(oid: int) -> int:
+    """The OID PostgreSQL describes a column of type ``oid`` with: a domain's base type, as
+    printtup.c SendRowDescriptionMessage sends it (getBaseTypeAndTypmod), so information_schema's
+    character_data is described as varchar and sql_identifier as name (Grafana's column listing)."""
+    entry = TYPES[oid]
+    return described_type_oid(entry[6]) if entry[3] == "d" else oid
+
+
+#: Each such type's name and the OID a column of it is described with.
 CATALOG_TYPE_OIDS: dict[str, int] = {
-    entry[-1]: oid for oid, entry in TYPES.items() if entry[-1] in _SAME_WIRE_FORM
+    entry[-1]: described_type_oid(oid)
+    for oid, entry in TYPES.items()
+    if entry[-1] in _SAME_WIRE_FORM
+}
+
+
+def described_typmod(oid: int) -> int:
+    """The typmod PostgreSQL describes a column of type ``oid`` with: a domain's own typmod, as
+    printtup.c getBaseTypeAndTypmod gives it (yes_or_no, varchar(3), a 7; time_stamp,
+    timestamptz(2), a 2), or -1, PostgreSQL's "no typmod", for a type that is not a domain."""
+    return DOMAIN_TYPMODS[oid] if TYPES[oid][3] == "d" else -1
+
+
+#: Each such type's name and the typmod a column of it is described with, where it has one.
+CATALOG_TYPE_TYPMODS: dict[str, int] = {
+    entry[-1]: described_typmod(oid)
+    for oid, entry in TYPES.items()
+    if entry[-1] in _SAME_WIRE_FORM and described_typmod(oid) != -1
 }
 
 _PSEUDO_TYPES = frozenset(entry[-1] for entry in TYPES.values() if entry[3] == "p")
@@ -257,9 +284,10 @@ def _out_columns() -> dict[str, tuple[str, ...]]:
     return {name: next(iter(outs)) for name, outs in named.items() if len(outs) == 1}
 
 
-#: sqlglot's readings of PostgreSQL's one-column set-returning functions: unnest of one array, and
-#: generate_series.
-_ONE_COLUMN_FUNCTIONS = (exp.Explode, exp.GenerateSeries)
+#: sqlglot's readings of PostgreSQL's one-column functions in FROM: unnest of one array,
+#: generate_series, and string_to_array, a scalar function PostgreSQL reads in FROM as a one-row
+#: relation of its result (REQ-2204: Grafana reads the search path with it).
+_ONE_COLUMN_FUNCTIONS = (exp.Explode, exp.GenerateSeries, exp.StringToArray)
 
 
 def one_column_function(table: exp.Expr) -> exp.Table | None:  # REQ-2204
