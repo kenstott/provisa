@@ -126,8 +126,9 @@ def test_clickhouse_pgwire_connector_probe_reports_cached_bundle(tmp_path, monke
 def test_clickhouse_pgwire_connector_probe_unavailable_on_an_unbuilt_platform(monkeypatch):
     from provisa.federation.clickhouse_connectors import ClickHouseSharepointConnector
 
-    monkeypatch.setattr(rd.platform, "system", lambda: "Linux")
-    monkeypatch.setattr(rd.platform, "machine", lambda: "aarch64")
+    # An Intel Mac is not a supported platform (REQ-294): no bundle is published for it.
+    monkeypatch.setattr(rd.platform, "system", lambda: "Darwin")
+    monkeypatch.setattr(rd.platform, "machine", lambda: "x86_64")
     result = asyncio.run(ClickHouseSharepointConnector().probe(_fetch_unused))
     assert result.available is False
     assert result.remediation is not None

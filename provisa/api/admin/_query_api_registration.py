@@ -28,6 +28,7 @@ from provisa.core.schema_org import sources
 
 if TYPE_CHECKING:
     from provisa.api.admin.types import MutationResult, QueryPreviewType
+    from provisa.core.auth_models import ApiAuth
     from provisa.core.database import Connection
     from provisa.core.models import Table
 
@@ -43,10 +44,59 @@ async def source_row(conn: "Connection", source_id: str) -> dict[str, Any] | Non
             sources.c.port,
             sources.c.database,
             sources.c.mapping,
+            sources.c.username,  # REQ-2138: a sparql source's credential, as held
+            sources.c.password_ref,
         ).where(sources.c.id == source_id)
     )
     row = res.fetchone()
     return dict(row._mapping) if row is not None else None
+
+
+def sparql_source_refusal(
+    source_id: str, source_type: str, mapping: dict, endpoint_url: str, username: str, password: str
+) -> "MutationResult | None":  # REQ-2138
+    """The refusal for a sparql source whose credential is not one there is, or that reads
+    Provisa's own endpoint with no credential; None for a source that may be saved (and for
+    every other type)."""
+    from provisa.api.admin.types import MutationResult
+    from provisa.sparql.source import (
+        OwnEndpointNeedsCredential,
+        SparqlCredentialInvalid,
+        require_credential,
+        sparql_auth,
+    )
+
+    if source_type != "sparql":
+        return None
+    try:
+        require_credential(
+            source_id, endpoint_url, sparql_auth(source_id, mapping, username, password)
+        )
+    except (OwnEndpointNeedsCredential, SparqlCredentialInvalid) as refused:
+        return MutationResult(
+            success=False, message=str(refused), code=refused.code, params=refused.params
+        )
+    return None
+
+
+def refresh_sparql_api_source(
+    source_id: str, mapping: dict, endpoint_url: str, username: str, password: str
+) -> None:  # REQ-2138
+    """After a sparql source's save: its live api source (once a table has made one) reads the
+    endpoint under the credential just saved, as a restart would load it."""
+    from provisa.api.app import state
+    from provisa.sparql.persist import sparql_config_from_source
+
+    if source_id not in state.api_sources:
+        return
+    _, api_source = sparql_config_from_source(
+        source_id=source_id,
+        endpoint_url=endpoint_url,
+        options=mapping,
+        username=username,
+        password=password,
+    )
+    state.api_sources[source_id] = api_source
 
 
 async def is_quickbooks_source(conn: "Connection", source_id: str) -> bool:
@@ -70,9 +120,20 @@ async def preview_sparql(conn: "Connection", source_id: str, query: str) -> "Que
     row = await source_row(conn, source_id)
     if row is None or row["type"] != "sparql":
         return QueryPreviewType(error=f"{source_id!r} is not a registered sparql source")
-    cfg, _ = sparql_config_from_source(source_id=source_id, endpoint_url=row["host"])
+    try:
+        # REQ-2138: the preview reads the endpoint under the source's own credential, as its
+        # slice and its tables do; one reading Provisa's own endpoint with none is refused.
+        cfg, _ = sparql_config_from_source(
+            source_id=source_id,
+            endpoint_url=row["host"],
+            options=row["mapping"] or {},
+            username=row["username"],
+            password=row["password_ref"],
+        )
+    except ValueError as exc:
+        return QueryPreviewType(error=str(exc))
     if inferred_iri(query) is not None:
-        return await _preview_inferred(row, query)
+        return await _preview_inferred(row, cfg.auth, query)
     try:
         results = await probe_endpoint(cfg, query)
     except httpx.HTTPError as exc:
@@ -93,15 +154,19 @@ async def preview_sparql(conn: "Connection", source_id: str, query: str) -> "Que
     )
 
 
-async def _preview_inferred(row: dict[str, Any], query: str) -> "QueryPreviewType":
+async def _preview_inferred(
+    row: dict[str, Any], auth: "ApiAuth | None", query: str
+) -> "QueryPreviewType":
     """REQ-2138: preview an inferred class or property of the source's reasoner: the source's
-    classification, reasoned now, and the first rows of the IRI the query names -- a class's
-    members (``member``), a property's pairs (``subject``, ``value``)."""
+    classification, reasoned now from the slice its endpoint answers under the source's own
+    credential (``auth``), and the first rows of the IRI the query names -- a class's members
+    (``member``), a property's pairs (``subject``, ``value``)."""
     import httpx
 
     from provisa.api.admin.types import QueryPreviewColumnType, QueryPreviewType
     from provisa.core.secrets import resolve_secrets
     from provisa.sparql import reasoning
+    from provisa.sparql.source import credential_headers, sparql_headers
 
     try:
         reasoner = reasoning.source_reasoner(row["id"], row["mapping"] or {})
@@ -116,7 +181,11 @@ async def _preview_inferred(row: dict[str, Any], query: str) -> "QueryPreviewTyp
     assert iri is not None
     try:
         found = await reasoning.classification(
-            row["id"], reasoner[1], resolve_secrets(row["host"]), {}, ttl=0
+            row["id"],
+            reasoner[1],
+            resolve_secrets(row["host"]),
+            {**sparql_headers(), **credential_headers(auth)},
+            ttl=0,
         )
     except (reasoning.ReasonerFailed, httpx.HTTPError) as exc:
         return QueryPreviewType(error=f"{type(exc).__name__}: {exc}")
@@ -433,19 +502,25 @@ async def persist_query_api_registration(
         )
     else:
         from provisa.sparql.persist import persist_sparql_table
+        from provisa.sparql.source import OwnEndpointNeedsCredential, SparqlCredentialInvalid
 
-        from provisa.sparql.reasoning import source_reasoner
-
-        api_source, endpoint = await persist_sparql_table(
-            conn,
-            source_id=model.source_id,
-            endpoint_url=row["host"],
-            reasoner=source_reasoner(model.source_id, row["mapping"] or {}),  # REQ-2138
-            table_name=model.table_name,
-            query_template=model.query_template,
-            columns=model.columns,
-            ttl=model.cache_ttl or 300,
-        )
+        try:
+            api_source, endpoint = await persist_sparql_table(
+                conn,
+                source_id=model.source_id,
+                endpoint_url=row["host"],
+                table_name=model.table_name,
+                query_template=model.query_template,
+                columns=model.columns,
+                ttl=model.cache_ttl or 300,
+                options=row["mapping"] or {},  # REQ-2138: its reasoner, its credential's kind
+                username=row["username"],
+                password=row["password_ref"],
+            )
+        except (OwnEndpointNeedsCredential, SparqlCredentialInvalid) as refused:
+            return MutationResult(
+                success=False, message=str(refused), code=refused.code, params=refused.params
+            )
     if not isinstance(getattr(state, "api_sources", None), dict):
         state.api_sources = {}
     state.api_sources[api_source.id] = api_source

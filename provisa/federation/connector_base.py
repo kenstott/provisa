@@ -153,7 +153,7 @@ class Connector(ABC):  # REQ-842
         ""  # stable identity for probe reports + override strike-list (falls back to source_type)
     )
     # DuckDB connectors backed by a loadable extension declare it (REQ-899): ``extension`` is the name
-    # to INSTALL/LOAD before an attach; ``install_from_community`` selects the community vs core registry;
+    # to LOAD before an attach; ``install_from_community`` selects the community vs core registry;
     # ``probe_symbol`` is the scanner/attach function whose presence after LOAD proves the extension is
     # installed — the load-only probe (never opens a live source). None where no extension is needed.
     extension: str | None = None

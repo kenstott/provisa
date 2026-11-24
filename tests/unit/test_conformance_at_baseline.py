@@ -166,7 +166,7 @@ def test_a_summary_gives_three_counts_and_never_a_by_design_case_as_failed():
     assert doc["pass_rate"] == round(285 / 290, 4)
     line = by_design.counts_line(doc)
     assert line == (
-        "295 cases: 285 passed, 5 skipped by design, 5 failed. Pass rate 98.3% (passed over "
+        "295 cases: 285 passed, 5 skipped by design, 0 documented limit, 5 failed. Pass rate 98.3% (passed over "
         "passed and failed)."
     )
     assert not re.search(r"[0-9]+ failed, [0-9]+ passed", line)

@@ -31,10 +31,18 @@ jobs:
       - name: Pyodide downloads
         uses: ./.github/actions/pyodide-downloads
 
+      # This commit's provisa-duckdb-ext wheels, which the image stages (REQ-294): the Pages index
+      # holds only what a release published.
+      - name: DuckDB extension wheels
+        uses: ./.github/actions/duckdb-ext-wheels
+        with:
+          phase: prime
+
       - name: Build the app image (linux/amd64, not pushed)
         run: >-
           docker build --platform linux/amd64
           --build-context pyodide-downloads="$PROVISA_NOTEBOOK_DOWNLOADS"
+          --build-context duckdb-ext-wheels="$PROVISA_DUCKDB_EXT_WHEELS"
           -t provisa/provisa:ci .
 
       # REQ-2194: provisa's compiled encoders are in the image (the Dockerfile imports them too).

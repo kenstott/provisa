@@ -96,6 +96,12 @@ def _left_beside(tmp_path) -> list[str]:
     return sorted(p.name for p in release.iterdir() if p.name != f".{_SPEC.artifact_name}.lock")
 
 
+def _resolver(tmp_path) -> BundleResolver:
+    """The resolver the ``--github-release`` staging step builds: a running Provisa never fetches
+    (REQ-294), so the download and its checks run only with the downloader injected."""
+    return BundleResolver(cache_root=tmp_path, downloader=pgwire_bundles.download_release_asset)
+
+
 def test_checksum_url_is_the_tarball_asset_plus_sha256():
     assert _SPEC.checksum_url == f"{_SPEC.download_url}.sha256"
 
@@ -103,7 +109,7 @@ def test_checksum_url_is_the_tarball_asset_plus_sha256():
 def test_good_tarball_installs_whole(tmp_path, monkeypatch):
     body = _tarball()
     fetched = _serve(monkeypatch, tarball=body, checksum=_sum(body))
-    root = BundleResolver(cache_root=tmp_path).resolve(_SPEC)
+    root = _resolver(tmp_path).resolve(_SPEC)
     assert (root / "bin" / _SPEC.artifact_name).read_bytes() == b"#!/bin/sh\n"
     assert (root / "jars" / "govdata.jar").stat().st_size == 256 * 1024
     assert (root / "model" / "model.json").is_file()
@@ -115,7 +121,7 @@ def test_good_tarball_installs_whole(tmp_path, monkeypatch):
 def test_checksum_with_bare_digest_is_accepted(tmp_path, monkeypatch):
     body = _tarball()
     _serve(monkeypatch, tarball=body, checksum=hashlib.sha256(body).hexdigest().encode())
-    root = BundleResolver(cache_root=tmp_path).resolve(_SPEC)
+    root = _resolver(tmp_path).resolve(_SPEC)
     assert (root / "bin" / _SPEC.artifact_name).is_file()
 
 
@@ -124,7 +130,7 @@ def test_truncated_tarball_is_refused_and_leaves_no_cache_directory(tmp_path, mo
     # The connection was cut off: the release's checksum is of the whole tarball.
     _serve(monkeypatch, tarball=body[: len(body) // 2], checksum=_sum(body))
     with pytest.raises(BundleUnavailable, match="SHA-256"):
-        BundleResolver(cache_root=tmp_path).resolve(_SPEC)
+        _resolver(tmp_path).resolve(_SPEC)
     assert _left_beside(tmp_path) == []
 
 
@@ -133,7 +139,7 @@ def test_checksum_mismatch_is_refused(tmp_path, monkeypatch):
     tampered = _tarball(launcher=False)
     _serve(monkeypatch, tarball=tampered, checksum=_sum(body))
     with pytest.raises(BundleUnavailable) as err:
-        BundleResolver(cache_root=tmp_path).resolve(_SPEC)
+        _resolver(tmp_path).resolve(_SPEC)
     assert hashlib.sha256(tampered).hexdigest() in str(err.value)
     assert hashlib.sha256(body).hexdigest() in str(err.value)
     assert _left_beside(tmp_path) == []
@@ -143,7 +149,7 @@ def test_missing_checksum_asset_is_refused(tmp_path, monkeypatch):
     body = _tarball()
     fetched = _serve(monkeypatch, tarball=body, checksum=None)
     with pytest.raises(BundleUnavailable, match=r"no checksum asset .*\.tar\.gz\.sha256"):
-        BundleResolver(cache_root=tmp_path).resolve(_SPEC)
+        _resolver(tmp_path).resolve(_SPEC)
     # Nothing is downloaded that cannot be verified.
     assert fetched == [_SPEC.checksum_url]
     assert _left_beside(tmp_path) == []
@@ -153,7 +159,7 @@ def test_malformed_checksum_asset_is_refused(tmp_path, monkeypatch):
     body = _tarball()
     _serve(monkeypatch, tarball=body, checksum=b"<html>rate limited</html>")
     with pytest.raises(BundleUnavailable, match="does not hold a SHA-256 digest"):
-        BundleResolver(cache_root=tmp_path).resolve(_SPEC)
+        _resolver(tmp_path).resolve(_SPEC)
     assert _left_beside(tmp_path) == []
 
 
@@ -161,7 +167,7 @@ def test_tarball_without_launcher_is_refused_and_not_moved_into_place(tmp_path, 
     body = _tarball(launcher=False)
     _serve(monkeypatch, tarball=body, checksum=_sum(body))
     with pytest.raises(BundleUnavailable, match="does not contain launcher"):
-        BundleResolver(cache_root=tmp_path).resolve(_SPEC)
+        _resolver(tmp_path).resolve(_SPEC)
     assert _left_beside(tmp_path) == []
 
 
@@ -185,5 +191,5 @@ def test_interrupted_extract_leaves_no_partial_tree(tmp_path, monkeypatch):
         ],
     )
     with pytest.raises(BundleUnavailable, match="No space left on device"):
-        BundleResolver(cache_root=tmp_path).resolve(_SPEC)
+        _resolver(tmp_path).resolve(_SPEC)
     assert _left_beside(tmp_path) == []

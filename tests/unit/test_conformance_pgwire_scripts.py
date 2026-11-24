@@ -113,7 +113,10 @@ def test_pgspec_results_are_counted_per_leaf_and_failures_grouped_by_section():
         "TestSimpleQuery/Insert",
     ]
     md = m.markdown(s)
-    assert "5 tests: 2 passed, 0 skipped by design, 3 failed. Pass rate 40.0%" in md
+    assert (
+        "5 tests: 2 passed, 0 skipped by design, 0 documented limit, 3 failed. Pass rate 40.0%"
+        in md
+    )
     assert "`TestSimpleQuery/Cancel`: not reached" in md
     assert "`TestSimpleQuery/Insert`: skipped by pgspec" in md
 
@@ -246,6 +249,7 @@ def test_each_part_of_the_catalog_report_is_its_own_section():
                     "differs_type": 0,
                     "differs_engine_error": 1,
                     "by_design": 0,
+                    "documented_limit": 0,
                     "not_compared": 1,
                 }
             },
@@ -276,15 +280,15 @@ def test_each_part_of_the_catalog_report_is_its_own_section():
         },
     }
     md = m.markdown(report)
-    # REQ-2167 (amended 2026-10-28): each part's three counts, side by side.
-    assert "| catalog relations | 3 | 1 | 0 | 2 | 33.3% |" in md
+    # REQ-2167 (amended 2026-11-23): each part's four counts, side by side.
+    assert "| catalog relations | 3 | 1 | 0 | 0 | 2 | 33.3% |" in md
     # REQ-2171 (RESULTS ARE BY ENGINE): functions are no part of that table; they have one engine's
     # counts, and no failed count.
     assert "| catalog functions |" not in md
     assert "## Catalog functions on duckdb (PostgreSQL 16.4)" in md
     assert "| duckdb | 1 | 0 | 0 | 1 | 0 | 1 |" in md
     assert "Functions failed" not in md
-    assert "| type conversions | 1 | 0 | 0 | 1 | 0.0% |" in md
+    assert "| type conversions | 1 | 0 | 0 | 0 | 1 | 0.0% |" in md
     for heading in (
         "## pgwire catalog shape (PostgreSQL 16.4)",
         "## pgwire catalog coverage (PostgreSQL 16.4)",
@@ -1094,7 +1098,7 @@ def test_the_pgwire_page_counts_leave_functions_to_the_results_by_engine():
     surface, _, rate, cases = fill_docs.read(m.combined(pgspec, catalog))
     assert surface == "pgwire"
     assert rate == (
-        "100.0%: 57 passed, 1 skipped by design, 0 failed, of 58 cases. "
+        "100.0%: 57 passed, 1 skipped by design, 0 documented limit, 0 failed, of 58 cases. "
         "Catalog functions are reported by engine"
     )
     assert "box(point)" not in cases

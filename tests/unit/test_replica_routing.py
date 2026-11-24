@@ -389,3 +389,51 @@ async def test_a_deployment_with_no_store_and_nothing_replicated_reads_its_route
 
 async def no_synthetic_tables(_conn):
     return {}
+
+
+async def test_a_table_kept_in_another_region_is_not_reconciled_here(monkeypatch):
+    """REQ-1922: a table naming another region has its replica there, never here. The landed-table
+    reconcile (``landing_worklist``) creates each table it lists at this region's replica address,
+    so a table kept elsewhere listed here came back as an empty copy right after this region's own
+    copy was retired and dropped (test_region_retire_e2e)."""
+    from provisa.core import process_region
+    from provisa.federation import replica_routing
+
+    def _reg(table_id: int, table_name: str, region: str | None) -> dict:
+        return {
+            "id": table_id,
+            "source_id": "pg",
+            "schema_name": "public",
+            "table_name": table_name,
+            "region": region,
+            "replicate": 0,
+            "load_protected": None,
+            "cache_ttl": None,
+            "row_materialize": False,
+            "landing_filter": None,
+            "columns": [
+                {
+                    "column_name": "id",
+                    "native_filter_type": None,
+                    "data_type": "integer",
+                    "is_primary_key": True,
+                }
+            ],
+        }
+
+    registered = [_reg(1, "everywhere", None), _reg(2, "in_us", "us"), _reg(3, "in_eu", "eu")]
+    registry = replica_routing._Registry(
+        registered,
+        {"pg": _attachable()},
+        serving=frozenset(),
+        promoted=frozenset(),
+        synthetic={},
+    )
+
+    async def _registry(_state):
+        return registry
+
+    monkeypatch.setattr(replica_routing, "_registry", _registry)
+    monkeypatch.setattr(process_region, "_region", "us")
+    worklist = await replica_routing.landing_worklist(_ENGINE, None)
+    assert [entry[2] for entry in worklist] == ["everywhere", "in_us"]

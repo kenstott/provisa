@@ -71,9 +71,18 @@ build_provisa_image() {
   if [ -n "${PROVISA_NOTEBOOK_DOWNLOADS:-}" ]; then
     pyodide=(--build-context "pyodide-downloads=${PROVISA_NOTEBOOK_DOWNLOADS}")
   fi
+  # provisa-duckdb-ext's wheels from the directory the leg built them into
+  # (.github/actions/duckdb-ext-wheels), when the environment names one: the image stages them
+  # (REQ-294), and the release's Pages index holds them only once a release has published them. A
+  # build that names none reads the Pages index, and stops by name when it has no wheel.
+  local duckdb_ext=()
+  if [ -n "${PROVISA_DUCKDB_EXT_WHEELS:-}" ]; then
+    duckdb_ext=(--build-context "duckdb-ext-wheels=${PROVISA_DUCKDB_EXT_WHEELS}")
+  fi
   until docker build \
     --platform linux/amd64 \
     ${pyodide[@]+"${pyodide[@]}"} \
+    ${duckdb_ext[@]+"${duckdb_ext[@]}"} \
     --tag provisa/provisa:local \
     "${REPO_ROOT}"; do
     attempt=$((attempt + 1))

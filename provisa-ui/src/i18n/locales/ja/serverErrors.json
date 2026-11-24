@@ -626,7 +626,9 @@
       "columns_not_inferred": "列を推測できませんでした：プローブが行を返さず、SELECT 変数も見つかりませんでした。",
       "probe_failed": "SPARQL エンドポイントのプローブに失敗しました：{{error}}",
       "source_not_found": "SPARQL ソース「{{source_id}}」が見つかりません",
-      "no_select_variables": "クエリに SELECT 変数がありません (SELECT * または SELECT クエリではありません): クエリからカラムを読み取れません"
+      "no_select_variables": "クエリに SELECT 変数がありません (SELECT * または SELECT クエリではありません): クエリからカラムを読み取れません",
+      "credential_invalid": "ソース '{{source}}' は不完全な {{kind}} 資格情報を宣言しています。bearer 資格情報にはトークン、basic 資格情報にはユーザー名とパスワードが必要です（種類は bearer と basic）",
+      "own_endpoint_needs_credential": "ソース '{{source}}' は Provisa 自身の SPARQL エンドポイントを読み取りますが、資格情報を宣言していません。サービス用に保持する Provisa アカウントの bearer トークン、またはユーザー名とパスワードを宣言してください。そのロールが読み取れる範囲を決めます"
     },
     "subscribe": {
       "avro_topic_without_registry": "トピック '{{topic}}' は Avro メッセージを含みますが、そのソースには読み取り用のスキーマレジストリが指定されていません。ソースのスキーマレジストリ URL を設定してください",

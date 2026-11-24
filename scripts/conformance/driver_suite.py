@@ -40,7 +40,7 @@ not run is reported, never counted.
 
 Log lines, printed after the files are written, so the result is readable from the job log:
 
-    CONFORMANCE-COUNTS surface=driver-<driver> passed=<n> by_design=<n> failed=<n> not_tested=<n> total=<n>
+    CONFORMANCE-COUNTS surface=driver-<driver> passed=<n> by_design=<n> documented_limit=<n> failed=<n> not_tested=<n> total=<n>
     DRIVER-UNEXPECTED-FAILURE <test>
     DRIVER-UNEXPECTED-PASS <test>
 
@@ -68,10 +68,12 @@ LISTS = Path(__file__).resolve().parent / "drivers"
 DOCS = Path(__file__).resolve().parents[2] / "docs" / "conformance"
 PAGE = DOCS / "drivers.md"
 
-#: The four counts every driver's report gives (REQ-2203), each with the label a page gives it.
+#: The counts every driver's report gives (REQ-2203; REQ-2167, amended 2026-11-23: documented limit
+#: is its own count, none for a driver, whose list states no limitation), each with its label.
 COUNTS = {
     "passed": "passed",
     "by_design": "skipped by design",
+    "documented_limit": "documented limit",
     "failed": "failed",
     "not_tested": "not tested",
 }
@@ -314,6 +316,8 @@ def summarise(expected: Expected, version: str, results: dict[str, dict], suite:
         "total": passed + by_design + failed + len(not_tested),
         "passed": passed,
         "by_design": by_design,
+        # A driver's list states no limitation to fail as (REQ-2167, amended 2026-11-23).
+        "documented_limit": 0,
         "failed": failed,
         "not_tested": len(not_tested),
         "by_design_groups": groups,
@@ -426,7 +430,8 @@ def section(doc: dict, requirement: bool = False) -> str:
 def log_lines(doc: dict) -> list[str]:
     return [
         f"CONFORMANCE-COUNTS surface={doc['surface']} passed={doc['passed']} "
-        f"by_design={doc['by_design']} failed={doc['failed']} not_tested={doc['not_tested']} "
+        f"by_design={doc['by_design']} documented_limit={doc['documented_limit']} "
+        f"failed={doc['failed']} not_tested={doc['not_tested']} "
         f"total={doc['total']}",
         *(f"DRIVER-UNEXPECTED-FAILURE {f['test']}" for f in doc["unexpected_failures"]),
         *(f"DRIVER-UNEXPECTED-PASS {p['test']}" for p in doc["unexpected_passes"]),

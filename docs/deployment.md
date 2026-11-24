@@ -30,6 +30,20 @@ Every production path needs the Provisa artifacts before any deployment can run.
 
 **Terraform path.** Upload the AppImage to S3 before running `terraform/deploy.sh`. EC2 nodes download it at boot through their IAM role, so they need outbound access to S3, directly or through a VPC gateway endpoint. Apply the same scanning policy as for the AppImage path.
 
+**DuckDB extensions and connector bundles.** Every installer works the same way: it stays small, and one stage command, `python -m provisa.runtime_deps.stage_assets [home]`, places the DuckDB extensions and the connector bundles (file, SharePoint, Salesforce, ServiceNow, Jira, CloudOps, Splunk, GovData) in local directories outside the installed application. It runs once, at install or first launch, on the macOS, Windows, Linux and `pip` installs; the container image is built with these assets inside it. DuckDB and the connectors never download anything at runtime: a missing extension or bundle fails naming it and this command.
+
+The assets come from package repositories an enterprise Artifactory proxy typically carries. The core DuckDB extensions are the `duckdb-extension-*` projects on PyPI and the community extensions are the version parts of `provisa-duckdb-ext`, fetched with `pip download` from the index pip is configured for (`pip.conf`, `PIP_INDEX_URL`). The connector bundles are Maven artifacts (`io.simpleishard:pgwire-<connector>-<platform>` and the `pgwire-shared-<platform>` files they have in common) fetched from `PROVISA_MAVEN_REPOSITORY`, else the mirror of `central` in `~/.m2/settings.xml`, else Maven Central.
+
+`python -m provisa.federation.duckdb_extensions` and `python -m provisa.runtime_deps.pgwire_bundles` check an install and name anything missing. An extension declared by a [custom connector](sources.md#custom-connectors) isn't staged; put it in `PROVISA_DUCKDB_EXT_DIR` yourself. A MotherDuck source needs its service reachable: the extension asks `api.motherduck.com` for its build when it loads.
+
+**Air-gapped sites.** Fill the directories once, on a machine of the same OS and architecture that reaches the package repositories, with the same Provisa version:
+
+```bash
+python -m provisa.runtime_deps.stage_assets ./provisa-assets
+```
+
+Copy the two directories it fills (`duckdb-ext` and `runtime-deps`) to the matching ones on the target (`~/.provisa/` for a native install, `PROVISA_DUCKDB_EXT_DIR` and `PROVISA_RUNTIME_DEPS_CACHE` elsewhere), keeping their layout. A directory already filled is used without fetching anything.
+
 **Helm / Kubernetes path.** Push the individual images to a registry the cluster can reach. This path works best with registry-based scanning (Prisma Cloud, Aqua, Trivy, AWS Inspector), because the images are objects scanners already understand. For an air-gapped cluster, mirror the images to an internal registry and override the references in `values.yaml`.
 
 ### Embedding library in every install
@@ -79,6 +93,16 @@ UI:      http://localhost:3000
 `--reset-volumes` runs `docker compose down -v` before starting, destroying all Docker volumes (PostgreSQL data, MinIO objects, Redis state, etc.). Use when you want a completely clean slate: after a schema change during development, or when Docker has crashed and left volumes corrupt. **All data will be lost.**
 
 `--observability` adds full tracing and metrics instrumentation. It downloads the OpenTelemetry Java agent and patches Trino's `jvm.config` to load it, instruments the Provisa backend with OTLP export, and starts the OTel collector, Prometheus, Tempo, and Grafana (`http://localhost:3100`). The `jvm.config` patch is automatically reverted on Ctrl+C.
+
+### DuckDB extensions on a source checkout
+
+Provisa never downloads a DuckDB extension while it runs. It only loads what's already staged, and a missing extension fails naming the extension and this step. On a source checkout, run this once on a connected machine (and again after a DuckDB version change):
+
+```bash
+python scripts/stage_duckdb_extensions.py
+```
+
+It installs every extension from DuckDB's own repositories into its per-user directory, or into `PROVISA_DUCKDB_EXT_DIR` when that's set, then loads each to confirm it. An install uses `python -m provisa.runtime_deps.stage_assets` instead.
 
 ### Manual steps (backend only, no UI)
 

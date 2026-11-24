@@ -929,11 +929,11 @@ def markdown(report: dict[str, Any]) -> str:
     out = [
         f"## pgwire catalog and types (PostgreSQL {report['postgres_version']})",
         "",
-        "| part | cases | passed | skipped by design | failed | pass rate |",
-        "|---|---:|---:|---:|---:|---:|",
+        "| part | cases | passed | skipped by design | documented limit | failed | pass rate |",
+        "|---|---:|---:|---:|---:|---:|---:|",
         *(
             f"| {label} | {part['total']} | {part['passed']} | {part['by_design']} "
-            f"| {part['failed']} | "
+            f"| {part['documented_limit']} | {part['failed']} | "
             + ("n/a" if part["pass_rate"] is None else f"{part['pass_rate']:.1%}")
             + " |"
             for label, part in (
@@ -1057,7 +1057,7 @@ def probe(
     print(markdown(report))
 
 
-#: The parts of the pgwire run, each a set of cases with its own three counts.
+#: The parts of the pgwire run, each a set of cases with its own four counts.
 PARTS = ("pgspec", "catalog_relations", "catalog_functions", "type_conversions")
 
 
@@ -1072,8 +1072,8 @@ def _totals(parts: list[dict[str, Any]]) -> dict[str, Any]:
 
 def combined(pgspec: dict, catalog: dict | None) -> dict[str, Any]:
     """The pgwire run's artifact: pgspec's summary and the catalog and type comparison's parts,
-    and their three counts summed at the top, in the shape every conformance report has (REQ-2167,
-    amended 2026-10-28). ``catalog`` is None when the comparison did not complete: its parts are
+    and their four counts summed at the top, in the shape every conformance report has (REQ-2167,
+    amended 2026-11-23). ``catalog`` is None when the comparison did not complete: its parts are
     null and counted nowhere."""
     doc: dict[str, Any] = {
         "surface": "pgwire",
@@ -1082,13 +1082,13 @@ def combined(pgspec: dict, catalog: dict | None) -> dict[str, Any]:
         "postgres_version": (catalog or {}).get("postgres_version"),
     }
     parts = [doc[part] for part in PARTS if doc[part] is not None]
-    keys = ("total", "passed", "by_design", "failed", "ran", "pass_rate")
+    keys = ("total", "passed", "by_design", "documented_limit", "failed", "ran", "pass_rate")
     totals = _totals(parts)
     others = _totals([doc[part] for part in PARTS if part != FUNCTIONS and doc[part] is not None])
     functions = doc[FUNCTIONS] or {}
     # The groups and failures stay in their parts; the top gives the counts. Functions have no
     # overall count (REQ-2171, RESULTS ARE BY ENGINE): ``outside_functions`` is the run without
-    # them, what the page reports, and ``functions_by_engine`` is theirs. The top's own six keys
+    # them, what the page reports, and ``functions_by_engine`` is theirs. The top's own seven keys
     # still sum every part because the landing floor reads ``failed``: they go when it moves.
     return {
         "surface": "pgwire",

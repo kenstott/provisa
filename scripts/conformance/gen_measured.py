@@ -235,19 +235,6 @@ BOUND_DIALECTS = ("duckdb", "trino", "clickhouse")
 _MULTIDIMENSIONAL = "{{"
 
 
-def _edge_value(label: str, statement: str) -> str:
-    """The value an edge call of ``label`` (``<type> <kind>``) passed, as the statement wrote it."""
-    for kind in sorted(
-        {e.kind for edges in function_edges.EDGES.values() for e in edges}, key=len, reverse=True
-    ):
-        if label.endswith(f" {kind}"):
-            argtype = label[: -len(kind) - 1]
-            for edge in function_edges.EDGES.get(argtype, ()):
-                if edge.kind == kind and edge.literal in statement:
-                    return f"{argtype} {edge.literal}"
-    return label
-
-
 def _sqlstate(raised: dict[str, Any]) -> str:
     """The SQLSTATE a client gets for an edge call's error: a translator's refusal by name is
     0A000 (function_macros.FunctionRefused), which a run before it was given kept as XX000."""
@@ -281,17 +268,21 @@ def bounds(run: dict[str, Any], grid: polyfill.Grid, leave: frozenset[str]) -> d
             stated = applied.feature.read.limitations.get(dialect, ())
             seen = found[applied.feature.name][dialect]
             # An edge raise is within the row's bound where it states any limitation there; a
-            # wrong answer, where it states a difference (polyfill_check._stated_differences).
+            # wrong answer, where it states a difference (polyfill_check._differences).
             if outcome.get("error_at_edge") and not stated:
                 for raised in outcome.get("edge_raised", ()):
                     if _MULTIDIMENSIONAL not in raised["statement"]:
-                        value = _edge_value(raised["edge"], raised["statement"])
+                        value = function_edges.edge_value(raised["edge"], raised["statement"])
                         seen[_sqlstate(raised)].add(value)
             detail = outcome.get("detail") or {}
             differs = any(lim.refusal is None for lim in stated)
             if outcome.get("wrong_at_edge") and not differs:
                 if _MULTIDIMENSIONAL not in detail.get("statement", ""):
-                    seen[""].add(_edge_value(detail.get("edge", ""), detail.get("statement", "")))
+                    seen[""].add(
+                        function_edges.edge_value(
+                            detail.get("edge", ""), detail.get("statement", "")
+                        )
+                    )
     texts: dict = collections.defaultdict(lambda: collections.defaultdict(set))
     for feature, by_dialect in found.items():
         for dialect, by_state in by_dialect.items():

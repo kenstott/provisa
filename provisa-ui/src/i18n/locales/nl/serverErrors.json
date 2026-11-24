@@ -626,7 +626,9 @@
       "columns_not_inferred": "Kon geen kolommen afleiden: probe retourneerde geen rijen en er zijn geen SELECT-variabelen gevonden.",
       "probe_failed": "SPARQL-endpointprobe mislukt: {{error}}",
       "source_not_found": "SPARQL-bron '{{source_id}}' niet gevonden",
-      "no_select_variables": "De query noemt geen SELECT-variabelen (SELECT * of geen SELECT-query): de kolommen zijn er niet uit te lezen"
+      "no_select_variables": "De query noemt geen SELECT-variabelen (SELECT * of geen SELECT-query): de kolommen zijn er niet uit te lezen",
+      "credential_invalid": "Bron '{{source}}' geeft onvolledige {{kind}}-inloggegevens op: bearer-gegevens hebben een token nodig, basic-gegevens een gebruikersnaam en wachtwoord (de soorten zijn bearer en basic)",
+      "own_endpoint_needs_credential": "Bron '{{source}}' leest het eigen SPARQL-eindpunt van Provisa en geeft geen inloggegevens op: geef het bearer-token of de gebruikersnaam en het wachtwoord op van een Provisa-account dat voor de dienst wordt bijgehouden, waarvan de rollen begrenzen wat de bron leest"
     },
     "subscribe": {
       "avro_topic_without_registry": "Topic '{{topic}}' bevat Avro-berichten en de bron noemt geen schema-registry om ze mee te lezen: stel de schema-registry-URL van de bron in",

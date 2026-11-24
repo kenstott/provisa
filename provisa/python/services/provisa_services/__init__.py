@@ -427,9 +427,10 @@ class TableConnection:
 
 @dataclass(frozen=True)
 class TableFlight:
-    """REQ-2270: how a function on a remote host reaches its table over Arrow Flight SQL: the
-    server's ``uri``, and the bearer ``token`` good for this call only, presented with the call's
-    id (``call``) in the ``x-provisa-call`` header. :meth:`TableRef.read` reads with it."""
+    """REQ-2270: how a function reaches its table over Arrow Flight SQL: the server's ``uri`` (on
+    a remote host, the deployment's Flight server; in a local worker, the loopback listener minted
+    for the call, REQ-2226), and the bearer ``token`` good for this call only, presented with the
+    call's id (``call``) in the ``x-provisa-call`` header. :meth:`TableRef.read` reads with it."""
 
     uri: str
     token: str
@@ -465,10 +466,10 @@ def _statement_command(sql: str) -> bytes:
 class TableRef(Generic[_Row]):
     """REQ-2226: a governed Provisa table given to a ``@command`` or ``@query``, ``TableRef[Row]``
     with ``Row`` the input columns it declares. The function reads the table as the calling role,
-    so what the role cannot see it cannot read. A local worker, or a remote host in a language
-    without a Flight client, runs ``sql`` on a PostgreSQL connection made with ``connection``; a
-    Python remote host, such as the Spark connector's, is given ``flight`` instead (REQ-2270) and
-    reads with :meth:`read`. Exactly one of the two is set."""
+    so what the role cannot see it cannot read. Python code, in a local worker (REQ-2226) or on a
+    remote host such as the Spark connector's (REQ-2270), is given ``flight`` and reads with
+    :meth:`read`; code in a language without a Flight client runs ``sql`` on a PostgreSQL
+    connection made with ``connection``. Exactly one of the two is set."""
 
     ref: str
     columns: tuple[str, ...]
@@ -495,7 +496,12 @@ class TableRef(Generic[_Row]):
                 (b"x-provisa-call", target.call.encode()),
             ]
         )
-        client = flight.FlightClient(target.uri)
+        # A local worker's listener is on its own loopback, which the egress proxy its sandbox
+        # names for every other connection refuses: gRPC would otherwise go through it.
+        loopback = target.uri.startswith(("grpc://127.0.0.1:", "grpc://localhost:"))
+        client = flight.FlightClient(
+            target.uri, generic_options=[("grpc.enable_http_proxy", 0)] if loopback else None
+        )
         try:
             descriptor = flight.FlightDescriptor.for_command(_statement_command(self.sql))
             info = client.get_flight_info(descriptor, options)
