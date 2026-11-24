@@ -273,8 +273,8 @@ def _violations(
             gov_ctx,
             role,
             raw_tables,
-            bypass_relationship_guard=True,  # one table: it relates nothing
-            bypass_uncovered_relationships=True,
+            bypass_relationship_guard=bypass_relationship_guard,
+            bypass_uncovered_relationships=bypass_uncovered_relationships,
             table_functions=frozenset(),
             view_commands={},
         )
