@@ -88719,6 +88719,7 @@ Then the mutation is refused as it is in the UI"
   - tests/unit/test_mcp_graph_tools.py
   - provisa-ui/src/__tests__/clientTools.admin.test.ts
   - provisa-ui/src/__tests__/ChatPanel.test.tsx
+  - tests/unit/test_mcp_native_discovery.py
   code:
   - provisa/api/mcp/admin_api.py
   - provisa/api/mcp/chat.py

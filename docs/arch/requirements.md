@@ -25412,7 +25412,7 @@ Polly can perform every action the UI can, as the chatting user, through the adm
 
 **Code:** `provisa/api/mcp/admin_api.py`, `provisa/api/mcp/chat.py`, `provisa/api/mcp/tools.py`, `provisa-ui/src/mcp/clientTools.ts`, `provisa-ui/src/components/ChatPanel.tsx`
 
-**Tests:** `tests/unit/test_mcp_admin_api.py`, `tests/unit/test_mcp_chat.py`, `tests/unit/test_mcp_chat_prompt_rules.py`, `tests/unit/test_mcp_graph_tools.py`, `provisa-ui/src/__tests__/clientTools.admin.test.ts`, `provisa-ui/src/__tests__/ChatPanel.test.tsx`
+**Tests:** `tests/unit/test_mcp_admin_api.py`, `tests/unit/test_mcp_chat.py`, `tests/unit/test_mcp_chat_prompt_rules.py`, `tests/unit/test_mcp_graph_tools.py`, `provisa-ui/src/__tests__/clientTools.admin.test.ts`, `provisa-ui/src/__tests__/ChatPanel.test.tsx`, `tests/unit/test_mcp_native_discovery.py`
 
 ### REQ-2115 · Catalog Explore {#REQ-2115}
 
