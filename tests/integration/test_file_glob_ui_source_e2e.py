@@ -191,8 +191,11 @@ def _read_both(srv, relation: str) -> None:
     )
 
 
-def test_a_combined_glob_table_on_an_admin_created_files_source_reads_every_file(served):
-    srv, data = served
+def _register_combined(srv, data: Path, glob: str) -> tuple[list[dict], str | None]:
+    """The maintainer's flow, call for call as the UI makes it: a files source created in the
+    admin, its schema and listed files, the preview of ``glob`` typed in "Or files matching", the
+    reference file's columns, the suggested alias, then ``registerTables`` with the combined
+    table. Answers what each registration answered and the alias sent."""
     created = _gql(
         srv,
         "mutation($input: SourceInput!) { createSource(input: $input) { success message } }",
@@ -221,10 +224,10 @@ def test_a_combined_glob_table_on_an_admin_created_files_source_reads_every_file
         srv,
         "query($s: String!, $g: String, $t: [String!]) { fileGlobPreview(sourceId: $s, glob: $g, "
         "tables: $t) { glob referenceTable files { file table } differing { file } } }",
-        {"s": _SOURCE, "g": "complaints_2026_*.csv", "t": offered},
+        {"s": _SOURCE, "g": glob, "t": offered},
         "fileGlobPreview",
     )
-    assert len(preview["files"]) == 2, preview
+    assert preview["glob"] == glob, preview
     assert not preview["differing"], preview
     reference = preview["referenceTable"]
     columns = _listed(
@@ -248,7 +251,7 @@ def test_a_combined_glob_table_on_an_admin_created_files_source_reads_every_file
     outcomes = _gql(
         srv,
         "mutation($inputs: [TableInput!]!) { registerTables(inputs: $inputs) "
-        "{ tableName result { success message } } }",
+        "{ tableName result { success message code params } } }",
         {
             "inputs": [
                 {
@@ -268,6 +271,12 @@ def test_a_combined_glob_table_on_an_admin_created_files_source_reads_every_file
             ]
         },
     )["registerTables"]
+    return outcomes, alias
+
+
+def test_a_combined_glob_table_on_an_admin_created_files_source_reads_every_file(served):
+    srv, data = served
+    outcomes, alias = _register_combined(srv, data, "complaints_2026_*.csv")
     assert all(o["result"]["success"] for o in outcomes), json.dumps(outcomes)
 
     # naming.tableSqlRef: the domain's SQL name, then the alias or the table's name.
@@ -277,3 +286,33 @@ def test_a_combined_glob_table_on_an_admin_created_files_source_reads_every_file
     # After a restart, the registered glob table is still the union under its name.
     srv.restart()
     _read_both(srv, relation)
+
+
+def test_a_pattern_naming_no_file_type_reads_as_the_type_its_files_share(served):
+    """REQ-2234, A PATTERN WITH NO FILE TYPE: ``complaints*`` (no extension) over CSV files is
+    read as CSV -- the maintainer's failure, where ``complaints*.csv`` worked."""
+    srv, data = served
+    outcomes, alias = _register_combined(srv, data, "complaints*")
+    assert all(o["result"]["success"] for o in outcomes), json.dumps(outcomes)
+    relation = f'"ops"."{alias or "complaints"}"'
+    _read_both(srv, relation)
+    srv.restart()
+    _read_both(srv, relation)
+
+
+def test_a_pattern_naming_no_file_type_over_two_types_is_refused_naming_both(served):
+    """REQ-2234: files of more than one type cannot be one table; registration is refused by
+    name, listing the types found, and no table is registered."""
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    srv, data = served
+    pq.write_table(pa.table({"id": [4], "amount": [40]}), data / "complaints_2026_11.parquet")
+    outcomes, _alias = _register_combined(srv, data, "complaints*")
+    assert len(outcomes) == 1, outcomes
+    result = outcomes[0]["result"]
+    assert result["success"] is False, json.dumps(outcomes)
+    assert result["code"] == "schema.file_types_differ", json.dumps(outcomes)
+    assert result["params"]["types"] == "csv, parquet", json.dumps(outcomes)
+    rows = _sql_rows(srv, 'SELECT "id" FROM "complaints"', "refused")
+    assert rows is None, rows

@@ -53,7 +53,7 @@ federation_engine_host: 127.0.0.1
 federation_engine_port: 8080
 ```
 
-`provisa.env` sets `PROVISA_ENGINE=trino` as well. The environment outranks the config file, and the embedded launch profile names DuckDB unless the environment says otherwise.
+`provisa.env` does not set `PROVISA_ENGINE`. The embedded launch profile names DuckDB only when neither the environment nor the config file names an engine, so the config's `federation_engine` selects Trino.
 
 Trino runs with Docker's host network. It reaches your sources over the same network Provisa uses, and listens on the Trino port directly on the host. Provisa creates catalogs in Trino at runtime, so the engine config holds no catalog files.
 

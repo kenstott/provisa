@@ -174,23 +174,17 @@ def _state(
         tables=copy.deepcopy(tables),
         source_types={"pg": "postgresql"},
         source_catalogs={},
-        # The set's two plain relationships, as registered (REQ-2249): orders to the bridge, the
-        # bridge to clips.
+        # The set's one relationship, as registered (REQ-2249): the junction from orders to clips
+        # through the bridge (its two plain relationships are not saved, REQ-1586).
         relationships=[
             {
                 "source_table_id": 1,
-                "target_table_id": 3,
-                "source_column": "id",
-                "target_column": "order_id",
-                "via_table_id": None,
-                "target_function_name": None,
-            },
-            {
-                "source_table_id": 3,
                 "target_table_id": 2,
-                "source_column": "clip_id",
+                "source_column": "id",
                 "target_column": "id",
-                "via_table_id": None,
+                "via_table_id": 3,
+                "via_source_column": "order_id",
+                "via_target_column": "clip_id",
                 "target_function_name": None,
             },
         ],
