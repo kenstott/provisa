@@ -1,0 +1,22 @@
+{
+  "sourceSetup": {
+    "label": "Configuración del origen",
+    "connect": "Conectar origen",
+    "register": "Registrar tablas",
+    "relate": "Descubrir relaciones",
+    "query": "Consultar",
+    "tablesCount_one": "{{count}} tabla",
+    "tablesCount_other": "{{count}} tablas",
+    "registerHint": "Registre las tablas de este origen para consultarlas.",
+    "registerAction": "Registrar tablas",
+    "relateHint": "Relacione las tablas nuevas entre sí y con tablas de cualquier origen.",
+    "relateAction": "Descubrir relaciones",
+    "nothingToRelate": "Nada que relacionar",
+    "nothingToRelateHint": "Todavía no hay nada con lo que relacionar estas tablas. Continúe y consúltelas.",
+    "relateNotAllowed": "Sin permiso",
+    "relateNotAllowedHint": "Para crear relaciones se necesita el derecho de crear relaciones. Continúe y consulte las tablas.",
+    "queryHint": "Abre el explorador de consultas con una consulta inicial sobre {{table}}.",
+    "queryAction": "Abrir una consulta inicial",
+    "complete": "Configuración completa"
+  }
+}

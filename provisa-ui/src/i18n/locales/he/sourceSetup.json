@@ -1,0 +1,22 @@
+{
+  "sourceSetup": {
+    "label": "הגדרת המקור",
+    "connect": "חיבור מקור",
+    "register": "רישום טבלאות",
+    "relate": "גילוי קשרים",
+    "query": "שאילתה",
+    "tablesCount_one": "טבלה {{count}}",
+    "tablesCount_other": "{{count}} טבלאות",
+    "registerHint": "יש לרשום את הטבלאות של מקור זה כדי לתשאל אותן.",
+    "registerAction": "רישום טבלאות",
+    "relateHint": "קישור הטבלאות החדשות זו לזו ולטבלאות מכל מקור.",
+    "relateAction": "גילוי קשרים",
+    "nothingToRelate": "אין מה לקשר",
+    "nothingToRelateHint": "עדיין אין למה לקשר את הטבלאות האלה. אפשר להמשיך ולתשאל אותן.",
+    "relateNotAllowed": "אין הרשאה",
+    "relateNotAllowedHint": "יצירת קשרים דורשת את ההרשאה ליצירת קשרים. אפשר להמשיך ולתשאל את הטבלאות.",
+    "queryHint": "פתיחת חוקר השאילתות עם שאילתת התחלה על {{table}}.",
+    "queryAction": "פתיחת שאילתת התחלה",
+    "complete": "ההגדרה הושלמה"
+  }
+}
