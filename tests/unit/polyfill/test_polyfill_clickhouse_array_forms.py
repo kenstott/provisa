@@ -25,9 +25,10 @@ alike with 17):
 - hash_array of an array of two dimensions: of its elements, as array.c hashes them;
 - width_bucket of an infinite float8 operand (answered), a NaN and an infinite bound (2201G);
 - json_array_length and jsonb_array_length of no array: PostgreSQL's 22023 and message;
-- isfinite of an interval past int32 months: 22008; of a timestamp or an instant outside
-  DateTime64's bound (a year BC, past 9999, infinity) and timestamptz_larger and
-  timestamptz_smaller of one: the stated 0A000 of the bound.
+- isfinite of an interval past int32 months: 22008; of a timestamp outside DateTime64's bound (a
+  year BC, past 9999, infinity): timestamp_in's 0A000, now stated; of an instant literal in no ISO
+  form (a year BC, past 9999, infinity), and timestamptz_larger and timestamptz_smaller of one:
+  the row's refusal by name, now stated with its message.
 
 The run's 24.3-only errors (cardinality, array_larger's supertype, array_position of a start,
 array_sample and trim_array's arraySlice of a Nullable count, array_agg of a NULL) do not occur on
@@ -188,11 +189,11 @@ _OUTSIDE_STAMP = (
     "timestamp_in() of a value outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 "
     "has no exact form on clickhouse"
 )
-_BOUND = "1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC"
 
 
-def _outside(function: str) -> str:
-    return f"{function}() of a value outside {_BOUND} has no exact form on clickhouse"
+def _by_name(function: str) -> str:
+    """A row's refusal by name of a literal in no ISO form it does not read (instants._refused)."""
+    return f"{function}() has no form on clickhouse"
 
 
 _BC = "'4713-01-01 00:00:00+00 BC'::timestamp with time zone"
@@ -216,16 +217,16 @@ WITHIN_BOUND = [
     (_call("isfinite", "'294276-12-31 23:59:59.999999'::timestamp without time zone"), "0A000",
      _OUTSIDE_STAMP),
     (_call("isfinite", "'infinity'::timestamp without time zone"), "0A000", _OUTSIDE_STAMP),
-    (_call("isfinite", _BC), "0A000", _outside("timestamptz_in")),
-    (_call("isfinite", _FAR), "0A000", _outside("timestamptz_in")),
-    (_call("isfinite", _INFINITE), "0A000", _outside("timestamptz_in")),
-    (_call("timestamptz_larger", _BC, _TSTZ), "0A000", _outside("timestamptz_larger")),
-    (_call("timestamptz_larger", _TSTZ, _BC), "0A000", _outside("timestamptz_larger")),
-    (_call("timestamptz_larger", _FAR, _TSTZ), "0A000", _outside("timestamptz_larger")),
-    (_call("timestamptz_larger", _TSTZ, _INFINITE), "0A000", _outside("timestamptz_larger")),
-    (_call("timestamptz_smaller", _BC, _TSTZ), "0A000", _outside("timestamptz_smaller")),
-    (_call("timestamptz_smaller", _TSTZ, _FAR), "0A000", _outside("timestamptz_smaller")),
-    (_call("timestamptz_smaller", _INFINITE, _TSTZ), "0A000", _outside("timestamptz_smaller")),
+    (_call("isfinite", _BC), "0A000", _by_name("isfinite")),
+    (_call("isfinite", _FAR), "0A000", _by_name("isfinite")),
+    (_call("isfinite", _INFINITE), "0A000", _by_name("isfinite")),
+    (_call("timestamptz_larger", _BC, _TSTZ), "0A000", _by_name("timestamptz_larger")),
+    (_call("timestamptz_larger", _TSTZ, _BC), "0A000", _by_name("timestamptz_larger")),
+    (_call("timestamptz_larger", _FAR, _TSTZ), "0A000", _by_name("timestamptz_larger")),
+    (_call("timestamptz_larger", _TSTZ, _INFINITE), "0A000", _by_name("timestamptz_larger")),
+    (_call("timestamptz_smaller", _BC, _TSTZ), "0A000", _by_name("timestamptz_smaller")),
+    (_call("timestamptz_smaller", _TSTZ, _FAR), "0A000", _by_name("timestamptz_smaller")),
+    (_call("timestamptz_smaller", _INFINITE, _TSTZ), "0A000", _by_name("timestamptz_smaller")),
 ]  # fmt: skip
 
 

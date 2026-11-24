@@ -1634,8 +1634,7 @@ _HELD_STATED = (
     "A literal is read as PostgreSQL's interval input reads it (IntervalStyle postgres): amounts "
     "and their units, a clock, signs, fractions, '@' and 'ago'. ISO 8601 and SQL standard input, "
     "a bare number, infinity, and a value whose type no statement says (a table's column) are "
-    "refused by name. A text whose months, its years' and its own together, pass int32 "
-    "('178956971 years') raises PostgreSQL's 22008 (interval out of range)."
+    "refused by name."
 )
 _TEXT_STATED = (
     " An interval answer in the select list is interval_out's text (IntervalStyle postgres); one "
