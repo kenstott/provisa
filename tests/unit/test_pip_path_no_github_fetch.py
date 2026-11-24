@@ -241,7 +241,8 @@ HOSTS: dict[str, str] = {
     "extensions, named in EXTENSION_REPOSITORIES (provisa/federation/duckdb_extensions.py) for "
     "the provisa-duckdb-ext mirror build alone; a running Provisa only LOADs staged extensions "
     "and never reaches it. No move.",
-    "kenstott.github.io": "the release's package index on GitHub Pages; see ALLOWED above.",
+    "kenstott.github.io": "the release's package index on GitHub Pages; see ALLOWED above. "
+    "Move: provisa-duckdb-ext on PyPI once access returns.",
     "ghcr.io": "published demo bundles (provisa/core/demo_bundles.py PUBLISHED_AT), an OCI "
     "registry; PROVISA_DEMO_REGISTRY or --registry points at a mirror. Move (follow-up): open "
     "question, none of the three registries hosts OCI artifacts; publish the demo bundles as a "
