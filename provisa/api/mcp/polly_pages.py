@@ -161,6 +161,7 @@ PAGES: dict[str, PollyPage] = {
     "/admin/ai-models": PollyPage("AI model settings"),
     "/admin/package-registries": PollyPage("package registries"),
     "/admin/container-registries": PollyPage("container registries"),
+    "/admin/spark-cluster": PollyPage("the org's default Spark cluster"),
     "/context/health": PollyPage(
         "context health: the steward summary, whose bulk approval is the page's one action, and a "
         "card per health signal (terms, documents, classification, drift, tags lost, and sync for a "
