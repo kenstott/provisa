@@ -560,6 +560,7 @@
       "incremental_no_change": "למקור הקוד אין פונקציית ‎@change‎ עבור {{table}}. יש להצהיר על אחת באמצעות ‎@change table={{table}}‎.",
       "incremental_needs_rebuild_every": "{{table}} מתוחזקת באופן אינקרמנטלי, ולכן היא נבנית מחדש במלואה לפי שעון. יש לקבוע באיזו תדירות, בשניות, בשדה \"בנייה מחדש מלאה כל\".",
       "table_derived_from_function": "הטבלה '{{name}}' נגזרת מפונקציה: היא מוסרת על ידי כיבוי הטבלה של הפונקציה, והעמודות והפרמטרים שלה נערכים בפונקציה",
+      "table_has_dependents": "הטבלה '{{name}}' עדיין נקראת או מוזכרת על ידי אובייקטים אחרים: יש להוציא אותם משימוש או לשנות אותם תחילה",
       "table_withdrawn": "הטבלה {{table}} הוסרה מהייצור",
       "table_put_back": "הטבלה {{table}} הוחזרה",
       "source_withdrawn": "המקור {{source}} הוסר מהייצור",
@@ -573,7 +574,8 @@
       "table_domain_required": "הטבלה '{{table}}' אינה מציינת תחום: כל טבלה נרשמת בתחום",
       "table_state_from_function": "הטבלה '{{table}}' נגזרת מהפונקציה '{{name}}' ומצב השחרור שלה הוא של הפונקציה: היא אינה נמשכת או מוחזרת בפני עצמה",
       "table_region_from_function": "הטבלה '{{table}}' נגזרת מהפונקציה '{{name}}' ויש לה את האזור שלה: היא אינה מועברת לאזור אחר בפני עצמה",
-      "table_name_reserved": "שם הטבלה '{{table}}' שמור: פקודות של דומיין מוגשות תחת 'commands'. רשמו את הטבלה בשם או בכינוי אחר."
+      "table_name_reserved": "שם הטבלה '{{table}}' שמור: פקודות של דומיין מוגשות תחת 'commands'. רשמו את הטבלה בשם או בכינוי אחר.",
+      "file_types_differ": "התבנית {{glob}} תואמת קבצים מיותר מסוג אחד ({{types}}); כל הקבצים של טבלה אחת חייבים להיות מאותו סוג."
     },
     "secrets": {
       "env_reference_object_locked": "אובייקט זה שייך למפעיל: הוא קורא את סביבת השרת עצמו ואי אפשר לשנותו כאן. יש להוסיף אובייקט משלך במקומו.",
@@ -690,7 +692,8 @@
       "undefined_variable_property": "{{clause}} קורא את {{variable}}, ששום דבר במשפט אינו קושר: משתנה נקשר בתבנית MATCH, ב-WITH, ב-UNWIND או ב-CALL. קשורים כאן: {{bound}}. האם התכוונתם ל-{{suggestion}}? {{owner}} קשור ל-:{{label}}, שיש לו מאפיין {{variable}}.",
       "undefined_variable_properties": "{{clause}} קורא את {{variable}}, ששום דבר במשפט אינו קושר: משתנה נקשר בתבנית MATCH, ב-WITH, ב-UNWIND או ב-CALL. קשורים כאן: {{bound}}. האם התכוונתם ל-{{suggestions}}? כל אחד מהם קשור לתווית שיש לה מאפיין {{variable}}.",
       "non_finite_number": "התשובה מכילה מספר ש-JSON אינו יכול לייצג: {{column}} הוא {{value}}.",
-      "try_cast_needs_postgres_16": "toInteger, toFloat ו-toBoolean של ערך שעשוי לא להיות ניתן להמרה דורשים PostgreSQL 16 ומעלה במנוע זה."
+      "try_cast_needs_postgres_16": "toInteger, toFloat ו-toBoolean של ערך שעשוי לא להיות ניתן להמרה דורשים PostgreSQL 16 ומעלה במנוע זה.",
+      "relationship_unread": "לא ניתן היה לקרוא קשר, ולכן הקשתות שלו אינן מוצגות: {{statement}}: {{reason}}"
     },
     "requests": {
       "approver_outside_domains": "הזכות שלכם לאשר קשרים אינה מגיעה לאף דומיין שהבקשה הזו נוגעת בו ({{domains}})",

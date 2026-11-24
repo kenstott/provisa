@@ -29,10 +29,10 @@ from typing import Any
 import sqlglot.expressions as exp
 
 from provisa.compiler.temp_tables import TempSession
-from provisa.cypher.parser import CypherParseError
+from provisa.cypher.parser import CypherParseError, writes_in
 from provisa.ephemeral import read, store, then
 from provisa.ephemeral.delete import Deleted, delete, delete_bound
-from provisa.ephemeral.indexes import Indexed, index_statement
+from provisa.ephemeral.indexes import Indexed, index_statement, is_index_statement
 from provisa.ephemeral.labels import Labelled, write_labels, write_labels_bound
 from provisa.ephemeral.merge import _governed as merge_governed
 from provisa.ephemeral.merge import merge, merge_bound
@@ -94,6 +94,10 @@ async def _write(
     run_write: Write,
 ) -> Created | Deleted | Labelled | Propertied | Indexed | Answered | None:
     if session is None:
+        return None
+    if not writes_in(statement) and not is_index_statement(statement):
+        # A read: every write below is named by its write clause (CREATE, MERGE, DELETE, SET,
+        # REMOVE), so a statement holding none is the surface's own read, never parsed here.
         return None
     indexed = await index_statement(statement, model, session, state)
     if indexed is not None:

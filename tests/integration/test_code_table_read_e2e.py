@@ -612,10 +612,11 @@ def test_the_worker_cannot_reach_the_minted_pgwire_listener(server, ledger, mint
     assert row["status"] == "refused", row
 
 
-# REQ-2249: a code resolver set -- one resolver picked, kept as a bridge view over its call and two
-# ordinary relationships through it. Landed, the matches are built as the organisation's
-# administrator and served from the view; following the relationships applies the reader's row
-# rules on the target.
+# REQ-2249: a code resolver set -- one resolver picked, kept as a bridge view over its call and one
+# junction relationship through it (the two plain relationships are not saved, as GraphQL serves
+# junction relationships, REQ-1586). Landed, the matches are built as the organisation's
+# administrator and served from the view; following the junction applies the reader's row rules
+# at each hop.
 
 _RESOLVER_SET = (
     'id: "order_clips", resolver: "match_region", sourceTable: "orders", sourceColumn: "id", '
@@ -658,7 +659,8 @@ def order_clips(server, ledger):
     assert refreshed["success"], refreshed
 
 
-_FOLLOW = "{ orders(order_by: {id: asc}) { id order_clips { score clips { id region } } } }"
+#: GraphQL follows the junction to the matched target rows; the score is Cypher's edge property.
+_FOLLOW = "{ orders(order_by: {id: asc}) { id order_clips { id region } } }"
 
 
 def test_a_landed_code_resolver_is_followed_to_its_matches_and_the_target(server, order_clips):
@@ -670,8 +672,8 @@ def test_a_landed_code_resolver_is_followed_to_its_matches_and_the_target(server
         assert time.monotonic() < deadline, orders
         time.sleep(2)
     assert orders == [
-        {"id": 1, "order_clips": [{"score": 1.0, "clips": {"id": 1, "region": "emea"}}]},
-        {"id": 2, "order_clips": [{"score": 1.0, "clips": {"id": 2, "region": "amer"}}]},
+        {"id": 1, "order_clips": [{"id": 1, "region": "emea"}]},
+        {"id": 2, "order_clips": [{"id": 2, "region": "amer"}]},
     ]
 
 
@@ -681,14 +683,9 @@ def test_the_target_is_read_under_the_readers_row_rules(server, order_clips):
     by the analyst's rule on each input through its relationship to the view, so order 2's match
     (clip 2) is not served to the analyst at all (REQ-2131, amended 2026-11-16: a code-command
     view's bridge rows are filtered by the reader's rule on each input, through its relationship).
-
-    The score is computed from the whole of each table the resolver is given (its call may read
-    any column of them), so it derives from orders.tag, which the analyst sees masked: the score
-    is masked for the analyst with that column's mask (REQ-2131, amended 2026-11-16: only an
-    output that is an input's relationship key escapes a mask elsewhere on the input). The score
-    is a Float, so the mask keeps its type and it reads as null (REQ-2131, amended 77da388aa6)."""
+    GraphQL reads the junction's target rows; the score is not among them."""
     orders = _graphql(server, _ANALYST, _FOLLOW)["orders"]
-    assert orders[0]["order_clips"] == [{"score": None, "clips": {"id": 1, "region": "emea"}}]
+    assert orders[0]["order_clips"] == [{"id": 1, "region": "emea"}]
     assert orders[1]["order_clips"] == []
 
 
@@ -705,7 +702,7 @@ def test_a_resolver_whose_rows_lack_a_key_is_refused_with_the_reason(server, led
 
 
 def test_a_part_of_the_set_is_not_retired_apart_from_it(server, order_clips):
-    refused = _try(server, 'deleteRelationship(id: "order_clips_target")')
+    refused = _try(server, 'deleteRelationship(id: "order_clips")')
     assert not refused["success"]
     assert refused["code"] == "schema.code_resolver_part", refused
 
@@ -731,7 +728,7 @@ def test_cypher_serves_the_set_as_one_edge_carrying_the_score(server, order_clip
     assert rows == [(1, 1.0, 1), (2, 1.0, 2)], answer
 
 
-def test_retiring_the_set_retires_all_four_and_keeps_the_name(server, order_clips):
+def test_retiring_the_set_retires_the_bridge_and_junction_and_keeps_the_name(server, order_clips):
     """Last in the module: it retires the set the tests above follow."""
     retired = _admin(server, 'retireCodeResolver(id: "order_clips")')
     assert retired["success"], retired
@@ -742,9 +739,7 @@ def test_retiring_the_set_retires_all_four_and_keeps_the_name(server, order_clip
         timeout=server.request_timeout + 120,
     )
     listed = response.json()["data"]
-    assert not {"order_clips", "order_clips_matches", "order_clips_target"} & {
-        r["id"] for r in listed["relationships"]
-    }
+    assert "order_clips" not in {r["id"] for r in listed["relationships"]}
     assert listed["codeResolvers"] == []
     again = _try(server, f"createCodeResolver(input: {{{_RESOLVER_SET}}})")
     assert not again["success"], again

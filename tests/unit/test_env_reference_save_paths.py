@@ -84,6 +84,7 @@ _CONNECTION: dict[str, tuple[tuple[str, ...], str]] = {
         "the seam: a written value, and an UPDATE of a row that carries a reference",
     ),
     "execute_core": ((), "through _execute_core"),
+    "read_alone": ((), "through _execute_core, in autocommit outside a transaction"),
     "execute_core_many": (("guard_statement", "guard_rows"), "the values travel beside it"),
     "bulk_copy": (("guard_rows",), "a bulk load's rows"),
     "_bulk_load_singlestore": ((), "bulk_copy's SingleStore path, after its guard"),

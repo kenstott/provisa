@@ -496,6 +496,8 @@ def _governance_document(
                 # REQ-1443: the most recent scan's verdict. Atlas has no native DQ result, so it
                 # rides the document the governance facts already ride; ``never_run`` says the
                 # contract is registered but has not executed, which is a state, not an absence.
+                # REQ-392: ``unreadable`` (the publishing role was refused the results table)
+                # rides the same document, with the refusal as its ``reason``.
                 "outcome": assertion.outcome.as_document(),
             }
             for assertion in assertions

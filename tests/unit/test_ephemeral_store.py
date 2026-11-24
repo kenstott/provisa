@@ -118,7 +118,11 @@ def test_a_tag_on_a_model_node_is_a_label_row_under_its_identity(landed):
 def test_a_relationship_lands_its_ends_and_its_properties(landed):
     session = TempSession()
     _write(session, Writes(rels=[NewRel("r:1", "KNOWS", "e:1", "Person|7", {"since": 2019})]))
-    assert landed[store.RELS][1] == [("r:1", "KNOWS", "e:1", "Person|7", store.rel_table("KNOWS"))]
+    # The graph column is null for a Cypher relationship (REQ-2135: only a SPARQL named graph
+    # sets it).
+    assert landed[store.RELS][1] == [
+        ("r:1", "KNOWS", "e:1", "Person|7", store.rel_table("KNOWS"), None)
+    ]
     assert landed[store.rel_table("KNOWS")] == (
         [("rel_id", "text"), ("since", "bigint")],
         [("r:1", 2019)],

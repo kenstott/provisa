@@ -16,6 +16,10 @@ import { describe, it, expect, vi } from "vitest";
 import { fireEvent, render, screen } from "../../../test-utils/render";
 import type { Relationship } from "../../../types/admin";
 import { RelationshipDetail } from "../RelationshipDetail";
+// The panel links the tables it names (REQ-2259), gated on the viewer's rights.
+vi.mock("../../../context/AuthContext", () => ({
+  useAuth: () => ({ capabilities: ["table_registration"] }),
+}));
 import { RelationshipRow } from "../RelationshipRow";
 import { ListTable } from "../../list/ListTable";
 

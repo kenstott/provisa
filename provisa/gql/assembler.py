@@ -692,8 +692,9 @@ async def register_node_ids(  # REQ-394
 
 def to_serializable(obj: Any, *, keep_values: bool = False) -> Any:  # REQ-349, REQ-350
     """Recursively convert Node/Edge/Path to JSON-serializable dicts. A temporal value is
-    written as Cypher writes it, unless ``keep_values`` (Bolt, which sends it as its own
-    structure, REQ-2173)."""
+    written as Cypher writes it, and a decimal as a float, unless ``keep_values`` (Bolt, which
+    sends a temporal value as its own structure, REQ-2173, and a decimal as its exact digits,
+    REQ-1961)."""
     import datetime
     from decimal import Decimal
 
@@ -728,7 +729,9 @@ def to_serializable(obj: Any, *, keep_values: bool = False) -> Any:  # REQ-349, 
         return {k: to_serializable(v, keep_values=keep_values) for k, v in obj.items()}
     if isinstance(obj, list):
         return [to_serializable(i, keep_values=keep_values) for i in obj]
-    if keep_values and isinstance(obj, (datetime.date, datetime.time, Duration, Point)):
+    if keep_values and isinstance(obj, (datetime.date, datetime.time, Duration, Point, Decimal)):
+        # REQ-1961 (amended 2026-11-23): Bolt sends a decimal as the string of its exact digits
+        # (bolt.packstream), never rounded through a float here.
         return obj
     if isinstance(obj, Point):
         return obj.as_map()
