@@ -6676,12 +6676,24 @@ tables:
   schema: org_default
   table: data_product_owners
   columns:
+  - name: holds
+    data_type: boolean
+    visible_to:
+    - viewer
   - name: id
     data_type: text
     visible_to:
     - viewer
     is_primary_key: true
+  - name: named
+    data_type: boolean
+    visible_to:
+    - viewer
   - name: principal
+    data_type: text
+    visible_to:
+    - viewer
+  - name: principal_kind
     data_type: text
     visible_to:
     - viewer
@@ -6820,12 +6832,24 @@ tables:
     data_type: text
     visible_to:
     - viewer
+  - name: holds
+    data_type: boolean
+    visible_to:
+    - viewer
   - name: id
     data_type: text
     visible_to:
     - viewer
     is_primary_key: true
+  - name: named
+    data_type: boolean
+    visible_to:
+    - viewer
   - name: principal
+    data_type: text
+    visible_to:
+    - viewer
+  - name: principal_kind
     data_type: text
     visible_to:
     - viewer
@@ -10485,12 +10509,24 @@ tables:
   schema: org_default
   table: relationship_owners
   columns:
+  - name: holds
+    data_type: boolean
+    visible_to:
+    - viewer
   - name: id
     data_type: text
     visible_to:
     - viewer
     is_primary_key: true
+  - name: named
+    data_type: boolean
+    visible_to:
+    - viewer
   - name: principal
+    data_type: text
+    visible_to:
+    - viewer
+  - name: principal_kind
     data_type: text
     visible_to:
     - viewer

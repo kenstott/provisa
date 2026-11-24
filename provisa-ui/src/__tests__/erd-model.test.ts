@@ -165,6 +165,7 @@ const DOMAIN_SALES: Domain = {
   description: "Sales domain",
   isSystem: false,
   stewards: [],
+  stewardField: { people: [], roles: [] },
   effectiveStewards: [],
 };
 const DOMAIN_HR: Domain = {
@@ -172,6 +173,7 @@ const DOMAIN_HR: Domain = {
   description: "HR domain",
   isSystem: false,
   stewards: [],
+  stewardField: { people: [], roles: [] },
   effectiveStewards: [],
 };
 const NO_HIDDEN = new Set<string>();

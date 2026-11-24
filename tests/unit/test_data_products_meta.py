@@ -455,7 +455,14 @@ def test_the_owners_views_are_meta_tables_reached_both_ways():
         src, src_col, tgt_col, tgt = _edge(to_owners)
         assert (tgt, src_col, tgt_col) == (view, "id", key)
         assert _edge(to_object) == (view, key, "id", src)
-        assert set(COLUMN_DESCRIPTIONS[view]) == {"id", key, "principal"}
+        assert set(COLUMN_DESCRIPTIONS[view]) == {
+            "id",
+            key,
+            "principal",
+            "principal_kind",
+            "named",
+            "holds",
+        }
         assert TABLE_DESCRIPTIONS[view]
     assert not {"principal", "product_id", "relationship_id"} & GOVERNANCE_META_COLUMNS
 

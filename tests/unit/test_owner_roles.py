@@ -304,8 +304,7 @@ async def test_the_owners_view_lists_the_field_as_entered_beside_its_expansion(d
                 text(
                     f"SELECT principal_kind, principal, named, holds FROM {view}_meta "
                     f"WHERE {key} = :oid ORDER BY id"
-                ),
-                {"oid": OBJECT[kind]},
+                ).bindparams(oid=OBJECT[kind])
             )
         ).fetchall()
     listed = [tuple(r) for r in rows]

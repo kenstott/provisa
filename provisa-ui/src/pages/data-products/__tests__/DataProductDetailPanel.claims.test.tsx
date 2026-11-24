@@ -19,7 +19,7 @@ import { DataProductDetailPanel } from "../DataProductDetailPanel";
 import { dqStatus } from "../dataProductClaims";
 import type { ProductDq, ProductDqEntry, ProductInput, ProductLineage } from "../../../api/lineage";
 import type { CoreEdge, CoreTable, ProductCore } from "../productCore";
-import type { DataProduct } from "../../../types/admin";
+import type { DataProduct, NamedPrincipal } from "../../../types/admin";
 import { lifecycleProps } from "./lifecycleProps";
 import { openSection } from "./panelSections";
 
@@ -32,7 +32,7 @@ const P = {
   domainId: "sales",
   name: "Customer 360",
   owners: [] as string[],
-  namedOwners: [],
+  namedOwners: [] as NamedPrincipal[],
   purpose: "",
   limitations: "",
   usage: "",

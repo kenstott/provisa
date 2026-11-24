@@ -16,7 +16,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, waitFor, within } from "../../test-utils/render";
 import type { LineageNode, ProductInput, ProductLineage } from "../../api/lineage";
-import type { DataProduct } from "../../types/admin";
+import type { DataProduct, NamedPrincipal } from "../../types/admin";
 import type { ProductCore } from "../data-products/productCore";
 import { lifecycleProps } from "../data-products/__tests__/lifecycleProps";
 import { openSection } from "../data-products/__tests__/panelSections";
@@ -102,7 +102,7 @@ const product = {
   domainId: "pet-store",
   name: "Pet Health",
   owners: [] as string[],
-  namedOwners: [],
+  namedOwners: [] as NamedPrincipal[],
   purpose: "",
   limitations: "",
   usage: "",

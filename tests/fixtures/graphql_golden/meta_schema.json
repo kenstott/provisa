@@ -2629,6 +2629,13 @@
        }
       },
       {
+       "name": "holds",
+       "type": {
+        "kind": "SCALAR",
+        "name": "Boolean"
+       }
+      },
+      {
        "name": "id",
        "type": {
         "kind": "SCALAR",
@@ -2636,7 +2643,21 @@
        }
       },
       {
+       "name": "named",
+       "type": {
+        "kind": "SCALAR",
+        "name": "Boolean"
+       }
+      },
+      {
        "name": "principal",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "principalKind",
        "type": {
         "kind": "SCALAR",
         "name": "String"
@@ -3037,6 +3058,13 @@
     {
      "fields": [
       {
+       "name": "holds",
+       "type": {
+        "kind": "SCALAR",
+        "name": "Boolean"
+       }
+      },
+      {
        "name": "id",
        "type": {
         "kind": "SCALAR",
@@ -3044,7 +3072,21 @@
        }
       },
       {
+       "name": "named",
+       "type": {
+        "kind": "SCALAR",
+        "name": "Boolean"
+       }
+      },
+      {
        "name": "principal",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "principalKind",
        "type": {
         "kind": "SCALAR",
         "name": "String"
@@ -5443,6 +5485,13 @@
     {
      "fields": [
       {
+       "name": "holds",
+       "type": {
+        "kind": "SCALAR",
+        "name": "Boolean"
+       }
+      },
+      {
        "name": "id",
        "type": {
         "kind": "SCALAR",
@@ -5450,7 +5499,21 @@
        }
       },
       {
+       "name": "named",
+       "type": {
+        "kind": "SCALAR",
+        "name": "Boolean"
+       }
+      },
+      {
        "name": "principal",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "principalKind",
        "type": {
         "kind": "SCALAR",
         "name": "String"
