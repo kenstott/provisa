@@ -36,6 +36,18 @@ from pgwire_function_probe import Function, call, refused_by_name  # noqa: E402
 
 ABS = Function("abs", "integer", argtypes=("integer",), volatility="i", rettype="integer")
 
+#: The grid's own classification of documented limits (polyfill_check.documented_limits).
+_GRID_LIMITS = support.polyfill_check.documented_limits
+
+
+@pytest.fixture(autouse=True)
+def _limits_apart_from_the_grid(monkeypatch):
+    """The merge marks documented limits from the polyfill grid, which reads each engine by its
+    dialect. A test here of the merge itself states no limitation (most name made-up engines, which
+    have no dialect); a test of documented limits states its own (``_limited``) or reads the grid
+    (``_GRID_LIMITS``)."""
+    monkeypatch.setattr(support.polyfill_check, "documented_limits", lambda run: {})
+
 
 class Fake:
     """A server answering by statement; a statement it does not know is refused."""
@@ -1042,7 +1054,9 @@ def test_the_guaranteed_list_is_answers_checked_and_type_and_form_checked_on_eve
     assert doc["counts"]["a"]["not_checked"] == 1
     assert doc["not_checked_reasons"]["a"] == {"volatile": 1}
     text = support.merged_markdown(doc)
-    assert "| a | 3 | 2 | 0 | 0 | 0 | 1 | 1 | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |" in text
+    assert (
+        "| a | 3 | 2 | 0 | 0 | 0 | 0 | 1 | 1 | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |" in text
+    )
     assert (
         "| Numeric | 3 | 1 + 1 + 0, 1 not checked, of 3 | 1 + 1 + 0, 1 not checked, of 3 | 2 |"
         in text
@@ -1119,8 +1133,12 @@ def test_the_summary_gives_every_engine_and_every_family():
         }
     )
     text = support.merged_markdown(doc)
-    assert "| a | 2 | 1 | 0 | 0 | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 |" in text
-    assert "| b | 2 | 2 | 0 | 0 | 0 | 0 | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |" in text
+    assert (
+        "| a | 2 | 1 | 0 | 0 | 0 | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 |" in text
+    )
+    assert (
+        "| b | 2 | 2 | 0 | 0 | 0 | 0 | 0 | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |" in text
+    )
     assert (
         "| Numeric | 1 | 1 + 0 + 0, 0 not checked, of 1 | 1 + 0 + 0, 0 not checked, of 1 | 1 |"
         in text
@@ -1659,11 +1677,11 @@ def test_the_report_fails_per_engine_never_overall_and_keeps_a_wrong_answer_in_v
     doc = _results(("pg", "wrong_answer", []), ("duckdb", "refused", []))
     for text in (report.pgwire_block(doc), report.overview_block(doc)):
         assert (
-            "| Engine | Served | Of which within bound | Skipped by design | Failed | Not tested |"
-            in text
+            "| Engine | Served | Of which within bound | Skipped by design | Documented limit "
+            "| Failed | Not tested |" in text
         )
-        assert "| Postgres | 0 | 0 | 0 | 1 | 0 |" in text
-        assert "| DuckDB | 0 | 0 | 0 | 1 | 0 |" in text
+        assert "| Postgres | 0 | 0 | 0 | 0 | 1 | 0 |" in text
+        assert "| DuckDB | 0 | 0 | 0 | 0 | 1 | 0 |" in text
         assert "| Total" not in text and "| All" not in text
     assert "| `abs(integer)` | x |" in report.pgwire_block(doc)
 
@@ -1704,6 +1722,8 @@ def test_the_report_fails_per_engine_never_overall_and_keeps_a_wrong_answer_in_v
         ({"outcome": "wrong_answer"}, "failed"),
         ({"outcome": "error"}, "failed"),
         ({"outcome": "not_reached"}, "not_tested"),
+        ({"outcome": "refused", "documented_limit": "stated"}, "documented_limit"),
+        ({"outcome": "wrong_answer", "documented_limit": "stated"}, "documented_limit"),
     ],
 )
 def test_every_overload_is_passed_skipped_by_design_failed_or_not_tested(entry, verdict):
@@ -1718,6 +1738,97 @@ def test_the_four_counts_add_up_to_every_overload():
     c = report.result_counts(outcomes)
     assert (c["passed"], c["skipped_by_design"], c["failed"], c["not_tested"]) == (1, 1, 2, 2)
     assert c["passed"] + c["skipped_by_design"] + c["failed"] + c["not_tested"] == c["total"]
+
+
+def test_a_documented_limit_is_counted_apart_from_failures():
+    """REQ-2167, amended 2026-11-23: a documented limit is in no refused or differs count, and the
+    five verdicts add up to every overload."""
+    outcomes = [
+        {"outcome": "refused", "documented_limit": "a refusal a limitation of its row states"},
+        {
+            "outcome": "wrong_answer",
+            "wrong_at_edge": True,
+            "documented_limit": "a difference a limitation of its row states",
+        },
+        {"outcome": "refused"},
+        {"outcome": "pass"},
+    ]
+    c = report.result_counts(outcomes)
+    assert (c["passed"], c["documented_limit"], c["failed"]) == (1, 2, 1)
+    assert (c["refused_by_name"], c["differs"], c["differs_wrong_answer"]) == (1, 0, 0)
+    assert (c["differs_wrong_at_edge"], c["documented_at_edge"]) == (0, 1)
+    verdicts = ("passed", "skipped_by_design", "documented_limit", "failed", "not_tested")
+    assert sum(c[v] for v in verdicts) == c["total"] == 4
+    assert report.cell(outcomes[0]) == "documented limit"
+
+
+def _limited(monkeypatch, limits: dict[tuple[str, str, str], str]) -> None:
+    monkeypatch.setattr(support.polyfill_check, "documented_limits", lambda run: limits)
+
+
+def test_the_merged_report_marks_and_lists_documented_limits(monkeypatch):
+    _limited(
+        monkeypatch, {("abs", "integer", "duckdb"): "a refusal a limitation of its row states"}
+    )
+    doc = _results(("pg", "pass", []), ("duckdb", "refused", []), ("trino", "refused", []))
+    outcomes = doc["functions"][0]["outcomes"]
+    assert outcomes["duckdb"]["documented_limit"] == "a refusal a limitation of its row states"
+    assert outcomes["duckdb"]["result"] == "documented_limit"
+    assert "documented_limit" not in outcomes["trino"]
+    assert (
+        doc["by_engine"]["duckdb"]["documented_limit"],
+        doc["by_engine"]["duckdb"]["failed"],
+    ) == (
+        1,
+        0,
+    )
+    assert (doc["by_engine"]["trino"]["documented_limit"], doc["by_engine"]["trino"]["failed"]) == (
+        0,
+        1,
+    )
+    assert doc["counts"]["duckdb"]["documented_limit"] == 1
+    block = report.pgwire_block(doc)
+    assert "| DuckDB | 0 | 0 | 0 | 1 | 0 | 0 |" in block
+    assert "| Trino | 0 | 0 | 0 | 0 | 1 | 0 |" in block
+    listed = block.split("### Documented limits", 1)[1].split("### Wrong answers", 1)[0]
+    assert "<summary>DuckDB (1)</summary>" in listed
+    assert "| `abs(integer)` | refused | a refusal a limitation of its row states |" in listed
+    assert "Trino" not in listed
+    summary = support.merged_markdown(doc)
+    assert "#### Documented limits" in summary and "documented limit |" in summary
+
+
+def test_the_merge_reads_documented_limits_from_the_grid(monkeypatch):
+    """generate_subscripts is refused by name on Trino as its grid row says: a documented limit;
+    a refusal of abs no row states stays failed."""
+    monkeypatch.setattr(support.polyfill_check, "documented_limits", _GRID_LIMITS)
+    stated = {
+        **_entry("generate_subscripts", "refused"),
+        "overload": "anyarray, integer, boolean",
+        "detail": {
+            "statement": "SELECT generate_subscripts(NULL, NULL, NULL)",
+            "error": "ERROR:  generate_subscripts() has no form on trino",
+            "sqlstate": "0A000",
+        },
+    }
+    unstated = {
+        **_entry("abs", "refused"),
+        "detail": {"statement": "SELECT abs(NULL)", "error": "ERROR:  boom", "sqlstate": "0A000"},
+    }
+    doc = support.merged({"trino": _report("trino", stated, unstated)})
+    by = {f["function"]: f["outcomes"]["trino"] for f in doc["functions"]}
+    assert by["generate_subscripts"]["result"] == report.DOCUMENTED_LIMIT
+    assert by["abs"]["result"] == report.REFUSED
+    c = doc["by_engine"]["trino"]
+    assert (c["documented_limit"], c["failed"], c["refused_by_name"]) == (1, 1, 1)
+
+
+def test_a_documented_limit_is_out_of_the_wrong_answers_list(monkeypatch):
+    _limited(monkeypatch, {("abs", "integer", "duckdb"): "a difference a limitation states"})
+    doc = _results(("duckdb", "wrong_answer", []), ("trino", "wrong_answer", []))
+    wrong = report.wrong_answers(doc)
+    assert any("Trino (1)" in line for line in wrong)
+    assert not any("DuckDB" in line for line in wrong)
 
 
 def test_a_cell_says_what_was_checked_of_a_pass_and_a_call_alone_is_none():
@@ -1741,7 +1852,8 @@ def test_both_pages_are_filled_from_the_results_between_their_markers(tmp_path):
         text = (tmp_path / name).read_text()
         assert "stale text" not in text and "After." in text
         assert (
-            "| Postgres | 1 | 0 | 0 | 0 | 0 |" in text and "| DuckDB | 0 | 0 | 0 | 1 | 0 |" in text
+            "| Postgres | 1 | 0 | 0 | 0 | 0 | 0 |" in text
+            and "| DuckDB | 0 | 0 | 0 | 0 | 1 | 0 |" in text
         )
         assert "| Postgres | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |" in text
         assert "| DuckDB | 0 | 0 | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 0 |" in text
@@ -2010,6 +2122,8 @@ def test_the_results_a_floor_reads_keep_their_keys():
         "within_bound",
         "differs_wrong_at_edge",
         "differs_error_at_edge",
+        "documented_limit",
+        "documented_at_edge",
     )
     assert not set(report.RESULT_KEYS) & set(report.COLUMN_KEYS)
 

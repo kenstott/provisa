@@ -54,8 +54,11 @@ Each overload gets one outcome per engine:
 
 A wrong answer outranks an error, which outranks a refusal, which outranks a pass or a not checked:
 the overload is as bad as its worst call. function_report.py says what each outcome is on the
-report (exact, equivalent, not checked, skipped by design, refused by name or differs); there is no
-overall count, only one per engine.
+report (exact, equivalent, not checked, skipped by design, documented limit, refused by name or
+differs); there is no overall count, only one per engine. A refusal or wrong answer that is exactly
+what a stated limitation of its polyfill grid row on the engine says it will be carries
+``documented_limit`` (polyfill_check.documented_limits): it is a documented limit, counted and
+listed apart from failures (REQ-2167, amended 2026-11-23).
 
 The calls of an overload are the NULL call of pgwire_function_probe.py and, where ``value_calls``
 can write them, up to three calls with real values. How far values go, exactly:
@@ -169,8 +172,11 @@ import yaml
 from psycopg import pq
 from psycopg import sql as psql
 
+from provisa.transpiler.polyfill.grid import Limitation
+
 import function_edges
 import function_report
+import polyfill_check
 import pgwire_catalog_types as catalog
 import pgwire_function_probe as function_probe
 from function_report import (
@@ -1784,7 +1790,8 @@ def edge_calls(fn: Function, family: str) -> list[Call]:
     """``fn`` called with edge values (function_edges): an overload ``value_calls`` gives its
     samples, each call its first sample row with one argument an edge value of its type, at most
     ``function_edges.EDGE_CALLS_MAX``. An argument given literals of its own (``ARG_VALUES``: a
-    unit, a pattern, a format) keeps them; an aggregate or a window function reads the edge row
+    unit, a pattern, a format) keeps them, but for the edges ``function_edges.given_edges`` gives
+    it (a regexp's empty pattern), called first; an aggregate or a window function reads the edge row
     twice. None for an overload written whole (``VALUE_STATEMENTS``, domain_in), one of no
     argument, and a hypothetical-set aggregate, whose one argument is direct and ordered both."""
     if (
@@ -1797,7 +1804,13 @@ def edge_calls(fn: Function, family: str) -> list[Call]:
         return []
     given = _given(fn)
     with_null = len(fn.argtypes) > 1 or fn.kind in ("a", "w")
+    # An argument given literals of its own takes only the edges function_edges gives it there,
+    # first, so the round robin reaches them whatever the arity (an empty regexp pattern).
     per_position = [
+        (i, function_edges.given_edges(fn.name, i))
+        for i in sorted(given)
+        if function_edges.given_edges(fn.name, i)
+    ] + [
         (i, function_edges.edges_of(function_probe.CONCRETE.get(t, t), with_null=with_null))
         for i, t in enumerate(fn.argtypes)
         if i not in given
@@ -3409,25 +3422,47 @@ def measure_overload(
     return entry
 
 
-def _held_to_its_bound(entry: dict[str, Any], limitations: tuple[str, ...], engine: str) -> None:
+def _held_to_its_bound(
+    entry: dict[str, Any],
+    limitations: tuple[Limitation, ...],
+    engine: str,
+    elsewhere: Callable[[str, dict[str, Any]], bool] | None = None,
+) -> None:
     """An overload whose edge calls ran, held to what its grid row on ``engine`` states. One that
-    raised at an edge is within its bound only where the row states a limitation there; with none
-    it is an error, which the grid does not state. A row whose limitation says what its form raises
-    is bounded: its overload must raise that SQLSTATE on an edge call (``bound_raised``)."""
+    raised at an edge is within its bound only where each raise is an error a limitation of its
+    row states, its SQLSTATE and, where the limitation gives it, its message
+    (``function_edges.excuses``), or one the grid states of the value's own reading on the engine
+    (``elsewhere``: a literal past the engine's type); any other raise is an error the grid does
+    not state (REQ-2236, amended 2026-11-22). A row whose limitation says what its form raises is
+    bounded: ``bound_raised`` says whether this overload raised such an error; the polyfill check
+    credits the bound per feature and engine (polyfill_check)."""
+    stated_elsewhere = function_edges.stated_elsewhere if elsewhere is None else elsewhere
     if limitations:
-        entry["bound_stated"] = list(limitations)
-    if entry["outcome"] == WITHIN_BOUND and not limitations:
-        entry["outcome"] = "error"
-        entry["error_at_edge"] = True
-        entry["detail"] = {
-            **entry["detail"],
-            "unstated": f"it raises at an edge value; its grid row on {engine} states no bound",
-        }
-    stated = function_edges.stated_raises(limitations)
-    if stated and entry["outcome"] in ("pass", WITHIN_BOUND):
-        entry["bound_sqlstates"] = stated
+        entry["bound_stated"] = [lim.text for lim in limitations]
+    raised = entry.get("edge_raised", ())
+    if entry["outcome"] == WITHIN_BOUND:
+        unstated = [
+            r
+            for r in raised
+            if not any(function_edges.excuses(lim, r) for lim in limitations)
+            and not stated_elsewhere(engine, r)
+        ]
+        if unstated:
+            sqlstate, message = function_edges.raised_error(unstated[0])
+            why = (
+                f"it raises {sqlstate} {message!r} at an edge value; no limitation of its grid "
+                f"row on {engine} states that error"
+                if limitations
+                else f"it raises at an edge value; its grid row on {engine} states no bound"
+            )
+            entry["outcome"] = "error"
+            entry["error_at_edge"] = True
+            entry["detail"] = {**unstated[0], "unstated": why}
+    bounded = [lim for lim in limitations if function_edges.bound_errors(lim)]
+    if bounded and entry["outcome"] in ("pass", WITHIN_BOUND):
+        entry["bound_sqlstates"] = function_edges.stated_raises(limitations)
         entry["bound_raised"] = any(
-            raised.get("sqlstate") in stated for raised in entry.get("edge_raised", ())
+            function_edges.bound_excuses(lim, r) for lim in bounded for r in raised
         )
 
 
@@ -3743,6 +3778,9 @@ def _judge_edges(entry: dict[str, Any], edges: EdgeResults) -> None:
         entry["detail"] = edges.wrong[0]
         entry["wrong_calls"] = len(edges.wrong)
         entry["wrong_at_edge"] = True
+        # Every wrong edge call: a limitation naming edge values states only a wrong answer at
+        # them (polyfill_check._difference_stated).
+        entry["edge_wrong"] = edges.wrong
     elif edges.errors:
         entry["outcome"] = "error"
         entry["detail"] = edges.errors[0]
@@ -3956,6 +3994,10 @@ def measure(
                 f"{i}/{len(fns)} after {time.monotonic() - started:.0f}s at {fn.signature}",
                 flush=True,
             )
+    marked = with_documented_limits(
+        {engine: {(o["function"], o["overload"]): o for o in overloads}}
+    )
+    overloads = list(marked[engine].values())
     report = {
         "engine": engine,
         "postgres_version": pg.rows("SHOW server_version")[0][0],
@@ -3995,7 +4037,7 @@ def counts(overloads: list[dict[str, Any]]) -> dict[str, int]:
     verdicts = Counter(function_report.verdict(o) for o in overloads)
     out = {
         name: verdicts.get(name, 0)
-        for name in ("passed", "skipped_by_design", "failed", "not_tested")
+        for name in ("passed", "skipped_by_design", "documented_limit", "failed", "not_tested")
     }
     out |= {name: tally.get(name, 0) for name in OUTCOMES}
     out["total"] = len(overloads)
@@ -4038,7 +4080,7 @@ def not_checked_reasons(overloads: Iterable[dict[str, Any]]) -> dict[str, int]:
 def _row(label: str, c: dict[str, int]) -> str:
     return (
         f"| {label} | {c['total']} | {c['passed']} | {c['within_bound']} "
-        f"| {c['skipped_by_design']} | {c['failed']} "
+        f"| {c['skipped_by_design']} | {c['documented_limit']} | {c['failed']} "
         f"| {c['not_tested']} | {c['pass_answers_checked']} "
         f"| {c['pass_type_and_form_checked']} | {c['pass_side_effect_checked']} "
         f"| {c['not_checked']} | {c['by_design']} | {c['refused']} "
@@ -4048,12 +4090,13 @@ def _row(label: str, c: dict[str, int]) -> str:
 
 
 _HEADER = (
-    "| | overloads | served | of which within bound | skipped by design | failed | not tested "
+    "| | overloads | served | of which within bound | skipped by design | documented limit "
+    "| failed | not tested "
     "| pass, answers compared | pass, type and form compared "
     "| pass, side effect compared | not checked | skipped by design | refused by name "
     "| wrong answer | of which at an edge | engine error | of which at an edge | not callable "
     "| not reached |",
-    "|---|" + "---:|" * 18,
+    "|---|" + "---:|" * 19,
 )
 
 
@@ -4110,7 +4153,7 @@ def _outcome(entry: dict[str, Any] | None) -> dict[str, Any]:
         }
     kept: dict[str, Any] = {
         "outcome": entry["outcome"],
-        "result": function_report.result_of(entry["outcome"], entry.get("rules", ())),
+        "result": function_report.result(entry),
     }
     for key in (
         "detail",
@@ -4122,9 +4165,11 @@ def _outcome(entry: dict[str, Any] | None) -> dict[str, Any]:
         "wrong_at_edge",
         "error_at_edge",
         "edge_raised",
+        "edge_wrong",
         "bound_stated",
         "bound_sqlstates",
         "bound_raised",
+        "documented_limit",
     ):
         if entry.get(key) is not None:
             kept[key] = entry[key]
@@ -4157,12 +4202,15 @@ def merged(reports: dict[str, dict[str, Any] | None]) -> dict[str, Any]:
     side effect was compared on any, else ``type_and_form_checked`` (REQ-2167, WHAT GUARANTEED
     MEANS). One not checked or skipped by design on any engine is not on it: a pass is never a
     call alone. A function is guaranteed when each of its overloads PostgreSQL can call is."""
-    by_engine = {
-        engine: {
-            (o["function"], o["overload"]): o for o in (report or {"overloads": []})["overloads"]
+    by_engine = with_documented_limits(
+        {
+            engine: {
+                (o["function"], o["overload"]): o
+                for o in (report or {"overloads": []})["overloads"]
+            }
+            for engine, report in reports.items()
         }
-        for engine, report in reports.items()
-    }
+    )
     keys = sorted({key for overloads in by_engine.values() for key in overloads})
     functions: list[dict[str, Any]] = []
     for name, overload in keys:
@@ -4257,6 +4305,35 @@ def merged(reports: dict[str, dict[str, Any] | None]) -> dict[str, Any]:
     }
 
 
+def with_documented_limits(
+    by_engine: dict[str, dict[tuple[str, str], dict[str, Any]]],
+) -> dict[str, dict[tuple[str, str], dict[str, Any]]]:
+    """Each engine's overloads, by (function, overload), each failure that is a documented limit
+    carrying the limitation it is (``documented_limit``, polyfill_check.documented_limits):
+    REQ-2167, amended 2026-11-23, a case that fails exactly as a stated limitation of that feature
+    on that engine says it will is counted apart from failures."""
+    run = {
+        "engines": sorted(by_engine),
+        "functions": [
+            {"function": name, "overload": overload, "outcomes": {engine: entry}}
+            for engine, overloads in by_engine.items()
+            for (name, overload), entry in overloads.items()
+        ],
+    }
+    limits = polyfill_check.documented_limits(run)
+    return {
+        engine: {
+            key: (
+                {**entry, "documented_limit": limits[(key[0], key[1], engine)]}
+                if (key[0], key[1], engine) in limits
+                else entry
+            )
+            for key, entry in overloads.items()
+        }
+        for engine, overloads in by_engine.items()
+    }
+
+
 def _proof(entries: dict[str, dict[str, Any] | None]) -> str:
     """What every engine checked of an overload."""
     present = [e or {} for e in entries.values()]
@@ -4313,6 +4390,7 @@ def merged_markdown(doc: dict[str, Any]) -> str:
             ),
             "",
         ]
+    lines += ["#### Documented limits", "", *function_report.documented_limit_lines(doc), ""]
     for engine in engines:
         lines += [
             f"#### Not checked on {engine}",

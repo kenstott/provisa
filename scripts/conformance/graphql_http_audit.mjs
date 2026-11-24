@@ -47,6 +47,8 @@ const doc = {
   total: results.length,
   passed,
   by_design: 0,
+  // REQ-2167 (amended 2026-11-23): the audits state no limitation to fail as.
+  documented_limit: 0,
   failed,
   ran: passed + failed,
   pass_rate: passed + failed ? Math.round((passed / (passed + failed)) * 10000) / 10000 : null,
@@ -66,7 +68,7 @@ const rate = doc.pass_rate === null ? "n/a" : `${(doc.pass_rate * 100).toFixed(1
 const md = [
   `## GraphQL over HTTP conformance: ${doc.suite} ${version}`,
   "",
-  `${doc.total} audits: ${passed} passed, ${doc.by_design} skipped by design, ${failed} failed. Pass rate ${rate} (passed over passed and failed). MUST audits passed: ${doc.must_passed} of ${doc.must}.`,
+  `${doc.total} audits: ${passed} passed, ${doc.by_design} skipped by design, ${doc.documented_limit} documented limit, ${failed} failed. Pass rate ${rate} (passed over passed and failed). MUST audits passed: ${doc.must_passed} of ${doc.must}.`,
   "",
   "### Failed",
   "",

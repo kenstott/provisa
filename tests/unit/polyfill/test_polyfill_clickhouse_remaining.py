@@ -86,11 +86,11 @@ def test_a_strict_call_of_a_null_array_is_still_its_null(sql, named):
     written = sqlglot.parse_one(_clickhouse(sql), read="clickhouse")
     assert isinstance(written, exp.Select)
     (column,) = written.selects
-    # The NULL is typed as clickhouse.typed_null_columns sends an untyped NULL column (24.3's
-    # Arrow output has no type for Nullable(Nothing)).
+    # The NULL is typed as clickhouse.typed_null_columns sends an untyped NULL column PostgreSQL
+    # types (24.3's Arrow output has no type for Nullable(Nothing)).
     value = column.unalias()
     assert isinstance(value, exp.Cast) and isinstance(value.this, exp.Null)
-    assert value.to.sql(dialect="clickhouse") == "Nullable(String)"
+    assert value.to.sql(dialect="clickhouse") == "Nullable(FixedString(1))"
     assert column.alias_or_name == named
 
 

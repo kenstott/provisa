@@ -1617,12 +1617,18 @@ FEATURES: tuple[Feature, ...] = (
 )
 
 
-#: The type an untyped NULL column is sent as: ClickHouse types a bare NULL Nullable(Nothing),
-#: which the server's Arrow output has no type for (24.3: "The type 'Nothing' of a column is not
-#: supported for conversion into Arrow data format"). A NULL of Nothing reaches the wire as text
-#: (pgwire's inferred type of a null column), the same as a NULL of String does; a statement's
-#: Describe types the column from PostgreSQL's call, not from the engine's.
+#: The type an untyped NULL column PostgreSQL types by no call or cast is sent as: ClickHouse
+#: types a bare NULL Nullable(Nothing), which the server's Arrow output has no type for (24.3: "The
+#: type 'Nothing' of a column is not supported for conversion into Arrow data format"). A NULL of
+#: String reaches the wire as text, PostgreSQL's type of an unknown result column.
 _UNTYPED_NULL = "Nullable(String)"
+
+#: The type an untyped NULL column PostgreSQL types is sent as (REQ-2236): one Arrow writes as a
+#: binary, as embedded ClickHouse writes a Nothing, which pgwire reads as a column the engine
+#: could not type (server._UNTYPED_RESULTS) and describes by PostgreSQL's type of the column
+#: (cast_types.result_casts). No ClickHouse type of PostgreSQL's would do in its place: an Array
+#: is never Nullable, and 24.3 has no Variant.
+_DESCRIBED_NULL = "Nullable(FixedString(1))"
 
 
 def _untyped_null(value: exp.Expr) -> bool:
@@ -1636,24 +1642,44 @@ def _untyped_null(value: exp.Expr) -> bool:
     )
 
 
-def typed_null_columns(written: str) -> str:
-    """``written``, a statement in ClickHouse's SQL, with each column of its select list that
-    ClickHouse types Nullable(Nothing) a NULL of ``_UNTYPED_NULL``: the server sends its result as
-    Arrow (REQ-986), and 24.3's Arrow output has no type for Nothing. Read on the statement as
-    written, for the generator folds a CASE of NULLs to NULL. Only a plain SELECT's list: a set
-    operation's branch takes its type from the other branches, which a NULL of String would not
-    share. Unchanged where no column is such a NULL."""
+def _described(pg_sql: str, count: int) -> tuple[bool, ...]:
+    """For each of a ``count``-column result of ``pg_sql``, whether pgwire describes it by
+    PostgreSQL's type of its expression: where cast_types.result_casts types it, read as pgwire
+    reads it (server._describe_casts), which describes no column of a statement whose columns it
+    does not count alike."""
+    from provisa.pgwire.cast_types import result_casts
+
+    casts = result_casts(pg_sql)
+    if casts is None or len(casts) != count:
+        return (False,) * count
+    return tuple(cast is not None for cast in casts)
+
+
+def typed_null_columns(written: str, pg_sql: str) -> str:
+    """``written``, ``pg_sql`` in ClickHouse's SQL, with each column of its select list that
+    ClickHouse types Nullable(Nothing) a NULL the server's Arrow output types: the server sends its
+    result as Arrow (REQ-986), and 24.3's Arrow output has no type for Nothing. A column pgwire
+    describes by PostgreSQL's type is a NULL of ``_DESCRIBED_NULL``, any other a NULL of
+    ``_UNTYPED_NULL``. Read on the statement as written, for the generator folds a CASE of NULLs
+    to NULL. Only a plain SELECT's list: a set operation's branch takes its type from the other
+    branches, which a typed NULL would not share. Unchanged where no column is such a NULL."""
     if not _MENTIONS_NULL.search(written):
         return written
     tree = sqlglot.parse_one(written, read="clickhouse")
     if not isinstance(tree, exp.Select):
         return written
-    nulls = [c.unalias() for c in tree.selects if _untyped_null(c.unalias())]
+    nulls = [
+        (c.unalias(), described)
+        for c, described in zip(tree.selects, _described(pg_sql, len(tree.selects)))
+        if _untyped_null(c.unalias())
+    ]
     if not nulls:
         return written
-    typed = exp.DataType.build(_UNTYPED_NULL, dialect="clickhouse")
-    for value in nulls:
-        value.replace(exp.cast(exp.null(), typed.copy()))
+    for value, described in nulls:
+        typed = exp.DataType.build(
+            _DESCRIBED_NULL if described else _UNTYPED_NULL, dialect="clickhouse"
+        )
+        value.replace(exp.cast(exp.null(), typed))
     return tree.sql(dialect="clickhouse")
 
 
