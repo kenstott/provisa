@@ -20,6 +20,7 @@ real tenant DB: the core hook (:func:`provisa.core.offer_hooks.decide`) and its 
 
 from __future__ import annotations
 
+import json
 from datetime import timedelta
 from types import SimpleNamespace
 from typing import Any
@@ -194,10 +195,30 @@ async def test_a_decider_who_may_not_grant_the_role_is_refused_and_changes_nothi
 # -- the HTTP front door ---------------------------------------------------------------------------
 
 
+class _Request:
+    """A request as the router reads it: who the middleware bound, its headers and its body."""
+
+    def __init__(
+        self,
+        user_id: str = "anonymous",
+        role: str = "",
+        *,
+        org_id: str | None = None,
+        headers: dict[str, str] | None = None,
+        raw: bytes = b"",
+    ) -> None:
+        self.state = SimpleNamespace(
+            identity=SimpleNamespace(user_id=user_id), role=role, active_org_id=org_id
+        )
+        self.headers = headers or {}
+        self._raw = raw
+
+    async def body(self) -> bytes:
+        return self._raw
+
+
 def _request(user_id: str = "anonymous", role: str = "") -> Any:
-    return SimpleNamespace(
-        state=SimpleNamespace(identity=SimpleNamespace(user_id=user_id), role=role)
-    )
+    return _Request(user_id, role)
 
 
 def _app_state(db) -> Any:
@@ -209,6 +230,7 @@ def _app_state(db) -> Any:
         role_chains={"owner": ["owner"], "viewer": ["viewer"]},
         meta_roles={},
         auth_config={"assignments_source": "claims"},
+        idp_entitlements={},
     )
 
 
@@ -287,3 +309,252 @@ async def test_a_cancel_sent_to_a_hook_is_decided_through_the_front_door(control
             row = await offers.get_bid(conn, held["id"])
         assert row is not None
         assert row["status"] == "cancelled"
+
+
+# -- the signed external caller (amended 2026-11-24) -----------------------------------------------
+
+_SECRET = "hook-s3cret"
+_HOOK = offer_hooks.HookTarget(url="https://grants.example/requests", secret=_SECRET)
+#: Who may grant the offer's role, as principal_refusal answers for an external decider.
+_GRANTERS = frozenset({"o9"})
+
+
+@pytest.fixture
+def external(monkeypatch, front_door):
+    """The front door with the org's request hook configured, and the decider's right to grant
+    read through principal_refusal (its own rule is tested in test_data_product_offers_router);
+    returns the (principal, role) pairs it was asked."""
+    asked: list[tuple[str, str]] = []
+
+    def wire(db, target: offer_hooks.HookTarget | None = _HOOK) -> list[tuple[str, str]]:
+        front_door(db)
+
+        async def hook_target(_state: Any) -> offer_hooks.HookTarget | None:
+            return target
+
+        async def principal_refusal(_conn, _state, principal: str, role_id: str) -> str | None:
+            asked.append((principal, role_id))
+            if principal in _GRANTERS:
+                return None
+            return f"role {role_id!r} is outside the roles you may grant"
+
+        monkeypatch.setattr(router, "_hook_target", hook_target)
+        monkeypatch.setattr(router, "principal_refusal", principal_refusal)
+        return asked
+
+    return wire
+
+
+def _decision_body(held: dict, **more: Any) -> dict:
+    body = {
+        "request_id": held["request_id"],
+        "outcome": "accepted",
+        "decider": "o9",
+        "decided_at": _NOW.isoformat(),
+    }
+    body.update(more)
+    return {k: v for k, v in body.items() if v is not None}
+
+
+async def _post_signed(
+    body: dict, *, secret: str = _SECRET, signature: str | None = None, raw: bytes | None = None
+) -> dict:
+    """POST ``body`` as an external caller does: no credential (the org's public visitor), the
+    body signed under ``secret`` as the outbound hook signs a request."""
+    sent = json.dumps(body).encode() if raw is None else raw
+    signed = offer_hooks.sign(sent, secret) if signature is None else signature
+    request = _Request(
+        "public:acme",
+        "public",
+        org_id="acme",
+        headers={offer_hooks.SIGNATURE_HEADER: signed},
+        raw=sent,
+    )
+    return await router.decision_hook(router.DecisionBody.model_validate_json(sent), request)
+
+
+@pytest.mark.asyncio
+async def test_a_signed_decision_from_a_decider_who_may_grant_is_applied(control_plane, external):
+    async with _store(control_plane) as db:
+        async with db.acquire() as conn:
+            held = await _bid(conn, await _default(conn))
+        asked = external(db)
+        answer = await _post_signed(_decision_body(held))
+        assert (answer["id"], answer["status"]) == (held["id"], "accepted")
+        assert asked == [("o9", "viewer")]
+        async with db.acquire() as conn:
+            stored = await offers.get_bid(conn, held["id"])
+        assert stored is not None
+        assert (stored["status"], stored["decided_by"]) == ("accepted", "o9")
+        assert offer_grant._aware(stored["decided_at"]) == _NOW
+
+
+@pytest.mark.asyncio
+async def test_a_signed_decline_records_the_deciders_reason(control_plane, external):
+    async with _store(control_plane) as db:
+        async with db.acquire() as conn:
+            held = await _bid(conn, await _default(conn))
+        external(db)
+        await _post_signed(_decision_body(held, outcome="declined", reason="too broad"))
+        async with db.acquire() as conn:
+            stored = await offers.get_bid(conn, held["id"])
+        assert stored is not None
+        assert (stored["status"], stored["decided_by"], stored["decline_reason"]) == (
+            "declined",
+            "o9",
+            "too broad",
+        )
+
+
+@pytest.mark.asyncio
+async def test_an_unsigned_decision_from_no_signed_in_caller_is_refused(control_plane, external):
+    async with _store(control_plane) as db:
+        async with db.acquire() as conn:
+            held = await _bid(conn, await _default(conn))
+        asked = external(db)
+        sent = json.dumps(_decision_body(held)).encode()
+        visitor = _Request("public:acme", "public", org_id="acme", raw=sent)
+        with pytest.raises(ApiError) as refused:
+            await router.decision_hook(router.DecisionBody.model_validate_json(sent), visitor)
+        assert refused.value.status_code == 401
+        assert refused.value.code == "data_product.decision.unsigned"
+        assert asked == []
+        async with db.acquire() as conn:
+            await _unchanged(conn, held)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "forge",
+    ["another_secret", "another_body", "empty", "bare_hex", "uppercase_prefix"],
+)
+async def test_a_mis_signed_decision_is_refused_and_changes_nothing(control_plane, external, forge):
+    async with _store(control_plane) as db:
+        async with db.acquire() as conn:
+            held = await _bid(conn, await _default(conn))
+        asked = external(db)
+        body = _decision_body(held)
+        sent = json.dumps(body).encode()
+        good = offer_hooks.sign(sent, _SECRET)
+        signature = {
+            "another_secret": offer_hooks.sign(sent, "not-the-secret"),
+            # Signed for a decline, sent as an accept: the signature covers the body it came with.
+            "another_body": offer_hooks.sign(
+                json.dumps({**body, "outcome": "declined"}).encode(), _SECRET
+            ),
+            "empty": "",
+            "bare_hex": good.removeprefix("sha256="),
+            "uppercase_prefix": "SHA256=" + good.removeprefix("sha256="),
+        }[forge]
+        with pytest.raises(ApiError) as refused:
+            await _post_signed(body, signature=signature, raw=sent)
+        assert refused.value.status_code == 401
+        assert refused.value.code == "data_product.decision.bad_signature"
+        assert asked == []
+        async with db.acquire() as conn:
+            await _unchanged(conn, held)
+
+
+@pytest.mark.asyncio
+async def test_a_signed_decision_with_no_hook_configured_is_refused(control_plane, external):
+    """With no request hook there is no secret to sign with: no external decision verifies."""
+    async with _store(control_plane) as db:
+        async with db.acquire() as conn:
+            held = await _bid(conn, await _default(conn))
+        external(db, target=None)
+        with pytest.raises(ApiError) as refused:
+            await _post_signed(_decision_body(held))
+        assert refused.value.code == "data_product.decision.bad_signature"
+        async with db.acquire() as conn:
+            await _unchanged(conn, held)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("missing", ["decider", "decided_at"])
+async def test_a_signed_decision_names_who_decided_and_when(control_plane, external, missing):
+    async with _store(control_plane) as db:
+        async with db.acquire() as conn:
+            held = await _bid(conn, await _default(conn))
+        external(db)
+        with pytest.raises(ApiError) as refused:
+            await _post_signed(_decision_body(held, **{missing: None}))
+        assert refused.value.status_code == 422
+        assert refused.value.code == "data_product.decision.incomplete"
+        async with db.acquire() as conn:
+            await _unchanged(conn, held)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("outcome", "reason"), [("accepted", None), ("declined", "too broad")])
+async def test_a_signed_decision_from_a_decider_who_may_not_grant_is_refused(
+    control_plane, external, outcome, reason
+):
+    async with _store(control_plane) as db:
+        async with db.acquire() as conn:
+            held = await _bid(conn, await _default(conn))
+        asked = external(db)
+        with pytest.raises(ApiError) as refused:
+            await _post_signed(
+                _decision_body(held, outcome=outcome, reason=reason, decider="mallory")
+            )
+        assert refused.value.status_code == 403
+        assert refused.value.code == "data_product.offer.role_not_grantable"
+        assert asked == [("mallory", "viewer")]
+        async with db.acquire() as conn:
+            await _unchanged(conn, held)
+
+
+@pytest.mark.asyncio
+async def test_a_replayed_signed_decision_is_answered_as_it_stands_and_changes_nothing(
+    control_plane, external
+):
+    """The scheme signs the body, decided_at in it: a replay is the same decision sent again,
+    answered with the request as it stands, never decided anew."""
+    async with _store(control_plane) as db:
+        async with db.acquire() as conn:
+            held = await _bid(conn, await _default(conn))
+        external(db)
+        body = _decision_body(held)
+        first = await _post_signed(body)
+        async with db.acquire() as conn:
+            before = await offers.get_bid(conn, held["id"])
+        again = await _post_signed(body)
+        assert again == first
+        async with db.acquire() as conn:
+            assert await offers.get_bid(conn, held["id"]) == before
+
+
+@pytest.mark.asyncio
+async def test_a_replayed_signed_accept_after_a_decline_is_refused(control_plane, external):
+    """A captured decision replayed against a request decided otherwise changes nothing."""
+    async with _store(control_plane) as db:
+        async with db.acquire() as conn:
+            held = await _bid(conn, await _default(conn))
+        external(db)
+        await _post_signed(_decision_body(held, outcome="declined", reason="too broad"))
+        async with db.acquire() as conn:
+            before = await offers.get_bid(conn, held["id"])
+        with pytest.raises(ApiError) as refused:
+            await _post_signed(_decision_body(held))
+        assert refused.value.code == "data_product.offer.request_decided"
+        async with db.acquire() as conn:
+            assert await offers.get_bid(conn, held["id"]) == before
+
+
+@pytest.mark.asyncio
+async def test_a_signed_in_owner_still_decides_unsigned_as_themselves(
+    control_plane, front_door, monkeypatch
+):
+    async with _store(control_plane) as db:
+        async with db.acquire() as conn:
+            held = await _bid(conn, await _default(conn))
+        front_door(db)
+        monkeypatch.setattr(router, "may_grant", lambda *_a: None)
+        answer = await _post(
+            {"request_id": held["request_id"], "outcome": "accepted"}, _request("o1", "owner")
+        )
+        assert answer["status"] == "accepted"
+        async with db.acquire() as conn:
+            stored = await offers.get_bid(conn, held["id"])
+        assert stored is not None
+        assert stored["decided_by"] == "o1"
