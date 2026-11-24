@@ -27295,3 +27295,15 @@ Maintainer 2026-11-23 (Spark is the default expectation for data engineers; this
 **Code:** —
 
 **Tests:** `tests/integration/test_spark_reads_e2e.py`, `tests/integration/test_spark_connector_e2e.py`, `tests/unit/test_flight_minted_table_read.py`
+
+## 6. Execution, Routing, Caching & Performance
+
+### REQ-2271 · Federation Engines {#REQ-2271}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Maintainer 2026-11-24: impersonation is supported for federation engines, and only for them. An engine can be set to impersonate (off by default, per engine): Provisa then connects to that engine as the requesting user, mapped to the engine's principal, so the engine's own access control and audit see the person (Trino's session user, SET ROLE on a PostgreSQL engine, the user on Snowflake or Databricks as the engine, and the like, each engine by its own mechanism). Sources are never impersonated: the engine reads them with its own catalog credentials, and a direct read of a source uses the source's configured credential as today. An engine with no user model (DuckDB and the like) cannot be set to impersonate, and is refused by name. The engine's service account must hold the engine's impersonation capability; this is checked when the setting is turned on, by impersonating a declared probe principal and reading back the effective user, and the setting is refused by name when the check fails. The principal comes from a per-engine mapping of a Provisa identity (an explicit mapping, else a rule over its user id, verified email or an attribute); a request whose user has no mapping is refused by name, never run as the service account. Provisa's own row rules, masks and entitlements still apply, and the engine's rules apply on top. With impersonation on, the response cache key includes the engine principal. The audit records the Provisa user, the acting role, the engine principal and the service account. Background system work runs as the service account.
+
+**Code:** —
+
+**Tests:** —
