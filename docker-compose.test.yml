@@ -8,6 +8,11 @@
 #
 # Usage (core + test in the SAME project):
 #   docker compose -p provisa-itest -f docker-compose.core.yml -f docker-compose.test.yml up -d --wait
+#
+# REQ-1989: every pulled image is pinned by digest, its tag in the comment beside it, so a tag
+# moved upstream never changes a run (a floating CosmosDB emulator tag broke release 512's
+# integration lane, 2026-11-23). Re-pin with `docker buildx imagetools inspect <repo>:<tag>`;
+# a changed pin changes the lane image cache key (lane.yml hashes this file).
 services:
   # One test session's Postgres serves every module's in-process app and the multi-worker launches
   # (each worker opens its model, state, record and platform handles): the server's default of 100
@@ -30,7 +35,7 @@ services:
   kafka:
     hostname: kafka
     restart: unless-stopped
-    image: confluentinc/cp-kafka:7.6.0
+    image: confluentinc/cp-kafka@sha256:24cdd3a7fa89d2bed150560ebea81ff1943badfa61e51d66bb541a6b0d7fb047  # confluentinc/cp-kafka:7.6.0
     # HOST listener published on the same ephemeral port both sides so the advertised
     # address handed back to host clients (localhost:${KAFKA_HOST_PORT}) is reachable.
     ports:
@@ -62,7 +67,7 @@ services:
   schema-registry:
     hostname: schema-registry
     restart: unless-stopped
-    image: confluentinc/cp-schema-registry:7.6.0
+    image: confluentinc/cp-schema-registry@sha256:d23d8440708bb44daad5cba4195c070b9713c126375b355afb5ffedf7f1b94e7  # confluentinc/cp-schema-registry:7.6.0
     ports:
       - "${SCHEMA_REGISTRY_PORT:-8081}:8081"
     environment:
@@ -74,7 +79,7 @@ services:
 
   mariadb:
     restart: unless-stopped
-    image: mariadb:11
+    image: mariadb@sha256:e1d5495f445654134f226f55a41ce0da227116f6f27f283101f405c794d841fc  # mariadb:11
     environment:
       MARIADB_ROOT_PASSWORD: provisa
       MARIADB_DATABASE: provisa
@@ -91,7 +96,7 @@ services:
 
   tidb:
     restart: unless-stopped
-    image: pingcap/tidb:latest
+    image: pingcap/tidb@sha256:49159e21bdb8671cca48394ab4b6dc4e92527a775d24daf5a4b4c8d6f175a9fe  # pingcap/tidb:latest
     ports:
       - "${TIDB_PORT:-4000}:4000"
     volumes:
@@ -105,7 +110,7 @@ services:
 
   cockroachdb:
     restart: unless-stopped
-    image: cockroachdb/cockroach:v24.1.0
+    image: cockroachdb/cockroach@sha256:cc4e3ee67104d6f6434c81b555d69d4eb319f8aa0c5495931ffbe9273adfc4b5  # cockroachdb/cockroach:v24.1.0
     command: start-single-node --insecure
     ports:
       - "${COCKROACHDB_PORT:-26257}:26257"
@@ -122,7 +127,7 @@ services:
     restart: unless-stopped
     # Pinned: from 2026.1.2.0 the image runs as uid 10001 and /home/yugabyte/var is absent from
     # it, so the named volume mounted there is root-owned and yugabyted cannot create its conf dir.
-    image: yugabytedb/yugabyte:2026.1.1.1-b2
+    image: yugabytedb/yugabyte@sha256:3926eedf0ff4b99426fbff533128ff16635ed5697a5cf086dde4fafec28e6f75  # yugabytedb/yugabyte:2026.1.1.1-b2
     command: ["bin/yugabyted", "start", "--background=false"]
     ports:
       - "${YUGABYTEDB_PORT:-5433}:5433"
@@ -141,7 +146,7 @@ services:
   # superuser gpadmin (trust auth, no password), default db postgres, master listening on 5432.
   greenplum:
     restart: unless-stopped
-    image: datagrip/greenplum:6.8
+    image: datagrip/greenplum@sha256:2e3cd903a69d41514e86ba2ce8929fa386e07b09e19aadfc61da3fa4550af10f  # datagrip/greenplum:6.8
     ports:
       - "${GREENPLUM_PORT:-15432}:5432"
     healthcheck:
@@ -154,7 +159,7 @@ services:
 
   sqlserver:
     restart: unless-stopped
-    image: mcr.microsoft.com/mssql/server:2022-latest
+    image: mcr.microsoft.com/mssql/server@sha256:4525e3efac9f3e241cb003bb2ff2a82818b502f37e12049d788b1a9fa7e13b7f  # mcr.microsoft.com/mssql/server:2022-latest
     environment:
       ACCEPT_EULA: "Y"
       MSSQL_SA_PASSWORD: "Provisa_2026!"
@@ -171,7 +176,7 @@ services:
 
   oracle:
     restart: unless-stopped
-    image: gvenzl/oracle-free:slim
+    image: gvenzl/oracle-free@sha256:48a3d9db7fa7c2a2fdbdf5fff7502c93e807349a2d625718fe61668cc3daa844  # gvenzl/oracle-free:slim
     environment:
       ORACLE_PASSWORD: provisa
     ports:
@@ -190,7 +195,7 @@ services:
   # for seeding via `docker exec ... cqlsh`. Slow to boot (JVM + gossip), hence start_period.
   cassandra:
     restart: unless-stopped
-    image: cassandra:5
+    image: cassandra@sha256:5e996210152ab03e7e4af435ea853a6657954f1d6360ef1283f56cdbd8ad5020  # cassandra:5
     ports:
       - "${CASSANDRA_PORT:-9042}:9042"
     environment:
@@ -242,7 +247,7 @@ services:
   # `docker exec ... isql`; there is no Trino catalog involved for this source type.
   firebird:
     restart: unless-stopped
-    image: jacobalberty/firebird:v4
+    image: jacobalberty/firebird@sha256:aebff0bb0b7833d38608c707b8d183356e811b864b790e88232c10159d8c5b81  # jacobalberty/firebird:v4
     ports:
       - "${FIREBIRD_PORT:-3050}:3050"
     environment:
@@ -264,7 +269,7 @@ services:
   # non-amd64 hosts (conftest). Trino reaches it in-network at exasol:8563.
   exasol:
     restart: unless-stopped
-    image: exasol/docker-db:latest
+    image: exasol/docker-db@sha256:7159d8f8ac0278a203a02260e4e6f86e06f3a987dac2f6c23bdcb1ad3bce5f76  # exasol/docker-db:latest
     privileged: true
     shm_size: 2g
     ports:
@@ -308,7 +313,7 @@ services:
   # each by a statement over its engine URL rather than a healthcheck here. No volumes: a run's
   # engine is thrown away with its container.
   mysql:
-    image: mysql:8.4
+    image: mysql@sha256:8c233bad33d520a7aae1c1e619c3a9775f4a1ba2d463d692fada04ec7f40be00  # mysql:8.4
     environment:
       MYSQL_ROOT_PASSWORD: provisa
       MYSQL_DATABASE: provisa
@@ -316,7 +321,7 @@ services:
       - "${MYSQL_PORT:-3307}:3306"
 
   monetdb:
-    image: monetdb/monetdb:latest
+    image: monetdb/monetdb@sha256:a71e6e8c8402beadc51aebf944b465ee5b185c7ae4a9e6808b5d9133ee921786  # monetdb/monetdb:latest
     environment:
       MDB_DB_ADMIN_PASS: monetdb
       MDB_CREATE_DBS: provisa
@@ -328,22 +333,16 @@ services:
   # privileged. Pinned: latest (7.0.0-RC3.B025) exits at start, gaussdb: libopenblas.so.0 not found
   # (run 44939442678).
   opengauss:
-    image: opengauss/opengauss:7.0.0-RC2.B015
+    image: opengauss/opengauss@sha256:67f83a8136117cf624a78ec76736d7189db8a536b70dc3d974f168ca2af75843  # opengauss/opengauss:7.0.0-RC2.B015
     privileged: true
     environment:
       GS_PASSWORD: Provisa_2026!
     ports:
       - "${OPENGAUSS_PORT:-15433}:5432"
 
-  # Community Edition: database VMart, superuser dbadmin with no password.
-  vertica:
-    image: vertica/vertica-ce:24.1.0-0
-    ports:
-      - "${VERTICA_PORT:-5434}:5433"
-
   # Db2 Community Edition: privileged, and minutes to create its database on first start.
   db2:
-    image: icr.io/db2_community/db2:11.5.9.0
+    image: icr.io/db2_community/db2@sha256:77095d4e04cf4448c0257086afcb2c166193d718dc33441da3b949f97e21efd5  # icr.io/db2_community/db2:11.5.9.0
     privileged: true
     environment:
       LICENSE: accept
@@ -366,7 +365,7 @@ services:
   # instance init), hence the long start_period — the image ships its own readiness script.
   splunk:
     restart: unless-stopped
-    image: splunk/splunk:latest
+    image: splunk/splunk@sha256:e26840dfe69ec9ff305c10681664900168849c3ff346a9cf49322b5351841f3f  # splunk/splunk:latest
     # splunk/splunk publishes amd64 only — on arm64 the pull fails with "no matching manifest for
     # linux/arm64/v8" and takes the whole lane's `up --wait` down with it. Same pin as druid below.
     platform: linux/amd64
@@ -434,7 +433,7 @@ services:
   # In-network is unaffected — Trino/probe still reach the controller at pinot:9000 (container port).
   pinot:
     restart: unless-stopped
-    image: apachepinot/pinot:1.2.0
+    image: apachepinot/pinot@sha256:3097ab095157757ca16c8a869066e036891517b82c534b6ae67bd4f2c078c6a5  # apachepinot/pinot:1.2.0
     command: ["QuickStart", "-type", "batch"]
     ports:
       - "${PINOT_CONTROLLER_PORT:-9010}:9000"
@@ -459,7 +458,7 @@ services:
   # broker and submit ingestion tasks to the overlord (coordinator asOverlord); Trino never uses them.
   druid-zookeeper:
     restart: unless-stopped
-    image: zookeeper:3.8
+    image: zookeeper@sha256:8b0600b74991a754dd01b33c780a5cb987489672c51ad8eeb7251c22b4165b7d  # zookeeper:3.8
     environment:
       ZOO_MY_ID: "1"
       ZOO_4LW_COMMANDS_WHITELIST: ruok
@@ -472,7 +471,7 @@ services:
 
   druid-metadata:
     restart: unless-stopped
-    image: postgres:16
+    image: postgres@sha256:07abc3f43c9395b0bdbbab36bc25ddb0e8d83cd4fcafb5fb7d6abe14ff156dd8  # postgres:16
     environment:
       POSTGRES_USER: druid
       POSTGRES_PASSWORD: diurd
@@ -488,7 +487,7 @@ services:
 
   druid-coordinator:
     restart: unless-stopped
-    image: &druid_image apache/druid:30.0.0
+    image: &druid_image apache/druid@sha256:c9860f6346624cc05ecc2173986a04610efb0a9bea921f3a0aa1849ed61e5b99  # apache/druid:30.0.0
     platform: linux/amd64
     command: ["coordinator"]
     depends_on:
@@ -582,7 +581,7 @@ services:
 
   mongodb:
     restart: unless-stopped
-    image: mongo:7
+    image: mongo@sha256:41e8195b2791692695e1dc9bd21cd51d0a3af05fff8ace9304a5c1acf94f1ae1  # mongo:7
     ports:
       - "${MONGO_PORT:-27017}:27017"
     volumes:
@@ -600,7 +599,7 @@ services:
 
   elasticsearch:
     restart: unless-stopped
-    image: docker.elastic.co/elasticsearch/elasticsearch:8.13.0
+    image: docker.elastic.co/elasticsearch/elasticsearch@sha256:fcf6b29cb00f1db56921e6cb47b506e6a207fcaeae777765dfa733dc007513a6  # docker.elastic.co/elasticsearch/elasticsearch:8.13.0
     ports:
       - "${ELASTICSEARCH_PORT:-9200}:9200"
     environment:
@@ -618,7 +617,7 @@ services:
 
   neo4j:
     restart: unless-stopped
-    image: neo4j:5.19
+    image: neo4j@sha256:e5a03c2b120da495ac6d3198849818d54e6dec6209c79b975b5b5a235b2b86e4  # neo4j:5.19
     ports:
       - "${NEO4J_HTTP_PORT:-7474}:7474"
       - "${NEO4J_BOLT_PORT:-7687}:7687"
@@ -636,7 +635,7 @@ services:
 
   fuseki:
     restart: unless-stopped
-    image: atomgraph/fuseki:latest
+    image: atomgraph/fuseki@sha256:e6ab0e26d4ef78d79ccae9232004b292c72b785fcb26061e644418786fef35b5  # atomgraph/fuseki:latest
     ports:
       - "${FUSEKI_PORT:-3030}:3030"
     command: ["--mem", "/provisa"]
@@ -652,7 +651,7 @@ services:
   # read-only bind mount.
   openldap:
     restart: unless-stopped
-    image: osixia/openldap:1.5.0
+    image: osixia/openldap@sha256:18742e9c449c9c1afe129d3f2f3ee15fb34cc43e5f940a20f3399728f41d7c28  # osixia/openldap:1.5.0
     command: ["--copy-service"]
     ports:
       - "${LDAP_PORT:-389}:389"
@@ -675,7 +674,7 @@ services:
   # provider it serves: the test's own server, on the port the session leased for it.
   saml-idp:
     restart: unless-stopped
-    image: kenchan0130/simplesamlphp:1.19.8
+    image: kenchan0130/simplesamlphp@sha256:ca50be42baa7cc9c7ab762e1611975b11afea63974395a13d0db9d4c18be9a18  # kenchan0130/simplesamlphp:1.19.8
     ports:
       - "${SAML_IDP_PORT:-8480}:8080"
     environment:
@@ -695,7 +694,7 @@ services:
   # the repo; the management port answers the healthcheck, and the image ships no curl.
   keycloak:
     restart: unless-stopped
-    image: quay.io/keycloak/keycloak:26.0.7
+    image: quay.io/keycloak/keycloak@sha256:4388e2379b7e870a447adbe7b80bd61f5fbf04e925832b19669fda4957f05a81  # quay.io/keycloak/keycloak:26.0.7
     command: ["start-dev", "--import-realm"]
     ports:
       - "${KEYCLOAK_PORT:-8880}:8080"
@@ -717,7 +716,7 @@ services:
   # built for it, so it must be refused with nothing written. Unpublished: the test reaches them
   # with docker exec, as the command does.
   pg-ext-target-16:
-    image: postgres:16
+    image: postgres@sha256:07abc3f43c9395b0bdbbab36bc25ddb0e8d83cd4fcafb5fb7d6abe14ff156dd8  # postgres:16
     platform: linux/amd64
     environment:
       POSTGRES_PASSWORD: provisa
@@ -729,7 +728,7 @@ services:
       start_period: 10s
 
   pg-ext-target-15:
-    image: postgres:15
+    image: postgres@sha256:91b9edc40277faf94bc1e3d7ae621b185fa70f3099b94309c4731a8296114870  # postgres:15
     platform: linux/amd64
     environment:
       POSTGRES_PASSWORD: provisa
@@ -744,7 +743,7 @@ services:
   # isolated project's network with kafka + postgres and reaches them by service name.
   debezium-connect:
     restart: unless-stopped
-    image: quay.io/debezium/connect:2.7
+    image: quay.io/debezium/connect@sha256:f062d06e19be455ebf43cca662747f2ab6efbe4678954e7d64ac06055b8c7aff  # quay.io/debezium/connect:2.7
     ports:
       - "${DEBEZIUM_PORT:-8083}:8083"
     environment:
@@ -774,7 +773,7 @@ services:
   # this project, so the `up` metric populates and the test can query it.
   prometheus:
     restart: unless-stopped
-    image: prom/prometheus:v2.51.2
+    image: prom/prometheus@sha256:4f6c47e39a9064028766e8c95890ed15690c30f00c4ba14e7ce6ae1ded0295b1  # prom/prometheus:v2.51.2
     # REQ-1689: the native reader runs in the test process, so the API is host-published too.
     ports:
       - "${PROMETHEUS_PORT:-9090}:9090"
@@ -794,7 +793,7 @@ services:
   # metastore DB is embedded (DB_DRIVER=derby); schema is auto-initialized by the image entrypoint.
   hive-metastore:
     restart: unless-stopped
-    image: &hive_image apache/hive:4.0.0
+    image: &hive_image apache/hive@sha256:c0b241c544d341c16a6d8cafcb801a071be9b02054a5add255e9a0e826095e88  # apache/hive:4.0.0
     environment:
       SERVICE_NAME: metastore
       DB_DRIVER: derby
@@ -867,7 +866,7 @@ services:
   # our own mapping agrees with itself.
   marquez-db:
     restart: unless-stopped
-    image: postgres:16
+    image: postgres@sha256:07abc3f43c9395b0bdbbab36bc25ddb0e8d83cd4fcafb5fb7d6abe14ff156dd8  # postgres:16
     environment:
       POSTGRES_USER: marquez
       POSTGRES_PASSWORD: marquez
@@ -883,7 +882,7 @@ services:
 
   marquez:
     restart: unless-stopped
-    image: marquezproject/marquez:0.49.0
+    image: marquezproject/marquez@sha256:da785450d051c079058b87d97ded04148d9ac5e2e8c3fcf4942ddad9cbb1e9ad  # marquezproject/marquez:0.49.0
     depends_on:
       marquez-db:
         condition: service_healthy
@@ -916,7 +915,7 @@ services:
   # up only for the OpenMetadata tests.
   openmetadata-search:
     restart: unless-stopped
-    image: docker.elastic.co/elasticsearch/elasticsearch:9.3.0
+    image: docker.elastic.co/elasticsearch/elasticsearch@sha256:4f6bdcb742e892539c6ac49b0dd3e4e182e90218546e8c6a22db378c344acb60  # docker.elastic.co/elasticsearch/elasticsearch:9.3.0
     environment:
       discovery.type: single-node
       xpack.security.enabled: "false"
@@ -930,7 +929,7 @@ services:
 
   openmetadata-db:
     restart: unless-stopped
-    image: mysql:8.0
+    image: mysql@sha256:7dcddc01f13bab2f15cde676d44d01f61fc9f99fe7785e86196dfc07d358ae2b  # mysql:8.0
     command: --sql_mode=""
     environment:
       MYSQL_ROOT_PASSWORD: password
@@ -953,7 +952,7 @@ services:
   openmetadata:
     restart: unless-stopped
     # REQ-2118: 2.0.5 -- ODCS contract import (PUT /v1/dataContracts/odcs) needs 2.0.3 or later.
-    image: docker.getcollate.io/openmetadata/server:2.0.5
+    image: docker.getcollate.io/openmetadata/server@sha256:ede23602d8e7cc2447e14f67b36d8ee2e468671fb3157a39e776ecfd6d7cc11b  # docker.getcollate.io/openmetadata/server:2.0.5
     depends_on:
       openmetadata-db:
         condition: service_healthy
@@ -1005,7 +1004,7 @@ services:
   # also why it is slow to become healthy and carries a long start_period.
   atlas:
     restart: unless-stopped
-    image: sburn/apache-atlas:latest
+    image: sburn/apache-atlas@sha256:9192ed82f33072321590a0cd99be7d04e2afe74c35987dc109160a4f3bf00af7  # sburn/apache-atlas:latest
     # No `command`: the image's own CMD starts Atlas and then tails its log to keep PID 1 alive.
     # Naming the start script explicitly gets the path wrong for whatever version is tagged.
     ports:
@@ -1029,7 +1028,7 @@ services:
   # frontend: the test reads back over the same REST API it publishes through.
   datahub-mysql:
     restart: unless-stopped
-    image: mysql:8.2
+    image: mysql@sha256:212fe73edca5df6ff14826d5eb975c914bfb91f82a2e923f9050568f99525da1  # mysql:8.2
     command: --character-set-server=utf8mb4 --collation-server=utf8mb4_bin --default-authentication-plugin=caching_sha2_password
     environment:
       MYSQL_DATABASE: datahub
@@ -1045,7 +1044,7 @@ services:
 
   datahub-search:
     restart: unless-stopped
-    image: docker.elastic.co/elasticsearch/elasticsearch:7.10.1
+    image: docker.elastic.co/elasticsearch/elasticsearch@sha256:5d8f1962907ef60746a8cf61c8a7f2b8755510ee36bdee0f65417f90a38a0139  # docker.elastic.co/elasticsearch/elasticsearch:7.10.1
     environment:
       discovery.type: single-node
       xpack.security.enabled: "false"
@@ -1058,7 +1057,7 @@ services:
       start_period: 60s
 
   datahub-mysql-setup:
-    image: acryldata/datahub-mysql-setup:v0.14.1
+    image: acryldata/datahub-mysql-setup@sha256:8acdf2d2a684bec38d50be52260d727e258699eaed7d54455b06146b4f1c6d8b  # acryldata/datahub-mysql-setup:v0.14.1
     restart: "no"
     depends_on:
       datahub-mysql:
@@ -1071,7 +1070,7 @@ services:
       DATAHUB_DB_NAME: datahub
 
   datahub-upgrade:
-    image: acryldata/datahub-upgrade:v0.14.1
+    image: acryldata/datahub-upgrade@sha256:af6337aa83318e6bb4e77667a2b04400fcf7cb6234936d0e13f0ea851c67cd3e  # acryldata/datahub-upgrade:v0.14.1
     restart: "no"
     command: ["-u", "SystemUpdate"]
     depends_on:
@@ -1105,7 +1104,7 @@ services:
 
   datahub-gms:
     restart: unless-stopped
-    image: acryldata/datahub-gms:v0.14.1
+    image: acryldata/datahub-gms@sha256:21d5b49daedad0dc26a20c510f1978a5f3702567934d4516c1258761a2d8bad7  # acryldata/datahub-gms:v0.14.1
     depends_on:
       datahub-upgrade:
         condition: service_completed_successfully
