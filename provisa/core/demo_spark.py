@@ -10,14 +10,16 @@
 
 """The local test cluster of a demo or local install: a one-node Spark, run natively (REQ-2225).
 
-At first use the pinned Spark distribution is downloaded from Apache's release mirror into
-``<PROVISA_HOME>/spark``, its SHA-512 checked against the one pinned here before it is kept, and
-unpacked. A download whose sum is not the pinned one is refused by name and its partial file
-removed; there is no unpinned or unchecked route. Its Spark Connect server then runs on the Java
-runtime Provisa already ships (jdk4py), on a free loopback port, in a session of its own, and
+At first use the pinned pyspark sdist is downloaded from PyPI into ``<PROVISA_HOME>/spark``, its
+SHA-256 checked against the one PyPI publishes and pinned here before it is kept, and the parts of
+Spark it carries unpacked: its jars, and its Python client. A download whose sum is not the pinned
+one is refused by name and its partial file removed; there is no unpinned or unchecked route. Its
+Spark Connect server then runs on the Java runtime Provisa already ships (jdk4py), on a free
+loopback port, in a session of its own, and
 :data:`provisa.core.spark_cluster.LOCAL_TEST_CLUSTER_ENV` names it while it runs. It stops with the
 demo: the app's shutdown stops it, and the interpreter's exit as a backstop. Spark is never
-embedded in a bundle; nothing runs in Docker.
+embedded in a bundle; nothing runs in Docker. It runs on macOS and Linux only: on Windows it is
+refused by name, and a cluster can still be set in the organization's Spark tab.
 """
 
 # Requirements: REQ-2225
@@ -29,6 +31,7 @@ import shutil
 import signal
 import socket
 import subprocess
+import sys
 import tarfile
 import tempfile
 import threading
@@ -37,19 +40,38 @@ from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
-#: The pinned distribution: Spark 4.3.0, the version the Spark connector's client is locked at
-#: (connectors/spark/uv.lock), with its SHA-512 as Apache publishes it beside the archive.
+#: The pinned distribution: the pyspark 4.3.0 sdist, Spark 4.3.0, the version the Spark connector's
+#: client is locked at (connectors/spark/uv.lock). Its URL and SHA-256 are the ones PyPI's JSON API
+#: publishes for it (https://pypi.org/pypi/pyspark/4.3.0/json); PyPI keeps every release.
 SPARK_VERSION = "4.3.0"
-DISTRIBUTION = f"spark-{SPARK_VERSION}-bin-hadoop3"
-#: Apache's release mirror (its CDN). It serves the current releases only: when this pin is
-#: superseded there, the download fails loudly and the pin moves to the newer release.
-#: (archive.apache.org keeps every release but serves it at about 130 KB/s, 70 minutes for this
-#: archive.)
-URL = f"https://dlcdn.apache.org/spark/spark-{SPARK_VERSION}/{DISTRIBUTION}.tgz"
-SHA512 = (
-    "51a2473d09c74b6b755d3c4158275922fe4fed9c3801d9e48ade6083dc03b456"
-    "93274020fe0fcf2be2a607a6a828f7159f78609ef913049e98c1882d2d0aab5f"
+#: The Scala version of the distribution's jars (their ``_2.13`` suffix). Spark's launcher reads it
+#: from ``SPARK_SCALA_VERSION``, which the distribution's bin/load-spark-env.sh would set.
+SCALA_VERSION = "2.13"
+DISTRIBUTION = f"pyspark-{SPARK_VERSION}"
+URL = (
+    "https://files.pythonhosted.org/packages/46/b2/"
+    "4e28aaffe28db4745ac5df3ee9115719c1b5da5cce4106bee99c82d1eb2c/"
+    f"{DISTRIBUTION}.tar.gz"
 )
+SHA256 = "e8c517948eff7088a7aa07449aa8eafa4a15a8d50319de2525a6fd26622476c6"
+#: Where the sdist keeps each part of Spark the cluster uses, and where it goes in the install,
+#: laid out as a Spark distribution is: the jars, and the Python client with its py4j.
+UNPACKED = {
+    f"{DISTRIBUTION}/deps/jars/": "jars/",
+    f"{DISTRIBUTION}/pyspark/": "python/pyspark/",
+    f"{DISTRIBUTION}/lib/": "python/lib/",
+}
+#: The Spark Connect server's jar: the marker of a complete install.
+CONNECT_JAR = f"jars/spark-connect_{SCALA_VERSION}-{SPARK_VERSION}.jar"
+#: The platforms the cluster runs on (``sys.platform``).
+SUPPORTED_PLATFORMS = ("darwin", "linux")
+LAUNCHER_CLASS = "org.apache.spark.launcher.Main"
+SUBMIT_CLASS = "org.apache.spark.deploy.SparkSubmit"
+#: The JVM option of Spark's launcher that jdk4py's runtime cannot take: the launcher adds it to
+#: every command, and jdk4py's runtime does not carry the module, so the JVM refuses to start
+#: ("Module jdk.incubator.vector not found"). The distribution's one user of the module is netlib's
+#: BLAS, which checks for it and runs without it.
+ABSENT_MODULE_OPTION = "--add-modules=jdk.incubator.vector"
 CONNECT_SERVER_CLASS = "org.apache.spark.sql.connect.service.SparkConnectServer"
 LOOPBACK = "127.0.0.1"
 #: How long a start waits for the server to answer Spark Connect.
@@ -103,25 +125,25 @@ def stream_https(url: str) -> Iterator[bytes]:
 
 
 def download(
-    dest: Path, *, url: str = URL, sha512: str = SHA512, stream: Stream = stream_https
+    dest: Path, *, url: str = URL, sha256: str = SHA256, stream: Stream = stream_https
 ) -> Path:
-    """``url`` saved as ``dest`` once its SHA-512 is ``sha512``. Written to a partial file first;
+    """``url`` saved as ``dest`` once its SHA-256 is ``sha256``. Written to a partial file first;
     a sum that is not the pinned one is refused (``demo_spark.checksum``) and the partial file
     removed, as it is on any failure, so ``dest`` only ever holds the checked archive."""
     dest.parent.mkdir(parents=True, exist_ok=True)
     fd, partial_name = tempfile.mkstemp(dir=dest.parent, prefix=f".{dest.name}.", suffix=".part")
     partial = Path(partial_name)
-    digest = hashlib.sha512()
+    digest = hashlib.sha256()
     try:
         with os.fdopen(fd, "wb") as out:
             for chunk in stream(url):
                 digest.update(chunk)
                 out.write(chunk)
         found = digest.hexdigest()
-        if found != sha512:
+        if found != sha256:
             raise DemoSparkFailed(
                 "checksum",
-                f"{dest.name} from {url} has SHA-512 {found}, not the pinned {sha512}",
+                f"{dest.name} from {url} has SHA-256 {found}, not the pinned {sha256}",
             )
         os.replace(partial, dest)
     finally:
@@ -134,32 +156,55 @@ def spark_home(root: Path) -> Path:
     return root / SPARK_VERSION / DISTRIBUTION
 
 
-def install(root: Path, *, stream: Stream = stream_https, sha512: str = SHA512) -> Path:
+def _unpacked_members(tar: tarfile.TarFile) -> Iterator[tarfile.TarInfo]:
+    """The members of the sdist the cluster uses, each renamed to its place in the install."""
+    for member in tar:
+        for prefix, place in UNPACKED.items():
+            if member.name.startswith(prefix) and member.name != prefix:
+                yield member.replace(name=place + member.name[len(prefix) :], deep=False)
+                break
+
+
+def install(root: Path, *, stream: Stream = stream_https, sha256: str = SHA256) -> Path:
     """The pinned distribution under ``root``, downloaded, checked and unpacked on a miss. Its
-    ``bin/spark-submit`` is the marker of a complete install: the archive is unpacked into a
-    staging directory and moved into place whole, and the archive removed once it is."""
+    Spark Connect jar is the marker of a complete install: the sdist's parts are unpacked into a
+    staging directory and moved into place whole, and the sdist removed once they are."""
     home = spark_home(root)
-    if (home / "bin" / "spark-submit").is_file():
+    if (home / CONNECT_JAR).is_file():
         return home
-    archive = download(root / "downloads" / f"{DISTRIBUTION}.tgz", sha512=sha512, stream=stream)
+    archive = download(root / "downloads" / f"{DISTRIBUTION}.tar.gz", sha256=sha256, stream=stream)
     home.parent.mkdir(parents=True, exist_ok=True)
     staging = Path(tempfile.mkdtemp(dir=home.parent, prefix=".unpack-"))
     try:
+        unpacked = staging / DISTRIBUTION
         try:
             with tarfile.open(archive, mode="r:gz") as tar:
-                tar.extractall(staging, filter="data")  # nosec B202 - "data" refuses unsafe members
+                members = _unpacked_members(tar)
+                tar.extractall(unpacked, members=members, filter="data")  # nosec B202 - data filter
         except (OSError, tarfile.TarError) as exc:
             raise DemoSparkFailed("unpack", f"{archive.name} could not be unpacked: {exc}") from exc
-        unpacked = staging / DISTRIBUTION
-        if not (unpacked / "bin" / "spark-submit").is_file():
+        if not (unpacked / CONNECT_JAR).is_file():
             raise DemoSparkFailed(
-                "unpack", f"{archive.name} holds no {DISTRIBUTION}/bin/spark-submit"
+                "unpack", f"{archive.name} holds no {DISTRIBUTION}/deps/{CONNECT_JAR}"
             )
         os.replace(unpacked, home)
     finally:
         shutil.rmtree(staging)
     archive.unlink()
     return home
+
+
+def require_supported_platform() -> None:
+    """Refuse (``demo_spark.unsupported_platform``) on a platform the cluster does not run on."""
+    if sys.platform in SUPPORTED_PLATFORMS:
+        return
+    shown = "Windows" if sys.platform == "win32" else sys.platform
+    raise DemoSparkFailed(
+        "unsupported_platform",
+        f"the local test cluster runs on macOS and Linux only, not on {shown}: Spark on Windows "
+        "needs Hadoop's winutils.exe and hadoop.dll, which neither PyPI's pyspark nor Provisa "
+        "ships. Set a Spark cluster in the organization's Spark tab instead.",
+    )
 
 
 def java_home() -> Path:
@@ -182,10 +227,10 @@ def free_loopback_port() -> int:
         return probe.getsockname()[1]
 
 
-def command(home: Path, port: int, work: Path) -> list[str]:
-    """The Spark Connect server's command line: local mode, every address on the loopback."""
+def submit_arguments(port: int, work: Path) -> list[str]:
+    """spark-submit's arguments for the Spark Connect server: local mode, every address on the
+    loopback."""
     return [
-        str(home / "bin" / "spark-submit"),
         "--class", CONNECT_SERVER_CLASS,
         "--name", "Provisa local test cluster",
         "--master", "local[*]",
@@ -201,6 +246,45 @@ def command(home: Path, port: int, work: Path) -> list[str]:
     ]  # fmt: skip
 
 
+def launcher_command(home: Path, port: int, work: Path) -> list[str]:
+    """Spark's own launcher, as the distribution's bin/spark-class runs it: it prints the server's
+    JVM command line for these spark-submit arguments."""
+    return [
+        str(java_home() / "bin" / "java"),
+        "-Xmx128m",
+        "-cp", str(home / "jars" / "*"),
+        LAUNCHER_CLASS,
+        SUBMIT_CLASS,
+        *submit_arguments(port, work),
+    ]  # fmt: skip
+
+
+def server_command(launched: bytes) -> list[str]:
+    """The server's command line from the launcher's output (NUL-separated, as bin/spark-class
+    reads it), without the one option jdk4py's runtime cannot take."""
+    parts = [part.strip("\n") for part in launched.decode().split("\0")]
+    return [part for part in parts if part and part != ABSENT_MODULE_OPTION]
+
+
+def command(home: Path, port: int, work: Path) -> list[str]:
+    """The Spark Connect server's command line, built by Spark's launcher."""
+    launched = subprocess.run(  # noqa: S603 - code-built arguments
+        launcher_command(home, port, work),
+        cwd=str(work),
+        env=environment(home, work),
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        check=False,
+    )
+    if launched.returncode != 0:
+        raise DemoSparkFailed(
+            "start",
+            f"Spark's launcher exited with {launched.returncode}:\n"
+            f"{launched.stderr.decode(errors='replace')[-4000:]}",
+        )
+    return server_command(launched.stdout)
+
+
 def environment(home: Path, work: Path) -> dict[str, str]:
     """The server's environment: ours, with jdk4py's Java and the distribution's own home."""
     env = dict(os.environ)
@@ -208,6 +292,7 @@ def environment(home: Path, work: Path) -> dict[str, str]:
         {
             "JAVA_HOME": str(java_home()),
             "SPARK_HOME": str(home),
+            "SPARK_SCALA_VERSION": SCALA_VERSION,
             "SPARK_LOCAL_IP": LOOPBACK,
             "SPARK_LOG_DIR": str(work / "logs"),
             "SPARK_NO_DAEMONIZE": "1",
@@ -262,6 +347,7 @@ def start(
     timeout: float = START_TIMEOUT_S,
 ) -> Running:
     """Install (on a miss) and start the server under ``root``; returned once it answers."""
+    require_supported_platform()
     home = install(root, stream=stream)
     work = root / "work"
     for sub in ("tmp", "warehouse", "logs", "derby"):
