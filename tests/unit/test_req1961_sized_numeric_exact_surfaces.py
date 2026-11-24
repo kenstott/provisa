@@ -298,3 +298,26 @@ def test_an_nl_job_stores_a_sized_numeric_as_its_exact_digits():
     from provisa.nl.job import _json_default
 
     assert json.loads(json.dumps({"a": Decimal("12.50")}, default=_json_default)) == {"a": "12.50"}
+
+
+def test_a_cypher_float_literal_is_a_double_so_a_json_surface_writes_a_float():
+    """An engine types a bare 1.5 an exact DECIMAL, which a JSON surface writes as its digits; a
+    Cypher float is an IEEE double, so it is read as one. Compared, it stays as written."""
+    import duckdb
+
+    from provisa.cypher.parser import parse_cypher
+    from provisa.gql.assembler import to_serializable
+    from provisa.gql.label_map import CypherLabelMap
+    from provisa.gql.translator import cypher_to_sql
+
+    empty = CypherLabelMap(nodes={}, relationships={})
+    ast, _, _ = cypher_to_sql(parse_cypher("RETURN 1.5 AS a, 1.5 * 2 AS b, 7 AS c"), empty, {})
+    sql = ast.sql(dialect="duckdb")
+    assert "CAST(1.5 AS DOUBLE)" in sql
+    row = duckdb.sql(sql).fetchall()[0]
+    assert [to_serializable(v) for v in row] == [1.5, 3.0, 7]
+    compared, _, _ = cypher_to_sql(
+        parse_cypher("UNWIND [1, 2] AS x RETURN x > 1.5 AS a"), empty, {}
+    )
+    assert "> 1.5" in compared.sql(dialect="duckdb")
+    assert "CAST(1.5" not in compared.sql(dialect="duckdb")
