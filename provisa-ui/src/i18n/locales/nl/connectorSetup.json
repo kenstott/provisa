@@ -10,6 +10,7 @@
     "pairing": "Koppelcode",
     "pairingHint": "De regel die de container bij de eerste start afdrukte, na \"pairing code:\". Hij wordt één keer gebruikt en niet bewaard.",
     "secretHint": "Het secret van de organisatie dat wordt gebruikt. De waarde ervan wordt hier nooit ingevoerd.",
-    "fixedHint": "Ingesteld door deze connector. Kan niet worden gewijzigd."
+    "fixedHint": "Ingesteld door deze connector. Kan niet worden gewijzigd.",
+    "sparkClusterDefaultHint": "Laat leeg om het standaard Spark-cluster van de organisatie te gebruiken (Beheer, Spark-cluster)."
   }
 }

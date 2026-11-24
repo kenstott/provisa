@@ -10,6 +10,7 @@
     "pairing": "Código de emparejamiento",
     "pairingHint": "La línea que el contenedor imprimió en su primer inicio, después de \"pairing code:\". Se usa una vez y no se conserva.",
     "secretHint": "El secreto de la organización que se va a usar. Su valor nunca se introduce aquí.",
-    "fixedHint": "Lo establece este conector. No se puede cambiar."
+    "fixedHint": "Lo establece este conector. No se puede cambiar.",
+    "sparkClusterDefaultHint": "Déjelo vacío para usar el clúster de Spark predeterminado de la organización (Administración, Clúster de Spark)."
   }
 }

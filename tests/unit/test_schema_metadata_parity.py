@@ -110,6 +110,9 @@ REGISTRY_ONLY_TABLES = {
     # REQ-2098: the container registries a code source's built image may be pushed to. Beside
     # ``org_package_registries`` and the vault its credentials may name. Portable metadata only.
     "org_container_registries",
+    # REQ-2225: the organisation's default Spark cluster. Beside ``orgs`` and the vault its
+    # credential names. Portable metadata only.
+    "org_spark_clusters",
     # REQ-1984: the archives uploaded as Node sources' code, by content hash. Portable metadata
     # only.
     "org_code_bundles",

@@ -228,3 +228,52 @@ def test_a_bid_names_the_authority_its_hook_reaches_as_its_approver():
         "via": "hook",
         "name": "access.example.com",
     }
+
+
+def test_an_offer_as_listed_previews_each_contract_as_the_callers_acting_role(monkeypatch):
+    # REQ-2180 (A PRODUCT PAGE PREVIEWS CONTRACTS AS THE ACTING ROLE): the contract offered stays
+    # the offer's role's; its preview is the dataset as the request's acting role reads it, and a
+    # dataset the last build dropped has none.
+    from provisa.core.models import OfferContract, OfferTerms
+
+    built = {"id": 1, "domain_id": "sales", "columns": []}
+    asked: list[tuple[str, int]] = []
+    offered = OfferContract(
+        version="1.0.0",
+        created_at="2026-11-23T00:00:00Z",
+        terms=OfferTerms(fields=[], row_rules=[], data_level="full"),
+    )
+
+    async def contracts(_conn: Any, _offer_id: int) -> dict:
+        return {1: offered, 2: offered}
+
+    async def table_names(_conn: Any, ids: Any) -> dict:
+        return {1: "sales.orders", 2: "sales.gone"}
+
+    async def query_now(*_a: Any) -> bool:
+        return False
+
+    def preview(_state: Any, role_id: str, table: dict) -> list:
+        from provisa.core.models import OfferField
+
+        asked.append((role_id, table["id"]))
+        return [OfferField(name="id", type="integer")]
+
+    monkeypatch.setattr(router.offers, "contracts", contracts)
+    monkeypatch.setattr(router.offers, "table_names", table_names)
+    monkeypatch.setattr(router, "_query_now", query_now)
+    monkeypatch.setattr(router, "preview", preview)
+    monkeypatch.setattr(router, "_state", lambda: _state(tables=[built]))
+    row = {"id": 5, "product_id": "p", "name": "default", "role_id": "viewer"}
+    view = asyncio.run(
+        router._offer_view(None, _request(role="meta:viewer+steward"), row, now=None)  # type: ignore[arg-type]
+    )
+    assert view["preview_role"] == "meta:viewer+steward"
+    assert asked == [("meta:viewer+steward", 1)]
+    by_table = {c["table_id"]: c for c in view["contracts"]}
+    assert by_table[1]["preview"] == [
+        {"name": "id", "type": "integer", "description": None, "masked": None}
+    ]
+    assert by_table[2]["preview"] is None
+    # The contract offered is the offer's role's, untouched by the preview.
+    assert by_table[1]["contract"]["terms"]["fields"] == []

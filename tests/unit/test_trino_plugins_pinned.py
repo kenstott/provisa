@@ -17,6 +17,7 @@ failed for reasons that had nothing to do with the pin.
 
 from __future__ import annotations
 
+import email.message
 import hashlib
 import os
 import urllib.error
@@ -140,10 +141,77 @@ def test_a_fetch_with_other_bytes_is_refused_by_name_and_leaves_no_jar(monkeypat
     assert os.listdir(tmp_path / "trino-splunk") == []
 
 
-def test_a_refused_fetch_is_refused_by_name(monkeypatch, tmp_path):
-    _serve(monkeypatch, urllib.error.HTTPError("u", 429, "Too Many Requests", {}, None))  # type: ignore[arg-type]
-    with pytest.raises(pins.TrinoPluginRefused, match=r"trino-file: https://.* was refused: .*429"):
+def _too_many(retry_after: str | None = None) -> urllib.error.HTTPError:
+    headers = email.message.Message()
+    if retry_after is not None:
+        headers["Retry-After"] = retry_after
+    return urllib.error.HTTPError("u", 429, "Too Many Requests", headers, None)
+
+
+def _sleeps(monkeypatch) -> list[float]:
+    slept: list[float] = []
+    monkeypatch.setattr(pins.time, "sleep", slept.append)
+    return slept
+
+
+def _serve_in_turn(monkeypatch, answers: list[bytes | Exception]) -> list[str]:
+    urls: list[str] = []
+
+    def _retrieve(url: str, path: str) -> None:
+        urls.append(url)
+        answer = answers.pop(0)
+        if isinstance(answer, Exception):
+            with open(path, "wb") as f:
+                f.write(b"partial")  # a refused try leaves no .part behind
+            raise answer
+        with open(path, "wb") as f:
+            f.write(answer)
+
+    monkeypatch.setattr("urllib.request.urlretrieve", _retrieve)
+    return urls
+
+
+def test_a_fetch_refused_429_every_try_fails_by_name_after_the_bounded_tries(monkeypatch, tmp_path):
+    """Run 45293530114: the priming job's first jar got HTTP 429. Each 429 waits and tries again,
+    a bounded number of times; the last refusal fails naming the plugin and the URL."""
+    slept = _sleeps(monkeypatch)
+    urls = _serve(monkeypatch, _too_many())
+    with pytest.raises(
+        pins.TrinoPluginRefused,
+        match=r"trino-file: https://.* was refused after 5 tries: .*429",
+    ):
         pins.fetch(str(tmp_path / "trino-file"), "trino-file")
+    assert len(urls) == pins._FETCH_ATTEMPTS == 5
+    assert slept == [15, 30, 60, 120]
+    assert os.listdir(tmp_path / "trino-file") == []
+
+
+def test_a_429_then_the_jar_takes_the_jar(monkeypatch, tmp_path):
+    _pin_every_sum_to(monkeypatch, _BODY)
+    slept = _sleeps(monkeypatch)
+    urls = _serve_in_turn(monkeypatch, [_too_many(), _too_many(), _BODY])
+    path = pins.fetch(str(tmp_path / "trino-splunk"), "trino-splunk")
+    assert len(urls) == 3 and slept == [15, 30]
+    assert os.listdir(tmp_path / "trino-splunk") == [pins.jar_name("trino-splunk")]
+    assert open(path, "rb").read() == _BODY
+
+
+def test_a_longer_retry_after_is_waited_and_capped(monkeypatch, tmp_path):
+    _pin_every_sum_to(monkeypatch, _BODY)
+    slept = _sleeps(monkeypatch)
+    _serve_in_turn(monkeypatch, [_too_many("90"), _too_many("100000"), _too_many("5"), _BODY])
+    pins.fetch(str(tmp_path / "trino-cloudops"), "trino-cloudops")
+    assert slept == [90, 300, 60]
+
+
+def test_a_refusal_other_than_429_is_not_retried(monkeypatch, tmp_path):
+    slept = _sleeps(monkeypatch)
+    urls = _serve(
+        monkeypatch, urllib.error.HTTPError("u", 404, "Not Found", email.message.Message(), None)
+    )
+    with pytest.raises(pins.TrinoPluginRefused, match=r"trino-file: https://.* was refused: .*404"):
+        pins.fetch(str(tmp_path / "trino-file"), "trino-file")
+    assert len(urls) == 1 and slept == []
     assert os.listdir(tmp_path / "trino-file") == []
 
 

@@ -14,8 +14,8 @@
 import type { TFunction } from "i18next";
 import type {
   ConsumerKind,
+  OfferField,
   OfferInput,
-  OfferTerms,
   TermOfUse,
 } from "../../../api/dataProductOffers";
 import type { CoreTable } from "../productCore";
@@ -52,10 +52,10 @@ export function offerSummary(offer: OfferInput, datasets: number, t: TFunction):
   });
 }
 
-/** A contract's columns as the columns table reads them: each as the offer's role sees it, a
- *  masked one carrying its mask's kind. */
-export function contractColumns(terms: OfferTerms, role: string): ColumnForm[] {
-  return terms.fields.map((f) => ({
+/** A contract's columns as the columns table reads them: each as ``role`` sees it, a masked one
+ *  carrying its mask's kind. */
+export function contractColumns(fields: OfferField[], role: string): ColumnForm[] {
+  return fields.map((f) => ({
     name: f.name,
     visibleTo: [role],
     masks: f.masked ? [{ to: [role], mask: { type: f.masked as MaskKind } }] : [],

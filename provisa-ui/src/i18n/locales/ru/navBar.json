@@ -78,6 +78,7 @@
     "itemPython": "Python",
     "itemNotebook": "Блокнот",
     "itemContainerRegistries": "Реестры контейнеров",
+    "itemSparkCluster": "Кластер Spark",
     "itemSparql": "SPARQL",
     "itemPlatformObservability": "Наблюдаемость платформы",
     "itemOntology": "Онтология",

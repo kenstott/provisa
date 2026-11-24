@@ -227,6 +227,51 @@ describe("the mapping that joins the connector", () => {
   });
 });
 
+// REQ-2225: the Spark connector's cluster is the organisation's default Spark cluster when unset.
+describe("a value the organisation's default stands in for", () => {
+  const SPARK: Connector = {
+    ...CRM,
+    name: "spark",
+    requires: [
+      { name: "script", multiline: true },
+      { name: "cluster", org_default: "spark_cluster" },
+    ],
+  };
+  const fields = {
+    connector_host: "spark-host.acme.internal",
+    connector_port: "7443",
+    connector_pairing_code: "fp.secret",
+    [requiredField("script")]: "print(1)",
+  };
+
+  it("may be left empty, and is then left out of the mapping", () => {
+    expect(missingConnectorFields(fields, SPARK)).toEqual([]);
+    expect(JSON.parse(connectorMappingJson(fields, SPARK)).settings).toEqual({
+      script: "print(1)",
+    });
+  });
+
+  it("is sent when it is given", () => {
+    const given = { ...fields, [requiredField("cluster")]: "sc://own.acme.test:15002" };
+    expect(JSON.parse(connectorMappingJson(given, SPARK)).settings).toEqual({
+      script: "print(1)",
+      cluster: "sc://own.acme.test:15002",
+    });
+  });
+
+  it("is not a required field, and says the default is used", () => {
+    renderInForm(
+      <ConnectorSetupFields connector={SPARK} fields={fields} setFields={() => undefined} />,
+    );
+    const cluster = screen.getByTestId("connector-require-cluster") as HTMLInputElement;
+    expect(cluster.required).toBe(false);
+    expect(screen.getByText(/default Spark cluster/)).toBeInTheDocument();
+    expect((screen.getByTestId("connector-require-script") as HTMLTextAreaElement).required).toBe(
+      true,
+    );
+  });
+});
+
 describe("ConnectorSetupFields", () => {
   it("offers a field for everything the connector requires", async () => {
     renderInForm(<Form />);

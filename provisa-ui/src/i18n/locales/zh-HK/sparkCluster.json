@@ -1,0 +1,17 @@
+{
+  "sparkCluster": {
+    "help": "當數據來源未指定自己的叢集時，Spark 指令碼在此執行和驗證。數據來源如有自己的叢集，則一律使用該叢集。",
+    "address": "Spark Connect 位址",
+    "addressHelp": "叢集的 Spark Connect 位址，例如 sc://spark.example.com:15002。請勿在其中包含權杖：將權杖儲存為密鑰，並在下方指定。",
+    "credential": "權杖密鑰",
+    "credentialHelp": "呼叫叢集所用權杖的密鑰參照，例如 ${secret:spark_token}。若叢集不需要權杖，請留空。",
+    "inUseOrg": "未指定叢集的數據來源使用此預設叢集（{{target}}）。",
+    "inUseLocal": "未指定叢集的數據來源使用本機測試叢集（{{target}}）。設定預設叢集即可使用您自己的叢集。",
+    "inUseNone": "未設定 Spark 叢集：未指定叢集的數據來源在設定預設叢集之前無法執行。",
+    "test": "測試連線",
+    "tested": "已連線至 {{target}}：Spark {{version}}",
+    "saved": "已儲存",
+    "removed": "已刪除",
+    "remove": "移除預設叢集"
+  }
+}
