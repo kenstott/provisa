@@ -46,7 +46,7 @@ from provisa.api.admin.capabilities import (
     require_right_in_domains_request,
 )
 from provisa.api.errors import ApiError
-from provisa.api.offer_derivation import derive, published, seen_columns
+from provisa.api.offer_derivation import derive, preview, published, seen_columns
 from provisa.core import offer_grant, offer_hooks, offer_public
 from provisa.core.models import ConsumerKind, DataProductOffer
 from provisa.core.repositories import data_product as data_product_repo
@@ -227,8 +227,13 @@ async def _offer_view(
     conn: Any, request: Request, offer_row: dict, *, now: datetime
 ) -> dict[str, Any]:
     """An offer as listed: its terms, its contracts (one per dataset), the extension accepting it
-    would make for the caller, and whether it is open public data to query now."""
-    query_now = await _query_now(conn, _state(), offer_row)
+    would make for the caller, and whether it is open public data to query now. Each contract
+    carries its preview: the dataset's fields as the caller's acting role (``preview_role``) reads
+    them (REQ-2180, A PRODUCT PAGE PREVIEWS CONTRACTS AS THE ACTING ROLE)."""
+    state = _state()
+    query_now = await _query_now(conn, state, offer_row)
+    acting = str(request.state.role)
+    built = {t["id"]: t for t in state.tables}
     contracts = await offers.contracts(conn, offer_row["id"])
     names = await offers.table_names(conn, contracts)
     caller = _caller(request)
@@ -244,9 +249,15 @@ async def _offer_view(
                 "table_id": table_id,
                 "table": names.get(table_id, str(table_id)),
                 "contract": contract.model_dump(mode="json"),
+                # A dataset the last build dropped has no fields to preview until it is built
+                # again; the contract derived before stays listed (REQ-2180).
+                "preview": None
+                if table_id not in built
+                else [f.model_dump(mode="json") for f in preview(state, acting, built[table_id])],
             }
             for table_id, contract in sorted(contracts.items())
         ],
+        "preview_role": acting,
         "summary": {"extension": None if extension is None else extension.statement()},
         "query_now": query_now,
     }

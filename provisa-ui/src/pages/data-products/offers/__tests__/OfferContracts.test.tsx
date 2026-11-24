@@ -112,6 +112,7 @@ const contract = (
 ): OfferDatasetContract => ({
   table_id: tableId,
   table,
+  preview: [{ name: "id", type: "integer", description: null, masked: null }],
   contract: {
     version,
     created_at: "2026-10-01T00:00:00Z",
@@ -154,6 +155,7 @@ const offer = (count: 0 | 1 | 3, versions: ContractVersion[] = []): Offer => ({
   updated_at: "2026-10-01T00:00:00Z",
   summary: { extension: null },
   query_now: false,
+  preview_role: "viewer",
   contracts: [
     contract(1, "pet-store.pets", "1.2.0", versions),
     contract(2, "pet-store.vets", "0.1.0"),
@@ -230,7 +232,12 @@ async function panel(
   link = "/data-products?product=pet_health",
   versions: ContractVersion[] = [],
 ) {
-  offers.list = [offer(count, versions)];
+  return mounted(offer(count, versions), link);
+}
+
+/** The panel listing ``listed`` as the product's one offer. */
+async function mounted(listed: Offer, link = "/data-products?product=pet_health") {
+  offers.list = [listed];
   const view = render(
     <DataProductDetailPanel
       p={PRODUCT}
@@ -305,30 +312,10 @@ describe("an offer's contracts (REQ-2180)", () => {
     expect(rows()).toHaveLength(0);
   });
 
-  it("say on every column tab when the offer's role reads no column of a dataset", async () => {
+  it("say on every column tab when the acting role reads no column of a dataset", async () => {
     const none = offer(1);
-    none.contracts[0].contract.terms.fields = [];
-    offers.list = [none];
-    render(
-      <DataProductDetailPanel
-        p={PRODUCT}
-        core={CORE}
-        coreError={null}
-        reader={null}
-        canEdit={false}
-        canDelete={false}
-        owner
-        seesConsumers
-        lineageLoading={false}
-        lineageError=""
-        lineageGraph={LINEAGE}
-        onEdit={vi.fn()}
-        onDelete={vi.fn()}
-        {...lifecycleProps()}
-      />,
-      { initialEntries: ["/data-products?product=pet_health"] },
-    );
-    await screen.findByTestId("offer-card-1");
+    none.contracts[0].preview = [];
+    await mounted(none);
     openContracts();
     fireEvent.click(await screen.findByTestId("offer-1-contract-1-toggle"));
     const contract = await screen.findByTestId("offer-1-contract-1");
@@ -344,7 +331,52 @@ describe("an offer's contracts (REQ-2180)", () => {
     }
   });
 
-  it("list the columns the offer's role reads, with no empty-state", async () => {
+  it("are previewed as the acting meta role, and say so, while offered to the offer's role", async () => {
+    // REQ-2180 (A PRODUCT PAGE PREVIEWS CONTRACTS AS THE ACTING ROLE): the offered contract
+    // lists no column for viewer; the preview lists what the caller, acting as All, reads.
+    const meta = offer(1);
+    meta.preview_role = "meta:data_steward+pet_analyst";
+    meta.contracts[0].contract.terms.fields = [];
+    meta.contracts[0].preview = [
+      { name: "id", type: "integer", description: null, masked: null },
+      { name: "species", type: "varchar", description: null, masked: "regex" },
+    ];
+    await mounted(meta);
+    openContracts();
+    expect(await screen.findByTestId("offer-1-previewed-as")).toHaveTextContent(
+      "Previewed as All (meta role); offered to viewer",
+    );
+    fireEvent.click(await screen.findByTestId("offer-1-contract-1-toggle"));
+    expect(await screen.findByTestId("offer-1-contract-1-columns-col-id")).toBeInTheDocument();
+    expect(screen.getByTestId("offer-1-contract-1-columns-col-species")).toHaveTextContent(
+      "species",
+    );
+    expect(screen.queryByTestId("offer-1-contract-1-columns-empty")).toBeNull();
+  });
+
+  it("name a single acting role plainly", async () => {
+    const single = offer(1);
+    single.preview_role = "pet_analyst";
+    await mounted(single);
+    openContracts();
+    expect(await screen.findByTestId("offer-1-previewed-as")).toHaveTextContent(
+      "Previewed as pet_analyst; offered to viewer",
+    );
+  });
+
+  it("say a dataset the last build dropped has no preview until it is built", async () => {
+    const gone = offer(1);
+    gone.contracts[0].preview = null;
+    await mounted(gone);
+    openContracts();
+    fireEvent.click(await screen.findByTestId("offer-1-contract-1-toggle"));
+    expect(await screen.findByTestId("offer-1-contract-1-preview-not-built")).toHaveTextContent(
+      "Not in the last model build",
+    );
+    expect(screen.queryByTestId("offer-1-contract-1-columns")).toBeNull();
+  });
+
+  it("list the columns the acting role reads, with no empty-state", async () => {
     await panel(1);
     openContracts();
     fireEvent.click(await screen.findByTestId("offer-1-contract-1-toggle"));
