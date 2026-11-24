@@ -84,6 +84,10 @@ CLIENT_TABLE_FUNCTIONS = frozenset(
         "pg_timezone_names",
         "regexp_matches",
         "regexp_split_to_table",
+        # REQ-2204: Grafana's query editor reads the search path as
+        # ``string_to_array(current_setting('search_path'),',') s`` in FROM; PostgreSQL reads a
+        # function in FROM as a one-row relation of its result.
+        "string_to_array",
         "string_to_table",
         "ts_token_type",
         "unnest",

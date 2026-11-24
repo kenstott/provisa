@@ -604,18 +604,31 @@ async def _decide_locally(
             held = await offers.require_pending(conn, product_id, bid_id)
         except OfferRefused as refused:
             raise _refused(refused) from refused
+        return await _decide_as_caller(conn, state, held, outcome, reason, request)
 
-        async def may(role_id: str) -> str | None:
-            return may_grant(request, state, role_id)
 
-        decision = offer_hooks.Decision(
-            request_id=held["request_id"],
-            outcome=outcome,
-            decider=_caller(request) or _ANONYMOUS,
-            decided_at=datetime.now(UTC),
-            reason=reason,
-        )
-        return await _decide(conn, state, decision, may)
+async def _decide_as_caller(
+    conn: Any,
+    state: Any,
+    held: dict,
+    outcome: offer_hooks.Outcome,
+    reason: str | None,
+    request: Request,
+) -> dict:
+    """Decide the request ``held`` (a bid or a cancel) through the decision hook, as the
+    signed-in caller, now."""
+
+    async def may(role_id: str) -> str | None:
+        return may_grant(request, state, role_id)
+
+    decision = offer_hooks.Decision(
+        request_id=held["request_id"],
+        outcome=outcome,
+        decider=_caller(request) or _ANONYMOUS,
+        decided_at=datetime.now(UTC),
+        reason=reason,
+    )
+    return await _decide(conn, state, decision, may)
 
 
 @router.post("/{product_id}/bids/{bid_id}/accept")
@@ -713,18 +726,33 @@ class DecisionBody(BaseModel):
     reason: str | None = None
 
 
+def _visitor(request: Request) -> bool:
+    """Whether the caller is the org's public visitor: a request with no credential (REQ-1058),
+    bound by the auth middleware as ``public:<org>``. It is no signed-in person."""
+    identity = getattr(request.state, "identity", None)
+    org_id = getattr(request.state, "active_org_id", None)
+    return org_id is not None and getattr(identity, "user_id", None) == f"public:{org_id}"
+
+
 @router.post("/decisions")
 async def decision_hook(body: DecisionBody, request: Request) -> dict:
-    """The inbound decision hook for a signed-in caller: a request's id, accepted or declined. The
-    caller decides as themselves, now, as the product's owner role -- as the local queue does. A
-    signed external caller is not served here."""
+    """The inbound decision hook: a request's id, accepted or declined, who decided and when.
+
+    An external caller signs the body with the org's hook secret (``X-Provisa-Signature``, as the
+    outbound hook signs a request) and names the decider and the decision time; the decider's
+    right to grant the offer's role is read from the roles they hold now. A signed-in caller
+    decides as themselves, now, as the product's owner role -- as the local queue does. A caller
+    neither signed in nor signing is refused by name."""
+    signature = request.headers.get(offer_hooks.SIGNATURE_HEADER)
+    if signature is not None:
+        return await _decide_signed(body, await request.body(), signature)
+    if _visitor(request):
+        raise ApiError(
+            401,
+            "data_product.decision.unsigned",
+            "a decision is made by a signed-in caller or signed with the org's request hook secret",
+        )
     require_capability_request(request, "data_product_read")
-    state = _state()
-    async with state.model_db.acquire() as conn:
-        try:
-            held = await offers.require_request(conn, body.request_id)
-        except OfferRefused as refused:
-            raise _refused(refused) from refused
     caller = _caller(request)
     if body.decider is not None and caller is not None and body.decider != caller:
         raise ApiError(
@@ -732,7 +760,52 @@ async def decision_hook(body: DecisionBody, request: Request) -> dict:
             "data_product.decision.not_the_decider",
             f"a signed-in caller decides as themselves, not as {body.decider!r}",
         )
-    return await _decide_locally(held["product_id"], held["id"], body.outcome, body.reason, request)
+    state = _state()
+    async with state.model_db.acquire() as conn:
+        try:
+            held = await offers.require_request(conn, body.request_id)
+        except OfferRefused as refused:
+            raise _refused(refused) from refused
+        _require_owner(request, state, await _product(conn, held["product_id"]))
+        # A bid or a cancel alike: each is a request whose decision returns through this hook.
+        return await _decide_as_caller(conn, state, held, body.outcome, body.reason, request)
+
+
+async def _decide_signed(body: DecisionBody, raw: bytes, signature: str) -> dict:
+    """An external decision: ``raw`` verified against ``signature`` under the org's hook secret
+    (a constant-time compare, offer_hooks.verified), then decided as the decider it names, at the
+    time it names, if they may grant the offer's role. The same decision sent again is answered
+    with the request as it stands (offer_hooks.decide)."""
+    state = _state()
+    target = await _hook_target(state)
+    if target is None or not offer_hooks.verified(
+        raw, signature, await offer_hooks.resolved_secret(target)
+    ):
+        raise ApiError(
+            401,
+            "data_product.decision.bad_signature",
+            "the decision is not signed with the org's request hook secret",
+        )
+    if body.decider is None or body.decided_at is None:
+        raise ApiError(
+            422,
+            "data_product.decision.incomplete",
+            "an external decision names who decided (decider) and when (decided_at)",
+        )
+    decider = body.decider
+    async with state.model_db.acquire() as conn:
+
+        async def may(role_id: str) -> str | None:
+            return await principal_refusal(conn, state, decider, role_id)
+
+        decision = offer_hooks.Decision(
+            request_id=body.request_id,
+            outcome=body.outcome,
+            decider=decider,
+            decided_at=body.decided_at,
+            reason=body.reason,
+        )
+        return await _decide(conn, state, decision, may)
 
 
 # -- profiles --------------------------------------------------------------------------------------

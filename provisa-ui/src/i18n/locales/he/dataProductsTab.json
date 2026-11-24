@@ -317,7 +317,7 @@
     "syncNone": "לא מסונכרן",
     "syncSynced_one": "מסונכרן",
     "syncSynced_other": "מסונכרן עם {{count}}",
-    "syncFailed_one": "{{count}} נכשלו",
+    "syncFailed_one": "{{count}} נכשל",
     "syncFailed_other": "{{count}} נכשלו",
     "syncEntryPublished": "{{entry}}: פורסם {{when}}",
     "syncEntryFailed": "{{entry}}: נכשל {{when}}",

@@ -177,6 +177,10 @@ _RV597 = [
     "SELECT x FROM bank.customer c, unnest(ARRAY[c.ssn]) x",
     "SELECT x FROM bank.customer c, unnest(ARRAY[ssn]) x",
     "SELECT x FROM bank.customer c, LATERAL unnest(ARRAY[c.ssn]) x",
+    "SELECT s FROM bank.customer c, string_to_array(c.ssn, '-') s",
+    "SELECT s FROM bank.customer c, pg_catalog.string_to_array(ssn, '-') s",
+    "SELECT s[1] FROM bank.customer c, LATERAL string_to_array(c.ssn, '-') s",
+    "SELECT 1 FROM evil.string_to_array('a', ',') s",
     # H3: table-function admission
     "SELECT 1 FROM evil.unnest(ARRAY[1]) x",
     "SELECT 1 FROM public.unnest(ARRAY[1]) x",
