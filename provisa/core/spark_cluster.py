@@ -26,6 +26,7 @@ over the same gRPC Spark Connect clients speak, so it needs no Spark client here
 # Requirements: REQ-2225
 from __future__ import annotations
 
+import asyncio
 import os
 import re
 import uuid
@@ -195,19 +196,43 @@ async def forget(admin_db: "Database", org_id: str) -> bool:
 
 def local_test_cluster() -> str | None:
     """The demo's one-node Spark (REQ-2225): its address in a demo or local install, None in a
-    production one, which has no default until an administrator sets one."""
+    production one, which has no default until an administrator sets one. Started on demand: the
+    first use downloads and starts it (provisa/core/demo_spark.py), unless
+    :data:`LOCAL_TEST_CLUSTER_ENV` already names one. Blocks while it starts."""
+    from provisa.core.demo import is_demo
+
+    if not is_demo():
+        return None
+    address = os.environ.get(LOCAL_TEST_CLUSTER_ENV)
+    if address:
+        return address
+    from provisa.core import demo_spark
+
+    try:
+        return demo_spark.ensure()
+    except demo_spark.DemoSparkFailed as failed:
+        raise SparkClusterRefused(
+            "local_test_failed",
+            f"The local test cluster could not be started: {failed}",
+            status=503,
+        ) from failed
+
+
+def local_test_target() -> str | None:
+    """Where the local test cluster is, without starting it: ``host:port`` while it runs, its
+    loopback host alone before its first use (its port is picked when it starts), None in a
+    production install."""
     from provisa.core.demo import is_demo
 
     if not is_demo():
         return None
     address = os.environ.get(LOCAL_TEST_CLUSTER_ENV)
     if not address:
-        raise SparkClusterRefused(
-            "local_test_unset",
-            f"This demo install has no local test cluster: {LOCAL_TEST_CLUSTER_ENV} is not set",
-            status=503,
-        )
-    return address
+        from provisa.core.demo_spark import LOOPBACK
+
+        return LOOPBACK
+    shown = parse(address)
+    return f"{shown.host}:{shown.port}"
 
 
 @dataclass(frozen=True)
@@ -224,7 +249,8 @@ async def _resolved_default(admin_db: "Database", org_id: str) -> Resolved:
 
     kept = await read(admin_db, org_id)
     if kept is None:
-        local = local_test_cluster()
+        # Off the loop: its first use downloads and starts the cluster.
+        local = await asyncio.to_thread(local_test_cluster)
         if local is None:
             raise SparkClusterRefused(
                 "not_configured",
