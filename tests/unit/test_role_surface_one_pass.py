@@ -1,3 +1,13 @@
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 9f3f14ba-94ab-494c-adbd-87aaf7f249b6
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+
 """REQ-1882: a role's surface finds and names its tables once, and is the surface it was.
 
 The warm-up after a rebuild builds every role's surface: its context, schema, path map and proto.
