@@ -50,7 +50,7 @@ CONVERTED: dict[str, set[str]] = {
     "domains": {"delete", "insert"},
     "registered_tables": {"delete"},
     "sources": {"delete"},
-    "relationships": {"delete"},
+    "relationships": _ALL,
     "metrics": _ALL,
     "tracked_functions": _ALL,
     "tracked_webhooks": _ALL,

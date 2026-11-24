@@ -158,7 +158,7 @@ async def test_the_admin_api_the_label_map_and_meta_agree_on_an_unaliased_type(c
 
 async def test_a_change_of_naming_convention_respells_the_stored_graphql_field(control_plane):
     from provisa.compiler import naming
-    from provisa.core.relationship_names import store_effective_names
+    from provisa.core.repositories.relationship import store_effective_names
 
     db = await _plane(control_plane)
     field = select(relationships.c.graphql_field).where(relationships.c.id == "order-to-line-items")
@@ -180,7 +180,7 @@ async def test_a_build_writes_no_name_already_stored(control_plane):
     stored are not written again, so the reload reaches the stored stamp."""
     from sqlalchemy.sql.dml import Update
 
-    from provisa.core.relationship_names import store_effective_names
+    from provisa.core.repositories.relationship import store_effective_names
 
     db = await _plane(control_plane)
     async with db.acquire() as conn:
@@ -206,7 +206,7 @@ async def test_names_a_change_of_convention_respells_are_written_in_a_model_chan
     of naming convention, run 40190966276). Names already stored open no change at all."""
     from provisa.compiler import naming
     from provisa.core import model_change
-    from provisa.core.relationship_names import store_effective_names
+    from provisa.core.repositories.relationship import store_effective_names
 
     db = await _plane(control_plane)
     flushed: list[str] = []
