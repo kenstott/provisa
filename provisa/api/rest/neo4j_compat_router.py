@@ -30,6 +30,8 @@ from typing import Any
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
+
+from provisa.api.json_response import OrjsonResponse
 from pydantic import BaseModel
 from provisa.cache.middleware import build_cache_headers
 from provisa.api.errors import ApiError
@@ -194,7 +196,10 @@ async def neo4j_query_v2(  # REQ-345, REQ-346, REQ-347, REQ-349, REQ-350, REQ-35
     columns = list(rows[0].keys()) if rows else []
     serializable_rows = [to_serializable(r) for r in assembled]
 
-    return JSONResponse(
+    # REQ-1961 (amended 2026-11-24): the app's JSON response, which writes a decimal a node or
+    # relationship property holds as the string of its exact digits; the standard library's
+    # refuses a Decimal.
+    return OrjsonResponse(
         {
             "data": {
                 "fields": columns,
