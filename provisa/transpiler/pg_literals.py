@@ -37,6 +37,8 @@ import re
 import sqlglot
 import sqlglot.expressions as exp
 
+from provisa.transpiler.semantic_dialect import duckdb_year_of_era
+
 #: DuckDB's widest decimal.
 _MAX_PRECISION = 38
 #: The digits a literal's decimal has beside its own.
@@ -318,10 +320,7 @@ def _year_of_era(node: exp.Anonymous) -> exp.Expr:
     # Its value's literal in DuckDB's spelling first: the CASE that replaces the call is not
     # visited again.
     value = node.expressions[1].transform(duckdb_eras).sql(dialect="duckdb")
-    return sqlglot.parse_one(
-        f"CASE WHEN YEAR({value}) <= 0 THEN YEAR({value}) - 1 ELSE YEAR({value}) END",
-        read="duckdb",
-    )
+    return sqlglot.parse_one(duckdb_year_of_era(value), read="duckdb")
 
 
 def literal_input(node: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]

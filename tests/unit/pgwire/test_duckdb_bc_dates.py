@@ -87,6 +87,13 @@ ANSWERED: dict[str, str] = {
     _call("datetime_pl", _D, _TIME): "4713-01-01 12:30:45 BC",
     _call("datetimetz_pl", _D, _TIMETZ): "4713-01-01 10:30:45+00 BC",
     _call("extract", "'year'::text", _TS): "-4713",
+    # An interval's years have no era: the year correction of a date BC leaves them as they are.
+    _call("extract", "'year'::text", "'5 mons'::interval"): "0",
+    _call("extract", "'year'::text", "'-14 mons'::interval"): "-1",
+    _call("date_part", "'year'::text", "'5 mons'::interval"): "0",
+    _call("date_part", "'year'::text", "'-14 mons'::interval"): "-1",
+    _call("to_char", _TS, "'YYYY BC'::text"): "4713 BC",
+    _call("to_char", _D, "'YYYY-MM-DD AD'::text"): "4713-01-01 BC",
     _call("in_range", _TS, _AT, _IVL, "true::boolean", "true::boolean"): "t",
     _call("interval_pl_date", _IVL, _D): "4713-01-02 02:03:04 BC",
     _call("interval_pl_timestamp", _IVL, _TS): "4713-01-02 02:03:04 BC",

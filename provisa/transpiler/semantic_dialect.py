@@ -368,13 +368,24 @@ DuckDB.Generator.lambda_sql = _keyword_lambda_sql  # type: ignore[method-assign]
 _duckdb_extract = DuckDB.Generator.extract_sql
 
 
+def duckdb_year_of_era(value: str) -> str:
+    """PostgreSQL's year of the DuckDB value ``value`` (its SQL): DuckDB counts year 0 as 1 BC, as
+    Trino does (``_trino_extract_year``, REQ-2236), so a date or timestamp's year <= 0 reads one
+    lower (PostgreSQL's 4713 BC is -4713 where DuckDB says -4712). An interval's years have no era:
+    -5 months is 0 years on both, so an interval's YEAR is its own (typeof is the bound type, one
+    value for the statement). The correction reads YEAR(value), which parses back as exp.Year, so
+    SQL generated again is not corrected a second time."""
+    year = f"YEAR({value})"
+    return (
+        f"CASE WHEN {year} <= 0 AND TYPEOF({value}) <> 'INTERVAL' THEN {year} - 1 ELSE {year} END"
+    )
+
+
 def _duckdb_extract_year(self: DuckDB.Generator, expression: exp.Extract) -> str:
-    """EXTRACT(YEAR ...) on DuckDB counts year 0 as 1 BC, as Trino does (``_trino_extract_year``,
-    REQ-2236): PostgreSQL's 4713 BC is -4713 where DuckDB says -4712."""
+    """EXTRACT(YEAR ...) on DuckDB as PostgreSQL counts the year (``duckdb_year_of_era``)."""
     if expression.name.upper() != "YEAR":
         return _duckdb_extract(self, expression)
-    year = self.func("YEAR", expression.expression)
-    return f"CASE WHEN {year} <= 0 THEN {year} - 1 ELSE {year} END"
+    return duckdb_year_of_era(self.sql(expression.expression))
 
 
 DuckDB.Generator.TRANSFORMS[exp.Extract] = _duckdb_extract_year
