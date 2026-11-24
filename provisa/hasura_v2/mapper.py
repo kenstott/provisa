@@ -18,7 +18,7 @@ from typing import Any
 
 from provisa.compiler.naming import HASURA_DEFAULT, preset_of
 from provisa.core import domain_policy
-from provisa.security.rights import ORG_ADMIN_ROLE, Capability
+from provisa.security.rights import ORG_ADMIN_ROLE, PUBLIC_READ_RIGHTS, PUBLIC_ROLE, Capability
 from provisa.core.models import (
     AuthConfig,
     Cardinality,
@@ -185,6 +185,39 @@ _READ_CAPS = [
 _ADMIN_READER = "data_steward"
 
 
+def _refuse_public_writes(metadata: HasuraMetadata) -> None:  # REQ-1058
+    """The public role is read-only: an import whose public role carries an insert, update or
+    delete permission is refused, naming each such permission and its table, not trimmed."""
+    named = [
+        f"{kind} permission on {table.schema_name}.{table.name}"
+        for source in metadata.sources
+        for table in source.tables
+        for kind, perms in (
+            ("insert", table.insert_permissions),
+            ("update", table.update_permissions),
+            ("delete", table.delete_permissions),
+        )
+        if any(p.role == PUBLIC_ROLE for p in perms)
+    ]
+    if named:
+        raise ValueError(
+            f"Role {PUBLIC_ROLE!r} is read-only: the Hasura metadata grants it "
+            f"{'; '.join(named)}. Remove these permissions from the public role and import again."
+        )
+
+
+def _new_role(role_id: str) -> Role:  # REQ-041, REQ-1058
+    """An imported role as Hasura names it: it reads. The public role is read-only and holds no
+    right beyond PUBLIC_READ_RIGHTS (REQ-1058), so it starts with the read rights it may hold."""
+    capabilities = [c for c in _READ_CAPS if role_id != PUBLIC_ROLE or c in PUBLIC_READ_RIGHTS]
+    return Role(
+        id=role_id,
+        description=_imported_role(role_id),
+        capabilities=capabilities,
+        domain_access=["*"],
+    )
+
+
 def _collect_roles(metadata: HasuraMetadata) -> dict[str, Role]:  # REQ-041, REQ-040, REQ-1684
     """Collect all roles mentioned across permissions."""
     roles: dict[str, Role] = {}
@@ -199,33 +232,18 @@ def _collect_roles(metadata: HasuraMetadata) -> dict[str, Role]:  # REQ-041, REQ
             ):
                 for p in perms:
                     if p.role not in roles:
-                        roles[p.role] = Role(
-                            id=p.role,
-                            description=_imported_role(p.role),
-                            capabilities=list(_READ_CAPS),
-                            domain_access=["*"],
-                        )
+                        roles[p.role] = _new_role(p.role)
 
     for action in metadata.actions:
         for perm in action.permissions:
             role_id = perm.get("role", "")
             if role_id and role_id not in roles:
-                roles[role_id] = Role(
-                    id=role_id,
-                    description=_imported_role(role_id),
-                    capabilities=list(_READ_CAPS),
-                    domain_access=["*"],
-                )
+                roles[role_id] = _new_role(role_id)
 
     # Inherited roles
     for ir in metadata.inherited_roles:
         if ir.role_name not in roles:
-            roles[ir.role_name] = Role(
-                id=ir.role_name,
-                description=_imported_role(ir.role_name),
-                capabilities=list(_READ_CAPS),
-                domain_access=["*"],
-            )
+            roles[ir.role_name] = _new_role(ir.role_name)
         # One role inherited is a Provisa parent exactly. Several are written out as the union
         # of their grants once the tables are mapped (_inherit_several): Hasura's union reads every
         # row where one member does, and Provisa's inheritance of several parents never lifts a
@@ -236,12 +254,7 @@ def _collect_roles(metadata: HasuraMetadata) -> dict[str, Role]:  # REQ-041, REQ
             # Ensure child roles exist
             for child_role in ir.role_set:
                 if child_role not in roles:
-                    roles[child_role] = Role(
-                        id=child_role,
-                        description=_imported_role(child_role),
-                        capabilities=list(_READ_CAPS),
-                        domain_access=["*"],
-                    )
+                    roles[child_role] = _new_role(child_role)
 
     # Upgrade capabilities based on permission types
     for source in metadata.sources:
@@ -925,6 +938,7 @@ def convert_metadata(
     """
     if collector is None:
         collector = WarningCollector()
+    _refuse_public_writes(metadata)
 
     domain_map = domain_map or {}
     source_overrides = source_overrides or {}
