@@ -25,7 +25,7 @@ import pytest
 
 from provisa.pgwire.catalog import answer
 from provisa.pgwire.catalog_pg17 import RELATIONS
-from provisa.pgwire.catalog_types import described_type_oid
+from provisa.pgwire.catalog_types import described_type_oid, described_typmod
 from provisa.pgwire.catalog_populate import _build_catalog_db, _populate_pg_description
 from provisa.pgwire.server import ProvisaQueryResult
 
@@ -72,10 +72,35 @@ def _rows(sql: str, state=None) -> list[tuple]:
 @pytest.mark.parametrize("schema,relation", sorted(RELATIONS))
 def test_a_served_relation_has_postgresqls_columns_order_types_and_typmods(schema, relation):
     assert _fields(f"SELECT * FROM {schema}.{relation} LIMIT 0") == [
-        # A domain column is described as its base type, as PostgreSQL's RowDescription sends it.
-        (column, described_type_oid(oid), -1)
+        # A domain column is described as its base type and the domain's typmod, as PostgreSQL's
+        # RowDescription sends it (printtup.c getBaseTypeAndTypmod).
+        (column, described_type_oid(oid), described_typmod(oid))
         for column, _, oid in RELATIONS[(schema, relation)]
     ]
+
+
+VARCHAR, NAME, INT4, TIMESTAMPTZ = 1043, 19, 23, 1184
+
+
+def test_a_yes_or_no_column_is_described_as_varchar_3():
+    """yes_or_no is varchar(3): PostgreSQL 17 describes it with oid 1043 and typmod 7."""
+    fields = {n: (o, m) for n, o, m in _fields("SELECT * FROM information_schema.tables LIMIT 0")}
+    assert fields["is_insertable_into"] == (VARCHAR, 7)
+    assert fields["is_typed"] == (VARCHAR, 7)
+    assert fields["table_name"] == (NAME, -1)  # sql_identifier is name, no typmod
+    assert fields["table_type"] == (VARCHAR, -1)  # character_data is unsized varchar
+
+
+def test_a_time_stamp_column_is_described_as_timestamptz_2():
+    """time_stamp is timestamp(2) with time zone: oid 1184, typmod 2."""
+    fields = {n: (o, m) for n, o, m in _fields("SELECT * FROM information_schema.triggers LIMIT 0")}
+    assert fields["created"] == (TIMESTAMPTZ, 2)
+    assert fields["action_order"] == (INT4, -1)  # cardinal_number is int4, no typmod
+
+
+def test_a_yes_or_no_column_read_by_name_keeps_its_typmod():
+    sql = "SELECT column_name, is_nullable FROM information_schema.columns LIMIT 0"
+    assert _fields(sql) == [("column_name", NAME, -1), ("is_nullable", VARCHAR, 7)]
 
 
 _PG_ATTRIBUTE_OF_A_TABLE = (

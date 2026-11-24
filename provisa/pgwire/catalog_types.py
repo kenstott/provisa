@@ -27,7 +27,7 @@ from sqlglot.optimizer.annotate_types import annotate_types
 from sqlglot.optimizer.qualify import qualify
 from sqlglot.schema import MappingSchema
 
-from provisa.pgwire.catalog_pg17 import FUNCTION_RETURNS, RELATIONS, TYPES
+from provisa.pgwire.catalog_pg17 import DOMAIN_TYPMODS, FUNCTION_RETURNS, RELATIONS, TYPES
 from provisa.pgwire.catalog_pg17_procs import PROCS
 from provisa.pgwire.function_types import call_result_type
 
@@ -92,6 +92,21 @@ CATALOG_TYPE_OIDS: dict[str, int] = {
     entry[-1]: described_type_oid(oid)
     for oid, entry in TYPES.items()
     if entry[-1] in _SAME_WIRE_FORM
+}
+
+
+def described_typmod(oid: int) -> int:
+    """The typmod PostgreSQL describes a column of type ``oid`` with: a domain's own typmod, as
+    printtup.c getBaseTypeAndTypmod gives it (yes_or_no, varchar(3), a 7; time_stamp,
+    timestamptz(2), a 2), or -1, PostgreSQL's "no typmod", for a type that is not a domain."""
+    return DOMAIN_TYPMODS[oid] if TYPES[oid][3] == "d" else -1
+
+
+#: Each such type's name and the typmod a column of it is described with, where it has one.
+CATALOG_TYPE_TYPMODS: dict[str, int] = {
+    entry[-1]: described_typmod(oid)
+    for oid, entry in TYPES.items()
+    if entry[-1] in _SAME_WIRE_FORM and described_typmod(oid) != -1
 }
 
 _PSEUDO_TYPES = frozenset(entry[-1] for entry in TYPES.values() if entry[3] == "p")
