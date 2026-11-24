@@ -1382,290 +1382,320 @@ Write each tag on its own line inside the function's docstring, or use the `prov
 
 The function returns a table's rows as any iterable: a list, a generator or an async iterable. Columns come from the return type's fields.
 
-```python
-from dataclasses import dataclass
+=== "Docstring"
+
+    ```python
+    from dataclasses import dataclass
 
 
-@dataclass
-class Region:
-    code: str
-    name: str
+    @dataclass
+    class Region:
+        code: str
+        name: str
 
 
-def regions() -> list[Region]:
-    """Sales regions.
+    def regions() -> list[Region]:
+        """Sales regions.
+
+        @table
+        """
+        return [Region(code="emea", name="Europe, Middle East and Africa")]
+    ```
+
+=== "SDK"
+
+    ```python
+    from provisa_sdk import table
+
 
     @table
-    """
-    return [Region(code="emea", name="Europe, Middle East and Africa")]
-```
-
-With the SDK:
-
-```python
-from provisa_sdk import table
-
-
-@table
-def regions() -> list[Region]:
-    """Sales regions."""
-    ...
-```
+    def regions() -> list[Region]:
+        """Sales regions."""
+        ...
+    ```
 
 **`@loader` / `@loader N`**
 
 Tags a `@table` function as a batch loader. Provisa calls it once per batch of join keys and passes the keys in the read context. With `@loader N`, each batch is at most `N` keys.
 
-```python
-from provisa_services import ReadContext
+=== "Docstring"
+
+    ```python
+    from provisa_services import ReadContext
 
 
-def churn_score(inputs: ScoreInputs, context: ReadContext) -> list[Score] | dict[str, list[Score]]:
-    """@table
-    @loader
-    """
-    ...
-```
+    def churn_score(inputs: ScoreInputs, context: ReadContext) -> list[Score] | dict[str, list[Score]]:
+        """@table
+        @loader
+        """
+        ...
+    ```
 
-With the SDK:
+=== "SDK"
 
-```python
-@table(loader=True)   # or loader=50 for a batch of fifty
-def churn_score(inputs: ScoreInputs, context: ReadContext) -> list[Score] | dict[str, list[Score]]:
-    ...
-```
+    ```python
+    from provisa_sdk import table
+
+
+    @table(loader=True)   # or loader=50 for a batch of fifty
+    def churn_score(inputs: ScoreInputs, context: ReadContext) -> list[Score] | dict[str, list[Score]]:
+        ...
+    ```
 
 **`@stream`**
 
 The function is a generator. Each row is delivered as it is yielded, on surfaces that serve subscriptions.
 
-```python
-from collections.abc import Iterator
+=== "Docstring"
+
+    ```python
+    from collections.abc import Iterator
 
 
-def audit_events(inputs: AuditInputs) -> Iterator[AuditEvent]:
-    """@stream"""
-    for event in tail_log():
-        yield event
-```
+    def audit_events(inputs: AuditInputs) -> Iterator[AuditEvent]:
+        """@stream"""
+        for event in tail_log():
+            yield event
+    ```
 
-With the SDK:
+=== "SDK"
 
-```python
-from provisa_sdk import Stream, stream
+    ```python
+    from provisa_sdk import Stream, stream
 
 
-@stream
-def audit_events(inputs: AuditInputs) -> Stream[AuditEvent]:
-    ...
-```
+    @stream
+    def audit_events(inputs: AuditInputs) -> Stream[AuditEvent]:
+        ...
+    ```
 
 **`@command`**
 
 The function runs as a mutation.
 
-```python
-def cancel_order(order_id: int) -> bool:
-    """@command"""
-    return api.cancel(order_id)
-```
+=== "Docstring"
 
-With the SDK:
+    ```python
+    def cancel_order(order_id: int) -> bool:
+        """@command"""
+        return api.cancel(order_id)
+    ```
 
-```python
-from provisa_sdk import command
+=== "SDK"
+
+    ```python
+    from provisa_sdk import command
 
 
-@command
-def cancel_order(order_id: int) -> bool:
-    ...
-```
+    @command
+    def cancel_order(order_id: int) -> bool:
+        ...
+    ```
 
 **`@insert TABLE` / `@update TABLE` / `@delete TABLE`**
 
 Binds a command to one kind of SQL write on `TABLE`. Use when two commands fit the same write signature and Provisa needs to know which is which.
 
-```python
-def add_orders(rows: list[Order]) -> int:
-    """@command
-    @insert orders
-    """
-    ...
-```
+=== "Docstring"
 
-With the SDK:
+    ```python
+    def add_orders(rows: list[Order]) -> int:
+        """@command
+        @insert orders
+        """
+        ...
+    ```
 
-```python
-@command(insert="orders")
-def add_orders(rows: list[Order]) -> int:
-    ...
-```
+=== "SDK"
+
+    ```python
+    from provisa_sdk import command
+
+
+    @command(insert="orders")
+    def add_orders(rows: list[Order]) -> int:
+        ...
+    ```
 
 **`@query`**
 
 A command whose kind is `query`. Used for code resolvers and for commands that return rows.
 
-```python
-def stores_in_regions(stores: TableRef[Store], regions: TableRef[Region]) -> list[Match]:
-    """@query"""
-    ...
-```
+=== "Docstring"
 
-With the SDK:
+    ```python
+    def stores_in_regions(stores: TableRef[Store], regions: TableRef[Region]) -> list[Match]:
+        """@query"""
+        ...
+    ```
 
-```python
-from provisa_sdk import query
+=== "SDK"
+
+    ```python
+    from provisa_sdk import query
 
 
-@query
-def stores_in_regions(stores: TableRef[Store], regions: TableRef[Region]) -> list[Match]:
-    ...
-```
+    @query
+    def stores_in_regions(stores: TableRef[Store], regions: TableRef[Region]) -> list[Match]:
+        ...
+    ```
 
 **`@columns`**
 
 A batch column transform. Each parameter is one input column—a list of values in row order—and the function returns one result object per input row.
 
-```python
-def parse_address(raw: list[str]) -> list[Address]:
-    """@columns"""
-    ...
-```
+=== "Docstring"
 
-With the SDK:
+    ```python
+    def parse_address(raw: list[str]) -> list[Address]:
+        """@columns"""
+        ...
+    ```
 
-```python
-from provisa_sdk import Batch, Results, columns
+=== "SDK"
+
+    ```python
+    from provisa_sdk import Batch, Results, columns
 
 
-@columns
-def parse_address(raw: Batch[str]) -> Results[Address]:
-    ...
-```
+    @columns
+    def parse_address(raw: Batch[str]) -> Results[Address]:
+        ...
+    ```
 
 **`@change table=T key=COLS removed=COL cursor=COL`**
 
 Tags the function that keeps a code resolver's landed table fresh incrementally. Each argument goes on its own tag line.
 
-```python
-def store_region_changes(
-    stores: TableRef[Store], regions: TableRef[Region], since: int | None = None
-) -> list[Changed]:
-    """Store-region matches changed since ``since``.
+=== "Docstring"
 
-    @change table=store_regions
-    @change key=store_id,region_id
-    @change removed=removed
-    @change cursor=seq
-    """
-    ...
-```
+    ```python
+    def store_region_changes(
+        stores: TableRef[Store], regions: TableRef[Region], since: int | None = None
+    ) -> list[Changed]:
+        """Store-region matches changed since ``since``.
 
-With the SDK:
+        @change table=store_regions
+        @change key=store_id,region_id
+        @change removed=removed
+        @change cursor=seq
+        """
+        ...
+    ```
 
-```python
-from provisa_sdk import change
+=== "SDK"
+
+    ```python
+    from provisa_sdk import change
 
 
-@change(table="store_regions", key=["store_id", "region_id"], removed="removed", cursor="seq")
-def store_region_changes(stores: TableRef[Store], regions: TableRef[Region], since: int | None = None) -> list[Changed]:
-    ...
-```
+    @change(table="store_regions", key=["store_id", "region_id"], removed="removed", cursor="seq")
+    def store_region_changes(stores: TableRef[Store], regions: TableRef[Region], since: int | None = None) -> list[Changed]:
+        ...
+    ```
 
 **`@on-start`**
 
 Called once when the code starts. Takes nothing, or a mapping of the source's setup values.
 
-```python
-def setup(values: dict) -> None:
-    """@on-start"""
-    ...
-```
+=== "Docstring"
 
-With the SDK:
+    ```python
+    def setup(values: dict) -> None:
+        """@on-start"""
+        ...
+    ```
 
-```python
-from provisa_sdk import on_start
+=== "SDK"
+
+    ```python
+    from provisa_sdk import on_start
 
 
-@on_start
-def setup(values: dict) -> None:
-    ...
-```
+    @on_start
+    def setup(values: dict) -> None:
+        ...
+    ```
 
 **`@on-stop`**
 
 Called once when the code stops. Takes nothing.
 
-```python
-def teardown() -> None:
-    """@on-stop"""
-    ...
-```
+=== "Docstring"
 
-With the SDK:
+    ```python
+    def teardown() -> None:
+        """@on-stop"""
+        ...
+    ```
 
-```python
-from provisa_sdk import on_stop
+=== "SDK"
+
+    ```python
+    from provisa_sdk import on_stop
 
 
-@on_stop
-def teardown() -> None:
-    ...
-```
+    @on_stop
+    def teardown() -> None:
+        ...
+    ```
 
 **`@health`**
 
 Returns the code's status as text. Called periodically to check the worker.
 
-```python
-def status() -> str:
-    """@health"""
-    return "ok"
-```
+=== "Docstring"
 
-With the SDK:
+    ```python
+    def status() -> str:
+        """@health"""
+        return "ok"
+    ```
 
-```python
-from provisa_sdk import health
+=== "SDK"
+
+    ```python
+    from provisa_sdk import health
 
 
-@health
-def status() -> str:
-    return "ok"
-```
+    @health
+    def status() -> str:
+        return "ok"
+    ```
 
 **`@requires NAME` / `@requires NAME:secret`**
 
 Declares a setup value the code needs. Whoever adds the source fills it in. Stack one per value. With `:secret`, the value is treated as a credential and never shown in the UI.
 
-```python
-def fetch(inputs: Inputs) -> list[Row]:
-    """@table
-    @requires REGION
-    @requires API_KEY:secret
-    """
-    ...
-```
+=== "Docstring"
 
-With the SDK (`requires` stacks with any other decorator):
+    ```python
+    def fetch(inputs: Inputs) -> list[Row]:
+        """@table
+        @requires REGION
+        @requires API_KEY:secret
+        """
+        ...
+    ```
 
-```python
-from provisa_sdk import requires, table
+=== "SDK"
+
+    ```python
+    from provisa_sdk import requires, table
 
 
-@requires("API_KEY", secret=True)
-@requires("REGION")
-@table
-def fetch(inputs: Inputs) -> list[Row]:
-    ...
-```
+    @requires("API_KEY", secret=True)
+    @requires("REGION")
+    @table
+    def fetch(inputs: Inputs) -> list[Row]:
+        ...
+    ```
 
 **`@discover`**
 
 A single function whose return value—a `provisa_services.Discovered`—generates tables, queries and commands at read time. The generated items share one handler function per kind.
 
-```python
+```py
 def discover_feeds() -> Discovered:
     """@discover"""
     ...
@@ -1715,146 +1745,162 @@ A Node resolver is a TypeScript bundle. Tags go in JSDoc comments; types come fr
 
 **`@table`**
 
-```typescript
-/** Sales regions.
- * @table
- */
-export async function regions(): Promise<Region[]> {
-  return [{ code: "emea", name: "Europe, Middle East and Africa" }];
-}
-```
+=== "JSDoc"
 
-With the SDK:
+    ```typescript
+    /** Sales regions.
+     * @table
+     */
+    export async function regions(): Promise<Region[]> {
+      return [{ code: "emea", name: "Europe, Middle East and Africa" }];
+    }
+    ```
 
-```typescript
-import { table } from "@provisa/sdk";
+=== "SDK"
 
-export const regions = table(async function regions(): Promise<Region[]> {
-  return [{ code: "emea", name: "Europe, Middle East and Africa" }];
-});
-```
+    ```typescript
+    import { table } from "@provisa/sdk";
+
+    export const regions = table(async function regions(): Promise<Region[]> {
+      return [{ code: "emea", name: "Europe, Middle East and Africa" }];
+    });
+    ```
 
 **`@loader` / `@loader N`**
 
-```typescript
-import type { ReadContext } from "@provisa/services";
+=== "JSDoc"
 
-/** @table
- * @loader
- */
-export async function churnScore(
-  inputs: ScoreInputs,
-  context: ReadContext,
-): Promise<Score[] | Record<string, Score[]>> {
-  ...
-}
-```
+    ```typescript
+    import type { ReadContext } from "@provisa/services";
 
-With the SDK:
+    /** @table
+     * @loader
+     */
+    export async function churnScore(
+      inputs: ScoreInputs,
+      context: ReadContext,
+    ): Promise<Score[] | Record<string, Score[]>> {
+      ...
+    }
+    ```
 
-```typescript
-import { table } from "@provisa/sdk";
+=== "SDK"
 
-export const churnScore = table(churnScoreFn, { loader: true }); // or { loader: 50 }
-```
+    ```typescript
+    import { table } from "@provisa/sdk";
+
+    export const churnScore = table(churnScoreFn, { loader: true }); // or { loader: 50 }
+    ```
 
 **`@stream`**
 
 The function is an async generator.
 
-```typescript
-/** @stream */
-export async function* auditEvents(inputs: AuditInputs): AsyncIterable<AuditEvent> {
-  for await (const event of tailLog()) {
-    yield event;
-  }
-}
-```
+=== "JSDoc"
 
-With the SDK:
+    ```typescript
+    /** @stream */
+    export async function* auditEvents(inputs: AuditInputs): AsyncIterable<AuditEvent> {
+      for await (const event of tailLog()) {
+        yield event;
+      }
+    }
+    ```
 
-```typescript
-import { stream } from "@provisa/sdk";
+=== "SDK"
 
-export const auditEvents = stream(async function* auditEvents(inputs: AuditInputs) { ... });
-```
+    ```typescript
+    import { stream } from "@provisa/sdk";
+
+    export const auditEvents = stream(async function* auditEvents(inputs: AuditInputs) { ... });
+    ```
 
 **`@command`**
 
-```typescript
-/** @command */
-export async function cancelOrder(orderId: number): Promise<boolean> {
-  return api.cancel(orderId);
-}
-```
+=== "JSDoc"
 
-With the SDK:
+    ```typescript
+    /** @command */
+    export async function cancelOrder(orderId: number): Promise<boolean> {
+      return api.cancel(orderId);
+    }
+    ```
 
-```typescript
-import { command } from "@provisa/sdk";
+=== "SDK"
 
-export const cancelOrder = command(async function cancelOrder(orderId: number): Promise<boolean> {
-  ...
-});
-```
+    ```typescript
+    import { command } from "@provisa/sdk";
+
+    export const cancelOrder = command(async function cancelOrder(orderId: number): Promise<boolean> {
+      ...
+    });
+    ```
 
 **`@insert TABLE` / `@update TABLE` / `@delete TABLE`**
 
-```typescript
-/** @command
- * @insert orders
- */
-export async function addOrders(rows: Order[]): Promise<number> { ... }
-```
+=== "JSDoc"
 
-With the SDK:
+    ```typescript
+    /** @command
+     * @insert orders
+     */
+    export async function addOrders(rows: Order[]): Promise<number> { ... }
+    ```
 
-```typescript
-export const addOrders = command(addOrdersFn, { insert: "orders" });
-```
+=== "SDK"
+
+    ```typescript
+    import { command } from "@provisa/sdk";
+
+    export const addOrders = command(addOrdersFn, { insert: "orders" });
+    ```
 
 **`@query`**
 
-```typescript
-import type { TableRef } from "@provisa/services";
+=== "JSDoc"
 
-/** @query */
-export async function storesInRegions(
-  stores: TableRef<Store>,
-  regions: TableRef<Region>,
-): Promise<Match[]> { ... }
-```
+    ```typescript
+    import type { TableRef } from "@provisa/services";
 
-With the SDK:
+    /** @query */
+    export async function storesInRegions(
+      stores: TableRef<Store>,
+      regions: TableRef<Region>,
+    ): Promise<Match[]> { ... }
+    ```
 
-```typescript
-import { query } from "@provisa/sdk";
+=== "SDK"
 
-export const storesInRegions = query(storesInRegionsFn);
-```
+    ```typescript
+    import { query } from "@provisa/sdk";
+
+    export const storesInRegions = query(storesInRegionsFn);
+    ```
 
 **`@columns`**
 
-```typescript
-/** @columns */
-export async function parseAddress(raw: string[]): Promise<Address[]> { ... }
-```
+=== "JSDoc"
 
-With the SDK:
+    ```typescript
+    /** @columns */
+    export async function parseAddress(raw: string[]): Promise<Address[]> { ... }
+    ```
 
-```typescript
-import { columns } from "@provisa/sdk";
+=== "SDK"
 
-export const parseAddress = columns(async function parseAddress(raw: string[]): Promise<Address[]> {
-  ...
-});
-```
+    ```typescript
+    import { columns } from "@provisa/sdk";
+
+    export const parseAddress = columns(async function parseAddress(raw: string[]): Promise<Address[]> {
+      ...
+    });
+    ```
 
 **`@change table=T key=COLS removed=COL cursor=COL`**
 
 Write each line in the JSDoc comment. No SDK wrapper.
 
-```typescript
+```ts
 /** Store-region matches changed since `since`.
  * @change table=store_regions
  * @change key=store_id,region_id
@@ -1870,66 +1916,76 @@ export async function storeRegionChanges(
 
 **`@on-start`**
 
-```typescript
-/** @on-start */
-export async function setup(values?: Record<string, string>): Promise<void> { ... }
-```
+=== "JSDoc"
 
-With the SDK:
+    ```typescript
+    /** @on-start */
+    export async function setup(values?: Record<string, string>): Promise<void> { ... }
+    ```
 
-```typescript
-import { onStart } from "@provisa/sdk";
+=== "SDK"
 
-export const setup = onStart(async function setup(values?: Record<string, string>) { ... });
-```
+    ```typescript
+    import { onStart } from "@provisa/sdk";
+
+    export const setup = onStart(async function setup(values?: Record<string, string>) { ... });
+    ```
 
 **`@on-stop`**
 
-```typescript
-/** @on-stop */
-export async function teardown(): Promise<void> { ... }
-```
+=== "JSDoc"
 
-With the SDK:
+    ```typescript
+    /** @on-stop */
+    export async function teardown(): Promise<void> { ... }
+    ```
 
-```typescript
-import { onStop } from "@provisa/sdk";
+=== "SDK"
 
-export const teardown = onStop(async function teardown() { ... });
-```
+    ```typescript
+    import { onStop } from "@provisa/sdk";
+
+    export const teardown = onStop(async function teardown() { ... });
+    ```
 
 **`@health`**
 
-```typescript
-/** @health */
-export function status(): string {
-  return "ok";
-}
-```
+=== "JSDoc"
 
-With the SDK:
+    ```typescript
+    /** @health */
+    export function status(): string {
+      return "ok";
+    }
+    ```
 
-```typescript
-import { health } from "@provisa/sdk";
+=== "SDK"
 
-export const status = health(function status(): string { return "ok"; });
-```
+    ```typescript
+    import { health } from "@provisa/sdk";
+
+    export const status = health(function status(): string { return "ok"; });
+    ```
 
 **`@requires NAME` / `@requires NAME:secret`**
 
-```typescript
-/** @table
- * @requires REGION
- * @requires API_KEY:secret
- */
-export async function fetch(inputs: Inputs): Promise<Row[]> { ... }
-```
+=== "JSDoc"
 
-With the SDK (`requires` goes in the options object of any wrapper):
+    ```typescript
+    /** @table
+     * @requires REGION
+     * @requires API_KEY:secret
+     */
+    export async function fetch(inputs: Inputs): Promise<Row[]> { ... }
+    ```
 
-```typescript
-export const fetch = table(fetchFn, { requires: ["REGION", "API_KEY:secret"] });
-```
+=== "SDK"
+
+    ```typescript
+    import { table } from "@provisa/sdk";
+
+    export const fetch = table(fetchFn, { requires: ["REGION", "API_KEY:secret"] });
+    ```
 
 #### Parameter types
 
@@ -1974,184 +2030,228 @@ Go does not offer `@loader` or the read context.
 
 A `@table` function takes an optional `context.Context` first, then its inputs struct; it returns `[]T`, `([]T, error)`, `iter.Seq[T]` or `iter.Seq2[T, error]`.
 
-```go
-// ChurnRisk is the churn risk of one account.
-//
-// @table
-func ChurnRisk(ctx context.Context, in RiskInputs) ([]Risk, error) {
-    return []Risk{{Score: 0.82}}, nil
-}
-```
+=== "Doc comment"
 
-With the SDK:
+    ```go
+    // ChurnRisk is the churn risk of one account.
+    //
+    // @table
+    func ChurnRisk(ctx context.Context, in RiskInputs) ([]Risk, error) {
+        return []Risk{{Score: 0.82}}, nil
+    }
+    ```
 
-```go
-var _ = provisa.Table[RiskInputs, Risk](ChurnRisk)
-```
+=== "SDK"
+
+    ```go
+    import provisa "provisa.dev/sdk/go"
+
+    var _ = provisa.Table[RiskInputs, Risk](ChurnRisk)
+    ```
 
 **`@stream`**
 
 A `@stream` function returns `iter.Seq2[T, error]`. An item yielded with a non-nil error ends the stream.
 
-```go
-// AuditEvents streams audit events.
-//
-// @stream
-func AuditEvents(ctx context.Context, in AuditInputs) iter.Seq2[AuditEvent, error] {
-    return func(yield func(AuditEvent, error) bool) { ... }
-}
-```
+=== "Doc comment"
 
-With the SDK:
+    ```go
+    // AuditEvents streams audit events.
+    //
+    // @stream
+    func AuditEvents(ctx context.Context, in AuditInputs) iter.Seq2[AuditEvent, error] {
+        return func(yield func(AuditEvent, error) bool) { ... }
+    }
+    ```
 
-```go
-var _ = provisa.Stream[AuditInputs, AuditEvent](AuditEvents)
-```
+=== "SDK"
+
+    ```go
+    import provisa "provisa.dev/sdk/go"
+
+    var _ = provisa.Stream[AuditInputs, AuditEvent](AuditEvents)
+    ```
 
 **`@command`**
 
-```go
-// CancelOrder cancels one order.
-//
-// @command
-func CancelOrder(orderID int) (bool, error) {
-    return true, nil
-}
-```
+=== "Doc comment"
 
-With the SDK:
+    ```go
+    // CancelOrder cancels one order.
+    //
+    // @command
+    func CancelOrder(orderID int) (bool, error) {
+        return true, nil
+    }
+    ```
 
-```go
-var _ = provisa.Command(CancelOrder)
-```
+=== "SDK"
+
+    ```go
+    import provisa "provisa.dev/sdk/go"
+
+    var _ = provisa.Command(CancelOrder)
+    ```
 
 **`@insert TABLE` / `@update TABLE` / `@delete TABLE`**
 
-```go
-// AddOrders inserts orders.
-//
-// @command
-// @insert orders
-func AddOrders(rows []Order) (int, error) { ... }
-```
+=== "Doc comment"
 
-With the SDK:
+    ```go
+    // AddOrders inserts orders.
+    //
+    // @command
+    // @insert orders
+    func AddOrders(rows []Order) (int, error) { ... }
+    ```
 
-```go
-var _ = provisa.Command(AddOrders, provisa.Insert("orders"))
-```
+=== "SDK"
+
+    ```go
+    import provisa "provisa.dev/sdk/go"
+
+    var _ = provisa.Command(AddOrders, provisa.Insert("orders"))
+    ```
 
 **`@query`**
 
-```go
-// StoresInRegions matches stores to regions.
-//
-// @query
-func StoresInRegions(stores TableRef[Store], regions TableRef[Region]) ([]Match, error) { ... }
-```
+=== "Doc comment"
 
-With the SDK:
+    ```go
+    // StoresInRegions matches stores to regions.
+    //
+    // @query
+    func StoresInRegions(stores TableRef[Store], regions TableRef[Region]) ([]Match, error) { ... }
+    ```
 
-```go
-var _ = provisa.Query(StoresInRegions)
-```
+=== "SDK"
+
+    ```go
+    import provisa "provisa.dev/sdk/go"
+
+    var _ = provisa.Query(StoresInRegions)
+    ```
 
 **`@columns`**
 
-```go
-// ParseAddress parses raw addresses.
-//
-// @columns
-func ParseAddress(raw []string) ([]Address, error) { ... }
-```
+=== "Doc comment"
 
-With the SDK:
+    ```go
+    // ParseAddress parses raw addresses.
+    //
+    // @columns
+    func ParseAddress(raw []string) ([]Address, error) { ... }
+    ```
 
-```go
-var _ = provisa.Columns(ParseAddress)
-```
+=== "SDK"
+
+    ```go
+    import provisa "provisa.dev/sdk/go"
+
+    var _ = provisa.Columns(ParseAddress)
+    ```
 
 **`@change table=T key=COLS removed=COL cursor=COL`**
 
-```go
-// StoreRegionChanges returns matches changed since the cursor.
-//
-// @change table=store_regions
-// @change key=store_id,region_id
-// @change removed=removed
-// @change cursor=seq
-func StoreRegionChanges(stores TableRef[Store], regions TableRef[Region], since *int) ([]Changed, error) { ... }
-```
+=== "Doc comment"
 
-With the SDK (`Change` takes the four values as arguments):
+    ```go
+    // StoreRegionChanges returns matches changed since the cursor.
+    //
+    // @change table=store_regions
+    // @change key=store_id,region_id
+    // @change removed=removed
+    // @change cursor=seq
+    func StoreRegionChanges(stores TableRef[Store], regions TableRef[Region], since *int) ([]Changed, error) { ... }
+    ```
 
-```go
-var _ = provisa.Change(StoreRegionChanges, "store_regions", []string{"store_id", "region_id"}, "removed", "seq")
-```
+=== "SDK"
+
+    ```go
+    import provisa "provisa.dev/sdk/go"
+
+    var _ = provisa.Change(StoreRegionChanges, "store_regions", []string{"store_id", "region_id"}, "removed", "seq")
+    ```
 
 **`@on-start`**
 
-```go
-// Setup runs once on start.
-//
-// @on-start
-func Setup(ctx context.Context, values map[string]string) error { ... }
-```
+=== "Doc comment"
 
-With the SDK:
+    ```go
+    // Setup runs once on start.
+    //
+    // @on-start
+    func Setup(ctx context.Context, values map[string]string) error { ... }
+    ```
 
-```go
-var _ = provisa.OnStart(Setup)
-```
+=== "SDK"
+
+    ```go
+    import provisa "provisa.dev/sdk/go"
+
+    var _ = provisa.OnStart(Setup)
+    ```
 
 **`@on-stop`**
 
-```go
-// Teardown runs once on stop.
-//
-// @on-stop
-func Teardown(ctx context.Context) error { ... }
-```
+=== "Doc comment"
 
-With the SDK:
+    ```go
+    // Teardown runs once on stop.
+    //
+    // @on-stop
+    func Teardown(ctx context.Context) error { ... }
+    ```
 
-```go
-var _ = provisa.OnStop(Teardown)
-```
+=== "SDK"
+
+    ```go
+    import provisa "provisa.dev/sdk/go"
+
+    var _ = provisa.OnStop(Teardown)
+    ```
 
 **`@health`**
 
-```go
-// Status returns the code's health.
-//
-// @health
-func Status(ctx context.Context) (string, error) {
-    return "ok", nil
-}
-```
+=== "Doc comment"
 
-With the SDK:
+    ```go
+    // Status returns the code's health.
+    //
+    // @health
+    func Status(ctx context.Context) (string, error) {
+        return "ok", nil
+    }
+    ```
 
-```go
-var _ = provisa.Health(Status)
-```
+=== "SDK"
+
+    ```go
+    import provisa "provisa.dev/sdk/go"
+
+    var _ = provisa.Health(Status)
+    ```
 
 **`@requires NAME` / `@requires NAME:secret`**
 
-```go
-// Fetch fetches rows.
-//
-// @table
-// @requires REGION
-// @requires API_KEY:secret
-func Fetch(ctx context.Context, in Inputs) ([]Row, error) { ... }
-```
+=== "Doc comment"
 
-With the SDK:
+    ```go
+    // Fetch fetches rows.
+    //
+    // @table
+    // @requires REGION
+    // @requires API_KEY:secret
+    func Fetch(ctx context.Context, in Inputs) ([]Row, error) { ... }
+    ```
 
-```go
-var _ = provisa.Table[Inputs, Row](Fetch, provisa.Requires("REGION"), provisa.Requires("API_KEY", provisa.Secret))
-```
+=== "SDK"
+
+    ```go
+    import provisa "provisa.dev/sdk/go"
+
+    var _ = provisa.Table[Inputs, Row](Fetch, provisa.Requires("REGION"), provisa.Requires("API_KEY", provisa.Secret))
+    ```
 
 #### Field naming
 
@@ -2188,190 +2288,212 @@ Rust does not offer `@loader` or the read context. Rust functions are neither `a
 
 A `@table` function takes nothing or one inputs struct. It returns `Vec<T>`, `impl Iterator<Item = T>`, or either inside `Result<..., E>`.
 
-```rust
-/// The churn risk of one account.
-///
-/// @table
-pub fn churn_risk(inputs: RiskInputs) -> Result<Vec<Risk>, String> {
-    Ok(vec![Risk { score: 0.82, reasons: vec!["no logins".into()] }])
-}
-```
+=== "Doc comment"
 
-With the SDK:
+    ```rust
+    /// The churn risk of one account.
+    ///
+    /// @table
+    pub fn churn_risk(inputs: RiskInputs) -> Result<Vec<Risk>, String> {
+        Ok(vec![Risk { score: 0.82, reasons: vec!["no logins".into()] }])
+    }
+    ```
 
-```rust
-provisa_sdk::table!(churn_risk);
-```
+=== "SDK"
+
+    ```rust
+    provisa_sdk::table!(churn_risk);
+    ```
 
 **`@stream`**
 
 A `@stream` function returns an iterator. An item of `Result<T, E>` ends the stream on error.
 
-```rust
-/// Audit events.
-///
-/// @stream
-pub fn audit_events(inputs: AuditInputs) -> impl Iterator<Item = AuditEvent> {
-    tail_log()
-}
-```
+=== "Doc comment"
 
-With the SDK:
+    ```rust
+    /// Audit events.
+    ///
+    /// @stream
+    pub fn audit_events(inputs: AuditInputs) -> impl Iterator<Item = AuditEvent> {
+        tail_log()
+    }
+    ```
 
-```rust
-provisa_sdk::stream!(audit_events);
-```
+=== "SDK"
+
+    ```rust
+    provisa_sdk::stream!(audit_events);
+    ```
 
 **`@command`**
 
-```rust
-/// Cancel one order.
-///
-/// @command
-pub fn cancel_order(order_id: i64) -> Result<bool, String> {
-    Ok(true)
-}
-```
+=== "Doc comment"
 
-With the SDK:
+    ```rust
+    /// Cancel one order.
+    ///
+    /// @command
+    pub fn cancel_order(order_id: i64) -> Result<bool, String> {
+        Ok(true)
+    }
+    ```
 
-```rust
-provisa_sdk::command!(cancel_order);
-```
+=== "SDK"
+
+    ```rust
+    provisa_sdk::command!(cancel_order);
+    ```
 
 **`@insert TABLE` / `@update TABLE` / `@delete TABLE`**
 
-```rust
-/// Insert orders.
-///
-/// @command
-/// @insert orders
-pub fn add_orders(rows: Vec<Order>) -> Result<i64, String> { ... }
-```
+=== "Doc comment"
 
-With the SDK:
+    ```rust
+    /// Insert orders.
+    ///
+    /// @command
+    /// @insert orders
+    pub fn add_orders(rows: Vec<Order>) -> Result<i64, String> { ... }
+    ```
 
-```rust
-provisa_sdk::command!(add_orders, insert = "orders");
-```
+=== "SDK"
+
+    ```rust
+    provisa_sdk::command!(add_orders, insert = "orders");
+    ```
 
 **`@query`**
 
-```rust
-/// Match stores to regions.
-///
-/// @query
-pub fn stores_in_regions(stores: TableRef<Store>, regions: TableRef<Region>) -> Result<Vec<Match>, String> { ... }
-```
+=== "Doc comment"
 
-With the SDK:
+    ```rust
+    /// Match stores to regions.
+    ///
+    /// @query
+    pub fn stores_in_regions(stores: TableRef<Store>, regions: TableRef<Region>) -> Result<Vec<Match>, String> { ... }
+    ```
 
-```rust
-provisa_sdk::query!(stores_in_regions);
-```
+=== "SDK"
+
+    ```rust
+    provisa_sdk::query!(stores_in_regions);
+    ```
 
 **`@columns`**
 
-```rust
-/// Parse raw addresses.
-///
-/// @columns
-pub fn parse_address(raw: Vec<String>) -> Result<Vec<Address>, String> { ... }
-```
+=== "Doc comment"
 
-With the SDK:
+    ```rust
+    /// Parse raw addresses.
+    ///
+    /// @columns
+    pub fn parse_address(raw: Vec<String>) -> Result<Vec<Address>, String> { ... }
+    ```
 
-```rust
-provisa_sdk::columns!(parse_address);
-```
+=== "SDK"
+
+    ```rust
+    provisa_sdk::columns!(parse_address);
+    ```
 
 **`@change table=T key=COLS removed=COL cursor=COL`**
 
-```rust
-/// Matches changed since the cursor.
-///
-/// @change table=store_regions
-/// @change key=store_id,region_id
-/// @change removed=removed
-/// @change cursor=seq
-pub fn store_region_changes(stores: TableRef<Store>, regions: TableRef<Region>, since: Option<i64>) -> Result<Vec<Changed>, String> { ... }
-```
+=== "Doc comment"
 
-With the SDK:
+    ```rust
+    /// Matches changed since the cursor.
+    ///
+    /// @change table=store_regions
+    /// @change key=store_id,region_id
+    /// @change removed=removed
+    /// @change cursor=seq
+    pub fn store_region_changes(stores: TableRef<Store>, regions: TableRef<Region>, since: Option<i64>) -> Result<Vec<Changed>, String> { ... }
+    ```
 
-```rust
-provisa_sdk::change!(
-    store_region_changes,
-    table = "store_regions",
-    key = ["store_id", "region_id"],
-    removed = "removed",
-    cursor = "seq",
-);
-```
+=== "SDK"
+
+    ```rust
+    provisa_sdk::change!(
+        store_region_changes,
+        table = "store_regions",
+        key = ["store_id", "region_id"],
+        removed = "removed",
+        cursor = "seq",
+    );
+    ```
 
 **`@on-start`**
 
-```rust
-/// Called once on start.
-///
-/// @on-start
-pub fn setup(values: HashMap<String, String>) -> Result<(), String> { ... }
-```
+=== "Doc comment"
 
-With the SDK:
+    ```rust
+    /// Called once on start.
+    ///
+    /// @on-start
+    pub fn setup(values: HashMap<String, String>) -> Result<(), String> { ... }
+    ```
 
-```rust
-provisa_sdk::on_start!(setup);
-```
+=== "SDK"
+
+    ```rust
+    provisa_sdk::on_start!(setup);
+    ```
 
 **`@on-stop`**
 
-```rust
-/// Called once on stop.
-///
-/// @on-stop
-pub fn teardown() { ... }
-```
+=== "Doc comment"
 
-With the SDK:
+    ```rust
+    /// Called once on stop.
+    ///
+    /// @on-stop
+    pub fn teardown() { ... }
+    ```
 
-```rust
-provisa_sdk::on_stop!(teardown);
-```
+=== "SDK"
+
+    ```rust
+    provisa_sdk::on_stop!(teardown);
+    ```
 
 **`@health`**
 
-```rust
-/// Returns the code's status.
-///
-/// @health
-pub fn status() -> &'static str {
-    "ok"
-}
-```
+=== "Doc comment"
 
-With the SDK:
+    ```rust
+    /// Returns the code's status.
+    ///
+    /// @health
+    pub fn status() -> &'static str {
+        "ok"
+    }
+    ```
 
-```rust
-provisa_sdk::health!(status);
-```
+=== "SDK"
+
+    ```rust
+    provisa_sdk::health!(status);
+    ```
 
 **`@requires NAME` / `@requires NAME:secret`**
 
-```rust
-/// Fetch rows.
-///
-/// @table
-/// @requires REGION
-/// @requires API_KEY:secret
-pub fn fetch(inputs: Inputs) -> Result<Vec<Row>, String> { ... }
-```
+=== "Doc comment"
 
-With the SDK:
+    ```rust
+    /// Fetch rows.
+    ///
+    /// @table
+    /// @requires REGION
+    /// @requires API_KEY:secret
+    pub fn fetch(inputs: Inputs) -> Result<Vec<Row>, String> { ... }
+    ```
 
-```rust
-provisa_sdk::table!(fetch, requires = "REGION", secret = "API_KEY");
-```
+=== "SDK"
+
+    ```rust
+    provisa_sdk::table!(fetch, requires = "REGION", secret = "API_KEY");
+    ```
 
 #### Field naming
 
@@ -2415,7 +2537,7 @@ All Python docstring tags are available. The ones most relevant to Spark work ar
 
 **`@table`**
 
-```python
+```py
 from dataclasses import dataclass
 from provisa_spark import session
 
@@ -2437,7 +2559,7 @@ def sales() -> list[SalesRow]:
 
 **`@command`**
 
-```python
+```py
 def archive_orders(cutoff: str) -> int:
     """Archive orders older than cutoff.
 
@@ -2451,7 +2573,7 @@ def archive_orders(cutoff: str) -> int:
 
 A `@query` function can take governed Provisa tables as `TableRef` parameters, reading them through Arrow Flight SQL.
 
-```python
+```py
 from dataclasses import dataclass
 from provisa_services import TableRef
 from provisa_spark import dataframe
@@ -2474,7 +2596,7 @@ def regional_totals(orders: TableRef[Order]) -> list[Total]:
 
 **`@on-start`** and **`@on-stop`**
 
-```python
+```py
 def warmup(values: dict) -> None:
     """@on-start"""
     session()  # start the Spark Connect session once
@@ -2489,7 +2611,7 @@ def shutdown() -> None:
 
 Declares a setup value beyond the built-in `script` and `cluster`.
 
-```python
+```py
 def fetch(inputs: Inputs) -> list[Row]:
     """@table
     @requires DELTA_TABLE_PATH
