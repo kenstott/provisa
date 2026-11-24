@@ -4798,6 +4798,18 @@ async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, rep
 
         _code_workers.stop_all()
 
+    # REQ-2225: the demo's local test cluster, a JVM in its own session, stops with the demo.
+    with tolerate_shutdown_failure("local test cluster stop"):
+        from provisa.core import demo_spark
+
+        await asyncio.to_thread(demo_spark.stop)
+
+    # REQ-2225: the Spark connector hosts a checkout's demo runs stop with it.
+    with tolerate_shutdown_failure("native connector hosts stop"):
+        from provisa.codesource import native_connector
+
+        await asyncio.to_thread(native_connector.stop_all)
+
     # Stop every org's Live Query Engine (Phase AM, REQ-1266)
     for _live in state.org_registry.live_engines():
         with tolerate_shutdown_failure("live query engine stop"):

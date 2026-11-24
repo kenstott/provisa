@@ -321,6 +321,53 @@ class TestTheConnectionTest:
             spark_cluster.version_of(spark_cluster._field(1, b"session"))
 
 
+@pytest.mark.usefixtures("one_org_deployment")
+class TestTheReadinessCheck:
+    """The demo's Spark Connect server is one Provisa started itself on loopback: it is called
+    there without an organisation's egress rule (REQ-2006 governs typed addresses only), and on
+    loopback alone."""
+
+    async def test_a_server_provisa_started_answers_on_loopback(self, spark_connect):
+        assert spark_cluster.answers_locally(spark_connect["address"]) == "4.3.0"
+        assert len(spark_connect["requests"]) == 1
+
+    async def test_the_probe_still_refuses_a_sandbox_orgs_loopback_address(self, spark_connect):
+        with pytest.raises(PrivateEndpointRefused):
+            spark_cluster.probe(spark_connect["address"], org_id="sandbox")
+        assert spark_connect["requests"] == []
+
+    @pytest.mark.parametrize(
+        ("address", "host"),
+        [
+            ("sc://localhost:15002", "localhost"),
+            ("sc://10.0.0.5:15002", "10.0.0.5"),
+            ("sc://spark.acme.com", "spark.acme.com"),
+            ("sc://8.8.8.8:15002", "8.8.8.8"),
+        ],
+    )
+    async def test_a_non_loopback_address_is_refused_by_name_before_any_dial(
+        self, address, host, monkeypatch
+    ):
+        from provisa.grpc_remote.executor import NotLoopback
+
+        dialed: list = []
+        monkeypatch.setattr(grpc, "insecure_channel", lambda *a, **k: dialed.append(a))
+        monkeypatch.setattr(grpc, "secure_channel", lambda *a, **k: dialed.append(a))
+        with pytest.raises(NotLoopback) as refused:
+            spark_cluster.answers_locally(address)
+        assert refused.value.host == host
+        assert repr(host) in str(refused.value)
+        assert dialed == []
+
+    async def test_a_server_not_answering_yet_is_unreachable(self):
+        from tests.port_lease import lease_ports
+
+        (port,) = lease_ports(1)
+        with pytest.raises(SparkClusterRefused) as refused:
+            spark_cluster.answers_locally(f"sc://127.0.0.1:{port}")
+        assert refused.value.code == "spark_cluster.unreachable"
+
+
 class TestTheAdminSurface:
     @pytest.fixture
     def wired(self, plane, monkeypatch):
