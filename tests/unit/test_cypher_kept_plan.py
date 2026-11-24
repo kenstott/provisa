@@ -36,6 +36,7 @@ from provisa.executor.result import QueryResult
 from provisa.pgwire import _pipeline, governed_plan
 from provisa.transpiler.router import Route
 from tests.role_state import RoleState
+from tests.unit.test_response_cache_shared import FakeCacheStore
 
 _CYPHER = "MATCH (o:Orders) WHERE o.amount > $min RETURN o.amount AS amount"
 
@@ -106,6 +107,8 @@ def _state() -> SimpleNamespace:
         cypher_label_maps={},
         model_db=None,
         tenant_db=None,
+        # As AppState: always a store (REQ-1867: a hit's encoded responses are read beside it).
+        response_cache_store=FakeCacheStore(),
     )
 
 
@@ -432,7 +435,10 @@ def _stored(age_seconds: int = 7):
 
     from provisa.cache.store import CachedResult
 
-    return CachedResult(data=b"", cached_at=time.time() - age_seconds, ttl=300)
+    # As check_cache returns a hit: named by the key and tenant it was read under (REQ-1867).
+    return CachedResult(
+        data=b"", cached_at=time.time() - age_seconds, ttl=300, key="k", tenant_id=None
+    )
 
 
 async def test_a_pipeline_hit_names_the_entry_it_was_served_from(monkeypatch):
@@ -486,7 +492,9 @@ async def test_data_sql_reports_hit_on_a_hit_and_miss_on_a_miss(monkeypatch, acc
     import provisa.api.app as app_mod
     from provisa.api.data.endpoint_dev import SQLRequest, sql_endpoint
 
-    state = RoleState(schemas={"analyst": object()}, roles={})
+    state = RoleState(
+        schemas={"analyst": object()}, roles={}, response_cache_store=FakeCacheStore()
+    )
     monkeypatch.setattr(app_mod, "state", state, raising=False)
     raw = MagicMock()
     raw.state.role = "analyst"

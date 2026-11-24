@@ -64,7 +64,9 @@ from provisa.compiler.naming import apply_cql_property as _cql_prop
 
 
 from provisa.executor import stats as _qs_mod
+from provisa.cache import encoded
 from provisa.cache.middleware import build_cache_headers
+from provisa.core.statement_warnings import raised
 from provisa.compiler.directives import (
     NO_CACHE_HINT,
     cache_hint_for,
@@ -542,22 +544,6 @@ def _non_finite(rows: list) -> tuple[str, str] | None:
     return None
 
 
-def _build_stats_content(
-    columns: list[str],
-    serializable_rows: list,
-    physical_sql: str,
-    stats_enabled: bool,
-    t0: float,
-) -> dict:
-    """Build response content dict, optionally including query stats."""
-    content: dict = {"columns": columns, "rows": serializable_rows}
-    if stats_enabled:
-        stats = statement_stats("cypher", len(serializable_rows), physical_sql, t0)
-        if stats is not None:
-            content["provisa_stats"] = stats
-    return content
-
-
 def statement_stats(field: str, rows: int, physical_sql: str, t0: float) -> dict | None:
     """A graph statement's provisa_stats (X-Provisa-Stats: true): its execution since ``t0``
     recorded as one entry on the federation engine, beside what the pipeline recorded. Shared by
@@ -1026,12 +1012,7 @@ async def _answered_read(
     internal: bool,
 ) -> Response:
     """Stage 5 of a read: the planned statement run and its rows answered."""
-    from provisa.ephemeral import read as ephemeral_read
-    from provisa.ephemeral import seam
-    from provisa.gql.assembler import assemble_rows, to_serializable
-
-    plan, graph_vars, drawn = planned.plan, planned.graph_vars, planned.drawn
-    involved, label_map, temp = planned.involved, planned.label_map, planned.temp
+    plan, drawn = planned.plan, planned.drawn
 
     stats_enabled = (x_provisa_stats or "").lower() == "true"
     if stats_enabled:
@@ -1054,10 +1035,66 @@ async def _answered_read(
         return JSONResponse(
             content={"type": "cypher", "columns": [], "rows": [], "redirect": _executed.redirect}
         )
-    from provisa.gql.assembler import take_overrun
-
-    rows = take_overrun(_dict_rows(_executed))
     physical_sql = plan.physical_sql or plan.exec_sql or ""
+    # REQ-1867 (ENCODED RESPONSES): a hit answers the columns and rows kept beside its entry for
+    # this statement; one not yet kept is answered from the Arrow entry below and kept.
+    entry = _executed.cache_entry
+    encoded_field = None
+    kept = None
+    if entry is not None:
+        encoded_field = encoded.shape_field(
+            "cypher_http", body.query, sorted(body.params.items()), internal, drawn
+        )
+        kept = await encoded.served(state, entry, encoded_field)
+    if kept is None:
+        raised_before = raised()
+        answered = await _answered_rows(_executed, planned, internal, state)
+        if isinstance(answered, Response):
+            return answered
+        kept = encoded.Encoded(
+            (_json_bytes(answered[0]), _json_bytes(answered[1])),
+            {"rows": len(answered[1])},
+            encoded.warnings_since(raised_before),
+        )
+        if encoded_field is not None:
+            assert entry is not None
+            await encoded.keep(state, entry, encoded_field, kept)
+    columns_json, rows_json = kept.parts
+    stats = (
+        statement_stats("cypher", kept.facts["rows"], physical_sql, _t0) if stats_enabled else None
+    )
+    content = b'{"columns":' + columns_json + b',"rows":' + rows_json
+    if stats is not None:
+        content += b',"provisa_stats":' + _json_bytes(stats)
+    content += b',"type":"cypher","graph_columns":' + _json_bytes(drawn) + b"}"
+    # REQ-536: HIT (with the entry's age) when the rows came from the response cache, else MISS.
+    return Response(
+        content=content,
+        media_type="application/json",
+        headers=build_cache_headers(_executed.cache_entry),
+    )
+
+
+def _json_bytes(value: Any) -> bytes:  # noqa: ANN401 — a JSON value
+    """``value`` written as Starlette's JSONResponse writes a body, the form this route has
+    always answered in."""
+    return json.dumps(
+        value, ensure_ascii=False, allow_nan=False, indent=None, separators=(",", ":")
+    ).encode("utf-8")
+
+
+async def _answered_rows(
+    _executed: Any, planned: PlannedRead, internal: bool, state: Any
+) -> tuple[list[str], list] | Response:
+    """A read's columns and rows as it answers them: assembled, serialized and with its nodes and
+    relationships registered under their stable ids."""
+    from provisa.ephemeral import read as ephemeral_read
+    from provisa.ephemeral import seam
+    from provisa.gql.assembler import assemble_rows, take_overrun, to_serializable
+
+    graph_vars, involved = planned.graph_vars, planned.involved
+    label_map, temp = planned.label_map, planned.temp
+    rows = take_overrun(_dict_rows(_executed))
 
     # Assemble & serialize
     _ser_result = _serialize_rows(
@@ -1084,12 +1121,7 @@ async def _answered_read(
         if involved and temp is not None:
             # The session's own nodes as the session holds them: every label, no built-in _id.
             serializable_rows = seam.answered(serializable_rows, temp)
-
-    content = _build_stats_content(columns, serializable_rows, physical_sql, stats_enabled, _t0)
-    content["type"] = "cypher"
-    content["graph_columns"] = drawn
-    # REQ-536: HIT (with the entry's age) when the rows came from the response cache, else MISS.
-    return JSONResponse(content=content, headers=build_cache_headers(_executed.cache_entry))
+    return columns, serializable_rows
 
 
 def _with_withdrawn(state: Any, role_id: str, surface: Any) -> tuple[Any, frozenset[int], set]:

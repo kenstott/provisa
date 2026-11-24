@@ -16,6 +16,7 @@ Not FastAPI middleware — these are pipeline functions that need query context.
 from __future__ import annotations
 
 import logging
+from dataclasses import replace
 
 from provisa.cache.raw_sql import CacheEntry, decode_entry
 from provisa.cache.store import CacheStore, CachedResult
@@ -28,8 +29,12 @@ log = logging.getLogger(__name__)
 async def check_cache(  # REQ-544
     store: CacheStore, key: str, org_id: str | None = None
 ) -> CachedResult | None:
-    """Check for a cached result. Returns CachedResult on HIT, None on MISS."""
-    return await store.get(key, tenant_id=org_id)
+    """Check for a cached result. Returns CachedResult on HIT, None on MISS. A hit names the key
+    and tenant it was read under, which its encoded responses are kept beside (REQ-1867)."""
+    cached = await store.get(key, tenant_id=org_id)
+    if cached is None:
+        return None
+    return replace(cached, key=key, tenant_id=org_id)
 
 
 async def store_result(  # REQ-544, REQ-1867
