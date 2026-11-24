@@ -67,11 +67,17 @@ async def _base(conn) -> None:
         insert(domains).values(id="sales_eu", description="", parent_domain_id="sales")
     )
     await conn.execute_core(insert(domains).values(id="hr", description=""))
-    # sales_steward's domain_steward row names sales, which covers sales_eu under it.
+    # sales_steward's domain_steward row names sales, which covers sales_eu under it: the
+    # person holds the capability on both, and sales' Steward field names them.
     for domain_id in ("sales", "sales_eu"):
         await conn.execute_core(
             insert(object_owners).values(
-                object_kind="domain", object_id=domain_id, principal="sales_steward"
+                object_kind="domain",
+                object_id=domain_id,
+                principal_kind="person",
+                principal="sales_steward",
+                named=domain_id == "sales",
+                holds=True,
             )
         )
     await conn.execute_core(insert(sources).values(id="s1", type="postgres"))

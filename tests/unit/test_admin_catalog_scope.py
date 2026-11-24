@@ -95,6 +95,9 @@ class _Rows:
     def fetchone(self):
         return self._rows[0] if self._rows else None
 
+    def __iter__(self):
+        return iter(self._rows)
+
 
 def _relationship(rel_id, source, source_column, target, target_column, **extra):
     return {
@@ -130,6 +133,8 @@ class _Conn:
             return _Rows([])  # REQ-1921: no table here is withdrawn, itself or by its source
         if "registered_tables.retired IS true" in sql:
             return _Rows([])  # no table here is retired
+        if "domains.retired IS true" in sql:
+            return _Rows([])  # no domain here is retired
         if "table_columns.scope" in sql:
             # REQ-2153: the listed columns, outside the domains the query names as reached.
             reached = [v for v in stmt.compile().params.values() if isinstance(v, list)]
