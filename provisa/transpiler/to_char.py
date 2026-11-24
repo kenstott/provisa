@@ -341,7 +341,9 @@ _TRINO = _Engine(
 #: text, before it is transpiled (provisa.transpiler.transpile._duckdb_form).
 _DUCKDB = _Engine(
     dialect="postgres",
-    year="YEAR({v})",  # ISO's count (1 BC is 0), as adjusted reads it: not EXTRACT's era
+    # ISO's count (1 BC is 0), as adjusted reads it, from PostgreSQL's (1 BC is -1), which
+    # EXTRACT answers on DuckDB as on PostgreSQL (semantic_dialect.duckdb_year_of_era).
+    year="(EXTRACT(YEAR FROM {v}) + CASE WHEN EXTRACT(YEAR FROM {v}) < 0 THEN 1 ELSE 0 END)",
     month="EXTRACT(MONTH FROM {v})",
     day="EXTRACT(DAY FROM {v})",
     hour="EXTRACT(HOUR FROM {v})",
