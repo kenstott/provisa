@@ -104,12 +104,13 @@ def call_table_refs(
     from provisa.pgwire.minted import table_key
 
     tree = sqlglot.parse_one(sql, read=dialect)
+    called = called_commands(commands)
     out: list[tuple[str, ...]] = []
     for t in tree.find_all(exp.Table):
         call = t.this
         if not isinstance(call, exp.Anonymous):
             continue
-        command = commands.get(call.name)
+        command = called.get(call.name.lower())
         if command is None:
             continue
         values = list(call.expressions)
@@ -126,6 +127,13 @@ def call_table_refs(
             if parts not in out:
                 out.append(parts)
     return out
+
+
+def called_commands(commands: Mapping[str, dict]) -> dict[str, dict]:
+    """``commands`` by the lower-cased name a statement calls each by. A function name is folded
+    to lower case as PostgreSQL folds it, so a call matches whatever case a statement spells it in
+    -- a view's SQL lowered to the engine's prints it upper-cased (``CLIPS_ON_THE_CLUSTER(...)``)."""
+    return {name.lower(): command for name, command in commands.items()}
 
 
 def calls_command(sql: str, commands: Iterable[str], dialect: str = "postgres") -> bool:

@@ -33,7 +33,7 @@ from graphql import (
 )
 
 from provisa.compiler import hasura_schema
-from provisa.compiler.enum_detect import build_enum_filter_types, resolve_column_type
+from provisa.compiler.enum_detect import resolve_column_type
 from provisa.compiler.naming import (
     SYSTEM_SCHEMA_GQL_PREFIX,
     apply_gql_name,
@@ -205,13 +205,15 @@ def _comparison(
 def _build_where_input(  # REQ-008, REQ-221, REQ-2136
     table: _TableInfo,
     type_name: str,
-    enum_types: dict | None = None,
+    enum_filters: dict[str, GraphQLInputObjectType],
     relationships: Callable[[], dict[str, GraphQLInputField]] | None = None,
 ) -> GraphQLInputObjectType | None:
     """Build a typed WHERE input for a table's visible columns, and (``relationships``, read when
-    the schema is built) a condition per relationship: a row with a related row matching it."""
-    _enums = enum_types or {}
-    _enum_filters = build_enum_filter_types(_enums)
+    the schema is built) a condition per relationship: a row with a related row matching it.
+
+    ``enum_filters`` (pg enum name -> its filter type) is built once per schema
+    (build_enum_filter_types): a filter type is named after its enum, so two tables whose columns
+    one enum types must share it, or the schema holds two types of one name (REQ-221)."""
     input_fields: dict[str, GraphQLInputField] = {}
     for col in table.visible_columns:
         col_name = col["column_name"]
@@ -223,7 +225,7 @@ def _build_where_input(  # REQ-008, REQ-221, REQ-2136
         pg_name = meta.data_type.lower().strip()
         if "." in pg_name:
             pg_name = pg_name.rsplit(".", 1)[1]
-        enum_filter = _enum_filters.get(pg_name)
+        enum_filter = enum_filters.get(pg_name)
         if natively_nested(col.get("native_type")):
             # REQ-1965: a natively nested column is filtered with the JSON operations, not with
             # a scalar comparison of its element type.

@@ -107,11 +107,14 @@ def code_call(sql: str, commands: Mapping[str, dict]) -> tuple[dict, tuple[str, 
     registered commands by the name a statement calls them by (``state.tracked_functions``)."""
     from provisa.codesource.commands import CODE_COMMAND
 
+    from provisa.mv.view_inputs import called_commands
+
+    called = called_commands(commands)
     for table in sqlglot.parse_one(sql, read="postgres").find_all(exp.Table):
         call = table.this
         if not isinstance(call, exp.Anonymous):
             continue
-        command = commands.get(call.name)
+        command = called.get(call.name.lower())
         if command is None or command.get("impl_kind") != CODE_COMMAND:
             continue
         values = list(call.expressions)

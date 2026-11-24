@@ -17,17 +17,23 @@ is a model change of its own."""
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import and_, bindparam, delete, insert, select, update
 
 from provisa.core.repositories.build_output import replacing_build_output
 from provisa.core.schema_org import (
+    catalog_bindings,
+    glossary_term_refs,
+    glossary_terms,
     model_name_clashes,
     model_names,
     registered_tables,
     table_columns,
 )
+
+if TYPE_CHECKING:
+    from provisa.compiler.names_table import Estate
 
 
 _NAME_KEY = ("object_kind", "object_id", "surface")
@@ -46,6 +52,8 @@ def _stored_row(r: Any) -> dict[str, Any]:
         "table_id": r.table_id,
         "is_alias": r.alias,
         "warnings": [{"code": w.code, "message": w.message} for w in r.warnings],
+        "prime_term": r.prime_term,
+        "prime_term_ontology_name": r.prime_term_ontology_name,
     }
 
 
@@ -144,3 +152,72 @@ async def freeze_aliases(conn: Any, frozen: Iterable[Any]) -> None:
                 )
             else:
                 raise ValueError(f"a {f.object_kind} has no stored alias to freeze {f.alias!r} in")
+
+
+async def read_estate(
+    conn: Any,
+    *,
+    org_id: str | None,
+    engine: str,
+    replicas: Mapping[tuple[str, str, str], tuple[str, str]],
+) -> Estate:
+    """REQ-194 (THE NAMES TABLE SPANS THE DATA ESTATE): what the stored names table records of
+    the estate beside the model's own names (names_table.Estate), with the bound ``engine``'s
+    name and the ``replicas`` it keeps: every name an export target carries
+    (``catalog_bindings``: what was exported to it, nothing else), and each glossary term in
+    force with the columns it owns and the tables it is the Class of."""
+    from provisa.compiler.names_table import Estate
+
+    exports: dict[str, dict[str, str]] = {}
+    for b in (
+        await conn.execute_core(
+            select(
+                catalog_bindings.c.target,
+                catalog_bindings.c.semantic_uri,
+                catalog_bindings.c.physical_key,
+            )
+        )
+    ).fetchall():
+        exports.setdefault(b.target, {})[b.semantic_uri] = b.physical_key
+    in_force = ~glossary_terms.c.retired
+    terms = {
+        r.id: r.name
+        for r in (
+            await conn.execute_core(
+                select(glossary_terms.c.id, glossary_terms.c.name).where(in_force)
+            )
+        ).fetchall()
+    }
+    column_terms = {
+        (r.table_id, r.column_name): r.term_id
+        for r in (
+            await conn.execute_core(
+                select(
+                    glossary_term_refs.c.table_id,
+                    glossary_term_refs.c.column_name,
+                    glossary_term_refs.c.term_id,
+                )
+                .join(glossary_terms, glossary_terms.c.id == glossary_term_refs.c.term_id)
+                .where(in_force)
+            )
+        ).fetchall()
+    }
+    table_terms = {
+        r.id: r.class_term_id
+        for r in (
+            await conn.execute_core(
+                select(registered_tables.c.id, registered_tables.c.class_term_id)
+                .join(glossary_terms, glossary_terms.c.id == registered_tables.c.class_term_id)
+                .where(in_force)
+            )
+        ).fetchall()
+    }
+    return Estate(
+        org_id=org_id,
+        engine=engine,
+        replicas=dict(replicas),
+        exports=exports,
+        terms=terms,
+        column_terms=column_terms,
+        table_terms=table_terms,
+    )

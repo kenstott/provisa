@@ -50,10 +50,10 @@ def _node(script: str, *args: str) -> Any:
     return json.loads(done.stdout)
 
 
-# -- A Visual Studio Code extension for Node and Python code sources, on the Marketplace ----------
+# -- A Visual Studio Code extension for Node and Python code sources, shipped as a .vsix ---------
 
 
-def test_the_package_is_a_vs_code_extension_for_python_and_node_ready_for_the_marketplace():
+def test_the_package_is_a_vs_code_extension_for_python_and_node_packaged_as_a_vsix():
     assert PACKAGE["engines"]["vscode"].startswith("^")
     assert PACKAGE["publisher"] and PACKAGE["name"] and PACKAGE["displayName"]
     assert PACKAGE["repository"]["url"].startswith("https://")
@@ -430,3 +430,195 @@ def test_a_node_workspace_is_told_apart_as_code_check_does(tmp_path, folder_has)
         str(tmp_path),
     )
     assert out == "typescript"
+
+
+# -- The services shim, forwarded into VS Code terminals and debug sessions (amended 2026-11-22) --
+
+#: A ``vscode`` module standing in for the editor: it records the extension's terminal environment
+#: collection, its debug configuration provider and its commands, and answers the pickers with
+#: what the test queued in ``picks``.
+_FAKE_VSCODE = r"""
+const Module = require('module');
+const orig = Module._load;
+const registered = { commands: {}, debug: {} };
+const picks = [];
+class EventEmitter { constructor() { this.event = () => ({ dispose() {} }); } fire() {} }
+const disposable = { dispose() {} };
+const vscode = {
+  EventEmitter,
+  TreeItem: class { constructor(label) { this.label = label; } },
+  TreeItemCollapsibleState: { Collapsed: 1 },
+  ThemeColor: class {},
+  Range: class {},
+  ProgressLocation: { Notification: 15 },
+  window: {
+    createOutputChannel: () => ({ appendLine() {}, dispose() {} }),
+    createTextEditorDecorationType: () => disposable,
+    registerTreeDataProvider: () => disposable,
+    showQuickPick: async (items) => items[picks.shift()],
+    showInputBox: async () => picks.shift(),
+    showInformationMessage() {},
+    showErrorMessage(m) { throw new Error(m); },
+    visibleTextEditors: [],
+    onDidChangeVisibleTextEditors: () => disposable,
+  },
+  commands: { registerCommand: (id, fn) => { registered.commands[id] = fn; return disposable; } },
+  workspace: {
+    workspaceFolders: undefined,
+    getConfiguration: () => ({ get: (k) => ({ cli: ['provisa'], python: '', instances: INSTANCES })[k] }),
+    onDidChangeTextDocument: () => disposable,
+    onDidSaveTextDocument: () => disposable,
+  },
+  debug: {
+    registerDebugConfigurationProvider: (type, provider) => {
+      registered.debug[type] = provider;
+      return disposable;
+    },
+  },
+  env: { clipboard: { writeText: async () => {} } },
+};
+Module._load = function (r, ...a) { return r === 'vscode' ? vscode : orig.call(this, r, ...a); };
+
+/** The terminal environment collection VS Code gives an extension. */
+function collection() {
+  const vars = new Map();
+  return {
+    vars, persistent: true, description: undefined,
+    replace(name, value) { vars.set(name, value); },
+    clear() { vars.clear(); },
+  };
+}
+
+function context(state, secrets) {
+  return {
+    subscriptions: [],
+    environmentVariableCollection: collection(),
+    workspaceState: { get: (k) => state[k], update: async (k, v) => { state[k] = v; } },
+    secrets: { get: async (k) => secrets[k], store: async (k, v) => { secrets[k] = v; } },
+  };
+}
+
+const INSTANCES = [{ name: 'local', url: 'http://localhost:8000/', org: 'acme' }];
+const { activate } = require(SRC + '/extension.js');
+"""
+
+_ADDRESS = "http://localhost:8000/admin/orgs/acme/code-sources/orders_py/services/pat-123"
+
+
+def test_a_new_terminal_gets_provisa_services_for_the_signed_in_dev_mode_source():
+    out = _node(
+        _FAKE_VSCODE
+        + """
+(async () => {
+  const ctx = context(
+    { 'provisa.instance': 'http://localhost:8000/', 'provisa.sourceId': 'orders_py' },
+    { 'provisa.token.http://localhost:8000/': 'pat-123' },
+  );
+  await activate(ctx);
+  const c = ctx.environmentVariableCollection;
+  console.log(JSON.stringify({ vars: Object.fromEntries(c.vars), persistent: c.persistent,
+    description: c.description }));
+})();
+"""
+    )
+    assert out["vars"] == {"PROVISA_SERVICES": _ADDRESS}
+    # The address holds a personal access token: never written to the workspace's storage.
+    assert out["persistent"] is False
+    assert "orders_py" in out["description"]
+
+
+def test_a_launched_debug_session_gets_provisa_services_and_keeps_its_own_environment():
+    out = _node(
+        _FAKE_VSCODE
+        + """
+(async () => {
+  const ctx = context(
+    { 'provisa.instance': 'http://localhost:8000/', 'provisa.sourceId': 'orders_py' },
+    { 'provisa.token.http://localhost:8000/': 'pat-123' },
+  );
+  await activate(ctx);
+  const provider = registered.debug['*'];
+  const plain = await provider.resolveDebugConfiguration(undefined,
+    { type: 'debugpy', request: 'launch', program: 'serve.py' });
+  const own = await provider.resolveDebugConfiguration(undefined,
+    { type: 'node', request: 'launch', env: { LOG_LEVEL: 'debug' } });
+  console.log(JSON.stringify({ types: Object.keys(registered.debug), plain, own }));
+})();
+"""
+    )
+    # Every debugger type: a Python, Node, Bun or Deno launch alike.
+    assert out["types"] == ["*"]
+    assert out["plain"] == {
+        "type": "debugpy",
+        "request": "launch",
+        "program": "serve.py",
+        "env": {"PROVISA_SERVICES": _ADDRESS},
+    }
+    assert out["own"]["env"] == {"PROVISA_SERVICES": _ADDRESS, "LOG_LEVEL": "debug"}
+
+
+def test_nothing_is_forwarded_until_signing_in_and_signing_in_forwards_it():
+    out = _node(
+        _FAKE_VSCODE
+        + """
+(async () => {
+  const ctx = context({ 'provisa.sourceId': 'orders_py' }, {});
+  await activate(ctx);
+  const provider = registered.debug['*'];
+  const c = ctx.environmentVariableCollection;
+  const before = { vars: Object.fromEntries(c.vars),
+    debug: await provider.resolveDebugConfiguration(undefined, { type: 'debugpy' }) };
+  picks.push(0, 'pat-123');  // the instance, then the token
+  await registered.commands['provisa.signIn']();
+  const after = { vars: Object.fromEntries(c.vars),
+    debug: await provider.resolveDebugConfiguration(undefined, { type: 'debugpy' }) };
+  console.log(JSON.stringify({ before, after }));
+})();
+"""
+    )
+    # REQ-2106: with no address the shim's calls raise, naming the service.
+    assert out["before"] == {"vars": {}, "debug": {"type": "debugpy"}}
+    assert out["after"]["vars"] == {"PROVISA_SERVICES": _ADDRESS}
+    assert out["after"]["debug"]["env"] == {"PROVISA_SERVICES": _ADDRESS}
+
+
+def test_the_python_shim_calls_the_forwarded_address(monkeypatch):
+    """What a terminal or debug session is given is what provisa_services reads: a call goes to
+    the forwarded address, followed by the service and its call."""
+    import http.server
+    import threading
+
+    seen: list[str] = []
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):  # noqa: N802 -- the http.server hook's name
+            seen.append(self.path)
+            body = b"s3cret"
+            self.send_response(200)
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *_args):
+            pass
+
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        url = f"http://127.0.0.1:{server.server_address[1]}"
+        address = _node(
+            "const { servicesEnv } = require(SRC + '/services.js');"
+            "console.log(JSON.stringify(servicesEnv({ url: process.argv[1], org: 'acme' },"
+            " 'orders_py', 'pat-123')));",
+            url,
+        )["PROVISA_SERVICES"]
+        sys.path.insert(0, str(ROOT / "provisa" / "python" / "services"))
+        monkeypatch.setenv("PROVISA_SERVICES", address)
+        import provisa_services
+
+        assert provisa_services.secrets.get("api_key") == "s3cret"
+    finally:
+        server.shutdown()
+        sys.path.remove(str(ROOT / "provisa" / "python" / "services"))
+    assert seen == ["/admin/orgs/acme/code-sources/orders_py/services/pat-123/secrets/api_key"]

@@ -38,7 +38,13 @@ pytestmark = [pytest.mark.integration]
 
 _ROLE = "org_admin"
 _ANALYST = "itest_analyst"
-_IMAGE = "mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:vnext-preview"
+# Pinned by digest: vnext-preview floats; on 2026-11-23 it moved to vnext-EN20261123, which answers
+# some queries with "InternalServerError: Internal error occurred (-2147418113)". This digest is
+# vnext-EN20261019, the same build test_cosmosdb_emulator_search_spike pins.
+_IMAGE = (
+    "mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator@sha256:"
+    "e2b2c3ca0b99b256ff0781518714592a0f54fefc30d76d70a450d65ead3c96cb"
+)
 # The emulator's published, well-known account key (not a secret).
 _KEY = "C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw=="
 _CUSTOMERS = [
