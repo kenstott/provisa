@@ -129,6 +129,7 @@ describe("the pickers of the domain something is put into", () => {
           setForm={setForm}
           domainOptions={IDS}
           roleOptions={["admin"]}
+          ownerRoleOptions={[]}
           onPeopleError={vi.fn()}
           tables={[]}
           selectedTableIds={[]}

@@ -133,7 +133,7 @@ describe("Admin > Domains: the domain tree", () => {
     fireEvent.click(await screen.findByRole("option", { name: "retail" }));
     fireEvent.click(screen.getByTestId("new-domain-save"));
     await waitFor(() =>
-      expect(createDomain).toHaveBeenCalledWith("outlets", "", null, "retail", []),
+      expect(createDomain).toHaveBeenCalledWith("outlets", "", null, "retail", [], []),
     );
   });
 
@@ -148,7 +148,7 @@ describe("Admin > Domains: the domain tree", () => {
     );
     fireEvent.click(screen.getByTestId("new-domain-save"));
     await waitFor(() =>
-      expect(createDomain).toHaveBeenCalledWith("outlets", "", null, null, ["okta|31"]),
+      expect(createDomain).toHaveBeenCalledWith("outlets", "", null, null, ["okta|31"], []),
     );
   });
 });

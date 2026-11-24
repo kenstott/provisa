@@ -64,6 +64,17 @@ log = logging.getLogger(__name__)
 _NOTHING_HELD = HeldEntitlements()
 
 
+def _with_role_rows(
+    state: Any, held: HeldEntitlements, role_ids: Collection[str]
+) -> HeldEntitlements:
+    """``held`` with the rows an Owner or Steward field wrote on any of ``role_ids`` (REQ-2219,
+    amended 2026-11-23: a role named makes every person acting as it a holder)."""
+    rows = tuple(r for role_id in role_ids for r in state.role_owner_rows.get(role_id, ()))
+    if not rows:
+        return held
+    return HeldEntitlements((*held.lists, *rows), held.expiries)
+
+
 @dataclass(frozen=True)
 class EntitlementRequest:
     """One person's identity-provider lists, as bound for a call. What Provisa holds is read
@@ -325,7 +336,11 @@ def _reaches(
     request = _current.get()
     if request is None:
         raise RuntimeError(f"no person is bound to this call: who may reach {kind} cannot be read")
-    held = state.held_entitlements.get(request.user_id, _NOTHING_HELD)
+    held = _with_role_rows(
+        state,
+        state.held_entitlements.get(request.user_id, _NOTHING_HELD),
+        [m for role_id in request.acting_roles for m in _members(role_id)],
+    )
     wanted = set(capabilities)
     now = datetime.now(UTC)
     for role_id in request.acting_roles:
@@ -367,8 +382,10 @@ def owned_products(state: Any) -> tuple[str, ...]:
     request = _current.get()
     if request is None:
         return ()
-    held = state.held_entitlements.get(request.user_id, _NOTHING_HELD)
     members = [m for role_id in request.acting_roles for m in _members(role_id)]
+    held = _with_role_rows(
+        state, state.held_entitlements.get(request.user_id, _NOTHING_HELD), members
+    )
 
     def holds_owner(role_id: str) -> bool:
         # Held by the role or an ancestor: a role holds what its parents hold (REQ-2155).

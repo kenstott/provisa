@@ -887,7 +887,9 @@
         "no_description": "Dieses Datenprodukt nennt weder seinen Zweck noch seine Verwendung.",
         "successor_retired": "Das Datenprodukt, das die Mitglieder dieses Produkts übernommen hat, '{{successor}}', ist ebenfalls ausgemustert."
       },
-      "owner_not_eligible": "{{owner}} hat keine Rolle mit der Berechtigung data_product_owner und kann daher nicht als Eigentümer des Datenprodukts {{data_product}} benannt werden. Weisen Sie zuerst eine solche Rolle zu."
+      "owner_not_eligible": "{{owner}} hat keine Rolle mit der Berechtigung data_product_owner und kann daher nicht als Eigentümer des Datenprodukts {{data_product}} benannt werden. Weisen Sie zuerst eine solche Rolle zu.",
+      "owner_role_not_eligible": "Die Rolle {{role}} hat die Berechtigung data_product_owner nicht und kann daher nicht als Eigentümer des Datenprodukts {{data_product}} benannt werden. Geben Sie der Rolle zuerst diese Berechtigung.",
+      "owners_change_refused": "Nur ein Org-Administrator oder ein aktueller Eigentümer des Datenprodukts {{data_product}} kann dessen Eigentümer ändern."
     },
     "erd": {
       "database_unavailable": "Die ERD-Layouts können nicht gelesen werden: Die Datenbank ist nicht verfügbar",
@@ -940,7 +942,9 @@
     "relationship": {
       "name_taken": "Der Name „{{name}}“ ist bereits von der Beziehung „{{held_by}}“ belegt. Benennen Sie diese anders.",
       "join_through_none": "Die Beziehungen '{{first}}' und '{{second}}' haben keine gemeinsame Zwischentabelle, oder ihre anderen Enden sind bereits darüber verknüpft.",
-      "owner_not_eligible": "{{owner}} hat keine Rolle mit der Berechtigung relationship_owner und kann daher nicht als Eigentümer der Beziehung {{relationship}} benannt werden. Weisen Sie zuerst eine solche Rolle zu."
+      "owner_not_eligible": "{{owner}} hat keine Rolle mit der Berechtigung relationship_owner und kann daher nicht als Eigentümer der Beziehung {{relationship}} benannt werden. Weisen Sie zuerst eine solche Rolle zu.",
+      "owner_role_not_eligible": "Die Rolle {{role}} hat die Berechtigung relationship_owner nicht und kann daher nicht als Eigentümer der Beziehung {{relationship}} benannt werden. Geben Sie der Rolle zuerst diese Berechtigung.",
+      "owners_change_refused": "Nur ein Org-Administrator oder ein aktueller Eigentümer der Beziehung {{relationship}} kann deren Eigentümer ändern."
     },
     "syncing": {
       "not_found": "Es gibt keinen Eintrag {{entry}}.",
@@ -982,7 +986,9 @@
       "webhook_secret_required": "Ein Webhook braucht das Geheimnis, mit dem geplante Prüfungen signiert werden"
     },
     "domain": {
-      "steward_not_eligible": "{{steward}} hat keine Rolle mit der Berechtigung domain_steward und kann daher nicht als Steward der Domäne {{domain}} benannt werden. Weisen Sie zuerst eine solche Rolle zu."
+      "steward_not_eligible": "{{steward}} hat keine Rolle mit der Berechtigung domain_steward und kann daher nicht als Steward der Domäne {{domain}} benannt werden. Weisen Sie zuerst eine solche Rolle zu.",
+      "steward_role_not_eligible": "Die Rolle {{role}} hat die Berechtigung domain_steward nicht und kann daher nicht als Steward der Domäne {{domain}} benannt werden. Geben Sie der Rolle zuerst diese Berechtigung.",
+      "stewards_change_refused": "Nur ein Org-Administrator oder ein aktueller Steward der Domäne {{domain}} kann deren Stewards ändern."
     }
   }
 }

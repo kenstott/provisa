@@ -11408,5 +11408,14 @@
   "serverErrors.json::serverErrors.schema.domain_stewards_saved": "Domain '{{domain}}' stewards saved",
   "syncingTab.json::syncingTab.noneForProducts": "No entry publishes the chosen data products.",
   "syncingTab.json::syncingTab.productFilterLabel": "Data products",
-  "syncingTab.json::syncingTab.productFilterPlaceholder": "Filter by data product"
+  "syncingTab.json::syncingTab.productFilterPlaceholder": "Filter by data product",
+  "serverErrors.json::serverErrors.data_product.owner_role_not_eligible": "Role {{role}} does not hold the data_product_owner capability, so cannot be named an owner of data product {{data_product}}. Give the role that capability first.",
+  "serverErrors.json::serverErrors.relationship.owner_role_not_eligible": "Role {{role}} does not hold the relationship_owner capability, so cannot be named an owner of relationship {{relationship}}. Give the role that capability first.",
+  "serverErrors.json::serverErrors.domain.steward_role_not_eligible": "Role {{role}} does not hold the domain_steward capability, so cannot be named a steward of domain {{domain}}. Give the role that capability first.",
+  "serverErrors.json::serverErrors.data_product.owners_change_refused": "Only an org admin or a current owner of data product {{data_product}} may change its owners.",
+  "serverErrors.json::serverErrors.relationship.owners_change_refused": "Only an org admin or a current owner of relationship {{relationship}} may change its owners.",
+  "serverErrors.json::serverErrors.domain.stewards_change_refused": "Only an org admin or a current steward of domain {{domain}} may change its stewards.",
+  "entitlements.json::entitlements.people.peopleGroup": "People",
+  "entitlements.json::entitlements.people.rolesGroup": "Roles",
+  "entitlements.json::entitlements.people.roleChip": "Role: {{role}}"
 }

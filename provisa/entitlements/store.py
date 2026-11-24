@@ -635,11 +635,97 @@ async def _model_role_rows(conn: "Connection") -> dict[_RoleKey, tuple[str, ...]
     return out
 
 
+def _model_stated(capability: str | None) -> bool:
+    """Whether a role row is one the model states (its defaults, or its ceiling): a role row of
+    any other capability is one an Owner or Steward field wrote (:func:`set_role_list`), which a
+    model build leaves alone."""
+    return capability is None or capability == CEILING
+
+
 async def _held_role_rows(conn: "Connection") -> dict[_RoleKey, tuple[str, ...]]:
     periods = history.current(await history.entitlement_periods(conn, source=ROLE))
     return {
-        (p.row.role_id, p.row.kind, p.row.capability): tuple(p.row.identifiers) for p in periods
+        (p.row.role_id, p.row.kind, p.row.capability): tuple(p.row.identifiers)
+        for p in periods
+        if _model_stated(p.row.capability)
     }
+
+
+async def set_role_list(
+    conn: "Connection",
+    role_id: str,
+    kind: str,
+    identifiers: Iterable[str],
+    *,
+    capability: str,
+    set_by: str | None,
+    reason: str | None,
+) -> None:
+    """Set ``role_id``'s own row of ``capability`` for ``kind``, replacing what it held: an Owner
+    or Steward field naming a role (REQ-2219, amended 2026-11-23), so every holder of the role
+    holds the capability on what it lists."""
+    if _model_stated(capability):
+        raise ValueError(f"a role's {capability!r} row is the model's, written by a model build")
+    await conn.execute_core(
+        insert(entitlements).values(
+            source=ROLE,
+            principal=None,
+            role_id=role_id,
+            kind=kind,
+            capability=capability,
+            identifiers=list(identifiers),
+            set_by=set_by,
+            reason=reason,
+        )
+    )
+
+
+async def remove_role_list(
+    conn: "Connection",
+    role_id: str,
+    kind: str,
+    *,
+    capability: str,
+    set_by: str | None,
+    reason: str | None,
+) -> None:
+    """End ``role_id``'s own row of ``capability`` for ``kind``."""
+    if _model_stated(capability):
+        raise ValueError(f"a role's {capability!r} row is the model's, written by a model build")
+    await conn.execute_core(
+        insert(entitlements).values(
+            source=ROLE,
+            principal=None,
+            role_id=role_id,
+            kind=kind,
+            capability=capability,
+            identifiers=[],
+            removed=True,
+            set_by=set_by,
+            reason=reason,
+        )
+    )
+
+
+async def load_role_owner_rows(conn: "Connection") -> dict[str, tuple[HeldList, ...]]:
+    """role id -> the rows an Owner or Steward field wrote on the role (:func:`set_role_list`), as
+    the store holds them now: what every person acting as the role holds as well."""
+    out: dict[str, list[HeldList]] = {}
+    for p in history.current(await history.entitlement_periods(conn, source=ROLE)):
+        row = p.row
+        if _model_stated(row.capability):
+            continue
+        out.setdefault(row.role_id, []).append(
+            HeldList(
+                row.role_id,
+                row.kind,
+                tuple(row.identifiers),
+                capability=row.capability,
+                set_by=row.set_by,
+                reason=row.reason,
+            )
+        )
+    return {role_id: tuple(rows) for role_id, rows in out.items()}
 
 
 async def write_role_rows(conn: "Connection") -> None:

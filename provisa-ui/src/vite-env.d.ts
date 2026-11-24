@@ -171,6 +171,7 @@ declare module "*.graphql" {
   export const RunDqCheckNow: DocumentNode;
   // REQ-609/REQ-1634: resolves a team role/visible_to ref list to individuals.
   export const ResolveOwners: DocumentNode;
+  export const OwnerField: DocumentNode;
   export const AvailableImportSets: DocumentNode;
   export const ServicenowApis: DocumentNode;
   export const SetServicenowApi: DocumentNode;

@@ -960,6 +960,15 @@ class AppState:
         self._active_runtime().held_entitlements = value
 
     @property
+    def role_owner_rows(self) -> dict[str, Any]:
+        """role id -> the rows an Owner or Steward field wrote on the role (REQ-2219)."""
+        return self._active_runtime().role_owner_rows
+
+    @role_owner_rows.setter
+    def role_owner_rows(self, value: dict[str, Any]) -> None:
+        self._active_runtime().role_owner_rows = value
+
+    @property
     def idp_entitlements(self) -> dict[str, Any]:
         """user id -> the lists their identity provider last sent (REQ-2219)."""
         return self._active_runtime().idp_entitlements
@@ -3970,6 +3979,7 @@ async def _rebuild_schemas_impl(
         from provisa.judgments import bases as _bases
 
         state.held_entitlements = await _entitlement_store.load_held(conn)
+        state.role_owner_rows = await _entitlement_store.load_role_owner_rows(conn)
         state.idp_entitlements = await _entitlement_store.load_idp(conn)
         state.data_product_refs = await _product_repo.refs(conn)
         state.glossary_term_refs = await _glossary_repo.term_refs(conn)

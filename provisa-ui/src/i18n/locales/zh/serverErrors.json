@@ -887,7 +887,9 @@
         "no_description": "此数据产品既未说明用途，也未说明使用方式。",
         "successor_retired": "接收此产品成员的数据产品“{{successor}}”也已停用。"
       },
-      "owner_not_eligible": "{{owner}} 没有拥有 data_product_owner 能力的角色，因此不能被指定为数据产品 {{data_product}} 的所有者。请先授予其此类角色。"
+      "owner_not_eligible": "{{owner}} 没有拥有 data_product_owner 能力的角色，因此不能被指定为数据产品 {{data_product}} 的所有者。请先授予其此类角色。",
+      "owner_role_not_eligible": "角色 {{role}} 不具备 data_product_owner 能力，因此不能被指定为数据产品 {{data_product}} 的所有者。请先为该角色授予此能力。",
+      "owners_change_refused": "只有组织管理员或数据产品 {{data_product}} 的现任所有者可以更改其所有者。"
     },
     "erd": {
       "database_unavailable": "无法读取 ERD 布局:数据库不可用",
@@ -940,7 +942,9 @@
     "relationship": {
       "name_taken": "名称“{{name}}”已被关系“{{held_by}}”占用。请为此关系另取名称。",
       "join_through_none": "关系 '{{first}}' 和 '{{second}}' 没有共同的中间表，或者它们的另一端已经通过该表连接。",
-      "owner_not_eligible": "{{owner}} 没有拥有 relationship_owner 能力的角色，因此不能被指定为关系 {{relationship}} 的所有者。请先授予其此类角色。"
+      "owner_not_eligible": "{{owner}} 没有拥有 relationship_owner 能力的角色，因此不能被指定为关系 {{relationship}} 的所有者。请先授予其此类角色。",
+      "owner_role_not_eligible": "角色 {{role}} 不具备 relationship_owner 能力，因此不能被指定为关系 {{relationship}} 的所有者。请先为该角色授予此能力。",
+      "owners_change_refused": "只有组织管理员或关系 {{relationship}} 的现任所有者可以更改其所有者。"
     },
     "syncing": {
       "not_found": "不存在条目 {{entry}}。",
@@ -982,7 +986,9 @@
       "webhook_secret_required": "Webhook 需要用于为定期审查签名的密钥"
     },
     "domain": {
-      "steward_not_eligible": "{{steward}} 没有拥有 domain_steward 能力的角色，因此不能被指定为域 {{domain}} 的管理员。请先授予其此类角色。"
+      "steward_not_eligible": "{{steward}} 没有拥有 domain_steward 能力的角色，因此不能被指定为域 {{domain}} 的管理员。请先授予其此类角色。",
+      "steward_role_not_eligible": "角色 {{role}} 不具备 domain_steward 能力，因此不能被指定为域 {{domain}} 的管理员。请先为该角色授予此能力。",
+      "stewards_change_refused": "只有组织管理员或域 {{domain}} 的现任管理员可以更改其管理员。"
     }
   }
 }

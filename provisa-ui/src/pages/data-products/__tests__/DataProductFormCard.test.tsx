@@ -83,6 +83,7 @@ function Harness({
       setForm={setForm}
       domainOptions={["sales"]}
       roleOptions={["admin"]}
+      ownerRoleOptions={[]}
       onPeopleError={vi.fn()}
       tables={[]}
       selectedTableIds={tableIds}
@@ -132,6 +133,7 @@ describe("DataProductFormCard", () => {
             setForm={setForm}
             domainOptions={["sales"]}
             roleOptions={["admin"]}
+            ownerRoleOptions={[]}
             onPeopleError={vi.fn()}
             tables={[]}
             selectedTableIds={[]}

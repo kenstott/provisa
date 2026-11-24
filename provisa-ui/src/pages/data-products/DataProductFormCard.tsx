@@ -37,6 +37,8 @@ export interface DataProductFormCardProps {
   setForm: React.Dispatch<React.SetStateAction<DataProductForm>>;
   domainOptions: string[];
   roleOptions: string[];
+  /** REQ-2219 (amended 2026-11-23): the roles the Owner field may name. */
+  ownerRoleOptions: string[];
   /** A failed search of the Owner field's people picker. */
   onPeopleError: (e: unknown) => void;
   tables: ListedTable[];
@@ -97,6 +99,7 @@ export function DataProductFormCard({
   setForm,
   domainOptions,
   roleOptions,
+  ownerRoleOptions,
   onPeopleError,
   tables,
   selectedTableIds,
@@ -186,11 +189,14 @@ export function DataProductFormCard({
         <Panel id="ownership" title={t("dataProductsTab.panelOwnership")} errors={0}>
           <FormLayout>
             <FormField size="medium">
-              {/* REQ-2219 (amended 2026-11-23): the Owner field names people. */}
+              {/* REQ-2219 (amended 2026-11-23): the Owner field names people and roles. */}
               <PeopleMultiPicker
                 label={t("dataProductsTab.ownerLabel")}
                 value={form.owners}
                 onChange={(owners) => setForm((f) => ({ ...f, owners }))}
+                roleOptions={ownerRoleOptions}
+                roles={form.ownerRoles}
+                onRolesChange={(ownerRoles) => setForm((f) => ({ ...f, ownerRoles }))}
                 onError={onPeopleError}
                 testId="data-product-owner-input"
               />

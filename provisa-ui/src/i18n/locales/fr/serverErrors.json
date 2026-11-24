@@ -887,7 +887,9 @@
         "no_description": "Ce produit de données n'indique ni son objectif ni son usage.",
         "successor_retired": "Le produit de données qui a repris les membres de celui-ci, « {{successor}} », a lui aussi été retiré."
       },
-      "owner_not_eligible": "{{owner}} n'a aucun rôle doté de la capacité data_product_owner et ne peut donc pas être nommé propriétaire du produit de données {{data_product}}. Attribuez-lui d'abord un tel rôle."
+      "owner_not_eligible": "{{owner}} n'a aucun rôle doté de la capacité data_product_owner et ne peut donc pas être nommé propriétaire du produit de données {{data_product}}. Attribuez-lui d'abord un tel rôle.",
+      "owner_role_not_eligible": "Le rôle {{role}} n'a pas la capacité data_product_owner et ne peut donc pas être nommé propriétaire du produit de données {{data_product}}. Donnez d'abord cette capacité au rôle.",
+      "owners_change_refused": "Seul un administrateur de l'organisation ou un propriétaire actuel du produit de données {{data_product}} peut modifier ses propriétaires."
     },
     "erd": {
       "database_unavailable": "Impossible de lire les dispositions de l'ERD : la base de données est indisponible",
@@ -940,7 +942,9 @@
     "relationship": {
       "name_taken": "Le nom « {{name}} » est pris par la relation « {{held_by}} ». Nommez celle-ci autrement.",
       "join_through_none": "Les relations '{{first}}' et '{{second}}' ne partagent aucune table intermédiaire, ou leurs autres extrémités y sont déjà jointes.",
-      "owner_not_eligible": "{{owner}} n'a aucun rôle doté de la capacité relationship_owner et ne peut donc pas être nommé propriétaire de la relation {{relationship}}. Attribuez-lui d'abord un tel rôle."
+      "owner_not_eligible": "{{owner}} n'a aucun rôle doté de la capacité relationship_owner et ne peut donc pas être nommé propriétaire de la relation {{relationship}}. Attribuez-lui d'abord un tel rôle.",
+      "owner_role_not_eligible": "Le rôle {{role}} n'a pas la capacité relationship_owner et ne peut donc pas être nommé propriétaire de la relation {{relationship}}. Donnez d'abord cette capacité au rôle.",
+      "owners_change_refused": "Seul un administrateur de l'organisation ou un propriétaire actuel de la relation {{relationship}} peut modifier ses propriétaires."
     },
     "syncing": {
       "not_found": "Il n'existe aucune entrée {{entry}}.",
@@ -982,7 +986,9 @@
       "webhook_secret_required": "Un webhook a besoin du secret avec lequel les revues planifiées sont signées"
     },
     "domain": {
-      "steward_not_eligible": "{{steward}} n'a aucun rôle doté de la capacité domain_steward et ne peut donc pas être nommé responsable du domaine {{domain}}. Attribuez-lui d'abord un tel rôle."
+      "steward_not_eligible": "{{steward}} n'a aucun rôle doté de la capacité domain_steward et ne peut donc pas être nommé responsable du domaine {{domain}}. Attribuez-lui d'abord un tel rôle.",
+      "steward_role_not_eligible": "Le rôle {{role}} n'a pas la capacité domain_steward et ne peut donc pas être nommé responsable du domaine {{domain}}. Donnez d'abord cette capacité au rôle.",
+      "stewards_change_refused": "Seul un administrateur de l'organisation ou un responsable actuel du domaine {{domain}} peut modifier ses responsables."
     }
   }
 }

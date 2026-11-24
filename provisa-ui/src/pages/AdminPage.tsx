@@ -153,6 +153,8 @@ export function AdminPage() {
   const [newDomainParent, setNewDomainParent] = useState("");
   // REQ-609, REQ-2219 (amended 2026-11-23): the new domain's Steward field names people.
   const [newDomainStewards, setNewDomainStewards] = useState<string[]>([]);
+  // ...and roles (every holder of each a steward).
+  const [newDomainStewardRoles, setNewDomainStewardRoles] = useState<string[]>([]);
   // The last domain change's outcome: done (green), or the server's refusal or error (red).
   const [domainMsg, setDomainMsg] = useState<{ text: string; ok: boolean } | null>(null);
   const onStewardSearchError = useCallback(
@@ -179,6 +181,10 @@ export function AdminPage() {
   const { createDomain } = useCreateDomain();
   const { deleteDomain } = useDeleteDomain();
   const allRoles = roles.map((r) => r.id);
+  // REQ-2219 (amended 2026-11-23): the roles a Steward field may name, those holding domain_steward.
+  const stewardRoleOptions = roles
+    .filter((r) => r.effectiveCapabilities.includes("domain_steward"))
+    .map((r) => r.id);
 
   // Update state and stats when hook data arrives
   useEffect(() => {
@@ -279,6 +285,7 @@ export function AdminPage() {
     setNewDomainAlias("");
     setNewDomainParent("");
     setNewDomainStewards([]);
+    setNewDomainStewardRoles([]);
   };
 
   const handleAddDomain = async () => {
@@ -292,6 +299,7 @@ export function AdminPage() {
         newDomainAlias.trim() || null,
         newDomainParent || null,
         newDomainStewards,
+        newDomainStewardRoles,
       );
     } catch (e) {
       setDomainMsg({ text: e instanceof Error ? e.message : String(e), ok: false });
@@ -433,6 +441,9 @@ export function AdminPage() {
                       label={t("adminPage.colSteward")}
                       value={newDomainStewards}
                       onChange={setNewDomainStewards}
+                      roleOptions={stewardRoleOptions}
+                      roles={newDomainStewardRoles}
+                      onRolesChange={setNewDomainStewardRoles}
                       onError={onStewardSearchError}
                       testId="new-domain-stewards"
                     />

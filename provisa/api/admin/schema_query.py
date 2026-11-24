@@ -128,6 +128,7 @@ from provisa.api.admin.types import (
     TagParamValueType,
     TagTargetInput,
     TagType,
+    OwnerFieldType,
     UserSummaryType,
 )
 
@@ -1115,6 +1116,25 @@ class Query:  # REQ-021, REQ-042
             for pid, items in sorted(found.items())
             if product_id is None or pid == product_id
         ]
+
+    @strawberry.field
+    async def owner_field(
+        self, info: StrawberryInfo, kind: str, object_id: str
+    ) -> OwnerFieldType:  # REQ-2219
+        """What an object's Owner (or a domain's Steward) field names, for the form that edits
+        it: the people and the roles with Provisa-held rows naming it (amended 2026-11-23). An
+        object's owners are shown to every org member (the meta views' owners), so this is too.
+        ``kind``: data_product, domain or relationship."""
+        from provisa.entitlements.owners import KINDS_BY_NAME, field_of
+
+        _resolve_admin_context(info)
+        owned = KINDS_BY_NAME.get(kind)
+        if owned is None:
+            raise ValueError(f"no Owner field on {kind!r}: one of {sorted(KINDS_BY_NAME)}")
+        pool = await _get_pool()
+        async with pool.acquire() as conn:
+            got = await field_of(cast("Connection", conn), owned, object_id)
+        return OwnerFieldType(people=list(got.people), roles=list(got.roles))
 
     @strawberry.field
     async def resolve_owners(self, info: StrawberryInfo, refs: list[str]) -> list[UserSummaryType]:

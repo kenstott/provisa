@@ -1047,6 +1047,7 @@ async def create_data_product(  # REQ-1855
     domain_id: str,
     name: str,
     owners: list[str] | None = None,
+    owner_roles: list[str] | None = None,
     team_role: str | None = None,
     purpose: str = "",
     limitations: str = "",
@@ -1060,7 +1061,9 @@ async def create_data_product(  # REQ-1855
     has members (take them out with set_data_product_members first). Its status is kept: a new
     product is a draft, and change_data_product_status changes it. `owners` names the people who
     own it, by user id, each holding a role with the data_product_owner capability; omitted, the
-    owners it has are kept."""
+    owners it has are kept. `owner_roles` names roles holding that capability, every holder of
+    each an owner; omitted, the roles it has are kept. Only an org admin (org_settings) or a
+    current owner of the product changes either."""
     require_role(role, state)
     from provisa.core.models import DataProduct as DataProductModel
     from provisa.core.repositories import data_product as data_product_repo
@@ -1118,7 +1121,8 @@ async def create_data_product(  # REQ-1855
             support=support,
             created_by=creator if stored is None else None,  # REQ-2219: set on insert only
         )
-        from provisa.entitlements.owners import reload_owner_rows, save_owner_field
+        from provisa.api.admin.capabilities import has_capability_request
+        from provisa.entitlements.owners import Changer, reload_owner_rows, save_owner_field
 
         async with conn.transaction():
             await data_product_repo.upsert(conn, model)
@@ -1130,12 +1134,15 @@ async def create_data_product(  # REQ-1855
                 await record_product_creator(conn, creator, role, domain_id, id)
             # REQ-2219 (amended 2026-11-23): the Owner field names people; saving writes or ends
             # their data_product_owner rows. A named person who cannot own refuses the save.
+            # Amended 2026-11-23: roles too; only an org admin or a current owner changes it.
             changed = await save_owner_field(
                 conn,
                 id,
                 domain_id,
                 owners,
+                roles=owner_roles,
                 stored_domain_id=None if stored is None else stored["domain_id"],
+                changer=Changer(creator, has_capability_request(request, "org_settings")),
                 set_by=creator,
             )
         if changed:

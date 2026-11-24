@@ -1082,6 +1082,7 @@ def build_mcp_server(state: Any):
         domain_id: str,
         name: str,
         owners: list[str] | None = None,
+        owner_roles: list[str] | None = None,
         team_role: str | None = None,
         purpose: str = "",
         limitations: str = "",
@@ -1092,7 +1093,9 @@ def build_mcp_server(state: Any):
     ) -> dict:
         """Create, or fully replace, a data product by id. domain_id must be an existing domain.
         Status is kept (new: draft); the publish/deprecate/retire/restore tools change it.
-        owners names the people who own it, by user id; omitted, its owners are kept."""
+        owners names the people who own it, by user id, and owner_roles the roles (every holder of
+        each an owner); either omitted is kept. Only an org admin or a current owner changes
+        them."""
         resolved = _role(role)
         return await tools.create_data_product(
             state,
@@ -1102,6 +1105,7 @@ def build_mcp_server(state: Any):
             domain_id,
             name,
             owners=owners,
+            owner_roles=owner_roles,
             team_role=team_role,
             purpose=purpose,
             limitations=limitations,

@@ -17,6 +17,7 @@ import { Alert, Button, Checkbox, Group, Table, Text } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { Plus, Package } from "lucide-react";
 import { useDomains, useTables, useRoles, useRelationships } from "../hooks/useAdminQueries";
+import { useOwnerField } from "../hooks/useOwnerField";
 import {
   useCreateDataProduct,
   useUpdateDataProduct,
@@ -96,6 +97,15 @@ export function DataProductsPage() {
   // The model's relationships: each dataset's associations in the Related tab.
   const { relationships } = useRelationships();
   const roleOptions = roles.map((r) => r.id);
+  // REQ-2219 (amended 2026-11-23): the roles the Owner field may name, those holding
+  // data_product_owner.
+  const ownerRoleOptions = roles
+    .filter((r) => r.effectiveCapabilities.includes("data_product_owner"))
+    .map((r) => r.id);
+  const readOwnerField = useOwnerField();
+  // The product whose Owner field, as it names people and roles, the open form holds. Until it
+  // is read, a save leaves the field as held.
+  const [ownerFieldFor, setOwnerFieldFor] = useState<string | null>(null);
   const { createDataProduct, loading: creatingProduct } = useCreateDataProduct();
   const { updateDataProduct, loading: updatingProduct } = useUpdateDataProduct();
   const saving = creatingProduct || updatingProduct;
@@ -280,11 +290,25 @@ export function DataProductsPage() {
     setCreating(false);
     setEditingId(p.id);
     setExpanded(p.id);
+    setOwnerFieldFor(null);
+    readOwnerField("data_product", p.id)
+      .then((field) => {
+        setForm((f) =>
+          f.id === p.id || f.id === `${p.id}-copy`
+            ? { ...f, owners: field.people, ownerRoles: field.roles }
+            : f,
+        );
+        setOwnerFieldFor(p.id);
+      })
+      .catch(onPeopleError);
     setForm({
       id: p.id,
       domainId: p.domainId,
       name: p.name,
-      owners: p.owners,
+      // Its owners as its Owner field names them, read above; the product's owners (p.owners)
+      // count every holder of a role named, who are not the field's.
+      owners: [],
+      ownerRoles: [],
       teamRole: p.teamRole ?? "",
       purpose: p.purpose,
       limitations: p.limitations,
@@ -327,7 +351,11 @@ export function DataProductsPage() {
       id: form.id.trim(),
       domainId: form.domainId.trim(),
       name: form.name.trim(),
-      owners: form.owners,
+      // An edited product's Owner field is sent once it has been read; before that it is left
+      // as held.
+      ...(editingId === null || ownerFieldFor === editingId
+        ? { owners: form.owners, ownerRoles: form.ownerRoles }
+        : { owners: null, ownerRoles: null }),
       teamRole: form.teamRole.trim() || null,
       purpose: form.purpose.trim(),
       limitations: form.limitations.trim(),
@@ -408,6 +436,7 @@ export function DataProductsPage() {
       setForm={setForm}
       domainOptions={domainOptions}
       roleOptions={roleOptions}
+      ownerRoleOptions={ownerRoleOptions}
       onPeopleError={onPeopleError}
       tables={tables}
       selectedTableIds={selectedTableIds}

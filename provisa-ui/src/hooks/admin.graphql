@@ -183,6 +183,14 @@ query DomainsQuery {
   }
 }
 
+# REQ-2219 (amended 2026-11-23): what an object's Owner or Steward field names, people and roles.
+query OwnerField($kind: String!, $objectId: String!) {
+  ownerField(kind: $kind, objectId: $objectId) {
+    people
+    roles
+  }
+}
+
 query ResolveOwners($refs: [String!]!) {
   resolveOwners(refs: $refs) {
     userId
@@ -1167,6 +1175,7 @@ mutation CreateDomain(
   $graphqlAlias: String
   $parentDomainId: String
   $stewards: [String!]
+  $stewardRoles: [String!]
 ) {
   createDomain(
     input: {
@@ -1175,6 +1184,7 @@ mutation CreateDomain(
       graphqlAlias: $graphqlAlias
       parentDomainId: $parentDomainId
       stewards: $stewards
+      stewardRoles: $stewardRoles
     }
   ) {
     ...MutationResult

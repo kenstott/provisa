@@ -250,21 +250,36 @@ class _Person:
     roles: set[str]
 
 
-async def holders(
-    conn: "Connection", kind: OwnedKind, *, exact: bool = False
+async def _role_members(conn: "Connection", role_ids: Collection[str]) -> dict[str, set[str]]:
+    """role id -> the people holding a grant of it in force (``role_grants.in_force``)."""
+    from provisa.auth.role_grants import in_force
+    from provisa.core.schema_org import user_role_assignments as ura
+
+    if not role_ids:
+        return {}
+    rows = await conn.execute_core(
+        select(ura.c.role_id, ura.c.user_id).where(ura.c.role_id.in_(sorted(role_ids)), in_force())
+    )
+    out: dict[str, set[str]] = {}
+    for r in rows.fetchall():
+        out.setdefault(r.role_id, set()).add(r.user_id)
+    return out
+
+
+async def _holders_of(
+    conn: "Connection", kind: OwnedKind, objects: Mapping[str, Paths]
 ) -> dict[str, tuple[str, ...]]:
-    """object id -> the people who hold ``kind``'s capability on it now (its owners, or a domain's
-    stewards), by user id, sorted; an object no one holds is absent. What a display, an export,
-    an approval and the steward gate read. ``exact``: only rows naming the object itself, not a
-    domain above it (what its own Steward field shows)."""
-    owned = await owned_objects(conn, kind)
-    objects = owned.exact if exact else owned.reach
+    """object id -> the people holding ``kind``'s capability on it now, for ``objects`` spelled as
+    given: a person's own row naming it, or a row an Owner or Steward field wrote on a role they
+    hold a grant of (REQ-2219, amended 2026-11-23: a role named holds it for every holder)."""
+    from provisa.entitlements.store import load_role_owner_rows
+
     capabilities = await _role_capabilities(conn)
     people: dict[str, _Person] = {}
     for period in history.current(await history.entitlement_periods(conn, kind=kind.list_kind)):
         row = period.row
         if row.principal is None:
-            continue  # a role's own rows (source ``role``) name no person
+            continue  # a role's own rows (source ``role``) are read below, for its holders
         person = people.setdefault(row.principal, _Person([], {}, set()))
         if row.source == PROVISA:
             person.lists.append(
@@ -275,6 +290,16 @@ async def holders(
         else:
             continue
         person.roles.add(row.role_id)
+    role_rows = {
+        role_id: [r for r in rows if r.capability == kind.capability and r.kind == kind.list_kind]
+        for role_id, rows in (await load_role_owner_rows(conn)).items()
+    }
+    role_rows = {role_id: rows for role_id, rows in role_rows.items() if rows}
+    for role_id, members in (await _role_members(conn, role_rows.keys())).items():
+        for principal in members:
+            person = people.setdefault(principal, _Person([], {}, set()))
+            person.lists.extend(role_rows[role_id])
+            person.roles.add(role_id)
     rules: dict[str, list[ExpiryRule]] = {}
     for period in history.current(await history.expiry_periods(conn)):
         row = period.row
@@ -302,6 +327,68 @@ async def holders(
         ):
             out.setdefault(oid, []).append(principal)
     return {oid: tuple(people_) for oid, people_ in out.items()}
+
+
+async def holders(
+    conn: "Connection", kind: OwnedKind, *, exact: bool = False
+) -> dict[str, tuple[str, ...]]:
+    """object id -> the people who hold ``kind``'s capability on it now (its owners, or a domain's
+    stewards), by user id, sorted; an object no one holds is absent. What a display, an export,
+    an approval and the steward gate read. ``exact``: only rows naming the object itself, not a
+    domain above it (what its own Steward field shows). A role named in the field makes each
+    person holding a grant of it a holder (REQ-2219, amended 2026-11-23)."""
+    owned = await owned_objects(conn, kind)
+    return await _holders_of(conn, kind, owned.exact if exact else owned.reach)
+
+
+@dataclass(frozen=True)
+class Named:
+    """What an Owner or Steward field names on one object: the people and the roles whose
+    Provisa-held rows of the kind's capability name it."""
+
+    people: tuple[str, ...]
+    roles: tuple[str, ...]
+
+
+async def named(conn: "Connection", kind: OwnedKind, paths: Paths) -> Named:
+    """What the field of the object spelled ``paths`` names now: each person with a Provisa-held
+    row of ``kind``'s capability naming it, and each role with such a row of its own (REQ-2219,
+    amended 2026-11-23). An identity provider's lists are its own, and not the field's."""
+    from provisa.entitlements.lists import ROLE
+
+    people: set[str] = set()
+    roles: set[str] = set()
+    for p in history.current(await history.entitlement_periods(conn, kind=kind.list_kind)):
+        row = p.row
+        if row.capability != kind.capability:
+            continue
+        if not any(matches(i, paths) for i in row.identifiers):
+            continue
+        if row.source == PROVISA and row.principal is not None:
+            people.add(row.principal)
+        elif row.source == ROLE and row.principal is None:
+            roles.add(row.role_id)
+    return Named(tuple(sorted(people)), tuple(sorted(roles)))
+
+
+#: The kinds by the name a client gives them (object_owners' names, :data:`_OBJECT_KIND`).
+KINDS_BY_NAME = {"data_product": PRODUCTS, "domain": DOMAINS, "relationship": RELATIONSHIPS}
+
+
+async def field_of(conn: "Connection", kind: OwnedKind, object_id: str) -> Named:
+    """What ``object_id``'s Owner (or Steward) field names now, for the form that edits it.
+    Raises LookupError for a product that does not exist."""
+    if kind is PRODUCTS:
+        from provisa.core.repositories import data_product as data_product_repo
+
+        stored = await data_product_repo.get(conn, object_id)
+        if stored is None:
+            raise LookupError(f"data product {object_id!r} not found")
+        return await named(conn, kind, product_paths(object_id, stored["domain_id"]))
+    if kind is DOMAINS:
+        return await named(conn, kind, _domain_paths(object_id))
+    identifier = await identifier_of(conn, kind, object_id)
+    return await named(conn, kind, (_segments(identifier),))
 
 
 async def product_owners(conn: "Connection") -> dict[str, tuple[str, ...]]:
@@ -369,6 +456,44 @@ class OwnerRefused(ValueError):
         self.code = kind.refusal_code
 
 
+class OwnerRoleRefused(ValueError):
+    """A role named in an Owner or Steward field that does not hold the kind's capability (or is
+    no role): its row would make none of its holders a holder (REQ-2219, amended 2026-11-23)."""
+
+    def __init__(self, role_id: str, kind: OwnedKind = PRODUCTS) -> None:
+        super().__init__(
+            f"role {role_id!r} does not hold the {kind.capability} capability, so cannot be "
+            f"named a {kind.noun}'s {kind.holder}; give the role that capability first"
+        )
+        self.role_id = role_id
+        self.kind = kind
+        self.code = f"{kind.noun.replace(' ', '_')}.{kind.holder}_role_not_eligible"
+
+
+class OwnerChangeRefused(PermissionError):
+    """An Owner or Steward field changed by someone who is neither an org admin (org_settings)
+    nor a current holder of that object (REQ-2219, amended 2026-11-23: editing an object's other
+    fields does not by itself let a person change its owners)."""
+
+    def __init__(self, object_id: str, kind: OwnedKind = PRODUCTS) -> None:
+        super().__init__(
+            f"only an org admin or a current {kind.holder} of {kind.noun} {object_id!r} may change "
+            f"its {kind.holder}s"
+        )
+        self.object_id = object_id
+        self.kind = kind
+        self.code = f"{kind.noun.replace(' ', '_')}.{kind.holder}s_change_refused"
+
+
+@dataclass(frozen=True)
+class Changer:
+    """Who saves an Owner or Steward field: their user id (None when no person is bound), and
+    whether they hold org_settings, as the surface's own capability gate reads it."""
+
+    user_id: str | None
+    org_admin: bool
+
+
 async def _eligible_roles(
     conn: "Connection",
     principal: str,
@@ -386,6 +511,68 @@ async def _eligible_roles(
     )
 
 
+async def _set_role_holders(
+    conn: "Connection",
+    kind: OwnedKind,
+    object_id: str,
+    identifier: str,
+    paths: Paths,
+    roles: tuple[str, ...],
+    capabilities: Mapping[str, frozenset[str]],
+    *,
+    set_by: str | None,
+) -> None:
+    """Make ``roles`` the roles whose own rows of ``kind``'s capability name ``object_id``."""
+    from provisa.entitlements.lists import ROLE
+    from provisa.entitlements.store import remove_role_list, set_role_list
+
+    held = {
+        p.row.role_id: tuple(p.row.identifiers)
+        for p in history.current(
+            await history.entitlement_periods(conn, source=ROLE, kind=kind.list_kind)
+        )
+        if p.row.capability == kind.capability
+    }
+    reason_set = f"named a {kind.holder} of {kind.noun} {object_id}"
+    reason_end = f"no longer a {kind.holder} of {kind.noun} {object_id}"
+    for role_id, identifiers in held.items():
+        if role_id in roles or not any(matches(i, paths) for i in identifiers):
+            continue
+        kept = [i for i in identifiers if not matches(i, paths)]
+        if kept:
+            await set_role_list(
+                conn,
+                role_id,
+                kind.list_kind,
+                kept,
+                capability=kind.capability,
+                set_by=set_by,
+                reason=reason_end,
+            )
+        else:
+            await remove_role_list(
+                conn,
+                role_id,
+                kind.list_kind,
+                capability=kind.capability,
+                set_by=set_by,
+                reason=reason_end,
+            )
+    for role_id in roles:
+        identifiers = held.get(role_id, ())
+        if any(matches(i, paths) for i in identifiers):
+            continue
+        await set_role_list(
+            conn,
+            role_id,
+            kind.list_kind,
+            [*identifiers, identifier],
+            capability=kind.capability,
+            set_by=set_by,
+            reason=reason_set,
+        )
+
+
 async def set_holders(
     conn: "Connection",
     kind: OwnedKind,
@@ -394,22 +581,29 @@ async def set_holders(
     paths: Paths,
     people: Iterable[str],
     *,
+    roles: Iterable[str] | None = None,
     set_by: str | None,
 ) -> None:
     """Make ``people`` (user ids) the people Provisa holds as ``object_id``'s holders of
     ``kind``: a row naming it (``identifier``) on each of a named person's role grants holding
     the capability, and the object (spelled ``paths``) ended from every Provisa-held row of anyone
-    else. An identity provider's lists are its own and are not written. Refused
-    (:class:`OwnerRefused`) before anything is written when a named person holds no such grant.
-    The caller holds the transaction."""
+    else. ``roles``, when given, become the roles whose own rows name it, so every holder of each
+    holds it (REQ-2219, amended 2026-11-23); None leaves the roles' rows as they are. An identity
+    provider's lists are its own and are not written. Refused (:class:`OwnerRefused`,
+    :class:`OwnerRoleRefused`) before anything is written when a named person holds no such grant
+    or a named role does not hold the capability. The caller holds the transaction."""
     from provisa.entitlements.store import remove_list, set_list
 
     wanted = tuple(dict.fromkeys(people))
+    wanted_roles = None if roles is None else tuple(dict.fromkeys(roles))
     capabilities = await _role_capabilities(conn)
     eligible = {p: await _eligible_roles(conn, p, capabilities, kind.capability) for p in wanted}
     for principal, role_ids in eligible.items():
         if not role_ids:
             raise OwnerRefused(principal, kind)
+    for role_id in wanted_roles or ():
+        if kind.capability not in capabilities.get(role_id, frozenset()):
+            raise OwnerRoleRefused(role_id, kind)
     held = {
         (p.row.principal, p.row.role_id): tuple(p.row.identifiers)
         for p in history.current(
@@ -461,6 +655,10 @@ async def set_holders(
                 reason=reason_set,
                 capability=kind.capability,
             )
+    if wanted_roles is not None:
+        await _set_role_holders(
+            conn, kind, object_id, identifier, paths, wanted_roles, capabilities, set_by=set_by
+        )
 
 
 async def set_product_owners(
@@ -469,6 +667,7 @@ async def set_product_owners(
     domain_id: str,
     owners: Iterable[str],
     *,
+    roles: Iterable[str] | None = None,
     set_by: str | None,
 ) -> None:
     """:func:`set_holders` for a product's owners."""
@@ -479,36 +678,53 @@ async def set_product_owners(
         product_identifier(product_id, domain_id),
         product_paths(product_id, domain_id),
         owners,
+        roles=roles,
         set_by=set_by,
     )
 
 
+def _domain_paths(domain_id: str) -> Paths:
+    return ((domain_id.lower(),), (domain_identifier(domain_id).lower(),))
+
+
 async def set_domain_stewards(
-    conn: "Connection", domain_id: str, stewards: Iterable[str], *, set_by: str | None
+    conn: "Connection",
+    domain_id: str,
+    stewards: Iterable[str],
+    *,
+    roles: Iterable[str] | None = None,
+    set_by: str | None,
 ) -> set[str]:
     """Write a domain's Steward field: ``stewards`` become the people Provisa holds as its
-    stewards. Returns the people whose rows it wrote, before and after, for
-    :func:`reload_owner_rows`."""
+    stewards (and ``roles``, when given, the roles). Returns the people whose rows it wrote,
+    before and after, for :func:`reload_owner_rows`."""
     before = set((await holders(conn, DOMAINS, exact=True)).get(domain_id, ()))
     wanted = list(stewards)
-    exact = ((domain_id.lower(),), (domain_identifier(domain_id).lower(),))
     await set_holders(
         conn,
         DOMAINS,
         domain_id,
         domain_identifier(domain_id),
-        exact,
+        _domain_paths(domain_id),
         wanted,
+        roles=roles,
         set_by=set_by,
     )
-    return before | set(wanted)
+    after = set((await holders(conn, DOMAINS, exact=True)).get(domain_id, ()))
+    return before | set(wanted) | after
 
 
 async def set_relationship_owners(
-    conn: "Connection", relationship_id: str, owners: Iterable[str], *, set_by: str | None
+    conn: "Connection",
+    relationship_id: str,
+    owners: Iterable[str],
+    *,
+    roles: Iterable[str] | None = None,
+    set_by: str | None,
 ) -> set[str]:
     """Write a relationship's Owner field: ``owners`` become the people Provisa holds as its
-    owners. Returns the people whose rows it wrote, before and after."""
+    owners (and ``roles``, when given, the roles). Returns the people whose rows it wrote, before
+    and after."""
     before = set((await holders(conn, RELATIONSHIPS, exact=True)).get(relationship_id, ()))
     wanted = list(owners)
     identifier = await identifier_of(conn, RELATIONSHIPS, relationship_id)
@@ -519,9 +735,35 @@ async def set_relationship_owners(
         identifier,
         (_segments(identifier),),
         wanted,
+        roles=roles,
         set_by=set_by,
     )
-    return before | set(wanted)
+    after = set((await holders(conn, RELATIONSHIPS, exact=True)).get(relationship_id, ()))
+    return before | set(wanted) | after
+
+
+async def _require_may_change(
+    conn: "Connection",
+    kind: OwnedKind,
+    object_id: str,
+    reach: Paths,
+    before: Named,
+    people: Iterable[str] | None,
+    roles: Iterable[str] | None,
+    changer: Changer,
+) -> None:
+    """Refuse (:class:`OwnerChangeRefused`) a field whose people or roles differ from what it
+    names (``before``) when ``changer`` is neither an org admin nor a current holder of the object
+    (spelled ``reach``): REQ-2219, amended 2026-11-23, the same for products, domains and
+    relationships. A field left as it is needs neither."""
+    same_people = people is None or set(people) == set(before.people)
+    same_roles = roles is None or set(roles) == set(before.roles)
+    if (same_people and same_roles) or changer.org_admin:
+        return
+    current = (await _holders_of(conn, kind, {object_id: reach})).get(object_id, ())
+    if changer.user_id is not None and changer.user_id in current:
+        return
+    raise OwnerChangeRefused(object_id, kind)
 
 
 async def save_owner_field(
@@ -530,32 +772,104 @@ async def save_owner_field(
     domain_id: str,
     owners: Iterable[str] | None,
     *,
+    roles: Iterable[str] | None = None,
     stored_domain_id: str | None,
+    changer: Changer,
     set_by: str | None,
 ) -> set[str]:
     """Write a product's Owner field as a save does, every surface alike (GraphQL, MCP):
-    ``owners``, or the owners held when it is None. A product moved from ``stored_domain_id``
+    ``owners`` (people) and ``roles``, each kept as named when None. Only an org admin or a current
+    owner changes it (:class:`OwnerChangeRefused`). A product moved from ``stored_domain_id``
     keeps its owners, named under its new domain. Returns the people whose rows it wrote, for
-    :func:`reload_owner_rows`; nothing is written when the field is None and the product stays."""
+    :func:`reload_owner_rows`; nothing is written when the field is unchanged and the product
+    stays."""
     moved = stored_domain_id is not None and stored_domain_id != domain_id
-    if owners is None and not moved:
+    held_at = product_paths(product_id, stored_domain_id or domain_id)
+    before = await named(conn, PRODUCTS, held_at) if stored_domain_id is not None else Named((), ())
+    await _require_may_change(conn, PRODUCTS, product_id, held_at, before, owners, roles, changer)
+    if owners is None and roles is None and not moved:
         return set()
-    before = set(await owners_of(conn, product_id)) if stored_domain_id is not None else set()
-    wanted = list(owners) if owners is not None else sorted(before)
+    held_before = set(
+        (await _holders_of(conn, PRODUCTS, {product_id: held_at})).get(product_id, ())
+    )
+    wanted = list(before.people) if owners is None else list(owners)
+    wanted_roles = list(before.roles) if roles is None else list(roles)
     if stored_domain_id is not None and moved:
         # The rows name the product under its old domain: end them all, then name it anew.
-        await set_product_owners(conn, product_id, stored_domain_id, [], set_by=set_by)
-    await set_product_owners(conn, product_id, domain_id, wanted, set_by=set_by)
-    return before | set(wanted)
+        await set_product_owners(conn, product_id, stored_domain_id, [], roles=[], set_by=set_by)
+    await set_product_owners(conn, product_id, domain_id, wanted, roles=wanted_roles, set_by=set_by)
+    held_after = set(
+        (await _holders_of(conn, PRODUCTS, {product_id: product_paths(product_id, domain_id)})).get(
+            product_id, ()
+        )
+    )
+    return held_before | set(wanted) | held_after
+
+
+async def save_domain_stewards(
+    conn: "Connection",
+    domain_id: str,
+    stewards: Iterable[str] | None,
+    *,
+    roles: Iterable[str] | None = None,
+    changer: Changer,
+    set_by: str | None,
+) -> set[str]:
+    """Write a domain's Steward field as a save does: only an org admin or a current steward of
+    the domain changes it (:class:`OwnerChangeRefused`). People or roles left None are kept."""
+    exact = _domain_paths(domain_id)
+    before = await named(conn, DOMAINS, exact)
+    owned = await owned_objects(conn, DOMAINS)
+    reach = owned.reach.get(domain_id, exact)
+    await _require_may_change(conn, DOMAINS, domain_id, reach, before, stewards, roles, changer)
+    if stewards is None and roles is None:
+        return set()
+    return await set_domain_stewards(
+        conn,
+        domain_id,
+        list(before.people) if stewards is None else stewards,
+        roles=roles,
+        set_by=set_by,
+    )
+
+
+async def save_relationship_owners(
+    conn: "Connection",
+    relationship_id: str,
+    owners: Iterable[str] | None,
+    *,
+    roles: Iterable[str] | None = None,
+    changer: Changer,
+    set_by: str | None,
+) -> set[str]:
+    """Write a relationship's Owner field as a save does: only an org admin or a current owner of
+    the relationship changes it (:class:`OwnerChangeRefused`). People or roles left None are
+    kept."""
+    if owners is None and roles is None:
+        return set()
+    identifier = await identifier_of(conn, RELATIONSHIPS, relationship_id)
+    paths = (_segments(identifier),)
+    before = await named(conn, RELATIONSHIPS, paths)
+    await _require_may_change(
+        conn, RELATIONSHIPS, relationship_id, paths, before, owners, roles, changer
+    )
+    return await set_relationship_owners(
+        conn,
+        relationship_id,
+        list(before.people) if owners is None else owners,
+        roles=roles,
+        set_by=set_by,
+    )
 
 
 async def end_product_owners(
     conn: "Connection", product_id: str, domain_id: str, *, set_by: str | None
 ) -> set[str]:
-    """End every Provisa-held owner row naming a product being deleted: no row is left naming a
-    product that is gone. Call before the product's row is deleted; returns its owners."""
+    """End every Provisa-held owner row naming a product being deleted, a role's among them: no
+    row is left naming a product that is gone. Call before the product's row is deleted; returns
+    its owners."""
     ended = set(await owners_of(conn, product_id))
-    await set_product_owners(conn, product_id, domain_id, [], set_by=set_by)
+    await set_product_owners(conn, product_id, domain_id, [], roles=[], set_by=set_by)
     return ended
 
 
@@ -567,6 +881,7 @@ async def reload_owner_rows(conn: "Connection", state: Any, people: Iterable[str
     from provisa.entitlements import effective_store, store
 
     state.held_entitlements = await store.load_held(conn)
+    state.role_owner_rows = await store.load_role_owner_rows(conn)
     state.data_product_refs = await data_product_repo.refs(conn)
     for principal in sorted(set(people)):
         # Each rewrites object_owners from the store as well (effective_store.write_person).

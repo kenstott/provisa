@@ -887,7 +887,9 @@
         "no_description": "This data product states neither its purpose nor its usage.",
         "successor_retired": "The data product that took this one's members, '{{successor}}', has been retired too."
       },
-      "owner_not_eligible": "{{owner}} holds no role with the data_product_owner capability, so cannot be named an owner of data product {{data_product}}. Grant them such a role first."
+      "owner_not_eligible": "{{owner}} holds no role with the data_product_owner capability, so cannot be named an owner of data product {{data_product}}. Grant them such a role first.",
+      "owner_role_not_eligible": "Role {{role}} does not hold the data_product_owner capability, so cannot be named an owner of data product {{data_product}}. Give the role that capability first.",
+      "owners_change_refused": "Only an org admin or a current owner of data product {{data_product}} may change its owners."
     },
     "erd": {
       "database_unavailable": "The ERD layouts cannot be read: the database is unavailable",
@@ -940,7 +942,9 @@
     "relationship": {
       "name_taken": "The name '{{name}}' is taken by relationship '{{held_by}}'. Name this one otherwise.",
       "join_through_none": "Relationships '{{first}}' and '{{second}}' share no middle table, or their other ends are already joined through it.",
-      "owner_not_eligible": "{{owner}} holds no role with the relationship_owner capability, so cannot be named an owner of relationship {{relationship}}. Grant them such a role first."
+      "owner_not_eligible": "{{owner}} holds no role with the relationship_owner capability, so cannot be named an owner of relationship {{relationship}}. Grant them such a role first.",
+      "owner_role_not_eligible": "Role {{role}} does not hold the relationship_owner capability, so cannot be named an owner of relationship {{relationship}}. Give the role that capability first.",
+      "owners_change_refused": "Only an org admin or a current owner of relationship {{relationship}} may change its owners."
     },
     "syncing": {
       "not_found": "There is no entry {{entry}}.",
@@ -982,7 +986,9 @@
       "webhook_secret_required": "A webhook needs the secret scheduled reviews are signed with"
     },
     "domain": {
-      "steward_not_eligible": "{{steward}} holds no role with the domain_steward capability, so cannot be named a steward of domain {{domain}}. Grant them such a role first."
+      "steward_not_eligible": "{{steward}} holds no role with the domain_steward capability, so cannot be named a steward of domain {{domain}}. Grant them such a role first.",
+      "steward_role_not_eligible": "Role {{role}} does not hold the domain_steward capability, so cannot be named a steward of domain {{domain}}. Give the role that capability first.",
+      "stewards_change_refused": "Only an org admin or a current steward of domain {{domain}} may change its stewards."
     }
   }
 }

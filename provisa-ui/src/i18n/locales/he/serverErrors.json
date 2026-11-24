@@ -887,7 +887,9 @@
         "no_description": "מוצר נתונים זה אינו מציין את מטרתו או את אופן השימוש בו.",
         "successor_retired": "מוצר הנתונים שקיבל את החברים של מוצר זה, '{{successor}}', הוצא גם הוא משימוש."
       },
-      "owner_not_eligible": "ל-{{owner}} אין תפקיד עם היכולת data_product_owner, ולכן לא ניתן למנות אותו לבעלים של מוצר הנתונים {{data_product}}. הקצו לו תפקיד כזה תחילה."
+      "owner_not_eligible": "ל-{{owner}} אין תפקיד עם היכולת data_product_owner, ולכן לא ניתן למנות אותו לבעלים של מוצר הנתונים {{data_product}}. הקצו לו תפקיד כזה תחילה.",
+      "owner_role_not_eligible": "לתפקיד {{role}} אין את היכולת data_product_owner, ולכן לא ניתן למנות אותו לבעלים של מוצר הנתונים {{data_product}}. הוסיפו לתפקיד יכולת זו תחילה.",
+      "owners_change_refused": "רק מנהל הארגון או בעלים נוכחי של מוצר הנתונים {{data_product}} רשאים לשנות את בעליו."
     },
     "erd": {
       "database_unavailable": "לא ניתן לקרוא את פריסות ה-ERD: מסד הנתונים אינו זמין",
@@ -940,7 +942,9 @@
     "relationship": {
       "name_taken": "השם '{{name}}' תפוס על ידי הקשר '{{held_by}}'. יש לתת לקשר הזה שם אחר.",
       "join_through_none": "לקשרים '{{first}}' ו-'{{second}}' אין טבלת ביניים משותפת, או שהקצוות האחרים שלהם כבר מצורפים דרכה.",
-      "owner_not_eligible": "ל-{{owner}} אין תפקיד עם היכולת relationship_owner, ולכן לא ניתן למנות אותו לבעלים של הקשר {{relationship}}. הקצו לו תפקיד כזה תחילה."
+      "owner_not_eligible": "ל-{{owner}} אין תפקיד עם היכולת relationship_owner, ולכן לא ניתן למנות אותו לבעלים של הקשר {{relationship}}. הקצו לו תפקיד כזה תחילה.",
+      "owner_role_not_eligible": "לתפקיד {{role}} אין את היכולת relationship_owner, ולכן לא ניתן למנות אותו לבעלים של הקשר {{relationship}}. הוסיפו לתפקיד יכולת זו תחילה.",
+      "owners_change_refused": "רק מנהל הארגון או בעלים נוכחי של הקשר {{relationship}} רשאים לשנות את בעליו."
     },
     "syncing": {
       "not_found": "אין רשומה {{entry}}.",
@@ -982,7 +986,9 @@
       "webhook_secret_required": "Webhook זקוק לסוד שבו נחתמות סקירות מתוזמנות"
     },
     "domain": {
-      "steward_not_eligible": "ל-{{steward}} אין תפקיד עם היכולת domain_steward, ולכן לא ניתן למנות אותו לאחראי על הדומיין {{domain}}. הקצו לו תפקיד כזה תחילה."
+      "steward_not_eligible": "ל-{{steward}} אין תפקיד עם היכולת domain_steward, ולכן לא ניתן למנות אותו לאחראי על הדומיין {{domain}}. הקצו לו תפקיד כזה תחילה.",
+      "steward_role_not_eligible": "לתפקיד {{role}} אין את היכולת domain_steward, ולכן לא ניתן למנות אותו לאחראי על הדומיין {{domain}}. הוסיפו לתפקיד יכולת זו תחילה.",
+      "stewards_change_refused": "רק מנהל הארגון או אחראי נוכחי על הדומיין {{domain}} רשאים לשנות את האחראים עליו."
     }
   }
 }

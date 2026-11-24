@@ -495,9 +495,10 @@ export function useCreateDomain() {
       graphqlAlias: string | null,
       parentDomainId: string | null,
       stewards: string[],
+      stewardRoles: string[],
     ) => {
       const result = await createDomain({
-        variables: { id, description, graphqlAlias, parentDomainId, stewards },
+        variables: { id, description, graphqlAlias, parentDomainId, stewards, stewardRoles },
       });
       return (result.data?.createDomain ?? { success: false, message: "" }) as MutationResult;
     },
