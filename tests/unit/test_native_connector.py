@@ -295,19 +295,28 @@ def _connects(address: str, port: int) -> bool:
         return False
 
 
-def test_a_native_hosts_front_binds_loopback_alone(tmp_path):
-    env = native_connector._environment(tmp_path, "d" * 64, "job")  # pyright: ignore[reportPrivateUsage]
-    state = tmp_path / "state"
-    server = front.Front(
+def _in_process_front(root: Path, bind: str = front.ALL_INTERFACES) -> front.Front:
+    """A front built in this process from the state and spill directories ``front.main`` makes
+    before it starts one."""
+    state = root / "state"
+    spill = root / "spill"
+    state.mkdir(parents=True, exist_ok=True)
+    spill.mkdir(parents=True, exist_ok=True)
+    return front.Front(
         0,
         front.Identity(state),
         None,
         {},
-        bounds=front.Bounds(state, str(tmp_path / "spill")),
+        bounds=front.Bounds(state, str(spill)),
         script=front.Script(state, [sys.executable, "-I", "host.py", "{fd}", "code", "entry"]),
         worker_argv=[],
-        bind=env[front.BIND_ENV],
+        bind=bind,
     )
+
+
+def test_a_native_hosts_front_binds_loopback_alone(tmp_path):
+    env = native_connector._environment(tmp_path, "d" * 64, "job")  # pyright: ignore[reportPrivateUsage]
+    server = _in_process_front(tmp_path, bind=env[front.BIND_ENV])
     try:
         assert server.socket.getsockname()[0] == "127.0.0.1"
     finally:
@@ -327,16 +336,7 @@ def test_a_native_host_refuses_a_connection_from_the_network(tmp_path):
 
 
 def test_an_image_hosts_front_keeps_listening_on_every_interface(tmp_path):
-    state = tmp_path / "state"
-    server = front.Front(
-        0,
-        front.Identity(state),
-        None,
-        {},
-        bounds=front.Bounds(state, str(tmp_path / "spill")),
-        script=front.Script(state, [sys.executable, "-I", "host.py", "{fd}", "code", "entry"]),
-        worker_argv=[],
-    )
+    server = _in_process_front(tmp_path)
     try:
         assert server.socket.getsockname()[0] == "0.0.0.0"
     finally:
