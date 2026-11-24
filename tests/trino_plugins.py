@@ -30,6 +30,7 @@ from __future__ import annotations
 import hashlib
 import os
 import sys
+import time
 import urllib.error
 import urllib.request
 
@@ -64,6 +65,14 @@ _TRINO_PLUGIN_SHA256 = {
     "trino-salesforce": "f75bbd16ce56c6ff766a34582aa745b99ed44cb150d91bf485cd2d145eb65d65",
     "trino-cloudops": "e4b421d0bacdfbb48cf4c5fc12cac514d1b8fe890f03c14ddc2a58c8190f77d2",
 }
+
+# Maven Central answers a burst with HTTP 429 (run 45293530114: the priming job's first jar, on a
+# cache miss). A 429 is retried after a growing wait, or the server's Retry-After when it asks
+# for longer, up to _FETCH_ATTEMPTS tries in all; the last refusal fails by name. Any other error
+# is not retried.
+_FETCH_ATTEMPTS = 5
+_FETCH_BACKOFF_SECONDS = (15, 30, 60, 120)
+_FETCH_RETRY_AFTER_CAP_SECONDS = 300
 
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -106,6 +115,21 @@ def jar_problem(path: str, name: str) -> str | None:
     return None
 
 
+def _rate_limited(exc: urllib.error.URLError) -> bool:
+    return isinstance(exc, urllib.error.HTTPError) and exc.code == 429
+
+
+def _retry_wait(exc: urllib.error.URLError, attempt: int) -> int:
+    """Seconds before try ``attempt + 1``: the backoff step, or the server's Retry-After (in
+    seconds, capped) when it asks for longer."""
+    wait = _FETCH_BACKOFF_SECONDS[attempt - 1]
+    headers = getattr(exc, "headers", None)
+    asked = headers.get("Retry-After") if headers is not None else None
+    if asked is not None and asked.strip().isdigit():
+        wait = max(wait, min(int(asked), _FETCH_RETRY_AFTER_CAP_SECONDS))
+    return wait
+
+
 def fetch(target: str, name: str) -> str:
     """Download the pinned ``name`` jar into the directory ``target``; return its path.
 
@@ -116,13 +140,22 @@ def fetch(target: str, name: str) -> str:
     path = os.path.join(target, jar_name(name))
     part = path + ".part"
     url = plugin_url(name)
-    print(f"[trino-plugins] downloading {name} from {url}", flush=True)
-    try:
-        urllib.request.urlretrieve(url, part)  # noqa: S310 — pinned https Maven Central URL
-    except urllib.error.URLError as exc:
-        if os.path.exists(part):
-            os.unlink(part)
-        raise TrinoPluginRefused(f"Trino plugin {name}: {url} was refused: {exc}") from exc
+    for attempt in range(1, _FETCH_ATTEMPTS + 1):
+        print(f"[trino-plugins] downloading {name} from {url} (try {attempt})", flush=True)
+        try:
+            urllib.request.urlretrieve(url, part)  # noqa: S310 — pinned https Maven Central URL
+            break
+        except urllib.error.URLError as exc:
+            if os.path.exists(part):
+                os.unlink(part)
+            if not _rate_limited(exc) or attempt == _FETCH_ATTEMPTS:
+                tries = f" after {attempt} tries" if _rate_limited(exc) else ""
+                raise TrinoPluginRefused(
+                    f"Trino plugin {name}: {url} was refused{tries}: {exc}"
+                ) from exc
+            wait = _retry_wait(exc, attempt)
+            print(f"[trino-plugins] {name}: HTTP 429, retrying in {wait}s", flush=True)
+            time.sleep(wait)
     problem = jar_problem(part, name)
     if problem is not None:
         if os.path.exists(part):

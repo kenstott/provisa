@@ -101,9 +101,16 @@ class _Plane:
     """What the open writes, in memory, and when each line was in what."""
 
     def __init__(
-        self, fail: dict[tuple[str, str], Exception] | None = None, *, meet: bool = False
+        self,
+        fail: dict[tuple[str, str], Exception] | None = None,
+        *,
+        meet: bool = False,
+        meet_creating: bool = False,
     ) -> None:
         self.fail = fail or {}
+        #: When set, the two creations meet inside their schemas' layout: each waits there for
+        #: the other. Creations made one at a time never meet (the barrier breaks).
+        self.meet_creating = threading.Barrier(2, timeout=5) if meet_creating else None
         #: When set, the two runtime builds meet inside their domain-policy windows: each waits
         #: there for the other, and test's reads its policy only after dev's has set the org's
         #: own. Builds made one at a time never meet (the barrier breaks).
@@ -170,6 +177,8 @@ def _install(monkeypatch, tmp_path: Path, plane: _Plane) -> OrgRegistry:
         plane.count("creating", +1)
         try:
             # The control plane blocks the thread that calls it (core.database): so does this.
+            if plane.meet_creating is not None:
+                plane.meet_creating.wait()
             time.sleep(_SCHEMA_S[env])
             plane._maybe_fail("schema", env)
             plane.schemas.add(env)
@@ -304,9 +313,15 @@ _DEMO = PublishedDemo(name="alpha", title="Alpha", directory=Path("/demos/alpha"
 
 
 def _opened(
-    monkeypatch, tmp_path: Path, how, fail: dict | None = None, *, meet: bool = False
+    monkeypatch,
+    tmp_path: Path,
+    how,
+    fail: dict | None = None,
+    *,
+    meet: bool = False,
+    meet_creating: bool = False,
 ) -> tuple[_Plane, OrgRegistry, BaseException | None]:
-    plane = _Plane(fail, meet=meet)
+    plane = _Plane(fail, meet=meet, meet_creating=meet_creating)
     registry = _install(monkeypatch, tmp_path, plane)
 
     async def _open() -> BaseException | None:
@@ -368,9 +383,15 @@ def _policies():
 
 
 def test_the_environments_are_created_side_by_side(monkeypatch, tmp_path):
-    plane, _registry, raised = _opened(monkeypatch, tmp_path, demo_sandbox._environments)
+    """Each line's creation and runtime build meet the other's: each waits inside for the other.
+    The lines' durations do not order them (test's line can end before dev's creation does), so
+    the overlap is proven by the meeting, not by timing. Made one after another, they never meet
+    (the barrier breaks and the open fails)."""
+    plane, _registry, raised = _opened(
+        monkeypatch, tmp_path, demo_sandbox._environments, meet=True, meet_creating=True
+    )
 
-    assert raised is None
+    assert raised is None, raised
     # test's creation ran while dev's did: one after another, never more than one at once.
     assert plane.most_creating == 2, plane.events
     assert plane.most_building == 2, plane.events

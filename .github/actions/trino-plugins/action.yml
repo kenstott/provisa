@@ -5,7 +5,8 @@ description: >-
   are cached by that pin and Maven Central is asked for them once per pin, by one job.
 
   `phase: prime` is that job's (or a lone job's): it restores the cache, and on a miss downloads
-  every jar (`python3 tests/trino_plugins.py fetch`, each checked against its sha256) and saves
+  every jar (`python3 tests/trino_plugins.py fetch`, each checked against its sha256, an HTTP 429
+  retried with backoff a bounded number of times before it fails by name) and saves
   them at once, then uploads them as the run's artifact. `phase: restore` is every parallel lane's,
   in a job that `needs:` the priming one: a cache miss takes the jars from that artifact, and each
   jar is verified before the tests. A lane
