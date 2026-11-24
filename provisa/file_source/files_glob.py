@@ -16,7 +16,7 @@ refused by name, never silently null-filled. Discovery proposes such a group (fi
 source's path that share a column set); registration is where the operator accepts it.
 """
 
-# Requirements: REQ-788
+# Requirements: REQ-788, REQ-2234
 
 from __future__ import annotations
 
@@ -44,6 +44,45 @@ class FileColumnsDiffer(ValueError):
             f"file {file!r} matched by glob {glob!r} has a different column set "
             f"({'; '.join(detail)}); every file in a files-glob table must have the same columns"
         )
+
+
+class FileTypesDiffer(ValueError):
+    """The files one ``file_glob`` matches are of more than one file type (REQ-2234, A PATTERN
+    WITH NO FILE TYPE): a pattern that names no type reads as the one type its files share, so
+    files of several types cannot be one table and are refused by name, listing the types."""
+
+    code = "schema.file_types_differ"
+
+    def __init__(self, glob: str, types: Sequence[str]) -> None:
+        self.params = {"glob": glob, "types": ", ".join(types)}
+        super().__init__(
+            f"glob {glob!r} matches files of more than one type ({', '.join(types)}); "
+            f"the files of one table must all be one type"
+        )
+
+
+def file_type_of(path: str) -> str:
+    """One file's type, as a files-glob table reads it: the file-source type its extension names
+    (csv, parquet, sqlite), else the extension itself, so an unreadable kind is still named."""
+    import posixpath
+
+    from provisa.file_source.crawler import _source_type_for_path
+
+    known = _source_type_for_path(path)
+    if known is not None:
+        return known
+    ext = posixpath.splitext(path.replace("\\", "/").rsplit("/", 1)[-1])[1].lower().lstrip(".")
+    return ext or "no extension"
+
+
+def glob_file_type(glob: str, files: Sequence[str]) -> str:
+    """The one file type of the files ``glob`` matches (REQ-2234): a pattern naming no type
+    (``complaint*``) reads as the type its files share. Files of more than one type raise
+    :class:`FileTypesDiffer`; ``files`` must be non-empty."""
+    types = sorted({file_type_of(f) for f in files})
+    if len(types) > 1:
+        raise FileTypesDiffer(glob, types)
+    return types[0]
 
 
 def column_set(columns: Iterable[str]) -> frozenset[str]:
@@ -190,11 +229,13 @@ def validate_glob_table(
     glob: str, files: list[str], columns_of: "Callable[[str], Sequence[str]]"
 ) -> list[str]:
     """The agreed columns of a files-glob table, or raise. ``columns_of`` introspects one file's
-    column names. A glob that matches no file is a configuration error named here (REQ-788)."""
+    column names. A glob that matches no file is a configuration error named here (REQ-788); files
+    of more than one type are refused by name (REQ-2234, :class:`FileTypesDiffer`)."""
     if not files:
         raise ValueError(
             f"glob {glob!r} matched no files; a files-glob table must match at least one"
         )
+    glob_file_type(glob, files)  # REQ-2234: one type, before any file is read as one
     return require_same_columns(glob, {path: list(columns_of(path)) for path in files})
 
 

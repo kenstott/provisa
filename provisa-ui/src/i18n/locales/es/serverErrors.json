@@ -574,7 +574,8 @@
       "table_domain_required": "La tabla '{{table}}' no indica ningún dominio: toda tabla se registra en un dominio",
       "table_state_from_function": "La tabla '{{table}}' se deriva de la función '{{name}}' y tiene su estado de publicación: no se retira ni se restablece por sí sola",
       "table_region_from_function": "La tabla '{{table}}' se deriva de la función '{{name}}' y tiene su región: no se traslada por sí sola a otra región",
-      "table_name_reserved": "El nombre de tabla '{{table}}' está reservado: los comandos de un dominio se sirven bajo 'commands'. Registre la tabla con otro nombre o alias."
+      "table_name_reserved": "El nombre de tabla '{{table}}' está reservado: los comandos de un dominio se sirven bajo 'commands'. Registre la tabla con otro nombre o alias.",
+      "file_types_differ": "El patrón {{glob}} coincide con archivos de más de un tipo ({{types}}); los archivos de una tabla deben ser todos de un mismo tipo."
     },
     "secrets": {
       "env_reference_object_locked": "Este objeto es del operador: lee el entorno propio del servidor y no puede cambiarse aquí. Añada uno propio en su lugar.",
@@ -691,7 +692,8 @@
       "undefined_variable_property": "{{clause}} lee {{variable}}, que nada en la sentencia vincula: una variable se vincula con un patrón MATCH, WITH, UNWIND o CALL. Vinculadas aquí: {{bound}}. ¿Quería decir {{suggestion}}? {{owner}} está vinculada a :{{label}}, que tiene una propiedad {{variable}}.",
       "undefined_variable_properties": "{{clause}} lee {{variable}}, que nada en la sentencia vincula: una variable se vincula con un patrón MATCH, WITH, UNWIND o CALL. Vinculadas aquí: {{bound}}. ¿Quería decir {{suggestions}}? Cada una está vinculada a una etiqueta con una propiedad {{variable}}.",
       "non_finite_number": "La respuesta contiene un número que JSON no puede representar: {{column}} es {{value}}.",
-      "try_cast_needs_postgres_16": "toInteger, toFloat y toBoolean de un valor que puede no convertirse requieren PostgreSQL 16 o posterior en este motor."
+      "try_cast_needs_postgres_16": "toInteger, toFloat y toBoolean de un valor que puede no convertirse requieren PostgreSQL 16 o posterior en este motor.",
+      "relationship_unread": "No se pudo leer una relación, así que sus aristas no se muestran: {{statement}}: {{reason}}"
     },
     "requests": {
       "approver_outside_domains": "Su derecho a aprobar relaciones no alcanza ningún dominio que toque esta solicitud ({{domains}})",

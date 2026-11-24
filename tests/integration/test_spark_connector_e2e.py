@@ -12,17 +12,25 @@
 connector's own project and the Spark Connect client from its lock, joined with an annotated
 script. A table read, a command and a @stream each run on the cluster.
 
+REQ-2270: a Provisa server joins the connector as a remote host, and a command given a governed
+table with a row rule reads it over Arrow Flight SQL as the calling role, so only the rows the rule
+allows reach the cluster. The server runs no minted-token pgwire listener: a read that took that
+path would be refused naming server.minted_pgwire_port.
+
 The server matches the client the connector's uv.lock pins, so a client/server version difference
 cannot pass or fail this test.
 """
 
-# Requirements: REQ-2225
+# Requirements: REQ-2225, REQ-2270
 
 from __future__ import annotations
 
+import datetime
+import ipaddress
 import json
 import os
 import shutil
+import socket
 import subprocess
 import sys
 import textwrap
@@ -30,7 +38,9 @@ import time
 from pathlib import Path
 from types import SimpleNamespace
 
+import httpx
 import pytest
+import yaml
 
 from provisa.codehost import front
 from provisa.codesource import remote, remote_sources
@@ -256,7 +266,7 @@ def cluster(client_python):
 class _Host:
     """The connector's front end and host, running its own code on the client's Python."""
 
-    def __init__(self, work: Path, python: Path) -> None:
+    def __init__(self, work: Path, python: Path, extra_env: dict[str, str] | None = None) -> None:
         self.work = work
         code = work / "code"
         code.mkdir()
@@ -275,6 +285,7 @@ class _Host:
             "PROVISA_MANIFEST_FILE": str(work / "manifest.json"),
             "PROVISA_CONNECTOR_SCRIPT": "script",
             **({"SPARK_HOME": str(_phome)} if _phome is not None else {}),
+            **(extra_env or {}),
         }
         self.process = subprocess.Popen(  # noqa: S603 -- the test's interpreter and Provisa's front
             [
@@ -432,3 +443,272 @@ async def test_a_stream_is_a_streaming_query_on_the_cluster(joined):
         worker.stop()
     assert len(seen) >= 5, seen
     assert seen == sorted(seen) and len(set(seen)) == len(seen)
+
+
+# -- REQ-2270: a command's governed table argument, read over Arrow Flight SQL --------------------
+
+#: A role the row rule narrows; org_admin, which the rule does not name, reads every row.
+_ANALYST = "clip_analyst"
+_ADMIN = "org_admin"
+
+_LEDGER = {
+    "ledger/ledger.py": '''
+from dataclasses import dataclass
+
+
+@dataclass
+class Clip:
+    id: int
+    region: str
+
+
+def clips() -> list[Clip]:
+    """@table"""
+    return [Clip(1, "emea"), Clip(2, "amer"), Clip(3, "apac")]
+''',
+}
+
+_TABLE_SCRIPT = textwrap.dedent(
+    '''
+    from dataclasses import dataclass
+
+    from provisa_services import TableRef
+    from provisa_spark import dataframe
+
+
+    @dataclass
+    class Clip:
+        id: int
+        region: str
+
+
+    def clips_on_the_cluster(clips: TableRef[Clip]) -> list[Clip]:
+        """The clips the caller may read, as a DataFrame on the cluster.
+
+        @query
+        """
+        frame = dataframe(clips).orderBy("id")
+        return [Clip(id=row.id, region=row.region) for row in frame.collect()]
+    '''
+)
+
+
+def _lan_address() -> str:
+    """This machine's address on its network: a remote host reaches Provisa by it, and a host name
+    on loopback is refused for one (table_reads)."""
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
+        probe.connect(("192.0.2.1", 9))  # TEST-NET-1: nothing is sent; the route names the address
+        address = probe.getsockname()[0]
+    assert not address.startswith("127."), f"no network address to serve Flight on: {address}"
+    return address
+
+
+def _certificate(directory: Path, address: str) -> tuple[Path, Path]:
+    """A self-signed certificate for ``address``, and its key: the Flight server's TLS, trusted by
+    the remote host as its root."""
+    from cryptography import x509
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import ec
+    from cryptography.x509.oid import NameOID
+
+    key = ec.generate_private_key(ec.SECP256R1())
+    name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, address)])
+    now = datetime.datetime.now(datetime.UTC)
+    certificate = (
+        x509.CertificateBuilder()
+        .subject_name(name)
+        .issuer_name(name)
+        .public_key(key.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(now - datetime.timedelta(minutes=5))
+        .not_valid_after(now + datetime.timedelta(days=1))
+        .add_extension(
+            x509.SubjectAlternativeName([x509.IPAddress(ipaddress.ip_address(address))]),
+            critical=False,
+        )
+        .add_extension(x509.BasicConstraints(ca=True, path_length=None), critical=True)
+        .sign(key, hashes.SHA256())
+    )
+    cert_path, key_path = directory / "flight.crt", directory / "flight.key"
+    cert_path.write_bytes(certificate.public_bytes(serialization.Encoding.PEM))
+    key_path.write_bytes(
+        key.private_bytes(
+            serialization.Encoding.PEM,
+            serialization.PrivateFormat.PKCS8,
+            serialization.NoEncryption(),
+        )
+    )
+    return cert_path, key_path
+
+
+def _column(name: str, data_type: str) -> str:
+    return f'{{name: "{name}", visibleTo: ["{_ADMIN}", "{_ANALYST}"], dataType: "{data_type}"}}'
+
+
+@pytest.fixture(scope="module")
+def flight_tls(tmp_path_factory):
+    address = _lan_address()
+    cert, key = _certificate(tmp_path_factory.mktemp("flight-tls"), address)
+    return address, cert, key
+
+
+@pytest.fixture(scope="module")
+def spark_host(tmp_path_factory, client_python, flight_tls):
+    """The connector's host, trusting the Flight server's certificate as its root."""
+    _, cert, _ = flight_tls
+    started = _Host(
+        tmp_path_factory.mktemp("spark-host"),
+        client_python,
+        {"GRPC_DEFAULT_SSL_ROOTS_FILE_PATH": str(cert)},
+    )
+    yield started
+    started.stop()
+
+
+@pytest.fixture(scope="module")
+def provisa_server(tmp_path_factory, spark_host, flight_tls):
+    """A Provisa server serving Arrow Flight over TLS at this machine's address, the connector's
+    block and image labels stood in for (tests/integration/spark_connector_app.py)."""
+    from tests.integration.isolated_server import IsolatedServer
+    from tests.integration.test_code_sources_e2e import _config
+
+    address, cert, key = flight_tls
+    work = tmp_path_factory.mktemp("spark-flight-server")
+    config = _config()
+    config["roles"] = [
+        {
+            "id": _ANALYST,
+            "description": "Reads the clips its row rule allows.",
+            "parents": ["data_writer"],
+            "capabilities": ["usage", "query_development", "command_execution", "full_results"],
+            "domain_access": ["*"],
+        }
+    ]
+    path = work / "config.yaml"
+    path.write_text(yaml.safe_dump(config))
+    row = {
+        "name": "spark",
+        "git": "https://git.example/spark.git",
+        "ref": "main",
+        "commit": "a" * 40,
+        "language": "python",
+        "image": "registry.example/connectors/spark",
+        "digest": "sha256:" + "b" * 64,
+        "code_hash": spark_host.hashed,
+        "arch": "amd64",
+        "requires": [{"name": "script", "multiline": True, "script": True}, {"name": "cluster"}],
+    }
+    labels = {
+        "code_hash": spark_host.hashed,
+        "manifest_hash": manifest_hash(_PROJECT_MANIFEST),
+        "runtime": "python",
+    }
+    srv = IsolatedServer(
+        "spark_flight",
+        engine="duckdb",
+        config=str(path),
+        control_plane="own",
+        materialize_store_url=f"duckdb:///{work / 'store.duckdb'}",
+        await_flight=True,
+        app="tests.integration.spark_connector_app:app",
+        env={
+            "PROVISA_RUNTIME_DEPS_CACHE": str(tmp_path_factory.mktemp("runtime-deps")),
+            "PROVISA_HOSTNAME": address,
+            "PROVISA_FLIGHT_CERT": str(cert),
+            "PROVISA_FLIGHT_KEY": str(key),
+            "PROVISA_TEST_SPARK_CONNECTOR": json.dumps(row),
+            "PROVISA_TEST_SPARK_LABELS": json.dumps(labels),
+        },
+    )
+    srv.start(timeout=240)
+    try:
+        yield srv
+    finally:
+        srv.stop_process()
+
+
+@pytest.fixture(scope="module")
+def clips_command(provisa_server, spark_host, cluster):
+    """The governed table ``fx.clips`` (a Python source; the analyst's row rule allows clip 1) and
+    the Spark command taking it, the connector joined with the server."""
+    from tests.integration.test_code_sources_e2e import _admin, _archive
+
+    srv = provisa_server
+    upload = httpx.post(
+        f"{srv.base_url}/admin/orgs/{srv.org_id}/code-uploads/archive",
+        params={"filename": "ledger.zip"},
+        content=_archive(_LEDGER),
+        headers={"X-Provisa-Role": _ADMIN, "Content-Type": "application/octet-stream"},
+        timeout=srv.request_timeout + 30,
+    )
+    assert upload.status_code == 200, upload.text
+    ledger = {
+        "runtime": "python",
+        "code": {"kind": "upload", "upload": upload.json()["content_hash"]},
+    }
+    _admin(
+        srv,
+        f'createSource(input: {{id: "ledger", type: "python", host: "", port: 0, database: "", '
+        f"cacheTtl: 300, mappingJson: {json.dumps(json.dumps(ledger))}}})",
+    )
+    columns = ", ".join([_column("id", "bigint"), _column("region", "text")])
+    _admin(
+        srv,
+        'registerTable(input: {sourceId: "ledger", domainId: "fx", schemaName: "default", '
+        f'tableName: "clips", cacheTtl: 300, columns: [{columns}]}})',
+    )
+    _admin(
+        srv,
+        f'upsertRlsRule(input: {{tableId: "clips", roleId: "{_ANALYST}", filterExpr: "id = 1", '
+        'description: "The analyst reads clip 1 only."})',
+    )
+    joining = {
+        "connector_join": {
+            "connector": "spark",
+            "host": "127.0.0.1",
+            "port": spark_host.port,
+            "pairing_code": spark_host.pairing,
+        },
+        "settings": {"script": _TABLE_SCRIPT, "cluster": cluster},
+    }
+    _admin(
+        srv,
+        f'createSource(input: {{id: "spark_jobs", type: "python", host: "", port: 0, '
+        f'database: "", cacheTtl: 300, mappingJson: {json.dumps(json.dumps(joining))}}})',
+    )
+    response = httpx.post(
+        f"{srv.base_url}/admin/actions/functions",
+        json={
+            "name": "clips_on_the_cluster",
+            "sourceId": "spark_jobs",
+            "functionName": "clips_on_the_cluster",
+            "domainId": "fx",
+            "visibleTo": [_ADMIN, _ANALYST],
+        },
+        headers={"X-Provisa-Role": _ADMIN},
+        timeout=srv.request_timeout + 120,
+    )
+    assert response.status_code == 200, response.text
+    return srv
+
+
+def _clips_as(srv, role: str) -> list[dict]:
+    response = httpx.post(
+        f"{srv.base_url}/data/sql",
+        json={
+            "sql": "SELECT c.id, c.region FROM clips_on_the_cluster('fx.clips') AS c ORDER BY c.id"
+        },
+        headers={"X-Provisa-Role": role},
+        timeout=srv.request_timeout + 300,
+    )
+    assert response.status_code == 200, response.text
+    return [{"id": int(r["id"]), "region": r["region"]} for r in response.json()["data"]["sql"]]
+
+
+def test_a_spark_command_reads_its_governed_table_over_flight_as_the_calling_role(clips_command):
+    assert _clips_as(clips_command, _ANALYST) == [{"id": 1, "region": "emea"}]
+    assert _clips_as(clips_command, _ADMIN) == [
+        {"id": 1, "region": "emea"},
+        {"id": 2, "region": "amer"},
+        {"id": 3, "region": "apac"},
+    ]
