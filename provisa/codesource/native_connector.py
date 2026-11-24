@@ -336,11 +336,12 @@ def script_value(row: dict) -> str:
 
 
 def _environment(work: Path, hashed: str, script: str) -> dict[str, str]:
-    from provisa.codehost.front import SCRIPT_ENV
+    from provisa.codehost.front import BIND_ENV, SCRIPT_ENV
     from provisa.python.host import DISCOVERED_ENV
 
     return {
         **os.environ,
+        BIND_ENV: LOOPBACK,  # REQ-2225: a native host is never reachable from the network
         "PROVISA_CODE_HASH": hashed,
         DISCOVERED_ENV: "{}",
         "PROVISA_MANIFEST_FILE": str(work / "manifest.json"),

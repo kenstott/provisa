@@ -17,6 +17,7 @@ start fails the source by name."""
 
 from __future__ import annotations
 
+import socket
 import subprocess
 import sys
 from pathlib import Path
@@ -26,6 +27,7 @@ from typing import Any, cast
 import pytest
 import yaml
 
+from provisa.codehost import front
 from provisa.codesource import native_connector, remote_sources
 from provisa.codesource.native_connector import NativeHostFailed
 from provisa.core.models import ConnectorConfig, ConnectorRequirement
@@ -246,3 +248,107 @@ def test_the_script_value_is_the_one_the_standard_file_marks():
         native_connector.script_value(
             {"requires": [{"name": "a", "script": True}, {"name": "b", "script": True}]}
         )
+
+
+# -- REQ-2225: a native host listens on loopback alone -------------------------------------------
+
+
+def _non_loopback_address() -> str:
+    """An address of this machine that is not loopback: the one its default route leaves by."""
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
+        probe.connect(("192.0.2.1", 9))  # TEST-NET-1: a UDP connect picks a route, sends nothing
+        address = probe.getsockname()[0]
+    assert not address.startswith("127."), f"this machine has no non-loopback address: {address}"
+    return address
+
+
+def _host_files(work: Path) -> SimpleNamespace:
+    """A native host's work directory and its install, as _launch leaves them."""
+    work.mkdir(parents=True)
+    code = work / "code"
+    code.mkdir()
+    (work / "manifest.json").write_text("{}")
+    (work / "names.json").write_text("{}")
+    return SimpleNamespace(python=Path(sys.executable), code=code, entry="spark_connector")
+
+
+def _start_front(work: Path, env: dict[str, str]) -> tuple[subprocess.Popen, int]:
+    built = cast(Any, _host_files(work))
+    log = work / "host.log"
+    with open(log, "w") as out:
+        process = subprocess.Popen(  # noqa: S603 -- the test's interpreter and Provisa's front end
+            native_connector._command(work, built, 0),  # pyright: ignore[reportPrivateUsage]
+            cwd=str(work),
+            env=env,
+            stdout=out,
+            stderr=subprocess.STDOUT,
+        )
+    port, _ = native_connector._await_listening(process, log, 0)  # pyright: ignore[reportPrivateUsage]
+    return process, port
+
+
+def _connects(address: str, port: int) -> bool:
+    try:
+        with socket.create_connection((address, port), timeout=5):
+            return True
+    except ConnectionRefusedError:
+        return False
+
+
+def test_a_native_hosts_front_binds_loopback_alone(tmp_path):
+    env = native_connector._environment(tmp_path, "d" * 64, "job")  # pyright: ignore[reportPrivateUsage]
+    state = tmp_path / "state"
+    server = front.Front(
+        0,
+        front.Identity(state),
+        None,
+        {},
+        bounds=front.Bounds(state, str(tmp_path / "spill")),
+        script=front.Script(state, [sys.executable, "-I", "host.py", "{fd}", "code", "entry"]),
+        worker_argv=[],
+        bind=env[front.BIND_ENV],
+    )
+    try:
+        assert server.socket.getsockname()[0] == "127.0.0.1"
+    finally:
+        server.server_close()
+
+
+def test_a_native_host_refuses_a_connection_from_the_network(tmp_path):
+    work = tmp_path / "host"
+    env = native_connector._environment(work, "d" * 64, "job")  # pyright: ignore[reportPrivateUsage]
+    process, port = _start_front(work, env)
+    try:
+        assert _connects("127.0.0.1", port)
+        assert not _connects(_non_loopback_address(), port)
+    finally:
+        process.terminate()
+        process.wait(timeout=10)
+
+
+def test_an_image_hosts_front_keeps_listening_on_every_interface(tmp_path):
+    state = tmp_path / "state"
+    server = front.Front(
+        0,
+        front.Identity(state),
+        None,
+        {},
+        bounds=front.Bounds(state, str(tmp_path / "spill")),
+        script=front.Script(state, [sys.executable, "-I", "host.py", "{fd}", "code", "entry"]),
+        worker_argv=[],
+    )
+    try:
+        assert server.socket.getsockname()[0] == "0.0.0.0"
+    finally:
+        server.server_close()
+    # The front started as an image starts it: no bind given, so the network reaches it.
+    work = tmp_path / "host"
+    env = native_connector._environment(work, "d" * 64, "job")  # pyright: ignore[reportPrivateUsage]
+    del env[front.BIND_ENV]
+    process, port = _start_front(work, env)
+    try:
+        assert _connects("127.0.0.1", port)
+        assert _connects(_non_loopback_address(), port)
+    finally:
+        process.terminate()
+        process.wait(timeout=10)
